@@ -54,16 +54,16 @@ from gui._pages.p08_import import render as import_page
 pg = st.navigation(
     {
         "Main": [
-            st.Page(dashboard, title="Dashboard", icon="\U0001f4ca"),
-            st.Page(construct, title="Construct", icon="\U0001f9ec"),
-            st.Page(diff_page, title="Diff", icon="\U0001f50d"),
-            st.Page(import_page, title="Import", icon="\U0001f4e5"),
+            st.Page(dashboard, title="Dashboard", icon="\U0001f4ca", url_path="dashboard"),
+            st.Page(construct, title="Construct", icon="\U0001f9ec", url_path="construct"),
+            st.Page(diff_page, title="Diff", icon="\U0001f50d", url_path="diff"),
+            st.Page(import_page, title="Import", icon="\U0001f4e5", url_path="import"),
         ],
         "Registry": [
-            st.Page(strains, title="Strains", icon="\U0001f9eb"),
-            st.Page(parts_page, title="Parts", icon="\U0001f9f1"),
-            st.Page(primers_page, title="Primers", icon="\U0001f9ea"),
-            st.Page(assembly, title="Assembly", icon="\U0001f527"),
+            st.Page(strains, title="Strains", icon="\U0001f9eb", url_path="strains"),
+            st.Page(parts_page, title="Parts", icon="\U0001f9f1", url_path="parts"),
+            st.Page(primers_page, title="Primers", icon="\U0001f9ea", url_path="primers"),
+            st.Page(assembly, title="Assembly", icon="\U0001f527", url_path="assembly"),
         ],
     }
 )
