@@ -1,0 +1,45 @@
+/* PlasmidVCS — Clean biotech UI */
+
+[data-testid="stSidebar"] {
+    background: #1a1a2e;
+}
+
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p {
+    color: #e0e0e0;
+}
+
+.stApp {
+    background: #f8f9fa;
+}
+
+/* Badge styles */
+.badge-cds { background: #F5A623; color: white; padding: 2px 8px; border-radius: 10px; font-size: 0.85em; }
+.badge-promoter { background: #B0B0B0; color: white; padding: 2px 8px; border-radius: 10px; font-size: 0.85em; }
+.badge-terminator { background: #CC0000; color: white; padding: 2px 8px; border-radius: 10px; font-size: 0.85em; }
+.badge-marker { background: #31AF31; color: white; padding: 2px 8px; border-radius: 10px; font-size: 0.85em; }
+.badge-origin { background: #FFD700; color: #333; padding: 2px 8px; border-radius: 10px; font-size: 0.85em; }
+
+/* Diff change badges */
+.change-point_mutation { background: #3498DB; color: white; padding: 2px 8px; border-radius: 10px; }
+.change-insertion { background: #27AE60; color: white; padding: 2px 8px; border-radius: 10px; }
+.change-deletion { background: #E74C3C; color: white; padding: 2px 8px; border-radius: 10px; }
+.change-replacement { background: #F39C12; color: white; padding: 2px 8px; border-radius: 10px; }
+
+/* Stat cards */
+.stat-card {
+    background: white;
+    border-radius: 10px;
+    padding: 16px 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    text-align: center;
+}
+.stat-card .stat-value {
+    font-size: 2em;
+    font-weight: 700;
+    color: #2c3e50;
+}
+.stat-card .stat-label {
+    font-size: 0.85em;
+    color: #7f8c8d;
+    margin-top: 4px;
+}
