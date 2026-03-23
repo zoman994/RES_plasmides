@@ -27,8 +27,6 @@ dependencies = [
     "click>=8.1",
     "rich>=13.0",
     "pyyaml>=6.0",
-    "streamlit>=1.30",
-    "snapgene_reader>=0.1",
 ]
 
 [project.optional-dependencies]

@@ -12,7 +12,10 @@ def _get_conn():
     root = st.session_state.get("project_root")
     if not root:
         return None
-    return db.get_connection(db_path(root))
+    try:
+        return db.get_connection(db_path(root))
+    except Exception:
+        return None
 
 
 def render():
@@ -25,16 +28,25 @@ def render():
 
     try:
         constructs = db.list_constructs(conn)
+        root = st.session_state.project_root
 
         # Stats bar
-        from pvcs.strains import list_strains
-        from pvcs.parts import list_parts
-        from pvcs.primers import list_primers
-
-        root = st.session_state.project_root
-        n_strains = len(list_strains(root))
-        n_parts = len(list_parts(project_root=root))
-        n_primers = len(list_primers(root))
+        n_strains = 0
+        n_parts = 0
+        n_primers = 0
+        try:
+            from pvcs.strains import list_strains
+            n_strains = len(list_strains(project_root=root))
+        except Exception:
+            pass
+        try:
+            n_parts = len(db.list_parts(conn))
+        except Exception:
+            pass
+        try:
+            n_primers = len(db.list_primers(conn))
+        except Exception:
+            pass
 
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Constructs", len(constructs))
@@ -49,26 +61,32 @@ def render():
             return
 
         # Construct grid (3 columns)
-        cols = st.columns(3)
-        for i, construct in enumerate(constructs):
-            col = cols[i % 3]
-            rev = db.get_latest_revision(conn, construct.id)
+        for row_start in range(0, len(constructs), 3):
+            cols = st.columns(3)
+            for j in range(3):
+                idx = row_start + j
+                if idx >= len(constructs):
+                    break
+                construct = constructs[idx]
+                rev = db.get_latest_revision(conn, construct.id)
 
-            with col:
-                with st.container(border=True):
-                    if rev and rev.features:
-                        svg = render_mini_map(rev.features, rev.length, size=150)
-                        st.html(f'<div style="text-align:center">{svg}</div>')
+                with cols[j]:
+                    with st.container(border=True):
+                        if rev and rev.features:
+                            svg = render_mini_map(rev.features, rev.length, size=120)
+                            st.html(f'<div style="text-align:center;padding:4px 0">{svg}</div>')
 
-                    st.markdown(f"**{construct.name}**")
-                    if rev:
-                        st.caption(
-                            f"{rev.length:,} bp | {construct.topology} | "
-                            f"v{rev.version} | {len(rev.features)} features"
-                        )
-                        st.caption(f"{rev.created_at[:10]} — {rev.message[:50]}")
-                    else:
-                        st.caption("No revisions")
+                        st.markdown(f"**{construct.name}**")
+                        if rev:
+                            feat_count = len([f for f in rev.features if f.type != "source"])
+                            st.caption(
+                                f"{rev.length:,} bp \u00b7 {construct.topology} \u00b7 "
+                                f"v{rev.version} \u00b7 {feat_count} features"
+                            )
+                            if rev.message:
+                                st.caption(f"{rev.created_at[:10]} \u2014 {rev.message[:50]}")
+                        else:
+                            st.caption("No revisions")
 
         # Recent activity
         st.divider()
@@ -83,9 +101,8 @@ def render():
 
         for name, rev in all_revisions[:10]:
             st.markdown(
-                f"**{name}** v{rev.version} — {rev.message} "
-                f"<span style='color:#7f8c8d'>({rev.created_at[:10]}, {rev.author})</span>",
-                unsafe_allow_html=True,
+                f"\u00b7 **{name}** v{rev.version} \u2014 {rev.message} "
+                f"*({rev.created_at[:10]})*"
             )
 
     finally:

@@ -9,8 +9,9 @@ import streamlit as st
 from pvcs import database as db
 from pvcs.config import db_path
 from pvcs.diff import semantic_diff
+from gui.components.plasmid_map import render_circular_map
 from gui.components.diff_view import (
-    render_diff_maps,
+    compute_diff_highlights,
     group_changes_by_feature,
     change_type_badge,
 )
@@ -20,7 +21,10 @@ def _get_conn():
     root = st.session_state.get("project_root")
     if not root:
         return None
-    return db.get_connection(db_path(root))
+    try:
+        return db.get_connection(db_path(root))
+    except Exception:
+        return None
 
 
 def render():
@@ -37,76 +41,102 @@ def render():
             st.info("No constructs to compare.")
             return
 
-        # --- Section 1: Header with selectors ---
+        # Build spec list: "construct_name:version" for all constructs x versions
+        specs: list[str] = []
+        spec_map: dict[str, tuple] = {}  # spec → (construct, revision)
+        for c in constructs:
+            revs = db.list_revisions(conn, c.id)
+            for r in revs:
+                spec = f"{c.name}:{r.version}"
+                specs.append(spec)
+                spec_map[spec] = (c, r)
+
+        if len(specs) < 2:
+            st.info("Need at least 2 revisions to compare.")
+            return
+
+        # --- Section 1: Selectors ---
         col_a, col_b = st.columns(2)
-
         with col_a:
-            st.markdown("**Version A**")
-            name_a = st.selectbox("Construct A", [c.name for c in constructs], key="diff_ca")
-            c_a = next(c for c in constructs if c.name == name_a)
-            revs_a = db.list_revisions(conn, c_a.id)
-            ver_a = st.selectbox("Version A", [r.version for r in revs_a], key="diff_va")
-
+            spec_a = st.selectbox("Version A", specs, index=0, key="diff_spec_a")
         with col_b:
-            st.markdown("**Version B**")
-            name_b = st.selectbox("Construct B", [c.name for c in constructs],
-                                  index=min(0, len(constructs) - 1), key="diff_cb")
-            c_b = next(c for c in constructs if c.name == name_b)
-            revs_b = db.list_revisions(conn, c_b.id)
-            ver_b_idx = min(len(revs_b) - 1, 1) if len(revs_b) > 1 else 0
-            ver_b = st.selectbox("Version B", [r.version for r in revs_b],
-                                 index=ver_b_idx, key="diff_vb")
+            default_b = min(1, len(specs) - 1)
+            spec_b = st.selectbox("Version B", specs, index=default_b, key="diff_spec_b")
 
-        if st.button("Compare", type="primary", use_container_width=True):
-            st.session_state.diff_run = True
-
-        if not st.session_state.get("diff_run"):
-            st.info("Select two revisions and click **Compare**.")
+        if spec_a == spec_b:
+            st.info("Select two different revisions to compare.")
             return
 
-        # Get revisions
-        rev_a = db.get_revision(conn, c_a.id, ver_a)
-        rev_b = db.get_revision(conn, c_b.id, ver_b)
-        if not rev_a or not rev_b:
-            st.error("Could not load revisions.")
-            return
+        c_a, rev_a = spec_map[spec_a]
+        c_b, rev_b = spec_map[spec_b]
 
         # Compute diff
-        result = semantic_diff(rev_a, rev_b)
+        with st.spinner("Computing semantic diff..."):
+            result = semantic_diff(rev_a, rev_b)
 
-        # Summary badge
+        # --- Summary ---
         n = len(result.changes)
         bp_delta = rev_b.length - rev_a.length
         bp_str = f"+{bp_delta}" if bp_delta >= 0 else str(bp_delta)
 
-        st.markdown(
-            f'<div style="background:#f0f2f6;padding:12px 20px;border-radius:8px;'
-            f'text-align:center;margin:10px 0">'
-            f'<span style="font-size:1.2em;font-weight:600">'
-            f'{n} change{"s" if n != 1 else ""}</span>'
-            f' &nbsp; | &nbsp; '
-            f'<span style="font-size:1.1em">{bp_str} bp</span>'
-            f' &nbsp; | &nbsp; '
-            f'{rev_a.length:,} bp \u2192 {rev_b.length:,} bp'
-            f'</div>',
-            unsafe_allow_html=True,
+        type_counts: dict[str, int] = {}
+        for ch in result.changes:
+            type_counts[ch.type] = type_counts.get(ch.type, 0) + 1
+
+        # Summary badges
+        badges = []
+        type_colors = {
+            "point_mutation": "#3498DB", "insertion": "#27AE60",
+            "deletion": "#E74C3C", "replacement": "#F39C12",
+        }
+        for ctype, count in type_counts.items():
+            color = type_colors.get(ctype, "#7f8c8d")
+            label = ctype.replace("_", " ")
+            badges.append(
+                f'<span style="background:{color};color:white;padding:3px 10px;'
+                f'border-radius:12px;font-size:0.85em;margin:0 3px">'
+                f'{count} {label}</span>'
+            )
+
+        st.html(
+            f'<div style="background:#f0f2f6;padding:14px 20px;border-radius:8px;'
+            f'text-align:center;margin:8px 0">'
+            f'<div style="font-size:1.3em;font-weight:700;margin-bottom:6px">'
+            f'{n} change{"s" if n != 1 else ""} &nbsp; | &nbsp; {bp_str} bp &nbsp; | &nbsp; '
+            f'{rev_a.length:,} bp \u2192 {rev_b.length:,} bp</div>'
+            f'<div>{"".join(badges)}</div></div>'
         )
 
         # --- Section 2: Side-by-side maps ---
-        svg_a, svg_b = render_diff_maps(rev_a, rev_b, result, size=400)
+        highlights_a, highlights_b = compute_diff_highlights(rev_a, rev_b, result)
 
         map_a, map_b = st.columns(2)
         with map_a:
+            st.caption(f"**{c_a.name}** v{rev_a.version}")
+            svg_a = render_circular_map(
+                rev_a.features, rev_a.length,
+                construct_name=f"v{rev_a.version}",
+                size=400,
+                highlight_features=highlights_a,
+            )
             st.html(f'<div style="text-align:center">{svg_a}</div>')
+
         with map_b:
+            st.caption(f"**{c_b.name}** v{rev_b.version}")
+            svg_b = render_circular_map(
+                rev_b.features, rev_b.length,
+                construct_name=f"v{rev_b.version}",
+                size=400,
+                highlight_features=highlights_b,
+            )
             st.html(f'<div style="text-align:center">{svg_b}</div>')
 
         # Legend
         st.html(
             '<div style="text-align:center;margin:8px 0;font-size:0.85em">'
-            '<span style="color:#27AE60">\u25cf Added</span> &nbsp; '
-            '<span style="color:#E74C3C">\u25cf Removed</span> &nbsp; '
-            '<span style="color:#F39C12">\u25cf Modified</span> &nbsp; '
+            '<span style="color:#27AE60">\u25cf Added</span> &nbsp;&nbsp; '
+            '<span style="color:#E74C3C">\u25cf Removed</span> &nbsp;&nbsp; '
+            '<span style="color:#F39C12">\u25cf Modified</span> &nbsp;&nbsp; '
             '<span style="color:#999">\u25cf Unchanged</span>'
             '</div>'
         )
@@ -125,30 +155,26 @@ def render():
         for feature_label, changes in groups.items():
             with st.expander(
                 f"{feature_label} \u2014 {len(changes)} change{'s' if len(changes) != 1 else ''}",
-                expanded=True,
+                expanded=len(groups) <= 5,
             ):
-                for i, ch in enumerate(changes, 1):
+                for ch in changes:
                     badge = change_type_badge(ch.type)
                     st.markdown(
                         f'{badge} &nbsp; **pos {ch.position_a}** &mdash; {ch.description}',
                         unsafe_allow_html=True,
                     )
                     if ch.sequence_a or ch.sequence_b:
-                        seq_a_display = ch.sequence_a[:50] + ("..." if len(ch.sequence_a) > 50 else "")
-                        seq_b_display = ch.sequence_b[:50] + ("..." if len(ch.sequence_b) > 50 else "")
-                        if seq_a_display or seq_b_display:
-                            st.caption(f"`{seq_a_display}` \u2192 `{seq_b_display}`")
+                        sa = ch.sequence_a[:40] + ("..." if len(ch.sequence_a) > 40 else "")
+                        sb = ch.sequence_b[:40] + ("..." if len(ch.sequence_b) > 40 else "")
+                        if sa or sb:
+                            st.caption(f"`{sa}` \u2192 `{sb}`")
 
-        # Summary stats
+        # Summary metrics
         st.divider()
-        st.subheader("Summary")
-        type_counts: dict[str, int] = {}
-        for c in result.changes:
-            type_counts[c.type] = type_counts.get(c.type, 0) + 1
-
-        cols = st.columns(len(type_counts))
-        for i, (ctype, count) in enumerate(type_counts.items()):
-            cols[i].metric(ctype.replace("_", " ").title(), count)
+        if type_counts:
+            metric_cols = st.columns(len(type_counts))
+            for i, (ctype, count) in enumerate(type_counts.items()):
+                metric_cols[i].metric(ctype.replace("_", " ").title(), count)
 
     finally:
         conn.close()
