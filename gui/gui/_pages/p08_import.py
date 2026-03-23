@@ -82,9 +82,15 @@ def render():
     else:
         tmp_path.write_bytes(uploaded.getvalue())
 
-    # Parse and preview
+    # Parse and preview — pick parser by extension
     try:
-        sequence, features, metadata = parse_genbank(tmp_path)
+        if suffix.lower() in (".fa", ".fasta"):
+            from pvcs.parser import parse_fasta
+            sequence, metadata = parse_fasta(tmp_path)
+            features = []  # FASTA has no annotations
+            metadata.setdefault("topology", "linear")
+        else:
+            sequence, features, metadata = parse_genbank(tmp_path)
     except Exception as e:
         st.error(f"Failed to parse file: {e}")
         return
