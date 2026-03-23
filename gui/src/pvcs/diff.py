@@ -291,6 +291,122 @@ def _classify_change(
 
 
 # ---------------------------------------------------------------------------
+# Layer 4: Merge scattered changes into feature-level replacements
+# ---------------------------------------------------------------------------
+
+def _merge_feature_replacements(
+    changes: list[Change],
+    features_a: list[Feature],
+    features_b: list[Feature],
+) -> list[Change]:
+    """Merge consecutive changes within the same feature into one REPLACEMENT
+    if they collectively span >50% of the feature.
+
+    When two unrelated genes are aligned, NW produces hundreds of tiny
+    match/mismatch blocks.  This collapses them into a single high-level
+    "Replaced gene X with gene Y" change.
+    """
+    if not changes:
+        return changes
+
+    # Build quick feature-length lookup (1-based coords)
+    feat_len_a: dict[str, int] = {}
+    feat_obj_a: dict[str, Feature] = {}
+    for f in features_a:
+        if f.type == "source":
+            continue
+        label = f"{f.type}:{f.name}"
+        feat_len_a[label] = f.end - f.start + 1
+        feat_obj_a[label] = f
+
+    feat_obj_b: dict[str, Feature] = {}
+    for f in features_b:
+        if f.type == "source":
+            continue
+        feat_obj_b[f"{f.type}:{f.name}"] = f
+
+    # Group changes by affected_feature
+    groups: dict[str | None, list[Change]] = {}
+    for c in changes:
+        groups.setdefault(c.affected_feature, []).append(c)
+
+    merged: list[Change] = []
+
+    for feat_label, group in groups.items():
+        # Only merge if ≥10 changes AND feature is known
+        if feat_label is None or len(group) <= 10 or feat_label not in feat_len_a:
+            merged.extend(group)
+            continue
+
+        feature_length = feat_len_a[feat_label]
+
+        # Total bp affected in this feature
+        total_bp = sum(max(c.length_a, c.length_b) for c in group)
+
+        if total_bp < feature_length * 0.50:
+            # Less than 50 % — keep individual changes (real point mutations)
+            merged.extend(group)
+            continue
+
+        # Collapse into ONE replacement change
+        first = group[0]
+        last = group[-1]
+
+        old_feat = feat_obj_a.get(feat_label)
+        # Try to find corresponding feature in B at same region
+        new_feat: Feature | None = None
+        if old_feat:
+            mid_b = first.position_b
+            for fb in features_b:
+                if fb.type == "source":
+                    continue
+                if fb.type == old_feat.type and fb.start <= mid_b <= fb.end:
+                    new_feat = fb
+                    break
+
+        # If no typed match, look for any feature overlapping the B region
+        if not new_feat:
+            for fb in features_b:
+                if fb.type == "source":
+                    continue
+                if fb.start <= first.position_b and fb.end >= last.position_b:
+                    new_feat = fb
+                    break
+
+        old_name = old_feat.name if old_feat else feat_label
+        old_len = feature_length
+        new_name = new_feat.name if new_feat else "?"
+        new_len = (new_feat.end - new_feat.start + 1) if new_feat else total_bp
+
+        # If both features have the same name AND same length, these are
+        # alignment artifacts from position shifts — not a real replacement.
+        # Drop the noise entirely.
+        if (old_feat and new_feat
+                and old_feat.name == new_feat.name
+                and abs(old_len - new_len) < 5
+                and old_feat.sequence and new_feat.sequence
+                and old_feat.sequence.upper() == new_feat.sequence.upper()):
+            continue  # identical feature, skip all noise
+
+        replacement = Change(
+            type="replacement",
+            position_a=first.position_a,
+            position_b=first.position_b,
+            length_a=old_len,
+            length_b=new_len,
+            affected_feature=feat_label,
+            description=f"Replaced {old_name} ({old_len:,} bp) with {new_name} ({new_len:,} bp)",
+            sequence_a="",
+            sequence_b="",
+        )
+        merged.append(replacement)
+
+    # Stable sort by position so output order is sensible
+    merged.sort(key=lambda c: c.position_a)
+    return merged
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -341,6 +457,9 @@ def semantic_diff(rev_a: Revision, rev_b: Revision) -> SemanticDiff:
         _classify_change(raw, feats_a, feats_b, seq_a, seq_b)
         for raw in raw_changes
     ]
+
+    # Layer 4: merge scattered per-base changes into feature-level replacements
+    changes = _merge_feature_replacements(changes, feats_a, feats_b)
 
     # Build summary
     n = len(changes)
