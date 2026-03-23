@@ -1,71 +1,9 @@
-/* ═══════════════════════════════════════════════════════════════
-   PlasmidVCS — Professional Biotech UI Theme
-   Light, clean, scientific instrument aesthetic
-   ═══════════════════════════════════════════════════════════════ */
+/* PlasmidVCS — Safe CSS overrides (no color overrides on text) */
 
-/* ── Global ──────────────────────────────────────────────────── */
-.stApp {
-    background: #FAFBFC;
-}
-
-.stApp [data-testid="stHeader"] {
-    background: rgba(255,255,255,0.95);
-    backdrop-filter: blur(8px);
-    border-bottom: 1px solid #E8ECF0;
-}
-
-/* ── Sidebar ─────────────────────────────────────────────────── */
-[data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #1B2838 0%, #0F1923 100%);
-    border-right: 1px solid #2A3A4A;
-}
-
-[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p,
-[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] span,
-[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] li,
-[data-testid="stSidebar"] label {
-    color: #C8D6E5 !important;
-}
-
-[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h1,
-[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h2,
-[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] strong {
-    color: #FFFFFF !important;
-}
-
-[data-testid="stSidebar"] hr {
-    border-color: #2A3A4A;
-}
-
-/* Active nav item */
-[data-testid="stSidebar"] .stPageLink-active {
-    background: rgba(0, 102, 204, 0.2) !important;
-    border-left: 3px solid #0066CC;
-}
-
-/* ── Typography ──────────────────────────────────────────────── */
-h1 {
-    color: #1A1A2E !important;
-    font-weight: 700 !important;
-    letter-spacing: -0.02em;
-}
-
-h2, h3 {
-    color: #2C3E50 !important;
-    font-weight: 600 !important;
-}
-
-/* ── Cards / Containers ──────────────────────────────────────── */
-[data-testid="stVerticalBlock"] > div[data-testid="element-container"] > div[data-testid="stExpander"] {
-    border: 1px solid #E8ECF0;
-    border-radius: 8px;
-    background: #FFFFFF;
-}
-
+/* ── Cards / Containers ── */
 div[data-testid="stContainer"][data-border="true"] {
     border: 1px solid #E0E4E8 !important;
     border-radius: 10px !important;
-    background: #FFFFFF !important;
     box-shadow: 0 1px 3px rgba(0,0,0,0.04) !important;
     transition: box-shadow 0.2s;
 }
@@ -74,71 +12,38 @@ div[data-testid="stContainer"][data-border="true"]:hover {
     box-shadow: 0 2px 8px rgba(0,0,0,0.08) !important;
 }
 
-/* ── Metrics ─────────────────────────────────────────────────── */
+/* ── Metrics ── */
 [data-testid="stMetric"] {
-    background: #FFFFFF;
     border: 1px solid #E8ECF0;
     border-radius: 10px;
     padding: 16px 20px;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.03);
 }
 
-[data-testid="stMetricValue"] {
-    color: #0066CC !important;
-    font-weight: 700 !important;
-}
-
-[data-testid="stMetricLabel"] {
-    color: #7F8C8D !important;
-    font-size: 0.85em !important;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-}
-
-/* ── Buttons ─────────────────────────────────────────────────── */
+/* ── Buttons ── */
 .stButton > button {
     border-radius: 8px !important;
     font-weight: 600 !important;
-    transition: all 0.15s;
 }
 
-.stButton > button[kind="primary"] {
-    background: #0066CC !important;
-    border: none !important;
-}
-
-.stButton > button[kind="primary"]:hover {
-    background: #0052A3 !important;
-    box-shadow: 0 2px 8px rgba(0,102,204,0.3) !important;
-}
-
-/* ── Select boxes ────────────────────────────────────────────── */
-[data-testid="stSelectbox"] > div > div {
-    border-radius: 8px !important;
-    border-color: #D1D5DB !important;
-}
-
-/* ── Expanders ───────────────────────────────────────────────── */
+/* ── Expanders ── */
 [data-testid="stExpander"] {
     border: 1px solid #E8ECF0 !important;
     border-radius: 8px !important;
-    background: #FFFFFF;
 }
 
 [data-testid="stExpander"] summary {
     font-weight: 600;
 }
 
-/* ── Dividers ────────────────────────────────────────────────── */
-hr {
-    border-color: #E8ECF0 !important;
+/* ── Select boxes ── */
+[data-testid="stSelectbox"] > div > div {
+    border-radius: 8px !important;
 }
 
-/* ── File uploader ───────────────────────────────────────────── */
+/* ── File uploader ── */
 [data-testid="stFileUploader"] {
     border: 2px dashed #CBD5E1 !important;
     border-radius: 12px !important;
-    background: #F8FAFC;
     transition: border-color 0.2s;
 }
 
@@ -146,85 +51,7 @@ hr {
     border-color: #0066CC !important;
 }
 
-/* ── Tables ──────────────────────────────────────────────────── */
-table {
-    border-collapse: collapse;
-    width: 100%;
-}
-
-table th {
-    background: #F0F2F6 !important;
-    color: #4A5568 !important;
-    font-weight: 600;
-    text-transform: uppercase;
-    font-size: 0.75em;
-    letter-spacing: 0.05em;
-    padding: 10px 12px !important;
-    border-bottom: 2px solid #E2E8F0 !important;
-}
-
-table td {
-    padding: 8px 12px !important;
-    border-bottom: 1px solid #F0F2F6 !important;
-    color: #2D3748;
-}
-
-table tr:hover td {
-    background: #F7FAFC;
-}
-
-/* ── Alerts / Info boxes ─────────────────────────────────────── */
+/* ── Alerts ── */
 [data-testid="stAlert"] {
     border-radius: 8px !important;
-}
-
-/* ── Diff summary banner ─────────────────────────────────────── */
-.diff-summary {
-    background: linear-gradient(135deg, #F8FAFC 0%, #EDF2F7 100%);
-    border: 1px solid #E2E8F0;
-    border-radius: 12px;
-    padding: 16px 24px;
-    text-align: center;
-}
-
-/* ── Feature badges ──────────────────────────────────────────── */
-.feat-badge {
-    display: inline-block;
-    padding: 2px 10px;
-    border-radius: 12px;
-    font-size: 0.8em;
-    font-weight: 600;
-    color: white;
-    letter-spacing: 0.02em;
-}
-
-/* ── Change type badges ──────────────────────────────────────── */
-.change-badge {
-    display: inline-block;
-    padding: 3px 10px;
-    border-radius: 12px;
-    font-size: 0.75em;
-    font-weight: 700;
-    color: white;
-    letter-spacing: 0.03em;
-    text-transform: uppercase;
-}
-
-/* ── Scrollbar ───────────────────────────────────────────────── */
-::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-}
-
-::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-    background: #CBD5E1;
-    border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-    background: #94A3B8;
 }

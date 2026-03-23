@@ -16,10 +16,10 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ── Load custom CSS ────────────────────────────────────────────
+# ── Load custom CSS via st.markdown (st.html uses iframe, won't work) ──
 _css_path = Path(__file__).parent / "style.css"
 if _css_path.exists():
-    st.html(f"<style>{_css_path.read_text()}</style>")
+    st.markdown(f"<style>{_css_path.read_text()}</style>", unsafe_allow_html=True)
 
 # Ensure src/ and gui root are on path so pvcs + gui imports work
 _gui_root = Path(__file__).resolve().parent.parent
