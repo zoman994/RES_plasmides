@@ -23,8 +23,16 @@ def _try_convert_dna(uploaded_file) -> Path | None:
         tmp.write_bytes(uploaded_file.getvalue())
 
         record = snapgene_file_to_seqrecord(str(tmp))
+        # Sanitize qualifiers: replace non-ASCII chars to avoid encoding errors
+        for feat in record.features:
+            for key, vals in feat.qualifiers.items():
+                feat.qualifiers[key] = [
+                    v.encode("ascii", "replace").decode("ascii") if isinstance(v, str) else v
+                    for v in vals
+                ]
         gb_path = tmp.with_suffix(".gb")
-        SeqIO.write(record, gb_path, "genbank")
+        with open(gb_path, "w", encoding="utf-8") as fh:
+            SeqIO.write(record, fh, "genbank")
         tmp.unlink()
         return gb_path
     except ImportError:
