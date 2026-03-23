@@ -9,29 +9,17 @@ from pathlib import Path
 
 import streamlit as st
 
-# Ensure src/ is on path so pvcs imports work
+# Ensure src/ and gui root are on path so pvcs + gui imports work
 _gui_root = Path(__file__).resolve().parent.parent
 _src_dir = _gui_root / "src"
-if str(_src_dir) not in sys.path:
-    sys.path.insert(0, str(_src_dir))
-
-st.set_page_config(
-    page_title="PlasmidVCS",
-    page_icon="\U0001f9ec",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
-
-# Load custom CSS
-_css_path = Path(__file__).parent / "style.css"
-if _css_path.exists():
-    st.html(f"<style>{_css_path.read_text()}</style>")
+for p in [str(_src_dir), str(_gui_root)]:
+    if p not in sys.path:
+        sys.path.insert(0, p)
 
 
 # --- Project root resolution ---
 def _resolve_project_root() -> Path | None:
     """Find a .pvcs project directory."""
-    # Check CLI args
     for arg in sys.argv:
         if arg.startswith("--project"):
             idx = sys.argv.index(arg)
@@ -40,12 +28,10 @@ def _resolve_project_root() -> Path | None:
             elif idx + 1 < len(sys.argv):
                 return Path(sys.argv[idx + 1])
 
-    # Check common locations
     candidates = [Path.cwd(), _gui_root, _gui_root.parent]
     for p in candidates:
         if (p / ".pvcs").is_dir():
             return p
-
     return None
 
 
@@ -55,58 +41,43 @@ if "project_root" not in st.session_state:
         st.session_state.project_root = root
 
 
-# --- Sidebar navigation ---
-st.sidebar.title("\U0001f9ec PlasmidVCS")
+# --- Use st.navigation API (no auto-discovery, single sidebar nav) ---
+from gui._pages.p01_dashboard import render as dashboard
+from gui._pages.p02_construct import render as construct
+from gui._pages.p03_diff import render as diff_page
+from gui._pages.p04_strains import render as strains
+from gui._pages.p05_parts import render as parts_page
+from gui._pages.p06_primers import render as primers_page
+from gui._pages.p07_assembly import render as assembly
+from gui._pages.p08_import import render as import_page
 
+pg = st.navigation(
+    {
+        "Main": [
+            st.Page(dashboard, title="Dashboard", icon="\U0001f4ca"),
+            st.Page(construct, title="Construct", icon="\U0001f9ec"),
+            st.Page(diff_page, title="Diff", icon="\U0001f50d"),
+            st.Page(import_page, title="Import", icon="\U0001f4e5"),
+        ],
+        "Registry": [
+            st.Page(strains, title="Strains", icon="\U0001f9eb"),
+            st.Page(parts_page, title="Parts", icon="\U0001f9f1"),
+            st.Page(primers_page, title="Primers", icon="\U0001f9ea"),
+            st.Page(assembly, title="Assembly", icon="\U0001f527"),
+        ],
+    }
+)
+
+# --- Sidebar project info ---
+st.sidebar.divider()
 if "project_root" in st.session_state:
     from pvcs.config import load_config
     try:
         cfg = load_config(st.session_state.project_root)
-        st.sidebar.caption(f"Project: **{cfg.get('project_name', 'Unknown')}**")
+        st.sidebar.caption(f"**{cfg.get('project_name', 'Project')}**")
     except Exception:
-        st.sidebar.caption(f"Project: {st.session_state.project_root}")
+        pass
 else:
     st.sidebar.warning("No project loaded")
 
-st.sidebar.divider()
-
-page = st.sidebar.radio(
-    "Navigation",
-    [
-        "\U0001f4ca Dashboard",
-        "\U0001f9ec Construct",
-        "\U0001f50d Diff",
-        "\U0001f9eb Strains",
-        "\U0001f9f1 Parts",
-        "\U0001f9ea Primers",
-        "\U0001f527 Assembly",
-        "\U0001f4e5 Import",
-    ],
-    label_visibility="collapsed",
-)
-
-# --- Page routing ---
-if page.startswith("\U0001f4ca"):
-    from gui.pages.p01_dashboard import render
-    render()
-elif page.startswith("\U0001f9ec"):
-    from gui.pages.p02_construct import render
-    render()
-elif page.startswith("\U0001f50d"):
-    from gui.pages.p03_diff import render
-    render()
-elif page.startswith("\U0001f9eb"):
-    from gui.pages.p04_strains import render
-    render()
-elif page.startswith("\U0001f9f1"):
-    from gui.pages.p05_parts import render
-    render()
-elif page.startswith("\U0001f9ea"):
-    from gui.pages.p06_primers import render
-    render()
-elif page.startswith("\U0001f527"):
-    from gui.pages.p07_assembly import render
-    render()
-elif page.startswith("\U0001f4e5"):
-    from gui.pages.p08_import import render
-    render()
+pg.run()
