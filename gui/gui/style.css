@@ -20,7 +20,10 @@
     border-right: 1px solid #2A3A4A;
 }
 
-[data-testid="stSidebar"] * {
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p,
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] span,
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] li,
+[data-testid="stSidebar"] label {
     color: #C8D6E5 !important;
 }
 
