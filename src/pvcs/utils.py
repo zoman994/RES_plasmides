@@ -178,8 +178,8 @@ def calc_tm(
         Melting temperature in °C.
     """
     seq = sequence.upper()
-    if len(seq) < 2:
-        return 0.0
+    if len(seq) < 6:
+        return 0.0  # too short for reliable nearest-neighbor Tm
 
     dH = 2 * _INIT_dH  # both ends
     dS = 2 * _INIT_dS

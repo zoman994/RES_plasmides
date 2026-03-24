@@ -36,6 +36,12 @@ RE_DATABASE: dict[str, dict] = {
     "ClaI":    {"site": "ATCGAT",   "cut": (2, 4), "end": "5prime", "overhang": "CG"},
     "MfeI":    {"site": "CAATTG",   "cut": (1, 5), "end": "5prime", "overhang": "AATT"},
     "AgeI":    {"site": "ACCGGT",   "cut": (1, 5), "end": "5prime", "overhang": "CCGG"},
+    # Type IIS (for Golden Gate)
+    "BsaI":    {"site": "GGTCTC",  "cut": (7, 11), "end": "typeIIS", "overhang": ""},
+    "BbsI":    {"site": "GAAGAC",  "cut": (8, 12), "end": "typeIIS", "overhang": ""},
+    "Esp3I":   {"site": "CGTCTC",  "cut": (7, 11), "end": "typeIIS", "overhang": ""},
+    "BpiI":    {"site": "GAAGAC",  "cut": (8, 12), "end": "typeIIS", "overhang": ""},
+    "SapI":    {"site": "GCTCTTC", "cut": (8, 12), "end": "typeIIS", "overhang": ""},
 }
 
 # Enzymes producing compatible sticky ends
