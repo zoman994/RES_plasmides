@@ -166,6 +166,41 @@ def render():
             summary = ", ".join(f"{v} {k}" for k, v in sorted(type_counts.items()))
             st.caption(summary)
 
+    # Auto-detect known features
+    if st.button("Detect Common Features", type="secondary"):
+        from pvcs.feature_db import detect_known_features
+        with st.spinner("Searching database (21 standard parts)..."):
+            hits = detect_known_features(sequence)
+        if hits:
+            st.success(f"Found {len(hits)} known feature(s)")
+            for h in hits:
+                arrow = "\u2192" if h["strand"] == 1 else "\u2190"
+                st.markdown(
+                    f"**{h['name']}** ({h['type']}) \u2014 "
+                    f"pos {h['start']}..{h['end']} {arrow} \u2014 "
+                    f"_{h['description']}_"
+                )
+            if st.button("Apply detected annotations"):
+                from pvcs.models import Feature
+                for hit in hits:
+                    # Check if existing feature overlaps
+                    matched = False
+                    for f in features:
+                        if abs(f.start - hit["start"]) < 20 and abs(f.end - hit["end"]) < 20:
+                            f.name = hit["name"]
+                            f.type = hit["type"]
+                            matched = True
+                            break
+                    if not matched:
+                        features.append(Feature(
+                            type=hit["type"], name=hit["name"],
+                            start=hit["start"], end=hit["end"],
+                            strand=hit["strand"], sequence="",
+                        ))
+                st.rerun()
+        else:
+            st.info("No known features detected in this sequence.")
+
     # Editable feature table
     with st.expander("Feature Details (click to edit types/names)", expanded=True):
         edited = render_editable_feature_table(features, key_prefix="imp")
