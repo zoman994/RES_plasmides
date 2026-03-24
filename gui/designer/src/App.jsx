@@ -7,7 +7,8 @@ import PrimerPanel from './components/PrimerPanel';
 import SequenceViewer from './components/SequenceViewer';
 import AddFragmentModal from './components/AddFragmentModal';
 import RestrictionPanel from './components/RestrictionPanel';
-import ProtocolTracker, { PCR_MIXES, ASM_PROTOCOLS } from './components/ProtocolTracker';
+import ProtocolTracker from './components/ProtocolTracker';
+import { PCR_MIXES, ASSEMBLY_PROTOCOLS as ASM_PROTOCOLS } from './protocol-data';
 import MutagenesisWizard from './components/MutagenesisWizard';
 import VerificationPanel from './components/VerificationPanel';
 import SignalPeptideSplitter from './components/SignalPeptideSplitter';
@@ -360,7 +361,7 @@ export default function App() {
         )}
 
         <div className="flex flex-1 overflow-hidden">
-          <PartsPalette parts={parts} onOpenModal={setModalMode} />
+          <PartsPalette parts={parts} onOpenModal={setModalMode} inventoryVersion={inventoryVersion} />
           <div className="flex-1 flex flex-col p-4 gap-3 overflow-y-auto">
 
             {/* Construct validation warnings */}
@@ -428,8 +429,9 @@ export default function App() {
             )}
 
             {activeTab === 'protocol' && (
-              <ProtocolTracker steps={protocolSteps} onUpdate={updateProtocolStep}
-                polymerase={polymerase} protocol={protocol} />
+              <ProtocolTracker fragments={fragments} primers={primers} pcrSizes={pcrSizes}
+                polymerase={polymerase} protocol={protocol} circular={circular}
+                onInventoryUpdate={() => setInventoryVersion(v => v + 1)} />
             )}
 
             {/* Analysis panels */}
