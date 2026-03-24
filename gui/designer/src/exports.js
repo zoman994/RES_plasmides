@@ -68,11 +68,22 @@ export function exportProtocol(fragments, junctions, primers, method, circular) 
       const fwd = primers[primerIdx] || {};
       const rev = primers[primerIdx + 1] || {};
       const pcrSize = (f.sequence || '').length + (fwd.tailSequence || '').length + (rev.tailSequence || '').length;
+      const anneal = Math.round(Math.min(fwd.tmBinding || 60, rev.tmBinding || 60));
+      const extSec = Math.ceil(pcrSize / 1000) * 30;
+      const extTime = extSec >= 60 ? `${Math.floor(extSec/60)} min ${extSec%60?extSec%60+' sec':''}` : `${extSec} sec`;
       txt += `PCR amplify ${f.name}\n`;
       txt += `  Template: ${f.name} (${(f.sequence || '').length} bp)\n`;
       txt += `  Primers: ${fwd.name || '?'} + ${rev.name || '?'}\n`;
-      txt += `  Annealing: ${Math.round(Math.min(fwd.tmBinding || 60, rev.tmBinding || 60))}\u00b0C\n`;
       txt += `  Expected size: ${pcrSize} bp\n`;
+      txt += `  PCR Program:\n`;
+      txt += `    98\u00b0C  30 sec  (initial denaturation)\n`;
+      txt += `    --- 30 cycles ---\n`;
+      txt += `    98\u00b0C  10 sec  (denature)\n`;
+      txt += `    ${anneal}\u00b0C  20 sec  (anneal)\n`;
+      txt += `    72\u00b0C  ${extTime}  (extend)\n`;
+      txt += `    -----------------\n`;
+      txt += `    72\u00b0C  5 min   (final extension)\n`;
+      txt += `    4\u00b0C   hold\n`;
       primerIdx += 2;
     } else {
       txt += `Use ${f.name} as-is (${(f.sequence || '').length} bp)\n`;
@@ -81,14 +92,22 @@ export function exportProtocol(fragments, junctions, primers, method, circular) 
     txt += '\n';
   });
 
+  const fusionExt = Math.ceil(totalBp / 1000) * 30;
+  const fusionTime = fusionExt >= 60 ? `${Math.floor(fusionExt/60)} min ${fusionExt%60?fusionExt%60+' sec':''}` : `${fusionExt} sec`;
+
   if (method === 'overlap_pcr') {
     txt += `Step ${fragments.length + 1}: Fusion PCR\n`;
-    txt += `  Mix all fragments, overlap-extend\n`;
-    txt += `  Outer primers: ${primers[0]?.name || '?'} + ${primers[primers.length - 1]?.name || '?'}\n`;
+    txt += `  Mix ${fragments.filter(f=>f.needsAmplification).length} PCR products equimolar (~50 ng each)\n`;
+    txt += `  5 cycles WITHOUT outer primers (fragment annealing)\n`;
+    txt += `  Then add outer primers: ${primers[0]?.name || '?'} + ${primers[primers.length - 1]?.name || '?'}\n`;
+    txt += `  25 more cycles, anneal 60\u00b0C, extend 72\u00b0C ${fusionTime}\n`;
     txt += `  Expected product: ${totalBp.toLocaleString()} bp\n`;
   } else if (method === 'gibson') {
     txt += `Step ${fragments.length + 1}: Gibson Assembly\n`;
-    txt += `  Mix all fragments + Gibson Master Mix\n`;
+    txt += `  Mix fragments equimolar (50-100 ng each, 2:1 insert:vector)\n`;
+    txt += `  Add 10 \u00b5l Gibson Master Mix\n`;
+    txt += `  50\u00b0C, 60 min\n`;
+    txt += `  Transform 2 \u00b5l into competent cells\n`;
     txt += `  50\u00b0C, 60 min\n`;
     txt += `  Expected product: ${totalBp.toLocaleString()} bp\n`;
   }

@@ -6,6 +6,9 @@ import DesignCanvas from './components/DesignCanvas';
 import PrimerPanel from './components/PrimerPanel';
 import SequenceViewer from './components/SequenceViewer';
 import AddFragmentModal from './components/AddFragmentModal';
+import RestrictionPanel from './components/RestrictionPanel';
+import VerificationPanel from './components/VerificationPanel';
+import SignalPeptideSplitter from './components/SignalPeptideSplitter';
 import { fetchParts, designPrimers } from './api';
 import { validateConstruct, checkPrimerQuality, pcrProductSize } from './validate';
 import { exportGenBank, exportProtocol, saveToPVCS } from './exports';
@@ -30,7 +33,8 @@ export default function App() {
   const [circular, setCircular] = useState(false);
   const [calculated, setCalculated] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [modalMode, setModalMode] = useState(null); // null | 'sequence' | 'composite' | 'construct'
+  const [modalMode, setModalMode] = useState(null);
+  const [splitTarget, setSplitTarget] = useState(null); // index of fragment for SP split
 
   // ── Restore from localStorage on mount ──
   useEffect(() => {
@@ -210,6 +214,30 @@ export default function App() {
     }
   };
 
+  const handleSignalSplit = (result) => {
+    const idx = splitTarget;
+    if (idx === null) return;
+    const nf = [...fragments];
+    if (result.action === 'remove') {
+      nf[idx] = { ...nf[idx], name: result.matureName, sequence: result.matureDNA, length: result.matureDNA.length };
+    } else if (result.action === 'replace') {
+      const sp = { id: `f${nextId++}`, name: result.signalPart.name, type: 'CDS',
+        sequence: result.signalPart.sequence || '', length: result.signalPart.length || 0,
+        strand: 1, needsAmplification: true };
+      nf[idx] = { ...nf[idx], name: result.matureName, sequence: result.matureDNA, length: result.matureDNA.length };
+      nf.splice(idx, 0, sp);
+    } else if (result.action === 'split_only') {
+      const sp = { id: `f${nextId++}`, name: result.signalName, type: 'CDS',
+        sequence: result.signalDNA, length: result.signalDNA.length, strand: 1, needsAmplification: true };
+      nf[idx] = { ...nf[idx], name: result.matureName, sequence: result.matureDNA, length: result.matureDNA.length };
+      nf.splice(idx, 0, sp);
+    }
+    setFragments(nf);
+    setJunctions(mkJunctions(nf, method, circular));
+    setSplitTarget(null);
+    setCalculated(false);
+  };
+
   const clearAll = () => {
     setFragments([]); setJunctions([]); setPrimers([]);
     setApiWarnings([]); setCalculated(false);
@@ -261,7 +289,7 @@ export default function App() {
               onDrop={addFragment} onRemove={removeFragment}
               onToggleAmplification={toggleAmplification} onJunctionChange={updateJunction}
               onReorder={reorderFragments} calculated={calculated}
-              pcrSizes={pcrSizes} />
+              pcrSizes={pcrSizes} onSplitSignal={setSplitTarget} />
 
             {/* Generate + actions */}
             {fragments.length >= 2 && (
@@ -280,6 +308,16 @@ export default function App() {
 
             <PrimerPanel primers={primers} warnings={[...apiWarnings]}
               orderSheet={orderSheet} primerQuality={primerQuality} />
+
+            {/* Analysis panels */}
+            {fragments.length > 0 && (
+              <RestrictionPanel
+                sequence={fragments.map(f => f.sequence || '').join('')}
+                fragments={fragments} circular={circular} />
+            )}
+            {fragments.length > 0 && primers.length > 0 && (
+              <VerificationPanel fragments={fragments} circular={circular} />
+            )}
 
             {/* Export buttons */}
             {primers.length > 0 && (
@@ -305,12 +343,15 @@ export default function App() {
           </div>
         </div>
       </div>
-      {/* Add fragment modal */}
       {modalMode && (
-        <AddFragmentModal
-          mode={modalMode}
-          onAdd={addCustomFragment}
-          onClose={() => setModalMode(null)}
+        <AddFragmentModal mode={modalMode} onAdd={addCustomFragment} onClose={() => setModalMode(null)} />
+      )}
+      {splitTarget !== null && fragments[splitTarget] && (
+        <SignalPeptideSplitter
+          fragment={fragments[splitTarget]}
+          onSplit={handleSignalSplit}
+          onClose={() => setSplitTarget(null)}
+          partsLibrary={parts}
         />
       )}
     </DndProvider>
