@@ -193,8 +193,9 @@ def design_overlaps(
         )
         fragments.append(frag)
 
-    # Generate primers
-    primers = _generate_primers(fragments, overlap_zones, seq, circular, salt_mm)
+    # Generate primers (pass junction_modes if provided)
+    primers = _generate_primers(fragments, overlap_zones, seq, circular, salt_mm,
+                                binding_tm_target=tm_target - 2.0)
 
     return OverlapDesign(
         fragments=fragments,
@@ -204,88 +205,146 @@ def design_overlaps(
     )
 
 
+def _select_binding_region(
+    sequence: str,
+    start_pos: int,
+    direction: str,
+    tm_target: float = 60.0,
+    tm_tolerance: float = 2.0,
+    min_len: int = 18,
+    max_len: int = 28,
+    salt_mm: float = 50.0,
+) -> tuple[str, float, int, int]:
+    """Extend binding region from start_pos until Tm >= tm_target.
+
+    Returns (binding_sequence, actual_tm, bind_start_0based, bind_end_0based).
+    """
+    seq = sequence.upper()
+
+    if direction == "forward":
+        for length in range(min_len, max_len + 1):
+            end = min(start_pos + length, len(seq))
+            binding = seq[start_pos:end]
+            tm = calc_tm(binding, salt_mm=salt_mm)
+            if tm >= tm_target - tm_tolerance:
+                return binding, tm, start_pos, end
+        end = min(start_pos + max_len, len(seq))
+        binding = seq[start_pos:end]
+        return binding, calc_tm(binding, salt_mm=salt_mm), start_pos, end
+    else:
+        for length in range(min_len, max_len + 1):
+            begin = max(start_pos - length, 0)
+            binding = seq[begin:start_pos]
+            binding_rc = reverse_complement(binding)
+            tm = calc_tm(binding_rc, salt_mm=salt_mm)
+            if tm >= tm_target - tm_tolerance:
+                return binding_rc, tm, begin, start_pos
+        begin = max(start_pos - max_len, 0)
+        binding = seq[begin:start_pos]
+        binding_rc = reverse_complement(binding)
+        return binding_rc, calc_tm(binding_rc, salt_mm=salt_mm), begin, start_pos
+
+
 def _generate_primers(
     fragments: list[Fragment],
     overlap_zones: list[OverlapZone],
     sequence: str,
     circular: bool,
     salt_mm: float,
+    binding_tm_target: float = 60.0,
+    junction_modes: list[str] | None = None,
 ) -> list[Primer]:
-    """Generate forward and reverse primers for each fragment."""
+    """Generate forward and reverse primers with Tm-based binding regions.
+
+    junction_modes: per-junction overlap distribution mode.
+      "split"      — half overlap on each adjacent primer (default)
+      "left_only"  — full overlap on left fragment's reverse primer
+      "right_only" — full overlap on right fragment's forward primer
+      "none"       — no overlap tails (pre-formed ends)
+    """
     primers: list[Primer] = []
     seq = sequence.upper()
     seq_len = len(seq)
 
+    n_junctions = len(overlap_zones)
+    if junction_modes is None:
+        junction_modes = ["split"] * n_junctions
+
+    def _get_fwd_tail(frag_idx: int) -> tuple[str, str]:
+        """Get forward primer tail for fragment at frag_idx."""
+        if frag_idx == 0 and not circular:
+            return "", ""
+        # Junction to the LEFT of this fragment
+        j_idx = frag_idx % n_junctions if circular else frag_idx - 1
+        if j_idx < 0 or j_idx >= n_junctions:
+            return "", ""
+        zone = overlap_zones[j_idx]
+        mode = junction_modes[j_idx] if j_idx < len(junction_modes) else "split"
+        if mode == "none":
+            return "", ""
+        elif mode == "left_only":
+            return "", ""  # tail goes on LEFT fragment's rev primer
+        elif mode == "right_only":
+            return reverse_complement(zone.sequence), f"overlap with F{frag_idx}"
+        else:  # split
+            half = len(zone.sequence) // 2
+            return reverse_complement(zone.sequence[:half]), f"overlap with F{frag_idx}"
+
+    def _get_rev_tail(frag_idx: int) -> tuple[str, str]:
+        """Get reverse primer tail for fragment at frag_idx."""
+        if frag_idx == len(fragments) - 1 and not circular:
+            return "", ""
+        # Junction to the RIGHT of this fragment
+        j_idx = (frag_idx + 1) % n_junctions if circular else frag_idx
+        if j_idx >= n_junctions:
+            return "", ""
+        zone = overlap_zones[j_idx]
+        mode = junction_modes[j_idx] if j_idx < len(junction_modes) else "split"
+        if mode == "none":
+            return "", ""
+        elif mode == "right_only":
+            return "", ""  # tail goes on RIGHT fragment's fwd primer
+        elif mode == "left_only":
+            return zone.sequence, f"overlap with F{frag_idx + 2}"
+        else:  # split
+            half = len(zone.sequence) // 2
+            return zone.sequence[:half], f"overlap with F{frag_idx + 2}"
+
     for i, frag in enumerate(fragments):
-        frag_start = frag.start - 1  # 0-based
-        frag_end_raw = frag.end  # 1-based end
+        frag_start = frag.start - 1
+        frag_end_raw = frag.end
 
-        # Forward primer: binds to fragment start, tail = left overlap
-        bind_len = 20
-        bind_start = frag_start
-        bind_end = min(frag_start + bind_len, seq_len)
-        binding_seq = seq[bind_start:bind_end]
-
-        tail_seq = ""
-        tail_purpose = ""
-        if frag.overlap_left and i > 0:
-            # Tail comes from the previous fragment's end (overlap zone)
-            prev_zone = overlap_zones[(i) % len(overlap_zones)] if circular else overlap_zones[i - 1] if i > 0 else None
-            if prev_zone:
-                tail_seq = reverse_complement(prev_zone.sequence[:len(prev_zone.sequence) // 2])
-                tail_purpose = f"overlap with Fragment_{i}"
+        # ── Forward primer ──
+        binding_seq, bind_tm, bs, be = _select_binding_region(
+            seq, frag_start, "forward", tm_target=binding_tm_target, salt_mm=salt_mm,
+        )
+        tail_seq, tail_purpose = _get_fwd_tail(i)
 
         full_seq = tail_seq + binding_seq
-        fwd_primer = Primer(
-            id=_new_id(),
-            name=f"fwd_F{i + 1}",
-            sequence=full_seq,
-            binding_start=bind_start + 1,
-            binding_end=bind_end,
-            binding_sequence=binding_seq,
-            tm_binding=calc_tm(binding_seq, salt_mm=salt_mm),
-            tail_sequence=tail_seq,
-            tail_purpose=tail_purpose,
+        primers.append(Primer(
+            id=_new_id(), name=f"fwd_F{i + 1}", sequence=full_seq,
+            binding_start=bs + 1, binding_end=be, binding_sequence=binding_seq,
+            tm_binding=bind_tm, tail_sequence=tail_seq, tail_purpose=tail_purpose,
             tm_full=calc_tm(full_seq, salt_mm=salt_mm),
             gc_percent=round(gc_content(full_seq) * 100, 1),
-            length=len(full_seq),
-            direction="forward",
+            length=len(full_seq), direction="forward",
+        ))
+
+        # ── Reverse primer ──
+        actual_end = frag_end_raw if not circular or frag_end_raw <= seq_len else frag_end_raw - seq_len
+        binding_rev, bind_tm_rev, bsr, ber = _select_binding_region(
+            seq, actual_end, "reverse", tm_target=binding_tm_target, salt_mm=salt_mm,
         )
-        primers.append(fwd_primer)
+        tail_rev, tail_purpose_rev = _get_rev_tail(i)
 
-        # Reverse primer: binds to fragment end (reverse complement)
-        if circular:
-            actual_end = frag_end_raw if frag_end_raw <= seq_len else frag_end_raw - seq_len
-        else:
-            actual_end = frag_end_raw
-
-        bind_start_rev = max(0, actual_end - bind_len)
-        bind_end_rev = actual_end
-        binding_seq_rev = reverse_complement(seq[bind_start_rev:bind_end_rev])
-
-        tail_seq_rev = ""
-        tail_purpose_rev = ""
-        if frag.overlap_right and i < len(fragments) - 1:
-            next_zone = overlap_zones[(i + 1) % len(overlap_zones)]
-            tail_seq_rev = next_zone.sequence[:len(next_zone.sequence) // 2]
-            tail_purpose_rev = f"overlap with Fragment_{i + 2}"
-
-        full_seq_rev = tail_seq_rev + binding_seq_rev
-        rev_primer = Primer(
-            id=_new_id(),
-            name=f"rev_F{i + 1}",
-            sequence=full_seq_rev,
-            binding_start=bind_start_rev + 1,
-            binding_end=bind_end_rev,
-            binding_sequence=binding_seq_rev,
-            tm_binding=calc_tm(binding_seq_rev, salt_mm=salt_mm),
-            tail_sequence=tail_seq_rev,
-            tail_purpose=tail_purpose_rev,
-            tm_full=calc_tm(full_seq_rev, salt_mm=salt_mm),
-            gc_percent=round(gc_content(full_seq_rev) * 100, 1),
-            length=len(full_seq_rev),
-            direction="reverse",
-        )
-        primers.append(rev_primer)
+        full_rev = tail_rev + binding_rev
+        primers.append(Primer(
+            id=_new_id(), name=f"rev_F{i + 1}", sequence=full_rev,
+            binding_start=bsr + 1, binding_end=ber, binding_sequence=binding_rev,
+            tm_binding=bind_tm_rev, tail_sequence=tail_rev, tail_purpose=tail_purpose_rev,
+            tm_full=calc_tm(full_rev, salt_mm=salt_mm),
+            gc_percent=round(gc_content(full_rev) * 100, 1),
+            length=len(full_rev), direction="reverse",
+        ))
 
     return primers

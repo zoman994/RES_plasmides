@@ -414,25 +414,61 @@ def _nav_3():
         st.session_state.asm_step = 4; st.rerun()
 
 
-# ── STEP 4: Primers ───────────────────────────────────────────
+# ── STEP 4: Primers (color-coded tail/binding) ────────────────
 def _step4():
     st.subheader("Step 4: Primers")
     primers = st.session_state.asm_primers
     if not primers: st.warning("No primers. Go back."); return
 
-    header = "| # | Name | Sequence | Tm bind | Tm full | GC% | Len |"
-    sep = "|---|------|----------|---------|---------|-----|-----|"
-    rows = [header, sep]
-    copy = ["Name\tSequence"]
-    for i, p in enumerate(primers, 1):
-        sq = p.sequence if len(p.sequence) <= 45 else p.sequence[:22] + "..." + p.sequence[-12:]
-        rows.append(f"| {i} | {p.name} | `{sq}` | {p.tm_binding:.1f}\u00b0 | {p.tm_full:.1f}\u00b0 | {p.gc_percent}% | {p.length} |")
-        copy.append(f"{p.name}\t{p.sequence}")
-    st.markdown("\n".join(rows))
-    st.code("\n".join(copy), language=None)
-    st.caption("Copy above for oligo ordering.")
+    # Color-coded primer display: tail lowercase gray, binding UPPERCASE bold
+    html = ('<table style="width:100%;border-collapse:collapse;font-size:0.88em">'
+            '<tr style="background:#F0F2F6;font-weight:600">'
+            '<th style="padding:8px;text-align:left">#</th>'
+            '<th style="padding:8px;text-align:left">Name</th>'
+            '<th style="padding:8px;text-align:left">Sequence (tail + BINDING)</th>'
+            '<th style="padding:8px;text-align:center">Bind Tm</th>'
+            '<th style="padding:8px;text-align:center">Full Tm</th>'
+            '<th style="padding:8px;text-align:center">GC%</th>'
+            '<th style="padding:8px;text-align:center">Len</th>'
+            '<th style="padding:8px;text-align:left">Tail purpose</th>'
+            '</tr>')
 
-    if st.button("Save to primer registry"):
+    copy_lines = ["Name\tSequence"]
+    for i, p in enumerate(primers, 1):
+        tail = p.tail_sequence.lower() if p.tail_sequence else ""
+        bind = p.binding_sequence.upper()
+        # Color: tail in teal, binding in dark
+        seq_html = (f'<span style="color:#0097A7;font-family:monospace">{tail}</span>'
+                    f'<span style="color:#1A1A2E;font-weight:700;font-family:monospace">{bind}</span>')
+        # Tm color: green if 58-64, yellow if outside
+        tm_color = "#27AE60" if 58 <= p.tm_binding <= 64 else "#F39C12"
+        purpose = p.tail_purpose if p.tail_purpose else "\u2014"
+        html += (f'<tr style="border-bottom:1px solid #EEE">'
+                 f'<td style="padding:6px">{i}</td>'
+                 f'<td style="padding:6px;font-weight:600">{p.name}</td>'
+                 f'<td style="padding:6px">{seq_html}</td>'
+                 f'<td style="padding:6px;text-align:center;color:{tm_color};font-weight:600">{p.tm_binding:.1f}\u00b0C</td>'
+                 f'<td style="padding:6px;text-align:center;color:#7F8C8D">{p.tm_full:.1f}\u00b0C</td>'
+                 f'<td style="padding:6px;text-align:center">{p.gc_percent}%</td>'
+                 f'<td style="padding:6px;text-align:center">{p.length} nt</td>'
+                 f'<td style="padding:6px;font-size:0.85em;color:#666">{purpose}</td>'
+                 f'</tr>')
+        copy_lines.append(f"{p.name}\t{p.sequence}")
+    html += '</table>'
+
+    # Legend
+    html += ('<div style="margin-top:8px;font-size:0.8em;color:#666">'
+             '<span style="color:#0097A7">\u25cf tail (overlap/RE site)</span> &nbsp; '
+             '<span style="color:#1A1A2E;font-weight:700">\u25cf BINDING (anneals to template)</span> &nbsp; '
+             'Bind Tm = PCR annealing temperature</div>')
+
+    st.html(html)
+
+    # Copy for ordering
+    with st.expander("Copy for ordering (tab-separated)"):
+        st.code("\n".join(copy_lines), language=None)
+
+    if st.button("Save all to primer registry"):
         from pvcs.primers import add_primer
         root = st.session_state.project_root
         saved = 0

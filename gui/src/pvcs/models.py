@@ -290,6 +290,9 @@ class Junction:
     enzyme_name: str | None = None
     end_type: str | None = None  # "5prime_overhang", "3prime_overhang", "blunt"
 
+    # Overlap mode: how tail is distributed between the two primers at this junction
+    overlap_mode: str = "split"  # "split", "left_only", "right_only", "none"
+
     warnings: list[str] = field(default_factory=list)
 
 
