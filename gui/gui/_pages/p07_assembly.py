@@ -490,25 +490,92 @@ def _step5(conn):
     st.subheader("Step 5: Record Assembly")
     method = st.session_state.asm_method
     frags = st.session_state.asm_fragments
-    st.markdown(f"**{METHOD_LABELS[method]}** | {len(frags)} fragments")
+    primers = st.session_state.asm_primers
+    root = st.session_state.project_root
+    st.markdown(f"**{METHOD_LABELS[method]}** | {len(frags)} fragments | {len(primers)} primers")
+
+    # Show what will be auto-saved
+    st.markdown("**On submit, the following will be saved automatically:**")
+    new_parts = [f for f in frags if f["source"] == "synthesis"]
+    if new_parts:
+        for f in new_parts:
+            st.caption(f"  \u2192 Part: **{f['name']}** ({len(f['sequence']):,} bp) \u2014 new part from sequence")
+    if primers:
+        st.caption(f"  \u2192 {len(primers)} primers saved to registry with fragment linkage")
+    st.caption(f"  \u2192 Assembly operation recorded")
 
     constructs = db.list_constructs(conn)
     with st.form("rec5"):
         cn = st.selectbox("Link to construct", [c.name for c in constructs] if constructs else ["(none)"])
         notes = st.text_input("Notes", value=f"{METHOD_LABELS[method]}: " + " + ".join(f["name"] for f in frags))
         status = st.selectbox("Initial status", list(VALID_STATUSES))
+        auto_save_parts = st.checkbox("Auto-save new fragments to Parts Library", value=True)
+        auto_save_primers = st.checkbox("Auto-save primers to registry", value=True)
+
         if st.form_submit_button("Create Assembly", type="primary"):
             if not constructs: st.error("No constructs."); return
             con = db.get_construct_by_name(conn, cn)
             rev = db.get_latest_revision(conn, con.id) if con else None
             if not rev: st.error("No revision."); return
+
+            # 1. Auto-save new sequence fragments to Parts Library
+            saved_parts = 0
+            if auto_save_parts:
+                from pvcs.parts import add_part_from_sequence, get_part
+                for f in frags:
+                    if f["source"] == "synthesis":
+                        if not get_part(f["name"], project_root=root):
+                            try:
+                                add_part_from_sequence(
+                                    f["name"], "misc_feature", f["sequence"],
+                                    description=f"Added from {METHOD_LABELS[method]} assembly",
+                                    project_root=root,
+                                )
+                                saved_parts += 1
+                            except Exception:
+                                pass
+
+            # 2. Auto-save primers to registry with linkage info
+            saved_primers = 0
+            primer_ids = []
+            if auto_save_primers:
+                from pvcs.primers import add_primer, get_primer
+                for pi, p in enumerate(primers):
+                    # Name primer after fragment if possible
+                    frag_idx = pi // 2
+                    frag_name = frags[frag_idx]["name"] if frag_idx < len(frags) else ""
+                    primer_name = f"{p.direction[:3]}_{frag_name}" if frag_name else p.name
+                    # Avoid duplicates
+                    if get_primer(primer_name, project_root=root):
+                        primer_name = f"{primer_name}_{_new_id()[:4]}"
+                    try:
+                        saved_p = add_primer(
+                            primer_name, p.sequence,
+                            binding_sequence=p.binding_sequence,
+                            tail_sequence=p.tail_sequence,
+                            tail_purpose=p.tail_purpose,
+                            direction=p.direction,
+                            project_root=root,
+                        )
+                        primer_ids.append(saved_p.id)
+                        saved_primers += 1
+                    except Exception:
+                        primer_ids.append(p.id)
+
+            # 3. Record assembly operation
             mf = [Fragment(id=_new_id(), order=f["order"], name=f["name"],
-                           source_type="pcr_product", start=0, end=len(f["sequence"])) for f in frags]
+                           source_type="pcr_product" if f["source"] == "synthesis" else f["source"].split(":")[0] if ":" in f["source"] else f["source"],
+                           start=0, end=len(f["sequence"]),
+                           source_part_id=f["source"].split(":")[1] if f["source"].startswith("part:") else None)
+                  for f in frags]
             try:
                 record_assembly(rev.id, method if method in VALID_METHODS else "other", mf,
-                                primer_ids=[p.id for p in st.session_state.asm_primers],
-                                status=status, notes=notes, project_root=st.session_state.project_root)
-                st.success(f"Recorded assembly for **{cn}**!"); st.balloons()
+                                primer_ids=primer_ids,
+                                status=status, notes=notes, project_root=root)
+                msg = f"Assembly recorded for **{cn}**!"
+                if saved_parts: msg += f" | {saved_parts} new parts saved"
+                if saved_primers: msg += f" | {saved_primers} primers saved"
+                st.success(msg); st.balloons()
                 _reset_wizard(); st.rerun()
             except Exception as e: st.error(str(e))
 
