@@ -1,57 +1,131 @@
-/* PlasmidVCS — Safe CSS overrides (no color overrides on text) */
+/* ══════════════════════════════════════════
+   PlasmidVCS — Профессиональная тема
+   ══════════════════════════════════════════ */
 
-/* ── Cards / Containers ── */
+.stApp { background: #FAFBFC; }
+
+.stApp [data-testid="stHeader"] {
+    background: rgba(255,255,255,0.95);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid #E0E4E8;
+}
+
+/* ── Боковая панель ── */
+[data-testid="stSidebar"] {
+    background: #1B2838;
+    border-right: none;
+}
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p,
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] span,
+[data-testid="stSidebar"] label { color: #C8D6E5 !important; }
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h1,
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] h2,
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] strong { color: #FFFFFF !important; }
+[data-testid="stSidebar"] a { color: #90CAF9 !important; }
+
+/* ── Контейнеры ── */
 div[data-testid="stContainer"][data-border="true"] {
     border: 1px solid #E0E4E8 !important;
-    border-radius: 10px !important;
+    border-radius: 12px !important;
+    background: #FFFFFF !important;
     box-shadow: 0 1px 3px rgba(0,0,0,0.04) !important;
     transition: box-shadow 0.2s;
 }
-
 div[data-testid="stContainer"][data-border="true"]:hover {
     box-shadow: 0 2px 8px rgba(0,0,0,0.08) !important;
 }
 
-/* ── Metrics ── */
+/* ── Метрики ── */
 [data-testid="stMetric"] {
+    background: #FFFFFF;
     border: 1px solid #E8ECF0;
-    border-radius: 10px;
+    border-radius: 12px;
     padding: 16px 20px;
 }
+[data-testid="stMetricValue"] {
+    color: #1565C0 !important;
+    font-weight: 700 !important;
+    font-size: 1.5rem !important;
+}
+[data-testid="stMetricLabel"] {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #8896A4 !important;
+}
 
-/* ── Buttons ── */
+/* ── Таблицы ── */
+table th {
+    background: #F0F2F6 !important;
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.7rem;
+    letter-spacing: 0.04em;
+    color: #4A5568 !important;
+    padding: 10px 12px !important;
+}
+table td {
+    border-bottom: 1px solid #F0F2F6 !important;
+    padding: 8px 12px !important;
+}
+table tr:hover td { background: #F7FAFC; }
+
+/* ── Кнопки ── */
 .stButton > button {
     border-radius: 8px !important;
-    font-weight: 600 !important;
+    font-weight: 500 !important;
+    padding: 8px 20px !important;
+    transition: all 0.15s !important;
+}
+.stButton > button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
 }
 
 /* ── Expanders ── */
 [data-testid="stExpander"] {
     border: 1px solid #E8ECF0 !important;
-    border-radius: 8px !important;
+    border-radius: 12px !important;
+    overflow: hidden;
 }
-
 [data-testid="stExpander"] summary {
     font-weight: 600;
+    padding: 12px 16px;
 }
 
-/* ── Select boxes ── */
+/* ── Selectbox ── */
 [data-testid="stSelectbox"] > div > div {
     border-radius: 8px !important;
 }
 
-/* ── File uploader ── */
+/* ── Загрузка файлов ── */
 [data-testid="stFileUploader"] {
     border: 2px dashed #CBD5E1 !important;
     border-radius: 12px !important;
-    transition: border-color 0.2s;
+    transition: all 0.2s;
+    padding: 20px !important;
 }
-
 [data-testid="stFileUploader"]:hover {
-    border-color: #0066CC !important;
+    border-color: #1565C0 !important;
+    background: #F0F7FF !important;
 }
 
-/* ── Alerts ── */
+/* ── Алерты ── */
 [data-testid="stAlert"] {
-    border-radius: 8px !important;
+    border-radius: 10px !important;
+    border-left-width: 4px !important;
 }
+
+/* ── Табы ── */
+.stTabs [data-baseweb="tab-list"] { gap: 4px; border-bottom: 2px solid #E0E4E8; }
+.stTabs [data-baseweb="tab"] { border-radius: 8px 8px 0 0; padding: 8px 16px; font-weight: 500; }
+
+/* ── Скрыть меню и футер ── */
+#MainMenu { visibility: hidden; }
+footer { visibility: hidden; }
+
+/* ── Скроллбар ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #C4CAD0; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #8896A4; }

@@ -1,14 +1,5 @@
 import { useDrag, useDrop } from 'react-dnd';
-
-const COLOR_PAIRS = {
-  CDS:          ['#F5A623', '#D4890F'],
-  promoter:     ['#B0B0B0', '#808080'],
-  terminator:   ['#CC0000', '#990000'],
-  rep_origin:   ['#FFD700', '#CCA300'],
-  marker:       ['#31AF31', '#1E7D1E'],
-  misc_feature: ['#6699CC', '#3366AA'],
-  regulatory:   ['#9B59B6', '#7D3C98'],
-};
+import { FEATURE_PAIRS, getFragColor, isMarker } from '../theme';
 
 export default function PartBlock({ fragment, index, onRemove, onToggleAmplification, onReorder, pcrSize, onSplitSignal }) {
   const [{ isDragging }, drag] = useDrag({
@@ -26,8 +17,7 @@ export default function PartBlock({ fragment, index, onRemove, onToggleAmplifica
   });
 
   const ref = (el) => { drag(drop(el)); };
-  const pair = COLOR_PAIRS[fragment.type] || ['#6699CC', '#3366AA'];
-  const color = pair[index % 2];
+  const color = isMarker(fragment.name) ? '#F0E442' : getFragColor(fragment.type, index);
 
   return (
     <div ref={ref} className={`relative group cursor-grab transition-transform
@@ -49,7 +39,7 @@ export default function PartBlock({ fragment, index, onRemove, onToggleAmplifica
         {fragment.subParts?.length > 0 ? (
           /* Composite: show stacked sub-parts */
           fragment.subParts.map((sp, si) => {
-            const spColor = COLOR_PAIRS[sp.type]?.[si % 2] || color;
+            const spColor = getFragColor(sp.type, si);
             return (
               <div key={si} className="h-full flex items-center px-1 text-[8px] text-white/90
                                        border-r border-white/20 last:border-r-0"

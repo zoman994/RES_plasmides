@@ -1,11 +1,7 @@
 import { useDrag } from 'react-dnd';
 import { useState } from 'react';
-
-const COLORS = {
-  CDS: '#F5A623', promoter: '#B0B0B0', terminator: '#CC0000',
-  rep_origin: '#FFD700', marker: '#31AF31', misc_feature: '#6699CC',
-  regulatory: '#9B59B6',
-};
+import { FEATURE_COLORS, getColor } from '../theme';
+import { t } from '../i18n';
 
 function DraggablePart({ part }) {
   const [{ isDragging }, drag] = useDrag({
@@ -13,7 +9,7 @@ function DraggablePart({ part }) {
     item: { part },
     collect: m => ({ isDragging: m.isDragging() }),
   });
-  const color = COLORS[part.type] || '#6699CC';
+  const color = getColor(part);
   return (
     <div ref={drag} style={{ opacity: isDragging ? 0.4 : 1 }}
       className="flex items-center gap-2 px-2 py-1.5 mb-1 rounded cursor-grab
@@ -37,8 +33,8 @@ export default function PartsPalette({ parts, onOpenModal }) {
 
   return (
     <div className="w-52 bg-white border-r border-gray-100 p-3 overflow-y-auto shrink-0 flex flex-col">
-      <h3 className="text-sm font-bold text-gray-700 mb-2">Parts Library</h3>
-      <input type="text" placeholder="Search..." value={search}
+      <h3 className="text-sm font-bold text-gray-700 mb-2">{t('Parts Library')}</h3>
+      <input type="text" placeholder={t('Search...')} value={search}
         onChange={e => setSearch(e.target.value)}
         className="w-full text-xs p-1.5 border rounded mb-3 outline-none focus:border-blue-400" />
 
@@ -46,7 +42,7 @@ export default function PartsPalette({ parts, onOpenModal }) {
         {Object.entries(grouped).map(([type, items]) => (
           <div key={type}>
             <div className="text-[10px] text-gray-400 uppercase tracking-wider mt-3 mb-1 font-semibold">
-              {type}
+              {t(type)}
             </div>
             {items.map(p => <DraggablePart key={p.id} part={p} />)}
           </div>
@@ -59,22 +55,22 @@ export default function PartsPalette({ parts, onOpenModal }) {
       {/* Custom sources */}
       <div className="mt-3 pt-3 border-t space-y-1">
         <div className="text-[10px] text-gray-400 uppercase tracking-wider mb-1 font-semibold">
-          Custom sources
+          {t('Custom sources')}
         </div>
         <button onClick={() => onOpenModal('composite')}
           className="w-full text-left text-xs p-2 rounded border border-dashed
                      border-gray-300 hover:border-blue-400 hover:bg-blue-50 transition">
-          <span className="mr-1">{'\uD83E\uDDEA'}</span> From PCR product / tube
+          {'\uD83E\uDDEA'} {t('From PCR product / tube')}
         </button>
         <button onClick={() => onOpenModal('construct')}
           className="w-full text-left text-xs p-2 rounded border border-dashed
                      border-gray-300 hover:border-blue-400 hover:bg-blue-50 transition">
-          <span className="mr-1">{'\uD83D\uDCCB'}</span> From existing construct
+          {'\uD83D\uDCCB'} {t('From existing construct')}
         </button>
         <button onClick={() => onOpenModal('sequence')}
           className="w-full text-left text-xs p-2 rounded border border-dashed
                      border-gray-300 hover:border-blue-400 hover:bg-blue-50 transition">
-          <span className="mr-1">{'\u270F\uFE0F'}</span> Paste custom sequence
+          {'\u270F\uFE0F'} {t('Paste custom sequence')}
         </button>
       </div>
     </div>

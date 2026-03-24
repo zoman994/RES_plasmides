@@ -66,17 +66,17 @@ from gui._pages.p08_import import render as import_page
 
 pg = st.navigation(
     {
-        "Main": [
-            st.Page(dashboard, title="Dashboard", icon="\U0001f4ca", url_path="dashboard"),
-            st.Page(construct, title="Construct", icon="\U0001f9ec", url_path="construct"),
-            st.Page(diff_page, title="Diff", icon="\U0001f50d", url_path="diff"),
-            st.Page(import_page, title="Import", icon="\U0001f4e5", url_path="import"),
+        "\u041e\u0441\u043d\u043e\u0432\u043d\u043e\u0435": [
+            st.Page(dashboard, title="\u041e\u0431\u0437\u043e\u0440", icon="\U0001f4ca", url_path="dashboard"),
+            st.Page(construct, title="\u041a\u043e\u043d\u0441\u0442\u0440\u0443\u043a\u0442", icon="\U0001f9ec", url_path="construct"),
+            st.Page(diff_page, title="\u0421\u0440\u0430\u0432\u043d\u0435\u043d\u0438\u0435", icon="\U0001f50d", url_path="diff"),
+            st.Page(import_page, title="\u0418\u043c\u043f\u043e\u0440\u0442", icon="\U0001f4e5", url_path="import"),
         ],
-        "Registry": [
-            st.Page(strains, title="Strains", icon="\U0001f9eb", url_path="strains"),
-            st.Page(parts_page, title="Parts", icon="\U0001f9f1", url_path="parts"),
-            st.Page(primers_page, title="Primers", icon="\U0001f9ea", url_path="primers"),
-            st.Page(assembly, title="Assembly", icon="\U0001f527", url_path="assembly"),
+        "\u0420\u0435\u0435\u0441\u0442\u0440\u044b": [
+            st.Page(strains, title="\u0428\u0442\u0430\u043c\u043c\u044b", icon="\U0001f9eb", url_path="strains"),
+            st.Page(parts_page, title="\u0427\u0430\u0441\u0442\u0438", icon="\U0001f9f1", url_path="parts"),
+            st.Page(primers_page, title="\u041f\u0440\u0430\u0439\u043c\u0435\u0440\u044b", icon="\U0001f9ea", url_path="primers"),
+            st.Page(assembly, title="\u0421\u0431\u043e\u0440\u043a\u0430", icon="\U0001f527", url_path="assembly"),
         ],
     }
 )

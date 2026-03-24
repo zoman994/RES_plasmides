@@ -1,20 +1,6 @@
 import { useState, useMemo } from 'react';
-
-// Alternating color pairs for same-type fragments
-const COLOR_PAIRS = {
-  CDS:          ['#F5A623', '#D4890F'],
-  promoter:     ['#B0B0B0', '#808080'],
-  terminator:   ['#CC0000', '#990000'],
-  rep_origin:   ['#FFD700', '#CCA300'],
-  marker:       ['#31AF31', '#1E7D1E'],
-  misc_feature: ['#6699CC', '#3366AA'],
-  regulatory:   ['#9B59B6', '#7D3C98'],
-};
-
-function getFragColor(type, index) {
-  const pair = COLOR_PAIRS[type] || ['#6699CC', '#3366AA'];
-  return pair[index % 2];
-}
+import { getFragColor, NT_COLORS } from '../theme';
+import { t } from '../i18n';
 
 export default function SequenceViewer({ fragments, circular, primers = [] }) {
   const [open, setOpen] = useState(false);
@@ -121,7 +107,6 @@ export default function SequenceViewer({ fragments, circular, primers = [] }) {
                             const abs = lineStart + ci;
                             const isBoundary = boundaries.has(abs);
                             const r = coloredRanges.find(r => abs >= r.start && abs < r.end);
-                            // Check if this position is under a primer
                             const underPrimer = linePrimers.find(p => abs >= p.start && abs < p.end);
                             return (
                               <span key={ci}>
@@ -136,7 +121,9 @@ export default function SequenceViewer({ fragments, circular, primers = [] }) {
                               </span>
                             );
                           })
-                        : line.seq
+                        : line.seq.split('').map((ch, ci) => (
+                            <span key={ci} style={{ color: NT_COLORS[ch.toUpperCase()] || '#333' }}>{ch}</span>
+                          ))
                       }
                     </span>
                   </div>

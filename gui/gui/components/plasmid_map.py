@@ -9,23 +9,24 @@ from __future__ import annotations
 import math
 from pvcs.models import Feature
 
-# SnapGene-style feature colors
+# Okabe-Ito colorblind-safe palette
 FEATURE_COLORS: dict[str, str] = {
-    "CDS": "#F5A623",
-    "gene": "#F5A623",
-    "promoter": "#B0B0B0",
-    "terminator": "#CC0000",
-    "rep_origin": "#FFD700",
-    "misc_feature": "#6699CC",
-    "regulatory": "#9B59B6",
-    "misc_RNA": "#E74C3C",
-    "repeat_region": "#95A5A6",
-    "protein_bind": "#1ABC9C",
-    "RBS": "#E67E22",
-    "enhancer": "#27AE60",
-    "source": "#BDC3C7",
-    "primer_bind": "#3498DB",
-    "mRNA": "#F39C12",
+    "CDS": "#56B4E9",
+    "gene": "#56B4E9",
+    "promoter": "#009E73",
+    "terminator": "#D55E00",
+    "rep_origin": "#E69F00",
+    "misc_feature": "#999999",
+    "regulatory": "#661100",
+    "misc_RNA": "#AA4499",
+    "repeat_region": "#999999",
+    "protein_bind": "#0072B2",
+    "RBS": "#E69F00",
+    "enhancer": "#009E73",
+    "source": "#CCCCCC",
+    "primer_bind": "#0072B2",
+    "mRNA": "#AA4499",
+    "signal_peptide": "#CC79A7",
 }
 
 MARKER_KEYWORDS = {"hygr", "ampr", "kanr", "amds", "pyrg", "hph", "ble", "nat", "hygror", "hygromycin"}
@@ -43,7 +44,7 @@ def _get_feature_color(feature: Feature, highlight: dict[str, str] | None = None
         return highlight[feature.name]
     name_lower = feature.name.lower()
     if any(kw in name_lower for kw in MARKER_KEYWORDS):
-        return "#31AF31"
+        return "#F0E442"
     return FEATURE_COLORS.get(feature.type, "#6699CC")
 
 
