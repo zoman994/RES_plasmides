@@ -1,9 +1,13 @@
 import { useDrag, useDrop } from 'react-dnd';
 
-const COLORS = {
-  CDS: '#F5A623', promoter: '#B0B0B0', terminator: '#CC0000',
-  rep_origin: '#FFD700', marker: '#31AF31', misc_feature: '#6699CC',
-  regulatory: '#9B59B6',
+const COLOR_PAIRS = {
+  CDS:          ['#F5A623', '#D4890F'],
+  promoter:     ['#B0B0B0', '#808080'],
+  terminator:   ['#CC0000', '#990000'],
+  rep_origin:   ['#FFD700', '#CCA300'],
+  marker:       ['#31AF31', '#1E7D1E'],
+  misc_feature: ['#6699CC', '#3366AA'],
+  regulatory:   ['#9B59B6', '#7D3C98'],
 };
 
 export default function PartBlock({ fragment, index, onRemove, onToggleAmplification, onReorder }) {
@@ -22,7 +26,8 @@ export default function PartBlock({ fragment, index, onRemove, onToggleAmplifica
   });
 
   const ref = (el) => { drag(drop(el)); };
-  const color = COLORS[fragment.type] || '#6699CC';
+  const pair = COLOR_PAIRS[fragment.type] || ['#6699CC', '#3366AA'];
+  const color = pair[index % 2];
 
   return (
     <div ref={ref} className={`relative group cursor-grab transition-transform

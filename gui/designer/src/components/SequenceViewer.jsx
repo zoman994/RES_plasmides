@@ -1,33 +1,71 @@
 import { useState, useMemo } from 'react';
 
-const COLORS = {
-  CDS: '#F5A623', promoter: '#B0B0B0', terminator: '#CC0000',
-  rep_origin: '#FFD700', marker: '#31AF31', misc_feature: '#6699CC',
-  regulatory: '#9B59B6',
+// Alternating color pairs for same-type fragments
+const COLOR_PAIRS = {
+  CDS:          ['#F5A623', '#D4890F'],
+  promoter:     ['#B0B0B0', '#808080'],
+  terminator:   ['#CC0000', '#990000'],
+  rep_origin:   ['#FFD700', '#CCA300'],
+  marker:       ['#31AF31', '#1E7D1E'],
+  misc_feature: ['#6699CC', '#3366AA'],
+  regulatory:   ['#9B59B6', '#7D3C98'],
 };
 
-export default function SequenceViewer({ fragments, circular }) {
+function getFragColor(type, index) {
+  const pair = COLOR_PAIRS[type] || ['#6699CC', '#3366AA'];
+  return pair[index % 2];
+}
+
+export default function SequenceViewer({ fragments, circular, primers = [] }) {
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState('all');
 
   const fullSeq = fragments.map(f => f.sequence || '').join('');
 
-  const coloredRanges = useMemo(() => {
+  // Build color ranges with alternating shades + boundary positions
+  const { coloredRanges, boundaries } = useMemo(() => {
     let offset = 0;
-    return fragments.map(f => {
+    const ranges = [];
+    const bounds = new Set();
+    fragments.forEach((f, i) => {
       const start = offset;
       offset += (f.sequence || '').length;
-      return { name: f.name, start, end: offset, color: COLORS[f.type] || '#6699CC' };
+      ranges.push({
+        name: f.name, type: f.type, start, end: offset,
+        color: getFragColor(f.type, i),
+      });
+      if (i > 0) bounds.add(start); // boundary between fragments
     });
+    return { coloredRanges: ranges, boundaries: bounds };
   }, [fragments]);
 
-  const displaySeq = selected === 'all'
-    ? fullSeq
-    : (fragments[selected]?.sequence || '');
+  // Build primer region lookup for annotations
+  const primerRegions = useMemo(() => {
+    if (!primers || primers.length === 0) return [];
+    // Accumulate fragment offsets to map primer positions to full sequence
+    const offsets = [];
+    let off = 0;
+    fragments.forEach(f => { offsets.push(off); off += (f.sequence || '').length; });
 
+    return primers.map((p, pi) => {
+      const fragIdx = Math.floor(pi / 2);
+      const fragOff = offsets[fragIdx] || 0;
+      const start = fragOff + (p.bindingStart || 1) - 1;
+      const end = fragOff + (p.bindingEnd || p.bindingStart || 1);
+      return {
+        name: p.name,
+        start, end,
+        direction: p.direction,
+        color: p.direction === 'forward' ? '#3B82F6' : '#EF4444',
+      };
+    });
+  }, [primers, fragments]);
+
+  const displaySeq = selected === 'all' ? fullSeq : (fragments[selected]?.sequence || '');
+  const COLS = 60;
   const lines = [];
-  for (let i = 0; i < displaySeq.length; i += 60) {
-    lines.push({ pos: i + 1, seq: displaySeq.slice(i, i + 60) });
+  for (let i = 0; i < displaySeq.length; i += COLS) {
+    lines.push({ pos: i + 1, seq: displaySeq.slice(i, i + COLS) });
   }
 
   if (fragments.length === 0) return null;
@@ -43,6 +81,7 @@ export default function SequenceViewer({ fragments, circular }) {
 
       {open && (
         <div className="p-4 border-t">
+          {/* Fragment selector tabs */}
           <div className="flex gap-1 mb-3 flex-wrap">
             <button onClick={() => setSelected('all')}
               className={`text-[10px] px-2 py-1 rounded transition ${
@@ -53,32 +92,87 @@ export default function SequenceViewer({ fragments, circular }) {
                 className={`text-[10px] px-2 py-1 rounded transition ${
                   selected === i ? 'text-white' : 'bg-gray-100 hover:bg-gray-200'
                 }`}
-                style={selected === i ? { background: COLORS[f.type] || '#6699CC' } : {}}>
+                style={selected === i ? { background: getFragColor(f.type, i) } : {}}>
                 {f.name} ({(f.sequence || '').length})
               </button>
             ))}
           </div>
 
-          <div className="font-mono text-[11px] leading-5 max-h-[300px]
+          {/* Sequence display */}
+          <div className="font-mono text-[11px] leading-5 max-h-[400px]
                           overflow-y-auto bg-gray-50 p-3 rounded">
-            {lines.map(line => (
-              <div key={line.pos} className="flex">
-                <span className="text-gray-400 w-12 text-right mr-3 select-none shrink-0">
-                  {line.pos}
-                </span>
-                <span className="break-all">
-                  {selected === 'all'
-                    ? line.seq.split('').map((ch, ci) => {
-                        const abs = line.pos - 1 + ci;
-                        const r = coloredRanges.find(r => abs >= r.start && abs < r.end);
-                        return <span key={ci} style={{ color: r?.color || '#333' }}>{ch}</span>;
-                      })
-                    : line.seq
-                  }
-                </span>
-              </div>
-            ))}
+            {lines.map(line => {
+              // Find primers that overlap this line
+              const lineStart = line.pos - 1;
+              const lineEnd = lineStart + line.seq.length;
+              const linePrimers = selected === 'all'
+                ? primerRegions.filter(p => p.start < lineEnd && p.end > lineStart)
+                : [];
+
+              return (
+                <div key={line.pos}>
+                  <div className="flex">
+                    <span className="text-gray-400 w-12 text-right mr-3 select-none shrink-0">
+                      {line.pos}
+                    </span>
+                    <span className="break-all">
+                      {selected === 'all'
+                        ? line.seq.split('').map((ch, ci) => {
+                            const abs = lineStart + ci;
+                            const isBoundary = boundaries.has(abs);
+                            const r = coloredRanges.find(r => abs >= r.start && abs < r.end);
+                            // Check if this position is under a primer
+                            const underPrimer = linePrimers.find(p => abs >= p.start && abs < p.end);
+                            return (
+                              <span key={ci}>
+                                {isBoundary && <span className="text-red-400 select-none">|</span>}
+                                <span style={{
+                                  color: r?.color || '#333',
+                                  textDecoration: underPrimer ? 'underline' : 'none',
+                                  textDecorationColor: underPrimer?.color,
+                                  textDecorationThickness: '2px',
+                                  textUnderlineOffset: '2px',
+                                }}>{ch}</span>
+                              </span>
+                            );
+                          })
+                        : line.seq
+                      }
+                    </span>
+                  </div>
+                  {/* Primer annotations below the sequence line */}
+                  {linePrimers.length > 0 && (
+                    <div className="flex ml-[60px] h-3">
+                      {linePrimers.map((p, pi) => {
+                        const pStart = Math.max(p.start - lineStart, 0);
+                        const pEnd = Math.min(p.end - lineStart, line.seq.length);
+                        const width = pEnd - pStart;
+                        if (width <= 0) return null;
+                        return (
+                          <div key={pi} className="absolute text-[7px] whitespace-nowrap"
+                            style={{
+                              marginLeft: `${pStart * 6.6}px`,
+                              color: p.color,
+                            }}>
+                            {p.direction === 'forward' ? '\u2192' : '\u2190'}{p.name}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
+
+          {/* Legend */}
+          {primerRegions.length > 0 && (
+            <div className="text-[9px] text-gray-500 mt-2 flex gap-3">
+              <span><span className="text-blue-500">\u2501</span> forward primer binding</span>
+              <span><span className="text-red-500">\u2501</span> reverse primer binding</span>
+              <span className="text-red-400">|</span> fragment boundary
+            </div>
+          )}
 
           <button onClick={() => navigator.clipboard.writeText(displaySeq)}
             className="mt-2 text-xs px-3 py-1.5 bg-blue-50 text-blue-700 rounded

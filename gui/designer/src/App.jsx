@@ -24,6 +24,7 @@ export default function App() {
   const [warnings, setWarnings] = useState([]);
   const [orderSheet, setOrderSheet] = useState('');
   const [circular, setCircular] = useState(false);
+  const [calculated, setCalculated] = useState(false);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -126,6 +127,16 @@ export default function App() {
       setPrimers(data.primers || []);
       setWarnings(data.warnings || []);
       setOrderSheet(data.orderSheet || '');
+      // Merge junction overlap data from API response
+      if (data.junctions) {
+        setJunctions(prev => prev.map((j, i) => ({
+          ...j,
+          overlapSequence: data.junctions[i]?.overlapSequence || j.overlapSequence,
+          overlapTm: data.junctions[i]?.overlapTm || j.overlapTm,
+          overlapGc: data.junctions[i]?.overlapGc || j.overlapGc,
+        })));
+      }
+      setCalculated(true);
     } catch (e) {
       setWarnings([`API error: ${e.message}`]);
     }
@@ -159,7 +170,7 @@ export default function App() {
               circular={circular} onToggleCircular={toggleCircular}
               onDrop={addFragment} onRemove={removeFragment}
               onToggleAmplification={toggleAmplification} onJunctionChange={updateJunction}
-              onReorder={reorderFragments} />
+              onReorder={reorderFragments} calculated={calculated} />
 
             {fragments.length >= 2 && (
               <button onClick={generate} disabled={loading}
@@ -170,7 +181,7 @@ export default function App() {
             )}
 
             {fragments.length > 0 && (
-              <SequenceViewer fragments={fragments} circular={circular} />
+              <SequenceViewer fragments={fragments} circular={circular} primers={primers} />
             )}
 
             <PrimerPanel primers={primers} warnings={warnings} orderSheet={orderSheet} />

@@ -1,10 +1,12 @@
 import { useDrop } from 'react-dnd';
 import PartBlock from './PartBlock';
 import JunctionBlock from './JunctionBlock';
+import JunctionDNA from './JunctionDNA';
 
 export default function DesignCanvas({
   fragments, junctions, circular, onToggleCircular,
   onDrop, onRemove, onToggleAmplification, onJunctionChange, onReorder,
+  calculated,
 }) {
   const [{ isOver }, drop] = useDrop({
     accept: 'PART',
@@ -48,14 +50,17 @@ export default function DesignCanvas({
                 <PartBlock fragment={frag} index={i}
                   onRemove={onRemove} onToggleAmplification={onToggleAmplification}
                   onReorder={onReorder} />
-                {/* Junction between fragments (N-1 for linear, N for circular) */}
+                {/* Junction between fragments */}
                 {i < junctions.length && (i < n - 1 || circular) && (
-                  <JunctionBlock
-                    junction={junctions[i]}
-                    index={i}
-                    leftName={frag.name}
-                    rightName={fragments[(i + 1) % n]?.name || '?'}
-                    onChange={cfg => onJunctionChange(i, cfg)} />
+                  <div className="flex flex-col items-center">
+                    <JunctionBlock
+                      junction={junctions[i]}
+                      index={i}
+                      leftName={frag.name}
+                      rightName={fragments[(i + 1) % n]?.name || '?'}
+                      onChange={cfg => onJunctionChange(i, cfg)} />
+                    <JunctionDNA junction={junctions[i]} calculated={calculated} />
+                  </div>
                 )}
               </div>
             ))}
