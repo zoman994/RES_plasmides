@@ -34,7 +34,13 @@ export default function App() {
   const [calculated, setCalculated] = useState(false);
   const [loading, setLoading] = useState(false);
   const [modalMode, setModalMode] = useState(null);
-  const [splitTarget, setSplitTarget] = useState(null); // index of fragment for SP split
+  const [splitTarget, setSplitTarget] = useState(null);
+  const [polymerase, setPolymerase] = useState('phusion');
+  const [primerPrefix, setPrimerPrefix] = useState('IS');
+
+  // Multi-step
+  const [steps, setSteps] = useState([]);
+  const [activeStep, setActiveStep] = useState(-1); // -1 = main canvas
 
   // ── Restore from localStorage on mount ──
   useEffect(() => {
@@ -171,7 +177,15 @@ export default function App() {
         fragments.map(f => ({ name: f.name, sequence: f.sequence, needsAmplification: f.needsAmplification })),
         junctions, method, circular, 60,
       );
-      setPrimers(data.primers || []);
+      // Rename primers with prefix and apply polymerase Tm correction
+      const tmAdj = { phusion: 3, kod: 2, taq: -5 }[polymerase] || 0;
+      let pidx = 1;
+      const renamedPrimers = (data.primers || []).map(p => ({
+        ...p,
+        name: `${primerPrefix}${String(pidx++).padStart(3, '0')}_${p.name}`,
+        tmAdjusted: Math.round((p.tmBinding || 60) + tmAdj),
+      }));
+      setPrimers(renamedPrimers);
       setApiWarnings(data.warnings || []);
       setOrderSheet(data.orderSheet || '');
       if (data.junctions) {
@@ -263,6 +277,17 @@ export default function App() {
                 {m.label}
               </button>
             ))}
+            <select value={polymerase} onChange={e => setPolymerase(e.target.value)}
+              className="text-xs border rounded px-2 py-1 ml-2">
+              <option value="phusion">Phusion/Q5</option>
+              <option value="taq">Taq</option>
+              <option value="kod">KOD</option>
+            </select>
+            <div className="flex items-center gap-1 ml-2 text-xs text-gray-500">
+              <span>Prefix:</span>
+              <input value={primerPrefix} onChange={e => setPrimerPrefix(e.target.value)}
+                className="w-10 border rounded px-1 py-0.5 text-xs" maxLength={4} />
+            </div>
             {fragments.length > 0 && (
               <button onClick={clearAll} className="text-xs px-2 py-1 text-red-500 hover:bg-red-50 rounded ml-2">
                 Clear
@@ -270,6 +295,27 @@ export default function App() {
             )}
           </div>
         </header>
+
+        {/* Multi-step tabs */}
+        {steps.length > 0 && (
+          <div className="bg-gray-50 border-b px-6 py-1 flex gap-1 items-center">
+            <button onClick={() => setActiveStep(-1)}
+              className={`text-xs px-3 py-1 rounded-t border-b-2 ${
+                activeStep === -1 ? 'border-blue-500 text-blue-700 font-bold' : 'border-transparent text-gray-500'}`}>
+              Main ({fragments.length})
+            </button>
+            {steps.map((s, i) => (
+              <button key={i} onClick={() => setActiveStep(i)}
+                className={`text-xs px-3 py-1 rounded-t border-b-2 ${
+                  activeStep === i ? 'border-blue-500 text-blue-700 font-bold' : 'border-transparent text-gray-500'}`}>
+                {s.name} ({s.fragments?.length || 0})
+              </button>
+            ))}
+            <button onClick={() => {
+              setSteps([...steps, { name: `Step ${steps.length + 2}`, fragments: [], junctions: [], method: 'overlap_pcr', circular: false }]);
+            }} className="text-xs px-2 py-1 text-gray-400 hover:text-blue-600">+ Step</button>
+          </div>
+        )}
 
         <div className="flex flex-1 overflow-hidden">
           <PartsPalette parts={parts} onOpenModal={setModalMode} />
@@ -317,6 +363,14 @@ export default function App() {
             )}
             {fragments.length > 0 && primers.length > 0 && (
               <VerificationPanel fragments={fragments} circular={circular} />
+            )}
+
+            {/* Multi-step: add step button */}
+            {fragments.length >= 2 && steps.length === 0 && (
+              <button onClick={() => setSteps([{ name: 'Step 2', fragments: [], junctions: [], method: 'overlap_pcr', circular: false }])}
+                className="text-xs px-4 py-2 border border-dashed rounded-lg hover:bg-blue-50 text-gray-500 w-full text-left">
+                + Add assembly step (multi-step: output of this step feeds into next)
+              </button>
             )}
 
             {/* Export buttons */}
