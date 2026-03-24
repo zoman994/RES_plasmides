@@ -51,6 +51,10 @@ export function validateConstruct(fragments) {
     // Two CDS in a row
     if (frag.type === 'CDS' && i < fragments.length - 1 && fragments[i + 1].type === 'CDS')
       w.push(`\ud83d\udca1 Two CDS in a row (${frag.name} \u2192 ${fragments[i + 1].name}) \u2014 polycistronic?`);
+
+    // Intron warning
+    if (frag.has_introns && frag.introns?.length > 0)
+      w.push(`\u26a0 ${frag.name}: has ${frag.introns.length} intron(s) \u2014 remove for E. coli expression! Use \u2702 or "Remove introns" button.`);
   });
   return w;
 }

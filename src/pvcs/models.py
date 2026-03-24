@@ -52,6 +52,10 @@ class Feature:
     sequence: str = ""    # nucleotide sequence of this feature
     part_id: str | None = None
     color: str | None = None
+    # Intron/exon structure (populated from GenBank join() locations)
+    exons: list[tuple[int, int]] = field(default_factory=list)    # [(start,end), ...] 1-based
+    introns: list[tuple[int, int]] = field(default_factory=list)  # [(start,end), ...] 1-based
+    has_introns: bool = False
 
 
 @dataclass

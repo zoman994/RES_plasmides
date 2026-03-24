@@ -203,6 +203,28 @@ def calc_tm_api(body: dict):
             "gc": round(gc_content(body["sequence"]) * 100, 1)}
 
 
+# ── Intron Detection ───────────────────────────────────────────
+
+@app.post("/api/introns/detect")
+def detect_introns(body: dict):
+    """Detect introns by aligning cDNA to genomic sequence."""
+    from pvcs.intron_detection import detect_introns_by_alignment
+    return detect_introns_by_alignment(
+        body["genomic"], body["cdna"],
+        max_intron=body.get("maxIntron", 5000),
+    )
+
+
+@app.post("/api/introns/remove")
+def remove_introns(body: dict):
+    """Generate exon fusion fragments for overlap PCR."""
+    from pvcs.intron_detection import generate_exon_fusion_fragments
+    return generate_exon_fusion_fragments(
+        body["genomic"], body["exons"],
+        overlap_length=body.get("overlapLength", 30),
+    )
+
+
 # ── Serve React build (production) ─────────────────────────────
 
 _designer_dist = Path(__file__).parent.parent / "designer" / "dist"

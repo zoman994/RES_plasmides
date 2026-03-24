@@ -77,6 +77,12 @@ export default function PartBlock({ fragment, index, onRemove, onToggleAmplifica
           PCR: {pcrSize} bp
         </div>
       )}
+      {/* Intron badge */}
+      {fragment.has_introns && fragment.introns?.length > 0 && (
+        <div className="text-center text-[8px] bg-gray-200 text-gray-600 rounded px-1 mx-auto w-fit">
+          {fragment.introns.length} intron{fragment.introns.length > 1 ? 's' : ''}
+        </div>
+      )}
       {/* Signal peptide split (CDS only) */}
       {fragment.type === 'CDS' && onSplitSignal && (
         <button onClick={(e) => { e.stopPropagation(); onSplitSignal(index); }}

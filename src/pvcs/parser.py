@@ -85,6 +85,8 @@ def _extract_feature_name(bio_feature: SeqFeature) -> str:
 
 def _bio_feature_to_pvcs(bio_feature: SeqFeature, full_sequence: str) -> Feature:
     """Convert a BioPython SeqFeature into a pvcs Feature."""
+    from Bio.SeqFeature import CompoundLocation
+
     loc = bio_feature.location
     start = int(loc.start) + 1  # BioPython is 0-based; pvcs is 1-based
     end = int(loc.end)
@@ -100,6 +102,18 @@ def _bio_feature_to_pvcs(bio_feature: SeqFeature, full_sequence: str) -> Feature
 
     color = bio_feature.qualifiers.get("ApEinfo_fwdcolor", [None])[0]
 
+    # Parse exon/intron structure from join() compound locations
+    exons: list[tuple[int, int]] = []
+    introns: list[tuple[int, int]] = []
+    if isinstance(loc, CompoundLocation):
+        for part in loc.parts:
+            exons.append((int(part.start) + 1, int(part.end)))  # 1-based
+        for i in range(len(exons) - 1):
+            intron_start = exons[i][1] + 1
+            intron_end = exons[i + 1][0] - 1
+            if intron_end >= intron_start:
+                introns.append((intron_start, intron_end))
+
     return Feature(
         type=bio_feature.type,
         name=_extract_feature_name(bio_feature),
@@ -109,6 +123,9 @@ def _bio_feature_to_pvcs(bio_feature: SeqFeature, full_sequence: str) -> Feature
         qualifiers=qualifiers,
         sequence=feat_seq,
         color=color,
+        exons=exons,
+        introns=introns,
+        has_introns=len(introns) > 0,
     )
 
 
