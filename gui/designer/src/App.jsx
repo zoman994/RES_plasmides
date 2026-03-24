@@ -36,6 +36,7 @@ export default function App() {
   const [showMutagenesis, setShowMutagenesis] = useState(false);
   const [activeTab, setActiveTab] = useState('canvas');
   const [protocolSteps, setProtocolSteps] = useState([]);
+  const [inventoryVersion, setInventoryVersion] = useState(0);
   const [polymerase, setPolymerase] = useState('phusion');
   const [primerPrefix, setPrimerPrefix] = useState('IS');
 

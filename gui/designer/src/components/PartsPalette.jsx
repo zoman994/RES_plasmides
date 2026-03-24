@@ -2,6 +2,7 @@ import { useDrag } from 'react-dnd';
 import { useState, useMemo } from 'react';
 import { FEATURE_COLORS, getColor } from '../theme';
 import { t } from '../i18n';
+import { getPCRProducts, getVerifiedPlasmids } from '../inventory';
 
 function DraggablePart({ part }) {
   const [{ isDragging }, drag] = useDrag({
@@ -31,8 +32,6 @@ export default function PartsPalette({ parts, onOpenModal, inventoryVersion = 0 
     (grouped[p.type] = grouped[p.type] || []).push(p);
   });
 
-  // Load inventory items
-  const { getPCRProducts, getVerifiedPlasmids } = require('../inventory');
   const pcrProducts = useMemo(() => getPCRProducts(), [inventoryVersion]);
   const plasmids = useMemo(() => getVerifiedPlasmids(), [inventoryVersion]);
 
