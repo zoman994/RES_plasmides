@@ -26,7 +26,7 @@ function DraggablePart({ part }) {
   );
 }
 
-export default function PartsPalette({ parts }) {
+export default function PartsPalette({ parts, onOpenModal }) {
   const [search, setSearch] = useState('');
   const filtered = parts.filter(p =>
     p.name.toLowerCase().includes(search.toLowerCase()));
@@ -36,22 +36,47 @@ export default function PartsPalette({ parts }) {
   });
 
   return (
-    <div className="w-52 bg-white border-r border-gray-100 p-3 overflow-y-auto shrink-0">
+    <div className="w-52 bg-white border-r border-gray-100 p-3 overflow-y-auto shrink-0 flex flex-col">
       <h3 className="text-sm font-bold text-gray-700 mb-2">Parts Library</h3>
       <input type="text" placeholder="Search..." value={search}
         onChange={e => setSearch(e.target.value)}
         className="w-full text-xs p-1.5 border rounded mb-3 outline-none focus:border-blue-400" />
-      {Object.entries(grouped).map(([type, items]) => (
-        <div key={type}>
-          <div className="text-[10px] text-gray-400 uppercase tracking-wider mt-3 mb-1 font-semibold">
-            {type}
+
+      <div className="flex-1 overflow-y-auto">
+        {Object.entries(grouped).map(([type, items]) => (
+          <div key={type}>
+            <div className="text-[10px] text-gray-400 uppercase tracking-wider mt-3 mb-1 font-semibold">
+              {type}
+            </div>
+            {items.map(p => <DraggablePart key={p.id} part={p} />)}
           </div>
-          {items.map(p => <DraggablePart key={p.id} part={p} />)}
+        ))}
+        {filtered.length === 0 && (
+          <div className="text-xs text-gray-400 text-center mt-6">No parts found</div>
+        )}
+      </div>
+
+      {/* Custom sources */}
+      <div className="mt-3 pt-3 border-t space-y-1">
+        <div className="text-[10px] text-gray-400 uppercase tracking-wider mb-1 font-semibold">
+          Custom sources
         </div>
-      ))}
-      {filtered.length === 0 && (
-        <div className="text-xs text-gray-400 text-center mt-6">No parts found</div>
-      )}
+        <button onClick={() => onOpenModal('composite')}
+          className="w-full text-left text-xs p-2 rounded border border-dashed
+                     border-gray-300 hover:border-blue-400 hover:bg-blue-50 transition">
+          <span className="mr-1">{'\uD83E\uDDEA'}</span> From PCR product / tube
+        </button>
+        <button onClick={() => onOpenModal('construct')}
+          className="w-full text-left text-xs p-2 rounded border border-dashed
+                     border-gray-300 hover:border-blue-400 hover:bg-blue-50 transition">
+          <span className="mr-1">{'\uD83D\uDCCB'}</span> From existing construct
+        </button>
+        <button onClick={() => onOpenModal('sequence')}
+          className="w-full text-left text-xs p-2 rounded border border-dashed
+                     border-gray-300 hover:border-blue-400 hover:bg-blue-50 transition">
+          <span className="mr-1">{'\u270F\uFE0F'}</span> Paste custom sequence
+        </button>
+      </div>
     </div>
   );
 }

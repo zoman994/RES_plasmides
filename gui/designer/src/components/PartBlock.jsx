@@ -41,15 +41,30 @@ export default function PartBlock({ fragment, index, onRemove, onToggleAmplifica
           <span className="text-[9px] bg-yellow-100 text-yellow-700 px-1 rounded">no PCR</span>
         </div>
       )}
-      {/* Block */}
-      <div className="h-14 px-4 flex items-center justify-center text-white text-sm
-                      font-semibold min-w-[80px] rounded-sm select-none"
+      {/* Block — composite shows sub-parts, regular shows single block */}
+      <div className="h-14 flex items-center min-w-[80px] rounded-sm select-none overflow-hidden"
         style={{ background: color }}
         onDoubleClick={() => onToggleAmplification(index)}
         title="Double-click to toggle PCR amplification">
-        {fragment.strand === -1 && <span className="text-xs mr-1 opacity-60">&larr;</span>}
-        {fragment.name}
-        {fragment.strand !== -1 && <span className="text-xs ml-1 opacity-60">&rarr;</span>}
+        {fragment.subParts?.length > 0 ? (
+          /* Composite: show stacked sub-parts */
+          fragment.subParts.map((sp, si) => {
+            const spColor = COLOR_PAIRS[sp.type]?.[si % 2] || color;
+            return (
+              <div key={si} className="h-full flex items-center px-1 text-[8px] text-white/90
+                                       border-r border-white/20 last:border-r-0"
+                style={{ background: spColor, flex: 1 }}>
+                {sp.name}
+              </div>
+            );
+          })
+        ) : (
+          <div className="flex-1 flex items-center justify-center text-white text-sm font-semibold px-4">
+            {fragment.strand === -1 && <span className="text-xs mr-1 opacity-60">&larr;</span>}
+            {fragment.name}
+            {fragment.strand !== -1 && <span className="text-xs ml-1 opacity-60">&rarr;</span>}
+          </div>
+        )}
       </div>
       {/* Length + PCR size */}
       <div className="text-center text-[10px] text-gray-400 mt-0.5">

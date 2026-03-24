@@ -5,6 +5,7 @@ import PartsPalette from './components/PartsPalette';
 import DesignCanvas from './components/DesignCanvas';
 import PrimerPanel from './components/PrimerPanel';
 import SequenceViewer from './components/SequenceViewer';
+import AddFragmentModal from './components/AddFragmentModal';
 import { fetchParts, designPrimers } from './api';
 import { validateConstruct, checkPrimerQuality, pcrProductSize } from './validate';
 import { exportGenBank, exportProtocol, saveToPVCS } from './exports';
@@ -29,6 +30,7 @@ export default function App() {
   const [circular, setCircular] = useState(false);
   const [calculated, setCalculated] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [modalMode, setModalMode] = useState(null); // null | 'sequence' | 'composite' | 'construct'
 
   // ── Restore from localStorage on mount ──
   useEffect(() => {
@@ -183,6 +185,31 @@ export default function App() {
     setLoading(false);
   };
 
+  const addCustomFragment = (fragData) => {
+    const frag = {
+      id: `f${nextId++}`,
+      name: fragData.name,
+      type: fragData.type || 'misc_feature',
+      sequence: fragData.sequence || '',
+      length: fragData.length || (fragData.sequence || '').length,
+      strand: fragData.strand || 1,
+      needsAmplification: fragData.needsAmplification ?? true,
+      sourceType: fragData.sourceType || 'sequence',
+      subParts: fragData.subParts,
+    };
+    const nf = [...fragments, frag];
+    setFragments(nf);
+    setCalculated(false);
+    if (nf.length > 1) {
+      const info = METHODS.find(x => x.id === method) || METHODS[0];
+      setJunctions(j => [...j, {
+        type: method === 'golden_gate' ? 'golden_gate' : 'overlap',
+        overlapMode: 'split', overlapLength: info.olLen, tmTarget: info.tm,
+        enzyme: 'BsaI', overhang: '',
+      }]);
+    }
+  };
+
   const clearAll = () => {
     setFragments([]); setJunctions([]); setPrimers([]);
     setApiWarnings([]); setCalculated(false);
@@ -217,7 +244,7 @@ export default function App() {
         </header>
 
         <div className="flex flex-1 overflow-hidden">
-          <PartsPalette parts={parts} />
+          <PartsPalette parts={parts} onOpenModal={setModalMode} />
           <div className="flex-1 flex flex-col p-4 gap-3 overflow-y-auto">
 
             {/* Construct validation warnings */}
@@ -278,6 +305,14 @@ export default function App() {
           </div>
         </div>
       </div>
+      {/* Add fragment modal */}
+      {modalMode && (
+        <AddFragmentModal
+          mode={modalMode}
+          onAdd={addCustomFragment}
+          onClose={() => setModalMode(null)}
+        />
+      )}
     </DndProvider>
   );
 }
