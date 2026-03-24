@@ -4,11 +4,12 @@ import { HTML5Backend } from 'react-dnd-html5-backend';
 import PartsPalette from './components/PartsPalette';
 import DesignCanvas from './components/DesignCanvas';
 import PrimerPanel from './components/PrimerPanel';
+import SequenceViewer from './components/SequenceViewer';
 import { fetchParts, designPrimers } from './api';
 
 const METHODS = [
-  { id: 'overlap_pcr', label: 'Overlap PCR', olLen: 22, tm: 62 },
-  { id: 'gibson', label: 'Gibson', olLen: 30, tm: 55 },
+  { id: 'overlap_pcr', label: 'Overlap PCR', olLen: 30, tm: 62 },
+  { id: 'gibson', label: 'Gibson', olLen: 35, tm: 55 },
   { id: 'golden_gate', label: 'Golden Gate', olLen: 0, tm: 0 },
 ];
 
@@ -22,6 +23,7 @@ export default function App() {
   const [primers, setPrimers] = useState([]);
   const [warnings, setWarnings] = useState([]);
   const [orderSheet, setOrderSheet] = useState('');
+  const [circular, setCircular] = useState(false);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -37,9 +39,10 @@ export default function App() {
     });
   }, []);
 
-  const mkJunctions = useCallback((frags, m) => {
+  const mkJunctions = useCallback((frags, m, isCirc = circular) => {
     const info = METHODS.find(x => x.id === m) || METHODS[0];
-    return Array.from({ length: Math.max(0, frags.length - 1) }, (_, i) => ({
+    const count = isCirc ? frags.length : Math.max(0, frags.length - 1);
+    return Array.from({ length: count }, (_, i) => ({
       type: m === 'golden_gate' ? 'golden_gate' : 'overlap',
       overlapMode: 'split',
       overlapLength: info.olLen,
@@ -74,7 +77,13 @@ export default function App() {
   const removeFragment = (index) => {
     const nf = fragments.filter((_, i) => i !== index);
     setFragments(nf);
-    setJunctions(mkJunctions(nf, method));
+    setJunctions(mkJunctions(nf, method, circular));
+  };
+
+  const toggleCircular = () => {
+    const next = !circular;
+    setCircular(next);
+    setJunctions(mkJunctions(fragments, method, next));
   };
 
   const toggleAmplification = (index) => {
@@ -85,6 +94,14 @@ export default function App() {
 
   const updateJunction = (index, config) => {
     const nj = [...junctions]; nj[index] = config; setJunctions(nj);
+  };
+
+  const reorderFragments = (fromIndex, toIndex) => {
+    const nf = [...fragments];
+    const [moved] = nf.splice(fromIndex, 1);
+    nf.splice(toIndex, 0, moved);
+    setFragments(nf);
+    setJunctions(mkJunctions(nf, method, circular));
   };
 
   const changeMethod = (m) => {
@@ -104,7 +121,7 @@ export default function App() {
     try {
       const data = await designPrimers(
         fragments.map(f => ({ name: f.name, sequence: f.sequence, needsAmplification: f.needsAmplification })),
-        junctions, method, false, 60,
+        junctions, method, circular, 60,
       );
       setPrimers(data.primers || []);
       setWarnings(data.warnings || []);
@@ -139,8 +156,10 @@ export default function App() {
           <PartsPalette parts={parts} />
           <div className="flex-1 flex flex-col p-4 gap-4 overflow-y-auto">
             <DesignCanvas fragments={fragments} junctions={junctions}
+              circular={circular} onToggleCircular={toggleCircular}
               onDrop={addFragment} onRemove={removeFragment}
-              onToggleAmplification={toggleAmplification} onJunctionChange={updateJunction} />
+              onToggleAmplification={toggleAmplification} onJunctionChange={updateJunction}
+              onReorder={reorderFragments} />
 
             {fragments.length >= 2 && (
               <button onClick={generate} disabled={loading}
@@ -148,6 +167,10 @@ export default function App() {
                   font-semibold text-sm hover:bg-blue-700 transition disabled:opacity-50">
                 {loading ? 'Calculating...' : 'Generate Primers'}
               </button>
+            )}
+
+            {fragments.length > 0 && (
+              <SequenceViewer fragments={fragments} circular={circular} />
             )}
 
             <PrimerPanel primers={primers} warnings={warnings} orderSheet={orderSheet} />

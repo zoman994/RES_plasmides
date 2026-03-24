@@ -1,4 +1,4 @@
-import { useDrag } from 'react-dnd';
+import { useDrag, useDrop } from 'react-dnd';
 
 const COLORS = {
   CDS: '#F5A623', promoter: '#B0B0B0', terminator: '#CC0000',
@@ -6,17 +6,30 @@ const COLORS = {
   regulatory: '#9B59B6',
 };
 
-export default function PartBlock({ fragment, index, onRemove, onToggleAmplification }) {
+export default function PartBlock({ fragment, index, onRemove, onToggleAmplification, onReorder }) {
   const [{ isDragging }, drag] = useDrag({
     type: 'CANVAS_PART',
     item: { index },
     collect: m => ({ isDragging: m.isDragging() }),
   });
+
+  const [{ isOver }, drop] = useDrop({
+    accept: 'CANVAS_PART',
+    drop: (item) => {
+      if (item.index !== index && onReorder) onReorder(item.index, index);
+    },
+    collect: m => ({ isOver: m.isOver() }),
+  });
+
+  const ref = (el) => { drag(drop(el)); };
   const color = COLORS[fragment.type] || '#6699CC';
 
   return (
-    <div ref={drag} className="relative group cursor-grab"
-      style={{ opacity: isDragging ? 0.4 : 1 }}>
+    <div ref={ref} className={`relative group cursor-grab transition-transform
+      ${isOver ? 'scale-105' : ''}`}
+      style={{ opacity: isDragging ? 0.3 : 1 }}>
+      {/* Drop indicator */}
+      {isOver && <div className="absolute -left-1 top-0 bottom-0 w-0.5 bg-blue-500 rounded" />}
       {/* No-PCR badge */}
       {!fragment.needsAmplification && (
         <div className="absolute -top-5 left-0 right-0 text-center">
