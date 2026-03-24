@@ -261,3 +261,91 @@ class AssemblyTemplate:
     overlap_length: int = 22
     backbone_part_id: str | None = None
     created_at: str = field(default_factory=_now)
+
+
+# --- Multi-step Assembly Plan Models ---
+
+
+@dataclass
+class Junction:
+    """How two adjacent fragments connect in an assembly step."""
+
+    id: str = field(default_factory=_new_id)
+    left_input_order: int = 0
+    right_input_order: int = 0
+
+    junction_type: str = ""  # "overlap", "overhang_4nt", "sticky_end", "blunt", "phosphorylation"
+
+    # Overlap-based (overlap PCR, Gibson)
+    overlap_sequence: str | None = None
+    overlap_length: int | None = None
+    overlap_tm: float | None = None
+    overlap_gc: float | None = None
+
+    # Golden Gate
+    overhang_4nt: str | None = None
+    enzyme: str | None = None
+
+    # Restriction/ligation
+    enzyme_name: str | None = None
+    end_type: str | None = None  # "5prime_overhang", "3prime_overhang", "blunt"
+
+    warnings: list[str] = field(default_factory=list)
+
+
+@dataclass
+class AssemblyInput:
+    """One input fragment for an assembly step."""
+
+    id: str = field(default_factory=_new_id)
+    order: int = 0
+    name: str = ""
+
+    source_type: str = ""  # "part", "construct", "sequence", "previous_step", "digest"
+    source_part_id: str | None = None
+    source_construct_id: str | None = None
+    source_revision_id: str | None = None
+    source_feature_name: str | None = None
+    source_step_id: str | None = None
+    raw_sequence: str | None = None
+
+    sequence: str = ""
+    length: int = 0
+
+    left_end: str | None = None
+    right_end: str | None = None
+
+
+@dataclass
+class AssemblyStep:
+    """One assembly operation within a multi-step plan."""
+
+    id: str = field(default_factory=_new_id)
+    plan_id: str = ""
+    order: int = 0
+    method: str = ""
+
+    inputs: list[AssemblyInput] = field(default_factory=list)
+    junctions: list[Junction] = field(default_factory=list)
+
+    output_name: str = ""
+    output_sequence: str | None = None
+    output_length: int | None = None
+
+    primers: list[Primer] = field(default_factory=list)
+
+    status: str = "design"
+    notes: str = ""
+
+
+@dataclass
+class AssemblyPlan:
+    """Complete assembly plan — may contain multiple steps."""
+
+    id: str = field(default_factory=_new_id)
+    name: str = ""
+    target_construct: str = ""
+    steps: list[AssemblyStep] = field(default_factory=list)
+    status: str = "design"
+    created_at: str = field(default_factory=_now)
+    notes: str = ""

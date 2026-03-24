@@ -1,4 +1,4 @@
-"""Assembly Pipeline — 3-method wizard + kanban board + templates."""
+"""Assembly Pipeline — 5-method wizard + multi-step plans + kanban."""
 
 from __future__ import annotations
 
@@ -9,55 +9,39 @@ import streamlit.components.v1 as components
 from pvcs import database as db
 from pvcs.config import db_path
 from pvcs.assembly import (
-    record_assembly,
-    update_status,
-    list_assemblies,
-    list_templates,
-    VALID_METHODS,
-    VALID_STATUSES,
+    record_assembly, update_status, list_assemblies, list_templates,
+    VALID_METHODS, VALID_STATUSES,
 )
-from pvcs.models import Fragment, OverlapZone, _new_id
+from pvcs.models import Fragment, Primer, _new_id
 from pvcs.utils import calc_tm, gc_content, reverse_complement
 
-
 # ═══════════════════════════════════════════════════════════════
-# Constants
-# ═══════════════════════════════════════════════════════════════
-
 STATUS_COLORS = {
-    "design": "#3498DB", "primers_ordered": "#0097A7",
-    "pcr": "#F39C12", "assembly": "#E67E22",
-    "transform": "#9B59B6", "screen": "#E91E63", "verified": "#27AE60",
+    "design": "#3498DB", "primers_ordered": "#0097A7", "pcr": "#F39C12",
+    "assembly": "#E67E22", "transform": "#9B59B6", "screen": "#E91E63",
+    "verified": "#27AE60",
 }
 STATUS_LABELS = {
-    "design": "Design", "primers_ordered": "Primers",
-    "pcr": "PCR", "assembly": "Assembly",
-    "transform": "Transform", "screen": "Screen", "verified": "Verified",
+    "design": "Design", "primers_ordered": "Primers", "pcr": "PCR",
+    "assembly": "Assembly", "transform": "Transform", "screen": "Screen",
+    "verified": "Verified",
+}
+ALL_METHODS = ["overlap_pcr", "gibson", "golden_gate", "restriction_ligation", "kld"]
+METHOD_LABELS = {
+    "overlap_pcr": "Overlap PCR",
+    "gibson": "Gibson Assembly",
+    "golden_gate": "Golden Gate",
+    "restriction_ligation": "Restriction / Ligation",
+    "kld": "KLD (Site-directed mutagenesis)",
+}
+METHOD_DESCS = {
+    "overlap_pcr": "Fragments share 18-25 bp overlaps. Fuse by overlap-extension PCR.",
+    "gibson": "Longer overlaps (20-40 bp). One-step isothermal assembly — no fusion PCR.",
+    "golden_gate": "Type IIS RE (BsaI/BbsI) creates 4-nt overhangs. Scarless, directional.",
+    "restriction_ligation": "Classic cloning: RE digest + T4 ligase. Insert into vector backbone.",
+    "kld": "Inverse PCR + KLD enzyme mix. Point mutations, insertions, deletions on existing plasmid.",
 }
 
-METHOD_INFO = {
-    "overlap_pcr": {
-        "label": "Overlap PCR",
-        "desc": "Fragments share short overlapping ends. First amplify each fragment with overlap-tailed primers, then fuse in a second PCR.",
-        "ol_min": 18, "ol_max": 30, "ol_default": 22,
-        "tm_min": 55.0, "tm_max": 68.0, "tm_default": 62.0,
-    },
-    "gibson": {
-        "label": "Gibson Assembly",
-        "desc": "Longer overlaps (20-40 bp). Fragments are joined by exonuclease + polymerase + ligase in a single isothermal reaction. No fusion PCR needed.",
-        "ol_min": 20, "ol_max": 40, "ol_default": 30,
-        "tm_min": 48.0, "tm_max": 65.0, "tm_default": 55.0,
-    },
-    "golden_gate": {
-        "label": "Golden Gate",
-        "desc": "Type IIS restriction enzyme cuts outside its recognition site, creating custom 4-nt overhangs. Simultaneous digest + ligation. Scarless, directional, up to 10+ fragments.",
-    },
-}
-
-
-# ═══════════════════════════════════════════════════════════════
-# Helpers
-# ═══════════════════════════════════════════════════════════════
 
 def _get_conn():
     root = st.session_state.get("project_root")
@@ -70,591 +54,531 @@ def _get_conn():
 
 
 def _init_wizard():
-    """Initialize wizard session state."""
-    defaults = {
-        "asm_step": 1,
-        "asm_method": "overlap_pcr",
-        "asm_fragments": [],
-        "asm_primers": [],
-        "asm_overlaps": [],
-        "asm_warnings": [],
-        "asm_overhangs": [],
-    }
-    for k, v in defaults.items():
+    for k, v in {"asm_step": 1, "asm_method": "overlap_pcr",
+                  "asm_fragments": [], "asm_primers": [],
+                  "asm_overlaps": [], "asm_warnings": [],
+                  "asm_overhangs": [], "asm_plan_steps": []}.items():
         if k not in st.session_state:
             st.session_state[k] = v
 
 
 def _reset_wizard():
     for k in ["asm_step", "asm_method", "asm_fragments", "asm_primers",
-              "asm_overlaps", "asm_warnings", "asm_overhangs"]:
-        if k in st.session_state:
-            del st.session_state[k]
+              "asm_overlaps", "asm_warnings", "asm_overhangs", "asm_plan_steps"]:
+        st.session_state.pop(k, None)
 
 
-# ═══════════════════════════════════════════════════════════════
-# STEP 1: Choose Method
-# ═══════════════════════════════════════════════════════════════
-
-def _step1_method():
-    st.subheader("Step 1: Choose Assembly Method")
-
-    method = st.radio(
-        "Method",
-        ["overlap_pcr", "gibson", "golden_gate"],
-        format_func=lambda m: METHOD_INFO[m]["label"],
-        index=["overlap_pcr", "gibson", "golden_gate"].index(st.session_state.asm_method),
-        horizontal=True,
-    )
-
-    info = METHOD_INFO[method]
-    st.info(info["desc"])
+# ── STEP 1: Choose Method ─────────────────────────────────────
+def _step1():
+    st.subheader("Step 1: Choose Method")
+    method = st.radio("Method", ALL_METHODS,
+                      format_func=lambda m: METHOD_LABELS[m],
+                      index=ALL_METHODS.index(st.session_state.asm_method),
+                      horizontal=True)
+    st.info(METHOD_DESCS[method])
     st.session_state.asm_method = method
-
     if st.button("Next \u2192", type="primary"):
         st.session_state.asm_step = 2
         st.rerun()
 
 
-# ═══════════════════════════════════════════════════════════════
-# STEP 2: Select Fragments
-# ═══════════════════════════════════════════════════════════════
+# ── STEP 2: Select Fragments / Template ───────────────────────
+def _step2(conn):
+    method = st.session_state.asm_method
 
-def _step2_fragments(conn):
+    if method == "kld":
+        _step2_kld(conn)
+        return
+    if method == "restriction_ligation":
+        _step2_restriction(conn)
+        return
+
     st.subheader("Step 2: Select Fragments")
-
     frags = st.session_state.asm_fragments
 
-    # Add fragment form
     with st.expander("Add Fragment", expanded=len(frags) == 0):
         source = st.radio("Source", ["Parts Library", "From Construct", "New / Synthesis"],
-                          horizontal=True, key="frag_source")
-
+                          horizontal=True, key="fs2")
         if source == "Parts Library":
             parts = db.list_parts(conn)
-            if not parts:
-                st.warning("No parts in library.")
-            else:
-                part_name = st.selectbox("Part", [p.name for p in parts], key="frag_part")
-                part = next(p for p in parts if p.name == part_name)
-                st.caption(f"{part.type} | {len(part.sequence):,} bp | {part.organism}")
-                if st.button("Add from library"):
-                    frags.append({"name": part.name, "sequence": part.sequence,
-                                  "source": f"part:{part.name}", "order": len(frags) + 1})
+            if parts:
+                pn = st.selectbox("Part", [p.name for p in parts], key="fp2")
+                p = next(x for x in parts if x.name == pn)
+                st.caption(f"{p.type} | {len(p.sequence):,} bp | {p.organism}")
+                if st.button("Add"):
+                    frags.append({"name": p.name, "sequence": p.sequence,
+                                  "source": f"part:{p.name}", "order": len(frags)+1})
                     st.rerun()
-
+            else:
+                st.warning("No parts in library.")
         elif source == "From Construct":
             constructs = db.list_constructs(conn)
-            if not constructs:
-                st.warning("No constructs.")
-            else:
+            if constructs:
                 c1, c2 = st.columns(2)
-                cname = c1.selectbox("Construct", [c.name for c in constructs], key="frag_construct")
-                con = next(c for c in constructs if c.name == cname)
+                cn = c1.selectbox("Construct", [c.name for c in constructs], key="fc2")
+                con = next(c for c in constructs if c.name == cn)
                 rev = db.get_latest_revision(conn, con.id)
                 if rev:
-                    feat_names = [f.name for f in rev.features if f.type != "source"]
-                    if feat_names:
-                        fname = c2.selectbox("Feature", feat_names, key="frag_feat")
-                        feat = next(f for f in rev.features if f.name == fname)
+                    fnames = [f.name for f in rev.features if f.type != "source"]
+                    if fnames:
+                        fn = c2.selectbox("Feature", fnames, key="ff2")
+                        feat = next(f for f in rev.features if f.name == fn)
                         st.caption(f"{feat.type} | {feat.start}..{feat.end} | {len(feat.sequence)} bp")
                         if st.button("Add from construct"):
                             frags.append({"name": feat.name, "sequence": feat.sequence,
-                                          "source": f"construct:{cname}", "order": len(frags) + 1})
+                                          "source": f"construct:{cn}", "order": len(frags)+1})
                             st.rerun()
-
-        else:  # New / Synthesis
+        else:
             c1, c2 = st.columns([1, 3])
-            fname = c1.text_input("Fragment name", key="frag_new_name")
-            fseq = c2.text_area("DNA sequence", height=80, key="frag_new_seq")
+            fn = c1.text_input("Name", key="fn2")
+            fq = c2.text_area("Sequence", height=80, key="fq2")
             if st.button("Add fragment"):
-                if fname and fseq:
-                    clean = "".join(c for c in fseq.upper() if c in "ATCGN")
-                    frags.append({"name": fname, "sequence": clean,
-                                  "source": "synthesis", "order": len(frags) + 1})
+                if fn and fq:
+                    clean = "".join(c for c in fq.upper() if c in "ATCGN")
+                    frags.append({"name": fn, "sequence": clean,
+                                  "source": "synthesis", "order": len(frags)+1})
                     st.rerun()
-                else:
-                    st.error("Name and sequence required.")
 
-    # Fragment list
     if frags:
-        st.markdown("**Fragments in assembly order:**")
+        st.markdown("**Fragments:**")
         for i, f in enumerate(frags):
             c1, c2, c3 = st.columns([1, 5, 1])
-            c1.markdown(f"**{i + 1}.**")
-            c2.markdown(f"**{f['name']}** — {len(f['sequence']):,} bp ({f['source']})")
-            if c3.button("\u2716", key=f"rm_frag_{i}"):
+            c1.markdown(f"**{i+1}.**")
+            c2.markdown(f"**{f['name']}** \u2014 {len(f['sequence']):,} bp ({f['source']})")
+            if c3.button("\u2716", key=f"rm{i}"):
                 frags.pop(i)
-                # Re-number
-                for j, ff in enumerate(frags):
-                    ff["order"] = j + 1
+                for j, ff in enumerate(frags): ff["order"] = j+1
                 st.rerun()
 
     st.session_state.asm_fragments = frags
-
-    # Navigation
     c1, c2 = st.columns(2)
-    if c1.button("\u2190 Back"):
-        st.session_state.asm_step = 1
-        st.rerun()
-    if len(frags) >= 2:
-        if c2.button("Next \u2192", type="primary"):
-            st.session_state.asm_step = 3
-            st.rerun()
+    if c1.button("\u2190 Back"): st.session_state.asm_step = 1; st.rerun()
+    if len(frags) >= 2 and c2.button("Next \u2192", type="primary"):
+        st.session_state.asm_step = 3; st.rerun()
+
+
+def _step2_kld(conn):
+    st.subheader("Step 2: Select Template & Mutation")
+    constructs = db.list_constructs(conn)
+    if not constructs:
+        st.warning("Import constructs first."); return
+
+    cn = st.selectbox("Template construct", [c.name for c in constructs], key="kld_c")
+    con = next(c for c in constructs if c.name == cn)
+    rev = db.get_latest_revision(conn, con.id)
+    if not rev: st.warning("No revisions."); return
+
+    mut_type = st.radio("Mutation type", ["Point mutation", "Insertion", "Deletion"], horizontal=True)
+    if mut_type == "Point mutation":
+        c1, c2, c3 = st.columns(3)
+        pos = c1.number_input("Position (1-based)", min_value=1, max_value=rev.length, value=1)
+        old_codon = rev.sequence[pos-1:pos+2].upper()
+        c2.text_input("Current codon", value=old_codon, disabled=True)
+        new_codon = c3.text_input("New codon", value="", max_chars=3, placeholder="CGG")
+        # Find feature at position
+        feat_name = ""
+        for f in rev.features:
+            if f.start <= pos <= f.end and f.type == "CDS":
+                feat_name = f.name; break
+        if feat_name: st.caption(f"In CDS: {feat_name}")
+        st.session_state["kld_data"] = {"type": "point", "pos": pos, "codon": new_codon.upper(),
+                                         "feat": feat_name, "seq": rev.sequence, "construct": cn}
+    elif mut_type == "Insertion":
+        pos = st.number_input("Insert at position", min_value=1, max_value=rev.length, value=1)
+        ins_seq = st.text_area("Insert sequence", height=60)
+        st.session_state["kld_data"] = {"type": "insertion", "pos": pos,
+                                         "ins": "".join(c for c in ins_seq.upper() if c in "ATCGN"),
+                                         "seq": rev.sequence, "construct": cn}
     else:
-        st.caption("Add at least 2 fragments to continue.")
+        c1, c2 = st.columns(2)
+        s = c1.number_input("Start", min_value=1, max_value=rev.length, value=1)
+        e = c2.number_input("End", min_value=1, max_value=rev.length, value=min(100, rev.length))
+        st.caption(f"Deleting {e-s+1} bp")
+        st.session_state["kld_data"] = {"type": "deletion", "start": s, "end": e,
+                                         "seq": rev.sequence, "construct": cn}
+
+    c1, c2 = st.columns(2)
+    if c1.button("\u2190 Back"): st.session_state.asm_step = 1; st.rerun()
+    if c2.button("Design primers \u2192", type="primary"):
+        st.session_state.asm_step = 3; st.rerun()
 
 
-# ═══════════════════════════════════════════════════════════════
-# STEP 3: Design Junctions
-# ═══════════════════════════════════════════════════════════════
+def _step2_restriction(conn):
+    st.subheader("Step 2: Select Insert & Vector")
+    from pvcs.restriction import RE_DATABASE, COMMON_PAIRS
 
-def _step3_junctions():
+    constructs = db.list_constructs(conn)
+    parts = db.list_parts(conn)
+
+    st.markdown("**Insert source:**")
+    ins_source = st.radio("Insert from", ["Parts Library", "From Construct", "Paste"], horizontal=True, key="ri_src")
+    insert_seq = ""
+    insert_name = ""
+    if ins_source == "Parts Library" and parts:
+        pn = st.selectbox("Part", [p.name for p in parts], key="ri_part")
+        p = next(x for x in parts if x.name == pn)
+        insert_seq = p.sequence; insert_name = p.name
+        st.caption(f"{len(insert_seq):,} bp")
+    elif ins_source == "From Construct" and constructs:
+        cn = st.selectbox("Construct", [c.name for c in constructs], key="ri_con")
+        con = next(c for c in constructs if c.name == cn)
+        rev = db.get_latest_revision(conn, con.id)
+        if rev:
+            fnames = [f.name for f in rev.features if f.type != "source"]
+            fn = st.selectbox("Feature", fnames, key="ri_feat") if fnames else None
+            if fn:
+                feat = next(f for f in rev.features if f.name == fn)
+                insert_seq = feat.sequence; insert_name = feat.name
+    else:
+        insert_name = st.text_input("Insert name", key="ri_name")
+        insert_seq = st.text_area("Paste insert sequence", key="ri_seq", height=60)
+        insert_seq = "".join(c for c in insert_seq.upper() if c in "ATCGN")
+
+    st.markdown("**Enzymes:**")
+    enzyme_names = sorted(RE_DATABASE.keys())
+    c1, c2 = st.columns(2)
+    e5 = c1.selectbox("5' enzyme", enzyme_names, index=enzyme_names.index("EcoRI"), key="re5")
+    e3 = c2.selectbox("3' enzyme", enzyme_names, index=enzyme_names.index("BamHI"), key="re3")
+
+    if e5 and e3:
+        e5i = RE_DATABASE[e5]; e3i = RE_DATABASE[e3]
+        st.caption(f"{e5}: {e5i['site']} ({e5i['end']} overhang: {e5i['overhang']})")
+        st.caption(f"{e3}: {e3i['site']} ({e3i['end']} overhang: {e3i['overhang']})")
+        directional = e5 != e3
+        st.caption(f"{'Directional' if directional else 'Non-directional'} cloning")
+
+    st.session_state["re_data"] = {"insert_seq": insert_seq, "insert_name": insert_name,
+                                    "e5": e5, "e3": e3}
+
+    c1, c2 = st.columns(2)
+    if c1.button("\u2190 Back"): st.session_state.asm_step = 1; st.rerun()
+    if insert_seq and c2.button("Design primers \u2192", type="primary"):
+        st.session_state.asm_step = 3; st.rerun()
+
+
+# ── STEP 3: Design Junctions ──────────────────────────────────
+def _step3():
     method = st.session_state.asm_method
-    frags = st.session_state.asm_fragments
-
     if method in ("overlap_pcr", "gibson"):
-        _step3_overlap(method, frags)
-    else:
-        _step3_golden_gate(frags)
+        _step3_overlap(method)
+    elif method == "golden_gate":
+        _step3_gg()
+    elif method == "restriction_ligation":
+        _step3_re()
+    elif method == "kld":
+        _step3_kld()
 
 
-def _step3_overlap(method: str, frags: list[dict]):
-    info = METHOD_INFO[method]
-    st.subheader(f"Step 3: Design {info['label']} Junctions")
+def _step3_overlap(method):
+    info = {"overlap_pcr": (18, 30, 22, 55.0, 68.0, 62.0),
+            "gibson": (20, 40, 30, 48.0, 65.0, 55.0)}[method]
+    ol_min, ol_max, ol_def, tm_min, tm_max, tm_def = info
+    st.subheader(f"Step 3: {METHOD_LABELS[method]} Junctions")
 
     c1, c2 = st.columns(2)
-    ol_len = c1.slider("Overlap length (bp)", info["ol_min"], info["ol_max"],
-                        info["ol_default"], key="asm_ol_len")
-    tm_target = c2.slider("Target Tm (\u00b0C)", info["tm_min"], info["tm_max"],
-                           info["tm_default"], step=0.5, key="asm_tm_target")
+    ol_len = c1.slider("Overlap (bp)", ol_min, ol_max, ol_def, key="ol3")
+    tm_target = c2.slider("Tm target (\u00b0C)", tm_min, tm_max, tm_def, step=0.5, key="tm3")
 
     if method == "gibson":
-        st.info("Gibson: No fusion PCR needed \u2014 exonuclease/polymerase/ligase mix does the assembly.")
+        st.info("No fusion PCR needed \u2014 isothermal enzyme mix does the assembly.")
 
-    if st.button("Calculate junctions", type="primary"):
-        # Build full sequence and split points
+    frags = st.session_state.asm_fragments
+    if st.button("Calculate", type="primary"):
         full_seq = "".join(f["sequence"] for f in frags)
-        split_points = []
-        pos = 0
-        for f in frags[:-1]:
-            pos += len(f["sequence"])
-            split_points.append(pos)
-
+        splits = []; pos = 0
+        for f in frags[:-1]: pos += len(f["sequence"]); splits.append(pos)
         from pvcs.overlap import design_overlaps
         try:
-            result = design_overlaps(
-                full_seq, split_points,
-                overlap_length=ol_len, tm_target=tm_target,
-                circular=False,
-            )
-
-            # Name primers after fragments
-            for i, p in enumerate(result.primers):
-                frag_idx = i // 2
-                direction = "fwd" if i % 2 == 0 else "rev"
-                if frag_idx < len(frags):
-                    p.name = f"{direction}_{frags[frag_idx]['name']}"
-
-            st.session_state.asm_primers = result.primers
-            st.session_state.asm_overlaps = result.overlap_zones
-            st.session_state.asm_warnings = result.warnings
-            st.success(f"Designed {len(result.overlap_zones)} overlap zones, {len(result.primers)} primers")
+            r = design_overlaps(full_seq, splits, overlap_length=ol_len,
+                                tm_target=tm_target, circular=False)
+            for i, p in enumerate(r.primers):
+                fi = i // 2
+                d = "fwd" if i % 2 == 0 else "rev"
+                if fi < len(frags): p.name = f"{d}_{frags[fi]['name']}"
+            st.session_state.asm_primers = r.primers
+            st.session_state.asm_overlaps = r.overlap_zones
+            st.session_state.asm_warnings = r.warnings
+            st.success(f"{len(r.overlap_zones)} junctions, {len(r.primers)} primers")
         except Exception as e:
-            st.error(f"Design failed: {e}")
-            return
+            st.error(str(e)); return
 
-    # Show results
     if st.session_state.asm_overlaps:
-        st.markdown("**Overlap zones:**")
         for i, z in enumerate(st.session_state.asm_overlaps):
-            st.markdown(
-                f"Junction {i + 1}: `{z.sequence}` \u2014 "
-                f"{z.length} bp, Tm={z.tm}\u00b0C, GC={z.gc_percent}%"
-            )
-
-        # Delta Tm check
+            st.markdown(f"Junction {i+1}: `{z.sequence}` \u2014 {z.length} bp, Tm={z.tm}\u00b0C, GC={z.gc_percent}%")
         tms = [z.tm for z in st.session_state.asm_overlaps]
         if len(tms) > 1:
-            delta = max(tms) - min(tms)
-            if delta > 3:
-                st.warning(f"\u0394Tm between overlaps: {delta:.1f}\u00b0C (ideal < 2\u00b0C)")
-            else:
-                st.success(f"\u0394Tm: {delta:.1f}\u00b0C \u2714")
+            d = max(tms) - min(tms)
+            (st.success if d <= 3 else st.warning)(f"\u0394Tm: {d:.1f}\u00b0C")
+        for w in st.session_state.asm_warnings: st.warning(w)
 
-        for w in st.session_state.asm_warnings:
-            st.warning(w)
-
-    # Navigation
-    c1, c2 = st.columns(2)
-    if c1.button("\u2190 Back"):
-        st.session_state.asm_step = 2
-        st.rerun()
-    if st.session_state.asm_primers:
-        if c2.button("Next \u2192", type="primary"):
-            st.session_state.asm_step = 4
-            st.rerun()
+    _nav_3()
 
 
-def _step3_golden_gate(frags: list[dict]):
-    st.subheader("Step 3: Design Golden Gate Junctions")
+def _step3_gg():
+    st.subheader("Step 3: Golden Gate Junctions")
+    from pvcs.golden_gate import ENZYME_SITES, design_golden_gate, suggest_overhangs, check_internal_sites, check_overhang_uniqueness
 
-    from pvcs.golden_gate import (
-        ENZYME_SITES, design_golden_gate, suggest_overhangs,
-        check_internal_sites, check_overhang_uniqueness,
-    )
+    enzyme = st.selectbox("Enzyme", list(ENZYME_SITES.keys()), key="gge")
+    site = ENZYME_SITES[enzyme][0]
+    st.caption(f"Site: {site}")
 
-    enzyme = st.selectbox("Enzyme", list(ENZYME_SITES.keys()), key="gg_enzyme")
-    enzyme_site = ENZYME_SITES[enzyme][0]
-    st.caption(f"Recognition site: {enzyme_site}")
-
-    # Check internal sites first
-    st.markdown("**Internal site check:**")
-    has_internal = False
+    frags = st.session_state.asm_fragments
     for f in frags:
-        sites = check_internal_sites(f["sequence"], enzyme_site)
+        sites = check_internal_sites(f["sequence"], site)
         if sites:
-            st.error(f"\u26a0 {f['name']}: internal {enzyme} site at position(s) {', '.join(map(str, sites))} \u2014 needs domestication!")
-            has_internal = True
+            st.error(f"\u26a0 {f['name']}: internal {enzyme} at {', '.join(map(str, sites))}")
         else:
-            st.markdown(f"\u2705 {f['name']}: no internal {enzyme} sites")
+            st.markdown(f"\u2705 {f['name']}: clean")
 
-    # Overhang inputs
-    st.markdown("**Junction overhangs (4-nt):**")
-    frag_tuples = [(f["name"], f["sequence"]) for f in frags]
-    auto_oh = suggest_overhangs(frag_tuples)
-
+    auto = suggest_overhangs([(f["name"], f["sequence"]) for f in frags])
     overhangs = []
     for i in range(len(frags)):
-        next_name = frags[(i + 1) % len(frags)]["name"]
-        default = auto_oh[i] if i < len(auto_oh) else "NNNN"
-        oh = st.text_input(
-            f"Junction {i + 1}: {frags[i]['name']} \u2192 {next_name}",
-            value=default, max_chars=4, key=f"gg_oh_{i}",
-        )
+        nxt = frags[(i+1) % len(frags)]["name"]
+        oh = st.text_input(f"OH {i+1}: {frags[i]['name']}\u2192{nxt}",
+                           value=auto[i] if i < len(auto) else "NNNN", max_chars=4, key=f"oh{i}")
         overhangs.append(oh.upper())
+    for w in check_overhang_uniqueness(overhangs): st.warning(w)
 
-    # Validate
-    oh_warnings = check_overhang_uniqueness(overhangs)
-    for w in oh_warnings:
-        st.warning(w)
+    bind = st.slider("Binding length", 18, 25, 20, key="ggb")
+    if st.button("Design primers", type="primary"):
+        try:
+            r = design_golden_gate([(f["name"], f["sequence"]) for f in frags],
+                                   enzyme=enzyme, overhangs=overhangs, binding_length=bind)
+            st.session_state.asm_primers = r.primers
+            st.session_state.asm_overhangs = overhangs
+            st.session_state.asm_warnings = r.internal_site_warnings + r.overhang_warnings
+            st.success(f"{len(r.primers)} primers")
+        except Exception as e:
+            st.error(str(e))
+    _nav_3()
 
-    binding_len = st.slider("Binding region length", 18, 25, 20, key="gg_bind_len")
+
+def _step3_re():
+    st.subheader("Step 3: Restriction / Ligation Design")
+    from pvcs.restriction import design_re_primers, find_sites, RE_DATABASE
+
+    data = st.session_state.get("re_data", {})
+    if not data.get("insert_seq"):
+        st.warning("Go back and select insert."); return
 
     if st.button("Design primers", type="primary"):
         try:
-            result = design_golden_gate(
-                frag_tuples, enzyme=enzyme, overhangs=overhangs,
-                binding_length=binding_len,
-            )
-            st.session_state.asm_primers = result.primers
-            st.session_state.asm_overhangs = overhangs
-            st.session_state.asm_warnings = result.internal_site_warnings + result.overhang_warnings
-            st.success(f"Designed {len(result.primers)} primers for {len(frags)} fragments")
+            r = design_re_primers(data["insert_seq"], data["e5"], data["e3"])
+            st.session_state.asm_primers = r.primers
+            st.session_state.asm_warnings = r.warnings
+            if r.directional:
+                st.success(f"Directional cloning: {data['e5']} / {data['e3']}")
+            else:
+                st.info("Non-directional (same enzyme both sides)")
+            if r.insert_internal_sites:
+                for s in r.insert_internal_sites:
+                    st.error(f"\u26a0 Internal {s['enzyme']} at pos {s['position']} in insert")
         except Exception as e:
-            st.error(f"Design failed: {e}")
-            return
+            st.error(str(e))
 
-    # Navigation
+    for w in st.session_state.asm_warnings: st.warning(w)
+    _nav_3()
+
+
+def _step3_kld():
+    st.subheader("Step 3: KLD Primer Design")
+    from pvcs.kld import design_kld_point_mutation, design_kld_insertion, design_kld_deletion
+
+    data = st.session_state.get("kld_data", {})
+    if not data: st.warning("Go back."); return
+
+    if st.button("Design KLD primers", type="primary"):
+        try:
+            if data["type"] == "point":
+                if not data.get("codon"): st.error("Enter new codon"); return
+                r = design_kld_point_mutation(data["seq"], data["pos"], data["codon"], data.get("feat", ""))
+            elif data["type"] == "insertion":
+                r = design_kld_insertion(data["seq"], data["pos"], data["ins"])
+            else:
+                r = design_kld_deletion(data["seq"], data["start"], data["end"])
+            st.session_state.asm_primers = r.primers
+            st.session_state.asm_warnings = r.warnings
+            st.success(f"{r.description}")
+            st.caption(f"Mutant: {r.template_length} bp \u2192 {len(r.mutant_sequence)} bp")
+        except Exception as e:
+            st.error(str(e))
+
+    for w in st.session_state.asm_warnings: st.warning(w)
+    _nav_3()
+
+
+def _nav_3():
     c1, c2 = st.columns(2)
-    if c1.button("\u2190 Back"):
-        st.session_state.asm_step = 2
-        st.rerun()
-    if st.session_state.asm_primers:
-        if c2.button("Next \u2192", type="primary"):
-            st.session_state.asm_step = 4
-            st.rerun()
+    if c1.button("\u2190 Back", key="b3"): st.session_state.asm_step = 2; st.rerun()
+    if st.session_state.asm_primers and c2.button("Next \u2192", type="primary", key="n3"):
+        st.session_state.asm_step = 4; st.rerun()
 
 
-# ═══════════════════════════════════════════════════════════════
-# STEP 4: Primers
-# ═══════════════════════════════════════════════════════════════
-
-def _step4_primers():
+# ── STEP 4: Primers ───────────────────────────────────────────
+def _step4():
     st.subheader("Step 4: Primers")
-    method = st.session_state.asm_method
     primers = st.session_state.asm_primers
+    if not primers: st.warning("No primers. Go back."); return
 
-    if not primers:
-        st.warning("No primers designed. Go back to Step 3.")
-        return
-
-    is_gg = method == "golden_gate"
-
-    # Header
-    header = "| # | Name | Sequence | Tm bind | Tm full | GC% | Length |"
-    align = "|---|------|----------|---------|---------|-----|--------|"
-    if is_gg:
-        header += " Overhang |"
-        align += "----------|"
-
-    rows = [header, align]
-    copy_lines = ["Name\tSequence"]
-
+    header = "| # | Name | Sequence | Tm bind | Tm full | GC% | Len |"
+    sep = "|---|------|----------|---------|---------|-----|-----|"
+    rows = [header, sep]
+    copy = ["Name\tSequence"]
     for i, p in enumerate(primers, 1):
-        seq_display = p.sequence if len(p.sequence) <= 50 else p.sequence[:25] + "..." + p.sequence[-15:]
-        row = f"| {i} | {p.name} | `{seq_display}` | {p.tm_binding:.1f}\u00b0 | {p.tm_full:.1f}\u00b0 | {p.gc_percent}% | {p.length} |"
-        if is_gg:
-            oh = p.tail_purpose.split("overhang ")[-1] if "overhang" in p.tail_purpose else ""
-            row += f" {oh} |"
-        rows.append(row)
-        copy_lines.append(f"{p.name}\t{p.sequence}")
-
+        sq = p.sequence if len(p.sequence) <= 45 else p.sequence[:22] + "..." + p.sequence[-12:]
+        rows.append(f"| {i} | {p.name} | `{sq}` | {p.tm_binding:.1f}\u00b0 | {p.tm_full:.1f}\u00b0 | {p.gc_percent}% | {p.length} |")
+        copy.append(f"{p.name}\t{p.sequence}")
     st.markdown("\n".join(rows))
+    st.code("\n".join(copy), language=None)
+    st.caption("Copy above for oligo ordering.")
 
-    # Copy for ordering
-    copy_text = "\n".join(copy_lines)
-    st.code(copy_text, language=None)
-    st.caption("Copy the above text and paste into your oligo order form.")
-
-    # Save to primer registry
-    if st.button("Save all primers to registry"):
+    if st.button("Save to primer registry"):
         from pvcs.primers import add_primer
         root = st.session_state.project_root
         saved = 0
         for p in primers:
             try:
-                add_primer(
-                    p.name, p.sequence,
-                    binding_sequence=p.binding_sequence,
-                    tail_sequence=p.tail_sequence,
-                    tail_purpose=p.tail_purpose,
-                    direction=p.direction,
-                    project_root=root,
-                )
-                saved += 1
-            except Exception:
-                pass  # duplicate name etc.
-        st.success(f"Saved {saved}/{len(primers)} primers to registry")
+                add_primer(p.name, p.sequence, binding_sequence=p.binding_sequence,
+                           tail_sequence=p.tail_sequence, tail_purpose=p.tail_purpose,
+                           direction=p.direction, project_root=root); saved += 1
+            except Exception: pass
+        st.success(f"Saved {saved}/{len(primers)}")
 
-    # Navigation
     c1, c2 = st.columns(2)
-    if c1.button("\u2190 Back"):
-        st.session_state.asm_step = 3
-        st.rerun()
-    if c2.button("Next \u2192", type="primary"):
-        st.session_state.asm_step = 5
-        st.rerun()
+    if c1.button("\u2190 Back", key="b4"): st.session_state.asm_step = 3; st.rerun()
+    if c2.button("Next \u2192", type="primary", key="n4"): st.session_state.asm_step = 5; st.rerun()
 
 
-# ═══════════════════════════════════════════════════════════════
-# STEP 5: Record & Track
-# ═══════════════════════════════════════════════════════════════
-
-def _step5_record(conn):
+# ── STEP 5: Record ────────────────────────────────────────────
+def _step5(conn):
     st.subheader("Step 5: Record Assembly")
-
     method = st.session_state.asm_method
     frags = st.session_state.asm_fragments
-    method_label = METHOD_INFO[method]["label"]
-
-    st.markdown(f"**Method:** {method_label} | **Fragments:** {len(frags)}")
-    for f in frags:
-        st.caption(f"  {f['order']}. {f['name']} ({len(f['sequence']):,} bp)")
+    st.markdown(f"**{METHOD_LABELS[method]}** | {len(frags)} fragments")
 
     constructs = db.list_constructs(conn)
-
-    with st.form("record_assembly"):
-        construct_name = st.selectbox(
-            "Link to construct",
-            [c.name for c in constructs] if constructs else ["(none)"],
-        )
-        notes = st.text_input("Notes", value=f"{method_label}: " + " + ".join(f["name"] for f in frags))
-        initial_status = st.selectbox("Initial status", list(VALID_STATUSES))
-
+    with st.form("rec5"):
+        cn = st.selectbox("Link to construct", [c.name for c in constructs] if constructs else ["(none)"])
+        notes = st.text_input("Notes", value=f"{METHOD_LABELS[method]}: " + " + ".join(f["name"] for f in frags))
+        status = st.selectbox("Initial status", list(VALID_STATUSES))
         if st.form_submit_button("Create Assembly", type="primary"):
-            if not constructs:
-                st.error("No constructs available.")
-            else:
-                con = db.get_construct_by_name(conn, construct_name)
-                rev = db.get_latest_revision(conn, con.id) if con else None
-                if not rev:
-                    st.error("No revision found for this construct.")
-                else:
-                    model_frags = [
-                        Fragment(id=_new_id(), order=f["order"], name=f["name"],
-                                 source_type="pcr_product", start=0, end=len(f["sequence"]))
-                        for f in frags
-                    ]
-                    try:
-                        record_assembly(
-                            rev.id, method, model_frags,
-                            primer_ids=[p.id for p in st.session_state.asm_primers],
-                            status=initial_status, notes=notes,
-                            project_root=st.session_state.project_root,
-                        )
-                        st.success(f"Assembly recorded for **{construct_name}**!")
-                        st.balloons()
-                        _reset_wizard()
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Failed: {e}")
+            if not constructs: st.error("No constructs."); return
+            con = db.get_construct_by_name(conn, cn)
+            rev = db.get_latest_revision(conn, con.id) if con else None
+            if not rev: st.error("No revision."); return
+            mf = [Fragment(id=_new_id(), order=f["order"], name=f["name"],
+                           source_type="pcr_product", start=0, end=len(f["sequence"])) for f in frags]
+            try:
+                record_assembly(rev.id, method if method in VALID_METHODS else "other", mf,
+                                primer_ids=[p.id for p in st.session_state.asm_primers],
+                                status=status, notes=notes, project_root=st.session_state.project_root)
+                st.success(f"Recorded assembly for **{cn}**!"); st.balloons()
+                _reset_wizard(); st.rerun()
+            except Exception as e: st.error(str(e))
 
-    if st.button("\u2190 Back"):
-        st.session_state.asm_step = 4
-        st.rerun()
+    if st.button("\u2190 Back", key="b5"): st.session_state.asm_step = 4; st.rerun()
 
 
-# ═══════════════════════════════════════════════════════════════
-# Kanban board (HTML5 drag-and-drop)
-# ═══════════════════════════════════════════════════════════════
-
-def _build_kanban_html(assemblies: list[dict]) -> str:
+# ── KANBAN ─────────────────────────────────────────────────────
+def _kanban(assemblies):
     statuses = list(VALID_STATUSES)
     cards = [{"id": a["operation"].id, "construct": a["construct_name"],
               "version": a["version"], "method": a["method"],
               "frags": a["fragments_count"], "status": a["status"],
-              "notes": (a["notes"] or "")[:60]} for a in assemblies]
-
-    cols_html = ""
+              "notes": (a["notes"] or "")[:50]} for a in assemblies]
+    cols = ""
     for s in statuses:
-        color = STATUS_COLORS.get(s, "#999")
-        label = STATUS_LABELS.get(s, s)
-        cols_html += f'''
-        <div class="kb-col" data-status="{s}"
-             ondragover="event.preventDefault();this.classList.add('kb-over')"
-             ondragleave="this.classList.remove('kb-over')"
-             ondrop="onDrop(event,'{s}')">
-            <div class="kb-hdr" style="background:{color}">{label}</div>
-            <div class="kb-body" id="col-{s}"></div>
-        </div>'''
-
-    return f'''<!DOCTYPE html><html><head><style>
-*{{margin:0;padding:0;box-sizing:border-box;font-family:-apple-system,'Segoe UI',Arial,sans-serif}}
-body{{background:transparent}}
-.kb-board{{display:flex;gap:8px;padding:8px 4px;min-height:300px}}
-.kb-col{{flex:1;min-width:110px;background:#F5F6F8;border-radius:10px;display:flex;flex-direction:column}}
-.kb-over{{background:#E3E8EF!important}}
-.kb-hdr{{color:#fff;padding:7px;border-radius:10px 10px 0 0;font-weight:700;font-size:10px;text-align:center;text-transform:uppercase;letter-spacing:.05em}}
-.kb-body{{padding:5px;flex:1;display:flex;flex-direction:column;gap:5px;min-height:50px}}
-.kb-card{{background:#fff;border-radius:7px;padding:8px 10px;cursor:grab;border:1px solid #E2E6EA;box-shadow:0 1px 2px rgba(0,0,0,.05);transition:.15s}}
-.kb-card:hover{{box-shadow:0 3px 8px rgba(0,0,0,.1)}}
-.kb-card:active{{cursor:grabbing;transform:scale(.97)}}
-.kb-name{{font-weight:700;font-size:12px;color:#1A1A2E}}
-.kb-meta{{font-size:10px;color:#7F8C8D}}
-.kb-tag{{display:inline-block;background:#EDF2F7;padding:1px 5px;border-radius:4px;font-size:9px;color:#4A5568;margin-top:3px}}
-.kb-empty{{color:#B0B8C4;font-size:10px;text-align:center;padding:15px 5px;font-style:italic}}
-</style></head><body>
-<div class="kb-board">{cols_html}</div>
-<script>
-const cards={json.dumps(cards)};const statuses={json.dumps(statuses)};
-function renderCards(){{statuses.forEach(s=>{{const col=document.getElementById('col-'+s);col.innerHTML='';const cc=cards.filter(c=>c.status===s);if(!cc.length)col.innerHTML='<div class="kb-empty">Drop here</div>';cc.forEach(c=>{{const el=document.createElement('div');el.className='kb-card';el.draggable=true;el.dataset.id=c.id;el.innerHTML='<div class="kb-name">'+c.construct+'</div><div class="kb-meta">v'+c.version+' &middot; '+c.frags+' frags</div>'+(c.notes?'<div class="kb-meta">'+c.notes+'</div>':'')+'<div class="kb-tag">'+c.method+'</div>';el.addEventListener('dragstart',e=>{{e.dataTransfer.setData('text/plain',JSON.stringify({{id:c.id,construct:c.construct}}));el.style.opacity='.4'}});el.addEventListener('dragend',()=>{{el.style.opacity='1'}});col.appendChild(el)}})}})}};
-function onDrop(e,ns){{e.preventDefault();e.currentTarget.classList.remove('kb-over');const d=JSON.parse(e.dataTransfer.getData('text/plain'));const c=cards.find(x=>x.id===d.id);if(c&&c.status!==ns){{c.status=ns;renderCards();const u=new URL(window.parent.location);u.searchParams.set('kb_construct',d.construct);u.searchParams.set('kb_status',ns);window.parent.location.href=u.toString()}}}};
-renderCards();
-</script></body></html>'''
+        co = STATUS_COLORS.get(s, "#999")
+        la = STATUS_LABELS.get(s, s)
+        cols += f'<div class="kc" data-status="{s}" ondragover="event.preventDefault();this.classList.add(\'ko\')" ondragleave="this.classList.remove(\'ko\')" ondrop="D(event,\'{s}\')"><div class="kh" style="background:{co}">{la}</div><div class="kb" id="c-{s}"></div></div>'
+    html = f'''<!DOCTYPE html><html><head><style>
+*{{margin:0;padding:0;box-sizing:border-box;font-family:-apple-system,'Segoe UI',sans-serif}}body{{background:transparent}}
+.kb-wrap{{display:flex;gap:6px;padding:6px;min-height:280px}}
+.kc{{flex:1;min-width:100px;background:#F3F4F6;border-radius:8px;display:flex;flex-direction:column}}
+.ko{{background:#E5E7EB!important}}.kh{{color:#fff;padding:6px;border-radius:8px 8px 0 0;font-weight:700;font-size:10px;text-align:center;text-transform:uppercase;letter-spacing:.04em}}
+.kb{{padding:4px;flex:1;display:flex;flex-direction:column;gap:4px;min-height:40px}}
+.kd{{background:#fff;border-radius:6px;padding:7px 9px;cursor:grab;border:1px solid #E5E7EB;box-shadow:0 1px 2px rgba(0,0,0,.04);transition:.12s}}
+.kd:hover{{box-shadow:0 2px 6px rgba(0,0,0,.1)}}.kd:active{{cursor:grabbing;transform:scale(.97)}}
+.kn{{font-weight:700;font-size:11px;color:#111}}.km{{font-size:9px;color:#6B7280}}.kt{{display:inline-block;background:#F3F4F6;padding:1px 4px;border-radius:3px;font-size:8px;color:#374151;margin-top:2px}}
+.ke{{color:#9CA3AF;font-size:9px;text-align:center;padding:12px 4px;font-style:italic}}
+</style></head><body><div class="kb-wrap">{cols}</div><script>
+const C={json.dumps(cards)},S={json.dumps(statuses)};
+function R(){{S.forEach(s=>{{const c=document.getElementById('c-'+s);c.innerHTML='';const f=C.filter(x=>x.status===s);if(!f.length)c.innerHTML='<div class="ke">Drop here</div>';f.forEach(x=>{{const e=document.createElement('div');e.className='kd';e.draggable=true;e.innerHTML='<div class="kn">'+x.construct+'</div><div class="km">v'+x.version+' &middot; '+x.frags+'f</div>'+(x.notes?'<div class="km">'+x.notes+'</div>':'')+'<div class="kt">'+x.method+'</div>';e.addEventListener('dragstart',v=>{{v.dataTransfer.setData('text/plain',JSON.stringify({{id:x.id,construct:x.construct}}));e.style.opacity='.4'}});e.addEventListener('dragend',()=>{{e.style.opacity='1'}});c.appendChild(e)}})}})}}
+function D(e,n){{e.preventDefault();e.currentTarget.classList.remove('ko');const d=JSON.parse(e.dataTransfer.getData('text/plain'));const c=C.find(x=>x.id===d.id);if(c&&c.status!==n){{c.status=n;R();const u=new URL(window.parent.location);u.searchParams.set('kb_construct',d.construct);u.searchParams.set('kb_status',n);window.parent.location.href=u.toString()}}}}
+R();</script></body></html>'''
+    mx = max((sum(1 for a in assemblies if a["status"] == s) for s in statuses), default=0)
+    components.html(html, height=max(300, 100 + mx * 80), scrolling=False)
 
 
-# ═══════════════════════════════════════════════════════════════
-# Main render
-# ═══════════════════════════════════════════════════════════════
-
+# ── MAIN RENDER ────────────────────────────────────────────────
 def render():
     st.title("Assembly Pipeline")
-
     root = st.session_state.get("project_root")
-    if not root:
-        st.warning("No project loaded.")
-        return
-
+    if not root: st.warning("No project loaded."); return
     conn = _get_conn()
-    if not conn:
-        st.warning("No project loaded.")
-        return
+    if not conn: st.warning("No project loaded."); return
 
     try:
-        # Handle kanban drag-and-drop update
-        kb_c = st.query_params.get("kb_construct")
-        kb_s = st.query_params.get("kb_status")
-        if kb_c and kb_s:
-            try:
-                update_status(kb_c, kb_s, project_root=root)
-                st.toast(f"{kb_c} \u2192 {kb_s}", icon="\u2705")
-            except Exception as e:
-                st.toast(str(e), icon="\u274c")
-            params = dict(st.query_params)
-            params.pop("kb_construct", None)
-            params.pop("kb_status", None)
-            st.query_params.update(params)
+        # Handle kanban drop
+        kc = st.query_params.get("kb_construct")
+        ks = st.query_params.get("kb_status")
+        if kc and ks:
+            try: update_status(kc, ks, project_root=root); st.toast(f"{kc} \u2192 {ks}", icon="\u2705")
+            except Exception as e: st.toast(str(e), icon="\u274c")
+            p = dict(st.query_params); p.pop("kb_construct", None); p.pop("kb_status", None)
+            st.query_params.update(p)
 
-        tab1, tab2, tab3 = st.tabs(["New Assembly", "Pipeline Board", "Templates"])
+        tab1, tab2, tab3 = st.tabs(["Design Assembly", "Pipeline Board", "Templates"])
 
-        # ── Tab 1: Wizard ──
         with tab1:
             _init_wizard()
-
-            # Progress bar
             step = st.session_state.asm_step
-            steps = ["Method", "Fragments", "Junctions", "Primers", "Record"]
-            progress_html = '<div style="display:flex;gap:4px;margin-bottom:16px">'
-            for i, name in enumerate(steps, 1):
-                color = "#0066CC" if i <= step else "#E0E4E8"
-                text_color = "#fff" if i <= step else "#999"
-                progress_html += (
-                    f'<div style="flex:1;text-align:center;padding:8px;'
-                    f'background:{color};color:{text_color};border-radius:6px;'
-                    f'font-size:12px;font-weight:600">{i}. {name}</div>'
-                )
-            progress_html += '</div>'
-            st.html(progress_html)
+            labels = ["Method", "Fragments", "Junctions", "Primers", "Record"]
+            bar = '<div style="display:flex;gap:3px;margin-bottom:14px">'
+            for i, l in enumerate(labels, 1):
+                bg = "#0066CC" if i <= step else "#E5E7EB"
+                fg = "#fff" if i <= step else "#9CA3AF"
+                bar += f'<div style="flex:1;text-align:center;padding:7px;background:{bg};color:{fg};border-radius:5px;font-size:11px;font-weight:600">{i}. {l}</div>'
+            bar += '</div>'
+            st.html(bar)
 
-            if step == 1:
-                _step1_method()
-            elif step == 2:
-                _step2_fragments(conn)
-            elif step == 3:
-                _step3_junctions()
-            elif step == 4:
-                _step4_primers()
-            elif step == 5:
-                _step5_record(conn)
+            if step == 1: _step1()
+            elif step == 2: _step2(conn)
+            elif step == 3: _step3()
+            elif step == 4: _step4()
+            elif step == 5: _step5(conn)
 
-        # ── Tab 2: Kanban ──
         with tab2:
             assemblies = list_assemblies(root)
             if not assemblies:
-                st.info("No assemblies yet. Create one in **New Assembly**.")
+                st.info("No assemblies. Create one in **Design Assembly**.")
             else:
                 st.caption("Drag cards between columns to update status")
-                html = _build_kanban_html(assemblies)
-                max_cards = max(sum(1 for a in assemblies if a["status"] == s) for s in VALID_STATUSES)
-                components.html(html, height=max(340, 110 + max_cards * 95), scrolling=False)
+                _kanban(assemblies)
 
-        # ── Tab 3: Templates ──
         with tab3:
-            st.subheader("Quick Start Templates")
-
             templates = [
-                {"name": "3-fragment Overlap PCR", "method": "overlap_pcr",
-                 "desc": "Promoter + CDS + Terminator", "slots": ["Promoter", "CDS", "Terminator"]},
-                {"name": "4-fragment Gibson", "method": "gibson",
-                 "desc": "Vector + Insert1 + Insert2 + Insert3", "slots": ["Vector", "Insert 1", "Insert 2", "Insert 3"]},
-                {"name": "Golden Gate modular (BsaI)", "method": "golden_gate",
-                 "desc": "Up to 8 fragments with BsaI", "slots": [f"Part {i}" for i in range(1, 9)]},
+                ("3-part Overlap PCR", "overlap_pcr", "Promoter + CDS + Terminator"),
+                ("4-part Gibson", "gibson", "Vector + Insert1 + Insert2 + Insert3"),
+                ("Golden Gate modular (BsaI)", "golden_gate", "Up to 8 fragments"),
+                ("Restriction + Ligation", "restriction_ligation", "Insert into backbone"),
+                ("Site-directed mutagenesis (KLD)", "kld", "Point mutation on template"),
             ]
-
-            for t in templates:
+            for name, m, desc in templates:
                 with st.container(border=True):
                     c1, c2 = st.columns([4, 1])
-                    c1.markdown(f"**{t['name']}**")
-                    c1.caption(f"{t['desc']} | Slots: {', '.join(t['slots'])}")
-                    if c2.button("Use", key=f"tpl_{t['name']}"):
-                        _reset_wizard()
-                        _init_wizard()
-                        st.session_state.asm_method = t["method"]
-                        st.session_state.asm_step = 2
-                        st.rerun()
+                    c1.markdown(f"**{name}**"); c1.caption(desc)
+                    if c2.button("Use", key=f"t_{m}"):
+                        _reset_wizard(); _init_wizard()
+                        st.session_state.asm_method = m
+                        st.session_state.asm_step = 2; st.rerun()
 
-            # Saved templates from DB
-            st.divider()
             saved = list_templates(root)
             if saved:
-                st.subheader("Saved Templates")
+                st.divider(); st.subheader("Saved Templates")
                 for t in saved:
                     with st.expander(f"{t.name} [{t.method}]"):
-                        st.markdown(f"**Overlap:** {t.overlap_length} bp")
-                        for slot in t.slots:
-                            fixed = "fixed" if slot.fixed else "swappable"
-                            st.markdown(f"  {slot.position}. **{slot.name}** ({slot.type_constraint}) \u2014 {fixed}")
-
+                        for s in t.slots:
+                            st.markdown(f"  {s.position}. **{s.name}** \u2014 {'fixed' if s.fixed else 'swappable'}")
     finally:
         conn.close()
