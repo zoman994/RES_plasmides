@@ -25,7 +25,7 @@ export default function VerificationPanel({ fragments, circular }) {
 
   if (!show) return (
     <button onClick={() => setShow(true)} className="text-xs px-4 py-2 border rounded-lg hover:bg-gray-50 text-gray-600 w-full text-left">
-      {'\uD83E\uDDEB'} Verification Primers (colony PCR + sequencing)
+      {'🧫 Праймеры верификации (colony PCR + секвенирование)'}
     </button>
   );
 
@@ -37,7 +37,7 @@ export default function VerificationPanel({ fragments, circular }) {
       </div>
 
       <button onClick={design} className="px-4 py-2 bg-green-600 text-white rounded text-xs font-semibold hover:bg-green-700 mb-3">
-        Design Verification Primers
+        Рассчитать праймеры верификации
       </button>
 
       {vp && (<>

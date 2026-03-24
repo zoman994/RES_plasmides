@@ -63,14 +63,14 @@ export default function RestrictionPanel({sequence,fragments,circular}){
 
   if(!show) return (
     <button onClick={()=>setShow(true)} className="text-xs px-4 py-2 border rounded-lg hover:bg-gray-50 text-gray-600 w-full text-left">
-      {'\uD83D\uDD2C'} Restriction Analysis
+      {'\uD83D\uDD2C'} Рестрикционный анализ
     </button>
   );
 
   return (
     <div className="border rounded-lg bg-white p-4">
       <div className="flex justify-between items-center mb-3">
-        <h3 className="text-sm font-bold text-gray-700">Restriction Analysis</h3>
+        <h3 className="text-sm font-bold text-gray-700">Рестрикционный анализ</h3>
         <button onClick={()=>setShow(false)} className="text-gray-400 text-xs">{'\u2715'}</button>
       </div>
 

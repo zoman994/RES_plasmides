@@ -1,6 +1,15 @@
 import { useDrag, useDrop } from 'react-dnd';
 import { FEATURE_PAIRS, getFragColor, isMarker } from '../theme';
 
+// Light colors need dark text (luminance > 0.5)
+function needsDarkText(hex) {
+  if (!hex || hex[0] !== '#') return false;
+  const r = parseInt(hex.slice(1,3), 16) / 255;
+  const g = parseInt(hex.slice(3,5), 16) / 255;
+  const b = parseInt(hex.slice(5,7), 16) / 255;
+  return (0.299 * r + 0.587 * g + 0.114 * b) > 0.6;
+}
+
 export default function PartBlock({ fragment, index, onRemove, onToggleAmplification, onReorder, pcrSize, onSplitSignal }) {
   const [{ isDragging }, drag] = useDrag({
     type: 'CANVAS_PART',
@@ -33,23 +42,23 @@ export default function PartBlock({ fragment, index, onRemove, onToggleAmplifica
       )}
       {/* Block — composite shows sub-parts, regular shows single block */}
       <div className="h-14 flex items-center min-w-[80px] rounded-sm select-none overflow-hidden"
-        style={{ background: color }}
+        style={{ background: color, border: needsDarkText(color) ? '1px solid #ccc' : 'none' }}
         onDoubleClick={() => onToggleAmplification(index)}
         title="Double-click to toggle PCR amplification">
         {fragment.subParts?.length > 0 ? (
-          /* Composite: show stacked sub-parts */
           fragment.subParts.map((sp, si) => {
             const spColor = getFragColor(sp.type, si);
             return (
-              <div key={si} className="h-full flex items-center px-1 text-[8px] text-white/90
+              <div key={si} className="h-full flex items-center px-1 text-[8px]
                                        border-r border-white/20 last:border-r-0"
-                style={{ background: spColor, flex: 1 }}>
+                style={{ background: spColor, flex: 1, color: needsDarkText(spColor) ? '#333' : '#fff' }}>
                 {sp.name}
               </div>
             );
           })
         ) : (
-          <div className="flex-1 flex items-center justify-center text-white text-sm font-semibold px-4">
+          <div className="flex-1 flex items-center justify-center text-sm font-semibold px-4"
+            style={{ color: needsDarkText(color) ? '#333' : '#fff' }}>
             {fragment.strand === -1 && <span className="text-xs mr-1 opacity-60">&larr;</span>}
             {fragment.name}
             {fragment.strand !== -1 && <span className="text-xs ml-1 opacity-60">&rarr;</span>}

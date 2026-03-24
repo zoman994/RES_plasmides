@@ -400,21 +400,21 @@ export default function App() {
                   <button onClick={() => setActiveTab('sequence')}
                     className={`text-xs px-3 py-1.5 border-b-2 font-medium transition ${
                       activeTab === 'sequence' ? 'border-blue-500 text-blue-700' : 'border-transparent text-gray-500'}`}>
-                    {'\uD83E\uDDEC'} \u041f\u043e\u0441\u043b\u0435\u0434\u043e\u0432\u0430\u0442\u0435\u043b\u044c\u043d\u043e\u0441\u0442\u044c
+                    {'🧬 Последовательность'}
                   </button>
                 )}
                 {primers.length > 0 && (
                   <button onClick={() => setActiveTab('primers')}
                     className={`text-xs px-3 py-1.5 border-b-2 font-medium transition ${
                       activeTab === 'primers' ? 'border-blue-500 text-blue-700' : 'border-transparent text-gray-500'}`}>
-                    {'\uD83E\uDDEA'} \u041f\u0440\u0430\u0439\u043c\u0435\u0440\u044b ({primers.length})
+                    {'🧪 Праймеры'} ({primers.length})
                   </button>
                 )}
                 {calculated && protocolSteps.length > 0 && (
                   <button onClick={() => setActiveTab('protocol')}
                     className={`text-xs px-3 py-1.5 border-b-2 font-medium transition ${
                       activeTab === 'protocol' ? 'border-purple-500 text-purple-700' : 'border-transparent text-gray-500'}`}>
-                    {'\uD83D\uDCCB'} \u041f\u0440\u043e\u0442\u043e\u043a\u043e\u043b ({protocolSteps.length})
+                    {'📋 Протокол'} ({protocolSteps.length})
                   </button>
                 )}
               </div>
