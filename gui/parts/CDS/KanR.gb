@@ -1,0 +1,25 @@
+LOCUS       KanR                     816 bp    DNA     linear   UNK 01-JAN-1980
+DEFINITION  KanR exported by PlasmidVCS.
+ACCESSION   KanR
+VERSION     KanR
+KEYWORDS    .
+SOURCE      .
+  ORGANISM  .
+            .
+FEATURES             Location/Qualifiers
+ORIGIN
+        1 atgagccata ttcaacggga aacgtcttgc tctaggccgc gattaaattc caacatggat
+       61 gctgatttat atgggtataa atgggctcgc gataatgtcg ggcaatcagg tgcgacaatc
+      121 tatcgattgt atgggaagcc cgatgcgcca gagttgtttc tgaaacatgg caaaggtagc
+      181 gttgccaatg atgttacaga tgagatggtc agactaaact ggctgacgga atttatgcct
+      241 cttccgacca tcaagcattt tatccgtact cctgatgatg catggttact caccactgcg
+      301 atccccggga aaacagcatt ccaggtatta gaagaatatc ctgattcagg tgaaaatatt
+      361 gttgatgcgc tggcagtgtt cctgcgccgg ttgcattcga ttcctgtttg taattgtcct
+      421 tttaacagcg atcgcgtatt tcgtctcgct caggcgcaat cacgaatgaa taacggtttg
+      481 gttgatgcga gtgattttga tgacgagcgt aatggctggc ctgttgaaca agtctggaaa
+      541 gaaatgcata aacttttgcc attctcaccg gattcagtcg tcactcatgg tgatttctca
+      601 cttgataacc ttatttttga cgaggggaaa ttaataggtt gtattgatgt tggacgagtc
+      661 ggaatcgcag accgatacca ggatcttgcc atcctatgga actgcctcgg tgagttttct
+      721 ccttcattac agaaacggct ttttcaaaaa tatggtattg ataatcctga tatgaataaa
+      781 ttgcagtttc atttgatgct cgatgagttt ttctaa
+//

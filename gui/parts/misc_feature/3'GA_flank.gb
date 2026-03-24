@@ -1,0 +1,26 @@
+LOCUS       3'GA_flank               872 bp    DNA     linear   UNK 01-JAN-1980
+DEFINITION  3'GA_flank exported by PlasmidVCS.
+ACCESSION   3'GA_flank
+VERSION     3'GA_flank
+KEYWORDS    .
+SOURCE      .
+  ORGANISM  .
+            .
+FEATURES             Location/Qualifiers
+ORIGIN
+        1 tgagggcaat tggttatatg atcatgtatg tagtgggtgt gcataatagt agtgaaatgg
+       61 aagccaagtc atgtgattgt aatcgaccga cggaattgag gatatccgga aatacagaca
+      121 ccgtgaaagc catggtcttt ccttcgtgta gaagaccaga cagacagtcc ctgatttacc
+      181 cttgcacaaa gcactagaaa attagcattc catccttctc tgcttgctct gctgatatca
+      241 ctgtcattca atgcatagcc atgagctcat cttagatcca agcacgtaat tccatagccg
+      301 aggtccacag tggagcagca acattcccca tcattgcttt ccccaggggc ctcccaacga
+      361 ctaaatcaag agtatatctc taccgtccaa tagatcgtct tcgcttcaaa atctttgaca
+      421 attccaagag ggtccccatc catcaaaccc agttcaataa tagccgagat gcatggtgga
+      481 gtcaattagg cagtattgct ggaatgtcgg ggccagttgg cccggtggtc attggccgcc
+      541 tgtgatgcca tctgccacta aatccgatca ttgatccacc gcccacgagg cgcgtctttg
+      601 ctttttgcgc ggcgtccagg ttcaactctc tctgcagctc cagtccaacg ctgactgact
+      661 agtttaccta ctggtctgat cggctccatc agagctatgg cgttatcccg tgccgttgct
+      721 gcgcaatcgc tatcttgatc gcaaccttga actcactctt gttttaatag tgatcttggt
+      781 gacggagtgt cggtgagtga caaccaacat cgtgcaagga gattgatacg gtgaccggtg
+      841 actctttctg gctgcaaggg agattgatac gg
+//

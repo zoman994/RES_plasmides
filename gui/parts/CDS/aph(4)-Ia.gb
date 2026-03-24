@@ -1,0 +1,29 @@
+LOCUS       aph(4)-Ia               1026 bp    DNA     linear   UNK 01-JAN-1980
+DEFINITION  aph(4)-Ia exported by PlasmidVCS.
+ACCESSION   aph(4)-Ia
+VERSION     aph(4)-Ia
+KEYWORDS    .
+SOURCE      .
+  ORGANISM  .
+            .
+FEATURES             Location/Qualifiers
+ORIGIN
+        1 atgaaaaagc ctgaactcac cgcgacgtct gtcgagaagt ttctgatcga aaagttcgac
+       61 agcgtctccg acctgatgca gctctcggag ggcgaagaat ctcgtgcttt cagcttcgat
+      121 gtaggagggc gtggatatgt cctgcgggta aatagctgcg ccgatggttt ctacaaagat
+      181 cgttatgttt atcggcactt tgcatcggcc gcgctcccga ttccggaagt gcttgacatt
+      241 ggggaattta gcgagagcct gacctattgc atctcccgcc gtgcacaggg tgtcacgttg
+      301 caagacctgc ctgaaaccga actgcccgct gttctgcagc cggtcgcgga ggccatggat
+      361 gcgatcgctg cggccgatct tagccagacg agcgggttcg gcccattcgg accgcaagga
+      421 atcggtcaat acactacatg gcgtgatttc atatgcgcga ttgctgatcc ccatgtgtat
+      481 cactggcaaa ctgtgatgga cgacaccgtc agtgcgtccg tcgcgcaggc tctcgatgag
+      541 ctgatgcttt gggccgagga ctgccccgaa gtccggcacc tcgtgcacgc ggatttcggc
+      601 tccaacaatg tcctgacgga caatggccgc ataacagcgg tcattgactg gagcgaggcg
+      661 atgttcgggg attcccaata cgaggtcgcc aacatcttct tctggaggcc gtggttggct
+      721 tgtatggagc agcagacgcg ctacttcgag cggaggcatc cggagcttgc aggatcgccg
+      781 cggctccggg cgtatatgct ccgcattggt cttgaccaac tctatcagag cttggttgac
+      841 ggcaatttcg atgatgcagc ttgggcgcag ggtcgatgcg acgcaatcgt ccgatccgga
+      901 gccgggactg tcgggcgtac acaaatcgcc cgcagaagcg cggccgtctg gaccgatggc
+      961 tgtgtagaag tactcgccga tagtggaaac cgacgcccca gcactcgtcc gagggcaaag
+     1021 gaataa
+//

@@ -1,0 +1,15 @@
+LOCUS       GFP                      198 bp    DNA     linear   UNK 01-JAN-1980
+DEFINITION  GFP exported by PlasmidVCS.
+ACCESSION   GFP
+VERSION     GFP
+KEYWORDS    .
+SOURCE      .
+  ORGANISM  .
+            .
+FEATURES             Location/Qualifiers
+ORIGIN
+        1 atgagtaaag gagaagaact tttcactgga gttgtcccaa ttcttgttga attagatggt
+       61 gatgttaatg ggcacaaatt ttctgtcagt ggagagggtg aaggtgatgc aacatacgga
+      121 aaacttaccc ttaaatttat ttgcactact ggaaaactac ctgttccatg gccaacactt
+      181 gtcactactt tcggttat
+//

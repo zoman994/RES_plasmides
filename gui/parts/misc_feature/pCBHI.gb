@@ -1,0 +1,36 @@
+LOCUS       pCBHI                   1492 bp    DNA     linear   UNK 01-JAN-1980
+DEFINITION  pCBHI exported by PlasmidVCS.
+ACCESSION   pCBHI
+VERSION     pCBHI
+KEYWORDS    .
+SOURCE      .
+  ORGANISM  .
+            .
+FEATURES             Location/Qualifiers
+ORIGIN
+        1 gttgtgaagt cggtaatccc gctgtatagt aatacgagtc gcatctaaat actccgaagc
+       61 tgctgcgaac ccggagaatc gagatgtgct ggaaagcttc tagcgagcgg ctaaattagc
+      121 atgaaaggct atgagaaatt ctggagacgg cttgttgaat catggcgttc cattcttcga
+      181 caagcaaagc gttccgtcgc agtagcaggc actcattccc gaaaaaactc ggagattcct
+      241 aagtagcgat ggaaccggaa taatataata ggcaatacat tgagttgcct cgacggttgc
+      301 aatgcagggg tactgagctt ggacataact gttccgtacc ccacctcttc tcaacctttg
+      361 gcgtttccct gattcagcgt acccgtacaa gtcgtaatca ctattaaccc agactgaccg
+      421 gacgtgtttt gcccttcatt tggagaaata atgtcattgc gatgtgtaat ttgcctgctt
+      481 gaccgactgg ggctgttcga agcccgaatg taggattgtt atccgaactc tgctcgtaga
+      541 ggcatgttgt gaatctgtgt cgggcaggac acgcctcgaa ggttcacggc aagggaaacc
+      601 accgatagca gtgtctagta gcaacctgta aagccgcaat gcagcatcac tggaaaatac
+      661 aaaccaatgg ctaaaagtac ataagttaat gcctaaagaa gtcatatacc agcggctaat
+      721 aattgtacaa tcaagtggct aaacgtaccg taatttgcca acggcttgtg gggttgcaga
+      781 agcaacggca aagccccact tccccacgtt tgtttcttca ctcagtccaa tctcagctgg
+      841 tgatccccca attgggtcgc ttgtttgttc cggtgaagtg aaagaagaca gaggtaagaa
+      901 tgtctgactc ggagcgtttt gcatacaacc aagggcagtg atggaagaca gtgaaatgtt
+      961 gacattcaag gagtatttag ccagggatgc ttgagtgtat cgtgtaagga ggtttgtctg
+     1021 ccgatacgac gaatactgta tagtcacttc tgatgaagtg gtccatattg aaatgtaagt
+     1081 cggcactgaa caggcaaaag attgagttga aactgcctaa gatctcgggc cctcgggcct
+     1141 tcggcctttg ggtgtacatg tttgtgctcc gggcaaatgc aaagtgtggt aggatcgaac
+     1201 acactgctgc ctttaccaag cagctgaggg tatgtgatag gcaaatgttc aggggccact
+     1261 gcatggtttc gaatagaaag agaagcttag ccaagaacaa tagccgataa agatagcctc
+     1321 attaaacgga atgagctagt aggcaaagtc agcgaatgtg tatatataaa ggttcgaggt
+     1381 ccgtgcctcc ctcatgctct ccccatctac tcatcaactc agatcctcca ggagacttgt
+     1441 acaccatctt ttgaggcaca gaaacccaat agtcaaccgc ggactgcgca tc
+//

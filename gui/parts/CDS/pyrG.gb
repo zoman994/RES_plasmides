@@ -1,0 +1,15 @@
+LOCUS       pyrG                     196 bp    DNA     linear   UNK 01-JAN-1980
+DEFINITION  pyrG exported by PlasmidVCS.
+ACCESSION   pyrG
+VERSION     pyrG
+KEYWORDS    .
+SOURCE      .
+  ORGANISM  .
+            .
+FEATURES             Location/Qualifiers
+ORIGIN
+        1 atgactattc ctaccgccac ccctacttct aactctgcca atggcggccc tttgaccatg
+       61 gctactccca atcgtcccaa ggtcatcact attgagggtt tcgattccct tggaagcact
+      121 gaaaccacaa agccaaacat cgatacctgg aaggttgatc tgatcgttga cttctgtcag
+      181 aatgccaatg aagatg
+//

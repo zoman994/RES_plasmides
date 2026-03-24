@@ -1,0 +1,28 @@
+LOCUS       hph                     1020 bp    DNA     linear   UNK 01-JAN-1980
+DEFINITION  hph exported by PlasmidVCS.
+ACCESSION   hph
+VERSION     hph
+KEYWORDS    .
+SOURCE      .
+  ORGANISM  .
+            .
+FEATURES             Location/Qualifiers
+ORIGIN
+        1 atgcctgaac tcaccgcgac gtctgtcgag aagtttctga tcgaaaagtt cgacagcgtc
+       61 tccgacctga tgcagctctc ggagggcgaa gaatctcgtg ctttcagctt cgatgtagga
+      121 gggcgtggat atgtcctgcg ggtaaatagc tgcgccgatg gtttctacaa agatcgttat
+      181 gtttatcggc actttgcatc ggccgcgctc ccgattccgg aagtgcttga cattggggag
+      241 ttcagcgaga gcctgaccta ttgcatctcc cgccgtgcac agggtgtcac gttgcaagac
+      301 ctgcctgaaa ccgaactgcc cgctgttctg gagccggtcg cggaggccat ggatgcgatt
+      361 gctgcggccg atcttagcca gacgagcggg ttcggcccat tcggaccgca aggaatcggt
+      421 caatacacta catggcgtga tttcatatgc gcgattgctg atccccatgt gtatcactgg
+      481 caaactgtga tggacgacac cgtcagtgcg tccgtcgcgc aggctctcga tgagctgatg
+      541 ctttgggccg aggactgccc cgaagtccgg cacctcgtgc acgcggattt cggctccaac
+      601 aatgtcctga cggacaatgg ccgcataaca gcggtcattg actggagcga ggcgatgttc
+      661 ggggattccc aatacgaggt cgccaacatc ttcttctgga ggccgtggtt ggcttgtatg
+      721 gagcagcaga cgcgctactt cgagcggagg catccggagc ttgcaggatc gccgcgcctc
+      781 cgggcgtata tgctccgcat tggtcttgac caactctatc agagcttggt tgacggcaat
+      841 ttcgatgatg cagcttgggc gcagggtcga tgcgacgcaa tcgtccgatc cggagccggg
+      901 actgtcgggc gtacacaaat cgcccgcaga agcgcggccg tctggaccga tggctgtgta
+      961 gaagtactcg ccgatagtgg aaaccgacgc cccagcactc gtccgagggc aaaggaatag
+//

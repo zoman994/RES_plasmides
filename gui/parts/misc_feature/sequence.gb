@@ -1,0 +1,14 @@
+LOCUS       sequence                 170 bp    DNA     linear   UNK 01-JAN-1980
+DEFINITION  sequence exported by PlasmidVCS.
+ACCESSION   sequence
+VERSION     sequence
+KEYWORDS    .
+SOURCE      .
+  ORGANISM  .
+            .
+FEATURES             Location/Qualifiers
+ORIGIN
+        1 atggagagcg acgagagcgg cctgcccgcc atggagatcg agtgccgcat caccggcacc
+       61 ctgaacggcg tggagttcga gctggtgggc ggcggagagg gcacccccga gcagggccgc
+      121 atgaccaaca agatgaagag caccaaaggc gccctgacct tcagccccta
+//

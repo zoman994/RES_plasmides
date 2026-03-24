@@ -1,0 +1,45 @@
+LOCUS       amy                     2039 bp    DNA     linear   UNK 01-JAN-1980
+DEFINITION  amy exported by PlasmidVCS.
+ACCESSION   amy
+VERSION     amy
+KEYWORDS    .
+SOURCE      .
+  ORGANISM  .
+            .
+FEATURES             Location/Qualifiers
+ORIGIN
+        1 atggtcgcgt ggtggtctct atttctgtac ggccttcagg tcgcggcacc tgctttggct
+       61 gcaacgcctg cggactggcg atcgcaatcc atttatttcc ttctcacgga tcgatttgca
+      121 aggacggatg ggtcgacgac tgcgacttgt aatactgcgg atcaggtgtg ttgttaccta
+      181 ctagctttca gaaagaggaa tgtaaactga cttgatatag aaatactgtg gtggaacatg
+      241 gcagggcatc atcgacaagg taaattgccc ctttatcaaa aaaaaaagaa ggaaaagcag
+      301 aagaaaaata aaataaaaag aactctagtc ctaaccatca catagttgga ctatatccag
+      361 ggaatgggct tcacagccat ctggatcacc cccgttacag cccagctgcc ccagaccacc
+      421 gcatatggag atgcctacca tggctactgg cagcaggata tgtaagtcga tttctttaaa
+      481 tatctacctg tcatctttta catcaatatg aactaacttg atggttttag atactctctg
+      541 aacgaaaact acggcactgc agatgacttg aaggcgctct cttcggccct tcatgagagg
+      601 gggatgtatc ttatggtcga tgtggttgct aaccatatgg ttcgtggtcc tttgcaactg
+      661 acttcgcgga tatggttcat ttcagtactg acaatgagta atatcagggc tatgatggag
+      721 cgggtagctc agtcgattac agtgtgttta aaccgttcag ttcccaagac tacttccacc
+      781 cgttctgttt cattcaaaac tatgaagatc agactcaggt tgaggattgc tggctaggag
+      841 ataacactgt ctccttgcct gatctcgata ccaccaagga tgtggtcaag aatgaatggt
+      901 acgactgggt gggatcattg gtatcgaact actccagtaa gatatttctc cctcattcta
+      961 caacttggct gatcgatgat acttacgaaa tcagttgacg gcctccgtat cgacacagta
+     1021 aaacacgtcc agaaggactt ctggcccggg tacaacaaag ccgcaggcgt gtactgtatc
+     1081 ggcgaggtgc tcgacggtga tccggcctac acttgtccct accagaacgt catggacggc
+     1141 gtactgaact atcccatgta tggttcctcc aaccatgagc cttcttgcaa gtctcatctc
+     1201 ctaacgaaac ggctaaaacc agttactatc cactcctcaa cgccttcaag tcaacctccg
+     1261 gcagcatgga cgacctctac aacatgatca acaccgtcaa atccgactgt ccagactcaa
+     1321 cactcctggg cacattcgtc gagaaccacg acaacccacg gttcgcttcg taagtcttcc
+     1381 cttttatttt ccgttcccaa tttccacaca gaaccccacc taacaagagc aaagttacac
+     1441 caacgacata gccctcgcca agaacgtcgc agcattcatc atcctcaacg acggaatccc
+     1501 catcatctac gccggccaag aacagcacta cgccggcgga aacgaccccg cgaaccgcga
+     1561 agcaacctgg ctctcgggct acccgaccga cagcgagctg tacaagttaa ttgcctccgc
+     1621 gaacgcaatc cggaactatg ccattagcaa agatacagga ttcgtgacct acaaggtaag
+     1681 cacaacctct aagcataccc taatggccta tcttcagagt atctgacaca agagactaat
+     1741 cactggcaat acagaactgg cccatctaca aagacgacac aacgatcgcc atgcgcaagg
+     1801 gcacagatgg gtcgcagatc gtgactatct tgtccaacaa gggtgcttcg ggtgattcgt
+     1861 ataccctctc cttgagtggt gcgggttaca cagccggcca gcaattgacg gaggtcattg
+     1921 gctgcacgac cgtgacggtt ggttcggatg gaaatgtgcc tgttcctatg gcaggtgggc
+     1981 tacctagggt attgtatccg actgagaagt tggcaggtag caagatctgt agtagctcg
+//

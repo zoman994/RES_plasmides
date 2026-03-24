@@ -1,0 +1,30 @@
+LOCUS       Chym                    1098 bp    DNA     linear   UNK 01-JAN-1980
+DEFINITION  Chym exported by PlasmidVCS.
+ACCESSION   Chym
+VERSION     Chym
+KEYWORDS    .
+SOURCE      .
+  ORGANISM  .
+            .
+FEATURES             Location/Qualifiers
+ORIGIN
+        1 agtgggatca ccaggatccc tctgcacaaa ggcaagactc tgagaaaagc gctgaaggag
+       61 cgtgggctcc tggaggactt tctgcagaga caacagtatg ccgtcagcag caagtactcc
+      121 agcttgggga aggtggccag ggaacccctg accagcgtcc tggatagtca gtactttggg
+      181 accatctaca tcgggacccc accccaggag ttcaccgtgg tgtttgacac tggctcctct
+      241 gacctgtggg tgccctctat ctactgcaag agcaatgtct gcaaaaacca ccaccgcttt
+      301 aatccgagaa agtcgtccac cttccggaac ctgggcaagc ccctgtccat ccattacggc
+      361 acgggcagca tggagggctt tctgggctac gacaccgtca ccgtctccaa cctcgtggac
+      421 cccaaccaga ctgtgggcct gagcaccgag caacctggcg aggtcttcac ctactccgag
+      481 tttgacggga tcctggggct ggcctacccc tcgcttgcct ccgagtactc ggtgcccgtg
+      541 tttgacaata tgatggacag acacctggtg gcccgagacc tgttctcggt ttacatggac
+      601 aggaatggcc aggggggcat ggtcacactg ggggccattg acccgtccta ctacaccggc
+      661 tccctgcact gggtgcccgt gaccttgcag cagtactggc agttcaccgt ggacagtgtc
+      721 accatcaacg gggtggcagt ggcctgtgtt ggtggctgtc aggccatcct ggacacgggt
+      781 acctccgtgg tcttcgggcc cagcagcgac atcctcaaaa ttcagatggc tattggagcc
+      841 acagagaacg agtatggtga gtttgacgtc gaatgtggga acatcaggag catgcccacc
+      901 gtggtcttcg agatcaatgg cagagactac ccactgtccc cctccgccta cacaagcaag
+      961 gaccagggct tctgcaccag tggctttcaa ggtgacaaca attccgagct gtggatcctg
+     1021 ggggatgtct tcatccggga gtattacagt gtctttgaca gggccaacaa tcgcgtgggg
+     1081 ctggccaagg ccatctga
+//

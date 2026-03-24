@@ -1,0 +1,13 @@
+LOCUS       3xFLAG                    66 bp    DNA     linear   UNK 01-JAN-1980
+DEFINITION  3xFLAG exported by PlasmidVCS.
+ACCESSION   3xFLAG
+VERSION     3xFLAG
+KEYWORDS    .
+SOURCE      .
+  ORGANISM  .
+            .
+FEATURES             Location/Qualifiers
+ORIGIN
+        1 gactacaaag accatgacgg tgattataaa gatcatgaca tcgattacaa ggatgacgat
+       61 gacaag
+//

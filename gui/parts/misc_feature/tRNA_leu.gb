@@ -1,0 +1,13 @@
+LOCUS       tRNA_leu                 112 bp    DNA     linear   UNK 01-JAN-1980
+DEFINITION  tRNA_leu exported by PlasmidVCS.
+ACCESSION   tRNA_leu
+VERSION     tRNA_leu
+KEYWORDS    .
+SOURCE      .
+  ORGANISM  .
+            .
+FEATURES             Location/Qualifiers
+ORIGIN
+        1 ggcaagatgg ccgagttggt ccaaggcgtc aggttaaggt ccaccttaat acccagcttc
+       61 acagcttcct gatcatcgta agatggcgtg ggttcgaatc ccactcttgt ca
+//

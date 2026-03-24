@@ -1,0 +1,25 @@
+LOCUS       pGAP                     812 bp    DNA     linear   UNK 01-JAN-1980
+DEFINITION  pGAP exported by PlasmidVCS.
+ACCESSION   pGAP
+VERSION     pGAP
+KEYWORDS    .
+SOURCE      .
+  ORGANISM  .
+            .
+FEATURES             Location/Qualifiers
+ORIGIN
+        1 tactactatg aaagaccgcg atgggccgat agtagtagtt acttccatta catcatctca
+       61 tccgcccggt tcctcgcctc cgcggcagtc tacgggtagg atcgtagcaa aaacccgggg
+      121 gatagacccg tcgtcccgag ctggagttcc gtataaccta ggtagaaggt atcaattgaa
+      181 cccgaacaac tggcaaaaca ttctcgagat cgtaggagtg agtacccggc gtgatggagg
+      241 gggagcacgc tcattggtcc gtacggcagc tgccgagggg gagcaggaga tccaaatatc
+      301 gtgagtctcc tgctttgccc ggtgtatgaa accggaaagg actgctgggg aactggggag
+      361 cggcgcaagc cgggaatccc agctgacaat tgacccatcc tcatgccgtg gcagagcttg
+      421 aggtagcttt tgccccgtct gtctccccgg tgtgcgcatt cgactgggcg cggcatctgt
+      481 gcctcctcca ggagcggagg acccagtagt aagtaggcct gacctggtcg ttgcgtcagt
+      541 ccagaggttc cctcccctac cctttttcta cttcccctcc cccgccgctc aacttttctt
+      601 tcccttttac tttctctctc tcttcctctt catccatcct ctcttcatca cttccctctt
+      661 cccttcatcc aattcatctt ccaagtgagt cttcctcccc atctgtccct ccatctttcc
+      721 catcatcatc tcccctccca gctcctcccc tcctctcgtc tcctcacgaa gcttgactaa
+      781 ccattacccc gccacataga cacatctaaa ca
+//

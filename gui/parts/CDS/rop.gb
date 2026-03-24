@@ -1,0 +1,15 @@
+LOCUS       rop                      192 bp    DNA     linear   UNK 01-JAN-1980
+DEFINITION  rop exported by PlasmidVCS.
+ACCESSION   rop
+VERSION     rop
+KEYWORDS    .
+SOURCE      .
+  ORGANISM  .
+            .
+FEATURES             Location/Qualifiers
+ORIGIN
+        1 gtgaccaaac aggaaaaaac cgcccttaac atggcccgct ttatcagaag ccagacatta
+       61 acgcttctgg agaaactcaa cgagctggac gcggatgaac aggcagacat ctgtgaatcg
+      121 cttcacgacc acgctgatga gctttaccgc agctgcctcg cgcgtttcgg tgatgacggt
+      181 gaaaacctct ga
+//

@@ -1,0 +1,12 @@
+LOCUS       gRNA                      20 bp    DNA     linear   UNK 01-JAN-1980
+DEFINITION  gRNA exported by PlasmidVCS.
+ACCESSION   gRNA
+VERSION     gRNA
+KEYWORDS    .
+SOURCE      .
+  ORGANISM  .
+            .
+FEATURES             Location/Qualifiers
+ORIGIN
+        1 tacaacaaga cgaagcgagg
+//

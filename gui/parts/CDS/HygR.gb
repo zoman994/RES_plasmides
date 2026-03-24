@@ -1,0 +1,15 @@
+LOCUS       HygR                     197 bp    DNA     linear   UNK 01-JAN-1980
+DEFINITION  HygR exported by PlasmidVCS.
+ACCESSION   HygR
+VERSION     HygR
+KEYWORDS    .
+SOURCE      .
+  ORGANISM  .
+            .
+FEATURES             Location/Qualifiers
+ORIGIN
+        1 atgaaaaagc ctgaactcac cgcgacgtct gtcgagaagt ttctgatcga aaagttcgac
+       61 agcgtctccg acctgatgca gctctcggag ggcgaagaat ctcgtgcttt cagcttcgat
+      121 gtaggagggc gtggatatgt cctgcgggta aatagctgcg ccgatggttt ctacaaagat
+      181 cgttatgttt atcggca
+//

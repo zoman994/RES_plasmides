@@ -1,0 +1,15 @@
+LOCUS       ZeoR                     194 bp    DNA     linear   UNK 01-JAN-1980
+DEFINITION  ZeoR exported by PlasmidVCS.
+ACCESSION   ZeoR
+VERSION     ZeoR
+KEYWORDS    .
+SOURCE      .
+  ORGANISM  .
+            .
+FEATURES             Location/Qualifiers
+ORIGIN
+        1 atggccaagt tgaccagtgc cgttccggtg ctcaccgcgc gcgacgtcgc cggagcggtc
+       61 gagttctgga ccgaccggct cgggttctcc cgggacttcg tggaggacga cttcgccggt
+      121 gtggtccggg acgacgtgac cctgttcatc agcgcggtcc aggaccaggt ggtgccggac
+      181 aacaccctgg cctg
+//

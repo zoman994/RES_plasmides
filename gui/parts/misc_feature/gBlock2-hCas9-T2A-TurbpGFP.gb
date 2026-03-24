@@ -1,0 +1,15 @@
+LOCUS       gBlock2-hCas9-T2A-TurbpGFP 236 bp    DNA     linear   UNK 01-JAN-1980
+DEFINITION  gBlock2-hCas9-T2A-TurbpGFP exported by PlasmidVCS.
+ACCESSION   gBlock2-hCas9-T2A-TurbpGFP
+VERSION     gBlock2-hCas9-T2A-TurbpGFP
+KEYWORDS    .
+SOURCE      .
+  ORGANISM  .
+            .
+FEATURES             Location/Qualifiers
+ORIGIN
+        1 atggagagcg acgagagcgg cctgcccgcc atggagatcg agtgccgcat caccggcacc
+       61 ctgaacggcg tggagttcga gctggtgggc ggcggagagg gcacccccga gcagggccgc
+      121 atgaccaaca agatgaagag caccaaaggc gccctgacct tcagccccta cctgctgagc
+      181 cacgtgatgg gctacggctt ctaccacttc ggcacctacc ccagcggcta cgagaa
+//

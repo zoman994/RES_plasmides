@@ -1,0 +1,12 @@
+LOCUS       T2A                       54 bp    DNA     linear   UNK 01-JAN-1980
+DEFINITION  T2A exported by PlasmidVCS.
+ACCESSION   T2A
+VERSION     T2A
+KEYWORDS    .
+SOURCE      .
+  ORGANISM  .
+            .
+FEATURES             Location/Qualifiers
+ORIGIN
+        1 gagggcagag gaagtcttct aacatgcggt gacgtggagg agaatcccgg ccca
+//

@@ -1,0 +1,15 @@
+LOCUS       SpCas9                   197 bp    DNA     linear   UNK 01-JAN-1980
+DEFINITION  SpCas9 exported by PlasmidVCS.
+ACCESSION   SpCas9
+VERSION     SpCas9
+KEYWORDS    .
+SOURCE      .
+  ORGANISM  .
+            .
+FEATURES             Location/Qualifiers
+ORIGIN
+        1 atggacaaga agtacagcat cggcctggac atcggcacca actctgtggg ctgggccgtg
+       61 atcaccgacg agtacaaggt gcccagcaag aaattcaagg tgctgggcaa caccgaccgg
+      121 cacagcatca agaagaacct gatcggcgcc ctgctgttcg acagcggcga aacagccgag
+      181 gccacccgcc tgaagcg
+//

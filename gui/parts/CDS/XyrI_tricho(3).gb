@@ -1,0 +1,58 @@
+LOCUS       XyrI_tricho(3)          2763 bp    DNA     linear   UNK 01-JAN-1980
+DEFINITION  XyrI_tricho(3) exported by PlasmidVCS.
+ACCESSION   XyrI_tricho(3)
+VERSION     XyrI_tricho(3)
+KEYWORDS    .
+SOURCE      .
+  ORGANISM  .
+            .
+FEATURES             Location/Qualifiers
+ORIGIN
+        1 atgttgtcca atcctctccg tcgctattct gcctaccccg acatctcctc ggcgtcattt
+       61 gacccgaact accatggctc acagtcgcat ctccactcga tcaacgtcaa cacattcggc
+      121 aacagccacc cctatcccat gcagcacctc gcacagcatg cggagctttc gagttcacgc
+      181 atgataaggg ccagtccggt gcagccaaag cagcgccagg gctctcttat tgctgccagg
+      241 aagaattcaa cgggtactgc tgggcccatt cggcggagga tcagtcgcgc ttgtgaccag
+      301 tgcaaccagc ttcgtaccaa gtgcgatggc ttacacccat gtgcccattg tatagaattc
+      361 ggccttggat gcgaatatgt ccgagagaga aagaagcgtg gcaaagcttc gcgcaaggat
+      421 attgctgccc agcaagccgc ggcggctgca gcacaacact ccggccaggt ccaggatggt
+      481 ccagaggatc aacatcgcaa actctcacgc cagcaaagcg aatcttcgcg tggcagcgct
+      541 gagcttgccc agcctgccca cgacccgcct catggccaca ttgagggctc tgtcagctcc
+      601 ttcagcgaca atggcctttc ccagcatgct gccatgggcg gcatggatgg cctggaagat
+      661 caccatggcc acgtcggagt tgatcctgcc ctgggccgaa ctcagctgga agcgtcatca
+      721 gcaatgggcc tgggcgcata cggtgaagtc caccccggct atgagagccc cggcatgaat
+      781 ggccatgtga tggtgccccc gtcgtatggc gcgcagacca ccatggccgg gtattccggt
+      841 atctcgtatg ctgcgcaagc cccgagtccg gctacgtata gcagcgacgg taactttcga
+      901 ctcaccggtc acatccatga ttacccgctg gcaaatggga gctcgccctc atggggacaa
+      961 agcgatttgc gatatcctgt gcttgagcct ctgctgcctc acctgggaaa catcctcccc
+     1021 gtgtctttgg cgtgcgatct gattgacctg tacttctcct cgtcttcatc agcacagatg
+     1081 cacccaatgt ccccatacgt tctgggcttc gtcttccgga agcgctcctt cttgcacccc
+     1141 acgaacccac gaaggtgcca gcccgcgctg cttgcgagca tgctgtgggt ggcggcacag
+     1201 actagcgaag cgtccttctt gacgagcctg ccgtcggcga ggagcaaggt ctgccagaag
+     1261 ctgctcgagc tgaccgttgg gcttcttcag cccctgatcc acaccggcac caacagcccg
+     1321 tctcccaaga ctagccccgt cgtcggtgct gctgccctgg gagttcttgg ggtggccatg
+     1381 ccgggctcgc tgaacatgga ttcactggcc ggcgaaacgg gtgcttttgg ggccataggg
+     1441 agccttgacg acgtcatcac ctatgtgcac ctcgccacgg tcgtctcggc cagcgagtac
+     1501 aagggcgcca gcctgcggtg gtggggtgcg gcatggtctc tcgccagaga gctcaagctt
+     1561 ggccgtgagc tgccgcctgg caatccacct gccaaccagg aggacggcga gggccttagc
+     1621 gaagacgtgg atgagcacga cttgaacaga aacaacactc gcttcgtgac ggaagaggag
+     1681 cgcgaagagc gacggcgagc atggtggctc gtttacatcg tcgacaggca cctggcgctc
+     1741 tgctacaacc gccccttgtt tcttctggac agcgagtgca gcgacttgta ccacccgatg
+     1801 gacgacatca agtggcaggc aggcaaattt cgcagccacg atgcagggaa ctccagcatc
+     1861 aacatcgata gctccatgac ggacgagttt ggcgatagtc cccgggcggc tcgcggcgca
+     1921 cactacgagt gccgcggtcg tagcattttt ggctacttct tgtccttgat gacaatcctg
+     1981 ggcgagattg tcgatgtcca ccatgctaaa agccaccccc ggttcggcgt tggattccgc
+     2041 tccgcgcggg attgggacga gcaggttgct gaaatcaccc gacacctgga catgtatgag
+     2101 gagagcctca agaggttcgt ggccaagcat ctgccattgt cctcaaagga caaggagcag
+     2161 catgagatgc acgacagtgg agcggtaaca gacatgcaat ctccactctc ggtgcggacc
+     2221 aacgcgtcca gccgcatgac ggagagcgag atccaggcca gcatcgtggt ggcttacagc
+     2281 acccatgtga tgcatgtcct ccacatcctc cttgcggata agtgggatcc catcaacctt
+     2341 ctagacgacg acgacttgtg gatctcgtcg gaaggattcg tgacggcgac gagccacgcg
+     2401 ttctcggctg ccgaagctat tagccagatt ctcgagtttg accctggcct ggagtttatg
+     2461 ccattcttct acggcgtcta tctcctgcag ggttccttcc tcctcctgct catcgccgac
+     2521 aagctgcagg ccgaagcgtc tccaagcgtc atcaaggctt gcgagaccat tgttagggca
+     2581 cacgaagctt gcgttgtgac gctgagcaca gagtatcagc gcaactttag caaggttatg
+     2641 cgaagcgcgc tggctctgat tcggggccgt gtgccggaag atttagctga gcagcagcag
+     2701 cgacgacgcg agcttcttgc actataccga tggactggta acggaaccgg tctggccctc
+     2761 taa
+//

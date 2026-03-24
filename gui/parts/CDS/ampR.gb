@@ -1,0 +1,15 @@
+LOCUS       AmpR                     199 bp    DNA     linear   UNK 01-JAN-1980
+DEFINITION  AmpR exported by PlasmidVCS.
+ACCESSION   AmpR
+VERSION     AmpR
+KEYWORDS    .
+SOURCE      .
+  ORGANISM  .
+            .
+FEATURES             Location/Qualifiers
+ORIGIN
+        1 atgagtattc aacatttccg tgtcgccctt attccctttt ttgcggcatt ttgccttcct
+       61 gtttttgctc acccagaaac gctggtgaaa gtaaaagatg ctgaagatca gttgggtgca
+      121 cgagtgggtt acatcgaact ggatctcaac agcggtaaga tccttgagag ttttcgcccc
+      181 gaagaacgtt ttccaatga
+//

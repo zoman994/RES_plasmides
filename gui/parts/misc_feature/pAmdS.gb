@@ -1,0 +1,29 @@
+LOCUS       pAmdS                   1045 bp    DNA     linear   UNK 01-JAN-1980
+DEFINITION  pAmdS exported by PlasmidVCS.
+ACCESSION   pAmdS
+VERSION     pAmdS
+KEYWORDS    .
+SOURCE      .
+  ORGANISM  .
+            .
+FEATURES             Location/Qualifiers
+ORIGIN
+        1 ccctgaaggt cggatgtacg acgtatatcc atctttaact agtcatcatt ggataggcag
+       61 attactcagc ctgaatgaca tcaacatgtt acccatgata caataggtca cacaaacaag
+      121 cgctaagatg cacttggtat gacaagccca gtagtccgtt tcaaaagacc tagatgatga
+      181 actacaacat gaggtgttgc ctcctgatcc agtccaactg caaacgctga tgtatactca
+      241 atcaagcctg atgtaaatgc tgcgactgca ttcgctggat atgaagatca aagagagctc
+      301 tgatgggtcc aatatagccg ggttttgtta ggacagtcca ccacaccgat attagaattg
+      361 gtcaagcacc ttatcatttc atagagattg cggtttctag atctacgcca ggaccgagca
+      421 agcccagatg agaaccgacg cagatttcct tggcacctgt tgcttcagct gaatcctggc
+      481 aatacgagat acctgctttg aatattttga atagctcgcc cgctggagag catcctgaat
+      541 gcaagtaaca accgtagagg ctgacacggc aggtgttgct agggagcgtc gtgttctaca
+      601 aggccagacg tcttcgcggt tgatatatat gtatgtttga ctgcaggctg ctcagcgacg
+      661 acagtcaagt tcgccctcgc tgcttgtgca ataatcgcag tggggaagcc acaccgtgac
+      721 tcccatcttt cagtaaagct ctgttggtgt ttatcagcaa tacacgtaat ttaaactcgt
+      781 tagcatgggg ctgatagctt aattaccgtt taccagtgcc gcggttctgc agctttcctt
+      841 ggcccgtaaa attcggcgaa gccagccaat caccagctag gcaccagcta aaccctataa
+      901 ttagtctctt atcaacacca tccgctcccc cgggatcaat gaggagaatg agggggatgc
+      961 ggggctaaag aagcctacat aaccctcatg ccaactccca gtttacactc gtcgagccaa
+     1021 catcctgact ataagctaac acaga
+//

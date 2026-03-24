@@ -190,3 +190,6 @@ def design_re_primers(
         primers=[fwd, rev],
         warnings=warnings + ([compat_msg] if not compatible else []),
     )
+
+# Backward-compatible alias
+find_re_sites_in_sequence = find_sites

@@ -1,0 +1,26 @@
+LOCUS       bla                      861 bp    DNA     linear   UNK 01-JAN-1980
+DEFINITION  bla exported by PlasmidVCS.
+ACCESSION   bla
+VERSION     bla
+KEYWORDS    .
+SOURCE      .
+  ORGANISM  .
+            .
+FEATURES             Location/Qualifiers
+ORIGIN
+        1 atgagtattc aacatttccg tgtcgccctt attccctttt ttgcggcatt ttgccttcct
+       61 gtttttgctc acccagaaac gctggtgaaa gtaaaagatg ctgaagatca gttgggtgca
+      121 cgagtgggtt acatcgaact ggatctcaac agcggtaaga tccttgagag ttttcgcccc
+      181 gaagaacgtt ttccaatgat gagcactttt aaagttctgc tatgtggcgc ggtattatcc
+      241 cgtattgacg ccgggcaaga gcaactcggt cgccgcatac actattctca gaatgacttg
+      301 gttgagtact caccagtcac agaaaagcat cttacggatg gcatgacagt aagagaatta
+      361 tgcagtgctg ccataaccat gagtgataac actgcggcca acttacttct gacaacgatc
+      421 ggaggaccga aggagctaac cgcttttttg cacaacatgg gggatcatgt aactcgcctt
+      481 gatcgttggg aaccggagct gaatgaagcc ataccaaacg acgagcgtga caccacgatg
+      541 cctgtagcaa tggcaacaac gttgcgcaaa ctattaactg gcgaactact tactctagct
+      601 tcccggcaac aattaataga ctggatggag gcggataaag ttgcaggacc acttctgcgc
+      661 tcggcccttc cggctggctg gtttattgct gataaatctg gagccggtga gcgtgggtct
+      721 cgcggtatca ttgcagcact ggggccagat ggtaagccct cccgtatcgt agttatctac
+      781 acgacgggga gtcaggcaac tatggatgaa cgaaatagac agatcgctga gataggtgcc
+      841 tcactgatta agcattggta a
+//

@@ -1,0 +1,52 @@
+LOCUS       AMAI                    2453 bp    DNA     linear   UNK 01-JAN-1980
+DEFINITION  AMAI exported by PlasmidVCS.
+ACCESSION   AMAI
+VERSION     AMAI
+KEYWORDS    .
+SOURCE      .
+  ORGANISM  .
+            .
+FEATURES             Location/Qualifiers
+ORIGIN
+        1 gtggtcgcag ataactccct aaattccctg agctaactct aagtcgacca tgccgtttat
+       61 ggttagcgcc tcccaaaaag gaatggccga cttagagtta cctcttgacg actttttctt
+      121 tcctccccct tacatttcgt taccacaaca cattcctata tccaaactcc aggtacataa
+      181 ctagtcgaaa tctctttaaa tctagtcaag aactagatac ttaaccttca tactgcttag
+      241 agatagcctt tgaagctctt atttcgctct ttgtctcact ctcaccttcc tcctcctcct
+      301 ccaatccttt ttgctcggga ctagtccaag actagtcaac agttagtatg ccgagcattc
+      361 gcgataacga taacgatctc cgaaagtccc cagagtactg tcactatctc gaggcagtta
+      421 aggacgggga gcttacgctg ccggatttca agatagtaag ccgacccgac tagctttaag
+      481 cctagttact gactagtcca caggacgaca atggcgtgcc tgatatccat ccatatgaag
+      541 tctactgccg agtgaaggga tgcctcaagc gtacagtgag tctactgcta tcatagtttc
+      601 tgactagtta ttaactagtt gacaggttcc ctctgccaac agaaacatat tggtcaagca
+      661 cttgaaggac aagaactccc acggcatgga gtttacattg cacaatggtc ctcccactat
+      721 gaaggaactg atggaggcca aaggcaagtc ctatctagat tacttggtga ctagtccctg
+      781 actagtcaag tagcatggta tgaaggcttg tttgaaggca ctgttctccc aaccccgact
+      841 cctaccaaga agcgcaagcg agctgcgtaa gtttctgtga gtctaactag tgtattagct
+      901 aatatatagc agcaccaagt ccaaggacca caatactaag ggagtcgaga attcgtgagt
+      961 ttcttctccc atttcaacta gtccttgact agtcactaac tactttgcag caacgagggt
+     1021 gaagctggaa atgatcagga caatggcgag ggcccgtaag tacagccatt caatgcagac
+     1081 tagttgctaa ctaatctgtg actagttcaa gtggtccgta cgccgtgcat acccctgtga
+     1141 ctggtaggaa tttgagcaag cctgtcttgc cgcgcgatga gaaaggaaag gcaagttaca
+     1201 ttcagccccg tacctaggat cagtgctaat ttataacctc tagccactct ttatggcaga
+     1261 tccgccgtga gggtagcaag gcagctaaat cagctggtga gaaaggaacc ataccctgca
+     1321 agacctgtcg caacgcaaag ggcaaaggta agctatccaa gctagtttgg gactagattc
+     1381 taactagtct cagcaccgtg tggttcaaag ccatattgcg agttttggcg ctttttctca
+     1441 tcgattgacg aggcaaaggg agcgagtatg caacctcgta agtcagactc agacaaagac
+     1501 caactagtta ttgaccagtc ttctagaagg ctctgttgtg gatcttgagg ccctggagag
+     1561 ttcctccaac aatccggaga caagcaagtc ctcgtcggac tagtcactaa ctagactcta
+     1621 actagttgca gacatggata atgcaaaaga gacaagcaat gaagaaagtg gtaagacatt
+     1681 tctcctttgt ggttctggac tagtctttga ctagtcacag tcttaaacaa ggaaaatgag
+     1741 catgaaaatg aggaggaaaa ggctgctgag cccgaggaag tgcagggtga tggcagacat
+     1801 ggtaggttaa taccttgtta gttattgcta gtcactgact agtcaataac tagtctctga
+     1861 acaccttgca atcactccgt ttgcgcagct gaacagtggt gaggataata gtagtaagtt
+     1921 attctagctt cagagttata ggagactaga tactaactag tattagttgc aactaacctg
+     1981 gatctcagag actttggcct caatctagaa tctatctagt tgtcaactag actgtggtat
+     2041 cattgtcttt tattttccta gtcctggaac tagcttctaa ctagtctccc taatatgtgg
+     2101 ctgtcttgtt tttttttttt gtttccctac ccggatatct agtccccttc taggttctgt
+     2161 taacctctcg ggctctgatt tagtttaacg caaacctgag attagtttct aactagtctc
+     2221 taggttttct atccaccttt aattgtaata ataaatacaa gcaacgttta tacgtcaaaa
+     2281 gcatttataa acttttaccc taaagtagct tgcttgtgtg tttagtttat aattagtctc
+     2341 ttattaattt gatgtaggta agcccgccac aaatatatat ttttacaaga taccgtggaa
+     2401 aaacttcgtg ctatcacaaa acagtataca aaaataagcg ggaattcgtt tgt
+//

@@ -1,0 +1,15 @@
+LOCUS       CmR                      199 bp    DNA     linear   UNK 01-JAN-1980
+DEFINITION  CmR exported by PlasmidVCS.
+ACCESSION   CmR
+VERSION     CmR
+KEYWORDS    .
+SOURCE      .
+  ORGANISM  .
+            .
+FEATURES             Location/Qualifiers
+ORIGIN
+        1 atggagaaaa aaatcactgg atataccacc gttgatatat cccaatggca tcgtaaagaa
+       61 cattttgagg catttcagtc agttgctcaa tgtacctata accagaccgt tcagctggat
+      121 attacggcct ttttaaagac cgtaaagaaa aataagcaca agttttatcc ggcctttatt
+      181 cacattcttg cccgcctga
+//

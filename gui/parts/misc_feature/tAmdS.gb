@@ -1,0 +1,21 @@
+LOCUS       tAmdS                    550 bp    DNA     linear   UNK 01-JAN-1980
+DEFINITION  tAmdS exported by PlasmidVCS.
+ACCESSION   tAmdS
+VERSION     tAmdS
+KEYWORDS    .
+SOURCE      .
+  ORGANISM  .
+            .
+FEATURES             Location/Qualifiers
+ORIGIN
+        1 ctaataagtg tcagatagca atttgcacaa gaaatcaata ccagcaactg taaataagcg
+       61 ctgaagtgac catgccatgc tacgaaagag cagaaaaaaa cctgccgtag aaccgaagag
+      121 atatgacacg cttccatctc tcaaaggaag aatcccttca gggttgcgtt tccagtctag
+      181 acacgtataa cggcacaagt gtctctcacc aaatgggtta tatctcaaat gtgatctaag
+      241 gatggaaagc ccagaatatt ggctgggttg atggctgctt cgagtgcagt ctcatgctgc
+      301 cacaggtgac tctggatggc cccataccac tcaacccatg gtacccgtgc ctcaggggtg
+      361 agctggttgt tgccttgcgg tagagtaata acgatagctc agccttgcag gtgatttccg
+      421 cgtctgtcta ttgtccttat tactgtgtcg agtccccaag ttttcttcca atagacatca
+      481 gtaagagtac cgcttttata ttgttgtcct aggaggacat tttccatcct agtggagcgc
+      541 tcctaccacc
+//

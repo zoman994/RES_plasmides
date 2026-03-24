@@ -1,0 +1,15 @@
+LOCUS       mCherry                  197 bp    DNA     linear   UNK 01-JAN-1980
+DEFINITION  mCherry exported by PlasmidVCS.
+ACCESSION   mCherry
+VERSION     mCherry
+KEYWORDS    .
+SOURCE      .
+  ORGANISM  .
+            .
+FEATURES             Location/Qualifiers
+ORIGIN
+        1 atggtgagca agggcgagga ggataacatg gccatcatca aggagttcat gcgcttcaag
+       61 gtgcacatgg agggctccgt gaacggccac gagttcgaga tcgagggcga gggcgagggc
+      121 cgcccctacg agggcaccca gaccgccaag ctgaaggtga ccaagggtgg ccccctgccc
+      181 ttcgcctggg acatcct
+//

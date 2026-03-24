@@ -1,0 +1,15 @@
+LOCUS       LacZ                     196 bp    DNA     linear   UNK 01-JAN-1980
+DEFINITION  LacZ exported by PlasmidVCS.
+ACCESSION   LacZ
+VERSION     LacZ
+KEYWORDS    .
+SOURCE      .
+  ORGANISM  .
+            .
+FEATURES             Location/Qualifiers
+ORIGIN
+        1 atgaccatga ttacgccaag ctatttaggt gacactatag aatactcaag ctatgcatca
+       61 agcttggtac cgagctcgga tccactagta acggccgcca gtgtgctgga attcgccctt
+      121 atagtgagtc gtattacaat tcactggccg tcgttttaca acgtcgtgac tgggaaaacc
+      181 ctggcgttac ccaact
+//

@@ -1,0 +1,15 @@
+LOCUS       NatR                     195 bp    DNA     linear   UNK 01-JAN-1980
+DEFINITION  NatR exported by PlasmidVCS.
+ACCESSION   NatR
+VERSION     NatR
+KEYWORDS    .
+SOURCE      .
+  ORGANISM  .
+            .
+FEATURES             Location/Qualifiers
+ORIGIN
+        1 atggccactc ctgaaatagg taactcaata gctgcgcaaa tcttcaatgc cactaaacct
+       61 gatgccaatg gtgctttcag taccagagaa gctaatgaaa ttccagaaac agatccgctt
+      121 attgttgatt tgggtgtcaa ctcaatggaa gatttcagca aactaccttc aatacctact
+      181 gataatgctc ttccc
+//

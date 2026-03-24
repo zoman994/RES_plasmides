@@ -1,0 +1,31 @@
+LOCUS       pglaA                   1150 bp    DNA     linear   UNK 01-JAN-1980
+DEFINITION  pglaA exported by PlasmidVCS.
+ACCESSION   pglaA
+VERSION     pglaA
+KEYWORDS    .
+SOURCE      .
+  ORGANISM  .
+            .
+FEATURES             Location/Qualifiers
+ORIGIN
+        1 gcagcttgaa gaattagtgg ccctgtaccc agacaccacc acgtacgggt ctccgttcag
+       61 gacaggcgcg gccaacaact ggtatccgca atttaaacga ttggccgcca ttctcggcga
+      121 cttggtcttc accattaccc ggcgggcatt cctctcgtat gcagaggaaa tctcccctga
+      181 tcttccgaac tggtcgtacc tggcgaccta tgactatggc accccagttc tggggacctt
+      241 ccacggaagt gacctgctgc aggtgttcta tgggatcaag ccaaactatg cagctagttc
+      301 tagccacacg tactatctga gctttgtgta tacgctggat ccgaactcca accgggggga
+      361 gtatattgag tggccgcagt ggaaggaatc gcggcagttg atgaatttcg gagcgaacga
+      421 cgccagtctc cttacggatg atttccgcaa cgggacatat gagttcatcc tgcagaatac
+      481 cgcggcgttc cacatctgat gccattggcg gaggggtccg gacggtcagg aacttagcct
+      541 tatgagatta atgatggacg tgtctggcct cggaaaagga tatatgggga tcataatagt
+      601 actagccata ttaatgaagg gtatatacca cgcgttggac ctgcgttata gcttcccgtt
+      661 agttatagta ccatcgttat accagccaat caagtcacca cgcacgaccg gggacggcga
+      721 atccccggga attgaaagaa attgcatccc aggccagtga ggccagcgat tggccacatc
+      781 tccaaggcac agggccattc tgcagcgctg gtggattcat cgcaatttcc cccggcccgg
+      841 cccgacaccg ctataggctg gttctcccac accatcggag attcgtcgcc taatgtctcg
+      901 tccgttcaca agctgaagag cttgaagtgg cgagatgcct ctgcaggaat tcaagctaga
+      961 tgctaagcga tattgcatgg caatttgtgt tgatgcatgt gcttcttcct tcagcttccc
+     1021 ctcgtgcaga tgaggtttgg ctataaattg aagtggttgg tcggggttcc gtgaggggct
+     1081 gaagtgcttc ctccctttta gacgcaactg agagcctgag cttcatcccc agcatcatta
+     1141 ctcctcagca
+//

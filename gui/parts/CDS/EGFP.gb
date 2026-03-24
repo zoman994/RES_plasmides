@@ -1,0 +1,15 @@
+LOCUS       EGFP                     196 bp    DNA     linear   UNK 01-JAN-1980
+DEFINITION  EGFP exported by PlasmidVCS.
+ACCESSION   EGFP
+VERSION     EGFP
+KEYWORDS    .
+SOURCE      .
+  ORGANISM  .
+            .
+FEATURES             Location/Qualifiers
+ORIGIN
+        1 atggtgagca agggcgagga gctgttcacc ggggtggtgc ccatcctggt cgagctggac
+       61 ggcgacgtaa acggccacaa gttcagcgtg tccggcgagg gcgagggcga tgccacctac
+      121 ggcaagctga ccctgaagtt catctgcacc accggcaagc tgcccgtgcc ctggcccacc
+      181 ctcgtgacca ccttcg
+//

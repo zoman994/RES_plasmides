@@ -1,0 +1,13 @@
+LOCUS       glaA_ss                   75 bp    DNA     linear   UNK 01-JAN-1980
+DEFINITION  glaA_ss exported by PlasmidVCS.
+ACCESSION   glaA_ss
+VERSION     glaA_ss
+KEYWORDS    .
+SOURCE      .
+  ORGANISM  .
+            .
+FEATURES             Location/Qualifiers
+ORIGIN
+        1 atgtcgttcc gatctctact cgccctgagc ggcctcgtct gcacagggtt ggcaaatgtg
+       61 atttccaagc gcgcg
+//

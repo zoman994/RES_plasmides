@@ -1,0 +1,19 @@
+LOCUS       gBlock1-CMV-COX8A-3xFLAG-hCas9 426 bp    DNA     linear   UNK 01-JAN-1980
+DEFINITION  gBlock1-CMV-COX8A-3xFLAG-hCas9 exported by PlasmidVCS.
+ACCESSION   gBlock1-CMV-COX8A-3xFLAG-hCas9
+VERSION     gBlock1-CMV-COX8A-3xFLAG-hCas9
+KEYWORDS    .
+SOURCE      .
+  ORGANISM  .
+            .
+FEATURES             Location/Qualifiers
+ORIGIN
+        1 tcaatgggag tttgttttgg caccaaaatc aacgggactt tccaaaatgt cgtaacaact
+       61 ccgccccatt gacgcaaatg ggcggtaggc gtgtacggtg ggaggtctat ataagcagag
+      121 ctggtttagt gaaccgtcag atccgctagc atggcctcca ctcgtgtcct cgcctctcgc
+      181 ctggcctccc ggatggctgc ttccgccaag gttgcccgcc ctgctgtccg cgttgctcag
+      241 gtcagcaagc gcaccatcca gactggctcc cccctccaga ccctcaagcg cacccagatg
+      301 acctccatcg tcaacgccac cacccgccag gctttccaga agcgcgccta ctcttccgac
+      361 tacaaagacc atgacggtga ttataaagat catgacatcg attacaagga tgacgatgac
+      421 aagctc
+//

@@ -1,0 +1,16 @@
+LOCUS       5SrRNAprom_an            250 bp    DNA     linear   UNK 01-JAN-1980
+DEFINITION  5SrRNAprom_an exported by PlasmidVCS.
+ACCESSION   5SrRNAprom_an
+VERSION     5SrRNAprom_an
+KEYWORDS    .
+SOURCE      .
+  ORGANISM  .
+            .
+FEATURES             Location/Qualifiers
+ORIGIN
+        1 taaggcaaaa tggatatgcc tgtcttagtc gagatctggc cagatcagaa atgccgattg
+       61 tgatgaaaat ctggatttct caccaccaga taagcctttc tgcgggccgg gctgagtaga
+      121 gcacctgcaa ggctaaaggt tacctgatag atcgtatttc aaatgatacc agtcacccgt
+      181 gtcatactct cctttgccta attagatatg tggaaagact ctatataatt tgagtcaata
+      241 accgaataaa
+//

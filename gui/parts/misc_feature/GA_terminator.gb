@@ -1,0 +1,26 @@
+LOCUS       GA_terminator            865 bp    DNA     linear   UNK 01-JAN-1980
+DEFINITION  GA_terminator exported by PlasmidVCS.
+ACCESSION   GA_terminator
+VERSION     GA_terminator
+KEYWORDS    .
+SOURCE      .
+  ORGANISM  .
+            .
+FEATURES             Location/Qualifiers
+ORIGIN
+        1 acaatcaatc catttcgcta tagttaaagg atggggatga gggcaattgg ttatatgatc
+       61 atgtatgtag tgggtgtgca taatagtagt gaaatggaag ccaagtcatg tgattgtaat
+      121 cgaccgacgg aattgaggat atccggaaat acagacaccg tgaaagccat ggcctttcct
+      181 tcgtgtagag gaccagacag tccctgattt acccttgcac aaagcactag aaaatttgca
+      241 ttccagcctt ctctgcttgc tctgctgata tcactgtcat tcaatgcata gccatgagct
+      301 catcttagat ccaagcacgt aattccatag ccgaggtcca cagtggagca gcaacattcc
+      361 ccatcattgc tttccccagg ggcctcccaa cgactaaatc aagagtatat ctctaccgtc
+      421 caatagatcg tcttcgcttc aaaatctttg acaattccaa gagggtcccc atccatcaaa
+      481 cccagttcaa taatagccga gatgcatggt ggagtcaatt aggcagtatt gctggaatgt
+      541 cggggccagt tggcccggtg gtcattggcc gcctgtgatg ccatctgcca ctaaatccga
+      601 tcattgatcc accgcccacg aggcgcgtct ttgctttttg cgcggcgtcc aggttcaact
+      661 ctctctgcag ctccagtcca acgctgactg actagtttac ctactggtct gatcggctcc
+      721 atcagagcta tggcgttatc ccgtgccgtt gctgcgcaat cgctatcttg atcgcaacct
+      781 tgaactcact cttgttttaa tagtgatctt ggtgacgaag cgtcggtgag tgacaaccaa
+      841 catcgtgcaa gggagattga tacgg
+//

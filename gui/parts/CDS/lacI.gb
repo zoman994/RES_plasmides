@@ -1,0 +1,30 @@
+LOCUS       lacI                    1083 bp    DNA     linear   UNK 01-JAN-1980
+DEFINITION  lacI exported by PlasmidVCS.
+ACCESSION   lacI
+VERSION     lacI
+KEYWORDS    .
+SOURCE      .
+  ORGANISM  .
+            .
+FEATURES             Location/Qualifiers
+ORIGIN
+        1 gtgaaaccag taacgttata cgatgtcgca gagtatgccg gtgtctctta tcagaccgtt
+       61 tcccgcgtgg tgaaccaggc cagccacgtt tctgcgaaaa cgcgggaaaa agtggaagcg
+      121 gcgatggcgg agctgaatta cattcccaac cgcgtggcac aacaactggc gggcaaacag
+      181 tcgttgctga ttggcgttgc cacctccagt ctggccctgc acgcgccgtc gcaaattgtc
+      241 gcggcgatta aatctcgcgc cgatcaactg ggtgccagcg tggtggtgtc gatggtagaa
+      301 cgaagcggcg tcgaagcctg taaagcggcg gtgcacaatc ttctcgcgca acgcgtcagt
+      361 gggctgatca ttaactatcc gctggatgac caggatgcca ttgctgtgga agctgcctgc
+      421 actaatgttc cggcgttatt tcttgatgtc tctgaccaga cacccatcaa cagtattatt
+      481 ttctcccatg aagacggtac gcgactgggc gtggagcatc tggtcgcatt gggtcaccag
+      541 caaatcgcgc tgttagcggg cccattaagt tctgtctcgg cgcgtctgcg tctggctggc
+      601 tggcataaat atctcactcg caatcaaatt cagccgatag cggaacggga aggcgactgg
+      661 agtgccatgt ccggttttca acaaaccatg caaatgctga atgagggcat cgttcccact
+      721 gcgatgctgg ttgccaacga tcagatggcg ctgggcgcaa tgcgcgccat taccgagtcc
+      781 gggctgcgcg ttggtgcgga tatctcggta gtgggatacg acgataccga agacagctca
+      841 tgttatatcc cgccgttaac caccatcaaa caggattttc gcctgctggg gcaaaccagc
+      901 gtggaccgct tgctgcaact ctctcagggc caggcggtga agggcaatca gctgttgccc
+      961 gtctcactgg tgaaaagaaa aaccaccctg gcgcccaata cgcaaaccgc ctctccccgc
+     1021 gcgttggccg attcattaat gcagctggca cgacaggttt cccgactgga aagcgggcag
+     1081 tga
+//
