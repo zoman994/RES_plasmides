@@ -13,11 +13,15 @@ from dataclasses import asdict
 from pathlib import Path
 
 from pvcs.models import (
+    AssemblyInput,
     AssemblyOperation,
+    AssemblyPlan,
+    AssemblyStep,
     AssemblyTemplate,
     Construct,
     Feature,
     Fragment,
+    Junction,
     Milestone,
     OverlapZone,
     Part,
@@ -128,6 +132,31 @@ CREATE TABLE IF NOT EXISTS assembly_templates (
     overlap_length INTEGER DEFAULT 22,
     backbone_part_id TEXT REFERENCES parts(id),
     created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS assembly_plans (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    target_construct TEXT DEFAULT '',
+    status TEXT DEFAULT 'design',
+    notes TEXT DEFAULT '',
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS assembly_steps (
+    id TEXT PRIMARY KEY,
+    plan_id TEXT NOT NULL REFERENCES assembly_plans(id),
+    "order" INTEGER NOT NULL,
+    method TEXT NOT NULL,
+    inputs TEXT NOT NULL DEFAULT '[]',
+    junctions TEXT NOT NULL DEFAULT '[]',
+    output_name TEXT DEFAULT '',
+    output_sequence TEXT,
+    output_length INTEGER,
+    primers TEXT DEFAULT '[]',
+    status TEXT DEFAULT 'design',
+    notes TEXT DEFAULT '',
+    UNIQUE(plan_id, "order")
 );
 """
 
@@ -555,6 +584,129 @@ def _row_to_template(row: sqlite3.Row) -> AssemblyTemplate:
         backbone_part_id=row["backbone_part_id"],
         created_at=row["created_at"],
     )
+
+
+# ---------------------------------------------------------------------------
+# Assembly Plan CRUD (multi-step DAG)
+# ---------------------------------------------------------------------------
+
+def _inputs_to_json(inputs: list[AssemblyInput]) -> str:
+    return json.dumps([asdict(i) for i in inputs], ensure_ascii=False)
+
+
+def _inputs_from_json(text: str) -> list[AssemblyInput]:
+    return [AssemblyInput(**d) for d in (json.loads(text) if text else [])]
+
+
+def _junctions_to_json(junctions: list[Junction]) -> str:
+    return json.dumps([asdict(j) for j in junctions], ensure_ascii=False)
+
+
+def _junctions_from_json(text: str) -> list[Junction]:
+    return [Junction(**d) for d in (json.loads(text) if text else [])]
+
+
+def _primers_to_json(primers: list) -> str:
+    return json.dumps([asdict(p) for p in primers], ensure_ascii=False)
+
+
+def _primers_from_json(text: str) -> list:
+    from pvcs.models import Primer
+    return [Primer(**d) for d in (json.loads(text) if text else [])]
+
+
+def insert_assembly_plan(conn: sqlite3.Connection, plan: AssemblyPlan) -> None:
+    conn.execute(
+        "INSERT INTO assembly_plans (id, name, target_construct, status, notes, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (plan.id, plan.name, plan.target_construct, plan.status, plan.notes, plan.created_at),
+    )
+    for step in plan.steps:
+        _insert_assembly_step(conn, step)
+    conn.commit()
+
+
+def _insert_assembly_step(conn: sqlite3.Connection, step: AssemblyStep) -> None:
+    conn.execute(
+        'INSERT INTO assembly_steps '
+        '(id, plan_id, "order", method, inputs, junctions, output_name, '
+        'output_sequence, output_length, primers, status, notes) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        (step.id, step.plan_id, step.order, step.method,
+         _inputs_to_json(step.inputs), _junctions_to_json(step.junctions),
+         step.output_name, step.output_sequence, step.output_length,
+         _primers_to_json(step.primers), step.status, step.notes),
+    )
+
+
+def get_assembly_plan(conn: sqlite3.Connection, plan_id: str) -> AssemblyPlan | None:
+    row = conn.execute("SELECT * FROM assembly_plans WHERE id = ?", (plan_id,)).fetchone()
+    if not row:
+        return None
+    steps = _load_plan_steps(conn, plan_id)
+    return AssemblyPlan(
+        id=row["id"], name=row["name"], target_construct=row["target_construct"],
+        steps=steps, status=row["status"], notes=row["notes"], created_at=row["created_at"],
+    )
+
+
+def list_assembly_plans(conn: sqlite3.Connection) -> list[AssemblyPlan]:
+    rows = conn.execute("SELECT * FROM assembly_plans ORDER BY created_at DESC").fetchall()
+    plans = []
+    for row in rows:
+        steps = _load_plan_steps(conn, row["id"])
+        plans.append(AssemblyPlan(
+            id=row["id"], name=row["name"], target_construct=row["target_construct"],
+            steps=steps, status=row["status"], notes=row["notes"], created_at=row["created_at"],
+        ))
+    return plans
+
+
+def _load_plan_steps(conn: sqlite3.Connection, plan_id: str) -> list[AssemblyStep]:
+    rows = conn.execute(
+        'SELECT * FROM assembly_steps WHERE plan_id = ? ORDER BY "order"', (plan_id,)
+    ).fetchall()
+    return [_row_to_step(r) for r in rows]
+
+
+def _row_to_step(row: sqlite3.Row) -> AssemblyStep:
+    return AssemblyStep(
+        id=row["id"], plan_id=row["plan_id"], order=row["order"],
+        method=row["method"],
+        inputs=_inputs_from_json(row["inputs"]),
+        junctions=_junctions_from_json(row["junctions"]),
+        output_name=row["output_name"],
+        output_sequence=row["output_sequence"],
+        output_length=row["output_length"],
+        primers=_primers_from_json(row["primers"]),
+        status=row["status"], notes=row["notes"],
+    )
+
+
+def update_step_status(
+    conn: sqlite3.Connection, step_id: str, status: str, notes: str | None = None,
+) -> None:
+    if notes is not None:
+        conn.execute(
+            "UPDATE assembly_steps SET status = ?, notes = ? WHERE id = ?",
+            (status, notes, step_id),
+        )
+    else:
+        conn.execute(
+            "UPDATE assembly_steps SET status = ? WHERE id = ?", (status, step_id),
+        )
+    conn.commit()
+
+
+def update_plan_status(conn: sqlite3.Connection, plan_id: str, status: str) -> None:
+    conn.execute("UPDATE assembly_plans SET status = ? WHERE id = ?", (status, plan_id))
+    conn.commit()
+
+
+def delete_assembly_plan(conn: sqlite3.Connection, plan_id: str) -> None:
+    conn.execute("DELETE FROM assembly_steps WHERE plan_id = ?", (plan_id,))
+    conn.execute("DELETE FROM assembly_plans WHERE id = ?", (plan_id,))
+    conn.commit()
 
 
 # ---------------------------------------------------------------------------
