@@ -104,21 +104,28 @@ def design_primers(req: DesignRequest):
     ]
 
     juncs: list[JunctionSpec] = []
+    n_frags = len(frags)
     for i, j in enumerate(req.junctions):
         jtype = j.get("type", "overlap")
+
+        # For circular: last junction connects last→first fragment
+        left_idx = i
+        right_idx = (i + 1) % n_frags if req.circular else min(i + 1, n_frags - 1)
+
         junc = JunctionSpec(
-            left_order=i + 1, right_order=i + 2,
+            left_order=left_idx + 1,
+            right_order=right_idx + 1,
             junction_type=jtype,
             overlap_mode=j.get("overlapMode", "split"),
             enzyme=j.get("enzyme", ""),
             overhang_4nt=j.get("overhang", ""),
             re_enzyme=j.get("reEnzyme", ""),
         )
-        # Design overlap if needed
-        if jtype == "overlap" and i < len(frags) - 1:
+        # Design overlap for ALL junctions including circular closing
+        if jtype == "overlap" and left_idx < n_frags and right_idx < n_frags:
             ol = design_overlap_junction(
-                frags[i].sequence, frags[i + 1].sequence,
-                overlap_length=j.get("overlapLength", 22),
+                frags[left_idx].sequence, frags[right_idx].sequence,
+                overlap_length=j.get("overlapLength", 30),
                 tm_target=j.get("tmTarget", 62.0),
             )
             junc.overlap_sequence = ol.overlap_sequence

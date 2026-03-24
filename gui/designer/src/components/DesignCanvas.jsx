@@ -6,7 +6,7 @@ import JunctionDNA from './JunctionDNA';
 export default function DesignCanvas({
   fragments, junctions, circular, onToggleCircular,
   onDrop, onRemove, onToggleAmplification, onJunctionChange, onReorder,
-  calculated, pcrSizes = [], onSplitSignal,
+  calculated, pcrSizes = [], onSplitSignal, primers = [],
 }) {
   const [{ isOver }, drop] = useDrop({
     accept: 'PART',
@@ -60,7 +60,9 @@ export default function DesignCanvas({
                       leftName={frag.name}
                       rightName={fragments[(i + 1) % n]?.name || '?'}
                       onChange={cfg => onJunctionChange(i, cfg)} />
-                    <JunctionDNA junction={junctions[i]} calculated={calculated} />
+                    <JunctionDNA junction={junctions[i]} calculated={calculated}
+                      primers={primers} leftFragment={frag}
+                      rightFragment={fragments[(i + 1) % n]} />
                   </div>
                 )}
               </div>

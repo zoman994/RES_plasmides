@@ -13,12 +13,6 @@ import { fetchParts, designPrimers } from './api';
 import { validateConstruct, checkPrimerQuality, pcrProductSize } from './validate';
 import { exportGenBank, exportProtocol, saveToPVCS } from './exports';
 
-const METHODS = [
-  { id: 'overlap_pcr', label: 'Overlap PCR', olLen: 30, tm: 62 },
-  { id: 'gibson', label: 'Gibson', olLen: 35, tm: 55 },
-  { id: 'golden_gate', label: 'Golden Gate', olLen: 0, tm: 0 },
-];
-
 const LS_KEY = 'pvcs_designer_state';
 let nextId = 1;
 
@@ -26,7 +20,8 @@ export default function App() {
   const [parts, setParts] = useState([]);
   const [fragments, setFragments] = useState([]);
   const [junctions, setJunctions] = useState([]);
-  const [method, setMethod] = useState('overlap_pcr');
+  const [assemblyType, setAssemblyType] = useState('overlap'); // 'overlap' | 'golden_gate'
+  const [protocol, setProtocol] = useState('overlap_pcr'); // for export: overlap_pcr | gibson | infusion
   const [primers, setPrimers] = useState([]);
   const [apiWarnings, setApiWarnings] = useState([]);
   const [orderSheet, setOrderSheet] = useState('');
@@ -50,7 +45,9 @@ export default function App() {
         const s = JSON.parse(saved);
         if (s.fragments?.length) { setFragments(s.fragments); nextId = s.fragments.length + 1; }
         if (s.junctions) setJunctions(s.junctions);
-        if (s.method) setMethod(s.method);
+        if (s.assemblyType) setAssemblyType(s.assemblyType);
+        else if (s.method) setAssemblyType(s.method === 'golden_gate' ? 'golden_gate' : 'overlap');
+        if (s.protocol) setProtocol(s.protocol);
         if (s.circular !== undefined) setCircular(s.circular);
       }
     } catch {}
@@ -58,8 +55,8 @@ export default function App() {
 
   // ── Save to localStorage on change ──
   useEffect(() => {
-    localStorage.setItem(LS_KEY, JSON.stringify({ fragments, junctions, method, circular }));
-  }, [fragments, junctions, method, circular]);
+    localStorage.setItem(LS_KEY, JSON.stringify({ fragments, junctions, assemblyType, protocol, circular }));
+  }, [fragments, junctions, assemblyType, protocol, circular]);
 
   // ── Load parts ──
   useEffect(() => {
@@ -94,15 +91,14 @@ export default function App() {
     [fragments, junctions, circular]);
 
   // ── Junction helpers ──
-  const mkJunctions = useCallback((frags, m, isCirc = circular) => {
-    const info = METHODS.find(x => x.id === m) || METHODS[0];
+  const mkJunctions = useCallback((frags, asmType = assemblyType, isCirc = circular) => {
     const count = isCirc ? frags.length : Math.max(0, frags.length - 1);
     return Array.from({ length: count }, () => ({
-      type: m === 'golden_gate' ? 'golden_gate' : 'overlap',
-      overlapMode: 'split', overlapLength: info.olLen, tmTarget: info.tm,
+      type: asmType === 'golden_gate' ? 'golden_gate' : 'overlap',
+      overlapMode: 'split', overlapLength: 30, tmTarget: 62,
       enzyme: 'BsaI', overhang: '',
     }));
-  }, [circular]);
+  }, [assemblyType, circular]);
 
   const addFragment = (part) => {
     const frag = {
@@ -115,10 +111,9 @@ export default function App() {
     setCalculated(false);
     setJunctions(j => {
       if (nf.length > 1) {
-        const info = METHODS.find(x => x.id === method) || METHODS[0];
         return [...j, {
-          type: method === 'golden_gate' ? 'golden_gate' : 'overlap',
-          overlapMode: 'split', overlapLength: info.olLen, tmTarget: info.tm,
+          type: assemblyType === 'golden_gate' ? 'golden_gate' : 'overlap',
+          overlapMode: 'split', overlapLength: 30, tmTarget: 62,
           enzyme: 'BsaI', overhang: '',
         }];
       }
@@ -128,14 +123,14 @@ export default function App() {
 
   const removeFragment = (i) => {
     setFragments(f => f.filter((_, idx) => idx !== i));
-    setJunctions(j => mkJunctions(fragments.filter((_, idx) => idx !== i), method, circular));
+    setJunctions(j => mkJunctions(fragments.filter((_, idx) => idx !== i), assemblyType, circular));
     setCalculated(false);
   };
 
   const toggleCircular = () => {
     const next = !circular;
     setCircular(next);
-    setJunctions(mkJunctions(fragments, method, next));
+    setJunctions(mkJunctions(fragments, assemblyType, next));
     setCalculated(false);
   };
 
@@ -153,21 +148,10 @@ export default function App() {
     const [moved] = nf.splice(from, 1);
     nf.splice(to, 0, moved);
     setFragments(nf);
-    setJunctions(mkJunctions(nf, method, circular));
+    setJunctions(mkJunctions(nf, assemblyType, circular));
     setCalculated(false);
   };
 
-  const changeMethod = (m) => {
-    setMethod(m);
-    setJunctions(prev => {
-      const info = METHODS.find(x => x.id === m);
-      return prev.map(j => ({
-        ...j, type: m === 'golden_gate' ? 'golden_gate' : 'overlap',
-        overlapLength: info.olLen || j.overlapLength, tmTarget: info.tm || j.tmTarget,
-      }));
-    });
-    setCalculated(false);
-  };
 
   const generate = async () => {
     if (fragments.length < 2) return;
@@ -175,7 +159,7 @@ export default function App() {
     try {
       const data = await designPrimers(
         fragments.map(f => ({ name: f.name, sequence: f.sequence, needsAmplification: f.needsAmplification })),
-        junctions, method, circular, 60,
+        junctions, assemblyType === 'golden_gate' ? 'golden_gate' : 'overlap_pcr', circular, 60,
       );
       // Rename primers with prefix and apply polymerase Tm correction
       const tmAdj = { phusion: 3, kod: 2, taq: -5 }[polymerase] || 0;
@@ -219,10 +203,9 @@ export default function App() {
     setFragments(nf);
     setCalculated(false);
     if (nf.length > 1) {
-      const info = METHODS.find(x => x.id === method) || METHODS[0];
       setJunctions(j => [...j, {
-        type: method === 'golden_gate' ? 'golden_gate' : 'overlap',
-        overlapMode: 'split', overlapLength: info.olLen, tmTarget: info.tm,
+        type: assemblyType === 'golden_gate' ? 'golden_gate' : 'overlap',
+        overlapMode: 'split', overlapLength: 30, tmTarget: 62,
         enzyme: 'BsaI', overhang: '',
       }]);
     }
@@ -247,7 +230,7 @@ export default function App() {
       nf.splice(idx, 0, sp);
     }
     setFragments(nf);
-    setJunctions(mkJunctions(nf, method, circular));
+    setJunctions(mkJunctions(nf, assemblyType, circular));
     setSplitTarget(null);
     setCalculated(false);
   };
@@ -269,14 +252,17 @@ export default function App() {
             <h1 className="text-lg font-bold text-gray-800">Construct Designer</h1>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-500 mr-1">Method:</span>
-            {METHODS.map(m => (
-              <button key={m.id} onClick={() => changeMethod(m.id)}
-                className={`text-xs px-3 py-1.5 rounded-full font-semibold transition
-                  ${method === m.id ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-                {m.label}
-              </button>
-            ))}
+            <span className="text-xs text-gray-500">Assembly:</span>
+            <button onClick={() => { setAssemblyType('overlap'); setJunctions(j => j.map(x => ({ ...x, type: 'overlap' }))); }}
+              className={`text-xs px-3 py-1.5 rounded-full font-semibold transition
+                ${assemblyType === 'overlap' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+              Overlap / Gibson
+            </button>
+            <button onClick={() => { setAssemblyType('golden_gate'); setJunctions(j => j.map(x => ({ ...x, type: 'golden_gate' }))); }}
+              className={`text-xs px-3 py-1.5 rounded-full font-semibold transition
+                ${assemblyType === 'golden_gate' ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+              Golden Gate
+            </button>
             <select value={polymerase} onChange={e => setPolymerase(e.target.value)}
               className="text-xs border rounded px-2 py-1 ml-2">
               <option value="phusion">Phusion/Q5</option>
@@ -312,7 +298,7 @@ export default function App() {
               </button>
             ))}
             <button onClick={() => {
-              setSteps([...steps, { name: `Step ${steps.length + 2}`, fragments: [], junctions: [], method: 'overlap_pcr', circular: false }]);
+              setSteps([...steps, { name: `Step ${steps.length + 2}`, fragments: [], junctions: [], assemblyType: 'overlap', circular: false }]);
             }} className="text-xs px-2 py-1 text-gray-400 hover:text-blue-600">+ Step</button>
           </div>
         )}
@@ -335,7 +321,8 @@ export default function App() {
               onDrop={addFragment} onRemove={removeFragment}
               onToggleAmplification={toggleAmplification} onJunctionChange={updateJunction}
               onReorder={reorderFragments} calculated={calculated}
-              pcrSizes={pcrSizes} onSplitSignal={setSplitTarget} />
+              pcrSizes={pcrSizes} onSplitSignal={setSplitTarget}
+              primers={primers} />
 
             {/* Generate + actions */}
             {fragments.length >= 2 && (
@@ -380,12 +367,12 @@ export default function App() {
                   className="text-xs px-3 py-1.5 bg-green-50 text-green-700 rounded hover:bg-green-100 border border-green-200">
                   Export GenBank (.gb)
                 </button>
-                <button onClick={() => exportProtocol(fragments, junctions, primers, method, circular)}
+                <button onClick={() => exportProtocol(fragments, junctions, primers, protocol, circular)}
                   className="text-xs px-3 py-1.5 bg-purple-50 text-purple-700 rounded hover:bg-purple-100 border border-purple-200">
                   Export Protocol (.txt)
                 </button>
                 <button onClick={async () => {
-                  const r = await saveToPVCS(fragments, junctions, primers, method, circular);
+                  const r = await saveToPVCS(fragments, junctions, primers, protocol, circular);
                   if (r.success) alert('Saved to PlasmidVCS!');
                   else alert(`Failed: ${r.error}`);
                 }}
