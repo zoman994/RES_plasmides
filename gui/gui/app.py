@@ -80,7 +80,9 @@ pg = st.navigation(
     }
 )
 
-# --- Sidebar project info ---
+# --- Sidebar links ---
+st.sidebar.divider()
+st.sidebar.page_link("http://localhost:3000", label="Construct Designer", icon="\U0001f9e9")
 st.sidebar.divider()
 if "project_root" in st.session_state:
     from pvcs.config import load_config
