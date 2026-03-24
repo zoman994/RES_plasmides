@@ -14,6 +14,65 @@ from Bio.SeqRecord import SeqRecord
 from pvcs.models import Feature, Revision, _new_id, _now
 from pvcs.utils import sequence_checksum
 
+# ── Feature type inference from name patterns ──
+
+PROMOTER_PATTERNS = [
+    "pgla", "pgpd", "pcbh", "ppdc", "ptef", "peno", "ppki",
+    "paox", "pgap", "ptdh", "padh", "pcyc",
+    "plac", "ptac", "pt7", "pt5", "para", "ptrp",
+    "pcmv", "pef1", "psv40", "pcag", "pubq",
+    "promoter", "prom",
+]
+CDS_PATTERNS = [
+    "hygr", "ampr", "kanr", "neor", "zeor", "bsd", "nat", "ble",
+    "pyrg", "pyrf", "amds", "hph", "aph",
+    "cas9", "cas12", "cpf1",
+    "gfp", "rfp", "yfp", "cfp", "mcherry", "egfp",
+    "lacz", "bgal", "bgii", "bgl1", "cbhi", "xynl", "phyp", "chym",
+    "amy", "glucoamylase", "amylase", "xylanase", "lipase",
+    "exonuclease", "ligase", "polymerase",
+    "orf", "cds",
+]
+TERMINATOR_PATTERNS = [
+    "ttrpc", "tgla", "tcyc", "tadh", "taox", "tnos",
+    "t7term", "terminator", "term",
+]
+ORIGIN_PATTERNS = [
+    "ori", "origin", "ama1", "ars", "cen",
+    "cole1", "pbr322", "p15a",
+]
+
+
+def infer_feature_type(name: str, ftype: str) -> str:
+    """Infer real feature type from name if type is generic (misc_feature/gene)."""
+    if ftype not in ("misc_feature", "gene", ""):
+        return ftype
+    nl = name.lower().strip()
+    if nl == "p":
+        return "promoter"
+    if nl == "t":
+        return "terminator"
+    for p in PROMOTER_PATTERNS:
+        if p in nl:
+            return "promoter"
+    for p in TERMINATOR_PATTERNS:
+        if p in nl:
+            return "terminator"
+    for p in ORIGIN_PATTERNS:
+        if p in nl:
+            return "rep_origin"
+    for p in CDS_PATTERNS:
+        if p in nl:
+            return "CDS"
+    return ftype
+
+
+def infer_all_feature_types(features: list[Feature]) -> list[Feature]:
+    """Apply type inference to all features."""
+    for f in features:
+        f.type = infer_feature_type(f.name, f.type)
+    return features
+
 
 def _extract_feature_name(bio_feature: SeqFeature) -> str:
     """Best-effort feature name from qualifiers."""
@@ -65,8 +124,11 @@ def parse_genbank(filepath: str | Path) -> tuple[str, list[Feature], dict]:
     features = [
         _bio_feature_to_pvcs(f, full_seq)
         for f in record.features
-        if f.type != "source"  # skip 'source' feature
+        if f.type != "source"
     ]
+
+    # Infer real types from names (misc_feature → CDS/promoter/terminator)
+    features = infer_all_feature_types(features)
 
     topology = record.annotations.get("topology", "linear")
     metadata = {

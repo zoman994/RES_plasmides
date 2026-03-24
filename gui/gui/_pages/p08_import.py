@@ -7,33 +7,65 @@ from pathlib import Path
 
 import streamlit as st
 from pvcs.config import init_project
-from pvcs.parser import parse_genbank
+from pvcs.parser import parse_genbank, infer_all_feature_types
 from pvcs.revision import import_construct
-from gui.components.plasmid_map import render_circular_map, show_svg
-from gui.components.feature_table import render_feature_table
+from gui.components.plasmid_map import render_map_auto, show_svg
+from gui.components.feature_table import render_feature_table, render_editable_feature_table
 
 
 def _try_convert_dna(uploaded_file) -> Path | None:
-    """Try to convert .dna (SnapGene) to GenBank via snapgene_reader."""
+    """Convert .dna (SnapGene) to GenBank preserving all feature names."""
     try:
-        from snapgene_reader import snapgene_file_to_seqrecord
+        from snapgene_reader import snapgene_file_to_dict
+        from Bio.Seq import Seq
+        from Bio.SeqRecord import SeqRecord
+        from Bio.SeqFeature import SeqFeature, FeatureLocation
         from Bio import SeqIO
 
-        tmp = Path(tempfile.mktemp(suffix=".dna"))
-        tmp.write_bytes(uploaded_file.getvalue())
+        STRAND_MAP = {"+": 1, "-": -1, ".": 0, 1: 1, -1: -1, 0: 0, None: 0}
 
-        record = snapgene_file_to_seqrecord(str(tmp))
-        # Sanitize qualifiers: replace non-ASCII chars to avoid encoding errors
-        for feat in record.features:
-            for key, vals in feat.qualifiers.items():
-                feat.qualifiers[key] = [
-                    v.encode("ascii", "replace").decode("ascii") if isinstance(v, str) else v
-                    for v in vals
-                ]
-        gb_path = tmp.with_suffix(".gb")
+        tmp_dna = Path(tempfile.mktemp(suffix=".dna"))
+        tmp_dna.write_bytes(uploaded_file.getvalue())
+
+        d = snapgene_file_to_dict(str(tmp_dna))
+        seq = d.get("seq", "")
+        is_circ = d.get("is_circular", False)
+
+        record = SeqRecord(
+            Seq(seq),
+            id=uploaded_file.name.replace(".dna", ""),
+            name=uploaded_file.name.replace(".dna", "")[:16],
+            annotations={
+                "molecule_type": "DNA",
+                "topology": "circular" if is_circ else "linear",
+            },
+        )
+
+        for f in d.get("features", []):
+            quals: dict = {}
+            if "name" in f:
+                quals["label"] = [f["name"]]  # FULL name preserved
+            if "qualifiers" in f:
+                for k, v in f["qualifiers"].items():
+                    val = v if isinstance(v, list) else [str(v)]
+                    # Sanitize non-ASCII
+                    quals[k] = [
+                        s.encode("ascii", "replace").decode("ascii") if isinstance(s, str) else s
+                        for s in val
+                    ]
+
+            strand = STRAND_MAP.get(f.get("strand", 0), 0)
+            sf = SeqFeature(
+                FeatureLocation(f.get("start", 0), f.get("end", 0), strand=strand),
+                type=f.get("type", "misc_feature"),
+                qualifiers=quals,
+            )
+            record.features.append(sf)
+
+        gb_path = tmp_dna.with_suffix(".gb")
         with open(gb_path, "w", encoding="utf-8") as fh:
             SeqIO.write(record, fh, "genbank")
-        tmp.unlink()
+        tmp_dna.unlink()
         return gb_path
     except ImportError:
         st.error("snapgene_reader not installed. Run: pip install snapgene_reader")
@@ -108,22 +140,24 @@ def render():
     # Map + info
     left, right = st.columns([3, 2])
 
+    topology = metadata.get("topology", "linear")
+
     with left:
-        svg = render_circular_map(
+        svg = render_map_auto(
             features, len(sequence),
             construct_name=metadata.get("name", uploaded.name),
-            size=400,
+            topology=topology, size=420,
         )
-        show_svg(svg, height=420)
+        h = 200 if topology == "linear" else 440
+        show_svg(svg, height=h)
 
     with right:
         st.markdown(f"**File:** {uploaded.name}")
         st.markdown(f"**Length:** {len(sequence):,} bp")
-        st.markdown(f"**Topology:** {metadata.get('topology', 'unknown')}")
+        st.markdown(f"**Topology:** {topology}")
         st.markdown(f"**Features:** {len(features)}")
-        st.markdown(f"**Organism:** {metadata.get('organism', '—')}")
+        st.markdown(f"**Organism:** {metadata.get('organism', '\u2014')}")
 
-        # Feature summary
         type_counts: dict[str, int] = {}
         for f in features:
             if f.type != "source":
@@ -132,9 +166,15 @@ def render():
             summary = ", ".join(f"{v} {k}" for k, v in sorted(type_counts.items()))
             st.caption(summary)
 
-    # Feature table
-    with st.expander("Feature Details", expanded=False):
-        render_feature_table(features)
+    # Editable feature table
+    with st.expander("Feature Details (click to edit types/names)", expanded=True):
+        edited = render_editable_feature_table(features, key_prefix="imp")
+        if edited:
+            st.info("Features modified. Changes will be applied on import.")
+
+    # Read-only table with ORF info
+    with st.expander("Feature Table with ORF info"):
+        render_feature_table(features, full_sequence=sequence)
 
     # Import form
     st.divider()

@@ -231,6 +231,108 @@ def render_mini_map(
     )
 
 
+def render_linear_map(
+    features: list[Feature],
+    sequence_length: int,
+    construct_name: str = "",
+    width: int = 700,
+    height: int = 200,
+    show_labels: bool = True,
+    highlight_features: dict[str, str] | None = None,
+) -> str:
+    """Render a linear construct map as horizontal bar with features."""
+    ml, mr, mt, mb = 60, 30, 55, 55
+    tw = width - ml - mr
+    by = mt + 45  # backbone y
+    fh = 18  # feature height
+    fg = 3   # gap between backbone and features
+
+    parts: list[str] = []
+    parts.append(f'<svg viewBox="0 0 {width} {height}" width="{width}" height="{height}" '
+                 f'xmlns="http://www.w3.org/2000/svg" font-family="Arial,Helvetica,sans-serif">')
+    parts.append(f'<rect width="{width}" height="{height}" fill="#FAFBFC" rx="6"/>')
+
+    # Construct name
+    if construct_name:
+        parts.append(f'<text x="{ml}" y="20" font-size="14" font-weight="bold" fill="#2c3e50">{construct_name}</text>')
+    if sequence_length > 0:
+        parts.append(f'<text x="{ml}" y="36" font-size="11" fill="#7f8c8d">{sequence_length:,} bp, linear</text>')
+
+    # Backbone line
+    parts.append(f'<line x1="{ml}" y1="{by}" x2="{ml + tw}" y2="{by}" stroke="#888" stroke-width="2"/>')
+    # 5' and 3' labels
+    parts.append(f'<text x="{ml - 8}" y="{by + 4}" text-anchor="end" font-size="10" fill="#999">5\'</text>')
+    parts.append(f'<text x="{ml + tw + 8}" y="{by + 4}" text-anchor="start" font-size="10" fill="#999">3\'</text>')
+    # Arrow at 3' end
+    ax = ml + tw
+    parts.append(f'<polygon points="{ax},{by - 5} {ax + 8},{by} {ax},{by + 5}" fill="#888"/>')
+
+    # Scale ticks
+    tick_int = 500 if sequence_length < 5000 else 1000 if sequence_length < 15000 else 2000
+    for bp in range(0, sequence_length + 1, tick_int):
+        x = ml + (bp / sequence_length) * tw if sequence_length > 0 else ml
+        parts.append(f'<line x1="{x:.1f}" y1="{by - 4}" x2="{x:.1f}" y2="{by + 4}" stroke="#ccc" stroke-width="0.8"/>')
+        if bp > 0 and bp < sequence_length:
+            kb = bp / 1000
+            label = f"{kb:.0f}k" if kb == int(kb) else f"{kb:.1f}k"
+            parts.append(f'<text x="{x:.1f}" y="{by + 16}" text-anchor="middle" font-size="9" fill="#aaa">{label}</text>')
+
+    # Features as colored rectangles with direction arrows
+    for feat in sorted(features, key=lambda f: f.start):
+        if feat.type == "source":
+            continue
+        color = _get_feature_color(feat, highlight_features)
+        x = ml + ((feat.start - 1) / sequence_length) * tw
+        w = max(((feat.end - feat.start + 1) / sequence_length) * tw, 3)
+
+        if feat.strand == -1:
+            y = by + fg  # below
+        else:
+            y = by - fh - fg  # above
+
+        # Rounded rect
+        parts.append(f'<rect x="{x:.1f}" y="{y}" width="{w:.1f}" height="{fh}" '
+                     f'rx="3" fill="{color}" opacity="0.85" stroke="white" stroke-width="0.5">'
+                     f'<title>{feat.type}: {feat.name} ({feat.start}..{feat.end})</title></rect>')
+
+        # Direction arrow inside
+        arrow_size = min(6, w * 0.3)
+        ay = y + fh / 2
+        if feat.strand == 1 and w > 10:
+            ax2 = x + w - 2
+            parts.append(f'<polygon points="{ax2 - arrow_size:.1f},{ay - 3} {ax2:.1f},{ay} {ax2 - arrow_size:.1f},{ay + 3}" fill="white" opacity="0.7"/>')
+        elif feat.strand == -1 and w > 10:
+            ax2 = x + 2
+            parts.append(f'<polygon points="{ax2 + arrow_size:.1f},{ay - 3} {ax2:.1f},{ay} {ax2 + arrow_size:.1f},{ay + 3}" fill="white" opacity="0.7"/>')
+
+        # Label
+        if show_labels and w > 15:
+            lx = x + w / 2
+            ly = y - 4 if feat.strand != -1 else y + fh + 12
+            font_size = min(10, max(7, w * 0.12))
+            parts.append(f'<text x="{lx:.1f}" y="{ly}" text-anchor="middle" '
+                         f'font-size="{font_size:.0f}" fill="#333" font-weight="500">{feat.name}</text>')
+
+    parts.append("</svg>")
+    return "\n".join(parts)
+
+
+def render_map_auto(
+    features: list[Feature],
+    sequence_length: int,
+    construct_name: str = "",
+    topology: str = "circular",
+    size: int = 500,
+    **kwargs,
+) -> str:
+    """Auto-select circular or linear map based on topology."""
+    if topology == "linear":
+        return render_linear_map(features, sequence_length, construct_name,
+                                  width=size, height=int(size * 0.4), **kwargs)
+    return render_circular_map(features, sequence_length, construct_name,
+                               size=size, **kwargs)
+
+
 def show_svg(svg_string: str, height: int | None = None):
     """Render SVG in Streamlit reliably.
     
