@@ -10,7 +10,7 @@ const COLOR_PAIRS = {
   regulatory:   ['#9B59B6', '#7D3C98'],
 };
 
-export default function PartBlock({ fragment, index, onRemove, onToggleAmplification, onReorder }) {
+export default function PartBlock({ fragment, index, onRemove, onToggleAmplification, onReorder, pcrSize }) {
   const [{ isDragging }, drag] = useDrag({
     type: 'CANVAS_PART',
     item: { index },
@@ -51,12 +51,17 @@ export default function PartBlock({ fragment, index, onRemove, onToggleAmplifica
         {fragment.name}
         {fragment.strand !== -1 && <span className="text-xs ml-1 opacity-60">&rarr;</span>}
       </div>
-      {/* Length */}
+      {/* Length + PCR size */}
       <div className="text-center text-[10px] text-gray-400 mt-0.5">
         {fragment.length >= 1000
           ? `${(fragment.length / 1000).toFixed(1)} kb`
           : `${fragment.length} bp`}
       </div>
+      {pcrSize && (
+        <div className="text-center text-[9px] text-blue-500 font-medium">
+          PCR: {pcrSize} bp
+        </div>
+      )}
       {/* Remove */}
       <button onClick={() => onRemove(index)}
         className="absolute -top-2 -right-2 w-4 h-4 bg-red-500 text-white rounded-full

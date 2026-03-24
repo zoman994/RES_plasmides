@@ -1,4 +1,4 @@
-export default function PrimerPanel({ primers, warnings, orderSheet }) {
+export default function PrimerPanel({ primers, warnings, orderSheet, primerQuality = [] }) {
   if (!primers || primers.length === 0) return null;
 
   const copyToClipboard = () => {
@@ -61,7 +61,18 @@ export default function PrimerPanel({ primers, warnings, orderSheet }) {
         <span>Tm bind = PCR annealing temp</span>
       </div>
 
-      {/* Warnings */}
+      {/* Primer quality warnings */}
+      {primerQuality.length > 0 && (
+        <div className="mt-2 space-y-1">
+          {primerQuality.map((pq, i) => (
+            <div key={i} className="text-[10px] text-orange-600 bg-orange-50 px-2 py-1 rounded">
+              <strong>{pq.name}:</strong> {pq.warnings.join(', ')}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* API Warnings */}
       {warnings && warnings.length > 0 && (
         <div className="mt-3 space-y-1">
           {warnings.map((w, i) => (

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import PartsPalette from './components/PartsPalette';
@@ -6,6 +6,8 @@ import DesignCanvas from './components/DesignCanvas';
 import PrimerPanel from './components/PrimerPanel';
 import SequenceViewer from './components/SequenceViewer';
 import { fetchParts, designPrimers } from './api';
+import { validateConstruct, checkPrimerQuality, pcrProductSize } from './validate';
+import { exportGenBank, exportProtocol, saveToPVCS } from './exports';
 
 const METHODS = [
   { id: 'overlap_pcr', label: 'Overlap PCR', olLen: 30, tm: 62 },
@@ -13,6 +15,7 @@ const METHODS = [
   { id: 'golden_gate', label: 'Golden Gate', olLen: 0, tm: 0 },
 ];
 
+const LS_KEY = 'pvcs_designer_state';
 let nextId = 1;
 
 export default function App() {
@@ -21,37 +24,73 @@ export default function App() {
   const [junctions, setJunctions] = useState([]);
   const [method, setMethod] = useState('overlap_pcr');
   const [primers, setPrimers] = useState([]);
-  const [warnings, setWarnings] = useState([]);
+  const [apiWarnings, setApiWarnings] = useState([]);
   const [orderSheet, setOrderSheet] = useState('');
   const [circular, setCircular] = useState(false);
   const [calculated, setCalculated] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  // ── Restore from localStorage on mount ──
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(LS_KEY);
+      if (saved) {
+        const s = JSON.parse(saved);
+        if (s.fragments?.length) { setFragments(s.fragments); nextId = s.fragments.length + 1; }
+        if (s.junctions) setJunctions(s.junctions);
+        if (s.method) setMethod(s.method);
+        if (s.circular !== undefined) setCircular(s.circular);
+      }
+    } catch {}
+  }, []);
+
+  // ── Save to localStorage on change ──
+  useEffect(() => {
+    localStorage.setItem(LS_KEY, JSON.stringify({ fragments, junctions, method, circular }));
+  }, [fragments, junctions, method, circular]);
+
+  // ── Load parts ──
   useEffect(() => {
     fetchParts().then(setParts).catch(() => {
       setParts([
-        { id: 'd1', name: 'PglaA', type: 'promoter', sequence: 'ATCG'.repeat(212), length: 850, organism: 'A. niger' },
-        { id: 'd2', name: 'XynTL', type: 'CDS', sequence: 'ATGC'.repeat(225), length: 900, organism: 'T. lanuginosus' },
-        { id: 'd3', name: 'TtrpC', type: 'terminator', sequence: 'GCTA'.repeat(185), length: 740, organism: 'A. nidulans' },
-        { id: 'd4', name: 'HygR', type: 'CDS', sequence: 'ATCG'.repeat(256), length: 1026, organism: 'E. coli' },
-        { id: 'd5', name: 'PgpdA', type: 'promoter', sequence: 'GCGC'.repeat(135), length: 540, organism: 'A. nidulans' },
-        { id: 'd6', name: 'pyrG', type: 'CDS', sequence: 'TAGC'.repeat(241), length: 966, organism: 'A. fumigatus' },
+        { id: 'd1', name: 'PglaA', type: 'promoter', sequence: 'ATCG'.repeat(212), length: 850 },
+        { id: 'd2', name: 'XynTL', type: 'CDS', sequence: 'ATGC'.repeat(225), length: 900 },
+        { id: 'd3', name: 'TtrpC', type: 'terminator', sequence: 'GCTA'.repeat(185), length: 740 },
+        { id: 'd4', name: 'HygR', type: 'CDS', sequence: 'ATCG'.repeat(256), length: 1026 },
+        { id: 'd5', name: 'PgpdA', type: 'promoter', sequence: 'GCGC'.repeat(135), length: 540 },
+        { id: 'd6', name: 'pyrG', type: 'CDS', sequence: 'TAGC'.repeat(241), length: 966 },
       ]);
     });
   }, []);
 
+  // ── Construct validation warnings ──
+  const constructWarnings = useMemo(() => validateConstruct(fragments), [fragments]);
+
+  // ── Primer quality warnings ──
+  const primerQuality = useMemo(() =>
+    primers.map(p => ({ name: p.name, warnings: checkPrimerQuality(p) }))
+      .filter(pq => pq.warnings.length > 0),
+    [primers]);
+
+  // ── PCR product sizes ──
+  const pcrSizes = useMemo(() =>
+    fragments.map((f, i) => {
+      const leftJ = i > 0 ? junctions[i - 1] : (circular ? junctions[junctions.length - 1] : null);
+      const rightJ = i < junctions.length ? junctions[i] : (circular ? junctions[0] : null);
+      return pcrProductSize(f, leftJ, rightJ);
+    }),
+    [fragments, junctions, circular]);
+
+  // ── Junction helpers ──
   const mkJunctions = useCallback((frags, m, isCirc = circular) => {
     const info = METHODS.find(x => x.id === m) || METHODS[0];
     const count = isCirc ? frags.length : Math.max(0, frags.length - 1);
-    return Array.from({ length: count }, (_, i) => ({
+    return Array.from({ length: count }, () => ({
       type: m === 'golden_gate' ? 'golden_gate' : 'overlap',
-      overlapMode: 'split',
-      overlapLength: info.olLen,
-      tmTarget: info.tm,
-      enzyme: 'BsaI',
-      overhang: '',
+      overlapMode: 'split', overlapLength: info.olLen, tmTarget: info.tm,
+      enzyme: 'BsaI', overhang: '',
     }));
-  }, []);
+  }, [circular]);
 
   const addFragment = (part) => {
     const frag = {
@@ -61,48 +100,49 @@ export default function App() {
     };
     const nf = [...fragments, frag];
     setFragments(nf);
+    setCalculated(false);
     setJunctions(j => {
-      const nj = [...j];
       if (nf.length > 1) {
         const info = METHODS.find(x => x.id === method) || METHODS[0];
-        nj.push({
+        return [...j, {
           type: method === 'golden_gate' ? 'golden_gate' : 'overlap',
           overlapMode: 'split', overlapLength: info.olLen, tmTarget: info.tm,
           enzyme: 'BsaI', overhang: '',
-        });
+        }];
       }
-      return nj;
+      return j;
     });
   };
 
-  const removeFragment = (index) => {
-    const nf = fragments.filter((_, i) => i !== index);
-    setFragments(nf);
-    setJunctions(mkJunctions(nf, method, circular));
+  const removeFragment = (i) => {
+    setFragments(f => f.filter((_, idx) => idx !== i));
+    setJunctions(j => mkJunctions(fragments.filter((_, idx) => idx !== i), method, circular));
+    setCalculated(false);
   };
 
   const toggleCircular = () => {
     const next = !circular;
     setCircular(next);
     setJunctions(mkJunctions(fragments, method, next));
+    setCalculated(false);
   };
 
-  const toggleAmplification = (index) => {
+  const toggleAmplification = (i) => {
+    setFragments(f => f.map((x, idx) => idx === i ? { ...x, needsAmplification: !x.needsAmplification } : x));
+  };
+
+  const updateJunction = (i, cfg) => {
+    setJunctions(j => j.map((x, idx) => idx === i ? cfg : x));
+    setCalculated(false);
+  };
+
+  const reorderFragments = (from, to) => {
     const nf = [...fragments];
-    nf[index] = { ...nf[index], needsAmplification: !nf[index].needsAmplification };
-    setFragments(nf);
-  };
-
-  const updateJunction = (index, config) => {
-    const nj = [...junctions]; nj[index] = config; setJunctions(nj);
-  };
-
-  const reorderFragments = (fromIndex, toIndex) => {
-    const nf = [...fragments];
-    const [moved] = nf.splice(fromIndex, 1);
-    nf.splice(toIndex, 0, moved);
+    const [moved] = nf.splice(from, 1);
+    nf.splice(to, 0, moved);
     setFragments(nf);
     setJunctions(mkJunctions(nf, method, circular));
+    setCalculated(false);
   };
 
   const changeMethod = (m) => {
@@ -114,6 +154,7 @@ export default function App() {
         overlapLength: info.olLen || j.overlapLength, tmTarget: info.tm || j.tmTarget,
       }));
     });
+    setCalculated(false);
   };
 
   const generate = async () => {
@@ -125,9 +166,8 @@ export default function App() {
         junctions, method, circular, 60,
       );
       setPrimers(data.primers || []);
-      setWarnings(data.warnings || []);
+      setApiWarnings(data.warnings || []);
       setOrderSheet(data.orderSheet || '');
-      // Merge junction overlap data from API response
       if (data.junctions) {
         setJunctions(prev => prev.map((j, i) => ({
           ...j,
@@ -138,10 +178,18 @@ export default function App() {
       }
       setCalculated(true);
     } catch (e) {
-      setWarnings([`API error: ${e.message}`]);
+      setApiWarnings([`API error: ${e.message}`]);
     }
     setLoading(false);
   };
+
+  const clearAll = () => {
+    setFragments([]); setJunctions([]); setPrimers([]);
+    setApiWarnings([]); setCalculated(false);
+    localStorage.removeItem(LS_KEY);
+  };
+
+  const totalBp = fragments.reduce((s, f) => s + (f.sequence || '').length, 0);
 
   return (
     <DndProvider backend={HTML5Backend}>
@@ -160,31 +208,73 @@ export default function App() {
                 {m.label}
               </button>
             ))}
+            {fragments.length > 0 && (
+              <button onClick={clearAll} className="text-xs px-2 py-1 text-red-500 hover:bg-red-50 rounded ml-2">
+                Clear
+              </button>
+            )}
           </div>
         </header>
 
         <div className="flex flex-1 overflow-hidden">
           <PartsPalette parts={parts} />
-          <div className="flex-1 flex flex-col p-4 gap-4 overflow-y-auto">
+          <div className="flex-1 flex flex-col p-4 gap-3 overflow-y-auto">
+
+            {/* Construct validation warnings */}
+            {constructWarnings.length > 0 && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-1">
+                {constructWarnings.map((w, i) => (
+                  <div key={i} className="text-xs text-amber-700">{w}</div>
+                ))}
+              </div>
+            )}
+
             <DesignCanvas fragments={fragments} junctions={junctions}
               circular={circular} onToggleCircular={toggleCircular}
               onDrop={addFragment} onRemove={removeFragment}
               onToggleAmplification={toggleAmplification} onJunctionChange={updateJunction}
-              onReorder={reorderFragments} calculated={calculated} />
+              onReorder={reorderFragments} calculated={calculated}
+              pcrSizes={pcrSizes} />
 
+            {/* Generate + actions */}
             {fragments.length >= 2 && (
-              <button onClick={generate} disabled={loading}
-                className="self-center px-6 py-2 bg-blue-600 text-white rounded-lg
-                  font-semibold text-sm hover:bg-blue-700 transition disabled:opacity-50">
-                {loading ? 'Calculating...' : 'Generate Primers'}
-              </button>
+              <div className="flex items-center justify-center gap-3">
+                <button onClick={generate} disabled={loading}
+                  className="px-6 py-2 bg-blue-600 text-white rounded-lg
+                    font-semibold text-sm hover:bg-blue-700 transition disabled:opacity-50">
+                  {loading ? 'Calculating...' : 'Generate Primers'}
+                </button>
+              </div>
             )}
 
             {fragments.length > 0 && (
               <SequenceViewer fragments={fragments} circular={circular} primers={primers} />
             )}
 
-            <PrimerPanel primers={primers} warnings={warnings} orderSheet={orderSheet} />
+            <PrimerPanel primers={primers} warnings={[...apiWarnings]}
+              orderSheet={orderSheet} primerQuality={primerQuality} />
+
+            {/* Export buttons */}
+            {primers.length > 0 && (
+              <div className="flex gap-2 flex-wrap">
+                <button onClick={() => exportGenBank(fragments, 'designed_construct', circular)}
+                  className="text-xs px-3 py-1.5 bg-green-50 text-green-700 rounded hover:bg-green-100 border border-green-200">
+                  Export GenBank (.gb)
+                </button>
+                <button onClick={() => exportProtocol(fragments, junctions, primers, method, circular)}
+                  className="text-xs px-3 py-1.5 bg-purple-50 text-purple-700 rounded hover:bg-purple-100 border border-purple-200">
+                  Export Protocol (.txt)
+                </button>
+                <button onClick={async () => {
+                  const r = await saveToPVCS(fragments, junctions, primers, method, circular);
+                  if (r.success) alert('Saved to PlasmidVCS!');
+                  else alert(`Failed: ${r.error}`);
+                }}
+                  className="text-xs px-3 py-1.5 bg-blue-50 text-blue-700 rounded hover:bg-blue-100 border border-blue-200">
+                  Save to PlasmidVCS
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>

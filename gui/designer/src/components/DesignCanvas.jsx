@@ -6,7 +6,7 @@ import JunctionDNA from './JunctionDNA';
 export default function DesignCanvas({
   fragments, junctions, circular, onToggleCircular,
   onDrop, onRemove, onToggleAmplification, onJunctionChange, onReorder,
-  calculated,
+  calculated, pcrSizes = [],
 }) {
   const [{ isOver }, drop] = useDrop({
     accept: 'PART',
@@ -49,7 +49,7 @@ export default function DesignCanvas({
               <div key={frag.id || i} className="flex items-center">
                 <PartBlock fragment={frag} index={i}
                   onRemove={onRemove} onToggleAmplification={onToggleAmplification}
-                  onReorder={onReorder} />
+                  onReorder={onReorder} pcrSize={pcrSizes[i]} />
                 {/* Junction between fragments */}
                 {i < junctions.length && (i < n - 1 || circular) && (
                   <div className="flex flex-col items-center">
