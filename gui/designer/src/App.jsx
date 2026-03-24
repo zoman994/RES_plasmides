@@ -7,6 +7,7 @@ import PrimerPanel from './components/PrimerPanel';
 import SequenceViewer from './components/SequenceViewer';
 import AddFragmentModal from './components/AddFragmentModal';
 import RestrictionPanel from './components/RestrictionPanel';
+import ProtocolTracker, { PCR_MIXES, ASM_PROTOCOLS } from './components/ProtocolTracker';
 import MutagenesisWizard from './components/MutagenesisWizard';
 import VerificationPanel from './components/VerificationPanel';
 import SignalPeptideSplitter from './components/SignalPeptideSplitter';
@@ -32,6 +33,8 @@ export default function App() {
   const [modalMode, setModalMode] = useState(null);
   const [splitTarget, setSplitTarget] = useState(null);
   const [showMutagenesis, setShowMutagenesis] = useState(false);
+  const [activeTab, setActiveTab] = useState('canvas');
+  const [protocolSteps, setProtocolSteps] = useState([]);
   const [polymerase, setPolymerase] = useState('phusion');
   const [primerPrefix, setPrimerPrefix] = useState('IS');
 
@@ -183,6 +186,39 @@ export default function App() {
         })));
       }
       setCalculated(true);
+
+      // Generate protocol steps
+      const pSteps = [];
+      const mix = PCR_MIXES[polymerase] || PCR_MIXES.phusion;
+      fragments.forEach((frag, fi) => {
+        if (!frag.needsAmplification) return;
+        const fwd = renamedPrimers.find(p => p.direction === 'forward' && p.name.includes(frag.name));
+        const rev = renamedPrimers.find(p => p.direction === 'reverse' && p.name.includes(frag.name));
+        const sz = pcrSizes[fi] || frag.length;
+        pSteps.push({
+          id: `pcr_${fi}`, type: 'pcr', title: `\u041f\u0426\u0420 ${frag.name}`,
+          subtitle: `${sz} \u043f.\u043d.`, template: frag.name,
+          fwdPrimer: fwd?.name, revPrimer: rev?.name,
+          annealTemp: Math.round(Math.min(fwd?.tmBinding || 60, rev?.tmBinding || 60)),
+          expectedSize: sz, extensionTime: Math.ceil(sz / 1000) * mix.extRate, mix,
+          statuses: [{ label: '\u041f\u0426\u0420', done: false }, { label: '\u0413\u0435\u043b\u044c', done: false }, { label: '\u041e\u0447\u0438\u0441\u0442\u043a\u0430', done: false }],
+        });
+      });
+      pSteps.push({
+        id: 'assembly', type: 'assembly', title: '\u0421\u0431\u043e\u0440\u043a\u0430',
+        subtitle: (ASM_PROTOCOLS[protocol] || ASM_PROTOCOLS.overlap_pcr).name,
+        protocol: ASM_PROTOCOLS[protocol] || ASM_PROTOCOLS.overlap_pcr,
+        expectedSize: totalBp,
+        fragments: fragments.filter(f => f.needsAmplification).map(f => f.name),
+        statuses: [{ label: '\u0421\u0431\u043e\u0440\u043a\u0430', done: false }, { label: '\u0413\u0435\u043b\u044c', done: false }],
+      });
+      pSteps.push({ id: 'transform', type: 'transform', title: '\u0422\u0440\u0430\u043d\u0441\u0444\u043e\u0440\u043c\u0430\u0446\u0438\u044f',
+        statuses: [{ label: '\u0422\u0440\u0430\u043d\u0441\u0444.', done: false }, { label: '\u041a\u043e\u043b\u043e\u043d\u0438\u0438', done: false }] });
+      pSteps.push({ id: 'screening', type: 'screening', title: 'Colony PCR', expectedSize: totalBp,
+        statuses: [{ label: 'Colony PCR', done: false }, { label: '\u041e\u0442\u043e\u0431\u0440\u0430\u043d\u044b', done: false }] });
+      pSteps.push({ id: 'sequencing', type: 'sequencing', title: '\u0421\u0435\u043a\u0432\u0435\u043d\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435',
+        statuses: [{ label: '\u041e\u0442\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u043e', done: false }, { label: '\u041f\u043e\u0434\u0442\u0432.', done: false }] });
+      setProtocolSteps(pSteps);
     } catch (e) {
       setApiWarnings([`API error: ${e.message}`]);
     }
@@ -245,6 +281,10 @@ export default function App() {
     setJunctions(result.junctions);
     setCalculated(false);
     setPrimers([]);
+  };
+
+  const updateProtocolStep = (stepId, data) => {
+    setProtocolSteps(ps => ps.map(s => s.id === stepId ? { ...s, ...data } : s));
   };
 
   const clearAll = () => {
@@ -351,12 +391,46 @@ export default function App() {
               </div>
             )}
 
-            {fragments.length > 0 && (
+            {/* Tabs: Sequence / Primers / Protocol */}
+            {(fragments.length > 0 || primers.length > 0) && (
+              <div className="flex gap-1 border-b">
+                {fragments.length > 0 && (
+                  <button onClick={() => setActiveTab('sequence')}
+                    className={`text-xs px-3 py-1.5 border-b-2 font-medium transition ${
+                      activeTab === 'sequence' ? 'border-blue-500 text-blue-700' : 'border-transparent text-gray-500'}`}>
+                    {'\uD83E\uDDEC'} \u041f\u043e\u0441\u043b\u0435\u0434\u043e\u0432\u0430\u0442\u0435\u043b\u044c\u043d\u043e\u0441\u0442\u044c
+                  </button>
+                )}
+                {primers.length > 0 && (
+                  <button onClick={() => setActiveTab('primers')}
+                    className={`text-xs px-3 py-1.5 border-b-2 font-medium transition ${
+                      activeTab === 'primers' ? 'border-blue-500 text-blue-700' : 'border-transparent text-gray-500'}`}>
+                    {'\uD83E\uDDEA'} \u041f\u0440\u0430\u0439\u043c\u0435\u0440\u044b ({primers.length})
+                  </button>
+                )}
+                {calculated && protocolSteps.length > 0 && (
+                  <button onClick={() => setActiveTab('protocol')}
+                    className={`text-xs px-3 py-1.5 border-b-2 font-medium transition ${
+                      activeTab === 'protocol' ? 'border-purple-500 text-purple-700' : 'border-transparent text-gray-500'}`}>
+                    {'\uD83D\uDCCB'} \u041f\u0440\u043e\u0442\u043e\u043a\u043e\u043b ({protocolSteps.length})
+                  </button>
+                )}
+              </div>
+            )}
+
+            {activeTab === 'sequence' && fragments.length > 0 && (
               <SequenceViewer fragments={fragments} circular={circular} primers={primers} />
             )}
 
-            <PrimerPanel primers={primers} warnings={[...apiWarnings]}
-              orderSheet={orderSheet} primerQuality={primerQuality} />
+            {activeTab === 'primers' && (
+              <PrimerPanel primers={primers} warnings={[...apiWarnings]}
+                orderSheet={orderSheet} primerQuality={primerQuality} />
+            )}
+
+            {activeTab === 'protocol' && (
+              <ProtocolTracker steps={protocolSteps} onUpdate={updateProtocolStep}
+                polymerase={polymerase} protocol={protocol} />
+            )}
 
             {/* Analysis panels */}
             {fragments.length > 0 && (
