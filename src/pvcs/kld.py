@@ -168,13 +168,20 @@ def design_kld_deletion(
     binding_length: int = 20,
     salt_mm: float = 50.0,
 ) -> KLDDesign:
-    """Design KLD primers for a deletion."""
+    """Design KLD primers for a deletion.
+
+    Args:
+        start: First deleted position (1-based, inclusive).
+        end: Last deleted position (1-based, inclusive).
+    """
     seq = template_sequence.upper()
-    s0, e0 = start - 1, end  # 0-based half-open
+    s0 = start - 1       # 0-based start (inclusive)
+    e0 = end              # 0-based end (exclusive) = 1-based end (inclusive)
 
     deleted = seq[s0:e0]
     mutant = seq[:s0] + seq[e0:]
-    description = f"Delete {e0 - s0} bp at pos {start}-{end}"
+    del_len = e0 - s0
+    description = f"Delete {del_len} bp at pos {start}-{end}"
 
     # Forward: binds just after deletion
     fwd_seq = seq[e0:e0 + binding_length]

@@ -36,6 +36,10 @@ RE_DATABASE: dict[str, dict] = {
     "ClaI":    {"site": "ATCGAT",   "cut": (2, 4), "end": "5prime", "overhang": "CG"},
     "MfeI":    {"site": "CAATTG",   "cut": (1, 5), "end": "5prime", "overhang": "AATT"},
     "AgeI":    {"site": "ACCGGT",   "cut": (1, 5), "end": "5prime", "overhang": "CCGG"},
+    "SpeI":    {"site": "ACTAGT",   "cut": (1, 5), "end": "5prime", "overhang": "CTAG"},
+    "AvrII":   {"site": "CCTAGG",   "cut": (1, 5), "end": "5prime", "overhang": "CTAG"},
+    "BclI":    {"site": "TGATCA",   "cut": (1, 5), "end": "5prime", "overhang": "GATC"},
+    "BspHI":   {"site": "TCATGA",   "cut": (1, 5), "end": "5prime", "overhang": "CATG"},
     # Type IIS (for Golden Gate)
     "BsaI":    {"site": "GGTCTC",  "cut": (7, 11), "end": "typeIIS", "overhang": ""},
     "BbsI":    {"site": "GAAGAC",  "cut": (8, 12), "end": "typeIIS", "overhang": ""},
@@ -44,16 +48,20 @@ RE_DATABASE: dict[str, dict] = {
     "SapI":    {"site": "GCTCTTC", "cut": (8, 12), "end": "typeIIS", "overhang": ""},
 }
 
-# Enzymes producing compatible sticky ends
+# Enzymes producing compatible sticky ends (same overhang sequence)
 COMPATIBLE_PAIRS: dict[tuple[str, str], bool] = {
-    ("BamHI", "BglII"): True,
-    ("BglII", "BamHI"): True,
-    ("EcoRI", "MfeI"): True,
-    ("MfeI", "EcoRI"): True,
-    ("NheI", "XbaI"): True,
-    ("XbaI", "NheI"): True,
-    ("SalI", "XhoI"): True,
-    ("XhoI", "SalI"): True,
+    ("BamHI", "BglII"): True, ("BglII", "BamHI"): True,   # GATC
+    ("BamHI", "BclI"): True,  ("BclI", "BamHI"): True,    # GATC
+    ("BglII", "BclI"): True,  ("BclI", "BglII"): True,    # GATC
+    ("EcoRI", "MfeI"): True,  ("MfeI", "EcoRI"): True,    # AATT
+    ("NheI", "XbaI"): True,   ("XbaI", "NheI"): True,     # CTAG
+    ("NheI", "SpeI"): True,   ("SpeI", "NheI"): True,     # CTAG
+    ("NheI", "AvrII"): True,  ("AvrII", "NheI"): True,    # CTAG
+    ("XbaI", "SpeI"): True,   ("SpeI", "XbaI"): True,     # CTAG
+    ("XbaI", "AvrII"): True,  ("AvrII", "XbaI"): True,    # CTAG
+    ("SpeI", "AvrII"): True,  ("AvrII", "SpeI"): True,    # CTAG
+    ("SalI", "XhoI"): True,   ("XhoI", "SalI"): True,     # TCGA
+    ("NcoI", "BspHI"): True,  ("BspHI", "NcoI"): True,    # CATG
 }
 
 COMMON_PAIRS = [
