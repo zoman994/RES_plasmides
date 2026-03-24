@@ -1,8 +1,11 @@
-"""Assembly Pipeline — create assemblies, update status, view templates."""
+"""Assembly Pipeline — kanban board with drag-and-drop, create assemblies."""
 
 from __future__ import annotations
 
+import json
+
 import streamlit as st
+import streamlit.components.v1 as components
 from pvcs import database as db
 from pvcs.config import db_path
 from pvcs.assembly import (
@@ -27,7 +30,7 @@ def _get_conn():
 
 
 def _parse_fragments(text: str) -> list[Fragment]:
-    """Parse 'Name:start-end, Name2:start-end' into Fragment objects."""
+    """Parse 'Name:start-end, ...' into Fragment objects."""
     fragments = []
     for i, part in enumerate(text.split(","), 1):
         part = part.strip()
@@ -37,26 +40,141 @@ def _parse_fragments(text: str) -> list[Fragment]:
             name, coords = part.split(":", 1)
             name = name.strip()
             if "-" in coords:
-                start_s, end_s = coords.split("-", 1)
-                start = int(start_s.strip())
-                end = int(end_s.strip())
+                s, e = coords.split("-", 1)
+                start, end = int(s.strip()), int(e.strip())
             else:
-                start = int(coords.strip())
-                end = start
+                start = end = int(coords.strip())
         else:
-            name = part
-            start = 0
-            end = 0
-
-        fragments.append(Fragment(
-            id=_new_id(),
-            order=i,
-            name=name,
-            source_type="pcr_product",
-            start=start,
-            end=end,
-        ))
+            name, start, end = part, 0, 0
+        fragments.append(Fragment(id=_new_id(), order=i, name=name,
+                                  source_type="pcr_product", start=start, end=end))
     return fragments
+
+
+STATUS_COLORS = {
+    "design": "#3498DB",
+    "primers_ordered": "#0097A7",
+    "pcr": "#F39C12",
+    "assembly": "#E67E22",
+    "transform": "#9B59B6",
+    "screen": "#E91E63",
+    "verified": "#27AE60",
+}
+
+STATUS_LABELS = {
+    "design": "Design",
+    "primers_ordered": "Primers",
+    "pcr": "PCR",
+    "assembly": "Assembly",
+    "transform": "Transform",
+    "screen": "Screen",
+    "verified": "Verified",
+}
+
+
+def _build_kanban_html(assemblies: list[dict]) -> str:
+    """Build HTML/CSS/JS kanban board with drag-and-drop."""
+    statuses = list(VALID_STATUSES)
+
+    # Build cards JSON for JS
+    cards = []
+    for a in assemblies:
+        cards.append({
+            "id": a["operation"].id,
+            "construct": a["construct_name"],
+            "version": a["version"],
+            "method": a["method"],
+            "frags": a["fragments_count"],
+            "status": a["status"],
+            "notes": (a["notes"] or "")[:60],
+        })
+    cards_json = json.dumps(cards)
+
+    # Build column headers
+    cols_html = ""
+    for s in statuses:
+        color = STATUS_COLORS.get(s, "#999")
+        label = STATUS_LABELS.get(s, s)
+        cols_html += f'''
+        <div class="kb-col" data-status="{s}"
+             ondragover="event.preventDefault();this.classList.add('kb-col-over')"
+             ondragleave="this.classList.remove('kb-col-over')"
+             ondrop="onDrop(event, '{s}')">
+            <div class="kb-col-header" style="background:{color}">{label}</div>
+            <div class="kb-col-body" id="col-{s}"></div>
+        </div>'''
+
+    return f'''<!DOCTYPE html>
+<html><head><style>
+* {{ margin:0; padding:0; box-sizing:border-box; font-family: -apple-system, 'Segoe UI', Arial, sans-serif; }}
+body {{ background: transparent; }}
+.kb-board {{ display:flex; gap:8px; overflow-x:auto; padding:8px 4px; min-height:320px; }}
+.kb-col {{ flex:1; min-width:120px; background:#F5F6F8; border-radius:10px; display:flex; flex-direction:column; }}
+.kb-col-over {{ background:#E3E8EF !important; }}
+.kb-col-header {{ color:#fff; padding:8px 10px; border-radius:10px 10px 0 0; font-weight:700; font-size:11px;
+    text-align:center; text-transform:uppercase; letter-spacing:0.05em; }}
+.kb-col-body {{ padding:6px; flex:1; display:flex; flex-direction:column; gap:6px; min-height:60px; }}
+.kb-card {{ background:#fff; border-radius:8px; padding:10px 12px; cursor:grab; border:1px solid #E2E6EA;
+    box-shadow:0 1px 3px rgba(0,0,0,0.06); transition:box-shadow 0.15s, transform 0.15s; }}
+.kb-card:hover {{ box-shadow:0 3px 10px rgba(0,0,0,0.12); }}
+.kb-card:active {{ cursor:grabbing; transform:scale(0.97); }}
+.kb-card-name {{ font-weight:700; font-size:13px; color:#1A1A2E; margin-bottom:3px; }}
+.kb-card-meta {{ font-size:11px; color:#7F8C8D; }}
+.kb-card-method {{ display:inline-block; background:#EDF2F7; padding:1px 6px; border-radius:4px;
+    font-size:10px; color:#4A5568; margin-top:4px; }}
+.kb-empty {{ color:#B0B8C4; font-size:11px; text-align:center; padding:20px 8px; font-style:italic; }}
+</style></head><body>
+<div class="kb-board">{cols_html}</div>
+<script>
+const cards = {cards_json};
+const statuses = {json.dumps(statuses)};
+
+function renderCards() {{
+    statuses.forEach(s => {{
+        const col = document.getElementById('col-' + s);
+        col.innerHTML = '';
+        const colCards = cards.filter(c => c.status === s);
+        if (colCards.length === 0) {{
+            col.innerHTML = '<div class="kb-empty">Drop here</div>';
+        }}
+        colCards.forEach(c => {{
+            const el = document.createElement('div');
+            el.className = 'kb-card';
+            el.draggable = true;
+            el.dataset.id = c.id;
+            el.dataset.construct = c.construct;
+            el.innerHTML = '<div class="kb-card-name">' + c.construct + '</div>'
+                + '<div class="kb-card-meta">v' + c.version + ' &middot; ' + c.frags + ' frags</div>'
+                + (c.notes ? '<div class="kb-card-meta">' + c.notes + '</div>' : '')
+                + '<div class="kb-card-method">' + c.method + '</div>';
+            el.addEventListener('dragstart', e => {{
+                e.dataTransfer.setData('text/plain', JSON.stringify({{id:c.id, construct:c.construct}}));
+                el.style.opacity = '0.4';
+            }});
+            el.addEventListener('dragend', e => {{ el.style.opacity = '1'; }});
+            col.appendChild(el);
+        }});
+    }});
+}}
+
+function onDrop(e, newStatus) {{
+    e.preventDefault();
+    e.currentTarget.classList.remove('kb-col-over');
+    const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+    const card = cards.find(c => c.id === data.id);
+    if (card && card.status !== newStatus) {{
+        card.status = newStatus;
+        renderCards();
+        // Notify Streamlit via URL params
+        const url = new URL(window.parent.location);
+        url.searchParams.set('kb_construct', data.construct);
+        url.searchParams.set('kb_status', newStatus);
+        window.parent.location.href = url.toString();
+    }}
+}}
+
+renderCards();
+</script></body></html>'''
 
 
 def render():
@@ -73,57 +191,39 @@ def render():
         return
 
     try:
-        tab1, tab2, tab3 = st.tabs(["Pipeline Status", "New Assembly", "Templates"])
+        # ── Handle drag-and-drop status update from kanban ──
+        kb_construct = st.query_params.get("kb_construct")
+        kb_status = st.query_params.get("kb_status")
+        if kb_construct and kb_status:
+            try:
+                update_status(kb_construct, kb_status, project_root=root)
+                st.toast(f"{kb_construct} \u2192 {kb_status}", icon="\u2705")
+            except Exception as e:
+                st.toast(f"Update failed: {e}", icon="\u274c")
+            # Clear params
+            params = dict(st.query_params)
+            params.pop("kb_construct", None)
+            params.pop("kb_status", None)
+            st.query_params.update(params)
 
-        # ── Tab 1: Pipeline Status ──
+        tab1, tab2, tab3 = st.tabs(["Kanban Board", "New Assembly", "Templates"])
+
+        # ── Tab 1: Kanban Board ──
         with tab1:
             assemblies = list_assemblies(root)
 
             if not assemblies:
-                st.info("No assembly operations. Create one in the **New Assembly** tab.")
+                st.info("No assemblies yet. Create one in the **New Assembly** tab.")
             else:
-                status_colors = {
-                    "design": "#3498DB", "primers_ordered": "#00BCD4",
-                    "pcr": "#F39C12", "assembly": "#FF9800",
-                    "transform": "#9B59B6", "screen": "#E91E63",
-                    "verified": "#27AE60",
-                }
-
-                for a in assemblies:
-                    color = status_colors.get(a["status"], "#999")
-                    with st.container(border=True):
-                        c1, c2, c3 = st.columns([3, 2, 2])
-
-                        with c1:
-                            st.markdown(f"**{a['construct_name']}** v{a['version']}")
-                            st.caption(f"{a['method']} | {a['fragments_count']} fragments")
-                            if a["notes"]:
-                                st.caption(a["notes"][:80])
-
-                        with c2:
-                            st.html(
-                                f'<div style="background:{color};color:white;'
-                                f'padding:6px 12px;border-radius:6px;text-align:center;'
-                                f'font-weight:600;font-size:0.9em;margin-top:8px">'
-                                f'{a["status"].upper()}</div>'
-                            )
-
-                        with c3:
-                            current_idx = list(VALID_STATUSES).index(a["status"])
-                            next_statuses = list(VALID_STATUSES)[current_idx:]
-                            key = f"status_{a['operation'].id}"
-
-                            new_st = st.selectbox(
-                                "Update to", next_statuses,
-                                key=key, label_visibility="collapsed",
-                            )
-                            if st.button("Update", key=f"btn_{a['operation'].id}"):
-                                try:
-                                    update_status(a["construct_name"], new_st, project_root=root)
-                                    st.success(f"{a['construct_name']} \u2192 {new_st}")
-                                    st.rerun()
-                                except Exception as e:
-                                    st.error(str(e))
+                st.caption("Drag cards between columns to update status")
+                html = _build_kanban_html(assemblies)
+                # Calculate height based on max cards in any column
+                max_cards = max(
+                    sum(1 for a in assemblies if a["status"] == s)
+                    for s in VALID_STATUSES
+                )
+                height = max(350, 120 + max_cards * 100)
+                components.html(html, height=height, scrolling=False)
 
         # ── Tab 2: New Assembly ──
         with tab2:
@@ -166,7 +266,7 @@ def render():
                                     )
                                     st.success(
                                         f"Created assembly for **{construct_name}** "
-                                        f"({method}, {len(fragments)} fragments, status: {initial_status})"
+                                        f"({method}, {len(fragments)} fragments)"
                                     )
                                     st.rerun()
                                 except Exception as e:
@@ -176,7 +276,7 @@ def render():
         with tab3:
             templates = list_templates(root)
             if not templates:
-                st.info("No assembly templates. Create templates via CLI.")
+                st.info("No assembly templates.")
             else:
                 for t in templates:
                     with st.expander(f"{t.name} [{t.method}]"):
