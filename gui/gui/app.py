@@ -21,10 +21,11 @@ _css_path = Path(__file__).parent / "style.css"
 if _css_path.exists():
     st.markdown(f"<style>{_css_path.read_text()}</style>", unsafe_allow_html=True)
 
-# Ensure src/ and gui root are on path so pvcs + gui imports work
-_gui_root = Path(__file__).resolve().parent.parent
-_src_dir = _gui_root / "src"
-for p in [str(_src_dir), str(_gui_root)]:
+# Ensure root src/ and gui/ are on path so pvcs + gui imports work
+_gui_dir = Path(__file__).resolve().parent.parent   # .../gui/
+_repo_root = _gui_dir.parent                         # .../RESplasmide/
+_src_dir = _repo_root / "src"                        # .../RESplasmide/src/
+for p in [str(_src_dir), str(_gui_dir)]:
     if p not in sys.path:
         sys.path.insert(0, p)
 
@@ -40,7 +41,7 @@ def _resolve_project_root() -> Path | None:
             elif idx + 1 < len(sys.argv):
                 return Path(sys.argv[idx + 1])
 
-    candidates = [Path.cwd(), _gui_root, _gui_root.parent]
+    candidates = [Path.cwd(), _gui_dir, _repo_root]
     for p in candidates:
         if (p / ".pvcs").is_dir():
             return p

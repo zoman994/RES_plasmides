@@ -12,7 +12,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 # Ensure pvcs is importable
-_src = Path(__file__).resolve().parent.parent / "src"
+# gui/api/ → gui/ → RESplasmide/ → RESplasmide/src/
+_src = Path(__file__).resolve().parent.parent.parent / "src"
 if str(_src) not in sys.path:
     sys.path.insert(0, str(_src))
 
