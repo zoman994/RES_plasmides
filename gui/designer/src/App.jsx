@@ -7,6 +7,7 @@ import PrimerPanel from './components/PrimerPanel';
 import SequenceViewer from './components/SequenceViewer';
 import AddFragmentModal from './components/AddFragmentModal';
 import RestrictionPanel from './components/RestrictionPanel';
+import MutagenesisWizard from './components/MutagenesisWizard';
 import VerificationPanel from './components/VerificationPanel';
 import SignalPeptideSplitter from './components/SignalPeptideSplitter';
 import { fetchParts, designPrimers } from './api';
@@ -30,6 +31,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [modalMode, setModalMode] = useState(null);
   const [splitTarget, setSplitTarget] = useState(null);
+  const [showMutagenesis, setShowMutagenesis] = useState(false);
   const [polymerase, setPolymerase] = useState('phusion');
   const [primerPrefix, setPrimerPrefix] = useState('IS');
 
@@ -235,6 +237,16 @@ export default function App() {
     setCalculated(false);
   };
 
+  const handleMutagenesis = (result) => {
+    const newFrags = result.fragments.map((f, i) => ({
+      ...f, id: `mf${nextId++}`, isMutagenesis: true,
+    }));
+    setFragments(newFrags);
+    setJunctions(result.junctions);
+    setCalculated(false);
+    setPrimers([]);
+  };
+
   const clearAll = () => {
     setFragments([]); setJunctions([]); setPrimers([]);
     setApiWarnings([]); setCalculated(false);
@@ -262,6 +274,10 @@ export default function App() {
               className={`text-xs px-3 py-1.5 rounded-full font-semibold transition
                 ${assemblyType === 'golden_gate' ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
               Golden Gate
+            </button>
+            <button onClick={() => setShowMutagenesis(true)}
+              className="text-xs px-3 py-1.5 rounded-full font-semibold bg-purple-100 text-purple-700 hover:bg-purple-200 transition">
+              {'\uD83D\uDD2C'} Mutagenesis
             </button>
             <select value={polymerase} onChange={e => setPolymerase(e.target.value)}
               className="text-xs border rounded px-2 py-1 ml-2">
@@ -386,6 +402,9 @@ export default function App() {
       </div>
       {modalMode && (
         <AddFragmentModal mode={modalMode} onAdd={addCustomFragment} onClose={() => setModalMode(null)} />
+      )}
+      {showMutagenesis && (
+        <MutagenesisWizard onComplete={handleMutagenesis} onClose={() => setShowMutagenesis(false)} />
       )}
       {splitTarget !== null && fragments[splitTarget] && (
         <SignalPeptideSplitter
