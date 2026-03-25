@@ -7,7 +7,7 @@ const SIGNAL_PEPTIDES = [
     sequence: 'ATGTTCTCTCCCATCCTCACTGCCGTCGCTCTCGCAGCCGGCCTGGCCGCCCCC' },
   { name: 'cbhI_ss', organism: 'T. reesei', aa: 17,
     sequence: 'ATGTACCGCAAGCTCGCCGTCATCTCCGCCTTCCTCGCCACAGCCCGCGCC' },
-  { name: '\u03B1-factor_ss', organism: 'S. cerevisiae', aa: 85,
+  { name: 'α-factor_ss', organism: 'S. cerevisiae', aa: 85,
     sequence: 'ATGAGATTTCCTTCAATTTTTACTGCTGTTTTATTCGCAGCATCCTCCGCATTAGCTGCTCCAGTCAACACTACAACAGAAGATGAAACGGCACAAATTCCGGCTGAAGCTGTCATCGGTTACTCAGATTTAGAAGGGGATTTCGATGTTGCTGTTTTGCCATTTTCCAACAGCACAAATAACGGGTTATTGTTTATAAATACTACTATTGCCAGCATTGCTGCTAAAGAAGAAGGGGTATCTCTCGAGAAAAGAGAG' },
   { name: 'pelB_ss', organism: 'E. coli', aa: 22,
     sequence: 'ATGAAATACCTATTGCCTACGGCAGCCGCTGGATTGTTATTACTCGCGGCCCAGCCAGCCATGGCC' },
@@ -97,13 +97,13 @@ export default function FragmentSplitter({ fragment, onSplit, onClose, partsLibr
         {/* Header */}
         <div className="flex justify-between items-start mb-4">
           <div>
-            <h3 className="font-bold text-lg">{'\u2702'} Разделить фрагмент</h3>
+            <h3 className="font-bold text-lg">{'✂'} Разделить фрагмент</h3>
             <div className="text-sm text-gray-500 mt-1">
               {fragment.name} ({fragment.type}, {seq.length} п.н.
               {isCDS && protein.length > 0 ? `, ${protein.length} а.о.` : ''})
             </div>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">{'\u2715'}</button>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">{'✕'}</button>
         </div>
 
         {/* Mode tabs */}
@@ -127,18 +127,18 @@ export default function FragmentSplitter({ fragment, onSplit, onClose, partsLibr
           {isCDS && spPred.position > 0 && (
             <button onClick={applyPresetSP}
               className="text-[11px] px-3 py-1.5 rounded-full bg-orange-50 text-orange-700 border border-orange-200 hover:bg-orange-100 transition">
-              {'\uD83D\uDD2C'} Сигнальный пептид (авто)
+              {'🔬'} Сигнальный пептид (авто)
             </button>
           )}
           {isPromoter && tata && (
             <button onClick={applyPresetTATA}
               className="text-[11px] px-3 py-1.5 rounded-full bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 transition">
-              {'\uD83D\uDCCF'} TATA-box (pos {tata.position})
+              {'📏'} TATA-box (pos {tata.position})
             </button>
           )}
           <button onClick={() => { mode === 'aa' ? setCutAA(Math.floor(maxAA / 2)) : setCutNT(Math.floor(maxNT / 2)); }}
             className="text-[11px] px-3 py-1.5 rounded-full bg-gray-50 text-gray-600 border border-gray-200 hover:bg-gray-100 transition">
-            {'\u270F\uFE0F'} Произвольная позиция
+            {'✏️'} Произвольная позиция
           </button>
         </div>
 
@@ -158,13 +158,13 @@ export default function FragmentSplitter({ fragment, onSplit, onClose, partsLibr
             <div className="text-xs text-gray-500 mb-1">Белковая последовательность:</div>
             <div className="font-mono text-[11px] leading-relaxed bg-gray-50 p-3 rounded break-all max-h-[100px] overflow-y-auto">
               <span className="text-orange-600 font-bold">{protein.slice(0, cutAA)}</span>
-              <span className="text-red-500 text-lg font-bold">{'\u2193'}</span>
+              <span className="text-red-500 text-lg font-bold">{'↓'}</span>
               <span className="text-blue-600">{protein.slice(cutAA, cutAA + 30)}</span>
               <span className="text-gray-400">{protein.slice(cutAA + 30)}</span>
             </div>
             <div className="flex gap-4 mt-1 text-[10px]">
-              <span className="text-orange-600">{'\u25A0'} Часть 1: {cutAA} а.о. ({cutAA * 3} п.н.)</span>
-              <span className="text-blue-600">{'\u25A0'} Часть 2: {protein.length - cutAA} а.о. ({part2DNA.length} п.н.)</span>
+              <span className="text-orange-600">{'■'} Часть 1: {cutAA} а.о. ({cutAA * 3} п.н.)</span>
+              <span className="text-blue-600">{'■'} Часть 2: {protein.length - cutAA} а.о. ({part2DNA.length} п.н.)</span>
             </div>
           </div>
         ) : (
@@ -174,15 +174,15 @@ export default function FragmentSplitter({ fragment, onSplit, onClose, partsLibr
               <span className="text-orange-600 font-bold">
                 {seq.slice(Math.max(0, cutNT - 30), cutNT)}
               </span>
-              <span className="text-red-500 text-lg font-bold">{'\u2502'}</span>
+              <span className="text-red-500 text-lg font-bold">{'│'}</span>
               <span className="text-blue-600">
                 {seq.slice(cutNT, cutNT + 30)}
               </span>
               {cutNT + 30 < seq.length && <span className="text-gray-400">...</span>}
             </div>
             <div className="flex gap-4 mt-1 text-[10px]">
-              <span className="text-orange-600">{'\u25A0'} Часть 1: {cutNT} п.н.</span>
-              <span className="text-blue-600">{'\u25A0'} Часть 2: {seq.length - cutNT} п.н.</span>
+              <span className="text-orange-600">{'■'} Часть 1: {cutNT} п.н.</span>
+              <span className="text-blue-600">{'■'} Часть 2: {seq.length - cutNT} п.н.</span>
             </div>
           </div>
         )}
@@ -222,7 +222,7 @@ export default function FragmentSplitter({ fragment, onSplit, onClose, partsLibr
             cutPosition: cutBP,
           })}
             className="w-full text-left px-4 py-3 border border-dashed rounded-lg hover:bg-blue-50 hover:border-blue-300 transition">
-            <div className="text-sm font-semibold text-blue-700">{'\u2702'} Разрезать на два фрагмента</div>
+            <div className="text-sm font-semibold text-blue-700">{'✂'} Разрезать на два фрагмента</div>
             <div className="text-[10px] text-gray-500">
               [{fragment.name}_part1 ({part1DNA.length} п.н.)] + [{fragment.name}_part2 ({part2DNA.length} п.н.)]
             </div>
@@ -236,7 +236,7 @@ export default function FragmentSplitter({ fragment, onSplit, onClose, partsLibr
             cutPosition: cutBP,
           })}
             className="w-full text-left px-4 py-3 border rounded-lg hover:bg-red-50 hover:border-red-300 transition">
-            <div className="text-sm font-semibold text-red-700">{'\uD83D\uDDD1'} Удалить часть 1, оставить часть 2</div>
+            <div className="text-sm font-semibold text-red-700">{'🗑'} Удалить часть 1, оставить часть 2</div>
             <div className="text-[10px] text-gray-500">Удалить первые {part1DNA.length} п.н.</div>
           </button>
 
@@ -248,14 +248,14 @@ export default function FragmentSplitter({ fragment, onSplit, onClose, partsLibr
             cutPosition: cutBP,
           })}
             className="w-full text-left px-4 py-3 border rounded-lg hover:bg-red-50 hover:border-red-300 transition">
-            <div className="text-sm font-semibold text-red-700">{'\uD83D\uDDD1'} Удалить часть 2, оставить часть 1</div>
+            <div className="text-sm font-semibold text-red-700">{'🗑'} Удалить часть 2, оставить часть 1</div>
             <div className="text-[10px] text-gray-500">Оставить первые {part1DNA.length} п.н.</div>
           </button>
 
           {/* 4. Replace part 1 (CDS mode — signal peptides) */}
           {isCDS && mode === 'aa' && (
             <div className="border rounded-lg p-3 space-y-2">
-              <div className="text-sm font-semibold text-green-700">{'\uD83D\uDD04'} Заменить часть 1 на:</div>
+              <div className="text-sm font-semibold text-green-700">{'🔄'} Заменить часть 1 на:</div>
 
               {/* Built-in signal peptides */}
               {SIGNAL_PEPTIDES.map(sp => (
@@ -297,7 +297,7 @@ export default function FragmentSplitter({ fragment, onSplit, onClose, partsLibr
           {/* 5. Cancel */}
           <button onClick={onClose}
             className="w-full text-left px-4 py-3 border rounded-lg hover:bg-gray-50 transition">
-            <div className="text-sm font-semibold text-gray-700">{'\u2705'} Отмена</div>
+            <div className="text-sm font-semibold text-gray-700">{'✅'} Отмена</div>
           </button>
         </div>
       </div>

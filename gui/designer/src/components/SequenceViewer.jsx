@@ -62,7 +62,7 @@ export default function SequenceViewer({ fragments, circular, primers = [] }) {
         className="w-full text-left px-4 py-2 text-sm font-medium text-gray-700
                    hover:bg-gray-50 flex justify-between items-center">
         <span>Sequence ({(fullSeq.length / 1000).toFixed(1)} kb{circular ? ', circular' : ''})</span>
-        <span className="text-gray-400">{open ? '\u25BC' : '\u25B6'}</span>
+        <span className="text-gray-400">{open ? '▼' : '▶'}</span>
       </button>
 
       {open && (
@@ -141,7 +141,7 @@ export default function SequenceViewer({ fragments, circular, primers = [] }) {
                               marginLeft: `${pStart * 6.6}px`,
                               color: p.color,
                             }}>
-                            {p.direction === 'forward' ? '\u2192' : '\u2190'}{p.name}
+                            {p.direction === 'forward' ? '→' : '←'}{p.name}
                           </div>
                         );
                       })}
@@ -155,8 +155,8 @@ export default function SequenceViewer({ fragments, circular, primers = [] }) {
           {/* Legend */}
           {primerRegions.length > 0 && (
             <div className="text-[9px] text-gray-500 mt-2 flex gap-3">
-              <span><span className="text-blue-500">\u2501</span> forward primer binding</span>
-              <span><span className="text-red-500">\u2501</span> reverse primer binding</span>
+              <span><span className="text-blue-500">━</span> forward primer binding</span>
+              <span><span className="text-red-500">━</span> reverse primer binding</span>
               <span className="text-red-400">|</span> fragment boundary
             </div>
           )}

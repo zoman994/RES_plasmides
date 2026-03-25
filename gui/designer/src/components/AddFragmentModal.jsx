@@ -196,7 +196,7 @@ export default function AddFragmentModal({ mode, onAdd, onClose }) {
         {sequence && (
           <div className="text-xs text-gray-500 mb-3">
             {clean(sequence).length} bp
-            {subParts.length > 0 && ` \u00b7 ${subParts.length} sub-parts`}
+            {subParts.length > 0 && ` · ${subParts.length} sub-parts`}
           </div>
         )}
 

@@ -21,7 +21,7 @@ export default function AssemblyTabs({ assemblies, activeId, onSelect, onAdd, on
             {/* Dependency arrow */}
             {i > 0 && (
               <span className={`text-sm mx-0.5 select-none ${hasDep ? 'text-green-500 font-bold' : 'text-gray-300'}`}>
-                {'\u2192'}
+                {'→'}
               </span>
             )}
             <button
@@ -74,7 +74,7 @@ export default function AssemblyTabs({ assemblies, activeId, onSelect, onAdd, on
                   onClick={e => { e.stopPropagation(); onRemove(asm.id); }}
                   className="hidden group-hover:inline-block text-gray-400 hover:text-red-500
                              ml-1 cursor-pointer text-sm leading-none"
-                >{'\u00D7'}</span>
+                >{'×'}</span>
               )}
             </button>
           </div>

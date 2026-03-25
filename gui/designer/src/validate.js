@@ -13,16 +13,16 @@ export function validateConstruct(fragments) {
     // CDS-specific checks
     if (frag.type === 'CDS' && seq.length > 0) {
       if (!seq.startsWith('ATG'))
-        w.push(`\u26a0 ${frag.name}: no ATG start codon`);
+        w.push(`⚠ ${frag.name}: no ATG start codon`);
 
       if (seq.length % 3 !== 0)
-        w.push(`\u26a0 ${frag.name}: length ${seq.length}bp not divisible by 3 (frameshift?)`);
+        w.push(`⚠ ${frag.name}: length ${seq.length}bp not divisible by 3 (frameshift?)`);
 
       // Internal stop codons (exclude last codon)
       for (let j = 0; j < seq.length - 3; j += 3) {
         const codon = seq.slice(j, j + 3);
         if (STOPS.includes(codon)) {
-          w.push(`\u26a0 ${frag.name}: internal stop codon ${codon} at position ${j + 1}`);
+          w.push(`⚠ ${frag.name}: internal stop codon ${codon} at position ${j + 1}`);
           break; // report only first
         }
       }
@@ -30,31 +30,31 @@ export function validateConstruct(fragments) {
       // Missing stop at end
       const lastCodon = seq.slice(-3);
       if (!STOPS.includes(lastCodon))
-        w.push(`\ud83d\udca1 ${frag.name}: no stop codon at end`);
+        w.push(`💡 ${frag.name}: no stop codon at end`);
     }
 
     // Order / context checks
     if (i > 0) {
       const prev = fragments[i - 1];
       if (frag.type === 'CDS' && prev.type !== 'promoter' && prev.type !== 'regulatory' && prev.type !== 'CDS')
-        w.push(`\ud83d\udca1 ${frag.name}: no promoter before this CDS`);
+        w.push(`💡 ${frag.name}: no promoter before this CDS`);
       if (frag.type === 'promoter' && prev.type === 'terminator')
-        w.push(`\ud83d\udca1 Terminator before promoter (${prev.name} \u2192 ${frag.name}) \u2014 reversed order?`);
+        w.push(`💡 Terminator before promoter (${prev.name} → ${frag.name}) — reversed order?`);
       if (frag.type === 'promoter' && prev.type === 'promoter')
-        w.push(`\ud83d\udca1 Two promoters in a row (${prev.name} \u2192 ${frag.name})`);
+        w.push(`💡 Two promoters in a row (${prev.name} → ${frag.name})`);
     }
 
     // CDS at end without terminator
     if (frag.type === 'CDS' && i === fragments.length - 1)
-      w.push(`\ud83d\udca1 ${frag.name}: no terminator after last CDS`);
+      w.push(`💡 ${frag.name}: no terminator after last CDS`);
 
     // Two CDS in a row
     if (frag.type === 'CDS' && i < fragments.length - 1 && fragments[i + 1].type === 'CDS')
-      w.push(`\ud83d\udca1 Two CDS in a row (${frag.name} \u2192 ${fragments[i + 1].name}) \u2014 polycistronic?`);
+      w.push(`💡 Two CDS in a row (${frag.name} → ${fragments[i + 1].name}) — polycistronic?`);
 
     // Intron warning
     if (frag.has_introns && frag.introns?.length > 0)
-      w.push(`\u26a0 ${frag.name}: has ${frag.introns.length} intron(s) \u2014 remove for E. coli expression! Use \u2702 or "Remove introns" button.`);
+      w.push(`⚠ ${frag.name}: has ${frag.introns.length} intron(s) — remove for E. coli expression! Use ✂ or "Remove introns" button.`);
   });
   return w;
 }
@@ -86,7 +86,7 @@ export function checkPrimerQuality(primer) {
 
   // Length warning
   if ((primer.length || 0) > 55)
-    w.push('Very long (>55nt) \u2014 use PAGE purification');
+    w.push('Very long (>55nt) — use PAGE purification');
 
   return w;
 }

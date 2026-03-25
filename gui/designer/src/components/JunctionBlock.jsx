@@ -7,9 +7,9 @@ export default function JunctionBlock({ junction, index, leftName, rightName, on
   // Canvas label with direction indicator
   const label =
     j.type === 'overlap'
-      ? (j.overlapMode === 'left_only' ? `\u25C0${j.overlapLength || 30}bp`
-        : j.overlapMode === 'right_only' ? `${j.overlapLength || 30}bp\u25B6`
-        : `\u25C0\u25B6${j.overlapLength || 30}bp`)
+      ? (j.overlapMode === 'left_only' ? `◀${j.overlapLength || 30}bp`
+        : j.overlapMode === 'right_only' ? `${j.overlapLength || 30}bp▶`
+        : `◀▶${j.overlapLength || 30}bp`)
     : j.type === 'golden_gate' ? `GG:${j.overhang || '?'}`
     : j.type === 'sticky_end' ? (j.reEnzyme || 'RE')
     : j.type;

@@ -45,7 +45,7 @@ export default function PrimerPanel({ primers, warnings, orderSheet, primerQuali
                   <td className="p-2 text-right">{p.gcPercent}%</td>
                   <td className="p-2 text-right">{p.length}</td>
                   <td className="p-2 text-[10px] text-gray-500 max-w-[140px] truncate">
-                    {p.tailPurpose || '\u2014'}
+                    {p.tailPurpose || '—'}
                   </td>
                 </tr>
               );

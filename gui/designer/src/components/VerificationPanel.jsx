@@ -33,7 +33,7 @@ export default function VerificationPanel({ fragments, circular }) {
     <div className="border rounded-lg bg-white p-4">
       <div className="flex justify-between items-center mb-3">
         <h3 className="text-sm font-bold text-gray-700">Verification Strategy</h3>
-        <button onClick={() => setShow(false)} className="text-gray-400 text-xs">{'\u2715'}</button>
+        <button onClick={() => setShow(false)} className="text-gray-400 text-xs">{'✕'}</button>
       </div>
 
       <button onClick={design} className="px-4 py-2 bg-green-600 text-white rounded text-xs font-semibold hover:bg-green-700 mb-3">

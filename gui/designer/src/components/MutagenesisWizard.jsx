@@ -55,7 +55,7 @@ export default function MutagenesisWizard({ onComplete, onClose }) {
       m.newCodon = getCodonsForAA(val, organism)[0]?.codon || 'NNN';
     }
     m.label = m.type === 'substitution' ? `${m.currentAA}${m.aaPosition}${m.newAA}`
-      : m.type === 'deletion' ? `\u0394${m.aaPosition}-${m.aaPosition + Math.floor((m.deleteLength || 3) / 3)}`
+      : m.type === 'deletion' ? `Δ${m.aaPosition}-${m.aaPosition + Math.floor((m.deleteLength || 3) / 3)}`
       : `ins${m.aaPosition}`;
     ms[idx] = m;
     setMutations(ms);
@@ -76,7 +76,7 @@ export default function MutagenesisWizard({ onComplete, onClose }) {
         onClick={e => e.stopPropagation()}>
 
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-bold">{'\uD83D\uDD2C'} Mutagenesis Wizard</h2>
+          <h2 className="text-lg font-bold">{'🔬'} Mutagenesis Wizard</h2>
           <div className="flex gap-1">
             {[1, 2, 3].map(s => (
               <div key={s} className={`w-8 h-1.5 rounded ${s <= step ? 'bg-purple-500' : 'bg-gray-200'}`} />
@@ -133,7 +133,7 @@ export default function MutagenesisWizard({ onComplete, onClose }) {
 
           <button onClick={() => { if (templateSeq) setStep(2); }} disabled={!templateSeq}
             className="w-full bg-purple-600 text-white rounded py-2 text-sm font-semibold disabled:opacity-40">
-            Next: Define Mutations {'\u2192'}
+            Next: Define Mutations {'→'}
           </button>
         </>)}
 
@@ -182,7 +182,7 @@ export default function MutagenesisWizard({ onComplete, onClose }) {
                     <span className="font-bold text-lg">{m.currentAA}</span>
                     <span className="text-gray-400 ml-1">{AA_NAMES[m.currentAA]}</span>
                   </div>
-                  <span className="text-lg mt-3">{'\u2192'}</span>
+                  <span className="text-lg mt-3">{'→'}</span>
                   <div className="text-xs">
                     <label className="text-gray-500 block">New AA</label>
                     <select value={m.newAA} onChange={e => updateMut(i, 'newAA', e.target.value)}
@@ -234,7 +234,7 @@ export default function MutagenesisWizard({ onComplete, onClose }) {
                 </>)}
 
                 <button onClick={() => setMutations(mutations.filter((_, j) => j !== i))}
-                  className="text-red-400 text-xs mt-4">{'\u2716'}</button>
+                  className="text-red-400 text-xs mt-4">{'✖'}</button>
               </div>
               {m.label && <div className="text-xs text-purple-600 font-semibold mt-1">{m.label}</div>}
             </div>
@@ -251,10 +251,10 @@ export default function MutagenesisWizard({ onComplete, onClose }) {
           )}
 
           <div className="flex gap-2">
-            <button onClick={() => setStep(1)} className="flex-1 border rounded py-2 text-sm">{'\u2190'} Back</button>
+            <button onClick={() => setStep(1)} className="flex-1 border rounded py-2 text-sm">{'←'} Back</button>
             <button onClick={compute} disabled={mutations.length === 0}
               className="flex-1 bg-purple-600 text-white rounded py-2 text-sm font-semibold disabled:opacity-40">
-              Compute Strategy {'\u2192'}
+              Compute Strategy {'→'}
             </button>
           </div>
         </>)}
@@ -276,7 +276,7 @@ export default function MutagenesisWizard({ onComplete, onClose }) {
             <div className="text-xs font-semibold text-gray-600 mb-1">Fragments:</div>
             {strategy.fragments.map((f, i) => (
               <div key={i} className="text-xs bg-white border rounded p-2 mb-1">
-                <strong>{f.name}</strong> \u2014 {f.length} bp
+                <strong>{f.name}</strong> — {f.length} bp
                 {f.needsAmplification ? ' (PCR from template)' : ''}
               </div>
             ))}
@@ -296,7 +296,7 @@ export default function MutagenesisWizard({ onComplete, onClose }) {
           ))}
 
           <div className="flex gap-2 mt-4">
-            <button onClick={() => setStep(2)} className="flex-1 border rounded py-2 text-sm">{'\u2190'} Back</button>
+            <button onClick={() => setStep(2)} className="flex-1 border rounded py-2 text-sm">{'←'} Back</button>
             <button onClick={() => {
               onComplete({
                 fragments: strategy.fragments.map((f, i) => ({
@@ -310,7 +310,7 @@ export default function MutagenesisWizard({ onComplete, onClose }) {
               onClose();
             }}
               className="flex-1 bg-purple-600 text-white rounded py-2 text-sm font-semibold">
-              {'\u2705'} Apply to Canvas
+              {'✅'} Apply to Canvas
             </button>
           </div>
         </>)}

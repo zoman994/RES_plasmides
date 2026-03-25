@@ -60,7 +60,7 @@ export default function PartsPalette({ parts, onOpenModal, inventoryVersion = 0 
       {pcrProducts.length > 0 && (
         <div>
           <div className="text-[10px] text-amber-600 uppercase tracking-wider font-semibold mt-4 mb-1">
-            {'\uD83E\uDDEA'} \u0418\u043c\u0435\u044e\u0449\u0438\u0435\u0441\u044f \u041f\u0426\u0420-\u043f\u0440\u043e\u0434\u0443\u043a\u0442\u044b
+            {'🧪'} Имеющиеся ПЦР-продукты
           </div>
           {pcrProducts.map(item => (
             <DraggablePart key={item.id} part={{
@@ -77,7 +77,7 @@ export default function PartsPalette({ parts, onOpenModal, inventoryVersion = 0 
       {plasmids.length > 0 && (
         <div>
           <div className="text-[10px] text-purple-600 uppercase tracking-wider font-semibold mt-4 mb-1">
-            {'\uD83D\uDC8A'} \u041f\u043e\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0451\u043d\u043d\u044b\u0435 \u043f\u043b\u0430\u0437\u043c\u0438\u0434\u044b
+            {'💊'} Подтверждённые плазмиды
           </div>
           {plasmids.map(item => (
             <DraggablePart key={item.id} part={{
@@ -98,17 +98,17 @@ export default function PartsPalette({ parts, onOpenModal, inventoryVersion = 0 
         <button onClick={() => onOpenModal('composite')}
           className="w-full text-left text-xs p-2 rounded border border-dashed
                      border-gray-300 hover:border-blue-400 hover:bg-blue-50 transition">
-          {'\uD83E\uDDEA'} {t('From PCR product / tube')}
+          {'🧪'} {t('From PCR product / tube')}
         </button>
         <button onClick={() => onOpenModal('construct')}
           className="w-full text-left text-xs p-2 rounded border border-dashed
                      border-gray-300 hover:border-blue-400 hover:bg-blue-50 transition">
-          {'\uD83D\uDCCB'} {t('From existing construct')}
+          {'📋'} {t('From existing construct')}
         </button>
         <button onClick={() => onOpenModal('sequence')}
           className="w-full text-left text-xs p-2 rounded border border-dashed
                      border-gray-300 hover:border-blue-400 hover:bg-blue-50 transition">
-          {'\u270F\uFE0F'} {t('Paste custom sequence')}
+          {'✏️'} {t('Paste custom sequence')}
         </button>
       </div>
     </div>

@@ -63,7 +63,7 @@ export default function RestrictionPanel({sequence,fragments,circular}){
 
   if(!show) return (
     <button onClick={()=>setShow(true)} className="text-xs px-4 py-2 border rounded-lg hover:bg-gray-50 text-gray-600 w-full text-left">
-      {'\uD83D\uDD2C'} Рестрикционный анализ
+      {'🔬'} Рестрикционный анализ
     </button>
   );
 
@@ -71,7 +71,7 @@ export default function RestrictionPanel({sequence,fragments,circular}){
     <div className="border rounded-lg bg-white p-4">
       <div className="flex justify-between items-center mb-3">
         <h3 className="text-sm font-bold text-gray-700">Рестрикционный анализ</h3>
-        <button onClick={()=>setShow(false)} className="text-gray-400 text-xs">{'\u2715'}</button>
+        <button onClick={()=>setShow(false)} className="text-gray-400 text-xs">{'✕'}</button>
       </div>
 
       <div className="flex gap-1 mb-3 flex-wrap">
@@ -102,7 +102,7 @@ export default function RestrictionPanel({sequence,fragments,circular}){
       {unique.length>0&&(
         <div className="bg-green-50 border border-green-200 rounded p-2 mb-3">
           <div className="text-[10px] text-green-700 font-semibold mb-1">Unique cutters ({unique.length}):</div>
-          <div className="text-[10px] text-green-600">{unique.map(s=>`${s.enzyme} (${s.positions[0]})`).join(' \u00b7 ')}</div>
+          <div className="text-[10px] text-green-600">{unique.map(s=>`${s.enzyme} (${s.positions[0]})`).join(' · ')}</div>
         </div>
       )}
 
@@ -112,7 +112,7 @@ export default function RestrictionPanel({sequence,fragments,circular}){
           {sites.filter(s=>s.cutCount>0&&s.cutCount<=5).map(s=>(
             <button key={s.enzyme} onClick={()=>setDigest(d=>d.includes(s.enzyme)?d.filter(e=>e!==s.enzyme):[...d,s.enzyme])}
               className={`text-[10px] px-2 py-0.5 rounded border ${digest.includes(s.enzyme)?'bg-blue-100 border-blue-400 text-blue-700':'border-gray-200'}`}>
-              {s.enzyme} ({s.cutCount}{'\u00d7'})
+              {s.enzyme} ({s.cutCount}{'×'})
             </button>
           ))}
         </div>
@@ -127,7 +127,7 @@ export default function RestrictionPanel({sequence,fragments,circular}){
                 </div>
               );
             })}
-            <div className="text-[8px] text-gray-400 ml-2">{digest.join('+')} {'\u2192'} {digestFrags.length} frags</div>
+            <div className="text-[8px] text-gray-400 ml-2">{digest.join('+')} {'→'} {digestFrags.length} frags</div>
           </div>
         )}
       </div>
