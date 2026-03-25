@@ -2,6 +2,11 @@ import { useDrop } from 'react-dnd';
 import PartBlock from './PartBlock';
 import JunctionBlock from './JunctionBlock';
 import JunctionDNA from './JunctionDNA';
+import { getFragColor, isMarker } from '../theme';
+
+function fragColor(frag, idx) {
+  return isMarker(frag.name) ? '#F0E442' : getFragColor(frag.type, idx);
+}
 
 export default function DesignCanvas({
   fragments, junctions, circular, onToggleCircular,
@@ -16,6 +21,7 @@ export default function DesignCanvas({
 
   const totalBp = fragments.reduce((s, f) => s + (f.length || 0), 0);
   const n = fragments.length;
+  const hasPrimers = calculated && primers.length > 0;
 
   return (
     <div ref={drop}
@@ -43,30 +49,45 @@ export default function DesignCanvas({
 
           <div className="flex items-center">
             {/* 5' cap */}
-            <div className="w-1.5 h-14 bg-gray-300 rounded-l" />
+            <div className={`w-1.5 bg-gray-300 rounded-l ${hasPrimers ? 'h-[72px]' : 'h-14'}`} />
 
-            {fragments.map((frag, i) => (
-              <div key={frag.id || i} className="flex items-center">
-                <PartBlock fragment={frag} index={i}
-                  onRemove={onRemove} onToggleAmplification={onToggleAmplification}
-                  onReorder={onReorder} pcrSize={pcrSizes[i]}
-                  onSplitSignal={onSplitSignal} />
-                {/* Junction between fragments */}
-                {i < junctions.length && (i < n - 1 || circular) && (
-                  <div className="flex flex-col items-center">
-                    <JunctionBlock
-                      junction={junctions[i]}
-                      index={i}
-                      leftName={frag.name}
-                      rightName={fragments[(i + 1) % n]?.name || '?'}
-                      onChange={cfg => onJunctionChange(i, cfg)} />
-                    <JunctionDNA junction={junctions[i]} calculated={calculated}
-                      primers={primers} leftFragment={frag}
-                      rightFragment={fragments[(i + 1) % n]} />
-                  </div>
-                )}
-              </div>
-            ))}
+            {fragments.map((frag, i) => {
+              // Find primers for this fragment
+              const fwdPrimer = primers.find(p => p.direction === 'forward' && p.name.includes(frag.name)) || null;
+              const revPrimer = primers.find(p => p.direction === 'reverse' && p.name.includes(frag.name)) || null;
+
+              // Neighbor colors for tail coloring
+              const leftIdx = circular ? (i - 1 + n) % n : i - 1;
+              const rightIdx = circular ? (i + 1) % n : i + 1;
+              const leftNeighborColor = (leftIdx >= 0 && leftIdx < n && leftIdx !== i)
+                ? fragColor(fragments[leftIdx], leftIdx) : null;
+              const rightNeighborColor = (rightIdx >= 0 && rightIdx < n && rightIdx !== i)
+                ? fragColor(fragments[rightIdx], rightIdx) : null;
+
+              return (
+                <div key={frag.id || i} className="flex items-center">
+                  <PartBlock fragment={frag} index={i}
+                    onRemove={onRemove} onToggleAmplification={onToggleAmplification}
+                    onReorder={onReorder} pcrSize={pcrSizes[i]}
+                    onSplitSignal={onSplitSignal}
+                    fwdPrimer={fwdPrimer} revPrimer={revPrimer}
+                    leftNeighborColor={leftNeighborColor}
+                    rightNeighborColor={rightNeighborColor} />
+                  {/* Junction between fragments */}
+                  {i < junctions.length && (i < n - 1 || circular) && (
+                    <div className="flex flex-col items-center">
+                      <JunctionBlock
+                        junction={junctions[i]}
+                        index={i}
+                        leftName={frag.name}
+                        rightName={fragments[(i + 1) % n]?.name || '?'}
+                        onChange={cfg => onJunctionChange(i, cfg)} />
+                      <JunctionDNA junction={junctions[i]} calculated={calculated} />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
 
             {/* Circular: show closing junction label */}
             {circular && n > 1 && (
@@ -74,7 +95,7 @@ export default function DesignCanvas({
             )}
 
             {/* 3' cap */}
-            <div className="w-1.5 h-14 bg-gray-300 rounded-r" />
+            <div className={`w-1.5 bg-gray-300 rounded-r ${hasPrimers ? 'h-[72px]' : 'h-14'}`} />
           </div>
 
           <div className="text-xs text-gray-500 mt-3 select-none">

@@ -54,3 +54,14 @@ export function getColor(feature) {
   if (isMarker(feature.name || feature)) return FEATURE_COLORS.marker;
   return FEATURE_COLORS[feature.type || feature] || FEATURE_COLORS.misc_feature;
 }
+
+/** Darken a hex color by a fraction (0-1). */
+export function darken(hex, amount = 0.2) {
+  if (!hex || hex[0] !== '#') return hex || '#333';
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return '#' + [r, g, b].map(c =>
+    Math.round(c * (1 - amount)).toString(16).padStart(2, '0')
+  ).join('');
+}
