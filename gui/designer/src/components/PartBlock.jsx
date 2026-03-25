@@ -193,40 +193,34 @@ export default function PartBlock({
           {fragment.introns.length} intron{fragment.introns.length > 1 ? 's' : ''}
         </div>
       )}
-      {/* Domain editor button (CDS only) */}
-      {fragment.type === 'CDS' && onEditDomains && (
-        <button onClick={(e) => { e.stopPropagation(); onEditDomains(index); }}
-          className="absolute -bottom-2 -right-6 w-5 h-5 bg-teal-500 text-white rounded-full
-                     text-[10px] hidden group-hover:flex items-center justify-center
-                     hover:bg-teal-600 z-10"
-          title="Разметить домены">
-          {'📐'}
+      {/* ── Hover toolbar (bottom) ── */}
+      <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 hidden group-hover:flex items-center gap-1 z-10
+                       bg-white rounded-full shadow border border-gray-200 px-1.5 py-0.5">
+        {onFlip && (
+          <button onClick={(e) => { e.stopPropagation(); onFlip(index); }}
+            className="w-5 h-5 rounded-full text-[10px] flex items-center justify-center hover:bg-indigo-100 text-indigo-600"
+            title="Перевернуть (reverse complement)">↻</button>
+        )}
+        {onSplitSignal && (
+          <button onClick={(e) => { e.stopPropagation(); onSplitSignal(index); }}
+            className="w-5 h-5 rounded-full text-[10px] flex items-center justify-center hover:bg-orange-100 text-orange-600"
+            title="Разделить фрагмент">✂</button>
+        )}
+        {fragment.type === 'CDS' && onEditDomains && (
+          <button onClick={(e) => { e.stopPropagation(); onEditDomains(index); }}
+            className="w-5 h-5 rounded-full text-[9px] flex items-center justify-center hover:bg-teal-100 text-teal-600"
+            title="Разметить домены">📐</button>
+        )}
+        <button onClick={(e) => { e.stopPropagation(); onToggleAmplification(index); }}
+          className={`text-[8px] px-1.5 py-0.5 rounded-full font-medium
+            ${fragment.needsAmplification ? 'bg-blue-50 text-blue-600 hover:bg-blue-100' : 'bg-amber-50 text-amber-600 hover:bg-amber-100'}`}
+          title={fragment.needsAmplification ? 'Отключить ПЦР (фрагмент из пробирки)' : 'Включить ПЦР (нужна амплификация)'}>
+          {fragment.needsAmplification ? 'ПЦР' : 'нет'}
         </button>
-      )}
-      {/* Flip button */}
-      {onFlip && (
-        <button onClick={(e) => { e.stopPropagation(); onFlip(index); }}
-          className="absolute -bottom-2 -left-2 w-5 h-5 bg-indigo-500 text-white rounded-full
-                     text-[10px] hidden group-hover:flex items-center justify-center
-                     hover:bg-indigo-600 z-10"
-          title="Перевернуть (reverse complement)">
-          {'↻'}
-        </button>
-      )}
-      {/* Fragment splitter (universal) */}
-      {onSplitSignal && (
-        <button onClick={(e) => { e.stopPropagation(); onSplitSignal(index); }}
-          className="absolute -top-2 -left-2 w-5 h-5 bg-orange-400 text-white rounded-full
-                     text-[10px] hidden group-hover:flex items-center justify-center
-                     hover:bg-orange-500 z-10" title="Разделить фрагмент">
-          {'✂'}
-        </button>
-      )}
-      {/* Remove */}
-      <button onClick={() => onRemove(index)}
-        className="absolute -top-2 -right-2 w-4 h-4 bg-red-500 text-white rounded-full
-                   text-[10px] hidden group-hover:flex items-center justify-center
-                   hover:bg-red-600 z-10">&times;</button>
+        <button onClick={(e) => { e.stopPropagation(); onRemove(index); }}
+          className="w-5 h-5 rounded-full text-[10px] flex items-center justify-center hover:bg-red-100 text-red-500"
+          title="Удалить фрагмент">×</button>
+      </div>
     </div>
   );
 }
