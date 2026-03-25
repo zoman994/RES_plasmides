@@ -1,15 +1,11 @@
 import { useState } from 'react';
 
-const RC = { A: 'T', T: 'A', G: 'C', C: 'G' };
-const revComp = s => s.split('').reverse().map(c => RC[c.toUpperCase()] || 'N').join('');
-
 export default function JunctionDNA({ junction, calculated, primers = [],
                                        leftFragment, rightFragment,
                                        leftColor, rightColor }) {
   const [expanded, setExpanded] = useState(false);
   const j = junction || {};
 
-  // Before calculation: label is shown by JunctionBlock, nothing here
   if (!calculated || !primers.length) return null;
 
   const overlapSeq = (j.overlapSequence || '').toUpperCase();
@@ -29,7 +25,6 @@ export default function JunctionDNA({ junction, calculated, primers = [],
 
   return (
     <div className="relative flex flex-col items-center select-none">
-      {/* Compact: clickable sequence preview */}
       <div className="cursor-pointer hover:bg-gray-50 rounded px-1 py-0.5"
         onClick={() => setExpanded(!expanded)}
         title="Клик для подробностей">
@@ -43,70 +38,70 @@ export default function JunctionDNA({ junction, calculated, primers = [],
         </div>
       </div>
 
-      {/* Inline popover — attached below junction */}
       {expanded && (
         <>
-          {/* Click-away overlay (transparent) */}
           <div className="fixed inset-0 z-20" onClick={() => setExpanded(false)} />
-          {/* Popover */}
           <div className="absolute top-full left-1/2 -translate-x-1/2 z-30 mt-1
-                          w-[380px] bg-white rounded-lg shadow-xl border p-3"
+                          w-[400px] bg-white rounded-lg shadow-xl border p-3"
             onClick={e => e.stopPropagation()}>
-            {/* Arrow pointing up */}
             <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-white border-l border-t rotate-45" />
 
             <div className="text-[10px] font-semibold mb-2">
-              {leftName} {'↔'} {rightName} ({overlapSeq.length} п.н., Tm {j.overlapTm}°C)
+              Overlap: {leftName} {'↔'} {rightName} — {overlapSeq.length} п.н., Tm {j.overlapTm}°C
             </div>
 
-            {/* Primer details */}
+            {/* Product from left fragment (rev primer extends right) */}
             {revLeft && (
-              <div className="bg-gray-50 rounded p-2 mb-1.5">
-                <div className="text-[9px] text-gray-500 mb-1">{revLeft.name} (← обратный)</div>
-                <div className="font-mono text-[10px]">
-                  <span className="text-[7px] text-gray-400">5'─</span>
-                  <span style={{ color: rc }}>{(revLeft.tailSequence || '').toLowerCase()}</span>
-                  <span className="font-bold">{(revLeft.bindingSequence || '').toUpperCase()}</span>
-                  <span className="text-[7px] text-gray-400">─3'</span>
+              <div className="bg-gray-50 rounded p-2 mb-1">
+                <div className="text-[9px] text-gray-500 mb-1">Продукт {leftName} ({revLeft.name} ←)</div>
+                <div className="font-mono text-[10px] overflow-x-auto whitespace-nowrap">
+                  <span className="text-gray-400">…</span>
+                  <span className="font-bold text-gray-700">{(revLeft.bindingSequence || '').toUpperCase().slice(-12)}</span>
+                  <span className="text-gray-300">{' '}</span>
+                  <span className="text-teal-600">{(revLeft.tailSequence || '').toLowerCase().slice(0, 20)}</span>
+                  {revTailLen > 20 && <span className="text-gray-400">…</span>}
                 </div>
                 <div className="text-[8px] text-gray-400 mt-0.5">
-                  tail {revTailLen} п.н. (от {rightName}) · binding {(revLeft.bindingSequence || '').length} п.н.
-                </div>
-              </div>
-            )}
-            {fwdRight && (
-              <div className="bg-gray-50 rounded p-2 mb-2">
-                <div className="text-[9px] text-gray-500 mb-1">{fwdRight.name} (→ прямой)</div>
-                <div className="font-mono text-[10px]">
-                  <span className="text-[7px] text-gray-400">5'─</span>
-                  <span style={{ color: lc }}>{(fwdRight.tailSequence || '').toLowerCase()}</span>
-                  <span className="font-bold">{(fwdRight.bindingSequence || '').toUpperCase()}</span>
-                  <span className="text-[7px] text-gray-400">─3'</span>
-                </div>
-                <div className="text-[8px] text-gray-400 mt-0.5">
-                  tail {fwdTailLen} п.н. (от {leftName}) · binding {(fwdRight.bindingSequence || '').length} п.н.
+                  ←binding {(revLeft.bindingSequence || '').length} п.н. (на {leftName}) · tail {revTailLen} п.н. (от {rightName})→
                 </div>
               </div>
             )}
 
-            {/* Overlap double-strand */}
+            {/* Product from right fragment (fwd primer extends left) */}
+            {fwdRight && (
+              <div className="bg-gray-50 rounded p-2 mb-2">
+                <div className="text-[9px] text-gray-500 mb-1">Продукт {rightName} (→ {fwdRight.name})</div>
+                <div className="font-mono text-[10px] overflow-x-auto whitespace-nowrap">
+                  {fwdTailLen > 20 && <span className="text-gray-400">…</span>}
+                  <span className="text-teal-600">{(fwdRight.tailSequence || '').toLowerCase().slice(-20)}</span>
+                  <span className="text-gray-300">{' '}</span>
+                  <span className="font-bold text-gray-700">{(fwdRight.bindingSequence || '').toUpperCase().slice(0, 12)}</span>
+                  <span className="text-gray-400">…</span>
+                </div>
+                <div className="text-[8px] text-gray-400 mt-0.5">
+                  ←tail {fwdTailLen} п.н. (от {leftName}) · binding {(fwdRight.bindingSequence || '').length} п.н. (на {rightName})→
+                </div>
+              </div>
+            )}
+
+            {/* Overlap annealing zone */}
             <div className="bg-blue-50 rounded p-2 font-mono text-[9px] overflow-x-auto">
+              <div className="text-[8px] text-blue-700 font-sans font-semibold mb-1">
+                Зона отжига ({overlapSeq.length} п.н.)
+              </div>
               <div className="whitespace-nowrap">
-                <span className="text-[7px] text-gray-400">5'…</span>
+                <span className="text-gray-400">{leftName}: …</span>
                 <span style={{ color: lc, fontWeight: 'bold' }}>{leftPart}</span>
-                <span className="text-gray-300">│</span>
                 <span style={{ color: rc, fontWeight: 'bold' }}>{rightPart}</span>
-                <span className="text-[7px] text-gray-400">…3'</span>
-              </div>
-              <div className="whitespace-nowrap text-gray-300 tracking-[0.5px]">
-                {'   '}{'|'.repeat(overlapSeq.length)}
               </div>
               <div className="whitespace-nowrap">
-                <span className="text-[7px] text-gray-400">3'…</span>
-                <span style={{ color: lc }}>{revComp(leftPart)}</span>
-                <span className="text-gray-300">│</span>
-                <span style={{ color: rc }}>{revComp(rightPart)}</span>
-                <span className="text-[7px] text-gray-400">…5'</span>
+                <span className="text-gray-400">{rightName}:{'  '}</span>
+                <span style={{ color: lc }}>{leftPart}</span>
+                <span style={{ color: rc }}>{rightPart}</span>
+                <span className="text-gray-400">…</span>
+              </div>
+              <div className="text-[8px] text-gray-400 mt-1 font-sans text-center">
+                {'←'} {revTailLen} п.н. от {rightName} {'|'} {fwdTailLen} п.н. от {leftName} {'→'}
               </div>
             </div>
 

@@ -149,7 +149,7 @@ export default function SequenceViewer({ fragments, circular, primers = [] }) {
           )}
 
           {/* Sequence display */}
-          <div className="font-mono max-h-[400px] overflow-y-auto bg-gray-50 p-3 rounded">
+          <div className="font-mono max-h-[400px] overflow-y-auto bg-gray-50 p-3 rounded text-[12px]">
             {lines.map(line => {
               const lineStart = line.pos - 1;
               const lineEnd = lineStart + line.seq.length;
@@ -185,24 +185,18 @@ export default function SequenceViewer({ fragments, circular, primers = [] }) {
                 );
               };
 
+              // Shared left padding for line number
+              const LN_W = '48px';
+
               return (
                 <div key={line.pos} className={linePrimers.length > 0 ? 'mb-1' : ''}>
-                  {fwdPrimers.length > 0 && <div className="ml-[52px]">{fwdPrimers.map(renderTrack)}</div>}
+                  {fwdPrimers.length > 0 && <div style={{ paddingLeft: LN_W }}>{fwdPrimers.map(renderTrack)}</div>}
 
-                  <div className="flex">
-                    <span className="text-gray-400 w-[48px] text-right mr-1 select-none shrink-0 text-[11px]">{line.pos}</span>
-                    <span className="text-[12px] tracking-[0.5px] text-[#1a1a1a] select-all break-all leading-5">
+                  <div className="flex whitespace-pre leading-5">
+                    <span className="text-gray-400 text-right select-none shrink-0 text-[11px]" style={{ width: LN_W }}>{line.pos} </span>
+                    <span className="text-[#1a1a1a] select-all">
                       {effectiveMode === 'dna' && selected === 'all'
-                        ? line.seq.split('').map((ch, ci) => {
-                            const abs = lineStart + ci;
-                            const isBoundary = boundaries.has(abs);
-                            return (
-                              <span key={ci}>
-                                {isBoundary && <span className="border-l-2 border-amber-400 pl-px ml-px" />}
-                                {ch}
-                              </span>
-                            );
-                          })
+                        ? line.seq
                         : effectiveMode === 'dna'
                           ? line.seq.split('').map((ch, ci) => {
                               const aaIdx = Math.floor((lineStart + ci) / 3);
@@ -222,7 +216,7 @@ export default function SequenceViewer({ fragments, circular, primers = [] }) {
                     </span>
                   </div>
 
-                  {revPrimers.length > 0 && <div className="ml-[52px]">{revPrimers.map(renderTrack)}</div>}
+                  {revPrimers.length > 0 && <div style={{ paddingLeft: LN_W }}>{revPrimers.map(renderTrack)}</div>}
                 </div>
               );
             })}
