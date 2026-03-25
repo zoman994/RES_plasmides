@@ -650,7 +650,10 @@ export default function App() {
       {showPartsLib && (
         <PartsLibrary parts={parts} onClose={() => setShowPartsLib(false)}
           onOpenCDSEditor={(part) => { setGlobalCDSPart(part); setShowGlobalCDS(true); setShowPartsLib(false); }}
-          onAddToCanvas={(part) => addFragment(part)} />
+          onAddToCanvas={(part) => addFragment(part)}
+          onUpdatePart={(id, data) => {
+            setParts(prev => prev.map(p => p.id === id ? { ...p, ...data } : p));
+          }} />
       )}
       {showGlobalCDS && (
         <CDSEditor

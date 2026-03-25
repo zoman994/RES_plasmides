@@ -9,11 +9,13 @@ const TYPE_LABELS = {
   misc_feature: 'Прочее', regulatory: 'Регуляторные',
 };
 
-export default function PartsLibrary({ parts, onClose, onOpenCDSEditor, onAddToCanvas }) {
+export default function PartsLibrary({ parts, onClose, onOpenCDSEditor, onAddToCanvas, onUpdatePart }) {
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
   const [selectedId, setSelectedId] = useState(null);
   const [expanded, setExpanded] = useState(new Set());
+  const [editingDesc, setEditingDesc] = useState(false);
+  const [descText, setDescText] = useState('');
 
   // Group and filter
   const filtered = useMemo(() => {
@@ -152,17 +154,33 @@ export default function PartsLibrary({ parts, onClose, onOpenCDSEditor, onAddToC
                   </div>
                 </div>
 
-                {/* Description */}
-                {(() => {
-                  const desc = getPartDescription(selected.name, selected.type);
-                  return desc.long ? (
-                    <div className="text-[11px] text-gray-600 bg-gray-50 rounded p-2 space-y-1">
-                      <div>{desc.long}</div>
-                      {desc.hostRange && <div className="text-gray-400">Хозяин: {desc.hostRange}</div>}
-                      {desc.note && <div className="text-amber-600">{'⚠'} {desc.note}</div>}
+                {/* Description (editable) */}
+                {editingDesc ? (
+                  <div>
+                    <textarea value={descText} onChange={e => setDescText(e.target.value)}
+                      className="w-full border rounded p-2 text-[11px] min-h-[60px] outline-none focus:border-blue-400 resize-y"
+                      placeholder="Описание: функция, условия, хозяин, особенности..."
+                      autoFocus />
+                    <div className="flex gap-2 mt-1">
+                      <button onClick={() => { onUpdatePart?.(selected.id, { description: descText }); setEditingDesc(false); }}
+                        className="text-[10px] bg-blue-600 text-white px-2 py-0.5 rounded">{'💾'} Сохранить</button>
+                      <button onClick={() => setEditingDesc(false)}
+                        className="text-[10px] text-gray-500 px-2 py-0.5">Отмена</button>
                     </div>
-                  ) : null;
-                })()}
+                  </div>
+                ) : (
+                  <div onClick={() => { setEditingDesc(true); setDescText(selected.description || getPartDescription(selected.name, selected.type).long || ''); }}
+                    className="text-[11px] text-gray-600 bg-gray-50 rounded p-2 cursor-pointer hover:bg-gray-100 border border-transparent hover:border-gray-200 min-h-[40px]"
+                    title="Нажмите чтобы редактировать">
+                    {selected.description || getPartDescription(selected.name, selected.type).long || (
+                      <span className="text-gray-400 italic">Нажмите чтобы добавить описание...</span>
+                    )}
+                    {(() => {
+                      const desc = getPartDescription(selected.name, selected.type);
+                      return desc.hostRange ? <div className="text-gray-400 mt-1">Хозяин: {desc.hostRange}</div> : null;
+                    })()}
+                  </div>
+                )}
 
                 {/* Domain bar */}
                 {selected.domains?.length > 0 && (
