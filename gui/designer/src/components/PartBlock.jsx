@@ -33,7 +33,7 @@ function fmtSize(bp) {
 
 export default function PartBlock({
   fragment, index, onRemove, onToggleAmplification, onReorder, onFlip,
-  pcrSize, onSplitSignal, onEditDomains, fragmentCount,
+  pcrSize, onSplitSignal, onEditDomains, onEditSequence, fragmentCount,
   fwdPrimer, revPrimer, leftNeighborColor, rightNeighborColor,
 }) {
   const [{ isDragging }, drag] = useDrag({
@@ -246,6 +246,11 @@ export default function PartBlock({
           <button onClick={(e) => { e.stopPropagation(); onEditDomains(index); }}
             className="w-5 h-5 rounded-full text-[9px] flex items-center justify-center hover:bg-teal-100 text-teal-600"
             title="Разметить домены">📐</button>
+        )}
+        {onEditSequence && (
+          <button onClick={(e) => { e.stopPropagation(); onEditSequence(index); }}
+            className="w-5 h-5 rounded-full text-[10px] flex items-center justify-center hover:bg-blue-100 text-blue-600"
+            title="Редактировать последовательность">✏️</button>
         )}
         <button onClick={(e) => { e.stopPropagation(); onToggleAmplification(index); }}
           className={`text-[8px] px-1.5 py-0.5 rounded-full font-medium

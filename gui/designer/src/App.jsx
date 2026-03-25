@@ -18,6 +18,7 @@ import ExperimentStats from './components/ExperimentStats';
 import OligoManager from './components/OligoManager';
 import CDSEditor from './components/CDSEditor';
 import PartsLibrary from './components/PartsLibrary';
+import SequenceEditor from './components/SequenceEditor';
 import { fetchParts, designPrimers } from './api';
 import { validateConstruct, checkPrimerQuality, pcrProductSize } from './validate';
 import { exportGenBank, exportProtocol, saveToPVCS } from './exports';
@@ -80,6 +81,7 @@ export default function App() {
   const [showPartsLib, setShowPartsLib] = useState(false);
   const [globalCDSPart, setGlobalCDSPart] = useState(null);
   const [domainTarget, setDomainTarget] = useState(null);
+  const [seqEditTarget, setSeqEditTarget] = useState(null);
   const [activeTab, setActiveTab] = useState('canvas');
   const [inventoryVersion, setInventoryVersion] = useState(0);
   const [polymerase, setPolymerase] = useState('phusion');
@@ -577,7 +579,7 @@ export default function App() {
               onToggleAmplification={toggleAmplification} onJunctionChange={updateJunction}
               onReorder={reorderFragments} onFlip={flipFragment} calculated={calculated}
               pcrSizes={pcrSizes} onSplitSignal={setSplitTarget}
-              onEditDomains={setDomainTarget} primers={primers} />
+              onEditDomains={setDomainTarget} onEditSequence={setSeqEditTarget} primers={primers} />
 
             {fragments.length >= 2 && !active.completed && (
               <div className="flex items-center justify-center gap-3">
@@ -690,6 +692,19 @@ export default function App() {
       {splitTarget !== null && fragments[splitTarget] && (
         <FragmentSplitter fragment={fragments[splitTarget]} onSplit={handleFragmentSplit}
           onClose={() => setSplitTarget(null)} partsLibrary={parts} />
+      )}
+      {seqEditTarget !== null && fragments[seqEditTarget] && (
+        <SequenceEditor
+          fragment={fragments[seqEditTarget]}
+          onSave={(updated) => {
+            updateActive({
+              fragments: fragments.map((f, i) => i === seqEditTarget ? updated : f),
+              calculated: false, primers: [],
+            });
+            setSeqEditTarget(null);
+          }}
+          onClose={() => setSeqEditTarget(null)}
+        />
       )}
       {domainTarget !== null && fragments[domainTarget]?.type === 'CDS' && (
         <CDSEditor
