@@ -52,6 +52,9 @@ export default function PartBlock({
   const tc = dark ? '#333' : '#fff';
   const hasPrimers = !!(fwdPrimer || revPrimer);
 
+  const fwdTail = fwdPrimer?.tailSequence;
+  const revTail = revPrimer?.tailSequence;
+
   return (
     <div ref={ref} className={`relative group cursor-grab transition-transform
       ${isOver ? 'scale-105' : ''}`}
@@ -77,21 +80,41 @@ export default function PartBlock({
         onDoubleClick={() => onToggleAmplification(index)}
         title="Double-click to toggle PCR amplification">
 
+        {/* ── Fwd tail bar — extends LEFT from block edge (top area) ── */}
+        {fwdTail && leftNeighborColor && (
+          <div className="absolute right-full top-1 flex items-center h-5 rounded-l px-1.5 text-[8px] font-bold whitespace-nowrap"
+            style={{
+              minWidth: 24,
+              backgroundColor: leftNeighborColor + '55',
+              borderLeft: `2px solid ${leftNeighborColor}`,
+              borderTop: `1px solid ${leftNeighborColor}60`,
+              borderBottom: `1px solid ${leftNeighborColor}60`,
+              color: darken(leftNeighborColor, 0.3),
+            }}
+            title={`Tail (от соседа): ${fwdTail} (${fwdTail.length} п.н.)`}>
+            {fwdTail.length}
+          </div>
+        )}
+
+        {/* ── Rev tail bar — extends RIGHT from block edge (bottom area) ── */}
+        {revTail && rightNeighborColor && (
+          <div className="absolute left-full bottom-1 flex items-center h-5 rounded-r px-1.5 text-[8px] font-bold whitespace-nowrap"
+            style={{
+              minWidth: 24,
+              backgroundColor: rightNeighborColor + '55',
+              borderRight: `2px solid ${rightNeighborColor}`,
+              borderTop: `1px solid ${rightNeighborColor}60`,
+              borderBottom: `1px solid ${rightNeighborColor}60`,
+              color: darken(rightNeighborColor, 0.3),
+            }}
+            title={`Tail (от соседа): ${revTail} (${revTail.length} п.н.)`}>
+            {revTail.length}
+          </div>
+        )}
+
         {/* ── Forward primer row (top) ── */}
         {fwdPrimer && (
-          <div className="relative flex items-center h-5 px-2 shrink-0">
-            {/* Tail extending LEFT — colored as LEFT neighbor */}
-            {fwdPrimer.tailSequence && leftNeighborColor && (
-              <div className="absolute right-full top-0 bottom-0 flex items-center px-1.5 rounded-l-sm text-[7px] font-mono whitespace-nowrap"
-                style={{
-                  backgroundColor: leftNeighborColor + '40',
-                  borderLeft: `2px solid ${leftNeighborColor}`,
-                  color: darken(leftNeighborColor, 0.3),
-                }}
-                title={`Tail: ${fwdPrimer.tailSequence} (${fwdPrimer.tailSequence.length}bp)`}>
-                {fwdPrimer.tailSequence.length}
-              </div>
-            )}
+          <div className="flex items-center h-5 px-2 shrink-0">
             <span className="text-[9px] mr-0.5" style={{ color: tc, opacity: 0.8 }}>{'→'}</span>
             <span className="text-[7px] truncate max-w-[55px]" style={{ color: tc, opacity: 0.7 }}
               title={fwdPrimer.name}>{primerLabel(fwdPrimer.name)}</span>
@@ -129,24 +152,12 @@ export default function PartBlock({
 
         {/* ── Reverse primer row (bottom) ── */}
         {revPrimer && (
-          <div className="relative flex items-center h-5 px-2 shrink-0">
+          <div className="flex items-center h-5 px-2 shrink-0">
             <span className="text-[7px]" style={{ color: tc, opacity: 0.6 }}>{revPrimer.tmBinding}°</span>
             <div className="flex-1 h-[2px] mx-1 rounded" style={{ background: tc, opacity: 0.25 }} />
             <span className="text-[7px] truncate max-w-[55px] text-right" style={{ color: tc, opacity: 0.7 }}
               title={revPrimer.name}>{primerLabel(revPrimer.name)}</span>
             <span className="text-[9px] ml-0.5" style={{ color: tc, opacity: 0.8 }}>{'←'}</span>
-            {/* Tail extending RIGHT — colored as RIGHT neighbor */}
-            {revPrimer.tailSequence && rightNeighborColor && (
-              <div className="absolute left-full top-0 bottom-0 flex items-center px-1.5 rounded-r-sm text-[7px] font-mono whitespace-nowrap"
-                style={{
-                  backgroundColor: rightNeighborColor + '40',
-                  borderRight: `2px solid ${rightNeighborColor}`,
-                  color: darken(rightNeighborColor, 0.3),
-                }}
-                title={`Tail: ${revPrimer.tailSequence} (${revPrimer.tailSequence.length}bp)`}>
-                {revPrimer.tailSequence.length}
-              </div>
-            )}
           </div>
         )}
       </div>

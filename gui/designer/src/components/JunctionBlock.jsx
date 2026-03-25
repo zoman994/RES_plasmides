@@ -4,15 +4,30 @@ export default function JunctionBlock({ junction, index, leftName, rightName, on
   const [open, setOpen] = useState(false);
   const j = junction || { type: 'overlap', overlapMode: 'split', overlapLength: 30, tmTarget: 62 };
 
-  // Canvas label with direction indicator
+  // Actual overlap (from API) vs user-set
+  const userLen = j.overlapLength || 30;
+  const actualLen = j.overlapSequence ? j.overlapSequence.length : null;
+  const displayLen = actualLen || userLen;
+  const diff = actualLen && actualLen !== userLen ? actualLen - userLen : 0;
+
+  // Mode arrow
+  const modeArrow = j.overlapMode === 'left_only' ? '◀' : j.overlapMode === 'right_only' ? '▶' : '◀▶';
+
+  // Canvas label
   const label =
     j.type === 'overlap'
-      ? (j.overlapMode === 'left_only' ? `◀${j.overlapLength || 30}bp`
-        : j.overlapMode === 'right_only' ? `${j.overlapLength || 30}bp▶`
-        : `◀▶${j.overlapLength || 30}bp`)
+      ? `${modeArrow}${displayLen} п.н.`
     : j.type === 'golden_gate' ? `GG:${j.overhang || '?'}`
     : j.type === 'sticky_end' ? (j.reEnzyme || 'RE')
     : j.type;
+
+  // Auto-expansion note
+  const autoNote = diff ? `(${diff > 0 ? '+' : ''}${diff})` : '';
+
+  // Tooltip with overlap details
+  const tip = j.overlapSequence
+    ? `Overlap: ${j.overlapSequence}\n${displayLen} п.н. · Tm ${j.overlapTm || '?'}°C · GC ${j.overlapGc || '?'}%${diff ? `\nАвто-расширен с ${userLen} до ${displayLen} п.н. для Tm` : ''}`
+    : `Overlap: ${userLen} п.н.`;
 
   const modeBtn = (mode, icon, desc) => (
     <button
@@ -34,11 +49,17 @@ export default function JunctionBlock({ junction, index, leftName, rightName, on
     <div className="relative">
       <div onClick={() => setOpen(!open)}
         className="w-6 h-14 cursor-pointer flex items-center justify-center
-                   hover:bg-blue-50 transition rounded" title="Configure junction">
+                   hover:bg-blue-50 transition rounded" title={tip}>
         <div className="w-px h-10 bg-gray-300" />
       </div>
-      <div className="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap">
+      <div className="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap flex flex-col items-center">
         <span className="text-[9px] text-blue-600 font-semibold">{label}</span>
+        {autoNote && (
+          <span className="text-[7px] text-teal-500">{autoNote}</span>
+        )}
+        {actualLen && j.overlapTm && (
+          <span className="text-[7px] text-gray-400">Tm {j.overlapTm}°</span>
+        )}
       </div>
 
       {open && (
@@ -47,20 +68,20 @@ export default function JunctionBlock({ junction, index, leftName, rightName, on
           onClick={e => e.stopPropagation()}>
           <h4 className="text-sm font-semibold mb-3">{leftName} &rarr; {rightName}</h4>
 
-          <label className="text-[11px] text-gray-500 block mb-1">Junction type</label>
+          <label className="text-[11px] text-gray-500 block mb-1">Тип стыка</label>
           <select value={j.type}
             onChange={e => onChange({ ...j, type: e.target.value })}
             className="w-full text-sm border rounded p-1.5 mb-3">
             <option value="overlap">Overlap (PCR/Gibson)</option>
             <option value="golden_gate">Golden Gate</option>
-            <option value="sticky_end">Restriction enzyme</option>
-            <option value="blunt">Blunt end</option>
-            <option value="preformed">Pre-formed</option>
+            <option value="sticky_end">Рестриктаза</option>
+            <option value="blunt">Тупые концы</option>
+            <option value="preformed">Готовые концы</option>
           </select>
 
           {j.type === 'overlap' && (
             <>
-              <label className="text-[11px] text-gray-500 block mb-1">Overlap on:</label>
+              <label className="text-[11px] text-gray-500 block mb-1">Overlap на:</label>
               <div className="flex gap-1 mb-3">
                 {modeBtn('left_only',
                   <><span className="text-teal-500">&larr;overlap</span><span className="text-gray-300">|</span><span>binding</span></>,
@@ -68,7 +89,7 @@ export default function JunctionBlock({ junction, index, leftName, rightName, on
                 )}
                 {modeBtn('split',
                   <><span className="text-teal-500">&larr;half</span><span className="text-gray-300">|</span><span className="text-teal-500">half&rarr;</span></>,
-                  <>&laquo;&raquo; both</>
+                  <>&laquo;&raquo; оба</>
                 )}
                 {modeBtn('right_only',
                   <><span>binding</span><span className="text-gray-300">|</span><span className="text-teal-500">overlap&rarr;</span></>,
@@ -78,19 +99,19 @@ export default function JunctionBlock({ junction, index, leftName, rightName, on
 
               <div className="text-[10px] text-gray-400 mb-2">
                 {j.overlapMode === 'split'
-                  ? `${Math.floor((j.overlapLength || 30) / 2)}bp on each primer`
-                  : `Full ${j.overlapLength || 30}bp on one primer`}
+                  ? `${Math.floor((j.overlapLength || 30) / 2)} п.н. на каждом праймере`
+                  : `Полные ${j.overlapLength || 30} п.н. на одном праймере`}
               </div>
 
               <div className="flex gap-3 mb-2">
                 <div className="flex-1">
-                  <label className="text-[11px] text-gray-500 block">Length (bp)</label>
+                  <label className="text-[11px] text-gray-500 block">Длина (п.н.)</label>
                   <input type="number" value={j.overlapLength || 30} min={15} max={45}
                     onChange={e => onChange({ ...j, overlapLength: +e.target.value })}
                     className="w-full text-sm border rounded p-1.5" />
                 </div>
                 <div className="flex-1">
-                  <label className="text-[11px] text-gray-500 block">Tm target</label>
+                  <label className="text-[11px] text-gray-500 block">Целевой Tm</label>
                   <input type="number" value={j.tmTarget || 62} min={50} max={70}
                     onChange={e => onChange({ ...j, tmTarget: +e.target.value })}
                     className="w-full text-sm border rounded p-1.5" />
@@ -101,13 +122,13 @@ export default function JunctionBlock({ junction, index, leftName, rightName, on
 
           {j.type === 'golden_gate' && (
             <>
-              <label className="text-[11px] text-gray-500 block mb-1">Enzyme</label>
+              <label className="text-[11px] text-gray-500 block mb-1">Фермент</label>
               <select value={j.enzyme || 'BsaI'}
                 onChange={e => onChange({ ...j, enzyme: e.target.value })}
                 className="w-full text-sm border rounded p-1.5 mb-2">
                 <option>BsaI</option><option>BbsI</option><option>Esp3I</option>
               </select>
-              <label className="text-[11px] text-gray-500 block mb-1">4-nt overhang</label>
+              <label className="text-[11px] text-gray-500 block mb-1">4-нт овергенг</label>
               <input type="text" maxLength={4} value={j.overhang || ''}
                 onChange={e => onChange({ ...j, overhang: e.target.value.toUpperCase() })}
                 className="w-full text-sm border rounded p-1.5 font-mono" placeholder="ATCG" />
@@ -116,7 +137,7 @@ export default function JunctionBlock({ junction, index, leftName, rightName, on
 
           {j.type === 'sticky_end' && (
             <>
-              <label className="text-[11px] text-gray-500 block mb-1">Enzyme</label>
+              <label className="text-[11px] text-gray-500 block mb-1">Рестриктаза</label>
               <input type="text" value={j.reEnzyme || ''}
                 onChange={e => onChange({ ...j, reEnzyme: e.target.value })}
                 className="w-full text-sm border rounded p-1.5" placeholder="EcoRI" />
@@ -125,7 +146,7 @@ export default function JunctionBlock({ junction, index, leftName, rightName, on
 
           <button onClick={() => setOpen(false)}
             className="mt-3 w-full text-xs bg-gray-100 hover:bg-gray-200 rounded p-1.5">
-            Done
+            Готово
           </button>
         </div>
       )}

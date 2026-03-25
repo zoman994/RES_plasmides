@@ -38,7 +38,7 @@ export default function DesignCanvas({
           {/* Topology toggle + info */}
           <div className="flex items-center gap-4 mb-3 select-none">
             <div className="text-[11px] text-gray-400">
-              5' &rarr;&rarr;&rarr; construct assembly &rarr;&rarr;&rarr; 3'
+              5' &rarr;&rarr;&rarr; сборка конструкции &rarr;&rarr;&rarr; 3'
             </div>
             <button onClick={onToggleCircular}
               className={`text-[11px] px-3 py-1 rounded-full font-medium transition
@@ -99,9 +99,9 @@ export default function DesignCanvas({
           </div>
 
           <div className="text-xs text-gray-500 mt-3 select-none">
-            Total: {totalBp >= 1000 ? `${(totalBp / 1000).toFixed(1)} kb` : `${totalBp} bp`}
-            {' '}{circular ? 'circular' : 'linear'}
-            {' '}&middot; {n} fragments &middot; {junctions.length} junctions
+            Итого: {totalBp >= 1000 ? `${(totalBp / 1000).toFixed(1)} т.п.н.` : `${totalBp} п.н.`}
+            {' '}{circular ? 'кольцевой' : 'линейный'}
+            {' '}&middot; {n} фрагм. &middot; {junctions.length} {junctions.length === 1 ? 'стык' : 'стыков'}
           </div>
         </>
       )}
