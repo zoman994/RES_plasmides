@@ -21,7 +21,7 @@ function fragmentWidthEstimate(bp) {
 export default function DesignCanvas({
   fragments, junctions, circular, onToggleCircular,
   onDrop, onRemove, onToggleAmplification, onJunctionChange, onReorder, onFlip,
-  calculated, pcrSizes = [], onSplitSignal, primers = [],
+  calculated, pcrSizes = [], onSplitSignal, onEditDomains, primers = [],
 }) {
   const [{ isOver }, drop] = useDrop({
     accept: 'PART',
@@ -128,7 +128,7 @@ export default function DesignCanvas({
                       <PartBlock fragment={frag} index={i} fragmentCount={n}
                         onRemove={onRemove} onToggleAmplification={onToggleAmplification}
                         onReorder={onReorder} onFlip={onFlip} pcrSize={pcrSizes[i]}
-                        onSplitSignal={onSplitSignal}
+                        onSplitSignal={onSplitSignal} onEditDomains={onEditDomains}
                         fwdPrimer={fwdPrimer} revPrimer={revPrimer}
                         leftNeighborColor={leftNeighborColor}
                         rightNeighborColor={rightNeighborColor} />

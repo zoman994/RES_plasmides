@@ -16,6 +16,7 @@ import AssemblyTabs from './components/AssemblyTabs';
 import ExperimentSelector from './components/ExperimentSelector';
 import ExperimentStats from './components/ExperimentStats';
 import OligoManager from './components/OligoManager';
+import CDSEditor from './components/CDSEditor';
 import { fetchParts, designPrimers } from './api';
 import { validateConstruct, checkPrimerQuality, pcrProductSize } from './validate';
 import { exportGenBank, exportProtocol, saveToPVCS } from './exports';
@@ -74,6 +75,7 @@ export default function App() {
   const [splitTarget, setSplitTarget] = useState(null);
   const [showMutagenesis, setShowMutagenesis] = useState(false);
   const [showOligos, setShowOligos] = useState(false);
+  const [domainTarget, setDomainTarget] = useState(null);
   const [activeTab, setActiveTab] = useState('canvas');
   const [inventoryVersion, setInventoryVersion] = useState(0);
   const [polymerase, setPolymerase] = useState('phusion');
@@ -351,6 +353,15 @@ export default function App() {
     updateActive({ primers: primers.map(p => p.name === primerName ? { ...p, reused: true, reusedFrom: existingPrimer.name } : p) });
   };
 
+  // ═══════════ Domain editing ═══════════
+  const handleSaveDomains = (domains) => {
+    if (domainTarget === null) return;
+    updateActive({
+      fragments: fragments.map((f, idx) => idx === domainTarget ? { ...f, domains } : f),
+    });
+    setDomainTarget(null);
+  };
+
   // ═══════════ Assembly management ═══════════
   const addAssembly = () => {
     const id = `asm_${Date.now()}`;
@@ -501,7 +512,7 @@ export default function App() {
               onToggleAmplification={toggleAmplification} onJunctionChange={updateJunction}
               onReorder={reorderFragments} onFlip={flipFragment} calculated={calculated}
               pcrSizes={pcrSizes} onSplitSignal={setSplitTarget}
-              primers={primers} />
+              onEditDomains={setDomainTarget} primers={primers} />
 
             {fragments.length >= 2 && !active.completed && (
               <div className="flex items-center justify-center gap-3">
@@ -614,6 +625,13 @@ export default function App() {
       {splitTarget !== null && fragments[splitTarget] && (
         <FragmentSplitter fragment={fragments[splitTarget]} onSplit={handleFragmentSplit}
           onClose={() => setSplitTarget(null)} partsLibrary={parts} />
+      )}
+      {domainTarget !== null && fragments[domainTarget]?.type === 'CDS' && (
+        <CDSEditor
+          fragment={fragments[domainTarget]}
+          onSave={handleSaveDomains}
+          onClose={() => setDomainTarget(null)}
+        />
       )}
       {showOligos && (
         <div className="fixed inset-0 z-50 flex items-start justify-center pt-12 bg-black/30"

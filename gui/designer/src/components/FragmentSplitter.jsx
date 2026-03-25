@@ -124,7 +124,18 @@ export default function FragmentSplitter({ fragment, onSplit, onClose, partsLibr
 
         {/* Presets */}
         <div className="flex gap-2 mb-4 flex-wrap">
-          {isCDS && spPred.position > 0 && (
+          {/* Domain boundary presets */}
+          {isCDS && fragment.domains?.length > 1 && fragment.domains.slice(0, -1).map((d, i) => {
+            const next = fragment.domains[i + 1];
+            return (
+              <button key={i} onClick={() => { setMode('aa'); setCutAA(d.endAA); }}
+                className="text-[11px] px-3 py-1.5 rounded-full border hover:bg-blue-50 transition"
+                style={{ borderColor: d.color, color: d.color }}>
+                {'📐'} {d.name} | {next.name} (поз. {d.endAA})
+              </button>
+            );
+          })}
+          {isCDS && spPred.position > 0 && !fragment.domains?.length && (
             <button onClick={applyPresetSP}
               className="text-[11px] px-3 py-1.5 rounded-full bg-orange-50 text-orange-700 border border-orange-200 hover:bg-orange-100 transition">
               {'🔬'} Сигнальный пептид (авто)

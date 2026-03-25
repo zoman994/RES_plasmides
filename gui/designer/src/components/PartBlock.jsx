@@ -31,7 +31,7 @@ function fmtSize(bp) {
 
 export default function PartBlock({
   fragment, index, onRemove, onToggleAmplification, onReorder, onFlip,
-  pcrSize, onSplitSignal, fragmentCount,
+  pcrSize, onSplitSignal, onEditDomains, fragmentCount,
   fwdPrimer, revPrimer, leftNeighborColor, rightNeighborColor,
 }) {
   const [{ isDragging }, drag] = useDrag({
@@ -148,6 +148,22 @@ export default function PartBlock({
               <span className="truncate">{fragment.name}</span>
               {fragment.strand !== -1 && <span className="text-xs ml-1 opacity-60 shrink-0">&rarr;</span>}
             </div>
+            {/* Domain bar for CDS with domains */}
+            {fragment.domains?.length > 0 && (
+              <div className="flex h-3 rounded overflow-hidden w-full mx-1 mt-0.5">
+                {fragment.domains.map((d, di) => {
+                  const totalAA = Math.ceil((fragment.sequence || '').length / 3);
+                  const widthPct = Math.max(3, ((d.endAA - d.startAA + 1) / (totalAA || 1)) * 100);
+                  return (
+                    <div key={di} style={{ width: `${widthPct}%`, backgroundColor: d.color || '#56B4E9' }}
+                      className="flex items-center justify-center text-[6px] text-white font-medium truncate border-r border-white/30 last:border-0"
+                      title={`${d.name} (${d.type}): ${d.startAA}–${d.endAA} а.о.`}>
+                      {widthPct > 10 ? d.name : ''}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
             <div className="text-[9px] opacity-50">{fmtSize(fragment.length)}</div>
           </div>
         )}
@@ -175,6 +191,16 @@ export default function PartBlock({
         <div className="text-center text-[8px] bg-gray-200 text-gray-600 rounded px-1 mx-auto w-fit">
           {fragment.introns.length} intron{fragment.introns.length > 1 ? 's' : ''}
         </div>
+      )}
+      {/* Domain editor button (CDS only) */}
+      {fragment.type === 'CDS' && onEditDomains && (
+        <button onClick={(e) => { e.stopPropagation(); onEditDomains(index); }}
+          className="absolute -bottom-2 -right-6 w-5 h-5 bg-teal-500 text-white rounded-full
+                     text-[10px] hidden group-hover:flex items-center justify-center
+                     hover:bg-teal-600 z-10"
+          title="Разметить домены">
+          {'📐'}
+        </button>
       )}
       {/* Flip button */}
       {onFlip && (
