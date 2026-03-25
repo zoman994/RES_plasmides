@@ -14,6 +14,7 @@ import VerificationPanel from './components/VerificationPanel';
 import FragmentSplitter from './components/FragmentSplitter';
 import AssemblyTabs from './components/AssemblyTabs';
 import ExperimentStats from './components/ExperimentStats';
+import OligoManager from './components/OligoManager';
 import { fetchParts, designPrimers } from './api';
 import { validateConstruct, checkPrimerQuality, pcrProductSize } from './validate';
 import { exportGenBank, exportProtocol, saveToPVCS } from './exports';
@@ -561,6 +562,13 @@ export default function App() {
                     {'📊 Статистика'}
                   </button>
                 )}
+                {primers.length > 0 && (
+                  <button onClick={() => setActiveTab('oligos')}
+                    className={`text-xs px-3 py-1.5 border-b-2 font-medium transition ${
+                      activeTab === 'oligos' ? 'border-indigo-500 text-indigo-700' : 'border-transparent text-gray-500'}`}>
+                    {'🧬 Олиги'}
+                  </button>
+                )}
               </div>
             )}
 
@@ -592,6 +600,10 @@ export default function App() {
 
             {activeTab === 'stats' && (
               <ExperimentStats assemblies={assemblies} />
+            )}
+
+            {activeTab === 'oligos' && (
+              <OligoManager assemblies={assemblies} />
             )}
 
             {/* Analysis panels */}

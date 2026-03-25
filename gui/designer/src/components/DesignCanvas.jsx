@@ -84,7 +84,11 @@ export default function DesignCanvas({
                         leftName={frag.name}
                         rightName={fragments[(i + 1) % n]?.name || '?'}
                         onChange={cfg => onJunctionChange(i, cfg)} />
-                      <JunctionDNA junction={junctions[i]} calculated={calculated} />
+                      <JunctionDNA junction={junctions[i]} calculated={calculated}
+                        primers={primers}
+                        leftFragment={frag} rightFragment={fragments[(i + 1) % n]}
+                        leftColor={fragColor(frag, i)}
+                        rightColor={fragColor(fragments[(i + 1) % n], (i + 1) % n)} />
                     </div>
                   )}
                 </div>
