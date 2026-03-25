@@ -58,9 +58,15 @@ export default function DesignCanvas({
     setZoom(Math.max(30, Math.min(100, Math.floor(containerW / totalW * 100))));
   }, [fragments, n]);
 
-  // Auto-fit on fragment count change
+  // Auto-fit ONLY when fragment count changes (not on every re-render)
+  const prevN = useRef(n);
   useEffect(() => {
-    if (n > 0) { const tm = setTimeout(fitToView, 50); return () => clearTimeout(tm); }
+    if (n > 0 && n !== prevN.current) {
+      const tm = setTimeout(fitToView, 50);
+      prevN.current = n;
+      return () => clearTimeout(tm);
+    }
+    prevN.current = n;
   }, [n, fitToView]);
 
   // Ctrl+wheel zoom
