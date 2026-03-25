@@ -28,7 +28,7 @@ function fmtSize(bp) {
 }
 
 export default function PartBlock({
-  fragment, index, onRemove, onToggleAmplification, onReorder,
+  fragment, index, onRemove, onToggleAmplification, onReorder, onFlip,
   pcrSize, onSplitSignal,
   fwdPrimer, revPrimer, leftNeighborColor, rightNeighborColor,
 }) {
@@ -68,8 +68,12 @@ export default function PartBlock({
       {/* ═══ Main colored block ═══ */}
       <div className={`relative flex flex-col rounded-sm select-none
         ${hasPrimers ? 'min-h-[72px]' : 'h-14'}`}
-        style={{ background: color, border: dark ? '1px solid #ccc' : 'none',
-                 width: fragmentWidth(fragment.length), minWidth: 80 }}
+        style={{
+          background: color,
+          border: dark ? '1px solid #ccc' : 'none',
+          width: fragmentWidth(fragment.length), minWidth: 80,
+          borderLeft: fragment.strand === -1 ? `3px solid ${dark ? '#fff' : 'rgba(255,255,255,0.6)'}` : undefined,
+        }}
         onDoubleClick={() => onToggleAmplification(index)}
         title="Double-click to toggle PCR amplification">
 
@@ -158,6 +162,16 @@ export default function PartBlock({
         <div className="text-center text-[8px] bg-gray-200 text-gray-600 rounded px-1 mx-auto w-fit">
           {fragment.introns.length} intron{fragment.introns.length > 1 ? 's' : ''}
         </div>
+      )}
+      {/* Flip button */}
+      {onFlip && (
+        <button onClick={(e) => { e.stopPropagation(); onFlip(index); }}
+          className="absolute -bottom-2 -left-2 w-5 h-5 bg-indigo-500 text-white rounded-full
+                     text-[10px] hidden group-hover:flex items-center justify-center
+                     hover:bg-indigo-600 z-10"
+          title="Перевернуть (reverse complement)">
+          {'↻'}
+        </button>
       )}
       {/* Fragment splitter (universal) */}
       {onSplitSignal && (

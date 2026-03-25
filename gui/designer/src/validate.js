@@ -52,6 +52,12 @@ export function validateConstruct(fragments) {
     if (frag.type === 'CDS' && i < fragments.length - 1 && fragments[i + 1].type === 'CDS')
       w.push(`💡 Two CDS in a row (${frag.name} → ${fragments[i + 1].name}) — polycistronic?`);
 
+    // Flipped regulatory elements
+    if (frag.type === 'promoter' && frag.strand === -1)
+      w.push(`💡 ${frag.name}: промотор в обратной ориентации (←). Транскрипция пойдёт влево.`);
+    if (frag.type === 'terminator' && frag.strand === -1)
+      w.push(`⚠ ${frag.name}: терминатор перевёрнут — не будет работать для предыдущего гена.`);
+
     // Intron warning
     if (frag.has_introns && frag.introns?.length > 0)
       w.push(`⚠ ${frag.name}: has ${frag.introns.length} intron(s) — remove for E. coli expression! Use ✂ or "Remove introns" button.`);

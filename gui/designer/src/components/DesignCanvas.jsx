@@ -10,7 +10,7 @@ function fragColor(frag, idx) {
 
 export default function DesignCanvas({
   fragments, junctions, circular, onToggleCircular,
-  onDrop, onRemove, onToggleAmplification, onJunctionChange, onReorder,
+  onDrop, onRemove, onToggleAmplification, onJunctionChange, onReorder, onFlip,
   calculated, pcrSizes = [], onSplitSignal, primers = [],
 }) {
   const [{ isOver }, drop] = useDrop({
@@ -68,7 +68,7 @@ export default function DesignCanvas({
                 <div key={frag.id || i} className="flex items-center">
                   <PartBlock fragment={frag} index={i}
                     onRemove={onRemove} onToggleAmplification={onToggleAmplification}
-                    onReorder={onReorder} pcrSize={pcrSizes[i]}
+                    onReorder={onReorder} onFlip={onFlip} pcrSize={pcrSizes[i]}
                     onSplitSignal={onSplitSignal}
                     fwdPrimer={fwdPrimer} revPrimer={revPrimer}
                     leftNeighborColor={leftNeighborColor}

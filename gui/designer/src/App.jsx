@@ -195,6 +195,18 @@ export default function App() {
     });
   };
 
+  const flipFragment = (i) => {
+    const RC = { A:'T', T:'A', G:'C', C:'G', a:'t', t:'a', g:'c', c:'g',
+      N:'N', n:'n', R:'Y', Y:'R', M:'K', K:'M', S:'S', W:'W' };
+    const revComp = s => s.split('').reverse().map(c => RC[c] || c).join('');
+    updateActive({
+      fragments: fragments.map((x, idx) =>
+        idx === i ? { ...x, sequence: revComp(x.sequence || ''), strand: x.strand === -1 ? 1 : -1 } : x
+      ),
+      calculated: false, primers: [],
+    });
+  };
+
   const reorderFragments = (from, to) => {
     const nf = [...fragments];
     const [moved] = nf.splice(from, 1);
@@ -480,7 +492,7 @@ export default function App() {
               circular={circular} onToggleCircular={toggleCircular}
               onDrop={addFragment} onRemove={removeFragment}
               onToggleAmplification={toggleAmplification} onJunctionChange={updateJunction}
-              onReorder={reorderFragments} calculated={calculated}
+              onReorder={reorderFragments} onFlip={flipFragment} calculated={calculated}
               pcrSizes={pcrSizes} onSplitSignal={setSplitTarget}
               primers={primers} />
 
