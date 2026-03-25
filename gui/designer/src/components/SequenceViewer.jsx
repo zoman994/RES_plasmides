@@ -163,15 +163,14 @@ export default function SequenceViewer({ fragments, circular, primers = [] }) {
                   const bs = Math.max(p.bindStart - lineStart, s);
                   const be = Math.min(p.bindEnd - lineStart, e);
                   const isFwd = p.direction === 'forward';
-                  const c = isFwd ? '#2563eb' : '#dc2626';
                   return (
                     <div key={p.name} className="relative h-3" title={p.name}>
                       <div className="absolute bottom-0 flex" style={{ left: `${s}ch`, width: `${e - s}ch` }}>
-                        {isFwd && s < bs && <div style={{ width: `${bs - s}ch`, borderBottom: '2px solid #14b8a6' }} className="h-2.5" />}
-                        {bs < be && <div style={{ width: `${be - bs}ch`, borderBottom: `2px solid ${c}` }} className="h-2.5" />}
-                        {!isFwd && be < e && <div style={{ width: `${e - be}ch`, borderBottom: '2px solid #14b8a6' }} className="h-2.5" />}
+                        {isFwd && s < bs && <div style={{ width: `${bs - s}ch`, borderBottom: '2px solid #0d9488' }} className="h-2.5" />}
+                        {bs < be && <div style={{ width: `${be - bs}ch`, borderBottom: '2px solid #2563eb' }} className="h-2.5" />}
+                        {!isFwd && be < e && <div style={{ width: `${e - be}ch`, borderBottom: '2px solid #0d9488' }} className="h-2.5" />}
                       </div>
-                      <span className="absolute text-[7px] whitespace-nowrap" style={{ left: `${s}ch`, top: '0', color: c }}>
+                      <span className="absolute text-[7px] whitespace-nowrap text-gray-500" style={{ left: `${s}ch`, top: '0' }}>
                         {isFwd ? '→' : '←'}{p.label} {p.tm}°
                       </span>
                     </div>
@@ -193,19 +192,16 @@ export default function SequenceViewer({ fragments, circular, primers = [] }) {
                           ? line.seq.split('').map((ch, ci) => {
                               const abs = lineStart + ci;
                               const isBoundary = boundaries.has(abs);
-                              const r = coloredRanges.find(r => abs >= r.start && abs < r.end);
+                              // Two colors: blue=binding, teal=tail, black=rest
                               const pr = linePrimers.find(p => abs >= p.start && abs < p.end);
-                              let bg = 'transparent';
+                              let color = '#1a1a1a';
                               if (pr) {
-                                const inBind = abs >= pr.bindStart && abs < pr.bindEnd;
-                                bg = inBind
-                                  ? (pr.direction === 'forward' ? 'rgba(37,99,235,0.10)' : 'rgba(220,38,38,0.10)')
-                                  : 'rgba(20,184,166,0.10)';
+                                color = (abs >= pr.bindStart && abs < pr.bindEnd) ? '#2563eb' : '#0d9488';
                               }
                               return (
                                 <span key={ci}>
                                   {isBoundary && <span className="inline-block w-0.5 bg-gray-400 mx-px" style={{ height: '14px', verticalAlign: 'middle' }} />}
-                                  <span style={{ color: r?.color || '#333', backgroundColor: bg }}>{ch}</span>
+                                  <span style={{ color }}>{ch}</span>
                                 </span>
                               );
                             })
@@ -241,16 +237,13 @@ export default function SequenceViewer({ fragments, circular, primers = [] }) {
             {effectiveMode === 'dna' && primerRegions.length > 0 && (
               <>
                 <span className="flex items-center gap-1">
-                  <span className="w-4 h-0.5 bg-blue-600 inline-block" /> → прямой (binding)
+                  <span className="font-mono font-bold" style={{ color: '#2563eb' }}>ATCG</span> binding (отжиг)
                 </span>
                 <span className="flex items-center gap-1">
-                  <span className="w-4 h-0.5 bg-red-600 inline-block" /> ← обратный (binding)
+                  <span className="font-mono" style={{ color: '#0d9488' }}>atcg</span> хвост (overlap)
                 </span>
                 <span className="flex items-center gap-1">
-                  <span className="w-4 h-0.5 bg-teal-500 inline-block" /> хвост (overlap)
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="inline-block w-0.5 h-3 bg-gray-400" /> граница фрагмента
+                  <span className="font-mono" style={{ color: '#1a1a1a' }}>ATCG</span> остальное
                 </span>
               </>
             )}
