@@ -60,7 +60,7 @@ export default function PartBlock({
   return (
     <div ref={ref} className={`relative group cursor-grab transition-transform
       ${isOver ? 'scale-105' : ''}`}
-      style={{ opacity: isDragging ? 0.3 : 1, zIndex: 1 }}>
+      style={{ opacity: isDragging ? 0.3 : 1, zIndex: 1, overflow: 'visible' }}>
       {/* Drop indicator */}
       {isOver && <div className="absolute -left-1 top-0 bottom-0 w-0.5 bg-blue-500 rounded" />}
       {/* No-PCR badge */}
@@ -84,7 +84,7 @@ export default function PartBlock({
 
         {/* ── Fwd tail bar — extends LEFT from block edge (top area) ── */}
         {fwdTail && leftNeighborColor && (
-          <div className="absolute right-full top-1 flex items-center h-5 rounded-l px-1.5 text-[8px] font-bold whitespace-nowrap"
+          <div className="absolute right-full top-1 flex items-center h-5 rounded-l px-1.5 text-[8px] font-bold whitespace-nowrap z-[2]"
             style={{
               minWidth: 24,
               backgroundColor: leftNeighborColor + '55',
@@ -100,7 +100,7 @@ export default function PartBlock({
 
         {/* ── Rev tail bar — extends RIGHT from block edge (bottom area) ── */}
         {revTail && rightNeighborColor && (
-          <div className="absolute left-full bottom-1 flex items-center h-5 rounded-r px-1.5 text-[8px] font-bold whitespace-nowrap"
+          <div className="absolute left-full bottom-1 flex items-center h-5 rounded-r px-1.5 text-[8px] font-bold whitespace-nowrap z-[2]"
             style={{
               minWidth: 24,
               backgroundColor: rightNeighborColor + '55',

@@ -47,9 +47,10 @@ export default function DesignCanvas({
             </button>
           </div>
 
-          <div className="flex items-center overflow-x-auto max-w-full pb-2">
+          <div className="overflow-x-auto max-w-full">
+          <div className="flex items-center py-6 px-4" style={{ overflow: 'visible' }}>
             {/* 5' cap */}
-            <div className={`w-1.5 bg-gray-300 rounded-l ${hasPrimers ? 'h-[72px]' : 'h-14'}`} />
+            <div className={`w-1.5 bg-gray-300 rounded-l shrink-0 ${hasPrimers ? 'h-[72px]' : 'h-14'}`} />
 
             {fragments.map((frag, i) => {
               // Find primers for this fragment
@@ -95,7 +96,8 @@ export default function DesignCanvas({
             )}
 
             {/* 3' cap */}
-            <div className={`w-1.5 bg-gray-300 rounded-r ${hasPrimers ? 'h-[72px]' : 'h-14'}`} />
+            <div className={`w-1.5 bg-gray-300 rounded-r shrink-0 ${hasPrimers ? 'h-[72px]' : 'h-14'}`} />
+          </div>
           </div>
 
           <div className="text-xs text-gray-500 mt-3 select-none">
