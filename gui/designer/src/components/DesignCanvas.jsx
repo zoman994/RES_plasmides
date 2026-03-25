@@ -47,7 +47,7 @@ export default function DesignCanvas({
             </button>
           </div>
 
-          <div className="flex items-center">
+          <div className="flex items-center overflow-x-auto max-w-full pb-2">
             {/* 5' cap */}
             <div className={`w-1.5 bg-gray-300 rounded-l ${hasPrimers ? 'h-[72px]' : 'h-14'}`} />
 
@@ -66,7 +66,7 @@ export default function DesignCanvas({
 
               return (
                 <div key={frag.id || i} className="flex items-center">
-                  <PartBlock fragment={frag} index={i}
+                  <PartBlock fragment={frag} index={i} fragmentCount={n}
                     onRemove={onRemove} onToggleAmplification={onToggleAmplification}
                     onReorder={onReorder} onFlip={onFlip} pcrSize={pcrSizes[i]}
                     onSplitSignal={onSplitSignal}

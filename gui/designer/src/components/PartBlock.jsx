@@ -14,8 +14,10 @@ function primerLabel(name) {
   return m ? m[0] : (name || '').slice(0, 8);
 }
 
-function fragmentWidth(bp) {
-  const minW = 80, maxW = 280, minBp = 20, maxBp = 10000;
+function fragmentWidth(bp, fragCount = 1) {
+  const scale = fragCount <= 4 ? 1 : Math.max(0.45, 1 - (fragCount - 4) * 0.1);
+  const minW = Math.round(70 * scale), maxW = Math.round(280 * scale);
+  const minBp = 20, maxBp = 10000;
   if (!bp || bp <= minBp) return minW;
   if (bp >= maxBp) return maxW;
   const frac = (Math.log(bp) - Math.log(minBp)) / (Math.log(maxBp) - Math.log(minBp));
@@ -29,7 +31,7 @@ function fmtSize(bp) {
 
 export default function PartBlock({
   fragment, index, onRemove, onToggleAmplification, onReorder, onFlip,
-  pcrSize, onSplitSignal,
+  pcrSize, onSplitSignal, fragmentCount,
   fwdPrimer, revPrimer, leftNeighborColor, rightNeighborColor,
 }) {
   const [{ isDragging }, drag] = useDrag({
@@ -74,7 +76,7 @@ export default function PartBlock({
         style={{
           background: color,
           border: dark ? '1px solid #ccc' : 'none',
-          width: fragmentWidth(fragment.length), minWidth: 80,
+          width: fragmentWidth(fragment.length, fragmentCount), minWidth: 60,
           borderLeft: fragment.strand === -1 ? `3px solid ${dark ? '#fff' : 'rgba(255,255,255,0.6)'}` : undefined,
         }}
         onDoubleClick={() => onToggleAmplification(index)}
