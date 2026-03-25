@@ -7,6 +7,8 @@ const TYPE_LABELS = {
   CDS: 'CDS', promoter: 'Промоторы', terminator: 'Терминаторы',
   rep_origin: 'Ориджины', marker: 'Маркеры', signal_peptide: 'Сигналы',
   misc_feature: 'Прочее', regulatory: 'Регуляторные',
+  pcr_product: 'ПЦР-продукты', plasmid: 'Плазмиды',
+  assembled_product: 'Продукты сборки',
 };
 
 export default function PartsLibrary({ parts, onClose, onOpenCDSEditor, onAddToCanvas, onUpdatePart }) {
@@ -198,6 +200,20 @@ export default function PartsLibrary({ parts, onClose, onOpenCDSEditor, onAddToC
                           </div>
                         );
                       })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Components (for assembled products) */}
+                {selected.components?.length > 0 && (
+                  <div>
+                    <div className="text-[10px] text-gray-500 mb-1">Собран из:</div>
+                    <div className="flex gap-1 flex-wrap">
+                      {selected.components.map((c, i) => (
+                        <span key={i} className="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded">
+                          {c}
+                        </span>
+                      ))}
                     </div>
                   </div>
                 )}

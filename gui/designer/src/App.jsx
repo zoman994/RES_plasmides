@@ -77,7 +77,6 @@ export default function App() {
   const [showMutagenesis, setShowMutagenesis] = useState(false);
   const [showOligos, setShowOligos] = useState(false);
   const [showPartsLib, setShowPartsLib] = useState(false);
-  const [showGlobalCDS, setShowGlobalCDS] = useState(false);
   const [globalCDSPart, setGlobalCDSPart] = useState(null);
   const [domainTarget, setDomainTarget] = useState(null);
   const [activeTab, setActiveTab] = useState('canvas');
@@ -391,9 +390,24 @@ export default function App() {
 
   const completeAssembly = () => {
     const fullSeq = fragments.map(f => f.sequence || '').join('');
-    addToInventory({ name: active.name, sequence: fullSeq, length: fullSeq.length,
-      type: circular ? 'plasmid' : 'pcr_product', verified: circular, sourceAssemblyId: active.id });
-    updateActive({ completed: true, product: { name: active.name, sequence: fullSeq, length: fullSeq.length } });
+    const productType = circular ? 'plasmid' : 'pcr_product';
+    const product = {
+      name: active.name, sequence: fullSeq, length: fullSeq.length,
+      type: productType, verified: circular, sourceAssemblyId: active.id,
+      sourceType: 'assembly',
+      components: fragments.map(f => f.name),
+    };
+    // Save to inventory (for drag-and-drop in next assembly)
+    addToInventory(product);
+    // Save to parts library (as a reusable part)
+    setParts(prev => {
+      if (prev.some(p => p.name === active.name && p.sourceAssemblyId === active.id)) return prev;
+      return [...prev, {
+        id: `prod_${Date.now()}`, ...product,
+        needsAmplification: false,
+      }];
+    });
+    updateActive({ completed: true, product });
     setInventoryVersion(v => v + 1);
   };
 
@@ -449,10 +463,6 @@ export default function App() {
             <button onClick={() => setShowOligos(true)}
               className="text-xs px-2 py-1 rounded border border-gray-200 hover:bg-gray-50 text-gray-600 transition">
               {'📋'} Олиги
-            </button>
-            <button onClick={() => setShowGlobalCDS(true)}
-              className="text-xs px-2 py-1 rounded border border-gray-200 hover:bg-gray-50 text-gray-600 transition">
-              {'📐'} CDS
             </button>
             <button onClick={() => setShowPartsLib(true)}
               className="text-xs px-2 py-1 rounded border border-gray-200 hover:bg-gray-50 text-gray-600 transition">
@@ -649,24 +659,24 @@ export default function App() {
       )}
       {showPartsLib && (
         <PartsLibrary parts={parts} onClose={() => setShowPartsLib(false)}
-          onOpenCDSEditor={(part) => { setGlobalCDSPart(part); setShowGlobalCDS(true); setShowPartsLib(false); }}
+          onOpenCDSEditor={(part) => { setGlobalCDSPart(part); setShowPartsLib(false); }}
           onAddToCanvas={(part) => addFragment(part)}
           onUpdatePart={(id, data) => {
             setParts(prev => prev.map(p => p.id === id ? { ...p, ...data } : p));
           }} />
       )}
-      {showGlobalCDS && (
+      {globalCDSPart && (
         <CDSEditor
-          fragment={globalCDSPart || { name: 'Выберите CDS', sequence: '', type: 'CDS', domains: [] }}
+          fragment={globalCDSPart}
           onSave={(domains) => {
-            if (globalCDSPart) {
-              // Update part in state if it's on canvas
-              const idx = fragments.findIndex(f => f.id === globalCDSPart.id || f.name === globalCDSPart.name);
-              if (idx >= 0) updateActive({ fragments: fragments.map((f, i) => i === idx ? { ...f, domains } : f) });
-            }
-            setShowGlobalCDS(false);
+            // Update part in parts library
+            setParts(prev => prev.map(p => p.id === globalCDSPart.id ? { ...p, domains } : p));
+            // Update on canvas if present
+            const idx = fragments.findIndex(f => f.id === globalCDSPart.id || f.name === globalCDSPart.name);
+            if (idx >= 0) updateActive({ fragments: fragments.map((f, i) => i === idx ? { ...f, domains } : f) });
+            setGlobalCDSPart(null);
           }}
-          onClose={() => setShowGlobalCDS(false)}
+          onClose={() => setGlobalCDSPart(null)}
         />
       )}
       {showOligos && (
