@@ -63,8 +63,9 @@ export default function JunctionBlock({ junction, index, leftName, rightName, on
       </div>
 
       {open && (
-        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50
-                        w-80 bg-white rounded-lg shadow-xl border p-4"
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20"
+          onClick={() => setOpen(false)}>
+        <div className="w-80 bg-white rounded-lg shadow-xl border p-4"
           onClick={e => e.stopPropagation()}>
           <h4 className="text-sm font-semibold mb-3">{leftName} &rarr; {rightName}</h4>
 
@@ -148,6 +149,7 @@ export default function JunctionBlock({ junction, index, leftName, rightName, on
             className="mt-3 w-full text-xs bg-gray-100 hover:bg-gray-200 rounded p-1.5">
             Готово
           </button>
+        </div>
         </div>
       )}
     </div>
