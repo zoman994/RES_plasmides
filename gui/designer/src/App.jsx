@@ -11,61 +11,114 @@ import ProtocolTracker from './components/ProtocolTracker';
 import { PCR_MIXES, ASSEMBLY_PROTOCOLS as ASM_PROTOCOLS } from './protocol-data';
 import MutagenesisWizard from './components/MutagenesisWizard';
 import VerificationPanel from './components/VerificationPanel';
-import SignalPeptideSplitter from './components/SignalPeptideSplitter';
+import FragmentSplitter from './components/FragmentSplitter';
+import AssemblyTabs from './components/AssemblyTabs';
 import { fetchParts, designPrimers } from './api';
 import { validateConstruct, checkPrimerQuality, pcrProductSize } from './validate';
 import { exportGenBank, exportProtocol, saveToPVCS } from './exports';
+import { addToInventory } from './inventory';
 
 const LS_KEY = 'pvcs_designer_state';
 let nextId = 1;
 
+function mkJunction(asmType) {
+  return {
+    type: asmType === 'golden_gate' ? 'golden_gate' : 'overlap',
+    overlapMode: 'split', overlapLength: 30, tmTarget: 62,
+    enzyme: 'BsaI', overhang: '',
+  };
+}
+
+function mkJunctions(frags, asmType, isCirc) {
+  const count = isCirc ? frags.length : Math.max(0, frags.length - 1);
+  return Array.from({ length: count }, () => mkJunction(asmType));
+}
+
+function newAssembly(id, name) {
+  return {
+    id, name,
+    fragments: [], junctions: [],
+    assemblyType: 'overlap', protocol: 'overlap_pcr',
+    circular: false, calculated: false,
+    primers: [], apiWarnings: [], orderSheet: '',
+    protocolSteps: [],
+    completed: false, product: null,
+  };
+}
+
 export default function App() {
+  // ═══════════ Global state ═══════════
   const [parts, setParts] = useState([]);
-  const [fragments, setFragments] = useState([]);
-  const [junctions, setJunctions] = useState([]);
-  const [assemblyType, setAssemblyType] = useState('overlap'); // 'overlap' | 'golden_gate'
-  const [protocol, setProtocol] = useState('overlap_pcr'); // for export: overlap_pcr | gibson | infusion
-  const [primers, setPrimers] = useState([]);
-  const [apiWarnings, setApiWarnings] = useState([]);
-  const [orderSheet, setOrderSheet] = useState('');
-  const [circular, setCircular] = useState(false);
-  const [calculated, setCalculated] = useState(false);
+  const [assemblies, setAssemblies] = useState([newAssembly('asm_1', 'Сборка 1')]);
+  const [activeId, setActiveId] = useState('asm_1');
   const [loading, setLoading] = useState(false);
   const [modalMode, setModalMode] = useState(null);
   const [splitTarget, setSplitTarget] = useState(null);
   const [showMutagenesis, setShowMutagenesis] = useState(false);
   const [activeTab, setActiveTab] = useState('canvas');
-  const [protocolSteps, setProtocolSteps] = useState([]);
   const [inventoryVersion, setInventoryVersion] = useState(0);
   const [polymerase, setPolymerase] = useState('phusion');
   const [primerPrefix, setPrimerPrefix] = useState('IS');
 
-  // Multi-step
-  const [steps, setSteps] = useState([]);
-  const [activeStep, setActiveStep] = useState(-1); // -1 = main canvas
+  // ═══════════ Active assembly (derived) ═══════════
+  const active = assemblies.find(a => a.id === activeId) || assemblies[0];
+  const { fragments, junctions, assemblyType, protocol, circular, calculated,
+          primers, apiWarnings, orderSheet, protocolSteps } = active;
 
-  // ── Restore from localStorage on mount ──
+  // ═══════════ Update helpers ═══════════
+  const updateActive = useCallback((updates) => {
+    setAssemblies(prev => prev.map(a =>
+      a.id === activeId ? { ...a, ...updates } : a
+    ));
+  }, [activeId]);
+
+  const updateAssembly = useCallback((id, updates) => {
+    setAssemblies(prev => prev.map(a =>
+      a.id === id ? { ...a, ...updates } : a
+    ));
+  }, []);
+
+  // ═══════════ Restore from localStorage ═══════════
   useEffect(() => {
     try {
-      const saved = localStorage.getItem(LS_KEY);
-      if (saved) {
-        const s = JSON.parse(saved);
-        if (s.fragments?.length) { setFragments(s.fragments); nextId = s.fragments.length + 1; }
-        if (s.junctions) setJunctions(s.junctions);
-        if (s.assemblyType) setAssemblyType(s.assemblyType);
-        else if (s.method) setAssemblyType(s.method === 'golden_gate' ? 'golden_gate' : 'overlap');
-        if (s.protocol) setProtocol(s.protocol);
-        if (s.circular !== undefined) setCircular(s.circular);
+      const saved = JSON.parse(localStorage.getItem(LS_KEY) || '{}');
+      if (saved.assemblies?.length) {
+        // New multi-assembly format
+        setAssemblies(saved.assemblies);
+        setActiveId(saved.activeId || saved.assemblies[0].id);
+        if (saved.polymerase) setPolymerase(saved.polymerase);
+        if (saved.primerPrefix) setPrimerPrefix(saved.primerPrefix);
+        let maxId = 0;
+        saved.assemblies.forEach(a =>
+          (a.fragments || []).forEach(f => {
+            const n = parseInt(String(f.id).replace(/\D/g, ''), 10);
+            if (n > maxId) maxId = n;
+          })
+        );
+        nextId = maxId + 1;
+      } else if (saved.fragments?.length) {
+        // Migrate old single-assembly format
+        const asm = newAssembly('asm_1', 'Сборка 1');
+        asm.fragments = saved.fragments;
+        if (saved.junctions) asm.junctions = saved.junctions;
+        asm.assemblyType = saved.assemblyType ||
+          (saved.method === 'golden_gate' ? 'golden_gate' : 'overlap');
+        if (saved.protocol) asm.protocol = saved.protocol;
+        if (saved.circular !== undefined) asm.circular = saved.circular;
+        setAssemblies([asm]);
+        nextId = saved.fragments.length + 1;
       }
     } catch {}
   }, []);
 
-  // ── Save to localStorage on change ──
+  // ═══════════ Save to localStorage ═══════════
   useEffect(() => {
-    localStorage.setItem(LS_KEY, JSON.stringify({ fragments, junctions, assemblyType, protocol, circular }));
-  }, [fragments, junctions, assemblyType, protocol, circular]);
+    localStorage.setItem(LS_KEY, JSON.stringify({
+      assemblies, activeId, polymerase, primerPrefix,
+    }));
+  }, [assemblies, activeId, polymerase, primerPrefix]);
 
-  // ── Load parts ──
+  // ═══════════ Load parts ═══════════
   useEffect(() => {
     fetchParts().then(setParts).catch(() => {
       setParts([
@@ -79,16 +132,12 @@ export default function App() {
     });
   }, []);
 
-  // ── Construct validation warnings ──
+  // ═══════════ Computed from active assembly ═══════════
   const constructWarnings = useMemo(() => validateConstruct(fragments), [fragments]);
-
-  // ── Primer quality warnings ──
   const primerQuality = useMemo(() =>
     primers.map(p => ({ name: p.name, warnings: checkPrimerQuality(p) }))
       .filter(pq => pq.warnings.length > 0),
     [primers]);
-
-  // ── PCR product sizes ──
   const pcrSizes = useMemo(() =>
     fragments.map((f, i) => {
       const leftJ = i > 0 ? junctions[i - 1] : (circular ? junctions[junctions.length - 1] : null);
@@ -96,79 +145,96 @@ export default function App() {
       return pcrProductSize(f, leftJ, rightJ);
     }),
     [fragments, junctions, circular]);
+  const totalBp = fragments.reduce((s, f) => s + (f.sequence || '').length, 0);
 
-  // ── Junction helpers ──
-  const mkJunctions = useCallback((frags, asmType = assemblyType, isCirc = circular) => {
-    const count = isCirc ? frags.length : Math.max(0, frags.length - 1);
-    return Array.from({ length: count }, () => ({
-      type: asmType === 'golden_gate' ? 'golden_gate' : 'overlap',
-      overlapMode: 'split', overlapLength: 30, tmTarget: 62,
-      enzyme: 'BsaI', overhang: '',
-    }));
-  }, [assemblyType, circular]);
-
+  // ═══════════ Fragment handlers ═══════════
   const addFragment = (part) => {
     const frag = {
       id: `f${nextId++}`, name: part.name, type: part.type,
       sequence: part.sequence || '', length: part.length || 0,
-      strand: 1, needsAmplification: true,
+      strand: 1, needsAmplification: part.needsAmplification ?? true,
+      sourceAssemblyId: part.sourceAssemblyId,
     };
     const nf = [...fragments, frag];
-    setFragments(nf);
-    setCalculated(false);
-    setJunctions(j => {
-      if (nf.length > 1) {
-        return [...j, {
-          type: assemblyType === 'golden_gate' ? 'golden_gate' : 'overlap',
-          overlapMode: 'split', overlapLength: 30, tmTarget: 62,
-          enzyme: 'BsaI', overhang: '',
-        }];
-      }
-      return j;
-    });
+    const nj = nf.length > 1
+      ? [...junctions, mkJunction(assemblyType)]
+      : junctions;
+    updateActive({ fragments: nf, junctions: nj, calculated: false });
   };
 
   const removeFragment = (i) => {
-    setFragments(f => f.filter((_, idx) => idx !== i));
-    setJunctions(j => mkJunctions(fragments.filter((_, idx) => idx !== i), assemblyType, circular));
-    setCalculated(false);
+    const nf = fragments.filter((_, idx) => idx !== i);
+    updateActive({
+      fragments: nf,
+      junctions: mkJunctions(nf, assemblyType, circular),
+      calculated: false,
+    });
   };
 
   const toggleCircular = () => {
     const next = !circular;
-    setCircular(next);
-    setJunctions(mkJunctions(fragments, assemblyType, next));
-    setCalculated(false);
+    updateActive({
+      circular: next,
+      junctions: mkJunctions(fragments, assemblyType, next),
+      calculated: false,
+    });
   };
 
   const toggleAmplification = (i) => {
-    setFragments(f => f.map((x, idx) => idx === i ? { ...x, needsAmplification: !x.needsAmplification } : x));
+    updateActive({
+      fragments: fragments.map((x, idx) =>
+        idx === i ? { ...x, needsAmplification: !x.needsAmplification } : x
+      ),
+    });
   };
 
   const updateJunction = (i, cfg) => {
-    setJunctions(j => j.map((x, idx) => idx === i ? cfg : x));
-    setCalculated(false);
+    updateActive({
+      junctions: junctions.map((x, idx) => idx === i ? cfg : x),
+      calculated: false,
+    });
   };
 
   const reorderFragments = (from, to) => {
     const nf = [...fragments];
     const [moved] = nf.splice(from, 1);
     nf.splice(to, 0, moved);
-    setFragments(nf);
-    setJunctions(mkJunctions(nf, assemblyType, circular));
-    setCalculated(false);
+    updateActive({
+      fragments: nf,
+      junctions: mkJunctions(nf, assemblyType, circular),
+      calculated: false,
+    });
   };
 
+  const addCustomFragment = (fragData) => {
+    const frag = {
+      id: `f${nextId++}`,
+      name: fragData.name,
+      type: fragData.type || 'misc_feature',
+      sequence: fragData.sequence || '',
+      length: fragData.length || (fragData.sequence || '').length,
+      strand: fragData.strand || 1,
+      needsAmplification: fragData.needsAmplification ?? true,
+      sourceType: fragData.sourceType || 'sequence',
+      subParts: fragData.subParts,
+    };
+    const nf = [...fragments, frag];
+    const nj = nf.length > 1
+      ? [...junctions, mkJunction(assemblyType)]
+      : junctions;
+    updateActive({ fragments: nf, junctions: nj, calculated: false });
+  };
 
+  // ═══════════ Generate primers ═══════════
   const generate = async () => {
     if (fragments.length < 2) return;
+    const asmId = active.id; // capture for async safety
     setLoading(true);
     try {
       const data = await designPrimers(
         fragments.map(f => ({ name: f.name, sequence: f.sequence, needsAmplification: f.needsAmplification })),
         junctions, assemblyType === 'golden_gate' ? 'golden_gate' : 'overlap_pcr', circular, 60,
       );
-      // Rename primers with prefix and apply polymerase Tm correction
       const tmAdj = { phusion: 3, kod: 2, taq: -5 }[polymerase] || 0;
       let pidx = 1;
       const renamedPrimers = (data.primers || []).map(p => ({
@@ -176,20 +242,15 @@ export default function App() {
         name: `${primerPrefix}${String(pidx++).padStart(3, '0')}_${p.name}`,
         tmAdjusted: Math.round((p.tmBinding || 60) + tmAdj),
       }));
-      setPrimers(renamedPrimers);
-      setApiWarnings(data.warnings || []);
-      setOrderSheet(data.orderSheet || '');
-      if (data.junctions) {
-        setJunctions(prev => prev.map((j, i) => ({
-          ...j,
-          overlapSequence: data.junctions[i]?.overlapSequence || j.overlapSequence,
-          overlapTm: data.junctions[i]?.overlapTm || j.overlapTm,
-          overlapGc: data.junctions[i]?.overlapGc || j.overlapGc,
-        })));
-      }
-      setCalculated(true);
 
-      // Generate protocol steps
+      const updatedJunctions = junctions.map((j, i) => ({
+        ...j,
+        overlapSequence: data.junctions?.[i]?.overlapSequence || j.overlapSequence,
+        overlapTm: data.junctions?.[i]?.overlapTm || j.overlapTm,
+        overlapGc: data.junctions?.[i]?.overlapGc || j.overlapGc,
+      }));
+
+      // Protocol steps
       const pSteps = [];
       const mix = PCR_MIXES[polymerase] || PCR_MIXES.phusion;
       fragments.forEach((frag, fi) => {
@@ -220,86 +281,125 @@ export default function App() {
         statuses: [{ label: 'Colony PCR', done: false }, { label: '\u041e\u0442\u043e\u0431\u0440\u0430\u043d\u044b', done: false }] });
       pSteps.push({ id: 'sequencing', type: 'sequencing', title: '\u0421\u0435\u043a\u0432\u0435\u043d\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435',
         statuses: [{ label: '\u041e\u0442\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u043e', done: false }, { label: '\u041f\u043e\u0434\u0442\u0432.', done: false }] });
-      setProtocolSteps(pSteps);
+
+      updateAssembly(asmId, {
+        primers: renamedPrimers,
+        apiWarnings: data.warnings || [],
+        orderSheet: data.orderSheet || '',
+        junctions: updatedJunctions,
+        calculated: true,
+        protocolSteps: pSteps,
+      });
     } catch (e) {
-      setApiWarnings([`API error: ${e.message}`]);
+      updateAssembly(asmId, { apiWarnings: [`API error: ${e.message}`] });
     }
     setLoading(false);
   };
 
-  const addCustomFragment = (fragData) => {
-    const frag = {
-      id: `f${nextId++}`,
-      name: fragData.name,
-      type: fragData.type || 'misc_feature',
-      sequence: fragData.sequence || '',
-      length: fragData.length || (fragData.sequence || '').length,
-      strand: fragData.strand || 1,
-      needsAmplification: fragData.needsAmplification ?? true,
-      sourceType: fragData.sourceType || 'sequence',
-      subParts: fragData.subParts,
-    };
-    const nf = [...fragments, frag];
-    setFragments(nf);
-    setCalculated(false);
-    if (nf.length > 1) {
-      setJunctions(j => [...j, {
-        type: assemblyType === 'golden_gate' ? 'golden_gate' : 'overlap',
-        overlapMode: 'split', overlapLength: 30, tmTarget: 62,
-        enzyme: 'BsaI', overhang: '',
-      }]);
-    }
-  };
-
-  const handleSignalSplit = (result) => {
+  // ═══════════ Fragment split ═══════════
+  const handleFragmentSplit = (result) => {
     const idx = splitTarget;
     if (idx === null) return;
     const nf = [...fragments];
-    if (result.action === 'remove') {
-      nf[idx] = { ...nf[idx], name: result.matureName, sequence: result.matureDNA, length: result.matureDNA.length };
-    } else if (result.action === 'replace') {
-      const sp = { id: `f${nextId++}`, name: result.signalPart.name, type: 'CDS',
-        sequence: result.signalPart.sequence || '', length: result.signalPart.length || 0,
-        strand: 1, needsAmplification: true };
-      nf[idx] = { ...nf[idx], name: result.matureName, sequence: result.matureDNA, length: result.matureDNA.length };
-      nf.splice(idx, 0, sp);
-    } else if (result.action === 'split_only') {
-      const sp = { id: `f${nextId++}`, name: result.signalName, type: 'CDS',
-        sequence: result.signalDNA, length: result.signalDNA.length, strand: 1, needsAmplification: true };
-      nf[idx] = { ...nf[idx], name: result.matureName, sequence: result.matureDNA, length: result.matureDNA.length };
-      nf.splice(idx, 0, sp);
+    const frag = nf[idx];
+    if (result.action === 'split') {
+      const p1 = { id: `f${nextId++}`, name: result.part1Name, type: frag.type,
+        sequence: result.part1DNA, length: result.part1DNA.length, strand: 1, needsAmplification: true };
+      nf[idx] = { ...frag, name: result.part2Name, sequence: result.part2DNA, length: result.part2DNA.length };
+      nf.splice(idx, 0, p1);
+    } else if (result.action === 'remove_part1') {
+      nf[idx] = { ...frag, sequence: result.sequence, length: result.sequence.length };
+    } else if (result.action === 'remove_part2') {
+      nf[idx] = { ...frag, sequence: result.sequence, length: result.sequence.length };
+    } else if (result.action === 'replace_part1') {
+      const rep = { id: `f${nextId++}`, name: result.replacementName, type: result.replacementType || frag.type,
+        sequence: result.replacementSeq, length: result.replacementSeq.length, strand: 1, needsAmplification: true };
+      nf[idx] = { ...frag, name: result.part2Name, sequence: result.part2DNA, length: result.part2DNA.length };
+      nf.splice(idx, 0, rep);
     }
-    setFragments(nf);
-    setJunctions(mkJunctions(nf, assemblyType, circular));
+    updateActive({
+      fragments: nf,
+      junctions: mkJunctions(nf, assemblyType, circular),
+      calculated: false,
+    });
     setSplitTarget(null);
-    setCalculated(false);
   };
 
+  // ═══════════ Mutagenesis ═══════════
   const handleMutagenesis = (result) => {
-    const newFrags = result.fragments.map((f, i) => ({
+    const newFrags = result.fragments.map((f) => ({
       ...f, id: `mf${nextId++}`, isMutagenesis: true,
     }));
-    setFragments(newFrags);
-    setJunctions(result.junctions);
-    setCalculated(false);
-    setPrimers([]);
+    updateActive({
+      fragments: newFrags,
+      junctions: result.junctions,
+      calculated: false,
+      primers: [],
+    });
   };
 
-  const updateProtocolStep = (stepId, data) => {
-    setProtocolSteps(ps => ps.map(s => s.id === stepId ? { ...s, ...data } : s));
+  // ═══════════ Assembly management ═══════════
+  const addAssembly = () => {
+    const id = `asm_${Date.now()}`;
+    const num = assemblies.length + 1;
+    setAssemblies(prev => [...prev, newAssembly(id, `Сборка ${num}`)]);
+    setActiveId(id);
+    setSplitTarget(null);
+    setShowMutagenesis(false);
   };
 
-  const clearAll = () => {
-    setFragments([]); setJunctions([]); setPrimers([]);
-    setApiWarnings([]); setCalculated(false);
-    localStorage.removeItem(LS_KEY);
+  const removeAssembly = (id) => {
+    if (assemblies.length <= 1) return;
+    const remaining = assemblies.filter(a => a.id !== id);
+    setAssemblies(remaining);
+    if (activeId === id) setActiveId(remaining[0].id);
   };
 
-  const totalBp = fragments.reduce((s, f) => s + (f.sequence || '').length, 0);
+  const renameAssembly = (id, name) => {
+    updateAssembly(id, { name });
+  };
 
+  const switchAssembly = (id) => {
+    setActiveId(id);
+    setSplitTarget(null);
+    setShowMutagenesis(false);
+  };
+
+  const setAssemblyType_ = (type) => {
+    updateActive({
+      assemblyType: type,
+      junctions: junctions.map(j => ({ ...j, type: type === 'golden_gate' ? 'golden_gate' : 'overlap' })),
+    });
+  };
+
+  const completeAssembly = () => {
+    const fullSeq = fragments.map(f => f.sequence || '').join('');
+    const product = {
+      name: active.name,
+      sequence: fullSeq,
+      length: fullSeq.length,
+      type: circular ? 'plasmid' : 'pcr_product',
+      verified: circular,
+      sourceAssemblyId: active.id,
+    };
+    addToInventory(product);
+    updateActive({ completed: true, product });
+    setInventoryVersion(v => v + 1);
+  };
+
+  const clearAssembly = () => {
+    updateActive({
+      fragments: [], junctions: [], primers: [],
+      apiWarnings: [], orderSheet: '', calculated: false,
+      protocolSteps: [], completed: false, product: null,
+    });
+  };
+
+  // ═══════════ Render ═══════════
   return (
     <DndProvider backend={HTML5Backend}>
       <div className="h-screen flex flex-col">
+        {/* Header */}
         <header className="bg-white border-b px-6 py-3 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <span className="text-lg">&#x1F9EC;</span>
@@ -307,12 +407,12 @@ export default function App() {
           </div>
           <div className="flex items-center gap-2">
             <span className="text-xs text-gray-500">Assembly:</span>
-            <button onClick={() => { setAssemblyType('overlap'); setJunctions(j => j.map(x => ({ ...x, type: 'overlap' }))); }}
+            <button onClick={() => setAssemblyType_('overlap')}
               className={`text-xs px-3 py-1.5 rounded-full font-semibold transition
                 ${assemblyType === 'overlap' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
               Overlap / Gibson
             </button>
-            <button onClick={() => { setAssemblyType('golden_gate'); setJunctions(j => j.map(x => ({ ...x, type: 'golden_gate' }))); }}
+            <button onClick={() => setAssemblyType_('golden_gate')}
               className={`text-xs px-3 py-1.5 rounded-full font-semibold transition
                 ${assemblyType === 'golden_gate' ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
               Golden Gate
@@ -333,37 +433,39 @@ export default function App() {
                 className="w-10 border rounded px-1 py-0.5 text-xs" maxLength={4} />
             </div>
             {fragments.length > 0 && (
-              <button onClick={clearAll} className="text-xs px-2 py-1 text-red-500 hover:bg-red-50 rounded ml-2">
+              <button onClick={clearAssembly} className="text-xs px-2 py-1 text-red-500 hover:bg-red-50 rounded ml-2">
                 Clear
               </button>
             )}
           </div>
         </header>
 
-        {/* Multi-step tabs */}
-        {steps.length > 0 && (
-          <div className="bg-gray-50 border-b px-6 py-1 flex gap-1 items-center">
-            <button onClick={() => setActiveStep(-1)}
-              className={`text-xs px-3 py-1 rounded-t border-b-2 ${
-                activeStep === -1 ? 'border-blue-500 text-blue-700 font-bold' : 'border-transparent text-gray-500'}`}>
-              Main ({fragments.length})
-            </button>
-            {steps.map((s, i) => (
-              <button key={i} onClick={() => setActiveStep(i)}
-                className={`text-xs px-3 py-1 rounded-t border-b-2 ${
-                  activeStep === i ? 'border-blue-500 text-blue-700 font-bold' : 'border-transparent text-gray-500'}`}>
-                {s.name} ({s.fragments?.length || 0})
-              </button>
-            ))}
-            <button onClick={() => {
-              setSteps([...steps, { name: `Step ${steps.length + 2}`, fragments: [], junctions: [], assemblyType: 'overlap', circular: false }]);
-            }} className="text-xs px-2 py-1 text-gray-400 hover:text-blue-600">+ Step</button>
-          </div>
-        )}
+        {/* Assembly tabs */}
+        <AssemblyTabs
+          assemblies={assemblies}
+          activeId={activeId}
+          onSelect={switchAssembly}
+          onAdd={addAssembly}
+          onRemove={removeAssembly}
+          onRename={renameAssembly}
+        />
 
         <div className="flex flex-1 overflow-hidden">
           <PartsPalette parts={parts} onOpenModal={setModalMode} inventoryVersion={inventoryVersion} />
           <div className="flex-1 flex flex-col p-4 gap-3 overflow-y-auto">
+
+            {/* Completed badge */}
+            {active.completed && (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3 flex items-center gap-3">
+                <span className="text-green-600 text-xl">{'\u2705'}</span>
+                <div>
+                  <div className="text-sm font-semibold text-green-800">Сборка завершена</div>
+                  <div className="text-xs text-green-600">
+                    Продукт {'\u00AB'}{active.product?.name}{'\u00BB'} ({active.product?.length} п.н.) доступен в палитре для следующей сборки
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Construct validation warnings */}
             {constructWarnings.length > 0 && (
@@ -383,7 +485,7 @@ export default function App() {
               primers={primers} />
 
             {/* Generate + actions */}
-            {fragments.length >= 2 && (
+            {fragments.length >= 2 && !active.completed && (
               <div className="flex items-center justify-center gap-3">
                 <button onClick={generate} disabled={loading}
                   className="px-6 py-2 bg-blue-600 text-white rounded-lg
@@ -424,15 +526,25 @@ export default function App() {
               <SequenceViewer fragments={fragments} circular={circular} primers={primers} />
             )}
 
-            {activeTab === 'primers' && (
+            {activeTab === 'primers' && primers.length > 0 && (
               <PrimerPanel primers={primers} warnings={[...apiWarnings]}
                 orderSheet={orderSheet} primerQuality={primerQuality} />
             )}
 
-            {activeTab === 'protocol' && (
-              <ProtocolTracker fragments={fragments} primers={primers} pcrSizes={pcrSizes}
-                polymerase={polymerase} protocol={protocol} circular={circular}
-                onInventoryUpdate={() => setInventoryVersion(v => v + 1)} />
+            {activeTab === 'protocol' && calculated && (
+              <>
+                <ProtocolTracker fragments={fragments} primers={primers} pcrSizes={pcrSizes}
+                  polymerase={polymerase} protocol={protocol} circular={circular}
+                  assemblyId={active.id}
+                  onInventoryUpdate={() => setInventoryVersion(v => v + 1)} />
+                {!active.completed && (
+                  <button onClick={completeAssembly}
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm
+                      font-semibold hover:bg-green-700 transition w-full">
+                    {'\u2705'} Сборка завершена {'\u2014'} создать продукт
+                  </button>
+                )}
+              </>
             )}
 
             {/* Analysis panels */}
@@ -445,18 +557,10 @@ export default function App() {
               <VerificationPanel fragments={fragments} circular={circular} />
             )}
 
-            {/* Multi-step: add step button */}
-            {fragments.length >= 2 && steps.length === 0 && (
-              <button onClick={() => setSteps([{ name: 'Step 2', fragments: [], junctions: [], method: 'overlap_pcr', circular: false }])}
-                className="text-xs px-4 py-2 border border-dashed rounded-lg hover:bg-blue-50 text-gray-500 w-full text-left">
-                + Add assembly step (multi-step: output of this step feeds into next)
-              </button>
-            )}
-
             {/* Export buttons */}
             {primers.length > 0 && (
               <div className="flex gap-2 flex-wrap">
-                <button onClick={() => exportGenBank(fragments, 'designed_construct', circular)}
+                <button onClick={() => exportGenBank(fragments, active.name || 'designed_construct', circular)}
                   className="text-xs px-3 py-1.5 bg-green-50 text-green-700 rounded hover:bg-green-100 border border-green-200">
                   Export GenBank (.gb)
                 </button>
@@ -484,9 +588,9 @@ export default function App() {
         <MutagenesisWizard onComplete={handleMutagenesis} onClose={() => setShowMutagenesis(false)} />
       )}
       {splitTarget !== null && fragments[splitTarget] && (
-        <SignalPeptideSplitter
+        <FragmentSplitter
           fragment={fragments[splitTarget]}
-          onSplit={handleSignalSplit}
+          onSplit={handleFragmentSplit}
           onClose={() => setSplitTarget(null)}
           partsLibrary={parts}
         />

@@ -3,14 +3,24 @@ import ConcentrationInput from './ConcentrationInput';
 import { PCR_MIXES, PURIFICATION, ASSEMBLY_PROTOCOLS, calcPCRTime, fmtTime, suggestPurif, calcAssemblyMix } from '../protocol-data';
 import { addToInventory } from '../inventory';
 
-export default function ProtocolTracker({ fragments, primers, pcrSizes, polymerase, protocol, circular, onInventoryUpdate }) {
-  const [states, setStates] = useState({});
+export default function ProtocolTracker({ fragments, primers, pcrSizes, polymerase, protocol, circular, assemblyId, onInventoryUpdate }) {
+  const stateKey = `pvcs-protocol-state-${assemblyId || 'default'}`;
+  const [states, setStatesRaw] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(stateKey) || '{}'); } catch { return {}; }
+  });
 
-  // Restore from localStorage
-  useEffect(() => { try { setStates(JSON.parse(localStorage.getItem('pvcs-protocol-state') || '{}')); } catch {} }, []);
-  useEffect(() => { localStorage.setItem('pvcs-protocol-state', JSON.stringify(states)); }, [states]);
+  // Reload when assembly changes
+  useEffect(() => {
+    try { setStatesRaw(JSON.parse(localStorage.getItem(stateKey) || '{}')); } catch { setStatesRaw({}); }
+  }, [stateKey]);
 
-  const upd = (id, data) => setStates(p => ({ ...p, [id]: { ...p[id], ...data } }));
+  const upd = (id, data) => {
+    setStatesRaw(prev => {
+      const next = { ...prev, [id]: { ...prev[id], ...data } };
+      localStorage.setItem(stateKey, JSON.stringify(next));
+      return next;
+    });
+  };
 
   // Generate steps
   const steps = useMemo(() => {

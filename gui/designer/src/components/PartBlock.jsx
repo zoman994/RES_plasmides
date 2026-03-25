@@ -82,12 +82,12 @@ export default function PartBlock({ fragment, index, onRemove, onToggleAmplifica
           {fragment.introns.length} intron{fragment.introns.length > 1 ? 's' : ''}
         </div>
       )}
-      {/* Signal peptide split (CDS only) */}
-      {fragment.type === 'CDS' && onSplitSignal && (
+      {/* Fragment splitter (universal) */}
+      {onSplitSignal && (
         <button onClick={(e) => { e.stopPropagation(); onSplitSignal(index); }}
           className="absolute -top-2 -left-2 w-5 h-5 bg-orange-400 text-white rounded-full
                      text-[10px] hidden group-hover:flex items-center justify-center
-                     hover:bg-orange-500" title="Split signal peptide">
+                     hover:bg-orange-500" title="Разделить фрагмент">
           {'\u2702'}
         </button>
       )}

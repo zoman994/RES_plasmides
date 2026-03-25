@@ -104,16 +104,29 @@ const RU = {
   'Compute Strategy': 'Рассчитать стратегию',
   'Add mutation': '+ Добавить мутацию',
 
-  // Signal peptide
-  'Split Signal Peptide': 'Разделить сигнальный пептид',
+  // Fragment splitter
+  'Split Fragment': 'Разделить фрагмент',
+  'By amino acids': 'По аминокислотам',
+  'By nucleotides': 'По нуклеотидам',
+  'Cut position': 'Позиция разреза',
+  'Signal peptide (auto)': 'Сигнальный пептид (авто)',
+  'Custom position': 'Произвольная позиция',
   'Signal peptide detected': 'Обнаружен сигнальный пептид',
-  'Remove signal, keep mature': 'Удалить сигнал, оставить зрелый белок',
-  'Keep native signal': 'Оставить нативный сигнал',
-  'Split into two fragments': 'Разделить на два фрагмента',
+  'Split into two fragments': 'Разрезать на два фрагмента',
+  'Remove part 1, keep part 2': 'Удалить часть 1, оставить часть 2',
+  'Remove part 2, keep part 1': 'Удалить часть 2, оставить часть 1',
+  'Replace part 1 with': 'Заменить часть 1 на',
+  'Cancel': 'Отмена',
+  'Part 1': 'Часть 1',
+  'Part 2': 'Часть 2',
+  'Protein sequence': 'Белковая последовательность',
+  'Nucleotide sequence': 'Нуклеотидная последовательность',
 
-  // Multi-step
-  '+ Add step': '+ Добавить шаг',
-  'Add assembly step': '+ Добавить шаг сборки',
+  // Multi-assembly
+  'New assembly': 'Новая сборка',
+  'Assembly completed': 'Сборка завершена',
+  'Create product': 'Создать продукт',
+  'Product available': 'Продукт доступен в палитре',
 
   // Units
   'bp': 'п.н.',

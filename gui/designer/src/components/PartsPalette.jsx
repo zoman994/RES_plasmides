@@ -67,6 +67,7 @@ export default function PartsPalette({ parts, onOpenModal, inventoryVersion = 0 
               id: item.id, name: item.name, type: 'pcr_product',
               sequence: item.sequence, length: item.length,
               needsAmplification: false, concentration: item.concentration,
+              sourceAssemblyId: item.sourceAssemblyId,
             }} />
           ))}
         </div>
@@ -83,6 +84,7 @@ export default function PartsPalette({ parts, onOpenModal, inventoryVersion = 0 
               id: item.id, name: item.name, type: 'plasmid',
               sequence: item.sequence, length: item.length,
               needsAmplification: false, concentration: item.concentration,
+              sourceAssemblyId: item.sourceAssemblyId,
             }} />
           ))}
         </div>
