@@ -66,7 +66,7 @@ export default function PartBlock({
       {/* No-PCR badge */}
       {!fragment.needsAmplification && (
         <div className="absolute -top-5 left-0 right-0 text-center z-10">
-          <span className="text-[9px] bg-yellow-100 text-yellow-700 px-1 rounded">no PCR</span>
+          <span className="text-[9px] bg-yellow-100 text-yellow-700 px-1 rounded">без ПЦР</span>
         </div>
       )}
 
@@ -80,7 +80,7 @@ export default function PartBlock({
           borderLeft: fragment.strand === -1 ? `3px solid ${dark ? '#fff' : 'rgba(255,255,255,0.6)'}` : undefined,
         }}
         onDoubleClick={() => onToggleAmplification(index)}
-        title="Double-click to toggle PCR amplification">
+        title="Двойной клик — вкл/выкл ПЦР-амплификацию">
 
         {/* ── Fwd tail bar — extends LEFT from block edge (top area) ── */}
         {fwdTail && leftNeighborColor && (
@@ -140,13 +140,13 @@ export default function PartBlock({
             })}
           </div>
         ) : (
-          <div className={`flex-1 flex flex-col items-center justify-center px-3
+          <div className={`flex-1 flex flex-col items-center justify-center px-2 overflow-hidden
             ${hasPrimers ? 'min-h-[30px]' : ''}`}
-            style={{ color: tc }}>
-            <div className="flex items-center text-sm font-semibold">
-              {fragment.strand === -1 && <span className="text-xs mr-1 opacity-60">&larr;</span>}
-              {fragment.name}
-              {fragment.strand !== -1 && <span className="text-xs ml-1 opacity-60">&rarr;</span>}
+            style={{ color: tc }} title={fragment.name}>
+            <div className="flex items-center text-sm font-semibold max-w-full">
+              {fragment.strand === -1 && <span className="text-xs mr-1 opacity-60 shrink-0">&larr;</span>}
+              <span className="truncate">{fragment.name}</span>
+              {fragment.strand !== -1 && <span className="text-xs ml-1 opacity-60 shrink-0">&rarr;</span>}
             </div>
             <div className="text-[9px] opacity-50">{fmtSize(fragment.length)}</div>
           </div>

@@ -19,6 +19,7 @@ import { validateConstruct, checkPrimerQuality, pcrProductSize } from './validat
 import { exportGenBank, exportProtocol, saveToPVCS } from './exports';
 import { addToInventory } from './inventory';
 import { findAllMatches, addPrimersToRegistry } from './primer-reuse';
+import { t } from './i18n';
 
 const LS_KEY = 'pvcs_designer_state';
 let nextId = 1;
@@ -437,10 +438,10 @@ export default function App() {
         <header className="bg-white border-b px-6 py-3 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <span className="text-lg">&#x1F9EC;</span>
-            <h1 className="text-lg font-bold text-gray-800">Construct Designer</h1>
+            <h1 className="text-lg font-bold text-gray-800">{t('Construct Designer')}</h1>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-500">Assembly:</span>
+            <span className="text-xs text-gray-500">{t('Assembly:')}</span>
             <button onClick={() => setAssemblyType_('overlap')}
               className={`text-xs px-3 py-1.5 rounded-full font-semibold transition
                 ${assemblyType === 'overlap' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
@@ -453,7 +454,7 @@ export default function App() {
             </button>
             <button onClick={() => setShowMutagenesis(true)}
               className="text-xs px-3 py-1.5 rounded-full font-semibold bg-purple-100 text-purple-700 hover:bg-purple-200 transition">
-              {'🔬'} Mutagenesis
+              {'🔬'} {t('Mutagenesis')}
             </button>
             <select value={polymerase} onChange={e => setPolymerase(e.target.value)}
               className="text-xs border rounded px-2 py-1 ml-2">
@@ -468,7 +469,7 @@ export default function App() {
             </div>
             {fragments.length > 0 && (
               <button onClick={clearAssembly} className="text-xs px-2 py-1 text-red-500 hover:bg-red-50 rounded ml-2">
-                Clear
+                {t('Clear')}
               </button>
             )}
           </div>
@@ -524,7 +525,7 @@ export default function App() {
                 <button onClick={generate} disabled={loading}
                   className="px-6 py-2 bg-blue-600 text-white rounded-lg
                     font-semibold text-sm hover:bg-blue-700 transition disabled:opacity-50">
-                  {loading ? 'Calculating...' : 'Generate Primers'}
+                  {loading ? t('Calculating...') : t('Generate Primers')}
                 </button>
               </div>
             )}

@@ -3,6 +3,7 @@ import PartBlock from './PartBlock';
 import JunctionBlock from './JunctionBlock';
 import JunctionDNA from './JunctionDNA';
 import { getFragColor, isMarker } from '../theme';
+import { t } from '../i18n';
 
 function fragColor(frag, idx) {
   return isMarker(frag.name) ? '#F0E442' : getFragColor(frag.type, idx);
@@ -31,7 +32,7 @@ export default function DesignCanvas({
 
       {n === 0 ? (
         <div className="text-gray-400 text-sm select-none">
-          Drag parts from the palette to start building your construct
+          {t('Drag parts here')}
         </div>
       ) : (
         <>
@@ -43,21 +44,19 @@ export default function DesignCanvas({
             <button onClick={onToggleCircular}
               className={`text-[11px] px-3 py-1 rounded-full font-medium transition
                 ${circular ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
-              {circular ? '⭕ Circular' : '📏 Linear'}
+              {circular ? `⭕ ${t('Circular')}` : `📏 ${t('Linear')}`}
             </button>
           </div>
 
           <div className="overflow-x-auto max-w-full">
-          <div className="flex items-center py-6 px-4" style={{ overflow: 'visible' }}>
+          <div className="flex items-center py-6 px-6 gap-1" style={{ overflow: 'visible' }}>
             {/* 5' cap */}
             <div className={`w-1.5 bg-gray-300 rounded-l shrink-0 ${hasPrimers ? 'h-[72px]' : 'h-14'}`} />
 
             {fragments.map((frag, i) => {
-              // Find primers for this fragment
               const fwdPrimer = primers.find(p => p.direction === 'forward' && p.name.includes(frag.name)) || null;
               const revPrimer = primers.find(p => p.direction === 'reverse' && p.name.includes(frag.name)) || null;
 
-              // Neighbor colors for tail coloring
               const leftIdx = circular ? (i - 1 + n) % n : i - 1;
               const rightIdx = circular ? (i + 1) % n : i + 1;
               const leftNeighborColor = (leftIdx >= 0 && leftIdx < n && leftIdx !== i)
@@ -67,16 +66,18 @@ export default function DesignCanvas({
 
               return (
                 <div key={frag.id || i} className="flex items-center">
-                  <PartBlock fragment={frag} index={i} fragmentCount={n}
-                    onRemove={onRemove} onToggleAmplification={onToggleAmplification}
-                    onReorder={onReorder} onFlip={onFlip} pcrSize={pcrSizes[i]}
-                    onSplitSignal={onSplitSignal}
-                    fwdPrimer={fwdPrimer} revPrimer={revPrimer}
-                    leftNeighborColor={leftNeighborColor}
-                    rightNeighborColor={rightNeighborColor} />
+                  <div className="mx-1">
+                    <PartBlock fragment={frag} index={i} fragmentCount={n}
+                      onRemove={onRemove} onToggleAmplification={onToggleAmplification}
+                      onReorder={onReorder} onFlip={onFlip} pcrSize={pcrSizes[i]}
+                      onSplitSignal={onSplitSignal}
+                      fwdPrimer={fwdPrimer} revPrimer={revPrimer}
+                      leftNeighborColor={leftNeighborColor}
+                      rightNeighborColor={rightNeighborColor} />
+                  </div>
                   {/* Junction between fragments */}
                   {i < junctions.length && (i < n - 1 || circular) && (
-                    <div className="flex flex-col items-center">
+                    <div className="flex flex-col items-center shrink-0" style={{ minWidth: 50 }}>
                       <JunctionBlock
                         junction={junctions[i]}
                         index={i}
@@ -90,7 +91,6 @@ export default function DesignCanvas({
               );
             })}
 
-            {/* Circular: show closing junction label */}
             {circular && n > 1 && (
               <div className="text-[9px] text-blue-500 font-medium ml-1">&rarr;1st</div>
             )}
