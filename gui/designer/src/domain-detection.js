@@ -17,17 +17,30 @@ export const DOMAIN_COLORS = {
   custom: '#0072B2',
 };
 
+const CHARGED = new Set('DEKR'.split(''));
+
 /** Detect signal peptide via hydrophobicity scan. */
 export function detectSignalPeptide(protein) {
   let best = 0, bestS = 0;
   for (let c = 15; c <= Math.min(35, protein.length - 10); c++) {
     const w = protein.slice(0, c);
     const hyd = w.split('').filter(a => HYDRO.has(a)).length / c;
+
+    // Penalize charged residues in hydrophobic core (positions 3..c)
+    const core = w.slice(3);
+    const chargedFrac = core.split('').filter(a => CHARGED.has(a)).length / (core.length || 1);
+    const chargePenalty = chargedFrac > 0.2 ? (chargedFrac - 0.2) * 0.8 : 0;
+
+    // Von Heijne -3,-1 small residue rule
     const site = protein.slice(Math.max(0, c - 3), c);
     const sb = site.length >= 3 && SMALL.has(site[0]) && SMALL.has(site[2]) ? 0.15 : 0;
+
+    // N-region positive charge (1-2 K/R is typical, cap bonus)
     const nr = protein.slice(0, 5);
-    const cb = (nr.match(/[KR]/g) || []).length * 0.03;
-    const s = hyd + sb + cb;
+    const nrKR = (nr.match(/[KR]/g) || []).length;
+    const cb = Math.min(nrKR, 2) * 0.03;
+
+    const s = hyd + sb + cb - chargePenalty;
     if (s > bestS) { bestS = s; best = c; }
   }
   return { found: bestS > 0.4, cleavageSite: best, confidence: bestS };
