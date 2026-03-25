@@ -65,7 +65,7 @@ export default function JunctionBlock({ junction, index, leftName, rightName, on
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20"
           onClick={() => setOpen(false)}>
-        <div className="w-80 bg-white rounded-lg shadow-xl border p-4"
+        <div className="w-80 max-h-[80vh] overflow-y-auto bg-white rounded-lg shadow-xl border p-4"
           onClick={e => e.stopPropagation()}>
           <h4 className="text-sm font-semibold mb-3">{leftName} &rarr; {rightName}</h4>
 

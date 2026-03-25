@@ -23,7 +23,7 @@ function DraggablePart({ part }) {
   );
 }
 
-export default function PartsPalette({ parts, onOpenModal, inventoryVersion = 0 }) {
+export default function PartsPalette({ parts, onOpenModal, onOpenLibrary, inventoryVersion = 0 }) {
   const [search, setSearch] = useState('');
   const filtered = parts.filter(p =>
     p.name.toLowerCase().includes(search.toLowerCase()));
@@ -110,6 +110,12 @@ export default function PartsPalette({ parts, onOpenModal, inventoryVersion = 0 
                      border-gray-300 hover:border-blue-400 hover:bg-blue-50 transition">
           {'✏️'} {t('Paste custom sequence')}
         </button>
+        {onOpenLibrary && (
+          <button onClick={onOpenLibrary}
+            className="w-full text-center text-[10px] text-blue-600 hover:underline mt-2">
+            {'📦'} Полная библиотека →
+          </button>
+        )}
       </div>
     </div>
   );

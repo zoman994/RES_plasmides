@@ -17,6 +17,7 @@ import ExperimentSelector from './components/ExperimentSelector';
 import ExperimentStats from './components/ExperimentStats';
 import OligoManager from './components/OligoManager';
 import CDSEditor from './components/CDSEditor';
+import PartsLibrary from './components/PartsLibrary';
 import { fetchParts, designPrimers } from './api';
 import { validateConstruct, checkPrimerQuality, pcrProductSize } from './validate';
 import { exportGenBank, exportProtocol, saveToPVCS } from './exports';
@@ -75,6 +76,9 @@ export default function App() {
   const [splitTarget, setSplitTarget] = useState(null);
   const [showMutagenesis, setShowMutagenesis] = useState(false);
   const [showOligos, setShowOligos] = useState(false);
+  const [showPartsLib, setShowPartsLib] = useState(false);
+  const [showGlobalCDS, setShowGlobalCDS] = useState(false);
+  const [globalCDSPart, setGlobalCDSPart] = useState(null);
   const [domainTarget, setDomainTarget] = useState(null);
   const [activeTab, setActiveTab] = useState('canvas');
   const [inventoryVersion, setInventoryVersion] = useState(0);
@@ -441,12 +445,22 @@ export default function App() {
               className="text-xs px-3 py-1.5 rounded-full font-semibold bg-purple-100 text-purple-700 hover:bg-purple-200 transition">
               {'🔬'} {t('Mutagenesis')}
             </button>
+            <div className="w-px h-5 bg-gray-200 mx-1" />
             <button onClick={() => setShowOligos(true)}
-              className="text-xs px-3 py-1.5 rounded-full font-semibold bg-indigo-100 text-indigo-700 hover:bg-indigo-200 transition">
+              className="text-xs px-2 py-1 rounded border border-gray-200 hover:bg-gray-50 text-gray-600 transition">
               {'📋'} Олиги
             </button>
+            <button onClick={() => setShowGlobalCDS(true)}
+              className="text-xs px-2 py-1 rounded border border-gray-200 hover:bg-gray-50 text-gray-600 transition">
+              {'📐'} CDS
+            </button>
+            <button onClick={() => setShowPartsLib(true)}
+              className="text-xs px-2 py-1 rounded border border-gray-200 hover:bg-gray-50 text-gray-600 transition">
+              {'📦'} Запчасти
+            </button>
+            <div className="w-px h-5 bg-gray-200 mx-1" />
             <select value={polymerase} onChange={e => setPolymerase(e.target.value)}
-              className="text-xs border rounded px-2 py-1 ml-1">
+              className="text-xs border rounded px-2 py-1">
               <option value="phusion">Phusion/Q5</option>
               <option value="taq">Taq</option>
               <option value="kod">KOD</option>
@@ -483,7 +497,7 @@ export default function App() {
         />
 
         <div className="flex flex-1 overflow-hidden">
-          <PartsPalette parts={parts} onOpenModal={setModalMode} inventoryVersion={inventoryVersion} />
+          <PartsPalette parts={parts} onOpenModal={setModalMode} onOpenLibrary={() => setShowPartsLib(true)} inventoryVersion={inventoryVersion} />
           <div className="flex-1 flex flex-col p-3 gap-2 overflow-y-auto">
 
             {active.completed && (
@@ -631,6 +645,25 @@ export default function App() {
           fragment={fragments[domainTarget]}
           onSave={handleSaveDomains}
           onClose={() => setDomainTarget(null)}
+        />
+      )}
+      {showPartsLib && (
+        <PartsLibrary parts={parts} onClose={() => setShowPartsLib(false)}
+          onOpenCDSEditor={(part) => { setGlobalCDSPart(part); setShowGlobalCDS(true); setShowPartsLib(false); }}
+          onAddToCanvas={(part) => addFragment(part)} />
+      )}
+      {showGlobalCDS && (
+        <CDSEditor
+          fragment={globalCDSPart || { name: 'Выберите CDS', sequence: '', type: 'CDS', domains: [] }}
+          onSave={(domains) => {
+            if (globalCDSPart) {
+              // Update part in state if it's on canvas
+              const idx = fragments.findIndex(f => f.id === globalCDSPart.id || f.name === globalCDSPart.name);
+              if (idx >= 0) updateActive({ fragments: fragments.map((f, i) => i === idx ? { ...f, domains } : f) });
+            }
+            setShowGlobalCDS(false);
+          }}
+          onClose={() => setShowGlobalCDS(false)}
         />
       )}
       {showOligos && (
