@@ -6,14 +6,12 @@ import { DOMAIN_COLORS } from '../domain-detection';
 export default function SequenceViewer({ fragments, circular, primers = [] }) {
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState('all');
-  const [viewMode, setViewMode] = useState('dna'); // 'dna' | 'protein' | 'domains'
+  const [viewMode, setViewMode] = useState('dna');
 
   const fullSeq = fragments.map(f => f.sequence || '').join('');
   const selFrag = typeof selected === 'number' ? fragments[selected] : null;
   const isCDS = selFrag?.type === 'CDS';
   const hasDomains = isCDS && selFrag?.domains?.length > 0;
-
-  // Auto-switch to domains mode for CDS with domains
   const effectiveMode = !isCDS ? 'dna' : viewMode;
 
   const { coloredRanges, boundaries } = useMemo(() => {
@@ -27,44 +25,52 @@ export default function SequenceViewer({ fragments, circular, primers = [] }) {
     return { coloredRanges: ranges, boundaries: bounds };
   }, [fragments]);
 
+  // Build primer regions with binding position search
   const primerRegions = useMemo(() => {
     if (!primers?.length) return [];
-    // Build fragment offset map
     const offsets = {}; let off = 0;
     fragments.forEach(f => { offsets[f.name] = off; off += (f.sequence || '').length; });
+    const RC_MAP = { A: 'T', T: 'A', G: 'C', C: 'G' };
 
     return primers.map(p => {
-      // Find which fragment this primer belongs to by name match
       const frag = fragments.find(f => p.name.includes(f.name));
       if (!frag) return null;
       const fragOff = offsets[frag.name] || 0;
       const fragSeq = (frag.sequence || '').toUpperCase();
       const bind = (p.bindingSequence || '').toUpperCase();
-
       if (!bind) return null;
 
-      // Find binding position within fragment
-      let bindStart, bindEnd;
+      let bindStart;
       if (p.direction === 'forward') {
         bindStart = fragSeq.indexOf(bind);
-        bindEnd = bindStart >= 0 ? bindStart + bind.length : -1;
       } else {
-        // Reverse primer: search for reverse complement of binding on sense strand
-        const rc = bind.split('').reverse().map(c => ({A:'T',T:'A',G:'C',C:'G'}[c]||'N')).join('');
+        const rc = bind.split('').reverse().map(c => RC_MAP[c] || 'N').join('');
         bindStart = fragSeq.indexOf(rc);
-        bindEnd = bindStart >= 0 ? bindStart + rc.length : -1;
       }
-
       if (bindStart < 0) return null;
 
+      const bindEnd = bindStart + bind.length;
+      const tailLen = (p.tailSequence || '').length;
+      // For fwd: tail is BEFORE binding (left side). For rev: tail is AFTER binding (right side on sense).
+      const totalStart = p.direction === 'forward'
+        ? fragOff + bindStart - tailLen
+        : fragOff + bindStart;
+      const totalEnd = p.direction === 'forward'
+        ? fragOff + bindEnd
+        : fragOff + bindEnd + tailLen;
+
+      const label = p.name.match(/^[A-Za-z]+\d+/)?.[0] || p.name.slice(0, 8);
+
       return {
-        name: p.name, start: fragOff + bindStart, end: fragOff + bindEnd,
-        direction: p.direction, color: p.direction === 'forward' ? '#3B82F6' : '#EF4444',
+        name: p.name, label,
+        start: Math.max(0, totalStart), end: Math.min(fullSeq.length, totalEnd),
+        bindStart: fragOff + bindStart, bindEnd: fragOff + bindEnd,
+        direction: p.direction,
+        tm: p.tmBinding,
       };
     }).filter(Boolean);
-  }, [primers, fragments]);
+  }, [primers, fragments, fullSeq.length]);
 
-  // DNA or protein sequence for display
   const displaySeq = selected === 'all' ? fullSeq : (selFrag?.sequence || '');
   const protein = useMemo(() => isCDS && effectiveMode !== 'dna' ? translateDNA(displaySeq) : '', [displaySeq, isCDS, effectiveMode]);
 
@@ -101,8 +107,6 @@ export default function SequenceViewer({ fragments, circular, primers = [] }) {
                 {f.name} ({(f.sequence || '').length})
               </button>
             ))}
-
-            {/* View mode toggle (CDS only) */}
             {isCDS && (
               <div className="flex gap-0 rounded-lg overflow-hidden border ml-auto">
                 {hasDomains && (
@@ -123,7 +127,7 @@ export default function SequenceViewer({ fragments, circular, primers = [] }) {
             )}
           </div>
 
-          {/* Domain bar (domains mode) */}
+          {/* Domain bar */}
           {effectiveMode === 'domains' && hasDomains && (
             <div className="mb-3">
               <div className="flex h-8 rounded overflow-hidden border">
@@ -133,14 +137,11 @@ export default function SequenceViewer({ fragments, circular, primers = [] }) {
                   return (
                     <div key={i} style={{ width: `${widthPct}%`, backgroundColor: d.color || DOMAIN_COLORS[d.type] }}
                       className="flex items-center justify-center text-[9px] text-white font-medium truncate px-1 border-r border-white/30 last:border-0"
-                      title={`${d.name}: ${d.startAA}–${d.endAA} а.о. (${d.type})`}>
+                      title={`${d.name}: ${d.startAA}–${d.endAA} а.о.`}>
                       {widthPct > 8 ? `${d.name} (${d.endAA - d.startAA + 1})` : d.name}
                     </div>
                   );
                 })}
-              </div>
-              <div className="flex justify-between text-[8px] text-gray-400 mt-0.5 px-1">
-                <span>1</span><span>{Math.ceil(displaySeq.length / 3)} а.о.</span>
               </div>
             </div>
           )}
@@ -154,33 +155,38 @@ export default function SequenceViewer({ fragments, circular, primers = [] }) {
                 ? primerRegions.filter(p => p.start < lineEnd && p.end > lineStart) : [];
 
               return (
-                <div key={line.pos}>
+                <div key={line.pos} className="mb-0.5">
+                  {/* Sequence line */}
                   <div className="flex">
-                    <span className="text-gray-400 w-12 text-right mr-3 select-none shrink-0">
+                    <span className="text-gray-400 w-12 text-right mr-3 select-none shrink-0 text-[11px]">
                       {line.pos}
                     </span>
-                    <span className="break-all">
+                    <span className="break-all tracking-[0.5px]">
                       {effectiveMode === 'dna' && selected === 'all'
                         ? line.seq.split('').map((ch, ci) => {
                             const abs = lineStart + ci;
                             const isBoundary = boundaries.has(abs);
                             const r = coloredRanges.find(r => abs >= r.start && abs < r.end);
-                            const underPrimer = linePrimers.find(p => abs >= p.start && abs < p.end);
+                            // Primer highlight: light background
+                            const pr = linePrimers.find(p => abs >= p.start && abs < p.end);
+                            let bg = 'transparent';
+                            if (pr) {
+                              const inBinding = abs >= pr.bindStart && abs < pr.bindEnd;
+                              bg = inBinding
+                                ? (pr.direction === 'forward' ? 'rgba(37,99,235,0.12)' : 'rgba(220,38,38,0.12)')
+                                : 'rgba(20,184,166,0.12)'; // tail = teal
+                            }
                             return (
                               <span key={ci}>
-                                {isBoundary && <span className="text-red-400 select-none">|</span>}
-                                <span style={{
-                                  color: r?.color || '#333',
-                                  textDecoration: underPrimer ? 'underline' : 'none',
-                                  textDecorationColor: underPrimer?.color,
-                                  textDecorationThickness: '2px', textUnderlineOffset: '2px',
-                                }}>{ch}</span>
+                                {isBoundary && (
+                                  <span className="inline-block w-0.5 bg-gray-400 mx-px" style={{ height: '14px', verticalAlign: 'middle' }} />
+                                )}
+                                <span style={{ color: r?.color || '#333', backgroundColor: bg }}>{ch}</span>
                               </span>
                             );
                           })
                         : effectiveMode === 'dna'
                           ? line.seq.split('').map((ch, ci) => {
-                              // Single fragment DNA — color by domain if CDS
                               const aaIdx = Math.floor((lineStart + ci) / 3);
                               const dom = isCDS && selFrag?.domains?.find(d => aaIdx + 1 >= d.startAA && aaIdx + 1 <= d.endAA);
                               return (
@@ -190,34 +196,61 @@ export default function SequenceViewer({ fragments, circular, primers = [] }) {
                                 }}>{ch}</span>
                               );
                             })
-                          : /* Protein mode */
-                            line.seq.split('').map((aa, ci) => {
+                          : line.seq.split('').map((aa, ci) => {
                               const aaPos = lineStart + ci + 1;
                               const dom = selFrag?.domains?.find(d => aaPos >= d.startAA && aaPos <= d.endAA);
                               return (
                                 <span key={ci} style={{
                                   backgroundColor: dom ? (dom.color || DOMAIN_COLORS[dom.type]) + '25' : 'transparent',
                                   borderBottom: dom ? `2px solid ${dom.color || DOMAIN_COLORS[dom.type]}` : 'none',
-                                }} title={dom ? `${dom.name} — позиция ${aaPos}` : `позиция ${aaPos}`}>{aa}</span>
+                                }} title={dom ? `${dom.name} — ${aaPos}` : `${aaPos}`}>{aa}</span>
                               );
                             })
                       }
                     </span>
                   </div>
+
+                  {/* Primer track bars */}
                   {linePrimers.length > 0 && (
-                    <div className="relative ml-[60px] font-mono" style={{ height: `${linePrimers.length * 11}px` }}>
+                    <div className="ml-[60px]" style={{ marginBottom: '2px' }}>
                       {linePrimers.map((p, pi) => {
-                        const pStart = Math.max(p.start - lineStart, 0);
-                        const pEnd = Math.min(p.end - lineStart, line.seq.length);
-                        if (pEnd - pStart <= 0) return null;
-                        // Short label that fits
-                        const label = p.name.match(/^[A-Za-z]+\d+/)?.[0] || p.name.slice(0, 6);
+                        const pStartOnLine = Math.max(p.start - lineStart, 0);
+                        const pEndOnLine = Math.min(p.end - lineStart, line.seq.length);
+                        if (pEndOnLine - pStartOnLine <= 0) return null;
+
+                        const bindStartOnLine = Math.max(p.bindStart - lineStart, pStartOnLine);
+                        const bindEndOnLine = Math.min(p.bindEnd - lineStart, pEndOnLine);
+
+                        const isFwd = p.direction === 'forward';
+                        const barColor = isFwd ? '#2563eb' : '#dc2626';
+
                         return (
-                          <span key={pi} className="absolute text-[7px] whitespace-nowrap leading-none"
-                            style={{ left: `${pStart}ch`, top: `${pi * 11}px`, color: p.color }}
-                            title={p.name}>
-                            {p.direction === 'forward' ? '→' : '←'}{label}
-                          </span>
+                          <div key={pi} className="relative h-4 flex items-end" title={p.name}>
+                            {/* Track bar using ch units */}
+                            <div className="absolute bottom-0 flex" style={{ left: `${pStartOnLine}ch`, width: `${pEndOnLine - pStartOnLine}ch` }}>
+                              {/* Tail portion (before binding for fwd, after for rev) */}
+                              {isFwd && pStartOnLine < bindStartOnLine && (
+                                <div style={{ width: `${bindStartOnLine - pStartOnLine}ch`, borderBottom: '2px solid #14b8a6', backgroundColor: 'rgba(20,184,166,0.08)' }}
+                                  className="h-3 rounded-l-sm" />
+                              )}
+                              {/* Binding bar */}
+                              {bindStartOnLine < bindEndOnLine && (
+                                <div style={{ width: `${bindEndOnLine - bindStartOnLine}ch`, borderBottom: `2px solid ${barColor}`, backgroundColor: barColor + '10' }}
+                                  className="h-3" />
+                              )}
+                              {/* Tail portion (after binding for rev) */}
+                              {!isFwd && bindEndOnLine < pEndOnLine && (
+                                <div style={{ width: `${pEndOnLine - bindEndOnLine}ch`, borderBottom: '2px solid #14b8a6', backgroundColor: 'rgba(20,184,166,0.08)' }}
+                                  className="h-3 rounded-r-sm" />
+                              )}
+                            </div>
+                            {/* Label */}
+                            <span className="absolute text-[7px] whitespace-nowrap font-medium"
+                              style={{ left: `${pStartOnLine}ch`, bottom: '-1px', color: barColor }}>
+                              {isFwd ? '→' : '←'}{p.label}
+                              <span className="text-gray-400 ml-0.5 font-normal">{p.tm}°</span>
+                            </span>
+                          </div>
                         );
                       })}
                     </div>
@@ -228,12 +261,21 @@ export default function SequenceViewer({ fragments, circular, primers = [] }) {
           </div>
 
           {/* Legend */}
-          <div className="text-[9px] text-gray-500 mt-2 flex gap-3 flex-wrap">
+          <div className="flex items-center gap-4 text-[9px] text-gray-500 mt-2 pt-2 border-t flex-wrap">
             {effectiveMode === 'dna' && primerRegions.length > 0 && (
               <>
-                <span><span className="text-blue-500">━</span> forward primer</span>
-                <span><span className="text-red-500">━</span> reverse primer</span>
-                <span className="text-red-400">|</span><span>граница фрагмента</span>
+                <span className="flex items-center gap-1">
+                  <span className="w-4 h-0.5 bg-blue-600 inline-block" /> → прямой (binding)
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="w-4 h-0.5 bg-red-600 inline-block" /> ← обратный (binding)
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="w-4 h-0.5 bg-teal-500 inline-block" /> хвост (overlap)
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="inline-block w-0.5 h-3 bg-gray-400" /> граница фрагмента
+                </span>
               </>
             )}
             {effectiveMode !== 'dna' && hasDomains && selFrag.domains.map((d, i) => (
