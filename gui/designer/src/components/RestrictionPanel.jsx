@@ -122,7 +122,7 @@ export default function RestrictionPanel({sequence,fragments,circular}){
               const h=Math.max(8,Math.min(85,(Math.log10(sz)-1.5)/2.5*85));
               return(
                 <div key={i} className="flex flex-col items-center gap-0.5">
-                  <span className="text-[7px] text-gray-500">{sz>=1000?`${(sz/1000).toFixed(1)}k`:sz}</span>
+                  <span className="text-[7px] text-gray-500">{sz}</span>
                   <div className="w-5 bg-blue-400 rounded-t" style={{height:`${h}%`,marginTop:'auto'}}/>
                 </div>
               );

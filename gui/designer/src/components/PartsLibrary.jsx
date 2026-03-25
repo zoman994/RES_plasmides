@@ -118,7 +118,7 @@ export default function PartsLibrary({ parts, onClose, onOpenCDSEditor, onAddToC
                         <span className="w-2.5 h-2.5 rounded-full shrink-0"
                           style={{ background: FEATURE_COLORS[p.type] || '#999' }} />
                         <span className="flex-1 truncate font-medium">{p.name}</span>
-                        <span className="text-[10px] text-gray-400">{p.length >= 1000 ? `${(p.length / 1000).toFixed(1)}k` : p.length}</span>
+                        <span className="text-[10px] text-gray-400">{p.length}</span>
                       </div>
                       {/* Children (variants) */}
                       {hasChildren && isExpanded && children.map(ch => (

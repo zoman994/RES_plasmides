@@ -458,7 +458,7 @@ export default function App() {
   // ═══════════ Render ═══════════
   return (
     <DndProvider backend={HTML5Backend}>
-      <div className="h-screen flex flex-col">
+      <div className="h-screen flex flex-col" style={{ backgroundColor: '#f8f9fa' }}>
         {/* Header */}
         <header className="px-6 py-2.5 flex items-center justify-between shrink-0"
           style={{

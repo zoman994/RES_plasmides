@@ -104,7 +104,8 @@ export default function DesignCanvas({
         ${isOver ? 'border-2 border-blue-400 bg-blue-50/40' : 'border border-gray-200'}`}
       style={{
         ...(n > 0 ? { height: canvasH, minHeight: 150, maxHeight: 800 } : { minHeight: 180 }),
-        backgroundImage: 'radial-gradient(#e5e7eb 1px, transparent 1px)',
+        backgroundColor: '#ffffff',
+        backgroundImage: 'radial-gradient(#e0e2e6 1px, transparent 1px)',
         backgroundSize: '20px 20px',
       }}
       >
@@ -193,7 +194,7 @@ export default function DesignCanvas({
 
           {/* Summary line */}
           <div className="text-[10px] text-gray-500 mt-1 select-none shrink-0">
-            Итого: {totalBp >= 1000 ? `${(totalBp / 1000).toFixed(1)} т.п.н.` : `${totalBp} п.н.`}
+            Итого: {totalBp} п.н.
             {' '}{circular ? 'кольцевой' : 'линейный'}
             {' '}&middot; {n} фрагм. &middot; {junctions.length} {junctions.length === 1 ? 'стык' : 'стыков'}
           </div>

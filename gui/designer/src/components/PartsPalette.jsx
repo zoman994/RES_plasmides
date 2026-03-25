@@ -21,8 +21,7 @@ function DraggablePart({ part }) {
                  bg-white border border-gray-100 hover:border-gray-300 hover:shadow-sm transition">
       <SBOLIcon type={part.type} size={14} color={color} />
       <span className="text-xs font-medium truncate">{part.name}</span>
-      <span className="text-[10px] text-gray-400 ml-auto">{part.length >= 1000
-        ? `${(part.length / 1000).toFixed(1)}k` : `${part.length}`}</span>
+      <span className="text-[10px] text-gray-400 ml-auto">{part.length}</span>
     </div>
   );
 }
@@ -40,7 +39,7 @@ export default function PartsPalette({ parts, onOpenModal, onOpenLibrary, invent
   const plasmids = useMemo(() => getVerifiedPlasmids(), [inventoryVersion]);
 
   return (
-    <div className="w-52 bg-white border-r border-gray-100 p-3 overflow-y-auto shrink-0 flex flex-col">
+    <div className="w-52 border-r border-gray-200 p-3 overflow-y-auto shrink-0 flex flex-col" style={{ backgroundColor: '#fdfdfe' }}>
       <h3 className="text-sm font-bold text-gray-700 mb-2">{t('Parts Library')}</h3>
       <input type="text" placeholder={t('Search...')} value={search}
         onChange={e => setSearch(e.target.value)}

@@ -57,7 +57,7 @@ export default function SequenceViewer({ fragments, circular, primers = [] }) {
     <div className="border rounded-lg bg-white">
       <button onClick={() => setOpen(!open)}
         className="w-full text-left px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 flex justify-between items-center">
-        <span>Последовательность ({(fullSeq.length / 1000).toFixed(1)} т.п.н.{circular ? ', кольцевая' : ''})</span>
+        <span>Последовательность ({fullSeq.length} п.н.{circular ? ', кольцевая' : ''})</span>
         <span className="text-gray-400">{open ? '▼' : '▶'}</span>
       </button>
 

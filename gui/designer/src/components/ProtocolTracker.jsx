@@ -79,7 +79,7 @@ export default function ProtocolTracker({ fragments, primers, pcrSizes, polymera
         sub: PURIFICATION[asm.postPurif]?.name || '?', purif: asm.postPurif, frag: 'construct', sz: totalSz });
     }
     n++; s.push({ id: 'transform', num: n, type: 'transform', title: 'Трансформация' });
-    n++; s.push({ id: 'screening', num: n, type: 'screening', title: 'Colony PCR', sub: `ожид. ${(totalSz/1000).toFixed(1)} кб`, sz: totalSz });
+    n++; s.push({ id: 'screening', num: n, type: 'screening', title: 'Colony PCR', sub: `ожид. ${totalSz} п.н.`, sz: totalSz });
     n++; s.push({ id: 'miniprep', num: n, type: 'miniprep', title: 'Мини-преп' });
     n++; s.push({ id: 'sequencing', num: n, type: 'sequencing', title: 'Секвенирование',
       sub: totalSz > 1500 ? `${Math.ceil(totalSz / 700)} реакций` : '2 реакции' });
@@ -336,7 +336,7 @@ function TransformContent() {
 function ScreeningContent({ step }) {
   return (
     <div className="text-[11px]">
-      <div className="font-semibold mb-1">Colony PCR (ожид. {step.sz ? `${(step.sz/1000).toFixed(1)} кб` : '?'})</div>
+      <div className="font-semibold mb-1">Colony PCR (ожид. {step.sz ? `${step.sz} п.н.` : '?'})</div>
       <div className="grid grid-cols-4 gap-1">
         {[1,2,3,4,5,6,7,8].map(n => (
           <div key={n} className="flex items-center gap-1">

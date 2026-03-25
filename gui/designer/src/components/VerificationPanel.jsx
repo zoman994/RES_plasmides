@@ -48,7 +48,7 @@ export default function VerificationPanel({ fragments, circular }) {
             <div>rev: {vp.rev.sequence}</div>
           </div>
           <div className="text-xs text-green-600 mt-2">
-            Expected: <strong>{(vp.expectedSize / 1000).toFixed(1)} kb</strong>
+            Ожидаемый: <strong>{vp.expectedSize} п.н.</strong>
           </div>
         </div>
 

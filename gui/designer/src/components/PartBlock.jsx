@@ -28,7 +28,7 @@ function fragmentWidth(bp, fragCount = 1) {
 
 function fmtSize(bp) {
   if (!bp) return '0 п.н.';
-  return bp >= 1000 ? `${(bp / 1000).toFixed(1)} т.п.н.` : `${bp} п.н.`;
+  return `${bp} п.н.`;
 }
 
 export default function PartBlock({
