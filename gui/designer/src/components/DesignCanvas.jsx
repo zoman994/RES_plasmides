@@ -159,10 +159,6 @@ export default function DesignCanvas({
               {fragments.map((frag, i) => {
                 const fwdPrimer = primers.find(p => p.direction === 'forward' && p.name.includes(frag.name)) || null;
                 const revPrimer = primers.find(p => p.direction === 'reverse' && p.name.includes(frag.name)) || null;
-                const leftIdx = circular ? (i - 1 + n) % n : i - 1;
-                const rightIdx = circular ? (i + 1) % n : i + 1;
-                const leftNeighborColor = (leftIdx >= 0 && leftIdx < n && leftIdx !== i) ? fragColor(fragments[leftIdx], leftIdx) : null;
-                const rightNeighborColor = (rightIdx >= 0 && rightIdx < n && rightIdx !== i) ? fragColor(fragments[rightIdx], rightIdx) : null;
 
                 return (
                   <div key={frag.id || i} className="flex items-center">
@@ -171,9 +167,7 @@ export default function DesignCanvas({
                         onRemove={onRemove} onToggleAmplification={onToggleAmplification}
                         onReorder={onReorder} onFlip={onFlip} pcrSize={pcrSizes[i]}
                         onSplitSignal={onSplitSignal} onEditDomains={onEditDomains} onEditSequence={onEditSequence}
-                        fwdPrimer={fwdPrimer} revPrimer={revPrimer}
-                        leftNeighborColor={leftNeighborColor}
-                        rightNeighborColor={rightNeighborColor} />
+                        fwdPrimer={fwdPrimer} revPrimer={revPrimer} />
                     </div>
                     {i < junctions.length && (i < n - 1 || circular) && (
                       <div className="flex flex-col items-center shrink-0" style={{ minWidth: 50 }}>
