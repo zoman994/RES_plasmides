@@ -29,15 +29,39 @@ export default function SequenceViewer({ fragments, circular, primers = [] }) {
 
   const primerRegions = useMemo(() => {
     if (!primers?.length) return [];
-    const offsets = []; let off = 0;
-    fragments.forEach(f => { offsets.push(off); off += (f.sequence || '').length; });
-    return primers.map((p, pi) => {
-      const fragIdx = Math.floor(pi / 2);
-      const fragOff = offsets[fragIdx] || 0;
-      return { name: p.name, start: fragOff + (p.bindingStart || 1) - 1,
-        end: fragOff + (p.bindingEnd || p.bindingStart || 1),
-        direction: p.direction, color: p.direction === 'forward' ? '#3B82F6' : '#EF4444' };
-    });
+    // Build fragment offset map
+    const offsets = {}; let off = 0;
+    fragments.forEach(f => { offsets[f.name] = off; off += (f.sequence || '').length; });
+
+    return primers.map(p => {
+      // Find which fragment this primer belongs to by name match
+      const frag = fragments.find(f => p.name.includes(f.name));
+      if (!frag) return null;
+      const fragOff = offsets[frag.name] || 0;
+      const fragSeq = (frag.sequence || '').toUpperCase();
+      const bind = (p.bindingSequence || '').toUpperCase();
+
+      if (!bind) return null;
+
+      // Find binding position within fragment
+      let bindStart, bindEnd;
+      if (p.direction === 'forward') {
+        bindStart = fragSeq.indexOf(bind);
+        bindEnd = bindStart >= 0 ? bindStart + bind.length : -1;
+      } else {
+        // Reverse primer: search for reverse complement of binding on sense strand
+        const rc = bind.split('').reverse().map(c => ({A:'T',T:'A',G:'C',C:'G'}[c]||'N')).join('');
+        bindStart = fragSeq.indexOf(rc);
+        bindEnd = bindStart >= 0 ? bindStart + rc.length : -1;
+      }
+
+      if (bindStart < 0) return null;
+
+      return {
+        name: p.name, start: fragOff + bindStart, end: fragOff + bindEnd,
+        direction: p.direction, color: p.direction === 'forward' ? '#3B82F6' : '#EF4444',
+      };
+    }).filter(Boolean);
   }, [primers, fragments]);
 
   // DNA or protein sequence for display
@@ -181,16 +205,16 @@ export default function SequenceViewer({ fragments, circular, primers = [] }) {
                     </span>
                   </div>
                   {linePrimers.length > 0 && (
-                    <div className="flex ml-[60px] h-3">
+                    <div className="relative ml-[60px] h-3 font-mono">
                       {linePrimers.map((p, pi) => {
                         const pStart = Math.max(p.start - lineStart, 0);
                         const width = Math.min(p.end - lineStart, line.seq.length) - pStart;
                         if (width <= 0) return null;
                         return (
-                          <div key={pi} className="absolute text-[7px] whitespace-nowrap"
-                            style={{ marginLeft: `${pStart * 6.6}px`, color: p.color }}>
+                          <span key={pi} className="absolute text-[7px] whitespace-nowrap leading-none"
+                            style={{ left: `${pStart}ch`, color: p.color }}>
                             {p.direction === 'forward' ? '→' : '←'}{p.name}
-                          </div>
+                          </span>
                         );
                       })}
                     </div>
