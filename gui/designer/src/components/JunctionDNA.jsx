@@ -9,16 +9,8 @@ export default function JunctionDNA({ junction, calculated, primers = [],
   const [expanded, setExpanded] = useState(false);
   const j = junction || {};
 
-  if (!calculated || !primers.length) {
-    const len = j.overlapLength || 30;
-    const mode = j.overlapMode || 'split';
-    const arrow = mode === 'left_only' ? '◀' : mode === 'right_only' ? '▶' : '◀▶';
-    return (
-      <div className="flex flex-col items-center px-1">
-        <span className="text-[9px] text-blue-600 font-semibold">{arrow}{len} п.н.</span>
-      </div>
-    );
-  }
+  // Before calculation: label is shown by JunctionBlock, nothing here
+  if (!calculated || !primers.length) return null;
 
   const overlapSeq = (j.overlapSequence || '').toUpperCase();
   if (!overlapSeq) return null;
