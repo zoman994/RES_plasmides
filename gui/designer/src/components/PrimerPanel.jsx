@@ -81,12 +81,14 @@ export default function PrimerPanel({
                     )}
                   </td>
                   <td className="p-2 font-mono text-[10px] max-w-xs break-all">
+                    <span className="text-[8px] text-gray-400">5'─</span>
                     <span className="text-teal-500">
                       {(p.tailSequence || '').toLowerCase()}
                     </span>
                     <span className="text-gray-900 font-bold">
                       {(p.bindingSequence || '').toUpperCase()}
                     </span>
+                    <span className="text-[8px] text-gray-400">─3'</span>
                     {/* Expandable match details */}
                     {hasMatches && expanded && (
                       <div className="mt-2 space-y-1.5">
