@@ -10,9 +10,21 @@ function needsDarkText(hex) {
 }
 
 function primerLabel(name) {
-  // "IS001_fwd_PglaA" → "IS001"
   const m = (name || '').match(/^[A-Za-z]+\d+/);
   return m ? m[0] : (name || '').slice(0, 8);
+}
+
+function fragmentWidth(bp) {
+  const minW = 80, maxW = 280, minBp = 20, maxBp = 10000;
+  if (!bp || bp <= minBp) return minW;
+  if (bp >= maxBp) return maxW;
+  const frac = (Math.log(bp) - Math.log(minBp)) / (Math.log(maxBp) - Math.log(minBp));
+  return Math.round(minW + frac * (maxW - minW));
+}
+
+function fmtSize(bp) {
+  if (!bp) return '0 п.н.';
+  return bp >= 1000 ? `${(bp / 1000).toFixed(1)} т.п.н.` : `${bp} п.н.`;
 }
 
 export default function PartBlock({
@@ -54,9 +66,10 @@ export default function PartBlock({
       )}
 
       {/* ═══ Main colored block ═══ */}
-      <div className={`relative flex flex-col min-w-[100px] rounded-sm select-none
+      <div className={`relative flex flex-col rounded-sm select-none
         ${hasPrimers ? 'min-h-[72px]' : 'h-14'}`}
-        style={{ background: color, border: dark ? '1px solid #ccc' : 'none' }}
+        style={{ background: color, border: dark ? '1px solid #ccc' : 'none',
+                 width: fragmentWidth(fragment.length), minWidth: 80 }}
         onDoubleClick={() => onToggleAmplification(index)}
         title="Double-click to toggle PCR amplification">
 
@@ -98,12 +111,15 @@ export default function PartBlock({
             })}
           </div>
         ) : (
-          <div className={`flex-1 flex items-center justify-center text-sm font-semibold px-4
+          <div className={`flex-1 flex flex-col items-center justify-center px-3
             ${hasPrimers ? 'min-h-[30px]' : ''}`}
             style={{ color: tc }}>
-            {fragment.strand === -1 && <span className="text-xs mr-1 opacity-60">&larr;</span>}
-            {fragment.name}
-            {fragment.strand !== -1 && <span className="text-xs ml-1 opacity-60">&rarr;</span>}
+            <div className="flex items-center text-sm font-semibold">
+              {fragment.strand === -1 && <span className="text-xs mr-1 opacity-60">&larr;</span>}
+              {fragment.name}
+              {fragment.strand !== -1 && <span className="text-xs ml-1 opacity-60">&rarr;</span>}
+            </div>
+            <div className="text-[9px] opacity-50">{fmtSize(fragment.length)}</div>
           </div>
         )}
 
@@ -131,15 +147,10 @@ export default function PartBlock({
         )}
       </div>
 
-      {/* Length + PCR size */}
-      <div className="text-center text-[10px] text-gray-400 mt-0.5">
-        {fragment.length >= 1000
-          ? `${(fragment.length / 1000).toFixed(1)} kb`
-          : `${fragment.length} bp`}
-      </div>
+      {/* PCR size (below block) */}
       {pcrSize && (
-        <div className="text-center text-[9px] text-blue-500 font-medium">
-          PCR: {pcrSize} bp
+        <div className="text-center text-[9px] text-blue-500 font-medium mt-0.5">
+          PCR: {fmtSize(pcrSize)}
         </div>
       )}
       {/* Intron badge */}
