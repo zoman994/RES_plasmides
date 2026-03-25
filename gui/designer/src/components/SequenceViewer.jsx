@@ -28,43 +28,45 @@ export default function SequenceViewer({ fragments, circular, primers = [] }) {
   // Build primer regions with binding position search
   const primerRegions = useMemo(() => {
     if (!primers?.length) return [];
-    const offsets = {}; let off = 0;
-    fragments.forEach(f => { offsets[f.name] = off; off += (f.sequence || '').length; });
-    const RC_MAP = { A: 'T', T: 'A', G: 'C', C: 'G' };
+    // Build fragment offset + end map
+    const fragInfo = []; let off = 0;
+    fragments.forEach(f => {
+      const len = (f.sequence || '').length;
+      fragInfo.push({ name: f.name, offset: off, end: off + len });
+      off += len;
+    });
 
     return primers.map(p => {
-      const frag = fragments.find(f => p.name.includes(f.name));
-      if (!frag) return null;
-      const fragOff = offsets[frag.name] || 0;
-      const fragSeq = (frag.sequence || '').toUpperCase();
-      const bind = (p.bindingSequence || '').toUpperCase();
-      if (!bind) return null;
-
-      let bindStart;
-      if (p.direction === 'forward') {
-        bindStart = fragSeq.indexOf(bind);
-      } else {
-        const rc = bind.split('').reverse().map(c => RC_MAP[c] || 'N').join('');
-        bindStart = fragSeq.indexOf(rc);
-      }
-      if (bindStart < 0) return null;
-
-      const bindEnd = bindStart + bind.length;
+      const fi = fragInfo.find(f => p.name.includes(f.name));
+      if (!fi) return null;
+      const bindLen = (p.bindingSequence || '').length;
       const tailLen = (p.tailSequence || '').length;
-      // For fwd: tail is BEFORE binding (left side). For rev: tail is AFTER binding (right side on sense).
+      if (!bindLen) return null;
+
+      let bindStart, bindEnd;
+      if (p.direction === 'forward') {
+        // Fwd primer: binds at START of fragment, tail extends LEFT into prev fragment
+        bindStart = fi.offset;
+        bindEnd = fi.offset + bindLen;
+      } else {
+        // Rev primer: binds at END of fragment, tail extends RIGHT into next fragment
+        bindEnd = fi.end;
+        bindStart = fi.end - bindLen;
+      }
+
       const totalStart = p.direction === 'forward'
-        ? fragOff + bindStart - tailLen
-        : fragOff + bindStart;
+        ? Math.max(0, bindStart - tailLen)
+        : bindStart;
       const totalEnd = p.direction === 'forward'
-        ? fragOff + bindEnd
-        : fragOff + bindEnd + tailLen;
+        ? bindEnd
+        : Math.min(fullSeq.length, bindEnd + tailLen);
 
       const label = p.name.match(/^[A-Za-z]+\d+/)?.[0] || p.name.slice(0, 8);
 
       return {
         name: p.name, label,
-        start: Math.max(0, totalStart), end: Math.min(fullSeq.length, totalEnd),
-        bindStart: fragOff + bindStart, bindEnd: fragOff + bindEnd,
+        start: totalStart, end: totalEnd,
+        bindStart, bindEnd,
         direction: p.direction,
         tm: p.tmBinding,
       };
