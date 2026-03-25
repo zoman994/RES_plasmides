@@ -1,5 +1,6 @@
 import { useDrag, useDrop } from 'react-dnd';
 import { getFragColor, isMarker, darken } from '../theme';
+import { getPartDescription } from '../part-descriptions';
 
 function needsDarkText(hex) {
   if (!hex || hex[0] !== '#') return false;
@@ -80,7 +81,7 @@ export default function PartBlock({
           borderLeft: fragment.strand === -1 ? `3px solid ${dark ? '#fff' : 'rgba(255,255,255,0.6)'}` : undefined,
         }}
         onDoubleClick={() => onToggleAmplification(index)}
-        title="Двойной клик — вкл/выкл ПЦР-амплификацию">
+        title={getPartDescription(fragment.name, fragment.type).short || 'Двойной клик — вкл/выкл ПЦР'}>
 
         {/* ── Fwd tail bar — extends LEFT from block edge (top area) ── */}
         {fwdTail && leftNeighborColor && (

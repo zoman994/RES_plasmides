@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { FEATURE_COLORS, getFragColor } from '../theme';
 import { DOMAIN_COLORS } from '../domain-detection';
+import { getPartDescription } from '../part-descriptions';
 
 const TYPE_LABELS = {
   CDS: 'CDS', promoter: 'Промоторы', terminator: 'Терминаторы',
@@ -150,6 +151,18 @@ export default function PartsLibrary({ parts, onClose, onOpenCDSEditor, onAddToC
                     {selected.organism && <span>{selected.organism}</span>}
                   </div>
                 </div>
+
+                {/* Description */}
+                {(() => {
+                  const desc = getPartDescription(selected.name, selected.type);
+                  return desc.long ? (
+                    <div className="text-[11px] text-gray-600 bg-gray-50 rounded p-2 space-y-1">
+                      <div>{desc.long}</div>
+                      {desc.hostRange && <div className="text-gray-400">Хозяин: {desc.hostRange}</div>}
+                      {desc.note && <div className="text-amber-600">{'⚠'} {desc.note}</div>}
+                    </div>
+                  ) : null;
+                })()}
 
                 {/* Domain bar */}
                 {selected.domains?.length > 0 && (

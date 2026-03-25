@@ -3,6 +3,7 @@ import { useState, useMemo } from 'react';
 import { FEATURE_COLORS, getColor } from '../theme';
 import { t } from '../i18n';
 import { getPCRProducts, getVerifiedPlasmids } from '../inventory';
+import { getPartDescription } from '../part-descriptions';
 
 function DraggablePart({ part }) {
   const [{ isDragging }, drag] = useDrag({
@@ -11,8 +12,10 @@ function DraggablePart({ part }) {
     collect: m => ({ isDragging: m.isDragging() }),
   });
   const color = getColor(part);
+  const desc = getPartDescription(part.name, part.type);
   return (
     <div ref={drag} style={{ opacity: isDragging ? 0.4 : 1 }}
+      title={desc.short + (desc.note ? `\n⚠ ${desc.note}` : '')}
       className="flex items-center gap-2 px-2 py-1.5 mb-1 rounded cursor-grab
                  bg-white border border-gray-100 hover:border-gray-300 hover:shadow-sm transition">
       <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: color }} />
