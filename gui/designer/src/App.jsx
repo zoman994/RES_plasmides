@@ -484,7 +484,7 @@ export default function App() {
 
         <div className="flex flex-1 overflow-hidden">
           <PartsPalette parts={parts} onOpenModal={setModalMode} inventoryVersion={inventoryVersion} />
-          <div className="flex-1 flex flex-col p-4 gap-3 overflow-y-auto">
+          <div className="flex-1 flex flex-col p-3 gap-2 overflow-y-auto">
 
             {active.completed && (
               <div className="bg-green-50 border border-green-200 rounded-lg p-3 flex items-center gap-3">
@@ -596,18 +596,18 @@ export default function App() {
               <div className="flex gap-2 flex-wrap">
                 <button onClick={() => exportGenBank(fragments, active.name || 'designed_construct', circular)}
                   className="text-xs px-3 py-1.5 bg-green-50 text-green-700 rounded hover:bg-green-100 border border-green-200">
-                  Export GenBank (.gb)
+                  {t('Export GenBank')} (.gb)
                 </button>
                 <button onClick={() => exportProtocol(fragments, junctions, primers, protocol, circular)}
                   className="text-xs px-3 py-1.5 bg-purple-50 text-purple-700 rounded hover:bg-purple-100 border border-purple-200">
-                  Export Protocol (.txt)
+                  {t('Export Protocol')} (.txt)
                 </button>
                 <button onClick={async () => {
                   const r = await saveToPVCS(fragments, junctions, primers, protocol, circular);
-                  if (r.success) alert('Saved to PlasmidVCS!'); else alert(`Failed: ${r.error}`);
+                  if (r.success) alert('Сохранено в PlasmidVCS!'); else alert(`Ошибка: ${r.error}`);
                 }}
                   className="text-xs px-3 py-1.5 bg-blue-50 text-blue-700 rounded hover:bg-blue-100 border border-blue-200">
-                  Save to PlasmidVCS
+                  {t('Save to PlasmidVCS')}
                 </button>
               </div>
             )}
