@@ -100,8 +100,8 @@ export default function JunctionBlock({ junction, index, leftName, rightName, on
 
               <div className="text-[10px] text-gray-400 mb-2">
                 {j.overlapMode === 'split'
-                  ? `${Math.floor((j.overlapLength || 30) / 2)} п.н. на каждом праймере`
-                  : `Полные ${j.overlapLength || 30} п.н. на одном праймере`}
+                  ? `Overlap ${j.overlapLength || 30} п.н. (по ~${Math.floor((j.overlapLength || 30) / 2)} на каждый праймер)`
+                  : `Overlap ${j.overlapLength || 30} п.н. целиком на одном праймере`}
               </div>
 
               <div className="flex gap-3 mb-2">
