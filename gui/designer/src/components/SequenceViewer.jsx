@@ -205,15 +205,18 @@ export default function SequenceViewer({ fragments, circular, primers = [] }) {
                     </span>
                   </div>
                   {linePrimers.length > 0 && (
-                    <div className="relative ml-[60px] h-3 font-mono">
+                    <div className="relative ml-[60px] font-mono" style={{ height: `${linePrimers.length * 11}px` }}>
                       {linePrimers.map((p, pi) => {
                         const pStart = Math.max(p.start - lineStart, 0);
-                        const width = Math.min(p.end - lineStart, line.seq.length) - pStart;
-                        if (width <= 0) return null;
+                        const pEnd = Math.min(p.end - lineStart, line.seq.length);
+                        if (pEnd - pStart <= 0) return null;
+                        // Short label that fits
+                        const label = p.name.match(/^[A-Za-z]+\d+/)?.[0] || p.name.slice(0, 6);
                         return (
                           <span key={pi} className="absolute text-[7px] whitespace-nowrap leading-none"
-                            style={{ left: `${pStart}ch`, color: p.color }}>
-                            {p.direction === 'forward' ? '→' : '←'}{p.name}
+                            style={{ left: `${pStart}ch`, top: `${pi * 11}px`, color: p.color }}
+                            title={p.name}>
+                            {p.direction === 'forward' ? '→' : '←'}{label}
                           </span>
                         );
                       })}
