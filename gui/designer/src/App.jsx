@@ -80,11 +80,12 @@ export default function App() {
   }, []);
 
   // ═══════════ Restore from localStorage ═══════════
+  const [initialized, setInitialized] = useState(false);
+
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(LS_KEY) || '{}');
       if (saved.assemblies?.length) {
-        // New multi-assembly format
         setAssemblies(saved.assemblies);
         setActiveId(saved.activeId || saved.assemblies[0].id);
         if (saved.polymerase) setPolymerase(saved.polymerase);
@@ -92,13 +93,12 @@ export default function App() {
         let maxId = 0;
         saved.assemblies.forEach(a =>
           (a.fragments || []).forEach(f => {
-            const n = parseInt(String(f.id).replace(/\D/g, ''), 10);
-            if (n > maxId) maxId = n;
+            const num = parseInt(String(f.id).replace(/\D/g, ''), 10);
+            if (num > maxId) maxId = num;
           })
         );
         nextId = maxId + 1;
       } else if (saved.fragments?.length) {
-        // Migrate old single-assembly format
         const asm = newAssembly('asm_1', 'Сборка 1');
         asm.fragments = saved.fragments;
         if (saved.junctions) asm.junctions = saved.junctions;
@@ -110,14 +110,16 @@ export default function App() {
         nextId = saved.fragments.length + 1;
       }
     } catch {}
+    setInitialized(true);
   }, []);
 
-  // ═══════════ Save to localStorage ═══════════
+  // ═══════════ Save to localStorage (only after init) ═══════════
   useEffect(() => {
+    if (!initialized) return;
     localStorage.setItem(LS_KEY, JSON.stringify({
       assemblies, activeId, polymerase, primerPrefix,
     }));
-  }, [assemblies, activeId, polymerase, primerPrefix]);
+  }, [initialized, assemblies, activeId, polymerase, primerPrefix]);
 
   // ═══════════ Load parts ═══════════
   useEffect(() => {
