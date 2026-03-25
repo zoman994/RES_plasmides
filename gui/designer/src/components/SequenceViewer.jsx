@@ -149,7 +149,7 @@ export default function SequenceViewer({ fragments, circular, primers = [] }) {
           )}
 
           {/* Sequence display */}
-          <div className="font-mono text-[11px] leading-5 max-h-[400px] overflow-y-auto bg-gray-50 p-3 rounded">
+          <div className="font-mono max-h-[400px] overflow-y-auto bg-gray-50 p-3 rounded">
             {lines.map(line => {
               const lineStart = line.pos - 1;
               const lineEnd = lineStart + line.seq.length;
@@ -158,100 +158,97 @@ export default function SequenceViewer({ fragments, circular, primers = [] }) {
               const fwdPrimers = linePrimers.filter(p => p.direction === 'forward');
               const revPrimers = linePrimers.filter(p => p.direction === 'reverse');
 
-              const renderBar = (p) => {
-                  const s = Math.max(p.start - lineStart, 0);
-                  const e = Math.min(p.end - lineStart, line.seq.length);
-                  if (e - s <= 0) return null;
-                  const bs = Math.max(p.bindStart - lineStart, s);
-                  const be = Math.min(p.bindEnd - lineStart, e);
-                  const isFwd = p.direction === 'forward';
-                  const bindColor = isFwd ? '#2563eb' : '#dc2626';
-                  return (
-                    <div key={p.name} className="relative h-3" title={p.name}>
-                      <div className="absolute bottom-0 flex" style={{ left: `${s}ch`, width: `${e - s}ch` }}>
-                        {isFwd && s < bs && <div style={{ width: `${bs - s}ch`, borderBottom: '2px dashed #0d9488' }} className="h-2.5" />}
-                        {bs < be && <div style={{ width: `${be - bs}ch`, borderBottom: `2px solid ${bindColor}` }} className="h-2.5" />}
-                        {!isFwd && be < e && <div style={{ width: `${e - be}ch`, borderBottom: '2px dashed #0d9488' }} className="h-2.5" />}
-                      </div>
-                      <span className="absolute text-[7px] whitespace-nowrap text-gray-500" style={{ left: `${s}ch`, top: '0' }}>
-                        {isFwd ? '→' : '←'}{p.label} {p.tm}°
-                      </span>
-                    </div>
-                  );
-                };
-
+              const renderTrack = (p) => {
+                const s = Math.max(p.start - lineStart, 0);
+                const e = Math.min(p.end - lineStart, line.seq.length);
+                if (e - s <= 0) return null;
+                const bs = Math.max(p.bindStart - lineStart, s);
+                const be = Math.min(p.bindEnd - lineStart, e);
+                const isFwd = p.direction === 'forward';
+                const c = isFwd ? '#2563eb' : '#dc2626';
+                const tailBefore = isFwd ? bs - s : 0;
+                const bindW = be - bs;
+                const tailAfter = isFwd ? 0 : e - be;
                 return (
-                  <div key={line.pos} className={linePrimers.length > 0 ? 'mb-1' : 'mb-0'}>
-                    {/* Forward primers ABOVE sequence */}
-                    {fwdPrimers.length > 0 && (
-                      <div className="ml-[60px]">{fwdPrimers.map(renderBar)}</div>
-                    )}
-
-                    {/* Sequence line */}
-                    <div className="flex">
-                      <span className="text-gray-400 w-12 text-right mr-3 select-none shrink-0 text-[11px]">{line.pos}</span>
-                      <span className="break-all tracking-[0.5px]">
-                        {effectiveMode === 'dna' && selected === 'all'
-                          ? line.seq.split('').map((ch, ci) => {
-                              const abs = lineStart + ci;
-                              const isBoundary = boundaries.has(abs);
-                              // Fragment bg tint at 8% opacity
-                              const r = coloredRanges.find(r => abs >= r.start && abs < r.end);
-                              const bg = r ? r.color + '14' : 'transparent';
-                              return (
-                                <span key={ci}>
-                                  {isBoundary && <span className="inline-block w-0.5 mx-px rounded" style={{ height: '14px', verticalAlign: 'middle', background: `linear-gradient(to right, ${coloredRanges.find(r => abs - 1 >= r.start && abs - 1 < r.end)?.color || '#999'}, ${r?.color || '#999'})` }} />}
-                                  <span style={{ color: '#1a1a1a', backgroundColor: bg }}>{ch}</span>
-                                </span>
-                              );
-                            })
-                          : effectiveMode === 'dna'
-                            ? line.seq.split('').map((ch, ci) => {
-                                const aaIdx = Math.floor((lineStart + ci) / 3);
-                                const dom = isCDS && selFrag?.domains?.find(d => aaIdx + 1 >= d.startAA && aaIdx + 1 <= d.endAA);
-                                return (<span key={ci} style={{ color: NT_COLORS[ch.toUpperCase()] || '#333',
-                                  borderBottom: dom ? `2px solid ${dom.color || DOMAIN_COLORS[dom.type]}` : 'none' }}>{ch}</span>);
-                              })
-                            : line.seq.split('').map((aa, ci) => {
-                                const aaPos = lineStart + ci + 1;
-                                const dom = selFrag?.domains?.find(d => aaPos >= d.startAA && aaPos <= d.endAA);
-                                return (<span key={ci} style={{ backgroundColor: dom ? (dom.color || DOMAIN_COLORS[dom.type]) + '25' : 'transparent',
-                                  borderBottom: dom ? `2px solid ${dom.color || DOMAIN_COLORS[dom.type]}` : 'none' }}
-                                  title={dom ? `${dom.name} — ${aaPos}` : `${aaPos}`}>{aa}</span>);
-                              })
-                        }
-                      </span>
+                  <div key={p.name} className="relative h-5" title={p.name}>
+                    <span className="absolute text-[8px] whitespace-nowrap font-medium" style={{ left: `${s}ch`, top: 0, color: c }}>
+                      {isFwd ? '→' : '←'}{p.label} {p.tm}°
+                    </span>
+                    <div className="absolute bottom-0 flex items-center" style={{ left: `${s}ch` }}>
+                      {!isFwd && <div className="w-0 h-0 mr-px" style={{ borderTop: '3px solid transparent', borderBottom: '3px solid transparent', borderRight: `4px solid ${c}` }} />}
+                      {tailBefore > 0 && <div style={{ width: `${tailBefore}ch`, backgroundColor: c, opacity: 0.25 }} className="h-1.5 rounded-l-full" />}
+                      {bindW > 0 && <div style={{ width: `${bindW}ch`, backgroundColor: c }} className="h-1.5" />}
+                      {tailAfter > 0 && <div style={{ width: `${tailAfter}ch`, backgroundColor: c, opacity: 0.25 }} className="h-1.5 rounded-r-full" />}
+                      {isFwd && <div className="w-0 h-0 ml-px" style={{ borderTop: '3px solid transparent', borderBottom: '3px solid transparent', borderLeft: `4px solid ${c}` }} />}
                     </div>
-
-                    {/* Reverse primers BELOW sequence */}
-                    {revPrimers.length > 0 && (
-                      <div className="ml-[60px]">{revPrimers.map(renderBar)}</div>
-                    )}
                   </div>
+                );
+              };
+
+              return (
+                <div key={line.pos} className={linePrimers.length > 0 ? 'mb-1' : ''}>
+                  {fwdPrimers.length > 0 && <div className="ml-[52px]">{fwdPrimers.map(renderTrack)}</div>}
+
+                  <div className="flex">
+                    <span className="text-gray-400 w-[48px] text-right mr-1 select-none shrink-0 text-[11px]">{line.pos}</span>
+                    <span className="text-[12px] tracking-[0.5px] text-[#1a1a1a] select-all break-all leading-5">
+                      {effectiveMode === 'dna' && selected === 'all'
+                        ? line.seq.split('').map((ch, ci) => {
+                            const abs = lineStart + ci;
+                            const isBoundary = boundaries.has(abs);
+                            return (
+                              <span key={ci}>
+                                {isBoundary && <span className="border-l-2 border-amber-400 pl-px ml-px" />}
+                                {ch}
+                              </span>
+                            );
+                          })
+                        : effectiveMode === 'dna'
+                          ? line.seq.split('').map((ch, ci) => {
+                              const aaIdx = Math.floor((lineStart + ci) / 3);
+                              const dom = isCDS && selFrag?.domains?.find(d => aaIdx + 1 >= d.startAA && aaIdx + 1 <= d.endAA);
+                              return (<span key={ci} style={{
+                                borderBottom: dom ? `2px solid ${dom.color || DOMAIN_COLORS[dom.type]}` : 'none' }}>{ch}</span>);
+                            })
+                          : line.seq.split('').map((aa, ci) => {
+                              const aaPos = lineStart + ci + 1;
+                              const dom = selFrag?.domains?.find(d => aaPos >= d.startAA && aaPos <= d.endAA);
+                              return (<span key={ci} style={{
+                                backgroundColor: dom ? (dom.color || DOMAIN_COLORS[dom.type]) + '25' : 'transparent',
+                                borderBottom: dom ? `2px solid ${dom.color || DOMAIN_COLORS[dom.type]}` : 'none' }}
+                                title={dom ? `${dom.name} — ${aaPos}` : `${aaPos}`}>{aa}</span>);
+                            })
+                      }
+                    </span>
+                  </div>
+
+                  {revPrimers.length > 0 && <div className="ml-[52px]">{revPrimers.map(renderTrack)}</div>}
+                </div>
               );
             })}
           </div>
 
           {/* Legend */}
-          <div className="flex items-center gap-4 text-[9px] text-gray-500 mt-2 pt-2 border-t flex-wrap">
+          <div className="flex items-center gap-5 text-[9px] text-gray-500 mt-2 pt-2 border-t flex-wrap">
             {effectiveMode === 'dna' && primerRegions.length > 0 && (
               <>
                 <span className="flex items-center gap-1.5">
-                  <span className="w-3 h-3 rounded-sm" style={{ background: 'rgba(0,158,115,0.15)' }} />
-                  Фон = фрагмент
+                  <span className="flex items-center">
+                    <span className="w-2 h-1.5 bg-blue-600 opacity-25 rounded-l-full" />
+                    <span className="w-3 h-1.5 bg-blue-600 rounded-r-full" />
+                    <span className="w-0 h-0 ml-px" style={{ borderTop: '2px solid transparent', borderBottom: '2px solid transparent', borderLeft: '3px solid #2563eb' }} />
+                  </span>
+                  → прямой
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <span className="w-4 border-b-2 border-blue-600" />
-                  → прямой (binding)
+                  <span className="flex items-center">
+                    <span className="w-0 h-0 mr-px" style={{ borderTop: '2px solid transparent', borderBottom: '2px solid transparent', borderRight: '3px solid #dc2626' }} />
+                    <span className="w-3 h-1.5 bg-red-600 rounded-l-full" />
+                    <span className="w-2 h-1.5 bg-red-600 opacity-25 rounded-r-full" />
+                  </span>
+                  ← обратный
                 </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="w-4 border-b-2 border-red-600" />
-                  ← обратный (binding)
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="w-4 border-b-2 border-dashed" style={{ borderColor: '#0d9488' }} />
-                  Хвост (overlap)
-                </span>
+                <span className="text-gray-400">сплошной = binding {'·'} полупрозрачный = хвост</span>
               </>
             )}
             {effectiveMode !== 'dna' && hasDomains && selFrag.domains.map((d, i) => (
