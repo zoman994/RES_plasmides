@@ -458,50 +458,56 @@ export default function App() {
     <DndProvider backend={HTML5Backend}>
       <div className="h-screen flex flex-col">
         {/* Header */}
-        <header className="bg-white border-b px-6 py-3 flex items-center justify-between shrink-0">
+        <header className="px-6 py-2.5 flex items-center justify-between shrink-0"
+          style={{
+            background: 'rgba(15, 23, 42, 0.85)',
+            backdropFilter: 'blur(12px) saturate(180%)',
+            borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+          }}>
           <div className="flex items-center gap-3">
             <span className="text-lg">&#x1F9EC;</span>
-            <h1 className="text-lg font-bold text-gray-800">{t('Construct Designer')}</h1>
+            <h1 className="text-base font-bold text-white">{t('Construct Designer')}</h1>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-500">{t('Assembly:')}</span>
+            <span className="text-xs text-gray-400">{t('Assembly:')}</span>
             <button onClick={() => setAssemblyType_('overlap')}
               className={`text-xs px-3 py-1.5 rounded-full font-semibold transition
-                ${assemblyType === 'overlap' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                ${assemblyType === 'overlap' ? 'bg-blue-500 text-white' : 'bg-white/10 text-gray-300 hover:bg-white/20'}`}>
               Overlap / Gibson
             </button>
             <button onClick={() => setAssemblyType_('golden_gate')}
               className={`text-xs px-3 py-1.5 rounded-full font-semibold transition
-                ${assemblyType === 'golden_gate' ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                ${assemblyType === 'golden_gate' ? 'bg-amber-500 text-white' : 'bg-white/10 text-gray-300 hover:bg-white/20'}`}>
               Golden Gate
             </button>
             <button onClick={() => setShowMutagenesis(true)}
-              className="text-xs px-3 py-1.5 rounded-full font-semibold bg-purple-100 text-purple-700 hover:bg-purple-200 transition">
+              className="text-xs px-3 py-1.5 rounded-full font-semibold bg-purple-500/20 text-purple-300 hover:bg-purple-500/30 transition">
               {'🔬'} {t('Mutagenesis')}
             </button>
-            <div className="w-px h-5 bg-gray-200 mx-1" />
+            <div className="w-px h-4 bg-white/15 mx-1" />
             <button onClick={() => setShowOligos(true)}
-              className="text-xs px-2 py-1 rounded border border-gray-200 hover:bg-gray-50 text-gray-600 transition">
+              className="text-xs px-2 py-1 rounded bg-white/10 text-gray-300 hover:bg-white/20 transition">
               {'📋'} Олиги
             </button>
             <button onClick={() => setShowPartsLib(true)}
-              className="text-xs px-2 py-1 rounded border border-gray-200 hover:bg-gray-50 text-gray-600 transition">
+              className="text-xs px-2 py-1 rounded bg-white/10 text-gray-300 hover:bg-white/20 transition">
               {'📦'} Запчасти
             </button>
-            <div className="w-px h-5 bg-gray-200 mx-1" />
+            <div className="w-px h-4 bg-white/15 mx-1" />
             <select value={polymerase} onChange={e => setPolymerase(e.target.value)}
-              className="text-xs border rounded px-2 py-1">
+              className="text-xs bg-white/10 text-gray-300 border-0 rounded px-2 py-1">
               <option value="phusion">Phusion/Q5</option>
               <option value="taq">Taq</option>
               <option value="kod">KOD</option>
             </select>
-            <div className="flex items-center gap-1 ml-1 text-xs text-gray-500">
+            <div className="flex items-center gap-1 ml-1 text-xs text-gray-400">
               <span>Prefix:</span>
               <input value={primerPrefix} onChange={e => setPrimerPrefix(e.target.value)}
-                className="w-10 border rounded px-1 py-0.5 text-xs" maxLength={4} />
+                className="w-10 bg-white/10 text-gray-300 border-0 rounded px-1 py-0.5 text-xs" maxLength={4} />
             </div>
             {fragments.length > 0 && (
-              <button onClick={clearAssembly} className="text-xs px-2 py-1 text-red-500 hover:bg-red-50 rounded ml-1">
+              <button onClick={clearAssembly} className="text-xs px-2 py-1 text-red-400 hover:bg-red-500/20 rounded ml-1">
                 {t('Clear')}
               </button>
             )}

@@ -4,6 +4,7 @@ import { FEATURE_COLORS, getColor } from '../theme';
 import { t } from '../i18n';
 import { getPCRProducts, getVerifiedPlasmids } from '../inventory';
 import { getPartDescription } from '../part-descriptions';
+import { SBOLIcon } from '../sbol-glyphs';
 
 function DraggablePart({ part }) {
   const [{ isDragging }, drag] = useDrag({
@@ -18,7 +19,7 @@ function DraggablePart({ part }) {
       title={desc.short + (desc.note ? `\n⚠ ${desc.note}` : '')}
       className="flex items-center gap-2 px-2 py-1.5 mb-1 rounded cursor-grab
                  bg-white border border-gray-100 hover:border-gray-300 hover:shadow-sm transition">
-      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: color }} />
+      <SBOLIcon type={part.type} size={14} color={color} />
       <span className="text-xs font-medium truncate">{part.name}</span>
       <span className="text-[10px] text-gray-400 ml-auto">{part.length >= 1000
         ? `${(part.length / 1000).toFixed(1)}k` : `${part.length}`}</span>

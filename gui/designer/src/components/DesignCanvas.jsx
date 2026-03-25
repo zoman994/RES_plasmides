@@ -99,10 +99,15 @@ export default function DesignCanvas({
 
   return (
     <div ref={(el) => { drop(el); canvasRef.current = el; }}
-      className={`relative border-2 border-dashed rounded-xl px-4 pt-2 pb-3
+      className={`relative rounded-xl px-4 pt-2 pb-3
         flex flex-col transition
-        ${isOver ? 'border-blue-400 bg-blue-50/40' : 'border-gray-200 bg-white'}`}
-      style={n > 0 ? { height: canvasH, minHeight: 150, maxHeight: 800 } : { minHeight: 180 }}>
+        ${isOver ? 'border-2 border-blue-400 bg-blue-50/40' : 'border border-gray-200'}`}
+      style={{
+        ...(n > 0 ? { height: canvasH, minHeight: 150, maxHeight: 800 } : { minHeight: 180 }),
+        backgroundImage: 'radial-gradient(#e5e7eb 1px, transparent 1px)',
+        backgroundSize: '20px 20px',
+      }}
+      >
 
       {n === 0 ? (
         <div className="flex-1 flex items-center justify-center text-gray-400 text-sm select-none">

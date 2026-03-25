@@ -1,6 +1,7 @@
 import { useDrag, useDrop } from 'react-dnd';
 import { getFragColor, isMarker, darken } from '../theme';
 import { getPartDescription } from '../part-descriptions';
+import { SBOLIcon } from '../sbol-glyphs';
 
 function needsDarkText(hex) {
   if (!hex || hex[0] !== '#') return false;
@@ -103,14 +104,16 @@ export default function PartBlock({
         </div>
       )}
 
-      {/* ═══ Main colored block ═══ */}
-      <div className={`relative flex flex-col rounded-sm select-none
-        ${hasPrimers ? 'min-h-[72px]' : 'h-14'}`}
+      {/* ═══ Main block — card style with left color bar ═══ */}
+      <div className={`relative flex flex-col rounded-lg select-none
+        ${hasPrimers ? 'min-h-[72px]' : 'h-14'}
+        ${isDragging ? 'shadow-xl' : 'shadow-sm hover:shadow-md'}`}
         style={{
-          background: color,
-          border: dark ? '1px solid #ccc' : 'none',
+          background: `linear-gradient(135deg, ${color}15 0%, ${color}08 100%)`,
+          border: `1px solid ${color}30`,
+          borderLeft: `4px solid ${color}`,
           width: fragmentWidth(fragment.length, fragmentCount), minWidth: 60,
-          borderLeft: fragment.strand === -1 ? `3px solid ${dark ? '#fff' : 'rgba(255,255,255,0.6)'}` : undefined,
+          transition: 'box-shadow 150ms ease, transform 150ms ease',
         }}
         onDoubleClick={() => onToggleAmplification(index)}
         title={getPartDescription(fragment.name, fragment.type).short || 'Двойной клик — вкл/выкл ПЦР'}>
@@ -150,11 +153,11 @@ export default function PartBlock({
         {/* ── Forward primer row (top) ── */}
         {fwdPrimer && (
           <div className="flex items-center h-5 px-2 shrink-0">
-            <span className="text-[9px] mr-0.5" style={{ color: tc, opacity: 0.8 }}>{'→'}</span>
-            <span className="text-[7px] truncate max-w-[55px]" style={{ color: tc, opacity: 0.7 }}
+            <span className="text-[9px] mr-0.5 text-blue-500">{'→'}</span>
+            <span className="text-[7px] truncate max-w-[55px] text-gray-500"
               title={fwdPrimer.name}>{primerLabel(fwdPrimer.name)}</span>
-            <div className="flex-1 h-[2px] mx-1 rounded" style={{ background: tc, opacity: 0.25 }} />
-            <span className="text-[7px]" style={{ color: tc, opacity: 0.6 }}>{fwdPrimer.tmBinding}°</span>
+            <div className="flex-1 h-[2px] mx-1 rounded" style={{ background: color, opacity: 0.2 }} />
+            <span className="text-[7px] text-gray-400">{fwdPrimer.tmBinding}°</span>
           </div>
         )}
 
@@ -175,11 +178,12 @@ export default function PartBlock({
         ) : (
           <div className={`flex-1 flex flex-col items-center justify-center px-2 overflow-hidden
             ${hasPrimers ? 'min-h-[30px]' : ''}`}
-            style={{ color: tc }} title={fragment.name}>
-            <div className="flex items-center text-sm font-semibold max-w-full">
-              {fragment.strand === -1 && <span className="text-xs mr-1 opacity-60 shrink-0">&larr;</span>}
-              <span className="truncate">{fragment.name}</span>
-              {fragment.strand !== -1 && <span className="text-xs ml-1 opacity-60 shrink-0">&rarr;</span>}
+            title={fragment.name}>
+            <div className="flex items-center gap-1 max-w-full">
+              <SBOLIcon type={fragment.type} size={14} color={color} />
+              {fragment.strand === -1 && <span className="text-[10px] opacity-50 shrink-0">&larr;</span>}
+              <span className="text-xs font-semibold text-gray-800 truncate">{fragment.name}</span>
+              {fragment.strand !== -1 && <span className="text-[10px] opacity-50 shrink-0">&rarr;</span>}
             </div>
             {/* Domain bar for CDS with domains */}
             {fragment.domains?.length > 0 && (
@@ -197,18 +201,18 @@ export default function PartBlock({
                 })}
               </div>
             )}
-            <div className="text-[9px] opacity-50">{fmtSize(fragment.length)}</div>
+            <div className="text-[9px] text-gray-400">{fmtSize(fragment.length)}</div>
           </div>
         )}
 
         {/* ── Reverse primer row (bottom) ── */}
         {revPrimer && (
           <div className="flex items-center h-5 px-2 shrink-0">
-            <span className="text-[7px]" style={{ color: tc, opacity: 0.6 }}>{revPrimer.tmBinding}°</span>
-            <div className="flex-1 h-[2px] mx-1 rounded" style={{ background: tc, opacity: 0.25 }} />
-            <span className="text-[7px] truncate max-w-[55px] text-right" style={{ color: tc, opacity: 0.7 }}
+            <span className="text-[7px] text-gray-400">{revPrimer.tmBinding}°</span>
+            <div className="flex-1 h-[2px] mx-1 rounded" style={{ background: color, opacity: 0.2 }} />
+            <span className="text-[7px] truncate max-w-[55px] text-right text-gray-500"
               title={revPrimer.name}>{primerLabel(revPrimer.name)}</span>
-            <span className="text-[9px] ml-0.5" style={{ color: tc, opacity: 0.8 }}>{'←'}</span>
+            <span className="text-[9px] ml-0.5 text-red-500">{'←'}</span>
           </div>
         )}
       </div>
