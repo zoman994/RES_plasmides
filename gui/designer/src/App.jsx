@@ -24,6 +24,7 @@ import { exportGenBank, exportProtocol, saveToPVCS } from './exports';
 import { addToInventory } from './inventory';
 import { findAllMatches, addPrimersToRegistry } from './primer-reuse';
 import { t } from './i18n';
+import { getFragColor, isMarker } from './theme';
 
 const LS_KEY = 'pvcs_designer_state';
 let nextId = 1;
@@ -390,24 +391,43 @@ export default function App() {
 
   const completeAssembly = () => {
     const fullSeq = fragments.map(f => f.sequence || '').join('');
+    const totalLen = fullSeq.length;
     const productType = circular ? 'plasmid' : 'pcr_product';
-    const product = {
-      name: active.name, sequence: fullSeq, length: fullSeq.length,
-      type: productType, verified: circular, sourceAssemblyId: active.id,
-      sourceType: 'assembly',
+
+    // Build sub-fragments for striped visualization
+    const subFragments = fragments.map(f => ({
+      name: f.name, type: f.type, length: f.length,
+      color: isMarker(f.name) ? '#F0E442' : getFragColor(f.type, fragments.indexOf(f)),
+      pct: (f.length / totalLen) * 100,
+    }));
+
+    const mergedProduct = {
+      id: `product_${Date.now()}`, name: active.name,
+      type: productType, sequence: fullSeq, length: totalLen,
+      strand: 1, needsAmplification: false,
+      subFragments,
+      sourceType: 'assembly', sourceAssemblyId: active.id,
       components: fragments.map(f => f.name),
+      completedAt: new Date().toISOString(),
     };
-    // Save to inventory (for drag-and-drop in next assembly)
-    addToInventory(product);
-    // Save to parts library (as a reusable part)
+
+    // Save to inventory
+    addToInventory({ ...mergedProduct, verified: circular });
+    // Save to parts library
     setParts(prev => {
       if (prev.some(p => p.name === active.name && p.sourceAssemblyId === active.id)) return prev;
-      return [...prev, {
-        id: `prod_${Date.now()}`, ...product,
-        needsAmplification: false,
-      }];
+      return [...prev, mergedProduct];
     });
-    updateActive({ completed: true, product });
+
+    // Replace canvas: keep originals, show merged product
+    updateActive({
+      completed: true,
+      product: mergedProduct,
+      originalFragments: fragments,
+      originalJunctions: junctions,
+      fragments: [mergedProduct],
+      junctions: [],
+    });
     setInventoryVersion(v => v + 1);
   };
 
@@ -513,12 +533,27 @@ export default function App() {
             {active.completed && (
               <div className="bg-green-50 border border-green-200 rounded-lg p-3 flex items-center gap-3">
                 <span className="text-green-600 text-xl">{'✅'}</span>
-                <div>
+                <div className="flex-1">
                   <div className="text-sm font-semibold text-green-800">Сборка завершена</div>
                   <div className="text-xs text-green-600">
-                    Продукт {'«'}{active.product?.name}{'»'} ({active.product?.length} п.н.) доступен в палитре
+                    Продукт {'«'}{active.product?.name}{'»'} ({active.product?.length} п.н.)
+                    {active.product?.components && ` = ${active.product.components.join(' + ')}`}
                   </div>
                 </div>
+                {active.originalFragments && (
+                  <button onClick={() => {
+                    if (active.originalFragments && fragments[0]?.subFragments) {
+                      // Expand: restore original fragments
+                      updateActive({ fragments: active.originalFragments, junctions: active.originalJunctions || [] });
+                    } else {
+                      // Collapse: back to merged product
+                      updateActive({ fragments: [active.product], junctions: [] });
+                    }
+                  }}
+                    className="text-[10px] px-2 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200">
+                    {fragments[0]?.subFragments ? '🔍 Показать фрагменты' : '📦 Свернуть в продукт'}
+                  </button>
+                )}
               </div>
             )}
 

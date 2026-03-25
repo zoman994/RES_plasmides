@@ -62,10 +62,42 @@ export default function PartBlock({
     <div ref={ref} className={`relative group cursor-grab transition-transform
       ${isOver ? 'scale-105' : ''}`}
       style={{ opacity: isDragging ? 0.3 : 1, zIndex: 1, overflow: 'visible' }}>
-      {/* Drop indicator */}
       {isOver && <div className="absolute -left-1 top-0 bottom-0 w-0.5 bg-blue-500 rounded" />}
+
+      {/* ═══ MERGED PRODUCT BLOCK ═══ */}
+      {fragment.subFragments?.length > 0 ? (
+        <>
+          <div className="relative flex h-16 rounded-lg overflow-hidden border-2 border-green-400 shadow-sm"
+            style={{ width: fragmentWidth(fragment.length, fragmentCount), minWidth: 100 }}
+            title={`${fragment.name}: ${fragment.subFragments.map(s => s.name).join(' + ')}`}>
+            {fragment.subFragments.map((sub, si) => (
+              <div key={si} style={{ width: `${sub.pct}%`, backgroundColor: sub.color }}
+                className="flex items-end justify-center border-r border-white/30 last:border-r-0"
+                title={`${sub.name} (${fmtSize(sub.length)})`}>
+                {sub.pct > 12 && (
+                  <span className="text-[7px] text-white/80 font-medium truncate px-0.5 mb-0.5">{sub.name}</span>
+                )}
+              </div>
+            ))}
+            {/* Name overlay */}
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+              <span className="text-sm font-bold text-white drop-shadow-md truncate max-w-full px-2">{fragment.name}</span>
+              <span className="text-[9px] text-white/90 drop-shadow-sm">{fmtSize(fragment.length)}</span>
+            </div>
+          </div>
+          {/* ✓ badge */}
+          <div className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-green-500 text-white text-[10px]
+                          flex items-center justify-center shadow border-2 border-white z-10">✓</div>
+          {fragment.concentration && (
+            <div className="text-center text-[9px] text-green-600 font-medium mt-0.5">
+              {fragment.concentration} нг/µл
+            </div>
+          )}
+        </>
+      ) : (
+      <>
       {/* No-PCR badge */}
-      {!fragment.needsAmplification && (
+      {!fragment.needsAmplification && !fragment.subFragments && (
         <div className="absolute -top-5 left-0 right-0 text-center z-10">
           <span className="text-[9px] bg-yellow-100 text-yellow-700 px-1 rounded">без ПЦР</span>
         </div>
@@ -221,6 +253,8 @@ export default function PartBlock({
           className="w-5 h-5 rounded-full text-[10px] flex items-center justify-center hover:bg-red-100 text-red-500"
           title="Удалить фрагмент">×</button>
       </div>
+      </>
+      )}
     </div>
   );
 }
