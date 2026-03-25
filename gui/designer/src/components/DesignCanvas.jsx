@@ -29,13 +29,26 @@ export default function DesignCanvas({
     collect: m => ({ isOver: m.isOver() }),
   });
 
-  const [zoom, setZoom] = useState(100);
+  const [zoom, setZoom] = useState(() => {
+    const saved = localStorage.getItem('pvcs-canvas-zoom');
+    return saved ? parseInt(saved) : 100;
+  });
+  const [canvasH, setCanvasH] = useState(() => {
+    const saved = localStorage.getItem('pvcs-canvas-height');
+    return saved ? parseInt(saved) : 280;
+  });
   const canvasRef = useRef(null);
   const scrollRef = useRef(null);
+  const resizing = useRef(false);
+  const startY = useRef(0);
+  const startH = useRef(0);
 
   const totalBp = fragments.reduce((s, f) => s + (f.length || 0), 0);
   const n = fragments.length;
   const hasPrimers = calculated && primers.length > 0;
+
+  // Persist zoom
+  useEffect(() => { localStorage.setItem('pvcs-canvas-zoom', String(zoom)); }, [zoom]);
 
   const fitToView = useCallback(() => {
     const scale = n <= 4 ? 1 : Math.max(0.45, 1 - (n - 4) * 0.1);
@@ -45,13 +58,9 @@ export default function DesignCanvas({
     setZoom(Math.max(30, Math.min(100, Math.floor(containerW / totalW * 100))));
   }, [fragments, n]);
 
-  // Auto-fit when fragments change
+  // Auto-fit on fragment count change
   useEffect(() => {
-    if (n > 0) {
-      // Defer to let refs attach
-      const t = setTimeout(fitToView, 50);
-      return () => clearTimeout(t);
-    }
+    if (n > 0) { const tm = setTimeout(fitToView, 50); return () => clearTimeout(tm); }
   }, [n, fitToView]);
 
   // Ctrl+wheel zoom
@@ -68,21 +77,41 @@ export default function DesignCanvas({
     return () => el.removeEventListener('wheel', handler);
   }, []);
 
+  // ═══ Resize handle ═══
+  const onResizeStart = useCallback((e) => {
+    resizing.current = true;
+    startY.current = e.clientY;
+    startH.current = canvasH;
+    const onMove = (ev) => {
+      if (!resizing.current) return;
+      const newH = Math.max(150, Math.min(800, startH.current + ev.clientY - startY.current));
+      setCanvasH(newH);
+    };
+    const onUp = () => {
+      resizing.current = false;
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      setCanvasH(h => { localStorage.setItem('pvcs-canvas-height', String(h)); return h; });
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, [canvasH]);
+
   return (
     <div ref={(el) => { drop(el); canvasRef.current = el; }}
-      className={`border-2 border-dashed rounded-xl px-4 py-2
-        flex flex-col items-center transition
-        ${isOver ? 'border-blue-400 bg-blue-50/40' : 'border-gray-200 bg-white'}
-        ${n === 0 ? 'min-h-[180px] justify-center' : ''}`}>
+      className={`relative border-2 border-dashed rounded-xl px-4 pt-2 pb-3
+        flex flex-col transition
+        ${isOver ? 'border-blue-400 bg-blue-50/40' : 'border-gray-200 bg-white'}`}
+      style={n > 0 ? { height: canvasH, minHeight: 150, maxHeight: 800 } : { minHeight: 180 }}>
 
       {n === 0 ? (
-        <div className="text-gray-400 text-sm select-none">
+        <div className="flex-1 flex items-center justify-center text-gray-400 text-sm select-none">
           {t('Drag parts here')}
         </div>
       ) : (
         <>
-          {/* Top bar — compact */}
-          <div className="flex items-center gap-2 mb-1 select-none w-full">
+          {/* Top bar */}
+          <div className="flex items-center gap-2 mb-1 select-none w-full shrink-0">
             <div className="text-[10px] text-gray-400">
               5' &rarr; сборка конструкции &rarr; 3'
             </div>
@@ -106,11 +135,11 @@ export default function DesignCanvas({
           </div>
 
           {/* Scrollable + zoomable blocks */}
-          <div ref={scrollRef} className="overflow-x-auto max-w-full w-full">
+          <div ref={scrollRef} className="flex-1 overflow-x-auto overflow-y-auto w-full">
             <div className="py-4 px-4 gap-1"
               style={{
                 display: 'flex', alignItems: 'center', overflow: 'visible',
-                transform: `scale(${zoom / 100})`, transformOrigin: 'left center',
+                transform: `scale(${zoom / 100})`, transformOrigin: 'left top',
                 minHeight: zoom < 100 ? `${Math.ceil(100 / zoom * (hasPrimers ? 110 : 70))}px` : undefined,
               }}>
               <div className={`w-1.5 bg-gray-300 rounded-l shrink-0 ${hasPrimers ? 'h-[72px]' : 'h-14'}`} />
@@ -157,12 +186,22 @@ export default function DesignCanvas({
             </div>
           </div>
 
-          <div className="text-[10px] text-gray-500 mt-1 select-none">
+          {/* Summary line */}
+          <div className="text-[10px] text-gray-500 mt-1 select-none shrink-0">
             Итого: {totalBp >= 1000 ? `${(totalBp / 1000).toFixed(1)} т.п.н.` : `${totalBp} п.н.`}
             {' '}{circular ? 'кольцевой' : 'линейный'}
             {' '}&middot; {n} фрагм. &middot; {junctions.length} {junctions.length === 1 ? 'стык' : 'стыков'}
           </div>
         </>
+      )}
+
+      {/* Resize handle */}
+      {n > 0 && (
+        <div onMouseDown={onResizeStart}
+          className="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize
+                     flex items-center justify-center group hover:bg-blue-50 transition-colors">
+          <div className="w-10 h-1 rounded-full bg-gray-300 group-hover:bg-blue-400 transition-colors" />
+        </div>
       )}
     </div>
   );
