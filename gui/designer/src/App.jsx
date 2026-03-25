@@ -13,6 +13,7 @@ import MutagenesisWizard from './components/MutagenesisWizard';
 import VerificationPanel from './components/VerificationPanel';
 import FragmentSplitter from './components/FragmentSplitter';
 import AssemblyTabs from './components/AssemblyTabs';
+import ExperimentStats from './components/ExperimentStats';
 import { fetchParts, designPrimers } from './api';
 import { validateConstruct, checkPrimerQuality, pcrProductSize } from './validate';
 import { exportGenBank, exportProtocol, saveToPVCS } from './exports';
@@ -552,6 +553,13 @@ export default function App() {
                     {'📋 Протокол'} ({protocolSteps.length})
                   </button>
                 )}
+                {calculated && (
+                  <button onClick={() => setActiveTab('stats')}
+                    className={`text-xs px-3 py-1.5 border-b-2 font-medium transition ${
+                      activeTab === 'stats' ? 'border-teal-500 text-teal-700' : 'border-transparent text-gray-500'}`}>
+                    {'📊 Статистика'}
+                  </button>
+                )}
               </div>
             )}
 
@@ -579,6 +587,10 @@ export default function App() {
                   </button>
                 )}
               </>
+            )}
+
+            {activeTab === 'stats' && (
+              <ExperimentStats assemblies={assemblies} />
             )}
 
             {/* Analysis panels */}

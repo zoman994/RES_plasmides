@@ -3,20 +3,44 @@ import ConcentrationInput from './ConcentrationInput';
 import { PCR_MIXES, PURIFICATION, ASSEMBLY_PROTOCOLS, calcPCRTime, fmtTime, suggestPurif, calcAssemblyMix } from '../protocol-data';
 import { addToInventory } from '../inventory';
 
+function fmtTs(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return `${d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })} ${d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`;
+}
+
+function fmtDuration(startIso, endIso) {
+  if (!startIso || !endIso) return '';
+  const min = Math.round((new Date(endIso) - new Date(startIso)) / 60000);
+  if (min < 60) return `${min} мин`;
+  return `${Math.floor(min / 60)} ч ${min % 60} мин`;
+}
+
 export default function ProtocolTracker({ fragments, primers, pcrSizes, polymerase, protocol, circular, assemblyId, onInventoryUpdate }) {
   const stateKey = `pvcs-protocol-state-${assemblyId || 'default'}`;
   const [states, setStatesRaw] = useState(() => {
     try { return JSON.parse(localStorage.getItem(stateKey) || '{}'); } catch { return {}; }
   });
 
-  // Reload when assembly changes
   useEffect(() => {
     try { setStatesRaw(JSON.parse(localStorage.getItem(stateKey) || '{}')); } catch { setStatesRaw({}); }
   }, [stateKey]);
 
+  // ═══ Auto-timestamped update ═══
   const upd = (id, data) => {
+    const now = new Date().toISOString();
     setStatesRaw(prev => {
-      const next = { ...prev, [id]: { ...prev[id], ...data } };
+      const step = prev[id] || {};
+      const ts = { ...(step.timestamps || {}) };
+
+      // Auto-record timestamps based on what changed
+      if (!ts.started) ts.started = now;
+      if (data.done && !step.done) ts.completed = now;
+      if (data.done === false && step.done) delete ts.completed;
+      if (data.photo && !step.photo) ts.gelUploaded = now;
+      if (data.measured && !step.measured) ts.measured = now;
+
+      const next = { ...prev, [id]: { ...step, ...data, timestamps: ts, updatedAt: now } };
       localStorage.setItem(stateKey, JSON.stringify(next));
       return next;
     });
@@ -37,27 +61,23 @@ export default function ProtocolTracker({ fragments, primers, pcrSizes, polymera
       s.push({ id: `pcr_${i}`, num: n, type: 'pcr', title: `ПЦР ${frag.name}`, sub: `${sz} п.н.`,
         frag: frag.name, fwd: fwd?.name, rev: rev?.name, anneal, sz, ext: tm.extSec, timeMin: tm.totalMin,
         mix: PCR_MIXES[polymerase], seq: frag.sequence, fragLen: frag.length });
-      // Purification sub-step
       const isLast = !fragments.slice(i + 1).some(f => f.needsAmplification);
       const purif = suggestPurif('pcr', protocol, isLast);
       n++;
       s.push({ id: `purif_${i}`, num: n, type: 'purif', title: `Очистка ${frag.name}`,
         sub: PURIFICATION[purif]?.name || '?', purif, frag: frag.name, sz, seq: frag.sequence, fragLen: frag.length });
     });
-    // Assembly
     n++;
     const asm = ASSEMBLY_PROTOCOLS[protocol] || ASSEMBLY_PROTOCOLS.gibson;
     const totalSz = fragments.reduce((sum, f) => sum + (f.length || 0), 0);
     s.push({ id: 'assembly', num: n, type: 'assembly', title: `Сборка — ${asm.name}`,
       sub: `${totalSz} п.н.`, asm, method: protocol, sz: totalSz,
       frags: fragments.filter(f => f.needsAmplification).map(f => f.name) });
-    // Post-assembly purification
     if (asm.postPurif && asm.postPurif !== 'none') {
       n++;
       s.push({ id: 'purif_asm', num: n, type: 'purif', title: 'Очистка после сборки',
         sub: PURIFICATION[asm.postPurif]?.name || '?', purif: asm.postPurif, frag: 'construct', sz: totalSz });
     }
-    // Transform + screening + miniprep + sequencing
     n++; s.push({ id: 'transform', num: n, type: 'transform', title: 'Трансформация' });
     n++; s.push({ id: 'screening', num: n, type: 'screening', title: 'Colony PCR', sub: `ожид. ${(totalSz/1000).toFixed(1)} кб`, sz: totalSz });
     n++; s.push({ id: 'miniprep', num: n, type: 'miniprep', title: 'Мини-преп' });
@@ -66,7 +86,7 @@ export default function ProtocolTracker({ fragments, primers, pcrSizes, polymera
     return s;
   }, [fragments, primers, pcrSizes, polymerase, protocol]);
 
-  // Assembly mix from measured concentrations
+  // Assembly mix
   const measuredFrags = useMemo(() => {
     return steps.filter(s => s.type === 'purif' && s.id.startsWith('purif_') && s.id !== 'purif_asm')
       .map(s => ({ name: s.frag, sizeBp: s.sz, concentration: states[s.id]?.concentration || 0, volume: states[s.id]?.volume || 0 }))
@@ -80,8 +100,21 @@ export default function ProtocolTracker({ fragments, primers, pcrSizes, polymera
     if (onInventoryUpdate) onInventoryUpdate();
   };
 
+  // ═══ Statistics ═══
+  const stats = useMemo(() => {
+    const completed = steps.filter(s => states[s.id]?.done).length;
+    const allTs = steps.map(s => states[s.id]?.timestamps).filter(Boolean);
+    const firstStart = allTs.map(t => t.started).filter(Boolean).sort()[0];
+    const lastComplete = allTs.map(t => t.completed).filter(Boolean).sort().pop();
+    let totalMin = 0;
+    allTs.forEach(t => {
+      if (t.started && t.completed) totalMin += (new Date(t.completed) - new Date(t.started)) / 60000;
+    });
+    return { completed, total: steps.length, firstStart, lastComplete, activeMin: Math.round(totalMin) };
+  }, [steps, states]);
+
   const exportPrint = () => {
-    const html = steps.map((s, i) =>
+    const html = steps.map((s) =>
       `<div style="page-break-inside:avoid;border:1px solid #ddd;border-radius:8px;padding:16px;margin:12px 0">
       <h3>Шаг ${s.num}: ${s.title} <small style="color:#888">${s.sub || ''}</small></h3>
       ${s.type === 'pcr' ? `<p>Темплейт: ${s.frag}<br>Праймеры: ${s.fwd} + ${s.rev}<br>Anneal: ${s.anneal}°C<br>Ожид.: ${s.sz} п.н.</p>` : ''}
@@ -98,9 +131,24 @@ export default function ProtocolTracker({ fragments, primers, pcrSizes, polymera
   return (
     <div className="space-y-3">
       <div className="flex justify-between items-center">
-        <h3 className="text-sm font-bold">{'📋'} Протокол ({steps.length} шагов)</h3>
-        <button onClick={exportPrint} className="text-xs px-3 py-1.5 bg-gray-100 rounded hover:bg-gray-200">{'🖨️'} Печать</button>
+        <h3 className="text-sm font-bold">{'📋'} Протокол ({stats.completed}/{stats.total} шагов)</h3>
+        <div className="flex items-center gap-2">
+          {stats.activeMin > 0 && (
+            <span className="text-[10px] text-gray-400">
+              {'⏱'} {stats.activeMin >= 60 ? `${Math.floor(stats.activeMin / 60)} ч ${stats.activeMin % 60} мин` : `${stats.activeMin} мин`}
+            </span>
+          )}
+          <button onClick={exportPrint} className="text-xs px-3 py-1.5 bg-gray-100 rounded hover:bg-gray-200">{'🖨️'} Печать</button>
+        </div>
       </div>
+
+      {/* Progress bar */}
+      {stats.total > 0 && (
+        <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+          <div className="h-full bg-green-500 rounded-full transition-all"
+            style={{ width: `${(stats.completed / stats.total) * 100}%` }} />
+        </div>
+      )}
 
       {/* Assembly mix calculator */}
       {asmMix && (
@@ -141,6 +189,7 @@ export default function ProtocolTracker({ fragments, primers, pcrSizes, polymera
       {/* Step cards */}
       {steps.map(step => {
         const st = states[step.id] || {};
+        const ts = st.timestamps || {};
         return (
           <div key={step.id} className="border rounded-xl bg-white overflow-hidden">
             {/* Header */}
@@ -148,14 +197,19 @@ export default function ProtocolTracker({ fragments, primers, pcrSizes, polymera
               <div>
                 <span className="text-sm font-bold">Шаг {step.num}: {step.title}</span>
                 {step.sub && <span className="text-xs text-gray-500 ml-2">{step.sub}</span>}
+                {/* Timestamp line */}
+                {ts.started && (
+                  <div className="text-[9px] text-gray-400 mt-0.5">
+                    {fmtTs(ts.started)}
+                    {ts.completed && <> → {fmtTs(ts.completed)} ({fmtDuration(ts.started, ts.completed)})</>}
+                  </div>
+                )}
               </div>
               <div className="flex gap-1">
-                {['done'].map(k => (
-                  <button key={k} onClick={() => upd(step.id, { done: !st.done })}
-                    className={`text-[10px] px-2 py-0.5 rounded-full border ${st.done ? 'bg-green-100 border-green-400 text-green-700' : 'border-gray-200 text-gray-400'}`}>
-                    {st.done ? '✔ Готово' : '○ В процессе'}
-                  </button>
-                ))}
+                <button onClick={() => upd(step.id, { done: !st.done })}
+                  className={`text-[10px] px-2 py-0.5 rounded-full border ${st.done ? 'bg-green-100 border-green-400 text-green-700' : 'border-gray-200 text-gray-400'}`}>
+                  {st.done ? '✔ Готово' : '○ В процессе'}
+                </button>
               </div>
             </div>
 
@@ -182,7 +236,7 @@ export default function ProtocolTracker({ fragments, primers, pcrSizes, polymera
                 <div>
                   <label className="text-[10px] text-gray-500">{'📷'} Фото</label>
                   <input type="file" accept="image/*" className="w-full text-[10px]"
-                    onChange={e => { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = () => upd(step.id, { photo: r.result }); r.readAsDataURL(f); }} />
+                    onChange={e => { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = () => upd(step.id, { photo: r.result, gelUploaded: true }); r.readAsDataURL(f); }} />
                 </div>
                 <div>
                   <label className="text-[10px] text-gray-500">Комментарий</label>
@@ -192,14 +246,16 @@ export default function ProtocolTracker({ fragments, primers, pcrSizes, polymera
               </div>
               {st.photo && <img src={st.photo} alt="gel" className="mt-2 max-h-32 rounded border" />}
 
-              {/* Concentration input for purification steps */}
               {(step.type === 'purif' || step.type === 'miniprep') && !st.measured && (
                 <ConcentrationInput fragmentName={step.frag || 'construct'} fragmentLength={step.fragLen || step.sz}
                   fragmentSequence={step.seq} sourceStep={`Шаг ${step.num} ${step.title}`}
                   onSave={m => handleConcSave(step.id, m)} />
               )}
               {st.measured && (
-                <div className="text-[10px] text-green-600 mt-1">{'✅'} Измерено: {st.concentration} нг/µл, {st.volume} µл</div>
+                <div className="text-[10px] text-green-600 mt-1">
+                  {'✅'} Измерено: {st.concentration} нг/µл, {st.volume} µл
+                  {ts.measured && <span className="text-gray-400 ml-1">({fmtTs(ts.measured)})</span>}
+                </div>
               )}
             </div>
           </div>
