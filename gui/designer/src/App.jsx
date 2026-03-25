@@ -17,6 +17,7 @@ import { fetchParts, designPrimers } from './api';
 import { validateConstruct, checkPrimerQuality, pcrProductSize } from './validate';
 import { exportGenBank, exportProtocol, saveToPVCS } from './exports';
 import { addToInventory } from './inventory';
+import { findAllMatches, addPrimersToRegistry } from './primer-reuse';
 
 const LS_KEY = 'pvcs_designer_state';
 let nextId = 1;
@@ -40,7 +41,7 @@ function newAssembly(id, name) {
     fragments: [], junctions: [],
     assemblyType: 'overlap', protocol: 'overlap_pcr',
     circular: false, calculated: false,
-    primers: [], apiWarnings: [], orderSheet: '',
+    primers: [], apiWarnings: [], orderSheet: '', primerMatches: {},
     protocolSteps: [],
     completed: false, product: null,
   };
@@ -63,7 +64,7 @@ export default function App() {
   // ═══════════ Active assembly (derived) ═══════════
   const active = assemblies.find(a => a.id === activeId) || assemblies[0];
   const { fragments, junctions, assemblyType, protocol, circular, calculated,
-          primers, apiWarnings, orderSheet, protocolSteps } = active;
+          primers, apiWarnings, orderSheet, primerMatches, protocolSteps } = active;
 
   // ═══════════ Update helpers ═══════════
   const updateActive = useCallback((updates) => {
@@ -294,10 +295,17 @@ export default function App() {
       pSteps.push({ id: 'sequencing', type: 'sequencing', title: 'Секвенирование',
         statuses: [{ label: 'Отправлено', done: false }, { label: 'Подтв.', done: false }] });
 
+      // Find reusable primers from registry
+      const matches = findAllMatches(renamedPrimers);
+
+      // Save new primers to registry for future reuse
+      addPrimersToRegistry(renamedPrimers);
+
       updateAssembly(asmId, {
         primers: renamedPrimers,
         apiWarnings: data.warnings || [],
         orderSheet: data.orderSheet || '',
+        primerMatches: matches,
         junctions: updatedJunctions,
         calculated: true,
         protocolSteps: pSteps,
@@ -347,6 +355,17 @@ export default function App() {
       junctions: result.junctions,
       calculated: false,
       primers: [],
+    });
+  };
+
+  // ═══════════ Primer reuse ═══════════
+  const handleReusePrimer = (primerName, existingPrimer) => {
+    updateActive({
+      primers: primers.map(p =>
+        p.name === primerName
+          ? { ...p, reused: true, reusedFrom: existingPrimer.name }
+          : p
+      ),
     });
   };
 
@@ -540,7 +559,8 @@ export default function App() {
 
             {activeTab === 'primers' && primers.length > 0 && (
               <PrimerPanel primers={primers} warnings={[...apiWarnings]}
-                orderSheet={orderSheet} primerQuality={primerQuality} />
+                orderSheet={orderSheet} primerQuality={primerQuality}
+                primerMatches={primerMatches} onReusePrimer={handleReusePrimer} />
             )}
 
             {activeTab === 'protocol' && calculated && (
