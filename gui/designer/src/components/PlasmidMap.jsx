@@ -26,10 +26,14 @@ export default function PlasmidMap({ fragments, constructName, totalBp, junction
   const dragging = useRef(false);
   const dragStart = useRef({ x: 0, y: 0, px: 0, py: 0 });
 
+  const [hovPrimer, setHovPrimer] = useState(null);
+
   const SIZE = 600;
   const cx = SIZE / 2, cy = SIZE / 2;
   const outerR = 140, innerR = 118, backboneR = (outerR + innerR) / 2;
   const labelR = outerR + 16;
+  // Primer track ring — inside the backbone
+  const primerOuterR = innerR - 5, primerInnerR = innerR - 13;
 
   const onWheel = useCallback((e) => {
     e.preventDefault();
@@ -58,6 +62,25 @@ export default function PlasmidMap({ fragments, constructName, totalBp, junction
     const color = isMarker(f.name) ? '#F0E442' : getFragColor(f.type, i);
     return { ...f, index: i, startAngle: sA, endAngle: eA, midAngle: (sA + eA) / 2, color, len };
   });
+
+  // Primer arcs for inner ring
+  const primerArcs = primers.map((p, pi) => {
+    const frag = fragments.find(f => p.name.includes(f.name));
+    if (!frag) return null;
+    const arc = arcs[fragments.indexOf(frag)];
+    if (!arc) return null;
+    const bL = (p.bindingSequence || '').length, tL = (p.tailSequence || '').length;
+    if (!bL) return null;
+    const bpR = arc.len > 0 ? (arc.endAngle - arc.startAngle) / arc.len : 0;
+    const isFwd = p.direction === 'forward';
+    // Binding at fragment edge, tail extends into neighbor
+    const bindS = isFwd ? arc.startAngle : arc.endAngle - bL * bpR;
+    const bindE = isFwd ? arc.startAngle + bL * bpR : arc.endAngle;
+    const tailS = isFwd ? bindS - tL * bpR : bindE;
+    const tailE = isFwd ? bindS : bindE + tL * bpR;
+    const fullS = Math.min(bindS, tailS), fullE = Math.max(bindE, tailE);
+    return { ...p, pi, isFwd, bindS, bindE, tailS, tailE, fullS, fullE, midAngle: (fullS + fullE) / 2 };
+  }).filter(Boolean);
 
   // Center label — short construct name, not all fragments joined
   const centerName = constructName || (fragments.length <= 3 ? fragments.map(f => f.name).join('+') : `${fragments.length} фрагм.`);
@@ -134,6 +157,47 @@ export default function PlasmidMap({ fragments, constructName, totalBp, junction
                   fontSize={8} fill="#3b82f6" fontWeight={600}>
                   {'◀▶'}{oLen}
                 </text>
+              )}
+            </g>
+          );
+        })}
+
+        {/* Primer ring — SnapGene-style arrow arcs inside backbone */}
+        <circle cx={cx} cy={cy} r={(primerOuterR + primerInnerR) / 2} fill="none" stroke="#f1f5f9" strokeWidth={primerOuterR - primerInnerR} />
+        {primerArcs.map((p, i) => {
+          const c = p.isFwd ? '#2563eb' : '#dc2626';
+          const isHP = hovPrimer === i;
+          // Arrowhead at 3' end
+          const arrowAngle = p.isFwd ? p.bindE : p.bindS;
+          const tipR = primerOuterR + 3;
+          const tip = polar(cx, cy, tipR, arrowAngle);
+          const b1 = polar(cx, cy, primerOuterR, arrowAngle - (p.isFwd ? 0.015 : -0.015));
+          const b2 = polar(cx, cy, primerInnerR, arrowAngle - (p.isFwd ? 0.015 : -0.015));
+          // Tooltip position
+          const tp = polar(cx, cy, primerInnerR - 10, p.midAngle);
+          return (
+            <g key={`pa-${i}`} style={{ cursor: 'pointer' }}
+              onMouseEnter={() => setHovPrimer(i)} onMouseLeave={() => setHovPrimer(null)}>
+              {/* Tail arc (transparent) */}
+              {Math.abs(p.tailE - p.tailS) > 0.002 && (
+                <path d={sectorPath(cx, cy, primerOuterR, primerInnerR, Math.min(p.tailS, p.tailE), Math.max(p.tailS, p.tailE))}
+                  fill={c} opacity={0.2} stroke="none" />
+              )}
+              {/* Binding arc (solid) */}
+              <path d={sectorPath(cx, cy, primerOuterR, primerInnerR, p.bindS, p.bindE)}
+                fill={c} opacity={isHP ? 0.9 : 0.6} stroke="#fff" strokeWidth={0.5}
+                style={{ transition: 'opacity 100ms' }} />
+              {/* Arrowhead */}
+              <polygon points={`${tip.x},${tip.y} ${b1.x},${b1.y} ${b2.x},${b2.y}`} fill={c} opacity={0.8} />
+              {/* Hover tooltip */}
+              {isHP && (
+                <g>
+                  <rect x={tp.x - 50} y={tp.y - 8} width={100} height={16} rx={3}
+                    fill="white" stroke={c} strokeWidth={0.5} />
+                  <text x={tp.x} y={tp.y + 3} textAnchor="middle" fontSize={7} fill="#333">
+                    {p.name.match(/^[A-Za-z]+\d+/)?.[0] || p.name.slice(0, 10)} · Tm {p.tmBinding}°
+                  </text>
+                </g>
               )}
             </g>
           );
