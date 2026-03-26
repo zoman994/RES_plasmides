@@ -86,11 +86,12 @@ export default function PartBlock({
 
         {/* Fwd primer — top line */}
         {fwdPrimer && (
-          <div className="flex items-center justify-between px-2 pt-1.5 pb-0.5">
-            <span className="text-[8px] text-blue-500 truncate" title={fwdPrimer.name}>
-              {'→'} {primerLabel(fwdPrimer.name)}
+          <div className="flex items-center justify-between px-2 pt-1.5 pb-0.5 text-[11px]">
+            <span className="text-blue-600 font-medium flex items-center gap-0.5 truncate" title={fwdPrimer.name}>
+              <span className="text-blue-500 text-[13px]">{'→'}</span>
+              {primerLabel(fwdPrimer.name)}
             </span>
-            <span className="text-[8px] text-blue-400">{fwdPrimer.tmBinding}°</span>
+            <span className="text-blue-400 font-mono shrink-0">{fwdPrimer.tmBinding}°</span>
           </div>
         )}
 
@@ -98,14 +99,16 @@ export default function PartBlock({
         <div className={`flex-1 flex flex-col items-center justify-center px-2 overflow-hidden
           ${hasPrimers ? 'py-1' : 'py-3'}`}>
           <div className="flex items-center gap-1 max-w-full">
-            <SBOLIcon type={fragment.type} size={14} color={color} />
-            {fragment.strand === -1 && <span className="text-[10px] opacity-50 shrink-0">&larr;</span>}
+            <span className={`inline-block shrink-0 ${fragment.strand === -1 ? 'scale-x-[-1]' : ''}`}>
+              <SBOLIcon type={fragment.type} size={14} color={color} />
+            </span>
+            {fragment.strand === -1 && <span className="text-xs opacity-40 shrink-0">{'←'}</span>}
             <span className="text-xs font-semibold text-gray-800 truncate" title={fragment.name}>{fragment.name}</span>
-            {fragment.strand !== -1 && <span className="text-[10px] opacity-50 shrink-0">&rarr;</span>}
+            {fragment.strand !== -1 && <span className="text-xs opacity-40 shrink-0">{'→'}</span>}
           </div>
-          {/* Domain bar */}
+          {/* Domain bar (flips with strand) */}
           {fragment.domains?.length > 0 && (
-            <div className="flex h-2.5 rounded overflow-hidden w-full mt-0.5">
+            <div className={`flex h-2.5 rounded overflow-hidden w-full mt-0.5 ${fragment.strand === -1 ? 'flex-row-reverse' : ''}`}>
               {fragment.domains.map((d, di) => {
                 const totalAA = Math.ceil((fragment.sequence || '').length / 3);
                 const w = Math.max(3, ((d.endAA - d.startAA + 1) / (totalAA || 1)) * 100);
@@ -122,10 +125,11 @@ export default function PartBlock({
 
         {/* Rev primer — bottom line */}
         {revPrimer && (
-          <div className="flex items-center justify-between px-2 pb-1.5 pt-0.5">
-            <span className="text-[8px] text-red-400">{revPrimer.tmBinding}°</span>
-            <span className="text-[8px] text-red-500 truncate" title={revPrimer.name}>
-              {primerLabel(revPrimer.name)} {'←'}
+          <div className="flex items-center justify-between px-2 pb-1.5 pt-0.5 text-[11px]">
+            <span className="text-red-400 font-mono shrink-0">{revPrimer.tmBinding}°</span>
+            <span className="text-red-600 font-medium flex items-center gap-0.5 truncate" title={revPrimer.name}>
+              {primerLabel(revPrimer.name)}
+              <span className="text-red-500 text-[13px]">{'←'}</span>
             </span>
           </div>
         )}
