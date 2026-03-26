@@ -202,17 +202,16 @@ export default function DesignCanvas({
 
               {!circular && <div className={`w-1.5 bg-gray-300 rounded-r shrink-0 ${hasPrimers ? 'h-[72px]' : 'h-14'}`} />}
             </div>
-          </div>
-
-          {/* Circular arc: sized to match actual blocks row width */}
-          {circular && n > 1 && (
-            <div className="relative shrink-0 ml-4" style={{ width: blocksRowRef.current ? `${blocksRowRef.current.scrollWidth * (zoom / 100)}px` : '100%' }}>
-              <div className="border-b-2 border-l-2 border-r-2 border-dashed border-blue-400 rounded-b-[24px] h-5 mx-2 opacity-40" />
-              <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 bg-white px-2 rounded">
-                <span className="text-[9px] font-bold text-blue-500">{'⟳'} замыкание</span>
+            {/* Circular arc — inside scroll container, right after blocks row */}
+            {circular && n > 1 && (
+              <div className="relative mx-4" style={{ marginTop: -8 }}>
+                <div className="border-b-2 border-l-2 border-r-2 border-dashed border-blue-400 rounded-b-[20px] h-4 mx-2 opacity-40" />
+                <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 bg-white px-2 rounded">
+                  <span className="text-[9px] font-bold text-blue-500">{'⟳'} замыкание</span>
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
           {/* Summary line */}
           <div className="text-[10px] text-gray-500 mt-1 select-none shrink-0">
