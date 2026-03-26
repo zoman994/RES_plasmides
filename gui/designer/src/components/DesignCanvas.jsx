@@ -203,19 +203,15 @@ export default function DesignCanvas({
             </div>
           </div>
 
-          {/* Circular arc: visual connection last → first */}
+          {/* Circular arc: CSS border connecting last → first */}
           {circular && n > 1 && (
-            <div className="w-full shrink-0" style={{ height: 32 }}>
-              <svg width="100%" height="32" className="overflow-visible">
-                <path
-                  d={`M 20,0 C 20,28 calc(100% - 20),28 calc(100% - 20),0`}
-                  fill="none" stroke="#3b82f6" strokeWidth="2"
-                  strokeDasharray="6 3" opacity="0.4" />
-                <text x="50%" y="22" textAnchor="middle"
-                  className="text-[9px] fill-blue-500 font-medium">
+            <div className="relative mx-6 shrink-0">
+              <div className="border-b-2 border-l-2 border-r-2 border-dashed border-blue-400 rounded-b-[30px] h-6 mx-4 opacity-40" />
+              <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 bg-white px-2">
+                <span className="text-[9px] font-bold text-blue-500">
                   {'⟳'} замыкание
-                </text>
-              </svg>
+                </span>
+              </div>
             </div>
           )}
 
