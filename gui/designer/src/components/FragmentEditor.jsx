@@ -124,49 +124,52 @@ export default function FragmentEditor({ fragment, onSave, onClose }) {
               ))}
             </div>
 
-            {/* Codon view with amino acids (CDS) */}
+            {/* Codon view with centered amino acids (CDS, view mode) */}
             {isCDS && editMode === 'view' && (
-              <div className="bg-gray-50 rounded-lg p-3 max-h-[200px] overflow-y-auto mb-3 font-mono text-[10px]">
+              <div className="bg-gray-50 rounded-lg p-3 max-h-[220px] overflow-y-auto mb-3 font-mono">
                 {codonLines.map(line => (
-                  <div key={line.pos} className="mb-1">
-                    <div className="flex items-start">
-                      <span className="text-gray-400 w-10 text-right mr-2 shrink-0 text-[9px] pt-0.5">{line.pos}</span>
-                      <div>
-                        {/* Codons */}
-                        <div className="flex flex-wrap">
-                          {line.codons.map((c, ci) => (
-                            <span key={ci} className="mr-1.5" style={{ borderBottom: c.dom ? `2px solid ${c.dom.color}` : 'none' }}>
-                              {c.codon}
-                            </span>
-                          ))}
-                        </div>
-                        {/* Amino acids below */}
-                        <div className="flex flex-wrap text-[9px] text-gray-500 -mt-0.5">
-                          {line.codons.map((c, ci) => (
-                            <span key={ci} className="mr-1.5 w-[calc(3ch+6px)] text-center"
-                              style={{ color: c.aa === '*' ? '#dc2626' : c.dom ? c.dom.color : '#888' }}>
-                              {c.aa}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
+                  <div key={line.pos} className="mb-2 flex items-start">
+                    <span className="text-gray-400 w-10 text-right mr-2 shrink-0 text-[9px] pt-0.5">{line.pos}</span>
+                    <div className="flex flex-wrap">
+                      {line.codons.map((c, ci) => (
+                        <span key={ci} className="inline-block text-center" style={{ width: '3.6ch' }}>
+                          <span className="block text-[11px] text-[#1a1a1a]" style={{ borderBottom: c.dom ? `2px solid ${c.dom.color}` : 'none' }}>
+                            {c.codon}
+                          </span>
+                          <span className="block text-[9px]" style={{ color: c.aa === '*' ? '#dc2626' : c.aa === 'M' && c.aaIdx === 1 ? '#16a34a' : c.dom ? c.dom.color : '#aaa' }}>
+                            {c.aa}
+                          </span>
+                        </span>
+                      ))}
                     </div>
                   </div>
                 ))}
               </div>
             )}
 
-            {/* Non-CDS or edit mode: plain sequence */}
-            {(!isCDS || editMode === 'edit') && (
+            {/* Edit mode: textarea + live translation */}
+            {editMode === 'edit' && (
               <div className="mb-3">
-                {editMode === 'edit' ? (
-                  <textarea value={seq} onChange={e => setSeq(e.target.value.toUpperCase().replace(/[^ATGCNRYWSMKHBVD]/g, ''))}
-                    className="w-full font-mono text-[10px] leading-relaxed border rounded-lg p-3 h-32 resize-y focus:border-blue-400 outline-none" spellCheck={false} />
-                ) : (
-                  <div className="font-mono text-[10px] leading-relaxed bg-gray-50 rounded-lg p-3 max-h-[150px] overflow-y-auto break-all text-gray-600">
-                    {seq.slice(0, 400)}{seq.length > 400 && <span className="text-gray-400">... ({seq.length})</span>}
+                <textarea value={seq} onChange={e => setSeq(e.target.value.toUpperCase().replace(/[^ATGCNRYWSMKHBVD]/g, ''))}
+                  className="w-full font-mono text-[11px] leading-relaxed border rounded-lg p-3 h-32 resize-y focus:border-blue-400 outline-none" spellCheck={false} />
+                {isCDS && (
+                  <div className="mt-2 bg-gray-50 rounded-lg p-2 max-h-24 overflow-y-auto">
+                    <div className="text-[9px] text-gray-500 mb-1">Трансляция:</div>
+                    <div className="font-mono text-[11px] break-all">
+                      {protein.split('').map((aa, i) => (
+                        <span key={i} style={{ color: aa === '*' ? '#dc2626' : (aa === 'M' && i === 0) ? '#16a34a' : '#d946ef', fontWeight: (aa === '*' || (aa === 'M' && i === 0)) ? 700 : 400 }}>{aa}</span>
+                      ))}
+                    </div>
+                    {seq.length % 3 !== 0 && <div className="text-[9px] text-red-500 mt-1">{'⚠'} {seq.length % 3} лишних нуклеотида — сдвиг рамки!</div>}
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Non-CDS view mode: plain sequence */}
+            {!isCDS && editMode === 'view' && (
+              <div className="font-mono text-[11px] leading-relaxed bg-gray-50 rounded-lg p-3 max-h-[150px] overflow-y-auto break-all text-gray-600 mb-3">
+                {seq.slice(0, 400)}{seq.length > 400 && <span className="text-gray-400">... ({seq.length})</span>}
               </div>
             )}
 
