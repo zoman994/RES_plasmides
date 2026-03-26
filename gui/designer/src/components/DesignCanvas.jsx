@@ -22,7 +22,7 @@ function fragmentWidthEstimate(bp) {
 export default function DesignCanvas({
   fragments, junctions, circular, onToggleCircular,
   onDrop, onRemove, onToggleAmplification, onJunctionChange, onReorder, onFlip,
-  calculated, pcrSizes = [], onSplitSignal, onEditDomains, onEditSequence, primers = [],
+  calculated, pcrSizes = [], onSplitSignal, onEditDomains, onEditSequence, primers = [], constructName,
 }) {
   const [{ isOver }, drop] = useDrop({
     accept: 'PART',
@@ -172,8 +172,8 @@ export default function DesignCanvas({
           {/* Circular map view — full canvas */}
           {viewMode === 'map' && circular ? (
             <div className="flex-1 flex items-center justify-center p-0">
-              <PlasmidMap fragments={fragments} name={fragments.map(f => f.name).join('+')}
-                totalBp={totalBp} primers={primers} />
+              <PlasmidMap fragments={fragments} constructName={constructName}
+                totalBp={totalBp} junctions={junctions} />
             </div>
           ) :
           /* Scrollable + zoomable blocks */

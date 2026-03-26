@@ -607,7 +607,8 @@ export default function App() {
               onToggleAmplification={toggleAmplification} onJunctionChange={updateJunction}
               onReorder={reorderFragments} onFlip={flipFragment} calculated={calculated}
               pcrSizes={pcrSizes} onSplitSignal={setSplitTarget}
-              onEditDomains={setDomainTarget} onEditSequence={setSeqEditTarget} primers={primers} />
+              onEditDomains={setDomainTarget} onEditSequence={setSeqEditTarget} primers={primers}
+              constructName={active.name} />
 
             {fragments.length >= 2 && !active.completed && (
               <div className="flex items-center justify-center gap-3">
