@@ -36,7 +36,7 @@ export default function PlasmidMap({ fragments, constructName, totalBp, junction
   const outerR = 140, innerR = 118, backboneR = (outerR + innerR) / 2;
   const labelR = outerR + 16;
   // Primer track ring — inside the backbone
-  const primerOuterR = innerR - 5, primerInnerR = innerR - 13;
+  const primerOuterR = innerR - 4, primerInnerR = innerR - 16;
 
   const onWheel = useCallback((e) => {
     e.preventDefault();
@@ -77,10 +77,13 @@ export default function PlasmidMap({ fragments, constructName, totalBp, junction
     const bpR = arc.len > 0 ? (arc.endAngle - arc.startAngle) / arc.len : 0;
     const isFwd = p.direction === 'forward';
     // Binding at fragment edge, tail extends into neighbor
-    const bindS = isFwd ? arc.startAngle : arc.endAngle - bL * bpR;
-    const bindE = isFwd ? arc.startAngle + bL * bpR : arc.endAngle;
-    const tailS = isFwd ? bindS - tL * bpR : bindE;
-    const tailE = isFwd ? bindS : bindE + tL * bpR;
+    const MIN_ANG = 0.03; // minimum visible angle (~2°)
+    const bAng = Math.max(bL * bpR, MIN_ANG);
+    const tAng = tL > 0 ? Math.max(tL * bpR, MIN_ANG * 0.5) : 0;
+    const bindS = isFwd ? arc.startAngle : arc.endAngle - bAng;
+    const bindE = isFwd ? arc.startAngle + bAng : arc.endAngle;
+    const tailS = isFwd ? bindS - tAng : bindE;
+    const tailE = isFwd ? bindS : bindE + tAng;
     const fullS = Math.min(bindS, tailS), fullE = Math.max(bindE, tailE);
     return { ...p, pi, isFwd, bindS, bindE, tailS, tailE, fullS, fullE, midAngle: (fullS + fullE) / 2 };
   }).filter(Boolean);
@@ -180,10 +183,10 @@ export default function PlasmidMap({ fragments, constructName, totalBp, junction
           const isHP = hovPrimer === i;
           // Arrowhead at 3' end
           const arrowAngle = p.isFwd ? p.bindE : p.bindS;
-          const tipR = primerOuterR + 3;
-          const tip = polar(cx, cy, tipR, arrowAngle);
-          const b1 = polar(cx, cy, primerOuterR, arrowAngle - (p.isFwd ? 0.015 : -0.015));
-          const b2 = polar(cx, cy, primerInnerR, arrowAngle - (p.isFwd ? 0.015 : -0.015));
+          const tipR = (primerOuterR + primerInnerR) / 2;
+          const tip = polar(cx, cy, tipR, arrowAngle + (p.isFwd ? 0.012 : -0.012));
+          const b1 = polar(cx, cy, primerOuterR, arrowAngle);
+          const b2 = polar(cx, cy, primerInnerR, arrowAngle);
           // Tooltip position
           const tp = polar(cx, cy, primerInnerR - 10, p.midAngle);
           return (
