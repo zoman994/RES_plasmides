@@ -5,6 +5,7 @@ import JunctionBlock from './JunctionBlock';
 import JunctionDNA from './JunctionDNA';
 import { getFragColor, isMarker } from '../theme';
 import { t } from '../i18n';
+import PlasmidMap from './PlasmidMap';
 
 function fragColor(frag, idx) {
   return isMarker(frag.name) ? '#F0E442' : getFragColor(frag.type, idx);
@@ -33,6 +34,7 @@ export default function DesignCanvas({
     const saved = localStorage.getItem('pvcs-canvas-zoom');
     return saved ? parseInt(saved) : 100;
   });
+  const [viewMode, setViewMode] = useState('linear'); // 'linear' | 'map'
   const [canvasH, setCanvasH] = useState(() => {
     const saved = localStorage.getItem('pvcs-canvas-height');
     return saved ? parseInt(saved) : 280;
@@ -158,9 +160,23 @@ export default function DesignCanvas({
                 ${circular ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
               {circular ? `⭕ ${t('Circular')}` : `📏 ${t('Linear')}`}
             </button>
+            {circular && n > 1 && (
+              <button onClick={() => setViewMode(v => v === 'linear' ? 'map' : 'linear')}
+                className={`text-[10px] px-2 py-0.5 rounded-full font-medium transition
+                  ${viewMode === 'map' ? 'bg-teal-100 text-teal-700' : 'bg-gray-100 text-gray-500'}`}>
+                {viewMode === 'map' ? '⊕ Карта' : '≡ Линейный'}
+              </button>
+            )}
           </div>
 
-          {/* Scrollable + zoomable blocks */}
+          {/* Circular map view */}
+          {viewMode === 'map' && circular ? (
+            <div className="flex-1 overflow-auto flex items-center justify-center">
+              <PlasmidMap fragments={fragments} name={fragments.map(f => f.name).join('+')}
+                totalBp={totalBp} primers={primers} />
+            </div>
+          ) :
+          /* Scrollable + zoomable blocks */
           <div ref={scrollRef} className="flex-1 overflow-x-auto overflow-y-auto w-full">
             <div ref={blocksRowRef} className="py-4 px-4 gap-1 w-fit"
               style={{
@@ -213,7 +229,7 @@ export default function DesignCanvas({
                 </div>
               </div>
             )}
-          </div>
+          </div>}
 
           {/* Summary line */}
           <div className="text-[10px] text-gray-500 mt-1 select-none shrink-0">
