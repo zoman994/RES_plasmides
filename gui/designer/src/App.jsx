@@ -91,8 +91,17 @@ export default function App() {
   const activeExp = experiments.find(e => e.id === activeExpId) || experiments[0];
   const assemblies = activeExp?.assemblies || [];
   const active = assemblies.find(a => a.id === activeId) || assemblies[0] || newAssembly('asm_1', 'Сборка 1');
-  const { fragments, junctions, assemblyType, protocol, circular, calculated,
-          primers, apiWarnings, orderSheet, primerMatches, protocolSteps } = active;
+  const fragments = active.fragments || [];
+  const junctions = active.junctions || [];
+  const assemblyType = active.assemblyType || 'overlap';
+  const protocol = active.protocol || 'overlap_pcr';
+  const circular = active.circular || false;
+  const calculated = active.calculated || false;
+  const primers = active.primers || [];
+  const apiWarnings = active.apiWarnings || [];
+  const orderSheet = active.orderSheet || '';
+  const primerMatches = active.primerMatches || {};
+  const protocolSteps = active.protocolSteps || [];
 
   // ═══════════ Assembly updaters (through experiments) ═══════════
   const setAssemblies = useCallback((updater) => {
