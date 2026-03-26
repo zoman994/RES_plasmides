@@ -176,38 +176,41 @@ export default function DesignCanvas({
                 totalBp={totalBp} junctions={junctions} />
             </div>
           ) :
-          /* Scrollable + zoomable blocks */
+          /* Scrollable + zoomable blocks — wraps to rows */
           <div ref={scrollRef} className="flex-1 overflow-x-auto overflow-y-auto w-full">
-            <div ref={blocksRowRef} className="py-4 px-4 gap-1 w-fit"
-              style={{
-                display: 'flex', alignItems: 'center', overflow: 'visible',
-                transform: `scale(${zoom / 100})`, transformOrigin: 'left top',
-                minHeight: zoom < 100 ? `${Math.ceil(100 / zoom * (hasPrimers ? 110 : 70))}px` : undefined,
-              }}>
-              <div className={`w-1.5 bg-gray-300 rounded-l shrink-0 ${hasPrimers ? 'h-[72px]' : 'h-14'}`} />
+            {(() => {
+              const perRow = n <= 5 ? n : Math.ceil(n / Math.ceil(n / 5));
+              const rows = [];
+              for (let r = 0; r < n; r += perRow) rows.push(fragments.slice(r, r + perRow).map((f, ri) => ({ frag: f, idx: r + ri })));
 
-              {fragments.map((frag, i) => {
-                const fwdPrimer = primers.find(p => p.direction === 'forward' && p.name.includes(frag.name)) || null;
-                const revPrimer = primers.find(p => p.direction === 'reverse' && p.name.includes(frag.name)) || null;
-
-                return (
-                  <div key={frag.id || i} className="flex items-center">
-                    <div className="mx-1">
-                      <PartBlock fragment={frag} index={i} fragmentCount={n}
-                        onRemove={onRemove} onToggleAmplification={onToggleAmplification}
-                        onReorder={onReorder} onFlip={onFlip} pcrSize={pcrSizes[i]}
-                        onSplitSignal={onSplitSignal} onEditDomains={onEditDomains} onEditSequence={onEditSequence}
-                        fwdPrimer={fwdPrimer} revPrimer={revPrimer}
-                        circularHint={circular && (i === 0 || i === n - 1) ? (i === 0 ? 'first' : 'last') : null} />
-                    </div>
-                    {i < junctions.length && (i < n - 1 || circular) && (
-                      <div className="flex flex-col items-center shrink-0" style={{ minWidth: 50 }}>
-                        <JunctionBlock junction={junctions[i]} index={i}
-                          leftName={frag.name} rightName={fragments[(i + 1) % n]?.name || '?'}
-                          leftPCR={frag.needsAmplification !== false}
-                          rightPCR={fragments[(i + 1) % n]?.needsAmplification !== false}
-                          onChange={cfg => onJunctionChange(i, cfg)} />
-                        <JunctionDNA junction={junctions[i]} calculated={calculated}
+              return (
+                <div ref={blocksRowRef} className="py-4 px-4" style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'left top', overflow: 'visible' }}>
+                  {rows.map((row, ri) => (
+                    <div key={ri}>
+                      <div className="flex items-center gap-1 w-fit">
+                        {ri === 0 && <div className={`w-1.5 bg-gray-300 rounded-l shrink-0 ${hasPrimers ? 'h-[72px]' : 'h-14'}`} />}
+                        {ri > 0 && <div className="text-[9px] text-gray-400 px-1 shrink-0">{'↳'}</div>}
+                        {row.map(({ frag, idx: i }) => {
+                          const fwdPrimer = primers.find(p => p.direction === 'forward' && p.name.includes(frag.name)) || null;
+                          const revPrimer = primers.find(p => p.direction === 'reverse' && p.name.includes(frag.name)) || null;
+                          return (
+                            <div key={frag.id || i} className="flex items-center">
+                              <div className="mx-1">
+                                <PartBlock fragment={frag} index={i} fragmentCount={n}
+                                  onRemove={onRemove} onToggleAmplification={onToggleAmplification}
+                                  onReorder={onReorder} onFlip={onFlip} pcrSize={pcrSizes[i]}
+                                  onSplitSignal={onSplitSignal} onEditDomains={onEditDomains} onEditSequence={onEditSequence}
+                                  fwdPrimer={fwdPrimer} revPrimer={revPrimer}
+                                  circularHint={circular && (i === 0 || i === n - 1) ? (i === 0 ? 'first' : 'last') : null} />
+                              </div>
+                              {i < junctions.length && (i < n - 1 || circular) && (
+                                <div className="flex flex-col items-center shrink-0" style={{ minWidth: 50 }}>
+                                  <JunctionBlock junction={junctions[i]} index={i}
+                                    leftName={frag.name} rightName={fragments[(i + 1) % n]?.name || '?'}
+                                    leftPCR={frag.needsAmplification !== false}
+                                    rightPCR={fragments[(i + 1) % n]?.needsAmplification !== false}
+                                    onChange={cfg => onJunctionChange(i, cfg)} />
+                                  <JunctionDNA junction={junctions[i]} calculated={calculated}
                           primers={primers}
                           leftFragment={frag} rightFragment={fragments[(i + 1) % n]}
                           leftColor={fragColor(frag, i)}
@@ -216,19 +219,24 @@ export default function DesignCanvas({
                     )}
                   </div>
                 );
-              })}
-
-              {!circular && <div className={`w-1.5 bg-gray-300 rounded-r shrink-0 ${hasPrimers ? 'h-[72px]' : 'h-14'}`} />}
-            </div>
-            {/* Circular arc — inside scroll container, right after blocks row */}
-            {circular && n > 1 && (
-              <div className="relative mx-4" style={{ marginTop: -8 }}>
-                <div className="border-b-2 border-l-2 border-r-2 border-dashed border-blue-400 rounded-b-[20px] h-4 mx-2 opacity-40" />
-                <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 bg-white px-2 rounded">
-                  <span className="text-[9px] font-bold text-blue-500">{'⟳'} замыкание</span>
+                          })}
+                        {ri === rows.length - 1 && !circular && <div className={`w-1.5 bg-gray-300 rounded-r shrink-0 ${hasPrimers ? 'h-[72px]' : 'h-14'}`} />}
+                      </div>
+                      {ri < rows.length - 1 && <div className="h-2" />}
+                    </div>
+                  ))}
+                  {/* Circular arc */}
+                  {circular && n > 1 && (
+                    <div className="relative mx-4 mt-1">
+                      <div className="border-b-2 border-l-2 border-r-2 border-dashed border-blue-400 rounded-b-[20px] h-4 mx-2 opacity-40" />
+                      <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 bg-white px-2 rounded">
+                        <span className="text-[9px] font-bold text-blue-500">{'⟳'} замыкание</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
-            )}
+              );
+            })()}
           </div>}
 
           {/* Summary line */}
