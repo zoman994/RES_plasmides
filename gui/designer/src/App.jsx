@@ -33,7 +33,7 @@ let nextId = 1;
 function mkJunction(asmType) {
   return {
     type: asmType === 'golden_gate' ? 'golden_gate' : 'overlap',
-    overlapMode: 'split', overlapLength: 30, tmTarget: 62,
+    overlapMode: 'split', overlapLength: 30, tmTarget: 62, calcMode: 'length',
     enzyme: 'BsaI', overhang: '',
   };
 }

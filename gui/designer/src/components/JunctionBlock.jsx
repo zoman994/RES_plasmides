@@ -5,11 +5,10 @@ export default function JunctionBlock({ junction, index, leftName, rightName, on
   const [open, setOpen] = useState(false);
   const j = junction || { type: 'overlap', overlapMode: 'split', overlapLength: 30, tmTarget: 62 };
 
-  // Actual overlap (from API) vs user-set
+  const calcMode = j.calcMode || 'length';
   const userLen = j.overlapLength || 30;
   const actualLen = j.overlapSequence ? j.overlapSequence.length : null;
   const displayLen = actualLen || userLen;
-  const diff = actualLen && actualLen !== userLen ? actualLen - userLen : 0;
 
   // Mode arrow
   const modeArrow = j.overlapMode === 'left_only' ? '◀' : j.overlapMode === 'right_only' ? '▶' : '◀▶';
@@ -52,9 +51,11 @@ export default function JunctionBlock({ junction, index, leftName, rightName, on
       </div>
       <div className="absolute -top-4 left-1/2 -translate-x-1/2 whitespace-nowrap flex flex-col items-center leading-tight">
         <span className="text-[10px] text-blue-600 font-bold">{label}</span>
-        {actualLen && j.overlapTm && (
-          <span className="text-[8px] text-gray-400">Tm {j.overlapTm}°</span>
-        )}
+        {j.overlapTm ? (
+          <span className="text-[8px] text-gray-400">
+            {calcMode === 'tm' ? `Tm≈${j.tmTarget || 62}°` : `Tm ${j.overlapTm}°`}
+          </span>
+        ) : null}
       </div>
 
       {open && createPortal(
@@ -93,25 +94,47 @@ export default function JunctionBlock({ junction, index, leftName, rightName, on
                 )}
               </div>
 
-              <div className="text-[10px] text-gray-400 mb-2">
-                {j.overlapMode === 'split'
-                  ? `Overlap ${j.overlapLength || 30} п.н. (по ~${Math.floor((j.overlapLength || 30) / 2)} на каждый праймер)`
-                  : `Overlap ${j.overlapLength || 30} п.н. целиком на одном праймере`}
+              {/* Calc mode toggle */}
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-[10px] text-gray-500">Расчёт:</span>
+                <div className="flex rounded-lg overflow-hidden border border-gray-200">
+                  <button onClick={() => onChange({ ...j, calcMode: 'length' })}
+                    className={`px-2.5 py-1 text-[10px] font-medium transition ${
+                      calcMode === 'length' ? 'bg-blue-500 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+                    По длине
+                  </button>
+                  <button onClick={() => onChange({ ...j, calcMode: 'tm' })}
+                    className={`px-2.5 py-1 text-[10px] font-medium transition ${
+                      calcMode === 'tm' ? 'bg-blue-500 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+                    По Tm
+                  </button>
+                </div>
               </div>
 
-              <div className="flex gap-3 mb-2">
-                <div className="flex-1">
-                  <label className="text-[11px] text-gray-500 block">Длина (п.н.)</label>
-                  <input type="number" value={j.overlapLength || 30} min={15} max={45}
+              {calcMode === 'length' ? (
+                <div className="flex items-center gap-2 mb-2">
+                  <label className="text-[10px] text-gray-500">Overlap:</label>
+                  <input type="number" value={j.overlapLength || 30} min={15} max={60}
                     onChange={e => onChange({ ...j, overlapLength: +e.target.value })}
-                    className="w-full text-sm border rounded p-1.5" />
+                    className="w-16 text-sm border rounded px-2 py-1 text-center font-mono" />
+                  <span className="text-[10px] text-gray-400">п.н.</span>
+                  {j.overlapTm && <span className="text-[10px] text-gray-400 ml-1">→ Tm {j.overlapTm}°</span>}
                 </div>
-                <div className="flex-1">
-                  <label className="text-[11px] text-gray-500 block">Целевой Tm</label>
-                  <input type="number" value={j.tmTarget || 62} min={50} max={70}
+              ) : (
+                <div className="flex items-center gap-2 mb-2">
+                  <label className="text-[10px] text-gray-500">Целевой Tm:</label>
+                  <input type="number" value={j.tmTarget || 62} min={45} max={75} step={0.5}
                     onChange={e => onChange({ ...j, tmTarget: +e.target.value })}
-                    className="w-full text-sm border rounded p-1.5" />
+                    className="w-16 text-sm border rounded px-2 py-1 text-center font-mono" />
+                  <span className="text-[10px] text-gray-400">°C</span>
+                  {actualLen && <span className="text-[10px] text-gray-400 ml-1">→ {actualLen} п.н.</span>}
                 </div>
+              )}
+
+              <div className="text-[9px] text-gray-400 mb-2">
+                {j.overlapMode === 'split'
+                  ? `Overlap ${displayLen} п.н. (по ~${Math.floor(displayLen / 2)} на каждый праймер)`
+                  : `Overlap ${displayLen} п.н. целиком на одном праймере`}
               </div>
             </>
           )}
