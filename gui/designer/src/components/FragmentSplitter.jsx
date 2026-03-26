@@ -128,7 +128,7 @@ export default function FragmentSplitter({ fragment, onSplit, onClose, partsLibr
           {isCDS && fragment.domains?.length > 1 && fragment.domains.slice(0, -1).map((d, i) => {
             const next = fragment.domains[i + 1];
             return (
-              <button key={i} onClick={() => { setMode('aa'); setCutAA(d.endAA); }}
+              <button key={i} onClick={() => { if (mode === 'aa') setCutAA(d.endAA); else setCutNT(d.endAA * 3); }}
                 className="text-[11px] px-3 py-1.5 rounded-full border hover:bg-blue-50 transition"
                 style={{ borderColor: d.color, color: d.color }}>
                 {'📐'} {d.name} | {next.name} (поз. {d.endAA})
