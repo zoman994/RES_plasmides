@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 
 export default function JunctionBlock({ junction, index, leftName, rightName, onChange }) {
   const [open, setOpen] = useState(false);
@@ -62,7 +63,7 @@ export default function JunctionBlock({ junction, index, leftName, rightName, on
         )}
       </div>
 
-      {open && (
+      {open && createPortal(
         <div className="fixed inset-0 z-50 flex items-start justify-center pt-20 bg-black/20 overflow-y-auto"
           onClick={() => setOpen(false)}>
         <div className="w-80 bg-white rounded-lg shadow-xl border p-4 mb-8"
@@ -150,7 +151,8 @@ export default function JunctionBlock({ junction, index, leftName, rightName, on
             Готово
           </button>
         </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
