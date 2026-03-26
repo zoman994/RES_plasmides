@@ -16,9 +16,8 @@ import AssemblyTabs from './components/AssemblyTabs';
 import ExperimentSelector from './components/ExperimentSelector';
 import ExperimentStats from './components/ExperimentStats';
 import OligoManager from './components/OligoManager';
-import CDSEditor from './components/CDSEditor';
+import FragmentEditor from './components/FragmentEditor';
 import PartsLibrary from './components/PartsLibrary';
-import SequenceEditor from './components/SequenceEditor';
 import { fetchParts, designPrimers } from './api';
 import { validateConstruct, checkPrimerQuality, pcrProductSize } from './validate';
 import { exportGenBank, exportProtocol, saveToPVCS } from './exports';
@@ -80,8 +79,7 @@ export default function App() {
   const [showOligos, setShowOligos] = useState(false);
   const [showPartsLib, setShowPartsLib] = useState(false);
   const [globalCDSPart, setGlobalCDSPart] = useState(null);
-  const [domainTarget, setDomainTarget] = useState(null);
-  const [seqEditTarget, setSeqEditTarget] = useState(null);
+  const [editTarget, setEditTarget] = useState(null);
   const [activeTab, setActiveTab] = useState('canvas');
   const [warningsOpen, setWarningsOpen] = useState(false);
   const [inventoryVersion, setInventoryVersion] = useState(0);
@@ -388,13 +386,14 @@ export default function App() {
     updateActive({ primers: primers.map(p => p.name === primerName ? { ...p, reused: true, reusedFrom: existingPrimer.name } : p) });
   };
 
-  // ═══════════ Domain editing ═══════════
-  const handleSaveDomains = (domains) => {
-    if (domainTarget === null) return;
+  // ═══════════ Fragment editing (sequence + domains) ═══════════
+  const handleSaveFragment = (updated) => {
+    if (editTarget === null) return;
     updateActive({
-      fragments: fragments.map((f, idx) => idx === domainTarget ? { ...f, domains } : f),
+      fragments: fragments.map((f, i) => i === editTarget ? updated : f),
+      calculated: false, primers: [],
     });
-    setDomainTarget(null);
+    setEditTarget(null);
   };
 
   // ═══════════ Assembly management ═══════════
@@ -619,7 +618,7 @@ export default function App() {
               onToggleAmplification={toggleAmplification} onJunctionChange={updateJunction}
               onReorder={reorderFragments} onFlip={flipFragment} calculated={calculated}
               pcrSizes={pcrSizes} onSplitSignal={setSplitTarget}
-              onEditDomains={setDomainTarget} onEditSequence={setSeqEditTarget} primers={primers}
+              onEditFragment={setEditTarget} primers={primers}
               constructName={active.name} />
 
             {fragments.length >= 2 && !active.completed && (
@@ -734,24 +733,11 @@ export default function App() {
         <FragmentSplitter fragment={fragments[splitTarget]} onSplit={handleFragmentSplit}
           onClose={() => setSplitTarget(null)} partsLibrary={parts} />
       )}
-      {seqEditTarget !== null && fragments[seqEditTarget] && (
-        <SequenceEditor
-          fragment={fragments[seqEditTarget]}
-          onSave={(updated) => {
-            updateActive({
-              fragments: fragments.map((f, i) => i === seqEditTarget ? updated : f),
-              calculated: false, primers: [],
-            });
-            setSeqEditTarget(null);
-          }}
-          onClose={() => setSeqEditTarget(null)}
-        />
-      )}
-      {domainTarget !== null && fragments[domainTarget]?.type === 'CDS' && (
-        <CDSEditor
-          fragment={fragments[domainTarget]}
-          onSave={handleSaveDomains}
-          onClose={() => setDomainTarget(null)}
+      {editTarget !== null && fragments[editTarget] && (
+        <FragmentEditor
+          fragment={fragments[editTarget]}
+          onSave={handleSaveFragment}
+          onClose={() => setEditTarget(null)}
         />
       )}
       {showPartsLib && (
@@ -763,14 +749,12 @@ export default function App() {
           }} />
       )}
       {globalCDSPart && (
-        <CDSEditor
+        <FragmentEditor
           fragment={globalCDSPart}
-          onSave={(domains) => {
-            // Update part in parts library
-            setParts(prev => prev.map(p => p.id === globalCDSPart.id ? { ...p, domains } : p));
-            // Update on canvas if present
+          onSave={(updated) => {
+            setParts(prev => prev.map(p => p.id === globalCDSPart.id ? { ...p, ...updated } : p));
             const idx = fragments.findIndex(f => f.id === globalCDSPart.id || f.name === globalCDSPart.name);
-            if (idx >= 0) updateActive({ fragments: fragments.map((f, i) => i === idx ? { ...f, domains } : f) });
+            if (idx >= 0) updateActive({ fragments: fragments.map((f, i) => i === idx ? updated : f), calculated: false, primers: [] });
             setGlobalCDSPart(null);
           }}
           onClose={() => setGlobalCDSPart(null)}

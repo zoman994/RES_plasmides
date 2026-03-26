@@ -16,7 +16,7 @@ function sectorPath(cx, cy, oR, iR, s, e) {
 }
 
 export default function PlasmidMap({ fragments, constructName, totalBp, junctions = [], primers = [],
-  onSelectFragment, onRemove, onFlip, onSplitSignal, onEditSequence }) {
+  onSelectFragment, onRemove, onFlip, onSplitSignal, onEditFragment }) {
   const [hovered, setHovered] = useState(null);
   const [selected, setSelected] = useState(null);
   const [hovJunc, setHovJunc] = useState(null);
@@ -148,7 +148,7 @@ export default function PlasmidMap({ fragments, constructName, totalBp, junction
                       className="w-5 h-5 rounded-full text-[10px] flex items-center justify-center hover:bg-indigo-100 text-indigo-600" title="Перевернуть">↻</button>}
                     {onSplitSignal && <button onClick={(e) => { e.stopPropagation(); onSplitSignal(i); }}
                       className="w-5 h-5 rounded-full text-[10px] flex items-center justify-center hover:bg-orange-100 text-orange-600" title="Разделить">✂</button>}
-                    {onEditSequence && <button onClick={(e) => { e.stopPropagation(); onEditSequence(i); }}
+                    {onEditFragment && <button onClick={(e) => { e.stopPropagation(); onEditFragment(i); }}
                       className="w-5 h-5 rounded-full text-[10px] flex items-center justify-center hover:bg-blue-100 text-blue-600" title="Редактировать">✏️</button>}
                     {onRemove && <button onClick={(e) => { e.stopPropagation(); onRemove(i); }}
                       className="w-5 h-5 rounded-full text-[10px] flex items-center justify-center hover:bg-red-100 text-red-500" title="Удалить">×</button>}

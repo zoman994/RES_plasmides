@@ -22,7 +22,7 @@ function fragmentWidthEstimate(bp) {
 export default function DesignCanvas({
   fragments, junctions, circular, onToggleCircular,
   onDrop, onRemove, onToggleAmplification, onJunctionChange, onReorder, onFlip,
-  calculated, pcrSizes = [], onSplitSignal, onEditDomains, onEditSequence, primers = [], constructName,
+  calculated, pcrSizes = [], onSplitSignal, onEditFragment, primers = [], constructName,
 }) {
   const [{ isOver }, drop] = useDrop({
     accept: 'PART',
@@ -175,7 +175,7 @@ export default function DesignCanvas({
               <PlasmidMap fragments={fragments} constructName={constructName}
                 totalBp={totalBp} junctions={junctions} primers={primers}
                 onRemove={onRemove} onFlip={onFlip}
-                onSplitSignal={onSplitSignal} onEditSequence={onEditSequence} />
+                onSplitSignal={onSplitSignal} onEditFragment={onEditFragment} />
             </div>
           ) :
           /* Scrollable + zoomable blocks — wraps to rows */
@@ -201,7 +201,7 @@ export default function DesignCanvas({
                                 <PartBlock fragment={frag} index={i} fragmentCount={n}
                                   onRemove={onRemove} onToggleAmplification={onToggleAmplification}
                                   onReorder={onReorder} onFlip={onFlip} pcrSize={pcrSizes[i]}
-                                  onSplitSignal={onSplitSignal} onEditDomains={onEditDomains} onEditSequence={onEditSequence}
+                                  onSplitSignal={onSplitSignal} onEditFragment={onEditFragment}
                                   fwdPrimer={fwdPrimer} revPrimer={revPrimer}
                                   circularHint={circular && (i === 0 || i === n - 1) ? (i === 0 ? 'first' : 'last') : null} />
                               </div>
