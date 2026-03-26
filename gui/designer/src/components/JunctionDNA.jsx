@@ -42,7 +42,7 @@ export default function JunctionDNA({ junction, calculated, primers = [],
         <>
           <div className="fixed inset-0 z-20" onClick={() => setExpanded(false)} />
           <div className="absolute top-full left-1/2 -translate-x-1/2 z-30 mt-1
-                          w-[400px] bg-white rounded-lg shadow-xl border p-3"
+                          w-[480px] bg-white rounded-lg shadow-xl border p-3"
             onClick={e => e.stopPropagation()}>
             <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-white border-l border-t rotate-45" />
 
@@ -50,60 +50,77 @@ export default function JunctionDNA({ junction, calculated, primers = [],
               Overlap: {leftName} {'↔'} {rightName} — {overlapSeq.length} п.н., Tm {j.overlapTm}°C
             </div>
 
-            {/* Product from left fragment (rev primer extends right) */}
+            {/* Rev primer — full sequence, 5'→3' as ordered */}
             {revLeft && (
-              <div className="bg-gray-50 rounded p-2 mb-1">
-                <div className="text-[9px] text-gray-500 mb-1">{revLeft.name} (← обратный, на {leftName})</div>
-                <div className="font-mono text-[11px] overflow-x-auto whitespace-nowrap flex items-center gap-px">
-                  <span className="text-gray-400 text-[9px]">…3'─</span>
-                  <span className="font-bold text-[#1a1a1a] bg-gray-100 border-b-2 border-gray-700 px-0.5 rounded-sm">
-                    {(revLeft.bindingSequence || '').toUpperCase().slice(-15)}</span>
+              <div className="bg-gray-50 rounded p-2 mb-1.5">
+                <div className="text-[9px] text-gray-500 mb-1">
+                  {revLeft.name} (← обратный, на {leftName})
+                </div>
+                <div className="font-mono text-[11px] overflow-x-auto whitespace-nowrap">
+                  <span className="text-gray-400 text-[9px]">5'─</span>
                   <span className="text-teal-600 bg-teal-50 border-b-2 border-dashed border-teal-400 px-0.5 rounded-sm">
-                    {(revLeft.tailSequence || '').toLowerCase().slice(0, 20)}{revTailLen > 20 ? '…' : ''}</span>
-                  <span className="text-gray-400 text-[9px]">─5'</span>
+                    {(revLeft.tailSequence || '').toLowerCase()}</span>
+                  <span className="font-bold text-[#1a1a1a] bg-gray-100 border-b-2 border-gray-700 px-0.5 rounded-sm">
+                    {(revLeft.bindingSequence || '').toUpperCase()}</span>
+                  <span className="text-gray-400 text-[9px]">─3'</span>
                 </div>
                 <div className="text-[8px] text-gray-500 mt-0.5">
-                  <span className="font-bold">BINDING</span> {(revLeft.bindingSequence || '').length} п.н. ·
-                  <span className="text-teal-600"> tail</span> {revTailLen} п.н. (от {rightName})
+                  <span className="text-teal-600">tail</span> {revTailLen} п.н. (от {rightName}) ·
+                  <span className="font-bold"> BINDING</span> {(revLeft.bindingSequence || '').length} п.н. ·
+                  всего {revTailLen + (revLeft.bindingSequence || '').length} п.н. ·
+                  Tm {revLeft.tmBinding}°C
                 </div>
               </div>
             )}
 
-            {/* Product from right fragment (fwd primer extends left) */}
+            {/* Fwd primer — full sequence, 5'→3' as ordered */}
             {fwdRight && (
               <div className="bg-gray-50 rounded p-2 mb-2">
-                <div className="text-[9px] text-gray-500 mb-1">{fwdRight.name} (→ прямой, на {rightName})</div>
-                <div className="font-mono text-[11px] overflow-x-auto whitespace-nowrap flex items-center gap-px">
+                <div className="text-[9px] text-gray-500 mb-1">
+                  {fwdRight.name} (→ прямой, на {rightName})
+                </div>
+                <div className="font-mono text-[11px] overflow-x-auto whitespace-nowrap">
                   <span className="text-gray-400 text-[9px]">5'─</span>
                   <span className="text-teal-600 bg-teal-50 border-b-2 border-dashed border-teal-400 px-0.5 rounded-sm">
-                    {fwdTailLen > 20 ? '…' : ''}{(fwdRight.tailSequence || '').toLowerCase().slice(-20)}</span>
+                    {(fwdRight.tailSequence || '').toLowerCase()}</span>
                   <span className="font-bold text-[#1a1a1a] bg-gray-100 border-b-2 border-gray-700 px-0.5 rounded-sm">
-                    {(fwdRight.bindingSequence || '').toUpperCase().slice(0, 15)}</span>
+                    {(fwdRight.bindingSequence || '').toUpperCase()}</span>
                   <span className="text-gray-400 text-[9px]">─3'</span>
                 </div>
                 <div className="text-[8px] text-gray-500 mt-0.5">
                   <span className="text-teal-600">tail</span> {fwdTailLen} п.н. (от {leftName}) ·
-                  <span className="font-bold"> BINDING</span> {(fwdRight.bindingSequence || '').length} п.н.
+                  <span className="font-bold"> BINDING</span> {(fwdRight.bindingSequence || '').length} п.н. ·
+                  всего {fwdTailLen + (fwdRight.bindingSequence || '').length} п.н. ·
+                  Tm {fwdRight.tmBinding}°C
                 </div>
               </div>
             )}
 
-            {/* Overlap annealing zone */}
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-2 font-mono text-[10px] overflow-x-auto">
-              <div className="text-[9px] text-amber-700 font-sans font-semibold mb-1">
+            {/* Overlap annealing zone — aligned with fixed-width labels */}
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 font-mono text-[10px] overflow-x-auto">
+              <div className="text-[9px] text-amber-700 font-sans font-semibold mb-2">
                 Зона отжига ({overlapSeq.length} п.н.)
               </div>
-              <div className="whitespace-nowrap">
-                <span className="text-gray-500 text-[9px] font-sans">{leftName}: </span>
-                <span className="text-gray-400">…</span>
-                <span className="font-bold text-[#1a1a1a] bg-gray-100 px-0.5 rounded-sm">{leftPart.toUpperCase()}</span>
-                <span className="text-teal-600 bg-teal-50 px-0.5 rounded-sm">{rightPart.toLowerCase()}</span>
+              <div className="space-y-0.5">
+                <div className="flex whitespace-nowrap">
+                  <span className="text-[9px] text-gray-500 w-20 shrink-0 text-right mr-2 font-sans">{leftName}:</span>
+                  <span>
+                    <span className="text-gray-300">…</span>
+                    <span className="font-bold text-[#1a1a1a] bg-gray-100 px-0.5 rounded-sm">{leftPart.toUpperCase()}</span>
+                    <span className="text-teal-600 bg-teal-50 px-0.5 rounded-sm">{rightPart.toLowerCase()}</span>
+                  </span>
+                </div>
+                <div className="flex whitespace-nowrap">
+                  <span className="text-[9px] text-gray-500 w-20 shrink-0 text-right mr-2 font-sans">{rightName}:</span>
+                  <span>
+                    <span className="text-teal-600 bg-teal-50 px-0.5 rounded-sm">{leftPart.toLowerCase()}</span>
+                    <span className="font-bold text-[#1a1a1a] bg-gray-100 px-0.5 rounded-sm">{rightPart.toUpperCase()}</span>
+                    <span className="text-gray-300">…</span>
+                  </span>
+                </div>
               </div>
-              <div className="whitespace-nowrap mt-0.5">
-                <span className="text-gray-500 text-[9px] font-sans">{rightName}: </span>
-                <span className="text-teal-600 bg-teal-50 px-0.5 rounded-sm">{leftPart.toLowerCase()}</span>
-                <span className="font-bold text-[#1a1a1a] bg-gray-100 px-0.5 rounded-sm">{rightPart.toUpperCase()}</span>
-                <span className="text-gray-400">…</span>
+              <div className="text-[8px] text-amber-600 mt-2 font-sans text-center">
+                {'←'} {revTailLen} п.н. от {rightName} {'│'} {fwdTailLen} п.н. от {leftName} {'→'}
               </div>
             </div>
 
