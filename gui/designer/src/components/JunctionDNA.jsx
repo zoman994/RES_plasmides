@@ -53,16 +53,18 @@ export default function JunctionDNA({ junction, calculated, primers = [],
             {/* Product from left fragment (rev primer extends right) */}
             {revLeft && (
               <div className="bg-gray-50 rounded p-2 mb-1">
-                <div className="text-[9px] text-gray-500 mb-1">Продукт {leftName} ({revLeft.name} ←)</div>
-                <div className="font-mono text-[10px] overflow-x-auto whitespace-nowrap">
-                  <span className="text-gray-400">…</span>
-                  <span className="font-bold text-gray-700">{(revLeft.bindingSequence || '').toUpperCase().slice(-12)}</span>
-                  <span className="text-gray-300">{' '}</span>
-                  <span className="text-teal-600">{(revLeft.tailSequence || '').toLowerCase().slice(0, 20)}</span>
-                  {revTailLen > 20 && <span className="text-gray-400">…</span>}
+                <div className="text-[9px] text-gray-500 mb-1">{revLeft.name} (← обратный, на {leftName})</div>
+                <div className="font-mono text-[11px] overflow-x-auto whitespace-nowrap flex items-center gap-px">
+                  <span className="text-gray-400 text-[9px]">…3'─</span>
+                  <span className="font-bold text-[#1a1a1a] bg-gray-100 border-b-2 border-gray-700 px-0.5 rounded-sm">
+                    {(revLeft.bindingSequence || '').toUpperCase().slice(-15)}</span>
+                  <span className="text-teal-600 bg-teal-50 border-b-2 border-dashed border-teal-400 px-0.5 rounded-sm">
+                    {(revLeft.tailSequence || '').toLowerCase().slice(0, 20)}{revTailLen > 20 ? '…' : ''}</span>
+                  <span className="text-gray-400 text-[9px]">─5'</span>
                 </div>
-                <div className="text-[8px] text-gray-400 mt-0.5">
-                  ←binding {(revLeft.bindingSequence || '').length} п.н. (на {leftName}) · tail {revTailLen} п.н. (от {rightName})→
+                <div className="text-[8px] text-gray-500 mt-0.5">
+                  <span className="font-bold">BINDING</span> {(revLeft.bindingSequence || '').length} п.н. ·
+                  <span className="text-teal-600"> tail</span> {revTailLen} п.н. (от {rightName})
                 </div>
               </div>
             )}
@@ -70,38 +72,38 @@ export default function JunctionDNA({ junction, calculated, primers = [],
             {/* Product from right fragment (fwd primer extends left) */}
             {fwdRight && (
               <div className="bg-gray-50 rounded p-2 mb-2">
-                <div className="text-[9px] text-gray-500 mb-1">Продукт {rightName} (→ {fwdRight.name})</div>
-                <div className="font-mono text-[10px] overflow-x-auto whitespace-nowrap">
-                  {fwdTailLen > 20 && <span className="text-gray-400">…</span>}
-                  <span className="text-teal-600">{(fwdRight.tailSequence || '').toLowerCase().slice(-20)}</span>
-                  <span className="text-gray-300">{' '}</span>
-                  <span className="font-bold text-gray-700">{(fwdRight.bindingSequence || '').toUpperCase().slice(0, 12)}</span>
-                  <span className="text-gray-400">…</span>
+                <div className="text-[9px] text-gray-500 mb-1">{fwdRight.name} (→ прямой, на {rightName})</div>
+                <div className="font-mono text-[11px] overflow-x-auto whitespace-nowrap flex items-center gap-px">
+                  <span className="text-gray-400 text-[9px]">5'─</span>
+                  <span className="text-teal-600 bg-teal-50 border-b-2 border-dashed border-teal-400 px-0.5 rounded-sm">
+                    {fwdTailLen > 20 ? '…' : ''}{(fwdRight.tailSequence || '').toLowerCase().slice(-20)}</span>
+                  <span className="font-bold text-[#1a1a1a] bg-gray-100 border-b-2 border-gray-700 px-0.5 rounded-sm">
+                    {(fwdRight.bindingSequence || '').toUpperCase().slice(0, 15)}</span>
+                  <span className="text-gray-400 text-[9px]">─3'</span>
                 </div>
-                <div className="text-[8px] text-gray-400 mt-0.5">
-                  ←tail {fwdTailLen} п.н. (от {leftName}) · binding {(fwdRight.bindingSequence || '').length} п.н. (на {rightName})→
+                <div className="text-[8px] text-gray-500 mt-0.5">
+                  <span className="text-teal-600">tail</span> {fwdTailLen} п.н. (от {leftName}) ·
+                  <span className="font-bold"> BINDING</span> {(fwdRight.bindingSequence || '').length} п.н.
                 </div>
               </div>
             )}
 
             {/* Overlap annealing zone */}
-            <div className="bg-blue-50 rounded p-2 font-mono text-[9px] overflow-x-auto">
-              <div className="text-[8px] text-blue-700 font-sans font-semibold mb-1">
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-2 font-mono text-[10px] overflow-x-auto">
+              <div className="text-[9px] text-amber-700 font-sans font-semibold mb-1">
                 Зона отжига ({overlapSeq.length} п.н.)
               </div>
               <div className="whitespace-nowrap">
-                <span className="text-gray-400">{leftName}: …</span>
-                <span style={{ color: lc, fontWeight: 'bold' }}>{leftPart}</span>
-                <span style={{ color: rc, fontWeight: 'bold' }}>{rightPart}</span>
-              </div>
-              <div className="whitespace-nowrap">
-                <span className="text-gray-400">{rightName}:{'  '}</span>
-                <span style={{ color: lc }}>{leftPart}</span>
-                <span style={{ color: rc }}>{rightPart}</span>
+                <span className="text-gray-500 text-[9px] font-sans">{leftName}: </span>
                 <span className="text-gray-400">…</span>
+                <span className="font-bold text-[#1a1a1a] bg-gray-100 px-0.5 rounded-sm">{leftPart.toUpperCase()}</span>
+                <span className="text-teal-600 bg-teal-50 px-0.5 rounded-sm">{rightPart.toLowerCase()}</span>
               </div>
-              <div className="text-[8px] text-gray-400 mt-1 font-sans text-center">
-                {'←'} {revTailLen} п.н. от {rightName} {'|'} {fwdTailLen} п.н. от {leftName} {'→'}
+              <div className="whitespace-nowrap mt-0.5">
+                <span className="text-gray-500 text-[9px] font-sans">{rightName}: </span>
+                <span className="text-teal-600 bg-teal-50 px-0.5 rounded-sm">{leftPart.toLowerCase()}</span>
+                <span className="font-bold text-[#1a1a1a] bg-gray-100 px-0.5 rounded-sm">{rightPart.toUpperCase()}</span>
+                <span className="text-gray-400">…</span>
               </div>
             </div>
 
