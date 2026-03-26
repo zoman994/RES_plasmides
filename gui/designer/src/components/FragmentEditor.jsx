@@ -1,17 +1,15 @@
 /**
- * FragmentEditor — unified editor with tabs:
- *   🔤 Последовательность (DNA editing + quick actions)
- *   📐 Домены (CDS domain annotation)
+ * FragmentEditor — unified editor:
+ *   🔤 ДНК (DNA editing + codon/AA display + quick actions)
+ *   🧬 Белок (protein editing + domain annotation) — CDS only
  */
 import { useState, useMemo } from 'react';
-import { translateDNA } from '../codons';
+import { translateDNA, CODON_TABLE } from '../codons';
 import { autoDetectDomains, DOMAIN_COLORS } from '../domain-detection';
-import { NT_COLORS } from '../theme';
 
 const STOPS = ['TAA', 'TAG', 'TGA'];
 const hasStop = s => STOPS.includes((s || '').slice(-3).toUpperCase());
 const gcContent = s => { const g = ((s || '').toUpperCase().match(/[GC]/g) || []).length; return s ? g / s.length : 0; };
-const fmtCodons = s => (s || '').match(/.{1,3}/g)?.join(' ') || s;
 
 const QUICK_ACTIONS = [
   { key: 'add_TAA', label: '+ TAA', pos: 'end', insert: 'TAA', forType: 'CDS', cond: s => !hasStop(s) },
@@ -35,16 +33,14 @@ function persistDomains(id, domains) { try { const a = JSON.parse(localStorage.g
 
 export default function FragmentEditor({ fragment, onSave, onClose }) {
   const isCDS = fragment.type === 'CDS';
-  const [tab, setTab] = useState('seq'); // 'seq' | 'domains'
+  const [tab, setTab] = useState('dna'); // 'dna' | 'protein'
   const [seq, setSeq] = useState(fragment.sequence || '');
   const [domains, setDomains] = useState(fragment.domains?.length ? fragment.domains : loadSavedDomains(fragment.id) || loadSavedDomains(fragment.name) || []);
-  const [editMode, setEditMode] = useState('quick');
+  const [editMode, setEditMode] = useState('view');
   const [addForm, setAddForm] = useState(null);
   const origLen = (fragment.sequence || '').length;
 
   const protein = useMemo(() => translateDNA(seq), [seq]);
-  const protein5 = useMemo(() => isCDS ? translateDNA(seq.slice(0, 30)) : '', [seq, isCDS]);
-  const protein3 = useMemo(() => isCDS ? translateDNA(seq.slice(-30)) : '', [seq, isCDS]);
   const totalAA = protein.length;
   const diff = seq.length - origLen;
 
@@ -72,9 +68,28 @@ export default function FragmentEditor({ fragment, onSave, onClose }) {
     setAddForm(null);
   };
 
+  // Build codon lines for DNA tab (10 codons per line)
+  const codonLines = useMemo(() => {
+    if (!isCDS) return [];
+    const lines = [];
+    for (let i = 0; i < seq.length; i += 30) {
+      const chunk = seq.slice(i, i + 30);
+      const codons = [];
+      for (let j = 0; j < chunk.length; j += 3) {
+        const codon = chunk.slice(j, j + 3).toUpperCase();
+        const aa = CODON_TABLE[codon] || (codon.length < 3 ? '' : 'X');
+        const aaIdx = Math.floor((i + j) / 3) + 1;
+        const dom = domains.find(d => aaIdx >= d.startAA && aaIdx <= d.endAA);
+        codons.push({ codon, aa, aaIdx, dom });
+      }
+      lines.push({ pos: i + 1, codons });
+    }
+    return lines;
+  }, [seq, isCDS, domains]);
+
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-2xl w-[640px] max-h-[85vh] overflow-y-auto p-5" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-xl shadow-2xl w-[680px] max-h-[85vh] overflow-y-auto p-5" onClick={e => e.stopPropagation()}>
 
         <div className="flex justify-between items-start mb-3">
           <div>
@@ -86,20 +101,20 @@ export default function FragmentEditor({ fragment, onSave, onClose }) {
 
         {/* Tabs */}
         <div className="flex gap-0 rounded-lg overflow-hidden border mb-3">
-          <button onClick={() => setTab('seq')}
-            className={`flex-1 px-3 py-1.5 text-xs font-medium transition ${tab === 'seq' ? 'bg-blue-600 text-white' : 'hover:bg-gray-50'}`}>
-            {'🔤'} Последовательность
+          <button onClick={() => setTab('dna')}
+            className={`flex-1 px-3 py-1.5 text-xs font-medium transition ${tab === 'dna' ? 'bg-blue-600 text-white' : 'hover:bg-gray-50'}`}>
+            {'🔤'} ДНК
           </button>
           {isCDS && (
-            <button onClick={() => setTab('domains')}
-              className={`flex-1 px-3 py-1.5 text-xs font-medium transition ${tab === 'domains' ? 'bg-blue-600 text-white' : 'hover:bg-gray-50'}`}>
-              {'📐'} Домены
+            <button onClick={() => setTab('protein')}
+              className={`flex-1 px-3 py-1.5 text-xs font-medium transition ${tab === 'protein' ? 'bg-blue-600 text-white' : 'hover:bg-gray-50'}`}>
+              {'🧬'} Белок
             </button>
           )}
         </div>
 
-        {/* ═══ TAB: Sequence ═══ */}
-        {tab === 'seq' && (
+        {/* ═══ TAB: ДНК ═══ */}
+        {tab === 'dna' && (
           <>
             {/* Quick actions */}
             <div className="flex flex-wrap gap-1 mb-3">
@@ -109,60 +124,75 @@ export default function FragmentEditor({ fragment, onSave, onClose }) {
               ))}
             </div>
 
-            {/* 5'/3' preview for CDS */}
-            {isCDS && (
-              <div className="grid grid-cols-2 gap-2 mb-3">
-                <div className="bg-gray-50 rounded p-2">
-                  <div className="text-[9px] text-gray-400 mb-1">5' начало:</div>
-                  <div className="font-mono text-[10px]">{fmtCodons(seq.slice(0, 30))}</div>
-                  <div className="font-mono text-[9px] text-gray-400">{protein5}</div>
-                  {!seq.toUpperCase().startsWith('ATG') && <div className="text-[9px] text-amber-600 mt-0.5">{'⚠'} Нет ATG</div>}
-                </div>
-                <div className="bg-gray-50 rounded p-2">
-                  <div className="text-[9px] text-gray-400 mb-1">3' конец:</div>
-                  <div className="font-mono text-[10px]">...{fmtCodons(seq.slice(-30))}</div>
-                  <div className="font-mono text-[9px] text-gray-400">...{protein3}</div>
-                  {!hasStop(seq) && <div className="text-[9px] text-red-600 mt-0.5 flex gap-1">{'⚠'} Нет стоп! <button onClick={() => apply(QUICK_ACTIONS[0])} className="underline text-blue-600">+TAA</button></div>}
-                </div>
+            {/* Codon view with amino acids (CDS) */}
+            {isCDS && editMode === 'view' && (
+              <div className="bg-gray-50 rounded-lg p-3 max-h-[200px] overflow-y-auto mb-3 font-mono text-[10px]">
+                {codonLines.map(line => (
+                  <div key={line.pos} className="mb-1">
+                    <div className="flex items-start">
+                      <span className="text-gray-400 w-10 text-right mr-2 shrink-0 text-[9px] pt-0.5">{line.pos}</span>
+                      <div>
+                        {/* Codons */}
+                        <div className="flex flex-wrap">
+                          {line.codons.map((c, ci) => (
+                            <span key={ci} className="mr-1.5" style={{ borderBottom: c.dom ? `2px solid ${c.dom.color}` : 'none' }}>
+                              {c.codon}
+                            </span>
+                          ))}
+                        </div>
+                        {/* Amino acids below */}
+                        <div className="flex flex-wrap text-[9px] text-gray-500 -mt-0.5">
+                          {line.codons.map((c, ci) => (
+                            <span key={ci} className="mr-1.5 w-[calc(3ch+6px)] text-center"
+                              style={{ color: c.aa === '*' ? '#dc2626' : c.dom ? c.dom.color : '#888' }}>
+                              {c.aa}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
 
-            {/* Sequence editor */}
-            <div className="mb-3">
-              <div className="flex justify-between mb-1">
-                <span className="text-[10px] text-gray-500">{editMode === 'quick' ? 'Просмотр' : 'Редактирование'}</span>
-                <button onClick={() => setEditMode(m => m === 'quick' ? 'full' : 'quick')} className="text-[10px] text-blue-600 hover:underline">
-                  {editMode === 'quick' ? '✏️ Редактировать' : '👁 Просмотр'}
-                </button>
+            {/* Non-CDS or edit mode: plain sequence */}
+            {(!isCDS || editMode === 'edit') && (
+              <div className="mb-3">
+                {editMode === 'edit' ? (
+                  <textarea value={seq} onChange={e => setSeq(e.target.value.toUpperCase().replace(/[^ATGCNRYWSMKHBVD]/g, ''))}
+                    className="w-full font-mono text-[10px] leading-relaxed border rounded-lg p-3 h-32 resize-y focus:border-blue-400 outline-none" spellCheck={false} />
+                ) : (
+                  <div className="font-mono text-[10px] leading-relaxed bg-gray-50 rounded-lg p-3 max-h-[150px] overflow-y-auto break-all text-gray-600">
+                    {seq.slice(0, 400)}{seq.length > 400 && <span className="text-gray-400">... ({seq.length})</span>}
+                  </div>
+                )}
               </div>
-              {editMode === 'full' ? (
-                <textarea value={seq} onChange={e => setSeq(e.target.value.toUpperCase().replace(/[^ATGCNRYWSMKHBVD]/g, ''))}
-                  className="w-full font-mono text-[10px] leading-relaxed border rounded-lg p-3 h-28 resize-y focus:border-blue-400 outline-none" spellCheck={false} />
-              ) : (
-                <div className="font-mono text-[10px] leading-relaxed bg-gray-50 rounded-lg p-3 max-h-[100px] overflow-y-auto break-all text-gray-600">
-                  {seq.slice(0, 300)}{seq.length > 300 && <span className="text-gray-400">... ({seq.length})</span>}
-                </div>
-              )}
-            </div>
+            )}
 
-            {/* Stats */}
-            <div className="flex gap-3 text-[10px] text-gray-500 mb-3 flex-wrap">
-              <span>Длина: {seq.length}{diff !== 0 && <span className={diff > 0 ? 'text-green-600' : 'text-red-600'}> ({diff > 0 ? '+' : ''}{diff})</span>}</span>
-              {isCDS && <span className={seq.length % 3 === 0 ? 'text-green-600' : 'text-red-600'}>Рамка: {seq.length % 3 === 0 ? '✓' : `⚠ ост. ${seq.length % 3}`}</span>}
-              {isCDS && <span>ATG: {seq.toUpperCase().startsWith('ATG') ? '✓' : '⚠'}</span>}
-              {isCDS && <span>Стоп: {hasStop(seq) ? `✓ ${seq.slice(-3).toUpperCase()}` : '⚠'}</span>}
-              <span>GC: {(gcContent(seq) * 100).toFixed(1)}%</span>
+            <div className="flex justify-between items-center mb-3">
+              <div className="flex gap-3 text-[10px] text-gray-500 flex-wrap">
+                <span>Длина: {seq.length}{diff !== 0 && <span className={diff > 0 ? 'text-green-600' : 'text-red-600'}> ({diff > 0 ? '+' : ''}{diff})</span>}</span>
+                {isCDS && <span className={seq.length % 3 === 0 ? 'text-green-600' : 'text-red-600'}>Рамка: {seq.length % 3 === 0 ? '✓' : `⚠ ост. ${seq.length % 3}`}</span>}
+                {isCDS && <span>ATG: {seq.toUpperCase().startsWith('ATG') ? '✓' : '⚠'}</span>}
+                {isCDS && <span>Стоп: {hasStop(seq) ? `✓ ${seq.slice(-3).toUpperCase()}` : '⚠'}</span>}
+                <span>GC: {(gcContent(seq) * 100).toFixed(1)}%</span>
+              </div>
+              <button onClick={() => setEditMode(m => m === 'view' ? 'edit' : 'view')}
+                className="text-[10px] text-blue-600 hover:underline shrink-0">
+                {editMode === 'view' ? '✏️ Редактировать' : '👁 Просмотр'}
+              </button>
             </div>
           </>
         )}
 
-        {/* ═══ TAB: Domains ═══ */}
-        {tab === 'domains' && isCDS && (
+        {/* ═══ TAB: Белок ═══ */}
+        {tab === 'protein' && isCDS && (
           <>
             {/* Domain bar */}
             {domains.length > 0 && (
               <div className="mb-3">
-                <div className="flex h-7 rounded overflow-hidden border">
+                <div className="flex h-6 rounded overflow-hidden border">
                   {domains.map((d, di) => {
                     const w = Math.max(2, ((d.endAA - d.startAA + 1) / totalAA) * 100);
                     return (
@@ -177,17 +207,22 @@ export default function FragmentEditor({ fragment, onSave, onClose }) {
               </div>
             )}
 
-            {/* Protein with domain coloring */}
-            <div className="font-mono text-[10px] leading-relaxed bg-gray-50 p-3 rounded max-h-[100px] overflow-y-auto break-all mb-3">
+            {/* Protein sequence — editable with domain coloring */}
+            <div className="font-mono text-[10px] leading-relaxed bg-gray-50 p-3 rounded max-h-[150px] overflow-y-auto break-all mb-3">
               {protein.split('').map((aa, i) => {
                 const pos = i + 1;
                 const dom = domains.find(d => pos >= d.startAA && pos <= d.endAA);
-                return <span key={i} style={{ backgroundColor: dom ? dom.color + '30' : 'transparent', borderBottom: dom ? `2px solid ${dom.color}` : 'none' }}
-                  title={dom ? `${dom.name} — ${pos} а.о.` : `${pos}`}>{aa}</span>;
+                return (
+                  <span key={i} style={{
+                    backgroundColor: dom ? dom.color + '25' : 'transparent',
+                    borderBottom: dom ? `2px solid ${dom.color}` : 'none',
+                    color: aa === '*' ? '#dc2626' : '#333',
+                  }} title={`${aa} — позиция ${pos}${dom ? ` (${dom.name})` : ''}`}>{aa}</span>
+                );
               })}
             </div>
 
-            {/* Domain table */}
+            {/* Domain management */}
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-semibold text-gray-600">Домены ({domains.length})</span>
               <div className="flex gap-2">
@@ -227,7 +262,6 @@ export default function FragmentEditor({ fragment, onSave, onClose }) {
 
             {domains.length === 0 && <div className="text-center text-gray-400 text-xs py-3 mb-3">Нажмите «Авто» или добавьте вручную</div>}
 
-            {/* Add form */}
             {addForm && (
               <div className="border rounded p-2 bg-gray-50 mb-3 space-y-2">
                 <div className="grid grid-cols-4 gap-2">
@@ -250,9 +284,7 @@ export default function FragmentEditor({ fragment, onSave, onClose }) {
 
         {/* Save */}
         <div className="flex gap-2">
-          <button onClick={handleSave} className="text-xs bg-blue-600 text-white px-4 py-1.5 rounded-lg hover:bg-blue-700 font-semibold">
-            {'💾'} Сохранить
-          </button>
+          <button onClick={handleSave} className="text-xs bg-blue-600 text-white px-4 py-1.5 rounded-lg hover:bg-blue-700 font-semibold">{'💾'} Сохранить</button>
           <button onClick={onClose} className="text-xs text-gray-500 px-4 py-1.5">Отмена</button>
         </div>
       </div>
