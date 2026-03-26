@@ -15,12 +15,15 @@ function sectorPath(cx, cy, oR, iR, s, e) {
   return `M ${os.x} ${os.y} A ${oR} ${oR} 0 ${lg} 1 ${oe.x} ${oe.y} L ${ie.x} ${ie.y} A ${iR} ${iR} 0 ${lg} 0 ${is_.x} ${is_.y} Z`;
 }
 
-export default function PlasmidMap({ fragments, constructName, totalBp, junctions = [], primers = [], onSelectFragment, onJunctionClick }) {
+export default function PlasmidMap({ fragments, constructName, totalBp, junctions = [], primers = [],
+  onSelectFragment, onRemove, onFlip, onSplitSignal, onEditSequence }) {
   const [hovered, setHovered] = useState(null);
+  const [selected, setSelected] = useState(null);
   const [hovJunc, setHovJunc] = useState(null);
   const [selJunc, setSelJunc] = useState(null);
   const [popupPos, setPopupPos] = useState(null);
   const popupRef = useRef(null);
+  const [btnPos, setBtnPos] = useState(null);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const dragging = useRef(false);
@@ -108,14 +111,22 @@ export default function PlasmidMap({ fragments, constructName, totalBp, junction
         {/* Feature arcs */}
         {arcs.map((a, i) => {
           const isH = hovered === i;
+          const isSel = selected === i;
           const gap = 0.008;
           return (
             <g key={i}>
-              <path d={sectorPath(cx, cy, isH ? outerR + 4 : outerR, innerR, a.startAngle + gap, a.endAngle - gap)}
-                fill={a.color} stroke="#fff" strokeWidth={1} opacity={isH ? 0.85 : 1}
+              <path d={sectorPath(cx, cy, isSel ? outerR + 5 : isH ? outerR + 3 : outerR, isSel ? innerR - 2 : innerR, a.startAngle + gap, a.endAngle - gap)}
+                fill={a.color} stroke={isSel ? '#000' : '#fff'} strokeWidth={isSel ? 2 : 1} opacity={isH ? 0.85 : 1}
                 style={{ cursor: 'pointer', transition: 'all 100ms' }}
-                onMouseEnter={() => setHovered(i)} onMouseLeave={() => setHovered(null)}
-                onClick={() => onSelectFragment?.(i)} />
+                onMouseEnter={(e) => {
+                  setHovered(i);
+                  const r = e.currentTarget.closest('svg').getBoundingClientRect();
+                  const mp = polar(cx, cy, outerR + 22, a.midAngle);
+                  const svgScale = r.width / (SIZE / zoom);
+                  setBtnPos({ x: r.left + (mp.x - vx) * svgScale, y: r.top + (mp.y - vy) * svgScale });
+                }}
+                onMouseLeave={() => setHovered(null)}
+                onClick={() => { setSelected(isSel ? null : i); onSelectFragment?.(i); }} />
               {/* Direction arrow */}
               {a.endAngle - a.startAngle > 0.15 && (() => {
                 const aA = a.strand === -1 ? a.startAngle + 0.05 : a.endAngle - 0.05;
@@ -238,6 +249,22 @@ export default function PlasmidMap({ fragments, constructName, totalBp, junction
           );
         })()}
       </svg>
+
+      {/* Hover action buttons — floating HTML over SVG */}
+      {hovered !== null && btnPos && (
+        <div className="fixed z-40 flex gap-0.5 bg-white rounded-full shadow-md border px-1 py-0.5"
+          style={{ left: btnPos.x - 55, top: btnPos.y - 14 }}
+          onMouseEnter={() => setHovered(hovered)} onMouseLeave={() => setHovered(null)}>
+          {onFlip && <button onClick={() => { onFlip(hovered); setHovered(null); }}
+            className="w-5 h-5 rounded-full text-[10px] flex items-center justify-center hover:bg-indigo-100 text-indigo-600" title="Перевернуть">↻</button>}
+          {onSplitSignal && <button onClick={() => { onSplitSignal(hovered); setHovered(null); }}
+            className="w-5 h-5 rounded-full text-[10px] flex items-center justify-center hover:bg-orange-100 text-orange-600" title="Разделить">✂</button>}
+          {onEditSequence && <button onClick={() => { onEditSequence(hovered); setHovered(null); }}
+            className="w-5 h-5 rounded-full text-[10px] flex items-center justify-center hover:bg-blue-100 text-blue-600" title="Редактировать">✏️</button>}
+          {onRemove && <button onClick={() => { onRemove(hovered); setHovered(null); }}
+            className="w-5 h-5 rounded-full text-[10px] flex items-center justify-center hover:bg-red-100 text-red-500" title="Удалить">×</button>}
+        </div>
+      )}
 
       {/* Junction detail popup */}
       {selJunc !== null && popupPos && junctions[selJunc] && (
