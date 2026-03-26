@@ -40,6 +40,7 @@ export default function DesignCanvas({
   const canvasRef = useRef(null);
   const canvasContainerRef = useRef(null);
   const scrollRef = useRef(null);
+  const blocksRowRef = useRef(null);
   const resizing = useRef(false);
   const startY = useRef(0);
   const startH = useRef(0);
@@ -161,7 +162,7 @@ export default function DesignCanvas({
 
           {/* Scrollable + zoomable blocks */}
           <div ref={scrollRef} className="flex-1 overflow-x-auto overflow-y-auto w-full">
-            <div className="py-4 px-4 gap-1"
+            <div ref={blocksRowRef} className="py-4 px-4 gap-1 w-fit"
               style={{
                 display: 'flex', alignItems: 'center', overflow: 'visible',
                 transform: `scale(${zoom / 100})`, transformOrigin: 'left top',
@@ -203,14 +204,12 @@ export default function DesignCanvas({
             </div>
           </div>
 
-          {/* Circular arc: CSS border connecting last → first */}
+          {/* Circular arc: sized to match actual blocks row width */}
           {circular && n > 1 && (
-            <div className="relative mx-6 shrink-0">
-              <div className="border-b-2 border-l-2 border-r-2 border-dashed border-blue-400 rounded-b-[30px] h-6 mx-4 opacity-40" />
-              <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 bg-white px-2">
-                <span className="text-[9px] font-bold text-blue-500">
-                  {'⟳'} замыкание
-                </span>
+            <div className="relative shrink-0 ml-4" style={{ width: blocksRowRef.current ? `${blocksRowRef.current.scrollWidth * (zoom / 100)}px` : '100%' }}>
+              <div className="border-b-2 border-l-2 border-r-2 border-dashed border-blue-400 rounded-b-[24px] h-5 mx-2 opacity-40" />
+              <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 bg-white px-2 rounded">
+                <span className="text-[9px] font-bold text-blue-500">{'⟳'} замыкание</span>
               </div>
             </div>
           )}
