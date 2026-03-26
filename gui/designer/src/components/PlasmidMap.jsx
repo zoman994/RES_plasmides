@@ -23,7 +23,6 @@ export default function PlasmidMap({ fragments, constructName, totalBp, junction
   const [selJunc, setSelJunc] = useState(null);
   const [popupPos, setPopupPos] = useState(null);
   const popupRef = useRef(null);
-  const [btnPos, setBtnPos] = useState(null);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const dragging = useRef(false);
@@ -116,19 +115,19 @@ export default function PlasmidMap({ fragments, constructName, totalBp, junction
           const isH = hovered === i;
           const isSel = selected === i;
           const gap = 0.008;
+          const btnP = polar(cx, cy, outerR + 28, a.midAngle);
           return (
-            <g key={i}>
+            <g key={i}
+              onMouseEnter={() => setHovered(i)}
+              onMouseLeave={() => setHovered(null)}
+              style={{ cursor: 'pointer' }}>
+              {/* Invisible wider hit area */}
+              <path d={sectorPath(cx, cy, outerR + 20, innerR - 8, a.startAngle, a.endAngle)}
+                fill="transparent" stroke="none" />
+              {/* Visible arc */}
               <path d={sectorPath(cx, cy, isSel ? outerR + 5 : isH ? outerR + 3 : outerR, isSel ? innerR - 2 : innerR, a.startAngle + gap, a.endAngle - gap)}
                 fill={a.color} stroke={isSel ? '#000' : '#fff'} strokeWidth={isSel ? 2 : 1} opacity={isH ? 0.85 : 1}
-                style={{ cursor: 'pointer', transition: 'all 100ms' }}
-                onMouseEnter={(e) => {
-                  setHovered(i);
-                  const r = e.currentTarget.closest('svg').getBoundingClientRect();
-                  const mp = polar(cx, cy, outerR + 22, a.midAngle);
-                  const svgScale = r.width / (SIZE / zoom);
-                  setBtnPos({ x: r.left + (mp.x - vx) * svgScale, y: r.top + (mp.y - vy) * svgScale });
-                }}
-                onMouseLeave={() => setHovered(null)}
+                style={{ transition: 'all 100ms' }}
                 onClick={() => { setSelected(isSel ? null : i); onSelectFragment?.(i); }} />
               {/* Direction arrow */}
               {a.endAngle - a.startAngle > 0.15 && (() => {
@@ -139,6 +138,23 @@ export default function PlasmidMap({ fragments, constructName, totalBp, junction
                 return <polygon points={`${t.x},${t.y} ${t.x-4*Math.cos(pA)+3*d*Math.sin(pA)},${t.y-4*Math.sin(pA)-3*d*Math.cos(pA)} ${t.x+4*Math.cos(pA)+3*d*Math.sin(pA)},${t.y+4*Math.sin(pA)-3*d*Math.cos(pA)}`}
                   fill="#fff" opacity={0.5} />;
               })()}
+              {/* Action buttons — inside <g> so hover persists */}
+              {isH && (
+                <foreignObject x={btnP.x - 48} y={btnP.y - 12} width={96} height={28}
+                  style={{ overflow: 'visible', pointerEvents: 'none' }}>
+                  <div style={{ pointerEvents: 'auto' }}
+                    className="flex gap-0.5 bg-white rounded-full shadow-md border px-1 py-0.5 w-fit">
+                    {onFlip && <button onClick={(e) => { e.stopPropagation(); onFlip(i); }}
+                      className="w-5 h-5 rounded-full text-[10px] flex items-center justify-center hover:bg-indigo-100 text-indigo-600" title="Перевернуть">↻</button>}
+                    {onSplitSignal && <button onClick={(e) => { e.stopPropagation(); onSplitSignal(i); }}
+                      className="w-5 h-5 rounded-full text-[10px] flex items-center justify-center hover:bg-orange-100 text-orange-600" title="Разделить">✂</button>}
+                    {onEditSequence && <button onClick={(e) => { e.stopPropagation(); onEditSequence(i); }}
+                      className="w-5 h-5 rounded-full text-[10px] flex items-center justify-center hover:bg-blue-100 text-blue-600" title="Редактировать">✏️</button>}
+                    {onRemove && <button onClick={(e) => { e.stopPropagation(); onRemove(i); }}
+                      className="w-5 h-5 rounded-full text-[10px] flex items-center justify-center hover:bg-red-100 text-red-500" title="Удалить">×</button>}
+                  </div>
+                </foreignObject>
+              )}
             </g>
           );
         })}
@@ -252,22 +268,6 @@ export default function PlasmidMap({ fragments, constructName, totalBp, junction
           );
         })()}
       </svg>
-
-      {/* Hover action buttons — floating HTML over SVG */}
-      {hovered !== null && btnPos && (
-        <div className="fixed z-40 flex gap-0.5 bg-white rounded-full shadow-md border px-1 py-0.5"
-          style={{ left: btnPos.x - 55, top: btnPos.y - 14 }}
-          onMouseEnter={() => setHovered(hovered)} onMouseLeave={() => setHovered(null)}>
-          {onFlip && <button onClick={() => { onFlip(hovered); setHovered(null); }}
-            className="w-5 h-5 rounded-full text-[10px] flex items-center justify-center hover:bg-indigo-100 text-indigo-600" title="Перевернуть">↻</button>}
-          {onSplitSignal && <button onClick={() => { onSplitSignal(hovered); setHovered(null); }}
-            className="w-5 h-5 rounded-full text-[10px] flex items-center justify-center hover:bg-orange-100 text-orange-600" title="Разделить">✂</button>}
-          {onEditSequence && <button onClick={() => { onEditSequence(hovered); setHovered(null); }}
-            className="w-5 h-5 rounded-full text-[10px] flex items-center justify-center hover:bg-blue-100 text-blue-600" title="Редактировать">✏️</button>}
-          {onRemove && <button onClick={() => { onRemove(hovered); setHovered(null); }}
-            className="w-5 h-5 rounded-full text-[10px] flex items-center justify-center hover:bg-red-100 text-red-500" title="Удалить">×</button>}
-        </div>
-      )}
 
       {/* Junction detail popup */}
       {selJunc !== null && popupPos && junctions[selJunc] && (
