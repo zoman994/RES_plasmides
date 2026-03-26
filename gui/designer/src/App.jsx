@@ -83,6 +83,7 @@ export default function App() {
   const [domainTarget, setDomainTarget] = useState(null);
   const [seqEditTarget, setSeqEditTarget] = useState(null);
   const [activeTab, setActiveTab] = useState('canvas');
+  const [warningsOpen, setWarningsOpen] = useState(false);
   const [inventoryVersion, setInventoryVersion] = useState(0);
   const [polymerase, setPolymerase] = useState('phusion');
   const [primerPrefix, setPrimerPrefix] = useState('IS');
@@ -594,10 +595,21 @@ export default function App() {
             )}
 
             {constructWarnings.length > 0 && (
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-1">
-                {constructWarnings.map((w, i) => (
-                  <div key={i} className="text-xs text-amber-700">{w}</div>
-                ))}
+              <div>
+                <button onClick={() => setWarningsOpen(!warningsOpen)}
+                  className="w-full flex items-center justify-between bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5 text-left hover:bg-amber-100 transition">
+                  <span className="text-xs font-medium text-amber-700">
+                    {'⚠'} {constructWarnings.length} замечани{constructWarnings.length === 1 ? 'е' : constructWarnings.length < 5 ? 'я' : 'й'}
+                  </span>
+                  <span className="text-amber-400 text-sm">{warningsOpen ? '▲' : '▼'}</span>
+                </button>
+                {warningsOpen && (
+                  <div className="bg-amber-50 border border-t-0 border-amber-200 rounded-b-lg px-3 py-2 space-y-1 max-h-48 overflow-y-auto">
+                    {constructWarnings.map((w, i) => (
+                      <div key={i} className="text-xs text-amber-800">{w}</div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
