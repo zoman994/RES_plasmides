@@ -57,16 +57,32 @@ export default function PlasmidMap({ fragments, name, totalBp, primers = [], onS
     return { ...f, index: i, startBp, endBp, startAngle, endAngle, midAngle, color, len };
   });
 
-  // Primer tick marks
-  const primerTicks = primers.map(p => {
+  // Primer arcs on inner ring
+  const primerArcs = primers.map(p => {
     const frag = fragments.find(f => p.name.includes(f.name));
     if (!frag) return null;
     const fi = fragments.indexOf(frag);
     const arc = arcs[fi];
     if (!arc) return null;
+    const bindLen = (p.bindingSequence || '').length;
+    const tailLen = (p.tailSequence || '').length;
+    const totalLen = bindLen + tailLen;
+    if (!totalLen) return null;
     const isFwd = p.direction === 'forward';
-    const angle = isFwd ? arc.startAngle : arc.endAngle;
-    return { name: p.name, angle, direction: p.direction };
+    const bpPerRad = (arc.endAngle - arc.startAngle) / arc.len;
+    let bindStart, bindEnd, tailStart, tailEnd;
+    if (isFwd) {
+      bindStart = arc.startAngle;
+      bindEnd = arc.startAngle + bindLen * bpPerRad;
+      tailStart = bindStart - tailLen * bpPerRad;
+      tailEnd = bindStart;
+    } else {
+      bindEnd = arc.endAngle;
+      bindStart = arc.endAngle - bindLen * bpPerRad;
+      tailStart = arc.endAngle;
+      tailEnd = arc.endAngle + tailLen * bpPerRad;
+    }
+    return { name: p.name, direction: p.direction, bindStart, bindEnd, tailStart, tailEnd, isFwd };
   }).filter(Boolean);
 
   return (
@@ -133,16 +149,27 @@ export default function PlasmidMap({ fragments, name, totalBp, primers = [], onS
           );
         })}
 
-        {/* Primer ticks */}
-        {primerTicks.map((p, i) => {
-          const iR = innerR - 3;
-          const oR2 = innerR - 10;
-          const s = polar(cx, cy, iR, p.angle);
-          const e = polar(cx, cy, oR2, p.angle);
+        {/* Primer arcs on inner ring */}
+        {primerArcs.map((p, i) => {
+          const c = p.isFwd ? '#2563eb' : '#dc2626';
+          const pR = p.isFwd ? innerR - 6 : innerR - 14;
           return (
-            <line key={`pr-${i}`} x1={s.x} y1={s.y} x2={e.x} y2={e.y}
-              stroke={p.direction === 'forward' ? '#2563eb' : '#dc2626'}
-              strokeWidth={1.5} opacity={0.6} />
+            <g key={`pr-${i}`}>
+              {/* Tail arc (semi-transparent) */}
+              {p.tailEnd - p.tailStart > 0.001 && (
+                <path d={arcPath(cx, cy, pR, Math.min(p.tailStart, p.tailEnd), Math.max(p.tailStart, p.tailEnd))}
+                  fill="none" stroke={c} strokeWidth={3} opacity={0.25} strokeLinecap="round" />
+              )}
+              {/* Binding arc (solid) */}
+              <path d={arcPath(cx, cy, pR, p.bindStart, p.bindEnd)}
+                fill="none" stroke={c} strokeWidth={3} opacity={0.7} strokeLinecap="round" />
+              {/* Arrow tip */}
+              {(() => {
+                const tipAngle = p.isFwd ? p.bindEnd : p.bindStart;
+                const tip = polar(cx, cy, pR, tipAngle);
+                return <circle cx={tip.x} cy={tip.y} r={2.5} fill={c} opacity={0.8} />;
+              })()}
+            </g>
           );
         })}
 
