@@ -25,12 +25,13 @@ export default function PlasmidMap({ fragments, name, totalBp, primers = [], onS
   const dragging = useRef(false);
   const dragStart = useRef({ x: 0, y: 0, px: 0, py: 0 });
 
-  const SIZE = 500;
+  const SIZE = 600;
+  const PAD = 80; // padding for labels
   const cx = SIZE / 2, cy = SIZE / 2;
-  const outerR = 170, innerR = 145, backboneR = (outerR + innerR) / 2;
-  const labelR = outerR + 22;
-  const fwdPrimerR = outerR + 8;   // forward primers OUTSIDE
-  const revPrimerR = innerR - 8;   // reverse primers INSIDE
+  const outerR = 140, innerR = 118, backboneR = (outerR + innerR) / 2;
+  const labelR = outerR + 18;
+  const fwdPrimerR = outerR + 6;   // forward primers OUTSIDE
+  const revPrimerR = innerR - 6;   // reverse primers INSIDE
 
   // Wheel zoom
   const onWheel = useCallback((e) => {
@@ -79,10 +80,11 @@ export default function PlasmidMap({ fragments, name, totalBp, primers = [], onS
     return { name: p.name, isFwd, bS, bE, tS, tE, tm: p.tmBinding };
   }).filter(Boolean);
 
-  const vb = `${-pan.x + SIZE / 2 - SIZE / 2 / zoom} ${-pan.y + SIZE / 2 - SIZE / 2 / zoom} ${SIZE / zoom} ${SIZE / zoom}`;
+  const vw = SIZE / zoom, vx = -pan.x + cx - vw / 2, vy = -pan.y + cy - vw / 2;
+  const vb = `${vx} ${vy} ${vw} ${vw}`;
 
   return (
-    <div className="relative flex flex-col items-center">
+    <div className="relative w-full h-full flex flex-col items-center">
       {/* Zoom controls */}
       <div className="absolute top-2 right-2 flex items-center gap-1 z-10 bg-white/80 rounded-lg px-2 py-1 shadow-sm border">
         <button onClick={() => setZoom(z => Math.max(0.5, z - 0.2))} className="w-5 h-5 text-[11px] rounded hover:bg-gray-100 flex items-center justify-center">−</button>
