@@ -233,20 +233,31 @@ export default function PlasmidMap({ fragments, constructName, totalBp, junction
           );
         })}
 
-        {/* Feature labels */}
+        {/* Feature labels — INSIDE the arcs via textPath */}
+        <defs>
+          {arcs.map((a, i) => {
+            const r = backboneR;
+            const midDeg = (a.midAngle * 180) / Math.PI - 90;
+            const isBottom = midDeg > 0 && midDeg < 180;
+            // Flip arc direction for bottom half so text reads left-to-right
+            const [from, to] = isBottom ? [a.endAngle, a.startAngle] : [a.startAngle, a.endAngle];
+            const s = polar(cx, cy, r, from), e = polar(cx, cy, r, to);
+            const large = Math.abs(a.endAngle - a.startAngle) > Math.PI ? 1 : 0;
+            const sweep = isBottom ? 0 : 1;
+            return <path key={`tp-${i}`} id={`arc-text-${i}`} d={`M ${s.x} ${s.y} A ${r} ${r} 0 ${large} ${sweep} ${e.x} ${e.y}`} fill="none" />;
+          })}
+        </defs>
         {arcs.map((a, i) => {
           const pct = ((a.endAngle - a.startAngle) / TAU) * 100;
-          if (pct < 3) return null;
-          const mid = a.midAngle, midD = (mid * 180) / Math.PI - 90;
-          const isR = midD >= -90 && midD < 90;
-          const lp = polar(cx, cy, labelR + 10, mid);
+          if (pct < 4) return null;
+          const label = pct > 12 ? `${a.name} (${a.len})` : a.name;
           return (
-            <text key={`l-${i}`} x={lp.x} y={lp.y} textAnchor={isR ? 'start' : 'end'}
-              dominantBaseline="central" fontSize={pct > 10 ? 11 : 9}
-              fill={hovered === i ? a.color : '#555'} fontWeight={hovered === i ? 700 : 400}
-              style={{ cursor: 'pointer' }}
+            <text key={`l-${i}`} fontSize={pct > 15 ? 10 : 8} fill="#fff" fontWeight={600}
+              style={{ cursor: 'pointer', textShadow: '0 0 3px rgba(0,0,0,0.3)' }}
               onMouseEnter={() => setHovered(i)} onMouseLeave={() => setHovered(null)}>
-              {a.name} ({a.len})
+              <textPath href={`#arc-text-${i}`} startOffset="50%" textAnchor="middle">
+                {label}
+              </textPath>
             </text>
           );
         })}
