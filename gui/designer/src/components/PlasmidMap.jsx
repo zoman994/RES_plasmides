@@ -253,8 +253,7 @@ export default function PlasmidMap({ fragments, constructName, totalBp, junction
           const label = pct > 12 ? `${a.name} (${a.len})` : a.name;
           return (
             <text key={`l-${i}`} fontSize={pct > 15 ? 10 : 8} fill="#fff" fontWeight={600}
-              style={{ cursor: 'pointer', textShadow: '0 0 3px rgba(0,0,0,0.3)' }}
-              onMouseEnter={() => setHovered(i)} onMouseLeave={() => setHovered(null)}>
+              style={{ pointerEvents: 'none', textShadow: '0 0 3px rgba(0,0,0,0.3)' }}>
               <textPath href={`#arc-text-${i}`} startOffset="50%" textAnchor="middle">
                 {label}
               </textPath>
