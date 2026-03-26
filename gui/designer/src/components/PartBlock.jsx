@@ -23,7 +23,7 @@ function primerLabel(name) {
 export default function PartBlock({
   fragment, index, onRemove, onToggleAmplification, onReorder, onFlip,
   pcrSize, onSplitSignal, onEditDomains, onEditSequence, fragmentCount,
-  fwdPrimer, revPrimer,
+  fwdPrimer, revPrimer, circularHint,
 }) {
   const [{ isDragging }, drag] = useDrag({
     type: 'CANVAS_PART', item: { index },
@@ -78,7 +78,8 @@ export default function PartBlock({
         style={{
           background: `linear-gradient(135deg, ${color}15 0%, ${color}08 100%)`,
           border: `1px solid ${color}30`,
-          borderLeft: `4px solid ${color}`,
+          borderLeft: circularHint === 'first' ? '3px solid #3b82f6' : `4px solid ${color}`,
+          borderRight: circularHint === 'last' ? '3px solid #3b82f6' : undefined,
           width: fragmentWidth(fragment.length, fragmentCount), minWidth: 60,
           transition: 'box-shadow 150ms ease',
         }}

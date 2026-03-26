@@ -180,7 +180,8 @@ export default function DesignCanvas({
                         onRemove={onRemove} onToggleAmplification={onToggleAmplification}
                         onReorder={onReorder} onFlip={onFlip} pcrSize={pcrSizes[i]}
                         onSplitSignal={onSplitSignal} onEditDomains={onEditDomains} onEditSequence={onEditSequence}
-                        fwdPrimer={fwdPrimer} revPrimer={revPrimer} />
+                        fwdPrimer={fwdPrimer} revPrimer={revPrimer}
+                        circularHint={circular && (i === 0 || i === n - 1) ? (i === 0 ? 'first' : 'last') : null} />
                     </div>
                     {i < junctions.length && (i < n - 1 || circular) && (
                       <div className="flex flex-col items-center shrink-0" style={{ minWidth: 50 }}>
@@ -198,12 +199,25 @@ export default function DesignCanvas({
                 );
               })}
 
-              {circular && n > 1 && (
-                <div className="text-[9px] text-blue-500 font-medium ml-1">&rarr;1st</div>
-              )}
-              <div className={`w-1.5 bg-gray-300 rounded-r shrink-0 ${hasPrimers ? 'h-[72px]' : 'h-14'}`} />
+              {!circular && <div className={`w-1.5 bg-gray-300 rounded-r shrink-0 ${hasPrimers ? 'h-[72px]' : 'h-14'}`} />}
             </div>
           </div>
+
+          {/* Circular arc: visual connection last → first */}
+          {circular && n > 1 && (
+            <div className="w-full shrink-0" style={{ height: 32 }}>
+              <svg width="100%" height="32" className="overflow-visible">
+                <path
+                  d={`M 20,0 C 20,28 calc(100% - 20),28 calc(100% - 20),0`}
+                  fill="none" stroke="#3b82f6" strokeWidth="2"
+                  strokeDasharray="6 3" opacity="0.4" />
+                <text x="50%" y="22" textAnchor="middle"
+                  className="text-[9px] fill-blue-500 font-medium">
+                  {'⟳'} замыкание
+                </text>
+              </svg>
+            </div>
+          )}
 
           {/* Summary line */}
           <div className="text-[10px] text-gray-500 mt-1 select-none shrink-0">

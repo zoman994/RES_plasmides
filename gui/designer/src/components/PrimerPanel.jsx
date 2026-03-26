@@ -65,6 +65,10 @@ export default function PrimerPanel({
                     <div className="flex items-center gap-1">
                       {p.reused && <span className="text-green-600 text-[10px]">{'✓'}</span>}
                       <span className={p.reused ? 'text-green-700' : ''}>{p.name}</span>
+                      {p.phosphorylated && (
+                        <span className="text-[8px] bg-purple-100 text-purple-700 rounded px-1 py-px font-semibold ml-1"
+                          title="5'-фосфорилирование (указать при заказе)">5'-PO₄</span>
+                      )}
                     </div>
                     {p.reused && (
                       <div className="text-[9px] text-green-600 mt-0.5">
@@ -81,7 +85,7 @@ export default function PrimerPanel({
                     )}
                   </td>
                   <td className="p-2 font-mono text-[10px] max-w-xs break-all">
-                    <span className="text-[8px] text-gray-400">5'─</span>
+                    <span className="text-[8px] text-gray-400">{p.phosphorylated ? '5\'─[P]─' : '5\'─'}</span>
                     <span className="text-teal-500">
                       {(p.tailSequence || '').toLowerCase()}
                     </span>
