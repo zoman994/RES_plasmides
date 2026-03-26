@@ -173,7 +173,7 @@ export default function DesignCanvas({
           {viewMode === 'map' && circular ? (
             <div className="flex-1 flex items-center justify-center overflow-hidden min-h-0">
               <PlasmidMap fragments={fragments} constructName={constructName}
-                totalBp={totalBp} junctions={junctions} />
+                totalBp={totalBp} junctions={junctions} primers={primers} />
             </div>
           ) :
           /* Scrollable + zoomable blocks — wraps to rows */

@@ -3,8 +3,7 @@
  * Clean view: feature arcs + labels + junction markers.
  * Primers shown in linear view / Primer Panel (not here).
  */
-import { useState, useRef, useCallback } from 'react';
-import { createPortal } from 'react-dom';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { getFragColor, isMarker } from '../theme';
 
 const TAU = 2 * Math.PI;
@@ -16,8 +15,12 @@ function sectorPath(cx, cy, oR, iR, s, e) {
   return `M ${os.x} ${os.y} A ${oR} ${oR} 0 ${lg} 1 ${oe.x} ${oe.y} L ${ie.x} ${ie.y} A ${iR} ${iR} 0 ${lg} 0 ${is_.x} ${is_.y} Z`;
 }
 
-export default function PlasmidMap({ fragments, constructName, totalBp, junctions = [], onSelectFragment, onJunctionClick }) {
+export default function PlasmidMap({ fragments, constructName, totalBp, junctions = [], primers = [], onSelectFragment, onJunctionClick }) {
   const [hovered, setHovered] = useState(null);
+  const [hovJunc, setHovJunc] = useState(null);
+  const [selJunc, setSelJunc] = useState(null);
+  const [popupPos, setPopupPos] = useState(null);
+  const popupRef = useRef(null);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const dragging = useRef(false);
@@ -35,6 +38,14 @@ export default function PlasmidMap({ fragments, constructName, totalBp, junction
   const onMouseDown = (e) => { if (e.button !== 0) return; dragging.current = true; dragStart.current = { x: e.clientX, y: e.clientY, px: pan.x, py: pan.y }; };
   const onMouseMove = (e) => { if (!dragging.current) return; setPan({ x: dragStart.current.px + (e.clientX - dragStart.current.x) / zoom, y: dragStart.current.py + (e.clientY - dragStart.current.y) / zoom }); };
   const onMouseUp = () => { dragging.current = false; };
+
+  // Close popup on click outside
+  useEffect(() => {
+    if (selJunc === null) return;
+    const h = (e) => { if (popupRef.current && !popupRef.current.contains(e.target)) setSelJunc(null); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [selJunc]);
 
   if (!fragments?.length || !totalBp) return null;
 
@@ -95,31 +106,38 @@ export default function PlasmidMap({ fragments, constructName, totalBp, junction
           );
         })}
 
-        {/* Junction markers (thin dashed ticks at boundaries) */}
-        {arcs.map((a, i) => {
-          if (i === 0) return null; // no junction before first
-          const angle = a.startAngle;
-          const inner = polar(cx, cy, innerR - 4, angle);
-          const outer = polar(cx, cy, outerR + 4, angle);
+        {/* Junction zones — interactive ticks with hover + click */}
+        {junctions.map((j, ji) => {
+          const angle = arcs[ji + 1]?.startAngle ?? arcs[0].startAngle;
+          const isClosing = ji === junctions.length - 1 && fragments.length > 1;
+          const isHJ = hovJunc === ji;
+          const inner = polar(cx, cy, innerR - 6, angle);
+          const outer = polar(cx, cy, outerR + 6, angle);
+          const mid = polar(cx, cy, outerR + 14, angle);
+          const oLen = j.overlapSequence?.length || j.overlapLength || 30;
           return (
-            <line key={`jm-${i}`} x1={inner.x} y1={inner.y} x2={outer.x} y2={outer.y}
-              stroke="#94a3b8" strokeWidth={1} strokeDasharray="3 2" opacity={0.5}
-              style={{ cursor: 'pointer' }}
-              onClick={(e) => { e.stopPropagation(); onJunctionClick?.(i - 1, e); }} />
+            <g key={`jz-${ji}`}>
+              {/* Wide invisible click target */}
+              <line x1={polar(cx, cy, innerR - 15, angle).x} y1={polar(cx, cy, innerR - 15, angle).y}
+                x2={polar(cx, cy, outerR + 15, angle).x} y2={polar(cx, cy, outerR + 15, angle).y}
+                stroke="transparent" strokeWidth={12} style={{ cursor: 'pointer' }}
+                onMouseEnter={() => setHovJunc(ji)} onMouseLeave={() => setHovJunc(null)}
+                onClick={(e) => { e.stopPropagation(); setSelJunc(ji); setPopupPos({ x: e.clientX, y: e.clientY }); }} />
+              {/* Visible tick */}
+              <line x1={inner.x} y1={inner.y} x2={outer.x} y2={outer.y}
+                stroke={isHJ ? '#3b82f6' : (isClosing ? '#3b82f6' : '#94a3b8')}
+                strokeWidth={isHJ ? 2 : 1} strokeDasharray={isHJ ? 'none' : '3 2'}
+                opacity={isHJ ? 0.8 : 0.5} />
+              {/* Hover label */}
+              {isHJ && (
+                <text x={mid.x} y={mid.y} textAnchor="middle" dominantBaseline="central"
+                  fontSize={8} fill="#3b82f6" fontWeight={600}>
+                  {'◀▶'}{oLen}
+                </text>
+              )}
+            </g>
           );
         })}
-        {/* Closing junction (last → first) */}
-        {fragments.length > 1 && (() => {
-          const angle = arcs[0].startAngle; // = 0, top of circle
-          const inner = polar(cx, cy, innerR - 4, angle);
-          const outer = polar(cx, cy, outerR + 4, angle);
-          return (
-            <line x1={inner.x} y1={inner.y} x2={outer.x} y2={outer.y}
-              stroke="#3b82f6" strokeWidth={1.5} strokeDasharray="3 2" opacity={0.6}
-              style={{ cursor: 'pointer' }}
-              onClick={(e) => { e.stopPropagation(); onJunctionClick?.(fragments.length - 1, e); }} />
-          );
-        })()}
 
         {/* Feature labels */}
         {arcs.map((a, i) => {
@@ -156,6 +174,57 @@ export default function PlasmidMap({ fragments, constructName, totalBp, junction
           );
         })()}
       </svg>
+
+      {/* Junction detail popup */}
+      {selJunc !== null && popupPos && junctions[selJunc] && (
+        <div ref={popupRef} className="fixed z-50 bg-white rounded-xl shadow-xl border p-4 max-w-sm"
+          style={{ left: Math.min(popupPos.x + 10, window.innerWidth - 380), top: Math.min(popupPos.y - 10, window.innerHeight - 300) }}>
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-[11px] font-semibold text-gray-700">
+              {fragments[selJunc]?.name} {'↔'} {fragments[(selJunc + 1) % fragments.length]?.name}
+            </span>
+            <button onClick={() => setSelJunc(null)} className="text-gray-400 hover:text-gray-600 text-sm">{'✕'}</button>
+          </div>
+          <div className="text-[10px] text-gray-500 space-y-1">
+            <div>Overlap: <strong>{junctions[selJunc].overlapSequence?.length || junctions[selJunc].overlapLength || 30} п.н.</strong></div>
+            {junctions[selJunc].overlapTm && <div>Tm: <strong>{junctions[selJunc].overlapTm}°C</strong></div>}
+            <div>Режим: {junctions[selJunc].overlapMode === 'left_only' ? '◀ на левом' : junctions[selJunc].overlapMode === 'right_only' ? '▶ на правом' : '◀▶ split'}</div>
+            {/* Primers for this junction */}
+            {(() => {
+              const leftName = fragments[selJunc]?.name || '';
+              const rightName = fragments[(selJunc + 1) % fragments.length]?.name || '';
+              const revP = primers.find(p => p.direction === 'reverse' && p.name.includes(leftName));
+              const fwdP = primers.find(p => p.direction === 'forward' && p.name.includes(rightName));
+              return (
+                <>
+                  {revP && (
+                    <div className="bg-gray-50 rounded p-1.5 mt-1">
+                      <div className="text-[9px] text-gray-500">{revP.name} ←</div>
+                      <div className="font-mono text-[10px] overflow-x-auto whitespace-nowrap" style={{ fontWeight: 400 }}>
+                        <span className="text-gray-400 text-[8px]">5'─</span>
+                        <span className="text-teal-600">{(revP.tailSequence || '').toLowerCase()}</span>
+                        <span className="text-gray-800">{(revP.bindingSequence || '').toUpperCase()}</span>
+                        <span className="text-gray-400 text-[8px]">─3'</span>
+                      </div>
+                    </div>
+                  )}
+                  {fwdP && (
+                    <div className="bg-gray-50 rounded p-1.5 mt-1">
+                      <div className="text-[9px] text-gray-500">→ {fwdP.name}</div>
+                      <div className="font-mono text-[10px] overflow-x-auto whitespace-nowrap" style={{ fontWeight: 400 }}>
+                        <span className="text-gray-400 text-[8px]">5'─</span>
+                        <span className="text-teal-600">{(fwdP.tailSequence || '').toLowerCase()}</span>
+                        <span className="text-gray-800">{(fwdP.bindingSequence || '').toUpperCase()}</span>
+                        <span className="text-gray-400 text-[8px]">─3'</span>
+                      </div>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
