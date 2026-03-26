@@ -58,16 +58,21 @@ export default function DesignCanvas({
     setZoom(Math.max(30, Math.min(100, Math.floor(containerW / totalW * 100))));
   }, [fragments, n]);
 
-  // Auto-fit ONLY when fragment count changes (not on every re-render)
+  // Auto-fit when fragment count changes or primers are calculated
   const prevN = useRef(n);
+  const prevHasPrimers = useRef(hasPrimers);
   useEffect(() => {
-    if (n > 0 && n !== prevN.current) {
-      const tm = setTimeout(fitToView, 50);
+    const nChanged = n > 0 && n !== prevN.current;
+    const primersJustCalculated = hasPrimers && !prevHasPrimers.current;
+    if (nChanged || primersJustCalculated) {
+      const tm = setTimeout(fitToView, 100);
       prevN.current = n;
+      prevHasPrimers.current = hasPrimers;
       return () => clearTimeout(tm);
     }
     prevN.current = n;
-  }, [n, fitToView]);
+    prevHasPrimers.current = hasPrimers;
+  }, [n, hasPrimers, fitToView]);
 
   // Ctrl+wheel zoom
   useEffect(() => {
