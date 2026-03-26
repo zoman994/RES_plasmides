@@ -20,7 +20,7 @@ const QUICK_ACTIONS = [
   { key: 'rm_stop', label: 'Убрать стоп', pos: 'end', remove: 3, forType: 'CDS', cond: s => hasStop(s) },
   { key: 'kozak', label: '+ Kozak', pos: 'start', insert: 'GCCACC', forType: 'CDS', desc: 'GCCACCATG' },
   { key: 'his6c', label: '+ His6 (C)', pos: 'before_stop', insert: 'CATCACCATCACCATCAC', forType: 'CDS' },
-  { key: 'gs_link', label: '+ GS линкер', pos: 'end', insert: 'GGCGGCGGCGGCTCCGGCGGCGGCGGCTCC' },
+  { key: 'gs_link', label: '+ GS линкер', pos: 'end', insert: 'GGCGGCGGCGGCTCCGGCGGCGGCGGCTCC', forType: 'CDS' },
 ];
 
 const DOMAIN_TYPES = [
