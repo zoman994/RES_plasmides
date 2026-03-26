@@ -169,9 +169,9 @@ export default function DesignCanvas({
             )}
           </div>
 
-          {/* Circular map view — full canvas */}
+          {/* Circular map view — contained within canvas */}
           {viewMode === 'map' && circular ? (
-            <div className="flex-1 flex items-center justify-center p-0">
+            <div className="flex-1 flex items-center justify-center overflow-hidden min-h-0">
               <PlasmidMap fragments={fragments} constructName={constructName}
                 totalBp={totalBp} junctions={junctions} />
             </div>

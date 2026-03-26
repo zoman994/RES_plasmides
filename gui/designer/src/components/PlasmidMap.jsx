@@ -54,7 +54,7 @@ export default function PlasmidMap({ fragments, constructName, totalBp, junction
   const vw = SIZE / zoom, vx = -pan.x + cx - vw / 2, vy = -pan.y + cy - vw / 2;
 
   return (
-    <div className="relative w-full h-full flex flex-col items-center">
+    <div className="relative w-full h-full overflow-hidden flex flex-col items-center min-h-0">
       {/* Zoom controls */}
       <div className="absolute top-2 right-2 flex items-center gap-1 z-10 bg-white/80 rounded-lg px-2 py-1 shadow-sm border">
         <button onClick={() => setZoom(z => Math.max(0.5, z - 0.2))} className="w-5 h-5 text-[11px] rounded hover:bg-gray-100 flex items-center justify-center">−</button>
@@ -64,7 +64,8 @@ export default function PlasmidMap({ fragments, constructName, totalBp, junction
       </div>
 
       <svg viewBox={`${vx} ${vy} ${vw} ${vw}`}
-        style={{ width: '100%', height: '100%', cursor: dragging.current ? 'grabbing' : 'grab' }}
+        preserveAspectRatio="xMidYMid meet"
+        style={{ width: 'auto', height: '100%', maxWidth: '100%', maxHeight: '100%', aspectRatio: '1', cursor: dragging.current ? 'grabbing' : 'grab' }}
         onWheel={onWheel} onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}>
 
         {/* Backbone ring */}
