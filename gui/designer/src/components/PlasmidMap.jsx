@@ -138,8 +138,8 @@ export default function PlasmidMap({ fragments, constructName, totalBp, junction
                 return <polygon points={`${t.x},${t.y} ${t.x-4*Math.cos(pA)+3*d*Math.sin(pA)},${t.y-4*Math.sin(pA)-3*d*Math.cos(pA)} ${t.x+4*Math.cos(pA)+3*d*Math.sin(pA)},${t.y+4*Math.sin(pA)-3*d*Math.cos(pA)}`}
                   fill="#fff" opacity={0.5} />;
               })()}
-              {/* Action buttons — inside <g> so hover persists */}
-              {isH && (
+              {/* Action buttons — shown on CLICK (selected) */}
+              {isSel && (
                 <foreignObject x={btnP.x - 48} y={btnP.y - 12} width={96} height={28}
                   style={{ overflow: 'visible', pointerEvents: 'none' }}>
                   <div style={{ pointerEvents: 'auto' }}
