@@ -65,7 +65,7 @@ export default function PlasmidMap({ fragments, constructName, totalBp, junction
 
       <svg viewBox={`${vx} ${vy} ${vw} ${vw}`}
         preserveAspectRatio="xMidYMid meet"
-        style={{ width: 'auto', height: '100%', maxWidth: '100%', maxHeight: '100%', aspectRatio: '1', cursor: dragging.current ? 'grabbing' : 'grab' }}
+        style={{ width: '100%', height: '100%', cursor: dragging.current ? 'grabbing' : 'grab' }}
         onWheel={onWheel} onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}>
 
         {/* Backbone ring */}
