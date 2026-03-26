@@ -102,9 +102,7 @@ export default function PartBlock({
             <span className={`inline-block shrink-0 ${fragment.strand === -1 ? 'scale-x-[-1]' : ''}`}>
               <SBOLIcon type={fragment.type} size={14} color={color} />
             </span>
-            {fragment.strand === -1 && <span className="text-xs opacity-40 shrink-0">{'←'}</span>}
             <span className="text-xs font-semibold text-gray-800 truncate" title={fragment.name}>{fragment.name}</span>
-            {fragment.strand !== -1 && <span className="text-xs opacity-40 shrink-0">{'→'}</span>}
           </div>
           {/* Domain bar (flips with strand) */}
           {fragment.domains?.length > 0 && (
