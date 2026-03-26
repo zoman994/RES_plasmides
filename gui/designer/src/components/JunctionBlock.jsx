@@ -23,7 +23,7 @@ export default function JunctionBlock({ junction, index, leftName, rightName, le
 
   // Tooltip with overlap details
   const tip = j.overlapSequence
-    ? `Overlap: ${j.overlapSequence}\n${displayLen} п.н. · Tm ${j.overlapTm || '?'}°C · GC ${j.overlapGc || '?'}%${diff ? `\nАвто-расширен с ${userLen} до ${displayLen} п.н. для Tm` : ''}`
+    ? `Overlap: ${j.overlapSequence}\n${displayLen} п.н. · Tm ${j.overlapTm || '?'}°C · GC ${j.overlapGc || '?'}%${actualLen && actualLen !== userLen ? `\nАвто-расширен с ${userLen} до ${displayLen} п.н. для Tm` : ''}`
     : `Overlap: ${userLen} п.н.`;
 
   const modeBtn = (mode, icon, desc) => {
