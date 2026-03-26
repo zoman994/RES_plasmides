@@ -91,7 +91,7 @@ export default function PlasmidMap({ fragments, name, totalBp, primers = [], onS
         <button onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }} className="text-[9px] px-1.5 rounded hover:bg-gray-100 text-gray-500 ml-1">Сброс</button>
       </div>
 
-      <svg viewBox={vb} style={{ width: '100%', maxWidth: SIZE, aspectRatio: '1', cursor: dragging.current ? 'grabbing' : 'grab' }}
+      <svg viewBox={vb} style={{ width: '100%', height: '100%', cursor: dragging.current ? 'grabbing' : 'grab' }}
         onWheel={onWheel} onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}>
 
         {/* Backbone */}
