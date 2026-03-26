@@ -225,6 +225,23 @@ export default function App() {
     experiments.flatMap(e => (e.assemblies || []).map(a => ({ ...a, experimentName: e.name }))),
     [experiments]);
 
+  // ═══════════ Auto-adjust junction modes for non-PCR fragments ═══════════
+  function autoAdjustJunctions(frags, juncs, isCirc) {
+    const n = frags.length;
+    return juncs.map((j, i) => {
+      if (j.type !== 'overlap') return j;
+      const left = frags[i];
+      const right = frags[(i + 1) % n];
+      if (!left || !right) return j;
+      const lPCR = left.needsAmplification !== false;
+      const rPCR = right.needsAmplification !== false;
+      if (lPCR && rPCR) return j.autoMode ? { ...j, overlapMode: 'split', autoMode: false } : j;
+      if (lPCR && !rPCR) return { ...j, overlapMode: 'left_only', autoMode: true };
+      if (!lPCR && rPCR) return { ...j, overlapMode: 'right_only', autoMode: true };
+      return { ...j, overlapMode: 'split', autoMode: true, autoWarning: 'Оба фрагмента без ПЦР — overlap невозможен!' };
+    });
+  }
+
   // ═══════════ Fragment handlers ═══════════
   const addFragment = (part) => {
     const frag = {
@@ -235,7 +252,7 @@ export default function App() {
     };
     const nf = [...fragments, frag];
     const nj = nf.length > 1 ? [...junctions, mkJunction(assemblyType)] : junctions;
-    updateActive({ fragments: nf, junctions: nj, calculated: false });
+    updateActive({ fragments: nf, junctions: autoAdjustJunctions(nf, nj, circular), calculated: false });
   };
 
   const removeFragment = (i) => {
@@ -249,7 +266,9 @@ export default function App() {
   };
 
   const toggleAmplification = (i) => {
-    updateActive({ fragments: fragments.map((x, idx) => idx === i ? { ...x, needsAmplification: !x.needsAmplification } : x) });
+    const newFrags = fragments.map((x, idx) => idx === i ? { ...x, needsAmplification: !x.needsAmplification } : x);
+    const newJuncs = autoAdjustJunctions(newFrags, junctions, circular);
+    updateActive({ fragments: newFrags, junctions: newJuncs, calculated: false });
   };
 
   const updateJunction = (i, cfg) => {

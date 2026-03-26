@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
 
-export default function JunctionBlock({ junction, index, leftName, rightName, onChange }) {
+export default function JunctionBlock({ junction, index, leftName, rightName, leftPCR = true, rightPCR = true, onChange }) {
   const [open, setOpen] = useState(false);
   const j = junction || { type: 'overlap', overlapMode: 'split', overlapLength: 30, tmTarget: 62 };
 
@@ -26,21 +26,28 @@ export default function JunctionBlock({ junction, index, leftName, rightName, on
     ? `Overlap: ${j.overlapSequence}\n${displayLen} п.н. · Tm ${j.overlapTm || '?'}°C · GC ${j.overlapGc || '?'}%${diff ? `\nАвто-расширен с ${userLen} до ${displayLen} п.н. для Tm` : ''}`
     : `Overlap: ${userLen} п.н.`;
 
-  const modeBtn = (mode, icon, desc) => (
-    <button
-      onClick={() => {
-        let len = j.overlapLength || 30;
-        if (mode === 'split' && len < 28) len = 30;
-        onChange({ ...j, overlapMode: mode, overlapLength: len });
-      }}
-      className={`flex-1 text-[10px] py-2 px-1 rounded border text-center transition
-        ${j.overlapMode === mode
-          ? 'bg-blue-50 border-blue-400 text-blue-700 font-bold'
-          : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
-      <div className="font-mono">{icon}</div>
-      <div className="mt-1">{desc}</div>
-    </button>
-  );
+  const modeBtn = (mode, icon, desc) => {
+    const disabled = (mode === 'split' && (!leftPCR || !rightPCR))
+      || (mode === 'left_only' && !leftPCR) || (mode === 'right_only' && !rightPCR);
+    return (
+      <button
+        onClick={() => {
+          if (disabled) return;
+          let len = j.overlapLength || 30;
+          if (mode === 'split' && len < 28) len = 30;
+          onChange({ ...j, overlapMode: mode, overlapLength: len, autoMode: false });
+        }}
+        disabled={disabled}
+        className={`flex-1 text-[10px] py-2 px-1 rounded border text-center transition
+          ${j.overlapMode === mode ? 'bg-blue-50 border-blue-400 text-blue-700 font-bold'
+            : disabled ? 'bg-gray-50 text-gray-300 cursor-not-allowed border-gray-100'
+            : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}
+        title={disabled ? `Недоступно: ${!leftPCR ? leftName : rightName} без ПЦР` : undefined}>
+        <div className="font-mono">{icon}</div>
+        <div className="mt-1">{desc}</div>
+      </button>
+    );
+  };
 
   return (
     <div className="relative">

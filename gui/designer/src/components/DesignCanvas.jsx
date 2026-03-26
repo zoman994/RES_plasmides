@@ -188,6 +188,8 @@ export default function DesignCanvas({
                       <div className="flex flex-col items-center shrink-0" style={{ minWidth: 50 }}>
                         <JunctionBlock junction={junctions[i]} index={i}
                           leftName={frag.name} rightName={fragments[(i + 1) % n]?.name || '?'}
+                          leftPCR={frag.needsAmplification !== false}
+                          rightPCR={fragments[(i + 1) % n]?.needsAmplification !== false}
                           onChange={cfg => onJunctionChange(i, cfg)} />
                         <JunctionDNA junction={junctions[i]} calculated={calculated}
                           primers={primers}
