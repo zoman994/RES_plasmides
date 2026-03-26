@@ -22,9 +22,6 @@ export default function JunctionBlock({ junction, index, leftName, rightName, on
     : j.type === 'sticky_end' ? (j.reEnzyme || 'RE')
     : j.type;
 
-  // Auto-expansion note
-  const autoNote = diff ? `(${diff > 0 ? '+' : ''}${diff})` : '';
-
   // Tooltip with overlap details
   const tip = j.overlapSequence
     ? `Overlap: ${j.overlapSequence}\n${displayLen} п.н. · Tm ${j.overlapTm || '?'}°C · GC ${j.overlapGc || '?'}%${diff ? `\nАвто-расширен с ${userLen} до ${displayLen} п.н. для Tm` : ''}`
@@ -53,13 +50,10 @@ export default function JunctionBlock({ junction, index, leftName, rightName, on
                    hover:bg-blue-50 transition rounded" title={tip}>
         <div className="w-px h-10 bg-gray-300" />
       </div>
-      <div className="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap flex flex-col items-center">
-        <span className="text-[9px] text-blue-600 font-semibold">{label}</span>
-        {autoNote && (
-          <span className="text-[7px] text-teal-500">{autoNote}</span>
-        )}
+      <div className="absolute -top-4 left-1/2 -translate-x-1/2 whitespace-nowrap flex flex-col items-center leading-tight">
+        <span className="text-[10px] text-blue-600 font-bold">{label}</span>
         {actualLen && j.overlapTm && (
-          <span className="text-[7px] text-gray-400">Tm {j.overlapTm}°</span>
+          <span className="text-[8px] text-gray-400">Tm {j.overlapTm}°</span>
         )}
       </div>
 
