@@ -38,6 +38,7 @@ export default function DesignCanvas({
     return saved ? parseInt(saved) : 280;
   });
   const canvasRef = useRef(null);
+  const canvasContainerRef = useRef(null);
   const scrollRef = useRef(null);
   const resizing = useRef(false);
   const startY = useRef(0);
@@ -88,33 +89,40 @@ export default function DesignCanvas({
     return () => el.removeEventListener('wheel', handler);
   }, []);
 
-  // ═══ Resize handle ═══
+  // ═══ Resize handle (direct DOM for smooth 60fps) ═══
   const onResizeStart = useCallback((e) => {
+    e.preventDefault();
     resizing.current = true;
     startY.current = e.clientY;
     startH.current = canvasH;
     const onMove = (ev) => {
       if (!resizing.current) return;
-      const newH = Math.max(150, Math.min(800, startH.current + ev.clientY - startY.current));
-      setCanvasH(newH);
+      const h = Math.max(200, Math.min(800, startH.current + ev.clientY - startY.current));
+      if (canvasContainerRef.current) canvasContainerRef.current.style.height = `${h}px`;
+      startH.current = h; // track for onUp
+      startY.current = ev.clientY;
     };
     const onUp = () => {
       resizing.current = false;
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
-      setCanvasH(h => { localStorage.setItem('pvcs-canvas-height', String(h)); return h; });
+      const finalH = parseInt(canvasContainerRef.current?.style.height) || 280;
+      setCanvasH(finalH);
+      localStorage.setItem('pvcs-canvas-height', String(finalH));
     };
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
   }, [canvasH]);
 
   return (
-    <div ref={(el) => { drop(el); canvasRef.current = el; }}
+    <div ref={(el) => { drop(el); canvasRef.current = el; canvasContainerRef.current = el; }}
       className={`relative rounded-xl px-4 pt-2 pb-3
-        flex flex-col transition
+        flex flex-col shrink-0
         ${isOver ? 'border-2 border-blue-400 bg-blue-50/40' : 'border border-gray-200'}`}
       style={{
-        ...(n > 0 ? { height: canvasH, minHeight: 150, maxHeight: 800 } : { minHeight: 180 }),
+        height: n > 0 ? canvasH : undefined,
+        minHeight: n > 0 ? 200 : 180,
+        maxHeight: 800,
         backgroundColor: '#ffffff',
         backgroundImage: 'radial-gradient(#e0e2e6 1px, transparent 1px)',
         backgroundSize: '20px 20px',
