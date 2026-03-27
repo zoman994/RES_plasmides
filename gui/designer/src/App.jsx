@@ -13,7 +13,7 @@ import MutagenesisWizard from './components/MutagenesisWizard';
 import VerificationPanel from './components/VerificationPanel';
 import FragmentSplitter from './components/FragmentSplitter';
 import AssemblyTabs from './components/AssemblyTabs';
-import ExperimentSelector from './components/ExperimentSelector';
+import ProjectBar from './components/ExperimentSelector';
 import ExperimentStats from './components/ExperimentStats';
 import OligoManager from './components/OligoManager';
 import FragmentEditor from './components/FragmentEditor';
@@ -66,11 +66,8 @@ function newExperiment(id, name) {
 export default function App() {
   // ═══════════ Global state ═══════════
   const [parts, setParts] = useState([]);
-  const [experiments, setExperiments] = useState([{
-    id: 'exp_1', name: 'Эксперимент 1', createdAt: new Date().toISOString(),
-    assemblies: [newAssembly('asm_1', 'Сборка 1')],
-  }]);
-  const [activeExpId, setActiveExpId] = useState('exp_1');
+  const [projectName, setProjectName] = useState('Проект 1');
+  const [assemblies, setAssemblies] = useState([newAssembly('asm_1', 'Сборка 1')]);
   const [activeId, setActiveId] = useState('asm_1');
   const [loading, setLoading] = useState(false);
   const [modalMode, setModalMode] = useState(null);
@@ -86,9 +83,7 @@ export default function App() {
   const [polymerase, setPolymerase] = useState('phusion');
   const [primerPrefix, setPrimerPrefix] = useState('IS');
 
-  // ═══════════ Derived: experiment → assemblies → active ═══════════
-  const activeExp = experiments.find(e => e.id === activeExpId) || experiments[0];
-  const assemblies = activeExp?.assemblies || [];
+  // ═══════════ Derived ═══════════
   const active = assemblies.find(a => a.id === activeId) || assemblies[0] || newAssembly('asm_1', 'Сборка 1');
   const fragments = active.fragments || [];
   const junctions = active.junctions || [];
@@ -102,26 +97,14 @@ export default function App() {
   const primerMatches = active.primerMatches || {};
   const protocolSteps = active.protocolSteps || [];
 
-  // ═══════════ Assembly updaters (through experiments) ═══════════
-  const setAssemblies = useCallback((updater) => {
-    setExperiments(prev => prev.map(e =>
-      e.id === activeExpId
-        ? { ...e, assemblies: typeof updater === 'function' ? updater(e.assemblies) : updater }
-        : e
-    ));
-  }, [activeExpId]);
-
+  // ═══════════ Assembly updaters ═══════════
   const updateActive = useCallback((updates) => {
-    setAssemblies(prev => prev.map(a =>
-      a.id === activeId ? { ...a, ...updates } : a
-    ));
-  }, [activeId, setAssemblies]);
+    setAssemblies(prev => prev.map(a => a.id === activeId ? { ...a, ...updates } : a));
+  }, [activeId]);
 
   const updateAssembly = useCallback((id, updates) => {
-    setAssemblies(prev => prev.map(a =>
-      a.id === id ? { ...a, ...updates } : a
-    ));
-  }, [setAssemblies]);
+    setAssemblies(prev => prev.map(a => a.id === id ? { ...a, ...updates } : a));
+  }, []);
 
   // ═══════════ Restore from localStorage ═══════════
   const [initialized, setInitialized] = useState(false);
@@ -129,55 +112,36 @@ export default function App() {
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(LS_KEY) || '{}');
+      // Migrate from experiments format
       if (saved.experiments?.length) {
-        // New experiment format
-        setExperiments(saved.experiments);
-        setActiveExpId(saved.activeExpId || saved.experiments[0].id);
-        const firstExp = saved.experiments.find(e => e.id === (saved.activeExpId || saved.experiments[0].id));
-        setActiveId(saved.activeId || firstExp?.assemblies?.[0]?.id || 'asm_1');
-        if (saved.polymerase) setPolymerase(saved.polymerase);
-        if (saved.primerPrefix) setPrimerPrefix(saved.primerPrefix);
-        let maxId = 0;
-        saved.experiments.forEach(exp =>
-          (exp.assemblies || []).forEach(a =>
-            (a.fragments || []).forEach(f => {
-              const num = parseInt(String(f.id).replace(/\D/g, ''), 10);
-              if (num > maxId) maxId = num;
-            })
-          )
-        );
-        nextId = maxId + 1;
+        const exp = saved.experiments.find(e => e.id === saved.activeExpId) || saved.experiments[0];
+        setProjectName(exp.name || 'Проект 1');
+        setAssemblies(exp.assemblies || [newAssembly('asm_1', 'Сборка 1')]);
+        setActiveId(saved.activeId || exp.assemblies?.[0]?.id || 'asm_1');
       } else if (saved.assemblies?.length) {
-        // Migrate: assemblies → wrap in experiment
-        setExperiments([{
-          id: 'exp_1', name: 'Эксперимент 1', createdAt: new Date().toISOString(),
-          assemblies: saved.assemblies,
-        }]);
+        setAssemblies(saved.assemblies);
         setActiveId(saved.activeId || saved.assemblies[0].id);
-        if (saved.polymerase) setPolymerase(saved.polymerase);
-        if (saved.primerPrefix) setPrimerPrefix(saved.primerPrefix);
-        let maxId = 0;
-        saved.assemblies.forEach(a =>
-          (a.fragments || []).forEach(f => {
-            const num = parseInt(String(f.id).replace(/\D/g, ''), 10);
-            if (num > maxId) maxId = num;
-          })
-        );
-        nextId = maxId + 1;
       } else if (saved.fragments?.length) {
-        // Migrate old single-assembly format
         const asm = newAssembly('asm_1', 'Сборка 1');
         asm.fragments = saved.fragments;
         if (saved.junctions) asm.junctions = saved.junctions;
         asm.assemblyType = saved.assemblyType || 'overlap';
         if (saved.protocol) asm.protocol = saved.protocol;
         if (saved.circular !== undefined) asm.circular = saved.circular;
-        setExperiments([{
-          id: 'exp_1', name: 'Эксперимент 1', createdAt: new Date().toISOString(),
-          assemblies: [asm],
-        }]);
-        nextId = saved.fragments.length + 1;
+        setAssemblies([asm]);
       }
+      if (saved.projectName) setProjectName(saved.projectName);
+      if (saved.polymerase) setPolymerase(saved.polymerase);
+      if (saved.primerPrefix) setPrimerPrefix(saved.primerPrefix);
+      // Compute max fragment ID
+      let maxId = 0;
+      (saved.assemblies || saved.experiments?.[0]?.assemblies || []).forEach(a =>
+        (a.fragments || []).forEach(f => {
+          const num = parseInt(String(f.id).replace(/\D/g, ''), 10);
+          if (num > maxId) maxId = num;
+        })
+      );
+      nextId = maxId + 1;
     } catch {}
     setInitialized(true);
   }, []);
@@ -186,9 +150,9 @@ export default function App() {
   useEffect(() => {
     if (!initialized) return;
     localStorage.setItem(LS_KEY, JSON.stringify({
-      experiments, activeExpId, activeId, polymerase, primerPrefix,
+      projectName, assemblies, activeId, polymerase, primerPrefix,
     }));
-  }, [initialized, experiments, activeExpId, activeId, polymerase, primerPrefix]);
+  }, [initialized, projectName, assemblies, activeId, polymerase, primerPrefix]);
 
   // ═══════════ Load parts ═══════════
   useEffect(() => {
@@ -220,9 +184,7 @@ export default function App() {
   const totalBp = fragments.reduce((s, f) => s + (f.sequence || '').length, 0);
 
   // All assemblies across all experiments (for OligoManager)
-  const allAssemblies = useMemo(() =>
-    experiments.flatMap(e => (e.assemblies || []).map(a => ({ ...a, experimentName: e.name }))),
-    [experiments]);
+  const allAssemblies = assemblies;
 
   // ═══════════ Auto-adjust junction modes for non-PCR fragments ═══════════
   function autoAdjustJunctions(frags, juncs, isCirc) {
@@ -500,22 +462,7 @@ export default function App() {
       calculated: false, protocolSteps: [], completed: false, product: null });
   };
 
-  // ═══════════ Experiment management ═══════════
-  const createExperiment = () => {
-    const name = prompt('Название эксперимента:', `Эксперимент ${experiments.length + 1}`);
-    if (!name) return;
-    const exp = newExperiment(`exp_${Date.now()}`, name);
-    setExperiments(prev => [...prev, exp]);
-    setActiveExpId(exp.id);
-    setActiveId(exp._firstAsmId);
-  };
-
-  const switchExperiment = (expId) => {
-    const exp = experiments.find(e => e.id === expId);
-    setActiveExpId(expId);
-    if (exp?.assemblies?.length) setActiveId(exp.assemblies[0].id);
-    setSplitTarget(null); setShowMutagenesis(false);
-  };
+  // ═══════════ (no experiment management — single project) ═══════════
 
   // ═══════════ Render ═══════════
   return (
@@ -579,12 +526,7 @@ export default function App() {
         </header>
 
         {/* Experiment selector */}
-        <ExperimentSelector
-          experiments={experiments}
-          activeExpId={activeExpId}
-          onSelect={switchExperiment}
-          onCreate={createExperiment}
-        />
+        <ProjectBar projectName={projectName} onRename={setProjectName} />
 
         {/* Assembly tabs */}
         <AssemblyTabs
