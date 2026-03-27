@@ -412,7 +412,8 @@ export default function App() {
   const switchAssembly = (id) => { setActiveId(id); setSplitTarget(null); setShowMutagenesis(false); };
 
   const setAssemblyType_ = (type) => {
-    updateActive({ assemblyType: type, junctions: junctions.map(j => ({ ...j, type: type === 'golden_gate' ? 'golden_gate' : 'overlap' })) });
+    // Set default for NEW junctions only — don't override existing individual settings
+    updateActive({ assemblyType: type });
   };
 
   const completeAssembly = () => {
@@ -481,7 +482,7 @@ export default function App() {
             <h1 className="text-base font-bold text-white">{t('Construct Designer')}</h1>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-400">{t('Assembly:')}</span>
+            <span className="text-xs text-gray-400" title="Тип для новых стыков (каждый стык настраивается индивидуально)">Метод:</span>
             <button onClick={() => setAssemblyType_('overlap')}
               className={`text-xs px-3 py-1.5 rounded-full font-semibold transition
                 ${assemblyType === 'overlap' ? 'bg-blue-500 text-white' : 'bg-white/10 text-gray-300 hover:bg-white/20'}`}>
