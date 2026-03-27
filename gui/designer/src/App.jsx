@@ -355,22 +355,56 @@ export default function App() {
   };
 
   // ═══════════ Fragment split ═══════════
+  // Adjust domain positions when sequence is trimmed
+  function adjustDomains(domains, cutAA, action) {
+    if (!domains?.length) return [];
+    const isCDS = true; // domains use AA positions
+    if (action === 'remove_part1') {
+      // Remove first cutAA amino acids — shift all domains left, remove those entirely in cut region
+      return domains
+        .filter(d => d.endAA > cutAA) // keep only domains that extend past cut
+        .map(d => ({ ...d, startAA: Math.max(1, d.startAA - cutAA), endAA: d.endAA - cutAA }));
+    }
+    if (action === 'remove_part2') {
+      // Keep first cutAA amino acids — remove domains that start after cut
+      return domains
+        .filter(d => d.startAA <= cutAA)
+        .map(d => ({ ...d, endAA: Math.min(d.endAA, cutAA) }));
+    }
+    if (action === 'split') {
+      // Part 1 gets domains up to cutAA, part 2 gets domains after cutAA (shifted)
+      return {
+        part1: domains.filter(d => d.startAA <= cutAA).map(d => ({ ...d, endAA: Math.min(d.endAA, cutAA) })),
+        part2: domains.filter(d => d.endAA > cutAA).map(d => ({ ...d, startAA: Math.max(1, d.startAA - cutAA), endAA: d.endAA - cutAA })),
+      };
+    }
+    return domains;
+  }
+
   const handleFragmentSplit = (result) => {
     const idx = splitTarget; if (idx === null) return;
     const nf = [...fragments]; const frag = nf[idx];
+    const cutAA = result.cutPosition ? Math.floor(result.cutPosition / 3) : 0;
+
     if (result.action === 'split') {
+      const domSplit = adjustDomains(frag.domains, cutAA, 'split');
       const p1 = { id: `f${nextId++}`, name: result.part1Name, type: frag.type,
-        sequence: result.part1DNA, length: result.part1DNA.length, strand: 1, needsAmplification: true };
-      nf[idx] = { ...frag, name: result.part2Name, sequence: result.part2DNA, length: result.part2DNA.length };
+        sequence: result.part1DNA, length: result.part1DNA.length, strand: 1, needsAmplification: true,
+        domains: domSplit.part1 || [] };
+      nf[idx] = { ...frag, name: result.part2Name, sequence: result.part2DNA, length: result.part2DNA.length,
+        domains: domSplit.part2 || [] };
       nf.splice(idx, 0, p1);
     } else if (result.action === 'remove_part1') {
-      nf[idx] = { ...frag, sequence: result.sequence, length: result.sequence.length };
+      nf[idx] = { ...frag, sequence: result.sequence, length: result.sequence.length,
+        domains: adjustDomains(frag.domains, cutAA, 'remove_part1') };
     } else if (result.action === 'remove_part2') {
-      nf[idx] = { ...frag, sequence: result.sequence, length: result.sequence.length };
+      nf[idx] = { ...frag, sequence: result.sequence, length: result.sequence.length,
+        domains: adjustDomains(frag.domains, cutAA, 'remove_part2') };
     } else if (result.action === 'replace_part1') {
       const rep = { id: `f${nextId++}`, name: result.replacementName, type: result.replacementType || frag.type,
         sequence: result.replacementSeq, length: result.replacementSeq.length, strand: 1, needsAmplification: true };
-      nf[idx] = { ...frag, name: result.part2Name, sequence: result.part2DNA, length: result.part2DNA.length };
+      nf[idx] = { ...frag, name: result.part2Name, sequence: result.part2DNA, length: result.part2DNA.length,
+        domains: adjustDomains(frag.domains, cutAA, 'remove_part1') };
       nf.splice(idx, 0, rep);
     }
     updateActive({ fragments: nf, junctions: mkJunctions(nf, assemblyType, circular), calculated: false });
