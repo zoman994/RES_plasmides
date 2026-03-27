@@ -43,7 +43,24 @@ const REGION_TYPES = {
     { value: 'binding', label: 'Сайт связывания' }, { value: 'custom', label: 'Другое' },
   ],
 };
-function getRegionTypes(fragType) { return REGION_TYPES[fragType] || REGION_TYPES._default; }
+function getRegionTypes(fragType) {
+  const base = REGION_TYPES[fragType] || REGION_TYPES._default;
+  // Load user-defined types from localStorage
+  try {
+    const custom = JSON.parse(localStorage.getItem('pvcs-custom-region-types') || '[]');
+    return [...base, ...custom];
+  } catch { return base; }
+}
+
+function addCustomRegionType(value, label) {
+  try {
+    const custom = JSON.parse(localStorage.getItem('pvcs-custom-region-types') || '[]');
+    if (!custom.some(t => t.value === value)) {
+      custom.push({ value, label });
+      localStorage.setItem('pvcs-custom-region-types', JSON.stringify(custom));
+    }
+  } catch {}
+}
 
 // Region colors — extend for regulatory elements
 const REGION_COLORS = {
@@ -306,8 +323,15 @@ export default function FragmentEditor({ fragment, onSave, onClose }) {
               <div className="border rounded p-2 bg-gray-50 mb-3 space-y-2">
                 <div className="grid grid-cols-4 gap-2">
                   <input placeholder="Имя" value={addForm.name} onChange={e => setAddForm({ ...addForm, name: e.target.value })} className="text-xs border rounded p-1.5 col-span-2" />
-                  <select value={addForm.type} onChange={e => setAddForm({ ...addForm, type: e.target.value })} className="text-xs border rounded p-1.5">
-                    {regionTypes.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}</select>
+                  <select value={addForm.type} onChange={e => {
+                    if (e.target.value === '__new__') {
+                      const name = prompt('Название нового типа:');
+                      if (name) { const val = name.toLowerCase().replace(/\s+/g, '_'); addCustomRegionType(val, name); setAddForm({ ...addForm, type: val }); }
+                    } else setAddForm({ ...addForm, type: e.target.value });
+                  }} className="text-xs border rounded p-1.5">
+                    {regionTypes.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                    <option value="__new__">+ Новый тип...</option>
+                  </select>
                   <div className="flex gap-1">
                     <input type="number" value={addForm.startAA} min={1} max={maxPos} onChange={e => setAddForm({ ...addForm, startAA: +e.target.value })} className="text-xs border rounded p-1.5 w-14" />
                     <input type="number" value={addForm.endAA} min={1} max={maxPos} onChange={e => setAddForm({ ...addForm, endAA: +e.target.value })} className="text-xs border rounded p-1.5 w-14" />
