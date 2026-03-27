@@ -20,12 +20,39 @@ const QUICK_ACTIONS = [
   { key: 'his6c', label: '+ His6 (C)', pos: 'before_stop', insert: 'CATCACCATCACCATCAC', forType: 'CDS' },
 ];
 
-const DOMAIN_TYPES = [
-  { value: 'signal', label: 'Сигн. пептид' }, { value: 'propeptide', label: 'Пропептид' },
-  { value: 'domain', label: 'Домен' }, { value: 'linker', label: 'Линкер' },
-  { value: 'tag', label: 'Тег' }, { value: 'binding', label: 'Связывающий' },
-  { value: 'transmembrane', label: 'Трансмембр.' }, { value: 'custom', label: 'Другое' },
-];
+// Domain/region types — universal for all fragment types
+const REGION_TYPES = {
+  CDS: [
+    { value: 'signal', label: 'Сигн. пептид' }, { value: 'propeptide', label: 'Пропептид' },
+    { value: 'domain', label: 'Домен' }, { value: 'linker', label: 'Линкер' },
+    { value: 'tag', label: 'Тег (His, FLAG)' }, { value: 'binding', label: 'Связывающий' },
+    { value: 'transmembrane', label: 'Трансмембр.' }, { value: 'custom', label: 'Другое' },
+  ],
+  promoter: [
+    { value: 'UAS', label: 'UAS/Энхансер' }, { value: 'TATA', label: 'TATA-box' },
+    { value: 'RBS', label: 'RBS (Шайн-Дальгарно)' }, { value: 'core', label: 'Core промотор' },
+    { value: 'operator', label: 'Оператор' }, { value: 'insulator', label: 'Инсулятор' },
+    { value: 'TSS', label: 'Старт транскрипции' }, { value: 'custom', label: 'Другое' },
+  ],
+  terminator: [
+    { value: 'polyA', label: 'PolyA-сигнал' }, { value: 'stem_loop', label: 'Стем-луп' },
+    { value: 'T_rich', label: 'T-богатый участок' }, { value: 'custom', label: 'Другое' },
+  ],
+  _default: [
+    { value: 'region', label: 'Область' }, { value: 'repeat', label: 'Повтор' },
+    { value: 'binding', label: 'Сайт связывания' }, { value: 'custom', label: 'Другое' },
+  ],
+};
+function getRegionTypes(fragType) { return REGION_TYPES[fragType] || REGION_TYPES._default; }
+
+// Region colors — extend for regulatory elements
+const REGION_COLORS = {
+  ...DOMAIN_COLORS,
+  UAS: '#6929c4', TATA: '#d55e00', RBS: '#0072b2', core: '#009e73',
+  operator: '#e69f00', insulator: '#cc79a7', TSS: '#56b4e9',
+  polyA: '#d55e00', stem_loop: '#009e73', T_rich: '#e69f00',
+  region: '#56b4e9', repeat: '#999999',
+};
 
 const DOMAINS_LS_KEY = 'pvcs-parts-domains';
 function loadSavedDomains(id) { try { return JSON.parse(localStorage.getItem(DOMAINS_LS_KEY) || '{}')[id]; } catch { return null; } }
@@ -105,12 +132,10 @@ export default function FragmentEditor({ fragment, onSave, onClose }) {
             className={`flex-1 px-3 py-1.5 text-xs font-medium transition ${tab === 'dna' ? 'bg-blue-600 text-white' : 'hover:bg-gray-50'}`}>
             {'🔤'} ДНК
           </button>
-          {isCDS && (
-            <button onClick={() => setTab('protein')}
-              className={`flex-1 px-3 py-1.5 text-xs font-medium transition ${tab === 'protein' ? 'bg-blue-600 text-white' : 'hover:bg-gray-50'}`}>
-              {'🧬'} Белок
-            </button>
-          )}
+          <button onClick={() => setTab('regions')}
+            className={`flex-1 px-3 py-1.5 text-xs font-medium transition ${tab === 'regions' ? 'bg-blue-600 text-white' : 'hover:bg-gray-50'}`}>
+            {isCDS ? '🧬 Белок' : '📐 Разметка'}
+          </button>
         </div>
 
         {/* ═══ TAB: ДНК ═══ */}
@@ -189,19 +214,24 @@ export default function FragmentEditor({ fragment, onSave, onClose }) {
           </>
         )}
 
-        {/* ═══ TAB: Белок ═══ */}
-        {tab === 'protein' && isCDS && (
-          <>
-            {/* Domain bar */}
+        {/* ═══ TAB: Белок / Разметка ═══ */}
+        {tab === 'regions' && (() => {
+            const unit = isCDS ? 'а.о.' : 'п.н.';
+            const maxPos = isCDS ? totalAA : seq.length;
+            const regionTypes = getRegionTypes(fragment.type);
+            const getColor = (type) => REGION_COLORS[type] || DOMAIN_COLORS[type] || '#56B4E9';
+            return (
+            <>
+            {/* Region bar */}
             {domains.length > 0 && (
               <div className="mb-3">
                 <div className="flex h-6 rounded overflow-hidden border">
                   {domains.map((d, di) => {
-                    const w = Math.max(2, ((d.endAA - d.startAA + 1) / totalAA) * 100);
+                    const w = Math.max(2, ((d.endAA - d.startAA + 1) / maxPos) * 100);
                     return (
-                      <div key={di} style={{ width: `${w}%`, backgroundColor: d.color }}
+                      <div key={di} style={{ width: `${w}%`, backgroundColor: d.color || getColor(d.type) }}
                         className="flex items-center justify-center text-[7px] text-white font-medium truncate px-0.5 border-r border-white/30"
-                        title={`${d.name}: ${d.startAA}–${d.endAA} а.о.`}>
+                        title={`${d.name}: ${d.startAA}–${d.endAA} ${unit}`}>
                         {w > 6 ? d.name : ''}
                       </div>
                     );
@@ -210,28 +240,35 @@ export default function FragmentEditor({ fragment, onSave, onClose }) {
               </div>
             )}
 
-            {/* Protein sequence — editable with domain coloring */}
+            {/* Sequence with region coloring */}
             <div className="font-mono text-[10px] leading-relaxed bg-gray-50 p-3 rounded max-h-[150px] overflow-y-auto break-all mb-3">
-              {protein.split('').map((aa, i) => {
+              {isCDS ? protein.split('').map((aa, i) => {
                 const pos = i + 1;
                 const dom = domains.find(d => pos >= d.startAA && pos <= d.endAA);
                 return (
-                  <span key={i} style={{
-                    backgroundColor: dom ? dom.color + '25' : 'transparent',
-                    borderBottom: dom ? `2px solid ${dom.color}` : 'none',
-                    color: aa === '*' ? '#dc2626' : '#333',
-                  }} title={`${aa} — позиция ${pos}${dom ? ` (${dom.name})` : ''}`}>{aa}</span>
+                  <span key={i} style={{ backgroundColor: dom ? (dom.color || getColor(dom.type)) + '25' : 'transparent',
+                    borderBottom: dom ? `2px solid ${dom.color || getColor(dom.type)}` : 'none',
+                    color: aa === '*' ? '#dc2626' : '#333' }}
+                    title={`${aa} — ${pos} ${unit}${dom ? ` (${dom.name})` : ''}`}>{aa}</span>
+                );
+              }) : seq.split('').map((nt, i) => {
+                const pos = i + 1;
+                const dom = domains.find(d => pos >= d.startAA && pos <= d.endAA);
+                return (
+                  <span key={i} style={{ backgroundColor: dom ? (dom.color || getColor(dom.type)) + '20' : 'transparent',
+                    borderBottom: dom ? `2px solid ${dom.color || getColor(dom.type)}` : 'none' }}
+                    title={`${pos} п.н.${dom ? ` (${dom.name})` : ''}`}>{nt}</span>
                 );
               })}
             </div>
 
-            {/* Domain management */}
+            {/* Region management */}
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold text-gray-600">Домены ({domains.length})</span>
+              <span className="text-xs font-semibold text-gray-600">{isCDS ? 'Домены' : 'Области'} ({domains.length})</span>
               <div className="flex gap-2">
-                <button onClick={() => setDomains(autoDetectDomains(seq, fragment.name))}
-                  className="text-[10px] px-2 py-1 bg-blue-50 text-blue-700 rounded hover:bg-blue-100">{'🔍'} Авто</button>
-                <button onClick={() => setAddForm({ name: '', type: 'domain', startAA: 1, endAA: totalAA })}
+                {isCDS && <button onClick={() => setDomains(autoDetectDomains(seq, fragment.name))}
+                  className="text-[10px] px-2 py-1 bg-blue-50 text-blue-700 rounded hover:bg-blue-100">{'🔍'} Авто</button>}
+                <button onClick={() => setAddForm({ name: '', type: regionTypes[0]?.value || 'custom', startAA: 1, endAA: maxPos })}
                   className="text-[10px] px-2 py-1 bg-green-50 text-green-700 rounded hover:bg-green-100">+ Добавить</button>
               </div>
             </div>
@@ -240,20 +277,20 @@ export default function FragmentEditor({ fragment, onSave, onClose }) {
               <table className="w-full text-[11px] mb-3">
                 <thead><tr className="text-gray-400 text-[9px] uppercase">
                   <th className="text-left p-1">#</th><th className="text-left p-1">Имя</th>
-                  <th className="text-left p-1">Тип</th><th className="text-right p-1">Позиция</th>
+                  <th className="text-left p-1">Тип</th><th className="text-right p-1">Позиция ({unit})</th>
                   <th className="text-right p-1">Дл.</th><th className="p-1 w-5"></th>
                 </tr></thead>
                 <tbody>{domains.map((d, di) => (
                   <tr key={di} className="border-t hover:bg-gray-50">
-                    <td className="p-1"><span className="w-3 h-3 rounded-full inline-block" style={{ backgroundColor: d.color }} /></td>
+                    <td className="p-1"><span className="w-3 h-3 rounded-full inline-block" style={{ backgroundColor: d.color || getColor(d.type) }} /></td>
                     <td className="p-1"><input value={d.name} onChange={e => setDomains(prev => prev.map((x, j) => j === di ? { ...x, name: e.target.value } : x))}
                       className="text-[11px] border rounded px-1 py-0.5 w-24" /></td>
-                    <td className="p-1"><select value={d.type} onChange={e => setDomains(prev => prev.map((x, j) => j === di ? { ...x, type: e.target.value, color: DOMAIN_COLORS[e.target.value] || x.color } : x))}
-                      className="text-[10px] border rounded px-1 py-0.5">{DOMAIN_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}</select></td>
+                    <td className="p-1"><select value={d.type} onChange={e => setDomains(prev => prev.map((x, j) => j === di ? { ...x, type: e.target.value, color: getColor(e.target.value) } : x))}
+                      className="text-[10px] border rounded px-1 py-0.5">{regionTypes.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}</select></td>
                     <td className="p-1 text-right text-[10px]">
-                      <input type="number" value={d.startAA} min={1} max={totalAA} onChange={e => setDomains(prev => prev.map((x, j) => j === di ? { ...x, startAA: +e.target.value } : x))}
+                      <input type="number" value={d.startAA} min={1} max={maxPos} onChange={e => setDomains(prev => prev.map((x, j) => j === di ? { ...x, startAA: +e.target.value } : x))}
                         className="w-11 text-[10px] border rounded px-1 py-0.5 text-right" />–
-                      <input type="number" value={d.endAA} min={1} max={totalAA} onChange={e => setDomains(prev => prev.map((x, j) => j === di ? { ...x, endAA: +e.target.value } : x))}
+                      <input type="number" value={d.endAA} min={1} max={maxPos} onChange={e => setDomains(prev => prev.map((x, j) => j === di ? { ...x, endAA: +e.target.value } : x))}
                         className="w-11 text-[10px] border rounded px-1 py-0.5 text-right" />
                     </td>
                     <td className="p-1 text-right text-gray-400">{d.endAA - d.startAA + 1}</td>
@@ -263,17 +300,17 @@ export default function FragmentEditor({ fragment, onSave, onClose }) {
               </table>
             )}
 
-            {domains.length === 0 && <div className="text-center text-gray-400 text-xs py-3 mb-3">Нажмите «Авто» или добавьте вручную</div>}
+            {domains.length === 0 && <div className="text-center text-gray-400 text-xs py-3 mb-3">{isCDS ? 'Нажмите «Авто» или добавьте вручную' : 'Добавьте области вручную'}</div>}
 
             {addForm && (
               <div className="border rounded p-2 bg-gray-50 mb-3 space-y-2">
                 <div className="grid grid-cols-4 gap-2">
                   <input placeholder="Имя" value={addForm.name} onChange={e => setAddForm({ ...addForm, name: e.target.value })} className="text-xs border rounded p-1.5 col-span-2" />
                   <select value={addForm.type} onChange={e => setAddForm({ ...addForm, type: e.target.value })} className="text-xs border rounded p-1.5">
-                    {DOMAIN_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}</select>
+                    {regionTypes.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}</select>
                   <div className="flex gap-1">
-                    <input type="number" value={addForm.startAA} min={1} max={totalAA} onChange={e => setAddForm({ ...addForm, startAA: +e.target.value })} className="text-xs border rounded p-1.5 w-14" />
-                    <input type="number" value={addForm.endAA} min={1} max={totalAA} onChange={e => setAddForm({ ...addForm, endAA: +e.target.value })} className="text-xs border rounded p-1.5 w-14" />
+                    <input type="number" value={addForm.startAA} min={1} max={maxPos} onChange={e => setAddForm({ ...addForm, startAA: +e.target.value })} className="text-xs border rounded p-1.5 w-14" />
+                    <input type="number" value={addForm.endAA} min={1} max={maxPos} onChange={e => setAddForm({ ...addForm, endAA: +e.target.value })} className="text-xs border rounded p-1.5 w-14" />
                   </div>
                 </div>
                 <div className="flex gap-2">
@@ -283,7 +320,8 @@ export default function FragmentEditor({ fragment, onSave, onClose }) {
               </div>
             )}
           </>
-        )}
+          );
+        })()}
 
         {/* Save */}
         <div className="flex gap-2">
