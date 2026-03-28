@@ -136,9 +136,14 @@ export default function PlasmidMap({ fragments, constructName, totalBp, junction
               {/* Invisible wider hit area */}
               <path d={sectorPath(cx, cy, outerR + 20, innerR - 8, a.startAngle, a.endAngle)}
                 fill="transparent" stroke="none" />
-              {/* Visible arc — with domain sub-arcs for CDS */}
+              {/* Visible arc — with domain sub-arcs inside a colored frame */}
               {a.domains?.length > 0 ? (<>
-                {/* Domain sub-arcs */}
+                {/* Outer frame = fragment color */}
+                <path d={sectorPath(cx, cy, isSel ? outerR + 5 : isH ? outerR + 3 : outerR, isSel ? innerR - 2 : innerR, a.startAngle + gap, a.endAngle - gap)}
+                  fill="none" stroke={a.color} strokeWidth={2.5} opacity={isH ? 0.85 : 1}
+                  style={{ transition: 'all 100ms' }}
+                  onClick={() => { setSelected(isSel ? null : i); onSelectFragment?.(i); }} />
+                {/* Domain fills inside the frame */}
                 {a.domains.map((dom, di) => {
                   const isCDS = a.type === 'CDS' || a.type === 'gene';
                   const domStartBp = isCDS ? (dom.startAA - 1) * 3 : dom.startAA - 1;
@@ -147,20 +152,21 @@ export default function PlasmidMap({ fragments, constructName, totalBp, junction
                   const dsFrac = domStartBp / fragLen;
                   const deFrac = Math.min(1, domEndBp / fragLen);
                   const dsA = a.startAngle + (a.endAngle - a.startAngle) * dsFrac + gap;
-                  const deA = a.startAngle + (a.endAngle - a.startAngle) * deFrac - gap * 0.3;
-                  const oR = isSel ? outerR + 5 : isH ? outerR + 3 : outerR;
-                  const iR = isSel ? innerR - 2 : innerR;
+                  const deA = a.startAngle + (a.endAngle - a.startAngle) * deFrac - gap * 0.2;
+                  // Slightly inset so frame border is visible
+                  const oR = (isSel ? outerR + 5 : isH ? outerR + 3 : outerR) - 1.5;
+                  const iR = (isSel ? innerR - 2 : innerR) + 1.5;
                   return (
                     <path key={`d${di}`} d={sectorPath(cx, cy, oR, iR, dsA, deA)}
                       fill={dom.color || DOMAIN_COLORS[dom.type] || a.color}
-                      stroke="#fff" strokeWidth={0.5} opacity={isH ? 0.85 : 1}
+                      stroke="#fff" strokeWidth={0.3} opacity={isH ? 0.85 : 1}
                       style={{ transition: 'all 100ms' }}
                       onClick={() => { setSelected(isSel ? null : i); onSelectFragment?.(i); }}>
                       <title>{a.name}: {dom.name} ({dom.startAA}–{dom.endAA})</title>
                     </path>
                   );
                 })}
-                {/* Domain labels inside arcs — always readable left-to-right */}
+                {/* Domain labels via textPath (follows arc curvature) */}
                 {a.domains.map((dom, di) => {
                   const isCDS = a.type === 'CDS' || a.type === 'gene';
                   const domStartBp = isCDS ? (dom.startAA - 1) * 3 : dom.startAA - 1;
@@ -173,22 +179,22 @@ export default function PlasmidMap({ fragments, constructName, totalBp, junction
                   const arcSpan = deA - dsA;
                   const midR = (outerR + innerR) / 2;
                   const arcLen = arcSpan * midR;
-                  if (arcLen < 30) return null;
+                  if (arcLen < 25) return null; // too narrow for label
                   const midA = (dsA + deA) / 2;
-                  const lp = polar(cx, cy, midR, midA);
-                  // midA: 0=12 o'clock, π/2=3, π=6, 3π/2=9
-                  // Bottom half (3→9 through 6): flip 180° so text reads left-to-right
+                  // textPath: flip for bottom half so text reads left-to-right
                   const isBottom = midA > Math.PI / 2 && midA < Math.PI * 1.5;
-                  const midDeg = midA * 180 / Math.PI;
-                  const rot = midDeg + (isBottom ? 90 : -90);
+                  const [from, to] = isBottom ? [deA, dsA] : [dsA, deA];
+                  const s = polar(cx, cy, midR, from), e = polar(cx, cy, midR, to);
+                  const lg = arcSpan > Math.PI ? 1 : 0;
+                  const pathId = `dom-tp-${i}-${di}`;
                   return (
-                    <text key={`dl${di}`} x={lp.x} y={lp.y}
-                      textAnchor="middle" dominantBaseline="central"
-                      className="pointer-events-none select-none"
-                      style={{ fontSize: arcLen < 50 ? '6px' : '7px', fill: '#fff', fontWeight: 500 }}
-                      transform={`rotate(${rot}, ${lp.x}, ${lp.y})`}>
-                      {dom.name}
-                    </text>
+                    <g key={`dl${di}`}>
+                      <defs><path id={pathId} d={`M ${s.x} ${s.y} A ${midR} ${midR} 0 ${lg} ${isBottom ? 0 : 1} ${e.x} ${e.y}`} fill="none" /></defs>
+                      <text className="pointer-events-none select-none"
+                        style={{ fontSize: arcLen < 40 ? '5px' : '7px', fill: '#fff', fontWeight: 500 }}>
+                        <textPath href={`#${pathId}`} startOffset="50%" textAnchor="middle">{dom.name}</textPath>
+                      </text>
+                    </g>
                   );
                 })}
               </>) : (
