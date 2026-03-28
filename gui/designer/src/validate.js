@@ -62,7 +62,54 @@ export function validateConstruct(fragments) {
     if (frag.has_introns && frag.introns?.length > 0)
       w.push(`⚠ ${frag.name}: содержит ${frag.introns.length} интрон(ов) — удалите для экспрессии в E. coli!`);
   });
+
+  // Identical fragment detection
+  for (let i = 0; i < fragments.length; i++) {
+    for (let j = i + 1; j < fragments.length; j++) {
+      if (!fragments[i].sequence || !fragments[j].sequence) continue;
+      if (fragments[i].sequence === fragments[j].sequence) {
+        const adjacent = j === i + 1;
+        if (adjacent) {
+          w.push(`⛔ ${fragments[i].name} (#${i + 1}) и ${fragments[j].name} (#${j + 1}) идентичны и стоят рядом — overlap/Gibson сборка НЕВОЗМОЖНА. Overlap-регионы будут одинаковыми → неправильная сборка. Используйте Golden Gate.`);
+        } else {
+          w.push(`⚠ ${fragments[i].name} (#${i + 1}) и ${fragments[j].name} (#${j + 1}) идентичны — overlap/Gibson может дать ошибочную сборку с повторяющимися фрагментами. Рекомендуется Golden Gate.`);
+        }
+      }
+    }
+  }
+
   return w;
+}
+
+/** Check if junctions between identical fragments need Golden Gate. */
+export function detectIdenticalFragmentIssues(fragments, junctions) {
+  const issues = [];
+  for (let i = 0; i < junctions.length; i++) {
+    const left = fragments[i];
+    const right = fragments[(i + 1) % fragments.length];
+    if (!left?.sequence || !right?.sequence) continue;
+    if (left.sequence === right.sequence && (junctions[i]?.type || 'overlap') === 'overlap') {
+      issues.push({ junctionIndex: i, leftName: left.name, rightName: right.name });
+    }
+  }
+  return issues;
+}
+
+/** Group identical fragments for PCR deduplication. Returns map: seqHash → { fragment, indices, count }. */
+export function groupIdenticalFragments(fragments) {
+  const groups = new Map();
+  fragments.forEach((f, i) => {
+    if (f.needsAmplification === false || !f.sequence) return;
+    const key = f.sequence;
+    if (!groups.has(key)) {
+      groups.set(key, { fragment: f, indices: [i], count: 1 });
+    } else {
+      const g = groups.get(key);
+      g.indices.push(i);
+      g.count++;
+    }
+  });
+  return groups;
 }
 
 /** Check primer quality — returns per-primer warning arrays. */

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useDrop } from 'react-dnd';
 import PartBlock from './PartBlock';
 import JunctionBlock from './JunctionBlock';
@@ -6,6 +6,9 @@ import JunctionDNA from './JunctionDNA';
 import { getFragColor, isMarker } from '../theme';
 import { t } from '../i18n';
 import PlasmidMap from './PlasmidMap';
+import SequenceMapView from './SequenceMapView';
+import { collectFamily } from '../part-variants';
+import { useStore, useFragments, useJunctions, usePrimers, useCustomPrimers } from '../store';
 
 function fragColor(frag, idx) {
   return isMarker(frag.name) ? '#F0E442' : getFragColor(frag.type, idx);
@@ -20,10 +23,33 @@ function fragmentWidthEstimate(bp) {
 }
 
 export default function DesignCanvas({
-  fragments, junctions, circular, onToggleCircular,
-  onDrop, onRemove, onToggleAmplification, onJunctionChange, onReorder, onFlip,
-  calculated, pcrSizes = [], onSplitSignal, onEditFragment, primers = [], constructName,
+  onDrop, onRemove, onToggleAmplification, onReorder, onFlip,
+  pcrSizes = [], onSplitSignal, onEditFragment,
+  onSwapVariant, onAddCustomPrimer, onJunctionChange, onToggleCircular,
 }) {
+  // ═══ Store selectors (granular) ═══
+  const fragments  = useFragments();
+  const junctions  = useJunctions();
+  const primers    = usePrimers();
+  const customPrimers = useCustomPrimers();
+  const circular   = useStore(s => { const asm = s.assemblies.find(a => a.id === s.activeId); return asm?.circular || false; });
+  const calculated = useStore(s => { const asm = s.assemblies.find(a => a.id === s.activeId); return asm?.calculated || false; });
+  const parts      = useStore(s => s.parts);
+  const constructName = useStore(s => { const asm = s.assemblies.find(a => a.id === s.activeId); return asm?.name || ''; });
+
+  // ═══ Derived from store data ═══
+  const allPrimers = useMemo(() => [
+    ...primers.map(p => ({ ...p, category: 'assembly' })),
+    ...customPrimers.map(p => ({ ...p, category: 'custom' })),
+  ], [primers, customPrimers]);
+
+  const allOverhangs = useMemo(() => junctions.map((j, i) => ({
+    overhang: j.overhang || '',
+    type: j.type || 'overlap',
+    leftName: fragments[i]?.name || '?',
+    rightName: fragments[(i + 1) % fragments.length]?.name || '?',
+  })), [junctions, fragments]);
+
   const [{ isOver }, drop] = useDrop({
     accept: 'PART',
     drop: (item) => onDrop(item.part),
@@ -34,7 +60,7 @@ export default function DesignCanvas({
     const saved = localStorage.getItem('pvcs-canvas-zoom');
     return saved ? parseInt(saved) : 100;
   });
-  const [viewMode, setViewMode] = useState('linear'); // 'linear' | 'map'
+  const [viewMode, setViewMode] = useState('blocks'); // 'blocks' | 'sequence' | 'map'
   const [canvasH, setCanvasH] = useState(() => {
     const saved = localStorage.getItem('pvcs-canvas-height');
     return saved ? parseInt(saved) : 280;
@@ -47,6 +73,18 @@ export default function DesignCanvas({
   const startY = useRef(0);
   const startH = useRef(0);
 
+  // Keyboard shortcuts: Ctrl+1/2/3 for view modes
+  useEffect(() => {
+    const handler = (e) => {
+      if (!e.ctrlKey) return;
+      if (e.key === '1') { setViewMode('blocks'); e.preventDefault(); }
+      if (e.key === '2') { setViewMode('sequence'); e.preventDefault(); }
+      if (e.key === '3') { setViewMode('map'); e.preventDefault(); }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, []);
+
   const totalBp = fragments.reduce((s, f) => s + (f.length || 0), 0);
   const n = fragments.length;
   const hasPrimers = calculated && primers.length > 0;
@@ -55,11 +93,12 @@ export default function DesignCanvas({
   useEffect(() => { localStorage.setItem('pvcs-canvas-zoom', String(zoom)); }, [zoom]);
 
   const fitToView = useCallback(() => {
-    const scale = n <= 4 ? 1 : Math.max(0.45, 1 - (n - 4) * 0.1);
-    const totalW = fragments.reduce((s, f) => s + fragmentWidthEstimate(f.length) * scale, 0)
-      + Math.max(0, n - 1) * 55 + 60;
+    const scale = n <= 4 ? 1 : n <= 10 ? Math.max(0.45, 1 - (n - 4) * 0.1) : Math.max(0.2, 0.45 - (n - 10) * 0.02);
+    const blockW = n > 15 ? 80 : fragmentWidthEstimate;
+    const totalW = fragments.reduce((s, f) => s + (typeof blockW === 'function' ? blockW(f.length) : blockW) * scale, 0)
+      + Math.max(0, n - 1) * (n > 15 ? 35 : 55) + 60;
     const containerW = scrollRef.current?.clientWidth || 800;
-    setZoom(Math.max(30, Math.min(100, Math.floor(containerW / totalW * 100))));
+    setZoom(Math.max(15, Math.min(100, Math.floor(containerW / totalW * 100))));
   }, [fragments, n]);
 
   // Auto-fit when fragment count changes or primers are calculated
@@ -160,16 +199,23 @@ export default function DesignCanvas({
                 ${circular ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
               {circular ? `⭕ ${t('Circular')}` : `📏 ${t('Linear')}`}
             </button>
-            {circular && n > 1 && (
-              <button onClick={() => setViewMode(v => v === 'linear' ? 'map' : 'linear')}
-                className={`text-[10px] px-2 py-0.5 rounded-full font-medium transition
-                  ${viewMode === 'map' ? 'bg-teal-100 text-teal-700' : 'bg-gray-100 text-gray-500'}`}>
-                {viewMode === 'map' ? '⊕ Карта' : '≡ Линейный'}
-              </button>
-            )}
+            <div className="flex rounded-lg overflow-hidden border border-gray-200 ml-1">
+              {[
+                { mode: 'blocks', label: '📦 Блоки', key: '1' },
+                { mode: 'sequence', label: '🧬 Посл.', key: '2' },
+                ...(circular ? [{ mode: 'map', label: '⭕ Карта', key: '3' }] : []),
+              ].map(v => (
+                <button key={v.mode} onClick={() => setViewMode(v.mode)}
+                  className={`text-[9px] px-2 py-0.5 transition ${
+                    viewMode === v.mode ? 'bg-gray-800 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
+                  title={`Ctrl+${v.key}`}>
+                  {v.label}
+                </button>
+              ))}
+            </div>
           </div>
 
-          {/* Circular map view — contained within canvas */}
+          {/* View modes */}
           {viewMode === 'map' && circular ? (
             <div className="flex-1 flex items-center justify-center overflow-hidden min-h-0">
               <PlasmidMap fragments={fragments} constructName={constructName}
@@ -177,6 +223,9 @@ export default function DesignCanvas({
                 onRemove={onRemove} onFlip={onFlip}
                 onSplitSignal={onSplitSignal} onEditFragment={onEditFragment} />
             </div>
+          ) : viewMode === 'sequence' ? (
+            <SequenceMapView fragments={fragments} primers={allPrimers || primers} circular={circular}
+              onAddCustomPrimer={onAddCustomPrimer} />
           ) :
           /* Scrollable + zoomable blocks — wraps to rows */
           <div ref={scrollRef} className="flex-1 overflow-x-auto overflow-y-auto w-full">
@@ -203,15 +252,19 @@ export default function DesignCanvas({
                                   onReorder={onReorder} onFlip={onFlip} pcrSize={pcrSizes[i]}
                                   onSplitSignal={onSplitSignal} onEditFragment={onEditFragment}
                                   fwdPrimer={fwdPrimer} revPrimer={revPrimer}
-                                  circularHint={circular && (i === 0 || i === n - 1) ? (i === 0 ? 'first' : 'last') : null} />
+                                  circularHint={circular && (i === 0 || i === n - 1) ? (i === 0 ? 'first' : 'last') : null}
+                                  variants={parts.length > 0 ? collectFamily(frag.id, parts).filter(v => v.id !== frag.id) : []}
+                                  onSwapVariant={onSwapVariant} />
                               </div>
                               {i < junctions.length && (i < n - 1 || circular) && (
                                 <div className="flex flex-col items-center shrink-0" style={{ minWidth: 50 }}>
                                   <JunctionBlock junction={junctions[i]} index={i}
                                     leftName={frag.name} rightName={fragments[(i + 1) % n]?.name || '?'}
+                                    leftFrag={frag} rightFrag={fragments[(i + 1) % n]}
                                     leftPCR={frag.needsAmplification !== false}
                                     rightPCR={fragments[(i + 1) % n]?.needsAmplification !== false}
-                                    onChange={cfg => onJunctionChange(i, cfg)} />
+                                    onChange={cfg => onJunctionChange(i, cfg)}
+                                    allOverhangs={allOverhangs} />
                                   <JunctionDNA junction={junctions[i]} calculated={calculated}
                           primers={primers}
                           leftFragment={frag} rightFragment={fragments[(i + 1) % n]}

@@ -1,16 +1,19 @@
+import { useState } from 'react';
 import { useDrag, useDrop } from 'react-dnd';
 import { getFragColor, isMarker } from '../theme';
 import { getPartDescription } from '../part-descriptions';
 import { SBOLIcon } from '../sbol-glyphs';
+import { useStore } from '../store';
 
 function fragmentWidth(bp, fragCount = 1) {
-  const scale = fragCount <= 4 ? 1 : Math.max(0.45, 1 - (fragCount - 4) * 0.1);
-  const minW = Math.round(70 * scale), maxW = Math.round(280 * scale);
+  const scale = fragCount <= 4 ? 1 : fragCount <= 10 ? Math.max(0.45, 1 - (fragCount - 4) * 0.1) : Math.max(0.2, 0.45 - (fragCount - 10) * 0.015);
+  const minW = Math.round(Math.max(50, 70 * scale)), maxW = Math.round(Math.max(70, 280 * scale));
   if (!bp || bp <= 20) return minW;
   if (bp >= 10000) return maxW;
   const frac = (Math.log(bp) - Math.log(20)) / (Math.log(10000) - Math.log(20));
   return Math.round(minW + frac * (maxW - minW));
 }
+const isCompact = (fc) => fc > 12;
 
 function fmtSize(bp) {
   return bp ? `${bp} п.н.` : '0 п.н.';
@@ -24,7 +27,12 @@ export default function PartBlock({
   fragment, index, onRemove, onToggleAmplification, onReorder, onFlip,
   pcrSize, onSplitSignal, onEditFragment, fragmentCount,
   fwdPrimer, revPrimer, circularHint,
+  variants, onSwapVariant,
 }) {
+  // ═══ Store selector (granular) ═══
+  const expertMode = useStore(s => s.expertMode);
+  const [showVariants, setShowVariants] = useState(false);
+  const variantCount = variants?.length || 0;
   const [{ isDragging }, drag] = useDrag({
     type: 'CANVAS_PART', item: { index },
     collect: m => ({ isDragging: m.isDragging() }),
@@ -35,7 +43,7 @@ export default function PartBlock({
     collect: m => ({ isOver: m.isOver() }),
   });
   const ref = (el) => { drag(drop(el)); };
-  const color = isMarker(fragment.name) ? '#F0E442' : getFragColor(fragment.type, index);
+  const color = fragment.customColor || (isMarker(fragment.name) ? '#F0E442' : getFragColor(fragment.type, index));
   const hasPrimers = !!(fwdPrimer || revPrimer);
 
   return (
@@ -85,8 +93,8 @@ export default function PartBlock({
         }}
         title={getPartDescription(fragment.name, fragment.type).short}>
 
-        {/* Fwd primer — top line */}
-        {fwdPrimer && (
+        {/* Fwd primer — top line (hidden in compact mode) */}
+        {fwdPrimer && !isCompact(fragmentCount) && (
           <div className="flex items-center justify-between px-2 pt-1.5 pb-0.5 text-[11px]">
             <span className="text-blue-600 font-medium flex items-center gap-0.5 truncate" title={fwdPrimer.name}>
               <span className="text-blue-500 text-[13px]">{'→'}</span>
@@ -122,8 +130,8 @@ export default function PartBlock({
           <div className="text-[9px] text-gray-400">{fmtSize(fragment.length)}</div>
         </div>
 
-        {/* Rev primer — bottom line */}
-        {revPrimer && (
+        {/* Rev primer — bottom line (hidden in compact mode) */}
+        {revPrimer && !isCompact(fragmentCount) && (
           <div className="flex items-center justify-between px-2 pb-1.5 pt-0.5 text-[11px]">
             <span className="text-red-400 font-mono shrink-0">{revPrimer.tmBinding}°</span>
             <span className="text-red-600 font-medium flex items-center gap-0.5 truncate" title={revPrimer.name}>
@@ -134,10 +142,52 @@ export default function PartBlock({
         )}
       </div>
 
-      {/* PCR size */}
-      {pcrSize && (
+      {/* PCR size (hidden in compact mode) */}
+      {pcrSize && !isCompact(fragmentCount) && (
         <div className="text-center text-[9px] text-green-600 font-medium mt-0.5">
           PCR: {fmtSize(pcrSize)}
+        </div>
+      )}
+
+      {/* Variant badge */}
+      {variantCount > 0 && (
+        <span onClick={(e) => { e.stopPropagation(); setShowVariants(v => !v); }}
+          className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-purple-500 text-white text-[9px] font-bold
+                     flex items-center justify-center cursor-pointer hover:bg-purple-600 transition z-10 shadow"
+          title={`${variantCount} вариант(ов)`}>
+          {variantCount}
+        </span>
+      )}
+
+      {/* Variant picker popup */}
+      {showVariants && variants?.length > 0 && (
+        <div className="absolute top-full left-0 mt-1 z-40 w-64 bg-white rounded-xl shadow-xl border p-2"
+          onClick={e => e.stopPropagation()}>
+          <div className="text-[10px] font-semibold text-gray-600 mb-1.5 px-1">Варианты {fragment.name}:</div>
+          {variants.map(v => (
+            <div key={v.id}
+              onClick={() => { onSwapVariant?.(index, v); setShowVariants(false); }}
+              className={`flex items-center justify-between p-1.5 rounded-lg cursor-pointer text-[11px] mb-0.5
+                ${v.id === fragment.id ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50'}`}>
+              <div className="min-w-0">
+                <div className="font-medium truncate">{v.name} <span className="text-gray-400 font-normal">{v.length} п.н.</span></div>
+                {v.modification && <div className="text-[9px] text-gray-400 truncate">{v.modification.description}</div>}
+              </div>
+              {v.testResults?.length > 0 ? (
+                <span className={`text-[9px] px-1.5 py-0.5 rounded-full shrink-0 ml-1 ${
+                  v.testResults[0].result === 'active' ? 'bg-green-100 text-green-700' :
+                  v.testResults[0].result === 'inactive' ? 'bg-red-100 text-red-700' :
+                  'bg-amber-100 text-amber-700'}`}>
+                  {v.testResults[0].result === 'active' ? '✓' : v.testResults[0].result === 'inactive' ? '✗' : '~'}
+                  {v.testResults[0].activity != null ? ` ${Math.round(v.testResults[0].activity * 100)}%` : ''}
+                </span>
+              ) : (
+                <span className="text-[9px] text-gray-300 shrink-0 ml-1">не тест.</span>
+              )}
+            </div>
+          ))}
+          <button onClick={() => setShowVariants(false)}
+            className="text-[9px] text-gray-400 hover:text-gray-600 mt-1 px-1">Закрыть</button>
         </div>
       )}
 
@@ -149,12 +199,12 @@ export default function PartBlock({
             className="w-5 h-5 rounded-full text-[10px] flex items-center justify-center hover:bg-indigo-100 text-indigo-600"
             title="Перевернуть (reverse complement)">↻</button>
         )}
-        {onSplitSignal && (
+        {expertMode && onSplitSignal && (
           <button onClick={(e) => { e.stopPropagation(); onSplitSignal(index); }}
             className="w-5 h-5 rounded-full text-[10px] flex items-center justify-center hover:bg-orange-100 text-orange-600"
             title="Разделить фрагмент">✂</button>
         )}
-        {onEditFragment && (
+        {expertMode && onEditFragment && (
           <button onClick={(e) => { e.stopPropagation(); onEditFragment(index); }}
             className="w-5 h-5 rounded-full text-[10px] flex items-center justify-center hover:bg-blue-100 text-blue-600"
             title="Редактировать">✏️</button>

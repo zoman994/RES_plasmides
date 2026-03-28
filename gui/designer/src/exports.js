@@ -115,6 +115,110 @@ export function exportProtocol(fragments, junctions, primers, method, circular) 
   download('assembly_protocol.txt', txt);
 }
 
+// ═══════════ Data Export / Import ═══════════
+
+const DATA_LS_KEYS = {
+  projects: 'pvcs_designer_state',
+  primers: 'pvcs-primer-registry',
+  inventory: 'pvcs-inventory',
+  collections: 'pvcs-collections',
+  customTypes: 'pvcs-custom-part-types',
+  customRegions: 'pvcs-custom-region-types',
+  domains: 'pvcs-parts-domains',
+  userColors: 'pvcs-user-palette',
+  oligos: 'pvcs-oligos',
+};
+
+/** Export all user data as a single JSON file. */
+export function exportAllData(projectName) {
+  const data = { _format: 'pvcs-backup', _version: 2, _date: new Date().toISOString() };
+  Object.entries(DATA_LS_KEYS).forEach(([key, lsKey]) => {
+    try { data[key] = JSON.parse(localStorage.getItem(lsKey) || 'null'); } catch {}
+  });
+  const name = (projectName || 'pvcs_backup').replace(/\s+/g, '_');
+  download(`${name}_${new Date().toISOString().slice(0,10)}.json`, JSON.stringify(data, null, 2), 'application/json');
+}
+
+/** Export only projects (assemblies, fragments). */
+export function exportProjects() {
+  try {
+    const state = JSON.parse(localStorage.getItem(DATA_LS_KEYS.projects) || '{}');
+    const data = { _format: 'pvcs-projects', _version: 2, _date: new Date().toISOString(), ...state };
+    download('pvcs_projects.json', JSON.stringify(data, null, 2), 'application/json');
+  } catch {}
+}
+
+/** Export primer database. */
+export function exportPrimers() {
+  try {
+    const primers = JSON.parse(localStorage.getItem(DATA_LS_KEYS.primers) || '[]');
+    const data = { _format: 'pvcs-primers', _date: new Date().toISOString(), primers };
+    download('pvcs_primers.json', JSON.stringify(data, null, 2), 'application/json');
+  } catch {}
+}
+
+/** Export parts library (inventory + collections + custom types). */
+export function exportParts(allParts) {
+  const data = {
+    _format: 'pvcs-parts', _date: new Date().toISOString(),
+    parts: allParts || [],
+  };
+  try { data.inventory = JSON.parse(localStorage.getItem(DATA_LS_KEYS.inventory) || '[]'); } catch {}
+  try { data.collections = JSON.parse(localStorage.getItem(DATA_LS_KEYS.collections) || '[]'); } catch {}
+  try { data.customTypes = JSON.parse(localStorage.getItem(DATA_LS_KEYS.customTypes) || '[]'); } catch {}
+  try { data.domains = JSON.parse(localStorage.getItem(DATA_LS_KEYS.domains) || '{}'); } catch {}
+  download('pvcs_parts.json', JSON.stringify(data, null, 2), 'application/json');
+}
+
+/** Import data from JSON file. Returns { type, data } or throws. */
+export function parseImportFile(jsonString) {
+  const data = JSON.parse(jsonString);
+  if (data._format === 'pvcs-backup') return { type: 'backup', data };
+  if (data._format === 'pvcs-projects' || data.projects) return { type: 'projects', data };
+  if (data._format === 'pvcs-primers') return { type: 'primers', data };
+  if (data._format === 'pvcs-parts') return { type: 'parts', data };
+  throw new Error('Неизвестный формат файла');
+}
+
+/** Apply imported data to localStorage. Returns summary string. */
+export function applyImport(parsed) {
+  const { type, data } = parsed;
+  const results = [];
+
+  if (type === 'backup') {
+    Object.entries(DATA_LS_KEYS).forEach(([key, lsKey]) => {
+      if (data[key] != null) {
+        localStorage.setItem(lsKey, JSON.stringify(data[key]));
+        results.push(key);
+      }
+    });
+    return `Восстановлено: ${results.join(', ')}. Перезагрузите страницу.`;
+  }
+
+  if (type === 'projects') {
+    localStorage.setItem(DATA_LS_KEYS.projects, JSON.stringify(data));
+    return `Импортировано ${data.projects?.length || 0} проектов. Перезагрузите страницу.`;
+  }
+
+  if (type === 'primers') {
+    const existing = JSON.parse(localStorage.getItem(DATA_LS_KEYS.primers) || '[]');
+    const existingSeqs = new Set(existing.map(p => p.sequence));
+    const newPrimers = (data.primers || []).filter(p => !existingSeqs.has(p.sequence));
+    localStorage.setItem(DATA_LS_KEYS.primers, JSON.stringify([...existing, ...newPrimers]));
+    return `Добавлено ${newPrimers.length} новых праймеров (пропущено ${data.primers.length - newPrimers.length} дубликатов).`;
+  }
+
+  if (type === 'parts') {
+    if (data.inventory) localStorage.setItem(DATA_LS_KEYS.inventory, JSON.stringify(data.inventory));
+    if (data.collections) localStorage.setItem(DATA_LS_KEYS.collections, JSON.stringify(data.collections));
+    if (data.customTypes) localStorage.setItem(DATA_LS_KEYS.customTypes, JSON.stringify(data.customTypes));
+    if (data.domains) localStorage.setItem(DATA_LS_KEYS.domains, JSON.stringify(data.domains));
+    return `Импортировано: ${data.parts?.length || 0} запчастей, ${data.collections?.length || 0} коллекций. Перезагрузите страницу.`;
+  }
+
+  return 'Неизвестный формат.';
+}
+
 /** Save assembly to PlasmidVCS via API. */
 export async function saveToPVCS(fragments, junctions, primers, method, circular, name) {
   try {

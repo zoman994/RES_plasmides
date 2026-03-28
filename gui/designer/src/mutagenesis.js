@@ -1,6 +1,7 @@
 /** Mutagenesis strategy engine — KLD / 2-fragment / multi-fragment. */
 
-import { translateDNA, translateCodon, getBestCodon } from './codons';
+import { translateDNA, translateCodon, getBestCodon, CODON_TABLE } from './codons';
+import { calcTm as calcTmNN } from './tm-calculator';
 
 const RC = { A: 'T', T: 'A', G: 'C', C: 'G' };
 const revComp = s => s.split('').reverse().map(c => RC[c.toUpperCase()] || 'N').join('');
@@ -193,6 +194,110 @@ function makeFragmentStrategy(templateSeq, mutations, featureStart, featureEnd, 
     warnings,
     mutantSequence: mutantSeq,
     mutations,
+  };
+}
+
+// ═══════════ Inline mutagenesis helpers ═══════════
+
+/** Common biochemically-motivated substitutions per amino acid. */
+const COMMON_SUBS = {
+  E: [{ to: 'A', note: 'убрать заряд' }, { to: 'Q', note: 'изостерная' }, { to: 'D', note: 'конс.' }],
+  D: [{ to: 'A', note: 'убрать заряд' }, { to: 'N', note: 'изостерная' }, { to: 'E', note: 'конс.' }],
+  K: [{ to: 'A', note: 'убрать заряд' }, { to: 'R', note: 'конс.' }, { to: 'E', note: 'charge swap' }],
+  R: [{ to: 'A', note: 'убрать заряд' }, { to: 'K', note: 'конс.' }],
+  S: [{ to: 'A', note: 'убрать -OH' }, { to: 'T', note: 'конс.' }, { to: 'D', note: 'фосфомим.' }, { to: 'E', note: 'фосфомим.' }],
+  T: [{ to: 'A', note: 'убрать -OH' }, { to: 'S', note: 'конс.' }, { to: 'V', note: 'гидроф.' }],
+  C: [{ to: 'A', note: 'убрать -SH' }, { to: 'S', note: 'конс.' }],
+  Y: [{ to: 'F', note: 'убрать -OH' }, { to: 'A', note: 'Ala scan' }],
+  W: [{ to: 'F', note: 'убрать индол' }, { to: 'A', note: 'Ala scan' }],
+  H: [{ to: 'A', note: 'убрать имидазол' }, { to: 'Q', note: 'по размеру' }],
+  P: [{ to: 'A', note: 'убрать излом' }],
+  G: [{ to: 'A', note: 'бок. цепь' }],
+  N: [{ to: 'A', note: 'Ala scan' }, { to: 'D', note: 'изостерная' }],
+  Q: [{ to: 'A', note: 'Ala scan' }, { to: 'E', note: 'изостерная' }],
+  F: [{ to: 'A', note: 'Ala scan' }, { to: 'Y', note: '+OH' }, { to: 'L', note: 'конс.' }],
+  I: [{ to: 'A', note: 'Ala scan' }, { to: 'V', note: 'конс.' }],
+  L: [{ to: 'A', note: 'Ala scan' }, { to: 'V', note: 'конс.' }],
+  V: [{ to: 'A', note: 'Ala scan' }, { to: 'I', note: 'конс.' }],
+  M: [{ to: 'A', note: 'Ala scan' }, { to: 'L', note: 'конс.' }],
+  A: [{ to: 'G', note: 'меньше' }, { to: 'V', note: 'больше' }],
+};
+
+export function getCommonSubstitutions(aa) {
+  return COMMON_SUBS[aa] || [{ to: 'A', note: 'Ala scan' }];
+}
+
+// Reverse codon table: AA → [codons]
+const AA_CODONS = {};
+Object.entries(CODON_TABLE).forEach(([codon, aa]) => {
+  if (aa === '*') return;
+  (AA_CODONS[aa] = AA_CODONS[aa] || []).push(codon);
+});
+
+/** Choose mutant codon with minimum nucleotide changes from original. */
+export function chooseMutantCodon(originalCodon, targetAA) {
+  const codons = AA_CODONS[targetAA];
+  if (!codons?.length) return null;
+  const orig = originalCodon.toUpperCase();
+  let best = codons[0], bestDiff = 3;
+  for (const codon of codons) {
+    let diff = 0;
+    for (let i = 0; i < 3; i++) { if (codon[i] !== orig[i]) diff++; }
+    if (diff < bestDiff) { bestDiff = diff; best = codon; }
+  }
+  return { codon: best, changes: bestDiff };
+}
+
+/** Apply inline substitution: returns { sequence, label, codonChange, changes }. */
+export function inlineSubstitution(sequence, aaPosition, targetAA) {
+  const codonStart = aaPosition * 3;
+  const originalCodon = sequence.slice(codonStart, codonStart + 3).toUpperCase();
+  const fromAA = CODON_TABLE[originalCodon] || '?';
+  const result = chooseMutantCodon(originalCodon, targetAA);
+  if (!result) return null;
+  return {
+    sequence: sequence.slice(0, codonStart) + result.codon + sequence.slice(codonStart + 3),
+    codonStart,
+    originalCodon,
+    newCodon: result.codon,
+    changes: result.changes,
+    label: `${fromAA}${aaPosition + 1}${targetAA}`,
+    codonChange: `${originalCodon}→${result.codon}`,
+  };
+}
+
+/** Apply inline deletion of N amino acids. */
+export function inlineDeletion(sequence, aaPosition, count) {
+  const start = aaPosition * 3;
+  const delLen = count * 3;
+  const fromAA = CODON_TABLE[sequence.slice(start, start + 3).toUpperCase()] || '?';
+  return {
+    sequence: sequence.slice(0, start) + sequence.slice(start + delLen),
+    label: count === 1 ? `Δ${fromAA}${aaPosition + 1}` : `Δ${aaPosition + 1}-${aaPosition + count}`,
+    deletedBp: delLen,
+  };
+}
+
+/** Design KLD primers around a mutation site (back-to-back, no phosphorylation needed). */
+export function designInlineKLDPrimers(sequence, mutationSiteBp, targetTm = 60) {
+  const seq = sequence.toUpperCase();
+  // Simple Tm approximation
+  const tm = calcTmNN; // SantaLucia 1998 NN model (±1-2°C accuracy)
+
+  // Forward: starts at mutation site
+  let fEnd = mutationSiteBp + 18;
+  while (fEnd < seq.length && fEnd < mutationSiteBp + 35 && tm(seq.slice(mutationSiteBp, fEnd)) < targetTm) fEnd++;
+  const fwd = seq.slice(mutationSiteBp, Math.min(fEnd, seq.length));
+
+  // Reverse: ends just before mutation (RC)
+  let rStart = mutationSiteBp - 18;
+  while (rStart > 0 && rStart > mutationSiteBp - 35 && tm(seq.slice(rStart, mutationSiteBp)) < targetTm) rStart--;
+  const revRegion = seq.slice(Math.max(0, rStart), mutationSiteBp);
+  const rev = revRegion.split('').reverse().map(c => ({ A:'T',T:'A',G:'C',C:'G' }[c]||'N')).join('');
+
+  return {
+    forward: { sequence: fwd, tm: Math.round(tm(fwd)) },
+    reverse: { sequence: rev, tm: Math.round(tm(revRegion)) },
   };
 }
 

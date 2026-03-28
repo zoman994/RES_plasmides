@@ -213,6 +213,69 @@ def gc_content(sequence: str) -> float:
     return round(gc / len(seq), 4)
 
 
+# ═══ primer3-py integration (optional, for hairpin/dimer analysis) ═══
+
+try:
+    from primer3 import ThermoAnalysis as _ThermoAnalysis
+    _HAS_PRIMER3 = True
+except ImportError:
+    _HAS_PRIMER3 = False
+
+
+def calc_tm_primer3(
+    sequence: str,
+    mv_conc: float = 50.0,
+    dv_conc: float = 1.5,
+    dntp_conc: float = 0.6,
+    dna_conc: float = 250.0,
+) -> float:
+    """Calculate Tm using primer3-py (SantaLucia 1998 via C library).
+
+    Falls back to built-in NN implementation if primer3-py not installed.
+    Install: pip install primer3-py
+    """
+    if not _HAS_PRIMER3:
+        return calc_tm(sequence, dna_conc, mv_conc)
+    ta = _ThermoAnalysis(mv_conc=mv_conc, dv_conc=dv_conc, dntp_conc=dntp_conc, dna_conc=dna_conc)
+    return round(ta.calc_tm(sequence.upper()), 1)
+
+
+def check_hairpin(sequence: str, mv_conc: float = 50.0) -> dict | None:
+    """Check for hairpin formation using primer3-py.
+
+    Returns dict with dG, dH, dS, Tm if hairpin detected, else None.
+    """
+    if not _HAS_PRIMER3:
+        return None
+    ta = _ThermoAnalysis(mv_conc=mv_conc)
+    result = ta.calc_hairpin(sequence.upper())
+    if result.structure_found:
+        return {"dG": round(result.dg / 1000, 2), "tm": round(result.tm, 1)}
+    return None
+
+
+def check_homodimer(sequence: str, mv_conc: float = 50.0) -> dict | None:
+    """Check for homodimer formation using primer3-py."""
+    if not _HAS_PRIMER3:
+        return None
+    ta = _ThermoAnalysis(mv_conc=mv_conc)
+    result = ta.calc_homodimer(sequence.upper())
+    if result.structure_found:
+        return {"dG": round(result.dg / 1000, 2), "tm": round(result.tm, 1)}
+    return None
+
+
+def check_heterodimer(seq1: str, seq2: str, mv_conc: float = 50.0) -> dict | None:
+    """Check for heterodimer formation between two primers."""
+    if not _HAS_PRIMER3:
+        return None
+    ta = _ThermoAnalysis(mv_conc=mv_conc)
+    result = ta.calc_heterodimer(seq1.upper(), seq2.upper())
+    if result.structure_found:
+        return {"dG": round(result.dg / 1000, 2), "tm": round(result.tm, 1)}
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Restriction enzyme helpers
 # ---------------------------------------------------------------------------

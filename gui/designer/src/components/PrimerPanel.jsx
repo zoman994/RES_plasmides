@@ -1,9 +1,15 @@
 import { useState } from 'react';
 import { buildOrderSheet } from '../primer-reuse';
 
+const CAT_STYLES = {
+  assembly: { dot: 'bg-blue-500', label: 'сборка', text: 'text-blue-600' },
+  custom: { dot: 'bg-green-500', label: 'ручной', text: 'text-green-600' },
+  verification: { dot: 'bg-gray-400', label: 'вериф.', text: 'text-gray-500' },
+};
+
 export default function PrimerPanel({
   primers, warnings, orderSheet, primerQuality = [],
-  primerMatches = {}, onReusePrimer,
+  primerMatches = {}, onReusePrimer, onDeletePrimer,
 }) {
   const [showMatches, setShowMatches] = useState({});
 
@@ -63,8 +69,12 @@ export default function PrimerPanel({
                 <tr key={i} className={`border-t hover:bg-gray-50 ${p.reused ? 'bg-green-50' : ''}`}>
                   <td className="p-2 font-semibold whitespace-nowrap">
                     <div className="flex items-center gap-1">
+                      {p.category && <span className={`w-1.5 h-1.5 rounded-full ${CAT_STYLES[p.category]?.dot || 'bg-blue-500'}`} title={CAT_STYLES[p.category]?.label} />}
                       {p.reused && <span className="text-green-600 text-[10px]">{'✓'}</span>}
                       <span className={p.reused ? 'text-green-700' : ''}>{p.name}</span>
+                      {p.category === 'custom' && onDeletePrimer && (
+                        <button onClick={() => onDeletePrimer(p.id)} className="text-[9px] text-gray-300 hover:text-red-500 ml-1" title="Удалить">{'×'}</button>
+                      )}
                       {p.phosphorylated && (
                         <span className="text-[8px] bg-purple-100 text-purple-700 rounded px-1 py-px font-semibold ml-1"
                           title="5'-фосфорилирование (указать при заказе)">5'-PO₄</span>

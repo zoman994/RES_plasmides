@@ -30,8 +30,15 @@ export const FEATURE_PAIRS = {
 };
 
 export function getFragColor(type, index) {
-  const pair = FEATURE_PAIRS[type] || FEATURE_PAIRS.misc_feature;
-  return pair[index % 2];
+  const pair = FEATURE_PAIRS[type];
+  if (pair) return pair[index % 2];
+  // Check custom types from localStorage
+  try {
+    const custom = JSON.parse(localStorage.getItem('pvcs-custom-part-types') || '[]');
+    const ct = custom.find(t => t.value === type);
+    if (ct) return ct.color;
+  } catch {}
+  return FEATURE_PAIRS.misc_feature[index % 2];
 }
 
 // Nucleotide colors (Sanger convention)
@@ -52,7 +59,14 @@ export function isMarker(name) {
 
 export function getColor(feature) {
   if (isMarker(feature.name || feature)) return FEATURE_COLORS.marker;
-  return FEATURE_COLORS[feature.type || feature] || FEATURE_COLORS.misc_feature;
+  const type = feature.type || feature;
+  if (FEATURE_COLORS[type]) return FEATURE_COLORS[type];
+  try {
+    const custom = JSON.parse(localStorage.getItem('pvcs-custom-part-types') || '[]');
+    const ct = custom.find(t => t.value === type);
+    if (ct) return ct.color;
+  } catch {}
+  return FEATURE_COLORS.misc_feature;
 }
 
 /** Darken a hex color by a fraction (0-1). */

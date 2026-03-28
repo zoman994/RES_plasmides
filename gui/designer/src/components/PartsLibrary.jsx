@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { FEATURE_COLORS, getFragColor } from '../theme';
 import { DOMAIN_COLORS } from '../domain-detection';
 import { getPartDescription } from '../part-descriptions';
+import { SBOLIcon, GLYPH_KEYS, GLYPH_LABELS } from '../sbol-glyphs';
 
 const TYPE_LABELS = {
   CDS: 'CDS', promoter: 'Промоторы', terminator: 'Терминаторы',
@@ -11,6 +12,21 @@ const TYPE_LABELS = {
   assembled_product: 'Продукты сборки',
 };
 
+const CUSTOM_TYPES_KEY = 'pvcs-custom-part-types';
+function loadCustomTypes() {
+  try { return JSON.parse(localStorage.getItem(CUSTOM_TYPES_KEY) || '[]'); } catch { return []; }
+}
+function saveCustomType(value, label, color, glyph) {
+  const arr = loadCustomTypes();
+  if (arr.some(t => t.value === value)) return;
+  arr.push({ value, label, color, glyph: glyph || 'misc_feature' });
+  localStorage.setItem(CUSTOM_TYPES_KEY, JSON.stringify(arr));
+}
+function removeCustomType(value) {
+  const arr = loadCustomTypes().filter(t => t.value !== value);
+  localStorage.setItem(CUSTOM_TYPES_KEY, JSON.stringify(arr));
+}
+
 export default function PartsLibrary({ parts, onClose, onOpenCDSEditor, onAddToCanvas, onUpdatePart }) {
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
@@ -18,6 +34,11 @@ export default function PartsLibrary({ parts, onClose, onOpenCDSEditor, onAddToC
   const [expanded, setExpanded] = useState(new Set());
   const [editingDesc, setEditingDesc] = useState(false);
   const [descText, setDescText] = useState('');
+  const [customTypes, setCustomTypes] = useState(() => loadCustomTypes());
+  const [showNewType, setShowNewType] = useState(false);
+  const [newTypeName, setNewTypeName] = useState('');
+  const [newTypeColor, setNewTypeColor] = useState('#6929c4');
+  const [newTypeGlyph, setNewTypeGlyph] = useState('misc_feature');
 
   // Group and filter
   const filtered = useMemo(() => {
@@ -58,7 +79,28 @@ export default function PartsLibrary({ parts, onClose, onOpenCDSEditor, onAddToC
     return next;
   });
 
-  const types = Object.keys(FEATURE_COLORS);
+  const builtinTypes = Object.keys(FEATURE_COLORS);
+  const allTypeLabels = { ...TYPE_LABELS };
+  const allTypeColors = { ...FEATURE_COLORS };
+  customTypes.forEach(ct => { allTypeLabels[ct.value] = ct.label; allTypeColors[ct.value] = ct.color; });
+
+  const handleAddType = () => {
+    const name = newTypeName.trim();
+    if (!name) return;
+    const value = name.toLowerCase().replace(/\s+/g, '_').replace(/[^a-zа-яё0-9_]/gi, '');
+    if (!value || allTypeLabels[value]) return;
+    saveCustomType(value, name, newTypeColor, newTypeGlyph);
+    setCustomTypes(loadCustomTypes());
+    setShowNewType(false);
+    setNewTypeName('');
+    setTypeFilter(value);
+  };
+
+  const handleRemoveType = (value) => {
+    removeCustomType(value);
+    setCustomTypes(loadCustomTypes());
+    if (typeFilter === value) setTypeFilter('all');
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 bg-black/30"
@@ -77,19 +119,63 @@ export default function PartsLibrary({ parts, onClose, onOpenCDSEditor, onAddToC
           <input type="text" placeholder="Поиск по имени или последовательности..."
             value={search} onChange={e => setSearch(e.target.value)}
             className="w-full text-xs border rounded px-3 py-1.5" />
-          <div className="flex gap-1 flex-wrap">
+          <div className="flex gap-1 flex-wrap items-center">
             <button onClick={() => setTypeFilter('all')}
               className={`text-[10px] px-2 py-0.5 rounded-full border ${typeFilter === 'all' ? 'bg-gray-800 text-white border-gray-800' : 'border-gray-200'}`}>
               Все
             </button>
-            {types.map(tp => (
+            {builtinTypes.map(tp => (
               <button key={tp} onClick={() => setTypeFilter(tp)}
-                className={`text-[10px] px-2 py-0.5 rounded-full border ${typeFilter === tp ? 'text-white' : 'border-gray-200'}`}
+                className={`text-[10px] px-2 py-0.5 rounded-full border inline-flex items-center gap-1 ${typeFilter === tp ? 'text-white' : 'border-gray-200'}`}
                 style={typeFilter === tp ? { backgroundColor: FEATURE_COLORS[tp], borderColor: FEATURE_COLORS[tp] } : {}}>
+                <SBOLIcon type={tp} size={10} color={typeFilter === tp ? '#fff' : FEATURE_COLORS[tp]} />
                 {TYPE_LABELS[tp] || tp}
               </button>
             ))}
+            {customTypes.map(ct => (
+              <span key={ct.value} className="inline-flex items-center gap-0.5">
+                <button onClick={() => setTypeFilter(ct.value)}
+                  className={`text-[10px] px-2 py-0.5 rounded-full border inline-flex items-center gap-1 ${typeFilter === ct.value ? 'text-white' : 'border-gray-200'}`}
+                  style={typeFilter === ct.value ? { backgroundColor: ct.color, borderColor: ct.color } : {}}>
+                  <SBOLIcon type={ct.glyph || 'misc_feature'} size={10} color={typeFilter === ct.value ? '#fff' : ct.color} />
+                  {ct.label}
+                </button>
+                <button onClick={() => handleRemoveType(ct.value)}
+                  className="text-[9px] text-gray-300 hover:text-red-500" title="Удалить раздел">{'×'}</button>
+              </span>
+            ))}
+            <button onClick={() => setShowNewType(v => !v)}
+              className="text-[10px] px-2 py-0.5 rounded-full border border-dashed border-gray-300 text-gray-400 hover:text-gray-600 hover:border-gray-400"
+              title="Создать раздел">+</button>
           </div>
+          {showNewType && (
+            <div className="bg-gray-50 rounded-lg p-2 space-y-2">
+              <div className="flex items-center gap-2">
+                <input type="color" value={newTypeColor} onChange={e => setNewTypeColor(e.target.value)}
+                  className="w-5 h-5 border-0 p-0 rounded cursor-pointer" title="Цвет" />
+                <input type="text" value={newTypeName} onChange={e => setNewTypeName(e.target.value)}
+                  placeholder="Название раздела..." className="text-xs border rounded px-2 py-1 flex-1"
+                  onKeyDown={e => { if (e.key === 'Enter') handleAddType(); if (e.key === 'Escape') setShowNewType(false); }}
+                  autoFocus />
+                <button onClick={handleAddType}
+                  className="text-[10px] px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700">Создать</button>
+                <button onClick={() => setShowNewType(false)}
+                  className="text-[10px] text-gray-400 hover:text-gray-600">Отмена</button>
+              </div>
+              <div>
+                <span className="text-[9px] text-gray-400 mb-1 block">Глиф (SBOL Visual):</span>
+                <div className="flex flex-wrap gap-0.5">
+                {GLYPH_KEYS.map(gk => (
+                  <button key={gk} type="button" onClick={() => setNewTypeGlyph(gk)}
+                    className={`p-1 rounded ${newTypeGlyph === gk ? 'bg-blue-100 ring-2 ring-blue-400' : 'hover:bg-gray-200'}`}
+                    title={GLYPH_LABELS[gk]}>
+                    <SBOLIcon type={gk} size={14} color={newTypeGlyph === gk ? newTypeColor : '#666'} />
+                  </button>
+                ))}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Main: list + detail */}
@@ -99,7 +185,7 @@ export default function PartsLibrary({ parts, onClose, onOpenCDSEditor, onAddToC
             {Object.entries(grouped).map(([type, items]) => (
               <div key={type} className="mb-3">
                 <div className="text-[9px] uppercase text-gray-400 tracking-wider font-semibold mb-1">
-                  {TYPE_LABELS[type] || type}
+                  {allTypeLabels[type] || type}
                 </div>
                 {items.map(p => {
                   const children = childMap[p.id] || [];
@@ -115,8 +201,9 @@ export default function PartsLibrary({ parts, onClose, onOpenCDSEditor, onAddToC
                             className="text-[10px] text-gray-400 w-3 cursor-pointer">{isExpanded ? '▼' : '▶'}</span>
                         )}
                         {!hasChildren && <span className="w-3" />}
-                        <span className="w-2.5 h-2.5 rounded-full shrink-0"
-                          style={{ background: FEATURE_COLORS[p.type] || '#999' }} />
+                        <span className="shrink-0">
+                          <SBOLIcon type={p.type} size={14} color={allTypeColors[p.type] || '#999'} />
+                        </span>
                         <span className="flex-1 truncate font-medium">{p.name}</span>
                         <span className="text-[10px] text-gray-400">{p.length}</span>
                       </div>
@@ -145,11 +232,15 @@ export default function PartsLibrary({ parts, onClose, onOpenCDSEditor, onAddToC
             {selected ? (
               <div className="space-y-3">
                 <div>
-                  <h4 className="text-base font-semibold">{selected.name}</h4>
+                  <div className="flex items-center gap-2">
+                    <SBOLIcon type={selected.type} size={22} color={allTypeColors[selected.type] || '#999'} />
+                    <h4 className="text-base font-semibold">{selected.name}</h4>
+                  </div>
                   <div className="flex gap-3 text-[11px] text-gray-500 mt-1">
-                    <span className="px-1.5 py-0.5 rounded text-white text-[10px]"
-                      style={{ background: FEATURE_COLORS[selected.type] || '#999' }}>
-                      {TYPE_LABELS[selected.type] || selected.type}
+                    <span className="px-1.5 py-0.5 rounded text-white text-[10px] inline-flex items-center gap-1"
+                      style={{ background: allTypeColors[selected.type] || '#999' }}>
+                      <SBOLIcon type={selected.type} size={10} color="#fff" />
+                      {allTypeLabels[selected.type] || selected.type}
                     </span>
                     <span>{selected.length} п.н.{selected.type === 'CDS' ? ` (${Math.floor(selected.length / 3)} а.о.)` : ''}</span>
                     {selected.organism && <span>{selected.organism}</span>}
@@ -181,6 +272,47 @@ export default function PartsLibrary({ parts, onClose, onOpenCDSEditor, onAddToC
                       const desc = getPartDescription(selected.name, selected.type);
                       return desc.hostRange ? <div className="text-gray-400 mt-1">Хозяин: {desc.hostRange}</div> : null;
                     })()}
+                  </div>
+                )}
+
+                {/* Variant info */}
+                {selected.parentId && (
+                  <div className="flex items-center gap-2 text-[11px]">
+                    <span className="px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 text-[10px]">
+                      Вариант
+                    </span>
+                    {selected.modification && (
+                      <span className="text-gray-500">{selected.modification.description}</span>
+                    )}
+                    <button onClick={() => { const p = parts.find(x => x.id === selected.parentId); if (p) setSelectedId(p.id); }}
+                      className="text-[10px] text-blue-600 hover:underline ml-auto">
+                      Родитель
+                    </button>
+                  </div>
+                )}
+
+                {/* Test results */}
+                {selected.testResults?.length > 0 && (
+                  <div>
+                    <div className="text-[10px] text-gray-500 mb-1">Результаты тестов:</div>
+                    <div className="space-y-1">
+                      {selected.testResults.map((tr, ti) => (
+                        <div key={ti} className="flex items-center gap-2 text-[11px] bg-gray-50 rounded p-1.5">
+                          <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-medium ${
+                            tr.result === 'active' ? 'bg-green-100 text-green-700' :
+                            tr.result === 'inactive' ? 'bg-red-100 text-red-700' :
+                            tr.result === 'enhanced' ? 'bg-blue-100 text-blue-700' :
+                            'bg-amber-100 text-amber-700'
+                          }`}>
+                            {tr.result === 'active' ? 'Активен' : tr.result === 'inactive' ? 'Неактивен' :
+                             tr.result === 'enhanced' ? 'Усилен' : 'Снижен'}
+                          </span>
+                          {tr.activity != null && <span className="text-gray-600">{Math.round(tr.activity * 100)}%</span>}
+                          {tr.notes && <span className="text-gray-400 truncate">{tr.notes}</span>}
+                          <span className="text-[9px] text-gray-300 ml-auto">{tr.date?.slice(0, 10)}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
 

@@ -38,6 +38,12 @@ dev = [
 fast = [
     "parasail>=1.3",  # faster sequence alignment
 ]
+primers = [
+    "primer3-py>=2.0",  # SantaLucia NN Tm + hairpin/dimer analysis
+]
+golden-gate = [
+    "tatapov>=0.1",     # Potapov 2018 overhang fidelity data
+]
 
 [project.scripts]
 pvcs = "pvcs.cli:main"
