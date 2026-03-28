@@ -9,14 +9,40 @@ const comp = c => COMPLEMENT[c.toUpperCase()] || 'N';
 const revComp = s => s.split('').reverse().map(c => comp(c)).join('');
 const gcPct = s => gcPercent(s);
 
-const PER_LINE = 60;
+const LABEL_WIDTH = 8; // characters reserved for position label (left margin)
 
 export default function SequenceMapView({ fragments, primers = [], circular, onAddCustomPrimer }) {
-  const [selection, setSelection] = useState(null); // { start, end }
+  const [selection, setSelection] = useState(null);
   const [dragging, setDragging] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [toast, setToast] = useState('');
   const containerRef = useRef(null);
+  const preRef = useRef(null);
+  const [charsPerLine, setCharsPerLine] = useState(80);
+
+  // Measure how many monospace characters fit in the container
+  useEffect(() => {
+    const measure = () => {
+      const el = preRef.current || containerRef.current;
+      if (!el) return;
+      // Create a hidden span to measure 1ch in the actual font
+      const probe = document.createElement('span');
+      probe.style.cssText = 'position:absolute;visibility:hidden;white-space:pre;font:inherit';
+      probe.textContent = '0'.repeat(100);
+      el.appendChild(probe);
+      const chW = probe.getBoundingClientRect().width / 100;
+      el.removeChild(probe);
+      if (chW <= 0) return;
+      const available = el.clientWidth - 24; // padding
+      const fitChars = Math.floor(available / chW) - LABEL_WIDTH;
+      const rounded = Math.floor(fitChars / 10) * 10; // round to nearest 10
+      setCharsPerLine(Math.max(30, Math.min(200, rounded)));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    if (containerRef.current) observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, []);
 
   // Build full construct sequence + feature map
   const { fullSeq, features } = useMemo(() => {
@@ -72,11 +98,11 @@ export default function SequenceMapView({ fragments, primers = [], circular, onA
 
   const lines = useMemo(() => {
     const result = [];
-    for (let i = 0; i < fullSeq.length; i += PER_LINE) {
-      result.push({ start: i, seq: fullSeq.slice(i, i + PER_LINE) });
+    for (let i = 0; i < fullSeq.length; i += charsPerLine) {
+      result.push({ start: i, seq: fullSeq.slice(i, i + charsPerLine) });
     }
     return result;
-  }, [fullSeq]);
+  }, [fullSeq, charsPerLine]);
 
   // Selection handlers
   const posFromEvent = useCallback((e, lineStart) => {
@@ -139,8 +165,8 @@ export default function SequenceMapView({ fragments, primers = [], circular, onA
 
   return (
     <div ref={containerRef} className="overflow-auto flex-1 outline-none" tabIndex={0} onKeyDown={handleKeyDown}>
-      {/* Lines */}
-      <div className="p-3 font-mono text-[11px] leading-[1.3]">
+      {/* All content in one pre — guarantees ch units match rendered characters */}
+      <pre ref={preRef} className="p-3 font-mono text-[11px] leading-[1.4] m-0 whitespace-pre" style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace' }}>
         {lines.map(line => {
           const lineEnd = line.start + line.seq.length;
 
@@ -152,7 +178,7 @@ export default function SequenceMapView({ fragments, primers = [], circular, onA
           return (
             <div key={line.start} className="mb-3">
               {/* Ruler — tick marks every 10bp */}
-              <div className="flex text-[8px] text-gray-300 select-none ml-14">
+              <div className="text-[8px] text-gray-300 select-none" style={{ paddingLeft: `${LABEL_WIDTH}ch` }}>
                 {Array.from({ length: Math.ceil(line.seq.length / 10) }, (_, gi) => {
                   const tickPos = line.start + gi * 10 + 10;
                   return (
@@ -163,15 +189,15 @@ export default function SequenceMapView({ fragments, primers = [], circular, onA
                 })}
               </div>
 
-              {/* Feature bars — ch-based positioning (no spaces = perfect alignment) */}
+              {/* Feature bars — ch-based positioning, aligned with sequence text */}
               {lineFeats.length > 0 && (
-                <div className="relative h-4 ml-14 mb-0.5" style={{ width: `${line.seq.length}ch` }}>
+                <div className="relative h-4 mb-0.5" style={{ paddingLeft: `${LABEL_WIDTH}ch` }}>
                   {lineFeats.map(f => {
                     const left = Math.max(0, f.start - line.start);
                     const right = Math.min(line.seq.length, f.end - line.start);
                     return (
                       <div key={f.id} className="absolute h-3.5 rounded-sm text-[7px] text-white px-0.5 flex items-center truncate"
-                        style={{ left: `${left}ch`, width: `${right - left}ch`, backgroundColor: f.color, minWidth: 4 }}
+                        style={{ left: `${LABEL_WIDTH + left}ch`, width: `${right - left}ch`, backgroundColor: f.color, minWidth: 4 }}
                         title={`${f.name} (${f.type}) ${f.start + 1}..${f.end}`}>
                         {(right - left) > 5 ? f.name : ''}
                       </div>
@@ -180,10 +206,10 @@ export default function SequenceMapView({ fragments, primers = [], circular, onA
                 </div>
               )}
 
-              {/* Sense strand 5'→3' — no spaces, pure monospace */}
-              <div className="flex">
-                <span className="w-12 text-right text-gray-400 mr-2 shrink-0 text-[9px] select-none">{line.start + 1}</span>
-                <span className="select-none cursor-text whitespace-pre"
+              {/* Sense strand 5'→3' */}
+              <div>
+                <span className="inline-block text-right text-gray-400 select-none text-[9px]" style={{ width: `${LABEL_WIDTH}ch` }}>{line.start + 1}</span>
+                <span className="select-none cursor-text"
                   onMouseDown={e => onMouseDown(e, line.start)}
                   onMouseMove={e => onMouseMove(e, line.start)}>
                   {line.seq.split('').map((nt, ci) => {
@@ -200,9 +226,9 @@ export default function SequenceMapView({ fragments, primers = [], circular, onA
               </div>
 
               {/* Antisense strand 3'→5' */}
-              <div className="flex">
-                <span className="w-12 mr-2 shrink-0" />
-                <span className="text-gray-400 select-none cursor-text whitespace-pre"
+              <div>
+                <span className="inline-block" style={{ width: `${LABEL_WIDTH}ch` }} />
+                <span className="text-gray-400 select-none cursor-text"
                   onMouseDown={e => onMouseDown(e, line.start)}
                   onMouseMove={e => onMouseMove(e, line.start)}>
                   {line.seq.split('').map((nt, ci) => {
@@ -218,11 +244,11 @@ export default function SequenceMapView({ fragments, primers = [], circular, onA
                 </span>
               </div>
 
-              {/* Amino acid translation — under CDS regions, ch-aligned */}
+              {/* Amino acid translation — under CDS regions */}
               {lineFeats.some(f => f.type === 'CDS' || f.type === 'gene') && (
-                <div className="flex">
-                  <span className="w-12 mr-2 shrink-0" />
-                  <span className="whitespace-pre select-none">
+                <div>
+                  <span className="inline-block" style={{ width: `${LABEL_WIDTH}ch` }} />
+                  <span className="select-none">
                     {line.seq.split('').map((_, ci) => {
                       const absPos = line.start + ci;
                       const cds = lineFeats.find(f => (f.type === 'CDS' || f.type === 'gene') && absPos >= f.start && absPos < f.end);
@@ -258,7 +284,7 @@ export default function SequenceMapView({ fragments, primers = [], circular, onA
                   return (catOrder[a.category] || 0) - (catOrder[b.category] || 0) || (a.direction === 'forward' ? -1 : 1);
                 });
                 return (
-                  <div className="relative ml-14" style={{ height: sorted.length * 14 + 2, width: `${line.seq.length}ch` }}>
+                  <div className="relative" style={{ height: sorted.length * 14 + 2, paddingLeft: `${LABEL_WIDTH}ch` }}>
                     {sorted.map((p, pi) => {
                       const barStart = Math.max(0, p.start - line.start);
                       const barEnd = Math.min(line.seq.length, p.end - line.start);
@@ -286,7 +312,7 @@ export default function SequenceMapView({ fragments, primers = [], circular, onA
             </div>
           );
         })}
-      </div>
+      </pre>
 
       {/* Selection info bar */}
       {sel && selLen > 0 && (
