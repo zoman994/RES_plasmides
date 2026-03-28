@@ -11,11 +11,18 @@ describe('calcTmNN — SantaLucia 1998 NN model', () => {
     expect(calcTmNN('')).toBe(0);
   });
 
-  it('calculates Tm for a standard 20-mer in reasonable range', () => {
-    // GTAAAACGACGGCCAGT — M13 forward, NN model ~44-50°C depending on salt
+  it('calculates Tm for M13 forward within ±3°C of reference', () => {
+    // GTAAAACGACGGCCAGT — M13 forward, primer3/NEB reference ~49-52°C
     const tm = calcTmNN('GTAAAACGACGGCCAGT');
-    expect(tm).toBeGreaterThan(38);
-    expect(tm).toBeLessThan(56);
+    expect(tm).toBeGreaterThan(48);
+    expect(tm).toBeLessThan(55);
+  });
+
+  it('calculates Tm for M13 reverse within ±3°C of reference', () => {
+    // CAGGAAACAGCTATGAC — M13 reverse, reference ~46°C
+    const tm = calcTmNN('CAGGAAACAGCTATGAC');
+    expect(tm).toBeGreaterThan(43);
+    expect(tm).toBeLessThan(49);
   });
 
   it('GC-rich primers have higher Tm than AT-rich', () => {

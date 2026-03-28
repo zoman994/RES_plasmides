@@ -91,18 +91,19 @@ export function calcTmNN(seq, opts = {}) {
   // For self-complementary: Ct = total / 1; for non-self-comp: Ct = total / 4
   const Ct = (oligoConc * 1e-9) / 4; // non-self-complementary assumed
 
-  // Basic Tm calculation
-  let Tm = totalDH / (totalDS + R * Math.log(Ct)) - 273.15;
-
-  // Salt correction — Owczarzy et al. (2004/2008)
-  // Accounts for both monovalent (Na+) and divalent (Mg2+) cations
+  // Salt correction — applied to entropy BEFORE Tm calculation
+  // SantaLucia 1998: ΔS_salt = 0.368 * (N-1) * ln([Na+])
   const mono = naConc * 1e-3; // convert to M
   const mg = mgConc * 1e-3;
   const dntp = dntpConc * 1e-3;
   const freeNg = Math.max(0, mg - dntp); // free Mg2+ after dNTP chelation
 
+  // Na+ dominant: entropy correction
+  const saltDS = 0.368 * (s.length - 1) * Math.log(mono);
+  let Tm = totalDH / (totalDS + saltDS + R * Math.log(Ct)) - 273.15;
+
+  // Mg2+ dominant: Owczarzy 2008 override (recalculates from 1/Tm form)
   if (freeNg > 0 && mono < 0.22 * Math.sqrt(freeNg)) {
-    // Mg2+ dominant — Owczarzy 2008 equation
     const fGC = gcFraction(s);
     const lnMg = Math.log(freeNg);
     const a = 3.92e-5;
@@ -110,16 +111,14 @@ export function calcTmNN(seq, opts = {}) {
     const c = 6.26e-5;
     const d = 1.42e-5;
     const e2 = -4.82e-4;
-    const f = 5.25e-4;
+    const f2 = 5.25e-4;
     const g = 8.31e-5;
-    const invTm = (1 / (Tm + 273.15))
+    // Owczarzy uses 1M NaCl Tm as baseline — recalculate without salt correction
+    const Tm1M = totalDH / (totalDS + 0.368 * (s.length - 1) * Math.log(1.0) + R * Math.log(Ct)) - 273.15;
+    const invTm = (1 / (Tm1M + 273.15))
       + a + b * lnMg + fGC * (c + d * lnMg)
-      + (1 / (2 * (s.length - 1))) * (e2 + f * lnMg + g * lnMg * lnMg);
+      + (1 / (2 * (s.length - 1))) * (e2 + f2 * lnMg + g * lnMg * lnMg);
     Tm = 1 / invTm - 273.15;
-  } else {
-    // Na+ dominant — SantaLucia 1998 salt correction
-    // von Ahsen (2001): ΔTm = 7.21 × ln([Na+])
-    Tm += 7.21 * Math.log(mono);
   }
 
   return Math.round(Tm * 10) / 10;
