@@ -53,9 +53,11 @@ export default function App() {
   const assemblies    = useStore(s => s.assemblies);
   const activeId      = useStore(s => s.activeId);
   // ═══ Store: state needed for render ═══
-  const parts      = useStore(s => s.parts);
-  const polymerase = useStore(s => s.polymerase);
-  const ggEnzyme   = useStore(s => s.ggEnzyme);
+  const parts        = useStore(s => s.parts);
+  const projectName  = useStore(s => s.projectName);
+  const polymerase   = useStore(s => s.polymerase);
+  const primerPrefix = useStore(s => s.primerPrefix);
+  const ggEnzyme     = useStore(s => s.ggEnzyme);
   const ggSiteCheck = useStore(s => s.ggSiteCheck);
   const loading    = useStore(s => s.loading);
   const modalMode  = useStore(s => s.modalMode);
