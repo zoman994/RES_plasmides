@@ -18,6 +18,7 @@ export const createFragmentSlice = (set, get) => ({
 
   // ═══ Fragment actions (modify active assembly) ═══
   addFragment: (part) => {
+    get().pushUndo?.();
     const frag = {
       id: `f${nextId++}`, name: part.name, type: part.type,
       sequence: part.sequence || '', length: part.length || 0,
@@ -50,6 +51,7 @@ export const createFragmentSlice = (set, get) => ({
   },
 
   removeFragment: (index) => {
+    get().pushUndo?.();
     set(state => {
       const asm = state.assemblies.find(a => a.id === state.activeId);
       if (!asm) return;
@@ -66,6 +68,7 @@ export const createFragmentSlice = (set, get) => ({
   },
 
   flipFragment: (index) => {
+    get().pushUndo?.();
     set(state => {
       const asm = state.assemblies.find(a => a.id === state.activeId);
       if (!asm) return;
@@ -80,6 +83,7 @@ export const createFragmentSlice = (set, get) => ({
   },
 
   reorderFragments: (from, to) => {
+    get().pushUndo?.();
     set(state => {
       const asm = state.assemblies.find(a => a.id === state.activeId);
       if (!asm || from === to) return;

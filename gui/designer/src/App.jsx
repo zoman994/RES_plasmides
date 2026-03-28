@@ -10,7 +10,7 @@ import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 
 // ═══ Store ═══
-import { useStore, useFragments, useJunctions, usePrimers, useCustomPrimers, undo, redo, useCanUndo, useCanRedo } from './store/index';
+import { useStore, useFragments, useJunctions, usePrimers, useCustomPrimers, undo, redo, pushUndo, useCanUndo, useCanRedo } from './store/index';
 
 // ═══ Hooks (extracted handlers) ═══
 import { useGeneratePrimers } from './hooks/useGeneratePrimers';

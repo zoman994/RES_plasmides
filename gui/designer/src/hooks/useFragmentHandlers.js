@@ -2,7 +2,7 @@
  * useFragmentHandlers — fragment editing, splitting, mutagenesis, variant creation.
  * Extracts ~200 lines of handler logic from App.jsx.
  */
-import { useStore, useFragments, useJunctions, usePrimers } from '../store';
+import { useStore, useFragments, useJunctions, usePrimers, pushUndo } from '../store';
 import { adjustDomains, buildPlainJunctions } from '../assembly-utils';
 import { designInlineKLDPrimers } from '../mutagenesis';
 import { PCR_MIXES } from '../protocol-data';
@@ -28,7 +28,7 @@ export function useFragmentHandlers() {
   const incrementInventoryVersion = useStore(s => s.incrementInventoryVersion);
 
   /** Handle fragment split / trim / replace results. */
-  const handleFragmentSplit = (result) => {
+  const handleFragmentSplit = (result) => { pushUndo();
     const idx = splitTarget;
     if (idx === null) return;
     const active = getActive();
@@ -68,6 +68,7 @@ export function useFragmentHandlers() {
   /** Save edited fragment, create variant in parts library if mutations present. */
   const handleSaveFragment = (updated) => {
     if (editTarget === null) return;
+    pushUndo();
     const original = fragments[editTarget];
     const hasMutations = updated.mutations?.length > 0 && updated.mutations !== original.mutations;
 
@@ -169,7 +170,7 @@ export function useFragmentHandlers() {
   };
 
   /** Mark assembly as complete, create merged product. */
-  const completeAssembly = () => {
+  const completeAssembly = () => { pushUndo();
     const active = getActive();
     if (!active) return;
     const circular = active.circular || false;
@@ -199,7 +200,7 @@ export function useFragmentHandlers() {
     incrementInventoryVersion();
   };
 
-  const clearAssembly = () => {
+  const clearAssembly = () => { pushUndo();
     updateActive({ fragments: [], junctions: [], primers: [], apiWarnings: [], orderSheet: '',
       calculated: false, protocolSteps: [], completed: false, product: null });
   };

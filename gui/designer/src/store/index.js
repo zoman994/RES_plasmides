@@ -2,20 +2,12 @@
  * PlasmidVCS Global Store — Zustand with slices pattern.
  *
  * Architecture: 5 domain slices, each in its own file.
- * Middleware stack: devtools → subscribeWithSelector → temporal → immer → persist
- * Undo/redo via zundo (temporal middleware) — Ctrl+Z / Ctrl+Shift+Z
- *
- * Slices:
- *   projectSlice  — projects, assemblies, active selection
- *   fragmentSlice — fragments on canvas, add/remove/reorder/flip/split
- *   junctionSlice — junctions between fragments, GG overhangs
- *   primerSlice   — assembly/custom primers, generate, KLD
- *   uiSlice       — modals, tabs, expert mode, warnings
+ * Middleware stack: devtools → subscribeWithSelector → immer → persist
+ * Undo/redo: manual snapshot stack (simple, no external deps).
  */
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import { devtools, persist, subscribeWithSelector } from 'zustand/middleware';
-import { temporal } from 'zundo';
 import { createProjectSlice } from './projectSlice';
 import { createFragmentSlice } from './fragmentSlice';
 import { createJunctionSlice } from './junctionSlice';
@@ -24,15 +16,19 @@ import { createUiSlice } from './uiSlice';
 
 const LS_KEY = 'pvcs_designer_state';
 
-// UI fields excluded from undo history (transient state)
-const UI_FIELDS = new Set([
-  'modalMode', 'showMutagenesis', 'showOligos', 'showPartsLib',
-  'showDataMgr', 'editTarget', 'splitTarget', 'activeTab',
-  'warningsOpen', 'loading', 'globalCDSPart', 'ggSiteCheck',
-  'firstLaunch', 'inventoryVersion',
-]);
+// Fields to snapshot for undo (domain state only, not UI)
+const SNAPSHOT_KEYS = [
+  'projects', 'activeProjectId', 'projectName', 'assemblies', 'activeId',
+  'polymerase', 'primerPrefix', 'parts', 'ggEnzyme',
+];
 
-// State creator (innermost)
+function takeSnapshot(state) {
+  const snap = {};
+  for (const k of SNAPSHOT_KEYS) snap[k] = JSON.parse(JSON.stringify(state[k] ?? null));
+  return snap;
+}
+
+// State creator
 const stateCreator = (set, get, api) => ({
   ...createProjectSlice(set, get, api),
   ...createFragmentSlice(set, get, api),
@@ -52,6 +48,49 @@ const stateCreator = (set, get, api) => ({
   },
   initialized: false,
   initialize: () => set({ initialized: true }, false, 'initialize'),
+
+  // ═══ Undo / Redo ═══
+  _undoStack: [],
+  _redoStack: [],
+  _undoPaused: false,
+
+  /** Save current state to undo stack (call before destructive actions). */
+  pushUndo: () => {
+    if (get()._undoPaused) return;
+    const snap = takeSnapshot(get());
+    set(state => {
+      state._undoStack.push(snap);
+      if (state._undoStack.length > 50) state._undoStack.shift();
+      state._redoStack = [];
+    }, false, 'pushUndo');
+  },
+
+  undo: () => {
+    const { _undoStack } = get();
+    if (_undoStack.length === 0) return;
+    const snap = takeSnapshot(get()); // save current for redo
+    const prev = _undoStack[_undoStack.length - 1];
+    set(state => {
+      state._undoStack.pop();
+      state._redoStack.push(snap);
+      for (const k of SNAPSHOT_KEYS) state[k] = prev[k];
+    }, false, 'undo');
+  },
+
+  redo: () => {
+    const { _redoStack } = get();
+    if (_redoStack.length === 0) return;
+    const snap = takeSnapshot(get());
+    const next = _redoStack[_redoStack.length - 1];
+    set(state => {
+      state._redoStack.pop();
+      state._undoStack.push(snap);
+      for (const k of SNAPSHOT_KEYS) state[k] = next[k];
+    }, false, 'redo');
+  },
+
+  pauseUndo: () => set({ _undoPaused: true }, false, 'pauseUndo'),
+  resumeUndo: () => set({ _undoPaused: false }, false, 'resumeUndo'),
 });
 
 // Persist config
@@ -76,44 +115,23 @@ const persistConfig = {
   onRehydrateStorage: () => (state) => { if (state) state.initialized = true; },
 };
 
-// Temporal (undo/redo) config
-const temporalConfig = {
-  partialize: (state) => {
-    const tracked = {};
-    for (const key of Object.keys(state)) {
-      if (!UI_FIELDS.has(key) && typeof state[key] !== 'function') tracked[key] = state[key];
-    }
-    return tracked;
-  },
-  limit: 50,
-  handleSet: (handleSet) => {
-    let timeout;
-    return (state) => { clearTimeout(timeout); timeout = setTimeout(() => handleSet(state), 500); };
-  },
-};
-
-// Middleware stack: temporal must wrap the state creator directly
-// Order (outside→in): create → temporal → devtools → subscribeWithSelector → immer → persist → stateCreator
 export const useStore = create(
-  temporal(
-    devtools(
-      subscribeWithSelector(
-        immer(
-          persist(stateCreator, persistConfig)
-        )
-      ),
-      { name: 'PlasmidVCS' }
+  devtools(
+    subscribeWithSelector(
+      immer(
+        persist(stateCreator, persistConfig)
+      )
     ),
-    temporalConfig
+    { name: 'PlasmidVCS' }
   )
 );
 
 // ═══ Undo/Redo exports ═══
-export const useTemporalStore = useStore.temporal;
-export const undo = () => useStore.temporal.getState().undo();
-export const redo = () => useStore.temporal.getState().redo();
-export const useCanUndo = () => useStore.temporal(s => s.pastStates.length > 0);
-export const useCanRedo = () => useStore.temporal(s => s.futureStates.length > 0);
+export const undo = () => useStore.getState().undo();
+export const redo = () => useStore.getState().redo();
+export const pushUndo = () => useStore.getState().pushUndo();
+export const useCanUndo = () => useStore(s => s._undoStack.length > 0);
+export const useCanRedo = () => useStore(s => s._redoStack.length > 0);
 
 // ═══ Derived selectors ═══
 

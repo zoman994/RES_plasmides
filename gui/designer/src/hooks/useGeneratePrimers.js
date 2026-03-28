@@ -2,7 +2,7 @@
  * useGeneratePrimers — async primer generation via API.
  * Extracts the 120-line generate() function from App.jsx.
  */
-import { useStore, useFragments, useJunctions } from '../store';
+import { useStore, useFragments, useJunctions, pushUndo } from '../store';
 import { designPrimers } from '../api';
 import { PCR_MIXES, ASSEMBLY_PROTOCOLS as ASM_PROTOCOLS } from '../protocol-data';
 import { findAllMatches, addPrimersToRegistry } from '../primer-reuse';
@@ -21,6 +21,7 @@ export function useGeneratePrimers() {
 
   const generate = async () => {
     if (fragments.length < 2) return;
+    pushUndo();
     const active = getActive();
     if (!active) return;
     const assemblyType = active.assemblyType || 'overlap';
