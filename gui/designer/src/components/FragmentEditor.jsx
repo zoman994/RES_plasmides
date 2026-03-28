@@ -123,9 +123,10 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
   const [domains, setDomains] = useState(fragment.domains?.length ? fragment.domains : loadSavedDomains(fragment.id) || loadSavedDomains(fragment.name) || []);
   const [customColor, setCustomColor] = useState(fragment.customColor || '');
   const [showPalette, setShowPalette] = useState(false);
-  const [editMode, setEditMode] = useState('view'); // 'view' | 'edit'
+  const [editMode, setEditMode] = useState('view'); // 'view' | 'edit' (codon inline editing)
+  const [workflow, setWorkflow] = useState('edit'); // 'edit' = simple edit | 'mutagenesis' = with protocol
   const [mutTarget, setMutTarget] = useState(null); // { start, end, x, y } — AA range
-  const [dnaMutTarget, setDnaMutTarget] = useState(null); // { pos, nt, x, y } — nucleotide position
+  const [dnaMutTarget, setDnaMutTarget] = useState(null); // { pos, nt, x, y }
   const [customAA, setCustomAA] = useState('');
   const [mutations, setMutations] = useState([]);
   const [editingCodon, setEditingCodon] = useState(null);
@@ -198,11 +199,22 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
 
   const handleSave = () => {
     persistDomains(fragment.id || fragment.name, domains);
-    const mutLabels = mutations.map(m => m.label).join(',');
-    const name = mutations.length > 0 ? `${fragment.name}(${mutLabels})` : fragment.name;
-    onSave({ ...fragment, name, sequence: seq, length: seq.length, domains, customColor: customColor || undefined,
-      mutations: mutations.length > 0 ? [...(fragment.mutations || []), ...mutations] : fragment.mutations,
-      editedAt: new Date().toISOString() });
+
+    if (workflow === 'edit') {
+      // Simple edit mode — save sequence directly, no variants/primers
+      onSave({ ...fragment, sequence: seq, length: seq.length, domains,
+        customColor: customColor || undefined, editedAt: new Date().toISOString(),
+        // Don't pass mutations — this is a direct edit, not mutagenesis
+      });
+    } else {
+      // Mutagenesis mode — rename with mutations, trigger variant + KLD
+      const mutLabels = mutations.map(m => m.label).join(',');
+      const name = mutations.length > 0 ? `${fragment.name}(${mutLabels})` : fragment.name;
+      onSave({ ...fragment, name, sequence: seq, length: seq.length, domains,
+        customColor: customColor || undefined,
+        mutations: mutations.length > 0 ? [...(fragment.mutations || []), ...mutations] : fragment.mutations,
+        editedAt: new Date().toISOString() });
+    }
     onClose();
   };
 
@@ -423,7 +435,31 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
           </div>
         )}
 
-        {/* Tabs */}
+        {/* Workflow mode toggle */}
+        <div className="flex items-center gap-1 mb-2 p-1.5 bg-gray-50 rounded-lg">
+          <button onClick={() => setWorkflow('edit')}
+            className={`flex-1 px-2 py-1 text-[10px] rounded-md flex items-center justify-center gap-1 transition ${
+              workflow === 'edit' ? 'bg-white shadow-sm border font-medium text-gray-800' : 'text-gray-400 hover:bg-gray-100'}`}>
+            {'✏️'} Редактирование
+          </button>
+          <button onClick={() => setWorkflow('mutagenesis')}
+            className={`flex-1 px-2 py-1 text-[10px] rounded-md flex items-center justify-center gap-1 transition ${
+              workflow === 'mutagenesis' ? 'bg-purple-50 shadow-sm border border-purple-200 font-medium text-purple-700' : 'text-gray-400 hover:bg-gray-100'}`}>
+            {'🧬'} Мутагенез
+          </button>
+        </div>
+        {workflow === 'edit' && seqChanged && (
+          <div className="text-[9px] text-amber-600 bg-amber-50 rounded px-2 py-1 mb-2">
+            {'⚠'} Последовательность изменена. При сохранении праймеры будут сброшены.
+          </div>
+        )}
+        {workflow === 'mutagenesis' && mutations.length === 0 && (
+          <div className="text-[9px] text-purple-500 bg-purple-50 rounded px-2 py-1 mb-2">
+            {'🧬'} Кликните по кодону (ДНК) или аминокислоте (АК) для мутагенеза. Будут подобраны праймеры и протокол.
+          </div>
+        )}
+
+        {/* Content tabs */}
         <div className="flex gap-0 rounded-lg overflow-hidden border mb-3">
           <button onClick={() => setTab('dna')}
             className={`flex-1 px-3 py-1.5 text-xs font-medium transition ${tab === 'dna' ? 'bg-blue-600 text-white' : 'hover:bg-gray-50'}`}>
@@ -752,8 +788,18 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
 
         {/* Save */}
         <div className="flex gap-2 items-center">
-          <button onClick={handleSave} className="text-xs bg-blue-600 text-white px-4 py-1.5 rounded-lg hover:bg-blue-700 font-semibold">{'💾'} Сохранить</button>
-          {seqChanged && onSaveAsVariant && (
+          {workflow === 'edit' ? (
+            <button onClick={handleSave} className="text-xs bg-blue-600 text-white px-4 py-1.5 rounded-lg hover:bg-blue-700 font-semibold">
+              {'💾'} Сохранить
+            </button>
+          ) : (
+            <button onClick={handleSave}
+              disabled={mutations.length === 0 && !seqChanged}
+              className="text-xs bg-purple-600 text-white px-4 py-1.5 rounded-lg hover:bg-purple-700 font-semibold disabled:opacity-40">
+              {'🧬'} Применить мутагенез {mutations.length > 0 && `(${mutations.length})`}
+            </button>
+          )}
+          {workflow === 'mutagenesis' && seqChanged && onSaveAsVariant && (
             <button onClick={handleSaveAsVariant}
               className="text-xs bg-purple-50 text-purple-700 px-3 py-1.5 rounded-lg hover:bg-purple-100 border border-purple-200 font-medium">
               {'🔀'} Как вариант
