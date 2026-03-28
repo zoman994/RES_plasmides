@@ -80,12 +80,14 @@ export default function PartBlock({
         </div>
       )}
 
-      {/* ═══ CLEAN CARD BLOCK ═══ */}
-      <div className={`relative flex flex-col rounded-lg select-none
+      {/* ═══ CARD BLOCK — border = fragment color, fill = domain colors ═══ */}
+      {(() => {
+        const hasDomains = fragment.domains?.length > 0;
+        return (
+      <div className={`relative flex flex-col rounded-lg select-none overflow-hidden
         ${isDragging ? 'shadow-xl' : 'shadow-sm hover:shadow-md'}`}
         style={{
-          background: `linear-gradient(135deg, ${color}15 0%, ${color}08 100%)`,
-          border: `1px solid ${color}30`,
+          border: `2px solid ${color}`,
           borderLeft: circularHint === 'first' ? '3px solid #3b82f6' : `4px solid ${color}`,
           borderRight: circularHint === 'last' ? '3px solid #3b82f6' : undefined,
           width: fragmentWidth(fragment.length, fragmentCount), minWidth: 60,
@@ -93,9 +95,27 @@ export default function PartBlock({
         }}
         title={getPartDescription(fragment.name, fragment.type).short}>
 
+        {/* Domain fill background — colored sections behind content */}
+        {hasDomains && (
+          <div className={`absolute inset-0 flex ${fragment.strand === -1 ? 'flex-row-reverse' : ''}`} style={{ zIndex: 0 }}>
+            {fragment.domains.map((d, di) => {
+              const totalAA = Math.ceil((fragment.sequence || '').length / 3);
+              const w = Math.max(3, ((d.endAA - d.startAA + 1) / (totalAA || 1)) * 100);
+              return (
+                <div key={di} style={{ width: `${w}%`, backgroundColor: (d.color || '#56B4E9') + '20' }}
+                  className="border-r border-white/20 last:border-0" />
+              );
+            })}
+          </div>
+        )}
+        {/* Solid fill when no domains */}
+        {!hasDomains && (
+          <div className="absolute inset-0" style={{ background: `linear-gradient(135deg, ${color}15 0%, ${color}08 100%)`, zIndex: 0 }} />
+        )}
+
         {/* Fwd primer — top line (hidden in compact mode) */}
         {fwdPrimer && !isCompact(fragmentCount) && (
-          <div className="flex items-center justify-between px-2 pt-1.5 pb-0.5 text-[11px]">
+          <div className="flex items-center justify-between px-2 pt-1.5 pb-0.5 text-[11px] relative z-10">
             <span className="text-blue-600 font-medium flex items-center gap-0.5 truncate" title={fwdPrimer.name}>
               <span className="text-blue-500 text-[13px]">{'→'}</span>
               {primerLabel(fwdPrimer.name)}
@@ -105,7 +125,7 @@ export default function PartBlock({
         )}
 
         {/* Fragment center */}
-        <div className={`flex-1 flex flex-col items-center justify-center px-2 overflow-hidden
+        <div className={`flex-1 flex flex-col items-center justify-center px-2 overflow-hidden relative z-10
           ${hasPrimers ? 'py-1' : 'py-3'}`}>
           <div className="flex items-center gap-1 max-w-full">
             <span className={`inline-block shrink-0 ${fragment.strand === -1 ? 'scale-x-[-1]' : ''}`}>
@@ -113,9 +133,9 @@ export default function PartBlock({
             </span>
             <span className="text-xs font-semibold text-gray-800 truncate" title={fragment.name}>{fragment.name}</span>
           </div>
-          {/* Domain bar (flips with strand) */}
-          {fragment.domains?.length > 0 && (
-            <div className={`flex h-2.5 rounded overflow-hidden w-full mt-0.5 ${fragment.strand === -1 ? 'flex-row-reverse' : ''}`}>
+          {/* Domain bar — colored strip at bottom */}
+          {hasDomains && (
+            <div className={`flex h-2 rounded overflow-hidden w-full mt-0.5 ${fragment.strand === -1 ? 'flex-row-reverse' : ''}`}>
               {fragment.domains.map((d, di) => {
                 const totalAA = Math.ceil((fragment.sequence || '').length / 3);
                 const w = Math.max(3, ((d.endAA - d.startAA + 1) / (totalAA || 1)) * 100);
@@ -132,7 +152,7 @@ export default function PartBlock({
 
         {/* Rev primer — bottom line (hidden in compact mode) */}
         {revPrimer && !isCompact(fragmentCount) && (
-          <div className="flex items-center justify-between px-2 pb-1.5 pt-0.5 text-[11px]">
+          <div className="flex items-center justify-between px-2 pb-1.5 pt-0.5 text-[11px] relative z-10">
             <span className="text-red-400 font-mono shrink-0">{revPrimer.tmBinding}°</span>
             <span className="text-red-600 font-medium flex items-center gap-0.5 truncate" title={revPrimer.name}>
               {primerLabel(revPrimer.name)}
@@ -141,6 +161,8 @@ export default function PartBlock({
           </div>
         )}
       </div>
+        );
+      })()}
 
       {/* PCR size (hidden in compact mode) */}
       {pcrSize && !isCompact(fragmentCount) && (
