@@ -126,10 +126,9 @@ export default function PlasmidMap({ fragments, constructName, totalBp, junction
               <path d={sectorPath(cx, cy, outerR + 20, innerR - 8, a.startAngle, a.endAngle)}
                 fill="transparent" stroke="none" />
               {/* Visible arc — with domain sub-arcs for CDS */}
-              {a.domains?.length > 0 ? (
-                // Domain sub-arcs within fragment
-                a.domains.map((dom, di) => {
-                  // Domain positions: startAA/endAA (1-based) → bp positions within fragment
+              {a.domains?.length > 0 ? (<>
+                {/* Domain sub-arcs */}
+                {a.domains.map((dom, di) => {
                   const isCDS = a.type === 'CDS' || a.type === 'gene';
                   const domStartBp = isCDS ? (dom.startAA - 1) * 3 : dom.startAA - 1;
                   const domEndBp = isCDS ? dom.endAA * 3 : dom.endAA;
@@ -149,8 +148,35 @@ export default function PlasmidMap({ fragments, constructName, totalBp, junction
                       <title>{a.name}: {dom.name} ({dom.startAA}–{dom.endAA})</title>
                     </path>
                   );
-                })
-              ) : (
+                })}
+                {/* Domain labels inside arcs */}
+                {a.domains.map((dom, di) => {
+                  const isCDS = a.type === 'CDS' || a.type === 'gene';
+                  const domStartBp = isCDS ? (dom.startAA - 1) * 3 : dom.startAA - 1;
+                  const domEndBp = isCDS ? dom.endAA * 3 : dom.endAA;
+                  const fragLen = a.len || 1;
+                  const dsFrac = domStartBp / fragLen;
+                  const deFrac = Math.min(1, domEndBp / fragLen);
+                  const dsA = a.startAngle + (a.endAngle - a.startAngle) * dsFrac;
+                  const deA = a.startAngle + (a.endAngle - a.startAngle) * deFrac;
+                  const arcSpan = deA - dsA;
+                  const midR = (outerR + innerR) / 2;
+                  const arcLen = arcSpan * midR; // approximate arc length in SVG units
+                  if (arcLen < 30) return null; // too small for label
+                  const midA = (dsA + deA) / 2;
+                  const lp = polar(cx, cy, midR, midA);
+                  const rot = (midA * 180 / Math.PI) + (midA > Math.PI ? -90 : 90);
+                  return (
+                    <text key={`dl${di}`} x={lp.x} y={lp.y}
+                      textAnchor="middle" dominantBaseline="central"
+                      className="pointer-events-none select-none"
+                      style={{ fontSize: arcLen < 50 ? '6px' : '7px', fill: '#fff', fontWeight: 500 }}
+                      transform={`rotate(${rot}, ${lp.x}, ${lp.y})`}>
+                      {dom.name}
+                    </text>
+                  );
+                })}
+              </>) : (
                 // Single solid arc (no domains)
                 <path d={sectorPath(cx, cy, isSel ? outerR + 5 : isH ? outerR + 3 : outerR, isSel ? innerR - 2 : innerR, a.startAngle + gap, a.endAngle - gap)}
                   fill={a.color} stroke={isSel ? '#000' : '#fff'} strokeWidth={isSel ? 2 : 1} opacity={isH ? 0.85 : 1}
