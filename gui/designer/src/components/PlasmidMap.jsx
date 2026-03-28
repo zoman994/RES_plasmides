@@ -35,8 +35,9 @@ export default function PlasmidMap({ fragments, constructName, totalBp, junction
   const cx = SIZE / 2, cy = SIZE / 2;
   const outerR = 140, innerR = 118, backboneR = (outerR + innerR) / 2;
   const labelR = outerR + 16;
-  // Primer track ring — inside the backbone
-  const primerOuterR = innerR - 4, primerInnerR = innerR - 16;
+  // Primer tracks — fwd OUTSIDE backbone, rev INSIDE
+  const fwdPrimerOuterR = outerR + 10, fwdPrimerInnerR = outerR + 4;
+  const revPrimerOuterR = innerR - 4, revPrimerInnerR = innerR - 10;
 
   const onWheel = useCallback((e) => {
     e.preventDefault();
@@ -246,34 +247,31 @@ export default function PlasmidMap({ fragments, constructName, totalBp, junction
           );
         })}
 
-        {/* Primer ring — SnapGene-style arrow arcs inside backbone */}
-        <circle cx={cx} cy={cy} r={(primerOuterR + primerInnerR) / 2} fill="none" stroke="#f1f5f9" strokeWidth={primerOuterR - primerInnerR} />
+        {/* Primer rings — fwd OUTSIDE (blue), rev INSIDE (red) */}
+        <circle cx={cx} cy={cy} r={(fwdPrimerOuterR + fwdPrimerInnerR) / 2} fill="none" stroke="#eff6ff" strokeWidth={fwdPrimerOuterR - fwdPrimerInnerR} opacity={0.5} />
+        <circle cx={cx} cy={cy} r={(revPrimerOuterR + revPrimerInnerR) / 2} fill="none" stroke="#fef2f2" strokeWidth={revPrimerOuterR - revPrimerInnerR} opacity={0.5} />
         {primerArcs.map((p, i) => {
           const c = p.isFwd ? '#2563eb' : '#dc2626';
+          const pOuter = p.isFwd ? fwdPrimerOuterR : revPrimerOuterR;
+          const pInner = p.isFwd ? fwdPrimerInnerR : revPrimerInnerR;
           const isHP = hovPrimer === i;
-          // Arrowhead at 3' end
           const arrowAngle = p.isFwd ? p.bindE : p.bindS;
-          const tipR = (primerOuterR + primerInnerR) / 2;
+          const tipR = (pOuter + pInner) / 2;
           const tip = polar(cx, cy, tipR, arrowAngle + (p.isFwd ? 0.012 : -0.012));
-          const b1 = polar(cx, cy, primerOuterR, arrowAngle);
-          const b2 = polar(cx, cy, primerInnerR, arrowAngle);
-          // Tooltip position
-          const tp = polar(cx, cy, primerInnerR - 10, p.midAngle);
+          const b1 = polar(cx, cy, pOuter, arrowAngle);
+          const b2 = polar(cx, cy, pInner, arrowAngle);
+          const tp = polar(cx, cy, p.isFwd ? fwdPrimerOuterR + 10 : revPrimerInnerR - 10, p.midAngle);
           return (
             <g key={`pa-${i}`} style={{ cursor: 'pointer' }}
               onMouseEnter={() => setHovPrimer(i)} onMouseLeave={() => setHovPrimer(null)}>
-              {/* Tail arc (transparent) */}
               {Math.abs(p.tailE - p.tailS) > 0.002 && (
-                <path d={sectorPath(cx, cy, primerOuterR, primerInnerR, Math.min(p.tailS, p.tailE), Math.max(p.tailS, p.tailE))}
+                <path d={sectorPath(cx, cy, pOuter, pInner, Math.min(p.tailS, p.tailE), Math.max(p.tailS, p.tailE))}
                   fill={c} opacity={0.2} stroke="none" />
               )}
-              {/* Binding arc (solid) */}
-              <path d={sectorPath(cx, cy, primerOuterR, primerInnerR, p.bindS, p.bindE)}
+              <path d={sectorPath(cx, cy, pOuter, pInner, p.bindS, p.bindE)}
                 fill={c} opacity={isHP ? 0.9 : 0.6} stroke="#fff" strokeWidth={0.5}
                 style={{ transition: 'opacity 100ms' }} />
-              {/* Arrowhead */}
               <polygon points={`${tip.x},${tip.y} ${b1.x},${b1.y} ${b2.x},${b2.y}`} fill={c} opacity={0.8} />
-              {/* Hover tooltip */}
               {isHP && (
                 <g>
                   <rect x={tp.x - 50} y={tp.y - 8} width={100} height={16} rx={3}
