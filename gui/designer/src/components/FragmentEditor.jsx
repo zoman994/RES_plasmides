@@ -146,11 +146,18 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
     }
   };
 
-  // Open DNA mutation menu (nucleotide-level)
+  // Open DNA mutation menu (nucleotide-level, Shift extends range)
   const openDnaMutMenu = (e, ntPos) => {
+    e.stopPropagation();
     setMutTarget(null);
     const rect = e.currentTarget.getBoundingClientRect();
-    setDnaMutTarget({ pos: ntPos, nt: seq[ntPos]?.toUpperCase() || 'N', x: rect.left, y: rect.bottom + 4 });
+    if (e.shiftKey && dnaMutTarget) {
+      const start = Math.min(dnaMutTarget.pos, ntPos);
+      const end = Math.max(dnaMutTarget.pos, ntPos);
+      setDnaMutTarget({ ...dnaMutTarget, pos: start, endPos: end, nt: seq.slice(start, end + 1).toUpperCase() });
+    } else {
+      setDnaMutTarget({ pos: ntPos, endPos: ntPos, nt: seq[ntPos]?.toUpperCase() || 'N', x: rect.left, y: rect.bottom + 4 });
+    }
     setInsertSeq('');
   };
   const [addForm, setAddForm] = useState(null);
@@ -495,7 +502,8 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
                         const inRange = mutTarget && ai >= mutTarget.start && ai <= mutTarget.end;
                         const isEditing = editMode === 'edit' && editingCodon?.aaIdx === ai;
                         const ntStart = ai * 3; // nucleotide position of this codon
-                        const dnaMutHere = dnaMutTarget && dnaMutTarget.pos >= ntStart && dnaMutTarget.pos < ntStart + 3;
+                        const dnaEnd = dnaMutTarget?.endPos ?? dnaMutTarget?.pos ?? -1;
+                        const dnaMutHere = dnaMutTarget && ntStart + 2 >= dnaMutTarget.pos && ntStart <= dnaEnd;
                         return (
                         <span key={ci} className={`inline-block text-center rounded transition
                           ${editMode === 'view' ? 'cursor-pointer' : 'cursor-text'}
@@ -563,7 +571,7 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
                       <span>
                         {lineSeq.split('').map((nt, ci) => {
                           const pos = lineStart + ci;
-                          const isDnaMut = dnaMutTarget?.pos === pos;
+                          const isDnaMut = dnaMutTarget && pos >= dnaMutTarget.pos && pos <= (dnaMutTarget.endPos ?? dnaMutTarget.pos);
                           const isMut = mutations.some(m => m.position === pos);
                           const gap = ci > 0 && ci % 10 === 0;
                           return (
@@ -814,7 +822,7 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
 
       {/* Mutation popup — portal, positioned near click */}
       {isCDS && mutTarget && createPortal(
-        <div className="fixed inset-0 z-[60]" onClick={() => setMutTarget(null)}>
+        <div className="fixed inset-0 z-[60]" onClick={(e) => { e.stopPropagation(); setMutTarget(null); }}>
           <div className="absolute bg-white rounded-xl shadow-2xl border p-3 w-64"
             style={{
               left: Math.min(mutTarget.x, window.innerWidth - 270),
@@ -908,7 +916,7 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
 
       {/* DNA mutation popup — nucleotide-level */}
       {dnaMutTarget && createPortal(
-        <div className="fixed inset-0 z-[60]" onClick={() => setDnaMutTarget(null)}>
+        <div className="fixed inset-0 z-[60]" onClick={(e) => { e.stopPropagation(); setDnaMutTarget(null); }}>
           <div className="absolute bg-white rounded-xl shadow-2xl border p-3 w-64"
             style={{
               left: Math.min(dnaMutTarget.x, window.innerWidth - 270),
@@ -916,10 +924,19 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
             }}
             onClick={e => e.stopPropagation()}>
 
+            {(() => {
+              const isRange = dnaMutTarget.endPos != null && dnaMutTarget.endPos !== dnaMutTarget.pos;
+              const rangeLen = isRange ? dnaMutTarget.endPos - dnaMutTarget.pos + 1 : 1;
+              return (<>
             <div className="flex justify-between items-center mb-2">
               <div className="text-[11px] font-semibold">
-                ДНК мутация: <span className="text-teal-700 font-mono">{dnaMutTarget.nt}</span>
-                <span className="text-gray-400 ml-1">позиция {dnaMutTarget.pos + 1}</span>
+                {isRange ? (
+                  <>ДНК: <span className="text-teal-700 font-mono">{dnaMutTarget.pos + 1}–{dnaMutTarget.endPos + 1}</span>
+                  <span className="text-gray-400 ml-1">({rangeLen} п.н.)</span></>
+                ) : (
+                  <>ДНК мутация: <span className="text-teal-700 font-mono">{dnaMutTarget.nt}</span>
+                  <span className="text-gray-400 ml-1">позиция {dnaMutTarget.pos + 1}</span></>
+                )}
               </div>
               <button onClick={() => setDnaMutTarget(null)} className="text-gray-300 hover:text-gray-500 text-xs">{'✕'}</button>
             </div>
@@ -967,17 +984,27 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
 
             {/* Deletion */}
             <div className="border-t pt-2 space-y-1">
-              <button onClick={() => applyDnaDel(dnaMutTarget.pos, 1)}
-                className="text-[10px] text-red-600 hover:bg-red-50 px-2 py-0.5 rounded w-full text-left">
-                {'🗑'} Удалить {dnaMutTarget.nt} (1 п.н.)
-              </button>
-              {isCDS && (
-                <button onClick={() => applyDnaDel(Math.floor(dnaMutTarget.pos / 3) * 3, 3)}
+              {isRange ? (
+                <button onClick={() => applyDnaDel(dnaMutTarget.pos, rangeLen)}
                   className="text-[10px] text-red-600 hover:bg-red-50 px-2 py-0.5 rounded w-full text-left">
-                  {'🗑'} Удалить кодон ({seq.slice(Math.floor(dnaMutTarget.pos / 3) * 3, Math.floor(dnaMutTarget.pos / 3) * 3 + 3).toUpperCase()}) — 3 п.н.
+                  {'🗑'} Удалить {dnaMutTarget.pos + 1}–{dnaMutTarget.endPos + 1} ({rangeLen} п.н.)
                 </button>
-              )}
+              ) : (<>
+                <button onClick={() => applyDnaDel(dnaMutTarget.pos, 1)}
+                  className="text-[10px] text-red-600 hover:bg-red-50 px-2 py-0.5 rounded w-full text-left">
+                  {'🗑'} Удалить {dnaMutTarget.nt} (1 п.н.)
+                </button>
+                {isCDS && (
+                  <button onClick={() => applyDnaDel(Math.floor(dnaMutTarget.pos / 3) * 3, 3)}
+                    className="text-[10px] text-red-600 hover:bg-red-50 px-2 py-0.5 rounded w-full text-left">
+                    {'🗑'} Удалить кодон — 3 п.н.
+                  </button>
+                )}
+              </>)}
             </div>
+
+            {/* Close IIFE */}
+            </>); })()}
 
             {/* Applied mutations */}
             {mutations.length > 0 && (
