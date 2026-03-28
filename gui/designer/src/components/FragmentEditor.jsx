@@ -149,7 +149,9 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
   // Open DNA mutation menu (nucleotide-level, Shift extends range)
   const dnaMutAnchor = useRef(null); // remember first click position for Shift+click
   const openDnaMutMenu = (e, ntPos) => {
+    e.preventDefault(); // prevent browser text selection on Shift+click
     e.stopPropagation();
+    window.getSelection()?.removeAllRanges(); // clear any existing selection
     setMutTarget(null);
     const rect = e.currentTarget.getBoundingClientRect();
     if (e.shiftKey && dnaMutAnchor.current != null) {
@@ -505,57 +507,45 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
               ))}
             </div>
 
-            {/* Codon view — unified: click AA → mutate, edit mode → inline codon editing */}
+            {/* CDS nucleotide view — per-nucleotide clickable, AA below middle nt */}
             {isCDS && (
-              <div className="bg-gray-50 rounded-lg p-3 max-h-[220px] overflow-y-auto mb-3 font-mono relative">
+              <div className="bg-gray-50 rounded-lg p-3 max-h-[220px] overflow-y-auto mb-3 font-mono relative select-none">
                 {codonLines.map(line => (
                   <div key={line.pos} className="mb-2 flex items-start">
                     <span className="text-gray-400 w-10 text-right mr-2 shrink-0 text-[9px] pt-0.5">{line.pos}</span>
                     <div className="flex flex-wrap">
                       {line.codons.map((c, ci) => {
-                        const ai = c.aaIdx - 1; // 0-based
-                        const isMutated = mutations.some(m => m.label && String(c.aaIdx) === m.label.match(/\d+/)?.[0]);
-                        const inRange = mutTarget && ai >= mutTarget.start && ai <= mutTarget.end;
-                        const isEditing = editMode === 'edit' && editingCodon?.aaIdx === ai;
-                        const ntStart = ai * 3; // nucleotide position of this codon
-                        const dnaEnd = dnaMutTarget?.endPos ?? dnaMutTarget?.pos ?? -1;
-                        const dnaMutHere = dnaMutTarget && ntStart + 2 >= dnaMutTarget.pos && ntStart <= dnaEnd;
-                        return (
-                        <span key={ci} className={`inline-block text-center rounded transition
-                          ${editMode === 'view' ? 'cursor-pointer' : 'cursor-text'}
-                          ${inRange ? 'bg-purple-200' : dnaMutHere ? 'bg-teal-200' : isMutated ? 'bg-amber-100' : editMode === 'view' ? 'hover:bg-purple-50' : 'hover:bg-blue-50'}`}
-                          style={{ width: '3.6ch' }}
-                          onClick={e => {
-                            if (editMode === 'edit') {
-                              setEditingCodon({ aaIdx: ai, value: c.codon });
-                            }
-                          }}>
-                          {isEditing ? (
-                            <input value={editingCodon.value}
-                              onChange={e => setEditingCodon({ aaIdx: ai, value: e.target.value.toUpperCase().replace(/[^ATGC]/g, '').slice(0, 3) })}
-                              onBlur={() => commitCodonEdit(ai, editingCodon.value)}
-                              onKeyDown={e => {
-                                if (e.key === 'Enter') commitCodonEdit(ai, editingCodon.value);
-                                if (e.key === 'Escape') setEditingCodon(null);
-                                if (e.key === 'Tab') { e.preventDefault(); commitCodonEdit(ai, editingCodon.value); setEditingCodon({ aaIdx: ai + 1, value: seq.slice((ai + 1) * 3, (ai + 1) * 3 + 3).toUpperCase() }); }
-                              }}
-                              className="w-full text-[11px] text-center border-b-2 border-blue-400 bg-white outline-none font-mono px-0"
-                              style={{ width: '3.6ch' }}
-                              autoFocus maxLength={3} />
-                          ) : (
-                            <span className={`block text-[11px] text-[#1a1a1a] ${editMode === 'view' ? 'hover:text-teal-700 hover:underline cursor-pointer' : ''}`}
-                              style={{ borderBottom: c.dom ? `2px solid ${c.dom.color}` : editMode === 'edit' ? '1px dashed #cbd5e1' : 'none' }}
-                              onClick={editMode === 'view' ? (e) => { e.stopPropagation(); openDnaMutMenu(e, ntStart); } : undefined}>
-                              {c.codon}
+                        const ai = c.aaIdx - 1;
+                        const ntBase = ai * 3;
+                        return c.codon.split('').map((nt, ni) => {
+                          const ntPos = ntBase + ni;
+                          const dEnd = dnaMutTarget?.endPos ?? dnaMutTarget?.pos ?? -1;
+                          const inDnaRange = dnaMutTarget && ntPos >= dnaMutTarget.pos && ntPos <= dEnd;
+                          const inAARange = mutTarget && ai >= mutTarget.start && ai <= mutTarget.end;
+                          const isMut = mutations.some(m => m.position === ntPos || (m.codonStart != null && ntPos >= m.codonStart && ntPos < m.codonStart + 3));
+                          const isMiddle = ni === 1; // AA shown under middle nucleotide
+                          const isCodonEnd = ni === 2; // small gap after codon
+                          return (
+                            <span key={`${ci}-${ni}`} className="inline-block text-center" style={{ width: '1.2ch', marginRight: isCodonEnd ? '0.3ch' : 0 }}>
+                              <span className={`block text-[11px] cursor-pointer rounded-sm transition
+                                ${inDnaRange ? 'bg-teal-300 text-white' : inAARange ? 'bg-purple-200' : isMut ? 'bg-amber-200' : 'hover:bg-teal-100'}`}
+                                style={{ borderBottom: c.dom ? `2px solid ${c.dom.color}` : 'none' }}
+                                onClick={e => { e.preventDefault(); openDnaMutMenu(e, ntPos); }}>
+                                {nt}
+                              </span>
+                              {isMiddle ? (
+                                <span className={`block text-[9px] cursor-pointer ${editMode === 'view' ? 'hover:font-bold' : ''}`}
+                                  style={{ color: c.aa === '*' ? '#dc2626' : c.aa === 'M' && c.aaIdx === 1 ? '#16a34a' : c.dom ? c.dom.color : '#aaa' }}
+                                  onClick={e => { e.preventDefault(); e.stopPropagation(); openMutMenu(e, ai, c.aa, c.codon); }}>
+                                  {c.aa}
+                                </span>
+                              ) : (
+                                <span className="block text-[9px] text-transparent">{'\u00A0'}</span>
+                              )}
                             </span>
-                          )}
-                          <span className={`block text-[9px] ${editMode === 'view' ? 'hover:font-bold cursor-pointer' : ''}`}
-                            style={{ color: c.aa === '*' ? '#dc2626' : c.aa === 'M' && c.aaIdx === 1 ? '#16a34a' : c.dom ? c.dom.color : '#aaa' }}
-                            onClick={editMode === 'view' ? (e) => { e.stopPropagation(); openMutMenu(e, ai, c.aa, c.codon); } : undefined}>
-                            {c.aa}
-                          </span>
-                        </span>
-                      );})}
+                          );
+                        });
+                      })}
                     </div>
                   </div>
                 ))}
@@ -563,7 +553,7 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
             )}
             {isCDS && !mutTarget && !dnaMutTarget && (
               <div className="text-[9px] text-gray-400 -mt-2 mb-2 text-center">
-                {editMode === 'view' ? 'Кодон → мутация ДНК · Аминокислота → замена АК · Shift → диапазон' : 'Клик → редактирование кодона · Tab → след.'}
+                Нуклеотид → мутация ДНК · Аминокислота → замена АК · Shift → диапазон
               </div>
             )}
 
