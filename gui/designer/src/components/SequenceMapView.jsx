@@ -245,6 +245,51 @@ export default function SequenceMapView({ fragments, primers = [], circular, onA
                 </span>
               </div>
 
+              {/* Forward primer tracks — ABOVE sense strand, character-grid aligned */}
+              {(() => {
+                const fwdP = linePrimers.filter(p => p.direction === 'forward');
+                // Deduplicate by name
+                const seen = new Set(); const uniqFwd = fwdP.filter(p => { if (seen.has(p.name)) return false; seen.add(p.name); return true; });
+                return uniqFwd.length > 0 && uniqFwd.map((p, pi) => (
+                  <div key={`fwd${pi}`}>
+                    <span className="select-none">{' '.repeat(LABEL_WIDTH)}</span>
+                    {line.seq.split('').map((_, ci) => {
+                      const pos = line.start + ci;
+                      const inPrimer = pos >= p.start && pos < p.end;
+                      const isLast = inPrimer && (pos === p.end - 1 || ci === line.seq.length - 1);
+                      if (!inPrimer) return <span key={ci}>{'\u00A0'}</span>;
+                      if (isLast) return <span key={ci} className="text-[10px]" style={{ color: '#3b82f6' }}>{'▸'}</span>;
+                      return <span key={ci} className="inline-block" style={{ borderBottom: '2px solid #3b82f6' }}>{'\u00A0'}</span>;
+                    })}
+                    <span className="text-[7px] ml-1" style={{ color: '#3b82f6' }}>
+                      {(p.name || '').replace(/^[A-Z]{2}\d{3}_/, '')} {p.tmBinding || ''}°
+                    </span>
+                  </div>
+                ));
+              })()}
+
+              {/* Sense strand 5'→3' with annotation background tint */}
+              <div>
+                <span className="text-gray-400 select-none">{String(line.start + 1).padStart(LABEL_WIDTH)}</span>
+                <span className="select-none cursor-text"
+                  onMouseDown={e => onMouseDown(e, line.start)}
+                  onMouseMove={e => onMouseMove(e, line.start)}>
+                  {line.seq.split('').map((nt, ci) => {
+                    const pos = line.start + ci;
+                    const ann = annMap[ci];
+                    const inSel = sel && pos >= sel.start && pos <= sel.end;
+                    const fwdP = linePrimers.find(p => p.direction === 'forward' && pos >= p.start && pos < p.end);
+                    return (
+                      <span key={ci}
+                        className={inSel ? 'bg-blue-300 text-white' : fwdP ? 'bg-blue-50' : ''}
+                        style={!inSel && !fwdP && ann ? { background: ann.color + '20' } : undefined}>
+                        {nt}
+                      </span>
+                    );
+                  })}
+                </span>
+              </div>
+
               {/* Antisense strand 3'→5' */}
               <div>
                 <span className="select-none">{' '.repeat(LABEL_WIDTH)}</span>
@@ -267,6 +312,28 @@ export default function SequenceMapView({ fragments, primers = [], circular, onA
                 </span>
               </div>
 
+              {/* Reverse primer tracks — BELOW antisense strand */}
+              {(() => {
+                const revP = linePrimers.filter(p => p.direction === 'reverse');
+                const seen = new Set(); const uniqRev = revP.filter(p => { if (seen.has(p.name)) return false; seen.add(p.name); return true; });
+                return uniqRev.length > 0 && uniqRev.map((p, pi) => (
+                  <div key={`rev${pi}`}>
+                    <span className="select-none">{' '.repeat(LABEL_WIDTH)}</span>
+                    {line.seq.split('').map((_, ci) => {
+                      const pos = line.start + ci;
+                      const inPrimer = pos >= p.start && pos < p.end;
+                      const isFirst = inPrimer && (pos === p.start || ci === 0);
+                      if (!inPrimer) return <span key={ci}>{'\u00A0'}</span>;
+                      if (isFirst) return <span key={ci} className="text-[10px]" style={{ color: '#dc2626' }}>{'◂'}</span>;
+                      return <span key={ci} className="inline-block" style={{ borderBottom: '2px solid #dc2626' }}>{'\u00A0'}</span>;
+                    })}
+                    <span className="text-[7px] ml-1" style={{ color: '#dc2626' }}>
+                      {(p.name || '').replace(/^[A-Z]{2}\d{3}_/, '')} {p.tmBinding || ''}°
+                    </span>
+                  </div>
+                ));
+              })()}
+
               {/* Amino acid translation — under CDS regions */}
               {lineFeats.some(f => f.type === 'CDS' || f.type === 'gene') && (
                 <div>
@@ -275,7 +342,7 @@ export default function SequenceMapView({ fragments, primers = [], circular, onA
                     {line.seq.split('').map((_, ci) => {
                       const absPos = line.start + ci;
                       const cds = lineFeats.find(f => (f.type === 'CDS' || f.type === 'gene') && absPos >= f.start && absPos < f.end);
-                      if (!cds) return <span key={ci} className="inline-block" style={{ width: '1ch' }}>{' '}</span>;
+                      if (!cds) return <span key={ci}>{' '}</span>;
                       const posInCDS = absPos - cds.start;
                       if (posInCDS % 3 === 1) {
                         const codonStart = cds.start + posInCDS - 1;
@@ -284,54 +351,21 @@ export default function SequenceMapView({ fragments, primers = [], circular, onA
                         const aaIdx = Math.floor(posInCDS / 3);
                         return (
                           <span key={ci}
-                            className={`inline-block text-center text-[9px] font-medium
+                            className={`text-[9px] font-medium
                               ${aa === 'M' && aaIdx === 0 ? 'text-green-600 font-bold' :
                                 aa === '*' ? 'text-red-600 font-bold' :
                                 'text-purple-400'}`}
-                            style={{ width: '1ch' }}
                             title={`${aa} #${aaIdx + 1} (${codon})`}>
                             {aa}
                           </span>
                         );
                       }
-                      return <span key={ci} className="inline-block" style={{ width: '1ch' }}>{' '}</span>;
+                      return <span key={ci}>{' '}</span>;
                     })}
                   </span>
                 </div>
               )}
 
-              {/* Primer tracks — category-aware: assembly(blue/red), custom(green), verification(gray) */}
-              {linePrimers.length > 0 && (() => {
-                const sorted = [...linePrimers].sort((a, b) => {
-                  const catOrder = { assembly: 0, custom: 1, verification: 2 };
-                  return (catOrder[a.category] || 0) - (catOrder[b.category] || 0) || (a.direction === 'forward' ? -1 : 1);
-                });
-                return (
-                  <div className="relative" style={{ height: sorted.length * 14 + 2, paddingLeft: `${LABEL_WIDTH}ch` }}>
-                    {sorted.map((p, pi) => {
-                      const barStart = Math.max(0, p.start - line.start);
-                      const barEnd = Math.min(line.seq.length, p.end - line.start);
-                      const cat = p.category || 'assembly';
-                      const isFwd = p.direction === 'forward';
-                      const color = cat === 'custom' ? '#16a34a' : cat === 'verification' ? '#6b7280'
-                        : isFwd ? '#2563eb' : '#dc2626';
-                      const dashed = cat === 'custom';
-                      const label = (p.name || '').replace(/^[A-Z]{2}\d{3}_/, '');
-                      return (
-                        <div key={pi} className="absolute flex items-center" style={{ left: `${barStart}ch`, width: `${barEnd - barStart}ch`, top: pi * 14 }}>
-                          {!isFwd && <div className="w-0 h-0 border-t-[3px] border-b-[3px] border-r-[5px] border-transparent" style={{ borderRightColor: color }} />}
-                          <div className={`h-1.5 flex-1 ${isFwd ? 'rounded-l-full' : 'rounded-r-full'}`}
-                            style={{ backgroundColor: color, backgroundImage: dashed ? `repeating-linear-gradient(90deg, ${color} 0 4px, transparent 4px 6px)` : 'none' }} />
-                          {isFwd && <div className="w-0 h-0 border-t-[3px] border-b-[3px] border-l-[5px] border-transparent" style={{ borderLeftColor: color }} />}
-                          <span className="text-[7px] ml-0.5 whitespace-nowrap truncate max-w-[120px]" style={{ color }}>
-                            {label} {p.tmBinding || ''}°{cat === 'custom' ? ' ✎' : ''}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })()}
             </div>
           );
         })}
