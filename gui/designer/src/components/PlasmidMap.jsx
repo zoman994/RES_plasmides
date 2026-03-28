@@ -150,7 +150,7 @@ export default function PlasmidMap({ fragments, constructName, totalBp, junction
                     </path>
                   );
                 })}
-                {/* Domain labels inside arcs */}
+                {/* Domain labels inside arcs — always readable left-to-right */}
                 {a.domains.map((dom, di) => {
                   const isCDS = a.type === 'CDS' || a.type === 'gene';
                   const domStartBp = isCDS ? (dom.startAA - 1) * 3 : dom.startAA - 1;
@@ -162,11 +162,17 @@ export default function PlasmidMap({ fragments, constructName, totalBp, junction
                   const deA = a.startAngle + (a.endAngle - a.startAngle) * deFrac;
                   const arcSpan = deA - dsA;
                   const midR = (outerR + innerR) / 2;
-                  const arcLen = arcSpan * midR; // approximate arc length in SVG units
-                  if (arcLen < 30) return null; // too small for label
+                  const arcLen = arcSpan * midR;
+                  if (arcLen < 30) return null;
                   const midA = (dsA + deA) / 2;
                   const lp = polar(cx, cy, midR, midA);
-                  const rot = (midA * 180 / Math.PI) + (midA > Math.PI ? -90 : 90);
+                  // Angle in degrees from 12 o'clock. Tangent to arc = midA_deg.
+                  // Text should be tangent to arc and always readable (not upside-down).
+                  const midDeg = (midA * 180 / Math.PI); // polar angle in degrees
+                  // If in bottom half (90°..270° in polar = right side..bottom..left side),
+                  // flip 180° so text reads left-to-right
+                  const isBottom = midDeg > 90 && midDeg < 270;
+                  const rot = midDeg + (isBottom ? -90 + 180 : -90);
                   return (
                     <text key={`dl${di}`} x={lp.x} y={lp.y}
                       textAnchor="middle" dominantBaseline="central"
