@@ -10,7 +10,7 @@ import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 
 // ═══ Store ═══
-import { useStore, useFragments, useJunctions, usePrimers, useCustomPrimers } from './store/index';
+import { useStore, useFragments, useJunctions, usePrimers, useCustomPrimers, undo, redo, useCanUndo, useCanRedo } from './store/index';
 
 // ═══ Hooks (extracted handlers) ═══
 import { useGeneratePrimers } from './hooks/useGeneratePrimers';
@@ -44,7 +44,19 @@ import { estimateEfficiency } from './assembly-utils';
 
 export default function App() {
 
-  // ═══════════ Store: domain state ═══════════
+  // ═══ Undo/Redo ═══
+  const canUndo = useCanUndo();
+  const canRedo = useCanRedo();
+
+  useEffect(() => {
+    const handler = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'Z' || e.key === 'y')) { e.preventDefault(); redo(); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   // ═══ Store selectors ═══
   const fragments     = useFragments();
   const junctions     = useJunctions();
@@ -171,6 +183,23 @@ export default function App() {
           <div className="flex items-center gap-3">
             <span className="text-lg">&#x1F9EC;</span>
             <h1 className="text-base font-bold text-white">{t('Construct Designer')}</h1>
+            {/* Undo / Redo */}
+            <div className="flex items-center gap-0.5 ml-2">
+              <button onClick={undo} disabled={!canUndo}
+                className={`p-1 rounded transition ${canUndo ? 'hover:bg-white/20 text-gray-300' : 'text-gray-600 cursor-not-allowed'}`}
+                title="Отменить (Ctrl+Z)">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 8h8a3 3 0 010 6H8M3 8l3-3M3 8l3 3"/>
+                </svg>
+              </button>
+              <button onClick={redo} disabled={!canRedo}
+                className={`p-1 rounded transition ${canRedo ? 'hover:bg-white/20 text-gray-300' : 'text-gray-600 cursor-not-allowed'}`}
+                title="Повторить (Ctrl+Shift+Z)">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M13 8H5a3 3 0 000 6h3M13 8l-3-3M13 8l-3 3"/>
+                </svg>
+              </button>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <button onClick={toggleExpertMode}
