@@ -176,13 +176,11 @@ export default function PlasmidMap({ fragments, constructName, totalBp, junction
                   if (arcLen < 30) return null;
                   const midA = (dsA + deA) / 2;
                   const lp = polar(cx, cy, midR, midA);
-                  // Angle in degrees from 12 o'clock. Tangent to arc = midA_deg.
-                  // Text should be tangent to arc and always readable (not upside-down).
-                  const midDeg = (midA * 180 / Math.PI); // polar angle in degrees
-                  // If in bottom half (90°..270° in polar = right side..bottom..left side),
-                  // flip 180° so text reads left-to-right
-                  const isBottom = midDeg > 90 && midDeg < 270;
-                  const rot = midDeg + (isBottom ? -90 + 180 : -90);
+                  // midA: 0=12 o'clock, π/2=3, π=6, 3π/2=9
+                  // Bottom half (3→9 through 6): flip 180° so text reads left-to-right
+                  const isBottom = midA > Math.PI / 2 && midA < Math.PI * 1.5;
+                  const midDeg = midA * 180 / Math.PI;
+                  const rot = midDeg + (isBottom ? 90 : -90);
                   return (
                     <text key={`dl${di}`} x={lp.x} y={lp.y}
                       textAnchor="middle" dominantBaseline="central"
@@ -305,8 +303,10 @@ export default function PlasmidMap({ fragments, constructName, totalBp, junction
         <defs>
           {arcs.map((a, i) => {
             const r = backboneR;
-            const midDeg = (a.midAngle * 180) / Math.PI - 90;
-            const isBottom = midDeg > 0 && midDeg < 180;
+            // Flip text for bottom half of circle so it reads left-to-right
+            // midAngle: 0=12 o'clock, π/2=3, π=6, 3π/2=9
+            // Bottom half: 3 o'clock → 9 o'clock (through 6) = midAngle ∈ (π/2, 3π/2)
+            const isBottom = a.midAngle > Math.PI / 2 && a.midAngle < Math.PI * 1.5;
             // Flip arc direction for bottom half so text reads left-to-right
             const [from, to] = isBottom ? [a.endAngle, a.startAngle] : [a.startAngle, a.endAngle];
             const s = polar(cx, cy, r, from), e = polar(cx, cy, r, to);
