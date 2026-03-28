@@ -32,97 +32,79 @@ const UI_FIELDS = new Set([
   'firstLaunch', 'inventoryVersion',
 ]);
 
+// State creator (innermost)
+const stateCreator = (set, get, api) => ({
+  ...createProjectSlice(set, get, api),
+  ...createFragmentSlice(set, get, api),
+  ...createJunctionSlice(set, get, api),
+  ...createPrimerSlice(set, get, api),
+  ...createUiSlice(set, get, api),
+
+  getActive: () => {
+    const { assemblies, activeId } = get();
+    return assemblies.find(a => a.id === activeId) || assemblies[0] || null;
+  },
+  updateActive: (updates) => {
+    set(state => {
+      const idx = state.assemblies.findIndex(a => a.id === state.activeId);
+      if (idx >= 0) Object.assign(state.assemblies[idx], updates);
+    }, false, 'updateActive');
+  },
+  initialized: false,
+  initialize: () => set({ initialized: true }, false, 'initialize'),
+});
+
+// Persist config
+const persistConfig = {
+  name: LS_KEY,
+  version: 3,
+  partialize: (state) => ({
+    projects: state.projects, activeProjectId: state.activeProjectId,
+    projectName: state.projectName, assemblies: state.assemblies,
+    activeId: state.activeId, polymerase: state.polymerase,
+    primerPrefix: state.primerPrefix, expertMode: state.expertMode,
+    parts: state.parts,
+  }),
+  migrate: (persisted, version) => {
+    if (version < 3 && persisted && !persisted.projects) {
+      const pName = persisted.projectName || 'Проект 1';
+      const asms = persisted.assemblies || [];
+      return { ...persisted, projects: [{ id: 'proj_1', name: pName, assemblies: asms, activeId: asms[0]?.id || 'asm_1' }], activeProjectId: 'proj_1' };
+    }
+    return persisted;
+  },
+  onRehydrateStorage: () => (state) => { if (state) state.initialized = true; },
+};
+
+// Temporal (undo/redo) config
+const temporalConfig = {
+  partialize: (state) => {
+    const tracked = {};
+    for (const key of Object.keys(state)) {
+      if (!UI_FIELDS.has(key) && typeof state[key] !== 'function') tracked[key] = state[key];
+    }
+    return tracked;
+  },
+  limit: 50,
+  handleSet: (handleSet) => {
+    let timeout;
+    return (state) => { clearTimeout(timeout); timeout = setTimeout(() => handleSet(state), 500); };
+  },
+};
+
+// Middleware stack: temporal must wrap the state creator directly
+// Order (outside→in): create → temporal → devtools → subscribeWithSelector → immer → persist → stateCreator
 export const useStore = create(
-  devtools(
-    subscribeWithSelector(
-      temporal(
+  temporal(
+    devtools(
+      subscribeWithSelector(
         immer(
-          persist(
-            (set, get, api) => ({
-              // ═══ Domain slices ═══
-              ...createProjectSlice(set, get, api),
-              ...createFragmentSlice(set, get, api),
-              ...createJunctionSlice(set, get, api),
-              ...createPrimerSlice(set, get, api),
-              ...createUiSlice(set, get, api),
-
-              // ═══ Computed: active assembly shorthand ═══
-              getActive: () => {
-                const { assemblies, activeId } = get();
-                return assemblies.find(a => a.id === activeId) || assemblies[0] || null;
-              },
-
-              updateActive: (updates) => {
-                set(state => {
-                  const idx = state.assemblies.findIndex(a => a.id === state.activeId);
-                  if (idx >= 0) Object.assign(state.assemblies[idx], updates);
-                }, false, 'updateActive');
-              },
-
-              // ═══ Initialization ═══
-              initialized: false,
-              initialize: () => {
-                set({ initialized: true }, false, 'initialize');
-              },
-            }),
-            {
-              name: LS_KEY,
-              version: 3,
-              partialize: (state) => ({
-                projects: state.projects,
-                activeProjectId: state.activeProjectId,
-                projectName: state.projectName,
-                assemblies: state.assemblies,
-                activeId: state.activeId,
-                polymerase: state.polymerase,
-                primerPrefix: state.primerPrefix,
-                expertMode: state.expertMode,
-                parts: state.parts,
-              }),
-              migrate: (persisted, version) => {
-                if (version < 3 && persisted && !persisted.projects) {
-                  const old = persisted;
-                  const pName = old.projectName || 'Проект 1';
-                  const asms = old.assemblies || [];
-                  const aId = old.activeId || asms[0]?.id || 'asm_1';
-                  return {
-                    ...old,
-                    projects: [{ id: 'proj_1', name: pName, assemblies: asms, activeId: aId }],
-                    activeProjectId: 'proj_1',
-                  };
-                }
-                return persisted;
-              },
-              onRehydrateStorage: () => (state) => {
-                if (state) state.initialized = true;
-              },
-            }
-          )
-        ),
-        {
-          // Only track domain state changes, not UI toggles
-          partialize: (state) => {
-            const tracked = {};
-            for (const key of Object.keys(state)) {
-              if (!UI_FIELDS.has(key) && typeof state[key] !== 'function') {
-                tracked[key] = state[key];
-              }
-            }
-            return tracked;
-          },
-          limit: 50,
-          // Debounce rapid changes (typing, dragging) — 500ms
-          handleSet: (handleSet) => {
-            let timeout;
-            return (state) => {
-              clearTimeout(timeout);
-              timeout = setTimeout(() => handleSet(state), 500);
-            };
-          },
-        }
-      )
+          persist(stateCreator, persistConfig)
+        )
+      ),
+      { name: 'PlasmidVCS' }
     ),
-    { name: 'PlasmidVCS' }
+    temporalConfig
   )
 );
 
