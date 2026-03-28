@@ -175,38 +175,55 @@ export default function SequenceMapView({ fragments, primers = [], circular, onA
           // Primers on this line
           const linePrimers = primerPositions.filter(p => p.start < lineEnd && p.end > line.start);
 
+          // Build per-position annotation color map for this line
+          const annMap = new Array(line.seq.length).fill(null);
+          lineFeats.forEach(f => {
+            const from = Math.max(0, f.start - line.start);
+            const to = Math.min(line.seq.length, f.end - line.start);
+            for (let k = from; k < to; k++) annMap[k] = f;
+          });
+
           return (
             <div key={line.start} className="mb-3">
-              {/* Ruler — tick marks every 10bp */}
-              <div className="text-[8px] text-gray-300 select-none" style={{ paddingLeft: `${LABEL_WIDTH}ch` }}>
-                {Array.from({ length: Math.ceil(line.seq.length / 10) }, (_, gi) => {
-                  const tickPos = line.start + gi * 10 + 10;
-                  return (
-                    <span key={gi} className="inline-block text-center" style={{ width: `${Math.min(10, line.seq.length - gi * 10)}ch` }}>
-                      {tickPos <= line.start + line.seq.length ? tickPos : ''}
-                    </span>
-                  );
-                })}
-              </div>
-
-              {/* Feature bars — ch-based positioning, aligned with sequence text */}
-              {lineFeats.length > 0 && (
-                <div className="relative h-4 mb-0.5" style={{ paddingLeft: `${LABEL_WIDTH}ch` }}>
-                  {lineFeats.map(f => {
-                    const left = Math.max(0, f.start - line.start);
-                    const right = Math.min(line.seq.length, f.end - line.start);
+              {/* Annotation bar — same character grid as sequence (pixel-perfect) */}
+              {lineFeats.length > 0 && (() => {
+                // Pre-compute label characters for each position
+                const labelChars = new Array(line.seq.length).fill('\u00A0');
+                lineFeats.forEach(f => {
+                  const from = Math.max(0, f.start - line.start);
+                  const to = Math.min(line.seq.length, f.end - line.start);
+                  const span = to - from;
+                  // Center the name within the annotation span
+                  const label = span > 3 ? (span > 12 ? `${f.name} (${f.end - f.start})` : f.name) : '';
+                  const pad = Math.max(0, Math.floor((span - label.length) / 2));
+                  for (let c = 0; c < label.length && from + pad + c < to; c++) {
+                    labelChars[from + pad + c] = label[c];
+                  }
+                });
+                return (<div>
+                  <span className="select-none">{' '.repeat(LABEL_WIDTH)}</span>
+                  {line.seq.split('').map((_, ci) => {
+                    const ann = annMap[ci];
+                    const prev = ci > 0 ? annMap[ci - 1] : null;
+                    const next = ci < line.seq.length - 1 ? annMap[ci + 1] : null;
+                    const isStart = ann && (!prev || prev.id !== ann.id);
+                    const isEnd = ann && (!next || next.id !== ann.id);
                     return (
-                      <div key={f.id} className="absolute h-3.5 rounded-sm text-[7px] text-white px-0.5 flex items-center truncate"
-                        style={{ left: `${LABEL_WIDTH + left}ch`, width: `${right - left}ch`, backgroundColor: f.color, minWidth: 4 }}
-                        title={`${f.name} (${f.type}) ${f.start + 1}..${f.end}`}>
-                        {(right - left) > 5 ? f.name : ''}
-                      </div>
+                      <span key={ci}
+                        className="inline-block h-[13px] leading-[13px] text-[8px] text-white select-none overflow-hidden"
+                        style={{
+                          backgroundColor: ann ? ann.color : 'transparent',
+                          borderRadius: `${isStart ? '2px' : '0'} ${isEnd ? '2px' : '0'} ${isEnd ? '2px' : '0'} ${isStart ? '2px' : '0'}`,
+                        }}
+                        title={ann ? `${ann.name} (${ann.type}) ${ann.start + 1}..${ann.end}` : undefined}>
+                        {labelChars[ci]}
+                      </span>
                     );
                   })}
-                </div>
-              )}
+                </div>);
+              })()}
 
-              {/* Sense strand 5'→3' — label is padded string, same font as sequence */}
+              {/* Sense strand 5'→3' with annotation background tint */}
               <div>
                 <span className="text-gray-400 select-none">{String(line.start + 1).padStart(LABEL_WIDTH)}</span>
                 <span className="select-none cursor-text"
@@ -214,10 +231,13 @@ export default function SequenceMapView({ fragments, primers = [], circular, onA
                   onMouseMove={e => onMouseMove(e, line.start)}>
                   {line.seq.split('').map((nt, ci) => {
                     const pos = line.start + ci;
+                    const ann = annMap[ci];
                     const inSel = sel && pos >= sel.start && pos <= sel.end;
                     const fwdP = linePrimers.find(p => p.direction === 'forward' && pos >= p.start && pos < p.end);
                     return (
-                      <span key={ci} className={inSel ? 'bg-blue-300 text-white' : fwdP ? 'bg-blue-50' : ''}>
+                      <span key={ci}
+                        className={inSel ? 'bg-blue-300 text-white' : fwdP ? 'bg-blue-50' : ''}
+                        style={!inSel && !fwdP && ann ? { background: ann.color + '20' } : undefined}>
                         {nt}
                       </span>
                     );
@@ -225,7 +245,7 @@ export default function SequenceMapView({ fragments, primers = [], circular, onA
                 </span>
               </div>
 
-              {/* Antisense strand 3'→5' — same padded space as label */}
+              {/* Antisense strand 3'→5' */}
               <div>
                 <span className="select-none">{' '.repeat(LABEL_WIDTH)}</span>
                 <span className="text-gray-400 select-none cursor-text"
@@ -233,10 +253,13 @@ export default function SequenceMapView({ fragments, primers = [], circular, onA
                   onMouseMove={e => onMouseMove(e, line.start)}>
                   {line.seq.split('').map((nt, ci) => {
                     const pos = line.start + ci;
+                    const ann = annMap[ci];
                     const inSel = sel && pos >= sel.start && pos <= sel.end;
                     const revP = linePrimers.find(p => p.direction === 'reverse' && pos >= p.start && pos < p.end);
                     return (
-                      <span key={ci} className={inSel ? 'bg-blue-200' : revP ? 'bg-red-50' : ''}>
+                      <span key={ci}
+                        className={inSel ? 'bg-blue-200' : revP ? 'bg-red-50' : ''}
+                        style={!inSel && !revP && ann ? { background: ann.color + '15' } : undefined}>
                         {comp(nt)}
                       </span>
                     );
