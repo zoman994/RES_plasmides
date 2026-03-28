@@ -1,13 +1,16 @@
 /**
  * PlasmidVCS Global Store — Zustand with slices pattern.
  *
- * Architecture: 5 domain slices, each in its own file.
- * Middleware stack: devtools → subscribeWithSelector → immer → persist
- * Undo/redo: manual snapshot stack (simple, no external deps).
+ * Performance optimizations:
+ * - Debounced undo snapshots (shallow copy, deep clone only on undo/redo)
+ * - Stable selectors with shallow equality (no new array refs)
+ * - Throttled localStorage persistence (max 1 write/sec)
+ * - devtools disabled in production
  */
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import { devtools, persist, subscribeWithSelector } from 'zustand/middleware';
+import { shallow } from 'zustand/shallow';
 import { createProjectSlice } from './projectSlice';
 import { createFragmentSlice } from './fragmentSlice';
 import { createJunctionSlice } from './junctionSlice';
@@ -16,25 +19,33 @@ import { createUiSlice } from './uiSlice';
 
 const LS_KEY = 'pvcs_designer_state';
 
-// Fields to snapshot for undo (domain state only, not UI)
+// ═══ Undo: snapshot keys (domain state only) ═══
 const SNAPSHOT_KEYS = [
   'projects', 'activeProjectId', 'projectName', 'assemblies', 'activeId',
   'polymerase', 'primerPrefix', 'parts', 'ggEnzyme',
 ];
 
-function takeSnapshot(state) {
+// Shallow snapshot — fast (no JSON stringify on push)
+function shallowSnapshot(state) {
   const snap = {};
-  for (const k of SNAPSHOT_KEYS) snap[k] = JSON.parse(JSON.stringify(state[k] ?? null));
+  for (const k of SNAPSHOT_KEYS) snap[k] = state[k];
   return snap;
 }
 
-// State creator
-const stateCreator = (set, get, api) => ({
-  ...createProjectSlice(set, get, api),
-  ...createFragmentSlice(set, get, api),
-  ...createJunctionSlice(set, get, api),
-  ...createPrimerSlice(set, get, api),
-  ...createUiSlice(set, get, api),
+// Deep clone — only when actually restoring (undo/redo)
+function deepCloneSnapshot(snap) {
+  return JSON.parse(JSON.stringify(snap));
+}
+
+// ═══ State creator ═══
+let _pushTimeout = null;
+
+const stateCreator = (set, get) => ({
+  ...createProjectSlice(set, get),
+  ...createFragmentSlice(set, get),
+  ...createJunctionSlice(set, get),
+  ...createPrimerSlice(set, get),
+  ...createUiSlice(set, get),
 
   getActive: () => {
     const { assemblies, activeId } = get();
@@ -49,43 +60,47 @@ const stateCreator = (set, get, api) => ({
   initialized: false,
   initialize: () => set({ initialized: true }, false, 'initialize'),
 
-  // ═══ Undo / Redo ═══
+  // ═══ Undo / Redo (debounced, shallow push, deep clone on restore) ═══
   _undoStack: [],
   _redoStack: [],
   _undoPaused: false,
 
-  /** Save current state to undo stack (call before destructive actions). */
   pushUndo: () => {
     if (get()._undoPaused) return;
-    const snap = takeSnapshot(get());
-    set(state => {
-      state._undoStack.push(snap);
-      if (state._undoStack.length > 50) state._undoStack.shift();
-      state._redoStack = [];
-    }, false, 'pushUndo');
+    clearTimeout(_pushTimeout);
+    _pushTimeout = setTimeout(() => {
+      const snap = shallowSnapshot(get());
+      set(state => {
+        state._undoStack.push(snap);
+        if (state._undoStack.length > 50) state._undoStack.shift();
+        state._redoStack = [];
+      }, false, 'pushUndo');
+    }, 300);
   },
 
   undo: () => {
     const { _undoStack } = get();
     if (_undoStack.length === 0) return;
-    const snap = takeSnapshot(get()); // save current for redo
+    const current = deepCloneSnapshot(shallowSnapshot(get()));
     const prev = _undoStack[_undoStack.length - 1];
     set(state => {
       state._undoStack.pop();
-      state._redoStack.push(snap);
-      for (const k of SNAPSHOT_KEYS) state[k] = prev[k];
+      state._redoStack.push(current);
+      const restored = deepCloneSnapshot(prev);
+      for (const k of SNAPSHOT_KEYS) state[k] = restored[k];
     }, false, 'undo');
   },
 
   redo: () => {
     const { _redoStack } = get();
     if (_redoStack.length === 0) return;
-    const snap = takeSnapshot(get());
+    const current = deepCloneSnapshot(shallowSnapshot(get()));
     const next = _redoStack[_redoStack.length - 1];
     set(state => {
       state._redoStack.pop();
-      state._undoStack.push(snap);
-      for (const k of SNAPSHOT_KEYS) state[k] = next[k];
+      state._undoStack.push(current);
+      const restored = deepCloneSnapshot(next);
+      for (const k of SNAPSHOT_KEYS) state[k] = restored[k];
     }, false, 'redo');
   },
 
@@ -93,10 +108,23 @@ const stateCreator = (set, get, api) => ({
   resumeUndo: () => set({ _undoPaused: false }, false, 'resumeUndo'),
 });
 
-// Persist config
+// ═══ Persist config with throttled writes ═══
+const throttledStorage = {
+  getItem: (name) => { const s = localStorage.getItem(name); return s ? JSON.parse(s) : null; },
+  setItem: (() => {
+    let timeout;
+    return (name, value) => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => localStorage.setItem(name, JSON.stringify(value)), 1000);
+    };
+  })(),
+  removeItem: (name) => localStorage.removeItem(name),
+};
+
 const persistConfig = {
   name: LS_KEY,
   version: 3,
+  storage: throttledStorage,
   partialize: (state) => ({
     projects: state.projects, activeProjectId: state.activeProjectId,
     projectName: state.projectName, assemblies: state.assemblies,
@@ -115,52 +143,43 @@ const persistConfig = {
   onRehydrateStorage: () => (state) => { if (state) state.initialized = true; },
 };
 
-export const useStore = create(
-  devtools(
-    subscribeWithSelector(
-      immer(
-        persist(stateCreator, persistConfig)
-      )
-    ),
-    { name: 'PlasmidVCS' }
-  )
-);
+// ═══ Create store — devtools only in development ═══
+const withMiddleware = import.meta.env.DEV
+  ? (fn) => devtools(subscribeWithSelector(immer(persist(fn, persistConfig))), { name: 'PlasmidVCS' })
+  : (fn) => subscribeWithSelector(immer(persist(fn, persistConfig)));
 
-// ═══ Undo/Redo exports ═══
+export const useStore = create(withMiddleware(stateCreator));
+
+// ═══ Exports ═══
 export const undo = () => useStore.getState().undo();
 export const redo = () => useStore.getState().redo();
 export const pushUndo = () => useStore.getState().pushUndo();
 export const useCanUndo = () => useStore(s => s._undoStack.length > 0);
 export const useCanRedo = () => useStore(s => s._redoStack.length > 0);
 
-// ═══ Derived selectors ═══
+// ═══ Stable selectors (shallow equality, no new refs) ═══
+const EMPTY = [];
 
-export const useFragments = () => useStore(s => {
-  const asm = s.assemblies.find(a => a.id === s.activeId);
-  return asm?.fragments || [];
-});
-
-export const useJunctions = () => useStore(s => {
-  const asm = s.assemblies.find(a => a.id === s.activeId);
-  return asm?.junctions || [];
-});
-
-export const usePrimers = () => useStore(s => {
-  const asm = s.assemblies.find(a => a.id === s.activeId);
-  return asm?.primers || [];
-});
-
-export const useCustomPrimers = () => useStore(s => {
-  const asm = s.assemblies.find(a => a.id === s.activeId);
-  return asm?.customPrimers || [];
-});
-
+export const useFragments = () => useStore(
+  s => { const asm = s.assemblies.find(a => a.id === s.activeId); return asm?.fragments || EMPTY; },
+  shallow
+);
+export const useJunctions = () => useStore(
+  s => { const asm = s.assemblies.find(a => a.id === s.activeId); return asm?.junctions || EMPTY; },
+  shallow
+);
+export const usePrimers = () => useStore(
+  s => { const asm = s.assemblies.find(a => a.id === s.activeId); return asm?.primers || EMPTY; },
+  shallow
+);
+export const useCustomPrimers = () => useStore(
+  s => { const asm = s.assemblies.find(a => a.id === s.activeId); return asm?.customPrimers || EMPTY; },
+  shallow
+);
 export const usePrefixSums = () => useStore(s => {
   const asm = s.assemblies.find(a => a.id === s.activeId);
-  const frags = asm?.fragments || [];
+  const frags = asm?.fragments || EMPTY;
   const offsets = [0];
-  for (let i = 0; i < frags.length; i++) {
-    offsets[i + 1] = offsets[i] + (frags[i].length || 0);
-  }
+  for (let i = 0; i < frags.length; i++) offsets[i + 1] = offsets[i] + (frags[i].length || 0);
   return offsets;
 });
