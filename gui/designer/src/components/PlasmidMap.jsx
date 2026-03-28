@@ -5,6 +5,7 @@
  */
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { getFragColor, isMarker } from '../theme';
+import { DOMAIN_COLORS } from '../domain-detection';
 
 const TAU = 2 * Math.PI;
 function polar(cx, cy, r, a) { return { x: cx + r * Math.cos(a - Math.PI / 2), y: cy + r * Math.sin(a - Math.PI / 2) }; }
@@ -124,11 +125,38 @@ export default function PlasmidMap({ fragments, constructName, totalBp, junction
               {/* Invisible wider hit area */}
               <path d={sectorPath(cx, cy, outerR + 20, innerR - 8, a.startAngle, a.endAngle)}
                 fill="transparent" stroke="none" />
-              {/* Visible arc */}
-              <path d={sectorPath(cx, cy, isSel ? outerR + 5 : isH ? outerR + 3 : outerR, isSel ? innerR - 2 : innerR, a.startAngle + gap, a.endAngle - gap)}
-                fill={a.color} stroke={isSel ? '#000' : '#fff'} strokeWidth={isSel ? 2 : 1} opacity={isH ? 0.85 : 1}
-                style={{ transition: 'all 100ms' }}
-                onClick={() => { setSelected(isSel ? null : i); onSelectFragment?.(i); }} />
+              {/* Visible arc — with domain sub-arcs for CDS */}
+              {a.domains?.length > 0 ? (
+                // Domain sub-arcs within fragment
+                a.domains.map((dom, di) => {
+                  // Domain positions: startAA/endAA (1-based) → bp positions within fragment
+                  const isCDS = a.type === 'CDS' || a.type === 'gene';
+                  const domStartBp = isCDS ? (dom.startAA - 1) * 3 : dom.startAA - 1;
+                  const domEndBp = isCDS ? dom.endAA * 3 : dom.endAA;
+                  const fragLen = a.len || 1;
+                  const dsFrac = domStartBp / fragLen;
+                  const deFrac = Math.min(1, domEndBp / fragLen);
+                  const dsA = a.startAngle + (a.endAngle - a.startAngle) * dsFrac + gap;
+                  const deA = a.startAngle + (a.endAngle - a.startAngle) * deFrac - gap * 0.3;
+                  const oR = isSel ? outerR + 5 : isH ? outerR + 3 : outerR;
+                  const iR = isSel ? innerR - 2 : innerR;
+                  return (
+                    <path key={`d${di}`} d={sectorPath(cx, cy, oR, iR, dsA, deA)}
+                      fill={dom.color || DOMAIN_COLORS[dom.type] || a.color}
+                      stroke="#fff" strokeWidth={0.5} opacity={isH ? 0.85 : 1}
+                      style={{ transition: 'all 100ms' }}
+                      onClick={() => { setSelected(isSel ? null : i); onSelectFragment?.(i); }}>
+                      <title>{a.name}: {dom.name} ({dom.startAA}–{dom.endAA})</title>
+                    </path>
+                  );
+                })
+              ) : (
+                // Single solid arc (no domains)
+                <path d={sectorPath(cx, cy, isSel ? outerR + 5 : isH ? outerR + 3 : outerR, isSel ? innerR - 2 : innerR, a.startAngle + gap, a.endAngle - gap)}
+                  fill={a.color} stroke={isSel ? '#000' : '#fff'} strokeWidth={isSel ? 2 : 1} opacity={isH ? 0.85 : 1}
+                  style={{ transition: 'all 100ms' }}
+                  onClick={() => { setSelected(isSel ? null : i); onSelectFragment?.(i); }} />
+              )}
               {/* Direction arrow */}
               {a.endAngle - a.startAngle > 0.15 && (() => {
                 const aA = a.strand === -1 ? a.startAngle + 0.05 : a.endAngle - 0.05;
