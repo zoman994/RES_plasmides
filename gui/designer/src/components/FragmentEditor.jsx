@@ -147,19 +147,35 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
   };
 
   // Open DNA mutation menu (nucleotide-level, Shift extends range)
+  const dnaMutAnchor = useRef(null); // remember first click position for Shift+click
   const openDnaMutMenu = (e, ntPos) => {
     e.stopPropagation();
     setMutTarget(null);
     const rect = e.currentTarget.getBoundingClientRect();
-    if (e.shiftKey && dnaMutTarget) {
-      const start = Math.min(dnaMutTarget.pos, ntPos);
-      const end = Math.max(dnaMutTarget.pos, ntPos);
-      setDnaMutTarget({ ...dnaMutTarget, pos: start, endPos: end, nt: seq.slice(start, end + 1).toUpperCase() });
+    if (e.shiftKey && dnaMutAnchor.current != null) {
+      // Extend from anchor to ntPos
+      const start = Math.min(dnaMutAnchor.current, ntPos);
+      const end = Math.max(dnaMutAnchor.current, ntPos);
+      setDnaMutTarget(prev => ({
+        ...(prev || {}), pos: start, endPos: end,
+        nt: seq.slice(start, end + 1).toUpperCase(),
+        x: prev?.x || rect.left, y: prev?.y || rect.bottom + 4,
+      }));
     } else {
+      dnaMutAnchor.current = ntPos; // set anchor for future Shift+click
       setDnaMutTarget({ pos: ntPos, endPos: ntPos, nt: seq[ntPos]?.toUpperCase() || 'N', x: rect.left, y: rect.bottom + 4 });
     }
     setInsertSeq('');
   };
+
+  // Close DNA popup on Escape
+  useEffect(() => {
+    if (!dnaMutTarget) return;
+    const handler = (e) => { if (e.key === 'Escape') setDnaMutTarget(null); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [dnaMutTarget]);
+
   const [addForm, setAddForm] = useState(null);
   const [domPaletteIdx, setDomPaletteIdx] = useState(null); // which domain row has palette open
   const origLen = (fragment.sequence || '').length;
@@ -914,15 +930,14 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
         document.body
       )}
 
-      {/* DNA mutation popup — nucleotide-level */}
+      {/* DNA mutation popup — no full-screen backdrop (allows Shift+click on nucleotides) */}
       {dnaMutTarget && createPortal(
-        <div className="fixed inset-0 z-[60]" onClick={(e) => { e.stopPropagation(); setDnaMutTarget(null); }}>
-          <div className="absolute bg-white rounded-xl shadow-2xl border p-3 w-64"
-            style={{
-              left: Math.min(dnaMutTarget.x, window.innerWidth - 270),
-              top: Math.min(dnaMutTarget.y, window.innerHeight - 350),
-            }}
-            onClick={e => e.stopPropagation()}>
+        <div className="fixed z-[60] bg-white rounded-xl shadow-2xl border p-3 w-64"
+          style={{
+            left: Math.min(dnaMutTarget.x, window.innerWidth - 270),
+            top: Math.min(dnaMutTarget.y, window.innerHeight - 350),
+          }}
+          onClick={e => e.stopPropagation()}>
 
             {(() => {
               const isRange = dnaMutTarget.endPos != null && dnaMutTarget.endPos !== dnaMutTarget.pos;
@@ -1015,8 +1030,7 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
                 ))}
               </div>
             )}
-          </div>
-        </div>,
+          </div>,
         document.body
       )}
     </div>
