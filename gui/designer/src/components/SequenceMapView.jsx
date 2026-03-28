@@ -206,9 +206,9 @@ export default function SequenceMapView({ fragments, primers = [], circular, onA
                 </div>
               )}
 
-              {/* Sense strand 5'→3' */}
+              {/* Sense strand 5'→3' — label is padded string, same font as sequence */}
               <div>
-                <span className="inline-block text-right text-gray-400 select-none text-[9px]" style={{ width: `${LABEL_WIDTH}ch` }}>{line.start + 1}</span>
+                <span className="text-gray-400 select-none">{String(line.start + 1).padStart(LABEL_WIDTH)}</span>
                 <span className="select-none cursor-text"
                   onMouseDown={e => onMouseDown(e, line.start)}
                   onMouseMove={e => onMouseMove(e, line.start)}>
@@ -225,9 +225,9 @@ export default function SequenceMapView({ fragments, primers = [], circular, onA
                 </span>
               </div>
 
-              {/* Antisense strand 3'→5' */}
+              {/* Antisense strand 3'→5' — same padded space as label */}
               <div>
-                <span className="inline-block" style={{ width: `${LABEL_WIDTH}ch` }} />
+                <span className="select-none">{' '.repeat(LABEL_WIDTH)}</span>
                 <span className="text-gray-400 select-none cursor-text"
                   onMouseDown={e => onMouseDown(e, line.start)}
                   onMouseMove={e => onMouseMove(e, line.start)}>
@@ -247,7 +247,7 @@ export default function SequenceMapView({ fragments, primers = [], circular, onA
               {/* Amino acid translation — under CDS regions */}
               {lineFeats.some(f => f.type === 'CDS' || f.type === 'gene') && (
                 <div>
-                  <span className="inline-block" style={{ width: `${LABEL_WIDTH}ch` }} />
+                  <span className="select-none">{' '.repeat(LABEL_WIDTH)}</span>
                   <span className="select-none">
                     {line.seq.split('').map((_, ci) => {
                       const absPos = line.start + ci;
