@@ -1,7 +1,22 @@
+/**
+ * App.jsx — Root layout component.
+ *
+ * All state lives in Zustand store (src/store/).
+ * Complex handlers extracted to custom hooks (src/hooks/).
+ * This file is pure layout + wiring (~430 lines).
+ */
 import { useEffect, useMemo } from 'react';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
+
+// ═══ Store ═══
 import { useStore, useFragments, useJunctions, usePrimers, useCustomPrimers } from './store/index';
+
+// ═══ Hooks (extracted handlers) ═══
+import { useGeneratePrimers } from './hooks/useGeneratePrimers';
+import { useFragmentHandlers } from './hooks/useFragmentHandlers';
+
+// ═══ Components ═══
 import PartsPalette from './components/PartsPalette';
 import DesignCanvas from './components/DesignCanvas';
 import PrimerPanel from './components/PrimerPanel';
@@ -9,7 +24,6 @@ import SequenceViewer from './components/SequenceViewer';
 import AddFragmentModal from './components/AddFragmentModal';
 import RestrictionPanel from './components/RestrictionPanel';
 import ProtocolTracker from './components/ProtocolTracker';
-import { PCR_MIXES, ASSEMBLY_PROTOCOLS as ASM_PROTOCOLS } from './protocol-data';
 import MutagenesisWizard from './components/MutagenesisWizard';
 import VerificationPanel from './components/VerificationPanel';
 import FragmentSplitter from './components/FragmentSplitter';
@@ -20,101 +34,64 @@ import OligoManager from './components/OligoManager';
 import FragmentEditor from './components/FragmentEditor';
 import PartsLibrary from './components/PartsLibrary';
 import DataManager from './components/DataManager';
-import { fetchParts, designPrimers } from './api';
-import { validateConstruct, checkPrimerQuality, pcrProductSize } from './validate';
-import { exportGenBank, exportProtocol, saveToPVCS } from './exports';
-import { addToInventory } from './inventory';
-import { findAllMatches, addPrimersToRegistry } from './primer-reuse';
-import { t } from './i18n';
-import { getFragColor, isMarker } from './theme';
-import { GG_ENZYMES } from './golden-gate';
-import { designInlineKLDPrimers } from './mutagenesis';
 
-// ============================================================================
-// App — root component, wired to Zustand store
-// ============================================================================
+// ═══ Utilities ═══
+import { fetchParts } from './api';
+import { validateConstruct, checkPrimerQuality, pcrProductSize } from './validate';
+import { t } from './i18n';
+import { GG_ENZYMES } from './golden-gate';
+import { estimateEfficiency } from './assembly-utils';
 
 export default function App() {
 
   // ═══════════ Store: domain state ═══════════
+  // ═══ Store selectors ═══
   const fragments     = useFragments();
   const junctions     = useJunctions();
   const primers       = usePrimers();
   const customPrimers = useCustomPrimers();
+  const assemblies    = useStore(s => s.assemblies);
+  const activeId      = useStore(s => s.activeId);
+  // ═══ Store: state needed for render ═══
+  const parts      = useStore(s => s.parts);
+  const polymerase = useStore(s => s.polymerase);
+  const ggEnzyme   = useStore(s => s.ggEnzyme);
+  const ggSiteCheck = useStore(s => s.ggSiteCheck);
+  const loading    = useStore(s => s.loading);
+  const modalMode  = useStore(s => s.modalMode);
+  const splitTarget = useStore(s => s.splitTarget);
+  const showMutagenesis = useStore(s => s.showMutagenesis);
+  const showOligos = useStore(s => s.showOligos);
+  const showPartsLib = useStore(s => s.showPartsLib);
+  const globalCDSPart = useStore(s => s.globalCDSPart);
+  const editTarget = useStore(s => s.editTarget);
+  const showDataMgr = useStore(s => s.showDataMgr);
+  const activeTab  = useStore(s => s.activeTab);
+  const warningsOpen = useStore(s => s.warningsOpen);
+  const expertMode = useStore(s => s.expertMode);
+  const firstLaunch = useStore(s => s.firstLaunch);
+  const maxFinalParts = useStore(s => s.maxFinalParts);
 
-  const assemblies       = useStore(s => s.assemblies);
-  const activeId         = useStore(s => s.activeId);
-  const projectName      = useStore(s => s.projectName);
-  const projects         = useStore(s => s.projects);
-  const activeProjectId  = useStore(s => s.activeProjectId);
-  const parts            = useStore(s => s.parts);
-  const polymerase       = useStore(s => s.polymerase);
-  const primerPrefix     = useStore(s => s.primerPrefix);
-  const ggEnzyme         = useStore(s => s.ggEnzyme);
-  const ggSiteCheck      = useStore(s => s.ggSiteCheck);
-  const loading          = useStore(s => s.loading);
+  // ═══ Store: actions needed for render ═══
+  const { removeFragment, flipFragment, reorderFragments, toggleAmplification,
+    updateActive, getActive, addAssembly, removeAssembly, renameAssembly, switchAssembly,
+    updateJunction, toggleCircular, setAssemblyType, autoDesignGGOverhangs, setGgEnzyme,
+    addCustomPrimer, deleteCustomPrimer, setPolymerase, setPrimerPrefix, setParts,
+    addPart, updatePart, toggleExpertMode, setModalMode, setShowMutagenesis,
+    setShowOligos, setShowPartsLib, setShowDataMgr, setGlobalCDSPart,
+    setEditTarget, setSplitTarget, setActiveTab, setWarningsOpen, setMaxFinalParts,
+    setFirstLaunch, incrementInventoryVersion, addFragment,
+  } = useStore.getState();
 
-  // ═══════════ Store: UI state ═══════════
-  const modalMode        = useStore(s => s.modalMode);
-  const splitTarget      = useStore(s => s.splitTarget);
-  const showMutagenesis  = useStore(s => s.showMutagenesis);
-  const showOligos       = useStore(s => s.showOligos);
-  const showPartsLib     = useStore(s => s.showPartsLib);
-  const globalCDSPart    = useStore(s => s.globalCDSPart);
-  const editTarget       = useStore(s => s.editTarget);
-  const showDataMgr      = useStore(s => s.showDataMgr);
-  const activeTab        = useStore(s => s.activeTab);
-  const warningsOpen     = useStore(s => s.warningsOpen);
-  const expertMode       = useStore(s => s.expertMode);
-  const firstLaunch      = useStore(s => s.firstLaunch);
-  const maxFinalParts    = useStore(s => s.maxFinalParts);
-  const inventoryVersion = useStore(s => s.inventoryVersion);
+  // ═══ Custom hooks (extracted handlers) ═══
+  const generate = useGeneratePrimers();
+  const {
+    handleFragmentSplit, handleSaveFragment, handleSaveAsVariant,
+    handleSwapVariant, handleMutagenesis, handleReusePrimer,
+    completeAssembly, clearAssembly, addCustomFragment,
+  } = useFragmentHandlers();
 
-  // ═══════════ Store: actions ═══════════
-  const addFragment          = useStore(s => s.addFragment);
-  const removeFragment       = useStore(s => s.removeFragment);
-  const flipFragment         = useStore(s => s.flipFragment);
-  const reorderFragments     = useStore(s => s.reorderFragments);
-  const toggleAmplification  = useStore(s => s.toggleAmplification);
-  const updateActive         = useStore(s => s.updateActive);
-  const getActive            = useStore(s => s.getActive);
-  const addAssembly          = useStore(s => s.addAssembly);
-  const removeAssembly       = useStore(s => s.removeAssembly);
-  const renameAssembly       = useStore(s => s.renameAssembly);
-  const switchAssembly       = useStore(s => s.switchAssembly);
-  const addProject           = useStore(s => s.addProject);
-  const switchProject        = useStore(s => s.switchProject);
-  const removeProject        = useStore(s => s.removeProject);
-  const setProjectName       = useStore(s => s.setProjectName);
-  const updateJunction       = useStore(s => s.updateJunction);
-  const toggleCircular       = useStore(s => s.toggleCircular);
-  const setAssemblyType      = useStore(s => s.setAssemblyType);
-  const autoDesignGGOverhangs = useStore(s => s.autoDesignGGOverhangs);
-  const setGgEnzyme          = useStore(s => s.setGgEnzyme);
-  const addCustomPrimer      = useStore(s => s.addCustomPrimer);
-  const deleteCustomPrimer   = useStore(s => s.deleteCustomPrimer);
-  const setLoading           = useStore(s => s.setLoading);
-  const setPolymerase        = useStore(s => s.setPolymerase);
-  const setPrimerPrefix      = useStore(s => s.setPrimerPrefix);
-  const setParts             = useStore(s => s.setParts);
-  const addPart              = useStore(s => s.addPart);
-  const updatePart           = useStore(s => s.updatePart);
-  const toggleExpertMode     = useStore(s => s.toggleExpertMode);
-  const setModalMode         = useStore(s => s.setModalMode);
-  const setShowMutagenesis   = useStore(s => s.setShowMutagenesis);
-  const setShowOligos        = useStore(s => s.setShowOligos);
-  const setShowPartsLib      = useStore(s => s.setShowPartsLib);
-  const setShowDataMgr       = useStore(s => s.setShowDataMgr);
-  const setGlobalCDSPart     = useStore(s => s.setGlobalCDSPart);
-  const setEditTarget        = useStore(s => s.setEditTarget);
-  const setSplitTarget       = useStore(s => s.setSplitTarget);
-  const setActiveTab         = useStore(s => s.setActiveTab);
-  const setWarningsOpen      = useStore(s => s.setWarningsOpen);
-  const setMaxFinalParts     = useStore(s => s.setMaxFinalParts);
-  const incrementInventoryVersion = useStore(s => s.incrementInventoryVersion);
-  const setFirstLaunch       = useStore(s => s.setFirstLaunch);
-
-  // ═══════════ Active assembly shorthand ═══════════
+  // ═══ Active assembly shorthand ═══
   const active       = getActive() || { id: 'asm_1', name: 'Сборка 1', fragments: [], junctions: [] };
   const assemblyType = active.assemblyType || 'overlap';
   const protocol     = active.protocol || 'overlap_pcr';
@@ -145,21 +122,7 @@ export default function App() {
     [fragments, junctions, circular]);
   const totalBp = fragments.reduce((s, f) => s + (f.sequence || '').length, 0);
 
-  // ═══════════ Assembly efficiency helpers ═══════════
-  const estimateEfficiency = (count, method) => {
-    if (method === 'golden_gate') {
-      if (count <= 4) return { pct: '>90%', color: 'green' };
-      if (count <= 8) return { pct: '~70%', color: 'green' };
-      if (count <= 12) return { pct: '~50%', color: 'amber' };
-      return { pct: '<30%', color: 'red' };
-    }
-    if (count <= 2) return { pct: '~95%', color: 'green' };
-    if (count === 3) return { pct: '~80%', color: 'green' };
-    if (count === 4) return { pct: '~50%', color: 'amber' };
-    if (count === 5) return { pct: '~30%', color: 'amber' };
-    return { pct: '<20%', color: 'red' };
-  };
-
+  // ═══ Assembly strategy ═══
   const effectiveFinalParts = maxFinalParts === 0
     ? (fragments.length <= 3 ? fragments.length : 3)
     : Math.min(maxFinalParts, fragments.length);
@@ -167,27 +130,7 @@ export default function App() {
     ? estimateEfficiency(effectiveFinalParts, assemblyType === 'golden_gate' ? 'golden_gate' : 'overlap')
     : null;
 
-  function planAssemblyStages(frags, _method, maxParts) {
-    const target = maxParts === 0 ? (frags.length <= 3 ? frags.length : 3) : Math.min(maxParts, frags.length);
-    if (frags.length <= target) return [{ round: 0, groups: [frags.map((_, i) => i)] }];
-    const stages = [];
-    let currentGroups = frags.map((_, i) => [i]);
-    let round = 1;
-    while (currentGroups.length > target) {
-      const merged = [];
-      for (let i = 0; i < currentGroups.length; i += 2) {
-        merged.push(i + 1 < currentGroups.length
-          ? [...currentGroups[i], ...currentGroups[i + 1]]
-          : currentGroups[i]);
-      }
-      stages.push({ round, groups: merged.map(g => [...g]) });
-      currentGroups = merged;
-      round++;
-    }
-    return stages;
-  }
-
-  // ═══════════ Load parts on mount (merge API parts with persisted user variants) ═══════════
+  // ═══ Load parts on mount (merge API parts with persisted user variants) ═══
   useEffect(() => {
     const mergeParts = (apiParts) => {
       const existingIds = new Set(parts.map(p => p.id));
@@ -210,345 +153,8 @@ export default function App() {
     fetchParts().then(mergeParts).catch(() => mergeParts(fallback));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ═══════════ Complex handlers (need multiple store actions + API) ═══════════
 
-  /** Generate primers via API, build protocol steps. */
-  const generate = async () => {
-    if (fragments.length < 2) return;
-    const asmId = active.id;
-    setLoading(true);
-    try {
-      const data = await designPrimers(
-        fragments.map(f => ({ name: f.name, sequence: f.sequence, needsAmplification: f.needsAmplification })),
-        junctions, assemblyType === 'golden_gate' ? 'golden_gate' : 'overlap_pcr', circular, 60,
-      );
-      const tmAdj = { phusion: 3, kod: 2, taq: -5 }[polymerase] || 0;
-      let pidx = 1;
-      let renamedPrimers = (data.primers || []).map(p => ({
-        ...p, name: `${primerPrefix}${String(pidx++).padStart(3, '0')}_${p.name}`,
-        tmAdjusted: Math.round((p.tmBinding || 60) + tmAdj),
-      }));
-      if (assemblyType !== 'golden_gate') {
-        const seenBinding = new Map();
-        renamedPrimers = renamedPrimers.filter(p => {
-          const key = `${p.direction}_${(p.bindingSequence || p.sequence || '').toUpperCase()}`;
-          if (seenBinding.has(key)) return false;
-          seenBinding.set(key, p.name);
-          return true;
-        });
-      }
-      const updatedJunctions = junctions.map((j, i) => ({
-        ...j, overlapSequence: data.junctions?.[i]?.overlapSequence || j.overlapSequence,
-        overlapTm: data.junctions?.[i]?.overlapTm || j.overlapTm,
-        overlapGc: data.junctions?.[i]?.overlapGc || j.overlapGc,
-      }));
-      const pSteps = [];
-      const mix = PCR_MIXES[polymerase] || PCR_MIXES.phusion;
-      fragments.forEach((frag, fi) => {
-        if (!frag.needsAmplification) return;
-        const fwd = renamedPrimers.find(p => p.direction === 'forward' && p.name.includes(frag.name));
-        const rev = renamedPrimers.find(p => p.direction === 'reverse' && p.name.includes(frag.name));
-        const sz = pcrSizes[fi] || frag.length;
-        pSteps.push({ id: `pcr_${fi}`, type: 'pcr', title: `ПЦР ${frag.name}`, subtitle: `${sz} п.н.`, template: frag.name,
-          fwdPrimer: fwd?.name, revPrimer: rev?.name, annealTemp: Math.round(Math.min(fwd?.tmBinding || 60, rev?.tmBinding || 60)),
-          expectedSize: sz, extensionTime: Math.ceil(sz / 1000) * mix.extRate, mix,
-          statuses: [{ label: 'ПЦР', done: false }, { label: 'Гель', done: false }, { label: 'Очистка', done: false }] });
-      });
-      // Junction-type-aware assembly stages
-      const jTypes = updatedJunctions.map(j => j.type || 'overlap');
-      const hasOverlap = jTypes.includes('overlap');
-      const hasGG = jTypes.includes('golden_gate');
-      const hasKLD = jTypes.includes('kld');
-      const hasRE = jTypes.includes('re_ligation') || jTypes.includes('sticky_end');
-
-      if (hasOverlap) {
-        const overlapGroups = []; let currentGroup = [0];
-        for (let gi = 0; gi < updatedJunctions.length; gi++) {
-          const jt = updatedJunctions[gi].type || 'overlap';
-          const nextFrag = (gi + 1) % fragments.length;
-          if (jt === 'overlap') { currentGroup.push(nextFrag); }
-          else { overlapGroups.push([...currentGroup]); currentGroup = [nextFrag]; }
-        }
-        overlapGroups.push([...currentGroup]);
-        overlapGroups.filter(g => g.length > 1).forEach((group, gi) => {
-          const groupFragNames = group.map(i => fragments[i]?.name || '?');
-          if (group.length <= 3 || maxFinalParts === group.length) {
-            pSteps.push({ id: `overlap_${gi}`, type: 'assembly',
-              title: `Overlap-сборка${overlapGroups.filter(g2 => g2.length > 1).length > 1 ? ` (группа ${gi + 1})` : ''}`,
-              subtitle: `${groupFragNames.length} фрагментов → 1 продукт`,
-              protocol: ASM_PROTOCOLS.overlap_pcr, expectedSize: null, fragments: groupFragNames,
-              statuses: [{ label: 'Сборка', done: false }, { label: 'Гель', done: false }, { label: 'Очистка', done: false }] });
-          } else {
-            const stages = planAssemblyStages(group.map(i => fragments[i]), assemblyType, maxFinalParts);
-            stages.forEach((stage, si) => {
-              const stageNames = stage.groups.map(g => g.map(i => group[i] != null ? (fragments[group[i]]?.name || '?') : '?').join('+'));
-              pSteps.push({ id: `overlap_${gi}_r${si}`, type: 'assembly',
-                title: `Overlap-сборка (раунд ${stage.round})`, subtitle: `→ ${stage.groups.length} продуктов`,
-                protocol: ASM_PROTOCOLS.overlap_pcr, expectedSize: null, fragments: stageNames,
-                statuses: [{ label: 'Сборка', done: false }, { label: 'Гель', done: false }, { label: 'Очистка', done: false }] });
-            });
-          }
-        });
-      }
-      if (hasGG) {
-        const ggJunctions = updatedJunctions.filter(j => j.type === 'golden_gate');
-        const enzyme = ggJunctions[0]?.enzyme || 'BsaI';
-        pSteps.push({ id: 'gg_assembly', type: 'assembly', title: 'Golden Gate сборка',
-          subtitle: `${enzyme} · ${ggJunctions.length} стыков · (37°C↔16°C) ×30`,
-          protocol: ASM_PROTOCOLS.golden_gate || ASM_PROTOCOLS.overlap_pcr, expectedSize: totalBp,
-          fragments: ggJunctions.map(j => j.overhang || '----'),
-          statuses: [{ label: 'GG реакция', done: false }, { label: 'Гель', done: false }] });
-      }
-      if (hasRE) {
-        const reJunctions = updatedJunctions.filter(j => j.type === 're_ligation' || j.type === 'sticky_end');
-        const enzymes = [...new Set(reJunctions.map(j => j.reEnzyme || j.enzyme || '?'))];
-        pSteps.push({ id: 're_assembly', type: 'assembly', title: 'Рестрикция + лигирование',
-          subtitle: `${enzymes.join(', ')} · T4 Ligase · 16°C overnight`,
-          protocol: ASM_PROTOCOLS.overlap_pcr, expectedSize: totalBp, fragments: enzymes,
-          statuses: [{ label: 'Рестрикция', done: false }, { label: 'Лигирование', done: false }, { label: 'Гель', done: false }] });
-      }
-      if (hasKLD) {
-        pSteps.push({ id: 'kld_assembly', type: 'assembly', title: 'KLD (Kinase-Ligase-DpnI)',
-          subtitle: 'T4 PNK + T4 Ligase + DpnI · 25°C 30мин',
-          protocol: ASM_PROTOCOLS.overlap_pcr, expectedSize: totalBp, fragments: [],
-          statuses: [{ label: 'KLD', done: false }, { label: 'Гель', done: false }] });
-      }
-      if (!hasOverlap && !hasGG && !hasKLD && !hasRE) {
-        pSteps.push({ id: 'assembly', type: 'assembly', title: 'Сборка',
-          subtitle: (ASM_PROTOCOLS[protocol] || ASM_PROTOCOLS.overlap_pcr).name,
-          protocol: ASM_PROTOCOLS[protocol] || ASM_PROTOCOLS.overlap_pcr, expectedSize: totalBp,
-          fragments: fragments.map(f => f.name),
-          statuses: [{ label: 'Сборка', done: false }, { label: 'Гель', done: false }] });
-      }
-      pSteps.push({ id: 'transform', type: 'transform', title: 'Трансформация',
-        statuses: [{ label: 'Трансф.', done: false }, { label: 'Колонии', done: false }] });
-      pSteps.push({ id: 'screening', type: 'screening', title: 'Colony PCR', expectedSize: totalBp,
-        statuses: [{ label: 'Colony PCR', done: false }, { label: 'Отобраны', done: false }] });
-      pSteps.push({ id: 'sequencing', type: 'sequencing', title: 'Секвенирование',
-        statuses: [{ label: 'Отправлено', done: false }, { label: 'Подтв.', done: false }] });
-      const matches = findAllMatches(renamedPrimers);
-      addPrimersToRegistry(renamedPrimers);
-      // Use updateActive to batch-set all results
-      updateActive({ primers: renamedPrimers, apiWarnings: data.warnings || [], orderSheet: data.orderSheet || '',
-        primerMatches: matches, junctions: updatedJunctions, calculated: true, protocolSteps: pSteps });
-    } catch (e) {
-      updateActive({ apiWarnings: [`API error: ${e.message}`] });
-    }
-    setLoading(false);
-  };
-
-  /** Handle fragment split / trim / replace results. */
-  const handleFragmentSplit = (result) => {
-    const idx = splitTarget; if (idx === null) return;
-    const nf = [...fragments]; const frag = nf[idx];
-    const cutAA = result.cutPosition ? Math.floor(result.cutPosition / 3) : 0;
-
-    if (result.action === 'split') {
-      const domSplit = adjustDomains(frag.domains, cutAA, 'split');
-      const p1 = { id: `f${Date.now()}`, name: result.part1Name, type: frag.type,
-        sequence: result.part1DNA, length: result.part1DNA.length, strand: 1, needsAmplification: true,
-        domains: domSplit.part1 || [] };
-      nf[idx] = { ...frag, name: result.part2Name, sequence: result.part2DNA, length: result.part2DNA.length,
-        domains: domSplit.part2 || [] };
-      nf.splice(idx, 0, p1);
-    } else if (result.action === 'remove_part1') {
-      nf[idx] = { ...frag, sequence: result.sequence, length: result.sequence.length,
-        domains: adjustDomains(frag.domains, cutAA, 'remove_part1') };
-    } else if (result.action === 'remove_part2') {
-      nf[idx] = { ...frag, sequence: result.sequence, length: result.sequence.length,
-        domains: adjustDomains(frag.domains, cutAA, 'remove_part2') };
-    } else if (result.action === 'replace_part1') {
-      const rep = { id: `f${Date.now()}`, name: result.replacementName, type: result.replacementType || frag.type,
-        sequence: result.replacementSeq, length: result.replacementSeq.length, strand: 1, needsAmplification: true };
-      nf[idx] = { ...frag, name: result.part2Name, sequence: result.part2DNA, length: result.part2DNA.length,
-        domains: adjustDomains(frag.domains, cutAA, 'remove_part1') };
-      nf.splice(idx, 0, rep);
-    }
-    updateActive({ fragments: nf, junctions: buildPlainJunctions(nf, assemblyType, circular), calculated: false });
-    setSplitTarget(null);
-  };
-
-  /** Save edited fragment, create variant in parts library if mutations present. */
-  const handleSaveFragment = (updated) => {
-    if (editTarget === null) return;
-    const original = fragments[editTarget];
-    const hasMutations = updated.mutations?.length > 0 && updated.mutations !== original.mutations;
-
-    updateActive({
-      fragments: fragments.map((f, i) => i === editTarget ? updated : f),
-      calculated: false, primers: [],
-    });
-
-    if (hasMutations) {
-      const findRoot = (name, id) => {
-        let p = parts.find(x => x.id === id) || parts.find(x => x.id === original.partId);
-        if (p?.parentId) p = parts.find(x => x.id === p.parentId) || p;
-        if (!p) { const baseName = name.replace(/\(.*\)$/, '').trim(); p = parts.find(x => x.name === baseName && !x.parentId); }
-        if (!p) p = parts.find(x => x.name === name);
-        return p;
-      };
-      const rootPart = findRoot(original.name, original.id);
-      if (rootPart) {
-        const variantId = `p_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-        const newMuts = updated.mutations.filter(m => !(original.mutations || []).some(om => om.label === m.label));
-        const mutDesc = newMuts.map(m => m.label).join(', ');
-        const variant = {
-          id: variantId, name: updated.name, type: rootPart.type,
-          sequence: updated.sequence, length: updated.length, organism: rootPart.organism,
-          parentId: rootPart.id, modification: { type: 'mutation', description: mutDesc },
-          mutations: updated.mutations, testResults: [], domains: updated.domains,
-          source: 'mutagenesis', createdAt: new Date().toISOString(),
-        };
-        updatePart(rootPart.id, { children: [...(rootPart.children || []), variantId] });
-        addPart(variant);
-        updateActive({
-          fragments: fragments.map((f, i) => i === editTarget ? { ...updated, partId: variantId } : f),
-          calculated: false, primers: [],
-        });
-      }
-      // Auto-design KLD primers for mutations
-      const lastMut = updated.mutations[updated.mutations.length - 1];
-      if (lastMut?.codonStart != null || lastMut?.label) {
-        const mutSite = lastMut.codonStart ?? ((parseInt(lastMut.label?.match(/\d+/)?.[0] || '1') - 1) * 3);
-        const kldP = designInlineKLDPrimers(updated.sequence, mutSite, 60);
-        let pidx2 = 1;
-        const kldPrimers = [
-          { name: `${primerPrefix}${String(pidx2++).padStart(3, '0')}_mut_fwd_${original.name}`,
-            sequence: kldP.forward.sequence, bindingSequence: kldP.forward.sequence, tailSequence: '',
-            tmBinding: kldP.forward.tm, direction: 'forward', isMutagenesis: true, mutation: lastMut.label },
-          { name: `${primerPrefix}${String(pidx2++).padStart(3, '0')}_mut_rev_${original.name}`,
-            sequence: kldP.reverse.sequence, bindingSequence: kldP.reverse.sequence, tailSequence: '',
-            tmBinding: kldP.reverse.tm, direction: 'reverse', isMutagenesis: true, mutation: lastMut.label },
-        ];
-        const kldSteps = [
-          { id: 'kld_pcr', type: 'pcr', title: `Обратная ПЦР ${updated.name}`, subtitle: `${updated.length} п.н. (вся плазмида)`,
-            template: original.name, fwdPrimer: kldPrimers[0].name, revPrimer: kldPrimers[1].name,
-            annealTemp: Math.round(Math.min(kldP.forward.tm, kldP.reverse.tm)),
-            expectedSize: updated.length, extensionTime: Math.ceil(updated.length / 1000) * 30,
-            mix: PCR_MIXES[polymerase],
-            statuses: [{ label: 'ПЦР', done: false }, { label: 'Гель', done: false }] },
-          { id: 'kld_asm', type: 'assembly', title: 'KLD реакция', subtitle: 'T4 PNK + T4 Ligase + DpnI · 25°C 30мин',
-            statuses: [{ label: 'KLD', done: false }] },
-          { id: 'transform', type: 'transform', title: 'Трансформация',
-            statuses: [{ label: 'Трансф.', done: false }, { label: 'Колонии', done: false }] },
-          { id: 'screening', type: 'screening', title: 'Colony PCR', expectedSize: updated.length,
-            statuses: [{ label: 'Colony PCR', done: false }] },
-          { id: 'sequencing', type: 'sequencing', title: 'Секвенирование',
-            statuses: [{ label: 'Отправлено', done: false }, { label: 'Подтв.', done: false }] },
-        ];
-        updateActive({
-          fragments: fragments.map((f, i) => i === editTarget ? updated : f),
-          primers: kldPrimers, calculated: true, protocolSteps: kldSteps,
-        });
-      }
-    }
-    setEditTarget(null);
-  };
-
-  const handleMutagenesis = (result) => {
-    updateActive({ fragments: result.fragments.map(f => ({ ...f, id: `mf${Date.now()}_${Math.random().toString(36).slice(2,5)}`, isMutagenesis: true })),
-      junctions: result.junctions, calculated: false, primers: [] });
-  };
-
-  const handleReusePrimer = (primerName, existingPrimer) => {
-    updateActive({ primers: primers.map(p => p.name === primerName ? { ...p, reused: true, reusedFrom: existingPrimer.name } : p) });
-  };
-
-  const handleSaveAsVariant = (variantData) => {
-    const variant = { ...variantData, id: `p_${Date.now()}_${Math.random().toString(36).slice(2, 6)}` };
-    addPart(variant);
-    if (editTarget !== null) {
-      updateActive({
-        fragments: fragments.map((f, i) => i === editTarget ? { ...f, ...variant, strand: f.strand, needsAmplification: f.needsAmplification } : f),
-        calculated: false, primers: [],
-      });
-    }
-  };
-
-  const handleSwapVariant = (fragIndex, variant) => {
-    updateActive({
-      fragments: fragments.map((f, i) => i === fragIndex ? {
-        ...f, id: variant.id, name: variant.name, sequence: variant.sequence,
-        length: variant.length, domains: variant.domains, parentId: variant.parentId,
-        modification: variant.modification, testResults: variant.testResults, customColor: variant.customColor,
-      } : f),
-      calculated: false, primers: [],
-    });
-  };
-
-  /** Mark assembly as complete, create merged product. */
-  const completeAssembly = () => {
-    const fullSeq = fragments.map(f => f.sequence || '').join('');
-    const totalLen = fullSeq.length;
-    const productType = circular ? 'plasmid' : 'pcr_product';
-    const subFragments = fragments.map(f => ({
-      name: f.name, type: f.type, length: f.length,
-      color: isMarker(f.name) ? '#F0E442' : getFragColor(f.type, fragments.indexOf(f)),
-      pct: (f.length / totalLen) * 100,
-    }));
-    const mergedProduct = {
-      id: `product_${Date.now()}`, name: active.name,
-      type: productType, sequence: fullSeq, length: totalLen,
-      strand: 1, needsAmplification: false, subFragments,
-      sourceType: 'assembly', sourceAssemblyId: active.id,
-      components: fragments.map(f => f.name), completedAt: new Date().toISOString(),
-    };
-    addToInventory({ ...mergedProduct, verified: circular });
-    // Add to parts library if not already present
-    if (!parts.some(p => p.name === active.name && p.sourceAssemblyId === active.id)) {
-      addPart(mergedProduct);
-    }
-    updateActive({
-      completed: true, product: mergedProduct,
-      originalFragments: fragments, originalJunctions: junctions,
-      fragments: [mergedProduct], junctions: [],
-    });
-    incrementInventoryVersion();
-  };
-
-  const clearAssembly = () => {
-    updateActive({ fragments: [], junctions: [], primers: [], apiWarnings: [], orderSheet: '',
-      calculated: false, protocolSteps: [], completed: false, product: null });
-  };
-
-  const addCustomFragment = (fragData) => {
-    addFragment({
-      name: fragData.name, type: fragData.type || 'misc_feature',
-      sequence: fragData.sequence || '', length: fragData.length || (fragData.sequence || '').length,
-      strand: fragData.strand || 1, needsAmplification: fragData.needsAmplification ?? true,
-      sourceType: fragData.sourceType || 'sequence', subParts: fragData.subParts,
-    });
-  };
-
-  // ═══════════ Utility: domain position adjustment for splits ═══════════
-  function adjustDomains(domains, cutAA, action) {
-    if (!domains?.length) return [];
-    if (action === 'remove_part1') {
-      return domains.filter(d => d.endAA > cutAA).map(d => ({ ...d, startAA: Math.max(1, d.startAA - cutAA), endAA: d.endAA - cutAA }));
-    }
-    if (action === 'remove_part2') {
-      return domains.filter(d => d.startAA <= cutAA).map(d => ({ ...d, endAA: Math.min(d.endAA, cutAA) }));
-    }
-    if (action === 'split') {
-      return {
-        part1: domains.filter(d => d.startAA <= cutAA).map(d => ({ ...d, endAA: Math.min(d.endAA, cutAA) })),
-        part2: domains.filter(d => d.endAA > cutAA).map(d => ({ ...d, startAA: Math.max(1, d.startAA - cutAA), endAA: d.endAA - cutAA })),
-      };
-    }
-    return domains;
-  }
-
-  /** Build plain junctions array (no auto-adjust, used after split). */
-  function buildPlainJunctions(frags, asmType, isCirc) {
-    const count = isCirc ? frags.length : Math.max(0, frags.length - 1);
-    return Array.from({ length: count }, () => ({
-      type: asmType === 'golden_gate' ? 'golden_gate' : 'overlap',
-      overlapMode: 'split', overlapLength: 30, tmTarget: 62, calcMode: 'length',
-      enzyme: 'BsaI', overhang: '',
-    }));
-  }
-
-  // ═══════════ Render ═══════════
+  // ═══ Render ═══
   return (
     <DndProvider backend={HTML5Backend}>
       <div className="h-screen flex flex-col" style={{ backgroundColor: '#f8f9fa' }}>
