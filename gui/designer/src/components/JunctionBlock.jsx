@@ -18,7 +18,7 @@ const LINE_COLORS = {
   kld: 'bg-purple-400', sticky_end: 'bg-orange-300', blunt: 'bg-gray-300', preformed: 'bg-gray-300',
 };
 
-export default function JunctionBlock({ junction, index, leftName, rightName, leftFrag, rightFrag, leftPCR = true, rightPCR = true, onChange, allOverhangs }) {
+export default function JunctionBlock({ junction, index, leftName, rightName, leftFrag, rightFrag, leftPCR = true, rightPCR = true, onChange, allOverhangs, fragmentCount = 1 }) {
   // ═══ Store selector (granular) ═══
   const expertMode = useStore(s => s.expertMode);
   const [open, setOpen] = useState(false);
@@ -93,19 +93,21 @@ export default function JunctionBlock({ junction, index, leftName, rightName, le
             </span>
           </div>
         );
-      default: // overlap
+      default: { // overlap
+        const compact = fragmentCount > 8;
         return (
           <div className="flex flex-col items-center leading-tight">
-            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${st.bg} ${st.border} ${st.text}`}>
-              {modeArrow} {displayLen} п.н.
+            <span className={`text-[${compact ? '8' : '10'}px] font-bold px-1 py-0.5 rounded-full border ${st.bg} ${st.border} ${st.text}`}>
+              {compact ? displayLen : `${modeArrow} ${displayLen} п.н.`}
             </span>
-            {j.overlapTm ? (
+            {!compact && j.overlapTm ? (
               <span className="text-[8px] text-gray-400 mt-0.5">
                 {calcMode === 'tm' ? `Tm≈${j.tmTarget || 62}°` : `Tm ${j.overlapTm}°`}
               </span>
             ) : null}
           </div>
         );
+      }
     }
   };
 
@@ -124,7 +126,7 @@ export default function JunctionBlock({ junction, index, leftName, rightName, le
         title={expertMode ? tip : `${tip}\n🔬 Эксперт: настройка`}>
         <div className={`w-0.5 h-10 rounded ${overlapImpossible ? 'bg-red-400' : LINE_COLORS[jType] || 'bg-gray-300'}`} />
       </div>
-      <div className="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap">
+      <div className="absolute -top-4 left-1/2 -translate-x-1/2 whitespace-nowrap pointer-events-none" style={{ zIndex: 2 }}>
         {renderLabel()}
       </div>
 

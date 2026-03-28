@@ -257,13 +257,14 @@ export default function DesignCanvas({
                                   onSwapVariant={onSwapVariant} />
                               </div>
                               {i < junctions.length && (i < n - 1 || circular) && (
-                                <div className="flex flex-col items-center shrink-0" style={{ minWidth: 50 }}>
+                                <div className="flex flex-col items-center shrink-0" style={{ minWidth: n > 12 ? 36 : 50 }}>
                                   <JunctionBlock junction={junctions[i]} index={i}
                                     leftName={frag.name} rightName={fragments[(i + 1) % n]?.name || '?'}
                                     leftFrag={frag} rightFrag={fragments[(i + 1) % n]}
                                     leftPCR={frag.needsAmplification !== false}
                                     rightPCR={fragments[(i + 1) % n]?.needsAmplification !== false}
                                     onChange={cfg => onJunctionChange(i, cfg)}
+                                    fragmentCount={n}
                                     allOverhangs={allOverhangs} />
                                   <JunctionDNA junction={junctions[i]} calculated={calculated}
                           primers={primers}
