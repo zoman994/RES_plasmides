@@ -80,18 +80,37 @@ export default function PartBlock({
         </div>
       )}
 
-      {/* ═══ CLEAN CARD BLOCK ═══ */}
+      {/* ═══ CARD BLOCK — purple left border for mutants ═══ */}
+      {(() => { const hasMuts = fragment.mutations?.length > 0; return (
       <div className={`relative flex flex-col rounded-lg select-none
         ${isDragging ? 'shadow-xl' : 'shadow-sm hover:shadow-md'}`}
         style={{
           background: `linear-gradient(135deg, ${color}15 0%, ${color}08 100%)`,
-          border: `1px solid ${color}30`,
-          borderLeft: circularHint === 'first' ? '3px solid #3b82f6' : `4px solid ${color}`,
+          border: `1px solid ${hasMuts ? '#c084fc' : color + '30'}`,
+          borderLeft: circularHint === 'first' ? '3px solid #3b82f6' : `4px solid ${hasMuts ? '#a855f7' : color}`,
           borderRight: circularHint === 'last' ? '3px solid #3b82f6' : undefined,
           width: fragmentWidth(fragment.length, fragmentCount), minWidth: 60,
           transition: 'box-shadow 150ms ease',
         }}
         title={getPartDescription(fragment.name, fragment.type).short}>
+
+        {/* Mutation badge */}
+        {hasMuts && (
+          <div className="absolute -top-2 right-1.5 z-10 group/mut">
+            <span className="text-[7px] bg-purple-100 text-purple-700 border border-purple-200 rounded-full px-1.5 py-px font-medium cursor-help">
+              {'🧬'}{fragment.mutations.length}
+            </span>
+            <div className="hidden group-hover/mut:block absolute top-4 right-0 z-50 bg-white shadow-xl rounded-lg border p-2 min-w-[140px]">
+              <div className="text-[9px] font-semibold text-purple-700 mb-1">Мутации:</div>
+              {fragment.mutations.map((m, mi) => (
+                <div key={mi} className="text-[10px] text-gray-600 flex justify-between gap-2">
+                  <span className="font-mono font-medium">{m.label || `${m.from || ''}${(m.position || 0) + 1}${m.to || ''}`}</span>
+                  {m.codonChange && <span className="text-gray-400 text-[8px]">{m.codonChange}</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Fwd primer — top line (hidden in compact mode) */}
         {fwdPrimer && !isCompact(fragmentCount) && (
@@ -111,8 +130,23 @@ export default function PartBlock({
             <span className={`inline-block shrink-0 ${fragment.strand === -1 ? 'scale-x-[-1]' : ''}`}>
               <SBOLIcon type={fragment.type} size={14} color={color} />
             </span>
-            <span className="text-xs font-semibold text-gray-800 truncate" title={fragment.name}>{fragment.name}</span>
+            <span className="text-xs font-semibold text-gray-800 truncate" title={fragment.name}>
+              {fragment.name.split('(')[0]}
+            </span>
           </div>
+          {/* Mutation labels as compact badges */}
+          {hasMuts && !isCompact(fragmentCount) && (
+            <div className="flex flex-wrap gap-0.5 mt-0.5 justify-center">
+              {fragment.mutations.slice(0, 3).map((m, mi) => (
+                <span key={mi} className="text-[7px] font-mono bg-purple-100 text-purple-700 rounded px-0.5">
+                  {m.label || `${m.from || ''}${(m.position || 0) + 1}${m.to || ''}`}
+                </span>
+              ))}
+              {fragment.mutations.length > 3 && (
+                <span className="text-[7px] bg-purple-100 text-purple-700 rounded px-0.5">+{fragment.mutations.length - 3}</span>
+              )}
+            </div>
+          )}
           {/* Domain bar (flips with strand) */}
           {fragment.domains?.length > 0 && (
             <div className={`flex h-2.5 rounded overflow-hidden w-full mt-0.5 ${fragment.strand === -1 ? 'flex-row-reverse' : ''}`}>
@@ -127,7 +161,19 @@ export default function PartBlock({
               })}
             </div>
           )}
-          <div className="text-[9px] text-gray-400">{fmtSize(fragment.length)}</div>
+          {/* Size + mutation position dots */}
+          <div className="text-[9px] text-gray-400 w-full text-center relative">
+            {fmtSize(fragment.length)}
+            {hasMuts && fragment.mutations.some(m => m.position != null) && (
+              <div className="absolute inset-x-0 -bottom-1 h-1 flex items-center">
+                {fragment.mutations.map((m, mi) => {
+                  const pos = (m.codonStart ?? ((m.position || 0) * 3));
+                  const pct = Math.min(95, Math.max(5, (pos / (fragment.length || 1)) * 100));
+                  return <div key={mi} className="absolute w-1 h-1 rounded-full bg-purple-500" style={{ left: `${pct}%` }} title={m.label} />;
+                })}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Rev primer — bottom line (hidden in compact mode) */}
@@ -141,6 +187,7 @@ export default function PartBlock({
           </div>
         )}
       </div>
+      ); })()}
 
       {/* PCR size (hidden in compact mode) */}
       {pcrSize && !isCompact(fragmentCount) && (
