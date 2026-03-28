@@ -39,10 +39,20 @@ export default function PlasmidMap({ fragments, constructName, totalBp, junction
   const fwdPrimerOuterR = outerR + 10, fwdPrimerInnerR = outerR + 4;
   const revPrimerOuterR = innerR - 4, revPrimerInnerR = innerR - 10;
 
+  // Wheel zoom — must use native listener with { passive: false }
+  // React's onWheel is passive by default, so preventDefault() is ignored
+  const svgRef = useRef(null);
   const onWheel = useCallback((e) => {
     e.preventDefault();
+    e.stopPropagation();
     setZoom(z => Math.max(0.5, Math.min(4, z + (e.deltaY > 0 ? -0.1 : 0.1))));
   }, []);
+  useEffect(() => {
+    const el = svgRef.current;
+    if (!el) return;
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [onWheel]);
   const onMouseDown = (e) => { if (e.button !== 0) return; dragging.current = true; dragStart.current = { x: e.clientX, y: e.clientY, px: pan.x, py: pan.y }; };
   const onMouseMove = (e) => { if (!dragging.current) return; setPan({ x: dragStart.current.px + (e.clientX - dragStart.current.x) / zoom, y: dragStart.current.py + (e.clientY - dragStart.current.y) / zoom }); };
   const onMouseUp = () => { dragging.current = false; };
@@ -104,10 +114,10 @@ export default function PlasmidMap({ fragments, constructName, totalBp, junction
         <button onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }} className="text-[9px] px-1.5 rounded hover:bg-gray-100 text-gray-500 ml-1">Сброс</button>
       </div>
 
-      <svg viewBox={`${vx} ${vy} ${vw} ${vw}`}
+      <svg ref={svgRef} viewBox={`${vx} ${vy} ${vw} ${vw}`}
         preserveAspectRatio="xMidYMid meet"
         style={{ width: '100%', height: '100%', cursor: dragging.current ? 'grabbing' : 'grab' }}
-        onWheel={onWheel} onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}>
+        onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}>
 
         {/* Backbone ring */}
         <circle cx={cx} cy={cy} r={backboneR} fill="none" stroke="#e5e7eb" strokeWidth={outerR - innerR} />
