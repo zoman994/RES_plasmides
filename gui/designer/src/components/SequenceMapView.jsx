@@ -151,26 +151,36 @@ export default function SequenceMapView({ fragments, primers = [], circular, onA
 
           return (
             <div key={line.start} className="mb-3">
-              {/* Feature bars */}
+              {/* Ruler — tick marks every 10bp */}
+              <div className="flex text-[8px] text-gray-300 select-none ml-14">
+                {Array.from({ length: Math.ceil(line.seq.length / 10) }, (_, gi) => {
+                  const tickPos = line.start + gi * 10 + 10;
+                  return (
+                    <span key={gi} className="inline-block text-center" style={{ width: `${Math.min(10, line.seq.length - gi * 10)}ch` }}>
+                      {tickPos <= line.start + line.seq.length ? tickPos : ''}
+                    </span>
+                  );
+                })}
+              </div>
+
+              {/* Feature bars — ch-based positioning (no spaces = perfect alignment) */}
               {lineFeats.length > 0 && (
-                <div className="relative h-4 ml-14 mb-0.5">
+                <div className="relative h-4 ml-14 mb-0.5" style={{ width: `${line.seq.length}ch` }}>
                   {lineFeats.map(f => {
                     const left = Math.max(0, f.start - line.start);
                     const right = Math.min(line.seq.length, f.end - line.start);
-                    const wPct = ((right - left) / PER_LINE) * 100;
-                    const lPct = (left / PER_LINE) * 100;
                     return (
                       <div key={f.id} className="absolute h-3.5 rounded-sm text-[7px] text-white px-0.5 flex items-center truncate"
-                        style={{ left: `${lPct}%`, width: `${wPct}%`, backgroundColor: f.color, minWidth: 4 }}
+                        style={{ left: `${left}ch`, width: `${right - left}ch`, backgroundColor: f.color, minWidth: 4 }}
                         title={`${f.name} (${f.type}) ${f.start + 1}..${f.end}`}>
-                        {wPct > 8 ? f.name : ''}
+                        {(right - left) > 5 ? f.name : ''}
                       </div>
                     );
                   })}
                 </div>
               )}
 
-              {/* Sense strand 5'→3' */}
+              {/* Sense strand 5'→3' — no spaces, pure monospace */}
               <div className="flex">
                 <span className="w-12 text-right text-gray-400 mr-2 shrink-0 text-[9px] select-none">{line.start + 1}</span>
                 <span className="select-none cursor-text whitespace-pre"
@@ -180,9 +190,8 @@ export default function SequenceMapView({ fragments, primers = [], circular, onA
                     const pos = line.start + ci;
                     const inSel = sel && pos >= sel.start && pos <= sel.end;
                     const fwdP = linePrimers.find(p => p.direction === 'forward' && pos >= p.start && pos < p.end);
-                    const gap = ci > 0 && ci % 10 === 0;
                     return (
-                      <span key={ci} className={`${inSel ? 'bg-blue-300 text-white' : fwdP ? 'bg-blue-50' : ''} ${gap ? 'mr-0.5' : ''}`}>
+                      <span key={ci} className={inSel ? 'bg-blue-300 text-white' : fwdP ? 'bg-blue-50' : ''}>
                         {nt}
                       </span>
                     );
@@ -200,9 +209,8 @@ export default function SequenceMapView({ fragments, primers = [], circular, onA
                     const pos = line.start + ci;
                     const inSel = sel && pos >= sel.start && pos <= sel.end;
                     const revP = linePrimers.find(p => p.direction === 'reverse' && pos >= p.start && pos < p.end);
-                    const gap = ci > 0 && ci % 10 === 0;
                     return (
-                      <span key={ci} className={`${inSel ? 'bg-blue-200' : revP ? 'bg-red-50' : ''} ${gap ? 'mr-0.5' : ''}`}>
+                      <span key={ci} className={inSel ? 'bg-blue-200' : revP ? 'bg-red-50' : ''}>
                         {comp(nt)}
                       </span>
                     );
@@ -210,7 +218,7 @@ export default function SequenceMapView({ fragments, primers = [], circular, onA
                 </span>
               </div>
 
-              {/* Amino acid translation — only under CDS regions */}
+              {/* Amino acid translation — under CDS regions, ch-aligned */}
               {lineFeats.some(f => f.type === 'CDS' || f.type === 'gene') && (
                 <div className="flex">
                   <span className="w-12 mr-2 shrink-0" />
@@ -220,16 +228,14 @@ export default function SequenceMapView({ fragments, primers = [], circular, onA
                       const cds = lineFeats.find(f => (f.type === 'CDS' || f.type === 'gene') && absPos >= f.start && absPos < f.end);
                       if (!cds) return <span key={ci} className="inline-block" style={{ width: '1ch' }}>{' '}</span>;
                       const posInCDS = absPos - cds.start;
-                      const gap = ci > 0 && ci % 10 === 0;
                       if (posInCDS % 3 === 1) {
-                        // Middle nucleotide of codon — show amino acid
                         const codonStart = cds.start + posInCDS - 1;
                         const codon = fullSeq.slice(codonStart, codonStart + 3).toUpperCase();
                         const aa = CODON_TABLE[codon] || '';
                         const aaIdx = Math.floor(posInCDS / 3);
                         return (
                           <span key={ci}
-                            className={`inline-block text-center text-[9px] font-medium ${gap ? 'mr-0.5' : ''}
+                            className={`inline-block text-center text-[9px] font-medium
                               ${aa === 'M' && aaIdx === 0 ? 'text-green-600 font-bold' :
                                 aa === '*' ? 'text-red-600 font-bold' :
                                 'text-purple-400'}`}
@@ -239,7 +245,7 @@ export default function SequenceMapView({ fragments, primers = [], circular, onA
                           </span>
                         );
                       }
-                      return <span key={ci} className={`inline-block ${gap ? 'mr-0.5' : ''}`} style={{ width: '1ch' }}>{' '}</span>;
+                      return <span key={ci} className="inline-block" style={{ width: '1ch' }}>{' '}</span>;
                     })}
                   </span>
                 </div>
@@ -252,12 +258,10 @@ export default function SequenceMapView({ fragments, primers = [], circular, onA
                   return (catOrder[a.category] || 0) - (catOrder[b.category] || 0) || (a.direction === 'forward' ? -1 : 1);
                 });
                 return (
-                  <div className="relative ml-14" style={{ height: sorted.length * 14 + 2 }}>
+                  <div className="relative ml-14" style={{ height: sorted.length * 14 + 2, width: `${line.seq.length}ch` }}>
                     {sorted.map((p, pi) => {
                       const barStart = Math.max(0, p.start - line.start);
                       const barEnd = Math.min(line.seq.length, p.end - line.start);
-                      const lPct = (barStart / PER_LINE) * 100;
-                      const wPct = ((barEnd - barStart) / PER_LINE) * 100;
                       const cat = p.category || 'assembly';
                       const isFwd = p.direction === 'forward';
                       const color = cat === 'custom' ? '#16a34a' : cat === 'verification' ? '#6b7280'
@@ -265,7 +269,7 @@ export default function SequenceMapView({ fragments, primers = [], circular, onA
                       const dashed = cat === 'custom';
                       const label = (p.name || '').replace(/^[A-Z]{2}\d{3}_/, '');
                       return (
-                        <div key={pi} className="absolute flex items-center" style={{ left: `${lPct}%`, width: `${wPct}%`, top: pi * 14 }}>
+                        <div key={pi} className="absolute flex items-center" style={{ left: `${barStart}ch`, width: `${barEnd - barStart}ch`, top: pi * 14 }}>
                           {!isFwd && <div className="w-0 h-0 border-t-[3px] border-b-[3px] border-r-[5px] border-transparent" style={{ borderRightColor: color }} />}
                           <div className={`h-1.5 flex-1 ${isFwd ? 'rounded-l-full' : 'rounded-r-full'}`}
                             style={{ backgroundColor: color, backgroundImage: dashed ? `repeating-linear-gradient(90deg, ${color} 0 4px, transparent 4px 6px)` : 'none' }} />
