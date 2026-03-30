@@ -1,5 +1,7 @@
 import { useState, useMemo } from 'react';
 import { CODON_TABLE, translateDNA } from '../codons';
+import { getRegions } from '../annotation-model';
+import { FEATURE_COLORS } from '../theme';
 
 /* ── Built-in signal peptides (real DNA sequences) ── */
 const SIGNAL_PEPTIDES = [
@@ -124,7 +126,25 @@ export default function FragmentSplitter({ fragment, onSplit, onClose, partsLibr
 
         {/* Presets */}
         <div className="flex gap-2 mb-4 flex-wrap">
-          {/* Domain boundary presets */}
+          {/* Region boundary presets */}
+          {(() => {
+            const regions = getRegions(fragment.annotations);
+            if (regions.length > 1) {
+              return regions.slice(0, -1).map((r, ri) => {
+                const next = regions[ri + 1];
+                const color = FEATURE_COLORS[r.type] || '#999';
+                return (
+                  <button key={`r${ri}`} onClick={() => { setCutNT(r.end); }}
+                    className="text-[11px] px-3 py-1.5 rounded-full border hover:bg-blue-50 transition"
+                    style={{ borderColor: color, color }}>
+                    {'📐'} {r.name} | {next.name} (поз. {r.end})
+                  </button>
+                );
+              });
+            }
+            return null;
+          })()}
+          {/* Legacy domain boundary presets */}
           {isCDS && fragment.domains?.length > 1 && fragment.domains.slice(0, -1).map((d, i) => {
             const next = fragment.domains[i + 1];
             return (

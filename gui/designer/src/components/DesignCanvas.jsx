@@ -96,7 +96,7 @@ export default function DesignCanvas({
     const scale = n <= 4 ? 1 : n <= 10 ? Math.max(0.45, 1 - (n - 4) * 0.1) : Math.max(0.2, 0.45 - (n - 10) * 0.02);
     const blockW = n > 15 ? 80 : fragmentWidthEstimate;
     const totalW = fragments.reduce((s, f) => s + (typeof blockW === 'function' ? blockW(f.length) : blockW) * scale, 0)
-      + Math.max(0, n - 1) * (n > 15 ? 35 : 55) + 60;
+      + Math.max(0, n - 1) * (n > 15 ? 48 : 84) + 60;
     const containerW = scrollRef.current?.clientWidth || 800;
     setZoom(Math.max(15, Math.min(100, Math.floor(containerW / totalW * 100))));
   }, [fragments, n]);
@@ -161,6 +161,7 @@ export default function DesignCanvas({
       className={`relative rounded-xl px-4 pt-2 pb-3
         flex flex-col shrink-0
         ${isOver ? 'border-2 border-blue-400 bg-blue-50/40' : 'border border-gray-200'}`}
+      onClick={(e) => { if (e.target === e.currentTarget) useStore.getState().setHighlightedPartId(null); }}
       style={{
         height: n > 0 ? canvasH : undefined,
         minHeight: n > 0 ? 200 : 180,
@@ -257,7 +258,7 @@ export default function DesignCanvas({
                                   onSwapVariant={onSwapVariant} />
                               </div>
                               {i < junctions.length && (i < n - 1 || circular) && (
-                                <div className="flex flex-col items-center shrink-0" style={{ minWidth: n > 12 ? 36 : 50 }}>
+                                <div className="flex flex-col items-center shrink-0" style={{ minWidth: n > 12 ? 44 : 80 }}>
                                   <JunctionBlock junction={junctions[i]} index={i}
                                     leftName={frag.name} rightName={fragments[(i + 1) % n]?.name || '?'}
                                     leftFrag={frag} rightFrag={fragments[(i + 1) % n]}

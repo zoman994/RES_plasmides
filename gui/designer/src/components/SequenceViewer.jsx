@@ -10,7 +10,7 @@ export default function SequenceViewer({ fragments, circular, primers = [] }) {
 
   const fullSeq = fragments.map(f => f.sequence || '').join('');
   const selFrag = typeof selected === 'number' ? fragments[selected] : null;
-  const isCDS = selFrag?.type === 'CDS';
+  const isCDS = selFrag?.type === 'CDS' || selFrag?.type === 'gene' || selFrag?.type === 'marker';
   const hasDomains = isCDS && selFrag?.domains?.length > 0;
   const effectiveMode = !isCDS ? 'dna' : viewMode;
 

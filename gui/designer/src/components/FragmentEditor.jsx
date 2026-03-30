@@ -8,6 +8,10 @@ import { createPortal } from 'react-dom';
 import { translateDNA, CODON_TABLE } from '../codons';
 import { autoDetectDomains, DOMAIN_COLORS } from '../domain-detection';
 import { FEATURE_COLORS, getFragColor, isMarker } from '../theme';
+import { ANNOTATION_COLORS, autoAnnotate } from '../auto-annotate';
+import { migratePartAnnotations } from '../migrate-annotations';
+import { getRegions, getAllDetails, getPoints } from '../annotation-model';
+import AnnotationEditor from './AnnotationEditor';
 import { detectModification, suggestVariantName } from '../part-variants';
 import { getCommonSubstitutions, inlineSubstitution, inlineDeletion, designInlineKLDPrimers } from '../mutagenesis';
 
@@ -117,9 +121,17 @@ function loadSavedDomains(id) { try { return JSON.parse(localStorage.getItem(DOM
 function persistDomains(id, domains) { try { const a = JSON.parse(localStorage.getItem(DOMAINS_LS_KEY) || '{}'); a[id] = domains; localStorage.setItem(DOMAINS_LS_KEY, JSON.stringify(a)); } catch {} }
 
 export default function FragmentEditor({ fragment, onSave, onClose, onColorChange, onSaveAsVariant }) {
-  const isCDS = fragment.type === 'CDS';
+  // CDS-like if fragment type is CDS or any annotation region is CDS
+  const hasCDSRegion = (fragment.annotations || []).some(a => a.level === 'region' && (a.type === 'CDS' || a.type === 'gene' || a.type === 'marker'));
+  const isCDS = fragment.type === 'CDS' || hasCDSRegion;
   const [tab, setTab] = useState('dna'); // 'dna' | 'protein'
   const [seq, setSeq] = useState(fragment.sequence || '');
+  // Unified annotations — migrate from legacy domains if needed
+  const [annotations, setAnnotations] = useState(() => {
+    if (fragment.annotations?.some(a => a.level === 'region')) return fragment.annotations;
+    return migratePartAnnotations(fragment);
+  });
+  // Legacy compat: keep domains in sync for save handler
   const [domains, setDomains] = useState(fragment.domains?.length ? fragment.domains : loadSavedDomains(fragment.id) || loadSavedDomains(fragment.name) || []);
   const [customColor, setCustomColor] = useState(fragment.customColor || '');
   const [showPalette, setShowPalette] = useState(false);
@@ -227,7 +239,7 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
 
     if (workflow === 'edit') {
       // Simple edit mode — save sequence directly, no variants/primers
-      onSave({ ...fragment, sequence: seq, length: seq.length, domains,
+      onSave({ ...fragment, sequence: seq, length: seq.length, domains, annotations,
         customColor: customColor || undefined, editedAt: new Date().toISOString(),
         // Don't pass mutations — this is a direct edit, not mutagenesis
       });
@@ -235,7 +247,7 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
       // Mutagenesis mode — rename with mutations, trigger variant + KLD
       const mutLabels = mutations.map(m => m.label).join(',');
       const name = mutations.length > 0 ? `${fragment.name}(${mutLabels})` : fragment.name;
-      onSave({ ...fragment, name, sequence: seq, length: seq.length, domains,
+      onSave({ ...fragment, name, sequence: seq, length: seq.length, domains, annotations,
         customColor: customColor || undefined,
         mutations: mutations.length > 0 ? [...(fragment.mutations || []), ...mutations] : fragment.mutations,
         editedAt: new Date().toISOString() });
@@ -619,31 +631,12 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
           </>
         )}
 
-        {/* ═══ TAB: Белок / Разметка ═══ */}
+        {/* ═══ TAB: Белок / Аннотации ═══ */}
         {tab === 'regions' && (() => {
-            const unit = isCDS ? 'а.о.' : 'п.н.';
-            const maxPos = isCDS ? totalAA : seq.length;
-            const regionTypes = getRegionTypes(fragment.type);
-            const getColor = (type) => REGION_COLORS[type] || DOMAIN_COLORS[type] || '#56B4E9';
+            const getColor = (type) => ANNOTATION_COLORS[type] || REGION_COLORS[type] || DOMAIN_COLORS[type] || '#56B4E9';
+            const details = getAllDetails(annotations);
             return (
             <>
-            {/* Region bar */}
-            {domains.length > 0 && (
-              <div className="mb-3">
-                <div className="flex h-6 rounded overflow-hidden border">
-                  {domains.map((d, di) => {
-                    const w = Math.max(2, ((d.endAA - d.startAA + 1) / maxPos) * 100);
-                    return (
-                      <div key={di} style={{ width: `${w}%`, backgroundColor: d.color || getColor(d.type) }}
-                        className="flex items-center justify-center text-[7px] text-white font-medium truncate px-0.5 border-r border-white/30"
-                        title={`${d.name}: ${d.startAA}–${d.endAA} ${unit}`}>
-                        {w > 6 ? d.name : ''}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
 
             {/* Protein sequence with numbered lines — clickable AAs for mutagenesis (CDS) */}
             <div className="font-mono text-[10px] leading-relaxed bg-gray-50 p-3 rounded max-h-[200px] overflow-y-auto mb-3 relative">
@@ -660,18 +653,20 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
                       {line.aas.split('').map((aa, ci) => {
                         const i = line.start + ci;
                         const pos = i + 1;
-                        const dom = domains.find(d => pos >= d.startAA && pos <= d.endAA);
+                        const ntPos = i * 3;
+                        // Find detail annotation covering this AA position (nt-based)
+                        const det = details.find(d => ntPos >= d.start && ntPos < d.end);
+                        const detColor = det ? (det.color || getColor(det.type)) : null;
                         const isMutated = mutations.some(m => m.label?.includes(String(pos)));
-                        // Add a thin gap every 10 AAs for readability
                         const gap10 = ci > 0 && ci % 10 === 0;
                         return (
                           <span key={i}
                             className={`cursor-pointer rounded-sm transition inline-block text-center ${gap10 ? 'ml-1' : ''}
                               ${mutTarget?.aaIdx === i ? 'bg-purple-300' : isMutated ? 'bg-amber-200' : 'hover:bg-purple-100'}`}
-                            style={{ backgroundColor: mutTarget?.aaIdx === i ? undefined : isMutated ? undefined : dom ? (dom.color || getColor(dom.type)) + '25' : 'transparent',
-                              borderBottom: dom ? `2px solid ${dom.color || getColor(dom.type)}` : 'none',
+                            style={{ backgroundColor: mutTarget?.aaIdx === i ? undefined : isMutated ? undefined : detColor ? detColor + '25' : 'transparent',
+                              borderBottom: detColor ? `2px solid ${detColor}` : 'none',
                               color: aa === '*' ? '#dc2626' : '#333' }}
-                            title={`${aa}${pos} — клик для мутации`}
+                            title={`${aa}${pos}${det ? ` (${det.name})` : ''} — клик для мутации`}
                             onClick={e => openMutMenu(e, i, aa, seq.slice(i * 3, i * 3 + 3).toUpperCase())}>{aa}</span>
                         );
                       })}
@@ -679,101 +674,36 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
                   </div>
                 ));
               })() : seq.split('').map((nt, i) => {
-                const pos = i + 1;
-                const dom = domains.find(d => pos >= d.startAA && pos <= d.endAA);
+                const det = details.find(d => i >= d.start && i < d.end);
+                const detColor = det ? (det.color || getColor(det.type)) : null;
                 return (
-                  <span key={i} style={{ backgroundColor: dom ? (dom.color || getColor(dom.type)) + '20' : 'transparent',
-                    borderBottom: dom ? `2px solid ${dom.color || getColor(dom.type)}` : 'none' }}
-                    title={`${pos} п.н.${dom ? ` (${dom.name})` : ''}`}>{nt}</span>
+                  <span key={i} style={{ backgroundColor: detColor ? detColor + '20' : 'transparent',
+                    borderBottom: detColor ? `2px solid ${detColor}` : 'none' }}
+                    title={`${i + 1} п.н.${det ? ` (${det.name})` : ''}`}>{nt}</span>
                 );
               })}
 
             </div>
             {isCDS && !mutTarget && <div className="text-[9px] text-gray-400 -mt-2 mb-2 text-center">Клик по аминокислоте → мутагенез</div>}
 
-            {/* Region management */}
+            {/* Annotation management — unified region/detail/point editor */}
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold text-gray-600">{isCDS ? 'Домены' : 'Области'} ({domains.length})</span>
+              <span className="text-xs font-semibold text-gray-600">Аннотации ({annotations.length})</span>
               <div className="flex gap-2">
-                {isCDS && <button onClick={() => setDomains(autoDetectDomains(seq, fragment.name))}
-                  className="text-[10px] px-2 py-1 bg-blue-50 text-blue-700 rounded hover:bg-blue-100">{'🔍'} Авто</button>}
-                <button onClick={() => setAddForm({ name: '', type: regionTypes[0]?.value || 'custom', startAA: 1, endAA: maxPos })}
-                  className="text-[10px] px-2 py-1 bg-green-50 text-green-700 rounded hover:bg-green-100">+ Добавить</button>
+                <button onClick={() => setAnnotations(autoAnnotate({ ...fragment, sequence: seq, annotations: annotations.filter(a => a.level === 'region' && !a.auto) }))}
+                  className="text-[10px] px-2 py-1 bg-blue-50 text-blue-700 rounded hover:bg-blue-100">{'🔍'} Авто</button>
               </div>
             </div>
 
-            {domains.length > 0 && (
-              <table className="w-full text-[11px] mb-3">
-                <thead><tr className="text-gray-400 text-[9px] uppercase">
-                  <th className="text-left p-1">#</th><th className="text-left p-1">Имя</th>
-                  <th className="text-left p-1">Тип</th><th className="text-right p-1">Позиция ({unit})</th>
-                  <th className="text-right p-1">Дл.</th><th className="p-1 w-5"></th>
-                </tr></thead>
-                <tbody>{domains.map((d, di) => (
-                  <tr key={di} className="border-t hover:bg-gray-50">
-                    <td className="p-1 relative">
-                      <span className="w-4 h-4 rounded-full inline-block border border-gray-200 cursor-pointer"
-                        style={{ backgroundColor: d.color || getColor(d.type) }}
-                        onClick={() => setDomPaletteIdx(domPaletteIdx === di ? null : di)} />
-                      {domPaletteIdx === di && (
-                        <div className="absolute left-0 top-7 z-20 bg-white border border-gray-200 rounded-lg shadow-lg p-2 w-56"
-                          onClick={e => e.stopPropagation()}>
-                          <div className="flex gap-1 flex-wrap">
-                            {BASE_PALETTE.map(c => (
-                              <button key={c} type="button" onClick={() => { setDomains(prev => prev.map((x, j) => j === di ? { ...x, color: c } : x)); setDomPaletteIdx(null); }}
-                                className="w-4 h-4 rounded-full cursor-pointer"
-                                style={{ backgroundColor: c, outline: (d.color || getColor(d.type)).toUpperCase() === c.toUpperCase() ? '2px solid #1f2937' : '1px solid #d1d5db', outlineOffset: '1px' }} />
-                            ))}
-                          </div>
-                          {userColors.length > 0 && (
-                            <div className="flex gap-1 flex-wrap mt-1.5 pt-1.5 border-t border-gray-100">
-                              {userColors.map((c, ci) => (
-                                <label key={ci} className="relative w-4 h-4 rounded-full cursor-pointer"
-                                  style={{ backgroundColor: c, outline: (d.color || getColor(d.type)).toUpperCase() === c.toUpperCase() ? '2px solid #1f2937' : '1px solid #d1d5db', outlineOffset: '1px' }}>
-                                  <input type="color" value={c}
-                                    onChange={e => {
-                                      setDomains(prev => prev.map((x, j) => j === di ? { ...x, color: e.target.value } : x));
-                                      replaceUserColor(ci, e.target.value);
-                                      refreshUserColors();
-                                    }}
-                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
-                                </label>
-                              ))}
-                            </div>
-                          )}
-                          <div className="flex items-center gap-2 mt-1.5 pt-1.5 border-t border-gray-100">
-                            <label className="flex items-center gap-1 cursor-pointer text-[9px] text-blue-600 hover:text-blue-800">
-                              <input type="color" value={d.color || getColor(d.type)}
-                                ref={el => bindNativeChange(el, hex => setDomains(prev => prev.map((x, j) => j === di ? { ...x, color: hex } : x)))}
-                                onChange={e => setDomains(prev => prev.map((x, j) => j === di ? { ...x, color: e.target.value } : x))}
-                                className="w-3 h-3 cursor-pointer border-0 p-0 rounded" />
-                              Свой цвет
-                            </label>
-                          </div>
-                        </div>
-                      )}
-                    </td>
-                    <td className="p-1"><input value={d.name} onChange={e => setDomains(prev => prev.map((x, j) => j === di ? { ...x, name: e.target.value } : x))}
-                      className="text-[11px] border rounded px-1 py-0.5 w-24" /></td>
-                    <td className="p-1"><select value={d.type} onChange={e => setDomains(prev => prev.map((x, j) => j === di ? { ...x, type: e.target.value, color: getColor(e.target.value) } : x))}
-                      className="text-[10px] border rounded px-1 py-0.5">{regionTypes.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}</select></td>
-                    <td className="p-1 text-right text-[10px]">
-                      <input type="number" value={d.startAA} min={1} max={maxPos} onChange={e => setDomains(prev => prev.map((x, j) => j === di ? { ...x, startAA: +e.target.value } : x))}
-                        className="w-11 text-[10px] border rounded px-1 py-0.5 text-right" />–
-                      <input type="number" value={d.endAA} min={1} max={maxPos} onChange={e => setDomains(prev => prev.map((x, j) => j === di ? { ...x, endAA: +e.target.value } : x))}
-                        className="w-11 text-[10px] border rounded px-1 py-0.5 text-right" />
-                    </td>
-                    <td className="p-1 text-right text-gray-400">{d.endAA - d.startAA + 1}</td>
-                    <td className="p-1"><button onClick={() => setDomains(prev => prev.filter((_, j) => j !== di))} className="text-gray-300 hover:text-red-500">{'✕'}</button></td>
-                  </tr>
-                ))}</tbody>
-              </table>
-            )}
+            <AnnotationEditor
+              annotations={annotations}
+              seqLength={seq.length}
+              onChange={setAnnotations}
+              compact />
 
-            {domains.length === 0 && <div className="text-center text-gray-400 text-xs py-3 mb-3">{isCDS ? 'Нажмите «Авто» или добавьте вручную' : 'Добавьте области вручную'}</div>}
-
+            {/* Legacy domain add form — kept for backward compat */}
             {addForm && (
-              <div className="border rounded p-2 bg-gray-50 mb-3 space-y-2">
+              <div className="border rounded p-2 bg-gray-50 mb-3 space-y-2 mt-2">
                 <div className="grid grid-cols-4 gap-2">
                   <input placeholder="Имя" value={addForm.name} onChange={e => setAddForm({ ...addForm, name: e.target.value })} className="text-xs border rounded p-1.5 col-span-2" />
                   <select value={addForm.type} onChange={e => {
@@ -782,12 +712,12 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
                       if (name) { const val = name.toLowerCase().replace(/\s+/g, '_'); addCustomRegionType(val, name); setAddForm({ ...addForm, type: val }); }
                     } else setAddForm({ ...addForm, type: e.target.value });
                   }} className="text-xs border rounded p-1.5">
-                    {regionTypes.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                    {getRegionTypes(fragment.type).map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                     <option value="__new__">+ Новый тип...</option>
                   </select>
                   <div className="flex gap-1">
-                    <input type="number" value={addForm.startAA} min={1} max={maxPos} onChange={e => setAddForm({ ...addForm, startAA: +e.target.value })} className="text-xs border rounded p-1.5 w-14" />
-                    <input type="number" value={addForm.endAA} min={1} max={maxPos} onChange={e => setAddForm({ ...addForm, endAA: +e.target.value })} className="text-xs border rounded p-1.5 w-14" />
+                    <input type="number" value={addForm.startAA} min={1} max={isCDS ? totalAA : seq.length} onChange={e => setAddForm({ ...addForm, startAA: +e.target.value })} className="text-xs border rounded p-1.5 w-14" />
+                    <input type="number" value={addForm.endAA} min={1} max={isCDS ? totalAA : seq.length} onChange={e => setAddForm({ ...addForm, endAA: +e.target.value })} className="text-xs border rounded p-1.5 w-14" />
                   </div>
                 </div>
                 <div className="flex gap-2">

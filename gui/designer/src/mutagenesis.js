@@ -301,6 +301,53 @@ export function designInlineKLDPrimers(sequence, mutationSiteBp, targetTm = 60) 
   };
 }
 
+/**
+ * Design QuikChange primers: mutation in CENTER of both primers, full overlap.
+ * rev = reverseComplement(fwd). Both 25-45nt. Not phosphorylated.
+ */
+export function designQuikChangePrimers(sequence, mutationSiteBp, mutationLengthBp = 3, targetTm = 62) {
+  const seq = sequence.toUpperCase();
+  const tm = calcTmNN;
+
+  // Mutation center
+  const mutCenter = mutationSiteBp + Math.floor(mutationLengthBp / 2);
+
+  // Expand symmetrically from mutation center until Tm ≥ targetTm, max 45nt
+  let halfLen = 12;
+  while (halfLen < 22) {
+    const start = Math.max(0, mutCenter - halfLen);
+    const end = Math.min(seq.length, mutCenter + halfLen);
+    if (tm(seq.slice(start, end)) >= targetTm) break;
+    halfLen++;
+  }
+
+  const fStart = Math.max(0, mutCenter - halfLen);
+  const fEnd = Math.min(seq.length, mutCenter + halfLen);
+  const fwd = seq.slice(fStart, fEnd);
+  const rev = fwd.split('').reverse().map(c => ({ A: 'T', T: 'A', G: 'C', C: 'G' }[c] || 'N')).join('');
+
+  return {
+    forward: {
+      sequence: fwd, tm: Math.round(tm(fwd)),
+      containsMutation: true, phosphorylated: false,
+    },
+    reverse: {
+      sequence: rev, tm: Math.round(tm(fwd)),
+      containsMutation: true, phosphorylated: false,
+      overlapWithForward: fwd.length,
+    },
+    protocol: {
+      method: 'quikchange',
+      steps: [
+        'ПЦР: 18 циклов (не больше — фон)',
+        'DpnI: 1 ч при 37°C (уничтожить матрицу)',
+        'Трансформация напрямую (без лигирования!)',
+      ],
+      notes: '5\'-фосфорилированные праймеры НЕ нужны.',
+    },
+  };
+}
+
 /** Validate mutations and return warnings. */
 export function validateMutations(templateSeq, mutations, featureStart = 0) {
   const warnings = [];

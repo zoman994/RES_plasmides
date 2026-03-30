@@ -1,12 +1,11 @@
 /** SequenceMapView — SnapGene-like double-strand sequence with annotations. */
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import { getFragColor, isMarker } from '../theme';
+import { getFragColor, isMarker, FEATURE_COLORS } from '../theme';
 import { CODON_TABLE } from '../codons';
+import { getRegions } from '../annotation-model';
 import { calcTm as simpleTm, gcPercent } from '../tm-calculator';
 
-const COMPLEMENT = { A: 'T', T: 'A', G: 'C', C: 'G', N: 'N' };
-const comp = c => COMPLEMENT[c.toUpperCase()] || 'N';
-const revComp = s => s.split('').reverse().map(c => comp(c)).join('');
+import { complement as comp, reverseComplement as revComp } from '../sequence-utils';
 const gcPct = s => gcPercent(s);
 
 const LABEL_WIDTH = 8; // characters reserved for position label (left margin)
@@ -44,16 +43,25 @@ export default function SequenceMapView({ fragments, primers = [], circular, onA
     return () => observer.disconnect();
   }, []);
 
-  // Build full construct sequence + feature map
+  // Build full construct sequence + feature map (region-aware)
   const { fullSeq, features } = useMemo(() => {
     let seq = '';
     const feats = [];
     fragments.forEach((f, i) => {
-      const start = seq.length;
+      const fragStart = seq.length;
       seq += f.sequence || '';
-      const end = seq.length;
+      const fragEnd = seq.length;
       const color = f.customColor || (isMarker(f.name) ? '#F0E442' : getFragColor(f.type, i));
-      feats.push({ id: f.id || i, name: f.name, type: f.type, start, end, color, strand: f.strand || 1 });
+      // If fragment has region annotations, use them as features
+      const regions = getRegions(f.annotations);
+      if (regions.length > 1) {
+        regions.forEach((r, ri) => {
+          const rColor = FEATURE_COLORS[r.type] || color;
+          feats.push({ id: `${f.id || i}_r${ri}`, name: r.name, type: r.type, start: fragStart + r.start, end: fragStart + r.end, color: rColor, strand: f.strand || 1 });
+        });
+      } else {
+        feats.push({ id: f.id || i, name: f.name, type: f.type, start: fragStart, end: fragEnd, color, strand: f.strand || 1 });
+      }
     });
     return { fullSeq: seq, features: feats };
   }, [fragments]);

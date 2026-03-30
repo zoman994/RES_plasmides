@@ -5,7 +5,7 @@
  * Complex handlers extracted to custom hooks (src/hooks/).
  * This file is pure layout + wiring (~430 lines).
  */
-import { useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 
@@ -34,6 +34,9 @@ import OligoManager from './components/OligoManager';
 import FragmentEditor from './components/FragmentEditor';
 import PartsLibrary from './components/PartsLibrary';
 import DataManager from './components/DataManager';
+import PlasmidViewer from './components/PlasmidViewer';
+import PlasmidUseWizard from './components/PlasmidUseWizard';
+import PlasmidVersionTree from './components/PlasmidVersionTree';
 
 // ═══ Utilities ═══
 import { fetchParts } from './api';
@@ -41,6 +44,7 @@ import { validateConstruct, checkPrimerQuality, pcrProductSize } from './validat
 import { t } from './i18n';
 import { GG_ENZYMES } from './golden-gate';
 import { estimateEfficiency } from './assembly-utils';
+import { handleFileImport } from './file-import';
 
 export default function App() {
 
@@ -77,6 +81,10 @@ export default function App() {
   const showMutagenesis = useStore(s => s.showMutagenesis);
   const showOligos = useStore(s => s.showOligos);
   const showPartsLib = useStore(s => s.showPartsLib);
+  const partsLibPartId = useStore(s => s.partsLibPartId);
+  const viewerPart = useStore(s => s.viewerPart);
+  const wizardPlasmid = useStore(s => s.wizardPlasmid);
+  const versionTreePartId = useStore(s => s.versionTreePartId);
   const globalCDSPart = useStore(s => s.globalCDSPart);
   const editTarget = useStore(s => s.editTarget);
   const showDataMgr = useStore(s => s.showDataMgr);
@@ -104,6 +112,46 @@ export default function App() {
     handleSwapVariant, handleMutagenesis, handleReusePrimer,
     completeAssembly, clearAssembly, addCustomFragment,
   } = useFragmentHandlers();
+
+  // ═══ File drag-and-drop from OS ═══
+  const [fileDragOver, setFileDragOver] = useState(false);
+  const dragCounterRef = useRef(0);
+
+  const handleDragEnter = (e) => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    e.preventDefault();
+    dragCounterRef.current++;
+    setFileDragOver(true);
+  };
+  const handleDragOver = (e) => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  };
+  const handleDragLeave = (e) => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    dragCounterRef.current--;
+    if (dragCounterRef.current <= 0) {
+      dragCounterRef.current = 0;
+      setFileDragOver(false);
+    }
+  };
+  const handleFileDrop = async (e) => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current = 0;
+    setFileDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+    try {
+      const data = await handleFileImport(file);
+      useStore.getState().setImportedData(data);
+      setModalMode('library');
+    } catch (err) {
+      alert(`Ошибка импорта: ${err.message}`);
+    }
+  };
 
   // ═══ Active assembly shorthand ═══
   const active       = getActive() || { id: 'asm_1', name: 'Сборка 1', fragments: [], junctions: [] };
@@ -164,14 +212,28 @@ export default function App() {
       { id: 'd5', name: 'PgpdA', type: 'promoter', sequence: 'GCGC'.repeat(135), length: 540 },
       { id: 'd6', name: 'pyrG', type: 'CDS', sequence: 'TAGC'.repeat(241), length: 966 },
     ];
-    fetchParts().then(mergeParts).catch(() => mergeParts(fallback));
+    fetchParts().then(mergeParts).catch(() => mergeParts([])); // empty start for testing
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
 
   // ═══ Render ═══
   return (
     <DndProvider backend={HTML5Backend}>
-      <div className="h-screen flex flex-col" style={{ backgroundColor: '#f8f9fa' }}>
+      <div className="h-screen flex flex-col" style={{ backgroundColor: '#f8f9fa' }}
+        onDragEnter={handleDragEnter} onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave} onDrop={handleFileDrop}>
+
+        {/* File drag overlay */}
+        {fileDragOver && (
+          <div className="fixed inset-0 z-50 bg-blue-500/20 backdrop-blur-sm flex items-center justify-center pointer-events-none">
+            <div className="bg-white rounded-2xl shadow-2xl border-2 border-dashed border-blue-400 p-10 flex flex-col items-center gap-3">
+              <span className="text-4xl">{'📂'}</span>
+              <span className="text-lg font-semibold text-blue-700">Перетащите файл сюда</span>
+              <span className="text-sm text-gray-500">.gb · .gbk · .fasta · .dna</span>
+            </div>
+          </div>
+        )}
+
         {/* Header */}
         <header className="px-6 py-2.5 flex items-center justify-between shrink-0"
           style={{
@@ -554,10 +616,24 @@ export default function App() {
         />
       )}
       {showPartsLib && (
-        <PartsLibrary parts={parts} onClose={() => setShowPartsLib(false)}
+        <PartsLibrary parts={parts} onClose={() => { setShowPartsLib(false); useStore.getState().setPartsLibPartId(null); }}
           onOpenCDSEditor={(part) => { setGlobalCDSPart(part); setShowPartsLib(false); }}
           onAddToCanvas={(part) => addFragment(part)}
-          onUpdatePart={(id, data) => updatePart(id, data)} />
+          onUpdatePart={(id, data) => updatePart(id, data)}
+          preSelectPartId={partsLibPartId} />
+      )}
+      {viewerPart && (
+        <PlasmidViewer part={viewerPart}
+          onClose={() => useStore.getState().setViewerPart(null)} />
+      )}
+      {wizardPlasmid && (
+        <PlasmidUseWizard plasmid={wizardPlasmid}
+          onClose={() => useStore.getState().setWizardPlasmid(null)} />
+      )}
+      {versionTreePartId && (
+        <PlasmidVersionTree partId={versionTreePartId}
+          onClose={() => useStore.getState().setVersionTreePartId(null)}
+          onViewPart={(p) => { useStore.getState().setVersionTreePartId(null); useStore.getState().setViewerPart(p); }} />
       )}
       {globalCDSPart && (
         <FragmentEditor

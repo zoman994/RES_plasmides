@@ -44,6 +44,9 @@ primers = [
 golden-gate = [
     "tatapov>=0.1",     # Potapov 2018 overhang fidelity data
 ]
+snapgene = [
+    "snapgene-reader>=0.1.20",  # SnapGene .dna full feature extraction
+]
 
 [project.scripts]
 pvcs = "pvcs.cli:main"

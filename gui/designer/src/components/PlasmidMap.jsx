@@ -4,8 +4,9 @@
  * Primers shown in linear view / Primer Panel (not here).
  */
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { getFragColor, isMarker } from '../theme';
+import { getFragColor, isMarker, FEATURE_COLORS } from '../theme';
 import { DOMAIN_COLORS } from '../domain-detection';
+import { getRegions, getDetails } from '../annotation-model';
 
 const TAU = 2 * Math.PI;
 function polar(cx, cy, r, a) { return { x: cx + r * Math.cos(a - Math.PI / 2), y: cy + r * Math.sin(a - Math.PI / 2) }; }
@@ -136,74 +137,83 @@ export default function PlasmidMap({ fragments, constructName, totalBp, junction
               {/* Invisible wider hit area */}
               <path d={sectorPath(cx, cy, outerR + 20, innerR - 8, a.startAngle, a.endAngle)}
                 fill="transparent" stroke="none" />
-              {/* Visible arc — with domain sub-arcs inside a colored frame */}
-              {a.domains?.length > 0 ? (<>
-                {/* Outer frame = fragment color */}
-                <path d={sectorPath(cx, cy, isSel ? outerR + 5 : isH ? outerR + 3 : outerR, isSel ? innerR - 2 : innerR, a.startAngle + gap, a.endAngle - gap)}
-                  fill="none" stroke={a.color} strokeWidth={2.5} opacity={isH ? 0.85 : 1}
-                  style={{ transition: 'all 100ms' }}
-                  onClick={() => { setSelected(isSel ? null : i); onSelectFragment?.(i); }} />
-                {/* Domain fills inside the frame */}
-                {a.domains.map((dom, di) => {
-                  const isCDS = a.type === 'CDS' || a.type === 'gene';
-                  const domStartBp = isCDS ? (dom.startAA - 1) * 3 : dom.startAA - 1;
-                  const domEndBp = isCDS ? dom.endAA * 3 : dom.endAA;
-                  const fragLen = a.len || 1;
-                  const dsFrac = domStartBp / fragLen;
-                  const deFrac = Math.min(1, domEndBp / fragLen);
-                  const dsA = a.startAngle + (a.endAngle - a.startAngle) * dsFrac + gap;
-                  const deA = a.startAngle + (a.endAngle - a.startAngle) * deFrac - gap * 0.2;
-                  // Slightly inset so frame border is visible
-                  const oR = (isSel ? outerR + 5 : isH ? outerR + 3 : outerR) - 1.5;
-                  const iR = (isSel ? innerR - 2 : innerR) + 1.5;
+              {/* Visible arc — with region/domain sub-arcs inside a colored frame */}
+              {(() => {
+                // Try region-based annotations first, fall back to legacy domains
+                const regions = getRegions(a.annotations);
+                const subArcs = regions.length > 1 ? regions : null;
+                const legacyDoms = !subArcs && a.domains?.length > 0 ? a.domains : null;
+                const hasSubs = subArcs || legacyDoms;
+                const oRBase = isSel ? outerR + 5 : isH ? outerR + 3 : outerR;
+                const iRBase = isSel ? innerR - 2 : innerR;
+                if (!hasSubs) {
+                  // Single solid arc (no domains/regions)
                   return (
-                    <path key={`d${di}`} d={sectorPath(cx, cy, oR, iR, dsA, deA)}
-                      fill={dom.color || DOMAIN_COLORS[dom.type] || a.color}
-                      stroke="#fff" strokeWidth={0.3} opacity={isH ? 0.85 : 1}
+                    <path d={sectorPath(cx, cy, oRBase, iRBase, a.startAngle + gap, a.endAngle - gap)}
+                      fill={a.color} stroke={isSel ? '#000' : '#fff'} strokeWidth={isSel ? 2 : 1} opacity={isH ? 0.85 : 1}
                       style={{ transition: 'all 100ms' }}
-                      onClick={() => { setSelected(isSel ? null : i); onSelectFragment?.(i); }}>
-                      <title>{a.name}: {dom.name} ({dom.startAA}–{dom.endAA})</title>
-                    </path>
+                      onClick={() => { setSelected(isSel ? null : i); onSelectFragment?.(i); }} />
                   );
-                })}
-                {/* Domain labels via textPath (follows arc curvature) */}
-                {a.domains.map((dom, di) => {
-                  const isCDS = a.type === 'CDS' || a.type === 'gene';
-                  const domStartBp = isCDS ? (dom.startAA - 1) * 3 : dom.startAA - 1;
-                  const domEndBp = isCDS ? dom.endAA * 3 : dom.endAA;
-                  const fragLen = a.len || 1;
-                  const dsFrac = domStartBp / fragLen;
-                  const deFrac = Math.min(1, domEndBp / fragLen);
-                  const dsA = a.startAngle + (a.endAngle - a.startAngle) * dsFrac;
-                  const deA = a.startAngle + (a.endAngle - a.startAngle) * deFrac;
-                  const arcSpan = deA - dsA;
-                  const midR = (outerR + innerR) / 2;
-                  const arcLen = arcSpan * midR;
-                  if (arcLen < 25) return null; // too narrow for label
-                  const midA = (dsA + deA) / 2;
-                  // textPath: flip for bottom half so text reads left-to-right
-                  const isBottom = midA > Math.PI / 2 && midA < Math.PI * 1.5;
-                  const [from, to] = isBottom ? [deA, dsA] : [dsA, deA];
-                  const s = polar(cx, cy, midR, from), e = polar(cx, cy, midR, to);
-                  const lg = arcSpan > Math.PI ? 1 : 0;
-                  const pathId = `dom-tp-${i}-${di}`;
-                  return (
-                    <g key={`dl${di}`}>
-                      <defs><path id={pathId} d={`M ${s.x} ${s.y} A ${midR} ${midR} 0 ${lg} ${isBottom ? 0 : 1} ${e.x} ${e.y}`} fill="none" /></defs>
-                      <text className="pointer-events-none select-none"
-                        style={{ fontSize: arcLen < 40 ? '5px' : '7px', fill: '#fff', fontWeight: 500 }}>
-                        <textPath href={`#${pathId}`} startOffset="50%" textAnchor="middle">{dom.name}</textPath>
-                      </text>
-                    </g>
-                  );
-                })}
-              </>) : (
-                // Single solid arc (no domains)
-                <path d={sectorPath(cx, cy, isSel ? outerR + 5 : isH ? outerR + 3 : outerR, isSel ? innerR - 2 : innerR, a.startAngle + gap, a.endAngle - gap)}
-                  fill={a.color} stroke={isSel ? '#000' : '#fff'} strokeWidth={isSel ? 2 : 1} opacity={isH ? 0.85 : 1}
-                  style={{ transition: 'all 100ms' }}
-                  onClick={() => { setSelected(isSel ? null : i); onSelectFragment?.(i); }} />
-              )}
+                }
+                const fragLen = a.len || 1;
+
+                // Build unified sub-arc list: { startBp, endBp, color, name, label }
+                const subs = subArcs
+                  ? subArcs.map(r => ({ startBp: r.start, endBp: r.end, color: FEATURE_COLORS[r.type] || a.color, name: r.name, label: r.name }))
+                  : legacyDoms.map(dom => {
+                      const isCDS = a.type === 'CDS' || a.type === 'gene';
+                      return { startBp: isCDS ? (dom.startAA - 1) * 3 : dom.startAA - 1, endBp: isCDS ? dom.endAA * 3 : dom.endAA, color: dom.color || DOMAIN_COLORS[dom.type] || a.color, name: dom.name, label: dom.name };
+                    });
+
+                return (<>
+                  {/* Outer frame */}
+                  <path d={sectorPath(cx, cy, oRBase, iRBase, a.startAngle + gap, a.endAngle - gap)}
+                    fill="none" stroke={a.color} strokeWidth={2.5} opacity={isH ? 0.85 : 1}
+                    style={{ transition: 'all 100ms' }}
+                    onClick={() => { setSelected(isSel ? null : i); onSelectFragment?.(i); }} />
+                  {/* Sub-arc fills */}
+                  {subs.map((sub, si) => {
+                    const dsFrac = sub.startBp / fragLen;
+                    const deFrac = Math.min(1, sub.endBp / fragLen);
+                    const dsA = a.startAngle + (a.endAngle - a.startAngle) * dsFrac + gap;
+                    const deA = a.startAngle + (a.endAngle - a.startAngle) * deFrac - gap * 0.2;
+                    return (
+                      <path key={`s${si}`} d={sectorPath(cx, cy, oRBase - 1.5, iRBase + 1.5, dsA, deA)}
+                        fill={sub.color} stroke="#fff" strokeWidth={0.3} opacity={isH ? 0.85 : 1}
+                        style={{ transition: 'all 100ms' }}
+                        onClick={() => { setSelected(isSel ? null : i); onSelectFragment?.(i); }}>
+                        <title>{a.name}: {sub.name} ({sub.startBp}–{sub.endBp})</title>
+                      </path>
+                    );
+                  })}
+                  {/* Sub-arc labels via textPath */}
+                  {subs.map((sub, si) => {
+                    const dsFrac = sub.startBp / fragLen;
+                    const deFrac = Math.min(1, sub.endBp / fragLen);
+                    const dsA = a.startAngle + (a.endAngle - a.startAngle) * dsFrac;
+                    const deA = a.startAngle + (a.endAngle - a.startAngle) * deFrac;
+                    const arcSpan = deA - dsA;
+                    const midR = (outerR + innerR) / 2;
+                    const arcLen = arcSpan * midR;
+                    if (arcLen < 25) return null;
+                    const midA = (dsA + deA) / 2;
+                    const isBottom = midA > Math.PI / 2 && midA < Math.PI * 1.5;
+                    const [from, to] = isBottom ? [deA, dsA] : [dsA, deA];
+                    const s = polar(cx, cy, midR, from), e = polar(cx, cy, midR, to);
+                    const lg = arcSpan > Math.PI ? 1 : 0;
+                    const pathId = `sub-tp-${i}-${si}`;
+                    return (
+                      <g key={`sl${si}`}>
+                        <defs><path id={pathId} d={`M ${s.x} ${s.y} A ${midR} ${midR} 0 ${lg} ${isBottom ? 0 : 1} ${e.x} ${e.y}`} fill="none" /></defs>
+                        <text className="pointer-events-none select-none"
+                          style={{ fontSize: arcLen < 40 ? '5px' : '7px', fill: '#fff', fontWeight: 500 }}>
+                          <textPath href={`#${pathId}`} startOffset="50%" textAnchor="middle">{sub.label}</textPath>
+                        </text>
+                      </g>
+                    );
+                  })}
+                </>);
+              })()}
               {/* Direction arrow */}
               {a.endAngle - a.startAngle > 0.15 && (() => {
                 const aA = a.strand === -1 ? a.startAngle + 0.05 : a.endAngle - 0.05;

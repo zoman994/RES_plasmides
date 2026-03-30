@@ -1,9 +1,15 @@
 import { useState, useEffect, useMemo } from 'react';
 import { translateDNA, getCodonsForAA, AA_NAMES, ORGANISMS, translateCodon } from '../codons';
-import { computeMutagenesisStrategy, chooseStrategy, validateMutations } from '../mutagenesis';
+import { computeMutagenesisStrategy, chooseStrategy, validateMutations, designQuikChangePrimers } from '../mutagenesis';
 import { fetchConstructs, fetchFeatures } from '../api';
 
 const STRAT_LABELS = { kld: 'KLD (back-to-back primers)', two_fragment: '2-fragment overlap PCR', multi_fragment: 'Multi-fragment overlap PCR' };
+const METHOD_OPTIONS = [
+  { id: 'auto', label: 'Авто (рекомендуется)', desc: 'KLD/overlap в зависимости от расстояния мутаций' },
+  { id: 'kld', label: 'KLD', desc: 'Back-to-back праймеры + KLD mix. Работает всегда.' },
+  { id: 'quikchange', label: 'QuikChange', desc: 'Перекрывающиеся праймеры. Только DpnI, без лигазы.' },
+  { id: 'overlap', label: 'Overlap extension', desc: 'Два фрагмента с overlap. Для далёких мутаций.' },
+];
 
 export default function MutagenesisWizard({ onComplete, onClose }) {
   const [step, setStep] = useState(1);
@@ -13,6 +19,7 @@ export default function MutagenesisWizard({ onComplete, onClose }) {
   const [cdsStart, setCdsStart] = useState(0);
   const [cdsEnd, setCdsEnd] = useState(0);
   const [mutations, setMutations] = useState([]);
+  const [method, setMethod] = useState('auto');
   const [strategy, setStrategy] = useState(null);
 
   // Construct loading
@@ -258,6 +265,26 @@ export default function MutagenesisWizard({ onComplete, onClose }) {
             </button>
           </div>
         </>)}
+
+        {/* ── Method selection (shown on step 2, before compute) ── */}
+        {step === 2 && mutations.length > 0 && (
+          <div className="mt-3 p-3 bg-gray-50 rounded border">
+            <div className="text-xs font-semibold text-gray-600 mb-2">Метод мутагенеза:</div>
+            <div className="space-y-1">
+              {METHOD_OPTIONS.map(m => (
+                <label key={m.id} className={`flex items-start gap-2 p-2 rounded border cursor-pointer transition
+                  ${method === m.id ? 'bg-blue-50 border-blue-300' : 'hover:bg-gray-50 border-gray-100'}`}>
+                  <input type="radio" name="method" value={m.id} checked={method === m.id}
+                    onChange={() => setMethod(m.id)} className="mt-0.5" />
+                  <div>
+                    <div className="text-xs font-medium">{m.label}</div>
+                    <div className="text-[10px] text-gray-400">{m.desc}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* ── Step 3: Review + Apply ── */}
         {step === 3 && strategy && (<>

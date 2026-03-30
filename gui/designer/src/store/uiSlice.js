@@ -9,8 +9,12 @@ export const createUiSlice = (set) => ({
   showMutagenesis: false,
   showOligos: false,
   showPartsLib: false,
+  partsLibPartId: null,       // pre-select this Part when opening PartsLibrary
   showDataMgr: false,
   globalCDSPart: null,      // Part being edited in global editor
+  viewerPart: null,         // Part shown in PlasmidViewer modal
+  wizardPlasmid: null,      // Part shown in PlasmidUseWizard modal
+  versionTreePartId: null,  // Part ID for PlasmidVersionTree modal
 
   // ═══ Canvas / editing state ═══
   editTarget: null,         // index of fragment being edited
@@ -22,6 +26,12 @@ export const createUiSlice = (set) => ({
   expertMode: localStorage.getItem('pvcs-expert-mode') === 'true',
   firstLaunch: !localStorage.getItem('pvcs-expert-mode') && !localStorage.getItem('pvcs_designer_state'),
 
+  // ═══ File import ═══
+  importedData: null,       // Pre-fill data for AddFragmentModal from file import
+
+  // ═══ Canvas ↔ palette navigation ═══
+  highlightedPartId: null,  // Part ID highlighted in both canvas and palette
+
   // ═══ Assembly strategy ═══
   maxFinalParts: 0,         // 0 = auto
   inventoryVersion: 0,
@@ -31,12 +41,18 @@ export const createUiSlice = (set) => ({
   setShowMutagenesis: (v) => set({ showMutagenesis: v }, false, 'setShowMutagenesis'),
   setShowOligos: (v) => set({ showOligos: v }, false, 'setShowOligos'),
   setShowPartsLib: (v) => set({ showPartsLib: v }, false, 'setShowPartsLib'),
+  setPartsLibPartId: (id) => set({ partsLibPartId: id }, false, 'setPartsLibPartId'),
   setShowDataMgr: (v) => set({ showDataMgr: v }, false, 'setShowDataMgr'),
   setGlobalCDSPart: (part) => set({ globalCDSPart: part }, false, 'setGlobalCDSPart'),
+  setViewerPart: (part) => set({ viewerPart: part }, false, 'setViewerPart'),
+  setWizardPlasmid: (part) => set({ wizardPlasmid: part }, false, 'setWizardPlasmid'),
+  setVersionTreePartId: (id) => set({ versionTreePartId: id }, false, 'setVersionTreePartId'),
   setEditTarget: (idx) => set({ editTarget: idx }, false, 'setEditTarget'),
   setSplitTarget: (idx) => set({ splitTarget: idx }, false, 'setSplitTarget'),
   setActiveTab: (tab) => set({ activeTab: tab }, false, 'setActiveTab'),
   setWarningsOpen: (v) => set({ warningsOpen: v }, false, 'setWarningsOpen'),
+  setImportedData: (data) => set({ importedData: data }, false, 'setImportedData'),
+  setHighlightedPartId: (id) => set({ highlightedPartId: id }, false, 'setHighlightedPartId'),
   setMaxFinalParts: (v) => set({ maxFinalParts: v }, false, 'setMaxFinalParts'),
   incrementInventoryVersion: () => set(state => { state.inventoryVersion++; }, false, 'incrementInventoryVersion'),
   setFirstLaunch: (v) => set({ firstLaunch: v }, false, 'setFirstLaunch'),

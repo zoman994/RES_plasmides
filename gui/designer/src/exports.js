@@ -1,5 +1,48 @@
 /** Export functions — GenBank, protocol, clipboard. */
 
+import { ANNOTATION_COLORS } from './auto-annotate';
+
+// BodgeGene type → GenBank feature key
+const GENBANK_TYPE_MAP = {
+  'CDS': 'CDS',
+  'gene': 'gene',
+  'promoter': 'promoter',
+  'terminator': 'terminator',
+  'rep_origin': 'rep_origin',
+  'marker': 'CDS',
+  'reporter': 'CDS',
+  'signal_peptide': 'sig_peptide',
+  'propeptide': 'mat_peptide',
+  'tag': 'misc_feature',
+  'linker': 'misc_feature',
+  'T2A': 'misc_feature',
+  'intron': 'intron',
+  'enhancer': 'enhancer',
+  '5UTR': "5'UTR",
+  '3UTR': "3'UTR",
+  'RBS': 'RBS',
+  'polyA_signal': 'polyA_signal',
+  'start_codon': 'misc_feature',
+  'stop_codon': 'misc_feature',
+  'restriction_site': 'misc_feature',
+  'mutation': 'variation',
+  'variation': 'variation',
+  'primer_bind': 'primer_bind',
+  'gRNA': 'ncRNA',
+  'ncRNA': 'ncRNA',
+  'aptamer': 'ncRNA',
+  'domain': 'Region',
+  'binding': 'misc_binding',
+  'active_site': 'misc_feature',
+  'cleavage_site': 'misc_feature',
+  'NLS': 'misc_feature',
+  'MCS': 'misc_feature',
+  'spacer': 'misc_feature',
+  'misc_feature': 'misc_feature',
+  'core_promoter': 'misc_feature',
+  'regulatory': 'regulatory',
+};
+
 function download(filename, content, type = 'text/plain') {
   const blob = new Blob([content], { type });
   const url = URL.createObjectURL(blob);
@@ -10,7 +53,7 @@ function download(filename, content, type = 'text/plain') {
   URL.revokeObjectURL(url);
 }
 
-/** Export predicted sequence as GenBank file. */
+/** Export predicted sequence as GenBank file with full annotations. */
 export function exportGenBank(fragments, constructName = 'construct', circular = false) {
   const seq = fragments.map(f => f.sequence || '').join('');
   const topology = circular ? 'circular' : 'linear';
@@ -23,12 +66,40 @@ export function exportGenBank(fragments, constructName = 'construct', circular =
 
   let offset = 0;
   fragments.forEach(f => {
-    const start = offset + 1;
-    const end = offset + (f.sequence || '').length;
-    const loc = f.strand === -1 ? `complement(${start}..${end})` : `${start}..${end}`;
-    gb += `     ${(f.type || 'misc_feature').padEnd(16)}${loc}\n`;
-    gb += `                     /label="${f.name}"\n`;
-    offset = end;
+    const fragStart = offset;
+    const fragEnd = offset + (f.sequence || '').length;
+    const allAnns = f.annotations || [];
+    const regions = allAnns.filter(a => a.level === 'region');
+
+    // Export all annotations (regions, details, points)
+    if (allAnns.length > 0) {
+      for (const ann of allAnns) {
+        const start = fragStart + ann.start + 1;
+        const end = fragStart + ann.end;
+        const loc = f.strand === -1 ? `complement(${start}..${end})` : `${start}..${end}`;
+        const gbType = GENBANK_TYPE_MAP[ann.type] || 'misc_feature';
+
+        gb += `     ${gbType.padEnd(16)}${loc}\n`;
+        gb += `                     /label="${ann.name}"\n`;
+
+        // BodgeGene-specific qualifiers for round-trip import
+        if (ann.level) gb += `                     /bodgegene_level="${ann.level}"\n`;
+        if (ann.regionId) gb += `                     /bodgegene_regionId="${ann.regionId}"\n`;
+
+        // ApEinfo colors for SnapGene/ApE compatibility
+        const color = ann.color || ANNOTATION_COLORS[ann.type];
+        if (color) gb += `                     /ApEinfo_fwdcolor="${color}"\n`;
+      }
+    } else {
+      // Fallback: no annotations, export fragment as single feature
+      const start = fragStart + 1;
+      const end = fragEnd;
+      const loc = f.strand === -1 ? `complement(${start}..${end})` : `${start}..${end}`;
+      const gbType = GENBANK_TYPE_MAP[f.type] || 'misc_feature';
+      gb += `     ${gbType.padEnd(16)}${loc}\n`;
+      gb += `                     /label="${f.name}"\n`;
+    }
+    offset = fragEnd;
   });
 
   gb += `ORIGIN\n`;

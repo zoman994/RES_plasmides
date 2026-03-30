@@ -16,6 +16,7 @@ import { createFragmentSlice } from './fragmentSlice';
 import { createJunctionSlice } from './junctionSlice';
 import { createPrimerSlice } from './primerSlice';
 import { createUiSlice } from './uiSlice';
+import { migratePartAnnotations } from '../migrate-annotations';
 
 const LS_KEY = 'pvcs_designer_state';
 
@@ -123,7 +124,7 @@ const throttledStorage = {
 
 const persistConfig = {
   name: LS_KEY,
-  version: 3,
+  version: 4,
   storage: throttledStorage,
   partialize: (state) => ({
     projects: state.projects, activeProjectId: state.activeProjectId,
@@ -136,7 +137,14 @@ const persistConfig = {
     if (version < 3 && persisted && !persisted.projects) {
       const pName = persisted.projectName || 'Проект 1';
       const asms = persisted.assemblies || [];
-      return { ...persisted, projects: [{ id: 'proj_1', name: pName, assemblies: asms, activeId: asms[0]?.id || 'asm_1' }], activeProjectId: 'proj_1' };
+      persisted = { ...persisted, projects: [{ id: 'proj_1', name: pName, assemblies: asms, activeId: asms[0]?.id || 'asm_1' }], activeProjectId: 'proj_1' };
+    }
+    // v3→v4: migrate parts to region-based annotations
+    if (version < 4 && persisted?.parts) {
+      persisted.parts = persisted.parts.map(p => {
+        if (p.annotations?.some(a => a.level === 'region')) return p; // already migrated
+        return { ...p, annotations: migratePartAnnotations(p) };
+      });
     }
     return persisted;
   },

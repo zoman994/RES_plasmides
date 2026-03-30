@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import logging
 import sys
 from dataclasses import asdict
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+import tempfile
+
+logging.basicConfig(level=logging.INFO)
+
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -223,6 +228,55 @@ def remove_introns(body: dict):
         body["genomic"], body["exons"],
         overlap_length=body.get("overlapLength", 30),
     )
+
+
+# ── File Import (.dna / .gb) ──────────────────────────────────
+
+@app.post("/api/import")
+async def import_file(file: UploadFile = File(...)):
+    """Import a .dna (SnapGene) or .gb (GenBank) file via BioPython."""
+    from pvcs.parser import parse_snapgene, parse_genbank
+
+    ext = Path(file.filename or "").suffix.lower()
+    content = await file.read()
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
+        tmp.write(content)
+        tmp_path = tmp.name
+
+    try:
+        if ext == ".dna":
+            seq, features, meta = parse_snapgene(tmp_path)
+        elif ext in (".gb", ".gbk", ".genbank"):
+            seq, features, meta = parse_genbank(tmp_path)
+        else:
+            raise HTTPException(400, f"Unsupported format: {ext}")
+    except Exception as e:
+        Path(tmp_path).unlink(missing_ok=True)
+        raise HTTPException(422, f"Parse error: {e}")
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
+
+    logging.info("Import %s: %d features, %d bp", file.filename, len(features), len(seq))
+
+    return {
+        "name": meta.get("name", ""),
+        "sequence": seq,
+        "length": len(seq),
+        "topology": meta.get("topology", "linear"),
+        "organism": meta.get("organism", ""),
+        "description": meta.get("description", ""),
+        "features": [
+            {
+                "type": f.type, "name": f.name,
+                "start": f.start, "end": f.end, "strand": f.strand,
+                "sequence": f.sequence, "color": f.color,
+                "exons": f.exons, "introns": f.introns,
+                "has_introns": f.has_introns,
+            }
+            for f in features
+        ],
+    }
 
 
 # ── Serve React build (production) ─────────────────────────────

@@ -73,3 +73,26 @@ export function adjustDomains(domains, cutAA, action) {
   }
   return domains;
 }
+
+/**
+ * Convert legacy domain objects (AA coords) → detail-level annotations (nt coords).
+ * Used during migration from old domain model to region-based annotations.
+ *
+ * @param {Array} domains     — [{ name, type, startAA, endAA, color, … }]
+ * @param {string} regionId   — parent region ID
+ * @param {number} regionStart — nucleotide offset of the region within the Part
+ * @returns {Array} detail-level annotation objects
+ */
+export function convertDomainsToAnnotations(domains, regionId, regionStart = 0) {
+  if (!domains?.length) return [];
+  return domains.map(d => ({
+    name: d.name,
+    type: d.type || 'domain',
+    start: (d.startAA - 1) * 3 + regionStart,
+    end: d.endAA * 3 + regionStart,
+    level: 'detail',
+    regionId,
+    color: d.color,
+    migrated: true,
+  }));
+}

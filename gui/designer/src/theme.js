@@ -12,6 +12,27 @@ export const FEATURE_COLORS = {
   misc_feature:   '#999999',
   regulatory:     '#661100',
   misc_RNA:       '#AA4499',
+  fusion:         '#6B7280',
+  mutation:       '#D946EF',
+  reporter:       '#10B981',
+  enhancer:       '#8B5CF6',
+  '5UTR':         '#6366F1',
+  '3UTR':         '#6366F1',
+  RBS:            '#8B5CF6',
+  Kozak:          '#8B5CF6',
+  IRES:           '#7C3AED',
+  insulator:      '#64748B',
+  NLS:            '#0EA5E9',
+  T2A:            '#F97316',
+  MCS:            '#78716C',
+  ARS_CEN:        '#A855F7',
+  loxP:           '#D946EF',
+  FRT:            '#D946EF',
+  gRNA:           '#14B8A6',
+  ncRNA:          '#14B8A6',
+  aptamer:        '#14B8A6',
+  homology_arm:   '#78716C',
+  spacer:         '#94A3B8',
 };
 
 // Alternating pairs for adjacent same-type fragments
@@ -27,6 +48,7 @@ export const FEATURE_PAIRS = {
   misc_feature:   ['#999999', '#777777'],
   regulatory:     ['#661100', '#4D0D00'],
   misc_RNA:       ['#AA4499', '#883377'],
+  fusion:         ['#6B7280', '#525964'],
 };
 
 export function getFragColor(type, index) {

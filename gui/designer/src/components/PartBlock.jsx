@@ -1,9 +1,12 @@
 import { useState } from 'react';
 import { useDrag, useDrop } from 'react-dnd';
-import { getFragColor, isMarker } from '../theme';
+import { getFragColor, isMarker, FEATURE_COLORS } from '../theme';
 import { getPartDescription } from '../part-descriptions';
 import { SBOLIcon } from '../sbol-glyphs';
 import { useStore } from '../store';
+import { getRegions, getDetails } from '../annotation-model';
+import { ANNOTATION_COLORS } from '../auto-annotate';
+import ContextMenu from './ContextMenu';
 
 function fragmentWidth(bp, fragCount = 1) {
   const scale = fragCount <= 4 ? 1 : fragCount <= 10 ? Math.max(0.45, 1 - (fragCount - 4) * 0.1) : Math.max(0.2, 0.45 - (fragCount - 10) * 0.015);
@@ -31,7 +34,11 @@ export default function PartBlock({
 }) {
   // ═══ Store selector (granular) ═══
   const expertMode = useStore(s => s.expertMode);
+  const highlightedPartId = useStore(s => s.highlightedPartId);
+  const setHighlightedPartId = useStore(s => s.setHighlightedPartId);
+  const isHighlighted = fragment.partId && fragment.partId === highlightedPartId;
   const [showVariants, setShowVariants] = useState(false);
+  const [ctxMenu, setCtxMenu] = useState(null);
   const variantCount = variants?.length || 0;
   const [{ isDragging }, drag] = useDrag({
     type: 'CANVAS_PART', item: { index },
@@ -48,7 +55,12 @@ export default function PartBlock({
 
   return (
     <div ref={ref} className={`relative group cursor-grab transition-transform ${isOver ? 'scale-105' : ''}`}
-      style={{ opacity: isDragging ? 0.3 : 1, zIndex: 1 }}>
+      style={{ opacity: isDragging ? 0.3 : 1, zIndex: 1,
+        boxShadow: isHighlighted ? '0 0 0 2px #3b82f6, 0 0 8px rgba(59,130,246,0.3)' : undefined,
+        borderRadius: isHighlighted ? 8 : undefined,
+      }}
+      onClick={(e) => { e.stopPropagation(); setHighlightedPartId(fragment.partId === highlightedPartId ? null : fragment.partId); }}
+      onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY }); }}>
       {isOver && <div className="absolute -left-1 top-0 bottom-0 w-0.5 bg-blue-500 rounded" />}
 
       {/* ═══ MERGED PRODUCT ═══ */}
@@ -81,7 +93,7 @@ export default function PartBlock({
       )}
 
       {/* ═══ CARD BLOCK — purple left border for mutants ═══ */}
-      {(() => { const hasMuts = fragment.mutations?.length > 0; return (
+      {(() => { const mutAnns = (fragment.annotations || []).filter(a => a.type === 'mutation'); const legacyMuts = fragment.mutations || []; const hasMuts = mutAnns.length > 0 || legacyMuts.length > 0; const muts = mutAnns.length > 0 ? mutAnns : legacyMuts; return (
       <div className={`relative flex flex-col rounded-lg select-none
         ${isDragging ? 'shadow-xl' : 'shadow-sm hover:shadow-md'}`}
         style={{
@@ -98,14 +110,14 @@ export default function PartBlock({
         {hasMuts && (
           <div className="absolute -top-2 right-1.5 z-10 group/mut">
             <span className="text-[7px] bg-purple-100 text-purple-700 border border-purple-200 rounded-full px-1.5 py-px font-medium cursor-help">
-              {'🧬'}{fragment.mutations.length}
+              {'🧬'}{muts.length}
             </span>
             <div className="hidden group-hover/mut:block absolute top-4 right-0 z-50 bg-white shadow-xl rounded-lg border p-2 min-w-[140px]">
               <div className="text-[9px] font-semibold text-purple-700 mb-1">Мутации:</div>
-              {fragment.mutations.map((m, mi) => (
+              {muts.map((m, mi) => (
                 <div key={mi} className="text-[10px] text-gray-600 flex justify-between gap-2">
-                  <span className="font-mono font-medium">{m.label || `${m.from || ''}${(m.position || 0) + 1}${m.to || ''}`}</span>
-                  {m.codonChange && <span className="text-gray-400 text-[8px]">{m.codonChange}</span>}
+                  <span className="font-mono font-medium">{m.name || m.label || `${m.from || ''}${(m.position || 0) + 1}${m.to || ''}`}</span>
+                  {(m.details?.codonChange || m.codonChange) && <span className="text-gray-400 text-[8px]">{m.details?.codonChange || m.codonChange}</span>}
                 </div>
               ))}
             </div>
@@ -137,39 +149,77 @@ export default function PartBlock({
           {/* Mutation labels as compact badges */}
           {hasMuts && !isCompact(fragmentCount) && (
             <div className="flex flex-wrap gap-0.5 mt-0.5 justify-center">
-              {fragment.mutations.slice(0, 3).map((m, mi) => (
+              {muts.slice(0, 3).map((m, mi) => (
                 <span key={mi} className="text-[7px] font-mono bg-purple-100 text-purple-700 rounded px-0.5">
-                  {m.label || `${m.from || ''}${(m.position || 0) + 1}${m.to || ''}`}
+                  {m.name || m.label || `${m.from || ''}${(m.position || 0) + 1}${m.to || ''}`}
                 </span>
               ))}
-              {fragment.mutations.length > 3 && (
-                <span className="text-[7px] bg-purple-100 text-purple-700 rounded px-0.5">+{fragment.mutations.length - 3}</span>
+              {muts.length > 3 && (
+                <span className="text-[7px] bg-purple-100 text-purple-700 rounded px-0.5">+{muts.length - 3}</span>
               )}
             </div>
           )}
-          {/* Domain bar (flips with strand) */}
-          {fragment.domains?.length > 0 && (
-            <div className={`flex h-2.5 rounded overflow-hidden w-full mt-0.5 ${fragment.strand === -1 ? 'flex-row-reverse' : ''}`}>
-              {fragment.domains.map((d, di) => {
-                const totalAA = Math.ceil((fragment.sequence || '').length / 3);
-                const w = Math.max(3, ((d.endAA - d.startAA + 1) / (totalAA || 1)) * 100);
-                return (
-                  <div key={di} style={{ width: `${w}%`, backgroundColor: d.color || '#56B4E9' }}
-                    className="border-r border-white/30 last:border-0"
-                    title={`${d.name}: ${d.startAA}–${d.endAA} а.о.`} />
-                );
-              })}
-            </div>
-          )}
+          {/* Region bar — shows detail annotations as colored segments */}
+          {(() => {
+            const regions = getRegions(fragment.annotations);
+            const allDetails = (fragment.annotations || []).filter(a => a.level === 'detail');
+            const seqLen = (fragment.sequence || '').length || 1;
+
+            if (regions.length > 0 && allDetails.length > 0) {
+              // Render region(s): solid region color background + detail overlays
+              return (
+                <div className={`flex h-2.5 rounded overflow-hidden w-full mt-0.5 ${fragment.strand === -1 ? 'flex-row-reverse' : ''}`}>
+                  {regions.map((r, ri) => {
+                    const w = Math.max(3, ((r.end - r.start) / seqLen) * 100);
+                    const regionColor = FEATURE_COLORS[r.type] || '#999';
+                    const details = getDetails(fragment.annotations, r.id);
+                    const regionLen = r.end - r.start || 1;
+                    return (
+                      <div key={ri} className="relative h-full border-r border-white/30 last:border-0 overflow-hidden"
+                        style={{ width: `${w}%`, backgroundColor: regionColor }}
+                        title={`${r.name}: ${r.start}–${r.end}`}>
+                        {details.map((d, di) => {
+                          const left = ((d.start - r.start) / regionLen) * 100;
+                          const dw = Math.max(1, ((d.end - d.start) / regionLen) * 100);
+                          return (
+                            <div key={di} className="absolute top-0 h-full"
+                              style={{ left: `${left}%`, width: `${dw}%`, backgroundColor: d.color || ANNOTATION_COLORS[d.type] || regionColor }}
+                              title={`${d.name}: ${d.start}–${d.end}`} />
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            }
+            // Fallback: legacy domain bar
+            if (fragment.domains?.length > 0) {
+              const totalAA = Math.ceil(seqLen / 3);
+              return (
+                <div className={`flex h-2.5 rounded overflow-hidden w-full mt-0.5 ${fragment.strand === -1 ? 'flex-row-reverse' : ''}`}>
+                  {fragment.domains.map((d, di) => {
+                    const w = Math.max(3, ((d.endAA - d.startAA + 1) / (totalAA || 1)) * 100);
+                    return (
+                      <div key={di} style={{ width: `${w}%`, backgroundColor: d.color || '#56B4E9' }}
+                        className="border-r border-white/30 last:border-0"
+                        title={`${d.name}: ${d.startAA}–${d.endAA} а.о.`} />
+                    );
+                  })}
+                </div>
+              );
+            }
+            return null;
+          })()}
           {/* Size + mutation position dots */}
           <div className="text-[9px] text-gray-400 w-full text-center relative">
             {fmtSize(fragment.length)}
-            {hasMuts && fragment.mutations.some(m => m.position != null) && (
+            {hasMuts && muts.some(m => m.start != null || m.position != null) && (
               <div className="absolute inset-x-0 -bottom-1 h-1 flex items-center">
-                {fragment.mutations.map((m, mi) => {
-                  const pos = (m.codonStart ?? ((m.position || 0) * 3));
+                {muts.map((m, mi) => {
+                  const pos = m.start ?? m.codonStart ?? ((m.position || 0) * 3);
                   const pct = Math.min(95, Math.max(5, (pos / (fragment.length || 1)) * 100));
-                  return <div key={mi} className="absolute w-1 h-1 rounded-full bg-purple-500" style={{ left: `${pct}%` }} title={m.label} />;
+                  return <div key={mi} className="absolute w-1 h-1 rounded-full bg-fuchsia-500" style={{ left: `${pct}%` }} title={m.name || m.label} />;
                 })}
               </div>
             )}
@@ -267,6 +317,23 @@ export default function PartBlock({
           title="Удалить">×</button>
       </div>
       </>
+      )}
+
+      {/* ═══ Context Menu ═══ */}
+      {ctxMenu && (
+        <ContextMenu
+          position={{ x: ctxMenu.x, y: ctxMenu.y }}
+          onClose={() => setCtxMenu(null)}
+          items={[
+            { icon: '\uD83D\uDCCB', label: 'Копировать последовательность', onClick: () => navigator.clipboard.writeText(fragment.sequence || '') },
+            { divider: true },
+            ...(onEditFragment ? [{ icon: '\u270F\uFE0F', label: 'Редактировать', onClick: () => onEditFragment(index) }] : []),
+            ...(onSplitSignal ? [{ icon: '\u2702\uFE0F', label: 'Разрезать', onClick: () => onSplitSignal(index) }] : []),
+            ...(onFlip ? [{ icon: '\u21BB', label: 'Перевернуть (RC)', onClick: () => onFlip(index) }] : []),
+            { divider: true },
+            { icon: '\uD83D\uDDD1', label: 'Удалить', onClick: () => onRemove(index) },
+          ]}
+        />
       )}
     </div>
   );

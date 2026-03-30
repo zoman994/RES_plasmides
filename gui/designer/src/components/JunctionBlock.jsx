@@ -126,7 +126,7 @@ export default function JunctionBlock({ junction, index, leftName, rightName, le
         title={expertMode ? tip : `${tip}\n🔬 Эксперт: настройка`}>
         <div className={`w-0.5 h-10 rounded ${overlapImpossible ? 'bg-red-400' : LINE_COLORS[jType] || 'bg-gray-300'}`} />
       </div>
-      <div className="absolute -top-4 left-1/2 -translate-x-1/2 whitespace-nowrap pointer-events-none" style={{ zIndex: 2 }}>
+      <div className="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap pointer-events-none" style={{ zIndex: 2 }}>
         {renderLabel()}
       </div>
 

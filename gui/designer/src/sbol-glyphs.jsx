@@ -4,6 +4,8 @@
  * All glyphs use a 36x36 viewBox for consistency.
  */
 
+import { t } from './i18n';
+
 // ═══════════ Core glyphs ═══════════
 
 export function PromoterGlyph({ size = 18, color = 'currentColor' }) {
@@ -293,6 +295,119 @@ export function PlasmidGlyph({ size = 18, color = 'currentColor' }) {
   );
 }
 
+// ═══════════ New glyphs ═══════════
+
+/** Start codon — small filled chevron pointing right (compact CDS-like) */
+export function StartCodonGlyph({ size = 36, color = '#000' }) {
+  return <svg width={size} height={size} viewBox="0 0 36 36"><polygon points="8,8 28,18 8,28" fill={color} fillOpacity="0.4" stroke={color} strokeWidth="2" strokeLinejoin="round" /></svg>;
+}
+
+/** Stop codon — filled square (stop sign) */
+export function StopCodonGlyph({ size = 36, color = '#000' }) {
+  return <svg width={size} height={size} viewBox="0 0 36 36"><rect x="10" y="10" width="16" height="16" rx="2" fill={color} fillOpacity="0.35" stroke={color} strokeWidth="2" /></svg>;
+}
+
+/** Mutation — lightning/zigzag */
+export function MutationGlyph({ size = 36, color = '#000' }) {
+  return <svg width={size} height={size} viewBox="0 0 36 36"><path d="M 20 4 L 13 15 L 23 17 L 14 32" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+}
+
+/** Cleavage site — scissors (two crossed lines with circles) */
+export function CleavageSiteGlyph({ size = 36, color = '#000' }) {
+  return <svg width={size} height={size} viewBox="0 0 36 36"><line x1="10" y1="8" x2="26" y2="28" stroke={color} strokeWidth="2" /><line x1="26" y1="8" x2="10" y2="28" stroke={color} strokeWidth="2" /><circle cx="10" cy="8" r="3" fill="none" stroke={color} strokeWidth="1.5" /><circle cx="26" cy="8" r="3" fill="none" stroke={color} strokeWidth="1.5" /></svg>;
+}
+
+/** Active site — 4-pointed star */
+export function ActiveSiteGlyph({ size = 36, color = '#000' }) {
+  return <svg width={size} height={size} viewBox="0 0 36 36"><polygon points="18,4 21,14 32,14 23,21 26,32 18,25 10,32 13,21 4,14 15,14" fill={color} fillOpacity="0.2" stroke={color} strokeWidth="1.5" strokeLinejoin="round" /></svg>;
+}
+
+/** Binding site — two facing arcs )( */
+export function BindingSiteGlyph({ size = 36, color = '#000' }) {
+  return <svg width={size} height={size} viewBox="0 0 36 36"><path d="M 14 8 Q 6 18 14 28" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" /><path d="M 22 8 Q 30 18 22 28" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" /></svg>;
+}
+
+/** Propeptide — triangle with dashed line */
+export function PropeptideGlyph({ size = 36, color = '#000' }) {
+  return <svg width={size} height={size} viewBox="0 0 36 36"><polygon points="6,28 18,6 30,28" fill={color} fillOpacity="0.15" stroke={color} strokeWidth="2" strokeLinejoin="round" /><line x1="10" y1="20" x2="26" y2="20" stroke={color} strokeWidth="1.5" strokeDasharray="3 2" /></svg>;
+}
+
+/** Fusion — two chevrons joined */
+export function FusionGlyph({ size = 36, color = '#000' }) {
+  return <svg width={size} height={size} viewBox="0 0 36 36"><polygon points="3,8 16,18 3,28" fill={color} fillOpacity="0.25" stroke={color} strokeWidth="1.5" strokeLinejoin="round" /><polygon points="17,8 30,18 17,28" fill={color} fillOpacity="0.25" stroke={color} strokeWidth="1.5" strokeLinejoin="round" /></svg>;
+}
+
+// ═══════════ Additional glyphs ═══════════
+
+/** 5'UTR — open bracket with dot (cap site) */
+export function UTR5Glyph({ size = 36, color = '#000' }) {
+  return <svg width={size} height={size} viewBox="0 0 36 36" fill="none">
+    <path d="M 24 6 Q 8 18 24 30" stroke={color} strokeWidth="2.5" strokeLinecap="round" />
+    <circle cx="24" cy="6" r="3" fill={color} />
+  </svg>;
+}
+
+/** 3'UTR — closing bracket with dot (polyA) */
+export function UTR3Glyph({ size = 36, color = '#000' }) {
+  return <svg width={size} height={size} viewBox="0 0 36 36" fill="none">
+    <path d="M 12 6 Q 28 18 12 30" stroke={color} strokeWidth="2.5" strokeLinecap="round" />
+    <circle cx="12" cy="30" r="3" fill={color} />
+  </svg>;
+}
+
+/** IRES — double loop (internal ribosome entry) */
+export function IRESGlyph({ size = 36, color = '#000' }) {
+  return <svg width={size} height={size} viewBox="0 0 36 36" fill="none">
+    <path d="M 4 24 A 8 8 0 0 1 18 24" stroke={color} strokeWidth="2" fill={color} fillOpacity="0.1" />
+    <path d="M 18 24 A 8 8 0 0 1 32 24" stroke={color} strokeWidth="2" fill={color} fillOpacity="0.1" />
+    <line x1="2" y1="24" x2="34" y2="24" stroke={color} strokeWidth="2" />
+  </svg>;
+}
+
+/** T2A — dashed line with scissors (self-cleavage) */
+export function T2AGlyph({ size = 36, color = '#000' }) {
+  return <svg width={size} height={size} viewBox="0 0 36 36" fill="none">
+    <line x1="18" y1="4" x2="18" y2="32" stroke={color} strokeWidth="2" strokeDasharray="4 2" />
+    <path d="M 10 14 L 18 18 L 10 22" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M 26 14 L 18 18 L 26 22" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>;
+}
+
+/** HomologyArm — line with crossover (recombination) */
+export function HomologyArmGlyph({ size = 36, color = '#000' }) {
+  return <svg width={size} height={size} viewBox="0 0 36 36" fill="none">
+    <line x1="4" y1="18" x2="32" y2="18" stroke={color} strokeWidth="2.5" strokeLinecap="round" />
+    <path d="M 14 10 L 22 26 M 22 10 L 14 26" stroke={color} strokeWidth="2" strokeLinecap="round" />
+  </svg>;
+}
+
+/** MCS — row of vertical ticks (multiple cloning site) */
+export function MCSGlyph({ size = 36, color = '#000' }) {
+  return <svg width={size} height={size} viewBox="0 0 36 36" fill="none">
+    {[8, 14, 20, 26].map(x => (
+      <line key={x} x1={x} y1="8" x2={x} y2="28" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+    ))}
+    <line x1="4" y1="18" x2="32" y2="18" stroke={color} strokeWidth="2" strokeLinecap="round" />
+  </svg>;
+}
+
+/** gRNA — arrow with loop (guide RNA targeting) */
+export function GRNAGlyph({ size = 36, color = '#000' }) {
+  return <svg width={size} height={size} viewBox="0 0 36 36" fill="none">
+    <path d="M 6 24 L 6 12 Q 6 6 12 6 L 24 6 Q 30 6 30 12 L 30 16" stroke={color} strokeWidth="2" strokeLinecap="round" />
+    <path d="M 26 12 L 30 16 L 34 12" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    <line x1="6" y1="24" x2="24" y2="24" stroke={color} strokeWidth="2" strokeLinecap="round" />
+  </svg>;
+}
+
+/** Reporter — CDS chevron with star (fluorescence) */
+export function ReporterGlyph({ size = 36, color = '#000' }) {
+  return <svg width={size} height={size} viewBox="0 0 36 36" fill="none">
+    <path d="M 2 10 L 22 10 L 32 18 L 22 26 L 2 26 Z" stroke={color} strokeWidth="2" fill={color} fillOpacity="0.15" strokeLinejoin="round" />
+    <circle cx="14" cy="18" r="4" fill={color} fillOpacity="0.4" />
+  </svg>;
+}
+
 // ═══════════ Registry ═══════════
 
 const GLYPH_MAP = {
@@ -327,6 +442,34 @@ const GLYPH_MAP = {
   transmembrane: TransmembraneGlyph,
   domain: DomainGlyph,
   plasmid: PlasmidGlyph,
+  // New glyphs
+  start_codon: StartCodonGlyph,
+  stop_codon: StopCodonGlyph,
+  mutation: MutationGlyph,
+  variation: MutationGlyph,
+  cleavage_site: CleavageSiteGlyph,
+  active_site: ActiveSiteGlyph,
+  binding: BindingSiteGlyph,
+  propeptide: PropeptideGlyph,
+  fusion: FusionGlyph,
+  poly_a: PolyAGlyph,
+  stem_loop: AptamerGlyph,
+  core_promoter: PromoterGlyph,
+  catalytic: DomainGlyph,
+  // Additional glyphs
+  '5UTR': UTR5Glyph,
+  '3UTR': UTR3Glyph,
+  IRES: IRESGlyph,
+  T2A: T2AGlyph,
+  homology_arm: HomologyArmGlyph,
+  MCS: MCSGlyph,
+  gRNA: GRNAGlyph,
+  reporter: ReporterGlyph,
+  Kozak: RBSGlyph,
+  ARS_CEN: OriginGlyph,
+  loxP: RecombinationGlyph,
+  FRT: RecombinationGlyph,
+  polyA_signal: PolyAGlyph,
 };
 
 // All available glyph keys for the picker (ordered logically)
@@ -337,37 +480,25 @@ export const GLYPH_KEYS = [
   'tag', 'NLS', 'linker', 'domain', 'transmembrane',
   'intron', 'polyA', 'ncRNA', 'aptamer',
   'primer_bind', 'spacer', 'plasmid', 'misc_feature',
+  'start_codon', 'stop_codon', 'mutation', 'cleavage_site',
+  'active_site', 'binding', 'propeptide', 'fusion', 'catalytic',
+  'reporter', '5UTR', '3UTR', 'IRES', 'T2A', 'MCS', 'gRNA', 'homology_arm', 'Kozak', 'ARS_CEN', 'loxP', 'FRT',
 ];
 
-export const GLYPH_LABELS = {
-  CDS: 'CDS (ORF)',
-  promoter: 'Промотор',
-  terminator: 'Терминатор',
-  rep_origin: 'Ориджин репликации',
-  marker: 'Маркер селекции',
-  signal_peptide: 'Сигнальный пептид',
-  RBS: 'Сайт связ. рибосомы',
-  operator: 'Оператор',
-  enhancer: 'Энхансер / UAS',
-  insulator: 'Инсулятор',
-  restriction: 'Сайт рестрикции',
-  recombination: 'Сайт рекомбинации',
-  scar: 'Скар сборки',
-  overhang: 'Липкий конец',
-  tag: 'Тег / Эпитоп',
-  NLS: 'NLS / Ядерная лок.',
-  linker: 'Линкер',
-  domain: 'Белковый домен',
-  transmembrane: 'Трансмембранный',
-  intron: 'Интрон',
-  polyA: 'PolyA-сигнал',
-  ncRNA: 'нкРНК',
-  aptamer: 'Аптамер / Шпилька',
-  primer_bind: 'Сайт праймера',
-  spacer: 'Спейсер',
-  plasmid: 'Плазмида',
-  misc_feature: 'Прочее',
-};
+// i18n-aware label lookup: uses Proxy so GLYPH_LABELS[key] returns t('glyph.' + key)
+export function getGlyphLabel(key) { return t('glyph.' + key); }
+
+export const GLYPH_LABELS = new Proxy({}, {
+  get(_, key) {
+    if (typeof key === 'symbol') return undefined;
+    return t('glyph.' + key);
+  },
+  ownKeys() { return GLYPH_KEYS; },
+  getOwnPropertyDescriptor(_, key) {
+    if (typeof key === 'symbol') return undefined;
+    return { configurable: true, enumerable: true, value: t('glyph.' + key) };
+  },
+});
 
 export function SBOLIcon({ type, size = 18, color = 'currentColor' }) {
   let Comp = GLYPH_MAP[type];

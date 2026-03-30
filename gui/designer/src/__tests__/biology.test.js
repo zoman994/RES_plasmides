@@ -266,10 +266,10 @@ describe('Signal peptide detection', () => {
     expect(result.cleavageSite).toBe(0);
   });
 
-  it('all-hydrophobic protein: detects as signal (maybe false positive)', () => {
+  it('all-hydrophobic low-complexity: rejected by filter (no false positive)', () => {
     const allHydro = 'MALLLLLLLLLLLLLLLLLLLL' + 'A'.repeat(100);
     const result = detectSignalPeptide(allHydro);
-    expect(result.found).toBe(true);
+    expect(result.found).toBe(false); // low-complexity filter rejects
   });
 });
 

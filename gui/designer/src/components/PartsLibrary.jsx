@@ -1,8 +1,10 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { FEATURE_COLORS, getFragColor } from '../theme';
 import { DOMAIN_COLORS } from '../domain-detection';
 import { getPartDescription } from '../part-descriptions';
 import { SBOLIcon, GLYPH_KEYS, GLYPH_LABELS } from '../sbol-glyphs';
+import { autoAnnotate } from '../auto-annotate';
+import AnnotationEditor from './AnnotationEditor';
 
 const TYPE_LABELS = {
   CDS: 'CDS', promoter: 'Промоторы', terminator: 'Терминаторы',
@@ -27,10 +29,10 @@ function removeCustomType(value) {
   localStorage.setItem(CUSTOM_TYPES_KEY, JSON.stringify(arr));
 }
 
-export default function PartsLibrary({ parts, onClose, onOpenCDSEditor, onAddToCanvas, onUpdatePart }) {
+export default function PartsLibrary({ parts, onClose, onOpenCDSEditor, onAddToCanvas, onUpdatePart, preSelectPartId }) {
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
-  const [selectedId, setSelectedId] = useState(null);
+  const [selectedId, setSelectedId] = useState(preSelectPartId || null);
   const [expanded, setExpanded] = useState(new Set());
   const [editingDesc, setEditingDesc] = useState(false);
   const [descText, setDescText] = useState('');
@@ -39,6 +41,11 @@ export default function PartsLibrary({ parts, onClose, onOpenCDSEditor, onAddToC
   const [newTypeName, setNewTypeName] = useState('');
   const [newTypeColor, setNewTypeColor] = useState('#6929c4');
   const [newTypeGlyph, setNewTypeGlyph] = useState('misc_feature');
+
+  // Pre-select from external navigation
+  useEffect(() => {
+    if (preSelectPartId) setSelectedId(preSelectPartId);
+  }, [preSelectPartId]);
 
   // Group and filter
   const filtered = useMemo(() => {
@@ -274,6 +281,29 @@ export default function PartsLibrary({ parts, onClose, onOpenCDSEditor, onAddToC
                     })()}
                   </div>
                 )}
+
+                {/* ═══ Annotations section (shared component) ═══ */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[10px] text-gray-500 font-semibold">
+                      {'📝'} Аннотации ({(selected.annotations || []).length})
+                    </span>
+                    <button onClick={() => {
+                      const manual = (selected.annotations || []).filter(a => !a.auto && a.level !== 'region');
+                      const manualRegions = (selected.annotations || []).filter(a => a.level === 'region' && !a.auto);
+                      const auto = autoAnnotate({ ...selected, annotations: manualRegions.length ? manualRegions : [] });
+                      onUpdatePart?.(selected.id, { annotations: [...auto, ...manual] });
+                    }}
+                      className="text-[9px] text-blue-600 hover:text-blue-800 px-1.5 py-0.5 rounded hover:bg-blue-50"
+                      title="Перегенерировать авто-аннотации (ручные сохранятся)">
+                      {'🔍'} Авто
+                    </button>
+                  </div>
+                  <AnnotationEditor
+                    annotations={selected.annotations || []}
+                    seqLength={selected.sequence?.length || 0}
+                    onChange={(anns) => onUpdatePart?.(selected.id, { annotations: anns })} />
+                </div>
 
                 {/* Variant info */}
                 {selected.parentId && (

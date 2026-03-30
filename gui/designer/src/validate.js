@@ -1,5 +1,8 @@
 /** Construct and primer validation for the Designer. */
 
+import { getRegions } from './annotation-model';
+import { validateCDS } from './cds-validation';
+
 const STOPS = ['TAA', 'TAG', 'TGA'];
 const RC = { A: 'T', T: 'A', G: 'C', C: 'G' };
 const revComp = s => s.split('').reverse().map(c => RC[c] || 'N').join('');
@@ -9,6 +12,18 @@ export function validateConstruct(fragments) {
   const w = [];
   fragments.forEach((frag, i) => {
     const seq = (frag.sequence || '').toUpperCase();
+
+    // Region-based CDS validation (for fusion parts with CDS regions)
+    const regions = getRegions(frag.annotations);
+    for (const region of regions) {
+      if (region.type !== 'CDS' && region.type !== 'gene') continue;
+      const rSeq = seq.slice(region.start, region.end);
+      if (rSeq.length === 0) continue;
+      const cdsWarnings = validateCDS(rSeq);
+      for (const cw of cdsWarnings) {
+        w.push(`${cw.level === 'error' ? '\u26D4' : '\u26A0'} ${frag.name}/${region.name}: ${cw.message}`);
+      }
+    }
 
     // CDS-specific checks
     if (frag.type === 'CDS' && seq.length > 0) {

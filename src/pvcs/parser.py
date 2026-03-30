@@ -5,11 +5,14 @@ Converts GenBank files into pvcs data structures (Revision, Feature).
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from Bio import SeqIO
 from Bio.SeqFeature import SeqFeature
 from Bio.SeqRecord import SeqRecord
+
+logger = logging.getLogger(__name__)
 
 from pvcs.models import Feature, Revision, _new_id, _now
 from pvcs.utils import sequence_checksum
@@ -225,6 +228,71 @@ def write_genbank(
     filepath = Path(filepath)
     filepath.parent.mkdir(parents=True, exist_ok=True)
     SeqIO.write(record, filepath, "genbank")
+
+
+def parse_snapgene(filepath: str | Path) -> tuple[str, list[Feature], dict]:
+    """Parse a SnapGene .dna file.
+
+    Strategy: BioPython first (fast), snapgene_reader fallback (full features).
+    BioPython's snapgene support extracts sequence but often misses features
+    from the proprietary .dna format. snapgene_reader handles the full format.
+
+    Returns (sequence, features, metadata) — same shape as parse_genbank().
+    """
+    filepath = Path(filepath)
+    record: SeqRecord = SeqIO.read(filepath, "snapgene")
+    full_seq = str(record.seq).upper()
+
+    raw_features = [f for f in record.features if f.type != "source"]
+    logger.info(
+        "parse_snapgene: BioPython extracted %d features from %s",
+        len(raw_features), filepath.name,
+    )
+    features = []
+    for f in raw_features:
+        try:
+            features.append(_bio_feature_to_pvcs(f, full_seq))
+        except Exception as e:
+            logger.warning("Skipped feature %s: %s", f.type, e)
+
+    # If BioPython didn't extract features, try snapgene_reader
+    if not features:
+        try:
+            from snapgene_reader import snapgene_file_to_seqrecord
+
+            record2 = snapgene_file_to_seqrecord(str(filepath))
+            raw2 = [f for f in record2.features if f.type != "source"]
+            logger.info("  snapgene_reader extracted %d features", len(raw2))
+            for f in raw2:
+                try:
+                    features.append(_bio_feature_to_pvcs(f, full_seq))
+                except Exception as e:
+                    logger.warning("  Skipped feature %s: %s", f.type, e)
+        except ImportError:
+            logger.warning("  snapgene_reader not installed (pip install snapgene-reader)")
+        except Exception as e:
+            logger.warning("  snapgene_reader error: %s", e)
+
+    features = infer_all_feature_types(features)
+
+    topology = record.annotations.get("topology", "linear")
+    raw_name = record.name or ""
+    if not raw_name or raw_name.startswith("<") or raw_name == ".":
+        raw_name = record.id or ""
+    if not raw_name or raw_name.startswith("<") or raw_name == ".":
+        raw_name = (record.description or "").split()[0] if record.description else ""
+    if not raw_name or raw_name.startswith("<"):
+        raw_name = filepath.stem
+
+    metadata = {
+        "name": raw_name,
+        "description": record.description or "",
+        "topology": topology,
+        "molecule_type": record.annotations.get("molecule_type", "DNA"),
+        "organism": record.annotations.get("organism", ""),
+    }
+
+    return full_seq, features, metadata
 
 
 def parse_fasta(filepath: str | Path) -> tuple[str, dict]:

@@ -2,6 +2,14 @@
 
 import { translateDNA } from './codons';
 
+// ═══ Region ID generator ═══
+let _regionCounter = 0;
+export function generateRegionId() {
+  return `r_${++_regionCounter}_${Math.random().toString(36).slice(2, 8)}`;
+}
+/** Reset counter (for tests). */
+export function resetRegionCounter() { _regionCounter = 0; }
+
 const HYDRO = new Set('AVLIFWM'.split(''));
 const SMALL = new Set('AGST'.split(''));
 const LINKER_AA = new Set('STPG'.split(''));
@@ -21,9 +29,17 @@ const CHARGED = new Set('DEKR'.split(''));
 
 /** Detect signal peptide via hydrophobicity scan. */
 export function detectSignalPeptide(protein) {
+  // Low-complexity filter: reject if first 20 AA have <5 unique residues
+  const head = protein.slice(0, Math.min(20, protein.length));
+  if (new Set(head.split('')).size < 4) return { found: false, cleavageSite: 0, confidence: 0 };
+
   let best = 0, bestS = 0;
   for (let c = 15; c <= Math.min(35, protein.length - 10); c++) {
     const w = protein.slice(0, c);
+
+    // Min 5 unique AA in window (reject low-diversity)
+    if (new Set(w.split('')).size < 5) continue;
+
     const hyd = w.split('').filter(a => HYDRO.has(a)).length / c;
 
     // Penalize charged residues in hydrophobic core (positions 3..c)
@@ -43,7 +59,7 @@ export function detectSignalPeptide(protein) {
     const s = hyd + sb + cb - chargePenalty;
     if (s > bestS) { bestS = s; best = c; }
   }
-  return { found: bestS > 0.4, cleavageSite: best, confidence: bestS };
+  return { found: bestS > 0.5, cleavageSite: best, confidence: bestS };
 }
 
 /** Detect His-tag (6+ consecutive histidines). */
@@ -58,6 +74,8 @@ export function detectHisTag(protein) {
 export function detectPropeptide(protein, signalEnd) {
   if (!signalEnd || signalEnd >= protein.length - 20) return null;
   const region = protein.slice(signalEnd, Math.min(signalEnd + 80, protein.length));
+  // Low-complexity filter
+  if (new Set(region.split('')).size < 5) return null;
   const krIdx = region.search(/KR|KK|RR/);
   if (krIdx >= 5 && krIdx <= 60) return { endAA: signalEnd + krIdx + 2 };
   return null;
@@ -70,6 +88,8 @@ export function detectLinkers(protein) {
   let inLinker = false, start = 0;
   for (let i = 0; i <= protein.length - winSize; i++) {
     const win = protein.slice(i, i + winSize);
+    // Skip low-diversity windows (e.g. AAAAAAA...)
+    if (new Set(win.split('')).size < 3) { inLinker = false; continue; }
     const linkerFrac = win.split('').filter(a => LINKER_AA.has(a)).length / winSize;
     if (linkerFrac > 0.6 && !inLinker) { inLinker = true; start = i; }
     if ((linkerFrac <= 0.6 || i === protein.length - winSize) && inLinker) {
@@ -160,4 +180,30 @@ export function autoDetectDomains(dna, geneName = 'CDS') {
   }
 
   return filled;
+}
+
+/**
+ * Bridge: convert autoDetectDomains output → detail-level annotations.
+ * All coordinates are in nucleotides, offset by regionStart.
+ *
+ * @param {string} dna        — DNA of the region
+ * @param {string} regionId   — parent region ID
+ * @param {number} regionStart — nucleotide offset of the region within the Part
+ * @param {string} geneName   — label for gap-filling domains
+ * @returns {Array} detail-level annotation objects
+ */
+export function detectDomainsAsAnnotations(dna, regionId, regionStart, geneName) {
+  const domains = autoDetectDomains(dna, geneName);
+  return domains.map(d => ({
+    name: d.name,
+    type: d.type,
+    start: (d.startAA - 1) * 3 + regionStart,
+    end: d.endAA * 3 + regionStart,
+    level: 'detail',
+    regionId,
+    color: d.color,
+    auto: true,
+    confidence: d.confidence,
+    detector: 'domain_detection',
+  }));
 }
