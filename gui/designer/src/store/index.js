@@ -16,6 +16,7 @@ import { createFragmentSlice } from './fragmentSlice';
 import { createJunctionSlice } from './junctionSlice';
 import { createPrimerSlice } from './primerSlice';
 import { createUiSlice } from './uiSlice';
+import { createProjectFlowSlice } from './projectFlowSlice';
 import { migratePartAnnotations } from '../migrate-annotations';
 
 const LS_KEY = 'pvcs_designer_state';
@@ -47,6 +48,7 @@ const stateCreator = (set, get) => ({
   ...createJunctionSlice(set, get),
   ...createPrimerSlice(set, get),
   ...createUiSlice(set, get),
+  ...createProjectFlowSlice(set, get),
 
   getActive: () => {
     const { assemblies, activeId } = get();
@@ -116,7 +118,7 @@ const throttledStorage = {
     let timeout;
     return (name, value) => {
       clearTimeout(timeout);
-      timeout = setTimeout(() => localStorage.setItem(name, JSON.stringify(value)), 1000);
+      timeout = setTimeout(() => localStorage.setItem(name, JSON.stringify(value)), 500);
     };
   })(),
   removeItem: (name) => localStorage.removeItem(name),
@@ -124,7 +126,7 @@ const throttledStorage = {
 
 const persistConfig = {
   name: LS_KEY,
-  version: 4,
+  version: 5,
   storage: throttledStorage,
   partialize: (state) => ({
     projects: state.projects, activeProjectId: state.activeProjectId,
@@ -132,12 +134,20 @@ const persistConfig = {
     activeId: state.activeId, polymerase: state.polymerase,
     primerPrefix: state.primerPrefix, expertMode: state.expertMode,
     parts: state.parts,
+    flowNodes: state.flowNodes, flowEdges: state.flowEdges,
+    projectView: state.projectView,
   }),
   migrate: (persisted, version) => {
     if (version < 3 && persisted && !persisted.projects) {
       const pName = persisted.projectName || 'Проект 1';
       const asms = persisted.assemblies || [];
       persisted = { ...persisted, projects: [{ id: 'proj_1', name: pName, assemblies: asms, activeId: asms[0]?.id || 'asm_1' }], activeProjectId: 'proj_1' };
+    }
+    // v4→v5: add Project Flow state
+    if (version < 5 && persisted) {
+      persisted.flowNodes = persisted.flowNodes || [];
+      persisted.flowEdges = persisted.flowEdges || [];
+      persisted.projectView = persisted.projectView || 'construct';
     }
     // v3→v4: migrate parts to region-based annotations
     if (version < 4 && persisted?.parts) {
@@ -148,7 +158,37 @@ const persistConfig = {
     }
     return persisted;
   },
-  onRehydrateStorage: () => (state) => { if (state) state.initialized = true; },
+  onRehydrateStorage: () => (state, error) => {
+    // Don't mutate state directly — it doesn't trigger subscriptions!
+    // Use useStore.setState() via queueMicrotask after store is ready.
+    if (!error && state) {
+      queueMicrotask(() => {
+        const s = useStore.getState();
+        if (s.flowNodes?.length > 0 && s.parts) {
+          const partIds = new Set(s.parts.map(p => p.id));
+          const orphanIds = new Set();
+          const cleanNodes = s.flowNodes.filter(n => {
+            if (n.type === 'plasmidNode' && n.data?.partId && !partIds.has(n.data.partId)) {
+              orphanIds.add(n.id);
+              return false;
+            }
+            return true;
+          });
+          if (orphanIds.size > 0) {
+            useStore.setState({
+              initialized: true,
+              flowNodes: cleanNodes,
+              flowEdges: (s.flowEdges || []).filter(e => !orphanIds.has(e.source) && !orphanIds.has(e.target)),
+            });
+          } else {
+            useStore.setState({ initialized: true });
+          }
+        } else {
+          useStore.setState({ initialized: true });
+        }
+      });
+    }
+  },
 };
 
 // ═══ Create store — devtools only in development ═══
@@ -157,6 +197,15 @@ const withMiddleware = import.meta.env.DEV
   : (fn) => subscribeWithSelector(immer(persist(fn, persistConfig)));
 
 export const useStore = create(withMiddleware(stateCreator));
+
+// Force-save before page unload (throttled write may not have fired yet)
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', () => {
+    const state = useStore.getState();
+    const persisted = persistConfig.partialize(state);
+    localStorage.setItem(LS_KEY, JSON.stringify({ state: persisted, version: 5 }));
+  });
+}
 
 // ═══ Exports ═══
 export const undo = () => useStore.getState().undo();

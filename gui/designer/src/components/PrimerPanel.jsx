@@ -66,12 +66,22 @@ export default function PrimerPanel({
               const expanded = showMatches[p.name];
 
               return (
-                <tr key={i} className={`border-t hover:bg-gray-50 ${p.reused ? 'bg-green-50' : ''}`}>
+                <tr key={i} className={`border-t hover:bg-gray-50 ${p.reused ? 'bg-green-50' : ''} ${p.isInternal ? 'opacity-60' : ''}`}>
                   <td className="p-2 font-semibold whitespace-nowrap">
                     <div className="flex items-center gap-1">
                       {p.category && <span className={`w-1.5 h-1.5 rounded-full ${CAT_STYLES[p.category]?.dot || 'bg-blue-500'}`} title={CAT_STYLES[p.category]?.label} />}
                       {p.reused && <span className="text-green-600 text-[10px]">{'✓'}</span>}
                       <span className={p.reused ? 'text-green-700' : ''}>{p.name}</span>
+                      {p.isInternal && (
+                        <span className="text-[8px] bg-gray-100 text-gray-500 px-1 rounded ml-1">
+                          {'внутр.'} {p.purpose || ''}
+                        </span>
+                      )}
+                      {p.needsAmplification === false && (
+                        <span className="text-[8px] bg-yellow-100 text-yellow-600 px-1 rounded ml-1">
+                          без ПЦР
+                        </span>
+                      )}
                       {p.category === 'custom' && onDeletePrimer && (
                         <button onClick={() => onDeletePrimer(p.id)} className="text-[9px] text-gray-300 hover:text-red-500 ml-1" title="Удалить">{'×'}</button>
                       )}

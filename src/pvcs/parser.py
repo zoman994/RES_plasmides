@@ -6,6 +6,7 @@ Converts GenBank files into pvcs data structures (Revision, Feature).
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 
 from Bio import SeqIO
@@ -20,30 +21,34 @@ from pvcs.utils import sequence_checksum
 # ── Feature type inference from name patterns ──
 
 PROMOTER_PATTERNS = [
-    "pgla", "pgpd", "pcbh", "ppdc", "ptef", "peno", "ppki",
-    "paox", "pgap", "ptdh", "padh", "pcyc",
-    "plac", "ptac", "pt7", "pt5", "para", "ptrp",
-    "pcmv", "pef1", "psv40", "pcag", "pubq",
-    "promoter", "prom",
+    r"\bpgla", r"\bpgpd", r"\bpcbh", r"\bppdc", r"\bptef", r"\bpeno", r"\bppki",
+    r"\bpaox", r"\bpgap", r"\bptdh", r"\bpadh", r"\bpcyc",
+    r"\bplac", r"\bptac", r"\bpt7\b", r"\bpt5\b", r"\bpara\b", r"\bptrp",
+    r"\bpcmv", r"\bpef1", r"\bpsv40", r"\bpcag", r"\bpubq",
+    r"\bpromoter\b",
 ]
 CDS_PATTERNS = [
-    "hygr", "ampr", "kanr", "neor", "zeor", "bsd", "nat", "ble",
-    "pyrg", "pyrf", "amds", "hph", "aph",
-    "cas9", "cas12", "cpf1",
-    "gfp", "rfp", "yfp", "cfp", "mcherry", "egfp",
-    "lacz", "bgal", "bgii", "bgl1", "cbhi", "xynl", "phyp", "chym",
-    "amy", "glucoamylase", "amylase", "xylanase", "lipase",
-    "exonuclease", "ligase", "polymerase",
-    "orf", "cds",
+    r"\bhygr\b", r"\bampr\b", r"\bkanr\b", r"\bneor\b", r"\bzeor\b", r"\bbsd\b", r"\bnat\b", r"\bble\b",
+    r"\bpyrg\b", r"\bpyrf\b", r"\bamds\b", r"\bhph\b", r"\baph\b",
+    r"\bcas9\b", r"\bcas12\b", r"\bcpf1\b",
+    r"\bgfp\b", r"\brfp\b", r"\byfp\b", r"\bcfp\b", r"\bmcherry\b", r"\begfp\b",
+    r"\blacz\b", r"\bbgal\b", r"\bcbhi?\b", r"\bxyn", r"\bphy",
+    r"\bamylase\b", r"\bxylanase\b", r"\blipase\b", r"\bglucoamylase\b",
+    r"\borf\d*\b", r"\bcds\b",
 ]
 TERMINATOR_PATTERNS = [
-    "ttrpc", "tgla", "tcyc", "tadh", "taox", "tnos",
-    "t7term", "terminator", "term",
+    r"\bttrpc", r"\btgla", r"\btcyc", r"\btadh", r"\btaox", r"\btnos",
+    r"\bt7.?term", r"\bterminator\b",
 ]
 ORIGIN_PATTERNS = [
-    "ori", "origin", "ama1", "ars", "cen",
-    "cole1", "pbr322", "p15a",
+    r"\bori\b", r"\borigin\b", r"\bama1\b", r"\bars\b", r"\bcen\b",
+    r"\bcole1\b", r"\bpbr322\b", r"\bp15a\b",
 ]
+
+
+def _matches_any(name_lower: str, patterns: list[str]) -> bool:
+    """Check if name matches any regex pattern."""
+    return any(re.search(p, name_lower) for p in patterns)
 
 
 def infer_feature_type(name: str, ftype: str) -> str:
@@ -55,18 +60,14 @@ def infer_feature_type(name: str, ftype: str) -> str:
         return "promoter"
     if nl == "t":
         return "terminator"
-    for p in PROMOTER_PATTERNS:
-        if p in nl:
-            return "promoter"
-    for p in TERMINATOR_PATTERNS:
-        if p in nl:
-            return "terminator"
-    for p in ORIGIN_PATTERNS:
-        if p in nl:
-            return "rep_origin"
-    for p in CDS_PATTERNS:
-        if p in nl:
-            return "CDS"
+    if _matches_any(nl, PROMOTER_PATTERNS):
+        return "promoter"
+    if _matches_any(nl, TERMINATOR_PATTERNS):
+        return "terminator"
+    if _matches_any(nl, ORIGIN_PATTERNS):
+        return "rep_origin"
+    if _matches_any(nl, CDS_PATTERNS):
+        return "CDS"
     return ftype
 
 
@@ -79,7 +80,7 @@ def infer_all_feature_types(features: list[Feature]) -> list[Feature]:
 
 def _extract_feature_name(bio_feature: SeqFeature) -> str:
     """Best-effort feature name from qualifiers."""
-    for key in ("gene", "label", "product", "note"):
+    for key in ("label", "product", "gene", "note"):
         vals = bio_feature.qualifiers.get(key, [])
         if vals:
             return vals[0]

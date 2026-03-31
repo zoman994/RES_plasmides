@@ -82,13 +82,33 @@ describe('gcPercent', () => {
 });
 
 describe('checkHairpin', () => {
+  it('detects strong hairpin (GC-rich stem ≥5bp)', () => {
+    // GCGCG...CGCGC — strong stem, ΔG well below threshold
+    expect(checkHairpin('ATGCGCGATTTCGCGCAT')).toBe(true);
+  });
+
   it('detects hairpin in self-complementary sequence', () => {
-    // Contains GCCG ... CGGC internal complement
+    // Contains GCCG ... CGGC — 4bp GC-rich stem
     expect(checkHairpin('ATGCCGATATCGGCTA')).toBe(true);
   });
 
   it('returns false for non-hairpin sequence', () => {
     expect(checkHairpin('ATGATGATGATG')).toBe(false);
+  });
+
+  it('rejects weak AT-only 4bp stem (false positive filter)', () => {
+    // ATAT...ATAT — 4bp AT-only stem is thermodynamically weak at 60°C
+    expect(checkHairpin('ATATGGGGATAT')).toBe(false);
+  });
+
+  it('accepts 4bp stem with GC content', () => {
+    // GCGC...GCGC — 4bp GC stem is stable enough
+    expect(checkHairpin('GCGCTTTTGCGC')).toBe(true);
+  });
+
+  it('returns false for empty/short sequences', () => {
+    expect(checkHairpin('')).toBe(false);
+    expect(checkHairpin('ATGC')).toBe(false);
   });
 });
 

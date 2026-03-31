@@ -37,6 +37,9 @@ import DataManager from './components/DataManager';
 import PlasmidViewer from './components/PlasmidViewer';
 import PlasmidUseWizard from './components/PlasmidUseWizard';
 import PlasmidVersionTree from './components/PlasmidVersionTree';
+import ProjectFlowCanvas from './components/flow/ProjectFlowCanvas';
+import { designPrimersLocal } from './local-primer-design';
+import SubFragmentBar from './components/SubFragmentBar';
 
 // ═══ Utilities ═══
 import { fetchParts } from './api';
@@ -56,6 +59,11 @@ export default function App() {
     const handler = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
       if ((e.ctrlKey || e.metaKey) && (e.key === 'Z' || e.key === 'y')) { e.preventDefault(); redo(); }
+      if ((e.ctrlKey || e.metaKey) && e.key === '5') {
+        e.preventDefault();
+        const v = useStore.getState().projectView;
+        useStore.getState().setProjectView(v === 'construct' ? 'flow' : 'construct');
+      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
@@ -93,6 +101,8 @@ export default function App() {
   const expertMode = useStore(s => s.expertMode);
   const firstLaunch = useStore(s => s.firstLaunch);
   const maxFinalParts = useStore(s => s.maxFinalParts);
+  const projectView = useStore(s => s.projectView);
+  const setProjectView = useStore(s => s.setProjectView);
 
   // ═══ Store: actions needed for render ═══
   const { removeFragment, flipFragment, reorderFragments, toggleAmplification,
@@ -215,6 +225,22 @@ export default function App() {
     fetchParts().then(mergeParts).catch(() => mergeParts([])); // empty start for testing
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ═══ Auto-design primers (client-side, no API) ═══
+  const autoDesigned = useMemo(() => {
+    if (fragments.length < 2) return null;
+    if (fragments.some(f => f.needsAmplification !== false && !f.sequence)) return null;
+    return designPrimersLocal(fragments, junctions, circular, { tmTarget: 60, primerPrefix, polymerase });
+  }, [fragments, junctions, circular, primerPrefix, polymerase]);
+
+  useEffect(() => {
+    if (autoDesigned && autoDesigned.primers.length > 0) {
+      updateActive({
+        primers: autoDesigned.primers,
+        apiWarnings: autoDesigned.warnings,
+        calculated: true,
+      });
+    }
+  }, [autoDesigned]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ═══ Render ═══
   return (
@@ -264,11 +290,6 @@ export default function App() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={toggleExpertMode}
-              className={`flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-medium transition border ${
-                expertMode ? 'bg-purple-500/20 border-purple-400/30 text-purple-300' : 'bg-green-500/20 border-green-400/30 text-green-300'}`}>
-              {expertMode ? '🔬 Эксперт' : '🎓 Студент'}
-            </button>
             <div className="w-px h-4 bg-white/15 mx-1" />
             <span className="text-xs text-gray-400">Метод:</span>
             <button onClick={() => setAssemblyType('overlap')}
@@ -338,18 +359,36 @@ export default function App() {
         {/* Project selector */}
         <ProjectBar />
 
-        {/* Assembly tabs */}
-        <AssemblyTabs
+        {/* View switcher: Construct / Project Flow */}
+        <div className="flex items-center gap-1.5 px-6 py-1 bg-gray-50 border-b shrink-0">
+          <button onClick={() => setProjectView('construct')}
+            className={`text-xs px-3 py-1 rounded-full font-medium transition ${
+              projectView === 'construct' ? 'bg-blue-500 text-white shadow-sm' : 'bg-white text-gray-600 border border-gray-300 hover:bg-gray-100'}`}>
+            {'\uD83D\uDCE6'} {t('Construct') || 'Construct'}
+          </button>
+          <button onClick={() => setProjectView('flow')}
+            className={`text-xs px-3 py-1 rounded-full font-medium transition ${
+              projectView === 'flow' ? 'bg-blue-500 text-white shadow-sm' : 'bg-white text-gray-600 border border-gray-300 hover:bg-gray-100'}`}>
+            {'\uD83D\uDD2C'} {t('Project') || 'Project'}
+          </button>
+          <span className="text-[9px] text-gray-400 ml-1">Ctrl+5</span>
+        </div>
+
+        {/* Assembly tabs (construct view only) */}
+        {projectView === 'construct' && <AssemblyTabs
           assemblies={assemblies}
           activeId={activeId}
           onSelect={switchAssembly}
           onAdd={addAssembly}
           onRemove={removeAssembly}
           onRename={renameAssembly}
-        />
+        />}
 
         <div className="flex flex-1 overflow-hidden">
           <PartsPalette />
+          {projectView === 'flow' ? (
+            <ProjectFlowCanvas />
+          ) : (
           <div className="flex-1 flex flex-col p-3 gap-2 overflow-y-auto">
 
             {active.completed && (
@@ -361,6 +400,20 @@ export default function App() {
                     Продукт {'«'}{active.product?.name}{'»'} ({active.product?.length} п.н.)
                     {active.product?.components && ` = ${active.product.components.join(' + ')}`}
                   </div>
+                  {active.product?.subFragments && (
+                    <SubFragmentBar subFragments={active.product.subFragments} height={10} className="mt-1" />
+                  )}
+                  <div className="text-[9px] text-gray-500 mt-0.5">
+                    {active.product?.subFragments?.map(f => f.name).join(' · ')}
+                  </div>
+                  {active.product?.assemblyMethod && (
+                    <div className="text-[9px] text-green-600 mt-0.5">
+                      {active.product.assemblyMethod === 'golden_gate' ? 'Golden Gate' :
+                       active.product.assemblyMethod === 'kld' ? 'KLD' :
+                       active.product.assemblyMethod === 'gibson' ? 'Gibson' : 'OV-PCR'}
+                      {active.product?.protocol === 'complete' ? ' · протокол выполнен' : ''}
+                    </div>
+                  )}
                 </div>
                 {active.originalFragments && (
                   <button onClick={() => {
@@ -394,7 +447,7 @@ export default function App() {
                         {w.includes('Golden Gate') && w.startsWith('⛔') && (
                           <button onClick={() => {
                             const newJ = junctions.map(j => ({ ...j, type: 'golden_gate', enzyme: ggEnzyme }));
-                            updateActive({ junctions: newJ, assemblyType: 'golden_gate', calculated: false, primers: [] });
+                            updateActive({ junctions: newJ, assemblyType: 'golden_gate', calculated: false });
                             setTimeout(() => autoDesignGGOverhangs(), 100);
                           }}
                             className="ml-2 text-[10px] bg-green-600 text-white px-2 py-0.5 rounded hover:bg-green-700 inline-flex items-center gap-1">
@@ -491,8 +544,8 @@ export default function App() {
                 })()}
                 <div className="flex items-center justify-center gap-3">
                   <button onClick={generate} disabled={loading}
-                    className="px-6 py-2 bg-blue-600 text-white rounded-lg font-semibold text-sm hover:bg-blue-700 transition disabled:opacity-50">
-                    {loading ? t('Calculating...') : t('Generate Primers')}
+                    className="px-4 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs hover:bg-gray-200 transition disabled:opacity-50 border border-gray-200">
+                    {loading ? t('Calculating...') : '🔄 Пересчитать (API)'}
                   </button>
                 </div>
               </div>
@@ -588,6 +641,7 @@ export default function App() {
               </div>
             )}
           </div>
+          )}
         </div>
       </div>
 
@@ -655,29 +709,6 @@ export default function App() {
         <DataManager onClose={() => setShowDataMgr(false)} parts={parts} projectName={projectName} />
       )}
       {/* First launch welcome */}
-      {firstLaunch && (
-        <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center">
-          <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md text-center">
-            <h2 className="text-lg font-bold mb-2">Добро пожаловать в PlasmidVCS!</h2>
-            <p className="text-sm text-gray-600 mb-6">Выберите режим работы:</p>
-            <div className="flex gap-4">
-              <button onClick={() => { if (expertMode) toggleExpertMode(); setFirstLaunch(false); }}
-                className="flex-1 p-4 rounded-xl border-2 border-green-200 hover:bg-green-50 transition">
-                <div className="text-2xl mb-2">{'🎓'}</div>
-                <div className="font-semibold">Студент</div>
-                <div className="text-[11px] text-gray-500 mt-1">Простой интерфейс для обучения клонированию</div>
-              </button>
-              <button onClick={() => { if (!expertMode) toggleExpertMode(); setFirstLaunch(false); }}
-                className="flex-1 p-4 rounded-xl border-2 border-purple-200 hover:bg-purple-50 transition">
-                <div className="text-2xl mb-2">{'🔬'}</div>
-                <div className="font-semibold">Эксперт</div>
-                <div className="text-[11px] text-gray-500 mt-1">Все инструменты: мутагенез, Golden Gate, протоколы</div>
-              </button>
-            </div>
-            <p className="text-[10px] text-gray-400 mt-4">Можно переключить в любой момент в шапке программы</p>
-          </div>
-        </div>
-      )}
       {showOligos && (
         <div className="fixed inset-0 z-50 flex items-start justify-center pt-12 bg-black/30"
           onClick={() => setShowOligos(false)}>

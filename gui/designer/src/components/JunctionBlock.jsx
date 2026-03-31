@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
+import ContextMenu from './ContextMenu';
 import { GG_ENZYMES, reverseComplement } from '../golden-gate';
+import { RE_ENZYMES, searchRE, getCompatible, getIsoschizomers, checkAssemblyForSites } from '../restriction-db';
 import { useStore } from '../store';
 
 const TYPE_STYLES = {
@@ -19,9 +21,14 @@ const LINE_COLORS = {
 };
 
 export default function JunctionBlock({ junction, index, leftName, rightName, leftFrag, rightFrag, leftPCR = true, rightPCR = true, onChange, allOverhangs, fragmentCount = 1 }) {
-  // ═══ Store selector (granular) ═══
-  const expertMode = useStore(s => s.expertMode);
+  // ═══ Store selectors (granular) ═══
+  const assemblyFragments = useStore(s => {
+    const asm = s.assemblies.find(a => a.id === s.activeId);
+    return asm?.fragments || [];
+  });
   const [open, setOpen] = useState(false);
+  const [ctxMenu, setCtxMenu] = useState(null);
+  const [reSearch, setReSearch] = useState('');
   const j = junction || { type: 'overlap', overlapMode: 'split', overlapLength: 30, tmTarget: 62 };
   const jType = j.type || 'overlap';
   const st = TYPE_STYLES[jType] || TYPE_STYLES.overlap;
@@ -121,11 +128,22 @@ export default function JunctionBlock({ junction, index, leftName, rightName, le
 
   return (
     <div className="relative">
-      <div onClick={() => expertMode && setOpen(!open)}
-        className={`w-6 h-14 flex items-center justify-center transition rounded ${expertMode ? 'cursor-pointer hover:bg-blue-50' : 'cursor-default'}`}
-        title={expertMode ? tip : `${tip}\n🔬 Эксперт: настройка`}>
+      <div onClick={() => setOpen(!open)}
+        onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY }); }}
+        className="w-6 h-14 flex items-center justify-center transition rounded cursor-pointer hover:bg-blue-50"
+        title={tip}>
         <div className={`w-0.5 h-10 rounded ${overlapImpossible ? 'bg-red-400' : LINE_COLORS[jType] || 'bg-gray-300'}`} />
       </div>
+      {ctxMenu && (
+        <ContextMenu position={ctxMenu} onClose={() => setCtxMenu(null)} items={[
+          { icon: '\u25C0\u25B6', label: 'Overlap', onClick: () => { onChange({ ...j, type: 'overlap' }); setCtxMenu(null); } },
+          { icon: '\uD83D\uDD36', label: 'Golden Gate', onClick: () => { onChange({ ...j, type: 'golden_gate' }); setCtxMenu(null); } },
+          { icon: '\u2702', label: 'RE/\u041B\u0438\u0433\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u0435', onClick: () => { onChange({ ...j, type: 're_ligation' }); setCtxMenu(null); } },
+          { icon: '\uD83D\uDD04', label: 'KLD', onClick: () => { onChange({ ...j, type: 'kld' }); setCtxMenu(null); } },
+          { divider: true },
+          { icon: '\u2699\uFE0F', label: 'Настройки...', onClick: () => { setCtxMenu(null); setOpen(true); } },
+        ]} />
+      )}
       <div className="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap pointer-events-none" style={{ zIndex: 2 }}>
         {renderLabel()}
       </div>
@@ -366,25 +384,91 @@ export default function JunctionBlock({ junction, index, leftName, rightName, le
           })()}
 
           {/* ═══ RE/Ligation settings ═══ */}
-          {jType === 're_ligation' && (
-            <>
-              <label className="text-[11px] text-gray-500 block mb-1">Рестриктаза</label>
-              <input type="text" value={j.reEnzyme || j.enzyme || ''}
-                onChange={e => onChange({ ...j, reEnzyme: e.target.value, enzyme: e.target.value })}
-                className="w-full text-sm border rounded p-1.5" placeholder="EcoRI" />
-              <div className="text-[9px] text-gray-400 mt-1">Рестрикция обоих фрагментов + лигирование T4 лигазой</div>
-            </>
-          )}
+          {(jType === 're_ligation' || jType === 'sticky_end') && (() => {
+            const selectedRE = j.reEnzyme || j.enzyme || '';
+            const reResults = searchRE(reSearch || '');
+            const internalSites = selectedRE ? checkAssemblyForSites(selectedRE, assemblyFragments) : [];
+            const selectedInfo = RE_ENZYMES[selectedRE];
+            const compatible = selectedRE ? getCompatible(selectedRE) : [];
+            const iso = selectedRE ? getIsoschizomers(selectedRE) : { isoschizomers: [], neoschizomers: [] };
 
-          {/* ═══ Sticky end (legacy, same as re_ligation) ═══ */}
-          {jType === 'sticky_end' && (
-            <>
+            return (<>
               <label className="text-[11px] text-gray-500 block mb-1">Рестриктаза</label>
-              <input type="text" value={j.reEnzyme || ''}
-                onChange={e => onChange({ ...j, reEnzyme: e.target.value })}
-                className="w-full text-sm border rounded p-1.5" placeholder="EcoRI" />
-            </>
-          )}
+              <input type="text" value={reSearch}
+                onChange={e => setReSearch(e.target.value)}
+                className="w-full text-sm border rounded p-1.5 mb-1"
+                placeholder="Поиск: имя, сайт, или овехенг..." />
+
+              {/* Dropdown results */}
+              <div className="max-h-36 overflow-y-auto border rounded mb-2">
+                {reResults.slice(0, 30).map(([name, info]) => {
+                  const hasInternal = assemblyFragments.some(f =>
+                    f.sequence && f.sequence.toUpperCase().includes(info.site.toUpperCase())
+                  );
+                  return (
+                    <div key={name}
+                      className={`flex items-center gap-1.5 px-2 py-1 text-[10px] cursor-pointer hover:bg-blue-50 transition
+                        ${name === selectedRE ? 'bg-orange-50 font-semibold' : ''}
+                        ${hasInternal ? 'bg-red-50' : ''}`}
+                      onClick={() => { onChange({ ...j, reEnzyme: name, enzyme: name }); setReSearch(''); }}>
+                      <span className="font-medium w-14 truncate">{name}</span>
+                      <span className="font-mono text-[9px] text-gray-500 w-20 truncate">{info.site}</span>
+                      <span className={`text-[8px] w-8 ${info.end === '5prime' ? 'text-blue-600' : info.end === '3prime' ? 'text-orange-600' : 'text-gray-400'}`}>
+                        {info.end === '5prime' ? "5'" : info.end === '3prime' ? "3'" : 'blunt'}
+                      </span>
+                      <span className="font-mono text-[8px] text-gray-400 flex-1 truncate">{info.overhang || '—'}</span>
+                      {hasInternal && <span className="text-[8px] text-red-500 shrink-0">{'⚠'} в сборке</span>}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Selected enzyme info */}
+              {selectedRE && selectedInfo && (
+                <div className="bg-orange-50 border border-orange-200 rounded-lg p-2 mb-2">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="font-semibold text-[11px] text-orange-800">{selectedRE}</span>
+                    <span className="font-mono text-[10px] text-orange-600">{selectedInfo.site}</span>
+                    <span className={`text-[9px] px-1 py-0.5 rounded ${selectedInfo.end === 'blunt' ? 'bg-gray-200 text-gray-600' : selectedInfo.end === '5prime' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
+                      {selectedInfo.end === '5prime' ? "5' overhang" : selectedInfo.end === '3prime' ? "3' overhang" : 'blunt'}
+                    </span>
+                  </div>
+                  {selectedInfo.overhang && (
+                    <div className="text-[9px] text-orange-600 mb-1">Overhang: <span className="font-mono font-bold">{selectedInfo.overhang}</span></div>
+                  )}
+                  <div className="text-[9px] text-gray-500">{selectedInfo.temp}°C · {selectedInfo.buffer}</div>
+                  {compatible.length > 0 && (
+                    <div className="text-[9px] text-gray-500 mt-1">Совместимые концы: <span className="text-orange-700 font-medium">{compatible.join(', ')}</span></div>
+                  )}
+                  {(iso.isoschizomers.length > 0 || iso.neoschizomers.length > 0) && (
+                    <div className="text-[9px] text-gray-500 mt-0.5">
+                      {iso.isoschizomers.length > 0 && <>Изошизомеры: {iso.isoschizomers.join(', ')}. </>}
+                      {iso.neoschizomers.length > 0 && <>Неошизомеры: {iso.neoschizomers.join(', ')}</>}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Internal site warning */}
+              {internalSites.length > 0 && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-2 mb-2 text-[10px]">
+                  <div className="font-semibold text-red-700 mb-1">
+                    {'⚠️'} {selectedRE} сайт найден внутри сборки!
+                  </div>
+                  {internalSites.map((hit, hi) => (
+                    <div key={hi} className="text-red-600">
+                      {hit.fragmentName}: {hit.sites.length} сайт(ов) — позиции: {hit.sites.map(s => `${s.position}(${s.strand})`).join(', ')}
+                    </div>
+                  ))}
+                  <div className="text-red-500 mt-1">
+                    Рестрикция разрежет фрагменты. Используйте другой фермент.
+                  </div>
+                </div>
+              )}
+
+              <div className="text-[9px] text-gray-400 mt-1">Рестрикция обоих фрагментов + лигирование T4 лигазой</div>
+            </>);
+          })()}
 
           {/* ═══ KLD settings ═══ */}
           {jType === 'kld' && (

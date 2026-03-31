@@ -116,4 +116,14 @@ describe('GG_ENZYMES database', () => {
   it('SapI has 3-nt overhangs', () => {
     expect(GG_ENZYMES.SapI.overhangLength).toBe(3);
   });
+
+  it('BUG-48: designOverhangs adds boundary warning', () => {
+    const frags = [
+      { name: 'A', sequence: 'ATGCGATCGATCGATCGATCGATCGATCG' },
+      { name: 'B', sequence: 'CGATCGATCGATCGATCGATCGATCGATG' },
+    ];
+    const result = designOverhangs(frags, 'BsaI', false);
+    // Should include an info-level warning about boundary-derived overhangs
+    expect(result.issues.some(i => i.type === 'boundary_derived')).toBe(true);
+  });
 });

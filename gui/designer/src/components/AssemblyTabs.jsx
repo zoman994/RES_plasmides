@@ -1,8 +1,10 @@
 import { useState } from 'react';
+import ContextMenu from './ContextMenu';
 
-export default function AssemblyTabs({ assemblies, activeId, onSelect, onAdd, onRemove, onRename }) {
+export default function AssemblyTabs({ assemblies, activeId, onSelect, onAdd, onRemove, onRename, onDuplicate }) {
   const [editingId, setEditingId] = useState(null);
   const [editName, setEditName] = useState('');
+  const [tabCtx, setTabCtx] = useState(null);
 
   const startRename = (id, name) => { setEditingId(id); setEditName(name); };
   const finishRename = () => {
@@ -26,6 +28,7 @@ export default function AssemblyTabs({ assemblies, activeId, onSelect, onAdd, on
             )}
             <button
               onClick={() => onSelect(asm.id)}
+              onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setTabCtx({ x: e.clientX, y: e.clientY, asmId: asm.id, asmName: asm.name }); }}
               className={`flex items-center gap-2 px-4 py-2.5 text-xs font-medium
                 border-b-2 transition-colors relative group
                 ${asm.id === activeId
@@ -86,6 +89,15 @@ export default function AssemblyTabs({ assemblies, activeId, onSelect, onAdd, on
         className="px-3 py-2 text-xs text-gray-400 hover:text-blue-600 transition ml-1">
         + Новая сборка
       </button>
+
+      {tabCtx && (
+        <ContextMenu position={tabCtx} onClose={() => setTabCtx(null)} items={[
+          { icon: '\u270F\uFE0F', label: 'Переименовать', onClick: () => { startRename(tabCtx.asmId, tabCtx.asmName); setTabCtx(null); } },
+          ...(onDuplicate ? [{ icon: '\uD83D\uDCCB', label: 'Дублировать', onClick: () => { onDuplicate(tabCtx.asmId); setTabCtx(null); } }] : []),
+          { divider: true },
+          ...(assemblies.length > 1 ? [{ icon: '\uD83D\uDDD1', label: 'Удалить', onClick: () => { onRemove(tabCtx.asmId); setTabCtx(null); } }] : []),
+        ]} />
+      )}
     </div>
   );
 }

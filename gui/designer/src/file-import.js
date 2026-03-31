@@ -34,13 +34,13 @@ function isFasta(text) {
  * @returns {Promise<{ name, sequence, length, topology, organism, description, annotations }>}
  */
 /** Backend API base URL. */
-const API_BASE = 'http://localhost:8000';
+const API_BASE = '';
 
 /**
  * Import a .dna file via backend API (binary SnapGene format).
  * Falls back gracefully if backend is unavailable.
  */
-async function importViaBacked(file) {
+async function importViaBackend(file) {
   const form = new FormData();
   form.append('file', file);
   const res = await fetch(`${API_BASE}/api/import`, { method: 'POST', body: form });
@@ -56,23 +56,53 @@ export async function handleFileImport(file) {
 
   // .dna files are binary — must go through backend
   if (ext === '.dna') {
-    const data = await importViaBacked(file);
+    const data = await importViaBackend(file);
     let annotations = [];
     if (data.features?.length > 0) {
       const result = importFeatures(data.features, data.length, 'genbank');
       annotations = result.annotations || [];
     }
-    // Fallback: if backend returned 0 features, try common features detection
-    if (annotations.length === 0 && data.sequence) {
+
+    // Enrichment: always run after import (even if features > 0)
+    if (data.sequence) {
       try {
-        const { enrichWithCommonFeatures, autoAnnotate } = await import('./auto-annotate');
-        const base = autoAnnotate({
-          name: data.name || 'imported',
-          type: 'misc_feature',
-          sequence: data.sequence,
-        });
-        annotations = await enrichWithCommonFeatures(data.sequence, base);
-      } catch { /* common features DB not available */ }
+        const { autoAnnotate, enrichWithCommonFeatures } = await import('./auto-annotate');
+
+        if (annotations.length === 0) {
+          // Fallback: no features from backend → full auto-annotation
+          const base = autoAnnotate({
+            name: data.name || 'imported',
+            type: 'misc_feature',
+            sequence: data.sequence,
+          });
+          annotations = await enrichWithCommonFeatures(data.sequence, base);
+        } else {
+          // Features exist → enrich with homology naming + detail detection
+          // 1. Homology-based naming via common-features.json
+          annotations = await enrichWithCommonFeatures(data.sequence, annotations);
+          for (const ann of annotations) {
+            if (ann.knownFeature && ann.level === 'region') {
+              ann.originalName = ann.name;
+              ann.name = ann.knownFeature;
+            }
+          }
+
+          // 2. Detail-level enrichment (signal peptides, tags, domains)
+          const withDetails = autoAnnotate({
+            name: data.name || 'imported',
+            type: 'misc_feature',
+            sequence: data.sequence,
+            annotations,
+          });
+          const existingKeys = new Set(annotations.map(a => `${a.start}-${a.end}-${a.level}`));
+          for (const ann of withDetails) {
+            const key = `${ann.start}-${ann.end}-${ann.level}`;
+            if (!existingKeys.has(key) && ann.level !== 'region') {
+              annotations.push(ann);
+            }
+          }
+        }
+      } catch { /* enrichment not available */ }
     }
     return {
       name: (data.name && !data.name.startsWith('<unknown'))

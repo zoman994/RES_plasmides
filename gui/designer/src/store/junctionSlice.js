@@ -55,7 +55,7 @@ export const createJunctionSlice = (set, get) => ({
       if (asm) asm.assemblyType = type;
     }, false, 'setAssemblyType');
     if (type === 'golden_gate') {
-      setTimeout(() => get().autoDesignGGOverhangs(), 50);
+      queueMicrotask(() => get().autoDesignGGOverhangs());
     }
   },
 
@@ -99,16 +99,21 @@ export const createJunctionSlice = (set, get) => ({
 
     const siteCheck = checkInternalSites(asm.fragments, state.ggEnzyme);
     const enzyme = siteCheck.ok ? state.ggEnzyme : (siteCheck.alternatives?.[0] || state.ggEnzyme);
-
-    set(s => { s.ggSiteCheck = siteCheck; }, false, 'setGgSiteCheck');
-    if (!siteCheck.ok && siteCheck.alternatives?.length) {
-      set({ ggEnzyme: enzyme }, false, 'autoSwitchGgEnzyme');
-    }
-
     const ovLen = GG_ENZYMES[enzyme]?.overhangLength || 4;
 
-    // Extract overhangs from sequences
+    // Validate and resolve conflicts (pure computation, no state mutation)
+    const result = designOverhangs(asm.fragments, enzyme, asm.circular);
+    let resolved = null;
+    if (!result.valid) {
+      resolved = resolveConflicts(asm.fragments, enzyme, asm.circular);
+    }
+
+    // Single set() for all state updates
     set(s => {
+      s.ggSiteCheck = siteCheck;
+      if (!siteCheck.ok && siteCheck.alternatives?.length) {
+        s.ggEnzyme = enzyme;
+      }
       const a = s.assemblies.find(x => x.id === s.activeId);
       if (!a) return;
       a.junctions.forEach((j, i) => {
@@ -121,24 +126,11 @@ export const createJunctionSlice = (set, get) => ({
           const half = Math.floor(ovLen / 2);
           j.overhang = (left.sequence.slice(-half) + right.sequence.slice(0, ovLen - half)).toUpperCase();
         }
+        // Apply resolved overhangs if available
+        if (resolved?.overhangs?.length && j.type === 'golden_gate' && resolved.overhangs[i]) {
+          j.overhang = resolved.overhangs[i].sequence;
+        }
       });
-    }, false, 'extractOverhangs');
-
-    // Validate and resolve conflicts
-    const result = designOverhangs(asm.fragments, enzyme, asm.circular);
-    if (!result.valid) {
-      const resolved = resolveConflicts(asm.fragments, enzyme, asm.circular);
-      if (resolved.overhangs?.length) {
-        set(s => {
-          const a = s.assemblies.find(x => x.id === s.activeId);
-          if (!a) return;
-          a.junctions.forEach((j, i) => {
-            if (j.type === 'golden_gate' && resolved.overhangs[i]) {
-              j.overhang = resolved.overhangs[i].sequence;
-            }
-          });
-        }, false, 'resolveGGConflicts');
-      }
-    }
+    }, false, 'autoDesignGGOverhangs');
   },
 });

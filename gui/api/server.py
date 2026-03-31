@@ -269,7 +269,7 @@ async def import_file(file: UploadFile = File(...)):
         "features": [
             {
                 "type": f.type, "name": f.name,
-                "start": f.start, "end": f.end, "strand": f.strand,
+                "start": f.start - 1, "end": f.end, "strand": f.strand,
                 "sequence": f.sequence, "color": f.color,
                 "exons": f.exons, "introns": f.introns,
                 "has_introns": f.has_introns,

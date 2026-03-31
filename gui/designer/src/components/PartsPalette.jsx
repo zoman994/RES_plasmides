@@ -50,8 +50,18 @@ export default function PartsPalette() {
   const setHighlightedPartId = useStore(s => s.setHighlightedPartId);
 
   const removePart       = useStore(s => s.removePart);
+  const initialized      = useStore(s => s.initialized);
 
   const fileInputRef = useRef(null);
+
+  // Wait for store rehydration before rendering parts list
+  if (!initialized) {
+    return (
+      <div className="p-4 text-center text-gray-400 text-sm">
+        Загрузка библиотеки...
+      </div>
+    );
+  }
   const partRefs = useRef({});
   const [search, setSearch] = useState('');
   const [activeCollId, setActiveCollId] = useState(null);

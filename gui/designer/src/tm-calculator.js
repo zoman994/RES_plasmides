@@ -160,16 +160,50 @@ export function calcTmForPolymerase(seq, polymerase = 'phusion') {
 }
 
 /**
- * Check for hairpin formation (simplified — checks for 4+ bp internal complement).
+ * Calculate ΔG (kcal/mol) of a short duplex at given temperature using NN params.
+ * Used for hairpin stem stability filtering.
+ */
+function stemDeltaG(stemSeq, tempC = 60) {
+  const s = stemSeq.toUpperCase();
+  if (s.length < 2) return 0;
+  const T = tempC + 273.15;
+  let dH = 0, dS = 0;
+  for (let i = 0; i < s.length - 1; i++) {
+    const pair = s[i] + s[i + 1];
+    const p = NN_PARAMS[pair];
+    if (p) { dH += p.dH; dS += p.dS; }
+  }
+  // ΔG = ΔH - T·ΔS (cal/mol → kcal/mol)
+  return (dH - T * dS) / 1000;
+}
+
+/**
+ * Check for hairpin formation with thermodynamic filtering.
+ * Reports true only if stem ΔG < -2 kcal/mol at 60°C (stable hairpin).
  */
 export function checkHairpin(seq) {
   const s = seq.toUpperCase();
+  if (s.length < 11) return false; // need MIN_STEM*2 + MIN_LOOP
   const comp = { A: 'T', T: 'A', G: 'C', C: 'G' };
-  const rc = s.split('').reverse().map(c => comp[c] || 'N').join('');
-  // Check if any 4-mer of the sequence matches its reverse complement
-  for (let i = 0; i < s.length - 7; i++) {
-    const sub = s.slice(i, i + 4);
-    if (rc.includes(sub)) return true;
+  const MIN_STEM = 4;
+  const MIN_LOOP = 3;
+  const MAX_LOOP = 8;
+  const DG_THRESHOLD = -2; // kcal/mol at 60°C
+
+  for (let stemLen = MIN_STEM; stemLen <= Math.floor((s.length - MIN_LOOP) / 2); stemLen++) {
+    for (let i = 0; i <= s.length - 2 * stemLen - MIN_LOOP; i++) {
+      const stem5 = s.slice(i, i + stemLen);
+      for (let loopLen = MIN_LOOP; loopLen <= MAX_LOOP; loopLen++) {
+        const j = i + stemLen + loopLen;
+        if (j + stemLen > s.length) break;
+        const stem3 = s.slice(j, j + stemLen);
+        let match = true;
+        for (let k = 0; k < stemLen; k++) {
+          if (comp[stem5[k]] !== stem3[stemLen - 1 - k]) { match = false; break; }
+        }
+        if (match && stemDeltaG(stem5) < DG_THRESHOLD) return true;
+      }
+    }
   }
   return false;
 }

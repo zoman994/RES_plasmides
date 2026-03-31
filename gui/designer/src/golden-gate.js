@@ -96,7 +96,13 @@ export function designOverhangs(fragments, enzymeKey, circular = false) {
     });
   }
 
-  return validateOverhangs(overhangs, ovLen);
+  const result = validateOverhangs(overhangs, ovLen);
+  result.issues.push({
+    type: 'boundary_derived',
+    severity: 'info',
+    message: `Overhangs вычислены из концов фрагментов, а не из позиции рестрикции ${enzymeKey}. Убедитесь что сайты ${enz.recognition} расположены корректно.`,
+  });
+  return result;
 }
 
 /** Validate overhangs: check palindromes, duplicates, RC matches, GC. */
@@ -221,19 +227,23 @@ function shiftJunction(fragments, jIdx, shift, circular) {
   const left = (fragments[jIdx].sequence || '');
   const right = (fragments[nextIdx].sequence || '');
 
+  /** Shift annotations by offset (positive = shift right). */
+  const shiftAnnotations = (annotations, offset) =>
+    annotations?.map(a => ({ ...a, start: a.start + offset, end: a.end + offset }));
+
   if (shift > 0) {
     if (right.length <= shift + 10) return null; // too short
     return fragments.map((f, i) => {
-      if (i === jIdx) return { ...f, sequence: left + right.slice(0, shift), length: left.length + shift };
-      if (i === nextIdx) return { ...f, sequence: right.slice(shift), length: right.length - shift };
+      if (i === jIdx) return { ...f, sequence: left + right.slice(0, shift), length: left.length + shift, annotations: f.annotations };
+      if (i === nextIdx) return { ...f, sequence: right.slice(shift), length: right.length - shift, annotations: shiftAnnotations(f.annotations, -shift) };
       return f;
     });
   } else {
     const absShift = Math.abs(shift);
     if (left.length <= absShift + 10) return null;
     return fragments.map((f, i) => {
-      if (i === jIdx) return { ...f, sequence: left.slice(0, left.length - absShift), length: left.length - absShift };
-      if (i === nextIdx) return { ...f, sequence: left.slice(-absShift) + right, length: right.length + absShift };
+      if (i === jIdx) return { ...f, sequence: left.slice(0, left.length - absShift), length: left.length - absShift, annotations: f.annotations };
+      if (i === nextIdx) return { ...f, sequence: left.slice(-absShift) + right, length: right.length + absShift, annotations: shiftAnnotations(f.annotations, absShift) };
       return f;
     });
   }

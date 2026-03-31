@@ -41,12 +41,29 @@ export function useFragmentHandlers() {
     const cutAA = result.cutPosition ? Math.floor(result.cutPosition / 3) : 0;
 
     if (result.action === 'split') {
+      const cutBP = result.cutPosition;
       const domSplit = adjustDomains(frag.domains, cutAA, 'split');
+
+      // Split annotations between two parts
+      const parentAnns = frag.annotations || [];
+      const anns1 = [], anns2 = [];
+      for (const a of parentAnns) {
+        if (a.end <= cutBP) {
+          anns1.push({ ...a });
+        } else if (a.start >= cutBP) {
+          anns2.push({ ...a, start: a.start - cutBP, end: a.end - cutBP });
+        } else {
+          // Annotation spans the cut — clone to both sides, trimmed
+          anns1.push({ ...a, end: cutBP, trimmed: true });
+          anns2.push({ ...a, start: 0, end: a.end - cutBP, trimmed: true });
+        }
+      }
+
       const p1 = { id: `f${Date.now()}`, name: result.part1Name, type: frag.type,
         sequence: result.part1DNA, length: result.part1DNA.length, strand: 1, needsAmplification: true,
-        domains: domSplit.part1 || [] };
+        domains: domSplit.part1 || [], annotations: anns1 };
       nf[idx] = { ...frag, name: result.part2Name, sequence: result.part2DNA, length: result.part2DNA.length,
-        domains: domSplit.part2 || [] };
+        domains: domSplit.part2 || [], annotations: anns2 };
       nf.splice(idx, 0, p1);
     } else if (result.action === 'remove_part1') {
       nf[idx] = { ...frag, sequence: result.sequence, length: result.sequence.length,
@@ -55,11 +72,41 @@ export function useFragmentHandlers() {
       nf[idx] = { ...frag, sequence: result.sequence, length: result.sequence.length,
         domains: adjustDomains(frag.domains, cutAA, 'remove_part2') };
     } else if (result.action === 'replace_part1') {
+      const cutBP = result.cutPosition;
+      const anns2 = (frag.annotations || [])
+        .filter(a => a.end > cutBP)
+        .map(a => ({ ...a, start: Math.max(0, a.start - cutBP), end: a.end - cutBP }));
+
       const rep = { id: `f${Date.now()}`, name: result.replacementName, type: result.replacementType || frag.type,
         sequence: result.replacementSeq, length: result.replacementSeq.length, strand: 1, needsAmplification: true };
       nf[idx] = { ...frag, name: result.part2Name, sequence: result.part2DNA, length: result.part2DNA.length,
-        domains: adjustDomains(frag.domains, cutAA, 'remove_part1') };
+        domains: adjustDomains(frag.domains, cutAA, 'remove_part1'), annotations: anns2 };
       nf.splice(idx, 0, rep);
+    } else if (result.action === 'split_for_insert') {
+      const parentAnns = frag.annotations || [];
+
+      // 5' flank annotations
+      const flank5Start = result.cutStart - result.flank5DNA.length;
+      const anns5 = parentAnns
+        .filter(a => a.start >= flank5Start && a.end <= result.cutStart)
+        .map(a => ({ ...a, start: a.start - flank5Start, end: a.end - flank5Start }));
+
+      // 3' flank annotations
+      const anns3 = parentAnns
+        .filter(a => a.start >= result.cutEnd && a.end <= result.cutEnd + result.flank3DNA.length)
+        .map(a => ({ ...a, start: a.start - result.cutEnd, end: a.end - result.cutEnd }));
+
+      const flank5 = {
+        id: `f${Date.now()}_5f`, name: result.flank5Name, type: 'homology_arm',
+        sequence: result.flank5DNA, length: result.flank5DNA.length,
+        strand: 1, needsAmplification: true, annotations: anns5,
+      };
+      const flank3 = {
+        id: `f${Date.now()}_3f`, name: result.flank3Name, type: 'homology_arm',
+        sequence: result.flank3DNA, length: result.flank3DNA.length,
+        strand: 1, needsAmplification: true, annotations: anns3,
+      };
+      nf.splice(idx, 1, flank5, flank3);
     }
     updateActive({ fragments: nf, junctions: buildPlainJunctions(nf, assemblyType, circular), calculated: false });
     setSplitTarget(null);
@@ -74,16 +121,19 @@ export function useFragmentHandlers() {
 
     updateActive({
       fragments: fragments.map((f, i) => i === editTarget ? updated : f),
-      calculated: false, primers: [],
+      calculated: false,
     });
 
     if (hasMutations) {
       // Find root parent Part
-      const findRoot = (name, id) => {
+      const findRoot = (_name, id) => {
         let p = parts.find(x => x.id === id) || parts.find(x => x.id === original.partId);
-        if (p?.parentId) p = parts.find(x => x.id === p.parentId) || p;
-        if (!p) { const baseName = name.replace(/\(.*\)$/, '').trim(); p = parts.find(x => x.name === baseName && !x.parentId); }
-        if (!p) p = parts.find(x => x.name === name);
+        // Traverse parentId chain to the root
+        while (p?.parentId) {
+          const parent = parts.find(x => x.id === p.parentId);
+          if (!parent) break;
+          p = parent;
+        }
         return p;
       };
       const rootPart = findRoot(original.name, original.id);
@@ -101,7 +151,7 @@ export function useFragmentHandlers() {
         addPart(variant);
         updateActive({
           fragments: fragments.map((f, i) => i === editTarget ? { ...updated, partId: variantId } : f),
-          calculated: false, primers: [],
+          calculated: false,
         });
       }
 
@@ -142,7 +192,7 @@ export function useFragmentHandlers() {
     if (editTarget !== null) {
       updateActive({
         fragments: fragments.map((f, i) => i === editTarget ? { ...f, ...variant, strand: f.strand, needsAmplification: f.needsAmplification } : f),
-        calculated: false, primers: [],
+        calculated: false,
       });
     }
   };
@@ -154,14 +204,14 @@ export function useFragmentHandlers() {
         length: variant.length, domains: variant.domains, parentId: variant.parentId,
         modification: variant.modification, testResults: variant.testResults, customColor: variant.customColor,
       } : f),
-      calculated: false, primers: [],
+      calculated: false,
     });
   };
 
   const handleMutagenesis = (result) => {
     updateActive({
       fragments: result.fragments.map(f => ({ ...f, id: `mf${Date.now()}_${Math.random().toString(36).slice(2, 5)}`, isMutagenesis: true })),
-      junctions: result.junctions, calculated: false, primers: [],
+      junctions: result.junctions, calculated: false,
     });
   };
 
@@ -181,10 +231,32 @@ export function useFragmentHandlers() {
       color: isMarker(f.name) ? '#F0E442' : getFragColor(f.type, i),
       pct: (f.length / totalLen) * 100,
     }));
+    // Merge annotations from all fragments with offset coordinates
+    const mergedAnnotations = [];
+    let offset = 0;
+    for (const frag of fragments) {
+      for (const ann of (frag.annotations || [])) {
+        mergedAnnotations.push({
+          ...ann, start: ann.start + offset, end: ann.end + offset,
+          sourceFragment: frag.name,
+        });
+      }
+      offset += (frag.sequence || '').length;
+    }
     const mergedProduct = {
       id: `product_${Date.now()}`, name: active.name,
       type: circular ? 'plasmid' : 'pcr_product', sequence: fullSeq, length: totalLen,
       strand: 1, needsAmplification: false, subFragments,
+      assemblyMethod: (() => {
+        const asmType = active.assemblyType || 'overlap';
+        if (asmType === 'golden_gate') return 'golden_gate';
+        if (asmType === 'kld') return 'kld';
+        if (asmType === 're_ligation') return 're_ligation';
+        return circular ? 'gibson' : 'overlap_pcr';
+      })(),
+      protocol: active.protocolSteps?.length > 0 ? 'complete' : 'manual',
+      annotations: mergedAnnotations,
+      topology: circular ? 'circular' : 'linear',
       sourceType: 'assembly', sourceAssemblyId: active.id,
       components: fragments.map(f => f.name), completedAt: new Date().toISOString(),
     };
@@ -193,9 +265,10 @@ export function useFragmentHandlers() {
       addPart(mergedProduct);
     }
     updateActive({
-      completed: true, product: mergedProduct,
+      product: mergedProduct,
       originalFragments: fragments, originalJunctions: junctions,
       fragments: [mergedProduct], junctions: [],
+      calculated: false,
     });
     incrementInventoryVersion();
   };

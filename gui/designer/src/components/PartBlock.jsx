@@ -31,12 +31,17 @@ export default function PartBlock({
   pcrSize, onSplitSignal, onEditFragment, fragmentCount,
   fwdPrimer, revPrimer, circularHint,
   variants, onSwapVariant,
+  compact,
 }) {
   // ═══ Store selector (granular) ═══
   const expertMode = useStore(s => s.expertMode);
   const highlightedPartId = useStore(s => s.highlightedPartId);
   const setHighlightedPartId = useStore(s => s.setHighlightedPartId);
+  const selectedFragIndices = useStore(s => s.selectedFragIndices);
+  const toggleFragSelection = useStore(s => s.toggleFragSelection);
+  const clearFragSelection = useStore(s => s.clearFragSelection);
   const isHighlighted = fragment.partId && fragment.partId === highlightedPartId;
+  const isSelected = selectedFragIndices.includes(index);
   const [showVariants, setShowVariants] = useState(false);
   const [ctxMenu, setCtxMenu] = useState(null);
   const variantCount = variants?.length || 0;
@@ -56,32 +61,170 @@ export default function PartBlock({
   return (
     <div ref={ref} className={`relative group cursor-grab transition-transform ${isOver ? 'scale-105' : ''}`}
       style={{ opacity: isDragging ? 0.3 : 1, zIndex: 1,
-        boxShadow: isHighlighted ? '0 0 0 2px #3b82f6, 0 0 8px rgba(59,130,246,0.3)' : undefined,
-        borderRadius: isHighlighted ? 8 : undefined,
+        outline: isSelected ? '3px solid #3b82f6' : undefined,
+        outlineOffset: isSelected ? 2 : undefined,
+        boxShadow: isSelected ? '0 0 0 5px rgba(59,130,246,0.15)' :
+          (isHighlighted ? '0 0 0 2px #3b82f6, 0 0 8px rgba(59,130,246,0.3)' : undefined),
+        borderRadius: (isSelected || isHighlighted) ? 8 : undefined,
       }}
-      onClick={(e) => { e.stopPropagation(); setHighlightedPartId(fragment.partId === highlightedPartId ? null : fragment.partId); }}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (e.ctrlKey || e.metaKey) {
+          toggleFragSelection(index);
+        } else if (e.shiftKey && selectedFragIndices.length > 0) {
+          const last = selectedFragIndices[selectedFragIndices.length - 1];
+          useStore.getState().selectFragRange(Math.min(last, index), Math.max(last, index));
+        } else {
+          clearFragSelection();
+          toggleFragSelection(index);
+        }
+        setHighlightedPartId(fragment.partId || null);
+      }}
+      onDoubleClick={(e) => {
+        e.stopPropagation();
+        if (fragment.subFragments?.length > 0) {
+          const store = useStore.getState();
+          const active = store.getActive();
+          if (!active) return;
+          const expanded = [];
+          let off = 0;
+          for (const sub of fragment.subFragments) {
+            expanded.push({
+              id: `f${Date.now()}_${Math.random().toString(36).slice(2,5)}`,
+              name: sub.name, type: sub.type,
+              sequence: (fragment.sequence || '').slice(off, off + sub.length),
+              length: sub.length, strand: 1, needsAmplification: true,
+            });
+            off += sub.length;
+          }
+          const newFragments = [...active.fragments];
+          newFragments.splice(index, 1, ...expanded);
+          const asmType = active.assemblyType || 'overlap';
+          const isCirc = active.circular || false;
+          const jCount = isCirc ? newFragments.length : Math.max(0, newFragments.length - 1);
+          const newJuncs = Array.from({ length: jCount }, () => ({
+            type: asmType === 'golden_gate' ? 'golden_gate' : 'overlap',
+            overlapMode: 'split', overlapLength: 30, tmTarget: 62, calcMode: 'length',
+          }));
+          store.pushUndo();
+          store.updateActive({ fragments: newFragments, junctions: newJuncs, calculated: false });
+        } else {
+          onEditFragment?.(index);
+        }
+      }}
       onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY }); }}>
       {isOver && <div className="absolute -left-1 top-0 bottom-0 w-0.5 bg-blue-500 rounded" />}
 
-      {/* ═══ MERGED PRODUCT ═══ */}
-      {fragment.subFragments?.length > 0 ? (
+      {/* ═══ COMPACT MODE (racetrack) ═══ */}
+      {compact ? (
         <>
-          <div className="relative flex h-16 rounded-lg overflow-hidden border-2 border-green-400 shadow-sm"
-            style={{ width: fragmentWidth(fragment.length, fragmentCount), minWidth: 100 }}
+          <div className="rounded-md border-[1.5px] px-2 flex items-center gap-1"
+            style={{
+              height: 42,
+              background: `${color}18`,
+              borderColor: color,
+              transition: 'box-shadow 150ms ease',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.boxShadow = `0 2px 8px ${color}40`; }}
+            onMouseLeave={e => { e.currentTarget.style.boxShadow = 'none'; }}
+            title={`${fragment.name} (${fmtSize(fragment.length)})`}>
+            <span className={`inline-block shrink-0 ${fragment.strand === -1 ? 'scale-x-[-1]' : ''}`}>
+              <SBOLIcon type={fragment.type} size={12} color={color} />
+            </span>
+            <span className="text-[11px] font-medium truncate text-gray-800">
+              {fragment.name?.length > 2 ? fragment.name.split('(')[0] : (fragment.type || 'frag')}
+            </span>
+            <span className="text-[9px] opacity-60 shrink-0 ml-auto">{fragment.length || 0} bp</span>
+          </div>
+        </>
+      ) : (
+
+      /* ═══ MERGED PRODUCT — with visible "stitches" + primers ═══ */
+      fragment.subFragments?.length > 0 ? (
+        <>
+          {/* Fwd primer — top line */}
+          {fwdPrimer && !isCompact(fragmentCount) && (
+            <div className="flex items-center justify-between px-2 pt-1 pb-0.5 text-[11px]">
+              <span className="text-blue-600 font-medium flex items-center gap-0.5 truncate" title={fwdPrimer.name}>
+                <span className="text-blue-500 text-[13px]">{'→'}</span>
+                {primerLabel(fwdPrimer.name)}
+              </span>
+              <span className="text-blue-400 font-mono shrink-0">{fwdPrimer.tmBinding}{'°'}</span>
+            </div>
+          )}
+
+          <div className="relative rounded-xl overflow-hidden"
+            style={{
+              width: fragmentWidth(fragment.length, fragmentCount),
+              minWidth: 100,
+              border: '2px dashed #22c55e',
+              background: '#f0fdf4',
+            }}
             title={`${fragment.name}: ${fragment.subFragments.map(s => s.name).join(' + ')}`}>
-            {fragment.subFragments.map((sub, si) => (
-              <div key={si} style={{ width: `${sub.pct}%`, backgroundColor: sub.color }}
-                className="flex items-end justify-center border-r border-white/30 last:border-r-0"
-                title={`${sub.name} (${fmtSize(sub.length)})`}>
-                {sub.pct > 12 && <span className="text-[7px] text-white/80 font-medium truncate px-0.5 mb-0.5">{sub.name}</span>}
-              </div>
-            ))}
-            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-              <span className="text-sm font-bold text-white drop-shadow-md truncate max-w-full px-2">{fragment.name}</span>
-              <span className="text-[9px] text-white/90 drop-shadow-sm">{fmtSize(fragment.length)}</span>
+
+            {/* Sub-fragment blocks with visible seams */}
+            <div className="flex h-14">
+              {fragment.subFragments.map((sub, si) => (
+                <div key={si} className="relative flex flex-col items-center justify-center"
+                  style={{
+                    width: `${sub.pct}%`,
+                    minWidth: 20,
+                    borderRight: si < fragment.subFragments.length - 1
+                      ? '2px dashed #86efac' : 'none',
+                  }}>
+                  <div className="absolute top-0 left-0 right-0 h-1.5"
+                    style={{ backgroundColor: sub.color }} />
+                  <span className="text-[9px] font-semibold text-gray-700 truncate px-1 mt-2"
+                    title={`${sub.name} (${fmtSize(sub.length)})`}>
+                    {sub.name}
+                  </span>
+                  <span className="text-[7px] text-gray-400">
+                    {fmtSize(sub.length)}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {/* Bottom info bar */}
+            <div className="flex items-center justify-center gap-2 py-0.5 bg-green-50 border-t border-dashed border-green-200">
+              <span className="text-[8px] text-green-700 font-medium">
+                {fragment.assemblyMethod === 'golden_gate' ? 'Golden Gate' :
+                 fragment.assemblyMethod === 'kld' ? 'KLD' :
+                 fragment.assemblyMethod === 're_ligation' ? 'RE-лигирование' :
+                 fragment.assemblyMethod === 'gibson' ? 'Gibson' :
+                 'OV-PCR'}
+              </span>
+              <span className="text-[8px] text-green-600">
+                {fmtSize(fragment.length)}
+              </span>
+              <span className="text-[8px] text-green-600">
+                {fragment.subFragments.length} {'фрагм.'}
+              </span>
             </div>
           </div>
-          <div className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-green-500 text-white text-[10px] flex items-center justify-center shadow border-2 border-white z-10">✓</div>
+
+          {/* Rev primer — bottom line */}
+          {revPrimer && !isCompact(fragmentCount) && (
+            <div className="flex items-center justify-between px-2 pb-1 pt-0.5 text-[11px]">
+              <span className="text-red-400 font-mono shrink-0">{revPrimer.tmBinding}{'°'}</span>
+              <span className="text-red-600 font-medium flex items-center gap-0.5 truncate" title={revPrimer.name}>
+                {primerLabel(revPrimer.name)}
+                <span className="text-red-500 text-[13px]">{'←'}</span>
+              </span>
+            </div>
+          )}
+
+          {/* PCR size */}
+          {pcrSize && !isCompact(fragmentCount) && (
+            <div className="text-center text-[9px] text-green-600 font-medium mt-0.5">
+              PCR: {fmtSize(pcrSize)}
+            </div>
+          )}
+
+          {/* Stitch badge */}
+          <div className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-green-500 text-white text-[10px]
+            flex items-center justify-center shadow border-2 border-white z-10"
+            title="Склеено">{'🔗'}</div>
         </>
       ) : (
       <>
@@ -317,7 +460,7 @@ export default function PartBlock({
           title="Удалить">×</button>
       </div>
       </>
-      )}
+      ))}
 
       {/* ═══ Context Menu ═══ */}
       {ctxMenu && (

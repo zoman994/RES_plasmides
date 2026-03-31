@@ -6,7 +6,7 @@ import { useStore, useFragments, useJunctions, pushUndo } from '../store';
 import { designPrimers } from '../api';
 import { PCR_MIXES, ASSEMBLY_PROTOCOLS as ASM_PROTOCOLS } from '../protocol-data';
 import { findAllMatches, addPrimersToRegistry } from '../primer-reuse';
-import { pcrProductSize } from '../validate';
+import { pcrProductSize, validateJunctionEnds } from '../validate';
 import { planAssemblyStages } from '../assembly-utils';
 
 export function useGeneratePrimers() {
@@ -28,6 +28,19 @@ export function useGeneratePrimers() {
     const protocol = active.protocol || 'overlap_pcr';
     const circular = active.circular || false;
     const totalBp = fragments.reduce((s, f) => s + (f.sequence || '').length, 0);
+
+    // ═══ Pre-flight validation ═══
+    const endWarnings = validateJunctionEnds(fragments, junctions, circular);
+    const endErrors = endWarnings.filter(w => w.severity === 'error');
+
+    if (endErrors.length > 0) {
+      updateActive({
+        apiWarnings: endErrors.map(e => e.message),
+        calculated: false,
+      });
+      setLoading(false);
+      return;
+    }
 
     // PCR sizes
     const pcrSizes = fragments.map((f, i) => {
@@ -80,7 +93,11 @@ export function useGeneratePrimers() {
       addPrimersToRegistry(renamedPrimers);
 
       updateActive({
-        primers: renamedPrimers, apiWarnings: data.warnings || [],
+        primers: renamedPrimers,
+        apiWarnings: [
+          ...endWarnings.filter(w => w.severity === 'warning').map(w => w.message),
+          ...(data.warnings || []),
+        ],
         orderSheet: data.orderSheet || '', primerMatches: matches,
         junctions: updatedJunctions, calculated: true, protocolSteps: pSteps,
       });

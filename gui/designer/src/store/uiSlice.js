@@ -23,14 +23,17 @@ export const createUiSlice = (set) => ({
   warningsOpen: false,
 
   // ═══ Expert mode ═══
-  expertMode: localStorage.getItem('pvcs-expert-mode') === 'true',
-  firstLaunch: !localStorage.getItem('pvcs-expert-mode') && !localStorage.getItem('pvcs_designer_state'),
+  expertMode: true,
+  firstLaunch: false,
 
   // ═══ File import ═══
   importedData: null,       // Pre-fill data for AddFragmentModal from file import
 
   // ═══ Canvas ↔ palette navigation ═══
   highlightedPartId: null,  // Part ID highlighted in both canvas and palette
+
+  // ═══ Fragment multi-select for merging ═══
+  selectedFragIndices: [],  // number[] — indices of selected fragments on canvas
 
   // ═══ Assembly strategy ═══
   maxFinalParts: 0,         // 0 = auto
@@ -53,6 +56,25 @@ export const createUiSlice = (set) => ({
   setWarningsOpen: (v) => set({ warningsOpen: v }, false, 'setWarningsOpen'),
   setImportedData: (data) => set({ importedData: data }, false, 'setImportedData'),
   setHighlightedPartId: (id) => set({ highlightedPartId: id }, false, 'setHighlightedPartId'),
+
+  toggleFragSelection: (index) => set(state => {
+    const idx = state.selectedFragIndices.indexOf(index);
+    if (idx >= 0) {
+      state.selectedFragIndices.splice(idx, 1);
+    } else {
+      state.selectedFragIndices.push(index);
+      state.selectedFragIndices.sort((a, b) => a - b);
+    }
+  }, false, 'toggleFragSelection'),
+
+  clearFragSelection: () => set({ selectedFragIndices: [] }, false, 'clearFragSelection'),
+
+  selectFragRange: (from, to) => set(state => {
+    const lo = Math.min(from, to);
+    const hi = Math.max(from, to);
+    state.selectedFragIndices = [];
+    for (let i = lo; i <= hi; i++) state.selectedFragIndices.push(i);
+  }, false, 'selectFragRange'),
   setMaxFinalParts: (v) => set({ maxFinalParts: v }, false, 'setMaxFinalParts'),
   incrementInventoryVersion: () => set(state => { state.inventoryVersion++; }, false, 'incrementInventoryVersion'),
   setFirstLaunch: (v) => set({ firstLaunch: v }, false, 'setFirstLaunch'),

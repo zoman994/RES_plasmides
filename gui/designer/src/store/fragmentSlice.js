@@ -40,8 +40,23 @@ function adjustAnnotationCoords(annotations, sortedMutations) {
   });
 }
 
-let nextId = 1;
+let nextId = Date.now();
 export const setNextId = (n) => { nextId = n; };
+
+/** Create a fragment object from a Part (shared between addFragment and insertFragmentAt). */
+function createFragFromPart(part) {
+  const annotations = part.annotations?.some(a => a.level === 'region')
+    ? part.annotations
+    : migratePartAnnotations(part);
+  return {
+    id: `f${nextId++}`, name: part.name, type: part.type,
+    sequence: part.sequence || '', length: part.length || 0,
+    strand: 1, needsAmplification: part.needsAmplification ?? true,
+    sourceAssemblyId: part.sourceAssemblyId, partId: part.id,
+    customColor: part.customColor, domains: part.domains,
+    annotations,
+  };
+}
 
 export const createFragmentSlice = (set, get) => ({
   // ═══ Parts library (global, not per-assembly) ═══
@@ -128,18 +143,7 @@ export const createFragmentSlice = (set, get) => ({
       });
     }
 
-    // Ensure annotations have regions (migrate legacy parts on the fly)
-    const annotations = part.annotations?.some(a => a.level === 'region')
-      ? part.annotations
-      : migratePartAnnotations(part);
-    const frag = {
-      id: `f${nextId++}`, name: part.name, type: part.type,
-      sequence: part.sequence || '', length: part.length || 0,
-      strand: 1, needsAmplification: part.needsAmplification ?? true,
-      sourceAssemblyId: part.sourceAssemblyId, partId: part.id,
-      customColor: part.customColor, domains: part.domains,
-      annotations,
-    };
+    const frag = createFragFromPart(part);
     set(state => {
       const asm = state.assemblies.find(a => a.id === state.activeId);
       if (!asm) return;
@@ -153,14 +157,14 @@ export const createFragmentSlice = (set, get) => ({
         });
       }
       asm.calculated = false;
-      asm.primers = [];
+
     }, false, 'addFragment');
     // Auto-adjust junctions (force GG for identical neighbors, etc.)
     get().autoAdjustJunctions();
     // Auto-design GG overhangs if any junction is GG
     const asm = get().assemblies.find(a => a.id === get().activeId);
     if (asm?.junctions.some(j => j.type === 'golden_gate')) {
-      setTimeout(() => get().autoDesignGGOverhangs(), 50);
+      queueMicrotask(() => get().autoDesignGGOverhangs());
     }
   },
 
@@ -170,15 +174,56 @@ export const createFragmentSlice = (set, get) => ({
       const asm = state.assemblies.find(a => a.id === state.activeId);
       if (!asm) return;
       asm.fragments.splice(index, 1);
-      // Rebuild junctions
-      const n = asm.fragments.length;
-      const count = asm.circular ? n : Math.max(0, n - 1);
-      asm.junctions = Array.from({ length: count }, (_, i) => asm.junctions[i] || {
-        type: asm.assemblyType === 'golden_gate' ? 'golden_gate' : 'overlap',
-        overlapMode: 'split', overlapLength: 30, tmTarget: 62, calcMode: 'length',
-      });
+      // Remove the junction at the deleted position, preserve the rest
+      if (asm.junctions.length > 0) {
+        const jIdx = Math.min(index, asm.junctions.length - 1);
+        asm.junctions.splice(jIdx, 1);
+      }
+      // Adjust junction count without destroying existing settings
+      const count = asm.circular ? asm.fragments.length : Math.max(0, asm.fragments.length - 1);
+      while (asm.junctions.length < count) {
+        asm.junctions.push({
+          type: asm.assemblyType === 'golden_gate' ? 'golden_gate' : 'overlap',
+          overlapMode: 'split', overlapLength: 30, tmTarget: 62, calcMode: 'length',
+        });
+      }
+      asm.junctions.length = count;
       asm.calculated = false;
     }, false, 'removeFragment');
+  },
+
+  insertFragmentAt: (index, part) => {
+    get().pushUndo?.();
+    // Auto-save to library if not already there
+    if (part.sequence && !get().parts.some(p => p.id === part.id)) {
+      get().addPart({
+        id: part.id, name: part.name, type: part.type || 'misc_feature',
+        sequence: part.sequence, length: part.length || part.sequence.length,
+        organism: part.organism, source: part.source || 'canvas_add',
+      });
+    }
+    const frag = createFragFromPart(part);
+    set(state => {
+      const asm = state.assemblies.find(a => a.id === state.activeId);
+      if (!asm) return;
+      asm.fragments.splice(index, 0, frag);
+      // Adjust junction count, preserving existing junction settings
+      const count = asm.circular ? asm.fragments.length : Math.max(0, asm.fragments.length - 1);
+      while (asm.junctions.length < count) {
+        asm.junctions.splice(Math.min(index, asm.junctions.length), 0, {
+          type: asm.assemblyType === 'golden_gate' ? 'golden_gate' : 'overlap',
+          overlapMode: 'split', overlapLength: 30, tmTarget: 62, calcMode: 'length',
+        });
+      }
+      asm.junctions.length = count;
+      asm.calculated = false;
+
+    }, false, 'insertFragmentAt');
+    get().autoAdjustJunctions();
+    const asm = get().assemblies.find(a => a.id === get().activeId);
+    if (asm?.junctions.some(j => j.type === 'golden_gate')) {
+      queueMicrotask(() => get().autoDesignGGOverhangs());
+    }
   },
 
   flipFragment: (index) => {
@@ -192,7 +237,7 @@ export const createFragmentSlice = (set, get) => ({
       f.sequence = f.sequence.split('').reverse().map(c => RC[c.toUpperCase()] || 'N').join('');
       f.strand = f.strand === 1 ? -1 : 1;
       asm.calculated = false;
-      asm.primers = [];
+
     }, false, 'flipFragment');
   },
 
@@ -202,14 +247,25 @@ export const createFragmentSlice = (set, get) => ({
       const asm = state.assemblies.find(a => a.id === state.activeId);
       if (!asm || from === to) return;
       const [moved] = asm.fragments.splice(from, 1);
-      asm.fragments.splice(to, 0, moved);
-      // Rebuild junctions
-      const n = asm.fragments.length;
-      const count = asm.circular ? n : Math.max(0, n - 1);
-      asm.junctions = Array.from({ length: count }, () => ({
-        type: asm.assemblyType === 'golden_gate' ? 'golden_gate' : 'overlap',
-        overlapMode: 'split', overlapLength: 30, tmTarget: 62, calcMode: 'length',
-      }));
+      const adjustedTo = from < to ? to - 1 : to;
+      asm.fragments.splice(adjustedTo, 0, moved);
+      // Move junctions to match fragment reorder, preserve settings
+      if (asm.junctions.length > 0) {
+        const jFrom = Math.min(from, asm.junctions.length - 1);
+        const jTo = Math.min(to, asm.junctions.length - 1);
+        const [movedJ] = asm.junctions.splice(jFrom, 1);
+        const adjustedJTo = jFrom < jTo ? jTo - 1 : jTo;
+        asm.junctions.splice(adjustedJTo, 0, movedJ);
+      }
+      // Adjust junction count without destroying existing settings
+      const count = asm.circular ? asm.fragments.length : Math.max(0, asm.fragments.length - 1);
+      while (asm.junctions.length < count) {
+        asm.junctions.push({
+          type: asm.assemblyType === 'golden_gate' ? 'golden_gate' : 'overlap',
+          overlapMode: 'split', overlapLength: 30, tmTarget: 62, calcMode: 'length',
+        });
+      }
+      asm.junctions.length = count;
       asm.calculated = false;
     }, false, 'reorderFragments');
   },
@@ -232,7 +288,7 @@ export const createFragmentSlice = (set, get) => ({
       if (!asm || !asm.fragments[index]) return;
       Object.assign(asm.fragments[index], updates);
       asm.calculated = false;
-      asm.primers = [];
+
     }, false, 'updateFragment');
   },
 

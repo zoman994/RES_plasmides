@@ -2,6 +2,9 @@
 
 import { getRegions } from './annotation-model';
 import { validateCDS } from './cds-validation';
+import { calcTmNN, gcPercent } from './tm-calculator';
+import { RE_ENZYMES, siteToRegex } from './restriction-db';
+import { reverseComplement as ggRC, GG_ENZYMES } from './golden-gate';
 
 const STOPS = ['TAA', 'TAG', 'TGA'];
 const RC = { A: 'T', T: 'A', G: 'C', C: 'G' };
@@ -159,7 +162,310 @@ export function checkPrimerQuality(primer) {
 export function pcrProductSize(frag, leftJunction, rightJunction) {
   if (!frag.needsAmplification) return null;
   const base = frag.length || (frag.sequence || '').length;
-  const leftTail = leftJunction?.overlapLength || 0;
-  const rightTail = rightJunction?.overlapLength || 0;
-  return base + leftTail + rightTail;
+  // Account for overlap mode: split shares overlap between fragments,
+  // left_only/right_only means one side already contains the full overlap
+  const leftAdd = !leftJunction ? 0
+    : leftJunction.overlapMode === 'right_only' ? 0
+    : leftJunction.overlapMode === 'split' ? Math.ceil((leftJunction.overlapLength || 0) / 2)
+    : leftJunction.overlapLength || 0;
+  const rightAdd = !rightJunction ? 0
+    : rightJunction.overlapMode === 'left_only' ? 0
+    : rightJunction.overlapMode === 'split' ? Math.ceil((rightJunction.overlapLength || 0) / 2)
+    : rightJunction.overlapLength || 0;
+  return base + leftAdd + rightAdd;
+}
+
+/**
+ * Validate junction end compatibility between adjacent fragments.
+ * Call BEFORE primer calculation to catch issues early.
+ *
+ * @param {Array} fragments — assembly fragments with .sequence
+ * @param {Array} junctions — junction configs with .type, .overlapLength, etc.
+ * @param {boolean} circular — is the assembly circular
+ * @returns {Array<{junction: number, severity: 'error'|'warning'|'info', message: string}>}
+ */
+export function validateJunctionEnds(fragments, junctions, circular) {
+  const warnings = [];
+  const n = junctions.length;
+
+  for (let i = 0; i < n; i++) {
+    const j = junctions[i];
+    const left = fragments[i];
+    const right = fragments[(i + 1) % fragments.length];
+    if (!left?.sequence || !right?.sequence) continue;
+
+    const jType = j.type || 'overlap';
+
+    // ═══ OVERLAP / GIBSON ═══
+    if (jType === 'overlap') {
+      // 1. Identical fragments → assembly impossible
+      if (left.sequence === right.sequence) {
+        warnings.push({
+          junction: i, severity: 'error',
+          message: `⛔ Стык ${i+1}: идентичные фрагменты (${left.name} = ${right.name}) — overlap/Gibson невозможен. Используйте Golden Gate.`
+        });
+        continue;
+      }
+
+      // 2. Overlap zone analysis
+      const overlapLen = j.overlapLength || 30;
+      const mode = j.overlapMode || 'split';
+
+      let overlapSeq;
+      if (mode === 'split') {
+        const half = Math.ceil(overlapLen / 2);
+        overlapSeq = left.sequence.slice(-half) + right.sequence.slice(0, overlapLen - half);
+      } else if (mode === 'left_only') {
+        overlapSeq = left.sequence.slice(-overlapLen);
+      } else {
+        overlapSeq = right.sequence.slice(0, overlapLen);
+      }
+
+      // 3. GC% check
+      const gc = gcPercent(overlapSeq);
+      if (gc < 20) {
+        warnings.push({
+          junction: i, severity: 'warning',
+          message: `⚠ Стык ${i+1}: GC% overlap = ${gc}% (< 20%) — очень слабый отжиг, сборка может не работать`
+        });
+      }
+      if (gc > 80) {
+        warnings.push({
+          junction: i, severity: 'warning',
+          message: `⚠ Стык ${i+1}: GC% overlap = ${gc}% (> 80%) — возможны вторичные структуры`
+        });
+      }
+
+      // 4. Tm check
+      const overlapTm = calcTmNN(overlapSeq);
+      if (overlapTm < 50) {
+        warnings.push({
+          junction: i, severity: 'warning',
+          message: `⚠ Стык ${i+1}: Tm overlap = ${overlapTm}°C (< 50°C) — слишком низкая, увеличьте overlap`
+        });
+      }
+      if (overlapTm > 72) {
+        warnings.push({
+          junction: i, severity: 'info',
+          message: `💡 Стык ${i+1}: Tm overlap = ${overlapTm}°C (> 72°C) — можно уменьшить overlap`
+        });
+      }
+
+      // 5. Repeat check — overlap sequence appears elsewhere in the construct
+      const fullSeq = fragments.map(f => f.sequence || '').join('');
+      if (overlapSeq.length >= 15) {
+        const check = overlapSeq.toUpperCase();
+        const first = fullSeq.toUpperCase().indexOf(check);
+        const second = fullSeq.toUpperCase().indexOf(check, first + 1);
+        if (second >= 0) {
+          warnings.push({
+            junction: i, severity: 'warning',
+            message: `⚠ Стык ${i+1}: overlap (${overlapSeq.slice(0,10)}...) повторяется в конструкте — риск мисассембли`
+          });
+        }
+      }
+
+      // 6. Self-complementary check (palindrome in overlap)
+      const rc = ggRC(overlapSeq.toUpperCase());
+      if (overlapSeq.toUpperCase() === rc) {
+        warnings.push({
+          junction: i, severity: 'warning',
+          message: `⚠ Стык ${i+1}: overlap палиндромный — возможен hairpin`
+        });
+      }
+    }
+
+    // ═══ RE / ЛИГИРОВАНИЕ ═══
+    if (jType === 're_ligation' || jType === 'sticky_end') {
+      const enzyme = j.reEnzyme || j.enzyme;
+      if (!enzyme) {
+        warnings.push({
+          junction: i, severity: 'error',
+          message: `⛔ Стык ${i+1}: рестриктаза не выбрана`
+        });
+        continue;
+      }
+
+      const reInfo = RE_ENZYMES[enzyme];
+      if (!reInfo) {
+        warnings.push({
+          junction: i, severity: 'error',
+          message: `⛔ Стык ${i+1}: неизвестный фермент "${enzyme}"`
+        });
+        continue;
+      }
+
+      const leftEnd30 = (left.sequence.slice(-30) || '').toUpperCase();
+      const rightStart30 = (right.sequence.slice(0, 30) || '').toUpperCase();
+      const site = reInfo.site.toUpperCase();
+
+      const re = siteToRegex(site);
+      re.lastIndex = 0;
+      const leftHas = re.test(leftEnd30);
+      re.lastIndex = 0;
+      const rightHas = re.test(rightStart30);
+
+      if (!leftHas && !rightHas) {
+        warnings.push({
+          junction: i, severity: 'warning',
+          message: `⚠ Стык ${i+1}: сайт ${enzyme} (${site}) не найден на концах фрагментов — убедитесь что фрагменты подготовлены рестрикцией`
+        });
+      }
+
+      if (reInfo.end === 'blunt') {
+        warnings.push({
+          junction: i, severity: 'info',
+          message: `💡 Стык ${i+1}: ${enzyme} даёт blunt ends — направление вставки неопределённо (50/50)`
+        });
+      }
+    }
+
+    // ═══ KLD ═══
+    if (jType === 'kld') {
+      if (left.needsAmplification === false || right.needsAmplification === false) {
+        warnings.push({
+          junction: i, severity: 'warning',
+          message: `⚠ Стык ${i+1}: KLD требует ПЦР обоих фрагментов — один из них помечен как "без ПЦР"`
+        });
+      }
+    }
+
+    // ═══ GOLDEN GATE ═══
+    if (jType === 'golden_gate') {
+      const oh = (j.overhang || '').toUpperCase();
+      if (!oh || oh.length < 3) {
+        warnings.push({
+          junction: i, severity: 'error',
+          message: `⛔ Стык ${i+1}: Golden Gate overhang не задан`
+        });
+        continue;
+      }
+
+      const ohRC = ggRC(oh);
+      if (oh === ohRC) {
+        warnings.push({
+          junction: i, severity: 'error',
+          message: `⛔ Стык ${i+1}: overhang ${oh} палиндромный — самолигирование`
+        });
+      }
+
+      const ohGC = (oh.match(/[GC]/g) || []).length;
+      if (ohGC === 0) {
+        warnings.push({
+          junction: i, severity: 'warning',
+          message: `⚠ Стык ${i+1}: overhang ${oh} без GC — слабая лигация`
+        });
+      }
+
+      for (let k = i + 1; k < n; k++) {
+        if (junctions[k]?.type !== 'golden_gate') continue;
+        const otherOH = (junctions[k].overhang || '').toUpperCase();
+        if (oh === otherOH) {
+          warnings.push({
+            junction: i, severity: 'error',
+            message: `⛔ Стык ${i+1} и ${k+1}: одинаковый overhang ${oh} — перекрёстная лигация`
+          });
+        }
+        if (oh === ggRC(otherOH)) {
+          warnings.push({
+            junction: i, severity: 'error',
+            message: `⛔ Стык ${i+1} и ${k+1}: RC-совпадение (${oh} ↔ ${otherOH}) — перекрёстная лигация`
+          });
+        }
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // SMART END SCANNING: Detect existing RE/GG cloning sites at fragment ends
+    // Only for overlap junctions where we MIGHT be able to suggest a better method
+    // ═══════════════════════════════════════════════════════════════
+
+    const SCAN_DEPTH = 30;
+    const MIN_FRAG_LEN = 50;
+
+    if ((jType === 'overlap' || !j.type)
+        && left.sequence.length >= MIN_FRAG_LEN
+        && right.sequence.length >= MIN_FRAG_LEN) {
+
+      const leftEnd = left.sequence.slice(-SCAN_DEPTH).toUpperCase();
+      const rightStart = right.sequence.slice(0, SCAN_DEPTH).toUpperCase();
+
+      // ─── 1. Scan for classical RE sites ───
+      const foundLeft = [];
+      const foundRight = [];
+
+      for (const [name, info] of Object.entries(RE_ENZYMES)) {
+        if (info.note && info.note.includes('methylat')) continue;
+        if (info.site.length < 6) continue;
+
+        const re = siteToRegex(info.site);
+
+        let m;
+        re.lastIndex = 0;
+        while ((m = re.exec(leftEnd)) !== null) {
+          foundLeft.push({ enzyme: name, position: leftEnd.length - m.index, site: info.site, overhang: info.overhang, end: info.end });
+          if (m.index === re.lastIndex) re.lastIndex++;
+        }
+
+        re.lastIndex = 0;
+        while ((m = re.exec(rightStart)) !== null) {
+          foundRight.push({ enzyme: name, position: m.index, site: info.site, overhang: info.overhang, end: info.end });
+          if (m.index === re.lastIndex) re.lastIndex++;
+        }
+      }
+
+      // ─── 2. Find MATCHING sites (same enzyme on both ends) ───
+      for (const ls of foundLeft) {
+        const match = foundRight.find(rs => rs.enzyme === ls.enzyme);
+        if (match) {
+          warnings.push({
+            junction: i, severity: 'info',
+            message: `💡 Стык ${i+1}: сайт ${ls.enzyme} (${ls.site}) найден на обоих концах (${left.name} и ${right.name}) — можно использовать RE лигирование вместо overlap`,
+            suggestion: { type: 're_ligation', enzyme: ls.enzyme, site: ls.site, overhang: ls.overhang }
+          });
+        }
+      }
+
+      // ─── 3. Find COMPATIBLE ends (different RE, same overhang+type) ───
+      for (const ls of foundLeft) {
+        if (!ls.overhang || ls.end === 'blunt') continue;
+        for (const rs of foundRight) {
+          if (rs.enzyme === ls.enzyme) continue;
+          if (rs.overhang === ls.overhang && rs.end === ls.end) {
+            warnings.push({
+              junction: i, severity: 'info',
+              message: `💡 Стык ${i+1}: совместимые концы ${ls.enzyme} (${ls.site}) и ${rs.enzyme} (${rs.site}) — оба дают ${ls.end === '5prime' ? "5'" : "3'"} overhang ${ls.overhang}`,
+              suggestion: { type: 're_ligation', enzyme: ls.enzyme, compatibleEnzyme: rs.enzyme, overhang: ls.overhang }
+            });
+          }
+        }
+      }
+
+      // ─── 4. Scan for GG (Type IIS) sites ───
+      for (const [name, enz] of Object.entries(GG_ENZYMES)) {
+        const rec = enz.recognition.toUpperCase();
+        const recRC = ggRC(rec);
+
+        const leftHasGG = leftEnd.includes(rec) || leftEnd.includes(recRC);
+        const rightHasGG = rightStart.includes(rec) || rightStart.includes(recRC);
+
+        if (leftHasGG || rightHasGG) {
+          const leftBody = left.sequence.slice(0, -SCAN_DEPTH).toUpperCase();
+          const rightBody = right.sequence.slice(SCAN_DEPTH).toUpperCase();
+          const inBody = leftBody.includes(rec) || leftBody.includes(recRC)
+                      || rightBody.includes(rec) || rightBody.includes(recRC);
+
+          if (!inBody) {
+            warnings.push({
+              junction: i, severity: 'info',
+              message: `💡 Стык ${i+1}: сайт ${name} (${rec}) обнаружен ${leftHasGG && rightHasGG ? 'на обоих концах' : leftHasGG ? `на конце ${left.name}` : `на начале ${right.name}`} — возможен Golden Gate`,
+              suggestion: { type: 'golden_gate', enzyme: name }
+            });
+          }
+        }
+      }
+    }
+  }
+
+  return warnings;
 }

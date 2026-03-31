@@ -55,6 +55,13 @@ export default function FragmentSplitter({ fragment, onSplit, onClose, partsLibr
   const [mode, setMode] = useState(isCDS ? 'aa' : 'nt'); // 'aa' | 'nt'
   const [cutAA, setCutAA] = useState(0);
   const [cutNT, setCutNT] = useState(Math.floor(seq.length / 2));
+  const [insertMode, setInsertMode] = useState(false);
+  const [cutStart, setCutStart] = useState(0);
+  const [cutEnd, setCutEnd] = useState(0);
+  const [flankLength, setFlankLength] = useState(1000);
+
+  // Regions from annotations
+  const regions = useMemo(() => getRegions(fragment.annotations), [fragment.annotations]);
 
   // Protein for CDS mode
   const protein = useMemo(() => isCDS ? translateDNA(seq) : '', [seq, isCDS]);
@@ -242,6 +249,51 @@ export default function FragmentSplitter({ fragment, onSplit, onClose, partsLibr
           )}
         </div>
 
+        {/* Insert mode controls */}
+        {insertMode && (
+          <div className="mb-4 space-y-3 bg-green-50 rounded-lg p-3 border border-green-200">
+            <div className="text-xs font-semibold text-green-700">Длина плечей гомологии:</div>
+            <div className="flex gap-2">
+              {[500, 750, 1000, 1500, 2000].map(len => (
+                <button key={len} onClick={() => setFlankLength(len)}
+                  className={`text-[11px] px-3 py-1.5 rounded-full border transition
+                    ${flankLength === len ? 'bg-green-100 border-green-400 text-green-700 font-semibold' : 'hover:bg-gray-50'}`}>
+                  {len} п.н.
+                </button>
+              ))}
+            </div>
+
+            <div className="text-xs font-semibold text-green-700 mt-2">Границы удаляемого региона:</div>
+            {regions.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {regions.map((r, ri) => (
+                  <button key={ri} onClick={() => { setCutStart(r.start); setCutEnd(r.end); }}
+                    className="text-[10px] px-2 py-1 rounded border border-red-200 hover:bg-red-50 transition text-red-600">
+                    {'🎯'} {r.name} ({r.start}–{r.end}, {r.end - r.start} п.н.)
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <label className="text-[10px] text-gray-500 w-14">Начало:</label>
+              <input type="number" value={cutStart} min={0} max={seq.length}
+                onChange={e => setCutStart(Math.max(0, +e.target.value))}
+                className="w-20 border rounded p-1 text-xs" />
+              <label className="text-[10px] text-gray-500 w-14">Конец:</label>
+              <input type="number" value={cutEnd} min={cutStart} max={seq.length}
+                onChange={e => setCutEnd(Math.min(seq.length, +e.target.value))}
+                className="w-20 border rounded p-1 text-xs" />
+              <span className="text-[10px] text-red-500">Удалить: {cutEnd - cutStart} п.н.</span>
+            </div>
+
+            <div className="bg-white rounded p-2 font-mono text-[10px] border">
+              <span className="text-orange-600">[5' flank: {Math.min(flankLength, cutStart)} п.н.]</span>
+              <span className="text-red-400 mx-1">──✂ {cutEnd - cutStart} п.н. ✂──</span>
+              <span className="text-blue-600">[3' flank: {Math.min(flankLength, seq.length - cutEnd)} п.н.]</span>
+            </div>
+          </div>
+        )}
+
         {/* ── Actions ── */}
         <div className="space-y-2">
 
@@ -325,7 +377,40 @@ export default function FragmentSplitter({ fragment, onSplit, onClose, partsLibr
             </div>
           )}
 
-          {/* 5. Cancel */}
+          {/* 5. Split for cassette insertion */}
+          <button onClick={() => {
+            if (!insertMode) {
+              setInsertMode(true);
+              const targetRegion = regions.find(r => r.type === 'CDS' || r.type === 'gene');
+              if (targetRegion) { setCutStart(targetRegion.start); setCutEnd(targetRegion.end); }
+              else { setCutStart(Math.floor(seq.length * 0.3)); setCutEnd(Math.floor(seq.length * 0.7)); }
+              return;
+            }
+            const flank5Len = Math.min(flankLength, cutStart);
+            const flank3Len = Math.min(flankLength, seq.length - cutEnd);
+            onSplit({
+              action: 'split_for_insert',
+              flank5Name: `5'_flank_${fragment.name}`,
+              flank5DNA: seq.slice(cutStart - flank5Len, cutStart),
+              flank3Name: `3'_flank_${fragment.name}`,
+              flank3DNA: seq.slice(cutEnd, cutEnd + flank3Len),
+              cutStart, cutEnd,
+              deletedLength: cutEnd - cutStart,
+              flankLength,
+            });
+          }}
+            className="w-full text-left px-4 py-3 border-2 border-dashed rounded-lg hover:bg-green-50 hover:border-green-400 transition">
+            <div className="text-sm font-semibold text-green-700">
+              {insertMode ? '✂ + ➕ Создать фланки для вставки' : '✂ + ➕ Разрезать для вставки кассеты'}
+            </div>
+            <div className="text-[10px] text-gray-500">
+              {insertMode
+                ? `[5'_flank ${Math.min(flankLength, cutStart)} п.н.] + [📦 кассета] + [3'_flank ${Math.min(flankLength, seq.length - cutEnd)} п.н.]`
+                : 'Удалить целевой ген, оставить фланки гомологии для overlap/Gibson'}
+            </div>
+          </button>
+
+          {/* 6. Cancel */}
           <button onClick={onClose}
             className="w-full text-left px-4 py-3 border rounded-lg hover:bg-gray-50 transition">
             <div className="text-sm font-semibold text-gray-700">{'✅'} Отмена</div>

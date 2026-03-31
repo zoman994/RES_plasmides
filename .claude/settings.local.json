@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(py -m pip install python-multipart)",
-      "Bash(py -m uvicorn server:app --port 8000 --log-level info)"
+      "Bash(py -m uvicorn server:app --port 8000 --log-level info)",
+      "Bash(npx vitest:*)"
     ]
   }
 }

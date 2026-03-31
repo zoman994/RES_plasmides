@@ -62,11 +62,12 @@ export const createProjectSlice = (set, get) => ({
       const cur = state.projects.find(p => p.id === state.activeProjectId);
       if (cur) { cur.name = state.projectName; cur.assemblies = state.assemblies; cur.activeId = state.activeId; }
 
+      const num = state.projects.length + 1;
       const id = `proj_${Date.now()}`;
       const asmId = `asm_${Date.now()}`;
-      state.projects.push({ id, name: `Проект ${state.projects.length + 1}`, assemblies: [newAssembly(asmId, 'Сборка 1')], activeId: asmId });
+      state.projects.push({ id, name: `Проект ${num}`, assemblies: [newAssembly(asmId, 'Сборка 1')], activeId: asmId });
       state.activeProjectId = id;
-      state.projectName = `Проект ${state.projects.length}`;
+      state.projectName = `Проект ${num}`;
       state.assemblies = [newAssembly(asmId, 'Сборка 1')];
       state.activeId = asmId;
     }, false, 'addProject');
