@@ -51,8 +51,21 @@ export default function PartsPalette() {
 
   const removePart       = useStore(s => s.removePart);
   const initialized      = useStore(s => s.initialized);
+  const updatePartStatus = useStore(s => s.updatePartStatus);
+  const archivePart      = useStore(s => s.archivePart);
+  const restorePart      = useStore(s => s.restorePart);
 
   const fileInputRef = useRef(null);
+  const partRefs = useRef({});
+  const [search, setSearch] = useState('');
+  const [activeCollId, setActiveCollId] = useState(null);
+  const [collVer, setCollVer] = useState(0);
+  const [expandedId, setExpandedId] = useState(null);
+  const [ctxMenu, setCtxMenu] = useState(null); // { part, x, y }
+  const [statusFilter, setStatusFilter] = useState('default');
+  const [invOpen, setInvOpen] = useState(false);
+
+  const collections = useMemo(() => getCollections(), [collVer]);
 
   // Wait for store rehydration before rendering parts list
   if (!initialized) {
@@ -62,24 +75,34 @@ export default function PartsPalette() {
       </div>
     );
   }
-  const partRefs = useRef({});
-  const [search, setSearch] = useState('');
-  const [activeCollId, setActiveCollId] = useState(null);
-  const [collVer, setCollVer] = useState(0);
-  const [expandedId, setExpandedId] = useState(null);
-  const [ctxMenu, setCtxMenu] = useState(null); // { part, x, y }
-
-  const collections = useMemo(() => getCollections(), [collVer]);
 
   const filtered = useMemo(() => {
     let list = parts;
+
+    // Status filter
+    const activeProjectId = useStore.getState().activeProjectId;
+    if (statusFilter === 'default') {
+      list = list.filter(p =>
+        p.status === 'verified' ||
+        (p.status === 'draft' && p.origin?.projectId === activeProjectId) ||
+        !p.status // backward compat
+      );
+    } else if (statusFilter === 'verified') {
+      list = list.filter(p => p.status === 'verified' || !p.status);
+    } else if (statusFilter === 'project') {
+      list = list.filter(p => p.origin?.projectId === activeProjectId);
+    } else if (statusFilter === 'archived') {
+      list = list.filter(p => p.status === 'archived');
+    }
+    // 'all' = no status filter
+
     if (activeCollId) {
       const coll = collections.find(c => c.id === activeCollId);
-      if (coll) list = parts.filter(p => coll.partIds.includes(p.id));
+      if (coll) list = list.filter(p => coll.partIds.includes(p.id));
     }
     if (search) list = list.filter(p => p.name.toLowerCase().includes(search.toLowerCase()));
     return list;
-  }, [parts, activeCollId, collections, search]);
+  }, [parts, activeCollId, collections, search, statusFilter]);
 
   const isPlasmid = (p) => p.topology === 'circular' && getRegions(p.annotations).length >= 2;
   const plasmidParts = filtered.filter(isPlasmid);
@@ -156,7 +179,23 @@ export default function PartsPalette() {
 
       <input type="text" placeholder={t('Search...')} value={search}
         onChange={e => setSearch(e.target.value)}
-        className="w-full text-xs p-1.5 border rounded mb-3 outline-none focus:border-blue-400" />
+        className="w-full text-xs p-1.5 border rounded mb-2 outline-none focus:border-blue-400" />
+
+      {/* Status filter */}
+      <div className="flex gap-1 mb-2 flex-wrap">
+        {[
+          { val: 'default', label: 'Актуальные' },
+          { val: 'all', label: 'Все' },
+          { val: 'verified', label: 'Получен.' },
+          { val: 'project', label: 'Проект' },
+          { val: 'archived', label: 'Архив' },
+        ].map(f => (
+          <button key={f.val} onClick={() => setStatusFilter(f.val)}
+            className={`text-[9px] px-2 py-0.5 rounded-full transition ${
+              statusFilter === f.val ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+            }`}>{f.label}</button>
+        ))}
+      </div>
 
       <div className="flex-1 overflow-y-auto">
         {/* ── ПЛАЗМИДЫ ── */}
@@ -181,6 +220,8 @@ export default function PartsPalette() {
                       <SBOLIcon type="plasmid" size={14} color="#A855F7" />
                     </DraggableHandle>
                     <span className="text-xs font-medium truncate flex-1">{p.name}</span>
+                    {p.status === 'draft' && <span className="text-[7px] px-1 rounded bg-amber-100 text-amber-700 shrink-0">Запл.</span>}
+                    {p.status === 'archived' && <span className="text-[7px] px-1 rounded bg-gray-100 text-gray-500 shrink-0">Арх.</span>}
                     <span className="text-[10px] text-gray-400">{p.length?.toLocaleString()}</span>
                     <span className="text-[9px] text-purple-400">{regions.length} рег</span>
                     <span className={`text-[9px] text-gray-300 transition-transform ${isExpanded ? 'rotate-90' : ''}`}>{'▶'}</span>
@@ -248,6 +289,8 @@ export default function PartsPalette() {
                     <SBOLIcon type={p.type} size={14} color={color} />
                   </DraggableHandle>
                   <span className="text-xs font-medium truncate flex-1">{p.name}</span>
+                  {p.status === 'draft' && <span className="text-[7px] px-1 rounded bg-amber-100 text-amber-700 shrink-0">Запл.</span>}
+                  {p.status === 'archived' && <span className="text-[7px] px-1 rounded bg-gray-100 text-gray-500 shrink-0">Арх.</span>}
                   <span className="text-[10px] text-gray-400">{p.length}</span>
                   {children.length > 0 && (
                     <span className="w-4 h-4 rounded-full bg-purple-100 text-purple-700 text-[8px] font-bold flex items-center justify-center">{children.length}</span>
@@ -340,13 +383,16 @@ export default function PartsPalette() {
         )}
       </div>
 
-      {/* 🧊 PhysicalDNA — Амплифицированные */}
+      {/* 🧊 PhysicalDNA — Инвентарь (collapsed by default) */}
       {!activeCollId && (pcrProducts.length > 0 || plasmids.length > 0) && (
         <div>
-          <div className="text-[10px] text-cyan-600 uppercase tracking-wider font-semibold mt-4 mb-1">
-            {'🧊'} Амплифицированные
+          <div className="text-[10px] text-cyan-600 uppercase tracking-wider font-semibold mt-4 mb-1 cursor-pointer flex items-center gap-1"
+            onClick={() => setInvOpen(!invOpen)}>
+            <span className={`text-[8px] transition-transform ${invOpen ? 'rotate-90' : ''}`}>{'▶'}</span>
+            <span>{'🧊'} Инвентарь</span>
+            <span className="text-gray-300">({pcrProducts.length + plasmids.length})</span>
           </div>
-          {pcrProducts.map(item => (
+          {invOpen && pcrProducts.map(item => (
             <DraggableHandle key={item.id} part={{
               id: item.id, name: item.name, type: 'pcr_product',
               sequence: item.sequence, length: item.length,
@@ -360,7 +406,7 @@ export default function PartsPalette() {
               </div>
             </DraggableHandle>
           ))}
-          {plasmids.map(item => (
+          {invOpen && plasmids.map(item => (
             <DraggableHandle key={item.id} part={{
               id: item.id, name: item.name, type: 'plasmid',
               sequence: item.sequence, length: item.length,
@@ -393,7 +439,16 @@ export default function PartsPalette() {
           }], p.name, true) },
           { divider: true },
           ...(plasmid ? [{ icon: '\u2699', label: 'Использовать в сборке', onClick: () => addFragment(p) }] : []),
-          { icon: '\uD83D\uDDD1', label: 'Удалить', onClick: () => { if (confirm(`Удалить "${p.name}"?`)) removePart(p.id); } },
+          { divider: true },
+          ...(p.status === 'draft' ? [
+            { icon: '\u2705', label: 'Отметить как полученный', onClick: () => updatePartStatus(p.id, 'verified') },
+          ] : []),
+          ...(p.status !== 'archived' ? [
+            { icon: '\uD83D\uDCE6', label: 'В архив', onClick: () => archivePart(p.id) },
+          ] : [
+            { icon: '\u21A9\uFE0F', label: 'Восстановить', onClick: () => restorePart(p.id) },
+          ]),
+          { icon: '\uD83D\uDDD1', label: 'Удалить', onClick: () => { if (confirm(`Удалить "${p.name}"?`)) removePart(p.id); }, danger: true },
         ];
         return <ContextMenu items={items} position={{ x: ctxMenu.x, y: ctxMenu.y }} onClose={() => setCtxMenu(null)} />;
       })()}

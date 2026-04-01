@@ -95,7 +95,20 @@ export const createFragmentSlice = (set, get) => ({
       derivation: part.derivation || null,
       source: part.source || 'manual',
       addedDate: part.addedDate || new Date().toISOString(),
+      origin: part.origin || {
+        projectId: get().activeProjectId,
+        projectName: get().projectName,
+        createdAt: new Date().toISOString(),
+      },
     };
+    // Auto-determine status from source
+    if (!newPart.status) {
+      if (['import', 'genbank_import', 'batch_import'].includes(newPart.source)) {
+        newPart.status = 'verified';
+      } else {
+        newPart.status = 'draft';
+      }
+    }
     // Always auto-annotate: preserves existing regions + manual, adds details + points
     newPart.annotations = autoAnnotate(newPart);
     state.parts.push(newPart);
@@ -127,6 +140,24 @@ export const createFragmentSlice = (set, get) => ({
   removePart: (id) => set(state => {
     state.parts = state.parts.filter(p => p.id !== id);
   }, false, 'removePart'),
+
+  updatePartStatus: (id, status) => set(state => {
+    const p = state.parts.find(x => x.id === id);
+    if (p) {
+      p.status = status;
+      if (status === 'verified') p.verifiedDate = new Date().toISOString();
+    }
+  }, false, 'updatePartStatus'),
+
+  archivePart: (id) => set(state => {
+    const p = state.parts.find(x => x.id === id);
+    if (p) p.status = 'archived';
+  }, false, 'archivePart'),
+
+  restorePart: (id) => set(state => {
+    const p = state.parts.find(x => x.id === id);
+    if (p && p.status === 'archived') p.status = 'draft';
+  }, false, 'restorePart'),
 
   // ═══ Fragment actions (modify active assembly) ═══
   addFragment: (part) => {

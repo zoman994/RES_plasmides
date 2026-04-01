@@ -210,14 +210,13 @@ export default function App() {
   // ═══ Load parts on mount (merge API parts with persisted user variants) ═══
   useEffect(() => {
     const mergeParts = (apiParts) => {
-      const existingIds = new Set(parts.map(p => p.id));
-      // User-created variants (parentId set, or source=mutagenesis) must be preserved
-      const userParts = parts.filter(p => p.parentId || p.source === 'mutagenesis');
-      // API parts: add only if not already present
-      const newApiParts = apiParts.filter(p => !existingIds.has(p.id));
-      // Merge: API base parts + user variants
-      const baseParts = apiParts.filter(p => existingIds.has(p.id) ? false : true);
-      setParts([...baseParts, ...userParts]);
+      const currentParts = useStore.getState().parts;
+      if (!apiParts.length) return; // don't wipe on empty
+      const existingIds = new Set(currentParts.map(p => p.id));
+      const newOnly = apiParts.filter(p => !existingIds.has(p.id));
+      if (newOnly.length > 0) {
+        useStore.getState().setParts([...currentParts, ...newOnly]);
+      }
     };
     const fallback = [
       { id: 'd1', name: 'PglaA', type: 'promoter', sequence: 'ATCG'.repeat(212), length: 850 },

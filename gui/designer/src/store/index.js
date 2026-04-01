@@ -126,7 +126,7 @@ const throttledStorage = {
 
 const persistConfig = {
   name: LS_KEY,
-  version: 5,
+  version: 6,
   storage: throttledStorage,
   partialize: (state) => ({
     projects: state.projects, activeProjectId: state.activeProjectId,
@@ -154,6 +154,19 @@ const persistConfig = {
       persisted.parts = persisted.parts.map(p => {
         if (p.annotations?.some(a => a.level === 'region')) return p; // already migrated
         return { ...p, annotations: migratePartAnnotations(p) };
+      });
+    }
+    // v5 → v6: add status field to parts
+    if (version < 6 && persisted?.parts) {
+      persisted.parts = persisted.parts.map(p => {
+        if (p.status) return p;
+        if (['import', 'genbank_import', 'batch_import'].includes(p.source)) {
+          return { ...p, status: 'verified' };
+        }
+        if (['mutagenesis', 'mutation', 'split', 'fusion', 'assembly'].includes(p.source)) {
+          return { ...p, status: 'draft', origin: p.origin || { projectId: persisted.activeProjectId, createdAt: p.addedDate } };
+        }
+        return { ...p, status: 'verified' }; // old data = benefit of the doubt
       });
     }
     return persisted;
@@ -203,7 +216,7 @@ if (typeof window !== 'undefined') {
   window.addEventListener('beforeunload', () => {
     const state = useStore.getState();
     const persisted = persistConfig.partialize(state);
-    localStorage.setItem(LS_KEY, JSON.stringify({ state: persisted, version: 5 }));
+    localStorage.setItem(LS_KEY, JSON.stringify({ state: persisted, version: 6 }));
   });
 }
 
