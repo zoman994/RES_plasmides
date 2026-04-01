@@ -12,6 +12,24 @@ import { applyNodeChanges, applyEdgeChanges, addEdge } from '@xyflow/react';
 import Dagre from '@dagrejs/dagre';
 import { newAssembly } from './projectSlice';
 
+/** Default stage labels inferred from node types within each rank */
+const STAGE_LABELS = {
+  plasmidNode: 'Шаблоны',
+  pcrNode: 'ПЦР',
+  assemblyNode: 'Сборка',
+  oligoNode: 'Олиго',
+  checkpointNode: 'Контроль',
+};
+
+function inferStageLabel(nodesInRank) {
+  // Priority: checkpoint > assembly > pcr > oligo > plasmid
+  const priority = ['checkpointNode', 'assemblyNode', 'pcrNode', 'oligoNode', 'plasmidNode'];
+  for (const type of priority) {
+    if (nodesInRank.some(n => n.type === type)) return STAGE_LABELS[type];
+  }
+  return `Этап`;
+}
+
 /** Node sizes for dagre auto-layout */
 const NODE_SIZES = {
   plasmidNode:    { width: 180, height: 80 },
@@ -22,8 +40,9 @@ const NODE_SIZES = {
 };
 
 export const createProjectFlowSlice = (set, get) => ({
-  flowNodes: [],       // [{ id, type, position, data }]
+  flowNodes: [],       // [{ id, type, position, data: { ..., stage, stageLabel } }]
   flowEdges: [],       // [{ id, source, target, type, data }]
+  flowStages: [],      // [{ rank, label, x, width, nodeCount }] — computed by autoLayoutFlow
   projectView: 'construct',  // 'construct' | 'flow'
 
   setProjectView: (view) => set({ projectView: view }, false, 'setProjectView'),
@@ -189,7 +208,7 @@ export const createProjectFlowSlice = (set, get) => ({
     state.flowEdges = [];
   }, false, 'clearFlow'),
 
-  // ═══ Auto-layout via dagre (LR) ═══
+  // ═══ Auto-layout via dagre (LR) + stage computation ═══
   autoLayoutFlow: () => {
     const { flowNodes, flowEdges } = get();
     if (flowNodes.length === 0) return;
@@ -206,14 +225,70 @@ export const createProjectFlowSlice = (set, get) => ({
     }
     Dagre.layout(g);
 
+    // Compute stages from dagre ranks (x-positions → rank buckets)
+    const xPositions = {};
+    for (const n of flowNodes) {
+      const pos = g.node(n.id);
+      if (pos) xPositions[n.id] = pos.x;
+    }
+    // Cluster x-positions into ranks (tolerance: ranksep/2 = 75)
+    const sortedX = [...new Set(Object.values(xPositions))].sort((a, b) => a - b);
+    const rankBuckets = [];
+    for (const x of sortedX) {
+      const existing = rankBuckets.find(b => Math.abs(b.x - x) < 75);
+      if (existing) { existing.x = (existing.x + x) / 2; }
+      else rankBuckets.push({ x, rank: rankBuckets.length });
+    }
+    const nodeRank = {};
+    for (const [id, x] of Object.entries(xPositions)) {
+      const bucket = rankBuckets.reduce((best, b) =>
+        Math.abs(b.x - x) < Math.abs(best.x - x) ? b : best, rankBuckets[0]);
+      nodeRank[id] = bucket.rank;
+    }
+
+    // Infer stage labels per rank
+    const rankNodes = {};
+    for (const n of flowNodes) {
+      const rank = nodeRank[n.id] ?? 0;
+      if (!rankNodes[rank]) rankNodes[rank] = [];
+      rankNodes[rank].push(n);
+    }
+    const stageLabels = {};
+    for (const [rank, nodes] of Object.entries(rankNodes)) {
+      stageLabels[rank] = inferStageLabel(nodes);
+    }
+
     set(state => {
+      // Compute stage metadata for UI
+      const stages = [];
       for (const n of state.flowNodes) {
         const pos = g.node(n.id);
         const size = NODE_SIZES[n.type] || { width: 180, height: 80 };
         if (pos) {
           n.position = { x: pos.x - size.width / 2, y: pos.y - size.height / 2 };
         }
+        const rank = nodeRank[n.id] ?? 0;
+        n.data.stage = rank;
+        n.data.stageLabel = stageLabels[rank] || `Этап ${rank + 1}`;
       }
+
+      // Build stage info for rendering
+      state.flowStages = Object.entries(rankNodes).map(([rank, nodes]) => {
+        const xs = nodes.map(n => {
+          const pos = g.node(n.id);
+          const size = NODE_SIZES[n.type] || { width: 180, height: 80 };
+          return pos ? [pos.x - size.width / 2, pos.x + size.width / 2] : [0, 0];
+        });
+        const minX = Math.min(...xs.map(r => r[0])) - 30;
+        const maxX = Math.max(...xs.map(r => r[1])) + 30;
+        return {
+          rank: +rank,
+          label: stageLabels[rank] || `Этап ${+rank + 1}`,
+          x: minX,
+          width: maxX - minX,
+          nodeCount: nodes.length,
+        };
+      }).sort((a, b) => a.rank - b.rank);
     }, false, 'autoLayoutFlow');
   },
 });

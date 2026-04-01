@@ -20,7 +20,7 @@
 
 ### Низкие
 
-- [ ] **BUG-66:** Нет концепции шага/этапа в flow DAG. (дизайн-задача, не баг)
+- [x] **BUG-66:** Нет концепции шага/этапа в flow DAG. Fix: stages вычисляются из dagre ranks, visual stage panel в ProjectFlowCanvas.
 
 ---
 

@@ -6,7 +6,7 @@
  * Supports: drag from PartsPalette, snap-to-grid, minimap, auto-layout, export.
  */
 import { useState, useRef, useCallback } from 'react';
-import { ReactFlow, MiniMap, Controls, Background } from '@xyflow/react';
+import { ReactFlow, MiniMap, Controls, Background, Panel, useReactFlow } from '@xyflow/react';
 import { useDrop } from 'react-dnd';
 import { useStore } from '../../store';
 import PlasmidNode from './PlasmidNode';
@@ -35,6 +35,7 @@ const edgeTypes = {
 export default function ProjectFlowCanvas() {
   const flowNodes = useStore(s => s.flowNodes);
   const flowEdges = useStore(s => s.flowEdges);
+  const flowStages = useStore(s => s.flowStages);
   const onNodesChange = useStore(s => s.onFlowNodesChange);
   const onEdgesChange = useStore(s => s.onFlowEdgesChange);
   const onConnect = useStore(s => s.onFlowConnect);
@@ -141,6 +142,31 @@ export default function ProjectFlowCanvas() {
           deleteKeyCode={null}
           proOptions={{ hideAttribution: true }}
         >
+          {/* Stage column indicators */}
+          {flowStages.length > 1 && (
+            <Panel position="top-left" className="pointer-events-none">
+              <div className="flex items-start gap-0" style={{ position: 'relative' }}>
+                {flowStages.map((stage, i) => {
+                  const colors = ['bg-blue-50', 'bg-teal-50', 'bg-amber-50', 'bg-purple-50', 'bg-green-50', 'bg-rose-50'];
+                  const textColors = ['text-blue-500', 'text-teal-500', 'text-amber-500', 'text-purple-500', 'text-green-500', 'text-rose-500'];
+                  return (
+                    <div key={stage.rank}
+                      className="flex flex-col items-center px-4 py-1.5">
+                      <div className={`text-[10px] font-bold ${textColors[i % textColors.length]} tracking-wide uppercase`}>
+                        Этап {stage.rank + 1}
+                      </div>
+                      <div className={`text-[9px] ${textColors[i % textColors.length]} opacity-70`}>
+                        {stage.label}
+                      </div>
+                      <div className={`text-[8px] text-gray-400 mt-0.5`}>
+                        {stage.nodeCount} {stage.nodeCount === 1 ? 'нода' : 'нод'}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Panel>
+          )}
           <Background gap={20} size={1} color="#e5e7eb" />
           <MiniMap
             nodeStrokeColor="#3b82f6"
@@ -193,7 +219,8 @@ export default function ProjectFlowCanvas() {
             PNG
           </button>
           <span className="text-[10px] text-gray-400 ml-1">
-            {flowNodes.length} {flowNodes.length === 1 ? 'node' : 'nodes'}
+            {flowNodes.length} {flowNodes.length === 1 ? 'нода' : 'нод'}
+            {flowStages.length > 0 && ` · ${flowStages.length} ${flowStages.length === 1 ? 'этап' : 'этапов'}`}
           </span>
         </div>
 
