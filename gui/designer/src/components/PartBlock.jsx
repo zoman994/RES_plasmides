@@ -32,8 +32,13 @@ export default function PartBlock({
   fwdPrimer, revPrimer, circularHint,
   variants, onSwapVariant,
   compact,
+  onMutagenesis, onReplace, onAddTag, onSaveToLibrary,
 }) {
   // ═══ Store selector (granular) ═══
+  const setMutagenesisTarget = useStore(s => s.setMutagenesisTarget);
+  const setReplacingFragment = useStore(s => s.setReplacingFragment);
+  const setTagFusionTarget = useStore(s => s.setTagFusionTarget);
+  const saveFragmentToLibrary = useStore(s => s.saveFragmentToLibrary);
   const expertMode = useStore(s => s.expertMode);
   const highlightedPartId = useStore(s => s.highlightedPartId);
   const setHighlightedPartId = useStore(s => s.setHighlightedPartId);
@@ -336,22 +341,6 @@ export default function PartBlock({
                 </div>
               );
             }
-            // Fallback: legacy domain bar
-            if (fragment.domains?.length > 0) {
-              const totalAA = Math.ceil(seqLen / 3);
-              return (
-                <div className={`flex h-2.5 rounded overflow-hidden w-full mt-0.5 ${fragment.strand === -1 ? 'flex-row-reverse' : ''}`}>
-                  {fragment.domains.map((d, di) => {
-                    const w = Math.max(3, ((d.endAA - d.startAA + 1) / (totalAA || 1)) * 100);
-                    return (
-                      <div key={di} style={{ width: `${w}%`, backgroundColor: d.color || '#56B4E9' }}
-                        className="border-r border-white/30 last:border-0"
-                        title={`${d.name}: ${d.startAA}–${d.endAA} а.о.`} />
-                    );
-                  })}
-                </div>
-              );
-            }
             return null;
           })()}
           {/* Size + mutation position dots */}
@@ -467,15 +456,25 @@ export default function PartBlock({
         <ContextMenu
           position={{ x: ctxMenu.x, y: ctxMenu.y }}
           onClose={() => setCtxMenu(null)}
-          items={[
-            { icon: '\uD83D\uDCCB', label: 'Копировать последовательность', onClick: () => navigator.clipboard.writeText(fragment.sequence || '') },
-            { divider: true },
-            ...(onEditFragment ? [{ icon: '\u270F\uFE0F', label: 'Редактировать', onClick: () => onEditFragment(index) }] : []),
-            ...(onSplitSignal ? [{ icon: '\u2702\uFE0F', label: 'Разрезать', onClick: () => onSplitSignal(index) }] : []),
-            ...(onFlip ? [{ icon: '\u21BB', label: 'Перевернуть (RC)', onClick: () => onFlip(index) }] : []),
-            { divider: true },
-            { icon: '\uD83D\uDDD1', label: 'Удалить', onClick: () => onRemove(index) },
-          ]}
+          items={(() => {
+            const isCDS = ['CDS', 'gene', 'marker', 'reporter'].includes(fragment.type);
+            return [
+              { icon: '\uD83D\uDCCB', label: 'Копировать последовательность', onClick: () => navigator.clipboard.writeText(fragment.sequence || ''), shortcut: 'Ctrl+C' },
+              { divider: true },
+              ...(onEditFragment ? [{ icon: '\u270F\uFE0F', label: 'Редактировать', onClick: () => onEditFragment(index), shortcut: 'E' }] : []),
+              ...(onSplitSignal ? [{ icon: '\u2702\uFE0F', label: 'Разрезать', onClick: () => onSplitSignal(index) }] : []),
+              ...(onFlip ? [{ icon: '\u21BB', label: 'Перевернуть (RC)', onClick: () => onFlip(index), shortcut: 'R' }] : []),
+              { divider: true },
+              ...(isCDS ? [
+                { icon: '\uD83E\uDDEC', label: 'Мутагенез...', onClick: () => setMutagenesisTarget(index), description: 'Точечные мутации, стратегия KLD' },
+                { icon: '\uD83C\uDFF7\uFE0F', label: 'Добавить тег/fusion...', onClick: () => setTagFusionTarget(index), description: 'His6, FLAG, MBP, TEV...' },
+              ] : []),
+              { icon: '\uD83D\uDD04', label: 'Заменить из библиотеки...', onClick: () => setReplacingFragment({ index, type: fragment.type }), description: 'Выбрать аналог по типу' },
+              { icon: '\uD83D\uDCE6', label: 'Сохранить в библиотеку', onClick: () => saveFragmentToLibrary(index) },
+              { divider: true },
+              { icon: '\uD83D\uDDD1', label: 'Удалить', onClick: () => onRemove(index), shortcut: 'Del', danger: true },
+            ];
+          })()}
         />
       )}
     </div>

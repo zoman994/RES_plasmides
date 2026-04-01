@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { getFragColor, NT_COLORS } from '../theme';
 import { translateDNA } from '../codons';
-import { DOMAIN_COLORS } from '../domain-detection';
+import { ANNOTATION_COLORS } from '../auto-annotate';
 
 export default function SequenceViewer({ fragments, circular, primers = [] }) {
   const [open, setOpen] = useState(false);
@@ -11,7 +11,11 @@ export default function SequenceViewer({ fragments, circular, primers = [] }) {
   const fullSeq = fragments.map(f => f.sequence || '').join('');
   const selFrag = typeof selected === 'number' ? fragments[selected] : null;
   const isCDS = selFrag?.type === 'CDS' || selFrag?.type === 'gene' || selFrag?.type === 'marker';
-  const hasDomains = isCDS && selFrag?.domains?.length > 0;
+  const details = useMemo(() => {
+    if (!selFrag?.annotations) return [];
+    return selFrag.annotations.filter(a => a.level === 'detail');
+  }, [selFrag]);
+  const hasDetails = details.length > 0;
   const effectiveMode = !isCDS ? 'dna' : viewMode;
 
   const { coloredRanges, boundaries } = useMemo(() => {
@@ -102,7 +106,7 @@ export default function SequenceViewer({ fragments, circular, primers = [] }) {
                 selected === 'all' ? 'bg-gray-800 text-white' : 'bg-gray-100 hover:bg-gray-200'
               }`}>Все ({fullSeq.length} п.н.)</button>
             {fragments.map((f, i) => (
-              <button key={i} onClick={() => { setSelected(i); if (f.type === 'CDS' && f.domains?.length) setViewMode('domains'); }}
+              <button key={i} onClick={() => { setSelected(i); if (f.type === 'CDS' && f.annotations?.some(a => a.level === 'detail')) setViewMode('domains'); }}
                 className={`text-[10px] px-2 py-1 rounded transition ${
                   selected === i ? 'text-white' : 'bg-gray-100 hover:bg-gray-200'
                 }`} style={selected === i ? { background: getFragColor(f.type, i) } : {}}>
@@ -111,10 +115,10 @@ export default function SequenceViewer({ fragments, circular, primers = [] }) {
             ))}
             {isCDS && (
               <div className="flex gap-0 rounded-lg overflow-hidden border ml-auto">
-                {hasDomains && (
+                {hasDetails && (
                   <button onClick={() => setViewMode('domains')}
                     className={`px-2 py-1 text-[9px] font-medium ${viewMode === 'domains' ? 'bg-blue-600 text-white' : 'hover:bg-gray-100'}`}>
-                    {'📦'} Домены
+                    {'📦'} Детали
                   </button>
                 )}
                 <button onClick={() => setViewMode('protein')}
@@ -130,17 +134,24 @@ export default function SequenceViewer({ fragments, circular, primers = [] }) {
           </div>
 
           {/* Domain bar */}
-          {effectiveMode === 'domains' && hasDomains && (
+          {effectiveMode === 'domains' && hasDetails && (
             <div className="mb-3">
               <div className="flex h-8 rounded overflow-hidden border">
-                {selFrag.domains.map((d, i) => {
-                  const totalAA = Math.ceil(displaySeq.length / 3);
-                  const widthPct = Math.max(3, ((d.endAA - d.startAA + 1) / (totalAA || 1)) * 100);
+                {details.map((d, i) => {
+                  const seqLen = displaySeq.length || 1;
+                  const widthPct = Math.max(3, ((d.end - d.start) / seqLen) * 100);
+                  const color = d.color || ANNOTATION_COLORS[d.type] || '#56B4E9';
+                  const isProteinDetail = isCDS;
+                  const aaStart = isProteinDetail ? Math.floor(d.start / 3) + 1 : null;
+                  const aaEnd = isProteinDetail ? Math.ceil(d.end / 3) : null;
+                  const label = isProteinDetail
+                    ? `${d.name}: ${aaStart}–${aaEnd} а.о. (${d.start+1}–${d.end} п.н.)`
+                    : `${d.name}: ${d.start+1}–${d.end} п.н.`;
                   return (
-                    <div key={i} style={{ width: `${widthPct}%`, backgroundColor: d.color || DOMAIN_COLORS[d.type] }}
+                    <div key={i} style={{ width: `${widthPct}%`, backgroundColor: color }}
                       className="flex items-center justify-center text-[9px] text-white font-medium truncate px-1 border-r border-white/30 last:border-0"
-                      title={`${d.name}: ${d.startAA}–${d.endAA} а.о.`}>
-                      {widthPct > 8 ? `${d.name} (${d.endAA - d.startAA + 1})` : d.name}
+                      title={label}>
+                      {widthPct > 8 ? d.name : ''}
                     </div>
                   );
                 })}
@@ -199,18 +210,21 @@ export default function SequenceViewer({ fragments, circular, primers = [] }) {
                         ? line.seq
                         : effectiveMode === 'dna'
                           ? line.seq.split('').map((ch, ci) => {
-                              const aaIdx = Math.floor((lineStart + ci) / 3);
-                              const dom = isCDS && selFrag?.domains?.find(d => aaIdx + 1 >= d.startAA && aaIdx + 1 <= d.endAA);
+                              const ntPos = lineStart + ci;
+                              const dom = details.find(d => ntPos >= d.start && ntPos < d.end);
+                              const color = dom ? (dom.color || ANNOTATION_COLORS[dom.type] || '#56B4E9') : null;
                               return (<span key={ci} style={{
-                                borderBottom: dom ? `2px solid ${dom.color || DOMAIN_COLORS[dom.type]}` : 'none' }}>{ch}</span>);
+                                borderBottom: color ? `2px solid ${color}` : 'none' }}>{ch}</span>);
                             })
                           : line.seq.split('').map((aa, ci) => {
+                              const ntPos = (lineStart + ci) * 3;
+                              const dom = details.find(d => ntPos >= d.start && ntPos < d.end);
+                              const color = dom ? (dom.color || ANNOTATION_COLORS[dom.type] || '#56B4E9') : null;
                               const aaPos = lineStart + ci + 1;
-                              const dom = selFrag?.domains?.find(d => aaPos >= d.startAA && aaPos <= d.endAA);
                               return (<span key={ci} style={{
-                                backgroundColor: dom ? (dom.color || DOMAIN_COLORS[dom.type]) + '25' : 'transparent',
-                                borderBottom: dom ? `2px solid ${dom.color || DOMAIN_COLORS[dom.type]}` : 'none' }}
-                                title={dom ? `${dom.name} — ${aaPos}` : `${aaPos}`}>{aa}</span>);
+                                backgroundColor: color ? color + '25' : 'transparent',
+                                borderBottom: color ? `2px solid ${color}` : 'none' }}
+                                title={dom ? `${dom.name} — ${aaPos} а.о.` : `${aaPos}`}>{aa}</span>);
                             })
                       }
                     </span>
@@ -245,8 +259,8 @@ export default function SequenceViewer({ fragments, circular, primers = [] }) {
                 <span className="text-gray-400">сплошной = binding {'·'} полупрозрачный = хвост</span>
               </>
             )}
-            {effectiveMode !== 'dna' && hasDomains && selFrag.domains.map((d, i) => (
-              <span key={i}><span style={{ color: d.color }}>━</span> {d.name}</span>
+            {effectiveMode !== 'dna' && hasDetails && details.map((d, i) => (
+              <span key={i}><span style={{ color: d.color || ANNOTATION_COLORS[d.type] || '#56B4E9' }}>━</span> {d.name}</span>
             ))}
           </div>
 

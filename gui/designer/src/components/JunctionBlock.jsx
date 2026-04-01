@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import ContextMenu from './ContextMenu';
 import { GG_ENZYMES, reverseComplement } from '../golden-gate';
-import { RE_ENZYMES, searchRE, getCompatible, getIsoschizomers, checkAssemblyForSites } from '../restriction-db';
+import { RE_ENZYMES, searchRE, getCompatible, getIsoschizomers, checkAssemblyForSites, siteToRegex } from '../restriction-db';
 import { useStore } from '../store';
 
 const TYPE_STYLES = {
@@ -402,9 +402,12 @@ export default function JunctionBlock({ junction, index, leftName, rightName, le
               {/* Dropdown results */}
               <div className="max-h-36 overflow-y-auto border rounded mb-2">
                 {reResults.slice(0, 30).map(([name, info]) => {
-                  const hasInternal = assemblyFragments.some(f =>
-                    f.sequence && f.sequence.toUpperCase().includes(info.site.toUpperCase())
-                  );
+                  const hasInternal = assemblyFragments.some(f => {
+                    if (!f.sequence) return false;
+                    const re = siteToRegex(info.site);
+                    re.lastIndex = 0;
+                    return re.test(f.sequence.toUpperCase());
+                  });
                   return (
                     <div key={name}
                       className={`flex items-center gap-1.5 px-2 py-1 text-[10px] cursor-pointer hover:bg-blue-50 transition

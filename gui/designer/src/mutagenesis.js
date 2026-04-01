@@ -91,10 +91,23 @@ function makeKLDStrategy(templateSeq, mutations, bindingLength) {
     revName = 'KLD_rev_del';
   }
 
-  // Handle second mutation if present (both in KLD primers)
+  // Handle second mutation if present and within primer range
   if (mutations.length === 2) {
     const mut2 = mutations[1];
-    warnings.push(`Both mutations encoded in primers (${mut2.dnaPosition - mut.dnaPosition}bp apart)`);
+    const gap = mut2.dnaPosition - pos;
+    if (gap > 0 && gap < bindingLength + 10 && mut2.type === 'substitution' && fwdSeq) {
+      // mut2 falls within fwd primer region — encode it
+      const relPos = mut2.dnaPosition - pos;
+      if (relPos < fwdSeq.length) {
+        fwdSeq = fwdSeq.slice(0, relPos) + mut2.newCodon + fwdSeq.slice(relPos + 3);
+      }
+      warnings.push(`Обе мутации закодированы в fwd праймере (${gap} п.н. друг от друга)`);
+    } else if (gap < 0 && Math.abs(gap) < bindingLength + 10 && mut2.type === 'substitution' && revSeq) {
+      // mut2 is upstream of mut — falls within rev primer
+      warnings.push(`Вторая мутация в зоне rev праймера (${Math.abs(gap)} п.н.) — проверьте вручную`);
+    } else {
+      warnings.push(`Две мутации слишком далеко (${Math.abs(gap)} п.н.) — нужен отдельный раунд KLD`);
+    }
   }
 
   const primers = [

@@ -1,42 +1,46 @@
 # CURRENT_TASK.md — BodgeGene
 
 **Дата:** 1 апреля 2026
-**Статус:** ✅ Все 6 задач выполнены (сессия 26).
+**Статус:** ✅ Блок 1 + Блок 2 выполнены (сессия 27).
 
 ---
 
-## Выполнено (сессия 26, 1 апреля 2026)
+## Выполнено: Блок 1 — Unified Annotations + Bugfixes
 
-| # | Задача | Файл | Баг |
-|---|--------|------|-----|
-| 1 | Click = select | PartBlock.jsx | UX click=select |
-| 2 | Off-by-one .dna import | server.py:272 | BUG-67 |
-| 3 | Feature name priority + word boundaries | parser.py:22-82 | BUG-68 + BUG-69 |
-| 4 | Enrichment после import | file-import.js:60-76 | BUG-68 + BUG-71 |
-| 5 | Annotation splitting при split | useFragmentHandlers.js:43-63 | BUG-57 |
-| 6 | Режим "вставка кассеты" | FragmentSplitter.jsx + useFragmentHandlers.js | новая фича |
+| # | Задача | Файлы |
+|---|--------|-------|
+| 1 | BUG-58: KLD primers merge | useFragmentHandlers.js |
+| 2 | BUG-47: IUPAC regex | JunctionBlock.jsx |
+| 3 | BUG-54: flip mirrors annotations | fragmentSlice.js |
+| 4 | Удаление `domains` (12+ мест) | fragmentSlice, useFragmentHandlers, PartBlock |
+| 5 | SequenceViewer → annotations | SequenceViewer.jsx |
+| 6 | autoAnnotate always при addPart | fragmentSlice.js |
 
-## Верификация
+## Выполнено: Блок 2 — Toolbar Redesign + Context Menu
 
-```
-1. ✅ Click фрагмент → синяя обводка → R перевернул → E открыл редактор → Del удалил
-2. ✅ Import .dna → первый CDS start=0, не start=1
-3. ✅ Import .dna → "Short terminal repeat" ≠ terminator
-4. ✅ Import .dna → gene="bla" → display name = "AmpR" (по гомологии)
-5. ✅ Import .dna с CDS → signal peptide обнаружен в annotations
-6. ✅ Split фрагмент с annotations → обе части имеют свои annotations
-7. ✅ "Разрезать для вставки кассеты" → два homology_arm фланка на canvas
-8. ☐ Drag кассету между фланками → 3 фрагмента с overlap junctions (требует UI тест)
-```
+| # | Задача | Файлы |
+|---|--------|-------|
+| 1 | ContextMenu: shortcut, description, danger | ContextMenu.jsx |
+| 2 | Type-dependent context menu | PartBlock.jsx |
+| 3 | Убран global method toggle + Mutagenesis из header | App.jsx |
+| 4 | mutagenesisTarget + template prop | uiSlice, App.jsx |
+| 5 | ReplacePicker + replaceFragment | ReplacePicker.jsx, fragmentSlice.js |
+| 6 | TagFusionPicker (11 preset тегов) | TagFusionPicker.jsx |
+| 7 | Junction default = overlap | fragmentSlice.js |
+| 8 | Убраны expertMode обёртки | App.jsx |
 
-**Тесты:** 421 passed, build ok.
+## Выполнено: Все баги из BUGS.md
+
+23 бага закрыты за сессию 27 (BUG-47..71 + click=select).
+Осталось: BUG-66 (дизайн-задача: этапы в flow DAG).
+
+**Тесты:** 428 passed, build ok.
 
 ---
 
-## Следующие приоритеты (не начаты)
+## Следующие приоритеты
 
-1. **BUG-58** (крит): KLD primers стирают assembly primers
-2. **BUG-54** (выс): flipFragment не зеркалит annotations
-3. **BUG-47** (выс): validate.js IUPAC matching
-4. **BUG-62/63/64** (выс): Flow planner — ноды без данных/редактирования
-5. **BUG-55** (выс): PlasmidUseWizard фланки гомологии
+1. BUG-66: Концепция шага/этапа в flow DAG (дизайн)
+2. MutagenesisWizard: template prop (Step 1 skip) — UI доработка
+3. Остальные expertMode обёртки за пределами header
+4. Тесты для новых компонентов (ReplacePicker, TagFusionPicker)

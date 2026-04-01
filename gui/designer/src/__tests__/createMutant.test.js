@@ -110,18 +110,19 @@ describe('createMutant', () => {
     });
   });
 
-  it('copies domains from parent', () => {
+  it('preserves annotations from parent (domains field removed)', () => {
     const mutations = [
       { dnaPosition: 3, type: 'substitution', newCodon: 'GCG', label: 'D2A' },
     ];
 
     const mutantId = store.getState().createMutant('parent_1', mutations);
     const mutant = store.getState().parts.find(p => p.id === mutantId);
-    const parent = store.getState().parts.find(p => p.id === 'parent_1');
 
-    expect(mutant.domains).toEqual(parent.domains);
-    // Deep copy — not the same reference
-    expect(mutant.domains).not.toBe(parent.domains);
+    // domains field no longer exists — annotations carry all information
+    expect(mutant.domains).toBeUndefined();
+    // Mutant should have annotations (from autoAnnotate or inherited)
+    expect(mutant.annotations).toBeDefined();
+    expect(mutant.annotations.length).toBeGreaterThan(0);
   });
 
   it('returns null for missing parent', () => {

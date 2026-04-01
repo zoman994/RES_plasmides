@@ -15,7 +15,7 @@ function rc(seq) {
  */
 function findBinding(seq, direction, tmTarget = 60) {
   const s = seq.toUpperCase();
-  const minLen = 15, maxLen = 30;
+  const minLen = 18, maxLen = 30;
 
   if (s.length < minLen) {
     return {

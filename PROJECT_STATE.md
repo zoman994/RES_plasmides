@@ -1,8 +1,8 @@
 # PROJECT_STATE.md — BodgeGene
 
-> **Обновлено:** 1 апреля 2026
-> **Версия:** v0.3.1-alpha
-> **Тесты:** ~533 (421 Vitest + 112 pytest)
+> **Обновлено:** 1 апреля 2026 (вечер)
+> **Версия:** v0.4.0-alpha
+> **Тесты:** ~540 (428 Vitest + 112 pytest)
 
 ---
 
@@ -29,27 +29,30 @@
 - Feature type inference: regex word boundaries (без false positives)
 - Click = select → все горячие клавиши работают (R/E/Del/Ctrl+C/Ctrl+D)
 
+- Unified annotations: `domains` удалены, всё через `annotations[]`, AA-позиции на лету
+- Type-dependent context menu (CDS → мутагенез/теги, все → замена/библиотека)
+- ReplacePicker: замена фрагмента из библиотеки с фильтром по типу
+- TagFusionPicker: 11 preset тегов (His6, FLAG, Strep, V5, TEV, G4S...)
+- Компактный header: убран global method toggle + Mutagenesis button
+- Flow planner: PCR node edit, real assemblies, MIRO+ с RE/KLD/лигирование
+
 ## Что сломано
 
-Открытые баги: **BUGS.md** (17 open, 52 fixed).
-
-Критичные:
-- **KLD primers стирают assembly primers** (BUG-58)
-
-Высокие:
-- Flip не зеркалит annotations (BUG-54)
-- validate.js IUPAC matching (BUG-47)
-- PlasmidUseWizard фланки (BUG-55)
-- Flow planner: PCRNode (BUG-62), ноды нередактируемы (BUG-63), AssemblyNode (BUG-64)
+Открытые баги: **BUGS.md** (0 критичных/высоких/средних, 1 низкий дизайн-задача).
 
 ## Что нужно сделать
 
-Текущие задачи: **CURRENT_TASK.md** — все 6 задач сессии 26 выполнены. Следующие приоритеты: BUG-58, BUG-54, BUG-47, Flow planner.
+- BUG-66: концепция шага/этапа в flow DAG (дизайн)
+- Тесты для ReplacePicker, TagFusionPicker
+- MutagenesisWizard: Step 1 skip при template prop
+- Оставшиеся `expertMode &&` обёртки за пределами header
 
 Дизайн-доки:
 - `docs/TWO_CLICK_OPS.md` — 10 атомарных операций
 - `docs/BLOCK_COMBINATIONS.md` — 16 комбинаций 4 типов блоков
 - `docs/FLOW_V2_DESIGN.md` — Universal ReactionNode, 14 операций, primer connection
+- `docs/BLOCK2_TOOLBAR_CONTEXT.md` — toolbar redesign + context menu spec
+- `docs/ANNOTATION_VERSIONING.md` — unified annotation system spec
 
 ---
 
@@ -57,6 +60,7 @@
 
 | # | Дата | Что |
 |---|------|-----|
+| 27 | 01.04 (вечер) | **Блок 1 + Блок 2 + все баги.** Блок 1: unified annotations (удаление `domains`, 12+ мест), 3 багфикса (BUG-47/54/58), autoAnnotate always, SequenceViewer migration. Блок 2: toolbar redesign — убран global method toggle, type-dependent context menu, ReplacePicker, TagFusionPicker (11 тегов), mutagenesisTarget, junction default=overlap. Закрыты ВСЕ баги (BUG-47..65 + click=select): 23 бага за сессию. Flow planner: PCR edit, real assemblies, MIRO+ с 6 операциями. 428 тестов, build ok. |
 | 26 | 01.04 | **6 задач из CURRENT_TASK.md выполнены.** Click=select (PartBlock.jsx), off-by-one fix (server.py), feature name priority + regex word boundaries (parser.py), enrichment после .dna import (file-import.js), annotation splitting при split/replace (useFragmentHandlers.js), режим "вставка кассеты" (FragmentSplitter.jsx). 421 тестов, build ok. Закрыты: BUG-57, BUG-67, BUG-68, BUG-69, BUG-71 + UX click=select. |
 | 25 | 31.03 (вечер) | **Глубокий аудит аннотаций + .dna import + flow planner.** Прочитаны ВСЕ файлы pipeline: parser.py → server.py → file-import.js → import-annotations.js → auto-annotate.js → feature-detection.js → annotation-model.js. Найдено 5 корневых причин "аннотации не работают": off-by-one (BUG-67), name priority (BUG-68), pattern false positives (BUG-69), нет detail enrichment (BUG-71), split теряет annotations (BUG-57). Аудит flow planner: 5 багов (BUG-62..66). Спроектирован Flow v2 (docs/FLOW_V2_DESIGN.md). Спроектирован режим "вставка кассеты" для FragmentSplitter. Найден корень нерабочих горячих клавиш: click=select не реализован (PartBlock.jsx line 75, одна строка). Выгружены финальные CURRENT_TASK.md (6 задач с точным кодом) и BUGS.md (20 open). |
 | 24 | 31.03 | Глубокая сессия: merge UI, local-primer-design.js, Two-Click концепция, BLOCK_COMBINATIONS, Expert mode → always ON. BUG-40..46. Реорганизация документации. |

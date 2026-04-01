@@ -121,12 +121,15 @@ export function parseGenBank(text) {
       // Continuation of multiline qualifier value
       if (currentQualKey && currentFeature && line.match(/^\s{21,}/)) {
         let cont = line.trim();
+        // No space for sequence-like qualifiers (translation, codon_start, etc.)
+        const noSpace = /^(translation|codon_start|transl_table)$/.test(currentQualKey);
+        const sep = noSpace ? '' : (currentQualVal ? ' ' : '');
         if (cont.endsWith('"')) {
           cont = cont.slice(0, -1);
-          currentQualVal += (currentQualVal ? ' ' : '') + cont;
+          currentQualVal += sep + cont;
           flushQualifier();
         } else {
-          currentQualVal += (currentQualVal ? ' ' : '') + cont;
+          currentQualVal += sep + cont;
         }
         continue;
       }

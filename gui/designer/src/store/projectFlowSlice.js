@@ -10,6 +10,7 @@
  */
 import { applyNodeChanges, applyEdgeChanges, addEdge } from '@xyflow/react';
 import Dagre from '@dagrejs/dagre';
+import { newAssembly } from './projectSlice';
 
 /** Node sizes for dagre auto-layout */
 const NODE_SIZES = {
@@ -86,6 +87,10 @@ export const createProjectFlowSlice = (set, get) => ({
         productName: '',
         productLength: null,
         polymerase: 'Q5',
+        primerFwd: '',
+        primerRev: '',
+        tmFwd: null,
+        tmRev: null,
       },
     });
 
@@ -102,26 +107,35 @@ export const createProjectFlowSlice = (set, get) => ({
     const sourceNode = state.flowNodes.find(n => n.id === sourceNodeId);
     if (!sourceNode) return;
 
-    const asmId = `asm-${Date.now()}`;
+    const ts = Date.now();
     const methodLabel = method === 'golden_gate' ? 'GG' : method === 'kld' ? 'KLD' : 'Gibson';
+    const assemblyType = method === 'golden_gate' ? 'golden_gate' : 'overlap';
 
+    // Create a real assembly in state.assemblies
+    const realAsmId = `asm_flow_${ts}`;
+    const asm = newAssembly(realAsmId, `${methodLabel} Assembly`);
+    asm.assemblyType = assemblyType;
+    if (method === 'kld') asm.protocol = 'kld';
+    state.assemblies.push(asm);
+
+    const flowNodeId = `asm-${ts}`;
     state.flowNodes.push({
-      id: asmId,
+      id: flowNodeId,
       type: 'assemblyNode',
       position: { x: sourceNode.position.x + 250, y: sourceNode.position.y },
       data: {
         label: `${methodLabel} Assembly`,
         method: method || 'gibson',
         fragmentCount: 1,
-        assemblyId: null,
+        assemblyId: realAsmId,
       },
     });
 
     // Auto-create fragment edge
     state.flowEdges.push({
-      id: `e-${sourceNodeId}-${asmId}`,
+      id: `e-${sourceNodeId}-${flowNodeId}`,
       source: sourceNodeId,
-      target: asmId,
+      target: flowNodeId,
       type: 'fragment',
     });
   }, false, 'addFlowAssembly'),

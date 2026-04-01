@@ -214,33 +214,46 @@ export default function PlasmidUseWizard({ plasmid, onClose }) {
 
   const handleReplace = () => {
     if (!selectionAnalysis || selectionAnalysis.type !== 'contiguous') return;
-    // Build backbone = plasmid minus selected block
-    const backboneSeq = seq.slice(0, selectionAnalysis.start) + seq.slice(selectionAnalysis.end);
-    const backboneAnns = (plasmid.annotations || []).filter(a => {
-      if (a.start >= selectionAnalysis.start && a.end <= selectionAnalysis.end) return false;
-      return true;
-    }).map(a => {
-      if (a.start >= selectionAnalysis.end) {
-        return { ...a, start: a.start - selectionAnalysis.totalLength, end: a.end - selectionAnalysis.totalLength };
-      }
-      return { ...a };
-    });
 
-    // Add backbone as fragment on canvas
+    const cutStart = selectionAnalysis.start;
+    const cutEnd = selectionAnalysis.end;
+    const allAnns = plasmid.annotations || [];
+
+    // Left flank: sequence before the deleted region
+    const leftSeq = seq.slice(0, cutStart);
+    const leftAnns = allAnns
+      .filter(a => a.end <= cutStart)
+      .map(a => ({ ...a }));
+
+    // Right flank: sequence after the deleted region
+    const rightSeq = seq.slice(cutEnd);
+    const rightAnns = allAnns
+      .filter(a => a.start >= cutEnd)
+      .map(a => ({ ...a, start: a.start - cutEnd, end: a.end - cutEnd }));
+
+    // Add two homology flanks on canvas
     useStore.getState().pushUndo?.();
     useStore.setState(state => {
       const asm = state.assemblies.find(a => a.id === state.activeId);
       if (!asm) return;
-      asm.fragments.push({
-        id: `f${Date.now()}`, name: `${plasmid.name} backbone`,
-        type: 'misc_feature', sequence: backboneSeq, length: backboneSeq.length,
-        strand: 1, needsAmplification: true, partId: plasmid.id,
-        annotations: backboneAnns,
-      });
+      const ts = Date.now();
+      asm.fragments.push(
+        {
+          id: `f${ts}_left`, name: `${plasmid.name} left flank`,
+          type: 'homology_arm', sequence: leftSeq, length: leftSeq.length,
+          strand: 1, needsAmplification: true, partId: plasmid.id,
+          annotations: leftAnns,
+        },
+        {
+          id: `f${ts}_right`, name: `${plasmid.name} right flank`,
+          type: 'homology_arm', sequence: rightSeq, length: rightSeq.length,
+          strand: 1, needsAmplification: true, partId: plasmid.id,
+          annotations: rightAnns,
+        },
+      );
       asm.calculated = false;
-      asm.primers = [];
     });
-    setMessage(`Backbone создан (${backboneSeq.length} п.н.). Добавьте вставку на canvas.`);
+    setMessage(`Два фланка гомологии созданы (${leftSeq.length} + ${rightSeq.length} п.н.). Добавьте вставку между ними.`);
   };
 
   const renderReplace = () => (
@@ -269,7 +282,7 @@ export default function PlasmidUseWizard({ plasmid, onClose }) {
           <div className="text-[10px] text-blue-500 mt-0.5">Смежные регионы — можно заменить как один блок</div>
           <button onClick={handleReplace}
             className="mt-1.5 text-[10px] px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700">
-            {'🔄'} Создать backbone (без выбранного блока)
+            {'🔄'} Создать фланки гомологии (без выбранного блока)
           </button>
         </div>
       )}

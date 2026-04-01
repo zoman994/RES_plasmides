@@ -84,9 +84,9 @@ export const createJunctionSlice = (set, get) => ({
         if (j.type !== 'overlap') return;
         const lPCR = left.needsAmplification !== false;
         const rPCR = right.needsAmplification !== false;
-        if (!lPCR && rPCR) { j.overlapMode = 'right_only'; j.autoMode = true; }
-        else if (lPCR && !rPCR) { j.overlapMode = 'left_only'; j.autoMode = true; }
-        else if (!lPCR && !rPCR) { j.autoMode = true; j.autoWarning = 'Оба без ПЦР'; }
+        if (!lPCR && rPCR) { j.overlapMode = 'right_only'; j.overlapLength = 30; j.autoMode = true; }
+        else if (lPCR && !rPCR) { j.overlapMode = 'left_only'; j.overlapLength = 30; j.autoMode = true; }
+        else if (!lPCR && !rPCR) { j.autoMode = true; j.autoWarning = 'Оба без ПЦР — overlap невозможен'; }
       });
     }, false, 'autoAdjustJunctions');
   },

@@ -132,12 +132,12 @@ export function exportProtocol(fragments, junctions, primers, method, circular) 
   txt += `Fragments: ${fragments.length}\n`;
   txt += `Expected product: ${totalBp.toLocaleString()} bp ${circular ? '(circular)' : '(linear)'}\n\n`;
 
-  let primerIdx = 0;
   fragments.forEach((f, i) => {
     txt += `Step ${i + 1}: `;
     if (f.needsAmplification) {
-      const fwd = primers[primerIdx] || {};
-      const rev = primers[primerIdx + 1] || {};
+      // Find primers by fragment name (robust to ordering and skipped fragments)
+      const fwd = primers.find(p => p.direction === 'forward' && p.name?.includes(f.name)) || {};
+      const rev = primers.find(p => p.direction === 'reverse' && p.name?.includes(f.name)) || {};
       const pcrSize = (f.sequence || '').length + (fwd.tailSequence || '').length + (rev.tailSequence || '').length;
       const anneal = Math.round(Math.min(fwd.tmBinding || 60, rev.tmBinding || 60));
       const extSec = Math.ceil(pcrSize / 1000) * 30;
@@ -155,7 +155,6 @@ export function exportProtocol(fragments, junctions, primers, method, circular) 
       txt += `    -----------------\n`;
       txt += `    72°C  5 min   (final extension)\n`;
       txt += `    4°C   hold\n`;
-      primerIdx += 2;
     } else {
       txt += `Use ${f.name} as-is (${(f.sequence || '').length} bp)\n`;
       txt += `  Source: ${f.sourceType || 'synthesis'}\n`;

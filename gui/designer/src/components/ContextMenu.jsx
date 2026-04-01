@@ -47,7 +47,15 @@ export default function ContextMenu({ items, position, onClose }) {
                 : 'text-gray-700 hover:bg-blue-50 hover:text-blue-700'
               }`}>
             {item.icon && <span className="text-sm w-5 text-center">{item.icon}</span>}
-            <span className="flex-1 truncate">{item.label}</span>
+            <div className="flex-1 min-w-0">
+              <span className={`truncate block ${item.danger ? 'text-red-600' : ''}`}>{item.label}</span>
+              {item.description && (
+                <span className="block text-[9px] text-gray-400 truncate">{item.description}</span>
+              )}
+            </div>
+            {item.shortcut && (
+              <span className="text-[10px] text-gray-400 ml-2 shrink-0">{item.shortcut}</span>
+            )}
           </button>
         );
       })}

@@ -25,6 +25,8 @@ import AddFragmentModal from './components/AddFragmentModal';
 import RestrictionPanel from './components/RestrictionPanel';
 import ProtocolTracker from './components/ProtocolTracker';
 import MutagenesisWizard from './components/MutagenesisWizard';
+import ReplacePicker from './components/ReplacePicker';
+import TagFusionPicker from './components/TagFusionPicker';
 import VerificationPanel from './components/VerificationPanel';
 import FragmentSplitter from './components/FragmentSplitter';
 import AssemblyTabs from './components/AssemblyTabs';
@@ -87,6 +89,9 @@ export default function App() {
   const modalMode  = useStore(s => s.modalMode);
   const splitTarget = useStore(s => s.splitTarget);
   const showMutagenesis = useStore(s => s.showMutagenesis);
+  const mutagenesisTarget = useStore(s => s.mutagenesisTarget);
+  const replacingFragment = useStore(s => s.replacingFragment);
+  const tagFusionTarget = useStore(s => s.tagFusionTarget);
   const showOligos = useStore(s => s.showOligos);
   const showPartsLib = useStore(s => s.showPartsLib);
   const partsLibPartId = useStore(s => s.partsLibPartId);
@@ -291,40 +296,10 @@ export default function App() {
           </div>
           <div className="flex items-center gap-2">
             <div className="w-px h-4 bg-white/15 mx-1" />
-            <span className="text-xs text-gray-400">Метод:</span>
-            <button onClick={() => setAssemblyType('overlap')}
-              className={`text-xs px-3 py-1.5 rounded-full font-semibold transition
-                ${assemblyType === 'overlap' ? 'bg-blue-500 text-white' : 'bg-white/10 text-gray-300 hover:bg-white/20'}`}>
-              Overlap / Gibson
+            <button onClick={() => setShowOligos(true)}
+              className="text-xs px-2 py-1 rounded bg-white/10 text-gray-300 hover:bg-white/20 transition">
+              {'📋'} Олиги
             </button>
-            {expertMode && (
-              <button onClick={() => setAssemblyType('golden_gate')}
-                className={`text-xs px-3 py-1.5 rounded-full font-semibold transition
-                  ${assemblyType === 'golden_gate' ? 'bg-amber-500 text-white' : 'bg-white/10 text-gray-300 hover:bg-white/20'}`}>
-                Golden Gate
-              </button>
-            )}
-            {expertMode && assemblyType === 'golden_gate' && (
-              <select value={ggEnzyme} onChange={e => { setGgEnzyme(e.target.value); setTimeout(autoDesignGGOverhangs, 50); }}
-                className="text-[10px] bg-white/10 text-gray-300 border-0 rounded px-2 py-1">
-                {Object.entries(GG_ENZYMES).map(([k, e]) => (
-                  <option key={k} value={k}>{e.name}{e.alias ? `/${e.alias}` : ''} ({e.overhangLength}nt)</option>
-                ))}
-              </select>
-            )}
-            {expertMode && (
-              <button onClick={() => setShowMutagenesis(true)}
-                className="text-xs px-3 py-1.5 rounded-full font-semibold bg-purple-500/20 text-purple-300 hover:bg-purple-500/30 transition">
-                {'🔬'} {t('Mutagenesis')}
-              </button>
-            )}
-            <div className="w-px h-4 bg-white/15 mx-1" />
-            {expertMode && (
-              <button onClick={() => setShowOligos(true)}
-                className="text-xs px-2 py-1 rounded bg-white/10 text-gray-300 hover:bg-white/20 transition">
-                {'📋'} Олиги
-              </button>
-            )}
             <button onClick={() => setShowPartsLib(true)}
               className="text-xs px-2 py-1 rounded bg-white/10 text-gray-300 hover:bg-white/20 transition">
               {'📦'} Запчасти
@@ -649,8 +624,26 @@ export default function App() {
       {modalMode && (
         <AddFragmentModal mode={modalMode} onAdd={addCustomFragment} onClose={() => setModalMode(null)} />
       )}
-      {showMutagenesis && (
-        <MutagenesisWizard onComplete={handleMutagenesis} onClose={() => setShowMutagenesis(false)} />
+      {(showMutagenesis || mutagenesisTarget !== null) && (
+        <MutagenesisWizard
+          template={mutagenesisTarget !== null ? fragments[mutagenesisTarget] : undefined}
+          onComplete={handleMutagenesis}
+          onClose={() => { setShowMutagenesis(false); useStore.getState().setMutagenesisTarget(null); }}
+        />
+      )}
+      {replacingFragment && (
+        <ReplacePicker
+          fragmentIndex={replacingFragment.index}
+          fragmentType={replacingFragment.type}
+          onClose={() => useStore.getState().setReplacingFragment(null)}
+        />
+      )}
+      {tagFusionTarget !== null && fragments[tagFusionTarget] && (
+        <TagFusionPicker
+          fragmentIndex={tagFusionTarget}
+          fragment={fragments[tagFusionTarget]}
+          onClose={() => useStore.getState().setTagFusionTarget(null)}
+        />
       )}
       {splitTarget !== null && fragments[splitTarget] && (
         <FragmentSplitter fragment={fragments[splitTarget]} onSplit={handleFragmentSplit}

@@ -3,7 +3,7 @@
  * Extracts ~200 lines of handler logic from App.jsx.
  */
 import { useStore, useFragments, useJunctions, usePrimers, pushUndo } from '../store';
-import { adjustDomains, buildPlainJunctions } from '../assembly-utils';
+import { buildPlainJunctions } from '../assembly-utils';
 import { designInlineKLDPrimers } from '../mutagenesis';
 import { PCR_MIXES } from '../protocol-data';
 import { addToInventory } from '../inventory';
@@ -38,11 +38,8 @@ export function useFragmentHandlers() {
 
     const nf = [...fragments];
     const frag = nf[idx];
-    const cutAA = result.cutPosition ? Math.floor(result.cutPosition / 3) : 0;
-
     if (result.action === 'split') {
       const cutBP = result.cutPosition;
-      const domSplit = adjustDomains(frag.domains, cutAA, 'split');
 
       // Split annotations between two parts
       const parentAnns = frag.annotations || [];
@@ -61,16 +58,14 @@ export function useFragmentHandlers() {
 
       const p1 = { id: `f${Date.now()}`, name: result.part1Name, type: frag.type,
         sequence: result.part1DNA, length: result.part1DNA.length, strand: 1, needsAmplification: true,
-        domains: domSplit.part1 || [], annotations: anns1 };
+        annotations: anns1 };
       nf[idx] = { ...frag, name: result.part2Name, sequence: result.part2DNA, length: result.part2DNA.length,
-        domains: domSplit.part2 || [], annotations: anns2 };
+        annotations: anns2 };
       nf.splice(idx, 0, p1);
     } else if (result.action === 'remove_part1') {
-      nf[idx] = { ...frag, sequence: result.sequence, length: result.sequence.length,
-        domains: adjustDomains(frag.domains, cutAA, 'remove_part1') };
+      nf[idx] = { ...frag, sequence: result.sequence, length: result.sequence.length };
     } else if (result.action === 'remove_part2') {
-      nf[idx] = { ...frag, sequence: result.sequence, length: result.sequence.length,
-        domains: adjustDomains(frag.domains, cutAA, 'remove_part2') };
+      nf[idx] = { ...frag, sequence: result.sequence, length: result.sequence.length };
     } else if (result.action === 'replace_part1') {
       const cutBP = result.cutPosition;
       const anns2 = (frag.annotations || [])
@@ -80,7 +75,7 @@ export function useFragmentHandlers() {
       const rep = { id: `f${Date.now()}`, name: result.replacementName, type: result.replacementType || frag.type,
         sequence: result.replacementSeq, length: result.replacementSeq.length, strand: 1, needsAmplification: true };
       nf[idx] = { ...frag, name: result.part2Name, sequence: result.part2DNA, length: result.part2DNA.length,
-        domains: adjustDomains(frag.domains, cutAA, 'remove_part1'), annotations: anns2 };
+        annotations: anns2 };
       nf.splice(idx, 0, rep);
     } else if (result.action === 'split_for_insert') {
       const parentAnns = frag.annotations || [];
@@ -144,7 +139,7 @@ export function useFragmentHandlers() {
           id: variantId, name: updated.name, type: rootPart.type,
           sequence: updated.sequence, length: updated.length, organism: rootPart.organism,
           parentId: rootPart.id, modification: { type: 'mutation', description: newMuts.map(m => m.label).join(', ') },
-          mutations: updated.mutations, testResults: [], domains: updated.domains,
+          mutations: updated.mutations, testResults: [],
           source: 'mutagenesis', createdAt: new Date().toISOString(),
         };
         updatePart(rootPart.id, { children: [...(rootPart.children || []), variantId] });
@@ -180,7 +175,8 @@ export function useFragmentHandlers() {
           { id: 'screening', type: 'screening', title: 'Colony PCR', expectedSize: updated.length, statuses: [{ label: 'Colony PCR', done: false }] },
           { id: 'sequencing', type: 'sequencing', title: 'Секвенирование', statuses: [{ label: 'Отправлено', done: false }, { label: 'Подтв.', done: false }] },
         ];
-        updateActive({ fragments: fragments.map((f, i) => i === editTarget ? updated : f), primers: kldPrimers, calculated: true, protocolSteps: kldSteps });
+        const existingNonMut = (getActive()?.primers || []).filter(p => !p.isMutagenesis);
+        updateActive({ fragments: fragments.map((f, i) => i === editTarget ? updated : f), primers: [...existingNonMut, ...kldPrimers], calculated: true, protocolSteps: kldSteps });
       }
     }
     setEditTarget(null);
@@ -201,7 +197,7 @@ export function useFragmentHandlers() {
     updateActive({
       fragments: fragments.map((f, i) => i === fragIndex ? {
         ...f, id: variant.id, name: variant.name, sequence: variant.sequence,
-        length: variant.length, domains: variant.domains, parentId: variant.parentId,
+        length: variant.length, parentId: variant.parentId,
         modification: variant.modification, testResults: variant.testResults, customColor: variant.customColor,
       } : f),
       calculated: false,

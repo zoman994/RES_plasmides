@@ -147,3 +147,45 @@ App.jsx был монолитом в 1350 строк с 40+ useState. Zustand д
 [2026-04-01] **Regex word boundaries для infer_feature_type.** Все паттерны (PROMOTER/CDS/TERMINATOR/ORIGIN) используют `\b` — "ori" не матчит "memorial", "term" не матчит "terminal".
 
 [2026-04-01] **Enrichment всегда после .dna import (даже если features > 0).** Два шага: 1) homology naming через `enrichWithCommonFeatures()` — "bla" → "AmpR" по sequence identity. 2) detail-level через `autoAnnotate()` — signal peptides, tags, domains внутри CDS. Дедупликация по `start-end-level` key.
+
+---
+
+## Сессия 27 — Unified Annotations + Versioning (01.04.2026)
+
+[2026-04-01] **Удаление `domains` как отдельного поля.** Вся информация хранится в `annotations[]` с `level: 'detail'`. AA-координаты нигде не хранятся — вычисляются на лету: `aaPos = Math.floor(ntStart / 3) + 1`. Мосты `convertDomainsToAnnotations()` и `detectDomainsAsAnnotations()` остаются как deprecated для миграции старых данных. 7 мест в коде: fragmentSlice (createFragFromPart, createMutant, splitPart, fuseParts, flipFragment), useFragmentHandlers (handleFragmentSplit, handleSaveFragment).
+
+[2026-04-01] **autoAnnotate() вызывается ВСЕГДА при addPart().** Заменяет `generateAutoAnnotations()` (которая пропускала Parts с existing annotations). autoAnnotate() сохраняет existing regions + manual annotations, добавляет details и points поверх. Ручные аннотации (`auto: false`) никогда не удаляются при пересчёте.
+
+[2026-04-01] **Кассета = view, не data.** `detectCassettes(annotations)` вычисляет кассеты на лету из смежных regions: promoter → CDS/marker → terminator, gap ≤ 50bp. Не создаём отдельную сущность в store. Опциональные подсказки `cassette`/`cassetteOrder` на region-annotations для ускорения — но UI работает и без них.
+
+[2026-04-01] **Универсальный координатный сдвиг `shiftAnnotations(annotations, editPoint, deltaL)`.** Единый алгоритм для всех операций, меняющих длину: deletion, insertion, region replacement. Аннотации после editPoint → shift(ΔL). Аннотации, перекрывающие editPoint → end += ΔL. До editPoint → без изменений.
+
+[2026-04-01] **Четыре правила наследования аннотаций.** (1) Координатный сдвиг при ΔL≠0. (2) Scope операции определяет что удалять/добавлять. (3) Versioning: minor (<100bp change) / major (structural). (4) autoAnnotate пересчитывается для затронутых CDS-регионов после каждой операции.
+
+[2026-04-01] **Версии: semver-like (major.minor).** Minor: substitution, малый тег <100bp. Major: deletion, insertion ≥100bp, замена региона, замена кассеты, flip, intron removal. `derivation.operations[]` — структурированный лог для semantic diff.
+
+[2026-04-01] **`annotationDiff(parent, child)` для semantic diff.** Сопоставление regions по имени → типу → overlap координат. Классификация: deleted, inserted, replaced, resized, mutated. Результат: "замена кассеты PglaA+XynTL+TtrpC → PcbhI+BGL1+TcbhI" вместо "1500 nucleotide differences".
+
+[2026-04-01] **Множественные делеции (интроны) от конца к началу.** Reverse order предотвращает сбой координат. Каждая делеция применяется последовательно: detail удалён → region shrinks → downstream shift.
+
+[2026-04-01] **Двойная адресация в UI.** CDS-детали: `Signal peptide: 1–22 а.о. (1–66 п.н.)`. Не-CDS детали: `TATA box: 803–809 п.н.`. Определяется через `REGION_RENDER_RULES[parentRegion.type].showTranslation`.
+
+[2026-04-01] **Документация: ANNOTATION_VERSIONING.md (техническая) + USER_GUIDE_ANNOTATIONS.md (для биологов).** Полная спецификация всех операций с edge cases. Руководство пользователя — без кода, для биологов.
+
+---
+
+## Блок 2 — Toolbar Redesign + Context Menu (01.04.2026)
+
+[2026-04-01] **Удаление глобального переключателя метода сборки из header.** `assemblyType` больше не управляется из toolbar. Каждый junction настраивается индивидуально в JunctionBlock. `addFragment()` всегда создаёт junction type='overlap' по умолчанию. `setAssemblyType()` остаётся в store для backward compat, из UI убран.
+
+[2026-04-01] **Мутагенез — через контекстное меню фрагмента, не через toolbar.** Правый клик по CDS → «Точечная мутация» или «Мутагенез wizard». `showMutagenesis` → `mutagenesisTarget: index | null`. MutagenesisWizard получает prop `template` → пропускает Step 1.
+
+[2026-04-01] **Type-dependent контекстное меню PartBlock.** CDS/gene/marker: мутагенез + тег/fusion. Промотор/терминатор: только замена. Плазмида: замена кассеты, вставка, делеция, дерево версий.
+
+[2026-04-01] **ReplacePicker — мини-modal.** Parts library фильтруется по типу. `replaceFragment(index, newPart)` — новый store action.
+
+[2026-04-01] **TagFusionPicker — пресеты тегов.** His6, FLAG, Strep-II, V5 (C-term). MBP, GST, SUMO (N-term). TEV, Thrombin (cleavage). (G₄S)×3 (linker). `insertTagAtFragment()` — новый store action.
+
+[2026-04-01] **ContextMenu расширен.** Поля: shortcut, description, danger. Обратно совместим.
+
+[2026-04-01] **Toolbar = только глобальные панели и настройки.** Parts, Oligos, Data, Polymerase, Prefix, Clear. Нет операций над фрагментами. Спека: `docs/BLOCK2_TOOLBAR_CONTEXT.md`.

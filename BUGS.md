@@ -8,37 +8,19 @@
 
 ### Критичные
 
-- [ ] **BUG-58:** `handleSaveFragment` стирает assembly primers. useFragmentHandlers.js: `updateActive({ primers: kldPrimers })` заменяет все 6 assembly primers на 2 KLD. Fix: добавлять KLD к существующим, не заменять.
+(нет)
 
 ### Высокие
 
-- [ ] **BUG-47:** validate.js `.includes(site)` не матчит IUPAC. Fix: `siteToRegex(site).test()`.
-
-- [ ] **BUG-54:** `flipFragment` не зеркалит annotations. Fix: `new_start = seqLen - old_end; new_end = seqLen - old_start`.
-
-- [ ] **BUG-55:** PlasmidUseWizard "replace" — цельный backbone вместо двух фланков гомологии.
-
-- [ ] **BUG-62:** PCRNode `primerFwd`/`primerRev` = undefined навсегда. PCR Planning Panel — все "?".
-
-- [ ] **BUG-63:** Ноды flow canvas нельзя редактировать. `updateFlowNodeData()` в store есть, не вызывается.
-
-- [ ] **BUG-64:** AssemblyNode `assemblyId: null` навсегда. Double-click → ничего.
+(нет)
 
 ### Средние
 
-- [ ] **BUG-48:** golden-gate overhang из концов фрагмента, не из cutOffset.
-- [ ] **BUG-50:** KLD не кодирует вторую мутацию (< 100bp gap).
-- [ ] **BUG-51:** exportProtocol primer indexing после BUG-40 fix.
-- [ ] **BUG-56:** PlasmidUseWizard sets `primers: []`.
-- [ ] **BUG-65:** MIRO+ dropdown — только PCR/Gibson/GG. Нет: RE, KLD, ligation, transformation.
+(нет)
 
 ### Низкие
 
-- [ ] **BUG-49:** findBinding для seq < 15bp — нет warning.
-- [ ] **BUG-52:** genbank-parser multiline qualifier — пробел в /translation.
-- [ ] **BUG-53:** autoAdjustJunctions не обновляет overlapLength.
-- [ ] **BUG-61:** Две реализации findBinding (15-30bp vs 18-35bp).
-- [ ] **BUG-66:** Нет концепции шага/этапа в flow DAG.
+- [ ] **BUG-66:** Нет концепции шага/этапа в flow DAG. (дизайн-задача, не баг)
 
 ---
 
@@ -52,3 +34,19 @@
 - [x] **BUG-69:** `infer_feature_type` false positives. Fix: regex `\b` word boundaries.
 - [x] **BUG-71:** Нет detail-level enrichment после .dna import. Fix: enrichment всегда (homology + detail).
 - [x] **Click = select.** PartBlock.jsx: click → clearFragSelection + toggleFragSelection + shift-range.
+- [x] **BUG-58:** KLD primers стирали assembly primers. Fix: merge `[...existingNonMut, ...kldPrimers]`.
+- [x] **BUG-47:** `.includes(site)` не матчит IUPAC. Fix: `siteToRegex().test()` в JunctionBlock.
+- [x] **BUG-54:** `flipFragment` не зеркалил annotations. Fix: `start: seqLen - end, end: seqLen - start`.
+- [x] **BUG-55:** PlasmidUseWizard "replace" — 1 backbone вместо 2 фланков. Fix: left flank + right flank.
+- [x] **BUG-56:** PlasmidUseWizard sets `primers: []`. Fix: убран `asm.primers = []` из handleReplace.
+- [x] **BUG-62:** PCRNode primer fields undefined. Fix: init primerFwd/Rev/tmFwd/tmRev в addFlowPCR.
+- [x] **BUG-63:** Flow nodes нельзя редактировать. Fix: double-click → inline edit form + updateFlowNodeData.
+- [x] **BUG-64:** AssemblyNode assemblyId null. Fix: newAssembly() в addFlowAssembly, real assemblyId.
+- [x] **BUG-48:** GG overhang из концов фрагмента. Fix: документация + комментарий (design decision, sites добавляются как primer tails).
+- [x] **BUG-49:** findBinding для seq < 15bp. Fix: minLen поднят до 18bp, warning сохранён.
+- [x] **BUG-50:** KLD не кодировал 2ю мутацию. Fix: если gap < bindingLength — мутация кодируется в fwd primer.
+- [x] **BUG-51:** exportProtocol primer indexing. Fix: поиск по имени фрагмента вместо primerIdx.
+- [x] **BUG-52:** genbank-parser multiline /translation. Fix: нет пробела для sequence-like qualifiers.
+- [x] **BUG-53:** autoAdjustJunctions overlapLength. Fix: overlapLength = 30 при left_only/right_only.
+- [x] **BUG-61:** Две реализации findBinding. Fix: frontend minLen = 18 (как backend).
+- [x] **BUG-65:** MIRO+ dropdown. Fix: добавлены RE, KLD, лигирование, трансформация.

@@ -6,7 +6,10 @@
 export const createUiSlice = (set) => ({
   // ═══ Modal/panel visibility ═══
   modalMode: null,          // AddFragmentModal mode
-  showMutagenesis: false,
+  showMutagenesis: false,     // deprecated — use mutagenesisTarget
+  mutagenesisTarget: null,    // index | null — fragment for mutagenesis wizard
+  replacingFragment: null,    // { index, type } | null — fragment being replaced
+  tagFusionTarget: null,      // index | null — fragment for tag/fusion picker
   showOligos: false,
   showPartsLib: false,
   partsLibPartId: null,       // pre-select this Part when opening PartsLibrary
@@ -42,6 +45,9 @@ export const createUiSlice = (set) => ({
   // ═══ UI actions ═══
   setModalMode: (mode) => set({ modalMode: mode }, false, 'setModalMode'),
   setShowMutagenesis: (v) => set({ showMutagenesis: v }, false, 'setShowMutagenesis'),
+  setMutagenesisTarget: (idx) => set({ mutagenesisTarget: idx }, false, 'setMutagenesisTarget'),
+  setReplacingFragment: (data) => set({ replacingFragment: data }, false, 'setReplacingFragment'),
+  setTagFusionTarget: (idx) => set({ tagFusionTarget: idx }, false, 'setTagFusionTarget'),
   setShowOligos: (v) => set({ showOligos: v }, false, 'setShowOligos'),
   setShowPartsLib: (v) => set({ showPartsLib: v }, false, 'setShowPartsLib'),
   setPartsLibPartId: (id) => set({ partsLibPartId: id }, false, 'setPartsLibPartId'),

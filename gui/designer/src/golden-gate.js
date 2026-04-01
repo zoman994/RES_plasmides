@@ -81,7 +81,10 @@ export function designOverhangs(fragments, enzymeKey, circular = false) {
     const leftSeq = (fragments[i].sequence || '').toUpperCase();
     const rightSeq = (fragments[nextIdx].sequence || '').toUpperCase();
 
-    // Take last half from left + first half from right
+    // Overhang = nucleotides at the junction point (cutOffset from recognition site).
+    // Since GG sites are added as primer tails during primer design,
+    // at planning stage we derive overhangs from fragment boundaries:
+    // last N/2 of left + first N/2 of right = the sticky-end sequence.
     const halfL = Math.floor(ovLen / 2);
     const halfR = ovLen - halfL;
     const leftEnd = leftSeq.slice(-halfL);

@@ -76,28 +76,17 @@ describe('splitPart', () => {
     expect(parent.sequence).toBe(SEQ);
   });
 
-  it('distributes domains correctly at split point', () => {
-    // Split at 9: DomA(0-9) fully in part1, DomB(9-18) fully in part2
+  it('domains field no longer set on split parts', () => {
     const [id1, id2] = store.getState().splitPart('p1', 9);
     const part1 = store.getState().parts.find(p => p.id === id1);
     const part2 = store.getState().parts.find(p => p.id === id2);
 
-    expect(part1.domains).toEqual([{ name: 'DomA', start: 0, end: 9 }]);
-    expect(part2.domains).toEqual([{ name: 'DomB', start: 0, end: 9 }]);
-  });
-
-  it('clamps domain spanning the split point into both halves', () => {
-    // Add a domain that spans the split: 3..15
-    store.getState().updatePart('p1', {
-      domains: [{ name: 'Wide', start: 3, end: 15 }],
-    });
-    const [id1, id2] = store.getState().splitPart('p1', 9);
-    const part1 = store.getState().parts.find(p => p.id === id1);
-    const part2 = store.getState().parts.find(p => p.id === id2);
-
-    // part1 gets 3..9 (clamped), part2 gets 0..6 (shifted)
-    expect(part1.domains).toEqual([{ name: 'Wide', start: 3, end: 9 }]);
-    expect(part2.domains).toEqual([{ name: 'Wide', start: 0, end: 6 }]);
+    // domains field removed — all data in annotations
+    expect(part1.domains).toBeUndefined();
+    expect(part2.domains).toBeUndefined();
+    // Both parts should have annotations from autoAnnotate
+    expect(part1.annotations.length).toBeGreaterThan(0);
+    expect(part2.annotations.length).toBeGreaterThan(0);
   });
 
   it('distributes annotations with correct coordinates', () => {
@@ -203,14 +192,15 @@ describe('fuseParts', () => {
     );
   });
 
-  it('shifts part2 domains by junction position', () => {
+  it('domains field no longer set on fused parts', () => {
     const fusedId = store.getState().fuseParts('a', 'b', 'F');
     const fused = store.getState().parts.find(p => p.id === fusedId);
 
-    expect(fused.domains).toEqual([
-      { name: 'DA', start: 0, end: 6 },
-      { name: 'DB', start: 6, end: 12 },
-    ]);
+    // domains field removed — annotations carry all data
+    expect(fused.domains).toBeUndefined();
+    // Fused part should have annotations (shifted correctly)
+    expect(fused.annotations).toBeDefined();
+    expect(fused.annotations.length).toBeGreaterThan(0);
   });
 
   it('sets derivation with fusion type and junctionPosition', () => {

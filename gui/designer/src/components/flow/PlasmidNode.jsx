@@ -212,8 +212,9 @@ function PlasmidNode({ id, data }) {
             onClick={(e) => e.stopPropagation()}>
             <div className="px-3 py-1.5 text-xs hover:bg-teal-50 cursor-pointer"
               onClick={() => { addFlowPCR(id); setShowDropdown(false); setShowMenu(false); }}>
-              🧪 PCR from this fragment
+              🧪 ПЦР из этого фрагмента
             </div>
+            <div className="border-t my-0.5" />
             <div className="px-3 py-1.5 text-xs hover:bg-blue-50 cursor-pointer"
               onClick={() => { addFlowAssembly(id, 'gibson'); setShowDropdown(false); setShowMenu(false); }}>
               ⚗️ Gibson Assembly
@@ -221,6 +222,18 @@ function PlasmidNode({ id, data }) {
             <div className="px-3 py-1.5 text-xs hover:bg-green-50 cursor-pointer"
               onClick={() => { addFlowAssembly(id, 'golden_gate'); setShowDropdown(false); setShowMenu(false); }}>
               🔶 Golden Gate Assembly
+            </div>
+            <div className="px-3 py-1.5 text-xs hover:bg-orange-50 cursor-pointer"
+              onClick={() => { addFlowAssembly(id, 're_ligation'); setShowDropdown(false); setShowMenu(false); }}>
+              ✂️ RE Лигирование
+            </div>
+            <div className="px-3 py-1.5 text-xs hover:bg-purple-50 cursor-pointer"
+              onClick={() => { addFlowAssembly(id, 'kld'); setShowDropdown(false); setShowMenu(false); }}>
+              🔄 KLD
+            </div>
+            <div className="px-3 py-1.5 text-xs hover:bg-yellow-50 cursor-pointer"
+              onClick={() => { addFlowAssembly(id, 'ligation'); setShowDropdown(false); setShowMenu(false); }}>
+              🔗 Лигирование
             </div>
           </div>
         )}

@@ -3,10 +3,11 @@
  * Fragments are instances of Parts placed in an assembly.
  */
 
-import { generateAutoAnnotations } from '../auto-annotate';
+import { autoAnnotate } from '../auto-annotate';
 import { applyMutation } from '../mutagenesis';
 import { generateRegionId } from '../domain-detection';
 import { migratePartAnnotations } from '../migrate-annotations';
+import { convertDomainsToAnnotations } from '../assembly-utils';
 import { getRegions } from '../annotation-model';
 import { checkDuplicates } from '../duplicate-checker';
 
@@ -45,15 +46,24 @@ export const setNextId = (n) => { nextId = n; };
 
 /** Create a fragment object from a Part (shared between addFragment and insertFragmentAt). */
 function createFragFromPart(part) {
-  const annotations = part.annotations?.some(a => a.level === 'region')
-    ? part.annotations
+  let annotations = part.annotations?.some(a => a.level === 'region')
+    ? [...part.annotations]
     : migratePartAnnotations(part);
+
+  // One-time migration: legacy domains → detail annotations
+  if (part.domains?.length && !annotations.some(a => a.migrated)) {
+    const regions = annotations.filter(a => a.level === 'region');
+    if (regions[0]) {
+      annotations = [...annotations, ...convertDomainsToAnnotations(part.domains, regions[0].id, regions[0].start)];
+    }
+  }
+
   return {
     id: `f${nextId++}`, name: part.name, type: part.type,
     sequence: part.sequence || '', length: part.length || 0,
     strand: 1, needsAmplification: part.needsAmplification ?? true,
     sourceAssemblyId: part.sourceAssemblyId, partId: part.id,
-    customColor: part.customColor, domains: part.domains,
+    customColor: part.customColor,
     annotations,
   };
 }
@@ -86,10 +96,8 @@ export const createFragmentSlice = (set, get) => ({
       source: part.source || 'manual',
       addedDate: part.addedDate || new Date().toISOString(),
     };
-    // Auto-annotate if no user annotations
-    if (!newPart.annotations?.length) {
-      newPart.annotations = generateAutoAnnotations(newPart);
-    }
+    // Always auto-annotate: preserves existing regions + manual, adds details + points
+    newPart.annotations = autoAnnotate(newPart);
     state.parts.push(newPart);
     // Link to single parent
     if (newPart.parentId) {
@@ -151,7 +159,7 @@ export const createFragmentSlice = (set, get) => ({
       // Add junction if more than 1 fragment
       if (asm.fragments.length > 1) {
         asm.junctions.push({
-          type: asm.assemblyType === 'golden_gate' ? 'golden_gate' : 'overlap',
+          type: 'overlap',
           overlapMode: 'split', overlapLength: 30, tmTarget: 62, calcMode: 'length',
           enzyme: 'BsaI', overhang: '',
         });
@@ -183,7 +191,7 @@ export const createFragmentSlice = (set, get) => ({
       const count = asm.circular ? asm.fragments.length : Math.max(0, asm.fragments.length - 1);
       while (asm.junctions.length < count) {
         asm.junctions.push({
-          type: asm.assemblyType === 'golden_gate' ? 'golden_gate' : 'overlap',
+          type: 'overlap',
           overlapMode: 'split', overlapLength: 30, tmTarget: 62, calcMode: 'length',
         });
       }
@@ -211,7 +219,7 @@ export const createFragmentSlice = (set, get) => ({
       const count = asm.circular ? asm.fragments.length : Math.max(0, asm.fragments.length - 1);
       while (asm.junctions.length < count) {
         asm.junctions.splice(Math.min(index, asm.junctions.length), 0, {
-          type: asm.assemblyType === 'golden_gate' ? 'golden_gate' : 'overlap',
+          type: 'overlap',
           overlapMode: 'split', overlapLength: 30, tmTarget: 62, calcMode: 'length',
         });
       }
@@ -234,11 +242,48 @@ export const createFragmentSlice = (set, get) => ({
       const f = asm.fragments[index];
       if (!f) return;
       const RC = { A: 'T', T: 'A', G: 'C', C: 'G', N: 'N' };
+      const seqLen = f.sequence.length;
       f.sequence = f.sequence.split('').reverse().map(c => RC[c.toUpperCase()] || 'N').join('');
       f.strand = f.strand === 1 ? -1 : 1;
+      if (f.annotations?.length) {
+        f.annotations = f.annotations.map(a => ({
+          ...a,
+          start: seqLen - a.end,
+          end: seqLen - a.start,
+        }));
+      }
       asm.calculated = false;
 
     }, false, 'flipFragment');
+  },
+
+  replaceFragment: (index, newPart) => {
+    get().pushUndo?.();
+    set(state => {
+      const asm = state.assemblies.find(a => a.id === state.activeId);
+      if (!asm || !asm.fragments[index]) return;
+      const old = asm.fragments[index];
+      asm.fragments[index] = {
+        ...createFragFromPart(newPart),
+        strand: old.strand,
+        needsAmplification: old.needsAmplification,
+      };
+      asm.calculated = false;
+    }, false, 'replaceFragment');
+  },
+
+  saveFragmentToLibrary: (index) => {
+    const asm = get().assemblies.find(a => a.id === get().activeId);
+    if (!asm || !asm.fragments[index]) return;
+    const frag = asm.fragments[index];
+    get().addPart({
+      name: frag.name,
+      type: frag.type,
+      sequence: frag.sequence,
+      length: frag.length,
+      annotations: frag.annotations,
+      source: 'canvas',
+    });
   },
 
   reorderFragments: (from, to) => {
@@ -261,7 +306,7 @@ export const createFragmentSlice = (set, get) => ({
       const count = asm.circular ? asm.fragments.length : Math.max(0, asm.fragments.length - 1);
       while (asm.junctions.length < count) {
         asm.junctions.push({
-          type: asm.assemblyType === 'golden_gate' ? 'golden_gate' : 'overlap',
+          type: 'overlap',
           overlapMode: 'split', overlapLength: 30, tmTarget: 62, calcMode: 'length',
         });
       }
@@ -308,9 +353,6 @@ export const createFragmentSlice = (set, get) => ({
     const labels = sorted.map(m => m.label).filter(Boolean).join(',');
     const mutantName = `${parent.name}(${labels})`;
 
-    // Deep-copy domains
-    const domains = parent.domains ? JSON.parse(JSON.stringify(parent.domains)) : undefined;
-
     // Adjust annotation coordinates if length changed
     let annotations = parent.annotations?.length
       ? adjustAnnotationCoords(parent.annotations, sorted)
@@ -350,7 +392,6 @@ export const createFragmentSlice = (set, get) => ({
       length: mutantSeq.length,
       parentId,
       derivation: { type: 'mutation', mutations: sorted },
-      domains,
       annotations: annotations.length ? annotations : undefined,
       source: 'mutation',
       organism: parent.organism,
@@ -371,15 +412,6 @@ export const createFragmentSlice = (set, get) => ({
 
     const seq1 = parent.sequence.slice(0, position);
     const seq2 = parent.sequence.slice(position);
-
-    // Distribute domains (legacy support)
-    const parentDomains = parent.domains || [];
-    const domains1 = parentDomains
-      .filter(d => d.start < position)
-      .map(d => ({ ...d, end: Math.min(d.end, position) }));
-    const domains2 = parentDomains
-      .filter(d => d.end > position)
-      .map(d => ({ ...d, start: Math.max(0, d.start - position), end: d.end - position }));
 
     // ── Region-aware annotation splitting ──
     const parentAnns = parent.annotations || [];
@@ -443,7 +475,6 @@ export const createFragmentSlice = (set, get) => ({
       sequence: seq1,
       length: seq1.length,
       derivation: { type: 'split', position, index: 0 },
-      domains: domains1,
       annotations: left.length ? left : undefined,
     });
     const id1 = get().parts[get().parts.length - 1].id;
@@ -454,7 +485,6 @@ export const createFragmentSlice = (set, get) => ({
       sequence: seq2,
       length: seq2.length,
       derivation: { type: 'split', position, index: 1 },
-      domains: domains2,
       annotations: right.length ? right : undefined,
     });
     const id2 = get().parts[get().parts.length - 1].id;
@@ -471,12 +501,6 @@ export const createFragmentSlice = (set, get) => ({
     const fusedSeq = p1.sequence + p2.sequence;
     const junctionPosition = p1.sequence.length;
 
-    // Domains: p1 as-is, p2 shifted by junction
-    const domains = [
-      ...(p1.domains || []).map(d => ({ ...d })),
-      ...(p2.domains || []).map(d => ({ ...d, start: d.start + junctionPosition, end: d.end + junctionPosition })),
-    ];
-
     // Annotations: p1 as-is, p2 shifted
     const anns1 = (p1.annotations || []).map(a => ({ ...a }));
     const anns2 = (p2.annotations || []).map(a => ({
@@ -491,7 +515,6 @@ export const createFragmentSlice = (set, get) => ({
       length: fusedSeq.length,
       parentIds: [partId1, partId2],
       derivation: { type: 'fusion', junctionPosition },
-      domains,
       annotations: annotations.length ? annotations : undefined,
       source: 'fusion',
       organism: p1.organism,
