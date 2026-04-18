@@ -6,7 +6,7 @@
 Прочитай CLAUDE.md → BUGS.md → CURRENT_TASK.md
 ```
 
-Трёх файлов хватит. Дополнительно при необходимости: DECISIONS.md, docs/TWO_CLICK_OPS.md, docs/BLOCK_COMBINATIONS.md.
+Трёх файлов хватит. НЕ читай docs/ без явной инструкции в CURRENT_TASK.md.
 
 ---
 
@@ -16,7 +16,7 @@ BodgeGene — визуальный конструктор генетически
 
 **Автор:** Игорь Синельников, ФИЦ Биотехнологии РАН  
 **Путь:** `C:\Users\Zoman\Desktop\RESplasmide`  
-**Версия:** v0.3.0-alpha  
+**Версия:** v0.5.0-alpha (~220 коммитов, ~695 тестов: 583 Vitest + 112 pytest)
 
 ---
 
@@ -40,13 +40,38 @@ BodgeGene — визуальный конструктор генетически
 cd gui/designer && npx vitest run && npx vite build
 ```
 
-### 4. Баги — в BUGS.md
+### 4. Баги — ТОЛЬКО в BUGS.md
 
-Обнаружил баг → записал в BUGS.md. Починил → отметил `[x]`. Claude Code читает BUGS.md при старте каждой сессии.
+Обнаружил баг → записал в BUGS.md. Починил → отметил `[x]`. НИКУДА БОЛЬШЕ — ни в docs/, ни в PROJECT_STATE.md, ни в отдельные файлы. BUGS.md — единственный трекер.
 
-### 5. Обновляй документацию
+### 5. Обновляй документацию после сессии
 
-После сессии обновить: PROJECT_STATE.md (журнал), BUGS.md (статусы), DECISIONS.md (если было архитектурное решение).
+- PROJECT_STATE.md: журнал сессии (что сделано, коммиты)
+- BUGS.md: обновить статусы
+- DECISIONS.md: если было архитектурное решение
+- CURRENT_TASK.md: отметить выполненные задачи
+
+### 6. Координация Claude Chat ↔ Claude Code
+
+| Документ | Кто пишет | Кто обновляет |
+|----------|-----------|---------------|
+| CURRENT_TASK.md | Chat создаёт задачу | Code отмечает ✅ |
+| PROJECT_STATE.md | — | Code обновляет после сессии |
+| DECISIONS.md | Chat добавляет решения | Code может добавлять |
+| BUGS.md | Оба добавляют баги | Code отмечает [x] |
+| docs/*.md (спеки) | Chat создаёт | Code НЕ редактирует спеки |
+
+**Жизненный цикл спеки:**
+1. Chat пишет спеку в docs/ (напр. docs/RESTRICTION_CLONING.md)
+2. Chat копирует задачи из спеки в CURRENT_TASK.md
+3. Code реализует по CURRENT_TASK.md
+4. После реализации: Code ставит `**Статус:** ✅ РЕАЛИЗОВАНО [дата]` в заголовок спеки
+5. Когда спека полностью реализована → перемещается в docs/archive/
+
+**Запрещено:**
+- Создавать параллельные трекеры багов (MASTER_TODO.md, TEST_RESULTS.md и т.п.)
+- Дублировать информацию между docs/ файлами
+- Держать в docs/ больше 8 активных файлов (остальное → archive/)
 
 ---
 
@@ -56,26 +81,33 @@ cd gui/designer && npx vitest run && npx vite build
 
 ```
 src/
-├── App.jsx              — root layout, wiring
+├── App.jsx              — root layout, wiring, 14 modals
 ├── store/               — Zustand 6 slices (project, fragment, junction, primer, ui, flow)
 ├── hooks/               — useGeneratePrimers, useFragmentHandlers
-├── components/          — 37+ React компонентов
+├── components/          — 48 React компонентов
+│   ├── QuickStart       — welcome screen при пустом canvas (6 actions)
+│   ├── ImportDecisionModal — smart import при file drop
+│   ├── ActionBar        — sticky actions после расчёта праймеров
 │   ├── DesignCanvas     — 4 view modes (blocks/sequence/map/racetrack)
 │   ├── PartBlock        — фрагмент на canvas (regular/merged/compact)
-│   ├── JunctionBlock    — junction настройки (overlap/GG/RE/KLD)
+│   ├── JunctionBlock    — junction настройки (overlap/GG/RE/KLD/ligation)
 │   ├── JunctionDNA      — визуал стыка (праймеры + overlap zone)
-│   └── flow/            — Project Flow (@xyflow/react, 5 node types)
+│   ├── CatalogPanel     — SnapGene каталог (2800+ плазмид, lazy-loaded)
+│   ├── PlasmidUseWizard — 10 режимов (view/use/restriction/replace/disassemble/extract/mutate/insert/delete/versions)
+│   └── flow/            — Project Flow (@xyflow/react, 5 node types, 3 edge types)
 ├── local-primer-design.js — клиентский primer design (без API)
 ├── tm-calculator.js     — SantaLucia 1998 NN Tm
-├── golden-gate.js       — GG enzyme DB + validation
-├── restriction-db.js    — 55 RE, IUPAC, siteToRegex
+├── golden-gate.js       — GG enzyme DB + validation (Type IIS ТОЛЬКО)
+├── restriction-db.js    — 63 RE + digest() + checkDoubleDigest() + generateRETail()
+├── orf-detection.js     — ORF detection (ATG→stop ≥100aa, обе цепи)
+├── tags-db.js           — 13 PEPTIDE_TAGS + 5 FUSION_PARTNERS
 ├── validate.js          — validateJunctionEnds + end scanning
-└── __tests__/           — Vitest (~400 tests)
+└── __tests__/           — Vitest (~583 tests)
 ```
 
 ### Backend (src/pvcs/)
 
-Python CLI + FastAPI. 22 модуля, 112 pytest тестов. Бэкенд НЕ нужен для основной работы — primer design, Tm, validation всё на клиенте.
+Python CLI + FastAPI. 22 модуля, 112 pytest тестов. Бэкенд НЕ нужен для основной работы — primer design, Tm, validation всё на клиенте. Нужен для .dna import (свой binary парсер snapgene_parser.py PRIMARY, BioPython FALLBACK).
 
 ### Tech stack
 
@@ -87,11 +119,12 @@ React 19, Vite 8, Tailwind 4, Zustand 5 + Immer, React Compiler, @xyflow/react, 
 
 | Термин | Значение |
 |--------|----------|
-| **Part** | Элемент в библиотеке (CDS, promoter, terminator) |
+| **Part** | Элемент в библиотеке (CDS, promoter, terminator). Статусы: draft/verified/archived |
 | **Fragment** | Part на canvas сборки |
-| **Junction** | Соединение между фрагментами (overlap/GG/RE/KLD) |
+| **Junction** | Соединение между фрагментами (overlap/GG/RE/KLD/ligation) |
 | **Merged block** | Склеенные фрагменты с пунктирным контуром и "швами" |
 | **Assembly** | Конструкт = фрагменты + junctions + праймеры |
+| **Annotation** | 3 уровня: region > detail > point. Все в annotations[], НЕТ отдельного domains[] |
 
 ### Типы блоков на canvas
 
@@ -110,17 +143,56 @@ React 19, Vite 8, Tailwind 4, Zustand 5 + Immer, React Compiler, @xyflow/react, 
 | Кольцевая | overlap | Gibson Assembly | Gibson |
 | Любая | golden_gate | Golden Gate | Golden Gate |
 | Любая | kld | KLD | KLD |
+| Любая | ligation | Restriction Cloning | RE-клонирование |
 | Любая | re_ligation | RE лигирование | RE-лигирование |
+
+### Ферменты: строгое разделение
+
+- **GG_ENZYMES** (golden-gate.js): Type IIS (BsaI, BpiI, BsmBI, BtgZI, SapI) — ТОЛЬКО для Golden Gate
+- **RE_ENZYMES** (restriction-db.js): 63 классических (EcoRI, BamHI, etc.) — ТОЛЬКО для RE-лигирования
+- Два словаря, два файла. НЕ СМЕШИВАТЬ.
+
+### Restriction cloning pipeline
+
+```
+digest(sequence, annotations, enzyme1, enzyme2?) → backbone + excised
+checkDoubleDigest(enzyme1, enzyme2) → buffer/temp compatibility
+checkInsertSites(insertSeq, enzyme1, enzyme2) → internal site warnings
+checkReadingFrame(enzyme) → frame check for CDS inserts
+generateRETail(enzyme) → protective bases + RE site for primer tails
+```
 
 ### Adaptive overlap для "без ПЦР" соседей
 
-Если сосед фрагмента — "без ПЦР", split mode автоматически переключается на full overlap (30bp вместо 15bp). Если оба соседа "без ПЦР" → warning "overlap невозможен".
+Если сосед фрагмента — "без ПЦР", split mode автоматически переключается на full overlap (30bp вместо 15bp). Если оба соседа "без ПЦР" → warning "overlap невозможен" (кроме ligation junctions).
+
+---
+
+## UX Flow
+
+### Пустой canvas → QuickStart
+6 кнопок: restriction, gibson, golden_gate, mutagenesis, import, free.
+
+### File drop → ImportDecisionModal
+Circular: 6 действий (restriction/backbone/mutagenesis/view/library/disassemble). Linear: 2 (view/library).
+
+### Wizard → presetMode bypass
+`wizardPresetMode` пропускает меню PlasmidUseWizard → сразу нужный режим.
+
+### Праймеры рассчитаны → ActionBar
+Sticky: протокол, заказ олигов, GenBank, завершить сборку.
+
+### Header: ⚙️ Настройки dropdown
+Polymerase + primer prefix вынесены из header в collapsible dropdown.
+
+### Breadcrumb: Проект → Сборка
+Навигация Construct ↔ Flow.
 
 ---
 
 ## Принцип двух кликов
 
-Любая операция ≤ 2 кликов. Expert mode = always ON (нет гейта). Подробная спека: `docs/TWO_CLICK_OPS.md`.
+Любая операция ≤ 2 кликов. Expert mode = always ON (нет гейта).
 
 | Действие | Как |
 |----------|-----|
@@ -128,7 +200,7 @@ React 19, Vite 8, Tailwind 4, Zustand 5 + Immer, React Compiler, @xyflow/react, 
 | Удалить | Click → Del |
 | Редактировать | Double-click |
 | Перевернуть | Click → R |
-| Склеить | Click + Click → floating pill |
+| Склеить | Ctrl+Click + Ctrl+Click → floating pill |
 | Развернуть | Double-click merged |
 | Настроить junction | Click junction |
 | Переключить view | Ctrl+1/2/3/4/5 |
@@ -143,6 +215,40 @@ React 19, Vite 8, Tailwind 4, Zustand 5 + Immer, React Compiler, @xyflow/react, 
 - Перезапись Part при мутации — создавать child variant
 - Побочные файлы задач (`_1b`, `_append`) — только CURRENT_TASK.md
 - Код без тестов
+- `domains[]` как отдельное поле — всё в `annotations[]` с `level: 'detail'`
+- Баги вне BUGS.md
+- Merge через ligation junction — биологически невозможно
+- Каталог SnapGene в parts[] — пользователь явно добавляет в библиотеку
+
+---
+
+## Документация проекта
+
+### Оперативные (корень репо) — читаются каждую сессию
+
+| Файл | Назначение |
+|------|-----------|
+| `CLAUDE.md` | Правила, архитектура, координация |
+| `BUGS.md` | Единственный трекер багов |
+| `CURRENT_TASK.md` | Текущая задача |
+| `PROJECT_STATE.md` | Что работает, журнал сессий |
+| `DECISIONS.md` | Архитектурные решения (append-only) |
+
+### Справочные (docs/) — читать по необходимости
+
+| Файл | Статус | Назначение |
+|------|--------|-----------|
+| `SYSTEM_AUDIT.md` | Активный | Трекинг проблем (5 CRIT fixed, HIGH/MED в работе) |
+| `PARTS_LIFECYCLE.md` | Реализовано | Статусы draft/verified/archived |
+| `FLOW_V2_DESIGN.md` | План | Universal ReactionNode (не реализован) |
+| `TASK_FLOW_PHASE2_3.md` | Частично | Flow Phase 2+3 |
+| `USER_GUIDE_ANNOTATIONS.md` | Справка | Руководство по аннотациям |
+| `USER_GUIDE_PARTS.md` | Справка | Руководство по запчастям |
+| `USER_GUIDE_RESTRICTION.md` | Справка | Руководство по RE-клонированию |
+
+### Архив (docs/archive/) — НЕ ЧИТАТЬ без запроса
+
+Устаревшие спеки, реализованные задачи: BLOCK_COMBINATIONS, TWO_CLICK_OPS, RESTRICTION_CLONING, UX_QUICKSTART, UX_POLISH.
 
 ---
 
