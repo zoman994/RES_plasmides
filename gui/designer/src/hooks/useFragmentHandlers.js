@@ -8,12 +8,14 @@ import { designInlineKLDPrimers } from '../mutagenesis';
 import { PCR_MIXES } from '../protocol-data';
 import { addToInventory } from '../inventory';
 import { getFragColor, isMarker } from '../theme';
+import { formatProductName } from '../parts-grouping';
 
 export function useFragmentHandlers() {
   const fragments    = useFragments();
   const junctions    = useJunctions();
   const primers      = usePrimers();
   const parts        = useStore(s => s.parts);
+  const projectName  = useStore(s => s.projectName);
   const polymerase   = useStore(s => s.polymerase);
   const primerPrefix = useStore(s => s.primerPrefix);
   const editTarget   = useStore(s => s.editTarget);
@@ -239,8 +241,9 @@ export function useFragmentHandlers() {
       }
       offset += (frag.sequence || '').length;
     }
+    const productName = formatProductName(projectName || 'Project', active.name);
     const mergedProduct = {
-      id: `product_${Date.now()}`, name: active.name,
+      id: `product_${Date.now()}`, name: productName,
       type: circular ? 'plasmid' : 'pcr_product', sequence: fullSeq, length: totalLen,
       strand: 1, needsAmplification: false, subFragments,
       assemblyMethod: (() => {
@@ -248,6 +251,9 @@ export function useFragmentHandlers() {
         if (asmType === 'golden_gate') return 'golden_gate';
         if (asmType === 'kld') return 'kld';
         if (asmType === 're_ligation') return 're_ligation';
+        const jTypes = (active.junctions || []).map(j => j.type || 'overlap');
+        if (jTypes.every(t => t === 'ligation')) return 'restriction_cloning';
+        if (jTypes.some(t => t === 'ligation' || t === 're_ligation')) return 're_ligation';
         return circular ? 'gibson' : 'overlap_pcr';
       })(),
       protocol: active.protocolSteps?.length > 0 ? 'complete' : 'manual',
@@ -257,7 +263,7 @@ export function useFragmentHandlers() {
       components: fragments.map(f => f.name), completedAt: new Date().toISOString(),
     };
     addToInventory({ ...mergedProduct, verified: circular });
-    if (!parts.some(p => p.name === active.name && p.sourceAssemblyId === active.id)) {
+    if (!parts.some(p => p.name === productName && p.sourceAssemblyId === active.id)) {
       addPart(mergedProduct);
     }
     updateActive({

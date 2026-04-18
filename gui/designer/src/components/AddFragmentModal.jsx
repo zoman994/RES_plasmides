@@ -6,7 +6,7 @@ import { autoAnnotate, enrichWithCommonFeatures } from '../auto-annotate';
 import { validateCDS } from '../cds-validation';
 import { parseGenBank, isGenBankFormat } from '../genbank-parser';
 import { importFeatures } from '../import-annotations';
-import { reverseComplement } from '../sequence-utils';
+import { reverseComplement, sanitizeSequence, IUPAC_DNA_REGEX, IUPAC_DNA_CHAR_REGEX } from '../sequence-utils';
 import { detectIntrons, intronsToAnnotations, getCDNA } from '../intron-utils';
 import AnnotationEditor, { PART_TYPE_GROUPS } from './AnnotationEditor';
 import SequencePreview from './SequencePreview';
@@ -93,8 +93,6 @@ export default function AddFragmentModal({ mode, onAdd, onClose }) {
     }
   }, [selectedConstruct]);
 
-  const clean = s => s.replace(/[^ATCGNatcgn]/g, '').toUpperCase();
-
   // GenBank ORIGIN-style formatting for textarea display
   const formatSequenceDisplay = (seq) => {
     if (!seq) return '';
@@ -113,7 +111,7 @@ export default function AddFragmentModal({ mode, onAdd, onClose }) {
 
   // ═══ Duplicate detection ═══
   const duplicates = useMemo(() => {
-    const cleaned = clean(sequence);
+    const cleaned = sanitizeSequence(sequence);
     if (cleaned.length < 20) return [];
     return checkDuplicates(cleaned, parts);
   }, [sequence, parts]);
@@ -161,19 +159,19 @@ export default function AddFragmentModal({ mode, onAdd, onClose }) {
       } catch { /* not valid genbank, treat as sequence */ }
     }
 
-    const cleaned = clean(rawText);
+    const cleaned = sanitizeSequence(rawText);
     setSequence(cleaned);
     setGenbankNotice('');
 
     // Restore cursor: count ATCG chars before cursor in raw, find same position in formatted
-    const charsBeforeCursor = rawText.slice(0, cursorPos).replace(/[^ATCGNatcgn]/g, '').length;
+    const charsBeforeCursor = rawText.slice(0, cursorPos).replace(IUPAC_DNA_REGEX, '').length;
     requestAnimationFrame(() => {
       if (!textareaRef.current) return;
       const formatted = formatSequenceDisplay(cleaned);
       let count = 0;
       let newPos = formatted.length;
       for (let i = 0; i < formatted.length; i++) {
-        if (/[ATCGNatcgn]/i.test(formatted[i])) {
+        if (IUPAC_DNA_CHAR_REGEX.test(formatted[i])) {
           count++;
           if (count === charsBeforeCursor) { newPos = i + 1; break; }
         }
@@ -184,7 +182,7 @@ export default function AddFragmentModal({ mode, onAdd, onClose }) {
   };
 
   useEffect(() => {
-    const cleaned = clean(sequence);
+    const cleaned = sanitizeSequence(sequence);
     if (!cleaned || cleaned.length < 3) {
       setPreviewAnnotations([]);
       setCdsWarnings([]);
@@ -222,7 +220,7 @@ export default function AddFragmentModal({ mode, onAdd, onClose }) {
   };
 
   const handleCreateAsVariant = (matchedPart) => {
-    const cleaned = clean(sequence);
+    const cleaned = sanitizeSequence(sequence);
     addPartToLib({
       name: name || `${matchedPart.name} variant`,
       type,
@@ -238,7 +236,7 @@ export default function AddFragmentModal({ mode, onAdd, onClose }) {
   };
 
   const handleAddToLibrary = () => {
-    const cleaned = clean(sequence);
+    const cleaned = sanitizeSequence(sequence);
     if (!name || !cleaned) return;
     addPartToLib({
       name,
@@ -260,8 +258,8 @@ export default function AddFragmentModal({ mode, onAdd, onClose }) {
     if (!name || (!sequence && mode !== 'construct')) return;
     onAdd({
       name,
-      sequence: clean(sequence),
-      length: clean(sequence).length,
+      sequence: sanitizeSequence(sequence),
+      length: sanitizeSequence(sequence).length,
       type,
       needsAmplification: needsPCR,
       sourceType: mode === 'composite' ? 'composite' : mode === 'construct' ? 'construct_feature' : 'sequence',
@@ -274,7 +272,8 @@ export default function AddFragmentModal({ mode, onAdd, onClose }) {
 
   const extractFeature = (f) => {
     setName(f.name);
-    setSequence(f.sequence || '');
+    // API response (fetchFeatures) is not pipeline-sanitized — sanitize here
+    setSequence(sanitizeSequence(f.sequence || ''));
     setType(f.type);
     setNote(`Extracted from ${selectedConstruct?.name}`);
     setNeedsPCR(true);
@@ -341,9 +340,9 @@ export default function AddFragmentModal({ mode, onAdd, onClose }) {
         </div>
 
         {/* ── Plasmid hint ── */}
-        {topology === 'circular' && clean(sequence).length > 3000 && (
+        {topology === 'circular' && sanitizeSequence(sequence).length > 3000 && (
           <div className="text-[11px] text-blue-600 bg-blue-50 rounded px-3 py-2 mb-2">
-            {'\uD83D\uDCA1'} {t('modal.plasmid_hint')} ({clean(sequence).length.toLocaleString()} {t('bp')}, circular)
+            {'\uD83D\uDCA1'} {t('modal.plasmid_hint')} ({sanitizeSequence(sequence).length.toLocaleString()} {t('bp')}, circular)
           </div>
         )}
 
@@ -365,8 +364,8 @@ export default function AddFragmentModal({ mode, onAdd, onClose }) {
           <>
             <textarea
               ref={isLibrary ? textareaRef : undefined}
-              value={isLibrary && clean(sequence) ? formatSequenceDisplay(clean(sequence)) : sequence}
-              onChange={isLibrary ? handleSequenceInput : e => setSequence(e.target.value)}
+              value={isLibrary && sanitizeSequence(sequence) ? formatSequenceDisplay(sanitizeSequence(sequence)) : sequence}
+              onChange={isLibrary ? handleSequenceInput : e => setSequence(sanitizeSequence(e.target.value))}
               placeholder={isLibrary ? t('modal.paste_sequence') : 'Paste DNA sequence (ATCG only)...'}
               className="w-full border rounded p-2 text-[11px] font-mono"
               style={{ ...(isLibrary ? { whiteSpace: 'pre', overflowX: 'auto' } : {}), maxHeight: '80px', overflowY: 'auto' }}
@@ -377,7 +376,7 @@ export default function AddFragmentModal({ mode, onAdd, onClose }) {
                   {'\uD83E\uDDEC'} {genbankNotice}
                 </div>
               ) : <span />}
-              {sequence && <span className="text-[10px] text-gray-400">{clean(sequence).length} bp</span>}
+              {sequence && <span className="text-[10px] text-gray-400">{sanitizeSequence(sequence).length} bp</span>}
             </div>
           </>
         )}
@@ -482,7 +481,7 @@ export default function AddFragmentModal({ mode, onAdd, onClose }) {
 
             {/* Manual sequence paste for extracted */}
             {name && (
-              <textarea value={sequence} onChange={e => setSequence(e.target.value)}
+              <textarea value={sequence} onChange={e => setSequence(sanitizeSequence(e.target.value))}
                 placeholder="Sequence (auto-filled from feature, or paste manually)"
                 className="w-full border rounded p-2 text-sm font-mono h-16" />
             )}
@@ -511,7 +510,7 @@ export default function AddFragmentModal({ mode, onAdd, onClose }) {
         {/* Sequence stats (for non-library modes) */}
         {!isLibrary && sequence && (
           <div className="text-xs text-gray-500">
-            {clean(sequence).length} bp
+            {sanitizeSequence(sequence).length} bp
             {subParts.length > 0 && ` · ${subParts.length} sub-parts`}
           </div>
         )}
@@ -542,7 +541,7 @@ export default function AddFragmentModal({ mode, onAdd, onClose }) {
                         else if (a.action === 'add_stop_TAG') setSequence(p => p + 'TAG');
                         else if (a.action === 'dismiss') setCdsWarnings(prev => prev.filter((_, idx) => idx !== i));
                         else if (a.action === 'detect_introns') {
-                          const candidates = detectIntrons(clean(sequence));
+                          const candidates = detectIntrons(sanitizeSequence(sequence));
                           if (candidates.length > 0) {
                             setIntronCandidates(candidates);
                             setShowIntronPanel(true);
@@ -636,8 +635,8 @@ export default function AddFragmentModal({ mode, onAdd, onClose }) {
         )}
 
         {/* ═══ Unified SequencePreview ═══ */}
-        {clean(sequence).length >= 3 && (() => {
-          const cleaned = clean(sequence);
+        {sanitizeSequence(sequence).length >= 3 && (() => {
+          const cleaned = sanitizeSequence(sequence);
           const seqLen = cleaned.length;
           const displaySeq = strand === -1 ? reverseComplement(cleaned) : cleaned;
           const displayAnns = strand === -1
@@ -660,7 +659,7 @@ export default function AddFragmentModal({ mode, onAdd, onClose }) {
         })()}
 
         {/* ═══ Annotation list + add form ═══ */}
-        {clean(sequence).length >= 3 && (
+        {sanitizeSequence(sequence).length >= 3 && (
           <div className="mb-3">
             <div className="flex items-center justify-between mb-1">
               <span className="text-[10px] text-gray-500 font-semibold">
@@ -675,7 +674,7 @@ export default function AddFragmentModal({ mode, onAdd, onClose }) {
             </div>
             <AnnotationEditor
               annotations={allAnnotations}
-              seqLength={clean(sequence).length}
+              seqLength={sanitizeSequence(sequence).length}
               onChange={(newAnns) => {
                 const auto = newAnns.filter(a => a.auto || a.source === 'import');
                 const manual = newAnns.filter(a => !a.auto && a.source !== 'import');
@@ -760,13 +759,13 @@ export default function AddFragmentModal({ mode, onAdd, onClose }) {
         {/* ═══ FOOTER — sticky bottom ═══ */}
         <div className="p-4 pt-3 border-t shrink-0 flex gap-2">
           {isLibrary ? (
-            <button onClick={handleAddToLibrary} disabled={!name || !clean(sequence)}
+            <button onClick={handleAddToLibrary} disabled={!name || !sanitizeSequence(sequence)}
               className="flex-1 bg-green-600 text-white rounded py-2 text-sm font-semibold
                          disabled:opacity-40 hover:bg-green-700 transition">
               {'📦'} {t('modal.save_to_library')}
             </button>
           ) : (
-            <button onClick={handleAdd} disabled={!name || !clean(sequence)}
+            <button onClick={handleAdd} disabled={!name || !sanitizeSequence(sequence)}
               className="flex-1 bg-blue-600 text-white rounded py-2 text-sm font-semibold
                          disabled:opacity-40 hover:bg-blue-700 transition">
               Add to assembly

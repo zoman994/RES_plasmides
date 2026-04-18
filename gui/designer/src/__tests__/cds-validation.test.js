@@ -47,13 +47,13 @@ describe('validateCDS', () => {
     expect(noStart.actions[0].action).toBe('add_start_ATG');
   });
 
-  it('length not divisible by 3 → error', () => {
+  it('length not divisible by 3 → warning', () => {
     const seq = 'ATGGCGAA'; // 8bp, 8%3=2
     const warnings = validateCDS(seq);
 
     const frameshift = warnings.find(w => w.type === 'frameshift');
     expect(frameshift).toBeDefined();
-    expect(frameshift.level).toBe('error');
+    expect(frameshift.level).toBe('warning');
     expect(frameshift.hint).toContain('2 нт');
   });
 

@@ -18,6 +18,8 @@ import { createPrimerSlice } from './primerSlice';
 import { createUiSlice } from './uiSlice';
 import { createProjectFlowSlice } from './projectFlowSlice';
 import { migratePartAnnotations } from '../migrate-annotations';
+import { autoAnnotate } from '../auto-annotate';
+import { sanitizeSequence } from '../sequence-utils';
 
 const LS_KEY = 'pvcs_designer_state';
 
@@ -126,7 +128,7 @@ const throttledStorage = {
 
 const persistConfig = {
   name: LS_KEY,
-  version: 6,
+  version: 7,
   storage: throttledStorage,
   partialize: (state) => ({
     projects: state.projects, activeProjectId: state.activeProjectId,
@@ -156,18 +158,28 @@ const persistConfig = {
         return { ...p, annotations: migratePartAnnotations(p) };
       });
     }
-    // v5 → v6: add status field to parts
+    // v5 → v6: add status field to parts (all existing → verified, don't guess)
     if (version < 6 && persisted?.parts) {
       persisted.parts = persisted.parts.map(p => {
-        if (p.status) return p;
-        if (['import', 'genbank_import', 'batch_import'].includes(p.source)) {
-          return { ...p, status: 'verified' };
-        }
-        if (['mutagenesis', 'mutation', 'split', 'fusion', 'assembly'].includes(p.source)) {
-          return { ...p, status: 'draft', origin: p.origin || { projectId: persisted.activeProjectId, createdAt: p.addedDate } };
-        }
-        return { ...p, status: 'verified' }; // old data = benefit of the doubt
+        if (p.status) return p; // already has status
+        return { ...p, status: 'verified' }; // safe default per PARTS_LIFECYCLE §2.3
       });
+    }
+    // v6 → v7: sanitize all stored sequences (BOM, null bytes, non-IUPAC stripping).
+    // subFragments are derived from parent.sequence — sanitize parent only.
+    if (version < 7 && persisted) {
+      if (persisted.parts) {
+        persisted.parts.forEach(p => {
+          if (p.sequence) p.sequence = sanitizeSequence(p.sequence);
+        });
+      }
+      if (persisted.assemblies) {
+        persisted.assemblies.forEach(a => {
+          a.fragments?.forEach(f => {
+            if (f.sequence) f.sequence = sanitizeSequence(f.sequence);
+          });
+        });
+      }
     }
     return persisted;
   },
@@ -177,6 +189,18 @@ const persistConfig = {
     if (!error && state) {
       queueMicrotask(() => {
         const s = useStore.getState();
+        // BUG-73: re-annotate parts with empty/missing annotations
+        if (s.parts?.length > 0) {
+          let changed = false;
+          const fixedParts = s.parts.map(p => {
+            if (p.sequence && (!p.annotations || p.annotations.length === 0)) {
+              changed = true;
+              return { ...p, annotations: autoAnnotate(p) };
+            }
+            return p;
+          });
+          if (changed) useStore.setState({ parts: fixedParts });
+        }
         if (s.flowNodes?.length > 0 && s.parts) {
           const partIds = new Set(s.parts.map(p => p.id));
           const orphanIds = new Set();
@@ -216,7 +240,7 @@ if (typeof window !== 'undefined') {
   window.addEventListener('beforeunload', () => {
     const state = useStore.getState();
     const persisted = persistConfig.partialize(state);
-    localStorage.setItem(LS_KEY, JSON.stringify({ state: persisted, version: 6 }));
+    localStorage.setItem(LS_KEY, JSON.stringify({ state: persisted, version: 7 }));
   });
 }
 

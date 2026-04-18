@@ -20,8 +20,18 @@ const STOPS = new Set(['TAA', 'TAG', 'TGA']);
 export function validateCDS(sequence, options = {}) {
   const { organismType } = options;
   if (!sequence) return [];
-  const seq = sequence.toUpperCase();
+  const rawSeq = sequence.toUpperCase();
   const warnings = [];
+
+  // B4: Auto-detect reading frame — if ATG is near the start, trim UTR prefix
+  let cdsStart = 0;
+  if (rawSeq.length >= 3 && rawSeq.slice(0, 3) !== 'ATG') {
+    const atgPos = rawSeq.indexOf('ATG');
+    if (atgPos > 0 && atgPos <= 10) {
+      cdsStart = atgPos;
+    }
+  }
+  const seq = cdsStart > 0 ? rawSeq.slice(cdsStart) : rawSeq;
 
   // 1. No start codon
   if (seq.length >= 3 && seq.slice(0, 3) !== 'ATG') {
@@ -38,10 +48,10 @@ export function validateCDS(sequence, options = {}) {
   // 2. Length not divisible by 3
   if (seq.length % 3 !== 0) {
     warnings.push({
-      level: 'error',
+      level: 'warning',
       type: 'frameshift',
-      message: `\u26D4 Длина ${seq.length} нт не кратна 3 (сдвиг рамки)`,
-      hint: `Остаток: ${seq.length % 3} нт. Проверьте границы CDS.`,
+      message: `\u26A0\uFE0F Длина ${seq.length} нт не кратна 3 (возможно включает UTR)`,
+      hint: `Остаток: ${seq.length % 3} нт. Проверьте границы CDS.${cdsStart > 0 ? ` ATG найден на позиции ${cdsStart + 1}.` : ''}`,
     });
   }
 

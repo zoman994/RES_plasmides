@@ -2,19 +2,23 @@
  * PlasmidUseWizard — modal wizard for plasmid operations.
  *
  * Triggered when addFragment detects a circular Part with ≥2 regions.
- * 9 modes: view, use whole, replace, disassemble, extract, mutate, insert, delete, versions.
+ * 10 modes: view, use whole, restriction cloning, replace, disassemble, extract, mutate, insert, delete, versions.
  */
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import PlasmidMap from './PlasmidMap';
 import { getRegions, getDetails } from '../annotation-model';
 import { ANNOTATION_COLORS } from '../auto-annotate';
 import { FEATURE_COLORS } from '../theme';
 import { useStore } from '../store';
 import { checkDuplicates } from '../duplicate-checker';
+import { migratePartAnnotations } from '../migrate-annotations';
+import { sanitizeSequence } from '../sequence-utils';
+import { digest, checkDoubleDigest, checkInsertSites, checkReadingFrame, scanAllSites } from '../restriction-db';
 
 const MODES = [
   { id: 'view',        icon: '\uD83D\uDC41',  label: 'Посмотреть',            desc: 'только просмотр' },
   { id: 'use_whole',   icon: '\uD83D\uDCE6',  label: 'Использовать целиком',  desc: 'как backbone/вектор' },
+  { id: 'restriction_cloning', icon: '\uD83D\uDD2A', label: 'Рестрикционное клонирование', desc: 'digest + insert + ligate' },
   { id: 'replace',     icon: '\uD83D\uDD04',  label: 'Заменить элемент',      desc: 'одиночный или кассету' },
   { id: 'disassemble', icon: '\uD83E\uDDE9',  label: 'Разобрать на части',    desc: 'все регионы в библиотеку' },
   { id: 'extract',     icon: '\u2702\uFE0F',   label: 'Вырезать элемент',      desc: 'один регион в библиотеку' },
@@ -29,10 +33,11 @@ const MODES = [
  * @param {Object} props.plasmid — Part with topology='circular' and ≥2 regions
  * @param {Function} props.onClose
  */
-export default function PlasmidUseWizard({ plasmid, onClose }) {
-  const [step, setStep] = useState('menu'); // 'menu' | mode id | sub-steps
+export default function PlasmidUseWizard({ plasmid, presetMode, onClose }) {
+  const [step, setStep] = useState(presetMode || 'menu'); // 'menu' | mode id | sub-steps
   const [selectedRegionIds, setSelectedRegionIds] = useState([]);
   const [message, setMessage] = useState(null);
+  const [creating, setCreating] = useState(false);
 
   const addFragment = useStore(s => s.addFragment);
   const addPart = useStore(s => s.addPart);
@@ -46,32 +51,42 @@ export default function PlasmidUseWizard({ plasmid, onClose }) {
   const regions = useMemo(() => getRegions(plasmid.annotations), [plasmid.annotations]);
   const totalBp = seq.length;
 
-  // Build fragments for PlasmidMap
-  const mapFragments = useMemo(() =>
-    regions.map(r => ({
-      id: r.id, name: r.name, type: r.type,
-      sequence: seq.slice(r.start, r.end),
-      length: r.end - r.start, strand: r.strand || 1,
-      annotations: (plasmid.annotations || []).filter(a =>
-        a.regionId === r.id || (a.level === 'region' && a.id === r.id)
-      ),
-    })),
-  [regions, plasmid.annotations, seq]);
+  // Build fragments for PlasmidMap — single plasmid to avoid overlapping region chaos
+  const mapFragments = useMemo(() => [{
+    id: plasmid.id || 'wizard',
+    name: plasmid.name,
+    type: plasmid.type || 'plasmid',
+    sequence: seq,
+    length: totalBp,
+    strand: 1,
+    annotations: plasmid.annotations || [],
+  }], [plasmid, seq, totalBp]);
 
   // ── Mode handlers ──
 
+  const usedRef = useRef(false);
   const handleUseWhole = () => {
+    if (usedRef.current) return; // StrictMode double-fire guard
+    usedRef.current = true;
     // Bypass plasmid detection by adding directly via store set
     useStore.getState().pushUndo?.();
+    // P4 fix: ensure annotations have region/detail levels for PartBlock rendering
+    const migratedAnnotations = plasmid.annotations?.some(a => a.level === 'region')
+      ? plasmid.annotations
+      : migratePartAnnotations(plasmid);
     useStore.setState(state => {
       const asm = state.assemblies.find(a => a.id === state.activeId);
       if (!asm) return;
+      // Guard: don't duplicate if same partId already on canvas
+      if (asm.fragments.some(f => f.partId === plasmid.id)) return;
       asm.fragments.push({
         id: `f${Date.now()}`, name: plasmid.name, type: plasmid.type || 'fusion',
         sequence: seq, length: totalBp, strand: 1,
         needsAmplification: false, partId: plasmid.id,
-        annotations: plasmid.annotations,
+        annotations: migratedAnnotations,
       });
+      // P5 fix: inherit topology from plasmid → enables Map/Racetrack views
+      if (plasmid.topology === 'circular') asm.circular = true;
       asm.calculated = false;
       asm.primers = [];
     });
@@ -100,6 +115,17 @@ export default function PlasmidUseWizard({ plasmid, onClose }) {
     }
     setMessage(`Добавлено: ${added.length} частей${dupes.length ? `. Дупликаты пропущены: ${dupes.join(', ')}` : ''}`);
   };
+
+  // B10: sync presetMode — instant actions execute immediately, multi-step set step
+  useEffect(() => {
+    if (!presetMode) return;
+    if (presetMode === 'view') { setViewerPart(plasmid); onClose(); return; }
+    if (presetMode === 'use_whole') { handleUseWhole(); return; }
+    if (presetMode === 'disassemble') { handleDisassemble(); return; }
+    if (presetMode === 'mutate') { setShowMutagenesis(true); onClose(); return; }
+    if (presetMode === 'versions') { useStore.getState().setVersionTreePartId(plasmid.id); onClose(); return; }
+    if (step === 'menu') setStep(presetMode);
+  }, [presetMode]);
 
   const handleExtract = (regionId) => {
     const r = regions.find(reg => reg.id === regionId);
@@ -280,9 +306,9 @@ export default function PlasmidUseWizard({ plasmid, onClose }) {
         <div className="p-2 bg-blue-50 rounded text-[11px] text-blue-700 mb-2">
           <div className="font-medium">Выбрано: {selectionAnalysis.names} ({selectionAnalysis.totalLength} п.н.)</div>
           <div className="text-[10px] text-blue-500 mt-0.5">Смежные регионы — можно заменить как один блок</div>
-          <button onClick={handleReplace}
-            className="mt-1.5 text-[10px] px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700">
-            {'🔄'} Создать фланки гомологии (без выбранного блока)
+          <button onClick={() => { setCreating(true); handleReplace(); }} disabled={creating}
+            className="mt-1.5 text-[10px] px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">
+            {'🔄'} {creating ? 'Создано ✓' : 'Создать фланки гомологии (без выбранного блока)'}
           </button>
         </div>
       )}
@@ -328,6 +354,103 @@ export default function PlasmidUseWizard({ plasmid, onClose }) {
       </div>
     </div>
   );
+
+  // ── Restriction cloning state ──
+  const [rcStep, setRcStep] = useState(1); // 1=enzymes, 2=insert, 3=preview
+  const [rcEnzymes, setRcEnzymes] = useState([]);  // [enzyme1] or [enzyme1, enzyme2]
+  const [rcInsertMode, setRcInsertMode] = useState('library'); // 'library' | 'paste' | 'later'
+  const [rcInsertPartId, setRcInsertPartId] = useState('');
+  const [rcInsertSeq, setRcInsertSeq] = useState('');
+  const [rcInsertName, setRcInsertName] = useState('');
+
+  // Unique-cutter sites for restriction cloning
+  const uniqueSites = useMemo(() => {
+    if (!seq) return [];
+    return scanAllSites(seq, { circular: true, minSiteLen: 6 })
+      .filter(s => s.isUnique)
+      .sort((a, b) => {
+        // CutSmart first, then alphabetical
+        const aCS = a.buffer === 'CutSmart' ? 0 : 1;
+        const bCS = b.buffer === 'CutSmart' ? 0 : 1;
+        return aCS - bCS || a.enzyme.localeCompare(b.enzyme);
+      });
+  }, [seq]);
+
+  const rcDigestResult = useMemo(() => {
+    if (rcEnzymes.length === 0) return null;
+    if (rcEnzymes.length === 1) return digest(seq, plasmid.annotations || [], rcEnzymes[0]);
+    return digest(seq, plasmid.annotations || [], rcEnzymes[0], rcEnzymes[1]);
+  }, [rcEnzymes, seq, plasmid.annotations]);
+
+  const rcDoubleCheck = useMemo(() => {
+    if (rcEnzymes.length !== 2) return null;
+    return checkDoubleDigest(rcEnzymes[0], rcEnzymes[1]);
+  }, [rcEnzymes]);
+
+  const rcInsertWarnings = useMemo(() => {
+    const insertSeq = rcInsertMode === 'paste' ? rcInsertSeq :
+      rcInsertMode === 'library' ? (parts.find(p => p.id === rcInsertPartId)?.sequence || '') : '';
+    if (!insertSeq || rcEnzymes.length === 0) return [];
+    return checkInsertSites(insertSeq, rcEnzymes[0], rcEnzymes[1] || null);
+  }, [rcInsertMode, rcInsertSeq, rcInsertPartId, rcEnzymes, parts]);
+
+  const handleRcCreate = () => {
+    if (!rcDigestResult || rcDigestResult.error) return;
+
+    const insertPart = rcInsertMode === 'library' ? parts.find(p => p.id === rcInsertPartId) : null;
+    const insertSeq = rcInsertMode === 'paste' ? sanitizeSequence(rcInsertSeq) :
+      rcInsertMode === 'library' ? (insertPart?.sequence || '') : '';
+    const insertName = rcInsertMode === 'library' ? (insertPart?.name || 'Insert') :
+      rcInsertMode === 'paste' ? (rcInsertName || 'Insert') : 'Insert (TBD)';
+
+    const bb = rcDigestResult.backbone;
+
+    useStore.getState().pushUndo?.();
+    useStore.setState(state => {
+      const asm = state.assemblies.find(a => a.id === state.activeId);
+      if (!asm) return;
+      const ts = Date.now();
+
+      // Clear existing fragments for a fresh cloning setup
+      asm.fragments = [
+        {
+          id: `f${ts}_bb`, name: `${plasmid.name} backbone`,
+          type: 'backbone', sequence: bb.sequence, length: bb.length,
+          strand: 1, needsAmplification: false, partId: plasmid.id,
+          annotations: bb.annotations,
+        },
+        {
+          id: `f${ts}_ins`, name: insertName,
+          type: insertPart?.type || 'CDS', sequence: insertSeq,
+          length: insertSeq.length, strand: 1,
+          needsAmplification: insertSeq.length > 0,
+          partId: insertPart?.id || null,
+          annotations: insertPart?.annotations || [],
+        },
+      ];
+
+      // Two ligation junctions
+      asm.junctions = [
+        {
+          type: 'ligation', enzyme: rcEnzymes[0],
+          overhang: bb.leftEnd.overhang, overhangType: bb.leftEnd.overhangType,
+          compatible: true, siteDestroyed: false,
+        },
+        {
+          type: 'ligation',
+          enzyme: rcEnzymes.length > 1 ? rcEnzymes[1] : rcEnzymes[0],
+          overhang: bb.rightEnd.overhang, overhangType: bb.rightEnd.overhangType,
+          compatible: true,
+          siteDestroyed: rcEnzymes.length > 1 && bb.leftEnd.overhang === bb.rightEnd.overhang &&
+            rcEnzymes[0] !== rcEnzymes[1],
+        },
+      ];
+
+      asm.circular = true;
+      asm.calculated = false;
+    });
+    onClose();
+  };
 
   const [insertPos, setInsertPos] = useState(null);
   const [insertPartId, setInsertPartId] = useState('');
@@ -384,6 +507,268 @@ export default function PlasmidUseWizard({ plasmid, onClose }) {
     </div>
   );
 
+  const renderRestrictionCloning = () => (
+    <div>
+      {/* Step indicators */}
+      <div className="flex items-center gap-2 mb-3">
+        {[1, 2, 3].map(s => (
+          <div key={s} className={`flex items-center gap-1 text-[10px] ${rcStep === s ? 'text-red-600 font-bold' : rcStep > s ? 'text-green-600' : 'text-gray-400'}`}>
+            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] border ${
+              rcStep === s ? 'bg-red-50 border-red-300' : rcStep > s ? 'bg-green-50 border-green-300' : 'border-gray-200'}`}>
+              {rcStep > s ? '✓' : s}
+            </span>
+            <span>{s === 1 ? 'Ферменты' : s === 2 ? 'Insert' : 'Создать'}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Step 1: enzyme selection */}
+      {rcStep === 1 && (
+        <div>
+          <div className="text-xs font-semibold text-gray-600 mb-1">Выберите 1 или 2 уникальных рестриктазы:</div>
+          <div className="text-[9px] text-gray-400 mb-2">1 фермент = linearize, 2 фермента = excise (directional cloning)</div>
+
+          <div className="max-h-48 overflow-y-auto border rounded mb-2">
+            {uniqueSites.map(s => {
+              const isSelected = rcEnzymes.includes(s.enzyme);
+              return (
+                <div key={s.enzyme}
+                  className={`flex items-center gap-1.5 px-2 py-1.5 text-[10px] cursor-pointer hover:bg-red-50 transition
+                    ${isSelected ? 'bg-red-50 font-semibold' : ''}`}
+                  onClick={() => {
+                    setRcEnzymes(prev => {
+                      if (prev.includes(s.enzyme)) return prev.filter(e => e !== s.enzyme);
+                      if (prev.length >= 2) return [prev[1], s.enzyme];
+                      return [...prev, s.enzyme];
+                    });
+                  }}>
+                  <span className={`w-4 h-4 rounded border flex items-center justify-center text-[8px] ${
+                    isSelected ? 'bg-red-500 text-white border-red-500' : 'border-gray-300'}`}>
+                    {isSelected ? '✓' : ''}
+                  </span>
+                  <span className="font-medium w-14">{s.enzyme}</span>
+                  <span className="font-mono text-[9px] text-gray-500 w-20">{s.site}</span>
+                  <span className={`text-[8px] w-10 ${s.end === '5prime' ? 'text-blue-600' : s.end === '3prime' ? 'text-orange-600' : 'text-gray-400'}`}>
+                    {s.end === '5prime' ? "5' oh" : s.end === '3prime' ? "3' oh" : 'blunt'}
+                  </span>
+                  <span className="text-[8px] text-gray-400">{s.buffer}</span>
+                  <span className="text-[8px] text-gray-400 ml-auto">поз. {s.positions[0]?.position}</span>
+                </div>
+              );
+            })}
+            {uniqueSites.length === 0 && (
+              <div className="p-3 text-center text-[10px] text-gray-400">Нет уникальных сайтов рестрикции</div>
+            )}
+          </div>
+
+          {/* Digest preview */}
+          {rcDigestResult && !rcDigestResult.error && (
+            <div className="bg-gray-50 rounded p-2 mb-2 text-[10px]">
+              <div className="font-medium text-gray-700">
+                {rcDigestResult.type === 'linearize' ? 'Линеаризация' : 'Excision'}: backbone {rcDigestResult.backbone.length} п.н.
+                {rcDigestResult.excised && `, excised ${rcDigestResult.excised.length} п.н.`}
+              </div>
+              {rcDigestResult.isDirectional && <div className="text-green-600 mt-0.5">✓ Направленное клонирование</div>}
+              {rcDigestResult.selfLigationRisk && <div className="text-amber-600 mt-0.5">⚠ Риск самолигирования</div>}
+            </div>
+          )}
+          {rcDigestResult?.error && (
+            <div className="bg-red-50 rounded p-2 mb-2 text-[10px] text-red-700">{rcDigestResult.error}</div>
+          )}
+
+          {/* Double digest check */}
+          {rcDoubleCheck && rcDoubleCheck.warnings.length > 0 && (
+            <div className="bg-amber-50 rounded p-2 mb-2 text-[10px]">
+              {rcDoubleCheck.warnings.map((w, i) => <div key={i} className="text-amber-700">{w}</div>)}
+            </div>
+          )}
+
+          <button onClick={() => setRcStep(2)}
+            disabled={rcEnzymes.length === 0 || rcDigestResult?.error}
+            className="text-[10px] px-3 py-1.5 bg-red-600 text-white rounded hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed">
+            Далее →
+          </button>
+        </div>
+      )}
+
+      {/* Step 2: insert selection */}
+      {rcStep === 2 && (
+        <div>
+          <div className="text-xs font-semibold text-gray-600 mb-2">Откуда insert?</div>
+          <div className="flex gap-1 mb-3">
+            {[
+              { val: 'library', label: 'Из библиотеки' },
+              { val: 'paste', label: 'Вставить seq' },
+              { val: 'later', label: 'Потом' },
+            ].map(m => (
+              <button key={m.val} onClick={() => setRcInsertMode(m.val)}
+                className={`flex-1 text-[10px] py-1.5 rounded border transition ${
+                  rcInsertMode === m.val ? 'bg-red-50 border-red-300 text-red-700 font-bold' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
+                {m.label}
+              </button>
+            ))}
+          </div>
+
+          {rcInsertMode === 'library' && (
+            <select value={rcInsertPartId} onChange={e => setRcInsertPartId(e.target.value)}
+              className="w-full text-xs border rounded p-1.5 mb-2">
+              <option value="">Выберите элемент...</option>
+              {parts.filter(p => p.id !== plasmid.id && p.sequence).map(p => (
+                <option key={p.id} value={p.id}>{p.name} ({(p.sequence || '').length} п.н.) — {p.type}</option>
+              ))}
+            </select>
+          )}
+
+          {rcInsertMode === 'paste' && (
+            <div className="space-y-1.5 mb-2">
+              <input type="text" value={rcInsertName} onChange={e => setRcInsertName(e.target.value)}
+                className="w-full text-xs border rounded p-1.5" placeholder="Имя insert..." />
+              <textarea value={rcInsertSeq} onChange={e => setRcInsertSeq(sanitizeSequence(e.target.value))}
+                className="w-full text-xs border rounded p-1.5 font-mono h-20" placeholder="ATGCCC..." />
+            </div>
+          )}
+
+          {rcInsertMode === 'later' && (
+            <div className="text-[10px] text-gray-400 mb-2">Placeholder-фрагмент будет создан. Замените позже.</div>
+          )}
+
+          {/* Insert site warnings */}
+          {rcInsertWarnings.length > 0 && (
+            <div className="bg-red-50 rounded p-2 mb-2">
+              {rcInsertWarnings.map((w, i) => (
+                <div key={i} className="text-[10px] text-red-700">
+                  ⚠ {w.message}
+                  {w.alternatives.length > 0 && <span className="text-gray-500"> Альтернативы: {w.alternatives.join(', ')}</span>}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <button onClick={() => setRcStep(1)} className="text-[10px] px-3 py-1.5 border rounded hover:bg-gray-50">← Назад</button>
+            <button onClick={() => setRcStep(3)}
+              disabled={rcInsertMode === 'library' && !rcInsertPartId}
+              className="text-[10px] px-3 py-1.5 bg-red-600 text-white rounded hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed">
+              Далее →
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Step 3: preview + confirm */}
+      {rcStep === 3 && rcDigestResult && !rcDigestResult.error && (() => {
+        const insertPart = rcInsertMode === 'library' ? parts.find(p => p.id === rcInsertPartId) : null;
+        const insertSeq = rcInsertMode === 'paste' ? rcInsertSeq : (insertPart?.sequence || '');
+        const insertName = rcInsertMode === 'library' ? (insertPart?.name || 'Insert') :
+          rcInsertMode === 'paste' ? (rcInsertName || 'Insert') : 'Insert (TBD)';
+        const bb = rcDigestResult.backbone;
+
+        // Reading frame check for CDS inserts
+        const isCDS = insertPart?.type === 'CDS' || insertPart?.type === 'gene';
+        const frameChecks = rcEnzymes.map(e => ({ enzyme: e, ...checkReadingFrame(e) }));
+
+        return (
+          <div>
+            <div className="text-xs font-semibold text-gray-600 mb-2">Preview</div>
+            <div className="bg-gray-50 rounded-lg p-3 space-y-2 mb-3 text-[10px]">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-gray-700">Backbone:</span>
+                <span>{plasmid.name} — {bb.length} п.н.</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-gray-700">Insert:</span>
+                <span>{insertName} — {insertSeq.length || '?'} п.н.</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-gray-700">Ферменты:</span>
+                <span>{rcEnzymes.join(' + ')}</span>
+                {rcDigestResult.isDirectional && <span className="text-green-600 font-medium">✓ направленное</span>}
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-gray-700">Junctions:</span>
+                <span>
+                  {rcEnzymes[0]} ({bb.leftEnd.overhangType}, {bb.leftEnd.overhang || 'blunt'})
+                  {rcEnzymes[1] && ` + ${rcEnzymes[1]} (${bb.rightEnd.overhangType}, ${bb.rightEnd.overhang || 'blunt'})`}
+                </span>
+              </div>
+            </div>
+
+            {/* Reading frame warnings for CDS */}
+            {isCDS && frameChecks.some(f => !f.inFrame) && (
+              <div className="bg-amber-50 rounded p-2 mb-2 text-[10px]">
+                {frameChecks.filter(f => !f.inFrame).map((f, i) => (
+                  <div key={i} className="text-amber-700">⚠ {f.enzyme}: добавляет {f.addedBases} п.н. — не в рамке считывания</div>
+                ))}
+              </div>
+            )}
+            {isCDS && frameChecks.some(f => f.containsATG) && (
+              <div className="bg-blue-50 rounded p-2 mb-2 text-[10px]">
+                {frameChecks.filter(f => f.containsATG).map((f, i) => (
+                  <div key={i} className="text-blue-700">💡 {f.enzyme} ({f.tip})</div>
+                ))}
+              </div>
+            )}
+
+            {/* B8: Junction sequence preview */}
+            {insertSeq && (() => {
+              const leftRE = rcEnzymes[0];
+              const rightRE = rcEnzymes[1] || rcEnzymes[0];
+              const leftOH = bb.leftEnd.overhang || '';
+              const rightOH = bb.rightEnd.overhang || '';
+              const bbSeqLeft = bb.sequence ? bb.sequence.slice(0, 12) : '';
+              const bbSeqRight = bb.sequence ? bb.sequence.slice(-12) : '';
+              const insLeft = insertSeq.slice(0, 12);
+              const insRight = insertSeq.slice(-12);
+              const totalAdded5 = leftOH.length;
+              const totalAdded3 = rightOH.length;
+              const inFrame5 = totalAdded5 % 3 === 0;
+              const inFrame3 = totalAdded3 % 3 === 0;
+              return (
+                <div className="bg-gray-50 rounded-lg p-3 mb-3 font-mono text-[10px] leading-5 space-y-2">
+                  <div className="text-[9px] text-gray-500 font-sans font-semibold mb-1">Junction preview</div>
+                  <div>
+                    <span className="text-[9px] text-gray-400 font-sans">5' ({leftRE}):</span>
+                    <div>
+                      <span className="text-gray-400">...{bbSeqRight}</span>
+                      <span className="bg-red-100 text-red-700 px-0.5 rounded">{leftOH || 'blunt'}</span>
+                      <span className="text-blue-600">{insLeft}...</span>
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-[9px] text-gray-400 font-sans">3' ({rightRE}):</span>
+                    <div>
+                      <span className="text-blue-600">...{insRight}</span>
+                      <span className="bg-red-100 text-red-700 px-0.5 rounded">{rightOH || 'blunt'}</span>
+                      <span className="text-gray-400">{bbSeqLeft}...</span>
+                    </div>
+                  </div>
+                  <div className="text-[9px] font-sans">
+                    {inFrame5 && inFrame3
+                      ? <span className="text-green-600">✓ Оба стыка в рамке считывания</span>
+                      : <span className="text-amber-600">⚠ Проверьте рамку: 5' +{totalAdded5} п.н., 3' +{totalAdded3} п.н.</span>}
+                  </div>
+                </div>
+              );
+            })()}
+
+            <div className="text-[9px] text-gray-400 mb-3">
+              На canvas будут созданы 2 фрагмента (backbone + insert) и 2 ligation junction.
+              Primer design автоматически добавит RE-тейлы к праймерам insert.
+            </div>
+
+            <div className="flex gap-2">
+              <button onClick={() => setRcStep(2)} className="text-[10px] px-3 py-1.5 border rounded hover:bg-gray-50">← Назад</button>
+              <button onClick={() => { setCreating(true); handleRcCreate(); }} disabled={creating}
+                className="text-[10px] px-4 py-1.5 bg-red-600 text-white rounded hover:bg-red-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed">
+                🔪 {creating ? 'Создано ✓' : 'Создать на canvas'}
+              </button>
+            </div>
+          </div>
+        );
+      })()}
+    </div>
+  );
+
   const renderVersions = () => (
     <div className="text-center py-6">
       <div className="text-gray-400 text-sm mb-2">{'🌳'} Дерево версий загружается...</div>
@@ -394,6 +779,7 @@ export default function PlasmidUseWizard({ plasmid, onClose }) {
     menu: renderMenu,
     extract: renderExtract,
     replace: renderReplace,
+    restriction_cloning: renderRestrictionCloning,
     delete: renderDelete,
     insert: renderInsert,
     versions: renderVersions,

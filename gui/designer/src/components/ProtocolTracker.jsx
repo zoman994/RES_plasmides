@@ -18,13 +18,13 @@ function fmtDuration(startIso, endIso) {
 
 const STAGE_TIMES = {
   pcr: '~3 часа', overlap: '~3 часа', gibson: '~2 часа',
-  golden_gate: '~3 часа', kld: '~1 час', re_ligation: '~2 часа',
+  golden_gate: '~3 часа', kld: '~1 час', re_ligation: '~2 часа', ligation: '~6 часов',
   transform: '~2 часа', screening: '~1 час', miniprep: '~1 час', sequencing: '1-3 дня',
 };
 
 const STAGE_COLORS = {
   pcr: 'bg-blue-500', overlap: 'bg-blue-600', gibson: 'bg-blue-600',
-  golden_gate: 'bg-green-500', kld: 'bg-purple-500', re_ligation: 'bg-orange-500',
+  golden_gate: 'bg-green-500', kld: 'bg-purple-500', re_ligation: 'bg-orange-500', ligation: 'bg-red-500',
   transform: 'bg-teal-500', screening: 'bg-amber-500', miniprep: 'bg-indigo-500', sequencing: 'bg-gray-500',
 };
 
@@ -61,7 +61,7 @@ export default function ProtocolTracker({ fragments, junctions, primers, pcrSize
     const hasOverlap = jTypes.includes('overlap');
     const hasGG = jTypes.includes('golden_gate');
     const hasKLD = jTypes.includes('kld');
-    const hasRE = jTypes.includes('re_ligation') || jTypes.includes('sticky_end');
+    const hasRE = jTypes.includes('re_ligation') || jTypes.includes('sticky_end') || jTypes.includes('ligation');
 
     // STAGE: PCR — deduplicate identical fragments (one PCR for all copies)
     const pcrSteps = [];
@@ -138,11 +138,14 @@ export default function ProtocolTracker({ fragments, junctions, primers, pcrSize
     // STAGE: RE/Ligation
     if (hasRE) {
       n++;
-      const reJunctions = (junctions || []).filter(j => j.type === 're_ligation' || j.type === 'sticky_end');
+      const reJunctions = (junctions || []).filter(j => j.type === 're_ligation' || j.type === 'sticky_end' || j.type === 'ligation');
       const enzymes = [...new Set(reJunctions.map(j => j.reEnzyme || j.enzyme || '?'))];
+      const isLigation = reJunctions.some(j => j.type === 'ligation');
+      const proto = isLigation ? (ASSEMBLY_PROTOCOLS.restriction_cloning || ASSEMBLY_PROTOCOLS.overlap_pcr) : null;
       result.push({ name: 'Рестрикция + лигирование', method: 're_ligation', parallel: false, time: STAGE_TIMES.re_ligation, steps: [{
         id: 're_asm', num: n, type: 're_ligation', title: `Рестрикция: ${enzymes.join(', ')}`,
-        sub: 'T4 Ligase · 16°C overnight', enzymes, sz: fragments.reduce((s, f) => s + (f.length || 0), 0),
+        sub: isLigation ? 'Digest → ligate → transform' : 'T4 Ligase · 16°C overnight',
+        enzymes, sz: fragments.reduce((s, f) => s + (f.length || 0), 0), asm: proto,
       }] });
     }
 

@@ -207,7 +207,11 @@ export default function SequenceViewer({ fragments, circular, primers = [] }) {
                     <span className="text-gray-400 text-right select-none shrink-0 text-[11px]" style={{ width: LN_W }}>{line.pos} </span>
                     <span className="text-[#1a1a1a] select-all">
                       {effectiveMode === 'dna' && selected === 'all'
-                        ? line.seq
+                        ? line.seq.split('').map((ch, ci) => {
+                            const absPos = lineStart + ci;
+                            const range = coloredRanges.find(r => absPos >= r.start && absPos < r.end);
+                            return <span key={ci} style={range ? { color: range.color } : undefined}>{ch}</span>;
+                          })
                         : effectiveMode === 'dna'
                           ? line.seq.split('').map((ch, ci) => {
                               const ntPos = lineStart + ci;

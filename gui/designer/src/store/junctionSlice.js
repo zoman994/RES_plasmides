@@ -70,6 +70,9 @@ export const createJunctionSlice = (set, get) => ({
         const right = asm.fragments[(i + 1) % n];
         if (!left || !right) return;
 
+        // Never overwrite ligation junctions
+        if (j.type === 'ligation' || j.type === 're_ligation') return;
+
         // Force GG for identical adjacent fragments
         if (left.sequence && right.sequence && left.sequence === right.sequence) {
           if (j.type === 'overlap' || !j.type) {

@@ -98,6 +98,7 @@ export const createFragmentSlice = (set, get) => ({
       origin: part.origin || {
         projectId: get().activeProjectId,
         projectName: get().projectName,
+        assemblyId: get().activeId,
         createdAt: new Date().toISOString(),
       },
     };
@@ -154,9 +155,12 @@ export const createFragmentSlice = (set, get) => ({
     if (p) p.status = 'archived';
   }, false, 'archivePart'),
 
-  restorePart: (id) => set(state => {
+  restorePart: (id, targetStatus = 'draft') => set(state => {
     const p = state.parts.find(x => x.id === id);
-    if (p && p.status === 'archived') p.status = 'draft';
+    if (p && p.status === 'archived') {
+      p.status = targetStatus;
+      if (targetStatus === 'verified') p.verifiedDate = new Date().toISOString();
+    }
   }, false, 'restorePart'),
 
   // ═══ Fragment actions (modify active assembly) ═══
@@ -281,10 +285,16 @@ export const createFragmentSlice = (set, get) => ({
           ...a,
           start: seqLen - a.end,
           end: seqLen - a.start,
+          strand: a.strand ? -a.strand : a.strand, // HIGH-1 fix: flip strand
         }));
       }
       asm.calculated = false;
-
+      // CRIT-4 fix: re-run GG overhang design after flip
+      const hasGG = asm.junctions.some(j => j.type === 'golden_gate');
+      if (hasGG) {
+        asm.apiWarnings = [...(asm.apiWarnings || []), '⚠ GG overhangs пересчитаны после flip фрагмента'];
+        queueMicrotask(() => get().autoDesignGGOverhangs());
+      }
     }, false, 'flipFragment');
   },
 
@@ -343,6 +353,11 @@ export const createFragmentSlice = (set, get) => ({
       }
       asm.junctions.length = count;
       asm.calculated = false;
+      // HIGH-9: re-run GG overhang design after reorder
+      const hasGG = asm.junctions.some(j => j.type === 'golden_gate');
+      if (hasGG) {
+        queueMicrotask(() => get().autoDesignGGOverhangs());
+      }
     }, false, 'reorderFragments');
   },
 

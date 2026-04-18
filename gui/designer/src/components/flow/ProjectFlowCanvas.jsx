@@ -5,7 +5,7 @@
  * Edges: template (dashed gray), product (solid blue), fragment (solid green).
  * Supports: drag from PartsPalette, snap-to-grid, minimap, auto-layout, export.
  */
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useMemo } from 'react';
 import { ReactFlow, MiniMap, Controls, Background, Panel, useReactFlow } from '@xyflow/react';
 import { useDrop } from 'react-dnd';
 import { useStore } from '../../store';
@@ -33,7 +33,13 @@ const edgeTypes = {
 };
 
 export default function ProjectFlowCanvas() {
-  const flowNodes = useStore(s => s.flowNodes);
+  const parts = useStore(s => s.parts);
+  const rawFlowNodes = useStore(s => s.flowNodes);
+  // B18: filter out ghost plasmid nodes whose part no longer exists
+  const flowNodes = useMemo(() => {
+    const partIds = new Set(parts.map(p => p.id));
+    return rawFlowNodes.filter(n => n.type !== 'plasmidNode' || partIds.has(n.data?.partId));
+  }, [rawFlowNodes, parts]);
   const flowEdges = useStore(s => s.flowEdges);
   const flowStages = useStore(s => s.flowStages);
   const onNodesChange = useStore(s => s.onFlowNodesChange);

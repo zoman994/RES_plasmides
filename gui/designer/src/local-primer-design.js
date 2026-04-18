@@ -4,6 +4,8 @@
  */
 import { calcTmNN } from './tm-calculator';
 import { GG_ENZYMES } from './golden-gate';
+import { getTagByName } from './tags-db';
+import { generateRETail } from './restriction-db';
 
 function rc(seq) {
   const comp = { A: 'T', T: 'A', G: 'C', C: 'G', N: 'N' };
@@ -22,7 +24,7 @@ function findBinding(seq, direction, tmTarget = 60) {
       sequence: s,
       tm: s.length >= 4 ? Math.round(calcTmNN(s) * 10) / 10 : 0,
       length: s.length,
-      warning: `Последовательность слишком короткая (${s.length} bp < ${minLen} bp)`,
+      warning: `Фрагмент слишком короткий (${s.length} bp < ${minLen} bp) — праймер неспецифичен. Рассмотрите merge (Ctrl+Click) с соседним фрагментом.`,
     };
   }
 
@@ -38,14 +40,109 @@ function findBinding(seq, direction, tmTarget = 60) {
 }
 
 /**
+ * Tag-aware binding: if the binding region falls entirely within a low-complexity
+ * tag/linker annotation, extend past the tag into specific CDS sequence.
+ * Returns { sequence, tm, length, warning?, extended? }.
+ */
+function findBindingTagAware(seq, direction, tmTarget, annotations) {
+  const binding = findBinding(seq, direction, tmTarget);
+  if (!annotations?.length) return binding;
+
+  const s = seq.toUpperCase();
+  const seqLen = s.length;
+
+  // Determine the binding region coordinates on the template
+  const bindStart = direction === 'forward' ? 0 : seqLen - binding.length;
+  const bindEnd = direction === 'forward' ? binding.length : seqLen;
+
+  // Find tag/linker annotations that substantially overlap with the binding region
+  // "Substantial" = tag covers ≥50% of binding, meaning most of the binding falls in tag
+  const tagTypes = ['tag', 'cleavage_site', 'linker'];
+  const overlappingTag = annotations.find(a => {
+    if (!tagTypes.includes(a.type)) return false;
+    const overlapStart = Math.max(a.start, bindStart);
+    const overlapEnd = Math.min(a.end, bindEnd);
+    const overlapLen = Math.max(0, overlapEnd - overlapStart);
+    return overlapLen >= binding.length * 0.5;
+  });
+
+  if (!overlappingTag) {
+    // Check for repeat patterns in binding even without annotation
+    const repeatWarning = checkRepeats(binding.sequence);
+    if (repeatWarning) return { ...binding, warning: repeatWarning };
+    return binding;
+  }
+
+  // Check if this tag is low-complexity
+  const tagInfo = getTagByName(overlappingTag.name);
+  const isLowComplexity = tagInfo?.lowComplexity ?? false;
+
+  if (!isLowComplexity) {
+    // Tag is not low-complexity (e.g. FLAG) — normal binding is fine
+    const repeatWarning = checkRepeats(binding.sequence);
+    if (repeatWarning) return { ...binding, warning: repeatWarning };
+    return binding;
+  }
+
+  // Extend binding past the tag region + at least 12bp of specific CDS sequence
+  const minSpecific = 12;
+  if (direction === 'reverse') {
+    // Binding is at the 3' end of the sequence (template sense)
+    // Tag occupies [tag.start, tag.end). We need to reach tag.start - minSpecific
+    const targetLen = seqLen - overlappingTag.start + minSpecific;
+    const extLen = Math.min(Math.max(targetLen, binding.length), seqLen);
+    const extRegion = s.slice(seqLen - extLen);
+    const tm = extLen >= 4 ? Math.round(calcTmNN(extRegion) * 10) / 10 : 0;
+    return {
+      sequence: extRegion,
+      tm,
+      length: extLen,
+      extended: true,
+      warning: `⚠ Binding расширен через ${overlappingTag.name} (повтор, low complexity) — ${extLen} bp, рекомендуется PAGE-очистка`,
+    };
+  } else {
+    // Forward: tag at 5' end
+    const targetLen = overlappingTag.end + minSpecific;
+    const extLen = Math.min(Math.max(targetLen, binding.length), seqLen);
+    const extRegion = s.slice(0, extLen);
+    const tm = extLen >= 4 ? Math.round(calcTmNN(extRegion) * 10) / 10 : 0;
+    return {
+      sequence: extRegion,
+      tm,
+      length: extLen,
+      extended: true,
+      warning: `⚠ Binding расширен через ${overlappingTag.name} (повтор, low complexity) — ${extLen} bp, рекомендуется PAGE-очистка`,
+    };
+  }
+}
+
+/** Check for trinucleotide/dinucleotide repeats in a primer binding region. */
+function checkRepeats(seq) {
+  if (/(CAC){3,}/i.test(seq) || /(GGT){3,}/i.test(seq) || /(GTG){3,}/i.test(seq) || /(ACC){3,}/i.test(seq)) {
+    return '⚠ Binding содержит повтор (low complexity) — возможен mispriming';
+  }
+  return null;
+}
+
+/**
  * Calculate overlap tail sequence for a junction.
  */
 function overlapTail(junction, leftSeq, rightSeq, side) {
   const j = junction || {};
   const jType = j.type || 'overlap';
+  leftSeq = (leftSeq || '').toUpperCase();
+  rightSeq = (rightSeq || '').toUpperCase();
 
-  if (jType === 'kld' || jType === 're_ligation' || jType === 'sticky_end') {
+  if (jType === 'kld' || jType === 'sticky_end') {
     return '';
+  }
+
+  if (jType === 'ligation' || jType === 're_ligation') {
+    if (!j.enzyme) return '';
+    const tail = generateRETail(j.enzyme);
+    // Forward primer (side='right'): RE tail is prepended directly
+    // Reverse primer (side='left'): RE tail needs reverse complement
+    return side === 'left' ? tail : rc(tail);
   }
 
   if (jType === 'golden_gate') {
@@ -87,7 +184,12 @@ export function designPrimersLocal(fragments, junctions, circular, opts = {}) {
   const primers = [];
   const warnings = [];
 
-  if (fragments.length < 2) return { primers, warnings };
+  if (fragments.length < 2) {
+    if (fragments.length === 1) {
+      warnings.push('ℹ️ Один фрагмент — праймеры не требуются (используется целиком без ПЦР). Для линейризации добавьте второй фрагмент или используйте рестрикционное клонирование.');
+    }
+    return { primers, warnings };
+  }
 
   // ═══ Expand merged fragments into sub-fragments ═══
   const expanded = [];
@@ -152,9 +254,8 @@ export function designPrimersLocal(fragments, junctions, circular, opts = {}) {
     const fwdIsInternal = frag._mergedName !== null && !frag._isFirst;
     const revIsInternal = frag._mergedName !== null && !frag._isLast;
 
-    // Forward primer
-    const fwdBinding = findBinding(seq, 'forward', tmTarget);
-    if (fwdBinding.warning) warnings.push(`⚠ ${frag.name} fwd: ${fwdBinding.warning}`);
+    // Forward primer (tag-aware if annotations present)
+    const fwdBinding = findBindingTagAware(seq, 'forward', tmTarget, frag.annotations);
     let fwdTail = '';
     if (leftJ && prevFrag?.sequence) {
       // If left neighbor is No-PCR (not from merged expansion) → carry FULL overlap
@@ -179,9 +280,8 @@ export function designPrimersLocal(fragments, junctions, circular, opts = {}) {
       needsAmplification: frag.needsAmplification !== false,
     });
 
-    // Reverse primer
-    const revBinding = findBinding(seq, 'reverse', tmTarget);
-    if (revBinding.warning) warnings.push(`⚠ ${frag.name} rev: ${revBinding.warning}`);
+    // Reverse primer (tag-aware if annotations present)
+    const revBinding = findBindingTagAware(seq, 'reverse', tmTarget, frag.annotations);
     let revTail = '';
     if (rightJ && nextFrag?.sequence) {
       // If right neighbor is No-PCR → carry FULL overlap
@@ -207,11 +307,19 @@ export function designPrimersLocal(fragments, junctions, circular, opts = {}) {
       needsAmplification: frag.needsAmplification !== false,
     });
 
+    // Tag-aware warnings
+    if (fwdBinding.warning) warnings.push(`${frag.name} fwd: ${fwdBinding.warning}`);
+    if (revBinding.warning) warnings.push(`${frag.name} rev: ${revBinding.warning}`);
+
     if (fwdBinding.tm < tmTarget - 3) {
       warnings.push(`⚠ ${frag.name} fwd: Tm ${fwdBinding.tm}°C < ${tmTarget}°C (последовательность слишком AT-богатая)`);
     }
     if (revBinding.tm < tmTarget - 3) {
       warnings.push(`⚠ ${frag.name} rev: Tm ${revBinding.tm}°C < ${tmTarget}°C`);
+    }
+    // deltaTm check
+    if (Math.abs(fwdBinding.tm - revBinding.tm) > 5) {
+      warnings.push(`⚠ ${frag.name}: ΔTm = ${Math.abs(Math.round((fwdBinding.tm - revBinding.tm) * 10) / 10)}°C (fwd ${fwdBinding.tm}°C, rev ${revBinding.tm}°C) — рекомендуется выровнять`);
     }
     if (fwdSeq.length > 60) {
       warnings.push(`💡 ${frag.name} fwd: ${fwdSeq.length} нт — длинный праймер, рекомендуется PAGE-очистка`);
@@ -244,6 +352,13 @@ export function designPrimersLocal(fragments, junctions, circular, opts = {}) {
       warnings.push(
         `⛔ ${last.name} → ${first.name}: оба "без ПЦР" — circular overlap невозможен.`
       );
+    }
+  }
+
+  // CRIT-5: warn about short fragments that produce non-specific primers
+  for (const frag of expanded) {
+    if (frag.sequence && frag.sequence.length < 18 && frag.needsAmplification !== false) {
+      warnings.push(`⚠ ${frag.name} (${frag.sequence.length} bp) — слишком короткий для специфичных праймеров. Рекомендуется merge с соседним (Ctrl+Click).`);
     }
   }
 

@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { translateDNA } from '../codons';
+import { sanitizeSequence } from '../sequence-utils';
 
 const STOPS = ['TAA', 'TAG', 'TGA'];
 const hasStop = s => STOPS.includes((s || '').slice(-3).toUpperCase());
@@ -19,7 +20,7 @@ const QUICK_ACTIONS = [
 ];
 
 export default function SequenceEditor({ fragment, onSave, onClose }) {
-  const [seq, setSeq] = useState(fragment.sequence || '');
+  const [seq, setSeq] = useState(sanitizeSequence(fragment.sequence || ''));
   const [mode, setMode] = useState('quick'); // 'quick' | 'full'
   const origLen = (fragment.sequence || '').length;
 
@@ -115,7 +116,7 @@ export default function SequenceEditor({ fragment, onSave, onClose }) {
           </div>
           {mode === 'full' ? (
             <textarea value={seq}
-              onChange={e => setSeq(e.target.value.toUpperCase().replace(/[^ATGCNRYWSMKHBVD]/g, ''))}
+              onChange={e => setSeq(sanitizeSequence(e.target.value))}
               className="w-full font-mono text-[10px] leading-relaxed border rounded-lg p-3 h-32 resize-y focus:border-blue-400 outline-none"
               spellCheck={false} />
           ) : (

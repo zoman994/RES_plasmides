@@ -3,27 +3,15 @@
  */
 import { useState } from 'react';
 import { useStore } from '../store';
+import { PEPTIDE_TAGS } from '../tags-db';
 
-const TAG_PRESETS = [
-  // C-terminal tags
-  { name: 'His6-tag', sequence: 'CACCACCACCACCACCAC', position: 'C-term', type: 'tag' },
-  { name: 'FLAG-tag', sequence: 'GACTACAAGGACGACGATGACAAG', position: 'C-term', type: 'tag' },
-  { name: 'Strep-tag II', sequence: 'TGGAGCCACCCGCAGTTCGAGAAG', position: 'C-term', type: 'tag' },
-  { name: 'V5-tag', sequence: 'GGTAAGCCTATCCCTAACCCTCTCCTCGGTCTCGATTCTACG', position: 'C-term', type: 'tag' },
-  { name: 'Myc-tag', sequence: 'GAACAAAAACTCATCTCAGAAGAGGATCTG', position: 'C-term', type: 'tag' },
-  { name: 'HA-tag', sequence: 'TACCCATACGATGTTCCAGATTACGCT', position: 'C-term', type: 'tag' },
-
-  // N-terminal tags
-  { name: 'His6-tag (N)', sequence: 'CACCACCACCACCACCAC', position: 'N-term', type: 'tag' },
-
-  // Cleavage sites
-  { name: 'TEV site', sequence: 'GAAAACCTGTATTTTCAGAGC', position: 'linker', type: 'cleavage_site' },
-  { name: 'Thrombin site', sequence: 'CTGGTGCCGCGCGGCAGC', position: 'linker', type: 'cleavage_site' },
-
-  // Linkers
-  { name: '(G4S)x3', sequence: 'GGTGGCGGTGGCTCGGGCGGTGGTGGGTCGGGTGGCGGCGGATCG', position: 'linker', type: 'linker' },
-  { name: '(G4S)x1', sequence: 'GGTGGCGGTGGCTCG', position: 'linker', type: 'linker' },
-];
+const TAG_PRESETS = PEPTIDE_TAGS.map(t => ({
+  name: t.name,
+  sequence: t.dna,
+  position: t.position === 'both' ? 'C-term' : t.position,
+  type: t.category === 'cleavage' ? 'cleavage_site' : t.category === 'linker' ? 'linker' : 'tag',
+  _bothPositions: t.position === 'both',
+}));
 
 export default function TagFusionPicker({ fragmentIndex, fragment, onClose }) {
   const [position, setPosition] = useState('C-term');
@@ -34,7 +22,7 @@ export default function TagFusionPicker({ fragmentIndex, fragment, onClose }) {
   });
 
   const presets = TAG_PRESETS.filter(t =>
-    position === 'N-term' ? t.position !== 'C-term' : t.position !== 'N-term'
+    t.position === 'linker' || t._bothPositions || t.position === position
   );
 
   const handleApply = (tag) => {

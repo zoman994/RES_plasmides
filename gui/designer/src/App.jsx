@@ -38,6 +38,9 @@ import PartsLibrary from './components/PartsLibrary';
 import DataManager from './components/DataManager';
 import PlasmidViewer from './components/PlasmidViewer';
 import PlasmidUseWizard from './components/PlasmidUseWizard';
+import ImportDecisionModal from './components/ImportDecisionModal';
+import ActionBar from './components/ActionBar';
+import CatalogPanel from './components/CatalogPanel';
 import PlasmidVersionTree from './components/PlasmidVersionTree';
 import ProjectFlowCanvas from './components/flow/ProjectFlowCanvas';
 import { designPrimersLocal } from './local-primer-design';
@@ -93,10 +96,13 @@ export default function App() {
   const replacingFragment = useStore(s => s.replacingFragment);
   const tagFusionTarget = useStore(s => s.tagFusionTarget);
   const showOligos = useStore(s => s.showOligos);
+  const showCatalog = useStore(s => s.showCatalog);
   const showPartsLib = useStore(s => s.showPartsLib);
   const partsLibPartId = useStore(s => s.partsLibPartId);
   const viewerPart = useStore(s => s.viewerPart);
   const wizardPlasmid = useStore(s => s.wizardPlasmid);
+  const wizardPresetMode = useStore(s => s.wizardPresetMode);
+  const importDecisionData = useStore(s => s.importDecisionData);
   const versionTreePartId = useStore(s => s.versionTreePartId);
   const globalCDSPart = useStore(s => s.globalCDSPart);
   const editTarget = useStore(s => s.editTarget);
@@ -130,6 +136,7 @@ export default function App() {
 
   // ═══ File drag-and-drop from OS ═══
   const [fileDragOver, setFileDragOver] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const dragCounterRef = useRef(0);
 
   const handleDragEnter = (e) => {
@@ -161,8 +168,7 @@ export default function App() {
     if (!file) return;
     try {
       const data = await handleFileImport(file);
-      useStore.getState().setImportedData(data);
-      setModalMode('library');
+      useStore.getState().setImportDecision(data);
     } catch (err) {
       alert(`Ошибка импорта: ${err.message}`);
     }
@@ -213,20 +219,13 @@ export default function App() {
       const currentParts = useStore.getState().parts;
       if (!apiParts.length) return; // don't wipe on empty
       const existingIds = new Set(currentParts.map(p => p.id));
-      const newOnly = apiParts.filter(p => !existingIds.has(p.id));
+      const existingNames = new Set(currentParts.map(p => p.name));
+      const newOnly = apiParts.filter(p => !existingIds.has(p.id) && !existingNames.has(p.name));
       if (newOnly.length > 0) {
         useStore.getState().setParts([...currentParts, ...newOnly]);
       }
     };
-    const fallback = [
-      { id: 'd1', name: 'PglaA', type: 'promoter', sequence: 'ATCG'.repeat(212), length: 850 },
-      { id: 'd2', name: 'XynTL', type: 'CDS', sequence: 'ATGC'.repeat(225), length: 900 },
-      { id: 'd3', name: 'TtrpC', type: 'terminator', sequence: 'GCTA'.repeat(185), length: 740 },
-      { id: 'd4', name: 'HygR', type: 'CDS', sequence: 'ATCG'.repeat(256), length: 1026 },
-      { id: 'd5', name: 'PgpdA', type: 'promoter', sequence: 'GCGC'.repeat(135), length: 540 },
-      { id: 'd6', name: 'pyrG', type: 'CDS', sequence: 'TAGC'.repeat(241), length: 966 },
-    ];
-    fetchParts().then(mergeParts).catch(() => mergeParts([])); // empty start for testing
+    fetchParts().then(mergeParts).catch(() => {}); // on error — keep existing parts
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ═══ Auto-design primers (client-side, no API) ═══
@@ -243,6 +242,18 @@ export default function App() {
         apiWarnings: autoDesigned.warnings,
         calculated: true,
       });
+    } else if (autoDesigned !== undefined) {
+      // P1v2 fix: clear stale primers when auto-design returns null/empty (e.g. 1 fragment)
+      const active = getActive();
+      if (active?.primers?.length > 0 && !active.primers.some(p => p.isMutagenesis)) {
+        updateActive({
+          primers: [],
+          apiWarnings: autoDesigned?.warnings || (fragments.length === 1
+            ? ['ℹ️ Один фрагмент — праймеры не нужны. Добавьте второй фрагмент для сборки.']
+            : []),
+          calculated: false,
+        });
+      }
     }
   }, [autoDesigned]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -303,25 +314,39 @@ export default function App() {
               className="text-xs px-2 py-1 rounded bg-white/10 text-gray-300 hover:bg-white/20 transition">
               {'📦'} Запчасти
             </button>
+            <button onClick={() => useStore.getState().setShowCatalog(true)}
+              className="text-xs px-2 py-1 rounded bg-white/10 text-gray-300 hover:bg-white/20 transition">
+              {'📚'} Каталог
+            </button>
             <button onClick={() => setShowDataMgr(true)}
               className="text-xs px-2 py-1 rounded bg-white/10 text-gray-300 hover:bg-white/20 transition"
               title="Экспорт / Импорт данных">
               {'💾'} Данные
             </button>
-            {expertMode && (<>
-              <div className="w-px h-4 bg-white/15 mx-1" />
-              <select value={polymerase} onChange={e => setPolymerase(e.target.value)}
-                className="text-xs bg-white/10 text-gray-300 border-0 rounded px-2 py-1">
-                <option value="phusion">Phusion/Q5</option>
-                <option value="taq">Taq</option>
-                <option value="kod">KOD</option>
-              </select>
-              <div className="flex items-center gap-1 ml-1 text-xs text-gray-400">
-                <span>Prefix:</span>
-                <input value={primerPrefix} onChange={e => setPrimerPrefix(e.target.value)}
-                  className="w-10 bg-white/10 text-gray-300 border-0 rounded px-1 py-0.5 text-xs" maxLength={4} />
-              </div>
-            </>)}
+            <div className="relative">
+              <button onClick={() => setShowSettings(s => !s)}
+                className="text-xs px-2 py-1 rounded bg-white/10 text-gray-300 hover:bg-white/20 transition flex items-center gap-1">
+                ⚙️ Настройки
+              </button>
+              {showSettings && (
+                <div className="absolute top-full right-0 mt-1 bg-white rounded-lg shadow-lg border p-3 z-50 min-w-[220px] space-y-2">
+                  <label className="flex items-center gap-2 text-xs text-gray-700">
+                    <span className="w-20">Полимераза:</span>
+                    <select value={polymerase} onChange={e => setPolymerase(e.target.value)}
+                      className="flex-1 text-xs border rounded px-2 py-1">
+                      <option value="phusion">Phusion/Q5</option>
+                      <option value="taq">Taq</option>
+                      <option value="kod">KOD</option>
+                    </select>
+                  </label>
+                  <label className="flex items-center gap-2 text-xs text-gray-700">
+                    <span className="w-20">Prefix:</span>
+                    <input value={primerPrefix} onChange={e => setPrimerPrefix(e.target.value)}
+                      className="flex-1 text-xs border rounded px-2 py-1" maxLength={4} />
+                  </label>
+                </div>
+              )}
+            </div>
             {fragments.length > 0 && (
               <button onClick={clearAssembly} className="text-xs px-2 py-1 text-red-400 hover:bg-red-500/20 rounded ml-1">
                 {t('Clear')}
@@ -347,6 +372,18 @@ export default function App() {
           </button>
           <span className="text-[9px] text-gray-400 ml-1">Ctrl+5</span>
         </div>
+
+        {/* Breadcrumb: Construct ↔ Flow */}
+        {projectView === 'construct' && (
+          <div className="flex items-center gap-1.5 px-6 py-0.5 text-[10px] text-gray-400 bg-white border-b">
+            <button onClick={() => setProjectView('flow')}
+              className="hover:text-blue-500 transition">
+              📂 {projectName || 'Проект'}
+            </button>
+            <span className="text-gray-300">→</span>
+            <span className="text-gray-600 font-medium">{active.name || 'Сборка'}</span>
+          </div>
+        )}
 
         {/* Assembly tabs (construct view only) */}
         {projectView === 'construct' && <AssemblyTabs
@@ -444,6 +481,17 @@ export default function App() {
               onSwapVariant={handleSwapVariant}
               onToggleCircular={toggleCircular}
               onAddCustomPrimer={addCustomPrimer} />
+
+            {calculated && primers.length > 0 && !active.completed && (
+              <ActionBar
+                primerCount={Math.floor(primers.length / 2)}
+                onExportProtocol={() => setActiveTab('protocol')}
+                onExportGenBank={() => exportGenBank(fragments, active.name || 'designed_construct', circular)}
+                onOrderOligos={() => setShowOligos(true)}
+                onComplete={completeAssembly}
+                completed={active.completed}
+              />
+            )}
 
             {fragments.length >= 2 && !active.completed && (
               <div className="space-y-2">
@@ -569,18 +617,10 @@ export default function App() {
                 onDeletePrimer={(id) => deleteCustomPrimer(id)} />
             )}
             {activeTab === 'protocol' && calculated && (
-              <>
-                <ProtocolTracker fragments={fragments} junctions={junctions} primers={primers} pcrSizes={pcrSizes}
-                  polymerase={polymerase} protocol={protocol} circular={circular}
-                  assemblyId={active.id}
-                  onInventoryUpdate={incrementInventoryVersion} />
-                {!active.completed && (
-                  <button onClick={completeAssembly}
-                    className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700 transition w-full">
-                    {'✅'} Сборка завершена {'—'} создать продукт
-                  </button>
-                )}
-              </>
+              <ProtocolTracker fragments={fragments} junctions={junctions} primers={primers} pcrSizes={pcrSizes}
+                polymerase={polymerase} protocol={protocol} circular={circular}
+                assemblyId={active.id}
+                onInventoryUpdate={incrementInventoryVersion} />
             )}
             {activeTab === 'stats' && (
               <ExperimentStats assemblies={assemblies} />
@@ -595,25 +635,6 @@ export default function App() {
               <VerificationPanel fragments={fragments} circular={circular} />
             )}
 
-            {primers.length > 0 && (
-              <div className="flex gap-2 flex-wrap">
-                <button onClick={() => exportGenBank(fragments, active.name || 'designed_construct', circular)}
-                  className="text-xs px-3 py-1.5 bg-green-50 text-green-700 rounded hover:bg-green-100 border border-green-200">
-                  {t('Export GenBank')} (.gb)
-                </button>
-                <button onClick={() => exportProtocol(fragments, junctions, primers, protocol, circular)}
-                  className="text-xs px-3 py-1.5 bg-purple-50 text-purple-700 rounded hover:bg-purple-100 border border-purple-200">
-                  {t('Export Protocol')} (.txt)
-                </button>
-                <button onClick={async () => {
-                  const r = await saveToPVCS(fragments, junctions, primers, protocol, circular);
-                  if (r.success) alert('Сохранено в PlasmidVCS!'); else alert(`Ошибка: ${r.error}`);
-                }}
-                  className="text-xs px-3 py-1.5 bg-blue-50 text-blue-700 rounded hover:bg-blue-100 border border-blue-200">
-                  {t('Save to PlasmidVCS')}
-                </button>
-              </div>
-            )}
           </div>
           )}
         </div>
@@ -670,11 +691,20 @@ export default function App() {
       )}
       {viewerPart && (
         <PlasmidViewer part={viewerPart}
-          onClose={() => useStore.getState().setViewerPart(null)} />
+          onClose={() => useStore.getState().setViewerPart(null)}
+          onOpenWizard={(part) => {
+            useStore.getState().setViewerPart(null);
+            useStore.getState().setWizardPlasmid(part);
+          }}
+        />
       )}
       {wizardPlasmid && (
-        <PlasmidUseWizard plasmid={wizardPlasmid}
-          onClose={() => useStore.getState().setWizardPlasmid(null)} />
+        <PlasmidUseWizard plasmid={wizardPlasmid} presetMode={wizardPresetMode}
+          onClose={() => { useStore.getState().setWizardPlasmid(null); useStore.getState().setWizardPresetMode(null); }} />
+      )}
+      {importDecisionData && (
+        <ImportDecisionModal data={importDecisionData}
+          onClose={() => useStore.getState().setImportDecision(null)} />
       )}
       {versionTreePartId && (
         <PlasmidVersionTree partId={versionTreePartId}
@@ -699,6 +729,9 @@ export default function App() {
       )}
       {showDataMgr && (
         <DataManager onClose={() => setShowDataMgr(false)} parts={parts} projectName={projectName} />
+      )}
+      {showCatalog && (
+        <CatalogPanel onClose={() => useStore.getState().setShowCatalog(false)} />
       )}
       {/* First launch welcome */}
       {showOligos && (

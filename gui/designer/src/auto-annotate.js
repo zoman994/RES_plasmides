@@ -15,23 +15,13 @@ import {
   detectSignalPeptide, detectHisTag, detectPropeptide, detectLinkers,
   generateRegionId, detectDomainsAsAnnotations,
 } from './domain-detection';
+import { PEPTIDE_TAGS, FUSION_PARTNERS } from './tags-db';
 
 // ═══ Known protein tags (searched in translated CDS) ═══
+// Merge peptide tags (small, by protein sequence) + fusion partners (large, by N-terminal pattern)
 const KNOWN_TAGS = [
-  { name: 'His6-tag',        pattern: 'HHHHHH' },
-  { name: 'FLAG-tag',        pattern: 'DYKDDDDK' },
-  { name: 'Strep-tag II',    pattern: 'WSHPQFEK' },
-  { name: 'V5-tag',          pattern: 'GKPIPNPLLGLD' },
-  { name: 'Myc-tag',         pattern: 'EQKLISEEDL' },
-  { name: 'HA-tag',          pattern: 'YPYDVPDYA' },
-  { name: 'TEV site',        pattern: 'ENLYFQS' },
-  { name: 'Thrombin site',   pattern: 'LVPRGS' },
-  { name: 'PreScission site', pattern: 'LEVLFQGP' },
-  { name: 'Enterokinase site', pattern: 'DDDDK' },
-  { name: 'Factor Xa site',  pattern: 'IEGR' },
-  { name: 'GST',             pattern: 'MSPILGYWKIKGLVQP' },
-  { name: 'MBP',             pattern: 'MKIEEGKLVI' },
-  { name: 'SUMO',            pattern: 'MSDQEAKPSTEDLGDKKEG' },
+  ...PEPTIDE_TAGS.map(t => ({ name: t.name, pattern: t.protein })),
+  ...FUSION_PARTNERS.map(fp => ({ name: fp.name, pattern: fp.pattern })),
 ];
 
 const STOP_CODONS = { TAA: 'TAA', TAG: 'TAG', TGA: 'TGA' };
@@ -506,11 +496,10 @@ export async function enrichWithCommonFeatures(sequence, annotations) {
   try {
     const { detectCommonFeaturesAsync } = await import('./feature-detection');
     const detected = await detectCommonFeaturesAsync(sequence);
-    if (!detected?.length) return annotations;
 
     const enriched = [...annotations];
 
-    for (const hit of detected) {
+    for (const hit of (detected || [])) {
       // Check if there's already an annotation covering this region
       const existing = enriched.find(a =>
         a.level === 'region' &&
@@ -545,6 +534,32 @@ export async function enrichWithCommonFeatures(sequence, annotations) {
           knownFeature: hit.feature.name,
         });
       }
+    }
+
+    // ORF detection: find unknown genes not in common-features.json
+    // Dynamic import — if orf-detection.js fails, enrichment continues without ORF scan
+    try {
+      const { detectORFs } = await import('./orf-detection');
+      const orfAnnotations = detectORFs(sequence, enriched);
+      enriched.push(...orfAnnotations);
+    } catch (e) {
+      console.warn('ORF detection skipped:', e.message);
+    }
+
+    // If real regions were found (from DB or ORF scan), remove generic misc_feature
+    // that covers >80% of the sequence (artifact from autoAnnotate fallback)
+    const hasRealRegions = enriched.some(a =>
+      a.level === 'region' && a.type !== 'misc_feature' &&
+      (a.source === 'common_db' || a.detector === 'orf_scan')
+    );
+    if (hasRealRegions) {
+      const seqLen = sequence.length;
+      return enriched.filter(a => {
+        if (a.level !== 'region' || a.type !== 'misc_feature') return true;
+        if (a.source === 'import') return true; // keep user-imported misc_features
+        const coverage = (a.end - a.start) / seqLen;
+        return coverage < 0.8;
+      });
     }
 
     return enriched;

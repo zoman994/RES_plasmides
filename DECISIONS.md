@@ -78,6 +78,14 @@ App.jsx был монолитом в 1350 строк с 40+ useState. Zustand д
 
 [2026-03-30] **removePart() — отдельный action.** Part в библиотеке ≠ Fragment на canvas.
 
+---
+
+## Circular Map rendering
+
+[2026-04-03] **PlasmidViewer/Wizard: mapFragments = [{whole plasmid}], не массив регионов.** Регионы плазмиды перекрываются (nested CDS, gene внутри operon). При передаче как отдельных "фрагментов" PlasmidMap суммирует их длины — offset превышает totalBp, арки уходят за 360°. Решение: всегда передавать одну плазмиду; PlasmidMap рисует sub-arcs по annotations с assignSubTracks() (max 4 tracks).
+
+[2026-04-03] **presetMode в PlasmidUseWizard: instant actions vs multi-step.** Instant (view, use_whole, disassemble, mutate, versions) → execute immediately в useEffect. Multi-step (restriction_cloning, replace, extract, delete, insert) → setStep(presetMode). Нельзя использовать useState initializer — presetMode может прийти позже.
+
 [2026-03-30] **enrichWithCommonFeatures fallback в file-import.js.** Если бэкенд 0 features → fallback на common features DB.
 
 ---
@@ -110,82 +118,124 @@ App.jsx был монолитом в 1350 строк с 40+ useState. Zustand д
 
 ---
 
-## Сессия 24 — Merger, Primers, Two-Click (31.03.2026)
+## Сессии 24–28, Блоки 2–3 (31.03–01.04.2026)
 
-[2026-03-31] **TDD-first: тесты пишутся ПЕРЕД кодом.** Правило #1 в CLAUDE.md. Каждая задача: red tests → green code → vitest run. Сокращает итерации "написал → сломано → переписал" в 3-4 раза.
-
-[2026-03-31] **BUGS.md — единый трекер багов.** Claude Code читает при старте каждой сессии. Open/Fixed секции. Обнаружил → записал. Починил → отметил `[x]`.
-
-[2026-03-31] **Один CURRENT_TASK.md, без побочных файлов.** Никаких `_1b`, `_append`. Если дополнить — дополняй основной. Claude Code гарантированно читает один файл.
-
-[2026-03-31] **Expert mode = always ON.** Убрать toggle из toolbar и first-launch wizard. `expertMode: true` в uiSlice. Все `expertMode &&` условия в PartBlock/JunctionBlock теперь всегда true. Студенческий режим прятал 8 из 9 операций — делал app бесполезным.
-
-[2026-03-31] **Click = single select (стандарт Finder/Figma).** Click = replace selection. Ctrl+Click = toggle в multi-select. Shift+Click = range. Click на пустое = deselect. Заменяет старую модель (Ctrl+Click для select, Click для highlight).
-
-[2026-03-31] **Double-click фрагмент = Edit. Double-click merged = Unfold.** Стандартная метафора "двойной клик = открыть/развернуть".
-
-[2026-03-31] **Праймеры дизайнятся для ВСЕХ фрагментов, включая "без ПЦР".** `needsAmplification` — флаг протокола (нужен ли шаг ПЦР), НЕ флаг primer design. Даже без ПЦР — фрагмент участвует в сборке, соседям нужно знать sequence для overlap tails.
-
-[2026-03-31] **designPrimersLocal разворачивает merged блоки.** Merged [AmpR+EGFP] → expand в [AmpR, EGFP] → праймеры для каждого. Internal primers (между sub-фрагментами) помечаются `isInternal: true`. Внешние показываются на merged блоке.
-
-[2026-03-31] **Adaptive overlap mode.** Если сосед "без ПЦР" → текущий фрагмент несёт ПОЛНЫЙ overlap (30bp вместо 15bp). Split mode автоматически переключается на `left_only`/`right_only`. Если оба без ПЦР → warning "overlap невозможен". Комбинаций 4×4=16, баги найдены в 6 (R+N, N+R, N+N, N+M, M+N). Спека: `docs/BLOCK_COMBINATIONS.md`.
-
-[2026-03-31] **JunctionDNA вычисляет overlap из фрагментов.** Не зависит от `j.overlapSequence` (которую auto-design не устанавливает). Берёт `leftFragment.sequence.slice(-half)` + `rightFragment.sequence.slice(0, overlapLen-half)`. Общая `findPrimers()` для всех 4 типов junction с merged-safe lookup.
-
-[2026-03-31] **assemblyMethod: linear+overlap = OV-PCR, circular+overlap = Gibson.** "Gibson" — только для кольцевой сборки. Линейная overlap PCR = "OV-PCR". Проверить 4 файла.
-
-[2026-03-31] **10 атомарных операций Two-Click UX.** Каждая OP = 1 коммит, независима, проверяема. Нет циклических зависимостей. Спека: `docs/TWO_CLICK_OPS.md`. Порядок: 1→2→4→3→5→10→6→7→8→9.
+_(решения сессий 24–28 и блоков 2–3 см. в предыдущих записях — без изменений)_
 
 ---
 
-## Сессия 26 — Bugfixes + Cassette Insertion (01.04.2026)
+## Блок 4b — Restriction Cloning → Canvas (03.04.2026)
 
-[2026-04-01] **Режим "вставка кассеты" в FragmentSplitter.** `split_for_insert` action → два `homology_arm` фрагмента (5'/3' flanks) с настраиваемой длиной (500-2000 bp). Пресеты по regions (CDS/gene). Drag кассету между фланками → overlap/Gibson сборка. Стандартный workflow для knock-in/knock-out.
+[2026-04-03] **digest() — чистая функция без side effects.** Принимает sequence + annotations + enzyme(s), возвращает backbone + excised + ends. Три режима: linearize (1 site), excise same enzyme (2 sites), excise two enzymes. Внутренние хелперы `_linearize`, `_exciseTwoEnzymes`, `_exciseSameEnzyme` — не экспортируются.
 
-[2026-04-01] **Feature name: label > product > gene > note.** Приоритет `label` над `gene` — `gene="bla"` → display name "AmpR" (из label), не "bla". Соответствует SnapGene, Benchling.
+[2026-04-03] **generateRETail() — protective bases + RE site.** Использует `minFlanking` из RE_ENZYMES БД (уже заполнено для всех 63 ферментов). Пример: EcoRI minFlanking=1 → "GGAATTC". GC-чередование для стабильности.
 
-[2026-04-01] **Regex word boundaries для infer_feature_type.** Все паттерны (PROMOTER/CDS/TERMINATOR/ORIGIN) используют `\b` — "ori" не матчит "memorial", "term" не матчит "terminal".
+[2026-04-03] **overlapTail() расширен: ligation/re_ligation → RE-тейлы.** Forward primer tail = `generateRETail(enzyme)` прямой. Reverse primer tail = `rc(generateRETail(enzyme))`. Фиксит CRIT-3 из SYSTEM_AUDIT. Обратно совместимо — overlap/GG/KLD не затронуты.
 
-[2026-04-01] **Enrichment всегда после .dna import (даже если features > 0).** Два шага: 1) homology naming через `enrichWithCommonFeatures()` — "bla" → "AmpR" по sequence identity. 2) detail-level через `autoAnnotate()` — signal peptides, tags, domains внутри CDS. Дедупликация по `start-end-level` key.
+[2026-04-03] **autoAdjustJunctions() не трогает ligation junctions.** Явный guard: `if (j.type === 'ligation' || j.type === 're_ligation') return;`. Предотвращает переключение ligation → overlap при авто-подстройке.
 
----
+[2026-04-03] **N+N + ligation = valid.** Два фрагмента без ПЦР + ligation junction — стандартная операция (digest + ligate). Warning "overlap невозможен" проверяет `junc.type === 'overlap'`, не срабатывает для ligation. Фиксит HIGH-4 из SYSTEM_AUDIT.
 
-## Сессия 27 — Unified Annotations + Versioning (01.04.2026)
+[2026-04-03] **PlasmidUseWizard: restriction_cloning = 10-й режим.** 3-step wizard: выбор ферментов (из unique cutters, sorted MCS→CutSmart) → выбор insert (library/paste/placeholder) → preview + create. Создаёт 2 фрагмента (backbone needsAmplification=false + insert true) + 2 ligation junctions + circular=true.
 
-[2026-04-01] **Удаление `domains` как отдельного поля.** Вся информация хранится в `annotations[]` с `level: 'detail'`. AA-координаты нигде не хранятся — вычисляются на лету: `aaPos = Math.floor(ntStart / 3) + 1`. Мосты `convertDomainsToAnnotations()` и `detectDomainsAsAnnotations()` остаются как deprecated для миграции старых данных. 7 мест в коде: fragmentSlice (createFragFromPart, createMutant, splitPart, fuseParts, flipFragment), useFragmentHandlers (handleFragmentSplit, handleSaveFragment).
-
-[2026-04-01] **autoAnnotate() вызывается ВСЕГДА при addPart().** Заменяет `generateAutoAnnotations()` (которая пропускала Parts с existing annotations). autoAnnotate() сохраняет existing regions + manual annotations, добавляет details и points поверх. Ручные аннотации (`auto: false`) никогда не удаляются при пересчёте.
-
-[2026-04-01] **Кассета = view, не data.** `detectCassettes(annotations)` вычисляет кассеты на лету из смежных regions: promoter → CDS/marker → terminator, gap ≤ 50bp. Не создаём отдельную сущность в store. Опциональные подсказки `cassette`/`cassetteOrder` на region-annotations для ускорения — но UI работает и без них.
-
-[2026-04-01] **Универсальный координатный сдвиг `shiftAnnotations(annotations, editPoint, deltaL)`.** Единый алгоритм для всех операций, меняющих длину: deletion, insertion, region replacement. Аннотации после editPoint → shift(ΔL). Аннотации, перекрывающие editPoint → end += ΔL. До editPoint → без изменений.
-
-[2026-04-01] **Четыре правила наследования аннотаций.** (1) Координатный сдвиг при ΔL≠0. (2) Scope операции определяет что удалять/добавлять. (3) Versioning: minor (<100bp change) / major (structural). (4) autoAnnotate пересчитывается для затронутых CDS-регионов после каждой операции.
-
-[2026-04-01] **Версии: semver-like (major.minor).** Minor: substitution, малый тег <100bp. Major: deletion, insertion ≥100bp, замена региона, замена кассеты, flip, intron removal. `derivation.operations[]` — структурированный лог для semantic diff.
-
-[2026-04-01] **`annotationDiff(parent, child)` для semantic diff.** Сопоставление regions по имени → типу → overlap координат. Классификация: deleted, inserted, replaced, resized, mutated. Результат: "замена кассеты PglaA+XynTL+TtrpC → PcbhI+BGL1+TcbhI" вместо "1500 nucleotide differences".
-
-[2026-04-01] **Множественные делеции (интроны) от конца к началу.** Reverse order предотвращает сбой координат. Каждая делеция применяется последовательно: detail удалён → region shrinks → downstream shift.
-
-[2026-04-01] **Двойная адресация в UI.** CDS-детали: `Signal peptide: 1–22 а.о. (1–66 п.н.)`. Не-CDS детали: `TATA box: 803–809 п.н.`. Определяется через `REGION_RENDER_RULES[parentRegion.type].showTranslation`.
-
-[2026-04-01] **Документация: ANNOTATION_VERSIONING.md (техническая) + USER_GUIDE_ANNOTATIONS.md (для биологов).** Полная спецификация всех операций с edge cases. Руководство пользователя — без кода, для биологов.
+[2026-04-03] **completeAssembly определяет restriction_cloning по junction types.** Если все junctions = ligation → assemblyMethod='restriction_cloning'. Если смешанные → 're_ligation'.
 
 ---
 
-## Блок 2 — Toolbar Redesign + Context Menu (01.04.2026)
+## Блок 5 — Quick Start + Smart Import (03.04.2026)
 
-[2026-04-01] **Удаление глобального переключателя метода сборки из header.** `assemblyType` больше не управляется из toolbar. Каждый junction настраивается индивидуально в JunctionBlock. `addFragment()` всегда создаёт junction type='overlap' по умолчанию. `setAssemblyType()` остаётся в store для backward compat, из UI убран.
+[2026-04-03] **QuickStart при пустом canvas вместо "Drag parts here".** Условие: `fragments.length === 0 && !active.completed`. 6 кнопок: restriction, gibson, golden_gate, mutagenesis, import, free. Каждая → свой routing. Скрытый `<input type="file">` для import. НЕ modal — inline в DesignCanvas.
 
-[2026-04-01] **Мутагенез — через контекстное меню фрагмента, не через toolbar.** Правый клик по CDS → «Точечная мутация» или «Мутагенез wizard». `showMutagenesis` → `mutagenesisTarget: index | null`. MutagenesisWizard получает prop `template` → пропускает Step 1.
+[2026-04-03] **ImportDecisionModal вместо молчаливого сохранения в библиотеку.** File drop → parse → сразу спросить "Что делать?". Circular: 6 действий (restriction/backbone/mutagenesis/view/library/disassemble). Linear: 2 действия (view/library). Создаёт Part автоматически и направляет в wizard с presetMode.
 
-[2026-04-01] **Type-dependent контекстное меню PartBlock.** CDS/gene/marker: мутагенез + тег/fusion. Промотор/терминатор: только замена. Плазмида: замена кассеты, вставка, делеция, дерево версий.
+[2026-04-03] **wizardPresetMode — bypass PlasmidUseWizard menu.** Новое state в uiSlice. ImportDecisionModal устанавливает presetMode → PlasmidUseWizard получает prop → `useState(presetMode || 'menu')` → пропускает шаг выбора режима. Сбрасывается при close.
 
-[2026-04-01] **ReplacePicker — мини-modal.** Parts library фильтруется по типу. `replaceFragment(index, newPart)` — новый store action.
+[2026-04-03] **Top-down UX: "Что хочешь сделать?" вместо bottom-up "Перетащи запчасти".** Биолог мыслит от цели (вставить ген в вектор), не от деталей (найти запчасть → drag → настроить junction). Quick Start и Smart Import — entry points, ведущие к правильному wizard.
 
-[2026-04-01] **TagFusionPicker — пресеты тегов.** His6, FLAG, Strep-II, V5 (C-term). MBP, GST, SUMO (N-term). TEV, Thrombin (cleavage). (G₄S)×3 (linker). `insertTagAtFragment()` — новый store action.
+---
 
-[2026-04-01] **ContextMenu расширен.** Поля: shortcut, description, danger. Обратно совместим.
+## Блок 6 — UX Polish (03.04.2026)
 
-[2026-04-01] **Toolbar = только глобальные панели и настройки.** Parts, Oligos, Data, Polymerase, Prefix, Clear. Нет операций над фрагментами. Спека: `docs/BLOCK2_TOOLBAR_CONTEXT.md`.
+[2026-04-03] **ActionBar — sticky панель "что дальше" после расчёта праймеров.** Условие: `calculated && primers.length > 0 && !active.completed`. 4 кнопки: протокол, заказ олигов, GenBank, завершить сборку. Заменяет дублирующие кнопки экспорта внизу + completeAssembly из вкладки Protocol.
+
+[2026-04-03] **Header: polymerase/prefix → ⚙️ Настройки dropdown.** `<details>` с белым popup. Освобождает header от редко используемых настроек. Сохранены: Олиги, Запчасти, Данные, Clear.
+
+[2026-04-03] **Breadcrumb "📂 Проект → Сборка" между View Switcher и AssemblyTabs.** Клик по "Проект" → `setProjectView('flow')`. Даёт контекст (в каком проекте/сборке находишься) и быстрый переход в Flow Canvas.
+
+---
+
+## Блок 8 — HIGH фиксы + SnapGene каталог (03.04.2026)
+
+[2026-04-03] **SnapGene каталог: lazy-loaded index + on-demand category files.** plasmids-index.json (~867KB) в public/ — только метаданные, БЕЗ sequences. 19 category JSON файлов в public/plasmids-data/ — подгружаются при клике.
+
+[2026-04-03] **Каталог не в parts[], пользователь явно добавляет.** status='draft', source='catalog'. Не загромождать палитку автоматически.
+
+[2026-04-03] **Merge через ligation junction — заблокирован.** Биологически невозможно. Guard + apiWarning.
+
+---
+
+## Блок 9 — First-time User Flow (03.04.2026)
+
+[2026-04-03] **ImportPrompt — entry point при пустой библиотеке.** pendingAction state в DesignCanvas: 4 состояния пустого canvas.
+
+[2026-04-03] **PlasmidViewer: конкретные action buttons в footer.** Клонировать / Как backbone / Мутагенез вместо generic "В wizard".
+
+---
+
+## Блок 10 — Circular Map + Visual Bugfix (03.04.2026)
+
+[2026-04-03] **mapFragments = [{whole plasmid}], не массив регионов.** Корневая причина спагетти circular map: перекрывающиеся регионы → offset > totalBp → углы > 360°.
+
+[2026-04-03] **PlasmidMap: onSelectRegion + selectedRegionId.** Новые props для выбора региона на sub-arc. onSelectFragment остаётся для DesignCanvas.
+
+[2026-04-03] **presetMode: instant actions vs multi-step modes.** use_whole/view/disassemble/mutate/versions → useEffect вызывает handler напрямую. Multi-step → setStep(presetMode).
+
+[2026-04-03] **Sequence sanitize: strip non-ATGCN.** BOM/null → regex strip. (Примечание: это первая итерация, централизована в Этапе 1.1 — 18.04.2026.)
+
+[2026-04-03] **Junction Sequence Preview в RE cloning wizard.** Inline ~20нт вокруг стыка с цветовым кодированием + reading frame indicator.
+
+---
+
+## Блок 11 — Bugfix после визуального тестирования (03.04.2026)
+
+[2026-04-03] **handleUseWhole: useRef guard + partId dedup против StrictMode double-fire.** Двойной вызов при React 19 StrictMode создавал дубликаты фрагментов → stale праймеры. Защита на двух уровнях: useRef мьютекс и дедупликация по partId.
+
+[2026-04-03] **designPrimersLocal + overlapTail: sanitize seq через regex.** `.toUpperCase().replace(/[^ATGCNRYSWKMBDHV]/g, '')` убирает BOM/null/пустые символы перед генерацией праймеров. Примечание: это workaround в месте использования, удалён в Этапе 1.1 (18.04.2026) после централизации.
+
+[2026-04-03] **migratePartAnnotations в handleUseWhole.** Legacy plasmids без level:'region' получают primary region при добавлении как backbone.
+
+[2026-04-03] **Inherit circular topology в handleUseWhole.** Backbone наследует topology от source plasmid — иначе circular → linear молча.
+
+---
+
+## Блок 11b — Root cause fixes (03.04.2026)
+
+[2026-04-03] **App.jsx useEffect: else-ветка для очистки stale праймеров.** Было: праймеры записывались только если `autoDesigned && primers.length > 0`. Старые праймеры оставались "живыми" когда fragments → 1. Стало: если `autoDesigned !== undefined && (нет primers)` → `updateActive({ primers: [], calculated: false })`. Root cause для P1.
+
+[2026-04-03] **AnnotationEditor opacity: regions 0.9, details 0.7.** Было 0.5/0.85 — regions блёклые, белый текст невидим. Инверсия: яркие regions + чуть темнее details для визуального различия.
+
+---
+
+## Критический аудит и перепланирование (18.04.2026)
+
+[2026-04-18] **Отмена type-driven рефакторинга с нуля.** После критического аудита кода v0.5.0-alpha установлено: annotation-model + domain-detection + auto-annotate + intron-utils + cds-validation + feature-detection + import-annotations + orf-detection уже образуют рабочую type-driven систему через level:'region'/'detail'/'point'. Переписывание в registry/TypeSpec — рефакторинг ради имён без ценности для пользователя, ценой 660+ тестов и 2+ месяцев до публикации. Вместо этого: точечные улучшения в рамках существующей архитектуры + фокус на стабилизацию + публикация v1.0 через 3-5 недель.
+
+[2026-04-18] **App.jsx декомпозиция отложена до v1.1.** 37KB в одном файле с 14 modals — технический долг. Но рискованно ломать работающее до публикации. После v1.0: вынести modals в ModalStack, effects в useAppEffects hook.
+
+[2026-04-18] **Крупные компоненты (>30KB) декомпозиция отложена до v1.1.** FragmentEditor (54KB), PlasmidUseWizard (39KB), AddFragmentModal (35KB), DesignCanvas (33KB), PlasmidMap (33KB), PartsPalette (31KB). На стабилизацию до v1.0 не тратим.
+
+[2026-04-18] **Derived primers vs imperative push отложено до v1.1.** P1 архитектурно неправильный (useEffect + useMemo + getActive/updateActive). Правильно: primers = derived selector от (fragments, junctions). Сейчас — workaround (else-ветка из Блока 11b).
+
+---
+
+## Этап 1.1 — Центральный sanitizeSequence (18.04.2026)
+
+[2026-04-18] **sanitize-at-entry как архитектурный контракт.** Ранее ДНК санитизировалась в 3+ местах использования через разные regex (defensive depth). Теперь: `sanitizeSequence()` вызывается один раз при входе данных (paste, file import, API response), далее в кодобазе данные считаются чистыми. Inline workarounds из `local-primer-design.js` (3 места) и `PlasmidViewer.jsx` удалены. Тесты обновлены под этот контракт (crit-fixes P2 тестирует sanitize-at-entry, не defensive depth). Trade-off: новая точка входа без sanitize — тесты не поймают. Решение: через code review + чеклист в CLAUDE.md.
+
+[2026-04-18] **Канонический IUPAC-порядок: `ATGCNRYSWKMBDHV`.** В кодобазе было 4 варианта buggy-regex: `[^ATGCNRYSWKMBDHV]` (local-primer-design), `[^ATGCNRYWSMKHBVD]` (SequenceEditor), `[^ATGCN]` (PlasmidUseWizard — без IUPAC вообще, скрытый баг P-wizard-iupac), `[^ATCGNatcgn]` (AddFragmentModal — без IUPAC, скрытый баг P-addfrag-iupac). Все схлопнуты в один источник через `sanitizeSequence()` в `sequence-utils.js`.
+
+[2026-04-18] **Экспортируемые regex-константы как anti-drift механизм.** `IUPAC_DNA_REGEX` и `IUPAC_DNA_CHAR_REGEX` экспортированы из sequence-utils. Используются в AddFragmentModal cursor-position logic (строки 169/177), где нужна синхронизация между sanitizeSequence и подсчётом символов. Без этого любое изменение алфавита приводило бы к рассинхронизации курсора.
+
+[2026-04-18] **Store migration v6→v7 санитизирует legacy-данные.** Persist version bump с 6 до 7. Миграция проходит по `persisted.parts[*].sequence` и `persisted.assemblies[*].fragments[*].sequence` через `sanitizeSequence`. `subFragments` не обрабатываются отдельно — производные от `parent.sequence`.
+
+[2026-04-18] **COMPLEMENT_MAP без IUPAC — known limitation v1.1.** `reverseComplement()` превращает R/Y/S/W/K/M/B/D/H/V в N. Если реальные данные потребуют — расширить до полной IUPAC complement таблицы. Пока в BUGS.md как TODO.

@@ -16,6 +16,7 @@ import { translateDNA, CODON_TABLE } from '../codons';
 import { exportGenBank } from '../exports';
 import { validateCDS } from '../cds-validation';
 import { getCDNA } from '../intron-utils';
+import { scanAllSites } from '../restriction-db';
 import { useStore } from '../store';
 
 const CHARS_PER_LINE = 80;
@@ -57,27 +58,33 @@ export default function PlasmidViewer({ part, onClose, onOpenWizard }) {
     return warnings;
   }, [regions, seq]);
 
-  // Build fragments array for PlasmidMap (one fragment per region, or whole Part)
-  const mapFragments = useMemo(() => {
-    if (regions.length > 0) {
-      return regions.map(r => ({
-        id: r.id,
-        name: r.name,
-        type: r.type,
-        sequence: seq.slice(r.start, r.end),
-        length: r.end - r.start,
-        strand: r.strand || 1,
-        annotations: (part.annotations || []).filter(a =>
-          a.regionId === r.id || (a.level === 'region' && a.id === r.id)
-        ),
-      }));
+  // B3: RE cut sites for sequence view markers
+  const reCutMap = useMemo(() => {
+    if (!seq || seq.length > 50000) return new Map();
+    const sites = scanAllSites(seq);
+    const map = new Map(); // position → [{ enzyme, strand }]
+    for (const s of sites) {
+      if (s.cutCount > 2) continue; // only unique/double cutters
+      for (const p of s.positions) {
+        const pos = p.position;
+        if (!map.has(pos)) map.set(pos, []);
+        map.get(pos).push({ enzyme: s.enzyme, strand: p.strand });
+      }
     }
-    return [{
-      id: part.id, name: part.name, type: part.type,
-      sequence: seq, length: totalBp, strand: 1,
-      annotations: part.annotations,
-    }];
-  }, [regions, part, seq, totalBp]);
+    return map;
+  }, [seq]);
+
+  // Build fragments array for PlasmidMap — ALWAYS one fragment = whole plasmid.
+  // PlasmidMap draws sub-arcs from annotations. Avoids overlapping region chaos.
+  const mapFragments = useMemo(() => [{
+    id: part.id || 'viewer',
+    name: part.name,
+    type: part.type || 'plasmid',
+    sequence: seq,
+    length: totalBp,
+    strand: 1,
+    annotations: part.annotations || [],
+  }], [part, seq, totalBp]);
 
   // Region at a given nucleotide position
   const regionAt = (pos) => regions.find(r => pos >= r.start && pos < r.end);
@@ -179,14 +186,23 @@ export default function PlasmidViewer({ part, onClose, onOpenWizard }) {
 
         {/* Main: map + annotations */}
         <div className="flex flex-1 overflow-hidden min-h-0">
-          {/* Left: circular map */}
+          {/* Left: circular map (or linear info for very short sequences) */}
           <div className="w-[400px] shrink-0 p-3 flex items-center justify-center border-r">
-            <PlasmidMap
-              fragments={mapFragments}
-              constructName={part.name}
-              totalBp={totalBp}
-              onSelectFragment={handleMapSelect}
-            />
+            {totalBp >= 100 ? (
+              <PlasmidMap
+                fragments={mapFragments}
+                constructName={part.name}
+                totalBp={totalBp}
+                onSelectFragment={handleMapSelect}
+              />
+            ) : (
+              <div className="text-center text-gray-400 text-sm">
+                <div className="text-2xl mb-2">📏</div>
+                <div className="font-medium">{part.name}</div>
+                <div className="text-[10px]">{totalBp} п.н., linear</div>
+                <div className="font-mono text-[10px] mt-3 bg-gray-50 rounded p-2 break-all max-w-[300px]">{seq}</div>
+              </div>
+            )}
           </div>
 
           {/* Right: annotations */}
@@ -232,8 +248,19 @@ export default function PlasmidViewer({ part, onClose, onOpenWizard }) {
                 (r.type === 'CDS' || r.type === 'gene') && r.start < lineEnd && r.end > line.start
               );
 
+              // B5: Region labels at boundaries
+              const lineRegions = regions.filter(r => r.start >= line.start && r.start < lineEnd);
+
               return (
                 <div key={line.start} className="mb-2" data-line={lineIdx}>
+                  {/* Region labels */}
+                  {lineRegions.map(r => (
+                    <div key={r.id} className="text-[9px] font-sans font-medium mt-1 mb-0.5 flex items-center gap-1"
+                      style={{ color: ANNOTATION_COLORS[r.type] || FEATURE_COLORS[r.type] || '#666' }}>
+                      <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: ANNOTATION_COLORS[r.type] || FEATURE_COLORS[r.type] || '#999' }} />
+                      {r.name} <span className="text-gray-300 font-normal">({r.end - r.start} п.н.)</span>
+                    </div>
+                  ))}
                   {/* Position number */}
                   <div className="text-[9px] text-gray-300 select-none mb-px">{line.start + 1}</div>
 
@@ -289,6 +316,28 @@ export default function PlasmidViewer({ part, onClose, onOpenWizard }) {
                     })}
                   </div>
 
+                  {/* B3: RE cut markers */}
+                  {reCutMap.size > 0 && (() => {
+                    const hasAnyCut = line.seq.split('').some((_, ci) => reCutMap.has(line.start + ci));
+                    if (!hasAnyCut) return null;
+                    return (
+                      <div className="whitespace-pre text-[9px] leading-3">
+                        {line.seq.split('').map((_, ci) => {
+                          const absPos = line.start + ci;
+                          const cuts = reCutMap.get(absPos);
+                          if (cuts) {
+                            const label = cuts.map(c => c.enzyme).join(', ');
+                            return (
+                              <span key={ci} className="inline-block w-[1ch] text-center text-red-500 font-bold"
+                                title={`${label} @ ${absPos + 1}`}>{'▼'}</span>
+                            );
+                          }
+                          return <span key={ci} className="inline-block w-[1ch]">{' '}</span>;
+                        })}
+                      </div>
+                    );
+                  })()}
+
                   {/* AA translation — only under CDS regions, exon-aware */}
                   {lineCDS.length > 0 && (() => {
                     // Build exon-only codon map so AA translation skips introns
@@ -343,10 +392,26 @@ export default function PlasmidViewer({ part, onClose, onOpenWizard }) {
           <div className="flex gap-2">
             <button onClick={onClose}
               className="text-xs px-3 py-1.5 border rounded hover:bg-gray-100">Закрыть</button>
-            {onOpenWizard && (
+            {onOpenWizard && part.topology === 'circular' && (
+              <div className="flex gap-1.5">
+                <button onClick={() => { useStore.getState().setWizardPresetMode('restriction_cloning'); onClose(); onOpenWizard(part); }}
+                  className="text-xs px-2.5 py-1.5 bg-red-50 text-red-700 border border-red-200 rounded hover:bg-red-100">
+                  {'🔪'} Клонировать
+                </button>
+                <button onClick={() => { useStore.getState().setWizardPresetMode('use_whole'); onClose(); onOpenWizard(part); }}
+                  className="text-xs px-2.5 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded hover:bg-blue-100">
+                  {'⚗️'} Как backbone
+                </button>
+                <button onClick={() => { useStore.getState().setWizardPresetMode('mutate'); onClose(); onOpenWizard(part); }}
+                  className="text-xs px-2.5 py-1.5 bg-purple-50 text-purple-700 border border-purple-200 rounded hover:bg-purple-100">
+                  {'🔄'} Мутагенез
+                </button>
+              </div>
+            )}
+            {onOpenWizard && part.topology !== 'circular' && (
               <button onClick={() => { onClose(); onOpenWizard(part); }}
                 className="text-xs px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded hover:bg-blue-100">
-                {'🔄'} В wizard
+                {'🔄'} Операции
               </button>
             )}
             {(part.children?.length > 0 || part.parentId) && (

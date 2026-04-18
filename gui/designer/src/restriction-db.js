@@ -19,76 +19,76 @@ export const RE_ENZYMES = {
   // ═══════════════════════════════════════════════════════
   // 6-cutters
   // ═══════════════════════════════════════════════════════
-  EcoRI:   { site: 'GAATTC',  cut: [1, 5], end: '5prime', overhang: 'AATT', temp: 37, buffer: 'CutSmart', isoschizomers: ['Eco831I', 'SsoI'], neoschizomers: [], supplier: 'NEB' },
-  BamHI:   { site: 'GGATCC',  cut: [1, 5], end: '5prime', overhang: 'GATC', temp: 37, buffer: 'CutSmart', isoschizomers: ['BstI'], neoschizomers: [], supplier: 'NEB' },
-  HindIII: { site: 'AAGCTT',  cut: [1, 5], end: '5prime', overhang: 'AGCT', temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB' },
-  XbaI:    { site: 'TCTAGA',  cut: [1, 5], end: '5prime', overhang: 'CTAG', temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB' },
-  XhoI:    { site: 'CTCGAG',  cut: [1, 5], end: '5prime', overhang: 'TCGA', temp: 37, buffer: 'CutSmart', isoschizomers: ['PaeR7I'], neoschizomers: [], supplier: 'NEB' },
-  SalI:    { site: 'GTCGAC',  cut: [1, 5], end: '5prime', overhang: 'TCGA', temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB' },
-  NcoI:    { site: 'CCATGG',  cut: [1, 5], end: '5prime', overhang: 'CATG', temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB' },
-  NdeI:    { site: 'CATATG',  cut: [2, 4], end: '5prime', overhang: 'TA',   temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB' },
-  PstI:    { site: 'CTGCAG',  cut: [5, 1], end: '3prime', overhang: 'TGCA', temp: 37, buffer: 'CutSmart', isoschizomers: ['BspMAI'], neoschizomers: [], supplier: 'NEB' },
-  SphI:    { site: 'GCATGC',  cut: [5, 1], end: '3prime', overhang: 'CATG', temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB' },
-  KpnI:    { site: 'GGTACC',  cut: [5, 1], end: '3prime', overhang: 'GTAC', temp: 37, buffer: 'CutSmart', isoschizomers: ['Asp718I'], neoschizomers: [], supplier: 'NEB' },
-  SacI:    { site: 'GAGCTC',  cut: [5, 1], end: '3prime', overhang: 'AGCT', temp: 37, buffer: 'CutSmart', isoschizomers: ['Ecl136II'], neoschizomers: ['Eco53kI'], supplier: 'NEB' },
-  NheI:    { site: 'GCTAGC',  cut: [1, 5], end: '5prime', overhang: 'CTAG', temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB' },
-  BglII:   { site: 'AGATCT',  cut: [1, 5], end: '5prime', overhang: 'GATC', temp: 37, buffer: 'NEBuffer 3.1', isoschizomers: [], neoschizomers: [], supplier: 'NEB' },
-  ClaI:    { site: 'ATCGAT',  cut: [2, 4], end: '5prime', overhang: 'CG',   temp: 37, buffer: 'CutSmart', isoschizomers: ['BspDI', 'BanIII'], neoschizomers: [], supplier: 'NEB' },
-  MfeI:    { site: 'CAATTG',  cut: [1, 5], end: '5prime', overhang: 'AATT', temp: 37, buffer: 'CutSmart', isoschizomers: ['MunI'], neoschizomers: [], supplier: 'NEB' },
-  AgeI:    { site: 'ACCGGT',  cut: [1, 5], end: '5prime', overhang: 'CCGG', temp: 37, buffer: 'CutSmart', isoschizomers: ['PinAI'], neoschizomers: [], supplier: 'NEB' },
-  SpeI:    { site: 'ACTAGT',  cut: [1, 5], end: '5prime', overhang: 'CTAG', temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB' },
-  AvrII:   { site: 'CCTAGG',  cut: [1, 5], end: '5prime', overhang: 'CTAG', temp: 37, buffer: 'CutSmart', isoschizomers: ['BlnI'], neoschizomers: [], supplier: 'NEB' },
-  BclI:    { site: 'TGATCA',  cut: [1, 5], end: '5prime', overhang: 'GATC', temp: 50, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB' },
-  MluI:    { site: 'ACGCGT',  cut: [1, 5], end: '5prime', overhang: 'CGCG', temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB' },
-  NruI:    { site: 'TCGCGA',  cut: [3, 3], end: 'blunt',  overhang: null,   temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB' },
-  ScaI:    { site: 'AGTACT',  cut: [3, 3], end: 'blunt',  overhang: null,   temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB' },
-  AflII:   { site: 'CTTAAG',  cut: [1, 5], end: '5prime', overhang: 'TTAA', temp: 37, buffer: 'CutSmart', isoschizomers: ['BfrI'], neoschizomers: [], supplier: 'NEB' },
-  ApaI:    { site: 'GGGCCC',  cut: [5, 1], end: '3prime', overhang: 'GGCC', temp: 25, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB' },
-  BspEI:   { site: 'TCCGGA',  cut: [1, 5], end: '5prime', overhang: 'CCGG', temp: 37, buffer: 'CutSmart', isoschizomers: ['Kpn2I', 'BsuEII'], neoschizomers: [], supplier: 'NEB' },
-  BsrGI:   { site: 'TGTACA',  cut: [1, 5], end: '5prime', overhang: 'GTAC', temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB' },
-  BstBI:   { site: 'TTCGAA',  cut: [2, 4], end: '5prime', overhang: 'CG',   temp: 65, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB' },
-  BstEII:  { site: 'GGTNACC', cut: [1, 6], end: '5prime', overhang: 'GTNAC', temp: 60, buffer: 'NEBuffer 3.1', isoschizomers: [], neoschizomers: [], supplier: 'NEB' },
-  DraI:    { site: 'TTTAAA',  cut: [3, 3], end: 'blunt',  overhang: null,   temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB' },
-  EagI:    { site: 'CGGCCG',  cut: [1, 5], end: '5prime', overhang: 'GGCC', temp: 37, buffer: 'CutSmart', isoschizomers: ['EclXI'], neoschizomers: [], supplier: 'NEB' },
-  Eco53kI: { site: 'GAGCTC',  cut: [3, 3], end: 'blunt',  overhang: null,   temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: ['SacI'], supplier: 'NEB' },
-  EcoNI:   { site: 'CCTNNNNNAGG', cut: [5, 6], end: '5prime', overhang: null, temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB' },
-  EcoRV:   { site: 'GATATC',  cut: [3, 3], end: 'blunt',  overhang: null,   temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB' },
-  HincII:  { site: 'GTYRAC',  cut: [3, 3], end: 'blunt',  overhang: null,   temp: 37, buffer: 'CutSmart', isoschizomers: ['HindII'], neoschizomers: [], supplier: 'NEB' },
-  HpaI:    { site: 'GTTAAC',  cut: [3, 3], end: 'blunt',  overhang: null,   temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB' },
-  MscI:    { site: 'TGGCCA',  cut: [3, 3], end: 'blunt',  overhang: null,   temp: 37, buffer: 'CutSmart', isoschizomers: ['BalI'], neoschizomers: [], supplier: 'NEB' },
-  NarI:    { site: 'GGCGCC',  cut: [2, 4], end: '5prime', overhang: 'CG',   temp: 37, buffer: 'CutSmart', isoschizomers: ['KasI', 'SfoI'], neoschizomers: [], supplier: 'NEB' },
-  PmlI:    { site: 'CACGTG',  cut: [3, 3], end: 'blunt',  overhang: null,   temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB' },
-  PpuMI:   { site: 'RGGWCCY', cut: [2, 5], end: '5prime', overhang: null,   temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB' },
-  PvuI:    { site: 'CGATCG',  cut: [4, 2], end: '3prime', overhang: 'AT',   temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB' },
-  PvuII:   { site: 'CAGCTG',  cut: [3, 3], end: 'blunt',  overhang: null,   temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB' },
-  SacII:   { site: 'CCGCGG',  cut: [4, 2], end: '3prime', overhang: 'GC',   temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB' },
-  SmaI:    { site: 'CCCGGG',  cut: [3, 3], end: 'blunt',  overhang: null,   temp: 25, buffer: 'CutSmart', isoschizomers: [], neoschizomers: ['XmaI'], supplier: 'NEB' },
-  SnaBI:   { site: 'TACGTA',  cut: [3, 3], end: 'blunt',  overhang: null,   temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB' },
-  StuI:    { site: 'AGGCCT',  cut: [3, 3], end: 'blunt',  overhang: null,   temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB' },
-  StyI:    { site: 'CCWWGG',  cut: [1, 5], end: '5prime', overhang: 'CWWG', temp: 37, buffer: 'NEBuffer 3.1', isoschizomers: [], neoschizomers: [], supplier: 'NEB' },
-  XmaI:    { site: 'CCCGGG',  cut: [1, 5], end: '5prime', overhang: 'CCGG', temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: ['SmaI'], supplier: 'NEB' },
-  XmnI:    { site: 'GAANNNNTTC', cut: [5, 5], end: 'blunt', overhang: null, temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB' },
+  EcoRI:   { site: 'GAATTC',  cut: [1, 5], end: '5prime', overhang: 'AATT', temp: 37, buffer: 'CutSmart', isoschizomers: ['Eco831I', 'SsoI'], neoschizomers: [], supplier: 'NEB', minFlanking: 1, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  BamHI:   { site: 'GGATCC',  cut: [1, 5], end: '5prime', overhang: 'GATC', temp: 37, buffer: 'CutSmart', isoschizomers: ['BstI'], neoschizomers: [], supplier: 'NEB', minFlanking: 4, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  HindIII: { site: 'AAGCTT',  cut: [1, 5], end: '5prime', overhang: 'AGCT', temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB', minFlanking: 2, damSensitive: false, dcmSensitive: false, heatInactivation: '80°C/20min' },
+  XbaI:    { site: 'TCTAGA',  cut: [1, 5], end: '5prime', overhang: 'CTAG', temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB', minFlanking: 2, damSensitive: true, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  XhoI:    { site: 'CTCGAG',  cut: [1, 5], end: '5prime', overhang: 'TCGA', temp: 37, buffer: 'CutSmart', isoschizomers: ['PaeR7I'], neoschizomers: [], supplier: 'NEB', minFlanking: 2, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  SalI:    { site: 'GTCGAC',  cut: [1, 5], end: '5prime', overhang: 'TCGA', temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB', minFlanking: 2, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  NcoI:    { site: 'CCATGG',  cut: [1, 5], end: '5prime', overhang: 'CATG', temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB', minFlanking: 2, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  NdeI:    { site: 'CATATG',  cut: [2, 4], end: '5prime', overhang: 'TA',   temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB', minFlanking: 2, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  PstI:    { site: 'CTGCAG',  cut: [5, 1], end: '3prime', overhang: 'TGCA', temp: 37, buffer: 'CutSmart', isoschizomers: ['BspMAI'], neoschizomers: [], supplier: 'NEB', minFlanking: 2, damSensitive: false, dcmSensitive: false, heatInactivation: '80°C/20min' },
+  SphI:    { site: 'GCATGC',  cut: [5, 1], end: '3prime', overhang: 'CATG', temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB', minFlanking: 2, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  KpnI:    { site: 'GGTACC',  cut: [5, 1], end: '3prime', overhang: 'GTAC', temp: 37, buffer: 'CutSmart', isoschizomers: ['Asp718I'], neoschizomers: [], supplier: 'NEB', minFlanking: 4, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  SacI:    { site: 'GAGCTC',  cut: [5, 1], end: '3prime', overhang: 'AGCT', temp: 37, buffer: 'CutSmart', isoschizomers: ['Ecl136II'], neoschizomers: ['Eco53kI'], supplier: 'NEB', minFlanking: 4, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  NheI:    { site: 'GCTAGC',  cut: [1, 5], end: '5prime', overhang: 'CTAG', temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB', minFlanking: 2, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  BglII:   { site: 'AGATCT',  cut: [1, 5], end: '5prime', overhang: 'GATC', temp: 37, buffer: 'NEBuffer 3.1', isoschizomers: [], neoschizomers: [], supplier: 'NEB', minFlanking: 2, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  ClaI:    { site: 'ATCGAT',  cut: [2, 4], end: '5prime', overhang: 'CG',   temp: 37, buffer: 'CutSmart', isoschizomers: ['BspDI', 'BanIII'], neoschizomers: [], supplier: 'NEB', minFlanking: 2, damSensitive: true, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  MfeI:    { site: 'CAATTG',  cut: [1, 5], end: '5prime', overhang: 'AATT', temp: 37, buffer: 'CutSmart', isoschizomers: ['MunI'], neoschizomers: [], supplier: 'NEB', minFlanking: 2, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  AgeI:    { site: 'ACCGGT',  cut: [1, 5], end: '5prime', overhang: 'CCGG', temp: 37, buffer: 'CutSmart', isoschizomers: ['PinAI'], neoschizomers: [], supplier: 'NEB', minFlanking: 2, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  SpeI:    { site: 'ACTAGT',  cut: [1, 5], end: '5prime', overhang: 'CTAG', temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB', minFlanking: 2, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  AvrII:   { site: 'CCTAGG',  cut: [1, 5], end: '5prime', overhang: 'CTAG', temp: 37, buffer: 'CutSmart', isoschizomers: ['BlnI'], neoschizomers: [], supplier: 'NEB', minFlanking: 2, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  BclI:    { site: 'TGATCA',  cut: [1, 5], end: '5prime', overhang: 'GATC', temp: 50, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB', minFlanking: 2, damSensitive: true, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  MluI:    { site: 'ACGCGT',  cut: [1, 5], end: '5prime', overhang: 'CGCG', temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB', minFlanking: 2, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  NruI:    { site: 'TCGCGA',  cut: [3, 3], end: 'blunt',  overhang: null,   temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB', minFlanking: 2, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  ScaI:    { site: 'AGTACT',  cut: [3, 3], end: 'blunt',  overhang: null,   temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB', minFlanking: 1, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  AflII:   { site: 'CTTAAG',  cut: [1, 5], end: '5prime', overhang: 'TTAA', temp: 37, buffer: 'CutSmart', isoschizomers: ['BfrI'], neoschizomers: [], supplier: 'NEB', minFlanking: 2, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  ApaI:    { site: 'GGGCCC',  cut: [5, 1], end: '3prime', overhang: 'GGCC', temp: 25, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB', minFlanking: 2, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  BspEI:   { site: 'TCCGGA',  cut: [1, 5], end: '5prime', overhang: 'CCGG', temp: 37, buffer: 'CutSmart', isoschizomers: ['Kpn2I', 'BsuEII'], neoschizomers: [], supplier: 'NEB', minFlanking: 2, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  BsrGI:   { site: 'TGTACA',  cut: [1, 5], end: '5prime', overhang: 'GTAC', temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB', minFlanking: 2, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  BstBI:   { site: 'TTCGAA',  cut: [2, 4], end: '5prime', overhang: 'CG',   temp: 65, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB', minFlanking: 2, damSensitive: false, dcmSensitive: false, heatInactivation: 'none' },
+  BstEII:  { site: 'GGTNACC', cut: [1, 6], end: '5prime', overhang: 'GTNAC', temp: 60, buffer: 'NEBuffer 3.1', isoschizomers: [], neoschizomers: [], supplier: 'NEB', minFlanking: 2, damSensitive: false, dcmSensitive: false, heatInactivation: 'none' },
+  DraI:    { site: 'TTTAAA',  cut: [3, 3], end: 'blunt',  overhang: null,   temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB', minFlanking: 2, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  EagI:    { site: 'CGGCCG',  cut: [1, 5], end: '5prime', overhang: 'GGCC', temp: 37, buffer: 'CutSmart', isoschizomers: ['EclXI'], neoschizomers: [], supplier: 'NEB', minFlanking: 2, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  Eco53kI: { site: 'GAGCTC',  cut: [3, 3], end: 'blunt',  overhang: null,   temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: ['SacI'], supplier: 'NEB', minFlanking: 2, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  EcoNI:   { site: 'CCTNNNNNAGG', cut: [5, 6], end: '5prime', overhang: null, temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB', minFlanking: 2, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  EcoRV:   { site: 'GATATC',  cut: [3, 3], end: 'blunt',  overhang: null,   temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB', minFlanking: 1, damSensitive: false, dcmSensitive: false, heatInactivation: '80°C/20min' },
+  HincII:  { site: 'GTYRAC',  cut: [3, 3], end: 'blunt',  overhang: null,   temp: 37, buffer: 'CutSmart', isoschizomers: ['HindII'], neoschizomers: [], supplier: 'NEB', minFlanking: 2, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  HpaI:    { site: 'GTTAAC',  cut: [3, 3], end: 'blunt',  overhang: null,   temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB', minFlanking: 1, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  MscI:    { site: 'TGGCCA',  cut: [3, 3], end: 'blunt',  overhang: null,   temp: 37, buffer: 'CutSmart', isoschizomers: ['BalI'], neoschizomers: [], supplier: 'NEB', minFlanking: 1, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  NarI:    { site: 'GGCGCC',  cut: [2, 4], end: '5prime', overhang: 'CG',   temp: 37, buffer: 'CutSmart', isoschizomers: ['KasI', 'SfoI'], neoschizomers: [], supplier: 'NEB', minFlanking: 2, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  PmlI:    { site: 'CACGTG',  cut: [3, 3], end: 'blunt',  overhang: null,   temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB', minFlanking: 2, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  PpuMI:   { site: 'RGGWCCY', cut: [2, 5], end: '5prime', overhang: null,   temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB', minFlanking: 2, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  PvuI:    { site: 'CGATCG',  cut: [4, 2], end: '3prime', overhang: 'AT',   temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB', minFlanking: 2, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  PvuII:   { site: 'CAGCTG',  cut: [3, 3], end: 'blunt',  overhang: null,   temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB', minFlanking: 2, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  SacII:   { site: 'CCGCGG',  cut: [4, 2], end: '3prime', overhang: 'GC',   temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB', minFlanking: 2, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  SmaI:    { site: 'CCCGGG',  cut: [3, 3], end: 'blunt',  overhang: null,   temp: 25, buffer: 'CutSmart', isoschizomers: [], neoschizomers: ['XmaI'], supplier: 'NEB', minFlanking: 4, damSensitive: false, dcmSensitive: true, heatInactivation: 'none' },
+  SnaBI:   { site: 'TACGTA',  cut: [3, 3], end: 'blunt',  overhang: null,   temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB', minFlanking: 2, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  StuI:    { site: 'AGGCCT',  cut: [3, 3], end: 'blunt',  overhang: null,   temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB', minFlanking: 2, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  StyI:    { site: 'CCWWGG',  cut: [1, 5], end: '5prime', overhang: 'CWWG', temp: 37, buffer: 'NEBuffer 3.1', isoschizomers: [], neoschizomers: [], supplier: 'NEB', minFlanking: 2, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  XmaI:    { site: 'CCCGGG',  cut: [1, 5], end: '5prime', overhang: 'CCGG', temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: ['SmaI'], supplier: 'NEB', minFlanking: 4, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  XmnI:    { site: 'GAANNNNTTC', cut: [5, 5], end: 'blunt', overhang: null, temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB', minFlanking: 2, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
 
   // ═══════════════════════════════════════════════════════
   // 8-cutters (rare cutters)
   // ═══════════════════════════════════════════════════════
-  NotI:    { site: 'GCGGCCGC',       cut: [2, 6], end: '5prime', overhang: 'GGCC',   temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB' },
-  AscI:    { site: 'GGCGCGCC',       cut: [2, 6], end: '5prime', overhang: 'CGCG',   temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB' },
-  FseI:    { site: 'GGCCGGCC',       cut: [6, 2], end: '3prime', overhang: 'CCGG',   temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB' },
-  PacI:    { site: 'TTAATTAA',       cut: [5, 3], end: '3prime', overhang: 'AT',     temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB' },
-  SbfI:    { site: 'CCTGCAGG',       cut: [6, 2], end: '3prime', overhang: 'TGCA',   temp: 37, buffer: 'CutSmart', isoschizomers: ['Sse8387I'], neoschizomers: [], supplier: 'NEB' },
-  SwaI:    { site: 'ATTTAAAT',       cut: [4, 4], end: 'blunt',  overhang: null,     temp: 25, buffer: 'CutSmart', isoschizomers: ['SmiI'], neoschizomers: [], supplier: 'NEB' },
-  SgrAI:   { site: 'CRCCGGYG',       cut: [2, 6], end: '5prime', overhang: 'RCCGGY', temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB' },
-  AsiSI:   { site: 'GCGATCGC',       cut: [5, 3], end: '3prime', overhang: 'AT',     temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB' },
-  SfiI:    { site: 'GGCCNNNNNGGCC',  cut: [8, 5], end: '3prime', overhang: 'NNN',    temp: 50, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB' },
-  PmeI:    { site: 'GTTTAAAC',       cut: [4, 4], end: 'blunt',  overhang: null,     temp: 37, buffer: 'CutSmart', isoschizomers: ['MssI'], neoschizomers: [], supplier: 'NEB' },
+  NotI:    { site: 'GCGGCCGC',       cut: [2, 6], end: '5prime', overhang: 'GGCC',   temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB', minFlanking: 6, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  AscI:    { site: 'GGCGCGCC',       cut: [2, 6], end: '5prime', overhang: 'CGCG',   temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB', minFlanking: 0, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  FseI:    { site: 'GGCCGGCC',       cut: [6, 2], end: '3prime', overhang: 'CCGG',   temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB', minFlanking: 6, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  PacI:    { site: 'TTAATTAA',       cut: [5, 3], end: '3prime', overhang: 'AT',     temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB', minFlanking: 6, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  SbfI:    { site: 'CCTGCAGG',       cut: [6, 2], end: '3prime', overhang: 'TGCA',   temp: 37, buffer: 'CutSmart', isoschizomers: ['Sse8387I'], neoschizomers: [], supplier: 'NEB', minFlanking: 6, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  SwaI:    { site: 'ATTTAAAT',       cut: [4, 4], end: 'blunt',  overhang: null,     temp: 25, buffer: 'CutSmart', isoschizomers: ['SmiI'], neoschizomers: [], supplier: 'NEB', minFlanking: 2, damSensitive: false, dcmSensitive: false, heatInactivation: 'none' },
+  SgrAI:   { site: 'CRCCGGYG',       cut: [2, 6], end: '5prime', overhang: 'RCCGGY', temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB', minFlanking: 2, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  AsiSI:   { site: 'GCGATCGC',       cut: [5, 3], end: '3prime', overhang: 'AT',     temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB', minFlanking: 2, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  SfiI:    { site: 'GGCCNNNNNGGCC',  cut: [8, 5], end: '3prime', overhang: 'NNN',    temp: 50, buffer: 'CutSmart', isoschizomers: [], neoschizomers: [], supplier: 'NEB', minFlanking: 2, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  PmeI:    { site: 'GTTTAAAC',       cut: [4, 4], end: 'blunt',  overhang: null,     temp: 37, buffer: 'CutSmart', isoschizomers: ['MssI'], neoschizomers: [], supplier: 'NEB', minFlanking: 2, damSensitive: false, dcmSensitive: false, heatInactivation: '65°C/20min' },
 
   // ═══════════════════════════════════════════════════════
   // Methylation-sensitive
   // ═══════════════════════════════════════════════════════
-  DpnI:    { site: 'GATC', cut: [2, 2], end: 'blunt', overhang: null, temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: ['DpnII', 'MboI'], supplier: 'NEB', note: 'Cuts ONLY methylated DNA (dam+). Key for KLD/QuikChange.' },
-  DpnII:   { site: 'GATC', cut: [0, 4], end: '5prime', overhang: 'GATC', temp: 37, buffer: 'DpnII', isoschizomers: ['MboI'], neoschizomers: ['DpnI'], supplier: 'NEB', note: 'Cuts UNmethylated DNA only.' },
-  MboI:    { site: 'GATC', cut: [0, 4], end: '5prime', overhang: 'GATC', temp: 37, buffer: 'CutSmart', isoschizomers: ['DpnII'], neoschizomers: ['DpnI'], supplier: 'NEB', note: 'Cuts UNmethylated DNA. Isoschizomer of DpnII.' },
+  DpnI:    { site: 'GATC', cut: [2, 2], end: 'blunt', overhang: null, temp: 37, buffer: 'CutSmart', isoschizomers: [], neoschizomers: ['DpnII', 'MboI'], supplier: 'NEB', note: 'Cuts ONLY methylated DNA (dam+). Key for KLD/QuikChange.', minFlanking: 0, damSensitive: false, dcmSensitive: false, heatInactivation: '80°C/20min' },
+  DpnII:   { site: 'GATC', cut: [0, 4], end: '5prime', overhang: 'GATC', temp: 37, buffer: 'DpnII', isoschizomers: ['MboI'], neoschizomers: ['DpnI'], supplier: 'NEB', note: 'Cuts UNmethylated DNA only.', minFlanking: 0, damSensitive: true, dcmSensitive: false, heatInactivation: '65°C/20min' },
+  MboI:    { site: 'GATC', cut: [0, 4], end: '5prime', overhang: 'GATC', temp: 37, buffer: 'CutSmart', isoschizomers: ['DpnII'], neoschizomers: ['DpnI'], supplier: 'NEB', note: 'Cuts UNmethylated DNA. Isoschizomer of DpnII.', minFlanking: 0, damSensitive: true, dcmSensitive: false, heatInactivation: '65°C/20min' },
 };
 
 // ═══════════════════════════════════════════════════════
@@ -230,4 +230,392 @@ export function checkAssemblyForSites(enzymeName, fragments) {
     }
   }
   return hits;
+}
+
+// ═══════════════════════════════════════════════════════
+// Compatible overhangs table
+// 5' and 3' overhangs are NOT compatible with each other!
+// ═══════════════════════════════════════════════════════
+export const COMPATIBLE_OVERHANGS = {
+  'GATC_5prime': ['BamHI', 'BglII', 'BclI', 'MboI', 'DpnII'],
+  'CTAG_5prime': ['XbaI', 'NheI', 'SpeI', 'AvrII'],
+  'TCGA_5prime': ['XhoI', 'SalI'],
+  'AATT_5prime': ['EcoRI', 'MfeI'],
+  'CCGG_5prime': ['AgeI', 'BspEI', 'XmaI'],
+  'CG_5prime':   ['ClaI', 'NarI', 'BstBI'],
+  'GGCC_5prime': ['NotI', 'EagI'],
+  'GGCC_3prime': ['ApaI'],
+  'blunt':       ['EcoRV', 'SmaI', 'NruI', 'ScaI', 'StuI', 'HpaI', 'DraI', 'PvuII', 'SnaBI', 'SwaI', 'PmeI'],
+};
+
+/**
+ * Scan sequence for ALL RE cut sites. Returns array sorted by cutCount.
+ * Uses existing findSitesInSequence() with circular wrap-around fix.
+ */
+export function scanAllSites(sequence, options = {}) {
+  const { circular = false, minSiteLen = 6 } = options;
+  const seq = sequence.toUpperCase();
+  const seqLen = seq.length;
+
+  // Circular: extend to catch wrap-around sites
+  const MAX_SITE = 13; // SfiI = 13bp
+  const searchSeq = circular ? seq + seq.slice(0, MAX_SITE) : seq;
+
+  const results = [];
+  for (const [name, info] of Object.entries(RE_ENZYMES)) {
+    // Skip methylation-only enzymes (DpnI, DpnII, MboI) — they're special
+    if (name === 'DpnI' || name === 'DpnII' || name === 'MboI') continue;
+    // Filter by site length (using only ATGC chars, ignoring IUPAC ambiguity)
+    const pureLen = info.site.replace(/[^ATGC]/gi, '').length;
+    if (pureLen < minSiteLen) continue;
+
+    const sites = findSitesInSequence(name, searchSeq);
+    // Filter: keep only sites starting within original sequence
+    const filtered = sites.filter(s => s.position < seqLen);
+
+    if (filtered.length > 0) {
+      results.push({
+        enzyme: name,
+        site: info.site,
+        siteLength: info.site.length,
+        end: info.end,
+        overhang: info.overhang,
+        buffer: info.buffer,
+        temp: info.temp,
+        damSensitive: info.damSensitive || false,
+        dcmSensitive: info.dcmSensitive || false,
+        positions: filtered,
+        cutCount: filtered.length,
+        isUnique: filtered.length === 1,
+      });
+    }
+  }
+
+  return results.sort((a, b) => a.cutCount - b.cutCount || a.enzyme.localeCompare(b.enzyme));
+}
+
+/**
+ * Detect MCS (Multiple Cloning Site) — region with dense unique RE sites.
+ * Returns { start, end, siteCount } or null.
+ */
+export function detectMCS(sites, seqLen, windowSize = 200) {
+  const uniquePositions = sites
+    .filter(s => s.isUnique)
+    .flatMap(s => s.positions.map(p => p.position))
+    .sort((a, b) => a - b);
+
+  if (uniquePositions.length < 4) return null;
+
+  let bestStart = 0, bestEnd = 0, bestCount = 0;
+  for (let i = 0; i < uniquePositions.length; i++) {
+    let count = 0;
+    for (let j = i; j < uniquePositions.length && uniquePositions[j] - uniquePositions[i] < windowSize; j++) {
+      count++;
+    }
+    if (count > bestCount) {
+      bestCount = count;
+      bestStart = uniquePositions[i];
+      let endIdx = i;
+      while (endIdx + 1 < uniquePositions.length && uniquePositions[endIdx + 1] - uniquePositions[i] < windowSize) endIdx++;
+      bestEnd = uniquePositions[endIdx] + 10; // +10 for last site
+    }
+  }
+
+  return bestCount >= 4 ? { start: bestStart, end: bestEnd, siteCount: bestCount } : null;
+}
+
+// ═══════════════════════════════════════════════════════
+// Restriction cloning functions (Block 4b)
+// ═══════════════════════════════════════════════════════
+
+/**
+ * Generate protective flanking bases + RE recognition site for primer tail.
+ * Uses minFlanking from RE_ENZYMES database.
+ * @returns {string} e.g. EcoRI → "GGAATTC" (1bp + GAATTC)
+ */
+export function generateRETail(enzymeName) {
+  const enzyme = RE_ENZYMES[enzymeName];
+  if (!enzyme) return '';
+  const flank = enzyme.minFlanking || 2;
+  // Protective bases: alternate GC for stability
+  const protective = 'GC'.repeat(Math.ceil(flank / 2)).slice(0, flank);
+  return protective + enzyme.site;
+}
+
+/**
+ * Check how many bases an RE site adds between vector and insert.
+ * Important for maintaining reading frame in fusion constructs.
+ */
+export function checkReadingFrame(enzymeName) {
+  const enzyme = RE_ENZYMES[enzymeName];
+  if (!enzyme) return { addedBases: 0, inFrame: false, containsATG: false };
+
+  // addedBases = overhang length (the ss part that stays between vector and insert)
+  const addedBases = enzyme.overhang ? enzyme.overhang.length : 0;
+  const inFrame = addedBases % 3 === 0;
+  const containsATG = enzyme.site.toUpperCase().includes('ATG');
+
+  const result = { addedBases, inFrame, containsATG };
+  if (!inFrame) {
+    result.warning = `${enzymeName} adds ${addedBases} bp (not in frame)`;
+    result.tip = 'Add spacer nucleotides to restore reading frame';
+  }
+  if (containsATG) {
+    result.tip = `${enzymeName} site (${enzyme.site}) contains ATG start codon`;
+  }
+  return result;
+}
+
+/**
+ * Check if insert sequence contains sites of the enzymes being used for cloning.
+ * Returns warnings with compatible alternatives.
+ */
+export function checkInsertSites(insertSeq, enzyme1, enzyme2) {
+  if (!insertSeq) return [];
+  const warnings = [];
+  const enzymes = enzyme2 ? [enzyme1, enzyme2] : [enzyme1];
+
+  for (const eName of enzymes) {
+    const sites = findSitesInSequence(eName, insertSeq);
+    if (sites.length > 0) {
+      // Find compatible alternatives from COMPATIBLE_OVERHANGS
+      const info = RE_ENZYMES[eName];
+      const key = info.end === 'blunt' ? 'blunt' : `${info.overhang}_${info.end}`;
+      const compatGroup = COMPATIBLE_OVERHANGS[key] || [];
+      const alternatives = compatGroup.filter(n => n !== eName);
+
+      warnings.push({
+        enzyme: eName,
+        count: sites.length,
+        positions: sites.map(s => s.position),
+        level: 'error',
+        message: `Insert contains ${sites.length} ${eName} site(s) — will be cut during digestion`,
+        alternatives,
+      });
+    }
+  }
+  return warnings;
+}
+
+/**
+ * Check compatibility of two enzymes for simultaneous double digest.
+ */
+export function checkDoubleDigest(enzyme1, enzyme2) {
+  const e1 = RE_ENZYMES[enzyme1];
+  const e2 = RE_ENZYMES[enzyme2];
+  if (!e1 || !e2) return { simultaneous: false, buffer: null, temp: null, warnings: ['Unknown enzyme'] };
+
+  const warnings = [];
+  const sameBuffer = e1.buffer === e2.buffer;
+  const sameTemp = e1.temp === e2.temp;
+  const simultaneous = sameBuffer && sameTemp;
+
+  if (!sameBuffer) {
+    warnings.push(`Different buffers: ${enzyme1} (${e1.buffer}) vs ${enzyme2} (${e2.buffer}) — use sequential digest`);
+  }
+  if (!sameTemp) {
+    warnings.push(`Different temperatures: ${enzyme1} (${e1.temp}°C) vs ${enzyme2} (${e2.temp}°C)`);
+  }
+  if (e1.damSensitive) warnings.push(`${enzyme1} is Dam-sensitive — use dam⁻ strain DNA`);
+  if (e2.damSensitive) warnings.push(`${enzyme2} is Dam-sensitive — use dam⁻ strain DNA`);
+  if (e1.dcmSensitive) warnings.push(`${enzyme1} is Dcm-sensitive`);
+  if (e2.dcmSensitive) warnings.push(`${enzyme2} is Dcm-sensitive`);
+
+  return {
+    simultaneous,
+    buffer: sameBuffer ? e1.buffer : null,
+    temp: sameTemp ? e1.temp : null,
+    warnings,
+  };
+}
+
+/**
+ * Digest a circular sequence with one or two restriction enzymes.
+ *
+ * One enzyme with 1 site → linearize (rotate sequence from cut point)
+ * One enzyme with 2 sites → excise (cut out region between sites)
+ * Two enzymes each with 1 site → excise (directional cloning)
+ *
+ * @param {string} sequence - Circular plasmid sequence
+ * @param {Array} annotations - Annotation array [{name, start, end, ...}]
+ * @param {string} enzyme1 - First enzyme name
+ * @param {string|null} enzyme2 - Optional second enzyme name
+ * @returns {Object} Digest result
+ */
+export function digest(sequence, annotations, enzyme1, enzyme2 = null) {
+  const e1Info = RE_ENZYMES[enzyme1];
+  if (!e1Info) return { error: `Unknown enzyme: ${enzyme1}` };
+
+  const sites1 = findSitesInSequence(enzyme1, sequence);
+
+  // Two different enzymes → each must cut exactly once
+  if (enzyme2 && enzyme2 !== enzyme1) {
+    const e2Info = RE_ENZYMES[enzyme2];
+    if (!e2Info) return { error: `Unknown enzyme: ${enzyme2}` };
+
+    const sites2 = findSitesInSequence(enzyme2, sequence);
+    if (sites1.length !== 1) return { error: `${enzyme1} cuts ${sites1.length} times (need exactly 1)` };
+    if (sites2.length !== 1) return { error: `${enzyme2} cuts ${sites2.length} times (need exactly 1)` };
+
+    return _exciseTwoEnzymes(sequence, annotations, enzyme1, e1Info, sites1[0], enzyme2, e2Info, sites2[0]);
+  }
+
+  // Single enzyme
+  if (sites1.length === 0) return { error: `${enzyme1} cuts 0 times in this sequence` };
+  if (sites1.length === 1) return _linearize(sequence, annotations, enzyme1, e1Info, sites1[0]);
+  if (sites1.length === 2) return _exciseSameEnzyme(sequence, annotations, enzyme1, e1Info, sites1[0], sites1[1]);
+  return { error: `${enzyme1} cuts ${sites1.length} times (need 1 or 2)` };
+}
+
+// ── Internal helpers ──
+
+function _computeEnd(enzymeInfo) {
+  return {
+    overhang: enzymeInfo.overhang,
+    overhangType: enzymeInfo.end,
+  };
+}
+
+function _cutPosition(sitePos, enzymeInfo) {
+  // Forward cut position on top strand
+  return sitePos + enzymeInfo.cut[0];
+}
+
+function _shiftAnnotations(annotations, cutPos, seqLen) {
+  return annotations.map(ann => {
+    let newStart = ann.start - cutPos;
+    let newEnd = ann.end - cutPos;
+    if (newStart < 0) newStart += seqLen;
+    if (newEnd < 0) newEnd += seqLen;
+    if (newEnd <= 0) newEnd += seqLen;
+    return { ...ann, start: newStart, end: newEnd };
+  });
+}
+
+function _linearize(sequence, annotations, enzymeName, enzymeInfo, site) {
+  const seqLen = sequence.length;
+  const cutPos = _cutPosition(site.position, enzymeInfo);
+
+  // Rotate sequence: start from cut position
+  const linearSeq = sequence.slice(cutPos) + sequence.slice(0, cutPos);
+  const shiftedAnns = _shiftAnnotations(annotations, cutPos, seqLen);
+  const endObj = { ..._computeEnd(enzymeInfo), enzymeUsed: enzymeName };
+
+  return {
+    type: 'linearize',
+    backbone: {
+      sequence: linearSeq,
+      annotations: shiftedAnns,
+      length: seqLen,
+      leftEnd: endObj,
+      rightEnd: { ...endObj },
+    },
+    excised: null,
+    enzymes: [{ name: enzymeName, position: site.position, ...enzymeInfo }],
+    isDirectional: false,
+    selfLigationRisk: true, // same ends → can self-ligate
+  };
+}
+
+function _exciseTwoEnzymes(sequence, annotations, name1, info1, site1, name2, info2, site2) {
+  const seqLen = sequence.length;
+  let pos1 = _cutPosition(site1.position, info1);
+  let pos2 = _cutPosition(site2.position, info2);
+
+  // Ensure pos1 < pos2 (swap if needed, keeping enzyme association)
+  let leftName = name1, rightName = name2, leftInfo = info1, rightInfo = info2;
+  if (pos1 > pos2) {
+    [pos1, pos2] = [pos2, pos1];
+    [leftName, rightName] = [rightName, leftName];
+    [leftInfo, rightInfo] = [rightInfo, leftInfo];
+  }
+
+  // Backbone = [pos2..seqLen] + [0..pos1], Excised = [pos1..pos2]
+  const backboneSeq = sequence.slice(pos2) + sequence.slice(0, pos1);
+  const excisedSeq = sequence.slice(pos1, pos2);
+
+  // Filter annotations into backbone vs excised
+  const backboneAnns = annotations
+    .filter(a => !(a.start >= pos1 && a.end <= pos2))
+    .map(a => {
+      let s = a.start, e = a.end;
+      // Shift for backbone rotation
+      if (s >= pos2) s -= pos2;
+      else if (s < pos1) s += (seqLen - pos2);
+      else return null;
+      if (e >= pos2) e -= pos2;
+      else if (e <= pos1) e += (seqLen - pos2);
+      else return null;
+      return { ...a, start: s, end: e };
+    })
+    .filter(Boolean);
+
+  const leftEnd = { ..._computeEnd(leftInfo), enzymeUsed: leftName };
+  const rightEnd = { ..._computeEnd(rightInfo), enzymeUsed: rightName };
+
+  // Directional if different overhangs/types
+  const sameOverhang = leftInfo.overhang === rightInfo.overhang && leftInfo.end === rightInfo.end;
+  const isDirectional = !sameOverhang;
+
+  return {
+    type: 'excise',
+    backbone: {
+      sequence: backboneSeq,
+      annotations: backboneAnns,
+      length: backboneSeq.length,
+      leftEnd: rightEnd, // backbone left gets the right enzyme's end (after rotation)
+      rightEnd: leftEnd, // backbone right gets the left enzyme's end
+    },
+    excised: { sequence: excisedSeq, length: excisedSeq.length },
+    enzymes: [
+      { name: leftName, position: site1.position, ...leftInfo },
+      { name: rightName, position: site2.position, ...rightInfo },
+    ],
+    isDirectional,
+    selfLigationRisk: !isDirectional,
+  };
+}
+
+function _exciseSameEnzyme(sequence, annotations, enzymeName, enzymeInfo, site1, site2) {
+  const seqLen = sequence.length;
+  let pos1 = _cutPosition(site1.position, enzymeInfo);
+  let pos2 = _cutPosition(site2.position, enzymeInfo);
+  if (pos1 > pos2) [pos1, pos2] = [pos2, pos1];
+
+  const backboneSeq = sequence.slice(pos2) + sequence.slice(0, pos1);
+  const excisedSeq = sequence.slice(pos1, pos2);
+
+  const backboneAnns = annotations
+    .filter(a => !(a.start >= pos1 && a.end <= pos2))
+    .map(a => {
+      let s = a.start, e = a.end;
+      if (s >= pos2) s -= pos2;
+      else if (s < pos1) s += (seqLen - pos2);
+      else return null;
+      if (e >= pos2) e -= pos2;
+      else if (e <= pos1) e += (seqLen - pos2);
+      else return null;
+      return { ...a, start: s, end: e };
+    })
+    .filter(Boolean);
+
+  const endObj = { ..._computeEnd(enzymeInfo), enzymeUsed: enzymeName };
+
+  return {
+    type: 'excise',
+    backbone: {
+      sequence: backboneSeq,
+      annotations: backboneAnns,
+      length: backboneSeq.length,
+      leftEnd: { ...endObj },
+      rightEnd: { ...endObj },
+    },
+    excised: { sequence: excisedSeq, length: excisedSeq.length },
+    enzymes: [
+      { name: enzymeName, position: site1.position, ...enzymeInfo },
+      { name: enzymeName, position: site2.position, ...enzymeInfo },
+    ],
+    isDirectional: false,
+    selfLigationRisk: true, // same enzyme → same overhangs → can self-ligate
+  };
 }

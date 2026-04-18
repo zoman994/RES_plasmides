@@ -123,6 +123,8 @@ export function exportProtocol(fragments, junctions, primers, method, circular) 
     overlap_pcr: 'Overlap PCR',
     gibson: 'Gibson Assembly',
     golden_gate: 'Golden Gate',
+    restriction_cloning: 'Restriction Cloning',
+    re_ligation: 'RE Ligation',
   };
   const totalBp = fragments.reduce((s, f) => s + (f.sequence || '').length, 0);
 
@@ -180,6 +182,21 @@ export function exportProtocol(fragments, junctions, primers, method, circular) 
     txt += `  Transform 2 µl into competent cells\n`;
     txt += `  50°C, 60 min\n`;
     txt += `  Expected product: ${totalBp.toLocaleString()} bp\n`;
+  } else if (method === 'restriction_cloning' || method === 're_ligation') {
+    const ligJunctions = (junctions || []).filter(j => j.type === 'ligation' || j.type === 're_ligation');
+    const enzymes = [...new Set(ligJunctions.map(j => j.enzyme || j.reEnzyme || '?'))];
+    txt += `Step ${fragments.length + 1}: Digest vector\n`;
+    txt += `  1 µg vector DNA + ${enzymes.join(' + ')} + buffer, 37°C 1 hr\n`;
+    txt += `  Gel-purify backbone band\n\n`;
+    txt += `Step ${fragments.length + 2}: Digest PCR insert\n`;
+    txt += `  PCR product + ${enzymes.join(' + ')} + buffer, 37°C 1 hr\n`;
+    txt += `  Column-purify\n\n`;
+    txt += `Step ${fragments.length + 3}: Ligation\n`;
+    txt += `  Vector:insert 1:3 molar ratio\n`;
+    txt += `  T4 DNA Ligase + buffer, 16°C 1 hr (or RT 10 min)\n\n`;
+    txt += `Step ${fragments.length + 4}: Transformation\n`;
+    txt += `  5 µl into competent cells\n`;
+    txt += `  Expected product: ${totalBp.toLocaleString()} bp ${circular ? '(circular)' : ''}\n`;
   }
 
   download('assembly_protocol.txt', txt);

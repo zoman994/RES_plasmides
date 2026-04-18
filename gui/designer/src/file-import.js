@@ -5,6 +5,7 @@
 
 import { parseGenBank, isGenBankFormat } from './genbank-parser';
 import { importFeatures } from './import-annotations';
+import { sanitizeSequence } from './sequence-utils';
 
 export const ACCEPT_STRING = '.gb,.gbk,.genbank,.dna,.fasta,.fa,.fna';
 
@@ -20,7 +21,7 @@ export function parseFasta(text) {
       seqParts.push(line.replace(/\s/g, ''));
     }
   }
-  const sequence = seqParts.join('').toUpperCase();
+  const sequence = sanitizeSequence(seqParts.join(''));
   return { name: name || 'imported', sequence, length: sequence.length, topology: 'linear', features: [] };
 }
 
@@ -57,6 +58,9 @@ export async function handleFileImport(file) {
   // .dna files are binary — must go through backend
   if (ext === '.dna') {
     const data = await importViaBackend(file);
+    // Sanitize backend-returned sequence — Python parser may emit non-IUPAC bytes
+    if (data.sequence) data.sequence = sanitizeSequence(data.sequence);
+    if (data.length != null) data.length = data.sequence?.length ?? data.length;
     let annotations = [];
     if (data.features?.length > 0) {
       const result = importFeatures(data.features, data.length, 'genbank');
@@ -143,6 +147,46 @@ export async function handleFileImport(file) {
   if (parsed.features?.length > 0) {
     const result = importFeatures(parsed.features, parsed.sequence.length, 'genbank');
     annotations = result.annotations || [];
+  }
+
+  // Enrichment: same pipeline as .dna files (homology naming + detail detection)
+  if (parsed.sequence) {
+    try {
+      const { autoAnnotate, enrichWithCommonFeatures } = await import('./auto-annotate');
+
+      if (annotations.length === 0) {
+        // No features in file → full auto-annotation
+        const base = autoAnnotate({
+          name: parsed.name || 'imported',
+          type: 'misc_feature',
+          sequence: parsed.sequence,
+        });
+        annotations = await enrichWithCommonFeatures(parsed.sequence, base);
+      } else {
+        // Features exist → enrich with homology naming + detail detection
+        annotations = await enrichWithCommonFeatures(parsed.sequence, annotations);
+        for (const ann of annotations) {
+          if (ann.knownFeature && ann.level === 'region') {
+            ann.originalName = ann.name;
+            ann.name = ann.knownFeature;
+          }
+        }
+        // Detail-level enrichment (signal peptides, tags, domains, RE sites)
+        const withDetails = autoAnnotate({
+          name: parsed.name || 'imported',
+          type: 'misc_feature',
+          sequence: parsed.sequence,
+          annotations,
+        });
+        const existingKeys = new Set(annotations.map(a => `${a.start}-${a.end}-${a.level}`));
+        for (const ann of withDetails) {
+          const key = `${ann.start}-${ann.end}-${ann.level}`;
+          if (!existingKeys.has(key) && ann.level !== 'region') {
+            annotations.push(ann);
+          }
+        }
+      }
+    } catch { /* enrichment not available */ }
   }
 
   return {

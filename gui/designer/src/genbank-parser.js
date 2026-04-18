@@ -5,6 +5,7 @@
  * Returns { name, sequence, length, topology, features, organism, description }
  * where features match the format expected by importFeatures().
  */
+import { sanitizeSequence } from './sequence-utils';
 
 /**
  * Parse GenBank text into structured data.
@@ -162,8 +163,8 @@ export function parseGenBank(text) {
   // Flush last feature
   flushFeature();
 
-  // Assemble sequence
-  result.sequence = seqLines.join('').toUpperCase();
+  // Assemble sequence (sanitize at entry — strips BOM, whitespace, digits, non-IUPAC)
+  result.sequence = sanitizeSequence(seqLines.join(''));
   result.length = result.sequence.length;
 
   return result;

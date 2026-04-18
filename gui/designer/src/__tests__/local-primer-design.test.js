@@ -168,6 +168,6 @@ describe('designPrimersLocal — all block combinations', () => {
     const { primers, warnings } = designPrimersLocal([shortFrag, normalFrag], [J], false);
     // Should still produce primers but with a warning
     expect(primers.length).toBeGreaterThan(0);
-    expect(warnings.some(w => w.includes('Short') && w.includes('короткая'))).toBe(true);
+    expect(warnings.some(w => w.includes('Short') && w.includes('короткий'))).toBe(true);
   });
 });

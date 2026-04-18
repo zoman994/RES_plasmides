@@ -9,6 +9,7 @@ const TYPE_STYLES = {
   overlap:      { bg: 'bg-blue-50',   border: 'border-blue-200',   text: 'text-blue-700',   active: 'bg-blue-500 text-white border-blue-500' },
   golden_gate:  { bg: 'bg-green-50',  border: 'border-green-200',  text: 'text-green-700',  active: 'bg-green-500 text-white border-green-500' },
   re_ligation:  { bg: 'bg-orange-50', border: 'border-orange-200', text: 'text-orange-700', active: 'bg-orange-500 text-white border-orange-500' },
+  ligation:     { bg: 'bg-red-50',    border: 'border-red-200',    text: 'text-red-700',    active: 'bg-red-500 text-white border-red-500' },
   kld:          { bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-700', active: 'bg-purple-500 text-white border-purple-500' },
   sticky_end:   { bg: 'bg-orange-50', border: 'border-orange-200', text: 'text-orange-700', active: 'bg-orange-500 text-white border-orange-500' },
   blunt:        { bg: 'bg-gray-50',   border: 'border-gray-200',   text: 'text-gray-600',   active: 'bg-gray-500 text-white border-gray-500' },
@@ -17,7 +18,8 @@ const TYPE_STYLES = {
 
 const LINE_COLORS = {
   overlap: 'bg-blue-300', golden_gate: 'bg-green-400', re_ligation: 'bg-orange-400',
-  kld: 'bg-purple-400', sticky_end: 'bg-orange-300', blunt: 'bg-gray-300', preformed: 'bg-gray-300',
+  ligation: 'bg-red-400', kld: 'bg-purple-400', sticky_end: 'bg-orange-300',
+  blunt: 'bg-gray-300', preformed: 'bg-gray-300',
 };
 
 export default function JunctionBlock({ junction, index, leftName, rightName, leftFrag, rightFrag, leftPCR = true, rightPCR = true, onChange, allOverhangs, fragmentCount = 1 }) {
@@ -50,6 +52,7 @@ export default function JunctionBlock({ junction, index, leftName, rightName, le
       ? `Overlap: ${j.overlapSequence}\n${displayLen} п.н. · Tm ${j.overlapTm || '?'}°C · GC ${j.overlapGc || '?'}%`
       : `Overlap: ${userLen} п.н.`)
     : jType === 'golden_gate' ? `Golden Gate: ${j.enzyme || 'BsaI'} · ${j.overhang || '----'}`
+    : jType === 'ligation' ? `RE лигирование: ${j.enzyme || '?'} · ${j.overhangType || ''} ${j.overhang || ''}`
     : jType === 're_ligation' || jType === 'sticky_end' ? `Рестрикция: ${j.reEnzyme || j.enzyme || '?'}`
     : jType === 'kld' ? 'KLD (back-to-back ligation)'
     : jType;
@@ -81,6 +84,17 @@ export default function JunctionBlock({ junction, index, leftName, rightName, le
             <span className={`text-[10px] font-bold font-mono px-1.5 py-0.5 rounded-full border ${st.bg} ${st.border} ${st.text}`}>
               {j.overhang || '----'}
             </span>
+          </div>
+        );
+      case 'ligation':
+        return (
+          <div className="flex flex-col items-center leading-tight">
+            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${st.bg} ${st.border} ${st.text}`}>
+              {'\uD83D\uDD2A'} {j.enzyme || 'RE'}
+            </span>
+            {j.overhangType && (
+              <span className="text-[7px] text-gray-400">{j.overhangType === 'blunt' ? 'blunt' : j.overhang || ''}</span>
+            )}
           </div>
         );
       case 're_ligation':
@@ -122,7 +136,7 @@ export default function JunctionBlock({ junction, index, leftName, rightName, le
   const typeButtons = [
     { val: 'overlap', icon: '◀▶', label: 'Overlap' },
     { val: 'golden_gate', icon: '🔶', label: 'Golden Gate' },
-    { val: 're_ligation', icon: '✂', label: 'RE/Лигирование' },
+    { val: 'ligation', icon: '\uD83D\uDD2A', label: 'RE лигир.' },
     { val: 'kld', icon: '🔄', label: 'KLD' },
   ];
 
@@ -138,7 +152,7 @@ export default function JunctionBlock({ junction, index, leftName, rightName, le
         <ContextMenu position={ctxMenu} onClose={() => setCtxMenu(null)} items={[
           { icon: '\u25C0\u25B6', label: 'Overlap', onClick: () => { onChange({ ...j, type: 'overlap' }); setCtxMenu(null); } },
           { icon: '\uD83D\uDD36', label: 'Golden Gate', onClick: () => { onChange({ ...j, type: 'golden_gate' }); setCtxMenu(null); } },
-          { icon: '\u2702', label: 'RE/\u041B\u0438\u0433\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u0435', onClick: () => { onChange({ ...j, type: 're_ligation' }); setCtxMenu(null); } },
+          { icon: '\uD83D\uDD2A', label: 'RE лигирование', onClick: () => { onChange({ ...j, type: 'ligation' }); setCtxMenu(null); } },
           { icon: '\uD83D\uDD04', label: 'KLD', onClick: () => { onChange({ ...j, type: 'kld' }); setCtxMenu(null); } },
           { divider: true },
           { icon: '\u2699\uFE0F', label: 'Настройки...', onClick: () => { setCtxMenu(null); setOpen(true); } },
@@ -339,7 +353,7 @@ export default function JunctionBlock({ junction, index, leftName, rightName, le
                           <div key={ai} className="flex items-center gap-2 text-[10px] px-1.5 py-0.5">
                             <span className="text-gray-400 w-4">#{ai + 1}</span>
                             <span className="text-gray-400 italic w-12 text-[9px]">
-                              {ao.type === 'overlap' ? 'overlap' : ao.type === 'kld' ? 'KLD' : ao.type === 're_ligation' ? 'RE' : ao.type || 'overlap'}
+                              {ao.type === 'overlap' ? 'overlap' : ao.type === 'kld' ? 'KLD' : ao.type === 'ligation' ? 'RE лиг.' : ao.type === 're_ligation' ? 'RE' : ao.type || 'overlap'}
                             </span>
                             <span className="text-gray-300 truncate flex-1">({ao.leftName}↔{ao.rightName})</span>
                             <span className="text-gray-300">—</span>
@@ -384,7 +398,7 @@ export default function JunctionBlock({ junction, index, leftName, rightName, le
           })()}
 
           {/* ═══ RE/Ligation settings ═══ */}
-          {(jType === 're_ligation' || jType === 'sticky_end') && (() => {
+          {(jType === 're_ligation' || jType === 'sticky_end' || jType === 'ligation') && (() => {
             const selectedRE = j.reEnzyme || j.enzyme || '';
             const reResults = searchRE(reSearch || '');
             const internalSites = selectedRE ? checkAssemblyForSites(selectedRE, assemblyFragments) : [];

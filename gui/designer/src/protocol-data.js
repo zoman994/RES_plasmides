@@ -99,6 +99,18 @@ export const ASSEMBLY_PROTOCOLS = {
     ],
     postPurif: 'none', time: 200,
   },
+  restriction_cloning: {
+    name: 'Restriction Cloning (digest + ligate)',
+    steps: [
+      '1. Рестрикция вектора: 1 µg ДНК + фермент(ы) + буфер, 37°C 1 ч',
+      '2. ПЦР insert с RE-тейлами: 50 µl Phusion/KOD, 30 циклов',
+      '3. Рестрикция ПЦР-продукта: тем же ферментом(ами), 37°C 1 ч',
+      '4. Очистка: гель-экстракция вектора и insert',
+      '5. Лигирование: T4 лигаза, вектор:вставка 1:3, 16°C 1 ч (или RT 10 мин)',
+      '6. Трансформация: 5 µl в компетентные клетки',
+    ],
+    postPurif: 'column_gel', time: 360,
+  },
 };
 
 export function calcPCRTime(sizeBp, polymerase) {

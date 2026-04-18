@@ -6,6 +6,8 @@ import { getRegions } from '../annotation-model';
 import { calcTm as simpleTm, gcPercent } from '../tm-calculator';
 
 import { complement as comp, reverseComplement as revComp } from '../sequence-utils';
+import { scanAllSites, RE_ENZYMES } from '../restriction-db';
+import { useStore } from '../store';
 const gcPct = s => gcPercent(s);
 
 const LABEL_WIDTH = 8; // characters reserved for position label (left margin)
@@ -22,7 +24,7 @@ export default function SequenceMapView({ fragments, primers = [], circular, onA
   // Measure how many monospace characters fit in the container
   useEffect(() => {
     const measure = () => {
-      const el = preRef.current || containerRef.current;
+      const el = containerRef.current;
       if (!el) return;
       // Create a hidden span to measure 1ch in the actual font
       const probe = document.createElement('span');
@@ -32,7 +34,8 @@ export default function SequenceMapView({ fragments, primers = [], circular, onA
       const chW = probe.getBoundingClientRect().width / 100;
       el.removeChild(probe);
       if (chW <= 0) return;
-      const available = el.clientWidth - 24; // padding
+      // Reserve space: 24px padding + ~120px for primer labels on the right
+      const available = el.clientWidth - 24 - 120;
       const fitChars = Math.floor(available / chW) - LABEL_WIDTH;
       const rounded = Math.floor(fitChars / 10) * 10; // round to nearest 10
       setCharsPerLine(Math.max(30, Math.min(200, rounded)));
@@ -112,6 +115,28 @@ export default function SequenceMapView({ fragments, primers = [], circular, onA
     return result;
   }, [fullSeq, charsPerLine]);
 
+  // RE site visualization
+  const showReSites = useStore(s => s.showReSites);
+  const reFilter = useStore(s => s.reFilter);
+  const reMinSiteLen = useStore(s => s.reMinSiteLen);
+
+  const reSiteMap = useMemo(() => {
+    if (!showReSites || !fullSeq) return {};
+    const sites = scanAllSites(fullSeq, { circular, minSiteLen: reMinSiteLen });
+    const filtered = reFilter === 'unique' ? sites.filter(s => s.isUnique) :
+      reFilter === 'double' ? sites.filter(s => s.cutCount <= 2) : sites;
+
+    const map = {};
+    for (const re of filtered) {
+      for (const pos of re.positions) {
+        const cutPos = pos.position + (RE_ENZYMES[re.enzyme]?.cut[0] || 0);
+        map[cutPos] = map[cutPos] || [];
+        if (!map[cutPos].includes(re.enzyme)) map[cutPos].push(re.enzyme);
+      }
+    }
+    return map;
+  }, [fullSeq, showReSites, reFilter, reMinSiteLen, circular]);
+
   // Selection handlers
   const posFromEvent = useCallback((e, lineStart) => {
     const span = e.currentTarget;
@@ -172,7 +197,7 @@ export default function SequenceMapView({ fragments, primers = [], circular, onA
   if (!fullSeq) return <div className="text-gray-400 text-xs text-center py-8">Нет последовательности</div>;
 
   return (
-    <div ref={containerRef} className="overflow-auto flex-1 outline-none" tabIndex={0} onKeyDown={handleKeyDown}>
+    <div ref={containerRef} className="overflow-y-auto overflow-x-hidden flex-1 min-w-0 outline-none" tabIndex={0} onKeyDown={handleKeyDown}>
       {/* All content in one pre — guarantees ch units match rendered characters */}
       <pre ref={preRef} className="p-3 font-mono text-[11px] leading-[1.4] m-0 whitespace-pre" style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace' }}>
         {lines.map(line => {
@@ -276,27 +301,28 @@ export default function SequenceMapView({ fragments, primers = [], circular, onA
                 ));
               })()}
 
-              {/* Sense strand 5'→3' with annotation background tint */}
-              <div>
-                <span className="text-gray-400 select-none">{String(line.start + 1).padStart(LABEL_WIDTH)}</span>
-                <span className="select-none cursor-text"
-                  onMouseDown={e => onMouseDown(e, line.start)}
-                  onMouseMove={e => onMouseMove(e, line.start)}>
-                  {line.seq.split('').map((nt, ci) => {
-                    const pos = line.start + ci;
-                    const ann = annMap[ci];
-                    const inSel = sel && pos >= sel.start && pos <= sel.end;
-                    const fwdP = linePrimers.find(p => p.direction === 'forward' && pos >= p.start && pos < p.end);
-                    return (
-                      <span key={ci}
-                        className={inSel ? 'bg-blue-300 text-white' : fwdP ? 'bg-blue-50' : ''}
-                        style={!inSel && !fwdP && ann ? { background: ann.color + '20' } : undefined}>
-                        {nt}
+              {/* RE cut site markers */}
+              {showReSites && (() => {
+                const lineReSites = [];
+                for (let ci = 0; ci < line.seq.length; ci++) {
+                  const pos = line.start + ci;
+                  if (reSiteMap[pos]) lineReSites.push({ ci, pos, enzymes: reSiteMap[pos] });
+                }
+                if (lineReSites.length === 0) return null;
+                return (
+                  <div className="relative" style={{ height: '12px' }}>
+                    <span className="select-none">{' '.repeat(LABEL_WIDTH)}</span>
+                    {lineReSites.map(({ ci, pos, enzymes }) => (
+                      <span key={pos}
+                        className="absolute text-[7px] text-red-500 font-mono"
+                        style={{ left: `${(LABEL_WIDTH + ci)}ch` }}
+                        title={`${enzymes.join(', ')} @ ${pos + 1}`}>
+                        {'▼'}{enzymes.length === 1 ? enzymes[0] : enzymes.length + '×'}
                       </span>
-                    );
-                  })}
-                </span>
-              </div>
+                    ))}
+                  </div>
+                );
+              })()}
 
               {/* Antisense strand 3'→5' */}
               <div>

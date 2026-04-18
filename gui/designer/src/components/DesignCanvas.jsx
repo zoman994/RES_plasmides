@@ -10,7 +10,10 @@ import RacetrackView from './RacetrackView';
 import SequenceMapView from './SequenceMapView';
 import { collectFamily } from '../part-variants';
 import ContextMenu from './ContextMenu';
+import QuickStart from './QuickStart';
+import ImportPrompt from './ImportPrompt';
 import { useStore, useFragments, useJunctions, usePrimers, useCustomPrimers } from '../store';
+import { handleFileImport } from '../file-import';
 
 function fragColor(frag, idx) {
   return isMarker(frag.name) ? '#F0E442' : getFragColor(frag.type, idx);
@@ -38,6 +41,7 @@ export default function DesignCanvas({
   const calculated = useStore(s => { const asm = s.assemblies.find(a => a.id === s.activeId); return asm?.calculated || false; });
   const parts      = useStore(s => s.parts);
   const constructName = useStore(s => { const asm = s.assemblies.find(a => a.id === s.activeId); return asm?.name || ''; });
+  const completed  = useStore(s => { const asm = s.assemblies.find(a => a.id === s.activeId); return asm?.completed || false; });
   const selectedFragIndices = useStore(s => s.selectedFragIndices);
   const clearFragSelection = useStore(s => s.clearFragSelection);
 
@@ -54,11 +58,48 @@ export default function DesignCanvas({
     rightName: fragments[(i + 1) % fragments.length]?.name || '?',
   })), [junctions, fragments]);
 
+  // ═══ Quick Start handler ═══
+  const handleQuickStart = (actionId, file) => {
+    switch (actionId) {
+      case 'restriction':
+      case 'mutagenesis': {
+        const plasmids = parts.filter(p => p.topology === 'circular' || (p.annotations?.length >= 2 && p.sequence?.length > 2000));
+        if (plasmids.length > 0) {
+          useStore.getState().setShowPartsLib(true);
+        } else {
+          setPendingAction(actionId);
+        }
+        break;
+      }
+      case 'gibson':
+      case 'free':
+        setDismissed(true);
+        break;
+      case 'golden_gate':
+        setDismissed(true);
+        useStore.getState().setAssemblyType('golden_gate');
+        break;
+      case 'catalog':
+        useStore.getState().setShowCatalog(true);
+        break;
+      case 'import_file':
+        if (file) {
+          handleFileImport(file).then(data => {
+            useStore.getState().setImportDecision(data);
+          }).catch(err => alert(`Ошибка импорта: ${err.message}`));
+        }
+        break;
+    }
+  };
+
   const [{ isOver }, drop] = useDrop({
     accept: 'PART',
     drop: (item) => onDrop(item.part),
     collect: m => ({ isOver: m.isOver() }),
   });
+
+  const [pendingAction, setPendingAction] = useState(null); // 'restriction' | 'mutagenesis' | null
+  const [dismissed, setDismissed] = useState(false); // QuickStart dismissed by gibson/free action
 
   const [zoom, setZoom] = useState(() => {
     const saved = localStorage.getItem('pvcs-canvas-zoom');
@@ -173,21 +214,16 @@ export default function DesignCanvas({
     setZoom(Math.max(15, Math.min(100, Math.floor(containerW / totalW * 100))));
   }, [fragments, n]);
 
-  // Auto-fit when fragment count changes or primers are calculated
+  // Auto-fit when fragment count changes
   const prevN = useRef(n);
-  const prevHasPrimers = useRef(hasPrimers);
   useEffect(() => {
-    const nChanged = n > 0 && n !== prevN.current;
-    const primersJustCalculated = hasPrimers && !prevHasPrimers.current;
-    if (nChanged || primersJustCalculated) {
+    if (n > 0 && n !== prevN.current) {
       const tm = setTimeout(fitToView, 100);
       prevN.current = n;
-      prevHasPrimers.current = hasPrimers;
       return () => clearTimeout(tm);
     }
     prevN.current = n;
-    prevHasPrimers.current = hasPrimers;
-  }, [n, hasPrimers, fitToView]);
+  }, [n, fitToView]);
 
   // Ctrl+wheel zoom
   useEffect(() => {
@@ -231,7 +267,7 @@ export default function DesignCanvas({
   return (
     <div ref={(el) => { drop(el); canvasRef.current = el; canvasContainerRef.current = el; }}
       className={`relative rounded-xl px-4 pt-2 pb-3
-        flex flex-col shrink-0
+        flex flex-col shrink-0 min-w-0 overflow-hidden
         ${isOver ? 'border-2 border-blue-400 bg-blue-50/40' : 'border border-gray-200'}`}
       onClick={(e) => { if (e.target === e.currentTarget) { useStore.getState().setHighlightedPartId(null); clearFragSelection(); } }}
       onContextMenu={(e) => {
@@ -254,7 +290,7 @@ export default function DesignCanvas({
       )}
 
       {/* Hotkey hints when single fragment selected */}
-      {selectedFragIndices.length === 1 && (
+      {n > 0 && selectedFragIndices.length === 1 && (
         <div className="absolute top-2 right-2 z-20 bg-white/90 backdrop-blur-sm border border-gray-200 rounded-lg px-2.5 py-1.5 shadow-sm text-[9px] text-gray-500 space-y-0.5 pointer-events-none">
           <div><kbd className="font-mono bg-gray-100 px-1 rounded">E</kbd> Редактировать</div>
           <div><kbd className="font-mono bg-gray-100 px-1 rounded">R</kbd> Перевернуть</div>
@@ -264,7 +300,7 @@ export default function DesignCanvas({
         </div>
       )}
 
-      <div style={{
+      <div className="flex-1 flex flex-col overflow-hidden" style={{
         minHeight: n > 0 ? (viewMode === 'racetrack' ? 380 : 200) : 180,
         maxHeight: 800,
         backgroundColor: '#ffffff',
@@ -274,9 +310,39 @@ export default function DesignCanvas({
       >
 
       {n === 0 ? (
-        <div className="flex-1 flex items-center justify-center text-gray-400 text-sm select-none">
-          {t('Drag parts here')}
-        </div>
+        completed ? (
+          <div className="flex-1 flex items-center justify-center text-gray-400 text-sm select-none">
+            {t('Drag parts here')}
+          </div>
+        ) : pendingAction ? (
+          <ImportPrompt
+            action={pendingAction}
+            onImportFile={(file) => {
+              handleFileImport(file).then(data => {
+                const preset = pendingAction === 'restriction' ? 'restriction_cloning' : 'mutate';
+                useStore.getState().setWizardPresetMode(preset);
+                useStore.getState().setImportDecision(data);
+                setPendingAction(null);
+              }).catch(err => alert(`Ошибка: ${err.message}`));
+            }}
+            onCancel={() => setPendingAction(null)}
+          />
+        ) : dismissed ? (
+          <div className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-400">
+            <div className="text-sm">Перетащите запчасти из палитры слева</div>
+            <div className="text-[10px] text-gray-300">или</div>
+            <button onClick={() => useStore.getState().setModalMode('add')}
+              className="text-xs px-4 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100">
+              + Добавить фрагмент по последовательности
+            </button>
+            <button onClick={() => setDismissed(false)}
+              className="text-[10px] text-gray-300 hover:text-gray-500 mt-2">
+              ← Назад к выбору метода
+            </button>
+          </div>
+        ) : (
+          <QuickStart onAction={handleQuickStart} />
+        )
       ) : (
         <>
           {/* Top bar */}
@@ -352,7 +418,7 @@ export default function DesignCanvas({
               for (let r = 0; r < n; r += perRow) rows.push(fragments.slice(r, r + perRow).map((f, ri) => ({ frag: f, idx: r + ri })));
 
               return (
-                <div ref={blocksRowRef} className="py-4 px-4" style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'left top', overflow: 'visible' }}>
+                <div ref={blocksRowRef} className="py-4 px-4" style={{ zoom: zoom / 100 }}>
                   {rows.map((row, ri) => (
                     <div key={ri}>
                       <div className="flex items-center gap-1 w-fit">
@@ -434,6 +500,16 @@ export default function DesignCanvas({
                   <button onClick={() => {
                     const active = useStore.getState().getActive();
                     if (!active) return;
+
+                    // HIGH-3: block merge through ligation junctions
+                    const junctionsBetween = sorted.slice(0, -1).map(i => active.junctions[i]);
+                    if (junctionsBetween.some(j => j && (j.type === 'ligation' || j.type === 're_ligation'))) {
+                      useStore.getState().updateActive({
+                        apiWarnings: [...(active.apiWarnings || []),
+                          '⛔ Нельзя склеить фрагменты через ligation junction — используйте overlap или Golden Gate'],
+                      });
+                      return;
+                    }
 
                     const selFrags = sorted.map(i => fragments[i]);
                     const fullSeq = selFrags.map(f => f.sequence || '').join('');

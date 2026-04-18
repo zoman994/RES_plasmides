@@ -6,6 +6,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { translateDNA, CODON_TABLE } from '../codons';
+import { sanitizeSequence } from '../sequence-utils';
 import { autoDetectDomains, DOMAIN_COLORS } from '../domain-detection';
 import { FEATURE_COLORS, getFragColor, isMarker } from '../theme';
 import { ANNOTATION_COLORS, autoAnnotate } from '../auto-annotate';
@@ -124,7 +125,7 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
   // CDS-like if fragment type is CDS or any annotation region is CDS
   const hasCDSRegion = (fragment.annotations || []).some(a => a.level === 'region' && (a.type === 'CDS' || a.type === 'gene' || a.type === 'marker'));
   const isCDS = fragment.type === 'CDS' || hasCDSRegion;
-  const [tab, setTab] = useState('dna'); // 'dna' | 'protein'
+  const [tab, setTab] = useState('edit'); // 'edit' | 'mutagenesis' | 'regions'
   const [seq, setSeq] = useState(fragment.sequence || '');
   // Unified annotations — migrate from legacy domains if needed
   const [annotations, setAnnotations] = useState(() => {
@@ -143,6 +144,9 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
   const [mutations, setMutations] = useState([]);
   const [editingCodon, setEditingCodon] = useState(null);
   const [insertSeq, setInsertSeq] = useState('');
+
+  // Custom instant tooltip for nucleotide hover (replaces slow browser title)
+  const [nucTooltip, setNucTooltip] = useState(null); // { x, y, text }
 
   // Open AA mutation menu
   const openMutMenu = (e, aaIdx, aa, codon) => {
@@ -221,6 +225,7 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
 
   const apply = (a) => {
     let s = seq;
+    const oldLen = s.length;
     if (a.insert) {
       if (a.pos === 'start') s = a.insert + s;
       else if (a.pos === 'end') s = s + a.insert;
@@ -229,15 +234,63 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
     }
     if (a.remove) { if (a.pos === 'end') s = s.slice(0, -a.remove); if (a.pos === 'start') s = s.slice(a.remove); }
     setSeq(s);
+    // CRIT-1 fix: shift annotations for Quick Actions
+    if (s.length !== oldLen) {
+      setAnnotations(prev => {
+        if (a.insert && a.pos === 'start') {
+          const shift = a.insert.length;
+          return prev.map(ann => ({ ...ann, start: ann.start + shift, end: ann.end + shift }));
+        }
+        if (a.insert && a.pos === 'before_stop' && hasStop(seq)) {
+          const insertPos = oldLen - 3;
+          const shift = a.insert.length;
+          return prev.map(ann => {
+            if (ann.end <= insertPos) return ann;
+            if (ann.start >= insertPos) return { ...ann, start: ann.start + shift, end: ann.end + shift };
+            return { ...ann, end: ann.end + shift };
+          });
+        }
+        if (a.remove && a.pos === 'start') {
+          const count = a.remove;
+          return prev.map(ann => {
+            if (ann.end <= count) return null;
+            if (ann.start >= count) return { ...ann, start: ann.start - count, end: ann.end - count };
+            return { ...ann, start: 0, end: ann.end - count };
+          }).filter(Boolean);
+        }
+        if (a.remove && a.pos === 'end') {
+          const cutPos = oldLen - a.remove;
+          return prev.map(ann => {
+            if (ann.start >= cutPos) return null;
+            if (ann.end > cutPos) return { ...ann, end: cutPos };
+            return ann;
+          }).filter(Boolean);
+        }
+        return prev;
+      });
+    }
   };
 
   const seqChanged = seq.toUpperCase() !== (fragment.sequence || '').toUpperCase();
   const modification = seqChanged ? detectModification(fragment.sequence || '', seq) : null;
 
+  // CRIT-2 fix: re-run autoAnnotate when sequence changes (detail/point only, preserve regions + manual)
+  useEffect(() => {
+    if (!seqChanged) return;
+    const timer = setTimeout(() => {
+      const regionAnns = annotations.filter(a => a.level === 'region');
+      const manualAnns = annotations.filter(a => !a.auto && a.level !== 'region');
+      const reAnnotated = autoAnnotate({ ...fragment, sequence: seq, annotations: regionAnns });
+      const autoDetails = (reAnnotated || []).filter(a => a.level !== 'region');
+      setAnnotations([...regionAnns, ...manualAnns, ...autoDetails]);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [seq]);
+
   const handleSave = () => {
     persistDomains(fragment.id || fragment.name, domains);
 
-    if (workflow === 'edit') {
+    if (tab !== 'mutagenesis') {
       // Simple edit mode — save sequence directly, no variants/primers
       onSave({ ...fragment, sequence: seq, length: seq.length, domains, annotations,
         customColor: customColor || undefined, editedAt: new Date().toISOString(),
@@ -363,16 +416,30 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
     const deleted = seq.slice(pos, pos + count).toUpperCase();
     const newSeq = seq.slice(0, pos) + seq.slice(pos + count);
     setSeq(newSeq);
+    // CRIT-1 fix: shift annotations after deletion
+    setAnnotations(prev => prev.map(a => {
+      if (a.end <= pos) return a;
+      if (a.start >= pos + count) return { ...a, start: a.start - count, end: a.end - count };
+      const newEnd = Math.max(a.start, a.end - count);
+      return { ...a, end: newEnd < a.start ? a.start : newEnd };
+    }).filter(a => a.end > a.start));
     setMutations(prev => [...prev, { type: 'nt_deletion', label: `Δ${pos+1}${count > 1 ? `-${pos+count}` : ''} (${deleted})`, codonStart: pos, position: pos, deletedBp: count }]);
     setDnaMutTarget(null);
   };
 
   /** Insert sequence at position. */
   const applyDnaInsert = (pos, insertedSeq) => {
-    const clean = insertedSeq.toUpperCase().replace(/[^ATGCNRYWSMKHBVD]/g, '');
+    const clean = sanitizeSequence(insertedSeq);
     if (!clean) return;
     const newSeq = seq.slice(0, pos) + clean + seq.slice(pos);
     setSeq(newSeq);
+    // CRIT-1 fix: shift annotations after insertion
+    const insertLen = clean.length;
+    setAnnotations(prev => prev.map(a => {
+      if (a.end <= pos) return a;
+      if (a.start >= pos) return { ...a, start: a.start + insertLen, end: a.end + insertLen };
+      return { ...a, end: a.end + insertLen };
+    }));
     setMutations(prev => [...prev, { type: 'nt_insertion', label: `ins${pos+1}+${clean.length}п.н.`, codonStart: pos, position: pos }]);
     setDnaMutTarget(null);
     setInsertSeq('');
@@ -472,44 +539,37 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
           </div>
         )}
 
-        {/* Workflow mode toggle */}
-        <div className="flex items-center gap-1 mb-2 p-1.5 bg-gray-50 rounded-lg">
-          <button onClick={() => setWorkflow('edit')}
-            className={`flex-1 px-2 py-1 text-[10px] rounded-md flex items-center justify-center gap-1 transition ${
-              workflow === 'edit' ? 'bg-white shadow-sm border font-medium text-gray-800' : 'text-gray-400 hover:bg-gray-100'}`}>
+        {/* Unified 3-tab navigation */}
+        <div className="flex gap-0 rounded-lg overflow-hidden border mb-3">
+          <button onClick={() => { setTab('edit'); setWorkflow('edit'); }}
+            className={`flex-1 px-3 py-1.5 text-xs font-medium transition ${
+              tab === 'edit' ? 'bg-blue-600 text-white' : 'hover:bg-gray-50'}`}>
             {'✏️'} Редактирование
           </button>
-          <button onClick={() => setWorkflow('mutagenesis')}
-            className={`flex-1 px-2 py-1 text-[10px] rounded-md flex items-center justify-center gap-1 transition ${
-              workflow === 'mutagenesis' ? 'bg-purple-50 shadow-sm border border-purple-200 font-medium text-purple-700' : 'text-gray-400 hover:bg-gray-100'}`}>
+          <button onClick={() => { setTab('mutagenesis'); setWorkflow('mutagenesis'); }}
+            className={`flex-1 px-3 py-1.5 text-xs font-medium transition ${
+              tab === 'mutagenesis' ? 'bg-purple-600 text-white' : 'hover:bg-gray-50'}`}>
             {'🧬'} Мутагенез
           </button>
+          <button onClick={() => setTab('regions')}
+            className={`flex-1 px-3 py-1.5 text-xs font-medium transition ${
+              tab === 'regions' ? 'bg-blue-600 text-white' : 'hover:bg-gray-50'}`}>
+            {isCDS ? '🧬 Белок' : '📐 Разметка'}
+          </button>
         </div>
-        {workflow === 'edit' && seqChanged && (
+        {tab === 'edit' && seqChanged && (
           <div className="text-[9px] text-amber-600 bg-amber-50 rounded px-2 py-1 mb-2">
             {'⚠'} Последовательность изменена. При сохранении праймеры будут сброшены.
           </div>
         )}
-        {workflow === 'mutagenesis' && mutations.length === 0 && (
+        {tab === 'mutagenesis' && mutations.length === 0 && (
           <div className="text-[9px] text-purple-500 bg-purple-50 rounded px-2 py-1 mb-2">
             {'🧬'} Кликните по кодону (ДНК) или аминокислоте (АК) для мутагенеза. Будут подобраны праймеры и протокол.
           </div>
         )}
 
-        {/* Content tabs */}
-        <div className="flex gap-0 rounded-lg overflow-hidden border mb-3">
-          <button onClick={() => setTab('dna')}
-            className={`flex-1 px-3 py-1.5 text-xs font-medium transition ${tab === 'dna' ? 'bg-blue-600 text-white' : 'hover:bg-gray-50'}`}>
-            {'🔤'} ДНК
-          </button>
-          <button onClick={() => setTab('regions')}
-            className={`flex-1 px-3 py-1.5 text-xs font-medium transition ${tab === 'regions' ? 'bg-blue-600 text-white' : 'hover:bg-gray-50'}`}>
-            {isCDS ? '🧬 Белок' : '📐 Разметка'}
-          </button>
-        </div>
-
-        {/* ═══ TAB: ДНК ═══ */}
-        {tab === 'dna' && (
+        {/* ═══ TAB: Редактирование / Мутагенез (DNA view) ═══ */}
+        {(tab === 'edit' || tab === 'mutagenesis') && (
           <>
             {/* Quick actions */}
             <div className="flex flex-wrap gap-1 mb-3">
@@ -542,6 +602,8 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
                               <span className={`block text-[11px] cursor-pointer rounded-sm transition
                                 ${inDnaRange ? 'bg-teal-300 text-white' : inAARange ? 'bg-purple-200' : isMut ? 'bg-amber-200' : 'hover:bg-teal-100'}`}
                                 style={{ borderBottom: c.dom ? `2px solid ${c.dom.color}` : 'none' }}
+                                onMouseEnter={e => { const r = e.currentTarget.getBoundingClientRect(); setNucTooltip({ x: r.left + r.width/2, y: r.top - 4, text: `${nt} · ${ntPos + 1}` }); }}
+                                onMouseLeave={() => setNucTooltip(null)}
                                 onClick={e => { e.preventDefault(); openDnaMutMenu(e, ntPos); }}>
                                 {nt}
                               </span>
@@ -572,7 +634,7 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
             {/* Non-CDS edit mode: textarea */}
             {!isCDS && editMode === 'edit' && (
               <div className="mb-3">
-                <textarea value={seq} onChange={e => setSeq(e.target.value.toUpperCase().replace(/[^ATGCNRYWSMKHBVD]/g, ''))}
+                <textarea value={seq} onChange={e => setSeq(sanitizeSequence(e.target.value))}
                   className="w-full font-mono text-[11px] leading-relaxed border rounded-lg p-3 h-32 resize-y focus:border-blue-400 outline-none" spellCheck={false} />
               </div>
             )}
@@ -596,6 +658,8 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
                             <span key={ci}
                               className={`cursor-pointer transition ${gap ? 'ml-1' : ''}
                                 ${isDnaMut ? 'bg-teal-300 text-white rounded' : isMut ? 'bg-amber-200 rounded' : 'hover:bg-teal-100 rounded'}`}
+                              onMouseEnter={e => { const r = e.currentTarget.getBoundingClientRect(); setNucTooltip({ x: r.left + r.width/2, y: r.top - 4, text: `${nt} · ${pos + 1}` }); }}
+                              onMouseLeave={() => setNucTooltip(null)}
                               onClick={e => openDnaMutMenu(e, pos)}>
                               {nt}
                             </span>
@@ -679,7 +743,8 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
                 return (
                   <span key={i} style={{ backgroundColor: detColor ? detColor + '20' : 'transparent',
                     borderBottom: detColor ? `2px solid ${detColor}` : 'none' }}
-                    title={`${i + 1} п.н.${det ? ` (${det.name})` : ''}`}>{nt}</span>
+                    onMouseEnter={e => { const r = e.currentTarget.getBoundingClientRect(); setNucTooltip({ x: r.left + r.width/2, y: r.top - 4, text: `${i + 1}${det ? ` · ${det.name}` : ''}` }); }}
+                    onMouseLeave={() => setNucTooltip(null)}>{nt}</span>
                 );
               })}
 
@@ -732,7 +797,7 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
 
         {/* Save */}
         <div className="flex gap-2 items-center">
-          {workflow === 'edit' ? (
+          {tab !== 'mutagenesis' ? (
             <button onClick={handleSave} className="text-xs bg-blue-600 text-white px-4 py-1.5 rounded-lg hover:bg-blue-700 font-semibold">
               {'💾'} Сохранить
             </button>
@@ -743,7 +808,7 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
               {'🧬'} Применить мутагенез {mutations.length > 0 && `(${mutations.length})`}
             </button>
           )}
-          {workflow === 'mutagenesis' && seqChanged && onSaveAsVariant && (
+          {tab === 'mutagenesis' && seqChanged && onSaveAsVariant && (
             <button onClick={handleSaveAsVariant}
               className="text-xs bg-purple-50 text-purple-700 px-3 py-1.5 rounded-lg hover:bg-purple-100 border border-purple-200 font-medium">
               {'🔀'} Как вариант
@@ -852,10 +917,11 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
 
       {/* DNA mutation popup — no full-screen backdrop (allows Shift+click on nucleotides) */}
       {dnaMutTarget && createPortal(
-        <div className="fixed z-[60] bg-white rounded-xl shadow-2xl border p-3 w-64"
+        <div className="fixed inset-0 z-[60]" onClick={() => setDnaMutTarget(null)}>
+        <div className="absolute bg-white rounded-xl shadow-2xl border p-3 w-64 max-h-[90vh] overflow-y-auto"
           style={{
-            left: Math.min(dnaMutTarget.x, window.innerWidth - 270),
-            top: Math.min(dnaMutTarget.y, window.innerHeight - 350),
+            left: Math.max(8, Math.min(dnaMutTarget.x, window.innerWidth - 272)),
+            top: Math.max(8, Math.min(dnaMutTarget.y, window.innerHeight - 400)),
           }}
           onClick={e => e.stopPropagation()}>
 
@@ -909,7 +975,7 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
             <div className="border-t pt-2 mb-2">
               <div className="text-[10px] text-gray-500 mb-1">Вставка после позиции {dnaMutTarget.pos + 1}:</div>
               <div className="flex gap-1">
-                <input value={insertSeq} onChange={e => setInsertSeq(e.target.value.toUpperCase().replace(/[^ATGCNRYWSMKHBVD]/g, ''))}
+                <input value={insertSeq} onChange={e => setInsertSeq(sanitizeSequence(e.target.value))}
                   placeholder="ATGC..." className="flex-1 border rounded px-2 py-1 text-xs font-mono" />
                 <button onClick={() => applyDnaInsert(dnaMutTarget.pos + 1, insertSeq)}
                   disabled={!insertSeq}
@@ -950,7 +1016,18 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
                 ))}
               </div>
             )}
-          </div>,
+          </div>
+        </div>,
+        document.body
+      )}
+      {/* Instant nucleotide tooltip (no browser delay) */}
+      {nucTooltip && createPortal(
+        <div style={{ position: 'fixed', left: nucTooltip.x, top: nucTooltip.y,
+          transform: 'translate(-50%, -100%)', pointerEvents: 'none', zIndex: 9999,
+          background: 'rgba(0,0,0,0.8)', color: '#fff', fontSize: '10px',
+          padding: '2px 6px', borderRadius: '4px', whiteSpace: 'nowrap' }}>
+          {nucTooltip.text}
+        </div>,
         document.body
       )}
     </div>

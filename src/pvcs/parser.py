@@ -234,19 +234,65 @@ def write_genbank(
 def parse_snapgene(filepath: str | Path) -> tuple[str, list[Feature], dict]:
     """Parse a SnapGene .dna file.
 
-    Strategy: BioPython first (fast), snapgene_reader fallback (full features).
-    BioPython's snapgene support extracts sequence but often misses features
-    from the proprietary .dna format. snapgene_reader handles the full format.
+    Strategy:
+      1. Own binary parser (pvcs.snapgene_parser) — reliable, extracts features correctly
+      2. BioPython fallback — only if own parser fails
 
     Returns (sequence, features, metadata) — same shape as parse_genbank().
     """
     filepath = Path(filepath)
+
+    # ====== PRIMARY: Our own .dna binary parser ======
+    try:
+        from pvcs.snapgene_parser import parse_dna_file
+
+        parsed = parse_dna_file(filepath)
+        if parsed and parsed.get('sequence') and parsed.get('features'):
+            full_seq = parsed['sequence']
+            features = []
+            for pf in parsed['features']:
+                feat_seq = pf.get('sequence', '')
+                if not feat_seq and full_seq and pf.get('start') is not None:
+                    s, e = pf['start'], pf.get('end', pf['start'])
+                    feat_seq = full_seq[s:e]
+                features.append(Feature(
+                    type=pf.get('type', 'misc_feature'),
+                    name=pf.get('name', 'unknown'),
+                    start=pf.get('start', 0) + 1,  # convert 0-based → 1-based
+                    end=pf.get('end', 0),
+                    strand=pf.get('strand', 1),
+                    qualifiers={},
+                    sequence=feat_seq,
+                    color=pf.get('color'),
+                ))
+
+            features = infer_all_feature_types(features)
+
+            raw_name = parsed.get('name', '') or filepath.stem
+            metadata = {
+                "name": raw_name,
+                "description": parsed.get('description', ''),
+                "topology": parsed.get('topology', 'linear'),
+                "molecule_type": "DNA",
+                "organism": parsed.get('organism', ''),
+            }
+
+            logger.info(
+                "parse_snapgene (own parser): %d features from %s",
+                len(features), filepath.name,
+            )
+            return full_seq, features, metadata
+
+    except Exception as e:
+        logger.warning("Own .dna parser failed for %s: %s, trying BioPython", filepath.name, e)
+
+    # ====== FALLBACK: BioPython ======
     record: SeqRecord = SeqIO.read(filepath, "snapgene")
     full_seq = str(record.seq).upper()
 
     raw_features = [f for f in record.features if f.type != "source"]
     logger.info(
-        "parse_snapgene: BioPython extracted %d features from %s",
+        "parse_snapgene (BioPython): %d features from %s",
         len(raw_features), filepath.name,
     )
     features = []
@@ -255,24 +301,6 @@ def parse_snapgene(filepath: str | Path) -> tuple[str, list[Feature], dict]:
             features.append(_bio_feature_to_pvcs(f, full_seq))
         except Exception as e:
             logger.warning("Skipped feature %s: %s", f.type, e)
-
-    # If BioPython didn't extract features, try snapgene_reader
-    if not features:
-        try:
-            from snapgene_reader import snapgene_file_to_seqrecord
-
-            record2 = snapgene_file_to_seqrecord(str(filepath))
-            raw2 = [f for f in record2.features if f.type != "source"]
-            logger.info("  snapgene_reader extracted %d features", len(raw2))
-            for f in raw2:
-                try:
-                    features.append(_bio_feature_to_pvcs(f, full_seq))
-                except Exception as e:
-                    logger.warning("  Skipped feature %s: %s", f.type, e)
-        except ImportError:
-            logger.warning("  snapgene_reader not installed (pip install snapgene-reader)")
-        except Exception as e:
-            logger.warning("  snapgene_reader error: %s", e)
 
     features = infer_all_feature_types(features)
 

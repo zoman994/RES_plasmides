@@ -231,7 +231,7 @@ export default function AnnotationEditor({
             const left = (a.start / seqLength) * 100;
             const width = Math.max(1, ((a.end - a.start) / seqLength) * 100);
             const color = a.color || ANNOTATION_COLORS[a.type] || ANNOTATION_COLORS.misc;
-            const opacity = a.level === 'region' ? 0.5 : 0.85;
+            const opacity = a.level === 'region' ? 0.9 : 0.7;
             return (
               <div key={i} className="absolute top-0 h-full flex items-center justify-center text-[6px] text-white font-medium truncate px-0.5 cursor-pointer"
                 style={{ left: `${left}%`, width: `${width}%`, backgroundColor: color, opacity }}

@@ -103,8 +103,11 @@ export function detectCommonFeatures(sequence, database, options = {}) {
   for (const feat of database.features) {
     if (feat.length > maxFeatureLength) continue;
 
-    // CDS: protein exact match
+    // CDS: protein exact match, then fuzzy fallback
     if (feat.protein && feat.protein.length >= 10) {
+      let found = false;
+
+      // Exact match first
       for (const frame of frames) {
         const idx = frame.protein.indexOf(feat.protein);
         if (idx >= 0) {
@@ -120,10 +123,51 @@ export function detectCommonFeatures(sequence, database, options = {}) {
             identity: 1.0,
             method: 'protein_exact',
           });
-          break; // one match per feature is enough
+          found = true;
+          break;
         }
       }
-      continue;
+
+      // Fuzzy protein match (>=90% identity) if no exact match
+      if (!found && feat.protein.length >= 30) {
+        for (const frame of frames) {
+          const fp = feat.protein;
+          const tp = frame.protein;
+          if (tp.length < fp.length * 0.8) continue;
+
+          let bestIdentity = 0, bestPos = -1;
+          const limit = tp.length - fp.length;
+          for (let i = 0; i <= limit; i++) {
+            let matches = 0;
+            for (let j = 0; j < fp.length; j++) {
+              if (fp[j] === tp[i + j]) matches++;
+            }
+            const identity = matches / fp.length;
+            if (identity > bestIdentity) {
+              bestIdentity = identity;
+              bestPos = i;
+            }
+          }
+
+          if (bestIdentity >= 0.90) {
+            const ntStart = frame.strand === 1
+              ? frame.offset + bestPos * 3
+              : seq.length - (frame.offset + (bestPos + fp.length) * 3);
+            results.push({
+              feature: feat,
+              start: Math.max(0, ntStart),
+              end: Math.min(seq.length, ntStart + fp.length * 3),
+              strand: frame.strand,
+              identity: bestIdentity,
+              method: 'protein_fuzzy',
+            });
+            found = true;
+            break;
+          }
+        }
+      }
+
+      if (found) continue;
     }
 
     // Non-CDS: sliding window DNA identity
