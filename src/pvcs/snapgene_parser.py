@@ -24,7 +24,7 @@ def _rc(seq):
 
 # ═══ Feature type normalization ═══
 _TYPE_MAP = {
-    'CDS': 'CDS', 'gene': 'CDS',
+    'CDS': 'CDS', 'gene': 'gene',
     'promoter': 'promoter', 'terminator': 'terminator',
     'rep_origin': 'rep_origin', 'origin of replication': 'rep_origin',
     'primer_bind': 'primer_bind',

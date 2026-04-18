@@ -1,11 +1,12 @@
 # CURRENT_TASK.md — Этап 1.2: TYPE_MAP пересмотр в import-annotations.js
 
-**Статус:** ⏳ К ВЫПОЛНЕНИЮ
+**Статус:** ✅ ВЫПОЛНЕНО 18.04.2026
 **Автор спеки:** Claude Chat, 18.04.2026 (v2, после верификации по коду)
 **Приоритет:** Средний (TYPE_MAP из BUGS.md)
-**Оценка времени:** 3–4 часа
-**Ветка:** `feat/type-map-1.2`
+**Оценка времени:** 3–4 часа / Фактическое: ~1.5 часа
+**Ветка:** работа выполнена на `feature/racetrack-canvas` (текущая; `feat/type-map-1.2` не создавалась из-за грязного рабочего дерева)
 **Предыдущий этап:** 1.1 Центральный sanitizeSequence ✅
+**Результат:** Vitest 604 ✅ (+21), Pytest 112 ✅, Build clean
 
 ---
 
@@ -708,22 +709,25 @@ cd .. && pytest tests/ -x
 - [ ] `grep -n "ncRNA:" src/auto-annotate.js` — подтвердить что `ncRNA` уже есть в `ANNOTATION_COLORS`
 
 **Реализация (TDD-first):**
-1. [ ] **Backend** — удалить `'gene': 'CDS'` из `snapgene_parser.py:27`
-2. [ ] Обновить `REGION_TYPES`, `DETAIL_TYPES`, `EXON_BEARING_TYPES`, `GENE_CHILD_TYPES`
-3. [ ] Переписать `TYPE_MAP` + добавить `normalizeGeneType` + обновить сигнатуру `normalizeType(type, feat)`
-4. [ ] Переписать `DETAIL_TYPE_MAP`
-5. [ ] Обновить gene-filter (`GENE_CHILD_TYPES` вместо только CDS)
-6. [ ] `extractColor` — учёт revcolor
-7. [ ] `strand: feat.strand || 1` в 3 push-объектах (detail + point + unknown-heuristic detail)
-8. [ ] `EXON_BEARING_TYPES.has(feat.type)` вместо inline CDS/gene check
-9. [ ] Добавить цвета в `ANNOTATION_COLORS` (только новые ключи, НЕ перезаписывать `ncRNA`, `variation`, `modified_base`)
-10. [ ] Обновить существующие тесты `import-annotations.test.js` (5 правок)
-11. [ ] Создать `import-annotations-typemap.test.js` (~20 тестов)
-12. [ ] `cd gui/designer && npx vitest run` — всё зелёное (≈603 тестов)
-13. [ ] `cd gui/designer && npx vite build` — clean
-14. [ ] `cd .. && pytest tests/ -x` — backend ≈112 ✅
-15. [ ] Обновить BUGS.md, PROJECT_STATE.md, DECISIONS.md
-16. [ ] Поставить `**Статус:** ✅ ВЫПОЛНЕНО [дата]` в этом файле
+1. [x] **Backend** — удалить `'gene': 'CDS'` из `snapgene_parser.py:27`
+2. [x] Обновить `REGION_TYPES`, `DETAIL_TYPES`, `EXON_BEARING_TYPES`, `GENE_CHILD_TYPES`
+3. [x] Переписать `TYPE_MAP` + добавить `normalizeGeneType` + обновить сигнатуру `normalizeType(type, feat)`
+4. [x] Переписать `DETAIL_TYPE_MAP`
+5. [x] Обновить gene-filter (`GENE_CHILD_TYPES` вместо только CDS)
+6. [x] `extractColor` — учёт revcolor
+7. [x] `strand: feat.strand || 1` в 3 push-объектах (detail + point + unknown-heuristic detail) + intron-push
+8. [x] `EXON_BEARING_TYPES.has(feat.type)` вместо inline CDS/gene check
+9. [x] Добавить цвета в `ANNOTATION_COLORS` (14 новых ключей; `ncRNA`/`domain`/`gene`/`RBS` не перезаписаны)
+10. [x] Обновить существующие тесты `import-annotations.test.js` (5 правок + фикстура `misc_RNA`→`weird_feature` т.к. тип стал known)
+11. [x] Создать `import-annotations-typemap.test.js` (20 тестов, red-first)
+12. [x] `cd gui/designer && npx vitest run` — **604 ✅**
+13. [x] `cd gui/designer && npx vite build` — **clean**
+14. [x] `pytest tests/ -x` — **112 ✅**
+15. [x] Обновить BUGS.md, PROJECT_STATE.md, DECISIONS.md
+16. [x] Поставить `**Статус:** ✅ ВЫПОЛНЕНО [дата]` в этом файле
+
+**Доп. правка по просьбе Chat:**
+- В `import-annotations.js` добавлен комментарий рядом с unknown-heuristic веткой: `// Note: 'exon' features fall through here → typically become details. / // Explicit handling not needed — GenBank join() in CDS already extracts introns via EXON_BEARING_TYPES.` (защита от будущих правок).
 
 **Если где-то упал (регрессия или неожиданность):**
 - Остановись, не пытайся «починить» эвристиками

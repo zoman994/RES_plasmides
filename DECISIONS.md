@@ -239,3 +239,29 @@ _(решения сессий 24–28 и блоков 2–3 см. в преды�
 [2026-04-18] **Store migration v6→v7 санитизирует legacy-данные.** Persist version bump с 6 до 7. Миграция проходит по `persisted.parts[*].sequence` и `persisted.assemblies[*].fragments[*].sequence` через `sanitizeSequence`. `subFragments` не обрабатываются отдельно — производные от `parent.sequence`.
 
 [2026-04-18] **COMPLEMENT_MAP без IUPAC — known limitation v1.1.** `reverseComplement()` превращает R/Y/S/W/K/M/B/D/H/V в N. Если реальные данные потребуют — расширить до полной IUPAC complement таблицы. Пока в BUGS.md как TODO.
+
+---
+
+## Этап 1.2 — TYPE_MAP пересмотр в import-annotations.js (18.04.2026)
+
+[2026-04-18] **`normalizeGeneType(feat)` — gene-семантика из qualifiers, не из type.** Раньше `gene → CDS` через TYPE_MAP — теряли ncRNA-gene и UTR-семантику. Теперь: `gene` не в TYPE_MAP, `normalizeType(type, feat)` делегирует `normalizeGeneType` который читает `/ncRNA_class` → `ncRNA`, `/product` matches `\btrna\b` → `tRNA`, matches `\b(rrna|ribosomal\s+rna|16s|23s|5s|18s|28s)\b` → `rRNA`, иначе → `gene`. Free-text `/note` эвристики не применяем — источник регрессий.
+
+[2026-04-18] **Gene-filter расширен до всех CDS/RNA детей.** `GENE_CHILD_TYPES = {CDS, mRNA, tRNA, rRNA, ncRNA, misc_RNA}`. Раньше фильтр пропускал `gene` только при наличии CDS-child — `gene` + `tRNA` внутри создавали дубль-регионы. Теперь любой RNA/CDS ребёнок делает `gene` избыточным.
+
+[2026-04-18] **Migration v7→v8 НЕ ДЕЛАЕМ.** Legacy annotations с типом `catalytic` (из `mat_peptide`/`domain`/`region` до 1.2) в store нельзя корректно мигрировать: нужен оригинальный INSDC-тип, которого нет. Information loss необратим. Известное ограничение в BUGS.md: для корректных типов — переимпортировать `.gb`/`.dna`. Render от `catalytic` не ломается (цвет `#2563EB` существует).
+
+[2026-04-18] **`oriT` ≠ `rep_origin`.** Биологически разные (конъюгация vs репликация). Собственный region-тип + цвет `#7C3AED` (violet-700) в `ANNOTATION_COLORS`. Раньше `oriT → rep_origin` через TYPE_MAP смешивал их семантику.
+
+[2026-04-18] **`mRNA` как собственный region-тип, без разбора на UTR+CDS.** Разбор mRNA на 5'UTR + CDS + 3'UTR — отдельная задача v1.1. В плазмидах встречается редко; сейчас важнее корректность типа, чем UX декомпозиции. `EXON_BEARING_TYPES = {CDS, gene, mRNA}` покрывает intron-извлечение из `qualifiers.exons`.
+
+[2026-04-18] **`D-loop` как собственный тип, не `misc_feature` fallback.** Встречается редко (митохондриальная ДНК), но раз добавляем — корректно. Цвет `#E0E7FF` (indigo-100). Аналогично `mobile_element`, `repeat_region` — собственные типы с сдержанными серыми цветами.
+
+[2026-04-18] **`domain/region/mat_peptide/motif → identity` без эвристик.** INSDC имеет отдельный `active_site` именно для каталитической активности. Free-text эвристики на `/note` (например «если `/note='catalytic site'` → `catalytic`») отвергнуты как источник регрессий. `domain` и `region` — общие INSDC-типы, не означают catalytic. `motif` не обязательно binding.
+
+[2026-04-18] **Backend `_TYPE_MAP` — минимальный diff.** Только `'gene': 'CDS'` → `'gene': 'gene'` в `snapgene_parser.py`. Остальное (`signal_peptide → sig_peptide`, `origin of replication → rep_origin`) не трогаем — работает корректно через frontend двойную нормализацию. Полный backend рефакторинг — не в scope 1.2.
+
+[2026-04-18] **`REGION_RENDER_RULES` не трогаем в 1.2.** Grep подтвердил: объект в `annotation-model.js:16` нигде не импортируется компонентами. Расширять под новые типы без потребителей — мёртвый код. Вернёмся когда появится detail-picker UI или подобный consumer.
+
+[2026-04-18] **`ApEinfo_revcolor` для strand=-1.** APE-формат указывает revcolor для reverse-strand features. `extractColor` теперь: `strand === -1 && q.ApEinfo_revcolor → revcolor`, иначе `fwdcolor`/`SnapGene:color`/`color`. Detail-level annotations также получают поле `strand` в 3 push-путях (detail/point/unknown-heuristic).
+
+[2026-04-18] **`variation`/`modified_base` остаются POINT в 1.2.** Не переносим в DETAIL. В большинстве случаев 1-nt изменения. Если реальные данные потребуют detail-уровня для больших variations — отдельная эвристика `span > 1 → detail` в v1.1.

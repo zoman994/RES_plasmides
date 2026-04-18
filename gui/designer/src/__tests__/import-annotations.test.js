@@ -53,7 +53,7 @@ describe('importFeatures', () => {
   it('small unknown type (500/5000bp) → detail', () => {
     const features = [
       feat('CDS', 0, 3000, { label: 'MainGene' }),
-      feat('misc_RNA', 100, 600, { label: 'small_rna' }),
+      feat('weird_feature', 100, 600, { label: 'small_rna' }),
     ];
     const { annotations } = importFeatures(features, 5000);
 
@@ -114,17 +114,17 @@ describe('importFeatures', () => {
     expect(annotations[0].name).toBe('AsCpf1');
   });
 
-  it('gene WITHOUT overlapping CDS → kept as detail (unknown heuristic)', () => {
+  it('gene WITHOUT overlapping CDS → region with type="gene"', () => {
     const features = [
       feat('gene', 0, 1500, { gene: 'lacZ' }),
-      // No CDS inside this gene — gene is NOT skipped
-      // 1500/5000 = 30% > 10% → becomes region via heuristic
+      // No CDS/RNA inside this gene — gene passes filter and becomes its own region.
     ];
     const { annotations } = importFeatures(features, 5000);
 
     expect(annotations).toHaveLength(1);
     expect(annotations[0].level).toBe('region');
-    expect(annotations[0].type).toBe('misc_feature');
+    expect(annotations[0].type).toBe('gene');
+    expect(annotations[0].name).toBe('lacZ');
   });
 
   it('nested CDS with mat_peptide + sig_peptide → region + 2 details', () => {
@@ -145,7 +145,7 @@ describe('importFeatures', () => {
     expect(details.every(d => d.regionId === regions[0].id)).toBe(true);
 
     const signal = details.find(d => d.type === 'signal_peptide');
-    const mature = details.find(d => d.type === 'catalytic');
+    const mature = details.find(d => d.type === 'mat_peptide');
     expect(signal).toBeDefined();
     expect(mature).toBeDefined();
   });
@@ -180,13 +180,21 @@ describe('importFeatures', () => {
 describe('normalizeType', () => {
   it('maps known types correctly', () => {
     expect(normalizeType('CDS')).toBe('CDS');
-    expect(normalizeType('gene')).toBe('CDS');
-    expect(normalizeType('mRNA')).toBe('CDS');
+    expect(normalizeType('mRNA')).toBe('mRNA');
     expect(normalizeType('promoter')).toBe('promoter');
     expect(normalizeType('terminator')).toBe('terminator');
     expect(normalizeType('rep_origin')).toBe('rep_origin');
-    expect(normalizeType('oriT')).toBe('rep_origin');
+    expect(normalizeType('oriT')).toBe('oriT');
     expect(normalizeType('regulatory')).toBe('regulatory');
+  });
+
+  it('gene requires feat context for qualifier-based classification', () => {
+    expect(normalizeType('gene', { qualifiers: {} })).toBe('gene');
+    expect(normalizeType('gene', { qualifiers: { ncRNA_class: 'miRNA' } })).toBe('ncRNA');
+    expect(normalizeType('gene', { qualifiers: { product: 'tRNA-Ala' } })).toBe('tRNA');
+    expect(normalizeType('gene', { qualifiers: { product: '16S ribosomal RNA' } })).toBe('rRNA');
+    // Without feat, gene falls through TYPE_MAP (which intentionally omits it) → misc_feature.
+    expect(normalizeType('gene')).toBe('misc_feature');
   });
 
   it('defaults unknown to misc_feature', () => {
@@ -198,8 +206,8 @@ describe('normalizeDetailType', () => {
   it('maps known detail types', () => {
     expect(normalizeDetailType('sig_peptide')).toBe('signal_peptide');
     expect(normalizeDetailType('signal_peptide')).toBe('signal_peptide');
-    expect(normalizeDetailType('transit_peptide')).toBe('signal_peptide');
-    expect(normalizeDetailType('mat_peptide')).toBe('catalytic');
+    expect(normalizeDetailType('transit_peptide')).toBe('transit_peptide');
+    expect(normalizeDetailType('mat_peptide')).toBe('mat_peptide');
     expect(normalizeDetailType('binding_site')).toBe('binding');
     expect(normalizeDetailType('TATA_signal')).toBe('core_promoter');
     expect(normalizeDetailType('polyA_signal')).toBe('poly_a');

@@ -2,7 +2,7 @@
 
 > **Обновлено:** 18 апреля 2026
 > **Версия:** v0.5.0-alpha (~220 коммитов)
-> **Тесты:** ~695 (583 Vitest + 112 pytest)
+> **Тесты:** 716 (604 Vitest + 112 pytest)
 
 ---
 
@@ -106,6 +106,23 @@
 ---
 
 ## Журнал сессий
+
+### Сессия 18.04.2026 — Этап 1.2: TYPE_MAP пересмотр в import-annotations.js
+
+1. ✅ **Backend diff:** `snapgene_parser.py` `_TYPE_MAP['gene']: 'CDS'` → `'gene'` (1 строка). Pytest 112 ✅.
+2. ✅ **REGION_TYPES расширен:** `gene`, `mRNA`, `tRNA`, `rRNA`, `ncRNA`, `misc_RNA`, `oriT`, `misc_binding`, `repeat_region`, `mobile_element`, `D-loop` (+11 новых).
+3. ✅ **DETAIL_TYPES расширен:** `CAAT_signal`, `polyA_site`, `stem_loop`, `unsure` (+4 новых).
+4. ✅ **TYPE_MAP переписан:** удалены ошибочные `gene/mRNA → CDS`, `oriT → rep_origin`. `gene` обрабатывается через `normalizeGeneType(feat)` по `/ncRNA_class` и `/product` (tRNA/rRNA regex).
+5. ✅ **DETAIL_TYPE_MAP переписан:** `mat_peptide/domain/region → catalytic` заменены на identity, `transit_peptide → signal_peptide` → `transit_peptide`, `motif → binding` → `motif`. Новые: `CAAT_signal`/`GC_signal` → `core_promoter`, `polyA_site` → `poly_a`, `propeptide`/`disulfide_bond`/`stem_loop`/`unsure` явный identity.
+6. ✅ **Gene-filter расширен:** `GENE_CHILD_TYPES` (CDS + 5 RNA-типов). Раньше фильтровал только CDS-children.
+7. ✅ **`normalizeType(type, feat)`:** сигнатура расширена. Без `feat` — `gene` уходит в `misc_feature` (TYPE_MAP его не содержит).
+8. ✅ **`EXON_BEARING_TYPES`:** `CDS`+`gene`+`mRNA` — покрывает intron-извлечение из `qualifiers.exons`.
+9. ✅ **`extractColor`:** учитывает `ApEinfo_revcolor` для `strand === -1`.
+10. ✅ **`strand: feat.strand || 1`** добавлен в 3 push-объекта (detail branch, point branch, unknown-heuristic detail), + в intron-push.
+11. ✅ **`ANNOTATION_COLORS` +14 ключей:** mRNA/tRNA/rRNA/misc_RNA/oriT/repeat_region/mobile_element/D-loop, mat_peptide/transit_peptide/motif/region/unsure/stem_loop. `ncRNA`/`domain`/`gene`/`RBS` — не перезаписаны (уже существовали).
+12. ✅ **Тесты:** +20 новых в `import-annotations-typemap.test.js` (red-first → green), 5 правок в `import-annotations.test.js` (обновлённые ожидания + фикстура `misc_RNA`→`weird_feature` т.к. `misc_RNA` стал known region).
+13. ✅ **Известное ограничение:** legacy `catalytic` annotations из предыдущих импортов сохраняются как есть (information loss необратим, миграцию v7→v8 не делаем).
+14. ✅ Vitest: **604 ✅** (было 583, +21), Build: ✅, Pytest: **112 ✅**.
 
 ### Сессия 18.04.2026 — Этап 1.1: Центральный sanitizeSequence
 

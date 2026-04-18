@@ -16,7 +16,6 @@
 
 ### Средние
 
-- [ ] **TYPE_MAP:** Семантические ошибки в `import-annotations.js` (строки 34–63). Region-level: `gene/mRNA → CDS` (теряется ncRNA-gene/UTR-семантика), `oriT → rep_origin` (биологически разные — репликация vs конъюгация). Detail-level: `mat_peptide/domain/region → catalytic`, `transit_peptide → signal_peptide`, `motif → binding` — все маппинги сомнительны. Пропущены INSDC-типы: `tRNA`, `rRNA`, `ncRNA`, `misc_RNA`, `stem_loop`, `repeat_region`, `mobile_element`, `variation`, `modified_base`. Структурная несогласованность: `REGION_TYPES` (строка 13) не содержит `gene`, из-за чего gene без CDS попадает в heuristic как `misc_feature` (тип `gene` теряется). Также `auto-annotate.js` уже трактует `gene` как CDS-like через `CDS_TYPES`, а `annotation-model.js` имеет полный `REGION_RENDER_RULES.gene` — импорт единственный, кто не согласован. Fix: Этап 1.2.
 - [ ] **P6:** Мутагенез: клик на 1 нуклеотид подсвечивает 2 соседних (весь кодон). При режиме "Нуклеотид → мутация ДНК" должен подсвечиваться только 1 нуклеотид, не триплет. 03.04.2026.
 
 ### Низкие
@@ -32,6 +31,14 @@
 ---
 
 ## FIXED
+
+### 18.04.2026 — Этап 1.2: TYPE_MAP пересмотр в import-annotations.js
+
+- [x] **TYPE_MAP:** Семантические ошибки в `import-annotations.js` исправлены. Region-level: `gene` → специализированная `normalizeGeneType(feat)` (по `/ncRNA_class` и `/product`), `mRNA`, `tRNA`, `rRNA`, `ncRNA`, `misc_RNA`, `oriT`, `repeat_region`, `mobile_element`, `D-loop` — собственные типы. Detail-level: `mat_peptide/domain/region → catalytic` заменены на identity, `transit_peptide → signal_peptide` → `transit_peptide`, `motif → binding` → `motif`. Новые маппинги: `CAAT_signal`/`GC_signal` → `core_promoter`, `polyA_site` → `poly_a`, `unsure`. Gene-filter расширен до всех RNA/CDS детей (`GENE_CHILD_TYPES`). `EXON_BEARING_TYPES` (`CDS`+`gene`+`mRNA`) для интрон-извлечения. `extractColor` учитывает `ApEinfo_revcolor` для strand=-1. `strand: feat.strand || 1` добавлен в 3 push-объекта (detail/point/unknown-heuristic). Backend: `snapgene_parser.py` `_TYPE_MAP['gene']` → `'gene'`. `ANNOTATION_COLORS` расширен 14 новыми ключами. +20 тестов в `import-annotations-typemap.test.js`, 5 правок в `import-annotations.test.js`.
+
+### Известные ограничения (TODO v1.1)
+
+- **Legacy-annotations с типом `catalytic`:** плазмиды в store из прошлых сессий могут содержать аннотации с типом `catalytic` (маппинг из `mat_peptide`/`domain`/`region` до Этапа 1.2). Автоматическая миграция невозможна — исходный INSDC-тип потерян. Render не ломается (`ANNOTATION_COLORS.catalytic` = `#2563EB` существует). Для получения корректных типов — переимпортировать исходный `.gb`/`.dna` файл.
 
 ### 18.04.2026 — Этап 1.1: Центральный sanitizeSequence (P2-arch)
 

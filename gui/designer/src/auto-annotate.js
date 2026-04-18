@@ -382,6 +382,22 @@ export const ANNOTATION_COLORS = {
   homology_arm: '#78716C',   // stone
   spacer: '#94A3B8',         // slate-400
   restriction_site: '#EF4444', // red — RE sites stand out
+  // Stage 1.2 — new region types
+  mRNA: '#6366F1',           // indigo
+  tRNA: '#14B8A6',           // teal (same family as ncRNA)
+  rRNA: '#0D9488',           // teal-600
+  misc_RNA: '#14B8A6',       // teal
+  oriT: '#7C3AED',           // violet-700 (biologically ≠ rep_origin)
+  repeat_region: '#6B7280',  // gray
+  mobile_element: '#64748B', // slate-500
+  'D-loop': '#E0E7FF',       // indigo-100
+  // Stage 1.2 — new / re-scoped detail types
+  mat_peptide: '#84CC16',    // lime — mature peptide
+  transit_peptide: '#C084FC',// purple-300 — organelle targeting
+  motif: '#A78BFA',          // violet-300
+  region: '#94A3B8',         // slate — generic INSDC region
+  unsure: '#FCA5A5',         // red-300 — ambiguous
+  stem_loop: '#FB923C',      // orange-400
 };
 
 // CDS-like region types that trigger protein detectors

@@ -10,18 +10,23 @@ import { generateRegionId } from './domain-detection';
 // ═══ Type classification sets ═══
 
 const REGION_TYPES = new Set([
-  'CDS', 'promoter', 'terminator', 'rep_origin',
-  'marker', 'misc_feature', 'regulatory',
+  'CDS', 'gene', 'mRNA', 'tRNA', 'rRNA', 'ncRNA', 'misc_RNA',
+  'promoter', 'terminator',
+  'rep_origin', 'oriT',
+  'marker', 'misc_feature', 'misc_binding', 'regulatory',
+  'repeat_region', 'mobile_element', 'D-loop',
 ]);
 
 const DETAIL_TYPES = new Set([
-  'sig_peptide', 'signal_peptide', 'mat_peptide',
-  'transit_peptide', 'propeptide',
-  'domain', 'region', 'motif', 'binding_site',
-  'active_site', 'metal_binding', 'disulfide_bond',
+  'sig_peptide', 'signal_peptide', 'transit_peptide',
+  'mat_peptide', 'propeptide',
+  'domain', 'region', 'motif',
+  'binding_site', 'active_site', 'metal_binding', 'disulfide_bond',
   'TATA_signal', '-35_signal', '-10_signal',
-  'polyA_signal', 'RBS', 'GC_signal',
-  'intron',
+  'CAAT_signal', 'GC_signal',
+  'polyA_signal', 'polyA_site',
+  'RBS', 'intron', 'stem_loop',
+  'unsure',
 ]);
 
 const POINT_TYPES = new Set([
@@ -29,38 +34,82 @@ const POINT_TYPES = new Set([
   'variation', 'modified_base',
 ]);
 
+// Types that bear exons (for intron-from-gaps extraction in first pass).
+const EXON_BEARING_TYPES = new Set(['CDS', 'gene', 'mRNA']);
+
+// Types whose presence inside a gene makes the gene redundant (avoid duplicate regions).
+const GENE_CHILD_TYPES = new Set(['CDS', 'mRNA', 'tRNA', 'rRNA', 'ncRNA', 'misc_RNA']);
+
 // ═══ Type normalization ═══
 
 const TYPE_MAP = {
-  CDS: 'CDS', gene: 'CDS', mRNA: 'CDS',
-  promoter: 'promoter', terminator: 'terminator',
-  rep_origin: 'rep_origin', oriT: 'rep_origin',
-  misc_feature: 'misc_feature', misc_binding: 'misc_feature',
-  regulatory: 'regulatory', marker: 'marker',
+  CDS: 'CDS',
+  mRNA: 'mRNA',
+  tRNA: 'tRNA',
+  rRNA: 'rRNA',
+  ncRNA: 'ncRNA',
+  misc_RNA: 'misc_RNA',
+  promoter: 'promoter',
+  terminator: 'terminator',
+  rep_origin: 'rep_origin',
+  oriT: 'oriT',
+  misc_feature: 'misc_feature',
+  misc_binding: 'misc_feature',
+  regulatory: 'regulatory',
+  marker: 'marker',
+  repeat_region: 'repeat_region',
+  mobile_element: 'mobile_element',
+  'D-loop': 'D-loop',
+  // 'gene' intentionally omitted — handled by normalizeGeneType(feat) for qualifier-based classification.
 };
 
 const DETAIL_TYPE_MAP = {
   sig_peptide: 'signal_peptide',
   signal_peptide: 'signal_peptide',
-  transit_peptide: 'signal_peptide',
-  mat_peptide: 'catalytic',
-  domain: 'catalytic',
-  region: 'catalytic',
-  motif: 'binding',
+  transit_peptide: 'transit_peptide',
+  mat_peptide: 'mat_peptide',
+  propeptide: 'propeptide',
+  domain: 'domain',
+  region: 'region',
+  motif: 'motif',
   binding_site: 'binding',
   metal_binding: 'binding',
   active_site: 'active_site',
+  disulfide_bond: 'disulfide_bond',
   TATA_signal: 'core_promoter',
   '-35_signal': 'core_promoter',
   '-10_signal': 'core_promoter',
+  CAAT_signal: 'core_promoter',
+  GC_signal: 'core_promoter',
   polyA_signal: 'poly_a',
+  polyA_site: 'poly_a',
   RBS: 'regulatory',
   primer_bind: 'primer_bind',
   intron: 'intron',
+  stem_loop: 'stem_loop',
+  unsure: 'unsure',
 };
 
-/** Normalize a region-level feature type to our model. */
-export function normalizeType(type) {
+/**
+ * Specialized gene classification based on qualifiers.
+ * Called only for gene-features that survived the RNA-child filter.
+ */
+function normalizeGeneType(feat) {
+  const q = feat.qualifiers || {};
+  if (q.ncRNA_class) return 'ncRNA';
+  const product = String(q.product || '').toLowerCase();
+  if (/\btrna\b/.test(product)) return 'tRNA';
+  if (/\b(rrna|ribosomal\s+rna|16s|23s|5s|18s|28s)\b/.test(product)) return 'rRNA';
+  return 'gene';
+}
+
+/**
+ * Normalize a region-level feature type to our model.
+ * @param {string} type — INSDC feature type
+ * @param {Object} [feat] — full feature object (required for 'gene' classification)
+ */
+export function normalizeType(type, feat) {
+  if (type === 'gene' && feat) return normalizeGeneType(feat);
   return TYPE_MAP[type] || 'misc_feature';
 }
 
@@ -81,9 +130,10 @@ function extractName(feat) {
     || feat.type;
 }
 
-/** Extract color from SnapGene/APE qualifiers. */
+/** Extract color from SnapGene/APE qualifiers, honoring strand for APE revcolor. */
 function extractColor(feat) {
   const q = feat.qualifiers || {};
+  if (feat.strand === -1 && q.ApEinfo_revcolor) return q.ApEinfo_revcolor;
   return q.ApEinfo_fwdcolor
     || q['SnapGene:color']
     || q.color
@@ -107,14 +157,15 @@ export function importFeatures(features, seqLength, format) {
   const regions = [];
 
   // ── Step 1: Filter ──
-  // Skip source features entirely
-  // Skip gene features if a CDS exists inside them
-  const cdsFeatures = features.filter(f => f.type === 'CDS');
+  // Skip source features entirely.
+  // Skip gene features that contain any CDS/RNA child (avoid duplicate regions).
+  const geneChildren = features.filter(f => GENE_CHILD_TYPES.has(f.type));
   const filtered = features.filter(f => {
     if (f.type === 'source') return false;
     if (f.type === 'gene') {
-      // Skip gene if any CDS is contained within it
-      return !cdsFeatures.some(cds => cds.start >= f.start && cds.end <= f.end);
+      return !geneChildren.some(child =>
+        child.start >= f.start && child.end <= f.end
+      );
     }
     return true;
   });
@@ -130,7 +181,7 @@ export function importFeatures(features, seqLength, format) {
     const ann = {
       id: regionId,
       name: extractName(feat),
-      type: normalizeType(feat.type),
+      type: normalizeType(feat.type, feat),
       start: feat.start,
       end: feat.end,
       strand: feat.strand || 1,
@@ -143,8 +194,8 @@ export function importFeatures(features, seqLength, format) {
     regions.push(ann);
     annotations.push(ann);
 
-    // If CDS has exon parts (from GenBank join()), create intron annotations for gaps
-    if ((feat.type === 'CDS' || feat.type === 'gene') && feat.qualifiers?.exons) {
+    // If feature has exon parts (from GenBank join()), create intron annotations for gaps.
+    if (EXON_BEARING_TYPES.has(feat.type) && feat.qualifiers?.exons) {
       const exons = feat.qualifiers.exons; // [{ start, end }, ...]
       for (let ei = 0; ei < exons.length - 1; ei++) {
         const intronStart = exons[ei].end;
@@ -155,6 +206,7 @@ export function importFeatures(features, seqLength, format) {
             type: 'intron',
             start: intronStart,
             end: intronEnd,
+            strand: feat.strand || 1,
             level: 'detail',
             regionId,
             auto: false,
@@ -180,6 +232,7 @@ export function importFeatures(features, seqLength, format) {
         type: normalizeDetailType(feat.type),
         start: feat.start,
         end: feat.end,
+        strand: feat.strand || 1,
         level: 'detail',
         regionId: parentRegion?.id || null,
         auto: false,
@@ -195,6 +248,7 @@ export function importFeatures(features, seqLength, format) {
         type: normalizeDetailType(feat.type),
         start: feat.start,
         end: feat.end,
+        strand: feat.strand || 1,
         level: 'point',
         auto: false,
         source: 'import',
@@ -202,7 +256,9 @@ export function importFeatures(features, seqLength, format) {
       continue;
     }
 
-    // Unknown type — heuristic
+    // Unknown type — heuristic.
+    // Note: 'exon' features fall through here → typically become details.
+    // Explicit handling not needed — GenBank join() in CDS already extracts introns via EXON_BEARING_TYPES.
     const span = feat.end - feat.start;
     const isInsideRegion = regions.some(r =>
       feat.start >= r.start && feat.end <= r.end
@@ -217,6 +273,7 @@ export function importFeatures(features, seqLength, format) {
         type: 'misc_feature',
         start: feat.start,
         end: feat.end,
+        strand: feat.strand || 1,
         level: 'region',
         auto: false,
         source: 'import',
@@ -234,6 +291,7 @@ export function importFeatures(features, seqLength, format) {
         type: normalizeDetailType(feat.type),
         start: feat.start,
         end: feat.end,
+        strand: feat.strand || 1,
         level: 'detail',
         regionId: parentRegion?.id || null,
         auto: false,
