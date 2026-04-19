@@ -10,6 +10,7 @@ import { useState } from 'react';
 import { ANNOTATION_COLORS } from '../auto-annotate';
 import { getRegions } from '../annotation-model';
 import { generateRegionId } from '../domain-detection';
+import { getTextColor } from '../lib/color-utils';
 import { SBOLIcon } from '../sbol-glyphs';
 import { t } from '../i18n';
 
@@ -233,8 +234,14 @@ export default function AnnotationEditor({
             const color = a.color || ANNOTATION_COLORS[a.type] || ANNOTATION_COLORS.misc;
             const opacity = a.level === 'region' ? 0.9 : 0.7;
             return (
-              <div key={i} className="absolute top-0 h-full flex items-center justify-center text-[6px] text-white font-medium truncate px-0.5 cursor-pointer"
-                style={{ left: `${left}%`, width: `${width}%`, backgroundColor: color, opacity }}
+              <div key={i} className="absolute top-0 h-full flex items-center justify-center text-[6px] font-medium truncate px-0.5 cursor-pointer"
+                style={{
+                  left: `${left}%`,
+                  width: `${width}%`,
+                  backgroundColor: color,
+                  color: getTextColor(color),
+                  opacity,
+                }}
                 title={`${a.name}: ${a.start + 1}..${a.end} (${a.level})`}
                 onClick={() => onSelect?.(a)}>
                 {width > 10 ? a.name : ''}
