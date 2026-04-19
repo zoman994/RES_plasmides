@@ -1,8 +1,8 @@
 # PROJECT_STATE.md — BodgeGene
 
-> **Обновлено:** 18 апреля 2026
-> **Версия:** v0.5.0-alpha (~220 коммитов)
-> **Тесты:** 716 (604 Vitest + 112 pytest)
+> **Обновлено:** 20 апреля 2026
+> **Версия:** v0.5.0-alpha (~227 коммитов)
+> **Тесты:** 746 (634 Vitest + 112 pytest)
 
 ---
 
@@ -106,6 +106,24 @@
 ---
 
 ## Журнал сессий
+
+### Сессия 19–20.04.2026 — Sprint 1: Читаемые метки, чистые стыки, настоящий мутагенез
+
+**Три класса багов в одном спринте, 7 коммитов.**
+
+1. ✅ **V5 contrast (`7521dcb`):** `getTextColor(bgHex)` helper + luminance-aware текст в `AnnotationEditor.jsx` annotation bar. 7 тестов.
+2. ✅ **V3 junction reset (`50d8bf0`):** `resetJunctionForType(j, newType)` helper + 6 call-sites в `JunctionBlock.jsx`. 6 тестов.
+3. ✅ **V3-bulk (`67ae2ee`):** `App.jsx:460` bulk GG-switch через тот же helper. 1 тест.
+4. ✅ **V4 mutagenesis helper (`e0f48cd`):** `buildMutagenesisPayload(result, ctx)` чистая функция + `isMutagenesis` guard в `App.jsx` useEffect. 6 тестов.
+5. ✅ **V4 Wizard path (`20e7df0`):** `MutagenesisWizard.onComplete` расширен (strategy/primers/protocol/warnings/templateName), `handleMutagenesis` через helper. 3 integration-теста.
+6. ✅ **V4 overlap bridge (`ea96ca2`):** `local-primer-design.js` приоритезирует `junction.overlapSequence` над WT-флангами в split-mode. 2 теста.
+7. ✅ **V4 in-place (`2f66348`):** `handleSaveFragment` переписан — computeMutagenesisStrategy выбирает KLD vs two/multi_fragment, дробит фрагмент на N с annotation split. No-PCR guard. 5 integration-тестов.
+
+**Все визуальные проверки из спеки — ожидают верификации Игорем на реальных плазмидах (pUC118, pET-28a, pDHG25).**
+
+Тесты: 604 → **634 ✅** (+30, совпало с прогнозом спеки ровно). Pytest: **112 ✅**. Build: clean на каждом коммите.
+
+Новый MED баг в OPEN: `MUTWIZ-SANITIZE` (MutagenesisWizard textarea не ходит через `sanitizeSequence`).
 
 ### Сессия 18.04.2026 — Этап 1.2: TYPE_MAP пересмотр в import-annotations.js
 

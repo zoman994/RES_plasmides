@@ -14,7 +14,6 @@
 ### Высокие
 
 - [ ] **P4 (повтор):** Нет аннотаций на PartBlock после «Как backbone». migratePartAnnotations не помог.
-- [ ] **V4 MUTAGEN-NO-PRIMERS:** При внесении мутации в плазмиду через MutagenesisWizard не добавляются праймеры для мутагенеза. Core-workflow сломан. Предполагаемые корни: либо mutagenesis primer design не вызывается после apply, либо возвращает empty array, либо праймеры очищаются stale-guard из P1v2 (else-ветка в App.jsx useEffect). Нужна диагностика. 19.04.2026 (after 1.2 visual testing).
 - [ ] **V7 INSERTION-CLOCK:** При сборке insert+backbone не видно в какое место backbone идёт вставка. Решение: reusable `<InsertionClock>` компонент (циферблат), стандартная метафора plasmid editors (SnapGene, Benchling, Geneious).
 
   **Дизайн:**
@@ -33,9 +32,8 @@
 
 - [ ] **P6:** Мутагенез: клик на 1 нуклеотид подсвечивает 2 соседних (весь кодон). При режиме "Нуклеотид → мутация ДНК" должен подсвечиваться только 1 нуклеотид, не триплет. 03.04.2026.
 - [ ] **V2 DUP-REGIONS:** Дубликаты перекрывающихся regions при импорте (pDHG25: AMA1 5256 bp + AMA1 5226 bp, разница 30 bp). Gene-filter (`GENE_CHILD_TYPES` из 1.2) не срабатывает, если gene и CDS почти совпадают по координатам, но не в contained-отношении. Плюс длинные имена ("Repeat Region 1") усекаются до "platfor" на арках — UX проблема. Связано с V1. 19.04.2026.
-- [ ] **V3 JUNCTION-STALE-RE:** После смены junction type с `ligation`/`re_ligation` на `golden_gate` старые RE-labels (Ncol, Kpnl) остаются на overhang-pills соседних фрагментов. State не ресетится при switch. Файл: JunctionBlock.jsx или JunctionDNA.jsx. 19.04.2026.
-- [ ] **V5 ANNOTATION-BAR-CONTRAST:** Белый текст на светлых фонах в annotation bar PlasmidViewer — нечитаем (AmpR promoter жёлтый `#FBBF24`, marker-цвета, светло-зелёные CDS). Ранее правили opacity (P3b, 11b), но contrast-aware text color не добавлен. Fix: вычислять luminance фона → выбирать white или `#1F2937`. Файл: AnnotationEditor.jsx или PlasmidViewer.jsx (annotation bar stripe). Quick win — ~1 ч. 19.04.2026.
 - [ ] **V6 RE-LABELS-OVERLAP:** Метки рестриктаз в MCS пересекаются и нечитаемы (pUC118: HindIII/EcoRI/KpnI/BamHI/XbaI/SalI сгруппированы в ~50 bp → labels сливаются в одну точку). Классическая проблема плазмидной визуализации. Варианты: (а) leader lines с разной длиной (vertical stacking); (б) cluster labels ("6 sites" + hover-popup); (в) hide-on-zoom <X% с опцией показать; (г) минимум 2-пиксельный gap между labels. Файл: PlasmidMap.jsx (RE site rendering). Связано с V1/V2 — UX-sprint на circular map. 19.04.2026.
+- [ ] **MUTWIZ-SANITIZE:** `MutagenesisWizard.jsx` textarea использует legacy regex `/[^ATCGatcg]/g` вместо `sanitizeSequence` из `sequence-utils.js` — нарушает архитектурный контракт Этапа 1.1 (sanitize-at-entry). IUPAC символы (R/Y/S/W/K/M/B/D/H/V) теряются при вставке в textarea. Обычный пользователь IUPAC не вводит, но контракт нарушен. Quick fix: заменить 2 инлайн-regex'а на `sanitizeSequence(...)`. 20.04.2026.
 
 ### Низкие
 
@@ -50,6 +48,21 @@
 ---
 
 ## FIXED
+
+### 19–20.04.2026 — Sprint 1: Читаемые метки, чистые стыки, настоящий мутагенез
+
+- [x] **V5 ANNOTATION-BAR-CONTRAST:** `AnnotationEditor.jsx` annotation bar — белый текст на жёлтых/светлых фонах заменён на luminance-aware (`#FFFFFF` или `#1F2937`). Helper `getTextColor(bgHex)` в `gui/designer/src/lib/color-utils.js` с WCAG формулой `0.299*R + 0.587*G + 0.114*B`, threshold `0.55`. Fallback на белый при malformed hex. +7 unit-тестов. Коммит `7521dcb`.
+- [x] **V3 JUNCTION-STALE-RE:** Переключение типа стыка в `JunctionBlock.jsx` (контекстное меню, tab-кнопки, GG warning-button) теперь ресетит enzyme/overhang поля предыдущего типа через `resetJunctionForType(j, newType)` helper в `gui/designer/src/lib/junction-utils.js`. 6 call-sites в JunctionBlock. Сохраняются: id + overlap-геометрия (overlapLength/overlapMode/autoMode/calcMode/tmTarget). GG → default enzyme `BsaI`, ligation/re_ligation → preserve reEnzyme (mirrored into j.enzyme). +6 unit-тестов. Коммит `50d8bf0`.
+- [x] **V3-bulk:** `App.jsx:460` bulk-переключение `junctions.map(j => ({...j, type: 'golden_gate', ...}))` страдало той же stale-state проблемой. Фикс через `resetJunctionForType(j, 'golden_gate')` + spread-override `enzyme: ggEnzyme`. +1 bulk-pattern тест. Коммит `67ae2ee`.
+- [x] **V4 MUTAGEN-NO-PRIMERS:** Core-workflow мутагенеза сломан в обоих UX-путях. Исправлено по 4 фронтам:
+  - **V4-helper (`e0f48cd`):** новый `src/lib/mutagenesis-payload.js::buildMutagenesisPayload(result, ctx)` — чистая функция, транслирует результат `computeMutagenesisStrategy` в project-prefixed primer names (`<prefix>NNN_mut_<dir>_<template>`) + protocolSteps (KLD: pcr + dpni[type=assembly] + kld_asm[type=kld] + transform + screening + sequencing; two/multi: pcr_parts + overlap_pcr + transform + screening + sequencing). +6 unit-тестов.
+  - **V4-A (`e0f48cd`):** `App.jsx` useEffect после `autoDesigned` — добавлен `isMutagenesis` guard в первую ветку. Если активная assembly несёт мутагенезные праймеры, стандартный auto-design не перезаписывает их, только обновляет `apiWarnings`+`calculated`. P1v2 regression (else-ветка) сохранена.
+  - **V4-wizard (`20e7df0`):** `MutagenesisWizard.jsx::onComplete` payload расширен (strategy/primers/protocol/warnings/templateName). `useFragmentHandlers.js::handleMutagenesis` теперь ходит через `buildMutagenesisPayload`, пишет primers+protocolSteps+apiWarnings, `calculated = strategy === 'kld'`. +3 integration-теста.
+  - **V4-overlap (`ea96ca2`):** `local-primer-design.js::overlapTail` в split-mode ветке теперь приоритезирует `junction.overlapSequence` над WT-флангами. Если strategy дала overlap-бridge с мутацией — мутация попадает в primer tail. Fallback на существующую логику без overlapSequence. +2 unit-теста.
+  - **V4-inplace (`2f66348`):** `handleSaveFragment` переписан: ранний return на no-mutations, маппинг `updated.mutations` в strategy-формат (6 FragmentEditor типов → substitution/deletion/insertion), `computeMutagenesisStrategy` на исходном WT (`original.sequence`), dispatch по `result.strategy`: KLD → replace fragment inline; two/multi → splice фрагмента на N под-фрагментов с overlap-стыками, аннотации разрезаются по `templateStart/templateEnd` с флагом `trimmed`. No-PCR guard блокирует split с apiWarning. Вариант в parts library сохранён. +5 integration-тестов.
+
+### Покрытие Sprint 1
+Vitest: 604 → **634** (+30), pytest: 112 ✅, build: clean на каждом из 7 коммитов.
 
 ### 18.04.2026 — Этап 1.2: TYPE_MAP пересмотр в import-annotations.js
 
