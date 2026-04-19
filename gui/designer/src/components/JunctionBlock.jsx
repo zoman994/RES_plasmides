@@ -4,6 +4,7 @@ import ContextMenu from './ContextMenu';
 import { GG_ENZYMES, reverseComplement } from '../golden-gate';
 import { RE_ENZYMES, searchRE, getCompatible, getIsoschizomers, checkAssemblyForSites, siteToRegex } from '../restriction-db';
 import { useStore } from '../store';
+import { resetJunctionForType } from '../lib/junction-utils';
 
 const TYPE_STYLES = {
   overlap:      { bg: 'bg-blue-50',   border: 'border-blue-200',   text: 'text-blue-700',   active: 'bg-blue-500 text-white border-blue-500' },
@@ -150,10 +151,10 @@ export default function JunctionBlock({ junction, index, leftName, rightName, le
       </div>
       {ctxMenu && (
         <ContextMenu position={ctxMenu} onClose={() => setCtxMenu(null)} items={[
-          { icon: '\u25C0\u25B6', label: 'Overlap', onClick: () => { onChange({ ...j, type: 'overlap' }); setCtxMenu(null); } },
-          { icon: '\uD83D\uDD36', label: 'Golden Gate', onClick: () => { onChange({ ...j, type: 'golden_gate' }); setCtxMenu(null); } },
-          { icon: '\uD83D\uDD2A', label: 'RE лигирование', onClick: () => { onChange({ ...j, type: 'ligation' }); setCtxMenu(null); } },
-          { icon: '\uD83D\uDD04', label: 'KLD', onClick: () => { onChange({ ...j, type: 'kld' }); setCtxMenu(null); } },
+          { icon: '\u25C0\u25B6', label: 'Overlap', onClick: () => { onChange(resetJunctionForType(j, 'overlap')); setCtxMenu(null); } },
+          { icon: '\uD83D\uDD36', label: 'Golden Gate', onClick: () => { onChange(resetJunctionForType(j, 'golden_gate')); setCtxMenu(null); } },
+          { icon: '\uD83D\uDD2A', label: 'RE лигирование', onClick: () => { onChange(resetJunctionForType(j, 'ligation')); setCtxMenu(null); } },
+          { icon: '\uD83D\uDD04', label: 'KLD', onClick: () => { onChange(resetJunctionForType(j, 'kld')); setCtxMenu(null); } },
           { divider: true },
           { icon: '\u2699\uFE0F', label: 'Настройки...', onClick: () => { setCtxMenu(null); setOpen(true); } },
         ]} />
@@ -172,7 +173,7 @@ export default function JunctionBlock({ junction, index, leftName, rightName, le
             <div className="bg-red-50 border border-red-200 rounded-lg p-2 mb-3 text-[10px] text-red-800">
               <div className="font-semibold">{'⛔'} Идентичные фрагменты!</div>
               <div className="text-red-600 mt-0.5">Overlap-регионы будут одинаковыми — сборка даст неправильный продукт.</div>
-              <button onClick={() => onChange({ ...j, type: 'golden_gate', enzyme: 'BsaI' })}
+              <button onClick={() => onChange(resetJunctionForType(j, 'golden_gate'))}
                 className="mt-1.5 text-[10px] bg-green-600 text-white px-2 py-0.5 rounded hover:bg-green-700 inline-flex items-center gap-1">
                 {'🔶'} Переключить на Golden Gate
               </button>
@@ -185,7 +186,7 @@ export default function JunctionBlock({ junction, index, leftName, rightName, le
               const tst = TYPE_STYLES[tb.val];
               return (
                 <button key={tb.val}
-                  onClick={() => onChange({ ...j, type: tb.val })}
+                  onClick={() => onChange(resetJunctionForType(j, tb.val))}
                   className={`flex-1 px-1.5 py-1.5 rounded-lg text-[9px] font-medium border transition text-center ${
                     jType === tb.val ? tst.active : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'}`}>
                   <div className="text-sm">{tb.icon}</div>
