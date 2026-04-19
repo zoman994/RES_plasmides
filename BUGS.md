@@ -9,14 +9,33 @@
 ### Критичные
 
 - [ ] **P1 (повтор):** 1 фрагмент → 4 праймера. Корень: App.jsx auto-design useEffect не очищает stale-праймеры.
+- [ ] **V1 REGION-OVERFLOW:** PlasmidMap нечитаем для плазмид с крупными region-аннотациями (repeat_region 2440 bp на 10791 bp pDHG25 → 22% внешнего кольца серого цвета). Текст меток по арке не читается, мелкие regions (on, AmpR, platformer) перекрываются большими. Детектировано визуально после Этапа 1.2 — repeat_region теперь region-тип (раньше уходил в unknown-heuristic как misc_feature, но визуально было то же). Возможные направления: (а) limit для layout — regions >N% кольца → собственный внутренний track; (б) smarter font rotation + truncation rules; (в) интерактивный hover с полным именем при усечении; (г) top-K filter по priority. 19.04.2026 (after 1.2 visual testing).
 
 ### Высокие
 
 - [ ] **P4 (повтор):** Нет аннотаций на PartBlock после «Как backbone». migratePartAnnotations не помог.
+- [ ] **V4 MUTAGEN-NO-PRIMERS:** При внесении мутации в плазмиду через MutagenesisWizard не добавляются праймеры для мутагенеза. Core-workflow сломан. Предполагаемые корни: либо mutagenesis primer design не вызывается после apply, либо возвращает empty array, либо праймеры очищаются stale-guard из P1v2 (else-ветка в App.jsx useEffect). Нужна диагностика. 19.04.2026 (after 1.2 visual testing).
+- [ ] **V7 INSERTION-CLOCK:** При сборке insert+backbone не видно в какое место backbone идёт вставка. Решение: reusable `<InsertionClock>` компонент (циферблат), стандартная метафора plasmid editors (SnapGene, Benchling, Geneious).
+
+  **Дизайн:**
+  - **Q1 (семантика):** Clock выбирает середину insert-region, cut = центр выбранного региона (интуитивно для юзера: «solid» вместо «как разорвать»).
+  - **Q2 (размещение):** inline mini-clock в PartBlock (маленькая круговая иконка с pointer + маркер insert position); клик раскрывает full-modal с draggable cursor по кольцу + sequence-view ±50 nt внизу.
+  - **Q3 (default):** авто-выбор safest place — середина самого длинного межгенного gap между features. Если авто не нашло (gaps < min-size или полное покрытие features) → блокировка сборки до явного выбора юзером.
+
+  **User stories:**
+  - **US-1 Assembly:** pUC118 + AsCpf1 → PartBlock backbone показывает mini-clock с pointer на autoshot safest position (напр. midgap между lacZα и AmpR). Клик → full clock modal → драг cursor по lacZα → inline warning "вставка разорвёт lacZα". «Выбрать» → пересчёт праймеров под новую cut position.
+  - **US-2 Mutagenesis:** тот же компонент в MutagenesisWizard для выбора позиции мутации. Cursor по кольцу → внизу triplet highlight «AmpR кодон 245, AA=Glu».
+  - **US-3 Linear:** для линейных фрагментов Clock вырождается в горизонтальную полоску (linear timeline), та же синхронизация с sequence-view.
+
+  **Новые файлы:** `components/InsertionClock.jsx` (reusable). **Влияет на:** PartBlock.jsx (inline mini-clock), MutagenesisWizard.jsx (US-2), DesignCanvas.jsx (wiring), fragment-slice (поле `insertionPoint` у backbone-type fragments). **Влияет на primer design:** `local-primer-design.js` пересчитывает overlap-tails от `insertionPoint` backbone'а, не от позиции 0. **Sprint 2.** Оценка: ~8-10 ч. 19.04.2026.
 
 ### Средние
 
 - [ ] **P6:** Мутагенез: клик на 1 нуклеотид подсвечивает 2 соседних (весь кодон). При режиме "Нуклеотид → мутация ДНК" должен подсвечиваться только 1 нуклеотид, не триплет. 03.04.2026.
+- [ ] **V2 DUP-REGIONS:** Дубликаты перекрывающихся regions при импорте (pDHG25: AMA1 5256 bp + AMA1 5226 bp, разница 30 bp). Gene-filter (`GENE_CHILD_TYPES` из 1.2) не срабатывает, если gene и CDS почти совпадают по координатам, но не в contained-отношении. Плюс длинные имена ("Repeat Region 1") усекаются до "platfor" на арках — UX проблема. Связано с V1. 19.04.2026.
+- [ ] **V3 JUNCTION-STALE-RE:** После смены junction type с `ligation`/`re_ligation` на `golden_gate` старые RE-labels (Ncol, Kpnl) остаются на overhang-pills соседних фрагментов. State не ресетится при switch. Файл: JunctionBlock.jsx или JunctionDNA.jsx. 19.04.2026.
+- [ ] **V5 ANNOTATION-BAR-CONTRAST:** Белый текст на светлых фонах в annotation bar PlasmidViewer — нечитаем (AmpR promoter жёлтый `#FBBF24`, marker-цвета, светло-зелёные CDS). Ранее правили opacity (P3b, 11b), но contrast-aware text color не добавлен. Fix: вычислять luminance фона → выбирать white или `#1F2937`. Файл: AnnotationEditor.jsx или PlasmidViewer.jsx (annotation bar stripe). Quick win — ~1 ч. 19.04.2026.
+- [ ] **V6 RE-LABELS-OVERLAP:** Метки рестриктаз в MCS пересекаются и нечитаемы (pUC118: HindIII/EcoRI/KpnI/BamHI/XbaI/SalI сгруппированы в ~50 bp → labels сливаются в одну точку). Классическая проблема плазмидной визуализации. Варианты: (а) leader lines с разной длиной (vertical stacking); (б) cluster labels ("6 sites" + hover-popup); (в) hide-on-zoom <X% с опцией показать; (г) минимум 2-пиксельный gap между labels. Файл: PlasmidMap.jsx (RE site rendering). Связано с V1/V2 — UX-sprint на circular map. 19.04.2026.
 
 ### Низкие
 
