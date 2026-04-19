@@ -15,6 +15,7 @@ import { useStore, useFragments, useJunctions, usePrimers, useCustomPrimers, und
 // ═══ Hooks (extracted handlers) ═══
 import { useGeneratePrimers } from './hooks/useGeneratePrimers';
 import { useFragmentHandlers } from './hooks/useFragmentHandlers';
+import { resetJunctionForType } from './lib/junction-utils';
 
 // ═══ Components ═══
 import PartsPalette from './components/PartsPalette';
@@ -457,7 +458,10 @@ export default function App() {
                         {w}
                         {w.includes('Golden Gate') && w.startsWith('⛔') && (
                           <button onClick={() => {
-                            const newJ = junctions.map(j => ({ ...j, type: 'golden_gate', enzyme: ggEnzyme }));
+                            const newJ = junctions.map(j => ({
+                              ...resetJunctionForType(j, 'golden_gate'),
+                              enzyme: ggEnzyme,
+                            }));
                             updateActive({ junctions: newJ, assemblyType: 'golden_gate', calculated: false });
                             setTimeout(() => autoDesignGGOverhangs(), 100);
                           }}

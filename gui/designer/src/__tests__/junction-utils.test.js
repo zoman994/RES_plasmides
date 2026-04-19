@@ -62,4 +62,24 @@ describe('resetJunctionForType', () => {
     expect(r.reEnzyme).toBe('NcoI');
     expect(r.enzyme).toBe('NcoI');
   });
+
+  it('bulk map pattern (App.jsx:460): ligation×3 → golden_gate with chosen enzyme', () => {
+    // Simulates the "convert entire assembly to Golden Gate" button
+    const junctions = [
+      { id: 'j1', type: 'ligation', reEnzyme: 'NcoI', enzyme: 'NcoI', overhang: 'CATG', overlapLength: 20 },
+      { id: 'j2', type: 'ligation', reEnzyme: 'KpnI', enzyme: 'KpnI', overhang: 'GTAC', overlapLength: 20 },
+      { id: 'j3', type: 'overlap', overlapLength: 25, overlapMode: 'split' },
+    ];
+    const ggEnzyme = 'BpiI';
+    const newJ = junctions.map(j => ({
+      ...resetJunctionForType(j, 'golden_gate'),
+      enzyme: ggEnzyme,
+    }));
+    expect(newJ).toHaveLength(3);
+    expect(newJ.every(j => j.type === 'golden_gate')).toBe(true);
+    expect(newJ.every(j => j.enzyme === 'BpiI')).toBe(true);
+    expect(newJ.every(j => j.reEnzyme === undefined)).toBe(true);
+    expect(newJ[0].id).toBe('j1');  // id preserved
+    expect(newJ[2].overlapLength).toBe(25);  // geometry preserved
+  });
 });
