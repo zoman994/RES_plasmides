@@ -11,7 +11,7 @@ import { useFragmentHandlers } from '../hooks/useFragmentHandlers';
 
 const ASM_ID = 'asm_save_test';
 
-function seedSingleFragment({ seq = 'ATG'.repeat(1000), needsAmp = true, annotations = [] } = {}) {
+function seedSingleFragment({ seq = 'ATG'.repeat(1000), needsAmp = true, annotations = [], circular = true } = {}) {
   useStore.setState({
     projectName: 'test',
     polymerase: 'phusion',
@@ -22,6 +22,7 @@ function seedSingleFragment({ seq = 'ATG'.repeat(1000), needsAmp = true, annotat
     assemblies: [{
       id: ASM_ID,
       name: 'save-test',
+      circular,
       fragments: [{
         id: 'f1',
         name: 'AmpR',
@@ -149,6 +150,34 @@ describe('handleSaveFragment — mutagenesis paths (V4-D)', () => {
     expect(asm.fragments[0].sequence).toBe('GCC'.repeat(1000));
     expect(asm.primers).toHaveLength(0);
     expect(asm.calculated).toBe(false);
+  });
+
+  it('V14: linear single mutation → two_fragment split (not KLD)', () => {
+    // Linear fragment in canvas assembly — KLD is biologically impossible here.
+    // Even with only 1 fragment present, if topology=linear → must use overlap PCR.
+    seedSingleFragment({ seq: 'ATG' + 'CCC'.repeat(999), circular: false });
+    const { result } = renderHook(() => useFragmentHandlers());
+
+    const updated = {
+      id: 'f1',
+      name: 'CmR(Q35A)',
+      sequence: 'ATG' + 'CCC'.repeat(999),
+      length: 3000,
+      needsAmplification: true,
+      strand: 1,
+      type: 'CDS',
+      annotations: [],
+      mutations: [{ type: 'substitution', label: 'Q35A', codonStart: 102, newCodon: 'GCG' }],
+    };
+    act(() => { result.current.handleSaveFragment(updated); });
+
+    const asm = getAsm();
+    expect(asm.fragments.length).toBeGreaterThanOrEqual(2);   // split, NOT kld
+    expect(asm.junctions.length).toBeGreaterThanOrEqual(1);
+    expect(asm.junctions[0].type).toBe('overlap');
+    expect(asm.junctions[0].containsMutation).toBe(true);
+    expect(asm.protocolSteps.some(s => s.id === 'overlap_pcr')).toBe(true);
+    expect(asm.protocolSteps.some(s => s.id === 'dpni')).toBe(false);
   });
 
   it('Annotations split correctly when fragment splits into 2', () => {

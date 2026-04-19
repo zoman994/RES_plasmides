@@ -172,9 +172,16 @@ export function useFragmentHandlers() {
     }
 
     const templateSeq = original.sequence;
+    const active = getActive();
+    const fragmentContext = {
+      topology: active?.circular ? 'circular' : 'linear',
+      isStandalone: fragments.length === 1,
+      length: templateSeq.length,
+    };
     const result = computeMutagenesisStrategy(templateSeq, normMuts, {
       featureStart: 0,
       featureEnd: templateSeq.length,
+      fragmentContext,
     });
 
     // ── Variant in parts library (preserved from old implementation) ──

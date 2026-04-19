@@ -73,6 +73,7 @@ export default function MutagenesisWizard({ onComplete, onClose }) {
     if (!templateSeq || mutations.length === 0) return;
     const result = computeMutagenesisStrategy(templateSeq, mutations, {
       featureStart: cdsStart, featureEnd: cdsEnd,
+      fragmentContext: { topology: 'circular', isStandalone: true, length: templateSeq.length },
     });
     setStrategy(result);
     setStep(3);
@@ -253,7 +254,7 @@ export default function MutagenesisWizard({ onComplete, onClose }) {
           {/* Strategy preview */}
           {mutations.length > 0 && (
             <div className="bg-purple-50 rounded p-2 mb-3 text-xs">
-              <strong>Strategy:</strong> {STRAT_LABELS[chooseStrategy(mutations)]}
+              <strong>Strategy:</strong> {STRAT_LABELS[chooseStrategy(mutations, { topology: 'circular', isStandalone: true })]}
               {validationWarnings.map((w, i) => <div key={i} className="text-amber-700 mt-1">{w}</div>)}
             </div>
           )}

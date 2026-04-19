@@ -1,45 +1,75 @@
-# CURRENT_TASK.md — MUTWIZ-SANITIZE quick-fix
+# CURRENT_TASK.md — Sprint 1.5 «Мутагенез v2»
 
-**Статус:** ✅ РЕАЛИЗОВАНО 20.04.2026
-**Автор спеки:** Claude Chat, 19.04.2026
-**Приоритет:** MED (нарушение контракта Этапа 1.1)
-**Оценка времени:** 15–20 минут / Фактическое: ~20 минут
-**Ветка:** `feature/racetrack-canvas` (прямо в рабочей ветке после Sprint 1)
-**Предыдущий этап:** Sprint 1 ✅ (634 Vitest)
-
----
-
-## Что сделано
-
-В `MutagenesisWizard.jsx` два legacy inline-regex заменены на централизованный `sanitizeSequence` из `sequence-utils.js` — контракт Этапа 1.1 (sanitize-at-entry) восстановлен.
-
-### Правки
-
-1. **Импорт:** добавлен `import { sanitizeSequence } from '../sequence-utils';` в `MutagenesisWizard.jsx:5`.
-2. **Template textarea (строка 129):** `e.target.value.replace(/[^ATCGatcg]/g, '').toUpperCase()` → `sanitizeSequence(e.target.value)`.
-3. **Insert DNA input (строка 238):** `e.target.value.toUpperCase().replace(/[^ATCG]/g, '')` → `sanitizeSequence(e.target.value)`. Placeholder расширен: `"CACCATCACCATCACCAT (6xHis) или CACCATNNKCATCAC (saturation)"`.
-
-### Биологический эффект
-
-Теперь IUPAC-коды (NNK, NNN, MNN, NDT для saturation mutagenesis, R/Y/S/W/K/M/B/D/H/V для ambiguity) **сохраняются** при вставке в template и insert-поля. До фикса `CACCATNNKCATCAC` молча превращался в `CACCATCATCAC` — мусор, нарушающий логику degenerate-codon libraries.
-
-### Тесты
-
-Новый файл `src/__tests__/mutagenesis-wizard-sanitize.test.jsx`, 3 render-based integration-теста:
-1. Template textarea сохраняет IUPAC (NNK/RRY) и нормализует (BOM/whitespace/case).
-2. Template textarea строго отбрасывает не-IUPAC (цифры, пунктуация, `z`).
-3. Insert input в step 2 → type=insertion сохраняет `NNK` в saturation-кодоне.
-
-Vitest: **634 → 637** (+3) ✅. Build: clean.
-
-### Коммит
-
-SHA: (см. git log)
+**Статус:** 🚧 В РАБОТЕ (начат 2026-04-21)
+**Спека:** `docs/SPRINT_1_5_MUTAGENESIS_V2.md`
+**Приоритет:** HIGH — блокирует Sprint 2 (V7 InsertionClock)
+**Оценка:** 6–8 часов, 4 коммита
+**Ветка:** `feature/racetrack-canvas`
+**Предыдущий этап:** Sprint 1 ✅ + MUTWIZ-SANITIZE ✅ (637 Vitest)
 
 ---
 
-## Что дальше
+## Цель
 
-Пауза до Sprint 2 HANDOFF от Chat (V7 InsertionClock + V1/V2/V6 circular map polish, ~12–15 ч).
+Исправить три архитектурных и один data-баг мутагенеза, найденных визуальной приёмкой Sprint 1:
 
-**Конец.**
+- **V14** `chooseStrategy` → не знает контекст фрагмента (линейный кусок в сборке получает KLD)
+- **V12** FragmentEditor смешивает bookkeeping-правку sequence и мутагенез в одном UI
+- **V13** «Мутагенез» в footer PlasmidViewer открывает пустой Wizard
+- **V11** KLD-олиги приходят с `tmBinding: 0, gcPercent: 0`
+
+После Sprint 1.5 мутагенез корректен по всем трём UX-путям (Wizard, in-place FragmentEditor, PlasmidViewer footer).
+
+---
+
+## Коммиты
+
+### K1 — V14 strategy context (2 ч)
+- [ ] `chooseStrategy(mutations, fragmentContext)` с default `{topology:'circular', isStandalone:true}`
+- [ ] `computeMutagenesisStrategy` прокидывает `options.fragmentContext`
+- [ ] `handleSaveFragment` собирает context из active.circular, fragments.length, length
+- [ ] `MutagenesisWizard.compute` передаёт `{topology:'circular', isStandalone:true}`
+- [ ] +5 unit-тестов strategy, regression на существующих
+- [ ] `fix(v14): chooseStrategy respects fragment topology and isStandalone context`
+
+### K2 — V12 FragmentEditor mode switcher (3 ч) — **ВИЗУАЛЬНАЯ ПРОВЕРКА ДО КОММИТА**
+- [ ] State `mode: 'edit' | 'mutagenesis'` + радио над tabs
+- [ ] Mode=edit: клик по нт = inline input, AA отключён, quick actions активны
+- [ ] Mode=mutagenesis: popup'ы DNA+AA, quick actions disabled
+- [ ] Confirm при переключении если mutations.length > 0
+- [ ] Раздельные `handleSaveEdit` (без mutations, +editHistory) и `handleSaveMutagenesis` (через strategy)
+- [ ] +6 integration-тестов через @testing-library/react
+- [ ] **STOP до визуала**: показать Игорю → коммитить только после подтверждения
+- [ ] `feat(v12): FragmentEditor mode switcher separates edit from mutagenesis`
+
+### K3 — V13 Wizard template passthrough (1 ч)
+- [ ] MutagenesisWizard props: `initialTemplateSeq/Name/Organism/CdsStart/CdsEnd`
+- [ ] Step = 2 если initialTemplateSeq задан
+- [ ] App.jsx прокидывает wizardPlasmid при presetMode='mutate'
+- [ ] +2 integration-теста
+- [ ] `fix(v13): PlasmidViewer mutate button passes template to MutagenesisWizard`
+
+### K4 — V11 KLD Tm (30 мин)
+- [ ] `makeKLDStrategy`: `tmBinding/tmFull = Math.round(calcTmNN(seq))`, `gcPercent` через regex
+- [ ] +2 теста (KLD primer Tm > 50 && < 80)
+- [ ] `fix(v11): KLD primers report real Tm and GC% instead of placeholder zeros`
+
+---
+
+## Regression guard
+
+- Все существующие 637 Vitest тестов остаются зелёными
+- После каждого коммита: `cd gui/designer && npx vitest run && npx vite build`
+
+## После всех коммитов
+
+- BUGS.md: V11/V12/V13/V14 → FIXED с датой 21.04.2026
+- PROJECT_STATE.md: журнал сессии Sprint 1.5
+- DECISIONS.md: подтверждение 4 решений из спеки Chat
+- Переместить `docs/SPRINT_1_5_MUTAGENESIS_V2.md` → `docs/archive/` после визуального подтверждения Игорем
+
+---
+
+## Команда на старт
+
+> Начинаем с K1. Отчёт Chat после K1 с результатом теста «linear fragment in Gibson assembly → two_fragment split».
