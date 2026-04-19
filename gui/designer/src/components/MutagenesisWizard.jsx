@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { translateDNA, getCodonsForAA, AA_NAMES, ORGANISMS, translateCodon } from '../codons';
 import { computeMutagenesisStrategy, chooseStrategy, validateMutations, designQuikChangePrimers } from '../mutagenesis';
 import { fetchConstructs, fetchFeatures } from '../api';
+import { sanitizeSequence } from '../sequence-utils';
 
 const STRAT_LABELS = { kld: 'KLD (back-to-back primers)', two_fragment: '2-fragment overlap PCR', multi_fragment: 'Multi-fragment overlap PCR' };
 const METHOD_OPTIONS = [
@@ -126,7 +127,7 @@ export default function MutagenesisWizard({ onComplete, onClose }) {
           )}
 
           <textarea value={templateSeq} onChange={e => {
-            const s = e.target.value.replace(/[^ATCGatcg]/g, '').toUpperCase();
+            const s = sanitizeSequence(e.target.value);
             setTemplateSeq(s); setCdsStart(0); setCdsEnd(s.length);
           }}
             placeholder="Or paste template DNA sequence..."
@@ -234,8 +235,8 @@ export default function MutagenesisWizard({ onComplete, onClose }) {
                   </div>
                   <div className="text-xs flex-1">
                     <label className="text-gray-500 block">Insert DNA</label>
-                    <input value={m.insertSequence} placeholder="CACCATCACCATCACCAT (6xHis)"
-                      onChange={e => updateMut(i, 'insertSequence', e.target.value.toUpperCase().replace(/[^ATCG]/g, ''))}
+                    <input value={m.insertSequence} placeholder="CACCATCACCATCACCAT (6xHis) или CACCATNNKCATCAC (saturation)"
+                      onChange={e => updateMut(i, 'insertSequence', sanitizeSequence(e.target.value))}
                       className="w-full border rounded p-1 font-mono" />
                   </div>
                 </>)}

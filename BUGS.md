@@ -33,7 +33,6 @@
 - [ ] **P6:** Мутагенез: клик на 1 нуклеотид подсвечивает 2 соседних (весь кодон). При режиме "Нуклеотид → мутация ДНК" должен подсвечиваться только 1 нуклеотид, не триплет. 03.04.2026.
 - [ ] **V2 DUP-REGIONS:** Дубликаты перекрывающихся regions при импорте (pDHG25: AMA1 5256 bp + AMA1 5226 bp, разница 30 bp). Gene-filter (`GENE_CHILD_TYPES` из 1.2) не срабатывает, если gene и CDS почти совпадают по координатам, но не в contained-отношении. Плюс длинные имена ("Repeat Region 1") усекаются до "platfor" на арках — UX проблема. Связано с V1. 19.04.2026.
 - [ ] **V6 RE-LABELS-OVERLAP:** Метки рестриктаз в MCS пересекаются и нечитаемы (pUC118: HindIII/EcoRI/KpnI/BamHI/XbaI/SalI сгруппированы в ~50 bp → labels сливаются в одну точку). Классическая проблема плазмидной визуализации. Варианты: (а) leader lines с разной длиной (vertical stacking); (б) cluster labels ("6 sites" + hover-popup); (в) hide-on-zoom <X% с опцией показать; (г) минимум 2-пиксельный gap между labels. Файл: PlasmidMap.jsx (RE site rendering). Связано с V1/V2 — UX-sprint на circular map. 19.04.2026.
-- [ ] **MUTWIZ-SANITIZE:** `MutagenesisWizard.jsx` textarea использует legacy regex `/[^ATCGatcg]/g` вместо `sanitizeSequence` из `sequence-utils.js` — нарушает архитектурный контракт Этапа 1.1 (sanitize-at-entry). IUPAC символы (R/Y/S/W/K/M/B/D/H/V) теряются при вставке в textarea. Обычный пользователь IUPAC не вводит, но контракт нарушен. Quick fix: заменить 2 инлайн-regex'а на `sanitizeSequence(...)`. 20.04.2026.
 
 ### Низкие
 
@@ -48,6 +47,10 @@
 ---
 
 ## FIXED
+
+### 20.04.2026 — MUTWIZ-SANITIZE: sanitize-at-entry в MutagenesisWizard
+
+- [x] **MUTWIZ-SANITIZE:** Заменены 2 legacy inline-regex `/[^ATCGatcg]/g` и `/[^ATCG]/g` в `MutagenesisWizard.jsx` на централизованный `sanitizeSequence` из `sequence-utils.js` (контракт Этапа 1.1). Template textarea (строка 129) и Insert DNA input (строка 238) теперь сохраняют полный IUPAC-алфавит (NNK/NNN/MNN/NDT saturation codons и ambiguity R/Y/S/W/K/M/B/D/H/V). Placeholder insert-поля расширен: "CACCATCACCATCACCAT (6xHis) или CACCATNNKCATCAC (saturation)". +3 integration-теста в `mutagenesis-wizard-sanitize.test.jsx` (IUPAC paste, invalid char strip, NNK в insertSequence через full step-1→step-2 flow). Vitest 634 → 637.
 
 ### 19–20.04.2026 — Sprint 1: Читаемые метки, чистые стыки, настоящий мутагенез
 

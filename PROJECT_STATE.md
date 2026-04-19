@@ -1,8 +1,8 @@
 # PROJECT_STATE.md — BodgeGene
 
 > **Обновлено:** 20 апреля 2026
-> **Версия:** v0.5.0-alpha (~227 коммитов)
-> **Тесты:** 746 (634 Vitest + 112 pytest)
+> **Версия:** v0.5.0-alpha (~228 коммитов)
+> **Тесты:** 749 (637 Vitest + 112 pytest)
 
 ---
 
@@ -106,6 +106,14 @@
 ---
 
 ## Журнал сессий
+
+### Сессия 20.04.2026 — MUTWIZ-SANITIZE quick-fix
+
+Мелкая, но архитектурно чистая правка: `MutagenesisWizard.jsx` использовал два legacy inline-regex (`/[^ATCGatcg]/g`, `/[^ATCG]/g`) в обход `sanitizeSequence` — нарушение контракта Этапа 1.1. Биологическая цена: saturation codons (NNK/NNN/MNN) молча стирались из template/insert-вводов.
+
+Фикс: импорт `sanitizeSequence` + 2 onChange-замены + обновлённый placeholder insert-поля (подсказка про saturation). +3 integration-теста (`mutagenesis-wizard-sanitize.test.jsx`) через `@testing-library/react` с fetch-моком.
+
+Тесты: 634 → **637 ✅** (+3). Build: clean. `MUTWIZ-SANITIZE` перенесён из OPEN/MED в FIXED.
 
 ### Сессия 19–20.04.2026 — Sprint 1: Читаемые метки, чистые стыки, настоящий мутагенез
 
