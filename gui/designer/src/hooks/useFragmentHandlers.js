@@ -110,78 +110,196 @@ export function useFragmentHandlers() {
     setSplitTarget(null);
   };
 
-  /** Save edited fragment, create variant in parts library if mutations present. */
+  /**
+   * Save edited fragment. If mutations are present, run the full mutagenesis
+   * strategy engine and either (a) replace the fragment in place (KLD) or
+   * (b) splice it into N sub-fragments connected by mutant overlap junctions
+   * (two_fragment / multi_fragment). See Sprint 1 V4-D.
+   */
   const handleSaveFragment = (updated) => {
     if (editTarget === null) return;
     pushUndo();
     const original = fragments[editTarget];
     const hasMutations = updated.mutations?.length > 0 && updated.mutations !== original.mutations;
 
+    // ── Simple edit (no mutations): write back, done ──
+    if (!hasMutations) {
+      updateActive({
+        fragments: fragments.map((f, i) => i === editTarget ? updated : f),
+        calculated: false,
+      });
+      setEditTarget(null);
+      return;
+    }
+
+    // ── Mutagenesis path ──
+
+    // Only the mutations introduced in THIS edit pass drive strategy choice.
+    const newMuts = updated.mutations.filter(
+      m => !(original.mutations || []).some(om => om.label === m.label)
+    );
+
+    // Normalize to the shape computeMutagenesisStrategy expects.
+    const normMuts = newMuts.map(m => {
+      const pos = m.codonStart ?? m.position
+        ?? ((parseInt(m.label?.match(/\d+/)?.[0] || '1') - 1) * 3);
+      if (m.type === 'nt_substitution') {
+        return { type: 'substitution', dnaPosition: pos, newCodon: null, label: m.label };
+      }
+      if (m.type === 'nt_deletion') {
+        return { type: 'deletion', dnaPosition: pos, deleteLength: m.deletedBp || 1, label: m.label };
+      }
+      if (m.type === 'nt_insertion') {
+        return { type: 'insertion', dnaPosition: pos, insertSequence: m.insertSequence || '', label: m.label };
+      }
+      if (m.type === 'deletion') {
+        return { type: 'deletion', dnaPosition: pos, deleteLength: m.deletedBp || 3, label: m.label };
+      }
+      if (m.type === 'insertion') {
+        return { type: 'insertion', dnaPosition: pos, insertSequence: m.insertSequence || '', label: m.label };
+      }
+      // default: substitution (the common FragmentEditor case)
+      return { type: 'substitution', dnaPosition: pos, newCodon: m.newCodon, label: m.label };
+    });
+
+    // Recover newCodon for nt-substitutions by reading the mutated triplet back.
+    for (const m of normMuts) {
+      if (m.type === 'substitution' && !m.newCodon) {
+        const codonStart = Math.floor(m.dnaPosition / 3) * 3;
+        m.newCodon = updated.sequence.slice(codonStart, codonStart + 3);
+        m.dnaPosition = codonStart;
+      }
+    }
+
+    const templateSeq = original.sequence;
+    const result = computeMutagenesisStrategy(templateSeq, normMuts, {
+      featureStart: 0,
+      featureEnd: templateSeq.length,
+    });
+
+    // ── Variant in parts library (preserved from old implementation) ──
+    const findRoot = (_name, id) => {
+      let p = parts.find(x => x.id === id) || parts.find(x => x.id === original.partId);
+      while (p?.parentId) {
+        const parent = parts.find(x => x.id === p.parentId);
+        if (!parent) break;
+        p = parent;
+      }
+      return p;
+    };
+    const rootPart = findRoot(original.name, original.id);
+    let variantId = original.partId;
+    if (rootPart) {
+      variantId = `p_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      const variant = {
+        id: variantId, name: updated.name, type: rootPart.type,
+        sequence: updated.sequence, length: updated.length, organism: rootPart.organism,
+        parentId: rootPart.id,
+        modification: { type: 'mutation', description: newMuts.map(m => m.label).join(', ') },
+        mutations: updated.mutations, testResults: [],
+        source: 'mutagenesis', createdAt: new Date().toISOString(),
+      };
+      updatePart(rootPart.id, { children: [...(rootPart.children || []), variantId] });
+      addPart(variant);
+    }
+
+    const baseCtx = {
+      primerPrefix,
+      polymerase,
+      existingPrimers: getActive()?.primers || [],
+      templateName: original.name || 'template',
+    };
+
+    // ── KLD: replace fragment in place, add mutagenesis primers ──
+    if (result.strategy === 'kld') {
+      const { primers: builtPrimers, protocolSteps } = buildMutagenesisPayload(result, baseCtx);
+      const newFragment = {
+        ...updated,
+        partId: variantId,
+        isMutagenesis: true,
+        needsAmplification: original.needsAmplification,
+      };
+      updateActive({
+        fragments: fragments.map((f, i) => i === editTarget ? newFragment : f),
+        primers: builtPrimers,
+        protocolSteps,
+        apiWarnings: result.warnings || [],
+        calculated: true,
+      });
+      setEditTarget(null);
+      return;
+    }
+
+    // ── two_fragment / multi_fragment: SPLIT fragment ──
+
+    // Pre-check: No-PCR fragment cannot be split (can't PCR what wasn't amplifiable).
+    if (original.needsAmplification === false) {
+      updateActive({
+        fragments: fragments.map((f, i) => i === editTarget ? updated : f),
+        apiWarnings: [
+          ...(getActive()?.apiWarnings || []),
+          `⚠ Фрагмент «${original.name}» помечен как без ПЦР — многофрагментный мутагенез невозможен. `
+          + `Используйте одну точечную мутацию (KLD) или включите амплификацию.`,
+        ],
+        calculated: false,
+      });
+      setEditTarget(null);
+      return;
+    }
+
+    // Build N new fragments from strategy (each uses WT template for PCR).
+    const newFragments = result.fragments.map((sf, i) => ({
+      id: `mf${Date.now()}_${i}_${Math.random().toString(36).slice(2, 4)}`,
+      name: `${original.name}_${i + 1}`,
+      sequence: sf.sequence,
+      length: sf.length,
+      type: sf.type || original.type,
+      strand: sf.strand || 1,
+      needsAmplification: true,
+      sourceType: sf.sourceType || 'template_pcr',
+      templateStart: sf.templateStart,
+      templateEnd: sf.templateEnd,
+      partId: i === 0 ? variantId : undefined,
+      isMutagenesis: true,
+      annotations: (original.annotations || [])
+        .filter(a => a.end > sf.templateStart && a.start < sf.templateEnd)
+        .map(a => ({
+          ...a,
+          start: Math.max(0, a.start - sf.templateStart),
+          end: Math.min(sf.length, a.end - sf.templateStart),
+          trimmed: a.start < sf.templateStart || a.end > sf.templateEnd,
+        })),
+    }));
+
+    const strategyJunctions = result.junctions.map(j => ({
+      ...j,
+      id: `j${Date.now()}_${Math.random().toString(36).slice(2, 4)}`,
+    }));
+
+    // Splice fragments[editTarget] → newFragments; insert strategyJunctions at the same index.
+    const updatedFragArr = [
+      ...fragments.slice(0, editTarget),
+      ...newFragments,
+      ...fragments.slice(editTarget + 1),
+    ];
+    const updatedJunctionArr = [
+      ...junctions.slice(0, editTarget),
+      ...strategyJunctions,
+      ...junctions.slice(editTarget),
+    ];
+
+    // primers stay empty for two/multi — auto-design picks them up via junction.overlapSequence (V4-E).
+    const { primers: builtPrimers, protocolSteps } = buildMutagenesisPayload(result, baseCtx);
+
     updateActive({
-      fragments: fragments.map((f, i) => i === editTarget ? updated : f),
+      fragments: updatedFragArr,
+      junctions: updatedJunctionArr,
+      primers: builtPrimers,
+      protocolSteps,
+      apiWarnings: result.warnings || [],
       calculated: false,
     });
 
-    if (hasMutations) {
-      // Find root parent Part
-      const findRoot = (_name, id) => {
-        let p = parts.find(x => x.id === id) || parts.find(x => x.id === original.partId);
-        // Traverse parentId chain to the root
-        while (p?.parentId) {
-          const parent = parts.find(x => x.id === p.parentId);
-          if (!parent) break;
-          p = parent;
-        }
-        return p;
-      };
-      const rootPart = findRoot(original.name, original.id);
-      if (rootPart) {
-        const variantId = `p_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-        const newMuts = updated.mutations.filter(m => !(original.mutations || []).some(om => om.label === m.label));
-        const variant = {
-          id: variantId, name: updated.name, type: rootPart.type,
-          sequence: updated.sequence, length: updated.length, organism: rootPart.organism,
-          parentId: rootPart.id, modification: { type: 'mutation', description: newMuts.map(m => m.label).join(', ') },
-          mutations: updated.mutations, testResults: [],
-          source: 'mutagenesis', createdAt: new Date().toISOString(),
-        };
-        updatePart(rootPart.id, { children: [...(rootPart.children || []), variantId] });
-        addPart(variant);
-        updateActive({
-          fragments: fragments.map((f, i) => i === editTarget ? { ...updated, partId: variantId } : f),
-          calculated: false,
-        });
-      }
-
-      // Auto-design KLD primers
-      const lastMut = updated.mutations[updated.mutations.length - 1];
-      if (lastMut?.codonStart != null || lastMut?.label) {
-        const mutSite = lastMut.codonStart ?? ((parseInt(lastMut.label?.match(/\d+/)?.[0] || '1') - 1) * 3);
-        const kldP = designInlineKLDPrimers(updated.sequence, mutSite, 60);
-        let pidx = 1;
-        const kldPrimers = [
-          { name: `${primerPrefix}${String(pidx++).padStart(3, '0')}_mut_fwd_${original.name}`,
-            sequence: kldP.forward.sequence, bindingSequence: kldP.forward.sequence, tailSequence: '',
-            tmBinding: kldP.forward.tm, direction: 'forward', isMutagenesis: true, mutation: lastMut.label },
-          { name: `${primerPrefix}${String(pidx++).padStart(3, '0')}_mut_rev_${original.name}`,
-            sequence: kldP.reverse.sequence, bindingSequence: kldP.reverse.sequence, tailSequence: '',
-            tmBinding: kldP.reverse.tm, direction: 'reverse', isMutagenesis: true, mutation: lastMut.label },
-        ];
-        const kldSteps = [
-          { id: 'kld_pcr', type: 'pcr', title: `Обратная ПЦР ${updated.name}`, subtitle: `${updated.length} п.н.`,
-            template: original.name, fwdPrimer: kldPrimers[0].name, revPrimer: kldPrimers[1].name,
-            annealTemp: Math.round(Math.min(kldP.forward.tm, kldP.reverse.tm)),
-            expectedSize: updated.length, extensionTime: Math.ceil(updated.length / 1000) * 30,
-            mix: PCR_MIXES[polymerase], statuses: [{ label: 'ПЦР', done: false }, { label: 'Гель', done: false }] },
-          { id: 'kld_asm', type: 'assembly', title: 'KLD реакция', subtitle: '25°C 30мин', statuses: [{ label: 'KLD', done: false }] },
-          { id: 'transform', type: 'transform', title: 'Трансформация', statuses: [{ label: 'Трансф.', done: false }, { label: 'Колонии', done: false }] },
-          { id: 'screening', type: 'screening', title: 'Colony PCR', expectedSize: updated.length, statuses: [{ label: 'Colony PCR', done: false }] },
-          { id: 'sequencing', type: 'sequencing', title: 'Секвенирование', statuses: [{ label: 'Отправлено', done: false }, { label: 'Подтв.', done: false }] },
-        ];
-        const existingNonMut = (getActive()?.primers || []).filter(p => !p.isMutagenesis);
-        updateActive({ fragments: fragments.map((f, i) => i === editTarget ? updated : f), primers: [...existingNonMut, ...kldPrimers], calculated: true, protocolSteps: kldSteps });
-      }
-    }
     setEditTarget(null);
   };
 
