@@ -4,7 +4,8 @@
  */
 import { useStore, useFragments, useJunctions, usePrimers, pushUndo } from '../store';
 import { buildPlainJunctions } from '../assembly-utils';
-import { designInlineKLDPrimers } from '../mutagenesis';
+import { designInlineKLDPrimers, computeMutagenesisStrategy } from '../mutagenesis';
+import { buildMutagenesisPayload } from '../lib/mutagenesis-payload';
 import { PCR_MIXES } from '../protocol-data';
 import { addToInventory } from '../inventory';
 import { getFragColor, isMarker } from '../theme';
@@ -207,9 +208,32 @@ export function useFragmentHandlers() {
   };
 
   const handleMutagenesis = (result) => {
+    pushUndo();
+
+    const baseFragments = result.fragments.map(f => ({
+      ...f,
+      id: `mf${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
+      isMutagenesis: true,
+    }));
+
+    // Build primers & protocolSteps through the shared payload helper.
+    // For KLD: primers come from strategy (back-to-back phosphorylated pair).
+    // For two/multi_fragment: primers stay empty here — auto-design will fill them
+    // from junction.overlapSequence (see V4-E, local-primer-design).
+    const { primers: builtPrimers, protocolSteps } = buildMutagenesisPayload(result, {
+      primerPrefix,
+      polymerase,
+      existingPrimers: getActive()?.primers || [],
+      templateName: result.templateName || 'template',
+    });
+
     updateActive({
-      fragments: result.fragments.map(f => ({ ...f, id: `mf${Date.now()}_${Math.random().toString(36).slice(2, 5)}`, isMutagenesis: true })),
-      junctions: result.junctions, calculated: false,
+      fragments: baseFragments,
+      junctions: result.junctions,
+      primers: builtPrimers,
+      protocolSteps,
+      apiWarnings: result.warnings || [],
+      calculated: result.strategy === 'kld',
     });
   };
 

@@ -326,13 +326,18 @@ export default function MutagenesisWizard({ onComplete, onClose }) {
             <button onClick={() => setStep(2)} className="flex-1 border rounded py-2 text-sm">{'←'} Back</button>
             <button onClick={() => {
               onComplete({
+                strategy: strategy.strategy,
                 fragments: strategy.fragments.map((f, i) => ({
                   ...f, id: `mut_${i}`, isMutagenesis: true,
                 })),
                 junctions: strategy.junctions,
+                primers: strategy.primers || [],
+                protocol: strategy.protocol || '',
+                warnings: strategy.warnings || [],
                 isMutagenesis: true,
                 mutantSequence: strategy.mutantSequence,
                 mutations: strategy.mutations,
+                templateName: templateName || 'template',
               });
               onClose();
             }}
