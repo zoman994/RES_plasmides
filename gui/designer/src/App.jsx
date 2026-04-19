@@ -238,11 +238,23 @@ export default function App() {
 
   useEffect(() => {
     if (autoDesigned && autoDesigned.primers.length > 0) {
-      updateActive({
-        primers: autoDesigned.primers,
-        apiWarnings: autoDesigned.warnings,
-        calculated: true,
-      });
+      // V4-A guard: if the active assembly already carries mutagenesis primers,
+      // do NOT overwrite them with standard overlap-auto-designed ones — keep
+      // the KLD/fragment-strategy primers and only refresh warnings/calculated.
+      const active = getActive();
+      const hasMutPrimers = active?.primers?.some(p => p.isMutagenesis);
+      if (hasMutPrimers) {
+        updateActive({
+          apiWarnings: autoDesigned.warnings,
+          calculated: true,
+        });
+      } else {
+        updateActive({
+          primers: autoDesigned.primers,
+          apiWarnings: autoDesigned.warnings,
+          calculated: true,
+        });
+      }
     } else if (autoDesigned !== undefined) {
       // P1v2 fix: clear stale primers when auto-design returns null/empty (e.g. 1 fragment)
       const active = getActive();
