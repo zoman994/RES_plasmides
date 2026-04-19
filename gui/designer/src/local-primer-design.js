@@ -160,6 +160,20 @@ function overlapTail(junction, leftSeq, rightSeq, side) {
   const overlapLen = j.overlapLength || 30;
   const mode = j.overlapMode || 'split';
 
+  // V4-E: If junction explicitly carries an overlapSequence (e.g. a mutant-containing
+  // overlap bridge emitted by computeMutagenesisStrategy), source the tail from it
+  // instead of the WT flanks. This lets the mutation reach the primer even though
+  // the amplified fragments are WT.
+  if (mode === 'split' && typeof j.overlapSequence === 'string' && j.overlapSequence.length > 0) {
+    const olSeq = j.overlapSequence.toUpperCase();
+    const half = Math.ceil(overlapLen / 2);
+    if (side === 'left') {
+      return olSeq.slice(half);
+    } else {
+      return rc(olSeq.slice(0, half));
+    }
+  }
+
   if (mode === 'split') {
     const half = Math.ceil(overlapLen / 2);
     if (side === 'left') {
