@@ -287,3 +287,37 @@ _(решения сессий 24–28 и блоков 2–3 см. в преды�
 [2026-04-20] **No-PCR guard для two/multi_fragment мутагенеза.** Если `fragments[editTarget].needsAmplification === false` (pre-synthesized, ordered, merged product) и strategy выбрала two/multi_fragment — split блокируется, выдаётся `apiWarning`: «помечен как без ПЦР — многофрагментный мутагенез невозможен. Используйте одну точечную мутацию (KLD) или включите амплификацию». Биологически: нельзя ПЦР'ить кусками то, что само по себе не амплифицируется. KLD на No-PCR-фрагменте разрешён (обратная ПЦР всей плазмиды валидна для любой ДНК-матрицы).
 
 [2026-04-20] **Migration circular plasmid + two_fragment split — отложено до v1.1.** Если фрагмент на canvas — product circular плазмиды, после two_fragment split получаем 2 linear фрагмента и 1 overlap-стык. Для замыкания в circular нужен второй overlap-стык между концами. В v1.0 это поведение приемлемо: пользователь видит 2 linear куска, закольцовывает через Gibson вручную. Автоматическое добавление замыкающего junction добавит час-два на спринт и риск регрессий. Вернёмся, когда появится реальный запрос.
+
+## [2026-04-20] Визуальная приёмка Sprint 1 — 4 новых архитектурных решения для Sprint 1.5
+
+После визуальной приёмки Sprint 1 зафиксированы три архитектурных долга и одно UX-дизайнерское решение, которые пойдут в Sprint 1.5 (см. `docs/SPRINT_1_5_MUTAGENESIS_V2.md`).
+
+**1. `chooseStrategy` принимает `fragmentContext`** (V14).
+Выбор стратегии мутагенеза (KLD / two_fragment / multi_fragment) зависит не только от количества и расстояния мутаций, но и от:
+- `topology` ('circular' | 'linear')
+- `isStandalone` (фрагмент один на canvas = полная плазмида, либо часть сборки)
+- `length`
+
+KLD возможен ТОЛЬКО при `topology === 'circular' && isStandalone === true`. Линейные фрагменты и фрагменты в составе сборки всегда идут через two_fragment/multi_fragment overlap PCR. Это биологическое требование KLD-реакции (нужна матрица для back-to-back линеаризации + backbone для лигирования концов).
+
+Причина ошибки первой итерации V4-D: `chooseStrategy` смотрел только на mutations, автоматически выдавая KLD для единичной мутации на любом фрагменте. На линейном куске это биологически невозможный workflow.
+
+**2. FragmentEditor — mode switcher разделяет edit от mutagenesis** (V12, Вариант C).
+Рассмотрены три варианта (A: разные tabs, B: выбор в popup, C: top-level mode switcher). Выбран C.
+
+Обоснование: bookkeeping-правка sequence (исправление документации по секвенированию) и мутагенез (планирование эксперимента) — принципиально разные операции, которые случайно делят жест клика по нуклеотиду. Mode switcher в заголовке FragmentEditor делает выбор явным и сохраняет разные state-пути через разные handlers (`handleSaveEdit` vs `handleSaveMutagenesis`).
+
+Мутации, накопленные в Mode=edit, теперь не могут быть сохранены через мутагенез-путь — они просто не записываются в `mutations[]`. Переключение режимов требует confirm'а, если есть накопленные мутации.
+
+**3. MutagenesisWizard принимает initial template через props** (V13).
+Wizard используется из трёх точек входа:
+- QuickStart → пустой Wizard, пользователь выбирает template из dropdown или textarea
+- Каталог → Посмотреть → footer Мутагенез → ожидается pre-filled template = эта плазмида
+- FragmentEditor in-place (не Wizard, а direct handleSaveFragment через strategy engine)
+
+До V13 только первая точка работала — Wizard всегда стартовал на Step 1 пустой. Теперь Wizard принимает `initialTemplateSeq/Name/Organism/CdsStart/CdsEnd` и при наличии `initialTemplateSeq` стартует на Step 2.
+
+Альтернатива — hydrate state через `useEffect` на mount — тоже работает, но менее декларативна. Выбран props-first подход.
+
+**4. `makeKLDStrategy` вычисляет Tm и GC через `calcTmNN`** (V11).
+Хардкодные плейсхолдеры `tmBinding: 0, gcPercent: 0` в KLD-стратегии ломали annealTemp-расчёт в `buildMutagenesisPayload::protocolSteps`. Tm-calculator уже импортирован в mutagenesis.js — достаточно его использовать. Почему не сделали сразу в V4: `tmBinding` логически принадлежит primer-дизайну, KLD-primers в `makeKLDStrategy` назначались как back-to-back sequences без отдельного Tm-шага. Решение — Tm вычисляется на стадии strategy, чтобы вся primer-информация приезжала в UI целиком.

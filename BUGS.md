@@ -10,6 +10,7 @@
 
 - [ ] **P1 (повтор):** 1 фрагмент → 4 праймера. Корень: App.jsx auto-design useEffect не очищает stale-праймеры.
 - [ ] **V1 REGION-OVERFLOW:** PlasmidMap нечитаем для плазмид с крупными region-аннотациями (repeat_region 2440 bp на 10791 bp pDHG25 → 22% внешнего кольца серого цвета). Текст меток по арке не читается, мелкие regions (on, AmpR, platformer) перекрываются большими. Детектировано визуально после Этапа 1.2 — repeat_region теперь region-тип (раньше уходил в unknown-heuristic как misc_feature, но визуально было то же). Возможные направления: (а) limit для layout — regions >N% кольца → собственный внутренний track; (б) smarter font rotation + truncation rules; (в) интерактивный hover с полным именем при усечении; (г) top-K filter по priority. 19.04.2026 (after 1.2 visual testing).
+- [ ] **V14 MUTAGENESIS-STRATEGY-CONTEXT-BLIND (арх):** `chooseStrategy()` в `mutagenesis.js` выбирает стратегию только по количеству и расстоянию мутаций, без учёта контекста фрагмента. Линейному фрагменту в составе сборки (например 199 bp CmR внутри Gibson-сборки) присваивается `'kld'` — **биологически невозможная стратегия**, так как KLD требует circular template с backbone для back-to-back праймеров и замыкания лигазой. Реальный workflow для такого случая — two-fragment overlap PCR с мутацией в overlap-зоне, с последующей сшивкой через соседей сборки. Последствие: single-fragment мутация на линейном куске не разрезается, олиги приходят как обычные overlap-праймеры без кодирования мутации в tail. Фикс требует: (а) расширить сигнатуру `chooseStrategy(mutations, fragmentContext)`, context = `{ topology, isStandalone, length, hasBackbone }`; (б) для `topology==='linear'` OR `!isStandalone` — всегда `two_fragment`/`multi_fragment`, никогда KLD; (в) `handleSaveFragment` и `handleMutagenesis` передают контекст из `active.circular`, `fragments.length`, фрагмента. См. Sprint 1.5. 20.04.2026.
 
 ### Высокие
 
@@ -28,15 +29,22 @@
 
   **Новые файлы:** `components/InsertionClock.jsx` (reusable). **Влияет на:** PartBlock.jsx (inline mini-clock), MutagenesisWizard.jsx (US-2), DesignCanvas.jsx (wiring), fragment-slice (поле `insertionPoint` у backbone-type fragments). **Влияет на primer design:** `local-primer-design.js` пересчитывает overlap-tails от `insertionPoint` backbone'а, не от позиции 0. **Sprint 2.** Оценка: ~8-10 ч. 19.04.2026.
 
+- [ ] **V12 FRAGMENTEDITOR-MODE-CONFUSION:** В `FragmentEditor.jsx` вкладки «Редактирование» и «Мутагенез» имеют **идентичный UI** (клик по нуклеотиду/аминокислоте даёт popup, popup добавляет в `state.mutations`), но **разное поведение при сохранении**: `tab==='edit'` → `onSave(updated)` БЕЗ mutations → `handleSaveFragment` уходит в ветку simple-edit → strategy engine не вызывается, мутации теряются. `tab==='mutagenesis'` → mutations передаются → strategy вызывается. Пользователь-ловушка: ожидает что «Редактирование» = простая правка, а «Мутагенез» = эксперимент, но оба принимают один и тот же жест клика. Мутации внесённые через первую вкладку оказываются в `state.mutations`, но никуда не идут при Save. Биологически две операции РЕАЛЬНО разные: (1) bookkeeping/правка sequence после секвенирования — меняет только документацию, эксперимент не нужен; (2) мутагенез — планируется эксперимент, олиги, протокол. UI должен отражать это разделение. Три варианта дизайна (A/B/C) обсуждены, выбран вариант C — top-level mode switcher. См. Sprint 1.5. 20.04.2026.
+- [ ] **V13 PLASMIDVIEWER-MUTATE-LOST-TEMPLATE:** Клик на кнопку «🔄 Мутагенез» в footer `PlasmidViewer` открывает `MutagenesisWizard` в пустом состоянии — без template, без CDS, без плазмиды. Пользователь видит Step 1 Select Template с пустыми полями, как если бы пришёл из QuickStart. `viewerPart` / `wizardPlasmid` / presetMode='mutate' не прокидываются в Wizard корректно. Похожая проблема может быть с режимами view/clone/backbone из того же footer — нужно проверить. Фикс: в `App.jsx` при открытии Wizard с presetMode='mutate' пробрасывать `templateSeq=viewerPart.sequence`, `templateName=viewerPart.name`, `organism=viewerPart.organism || 'E. coli'`, `cdsStart=0`, `cdsEnd=sequence.length` (или CDS-аннотации если есть). Либо в самом MutagenesisWizard читать `wizardPlasmid` prop и hydrate state на mount. См. Sprint 1.5. 20.04.2026.
+
 ### Средние
 
 - [ ] **P6:** Мутагенез: клик на 1 нуклеотид подсвечивает 2 соседних (весь кодон). При режиме "Нуклеотид → мутация ДНК" должен подсвечиваться только 1 нуклеотид, не триплет. 03.04.2026.
 - [ ] **V2 DUP-REGIONS:** Дубликаты перекрывающихся regions при импорте (pDHG25: AMA1 5256 bp + AMA1 5226 bp, разница 30 bp). Gene-filter (`GENE_CHILD_TYPES` из 1.2) не срабатывает, если gene и CDS почти совпадают по координатам, но не в contained-отношении. Плюс длинные имена ("Repeat Region 1") усекаются до "platfor" на арках — UX проблема. Связано с V1. 19.04.2026.
 - [ ] **V6 RE-LABELS-OVERLAP:** Метки рестриктаз в MCS пересекаются и нечитаемы (pUC118: HindIII/EcoRI/KpnI/BamHI/XbaI/SalI сгруппированы в ~50 bp → labels сливаются в одну точку). Классическая проблема плазмидной визуализации. Варианты: (а) leader lines с разной длиной (vertical stacking); (б) cluster labels ("6 sites" + hover-popup); (в) hide-on-zoom <X% с опцией показать; (г) минимум 2-пиксельный gap между labels. Файл: PlasmidMap.jsx (RE site rendering). Связано с V1/V2 — UX-sprint на circular map. 19.04.2026.
+- [ ] **V11 KLD-PRIMERS-ZERO-TM:** В `mutagenesis.js::makeKLDStrategy` (строки ~122–135) KLD-праймеры возвращаются с `tmBinding: 0, tmFull: 0, gcPercent: 0` — хардкод нулей как плейсхолдер. `buildMutagenesisPayload` передаёт их as-is в primer panel. Следствие: в UI видно `0°C` / `0%`, и `annealTemp` в protocolSteps рассчитывается как `Math.min(0, 0) = 0°C` — пользователь не получает корректную температуру отжига для ПЦР. Tm-calculator (`calcTmNN` из `tm-calculator.js`) уже импортируется в `mutagenesis.js:5`, достаточно вызвать его в `makeKLDStrategy`. Фикс: `tmBinding: Math.round(calcTmNN(seq))`, `gcPercent: Math.round(100 * (seq.match(/[GC]/g)?.length || 0) / seq.length)`. 4 строки кода + обновление 1 unit-теста в `mutagenesis.test.js`. Quick fix, 15 минут. См. Sprint 1.5. 19.04.2026.
+- [ ] **V8 CDS-WARNINGS-OVERFLOW:** В `PlasmidViewer` при просмотре плазмид с множественными CDS без ATG/stop (пример: `pET_lacZ(35-1025)_6HIS` даёт 28 warning'ов) — блок валидации не имеет max-height и перекрывает sequence view + annotation bar (60% видимой высоты модалки). Классическая проблема UX «слишком длинный список предупреждений». Варианты: (а) collapsible блок с "N замечаний — развернуть/свернуть" (по умолчанию свёрнут); (б) max-height + внутренний scroll; (в) фильтр «только errors (красные)» / «только warnings (жёлтые)»; (г) группировка по CDS-фиче. Файл: `PlasmidViewer.jsx` (секция рендеринга validation warnings). Низкий приоритет для чистых каталожных плазмид (0–2 warnings), критично для плазмид с partial CDS. 19.04.2026.
 
 ### Низкие
 
 - [ ] **B7 (deferred):** GG overhang palette: stale state after re-render.
+- [ ] **V9 SHORT-ANNOTATION-LABELS:** В `AnnotationEditor.jsx` annotation bar — подписи аннотаций скрываются если `width <= 10%` (код: `{width > 10 ? a.name : ''}`). На плотно аннотированных плазмидах (43 аннотации на 8 КБ) среднее окошко ~2% ширины, и практически все имена скрыты — видны только штрихи. Существующее поведение, не регрессия Sprint 1, но UX-долг. Варианты: (а) tooltip при hover показывает полное имя; (б) rotated/abbreviated labels; (в) leader lines с именами наружу полосы; (г) адаптивный threshold (если много коротких — показывать с truncation). 19.04.2026.
+- [ ] **V10 SBOL-GLYPH-PALENESS:** SBOL глифы в `AnnotationEditor` tree list (размер 14px) выглядят бледными: в `sbol-glyphs.jsx` все глифы с заливкой используют `fillOpacity="0.15"` и `strokeWidth={2}` на viewBox 36×36. На 14px canvas stroke даёт <1px экранной линии, 15% fill — практически невидим на белом фоне списка. Fix: поднять `fillOpacity` до 0.3–0.4 и `strokeWidth` до 2.5 (или 3.0) в базовых глифах (CDSGlyph, MarkerGlyph, SignalGlyph, промоторы). Outline-only глифы (OriginGlyph, MiscGlyph, TerminatorGlyph) не требуют изменения fill. Проверить что не перегружает визуально tree list. 19.04.2026.
 
 ---
 
@@ -66,6 +74,22 @@
 
 ### Покрытие Sprint 1
 Vitest: 604 → **634** (+30), pytest: 112 ✅, build: clean на каждом из 7 коммитов.
+
+### Визуальная приёмка Sprint 1 (20.04.2026)
+Проведена тест-сессия из 8 блоков. **Принято:**
+- ✅ V5: контраст annotation bar работает (pUC-like плазмида с AmpR/ori/f1_ori — тёмные подписи на жёлтом, белые на синем).
+- ✅ V3: Junction reset в context-menu работает, RE-метки чисто сбрасываются при переключении на GG.
+- ✅ V3-bulk: bulk-переключение всей сборки на GG через App.jsx:460 — все стыки очищены.
+- ✅ V4 Wizard KLD: `IS001_mut_fwd_pET-23(+)` / `IS002_mut_rev_pET-23(+)` — именование корректное, protocolSteps полный (pcr/dpni/kld_asm/transform/screening/sequencing).
+- ✅ V4 in-place KLD: одна мутация на standalone circular плазмиде → фрагмент остаётся одним, 2 мутагенезных олига, олиги НЕ стираются последующим auto-design.
+- ✅ V4-overlap: подтверждено косвенно через KLD workflow (но edge case с two_fragment split на линейном фрагменте — см. V14).
+
+**Не принято / найдены побочные баги:**
+- ❌ V4 in-place two_fragment split на линейном фрагменте в сборке — выбирается KLD вместо two_fragment (см. V14).
+- ❌ V4-A guard в многофрагментной сборке — не проверено отдельным тестом (косвенно работает через Wizard-путь).
+- Новые баги V8, V9, V10, V11, V12, V13, V14 — записаны в OPEN, перенесены в Sprint 1.5.
+
+**Вердикт:** Sprint 1 формально принят (KLD-путь работает, UI-фиксы приняты). Линейный two_fragment и дизайн-долг вкладок FragmentEditor уходят в Sprint 1.5.
 
 ### 18.04.2026 — Этап 1.2: TYPE_MAP пересмотр в import-annotations.js
 

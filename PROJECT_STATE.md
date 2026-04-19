@@ -107,6 +107,32 @@
 
 ## Журнал сессий
 
+### Сессия 20.04.2026 — Визуальная приёмка Sprint 1 + планирование Sprint 1.5
+
+Игорь провёл 8-блочную визуальную приёмочную сессию Sprint 1 на живом UI (25+ скриншотов).
+
+**Sprint 1 принят формально** — ключевые фичи работают:
+- V5 контраст annotation bar — подтверждено на pUC-like плазмиде с AmpR/ori/f1_ori
+- V3 junction reset в context-menu — подтверждено
+- V3-bulk: bulk-переключение всей сборки на GG — подтверждено
+- V4 Wizard KLD — `IS001_mut_fwd_pET-23(+)` пара корректно сгенерирована с полным protocolSteps
+- V4 in-place KLD на circular standalone — Q35A на CmR: single fragment + 2 мутагенезных олига сохраняются после auto-design re-run
+
+**Найдены 7 новых багов, вне скоупа Sprint 1:**
+- V14 (CRIT, арх) — `chooseStrategy` слеп к контексту фрагмента. Линейный фрагмент в сборке получает KLD вместо two_fragment.
+- V12 (HIGH) — вкладки «Редактирование» и «Мутагенез» в FragmentEditor имеют одинаковый UI но разное поведение при Save → пользователь-ловушка, мутации с «Редактирования» теряются.
+- V13 (HIGH) — кнопка «Мутагенез» в footer PlasmidViewer открывает пустой Wizard без template.
+- V11 (MED) — KLD-праймеры приходят с `tmBinding: 0, gcPercent: 0` вместо расчёта через `calcTmNN`.
+- V8 (MED) — CDS validation warnings перекрывают sequence view в PlasmidViewer на плазмидах с partial CDS (28+ warnings).
+- V9 (LOW) — подписи коротких аннотаций (<10%) скрыты в annotation bar.
+- V10 (LOW) — SBOL глифы в tree list бледные (fillOpacity 0.15 на 14px).
+
+**V11, V12, V13, V14 сгруппированы в Sprint 1.5 «Мутагенез v2»** — спека в `docs/SPRINT_1_5_MUTAGENESIS_V2.md`. Архитектурное решение: top-level mode switcher в FragmentEditor разделяет bookkeeping-правку sequence (без мутаций) от реального мутагенеза (с strategy engine). `chooseStrategy` расширяется до `chooseStrategy(mutations, fragmentContext)` с учётом topology + isStandalone.
+
+V8, V9, V10 записаны в BUGS как UX-долг для Sprint 3.
+
+**Решение:** Sprint 2 (V7 InsertionClock + V1/V2/V6) откладывается до завершения Sprint 1.5. Причина: V7 InsertionClock зависит от корректной работы мутагенеза, InsertionClock US-2 (cursor по кольцу для выбора позиции мутации) не имеет смысла без правильной стратегии.
+
 ### Сессия 20.04.2026 — MUTWIZ-SANITIZE quick-fix
 
 Мелкая, но архитектурно чистая правка: `MutagenesisWizard.jsx` использовал два legacy inline-regex (`/[^ATCGatcg]/g`, `/[^ATCG]/g`) в обход `sanitizeSequence` — нарушение контракта Этапа 1.1. Биологическая цена: saturation codons (NNK/NNN/MNN) молча стирались из template/insert-вводов.
