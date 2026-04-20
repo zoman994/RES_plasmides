@@ -15,6 +15,48 @@ import { getRegions, getAllDetails, getPoints } from '../annotation-model';
 import AnnotationEditor from './AnnotationEditor';
 import { detectModification, suggestVariantName } from '../part-variants';
 import { getCommonSubstitutions, inlineSubstitution, inlineDeletion, designInlineKLDPrimers } from '../mutagenesis';
+import { sequenceDiff } from '../sequence-diff';
+import { useStore } from '../store';
+
+/**
+ * K8 (Sprint 1.6) — compute per-nucleotide mutation highlights.
+ *
+ * Primary: diff against the parent-part sequence (fragment.parentId → parts).
+ *   - aaChange.silent === true  → 'silent'     (yellow)
+ *   - otherwise                 → 'nonsilent'  (red)
+ * Fallback (no parent): use fragment.mutations list, mark conservatively as
+ *   'nonsilent'. Insertions/deletions span `insertSequence.length` / `deletedBp`.
+ *
+ * @param {Object} fragment — { sequence, annotations?, parentId?, mutations? }
+ * @param {Object|null} parent — parts library entry or null
+ * @returns {Map<number, 'silent'|'nonsilent'>}
+ */
+export function computeMutationHighlights(fragment, parent) {
+  const map = new Map();
+  if (!fragment?.sequence) return map;
+
+  if (parent?.sequence) {
+    const cdsRegions = (fragment.annotations || [])
+      .filter(a => a.level === 'region' && (a.type === 'CDS' || a.type === 'gene'))
+      .map(a => ({ start: a.start, end: a.end }));
+    const diff = sequenceDiff(parent.sequence, fragment.sequence, cdsRegions);
+    for (const sub of diff.substitutions) {
+      const kind = sub.aaChange?.silent === true ? 'silent' : 'nonsilent';
+      map.set(sub.pos, kind);
+    }
+    return map;
+  }
+
+  for (const m of fragment.mutations || []) {
+    const pos = m.codonStart ?? m.position ?? 0;
+    const len = m.type === 'insertion' ? (m.insertSequence?.length || 0)
+              : m.type === 'deletion'  ? (m.deletedBp || 1)
+              : m.type === 'nt_substitution' ? 1
+              : 3;
+    for (let i = pos; i < pos + len; i++) map.set(i, 'nonsilent');
+  }
+  return map;
+}
 
 // Standard palette from design system
 const BASE_PALETTE = [
@@ -131,6 +173,19 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
   // These are biologically distinct operations that share the click gesture.
   const [mode, setMode] = useState('edit'); // 'edit' | 'mutagenesis'
   const [seq, setSeq] = useState(fragment.sequence || '');
+
+  // K8 — mutation highlights relative to parent part. Recomputed when sequence
+  // or parent changes. Returns Map<ntPos, 'silent'|'nonsilent'>.
+  const parts = useStore(s => s.parts);
+  const mutationHighlight = useMemo(() => {
+    const parent = fragment.parentId
+      ? parts.find(p => p.id === fragment.parentId)
+      : null;
+    return computeMutationHighlights(
+      { ...fragment, sequence: seq, annotations: fragment.annotations },
+      parent
+    );
+  }, [fragment.parentId, fragment.mutations, seq, parts, fragment.annotations]);
   // Unified annotations — migrate from legacy domains if needed
   const [annotations, setAnnotations] = useState(() => {
     if (fragment.annotations?.some(a => a.level === 'region')) return fragment.annotations;
@@ -639,12 +694,21 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
                           const isMut = mutations.some(m => m.position === ntPos || (m.codonStart != null && ntPos >= m.codonStart && ntPos < m.codonStart + 3));
                           const isMiddle = ni === 1; // AA shown under middle nucleotide
                           const isCodonEnd = ni === 2; // small gap after codon
+                          const mh = mutationHighlight.get(ntPos); // K8
                           return (
                             <span key={`${ci}-${ni}`} className="inline-block text-center" style={{ width: '1.2ch', marginRight: isCodonEnd ? '0.3ch' : 0 }}>
                               <span className={`block text-[11px] cursor-pointer rounded-sm transition
                                 ${inDnaRange ? 'bg-teal-300 text-white' : inAARange ? 'bg-purple-200' : isMut ? 'bg-amber-200' : 'hover:bg-teal-100'}`}
-                                style={{ borderBottom: c.dom ? `2px solid ${c.dom.color}` : 'none' }}
-                                onMouseEnter={e => { const r = e.currentTarget.getBoundingClientRect(); setNucTooltip({ x: r.left + r.width/2, y: r.top - 4, text: `${nt} · ${ntPos + 1}` }); }}
+                                style={{
+                                  borderBottom: mh
+                                    ? `2px solid ${mh === 'nonsilent' ? '#ef4444' : '#eab308'}`
+                                    : (c.dom ? `2px solid ${c.dom.color}` : 'none'),
+                                  backgroundColor: !inDnaRange && !inAARange && !isMut && mh
+                                    ? (mh === 'nonsilent' ? 'rgba(239,68,68,0.25)' : 'rgba(234,179,8,0.25)')
+                                    : undefined,
+                                }}
+                                title={mh ? `Мутация: ${mh === 'silent' ? 'silent (same AA)' : 'non-silent'}` : undefined}
+                                onMouseEnter={e => { const r = e.currentTarget.getBoundingClientRect(); setNucTooltip({ x: r.left + r.width/2, y: r.top - 4, text: `${nt} · ${ntPos + 1}${mh ? ` · ${mh}` : ''}` }); }}
                                 onMouseLeave={() => setNucTooltip(null)}
                                 onClick={e => { e.preventDefault(); openDnaMutMenu(e, ntPos); }}>
                                 {nt}
@@ -696,11 +760,17 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
                           const isDnaMut = dnaMutTarget && pos >= dnaMutTarget.pos && pos <= (dnaMutTarget.endPos ?? dnaMutTarget.pos);
                           const isMut = mutations.some(m => m.position === pos);
                           const gap = ci > 0 && ci % 10 === 0;
+                          const mh = mutationHighlight.get(pos); // K8
                           return (
                             <span key={ci}
-                              className={`cursor-pointer transition ${gap ? 'ml-1' : ''}
-                                ${isDnaMut ? 'bg-teal-300 text-white rounded' : isMut ? 'bg-amber-200 rounded' : 'hover:bg-teal-100 rounded'}`}
-                              onMouseEnter={e => { const r = e.currentTarget.getBoundingClientRect(); setNucTooltip({ x: r.left + r.width/2, y: r.top - 4, text: `${nt} · ${pos + 1}` }); }}
+                              className={`cursor-pointer transition rounded ${gap ? 'ml-1' : ''}
+                                ${isDnaMut ? 'bg-teal-300 text-white' : isMut ? 'bg-amber-200' : mh ? '' : 'hover:bg-teal-100'}`}
+                              style={!isDnaMut && !isMut && mh ? {
+                                backgroundColor: mh === 'nonsilent' ? 'rgba(239,68,68,0.25)' : 'rgba(234,179,8,0.25)',
+                                borderBottom: `2px solid ${mh === 'nonsilent' ? '#ef4444' : '#eab308'}`,
+                              } : undefined}
+                              title={mh ? `Мутация: ${mh === 'silent' ? 'silent (same AA)' : 'non-silent'}` : undefined}
+                              onMouseEnter={e => { const r = e.currentTarget.getBoundingClientRect(); setNucTooltip({ x: r.left + r.width/2, y: r.top - 4, text: `${nt} · ${pos + 1}${mh ? ` · ${mh}` : ''}` }); }}
                               onMouseLeave={() => setNucTooltip(null)}
                               onClick={e => openDnaMutMenu(e, pos)}>
                               {nt}
@@ -781,16 +851,27 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
                         const detColor = det ? (det.color || getColor(det.type)) : null;
                         const isMutated = mutations.some(m => m.label?.includes(String(pos)));
                         const gap10 = ci > 0 && ci % 10 === 0;
+                        // K8 — highlight codon if any of its 3 nt positions carries a diff.
+                        // Any nonsilent wins over silent (stricter color).
+                        let codonMh = null;
+                        for (let k = 0; k < 3; k++) {
+                          const h = mutationHighlight.get(ntPos + k);
+                          if (h === 'nonsilent') { codonMh = 'nonsilent'; break; }
+                          if (h === 'silent') codonMh = 'silent';
+                        }
+                        const codonMhBg = codonMh === 'nonsilent' ? 'rgba(239,68,68,0.25)'
+                                       : codonMh === 'silent' ? 'rgba(234,179,8,0.25)'
+                                       : null;
                         return (
                           <span key={i}
                             className={`rounded-sm transition inline-block text-center ${gap10 ? 'ml-1' : ''}
                               ${aaReadonly ? '' : 'cursor-pointer'}
-                              ${mutTarget?.aaIdx === i ? 'bg-purple-300' : isMutated ? 'bg-amber-200' : aaReadonly ? '' : 'hover:bg-purple-100'}`}
-                            style={{ backgroundColor: mutTarget?.aaIdx === i ? undefined : isMutated ? undefined : detColor ? detColor + '25' : 'transparent',
-                              borderBottom: detColor ? `2px solid ${detColor}` : 'none',
+                              ${mutTarget?.aaIdx === i ? 'bg-purple-300' : isMutated ? 'bg-amber-200' : aaReadonly ? '' : codonMhBg ? '' : 'hover:bg-purple-100'}`}
+                            style={{ backgroundColor: mutTarget?.aaIdx === i ? undefined : isMutated ? undefined : codonMhBg ? codonMhBg : detColor ? detColor + '25' : 'transparent',
+                              borderBottom: codonMh ? `2px solid ${codonMh === 'nonsilent' ? '#ef4444' : '#eab308'}` : (detColor ? `2px solid ${detColor}` : 'none'),
                               color: aa === '*' ? '#dc2626' : '#333',
                               cursor: aaReadonly ? 'default' : 'pointer' }}
-                            title={aaReadonly ? `${aa}${pos}${det ? ` (${det.name})` : ''}` : `${aa}${pos}${det ? ` (${det.name})` : ''} — клик для мутации`}
+                            title={codonMh ? `${aa}${pos} — Мутация: ${codonMh === 'silent' ? 'silent (same AA)' : 'non-silent'}` : (aaReadonly ? `${aa}${pos}${det ? ` (${det.name})` : ''}` : `${aa}${pos}${det ? ` (${det.name})` : ''} — клик для мутации`)}
                             onClick={aaReadonly ? undefined : e => openMutMenu(e, i, aa, seq.slice(i * 3, i * 3 + 3).toUpperCase())}>{aa}</span>
                         );
                       })}
