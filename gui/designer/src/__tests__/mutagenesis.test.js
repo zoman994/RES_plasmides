@@ -169,6 +169,34 @@ describe('computeMutagenesisStrategy — fragmentContext propagation', () => {
   });
 });
 
+describe('V11: KLD primers carry computed Tm and GC%, not placeholder zeros', () => {
+  it('substitution KLD primers report realistic Tm and GC%', () => {
+    const template = 'ATG' + 'GCC'.repeat(300) + 'TAA';
+    const mut = { type: 'substitution', dnaPosition: 300, newCodon: 'GCG', label: 'A100A' };
+    const result = computeMutagenesisStrategy(template, [mut]);
+    expect(result.strategy).toBe('kld');
+    expect(result.primers).toHaveLength(2);
+    for (const p of result.primers) {
+      expect(p.tmBinding).toBeGreaterThan(40);
+      expect(p.tmBinding).toBeLessThan(90);
+      expect(p.tmFull).toBe(p.tmBinding); // KLD has no tail → full == binding
+      expect(p.gcPercent).toBeGreaterThan(0);
+      expect(p.gcPercent).toBeLessThanOrEqual(100);
+    }
+  });
+
+  it('insertion KLD primers report non-zero Tm/GC', () => {
+    const template = 'ATG' + 'GCC'.repeat(100) + 'TAA';
+    const mut = { type: 'insertion', dnaPosition: 150, insertSequence: 'CATCATCAT', label: 'ins50' };
+    const result = computeMutagenesisStrategy(template, [mut]);
+    expect(result.strategy).toBe('kld');
+    for (const p of result.primers) {
+      expect(p.tmBinding).toBeGreaterThan(0);
+      expect(p.gcPercent).toBeGreaterThan(0);
+    }
+  });
+});
+
 describe('designInlineKLDPrimers', () => {
   it('designs forward and reverse primers around mutation site', () => {
     const seq = 'ATGATGATGATGATGATGATGATGATGATGATGATGATGATGATGATGATGATG'; // 54 nt

@@ -1,7 +1,7 @@
 /** Mutagenesis strategy engine — KLD / 2-fragment / multi-fragment. */
 
 import { translateDNA, translateCodon, getBestCodon, CODON_TABLE } from './codons';
-import { calcTm as calcTmNN } from './tm-calculator';
+import { calcTm as calcTmNN, gcPercent } from './tm-calculator';
 
 const RC = { A: 'T', T: 'A', G: 'C', C: 'G' };
 const revComp = s => s.split('').reverse().map(c => RC[c.toUpperCase()] || 'N').join('');
@@ -128,13 +128,18 @@ function makeKLDStrategy(templateSeq, mutations, bindingLength) {
     }
   }
 
+  // KLD primers are back-to-back with no tail — tmFull == tmBinding.
+  const fwdTm = Math.round(calcTmNN(fwdSeq));
+  const revTm = Math.round(calcTmNN(revSeq));
   const primers = [
     { name: fwdName, sequence: fwdSeq, bindingSequence: fwdSeq, tailSequence: '',
       tailPurpose: mut.type === 'substitution' ? `mutant codon ${mut.newCodon}` : mut.type,
-      tmBinding: 0, tmFull: 0, gcPercent: 0, length: fwdSeq.length, direction: 'forward' },
+      tmBinding: fwdTm, tmFull: fwdTm, gcPercent: gcPercent(fwdSeq),
+      length: fwdSeq.length, direction: 'forward' },
     { name: revName, sequence: revSeq, bindingSequence: revSeq, tailSequence: '',
       tailPurpose: 'back-to-back with fwd',
-      tmBinding: 0, tmFull: 0, gcPercent: 0, length: revSeq.length, direction: 'reverse' },
+      tmBinding: revTm, tmFull: revTm, gcPercent: gcPercent(revSeq),
+      length: revSeq.length, direction: 'reverse' },
   ];
 
   return {
