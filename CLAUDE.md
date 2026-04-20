@@ -16,7 +16,7 @@ BodgeGene — визуальный конструктор генетически
 
 **Автор:** Игорь Синельников, ФИЦ Биотехнологии РАН  
 **Путь:** `C:\Users\Zoman\Desktop\RESplasmide`  
-**Версия:** v0.5.0-alpha (~220 коммитов, ~695 тестов: 583 Vitest + 112 pytest)
+**Версия:** v0.5.0-alpha (~241 коммит, 850 тестов: 738 Vitest + 112 pytest). Sprint 1.7 финализирован Code, ждёт визуальной приёмки.
 
 ---
 
@@ -242,9 +242,14 @@ Polymerase + primer prefix вынесены из header в collapsible dropdown.
 | `PARTS_LIFECYCLE.md` | Реализовано | Статусы draft/verified/archived |
 | `FLOW_V2_DESIGN.md` | План | Universal ReactionNode (не реализован) |
 | `TASK_FLOW_PHASE2_3.md` | Частично | Flow Phase 2+3 |
-| `USER_GUIDE_ANNOTATIONS.md` | Справка | Руководство по аннотациям |
-| `USER_GUIDE_PARTS.md` | Справка | Руководство по запчастям |
-| `USER_GUIDE_RESTRICTION.md` | Справка | Руководство по RE-клонированию |
+
+### Пользовательские гайды (docs/guides/) — НЕ читаются при старте сессии
+
+| Файл | Назначение |
+|------|-----------|
+| `guides/USER_GUIDE_ANNOTATIONS.md` | Руководство по аннотациям |
+| `guides/USER_GUIDE_PARTS.md` | Руководство по запчастям |
+| `guides/USER_GUIDE_RESTRICTION.md` | Руководство по RE-клонированию |
 
 ### Архив (docs/archive/) — НЕ ЧИТАТЬ без запроса
 
