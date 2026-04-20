@@ -122,7 +122,13 @@ export default function PlasmidUseWizard({ plasmid, presetMode, onClose }) {
     if (presetMode === 'view') { setViewerPart(plasmid); onClose(); return; }
     if (presetMode === 'use_whole') { handleUseWhole(); return; }
     if (presetMode === 'disassemble') { handleDisassemble(); return; }
-    if (presetMode === 'mutate') { setShowMutagenesis(true); onClose(); return; }
+    if (presetMode === 'mutate') {
+      // V13: seed MutagenesisWizard with this plasmid so it opens pre-filled.
+      useStore.getState().setMutagenesisInitialPlasmid(plasmid);
+      setShowMutagenesis(true);
+      onClose();
+      return;
+    }
     if (presetMode === 'versions') { useStore.getState().setVersionTreePartId(plasmid.id); onClose(); return; }
     if (step === 'menu') setStep(presetMode);
   }, [presetMode]);
@@ -166,7 +172,10 @@ export default function PlasmidUseWizard({ plasmid, presetMode, onClose }) {
             if (m.id === 'view') { setViewerPart(plasmid); onClose(); return; }
             if (m.id === 'use_whole') { handleUseWhole(); return; }
             if (m.id === 'disassemble') { handleDisassemble(); return; }
-            if (m.id === 'mutate') { setShowMutagenesis(true); onClose(); return; }
+            if (m.id === 'mutate') {
+              useStore.getState().setMutagenesisInitialPlasmid(plasmid);
+              setShowMutagenesis(true); onClose(); return;
+            }
             if (m.id === 'versions') { useStore.getState().setVersionTreePartId(plasmid.id); onClose(); return; }
             setStep(m.id);
           }}

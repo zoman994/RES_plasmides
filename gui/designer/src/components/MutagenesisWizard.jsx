@@ -12,13 +12,21 @@ const METHOD_OPTIONS = [
   { id: 'overlap', label: 'Overlap extension', desc: 'Два фрагмента с overlap. Для далёких мутаций.' },
 ];
 
-export default function MutagenesisWizard({ onComplete, onClose }) {
-  const [step, setStep] = useState(1);
-  const [templateSeq, setTemplateSeq] = useState('');
-  const [templateName, setTemplateName] = useState('');
-  const [organism, setOrganism] = useState('E. coli');
-  const [cdsStart, setCdsStart] = useState(0);
-  const [cdsEnd, setCdsEnd] = useState(0);
+export default function MutagenesisWizard({
+  onComplete, onClose,
+  initialTemplateSeq,
+  initialTemplateName,
+  initialOrganism,
+  initialCdsStart,
+  initialCdsEnd,
+}) {
+  const presetSeq = initialTemplateSeq ? sanitizeSequence(initialTemplateSeq) : '';
+  const [step, setStep] = useState(presetSeq ? 2 : 1);
+  const [templateSeq, setTemplateSeq] = useState(presetSeq);
+  const [templateName, setTemplateName] = useState(initialTemplateName || '');
+  const [organism, setOrganism] = useState(initialOrganism || 'E. coli');
+  const [cdsStart, setCdsStart] = useState(initialCdsStart ?? 0);
+  const [cdsEnd, setCdsEnd] = useState(initialCdsEnd ?? presetSeq.length);
   const [mutations, setMutations] = useState([]);
   const [method, setMethod] = useState('auto');
   const [strategy, setStrategy] = useState(null);

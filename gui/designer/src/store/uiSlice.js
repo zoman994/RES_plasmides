@@ -19,6 +19,7 @@ export const createUiSlice = (set) => ({
   viewerPart: null,         // Part shown in PlasmidViewer modal
   wizardPlasmid: null,      // Part shown in PlasmidUseWizard modal
   wizardPresetMode: null,   // 'restriction_cloning' | 'use_whole' | 'mutate' | 'disassemble' | null
+  mutagenesisInitialPlasmid: null,  // Part passed to MutagenesisWizard from PlasmidViewer (V13)
   versionTreePartId: null,  // Part ID for PlasmidVersionTree modal
 
   // ═══ Canvas / editing state ═══
@@ -66,6 +67,7 @@ export const createUiSlice = (set) => ({
   setViewerPart: (part) => set({ viewerPart: part }, false, 'setViewerPart'),
   setWizardPlasmid: (part) => set({ wizardPlasmid: part }, false, 'setWizardPlasmid'),
   setWizardPresetMode: (mode) => set({ wizardPresetMode: mode }, false, 'setWizardPresetMode'),
+  setMutagenesisInitialPlasmid: (part) => set({ mutagenesisInitialPlasmid: part }, false, 'setMutagenesisInitialPlasmid'),
   setVersionTreePartId: (id) => set({ versionTreePartId: id }, false, 'setVersionTreePartId'),
   setEditTarget: (idx) => set({ editTarget: idx }, false, 'setEditTarget'),
   setSplitTarget: (idx) => set({ splitTarget: idx }, false, 'setSplitTarget'),

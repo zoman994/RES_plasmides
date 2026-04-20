@@ -103,6 +103,7 @@ export default function App() {
   const viewerPart = useStore(s => s.viewerPart);
   const wizardPlasmid = useStore(s => s.wizardPlasmid);
   const wizardPresetMode = useStore(s => s.wizardPresetMode);
+  const mutagenesisInitialPlasmid = useStore(s => s.mutagenesisInitialPlasmid);
   const importDecisionData = useStore(s => s.importDecisionData);
   const versionTreePartId = useStore(s => s.versionTreePartId);
   const globalCDSPart = useStore(s => s.globalCDSPart);
@@ -663,8 +664,17 @@ export default function App() {
       {(showMutagenesis || mutagenesisTarget !== null) && (
         <MutagenesisWizard
           template={mutagenesisTarget !== null ? fragments[mutagenesisTarget] : undefined}
+          initialTemplateSeq={mutagenesisInitialPlasmid?.sequence}
+          initialTemplateName={mutagenesisInitialPlasmid?.name}
+          initialOrganism={mutagenesisInitialPlasmid?.organism}
+          initialCdsStart={mutagenesisInitialPlasmid ? 0 : undefined}
+          initialCdsEnd={mutagenesisInitialPlasmid ? (mutagenesisInitialPlasmid.sequence?.length || 0) : undefined}
           onComplete={handleMutagenesis}
-          onClose={() => { setShowMutagenesis(false); useStore.getState().setMutagenesisTarget(null); }}
+          onClose={() => {
+            setShowMutagenesis(false);
+            useStore.getState().setMutagenesisTarget(null);
+            useStore.getState().setMutagenesisInitialPlasmid(null);
+          }}
         />
       )}
       {replacingFragment && (
