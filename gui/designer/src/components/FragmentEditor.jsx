@@ -741,8 +741,24 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
         {tab === 'regions' && (() => {
             const getColor = (type) => ANNOTATION_COLORS[type] || REGION_COLORS[type] || DOMAIN_COLORS[type] || '#56B4E9';
             const details = getAllDetails(annotations);
+            const aaReadonly = mode === 'edit';
             return (
             <>
+
+            {/* K5: protein tab is read-only in edit mode — no codon, so bookkeeping of AA is biologically impossible. */}
+            {aaReadonly && isCDS && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 mb-2 flex items-center justify-between text-xs text-blue-800">
+                <span>
+                  {'👁'} Режим просмотра. Правка белка невозможна — нужен кодон, а не только AA.
+                  Для мутагенеза переключите режим выше.
+                </span>
+                <button
+                  onClick={() => switchMode('mutagenesis')}
+                  className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition shrink-0 ml-2">
+                  {'→'} Мутагенез
+                </button>
+              </div>
+            )}
 
             {/* Protein sequence with numbered lines — clickable AAs for mutagenesis (CDS) */}
             <div className="font-mono text-[10px] leading-relaxed bg-gray-50 p-3 rounded max-h-[200px] overflow-y-auto mb-3 relative">
@@ -767,13 +783,15 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
                         const gap10 = ci > 0 && ci % 10 === 0;
                         return (
                           <span key={i}
-                            className={`cursor-pointer rounded-sm transition inline-block text-center ${gap10 ? 'ml-1' : ''}
-                              ${mutTarget?.aaIdx === i ? 'bg-purple-300' : isMutated ? 'bg-amber-200' : 'hover:bg-purple-100'}`}
+                            className={`rounded-sm transition inline-block text-center ${gap10 ? 'ml-1' : ''}
+                              ${aaReadonly ? '' : 'cursor-pointer'}
+                              ${mutTarget?.aaIdx === i ? 'bg-purple-300' : isMutated ? 'bg-amber-200' : aaReadonly ? '' : 'hover:bg-purple-100'}`}
                             style={{ backgroundColor: mutTarget?.aaIdx === i ? undefined : isMutated ? undefined : detColor ? detColor + '25' : 'transparent',
                               borderBottom: detColor ? `2px solid ${detColor}` : 'none',
-                              color: aa === '*' ? '#dc2626' : '#333' }}
-                            title={`${aa}${pos}${det ? ` (${det.name})` : ''} — клик для мутации`}
-                            onClick={e => openMutMenu(e, i, aa, seq.slice(i * 3, i * 3 + 3).toUpperCase())}>{aa}</span>
+                              color: aa === '*' ? '#dc2626' : '#333',
+                              cursor: aaReadonly ? 'default' : 'pointer' }}
+                            title={aaReadonly ? `${aa}${pos}${det ? ` (${det.name})` : ''}` : `${aa}${pos}${det ? ` (${det.name})` : ''} — клик для мутации`}
+                            onClick={aaReadonly ? undefined : e => openMutMenu(e, i, aa, seq.slice(i * 3, i * 3 + 3).toUpperCase())}>{aa}</span>
                         );
                       })}
                     </div>
@@ -791,7 +809,7 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
               })}
 
             </div>
-            {isCDS && !mutTarget && <div className="text-[9px] text-gray-400 -mt-2 mb-2 text-center">Клик по аминокислоте → мутагенез</div>}
+            {isCDS && !mutTarget && mode === 'mutagenesis' && <div className="text-[9px] text-gray-400 -mt-2 mb-2 text-center">Клик по аминокислоте → мутагенез</div>}
 
             {/* Annotation management — unified region/detail/point editor */}
             <div className="flex items-center justify-between mb-2">

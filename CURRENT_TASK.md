@@ -1,75 +1,71 @@
-# CURRENT_TASK.md — Sprint 1.5 «Мутагенез v2»
+# CURRENT_TASK.md — Sprint 1.6 «Мутагенез UX v2.1»
 
 **Статус:** 🚧 В РАБОТЕ (начат 2026-04-21)
-**Спека:** `docs/SPRINT_1_5_MUTAGENESIS_V2.md`
-**Приоритет:** HIGH — блокирует Sprint 2 (V7 InsertionClock)
+**Спека:** `docs/SPRINT_1_6_MUTAGENESIS_V2_1.md`
+**Приоритет:** HIGH — закрывает визуальную приёмку K2 из Sprint 1.5
 **Оценка:** 6–8 часов, 4 коммита
 **Ветка:** `feature/racetrack-canvas`
-**Предыдущий этап:** Sprint 1 ✅ + MUTWIZ-SANITIZE ✅ (637 Vitest)
+**Предыдущий этап:** Sprint 1.5 закоммичен целиком. K2 (mode switcher) технически валидный (663 теста), но визуальная приёмка нашла 4 проблемы архитектурного уровня → Sprint 1.6.
 
 ---
 
 ## Цель
 
-Исправить три архитектурных и один data-баг мутагенеза, найденных визуальной приёмкой Sprint 1:
+Починить поверх K2 четыре дефекта, выявленных визуальной приёмкой mode switcher'а:
 
-- **V14** `chooseStrategy` → не знает контекст фрагмента (линейный кусок в сборке получает KLD)
-- **V12** FragmentEditor смешивает bookkeeping-правку sequence и мутагенез в одном UI
-- **V13** «Мутагенез» в footer PlasmidViewer открывает пустой Wizard
-- **V11** KLD-олиги приходят с `tmBinding: 0, gcPercent: 0`
+- **K5** Белок в mode=edit должен быть **read-only** (bookkeeping белка невозможен без кодона)
+- **K6** Аннотации при split обрезаются биологически корректно (signal peptide дропается, CDS переименовывается)
+- **K7** Split-фрагменты визуально сгруппированы на canvas (пунктирная рамка + подложка + badge + линия)
+- **K8** Мутации подсвечиваются в FragmentEditor через `sequenceDiff` относительно parent-part
 
-После Sprint 1.5 мутагенез корректен по всем трём UX-путям (Wizard, in-place FragmentEditor, PlasmidViewer footer).
+**Порядок:** K5 → K6 → K8 → K7. K7 последний (крупный UI-change) — сразу видно подсветку K8 при визуальной приёмке.
 
 ---
 
 ## Коммиты
 
-### K1 — V14 strategy context (2 ч)
-- [ ] `chooseStrategy(mutations, fragmentContext)` с default `{topology:'circular', isStandalone:true}`
-- [ ] `computeMutagenesisStrategy` прокидывает `options.fragmentContext`
-- [ ] `handleSaveFragment` собирает context из active.circular, fragments.length, length
-- [ ] `MutagenesisWizard.compute` передаёт `{topology:'circular', isStandalone:true}`
-- [ ] +5 unit-тестов strategy, regression на существующих
-- [ ] `fix(v14): chooseStrategy respects fragment topology and isStandalone context`
+### K5 — Белок read-only в Правке (1 ч)
+- [ ] Баннер «Режим просмотра» + кнопка «→ Мутагенез» в tab='regions' + mode='edit'
+- [ ] AA-span: `onClick` и `cursor: pointer` только в mode='mutagenesis'
+- [ ] Подсказка «Клик → мутагенез» только в mode='mutagenesis'
+- [ ] +2 теста, 1 обновлённый в `fragment-editor-mode-switcher.test.jsx`
+- [ ] `feat(fragment-editor): protein tab is read-only in edit mode (K5, Sprint 1.6)`
 
-### K2 — V12 FragmentEditor mode switcher (3 ч) — **ВИЗУАЛЬНАЯ ПРОВЕРКА ДО КОММИТА**
-- [ ] State `mode: 'edit' | 'mutagenesis'` + радио над tabs
-- [ ] Mode=edit: клик по нт = inline input, AA отключён, quick actions активны
-- [ ] Mode=mutagenesis: popup'ы DNA+AA, quick actions disabled
-- [ ] Confirm при переключении если mutations.length > 0
-- [ ] Раздельные `handleSaveEdit` (без mutations, +editHistory) и `handleSaveMutagenesis` (через strategy)
-- [ ] +6 integration-тестов через @testing-library/react
-- [ ] **STOP до визуала**: показать Игорю → коммитить только после подтверждения
-- [ ] `feat(v12): FragmentEditor mode switcher separates edit from mutagenesis`
+### K6 — Биологически корректная обрезка аннотаций при split (2 ч)
+- [ ] Новый `lib/split-annotations.js::trimAnnotationsForSubFragment`
+- [ ] Правила: signal_peptide/transit_peptide/propeptide → drop при partial overlap; start/stop codon → drop если не на границе; restriction_site/primer_bind/mutation/variation → drop при trim; CDS/gene → rename с суффиксом `(5' trimmed)` / `(3' trimmed)`; остальное → trim + flag
+- [ ] `useFragmentHandlers.handleSaveFragment` делегирует helper'у
+- [ ] +15 unit-тестов в `split-annotations.test.js`
+- [ ] `feat(split): biologically correct annotation trimming on mutagenesis split (K6, Sprint 1.6)`
 
-### K3 — V13 Wizard template passthrough (1 ч)
-- [ ] MutagenesisWizard props: `initialTemplateSeq/Name/Organism/CdsStart/CdsEnd`
-- [ ] Step = 2 если initialTemplateSeq задан
-- [ ] App.jsx прокидывает wizardPlasmid при presetMode='mutate'
-- [ ] +2 integration-теста
-- [ ] `fix(v13): PlasmidViewer mutate button passes template to MutagenesisWizard`
+### K8 — Цветовая подсветка мутаций в FragmentEditor (1–1.5 ч)
+- [ ] Экспорт helper'а `computeMutationHighlights(fragment, parent)` → `Map<ntPos, 'silent'|'nonsilent'>`
+- [ ] Primary: diff с parent-part через `sequenceDiff` (уже существует)
+- [ ] Fallback: `fragment.mutations` (конservatively nonsilent)
+- [ ] Рендер: DNA per-nt (red/yellow background + underline), protein per-codon
+- [ ] Tooltip «Мутация: silent/nonsilent»
+- [ ] +4 теста в `fragment-editor-highlights.test.js`
+- [ ] `feat(fragment-editor): highlight mutations relative to parent (K8, Sprint 1.6)`
 
-### K4 — V11 KLD Tm (30 мин)
-- [ ] `makeKLDStrategy`: `tmBinding/tmFull = Math.round(calcTmNN(seq))`, `gcPercent` через regex
-- [ ] +2 теста (KLD primer Tm > 50 && < 80)
-- [ ] `fix(v11): KLD primers report real Tm and GC% instead of placeholder zeros`
+### K7 — Split-группа визуально на canvas (3–4 ч)
+- [ ] `handleSaveFragment` (two/multi_fragment): ставит `splitGroupId`, `splitGroupParentName`, `splitGroupIndex`, `splitGroupTotal` на новые фрагменты
+- [ ] `handleMutagenesis` (Wizard-путь) то же для non-KLD
+- [ ] `DesignCanvas` группирует соседние фрагменты с одинаковым splitGroupId
+- [ ] Группа рендерится с 4 визуальными эффектами: пунктирная рамка + тонированная подложка + badge «🧬 parent (split: N частей)» + соединительная линия
+- [ ] +3 компонентных теста в `split-group-rendering.test.jsx`
+- [ ] `feat(canvas): visual grouping for mutagenesis-split fragments (K7, Sprint 1.6)`
 
 ---
+
+## STOP после K7
+
+Не обновляю BUGS/PROJECT_STATE/DECISIONS и не перемещаю спеку в archive до визуальной приёмки Игорем. После приёмки — решение по 4 визуальным эффектам K7 (какие оставить, какие убрать).
 
 ## Regression guard
 
-- Все существующие 637 Vitest тестов остаются зелёными
+- Все существующие 663 Vitest тестов остаются зелёными
 - После каждого коммита: `cd gui/designer && npx vitest run && npx vite build`
-
-## После всех коммитов
-
-- BUGS.md: V11/V12/V13/V14 → FIXED с датой 21.04.2026
-- PROJECT_STATE.md: журнал сессии Sprint 1.5
-- DECISIONS.md: подтверждение 4 решений из спеки Chat
-- Переместить `docs/SPRINT_1_5_MUTAGENESIS_V2.md` → `docs/archive/` после визуального подтверждения Игорем
 
 ---
 
-## Команда на старт
-
-> Начинаем с K1. Отчёт Chat после K1 с результатом теста «linear fragment in Gibson assembly → two_fragment split».
+**Конец.**

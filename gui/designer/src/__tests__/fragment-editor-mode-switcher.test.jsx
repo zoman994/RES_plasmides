@@ -161,3 +161,76 @@ describe('FragmentEditor — V12 mode switcher', () => {
     expect(payload.mutations === frag.mutations || (Array.isArray(payload.mutations) && payload.mutations.length === 0)).toBe(true);
   });
 });
+
+// ─── K5 Sprint 1.6: protein tab read-only in edit mode ─────────────────────
+describe('FragmentEditor — K5 protein read-only in edit mode', () => {
+  // CDS fragment: ATG GCT TGC TAA → M-A-C-* (12 nt, 4 codons incl. stop)
+  const cdsFragment = () => ({
+    id: 'cds1',
+    name: 'TestCDS',
+    type: 'CDS',
+    sequence: 'ATGGCTTGCTAA',
+    length: 12,
+    strand: 1,
+    annotations: [],
+    mutations: [],
+  });
+
+  it('tab=regions + mode=edit (default) on CDS shows "Режим просмотра" banner + → Мутагенез button', () => {
+    render(<FragmentEditor fragment={cdsFragment()} onSave={() => {}} onClose={() => {}} />);
+    // Switch to regions/protein tab
+    const proteinTabBtn = screen.getByRole('button', { name: /🧬 Белок/ });
+    fireEvent.click(proteinTabBtn);
+
+    expect(screen.queryByText(/Режим просмотра/)).not.toBeNull();
+    expect(screen.queryByRole('button', { name: /→ Мутагенез/ })).not.toBeNull();
+    // Helper hint "Клик по аминокислоте → мутагенез" is NOT visible in edit mode
+    expect(screen.queryByText(/Клик по аминокислоте → мутагенез/)).toBeNull();
+  });
+
+  it('tab=regions + mode=mutagenesis hides view-only banner and shows hint', () => {
+    render(<FragmentEditor fragment={cdsFragment()} onSave={() => {}} onClose={() => {}} />);
+    // Switch to mutagenesis mode
+    const radios = screen.getAllByRole('radio');
+    fireEvent.click(radios.find(r => /Мутагенез/.test(r.textContent)));
+    // Switch to protein tab
+    fireEvent.click(screen.getByRole('button', { name: /🧬 Белок/ }));
+
+    expect(screen.queryByText(/Режим просмотра/)).toBeNull();
+    expect(screen.queryByText(/Клик по аминокислоте → мутагенез/)).not.toBeNull();
+  });
+
+  it('→ Мутагенез button switches mode without confirm when mutations=[]', () => {
+    render(<FragmentEditor fragment={cdsFragment()} onSave={() => {}} onClose={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: /🧬 Белок/ }));
+
+    // No mutations yet — confirm should not be called
+    fireEvent.click(screen.getByRole('button', { name: /→ Мутагенез/ }));
+    expect(window.confirm).not.toHaveBeenCalled();
+
+    // Banner is gone now that mode=mutagenesis
+    expect(screen.queryByText(/Режим просмотра/)).toBeNull();
+    // The mutagenesis radio is now aria-checked
+    const radios = screen.getAllByRole('radio');
+    const mutRadio = radios.find(r => /Мутагенез/.test(r.textContent));
+    expect(mutRadio.getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('tab=regions + mode=edit: AA span has cursor:default and no onClick', () => {
+    render(<FragmentEditor fragment={cdsFragment()} onSave={() => {}} onClose={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: /🧬 Белок/ }));
+
+    // Find AA span (has title containing "Mpos" like "M1" or similar) — grab first child span with single-letter AA
+    // The protein view renders each AA as a span. In edit mode, cursor must be default.
+    const aaSpans = Array.from(document.querySelectorAll('span')).filter(s => {
+      const txt = s.textContent;
+      return txt && txt.length === 1 && /[A-Z*]/.test(txt) && s.getAttribute('title');
+    });
+    expect(aaSpans.length).toBeGreaterThan(0);
+
+    // All AA spans should have cursor: default in edit mode
+    for (const sp of aaSpans) {
+      expect(sp.style.cursor).toBe('default');
+    }
+  });
+});
