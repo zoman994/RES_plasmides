@@ -125,7 +125,11 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
   // CDS-like if fragment type is CDS or any annotation region is CDS
   const hasCDSRegion = (fragment.annotations || []).some(a => a.level === 'region' && (a.type === 'CDS' || a.type === 'gene' || a.type === 'marker'));
   const isCDS = fragment.type === 'CDS' || hasCDSRegion;
-  const [tab, setTab] = useState('edit'); // 'edit' | 'mutagenesis' | 'regions'
+  const [tab, setTab] = useState('edit'); // 'edit' | 'regions' — 'edit' is the DNA view tab
+  // V12 — Sprint 1.5 mode switcher: bookkeeping edit (fix sequence in system)
+  // vs lab mutagenesis (plan experiment, generate primers/protocol).
+  // These are biologically distinct operations that share the click gesture.
+  const [mode, setMode] = useState('edit'); // 'edit' | 'mutagenesis'
   const [seq, setSeq] = useState(fragment.sequence || '');
   // Unified annotations — migrate from legacy domains if needed
   const [annotations, setAnnotations] = useState(() => {
@@ -137,7 +141,6 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
   const [customColor, setCustomColor] = useState(fragment.customColor || '');
   const [showPalette, setShowPalette] = useState(false);
   const [editMode, setEditMode] = useState('view'); // 'view' | 'edit' (codon inline editing)
-  const [workflow, setWorkflow] = useState('edit'); // 'edit' = simple edit | 'mutagenesis' = with protocol
   const [mutTarget, setMutTarget] = useState(null); // { start, end, x, y } — AA range
   const [dnaMutTarget, setDnaMutTarget] = useState(null); // { pos, nt, x, y }
   const [customAA, setCustomAA] = useState('');
@@ -148,8 +151,24 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
   // Custom instant tooltip for nucleotide hover (replaces slow browser title)
   const [nucTooltip, setNucTooltip] = useState(null); // { x, y, text }
 
+  // V12 — safe mode switch: confirm-and-clear if there are pending mutations.
+  const switchMode = (newMode) => {
+    if (newMode === mode) return;
+    if (mutations.length > 0) {
+      const ok = window.confirm(
+        `Переключение режима отменит ${mutations.length} накопленных мутаций. Продолжить?`
+      );
+      if (!ok) return;
+      setMutations([]);
+    }
+    setMutTarget(null);
+    setDnaMutTarget(null);
+    setMode(newMode);
+  };
+
   // Open AA mutation menu
   const openMutMenu = (e, aaIdx, aa, codon) => {
+    if (mode === 'edit') return; // V12 — AA clicks disabled in edit mode
     if (aa === '*') return;
     setDnaMutTarget(null);
     const rect = e.currentTarget.getBoundingClientRect();
@@ -287,24 +306,29 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
     return () => clearTimeout(timer);
   }, [seq]);
 
-  const handleSave = () => {
+  // V12 — bookkeeping edit: fix the record, no experimental intent.
+  const handleSaveEdit = () => {
     persistDomains(fragment.id || fragment.name, domains);
+    const newEntry = seq !== fragment.sequence
+      ? [{ timestamp: Date.now(), oldSeq: fragment.sequence, newSeq: seq }]
+      : [];
+    onSave({ ...fragment, sequence: seq, length: seq.length, domains, annotations,
+      customColor: customColor || undefined, editedAt: new Date().toISOString(),
+      editHistory: [...(fragment.editHistory || []), ...newEntry],
+      // mutations NOT passed — bookkeeping edit, not mutagenesis.
+    });
+    onClose();
+  };
 
-    if (tab !== 'mutagenesis') {
-      // Simple edit mode — save sequence directly, no variants/primers
-      onSave({ ...fragment, sequence: seq, length: seq.length, domains, annotations,
-        customColor: customColor || undefined, editedAt: new Date().toISOString(),
-        // Don't pass mutations — this is a direct edit, not mutagenesis
-      });
-    } else {
-      // Mutagenesis mode — rename with mutations, trigger variant + KLD
-      const mutLabels = mutations.map(m => m.label).join(',');
-      const name = mutations.length > 0 ? `${fragment.name}(${mutLabels})` : fragment.name;
-      onSave({ ...fragment, name, sequence: seq, length: seq.length, domains, annotations,
-        customColor: customColor || undefined,
-        mutations: mutations.length > 0 ? [...(fragment.mutations || []), ...mutations] : fragment.mutations,
-        editedAt: new Date().toISOString() });
-    }
+  // V12 — experimental mutagenesis: rename with labels, trigger strategy engine.
+  const handleSaveMutagenesis = () => {
+    persistDomains(fragment.id || fragment.name, domains);
+    const mutLabels = mutations.map(m => m.label).join(',');
+    const name = mutations.length > 0 ? `${fragment.name}(${mutLabels})` : fragment.name;
+    onSave({ ...fragment, name, sequence: seq, length: seq.length, domains, annotations,
+      customColor: customColor || undefined,
+      mutations: mutations.length > 0 ? [...(fragment.mutations || []), ...mutations] : fragment.mutations,
+      editedAt: new Date().toISOString() });
     onClose();
   };
 
@@ -386,7 +410,7 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
     const oldAA = CODON_TABLE[oldCodon] || '?';
     const newAA = CODON_TABLE[clean] || '?';
     setSeq(newSeq);
-    if (oldAA !== newAA) {
+    if (oldAA !== newAA && mode !== 'edit') {
       setMutations(prev => [...prev, { type: 'substitution', label: `${oldAA}${aaIdx + 1}${newAA}`, codonChange: `${oldCodon}→${clean}`, changes: 0 }]);
     }
     setEditingCodon(null);
@@ -400,13 +424,15 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
     if (newNt === oldNt) return;
     const newSeq = seq.slice(0, pos) + newNt + seq.slice(pos + 1);
     setSeq(newSeq);
-    // Track mutation
-    const label = isCDS
-      ? (() => { const ai = Math.floor(pos / 3); const oldC = seq.slice(ai*3, ai*3+3).toUpperCase(); const newC = newSeq.slice(ai*3, ai*3+3).toUpperCase();
-          const oldAA = CODON_TABLE[oldC]||'?'; const newAA = CODON_TABLE[newC]||'?';
-          return oldAA !== newAA ? `${oldAA}${ai+1}${newAA} (${oldNt}${pos+1}${newNt})` : `${oldNt}${pos+1}${newNt} (silent)`; })()
-      : `${oldNt}${pos+1}${newNt}`;
-    setMutations(prev => [...prev, { type: 'nt_substitution', label, codonStart: pos, position: pos }]);
+    // V12 — in edit mode, DNA change is a bookkeeping fix; no mutation tracking.
+    if (mode !== 'edit') {
+      const label = isCDS
+        ? (() => { const ai = Math.floor(pos / 3); const oldC = seq.slice(ai*3, ai*3+3).toUpperCase(); const newC = newSeq.slice(ai*3, ai*3+3).toUpperCase();
+            const oldAA = CODON_TABLE[oldC]||'?'; const newAA = CODON_TABLE[newC]||'?';
+            return oldAA !== newAA ? `${oldAA}${ai+1}${newAA} (${oldNt}${pos+1}${newNt})` : `${oldNt}${pos+1}${newNt} (silent)`; })()
+        : `${oldNt}${pos+1}${newNt}`;
+      setMutations(prev => [...prev, { type: 'nt_substitution', label, codonStart: pos, position: pos }]);
+    }
     setDnaMutTarget(null);
   };
 
@@ -423,7 +449,9 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
       const newEnd = Math.max(a.start, a.end - count);
       return { ...a, end: newEnd < a.start ? a.start : newEnd };
     }).filter(a => a.end > a.start));
-    setMutations(prev => [...prev, { type: 'nt_deletion', label: `Δ${pos+1}${count > 1 ? `-${pos+count}` : ''} (${deleted})`, codonStart: pos, position: pos, deletedBp: count }]);
+    if (mode !== 'edit') {
+      setMutations(prev => [...prev, { type: 'nt_deletion', label: `Δ${pos+1}${count > 1 ? `-${pos+count}` : ''} (${deleted})`, codonStart: pos, position: pos, deletedBp: count }]);
+    }
     setDnaMutTarget(null);
   };
 
@@ -440,7 +468,9 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
       if (a.start >= pos) return { ...a, start: a.start + insertLen, end: a.end + insertLen };
       return { ...a, end: a.end + insertLen };
     }));
-    setMutations(prev => [...prev, { type: 'nt_insertion', label: `ins${pos+1}+${clean.length}п.н.`, codonStart: pos, position: pos }]);
+    if (mode !== 'edit') {
+      setMutations(prev => [...prev, { type: 'nt_insertion', label: `ins${pos+1}+${clean.length}п.н.`, codonStart: pos, position: pos }]);
+    }
     setDnaMutTarget(null);
     setInsertSeq('');
   };
@@ -539,17 +569,28 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
           </div>
         )}
 
-        {/* Unified 3-tab navigation */}
+        {/* V12 — Mode switcher (above tabs): bookkeeping edit vs experimental mutagenesis */}
+        <div className="flex gap-0 rounded-lg overflow-hidden border mb-2" role="radiogroup" aria-label="Режим">
+          <button onClick={() => switchMode('edit')}
+            role="radio" aria-checked={mode === 'edit'}
+            className={`flex-1 px-3 py-1.5 text-xs font-medium transition ${
+              mode === 'edit' ? 'bg-slate-600 text-white' : 'hover:bg-gray-50'}`}>
+            {'✏️'} Правка <span className="opacity-70 text-[9px]">(фикс записи)</span>
+          </button>
+          <button onClick={() => switchMode('mutagenesis')}
+            role="radio" aria-checked={mode === 'mutagenesis'}
+            className={`flex-1 px-3 py-1.5 text-xs font-medium transition ${
+              mode === 'mutagenesis' ? 'bg-purple-600 text-white' : 'hover:bg-gray-50'}`}>
+            {'🧬'} Мутагенез <span className="opacity-70 text-[9px]">(эксперимент)</span>
+          </button>
+        </div>
+
+        {/* Tab navigation — DNA view vs regions/protein markup */}
         <div className="flex gap-0 rounded-lg overflow-hidden border mb-3">
-          <button onClick={() => { setTab('edit'); setWorkflow('edit'); }}
+          <button onClick={() => setTab('edit')}
             className={`flex-1 px-3 py-1.5 text-xs font-medium transition ${
               tab === 'edit' ? 'bg-blue-600 text-white' : 'hover:bg-gray-50'}`}>
-            {'✏️'} Редактирование
-          </button>
-          <button onClick={() => { setTab('mutagenesis'); setWorkflow('mutagenesis'); }}
-            className={`flex-1 px-3 py-1.5 text-xs font-medium transition ${
-              tab === 'mutagenesis' ? 'bg-purple-600 text-white' : 'hover:bg-gray-50'}`}>
-            {'🧬'} Мутагенез
+            {'🧪'} Последовательность
           </button>
           <button onClick={() => setTab('regions')}
             className={`flex-1 px-3 py-1.5 text-xs font-medium transition ${
@@ -557,25 +598,26 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
             {isCDS ? '🧬 Белок' : '📐 Разметка'}
           </button>
         </div>
-        {tab === 'edit' && seqChanged && (
+        {tab === 'edit' && mode === 'edit' && seqChanged && (
           <div className="text-[9px] text-amber-600 bg-amber-50 rounded px-2 py-1 mb-2">
             {'⚠'} Последовательность изменена. При сохранении праймеры будут сброшены.
           </div>
         )}
-        {tab === 'mutagenesis' && mutations.length === 0 && (
+        {tab === 'edit' && mode === 'mutagenesis' && mutations.length === 0 && (
           <div className="text-[9px] text-purple-500 bg-purple-50 rounded px-2 py-1 mb-2">
             {'🧬'} Кликните по кодону (ДНК) или аминокислоте (АК) для мутагенеза. Будут подобраны праймеры и протокол.
           </div>
         )}
 
-        {/* ═══ TAB: Редактирование / Мутагенез (DNA view) ═══ */}
-        {(tab === 'edit' || tab === 'mutagenesis') && (
+        {/* ═══ TAB: Последовательность (DNA view, behavior controlled by `mode`) ═══ */}
+        {tab === 'edit' && (
           <>
-            {/* Quick actions */}
+            {/* Quick actions — disabled in mutagenesis mode (they're bookkeeping helpers) */}
             <div className="flex flex-wrap gap-1 mb-3">
               {QUICK_ACTIONS.filter(a => !a.forType || a.forType === fragment.type).filter(a => !a.cond || a.cond(seq)).map(a => (
-                <button key={a.key} onClick={() => apply(a)} title={a.desc || ''}
-                  className="text-[10px] px-2 py-1 rounded border border-gray-200 hover:bg-blue-50 hover:border-blue-300 transition">{a.label}</button>
+                <button key={a.key} onClick={() => apply(a)} title={mode === 'mutagenesis' ? 'Доступно только в режиме Правки' : (a.desc || '')}
+                  disabled={mode === 'mutagenesis'}
+                  className="text-[10px] px-2 py-1 rounded border border-gray-200 hover:bg-blue-50 hover:border-blue-300 transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:border-gray-200">{a.label}</button>
               ))}
             </div>
 
@@ -795,20 +837,20 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
           );
         })()}
 
-        {/* Save */}
+        {/* Save — routed by mode, not tab (V12) */}
         <div className="flex gap-2 items-center">
-          {tab !== 'mutagenesis' ? (
-            <button onClick={handleSave} className="text-xs bg-blue-600 text-white px-4 py-1.5 rounded-lg hover:bg-blue-700 font-semibold">
+          {mode === 'edit' ? (
+            <button onClick={handleSaveEdit} className="text-xs bg-blue-600 text-white px-4 py-1.5 rounded-lg hover:bg-blue-700 font-semibold">
               {'💾'} Сохранить
             </button>
           ) : (
-            <button onClick={handleSave}
-              disabled={mutations.length === 0 && !seqChanged}
+            <button onClick={handleSaveMutagenesis}
+              disabled={mutations.length === 0}
               className="text-xs bg-purple-600 text-white px-4 py-1.5 rounded-lg hover:bg-purple-700 font-semibold disabled:opacity-40">
               {'🧬'} Применить мутагенез {mutations.length > 0 && `(${mutations.length})`}
             </button>
           )}
-          {tab === 'mutagenesis' && seqChanged && onSaveAsVariant && (
+          {mode === 'mutagenesis' && seqChanged && onSaveAsVariant && (
             <button onClick={handleSaveAsVariant}
               className="text-xs bg-purple-50 text-purple-700 px-3 py-1.5 rounded-lg hover:bg-purple-100 border border-purple-200 font-medium">
               {'🔀'} Как вариант
