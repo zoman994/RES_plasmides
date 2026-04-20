@@ -196,12 +196,19 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
   // CDS-like if fragment type is CDS or any annotation region is CDS
   const hasCDSRegion = (fragment.annotations || []).some(a => a.level === 'region' && (a.type === 'CDS' || a.type === 'gene' || a.type === 'marker'));
   const isCDS = fragment.type === 'CDS' || hasCDSRegion;
-  const [tab, setTab] = useState('edit'); // 'edit' | 'regions' — 'edit' is the DNA view tab
   // V12 — Sprint 1.5 mode switcher: bookkeeping edit (fix sequence in system)
   // vs lab mutagenesis (plan experiment, generate primers/protocol).
   // These are biologically distinct operations that share the click gesture.
   const [mode, setMode] = useState('edit'); // 'edit' | 'mutagenesis'
   const [seq, setSeq] = useState(fragment.sequence || '');
+
+  // K10 (Sprint 1.7) — Unified Editor: tabs replaced by collapsible panels.
+  const [panelsOpen, setPanelsOpen] = useState({
+    annotations: true,
+    mutations: true,
+    protein: false,
+  });
+  const togglePanel = (id) => setPanelsOpen(p => ({ ...p, [id]: !p[id] }));
 
   // K8 — mutation highlights relative to parent part. Recomputed when sequence
   // or parent changes. Returns Map<ntPos, 'silent'|'nonsilent'>.
@@ -669,34 +676,20 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
           </button>
         </div>
 
-        {/* Tab navigation — DNA view vs regions/protein markup */}
-        <div className="flex gap-0 rounded-lg overflow-hidden border mb-3">
-          <button onClick={() => setTab('edit')}
-            className={`flex-1 px-3 py-1.5 text-xs font-medium transition ${
-              tab === 'edit' ? 'bg-blue-600 text-white' : 'hover:bg-gray-50'}`}>
-            {'🧪'} Последовательность
-          </button>
-          <button onClick={() => setTab('regions')}
-            className={`flex-1 px-3 py-1.5 text-xs font-medium transition ${
-              tab === 'regions' ? 'bg-blue-600 text-white' : 'hover:bg-gray-50'}`}>
-            {isCDS ? '🧬 Белок' : '📐 Разметка'}
-          </button>
-        </div>
-        {tab === 'edit' && mode === 'edit' && seqChanged && (
+        {/* K10 — tabs removed. Sequence view is primary; annotations/mutations/protein are collapsible panels below. */}
+        {mode === 'edit' && seqChanged && (
           <div className="text-[9px] text-amber-600 bg-amber-50 rounded px-2 py-1 mb-2">
             {'⚠'} Последовательность изменена. При сохранении праймеры будут сброшены.
           </div>
         )}
-        {tab === 'edit' && mode === 'mutagenesis' && mutations.length === 0 && (
+        {mode === 'mutagenesis' && mutations.length === 0 && (
           <div className="text-[9px] text-purple-500 bg-purple-50 rounded px-2 py-1 mb-2">
             {'🧬'} Кликните по кодону (ДНК) или аминокислоте (АК) для мутагенеза. Будут подобраны праймеры и протокол.
           </div>
         )}
 
-        {/* ═══ TAB: Последовательность (DNA view, behavior controlled by `mode`) ═══ */}
-        {tab === 'edit' && (
-          <>
-            {/* Quick actions — disabled in mutagenesis mode (they're bookkeeping helpers) */}
+        {/* ═══ Sequence view (primary) — behavior controlled by `mode` ═══ */}
+        {/* Quick actions — disabled in mutagenesis mode (they're bookkeeping helpers) */}
             <div className="flex flex-wrap gap-1 mb-3">
               {QUICK_ACTIONS.filter(a => !a.forType || a.forType === fragment.type).filter(a => !a.cond || a.cond(seq)).map(a => (
                 <button key={a.key} onClick={() => apply(a)} title={mode === 'mutagenesis' ? 'Доступно только в режиме Правки' : (a.desc || '')}
@@ -762,7 +755,9 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
             )}
             {isCDS && !mutTarget && !dnaMutTarget && (
               <div className="text-[9px] text-gray-400 -mt-2 mb-2 text-center">
-                Нуклеотид → мутация ДНК · Аминокислота → замена АК · Shift → диапазон
+                {mode === 'mutagenesis'
+                  ? 'Нуклеотид → мутация ДНК · Аминокислота → замена АК · Shift → диапазон'
+                  : 'Клик по нуклеотиду — правка ДНК. Для мутагенеза переключите режим выше.'}
               </div>
             )}
 
@@ -810,7 +805,11 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
                     </div>
                   );
                 })}
-                {!dnaMutTarget && <div className="text-[9px] text-gray-400 text-center mt-1">Клик по нуклеотиду → мутагенез ДНК</div>}
+                {!dnaMutTarget && (
+                  <div className="text-[9px] text-gray-400 text-center mt-1">
+                    {mode === 'mutagenesis' ? 'Клик по нуклеотиду → мутагенез ДНК' : 'Клик по нуклеотиду → правка ДНК'}
+                  </div>
+                )}
               </div>
             )}
 
@@ -833,135 +832,148 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
                 </button>
               </div>
             </div>
-          </>
-        )}
 
-        {/* ═══ TAB: Белок / Аннотации ═══ */}
-        {tab === 'regions' && (() => {
-            const getColor = (type) => ANNOTATION_COLORS[type] || REGION_COLORS[type] || DOMAIN_COLORS[type] || '#56B4E9';
-            const details = getAllDetails(annotations);
-            const aaReadonly = mode === 'edit';
-            return (
+        {/* ═══ K10 Unified Editor — collapsible panels below sequence view ═══ */}
+        {(() => {
+          const getColor = (type) => ANNOTATION_COLORS[type] || REGION_COLORS[type] || DOMAIN_COLORS[type] || '#56B4E9';
+          const details = getAllDetails(annotations);
+
+          const PanelHeader = ({ id, title, badge }) => (
+            <button onClick={() => togglePanel(id)}
+              className="w-full px-3 py-2 text-xs font-semibold text-left flex items-center justify-between hover:bg-gray-50 rounded-t-lg">
+              <span>{panelsOpen[id] ? '▾' : '▸'} {title}</span>
+              {badge != null && <span className="text-[9px] text-gray-400">{badge}</span>}
+            </button>
+          );
+
+          return (
             <>
-
-            {/* K5: protein tab is read-only in edit mode — no codon, so bookkeeping of AA is biologically impossible. */}
-            {aaReadonly && isCDS && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 mb-2 flex items-center justify-between text-xs text-blue-800">
-                <span>
-                  {'👁'} Режим просмотра. Правка белка невозможна — нужен кодон, а не только AA.
-                  Для мутагенеза переключите режим выше.
-                </span>
-                <button
-                  onClick={() => switchMode('mutagenesis')}
-                  className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition shrink-0 ml-2">
-                  {'→'} Мутагенез
-                </button>
-              </div>
-            )}
-
-            {/* Protein sequence with numbered lines — clickable AAs for mutagenesis (CDS) */}
-            <div className="font-mono text-[10px] leading-relaxed bg-gray-50 p-3 rounded max-h-[200px] overflow-y-auto mb-3 relative">
-              {isCDS ? (() => {
-                const PER_LINE = 50;
-                const lines = [];
-                for (let li = 0; li < protein.length; li += PER_LINE) {
-                  lines.push({ start: li, aas: protein.slice(li, li + PER_LINE) });
-                }
-                return lines.map(line => (
-                  <div key={line.start} className="flex items-start mb-1">
-                    <span className="text-gray-400 w-10 text-right mr-2 shrink-0 text-[9px] pt-0.5 select-none">{line.start + 1}</span>
-                    <div className="flex flex-wrap">
-                      {line.aas.split('').map((aa, ci) => {
-                        const i = line.start + ci;
-                        const pos = i + 1;
-                        const ntPos = i * 3;
-                        // Find detail annotation covering this AA position (nt-based)
-                        const det = details.find(d => ntPos >= d.start && ntPos < d.end);
-                        const detColor = det ? (det.color || getColor(det.type)) : null;
-                        const isMutated = mutations.some(m => mutationHitsAA(m, pos));
-                        const gap10 = ci > 0 && ci % 10 === 0;
-                        // K8 — highlight codon if any of its 3 nt positions carries a diff.
-                        // Any nonsilent wins over silent (stricter color).
-                        let codonMh = null;
-                        for (let k = 0; k < 3; k++) {
-                          const h = mutationHighlight.get(ntPos + k);
-                          if (h === 'nonsilent') { codonMh = 'nonsilent'; break; }
-                          if (h === 'silent') codonMh = 'silent';
-                        }
-                        const codonMhBg = codonMh === 'nonsilent' ? 'rgba(239,68,68,0.25)'
-                                       : codonMh === 'silent' ? 'rgba(234,179,8,0.25)'
-                                       : null;
-                        return (
-                          <span key={i}
-                            className={`rounded-sm transition inline-block text-center ${gap10 ? 'ml-1' : ''}
-                              ${aaReadonly ? '' : 'cursor-pointer'}
-                              ${mutTarget?.aaIdx === i ? 'bg-purple-300' : isMutated ? 'bg-amber-200' : aaReadonly ? '' : codonMhBg ? '' : 'hover:bg-purple-100'}`}
-                            style={{ backgroundColor: mutTarget?.aaIdx === i ? undefined : isMutated ? undefined : codonMhBg ? codonMhBg : detColor ? detColor + '25' : 'transparent',
-                              borderBottom: codonMh ? `2px solid ${codonMh === 'nonsilent' ? '#ef4444' : '#eab308'}` : (detColor ? `2px solid ${detColor}` : 'none'),
-                              color: aa === '*' ? '#dc2626' : '#333',
-                              cursor: aaReadonly ? 'default' : 'pointer' }}
-                            title={codonMh ? `${aa}${pos} — Мутация: ${codonMh === 'silent' ? 'silent (same AA)' : 'non-silent'}` : (aaReadonly ? `${aa}${pos}${det ? ` (${det.name})` : ''}` : `${aa}${pos}${det ? ` (${det.name})` : ''} — клик для мутации`)}
-                            onClick={aaReadonly ? undefined : e => openMutMenu(e, i, aa, seq.slice(i * 3, i * 3 + 3).toUpperCase())}>{aa}</span>
-                        );
-                      })}
+              {/* ── Annotations panel ── */}
+              <div className="border rounded-lg mb-3">
+                <PanelHeader id="annotations" title="Аннотации" badge={annotations.length} />
+                {panelsOpen.annotations && (
+                  <div className="px-3 pb-3">
+                    <div className="flex items-center justify-end mb-2">
+                      <button onClick={() => setAnnotations(autoAnnotate({ ...fragment, sequence: seq, annotations: annotations.filter(a => a.level === 'region' && !a.auto) }))}
+                        className="text-[10px] px-2 py-1 bg-blue-50 text-blue-700 rounded hover:bg-blue-100">{'🔍'} Авто</button>
                     </div>
+                    <AnnotationEditor
+                      annotations={annotations}
+                      seqLength={seq.length}
+                      onChange={setAnnotations}
+                      compact />
+                    {addForm && (
+                      <div className="border rounded p-2 bg-gray-50 mb-3 space-y-2 mt-2">
+                        <div className="grid grid-cols-4 gap-2">
+                          <input placeholder="Имя" value={addForm.name} onChange={e => setAddForm({ ...addForm, name: e.target.value })} className="text-xs border rounded p-1.5 col-span-2" />
+                          <select value={addForm.type} onChange={e => {
+                            if (e.target.value === '__new__') {
+                              const name = prompt('Название нового типа:');
+                              if (name) { const val = name.toLowerCase().replace(/\s+/g, '_'); addCustomRegionType(val, name); setAddForm({ ...addForm, type: val }); }
+                            } else setAddForm({ ...addForm, type: e.target.value });
+                          }} className="text-xs border rounded p-1.5">
+                            {getRegionTypes(fragment.type).map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                            <option value="__new__">+ Новый тип...</option>
+                          </select>
+                          <div className="flex gap-1">
+                            <input type="number" value={addForm.startAA} min={1} max={isCDS ? totalAA : seq.length} onChange={e => setAddForm({ ...addForm, startAA: +e.target.value })} className="text-xs border rounded p-1.5 w-14" />
+                            <input type="number" value={addForm.endAA} min={1} max={isCDS ? totalAA : seq.length} onChange={e => setAddForm({ ...addForm, endAA: +e.target.value })} className="text-xs border rounded p-1.5 w-14" />
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={addDomain} className="text-xs px-3 py-1 bg-green-600 text-white rounded">Добавить</button>
+                          <button onClick={() => setAddForm(null)} className="text-xs px-3 py-1 bg-gray-200 rounded">Отмена</button>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                ));
-              })() : seq.split('').map((nt, i) => {
-                const det = details.find(d => i >= d.start && i < d.end);
-                const detColor = det ? (det.color || getColor(det.type)) : null;
-                return (
-                  <span key={i} style={{ backgroundColor: detColor ? detColor + '20' : 'transparent',
-                    borderBottom: detColor ? `2px solid ${detColor}` : 'none' }}
-                    onMouseEnter={e => { const r = e.currentTarget.getBoundingClientRect(); setNucTooltip({ x: r.left + r.width/2, y: r.top - 4, text: `${i + 1}${det ? ` · ${det.name}` : ''}` }); }}
-                    onMouseLeave={() => setNucTooltip(null)}>{nt}</span>
-                );
-              })}
-
-            </div>
-            {isCDS && !mutTarget && mode === 'mutagenesis' && <div className="text-[9px] text-gray-400 -mt-2 mb-2 text-center">Клик по аминокислоте → мутагенез</div>}
-
-            {/* Annotation management — unified region/detail/point editor */}
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold text-gray-600">Аннотации ({annotations.length})</span>
-              <div className="flex gap-2">
-                <button onClick={() => setAnnotations(autoAnnotate({ ...fragment, sequence: seq, annotations: annotations.filter(a => a.level === 'region' && !a.auto) }))}
-                  className="text-[10px] px-2 py-1 bg-blue-50 text-blue-700 rounded hover:bg-blue-100">{'🔍'} Авто</button>
+                )}
               </div>
-            </div>
 
-            <AnnotationEditor
-              annotations={annotations}
-              seqLength={seq.length}
-              onChange={setAnnotations}
-              compact />
+              {/* ── Mutations panel ── */}
+              {mutations.length > 0 && (
+                <div className="border rounded-lg mb-3">
+                  <PanelHeader id="mutations" title="Мутации" badge={mutations.length} />
+                  {panelsOpen.mutations && (
+                    <div className="px-3 pb-3">
+                      <div className="space-y-1">
+                        {mutations.map((m, mi) => (
+                          <div key={mi} className="flex items-center justify-between text-[10px] bg-purple-50 text-purple-700 rounded px-2 py-1">
+                            <span className="font-mono">{m.label}</span>
+                            <button
+                              onClick={() => setMutations(prev => prev.filter((_, i) => i !== mi))}
+                              className="text-purple-400 hover:text-purple-600 text-xs ml-2"
+                              title="Убрать мутацию из списка">{'✕'}</button>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="text-[9px] text-gray-400 mt-2">
+                        Кнопка ✕ убирает мутацию только из списка — последовательность не откатывается.
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
-            {/* Legacy domain add form — kept for backward compat */}
-            {addForm && (
-              <div className="border rounded p-2 bg-gray-50 mb-3 space-y-2 mt-2">
-                <div className="grid grid-cols-4 gap-2">
-                  <input placeholder="Имя" value={addForm.name} onChange={e => setAddForm({ ...addForm, name: e.target.value })} className="text-xs border rounded p-1.5 col-span-2" />
-                  <select value={addForm.type} onChange={e => {
-                    if (e.target.value === '__new__') {
-                      const name = prompt('Название нового типа:');
-                      if (name) { const val = name.toLowerCase().replace(/\s+/g, '_'); addCustomRegionType(val, name); setAddForm({ ...addForm, type: val }); }
-                    } else setAddForm({ ...addForm, type: e.target.value });
-                  }} className="text-xs border rounded p-1.5">
-                    {getRegionTypes(fragment.type).map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                    <option value="__new__">+ Новый тип...</option>
-                  </select>
-                  <div className="flex gap-1">
-                    <input type="number" value={addForm.startAA} min={1} max={isCDS ? totalAA : seq.length} onChange={e => setAddForm({ ...addForm, startAA: +e.target.value })} className="text-xs border rounded p-1.5 w-14" />
-                    <input type="number" value={addForm.endAA} min={1} max={isCDS ? totalAA : seq.length} onChange={e => setAddForm({ ...addForm, endAA: +e.target.value })} className="text-xs border rounded p-1.5 w-14" />
-                  </div>
+              {/* ── Protein (обзор) panel — CDS only, read-only in BOTH modes ── */}
+              {isCDS && (
+                <div className="border rounded-lg mb-3">
+                  <PanelHeader id="protein" title="Белок (обзор)" badge={`${totalAA} а.о.`} />
+                  {panelsOpen.protein && (
+                    <div className="px-3 pb-3">
+                      <div className="font-mono text-[10px] leading-relaxed bg-gray-50 p-3 rounded max-h-[200px] overflow-y-auto relative">
+                        {(() => {
+                          const PER_LINE = 50;
+                          const lines = [];
+                          for (let li = 0; li < protein.length; li += PER_LINE) {
+                            lines.push({ start: li, aas: protein.slice(li, li + PER_LINE) });
+                          }
+                          return lines.map(line => (
+                            <div key={line.start} className="flex items-start mb-1">
+                              <span className="text-gray-400 w-10 text-right mr-2 shrink-0 text-[9px] pt-0.5 select-none">{line.start + 1}</span>
+                              <div className="flex flex-wrap">
+                                {line.aas.split('').map((aa, ci) => {
+                                  const i = line.start + ci;
+                                  const pos = i + 1;
+                                  const ntPos = i * 3;
+                                  const det = details.find(d => ntPos >= d.start && ntPos < d.end);
+                                  const detColor = det ? (det.color || getColor(det.type)) : null;
+                                  const isMutated = mutations.some(m => mutationHitsAA(m, pos));
+                                  const gap10 = ci > 0 && ci % 10 === 0;
+                                  let codonMh = null;
+                                  for (let k = 0; k < 3; k++) {
+                                    const h = mutationHighlight.get(ntPos + k);
+                                    if (h === 'nonsilent') { codonMh = 'nonsilent'; break; }
+                                    if (h === 'silent') codonMh = 'silent';
+                                  }
+                                  const codonMhBg = codonMh === 'nonsilent' ? 'rgba(239,68,68,0.25)'
+                                                 : codonMh === 'silent' ? 'rgba(234,179,8,0.25)'
+                                                 : null;
+                                  return (
+                                    <span key={i}
+                                      className={`rounded-sm inline-block text-center ${gap10 ? 'ml-1' : ''}
+                                        ${isMutated ? 'bg-amber-200' : ''}`}
+                                      style={{ backgroundColor: isMutated ? undefined : codonMhBg ? codonMhBg : detColor ? detColor + '25' : 'transparent',
+                                        borderBottom: codonMh ? `2px solid ${codonMh === 'nonsilent' ? '#ef4444' : '#eab308'}` : (detColor ? `2px solid ${detColor}` : 'none'),
+                                        color: aa === '*' ? '#dc2626' : '#333',
+                                        cursor: 'default' }}
+                                      title={codonMh ? `${aa}${pos} — Мутация: ${codonMh === 'silent' ? 'silent (same AA)' : 'non-silent'}` : `${aa}${pos}${det ? ` (${det.name})` : ''}`}
+                                      >{aa}</span>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ));
+                        })()}
+                      </div>
+                      <div className="text-[9px] text-gray-400 mt-2 text-center">
+                        Обзор белка read-only. Для мутагенеза кликайте по аминокислотам в основной последовательности выше.
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <div className="flex gap-2">
-                  <button onClick={addDomain} className="text-xs px-3 py-1 bg-green-600 text-white rounded">Добавить</button>
-                  <button onClick={() => setAddForm(null)} className="text-xs px-3 py-1 bg-gray-200 rounded">Отмена</button>
-                </div>
-              </div>
-            )}
-          </>
+              )}
+            </>
           );
         })()}
 

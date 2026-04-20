@@ -162,8 +162,12 @@ describe('FragmentEditor — V12 mode switcher', () => {
   });
 });
 
-// ─── K5 Sprint 1.6: protein tab read-only in edit mode ─────────────────────
-describe('FragmentEditor — K5 protein read-only in edit mode', () => {
+// ─── K5 Sprint 1.6 (updated for K10 Sprint 1.7 Unified Editor) ─────────────
+// Protein tab removed → protein panel under collapsible. AA clicks in the
+// panel are read-only in BOTH modes (primary AA-mutagenesis lives in the
+// codon grid in the sequence view). Edit-mode "view-only" banner is replaced
+// by a mode-specific hint under sequence view.
+describe('FragmentEditor — K5/K10 protein panel read-only', () => {
   // CDS fragment: ATG GCT TGC TAA → M-A-C-* (12 nt, 4 codons incl. stop)
   const cdsFragment = () => ({
     id: 'cds1',
@@ -176,61 +180,54 @@ describe('FragmentEditor — K5 protein read-only in edit mode', () => {
     mutations: [],
   });
 
-  it('tab=regions + mode=edit (default) on CDS shows "Режим просмотра" banner + → Мутагенез button', () => {
+  it('K10: mode=edit on CDS shows footer hint steering users to Мутагенез for AA clicks', () => {
     render(<FragmentEditor fragment={cdsFragment()} onSave={() => {}} onClose={() => {}} />);
-    // Switch to regions/protein tab
-    const proteinTabBtn = screen.getByRole('button', { name: /🧬 Белок/ });
-    fireEvent.click(proteinTabBtn);
-
-    expect(screen.queryByText(/Режим просмотра/)).not.toBeNull();
-    expect(screen.queryByRole('button', { name: /→ Мутагенез/ })).not.toBeNull();
-    // Helper hint "Клик по аминокислоте → мутагенез" is NOT visible in edit mode
-    expect(screen.queryByText(/Клик по аминокислоте → мутагенез/)).toBeNull();
+    // Unified layout — no protein tab button exists anymore
+    expect(screen.queryByRole('button', { name: /🧬 Белок\s*$/ })).toBeNull();
+    // Instead, the sequence footer carries a mode-aware hint
+    expect(screen.queryByText(/Для мутагенеза переключите режим выше/)).not.toBeNull();
   });
 
-  it('tab=regions + mode=mutagenesis hides view-only banner and shows hint', () => {
+  it('K10: mode=mutagenesis on CDS replaces edit hint with AA-click guidance', () => {
     render(<FragmentEditor fragment={cdsFragment()} onSave={() => {}} onClose={() => {}} />);
-    // Switch to mutagenesis mode
     const radios = screen.getAllByRole('radio');
     fireEvent.click(radios.find(r => /Мутагенез/.test(r.textContent)));
-    // Switch to protein tab
-    fireEvent.click(screen.getByRole('button', { name: /🧬 Белок/ }));
-
-    expect(screen.queryByText(/Режим просмотра/)).toBeNull();
-    expect(screen.queryByText(/Клик по аминокислоте → мутагенез/)).not.toBeNull();
+    // Edit-mode hint is gone
+    expect(screen.queryByText(/Для мутагенеза переключите режим выше/)).toBeNull();
+    // Mutagenesis-specific hint visible
+    expect(screen.queryByText(/Аминокислота → замена АК/)).not.toBeNull();
   });
 
-  it('→ Мутагенез button switches mode without confirm when mutations=[]', () => {
+  it('K10: Protein (обзор) panel exists for CDS and is collapsed by default', () => {
     render(<FragmentEditor fragment={cdsFragment()} onSave={() => {}} onClose={() => {}} />);
-    fireEvent.click(screen.getByRole('button', { name: /🧬 Белок/ }));
+    const proteinPanelHeader = screen.getByRole('button', { name: /Белок \(обзор\)/ });
+    expect(proteinPanelHeader).not.toBeNull();
+    // Collapsed by default — sample AA spans should not be mounted yet
+    const aaSpans = Array.from(document.querySelectorAll('span'))
+      .filter(s => s.textContent?.length === 1 && /[MAC*]/.test(s.textContent) && s.getAttribute('title'));
+    // Panel header only, protein content hidden
+    expect(aaSpans.length).toBe(0);
+  });
 
-    // No mutations yet — confirm should not be called
-    fireEvent.click(screen.getByRole('button', { name: /→ Мутагенез/ }));
-    expect(window.confirm).not.toHaveBeenCalled();
+  it('K10: protein panel — AA spans render cursor:default in BOTH modes', () => {
+    render(<FragmentEditor fragment={cdsFragment()} onSave={() => {}} onClose={() => {}} />);
+    // Open protein panel (mode=edit)
+    fireEvent.click(screen.getByRole('button', { name: /Белок \(обзор\)/ }));
+    const editAAs = Array.from(document.querySelectorAll('span'))
+      .filter(s => s.textContent?.length === 1 && /[MAC*]/.test(s.textContent) && s.getAttribute('title'));
+    expect(editAAs.length).toBeGreaterThan(0);
+    for (const sp of editAAs) expect(sp.style.cursor).toBe('default');
 
-    // Banner is gone now that mode=mutagenesis
-    expect(screen.queryByText(/Режим просмотра/)).toBeNull();
-    // The mutagenesis radio is now aria-checked
+    // Switch to mutagenesis mode, protein panel still read-only
     const radios = screen.getAllByRole('radio');
-    const mutRadio = radios.find(r => /Мутагенез/.test(r.textContent));
-    expect(mutRadio.getAttribute('aria-checked')).toBe('true');
-  });
-
-  it('tab=regions + mode=edit: AA span has cursor:default and no onClick', () => {
-    render(<FragmentEditor fragment={cdsFragment()} onSave={() => {}} onClose={() => {}} />);
-    fireEvent.click(screen.getByRole('button', { name: /🧬 Белок/ }));
-
-    // Find AA span (has title containing "Mpos" like "M1" or similar) — grab first child span with single-letter AA
-    // The protein view renders each AA as a span. In edit mode, cursor must be default.
-    const aaSpans = Array.from(document.querySelectorAll('span')).filter(s => {
-      const txt = s.textContent;
-      return txt && txt.length === 1 && /[A-Z*]/.test(txt) && s.getAttribute('title');
-    });
-    expect(aaSpans.length).toBeGreaterThan(0);
-
-    // All AA spans should have cursor: default in edit mode
-    for (const sp of aaSpans) {
-      expect(sp.style.cursor).toBe('default');
-    }
+    fireEvent.click(radios.find(r => /Мутагенез/.test(r.textContent)));
+    const mutAAs = Array.from(document.querySelectorAll('span'))
+      .filter(s => s.textContent?.length === 1 && /[MAC*]/.test(s.textContent) && s.getAttribute('title'));
+    // Some AA spans belong to protein panel, some to sequence codon grid.
+    // Protein panel AAs always have cursor:default; codon grid AAs have inline
+    // onClick in mutagenesis. Filter by style presence — protein panel applies
+    // cursor:default via inline style, codon grid uses class-based cursor.
+    const panelAAs = mutAAs.filter(sp => sp.style.cursor === 'default');
+    expect(panelAAs.length).toBeGreaterThan(0);
   });
 });
