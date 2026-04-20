@@ -1,8 +1,8 @@
 # PROJECT_STATE.md — BodgeGene
 
-> **Обновлено:** 20 апреля 2026
-> **Версия:** v0.5.0-alpha (~228 коммитов)
-> **Тесты:** 749 (637 Vitest + 112 pytest)
+> **Обновлено:** 21 апреля 2026
+> **Версия:** v0.5.0-alpha (~237 коммитов)
+> **Тесты:** 812 (700 Vitest + 112 pytest)
 
 ---
 
@@ -106,6 +106,41 @@
 ---
 
 ## Журнал сессий
+
+### Сессия 21.04.2026 — Sprint 1.6 «Мутагенез UX v2.1» (partial visual acceptance)
+
+После технической приёмки Sprint 1.5 (663 Vitest, 4 коммита K1–K4) визуальная приёмка выявила 4 проблемы архитектурного уровня в K2 mode switcher. Sprint 1.6 закрывал их 4 коммитами:
+
+- **K5** (`c899f6e`): белок read-only в `mode='edit'` — баннер «Режим просмотра» + кнопка «→ Мутагенез», AA-clicks no-op. Биологическое обоснование: bookkeeping белка без кодона невозможен.
+- **K6** (`acbf515`): новый `lib/split-annotations.js::trimAnnotationsForSubFragment` с биологически корректными правилами (signal_peptide drop, CDS/gene rename с (5'/3' trimmed), point-like drop на границе). Заменил coordinate-only inline-логику в `handleSaveFragment`.
+- **K8** (`b2ac6ec`): `computeMutationHighlights(fragment, parent)` через `sequenceDiff` → Map\<ntPos, 'silent'|'nonsilent'\>. Red/yellow подсветка в DNA и protein views. Fallback на `fragment.mutations` когда нет parent.
+- **K7** (`d110272`): split-группа на canvas. `splitGroupId` + метаданные на sub-фрагментах. `DesignCanvas` оборачивает consecutive same-groupId в `.split-group-container` с 4 визуальными эффектами (пунктирная рамка, фон, badge, линия). Internal/external junction routing сохраняет цепочечную семантику.
+
+Тесты: 663 → **700** (+37). Build clean на всех четырёх коммитах.
+
+**Визуальная приёмка — partial acceptance.** Игорь протестировал на Gibson сборке HygroR+EGFP → обнаружил 3 критические проблемы и 1 архитектурный запрос:
+
+- **V15** — `FragmentEditor.isMutated` использует `m.label?.includes(String(pos))` — substring match вместо числового сравнения. Для mutations с номерами `G26A, R135A, G77C, C403G, G404C` любая AA-позиция, номер которой встречается как подстрока, подсвечивается ложно. Фикс в Sprint 1.7 K10 (Unified Editor переписывает рендер).
+- **V16** — `computeMutationHighlights` игнорирует `fragment.templateStart`. Для HygroR_2 (templateStart=42) diff с parent HygroR сравнивает «в лоб» → показывает всё как мутации. Фикс в Sprint 1.7 K9.
+- **V17** — одиночный линейный фрагмент рендерит decorative 30-bp overlap-junction справа. Нужен явный topology toggle. Фикс в Sprint 1.7 K12.
+- **Архитектурный запрос:** убрать tabs (Последовательность / Белок) из FragmentEditor. Последовательность — primary view, аннотации/белок — панель под ней. Mode (Правка/Мутагенез) остаётся как ортогональная ось. Реализация в Sprint 1.7 K10 Unified Editor.
+
+**Решение:** Sprint 1.6 закрыт **partial** — технически реализованные фичи (K5–K8) остаются в ветке, все 700 тестов зелёные, билд чистый. Три новых бага (V15/V16/V17) + архитектурный запрос идут в Sprint 1.7. K2 mode switcher, `switchMode` helper и identity-guard в `handleSaveFragment` — база, на которую Sprint 1.7 K10 накладывает Unified Editor рефакторинг.
+
+Спеку Sprint 1.7 пишет Claude Chat в следующей сессии.
+
+### Сессия 21.04.2026 — Sprint 1.5 «Мутагенез v2» (formal acceptance, visual partial)
+
+После Sprint 1 + визуальной приёмки сформирована спека `docs/SPRINT_1_5_MUTAGENESIS_V2.md` на 4 фикса мутагенеза. Реализованы в 4 коммитах:
+
+- **K1 V14** (`f342c57`): `chooseStrategy(mutations, fragmentContext)` — KLD разрешён только при `topology==='circular' && isStandalone===true`. Linear/non-standalone → `two_fragment`/`multi_fragment` независимо от числа мутаций. Для single-mutation linear cut ставится в позиции мутации → мутация в overlap-зоне. `handleSaveFragment` + `MutagenesisWizard.compute` прокидывают context. +15 тестов.
+- **K4 V11** (`67d2269`): KLD primers теперь с реальными Tm/GC через `calcTmNN` + готовую `gcPercent` из `tm-calculator.js` (DRY, не создавали новый `gcPctInt` helper из спеки CLEANUP_DEAD_CODE.md). `tmFull === tmBinding` для KLD (no tail). +2 теста.
+- **K3 V13** (`e983fed`): Новое поле `uiSlice.mutagenesisInitialPlasmid` + setter. `PlasmidUseWizard` (оба пути — useEffect и menu-click при `presetMode='mutate'`) сохраняет plasmid перед закрытием. `MutagenesisWizard` принимает `initialTemplateSeq/Name/Organism/CdsStart/CdsEnd`, при наличии `initialTemplateSeq` стартует на Step 2. Initial seq санитизируется на mount. +3 теста.
+- **K2 V12** (`c394c64`): Top-level mode switcher `edit | mutagenesis` в `FragmentEditor` (radio над tabs). AA-popup заблокирован в edit mode; DNA handlers не пишут в mutations в edit mode. Quick actions disabled в mutagenesis. `handleSave` разделён на `handleSaveEdit` (+editHistory writer) и `handleSaveMutagenesis`. Save button routed по mode. `switchMode` helper с confirm при накопленных mutations. +6 integration-тестов.
+
+Тесты: 637 → **663** (+26). Build clean.
+
+**Визуальная приёмка — partial.** K1/K3/K4 приняты. K2 технически правильный, но визуально обнаружены 4 проблемы (см. Sprint 1.6 сессия выше) → доработки в Sprint 1.6 и далее в Sprint 1.7.
 
 ### Сессия 20.04.2026 — Визуальная приёмка Sprint 1 + планирование Sprint 1.5
 
