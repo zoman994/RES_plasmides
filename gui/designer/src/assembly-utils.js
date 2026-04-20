@@ -2,6 +2,7 @@
  * Assembly utility functions — pure logic, no React/store dependency.
  * Extracted from App.jsx for reuse and testability.
  */
+import { expectedJunctionCount } from './components/utils/fragment-topology';
 
 /** Estimate assembly efficiency based on fragment count and method. */
 export function estimateEfficiency(count, method) {
@@ -42,9 +43,11 @@ export function planAssemblyStages(frags, _method, maxParts) {
   return stages;
 }
 
-/** Build plain junctions array (no auto-adjust, used after splits). */
+/** Build plain junctions array (no auto-adjust, used after splits).
+ *  K12 — uses expectedJunctionCount for the single-fragment V17 fix.
+ */
 export function buildPlainJunctions(frags, asmType, isCirc) {
-  const count = isCirc ? frags.length : Math.max(0, frags.length - 1);
+  const count = expectedJunctionCount(frags, isCirc);
   return Array.from({ length: count }, () => ({
     type: asmType === 'golden_gate' ? 'golden_gate' : 'overlap',
     overlapMode: 'split', overlapLength: 30, tmTarget: 62, calcMode: 'length',

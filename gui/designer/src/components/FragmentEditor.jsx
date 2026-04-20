@@ -212,7 +212,7 @@ const DOMAINS_LS_KEY = 'pvcs-parts-domains';
 function loadSavedDomains(id) { try { return JSON.parse(localStorage.getItem(DOMAINS_LS_KEY) || '{}')[id]; } catch { return null; } }
 function persistDomains(id, domains) { try { const a = JSON.parse(localStorage.getItem(DOMAINS_LS_KEY) || '{}'); a[id] = domains; localStorage.setItem(DOMAINS_LS_KEY, JSON.stringify(a)); } catch {} }
 
-export default function FragmentEditor({ fragment, onSave, onClose, onColorChange, onSaveAsVariant }) {
+export default function FragmentEditor({ fragment, onSave, onClose, onColorChange, onSaveAsVariant, assemblyCircular = false }) {
   // CDS-like if fragment type is CDS or any annotation region is CDS
   const hasCDSRegion = (fragment.annotations || []).some(a => a.level === 'region' && (a.type === 'CDS' || a.type === 'gene' || a.type === 'marker'));
   const isCDS = fragment.type === 'CDS' || hasCDSRegion;
@@ -236,6 +236,14 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
   const [sequenceView, setSequenceView] = useState('sub'); // 'sub' | 'full'
   const fullViewActive = hasFullView && sequenceView === 'full';
   const fullViewHighlight = useMemo(() => computeFullViewHighlights(fragment), [fragment]);
+
+  // K12 (Sprint 1.7) — per-fragment topology toggle. Optional field on fragment;
+  // fallback to assembly-level `assemblyCircular` (passed as prop from App.jsx).
+  const [topology, setTopology] = useState(
+    fragment.topology === 'circular' || fragment.topology === 'linear'
+      ? fragment.topology
+      : (assemblyCircular ? 'circular' : 'linear')
+  );
 
   // K8 — mutation highlights relative to parent part. Recomputed when sequence
   // or parent changes. Returns Map<ntPos, 'silent'|'nonsilent'>.
@@ -433,6 +441,7 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
     onSave({ ...fragment, sequence: seq, length: seq.length, domains, annotations,
       customColor: customColor || undefined, editedAt: new Date().toISOString(),
       editHistory: [...(fragment.editHistory || []), ...newEntry],
+      topology, // K12
       // mutations NOT passed — bookkeeping edit, not mutagenesis.
     });
     onClose();
@@ -446,6 +455,7 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
     onSave({ ...fragment, name, sequence: seq, length: seq.length, domains, annotations,
       customColor: customColor || undefined,
       mutations: mutations.length > 0 ? [...(fragment.mutations || []), ...mutations] : fragment.mutations,
+      topology, // K12
       editedAt: new Date().toISOString() });
     onClose();
   };
@@ -730,6 +740,21 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
             {'👁'} Виртуальный вид: показана полная мутант-последовательность родителя. Редактирование доступно в виде «Фрагмент».
           </div>
         )}
+
+        {/* K12 (Sprint 1.7) — per-fragment topology toggle */}
+        <div className="flex items-center gap-2 text-[10px] mb-2">
+          <span className="text-gray-500">Топология:</span>
+          <div className="flex rounded-lg overflow-hidden border">
+            <button onClick={() => setTopology('linear')}
+              className={`px-2 py-0.5 ${topology === 'linear' ? 'bg-gray-700 text-white' : 'hover:bg-gray-50'}`}>
+              {'📏'} Линейная
+            </button>
+            <button onClick={() => setTopology('circular')}
+              className={`px-2 py-0.5 ${topology === 'circular' ? 'bg-blue-600 text-white' : 'hover:bg-gray-50'}`}>
+              {'⭕'} Кольцевая
+            </button>
+          </div>
+        </div>
 
         {/* K10 — tabs removed. Sequence view is primary; annotations/mutations/protein are collapsible panels below. */}
         {mode === 'edit' && seqChanged && (

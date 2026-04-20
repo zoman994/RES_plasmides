@@ -286,6 +286,7 @@ export function useFragmentHandlers() {
       splitGroupFullSequence,
       splitGroupFullLength: splitGroupFullSequence.length,
       splitGroupFullParentMutations,
+      topology: 'linear', // K12 — split unavoidably linearizes sub-fragments
       annotations: trimAnnotationsForSubFragment(original.annotations, sf),
     }));
 
@@ -332,6 +333,23 @@ export function useFragmentHandlers() {
     }
   };
 
+  // K12 (Sprint 1.7) — per-fragment topology toggle.
+  const toggleFragmentTopology = (index) => {
+    const active = getActive();
+    if (!active) return;
+    const assemblyCircular = !!active.circular;
+    pushUndo();
+    updateActive({
+      fragments: fragments.map((f, i) => {
+        if (i !== index) return f;
+        const current = f.topology === 'circular' || f.topology === 'linear'
+          ? f.topology
+          : (assemblyCircular ? 'circular' : 'linear');
+        return { ...f, topology: current === 'circular' ? 'linear' : 'circular' };
+      }),
+    });
+  };
+
   const handleSwapVariant = (fragIndex, variant) => {
     updateActive({
       fragments: fragments.map((f, i) => i === fragIndex ? {
@@ -369,6 +387,7 @@ export function useFragmentHandlers() {
         splitGroupFullSequence,
         splitGroupFullLength: splitGroupFullSequence.length,
         splitGroupFullParentMutations,
+        topology: 'linear', // K12 — split unavoidably linearizes sub-fragments
       }),
     }));
 
@@ -473,5 +492,6 @@ export function useFragmentHandlers() {
     handleFragmentSplit, handleSaveFragment, handleSaveAsVariant,
     handleSwapVariant, handleMutagenesis, handleReusePrimer,
     completeAssembly, clearAssembly, addCustomFragment,
+    toggleFragmentTopology,
   };
 }

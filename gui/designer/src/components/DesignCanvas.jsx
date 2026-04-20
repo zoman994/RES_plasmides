@@ -14,6 +14,7 @@ import QuickStart from './QuickStart';
 import ImportPrompt from './ImportPrompt';
 import { useStore, useFragments, useJunctions, usePrimers, useCustomPrimers } from '../store';
 import { handleFileImport } from '../file-import';
+import { getFragmentTopology, expectedJunctionCount } from './utils/fragment-topology';
 
 function fragColor(frag, idx) {
   return isMarker(frag.name) ? '#F0E442' : getFragColor(frag.type, idx);
@@ -31,6 +32,7 @@ export default function DesignCanvas({
   onDrop, onRemove, onToggleAmplification, onReorder, onFlip,
   pcrSizes = [], onSplitSignal, onEditFragment,
   onSwapVariant, onAddCustomPrimer, onJunctionChange, onToggleCircular,
+  onToggleFragmentTopology,
 }) {
   // ═══ Store selectors (granular) ═══
   const fragments  = useFragments();
@@ -163,7 +165,7 @@ export default function DesignCanvas({
 
         const asmType = active.assemblyType || 'overlap';
         const isCirc = active.circular || false;
-        const juncCount = isCirc ? newFragments.length : Math.max(0, newFragments.length - 1);
+        const juncCount = expectedJunctionCount(newFragments, isCirc); // K12 / V17
         const defaultJ = () => ({
           type: asmType === 'golden_gate' ? 'golden_gate' : 'overlap',
           overlapMode: 'split', overlapLength: 30, tmTarget: 62, calcMode: 'length',
@@ -455,14 +457,20 @@ export default function DesignCanvas({
                                   fwdPrimer={fwdPrimer} revPrimer={revPrimer}
                                   circularHint={circular && (i === 0 || i === n - 1) ? (i === 0 ? 'first' : 'last') : null}
                                   variants={parts.length > 0 ? collectFamily(frag.id, parts).filter(v => v.id !== frag.id) : []}
-                                  onSwapVariant={onSwapVariant} />
+                                  onSwapVariant={onSwapVariant}
+                                  onToggleFragmentTopology={onToggleFragmentTopology} />
                               </div>
                             );
                           };
 
-                          const renderJunction = (i, frag) => (
-                            i < junctions.length && (i < n - 1 || circular) && (
-                              <div className="flex flex-col items-center shrink-0" style={{ minWidth: n > 12 ? 44 : 80 }}>
+                          const renderJunction = (i, frag) => {
+                            // V17 / K12 — single-fragment canvases never render a decorative
+                            // junction: linear has nothing to connect, circular shows the
+                            // separate arc indicator below. Guard uses the canonical count.
+                            if (expectedJunctionCount(fragments, circular) === 0) return null;
+                            if (!(i < junctions.length && (i < n - 1 || circular))) return null;
+                            return (
+                              <div data-junction className="flex flex-col items-center shrink-0" style={{ minWidth: n > 12 ? 44 : 80 }}>
                                 <JunctionBlock junction={junctions[i]} index={i}
                                   leftName={frag.name} rightName={fragments[(i + 1) % n]?.name || '?'}
                                   leftFrag={frag} rightFrag={fragments[(i + 1) % n]}
@@ -477,8 +485,8 @@ export default function DesignCanvas({
                                   leftColor={fragColor(frag, i)}
                                   rightColor={fragColor(fragments[(i + 1) % n], (i + 1) % n)} />
                               </div>
-                            )
-                          );
+                            );
+                          };
 
                           return segments.map((seg, si) => {
                             const isGroup = !!seg.gid && seg.items.length >= 2;
@@ -541,8 +549,8 @@ export default function DesignCanvas({
                       {ri < rows.length - 1 && <div className="h-2" />}
                     </div>
                   ))}
-                  {/* Circular arc */}
-                  {circular && n > 1 && (
+                  {/* Circular arc — n>=2 follows assembly.circular; n=1 honors per-fragment topology (K12). */}
+                  {((n >= 2 && circular) || (n === 1 && getFragmentTopology(fragments[0], circular) === 'circular')) && (
                     <div className="relative mx-4 mt-1">
                       <div className="border-b-2 border-l-2 border-r-2 border-dashed border-blue-400 rounded-b-[20px] h-4 mx-2 opacity-40" />
                       <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 bg-white px-2 rounded">
@@ -624,7 +632,7 @@ export default function DesignCanvas({
 
                     const asmType = active.assemblyType || 'overlap';
                     const isCirc = active.circular || false;
-                    const juncCount = isCirc ? newFragments.length : Math.max(0, newFragments.length - 1);
+                    const juncCount = expectedJunctionCount(newFragments, isCirc); // K12 / V17
                     const defaultJ = () => ({ type: asmType === 'golden_gate' ? 'golden_gate' : 'overlap',
                       overlapMode: 'split', overlapLength: 30, tmTarget: 62, calcMode: 'length' });
                     const newJunctions = [];
@@ -696,7 +704,7 @@ export default function DesignCanvas({
 
                 const asmType = active.assemblyType || 'overlap';
                 const isCirc = active.circular || false;
-                const count = isCirc ? expanded.length : Math.max(0, expanded.length - 1);
+                const count = expectedJunctionCount(expanded, isCirc); // K12 / V17
                 const newJunctions = Array.from({ length: count }, () => ({
                   type: asmType === 'golden_gate' ? 'golden_gate' : 'overlap',
                   overlapMode: 'split', overlapLength: 30, tmTarget: 62, calcMode: 'length',

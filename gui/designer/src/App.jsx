@@ -132,7 +132,7 @@ export default function App() {
   const generate = useGeneratePrimers();
   const {
     handleFragmentSplit, handleSaveFragment, handleSaveAsVariant,
-    handleSwapVariant, handleMutagenesis, handleReusePrimer,
+    handleSwapVariant, handleMutagenesis, handleReusePrimer, toggleFragmentTopology,
     completeAssembly, clearAssembly, addCustomFragment,
   } = useFragmentHandlers();
 
@@ -497,6 +497,7 @@ export default function App() {
               onEditFragment={setEditTarget}
               onSwapVariant={handleSwapVariant}
               onToggleCircular={toggleCircular}
+              onToggleFragmentTopology={toggleFragmentTopology}
               onAddCustomPrimer={addCustomPrimer} />
 
             {calculated && primers.length > 0 && !active.completed && (
@@ -706,6 +707,7 @@ export default function App() {
             });
           }}
           onSaveAsVariant={handleSaveAsVariant}
+          assemblyCircular={circular}
         />
       )}
       {showPartsLib && (
@@ -751,6 +753,7 @@ export default function App() {
             const idx = fragments.findIndex(f => f.id === globalCDSPart.id || f.name === globalCDSPart.name);
             if (idx >= 0) updateActive({ fragments: fragments.map((f, i) => i === idx ? { ...f, customColor: color } : f) });
           }}
+          assemblyCircular={globalCDSPart.topology === 'circular'}
         />
       )}
       {showDataMgr && (

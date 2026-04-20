@@ -32,6 +32,7 @@ export default function PartBlock({
   fwdPrimer, revPrimer, circularHint,
   variants, onSwapVariant,
   compact,
+  onToggleFragmentTopology,
   onMutagenesis, onReplace, onAddTag, onSaveToLibrary,
 }) {
   // ═══ Store selector (granular) ═══
@@ -471,6 +472,14 @@ export default function PartBlock({
               ] : []),
               { icon: '\uD83D\uDD04', label: 'Заменить из библиотеки...', onClick: () => setReplacingFragment({ index, type: fragment.type }), description: 'Выбрать аналог по типу' },
               { icon: '\uD83D\uDCE6', label: 'Сохранить в библиотеку', onClick: () => saveFragmentToLibrary(index) },
+              { divider: true },
+              // K12 — per-fragment topology toggle
+              ...(onToggleFragmentTopology ? [{
+                icon: fragment.topology === 'circular' ? '\uD83D\uDCCF' : '\u2B55',
+                label: fragment.topology === 'circular' ? 'Сделать линейной' : 'Сделать кольцевой',
+                onClick: () => onToggleFragmentTopology(index),
+                description: 'Топология фрагмента',
+              }] : []),
               { divider: true },
               { icon: '\uD83D\uDDD1', label: 'Удалить', onClick: () => onRemove(index), shortcut: 'Del', danger: true },
             ];
