@@ -27,7 +27,12 @@ import { useStore } from '../store';
  * Fallback (no parent): use fragment.mutations list, mark conservatively as
  *   'nonsilent'. Insertions/deletions span `insertSequence.length` / `deletedBp`.
  *
- * @param {Object} fragment — { sequence, annotations?, parentId?, mutations? }
+ * K9/V16 — honors `fragment.templateStart`: for split sub-fragments whose
+ * sequence is a window of the parent gene, we slice parent at templateStart
+ * before diffing. Without this the diff treats parent[0] as aligned to
+ * fragment[0] and reports the entire sub-fragment as mutated.
+ *
+ * @param {Object} fragment — { sequence, annotations?, parentId?, mutations?, templateStart? }
  * @param {Object|null} parent — parts library entry or null
  * @returns {Map<number, 'silent'|'nonsilent'>}
  */
@@ -36,10 +41,12 @@ export function computeMutationHighlights(fragment, parent) {
   if (!fragment?.sequence) return map;
 
   if (parent?.sequence) {
+    const offset = fragment.templateStart || 0;
+    const parentSlice = parent.sequence.slice(offset, offset + fragment.sequence.length);
     const cdsRegions = (fragment.annotations || [])
       .filter(a => a.level === 'region' && (a.type === 'CDS' || a.type === 'gene'))
       .map(a => ({ start: a.start, end: a.end }));
-    const diff = sequenceDiff(parent.sequence, fragment.sequence, cdsRegions);
+    const diff = sequenceDiff(parentSlice, fragment.sequence, cdsRegions);
     for (const sub of diff.substitutions) {
       const kind = sub.aaChange?.silent === true ? 'silent' : 'nonsilent';
       map.set(sub.pos, kind);
@@ -56,6 +63,28 @@ export function computeMutationHighlights(fragment, parent) {
     for (let i = pos; i < pos + len; i++) map.set(i, 'nonsilent');
   }
   return map;
+}
+
+/**
+ * K9/V15 — check whether mutation `m` hits the AA at 1-based position `aaPos`.
+ * Always numeric — never label-based.
+ *
+ * Replaces the previous `m.label?.includes(String(pos))` substring match,
+ * which false-positived any AA whose digits appeared inside another label
+ * (pos=26 matched "G26A", "R135A", "C403G", …).
+ */
+export function mutationHitsAA(m, aaPos) {
+  if (!m) return false;
+  const nt = m.codonStart ?? m.position;
+  if (nt == null) return false;
+  const aaStart = (aaPos - 1) * 3;
+  const aaEnd = aaPos * 3;
+  const span = m.type === 'insertion' || m.type === 'nt_insertion'
+    ? (m.insertSequence?.length || 3)
+    : m.type === 'deletion' || m.type === 'nt_deletion'
+    ? (m.deletedBp || 3)
+    : 3;
+  return nt < aaEnd && nt + span > aaStart;
 }
 
 // Standard palette from design system
@@ -849,7 +878,7 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
                         // Find detail annotation covering this AA position (nt-based)
                         const det = details.find(d => ntPos >= d.start && ntPos < d.end);
                         const detColor = det ? (det.color || getColor(det.type)) : null;
-                        const isMutated = mutations.some(m => m.label?.includes(String(pos)));
+                        const isMutated = mutations.some(m => mutationHitsAA(m, pos));
                         const gap10 = ci > 0 && ci % 10 === 0;
                         // K8 — highlight codon if any of its 3 nt positions carries a diff.
                         // Any nonsilent wins over silent (stricter color).

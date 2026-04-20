@@ -85,4 +85,30 @@ describe('computeMutationHighlights', () => {
     expect(computeMutationHighlights({ sequence: 'ATG' }, null).size).toBe(0);
     expect(computeMutationHighlights({ sequence: 'ATG', mutations: [] }, null).size).toBe(0);
   });
+
+  it('K9/V16: honors templateStart when diffing against parent', () => {
+    // Parent 51 bp: 42 A's, then ATGGCCTAA (M-A-*).
+    // Sub-fragment carries only the CDS window (templateStart=42, length=9).
+    const parent = { sequence: 'A'.repeat(42) + 'ATGGCCTAA' };
+    const fragment = {
+      sequence: 'ATGACCTAA',           // M-T-* — nt 3 mutated relative to parent[42..51]
+      templateStart: 42,
+      annotations: [{ level: 'region', type: 'CDS', start: 0, end: 9 }],
+    };
+    const m = computeMutationHighlights(fragment, parent);
+    // Only the one real sub in fragment-local coords (pos 3) is flagged.
+    expect(m.size).toBe(1);
+    expect(m.get(3)).toBe('nonsilent');
+  });
+
+  it('K9/V16: templateStart=0 (regular fragment) matches old behavior', () => {
+    const parent = { sequence: 'ATGGCCTAA' };
+    const fragment = {
+      sequence: 'ATGACCTAA',
+      templateStart: 0,
+      annotations: [{ level: 'region', type: 'CDS', start: 0, end: 9 }],
+    };
+    const m = computeMutationHighlights(fragment, parent);
+    expect(m.get(3)).toBe('nonsilent');
+  });
 });

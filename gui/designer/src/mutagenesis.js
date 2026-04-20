@@ -315,6 +315,8 @@ export function inlineDeletion(sequence, aaPosition, count) {
   const fromAA = CODON_TABLE[sequence.slice(start, start + 3).toUpperCase()] || '?';
   return {
     sequence: sequence.slice(0, start) + sequence.slice(start + delLen),
+    codonStart: start,
+    position: start,
     label: count === 1 ? `Δ${fromAA}${aaPosition + 1}` : `Δ${aaPosition + 1}-${aaPosition + count}`,
     deletedBp: delLen,
   };
