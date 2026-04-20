@@ -255,6 +255,10 @@ export function useFragmentHandlers() {
       return;
     }
 
+    // K7 — tag all sub-fragments with a shared splitGroupId so DesignCanvas
+    // can wrap them in a visual group (dashed border + badge + connector).
+    const splitGroupId = `sg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+
     // Build N new fragments from strategy (each uses WT template for PCR).
     const newFragments = result.fragments.map((sf, i) => ({
       id: `mf${Date.now()}_${i}_${Math.random().toString(36).slice(2, 4)}`,
@@ -269,6 +273,10 @@ export function useFragmentHandlers() {
       templateEnd: sf.templateEnd,
       partId: i === 0 ? variantId : undefined,
       isMutagenesis: true,
+      splitGroupId,
+      splitGroupParentName: original.name,
+      splitGroupIndex: i,
+      splitGroupTotal: result.fragments.length,
       annotations: trimAnnotationsForSubFragment(original.annotations, sf),
     }));
 
@@ -329,10 +337,23 @@ export function useFragmentHandlers() {
   const handleMutagenesis = (result) => {
     pushUndo();
 
-    const baseFragments = result.fragments.map(f => ({
+    // K7 — tag split sub-fragments with a shared splitGroupId (not KLD — single fragment).
+    const isSplit = result.strategy !== 'kld' && result.fragments.length > 1;
+    const splitGroupId = isSplit
+      ? `sg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
+      : null;
+    const parentName = result.templateName || 'template';
+
+    const baseFragments = result.fragments.map((f, i) => ({
       ...f,
       id: `mf${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
       isMutagenesis: true,
+      ...(splitGroupId && {
+        splitGroupId,
+        splitGroupParentName: parentName,
+        splitGroupIndex: i,
+        splitGroupTotal: result.fragments.length,
+      }),
     }));
 
     // Build primers & protocolSteps through the shared payload helper.

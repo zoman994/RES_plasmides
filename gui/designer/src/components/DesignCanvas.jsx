@@ -424,19 +424,29 @@ export default function DesignCanvas({
                       <div className="flex items-center gap-1 w-fit">
                         {ri === 0 && <div className={`w-1.5 bg-gray-300 rounded-l shrink-0 ${hasPrimers ? 'h-[72px]' : 'h-14'}`} />}
                         {ri > 0 && <div className="text-[9px] text-gray-400 px-1 shrink-0">{'↳'}</div>}
-                        {row.map(({ frag, idx: i }) => {
-                          let fwdPrimer = null, revPrimer = null;
-                          if (frag.subFragments?.length > 0) {
-                            const firstName = frag.subFragments[0].name;
-                            const lastName = frag.subFragments[frag.subFragments.length - 1].name;
-                            fwdPrimer = primers.find(p => p.direction === 'forward' && p.name.includes(firstName)) || null;
-                            revPrimer = primers.find(p => p.direction === 'reverse' && p.name.includes(lastName)) || null;
-                          } else {
-                            fwdPrimer = primers.find(p => p.direction === 'forward' && p.name.includes(frag.name)) || null;
-                            revPrimer = primers.find(p => p.direction === 'reverse' && p.name.includes(frag.name)) || null;
+                        {(() => {
+                          // K7 — split row into segments of consecutive fragments sharing a splitGroupId.
+                          // Segment with ≥2 items and a groupId is rendered inside a visual group container.
+                          const segments = [];
+                          for (const it of row) {
+                            const gid = it.frag.splitGroupId || null;
+                            const cur = segments[segments.length - 1];
+                            if (cur && cur.gid && cur.gid === gid) cur.items.push(it);
+                            else segments.push({ gid, items: [it] });
                           }
-                          return (
-                            <div key={frag.id || i} className="flex items-center">
+
+                          const renderFrag = ({ frag, idx: i }) => {
+                            let fwdPrimer = null, revPrimer = null;
+                            if (frag.subFragments?.length > 0) {
+                              const firstName = frag.subFragments[0].name;
+                              const lastName = frag.subFragments[frag.subFragments.length - 1].name;
+                              fwdPrimer = primers.find(p => p.direction === 'forward' && p.name.includes(firstName)) || null;
+                              revPrimer = primers.find(p => p.direction === 'reverse' && p.name.includes(lastName)) || null;
+                            } else {
+                              fwdPrimer = primers.find(p => p.direction === 'forward' && p.name.includes(frag.name)) || null;
+                              revPrimer = primers.find(p => p.direction === 'reverse' && p.name.includes(frag.name)) || null;
+                            }
+                            return (
                               <div className="mx-1">
                                 <PartBlock fragment={frag} index={i} fragmentCount={n}
                                   onRemove={onRemove} onToggleAmplification={onToggleAmplification}
@@ -447,26 +457,85 @@ export default function DesignCanvas({
                                   variants={parts.length > 0 ? collectFamily(frag.id, parts).filter(v => v.id !== frag.id) : []}
                                   onSwapVariant={onSwapVariant} />
                               </div>
-                              {i < junctions.length && (i < n - 1 || circular) && (
-                                <div className="flex flex-col items-center shrink-0" style={{ minWidth: n > 12 ? 44 : 80 }}>
-                                  <JunctionBlock junction={junctions[i]} index={i}
-                                    leftName={frag.name} rightName={fragments[(i + 1) % n]?.name || '?'}
-                                    leftFrag={frag} rightFrag={fragments[(i + 1) % n]}
-                                    leftPCR={frag.needsAmplification !== false}
-                                    rightPCR={fragments[(i + 1) % n]?.needsAmplification !== false}
-                                    onChange={cfg => onJunctionChange(i, cfg)}
-                                    fragmentCount={n}
-                                    allOverhangs={allOverhangs} />
-                                  <JunctionDNA junction={junctions[i]} calculated={calculated}
-                          primers={primers}
-                          leftFragment={frag} rightFragment={fragments[(i + 1) % n]}
-                          leftColor={fragColor(frag, i)}
-                          rightColor={fragColor(fragments[(i + 1) % n], (i + 1) % n)} />
-                      </div>
-                    )}
-                  </div>
-                );
-                          })}
+                            );
+                          };
+
+                          const renderJunction = (i, frag) => (
+                            i < junctions.length && (i < n - 1 || circular) && (
+                              <div className="flex flex-col items-center shrink-0" style={{ minWidth: n > 12 ? 44 : 80 }}>
+                                <JunctionBlock junction={junctions[i]} index={i}
+                                  leftName={frag.name} rightName={fragments[(i + 1) % n]?.name || '?'}
+                                  leftFrag={frag} rightFrag={fragments[(i + 1) % n]}
+                                  leftPCR={frag.needsAmplification !== false}
+                                  rightPCR={fragments[(i + 1) % n]?.needsAmplification !== false}
+                                  onChange={cfg => onJunctionChange(i, cfg)}
+                                  fragmentCount={n}
+                                  allOverhangs={allOverhangs} />
+                                <JunctionDNA junction={junctions[i]} calculated={calculated}
+                                  primers={primers}
+                                  leftFragment={frag} rightFragment={fragments[(i + 1) % n]}
+                                  leftColor={fragColor(frag, i)}
+                                  rightColor={fragColor(fragments[(i + 1) % n], (i + 1) % n)} />
+                              </div>
+                            )
+                          );
+
+                          return segments.map((seg, si) => {
+                            const isGroup = !!seg.gid && seg.items.length >= 2;
+                            const last = seg.items[seg.items.length - 1];
+                            const innerContent = seg.items.map(({ frag, idx: i }, k) => (
+                              <div key={frag.id || i} className="flex items-center">
+                                {renderFrag({ frag, idx: i })}
+                                {/* Internal junction — only when there's a next item in the SAME segment */}
+                                {k < seg.items.length - 1 && renderJunction(i, frag)}
+                              </div>
+                            ));
+                            // External junction after the segment (leads to the next segment / next row / circular close)
+                            const externalJunction = renderJunction(last.idx, last.frag);
+                            if (isGroup) {
+                              const parentName = seg.items[0].frag.splitGroupParentName || 'split';
+                              return (
+                                <div key={`seg-${si}`} className="flex items-center">
+                                  <div className="split-group-container relative flex items-center"
+                                    style={{
+                                      padding: '10px 6px 6px 6px',
+                                      marginTop: '14px',
+                                      border: '2px dashed #a855f7',
+                                      borderRadius: '12px',
+                                      backgroundColor: 'rgba(168, 85, 247, 0.05)',
+                                      gap: '2px',
+                                    }}>
+                                    {/* Badge */}
+                                    <div className="split-group-badge" style={{
+                                      position: 'absolute', top: '-10px', left: '12px',
+                                      backgroundColor: '#a855f7', color: 'white',
+                                      fontSize: '10px', fontWeight: 500, lineHeight: '14px',
+                                      padding: '1px 8px', borderRadius: '8px',
+                                      whiteSpace: 'nowrap', pointerEvents: 'none',
+                                    }}>
+                                      {'🧬'} {parentName} (split: {seg.items.length} частей)
+                                    </div>
+                                    {/* Connector line — subtle horizontal ink behind the fragments */}
+                                    <div className="split-group-connector" style={{
+                                      position: 'absolute', left: '10px', right: '10px',
+                                      top: '50%', height: '1px',
+                                      backgroundColor: 'rgba(168, 85, 247, 0.35)',
+                                      pointerEvents: 'none', zIndex: 0,
+                                    }} />
+                                    {innerContent}
+                                  </div>
+                                  {externalJunction}
+                                </div>
+                              );
+                            }
+                            return (
+                              <div key={`seg-${si}`} className="flex items-center">
+                                {innerContent}
+                                {externalJunction}
+                              </div>
+                            );
+                          });
+                        })()}
                         {ri === rows.length - 1 && !circular && <div className={`w-1.5 bg-gray-300 rounded-r shrink-0 ${hasPrimers ? 'h-[72px]' : 'h-14'}`} />}
                       </div>
                       {ri < rows.length - 1 && <div className="h-2" />}
