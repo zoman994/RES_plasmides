@@ -87,6 +87,26 @@ export function mutationHitsAA(m, aaPos) {
   return nt < aaEnd && nt + span > aaStart;
 }
 
+/**
+ * K11 (Sprint 1.7) — per-nucleotide highlight map for the virtual full-view
+ * of a split group. Positions come directly from the mutation list (not diff),
+ * so all are conservatively marked 'nonsilent'.
+ */
+export function computeFullViewHighlights(fragment) {
+  const map = new Map();
+  const muts = fragment?.splitGroupFullParentMutations || [];
+  for (const m of muts) {
+    const pos = m.codonStart ?? m.position ?? m.dnaPosition ?? 0;
+    const len = m.type === 'insertion' || m.type === 'nt_insertion'
+      ? (m.insertSequence?.length || 3)
+      : m.type === 'deletion' || m.type === 'nt_deletion'
+      ? (m.deletedBp || 3)
+      : 3;
+    for (let i = pos; i < pos + len; i++) map.set(i, 'nonsilent');
+  }
+  return map;
+}
+
 // Standard palette from design system
 const BASE_PALETTE = [
   '#56B4E9', '#009E73', '#D55E00', '#E69F00', '#F0E442',
@@ -209,6 +229,13 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
     protein: false,
   });
   const togglePanel = (id) => setPanelsOpen(p => ({ ...p, [id]: !p[id] }));
+
+  // K11 (Sprint 1.7) — virtual full-gene view for split sub-fragments.
+  // Only shown when fragment.splitGroupFullSequence is set (split-group member).
+  const hasFullView = !!fragment.splitGroupFullSequence;
+  const [sequenceView, setSequenceView] = useState('sub'); // 'sub' | 'full'
+  const fullViewActive = hasFullView && sequenceView === 'full';
+  const fullViewHighlight = useMemo(() => computeFullViewHighlights(fragment), [fragment]);
 
   // K8 — mutation highlights relative to parent part. Recomputed when sequence
   // or parent changes. Returns Map<ntPos, 'silent'|'nonsilent'>.
@@ -676,6 +703,34 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
           </button>
         </div>
 
+        {/* K11 (Sprint 1.7) — virtual full-view toggle for split sub-fragments */}
+        {hasFullView && (
+          <div className="flex items-center gap-2 text-[10px] mb-2">
+            <span className="text-gray-500">Вид:</span>
+            <div className="flex rounded-lg overflow-hidden border">
+              <button onClick={() => setSequenceView('sub')}
+                className={`px-2 py-0.5 ${sequenceView === 'sub' ? 'bg-purple-600 text-white' : 'hover:bg-gray-50'}`}>
+                Фрагмент ({fragment.length} п.н.)
+              </button>
+              <button onClick={() => setSequenceView('full')}
+                className={`px-2 py-0.5 ${sequenceView === 'full' ? 'bg-purple-600 text-white' : 'hover:bg-gray-50'}`}>
+                Полный ген ({fragment.splitGroupFullLength} п.н.)
+              </button>
+            </div>
+            {fullViewActive && (
+              <span className="text-[9px] text-purple-500 ml-auto truncate">
+                Просмотр split-группы · {fragment.splitGroupParentName || ''}
+              </span>
+            )}
+          </div>
+        )}
+
+        {fullViewActive && (
+          <div className="text-[9px] text-purple-700 bg-purple-50 rounded px-2 py-1 mb-2">
+            {'👁'} Виртуальный вид: показана полная мутант-последовательность родителя. Редактирование доступно в виде «Фрагмент».
+          </div>
+        )}
+
         {/* K10 — tabs removed. Sequence view is primary; annotations/mutations/protein are collapsible panels below. */}
         {mode === 'edit' && seqChanged && (
           <div className="text-[9px] text-amber-600 bg-amber-50 rounded px-2 py-1 mb-2">
@@ -688,7 +743,54 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
           </div>
         )}
 
+        {/* K11 — virtual full-view grid (read-only) */}
+        {fullViewActive && (() => {
+          const fullSeq = fragment.splitGroupFullSequence || '';
+          const regionStart = fragment.templateStart || 0;
+          const regionEnd = regionStart + (fragment.length || 0);
+          const PER_LINE = 60;
+          const lines = [];
+          for (let i = 0; i < fullSeq.length; i += PER_LINE) {
+            lines.push({ start: i, slice: fullSeq.slice(i, i + PER_LINE) });
+          }
+          return (
+            <div className="bg-gray-50 rounded-lg p-3 max-h-[240px] overflow-y-auto mb-3 font-mono text-[11px]"
+              data-testid="fragment-editor-full-view">
+              {lines.map(line => (
+                <div key={line.start} className="flex items-start mb-0.5">
+                  <span className="text-gray-400 w-10 text-right mr-2 shrink-0 text-[9px] pt-0.5 select-none">{line.start + 1}</span>
+                  <span>
+                    {line.slice.split('').map((nt, ci) => {
+                      const pos = line.start + ci;
+                      const inRegion = pos >= regionStart && pos < regionEnd;
+                      const mh = fullViewHighlight.get(pos);
+                      const gap = ci > 0 && ci % 10 === 0;
+                      return (
+                        <span key={ci}
+                          className={`rounded ${gap ? 'ml-1' : ''} ${inRegion ? 'bg-purple-100' : 'text-gray-500'}`}
+                          style={{ cursor: 'default',
+                            backgroundColor: mh === 'nonsilent' ? 'rgba(239,68,68,0.35)'
+                              : mh === 'silent' ? 'rgba(234,179,8,0.35)'
+                              : (inRegion ? 'rgba(168,85,247,0.18)' : undefined),
+                            borderBottom: mh ? `2px solid ${mh === 'nonsilent' ? '#ef4444' : '#eab308'}` : 'none',
+                          }}
+                          title={`${nt} · ${pos + 1}${inRegion ? ' · текущий фрагмент' : ''}${mh ? ' · мутация' : ''}`}>
+                          {nt}
+                        </span>
+                      );
+                    })}
+                  </span>
+                </div>
+              ))}
+              <div className="text-[9px] text-gray-400 text-center mt-1">
+                Обзор полной split-группы (read-only). Область текущего sub-фрагмента подсвечена.
+              </div>
+            </div>
+          );
+        })()}
+
         {/* ═══ Sequence view (primary) — behavior controlled by `mode` ═══ */}
+        {!fullViewActive && (<>
         {/* Quick actions — disabled in mutagenesis mode (they're bookkeeping helpers) */}
             <div className="flex flex-wrap gap-1 mb-3">
               {QUICK_ACTIONS.filter(a => !a.forType || a.forType === fragment.type).filter(a => !a.cond || a.cond(seq)).map(a => (
@@ -812,20 +914,23 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
                 )}
               </div>
             )}
+        </>)}
 
             <div className="flex justify-between items-center mb-3">
               <div className="flex gap-3 text-[10px] text-gray-500 flex-wrap">
-                <span>Длина: {seq.length}{diff !== 0 && <span className={diff > 0 ? 'text-green-600' : 'text-red-600'}> ({diff > 0 ? '+' : ''}{diff})</span>}</span>
-                {isCDS && <span className={seq.length % 3 === 0 ? 'text-green-600' : 'text-red-600'}>Рамка: {seq.length % 3 === 0 ? '✓' : `⚠ ост. ${seq.length % 3}`}</span>}
-                {isCDS && <span>ATG: {seq.toUpperCase().startsWith('ATG') ? '✓' : '⚠'}</span>}
-                {isCDS && <span>Стоп: {hasStop(seq) ? `✓ ${seq.slice(-3).toUpperCase()}` : '⚠'}</span>}
-                <span>GC: {(gcContent(seq) * 100).toFixed(1)}%</span>
+                <span>Длина: {fullViewActive ? fragment.splitGroupFullLength : seq.length}{!fullViewActive && diff !== 0 && <span className={diff > 0 ? 'text-green-600' : 'text-red-600'}> ({diff > 0 ? '+' : ''}{diff})</span>}</span>
+                {!fullViewActive && isCDS && <span className={seq.length % 3 === 0 ? 'text-green-600' : 'text-red-600'}>Рамка: {seq.length % 3 === 0 ? '✓' : `⚠ ост. ${seq.length % 3}`}</span>}
+                {!fullViewActive && isCDS && <span>ATG: {seq.toUpperCase().startsWith('ATG') ? '✓' : '⚠'}</span>}
+                {!fullViewActive && isCDS && <span>Стоп: {hasStop(seq) ? `✓ ${seq.slice(-3).toUpperCase()}` : '⚠'}</span>}
+                <span>GC: {(gcContent(fullViewActive ? (fragment.splitGroupFullSequence || '') : seq) * 100).toFixed(1)}%</span>
+                {fullViewActive && <span className="text-purple-500">Только обзор</span>}
               </div>
               <div className="flex gap-2 items-center shrink-0">
-                <button onClick={() => navigator.clipboard.writeText(seq)}
+                <button onClick={() => navigator.clipboard.writeText(fullViewActive ? (fragment.splitGroupFullSequence || '') : seq)}
                   className="text-[10px] text-gray-400 hover:text-gray-600" title="Копировать">{'📋'}</button>
                 <button onClick={() => { setEditMode(m => m === 'view' ? 'edit' : 'view'); setEditingCodon(null); }}
-                  className={`text-[10px] px-2 py-0.5 rounded transition ${editMode === 'edit' ? 'bg-blue-100 text-blue-700' : 'text-blue-600 hover:bg-blue-50'}`}>
+                  disabled={fullViewActive}
+                  className={`text-[10px] px-2 py-0.5 rounded transition disabled:opacity-40 disabled:cursor-not-allowed ${editMode === 'edit' ? 'bg-blue-100 text-blue-700' : 'text-blue-600 hover:bg-blue-50'}`}>
                   {editMode === 'view'
                     ? (isCDS ? '✏️ Редакт. кодоны' : '✏️ Редактировать')
                     : (isCDS ? '🧬 Мутагенез' : '👁 Просмотр')}
@@ -850,9 +955,14 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
             <>
               {/* ── Annotations panel ── */}
               <div className="border rounded-lg mb-3">
-                <PanelHeader id="annotations" title="Аннотации" badge={annotations.length} />
+                <PanelHeader id="annotations" title="Аннотации" badge={fullViewActive ? '—' : annotations.length} />
                 {panelsOpen.annotations && (
                   <div className="px-3 pb-3">
+                    {fullViewActive ? (
+                      <div className="text-[10px] text-gray-500 bg-gray-50 rounded px-2 py-2">
+                        В полном обзоре аннотации недоступны. Откройте parent-part из библиотеки для просмотра.
+                      </div>
+                    ) : (<>
                     <div className="flex items-center justify-end mb-2">
                       <button onClick={() => setAnnotations(autoAnnotate({ ...fragment, sequence: seq, annotations: annotations.filter(a => a.level === 'region' && !a.auto) }))}
                         className="text-[10px] px-2 py-1 bg-blue-50 text-blue-700 rounded hover:bg-blue-100">{'🔍'} Авто</button>
@@ -886,6 +996,7 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
                         </div>
                       </div>
                     )}
+                    </>)}
                   </div>
                 )}
               </div>

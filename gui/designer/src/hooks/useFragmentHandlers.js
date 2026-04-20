@@ -259,6 +259,12 @@ export function useFragmentHandlers() {
     // can wrap them in a visual group (dashed border + badge + connector).
     const splitGroupId = `sg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 
+    // K11 (Sprint 1.7) — carry the full mutant parent sequence on every sub
+    // so FragmentEditor can show a virtual full-gene view with all mutations
+    // of the group + the current sub's region highlighted.
+    const splitGroupFullSequence = result.mutantSequence || '';
+    const splitGroupFullParentMutations = updated.mutations || [];
+
     // Build N new fragments from strategy (each uses WT template for PCR).
     const newFragments = result.fragments.map((sf, i) => ({
       id: `mf${Date.now()}_${i}_${Math.random().toString(36).slice(2, 4)}`,
@@ -277,6 +283,9 @@ export function useFragmentHandlers() {
       splitGroupParentName: original.name,
       splitGroupIndex: i,
       splitGroupTotal: result.fragments.length,
+      splitGroupFullSequence,
+      splitGroupFullLength: splitGroupFullSequence.length,
+      splitGroupFullParentMutations,
       annotations: trimAnnotationsForSubFragment(original.annotations, sf),
     }));
 
@@ -344,6 +353,10 @@ export function useFragmentHandlers() {
       : null;
     const parentName = result.templateName || 'template';
 
+    // K11 (Sprint 1.7) — propagate full mutant sequence onto each split sub.
+    const splitGroupFullSequence = splitGroupId ? (result.mutantSequence || '') : '';
+    const splitGroupFullParentMutations = splitGroupId ? (result.mutations || []) : [];
+
     const baseFragments = result.fragments.map((f, i) => ({
       ...f,
       id: `mf${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
@@ -353,6 +366,9 @@ export function useFragmentHandlers() {
         splitGroupParentName: parentName,
         splitGroupIndex: i,
         splitGroupTotal: result.fragments.length,
+        splitGroupFullSequence,
+        splitGroupFullLength: splitGroupFullSequence.length,
+        splitGroupFullParentMutations,
       }),
     }));
 
