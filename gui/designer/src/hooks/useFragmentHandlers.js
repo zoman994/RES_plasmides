@@ -6,6 +6,7 @@ import { useStore, useFragments, useJunctions, usePrimers, pushUndo } from '../s
 import { buildPlainJunctions } from '../assembly-utils';
 import { designInlineKLDPrimers, computeMutagenesisStrategy } from '../mutagenesis';
 import { buildMutagenesisPayload } from '../lib/mutagenesis-payload';
+import { trimAnnotationsForSubFragment } from '../lib/split-annotations';
 import { PCR_MIXES } from '../protocol-data';
 import { addToInventory } from '../inventory';
 import { getFragColor, isMarker } from '../theme';
@@ -268,14 +269,7 @@ export function useFragmentHandlers() {
       templateEnd: sf.templateEnd,
       partId: i === 0 ? variantId : undefined,
       isMutagenesis: true,
-      annotations: (original.annotations || [])
-        .filter(a => a.end > sf.templateStart && a.start < sf.templateEnd)
-        .map(a => ({
-          ...a,
-          start: Math.max(0, a.start - sf.templateStart),
-          end: Math.min(sf.length, a.end - sf.templateStart),
-          trimmed: a.start < sf.templateStart || a.end > sf.templateEnd,
-        })),
+      annotations: trimAnnotationsForSubFragment(original.annotations, sf),
     }));
 
     const strategyJunctions = result.junctions.map(j => ({
