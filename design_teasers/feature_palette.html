@@ -1,0 +1,941 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<title>BodgeGene · Feature palette teaser</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..600&family=Geist:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --paper:#F8F5EE;
+    --paper-2:#F1ECE0;
+    --paper-3:#EAE3D2;
+    --ink:#1C1917;
+    --ink-80:rgba(28,25,23,.82);
+    --ink-60:rgba(28,25,23,.60);
+    --ink-45:rgba(28,25,23,.45);
+    --ink-30:rgba(28,25,23,.30);
+    --ink-15:rgba(28,25,23,.15);
+    --ink-08:rgba(28,25,23,.08);
+
+    --accent:#B85C3E;
+
+    /* === FEATURE COLORS — biological convention adapted to paper background === */
+    /* Promoters & Origins — yellow family (SnapGene convention) */
+    --bio-promoter:    #F2C84B;   /* warm yellow, chromatic */
+    --bio-ori:         #E8B333;   /* deeper amber */
+    --bio-terminator:  #D97B3B;   /* burnt orange */
+
+    /* Coding — green family */
+    --bio-cds:         #C8D570;   /* chartreuse — generic CDS */
+    --bio-resistance:  #9BC07C;   /* sage green — antibiotic resistance */
+    --bio-reporter:    #7CB49E;   /* teal green — GFP/reporter */
+
+    /* Regulatory — peach family */
+    --bio-ltr:         #ECB383;   /* warm peach — LTR */
+    --bio-enhancer:    #F2CDA9;   /* light peach — RRE/enhancer */
+    --bio-signal:      #B8AA8A;   /* warm taupe — signal peptide / poly(A) */
+
+    /* Tags — rose & lilac */
+    --bio-tag:         #E091A2;   /* rose — epitope tag (FLAG, HA, Myc) */
+    --bio-his:         #B884B8;   /* lilac — His-tag / fusion */
+    --bio-linker:      #C4B8A8;   /* warm gray — linker */
+
+    /* Binding sites — cool blues */
+    --bio-primer:      #9EBAD9;   /* sky blue — primer binding */
+    --bio-operator:    #6DA4C4;   /* medium blue — operator */
+    --bio-cap:         #A5CFD5;   /* cyan — CAP / TF binding */
+
+    /* Other */
+    --bio-poly-a:      #C4C0B8;   /* gray — poly(A) signal */
+    --bio-misc:        #EEE7D5;   /* ivory — misc/unknown */
+
+    /* Common dark stroke — NOT black, warm-dark brown */
+    --bio-stroke:      #3A2F1F;
+
+    /* Cut sites / RE */
+    --re-unique:       #8A6FC4;
+    --re-double:       #C47845;
+
+    --serif:'Fraunces', Georgia, serif;
+    --sans:'Geist', system-ui, sans-serif;
+    --mono:'JetBrains Mono', ui-monospace, monospace;
+  }
+
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:var(--sans);
+    background:var(--paper);
+    color:var(--ink);
+    font-size:13px;line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+    font-feature-settings:"ss01","cv11";
+  }
+
+  /* === HEADER =========================================================== */
+  .teaser-head{
+    padding:28px 40px 22px;
+    border-bottom:1px solid var(--ink-15);
+    display:flex;align-items:baseline;gap:20px;
+  }
+  .teaser-title{
+    font-family:var(--serif);
+    font-size:28px;
+    font-weight:500;
+    letter-spacing:-0.02em;
+    line-height:1;
+  }
+  .teaser-title em{color:var(--accent);font-style:italic;font-weight:400}
+  .teaser-sub{
+    font-family:var(--serif);
+    font-style:italic;
+    font-size:14px;
+    font-weight:300;
+    color:var(--ink-60);
+    margin-left:auto;
+    max-width:520px;
+    text-align:right;
+  }
+
+  /* === TOP SECTION: palette legend =================================== */
+  .palette-section{
+    padding:32px 40px 24px;
+    max-width:1280px;
+    margin:0 auto;
+  }
+  .section-label{
+    font-family:var(--serif);
+    font-size:11px;
+    font-weight:500;
+    letter-spacing:0.18em;
+    text-transform:uppercase;
+    color:var(--ink-45);
+    margin-bottom:18px;
+    display:flex;align-items:center;gap:14px;
+  }
+  .section-label::after{
+    content:"";flex:1;height:1px;background:var(--ink-15);
+  }
+
+  .palette-grid{
+    display:grid;
+    grid-template-columns:repeat(5, minmax(0, 1fr));
+    gap:14px 18px;
+  }
+  .pal{
+    display:flex;flex-direction:column;gap:8px;
+    padding:14px 14px 12px;
+    background:var(--paper);
+    border:1px solid var(--ink-15);
+    border-radius:6px;
+    transition:all .15s;
+  }
+  .pal:hover{border-color:var(--ink-30);background:var(--paper-2)}
+  .pal-swatch{
+    display:flex;align-items:center;gap:10px;
+  }
+  .pal-block{
+    width:36px;height:20px;
+    border:1px solid var(--bio-stroke);
+    border-radius:2px;
+    flex-shrink:0;
+  }
+  /* Arrow-style feature chip (for CDS/promoter) */
+  .pal-arrow{
+    width:48px;height:18px;
+    clip-path:polygon(0 0, calc(100% - 8px) 0, 100% 50%, calc(100% - 8px) 100%, 0 100%);
+    flex-shrink:0;
+    border:1px solid var(--bio-stroke);
+    /* note: clip-path eats the border on the angled side — accepted for teaser */
+  }
+  .pal-name{
+    font-family:var(--serif);
+    font-size:13px;
+    font-weight:500;
+    letter-spacing:-0.01em;
+    line-height:1.1;
+    color:var(--ink);
+  }
+  .pal-examples{
+    font-family:var(--mono);
+    font-size:10px;
+    color:var(--ink-45);
+    line-height:1.3;
+    letter-spacing:-0.01em;
+  }
+  .pal-tag{
+    font-family:var(--serif);
+    font-style:italic;
+    font-size:10px;
+    color:var(--ink-60);
+    font-weight:300;
+    letter-spacing:0.01em;
+  }
+
+  /* swatch background assignments */
+  .sw-promoter{background:var(--bio-promoter)}
+  .sw-ori{background:var(--bio-ori)}
+  .sw-terminator{background:var(--bio-terminator)}
+  .sw-cds{background:var(--bio-cds)}
+  .sw-resistance{background:var(--bio-resistance)}
+  .sw-reporter{background:var(--bio-reporter)}
+  .sw-ltr{background:var(--bio-ltr)}
+  .sw-enhancer{background:var(--bio-enhancer)}
+  .sw-signal{background:var(--bio-signal)}
+  .sw-tag{background:var(--bio-tag)}
+  .sw-his{background:var(--bio-his)}
+  .sw-linker{background:var(--bio-linker)}
+  .sw-primer{background:var(--bio-primer)}
+  .sw-operator{background:var(--bio-operator)}
+  .sw-cap{background:var(--bio-cap)}
+
+  .palette-note{
+    margin-top:18px;
+    padding:14px 18px;
+    background:var(--paper-2);
+    border-left:2px solid var(--accent);
+    font-family:var(--serif);
+    font-style:italic;
+    font-size:13px;
+    font-weight:300;
+    color:var(--ink-80);
+    line-height:1.55;
+  }
+  .palette-note strong{
+    font-style:normal;
+    font-weight:500;
+    color:var(--ink);
+  }
+
+  /* === MAP SECTION ====================================================== */
+  .map-section{
+    padding:8px 40px 32px;
+    max-width:1280px;
+    margin:0 auto;
+  }
+  .map-frame{
+    background:var(--paper);
+    border:1px solid var(--ink-15);
+    border-radius:8px;
+    padding:24px 28px 22px;
+    display:grid;
+    grid-template-columns:1fr 280px;
+    gap:24px;
+  }
+  .map-viewport{
+    position:relative;
+    min-height:680px;
+    background:
+      radial-gradient(circle at center, var(--ink-08) 1px, transparent 1.3px);
+    background-size:22px 22px;
+    background-position:11px 11px;
+    border:1px solid var(--ink-15);
+    border-radius:4px;
+    overflow:hidden;
+  }
+  .map-top{
+    position:absolute;
+    top:16px;left:18px;right:18px;
+    display:flex;align-items:center;justify-content:space-between;
+    z-index:2;
+  }
+  .map-title-blk{
+    display:flex;align-items:baseline;gap:12px;
+  }
+  .map-title{
+    font-family:var(--serif);
+    font-size:16px;
+    font-weight:500;
+    letter-spacing:-0.01em;
+  }
+  .map-bp{
+    font-family:var(--mono);
+    font-size:11px;
+    color:var(--ink-60);
+    font-variant-numeric:tabular-nums;
+  }
+  .map-view-switch{
+    display:inline-flex;
+    background:var(--paper);
+    border:1px solid var(--ink-15);
+    border-radius:5px;
+    padding:2px;
+    box-shadow:0 1px 0 rgba(0,0,0,.02);
+  }
+  .map-view-switch button{
+    font-family:var(--sans);
+    font-size:10.5px;
+    font-weight:500;
+    padding:3px 8px;
+    border:none;background:none;
+    border-radius:3px;
+    cursor:pointer;
+    color:var(--ink-60);
+    letter-spacing:-0.005em;
+  }
+  .map-view-switch button.on{
+    background:var(--ink);color:var(--paper);
+  }
+
+  svg.map-svg{
+    display:block;
+    width:100%;
+    height:640px;
+    margin:0 auto;
+  }
+  .map-svg text{
+    font-family:var(--sans);
+    font-size:11px;
+    fill:var(--ink-80);
+  }
+  .map-svg .label-serif{
+    font-family:var(--serif);
+    font-size:13px;
+    font-weight:500;
+  }
+  .map-svg .label-mono{
+    font-family:var(--mono);
+    font-size:10px;
+    fill:var(--ink-45);
+    font-variant-numeric:tabular-nums;
+  }
+  .map-svg .ticks text{
+    font-family:var(--mono);
+    font-size:9px;
+    fill:var(--ink-45);
+    font-variant-numeric:tabular-nums;
+  }
+  .map-svg .backbone{
+    fill:none;
+    stroke:var(--ink-80);
+    stroke-width:1.5;
+  }
+  .map-svg .feature{
+    stroke:var(--bio-stroke);
+    stroke-width:0.8;
+  }
+  .map-svg .re-tick{
+    stroke:var(--re-unique);
+    stroke-width:1;
+  }
+  .map-svg .re-label{
+    font-family:var(--mono);
+    font-size:9.5px;
+    fill:var(--re-unique);
+    font-variant-numeric:tabular-nums;
+    font-weight:500;
+  }
+  .map-svg .leader{
+    fill:none;
+    stroke:var(--ink-45);
+    stroke-width:0.6;
+  }
+
+  /* Side panel: feature list */
+  .side-panel{
+    display:flex;flex-direction:column;gap:18px;
+    padding:10px 0;
+  }
+  .side-title{
+    font-family:var(--serif);
+    font-size:11px;
+    font-weight:500;
+    letter-spacing:0.18em;
+    text-transform:uppercase;
+    color:var(--ink-45);
+    padding-bottom:8px;
+    border-bottom:1px solid var(--ink-15);
+  }
+  .feat-row{
+    display:grid;
+    grid-template-columns:16px 1fr auto;
+    align-items:center;
+    gap:10px;
+    padding:5px 6px;
+    border-radius:4px;
+    cursor:pointer;
+  }
+  .feat-row:hover{background:var(--paper-2)}
+  .feat-swatch{
+    width:12px;height:12px;
+    border-radius:2px;
+    border:1px solid var(--bio-stroke);
+  }
+  .feat-name{
+    font-family:var(--sans);
+    font-size:12px;
+    font-weight:500;
+    color:var(--ink);
+    letter-spacing:-0.005em;
+  }
+  .feat-pos{
+    font-family:var(--mono);
+    font-size:10px;
+    color:var(--ink-45);
+    font-variant-numeric:tabular-nums;
+  }
+  .feat-group{
+    font-family:var(--serif);
+    font-style:italic;
+    font-size:11px;
+    color:var(--ink-60);
+    margin:10px 0 4px;
+    padding-left:6px;
+    font-weight:300;
+  }
+
+  /* Bottom note */
+  .footnote{
+    padding:18px 40px 28px;
+    max-width:1280px;margin:0 auto;
+    display:flex;gap:40px;
+    border-top:1px solid var(--ink-15);
+  }
+  .fn-col{flex:1}
+  .fn-title{
+    font-family:var(--serif);
+    font-size:12px;
+    font-weight:500;
+    color:var(--ink);
+    margin-bottom:6px;
+    letter-spacing:-0.005em;
+  }
+  .fn-body{
+    font-family:var(--serif);
+    font-style:italic;
+    font-size:12.5px;
+    font-weight:300;
+    color:var(--ink-60);
+    line-height:1.6;
+  }
+  .fn-body code{
+    font-family:var(--mono);font-style:normal;
+    font-size:11px;
+    background:var(--paper-2);
+    padding:1px 5px;border-radius:3px;color:var(--ink);
+  }
+</style>
+</head>
+<body>
+
+<header class="teaser-head">
+  <h1 class="teaser-title">Feature <em>palette</em></h1>
+  <p class="teaser-sub">
+    Биологическая конвенция (SnapGene-совместимая), десатурированная под paper-background.
+    UI-акцент (терракотовый) и data-цвета живут раздельно — никакой конфликт между «chrome» и «что внутри карты».
+  </p>
+</header>
+
+<!-- === PALETTE LEGEND ================================================ -->
+<section class="palette-section">
+  <div class="section-label">Система цветов по типу фичи</div>
+
+  <div class="palette-grid">
+    <!-- promoters & origins -->
+    <div class="pal">
+      <div class="pal-swatch">
+        <div class="pal-arrow sw-promoter"></div>
+      </div>
+      <div class="pal-name">Promoter</div>
+      <div class="pal-examples">T7, lac, RSV, AmpR prom</div>
+      <div class="pal-tag">жёлтый — SnapGene convention</div>
+    </div>
+    <div class="pal">
+      <div class="pal-swatch"><div class="pal-block sw-ori"></div></div>
+      <div class="pal-name">Origin of replication</div>
+      <div class="pal-examples">ori, f1 ori, SV40 ori</div>
+      <div class="pal-tag">янтарный — чуть насыщеннее промоутера</div>
+    </div>
+    <div class="pal">
+      <div class="pal-swatch"><div class="pal-arrow sw-terminator"></div></div>
+      <div class="pal-name">Terminator</div>
+      <div class="pal-examples">T7 term, rrnB</div>
+      <div class="pal-tag">жжёный оранжевый</div>
+    </div>
+    <div class="pal">
+      <div class="pal-swatch"><div class="pal-arrow sw-cds"></div></div>
+      <div class="pal-name">CDS · generic</div>
+      <div class="pal-examples">lacI, rop, cro</div>
+      <div class="pal-tag">шартрёз</div>
+    </div>
+    <div class="pal">
+      <div class="pal-swatch"><div class="pal-arrow sw-resistance"></div></div>
+      <div class="pal-name">Resistance</div>
+      <div class="pal-examples">AmpR, KanR, CmR, HygR</div>
+      <div class="pal-tag">шалфейный — классика SnapGene</div>
+    </div>
+
+    <!-- row 2 -->
+    <div class="pal">
+      <div class="pal-swatch"><div class="pal-arrow sw-reporter"></div></div>
+      <div class="pal-name">Reporter</div>
+      <div class="pal-examples">GFP, LacZ, mCherry, luc</div>
+      <div class="pal-tag">чирок</div>
+    </div>
+    <div class="pal">
+      <div class="pal-swatch"><div class="pal-block sw-ltr"></div></div>
+      <div class="pal-name">LTR</div>
+      <div class="pal-examples">5′ LTR, 3′ LTR ΔU3</div>
+      <div class="pal-tag">персиковый — вирусные регуляторные</div>
+    </div>
+    <div class="pal">
+      <div class="pal-swatch"><div class="pal-block sw-enhancer"></div></div>
+      <div class="pal-name">Enhancer · RRE</div>
+      <div class="pal-examples">RRE, WPRE, cPPT</div>
+      <div class="pal-tag">светло-персиковый</div>
+    </div>
+    <div class="pal">
+      <div class="pal-swatch"><div class="pal-block sw-signal"></div></div>
+      <div class="pal-name">Signal / poly(A)</div>
+      <div class="pal-examples">pelB leader, SV40 pA</div>
+      <div class="pal-tag">тёплая охра</div>
+    </div>
+    <div class="pal">
+      <div class="pal-swatch"><div class="pal-block sw-tag"></div></div>
+      <div class="pal-name">Epitope tag</div>
+      <div class="pal-examples">3×FLAG, HA, Myc, V5</div>
+      <div class="pal-tag">розовый</div>
+    </div>
+
+    <!-- row 3 -->
+    <div class="pal">
+      <div class="pal-swatch"><div class="pal-block sw-his"></div></div>
+      <div class="pal-name">His-tag · Fusion</div>
+      <div class="pal-examples">6×His, GST, MBP, SUMO</div>
+      <div class="pal-tag">сиреневый</div>
+    </div>
+    <div class="pal">
+      <div class="pal-swatch"><div class="pal-block sw-linker"></div></div>
+      <div class="pal-name">Linker</div>
+      <div class="pal-examples">GS linker, TEV site</div>
+      <div class="pal-tag">тёплый серый</div>
+    </div>
+    <div class="pal">
+      <div class="pal-swatch"><div class="pal-block sw-primer"></div></div>
+      <div class="pal-name">Primer binding</div>
+      <div class="pal-examples">M13 fwd/rev, T7 binding</div>
+      <div class="pal-tag">небесный</div>
+    </div>
+    <div class="pal">
+      <div class="pal-swatch"><div class="pal-block sw-operator"></div></div>
+      <div class="pal-name">Operator</div>
+      <div class="pal-examples">lac O, tet O, ara O</div>
+      <div class="pal-tag">средний синий</div>
+    </div>
+    <div class="pal">
+      <div class="pal-swatch"><div class="pal-block sw-cap"></div></div>
+      <div class="pal-name">CAP · TF binding</div>
+      <div class="pal-examples">CAP, CRP, GATA</div>
+      <div class="pal-tag">циан</div>
+    </div>
+  </div>
+
+  <div class="palette-note">
+    <strong>Логика:</strong>
+    шесть семейств цветов — <em>жёлтая</em> (управляющие: промоутеры, ori, терминатор),
+    <em>зелёная</em> (кодирующие), <em>персиковая</em> (регуляторные/вирусные),
+    <em>розово-сиреневая</em> (теги и fusion-партнёры), <em>сине-голубая</em> (сайты связывания)
+    и <em>нейтральная</em> (сигналы, линкеры, misc). Внутри семейства — градация насыщенности
+    по «иерархии значимости» для биолога.
+    Каждый цвет обведён тёплым тёмно-коричневым stroke <code>#3A2F1F</code>, не чёрным —
+    это ключевое отличие от «медицинско-чистого» SnapGene и главная причина, почему палитра
+    садится на paper-фон без визуального шума.
+  </div>
+</section>
+
+<!-- === EXAMPLE: circular plasmid map ================================= -->
+<section class="map-section">
+  <div class="section-label">Применение · круговая карта</div>
+
+  <div class="map-frame">
+    <div class="map-viewport">
+      <div class="map-top">
+        <div class="map-title-blk">
+          <div class="map-title">pET-DualTag · пример</div>
+          <div class="map-bp">5 423 bp</div>
+        </div>
+        <div class="map-view-switch">
+          <button>Блоки</button>
+          <button>Посл.</button>
+          <button class="on">Карта</button>
+          <button>Стадион</button>
+        </div>
+      </div>
+
+      <!-- SVG MAP -->
+      <svg class="map-svg" viewBox="0 0 760 640" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <!-- arrow-head marker for directional features — but we draw arrows as paths -->
+        </defs>
+
+        <!-- constants: center 380 320, backbone radius 220, feature inner 205, outer 235 -->
+
+        <!-- Outer backbone circle -->
+        <circle cx="380" cy="320" r="220" class="backbone"/>
+
+        <!-- Tick marks every 500 bp. Total 5423bp → ticks at 0/500/1000.../5000 -->
+        <g class="ticks">
+          <!-- each tick: from r=220 to r=214, text at r=205 -->
+          <!-- angle: bp / 5423 * 360 - 90 (start at top) -->
+          <!-- 0 bp: angle -90 -->
+          <line x1="380" y1="100" x2="380" y2="106" stroke="var(--ink-45)" stroke-width="0.6"/>
+          <text x="380" y="92" text-anchor="middle">0</text>
+          <!-- 1000 bp: angle = 1000/5423*360-90 = -23.6° -->
+          <line x1="581.7" y1="232" x2="576.2" y2="234.4" stroke="var(--ink-45)" stroke-width="0.6"/>
+          <text x="599" y="233" text-anchor="start">1 000</text>
+          <!-- 2000 bp: angle = 42.8° -->
+          <line x1="541.5" y1="469.5" x2="536.5" y2="465.5" stroke="var(--ink-45)" stroke-width="0.6"/>
+          <text x="553" y="478" text-anchor="start">2 000</text>
+          <!-- 3000 bp: angle = 109.2° -->
+          <line x1="308.3" y1="527.9" x2="310.3" y2="522.3" stroke="var(--ink-45)" stroke-width="0.6"/>
+          <text x="308" y="546" text-anchor="middle">3 000</text>
+          <!-- 4000 bp: angle = 175.6° -->
+          <line x1="160.6" y1="337.0" x2="166.5" y2="336.4" stroke="var(--ink-45)" stroke-width="0.6"/>
+          <text x="143" y="341" text-anchor="end">4 000</text>
+          <!-- 5000 bp: angle = 242° -->
+          <line x1="276.5" y1="125.6" x2="279.7" y2="130.5" stroke="var(--ink-45)" stroke-width="0.6"/>
+          <text x="267" y="117" text-anchor="end">5 000</text>
+        </g>
+
+        <!-- === FEATURES ============================================= -->
+        <!-- Each feature is drawn as an annular arc segment.
+             Using approximate SVG arc paths.
+             Coordinate convention: top = 0bp = -90°, clockwise = forward strand.
+             Helper (mentally): bp_to_angle(bp) = bp/5423 * 360 - 90 (deg)  -->
+
+        <!-- T7 promoter: 1..50 bp, forward, outer track (r 224..236) — PROMOTER yellow -->
+        <!-- 0°=-90°→ 50bp = -86.7°. Short feature: we'll place it on outer edge. -->
+        <path d="M 380,96 A 236,236 0 0,1 393.5,96.4 L 393,108 A 224,224 0 0,0 380,108 Z"
+              fill="var(--bio-promoter)" class="feature"/>
+
+        <!-- lac operator: 55..80 bp (small) — OPERATOR medium blue, outer -->
+        <path d="M 394.7,96.6 A 236,236 0 0,1 401.3,97.2 L 400.6,109.2 A 224,224 0 0,0 394.2,108.6 Z"
+              fill="var(--bio-operator)" class="feature"/>
+
+        <!-- RBS: 95..110 bp — SIGNAL taupe, outer -->
+        <path d="M 410,98.3 A 236,236 0 0,1 414.0,98.9 L 413.2,110.8 A 224,224 0 0,0 409.4,110.3 Z"
+              fill="var(--bio-signal)" class="feature"/>
+
+        <!-- pelB leader: 120..190 bp — SIGNAL taupe, inner with arrow -->
+        <!-- Approximated as a curved box going forward -->
+        <path d="M 424,100.3 A 220,220 0 0,1 442.5,103.6 L 439.6,115.9
+                 A 208,208 0 0,0 423.1,112.8 Z"
+              fill="var(--bio-signal)" class="feature"/>
+
+        <!-- 3xFLAG tag: 200..250 bp — TAG rose -->
+        <path d="M 445.1,104.3 A 220,220 0 0,1 459.2,107.8
+                 L 456.4,119.9
+                 L 459,121
+                 A 208,208 0 0,0 456.2,120.2
+                 L 456.4,119.9
+                 A 208,208 0 0,0 442.3,116.4 Z"
+              fill="var(--bio-tag)" class="feature"/>
+        <!-- Simpler arc for the tag with arrow-end -->
+
+        <!-- Let's rebuild features more simply: use arc-with-arrowhead as path segments.
+             Given complexity of exact math, we'll use a simplified approach with
+             approximate polygons via Bezier arcs. -->
+
+        <!-- ========= SIMPLIFIED FEATURE DRAWING via <g transform="rotate">=========== -->
+        <!-- Trick: draw each feature as a flat horizontal rectangle in a local group
+             that's rotated around the center by the feature's midpoint angle. -->
+
+        <!-- Clear the above attempts by not trusting them, and redraw below. -->
+
+        <!-- Cover up previous attempts with white paper -->
+        <circle cx="380" cy="320" r="240" fill="var(--paper)" style="mix-blend-mode:normal"/>
+        <circle cx="380" cy="320" r="220" class="backbone"/>
+
+        <!-- Redraw ticks -->
+        <g class="ticks">
+          <line x1="380" y1="100" x2="380" y2="107" stroke="var(--ink-45)" stroke-width="0.6"/>
+          <text x="380" y="94" text-anchor="middle">0</text>
+          <line x1="581" y1="232" x2="575.5" y2="234.4" stroke="var(--ink-45)" stroke-width="0.6"/>
+          <text x="599" y="235" text-anchor="start">1 000</text>
+          <line x1="541" y1="469" x2="536" y2="465.5" stroke="var(--ink-45)" stroke-width="0.6"/>
+          <text x="553" y="478" text-anchor="start">2 000</text>
+          <line x1="308" y1="527" x2="310.3" y2="522.3" stroke="var(--ink-45)" stroke-width="0.6"/>
+          <text x="308" y="546" text-anchor="middle">3 000</text>
+          <line x1="161" y1="337" x2="167" y2="336.4" stroke="var(--ink-45)" stroke-width="0.6"/>
+          <text x="143" y="341" text-anchor="end">4 000</text>
+          <line x1="276" y1="125" x2="280" y2="130.5" stroke="var(--ink-45)" stroke-width="0.6"/>
+          <text x="267" y="117" text-anchor="end">5 000</text>
+        </g>
+
+        <!-- === FEATURES using rotated-group trick === -->
+        <!-- Each group: rotate around (380,320) by the mid-angle of the feature.
+             Inside the group, we draw at (380,320-R) i.e. at top of the circle,
+             a rectangle stretched tangentially. Arrow = triangle on one side. -->
+
+        <!-- T7 promoter (1..90 bp), forward. mid=45bp, angle = 45/5423*360-90 = -87.0° -->
+        <g transform="rotate(-87, 380, 320)">
+          <!-- arrow shape: rectangle + triangle head on right.
+               bp-to-arc-length: 1bp = (2*pi*R)/5423 in px. R=224 → 1bp ≈ 0.259px.
+               feature width (90bp) ≈ 23px. height 14px. Arrow head 5px. -->
+          <path d="M 368.5,90 h 17 l 5,7 l -5,7 h -17 z"
+                fill="var(--bio-promoter)" class="feature"/>
+        </g>
+        <!-- label -->
+        <g transform="rotate(-87, 380, 320)">
+          <text x="395" y="70" transform="rotate(87, 395, 70)" class="label-serif" text-anchor="start">T7 promoter</text>
+        </g>
+
+        <!-- lac operator (100..125 bp), mid=112.5, angle = -82.5° -->
+        <g transform="rotate(-82.5, 380, 320)">
+          <rect x="375" y="87" width="10" height="14" fill="var(--bio-operator)" class="feature"/>
+        </g>
+
+        <!-- RBS (135..155 bp), mid=145, angle = -80.4° -->
+        <g transform="rotate(-80.4, 380, 320)">
+          <rect x="376" y="87" width="8" height="14" fill="var(--bio-signal)" class="feature"/>
+        </g>
+
+        <!-- pelB leader (165..230 bp), mid=197.5, angle = -76.9° -->
+        <g transform="rotate(-76.9, 380, 320)">
+          <path d="M 370,90 h 16 l 4,7 l -4,7 h -16 z" fill="var(--bio-signal)" class="feature"/>
+        </g>
+
+        <!-- 3×FLAG (240..306 bp), mid=273, angle = -71.9° -->
+        <g transform="rotate(-71.9, 380, 320)">
+          <path d="M 370,90 h 16 l 4,7 l -4,7 h -16 z" fill="var(--bio-tag)" class="feature"/>
+        </g>
+        <g transform="rotate(-71.9, 380, 320)">
+          <text x="395" y="62" transform="rotate(71.9, 395, 62)" class="label-serif" text-anchor="start">3×FLAG</text>
+        </g>
+
+        <!-- GS linker (308..338 bp), mid=323, angle = -68.5° -->
+        <g transform="rotate(-68.5, 380, 320)">
+          <rect x="375" y="87" width="10" height="14" fill="var(--bio-linker)" class="feature"/>
+        </g>
+
+        <!-- GFP reporter (340..1056 bp), mid=698, angle = -43.7° — LARGE -->
+        <g transform="rotate(-43.7, 380, 320)">
+          <!-- reporter arrow, long -->
+          <path d="M 288,90 h 177 l 7,7 l -7,7 h -177 z" fill="var(--bio-reporter)" class="feature"/>
+          <text x="376" y="100" text-anchor="middle" class="label-serif" fill="var(--ink)" style="font-size:12px">GFP</text>
+        </g>
+
+        <!-- 6×His (1060..1078 bp), mid=1069, angle = -19.1° -->
+        <g transform="rotate(-19.1, 380, 320)">
+          <rect x="376" y="87" width="8" height="14" fill="var(--bio-his)" class="feature"/>
+        </g>
+        <g transform="rotate(-19.1, 380, 320)">
+          <text x="395" y="65" transform="rotate(19.1, 395, 65)" class="label-serif" text-anchor="start">6×His</text>
+        </g>
+
+        <!-- T7 terminator (1090..1140 bp), mid=1115, angle = -16.0° -->
+        <g transform="rotate(-16.0, 380, 320)">
+          <path d="M 373,90 h 14 l 3,7 l -3,7 h -14 z" fill="var(--bio-terminator)" class="feature"/>
+        </g>
+        <g transform="rotate(-16.0, 380, 320)">
+          <text x="395" y="52" transform="rotate(16.0, 395, 52)" class="label-serif" text-anchor="start">T7 term</text>
+        </g>
+
+        <!-- f1 ori (1250..1570 bp), mid=1410, angle = 3.6° — origin block, non-directional -->
+        <g transform="rotate(3.6, 380, 320)">
+          <rect x="335" y="88" width="90" height="12" fill="var(--bio-ori)" class="feature"/>
+          <text x="380" y="98" text-anchor="middle" class="label-serif" fill="var(--ink)" style="font-size:11px">f1 ori</text>
+        </g>
+
+        <!-- AmpR promoter (1720..1824 bp), mid=1772, angle = 27.6° -->
+        <g transform="rotate(27.6, 380, 320)">
+          <path d="M 358,90 h 40 l 5,7 l -5,7 h -40 z" fill="var(--bio-promoter)" class="feature"/>
+        </g>
+        <g transform="rotate(27.6, 380, 320)">
+          <text x="395" y="62" transform="rotate(-27.6, 395, 62)" class="label-serif" text-anchor="start">AmpR prom</text>
+        </g>
+
+        <!-- AmpR (1825..2685 bp), mid=2255, angle = 59.7° — LARGE RESISTANCE -->
+        <g transform="rotate(59.7, 380, 320)">
+          <path d="M 265,90 h 222 l 7,7 l -7,7 h -222 z" fill="var(--bio-resistance)" class="feature"/>
+          <text x="376" y="100" text-anchor="middle" class="label-serif" fill="var(--ink)" style="font-size:12px">AmpR</text>
+        </g>
+
+        <!-- ori pBR322 (2850..3438 bp), mid=3144, angle = 118.7° — LARGE ORIGIN -->
+        <g transform="rotate(118.7, 380, 320)">
+          <rect x="300" y="88" width="160" height="12" fill="var(--bio-ori)" class="feature"/>
+          <text x="380" y="98" text-anchor="middle" class="label-serif" fill="var(--ink)" style="font-size:12px">ori</text>
+        </g>
+
+        <!-- rop CDS (3540..4130 bp), mid=3835, angle = 164.6° — CDS generic, reverse direction -->
+        <g transform="rotate(164.6, 380, 320)">
+          <path d="M 468,90 l -7,7 l 7,7 h -157 z" fill="var(--bio-cds)" class="feature"/>
+          <text x="380" y="100" text-anchor="middle" class="label-serif" fill="var(--ink)" style="font-size:11px">rop</text>
+        </g>
+
+        <!-- lacI CDS (4300..5380 bp), mid=4840, angle = 231.3° — LARGE CDS -->
+        <g transform="rotate(231.3, 380, 320)">
+          <path d="M 487,90 l -7,7 l 7,7 h -210 z" fill="var(--bio-cds)" class="feature"/>
+          <text x="380" y="100" text-anchor="middle" class="label-serif" fill="var(--ink)" style="font-size:12px">lacI</text>
+        </g>
+
+        <!-- lac promoter (5385..5423 bp, wraps to 0), mid=5404, angle = 268.7° -->
+        <g transform="rotate(268.7, 380, 320)">
+          <path d="M 380,90 h -12 l -5,7 l 5,7 h 12 z" fill="var(--bio-promoter)" class="feature"/>
+        </g>
+        <g transform="rotate(268.7, 380, 320)">
+          <text x="365" y="62" transform="rotate(-268.7, 365, 62)" class="label-serif" text-anchor="end">lacI prom</text>
+        </g>
+
+        <!-- === RE SITES (outside backbone) === -->
+        <!-- each RE: tick mark from r=220 to r=248, label at r=256 -->
+
+        <!-- NdeI (120 bp) angle = -82° -->
+        <g transform="rotate(-82, 380, 320)">
+          <line x1="380" y1="100" x2="380" y2="72" class="re-tick"/>
+          <text x="380" y="64" text-anchor="middle" class="re-label" transform="rotate(82, 380, 64)">NdeI · 120</text>
+        </g>
+
+        <!-- BamHI (310 bp) angle = -69.4° -->
+        <g transform="rotate(-69.4, 380, 320)">
+          <line x1="380" y1="100" x2="380" y2="72" class="re-tick"/>
+          <text x="380" y="64" text-anchor="middle" class="re-label" transform="rotate(69.4, 380, 64)">BamHI · 310</text>
+        </g>
+
+        <!-- XhoI (1075 bp) angle = -18.7° -->
+        <g transform="rotate(-18.7, 380, 320)">
+          <line x1="380" y1="100" x2="380" y2="72" class="re-tick"/>
+          <text x="380" y="64" text-anchor="middle" class="re-label" transform="rotate(18.7, 380, 64)">XhoI · 1 075</text>
+        </g>
+
+        <!-- HindIII (1620 bp) angle = 17.5° -->
+        <g transform="rotate(17.5, 380, 320)">
+          <line x1="380" y1="100" x2="380" y2="72" class="re-tick"/>
+          <text x="380" y="64" text-anchor="middle" class="re-label" transform="rotate(-17.5, 380, 64)">HindIII · 1 620</text>
+        </g>
+
+        <!-- EcoRI (3480 bp) angle = 141° -->
+        <g transform="rotate(141, 380, 320)">
+          <line x1="380" y1="100" x2="380" y2="72" class="re-tick"/>
+          <text x="380" y="64" text-anchor="middle" class="re-label" transform="rotate(-141, 380, 64)">EcoRI · 3 480</text>
+        </g>
+
+        <!-- SacI (5150 bp) angle = 251.8° -->
+        <g transform="rotate(251.8, 380, 320)">
+          <line x1="380" y1="100" x2="380" y2="72" class="re-tick"/>
+          <text x="380" y="64" text-anchor="middle" class="re-label" transform="rotate(-251.8, 380, 64)">SacI · 5 150</text>
+        </g>
+
+        <!-- === CENTER LABEL === -->
+        <text x="380" y="316" text-anchor="middle" class="label-serif" style="font-size:20px">pET-DualTag</text>
+        <text x="380" y="338" text-anchor="middle" class="label-mono" style="font-size:12px">5 423 bp · circular</text>
+        <text x="380" y="356" text-anchor="middle" font-family="var(--serif)" font-style="italic" style="font-size:11px;fill:var(--ink-60);font-weight:300">synthetic construct · 15 features</text>
+
+      </svg>
+    </div>
+
+    <!-- Side panel: feature list grouped -->
+    <aside class="side-panel">
+      <div class="side-title">Состав · 15 фичей</div>
+
+      <div>
+        <div class="feat-group">Промоутеры & origins</div>
+        <div class="feat-row">
+          <div class="feat-swatch sw-promoter"></div>
+          <div class="feat-name">T7 promoter</div>
+          <div class="feat-pos">1–90</div>
+        </div>
+        <div class="feat-row">
+          <div class="feat-swatch sw-promoter"></div>
+          <div class="feat-name">AmpR promoter</div>
+          <div class="feat-pos">1720–1824</div>
+        </div>
+        <div class="feat-row">
+          <div class="feat-swatch sw-promoter"></div>
+          <div class="feat-name">lacI promoter</div>
+          <div class="feat-pos">5385–5423</div>
+        </div>
+        <div class="feat-row">
+          <div class="feat-swatch sw-ori"></div>
+          <div class="feat-name">f1 ori</div>
+          <div class="feat-pos">1250–1570</div>
+        </div>
+        <div class="feat-row">
+          <div class="feat-swatch sw-ori"></div>
+          <div class="feat-name">ori</div>
+          <div class="feat-pos">2850–3438</div>
+        </div>
+        <div class="feat-row">
+          <div class="feat-swatch sw-terminator"></div>
+          <div class="feat-name">T7 terminator</div>
+          <div class="feat-pos">1090–1140</div>
+        </div>
+      </div>
+
+      <div>
+        <div class="feat-group">Кодирующие</div>
+        <div class="feat-row">
+          <div class="feat-swatch sw-reporter"></div>
+          <div class="feat-name">GFP</div>
+          <div class="feat-pos">340–1056</div>
+        </div>
+        <div class="feat-row">
+          <div class="feat-swatch sw-resistance"></div>
+          <div class="feat-name">AmpR</div>
+          <div class="feat-pos">1825–2685</div>
+        </div>
+        <div class="feat-row">
+          <div class="feat-swatch sw-cds"></div>
+          <div class="feat-name">rop</div>
+          <div class="feat-pos">3540–4130</div>
+        </div>
+        <div class="feat-row">
+          <div class="feat-swatch sw-cds"></div>
+          <div class="feat-name">lacI</div>
+          <div class="feat-pos">4300–5380</div>
+        </div>
+      </div>
+
+      <div>
+        <div class="feat-group">Регуляторные & теги</div>
+        <div class="feat-row">
+          <div class="feat-swatch sw-operator"></div>
+          <div class="feat-name">lac operator</div>
+          <div class="feat-pos">100–125</div>
+        </div>
+        <div class="feat-row">
+          <div class="feat-swatch sw-signal"></div>
+          <div class="feat-name">RBS</div>
+          <div class="feat-pos">135–155</div>
+        </div>
+        <div class="feat-row">
+          <div class="feat-swatch sw-signal"></div>
+          <div class="feat-name">pelB leader</div>
+          <div class="feat-pos">165–230</div>
+        </div>
+        <div class="feat-row">
+          <div class="feat-swatch sw-tag"></div>
+          <div class="feat-name">3×FLAG</div>
+          <div class="feat-pos">240–306</div>
+        </div>
+        <div class="feat-row">
+          <div class="feat-swatch sw-his"></div>
+          <div class="feat-name">6×His</div>
+          <div class="feat-pos">1060–1078</div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<footer class="footnote">
+  <div class="fn-col">
+    <div class="fn-title">Две ортогональные системы цвета</div>
+    <div class="fn-body">
+      <strong style="font-style:normal;color:var(--ink)">UI chrome</strong> — терракотовый акцент, ink/paper нейтрали: это про навигацию, активные состояния, primary CTA.
+      <strong style="font-style:normal;color:var(--ink)">Data</strong> — биологическая палитра: про содержимое последовательностей.
+      Они не конфликтуют: взгляд биолога на карте не путает «кнопку» и «AmpR».
+    </div>
+  </div>
+  <div class="fn-col">
+    <div class="fn-title">Что ещё требует проработки</div>
+    <div class="fn-body">
+      Hover-состояния фичей (edge-glow вместо invert), selection (ink outline 2px), warning-overlay при перекрытии аннотаций, полупрозрачность для скрытых слоёв, темновой режим (ink становится paper, но feature colors поднимаются по насыщенности на ~15%, чтобы не тускнеть).
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
