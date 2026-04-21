@@ -7,8 +7,7 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { translateDNA, CODON_TABLE } from '../codons';
 import { sanitizeSequence } from '../sequence-utils';
-import { autoDetectDomains, DOMAIN_COLORS } from '../domain-detection';
-import { FEATURE_COLORS, getFragColor, isMarker } from '../theme';
+import { DOMAIN_COLORS } from '../domain-detection';
 import { ANNOTATION_COLORS, autoAnnotate } from '../auto-annotate';
 import { migratePartAnnotations } from '../migrate-annotations';
 import { getRegions, getAllDetails, getPoints } from '../annotation-model';
@@ -17,44 +16,14 @@ import { detectModification, suggestVariantName } from '../part-variants';
 import { getCommonSubstitutions, inlineSubstitution, inlineDeletion, designInlineKLDPrimers } from '../mutagenesis';
 import { useStore } from '../store';
 import { computeMutationHighlights, mutationHitsAA, computeFullViewHighlights } from './FragmentEditor/highlights';
+import {
+  BASE_PALETTE, loadUserColors, saveUserColor, replaceUserColor, getFragColorDefault,
+} from './FragmentEditor/color-palette';
+import {
+  REGION_COLORS, getRegionTypes, addCustomRegionType,
+  loadSavedDomains, persistDomains,
+} from './FragmentEditor/region-types';
 export { computeMutationHighlights, mutationHitsAA, computeFullViewHighlights };
-
-// Standard palette from design system
-const BASE_PALETTE = [
-  '#56B4E9', '#009E73', '#D55E00', '#E69F00', '#F0E442',
-  '#CC79A7', '#0072B2', '#999999', '#661100', '#AA4499',
-  '#6929c4', '#1192e8', '#005d5d', '#9f1853', '#fa4d56',
-  '#198038', '#002d9c', '#b28600',
-];
-
-const USER_COLORS_KEY = 'pvcs-user-palette';
-function loadUserColors() {
-  try {
-    const raw = JSON.parse(localStorage.getItem(USER_COLORS_KEY) || '[]');
-    return raw.filter(c => typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c));
-  } catch { return []; }
-}
-function saveUserColor(hex) {
-  if (!hex || !/^#[0-9a-f]{6}$/i.test(hex)) return;
-  const c = hex.toUpperCase();
-  if (BASE_PALETTE.some(p => p.toUpperCase() === c)) return;
-  const arr = loadUserColors();
-  if (arr.some(p => p.toUpperCase() === c)) return;
-  arr.push(hex);
-  if (arr.length > 12) arr.shift();
-  localStorage.setItem(USER_COLORS_KEY, JSON.stringify(arr));
-}
-function replaceUserColor(idx, hex) {
-  if (!hex || !/^#[0-9a-f]{6}$/i.test(hex)) return;
-  const arr = loadUserColors();
-  if (idx < 0 || idx >= arr.length) return;
-  arr[idx] = hex;
-  localStorage.setItem(USER_COLORS_KEY, JSON.stringify(arr));
-}
-
-function getFragColorDefault(frag) {
-  return isMarker(frag.name) ? '#F0E442' : (FEATURE_COLORS[frag.type] || '#56B4E9');
-}
 
 const STOPS = ['TAA', 'TAG', 'TGA'];
 const hasStop = s => STOPS.includes((s || '').slice(-3).toUpperCase());
@@ -68,61 +37,6 @@ const QUICK_ACTIONS = [
   { key: 'kozak', label: '+ Kozak', pos: 'start', insert: 'GCCACC', forType: 'CDS', desc: 'GCCACCATG' },
   { key: 'his6c', label: '+ His6 (C)', pos: 'before_stop', insert: 'CATCACCATCACCATCAC', forType: 'CDS' },
 ];
-
-// Domain/region types — universal for all fragment types
-const REGION_TYPES = {
-  CDS: [
-    { value: 'signal', label: 'Сигн. пептид' }, { value: 'propeptide', label: 'Пропептид' },
-    { value: 'domain', label: 'Домен' }, { value: 'linker', label: 'Линкер' },
-    { value: 'tag', label: 'Тег (His, FLAG)' }, { value: 'binding', label: 'Связывающий' },
-    { value: 'transmembrane', label: 'Трансмембр.' }, { value: 'custom', label: 'Другое' },
-  ],
-  promoter: [
-    { value: 'UAS', label: 'UAS/Энхансер' }, { value: 'TATA', label: 'TATA-box' },
-    { value: 'RBS', label: 'RBS (Шайн-Дальгарно)' }, { value: 'core', label: 'Core промотор' },
-    { value: 'operator', label: 'Оператор' }, { value: 'insulator', label: 'Инсулятор' },
-    { value: 'TSS', label: 'Старт транскрипции' }, { value: 'custom', label: 'Другое' },
-  ],
-  terminator: [
-    { value: 'polyA', label: 'PolyA-сигнал' }, { value: 'stem_loop', label: 'Стем-луп' },
-    { value: 'T_rich', label: 'T-богатый участок' }, { value: 'custom', label: 'Другое' },
-  ],
-  _default: [
-    { value: 'region', label: 'Область' }, { value: 'repeat', label: 'Повтор' },
-    { value: 'binding', label: 'Сайт связывания' }, { value: 'custom', label: 'Другое' },
-  ],
-};
-function getRegionTypes(fragType) {
-  const base = REGION_TYPES[fragType] || REGION_TYPES._default;
-  // Load user-defined types from localStorage
-  try {
-    const custom = JSON.parse(localStorage.getItem('pvcs-custom-region-types') || '[]');
-    return [...base, ...custom];
-  } catch { return base; }
-}
-
-function addCustomRegionType(value, label) {
-  try {
-    const custom = JSON.parse(localStorage.getItem('pvcs-custom-region-types') || '[]');
-    if (!custom.some(t => t.value === value)) {
-      custom.push({ value, label });
-      localStorage.setItem('pvcs-custom-region-types', JSON.stringify(custom));
-    }
-  } catch {}
-}
-
-// Region colors — extend for regulatory elements
-const REGION_COLORS = {
-  ...DOMAIN_COLORS,
-  UAS: '#6929c4', TATA: '#d55e00', RBS: '#0072b2', core: '#009e73',
-  operator: '#e69f00', insulator: '#cc79a7', TSS: '#56b4e9',
-  polyA: '#d55e00', stem_loop: '#009e73', T_rich: '#e69f00',
-  region: '#56b4e9', repeat: '#999999',
-};
-
-const DOMAINS_LS_KEY = 'pvcs-parts-domains';
-function loadSavedDomains(id) { try { return JSON.parse(localStorage.getItem(DOMAINS_LS_KEY) || '{}')[id]; } catch { return null; } }
-function persistDomains(id, domains) { try { const a = JSON.parse(localStorage.getItem(DOMAINS_LS_KEY) || '{}'); a[id] = domains; localStorage.setItem(DOMAINS_LS_KEY, JSON.stringify(a)); } catch {} }
 
 export default function FragmentEditor({ fragment, onSave, onClose, onColorChange, onSaveAsVariant, assemblyCircular = false }) {
   // CDS-like if fragment type is CDS or any annotation region is CDS
