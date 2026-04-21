@@ -62,9 +62,13 @@ export const REGION_RENDER_RULES = {
 
 // ═══ Selectors ═══
 
-/** All region-level annotations. */
+/** All region-level annotations. Backfills a deterministic `id` when missing
+ *  (legacy `.bodgegene` projects + whole-plasmid catalog imports arrive without
+ *  id and every consumer — map, sequence pane, workspace — keys off it). */
 export function getRegions(annotations) {
-  return (annotations || []).filter(a => a.level === 'region');
+  return (annotations || [])
+    .filter(a => a.level === 'region')
+    .map(a => a.id ? a : { ...a, id: `region:${a.start}:${a.end}:${a.type || 'unknown'}:${a.name || ''}` });
 }
 
 /** Detail annotations belonging to a specific region. */
