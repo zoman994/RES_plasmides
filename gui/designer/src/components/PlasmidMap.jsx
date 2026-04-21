@@ -9,6 +9,7 @@ import { getFragColor, isMarker, FEATURE_COLORS } from '../theme';
 import { DOMAIN_COLORS } from '../domain-detection';
 import { getRegions, getDetails } from '../annotation-model';
 import { scanAllSites, detectMCS, getCompatible, RE_ENZYMES } from '../restriction-db';
+import { featureColor, FEATURE_STROKE } from '../feature-palette';
 import { useStore } from '../store';
 
 const TAU = 2 * Math.PI;
@@ -63,7 +64,8 @@ function sectorPath(cx, cy, oR, iR, s, e) {
 }
 
 export default function PlasmidMap({ fragments, constructName, totalBp, junctions = [], primers = [],
-  onSelectFragment, onRemove, onFlip, onSplitSignal, onEditFragment }) {
+  onSelectFragment, onRemove, onFlip, onSplitSignal, onEditFragment,
+  selectedRegionId = null, onSelectRegion }) {
   const [hovered, setHovered] = useState(null);
   const [selected, setSelected] = useState(null);
   const [hovJunc, setHovJunc] = useState(null);
@@ -256,12 +258,12 @@ export default function PlasmidMap({ fragments, constructName, totalBp, junction
                 }
                 const fragLen = a.len || 1;
 
-                // Build unified sub-arc list: { startBp, endBp, color, name, label }
+                // Build unified sub-arc list: { id, ftype, startBp, endBp, color, name, label }
                 const rawSubs = subArcs
-                  ? subArcs.map(r => ({ startBp: r.start, endBp: r.end, color: FEATURE_COLORS[r.type] || a.color, name: r.name, label: r.name }))
+                  ? subArcs.map(r => ({ id: r.id, ftype: r.type, startBp: r.start, endBp: r.end, color: featureColor(r.type, r.name), name: r.name, label: r.name }))
                   : legacyDoms.map(dom => {
                       const isCDS = a.type === 'CDS' || a.type === 'gene';
-                      return { startBp: isCDS ? (dom.startAA - 1) * 3 : dom.startAA - 1, endBp: isCDS ? dom.endAA * 3 : dom.endAA, color: dom.color || DOMAIN_COLORS[dom.type] || a.color, name: dom.name, label: dom.name };
+                      return { id: null, ftype: dom.type, startBp: isCDS ? (dom.startAA - 1) * 3 : dom.startAA - 1, endBp: isCDS ? dom.endAA * 3 : dom.endAA, color: dom.color || DOMAIN_COLORS[dom.type] || a.color, name: dom.name, label: dom.name };
                     });
                 const { sorted: subs, maxTrack } = assignSubTracks(rawSubs);
                 const bandH = (oRBase - iRBase) / (maxTrack + 1);
@@ -279,11 +281,29 @@ export default function PlasmidMap({ fragments, constructName, totalBp, junction
                     const deA = a.startAngle + (a.endAngle - a.startAngle) * deFrac - gap * 0.2;
                     const subOR = oRBase - (sub._subTrack || 0) * bandH;
                     const subIR = subOR - bandH + 1;
+                    const isRegSel = selectedRegionId != null && sub.id != null && sub.id === selectedRegionId;
+                    const onSubClick = (e) => {
+                      e.stopPropagation();
+                      if (onSelectRegion && sub.id != null) {
+                        onSelectRegion(isRegSel ? null : sub.id);
+                      } else {
+                        setSelected(isSel ? null : i);
+                        onSelectFragment?.(i);
+                      }
+                    };
                     return (
-                      <path key={`s${si}`} d={sectorPath(cx, cy, subOR, subIR, dsA, deA)}
-                        fill={sub.color} stroke="#fff" strokeWidth={0.3} opacity={isH ? 0.85 : 1}
-                        style={{ transition: 'all 100ms' }}
-                        onClick={() => { setSelected(isSel ? null : i); onSelectFragment?.(i); }}>
+                      <path key={`s${si}`}
+                        data-testid={sub.id != null ? `sub-arc-${sub.id}` : undefined}
+                        d={sectorPath(cx, cy, subOR, subIR, dsA, deA)}
+                        fill={sub.color}
+                        stroke={isRegSel ? FEATURE_STROKE : '#fff'}
+                        strokeWidth={isRegSel ? 1.5 : 0.3}
+                        opacity={isRegSel ? 1 : (isH ? 0.85 : 1)}
+                        style={{
+                          transition: 'all 100ms',
+                          ...(isRegSel ? { filter: 'drop-shadow(0 0 1.5px rgba(58,47,31,0.35))' } : {}),
+                        }}
+                        onClick={onSubClick}>
                         <title>{sub.name} ({sub.startBp}–{sub.endBp})</title>
                       </path>
                     );

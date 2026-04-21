@@ -21,8 +21,6 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import PlasmidMap from './PlasmidMap';
 import SequencePane from './SequencePane';
-import { getRegions } from '../annotation-model';
-import { buildPlasmidSequence } from '../plasmid-sequence';
 
 const STORAGE_KEY = 'plasmid-workspace-bottom-h';
 const MIN_PANE = 100;
@@ -47,11 +45,21 @@ export default function PlasmidWorkspace({
     return Number.isFinite(saved) && saved > 0 ? saved : 0;
   });
 
-  // Aggregate regions across all fragments (concatenated coordinate space)
-  // so `onSelectFragment(idx)` from PlasmidMap can be mapped to a region id.
-  const regions = useMemo(() => {
-    const { annotations } = buildPlasmidSequence(fragments || []);
-    return getRegions(annotations);
+  // Fragment offsets + regions grouped by fragment — fallback path for
+  // PlasmidMap `onSelectFragment(i)` when a fragment is clicked on a region-less
+  // arc (single solid arc). We pick the fragment's first region as the target.
+  const { regionsByFragment } = useMemo(() => {
+    const list = fragments || [];
+    const byFragment = [];
+    let offset = 0;
+    for (const f of list) {
+      const fragLen = (f?.sequence || '').length || f?.length || 0;
+      const rawAnns = Array.isArray(f?.annotations) ? f.annotations : [];
+      const rs = rawAnns.filter(a => a && a.level === 'region' && typeof a.start === 'number');
+      byFragment.push(rs.map(r => ({ ...r, start: r.start + offset, end: r.end + offset })));
+      offset += fragLen;
+    }
+    return { regionsByFragment: byFragment };
   }, [fragments]);
 
   // Initial bottom height = 40% of container on first mount.
@@ -91,12 +99,22 @@ export default function PlasmidWorkspace({
     e.preventDefault();
   }, []);
 
-  // Map click → region id (mirrors PlasmidViewer.handleMapSelect).
-  const onMapSelect = useCallback((idx) => {
-    if (!regions.length || idx == null || idx < 0 || idx >= regions.length) return;
-    const id = regions[idx].id;
-    setSelectedRegionId(prev => (prev === id ? null : id));
-  }, [regions]);
+  // Fallback for fragment-level arc click (no sub-arcs): jump to the fragment's
+  // first region. If the fragment has no regions, clear the selection.
+  const onMapFragmentFallback = useCallback((i) => {
+    const frs = regionsByFragment[i];
+    if (!frs || !frs.length) {
+      setSelectedRegionId(null);
+      return;
+    }
+    const targetId = frs[0].id;
+    setSelectedRegionId(prev => (prev === targetId ? null : targetId));
+  }, [regionsByFragment]);
+
+  // Sub-arc click → region id directly (toggled inside PlasmidMap when id known).
+  const onMapRegionSelect = useCallback((id) => {
+    setSelectedRegionId(id);
+  }, []);
 
   // Sequence pane click → region id directly (component already toggles).
   const onSequenceSelect = useCallback((id) => {
@@ -117,7 +135,9 @@ export default function PlasmidWorkspace({
           totalBp={totalBp}
           junctions={junctions}
           primers={primers}
-          onSelectFragment={onMapSelect}
+          selectedRegionId={selectedRegionId}
+          onSelectRegion={onMapRegionSelect}
+          onSelectFragment={onMapFragmentFallback}
           onRemove={onRemove}
           onFlip={onFlip}
           onSplitSignal={onSplitSignal}

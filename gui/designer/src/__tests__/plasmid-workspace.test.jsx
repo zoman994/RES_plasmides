@@ -98,4 +98,77 @@ describe('PlasmidWorkspace — mount + synced cursor', () => {
     const bottomPane = panes[panes.length - 1];
     expect(bottomPane.style.height).toBe('250px');
   });
+
+  it('forward sync: clicking a sub-arc on the map toggles selectedRegionId and highlights it', () => {
+    const { container } = render(
+      <PlasmidWorkspace
+        fragments={[FRAG]}
+        constructName="test"
+        totalBp={27}
+        junctions={[]}
+        primers={[]}
+      />
+    );
+    const arc = container.querySelector('[data-testid="sub-arc-r-cds"]');
+    expect(arc).toBeTruthy();
+    // Before click — no highlight stroke (default white).
+    expect(arc.getAttribute('stroke')).not.toBe('#3A2F1F');
+    fireEvent.click(arc);
+    // After click — warm-dark stroke from feature-palette.
+    const refreshed = container.querySelector('[data-testid="sub-arc-r-cds"]');
+    expect(refreshed.getAttribute('stroke')).toBe('#3A2F1F');
+    expect(parseFloat(refreshed.getAttribute('stroke-width'))).toBeGreaterThanOrEqual(1.5);
+    // Toggle off.
+    fireEvent.click(refreshed);
+    const offAgain = container.querySelector('[data-testid="sub-arc-r-cds"]');
+    expect(offAgain.getAttribute('stroke')).not.toBe('#3A2F1F');
+  });
+
+  it('back-sync: SequencePane click highlights matching sub-arc on the map', () => {
+    const { container } = render(
+      <PlasmidWorkspace
+        fragments={[FRAG]}
+        constructName="test"
+        totalBp={27}
+        junctions={[]}
+        primers={[]}
+      />
+    );
+    // Click a nucleotide in the bottom pane.
+    const ntSpans = Array.from(container.querySelectorAll('span'))
+      .filter(s => /^[ATGC]$/.test(s.textContent.trim()) && s.getAttribute('title'));
+    expect(ntSpans.length).toBeGreaterThan(0);
+    fireEvent.click(ntSpans[0]);
+    // The matching sub-arc on the top pane now has the highlight stroke.
+    const arc = container.querySelector('[data-testid="sub-arc-r-cds"]');
+    expect(arc).toBeTruthy();
+    expect(arc.getAttribute('stroke')).toBe('#3A2F1F');
+  });
+
+  it('fallback: fragment without regions does not crash on arc click', () => {
+    const bareFrag = {
+      id: 'bare',
+      name: 'bare',
+      type: 'other',
+      sequence: 'AAAAAAAA',
+      length: 8,
+      annotations: [],
+    };
+    const { container } = render(
+      <PlasmidWorkspace
+        fragments={[bareFrag]}
+        constructName="bare"
+        totalBp={8}
+        junctions={[]}
+        primers={[]}
+      />
+    );
+    // No sub-arc for regions — clicking the single solid arc must not throw
+    // and must leave sub-arc test-id absent.
+    const arc = container.querySelector('svg path');
+    expect(arc).toBeTruthy();
+    fireEvent.click(arc);
+    // sequence-pane empty-state message visible (no regions).
+    expect(container.querySelector('[data-testid="sequence-pane"]')).toBeTruthy();
+  });
 });
