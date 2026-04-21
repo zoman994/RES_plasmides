@@ -21,6 +21,7 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import PlasmidMap from './PlasmidMap';
 import SequencePane from './SequencePane';
+import { getRegions } from '../annotation-model';
 
 const STORAGE_KEY = 'plasmid-workspace-bottom-h';
 const MIN_PANE = 100;
@@ -48,14 +49,15 @@ export default function PlasmidWorkspace({
   // Fragment offsets + regions grouped by fragment — fallback path for
   // PlasmidMap `onSelectFragment(i)` when a fragment is clicked on a region-less
   // arc (single solid arc). We pick the fragment's first region as the target.
+  // `getRegions` normalises id for annotations that arrive without one
+  // (whole-plasmid imports, legacy projects) so frs[0].id is always defined.
   const { regionsByFragment } = useMemo(() => {
     const list = fragments || [];
     const byFragment = [];
     let offset = 0;
     for (const f of list) {
       const fragLen = (f?.sequence || '').length || f?.length || 0;
-      const rawAnns = Array.isArray(f?.annotations) ? f.annotations : [];
-      const rs = rawAnns.filter(a => a && a.level === 'region' && typeof a.start === 'number');
+      const rs = getRegions(f?.annotations).filter(a => typeof a.start === 'number');
       byFragment.push(rs.map(r => ({ ...r, start: r.start + offset, end: r.end + offset })));
       offset += fragLen;
     }
