@@ -330,7 +330,7 @@ export default function PlasmidMap({ fragments, constructName, totalBp, junction
                       <g key={`sl${si}`}>
                         <defs><path id={pathId} d={`M ${s.x} ${s.y} A ${midR} ${midR} 0 ${lg} ${isBottom ? 0 : 1} ${e.x} ${e.y}`} fill="none" /></defs>
                         <text className="pointer-events-none select-none"
-                          style={{ fontSize: arcLen < 40 ? '5px' : '7px', fill: '#fff', fontWeight: 500 }}>
+                          style={{ fontSize: arcLen < 40 ? '5px' : '7px', fill: FEATURE_STROKE, fontWeight: 500 }}>
                           <textPath href={`#${pathId}`} startOffset="50%" textAnchor="middle">{sub.label}</textPath>
                         </text>
                       </g>
@@ -345,7 +345,7 @@ export default function PlasmidMap({ fragments, constructName, totalBp, junction
                 const d = a.strand === -1 ? -1 : 1;
                 const pA = aA - Math.PI / 2;
                 return <polygon points={`${t.x},${t.y} ${t.x-4*Math.cos(pA)+3*d*Math.sin(pA)},${t.y-4*Math.sin(pA)-3*d*Math.cos(pA)} ${t.x+4*Math.cos(pA)+3*d*Math.sin(pA)},${t.y+4*Math.sin(pA)-3*d*Math.cos(pA)}`}
-                  fill="#fff" opacity={0.5} />;
+                  fill={FEATURE_STROKE} opacity={0.6} />;
               })()}
               {/* Action buttons — shown on CLICK (selected) */}
               {isSel && (
@@ -535,8 +535,8 @@ export default function PlasmidMap({ fragments, constructName, totalBp, junction
           if (pct < 4) return null;
           const label = pct > 12 ? `${a.name} (${a.len})` : a.name;
           return (
-            <text key={`l-${i}`} fontSize={pct > 15 ? 10 : 8} fill="#fff" fontWeight={600}
-              style={{ pointerEvents: 'none', textShadow: '0 0 3px rgba(0,0,0,0.3)' }}>
+            <text key={`l-${i}`} fontSize={pct > 15 ? 10 : 8} fill={FEATURE_STROKE} fontWeight={600}
+              style={{ pointerEvents: 'none' }}>
               <textPath href={`#arc-text-${i}`} startOffset="50%" textAnchor="middle">
                 {label}
               </textPath>
