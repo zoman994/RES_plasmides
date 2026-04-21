@@ -5,7 +5,7 @@ import JunctionBlock from './JunctionBlock';
 import JunctionDNA from './JunctionDNA';
 import { getFragColor, isMarker } from '../theme';
 import { t } from '../i18n';
-import PlasmidMap from './PlasmidMap';
+import PlasmidWorkspace from './PlasmidWorkspace';
 import RacetrackView from './RacetrackView';
 import SequenceMapView from './SequenceMapView';
 import { collectFamily } from '../part-variants';
@@ -402,8 +402,8 @@ export default function DesignCanvas({
               onImportFile={null}
             />
           ) : viewMode === 'map' && circular ? (
-            <div className="flex-1 flex items-center justify-center overflow-hidden min-h-0">
-              <PlasmidMap fragments={fragments} constructName={constructName}
+            <div className="flex-1 overflow-hidden min-h-0">
+              <PlasmidWorkspace fragments={fragments} constructName={constructName}
                 totalBp={totalBp} junctions={junctions} primers={primers}
                 onRemove={onRemove} onFlip={onFlip}
                 onSplitSignal={onSplitSignal} onEditFragment={onEditFragment} />
