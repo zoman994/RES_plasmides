@@ -87,7 +87,7 @@ export default function SequencePane({ fragments, primers: _primers, selectedReg
   }, [selectedRegionId, regions]);
 
   const handleNucleotideClick = (region) => {
-    if (!region || !onSelectRegion) return;
+    if (!region || region.id == null || !onSelectRegion) return;
     onSelectRegion(region.id === selectedRegionId ? null : region.id);
   };
 

@@ -64,6 +64,24 @@ describe('SequencePane — render', () => {
     expect(contentDiv.className).toMatch(/min-w-full/);
   });
 
+  it('pushes a non-undefined id when the annotation has no id (K4.1 backfill + K4.2 guard)', () => {
+    const onSelectRegion = vi.fn();
+    const noIdRegion = { name: 'no-id', type: 'CDS', level: 'region', start: 0, end: 27 };
+    const fragments = [{ id: 'f1', sequence: SEQ, annotations: [noIdRegion] }];
+    const { container } = render(
+      <SequencePane fragments={fragments} selectedRegionId={null} onSelectRegion={onSelectRegion} />
+    );
+    const ntSpans = Array.from(container.querySelectorAll('span'))
+      .filter(s => /^[ATGC]$/.test(s.textContent.trim()) && s.getAttribute('title'));
+    expect(ntSpans.length).toBeGreaterThan(0);
+    fireEvent.click(ntSpans[0]);
+    expect(onSelectRegion).toHaveBeenCalledTimes(1);
+    const pushed = onSelectRegion.mock.calls[0][0];
+    expect(pushed).not.toBeUndefined();
+    expect(pushed).not.toBeNull();
+    expect(typeof pushed).toBe('string');
+  });
+
   it('toggles off when clicking the already selected region', () => {
     const onSelectRegion = vi.fn();
     const fragments = [{ id: 'f1', sequence: SEQ, annotations: [CDS_REGION] }];
