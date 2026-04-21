@@ -1,6 +1,19 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, fireEvent } from '@testing-library/react';
 import SequencePane from '../components/SequencePane';
+
+// Minimal ResizeObserver mock: captures the most recent callback so tests can
+// fire it synchronously. happy-dom has no layout, so offsetWidth defaults to 0
+// unless tests define it explicitly.
+beforeEach(() => {
+  globalThis.__lastResizeObserverCb = null;
+  globalThis.ResizeObserver = class {
+    constructor(cb) { globalThis.__lastResizeObserverCb = cb; }
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+});
 
 const SEQ = 'ATGGCTAGCAAATTTGGGCCCAAATAA'; // 27 nt, single line
 const CDS_REGION = { id: 'r-cds', name: 'cds', type: 'CDS', level: 'region', start: 0, end: 27 };
@@ -50,18 +63,34 @@ describe('SequencePane — render', () => {
     expect(onSelectRegion).toHaveBeenCalledWith('r-cds');
   });
 
-  it('content-div has min-w-full so the pane fills its container horizontally', () => {
-    const fragments = [{ id: 'f1', sequence: SEQ, annotations: [CDS_REGION] }];
+  it('keeps the default 80 charsPerLine when container has no measurable width (jsdom regression)', () => {
+    const fragments = [{ id: 'f1', sequence: 'A'.repeat(200), annotations: [CDS_REGION] }];
     const { container } = render(
       <SequencePane fragments={fragments} selectedRegionId={null} onSelectRegion={() => {}} />
     );
-    // The line-rendering div sits inside the overflow-y-auto scroll container.
-    // It must carry min-w-full so its intrinsic 80ch width does not leave
-    // right-side whitespace when the parent is wider than 80 chars.
+    // 200 nt at default 80 chars/line = 3 lines (80 + 80 + 40).
+    const lines = container.querySelectorAll('[data-line]');
+    expect(lines.length).toBe(3);
+  });
+
+  it('recomputes charsPerLine on container resize (snaps to multiples of 10, clamped)', async () => {
+    const fragments = [{ id: 'f1', sequence: 'A'.repeat(1000), annotations: [{ ...CDS_REGION, end: 1000 }] }];
+    const { container, rerender } = render(
+      <SequencePane fragments={fragments} selectedRegionId={null} onSelectRegion={() => {}} />
+    );
     const scroller = container.querySelector('.overflow-y-auto');
-    const contentDiv = scroller?.querySelector(':scope > div');
-    expect(contentDiv).toBeTruthy();
-    expect(contentDiv.className).toMatch(/min-w-full/);
+    // offsetWidth = 0 in happy-dom by default → default 80 holds.
+    Object.defineProperty(scroller, 'offsetWidth', { configurable: true, value: 900 });
+    // Trigger the ResizeObserver callback manually via the mock installed in setup.
+    if (globalThis.__lastResizeObserverCb) globalThis.__lastResizeObserverCb();
+    rerender(
+      <SequencePane fragments={fragments} selectedRegionId={null} onSelectRegion={() => {}} />
+    );
+    // available = 900 - 32 = 868 px; 868 / 7.3 ≈ 118; clamp 60-120 → 118;
+    // snap-to-10 → 110. 1000 nt / 110 = 10 lines.
+    const lines = container.querySelectorAll('[data-line]');
+    expect(lines.length).toBeLessThanOrEqual(11);
+    expect(lines.length).toBeGreaterThanOrEqual(9);
   });
 
   it('pushes a non-undefined id when the annotation has no id (K4.1 backfill + K4.2 guard)', () => {

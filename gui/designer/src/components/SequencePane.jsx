@@ -15,14 +15,21 @@
  * READ-ONLY in Map-WS-1. No mutation popups, no text-selection keyboards.
  * Inline mutations land in Map-WS-2.
  */
-import { useMemo, useRef, useEffect } from 'react';
+import { useMemo, useRef, useEffect, useState } from 'react';
 import { getRegions } from '../annotation-model';
 import { featureColor, FEATURE_STROKE } from '../feature-palette';
 import { CODON_TABLE } from '../codons';
 import { scanAllSites } from '../restriction-db';
 import { buildPlasmidSequence } from '../plasmid-sequence';
 
-const CHARS_PER_LINE = 80;
+const DEFAULT_CHARS_PER_LINE = 80;
+// Tailwind font-mono (JetBrains Mono / system monospace) at 11px: ~7.3 px/char.
+// Measured once on mount would be more precise, but the heuristic has held
+// across all tested fonts; revisit if a biologist reports overflow.
+const CHAR_PX = 7.3;
+const PANE_PADDING_PX = 32; // px-4 on both sides
+const MIN_CHARS = 60;
+const MAX_CHARS = 120;
 const COMPLEMENT = { A: 'T', T: 'A', G: 'C', C: 'G', N: 'N' };
 
 /**
@@ -34,6 +41,7 @@ const COMPLEMENT = { A: 'T', T: 'A', G: 'C', C: 'G', N: 'N' };
  */
 export default function SequencePane({ fragments, primers: _primers, selectedRegionId, onSelectRegion }) {
   const containerRef = useRef(null);
+  const [charsPerLine, setCharsPerLine] = useState(DEFAULT_CHARS_PER_LINE);
 
   const { sequence: seq, annotations } = useMemo(
     () => buildPlasmidSequence(fragments || []),
@@ -67,24 +75,44 @@ export default function SequencePane({ fragments, primers: _primers, selectedReg
     return map;
   }, [seq]);
 
-  // Split sequence into 80-char lines.
+  // Responsive charsPerLine: fit the line to the pane width, clamp to
+  // [MIN_CHARS, MAX_CHARS], snap to multiples of 10 (GenBank habit).
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const measure = () => {
+      const available = el.offsetWidth - PANE_PADDING_PX;
+      if (available <= 0) return; // collapsed / not yet laid out — keep default
+      const raw = Math.floor(available / CHAR_PX);
+      const clamped = Math.max(MIN_CHARS, Math.min(MAX_CHARS, raw));
+      const snapped = Math.floor(clamped / 10) * 10;
+      setCharsPerLine(prev => (prev === snapped ? prev : snapped));
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') return; // SSR / very old browsers
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Split sequence into `charsPerLine`-char lines.
   const seqLines = useMemo(() => {
     const lines = [];
-    for (let i = 0; i < seq.length; i += CHARS_PER_LINE) {
-      lines.push({ start: i, seq: seq.slice(i, i + CHARS_PER_LINE) });
+    for (let i = 0; i < seq.length; i += charsPerLine) {
+      lines.push({ start: i, seq: seq.slice(i, i + charsPerLine) });
     }
     return lines;
-  }, [seq]);
+  }, [seq, charsPerLine]);
 
   // Synced cursor: scroll the line for the selected region into view.
   useEffect(() => {
     if (!selectedRegionId || !containerRef.current) return;
     const region = regions.find(r => r.id === selectedRegionId);
     if (!region) return;
-    const targetLine = Math.floor(region.start / CHARS_PER_LINE);
+    const targetLine = Math.floor(region.start / charsPerLine);
     const lineEl = containerRef.current.querySelector(`[data-line="${targetLine}"]`);
     if (lineEl) lineEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  }, [selectedRegionId, regions]);
+  }, [selectedRegionId, regions, charsPerLine]);
 
   const handleNucleotideClick = (region) => {
     if (!region || region.id == null || !onSelectRegion) return;
@@ -105,7 +133,7 @@ export default function SequencePane({ fragments, primers: _primers, selectedReg
         Последовательность ({totalBp.toLocaleString()} п.н.)
       </div>
       <div className="flex-1 overflow-y-auto" ref={containerRef}>
-        <div className="px-4 py-3 font-mono text-[11px] leading-[18px] min-w-full">
+        <div className="px-4 py-3 font-mono text-[11px] leading-[18px]">
           {seqLines.map((line, lineIdx) => {
             const lineEnd = line.start + line.seq.length;
 
