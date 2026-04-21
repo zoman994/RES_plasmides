@@ -113,6 +113,20 @@ Append-only журнал. Решения не удаляются и не пер�
 
 [2026-04-22] **⚓ Тесты соразмерны коду, а не наращиваются ради галочки.** TDD-first для биологических алгоритмов (mutagenesis strategy, primer design, Tm/GC, split helpers), state slices (reducers, migrations) и data-model инвариантов. Для UX-компонентов (рендеры, тулбары, модалки) — happy path + 1–2 edge case, не больше. Ориентир: рост код/тесты 1:1 — допустим, 1:2+ — сигнал пересмотра объёма спринта. Наблюдение по ходу приёмки Sprint 1.7: +38 Vitest на 4 коммита воспринимается как избыточный темп. Целевой коридор на следующих спринтах средней сложности — ≤20 новых тестов.
 
+### Архитектурная гигиена (22.04.2026)
+
+[2026-04-22] **⚓ Лимит размера модулей.** Принято после Sprint 1.7 (FragmentEditor вырос с 62 до 70 KB за один спринт, чтение целиком в одну Chat-сессию невозможно).
+
+- **`.jsx` компонент:** soft warning 30 KB, hard лимит **40 KB** (обязательная декомпозиция в текущем или ближайшем спринте).
+- **`.js` helper / algorithm:** soft warning 20 KB, hard лимит **25 KB**.
+- **Data-файлы** (словари, константы, локали — `restriction-db.js`, `i18n.js`, `tags-db.js`, `part-descriptions.js`) — не лимитируются. Дробление по алфавиту бессмысленно.
+
+**Enforcement:**
+- Chat при написании спеки читает размер затрагиваемых модулей (`list_directory_with_sizes`). Если цель правки — модуль ≥ hard, первым пунктом спеки идёт декомпозиция, не новая функциональность (см. CHAT_PLAYBOOK.md §2).
+- Code после реализации спринта сообщает в отчёте: (а) файлы, переросшие hard за этот спринт (новые нарушители); (б) файлы, выросшие >5 KB за спринт (warning signal) (см. CLAUDE.md §7).
+
+**Текущие нарушители (снимок 22.04.2026):** `FragmentEditor.jsx` 70 KB, `App.jsx` 39 KB, `PlasmidUseWizard.jsx` 39 KB, `DesignCanvas.jsx` 38 KB, `AddFragmentModal.jsx` 35 KB (красная зона). `PlasmidMap.jsx` 33 KB, `PartsPalette.jsx` 31 KB, `JunctionBlock.jsx` 29 KB, `ProtocolTracker.jsx` 28 KB, `PartBlock.jsx` 26 KB (граничная зона, контроль). Плановая декомпозиция красной зоны — Sprint 3 «Decomposition» сразу после V7 InsertionClock.
+
 ---
 
 ## Sprint 1.7 — Unified Editor + Virtual Full Sequence + Topology (22.04.2026)

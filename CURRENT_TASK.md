@@ -15,12 +15,13 @@ Sprint 1.7 (Unified Editor + Virtual Full Sequence + Topology) закрыт 22.0
 
 ## Следующие кандидаты
 
-Решение — после выбора Игоря в новой сессии. Предварительные варианты:
+Решение — после выбора Игоря в новой сессии. Порядок ориентировочный:
 
-- **Sprint 2 — V7 InsertionClock** (~8–10 ч). Reusable clock-компонент для выбора позиции вставки/мутации. Биологически зависимая от уже исправленного мутагенеза — теперь разблокирована.
-- **Sprint 2+ — V20 Mutagenesis split micro-PCR** (алгоритм). `minFragmentLength` + multi-site primer при близких мутациях.
-- **Sprint 3 «UX Polish» — V1/V2/V6/V8/V9/V10/V18/V19/V21**. Единый спринт по накопленному UX-долгу circular map + annotation bar + FragmentEditor.
-- **Регрессионное расследование P1/P4** (оба «повтор»). Требуют отдельной диагностической сессии.
+1. **Sprint 2 — V7 InsertionClock** (~8–10 ч). Reusable clock-компонент для выбора позиции вставки/мутации. Биологически зависимая от уже исправленного мутагенеза — теперь разблокирована.
+2. **Sprint 3 — Decomposition** (⚓ DECISIONS.md 22.04.2026, сразу после Sprint 2). Декомпозиция красной зоны: `FragmentEditor.jsx` 70 KB → 4–5 файлов (SequenceGrid, ProteinPanel, MutationHighlights, FullViewToggle, core); `App.jsx` 39 KB → вынести ModalStack + useAppEffects; `DesignCanvas.jsx` 38 KB → вынести SplitGroupContainer + JunctionRouting + CanvasControls. Цель: каждый файл ≤ 30 KB. Оценка: 8–12 ч.
+3. **Sprint 2+ — V20 Mutagenesis split micro-PCR** (алгоритм). `minFragmentLength` + multi-site primer при близких мутациях.
+4. **Sprint 4 «UX Polish» — V1/V2/V6/V8/V9/V10/V18/V19/V21**. Единый спринт по накопленному UX-долгу circular map + annotation bar + FragmentEditor. Делать **после** Sprint 3 Decomposition — работать с атомизированным FragmentEditor значительно проще.
+- **Регрессионное расследование P1/P4** (оба «повтор»). Требуют отдельной диагностической сессии. Можно вкрапливать между спринтами.
 - **F1** — custom primers в PlasmidViewer.
 - **Project Flow Phase 2+3** (блоки 12–13) — `docs/TASK_FLOW_PHASE2_3.md`.
 - **Test audit** (низкий приоритет, по запросу). Аудит текущей базы 738 Vitest + 112 pytest на дубли, устаревшие снапшоты, тесты на удалённый код. Выполнять только если в следующих спринтах появятся симптомы: долгие прогоны, каскадные поломки при рефакторинге, непонятные фейлы. В остальных случаях ⚓-ориентир «≤20 новых тестов на спринт» удержит базу без явной чистки.

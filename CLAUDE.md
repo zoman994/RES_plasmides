@@ -16,7 +16,7 @@ BodgeGene — визуальный конструктор генетически
 
 **Автор:** Игорь Синельников, ФИЦ Биотехнологии РАН  
 **Путь:** `C:\Users\Zoman\Desktop\RESplasmide`  
-**Версия:** v0.5.0-alpha (~241 коммит, 850 тестов: 738 Vitest + 112 pytest). Sprint 1.7 финализирован Code, ждёт визуальной приёмки.
+**Версия:** v0.5.1-alpha (~241 коммит, 850 тестов: 738 Vitest + 112 pytest). Sprint 1.7 закрыт 22.04.2026 (full visual acceptance).
 
 ---
 
@@ -72,6 +72,29 @@ cd gui/designer && npx vitest run && npx vite build
 - Создавать параллельные трекеры багов (MASTER_TODO.md, TEST_RESULTS.md и т.п.)
 - Дублировать информацию между docs/ файлами
 - Держать в docs/ больше 8 активных файлов (остальное → archive/)
+
+### 7. Лимиты размера модулей (⚓ DECISIONS.md 22.04.2026)
+
+Пределы на один файл:
+- `.jsx` компонент — hard **40 KB**, soft warning 30 KB
+- `.js` helper / algorithm — hard **25 KB**, soft warning 20 KB
+- Data-файлы (словари, константы, локали — `restriction-db.js`, `i18n.js`, `tags-db.js`, `part-descriptions.js`) — не лимитируются
+
+**Если модуль в скоупе спеки уже ≥ hard:** Chat должен был поставить декомпозицию первым пунктом. Если не поставил — Code останавливается и просит Chat дополнить спеку, не начинает дописывать в раздутый файл.
+
+**В отчёте после реализации спринта** Code запускает (Git Bash / PowerShell):
+
+```bash
+cd gui/designer/src
+find components -name '*.jsx' -printf '%s %p\n' | sort -n | tail -15
+find . -maxdepth 1 -name '*.js' -printf '%s %p\n' | sort -n | tail -10
+```
+
+И выдаёт в отчёте две строки:
+- **Новые нарушители:** файлы, переросшие hard за этот спринт (с указанием скачка в KB)
+- **Warning signal:** файлы, выросшие >5 KB за спринт (даже если не перевалили hard)
+
+Если ни одного такого — просто «size budget: OK». Это единственный канал для Chat увидеть дрейф размеров между спринтами без ручной проверки.
 
 ---
 
