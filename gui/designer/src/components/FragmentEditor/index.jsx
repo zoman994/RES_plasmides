@@ -4,28 +4,28 @@
  *   🧬 Белок (protein editing + domain annotation) — CDS only
  */
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { translateDNA, CODON_TABLE } from '../codons';
-import { sanitizeSequence } from '../sequence-utils';
-import { DOMAIN_COLORS } from '../domain-detection';
-import { ANNOTATION_COLORS, autoAnnotate } from '../auto-annotate';
-import { migratePartAnnotations } from '../migrate-annotations';
-import { getRegions, getAllDetails, getPoints } from '../annotation-model';
-import AnnotationEditor from './AnnotationEditor';
-import { detectModification, suggestVariantName } from '../part-variants';
-import { inlineSubstitution, inlineDeletion, designInlineKLDPrimers } from '../mutagenesis';
-import { useStore } from '../store';
-import { computeMutationHighlights, mutationHitsAA, computeFullViewHighlights } from './FragmentEditor/highlights';
+import { translateDNA, CODON_TABLE } from '../../codons';
+import { sanitizeSequence } from '../../sequence-utils';
+import { DOMAIN_COLORS } from '../../domain-detection';
+import { ANNOTATION_COLORS, autoAnnotate } from '../../auto-annotate';
+import { migratePartAnnotations } from '../../migrate-annotations';
+import { getRegions, getAllDetails, getPoints } from '../../annotation-model';
+import AnnotationEditor from '../AnnotationEditor';
+import { detectModification, suggestVariantName } from '../../part-variants';
+import { inlineSubstitution, inlineDeletion, designInlineKLDPrimers } from '../../mutagenesis';
+import { useStore } from '../../store';
+import { computeMutationHighlights, mutationHitsAA, computeFullViewHighlights } from './highlights';
 import {
   BASE_PALETTE, loadUserColors, saveUserColor, replaceUserColor, getFragColorDefault,
-} from './FragmentEditor/color-palette';
+} from './color-palette';
 import {
   REGION_COLORS, getRegionTypes, addCustomRegionType,
   loadSavedDomains, persistDomains,
-} from './FragmentEditor/region-types';
-import FullViewGrid from './FragmentEditor/FullViewGrid';
-import AAMutationPopup from './FragmentEditor/AAMutationPopup';
-import DnaMutationPopup, { NucTooltip } from './FragmentEditor/DnaMutationPopup';
-import SequenceGrid from './FragmentEditor/SequenceGrid';
+} from './region-types';
+import FullViewGrid from './FullViewGrid';
+import AAMutationPopup from './AAMutationPopup';
+import DnaMutationPopup, { NucTooltip } from './DnaMutationPopup';
+import SequenceGrid from './SequenceGrid';
 export { computeMutationHighlights, mutationHitsAA, computeFullViewHighlights };
 
 const STOPS = ['TAA', 'TAG', 'TGA'];
