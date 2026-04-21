@@ -105,7 +105,7 @@ export default function SequencePane({ fragments, primers: _primers, selectedReg
         Последовательность ({totalBp.toLocaleString()} п.н.)
       </div>
       <div className="flex-1 overflow-y-auto" ref={containerRef}>
-        <div className="px-4 py-3 font-mono text-[11px] leading-[18px]">
+        <div className="px-4 py-3 font-mono text-[11px] leading-[18px] min-w-full">
           {seqLines.map((line, lineIdx) => {
             const lineEnd = line.start + line.seq.length;
 

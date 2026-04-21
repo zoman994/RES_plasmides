@@ -50,6 +50,20 @@ describe('SequencePane — render', () => {
     expect(onSelectRegion).toHaveBeenCalledWith('r-cds');
   });
 
+  it('content-div has min-w-full so the pane fills its container horizontally', () => {
+    const fragments = [{ id: 'f1', sequence: SEQ, annotations: [CDS_REGION] }];
+    const { container } = render(
+      <SequencePane fragments={fragments} selectedRegionId={null} onSelectRegion={() => {}} />
+    );
+    // The line-rendering div sits inside the overflow-y-auto scroll container.
+    // It must carry min-w-full so its intrinsic 80ch width does not leave
+    // right-side whitespace when the parent is wider than 80 chars.
+    const scroller = container.querySelector('.overflow-y-auto');
+    const contentDiv = scroller?.querySelector(':scope > div');
+    expect(contentDiv).toBeTruthy();
+    expect(contentDiv.className).toMatch(/min-w-full/);
+  });
+
   it('toggles off when clicking the already selected region', () => {
     const onSelectRegion = vi.fn();
     const fragments = [{ id: 'f1', sequence: SEQ, annotations: [CDS_REGION] }];
