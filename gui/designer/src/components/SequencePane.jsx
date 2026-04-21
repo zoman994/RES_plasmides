@@ -17,8 +17,7 @@
  */
 import { useMemo, useRef, useEffect } from 'react';
 import { getRegions } from '../annotation-model';
-import { ANNOTATION_COLORS } from '../auto-annotate';
-import { FEATURE_COLORS } from '../theme';
+import { featureColor, FEATURE_STROKE } from '../feature-palette';
 import { CODON_TABLE } from '../codons';
 import { scanAllSites } from '../restriction-db';
 import { buildPlasmidSequence } from '../plasmid-sequence';
@@ -120,14 +119,17 @@ export default function SequencePane({ fragments, primers: _primers, selectedReg
 
             return (
               <div key={line.start} className="mb-2" data-line={lineIdx}>
-                {lineRegions.map(r => (
-                  <div key={r.id} className="text-[9px] font-sans font-medium mt-1 mb-0.5 flex items-center gap-1"
-                    style={{ color: ANNOTATION_COLORS[r.type] || FEATURE_COLORS[r.type] || '#666' }}>
-                    <span className="w-2 h-2 rounded-full inline-block"
-                      style={{ backgroundColor: ANNOTATION_COLORS[r.type] || FEATURE_COLORS[r.type] || '#999' }} />
-                    {r.name} <span className="text-gray-300 font-normal">({r.end - r.start} п.н.)</span>
-                  </div>
-                ))}
+                {lineRegions.map(r => {
+                  const rColor = featureColor(r.type, r.name);
+                  return (
+                    <div key={r.id} className="text-[9px] font-sans font-medium mt-1 mb-0.5 flex items-center gap-1"
+                      style={{ color: FEATURE_STROKE }}>
+                      <span className="w-2 h-2 rounded-full inline-block"
+                        style={{ backgroundColor: rColor, boxShadow: `inset 0 0 0 1px ${FEATURE_STROKE}` }} />
+                      {r.name} <span className="text-gray-400 font-normal">({r.end - r.start} п.н.)</span>
+                    </div>
+                  );
+                })}
 
                 <div className="text-[9px] text-gray-300 select-none mb-px">{line.start + 1}</div>
 
@@ -138,7 +140,7 @@ export default function SequencePane({ fragments, primers: _primers, selectedReg
                     const region = regionAt(absPos);
                     const isIntr = isIntron(absPos);
                     const isSel = region && region.id === selectedRegionId;
-                    const regionColor = region ? (ANNOTATION_COLORS[region.type] || FEATURE_COLORS[region.type] || '#999') : null;
+                    const regionColor = region ? featureColor(region.type, region.name) : null;
 
                     let bg = 'transparent';
                     let style = {};
@@ -169,7 +171,7 @@ export default function SequencePane({ fragments, primers: _primers, selectedReg
                     const region = regionAt(absPos);
                     const isIntr = isIntron(absPos);
                     const isSel = region && region.id === selectedRegionId;
-                    const regionColor = region ? (ANNOTATION_COLORS[region.type] || FEATURE_COLORS[region.type] || '#999') : null;
+                    const regionColor = region ? featureColor(region.type, region.name) : null;
                     const bg = regionColor && !isIntr ? regionColor + (isSel ? '30' : '12') : 'transparent';
                     const compNt = COMPLEMENT[nt] || 'N';
                     return (
