@@ -70,6 +70,26 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
       : (assemblyCircular ? 'circular' : 'linear')
   );
 
+  // K5 (Sprint X) — Plasmid-Git diff view + commit actions. `commits` is read
+  // from live fragment in store so toggle/archive/message reflect instantly.
+  const [diffViewActive, setDiffViewActive] = useState(false);
+  const toggleCommit = useStore(s => s.toggleCommit);
+  const archiveCommit = useStore(s => s.archiveCommit);
+  const setCommitMessage = useStore(s => s.setCommitMessage);
+  const liveFragment = useStore(s => {
+    const asm = s.assemblies.find(a => a.id === s.activeId);
+    return asm?.fragments.find(f => f.id === fragment.id) || fragment;
+  });
+  const commits = Array.isArray(liveFragment.commits) ? liveFragment.commits : [];
+  const hasCommits = commits.length > 0;
+  const fragIdx = useStore(s => {
+    const asm = s.assemblies.find(a => a.id === s.activeId);
+    return asm?.fragments.findIndex(f => f.id === fragment.id) ?? -1;
+  });
+  const handleToggleCommit = (commitId) => { if (fragIdx >= 0) toggleCommit(fragIdx, commitId); };
+  const handleArchiveCommit = (commitId) => { if (fragIdx >= 0) archiveCommit(fragIdx, commitId); };
+  const handleSetCommitMessage = (commitId, msg) => { if (fragIdx >= 0) setCommitMessage(fragIdx, commitId, msg); };
+
   // K8 — mutation highlights relative to parent part. Recomputed when sequence
   // or parent changes. Returns Map<ntPos, 'silent'|'nonsilent'>.
   const parts = useStore(s => s.parts);
@@ -579,7 +599,24 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
               {'⭕'} Кольцевая
             </button>
           </div>
+          {/* K5 (Sprint X) — diff vs baseline toggle. Disabled without commits. */}
+          <button
+            onClick={() => setDiffViewActive(v => !v)}
+            disabled={!hasCommits}
+            title={hasCommits ? 'Показать baseline с наложением мутаций' : 'Нет применённых мутаций'}
+            className={`ml-auto px-2 py-0.5 rounded border transition disabled:opacity-40 disabled:cursor-not-allowed ${
+              diffViewActive ? 'bg-amber-100 text-amber-800 border-amber-300' : 'hover:bg-gray-50 border-gray-200'
+            }`}
+            data-testid="diff-view-toggle"
+          >
+            {diffViewActive ? '✕ Закрыть diff' : '⇌ Сравнить с baseline'}
+          </button>
         </div>
+        {diffViewActive && (
+          <div className="text-[9px] text-amber-700 bg-amber-50 rounded px-2 py-1 mb-2">
+            {'⇌'} Показан baseline с выделением точек мутаций. Редактирование заблокировано.
+          </div>
+        )}
 
         {/* K10 — tabs removed. Sequence view is primary; annotations/mutations/protein are collapsible panels below. */}
         {mode === 'edit' && seqChanged && (
@@ -670,6 +707,10 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
           addForm={addForm}
           setAddForm={setAddForm}
           onAddDomain={addDomain}
+          commits={commits}
+          onToggleCommit={handleToggleCommit}
+          onArchiveCommit={handleArchiveCommit}
+          onSetMessage={handleSetCommitMessage}
         />
 
         {/* Save — routed by mode, not tab (V12) */}

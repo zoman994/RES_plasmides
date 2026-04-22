@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { ANNOTATION_COLORS, autoAnnotate } from '../../auto-annotate';
 import { DOMAIN_COLORS } from '../../domain-detection';
 import { getAllDetails } from '../../annotation-model';
@@ -7,10 +8,106 @@ import { mutationHitsAA } from './highlights';
 
 /**
  * K10 (Sprint 1.7) Unified Editor — collapsible panels below sequence view.
- * Annotations / Mutations / Protein(обзор). Pure-props: no internal state, all
- * interaction delegated via callbacks. State (panelsOpen, annotations, domains,
- * mutations, addForm) lives in FragmentEditor/index.jsx.
+ * K5 (Sprint X) — Mutations panel gains Plasmid-Git UX: toggle ✕/✓ (revert),
+ * archive 🗑 (hard delete), inline-edit commit.message (pencil ✎),
+ * group-by-codon for substitution commits, 🔒 legacy lock for
+ * pre-Sprint-X mutations without commit.id.
  */
+
+// ── Commit row for the Git-aware path ──
+function CommitRow({ commit, onToggle, onArchive, onSetMessage }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(commit.message || '');
+  const active = commit.applied !== false;
+
+  const commitEdit = () => {
+    onSetMessage(commit.id, draft);
+    setEditing(false);
+  };
+  const cancelEdit = () => {
+    setDraft(commit.message || '');
+    setEditing(false);
+  };
+  const handleArchive = () => {
+    const ok = window.confirm(`Удалить «${commit.label || 'мутацию'}»? Это действие нельзя отменить через ✕ (только Ctrl+Z).`);
+    if (ok) onArchive(commit.id);
+  };
+
+  return (
+    <div className={`flex items-center gap-1 text-[10px] rounded px-2 py-1 ${
+      active ? 'bg-purple-50 text-purple-700' : 'bg-gray-100 text-gray-400 line-through'
+    }`}>
+      <button
+        onClick={() => onToggle(commit.id)}
+        className={`text-xs ${active ? 'text-purple-500 hover:text-purple-700' : 'text-gray-500 hover:text-green-600'}`}
+        title={active ? 'Отключить мутацию (sequence откатится, метка остаётся)' : 'Вернуть мутацию'}
+      >{active ? '✕' : '✓'}</button>
+      <span className="font-mono flex-1 min-w-0 truncate">{commit.label || '(no label)'}</span>
+      {editing ? (
+        <>
+          <input
+            autoFocus value={draft} maxLength={80}
+            onChange={e => setDraft(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') cancelEdit(); }}
+            onBlur={commitEdit}
+            className="text-[9px] flex-1 min-w-0 px-1 py-0.5 border rounded text-gray-700 bg-white"
+            placeholder="заметка…"
+          />
+        </>
+      ) : (
+        <>
+          {commit.message && (
+            <span className="text-[9px] text-gray-500 italic truncate" title={commit.message}>{commit.message}</span>
+          )}
+          <button
+            onClick={() => { setDraft(commit.message || ''); setEditing(true); }}
+            className="text-gray-400 hover:text-gray-600 text-[10px]"
+            title="Редактировать заметку"
+          >✎</button>
+        </>
+      )}
+      <button
+        onClick={handleArchive}
+        className="text-gray-400 hover:text-red-600 text-[10px]"
+        title="Удалить мутацию навсегда"
+      >🗑</button>
+    </div>
+  );
+}
+
+// ── Legacy (pre-Sprint-X) mutation row with lock ──
+function LegacyMutationRow({ mutation }) {
+  return (
+    <div className="flex items-center gap-1 text-[10px] bg-gray-50 text-gray-400 rounded px-2 py-1"
+         style={{ pointerEvents: 'none' }}
+         title="Legacy-мутация. Revert недоступен — создайте variant через Part library.">
+      <span>🔒</span>
+      <span className="font-mono flex-1 min-w-0 truncate">{mutation.label || '(no label)'}</span>
+    </div>
+  );
+}
+
+// ── Group commits by codon for substitutions; non-subs go to "Прочее" ──
+function groupCommits(commits) {
+  const byCodon = new Map();   // codonKey "C123" → commit[]
+  const others = [];           // non-substitution commits
+  for (const c of commits) {
+    if (c.type === 'substitution' && typeof c.parentPos === 'number') {
+      const key = `C${Math.floor(c.parentPos / 3) + 1}`;
+      if (!byCodon.has(key)) byCodon.set(key, []);
+      byCodon.get(key).push(c);
+    } else {
+      others.push(c);
+    }
+  }
+  const groups = [];
+  for (const [key, items] of byCodon.entries()) {
+    groups.push({ key, items: items.slice().sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0)) });
+  }
+  groups.sort((a, b) => parseInt(a.key.slice(1)) - parseInt(b.key.slice(1)));
+  return { groups, others };
+}
+
 export default function EditorPanels({
   fragment, seq, isCDS, totalAA, protein,
   fullViewActive,
@@ -20,9 +117,19 @@ export default function EditorPanels({
   panelsOpen, togglePanel,
   addForm, setAddForm,
   onAddDomain,
+  // K5 (Sprint X) — Plasmid-Git UX props
+  commits = [],
+  onToggleCommit,
+  onArchiveCommit,
+  onSetMessage,
 }) {
   const getColor = (type) => ANNOTATION_COLORS[type] || REGION_COLORS[type] || DOMAIN_COLORS[type] || '#56B4E9';
   const details = getAllDetails(annotations);
+
+  const hasGit = Array.isArray(commits) && commits.length > 0 && onToggleCommit && onArchiveCommit;
+  const hasLegacy = Array.isArray(mutations) && mutations.length > 0;
+  const { groups: codonGroups, others: otherCommits } = hasGit ? groupCommits(commits) : { groups: [], others: [] };
+  const mutationsBadge = (commits?.length || 0) + (mutations?.length || 0);
 
   const PanelHeader = ({ id, title, badge }) => (
     <button onClick={() => togglePanel(id)}
@@ -82,26 +189,56 @@ export default function EditorPanels({
         )}
       </div>
 
-      {/* ── Mutations panel ── */}
-      {mutations.length > 0 && (
+      {/* ── Mutations panel (K5: Git-aware + legacy lock) ── */}
+      {mutationsBadge > 0 && (
         <div className="border rounded-lg mb-3">
-          <PanelHeader id="mutations" title="Мутации" badge={mutations.length} />
+          <PanelHeader id="mutations" title="Мутации" badge={mutationsBadge} />
           {panelsOpen.mutations && (
-            <div className="px-3 pb-3">
-              <div className="space-y-1">
-                {mutations.map((m, mi) => (
-                  <div key={mi} className="flex items-center justify-between text-[10px] bg-purple-50 text-purple-700 rounded px-2 py-1">
-                    <span className="font-mono">{m.label}</span>
-                    <button
-                      onClick={() => setMutations(prev => prev.filter((_, i) => i !== mi))}
-                      className="text-purple-400 hover:text-purple-600 text-xs ml-2"
-                      title="Убрать мутацию из списка">{'✕'}</button>
-                  </div>
-                ))}
-              </div>
-              <div className="text-[9px] text-gray-400 mt-2">
-                Кнопка ✕ убирает мутацию только из списка — последовательность не откатывается.
-              </div>
+            <div className="px-3 pb-3 space-y-2">
+              {hasGit && codonGroups.length > 0 && (
+                <div className="space-y-2">
+                  {codonGroups.map(g => (
+                    <div key={g.key} className="space-y-1" data-testid={`commit-group-${g.key}`}>
+                      <div className="text-[9px] text-gray-500 font-mono">{g.key}:</div>
+                      {g.items.map(c => (
+                        <CommitRow key={c.id} commit={c}
+                          onToggle={onToggleCommit}
+                          onArchive={onArchiveCommit}
+                          onSetMessage={onSetMessage} />
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {hasGit && otherCommits.length > 0 && (
+                <div className="space-y-1">
+                  <div className="text-[9px] text-gray-500">Прочее:</div>
+                  {otherCommits.map(c => (
+                    <CommitRow key={c.id} commit={c}
+                      onToggle={onToggleCommit}
+                      onArchive={onArchiveCommit}
+                      onSetMessage={onSetMessage} />
+                  ))}
+                </div>
+              )}
+              {hasLegacy && (
+                <div className="space-y-1 pt-1" data-testid="legacy-mutations">
+                  {hasGit && <div className="text-[9px] text-gray-500">Legacy (pre-Sprint-X):</div>}
+                  {mutations.map((m, mi) => (
+                    <LegacyMutationRow key={mi} mutation={m} />
+                  ))}
+                </div>
+              )}
+              {hasGit && (
+                <div className="text-[9px] text-gray-400 pt-1">
+                  ✕ — отключить (обратимо), 🗑 — удалить навсегда, ✎ — заметка.
+                </div>
+              )}
+              {!hasGit && hasLegacy && (
+                <div className="text-[9px] text-gray-400">
+                  🔒 Legacy-мутации: revert недоступен. Создайте variant через Part library.
+                </div>
+              )}
             </div>
           )}
         </div>
