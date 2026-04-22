@@ -1,20 +1,23 @@
 import { sequenceDiff } from '../../sequence-diff';
+import { replayDiff } from '../../lib/plasmid-git';
 
 /**
- * K8 (Sprint 1.6) — compute per-nucleotide mutation highlights.
+ * K4 (Sprint X) / K8 (Sprint 1.6) — compute per-nucleotide mutation highlights.
  *
- * Primary: diff against the parent-part sequence (fragment.parentId → parts).
+ * Priority 1 (Plasmid-Git replay-aware, closes V22): if the fragment carries
+ *   commits[] + baseSnapshot, substitutions come from replayDiff against baseline.
+ *   Indels are intentionally NOT highlighted — their length change is self-evident,
+ *   and positional diff after an indel would false-positive the tail (V22 root cause).
+ *
+ * Priority 2 (legacy parent-sequenceDiff): diff against fragment.parent.sequence.
  *   - aaChange.silent === true  → 'silent'     (yellow)
  *   - otherwise                 → 'nonsilent'  (red)
- * Fallback (no parent): use fragment.mutations list, mark conservatively as
- *   'nonsilent'. Insertions/deletions span `insertSequence.length` / `deletedBp`.
+ * K9/V16 — honors `fragment.templateStart` for split sub-fragments.
  *
- * K9/V16 — honors `fragment.templateStart`: for split sub-fragments whose
- * sequence is a window of the parent gene, we slice parent at templateStart
- * before diffing. Without this the diff treats parent[0] as aligned to
- * fragment[0] and reports the entire sub-fragment as mutated.
+ * Priority 3 (fallback): fragment.mutations list, conservatively 'nonsilent'.
  *
- * @param {Object} fragment — { sequence, annotations?, parentId?, mutations?, templateStart? }
+ * @param {Object} fragment — { sequence, annotations?, parentId?, mutations?,
+ *                              templateStart?, baseSnapshot?, commits? }
  * @param {Object|null} parent — parts library entry or null
  * @returns {Map<number, 'silent'|'nonsilent'>}
  */
@@ -22,6 +25,15 @@ export function computeMutationHighlights(fragment, parent) {
   const map = new Map();
   if (!fragment?.sequence) return map;
 
+  // ── Priority 1: Plasmid-Git (covers both non-split and split-sub cases) ──
+  if (Array.isArray(fragment.commits) && fragment.commits.length > 0 && fragment.baseSnapshot) {
+    const cdsRegions = (fragment.annotations || [])
+      .filter(a => a.level === 'region' && (a.type === 'CDS' || a.type === 'gene'))
+      .map(a => ({ start: a.start, end: a.end }));
+    return replayDiff(fragment.baseSnapshot, fragment.commits, cdsRegions);
+  }
+
+  // ── Priority 2: legacy parent-sequenceDiff ──
   if (parent?.sequence) {
     const offset = fragment.templateStart || 0;
     const parentSlice = parent.sequence.slice(offset, offset + fragment.sequence.length);
@@ -36,6 +48,7 @@ export function computeMutationHighlights(fragment, parent) {
     return map;
   }
 
+  // ── Priority 3: mutation-list fallback ──
   for (const m of fragment.mutations || []) {
     const pos = m.codonStart ?? m.position ?? 0;
     const len = m.type === 'insertion' ? (m.insertSequence?.length || 0)

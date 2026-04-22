@@ -112,3 +112,98 @@ describe('computeMutationHighlights', () => {
     expect(m.get(3)).toBe('nonsilent');
   });
 });
+
+// ───────────────────────────────────────────────────────────
+// Sprint X K4 — replay-aware highlights, closes V22.
+// Priority order: commits+baseSnapshot  >  parent  >  mutations-list.
+// ───────────────────────────────────────────────────────────
+
+import { createCommit } from '../lib/plasmid-git';
+
+function makeCommit(type, parentPos, payload, label, t) {
+  const c = createCommit(type, parentPos, payload, label, undefined, t);
+  return c;
+}
+
+describe('Sprint X K4 — computeMutationHighlights via Plasmid-Git replay', () => {
+  it('Git-path: fragment with baseSnapshot + 1 substitution commit → Map size 3, nonsilent', () => {
+    const baseSnapshot = {
+      sequence: 'ATGGCCTAA',
+      annotations: [{ id: 'r', start: 0, end: 9, level: 'region', type: 'CDS' }],
+    };
+    const commits = [makeCommit('substitution', 3, { newCodon: 'ACC' }, 'A2T', 1)];
+    const fragment = {
+      sequence: 'ATGACCTAA', // replay result
+      baseSnapshot,
+      commits,
+      annotations: baseSnapshot.annotations,
+    };
+    const m = computeMutationHighlights(fragment, null);
+    expect(m.size).toBe(3);
+    expect(m.get(3)).toBe('nonsilent');
+    expect(m.get(4)).toBe('nonsilent');
+    expect(m.get(5)).toBe('nonsilent');
+  });
+
+  it('V22 regression direct: baseSnapshot + deletion + substitution → highlights only substitution HEAD coord, no tail', () => {
+    // Baseline: ATG GCT AAA GAG TTT  (M A K E F)
+    // Delete codon 1 (parentPos=3, len=3) → ATG AAA GAG TTT
+    // Substitute codon 3 of baseline (parentPos=9, GAG→CAG) → remapped to 6 in HEAD
+    const baseSnapshot = {
+      sequence: 'ATGGCTAAAGAGTTT',
+      annotations: [{ id: 'r', start: 0, end: 15, level: 'region', type: 'CDS' }],
+    };
+    const commits = [
+      makeCommit('deletion', 3, { deleteLength: 3 }, 'ΔA2', 1),
+      makeCommit('substitution', 9, { newCodon: 'CAG' }, 'E4Q', 2),
+    ];
+    const fragment = {
+      sequence: 'ATGAAACAGTTT',
+      baseSnapshot,
+      commits,
+      annotations: [{ start: 0, end: 12, level: 'region', type: 'CDS' }],
+    };
+    const m = computeMutationHighlights(fragment, null);
+    // Only substitution HEAD coords (6,7,8) — NO red tail after deletion.
+    expect([...m.keys()].sort((a, b) => a - b)).toEqual([6, 7, 8]);
+    for (const v of m.values()) expect(v).toBe('nonsilent');
+  });
+
+  it('V22 split-sub closed: split sub-fragment with baseSnapshot + commits → replayDiff honored (no tail after indel)', () => {
+    // Simulate HygroR_2-style sub: templateStart offset exists on the fragment
+    // but Git-path ignores it — it works off baseSnapshot relative coords.
+    const baseSnapshot = {
+      sequence: 'ATGGCTAAAGAGTTT',
+      annotations: [],
+    };
+    const commits = [
+      makeCommit('deletion', 3, { deleteLength: 1 }, 'Δ1nt', 1),      // frame-shift indel
+      makeCommit('substitution', 6, { newCodon: 'TTT' }, 'K3F', 2),
+    ];
+    const fragment = {
+      sequence: 'ATGCTAATAGAGTTT',           // placeholder, K4 doesn't use HEAD sequence
+      baseSnapshot,
+      commits,
+      templateStart: 42, // proves Git-path ignores templateStart (V22 closed for split-sub)
+      annotations: [],
+    };
+    const m = computeMutationHighlights(fragment, null);
+    // Deletion (1 nt) skipped, substitution at HEAD = 6 + (-1) = 5
+    // Only 3 consecutive positions, no tail.
+    const keys = [...m.keys()].sort((a, b) => a - b);
+    expect(keys.length).toBe(3);
+    expect(keys[2] - keys[0]).toBe(2); // contiguous triplet
+  });
+
+  it('legacy parent-diff path preserved for fragments without commits[]', () => {
+    // Fragment has no baseSnapshot/commits → falls through to parent-sequenceDiff.
+    const parent = { sequence: 'ATGGCCTAA' };
+    const fragment = {
+      sequence: 'ATGACCTAA',
+      annotations: [{ level: 'region', type: 'CDS', start: 0, end: 9 }],
+      // no commits, no baseSnapshot
+    };
+    const m = computeMutationHighlights(fragment, parent);
+    expect(m.get(3)).toBe('nonsilent');
+  });
+});
