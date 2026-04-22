@@ -200,6 +200,48 @@ export function designPrimersLocal(fragments, junctions, circular, opts = {}) {
 
   if (fragments.length < 2) {
     if (fragments.length === 1) {
+      // V24 (Sprint X K6): single-circular self-closure via overhang tails.
+      // PCR product gets a 15-bp tail on each end that enables circularization
+      // at the site of linearization (e.g. Gibson / KLD self-closure).
+      const frag = fragments[0];
+      const seq = (frag.sequence || '').toUpperCase();
+      const isCircular = circular || frag.topology === 'circular';
+      const tmAdj = { phusion: 3, kod: 2, taq: -5 }[polymerase] || 0;
+      if (isCircular && seq.length >= 40) {
+        const halfOverlap = 15;
+        const fwdTail = rc(seq.slice(0, halfOverlap));
+        const revTail = seq.slice(-halfOverlap);
+        const fwdBinding = findBindingTagAware(seq, 'forward', tmTarget, frag.annotations);
+        const revBinding = findBindingTagAware(seq, 'reverse', tmTarget, frag.annotations);
+        const revBindRC = rc(revBinding.sequence);
+        const fwdSeq = fwdTail + fwdBinding.sequence;
+        const revSeq = revTail + revBindRC;
+        primers.push({
+          name: `${primerPrefix}001_fwd_${frag.name}_self_closure`,
+          sequence: fwdSeq, bindingSequence: fwdBinding.sequence,
+          tailSequence: fwdTail, tmBinding: fwdBinding.tm,
+          tmAdjusted: Math.round(fwdBinding.tm + tmAdj),
+          direction: 'forward', fragmentName: frag.name, fragmentIndex: 0,
+          length: fwdSeq.length,
+          isInternal: false, mergedBlockName: null,
+          purpose: 'self-closure',
+          tailPurpose: 'circular self-closure tail',
+          needsAmplification: frag.needsAmplification !== false,
+        });
+        primers.push({
+          name: `${primerPrefix}002_rev_${frag.name}_self_closure`,
+          sequence: revSeq, bindingSequence: revBindRC,
+          tailSequence: revTail, tmBinding: revBinding.tm,
+          tmAdjusted: Math.round(revBinding.tm + tmAdj),
+          direction: 'reverse', fragmentName: frag.name, fragmentIndex: 0,
+          length: revSeq.length,
+          isInternal: false, mergedBlockName: null,
+          purpose: 'self-closure',
+          tailPurpose: 'circular self-closure tail',
+          needsAmplification: frag.needsAmplification !== false,
+        });
+        return { primers, warnings };
+      }
       warnings.push('ℹ️ Один фрагмент — праймеры не требуются (используется целиком без ПЦР). Для линейризации добавьте второй фрагмент или используйте рестрикционное клонирование.');
     }
     return { primers, warnings };

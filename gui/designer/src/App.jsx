@@ -503,6 +503,7 @@ export default function App() {
             {calculated && primers.length > 0 && !active.completed && (
               <ActionBar
                 primerCount={Math.floor(primers.length / 2)}
+                primers={primers}
                 onExportProtocol={() => setActiveTab('protocol')}
                 onExportGenBank={() => exportGenBank(fragments, active.name || 'designed_construct', circular)}
                 onOrderOligos={() => setShowOligos(true)}

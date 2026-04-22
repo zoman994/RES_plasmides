@@ -171,3 +171,44 @@ describe('designPrimersLocal — all block combinations', () => {
     expect(warnings.some(w => w.includes('Short') && w.includes('короткий'))).toBe(true);
   });
 });
+
+// ──────────────────────────────────────────────────────────────
+// Sprint X K6 — V24 fix: single circular fragment → self-closure primers.
+// ──────────────────────────────────────────────────────────────
+
+describe('designPrimersLocal — V24 single-circular self-closure (Sprint X K6)', () => {
+  const RC = { A: 'T', T: 'A', G: 'C', C: 'G' };
+  const rc = s => s.split('').reverse().map(c => RC[c.toUpperCase()] || 'N').join('');
+
+  const seq60 = 'ATGCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATG';
+
+  it('single LINEAR fragment → no primers + informational warning (regression)', () => {
+    const frag = { name: 'L', sequence: seq60, needsAmplification: true, topology: 'linear' };
+    const { primers, warnings } = designPrimersLocal([frag], [], false);
+    expect(primers).toHaveLength(0);
+    expect(warnings.some(w => w.includes('праймеры не требуются'))).toBe(true);
+  });
+
+  it('single CIRCULAR fragment → 2 self-closure primers with 15-bp tails', () => {
+    const frag = { name: 'C', sequence: seq60, needsAmplification: true };
+    const { primers } = designPrimersLocal([frag], [], true);
+    expect(primers).toHaveLength(2);
+    const [fwd, rev] = primers;
+    expect(fwd.direction).toBe('forward');
+    expect(rev.direction).toBe('reverse');
+    expect(fwd.purpose).toBe('self-closure');
+    expect(rev.purpose).toBe('self-closure');
+    expect(fwd.tailSequence).toBe(rc(seq60.slice(0, 15)));
+    expect(rev.tailSequence).toBe(seq60.slice(-15));
+    // 15 bp tail + ≥18 bp binding
+    expect(fwd.length).toBeGreaterThanOrEqual(33);
+    expect(rev.length).toBeGreaterThanOrEqual(33);
+  });
+
+  it('single-circular via fragment.topology flag (no asm-circular) also triggers self-closure', () => {
+    const frag = { name: 'C', sequence: seq60, needsAmplification: true, topology: 'circular' };
+    const { primers } = designPrimersLocal([frag], [], false);
+    expect(primers).toHaveLength(2);
+    expect(primers[0].purpose).toBe('self-closure');
+  });
+});
