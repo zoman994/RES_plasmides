@@ -221,11 +221,19 @@ export function useFragmentHandlers() {
     // ── KLD: replace fragment in place, add mutagenesis primers ──
     if (result.strategy === 'kld') {
       const { primers: builtPrimers, protocolSteps } = buildMutagenesisPayload(result, baseCtx);
+      // K3 (Sprint X): KLD creates a new biological commit point — the mutant
+      // plasmid is the new baseline. baseSnapshot locks mutant sequence;
+      // commits[] is reset so further inline edits branch from here.
       const newFragment = {
         ...updated,
         partId: variantId,
         isMutagenesis: true,
         needsAmplification: original.needsAmplification,
+        baseSnapshot: {
+          sequence: updated.sequence,
+          annotations: Array.isArray(updated.annotations) ? updated.annotations.map(a => ({ ...a })) : [],
+        },
+        commits: [],
       };
       updateActive({
         fragments: fragments.map((f, i) => i === editTarget ? newFragment : f),
@@ -266,29 +274,39 @@ export function useFragmentHandlers() {
     const splitGroupFullParentMutations = updated.mutations || [];
 
     // Build N new fragments from strategy (each uses WT template for PCR).
-    const newFragments = result.fragments.map((sf, i) => ({
-      id: `mf${Date.now()}_${i}_${Math.random().toString(36).slice(2, 4)}`,
-      name: `${original.name}_${i + 1}`,
-      sequence: sf.sequence,
-      length: sf.length,
-      type: sf.type || original.type,
-      strand: sf.strand || 1,
-      needsAmplification: true,
-      sourceType: sf.sourceType || 'template_pcr',
-      templateStart: sf.templateStart,
-      templateEnd: sf.templateEnd,
-      partId: i === 0 ? variantId : undefined,
-      isMutagenesis: true,
-      splitGroupId,
-      splitGroupParentName: original.name,
-      splitGroupIndex: i,
-      splitGroupTotal: result.fragments.length,
-      splitGroupFullSequence,
-      splitGroupFullLength: splitGroupFullSequence.length,
-      splitGroupFullParentMutations,
-      topology: 'linear', // K12 — split unavoidably linearizes sub-fragments
-      annotations: trimAnnotationsForSubFragment(original.annotations, sf),
-    }));
+    // K3 (Sprint X): each sub gets its own Plasmid-Git baseline — sf.sequence
+    // is mutant-inclusive for this region, so commits[] starts empty.
+    const newFragments = result.fragments.map((sf, i) => {
+      const subAnnotations = trimAnnotationsForSubFragment(original.annotations, sf);
+      return {
+        id: `mf${Date.now()}_${i}_${Math.random().toString(36).slice(2, 4)}`,
+        name: `${original.name}_${i + 1}`,
+        sequence: sf.sequence,
+        length: sf.length,
+        type: sf.type || original.type,
+        strand: sf.strand || 1,
+        needsAmplification: true,
+        sourceType: sf.sourceType || 'template_pcr',
+        templateStart: sf.templateStart,
+        templateEnd: sf.templateEnd,
+        partId: i === 0 ? variantId : undefined,
+        isMutagenesis: true,
+        splitGroupId,
+        splitGroupParentName: original.name,
+        splitGroupIndex: i,
+        splitGroupTotal: result.fragments.length,
+        splitGroupFullSequence,
+        splitGroupFullLength: splitGroupFullSequence.length,
+        splitGroupFullParentMutations,
+        topology: 'linear', // K12 — split unavoidably linearizes sub-fragments
+        annotations: subAnnotations,
+        baseSnapshot: {
+          sequence: sf.sequence,
+          annotations: subAnnotations.map(a => ({ ...a })),
+        },
+        commits: [],
+      };
+    });
 
     const strategyJunctions = result.junctions.map(j => ({
       ...j,
