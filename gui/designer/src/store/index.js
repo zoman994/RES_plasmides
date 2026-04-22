@@ -128,7 +128,7 @@ const throttledStorage = {
 
 const persistConfig = {
   name: LS_KEY,
-  version: 7,
+  version: 8,
   storage: throttledStorage,
   partialize: (state) => ({
     projects: state.projects, activeProjectId: state.activeProjectId,
@@ -180,6 +180,22 @@ const persistConfig = {
           });
         });
       }
+    }
+    // v7 → v8: Sprint X Plasmid-Git — bootstrap baseSnapshot + commits[] for
+    // fragments persisted before the Git model existed. Legacy mutations[] stays
+    // as read-only metadata (UI renders with 🔒 lock badge, revert unavailable).
+    if (version < 8 && persisted?.assemblies) {
+      persisted.assemblies.forEach(a => {
+        a.fragments?.forEach(f => {
+          if (f.sequence && !f.baseSnapshot) {
+            f.baseSnapshot = {
+              sequence: f.sequence,
+              annotations: Array.isArray(f.annotations) ? f.annotations.map(x => ({ ...x })) : [],
+            };
+            f.commits = [];
+          }
+        });
+      });
     }
     return persisted;
   },
@@ -240,7 +256,7 @@ if (typeof window !== 'undefined') {
   window.addEventListener('beforeunload', () => {
     const state = useStore.getState();
     const persisted = persistConfig.partialize(state);
-    localStorage.setItem(LS_KEY, JSON.stringify({ state: persisted, version: 7 }));
+    localStorage.setItem(LS_KEY, JSON.stringify({ state: persisted, version: 8 }));
   });
 }
 

@@ -10,6 +10,7 @@ import { migratePartAnnotations } from '../migrate-annotations';
 import { convertDomainsToAnnotations } from '../assembly-utils';
 import { getRegions } from '../annotation-model';
 import { checkDuplicates } from '../duplicate-checker';
+import { createPlasmidGitReducers } from '../lib/plasmid-git-reducers';
 
 /**
  * Adjust annotation coordinates after mutations change sequence length.
@@ -69,6 +70,10 @@ function createFragFromPart(part) {
 }
 
 export const createFragmentSlice = (set, get) => ({
+  // ═══ Plasmid-Git reducers (Sprint X): applyMutationGit / toggleCommit /
+  //     archiveCommit / setCommitMessage. Extracted to lib/ per size-budget §9. ═══
+  ...createPlasmidGitReducers(set, get),
+
   // ═══ Parts library (global, not per-assembly) ═══
   parts: [],
   lastDuplicateWarning: null, // { partName, matches: [{part, match, identity, message}] } | null
