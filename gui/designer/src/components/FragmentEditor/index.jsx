@@ -38,7 +38,7 @@ const QUICK_ACTIONS = [
   { key: 'his6c', label: '+ His6 (C)', pos: 'before_stop', insert: 'CATCACCATCACCATCAC', forType: 'CDS' },
 ];
 
-export default function FragmentEditor({ fragment, onSave, onClose, onColorChange, onSaveAsVariant, onSavePart, onCreateAssembly, assemblyCircular = false }) {
+export default function FragmentEditor({ fragment, onSave, onClose, onColorChange, onSavePart, onCreateAssembly, assemblyCircular = false }) {
   // CDS-like if fragment type is CDS or any annotation region is CDS
   const hasCDSRegion = (fragment.annotations || []).some(a => a.level === 'region' && (a.type === 'CDS' || a.type === 'gene' || a.type === 'marker'));
   const isCDS = fragment.type === 'CDS' || hasCDSRegion;
@@ -320,25 +320,6 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
     const muts = mutations.map(m => normalizeMutationForGit(m, seq));
     applyMutationsBatch(fragIdx, muts);
     setMutations([]);
-  };
-
-  const handleSaveAsVariant = () => {
-    if (!onSaveAsVariant) return;
-    const variantName = prompt('Имя варианта:', suggestVariantName(fragment.name, modification));
-    if (!variantName) return;
-    persistDomains(fragment.id || fragment.name, domains);
-    onSaveAsVariant({
-      name: variantName,
-      type: fragment.type,
-      sequence: seq,
-      length: seq.length,
-      domains,
-      customColor: customColor || undefined,
-      parentId: fragment.parentId || fragment.id,
-      modification,
-      testResults: [],
-    });
-    onClose();
   };
 
   // Sprint X-fix K3 + X-fix-2 K-fix2-2: save Part from applied Git commits
@@ -767,12 +748,6 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
               data-testid="save-as-part-button"
               className="text-xs bg-purple-50 text-purple-700 px-3 py-1.5 rounded-lg hover:bg-purple-100 border border-purple-200 font-medium">
               {'💾'} Сохранить как запчасть
-            </button>
-          )}
-          {mode === 'mutagenesis' && seqChanged && onSaveAsVariant && (
-            <button onClick={handleSaveAsVariant}
-              className="text-xs bg-purple-50 text-purple-700 px-3 py-1.5 rounded-lg hover:bg-purple-100 border border-purple-200 font-medium">
-              {'🔀'} Как вариант
             </button>
           )}
           {modification && (

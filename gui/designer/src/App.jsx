@@ -708,7 +708,6 @@ export default function App() {
               fragments: fragments.map((f, i) => i === editTarget ? { ...f, customColor: color } : f),
             });
           }}
-          onSaveAsVariant={handleSaveAsVariant}
           onSavePart={handleSaveAsVariant}
           onCreateAssembly={(idx) => handleCreateMutagenesisAssembly(idx)}
           assemblyCircular={circular}

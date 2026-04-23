@@ -162,16 +162,20 @@ describe('Sprint X-fix-2 K-fix2-2 — editor stays open', () => {
     render(<FragmentEditor fragment={frag} onSave={() => {}} onClose={onClose}
       onCreateAssembly={() => {}} onSavePart={() => {}} />);
 
+    // Flip to mutagenesis, click a nucleotide, then T → adds local mutation.
     fireEvent.click(screen.getByRole('radio', { name: /Мутагенез/ }));
     const ntSpans = Array.from(document.querySelectorAll('span.cursor-pointer'));
     fireEvent.click(ntSpans[0]);
     const buttonT = Array.from(document.querySelectorAll('button')).find(b => b.textContent.trim() === 'T');
     act(() => { fireEvent.click(buttonT); });
 
+    // Click «Применить мутагенез» — the batch-commit must NOT close the editor.
     act(() => { fireEvent.click(screen.getByRole('button', { name: /Применить мутагенез/ })); });
 
     expect(onClose).not.toHaveBeenCalled();
+    // Mutations panel should render a CommitRow from liveFragment.commits.
     const f = useStore.getState().assemblies[0].fragments[0];
+    expect(Array.isArray(f.commits)).toBe(true);
     expect(f.commits.length).toBe(1);
     expect(f.commits[0].applied).toBe(true);
   });
@@ -206,6 +210,39 @@ describe('Sprint X-fix-2 K-fix2-2 — editor stays open', () => {
     expect(onClose).not.toHaveBeenCalled();
 
     window.prompt = origPrompt;
+  });
+});
+
+// ─── Sprint X-fix-2 K-fix2-3 — duplicate «🔀 Как вариант» button is gone ───
+describe('Sprint X-fix-2 K-fix2-3 — only one Part button', () => {
+  beforeEach(() => { window.confirm = vi.fn(() => true); });
+
+  it('only «💾 Сохранить как запчасть» is rendered; «🔀 Как вариант» dropped', () => {
+    const frag = { id: 'f1', name: 'F', type: 'CDS',
+      sequence: 'ATGGCTAAAGAGTTT', length: 15, strand: 1,
+      annotations: [], mutations: [] };
+    seedFragment(frag);
+
+    const { rerender } = render(
+      <FragmentEditor fragment={frag} onSave={() => {}} onClose={() => {}}
+        onCreateAssembly={() => {}} onSavePart={() => {}} />
+    );
+
+    // Get into the old dual-button condition (mode=mutagenesis + seqChanged
+    // after local edit + an applied commit) to verify the duplicate is gone.
+    fireEvent.click(screen.getByRole('radio', { name: /Мутагенез/ }));
+    act(() => {
+      useStore.getState().applyMutationGit(0, {
+        type: 'substitution', dnaPosition: 3, newCodon: 'GAA', label: 'A2E',
+      });
+    });
+    rerender(
+      <FragmentEditor fragment={frag} onSave={() => {}} onClose={() => {}}
+        onCreateAssembly={() => {}} onSavePart={() => {}} />
+    );
+
+    expect(screen.queryByTestId('save-as-part-button')).not.toBeNull();
+    expect(screen.queryByText(/Как вариант/)).toBeNull();
   });
 });
 
