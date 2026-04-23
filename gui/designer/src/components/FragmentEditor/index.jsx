@@ -281,6 +281,20 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
     return () => clearTimeout(timer);
   }, [seq]);
 
+  // Sprint X-fix-2 K-fix2-2: after batch-commit (or toggleCommit / archiveCommit)
+  // the store replays fragment.sequence; re-sync local `seq` so SequenceGrid
+  // reflects the new state. Gated on `liveFragment.sequence` CHANGING (ref-tracked)
+  // to ignore initial mount and cross-test store bleed. mode=edit — skip
+  // (user's local input wins there).
+  const lastLiveSeqRef = useRef(liveFragment.sequence);
+  useEffect(() => {
+    if (mode !== 'mutagenesis') return;
+    if (liveFragment.sequence !== lastLiveSeqRef.current) {
+      setSeq(liveFragment.sequence);
+      lastLiveSeqRef.current = liveFragment.sequence;
+    }
+  }, [liveFragment.sequence, mode]);
+
   // V12 — bookkeeping edit: fix the record, no experimental intent.
   const handleSaveEdit = () => {
     persistDomains(fragment.id || fragment.name, domains);
@@ -296,16 +310,16 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
     onClose();
   };
 
-  // Sprint X-fix K1 + X-fix-2 K-fix2-1: route local mutations through
-  // Plasmid-Git as a single batch (one pushUndo for all N).
+  // Sprint X-fix K1 + X-fix-2 K-fix2-1/K-fix2-2: route local mutations through
+  // Plasmid-Git as a single batch (one pushUndo for all N); editor stays open
+  // so biologist can see commits land in the Mutations panel.
   const handleSaveMutagenesis = () => {
-    if (mutations.length === 0) { onClose(); return; }
-    if (fragIdx < 0) { onClose(); return; }
+    if (mutations.length === 0) return;
+    if (fragIdx < 0) return;
     persistDomains(fragment.id || fragment.name, domains);
     const muts = mutations.map(m => normalizeMutationForGit(m, seq));
     applyMutationsBatch(fragIdx, muts);
     setMutations([]);
-    onClose();
   };
 
   const handleSaveAsVariant = () => {
@@ -327,7 +341,8 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
     onClose();
   };
 
-  // Sprint X-fix K3: save Part from applied Git commits (HEAD replay).
+  // Sprint X-fix K3 + X-fix-2 K-fix2-2: save Part from applied Git commits
+  // (HEAD replay). Editor stays open so biologist can continue working.
   const handleSavePart = () => {
     if (!onSavePart) return;
     const payload = buildSavePartPayload({ fragment, liveFragment, seq, annotations, domains, customColor, commits });
@@ -335,7 +350,6 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
     if (!variantName) return;
     persistDomains(fragment.id || fragment.name, domains);
     onSavePart({ ...payload, name: variantName });
-    onClose();
   };
 
   // ═══ Inline mutagenesis ═══

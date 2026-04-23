@@ -148,6 +148,67 @@ describe('Sprint X-fix K2/K3 — Create assembly + Save-as-Part buttons', () => 
   });
 });
 
+// ─── Sprint X-fix-2 K-fix2-2 — editor stays open after apply / save-as-part ───
+describe('Sprint X-fix-2 K-fix2-2 — editor stays open', () => {
+  beforeEach(() => { window.confirm = vi.fn(() => true); });
+
+  it('editor stays open after «Применить мутагенез»', () => {
+    const frag = { id: 'f1', name: 'F', type: 'CDS',
+      sequence: 'ATGGCTAAAGAGTTT', length: 15, strand: 1,
+      annotations: [], mutations: [] };
+    seedFragment(frag);
+    const onClose = vi.fn();
+
+    render(<FragmentEditor fragment={frag} onSave={() => {}} onClose={onClose}
+      onCreateAssembly={() => {}} onSavePart={() => {}} />);
+
+    fireEvent.click(screen.getByRole('radio', { name: /Мутагенез/ }));
+    const ntSpans = Array.from(document.querySelectorAll('span.cursor-pointer'));
+    fireEvent.click(ntSpans[0]);
+    const buttonT = Array.from(document.querySelectorAll('button')).find(b => b.textContent.trim() === 'T');
+    act(() => { fireEvent.click(buttonT); });
+
+    act(() => { fireEvent.click(screen.getByRole('button', { name: /Применить мутагенез/ })); });
+
+    expect(onClose).not.toHaveBeenCalled();
+    const f = useStore.getState().assemblies[0].fragments[0];
+    expect(f.commits.length).toBe(1);
+    expect(f.commits[0].applied).toBe(true);
+  });
+
+  it('editor stays open after «Сохранить как запчасть»', () => {
+    const frag = { id: 'f1', name: 'F', type: 'CDS',
+      sequence: 'ATGGCTAAAGAGTTT', length: 15, strand: 1,
+      annotations: [], mutations: [] };
+    seedFragment(frag);
+    const onSavePart = vi.fn();
+    const onClose = vi.fn();
+    const origPrompt = window.prompt;
+    window.prompt = vi.fn(() => 'F(A2E)');
+
+    const { rerender } = render(
+      <FragmentEditor fragment={frag} onSave={() => {}} onClose={onClose}
+        onCreateAssembly={() => {}} onSavePart={onSavePart} />
+    );
+
+    act(() => {
+      useStore.getState().applyMutationGit(0, {
+        type: 'substitution', dnaPosition: 3, newCodon: 'GAA', label: 'A2E',
+      });
+    });
+    rerender(
+      <FragmentEditor fragment={frag} onSave={() => {}} onClose={onClose}
+        onCreateAssembly={() => {}} onSavePart={onSavePart} />
+    );
+
+    fireEvent.click(screen.getByTestId('save-as-part-button'));
+    expect(onSavePart).toHaveBeenCalledTimes(1);
+    expect(onClose).not.toHaveBeenCalled();
+
+    window.prompt = origPrompt;
+  });
+});
+
 // ─── Sprint X-fix-2 K-fix2-1 — applyMutationsBatch: single pushUndo ───
 describe('Sprint X-fix-2 K-fix2-1 — applyMutationsBatch', () => {
   it('batch of N mutations → pushUndo called exactly once (not N times)', () => {
