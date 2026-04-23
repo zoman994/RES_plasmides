@@ -8,6 +8,7 @@ import { describe, it, expect } from 'vitest';
 import { render } from '@testing-library/react';
 import Prototype, { isPrototypeURL } from '../components/Prototype';
 import CanvasBlocksView from '../components/Prototype/CanvasBlocksView';
+import PlasmidViewerWrapper from '../components/Prototype/PlasmidViewerWrapper';
 import { fixture } from '../components/Prototype/fixture';
 import { featureColor, FEATURE_COLORS_V2 } from '../feature-palette';
 
@@ -26,8 +27,8 @@ describe('Sprint UX-1 prototype — K1 scaffold', () => {
     const { container, getByText } = render(<Prototype />);
     expect(container.querySelector('.ux-prototype-root')).toBeTruthy();
     expect(getByText(/Canvas Blocks.*K2/i)).toBeTruthy();
-    expect(getByText(/PlasmidViewer.*K3/i)).toBeTruthy();
-    expect(getByText(/AnnotationEditor.*K4/i)).toBeTruthy();
+    expect(getByText(/Plasmid viewer.*K3/i)).toBeTruthy();
+    expect(getByText(/Annotation editor.*K4/i)).toBeTruthy();
   });
 
   it('fixture covers all 16 feature-palette families via featureColor (no unused family)', () => {
@@ -66,6 +67,20 @@ describe('Sprint UX-1 prototype — K2 CanvasBlocksView', () => {
       seen.add(bg);
     }
     // Fixture is designed so ≥10 distinct palette families appear.
+    expect(seen.size).toBeGreaterThanOrEqual(10);
+  });
+});
+
+describe('Sprint UX-1 prototype — K3 PlasmidViewerWrapper', () => {
+  it('circular map renders ≥10 distinct palette-sourced sub-arc fills', () => {
+    const { container } = render(<PlasmidViewerWrapper />);
+    const palette = new Set(Object.values(FEATURE_COLORS_V2));
+    const paths = container.querySelectorAll('svg path[fill]');
+    const seen = new Set();
+    for (const p of paths) {
+      const fill = p.getAttribute('fill');
+      if (palette.has(fill)) seen.add(fill);
+    }
     expect(seen.size).toBeGreaterThanOrEqual(10);
   });
 });

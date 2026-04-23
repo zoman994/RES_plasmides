@@ -10,6 +10,7 @@
 import './prototype-tokens.css';
 import { fixture } from './fixture';
 import CanvasBlocksView from './CanvasBlocksView';
+import PlasmidViewerWrapper from './PlasmidViewerWrapper';
 
 export function isPrototypeURL(search) {
   try {
@@ -34,11 +35,11 @@ export default function Prototype() {
           <CanvasBlocksView />
         </section>
         <section className="ux-proto-panel" aria-label="PlasmidViewer prototype">
-          <h2 className="ux-proto-panel-title">Plasmid viewer</h2>
-          <div className="ux-proto-panel-placeholder">PlasmidViewer prototype (K3)</div>
+          <h2 className="ux-proto-panel-title">Plasmid viewer (K3)</h2>
+          <PlasmidViewerWrapper />
         </section>
         <section className="ux-proto-panel" aria-label="AnnotationEditor prototype">
-          <h2 className="ux-proto-panel-title">Annotation editor</h2>
+          <h2 className="ux-proto-panel-title">Annotation editor (K4)</h2>
           <div className="ux-proto-panel-placeholder">AnnotationEditor prototype (K4)</div>
         </section>
       </main>
