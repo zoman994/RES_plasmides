@@ -9,6 +9,7 @@
  */
 import './prototype-tokens.css';
 import { fixture } from './fixture';
+import CanvasBlocksView from './CanvasBlocksView';
 
 export function isPrototypeURL(search) {
   try {
@@ -29,8 +30,8 @@ export default function Prototype() {
       </header>
       <main className="ux-proto-main">
         <section className="ux-proto-panel" aria-label="Canvas Blocks view prototype">
-          <h2 className="ux-proto-panel-title">Canvas Blocks view</h2>
-          <div className="ux-proto-panel-placeholder">Canvas Blocks prototype (K2)</div>
+          <h2 className="ux-proto-panel-title">Canvas Blocks view (K2)</h2>
+          <CanvasBlocksView />
         </section>
         <section className="ux-proto-panel" aria-label="PlasmidViewer prototype">
           <h2 className="ux-proto-panel-title">Plasmid viewer</h2>

@@ -7,6 +7,7 @@
 import { describe, it, expect } from 'vitest';
 import { render } from '@testing-library/react';
 import Prototype, { isPrototypeURL } from '../components/Prototype';
+import CanvasBlocksView from '../components/Prototype/CanvasBlocksView';
 import { fixture } from '../components/Prototype/fixture';
 import { featureColor, FEATURE_COLORS_V2 } from '../feature-palette';
 
@@ -48,5 +49,23 @@ describe('Sprint UX-1 prototype — K1 scaffold', () => {
       expect(a.name).toBeTruthy();
       expect(a.type).toBeTruthy();
     }
+  });
+});
+
+describe('Sprint UX-1 prototype — K2 CanvasBlocksView', () => {
+  it('renders one block per fixture annotation with palette-sourced background', () => {
+    const { container } = render(<CanvasBlocksView />);
+    const blocks = container.querySelectorAll('[data-proto-block]');
+    expect(blocks.length).toBe(fixture.annotations.length);
+
+    const palette = new Set(Object.values(FEATURE_COLORS_V2));
+    const seen = new Set();
+    for (const b of blocks) {
+      const bg = b.getAttribute('data-block-color');
+      expect(palette.has(bg)).toBe(true);
+      seen.add(bg);
+    }
+    // Fixture is designed so ≥10 distinct palette families appear.
+    expect(seen.size).toBeGreaterThanOrEqual(10);
   });
 });
