@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import '@xyflow/react/dist/style.css'
 import App from './App.jsx'
+import Prototype, { isPrototypeURL } from './components/Prototype'
 
 class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { error: null }; }
@@ -30,10 +31,12 @@ class ErrorBoundary extends Component {
   }
 }
 
+const RootComponent = isPrototypeURL(window.location.search) ? Prototype : App;
+
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <ErrorBoundary>
-      <App />
+      <RootComponent />
     </ErrorBoundary>
   </StrictMode>,
 )
