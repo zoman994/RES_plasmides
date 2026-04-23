@@ -1,185 +1,195 @@
-# CURRENT_TASK.md — Sprint X «Plasmid-Git»
+# CURRENT_TASK.md — Sprint UX-1 prototype
 
 **Статус:** 🟢 Готов к реализации
-**Спека:** `docs/SPRINT_X_PLASMID_GIT.md` (36.61 KB)
-**База:** v0.5.1-alpha, коммит `8699bf5`
-**Результат:** закрытие V22 (все контексты, включая split-sub), V24, V27 + Git-модель для inline мутаций
+**Спека:** `docs/SPRINT_UX_1_PROTOTYPE.md` (41.47 KB — prototype-спека с полным rationale по вариантам выбора, §2 playbook легитимное отклонение для жанра прототипа)
+**Тип:** feature (prototype phase)
+**База:** v0.5.1-alpha, коммит `8699bf5` (Sprint 2a.1 финал) либо любой коммит после Sprint X Plasmid-Git — не критично для прототипа (прототип изолирован, не зависит от mutation-фичей).
+**Оценка:** ~4–6 ч Code (K1–K4 + опционально K5).
 
 ---
 
 ## TL;DR (для Code)
 
-Ввести на `fragment` поля `baseSnapshot` (immutable) + `commits[]` (с флагом `applied`). Все inline mutation-writes идут через Git reducer `applyMutationGit` с auto-override same-codon. Revert через toggle `applied`, hard delete через отдельный archive. Split sub-fragments получают bootstrap `baseSnapshot` в момент создания. V22 закрывается replay-aware highlights для **обоих** контекстов (non-split + split-sub). V24 — независимый self-closure primers fix + ActionBar badge.
+URL-param switch в `src/main.jsx` (query `?ux=prototype`) → изолированный React-экран `<Prototype />` с тремя поверхностями (Canvas Blocks view + PlasmidViewer + AnnotationEditor), каждая в обёртке или минимальном fork, цвета через `featureColor` из `feature-palette.js` вместо `theme.js`. Fixture-плазмида с 15 семействами аннотаций. `App.jsx` / `DesignCanvas.jsx` / `PlasmidViewer.jsx` / `AnnotationEditor.jsx` — **не трогаем** (App.jsx в 0.8 KB от hard 40 KB, остальные крупные). Задача — review-оценка новой палитры на живых React-компонентах до полной UX-1 спеки.
 
-**6 подзадач, ~15–18 часов. На границе «делить на X-A/X-B» — см. §7 спеки.**
+**5 подзадач K1–K5, K5 опционально. После K4 — STOP, ждём review-сессию Игоря.**
 
 ---
 
 ## Порядок чтения перед началом
 
-1. `CLAUDE.md` — правила проекта.
-2. `BUGS.md` OPEN секция — V22 / V24 / V27 (ссылки в спеке §1).
-3. `docs/SPRINT_X_PLASMID_GIT.md` — **вся спека**, особенно §4 (архитектурные решения) и §5 (предположения + первые шаги проверок).
-4. Целевые файлы по мере необходимости для каждого K.
+1. `CLAUDE.md` — правила проекта (особенно §7 лимиты размеров).
+2. `BUGS.md` — по OPEN секции багов в скоупе нет (это prototype, не bugfix). Можно просмотреть `head` — иметь в виду V28/V29/V30/V31 (они в OUT спеки, но могут всплывать в review).
+3. `docs/SPRINT_UX_1_PROTOTYPE.md` — **вся спека**, особенно:
+   - §0 срез размеров — что можно и что нельзя трогать;
+   - §4 четыре архитектурных решения (prototype-first ⚓, вариант C, 3 поверхности, URL-switch);
+   - §5 предположения — каждое с «первым шагом K*»;
+   - §6 задачи (подробности по K1–K5 там, здесь только чеклист).
+4. Целевые файлы — по мере надобности для каждого K (§6 спеки указывает «первый шаг» — что читать/grep'ать первым).
 
 ---
 
 ## Чеклист подзадач
 
-### K1 — `lib/plasmid-git.js` pure helper + тесты
+### K1 — URL-switch + Prototype scaffold + tokens + fixture
 
-- [ ] Top-level feature-detect `crypto.randomUUID` (dev-throw / prod-fallback).
-- [ ] Экспорт: `bootstrapBaseSnapshot`, `createCommit`, `replay`, `replayDiff`, `resolveAutoOverride`, `codonStart`.
-- [ ] Вынести `adjustAnnotationCoords` из `fragmentSlice.js` сюда.
-- [ ] Новый файл `lib/__tests__/plasmid-git.test.js`: **~12 тестов** (bootstrap, createCommit uuid-regex, replay empty/sub/del/ins, V22 regression indel+sub, auto-override same-codon, toggle, createdAt-ordering, pure function, ~3 вариации по паттерну).
-- **Целевой размер:** 10–14 KB.
-- **Артефакты:** `lib/plasmid-git.js`, `lib/__tests__/plasmid-git.test.js`.
+- [ ] **Первый шаг:** прогнать все 15 типов fixture через `featureColor(type, name)` в unit-тесте — ни один не должен уходить в `misc` fallback. Если уходит — решение (расширить `featureColor` или поправить fixture) в commit message.
+- [ ] `src/main.jsx` — URL-param switch на `new URLSearchParams(window.location.search).get('ux') === 'prototype'`. `<StrictMode><ErrorBoundary>` сохранить в обеих ветвях.
+- [ ] `src/components/Prototype/index.jsx` — 3-row grid layout с placeholder-divs для K2/K3/K4, root class `.ux-prototype-root`.
+- [ ] `src/components/Prototype/prototype-tokens.css` — CSS-переменные paper/ink/accent из `design_teasers/bodgegene_workspace.html`, scoped под `.ux-prototype-root`.
+- [ ] `src/components/Prototype/fixture.js` — синтетическая плазмида ~4–6 kb, 15+ аннотаций, каждое семейство `feature-palette.js`.
+- [ ] `__tests__/prototype-scaffold.test.jsx` — +2 (URL `?ux=prototype` → `<Prototype />`; URL без параметра → `<App />` regression).
+- **Артефакты:** `main.jsx` изменён, 4 новых файла в `components/Prototype/`, 1 новый тест.
 
-### K2 — store reducers + migration
+### K2 — CanvasBlocksView обёртка или fork
 
-- [ ] **Первый шаг:** прочитать `store/index.js` pushUndo/popUndo. Если snapshot selective — добавить `baseSnapshot`/`commits` в whitelist явно.
-- [ ] Migration на hydration: fragments без `baseSnapshot` → bootstrap из текущих sequence/annotations, commits=[]. Legacy mutations[] не трогаем.
-- [ ] 4 reducers: `applyMutationGit` (с auto-override внутри), `toggleCommit`, `archiveCommit`, `setCommitMessage`.
-- [ ] **Контроль размера:** если `fragmentSlice.js` перевалит 24.5 KB — вынести reducers в `lib/plasmid-git-reducers.js` factory pattern.
-- [ ] Тесты `store/__tests__/fragmentSlice-git.test.js`: **~7** (migration sanity, applyMutationGit bootstrap, auto-override, toggle, archive, setCommitMessage, pushUndo вызовы).
-- **Артефакты:** обновлённый `fragmentSlice.js` (или `lib/plasmid-git-reducers.js`), обновлённый `store/index.js` (migration), новый тестовый файл.
+- [ ] **Первый шаг:** `grep -n "theme\|color" gui/designer/src/components/DesignCanvas.jsx gui/designer/src/components/PartBlock.jsx gui/designer/src/components/JunctionBlock.jsx`. Решить: wrapper (prop/context via `FeaturePaletteContext.Provider`) или fork Blocks-branch в `CanvasBlocksViewFork.jsx`. Commit message явно указывает путь.
+- [ ] `src/components/Prototype/CanvasBlocksView.jsx` (и опц. `CanvasBlocksViewFork.jsx` ≤5 KB, только рендер из fixture без Zustand state) — Canvas Blocks view с цветами через `featureColor`.
+- [ ] **Запрещено:** in-place правка `DesignCanvas.jsx` / `PartBlock.jsx` / `JunctionBlock.jsx`.
+- [ ] Тесты extend: +1 (≥1 PartBlock имеет background-color из семейства палитры).
+- **Артефакты:** 1–2 новых файла в `Prototype/`, extend test.
 
-### K3 — `handleSaveFragment` + split-sub bootstrap
+### K3 — PlasmidViewerWrapper обёртка
 
-- [ ] **Первый шаг:** `grep -rn 'sequence:' gui/designer/src/hooks gui/designer/src/store` — убедиться что inline-mutation-writes только в `handleSaveFragment`. Если найдены другие — мигрировать.
-- [ ] Переписать mutation-path: все newMuts → `applyMutationGit(editTarget, ...)`, не прямое write `fragments.map(... sequence: ...)`.
-- [ ] Split-path: каждому новому sub назначить `baseSnapshot: { sequence: sf.sequence, annotations: trimmed }`, `commits: []`.
-- [ ] KLD-path: пост-KLD fragment тоже получает `baseSnapshot: { sequence: updated.sequence, annotations }`, `commits: []`.
-- [ ] Тесты `hooks/__tests__/useFragmentHandlers.test.js`: **+4** (inline vanilla, two-on-same-codon auto-override, split-sub bootstrap, KLD-path bootstrap).
-- **Артефакты:** обновлённый `useFragmentHandlers.js`, обновлённый test.
+- [ ] **Первый шаг:** `grep -n "theme\|ANNOTATION_COLORS\|FEATURE_COLORS" gui/designer/src/components/PlasmidViewer.jsx`. Решить wrapper vs fork по тому же принципу, что K2.
+- [ ] `src/components/Prototype/PlasmidViewerWrapper.jsx` — PlasmidViewer на fixture, region-цвета через `featureColor`, labels на `FEATURE_STROKE` (⚓ Map-WS-1-fix-B).
+- [ ] **Запрещено:** in-place правка `PlasmidViewer.jsx`.
+- [ ] Тесты extend: +1 (circular map ≥ 10 уникальных pastel fill-значений).
 
-### K4 — `highlights.js` replay-aware
+### K4 — AnnotationEditorWrapper обёртка
 
-- [ ] Новая Git-path branch **первой** в `computeMutationHighlights(fragment, parent)`: если `fragment.commits?.length > 0 && fragment.baseSnapshot` → `replayDiff(fragment.baseSnapshot, fragment.commits, cdsRegions)`.
-- [ ] Existing парент-diff path и mutation-list fallback остаются как legacy для fragments без commits.
-- [ ] Тесты `FragmentEditor/__tests__/highlights.test.js`: **+4** (1 substitution commit, V22 regression direct deletion+substitution, split-sub V22 closed, legacy path сохранён).
-- **Артефакты:** обновлённый `highlights.js`, обновлённый test.
+- [ ] **Первый шаг:** прочитать props-signature `AnnotationEditor.jsx` (15.09 KB, малый — можно целиком). Найти где chip-элементы получают цвет. Ожидание: через `theme.js`.
+- [ ] `src/components/Prototype/AnnotationEditorWrapper.jsx` — AnnotationEditor на fixture, chip-цвета через `featureColor`. SBOL-глифы оставляем на текущих `sbol-glyphs.jsx` цветах (§10 open question 3 спеки).
+- [ ] **Запрещено:** in-place правка `AnnotationEditor.jsx`.
+- [ ] Тесты extend: +1 (≥10 уникальных chip computed background-color).
 
-### K5 — EditorPanels UX (toggle + archive + message + diff view + legacy lock)
+### K5 (опционально) — mock ↔ live toggle
 
-- [ ] Mutations panel переделан: toggle ✕/✓, archive 🗑 с native confirm, inline-edit commit.message через pencil ✎.
-- [ ] Group-by-codon для substitutions: header `{AA}{codon#}:` + entries внутри.
-- [ ] Non-substitution commits — отдельная группа «Прочее».
-- [ ] Legacy mutations (без commit.id): 🔒 lock icon + серый фон + `pointer-events: none` + tooltip «Legacy — revert недоступен».
-- [ ] Diff-view toggle в header Editor «⇌ Сравнить с baseline». Active → sequence grid показывает baseSnapshot.sequence с highlight-overlay substitutions + indel-markup. Mode switcher disabled в diff mode. Кнопка «✕ Закрыть diff» возвращает к HEAD.
-- [ ] Diff button disabled если `fragment.commits` пустой.
-- [ ] Props extension: `commits`, `onToggleCommit`, `onArchiveCommit`, `onSetMessage`, `diffViewActive`, `onToggleDiffView`.
-- [ ] `FragmentEditor/index.jsx`: proброс actions через `useStore`, local state `diffViewActive` useState, sequence grid render branch на `diffViewActive`.
-- [ ] Тесты `EditorPanels.test.jsx`: **+6** (toggle active/disabled, archive confirm OK/Cancel, inline message edit, legacy lock, group-by-codon) + 1 integration diff view.
-- **Ожидаемый размер:** 9.39 → 12–13 KB (EditorPanels), под hard 40 OK.
-- **Артефакты:** обновлённые `EditorPanels.jsx`, `FragmentEditor/index.jsx`, обновлённый test.
-
-### K6 — V24 self-closure primers + ActionBar badge
-
-- [ ] `local-primer-design.js:201-206` — добавить branch `fragments.length === 1 && circular` перед existing early-return. Собрать self-closure pair primers (15-bp tails), `purpose: 'self-closure'`.
-- [ ] Найти где рендерится ActionBar / protocol panel (grep `ActionBar`). Добавить условный badge «Режим: Self-closure (single circular, +30 bp замыкающий overlap)» когда `primers[0]?.purpose === 'self-closure'`.
-- [ ] Тесты `__tests__/local-primer-design.test.js`: **+3** (single linear no primers regression, single circular self-closure primers корректные tails, ActionBar badge integration).
-- **Артефакты:** обновлённые `local-primer-design.js`, `ActionBar.jsx` (или где badge), обновлённый test.
+- [ ] **Условие:** §10 open question 1 спеки — в пользу «оба». **По умолчанию пропускаем**, добавляем по итогам review если Игорь попросит.
+- [ ] Header-toggle в `Prototype/index.jsx` — `useStore((s) => s.fragments)` vs `fixture.fragments`. Fallback на fixture при пустом store + notice.
+- [ ] Тесты: skip (UX-toggle review-smoke).
 
 ---
 
 ## STOP-условие
 
-После K6 **остановиться**. НЕ:
-- обновлять `PROJECT_STATE.md` / `DECISIONS.md` / `BUGS.md` (визуальная приёмка — отдельной сессией Chat).
-- перемещать спеку в `docs/archive/`.
-- начинать Map-WS-2 или другой спринт.
-- трогать OPEN баги вне скоупа (V23, V1, V7, P1, P4, P6 и пр.).
+После commit K4 (и K5 если был) — **остановись**. НЕ:
 
-Если после K4 чувствуешь, что не укладываешься в оставшееся время — **STOP-фраза** в CURRENT_TASK.md: «Finished K1–K4, Sprint X-A complete. K5–K6 — следующая сессия (Sprint X-B).» Игорь решит дальнейший ход.
+- обновляй `PROJECT_STATE.md` / `DECISIONS.md` / `BUGS.md` — это Chat в сессии review;
+- перемещай `docs/SPRINT_UX_1_PROTOTYPE.md` в `docs/archive/` — прототип ждёт review + полной UX-1 спеки;
+- начинай Sprint UX-1a/b/c фазы 2;
+- трогай OPEN баги вне скоупа (V7, V22, V23, V24, V27, V28, V29, V30, V31 — все на своих спринтах);
+- **трогай `App.jsx` / `DesignCanvas.jsx` / `PlasmidViewer.jsx` / `AnnotationEditor.jsx`** вне обёртки (§3 OUT спеки).
+
+Если `App.jsx` пришлось бы править — **STOP в середине K***, отчёт о блокере в CURRENT_TASK.md, mini-spec на декомпозицию App.jsx **перед** продолжением, не молча дописывать.
 
 ---
 
 ## Формат отчёта
 
-В конец этого файла дописать (подробности в спеке §8):
+Дописать в конец этого файла (полный шаблон — спека §8). Обязательно:
 
-```
-## Отчёт Code по Sprint X Plasmid-Git
-
-- K1 коммит: `<hash>` — feat(plasmid-git): ...
-- ... (K2–K6)
-- Изменения размеров:
-  - fragmentSlice.js: 23.09 → X KB (hard 25 — OK/WARN/FAIL; митигация если FAIL)
-  - useFragmentHandlers.js: 20.29 → X KB
-  - FragmentEditor/index.jsx: 35.57 → X KB
-  - EditorPanels.jsx: 9.39 → X KB
-  - highlights.js: 3.54 → X KB
-  - local-primer-design.js: 15.63 → X KB
-- Новые файлы: lib/plasmid-git.js (X KB) + tests (+N); возможно lib/plasmid-git-reducers.js
-- Vitest: N/N (baseline 774, ΔN ≈ 25–35)
-- pytest: 112/112
-- vite build: clean | warnings: <...>
-- Отклонения от спеки: <список или «нет»>
-- Migration sanity: загрузить сохранённый проект → baseSnapshot bootstrap OK, sequence не изменилась.
-- Size budget: OK / WARN / FAIL + митигация.
-```
+- коммит-хэши K1–K4 (+K5 если был);
+- по K2/K3/K4 — явно **wrapper или fork** по каждой обёртке;
+- подтверждение что `App.jsx` / `DesignCanvas.jsx` / `PlasmidViewer.jsx` / `AnnotationEditor.jsx` **не тронуты** (исходные размеры в отчёте);
+- Vitest baseline зависит от git state (774 до Sprint X Plasmid-Git мерджа, 822 после);
+- Size budget + отклонения от спеки (§3 / §4 / §6) явным списком;
+- противоречия с §0.5 / §0.6 если обнаружены в процессе.
 
 ---
 
 ## Что делать при регрессии
 
-- Любой сломанный существующий тест (не в скоупе K) → **STOP**, отчёт о регрессии, не fix молча. Возможно root cause в архитектуре — обсудить с Игорем до хака.
-- `fragmentSlice.js` перевалил 25 KB hard → **STOP в середине K2**, вынести reducers в `lib/plasmid-git-reducers.js` factory, продолжить.
-- `crypto.randomUUID` недоступен в prod build → **STOP в K1**, не fallback'ом молча, а явным отчётом — возможно нужен polyfill в project.
-- Migration сломал сохранённый проект (тест K2 #1 упал) → **STOP**, не править логику bootstrap «на глаз» — обсудить.
+- Любой сломанный существующий тест (не в скоупе K) → **STOP**, отчёт о регрессии, не фиксировать молча — обсудить с Игорем.
+- Если `featureColor` не покрывает тип из fixture (K1 первый шаг) → остановись, обсудить: расширять `featureColor` (меняет контракт Map-WS-1-fix ⚓) или корректировать fixture.
+- Если в K2/K3/K4 wrapper невозможен и нужен fork — **это не блокер**, зафиксируй в commit message и продолжай. Fork ≤5 KB — в пределах нормы.
+- Если vite build падает из-за CSS-переменных (K1 prototype-tokens.css) → проверить Tailwind 4 `@theme` вместо обычного `:root` блока.
 
 ---
 
 ## Ссылки
 
-- **Спека:** `docs/SPRINT_X_PLASMID_GIT.md` (архитектурные решения, предположения, детали логики replay/auto-override, риски, open questions).
-- **Баги:** BUGS.md OPEN → V22, V24, V27.
-- **Legacy контекст:** Sprint 1.7 `docs/archive/SPRINT_1_7_UNIFIED_EDITOR.md` (K10 Unified Editor, K12 topology), Sprint 2a.1 finalization (EditorPanels extract) — коммит `8699bf5`.
-- **Playbook:** `CHAT_PLAYBOOK.md` §2 (формат спек), §4 (регламент архивации после финализации — делает Chat **следующей** сессии).
+- **Спека:** `docs/SPRINT_UX_1_PROTOTYPE.md` (41.47 KB, полные §0–§10).
+- **Kickoff:** §0.5 ответы Игоря batch 1 + §0.6 batch 2 (C + AnnotationEditor + router-check) + §0.7 отложенное на фазу 2.
+- **Архитектурные основы:** `DECISIONS.md` секция «Процесс — Chat ↔ Code координация 23.04.2026» (три ⚓: kickoff-интервью, `.claude/skills/`, **prototype-first**); секция Sprint Map-WS-1 cycle (⚓ `getRegions` id contract, `feature-palette.js` контракт, responsive charsPerLine).
+- **Референсы дизайна:** `design_teasers/feature_palette.html` (палитра), `design_teasers/bodgegene_workspace.html` (chrome).
+- **Playbook:** `CHAT_PLAYBOOK.md` §3 (CURRENT_TASK.md — оперативный чеклист, не зеркало спеки).
 
 ---
 
-**Handoff для Code:**
+**Handoff (из спеки §Handoff):**
 
-> Прочитай CLAUDE.md, BUGS.md, CURRENT_TASK.md, docs/SPRINT_X_PLASMID_GIT.md. Реализуй Sprint X «Plasmid-Git» по K1–K6. После K6 остановись — жди визуальной приёмки, не финализируй PROJECT_STATE/DECISIONS/BUGS, не перемещай спеку в archive.
+> Прочитай `CLAUDE.md`, `BUGS.md`, `CURRENT_TASK.md`, `docs/SPRINT_UX_1_PROTOTYPE.md`. Реализуй Sprint UX-1 prototype по K1–K4 (K5 опционально). После K4 остановись — жди review-сессии Игоря, не финализируй `PROJECT_STATE` / `DECISIONS` / `BUGS`, не перемещай спеку в `docs/archive/`.
 
 ---
 
-## Отчёт Code по Sprint X Plasmid-Git
+_Переписан Chat'ом 23.04.2026 на Sprint UX-1 prototype. Предыдущая версия содержала отчёт Code по Sprint X «Plasmid-Git» (K1–K6, коммиты `bb868f1`..`bc20620`, 822/822 Vitest); визуальная приёмка Sprint X не проведена — Chat следующей приёмки восстановит отчёт через `git log CURRENT_TASK.md` (или смотрит commits напрямую)._
 
-- K1 коммит: `bb868f1` — feat(plasmid-git): lib/plasmid-git.js + 19 tests (replay, replayDiff, resolveAutoOverride, codonStart, adjustAnnotationCoords, bootstrapBaseSnapshot, createCommit) + crypto.randomUUID feature-detect (dev-throw / prod-fallback)
-- K2 коммит: `dc99d9a` — feat(fragmentSlice): Plasmid-Git reducers (applyMutationGit / toggleCommit / archiveCommit / setCommitMessage) extracted to `lib/plasmid-git-reducers.js` factory per §9 risk 1 + persist v7→v8 migration (fragments → baseSnapshot + commits=[]) + 8 tests
-- K3 коммит: `0ecb155` — refactor(useFragmentHandlers): handleSaveFragment bootstraps baseSnapshot + commits=[] on KLD newFragment and on every split sub-fragment + 4 tests. Existing handle-save-fragment tests PASS unchanged.
-- K4 коммит: `d79c456` — fix(V22): highlights.js gains Priority-1 Git-branch calling replayDiff when fragment.commits[] set; legacy parent-sequenceDiff and mutations-list fallbacks preserved. Closes V22 for both non-split and split-sub. +4 tests (includes direct V22 regression: deletion-before-substitution highlights only substitution HEAD coord, no tail).
-- K5 коммит: `58d49b8` — fix(V27) + feat: EditorPanels Mutations panel переработан — commit toggle ✕/✓, archive 🗑 с native confirm, inline-edit message (✎ pencil), group-by-codon для substitution commits + «Прочее» для non-sub, legacy lock 🔒 с pointer-events:none для pre-Sprint-X mutations. FragmentEditor header получил «⇌ Сравнить с baseline» toggle (disabled без commits). +7 tests.
-- K6 коммит: `bc20620` — fix(V24): designPrimersLocal добавляет branch для single-circular → 2 self-closure primers с 15-bp tails (purpose='self-closure'). ActionBar рендерит amber badge «⟲ Режим: Self-closure (+30 bp замыкающий overlap)» когда primers[0].purpose==='self-closure'. +6 tests.
-- Изменения размеров:
-  - fragmentSlice.js: 23.09 → **23.93 KB** (hard 25 — OK, митигация применена: reducers вынесены в lib/plasmid-git-reducers.js factory)
-  - useFragmentHandlers.js: 20.29 → **21.62 KB** (hard 25 — OK)
-  - FragmentEditor/index.jsx: 35.57 → **38.88 KB** (hard 40 — OK, soft 30 warn; уже был >30)
-  - EditorPanels.jsx: 9.39 → **15.25 KB** (hard 40 — OK)
-  - highlights.js: 3.54 → **4.35 KB** (hard 25 — OK)
-  - local-primer-design.js: 15.63 → **18.21 KB** (hard 25 — OK)
-  - ActionBar.jsx: 0.71 → **1.76 KB** (hard 40 — OK)
-- Новые файлы:
-  - `src/lib/plasmid-git.js` (**9.42 KB**) — цель 10–14 KB, чуть ниже нижней границы (лаконично получилось)
-  - `src/lib/plasmid-git-reducers.js` (**4.29 KB**) — применено правило §9 риск 1, вынос из fragmentSlice
-  - `src/lib/__tests__/plasmid-git.test.js` (**+19** vitest)
-  - `src/store/__tests__/fragmentSlice-git.test.js` (**+8** vitest)
-  - `src/__tests__/useFragmentHandlers-git.test.js` (**+4** vitest)
-  - `src/__tests__/editor-panels-git.test.jsx` (**+7** vitest)
-  - `src/__tests__/action-bar-self-closure.test.jsx` (**+3** vitest)
-  - Расширены `src/__tests__/fragment-editor-highlights.test.js` (**+4**), `src/__tests__/local-primer-design.test.js` (**+3**)
-- Vitest: **822/822** (baseline 774 + 48 ≈ верхняя граница ожидаемого диапазона 25–35 превзойдена из-за 6 подзадач и сквозных интеграционных проверок; все тесты осмысленные, без дублей).
-- pytest: **112/112** (backend не трогался).
-- vite build: **clean** | pre-existing warnings: INEFFECTIVE_DYNAMIC_IMPORT для auto-annotate.js, chunk >500 KB (оба — pre-existing, за рамками спринта).
-- Отклонения от спеки:
-  1. **§6 K3 «Для каждой newMut → applyMutationGit»**: прямой вызов applyMutationGit внутри handleSaveFragment НЕ реализован. Вместо этого на post-strategy writes (KLD newFragment / split subs) ставится fresh bootstrap baseSnapshot + commits=[]. Обоснование: spec §6 K3 same bullet далее явно предписывает «KLD-path: новый fragment получает baseSnapshot: { sequence: updated.sequence (mutant) }, commits: []» и «Split-path: каждому sub назначаем baseSnapshot: { sequence: sf.sequence }, commits: []». Если бы applyMutationGit вызывался до strategy-engine, его commits мгновенно перезаписывались бы bootstrap-ом — работа впустую. Выбранный путь сохраняет биологическую семантику (KLD = committed boundary, mutant = новая baseline) и не ломает ни один existing test. Тесты K3 #3/#4 «direct applyMutationGit» проверяют reducer изолированно через store, подтверждая bootstrap + 1 commit + auto-override.
-  2. **§6 K5 «diff-view substitution + indel markup overlay»**: реализован минимальный MVP — toggle state, баннер «Показан baseline … редактирование заблокировано». Рендер baseSnapshot.sequence вместо seq в SequenceGrid + подсветка substitution/indel positions в diff-моде НЕ доведён до визуального overlay. Обоснование: scope K5 уже включает toggle/archive/message/legacy-lock/group-by-codon, добавление полного diff-rendering потребовало бы переработки SequenceGrid (не в scope §3 IN). Интеграционный тест проверяет state toggle end-to-end.
-  3. **§6 K1 список тестов**: фактически **19 тестов** (vs плановые ~12) — добавлены вариации (insertion+substitution, toggle+re-toggle round-trip, pure-function determinism, silent/nonsilent CODON_TABLE classification, frame-shift warning), а также edge-cases для resolveAutoOverride (non-substitution, disabled-existing).
-  4. **§6 K3 первый шаг «grep sequence: в hooks/store»**: выполнен. Найдены inline-writes только в handleFragmentSplit (ручное разбиение — не mutation-path), flipFragment (RC — не mutation), KLD/split-mutation-writes в handleSaveFragment (мигрированы к добавлению baseSnapshot). Других mutation-writes не найдено.
-- Migration sanity: в `store/index.js` персист-миграция v7→v8 проходит идемпотентно по `f.sequence && !f.baseSnapshot`. Unit-тест K2 `migration idempotency: ... does not overwrite baseSnapshot` подтверждает, что повторный вызов applyMutationGit не перепрошивает baseSnapshot (референциальное равенство сохраняется). Ручная визуальная проверка сохранённых проектов — открытая задача визуальной приёмки.
-- Size budget итог: **OK** (все файлы под hard). Мonтaжное правило §9 риск 1 применено превентивно (reducers в lib/plasmid-git-reducers.js с факторизацией через `createPlasmidGitReducers(set, get)`), потому fragmentSlice.js остался 23.93 KB.
+---
 
-**После K6: СТОП.** PROJECT_STATE/DECISIONS/BUGS не трогались. Spec остаётся на месте (`docs/SPRINT_X_PLASMID_GIT.md`). Визуальная приёмка — отдельной сессией.
+## Отчёт Code по Sprint UX-1 prototype
+
+Реализован 23.04.2026 на ветке `feature/racetrack-canvas`, база `54b1e0f`.
+
+### Коммиты
+
+- K1: `f2c3f36` — `feat(prototype): K1 URL-switch + scaffold + tokens + fixture`
+- K2: `0d680d2` — `feat(prototype): K2 CanvasBlocksView (fork)`
+- K3: `4d99663` — `feat(prototype): K3 PlasmidViewerWrapper (wrapper)`
+- K4: `d08a109` — `feat(prototype): K4 AnnotationEditorWrapper (wrapper)`
+- K5: **skipped** (§10 open question 1 default — дефолт fixture, toggle добавим только если Игорь попросит на review).
+
+### По каждой обёртке (wrapper vs fork)
+
+- **K2 CanvasBlocksView → fork.** `PartBlock.jsx` импортирует `getFragColor` / `FEATURE_COLORS` напрямую из `theme.js` (строки 3, 64, 323). Проброс палитры через prop/context невозможен без правки `PartBlock.jsx` (25.85 KB) и/или `DesignCanvas.jsx` (38.44 KB, soft zone) — обе правки OUT §3. Fork: `CanvasBlocksView.jsx` 3.37 KB (< 5 KB fork-budget ⚓), render-only, без Zustand / drag-drop / context-menu. Каждая аннотация fixture → карточка с gradient-фоном `featureColor(type, name)`, SBOL-глиф со stroke = `FEATURE_STROKE`, junction-бусина между блоками.
+- **K3 PlasmidViewerWrapper → wrapper (PlasmidMap).** Полный `PlasmidViewer.jsx` — `fixed inset-0 z-50` модалка (строка 153) и его sequence pane ещё на legacy `theme.js` `FEATURE_COLORS` (строки 14, 259–307). Review-релевантная поверхность — круговая карта, а `PlasmidMap.jsx` уже резолвит sub-arc fill через `featureColor(r.type, r.name)` + labels через `FEATURE_STROKE` (строки 12, 263, 333 — Sprint Map-WS-1-fix, ⚓ 21.04.2026). Wrapper (1.48 KB) передаёт fixture как один whole-plasmid fragment в `<PlasmidMap>`, `totalBp = fixture.length`. Нулевые правки `PlasmidViewer` / `PlasmidMap`. Известный gap (phase 2): outer frame arc `PlasmidMap` всё ещё на `getFragColor` (hollow ring stroke), sequence pane `PlasmidViewer` — out of scope.
+- **K4 AnnotationEditorWrapper → wrapper (prop injection).** `AnnotationEditor.jsx` резолвит chip-цвет как `ann.color || ANNOTATION_COLORS[ann.type]` в обоих render-путях (строка 174 `Row`, строка 234 annotation bar). Per-annotation `color` — выше legacy lookup в приоритете. Wrapper (1.33 KB) обогащает `fixture.annotations` полем `color = featureColor(a.type, a.name)` перед передачей в `<AnnotationEditor readOnly />` → V2 палитра по всему tree-list + bar + tree-row SBOL-глифам (строка 207 тоже читает `ann.color`). Не покрыты (phase 2): child-row border (строка 260 `regionColor = ANNOTATION_COLORS[...]`), edit-mode SBOL-глиф (строка 179) — не основные review-поверхности.
+
+### Изменения размеров
+
+- `main.jsx`: 1.40 → **1.56 KB** (+0.16 KB, URL-switch import + one-line `RootComponent` selection).
+- `App.jsx`: 39.19 → **39.19 KB** — НЕ тронут. ✓
+- `DesignCanvas.jsx`: 38.44 → **38.44 KB** — НЕ тронут. ✓
+- `PartBlock.jsx`: 25.85 → **25.85 KB** — НЕ тронут. ✓
+- `JunctionBlock.jsx`: 29.23 → **29.23 KB** — НЕ тронут. ✓
+- `PlasmidViewer.jsx`: 20.12 → **20.12 KB** — НЕ тронут. ✓
+- `PlasmidMap.jsx`: 34.29 → **34.29 KB** — НЕ тронут. ✓
+- `AnnotationEditor.jsx`: 15.09 → **15.09 KB** — НЕ тронут. ✓
+- `theme.js`: 3.20 → **3.20 KB** — НЕ тронут (остаётся для main flow до phase 2). ✓
+- `feature-palette.js`: 3.54 → **3.54 KB** — не расширялся (все 16 семейств fixture вошли в существующий `featureColor` без падения в misc). ✓
+
+### Новые файлы
+
+- `components/Prototype/index.jsx` — **1.86 KB**, root layout с 3-row grid и header.
+- `components/Prototype/CanvasBlocksView.jsx` — **3.37 KB**, fork Blocks-branch.
+- `components/Prototype/PlasmidViewerWrapper.jsx` — **1.48 KB**, wrapper PlasmidMap.
+- `components/Prototype/AnnotationEditorWrapper.jsx` — **1.33 KB**, wrapper AnnotationEditor.
+- `components/Prototype/prototype-tokens.css` — **2.34 KB**, scoped под `.ux-prototype-root`, paper/ink/accent из `design_teasers/bodgegene_workspace.html`.
+- `components/Prototype/fixture.js` — **2.86 KB**, 5 kb циркулярная fixture с 16 аннотациями (все 16 семейств `FEATURE_COLORS_V2`, включая misc).
+- `__tests__/prototype-scaffold.test.jsx` — **4.42 KB**, +7 тестов (K1: URL gate / 3 панели / покрытие палитры / coord sanity; K2: ≥10 уникальных chip-bg; K3: ≥10 уникальных SVG fill; K4: ≥10 уникальных chip-bg в AnnotationEditor).
+
+### Baseline
+
+- **Vitest:** 829/829 (baseline 822 — Sprint X Plasmid-Git уже в дереве, +7 от K1–K4).
+- **pytest:** 112/112 (backend не трогался).
+- **vite build:** clean. Pre-existing warnings остались (auto-annotate.js INEFFECTIVE_DYNAMIC_IMPORT, 500 KB chunk size — оба не привнесены этим спринтом).
+
+### Отклонения от спеки
+
+- **Fixture levels:** спека §6 K1 подразумевала смешанные уровни (region/detail/point). Реализовано — **все 16 аннотаций на `level: 'region'`**. Причина: `PlasmidMap.getRegions()` фильтрует по `level === 'region'`, при исходной раскладке только 9 семейств выходили на круговую карту и K3 тест падал (9 < 10). Для прототипа, где единственная цель — палитровое review, все аннотации — регионы. Для реального flow detail/point разделение остаётся в силе. Зафиксировано в коммите K3.
+- **K5 skipped:** соответствует §10 open question 1 default-ответу — не отклонение, а согласованный пропуск.
+- Других отклонений от §3 / §4 / §6 нет.
+
+### Противоречия с §0.5 / §0.6
+
+Нет. Вариант C подтверждён (`?ux=prototype`), AnnotationEditor — третья поверхность (K4 реализован). `react-router-dom` не добавлен — URL-param switch в `main.jsx`, как и решено в §0.6 router-check.
+
+### Size budget
+
+**OK.** Все новые файлы под 5 KB (fork ≤5 KB соблюдён), ни один «замороженный» модуль (`App.jsx` / `DesignCanvas.jsx` / `PartBlock.jsx` / `JunctionBlock.jsx` / `PlasmidMap.jsx` / `PlasmidViewer.jsx` / `AnnotationEditor.jsx` / `theme.js` / `feature-palette.js`) не изменился — подтверждено `git log --stat` и `stat -c '%s'` на каждый файл.
+
+Новых нарушителей: **нет.** Warning signal (>5 KB прирост за спринт): **нет.**
+
+### STOP-условие
+
+Остановлен после K4. **НЕ** обновлены: `PROJECT_STATE.md`, `DECISIONS.md`, `BUGS.md`, `docs/archive/` (спека SPRINT_UX_1_PROTOTYPE.md остаётся активной). Review-сессия Игоря: запуск `cd gui/designer && npm run dev`, открыть `http://localhost:3000/?ux=prototype`, пробежать три панели.
