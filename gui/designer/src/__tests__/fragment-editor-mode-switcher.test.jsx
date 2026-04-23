@@ -9,8 +9,9 @@
  * Save button is routed by mode, not tab.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, fireEvent, screen } from '@testing-library/react';
+import { render, fireEvent, screen, act } from '@testing-library/react';
 import FragmentEditor from '../components/FragmentEditor';
+import { useStore } from '../store';
 
 // Minimal non-CDS fragment — avoids autoAnnotate async effects on CDS.
 function makeFragment(overrides = {}) {
@@ -75,35 +76,42 @@ describe('FragmentEditor — V12 mode switcher', () => {
     expect(screen.queryByRole('button', { name: /💾 Сохранить/ })).toBeNull();
   });
 
-  it('mode=mutagenesis: clicking a nucleotide opens DNA popup and tracks mutation', () => {
+  it('mode=mutagenesis: clicking a nucleotide opens DNA popup and tracks mutation via Git', () => {
+    // Sprint X-fix K1: "Применить мутагенез" now routes through applyMutationGit
+    // (store reducer) instead of onSave. Seed store so the reducer has a target.
+    const frag = makeFragment();
+    useStore.setState({
+      editTarget: 0, parts: [], activeId: 'asm_mode_switch',
+      assemblies: [{
+        id: 'asm_mode_switch', name: 'x', fragments: [frag],
+        junctions: [], primers: [], protocolSteps: [], apiWarnings: [], calculated: false,
+      }],
+    });
     const onSave = vi.fn();
-    render(<FragmentEditor fragment={makeFragment()} onSave={onSave} onClose={() => {}} />);
+    render(<FragmentEditor fragment={frag} onSave={onSave} onClose={() => {}} />);
 
     // Switch to mutagenesis mode
     const radios = screen.getAllByRole('radio');
     fireEvent.click(radios.find(r => /Мутагенез/.test(r.textContent)));
 
-    // Click first nucleotide 'A' in the view (there are many — grab one with class matching cursor-pointer text)
-    // All nucleotides are rendered as spans with text content A/T/G/C and class cursor-pointer.
+    // Click first nucleotide 'A' in the view.
     const ntSpans = Array.from(document.querySelectorAll('span.cursor-pointer'));
     expect(ntSpans.length).toBeGreaterThan(0);
     fireEvent.click(ntSpans[0]);
 
     // DNA popup opens — look for A/T/G/C buttons in popup ("Заменить" section)
-    // Popup contains nt substitution buttons labeled 'A' 'T' 'G' 'C'
     const buttonT = Array.from(document.querySelectorAll('button')).find(b => b.textContent.trim() === 'T');
     expect(buttonT).toBeDefined();
-    fireEvent.click(buttonT);
+    act(() => { fireEvent.click(buttonT); });
 
-    // Save as mutagenesis
-    fireEvent.click(screen.getByRole('button', { name: /Применить мутагенез/ }));
+    // Apply mutagenesis — Git reducer is called, onSave is NOT.
+    act(() => { fireEvent.click(screen.getByRole('button', { name: /Применить мутагенез/ })); });
 
-    expect(onSave).toHaveBeenCalledTimes(1);
-    const payload = onSave.mock.calls[0][0];
-    expect(Array.isArray(payload.mutations)).toBe(true);
-    expect(payload.mutations.length).toBeGreaterThan(0);
-    // editHistory is NOT written on mutagenesis save
-    expect(payload.editHistory).toBeUndefined();
+    expect(onSave).not.toHaveBeenCalled();
+    const f = useStore.getState().assemblies[0].fragments[0];
+    expect(Array.isArray(f.commits)).toBe(true);
+    expect(f.commits.length).toBeGreaterThan(0);
+    expect(f.commits[0].applied).toBe(true);
   });
 
   it('mode=edit: clicking a nucleotide opens popup but Save produces payload WITHOUT new mutations', () => {

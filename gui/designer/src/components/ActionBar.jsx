@@ -2,12 +2,20 @@ export default function ActionBar({ primerCount, primers = [], onExportProtocol,
   if (completed) return null;
   // V24 (Sprint X K6) — single-circular self-closure mode indicator.
   const selfClosure = primers.some(p => p?.purpose === 'self-closure');
+  // Sprint X-fix K5 (U2) — single-linear terminal PCR indicator.
+  const terminalPCR = primers.some(p => p?.purpose === 'terminal-pcr');
   return (
     <div className="flex flex-col gap-1">
       {selfClosure && (
         <div className="text-[10px] px-3 py-1 bg-amber-50 text-amber-800 border border-amber-200 rounded-lg italic"
              data-testid="self-closure-badge">
           ⟲ Режим: Self-closure (single circular, +30 bp замыкающий overlap)
+        </div>
+      )}
+      {terminalPCR && (
+        <div className="text-[10px] px-3 py-1 bg-sky-50 text-sky-800 border border-sky-200 rounded-lg italic"
+             data-testid="terminal-pcr-badge">
+          📏 Режим: Концевая ПЦР (single linear, без tails)
         </div>
       )}
       <div className="flex items-center gap-2 px-4 py-2 bg-green-50 border border-green-200 rounded-lg">

@@ -22,6 +22,7 @@ import AAMutationPopup from './AAMutationPopup';
 import DnaMutationPopup, { NucTooltip } from './DnaMutationPopup';
 import SequenceGrid from './SequenceGrid';
 import EditorPanels from './EditorPanels';
+import { normalizeMutationForGit, buildSavePartPayload } from './mutation-normalize';
 export { computeMutationHighlights, mutationHitsAA, computeFullViewHighlights };
 
 const STOPS = ['TAA', 'TAG', 'TGA'];
@@ -37,7 +38,7 @@ const QUICK_ACTIONS = [
   { key: 'his6c', label: '+ His6 (C)', pos: 'before_stop', insert: 'CATCACCATCACCATCAC', forType: 'CDS' },
 ];
 
-export default function FragmentEditor({ fragment, onSave, onClose, onColorChange, onSaveAsVariant, assemblyCircular = false }) {
+export default function FragmentEditor({ fragment, onSave, onClose, onColorChange, onSaveAsVariant, onSavePart, onCreateAssembly, assemblyCircular = false }) {
   // CDS-like if fragment type is CDS or any annotation region is CDS
   const hasCDSRegion = (fragment.annotations || []).some(a => a.level === 'region' && (a.type === 'CDS' || a.type === 'gene' || a.type === 'marker'));
   const isCDS = fragment.type === 'CDS' || hasCDSRegion;
@@ -76,12 +77,15 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
   const toggleCommit = useStore(s => s.toggleCommit);
   const archiveCommit = useStore(s => s.archiveCommit);
   const setCommitMessage = useStore(s => s.setCommitMessage);
+  const applyMutationsBatch = useStore(s => s.applyMutationsBatch);
   const liveFragment = useStore(s => {
     const asm = s.assemblies.find(a => a.id === s.activeId);
     return asm?.fragments.find(f => f.id === fragment.id) || fragment;
   });
   const commits = Array.isArray(liveFragment.commits) ? liveFragment.commits : [];
   const hasCommits = commits.length > 0;
+  const appliedCommitCount = commits.filter(c => c.applied !== false).length;
+  const hasAppliedCommits = appliedCommitCount > 0;
   const fragIdx = useStore(s => {
     const asm = s.assemblies.find(a => a.id === s.activeId);
     return asm?.fragments.findIndex(f => f.id === fragment.id) ?? -1;
@@ -292,16 +296,15 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
     onClose();
   };
 
-  // V12 — experimental mutagenesis: rename with labels, trigger strategy engine.
+  // Sprint X-fix K1 + X-fix-2 K-fix2-1: route local mutations through
+  // Plasmid-Git as a single batch (one pushUndo for all N).
   const handleSaveMutagenesis = () => {
+    if (mutations.length === 0) { onClose(); return; }
+    if (fragIdx < 0) { onClose(); return; }
     persistDomains(fragment.id || fragment.name, domains);
-    const mutLabels = mutations.map(m => m.label).join(',');
-    const name = mutations.length > 0 ? `${fragment.name}(${mutLabels})` : fragment.name;
-    onSave({ ...fragment, name, sequence: seq, length: seq.length, domains, annotations,
-      customColor: customColor || undefined,
-      mutations: mutations.length > 0 ? [...(fragment.mutations || []), ...mutations] : fragment.mutations,
-      topology, // K12
-      editedAt: new Date().toISOString() });
+    const muts = mutations.map(m => normalizeMutationForGit(m, seq));
+    applyMutationsBatch(fragIdx, muts);
+    setMutations([]);
     onClose();
   };
 
@@ -321,6 +324,17 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
       modification,
       testResults: [],
     });
+    onClose();
+  };
+
+  // Sprint X-fix K3: save Part from applied Git commits (HEAD replay).
+  const handleSavePart = () => {
+    if (!onSavePart) return;
+    const payload = buildSavePartPayload({ fragment, liveFragment, seq, annotations, domains, customColor, commits });
+    const variantName = prompt('Имя варианта:', suggestVariantName(fragment.name, payload.modification));
+    if (!variantName) return;
+    persistDomains(fragment.id || fragment.name, domains);
+    onSavePart({ ...payload, name: variantName });
     onClose();
   };
 
@@ -442,7 +456,7 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
       return { ...a, end: a.end + insertLen };
     }));
     if (mode !== 'edit') {
-      setMutations(prev => [...prev, { type: 'nt_insertion', label: `ins${pos+1}+${clean.length}п.н.`, codonStart: pos, position: pos }]);
+      setMutations(prev => [...prev, { type: 'nt_insertion', label: `ins${pos+1}+${clean.length}п.н.`, codonStart: pos, position: pos, insertSequence: clean }]);
     }
     setDnaMutTarget(null);
     setInsertSeq('');
@@ -714,7 +728,7 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
         />
 
         {/* Save — routed by mode, not tab (V12) */}
-        <div className="flex gap-2 items-center">
+        <div className="flex gap-2 items-center flex-wrap">
           {mode === 'edit' ? (
             <button onClick={handleSaveEdit} className="text-xs bg-blue-600 text-white px-4 py-1.5 rounded-lg hover:bg-blue-700 font-semibold">
               {'💾'} Сохранить
@@ -724,6 +738,21 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
               disabled={mutations.length === 0}
               className="text-xs bg-purple-600 text-white px-4 py-1.5 rounded-lg hover:bg-purple-700 font-semibold disabled:opacity-40">
               {'🧬'} Применить мутагенез {mutations.length > 0 && `(${mutations.length})`}
+            </button>
+          )}
+          {hasAppliedCommits && onCreateAssembly && (
+            <button
+              onClick={() => { if (fragIdx >= 0) onCreateAssembly(fragIdx); onClose(); }}
+              data-testid="create-assembly-button"
+              className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 font-semibold">
+              {'🧬'} Создать сборку ({appliedCommitCount})
+            </button>
+          )}
+          {hasAppliedCommits && onSavePart && (
+            <button onClick={handleSavePart}
+              data-testid="save-as-part-button"
+              className="text-xs bg-purple-50 text-purple-700 px-3 py-1.5 rounded-lg hover:bg-purple-100 border border-purple-200 font-medium">
+              {'💾'} Сохранить как запчасть
             </button>
           )}
           {mode === 'mutagenesis' && seqChanged && onSaveAsVariant && (

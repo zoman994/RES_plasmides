@@ -56,4 +56,19 @@ describe('ActionBar — self-closure badge', () => {
     );
     expect(container.firstChild).toBeNull();
   });
+
+  // Sprint X-fix K5 (U2) — terminal-pcr badge for single-linear fragments.
+  it('renders terminal-pcr badge when any primer has purpose=terminal-pcr', () => {
+    const primers = [
+      { direction: 'forward', purpose: 'terminal-pcr' },
+      { direction: 'reverse', purpose: 'terminal-pcr' },
+    ];
+    render(
+      <ActionBar primerCount={1} primers={primers}
+        onExportProtocol={() => {}} onExportGenBank={() => {}}
+        onOrderOligos={() => {}} onComplete={() => {}} completed={false} />
+    );
+    const badge = screen.getByTestId('terminal-pcr-badge');
+    expect(badge.textContent).toMatch(/Концевая ПЦР/i);
+  });
 });

@@ -34,26 +34,22 @@ function seedFragment({ seq, needsAmp = true, circular = true }) {
 function getAsm() { return useStore.getState().assemblies.find(a => a.id === ASM_ID); }
 
 describe('K11 — split-group full view data propagation', () => {
-  it('handleSaveFragment split → each sub carries splitGroupFullSequence and full mutation list', () => {
-    // 3000 bp gene, two mutations far apart → two_fragment split.
+  it('handleCreateMutagenesisAssembly split → each sub carries splitGroupFullSequence and full mutation list', () => {
+    // Sprint X-fix K2 — split is driven by applied commits + explicit handler.
     seedFragment({ seq: 'ATG' + 'CCC'.repeat(999) });
-    const { result } = renderHook(() => useFragmentHandlers());
-
     act(() => {
-      result.current.handleSaveFragment({
-        id: 'f1', name: 'HygroR(E100A,R400K)',
-        sequence: 'ATG' + 'CCC'.repeat(999), length: 3000,
-        needsAmplification: true, strand: 1, type: 'CDS', annotations: [],
-        mutations: [
-          { type: 'substitution', label: 'E100A', codonStart: 300, newCodon: 'GCG' },
-          { type: 'substitution', label: 'R400K', codonStart: 1200, newCodon: 'AAA' },
-        ],
+      useStore.getState().applyMutationGit(0, {
+        type: 'substitution', dnaPosition: 300, newCodon: 'GCG', label: 'E100A',
+      });
+      useStore.getState().applyMutationGit(0, {
+        type: 'substitution', dnaPosition: 1200, newCodon: 'AAA', label: 'R400K',
       });
     });
+    const { result } = renderHook(() => useFragmentHandlers());
+    act(() => { result.current.handleCreateMutagenesisAssembly(0); });
 
     const asm = getAsm();
     expect(asm.fragments.length).toBeGreaterThanOrEqual(2);
-    // Every sub has the full sequence and same length
     for (const sub of asm.fragments) {
       expect(typeof sub.splitGroupFullSequence).toBe('string');
       expect(sub.splitGroupFullSequence.length).toBeGreaterThan(0);
@@ -61,7 +57,6 @@ describe('K11 — split-group full view data propagation', () => {
       expect(Array.isArray(sub.splitGroupFullParentMutations)).toBe(true);
       expect(sub.splitGroupFullParentMutations.length).toBe(2);
     }
-    // All subs share the same full sequence (duplication is intentional for simple lookup)
     expect(asm.fragments[0].splitGroupFullSequence).toBe(asm.fragments[1].splitGroupFullSequence);
   });
 
@@ -95,18 +90,15 @@ describe('K11 — split-group full view data propagation', () => {
     }
   });
 
-  it('KLD path (single fragment) does NOT add splitGroupFullSequence', () => {
+  it('KLD path (single fragment via handleCreateMutagenesisAssembly) does NOT add splitGroupFullSequence', () => {
     seedFragment({ seq: 'ATG'.repeat(1000) });
-    const { result } = renderHook(() => useFragmentHandlers());
-
     act(() => {
-      result.current.handleSaveFragment({
-        id: 'f1', name: 'HygroR(E245A)',
-        sequence: 'ATG'.repeat(1000), length: 3000,
-        needsAmplification: true, strand: 1, type: 'CDS', annotations: [],
-        mutations: [{ type: 'substitution', label: 'E245A', codonStart: 732, newCodon: 'GCG' }],
+      useStore.getState().applyMutationGit(0, {
+        type: 'substitution', dnaPosition: 732, newCodon: 'GCG', label: 'E245A',
       });
     });
+    const { result } = renderHook(() => useFragmentHandlers());
+    act(() => { result.current.handleCreateMutagenesisAssembly(0); });
 
     const asm = getAsm();
     expect(asm.fragments).toHaveLength(1); // KLD does not split

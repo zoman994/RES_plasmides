@@ -52,6 +52,27 @@ describe('designPrimersLocal', () => {
     expect(primers[0].tailSequence.length).toBeGreaterThan(0);
   });
 
+  // Sprint X-fix K5 (U2): single linear fragment → 2 terminal primers without tails.
+  it('single linear ≥36 bp: 2 terminal-pcr primers, tails empty', () => {
+    const seq500 = 'ATGCGATCGATCGATCGATCGATCGATCGATG'.repeat(16); // 512 bp
+    const { primers, warnings } = designPrimersLocal([frag('lin500', seq500)], [], false);
+    expect(primers).toHaveLength(2);
+    expect(primers[0].purpose).toBe('terminal-pcr');
+    expect(primers[1].purpose).toBe('terminal-pcr');
+    expect(primers[0].tailSequence).toBe('');
+    expect(primers[1].tailSequence).toBe('');
+    expect(primers[0].direction).toBe('forward');
+    expect(primers[1].direction).toBe('reverse');
+    // No "primers not required" warning for a valid linear single fragment.
+    expect(warnings.some(w => w.includes('не требуются'))).toBe(false);
+  });
+
+  it('single linear <36 bp: no primers, falls through to warning', () => {
+    const { primers, warnings } = designPrimersLocal([frag('tiny', 'ATGCGATCGATCGATCG')], [], false);
+    expect(primers).toHaveLength(0);
+    expect(warnings.some(w => w.includes('не требуются'))).toBe(true);
+  });
+
   it('expands merged fragments and marks internal primers', () => {
     const merged = {
       name: 'AmpR+EGFP',
@@ -182,11 +203,14 @@ describe('designPrimersLocal — V24 single-circular self-closure (Sprint X K6)'
 
   const seq60 = 'ATGCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATCGATG';
 
-  it('single LINEAR fragment → no primers + informational warning (regression)', () => {
+  it('single LINEAR fragment (Sprint X-fix K5/U2) → 2 terminal-pcr primers without tails', () => {
     const frag = { name: 'L', sequence: seq60, needsAmplification: true, topology: 'linear' };
     const { primers, warnings } = designPrimersLocal([frag], [], false);
-    expect(primers).toHaveLength(0);
-    expect(warnings.some(w => w.includes('праймеры не требуются'))).toBe(true);
+    expect(primers).toHaveLength(2);
+    expect(primers[0].purpose).toBe('terminal-pcr');
+    expect(primers[0].tailSequence).toBe('');
+    expect(primers[1].tailSequence).toBe('');
+    expect(warnings.some(w => w.includes('праймеры не требуются'))).toBe(false);
   });
 
   it('single CIRCULAR fragment → 2 self-closure primers with 15-bp tails', () => {

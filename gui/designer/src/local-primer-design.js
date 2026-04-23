@@ -242,6 +242,41 @@ export function designPrimersLocal(fragments, junctions, circular, opts = {}) {
         });
         return { primers, warnings };
       }
+      // Sprint X-fix K5 (U2): single-linear terminal PCR.
+      // Two binding-only primers at 5'/3' ends; no tails (nothing to join to).
+      // Respects needsAmplification — No-PCR backbones don't need primers.
+      if (!isCircular && seq.length >= 36 && frag.needsAmplification !== false) {
+        const fwdBinding = findBindingTagAware(seq, 'forward', tmTarget, frag.annotations);
+        const revBinding = findBindingTagAware(seq, 'reverse', tmTarget, frag.annotations);
+        const revBindRC = rc(revBinding.sequence);
+        primers.push({
+          name: `${primerPrefix}001_fwd_${frag.name}_terminal`,
+          sequence: fwdBinding.sequence, bindingSequence: fwdBinding.sequence,
+          tailSequence: '', tmBinding: fwdBinding.tm,
+          tmAdjusted: Math.round(fwdBinding.tm + tmAdj),
+          direction: 'forward', fragmentName: frag.name, fragmentIndex: 0,
+          length: fwdBinding.sequence.length,
+          isInternal: false, mergedBlockName: null,
+          purpose: 'terminal-pcr',
+          tailPurpose: '',
+          needsAmplification: frag.needsAmplification !== false,
+        });
+        primers.push({
+          name: `${primerPrefix}002_rev_${frag.name}_terminal`,
+          sequence: revBindRC, bindingSequence: revBindRC,
+          tailSequence: '', tmBinding: revBinding.tm,
+          tmAdjusted: Math.round(revBinding.tm + tmAdj),
+          direction: 'reverse', fragmentName: frag.name, fragmentIndex: 0,
+          length: revBindRC.length,
+          isInternal: false, mergedBlockName: null,
+          purpose: 'terminal-pcr',
+          tailPurpose: '',
+          needsAmplification: frag.needsAmplification !== false,
+        });
+        if (fwdBinding.warning) warnings.push(`${frag.name} fwd: ${fwdBinding.warning}`);
+        if (revBinding.warning) warnings.push(`${frag.name} rev: ${revBinding.warning}`);
+        return { primers, warnings };
+      }
       warnings.push('ℹ️ Один фрагмент — праймеры не требуются (используется целиком без ПЦР). Для линейризации добавьте второй фрагмент или используйте рестрикционное клонирование.');
     }
     return { primers, warnings };

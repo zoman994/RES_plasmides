@@ -4,7 +4,7 @@
  */
 import { useStore, useFragments, useJunctions, usePrimers, pushUndo } from '../store';
 import { buildPlainJunctions } from '../assembly-utils';
-import { designInlineKLDPrimers, computeMutagenesisStrategy } from '../mutagenesis';
+import { computeMutagenesisStrategy } from '../mutagenesis';
 import { buildMutagenesisPayload } from '../lib/mutagenesis-payload';
 import { trimAnnotationsForSubFragment } from '../lib/split-annotations';
 import { PCR_MIXES } from '../protocol-data';
@@ -26,7 +26,6 @@ export function useFragmentHandlers() {
   const getActive    = useStore(s => s.getActive);
   const addFragment  = useStore(s => s.addFragment);
   const addPart      = useStore(s => s.addPart);
-  const updatePart   = useStore(s => s.updatePart);
   const setEditTarget  = useStore(s => s.setEditTarget);
   const setSplitTarget = useStore(s => s.setSplitTarget);
   const incrementInventoryVersion = useStore(s => s.incrementInventoryVersion);
@@ -112,193 +111,146 @@ export function useFragmentHandlers() {
   };
 
   /**
-   * Save edited fragment. If mutations are present, run the full mutagenesis
-   * strategy engine and either (a) replace the fragment in place (KLD) or
-   * (b) splice it into N sub-fragments connected by mutant overlap junctions
-   * (two_fragment / multi_fragment). See Sprint 1 V4-D.
+   * Save edited fragment (bookkeeping only).
+   *
+   * Sprint X-fix K4: mutation-path removed. Mutagenesis is now driven through
+   * applyMutationGit (on "Применить мутагенез") + handleCreateMutagenesisAssembly
+   * (on "🧬 Создать сборку"). Any `updated.mutations` passed through this
+   * handler is silently ignored — the caller should have routed through the
+   * Git reducer instead. See Sprint X-fix §4 decision 7.
    */
   const handleSaveFragment = (updated) => {
     if (editTarget === null) return;
     pushUndo();
-    const original = fragments[editTarget];
-    const hasMutations = updated.mutations?.length > 0 && updated.mutations !== original.mutations;
+    updateActive({
+      fragments: fragments.map((f, i) => i === editTarget ? updated : f),
+      calculated: false,
+    });
+    setEditTarget(null);
+  };
 
-    // ── Simple edit (no mutations): write back, done ──
-    if (!hasMutations) {
+  const handleSaveAsVariant = (variantData) => {
+    const variant = {
+      ...variantData,
+      id: `p_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      sourceCommits: variantData.sourceCommits,
+    };
+    addPart(variant);
+    if (editTarget !== null) {
       updateActive({
-        fragments: fragments.map((f, i) => i === editTarget ? updated : f),
+        fragments: fragments.map((f, i) => i === editTarget ? { ...f, ...variant, strand: f.strand, needsAmplification: f.needsAmplification } : f),
         calculated: false,
       });
-      setEditTarget(null);
-      return;
     }
+  };
 
-    // ── Mutagenesis path ──
-
-    // Only the mutations introduced in THIS edit pass drive strategy choice.
-    const newMuts = updated.mutations.filter(
-      m => !(original.mutations || []).some(om => om.label === m.label)
-    );
-
-    // Normalize to the shape computeMutagenesisStrategy expects.
-    const normMuts = newMuts.map(m => {
-      const pos = m.codonStart ?? m.position
-        ?? ((parseInt(m.label?.match(/\d+/)?.[0] || '1') - 1) * 3);
-      if (m.type === 'nt_substitution') {
-        return { type: 'substitution', dnaPosition: pos, newCodon: null, label: m.label };
-      }
-      if (m.type === 'nt_deletion') {
-        return { type: 'deletion', dnaPosition: pos, deleteLength: m.deletedBp || 1, label: m.label };
-      }
-      if (m.type === 'nt_insertion') {
-        return { type: 'insertion', dnaPosition: pos, insertSequence: m.insertSequence || '', label: m.label };
-      }
-      if (m.type === 'deletion') {
-        return { type: 'deletion', dnaPosition: pos, deleteLength: m.deletedBp || 3, label: m.label };
-      }
-      if (m.type === 'insertion') {
-        return { type: 'insertion', dnaPosition: pos, insertSequence: m.insertSequence || '', label: m.label };
-      }
-      // default: substitution (the common FragmentEditor case)
-      return { type: 'substitution', dnaPosition: pos, newCodon: m.newCodon, label: m.label };
-    });
-
-    // Recover newCodon for nt-substitutions by reading the mutated triplet back.
-    for (const m of normMuts) {
-      if (m.type === 'substitution' && !m.newCodon) {
-        const codonStart = Math.floor(m.dnaPosition / 3) * 3;
-        m.newCodon = updated.sequence.slice(codonStart, codonStart + 3);
-        m.dnaPosition = codonStart;
-      }
+  // Sprint X-fix K2: translate a Plasmid-Git commit into the shape
+  // computeMutagenesisStrategy expects.
+  const commitToStrategyMut = (commit) => {
+    const pos = commit.parentPos;
+    if (commit.type === 'substitution') {
+      return { type: 'substitution', dnaPosition: pos, newCodon: commit.payload?.newCodon, label: commit.label };
     }
+    if (commit.type === 'deletion') {
+      return { type: 'deletion', dnaPosition: pos, deleteLength: commit.payload?.deleteLength || 1, label: commit.label };
+    }
+    if (commit.type === 'insertion') {
+      return { type: 'insertion', dnaPosition: pos, insertSequence: commit.payload?.insertSequence || '', label: commit.label };
+    }
+    return { type: commit.type, dnaPosition: pos, label: commit.label };
+  };
 
-    const templateSeq = original.sequence;
+  // Sprint X-fix K2: explicit "create mutagenesis assembly" action — driven by
+  // applied commits accumulated via applyMutationGit. Replaces the split-path
+  // removed from handleSaveFragment (Sprint X-fix K4).
+  const handleCreateMutagenesisAssembly = (fragIndex) => {
     const active = getActive();
+    if (!active) return;
+    const f = fragments[fragIndex];
+    if (!f || !f.baseSnapshot || !Array.isArray(f.commits)) return;
+    const appliedCommits = f.commits.filter(c => c.applied !== false);
+    if (appliedCommits.length === 0) return;
+    pushUndo();
+
+    const normMuts = appliedCommits.map(commitToStrategyMut);
+    const templateSeq = f.baseSnapshot.sequence;
     const fragmentContext = {
-      topology: active?.circular ? 'circular' : 'linear',
+      topology: f.topology === 'circular' || f.topology === 'linear'
+        ? f.topology : (active.circular ? 'circular' : 'linear'),
       isStandalone: fragments.length === 1,
       length: templateSeq.length,
     };
     const result = computeMutagenesisStrategy(templateSeq, normMuts, {
-      featureStart: 0,
-      featureEnd: templateSeq.length,
-      fragmentContext,
+      featureStart: 0, featureEnd: templateSeq.length, fragmentContext,
     });
-
-    // ── Variant in parts library (preserved from old implementation) ──
-    const findRoot = (_name, id) => {
-      let p = parts.find(x => x.id === id) || parts.find(x => x.id === original.partId);
-      while (p?.parentId) {
-        const parent = parts.find(x => x.id === p.parentId);
-        if (!parent) break;
-        p = parent;
-      }
-      return p;
-    };
-    const rootPart = findRoot(original.name, original.id);
-    let variantId = original.partId;
-    if (rootPart) {
-      variantId = `p_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-      const variant = {
-        id: variantId, name: updated.name, type: rootPart.type,
-        sequence: updated.sequence, length: updated.length, organism: rootPart.organism,
-        parentId: rootPart.id,
-        modification: { type: 'mutation', description: newMuts.map(m => m.label).join(', ') },
-        mutations: updated.mutations, testResults: [],
-        source: 'mutagenesis', createdAt: new Date().toISOString(),
-      };
-      updatePart(rootPart.id, { children: [...(rootPart.children || []), variantId] });
-      addPart(variant);
-    }
-
     const baseCtx = {
-      primerPrefix,
-      polymerase,
-      existingPrimers: getActive()?.primers || [],
-      templateName: original.name || 'template',
+      primerPrefix, polymerase,
+      existingPrimers: active.primers || [],
+      templateName: f.name || 'template',
     };
 
-    // ── KLD: replace fragment in place, add mutagenesis primers ──
     if (result.strategy === 'kld') {
       const { primers: builtPrimers, protocolSteps } = buildMutagenesisPayload(result, baseCtx);
-      // K3 (Sprint X): KLD creates a new biological commit point — the mutant
-      // plasmid is the new baseline. baseSnapshot locks mutant sequence;
-      // commits[] is reset so further inline edits branch from here.
       const newFragment = {
-        ...updated,
-        partId: variantId,
+        ...f,
         isMutagenesis: true,
-        needsAmplification: original.needsAmplification,
+        needsAmplification: f.needsAmplification,
         baseSnapshot: {
-          sequence: updated.sequence,
-          annotations: Array.isArray(updated.annotations) ? updated.annotations.map(a => ({ ...a })) : [],
+          sequence: f.sequence,
+          annotations: Array.isArray(f.annotations) ? f.annotations.map(a => ({ ...a })) : [],
         },
         commits: [],
       };
       updateActive({
-        fragments: fragments.map((f, i) => i === editTarget ? newFragment : f),
+        fragments: fragments.map((fr, i) => i === fragIndex ? newFragment : fr),
         primers: builtPrimers,
         protocolSteps,
         apiWarnings: result.warnings || [],
         calculated: true,
       });
-      setEditTarget(null);
       return;
     }
 
-    // ── two_fragment / multi_fragment: SPLIT fragment ──
-
-    // Pre-check: No-PCR fragment cannot be split (can't PCR what wasn't amplifiable).
-    if (original.needsAmplification === false) {
+    // No-PCR guard — can't split what can't be amplified.
+    if (f.needsAmplification === false) {
       updateActive({
-        fragments: fragments.map((f, i) => i === editTarget ? updated : f),
         apiWarnings: [
-          ...(getActive()?.apiWarnings || []),
-          `⚠ Фрагмент «${original.name}» помечен как без ПЦР — многофрагментный мутагенез невозможен. `
+          ...(active.apiWarnings || []),
+          `⚠ Фрагмент «${f.name}» помечен как без ПЦР — многофрагментный мутагенез невозможен. `
           + `Используйте одну точечную мутацию (KLD) или включите амплификацию.`,
         ],
         calculated: false,
       });
-      setEditTarget(null);
       return;
     }
 
-    // K7 — tag all sub-fragments with a shared splitGroupId so DesignCanvas
-    // can wrap them in a visual group (dashed border + badge + connector).
     const splitGroupId = `sg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-
-    // K11 (Sprint 1.7) — carry the full mutant parent sequence on every sub
-    // so FragmentEditor can show a virtual full-gene view with all mutations
-    // of the group + the current sub's region highlighted.
     const splitGroupFullSequence = result.mutantSequence || '';
-    const splitGroupFullParentMutations = updated.mutations || [];
+    const splitGroupFullParentMutations = normMuts;
 
-    // Build N new fragments from strategy (each uses WT template for PCR).
-    // K3 (Sprint X): each sub gets its own Plasmid-Git baseline — sf.sequence
-    // is mutant-inclusive for this region, so commits[] starts empty.
     const newFragments = result.fragments.map((sf, i) => {
-      const subAnnotations = trimAnnotationsForSubFragment(original.annotations, sf);
+      const subAnnotations = trimAnnotationsForSubFragment(f.annotations, sf);
       return {
         id: `mf${Date.now()}_${i}_${Math.random().toString(36).slice(2, 4)}`,
-        name: `${original.name}_${i + 1}`,
+        name: `${f.name}_${i + 1}`,
         sequence: sf.sequence,
         length: sf.length,
-        type: sf.type || original.type,
+        type: sf.type || f.type,
         strand: sf.strand || 1,
         needsAmplification: true,
         sourceType: sf.sourceType || 'template_pcr',
         templateStart: sf.templateStart,
         templateEnd: sf.templateEnd,
-        partId: i === 0 ? variantId : undefined,
+        partId: i === 0 ? f.partId : undefined,
         isMutagenesis: true,
         splitGroupId,
-        splitGroupParentName: original.name,
+        splitGroupParentName: f.name,
         splitGroupIndex: i,
         splitGroupTotal: result.fragments.length,
         splitGroupFullSequence,
         splitGroupFullLength: splitGroupFullSequence.length,
         splitGroupFullParentMutations,
-        topology: 'linear', // K12 — split unavoidably linearizes sub-fragments
+        topology: 'linear',
         annotations: subAnnotations,
         baseSnapshot: {
           sequence: sf.sequence,
@@ -313,19 +265,17 @@ export function useFragmentHandlers() {
       id: `j${Date.now()}_${Math.random().toString(36).slice(2, 4)}`,
     }));
 
-    // Splice fragments[editTarget] → newFragments; insert strategyJunctions at the same index.
     const updatedFragArr = [
-      ...fragments.slice(0, editTarget),
+      ...fragments.slice(0, fragIndex),
       ...newFragments,
-      ...fragments.slice(editTarget + 1),
+      ...fragments.slice(fragIndex + 1),
     ];
     const updatedJunctionArr = [
-      ...junctions.slice(0, editTarget),
+      ...junctions.slice(0, fragIndex),
       ...strategyJunctions,
-      ...junctions.slice(editTarget),
+      ...junctions.slice(fragIndex),
     ];
 
-    // primers stay empty for two/multi — auto-design picks them up via junction.overlapSequence (V4-E).
     const { primers: builtPrimers, protocolSteps } = buildMutagenesisPayload(result, baseCtx);
 
     updateActive({
@@ -336,19 +286,6 @@ export function useFragmentHandlers() {
       apiWarnings: result.warnings || [],
       calculated: false,
     });
-
-    setEditTarget(null);
-  };
-
-  const handleSaveAsVariant = (variantData) => {
-    const variant = { ...variantData, id: `p_${Date.now()}_${Math.random().toString(36).slice(2, 6)}` };
-    addPart(variant);
-    if (editTarget !== null) {
-      updateActive({
-        fragments: fragments.map((f, i) => i === editTarget ? { ...f, ...variant, strand: f.strand, needsAmplification: f.needsAmplification } : f),
-        calculated: false,
-      });
-    }
   };
 
   // K12 (Sprint 1.7) — per-fragment topology toggle.
@@ -511,5 +448,6 @@ export function useFragmentHandlers() {
     handleSwapVariant, handleMutagenesis, handleReusePrimer,
     completeAssembly, clearAssembly, addCustomFragment,
     toggleFragmentTopology,
+    handleCreateMutagenesisAssembly,
   };
 }

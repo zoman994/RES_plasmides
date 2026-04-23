@@ -1,8 +1,11 @@
 /**
- * Integration tests for useFragmentHandlers.handleSaveFragment in the mutagenesis branch.
- * Verifies V4-D: in-place FragmentEditor edits route through computeMutagenesisStrategy
- * and either replace the fragment (KLD) or split it (two_fragment / multi_fragment),
- * with a No-PCR guard in between.
+ * Integration tests for mutagenesis workflow after Sprint X-fix.
+ *
+ * Sprint X-fix K1/K2/K4: mutations no longer route through handleSaveFragment —
+ * they go through applyMutationGit (store reducer) + handleCreateMutagenesisAssembly
+ * (explicit "Create assembly" step). The V4-D semantics (KLD / two_fragment /
+ * multi_fragment / No-PCR guard / annotation splitting) are preserved, just
+ * accessed via the new Git-routed API.
  */
 import { describe, it, expect } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
@@ -47,23 +50,16 @@ function getAsm() {
   return useStore.getState().assemblies.find(a => a.id === ASM_ID);
 }
 
-describe('handleSaveFragment — mutagenesis paths (V4-D)', () => {
+describe('mutagenesis paths via Git (Sprint X-fix K1/K2)', () => {
   it('KLD path: single mutation keeps fragment as one, adds 2 mutagenesis primers', () => {
     seedSingleFragment();
+    act(() => {
+      useStore.getState().applyMutationGit(0, {
+        type: 'substitution', dnaPosition: 732, newCodon: 'GCG', label: 'E245A',
+      });
+    });
     const { result } = renderHook(() => useFragmentHandlers());
-
-    const updated = {
-      id: 'f1',
-      name: 'AmpR(E245A)',
-      sequence: 'ATG'.repeat(1000),
-      length: 3000,
-      needsAmplification: true,
-      annotations: [],
-      strand: 1,
-      type: 'CDS',
-      mutations: [{ type: 'substitution', label: 'E245A', codonStart: 732, newCodon: 'GCG' }],
-    };
-    act(() => { result.current.handleSaveFragment(updated); });
+    act(() => { result.current.handleCreateMutagenesisAssembly(0); });
 
     const asm = getAsm();
     expect(asm.fragments).toHaveLength(1);                          // NOT split
@@ -74,24 +70,17 @@ describe('handleSaveFragment — mutagenesis paths (V4-D)', () => {
   });
 
   it('two_fragment path: two distant mutations split fragment and emit overlap junction', () => {
-    seedSingleFragment({ seq: 'ATG' + 'CCC'.repeat(999) });  // 3000 bp
+    seedSingleFragment({ seq: 'ATG' + 'CCC'.repeat(999) });
+    act(() => {
+      useStore.getState().applyMutationGit(0, {
+        type: 'substitution', dnaPosition: 300, newCodon: 'GCG', label: 'E100A',
+      });
+      useStore.getState().applyMutationGit(0, {
+        type: 'substitution', dnaPosition: 1200, newCodon: 'AAA', label: 'R400K',
+      });
+    });
     const { result } = renderHook(() => useFragmentHandlers());
-
-    const updated = {
-      id: 'f1',
-      name: 'AmpR(E100A,R400K)',
-      sequence: 'ATG' + 'CCC'.repeat(999),
-      length: 3000,
-      needsAmplification: true,
-      annotations: [],
-      strand: 1,
-      type: 'CDS',
-      mutations: [
-        { type: 'substitution', label: 'E100A', codonStart: 300, newCodon: 'GCG' },
-        { type: 'substitution', label: 'R400K', codonStart: 1200, newCodon: 'AAA' },
-      ],
-    };
-    act(() => { result.current.handleSaveFragment(updated); });
+    act(() => { result.current.handleCreateMutagenesisAssembly(0); });
 
     const asm = getAsm();
     expect(asm.fragments.length).toBeGreaterThanOrEqual(2);          // split happened
@@ -106,30 +95,23 @@ describe('handleSaveFragment — mutagenesis paths (V4-D)', () => {
 
   it('No-PCR guard: split aborted on needsAmplification=false, warning emitted', () => {
     seedSingleFragment({ seq: 'ATG' + 'CCC'.repeat(999), needsAmp: false });
+    act(() => {
+      useStore.getState().applyMutationGit(0, {
+        type: 'substitution', dnaPosition: 300, newCodon: 'GCG', label: 'E100A',
+      });
+      useStore.getState().applyMutationGit(0, {
+        type: 'substitution', dnaPosition: 1200, newCodon: 'AAA', label: 'R400K',
+      });
+    });
     const { result } = renderHook(() => useFragmentHandlers());
-
-    const updated = {
-      id: 'f1',
-      name: 'AmpR',
-      sequence: 'ATG' + 'CCC'.repeat(999),
-      length: 3000,
-      needsAmplification: false,
-      strand: 1,
-      type: 'CDS',
-      annotations: [],
-      mutations: [
-        { type: 'substitution', label: 'E100A', codonStart: 300, newCodon: 'GCG' },
-        { type: 'substitution', label: 'R400K', codonStart: 1200, newCodon: 'AAA' },
-      ],
-    };
-    act(() => { result.current.handleSaveFragment(updated); });
+    act(() => { result.current.handleCreateMutagenesisAssembly(0); });
 
     const asm = getAsm();
     expect(asm.fragments).toHaveLength(1);                          // NOT split
     expect(asm.apiWarnings.some(w => w.includes('без ПЦР'))).toBe(true);
   });
 
-  it('Simple edit (no mutations): seq updated, no primers added', () => {
+  it('Simple edit (handleSaveFragment bookkeeping): seq updated, no primers added', () => {
     seedSingleFragment();
     const { result } = renderHook(() => useFragmentHandlers());
 
@@ -142,7 +124,6 @@ describe('handleSaveFragment — mutagenesis paths (V4-D)', () => {
       strand: 1,
       type: 'CDS',
       annotations: [],
-      // no mutations key
     };
     act(() => { result.current.handleSaveFragment(updated); });
 
@@ -153,23 +134,14 @@ describe('handleSaveFragment — mutagenesis paths (V4-D)', () => {
   });
 
   it('V14: linear single mutation → two_fragment split (not KLD)', () => {
-    // Linear fragment in canvas assembly — KLD is biologically impossible here.
-    // Even with only 1 fragment present, if topology=linear → must use overlap PCR.
     seedSingleFragment({ seq: 'ATG' + 'CCC'.repeat(999), circular: false });
+    act(() => {
+      useStore.getState().applyMutationGit(0, {
+        type: 'substitution', dnaPosition: 102, newCodon: 'GCG', label: 'Q35A',
+      });
+    });
     const { result } = renderHook(() => useFragmentHandlers());
-
-    const updated = {
-      id: 'f1',
-      name: 'CmR(Q35A)',
-      sequence: 'ATG' + 'CCC'.repeat(999),
-      length: 3000,
-      needsAmplification: true,
-      strand: 1,
-      type: 'CDS',
-      annotations: [],
-      mutations: [{ type: 'substitution', label: 'Q35A', codonStart: 102, newCodon: 'GCG' }],
-    };
-    act(() => { result.current.handleSaveFragment(updated); });
+    act(() => { result.current.handleCreateMutagenesisAssembly(0); });
 
     const asm = getAsm();
     expect(asm.fragments.length).toBeGreaterThanOrEqual(2);   // split, NOT kld
@@ -189,28 +161,20 @@ describe('handleSaveFragment — mutagenesis paths (V4-D)', () => {
         { id: 'r3', name: 'straddle', start: 1400, end: 1600, level: 'region', type: 'misc_feature' },
       ],
     });
+    act(() => {
+      useStore.getState().applyMutationGit(0, {
+        type: 'substitution', dnaPosition: 300, newCodon: 'GCG', label: 'E100A',
+      });
+      useStore.getState().applyMutationGit(0, {
+        type: 'substitution', dnaPosition: 2700, newCodon: 'AAA', label: 'R900K',
+      });
+    });
     const { result } = renderHook(() => useFragmentHandlers());
-
-    const updated = {
-      id: 'f1',
-      name: 'AmpR(mut)',
-      sequence: 'ATG' + 'CCC'.repeat(999),
-      length: 3000,
-      needsAmplification: true,
-      strand: 1,
-      type: 'CDS',
-      annotations: [],
-      mutations: [
-        { type: 'substitution', label: 'E100A', codonStart: 300,  newCodon: 'GCG' },
-        { type: 'substitution', label: 'R900K', codonStart: 2700, newCodon: 'AAA' },
-      ],
-    };
-    act(() => { result.current.handleSaveFragment(updated); });
+    act(() => { result.current.handleCreateMutagenesisAssembly(0); });
 
     const asm = getAsm();
     expect(asm.fragments.length).toBeGreaterThanOrEqual(2);
 
-    // promoter lives in first fragment; terminator in last fragment.
     const first = asm.fragments[0];
     const last = asm.fragments[asm.fragments.length - 1];
     expect((first.annotations || []).some(a => a.name === 'promoter')).toBe(true);

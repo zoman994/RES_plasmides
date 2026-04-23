@@ -134,6 +134,7 @@ export default function App() {
     handleFragmentSplit, handleSaveFragment, handleSaveAsVariant,
     handleSwapVariant, handleMutagenesis, handleReusePrimer, toggleFragmentTopology,
     completeAssembly, clearAssembly, addCustomFragment,
+    handleCreateMutagenesisAssembly,
   } = useFragmentHandlers();
 
   // ═══ File drag-and-drop from OS ═══
@@ -708,6 +709,8 @@ export default function App() {
             });
           }}
           onSaveAsVariant={handleSaveAsVariant}
+          onSavePart={handleSaveAsVariant}
+          onCreateAssembly={(idx) => handleCreateMutagenesisAssembly(idx)}
           assemblyCircular={circular}
         />
       )}
