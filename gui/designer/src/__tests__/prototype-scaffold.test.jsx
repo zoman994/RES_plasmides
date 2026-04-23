@@ -9,6 +9,7 @@ import { render } from '@testing-library/react';
 import Prototype, { isPrototypeURL } from '../components/Prototype';
 import CanvasBlocksView from '../components/Prototype/CanvasBlocksView';
 import PlasmidViewerWrapper from '../components/Prototype/PlasmidViewerWrapper';
+import AnnotationEditorWrapper from '../components/Prototype/AnnotationEditorWrapper';
 import { fixture } from '../components/Prototype/fixture';
 import { featureColor, FEATURE_COLORS_V2 } from '../feature-palette';
 
@@ -80,6 +81,23 @@ describe('Sprint UX-1 prototype — K3 PlasmidViewerWrapper', () => {
     for (const p of paths) {
       const fill = p.getAttribute('fill');
       if (palette.has(fill)) seen.add(fill);
+    }
+    expect(seen.size).toBeGreaterThanOrEqual(10);
+  });
+});
+
+describe('Sprint UX-1 prototype — K4 AnnotationEditorWrapper', () => {
+  it('tree list + bar show ≥10 distinct palette-sourced chip backgrounds', () => {
+    const { container } = render(<AnnotationEditorWrapper />);
+    const paletteLC = new Set(Object.values(FEATURE_COLORS_V2).map((c) => c.toLowerCase()));
+    const seen = new Set();
+    for (const el of container.querySelectorAll('[style]')) {
+      const style = el.getAttribute('style') || '';
+      const m = style.match(/background-color:\s*(#[0-9a-fA-F]{6})/i);
+      if (m) {
+        const hex = m[1].toLowerCase();
+        if (paletteLC.has(hex)) seen.add(hex);
+      }
     }
     expect(seen.size).toBeGreaterThanOrEqual(10);
   });
