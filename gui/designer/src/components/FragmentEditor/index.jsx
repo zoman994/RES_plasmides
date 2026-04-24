@@ -269,7 +269,10 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
   const modification = seqChanged ? detectModification(fragment.sequence || '', seq) : null;
 
   // CRIT-2 fix: re-run autoAnnotate when sequence changes (detail/point only, preserve regions + manual)
+  // Sprint X-fix-2 hot-fix: skip in mutagenesis mode — annotations come from
+  // Git replay in the store, not from this timer.
   useEffect(() => {
+    if (mode === 'mutagenesis') return;
     if (!seqChanged) return;
     const timer = setTimeout(() => {
       const regionAnns = annotations.filter(a => a.level === 'region');
@@ -279,7 +282,7 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
       setAnnotations([...regionAnns, ...manualAnns, ...autoDetails]);
     }, 500);
     return () => clearTimeout(timer);
-  }, [seq]);
+  }, [seq, mode]);
 
   // Sprint X-fix-2 K-fix2-2: after batch-commit (or toggleCommit / archiveCommit)
   // the store replays fragment.sequence; re-sync local `seq` so SequenceGrid
@@ -291,6 +294,7 @@ export default function FragmentEditor({ fragment, onSave, onClose, onColorChang
     if (mode !== 'mutagenesis') return;
     if (liveFragment.sequence !== lastLiveSeqRef.current) {
       setSeq(liveFragment.sequence);
+      setAnnotations(liveFragment.annotations || []);
       lastLiveSeqRef.current = liveFragment.sequence;
     }
   }, [liveFragment.sequence, mode]);
