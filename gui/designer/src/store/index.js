@@ -42,7 +42,13 @@ function deepCloneSnapshot(snap) {
 }
 
 // ═══ State creator ═══
+// Sprint X-fix-3 K-fix3-1: pushUndo captures the pre-action snapshot synchronously
+// at the FIRST call within a 300ms debounce window. Subsequent pushUndo calls in
+// the same window only extend the timer — the snapshot is already locked. This
+// fixes the batch-apply bug where setTimeout used to snapshot AFTER the same-tick
+// `set()` mutated state, causing undo to restore the post-apply state.
 let _pushTimeout = null;
+let _pendingSnapshot = null;
 
 const stateCreator = (set, get) => ({
   ...createProjectSlice(set, get),
@@ -72,9 +78,16 @@ const stateCreator = (set, get) => ({
 
   pushUndo: () => {
     if (get()._undoPaused) return;
+    if (_pendingSnapshot === null) {
+      // First pushUndo in this debounce window — capture pre-action state NOW,
+      // before any same-tick `set()` mutates the store.
+      _pendingSnapshot = shallowSnapshot(get());
+    }
     clearTimeout(_pushTimeout);
     _pushTimeout = setTimeout(() => {
-      const snap = shallowSnapshot(get());
+      const snap = _pendingSnapshot;
+      _pendingSnapshot = null;
+      _pushTimeout = null;
       set(state => {
         state._undoStack.push(snap);
         if (state._undoStack.length > 50) state._undoStack.shift();
@@ -84,6 +97,13 @@ const stateCreator = (set, get) => ({
   },
 
   undo: () => {
+    // Sprint X-fix-3: drop any pending pre-action snapshot — undoing makes the
+    // pending snapshot stale (it would describe the state we are now leaving).
+    if (_pendingSnapshot !== null) {
+      clearTimeout(_pushTimeout);
+      _pushTimeout = null;
+      _pendingSnapshot = null;
+    }
     const { _undoStack } = get();
     if (_undoStack.length === 0) return;
     const current = deepCloneSnapshot(shallowSnapshot(get()));
@@ -97,6 +117,12 @@ const stateCreator = (set, get) => ({
   },
 
   redo: () => {
+    // Sprint X-fix-3: same rationale as undo — pending snapshot becomes stale.
+    if (_pendingSnapshot !== null) {
+      clearTimeout(_pushTimeout);
+      _pushTimeout = null;
+      _pendingSnapshot = null;
+    }
     const { _redoStack } = get();
     if (_redoStack.length === 0) return;
     const current = deepCloneSnapshot(shallowSnapshot(get()));
