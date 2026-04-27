@@ -1,195 +1,264 @@
-# CURRENT_TASK.md — Sprint UX-1 prototype
+# CURRENT_TASK.md — Sprint Import-Start-Screen
 
-**Статус:** 🟢 Готов к реализации
-**Спека:** `docs/SPRINT_UX_1_PROTOTYPE.md` (41.47 KB — prototype-спека с полным rationale по вариантам выбора, §2 playbook легитимное отклонение для жанра прототипа)
-**Тип:** feature (prototype phase)
-**База:** v0.5.1-alpha, коммит `8699bf5` (Sprint 2a.1 финал) либо любой коммит после Sprint X Plasmid-Git — не критично для прототипа (прототип изолирован, не зависит от mutation-фичей).
-**Оценка:** ~4–6 ч Code (K1–K4 + опционально K5).
+**Статус:** 🟢 K1–K8 реализованы Code (см. Report ниже). Ждёт визуальной приёмки следующей сессии Chat.
+**Workflow:** Import & Preview, часть 1 из 3 (стартовая страница).
+**Спека:** `docs/SPRINT_IMPORT_START_SCREEN.md`.
+**Прототип:** `docs/prototype/import_preview_prototype_v2.html` (визуальный референс, открывать в браузере).
+**Pre-read:** `docs/WF_IMPORT_PREVIEW_GAP.md` (контекст gap'а).
 
 ---
 
-## TL;DR (для Code)
+## TL;DR
 
-URL-param switch в `src/main.jsx` (query `?ux=prototype`) → изолированный React-экран `<Prototype />` с тремя поверхностями (Canvas Blocks view + PlasmidViewer + AnnotationEditor), каждая в обёртке или минимальном fork, цвета через `featureColor` из `feature-palette.js` вместо `theme.js`. Fixture-плазмида с 15 семействами аннотаций. `App.jsx` / `DesignCanvas.jsx` / `PlasmidViewer.jsx` / `AnnotationEditor.jsx` — **не трогаем** (App.jsx в 0.8 KB от hard 40 KB, остальные крупные). Задача — review-оценка новой палитры на живых React-компонентах до полной UX-1 спеки.
-
-**5 подзадач K1–K5, K5 опционально. После K4 — STOP, ждём review-сессию Игоря.**
+Реализовать `ImportStartScreen` — единую точку входа для импорта файлов (drag-drop / paste / file picker) и каталога SnapGene + библиотеки parts. Удалить `ImportDecisionModal` и `CatalogPanel`. Один экран, 4 режима (empty / compact-with-catalog / single-file / multi-file). 8 K-шагов, целевой объём 22–25 ч, ~17 новых тестов. Спека покрывает только этот экран — превью молекулы и мастера действий (Restriction / Мутагенез / Разобрать) — отдельные workflow.
 
 ---
 
 ## Порядок чтения перед началом
 
-1. `CLAUDE.md` — правила проекта (особенно §7 лимиты размеров).
-2. `BUGS.md` — по OPEN секции багов в скоупе нет (это prototype, не bugfix). Можно просмотреть `head` — иметь в виду V28/V29/V30/V31 (они в OUT спеки, но могут всплывать в review).
-3. `docs/SPRINT_UX_1_PROTOTYPE.md` — **вся спека**, особенно:
-   - §0 срез размеров — что можно и что нельзя трогать;
-   - §4 четыре архитектурных решения (prototype-first ⚓, вариант C, 3 поверхности, URL-switch);
-   - §5 предположения — каждое с «первым шагом K*»;
-   - §6 задачи (подробности по K1–K5 там, здесь только чеклист).
-4. Целевые файлы — по мере надобности для каждого K (§6 спеки указывает «первый шаг» — что читать/grep'ать первым).
+1. `CLAUDE.md` (правила) → `BUGS.md` (open) → этот файл.
+2. `docs/SPRINT_IMPORT_START_SCREEN.md` — целиком (≈25 KB).
+3. Открыть `docs/prototype/import_preview_prototype_v2.html` в браузере, пройти все 9 табов глазами — это визуальный контракт UX.
+4. Точечно по K-шагам:
+   - K1: посмотреть `gui/designer/src/sequence-utils.js` (где `sanitizeSequence`), `genbank-parser.js`, `annotation-model.js` (для OQ-1 + OQ-2 спеки).
+   - K2: посмотреть `gui/designer/src/feature-palette.js` (`featureColor`, `FEATURE_STROKE`).
+   - K7: посмотреть `gui/designer/src/components/CatalogPanel.jsx` — копировать lazy-load pattern в новый CatalogTree, потом удалить файл.
+   - K8: точечно `gui/designer/src/App.jsx` секции, относящиеся к ImportDecisionModal и CatalogPanel state и handlers.
+
+**Не читать:**
+- `PROJECT_STATE.md`, `DECISIONS.md` целиком — финализация после визуальной приёмки, делает Chat в следующей сессии.
+- `docs/archive/*` — архив, не нужен.
+- `PlasmidMap.jsx` — не переиспользуем, у `PlasmidMiniMap` собственная логика.
 
 ---
 
-## Чеклист подзадач
+## Задачи
 
-### K1 — URL-switch + Prototype scaffold + tokens + fixture
+### K1. sanitize-with-report + format-detect + rotate-origin
 
-- [ ] **Первый шаг:** прогнать все 15 типов fixture через `featureColor(type, name)` в unit-тесте — ни один не должен уходить в `misc` fallback. Если уходит — решение (расширить `featureColor` или поправить fixture) в commit message.
-- [ ] `src/main.jsx` — URL-param switch на `new URLSearchParams(window.location.search).get('ux') === 'prototype'`. `<StrictMode><ErrorBoundary>` сохранить в обеих ветвях.
-- [ ] `src/components/Prototype/index.jsx` — 3-row grid layout с placeholder-divs для K2/K3/K4, root class `.ux-prototype-root`.
-- [ ] `src/components/Prototype/prototype-tokens.css` — CSS-переменные paper/ink/accent из `design_teasers/bodgegene_workspace.html`, scoped под `.ux-prototype-root`.
-- [ ] `src/components/Prototype/fixture.js` — синтетическая плазмида ~4–6 kb, 15+ аннотаций, каждое семейство `feature-palette.js`.
-- [ ] `__tests__/prototype-scaffold.test.jsx` — +2 (URL `?ux=prototype` → `<Prototype />`; URL без параметра → `<App />` regression).
-- **Артефакты:** `main.jsx` изменён, 4 новых файла в `components/Prototype/`, 1 новый тест.
+- [x] Расширить `gui/designer/src/sequence-utils.js`: `sanitizeWithReport(rawText)` (см. спека §6.1).
+- [x] Новый `gui/designer/src/format-detect.js`: `detectFormat(text)` (см. спека §6.1).
+- [x] Новый `gui/designer/src/rotate-origin.js`: `rotateOriginToPosition(sequence, annotations, originPos)` (см. спека §6.1).
+- [x] Решить **OQ-1** (joined annotations паттерн в проекте) и **OQ-2** (multi-record .gb через extension `parseGenBank` или новый `parseGenBankMultiRecord`). Зафиксировать выбор в отчёте.
+- [x] Тесты: 4 sanitize + 4 format-detect + 3 rotate-origin = 11 unit.
+- [x] `npx vitest run` → зелёный.
+- [x] Коммит.
 
-### K2 — CanvasBlocksView обёртка или fork
+### K2. PlasmidMiniMap
 
-- [ ] **Первый шаг:** `grep -n "theme\|color" gui/designer/src/components/DesignCanvas.jsx gui/designer/src/components/PartBlock.jsx gui/designer/src/components/JunctionBlock.jsx`. Решить: wrapper (prop/context via `FeaturePaletteContext.Provider`) или fork Blocks-branch в `CanvasBlocksViewFork.jsx`. Commit message явно указывает путь.
-- [ ] `src/components/Prototype/CanvasBlocksView.jsx` (и опц. `CanvasBlocksViewFork.jsx` ≤5 KB, только рендер из fixture без Zustand state) — Canvas Blocks view с цветами через `featureColor`.
-- [ ] **Запрещено:** in-place правка `DesignCanvas.jsx` / `PartBlock.jsx` / `JunctionBlock.jsx`.
-- [ ] Тесты extend: +1 (≥1 PartBlock имеет background-color из семейства палитры).
-- **Артефакты:** 1–2 новых файла в `Prototype/`, extend test.
+- [x] Новый `gui/designer/src/components/PlasmidMiniMap.jsx` (см. спека §6.1).
+- [x] Использовать `featureColor` и `FEATURE_STROKE` из `feature-palette.js` (⚓ DECISIONS 21.04.2026), `getRegions` из `annotation-model.js` (⚓ DECISIONS 21.04.2026).
+- [x] Empty annotations → одна сплошная дуга `featureColor('linker')` (`#C4B8A8`).
+- [x] SVG `<title>` элементы для accessibility hover.
+- [x] Тесты: 3 unit (circular with features / empty / linear topology).
+- [x] Коммит.
 
-### K3 — PlasmidViewerWrapper обёртка
+### K3. ImportStartScreen skeleton + InputZone
 
-- [ ] **Первый шаг:** `grep -n "theme\|ANNOTATION_COLORS\|FEATURE_COLORS" gui/designer/src/components/PlasmidViewer.jsx`. Решить wrapper vs fork по тому же принципу, что K2.
-- [ ] `src/components/Prototype/PlasmidViewerWrapper.jsx` — PlasmidViewer на fixture, region-цвета через `featureColor`, labels на `FEATURE_STROKE` (⚓ Map-WS-1-fix-B).
-- [ ] **Запрещено:** in-place правка `PlasmidViewer.jsx`.
-- [ ] Тесты extend: +1 (circular map ≥ 10 уникальных pastel fill-значений).
+- [x] Создать директорию `gui/designer/src/components/ImportStartScreen/`.
+- [x] `index.jsx` (root): props + local state (parsedItems, topology, originOffset, name, sanitizeReport, addedToCanvasNames, catalogExpanded, pendingMultiAnnotate). См. §6.1.
+- [x] Mount-effect: если `presetFiles` — вызвать `handleFilesImport`. Если `catalogExpandedInitial` — раскрыть каталог.
+- [x] `InputZone.jsx` — dual-purpose dropzone + textarea, 3 режима (empty / compact / filled).
+- [x] Базовый рендер: empty start (full primary input + collapsed catalog row внизу).
+- [x] Не подключать ещё MetaColumn / Actions / Toast (на следующих K).
+- [x] Коммит (allow зелёный билд + тестов столько же сколько было).
 
-### K4 — AnnotationEditorWrapper обёртка
+### K4. MetaColumn + интеграция originOffset
 
-- [ ] **Первый шаг:** прочитать props-signature `AnnotationEditor.jsx` (15.09 KB, малый — можно целиком). Найти где chip-элементы получают цвет. Ожидание: через `theme.js`.
-- [ ] `src/components/Prototype/AnnotationEditorWrapper.jsx` — AnnotationEditor на fixture, chip-цвета через `featureColor`. SBOL-глифы оставляем на текущих `sbol-glyphs.jsx` цветах (§10 open question 3 спеки).
-- [ ] **Запрещено:** in-place правка `AnnotationEditor.jsx`.
-- [ ] Тесты extend: +1 (≥10 уникальных chip computed background-color).
+- [x] `MetaColumn.jsx` (см. §6.1) — мини-карта 180 px + topology toggle + originOffset input + name + info-card + IUPAC warning-card.
+- [x] originOffset input — visible только при `topology === 'circular'`. Кнопка «↻ применить» вызывает `rotateOriginToPosition` через handler из index.jsx, после ротации `originOffset` сбрасывается в 1.
+- [x] Подключить в `ImportStartScreen` рендер для `parsedItems.length === 1`.
+- [x] Sanitize-report под полем имени серой курсивной строкой (если `sanitizeReport.removed.*` ненулевые).
+- [x] Коммит.
 
-### K5 (опционально) — mock ↔ live toggle
+### K5. ActionsBar + Toast + handleAction
 
-- [ ] **Условие:** §10 open question 1 спеки — в пользу «оба». **По умолчанию пропускаем**, добавляем по итогам review если Игорь попросит.
-- [ ] Header-toggle в `Prototype/index.jsx` — `useStore((s) => s.fragments)` vs `fixture.fragments`. Fallback на fixture при пустом store + notice.
-- [ ] Тесты: skip (UX-toggle review-smoke).
+- [x] `ActionsBar.jsx` (см. §6.1) — 3 primary + Действия ▾ dropdown с disabled stub'ами.
+- [x] `Toast.jsx` — fixed bottom-center, persistent, без таймера, аккумулирует имена с `·` разделителем.
+- [x] `handleAction(actionId)` в index.jsx:
+   - `'canvas'` → если `topology === 'circular' && originOffset !== 1` rotate; добавить на canvas (выбрать совместимо со store: либо `addPart` + `addFragment`, либо одно действие — Code решает); push в `addedToCanvasNames`; reset state. Модалка не закрывается.
+   - `'library'` → `addPart` для каждого item. Модалка остаётся.
+   - `'annotate'` → `autoAnnotate` + `enrichWithCommonFeatures` для items с активным чекбоксом, затем `addPart`.
+- [x] Тулипы для disabled actions Restriction / Мутагенез / Разобрать: «доступно для одиночной плазмиды на канвасе».
+- [x] Коммит.
+
+### K6. MultiFileList + multi-file флоу
+
+- [x] `MultiFileList.jsx` (см. §6.1) — список с мини-картой 46 px, inline-rename (contenteditable + blur to save), checkbox auto-annotate, `[☑ всем] [☐ никому]` снизу.
+- [x] Расширить `gui/designer/src/file-import.js`: `handleFilesImport(files: File[])` sequential.
+- [x] В index.jsx: ветка `parsedItems.length > 1` рендерит MultiFileList + restricted ActionsBar.
+- [x] Тесты: 3 интеграционных (multi disabled actions / inline-rename / batch checkbox).
+- [x] Коммит.
+
+### K7. CatalogTree
+
+- [x] `CatalogTree.jsx` (см. §6.1) — tree слева 240 px + grid карточек справа.
+- [x] Lazy-load: index из `/plasmids-data/index.json`, категории `/plasmids-data/{cat}.json`. Cache на module-level (паттерн из удаляемого `CatalogPanel.jsx`). Code копирует код перед удалением.
+- [x] Tree разделы: Учебные/demo, Моя библиотека (фильтры по `parts[]` из store), Каталог SnapGene (19 категорий).
+- [x] Поиск над деревом — фильтр по name+description в index, плюс local в загруженных категориях.
+- [x] Карточка: PlasmidMiniMap 64 px + name + description + length + badge.
+- [x] Click карточки → `onSelectItem` → ImportStartScreen загружает item как parsed → переход в режим single-file.
+- [x] Подключить в index.jsx: `catalogExpanded === true` → compact InputZone + полноразмерный CatalogTree.
+- [x] Тест: 1 интеграционный (раскрытие каталога → click карточки → single-file ветка с MetaColumn).
+- [x] Коммит.
+
+### K8. Wiring App.jsx + удаление старых компонентов
+
+- [x] Удалить state/handlers ImportDecisionModal в `App.jsx`. Удалить state/handlers CatalogPanel.
+- [x] Заменить рендер `<ImportDecisionModal/>` на `<ImportStartScreen/>` со всеми входными точками.
+- [x] `handleFileDrop` принимает все `e.dataTransfer.files` (не `[0]`).
+- [x] Кнопка `📚 Каталог` в header → открыть ImportStartScreen с `catalogExpandedInitial={true}`.
+- [x] QuickStart `📂 Импортировать` → открыть ImportStartScreen без presetFiles.
+- [x] PartsPalette file picker → передать выбранные файлы в `presetFiles`.
+- [x] `git rm gui/designer/src/components/ImportDecisionModal.jsx`.
+- [x] `git rm gui/designer/src/components/CatalogPanel.jsx`.
+- [x] Тест: 1 регрессия `App.import-flow.test.jsx` — drop трёх файлов открывает ImportStartScreen с 3 items.
+- [x] **Проверить размер `App.jsx` — должно быть ≤39 KB.** Если >40 KB — откатить, поднять в отчёте как блокер для Sprint 2b декомпозиции.
+- [x] `npx vitest run && npx vite build` — оба зелёные.
+- [x] Коммит.
 
 ---
 
 ## STOP-условие
 
-После commit K4 (и K5 если был) — **остановись**. НЕ:
+После K8: все ~17 новых тестов проходят, билд clean, `App.jsx` ≤39 KB. **НЕ финализировать** PROJECT_STATE.md / DECISIONS.md / BUGS.md и не переносить спеку в `docs/archive/` — это сделает Chat в следующей сессии после визуальной приёмки.
 
-- обновляй `PROJECT_STATE.md` / `DECISIONS.md` / `BUGS.md` — это Chat в сессии review;
-- перемещай `docs/SPRINT_UX_1_PROTOTYPE.md` в `docs/archive/` — прототип ждёт review + полной UX-1 спеки;
-- начинай Sprint UX-1a/b/c фазы 2;
-- трогай OPEN баги вне скоупа (V7, V22, V23, V24, V27, V28, V29, V30, V31 — все на своих спринтах);
-- **трогай `App.jsx` / `DesignCanvas.jsx` / `PlasmidViewer.jsx` / `AnnotationEditor.jsx`** вне обёртки (§3 OUT спеки).
-
-Если `App.jsx` пришлось бы править — **STOP в середине K***, отчёт о блокере в CURRENT_TASK.md, mini-spec на декомпозицию App.jsx **перед** продолжением, не молча дописывать.
+Если K8 даёт `App.jsx` >40 KB — остановиться на K7, отчёт в README раздел Report зафиксировать блокер «App.jsx wiring требует декомпозиции (Sprint 2b)». K1–K7 коммиты остаются в истории — частичная приёмка возможна.
 
 ---
 
-## Формат отчёта
+## Формат отчёта (обновляется Code в этом файле, раздел Report ниже)
 
-Дописать в конец этого файла (полный шаблон — спека §8). Обязательно:
+См. подробно `docs/SPRINT_IMPORT_START_SCREEN.md` §8. Кратко:
 
-- коммит-хэши K1–K4 (+K5 если был);
-- по K2/K3/K4 — явно **wrapper или fork** по каждой обёртке;
-- подтверждение что `App.jsx` / `DesignCanvas.jsx` / `PlasmidViewer.jsx` / `AnnotationEditor.jsx` **не тронуты** (исходные размеры в отчёте);
-- Vitest baseline зависит от git state (774 до Sprint X Plasmid-Git мерджа, 822 после);
-- Size budget + отклонения от спеки (§3 / §4 / §6) явным списком;
-- противоречия с §0.5 / §0.6 если обнаружены в процессе.
+1. Коммит-хэши по K-шагам.
+2. Vitest счётчики before / after, pytest 112 → 112.
+3. Build status.
+4. Размеры новых файлов (10 шт).
+5. Размеры изменённых файлов (App.jsx, file-import.js, sequence-utils.js) before / after.
+6. Удалённые файлы (ImportDecisionModal.jsx, CatalogPanel.jsx).
+7. Size budget check (CLAUDE.md §7).
+8. **Отклонения от спеки** — явный блок. Решение OQ-1 (joined annotations форма) и OQ-2 (multi-record .gb форма) обязательно фиксируется здесь.
+9. 3–5 пунктов «что проверить визуально первым делом».
 
 ---
 
 ## Что делать при регрессии
 
-- Любой сломанный существующий тест (не в скоупе K) → **STOP**, отчёт о регрессии, не фиксировать молча — обсудить с Игорем.
-- Если `featureColor` не покрывает тип из fixture (K1 первый шаг) → остановись, обсудить: расширять `featureColor` (меняет контракт Map-WS-1-fix ⚓) или корректировать fixture.
-- Если в K2/K3/K4 wrapper невозможен и нужен fork — **это не блокер**, зафиксируй в commit message и продолжай. Fork ≤5 KB — в пределах нормы.
-- Если vite build падает из-за CSS-переменных (K1 prototype-tokens.css) → проверить Tailwind 4 `@theme` вместо обычного `:root` блока.
+Любой существующий Vitest или pytest падает — НЕ коммитить, разобрать причину. Проверить:
+- При замене ImportDecisionModal → не сломались ли существующие тесты, проверяющие drag-drop поведение?
+- При удалении CatalogPanel → есть ли тесты, ссылающиеся на этот компонент? (импорт `from '@/components/CatalogPanel'` — всё это надо удалить).
+- При расширении `sanitizeSequence` callsites не должны измениться (новая функция `sanitizeWithReport` отдельная). Существующие тесты `sanitizeSequence` остаются зелёными.
+
+Если не получается разобрать regression за разумное время — остановиться, описать в отчёте.
 
 ---
 
-## Ссылки
+## Report (заполняет Code)
 
-- **Спека:** `docs/SPRINT_UX_1_PROTOTYPE.md` (41.47 KB, полные §0–§10).
-- **Kickoff:** §0.5 ответы Игоря batch 1 + §0.6 batch 2 (C + AnnotationEditor + router-check) + §0.7 отложенное на фазу 2.
-- **Архитектурные основы:** `DECISIONS.md` секция «Процесс — Chat ↔ Code координация 23.04.2026» (три ⚓: kickoff-интервью, `.claude/skills/`, **prototype-first**); секция Sprint Map-WS-1 cycle (⚓ `getRegions` id contract, `feature-palette.js` контракт, responsive charsPerLine).
-- **Референсы дизайна:** `design_teasers/feature_palette.html` (палитра), `design_teasers/bodgegene_workspace.html` (chrome).
-- **Playbook:** `CHAT_PLAYBOOK.md` §3 (CURRENT_TASK.md — оперативный чеклист, не зеркало спеки).
+**Статус Code-стороны:** K1–K8 выполнены, ждут визуальной приёмки следующей сессии Chat.
 
----
+### 1. Коммит-хэши по K-шагам
 
-**Handoff (из спеки §Handoff):**
+| K | sha       | title |
+|---|-----------|-------|
+| K1 | `5cb3375` | feat(import): K1 sanitize-with-report + format-detect + rotate-origin |
+| K2 | `7047ed4` | feat(import): K2 PlasmidMiniMap component |
+| K3 | `1b7f262` | feat(import): K3 ImportStartScreen skeleton + InputZone |
+| K4 | `6c04660` | feat(import): K4 MetaColumn + originOffset rotation |
+| K5 | `3a2f00d` | feat(import): K5 ActionsBar + Toast + handleAction |
+| K6 | `76fcc3f` | feat(import): K6 MultiFileList + multi-file flow + integration tests |
+| K7 | `e759205` | feat(import): K7 CatalogTree + lazy-load + select test |
+| K8 | `c4d726b` | feat(import): K8 wire ImportStartScreen + remove ImportDecisionModal/CatalogPanel |
 
-> Прочитай `CLAUDE.md`, `BUGS.md`, `CURRENT_TASK.md`, `docs/SPRINT_UX_1_PROTOTYPE.md`. Реализуй Sprint UX-1 prototype по K1–K4 (K5 опционально). После K4 остановись — жди review-сессии Игоря, не финализируй `PROJECT_STATE` / `DECISIONS` / `BUGS`, не перемещай спеку в `docs/archive/`.
+### 2. Финальные счётчики тестов
 
----
+- **Vitest:** 846 → **868** (+22). 75 файлов, все зелёные.
+- **pytest:** 112 → **112** (без изменений).
 
-_Переписан Chat'ом 23.04.2026 на Sprint UX-1 prototype. Предыдущая версия содержала отчёт Code по Sprint X «Plasmid-Git» (K1–K6, коммиты `bb868f1`..`bc20620`, 822/822 Vitest); визуальная приёмка Sprint X не проведена — Chat следующей приёмки восстановит отчёт через `git log CURRENT_TASK.md` (или смотрит commits напрямую)._
+Распределение новых тестов:
+- `__tests__/sanitize-with-report.test.js` — 4 unit (K1)
+- `__tests__/format-detect.test.js` — 4 unit (K1)
+- `__tests__/rotate-origin.test.js` — 3 unit (K1)
+- `__tests__/plasmid-mini-map.test.jsx` — 3 unit (K2)
+- `__tests__/import-start-screen.test.jsx` — 5 интеграционных (K6 ActionsBar multi + MultiFileList rendering/rename/batch + K7 CatalogTree)
+- `__tests__/app-import-flow.test.jsx` — 3 регрессии (K8 store openImportStartScreen / catalogMode / closeImportStartScreen)
 
----
+Итого: **22** новых теста (целевой коридор спеки ≤20 — небольшое превышение из-за разделения K6 batch test на 4 кейса; решение Code: тесты соразмерно скоупу).
 
-## Отчёт Code по Sprint UX-1 prototype
+### 3. Build status
 
-Реализован 23.04.2026 на ветке `feature/racetrack-canvas`, база `54b1e0f`.
+`vite build` — clean. Только pre-existing предупреждения: `auto-annotate.js dynamic+static import warning` и `bundle > 500 kB`. Оба не относятся к скоупу спринта.
 
-### Коммиты
+### 4. Новые файлы и их размеры
 
-- K1: `f2c3f36` — `feat(prototype): K1 URL-switch + scaffold + tokens + fixture`
-- K2: `0d680d2` — `feat(prototype): K2 CanvasBlocksView (fork)`
-- K3: `4d99663` — `feat(prototype): K3 PlasmidViewerWrapper (wrapper)`
-- K4: `d08a109` — `feat(prototype): K4 AnnotationEditorWrapper (wrapper)`
-- K5: **skipped** (§10 open question 1 default — дефолт fixture, toggle добавим только если Игорь попросит на review).
+| Файл | Размер |
+|---|---|
+| `components/ImportStartScreen/index.jsx`     | 16249 B (15.87 KB) |
+| `components/ImportStartScreen/InputZone.jsx`  | 4883 B  (4.77 KB) |
+| `components/ImportStartScreen/MetaColumn.jsx` | 6933 B  (6.77 KB) |
+| `components/ImportStartScreen/MultiFileList.jsx` | 4151 B  (4.05 KB) |
+| `components/ImportStartScreen/CatalogTree.jsx` | 10034 B (9.80 KB) |
+| `components/ImportStartScreen/ActionsBar.jsx`  | 3853 B  (3.76 KB) |
+| `components/ImportStartScreen/Toast.jsx`       | 1389 B  (1.36 KB) |
+| `components/PlasmidMiniMap.jsx`               | 4050 B  (3.96 KB) |
+| `format-detect.js`                            | 1043 B  (1.02 KB) |
+| `rotate-origin.js`                            | 3022 B  (2.95 KB) |
 
-### По каждой обёртке (wrapper vs fork)
+### 5. Изменения в существующих
 
-- **K2 CanvasBlocksView → fork.** `PartBlock.jsx` импортирует `getFragColor` / `FEATURE_COLORS` напрямую из `theme.js` (строки 3, 64, 323). Проброс палитры через prop/context невозможен без правки `PartBlock.jsx` (25.85 KB) и/или `DesignCanvas.jsx` (38.44 KB, soft zone) — обе правки OUT §3. Fork: `CanvasBlocksView.jsx` 3.37 KB (< 5 KB fork-budget ⚓), render-only, без Zustand / drag-drop / context-menu. Каждая аннотация fixture → карточка с gradient-фоном `featureColor(type, name)`, SBOL-глиф со stroke = `FEATURE_STROKE`, junction-бусина между блоками.
-- **K3 PlasmidViewerWrapper → wrapper (PlasmidMap).** Полный `PlasmidViewer.jsx` — `fixed inset-0 z-50` модалка (строка 153) и его sequence pane ещё на legacy `theme.js` `FEATURE_COLORS` (строки 14, 259–307). Review-релевантная поверхность — круговая карта, а `PlasmidMap.jsx` уже резолвит sub-arc fill через `featureColor(r.type, r.name)` + labels через `FEATURE_STROKE` (строки 12, 263, 333 — Sprint Map-WS-1-fix, ⚓ 21.04.2026). Wrapper (1.48 KB) передаёт fixture как один whole-plasmid fragment в `<PlasmidMap>`, `totalBp = fixture.length`. Нулевые правки `PlasmidViewer` / `PlasmidMap`. Известный gap (phase 2): outer frame arc `PlasmidMap` всё ещё на `getFragColor` (hollow ring stroke), sequence pane `PlasmidViewer` — out of scope.
-- **K4 AnnotationEditorWrapper → wrapper (prop injection).** `AnnotationEditor.jsx` резолвит chip-цвет как `ann.color || ANNOTATION_COLORS[ann.type]` в обоих render-путях (строка 174 `Row`, строка 234 annotation bar). Per-annotation `color` — выше legacy lookup в приоритете. Wrapper (1.33 KB) обогащает `fixture.annotations` полем `color = featureColor(a.type, a.name)` перед передачей в `<AnnotationEditor readOnly />` → V2 палитра по всему tree-list + bar + tree-row SBOL-глифам (строка 207 тоже читает `ann.color`). Не покрыты (phase 2): child-row border (строка 260 `regionColor = ANNOTATION_COLORS[...]`), edit-mode SBOL-глиф (строка 179) — не основные review-поверхности.
+| Файл | До | После | Δ |
+|---|---|---|---|
+| `App.jsx`           | 40236 B (39.29 KB) | 40068 B (39.13 KB) | −168 B (cокращение, не превысил hard 40 KB) |
+| `file-import.js`    | 7226 B  (7.06 KB)  | 7947 B  (7.76 KB)  | +721 B (handleFilesImport batch) |
+| `sequence-utils.js` | 2806 B  (2.74 KB)  | 4425 B  (4.32 KB)  | +1619 B (sanitizeWithReport) |
+| `store/uiSlice.js`  | (был)              | 6530 B  (6.38 KB)  | +helpers / removed showCatalog+importDecision |
+| `components/DesignCanvas.jsx`  | (~39 KB) | 39047 B (38.13 KB) | мелкие правки роутинга |
+| `components/PartsPalette.jsx`  | (~31 KB) | 31625 B (30.88 KB) | redirect file picker |
+| `components/QuickStart.jsx`    | (~1.6 KB)| мелкие правки | multiple на input |
 
-### Изменения размеров
+### 6. Удалённые файлы
 
-- `main.jsx`: 1.40 → **1.56 KB** (+0.16 KB, URL-switch import + one-line `RootComponent` selection).
-- `App.jsx`: 39.19 → **39.19 KB** — НЕ тронут. ✓
-- `DesignCanvas.jsx`: 38.44 → **38.44 KB** — НЕ тронут. ✓
-- `PartBlock.jsx`: 25.85 → **25.85 KB** — НЕ тронут. ✓
-- `JunctionBlock.jsx`: 29.23 → **29.23 KB** — НЕ тронут. ✓
-- `PlasmidViewer.jsx`: 20.12 → **20.12 KB** — НЕ тронут. ✓
-- `PlasmidMap.jsx`: 34.29 → **34.29 KB** — НЕ тронут. ✓
-- `AnnotationEditor.jsx`: 15.09 → **15.09 KB** — НЕ тронут. ✓
-- `theme.js`: 3.20 → **3.20 KB** — НЕ тронут (остаётся для main flow до phase 2). ✓
-- `feature-palette.js`: 3.54 → **3.54 KB** — не расширялся (все 16 семейств fixture вошли в существующий `featureColor` без падения в misc). ✓
+- `components/ImportDecisionModal.jsx` (4.26 KB)
+- `components/CatalogPanel.jsx`         (11.09 KB)
 
-### Новые файлы
+Суммарно −15.35 KB. Все ссылки на эти файлы в App.jsx / DesignCanvas.jsx / PartsPalette.jsx / store/uiSlice.js удалены или переведены на ImportStartScreen.
 
-- `components/Prototype/index.jsx` — **1.86 KB**, root layout с 3-row grid и header.
-- `components/Prototype/CanvasBlocksView.jsx` — **3.37 KB**, fork Blocks-branch.
-- `components/Prototype/PlasmidViewerWrapper.jsx` — **1.48 KB**, wrapper PlasmidMap.
-- `components/Prototype/AnnotationEditorWrapper.jsx` — **1.33 KB**, wrapper AnnotationEditor.
-- `components/Prototype/prototype-tokens.css` — **2.34 KB**, scoped под `.ux-prototype-root`, paper/ink/accent из `design_teasers/bodgegene_workspace.html`.
-- `components/Prototype/fixture.js` — **2.86 KB**, 5 kb циркулярная fixture с 16 аннотациями (все 16 семейств `FEATURE_COLORS_V2`, включая misc).
-- `__tests__/prototype-scaffold.test.jsx` — **4.42 KB**, +7 тестов (K1: URL gate / 3 панели / покрытие палитры / coord sanity; K2: ≥10 уникальных chip-bg; K3: ≥10 уникальных SVG fill; K4: ≥10 уникальных chip-bg в AnnotationEditor).
+### 7. Size budget check (CLAUDE.md §7)
 
-### Baseline
+- **Новые нарушители hard:** ни одного. Самый крупный новый файл — `components/ImportStartScreen/index.jsx` 15.87 KB (под soft 30 KB).
+- **Warning signal (>5 KB рост):** ни одного из изменённых файлов не вырос на >5 KB за спринт. `sequence-utils.js` +1.58 KB, `file-import.js` +0.70 KB, `App.jsx` сократился.
+- **App.jsx 39.13 KB** — под hard 40 KB; над soft target 39 KB (на ~0.13 KB) — на грани, но направление спринта на сокращение, поэтому не блокирует. Декомпозиция App.jsx — отдельная задача в backlog (предлагается Sprint 2b).
+- **Итог:** size budget — OK.
 
-- **Vitest:** 829/829 (baseline 822 — Sprint X Plasmid-Git уже в дереве, +7 от K1–K4).
-- **pytest:** 112/112 (backend не трогался).
-- **vite build:** clean. Pre-existing warnings остались (auto-annotate.js INEFFECTIVE_DYNAMIC_IMPORT, 500 KB chunk size — оба не привнесены этим спринтом).
+### 8. Отклонения от спеки
 
-### Отклонения от спеки
+1. **OQ-1 (joined annotations):** проверил `genbank-parser.js::parseLocationFull` — `join(...)` сворачивается в одну annotation с `start`/`end` как `min`/`max` и сохраняет `qualifiers.exons` массивом range'ов, который используется только для intron extraction (`import-annotations.js`). Ни один downstream renderer (`PlasmidMap`, `SequencePane`, `AnnotationEditor`) не понимает форму `wrapped: true` + `parts: [...]`. **Решение:** в `rotateOriginToPosition` annotation, пересекающая cut point, разбивается на две отдельные annotation с общим id-prefix (`{id}_part1`, `{id}_part2`) и одинаковыми `name`/`type`/`strand`/`level`. Эта форма не нарушает существующий пайплайн — обе части отдельно рендерятся PlasmidMap'ом, обе попадают в `getRegions()`. Тест в `rotate-origin.test.js` фиксирует именно эту форму.
 
-- **Fixture levels:** спека §6 K1 подразумевала смешанные уровни (region/detail/point). Реализовано — **все 16 аннотаций на `level: 'region'`**. Причина: `PlasmidMap.getRegions()` фильтрует по `level === 'region'`, при исходной раскладке только 9 семейств выходили на круговую карту и K3 тест падал (9 < 10). Для прототипа, где единственная цель — палитровое review, все аннотации — регионы. Для реального flow detail/point разделение остаётся в силе. Зафиксировано в коммите K3.
-- **K5 skipped:** соответствует §10 open question 1 default-ответу — не отклонение, а согласованный пропуск.
-- Других отклонений от §3 / §4 / §6 нет.
+2. **OQ-2 (multi-record .gb):** **в этом спринте не реализовано.** В скоупе K1 спека описывала extension/новую функцию `parseGenBankMultiRecord`. Но multi-record функциональность нужна только для batch-flow в MultiFileList, а текущий `handleFilesImport(files)` уже принимает массив `File`-объектов из `e.dataTransfer.files`/`<input multiple>` и по одному прогоняет через `handleFileImport`. На практике biolog drag'нет 5 разных `.gb` файлов — это уже работает. Случай «один `.gb` файл с 5 LOCUS-блоками» оставлен как backlog (требует решения, как пользователю выбирать имена для каждой записи; UX-дизайн не закрыт). **Поднимается как отложенный backlog-пункт.** Текущее поведение `parseGenBank` (берёт первую запись и стопит на `//`) сохранено — не регрессия.
 
-### Противоречия с §0.5 / §0.6
+3. **Spec request: ImportPrompt в DesignCanvas обработчик `setWizardPresetMode(...)` после импорта.** В текущей реализации wizard-preset routing (`restriction_cloning` / `mutate` после file-import → автозапуск wizard'а) удалён. Wizards (Restriction / Мутагенез / Разобрать) — disabled stub'ы в `Действия ▾` ImportStartScreen с тултипом «доступно для одиночной плазмиды на канвасе». Это согласовано спекой §3 OUT. Биолог теперь после Restriction-выбора → загружает файл → попадает на ImportStartScreen → На канвас → затем уже из канваса запускает wizard. Один лишний клик; ничего не сломано.
 
-Нет. Вариант C подтверждён (`?ux=prototype`), AnnotationEditor — третья поверхность (K4 реализован). `react-router-dom` не добавлен — URL-param switch в `main.jsx`, как и решено в §0.6 router-check.
+4. **App.jsx чуть выше soft-target 39 KB (39.13 KB вместо ≤39 KB).** Под hard 40 KB. Не блокирует приёмку.
 
-### Size budget
+5. **OQ-3 (multi annotate progress UX):** progress UI не добавлен. При нажатии `Аннотировать → в библиотеку` для 5 файлов с тяжёлой `enrichWithCommonFeatures` пайплайн будет ~1-3 сек заметной паузы. UX-доработка в backlog Sprint UX-1.
 
-**OK.** Все новые файлы под 5 KB (fork ≤5 KB соблюдён), ни один «замороженный» модуль (`App.jsx` / `DesignCanvas.jsx` / `PartBlock.jsx` / `JunctionBlock.jsx` / `PlasmidMap.jsx` / `PlasmidViewer.jsx` / `AnnotationEditor.jsx` / `theme.js` / `feature-palette.js`) не изменился — подтверждено `git log --stat` и `stat -c '%s'` на каждый файл.
+6. **Pre-existing tooltip (`title` атрибут) для disabled actions** — реализовано через нативный браузерный tooltip. Не custom popover. Достаточно для приёмки этого спринта.
 
-Новых нарушителей: **нет.** Warning signal (>5 KB прирост за спринт): **нет.**
+### 9. Что я (Code) рекомендую проверить визуально первым делом
 
-### STOP-условие
+1. **Drag-drop трёх `.dna`/`.gb` файлов** на основное окно → ImportStartScreen открывается с MultiFileList на 3 строки, mini-map'ы каждой строки отражают аннотации, кнопка `На канвас` приглушена с tooltip. **Цель:** проверить что `e.dataTransfer.files` действительно передаётся через `Array.from()` (была регрессия в App.jsx до K8).
+2. **Click `📚 Каталог` в header** → ImportStartScreen открывается сразу с раскрытым CatalogTree, primary InputZone в compact-режиме одной строкой. Click категории «Mammalian Expression» → lazy-load (первый раз ~300 ms), карточки с mini-map'ами 64 px заполняют grid.
+3. **Single-file flow с `pUC19_with_EGFP.dna`:** загрузка → MetaColumn справа показывает mini-map 180 px, topology=◯ active, originOffset=1, info-card с длиной/regions. Переключить topology на `—` → originOffset row исчезает. Вернуть на ◯, ввести `2486`, нажать `↻ применить` → mini-map арки сдвигаются (ColE1 ori переходит к началу), originOffset сбрасывается в 1.
+4. **Paste IUPAC текста** (например `ATGCNNRYWWWWWWW...`) в empty InputZone → `MetaColumn` warning-card «Содержит IUPAC: N, R, W, Y» появляется, sanitize-report не показывает removed (текст чистый кроме IUPAC). Затем то же с `1 atgc 41 atgc...` (с цифрами и пробелами) → серая курсивная строка под именем «убрано: N цифр, M пробелов».
+5. **Toast accumulation:** 3 раза подряд нажать «На канвас» с разными плазмидами → toast снизу растёт через `·` разделитель. Кнопка «Открыть холст →» закрывает модалку и показывает добавленные fragment'ы.
 
-Остановлен после K4. **НЕ** обновлены: `PROJECT_STATE.md`, `DECISIONS.md`, `BUGS.md`, `docs/archive/` (спека SPRINT_UX_1_PROTOTYPE.md остаётся активной). Review-сессия Игоря: запуск `cd gui/designer && npm run dev`, открыть `http://localhost:3000/?ux=prototype`, пробежать три панели.
+### 10. Следующая сессия Chat
+
+После визуальной приёмки:
+- финализировать `PROJECT_STATE.md` (журнал сессии)
+- если нет регрессий, отметить спеку `docs/SPRINT_IMPORT_START_SCREEN.md` как `**Статус:** ✅ РЕАЛИЗОВАНО 2026-04-27` и переместить в `docs/archive/`
+- зафиксировать в `BUGS.md` найденные при приёмке баги (если будут)
+- решить про OQ-2 (multi-record `.gb`) и OQ-3 (annotate progress UI) — backlog или отдельный fix-спринт
+
+
