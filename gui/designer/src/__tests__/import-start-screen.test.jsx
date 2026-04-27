@@ -5,9 +5,11 @@
  * inline-rename via contenteditable blur, batch checkbox toggles.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { render, fireEvent } from '@testing-library/react';
+import { render, fireEvent, waitFor } from '@testing-library/react';
 import MultiFileList from '../components/ImportStartScreen/MultiFileList';
 import ActionsBar from '../components/ImportStartScreen/ActionsBar';
+import CatalogTree from '../components/ImportStartScreen/CatalogTree';
+import { useStore } from '../store';
 
 function makeItem(name, opts = {}) {
   return {
@@ -87,7 +89,7 @@ describe('MultiFileList — inline rename + batch toggle', () => {
     expect(onRename.mock.calls[0][1]).toBe('pUC19_renamed');
   });
 
-  it('batch toggles: «☑ всем» / «☐ никому» / per-row checkbox each invoke their callback', () => {
+  it('batch toggles: per-row checkbox + «☑ всем» / «☐ никому» each fire their handler', () => {
     const items = [makeItem('pUC19'), makeItem('pET28a')];
     const onAll = vi.fn();
     const onNone = vi.fn();
@@ -108,5 +110,58 @@ describe('MultiFileList — inline rename + batch toggle', () => {
     expect(onAll).toHaveBeenCalledTimes(1);
     expect(onNone).toHaveBeenCalledTimes(1);
     expect(onToggle).toHaveBeenCalledWith('pUC19');
+  });
+});
+
+describe('CatalogTree — lazy-load + select', () => {
+  it('loads index, expands category, click on card invokes onSelectItem with full record', async () => {
+    // Mock fetch for /plasmids-index.json + /plasmids-data/<slug>.json.
+    const fakeIndex = {
+      version: '1.0', total: 2, categories: [
+        { slug: 'basic_cloning_vectors', name: 'Basic Cloning Vectors', count: 1, organism: 'E. coli' },
+      ],
+    };
+    const fakeCategory = {
+      plasmids: [{
+        id: 'sg_test1',
+        name: 'pUC19',
+        sequence: 'ATGCATGC',
+        length: 8,
+        topology: 'circular',
+        annotations: [{ id: 'r1', start: 1, end: 5, level: 'region', type: 'CDS', name: 'lacZα' }],
+        description: '<html>desc</html>',
+      }],
+    };
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(async (url) => {
+      if (String(url).endsWith('plasmids-index.json')) {
+        return { ok: true, json: async () => fakeIndex };
+      }
+      if (String(url).endsWith('basic_cloning_vectors.json')) {
+        return { ok: true, json: async () => fakeCategory };
+      }
+      return { ok: false, status: 404 };
+    });
+    // Reset module-level cache so re-runs see fresh fetch (cache lives in CatalogTree.jsx).
+    // Quick hack: import the component and reach into its module — instead, just
+    // accept the cache: this is the first run of the suite for that module, so it’s clean.
+    useStore.setState({ parts: [] });
+    const onSelect = vi.fn();
+    const { findByText, getByTestId } = render(
+      <CatalogTree onSelectItem={onSelect} query="" onQueryChange={() => {}} />
+    );
+    // Index loaded → category appears in tree.
+    const catBtn = await findByText('Basic Cloning Vectors');
+    fireEvent.click(catBtn);
+    // After click, fetchCategory promise resolves → card renders.
+    const card = await waitFor(() => getByTestId('catalog-card-pUC19'));
+    fireEvent.click(card);
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    const arg = onSelect.mock.calls[0][0];
+    expect(arg.name).toBe('pUC19');
+    expect(arg.sequence).toBe('ATGCATGC');
+    expect(arg.topology).toBe('circular');
+    expect(arg.annotations).toHaveLength(1);
+    globalThis.fetch = origFetch;
   });
 });

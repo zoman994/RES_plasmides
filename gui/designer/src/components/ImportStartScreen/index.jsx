@@ -10,6 +10,7 @@ import MetaColumn from './MetaColumn';
 import ActionsBar from './ActionsBar';
 import Toast from './Toast';
 import MultiFileList from './MultiFileList';
+import CatalogTree from './CatalogTree';
 
 /**
  * ImportStartScreen — single entry point for file import + paste + catalog
@@ -40,6 +41,7 @@ export default function ImportStartScreen({ open, onClose, presetFiles, catalogE
   const [pendingMultiAnnotate, setPendingMultiAnnotate] = useState(() => new Set());
   const [importError, setImportError] = useState(null);
   const [actionBusy, setActionBusy] = useState(false);
+  const [catalogQuery, setCatalogQuery] = useState('');
 
   const handleFilesImport = useCallback(async (files) => {
     if (!files?.length) return;
@@ -268,7 +270,7 @@ export default function ImportStartScreen({ open, onClose, presetFiles, catalogE
           )}
 
           {/* Primary input area */}
-          <div className="bg-white border border-gray-200 rounded-lg p-4">
+          <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-3">
             {empty && !catalogExpanded && (
               <InputZone
                 mode="empty"
@@ -283,6 +285,29 @@ export default function ImportStartScreen({ open, onClose, presetFiles, catalogE
                 mode="compact"
                 onFiles={handleFilesImport}
                 onPasteText={handlePasteText}
+              />
+            )}
+            {empty && catalogExpanded && (
+              <CatalogTree
+                onSelectItem={(it) => {
+                  const item = {
+                    name: it.name,
+                    sequence: it.sequence || '',
+                    length: it.length || it.sequence?.length || 0,
+                    topology: it.topology || 'linear',
+                    annotations: it.annotations || [],
+                    organism: it.organism || '',
+                    description: (it.description || '').replace(/<[^>]*>/g, '').trim(),
+                    _fileName: `${it.name}.dna`,
+                  };
+                  setParsedItems([item]);
+                  setTopology(item.topology);
+                  setName(item.name);
+                  setOriginOffset(1);
+                  setCatalogExpanded(false);
+                }}
+                query={catalogQuery}
+                onQueryChange={setCatalogQuery}
               />
             )}
             {single && (
