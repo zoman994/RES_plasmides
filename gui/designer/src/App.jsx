@@ -323,6 +323,10 @@ export default function App() {
               className="text-xs px-2 py-1 rounded bg-white/10 text-gray-300 hover:bg-white/20 transition">
               {'📦'} Запчасти
             </button>
+            <button onClick={() => useStore.getState().openImportStartScreen({})}
+              className="text-xs px-2 py-1 rounded bg-white/10 text-gray-300 hover:bg-white/20 transition">
+              {'📂'} Импорт
+            </button>
             <button onClick={() => useStore.getState().openImportStartScreen({ catalogMode: true })}
               className="text-xs px-2 py-1 rounded bg-white/10 text-gray-300 hover:bg-white/20 transition">
               {'📚'} Каталог

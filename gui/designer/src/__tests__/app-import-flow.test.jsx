@@ -40,6 +40,14 @@ describe('openImportStartScreen wires all dropped files into ImportStartScreen s
     expect(s.importStartFiles).toBeNull();
   });
 
+  it('K9: empty mode (header 📂 Импорт + QuickStart import) → no files, no catalogMode', () => {
+    useStore.getState().openImportStartScreen({});
+    const s = useStore.getState();
+    expect(s.importStartOpen).toBe(true);
+    expect(s.importStartCatalogMode).toBe(false);
+    expect(s.importStartFiles).toBeNull();
+  });
+
   it('closeImportStartScreen wipes files + catalogMode', () => {
     useStore.setState({
       importStartOpen: true,

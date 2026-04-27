@@ -11,7 +11,6 @@ import SequenceMapView from './SequenceMapView';
 import { collectFamily } from '../part-variants';
 import ContextMenu from './ContextMenu';
 import QuickStart from './QuickStart';
-import ImportPrompt from './ImportPrompt';
 import { useStore, useFragments, useJunctions, usePrimers, useCustomPrimers } from '../store';
 import { getFragmentTopology, expectedJunctionCount } from './utils/fragment-topology';
 
@@ -59,37 +58,18 @@ export default function DesignCanvas({
     rightName: fragments[(i + 1) % fragments.length]?.name || '?',
   })), [junctions, fragments]);
 
-  // ═══ Quick Start handler ═══
-  const handleQuickStart = (actionId, payload) => {
+  // ═══ Quick Start handler (post-K9: 3 actions only) ═══
+  const handleQuickStart = (actionId) => {
     switch (actionId) {
-      case 'restriction':
-      case 'mutagenesis': {
-        const plasmids = parts.filter(p => p.topology === 'circular' || (p.annotations?.length >= 2 && p.sequence?.length > 2000));
-        if (plasmids.length > 0) {
-          useStore.getState().setShowPartsLib(true);
-        } else {
-          setPendingAction(actionId);
-        }
-        break;
-      }
-      case 'gibson':
-      case 'free':
-        setDismissed(true);
-        break;
-      case 'golden_gate':
-        setDismissed(true);
-        useStore.getState().setAssemblyType('golden_gate');
+      case 'import':
+        useStore.getState().openImportStartScreen({});
         break;
       case 'catalog':
         useStore.getState().openImportStartScreen({ catalogMode: true });
         break;
-      case 'import_file': {
-        const files = Array.isArray(payload) ? payload : (payload ? [payload] : []);
-        if (files.length) {
-          useStore.getState().openImportStartScreen({ files });
-        }
+      case 'free':
+        setDismissed(true);
         break;
-      }
     }
   };
 
@@ -99,8 +79,7 @@ export default function DesignCanvas({
     collect: m => ({ isOver: m.isOver() }),
   });
 
-  const [pendingAction, setPendingAction] = useState(null); // 'restriction' | 'mutagenesis' | null
-  const [dismissed, setDismissed] = useState(false); // QuickStart dismissed by gibson/free action
+  const [dismissed, setDismissed] = useState(false); // QuickStart dismissed by «📦 Начать с нуля»
 
   const [zoom, setZoom] = useState(() => {
     const saved = localStorage.getItem('pvcs-canvas-zoom');
@@ -315,15 +294,6 @@ export default function DesignCanvas({
           <div className="flex-1 flex items-center justify-center text-gray-400 text-sm select-none">
             {t('Drag parts here')}
           </div>
-        ) : pendingAction ? (
-          <ImportPrompt
-            action={pendingAction}
-            onImportFile={(file) => {
-              useStore.getState().openImportStartScreen({ files: [file] });
-              setPendingAction(null);
-            }}
-            onCancel={() => setPendingAction(null)}
-          />
         ) : dismissed ? (
           <div className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-400">
             <div className="text-sm">Перетащите запчасти из палитры слева</div>

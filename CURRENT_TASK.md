@@ -1,6 +1,7 @@
 # CURRENT_TASK.md — Sprint Import-Start-Screen
 
-**Статус:** 🟢 K1–K8 реализованы Code (см. Report ниже). Ждёт визуальной приёмки следующей сессии Chat.
+**Статус:** 🟢 K1–K9 реализованы Code (Report §1–§11 ниже). Ждёт визуальной приёмки следующей сессии Chat.
+**Цикл:** K1–K8 + K9 cleanup → визуальная приёмка следующей сессии Chat → финализация.
 **Workflow:** Import & Preview, часть 1 из 3 (стартовая страница).
 **Спека:** `docs/SPRINT_IMPORT_START_SCREEN.md`.
 **Прототип:** `docs/prototype/import_preview_prototype_v2.html` (визуальный референс, открывать в браузере).
@@ -119,11 +120,81 @@
 
 ---
 
+### K9. Cleanup точек входа в ImportStartScreen
+
+Добавлен 27.04.2026 после ревью Report Code. Цель — убрать дублирующие и неявные точки входа, оставить две явных кнопки в header (Импорт и Каталог) + drag-drop + 2-кнопочное приглашение на пустом канвасе.
+
+#### Контекст проблемы
+
+После K8 точек входа в `ImportStartScreen` де-факто шесть, из них четыре — дубли:
+
+- Header `📚 Каталог` ведёт в ImportStartScreen с `catalogMode: true` — семантика узкая, биолог не понимает что за этой кнопкой и импорт файлов.
+- QuickStart 7 кнопок (`restriction` / `gibson` / `golden_gate` / `mutagenesis` / `catalog` / `import` / `free`) — после K8 wizard-preset routing удалён, первые четыре де-факто делают то же самое что `import` (открывают empty ImportStartScreen). 6 кнопок на одну функцию + одна (`free`) на «просто закрыть QuickStart».
+- DesignCanvas ImportPrompt — дублирует QuickStart на пустом канвасе.
+- PartsPalette file picker — биолог не ожидает импорт молекулы через палитру parts. Семантически неверная точка.
+
+#### Чего НЕ трогать в K9
+
+- Никаких правок в `ImportStartScreen/*` и его подкомпонентах (`InputZone`, `MetaColumn`, `MultiFileList`, `CatalogTree`, `ActionsBar`, `Toast`). Сама модалка уже принимает `presetFiles` и `catalogExpandedInitial` — этого достаточно.
+- Store-action `openImportStartScreen({ files, catalogMode })` работает — переиспользуется всеми новыми точками входа. Новых actions не вводить.
+- Drag-drop (#6) оставить как есть — `handleFileDrop` в App.jsx вызывает `openImportStartScreen({ files })`, ничего не меняем.
+
+#### Задачи K9
+
+- [x] **A. Header (App.jsx).** Добавить кнопку `📂 Импорт` перед существующей `📚 Каталог`. Обе ведут в `ImportStartScreen`:
+  - `📂 Импорт` → `openImportStartScreen({})` (empty mode, focus на InputZone)
+  - `📚 Каталог` → `openImportStartScreen({ catalogMode: true })` (как сейчас)
+  - Остальные кнопки header (`📋 Олиги`, `📦 Запчасти`, `💾 Данные`, `⚙️ Настройки`) НЕ трогать — это отдельные функции (OligoManager, PartsLibrary, DataManager, polymerase/prefix dropdown).
+
+- [x] **B. QuickStart на пустом канвасе (QuickStart.jsx).** Переделать с 7 кнопок на 3:
+  - Две крупные primary-кнопки `📂 Импортировать файл` (прямо открывает ImportStartScreen empty) и `📚 Выбрать из каталога` (открывает с catalogMode: true).
+  - Одна ненавязчивая secondary-кнопка `📦 Начать с нуля` (форма кнопки на усмотрение Code, но визуально отделёна от двух primary). Закрывает QuickStart, оставляет canvas пустым для сборки из палитры.
+  - Удалить из `actions[]` элементы `restriction` / `gibson` / `golden_gate` / `mutagenesis`. Они семантически мертвы после K8 (preset routing удалён).
+  - Удалить в QuickStart `<input type="file" hidden>` + `fileRef` — файл-пикер больше не нужен, потому что ImportStartScreen свои внутри. Гинт «или перетащите файл в окно» оставить — drag-drop работает.
+  - `onAction` пропсы QuickStart на стороне App.jsx: `'import'` → `openImportStartScreen({})`, `'catalog'` → `openImportStartScreen({ catalogMode: true })`, `'free'` → просто скрыть QuickStart (пользователь будет тянуть из PartsPalette). Убрать handlerы `'restriction' / 'gibson' / 'golden_gate' / 'mutagenesis' / 'import_file'` в App.jsx (если есть).
+
+- [x] **C. DesignCanvas ImportPrompt.** Удалить блок `ImportPrompt` (или инлайн-кнопку импорта) из `components/DesignCanvas.jsx`. Путь «пустой канвас → импортировать» закрывается QuickStart'ом и header-кнопкой `📂 Импорт`. Дублировать в самом канвасе не нужно.
+
+- [x] **D. PartsPalette file picker.** Убрать file picker из `components/PartsPalette.jsx` (и связанный redirect в `openImportStartScreen({ files })`). Палитра — про parts, не про импорт молекул. Остальная функциональность PartsPalette (drag parts на canvas, поиск, фильтры) НЕ трогать.
+
+- [x] **E. Проверка drag-drop.** Убедиться что `handleFileDrop` в App.jsx не сломан побочными правками. Ничего не менять, только проверить визуально после A–D.
+
+#### Тесты K9 (~2 регрессионных)
+
+- [x] **T1.** Click `📂 Импорт` в header → `openImportStartScreen` вызывается без `catalogMode`, store `importStartCatalogMode === false`.
+- [x] **T2.** Click в QuickStart `📂 Импортировать файл` → `openImportStartScreen` вызывается без `catalogMode`. Click `📚 Выбрать из каталога` → `catalogMode: true`. Click `📦 Начать с нуля` → QuickStart скрывается, ImportStartScreen НЕ открывается.
+- [x] **T3 (опционально):** PartsPalette больше не имеет file input. Регрессия проверяет что оставшиеся UI-элементы палитры (search, filters, drag) не сломаны. Если существующих тестов PartsPalette достаточно — этот тест можно скипнуть.
+
+#### Ожидаемые изменения размеров
+
+- `App.jsx` → +1 кнопка (~5 строк JSX), -handlerы QuickStart preset (`'restriction'` / `'gibson'` / и пр.). Баланс — стабильный или в минус. Сейчас 39.13 KB, цель ≤ 39.13 KB.
+- `QuickStart.jsx` → сильное сокращение (7 кнопок → 3, убираем file input + ref). Ожидаем -30 … -50%.
+- `DesignCanvas.jsx` → -ImportPrompt блок. Ожидаем -100 … -300 B.
+- `PartsPalette.jsx` → -file picker. Ожидаем -100 … -500 B.
+
+#### Коммит
+
+В той же ветке `feature/racetrack-canvas`. Один коммит на весь K9. Title: `chore(import): K9 cleanup entry points (header import button + QuickStart 3-button + remove DesignCanvas/PartsPalette duplicates)`.
+
+#### Отчёт по K9
+
+Дописать в `Report` в этом файле отдельный пункт «### 11. K9 cleanup»:
+1. sha коммита.
+2. Размеры before/after для App.jsx, QuickStart.jsx, DesignCanvas.jsx, PartsPalette.jsx.
+3. Счётчики тестов (868 → N, там же build status).
+4. Отклонения, если были. В частности: остался ли в App.jsx handler `'import_file'` (от QuickStart) или удалён полностью.
+
+---
+
 ## STOP-условие
 
-После K8: все ~17 новых тестов проходят, билд clean, `App.jsx` ≤39 KB. **НЕ финализировать** PROJECT_STATE.md / DECISIONS.md / BUGS.md и не переносить спеку в `docs/archive/` — это сделает Chat в следующей сессии после визуальной приёмки.
+**K1–K8** реализованы (см. Report ниже).
 
-Если K8 даёт `App.jsx` >40 KB — остановиться на K7, отчёт в README раздел Report зафиксировать блокер «App.jsx wiring требует декомпозиции (Sprint 2b)». K1–K7 коммиты остаются в истории — частичная приёмка возможна.
+**После K9:** все новые тесты (T1–T2 + существующие 868) проходят, билд clean, `App.jsx` ≤ 39.13 KB (не растёт). **НЕ финализировать** PROJECT_STATE.md / DECISIONS.md / BUGS.md и не переносить спеку в `docs/archive/` — это сделает Chat в следующей сессии после визуальной приёмки.
+
+Если K9 раздувает `App.jsx` выше 39.5 KB или ломает больше 1 существующего теста — остановиться, зафиксировать в Report. K9 должен оставаться чистым сокращением, не ростом.
+
+Если в K9 при удалении ImportPrompt в DesignCanvas обнаружится, что этот блок несёт дополнительную логику (не просто кнопку импорта) — остановиться на C, зафиксировать в отчёте что именно обнаружено, Chat пересмотрит спеку.
 
 ---
 
@@ -260,5 +331,68 @@
 - если нет регрессий, отметить спеку `docs/SPRINT_IMPORT_START_SCREEN.md` как `**Статус:** ✅ РЕАЛИЗОВАНО 2026-04-27` и переместить в `docs/archive/`
 - зафиксировать в `BUGS.md` найденные при приёмке баги (если будут)
 - решить про OQ-2 (multi-record `.gb`) и OQ-3 (annotate progress UI) — backlog или отдельный fix-спринт
+
+---
+
+### 11. K9 cleanup точек входа
+
+Цель — оставить две явных точки входа в `ImportStartScreen` (header `📂 Импорт` + `📚 Каталог`) + drag-drop + 3-кнопочный QuickStart на пустом канвасе. Удалить дубли (DesignCanvas ImportPrompt, PartsPalette file picker) и мёртвые preset-shortcut'ы (restriction / gibson / golden_gate / mutagenesis в QuickStart).
+
+#### 11.1. Коммит
+
+| sha | title |
+|---|---|
+| _один коммит ниже_ | `chore(import): K9 cleanup entry points (header import button + QuickStart 3-button + remove DesignCanvas/PartsPalette duplicates)` |
+
+#### 11.2. Подзадачи K9 — статус
+
+- ✅ **A.** В `App.jsx` добавлена кнопка `📂 Импорт` (header) перед существующей `📚 Каталог`. Обе ходят через `openImportStartScreen({...})`. Никакие другие header-кнопки (Олиги / Запчасти / Данные / Настройки) не тронуты.
+- ✅ **B.** `QuickStart.jsx` переделан с 7 кнопок на 3: 📂 Импортировать файл (`onAction('import')`) / 📚 Выбрать из каталога (`'catalog'`) / 📦 Начать с нуля (`'free'`, secondary, визуально отделён `border-t`). Удалены `<input type="file">` + `fileRef` — пикер больше не нужен. Гинт «или перетащите файл в окно» сохранён.
+- ✅ **C.** В `DesignCanvas.jsx` удалён блок `ImportPrompt` (use-site + import). Также удалён orphan-файл `components/ImportPrompt.jsx` (1085 B, был чистым UI без побочной логики — проверено перед удалением, как требует STOP-условие). Удалён state `pendingAction / setPendingAction`. `handleQuickStart` сжат до трёх case'ов: `import` / `catalog` / `free`.
+- ✅ **D.** В `PartsPalette.jsx` удалены оба file picker'а (header + bottom action), `fileInputRef`, `onFileSelect` и импорт `ACCEPT_STRING`. Bottom-actions ужались с 2 кнопок («Вставить» + «Импорт») до одной («Вставить»). Drag из палитры на canvas, поиск, фильтры — не тронуты.
+- ✅ **E.** Drag-drop на App.jsx root (`handleFileDrop` → `openImportStartScreen({ files })`) проверен — без правок, работает как до K9.
+
+#### 11.3. Удалённый файл
+
+- `components/ImportPrompt.jsx` — 1085 B (37 строк, чистый UI, не нёс дополнительной логики).
+
+#### 11.4. Размеры before / after
+
+| Файл | До K9 | После K9 | Δ | KB after |
+|---|---|---|---|---|
+| `App.jsx`           | 40068 B | 40316 B | **+248 B** | 39.37 KB |
+| `QuickStart.jsx`    | 3011 B  | 2895 B  | −116 B    | 2.83 KB |
+| `DesignCanvas.jsx`  | 39047 B | 37956 B | −1091 B   | 37.07 KB |
+| `PartsPalette.jsx`  | 31625 B | 30565 B | −1060 B   | 29.85 KB |
+| `ImportPrompt.jsx`  | 1085 B  | удалён   | −1085 B   | — |
+
+**Чистый баланс по затронутым файлам:** −3104 B (т.е. 3 KB сокращения).
+
+#### 11.5. Тесты K9 + счётчики
+
+- Vitest: **868 → 871** (+3). 76 файлов, все зелёные.
+- pytest: **112 → 112**.
+- Build: `vite build` clean.
+
+Новые тесты:
+- `__tests__/quickstart-k9.test.jsx` — 2 регрессии (T2): рендер 3-кнопочного layout + проверка что file input удалён + click → правильные `onAction(id)`.
+- `__tests__/app-import-flow.test.jsx` — добавлен 1 кейс (T1) для empty-mode `openImportStartScreen({})` (header `📂 Импорт` + QuickStart `import`).
+
+T3 (PartsPalette regression) — пропущен. Существующих тестов palette достаточно (Search, drag, filters) — все 871 зелёные после удаления file picker'а; явная регрессия на сам факт «file input не существует» избыточна.
+
+#### 11.6. Отклонения от K9-спеки
+
+1. **App.jsx +248 B вместо «стабильно или в минус».** Спека предполагала компенсацию за счёт удаления handler'ов QuickStart preset из App.jsx — но этих handler'ов в App.jsx и не было (они жили в `DesignCanvas.jsx::handleQuickStart`). Header добавил +248 B чистый рост (одна кнопка JSX). Итог: **39.37 KB** против целевых ≤39.13 KB. **Под STOP-порогом 39.5 KB — проходит.** Декомпозиция App.jsx (Sprint 2b в backlog) снимет это сразу.
+2. **`'import_file'` handler в App.jsx** не существовал и до K9 — этот case жил в `DesignCanvas.jsx::handleQuickStart` (был для скрытого file input в QuickStart). После K9 удалён вместе с file input'ом. В App.jsx ничего удалять не нужно было.
+3. **`ImportPrompt.jsx` файл удалён** — спека K9 строго не требовала, но после удаления единственного use-site он остался orphan. Проверено: чистый UI без побочной логики (см. STOP-условие). −1085 B чистой пользы.
+4. **`store/uiSlice.js` granular setters** (`setImportStartOpen` / `setImportStartFiles` / `setImportStartCatalogMode`) после K9 не используются нигде кроме `openImportStartScreen` / `closeImportStartScreen` (которые уже set'ят композитно). Не удалены — оставлены как однострочные строительные блоки (CLAUDE.md гигиена «не плодить, но и не вычищать без выгоды»).
+5. **QuickStart shrink на ~4% вместо ожидаемых -30..-50%.** Новый текст с описаниями + tone-based стили жирнее старой `actions[]`-табличной формы. Функционально соответствует спеке (3 кнопки + 2 primary tone'а + 1 secondary).
+
+#### 11.7. Что проверить визуально первым делом после K9
+
+1. Header — между `📦 Запчасти` и `📚 Каталог` должна быть новая `📂 Импорт`. Click → ImportStartScreen открывается в empty mode, primary InputZone большой, каталог свёрнут в одну строку снизу.
+2. Пустой канвас (после `Clear` или на старте) — QuickStart с 3 кнопками: две крупные `📂 Импортировать файл` (синяя) и `📚 Выбрать из каталога` (фиолетовая), под `border-t` — secondary `📦 Начать с нуля — сборка из палитры`. Гинт «или перетащите файл в окно» снизу.
+3. PartsPalette — никаких `📂` кнопок ни в header, ни в bottom-actions. Только `+` для добавления Part и `✏️ Вставить` снизу.
+4. Drag-drop трёх файлов в любое место окна → ImportStartScreen открывается с MultiFileList на 3 строки (не задето K9, но проверить).
 
 

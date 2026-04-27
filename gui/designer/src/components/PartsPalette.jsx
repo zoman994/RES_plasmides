@@ -11,7 +11,6 @@ import { CATEGORY_ORDER, CATEGORY_LABELS, CATEGORY_ICONS, STUDENT_CATEGORIES, gr
 import { getRegions } from '../annotation-model';
 import { ANNOTATION_COLORS } from '../auto-annotate';
 import { exportGenBank } from '../exports';
-import { ACCEPT_STRING } from '../file-import';
 import { groupByLifecycle } from '../parts-grouping';
 import ContextMenu from './ContextMenu';
 
@@ -56,7 +55,6 @@ export default function PartsPalette() {
   const archivePart      = useStore(s => s.archivePart);
   const restorePart      = useStore(s => s.restorePart);
 
-  const fileInputRef = useRef(null);
   const partRefs = useRef({});
   const [search, setSearch] = useState('');
   const [activeCollId, setActiveCollId] = useState(null);
@@ -143,13 +141,6 @@ export default function PartsPalette() {
   const handleRemoveFromColl = (collId, partId) => {
     removeFromCollection(collId, partId);
     setCollVer(v => v + 1);
-  };
-
-  const onFileSelect = (e) => {
-    const files = Array.from(e.target.files || []);
-    if (!files.length) return;
-    useStore.getState().openImportStartScreen({ files });
-    e.target.value = '';
   };
 
   // ═══ Status badge helper ═══
@@ -384,11 +375,6 @@ export default function PartsPalette() {
       <div className="flex items-center justify-between mb-2">
         <h3 className="text-sm font-bold text-gray-700">{t('Parts Library')}</h3>
         <div className="flex items-center gap-1">
-          <button onClick={() => fileInputRef.current?.click()}
-            className="w-6 h-6 rounded bg-green-50 text-green-600 hover:bg-green-100 text-sm flex items-center justify-center"
-            title="Импорт .gb / .dna / .fasta">{'📂'}</button>
-          <input ref={fileInputRef} type="file" accept={ACCEPT_STRING} multiple
-            onChange={onFileSelect} className="hidden" />
           <button onClick={() => setModalMode('library')}
             className="w-6 h-6 rounded bg-blue-50 text-blue-600 hover:bg-blue-100 text-sm font-bold flex items-center justify-center"
             title="Добавить Part в библиотеку">+</button>
@@ -589,18 +575,11 @@ export default function PartsPalette() {
 
       {/* Bottom actions — compact */}
       <div className="mt-3 pt-3 border-t">
-        <div className="flex gap-2">
-          <button onClick={() => setModalMode('sequence')}
-            className="flex-1 text-[10px] px-2 py-2 rounded border border-dashed border-gray-300
-              hover:border-blue-400 hover:bg-blue-50 transition text-center text-gray-500">
-            {'✏️'} Вставить
-          </button>
-          <button onClick={() => fileInputRef.current?.click()}
-            className="flex-1 text-[10px] px-2 py-2 rounded border border-dashed border-gray-300
-              hover:border-green-400 hover:bg-green-50 transition text-center text-gray-500">
-            {'📂'} Импорт
-          </button>
-        </div>
+        <button onClick={() => setModalMode('sequence')}
+          className="w-full text-[10px] px-2 py-2 rounded border border-dashed border-gray-300
+            hover:border-blue-400 hover:bg-blue-50 transition text-center text-gray-500">
+          {'✏️'} Вставить
+        </button>
         <button onClick={() => setShowPartsLib(true)}
           className="w-full text-center text-[10px] text-blue-600 hover:underline mt-2">
           {'📦'} Полная библиотека →
