@@ -26,6 +26,7 @@ export default function MetaColumn({
   fromFileFeatures = 0,
   enrichedFeatures = 0,
   lastActionStatus = null,
+  miniMapSize = 180,
 }) {
   const isCircular = topology === 'circular';
   const showInfoCard = fromFileFeatures > 0 || enrichedFeatures > 0 || !!lastActionStatus;
@@ -38,7 +39,7 @@ export default function MetaColumn({
           length={length}
           topology={topology}
           annotations={annotations}
-          size={180}
+          size={miniMapSize}
         />
       </div>
 
