@@ -27,6 +27,7 @@ export default function MetaColumn({
   iupacChars = [],
   fromFileFeatures = 0,
   enrichedFeatures = 0,
+  lastActionStatus = null,
 }) {
   const regions = getRegions(annotations);
   const isCircular = topology === 'circular';
@@ -162,6 +163,21 @@ export default function MetaColumn({
           <div className="flex justify-between">
             <span className="text-gray-500">Дополнено</span>
             <span className="font-medium text-emerald-700">+{enrichedFeatures}</span>
+          </div>
+        )}
+        {lastActionStatus && (
+          <div
+            className="mt-1 pt-1 border-t border-emerald-200 text-emerald-700 font-medium"
+            data-testid="meta-last-action-status"
+          >
+            {lastActionStatus.type === 'canvas' && '✓ Добавлено на канвас'}
+            {lastActionStatus.type === 'library' && '✓ В библиотеке'}
+            {lastActionStatus.type === 'annotate' && (
+              <>
+                ✓ +{Math.max(0, lastActionStatus.regionsAfter - lastActionStatus.regionsBefore)} регионов аннотированы (
+                {lastActionStatus.regionsBefore} → {lastActionStatus.regionsAfter})
+              </>
+            )}
           </div>
         )}
       </div>

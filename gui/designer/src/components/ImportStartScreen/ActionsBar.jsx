@@ -59,13 +59,8 @@ export default function ActionsBar({ mode = 'single', onAction, count = 1 }) {
           >
             На канвас
           </button>
-          <button
-            onClick={() => onAction?.('annotate-batch')}
-            className="text-xs px-3 py-1.5 rounded bg-white border border-gray-200 text-gray-700 hover:bg-gray-50"
-            data-testid="action-annotate-batch"
-          >
-            Аннотировать → в библиотеку
-          </button>
+          {/* Kfix-3 (F-E): single primary action — per-row checkbox controls
+              whether autoAnnotate runs before addPart. */}
           <button
             onClick={() => onAction?.('library-batch')}
             className="text-xs px-3 py-1.5 rounded bg-emerald-600 text-white font-medium hover:bg-emerald-700"

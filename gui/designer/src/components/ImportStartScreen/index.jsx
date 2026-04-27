@@ -42,6 +42,9 @@ export default function ImportStartScreen({ open, onClose, presetFiles, catalogE
   const [importError, setImportError] = useState(null);
   const [actionBusy, setActionBusy] = useState(false);
   const [catalogQuery, setCatalogQuery] = useState('');
+  // Kfix-3 (F-I) single-file action status — keeps MetaColumn after
+  // canvas/library/annotate, info-card shows what just happened in green.
+  const [lastActionStatus, setLastActionStatus] = useState(null);
 
   const handleFilesImport = useCallback(async (files) => {
     if (!files?.length) return;
@@ -88,6 +91,7 @@ export default function ImportStartScreen({ open, onClose, presetFiles, catalogE
     setSanitizeReport(null);
     setPendingMultiAnnotate(new Set());
     setImportError(null);
+    setLastActionStatus(null);
   };
 
   const handleClose = () => {
@@ -192,24 +196,27 @@ export default function ImportStartScreen({ open, onClose, presetFiles, catalogE
         // F-C: push only after successful add (not optimistic).
         setAddedToCanvasNames((prev) => [...prev, part.name]);
         setToastVisible(true);
-        resetSession();
+        // F-I: keep MetaColumn for single-file, just flag status.
+        setLastActionStatus({ type: 'canvas' });
       } else if (actionId === 'library') {
         if (parsedItems.length !== 1) return;
         const part = buildPartFromItem(parsedItems[0], 0);
         addPart(part);
-        resetSession();
+        setLastActionStatus({ type: 'library' });
       } else if (actionId === 'annotate') {
         if (parsedItems.length !== 1) return;
+        const before = getRegions(parsedItems[0].annotations || []).length;
         const annotated = await annotateItem(parsedItems[0]);
         const part = buildPartFromItem(annotated, 0);
         addPart(part);
-        resetSession();
+        const after = getRegions(annotated.annotations || []).length;
+        // Update parsedItem in-place so MetaColumn re-renders with new mini-map.
+        setParsedItems([annotated]);
+        setLastActionStatus({ type: 'annotate', regionsBefore: before, regionsAfter: after });
       } else if (actionId === 'library-batch') {
-        for (let i = 0; i < parsedItems.length; i++) {
-          addPart(buildPartFromItem(parsedItems[i], i));
-        }
-        resetSession();
-      } else if (actionId === 'annotate-batch') {
+        // Kfix-3 (F-E): single batch action honours per-row checkbox —
+        // items in pendingMultiAnnotate get autoAnnotate + enrichment
+        // before addPart, others go in raw.
         for (let i = 0; i < parsedItems.length; i++) {
           const item = parsedItems[i];
           const include = pendingMultiAnnotate.has(item.name || item._fileName);
@@ -359,6 +366,7 @@ export default function ImportStartScreen({ open, onClose, presetFiles, catalogE
                   iupacChars={sanitizeReport?.iupacChars || []}
                   fromFileFeatures={parsedItems[0]?._fromFileCount || 0}
                   enrichedFeatures={parsedItems[0]?._enrichedCount || 0}
+                  lastActionStatus={lastActionStatus}
                 />
               </div>
             )}
