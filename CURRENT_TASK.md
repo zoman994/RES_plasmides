@@ -342,7 +342,7 @@
 
 | sha | title |
 |---|---|
-| _один коммит ниже_ | `chore(import): K9 cleanup entry points (header import button + QuickStart 3-button + remove DesignCanvas/PartsPalette duplicates)` |
+| `6c13b49` | `chore(import): K9 cleanup entry points (header import button + QuickStart 3-button + remove DesignCanvas/PartsPalette duplicates)` |
 
 #### 11.2. Подзадачи K9 — статус
 
