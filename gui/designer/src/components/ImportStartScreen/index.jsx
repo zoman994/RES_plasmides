@@ -48,6 +48,8 @@ export default function ImportStartScreen({ open, onClose, presetFiles, catalogE
   // Kfix-3 (F-I) single-file action status — keeps MetaColumn after
   // canvas/library/annotate, info-card shows what just happened in green.
   const [lastActionStatus, setLastActionStatus] = useState(null);
+  // Kfix-7 (F-F) batch parsing progress for InputZone empty/compact modes.
+  const [pendingMultiParse, setPendingMultiParse] = useState(null);
 
   const handleFilesImport = useCallback(async (files) => {
     if (!files?.length) return;
@@ -299,6 +301,8 @@ export default function ImportStartScreen({ open, onClose, presetFiles, catalogE
                 onPasteText={handlePasteText}
                 pasteValue={pasteText}
                 onPasteValueChange={(v) => { setPasteText(v); handlePasteText(v); }}
+                onExpandCatalog={() => setCatalogExpanded(true)}
+                progress={pendingMultiParse}
               />
             )}
             {empty && catalogExpanded && (
@@ -306,30 +310,43 @@ export default function ImportStartScreen({ open, onClose, presetFiles, catalogE
                 mode="compact"
                 onFiles={handleFilesImport}
                 onPasteText={handlePasteText}
+                progress={pendingMultiParse}
               />
             )}
             {empty && catalogExpanded && (
-              <CatalogTree
-                onSelectItem={(it) => {
-                  const item = {
-                    name: it.name,
-                    sequence: it.sequence || '',
-                    length: it.length || it.sequence?.length || 0,
-                    topology: it.topology || 'linear',
-                    annotations: it.annotations || [],
-                    organism: it.organism || '',
-                    description: (it.description || '').replace(/<[^>]*>/g, '').trim(),
-                    _fileName: `${it.name}.dna`,
-                  };
-                  setParsedItems([item]);
-                  setTopology(item.topology);
-                  setName(item.name);
-                  setOriginOffset(1);
-                  setCatalogExpanded(false);
-                }}
-                query={catalogQuery}
-                onQueryChange={setCatalogQuery}
-              />
+              <>
+                <div className="flex items-center justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setCatalogExpanded(false)}
+                    className="text-[11px] px-2 py-1 rounded text-purple-700 hover:bg-purple-50"
+                    data-testid="catalog-collapse"
+                  >
+                    ▲ Свернуть каталог
+                  </button>
+                </div>
+                <CatalogTree
+                  onSelectItem={(it) => {
+                    const item = {
+                      name: it.name,
+                      sequence: it.sequence || '',
+                      length: it.length || it.sequence?.length || 0,
+                      topology: it.topology || 'linear',
+                      annotations: it.annotations || [],
+                      organism: it.organism || '',
+                      description: (it.description || '').replace(/<[^>]*>/g, '').trim(),
+                      _fileName: `${it.name}.dna`,
+                    };
+                    setParsedItems([item]);
+                    setTopology(item.topology);
+                    setName(item.name);
+                    setOriginOffset(1);
+                    setCatalogExpanded(false);
+                  }}
+                  query={catalogQuery}
+                  onQueryChange={setCatalogQuery}
+                />
+              </>
             )}
             {single && (
               <div className="grid grid-cols-[1fr_280px] gap-3 items-start">
