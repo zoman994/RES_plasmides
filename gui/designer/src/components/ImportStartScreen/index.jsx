@@ -26,7 +26,7 @@ import CatalogTree from './CatalogTree';
  */
 export default function ImportStartScreen({ open, onClose, presetFiles, catalogExpandedInitial }) {
   const addPart = useStore((s) => s.addPart);
-  const addFragment = useStore((s) => s.addFragment);
+  const addFragmentDirect = useStore((s) => s.addFragmentDirect);
   const partsCount = useStore((s) => s.parts.length);
 
   const [parsedItems, setParsedItems] = useState([]);
@@ -183,7 +183,13 @@ export default function ImportStartScreen({ open, onClose, presetFiles, catalogE
           item = { ...item, sequence, annotations, length: sequence.length, topology: 'circular' };
         }
         const part = buildPartFromItem(item, 0);
-        addFragment(part);
+        try {
+          addFragmentDirect(part);
+        } catch (err) {
+          setImportError(err?.message || String(err));
+          return;
+        }
+        // F-C: push only after successful add (not optimistic).
         setAddedToCanvasNames((prev) => [...prev, part.name]);
         setToastVisible(true);
         resetSession();
@@ -216,7 +222,7 @@ export default function ImportStartScreen({ open, onClose, presetFiles, catalogE
       setActionBusy(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [parsedItems, topology, originOffset, name, partsCount, pendingMultiAnnotate, actionBusy, addFragment, addPart, annotateItem]);
+  }, [parsedItems, topology, originOffset, name, partsCount, pendingMultiAnnotate, actionBusy, addFragmentDirect, addPart, annotateItem]);
 
   const originHints = useMemo(() => {
     if (parsedItems.length !== 1) return '';

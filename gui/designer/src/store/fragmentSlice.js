@@ -169,13 +169,28 @@ export const createFragmentSlice = (set, get) => ({
   }, false, 'restorePart'),
 
   // ═══ Fragment actions (modify active assembly) ═══
+  // addFragment: legacy entry point. For circular plasmids with ≥2 regions
+  // it routes into PlasmidUseWizard ("Use whole / Restriction / etc.").
+  // ImportStartScreen primary actions ("На канвас" etc.) bypass this hijack
+  // via addFragmentDirect — they must add the part as a plain fragment
+  // without spawning a secondary modal.
   addFragment: (part) => {
     // Plasmid detection: circular + ≥2 regions → open wizard instead
     if (part.topology === 'circular' && getRegions(part.annotations).length >= 2) {
       get().setWizardPlasmid?.(part);
       return;
     }
+    get().addFragmentDirect(part);
+  },
 
+  /**
+   * Add part to canvas as a fragment unconditionally (no wizard hijack).
+   * Used by ImportStartScreen — Kfix-2 (F-A) decoupled import-flow from
+   * PlasmidUseWizard. Other entry points (palette drag, library "add to
+   * canvas") still go through addFragment so the wizard auto-opens for
+   * full annotated plasmids.
+   */
+  addFragmentDirect: (part) => {
     get().pushUndo?.();
 
     // Auto-save to library if not already there
@@ -206,7 +221,7 @@ export const createFragmentSlice = (set, get) => ({
       }
       asm.calculated = false;
 
-    }, false, 'addFragment');
+    }, false, 'addFragmentDirect');
     // Auto-adjust junctions (force GG for identical neighbors, etc.)
     get().autoAdjustJunctions();
     // Auto-design GG overhangs if any junction is GG
