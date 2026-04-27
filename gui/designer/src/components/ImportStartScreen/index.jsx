@@ -1,10 +1,11 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useStore } from '../../store';
 import { handleFileImport } from '../../file-import';
 import { sanitizeWithReport } from '../../sequence-utils';
 import { detectFormat } from '../../format-detect';
 import { rotateOriginToPosition } from '../../rotate-origin';
 import { getRegions } from '../../annotation-model';
+import { exportGenBank } from '../../exports';
 import InputZone from './InputZone';
 import MetaColumn from './MetaColumn';
 import ActionsBar from './ActionsBar';
@@ -13,6 +14,74 @@ import CatalogTree from './CatalogTree';
 import SessionSummary from './SessionSummary';
 import FileSummaryCard from './FileSummaryCard';
 import { appendSessionEntry } from './session-log';
+
+/**
+ * InlineEditableTitle — Polish §1. Click-to-edit single-line title.
+ *   default: text + ✎ icon (opacity 0 until parent hover, then 0.6)
+ *   click  : transitions to <input>, autofocus + select-all
+ *   Enter  : commit (calls onCommit with trimmed value, blank kept blank)
+ *   Esc    : cancel (resets draft to current value)
+ *   blur   : commit (treated like Enter)
+ */
+export function InlineEditableTitle({ value, onCommit, placeholder = '(без имени)' }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value || '');
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (!editing) setDraft(value || '');
+  }, [value, editing]);
+
+  useEffect(() => {
+    if (editing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [editing]);
+
+  const commit = () => {
+    setEditing(false);
+    if ((draft || '') !== (value || '')) onCommit?.(draft);
+  };
+  const cancel = () => {
+    setDraft(value || '');
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        type="text"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') { e.preventDefault(); commit(); }
+          else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+        }}
+        className="text-lg font-semibold text-gray-800 bg-white border border-emerald-500 rounded px-2 py-0.5 outline-none w-full"
+        data-testid="title-input"
+      />
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => setEditing(true)}
+      className="group flex items-center gap-1.5 text-left max-w-full"
+      data-testid="title-display"
+    >
+      <span className="text-lg font-semibold text-gray-800 truncate" title={value || placeholder}>
+        {value || <span className="text-gray-400 italic font-normal">{placeholder}</span>}
+      </span>
+      <span className="text-gray-400 opacity-0 group-hover:opacity-60 transition-opacity text-sm" aria-hidden="true">
+        ✎
+      </span>
+    </button>
+  );
+}
 
 /**
  * ImportStartScreen — single entry point for file import + paste + catalog
@@ -30,6 +99,7 @@ export default function ImportStartScreen({ open, onClose, presetFiles, catalogE
   const addPart = useStore((s) => s.addPart);
   const addFragmentDirect = useStore((s) => s.addFragmentDirect);
   const partsCount = useStore((s) => s.parts.length);
+  const autoAnnotateOnImport = useStore((s) => s.autoAnnotateOnImport);
 
   const [parsedItems, setParsedItems] = useState([]);
   const [topology, setTopology] = useState('linear');
@@ -61,7 +131,9 @@ export default function ImportStartScreen({ open, onClose, presetFiles, catalogE
       const results = [];
       for (let i = 0; i < files.length; i++) {
         const f = files[i];
-        const data = await handleFileImport(f);
+        // Polish §7: F5 toggle gates enrichWithCommonFeatures + autoAnnotate
+        // detail enrichment in handleFileImport.
+        const data = await handleFileImport(f, { autoAnnotate: autoAnnotateOnImport });
         results.push({ ...data, _fileName: f.name });
         if (files.length > 1) setPendingMultiParse({ current: i + 1, total: files.length });
       }
@@ -81,7 +153,7 @@ export default function ImportStartScreen({ open, onClose, presetFiles, catalogE
     } finally {
       setPendingMultiParse(null);
     }
-  }, []);
+  }, [autoAnnotateOnImport]);
 
   // Mount-driven init: presetFiles → import; catalogExpandedInitial → expand.
   useEffect(() => {
@@ -243,6 +315,25 @@ export default function ImportStartScreen({ open, onClose, presetFiles, catalogE
           addPart(buildPartFromItem(next, i));
         }
         resetSession();
+      } else if (actionId === 'replace') {
+        // Polish §6: «Заменить файл» mirrors the ↻ link — clear card so
+        // empty mode reappears with file picker / drop target.
+        resetSession();
+      } else if (actionId === 'download-gb') {
+        // Polish §6: export current parsedItem as .gb via existing helper.
+        if (parsedItems.length !== 1) return;
+        const item = parsedItems[0];
+        const part = buildPartFromItem(item, 0);
+        try {
+          exportGenBank([part], part.name || 'imported', part.topology === 'circular');
+        } catch (err) {
+          setImportError(err?.message || String(err));
+        }
+      } else if (actionId === 'delete') {
+        // Polish §6: V42 «удалить из сессии» semantic — confirm + clear.
+        // eslint-disable-next-line no-alert
+        if (typeof window !== 'undefined' && !window.confirm('Удалить файл из сессии?')) return;
+        resetSession();
       }
     } finally {
       setActionBusy(false);
@@ -357,31 +448,56 @@ export default function ImportStartScreen({ open, onClose, presetFiles, catalogE
                 />
               </>
             )}
-            {single && (
+            {single && (() => {
+              const removed = sanitizeReport?.removed;
+              const removedSummary = removed
+                ? [
+                    removed.digits && `${removed.digits} цифр`,
+                    removed.whitespace && `${removed.whitespace} пробелов`,
+                    removed.punctuation && `${removed.punctuation} знаков`,
+                    removed.bom && `${removed.bom} BOM`,
+                    removed.other && `${removed.other} прочих`,
+                  ].filter(Boolean).join(', ')
+                : '';
+              return (
               <div className="grid grid-cols-[1fr_280px] gap-3 items-start">
                 <div className="flex flex-col gap-3">
                   <InputZone
                     mode="filled"
                     onFiles={handleFilesImport}
                     filledHeader={
-                      <div className="flex items-center justify-between w-full">
-                        <span className="font-medium text-gray-700 text-xs">
-                          {parsedItems[0]?.name || parsedItems[0]?._fileName || 'Загружено'}
-                        </span>
-                        <button
-                          onClick={resetSession}
-                          className="text-[11px] px-2 py-0.5 rounded border border-gray-200 hover:bg-gray-100"
-                        >
-                          Заменить
-                        </button>
+                      <div className="flex flex-col gap-0.5 w-full" data-testid="single-title-row">
+                        <InlineEditableTitle
+                          value={name}
+                          onCommit={(next) => setName(next)}
+                          placeholder="(без имени)"
+                        />
+                        {removedSummary && (
+                          <div
+                            className="text-[10px] italic text-gray-400"
+                            data-testid="single-sanitize-summary"
+                          >
+                            убрано: {removedSummary}
+                          </div>
+                        )}
                       </div>
                     }
                     filledBody={
-                      <div className="text-xs text-gray-600 leading-relaxed">
-                        {(parsedItems[0]?.length || 0).toLocaleString()} п.н. · {topology}
-                        {parsedItems[0]?.annotations?.length > 0 && (
-                          <> · {getRegions(parsedItems[0].annotations).length} регионов</>
-                        )}
+                      <div className="flex flex-col gap-0.5 leading-relaxed">
+                        <div className="text-xs text-gray-600">
+                          {(parsedItems[0]?.length || 0).toLocaleString()} п.н. · {topology}
+                          {parsedItems[0]?.annotations?.length > 0 && (
+                            <> · {getRegions(parsedItems[0].annotations).length} регионов</>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={resetSession}
+                          className="self-start text-[11px] text-gray-400 hover:text-emerald-700 underline-offset-2 hover:underline cursor-pointer"
+                          data-testid="replace-file-link"
+                        >
+                          ↻ замена файла
+                        </button>
                       </div>
                     }
                   />
@@ -399,10 +515,7 @@ export default function ImportStartScreen({ open, onClose, presetFiles, catalogE
                   onOriginOffsetChange={setOriginOffset}
                   onApplyOrigin={handleApplyOrigin}
                   originHints={originHints}
-                  name={name}
-                  onNameChange={setName}
                   annotations={parsedItems[0]?.annotations || []}
-                  sanitizeReport={sanitizeReport}
                   hasIUPAC={!!sanitizeReport?.hasIUPAC}
                   iupacChars={sanitizeReport?.iupacChars || []}
                   fromFileFeatures={parsedItems[0]?._fromFileCount || 0}
@@ -410,7 +523,8 @@ export default function ImportStartScreen({ open, onClose, presetFiles, catalogE
                   lastActionStatus={lastActionStatus}
                 />
               </div>
-            )}
+              );
+            })()}
             {multi && (
               <MultiFileList
                 items={parsedItems}
@@ -452,10 +566,22 @@ export default function ImportStartScreen({ open, onClose, presetFiles, catalogE
             )}
 
             {single && (
-              <ActionsBar mode="single" onAction={handleAction} count={1} />
+              <ActionsBar
+                mode="single"
+                onAction={handleAction}
+                count={1}
+                hasParsedItem={!!parsedItems[0]?.sequence}
+                exportEnabled
+              />
             )}
             {multi && (
-              <ActionsBar mode="multi" onAction={handleAction} count={parsedItems.length} />
+              <ActionsBar
+                mode="multi"
+                onAction={handleAction}
+                count={parsedItems.length}
+                hasParsedItem={parsedItems.length > 0}
+                exportEnabled={false}
+              />
             )}
           </div>
         </div>

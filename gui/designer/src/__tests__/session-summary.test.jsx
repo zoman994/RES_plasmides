@@ -61,17 +61,21 @@ describe('FileSummaryCard', () => {
     { id: 'f', start: 2150, end: 2200, level: 'region', type: 'CDS', name: 'extra' },
   ];
 
-  it('renders type counts + top-5 longest features', () => {
-    const { getByTestId, getAllByText } = render(
+  it('renders type counts + categorizes resistance/promoter/origin into category lines (Polish §4)', () => {
+    const { getByTestId, queryByTestId } = render(
       <FileSummaryCard parsedItem={{ annotations: ANN, sequence: 'A'.repeat(2300), topology: 'circular' }} />
     );
     expect(getByTestId('file-summary-types').textContent).toMatch(/CDS/);
-    const top = getByTestId('file-summary-top-features');
-    // AmpR is the longest (800 bp) — must appear
-    expect(top.textContent).toMatch(/AmpR/);
-    expect(top.textContent).toMatch(/ori/);
-    // 5 children only (top-5 cap)
-    expect(top.querySelectorAll('div.flex').length).toBe(5);
+    // Category lines surface the biologically meaningful items.
+    expect(getByTestId('cat-selection').textContent).toMatch(/AmpR/);
+    expect(getByTestId('cat-promoters').textContent).toMatch(/lac/);
+    expect(getByTestId('cat-origins').textContent).toMatch(/ori/);
+    // legacy "Самые длинные" section is gone
+    expect(queryByTestId('file-summary-top-features')).toBeNull();
+    // CDS-list shows remaining CDS (lacZα, extra) — AmpR moved into Селекция.
+    const cds = getByTestId('file-summary-cds-list');
+    expect(cds.textContent).toMatch(/lacZα/);
+    expect(cds.textContent).not.toMatch(/AmpR/);
   });
 
   it('returns null when parsedItem is empty / has no actionable data', () => {
@@ -90,11 +94,17 @@ describe('FileSummaryCard', () => {
     expect(queryByTestId('file-summary-re-sites')).toBeNull();
   });
 
-  it('renders warnings sub-block when parsedItem.warnings has entries', () => {
-    const { getByTestId } = render(
+  it('renders collapsible warnings sub-block, default collapsed (V8)', () => {
+    const { getByTestId, queryByTestId } = render(
       <FileSummaryCard parsedItem={{ annotations: ANN, sequence: 'A'.repeat(50), warnings: ['no stop codon', 'short ORF'], topology: 'linear' }} />
     );
-    expect(getByTestId('file-summary-warnings').textContent).toMatch(/no stop/);
-    expect(getByTestId('file-summary-warnings').textContent).toMatch(/short ORF/);
+    // Toggle button visible + count shown.
+    expect(getByTestId('warnings-toggle').textContent).toMatch(/2 замечаний валидации/);
+    // List collapsed by default.
+    expect(queryByTestId('warnings-list')).toBeNull();
+    fireEvent.click(getByTestId('warnings-toggle'));
+    const list = getByTestId('warnings-list');
+    expect(list.textContent).toMatch(/no stop/);
+    expect(list.textContent).toMatch(/short ORF/);
   });
 });

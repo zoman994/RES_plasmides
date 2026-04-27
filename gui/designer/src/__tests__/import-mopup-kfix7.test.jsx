@@ -10,10 +10,11 @@ import ActionsBar from '../components/ImportStartScreen/ActionsBar';
 
 describe('F-N ActionsBar dropdown opens upward', () => {
   it('the secondary popup uses bottom-full (opens up), not top-full (opens down)', () => {
-    const { getByText, getByTestId } = render(
-      <ActionsBar mode="single" onAction={vi.fn()} count={1} />
+    const { getByTestId } = render(
+      <ActionsBar mode="single" onAction={vi.fn()} count={1} hasParsedItem exportEnabled />
     );
-    fireEvent.click(getByText('Действия ▾'));
+    // Polish §6: trigger renamed Действия ▾ → ⋯ icon button.
+    fireEvent.click(getByTestId('action-secondary-toggle'));
     const popup = getByTestId('actions-secondary-popup');
     expect(popup.className).toMatch(/bottom-full/);
     expect(popup.className).not.toMatch(/top-full/);

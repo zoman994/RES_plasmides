@@ -1,5 +1,4 @@
 import PlasmidMiniMap from '../PlasmidMiniMap';
-import { getRegions } from '../../annotation-model';
 
 /**
  * MetaColumn — fixed 280 px right-side column shown when parsedItems.length === 1.
@@ -7,9 +6,11 @@ import { getRegions } from '../../annotation-model';
  *   - PlasmidMiniMap 180 px
  *   - Topology toggle (◯ / —)
  *   - Origin-offset input (visible only when topology === 'circular')
- *   - Name input
- *   - Info card (length / features count / sanitize report)
+ *   - Compact info-card (Из файла / Дополнено / lastActionStatus) — hides when empty
  *   - IUPAC warning card (if hasIUPAC)
+ *
+ * Polish §2/§5: name input + длина/регионов rows removed — title row
+ * (inline-editable in index.jsx) and subtitle now own that data.
  */
 export default function MetaColumn({
   length,
@@ -19,29 +20,15 @@ export default function MetaColumn({
   onOriginOffsetChange,
   onApplyOrigin,
   originHints = '',
-  name,
-  onNameChange,
   annotations = [],
-  sanitizeReport,
   hasIUPAC,
   iupacChars = [],
   fromFileFeatures = 0,
   enrichedFeatures = 0,
   lastActionStatus = null,
 }) {
-  const regions = getRegions(annotations);
   const isCircular = topology === 'circular';
-
-  const removed = sanitizeReport?.removed;
-  const removedSummary = removed
-    ? [
-        removed.digits && `${removed.digits} цифр`,
-        removed.whitespace && `${removed.whitespace} пробелов`,
-        removed.punctuation && `${removed.punctuation} знаков`,
-        removed.bom && `${removed.bom} BOM`,
-        removed.other && `${removed.other} прочих`,
-      ].filter(Boolean).join(', ')
-    : '';
+  const showInfoCard = fromFileFeatures > 0 || enrichedFeatures > 0 || !!lastActionStatus;
 
   return (
     <div className="flex flex-col gap-2.5">
@@ -122,65 +109,38 @@ export default function MetaColumn({
         </div>
       )}
 
-      {/* name */}
-      <div className="bg-white border border-gray-200 rounded px-3 py-2">
-        <label className="block text-[10px] uppercase tracking-wide text-gray-500 mb-1">имя</label>
-        <input
-          type="text"
-          value={name || ''}
-          onChange={(e) => onNameChange?.(e.target.value)}
-          placeholder="part_1"
-          className="w-full text-sm px-2 py-1 border border-gray-200 rounded outline-none focus:border-emerald-600"
-          data-testid="meta-name-input"
-        />
-        {!name && (
-          <div className="text-[10px] text-gray-400 italic mt-1">
-            пусто → присвоится part_N автоматически
-          </div>
-        )}
-        {removedSummary && (
-          <div className="text-[10px] text-gray-400 italic mt-1">убрано: {removedSummary}</div>
-        )}
-      </div>
-
-      {/* info card */}
-      <div className="bg-amber-50/40 border border-gray-200 rounded px-3 py-2 text-xs space-y-1">
-        <div className="flex justify-between">
-          <span className="text-gray-500">Длина</span>
-          <span className="font-medium text-gray-800">{(length || 0).toLocaleString()} п.н.</span>
+      {/* info card — Polish §5: длина/регионов rows removed, hidden if all empty */}
+      {showInfoCard && (
+        <div className="bg-amber-50/40 border border-gray-200 rounded px-3 py-2 text-xs space-y-1">
+          {fromFileFeatures > 0 && (
+            <div className="flex justify-between">
+              <span className="text-gray-500">Из файла</span>
+              <span className="font-medium text-gray-800">{fromFileFeatures}</span>
+            </div>
+          )}
+          {enrichedFeatures > 0 && (
+            <div className="flex justify-between">
+              <span className="text-gray-500">Дополнено</span>
+              <span className="font-medium text-emerald-700">+{enrichedFeatures}</span>
+            </div>
+          )}
+          {lastActionStatus && (
+            <div
+              className="mt-1 pt-1 border-t border-emerald-200 text-emerald-700 font-medium"
+              data-testid="meta-last-action-status"
+            >
+              {lastActionStatus.type === 'canvas' && '✓ Добавлено на канвас'}
+              {lastActionStatus.type === 'library' && '✓ В библиотеке'}
+              {lastActionStatus.type === 'annotate' && (
+                <>
+                  ✓ +{Math.max(0, lastActionStatus.regionsAfter - lastActionStatus.regionsBefore)} регионов аннотированы (
+                  {lastActionStatus.regionsBefore} → {lastActionStatus.regionsAfter})
+                </>
+              )}
+            </div>
+          )}
         </div>
-        <div className="flex justify-between">
-          <span className="text-gray-500">Регионов</span>
-          <span className="font-medium text-gray-800">{regions.length}</span>
-        </div>
-        {fromFileFeatures > 0 && (
-          <div className="flex justify-between">
-            <span className="text-gray-500">Из файла</span>
-            <span className="font-medium text-gray-800">{fromFileFeatures}</span>
-          </div>
-        )}
-        {enrichedFeatures > 0 && (
-          <div className="flex justify-between">
-            <span className="text-gray-500">Дополнено</span>
-            <span className="font-medium text-emerald-700">+{enrichedFeatures}</span>
-          </div>
-        )}
-        {lastActionStatus && (
-          <div
-            className="mt-1 pt-1 border-t border-emerald-200 text-emerald-700 font-medium"
-            data-testid="meta-last-action-status"
-          >
-            {lastActionStatus.type === 'canvas' && '✓ Добавлено на канвас'}
-            {lastActionStatus.type === 'library' && '✓ В библиотеке'}
-            {lastActionStatus.type === 'annotate' && (
-              <>
-                ✓ +{Math.max(0, lastActionStatus.regionsAfter - lastActionStatus.regionsBefore)} регионов аннотированы (
-                {lastActionStatus.regionsBefore} → {lastActionStatus.regionsAfter})
-              </>
-            )}
-          </div>
-        )}
-      </div>
+      )}
 
       {/* IUPAC warning */}
       {hasIUPAC && iupacChars.length > 0 && (

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 /**
  * InputZone — dual-purpose dropzone + textarea for ImportStartScreen.
@@ -25,6 +25,15 @@ export default function InputZone({
   progress = null, // { current, total }
 }) {
   const [isOver, setIsOver] = useState(false);
+  const fileInputRef = useRef(null);
+
+  // V36 (Polish §3): empty-mode dropzone doubles as a file-picker trigger —
+  // clicking opens native dialog, drag-drop continues to work.
+  const handlePickFiles = (e) => {
+    const picked = Array.from(e.target.files || []);
+    if (picked.length && typeof onFiles === 'function') onFiles(picked);
+    e.target.value = '';
+  };
 
   const handleDragEnter = (e) => {
     if (!e.dataTransfer.types.includes('Files')) return;
@@ -138,17 +147,33 @@ export default function InputZone({
           />
         ) : (
           <div
-            className="flex-1 flex flex-col items-center justify-center gap-1.5 p-8 text-center text-gray-500"
+            className="flex-1 flex flex-col items-center justify-center gap-1.5 p-8 text-center text-gray-500 cursor-pointer"
             onPaste={handlePaste}
+            onClick={() => fileInputRef.current?.click()}
             tabIndex={0}
+            role="button"
+            aria-label="Выберите файл или перетащите сюда"
+            data-testid="input-zone-clickable"
           >
             <div className="text-3xl opacity-40 leading-none">⬇</div>
             <div className="text-sm font-medium text-gray-700">Перетащите файл сюда</div>
             <div className="text-[11px] text-gray-400">.dna · .gb · .gbk · .fasta — формат определится сам</div>
+            <div className="text-[11px] text-gray-500 mt-1.5 underline underline-offset-2 hover:text-emerald-700">
+              или выберите файл
+            </div>
             <div className="text-[11px] text-gray-400 mt-2">
               или вставьте последовательность{' '}
               <span className="px-1.5 py-0.5 rounded text-[10px] bg-gray-100 border border-gray-200 font-mono">Ctrl+V</span>
             </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              hidden
+              multiple
+              accept=".dna,.gb,.gbk,.genbank,.fasta,.fa,.fna"
+              onChange={handlePickFiles}
+              data-testid="input-zone-file-picker"
+            />
           </div>
         )}
         {progressBar}

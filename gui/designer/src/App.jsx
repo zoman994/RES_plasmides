@@ -85,6 +85,8 @@ export default function App() {
   const projectName  = useStore(s => s.projectName);
   const polymerase   = useStore(s => s.polymerase);
   const primerPrefix = useStore(s => s.primerPrefix);
+  const autoAnnotateOnImport = useStore(s => s.autoAnnotateOnImport);
+  const setAutoAnnotateOnImport = useStore(s => s.setAutoAnnotateOnImport);
   const ggEnzyme     = useStore(s => s.ggEnzyme);
   const ggSiteCheck = useStore(s => s.ggSiteCheck);
   const loading    = useStore(s => s.loading);
@@ -342,7 +344,7 @@ export default function App() {
                 ⚙️ Настройки
               </button>
               {showSettings && (
-                <div className="absolute top-full right-0 mt-1 bg-white rounded-lg shadow-lg border p-3 z-50 min-w-[220px] space-y-2">
+                <div className="absolute top-full right-0 mt-1 bg-white rounded-lg shadow-lg border p-3 z-50 min-w-[260px] space-y-2">
                   <label className="flex items-center gap-2 text-xs text-gray-700">
                     <span className="w-20">Полимераза:</span>
                     <select value={polymerase} onChange={e => setPolymerase(e.target.value)}
@@ -356,6 +358,21 @@ export default function App() {
                     <span className="w-20">Prefix:</span>
                     <input value={primerPrefix} onChange={e => setPrimerPrefix(e.target.value)}
                       className="flex-1 text-xs border rounded px-2 py-1" maxLength={4} />
+                  </label>
+                  <label className="flex items-start gap-2 text-xs text-gray-700 pt-2 border-t border-gray-100">
+                    <input
+                      type="checkbox"
+                      checked={autoAnnotateOnImport}
+                      onChange={e => setAutoAnnotateOnImport(e.target.checked)}
+                      className="mt-0.5"
+                      data-testid="settings-auto-annotate-toggle"
+                    />
+                    <span className="flex-1 leading-snug">
+                      Авто-аннотация при импорте
+                      <span className="block text-[10px] text-gray-400 italic mt-0.5">
+                        common-features matching запускается автоматически. Снимите для импорта без enrichment.
+                      </span>
+                    </span>
                   </label>
                 </div>
               )}

@@ -35,6 +35,17 @@ export const createUiSlice = (set) => ({
   expertMode: true,
   firstLaunch: false,
 
+  // ═══ Import preferences ═══
+  // F5 — when false, parsedItem.annotations stays as-is from the parser
+  // (no enrichWithCommonFeatures + autoAnnotate detail enrichment).
+  // Persisted in localStorage under `pvcs-auto-annotate-on-import`.
+  autoAnnotateOnImport: (() => {
+    try {
+      const v = localStorage.getItem('pvcs-auto-annotate-on-import');
+      return v === null ? true : v === 'true';
+    } catch { return true; }
+  })(),
+
   // ═══ File import ═══
   importedData: null,       // Pre-fill data for AddFragmentModal from file import
 
@@ -121,5 +132,12 @@ export const createUiSlice = (set) => ({
       state.expertMode = !state.expertMode;
       localStorage.setItem('pvcs-expert-mode', String(state.expertMode));
     }, false, 'toggleExpertMode');
+  },
+
+  setAutoAnnotateOnImport: (v) => {
+    set(state => {
+      state.autoAnnotateOnImport = !!v;
+      try { localStorage.setItem('pvcs-auto-annotate-on-import', String(!!v)); } catch { /* ignore */ }
+    }, false, 'setAutoAnnotateOnImport');
   },
 });

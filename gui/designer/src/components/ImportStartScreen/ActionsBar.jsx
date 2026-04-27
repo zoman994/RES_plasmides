@@ -1,47 +1,58 @@
 /**
  * ActionsBar — primary actions for ImportStartScreen.
  *
- * mode='single' → 3 primary (canvas / library / annotate) + Действия ▾ dropdown
- * mode='multi'  → 2 primary (annotate→library / library) + restricted dropdown
- *                 with На канвас / Restriction / Мутагенез / Разобрать all disabled
+ * mode='single' → Polish layout:
+ *     [На канвас] [В библиотеку]  |  [Аннотировать]    ⋯
+ *   primary destinations on the left, annotate after a vertical divider,
+ *   ellipsis-icon dropdown on the far right with low-frequency actions
+ *   (replace file / download .gb / delete from session).
+ * mode='multi'  → На канвас (disabled) + В библиотеку (N) + ⋯ dropdown
+ *                 (multi-mode actions are gated to library batch only).
+ *
+ * Restriction / Мутагенез / Разобрать removed entirely (Polish §6) — they
+ * operate on post-canvas state and surface via canvas ContextMenu.
  */
 
 import { useState } from 'react';
 
-const SECONDARY = [
-  { id: 'restriction', label: 'Restriction' },
-  { id: 'mutagenesis', label: 'Мутагенез' },
-  { id: 'disassemble', label: 'Разобрать' },
-];
-
-const TIP_NEEDS_CANVAS = 'доступно для одиночной плазмиды на канвасе';
 const TIP_NEEDS_SINGLE = 'доступно для одиночной загрузки';
 
-export default function ActionsBar({ mode = 'single', onAction, count = 1 }) {
+export default function ActionsBar({
+  mode = 'single',
+  onAction,
+  count = 1,
+  hasParsedItem = true,
+  exportEnabled = false,
+}) {
   const [secondaryOpen, setSecondaryOpen] = useState(false);
 
   const isMulti = mode === 'multi';
+  const fire = (id) => {
+    setSecondaryOpen(false);
+    onAction?.(id);
+  };
 
   return (
     <div className="flex items-center justify-end gap-2 mt-3 pt-3 border-t border-gray-200">
       {!isMulti && (
         <>
           <button
-            onClick={() => onAction?.('canvas')}
+            onClick={() => fire('canvas')}
             className="text-xs px-3 py-1.5 rounded bg-emerald-600 text-white font-medium hover:bg-emerald-700"
             data-testid="action-canvas"
           >
             На канвас
           </button>
           <button
-            onClick={() => onAction?.('library')}
+            onClick={() => fire('library')}
             className="text-xs px-3 py-1.5 rounded bg-white border border-gray-200 text-gray-700 hover:bg-gray-50"
             data-testid="action-library"
           >
             В библиотеку
           </button>
+          <span className="w-px h-5 bg-gray-200 mx-1" data-testid="actions-divider" />
           <button
-            onClick={() => onAction?.('annotate')}
+            onClick={() => fire('annotate')}
             className="text-xs px-3 py-1.5 rounded bg-white border border-gray-200 text-gray-700 hover:bg-gray-50"
             data-testid="action-annotate"
           >
@@ -62,7 +73,7 @@ export default function ActionsBar({ mode = 'single', onAction, count = 1 }) {
           {/* Kfix-3 (F-E): single primary action — per-row checkbox controls
               whether autoAnnotate runs before addPart. */}
           <button
-            onClick={() => onAction?.('library-batch')}
+            onClick={() => fire('library-batch')}
             className="text-xs px-3 py-1.5 rounded bg-emerald-600 text-white font-medium hover:bg-emerald-700"
             data-testid="action-library-batch"
           >
@@ -73,25 +84,46 @@ export default function ActionsBar({ mode = 'single', onAction, count = 1 }) {
       <div className="relative">
         <button
           onClick={() => setSecondaryOpen((v) => !v)}
-          className="text-xs px-3 py-1.5 rounded bg-white border border-gray-200 text-gray-700 hover:bg-gray-50"
+          className="text-base leading-none px-2.5 py-1.5 rounded bg-white border border-gray-200 text-gray-600 hover:bg-gray-50"
+          aria-label="Дополнительно"
+          title="Дополнительно"
+          data-testid="action-secondary-toggle"
         >
-          Действия ▾
+          ⋯
         </button>
         {secondaryOpen && (
           <div
-            className="absolute right-0 bottom-full mb-1 z-10 bg-white border border-gray-200 rounded shadow-lg w-44"
+            className="absolute right-0 bottom-full mb-1 z-10 bg-white border border-gray-200 rounded shadow-lg w-48 py-1"
             data-testid="actions-secondary-popup"
           >
-            {SECONDARY.map((a) => (
-              <button
-                key={a.id}
-                disabled
-                title={isMulti ? TIP_NEEDS_SINGLE : TIP_NEEDS_CANVAS}
-                className="w-full text-left text-xs px-3 py-1.5 text-gray-400 cursor-not-allowed border-b border-gray-100 last:border-b-0"
-              >
-                {a.label}
-              </button>
-            ))}
+            <button
+              type="button"
+              onClick={() => fire('replace')}
+              disabled={!hasParsedItem}
+              className="w-full text-left text-xs px-3 py-1.5 hover:bg-gray-50 disabled:text-gray-300 disabled:cursor-not-allowed"
+              data-testid="action-replace"
+            >
+              📁 Заменить файл
+            </button>
+            <button
+              type="button"
+              onClick={() => fire('download-gb')}
+              disabled={!exportEnabled || !hasParsedItem}
+              title={!exportEnabled ? 'скоро' : undefined}
+              className="w-full text-left text-xs px-3 py-1.5 hover:bg-gray-50 disabled:text-gray-300 disabled:cursor-not-allowed"
+              data-testid="action-download-gb"
+            >
+              📥 Скачать как .gb
+            </button>
+            <button
+              type="button"
+              onClick={() => fire('delete')}
+              disabled={!hasParsedItem}
+              className="w-full text-left text-xs px-3 py-1.5 hover:bg-red-50 text-red-700 disabled:text-gray-300 disabled:cursor-not-allowed"
+              data-testid="action-delete"
+            >
+              🗑 Удалить из сессии
+            </button>
           </div>
         )}
       </div>

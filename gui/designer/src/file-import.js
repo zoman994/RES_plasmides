@@ -78,7 +78,10 @@ async function importViaBackend(file) {
   return res.json();
 }
 
-export async function handleFileImport(file) {
+export async function handleFileImport(file, opts = {}) {
+  // F5 — autoAnnotate=false skips enrichWithCommonFeatures + autoAnnotate
+  // detail enrichment. Parser features pass through unchanged.
+  const autoAnnotate = opts.autoAnnotate !== false;
   const ext = file.name.toLowerCase().match(/\.[^.]+$/)?.[0] || '';
 
   // .dna files are binary — must go through backend
@@ -94,7 +97,7 @@ export async function handleFileImport(file) {
     }
 
     // Enrichment: always run after import (even if features > 0)
-    if (data.sequence) {
+    if (autoAnnotate && data.sequence) {
       try {
         const { autoAnnotate, enrichWithCommonFeatures } = await import('./auto-annotate');
 
@@ -174,7 +177,7 @@ export async function handleFileImport(file) {
   }
 
   // Enrichment: same pipeline as .dna files (homology naming + detail detection)
-  if (parsed.sequence) {
+  if (autoAnnotate && parsed.sequence) {
     try {
       const { autoAnnotate, enrichWithCommonFeatures } = await import('./auto-annotate');
 
@@ -232,11 +235,11 @@ export async function handleFileImport(file) {
  * @param {File[]} files
  * @returns {Promise<Array<Object>>}
  */
-export async function handleFilesImport(files) {
+export async function handleFilesImport(files, opts = {}) {
   const results = [];
   for (const f of files || []) {
     try {
-      const data = await handleFileImport(f);
+      const data = await handleFileImport(f, opts);
       results.push({ ...data, _fileName: f.name });
     } catch (err) {
       results.push({ _fileName: f.name, _error: err.message || String(err), sequence: '', length: 0, annotations: [], topology: 'linear', name: f.name });

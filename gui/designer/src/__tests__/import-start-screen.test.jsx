@@ -23,10 +23,10 @@ function makeItem(name, opts = {}) {
 }
 
 describe('ActionsBar — multi mode restrictions', () => {
-  it('multi mode disables «На канвас» + Restriction/Мутагенез/Разобрать and surfaces tooltip', () => {
+  it('multi mode disables «На канвас», fires library-batch, and the ⋯ dropdown no longer shows Restriction/Мутагенез/Разобрать (Polish §6)', () => {
     const onAction = vi.fn();
-    const { getByTestId, getByText } = render(
-      <ActionsBar mode="multi" onAction={onAction} count={5} />
+    const { getByTestId, queryByText, container } = render(
+      <ActionsBar mode="multi" onAction={onAction} count={5} hasParsedItem />
     );
     const canvasBtn = getByTestId('action-canvas-disabled');
     expect(canvasBtn.disabled).toBe(true);
@@ -34,14 +34,14 @@ describe('ActionsBar — multi mode restrictions', () => {
     // Library batch button shows the count.
     const libBtn = getByTestId('action-library-batch');
     expect(libBtn.textContent).toContain('5');
-    // Open the secondary dropdown
-    fireEvent.click(getByText('Действия ▾'));
-    // All three secondary entries are disabled with «доступно для одиночной» tooltip.
-    for (const label of ['Restriction', 'Мутагенез', 'Разобрать']) {
-      const btn = getByText(label);
-      expect(btn.disabled).toBe(true);
-      expect(btn.getAttribute('title')).toMatch(/одиночной/);
-    }
+    // Polish §6: open the secondary dropdown via ⋯ and verify legacy
+    // Restriction/Мутагенез/Разобрать entries are gone.
+    fireEvent.click(getByTestId('action-secondary-toggle'));
+    expect(queryByText('Restriction')).toBeNull();
+    expect(queryByText('Мутагенез')).toBeNull();
+    expect(queryByText('Разобрать')).toBeNull();
+    // Container text should also not contain those labels (defensive).
+    expect(container.textContent).not.toMatch(/Restriction|Мутагенез|Разобрать/);
     // Action callback fires for batch options only.
     fireEvent.click(libBtn);
     expect(onAction).toHaveBeenCalledWith('library-batch');
