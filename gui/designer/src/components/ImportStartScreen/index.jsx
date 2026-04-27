@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useStore } from '../../store';
 import { handleFileImport } from '../../file-import';
 import { sanitizeWithReport } from '../../sequence-utils';
 import { detectFormat } from '../../format-detect';
@@ -6,6 +7,8 @@ import { rotateOriginToPosition } from '../../rotate-origin';
 import { getRegions } from '../../annotation-model';
 import InputZone from './InputZone';
 import MetaColumn from './MetaColumn';
+import ActionsBar from './ActionsBar';
+import Toast from './Toast';
 
 /**
  * ImportStartScreen — single entry point for file import + paste + catalog
@@ -20,6 +23,10 @@ import MetaColumn from './MetaColumn';
  * Local state — no Zustand slice. Modal-scoped only; resets on close.
  */
 export default function ImportStartScreen({ open, onClose, presetFiles, catalogExpandedInitial }) {
+  const addPart = useStore((s) => s.addPart);
+  const addFragment = useStore((s) => s.addFragment);
+  const partsCount = useStore((s) => s.parts.length);
+
   const [parsedItems, setParsedItems] = useState([]);
   const [topology, setTopology] = useState('linear');
   const [originOffset, setOriginOffset] = useState(1);
@@ -28,8 +35,10 @@ export default function ImportStartScreen({ open, onClose, presetFiles, catalogE
   const [sanitizeReport, setSanitizeReport] = useState(null);
   const [catalogExpanded, setCatalogExpanded] = useState(!!catalogExpandedInitial);
   const [addedToCanvasNames, setAddedToCanvasNames] = useState([]);
+  const [toastVisible, setToastVisible] = useState(true);
   const [pendingMultiAnnotate, setPendingMultiAnnotate] = useState(() => new Set());
   const [importError, setImportError] = useState(null);
+  const [actionBusy, setActionBusy] = useState(false);
 
   const handleFilesImport = useCallback(async (files) => {
     if (!files?.length) return;
@@ -124,6 +133,87 @@ export default function ImportStartScreen({ open, onClose, presetFiles, catalogE
     setParsedItems([{ ...item, sequence, annotations, length: sequence.length, topology: 'circular' }]);
     setOriginOffset(1);
   };
+
+  const buildPartFromItem = (item, index) => {
+    const baseName = (name || item.name || `part_${partsCount + index + 1}`).trim() || `part_${partsCount + index + 1}`;
+    const top = topology || item.topology || 'linear';
+    return {
+      id: `import_${Date.now()}_${index}`,
+      name: baseName,
+      type: top === 'circular' ? 'plasmid' : 'misc_feature',
+      sequence: item.sequence,
+      length: item.length || item.sequence?.length || 0,
+      annotations: item.annotations || [],
+      topology: top,
+      organism: item.organism || '',
+      description: item.description || '',
+      source: 'import',
+      status: 'draft',
+    };
+  };
+
+  const annotateItem = useCallback(async (item) => {
+    if (!item?.sequence) return item;
+    try {
+      const { autoAnnotate, enrichWithCommonFeatures } = await import('../../auto-annotate');
+      const base = item.annotations?.length
+        ? item.annotations
+        : autoAnnotate({ name: item.name || 'imported', type: 'misc_feature', sequence: item.sequence });
+      const enriched = await enrichWithCommonFeatures(item.sequence, base);
+      return { ...item, annotations: enriched };
+    } catch {
+      return item;
+    }
+  }, []);
+
+  const handleAction = useCallback(async (actionId) => {
+    if (actionBusy) return;
+    setActionBusy(true);
+    try {
+      if (actionId === 'canvas') {
+        if (parsedItems.length !== 1) return;
+        let item = parsedItems[0];
+        if (topology === 'circular' && originOffset && originOffset !== 1) {
+          const { sequence, annotations } = rotateOriginToPosition(
+            item.sequence, item.annotations || [], originOffset, { topology: 'circular' },
+          );
+          item = { ...item, sequence, annotations, length: sequence.length, topology: 'circular' };
+        }
+        const part = buildPartFromItem(item, 0);
+        addFragment(part);
+        setAddedToCanvasNames((prev) => [...prev, part.name]);
+        setToastVisible(true);
+        resetSession();
+      } else if (actionId === 'library') {
+        if (parsedItems.length !== 1) return;
+        const part = buildPartFromItem(parsedItems[0], 0);
+        addPart(part);
+        resetSession();
+      } else if (actionId === 'annotate') {
+        if (parsedItems.length !== 1) return;
+        const annotated = await annotateItem(parsedItems[0]);
+        const part = buildPartFromItem(annotated, 0);
+        addPart(part);
+        resetSession();
+      } else if (actionId === 'library-batch') {
+        for (let i = 0; i < parsedItems.length; i++) {
+          addPart(buildPartFromItem(parsedItems[i], i));
+        }
+        resetSession();
+      } else if (actionId === 'annotate-batch') {
+        for (let i = 0; i < parsedItems.length; i++) {
+          const item = parsedItems[i];
+          const include = pendingMultiAnnotate.has(item.name || item._fileName);
+          const next = include ? await annotateItem(item) : item;
+          addPart(buildPartFromItem(next, i));
+        }
+        resetSession();
+      }
+    } finally {
+      setActionBusy(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parsedItems, topology, originOffset, name, partsCount, pendingMultiAnnotate, actionBusy, addFragment, addPart, annotateItem]);
 
   const originHints = useMemo(() => {
     if (parsedItems.length !== 1) return '';
@@ -245,9 +335,24 @@ export default function ImportStartScreen({ open, onClose, presetFiles, catalogE
                 Загружено {parsedItems.length} файл(ов) → multi-list (K6)
               </div>
             )}
+
+            {single && (
+              <ActionsBar mode="single" onAction={handleAction} count={1} />
+            )}
+            {multi && (
+              <ActionsBar mode="multi" onAction={handleAction} count={parsedItems.length} />
+            )}
           </div>
         </div>
       </div>
+
+      {toastVisible && addedToCanvasNames.length > 0 && (
+        <Toast
+          items={addedToCanvasNames}
+          onOpenCanvas={() => { setToastVisible(false); handleClose(); }}
+          onClose={() => setToastVisible(false)}
+        />
+      )}
     </div>
   );
 }
