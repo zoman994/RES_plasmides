@@ -1,0 +1,98 @@
+/**
+ * Kfix-4 — PlasmidMiniMap leader-line labels + custom tooltip + viewBox.
+ *
+ * Coverage:
+ *   - viewBox padding: r ≤ (size − strokeWidth − 2) / 2 → arc geometry stays
+ *     inside the SVG box (no clipping).
+ *   - Leader-line labels render only at size === 180 for regions ≥10%.
+ *   - Custom hover-tooltip appears via React state (instant), not waiting
+ *     for native ~700ms popup. <title> stays in DOM for SR a11y.
+ *   - Compact size click opens popover with 180 px version.
+ */
+import { describe, it, expect } from 'vitest';
+import { render, fireEvent } from '@testing-library/react';
+import PlasmidMiniMap from '../components/PlasmidMiniMap';
+
+const ANNOT_BIG = [
+  { id: 'r1', start: 0, end: 1500, level: 'region', type: 'CDS', name: 'AmpR' },         // 75% of 2000
+  { id: 'r2', start: 1500, end: 1700, level: 'region', type: 'rep_origin', name: 'ori' }, // 10%
+  { id: 'r3', start: 1700, end: 1720, level: 'region', type: 'misc_feature', name: 'tiny' }, // 1%
+];
+
+describe('Kfix-4 viewBox padding', () => {
+  it('size=64 strokeWidth=5 → r leaves >=2 px room (no clipping)', () => {
+    const { container } = render(
+      <PlasmidMiniMap length={2000} topology="circular" annotations={[]} size={64} />
+    );
+    const outline = container.querySelector('svg circle');
+    const r = parseFloat(outline.getAttribute('r'));
+    // strokeWidth at 64 is round(64/13)=5; expected r = (64-5-2)/2 = 28.5
+    expect(r).toBeLessThanOrEqual(28.5 + 0.01);
+    // r must keep stroke fully inside viewBox (size=64 → cx=32; r + sw/2 ≤ 32).
+    expect(r + 5 / 2).toBeLessThanOrEqual(32);
+  });
+});
+
+describe('Kfix-4 leader labels (size === 180)', () => {
+  it('regions ≥10% get leader + text, smaller ones do not', () => {
+    const { container } = render(
+      <PlasmidMiniMap length={2000} topology="circular" annotations={ANNOT_BIG} size={180} />
+    );
+    const labels = [...container.querySelectorAll('svg text')];
+    const labelTexts = labels.map((t) => t.textContent);
+    expect(labelTexts).toContain('AmpR');
+    expect(labelTexts).toContain('ori');
+    expect(labelTexts).not.toContain('tiny');
+  });
+
+  it('size=64 — no leader labels even for big regions', () => {
+    const { container } = render(
+      <PlasmidMiniMap length={2000} topology="circular" annotations={ANNOT_BIG} size={64} />
+    );
+    expect(container.querySelectorAll('svg text').length).toBe(0);
+  });
+});
+
+describe('Kfix-4 custom hover-tooltip via React state', () => {
+  it('mouseMove on arc renders an instant tooltip overlay (no <title> wait)', () => {
+    const { container, queryByTestId } = render(
+      <PlasmidMiniMap length={2000} topology="circular" annotations={ANNOT_BIG} size={64} />
+    );
+    expect(queryByTestId('plasmid-mini-map-tooltip')).toBeNull();
+    const firstArcGroup = container.querySelector('svg > g');
+    fireEvent.mouseMove(firstArcGroup, { clientX: 30, clientY: 30 });
+    const tip = queryByTestId('plasmid-mini-map-tooltip');
+    expect(tip).toBeTruthy();
+    expect(tip.textContent).toMatch(/AmpR/);
+    fireEvent.mouseLeave(firstArcGroup);
+    expect(queryByTestId('plasmid-mini-map-tooltip')).toBeNull();
+  });
+
+  it('SVG <title> elements remain in DOM for screen readers', () => {
+    const { container } = render(
+      <PlasmidMiniMap length={2000} topology="circular" annotations={ANNOT_BIG} size={64} />
+    );
+    expect(container.querySelectorAll('svg title').length).toBe(3);
+  });
+});
+
+describe('Kfix-4 compact click → popover', () => {
+  it('size=64 click opens popover with 180 px nested mini-map', () => {
+    const { container, queryByTestId, getAllByTestId } = render(
+      <PlasmidMiniMap length={2000} topology="circular" annotations={ANNOT_BIG} size={64} />
+    );
+    expect(queryByTestId('plasmid-mini-map-popover')).toBeNull();
+    fireEvent.click(container.querySelector('svg.mini-map'));
+    expect(queryByTestId('plasmid-mini-map-popover')).toBeTruthy();
+    // Two mini-maps now in DOM: the original 64px + the 180px inside popover.
+    expect(getAllByTestId('plasmid-mini-map').length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('size=180 — no click handler / no popover affordance', () => {
+    const { container, queryByTestId } = render(
+      <PlasmidMiniMap length={2000} topology="circular" annotations={ANNOT_BIG} size={180} />
+    );
+    fireEvent.click(container.querySelector('svg.mini-map'));
+    expect(queryByTestId('plasmid-mini-map-popover')).toBeNull();
+  });
+});
