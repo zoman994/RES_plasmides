@@ -8,9 +8,10 @@ import { getRegions } from '../../annotation-model';
 import InputZone from './InputZone';
 import MetaColumn from './MetaColumn';
 import ActionsBar from './ActionsBar';
-import Toast from './Toast';
 import MultiFileList from './MultiFileList';
 import CatalogTree from './CatalogTree';
+import SessionSummary from './SessionSummary';
+import FileSummaryCard from './FileSummaryCard';
 
 /**
  * ImportStartScreen — single entry point for file import + paste + catalog
@@ -36,8 +37,10 @@ export default function ImportStartScreen({ open, onClose, presetFiles, catalogE
   const [pasteText, setPasteText] = useState('');
   const [sanitizeReport, setSanitizeReport] = useState(null);
   const [catalogExpanded, setCatalogExpanded] = useState(!!catalogExpandedInitial);
-  const [addedToCanvasNames, setAddedToCanvasNames] = useState([]);
-  const [toastVisible, setToastVisible] = useState(true);
+  // Kfix-5: addedItems replaces addedToCanvasNames + Toast — accumulates
+  // every successful action of the current session (canvas / library /
+  // annotate) for the in-modal SessionSummary.
+  const [addedItems, setAddedItems] = useState([]);
   const [pendingMultiAnnotate, setPendingMultiAnnotate] = useState(() => new Set());
   const [importError, setImportError] = useState(null);
   const [actionBusy, setActionBusy] = useState(false);
@@ -96,7 +99,7 @@ export default function ImportStartScreen({ open, onClose, presetFiles, catalogE
 
   const handleClose = () => {
     resetSession();
-    setAddedToCanvasNames([]);
+    setAddedItems([]);
     setCatalogExpanded(false);
     onClose?.();
   };
@@ -194,14 +197,16 @@ export default function ImportStartScreen({ open, onClose, presetFiles, catalogE
           return;
         }
         // F-C: push only after successful add (not optimistic).
-        setAddedToCanvasNames((prev) => [...prev, part.name]);
-        setToastVisible(true);
+        const miniMapData = { length: part.length, topology: part.topology, annotations: part.annotations };
+        setAddedItems((prev) => [...prev, { name: part.name, action: 'canvas', miniMapData }]);
         // F-I: keep MetaColumn for single-file, just flag status.
         setLastActionStatus({ type: 'canvas' });
       } else if (actionId === 'library') {
         if (parsedItems.length !== 1) return;
         const part = buildPartFromItem(parsedItems[0], 0);
         addPart(part);
+        const miniMapData = { length: part.length, topology: part.topology, annotations: part.annotations };
+        setAddedItems((prev) => [...prev, { name: part.name, action: 'library', miniMapData }]);
         setLastActionStatus({ type: 'library' });
       } else if (actionId === 'annotate') {
         if (parsedItems.length !== 1) return;
@@ -210,8 +215,11 @@ export default function ImportStartScreen({ open, onClose, presetFiles, catalogE
         const part = buildPartFromItem(annotated, 0);
         addPart(part);
         const after = getRegions(annotated.annotations || []).length;
+        const regionsAdded = Math.max(0, after - before);
         // Update parsedItem in-place so MetaColumn re-renders with new mini-map.
         setParsedItems([annotated]);
+        const miniMapData = { length: part.length, topology: part.topology, annotations: part.annotations };
+        setAddedItems((prev) => [...prev, { name: part.name, action: 'annotate', miniMapData, regionsAdded }]);
         setLastActionStatus({ type: 'annotate', regionsBefore: before, regionsAfter: after });
       } else if (actionId === 'library-batch') {
         // Kfix-3 (F-E): single batch action honours per-row checkbox —
@@ -325,31 +333,38 @@ export default function ImportStartScreen({ open, onClose, presetFiles, catalogE
             )}
             {single && (
               <div className="grid grid-cols-[1fr_280px] gap-3 items-start">
-                <InputZone
-                  mode="filled"
-                  onFiles={handleFilesImport}
-                  filledHeader={
-                    <div className="flex items-center justify-between w-full">
-                      <span className="font-medium text-gray-700 text-xs">
-                        {parsedItems[0]?.name || parsedItems[0]?._fileName || 'Загружено'}
-                      </span>
-                      <button
-                        onClick={resetSession}
-                        className="text-[11px] px-2 py-0.5 rounded border border-gray-200 hover:bg-gray-100"
-                      >
-                        Заменить
-                      </button>
-                    </div>
-                  }
-                  filledBody={
-                    <div className="text-xs text-gray-600 leading-relaxed">
-                      {(parsedItems[0]?.length || 0).toLocaleString()} п.н. · {topology}
-                      {parsedItems[0]?.annotations?.length > 0 && (
-                        <> · {getRegions(parsedItems[0].annotations).length} регионов</>
-                      )}
-                    </div>
-                  }
-                />
+                <div className="flex flex-col gap-3">
+                  <InputZone
+                    mode="filled"
+                    onFiles={handleFilesImport}
+                    filledHeader={
+                      <div className="flex items-center justify-between w-full">
+                        <span className="font-medium text-gray-700 text-xs">
+                          {parsedItems[0]?.name || parsedItems[0]?._fileName || 'Загружено'}
+                        </span>
+                        <button
+                          onClick={resetSession}
+                          className="text-[11px] px-2 py-0.5 rounded border border-gray-200 hover:bg-gray-100"
+                        >
+                          Заменить
+                        </button>
+                      </div>
+                    }
+                    filledBody={
+                      <div className="text-xs text-gray-600 leading-relaxed">
+                        {(parsedItems[0]?.length || 0).toLocaleString()} п.н. · {topology}
+                        {parsedItems[0]?.annotations?.length > 0 && (
+                          <> · {getRegions(parsedItems[0].annotations).length} регионов</>
+                        )}
+                      </div>
+                    }
+                  />
+                  <SessionSummary
+                    addedItems={addedItems}
+                    onOpenCanvas={handleClose}
+                  />
+                  <FileSummaryCard parsedItem={parsedItems[0]} />
+                </div>
                 <MetaColumn
                   length={parsedItems[0]?.length || parsedItems[0]?.sequence?.length || 0}
                   topology={topology}
@@ -420,13 +435,6 @@ export default function ImportStartScreen({ open, onClose, presetFiles, catalogE
         </div>
       </div>
 
-      {toastVisible && addedToCanvasNames.length > 0 && (
-        <Toast
-          items={addedToCanvasNames}
-          onOpenCanvas={() => { setToastVisible(false); handleClose(); }}
-          onClose={() => setToastVisible(false)}
-        />
-      )}
     </div>
   );
 }
