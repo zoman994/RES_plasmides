@@ -68,11 +68,17 @@ describe('Kfix-4 custom hover-tooltip via React state', () => {
     expect(queryByTestId('plasmid-mini-map-tooltip')).toBeNull();
   });
 
-  it('SVG <title> elements remain in DOM for screen readers', () => {
+  it('arc <g> wrappers carry aria-label for screen readers (V37 — replaces <title>)', () => {
     const { container } = render(
       <PlasmidMiniMap length={2000} topology="circular" annotations={ANNOT_BIG} size={64} />
     );
-    expect(container.querySelectorAll('svg title').length).toBe(3);
+    // V37 mini-fix: <title> elements removed (caused native ~700ms tooltip
+    // racing the React tooltip). aria-label on <g> keeps a11y, no native UI.
+    expect(container.querySelectorAll('svg title').length).toBe(0);
+    const labelled = container.querySelectorAll('svg g[aria-label]');
+    expect(labelled.length).toBe(3);
+    const labels = [...labelled].map((g) => g.getAttribute('aria-label'));
+    expect(labels.some((l) => l.includes('AmpR'))).toBe(true);
   });
 });
 

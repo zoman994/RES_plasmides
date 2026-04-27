@@ -13,7 +13,9 @@
  *   - viewBox padding under stroke (r ≤ (size − strokeWidth − 2) / 2) so
  *     thick arcs don't clip at the SVG boundary.
  *   - Custom React-state tooltip (`<div>` overlay, instant) — replaces
- *     native ~700 ms SVG <title> popup. <title> stays in DOM for SR a11y.
+ *     native ~700 ms SVG <title> popup. Each arc <g> carries an
+ *     `aria-label` (V37 mini-fix) so screen readers still announce the
+ *     region name without browsers rendering a competing native tooltip.
  *   - Leader-line labels for size === 180 on regions ≥ 10 % circumference,
  *     top-8 by length, simple collision-staggering for close angles.
  *   - For sizes ≤ 90 (CatalogTree, MultiFileList) — click opens a 180 px
@@ -121,11 +123,12 @@ export default function PlasmidMiniMap({ length, topology, annotations, size = 6
       paths.push(
         <g
           key={region.id}
+          role="img"
+          aria-label={titleText}
           style={{ cursor: 'help' }}
           onMouseMove={(e) => showHover(titleText, e)}
           onMouseLeave={clearHover}
         >
-          <title>{titleText}</title>
           <path
             d={`M ${x1.toFixed(2)} ${y1.toFixed(2)} A ${r} ${r} 0 ${large} 1 ${x2.toFixed(2)} ${y2.toFixed(2)}`}
             stroke={color}
@@ -141,11 +144,12 @@ export default function PlasmidMiniMap({ length, topology, annotations, size = 6
       paths.push(
         <g
           key={region.id}
+          role="img"
+          aria-label={titleText}
           style={{ cursor: 'help' }}
           onMouseMove={(e) => showHover(titleText, e)}
           onMouseLeave={clearHover}
         >
-          <title>{titleText}</title>
           <rect
             x={x1}
             y={cy - strokeWidth / 2}
@@ -162,15 +166,17 @@ export default function PlasmidMiniMap({ length, topology, annotations, size = 6
 
   if (paths.length === 0) {
     const linkerColor = FEATURE_COLORS_V2.linker;
+    const emptyLabel = `${totalLen} bp · без аннотаций`;
     if (isCircular) {
       paths.push(
         <g
           key="empty-linker"
+          role="img"
+          aria-label={emptyLabel}
           style={{ cursor: 'help' }}
-          onMouseMove={(e) => showHover(`${totalLen} bp · без аннотаций`, e)}
+          onMouseMove={(e) => showHover(emptyLabel, e)}
           onMouseLeave={clearHover}
         >
-          <title>{`${totalLen} bp · без аннотаций`}</title>
           <circle cx={cx} cy={cy} r={r} stroke={linkerColor} strokeWidth={strokeWidth} fill="none" />
         </g>
       );
@@ -178,11 +184,12 @@ export default function PlasmidMiniMap({ length, topology, annotations, size = 6
       paths.push(
         <g
           key="empty-linker"
+          role="img"
+          aria-label={emptyLabel}
           style={{ cursor: 'help' }}
-          onMouseMove={(e) => showHover(`${totalLen} bp · без аннотаций`, e)}
+          onMouseMove={(e) => showHover(emptyLabel, e)}
           onMouseLeave={clearHover}
         >
-          <title>{`${totalLen} bp · без аннотаций`}</title>
           <rect
             x={4}
             y={cy - strokeWidth / 2}

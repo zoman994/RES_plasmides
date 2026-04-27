@@ -15,9 +15,10 @@ describe('PlasmidMiniMap', () => {
     );
     const paths = container.querySelectorAll('svg > g > path');
     expect(paths.length).toBe(3);
-    // Each <g> wraps a <title> for accessibility
-    const titles = container.querySelectorAll('svg title');
-    expect(titles.length).toBe(3);
+    // V37 mini-fix: each <g> carries aria-label (replaces <title> which
+    // triggered a competing native ~700 ms tooltip).
+    const labelled = container.querySelectorAll('svg g[aria-label]');
+    expect(labelled.length).toBe(3);
     // SVG root carries aria-label
     const svg = container.querySelector('svg');
     expect(svg.getAttribute('aria-label')).toMatch(/circular/);
