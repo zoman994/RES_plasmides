@@ -12,6 +12,7 @@ import MultiFileList from './MultiFileList';
 import CatalogTree from './CatalogTree';
 import SessionSummary from './SessionSummary';
 import FileSummaryCard from './FileSummaryCard';
+import { appendSessionEntry } from './session-log';
 
 /**
  * ImportStartScreen — single entry point for file import + paste + catalog
@@ -227,7 +228,9 @@ export default function ImportStartScreen({ open, onClose, presetFiles, catalogE
         // Update parsedItem in-place so MetaColumn re-renders with new mini-map.
         setParsedItems([annotated]);
         const miniMapData = { length: part.length, topology: part.topology, annotations: part.annotations };
-        setAddedItems((prev) => [...prev, { name: part.name, action: 'annotate', miniMapData, regionsAdded }]);
+        // V41 mini-fix-2: appendSessionEntry dedupes repeat-annotate clicks
+        // on the same name (delta=0 → keep prior row; delta>0 → replace).
+        setAddedItems((prev) => appendSessionEntry(prev, { name: part.name, action: 'annotate', miniMapData, regionsAdded }));
         setLastActionStatus({ type: 'annotate', regionsBefore: before, regionsAfter: after });
       } else if (actionId === 'library-batch') {
         // Kfix-3 (F-E): single batch action honours per-row checkbox —

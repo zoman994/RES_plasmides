@@ -82,23 +82,59 @@ describe('Kfix-4 custom hover-tooltip via React state', () => {
   });
 });
 
-describe('Kfix-4 compact click → popover', () => {
-  it('size=64 click opens popover with 180 px nested mini-map', () => {
-    const { container, queryByTestId, getAllByTestId } = render(
+describe('V38 mini-fix-2 compact hover → popover', () => {
+  it('size=64 mouseenter opens popover with 180 px nested mini-map; mouseleave closes', () => {
+    const { queryByTestId, getAllByTestId, getByTestId } = render(
       <PlasmidMiniMap length={2000} topology="circular" annotations={ANNOT_BIG} size={64} />
     );
+    const wrapper = getByTestId('plasmid-mini-map');
     expect(queryByTestId('plasmid-mini-map-popover')).toBeNull();
-    fireEvent.click(container.querySelector('svg.mini-map'));
+    fireEvent.mouseEnter(wrapper);
     expect(queryByTestId('plasmid-mini-map-popover')).toBeTruthy();
     // Two mini-maps now in DOM: the original 64px + the 180px inside popover.
     expect(getAllByTestId('plasmid-mini-map').length).toBeGreaterThanOrEqual(2);
+    fireEvent.mouseLeave(wrapper);
+    expect(queryByTestId('plasmid-mini-map-popover')).toBeNull();
   });
 
-  it('size=180 — no click handler / no popover affordance', () => {
+  it('size=64 click does not open popover (V38: hover-only)', () => {
     const { container, queryByTestId } = render(
-      <PlasmidMiniMap length={2000} topology="circular" annotations={ANNOT_BIG} size={180} />
+      <PlasmidMiniMap length={2000} topology="circular" annotations={ANNOT_BIG} size={64} />
     );
     fireEvent.click(container.querySelector('svg.mini-map'));
     expect(queryByTestId('plasmid-mini-map-popover')).toBeNull();
+  });
+
+  it('size=180 — hover does not spawn nested popover (recursive guard)', () => {
+    const { queryByTestId, getByTestId } = render(
+      <PlasmidMiniMap length={2000} topology="circular" annotations={ANNOT_BIG} size={180} />
+    );
+    fireEvent.mouseEnter(getByTestId('plasmid-mini-map'));
+    expect(queryByTestId('plasmid-mini-map-popover')).toBeNull();
+  });
+
+  it('popover has no ✕ закрыть button (V38: closes on mouseleave only)', () => {
+    const { queryByTestId, getByTestId, container } = render(
+      <PlasmidMiniMap length={2000} topology="circular" annotations={ANNOT_BIG} size={64} />
+    );
+    fireEvent.mouseEnter(getByTestId('plasmid-mini-map'));
+    expect(queryByTestId('plasmid-mini-map-popover')).toBeTruthy();
+    expect(container.textContent).not.toMatch(/закрыть/);
+  });
+});
+
+describe('V39 mini-fix-2 tooltip background covers full text height', () => {
+  it('tooltip element has explicit non-zero leading (overrides parent line-height: 0)', () => {
+    const { container, queryByTestId } = render(
+      <PlasmidMiniMap length={2000} topology="circular" annotations={ANNOT_BIG} size={64} />
+    );
+    const firstArcGroup = container.querySelector('svg > g');
+    fireEvent.mouseMove(firstArcGroup, { clientX: 30, clientY: 30 });
+    const tip = queryByTestId('plasmid-mini-map-tooltip');
+    expect(tip).toBeTruthy();
+    // Outer wrapper sets line-height: 0 (svg layout). The tooltip must
+    // override this with explicit leading or its background collapses to a
+    // 0-px line box and shows a horizontal stripe through the glyphs.
+    expect(tip.className).toMatch(/leading-/);
   });
 });

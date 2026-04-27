@@ -18,11 +18,11 @@
  *     region name without browsers rendering a competing native tooltip.
  *   - Leader-line labels for size === 180 on regions ≥ 10 % circumference,
  *     top-8 by length, simple collision-staggering for close angles.
- *   - For sizes ≤ 90 (CatalogTree, MultiFileList) — click opens a 180 px
- *     popover overlay with full labels.
+ *   - For sizes ≤ 90 (CatalogTree, MultiFileList) — hover opens a 180 px
+ *     popover overlay with full labels (V38 mini-fix-2: was click-based).
  */
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { featureColor, FEATURE_STROKE, FEATURE_COLORS_V2 } from '../feature-palette';
 import { getRegions } from '../annotation-model';
 
@@ -84,6 +84,8 @@ export default function PlasmidMiniMap({ length, topology, annotations, size = 6
 
   const [hovered, setHovered] = useState(null); // { text, x, y } in container coords
   const [popoverOpen, setPopoverOpen] = useState(false);
+  const [popoverPos, setPopoverPos] = useState({ left: 0, top: 0 });
+  const wrapperRef = useRef(null);
 
   const cx = size / 2;
   const cy = size / 2;
@@ -204,15 +206,44 @@ export default function PlasmidMiniMap({ length, topology, annotations, size = 6
     }
   }
 
-  // Compact size → click opens a 180 px popover with labels.
+  // Compact size → hover opens a 180 px popover with labels (V38 mini-fix-2).
   const isCompact = size <= 90;
   const cursorClass = isCompact ? 'cursor-zoom-in' : '';
 
+  // V38: clamp popover within viewport. Default placement: to the right of
+  // the trigger, vertically centered; flip leftward / pin to viewport edges
+  // when the trigger sits near a card boundary. position: fixed avoids
+  // overflow:hidden clipping by ancestor cards.
+  const POPOVER_BOX = 220;
+  const openPopover = () => {
+    const el = wrapperRef.current;
+    if (!el) {
+      setPopoverOpen(true);
+      return;
+    }
+    const rect = el.getBoundingClientRect();
+    let left = rect.right + 8;
+    if (left + POPOVER_BOX > window.innerWidth - 8) {
+      left = rect.left - POPOVER_BOX - 8;
+    }
+    if (left < 8) left = 8;
+    let top = rect.top + rect.height / 2 - POPOVER_BOX / 2;
+    if (top < 8) top = 8;
+    if (top + POPOVER_BOX > window.innerHeight - 8) {
+      top = window.innerHeight - POPOVER_BOX - 8;
+    }
+    setPopoverPos({ left, top });
+    setPopoverOpen(true);
+  };
+
   return (
     <span
+      ref={wrapperRef}
       className={`relative inline-block ${cursorClass}`}
       style={{ width: size, height: size, lineHeight: 0 }}
       data-testid="plasmid-mini-map"
+      onMouseEnter={isCompact ? openPopover : undefined}
+      onMouseLeave={isCompact ? () => setPopoverOpen(false) : undefined}
     >
       <svg
         className="mini-map"
@@ -222,7 +253,6 @@ export default function PlasmidMiniMap({ length, topology, annotations, size = 6
         role="img"
         aria-label={isCircular ? `circular ${totalLen} bp` : `linear ${totalLen} bp`}
         style={{ overflow: 'visible' }}
-        onClick={isCompact ? (e) => { e.stopPropagation(); setPopoverOpen(true); } : undefined}
       >
         {isCircular ? (
           <circle cx={cx} cy={cy} r={r} fill="none" stroke={FEATURE_STROKE} strokeWidth={0.5} opacity={0.4} />
@@ -251,12 +281,13 @@ export default function PlasmidMiniMap({ length, topology, annotations, size = 6
       </svg>
       {hovered && (
         <span
-          className="absolute pointer-events-none rounded text-white text-[11px] px-2 py-0.5 whitespace-nowrap"
+          className="absolute pointer-events-none rounded text-white text-[11px] leading-[1.4] px-2 py-1 whitespace-nowrap"
           style={{
             background: '#1a1a1a',
             left: hovered.x + 8,
             top: hovered.y + 8,
             zIndex: 60,
+            display: 'inline-block',
           }}
           data-testid="plasmid-mini-map-tooltip"
         >
@@ -265,28 +296,21 @@ export default function PlasmidMiniMap({ length, topology, annotations, size = 6
       )}
       {popoverOpen && (
         <span
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-          onClick={(e) => { e.stopPropagation(); setPopoverOpen(false); }}
+          className="bg-white rounded-lg shadow-xl border border-gray-200 p-3 flex items-center justify-center"
+          style={{
+            position: 'fixed',
+            left: popoverPos.left,
+            top: popoverPos.top,
+            zIndex: 50,
+          }}
           data-testid="plasmid-mini-map-popover"
         >
-          <span
-            className="bg-white rounded-lg shadow-xl border border-gray-200 p-4 flex flex-col items-center gap-2"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <PlasmidMiniMap
-              length={length}
-              topology={topology}
-              annotations={annotations}
-              size={180}
-            />
-            <button
-              className="text-[11px] text-gray-500 hover:text-gray-700 self-end"
-              onClick={(e) => { e.stopPropagation(); setPopoverOpen(false); }}
-              aria-label="Закрыть"
-            >
-              ✕ закрыть
-            </button>
-          </span>
+          <PlasmidMiniMap
+            length={length}
+            topology={topology}
+            annotations={annotations}
+            size={180}
+          />
         </span>
       )}
     </span>
