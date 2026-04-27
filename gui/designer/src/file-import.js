@@ -199,3 +199,24 @@ export async function handleFileImport(file) {
     annotations,
   };
 }
+
+/**
+ * Sequentially parse multiple files into ParsedItem[]. Ordering matches input.
+ * Errors on individual files are surfaced as `{ _fileName, _error }` entries
+ * so callers can display per-file failures without aborting the batch.
+ *
+ * @param {File[]} files
+ * @returns {Promise<Array<Object>>}
+ */
+export async function handleFilesImport(files) {
+  const results = [];
+  for (const f of files || []) {
+    try {
+      const data = await handleFileImport(f);
+      results.push({ ...data, _fileName: f.name });
+    } catch (err) {
+      results.push({ _fileName: f.name, _error: err.message || String(err), sequence: '', length: 0, annotations: [], topology: 'linear', name: f.name });
+    }
+  }
+  return results;
+}

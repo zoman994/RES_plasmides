@@ -9,6 +9,7 @@ import InputZone from './InputZone';
 import MetaColumn from './MetaColumn';
 import ActionsBar from './ActionsBar';
 import Toast from './Toast';
+import MultiFileList from './MultiFileList';
 
 /**
  * ImportStartScreen — single entry point for file import + paste + catalog
@@ -331,9 +332,43 @@ export default function ImportStartScreen({ open, onClose, presetFiles, catalogE
               </div>
             )}
             {multi && (
-              <div className="text-xs text-gray-600">
-                Загружено {parsedItems.length} файл(ов) → multi-list (K6)
-              </div>
+              <MultiFileList
+                items={parsedItems}
+                annotateSet={pendingMultiAnnotate}
+                onRename={(item, nextName) => {
+                  setParsedItems((prev) => {
+                    const next = [...prev];
+                    const idx = next.findIndex((x) => x === item);
+                    if (idx >= 0) {
+                      const oldKey = item.name || item._fileName;
+                      next[idx] = { ...next[idx], name: nextName };
+                      setPendingMultiAnnotate((set) => {
+                        const out = new Set(set);
+                        if (out.has(oldKey)) {
+                          out.delete(oldKey);
+                          out.add(nextName);
+                        }
+                        return out;
+                      });
+                    }
+                    return next;
+                  });
+                }}
+                onAnnotateToggle={(key) => {
+                  setPendingMultiAnnotate((set) => {
+                    const out = new Set(set);
+                    if (out.has(key)) out.delete(key);
+                    else out.add(key);
+                    return out;
+                  });
+                }}
+                onAllAnnotate={() => {
+                  const all = new Set();
+                  for (const it of parsedItems) all.add(it.name || it._fileName);
+                  setPendingMultiAnnotate(all);
+                }}
+                onNoneAnnotate={() => setPendingMultiAnnotate(new Set())}
+              />
             )}
 
             {single && (
