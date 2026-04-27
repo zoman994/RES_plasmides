@@ -295,13 +295,11 @@ export default function DesignCanvas({
             {t('Drag parts here')}
           </div>
         ) : dismissed ? (
-          <div className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-400">
+          <div
+            className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-400"
+            data-testid="canvas-empty-blank-mode"
+          >
             <div className="text-sm">Перетащите запчасти из палитры слева</div>
-            <div className="text-[10px] text-gray-300">или</div>
-            <button onClick={() => useStore.getState().setModalMode('add')}
-              className="text-xs px-4 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100">
-              + Добавить фрагмент по последовательности
-            </button>
             <button onClick={() => setDismissed(false)}
               className="text-[10px] text-gray-300 hover:text-gray-500 mt-2">
               ← Назад к выбору метода

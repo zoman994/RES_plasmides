@@ -78,7 +78,10 @@ export default function ActionsBar({ mode = 'single', onAction, count = 1 }) {
           Действия ▾
         </button>
         {secondaryOpen && (
-          <div className="absolute right-0 top-full mt-1 z-10 bg-white border border-gray-200 rounded shadow-lg w-44">
+          <div
+            className="absolute right-0 bottom-full mb-1 z-10 bg-white border border-gray-200 rounded shadow-lg w-44"
+            data-testid="actions-secondary-popup"
+          >
             {SECONDARY.map((a) => (
               <button
                 key={a.id}

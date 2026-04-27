@@ -54,11 +54,15 @@ export default function ImportStartScreen({ open, onClose, presetFiles, catalogE
   const handleFilesImport = useCallback(async (files) => {
     if (!files?.length) return;
     setImportError(null);
+    // Kfix-7 (F-F): surface progress for batch parsing (>1 file).
+    if (files.length > 1) setPendingMultiParse({ current: 0, total: files.length });
     try {
       const results = [];
-      for (const f of files) {
+      for (let i = 0; i < files.length; i++) {
+        const f = files[i];
         const data = await handleFileImport(f);
         results.push({ ...data, _fileName: f.name });
+        if (files.length > 1) setPendingMultiParse({ current: i + 1, total: files.length });
       }
       setParsedItems(results);
       if (results.length === 1) {
@@ -73,6 +77,8 @@ export default function ImportStartScreen({ open, onClose, presetFiles, catalogE
       }
     } catch (err) {
       setImportError(err.message || String(err));
+    } finally {
+      setPendingMultiParse(null);
     }
   }, []);
 

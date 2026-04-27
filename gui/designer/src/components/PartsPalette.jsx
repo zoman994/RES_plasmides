@@ -573,15 +573,12 @@ export default function PartsPalette() {
         return <ContextMenu items={items} position={{ x: ctxMenu.x, y: ctxMenu.y }} onClose={() => setCtxMenu(null)} />;
       })()}
 
-      {/* Bottom actions — compact */}
+      {/* Bottom actions — Kfix-7 (F-P) removed legacy «✏️ Вставить» entry
+          point to AddFragmentModal; «📂 Импорт» in header + Ctrl+V into
+          ImportStartScreen empty mode covers the same need. */}
       <div className="mt-3 pt-3 border-t">
-        <button onClick={() => setModalMode('sequence')}
-          className="w-full text-[10px] px-2 py-2 rounded border border-dashed border-gray-300
-            hover:border-blue-400 hover:bg-blue-50 transition text-center text-gray-500">
-          {'✏️'} Вставить
-        </button>
         <button onClick={() => setShowPartsLib(true)}
-          className="w-full text-center text-[10px] text-blue-600 hover:underline mt-2">
+          className="w-full text-center text-[10px] text-blue-600 hover:underline">
           {'📦'} Полная библиотека →
         </button>
       </div>
