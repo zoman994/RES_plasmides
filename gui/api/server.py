@@ -259,8 +259,15 @@ async def import_file(file: UploadFile = File(...)):
 
     logging.info("Import %s: %d features, %d bp", file.filename, len(features), len(seq))
 
+    # Reject parser fallback to tmpXXXX (filepath.stem of NamedTemporaryFile) —
+    # use original upload filename without extension instead.
+    raw_name = (meta.get("name") or "").strip()
+    tmp_stem = Path(tmp_path).stem
+    if not raw_name or raw_name == tmp_stem or raw_name.startswith("<"):
+        raw_name = Path(file.filename or "").stem
+
     return {
-        "name": meta.get("name", ""),
+        "name": raw_name,
         "sequence": seq,
         "length": len(seq),
         "topology": meta.get("topology", "linear"),

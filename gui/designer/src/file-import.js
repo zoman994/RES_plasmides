@@ -9,6 +9,32 @@ import { sanitizeSequence } from './sequence-utils';
 
 export const ACCEPT_STRING = '.gb,.gbk,.genbank,.dna,.fasta,.fa,.fna';
 
+// Patterns for backend-leaked temp-file basenames (e.g. tmpe2oww0me, tmpA1B2C3).
+const TEMP_NAME_RE = /^tmp[a-z0-9_]{3,}$/i;
+
+/**
+ * Determine the best human-readable name for a parsed file.
+ * Priority:
+ *   1. Internal record name from the format (LOCUS, FASTA header, SnapGene metadata)
+ *      — but reject backend tempfile leaks (tmpXXXXX) and `<unknown...>` markers.
+ *   2. Original file.name without extension (the upload's actual filename).
+ *   3. `part_${fallbackIndex}` fallback (caller supplies).
+ *
+ * @param {{name?: string}} parsed — parser output.
+ * @param {{name?: string} | null} file — original File object (or null for paste/catalog).
+ * @param {number} fallbackIndex — index for `part_N` fallback (default 1).
+ * @returns {string}
+ */
+export function extractItemName(parsed, file, fallbackIndex = 1) {
+  const internal = (parsed?.name || '').trim();
+  const isTemp = internal && TEMP_NAME_RE.test(internal);
+  const isUnknown = internal && internal.startsWith('<');
+  if (internal && !isTemp && !isUnknown) return internal;
+  const fname = (file?.name || '').replace(/\.[^.]+$/, '').trim();
+  if (fname) return fname;
+  return `part_${fallbackIndex}`;
+}
+
 /** Parse FASTA text → { name, sequence, length, topology }. */
 export function parseFasta(text) {
   const lines = text.split(/\r?\n/);
@@ -109,9 +135,7 @@ export async function handleFileImport(file) {
       } catch { /* enrichment not available */ }
     }
     return {
-      name: (data.name && !data.name.startsWith('<unknown'))
-        ? data.name
-        : file.name.replace(/\.[^.]+$/, ''),
+      name: extractItemName(data, file),
       sequence: data.sequence,
       length: data.length,
       topology: data.topology || 'linear',
@@ -190,7 +214,7 @@ export async function handleFileImport(file) {
   }
 
   return {
-    name: parsed.name || file.name.replace(/\.[^.]+$/, ''),
+    name: extractItemName(parsed, file),
     sequence: parsed.sequence,
     length: parsed.length || parsed.sequence.length,
     topology: parsed.topology || 'linear',
