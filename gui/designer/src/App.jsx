@@ -39,9 +39,8 @@ import PartsLibrary from './components/PartsLibrary';
 import DataManager from './components/DataManager';
 import PlasmidViewer from './components/PlasmidViewer';
 import PlasmidUseWizard from './components/PlasmidUseWizard';
-import ImportDecisionModal from './components/ImportDecisionModal';
+import ImportStartScreen from './components/ImportStartScreen';
 import ActionBar from './components/ActionBar';
-import CatalogPanel from './components/CatalogPanel';
 import PlasmidVersionTree from './components/PlasmidVersionTree';
 import ProjectFlowCanvas from './components/flow/ProjectFlowCanvas';
 import { designPrimersLocal } from './local-primer-design';
@@ -53,7 +52,6 @@ import { validateConstruct, checkPrimerQuality, pcrProductSize } from './validat
 import { t } from './i18n';
 import { GG_ENZYMES } from './golden-gate';
 import { estimateEfficiency } from './assembly-utils';
-import { handleFileImport } from './file-import';
 
 export default function App() {
 
@@ -97,14 +95,15 @@ export default function App() {
   const replacingFragment = useStore(s => s.replacingFragment);
   const tagFusionTarget = useStore(s => s.tagFusionTarget);
   const showOligos = useStore(s => s.showOligos);
-  const showCatalog = useStore(s => s.showCatalog);
+  const importStartOpen = useStore(s => s.importStartOpen);
+  const importStartFiles = useStore(s => s.importStartFiles);
+  const importStartCatalogMode = useStore(s => s.importStartCatalogMode);
   const showPartsLib = useStore(s => s.showPartsLib);
   const partsLibPartId = useStore(s => s.partsLibPartId);
   const viewerPart = useStore(s => s.viewerPart);
   const wizardPlasmid = useStore(s => s.wizardPlasmid);
   const wizardPresetMode = useStore(s => s.wizardPresetMode);
   const mutagenesisInitialPlasmid = useStore(s => s.mutagenesisInitialPlasmid);
-  const importDecisionData = useStore(s => s.importDecisionData);
   const versionTreePartId = useStore(s => s.versionTreePartId);
   const globalCDSPart = useStore(s => s.globalCDSPart);
   const editTarget = useStore(s => s.editTarget);
@@ -161,20 +160,15 @@ export default function App() {
       setFileDragOver(false);
     }
   };
-  const handleFileDrop = async (e) => {
+  const handleFileDrop = (e) => {
     if (!e.dataTransfer.types.includes('Files')) return;
     e.preventDefault();
     e.stopPropagation();
     dragCounterRef.current = 0;
     setFileDragOver(false);
-    const file = e.dataTransfer.files[0];
-    if (!file) return;
-    try {
-      const data = await handleFileImport(file);
-      useStore.getState().setImportDecision(data);
-    } catch (err) {
-      alert(`Ошибка импорта: ${err.message}`);
-    }
+    const files = Array.from(e.dataTransfer.files || []);
+    if (!files.length) return;
+    useStore.getState().openImportStartScreen({ files });
   };
 
   // ═══ Active assembly shorthand ═══
@@ -329,7 +323,7 @@ export default function App() {
               className="text-xs px-2 py-1 rounded bg-white/10 text-gray-300 hover:bg-white/20 transition">
               {'📦'} Запчасти
             </button>
-            <button onClick={() => useStore.getState().setShowCatalog(true)}
+            <button onClick={() => useStore.getState().openImportStartScreen({ catalogMode: true })}
               className="text-xs px-2 py-1 rounded bg-white/10 text-gray-300 hover:bg-white/20 transition">
               {'📚'} Каталог
             </button>
@@ -733,10 +727,12 @@ export default function App() {
         <PlasmidUseWizard plasmid={wizardPlasmid} presetMode={wizardPresetMode}
           onClose={() => { useStore.getState().setWizardPlasmid(null); useStore.getState().setWizardPresetMode(null); }} />
       )}
-      {importDecisionData && (
-        <ImportDecisionModal data={importDecisionData}
-          onClose={() => useStore.getState().setImportDecision(null)} />
-      )}
+      <ImportStartScreen
+        open={importStartOpen}
+        onClose={() => useStore.getState().closeImportStartScreen()}
+        presetFiles={importStartFiles || undefined}
+        catalogExpandedInitial={importStartCatalogMode}
+      />
       {versionTreePartId && (
         <PlasmidVersionTree partId={versionTreePartId}
           onClose={() => useStore.getState().setVersionTreePartId(null)}
@@ -761,9 +757,6 @@ export default function App() {
       )}
       {showDataMgr && (
         <DataManager onClose={() => setShowDataMgr(false)} parts={parts} projectName={projectName} />
-      )}
-      {showCatalog && (
-        <CatalogPanel onClose={() => useStore.getState().setShowCatalog(false)} />
       )}
       {/* First launch welcome */}
       {showOligos && (

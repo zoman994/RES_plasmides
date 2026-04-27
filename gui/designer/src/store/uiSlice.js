@@ -13,8 +13,11 @@ export const createUiSlice = (set) => ({
   showOligos: false,
   showPartsLib: false,
   partsLibPartId: null,       // pre-select this Part when opening PartsLibrary
-  showCatalog: false,
   showDataMgr: false,
+  // ImportStartScreen modal — single entry point for file import + catalog
+  importStartOpen: false,
+  importStartFiles: null,            // File[] | null — preset-files for new modal
+  importStartCatalogMode: false,    // open with catalog expanded
   globalCDSPart: null,      // Part being edited in global editor
   viewerPart: null,         // Part shown in PlasmidViewer modal
   wizardPlasmid: null,      // Part shown in PlasmidUseWizard modal
@@ -34,7 +37,6 @@ export const createUiSlice = (set) => ({
 
   // ═══ File import ═══
   importedData: null,       // Pre-fill data for AddFragmentModal from file import
-  importDecisionData: null, // Data for ImportDecisionModal (smart import)
 
   // ═══ Canvas ↔ palette navigation ═══
   highlightedPartId: null,  // Part ID highlighted in both canvas and palette
@@ -61,8 +63,20 @@ export const createUiSlice = (set) => ({
   setShowOligos: (v) => set({ showOligos: v }, false, 'setShowOligos'),
   setShowPartsLib: (v) => set({ showPartsLib: v }, false, 'setShowPartsLib'),
   setPartsLibPartId: (id) => set({ partsLibPartId: id }, false, 'setPartsLibPartId'),
-  setShowCatalog: (v) => set({ showCatalog: v }, false, 'setShowCatalog'),
   setShowDataMgr: (v) => set({ showDataMgr: v }, false, 'setShowDataMgr'),
+  setImportStartOpen: (v) => set({ importStartOpen: v }, false, 'setImportStartOpen'),
+  setImportStartFiles: (files) => set({ importStartFiles: files }, false, 'setImportStartFiles'),
+  setImportStartCatalogMode: (v) => set({ importStartCatalogMode: v }, false, 'setImportStartCatalogMode'),
+  openImportStartScreen: ({ files = null, catalogMode = false } = {}) => set({
+    importStartOpen: true,
+    importStartFiles: files,
+    importStartCatalogMode: catalogMode,
+  }, false, 'openImportStartScreen'),
+  closeImportStartScreen: () => set({
+    importStartOpen: false,
+    importStartFiles: null,
+    importStartCatalogMode: false,
+  }, false, 'closeImportStartScreen'),
   setGlobalCDSPart: (part) => set({ globalCDSPart: part }, false, 'setGlobalCDSPart'),
   setViewerPart: (part) => set({ viewerPart: part }, false, 'setViewerPart'),
   setWizardPlasmid: (part) => set({ wizardPlasmid: part }, false, 'setWizardPlasmid'),
@@ -74,7 +88,6 @@ export const createUiSlice = (set) => ({
   setActiveTab: (tab) => set({ activeTab: tab }, false, 'setActiveTab'),
   setWarningsOpen: (v) => set({ warningsOpen: v }, false, 'setWarningsOpen'),
   setImportedData: (data) => set({ importedData: data }, false, 'setImportedData'),
-  setImportDecision: (data) => set({ importDecisionData: data }, false, 'setImportDecision'),
   setHighlightedPartId: (id) => set({ highlightedPartId: id }, false, 'setHighlightedPartId'),
 
   toggleFragSelection: (index) => set(state => {

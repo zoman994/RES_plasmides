@@ -11,7 +11,7 @@ import { CATEGORY_ORDER, CATEGORY_LABELS, CATEGORY_ICONS, STUDENT_CATEGORIES, gr
 import { getRegions } from '../annotation-model';
 import { ANNOTATION_COLORS } from '../auto-annotate';
 import { exportGenBank } from '../exports';
-import { handleFileImport, ACCEPT_STRING } from '../file-import';
+import { ACCEPT_STRING } from '../file-import';
 import { groupByLifecycle } from '../parts-grouping';
 import ContextMenu from './ContextMenu';
 
@@ -47,7 +47,6 @@ export default function PartsPalette() {
   const setGlobalCDSPart  = useStore(s => s.setGlobalCDSPart);
   const setViewerPart     = useStore(s => s.setViewerPart);
   const setPartsLibPartId = useStore(s => s.setPartsLibPartId);
-  const setImportedData   = useStore(s => s.setImportedData);
   const highlightedPartId = useStore(s => s.highlightedPartId);
   const setHighlightedPartId = useStore(s => s.setHighlightedPartId);
 
@@ -146,16 +145,10 @@ export default function PartsPalette() {
     setCollVer(v => v + 1);
   };
 
-  const onFileSelect = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    try {
-      const data = await handleFileImport(file);
-      setImportedData(data);
-      setModalMode('library');
-    } catch (err) {
-      alert(`Ошибка импорта: ${err.message}`);
-    }
+  const onFileSelect = (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    useStore.getState().openImportStartScreen({ files });
     e.target.value = '';
   };
 
@@ -394,7 +387,7 @@ export default function PartsPalette() {
           <button onClick={() => fileInputRef.current?.click()}
             className="w-6 h-6 rounded bg-green-50 text-green-600 hover:bg-green-100 text-sm flex items-center justify-center"
             title="Импорт .gb / .dna / .fasta">{'📂'}</button>
-          <input ref={fileInputRef} type="file" accept={ACCEPT_STRING}
+          <input ref={fileInputRef} type="file" accept={ACCEPT_STRING} multiple
             onChange={onFileSelect} className="hidden" />
           <button onClick={() => setModalMode('library')}
             className="w-6 h-6 rounded bg-blue-50 text-blue-600 hover:bg-blue-100 text-sm font-bold flex items-center justify-center"

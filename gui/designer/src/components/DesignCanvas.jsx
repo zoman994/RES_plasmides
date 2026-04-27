@@ -13,7 +13,6 @@ import ContextMenu from './ContextMenu';
 import QuickStart from './QuickStart';
 import ImportPrompt from './ImportPrompt';
 import { useStore, useFragments, useJunctions, usePrimers, useCustomPrimers } from '../store';
-import { handleFileImport } from '../file-import';
 import { getFragmentTopology, expectedJunctionCount } from './utils/fragment-topology';
 
 function fragColor(frag, idx) {
@@ -61,7 +60,7 @@ export default function DesignCanvas({
   })), [junctions, fragments]);
 
   // ═══ Quick Start handler ═══
-  const handleQuickStart = (actionId, file) => {
+  const handleQuickStart = (actionId, payload) => {
     switch (actionId) {
       case 'restriction':
       case 'mutagenesis': {
@@ -82,15 +81,15 @@ export default function DesignCanvas({
         useStore.getState().setAssemblyType('golden_gate');
         break;
       case 'catalog':
-        useStore.getState().setShowCatalog(true);
+        useStore.getState().openImportStartScreen({ catalogMode: true });
         break;
-      case 'import_file':
-        if (file) {
-          handleFileImport(file).then(data => {
-            useStore.getState().setImportDecision(data);
-          }).catch(err => alert(`Ошибка импорта: ${err.message}`));
+      case 'import_file': {
+        const files = Array.isArray(payload) ? payload : (payload ? [payload] : []);
+        if (files.length) {
+          useStore.getState().openImportStartScreen({ files });
         }
         break;
+      }
     }
   };
 
@@ -320,12 +319,8 @@ export default function DesignCanvas({
           <ImportPrompt
             action={pendingAction}
             onImportFile={(file) => {
-              handleFileImport(file).then(data => {
-                const preset = pendingAction === 'restriction' ? 'restriction_cloning' : 'mutate';
-                useStore.getState().setWizardPresetMode(preset);
-                useStore.getState().setImportDecision(data);
-                setPendingAction(null);
-              }).catch(err => alert(`Ошибка: ${err.message}`));
+              useStore.getState().openImportStartScreen({ files: [file] });
+              setPendingAction(null);
             }}
             onCancel={() => setPendingAction(null)}
           />

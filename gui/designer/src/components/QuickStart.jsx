@@ -45,12 +45,12 @@ export default function QuickStart({ onAction }) {
         </div>
 
         {/* Hidden file input for import */}
-        <input ref={fileRef} type="file" accept=".dna,.gb,.gbk,.fasta,.fa"
+        <input ref={fileRef} type="file" accept=".dna,.gb,.gbk,.fasta,.fa" multiple
           className="hidden"
           onChange={async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-            onAction('import_file', file);
+            const files = Array.from(e.target.files || []);
+            if (!files.length) return;
+            onAction('import_file', files);
             e.target.value = '';
           }}
         />
