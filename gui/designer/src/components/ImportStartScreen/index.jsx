@@ -1,8 +1,11 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { handleFileImport } from '../../file-import';
 import { sanitizeWithReport } from '../../sequence-utils';
 import { detectFormat } from '../../format-detect';
+import { rotateOriginToPosition } from '../../rotate-origin';
+import { getRegions } from '../../annotation-model';
 import InputZone from './InputZone';
+import MetaColumn from './MetaColumn';
 
 /**
  * ImportStartScreen — single entry point for file import + paste + catalog
@@ -107,6 +110,40 @@ export default function ImportStartScreen({ open, onClose, presetFiles, catalogE
     }
   };
 
+  const handleApplyOrigin = () => {
+    if (parsedItems.length !== 1) return;
+    const item = parsedItems[0];
+    if (topology !== 'circular') return;
+    if (!originOffset || originOffset === 1) return;
+    const { sequence, annotations } = rotateOriginToPosition(
+      item.sequence,
+      item.annotations || [],
+      originOffset,
+      { topology: 'circular' },
+    );
+    setParsedItems([{ ...item, sequence, annotations, length: sequence.length, topology: 'circular' }]);
+    setOriginOffset(1);
+  };
+
+  const originHints = useMemo(() => {
+    if (parsedItems.length !== 1) return '';
+    const item = parsedItems[0];
+    const seqLen = item.length || item.sequence?.length || 0;
+    if (!seqLen) return '';
+    const regions = getRegions(item.annotations || [])
+      .slice()
+      .sort((a, b) => a.start - b.start);
+    if (!regions.length) return '';
+    const gaps = [];
+    let cursor = 0;
+    for (const r of regions) {
+      if (r.start > cursor + 30) gaps.push(`${cursor + 1}–${r.start}`);
+      if (r.end > cursor) cursor = r.end;
+    }
+    if (seqLen > cursor + 30) gaps.push(`${cursor + 1}–${seqLen}`);
+    return gaps.slice(0, 4).join(', ');
+  }, [parsedItems]);
+
   if (!open) return null;
 
   const single = parsedItems.length === 1;
@@ -158,7 +195,7 @@ export default function ImportStartScreen({ open, onClose, presetFiles, catalogE
               />
             )}
             {single && (
-              <div className="grid grid-cols-[1fr_280px] gap-3 items-stretch">
+              <div className="grid grid-cols-[1fr_280px] gap-3 items-start">
                 <InputZone
                   mode="filled"
                   onFiles={handleFilesImport}
@@ -177,16 +214,30 @@ export default function ImportStartScreen({ open, onClose, presetFiles, catalogE
                   }
                   filledBody={
                     <div className="text-xs text-gray-600 leading-relaxed">
-                      {parsedItems[0]?.length || 0} п.н. · {topology}
+                      {(parsedItems[0]?.length || 0).toLocaleString()} п.н. · {topology}
                       {parsedItems[0]?.annotations?.length > 0 && (
-                        <> · {parsedItems[0].annotations.filter(a => a.level === 'region').length} регионов</>
+                        <> · {getRegions(parsedItems[0].annotations).length} регионов</>
                       )}
                     </div>
                   }
                 />
-                <div className="text-[11px] text-gray-400 italic">
-                  meta-column → K4
-                </div>
+                <MetaColumn
+                  length={parsedItems[0]?.length || parsedItems[0]?.sequence?.length || 0}
+                  topology={topology}
+                  onTopologyChange={setTopology}
+                  originOffset={originOffset}
+                  onOriginOffsetChange={setOriginOffset}
+                  onApplyOrigin={handleApplyOrigin}
+                  originHints={originHints}
+                  name={name}
+                  onNameChange={setName}
+                  annotations={parsedItems[0]?.annotations || []}
+                  sanitizeReport={sanitizeReport}
+                  hasIUPAC={!!sanitizeReport?.hasIUPAC}
+                  iupacChars={sanitizeReport?.iupacChars || []}
+                  fromFileFeatures={parsedItems[0]?._fromFileCount || 0}
+                  enrichedFeatures={parsedItems[0]?._enrichedCount || 0}
+                />
               </div>
             )}
             {multi && (
