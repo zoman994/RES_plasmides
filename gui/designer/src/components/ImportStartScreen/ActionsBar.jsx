@@ -51,13 +51,6 @@ export default function ActionsBar({
             В библиотеку
           </button>
           <span className="w-px h-5 bg-gray-200 mx-1" data-testid="actions-divider" />
-          <button
-            onClick={() => fire('annotate')}
-            className="text-xs px-3 py-1.5 rounded bg-white border border-gray-200 text-gray-700 hover:bg-gray-50"
-            data-testid="action-annotate"
-          >
-            Аннотировать
-          </button>
         </>
       )}
       {isMulti && (
@@ -96,6 +89,17 @@ export default function ActionsBar({
             className="absolute right-0 bottom-full mb-1 z-10 bg-white border border-gray-200 rounded shadow-lg w-48 py-1"
             data-testid="actions-secondary-popup"
           >
+            {!isMulti && (
+              <button
+                type="button"
+                onClick={() => fire('annotate')}
+                disabled={!hasParsedItem}
+                className="w-full text-left text-xs px-3 py-1.5 hover:bg-gray-50 disabled:text-gray-300 disabled:cursor-not-allowed"
+                data-testid="action-annotate"
+              >
+                📥 Авто-аннотация
+              </button>
+            )}
             <button
               type="button"
               onClick={() => fire('replace')}
@@ -105,6 +109,7 @@ export default function ActionsBar({
             >
               📁 Заменить файл
             </button>
+            <div className="my-1 border-t border-gray-100" />
             <button
               type="button"
               onClick={() => fire('download-gb')}
@@ -113,7 +118,7 @@ export default function ActionsBar({
               className="w-full text-left text-xs px-3 py-1.5 hover:bg-gray-50 disabled:text-gray-300 disabled:cursor-not-allowed"
               data-testid="action-download-gb"
             >
-              📥 Скачать как .gb
+              💾 Скачать как .gb
             </button>
             <button
               type="button"

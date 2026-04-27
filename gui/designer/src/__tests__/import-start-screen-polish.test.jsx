@@ -17,7 +17,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, fireEvent } from '@testing-library/react';
 import ActionsBar from '../components/ImportStartScreen/ActionsBar';
-import InputZone from '../components/ImportStartScreen/InputZone';
 import { InlineEditableTitle } from '../components/ImportStartScreen/index';
 import FileSummaryCard, {
   isResistanceMarker,
@@ -79,27 +78,39 @@ describe('InlineEditableTitle (Polish §1)', () => {
 
 // ────────────── §6 ActionsBar dropdown ──────────────
 
-describe('ActionsBar single-mode Polish §6 — divider + ⋯ + new dropdown items', () => {
-  it('renders divider between destinations and Аннотировать', () => {
-    const { getByTestId } = render(
+describe('ActionsBar single-mode IS-Final K7 — annotate moved to dropdown', () => {
+  it('main row has divider between destinations and ⋯ (no «Аннотировать» button)', () => {
+    const { getByTestId, queryByTestId } = render(
       <ActionsBar mode="single" onAction={vi.fn()} count={1} hasParsedItem exportEnabled />
     );
     expect(getByTestId('action-canvas')).toBeTruthy();
     expect(getByTestId('action-library')).toBeTruthy();
     expect(getByTestId('actions-divider')).toBeTruthy();
-    expect(getByTestId('action-annotate')).toBeTruthy();
+    // K7: «Аннотировать» is now inside the ⋯ dropdown, not in the main row.
+    expect(queryByTestId('action-annotate')).toBeNull();
   });
 
-  it('⋯ button opens dropdown with replace / download / delete entries', () => {
+  it('⋯ button opens dropdown with annotate / replace / download / delete entries', () => {
     const { getByTestId, queryByTestId } = render(
       <ActionsBar mode="single" onAction={vi.fn()} count={1} hasParsedItem exportEnabled />
     );
     expect(queryByTestId('actions-secondary-popup')).toBeNull();
     fireEvent.click(getByTestId('action-secondary-toggle'));
     expect(getByTestId('actions-secondary-popup')).toBeTruthy();
+    expect(getByTestId('action-annotate').textContent).toMatch(/Авто-аннотация/);
     expect(getByTestId('action-replace').textContent).toMatch(/Заменить файл/);
     expect(getByTestId('action-download-gb').textContent).toMatch(/Скачать как \.gb/);
     expect(getByTestId('action-delete').textContent).toMatch(/Удалить из сессии/);
+  });
+
+  it('📥 Авто-аннотация (in dropdown) fires onAction("annotate")', () => {
+    const onAction = vi.fn();
+    const { getByTestId } = render(
+      <ActionsBar mode="single" onAction={onAction} count={1} hasParsedItem exportEnabled />
+    );
+    fireEvent.click(getByTestId('action-secondary-toggle'));
+    fireEvent.click(getByTestId('action-annotate'));
+    expect(onAction).toHaveBeenCalledWith('annotate');
   });
 
   it('Replace dropdown entry fires onAction("replace")', () => {
@@ -282,27 +293,5 @@ describe('handleFileImport F5 autoAnnotate gate', () => {
   });
 });
 
-describe('InputZone empty mode V36 file picker', () => {
-  it('renders a hidden <input type=file> + clickable dropzone', () => {
-    const onFiles = vi.fn();
-    const { getByTestId } = render(
-      <InputZone mode="empty" onFiles={onFiles} onPasteText={vi.fn()} />
-    );
-    const picker = getByTestId('input-zone-file-picker');
-    expect(picker.tagName).toBe('INPUT');
-    expect(picker.type).toBe('file');
-    expect(picker.multiple).toBe(true);
-    expect(getByTestId('input-zone-clickable')).toBeTruthy();
-  });
-
-  it('selecting a file via picker invokes onFiles', () => {
-    const onFiles = vi.fn();
-    const { getByTestId } = render(
-      <InputZone mode="empty" onFiles={onFiles} onPasteText={vi.fn()} />
-    );
-    const file = new File(['LOCUS x'], 'pUC19.gb', { type: 'text/plain' });
-    fireEvent.change(getByTestId('input-zone-file-picker'), { target: { files: [file] } });
-    expect(onFiles).toHaveBeenCalledTimes(1);
-    expect(onFiles.mock.calls[0][0][0].name).toBe('pUC19.gb');
-  });
-});
+// V36 file-picker assertions migrated to catalog-panel.test.jsx
+// (drop-zone footer in CatalogPanel hosts the file picker after IS-Final K3).

@@ -83,8 +83,8 @@ describe('Kfix-4 custom hover-tooltip via React state', () => {
 });
 
 describe('V38 mini-fix-2 compact hover → popover', () => {
-  it('size=64 mouseenter opens popover with 180 px nested mini-map; mouseleave closes', () => {
-    const { queryByTestId, getAllByTestId, getByTestId } = render(
+  it('size=64 mouseenter opens popover with 180 px nested mini-map; mouseleave closes after debounce (K5.1)', async () => {
+    const { queryByTestId, getAllByTestId, getByTestId, findAllByTestId } = render(
       <PlasmidMiniMap length={2000} topology="circular" annotations={ANNOT_BIG} size={64} />
     );
     const wrapper = getByTestId('plasmid-mini-map');
@@ -93,7 +93,10 @@ describe('V38 mini-fix-2 compact hover → popover', () => {
     expect(queryByTestId('plasmid-mini-map-popover')).toBeTruthy();
     // Two mini-maps now in DOM: the original 64px + the 180px inside popover.
     expect(getAllByTestId('plasmid-mini-map').length).toBeGreaterThanOrEqual(2);
+    // K5.1: mouseleave does NOT close immediately (250 ms hover-bridge);
+    // close eventually after the timer fires.
     fireEvent.mouseLeave(wrapper);
+    await new Promise((res) => setTimeout(res, 320));
     expect(queryByTestId('plasmid-mini-map-popover')).toBeNull();
   });
 

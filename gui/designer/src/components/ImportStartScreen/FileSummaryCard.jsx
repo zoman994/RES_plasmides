@@ -93,24 +93,28 @@ function summarizeRESites(sequence, topology) {
   }
 }
 
-function CategoryLine({ icon, label, regions, testId }) {
+function ItemRow({ region }) {
+  const len = Math.max(0, (region.end || 0) - (region.start || 0));
+  return (
+    <div className="flex items-center gap-1.5 text-xs text-gray-700">
+      <span
+        className="inline-block w-2 h-2 rounded-sm shrink-0"
+        style={{ background: featureColor(region.type, region.name) }}
+      />
+      <span className="flex-1 truncate" title={region.name}>{region.name || region.type}</span>
+      <span className="text-[10px] text-gray-500 font-mono">{len.toLocaleString()} bp</span>
+    </div>
+  );
+}
+
+function CategorySection({ icon, label, regions, testId }) {
   if (!regions.length) return null;
   return (
-    <div className="flex items-baseline gap-1.5 text-xs text-gray-700" data-testid={testId}>
-      <span className="shrink-0">{icon}</span>
-      <span className="text-[10px] uppercase tracking-wide text-gray-500 shrink-0">{label}:</span>
-      <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
-        {regions.map((r, i) => (
-          <span key={r.id} className="inline-flex items-center gap-1">
-            {i > 0 && <span className="text-gray-300">·</span>}
-            <span
-              className="inline-block w-2 h-2 rounded-sm"
-              style={{ background: featureColor(r.type, r.name) }}
-            />
-            <span className="font-medium">{r.name || r.type}</span>
-          </span>
-        ))}
-      </span>
+    <div className="space-y-0.5" data-testid={testId}>
+      <div className="text-[10px] uppercase tracking-wide text-gray-400 font-medium">
+        {icon} {label} ({regions.length})
+      </div>
+      {regions.map((r) => <ItemRow key={r.id} region={r} />)}
     </div>
   );
 }
@@ -131,6 +135,7 @@ export default function FileSummaryCard({ parsedItem }) {
   );
   const warnings = parsedItem?.warnings || [];
   const [warningsOpen, setWarningsOpen] = useState(false);
+  const [showAllCDS, setShowAllCDS] = useState(false);
 
   if (!parsedItem) return null;
   const hasCategoryLine = cats.selection.length || cats.promoters.length || cats.origins.length || cats.tags.length;
@@ -162,41 +167,40 @@ export default function FileSummaryCard({ parsedItem }) {
       )}
 
       {hasCategoryLine > 0 && (
-        <div className="flex flex-col gap-1" data-testid="file-summary-categories">
-          <CategoryLine icon="🛡" label="Селекция" regions={cats.selection} testId="cat-selection" />
-          <CategoryLine icon="📣" label="Промоторы" regions={cats.promoters} testId="cat-promoters" />
-          <CategoryLine icon="⚓" label="Origin" regions={cats.origins} testId="cat-origins" />
-          <CategoryLine icon="🏷" label="Tags" regions={cats.tags} testId="cat-tags" />
+        <div className="flex flex-col gap-2" data-testid="file-summary-categories">
+          <CategorySection icon="🛡" label="СЕЛЕКЦИЯ" regions={cats.selection} testId="cat-selection" />
+          <CategorySection icon="📣" label="ПРОМОТОРЫ" regions={cats.promoters} testId="cat-promoters" />
+          <CategorySection icon="⚓" label="ORIGIN" regions={cats.origins} testId="cat-origins" />
+          <CategorySection icon="🏷" label="TAGS" regions={cats.tags} testId="cat-tags" />
         </div>
       )}
 
       {remainingCDS.length > 0 && (
         <div className="space-y-0.5" data-testid="file-summary-cds-list">
-          <div className="text-[10px] uppercase text-gray-400">CDS ({remainingCDS.length})</div>
-          {cdsTop.map((f) => {
-            const len = Math.max(0, f.end - f.start);
-            return (
-              <div key={f.id} className="flex items-center gap-1.5 text-xs text-gray-700">
-                <span
-                  className="inline-block w-2 h-2 rounded-sm shrink-0"
-                  style={{ background: featureColor(f.type, f.name) }}
-                />
-                <span className="flex-1 truncate" title={f.name}>{f.name || f.type}</span>
-                <span className="text-[10px] text-gray-500">{len.toLocaleString()} bp</span>
-              </div>
-            );
-          })}
-          {cdsOverflow > 0 && (
-            <div className="text-[10px] text-gray-500 pl-3.5" data-testid="cds-overflow">
+          <div className="text-[10px] uppercase tracking-wide text-gray-400 font-medium">
+            CDS ({remainingCDS.length})
+          </div>
+          {(showAllCDS ? remainingCDS : cdsTop).map((f) => (
+            <ItemRow key={f.id} region={f} />
+          ))}
+          {!showAllCDS && cdsOverflow > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowAllCDS(true)}
+              className="text-[10px] text-emerald-700 hover:text-emerald-900 hover:underline pl-3.5"
+              data-testid="cds-overflow"
+            >
               …ещё {cdsOverflow} CDS
-            </div>
+            </button>
           )}
         </div>
       )}
 
       {reSites.length > 0 && (
         <div className="text-xs text-gray-700" data-testid="file-summary-re-sites">
-          <div className="text-[10px] uppercase text-gray-400 mb-0.5">Уникальные/редкие сайты</div>
+          <div className="text-[10px] uppercase tracking-wide text-gray-400 mb-0.5 font-medium">
+            🔬 САЙТЫ РЕСТРИКЦИИ
+          </div>
           <div className="flex flex-wrap gap-x-2 gap-y-0.5">
             {reSites.map((s) => (
               <span key={s.name} className="inline-block">
