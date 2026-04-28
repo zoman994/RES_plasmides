@@ -26,6 +26,7 @@
  */
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { featureColor, FEATURE_STROKE, FEATURE_COLORS_V2 } from '../feature-palette';
 import { getRegions } from '../annotation-model';
 
@@ -33,11 +34,21 @@ const LEADER_LEN = 10;                    // px the leader sticks out past outer
 const LABEL_RING = 32;                    // px radial ring reserved for labels (circular ≥180 px)
 const COLLISION_RAD = 0.26;               // ≈ 15° — circular labels closer than this get staggered
 const COLLISION_PX = 40;                  // px — linear labels with anchors closer get staggered
-const HOVER_BRIDGE_MS = 250;              // K5.1 hover-bridge debounce
+const HOVER_BRIDGE_MS = 250;              // K5.1 hover-bridge debounce (mouseleave → close)
+const GROW_DURATION_MS = 200;             // F4 transform/opacity transition for the grow-overlay
 const LABEL_LENGTH_THRESHOLD_BP = 300;    // K6 (V46): every region ≥300 bp gets a label
 const LABEL_TYPE_BLACKLIST = new Set([    // GenBank metadata that always covers full plasmid
   'source',
 ]);
+
+// F4 (Sprint Catalog Polish FIX): paint-order: stroke fill + white halo so
+// labels read on any background tile (cards, popover, anything underneath).
+const OVERLAY_TEXT_STYLE = {
+  paintOrder: 'stroke fill',
+  stroke: 'white',
+  strokeWidth: 3,
+  filter: 'drop-shadow(0 0 1px rgba(0, 0, 0, 0.4))',
+};
 
 function pickRegionsForLabels(regions) {
   return regions
@@ -134,15 +145,24 @@ export default function PlasmidMiniMap({
   const regions = getRegions(annotations);
 
   const [hovered, setHovered] = useState(null);
-  const [popoverOpen, setPopoverOpen] = useState(false);
-  const [popoverPos, setPopoverPos] = useState({ left: 0, top: 0 });
+  // F4 grow-overlay state machine:
+  //   overlayMounted=false → portal not rendered.
+  //   overlayMounted=true && overlayActive=false → mounted at scale(0.5)/opacity(0).
+  //   overlayMounted=true && overlayActive=true  → CSS transitions to scale(1)/opacity(1).
+  //   On schedule-close: active flips back to false (transitions out), then mount=false
+  //   after GROW_DURATION_MS so the DOM unmounts cleanly.
+  const [overlayMounted, setOverlayMounted] = useState(false);
+  const [overlayActive, setOverlayActive] = useState(false);
+  const [overlayPos, setOverlayPos] = useState({ left: 0, top: 0 });
   const wrapperRef = useRef(null);
   const closeTimer = useRef(null);
+  const unmountTimer = useRef(null);
   const svgRef = useRef(null);
 
-  // K5.1 cleanup on unmount.
+  // Cleanup all pending timers on unmount.
   useEffect(() => () => {
     if (closeTimer.current) clearTimeout(closeTimer.current);
+    if (unmountTimer.current) clearTimeout(unmountTimer.current);
   }, []);
 
   const cx = size / 2;
@@ -314,47 +334,74 @@ export default function PlasmidMiniMap({
     }
   }
 
-  // Compact size → hover opens a 180 px popover with labels (V38 mini-fix-2).
-  const isCompact = size <= 90;
-  const cursorClass = isCompact ? 'cursor-zoom-in' : '';
+  // F4 (Sprint Catalog Polish FIX): hover on any mode='inline' tile (compact
+  // 32-48 px cards AND 160 px MetaColumn) opens a transparent grow-overlay
+  // through React portal. mode='overlay' instances never re-open — that's the
+  // recursive guard so the inner overlay-PlasmidMiniMap doesn't spawn another.
+  const overlayEnabled = !isOverlay;
+  const cursorClass = overlayEnabled ? 'cursor-zoom-in' : '';
 
-  // V38: clamp popover within viewport. position: fixed avoids ancestor
-  // overflow: hidden clipping by card boundaries.
-  const POPOVER_BOX = 220;
+  // 180 px overlay (matches inner PlasmidMiniMap size). After F4 viewBox
+  // expansion may grow the inner SVG up to ~280 px, so we leave headroom in
+  // the viewport-clamp box.
+  const OVERLAY_BOX = 280;
   const cancelClose = () => {
     if (closeTimer.current) {
       clearTimeout(closeTimer.current);
       closeTimer.current = null;
     }
+    if (unmountTimer.current) {
+      clearTimeout(unmountTimer.current);
+      unmountTimer.current = null;
+    }
   };
   const scheduleClose = () => {
     cancelClose();
     closeTimer.current = setTimeout(() => {
-      setPopoverOpen(false);
+      // Phase 1: transition out (scale → 0.5, opacity → 0). DOM still mounted.
+      setOverlayActive(false);
+      // Phase 2: unmount after the CSS transition finishes.
+      unmountTimer.current = setTimeout(() => {
+        setOverlayMounted(false);
+        unmountTimer.current = null;
+      }, GROW_DURATION_MS);
       closeTimer.current = null;
     }, HOVER_BRIDGE_MS);
   };
-  const openPopover = () => {
+  const openOverlay = () => {
+    if (!overlayEnabled) return;
     cancelClose();
     const el = wrapperRef.current;
-    if (!el) {
-      setPopoverOpen(true);
-      return;
+    let left = 0;
+    let top = 0;
+    if (el) {
+      const rect = el.getBoundingClientRect();
+      // Centre the overlay on the source tile, then clamp to viewport.
+      left = rect.left + rect.width / 2 - OVERLAY_BOX / 2;
+      top = rect.top + rect.height / 2 - OVERLAY_BOX / 2;
+      if (left < 8) left = 8;
+      if (left + OVERLAY_BOX > window.innerWidth - 8) {
+        left = window.innerWidth - OVERLAY_BOX - 8;
+      }
+      if (top < 8) top = 8;
+      if (top + OVERLAY_BOX > window.innerHeight - 8) {
+        top = window.innerHeight - OVERLAY_BOX - 8;
+      }
     }
-    const rect = el.getBoundingClientRect();
-    let left = rect.right + 8;
-    if (left + POPOVER_BOX > window.innerWidth - 8) {
-      left = rect.left - POPOVER_BOX - 8;
+    setOverlayPos({ left, top });
+    if (!overlayMounted) {
+      // First mount — initial style is scale(0.5)/opacity(0); rAF flips to active.
+      setOverlayMounted(true);
+      setOverlayActive(false);
+      requestAnimationFrame(() => setOverlayActive(true));
+    } else {
+      setOverlayActive(true);
     }
-    if (left < 8) left = 8;
-    let top = rect.top + rect.height / 2 - POPOVER_BOX / 2;
-    if (top < 8) top = 8;
-    if (top + POPOVER_BOX > window.innerHeight - 8) {
-      top = window.innerHeight - POPOVER_BOX - 8;
-    }
-    setPopoverPos({ left, top });
-    setPopoverOpen(true);
   };
+
+  // Source-fade: when overlay is mounted, the inline tile shrinks to 0.15
+  // opacity (хвост-след), letting biology see «откуда выехала» overlay.
+  const sourceOpacity = overlayMounted ? 0.15 : 1;
 
   return (
     <span
@@ -362,8 +409,8 @@ export default function PlasmidMiniMap({
       className={`relative inline-block ${cursorClass}`}
       style={{ width: size, height: size, lineHeight: 0 }}
       data-testid="plasmid-mini-map"
-      onMouseEnter={isCompact ? openPopover : undefined}
-      onMouseLeave={isCompact ? scheduleClose : undefined}
+      onMouseEnter={overlayEnabled ? openOverlay : undefined}
+      onMouseLeave={overlayEnabled ? scheduleClose : undefined}
     >
       <svg
         ref={svgRef}
@@ -373,7 +420,13 @@ export default function PlasmidMiniMap({
         viewBox={`${vbox.x} ${vbox.y} ${vbox.w} ${vbox.h}`}
         role="img"
         aria-label={isCircular ? `circular ${totalLen} bp` : `linear ${totalLen} bp`}
-        style={{ overflow: isOverlay ? 'visible' : 'hidden' }}
+        style={{
+          overflow: isOverlay ? 'visible' : 'hidden',
+          // F4 source-fade: when grow-overlay is mounted, the inline tile fades
+          // to 15 % so the biolog sees «откуда выехала» overlay.
+          opacity: sourceOpacity,
+          transition: `opacity ${GROW_DURATION_MS}ms ease-out`,
+        }}
       >
         {isCircular ? (
           <circle cx={cx} cy={cy} r={r} fill="none" stroke={FEATURE_STROKE} strokeWidth={0.5} opacity={0.4} />
@@ -394,11 +447,29 @@ export default function PlasmidMiniMap({
               fontFamily="system-ui, sans-serif"
               fill={FEATURE_STROKE}
               textAnchor={l.anchor}
+              style={isOverlay ? OVERLAY_TEXT_STYLE : undefined}
             >
               {l.label}
             </text>
           </g>
         ))}
+        {/* F4 plasmid name subtitle — overlay only, rendered inside the SVG so
+            it inherits viewBox expansion + paint-order white-stroke styling. */}
+        {isOverlay && name && (
+          <text
+            x={cx}
+            y={size + 20}
+            fontSize="14"
+            fontWeight="600"
+            fontFamily="system-ui, sans-serif"
+            fill={FEATURE_STROKE}
+            textAnchor="middle"
+            style={OVERLAY_TEXT_STYLE}
+            data-testid="plasmid-mini-map-overlay-name"
+          >
+            {name}
+          </text>
+        )}
       </svg>
       {hovered && (
         <span
@@ -415,16 +486,27 @@ export default function PlasmidMiniMap({
           {hovered.text}
         </span>
       )}
-      {popoverOpen && (
+      {/* F4 grow-overlay portal — transparent (no bg/border/shadow), CSS
+          transform animation, sits above catalog content via z-index 100. */}
+      {overlayMounted && typeof document !== 'undefined' && createPortal(
         <span
-          className="bg-white rounded-lg shadow-xl border border-gray-200 p-3 flex items-center justify-center"
           style={{
             position: 'fixed',
-            left: popoverPos.left,
-            top: popoverPos.top,
-            zIndex: 50,
+            left: overlayPos.left,
+            top: overlayPos.top,
+            width: OVERLAY_BOX,
+            height: OVERLAY_BOX,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 100,
+            pointerEvents: 'auto',
+            transform: overlayActive ? 'scale(1)' : 'scale(0.5)',
+            opacity: overlayActive ? 1 : 0,
+            transition: `transform ${GROW_DURATION_MS}ms ease-out, opacity ${GROW_DURATION_MS}ms ease-out`,
+            transformOrigin: 'center center',
           }}
-          data-testid="plasmid-mini-map-popover"
+          data-testid="plasmid-mini-map-overlay"
           onMouseEnter={cancelClose}
           onMouseLeave={scheduleClose}
         >
@@ -436,7 +518,8 @@ export default function PlasmidMiniMap({
             mode="overlay"
             name={name}
           />
-        </span>
+        </span>,
+        document.body,
       )}
     </span>
   );

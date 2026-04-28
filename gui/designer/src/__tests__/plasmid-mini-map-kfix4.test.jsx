@@ -83,47 +83,46 @@ describe('Kfix-4 custom hover-tooltip via React state', () => {
   });
 });
 
-describe('V38 mini-fix-2 compact hover → popover', () => {
-  it('size=64 mouseenter opens popover with 180 px nested mini-map; mouseleave closes after debounce (K5.1)', async () => {
+describe('V38 / F4 hover → grow-overlay', () => {
+  it('size=64 mouseenter opens overlay with 180 px nested mini-map; mouseleave closes after 250 ms hover-bridge + 200 ms grow-out', async () => {
     const { queryByTestId, getAllByTestId, getByTestId } = render(
       <PlasmidMiniMap length={2000} topology="circular" annotations={ANNOT_BIG} size={64} />
     );
     const wrapper = getByTestId('plasmid-mini-map');
-    expect(queryByTestId('plasmid-mini-map-popover')).toBeNull();
+    expect(queryByTestId('plasmid-mini-map-overlay')).toBeNull();
     fireEvent.mouseEnter(wrapper);
-    expect(queryByTestId('plasmid-mini-map-popover')).toBeTruthy();
-    // Two mini-maps now in DOM: the original 64px + the 180px inside popover.
+    expect(queryByTestId('plasmid-mini-map-overlay')).toBeTruthy();
+    // Two mini-maps in DOM: the source 64 px + the 180 px inner inside the overlay portal.
     expect(getAllByTestId('plasmid-mini-map').length).toBeGreaterThanOrEqual(2);
-    // K5.1: mouseleave does NOT close immediately (250 ms hover-bridge);
-    // close eventually after the timer fires.
     fireEvent.mouseLeave(wrapper);
-    await new Promise((res) => setTimeout(res, 320));
-    expect(queryByTestId('plasmid-mini-map-popover')).toBeNull();
+    // Hover-bridge 250 ms + grow-out animation 200 ms.
+    await new Promise((res) => setTimeout(res, 500));
+    expect(queryByTestId('plasmid-mini-map-overlay')).toBeNull();
   });
 
-  it('size=64 click does not open popover (V38: hover-only)', () => {
+  it('size=64 click does not open overlay (F4: hover-only)', () => {
     const { container, queryByTestId } = render(
       <PlasmidMiniMap length={2000} topology="circular" annotations={ANNOT_BIG} size={64} />
     );
     fireEvent.click(container.querySelector('svg.mini-map'));
-    expect(queryByTestId('plasmid-mini-map-popover')).toBeNull();
+    expect(queryByTestId('plasmid-mini-map-overlay')).toBeNull();
   });
 
-  it('size=180 — hover does not spawn nested popover (recursive guard)', () => {
+  it('mode=overlay (inner) — hover does not spawn nested overlay (F4 recursive guard)', () => {
     const { queryByTestId, getByTestId } = render(
-      <PlasmidMiniMap length={2000} topology="circular" annotations={ANNOT_BIG} size={180} />
+      <PlasmidMiniMap length={2000} topology="circular" annotations={ANNOT_BIG} size={180} mode="overlay" />
     );
     fireEvent.mouseEnter(getByTestId('plasmid-mini-map'));
-    expect(queryByTestId('plasmid-mini-map-popover')).toBeNull();
+    expect(queryByTestId('plasmid-mini-map-overlay')).toBeNull();
   });
 
-  it('popover has no ✕ закрыть button (V38: closes on mouseleave only)', () => {
-    const { queryByTestId, getByTestId, container } = render(
+  it('overlay has no ✕ закрыть button (F4: closes on mouseleave only)', () => {
+    const { queryByTestId, getByTestId, baseElement } = render(
       <PlasmidMiniMap length={2000} topology="circular" annotations={ANNOT_BIG} size={64} />
     );
     fireEvent.mouseEnter(getByTestId('plasmid-mini-map'));
-    expect(queryByTestId('plasmid-mini-map-popover')).toBeTruthy();
-    expect(container.textContent).not.toMatch(/закрыть/);
+    expect(queryByTestId('plasmid-mini-map-overlay')).toBeTruthy();
+    expect(baseElement.textContent).not.toMatch(/закрыть/);
   });
 });
 
