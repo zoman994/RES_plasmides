@@ -58,14 +58,11 @@ export default function DesignCanvas({
     rightName: fragments[(i + 1) % fragments.length]?.name || '?',
   })), [junctions, fragments]);
 
-  // ═══ Quick Start handler (post-K9: 3 actions only) ═══
+  // ═══ Quick Start handler (post-Catalog Polish K4: 2 actions) ═══
   const handleQuickStart = (actionId) => {
     switch (actionId) {
       case 'import':
         useStore.getState().openImportStartScreen({});
-        break;
-      case 'catalog':
-        useStore.getState().openImportStartScreen({ catalogMode: true });
         break;
       case 'free':
         setDismissed(true);

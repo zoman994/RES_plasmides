@@ -1,22 +1,28 @@
 /**
- * Sprint Import-Start-Screen K9 — entry-point cleanup regression.
+ * Sprint Catalog Polish K4 (V45) — QuickStart entry-point cleanup.
  *
- * After K9, QuickStart has exactly 3 actions: 'import' / 'catalog' / 'free'.
- * Wizard-preset shortcuts (restriction / gibson / golden_gate / mutagenesis)
- * are removed, and the hidden file <input> picker is gone — drag-drop and the
- * ImportStartScreen modal cover those flows.
+ * Post-K4: PRIMARY 2 → 1 («Старт сборки» merges import + catalog), so the
+ * empty-canvas welcome screen offers 2 actionable buttons total:
+ *   📂 Старт сборки  → onAction('import')  (file · catalog · paste)
+ *   📦 Начать с нуля → onAction('free')    (palette drag)
+ *
+ * The legacy 3-action layout (import / catalog / free) is retired here —
+ * see `docs/SPRINT_CATALOG_POLISH.md` §6 K4. Older test name preserved for
+ * git history continuity.
  */
 import { describe, it, expect, vi } from 'vitest';
 import { render, fireEvent } from '@testing-library/react';
 import QuickStart from '../components/QuickStart';
 
-describe('QuickStart — post-K9 3-button layout', () => {
-  it('renders exactly 3 actionable buttons (📂 Импортировать файл / 📚 Выбрать из каталога / 📦 Начать с нуля)', () => {
+describe('QuickStart — post-Catalog-Polish K4 2-button layout', () => {
+  it('renders exactly 2 actionable buttons (📂 Старт сборки / 📦 Начать с нуля), no «Каталог»', () => {
     const onAction = vi.fn();
     const { getByText, container } = render(<QuickStart onAction={onAction} />);
-    expect(getByText(/Импортировать файл/)).toBeTruthy();
-    expect(getByText(/Выбрать из каталога/)).toBeTruthy();
+    expect(getByText(/Старт сборки/)).toBeTruthy();
     expect(getByText(/Начать с нуля/)).toBeTruthy();
+    // Catalog entry retired.
+    expect(container.textContent).not.toMatch(/Выбрать из каталога/);
+    expect(container.textContent).not.toMatch(/📚/);
     // No hidden file input remains.
     expect(container.querySelector('input[type="file"]')).toBeNull();
     // No legacy preset buttons.
@@ -27,12 +33,12 @@ describe('QuickStart — post-K9 3-button layout', () => {
     expect(container.textContent).not.toMatch(/Свободная сборка/);
   });
 
-  it('Click 📂 Импортировать файл → onAction("import"); 📚 Выбрать из каталога → "catalog"; 📦 Начать с нуля → "free"', () => {
+  it('Click 📂 Старт сборки → onAction("import"); 📦 Начать с нуля → onAction("free"); never onAction("catalog")', () => {
     const onAction = vi.fn();
     const { getByText } = render(<QuickStart onAction={onAction} />);
-    fireEvent.click(getByText(/Импортировать файл/));
-    fireEvent.click(getByText(/Выбрать из каталога/));
+    fireEvent.click(getByText(/Старт сборки/));
     fireEvent.click(getByText(/Начать с нуля/));
-    expect(onAction.mock.calls.map(c => c[0])).toEqual(['import', 'catalog', 'free']);
+    expect(onAction.mock.calls.map(c => c[0])).toEqual(['import', 'free']);
+    expect(onAction.mock.calls.map(c => c[0])).not.toContain('catalog');
   });
 });

@@ -1,25 +1,21 @@
 /**
  * QuickStart — empty-canvas welcome screen.
  *
- * Post-Sprint Import-Start-Screen K9: 3 actions only.
- *   📂 Импортировать файл  → onAction('import')   — opens ImportStartScreen
- *   📚 Выбрать из каталога → onAction('catalog')  — opens with catalog expanded
- *   📦 Начать с нуля       → onAction('free')     — dismiss + drag from palette
+ * Sprint Catalog Polish K4 (V45): 2 actions (PRIMARY 2→1 + free).
+ *   📂 Старт сборки  → onAction('import')  — opens ImportStartScreen
+ *                                            (file · catalog 2800+ · Ctrl+V)
+ *   📦 Начать с нуля → onAction('free')    — dismiss + drag from palette
  *
- * Wizard-preset shortcuts (restriction / gibson / golden_gate / mutagenesis)
- * are gone — they all routed to the same import flow after K8. Wizards now
- * launch from the canvas Действия ▾ dropdown after a plasmid is loaded.
+ * Catalog button merged into Старт сборки — ImportStartScreen left column
+ * shows the SnapGene catalog tree by default (after IS-Final K4).
  */
 const PRIMARY = [
   { id: 'import',  icon: '📂', tone: 'blue',
-    label: 'Импортировать файл', desc: '.dna · .gb · .gbk · .fasta — или вставка' },
-  { id: 'catalog', icon: '📚', tone: 'purple',
-    label: 'Выбрать из каталога', desc: '2800+ плазмид SnapGene + ваша библиотека' },
+    label: 'Старт сборки', desc: 'файл · каталог 2800+ · Ctrl+V' },
 ];
 
 const TONE = {
   blue:   'bg-blue-50 border-blue-200 hover:border-blue-400 hover:bg-blue-100 text-blue-700',
-  purple: 'bg-purple-50 border-purple-200 hover:border-purple-400 hover:bg-purple-100 text-purple-700',
 };
 
 export default function QuickStart({ onAction }) {

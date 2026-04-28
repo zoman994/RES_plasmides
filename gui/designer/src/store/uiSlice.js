@@ -78,6 +78,8 @@ export const createUiSlice = (set) => ({
   setImportStartOpen: (v) => set({ importStartOpen: v }, false, 'setImportStartOpen'),
   setImportStartFiles: (files) => set({ importStartFiles: files }, false, 'setImportStartFiles'),
   setImportStartCatalogMode: (v) => set({ importStartCatalogMode: v }, false, 'setImportStartCatalogMode'),
+  // catalogMode: deprecated since Sprint Catalog Polish K4 (V45) — left col is
+  // always catalog tree by default; param accepted for backward-compat tests.
   openImportStartScreen: ({ files = null, catalogMode = false } = {}) => set({
     importStartOpen: true,
     importStartFiles: files,
