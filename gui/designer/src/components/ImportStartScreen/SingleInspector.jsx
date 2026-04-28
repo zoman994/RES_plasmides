@@ -38,7 +38,8 @@ export default function SingleInspector({
   lastActionStatus,
   addedItems,
   onAction,
-  onCloseSession,
+  onReplaceFile,
+  onOpenCanvas,
   exportEnabled,
   hasParsedItem,
 }) {
@@ -82,7 +83,7 @@ export default function SingleInspector({
         </div>
         <button
           type="button"
-          onClick={onCloseSession}
+          onClick={onReplaceFile}
           className="self-start text-[11px] text-gray-400 hover:text-emerald-700 underline-offset-2 hover:underline cursor-pointer"
           data-testid="replace-file-link"
         >
@@ -94,7 +95,7 @@ export default function SingleInspector({
       <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50">
         <SessionSummary
           addedItems={addedItems}
-          onOpenCanvas={onCloseSession}
+          onOpenCanvas={onOpenCanvas}
         />
         <div className="grid grid-cols-[1fr_200px] gap-3 items-start">
           <FileSummaryCard parsedItem={parsedItem} />

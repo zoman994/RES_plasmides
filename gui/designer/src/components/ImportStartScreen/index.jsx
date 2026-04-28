@@ -413,7 +413,8 @@ export default function ImportStartScreen({ open, onClose, presetFiles }) {
                 lastActionStatus={lastActionStatus}
                 addedItems={addedItems}
                 onAction={handleAction}
-                onCloseSession={resetSession}
+                onReplaceFile={resetSession}
+                onOpenCanvas={handleClose}
                 exportEnabled
                 hasParsedItem={!!parsedItems[0]?.sequence}
               />
