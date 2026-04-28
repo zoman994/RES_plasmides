@@ -17,7 +17,13 @@
  *     rules (`length ≥ 300 bp`, blacklist `source`, no cap), viewBox expands
  *     post-render via `getBBox` (variant 1A), SVG `overflow: visible`. F4 hover
  *     overlay renders an inner `mode='overlay'` instance so the user sees
- *     labels + plasmid name without disturbing the inline tile.
+ *     leader-labels without disturbing the inline tile.
+ *
+ * FIX-2 follow-up (28.04.2026): the plasmid-name <text> previously rendered
+ * under the arc (F4) is gone — name lives in the modal title row, repeating it
+ * inside the mini-map was redundant and pushed the SVG bbox past the right
+ * column. `disableHoverOverlay` opts a consumer out of the F4 hover-grow
+ * (used by SingleInspector right column to stay fully static).
  *
  * V37: arc <g> wrappers carry `aria-label` for screen readers; `<title>`
  * elements removed (caused native ~700 ms tooltip racing the React tooltip).
@@ -139,7 +145,7 @@ function buildLinearLabels(regions, totalLen, size, cy, strokeWidth) {
 export default function PlasmidMiniMap({
   length, topology, annotations, size = 64,
   mode = 'inline',
-  name,
+  disableHoverOverlay = false,
 }) {
   const isOverlay = mode === 'overlay';
   const isCircular = topology === 'circular';
@@ -337,10 +343,12 @@ export default function PlasmidMiniMap({
   }
 
   // F4 (Sprint Catalog Polish FIX): hover on any mode='inline' tile (compact
-  // 32-48 px cards AND 160 px MetaColumn) opens a transparent grow-overlay
-  // through React portal. mode='overlay' instances never re-open — that's the
-  // recursive guard so the inner overlay-PlasmidMiniMap doesn't spawn another.
-  const overlayEnabled = !isOverlay;
+  // 32-48 px cards AND 160 px MetaColumn) opens a grow-overlay through React
+  // portal. mode='overlay' instances never re-open — that's the recursive
+  // guard so the inner overlay-PlasmidMiniMap doesn't spawn another.
+  // FIX-2 follow-up (28.04.2026): consumers can pass `disableHoverOverlay` to
+  // keep the inline tile fully static (e.g. SingleInspector right column).
+  const overlayEnabled = !isOverlay && !disableHoverOverlay;
   const cursorClass = overlayEnabled ? 'cursor-zoom-in' : '';
 
   // 180 px overlay (matches inner PlasmidMiniMap size). After F4 viewBox
@@ -447,23 +455,6 @@ export default function PlasmidMiniMap({
             </text>
           </g>
         ))}
-        {/* F4 plasmid name subtitle — overlay only, rendered inside the SVG so
-            it inherits viewBox expansion + paint-order white-stroke styling. */}
-        {isOverlay && name && (
-          <text
-            x={cx}
-            y={size + 20}
-            fontSize="14"
-            fontWeight="600"
-            fontFamily="system-ui, sans-serif"
-            fill={FEATURE_STROKE}
-            textAnchor="middle"
-            style={OVERLAY_TEXT_STYLE}
-            data-testid="plasmid-mini-map-overlay-name"
-          >
-            {name}
-          </text>
-        )}
       </svg>
       {hovered && (
         <span
@@ -514,7 +505,6 @@ export default function PlasmidMiniMap({
             annotations={annotations}
             size={180}
             mode="overlay"
-            name={name}
           />
         </span>,
         document.body,

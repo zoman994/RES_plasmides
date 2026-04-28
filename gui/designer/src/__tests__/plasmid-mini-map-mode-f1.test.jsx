@@ -10,11 +10,10 @@
  *   - `mode='inline'` (default): viewBox stays `0 0 size size`, labels never
  *     render, `overflow: hidden`. Used by every consumer that lives inside
  *     a fixed grid cell (catalog cards, MetaColumn 160 px, MultiInspector rows,
- *     SessionSummary rows).
+ *     SessionSummary rows). After FIX-2 follow-up (28.04.2026) SingleInspector
+ *     also lives here — labels + name pushed the SVG past the 200 px column.
  *   - `mode='overlay'`: V46 labels rule and 1A viewBox expansion preserved.
- *     Used by F4 hover overlay AND, after FIX-2 (28.04.2026), SingleInspector
- *     right column (Игорь: «правая колонка — большая статичная карта С НАДПИСЯМИ,
- *     без hover-grow»).
+ *     Used by F4 hover overlay only.
  */
 import { describe, it, expect } from 'vitest';
 import { render, fireEvent } from '@testing-library/react';
@@ -87,7 +86,7 @@ describe('F1 name prop is accepted (rendered by F4 overlay)', () => {
   });
 });
 
-describe('FIX-2 K1 — SingleInspector right column = mode=overlay', () => {
+describe('FIX-2 follow-up — SingleInspector mini-map (full-width row, overlay-mode, static)', () => {
   const baseItem = {
     name: 'pUC19',
     sequence: 'A'.repeat(2686),
@@ -115,30 +114,52 @@ describe('FIX-2 K1 — SingleInspector right column = mode=overlay', () => {
     hasParsedItem: true,
   };
 
-  it('SingleInspector mini-map renders leader-labels (≥1 <text>) — Игорь: «максимум информации справа»', () => {
+  it('mini-map sits in a full-width row above the FileSummaryCard / MetaColumn grid', () => {
+    const { getByTestId, container } = render(<SingleInspector {...baseProps} />);
+    const row = getByTestId('single-mini-map-row');
+    expect(row).toBeTruthy();
+    // The row contains a PlasmidMiniMap wrapper.
+    expect(row.querySelector('[data-testid="plasmid-mini-map"]')).toBeTruthy();
+    // The row is NOT a child of the grid (which lives elsewhere in the body).
+    const grid = container.querySelector('.grid');
+    expect(grid?.contains(row)).toBe(false);
+  });
+
+  it('SingleInspector mini-map renders leader-labels (Игорь: «подписи арок должны быть видны»)', () => {
     const { container } = render(<SingleInspector {...baseProps} />);
-    const texts = container.querySelectorAll('svg.mini-map text');
-    // Two ≥300 bp regions in ANNOTS → at least both label texts (and possibly
-    // a name <text>; F1 size=160 < the name-render path which uses cy=size+20).
-    expect(texts.length).toBeGreaterThanOrEqual(1);
-    const labels = [...texts].map((t) => t.textContent);
+    const labels = [...container.querySelectorAll('svg.mini-map text')].map((t) => t.textContent);
     expect(labels).toContain('cdsA');
     expect(labels).toContain('cdsB');
   });
 
-  it('SingleInspector mini-map SVG → overflow: visible (overlay mode contract)', () => {
+  it('SingleInspector mini-map does NOT render the plasmid name <text> (FIX-2 follow-up)', () => {
     const { container } = render(<SingleInspector {...baseProps} />);
-    const svg = container.querySelector('svg.mini-map');
-    expect(svg.style.overflow).toBe('visible');
+    expect(container.querySelector('[data-testid="plasmid-mini-map-overlay-name"]')).toBeNull();
   });
 
-  it('hover on SingleInspector mini-map does NOT spawn a portal overlay (right column is static)', () => {
+  it('hover on SingleInspector mini-map does NOT spawn a portal overlay (disableHoverOverlay)', () => {
     const { container, baseElement } = render(<SingleInspector {...baseProps} />);
     const wrapper = container.querySelector('[data-testid="plasmid-mini-map"]');
     expect(wrapper).toBeTruthy();
     fireEvent.mouseEnter(wrapper);
-    // mode='overlay' instances disable the overlayEnabled branch — recursive
-    // guard so the right-column tile doesn't grow another overlay on top.
+    expect(baseElement.querySelector('[data-testid="plasmid-mini-map-overlay"]')).toBeNull();
+  });
+});
+
+describe('FIX-2 follow-up — disableHoverOverlay prop suppresses the F4 grow-overlay', () => {
+  it('inline tile WITHOUT disableHoverOverlay → hover spawns overlay', () => {
+    const { getByTestId, baseElement } = render(
+      <PlasmidMiniMap length={2000} topology="circular" annotations={ANNOTS} size={64} />,
+    );
+    fireEvent.mouseEnter(getByTestId('plasmid-mini-map'));
+    expect(baseElement.querySelector('[data-testid="plasmid-mini-map-overlay"]')).toBeTruthy();
+  });
+
+  it('inline tile WITH disableHoverOverlay → hover does NOT spawn overlay', () => {
+    const { getByTestId, baseElement } = render(
+      <PlasmidMiniMap length={2000} topology="circular" annotations={ANNOTS} size={64} disableHoverOverlay />,
+    );
+    fireEvent.mouseEnter(getByTestId('plasmid-mini-map'));
     expect(baseElement.querySelector('[data-testid="plasmid-mini-map-overlay"]')).toBeNull();
   });
 });

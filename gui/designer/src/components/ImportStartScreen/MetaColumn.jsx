@@ -1,13 +1,14 @@
-import PlasmidMiniMap from '../PlasmidMiniMap';
-
 /**
- * MetaColumn — fixed 280 px right-side column shown when parsedItems.length === 1.
+ * MetaColumn — 200 px right-side column shown when parsedItems.length === 1.
  * Holds:
- *   - PlasmidMiniMap 180 px
  *   - Topology toggle (◯ / —)
  *   - Origin-offset input (visible only when topology === 'circular')
  *   - Compact info-card (Из файла / Дополнено / lastActionStatus) — hides when empty
  *   - IUPAC warning card (if hasIUPAC)
+ *
+ * The mini-map used to live here (V46 onward) but FIX-2 follow-up moved it
+ * out of MetaColumn into a full-width row in SingleInspector — leader-labels
+ * (`mode='overlay'`) need more horizontal room than a 200 px grid cell offers.
  *
  * Polish §2/§5: name input + длина/регионов rows removed — title row
  * (inline-editable in index.jsx) and subtitle now own that data.
@@ -20,33 +21,17 @@ export default function MetaColumn({
   onOriginOffsetChange,
   onApplyOrigin,
   originHints = '',
-  annotations = [],
   hasIUPAC,
   iupacChars = [],
   fromFileFeatures = 0,
   enrichedFeatures = 0,
   lastActionStatus = null,
-  miniMapSize = 180,
-  miniMapMode = 'inline',
-  miniMapName,
 }) {
   const isCircular = topology === 'circular';
   const showInfoCard = fromFileFeatures > 0 || enrichedFeatures > 0 || !!lastActionStatus;
 
   return (
     <div className="flex flex-col gap-2.5">
-      {/* mini-map */}
-      <div className="flex items-center justify-center bg-amber-50/40 border border-gray-200 rounded p-3">
-        <PlasmidMiniMap
-          length={length}
-          topology={topology}
-          annotations={annotations}
-          size={miniMapSize}
-          mode={miniMapMode}
-          name={miniMapName}
-        />
-      </div>
-
       {/* topology toggle */}
       <div className="flex items-center justify-between bg-white border border-gray-200 rounded px-3 py-2">
         <span className="text-[10px] uppercase tracking-wide text-gray-500">топология</span>

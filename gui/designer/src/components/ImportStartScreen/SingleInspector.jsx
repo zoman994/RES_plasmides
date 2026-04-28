@@ -3,22 +3,28 @@ import MetaColumn from './MetaColumn';
 import ActionsBar from './ActionsBar';
 import SessionSummary from './SessionSummary';
 import FileSummaryCard from './FileSummaryCard';
+import PlasmidMiniMap from '../PlasmidMiniMap';
 import { InlineEditableTitle } from './InlineEditableTitle';
 
 /**
  * SingleInspector — right-pane inspector when one file/plasmid is selected.
  *
- * Layout (Sprint IS-Final K1):
+ * Layout (FIX-2 follow-up 28.04.2026): mini-map moved out of MetaColumn into
+ * its own full-width row above the grid so leader-labels (overlay mode) have
+ * room to render without spilling outside the 200 px grid column.
+ *
  *   ┌─ title row (full width) ─────────────────────── ↻ замена ─┐
  *   │ name (inline-editable)                                    │
  *   │ subtitle: bp · topology · regions · sanitize summary      │
  *   ├──────────────────────────────────────────────────────────┤
  *   │ [SessionSummary]                                         │
+ *   │ ┌──── full-width mini-map (overlay mode, static) ──────┐ │
+ *   │ │             plasmid arc + leader-labels               │ │
+ *   │ └──────────────────────────────────────────────────────┘ │
  *   │ ┌────────── grid [1fr_200px] ─────────┬─────────────────┐ │
  *   │ │ FileSummaryCard                     │ MetaColumn      │ │
- *   │ │                                     │  mini-map 160px │ │
  *   │ │                                     │  topology       │ │
- *   │ │                                     │  origin         │ │
+ *   │ │                                     │  origin / IUPAC │ │
  *   │ └─────────────────────────────────────┴─────────────────┘ │
  *   ├──────────────────────────────────────────────────────────┤
  *   │ ActionsBar                                               │
@@ -97,6 +103,23 @@ export default function SingleInspector({
           addedItems={addedItems}
           onOpenCanvas={onOpenCanvas}
         />
+        {/* Full-width mini-map block. Overlay mode renders leader-labels;
+            disableHoverOverlay keeps the right column fully static. The
+            outer container is wide enough that 1A viewBox expansion can
+            grow without escaping the modal. */}
+        <div
+          className="bg-amber-50/40 border border-gray-200 rounded p-3 flex items-center justify-center"
+          data-testid="single-mini-map-row"
+        >
+          <PlasmidMiniMap
+            length={length}
+            topology={topology}
+            annotations={parsedItem?.annotations || []}
+            size={160}
+            mode="overlay"
+            disableHoverOverlay
+          />
+        </div>
         <div className="grid grid-cols-[1fr_200px] gap-3 items-start">
           <FileSummaryCard parsedItem={parsedItem} />
           <MetaColumn
@@ -107,15 +130,11 @@ export default function SingleInspector({
             onOriginOffsetChange={onOriginOffsetChange}
             onApplyOrigin={onApplyOrigin}
             originHints={originHints}
-            annotations={parsedItem?.annotations || []}
             hasIUPAC={!!sanitizeReport?.hasIUPAC}
             iupacChars={sanitizeReport?.iupacChars || []}
             fromFileFeatures={parsedItem?._fromFileCount || 0}
             enrichedFeatures={parsedItem?._enrichedCount || 0}
             lastActionStatus={lastActionStatus}
-            miniMapSize={160}
-            miniMapMode="overlay"
-            miniMapName={parsedItem?.name || name}
           />
         </div>
       </div>

@@ -1,18 +1,16 @@
 /**
  * Sprint Catalog Polish FIX F4 — grow-overlay via React portal.
  *
- * Game plan after FIX-2 (28.04.2026): K2 restored the white card behind the
- * overlay (Игорь requested the bg back at visual acceptance), K3 dropped the
- * source-fade (the source tile stays at full opacity).
+ * Game plan after FIX-2 + follow-up (28.04.2026): K2 restored the white card,
+ * K3 dropped source-fade, follow-up dropped the plasmid-name <text> (was
+ * pushing the inner SVG bbox past the right column).
  *
  * Verified:
  *   1. Hover on inline mini-map mounts overlay in document.body via createPortal.
  *   2. After requestAnimationFrame the overlay style includes scale(1) opacity 1.
  *   3. Overlay carries the white-card chrome: bg-white + shadow + border.
  *   4. Source mini-map stays at opacity: 1 while overlay is mounted (no fade).
- *   5. Inner overlay PlasmidMiniMap renders <text> with the plasmid name under
- *      the arc.
- *   6. mouseleave → 250 ms hover-bridge → 200 ms grow-out → portal unmounts.
+ *   5. mouseleave → 250 ms hover-bridge → 200 ms grow-out → portal unmounts.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, fireEvent, act } from '@testing-library/react';
@@ -84,17 +82,12 @@ describe('F4 grow-overlay portal', () => {
     expect(sourceSvg.style.transition).toBeFalsy();
   });
 
-  it('inner overlay (mode=overlay) renders <text> with the plasmid name under the arc', () => {
+  it('inner overlay does NOT render a plasmid-name <text> (FIX-2 follow-up — pushed bbox past column)', () => {
     const { getByTestId, baseElement } = render(
-      <PlasmidMiniMap length={2000} topology="circular" annotations={ANNOTS} size={64} name="pUC19" />,
+      <PlasmidMiniMap length={2000} topology="circular" annotations={ANNOTS} size={64} />,
     );
     fireEvent.mouseEnter(getByTestId('plasmid-mini-map'));
-    const nameText = baseElement.querySelector('[data-testid="plasmid-mini-map-overlay-name"]');
-    expect(nameText).toBeTruthy();
-    expect(nameText.textContent).toBe('pUC19');
-    // F4 paint-order: stroke fill + white halo + drop-shadow on every text in
-    // overlay (labels and the name) so they read on any background.
-    expect(nameText.getAttribute('text-anchor')).toBe('middle');
+    expect(baseElement.querySelector('[data-testid="plasmid-mini-map-overlay-name"]')).toBeNull();
   });
 
   it('mouseleave → 250 ms hover-bridge then 200 ms grow-out → portal unmounts', async () => {
