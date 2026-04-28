@@ -280,4 +280,43 @@ describe('CatalogPanel — render + interactions', () => {
     fireEvent.paste(dz, { clipboardData: { getData: () => long } });
     expect(onPasteText).toHaveBeenCalledWith(long);
   });
+
+  // Игорь 28.04.2026 — «Этот {projectName}» tab: канвас-фрагменты + delete.
+  it('«Этот {projectName}» group renders canvas fragments with × button + delete fires removeFragment', async () => {
+    useStore.setState((s) => ({
+      ...s,
+      projectName: 'Тестовый проект',
+      assemblies: [{
+        id: 'asm_test',
+        name: 'Сборка 1',
+        fragments: [
+          { id: 'fr1', name: 'pBI221', sequence: 'A'.repeat(2000), length: 2000, topology: 'circular', annotations: [] },
+          { id: 'fr2', name: 'AsCpf1', sequence: 'A'.repeat(3000), length: 3000, topology: 'linear', annotations: [] },
+        ],
+        junctions: [],
+        primers: [],
+        circular: false,
+        calculated: false,
+      }],
+      activeId: 'asm_test',
+    }));
+    const { findByText, findByTestId, queryByTestId } = render(
+      <CatalogPanel onSelectItem={vi.fn()} onFiles={vi.fn()} />
+    );
+    // Group header includes the project name.
+    expect(await findByText(/Этот\s+Тестовый проект/)).toBeTruthy();
+    // Two fragment rows.
+    expect(await findByTestId('canvas-tab-row-0')).toBeTruthy();
+    expect(await findByTestId('canvas-tab-row-1')).toBeTruthy();
+    // Click × on the first row → removeFragment(0).
+    fireEvent.click(await findByTestId('canvas-tab-remove-0'));
+    await waitFor(() => {
+      const fragments = useStore.getState().assemblies.find((a) => a.id === 'asm_test').fragments;
+      expect(fragments).toHaveLength(1);
+      expect(fragments[0].name).toBe('AsCpf1');
+    });
+    // Empty placeholder appears when fragments are gone.
+    fireEvent.click(await findByTestId('canvas-tab-remove-0'));
+    await waitFor(() => expect(queryByTestId('canvas-tab-empty')).toBeTruthy());
+  });
 });

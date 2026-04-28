@@ -2,15 +2,22 @@
  * ActionsBar — primary actions for ImportStartScreen.
  *
  * mode='single' → Polish layout:
- *     [На канвас] [В библиотеку]  |  [Аннотировать]    ⋯
+ *     [На канвас] [В библиотеку]?  |  [Аннотировать]    ⋯
  *   primary destinations on the left, annotate after a vertical divider,
  *   ellipsis-icon dropdown on the far right with low-frequency actions
- *   (replace file / download .gb / delete from session).
+ *   (download .gb / delete from session).
  * mode='multi'  → На канвас (disabled) + В библиотеку (N) + ⋯ dropdown
  *                 (multi-mode actions are gated to library batch only).
  *
- * Restriction / Мутагенез / Разобрать removed entirely (Polish §6) — they
- * operate on post-canvas state and surface via canvas ContextMenu.
+ * libraryEnabled (single-mode only): when false the «В библиотеку» button is
+ * hidden — used for catalog items already in the library where adding again
+ * would be a no-op. SingleInspector flips it on once the user annotates the
+ * item or pastes/imports a new sequence.
+ *
+ * «Заменить файл» dropdown entry was dropped 28.04.2026 — duplicated a simple
+ * catalog click + the modal close-and-redrop. Restriction / Мутагенез /
+ * Разобрать removed entirely (Polish §6) — they operate on post-canvas state
+ * and surface via canvas ContextMenu.
  */
 
 import { useState } from 'react';
@@ -23,6 +30,7 @@ export default function ActionsBar({
   count = 1,
   hasParsedItem = true,
   exportEnabled = false,
+  libraryEnabled = true,
 }) {
   const [secondaryOpen, setSecondaryOpen] = useState(false);
 
@@ -43,13 +51,15 @@ export default function ActionsBar({
           >
             На канвас
           </button>
-          <button
-            onClick={() => fire('library')}
-            className="text-xs px-3 py-1.5 rounded bg-white border border-gray-200 text-gray-700 hover:bg-gray-50"
-            data-testid="action-library"
-          >
-            В библиотеку
-          </button>
+          {libraryEnabled && (
+            <button
+              onClick={() => fire('library')}
+              className="text-xs px-3 py-1.5 rounded bg-white border border-gray-200 text-gray-700 hover:bg-gray-50"
+              data-testid="action-library"
+            >
+              В библиотеку
+            </button>
+          )}
           <span className="w-px h-5 bg-gray-200 mx-1" data-testid="actions-divider" />
         </>
       )}
@@ -90,26 +100,19 @@ export default function ActionsBar({
             data-testid="actions-secondary-popup"
           >
             {!isMulti && (
-              <button
-                type="button"
-                onClick={() => fire('annotate')}
-                disabled={!hasParsedItem}
-                className="w-full text-left text-xs px-3 py-1.5 hover:bg-gray-50 disabled:text-gray-300 disabled:cursor-not-allowed"
-                data-testid="action-annotate"
-              >
-                📥 Авто-аннотация
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => fire('annotate')}
+                  disabled={!hasParsedItem}
+                  className="w-full text-left text-xs px-3 py-1.5 hover:bg-gray-50 disabled:text-gray-300 disabled:cursor-not-allowed"
+                  data-testid="action-annotate"
+                >
+                  📥 Авто-аннотация
+                </button>
+                <div className="my-1 border-t border-gray-100" />
+              </>
             )}
-            <button
-              type="button"
-              onClick={() => fire('replace')}
-              disabled={!hasParsedItem}
-              className="w-full text-left text-xs px-3 py-1.5 hover:bg-gray-50 disabled:text-gray-300 disabled:cursor-not-allowed"
-              data-testid="action-replace"
-            >
-              📁 Заменить файл
-            </button>
-            <div className="my-1 border-t border-gray-100" />
             <button
               type="button"
               onClick={() => fire('download-gb')}

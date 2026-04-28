@@ -66,6 +66,16 @@ export default function SingleInspector({
     : 0;
   const length = parsedItem.length || parsedItem.sequence?.length || 0;
 
+  // «В библиотеку» visible only for items NOT already in the library OR
+  // catalog items the biolog has derived in this session: annotated, had
+  // topology flipped, or origin rotated. Игорь 28.04.2026.
+  const topologyChanged = !!parsedItem.topology
+    && !!topology
+    && topology !== parsedItem.topology;
+  const libraryEnabled = parsedItem._source !== 'catalog'
+    || !!parsedItem._annotatedInSession
+    || topologyChanged;
+
   return (
     <div className="flex flex-col h-full" data-testid="single-inspector">
       {/* title row — Игорь 28.04.2026: «↻ замена файла» удалена,
@@ -137,6 +147,7 @@ export default function SingleInspector({
           count={1}
           hasParsedItem={hasParsedItem}
           exportEnabled={exportEnabled}
+          libraryEnabled={libraryEnabled}
         />
       </div>
     </div>

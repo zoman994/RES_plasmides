@@ -90,7 +90,7 @@ describe('ActionsBar single-mode IS-Final K7 — annotate moved to dropdown', ()
     expect(queryByTestId('action-annotate')).toBeNull();
   });
 
-  it('⋯ button opens dropdown with annotate / replace / download / delete entries', () => {
+  it('⋯ button opens dropdown with annotate / download / delete entries (replace dropped 28.04.2026)', () => {
     const { getByTestId, queryByTestId } = render(
       <ActionsBar mode="single" onAction={vi.fn()} count={1} hasParsedItem exportEnabled />
     );
@@ -98,9 +98,10 @@ describe('ActionsBar single-mode IS-Final K7 — annotate moved to dropdown', ()
     fireEvent.click(getByTestId('action-secondary-toggle'));
     expect(getByTestId('actions-secondary-popup')).toBeTruthy();
     expect(getByTestId('action-annotate').textContent).toMatch(/Авто-аннотация/);
-    expect(getByTestId('action-replace').textContent).toMatch(/Заменить файл/);
     expect(getByTestId('action-download-gb').textContent).toMatch(/Скачать как \.gb/);
     expect(getByTestId('action-delete').textContent).toMatch(/Удалить из сессии/);
+    // «Заменить файл» entry was dropped — duplicated catalog click (Игорь).
+    expect(queryByTestId('action-replace')).toBeNull();
   });
 
   it('📥 Авто-аннотация (in dropdown) fires onAction("annotate")', () => {
@@ -111,16 +112,6 @@ describe('ActionsBar single-mode IS-Final K7 — annotate moved to dropdown', ()
     fireEvent.click(getByTestId('action-secondary-toggle'));
     fireEvent.click(getByTestId('action-annotate'));
     expect(onAction).toHaveBeenCalledWith('annotate');
-  });
-
-  it('Replace dropdown entry fires onAction("replace")', () => {
-    const onAction = vi.fn();
-    const { getByTestId } = render(
-      <ActionsBar mode="single" onAction={onAction} count={1} hasParsedItem exportEnabled />
-    );
-    fireEvent.click(getByTestId('action-secondary-toggle'));
-    fireEvent.click(getByTestId('action-replace'));
-    expect(onAction).toHaveBeenCalledWith('replace');
   });
 
   it('Удалить из сессии fires onAction("delete") (parent confirms)', () => {
@@ -149,6 +140,22 @@ describe('ActionsBar single-mode IS-Final K7 — annotate moved to dropdown', ()
     const dlBtn = getByTestId('action-download-gb');
     expect(dlBtn.disabled).toBe(true);
     expect(dlBtn.getAttribute('title')).toMatch(/скоро/);
+  });
+
+  // Игорь 28.04.2026 — «В библиотеку» не должна показываться когда плазмида
+  // открыта из библиотеки (catalog click).
+  it('libraryEnabled=false hides «В библиотеку» button (catalog item, no annotation yet)', () => {
+    const { queryByTestId } = render(
+      <ActionsBar mode="single" onAction={vi.fn()} count={1} hasParsedItem exportEnabled libraryEnabled={false} />
+    );
+    expect(queryByTestId('action-library')).toBeNull();
+  });
+
+  it('libraryEnabled=true (default) shows «В библиотеку» button', () => {
+    const { getByTestId } = render(
+      <ActionsBar mode="single" onAction={vi.fn()} count={1} hasParsedItem exportEnabled />
+    );
+    expect(getByTestId('action-library')).toBeTruthy();
   });
 });
 

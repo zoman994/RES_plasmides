@@ -163,6 +163,15 @@ export default function CatalogPanel({
   progress = null,
 }) {
   const parts = useStore((s) => s.parts);
+  // Игорь 28.04.2026 — «Этот {projectName}» group: shows fragments already
+  // on the active assembly canvas with a × button to remove them. Single
+  // function — visualise canvas content without leaving the modal.
+  const projectName = useStore((s) => s.projectName);
+  const canvasFragments = useStore((s) => {
+    const asm = s.assemblies.find((a) => a.id === s.activeId);
+    return asm?.fragments || [];
+  });
+  const removeFragment = useStore((s) => s.removeFragment);
   const [index, setIndex] = useState(_indexCache);
   const [activeNode, setActiveNode] = useState(null); // { kind: 'snapgene'|'mine'|'demo', value }
   const [items, setItems] = useState([]);
@@ -171,6 +180,7 @@ export default function CatalogPanel({
   const [query, setQuery] = useState('');
   const [searchLoading, setSearchLoading] = useState(false);
   const [flatItems, setFlatItems] = useState(_flatCache?.items || null);
+  const [openCanvas, setOpenCanvas] = useState(() => readGroupState('canvas', true));
   const [openLearn, setOpenLearn] = useState(() => readGroupState('learn', true));
   const [openMine, setOpenMine] = useState(() => readGroupState('mine', true));
   const [openSnap, setOpenSnap] = useState(() => readGroupState('snapgene', false));
@@ -189,6 +199,7 @@ export default function CatalogPanel({
     return () => { alive = false; };
   }, []);
 
+  useEffect(() => { writeGroupState('canvas', openCanvas); }, [openCanvas]);
   useEffect(() => { writeGroupState('learn', openLearn); }, [openLearn]);
   useEffect(() => { writeGroupState('mine', openMine); }, [openMine]);
   useEffect(() => { writeGroupState('snapgene', openSnap); }, [openSnap]);
@@ -399,6 +410,53 @@ export default function CatalogPanel({
 
         {!searchActive && !replaceMode && (
           <>
+            {/* «Этот {projectName}» — read-only view of fragments on the
+                active canvas, with × to remove. Игорь 28.04.2026 — единственная
+                функция: увидеть что уже добавлено, не выходя на канвас. */}
+            <GroupHeader
+              groupKey="canvas"
+              label={`Этот ${projectName || 'проект'}`}
+              count={canvasFragments.length}
+              open={openCanvas}
+              onToggle={() => setOpenCanvas((v) => !v)}
+            />
+            {openCanvas && (
+              <>
+                {canvasFragments.length === 0 && (
+                  <div className="px-3 py-1 text-[11px] text-gray-400 italic" data-testid="canvas-tab-empty">
+                    нет фрагментов
+                  </div>
+                )}
+                {canvasFragments.map((f, i) => (
+                  <div
+                    key={`${f.id || f.name}-${i}`}
+                    className="flex items-center gap-2 px-2 py-1 hover:bg-gray-50 group"
+                    data-testid={`canvas-tab-row-${i}`}
+                  >
+                    <PlasmidMiniMap
+                      length={f.length || f.sequence?.length || 0}
+                      topology={f.topology || 'linear'}
+                      annotations={f.annotations || []}
+                      size={32}
+                      mode="inline"
+                    />
+                    <span className="flex-1 min-w-0 text-xs text-gray-700 truncate" title={f.name}>
+                      {f.name}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removeFragment(i)}
+                      className="text-[11px] text-gray-300 hover:text-red-600 px-1"
+                      title="Убрать с канваса"
+                      aria-label={`Убрать ${f.name} с канваса`}
+                      data-testid={`canvas-tab-remove-${i}`}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </>
+            )}
             <GroupHeader
               groupKey="learn" label="Учебные / demo"
               open={openLearn} onToggle={() => setOpenLearn((v) => !v)}

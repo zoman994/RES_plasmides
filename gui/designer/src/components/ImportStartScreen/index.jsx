@@ -70,7 +70,10 @@ export default function ImportStartScreen({ open, onClose, presetFiles }) {
       for (let i = 0; i < files.length; i++) {
         const f = files[i];
         const data = await handleFileImport(f, { autoAnnotate: autoAnnotateOnImport });
-        results.push({ ...data, _fileName: f.name });
+        // _source='file' marks the parsedItem as «новая, не в библиотеке» so
+        // ActionsBar shows the «В библиотеку» button. Catalog clicks tag with
+        // 'catalog' (already in library), paste text with 'paste'.
+        results.push({ ...data, _fileName: f.name, _source: 'file' });
         if (files.length > 1) setPendingMultiParse({ current: i + 1, total: files.length });
       }
       // Append-to-existing semantic: in single mode, ask before replacing.
@@ -154,6 +157,7 @@ export default function ImportStartScreen({ open, onClose, presetFiles }) {
         topology: 'linear',
         annotations: [],
         _pasted: true,
+        _source: 'paste',
       }]);
       setTopology('linear');
       setOriginOffset(1);
@@ -173,7 +177,16 @@ export default function ImportStartScreen({ open, onClose, presetFiles }) {
       originOffset,
       { topology: 'circular' },
     );
-    setParsedItems([{ ...item, sequence, annotations, length: sequence.length, topology: 'circular' }]);
+    // Origin rotation = derivative → flip _annotatedInSession so «В библиотеку»
+    // surfaces (catalog item is no longer the same as the library entry).
+    setParsedItems([{
+      ...item,
+      sequence,
+      annotations,
+      length: sequence.length,
+      topology: 'circular',
+      _annotatedInSession: true,
+    }]);
     setOriginOffset(1);
   };
 
@@ -245,10 +258,12 @@ export default function ImportStartScreen({ open, onClose, presetFiles }) {
         // explicit «В библиотеку» button does that. Annotate just enriches
         // parsedItem.annotations so the inspector shows the new regions; the
         // library entry is created later if/when the user clicks library.
+        // _annotatedInSession=true makes the «В библиотеку» button reappear
+        // even for catalog items (annotated copy ≠ original library entry).
         const before = getRegions(parsedItems[0].annotations || []).length;
         const annotated = await annotateItem(parsedItems[0]);
         const after = getRegions(annotated.annotations || []).length;
-        setParsedItems([annotated]);
+        setParsedItems([{ ...annotated, _annotatedInSession: true }]);
         setLastActionStatus({ type: 'annotate', regionsBefore: before, regionsAfter: after });
       } else if (actionId === 'library-batch') {
         for (let i = 0; i < parsedItems.length; i++) {
@@ -258,7 +273,10 @@ export default function ImportStartScreen({ open, onClose, presetFiles }) {
           addPart(buildPartFromItem(next, i));
         }
         resetSession();
-      } else if (actionId === 'replace' || actionId === 'replace-all') {
+      } else if (actionId === 'replace-all') {
+        // Multi-mode «Заменить весь batch» (MultiInspector dropdown). The
+        // single-mode «Заменить файл» entry was dropped — duplicated catalog
+        // click + drop-zone redrop.
         resetSession();
       } else if (actionId === 'download-gb') {
         if (parsedItems.length !== 1) return;
@@ -319,6 +337,9 @@ export default function ImportStartScreen({ open, onClose, presetFiles }) {
       organism: it.organism || '',
       description: (it.description || '').replace(/<[^>]*>/g, '').trim(),
       _fileName: `${it.name}.dna`,
+      // 'catalog' = already in library (SnapGene catalog OR Моя библиотека).
+      // ActionsBar uses this to hide «В библиотеку» (no-op for these items).
+      _source: 'catalog',
     };
     if (multi) {
       // disabled in multi mode (catalog buttons themselves are still clickable

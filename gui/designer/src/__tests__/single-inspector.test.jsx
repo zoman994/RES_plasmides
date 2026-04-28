@@ -54,4 +54,48 @@ describe('SingleInspector', () => {
     fireEvent.click(getByTestId('action-library'));
     expect(onAction).toHaveBeenCalledWith('library');
   });
+
+  // Игорь 28.04.2026 — _source/_annotatedInSession determines visibility of
+  // the «В библиотеку» button.
+  it('catalog item (NOT yet annotated) hides «В библиотеку» button', () => {
+    const { queryByTestId } = render(
+      <SingleInspector {...baseProps} parsedItem={{ ...baseItem, _source: 'catalog' }} />
+    );
+    expect(queryByTestId('action-library')).toBeNull();
+  });
+
+  it('catalog item AFTER annotate (_annotatedInSession) shows «В библиотеку» again', () => {
+    const { getByTestId } = render(
+      <SingleInspector
+        {...baseProps}
+        parsedItem={{ ...baseItem, _source: 'catalog', _annotatedInSession: true }}
+      />
+    );
+    expect(getByTestId('action-library')).toBeTruthy();
+  });
+
+  it('catalog item with topology flipped from circular → linear shows «В библиотеку»', () => {
+    const { getByTestId } = render(
+      <SingleInspector
+        {...baseProps}
+        parsedItem={{ ...baseItem, _source: 'catalog' }}
+        topology="linear"
+      />
+    );
+    expect(getByTestId('action-library')).toBeTruthy();
+  });
+
+  it('paste-text item shows «В библиотеку» button (not in library yet)', () => {
+    const { getByTestId } = render(
+      <SingleInspector {...baseProps} parsedItem={{ ...baseItem, _source: 'paste' }} />
+    );
+    expect(getByTestId('action-library')).toBeTruthy();
+  });
+
+  it('file-import item shows «В библиотеку» button', () => {
+    const { getByTestId } = render(
+      <SingleInspector {...baseProps} parsedItem={{ ...baseItem, _source: 'file' }} />
+    );
+    expect(getByTestId('action-library')).toBeTruthy();
+  });
 });
