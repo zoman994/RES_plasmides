@@ -252,6 +252,22 @@ export default function CatalogPanel({
     return applyCatalogFilter(pool, query);
   }, [searchActive, query, items, flatItems, myFlat]);
 
+  // V44 replace-mode: when activeNode is set (no search), tree is hidden and
+  // category items take over the scroll area. Header label resolves per-kind.
+  const replaceMode = !searchActive && !!activeNode;
+  const replaceModeLabel = useMemo(() => {
+    if (!activeNode) return '';
+    if (activeNode.kind === 'demo') return 'Базовые плазмиды';
+    if (activeNode.kind === 'mine') {
+      return myGroups.find((g) => g.key === activeNode.value)?.label || activeNode.value;
+    }
+    if (activeNode.kind === 'snapgene') {
+      return index?.categories?.find((c) => c.slug === activeNode.value)?.name || activeNode.value;
+    }
+    return '';
+  }, [activeNode, myGroups, index]);
+  const replaceModeCount = loading ? '…' : items.length;
+
   // Drop-zone handlers (Ctrl+V handler moved here from InputZone in K3).
   const handlePickFiles = (e) => {
     const picked = Array.from(e.target.files || []);
@@ -318,7 +334,20 @@ export default function CatalogPanel({
           </div>
         )}
 
-        {!searchActive && (
+        {replaceMode && (
+          <button
+            type="button"
+            onClick={() => setActiveNode(null)}
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border-b border-emerald-100 transition"
+            data-testid="catalog-replace-mode-back"
+          >
+            <span aria-hidden>←</span>
+            <span className="flex-1 text-left truncate">Назад · {replaceModeLabel}</span>
+            <span className="text-[10px] text-emerald-600/80 font-mono">({replaceModeCount})</span>
+          </button>
+        )}
+
+        {!searchActive && !replaceMode && (
           <>
             <GroupHeader
               groupKey="learn" label="Учебные / demo"
