@@ -9,7 +9,6 @@ import { exportGenBank } from '../../exports';
 import CatalogPanel from './CatalogPanel';
 import SingleInspector from './SingleInspector';
 import MultiInspector from './MultiInspector';
-import { appendSessionEntry } from './session-log';
 
 export { InlineEditableTitle } from './InlineEditableTitle';
 
@@ -242,15 +241,14 @@ export default function ImportStartScreen({ open, onClose, presetFiles }) {
         setLastActionStatus({ type: 'library' });
       } else if (actionId === 'annotate') {
         if (parsedItems.length !== 1) return;
+        // Игорь 28.04.2026: annotate must NOT auto-add to library — only the
+        // explicit «В библиотеку» button does that. Annotate just enriches
+        // parsedItem.annotations so the inspector shows the new regions; the
+        // library entry is created later if/when the user clicks library.
         const before = getRegions(parsedItems[0].annotations || []).length;
         const annotated = await annotateItem(parsedItems[0]);
-        const part = buildPartFromItem(annotated, 0);
-        addPart(part);
         const after = getRegions(annotated.annotations || []).length;
-        const regionsAdded = Math.max(0, after - before);
         setParsedItems([annotated]);
-        const miniMapData = { length: part.length, topology: part.topology, annotations: part.annotations };
-        setAddedItems((prev) => appendSessionEntry(prev, { name: part.name, action: 'annotate', miniMapData, regionsAdded }));
         setLastActionStatus({ type: 'annotate', regionsBefore: before, regionsAfter: after });
       } else if (actionId === 'library-batch') {
         for (let i = 0; i < parsedItems.length; i++) {
@@ -412,7 +410,6 @@ export default function ImportStartScreen({ open, onClose, presetFiles }) {
                 lastActionStatus={lastActionStatus}
                 addedItems={addedItems}
                 onAction={handleAction}
-                onReplaceFile={resetSession}
                 onOpenCanvas={handleClose}
                 exportEnabled
                 hasParsedItem={!!parsedItems[0]?.sequence}

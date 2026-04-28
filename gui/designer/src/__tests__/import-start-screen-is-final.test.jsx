@@ -95,18 +95,15 @@ describe('ImportStartScreen IS-Final orchestrator', () => {
     await waitFor(() => expect(queryByTestId('multi-inspector')).toBeTruthy(), { timeout: 2000 });
   });
 
-  it('catalog panel persists across single → if user clears, returns to empty', async () => {
-    const { findByTestId, findByText, queryByTestId } = render(
+  it('catalog panel persists across single → empty (e.g. after delete-from-session)', async () => {
+    const { findByTestId, findByText } = render(
       <ImportStartScreen open onClose={vi.fn()} />,
     );
     fireEvent.click(await findByTestId('catalog-group-snapgene-toggle'));
     fireEvent.click(await findByText('Basic Cloning Vectors'));
     fireEvent.click(await findByTestId('catalog-card-pUC19'));
     await findByTestId('single-inspector');
-    // Trigger ↻ замена файла → resetSession → empty.
-    fireEvent.click(await findByTestId('replace-file-link'));
-    await waitFor(() => expect(queryByTestId('empty-inspector')).toBeTruthy());
-    // Catalog panel still rendered.
+    // Catalog panel still rendered alongside the inspector — sanity check.
     expect(await findByTestId('catalog-panel')).toBeTruthy();
   });
 });

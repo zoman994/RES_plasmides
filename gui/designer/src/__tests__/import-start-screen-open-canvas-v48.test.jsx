@@ -3,9 +3,10 @@
  *
  * Bug pre-fix: SingleInspector wired SessionSummary's onOpenCanvas to
  * `onCloseSession` (= resetSession), which only cleared inputs but kept
- * the modal open. Fix: SingleInspector receives separate props
- *   - onReplaceFile (= resetSession) → for ↻ замена файла button
- *   - onOpenCanvas  (= handleClose)   → for SessionSummary's «Открыть холст →»
+ * the modal open. Fix: SingleInspector's `onOpenCanvas` (= handleClose)
+ * now closes the modal on click. The legacy ↻ замена файла button (for
+ * `onReplaceFile`) was dropped in a follow-up — biolog flagged it as a
+ * duplicate of clicking another catalog plasmid.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, fireEvent, waitFor } from '@testing-library/react';
@@ -32,7 +33,7 @@ function makeFetchMock() {
   });
 }
 
-describe('V48 — Открыть холст closes modal, ↻ замена файла does not', () => {
+describe('V48 — Открыть холст closes modal', () => {
   let origFetch;
   let origConfirm;
   beforeEach(() => {
@@ -72,11 +73,8 @@ describe('V48 — Открыть холст closes modal, ↻ замена фа�
     await waitFor(() => expect(r.onClose).toHaveBeenCalledTimes(1));
   });
 
-  it('clicking «↻ замена файла» does NOT fire onClose; resets to empty inspector', async () => {
+  it('replace-file-link button is gone (duplicated catalog click — Игорь 28.04.2026)', async () => {
     const r = await loadSinglePlasmidAndAddToCanvas();
-    fireEvent.click(r.getByTestId('replace-file-link'));
-    // empty inspector renders, modal stays open
-    await waitFor(() => expect(r.queryByTestId('empty-inspector')).toBeTruthy());
-    expect(r.onClose).not.toHaveBeenCalled();
+    expect(r.queryByTestId('replace-file-link')).toBeNull();
   });
 });

@@ -108,7 +108,6 @@ describe('FIX-2 follow-up — SingleInspector mini-map (full-width row, overlay-
     lastActionStatus: null,
     addedItems: [],
     onAction: () => {},
-    onReplaceFile: () => {},
     onOpenCanvas: () => {},
     exportEnabled: true,
     hasParsedItem: true,

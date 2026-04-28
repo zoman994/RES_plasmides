@@ -44,7 +44,6 @@ export default function SingleInspector({
   lastActionStatus,
   addedItems,
   onAction,
-  onReplaceFile,
   onOpenCanvas,
   exportEnabled,
   hasParsedItem,
@@ -69,32 +68,23 @@ export default function SingleInspector({
 
   return (
     <div className="flex flex-col h-full" data-testid="single-inspector">
-      {/* title row */}
-      <div className="px-4 py-3 border-b border-gray-200 bg-white flex items-center gap-3" data-testid="single-title-row">
-        <div className="flex-1 min-w-0">
-          <InlineEditableTitle
-            value={name}
-            onCommit={(next) => onNameChange?.(next)}
-            placeholder="(без имени)"
-          />
-          <div className="text-xs text-gray-600 mt-0.5">
-            {length.toLocaleString()} п.н. · {topology}
-            {regionCount > 0 && <> · {regionCount} регионов</>}
-          </div>
-          {removedSummary && (
-            <div className="text-[10px] italic text-gray-400" data-testid="single-sanitize-summary">
-              убрано: {removedSummary}
-            </div>
-          )}
+      {/* title row — Игорь 28.04.2026: «↻ замена файла» удалена,
+          дублировала простой клик по новой плазмиде в каталоге. */}
+      <div className="px-4 py-3 border-b border-gray-200 bg-white" data-testid="single-title-row">
+        <InlineEditableTitle
+          value={name}
+          onCommit={(next) => onNameChange?.(next)}
+          placeholder="(без имени)"
+        />
+        <div className="text-xs text-gray-600 mt-0.5">
+          {length.toLocaleString()} п.н. · {topology}
+          {regionCount > 0 && <> · {regionCount} регионов</>}
         </div>
-        <button
-          type="button"
-          onClick={onReplaceFile}
-          className="self-start text-[11px] text-gray-400 hover:text-emerald-700 underline-offset-2 hover:underline cursor-pointer"
-          data-testid="replace-file-link"
-        >
-          ↻ замена файла
-        </button>
+        {removedSummary && (
+          <div className="text-[10px] italic text-gray-400" data-testid="single-sanitize-summary">
+            убрано: {removedSummary}
+          </div>
+        )}
       </div>
 
       {/* main body */}
