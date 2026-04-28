@@ -5,16 +5,17 @@
  * Complex handlers extracted to custom hooks (src/hooks/).
  * This file is pure layout + wiring (~430 lines).
  */
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 
 // ═══ Store ═══
-import { useStore, useFragments, useJunctions, usePrimers, useCustomPrimers, undo, redo, pushUndo, useCanUndo, useCanRedo } from './store/index';
+import { useStore, useFragments, useJunctions, usePrimers, useCustomPrimers, undo, redo, useCanUndo, useCanRedo } from './store/index';
 
 // ═══ Hooks (extracted handlers) ═══
 import { useGeneratePrimers } from './hooks/useGeneratePrimers';
 import { useFragmentHandlers } from './hooks/useFragmentHandlers';
+import { useAppEffects } from './hooks/useAppEffects';
 import { resetJunctionForType } from './lib/junction-utils';
 
 // ═══ Components ═══
@@ -31,35 +32,21 @@ import ExperimentStats from './components/ExperimentStats';
 import ActionBar from './components/ActionBar';
 import ModalStack from './components/ModalStack';
 import ProjectFlowCanvas from './components/flow/ProjectFlowCanvas';
-import { designPrimersLocal } from './local-primer-design';
 import SubFragmentBar from './components/SubFragmentBar';
 
 // ═══ Utilities ═══
-import { fetchParts } from './api';
 import { validateConstruct, checkPrimerQuality, pcrProductSize } from './validate';
 import { t } from './i18n';
-import { GG_ENZYMES } from './golden-gate';
 import { estimateEfficiency } from './assembly-utils';
 
 export default function App() {
 
+  // ═══ Top-level side effects (keydown shortcuts, fetchParts, auto-design primers) ═══
+  useAppEffects();
+
   // ═══ Undo/Redo ═══
   const canUndo = useCanUndo();
   const canRedo = useCanRedo();
-
-  useEffect(() => {
-    const handler = (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
-      if ((e.ctrlKey || e.metaKey) && (e.key === 'Z' || e.key === 'y')) { e.preventDefault(); redo(); }
-      if ((e.ctrlKey || e.metaKey) && e.key === '5') {
-        e.preventDefault();
-        const v = useStore.getState().projectView;
-        useStore.getState().setProjectView(v === 'construct' ? 'flow' : 'construct');
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, []);
 
   // ═══ Store selectors ═══
   const fragments     = useFragments();
@@ -178,62 +165,6 @@ export default function App() {
   const efficiency = fragments.length >= 2
     ? estimateEfficiency(effectiveFinalParts, assemblyType === 'golden_gate' ? 'golden_gate' : 'overlap')
     : null;
-
-  // ═══ Load parts on mount (merge API parts with persisted user variants) ═══
-  useEffect(() => {
-    const mergeParts = (apiParts) => {
-      const currentParts = useStore.getState().parts;
-      if (!apiParts.length) return; // don't wipe on empty
-      const existingIds = new Set(currentParts.map(p => p.id));
-      const existingNames = new Set(currentParts.map(p => p.name));
-      const newOnly = apiParts.filter(p => !existingIds.has(p.id) && !existingNames.has(p.name));
-      if (newOnly.length > 0) {
-        useStore.getState().setParts([...currentParts, ...newOnly]);
-      }
-    };
-    fetchParts().then(mergeParts).catch(() => {}); // on error — keep existing parts
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ═══ Auto-design primers (client-side, no API) ═══
-  const autoDesigned = useMemo(() => {
-    if (fragments.length < 2) return null;
-    if (fragments.some(f => f.needsAmplification !== false && !f.sequence)) return null;
-    return designPrimersLocal(fragments, junctions, circular, { tmTarget: 60, primerPrefix, polymerase });
-  }, [fragments, junctions, circular, primerPrefix, polymerase]);
-
-  useEffect(() => {
-    if (autoDesigned && autoDesigned.primers.length > 0) {
-      // V4-A guard: if the active assembly already carries mutagenesis primers,
-      // do NOT overwrite them with standard overlap-auto-designed ones — keep
-      // the KLD/fragment-strategy primers and only refresh warnings/calculated.
-      const active = getActive();
-      const hasMutPrimers = active?.primers?.some(p => p.isMutagenesis);
-      if (hasMutPrimers) {
-        updateActive({
-          apiWarnings: autoDesigned.warnings,
-          calculated: true,
-        });
-      } else {
-        updateActive({
-          primers: autoDesigned.primers,
-          apiWarnings: autoDesigned.warnings,
-          calculated: true,
-        });
-      }
-    } else if (autoDesigned !== undefined) {
-      // P1v2 fix: clear stale primers when auto-design returns null/empty (e.g. 1 fragment)
-      const active = getActive();
-      if (active?.primers?.length > 0 && !active.primers.some(p => p.isMutagenesis)) {
-        updateActive({
-          primers: [],
-          apiWarnings: autoDesigned?.warnings || (fragments.length === 1
-            ? ['ℹ️ Один фрагмент — праймеры не нужны. Добавьте второй фрагмент для сборки.']
-            : []),
-          calculated: false,
-        });
-      }
-    }
-  }, [autoDesigned]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ═══ Render ═══
   return (
