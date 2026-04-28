@@ -352,8 +352,10 @@ export default function PlasmidMiniMap({
   const cursorClass = overlayEnabled ? 'cursor-zoom-in' : '';
 
   // 180 px overlay (matches inner PlasmidMiniMap size). After F4 viewBox
-  // expansion may grow the inner SVG up to ~280 px, so we leave headroom in
-  // the viewport-clamp box.
+  // expansion the SVG can grow up to ~280 px, so this is the worst-case
+  // budget for clamping the overlay center against the viewport edges.
+  // Actual overlay box is sized to content (`w-fit` style) — translate(-50%)
+  // re-centres it on the source tile regardless of real dimensions.
   const OVERLAY_BOX = 280;
   const cancelClose = () => {
     if (closeTimer.current) {
@@ -386,17 +388,16 @@ export default function PlasmidMiniMap({
     let top = 0;
     if (el) {
       const rect = el.getBoundingClientRect();
-      // Centre the overlay on the source tile, then clamp to viewport.
-      left = rect.left + rect.width / 2 - OVERLAY_BOX / 2;
-      top = rect.top + rect.height / 2 - OVERLAY_BOX / 2;
-      if (left < 8) left = 8;
-      if (left + OVERLAY_BOX > window.innerWidth - 8) {
-        left = window.innerWidth - OVERLAY_BOX - 8;
-      }
-      if (top < 8) top = 8;
-      if (top + OVERLAY_BOX > window.innerHeight - 8) {
-        top = window.innerHeight - OVERLAY_BOX - 8;
-      }
+      // overlayPos stores the overlay CENTER. CSS `translate(-50%, -50%)` on
+      // the portal then offsets by half its real dimensions, so the overlay
+      // visually centres on the source tile regardless of how wide labels
+      // grew. Clamp the centre point against the viewport using OVERLAY_BOX
+      // as worst-case half-budget.
+      const halfBox = OVERLAY_BOX / 2;
+      left = rect.left + rect.width / 2;
+      top = rect.top + rect.height / 2;
+      left = Math.max(8 + halfBox, Math.min(window.innerWidth - 8 - halfBox, left));
+      top = Math.max(8 + halfBox, Math.min(window.innerHeight - 8 - halfBox, top));
     }
     setOverlayPos({ left, top });
     if (!overlayMounted) {
@@ -484,7 +485,10 @@ export default function PlasmidMiniMap({
       {/* F4 grow-overlay portal — white card (bg/border/shadow), CSS transform
           animation, sits above catalog content via z-index 100. K2 (FIX-2):
           biolog asked for the white-bg card back; перекрытие соседних карточек
-          приемлемо по требованию. */}
+          приемлемо по требованию. FIX-2 follow-up: dropped fixed
+          width/height — container shrinks to the inner mini-map (which itself
+          grows with leader-labels) + `p-3` padding, so the rectangle hugs
+          plasmid + labels with a small inset, не разъезжается до OVERLAY_BOX. */}
       {overlayMounted && typeof document !== 'undefined' && createPortal(
         <span
           className="bg-white shadow-lg border border-gray-200 rounded p-3"
@@ -492,18 +496,19 @@ export default function PlasmidMiniMap({
             position: 'fixed',
             left: overlayPos.left,
             top: overlayPos.top,
-            width: OVERLAY_BOX,
-            height: OVERLAY_BOX,
-            display: 'flex',
+            display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
             zIndex: 100,
             pointerEvents: 'auto',
-            transform: overlayActive ? 'scale(1)' : 'scale(0.5)',
+            transform: overlayActive
+              ? 'translate(-50%, -50%) scale(1)'
+              : 'translate(-50%, -50%) scale(0.5)',
             opacity: overlayActive ? 1 : 0,
             transition: `transform ${GROW_DURATION_MS}ms ease-out, opacity ${GROW_DURATION_MS}ms ease-out`,
             transformOrigin: 'center center',
             boxSizing: 'border-box',
+            lineHeight: 0,
           }}
           data-testid="plasmid-mini-map-overlay"
           onMouseEnter={cancelClose}

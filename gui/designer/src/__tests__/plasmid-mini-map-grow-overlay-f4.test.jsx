@@ -63,7 +63,9 @@ describe('F4 grow-overlay portal', () => {
     // Wait for the rAF that sets overlayActive=true.
     await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(res)));
     const overlay = baseElement.querySelector('[data-testid="plasmid-mini-map-overlay"]');
-    expect(overlay.style.transform).toBe('scale(1)');
+    // FIX-2 follow-up: container is `w-fit` (no fixed dimensions) — overlay is
+    // centred on the source tile via `translate(-50%, -50%)`, then scaled.
+    expect(overlay.style.transform).toBe('translate(-50%, -50%) scale(1)');
     expect(overlay.style.opacity).toBe('1');
     expect(overlay.style.transition).toMatch(/transform 200ms/);
     expect(overlay.style.transition).toMatch(/opacity 200ms/);
