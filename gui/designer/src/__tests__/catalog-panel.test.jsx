@@ -226,4 +226,58 @@ describe('CatalogPanel — render + interactions', () => {
     expect(onSelect).toHaveBeenCalledTimes(1);
     expect(onSelect.mock.calls[0][0].name).toBe('pUC19');
   });
+
+  // FIX-2 follow-up (28.04.2026): paste-textarea coexists with drop-pad +
+  // keyboard Ctrl+V. Игорь: «текстовое окно для вставки текста, дроппад не
+  // убирай чтобы Ctrl+V работал нормально».
+  it('paste-textarea + «Загрузить» button commits trimmed text via onPasteText', async () => {
+    const onPasteText = vi.fn();
+    const { findByTestId } = render(
+      <CatalogPanel onSelectItem={vi.fn()} onFiles={vi.fn()} onPasteText={onPasteText} />
+    );
+    const ta = await findByTestId('catalog-paste-textarea');
+    const submit = await findByTestId('catalog-paste-submit');
+    expect(submit.disabled).toBe(true);
+    fireEvent.change(ta, { target: { value: '  ATGCATGC\n  ' } });
+    expect(submit.disabled).toBe(false);
+    fireEvent.click(submit);
+    expect(onPasteText).toHaveBeenCalledWith('ATGCATGC');
+    // textarea cleared after submit
+    expect(ta.value).toBe('');
+  });
+
+  it('Ctrl+Enter inside textarea commits text (keyboard shortcut path)', async () => {
+    const onPasteText = vi.fn();
+    const { findByTestId } = render(
+      <CatalogPanel onSelectItem={vi.fn()} onFiles={vi.fn()} onPasteText={onPasteText} />
+    );
+    const ta = await findByTestId('catalog-paste-textarea');
+    fireEvent.change(ta, { target: { value: 'GATTACA' } });
+    fireEvent.keyDown(ta, { key: 'Enter', ctrlKey: true });
+    expect(onPasteText).toHaveBeenCalledWith('GATTACA');
+  });
+
+  it('paste INTO textarea does not bubble up to drop-zone Ctrl+V handler (textarea owns the paste)', async () => {
+    const onPasteText = vi.fn();
+    const { findByTestId } = render(
+      <CatalogPanel onSelectItem={vi.fn()} onFiles={vi.fn()} onPasteText={onPasteText} />
+    );
+    const ta = await findByTestId('catalog-paste-textarea');
+    const long = 'A'.repeat(80);
+    // fireEvent.paste bubbles by default; the textarea must stopPropagation
+    // so the parent dropzone's onPaste does not fire.
+    fireEvent.paste(ta, { clipboardData: { getData: () => long } });
+    expect(onPasteText).not.toHaveBeenCalled();
+  });
+
+  it('drop-zone Ctrl+V on the OUTER area still calls onPasteText (existing contract preserved)', async () => {
+    const onPasteText = vi.fn();
+    const { findByTestId } = render(
+      <CatalogPanel onSelectItem={vi.fn()} onFiles={vi.fn()} onPasteText={onPasteText} />
+    );
+    const dz = await findByTestId('catalog-dropzone');
+    const long = 'A'.repeat(80);
+    fireEvent.paste(dz, { clipboardData: { getData: () => long } });
+    expect(onPasteText).toHaveBeenCalledWith(long);
+  });
 });

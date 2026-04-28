@@ -12,14 +12,18 @@ import { getRegions } from '../../annotation-model';
  *   [▾ Моя библиотека]
  *   [▸ Каталог SnapGene]   (collapsed by default)
  *   ─────────────────
- *   [drop-zone footer 120 px]
+ *   [drop-zone footer (auto-height): file picker / drag-drop + paste-textarea]
  *
  * Cross-category search: on the first keystroke we Promise.all all
  * `index.categories[].slug` JSONs into a flat cache, then filter by
  * name / description / length-pattern (>5kb / <2k / 2k-3k).
  *
- * Drop-zone footer hosts the file picker (V36) + drag-drop + Ctrl+V (≥ 50 chars)
- * + batch-parse progress overlay.
+ * Drop-zone footer hosts file picker (V36) + drag-drop + Ctrl+V на пустой
+ * области (≥50 chars) + a 2-row paste-textarea с кнопкой «Загрузить»
+ * (Игорь 28.04.2026, follow-up FIX-2). Parent div's onPaste фиксирует
+ * keyboard Ctrl+V; textarea вызывает stopPropagation на собственный paste
+ * чтобы её содержимое было видно перед коммитом. Plus batch-parse progress
+ * overlay.
  */
 
 // F5' (Sprint Catalog Polish FIX 28.04.2026): fold catalog SnapGene plasmids
@@ -175,6 +179,7 @@ export default function CatalogPanel({
   // Static index counts are pre-filter — we need real numbers to skip categories
   // that fully fall under the threshold (e.g. coronavirus_resources: 4 → 0).
   const [filteredCounts, setFilteredCounts] = useState(null);
+  const [pasteText, setPasteText] = useState('');
   const fileInputRef = useRef(null);
   const dropzoneRef = useRef(null);
 
@@ -337,6 +342,12 @@ export default function CatalogPanel({
       e.preventDefault();
       onPasteText(text);
     }
+  };
+  const submitPasteText = () => {
+    const text = pasteText.trim();
+    if (!text || typeof onPasteText !== 'function') return;
+    onPasteText(text);
+    setPasteText('');
   };
 
   const dzBorder = isOver
@@ -505,10 +516,16 @@ export default function CatalogPanel({
         )}
       </div>
 
-      {/* drop-zone footer (fixed 120 px) */}
+      {/* drop-zone footer — split: (top) file picker + drag-drop, (bottom)
+          paste-textarea + «Загрузить» button. Игорь 28.04.2026: «Добавь
+          текстовое окно для вставки текста, дроппад не убирай чтобы Ctrl+V
+          работал нормально». Parent div keeps onPaste so Ctrl+V на пустой
+          части drop-zone (или вне textarea) даёт прежний behaviour; textarea
+          сама перехватывает paste через stopPropagation, чтобы её содержимое
+          можно было увидеть/отредактировать перед коммитом. */}
       <div
         ref={dropzoneRef}
-        className={`relative shrink-0 h-[120px] border-t-2 border-dashed transition-colors ${dzBorder}`}
+        className={`relative shrink-0 border-t-2 border-dashed transition-colors ${dzBorder}`}
         onDragEnter={handleDragEnter}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
@@ -519,15 +536,14 @@ export default function CatalogPanel({
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
-          className="absolute inset-0 flex flex-col items-center justify-center gap-0.5 p-2 text-center text-gray-600 cursor-pointer outline-none"
+          className="w-full flex flex-col items-center justify-center gap-0.5 px-2 pt-2 pb-1 text-center text-gray-600 cursor-pointer outline-none hover:bg-black/[0.02]"
           aria-label="Выберите файл или перетащите сюда"
           data-testid="catalog-dropzone-clickable"
         >
-          <div className="text-2xl opacity-40 leading-none">⬇</div>
+          <div className="text-xl opacity-40 leading-none">⬇</div>
           <div className="text-[11px] font-medium text-gray-700">Перетащите или выберите файл</div>
-          <div className="text-[10px] text-gray-400">.dna · .gb · .gbk · .fasta</div>
           <div className="text-[10px] text-gray-400">
-            или Ctrl+V <span className="px-1 py-0.5 rounded bg-gray-100 border border-gray-200 font-mono">текст</span>
+            .dna · .gb · .gbk · .fasta · или Ctrl+V <span className="px-1 py-0.5 rounded bg-gray-100 border border-gray-200 font-mono">текст</span>
           </div>
         </button>
         <input
@@ -539,6 +555,34 @@ export default function CatalogPanel({
           onChange={handlePickFiles}
           data-testid="catalog-file-picker"
         />
+        <div className="px-2 pb-2 pt-1 flex items-stretch gap-1.5">
+          <textarea
+            value={pasteText}
+            onChange={(e) => setPasteText(e.target.value)}
+            onPaste={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                submitPasteText();
+              }
+            }}
+            placeholder="или вставьте/наберите последовательность…"
+            rows={2}
+            className="flex-1 min-w-0 text-[11px] font-mono px-2 py-1 border border-gray-200 rounded resize-none bg-white outline-none focus:border-emerald-600"
+            data-testid="catalog-paste-textarea"
+            spellCheck={false}
+          />
+          <button
+            type="button"
+            onClick={submitPasteText}
+            disabled={!pasteText.trim()}
+            className="shrink-0 text-[11px] px-2 rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed"
+            data-testid="catalog-paste-submit"
+            title="Загрузить текст (Ctrl+Enter)"
+          >
+            Загрузить
+          </button>
+        </div>
         {progress && progress.total > 1 && (
           <div
             className="absolute inset-0 bg-white/90 flex flex-col items-center justify-center px-3"
