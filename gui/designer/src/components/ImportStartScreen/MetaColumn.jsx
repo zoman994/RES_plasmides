@@ -78,7 +78,7 @@ export default function MetaColumn({
         </div>
       </div>
 
-      {/* origin offset (circular only) */}
+      {/* origin offset (circular only) — V47 vertical stack: input row + button row */}
       {isCircular && (
         <div className="bg-white border border-gray-200 rounded px-3 py-2 space-y-1.5">
           <div className="flex items-center gap-2">
@@ -92,16 +92,16 @@ export default function MetaColumn({
               className="w-20 text-xs px-2 py-1 border border-gray-200 rounded text-right font-mono"
               data-testid="origin-offset-input"
             />
-            <button
-              type="button"
-              onClick={onApplyOrigin}
-              disabled={!originOffset || originOffset === 1}
-              className="text-[11px] px-2 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed"
-              title="Применить ротацию"
-            >
-              ↻ применить
-            </button>
           </div>
+          <button
+            type="button"
+            onClick={onApplyOrigin}
+            disabled={!originOffset || originOffset === 1}
+            className="w-full text-[11px] px-2 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed"
+            title="Применить ротацию"
+          >
+            ↻ применить
+          </button>
           {originHints && (
             <div className="text-[10px] text-gray-400 italic leading-snug">
               межгенные участки: {originHints}
