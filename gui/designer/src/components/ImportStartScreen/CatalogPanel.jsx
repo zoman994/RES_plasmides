@@ -188,12 +188,14 @@ export default function CatalogPanel({
   useEffect(() => { writeGroupState('mine', openMine); }, [openMine]);
   useEffect(() => { writeGroupState('snapgene', openSnap); }, [openSnap]);
 
-  // F5' eager prefetch: as soon as index is available, load every category in
-  // the background to derive post-filter counts. Same `_flatCache` is reused
-  // by search and by replace-mode card lists, so this is not extra fetching —
-  // it just moves the work off the first-keystroke path.
+  // F5' lazy prefetch: as soon as the user EXPANDS the SnapGene tree, load
+  // every category in the background to derive post-filter counts. We don't
+  // prefetch on mount because (a) catalog isn't visible to most users on
+  // first launch, (b) gating cleanly avoids cross-test bleed where pending
+  // async prefetches from prior tests resolve after caches were reset.
   useEffect(() => {
     if (!index) return;
+    if (!openSnap) return;
     let alive = true;
     prefetchAllCategories(index)
       .then((c) => {
@@ -207,7 +209,7 @@ export default function CatalogPanel({
       })
       .catch(() => { /* catalog stays usable without prefetch — handleSelectNode still fetches per-category */ });
     return () => { alive = false; };
-  }, [index]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [index, openSnap]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Cross-category prefetch: fired by first non-empty keystroke if cache empty.
   useEffect(() => {

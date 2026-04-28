@@ -20,6 +20,7 @@ import { createProjectFlowSlice } from './projectFlowSlice';
 import { migratePartAnnotations } from '../migrate-annotations';
 import { autoAnnotate } from '../auto-annotate';
 import { sanitizeSequence } from '../sequence-utils';
+import { migratePartsAnnotationLevel, PARTS_SCHEMA_VERSION } from './parts-migration';
 
 const LS_KEY = 'pvcs_designer_state';
 
@@ -164,6 +165,7 @@ const persistConfig = {
     parts: state.parts,
     flowNodes: state.flowNodes, flowEdges: state.flowEdges,
     projectView: state.projectView,
+    partsSchemaVersion: state.partsSchemaVersion,
   }),
   migrate: (persisted, version) => {
     if (version < 3 && persisted && !persisted.projects) {
@@ -230,6 +232,17 @@ const persistConfig = {
     // Use useStore.setState() via queueMicrotask after store is ready.
     if (!error && state) {
       queueMicrotask(() => {
+        const s0 = useStore.getState();
+        // F3 (Sprint Catalog Polish FIX): backfill `level: 'region'` on legacy
+        // `mine` parts whose annotations were stored before the level hierarchy
+        // became the canonical shape. Idempotent via `partsSchemaVersion`.
+        const m = migratePartsAnnotationLevel(s0.parts, s0.partsSchemaVersion);
+        if (m.changed) {
+          useStore.setState({ parts: m.parts, partsSchemaVersion: m.schemaVersion });
+        } else if ((s0.partsSchemaVersion || 0) < PARTS_SCHEMA_VERSION) {
+          useStore.setState({ partsSchemaVersion: m.schemaVersion });
+        }
+        // Re-read state so BUG-73 sees F3's migrated parts (avoids overwriting).
         const s = useStore.getState();
         // BUG-73: re-annotate parts with empty/missing annotations
         if (s.parts?.length > 0) {
