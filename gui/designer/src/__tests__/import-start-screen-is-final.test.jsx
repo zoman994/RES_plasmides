@@ -65,7 +65,9 @@ describe('ImportStartScreen IS-Final orchestrator', () => {
     expect(queryByTestId('empty-inspector')).toBeNull();
   });
 
-  it('catalog click on single → window.confirm called with «Заменить текущий файл?»', async () => {
+  it('catalog click on single → switches inspector silently (F2: confirm removed)', async () => {
+    // Sprint Catalog Polish FIX F2: Игорь 28.04.2026 — «хочу чтобы просто
+    // переключалось». Catalog click on a 2nd item must NOT fire window.confirm.
     window.confirm = vi.fn(() => false);
     const { findByTestId, findByText } = render(
       <ImportStartScreen open onClose={vi.fn()} />,
@@ -74,9 +76,8 @@ describe('ImportStartScreen IS-Final orchestrator', () => {
     fireEvent.click(await findByText('Basic Cloning Vectors'));
     fireEvent.click(await findByTestId('catalog-card-pUC19'));
     await findByTestId('single-inspector');
-    // Now click another card (same one twice for simplicity) → confirm should be called.
     fireEvent.click(await findByTestId('catalog-card-pUC19'));
-    expect(window.confirm).toHaveBeenCalledWith(expect.stringMatching(/Заменить текущий файл/));
+    expect(window.confirm).not.toHaveBeenCalled();
   });
 
   it('drag-drop one file → single inspector; drag-drop two files → multi inspector', async () => {

@@ -98,11 +98,14 @@ describe('V43 — На канвас always-append (no confirm)', () => {
     expect(window.confirm).not.toHaveBeenCalled();
   });
 
-  it('catalog click on single mode still triggers window.confirm («Заменить текущий файл?») — V43 fix is scoped to canvas-action only', async () => {
+  it('catalog click on single now switches silently (F2 in Sprint Catalog Polish FIX removed the confirm)', async () => {
+    // V43 narrow contract: «На канвас» append-only, no confirm. Sprint Catalog
+    // Polish FIX F2 also dropped the catalog-click confirm — Игорь
+    // 28.04.2026 «хочу чтобы просто переключалось». This test now asserts the
+    // post-F2 behaviour for the canvas-action regression suite.
     window.confirm = vi.fn(() => false);
     const r = await loadSinglePlasmid();
-    // Click another (same) catalog card → confirm fires.
     fireEvent.click(await r.findByTestId('catalog-card-pUC19'));
-    expect(window.confirm).toHaveBeenCalledWith(expect.stringMatching(/Заменить текущий файл/));
+    expect(window.confirm).not.toHaveBeenCalled();
   });
 });

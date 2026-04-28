@@ -334,10 +334,9 @@ export default function ImportStartScreen({ open, onClose, presetFiles }) {
       setPendingMultiAnnotate(new Set());
       return;
     }
-    if (single) {
-      // eslint-disable-next-line no-alert
-      if (typeof window !== 'undefined' && !window.confirm('Заменить текущий файл?')) return;
-    }
+    // F2 (Sprint Catalog Polish FIX): catalog click on single → switch silently.
+    // Игорь 28.04.2026: «Хочу чтобы просто переключалось». Drag-drop file
+    // confirm (line ~81) and multi → batch confirm (line ~329) are unchanged.
     setParsedItems([item]);
     setTopology(item.topology);
     setName(item.name);
