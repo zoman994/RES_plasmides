@@ -409,11 +409,21 @@ export default function PlasmidMiniMap({
     }
   };
 
+  // Inline-mode tile sits in a fixed-size grid cell (catalog cards, multi
+  // rows) — wrapper width must equal `size` so the surrounding layout doesn't
+  // shift after annotations load. Overlay mode (SingleInspector full-width
+  // row, F4 hover portal) lets the wrapper grow with `vbox.drawW/drawH` so
+  // the parent container (`bg-amber-…`) tightly wraps the SVG + leader-labels
+  // — without this, the SVG visually pokes outside its wrapper and parents
+  // either look too small or stretch to fill cross-axis.
+  const wrapperWidth = isOverlay ? vbox.drawW : size;
+  const wrapperHeight = isOverlay ? vbox.drawH : size;
+
   return (
     <span
       ref={wrapperRef}
       className={`relative inline-block ${cursorClass}`}
-      style={{ width: size, height: size, lineHeight: 0 }}
+      style={{ width: wrapperWidth, height: wrapperHeight, lineHeight: 0 }}
       data-testid="plasmid-mini-map"
       onMouseEnter={overlayEnabled ? openOverlay : undefined}
       onMouseLeave={overlayEnabled ? scheduleClose : undefined}

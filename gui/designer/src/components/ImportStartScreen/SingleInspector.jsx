@@ -103,12 +103,12 @@ export default function SingleInspector({
           addedItems={addedItems}
           onOpenCanvas={onOpenCanvas}
         />
-        {/* Full-width mini-map block. Overlay mode renders leader-labels;
-            disableHoverOverlay keeps the right column fully static. The
-            outer container is wide enough that 1A viewBox expansion can
-            grow without escaping the modal. */}
+        {/* Mini-map block — shrink-to-fit so the container hugs the SVG +
+            leader-labels (after 1A viewBox expansion) without stretching to
+            the full pane width. `w-fit + mx-auto` centres the tight container
+            in the available space. */}
         <div
-          className="bg-amber-50/40 border border-gray-200 rounded p-3 flex items-center justify-center"
+          className="bg-amber-50/40 border border-gray-200 rounded p-3 flex items-center justify-center w-fit mx-auto"
           data-testid="single-mini-map-row"
         >
           <PlasmidMiniMap
