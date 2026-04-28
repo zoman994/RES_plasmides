@@ -21,7 +21,7 @@ describe('V46 region length boundary (300 bp)', () => {
       { id: 'b', start: 400, end: 699, level: 'region', type: 'CDS', name: 'just_299' },
     ];
     const { container } = render(
-      <PlasmidMiniMap length={2000} topology="circular" annotations={annots} size={180} />,
+      <PlasmidMiniMap length={2000} topology="circular" annotations={annots} size={180} mode="overlay" />,
     );
     const labels = [...container.querySelectorAll('svg text')].map((t) => t.textContent);
     expect(labels).toContain('just_300');
@@ -36,7 +36,7 @@ describe('V46 type=source blacklist', () => {
       { id: 'a', start: 100, end: 600, level: 'region', type: 'CDS', name: 'lacZ' },
     ];
     const { container } = render(
-      <PlasmidMiniMap length={14000} topology="circular" annotations={annots} size={180} />,
+      <PlasmidMiniMap length={14000} topology="circular" annotations={annots} size={180} mode="overlay" />,
     );
     const labels = [...container.querySelectorAll('svg text')].map((t) => t.textContent);
     expect(labels).not.toContain('Escherichia coli');
@@ -51,7 +51,7 @@ describe('V46 linear topology gets labels (size ≥ 100)', () => {
       { id: 'b', start: 1000, end: 1400, level: 'region', type: 'CDS', name: 'cdsB' },
     ];
     const { container } = render(
-      <PlasmidMiniMap length={2000} topology="linear" annotations={annots} size={180} />,
+      <PlasmidMiniMap length={2000} topology="linear" annotations={annots} size={180} mode="overlay" />,
     );
     const labels = [...container.querySelectorAll('svg text')].map((t) => t.textContent);
     expect(labels).toContain('cdsA');
@@ -65,7 +65,7 @@ describe('V46 size threshold (showLabels at size ≥ 100)', () => {
       { id: 'a', start: 0, end: 800, level: 'region', type: 'CDS', name: 'big' },
     ];
     const { container } = render(
-      <PlasmidMiniMap length={2000} topology="circular" annotations={annots} size={100} />,
+      <PlasmidMiniMap length={2000} topology="circular" annotations={annots} size={100} mode="overlay" />,
     );
     const labels = [...container.querySelectorAll('svg text')].map((t) => t.textContent);
     expect(labels).toContain('big');
@@ -76,7 +76,7 @@ describe('V46 size threshold (showLabels at size ≥ 100)', () => {
       { id: 'a', start: 0, end: 800, level: 'region', type: 'CDS', name: 'big' },
     ];
     const { container } = render(
-      <PlasmidMiniMap length={2000} topology="circular" annotations={annots} size={99} />,
+      <PlasmidMiniMap length={2000} topology="circular" annotations={annots} size={99} mode="overlay" />,
     );
     expect(container.querySelectorAll('svg text').length).toBe(0);
   });
@@ -93,7 +93,7 @@ describe('V46 no upper cap (heavy plasmid)', () => {
       name: `cds${i}`,
     }));
     const { container } = render(
-      <PlasmidMiniMap length={20000} topology="circular" annotations={annots} size={180} />,
+      <PlasmidMiniMap length={20000} topology="circular" annotations={annots} size={180} mode="overlay" />,
     );
     const labels = [...container.querySelectorAll('svg text')].map((t) => t.textContent);
     expect(labels.length).toBe(15);
@@ -104,15 +104,15 @@ describe('V46 no upper cap (heavy plasmid)', () => {
 });
 
 describe('V46 viewBox post-render expansion (jsdom fallback)', () => {
-  it('default viewBox stays 0,0,size,size when getBBox is unavailable (jsdom)', () => {
-    // jsdom does not implement getBBox; the useLayoutEffect catches the throw
+  it('default viewBox stays 0,0,size,size when getBBox is unavailable (jsdom) — overlay mode', () => {
+    // jsdom does not implement getBBox; the useLayoutEffect skips expansion
     // and leaves viewBox at its initial value. This test verifies the effect
     // does not crash in the test environment and the fallback is sane.
     const annots = [
       { id: 'a', start: 0, end: 800, level: 'region', type: 'CDS', name: 'cdsA' },
     ];
     const { container } = render(
-      <PlasmidMiniMap length={2000} topology="circular" annotations={annots} size={180} />,
+      <PlasmidMiniMap length={2000} topology="circular" annotations={annots} size={180} mode="overlay" />,
     );
     const svg = container.querySelector('svg.mini-map');
     expect(svg).toBeTruthy();
@@ -120,8 +120,7 @@ describe('V46 viewBox post-render expansion (jsdom fallback)', () => {
     expect(svg.getAttribute('viewBox')).toBe('0 0 180 180');
     expect(svg.getAttribute('width')).toBe('180');
     expect(svg.getAttribute('height')).toBe('180');
-    // overflow:visible means even if expansion did happen, SVG content
-    // wouldn't be clipped. Keep that contract here.
+    // overlay mode → overflow:visible (so labels don't clip if expansion fires).
     expect(svg.style.overflow).toBe('visible');
   });
 });

@@ -9,16 +9,15 @@
  * Cycles through `featureColor()` (feature-palette.js) so colors stay in sync
  * with PlasmidMap and SequencePane region rendering.
  *
- * Sprint Catalog Polish K6 (V46) leader-labels rules:
- *   - filter: every region with `(end - start) ≥ 300 bp` AND `type !== 'source'`
- *     gets a leader-label. No category-bias, no upper cap, no global-cap.
- *   - showLabels: `size >= 100` (both circular AND linear topologies). Below
- *     that — labels suppressed (CatalogPanel cards 48 px / SessionSummary 32 px
- *     stay graphics-only; hover opens the 180 px popover with labels).
- *   - viewBox post-render expansion (variant 1A): on label render, getBBox of
- *     the SVG content; if it overflows the initial 0,0,size,size box, expand
- *     viewBox + width/height with 4 px padding. jsdom (Vitest) lacks getBBox
- *     so the effect falls back to the default viewBox safely.
+ * Sprint Catalog Polish FIX F1 (28.04.2026): two-mode contract.
+ *   - `mode='inline'` (default): no leader-labels regardless of size, viewBox
+ *     stays `0 0 size size`, SVG `overflow: hidden`. Sized to fit a fixed
+ *     container (catalog cards, MetaColumn 160 px box, SessionSummary rows).
+ *   - `mode='overlay'`: leader-labels enabled at `size >= 100` per V46 K6
+ *     rules (`length ≥ 300 bp`, blacklist `source`, no cap), viewBox expands
+ *     post-render via `getBBox` (variant 1A), SVG `overflow: visible`. F4 hover
+ *     overlay renders an inner `mode='overlay'` instance so the user sees
+ *     labels + plasmid name without disturbing the inline tile.
  *
  * V37: arc <g> wrappers carry `aria-label` for screen readers; `<title>`
  * elements removed (caused native ~700 ms tooltip racing the React tooltip).
@@ -124,7 +123,12 @@ function buildLinearLabels(regions, totalLen, size, cy, strokeWidth) {
   return items;
 }
 
-export default function PlasmidMiniMap({ length, topology, annotations, size = 64 }) {
+export default function PlasmidMiniMap({
+  length, topology, annotations, size = 64,
+  mode = 'inline',
+  name,
+}) {
+  const isOverlay = mode === 'overlay';
   const isCircular = topology === 'circular';
   const totalLen = Math.max(1, length || 0);
   const regions = getRegions(annotations);
@@ -145,7 +149,10 @@ export default function PlasmidMiniMap({ length, topology, annotations, size = 6
   const cy = size / 2;
   // Kfix-4 viewBox padding: r leaves enough room for stroke + 1 px AA halo.
   const strokeWidth = Math.max(4, Math.round(size / 13));
-  const showLabels = size >= 100;
+  // F1 (Sprint Catalog Polish FIX): inline mode never renders leader-labels —
+  // they belong in the overlay (F4) so the inline tile stays inside its 200 px
+  // grid cell on SARS-Genome / pCAMBIA1381Xb without overflow into Topology.
+  const showLabels = isOverlay && size >= 100;
   // Reserve inner ring for labels at ≥180 px circular so leader + text fit
   // inside the SVG before any post-render expansion. For linear we don't
   // reserve — the bar stays full width.
@@ -163,8 +170,15 @@ export default function PlasmidMiniMap({ length, topology, annotations, size = 6
   // V46 viewBox post-render expansion (variant 1A): if real bbox of SVG content
   // overflows the initial 0,0,size,size box, widen viewBox + width/height with
   // 4 px padding so labels never clip. jsdom lacks getBBox → effect no-ops.
+  // F1: only in overlay mode — inline mode keeps a fixed `0 0 size size` box
+  // so the SVG fits its parent grid cell (the F1 fix for V46-acceptance bug).
   const [vbox, setVbox] = useState({ x: 0, y: 0, w: size, h: size, drawW: size, drawH: size });
   useLayoutEffect(() => {
+    if (!isOverlay) {
+      // Inline mode: lock viewBox to the host size on every prop change.
+      setVbox({ x: 0, y: 0, w: size, h: size, drawW: size, drawH: size });
+      return;
+    }
     if (!svgRef.current) return;
     if (!labels.length) {
       setVbox({ x: 0, y: 0, w: size, h: size, drawW: size, drawH: size });
@@ -190,7 +204,7 @@ export default function PlasmidMiniMap({ length, topology, annotations, size = 6
     const h = maxY - minY;
     if (minX === 0 && minY === 0 && w === size && h === size) return;
     setVbox({ x: minX, y: minY, w, h, drawW: w, drawH: h });
-  }, [size, totalLen, isCircular, regions.length, labels.length]);
+  }, [size, totalLen, isCircular, regions.length, labels.length, isOverlay]);
 
   const showHover = (titleText, evt) => {
     const host = evt.currentTarget.ownerSVGElement?.parentElement;
@@ -359,7 +373,7 @@ export default function PlasmidMiniMap({ length, topology, annotations, size = 6
         viewBox={`${vbox.x} ${vbox.y} ${vbox.w} ${vbox.h}`}
         role="img"
         aria-label={isCircular ? `circular ${totalLen} bp` : `linear ${totalLen} bp`}
-        style={{ overflow: 'visible' }}
+        style={{ overflow: isOverlay ? 'visible' : 'hidden' }}
       >
         {isCircular ? (
           <circle cx={cx} cy={cy} r={r} fill="none" stroke={FEATURE_STROKE} strokeWidth={0.5} opacity={0.4} />
@@ -419,6 +433,8 @@ export default function PlasmidMiniMap({ length, topology, annotations, size = 6
             topology={topology}
             annotations={annotations}
             size={180}
+            mode="overlay"
+            name={name}
           />
         </span>
       )}

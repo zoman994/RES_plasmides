@@ -34,10 +34,10 @@ describe('Kfix-4 viewBox padding', () => {
   });
 });
 
-describe('K6 (V46) leader labels (size ≥ 100)', () => {
-  it('regions ≥300 bp get leader + text, smaller ones do not', () => {
+describe('K6 (V46) leader labels (size ≥ 100, overlay mode)', () => {
+  it('regions ≥300 bp get leader + text, smaller ones do not (overlay)', () => {
     const { container } = render(
-      <PlasmidMiniMap length={2000} topology="circular" annotations={ANNOT_BIG} size={180} />
+      <PlasmidMiniMap length={2000} topology="circular" annotations={ANNOT_BIG} size={180} mode="overlay" />
     );
     const labels = [...container.querySelectorAll('svg text')];
     const labelTexts = labels.map((t) => t.textContent);
@@ -48,7 +48,7 @@ describe('K6 (V46) leader labels (size ≥ 100)', () => {
 
   it('size=64 — no leader labels (below new size threshold 100)', () => {
     const { container } = render(
-      <PlasmidMiniMap length={2000} topology="circular" annotations={ANNOT_BIG} size={64} />
+      <PlasmidMiniMap length={2000} topology="circular" annotations={ANNOT_BIG} size={64} mode="overlay" />
     );
     expect(container.querySelectorAll('svg text').length).toBe(0);
   });

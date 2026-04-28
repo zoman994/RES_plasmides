@@ -134,6 +134,8 @@ export default function MultiInspector({
                   topology={top}
                   annotations={item.annotations || []}
                   size={40}
+                  mode="inline"
+                  name={item.name || item._fileName}
                 />
                 <div
                   className="font-medium text-gray-700 outline-none rounded px-1 -mx-1 hover:bg-gray-100 focus:bg-white focus:ring-2 focus:ring-emerald-300 truncate"

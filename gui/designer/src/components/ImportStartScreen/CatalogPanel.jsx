@@ -476,6 +476,8 @@ export default function CatalogPanel({
                       topology={it.topology || 'circular'}
                       annotations={it.annotations || []}
                       size={48}
+                      mode="inline"
+                      name={it.name}
                     />
                     <div className="flex-1 min-w-0">
                       <div className="text-xs font-semibold text-gray-800 truncate">{it.name}</div>

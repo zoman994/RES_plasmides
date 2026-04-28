@@ -58,6 +58,8 @@ export default function SessionSummary({ addedItems = [], onOpenCanvas }) {
                 topology={it.miniMapData?.topology || 'linear'}
                 annotations={it.miniMapData?.annotations || []}
                 size={32}
+                mode="inline"
+                name={it.name}
               />
             </span>
             <span className="font-semibold flex-1 truncate" title={it.name}>{it.name}</span>
