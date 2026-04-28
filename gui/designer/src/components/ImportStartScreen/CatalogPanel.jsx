@@ -22,9 +22,17 @@ import { getRegions } from '../../annotation-model';
  * + batch-parse progress overlay.
  */
 
+// F5' (Sprint Catalog Polish FIX 28.04.2026): fold catalog SnapGene plasmids
+// to ≤20 kb. Bigger entries (Coronavirus genome ~30 kb, large viral expression
+// vectors etc.) are reference-material, not cloning subjects — they crowd the
+// catalog AND blow up leader-labels. If Игорь wants them back, raise this
+// constant or add a UI toggle in Sprint UX-1.
+// TODO(UX-1): consider a "show oversized catalog entries" Settings toggle.
+const MAX_CATALOG_LENGTH = 20000;
+
 let _indexCache = null;
 const _categoryCache = {};
-let _flatCache = null; // { items: [{...plasmid, _badge}], builtAt }
+let _flatCache = null; // { items: [{...plasmid, _badge, _slug}], builtAt }
 
 export function __resetCachesForTest() {
   _indexCache = null;
@@ -44,7 +52,11 @@ async function fetchCategory(slug) {
   if (_categoryCache[slug]) return _categoryCache[slug];
   const res = await fetch(`/plasmids-data/${slug}.json`);
   if (!res.ok) throw new Error(`category fetch ${slug}`);
-  const data = await res.json();
+  const raw = await res.json();
+  const filtered = (raw.plasmids || []).filter(
+    (p) => (p.length || p.sequence?.length || 0) <= MAX_CATALOG_LENGTH,
+  );
+  const data = { ...raw, plasmids: filtered };
   _categoryCache[slug] = data;
   return data;
 }
@@ -55,7 +67,7 @@ async function prefetchAllCategories(index) {
   const results = await Promise.all(cats.map(async (c) => {
     try {
       const data = await fetchCategory(c.slug);
-      return (data.plasmids || []).map((p) => ({ ...p, _badge: c.name || c.slug }));
+      return (data.plasmids || []).map((p) => ({ ...p, _badge: c.name || c.slug, _slug: c.slug }));
     } catch {
       return [];
     }
@@ -159,6 +171,10 @@ export default function CatalogPanel({
   const [openMine, setOpenMine] = useState(() => readGroupState('mine', true));
   const [openSnap, setOpenSnap] = useState(() => readGroupState('snapgene', false));
   const [isOver, setIsOver] = useState(false);
+  // F5' (Catalog Polish FIX): post-filter counts per slug after the ≤20 kb cull.
+  // Static index counts are pre-filter — we need real numbers to skip categories
+  // that fully fall under the threshold (e.g. coronavirus_resources: 4 → 0).
+  const [filteredCounts, setFilteredCounts] = useState(null);
   const fileInputRef = useRef(null);
   const dropzoneRef = useRef(null);
 
@@ -171,6 +187,27 @@ export default function CatalogPanel({
   useEffect(() => { writeGroupState('learn', openLearn); }, [openLearn]);
   useEffect(() => { writeGroupState('mine', openMine); }, [openMine]);
   useEffect(() => { writeGroupState('snapgene', openSnap); }, [openSnap]);
+
+  // F5' eager prefetch: as soon as index is available, load every category in
+  // the background to derive post-filter counts. Same `_flatCache` is reused
+  // by search and by replace-mode card lists, so this is not extra fetching —
+  // it just moves the work off the first-keystroke path.
+  useEffect(() => {
+    if (!index) return;
+    let alive = true;
+    prefetchAllCategories(index)
+      .then((c) => {
+        if (!alive) return;
+        const counts = new Map();
+        for (const it of c.items) {
+          counts.set(it._slug, (counts.get(it._slug) || 0) + 1);
+        }
+        setFilteredCounts(counts);
+        if (!flatItems) setFlatItems(c.items);
+      })
+      .catch(() => { /* catalog stays usable without prefetch — handleSelectNode still fetches per-category */ });
+    return () => { alive = false; };
+  }, [index]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Cross-category prefetch: fired by first non-empty keystroke if cache empty.
   useEffect(() => {
@@ -383,22 +420,32 @@ export default function CatalogPanel({
               </>
             )}
             <GroupHeader
-              groupKey="snapgene" label="Каталог SnapGene" count={index?.total}
+              groupKey="snapgene" label="Каталог SnapGene"
+              count={filteredCounts ? [...filteredCounts.values()].reduce((s, n) => s + n, 0) : index?.total}
               open={openSnap} onToggle={() => setOpenSnap((v) => !v)}
             />
             {openSnap && (
               <>
                 {!index && <div className="px-3 py-1 text-[11px] text-gray-400 italic">загрузка…</div>}
-                {index?.categories?.map((c) => (
-                  <button
-                    key={c.slug}
-                    onClick={() => handleSelectNode({ kind: 'snapgene', value: c.slug })}
-                    className={`w-full text-left text-xs px-3 py-1 hover:bg-gray-100 flex justify-between ${activeNode?.kind === 'snapgene' && activeNode.value === c.slug ? 'bg-emerald-50 text-emerald-700' : 'text-gray-700'}`}
-                  >
-                    <span className="truncate flex-1">{c.name}</span>
-                    <span className="text-[10px] text-gray-400 ml-2 shrink-0">{c.count}</span>
-                  </button>
-                ))}
+                {index?.categories?.map((c) => {
+                  // F5' skip categories whose post-filter count is 0
+                  // (e.g. coronavirus_resources: 4 of 4 plasmids are >20 kb).
+                  // Until prefetch resolves, fall back to static c.count so the
+                  // tree isn't temporarily empty.
+                  const filteredCount = filteredCounts?.get(c.slug);
+                  if (filteredCounts && (!filteredCount || filteredCount === 0)) return null;
+                  const displayCount = filteredCount ?? c.count;
+                  return (
+                    <button
+                      key={c.slug}
+                      onClick={() => handleSelectNode({ kind: 'snapgene', value: c.slug })}
+                      className={`w-full text-left text-xs px-3 py-1 hover:bg-gray-100 flex justify-between ${activeNode?.kind === 'snapgene' && activeNode.value === c.slug ? 'bg-emerald-50 text-emerald-700' : 'text-gray-700'}`}
+                    >
+                      <span className="truncate flex-1">{c.name}</span>
+                      <span className="text-[10px] text-gray-400 ml-2 shrink-0">{displayCount}</span>
+                    </button>
+                  );
+                })}
               </>
             )}
           </>
