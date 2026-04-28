@@ -114,7 +114,7 @@ export default function SingleInspector({
             enrichedFeatures={parsedItem?._enrichedCount || 0}
             lastActionStatus={lastActionStatus}
             miniMapSize={160}
-            miniMapMode="inline"
+            miniMapMode="overlay"
             miniMapName={parsedItem?.name || name}
           />
         </div>

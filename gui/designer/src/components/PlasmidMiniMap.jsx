@@ -43,6 +43,8 @@ const LABEL_TYPE_BLACKLIST = new Set([    // GenBank metadata that always covers
 
 // F4 (Sprint Catalog Polish FIX): paint-order: stroke fill + white halo so
 // labels read on any background tile (cards, popover, anything underneath).
+// FIX-2 (28.04.2026): K2 restored white-card bg behind the overlay; halo stays
+// because labels can sit outside the white card during 1A viewBox expansion.
 const OVERLAY_TEXT_STYLE = {
   paintOrder: 'stroke fill',
   stroke: 'white',
@@ -399,10 +401,6 @@ export default function PlasmidMiniMap({
     }
   };
 
-  // Source-fade: when overlay is mounted, the inline tile shrinks to 0.15
-  // opacity (хвост-след), letting biology see «откуда выехала» overlay.
-  const sourceOpacity = overlayMounted ? 0.15 : 1;
-
   return (
     <span
       ref={wrapperRef}
@@ -422,10 +420,6 @@ export default function PlasmidMiniMap({
         aria-label={isCircular ? `circular ${totalLen} bp` : `linear ${totalLen} bp`}
         style={{
           overflow: isOverlay ? 'visible' : 'hidden',
-          // F4 source-fade: when grow-overlay is mounted, the inline tile fades
-          // to 15 % so the biolog sees «откуда выехала» overlay.
-          opacity: sourceOpacity,
-          transition: `opacity ${GROW_DURATION_MS}ms ease-out`,
         }}
       >
         {isCircular ? (
@@ -486,10 +480,13 @@ export default function PlasmidMiniMap({
           {hovered.text}
         </span>
       )}
-      {/* F4 grow-overlay portal — transparent (no bg/border/shadow), CSS
-          transform animation, sits above catalog content via z-index 100. */}
+      {/* F4 grow-overlay portal — white card (bg/border/shadow), CSS transform
+          animation, sits above catalog content via z-index 100. K2 (FIX-2):
+          biolog asked for the white-bg card back; перекрытие соседних карточек
+          приемлемо по требованию. */}
       {overlayMounted && typeof document !== 'undefined' && createPortal(
         <span
+          className="bg-white shadow-lg border border-gray-200 rounded p-3"
           style={{
             position: 'fixed',
             left: overlayPos.left,
@@ -505,6 +502,7 @@ export default function PlasmidMiniMap({
             opacity: overlayActive ? 1 : 0,
             transition: `transform ${GROW_DURATION_MS}ms ease-out, opacity ${GROW_DURATION_MS}ms ease-out`,
             transformOrigin: 'center center',
+            boxSizing: 'border-box',
           }}
           data-testid="plasmid-mini-map-overlay"
           onMouseEnter={cancelClose}

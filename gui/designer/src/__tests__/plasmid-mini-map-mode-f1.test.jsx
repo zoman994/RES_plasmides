@@ -12,11 +12,14 @@
  *     a fixed grid cell (catalog cards, MetaColumn 160 px, MultiInspector rows,
  *     SessionSummary rows).
  *   - `mode='overlay'`: V46 labels rule and 1A viewBox expansion preserved.
- *     Used by F4 hover overlay (next K-step in this fix sprint).
+ *     Used by F4 hover overlay AND, after FIX-2 (28.04.2026), SingleInspector
+ *     right column (Игорь: «правая колонка — большая статичная карта С НАДПИСЯМИ,
+ *     без hover-grow»).
  */
 import { describe, it, expect } from 'vitest';
-import { render } from '@testing-library/react';
+import { render, fireEvent } from '@testing-library/react';
 import PlasmidMiniMap from '../components/PlasmidMiniMap';
+import SingleInspector from '../components/ImportStartScreen/SingleInspector';
 
 const ANNOTS = [
   { id: 'a', start: 0, end: 800, level: 'region', type: 'CDS', name: 'cdsA' },
@@ -81,5 +84,61 @@ describe('F1 name prop is accepted (rendered by F4 overlay)', () => {
       <PlasmidMiniMap length={2000} topology="circular" annotations={ANNOTS} size={160} mode="inline" name="pUC19" />,
     );
     expect(container.querySelectorAll('svg text').length).toBe(0);
+  });
+});
+
+describe('FIX-2 K1 — SingleInspector right column = mode=overlay', () => {
+  const baseItem = {
+    name: 'pUC19',
+    sequence: 'A'.repeat(2686),
+    length: 2686,
+    topology: 'circular',
+    annotations: ANNOTS,
+  };
+  const baseProps = {
+    parsedItem: baseItem,
+    topology: 'circular',
+    onTopologyChange: () => {},
+    originOffset: 1,
+    onOriginOffsetChange: () => {},
+    onApplyOrigin: () => {},
+    originHints: '',
+    name: 'pUC19',
+    onNameChange: () => {},
+    sanitizeReport: null,
+    lastActionStatus: null,
+    addedItems: [],
+    onAction: () => {},
+    onReplaceFile: () => {},
+    onOpenCanvas: () => {},
+    exportEnabled: true,
+    hasParsedItem: true,
+  };
+
+  it('SingleInspector mini-map renders leader-labels (≥1 <text>) — Игорь: «максимум информации справа»', () => {
+    const { container } = render(<SingleInspector {...baseProps} />);
+    const texts = container.querySelectorAll('svg.mini-map text');
+    // Two ≥300 bp regions in ANNOTS → at least both label texts (and possibly
+    // a name <text>; F1 size=160 < the name-render path which uses cy=size+20).
+    expect(texts.length).toBeGreaterThanOrEqual(1);
+    const labels = [...texts].map((t) => t.textContent);
+    expect(labels).toContain('cdsA');
+    expect(labels).toContain('cdsB');
+  });
+
+  it('SingleInspector mini-map SVG → overflow: visible (overlay mode contract)', () => {
+    const { container } = render(<SingleInspector {...baseProps} />);
+    const svg = container.querySelector('svg.mini-map');
+    expect(svg.style.overflow).toBe('visible');
+  });
+
+  it('hover on SingleInspector mini-map does NOT spawn a portal overlay (right column is static)', () => {
+    const { container, baseElement } = render(<SingleInspector {...baseProps} />);
+    const wrapper = container.querySelector('[data-testid="plasmid-mini-map"]');
+    expect(wrapper).toBeTruthy();
+    fireEvent.mouseEnter(wrapper);
+    // mode='overlay' instances disable the overlayEnabled branch — recursive
+    // guard so the right-column tile doesn't grow another overlay on top.
+    expect(baseElement.querySelector('[data-testid="plasmid-mini-map-overlay"]')).toBeNull();
   });
 });

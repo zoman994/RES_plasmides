@@ -1,17 +1,15 @@
 /**
- * Sprint Catalog Polish FIX F4 — transparent grow-overlay via React portal.
+ * Sprint Catalog Polish FIX F4 — grow-overlay via React portal.
  *
- * Игорь 28.04.2026 (kickoff Q&A):
- *   - «Всплывающие окна с мапой — их можно сделать тупо прозрачными?»
- *   - «При наведении она как бы увеличивалась … выходить на встречу человеку».
- *   - «Source мини-мап давай как след» (opacity 0.15).
- *   - «Название плазмиды тоже должно отражаться».
+ * Game plan after FIX-2 (28.04.2026): K2 restored the white card behind the
+ * overlay (Игорь requested the bg back at visual acceptance), K3 dropped the
+ * source-fade (the source tile stays at full opacity).
  *
  * Verified:
  *   1. Hover on inline mini-map mounts overlay in document.body via createPortal.
  *   2. After requestAnimationFrame the overlay style includes scale(1) opacity 1.
- *   3. Overlay style does NOT include white background / shadow / border.
- *   4. Source mini-map gets opacity: 0.15 while overlay is mounted.
+ *   3. Overlay carries the white-card chrome: bg-white + shadow + border.
+ *   4. Source mini-map stays at opacity: 1 while overlay is mounted (no fade).
  *   5. Inner overlay PlasmidMiniMap renders <text> with the plasmid name under
  *      the arc.
  *   6. mouseleave → 250 ms hover-bridge → 200 ms grow-out → portal unmounts.
@@ -47,18 +45,16 @@ describe('F4 grow-overlay portal', () => {
     expect(overlay.style.zIndex).toBe('100');
   });
 
-  it('overlay style does NOT include bg-white / shadow / border (transparent — Игорь requirement)', () => {
+  it('overlay carries white-card chrome: bg-white + shadow + border (FIX-2 K2 — biolog asked it back)', () => {
     const { getByTestId, baseElement } = render(
       <PlasmidMiniMap length={2000} topology="circular" annotations={ANNOTS} size={64} name="pUC19" />,
     );
     fireEvent.mouseEnter(getByTestId('plasmid-mini-map'));
     const overlay = baseElement.querySelector('[data-testid="plasmid-mini-map-overlay"]');
     const cls = overlay.className || '';
-    expect(cls).not.toMatch(/bg-white/);
-    expect(cls).not.toMatch(/shadow/);
-    expect(cls).not.toMatch(/border/);
-    // No inline backgroundColor either.
-    expect(overlay.style.background).toBeFalsy();
+    expect(cls).toMatch(/bg-white/);
+    expect(cls).toMatch(/shadow/);
+    expect(cls).toMatch(/border/);
   });
 
   it('overlay grows from scale(0.5)/opacity(0) → scale(1)/opacity(1) after rAF (CSS transition)', async () => {
@@ -75,16 +71,17 @@ describe('F4 grow-overlay portal', () => {
     expect(overlay.style.transition).toMatch(/opacity 200ms/);
   });
 
-  it('source mini-map fades to opacity 0.15 (хвост-след) while overlay is mounted', () => {
+  it('source mini-map stays at full opacity while overlay is mounted (FIX-2 K3 — fade dropped)', () => {
     const { getByTestId } = render(
       <PlasmidMiniMap length={2000} topology="circular" annotations={ANNOTS} size={64} name="pUC19" />,
     );
     const wrapper = getByTestId('plasmid-mini-map');
     const sourceSvg = wrapper.querySelector('svg.mini-map');
-    expect(sourceSvg.style.opacity).toBe('1');
+    expect(sourceSvg.style.opacity).toBeFalsy();
     fireEvent.mouseEnter(wrapper);
-    expect(sourceSvg.style.opacity).toBe('0.15');
-    expect(sourceSvg.style.transition).toMatch(/opacity 200ms/);
+    // Still no inline opacity / transition after overlay opens.
+    expect(sourceSvg.style.opacity).toBeFalsy();
+    expect(sourceSvg.style.transition).toBeFalsy();
   });
 
   it('inner overlay (mode=overlay) renders <text> with the plasmid name under the arc', () => {
