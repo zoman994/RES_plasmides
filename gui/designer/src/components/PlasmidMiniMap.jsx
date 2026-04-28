@@ -1,99 +1,64 @@
 /**
  * PlasmidMiniMap — small SVG indicator of a plasmid's region annotations.
  *
- * Used by ImportStartScreen MetaColumn (180 px), MultiInspector rows (40 px)
- * and CatalogPanel cards (48 px). Read-only — no labels, no RE sites, no hover
- * scale, no selected state. Empty annotations → one solid linker arc/bar
+ * Used by ImportStartScreen MetaColumn (160 px), MultiInspector rows (40 px),
+ * SessionSummary (32 px) and CatalogPanel cards (48 px). Read-only — no RE
+ * sites, no selected state. Empty annotations → one solid linker arc/bar
  * (signals "structure not recognized, annotate or accept as-is").
  *
- * Cycles through `featureColor()` (feature-palette.js) so colors stay in
- * sync with PlasmidMap and SequencePane region rendering.
+ * Cycles through `featureColor()` (feature-palette.js) so colors stay in sync
+ * with PlasmidMap and SequencePane region rendering.
  *
- * Kfix-4:
- *   - viewBox padding under stroke (r ≤ (size − strokeWidth − 2) / 2) so
- *     thick arcs don't clip at the SVG boundary.
- *   - Custom React-state tooltip (`<div>` overlay, instant) — replaces
- *     native ~700 ms SVG <title> popup. Each arc <g> carries an
- *     `aria-label` (V37 mini-fix) so screen readers still announce the
- *     region name without browsers rendering a competing native tooltip.
- *   - Leader-line labels for size === 180 on regions ≥ 10 % circumference,
- *     top-8 by length, simple collision-staggering for close angles.
- *   - For sizes ≤ 90 (CatalogPanel cards, MultiInspector rows) — hover opens
- *     a 180 px popover overlay with full labels (V38 mini-fix-2: was
- *     click-based; IS-Final K5.1 added 250 ms hover-bridge debounce).
+ * Sprint Catalog Polish K6 (V46) leader-labels rules:
+ *   - filter: every region with `(end - start) ≥ 300 bp` AND `type !== 'source'`
+ *     gets a leader-label. No category-bias, no upper cap, no global-cap.
+ *   - showLabels: `size >= 100` (both circular AND linear topologies). Below
+ *     that — labels suppressed (CatalogPanel cards 48 px / SessionSummary 32 px
+ *     stay graphics-only; hover opens the 180 px popover with labels).
+ *   - viewBox post-render expansion (variant 1A): on label render, getBBox of
+ *     the SVG content; if it overflows the initial 0,0,size,size box, expand
+ *     viewBox + width/height with 4 px padding. jsdom (Vitest) lacks getBBox
+ *     so the effect falls back to the default viewBox safely.
+ *
+ * V37: arc <g> wrappers carry `aria-label` for screen readers; `<title>`
+ * elements removed (caused native ~700 ms tooltip racing the React tooltip).
+ * V38/K5.1: compact (size ≤ 90) hover opens the 180 px popover with a
+ * 250 ms hover-bridge debounce.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { featureColor, FEATURE_STROKE, FEATURE_COLORS_V2 } from '../feature-palette';
 import { getRegions } from '../annotation-model';
-import { isResistanceMarker } from './ImportStartScreen/FileSummaryCard';
 
-const LEADER_LEN = 10;         // px the leader sticks out past outer radius
-const LABEL_RING = 32;         // px radial ring reserved for labels (180 px mode)
-const LABEL_THRESHOLD = 0.03;  // K5.2: 3 % (was 10 %)
-const MAX_LABELS = 8;
-const COLLISION_RAD = 0.26;    // ≈ 15° — labels closer than this get staggered
-const HOVER_BRIDGE_MS = 250;   // K5.1 hover-bridge debounce
+const LEADER_LEN = 10;                    // px the leader sticks out past outer radius / above bar
+const LABEL_RING = 32;                    // px radial ring reserved for labels (circular ≥180 px)
+const COLLISION_RAD = 0.26;               // ≈ 15° — circular labels closer than this get staggered
+const COLLISION_PX = 40;                  // px — linear labels with anchors closer get staggered
+const HOVER_BRIDGE_MS = 250;              // K5.1 hover-bridge debounce
+const LABEL_LENGTH_THRESHOLD_BP = 300;    // K6 (V46): every region ≥300 bp gets a label
+const LABEL_TYPE_BLACKLIST = new Set([    // GenBank metadata that always covers full plasmid
+  'source',
+]);
 
-// K5.2 priority class regex (mirror FileSummaryCard ORIGIN_NAME_RE / TAG_NAME_RE
-// without re-exporting; small surface kept private).
-const ORIGIN_NAME_RE = /^(ori|pUC ori|f1 ori|ColE1|p15A|2[μu]|ARS|CEN|pMB1|R6K|pBR322 ori)/i;
-const TAG_NAME_RE = /^(His[6-9]?|FLAG|HA|c?-?Myc|GFP|EGFP|mCherry|mTagBFP|T7-?tag|Strep-?II?|S-?tag|V5|VP(16|64|160))/i;
-
-function isOrigin(r) {
-  return r?.type === 'rep_origin' || ORIGIN_NAME_RE.test(r?.name || '');
+function pickRegionsForLabels(regions) {
+  return regions
+    .filter((r) => {
+      const len = (r.end || 0) - (r.start || 0);
+      if (len < LABEL_LENGTH_THRESHOLD_BP) return false;
+      if (LABEL_TYPE_BLACKLIST.has(r.type)) return false;
+      return true;
+    })
+    .slice()
+    .sort((a, b) => (b.end - b.start) - (a.end - a.start));
 }
-function isPromoter(r) {
-  return r?.type === 'promoter';
-}
-function isTag(r) {
-  return r?.type === 'tag' || TAG_NAME_RE.test(r?.name || '');
-}
 
-function buildLabels(regions, totalLen, cx, cy, r) {
-  if (!regions.length) return [];
-  // K5.2 priority pass: resistance / origin / promoter / tag pulled with hard
-  // caps regardless of length. Then fallback fill by length down to 3 %.
-  const used = new Set();
-  const picks = [];
-  const HARD_CAP = { resistance: 5, origin: 3, promoter: 3, tag: 2 };
-  const passes = [
-    { name: 'resistance', match: isResistanceMarker, cap: HARD_CAP.resistance },
-    { name: 'origin', match: isOrigin, cap: HARD_CAP.origin },
-    { name: 'promoter', match: isPromoter, cap: HARD_CAP.promoter },
-    { name: 'tag', match: isTag, cap: HARD_CAP.tag },
-  ];
-  for (const pass of passes) {
-    if (picks.length >= MAX_LABELS) break;
-    const matched = regions
-      .filter((rr) => !used.has(rr.id) && pass.match(rr))
-      .sort((a, b) => (b.end - b.start) - (a.end - a.start));
-    const hits = matched.slice(0, pass.cap);
-    for (const h of hits) {
-      if (picks.length >= MAX_LABELS) break;
-      picks.push({ region: h, span: h.end - h.start, frac: (h.end - h.start) / Math.max(1, totalLen) });
-      used.add(h.id);
-    }
-    // Hard-cap is *hard*: class members beyond the cap are still excluded from
-    // the fallback pass (so fallback can't sneak a 4th promoter past cap=3).
-    for (const m of matched.slice(pass.cap)) used.add(m.id);
-  }
-  // Fallback fill: regions not yet picked, threshold 3 %.
-  if (picks.length < MAX_LABELS) {
-    const remaining = regions
-      .filter((rr) => !used.has(rr.id))
-      .map((rr) => ({ region: rr, span: rr.end - rr.start, frac: (rr.end - rr.start) / Math.max(1, totalLen) }))
-      .filter((c) => c.frac >= LABEL_THRESHOLD)
-      .sort((a, b) => b.span - a.span)
-      .slice(0, MAX_LABELS - picks.length);
-    for (const c of remaining) picks.push(c);
-  }
+function buildCircularLabels(regions, totalLen, cx, cy, r) {
+  const picked = pickRegionsForLabels(regions);
+  if (!picked.length) return [];
 
-  if (!picks.length) return [];
-
-  const items = picks.map((c) => {
-    const start = Math.max(0, c.region.start);
-    const end = Math.max(start, c.region.end);
+  const items = picked.map((region) => {
+    const start = Math.max(0, region.start);
+    const end = Math.max(start, region.end);
     const midFrac = ((start + end) / 2) / Math.max(1, totalLen);
     const ang = midFrac * 2 * Math.PI - Math.PI / 2;
     const innerX = cx + r * Math.cos(ang);
@@ -104,10 +69,10 @@ function buildLabels(regions, totalLen, cx, cy, r) {
     const anchor = Math.cos(ang) >= 0 ? 'start' : 'end';
     const textX = outerX + (anchor === 'start' ? 2 : -2);
     return {
-      key: c.region.id,
+      key: region.id,
       ang,
-      label: c.region.name || c.region.type || 'region',
-      color: featureColor(c.region.type, c.region.name),
+      label: region.name || region.type || 'region',
+      color: featureColor(region.type, region.name),
       innerX, innerY, outerX, outerY, anchor,
       textX, textY: outerY + 3,
     };
@@ -124,16 +89,52 @@ function buildLabels(regions, totalLen, cx, cy, r) {
   return items;
 }
 
+function buildLinearLabels(regions, totalLen, size, cy, strokeWidth) {
+  const picked = pickRegionsForLabels(regions);
+  if (!picked.length) return [];
+
+  const items = picked.map((region) => {
+    const start = Math.max(0, region.start);
+    const end = Math.max(start, region.end);
+    const midFrac = ((start + end) / 2) / Math.max(1, totalLen);
+    const innerX = midFrac * (size - 8) + 4;
+    const innerY = cy - strokeWidth / 2;
+    const outerX = innerX;
+    const outerY = innerY - LEADER_LEN;
+    return {
+      key: region.id,
+      anchor: 'middle',
+      label: region.name || region.type || 'region',
+      color: featureColor(region.type, region.name),
+      innerX, innerY, outerX, outerY,
+      textX: outerX, textY: outerY - 2,
+    };
+  });
+
+  // Sort left-to-right; if anchors are within COLLISION_PX, stagger upward.
+  items.sort((a, b) => a.innerX - b.innerX);
+  for (let i = 1; i < items.length; i++) {
+    const prev = items[i - 1];
+    const cur = items[i];
+    if (Math.abs(cur.innerX - prev.innerX) < COLLISION_PX) {
+      cur.outerY = prev.outerY - 11;
+      cur.textY = cur.outerY - 2;
+    }
+  }
+  return items;
+}
+
 export default function PlasmidMiniMap({ length, topology, annotations, size = 64 }) {
   const isCircular = topology === 'circular';
   const totalLen = Math.max(1, length || 0);
   const regions = getRegions(annotations);
 
-  const [hovered, setHovered] = useState(null); // { text, x, y } in container coords
+  const [hovered, setHovered] = useState(null);
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [popoverPos, setPopoverPos] = useState({ left: 0, top: 0 });
   const wrapperRef = useRef(null);
   const closeTimer = useRef(null);
+  const svgRef = useRef(null);
 
   // K5.1 cleanup on unmount.
   useEffect(() => () => {
@@ -144,12 +145,52 @@ export default function PlasmidMiniMap({ length, topology, annotations, size = 6
   const cy = size / 2;
   // Kfix-4 viewBox padding: r leaves enough room for stroke + 1 px AA halo.
   const strokeWidth = Math.max(4, Math.round(size / 13));
-  const showLabels = size >= 180 && isCircular;
-  // Reserve inner ring for labels at 180 px so leader + text fit inside SVG.
+  const showLabels = size >= 100;
+  // Reserve inner ring for labels at ≥180 px circular so leader + text fit
+  // inside the SVG before any post-render expansion. For linear we don't
+  // reserve — the bar stays full width.
   const baseR = (size - strokeWidth - 2) / 2;
-  const r = showLabels ? Math.max(20, baseR - LABEL_RING) : baseR;
+  const r = (showLabels && isCircular && size >= 180)
+    ? Math.max(20, baseR - LABEL_RING)
+    : baseR;
 
-  const labels = showLabels ? buildLabels(regions, totalLen, cx, cy, r) : [];
+  const labels = showLabels
+    ? (isCircular
+        ? buildCircularLabels(regions, totalLen, cx, cy, r)
+        : buildLinearLabels(regions, totalLen, size, cy, strokeWidth))
+    : [];
+
+  // V46 viewBox post-render expansion (variant 1A): if real bbox of SVG content
+  // overflows the initial 0,0,size,size box, widen viewBox + width/height with
+  // 4 px padding so labels never clip. jsdom lacks getBBox → effect no-ops.
+  const [vbox, setVbox] = useState({ x: 0, y: 0, w: size, h: size, drawW: size, drawH: size });
+  useLayoutEffect(() => {
+    if (!svgRef.current) return;
+    if (!labels.length) {
+      setVbox({ x: 0, y: 0, w: size, h: size, drawW: size, drawH: size });
+      return;
+    }
+    let bbox;
+    try {
+      bbox = svgRef.current.getBBox();
+    } catch {
+      return; // jsdom or detached — keep default
+    }
+    if (!bbox || !Number.isFinite(bbox.width) || !Number.isFinite(bbox.height)) return;
+    // jsdom returns a zero-sized bbox (no real layout) — skip expansion so the
+    // default 0,0,size,size viewBox is kept in tests; real browsers always
+    // produce non-zero bbox once paths render.
+    if (bbox.width === 0 && bbox.height === 0) return;
+    const PAD = 4;
+    const minX = Math.min(0, Math.floor(bbox.x - PAD));
+    const minY = Math.min(0, Math.floor(bbox.y - PAD));
+    const maxX = Math.max(size, Math.ceil(bbox.x + bbox.width + PAD));
+    const maxY = Math.max(size, Math.ceil(bbox.y + bbox.height + PAD));
+    const w = maxX - minX;
+    const h = maxY - minY;
+    if (minX === 0 && minY === 0 && w === size && h === size) return;
+    setVbox({ x: minX, y: minY, w, h, drawW: w, drawH: h });
+  }, [size, totalLen, isCircular, regions.length, labels.length]);
 
   const showHover = (titleText, evt) => {
     const host = evt.currentTarget.ownerSVGElement?.parentElement;
@@ -263,10 +304,8 @@ export default function PlasmidMiniMap({ length, topology, annotations, size = 6
   const isCompact = size <= 90;
   const cursorClass = isCompact ? 'cursor-zoom-in' : '';
 
-  // V38: clamp popover within viewport. Default placement: to the right of
-  // the trigger, vertically centered; flip leftward / pin to viewport edges
-  // when the trigger sits near a card boundary. position: fixed avoids
-  // overflow:hidden clipping by ancestor cards.
+  // V38: clamp popover within viewport. position: fixed avoids ancestor
+  // overflow: hidden clipping by card boundaries.
   const POPOVER_BOX = 220;
   const cancelClose = () => {
     if (closeTimer.current) {
@@ -313,10 +352,11 @@ export default function PlasmidMiniMap({ length, topology, annotations, size = 6
       onMouseLeave={isCompact ? scheduleClose : undefined}
     >
       <svg
+        ref={svgRef}
         className="mini-map"
-        width={size}
-        height={size}
-        viewBox={`0 0 ${size} ${size}`}
+        width={vbox.drawW}
+        height={vbox.drawH}
+        viewBox={`${vbox.x} ${vbox.y} ${vbox.w} ${vbox.h}`}
         role="img"
         aria-label={isCircular ? `circular ${totalLen} bp` : `linear ${totalLen} bp`}
         style={{ overflow: 'visible' }}

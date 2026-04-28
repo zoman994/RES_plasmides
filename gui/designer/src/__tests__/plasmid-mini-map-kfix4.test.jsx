@@ -4,9 +4,10 @@
  * Coverage:
  *   - viewBox padding: r ≤ (size − strokeWidth − 2) / 2 → arc geometry stays
  *     inside the SVG box (no clipping).
- *   - Leader-line labels render only at size === 180 for regions ≥10%.
+ *   - Leader-line labels render at size ≥ 100 (V46 K6: was 180 + circular only)
+ *     for regions ≥ 300 bp.
  *   - Custom hover-tooltip appears via React state (instant), not waiting
- *     for native ~700ms popup. <title> stays in DOM for SR a11y.
+ *     for native ~700 ms popup. <title> stays in DOM for SR a11y.
  *   - Compact size click opens popover with 180 px version.
  */
 import { describe, it, expect } from 'vitest';
@@ -14,9 +15,9 @@ import { render, fireEvent } from '@testing-library/react';
 import PlasmidMiniMap from '../components/PlasmidMiniMap';
 
 const ANNOT_BIG = [
-  { id: 'r1', start: 0, end: 1500, level: 'region', type: 'CDS', name: 'AmpR' },         // 75% of 2000
-  { id: 'r2', start: 1500, end: 1700, level: 'region', type: 'rep_origin', name: 'ori' }, // 10%
-  { id: 'r3', start: 1700, end: 1720, level: 'region', type: 'misc_feature', name: 'tiny' }, // 1%
+  { id: 'r1', start: 0, end: 1500, level: 'region', type: 'CDS', name: 'AmpR' },              // 1500 bp ≥ 300
+  { id: 'r2', start: 1500, end: 1900, level: 'region', type: 'rep_origin', name: 'pUC ori' }, // 400 bp ≥ 300
+  { id: 'r3', start: 1900, end: 1920, level: 'region', type: 'misc_feature', name: 'tiny' },  // 20 bp < 300
 ];
 
 describe('Kfix-4 viewBox padding', () => {
@@ -33,19 +34,19 @@ describe('Kfix-4 viewBox padding', () => {
   });
 });
 
-describe('Kfix-4 leader labels (size === 180)', () => {
-  it('regions ≥10% get leader + text, smaller ones do not', () => {
+describe('K6 (V46) leader labels (size ≥ 100)', () => {
+  it('regions ≥300 bp get leader + text, smaller ones do not', () => {
     const { container } = render(
       <PlasmidMiniMap length={2000} topology="circular" annotations={ANNOT_BIG} size={180} />
     );
     const labels = [...container.querySelectorAll('svg text')];
     const labelTexts = labels.map((t) => t.textContent);
     expect(labelTexts).toContain('AmpR');
-    expect(labelTexts).toContain('ori');
+    expect(labelTexts).toContain('pUC ori');
     expect(labelTexts).not.toContain('tiny');
   });
 
-  it('size=64 — no leader labels even for big regions', () => {
+  it('size=64 — no leader labels (below new size threshold 100)', () => {
     const { container } = render(
       <PlasmidMiniMap length={2000} topology="circular" annotations={ANNOT_BIG} size={64} />
     );
@@ -84,7 +85,7 @@ describe('Kfix-4 custom hover-tooltip via React state', () => {
 
 describe('V38 mini-fix-2 compact hover → popover', () => {
   it('size=64 mouseenter opens popover with 180 px nested mini-map; mouseleave closes after debounce (K5.1)', async () => {
-    const { queryByTestId, getAllByTestId, getByTestId, findAllByTestId } = render(
+    const { queryByTestId, getAllByTestId, getByTestId } = render(
       <PlasmidMiniMap length={2000} topology="circular" annotations={ANNOT_BIG} size={64} />
     );
     const wrapper = getByTestId('plasmid-mini-map');
