@@ -345,6 +345,23 @@ export const createProjectSlice = (set, get) => ({
     if (id) _scheduleAutosave(get, id);
   },
 
+  updateDescription: (text) => {
+    set(state => {
+      const id = state.currentProjectId;
+      if (!id) return;
+      const proj = state.projects[id];
+      if (!proj) return;
+      proj.description = text;
+      proj.updatedAt = nowIso();
+      state._projectLifecycle[id] = {
+        ...(state._projectLifecycle[id] || {}),
+        lastModifiedInIndexedDBAt: proj.updatedAt,
+      };
+    });
+    const id = get().currentProjectId;
+    if (id) _scheduleAutosave(get, id);
+  },
+
   addTag: (tag) => {
     set(state => {
       const id = state.currentProjectId;

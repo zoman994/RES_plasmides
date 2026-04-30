@@ -28,7 +28,7 @@ export function applyThemeToDOM(theme) {
 export const createUiSlice = (set) => ({
   theme: loadInitialTheme(),
   agent: loadInitialAgent(),
-  modals: { settings: false },
+  modals: { settings: false, projectInfo: false },
   toast: null,
 
   setTheme: (theme) => {
@@ -46,6 +46,9 @@ export const createUiSlice = (set) => ({
 
   openSettings: () => set(state => { state.modals.settings = true; }),
   closeSettings: () => set(state => { state.modals.settings = false; }),
+
+  openProjectInfo: () => set(state => { state.modals.projectInfo = true; }),
+  closeProjectInfo: () => set(state => { state.modals.projectInfo = false; }),
 
   showToast: (msg, kind = 'info') => set(state => { state.toast = { msg, kind, at: Date.now() }; }),
   clearToast: () => set(state => { state.toast = null; }),

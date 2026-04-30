@@ -5,6 +5,7 @@ import { useStore } from '../../store';
 import UnderConstruction from '../UnderConstruction';
 import DagPlaceholder from '../DagPlaceholder';
 import SettingsModal from '../SettingsModal';
+import ThemeToggle from '../ThemeToggle';
 
 function reset() {
   useStore.setState((state) => {
@@ -46,11 +47,32 @@ describe('K6 — UnderConstruction + DagPlaceholder + SettingsModal', () => {
     expect(node.textContent).toContain('Empty project');
   });
 
-  it('SettingsModal Display tab toggles theme + applies data-theme on root', () => {
-    render(<SettingsModal />);
-    fireEvent.click(screen.getByTestId('settings-toggle-dark'));
+  it('ThemeToggle button flips theme + applies data-theme on root', () => {
+    render(<ThemeToggle />);
+    expect(useStore.getState().theme).toBe('light');
+    fireEvent.click(screen.getByTestId('theme-toggle'));
     expect(useStore.getState().theme).toBe('dark');
     expect(document.documentElement.dataset.theme).toBe('dark');
+    fireEvent.click(screen.getByTestId('theme-toggle'));
+    expect(useStore.getState().theme).toBe('light');
+    expect(document.documentElement.dataset.theme).toBe('light');
+  });
+
+  it('SettingsModal no longer has Display tab — defaults to Identity', () => {
+    render(<SettingsModal />);
+    expect(screen.queryByTestId('settings-tab-display')).toBeNull();
+    expect(screen.getByTestId('settings-tab-content-identity')).toBeTruthy();
+  });
+
+  it('SettingsModal sanity: Identity + Advanced tabs only, both reachable', () => {
+    render(<SettingsModal />);
+    expect(screen.getByTestId('settings-tab-identity')).toBeTruthy();
+    expect(screen.getByTestId('settings-tab-advanced')).toBeTruthy();
+    expect(screen.queryByTestId('settings-tab-display')).toBeNull();
+    fireEvent.click(screen.getByTestId('settings-tab-advanced'));
+    expect(screen.getByTestId('settings-tab-content-advanced')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('settings-tab-identity'));
+    expect(screen.getByTestId('settings-tab-content-identity')).toBeTruthy();
   });
 
   it('SettingsModal Identity tab saves agent', () => {

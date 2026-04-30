@@ -136,10 +136,29 @@ describe('K4 — hotkey infrastructure', () => {
     expect(noop).toHaveBeenCalledTimes(1);
   });
 
-  it('HOTKEYS map exposes 6 M-A entries', () => {
+  it('HOTKEYS map exposes 7 entries including project-info', () => {
     expect(Object.keys(HOTKEYS).sort()).toEqual([
       'close-project', 'escape', 'new-project',
-      'open-bodge', 'open-settings', 'save-bodge',
+      'open-bodge', 'open-settings', 'project-info', 'save-bodge',
     ]);
+  });
+
+  it('formatHotkey("project-info") → ⌘I on mac / Ctrl+I elsewhere', () => {
+    expect(formatHotkey('project-info', 'mac')).toBe('⌘I');
+    expect(formatHotkey('project-info', 'other')).toBe('Ctrl+I');
+  });
+
+  it('project-info is gated by currentProjectId (scope global-with-project)', () => {
+    _setPlatformOverrideForTests('other');
+    const handler = vi.fn();
+    renderHook(() => useHotkey('project-info', handler));
+
+    _setGetContextForTests(() => ({ currentProjectId: null, activeFullscreen: 'start' }));
+    expect(runHotkeyResolver(makeEvent({ key: 'i', ctrl: true }))).toBe(false);
+    expect(handler).not.toHaveBeenCalled();
+
+    _setGetContextForTests(() => ({ currentProjectId: 'p-1', activeFullscreen: 'dag' }));
+    expect(runHotkeyResolver(makeEvent({ key: 'i', ctrl: true }))).toBe(true);
+    expect(handler).toHaveBeenCalledTimes(1);
   });
 });

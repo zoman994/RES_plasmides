@@ -1,5 +1,6 @@
 import { useStore, selectIsDirty } from '../../store';
 import { formatHotkey, HOTKEYS } from '../../lib/hotkeys';
+import ThemeToggle from '../ThemeToggle';
 
 export default function Topbar() {
   const navStack = useStore(s => s.canvas.navStack);
@@ -10,8 +11,10 @@ export default function Topbar() {
   const popFullscreen = useStore(s => s.popFullscreen);
   const closeProject = useStore(s => s.closeProject);
   const openSettings = useStore(s => s.openSettings);
+  const openProjectInfo = useStore(s => s.openProjectInfo);
 
-  const canGoBack = navStack.length > 1;
+  const stackDepth = navStack.length;
+  const canPop = stackDepth > 1;
 
   const projectName = project ? (project.name || 'Untitled') : '—';
   const fileName = useStore(s => s.fileName);
@@ -21,6 +24,15 @@ export default function Topbar() {
   else if (dirty) saveStatus = lastSavedToFileAt ? 'Несохранённые изменения' : 'Не сохранено';
   else if (lastSavedToFileAt) saveStatus = `Сохранено ${formatRelativeTime(lastSavedToFileAt)}`;
   else saveStatus = 'Автосохранение в браузере';
+
+  function handleBack() {
+    if (canPop) popFullscreen();
+    else closeProject();
+  }
+
+  const backTitle = canPop
+    ? 'Назад'
+    : `${HOTKEYS['close-project'].label} ⋅ ${formatHotkey('close-project')}`;
 
   return (
     <header
@@ -35,21 +47,26 @@ export default function Topbar() {
         gap: 12,
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        {canGoBack && (
-          <button
-            type="button"
-            data-testid="topbar-back"
-            onClick={popFullscreen}
-            style={{
-              background: 'transparent', border: 'none',
-              padding: '4px 8px', cursor: 'pointer',
-              color: 'var(--text-primary, #1c1917)', fontSize: 14,
-            }}
-          >
-            ← Назад
-          </button>
-        )}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <button
+          type="button"
+          data-testid="topbar-back"
+          onClick={handleBack}
+          aria-label={canPop ? 'Назад' : 'Закрыть проект'}
+          title={backTitle}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            padding: '4px 10px',
+            fontSize: 18,
+            lineHeight: 1,
+            color: 'var(--text-primary, #1c1917)',
+            borderRadius: 'var(--radius-md, 6px)',
+          }}
+        >
+          ‹
+        </button>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
           <span style={{ fontWeight: 500, fontSize: 14, color: 'var(--text-primary, #1c1917)' }}>
             {projectName}
@@ -64,6 +81,22 @@ export default function Topbar() {
                 display: 'inline-block',
               }}
             />
+          )}
+          {project && (
+            <button
+              type="button"
+              data-testid="topbar-edit-info"
+              onClick={openProjectInfo}
+              title={`Project info ⋅ ${formatHotkey('project-info')}`}
+              aria-label="project info"
+              style={{
+                background: 'transparent', border: 'none',
+                cursor: 'pointer',
+                padding: '2px 6px', fontSize: 13, lineHeight: 1,
+                color: 'var(--text-secondary, #57534e)',
+                borderRadius: 'var(--radius-md, 6px)',
+              }}
+            >✏️</button>
           )}
           {fileName && (
             <span style={{ fontSize: 11, color: 'var(--text-tertiary, #78716c)', fontFamily: 'var(--font-mono)' }}>
@@ -91,21 +124,7 @@ export default function Topbar() {
         >
           Settings
         </button>
-        {project && (
-          <button
-            type="button"
-            data-testid="topbar-close"
-            onClick={closeProject}
-            title={`${HOTKEYS['close-project'].label} ⋅ ${formatHotkey('close-project')}`}
-            style={{
-              background: 'transparent', border: 'none',
-              padding: '4px 8px', cursor: 'pointer',
-              color: 'var(--text-secondary, #57534e)', fontSize: 13,
-            }}
-          >
-            Закрыть проект
-          </button>
-        )}
+        <ThemeToggle />
       </div>
     </header>
   );

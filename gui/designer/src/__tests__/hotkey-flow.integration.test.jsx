@@ -145,4 +145,25 @@ describe('K4-fixup — hotkey scenario F (round-trip via registry)', () => {
     expect(useStore.getState().canvas.activeFullscreen).toBe('start');
     expect(useStore.getState().modals.settings).toBe(false);
   });
+
+  it('Cmd/Ctrl+I from DAG opens ProjectInfoModal; Esc closes it', async () => {
+    render(<App />);
+    await act(async () => {
+      pressHotkey({ key: 'n', ctrl: true });
+      await flushAsync();
+    });
+    expect(useStore.getState().canvas.activeFullscreen).toBe('dag');
+
+    await act(async () => {
+      pressHotkey({ key: 'i', ctrl: true });
+      await flushAsync();
+    });
+    expect(useStore.getState().modals.projectInfo).toBe(true);
+
+    await act(async () => {
+      pressHotkey({ key: 'Escape' });
+      await flushAsync();
+    });
+    expect(useStore.getState().modals.projectInfo).toBe(false);
+  });
 });

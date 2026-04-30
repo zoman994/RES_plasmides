@@ -50,6 +50,12 @@ export const HOTKEYS = Object.freeze({
     label: 'Закрыть',
     allowInInput: true,
   },
+  'project-info': {
+    keys: { mac: { meta: true, key: 'i' }, other: { ctrl: true, key: 'i' } },
+    scope: 'global-with-project',
+    label: 'Project info',
+    allowInInput: false,
+  },
 });
 
 const SCOPE_PRIORITY = Object.freeze([

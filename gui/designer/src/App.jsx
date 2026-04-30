@@ -7,6 +7,7 @@ import UnderConstruction from './components/UnderConstruction';
 import MultiTabBlocked from './components/MultiTabBlocked';
 import ReadOnlyForced from './components/ReadOnlyForced';
 import SettingsModal from './components/SettingsModal';
+import ProjectInfoModal from './components/ProjectInfoModal';
 import { openBodgeFilePicker, pickSaveAs, saveBlobToHandle } from './lib/file-system';
 import { writeBodge, readBodge } from './lib/bodge-zip';
 import { listenForceRelease } from './lib/multi-tab-lock';
@@ -18,6 +19,7 @@ export default function App() {
   const theme = useStore(s => s.theme);
   const activeFullscreen = useStore(s => s.canvas.activeFullscreen);
   const settingsOpen = useStore(s => s.modals.settings);
+  const projectInfoOpen = useStore(s => s.modals.projectInfo);
   const navStack = useStore(s => s.canvas.navStack);
   const currentProjectId = useStore(s => s.currentProjectId);
   const project = useStore(s => (currentProjectId ? s.projects[currentProjectId] : null));
@@ -101,8 +103,16 @@ export default function App() {
     useStore.getState().openSettings();
   }, []);
 
+  const handleProjectInfo = useCallback(() => {
+    useStore.getState().openProjectInfo();
+  }, []);
+
   const handleEscape = useCallback(() => {
     const s = useStore.getState();
+    if (s.modals?.projectInfo) {
+      s.closeProjectInfo();
+      return;
+    }
     if (s.modals?.settings) {
       s.closeSettings();
       return;
@@ -118,6 +128,7 @@ export default function App() {
   useHotkey('save-bodge', handleSave);
   useHotkey('close-project', handleClose);
   useHotkey('open-settings', handleSettings);
+  useHotkey('project-info', handleProjectInfo);
   useHotkey('escape', handleEscape);
 
   // ─── Single global keydown listener via runHotkeyResolver ───
@@ -216,6 +227,7 @@ export default function App() {
         ? <StartScreen onOpenFile={handleOpen} />
         : <AppShell>{inProjectChild}</AppShell>}
       <DropOverlay active={dragActive} />
+      {projectInfoOpen && <ProjectInfoModal />}
       {settingsOpen && <SettingsModal />}
       <ToastBar />
     </div>

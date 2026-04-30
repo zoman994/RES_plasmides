@@ -2,6 +2,7 @@ import { useStore } from '../../store';
 import { formatHotkey, HOTKEYS } from '../../lib/hotkeys';
 import RecentCard from './RecentCard';
 import SidebarLink from './SidebarLink';
+import ThemeToggle from '../ThemeToggle';
 
 export default function StartScreen({ onOpenFile }) {
   const theme = useStore(s => s.theme);
@@ -44,20 +45,23 @@ export default function StartScreen({ onOpenFile }) {
         <h1 style={{ fontSize: 18, fontWeight: 500, margin: 0, color: 'var(--ss-accent-amber)' }}>
           BodgeGene
         </h1>
-        <div style={{ display: 'flex', gap: 18, alignItems: 'center' }}>
-          <a
+        <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+          <button
+            type="button"
             className="ss-header-link"
-            href="https://bodgegene.dev/guide"
-            target="_blank"
-            rel="noreferrer noopener"
+            onClick={() => pushFullscreen({
+              fullscreen: 'underConstruction',
+              payload: { milestone: 'M-A.1', name: 'Guide' },
+            })}
             data-testid="ss-guide-link"
-          >Guide</a>
+          >Guide</button>
           <button
             type="button"
             className="ss-header-link"
             onClick={openSettings}
             data-testid="ss-settings-link"
           >Settings</button>
+          <ThemeToggle />
         </div>
       </div>
 

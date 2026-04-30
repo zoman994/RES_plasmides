@@ -4,20 +4,17 @@ import { clearAll } from '../db/dexie-schema';
 import { formatHotkey } from '../lib/hotkeys';
 
 const TABS = [
-  { id: 'display', label: 'Display' },
   { id: 'identity', label: 'Identity' },
   { id: 'advanced', label: 'Advanced' },
 ];
 
 export default function SettingsModal() {
   const closeSettings = useStore(s => s.closeSettings);
-  const theme = useStore(s => s.theme);
-  const setTheme = useStore(s => s.setTheme);
   const agent = useStore(s => s.agent);
   const setAgent = useStore(s => s.setAgent);
   const showToast = useStore(s => s.showToast);
 
-  const [tab, setTab] = useState('display');
+  const [tab, setTab] = useState('identity');
   const [name, setName] = useState(agent?.name || '');
   const [email, setEmail] = useState(agent?.email || '');
   const [confirmReset, setConfirmReset] = useState(false);
@@ -104,42 +101,6 @@ export default function SettingsModal() {
         </div>
 
         <div style={{ padding: 18 }}>
-          {tab === 'display' && (
-            <div data-testid="settings-tab-content-display">
-              <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '0 0 8px' }}>
-                Тема оформления
-              </p>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button
-                  type="button"
-                  data-testid="settings-toggle-light"
-                  onClick={() => setTheme('light')}
-                  style={{
-                    padding: '6px 14px', fontSize: 13,
-                    border: theme === 'light' ? '0.5px solid var(--accent-500)' : '0.5px solid var(--border-default)',
-                    borderRadius: 'var(--radius-md)',
-                    background: theme === 'light' ? 'var(--accent-50)' : 'var(--surface-1)',
-                    color: 'var(--text-primary)',
-                    cursor: 'pointer',
-                  }}
-                >Light</button>
-                <button
-                  type="button"
-                  data-testid="settings-toggle-dark"
-                  onClick={() => setTheme('dark')}
-                  style={{
-                    padding: '6px 14px', fontSize: 13,
-                    border: theme === 'dark' ? '0.5px solid var(--accent-500)' : '0.5px solid var(--border-default)',
-                    borderRadius: 'var(--radius-md)',
-                    background: theme === 'dark' ? 'var(--accent-50)' : 'var(--surface-1)',
-                    color: 'var(--text-primary)',
-                    cursor: 'pointer',
-                  }}
-                >Dark</button>
-              </div>
-            </div>
-          )}
-
           {tab === 'identity' && (
             <div data-testid="settings-tab-content-identity">
               <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '0 0 8px' }}>
