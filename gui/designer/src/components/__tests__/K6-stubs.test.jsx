@@ -10,7 +10,7 @@ import ThemeToggle from '../ThemeToggle';
 function reset() {
   useStore.setState((state) => {
     state.theme = 'light';
-    state.modals = { settings: false };
+    state.modals = { settings: false, projectInfo: false };
     state.canvas.activeFullscreen = 'start';
     state.canvas.navStack = [{ fullscreen: 'start', payload: null }];
     state.toast = null;

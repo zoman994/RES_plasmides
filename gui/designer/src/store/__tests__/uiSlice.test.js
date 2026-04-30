@@ -7,7 +7,7 @@ function reset() {
   useStore.setState((state) => {
     state.theme = 'light';
     state.agent = { name: '', email: '' };
-    state.modals = { settings: false };
+    state.modals = { settings: false, projectInfo: false };
     state.toast = null;
   });
 }

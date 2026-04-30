@@ -43,7 +43,9 @@ export default function App() {
   // ─── Hotkey handlers (registered through registry, never via ad-hoc keydown) ───
 
   const handleNew = useCallback(() => {
-    useStore.getState().createProject('Untitled');
+    const s = useStore.getState();
+    s.createProject('Untitled');
+    s.openProjectInfo();
   }, []);
 
   const handleOpen = useCallback(async () => {

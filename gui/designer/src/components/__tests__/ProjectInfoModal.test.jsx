@@ -102,6 +102,15 @@ describe('M-A-fix-2 — ProjectInfoModal', () => {
     expect(useStore.getState().projects[id].description).toBe('old');
   });
 
+  it('auto-focuses the name input on mount (and selects its text)', () => {
+    seedProject({ description: '', tags: [] });
+    render(<ProjectInfoModal />);
+    const nameInput = screen.getByTestId('project-info-name');
+    expect(document.activeElement).toBe(nameInput);
+    expect(nameInput.selectionStart).toBe(0);
+    expect(nameInput.selectionEnd).toBe(nameInput.value.length);
+  });
+
   it('renders nothing if there is no current project (defensive)', () => {
     useStore.setState((state) => {
       state.currentProjectId = null;

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useStore } from '../store';
 import { formatHotkey } from '../lib/hotkeys';
 
@@ -26,6 +26,14 @@ export default function ProjectInfoModal() {
   const [description, setDescription] = useState(project?.description || '');
   const [tags, setTags] = useState(initialTags);
   const [tagInput, setTagInput] = useState('');
+  const nameRef = useRef(null);
+
+  useEffect(() => {
+    if (nameRef.current) {
+      nameRef.current.focus();
+      nameRef.current.select();
+    }
+  }, []);
 
   if (!project) return null;
 
@@ -123,6 +131,7 @@ export default function ProjectInfoModal() {
               style={{ display: 'block', fontSize: 12, marginBottom: 4, color: 'var(--text-secondary)' }}
             >Имя</label>
             <input
+              ref={nameRef}
               id="project-info-name"
               data-testid="project-info-name"
               type="text"

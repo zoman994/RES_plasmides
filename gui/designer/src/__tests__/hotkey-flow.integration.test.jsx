@@ -28,7 +28,7 @@ async function reset() {
     state._projectLifecycle = {};
     state.canvas.activeFullscreen = 'start';
     state.canvas.navStack = [{ fullscreen: 'start', payload: null }];
-    state.modals = { settings: false };
+    state.modals = { settings: false, projectInfo: false };
     state.toast = null;
     state.theme = 'light';
   });
@@ -70,6 +70,16 @@ describe('K4-fixup — hotkey scenario F (round-trip via registry)', () => {
     });
     expect(useStore.getState().currentProjectId).not.toBeNull();
     expect(useStore.getState().canvas.activeFullscreen).toBe('dag');
+  });
+
+  it('Cmd/Ctrl+N also auto-opens ProjectInfoModal for naming', async () => {
+    render(<App />);
+    expect(useStore.getState().modals.projectInfo).toBe(false);
+    await act(async () => {
+      pressHotkey({ key: 'n', ctrl: true });
+      await flushAsync();
+    });
+    expect(useStore.getState().modals.projectInfo).toBe(true);
   });
 
   it('Cmd/Ctrl+, opens Settings modal; Esc closes it', async () => {

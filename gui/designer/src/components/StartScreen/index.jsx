@@ -11,9 +11,15 @@ export default function StartScreen({ onOpenFile }) {
   const lifecycles = useStore(s => s._projectLifecycle);
   const createProject = useStore(s => s.createProject);
   const openProjectFromIndexedDB = useStore(s => s.openProjectFromIndexedDB);
+  const openProjectInfo = useStore(s => s.openProjectInfo);
   const pushFullscreen = useStore(s => s.pushFullscreen);
   const openSettings = useStore(s => s.openSettings);
   const showToast = useStore(s => s.showToast);
+
+  function handleNewProject() {
+    createProject('Untitled');
+    openProjectInfo();
+  }
 
   const recentProjects = recentProjectIds
     .map(id => projects[id])
@@ -78,7 +84,7 @@ export default function StartScreen({ onOpenFile }) {
             <button
               type="button"
               className="ss-action-btn-primary"
-              onClick={() => createProject('Untitled')}
+              onClick={handleNewProject}
               title={`${HOTKEYS['new-project'].label} ⋅ ${formatHotkey('new-project')}`}
               data-testid="ss-new-project"
             >+ New project</button>

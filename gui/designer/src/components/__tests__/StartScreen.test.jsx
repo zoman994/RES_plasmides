@@ -15,7 +15,7 @@ function reset() {
     state._projectLifecycle = {};
     state.canvas.activeFullscreen = 'start';
     state.canvas.navStack = [{ fullscreen: 'start', payload: null }];
-    state.modals = { settings: false };
+    state.modals = { settings: false, projectInfo: false };
     state.toast = null;
     state.theme = 'light';
   });
@@ -113,6 +113,13 @@ describe('K5 — StartScreen wireframe v7', () => {
     fireEvent.click(screen.getByTestId('ss-new-project'));
     expect(useStore.getState().currentProjectId).not.toBeNull();
     expect(useStore.getState().canvas.activeFullscreen).toBe('dag');
+  });
+
+  it('+ New project also opens ProjectInfoModal so user can rename right away', () => {
+    render(<StartScreen onOpenFile={() => {}} />);
+    expect(useStore.getState().modals.projectInfo).toBe(false);
+    fireEvent.click(screen.getByTestId('ss-new-project'));
+    expect(useStore.getState().modals.projectInfo).toBe(true);
   });
 
   it('↓ Import sequence is disabled (no-op click)', () => {

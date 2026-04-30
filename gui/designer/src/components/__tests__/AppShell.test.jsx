@@ -26,7 +26,7 @@ function reset() {
     state._projectLifecycle = {};
     state.canvas.activeFullscreen = 'start';
     state.canvas.navStack = [{ fullscreen: 'start', payload: null }];
-    state.modals = { settings: false };
+    state.modals = { settings: false, projectInfo: false };
     state.toast = null;
     state.theme = 'light';
   });
