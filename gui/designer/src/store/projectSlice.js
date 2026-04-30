@@ -1,5 +1,38 @@
 import { v7 as uuidv7 } from 'uuid';
 import { putProject, getProject, deleteProject as dexieDeleteProject, listAllProjects } from '../db/dexie-schema';
+import { acquireProjectLock } from '../lib/multi-tab-lock';
+
+const _lockReleaseFns = new Map();
+const _isTestEnv = typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'test';
+let _autoLockEnabled = !_isTestEnv;
+
+export function setAutoLockEnabled(enabled) {
+  _autoLockEnabled = !!enabled;
+}
+
+export async function tryAcquireLock(projectId) {
+  if (!_autoLockEnabled) return { hasLock: true, releaseFn: () => {} };
+  return acquireProjectLock(projectId);
+}
+
+export function storeLockRelease(projectId, releaseFn) {
+  _lockReleaseFns.set(projectId, releaseFn);
+}
+
+export function releaseLockFor(projectId) {
+  const fn = _lockReleaseFns.get(projectId);
+  if (fn) {
+    try { fn(); } catch { /* ignore */ }
+    _lockReleaseFns.delete(projectId);
+  }
+}
+
+export function clearAllLocks() {
+  for (const fn of _lockReleaseFns.values()) {
+    try { fn(); } catch { /* ignore */ }
+  }
+  _lockReleaseFns.clear();
+}
 
 const SCHEMA_VER = 1;
 const RECENT_LIMIT = 10;
@@ -166,6 +199,19 @@ export const createProjectSlice = (set, get) => ({
   openProjectFromIndexedDB: async (id) => {
     const rec = await getProject(id);
     if (!rec) throw new Error(`project not found: ${id}`);
+    const lockResult = await tryAcquireLock(id);
+    if (!lockResult.hasLock) {
+      set(state => {
+        state.projects[id] = rec.body;
+        state._projectLifecycle[id] = rec.lifecycle || state._projectLifecycle[id] || {};
+        state.currentProjectId = id;
+        state.hasProjectLock = false;
+        state.canvas.activeFullscreen = 'multiTabBlocked';
+        state.canvas.navStack = [{ fullscreen: 'multiTabBlocked', payload: { projectId: id } }];
+      });
+      return;
+    }
+    storeLockRelease(id, lockResult.releaseFn);
     set(state => {
       state.projects[id] = rec.body;
       state._projectLifecycle[id] = rec.lifecycle || state._projectLifecycle[id] || {};
@@ -175,6 +221,7 @@ export const createProjectSlice = (set, get) => ({
       state.fileLastKnownModified = rec.lifecycle?.fileLastKnownModified ?? null;
       state.fileHandle = null;
       state.recoveredFromCrash = !!(rec.lifecycle && rec.lifecycle.cleanShutdown !== true);
+      state.hasProjectLock = true;
       state.canvas.activeFullscreen = 'dag';
       state.canvas.navStack = [{ fullscreen: 'dag', payload: { projectId: id } }];
       const filtered = state.recentProjectIds.filter(rid => rid !== id);
@@ -183,6 +230,20 @@ export const createProjectSlice = (set, get) => ({
   },
 
   openProjectFromFileData: async ({ project, fileHandle = null, fileName = null, lastModified = null }) => {
+    const lockResult = await tryAcquireLock(project.id);
+    if (!lockResult.hasLock) {
+      set(state => {
+        state.projects[project.id] = project;
+        state.currentProjectId = project.id;
+        state.fileHandle = fileHandle;
+        state.fileName = fileName;
+        state.hasProjectLock = false;
+        state.canvas.activeFullscreen = 'multiTabBlocked';
+        state.canvas.navStack = [{ fullscreen: 'multiTabBlocked', payload: { projectId: project.id } }];
+      });
+      return;
+    }
+    storeLockRelease(project.id, lockResult.releaseFn);
     set(state => {
       state.projects[project.id] = project;
       state.currentProjectId = project.id;
@@ -190,6 +251,7 @@ export const createProjectSlice = (set, get) => ({
       state.fileName = fileName;
       state.lastSavedToFileAt = nowIso();
       state.fileLastKnownModified = lastModified;
+      state.hasProjectLock = true;
       state._projectLifecycle[project.id] = {
         fileName,
         lastSavedToFileAt: state.lastSavedToFileAt,
@@ -226,6 +288,8 @@ export const createProjectSlice = (set, get) => ({
   },
 
   closeProject: () => {
+    const id = get().currentProjectId;
+    if (id) releaseLockFor(id);
     set(state => {
       state.currentProjectId = null;
       state.fileHandle = null;
@@ -238,6 +302,30 @@ export const createProjectSlice = (set, get) => ({
       state.canvas.activeFullscreen = 'start';
       state.canvas.navStack = [{ fullscreen: 'start', payload: null }];
     });
+  },
+
+  releaseProjectLockForcedToReadOnly: () => {
+    const id = get().currentProjectId;
+    if (id) releaseLockFor(id);
+    set(state => {
+      state.hasProjectLock = false;
+      state.canvas.activeFullscreen = 'readOnlyForced';
+      state.canvas.navStack = [{ fullscreen: 'readOnlyForced', payload: { projectId: state.currentProjectId } }];
+    });
+  },
+
+  retryAcquireLock: async () => {
+    const id = get().currentProjectId;
+    if (!id) return false;
+    const lockResult = await tryAcquireLock(id);
+    if (!lockResult.hasLock) return false;
+    storeLockRelease(id, lockResult.releaseFn);
+    set(state => {
+      state.hasProjectLock = true;
+      state.canvas.activeFullscreen = 'dag';
+      state.canvas.navStack = [{ fullscreen: 'dag', payload: { projectId: id } }];
+    });
+    return true;
   },
 
   renameProject: (newName) => {

@@ -9,6 +9,7 @@ import ReadOnlyForced from './components/ReadOnlyForced';
 import SettingsModal from './components/SettingsModal';
 import { openBodgeFilePicker, pickSaveAs, saveBlobToHandle } from './lib/file-system';
 import { writeBodge, readBodge } from './lib/bodge-zip';
+import { listenForceRelease } from './lib/multi-tab-lock';
 
 const DROPZONE_TYPES = ['.bodge', '.fasta', '.fa', '.gb', '.dna'];
 
@@ -112,6 +113,15 @@ export default function App() {
     window.addEventListener('beforeunload', onBeforeUnload);
     return () => window.removeEventListener('beforeunload', onBeforeUnload);
   }, [flushAutosave, currentProjectId]);
+
+  useEffect(() => {
+    if (!currentProjectId) return;
+    const off = listenForceRelease(currentProjectId, () => {
+      const fn = useStore.getState().releaseProjectLockForcedToReadOnly;
+      if (fn) fn();
+    });
+    return off;
+  }, [currentProjectId]);
 
   useEffect(() => {
     function onDragEnter(e) {
