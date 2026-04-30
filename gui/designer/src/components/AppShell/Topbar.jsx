@@ -1,4 +1,5 @@
 import { useStore, selectIsDirty } from '../../store';
+import { formatHotkey, HOTKEYS } from '../../lib/hotkeys';
 
 export default function Topbar() {
   const navStack = useStore(s => s.canvas.navStack);
@@ -81,6 +82,7 @@ export default function Topbar() {
         <button
           type="button"
           onClick={openSettings}
+          title={`${HOTKEYS['open-settings'].label} ⋅ ${formatHotkey('open-settings')}`}
           style={{
             background: 'transparent', border: 'none',
             padding: '4px 8px', cursor: 'pointer',
@@ -94,6 +96,7 @@ export default function Topbar() {
             type="button"
             data-testid="topbar-close"
             onClick={closeProject}
+            title={`${HOTKEYS['close-project'].label} ⋅ ${formatHotkey('close-project')}`}
             style={{
               background: 'transparent', border: 'none',
               padding: '4px 8px', cursor: 'pointer',

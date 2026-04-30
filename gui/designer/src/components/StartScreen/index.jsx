@@ -1,4 +1,5 @@
 import { useStore } from '../../store';
+import { formatHotkey, HOTKEYS } from '../../lib/hotkeys';
 import RecentCard from './RecentCard';
 import SidebarLink from './SidebarLink';
 
@@ -74,19 +75,21 @@ export default function StartScreen({ onOpenFile }) {
               type="button"
               className="ss-action-btn-primary"
               onClick={() => createProject('Untitled')}
+              title={`${HOTKEYS['new-project'].label} ⋅ ${formatHotkey('new-project')}`}
               data-testid="ss-new-project"
             >+ New project</button>
             <button
               type="button"
               className="ss-action-btn"
               onClick={onOpenFile}
+              title={`${HOTKEYS['open-bodge'].label} ⋅ ${formatHotkey('open-bodge')}`}
               data-testid="ss-open-bodge"
             >↑ Open .bodge…</button>
             <button
               type="button"
               className="ss-action-btn"
               disabled
-              title="Will be in M-B"
+              title="Импорт sequence — будет в M-B"
               data-testid="ss-import-sequence"
             >↓ Import sequence</button>
           </div>

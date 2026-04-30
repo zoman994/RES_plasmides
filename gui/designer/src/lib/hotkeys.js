@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { useStore } from '../store';
 
 /* ════════════════════════════════════════════════════════════════════════════
  * Hotkey infrastructure (Sprint M-A K4).
@@ -156,14 +157,8 @@ function _isInInputElement(target) {
   return false;
 }
 
-/**
- * Default scope context resolver. Reads currentProjectId + activeFullscreen from
- * Zustand store at call time. Tests can pass an explicit `getContext` to avoid
- * pulling the real store.
- */
-async function _defaultGetContext() {
-  const mod = await import('../store');
-  const s = mod.useStore.getState();
+function _defaultGetContext() {
+  const s = useStore.getState();
   return {
     currentProjectId: s.currentProjectId,
     activeFullscreen: s.canvas?.activeFullscreen || 'start',
@@ -200,10 +195,10 @@ function _scopeAllowed(scope, ctx) {
  * @param {KeyboardEvent} event
  * @param {{ context?: { currentProjectId, activeFullscreen } }} [opts]
  */
-export async function runHotkeyResolver(event, opts = {}) {
+export function runHotkeyResolver(event, opts = {}) {
   if (!event || event.defaultPrevented) return false;
   const platform = detectPlatform();
-  const ctx = opts.context ? opts.context : await _getContext();
+  const ctx = opts.context ? opts.context : _getContext();
   const inInput = _isInInputElement(event.target);
 
   // Find all matching entries, then pick the one with highest scope rank.
@@ -223,7 +218,10 @@ export async function runHotkeyResolver(event, opts = {}) {
   const handler = _handlers.get(best);
   event.preventDefault();
   try {
-    await handler(event);
+    const ret = handler(event);
+    if (ret && typeof ret.then === 'function') {
+      ret.catch((e) => console.error(`[bodgegene/hotkeys] handler "${best}" rejected:`, e));
+    }
   } catch (e) {
     // eslint-disable-next-line no-console
     console.error(`[bodgegene/hotkeys] handler "${best}" threw:`, e);

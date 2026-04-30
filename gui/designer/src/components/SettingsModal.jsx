@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useStore } from '../store';
 import { clearAll } from '../db/dexie-schema';
+import { formatHotkey } from '../lib/hotkeys';
 
 const TABS = [
   { id: 'display', label: 'Display' },
@@ -75,6 +76,7 @@ export default function SettingsModal() {
             type="button"
             onClick={closeSettings}
             data-testid="settings-close"
+            title={`Закрыть ⋅ ${formatHotkey('escape')}`}
             style={{ background: 'transparent', border: 'none', fontSize: 18, cursor: 'pointer', color: 'var(--text-secondary)' }}
             aria-label="close"
           >×</button>

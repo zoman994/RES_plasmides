@@ -47,7 +47,7 @@ describe('K4 — hotkey infrastructure', () => {
     renderHook(() => useHotkey('new-project', handler));
     expect(_getHandlersForTests().has('new-project')).toBe(true);
     const ev = makeEvent({ key: 'n', ctrl: true });
-    const ran = await runHotkeyResolver(ev);
+    const ran = runHotkeyResolver(ev);
     expect(ran).toBe(true);
     expect(handler).toHaveBeenCalledTimes(1);
   });
@@ -59,7 +59,7 @@ describe('K4 — hotkey infrastructure', () => {
     unmount();
     expect(_getHandlersForTests().has('new-project')).toBe(false);
     const ev = makeEvent({ key: 'n', ctrl: true });
-    const ran = await runHotkeyResolver(ev);
+    const ran = runHotkeyResolver(ev);
     expect(ran).toBe(false);
     expect(handler).not.toHaveBeenCalled();
   });
@@ -71,12 +71,12 @@ describe('K4 — hotkey infrastructure', () => {
 
     _setGetContextForTests(() => ({ currentProjectId: null, activeFullscreen: 'start' }));
     const ev1 = makeEvent({ key: 's', ctrl: true });
-    expect(await runHotkeyResolver(ev1)).toBe(false);
+    expect(runHotkeyResolver(ev1)).toBe(false);
     expect(handler).not.toHaveBeenCalled();
 
     _setGetContextForTests(() => ({ currentProjectId: 'p-1', activeFullscreen: 'dag' }));
     const ev2 = makeEvent({ key: 's', ctrl: true });
-    expect(await runHotkeyResolver(ev2)).toBe(true);
+    expect(runHotkeyResolver(ev2)).toBe(true);
     expect(handler).toHaveBeenCalledTimes(1);
   });
 
@@ -87,7 +87,7 @@ describe('K4 — hotkey infrastructure', () => {
     const input = document.createElement('input');
     document.body.appendChild(input);
     const ev = makeEvent({ key: 'n', ctrl: true, target: input });
-    const ran = await runHotkeyResolver(ev);
+    const ran = runHotkeyResolver(ev);
     document.body.removeChild(input);
     expect(ran).toBe(false);
     expect(handler).not.toHaveBeenCalled();
@@ -101,7 +101,7 @@ describe('K4 — hotkey infrastructure', () => {
     const input = document.createElement('input');
     document.body.appendChild(input);
     const ev = makeEvent({ key: 's', ctrl: true, target: input });
-    const ran = await runHotkeyResolver(ev);
+    const ran = runHotkeyResolver(ev);
     document.body.removeChild(input);
     expect(ran).toBe(true);
     expect(handler).toHaveBeenCalledTimes(1);
@@ -122,17 +122,17 @@ describe('K4 — hotkey infrastructure', () => {
 
     // case A — modal open
     _setGetContextForTests(() => ({ currentProjectId: null, activeFullscreen: 'start' }));
-    await runHotkeyResolver(makeEvent({ key: 'Escape' }));
+    runHotkeyResolver(makeEvent({ key: 'Escape' }));
     expect(closeModal).toHaveBeenCalledTimes(1);
 
     // case B — no modal, navStack > 1 → handler "pops"
     mode = 'pop';
-    await runHotkeyResolver(makeEvent({ key: 'Escape' }));
+    runHotkeyResolver(makeEvent({ key: 'Escape' }));
     expect(popFs).toHaveBeenCalledTimes(1);
 
     // case C — root (start), no-op
     mode = 'noop';
-    await runHotkeyResolver(makeEvent({ key: 'Escape' }));
+    runHotkeyResolver(makeEvent({ key: 'Escape' }));
     expect(noop).toHaveBeenCalledTimes(1);
   });
 

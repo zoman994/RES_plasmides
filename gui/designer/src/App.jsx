@@ -10,6 +10,7 @@ import SettingsModal from './components/SettingsModal';
 import { openBodgeFilePicker, pickSaveAs, saveBlobToHandle } from './lib/file-system';
 import { writeBodge, readBodge } from './lib/bodge-zip';
 import { listenForceRelease } from './lib/multi-tab-lock';
+import { runHotkeyResolver, useHotkey } from './lib/hotkeys';
 
 const DROPZONE_TYPES = ['.bodge', '.fasta', '.fa', '.gb', '.dna'];
 
@@ -19,8 +20,6 @@ export default function App() {
   const settingsOpen = useStore(s => s.modals.settings);
   const navStack = useStore(s => s.canvas.navStack);
   const currentProjectId = useStore(s => s.currentProjectId);
-  const fileHandle = useStore(s => s.fileHandle);
-  const fileName = useStore(s => s.fileName);
   const project = useStore(s => (currentProjectId ? s.projects[currentProjectId] : null));
   const openProjectFromFileData = useStore(s => s.openProjectFromFileData);
   const registerSavedFile = useStore(s => s.registerSavedFile);
@@ -39,30 +38,11 @@ export default function App() {
     applyThemeToDOM(theme);
   }, [theme]);
 
-  // Cmd/Ctrl+S → save current project to file (no-op on start screen)
-  const handleSave = useCallback(async () => {
-    const id = useStore.getState().currentProjectId;
-    if (!id) return;
-    const proj = useStore.getState().projects[id];
-    if (!proj) return;
-    const blob = writeBodge(proj);
-    let handle = useStore.getState().fileHandle;
-    let name = useStore.getState().fileName;
-    if (!handle) {
-      const suggested = (proj.name || 'project').replace(/[^a-z0-9_-]+/gi, '_') + '.bodge';
-      const picked = await pickSaveAs(suggested);
-      if (!picked) return;
-      handle = picked.handle;
-      name = picked.fileName;
-    }
-    try {
-      const { lastModified } = await saveBlobToHandle(handle, blob);
-      registerSavedFile({ fileHandle: handle, fileName: name, lastModified });
-      showToast('Сохранено', 'success');
-    } catch (e) {
-      showToast(`Не удалось сохранить: ${e.message || e}`, 'error');
-    }
-  }, [registerSavedFile, showToast]);
+  // ─── Hotkey handlers (registered through registry, never via ad-hoc keydown) ───
+
+  const handleNew = useCallback(() => {
+    useStore.getState().createProject('Untitled');
+  }, []);
 
   const handleOpen = useCallback(async () => {
     let pick;
@@ -89,22 +69,69 @@ export default function App() {
     }
   }, [openProjectFromFileData, showToast]);
 
+  const handleSave = useCallback(async () => {
+    const id = useStore.getState().currentProjectId;
+    if (!id) return;
+    const proj = useStore.getState().projects[id];
+    if (!proj) return;
+    const blob = writeBodge(proj);
+    let handle = useStore.getState().fileHandle;
+    let name = useStore.getState().fileName;
+    if (!handle) {
+      const suggested = (proj.name || 'project').replace(/[^a-z0-9_-]+/gi, '_') + '.bodge';
+      const picked = await pickSaveAs(suggested);
+      if (!picked) return;
+      handle = picked.handle;
+      name = picked.fileName;
+    }
+    try {
+      const { lastModified } = await saveBlobToHandle(handle, blob);
+      registerSavedFile({ fileHandle: handle, fileName: name, lastModified });
+      showToast('Сохранено', 'success');
+    } catch (e) {
+      showToast(`Не удалось сохранить: ${e.message || e}`, 'error');
+    }
+  }, [registerSavedFile, showToast]);
+
+  const handleClose = useCallback(() => {
+    useStore.getState().closeProject();
+  }, []);
+
+  const handleSettings = useCallback(() => {
+    useStore.getState().openSettings();
+  }, []);
+
+  const handleEscape = useCallback(() => {
+    const s = useStore.getState();
+    if (s.modals?.settings) {
+      s.closeSettings();
+      return;
+    }
+    if (s.canvas.navStack.length > 1) {
+      s.popFullscreen();
+    }
+    // else no-op (root view)
+  }, []);
+
+  useHotkey('new-project', handleNew);
+  useHotkey('open-bodge', handleOpen);
+  useHotkey('save-bodge', handleSave);
+  useHotkey('close-project', handleClose);
+  useHotkey('open-settings', handleSettings);
+  useHotkey('escape', handleEscape);
+
+  // ─── Single global keydown listener via runHotkeyResolver ───
   useEffect(() => {
     function onKeyDown(e) {
-      const isSave = (e.key === 's' || e.key === 'S') && (e.metaKey || e.ctrlKey);
-      if (isSave) {
-        e.preventDefault();
-        handleSave();
-      }
+      runHotkeyResolver(e);
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [handleSave]);
+  }, []);
 
   useEffect(() => {
     function onBeforeUnload(e) {
       try { flushAutosave(); } catch { /* ignore */ }
-      // browser-native warning if dirty
       if (currentProjectId) {
         e.preventDefault();
         e.returnValue = '';
@@ -181,10 +208,7 @@ export default function App() {
       inProjectChild = null;
   }
 
-  // Fragment for hidden, controlled by activeFullscreen
   void project;
-  void fileHandle;
-  void fileName;
 
   return (
     <div data-theme={theme} style={{ minHeight: '100vh' }}>
