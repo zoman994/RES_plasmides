@@ -1,15 +1,26 @@
-// K4 stub. Full DAG placeholder lands in K6.
 export default function DagPlaceholder() {
   return (
     <div
       data-testid="dag-placeholder"
       style={{
-        flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        flex: 1,
+        position: 'relative',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
         background: 'var(--surface-2, #f5f5f4)',
-        color: 'var(--text-tertiary, #78716c)', fontSize: 14, padding: 24, textAlign: 'center',
+        backgroundImage:
+          'radial-gradient(circle, var(--border-subtle, #e7e5e4) 1px, transparent 1px)',
+        backgroundSize: '20px 20px',
+        color: 'var(--text-tertiary, #78716c)',
+        fontSize: 14,
+        padding: 24,
+        textAlign: 'center',
       }}
     >
-      Empty project. Push containers from Importer (coming in M-B).
+      <p style={{ margin: 0, maxWidth: 480 }}>
+        Empty project. Push containers from Importer (coming in M-B).
+      </p>
     </div>
   );
 }
