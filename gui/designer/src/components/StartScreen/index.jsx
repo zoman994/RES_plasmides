@@ -1,8 +1,20 @@
+import { useState } from 'react';
 import { useStore } from '../../store';
 import { formatHotkey, HOTKEYS } from '../../lib/hotkeys';
+import { writeBodge } from '../../lib/bodge-zip';
+import { downloadBlob } from '../../lib/file-system';
 import RecentCard from './RecentCard';
 import SidebarLink from './SidebarLink';
 import ThemeToggle from '../ThemeToggle';
+
+function fileNameFor(project) {
+  const safe = (project.name || 'project')
+    .trim()
+    .replace(/[^a-z0-9_\- ]+/gi, '_')
+    .replace(/\s+/g, '_')
+    .slice(0, 80) || 'project';
+  return `${safe}.bodge`;
+}
 
 export default function StartScreen({ onOpenFile }) {
   const theme = useStore(s => s.theme);
@@ -16,14 +28,62 @@ export default function StartScreen({ onOpenFile }) {
   const openSettings = useStore(s => s.openSettings);
   const showToast = useStore(s => s.showToast);
 
+  const [exportMode, setExportMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+
   function handleNewProject() {
     createProject('Untitled');
     openProjectInfo();
   }
 
+  function toggleExportMode() {
+    if (exportMode) {
+      setExportMode(false);
+      setSelectedIds(new Set());
+    } else {
+      setExportMode(true);
+    }
+  }
+
+  function toggleSelected(id) {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function handleExportSelected() {
+    if (selectedIds.size === 0) return;
+    let exported = 0;
+    for (const id of selectedIds) {
+      const proj = projects[id];
+      if (!proj) continue;
+      try {
+        const blob = writeBodge(proj);
+        await downloadBlob(blob, fileNameFor(proj));
+        exported += 1;
+        // tiny pause helps browsers handle multiple sequential downloads
+        await new Promise(r => setTimeout(r, 80));
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error('[bodgegene] export failed for project', id, e);
+      }
+    }
+    setExportMode(false);
+    setSelectedIds(new Set());
+    showToast(
+      exported === 1 ? 'Экспортирован 1 проект' : `Экспортировано: ${exported} проект(ов)`,
+      'success',
+    );
+  }
+
   const recentProjects = recentProjectIds
     .map(id => projects[id])
     .filter(Boolean);
+
+  const exportBtnDisabled = recentProjects.length === 0 && !exportMode;
 
   return (
     <div
@@ -102,6 +162,14 @@ export default function StartScreen({ onOpenFile }) {
               title="Импорт sequence — будет в M-B"
               data-testid="ss-import-sequence"
             >↓ Import sequence</button>
+            <button
+              type="button"
+              className={exportMode ? 'ss-action-btn-primary' : 'ss-action-btn'}
+              onClick={toggleExportMode}
+              disabled={exportBtnDisabled}
+              title={exportMode ? 'Выйти из режима экспорта' : 'Выгрузить .bodge файлы'}
+              data-testid="ss-export-toggle"
+            >{exportMode ? '✓ Выйти из выбора' : '⤓ Export .bodge…'}</button>
           </div>
 
           <div style={{ borderTop: '0.5px solid var(--ss-border-tertiary)', paddingTop: 16 }}>
@@ -164,9 +232,38 @@ export default function StartScreen({ onOpenFile }) {
             minHeight: 0,
           }}
         >
-          <p style={{ fontSize: 14, color: 'var(--ss-text-secondary)', margin: '0 0 12px' }}>
-            Recent projects
-          </p>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              margin: '0 0 12px',
+            }}
+          >
+            <p style={{ fontSize: 14, color: 'var(--ss-text-secondary)', margin: 0 }}>
+              {exportMode
+                ? `Выбор для экспорта · ${selectedIds.size} выбрано`
+                : 'Recent projects'}
+            </p>
+            {exportMode && (
+              <button
+                type="button"
+                onClick={handleExportSelected}
+                disabled={selectedIds.size === 0}
+                data-testid="ss-export-confirm"
+                style={{
+                  fontSize: 13,
+                  padding: '6px 14px',
+                  border: '0.5px solid var(--accent-500)',
+                  borderRadius: 'var(--radius-md)',
+                  background: selectedIds.size === 0 ? 'transparent' : 'var(--accent-50)',
+                  color: selectedIds.size === 0 ? 'var(--ss-text-tertiary)' : 'var(--accent-text)',
+                  fontWeight: 500,
+                  cursor: selectedIds.size === 0 ? 'not-allowed' : 'pointer',
+                }}
+              >Скачать выбранные ({selectedIds.size})</button>
+            )}
+          </div>
           {recentProjects.length === 0 ? (
             <p
               data-testid="ss-recent-empty"
@@ -190,12 +287,15 @@ export default function StartScreen({ onOpenFile }) {
                   key={project.id}
                   project={project}
                   lifecycle={lifecycles[project.id]}
+                  exportMode={exportMode}
+                  selected={selectedIds.has(project.id)}
+                  onToggleSelect={() => toggleSelected(project.id)}
                   onClick={() => openProjectFromIndexedDB(project.id)}
                 />
               ))}
             </div>
           )}
-          {recentProjects.length > 0 && (
+          {recentProjects.length > 0 && !exportMode && (
             <button
               type="button"
               className="ss-view-all"

@@ -22,7 +22,14 @@ export function formatRelativeTimeAgo(isoTs, nowMs = Date.now()) {
   return `${Math.round(diff / month)} мес назад`;
 }
 
-export default function RecentCard({ project, lifecycle, onClick }) {
+export default function RecentCard({
+  project,
+  lifecycle,
+  onClick,
+  exportMode = false,
+  selected = false,
+  onToggleSelect,
+}) {
   const removeProjectFromIndexedDB = useStore(s => s.removeProjectFromIndexedDB);
 
   if (!project) return null;
@@ -41,10 +48,15 @@ export default function RecentCard({ project, lifecycle, onClick }) {
     saved ? 'saved' : (containers === 0 ? 'only in browser' : 'unsaved'),
   ].filter(Boolean).join(' · ');
 
+  function handleCardClick() {
+    if (exportMode) onToggleSelect?.();
+    else onClick?.();
+  }
+
   function handleKeyDown(e) {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
-      onClick?.();
+      handleCardClick();
     }
   }
 
@@ -65,11 +77,43 @@ export default function RecentCard({ project, lifecycle, onClick }) {
       className="ss-recent-card"
       role="button"
       tabIndex={0}
-      onClick={onClick}
+      onClick={handleCardClick}
       onKeyDown={handleKeyDown}
       data-testid="ss-recent-card"
-      style={{ position: 'relative', textAlign: 'left', cursor: 'pointer' }}
+      aria-pressed={exportMode ? selected : undefined}
+      style={{
+        position: 'relative',
+        textAlign: 'left',
+        cursor: 'pointer',
+        ...(exportMode && selected
+          ? { outline: '1.5px solid var(--accent-500)', outlineOffset: -1 }
+          : null),
+      }}
     >
+      {exportMode && (
+        <span
+          aria-hidden="true"
+          data-testid="ss-recent-card-checkbox"
+          data-selected={selected ? 'true' : 'false'}
+          style={{
+            position: 'absolute',
+            top: 8,
+            right: 8,
+            width: 18,
+            height: 18,
+            borderRadius: 4,
+            border: `1.5px solid ${selected ? 'var(--accent-500)' : 'var(--ss-border-secondary)'}`,
+            background: selected ? 'var(--accent-500)' : 'transparent',
+            color: '#fff',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 12,
+            lineHeight: 1,
+          }}
+        >{selected ? '✓' : ''}</span>
+      )}
+
       <div className="ss-card-left">
         <div className={isUntitled ? 'ss-card-name-untitled' : 'ss-card-name'}>
           {displayName}
@@ -85,31 +129,34 @@ export default function RecentCard({ project, lifecycle, onClick }) {
       {description
         ? <div className="ss-card-desc">{description}</div>
         : <div className="ss-card-desc" style={{ color: 'var(--ss-text-tertiary)' }}>no description yet</div>}
-      <span className="ss-card-chevron">▷</span>
-      <button
-        type="button"
-        onClick={handleDelete}
-        onKeyDown={(e) => e.stopPropagation()}
-        data-testid="ss-recent-card-delete"
-        title="Удалить проект"
-        aria-label={`Удалить проект «${displayName}»`}
-        style={{
-          position: 'absolute',
-          right: 6,
-          bottom: 6,
-          background: 'transparent',
-          border: 'none',
-          cursor: 'pointer',
-          padding: '2px 6px',
-          fontSize: 14,
-          lineHeight: 1,
-          color: 'var(--ss-text-tertiary)',
-          opacity: 0.55,
-          borderRadius: 4,
-        }}
-        onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.color = 'var(--danger-fg, #b91c1c)'; }}
-        onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.55'; e.currentTarget.style.color = 'var(--ss-text-tertiary)'; }}
-      >×</button>
+      {!exportMode && <span className="ss-card-chevron">▷</span>}
+
+      {!exportMode && (
+        <button
+          type="button"
+          onClick={handleDelete}
+          onKeyDown={(e) => e.stopPropagation()}
+          data-testid="ss-recent-card-delete"
+          title="Удалить проект"
+          aria-label={`Удалить проект «${displayName}»`}
+          style={{
+            position: 'absolute',
+            right: 6,
+            bottom: 6,
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            padding: '2px 6px',
+            fontSize: 14,
+            lineHeight: 1,
+            color: 'var(--ss-text-tertiary)',
+            opacity: 0.55,
+            borderRadius: 4,
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.color = 'var(--danger-fg, #b91c1c)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.55'; e.currentTarget.style.color = 'var(--ss-text-tertiary)'; }}
+        >×</button>
+      )}
     </div>
   );
 }

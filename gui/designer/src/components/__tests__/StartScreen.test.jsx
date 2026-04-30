@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, act, waitFor } from '@testing-library/react';
 import { useStore } from '../../store';
 import { clearAllAutosaveTimers } from '../../store/projectSlice';
 import StartScreen from '../StartScreen';
@@ -197,6 +197,110 @@ describe('K5 — StartScreen wireframe v7', () => {
     const btn = screen.getByTestId('ss-browse-group-projects');
     expect(btn.disabled).toBe(true);
     expect(btn.textContent).toContain('soon');
+  });
+
+  it('Export toggle adds checkboxes to cards and hides × delete buttons', () => {
+    useStore.setState((state) => {
+      state.projects['p-1'] = {
+        id: 'p-1', name: 'A', tags: [], description: '', containerIds: [],
+        updatedAt: new Date().toISOString(),
+      };
+      state.projects['p-2'] = {
+        id: 'p-2', name: 'B', tags: [], description: '', containerIds: [],
+        updatedAt: new Date().toISOString(),
+      };
+      state._projectLifecycle['p-1'] = {};
+      state._projectLifecycle['p-2'] = {};
+      state.recentProjectIds = ['p-1', 'p-2'];
+    });
+    render(<StartScreen onOpenFile={() => {}} />);
+    expect(screen.queryAllByTestId('ss-recent-card-checkbox').length).toBe(0);
+    expect(screen.queryAllByTestId('ss-recent-card-delete').length).toBe(2);
+
+    fireEvent.click(screen.getByTestId('ss-export-toggle'));
+    expect(screen.queryAllByTestId('ss-recent-card-checkbox').length).toBe(2);
+    expect(screen.queryAllByTestId('ss-recent-card-delete').length).toBe(0);
+    expect(screen.getByTestId('ss-export-confirm')).toBeTruthy();
+    expect(screen.getByTestId('ss-export-confirm').disabled).toBe(true);
+  });
+
+  it('In export mode, clicking a card toggles selection (does not open project)', () => {
+    useStore.setState((state) => {
+      state.projects['p-1'] = {
+        id: 'p-1', name: 'A', tags: [], description: '', containerIds: [],
+        updatedAt: new Date().toISOString(),
+      };
+      state._projectLifecycle['p-1'] = {};
+      state.recentProjectIds = ['p-1'];
+    });
+    const openSpy = vi.fn();
+    useStore.setState({ openProjectFromIndexedDB: openSpy });
+    render(<StartScreen onOpenFile={() => {}} />);
+    fireEvent.click(screen.getByTestId('ss-export-toggle'));
+
+    const card = screen.getByTestId('ss-recent-card');
+    fireEvent.click(card);
+    expect(screen.getByTestId('ss-recent-card-checkbox').dataset.selected).toBe('true');
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(screen.getByTestId('ss-export-confirm').disabled).toBe(false);
+
+    fireEvent.click(card);
+    expect(screen.getByTestId('ss-recent-card-checkbox').dataset.selected).toBe('false');
+  });
+
+  it('Скачать выбранные → triggers downloadBlob once per selected project', async () => {
+    useStore.setState((state) => {
+      state.projects['p-1'] = {
+        id: 'p-1', name: 'pUC19', tags: [], description: '', containerIds: [],
+        updatedAt: new Date().toISOString(),
+      };
+      state.projects['p-2'] = {
+        id: 'p-2', name: 'pET28a-GFP', tags: [], description: '', containerIds: [],
+        updatedAt: new Date().toISOString(),
+      };
+      state._projectLifecycle['p-1'] = {};
+      state._projectLifecycle['p-2'] = {};
+      state.recentProjectIds = ['p-1', 'p-2'];
+    });
+
+    // count download attempts via anchor.click
+    const clicks = [];
+    const originalCreate = document.createElement.bind(document);
+    const createSpy = vi.spyOn(document, 'createElement').mockImplementation((tag) => {
+      const el = originalCreate(tag);
+      if (tag === 'a') {
+        el.click = () => { clicks.push(el.download); };
+      }
+      return el;
+    });
+    const originalCreateUrl = URL.createObjectURL;
+    URL.createObjectURL = () => 'blob:fake';
+    const originalRevokeUrl = URL.revokeObjectURL;
+    URL.revokeObjectURL = () => {};
+
+    try {
+      render(<StartScreen onOpenFile={() => {}} />);
+      fireEvent.click(screen.getByTestId('ss-export-toggle'));
+      const cards = screen.getAllByTestId('ss-recent-card');
+      fireEvent.click(cards[0]);
+      fireEvent.click(cards[1]);
+      expect(screen.getByTestId('ss-export-confirm').disabled).toBe(false);
+
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('ss-export-confirm'));
+      });
+      await waitFor(() => expect(clicks.length).toBe(2), { timeout: 1500 });
+
+      expect(clicks).toEqual(expect.arrayContaining(['pUC19.bodge', 'pET28a-GFP.bodge']));
+      // export mode resets after download
+      await waitFor(() => {
+        expect(screen.queryByTestId('ss-export-confirm')).toBeNull();
+      }, { timeout: 1500 });
+    } finally {
+      createSpy.mockRestore();
+      URL.createObjectURL = originalCreateUrl;
+      URL.revokeObjectURL = originalRevokeUrl;
+    }
   });
 
   it('formatRelativeTimeAgo handles common ranges', () => {
