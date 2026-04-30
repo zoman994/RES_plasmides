@@ -1,3 +1,5 @@
+import { useStore } from '../../store';
+
 export function formatRelativeTimeAgo(isoTs, nowMs = Date.now()) {
   if (!isoTs) return '';
   const then = new Date(isoTs).getTime();
@@ -21,9 +23,12 @@ export function formatRelativeTimeAgo(isoTs, nowMs = Date.now()) {
 }
 
 export default function RecentCard({ project, lifecycle, onClick }) {
+  const removeProjectFromIndexedDB = useStore(s => s.removeProjectFromIndexedDB);
+
   if (!project) return null;
   const name = project.name || '';
   const isUntitled = !name || name === 'Untitled';
+  const displayName = isUntitled ? 'Untitled' : name;
   const containers = (project.containerIds && project.containerIds.length) || 0;
   const saved = !!(lifecycle && lifecycle.lastSavedToFileAt);
   const fileName = lifecycle && lifecycle.fileName;
@@ -36,17 +41,38 @@ export default function RecentCard({ project, lifecycle, onClick }) {
     saved ? 'saved' : (containers === 0 ? 'only in browser' : 'unsaved'),
   ].filter(Boolean).join(' · ');
 
+  function handleKeyDown(e) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onClick?.();
+    }
+  }
+
+  function handleDelete(e) {
+    e.stopPropagation();
+    const ok = (typeof window !== 'undefined' && typeof window.confirm === 'function')
+      ? window.confirm(`Удалить проект «${displayName}»? Действие нельзя отменить.`)
+      : true;
+    if (!ok) return;
+    Promise.resolve(removeProjectFromIndexedDB(project.id)).catch((err) => {
+      // eslint-disable-next-line no-console
+      console.error('[bodgegene] removeProjectFromIndexedDB failed', err);
+    });
+  }
+
   return (
-    <button
-      type="button"
+    <div
       className="ss-recent-card"
+      role="button"
+      tabIndex={0}
       onClick={onClick}
+      onKeyDown={handleKeyDown}
       data-testid="ss-recent-card"
-      style={{ textAlign: 'left' }}
+      style={{ position: 'relative', textAlign: 'left', cursor: 'pointer' }}
     >
       <div className="ss-card-left">
         <div className={isUntitled ? 'ss-card-name-untitled' : 'ss-card-name'}>
-          {isUntitled ? 'Untitled' : name}
+          {displayName}
         </div>
         <div className="ss-card-meta">{meta}</div>
         {fileName
@@ -60,6 +86,30 @@ export default function RecentCard({ project, lifecycle, onClick }) {
         ? <div className="ss-card-desc">{description}</div>
         : <div className="ss-card-desc" style={{ color: 'var(--ss-text-tertiary)' }}>no description yet</div>}
       <span className="ss-card-chevron">▷</span>
-    </button>
+      <button
+        type="button"
+        onClick={handleDelete}
+        onKeyDown={(e) => e.stopPropagation()}
+        data-testid="ss-recent-card-delete"
+        title="Удалить проект"
+        aria-label={`Удалить проект «${displayName}»`}
+        style={{
+          position: 'absolute',
+          right: 6,
+          bottom: 6,
+          background: 'transparent',
+          border: 'none',
+          cursor: 'pointer',
+          padding: '2px 6px',
+          fontSize: 14,
+          lineHeight: 1,
+          color: 'var(--ss-text-tertiary)',
+          opacity: 0.55,
+          borderRadius: 4,
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.color = 'var(--danger-fg, #b91c1c)'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.55'; e.currentTarget.style.color = 'var(--ss-text-tertiary)'; }}
+      >×</button>
+    </div>
   );
 }

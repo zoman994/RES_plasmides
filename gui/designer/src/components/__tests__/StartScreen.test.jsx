@@ -108,6 +108,61 @@ describe('K5 — StartScreen wireframe v7', () => {
     expect(spy).toHaveBeenCalledWith('p-1');
   });
 
+  it('Recent card × button → confirm OK → removeProjectFromIndexedDB(id)', () => {
+    useStore.setState((state) => {
+      state.projects['p-1'] = {
+        id: 'p-1', name: 'pUC19', tags: [], description: '',
+        containerIds: [], updatedAt: new Date().toISOString(),
+      };
+      state._projectLifecycle['p-1'] = {};
+      state.recentProjectIds = ['p-1'];
+    });
+    const removeSpy = vi.fn().mockResolvedValue(undefined);
+    const openSpy = vi.fn();
+    useStore.setState({ removeProjectFromIndexedDB: removeSpy, openProjectFromIndexedDB: openSpy });
+    const confirmStub = vi.fn(() => true);
+    const originalConfirm = window.confirm;
+    window.confirm = confirmStub;
+
+    try {
+      render(<StartScreen onOpenFile={() => {}} />);
+      fireEvent.click(screen.getByTestId('ss-recent-card-delete'));
+
+      expect(confirmStub).toHaveBeenCalledTimes(1);
+      expect(confirmStub.mock.calls[0][0]).toMatch(/pUC19/);
+      expect(removeSpy).toHaveBeenCalledWith('p-1');
+      expect(openSpy).not.toHaveBeenCalled(); // delete must not bubble to card click
+    } finally {
+      window.confirm = originalConfirm;
+    }
+  });
+
+  it('Recent card × button → confirm Cancel → no reducer call', () => {
+    useStore.setState((state) => {
+      state.projects['p-1'] = {
+        id: 'p-1', name: 'P', tags: [], description: '',
+        containerIds: [], updatedAt: new Date().toISOString(),
+      };
+      state._projectLifecycle['p-1'] = {};
+      state.recentProjectIds = ['p-1'];
+    });
+    const removeSpy = vi.fn();
+    useStore.setState({ removeProjectFromIndexedDB: removeSpy });
+    const confirmStub = vi.fn(() => false);
+    const originalConfirm = window.confirm;
+    window.confirm = confirmStub;
+
+    try {
+      render(<StartScreen onOpenFile={() => {}} />);
+      fireEvent.click(screen.getByTestId('ss-recent-card-delete'));
+
+      expect(confirmStub).toHaveBeenCalled();
+      expect(removeSpy).not.toHaveBeenCalled();
+    } finally {
+      window.confirm = originalConfirm;
+    }
+  });
+
   it('+ New project triggers createProject and switches activeFullscreen to dag', () => {
     render(<StartScreen onOpenFile={() => {}} />);
     fireEvent.click(screen.getByTestId('ss-new-project'));
