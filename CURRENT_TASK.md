@@ -131,6 +131,118 @@ _CURRENT_TASK.md обновлён 30.04.2026 после второй итера�
 
 ---
 
+## ⚠️ Mini-spec M-A-fix-2: ProjectInfoModal (тип C, UX-итерация)
+
+**Дата:** 30.04.2026, после визуальной приёмки M-A.
+**Статус:** 🟡 Готов к handoff Code.
+
+### Контекст
+
+M-A прошёл визуальную приёмку с двумя серий правок:
+
+- **M-A-fix-1 (UX правки):** реализованы Игорем + Code retrofit без отдельной mini-spec — theme toggle вынесен в правый угол header (☀/🌙) вместо Display tab в Settings; Guide button → push UnderConstruction (M-A.1); back-button `‹` слева в Topbar вместо wordmark BodgeGene; SettingsModal Display tab удалён, остались Identity + Advanced. Уже в коде.
+- **M-A-fix-2 (это):** обнаружен UX gap — биолог создал проект «Untitled» с пустыми description/tags и **не имеет UI для редактирования**. Reducers `renameProject` / `addTag` / `removeTag` в store есть, но не подключены к UI. Карточка Recent с italic placeholders во всех полях.
+
+Игорь выбрал вариант B (modal Project info) против A (inline rename), C (sidebar inspector), D (отложить в M-B).
+
+### Что строим
+
+Новый компонент `components/ProjectInfoModal.jsx` (~3-5 KB) — modal по типу `SettingsModal` (floating panel + overlay backdrop), редактирующий три поля: name, description, tags. Открывается из Topbar (кнопка `✏️` рядом с project name) либо хоткеем `⌘I / Ctrl+I`. Esc и backdrop-click закрывают **без сохранения**. Save применяет изменения через store reducers.
+
+### Файлы
+
+1. `gui/designer/src/components/ProjectInfoModal.jsx` — **новый**, ~3-5 KB.
+2. `gui/designer/src/store/uiSlice.js` — добавить `modals.projectInfo: bool` + reducers `openProjectInfo()` / `closeProjectInfo()` (по образцу `openSettings` / `closeSettings`).
+3. `gui/designer/src/store/projectSlice.js` — добавить reducer `updateDescription(text)` (по образцу `renameProject` — set + bumpUpdatedAt + `_scheduleAutosave`). Этого reducer'а сейчас нет.
+4. `gui/designer/src/components/AppShell/Topbar.jsx` — добавить кнопку `✏️` после project name + dirty dot, перед file name. `onClick={openProjectInfo}`, `title={\`Project info ⋅ ${formatHotkey('project-info')}\`}`.
+5. `gui/designer/src/lib/hotkeys.js` — добавить **7-й entry** в `HOTKEYS` map:
+   - id: `'project-info'`
+   - keys: `{ mac: 'cmd+i', other: 'ctrl+i' }`
+   - scope: `'global-with-project'`
+   - label: `'Project info'`
+   - allowInInput: `false`
+6. `gui/designer/src/App.jsx` — (a) render `<ProjectInfoModal/>` если `modals.projectInfo` (как Settings); (b) `useHotkey('project-info', () => openProjectInfo())`; (c) расширить Esc handler — закрывать topmost modal в порядке приоритета: `modals.projectInfo` → `closeProjectInfo()`, иначе `modals.settings` → `closeSettings()`, иначе `popFullscreen()` если `navStack > 1`, иначе no-op.
+
+### Контракт `<ProjectInfoModal/>`
+
+- Читает текущий `project = projects[currentProjectId]`. Если `currentProjectId === null` — render `null` (modal не должен открыться без проекта; защита от ошибки в hotkey scope).
+- Локальный `useState` для name / description / tags. Инициализация из project на mount.
+- **Name:** `<input type="text">` required. Валидация на Save: `trim`, max 100 chars; если пусто после trim — fallback на `'Untitled'`.
+- **Description:** `<textarea rows={4}>` optional. Валидация на Save: `trim`, max 1000 chars.
+- **Tags:** chips list + input + кнопка `+ add` (либо Enter / `,` в input добавляет chip). Каждый chip с `×` для удаления. Валидация per-tag: `trim` + `toLowerCase`, max 50 chars; dedupe (case-insensitive) против существующих; total max 20 tags. Empty tag — ignore.
+- **Save** button:
+  - Compute diff vs текущего project.
+  - `name` change → `renameProject(newName)`.
+  - `description` change → `updateDescription(newDesc)`.
+  - Tags diff: для каждого removed → `removeTag(tag)`; для каждого added → `addTag(tag)`.
+  - `closeProjectInfo()` + `showToast('Сохранено', 'success')`.
+- **Cancel** button: `closeProjectInfo()` без вызовов reducers.
+- **Esc / backdrop click:** behaves как Cancel (без сохранения).
+- **Layout:** floating panel `min-width: 480px, max-width: 560px`, overlay `rgba(0,0,0,0.32)`, центрирован. CSS-vars из DESIGN_SYSTEM (`--surface-1`, `--text-primary`, `--accent-500`, `--border-default`, `--radius-lg`).
+- **`data-testid`:** `'project-info-modal'`, `'project-info-name'`, `'project-info-description'`, `'project-info-tag-input'`, `'project-info-tag-{tag}'`, `'project-info-save'`, `'project-info-cancel'`, `'project-info-close'`.
+
+### Тесты (`components/__tests__/ProjectInfoModal.test.jsx`, +7 кейсов)
+
+1. Modal renders с pre-populated name/description/tags из current project.
+2. Edit name → Save → `renameProject` called с trimmed value.
+3. Empty name → Save → `renameProject` called с `'Untitled'` (fallback).
+4. Edit description → Save → `updateDescription` called.
+5. Add tag (type `'pET-28a'` + Enter) → Save → `addTag('pet-28a')` (lowercase).
+6. Remove tag chip (click ×) → Save → `removeTag('pet-28a')` called.
+7. Cancel → `closeProjectInfo` called, никаких reducers не вызвано.
+
+Плюс расширить `K6-stubs.test.jsx`:
+8. SettingsModal остаётся без изменений (Identity + Advanced) — sanity test.
+
+Плюс в `lib/__tests__/hotkeys.test.js`:
+9. `formatHotkey('project-info', 'mac')` → `'⌘I'`; `'win'` → `'Ctrl+I'`.
+10. `useHotkey('project-info', handler)` — handler не вызывается если `currentProjectId === null` (scope `'global-with-project'`).
+
+Плюс в `__tests__/hotkey-flow.integration.test.jsx`:
+11. ⌘I из DAG → ProjectInfoModal open. Esc → close.
+
+### Что НЕ делаем (явно out of scope)
+
+- Inline rename в Topbar (modal — единственный путь).
+- Drag-drop reorder тегов.
+- Markdown rendering description (только plain text).
+- Аватары / agent picker (это в M-D вместе с commit attribution).
+- Edit metadata из RecentCard hover (это в M-A.1+ — открытие modal без открытия проекта требует другого scope логики).
+- History/audit log изменений metadata (это в M-D commits системе через ProjectCommit).
+- Tag autocomplete из других проектов (M-H Library + Tag-DB).
+- Validation по regex / format (никаких email-format requirements для description / etc).
+
+### STOP-условие
+
+После commit'а Code останавливается. **НЕ:**
+
+- обновляет `PROJECT_STATE.md` / `DECISIONS.md` / `BUGS.md` / `TECH_DEBT.md`;
+- финализирует Sprint M-A в archive;
+- начинает M-A-fix-3 / M-A.1 / M-B;
+- трогает 42 v0.5 компонента / hooks / расчётные модули.
+
+### Verification
+
+```bash
+cd gui/designer && npx vitest run
+npx vite build
+```
+
+**Ожидаемые цифры:** Vitest 726 (M-A baseline) → 736+ (+7 ProjectInfoModal + ~3 hotkeys-расширения + 1 K6 sanity). pytest 112/112 без изменений. Build clean.
+
+### Формат отчёта
+
+В конец этого файла дописать блок `## Отчёт Code по M-A-fix-2`:
+- Коммиты (1-2 hash'а, по сложности).
+- Размеры файлов (новый `ProjectInfoModal.jsx` + дельты `Topbar.jsx`, `App.jsx`, `lib/hotkeys.js`, `store/projectSlice.js`, `store/uiSlice.js`).
+- Тесты (Vitest до/после, pytest, build).
+- Отклонения от mini-spec — обязательный блок, явно «нет отклонений» если их нет.
+- Открытые вопросы при реализации.
+
+Жду визуальной приёмки в отдельной сессии Chat (3 скриншота: Topbar с ✏️ рядом с именем; ProjectInfoModal открытый с заполненными полями; ⌘I хоткей tooltip).
+
+---
+
 ## Отчёт Code по Sprint M-A
 
 **Дата:** 30.04.2026
@@ -380,3 +492,83 @@ _CURRENT_TASK.md обновлён 30.04.2026 после второй итера�
 - Backend — не тронут. pytest 112/112.
 
 Жду визуальной приёмки в отдельной сессии Chat.
+
+---
+
+## Отчёт Code по M-A-fix-2
+
+**Дата:** 30.04.2026 (та же сессия после M-A-fix-1).
+
+### Коммиты
+
+| Назначение | hash | message |
+|------------|------|---------|
+| M-A-fix-2 единым commit'ом | `fedbeed` | M-A-fix-2: ProjectInfoModal + 7th hotkey project-info (Cmd/Ctrl+I) |
+
+Mini-spec предполагал «1-2 hash'а». Реализовано одним коммитом — изменения тесно связаны (modal + hotkey + reducer + tooltip), разделение усложнило бы отчёт.
+
+### Размеры файлов
+
+| Файл | До | После | Δ | Лимит |
+|------|----|-------|----|-------|
+| `components/ProjectInfoModal.jsx` (новый) | — | **9.45 KB** | +9.45 KB | 40 KB hard |
+| `components/AppShell/Topbar.jsx` | 4.55 KB | 5.04 KB | +0.49 KB (✏️ кнопка) | 40 KB |
+| `App.jsx` | 9.04 KB | 9.22 KB | +0.18 KB (modal-рендер + useHotkey + Esc-приоритет) | 40 KB |
+| `lib/hotkeys.js` | 7.55 KB | 7.62 KB | +0.07 KB (7-й entry) | 25 KB |
+| `store/projectSlice.js` | 13.59 KB | 13.74 KB | +0.15 KB (`updateDescription` reducer) | 25 KB |
+| `store/uiSlice.js` | 1.62 KB | 1.75 KB | +0.13 KB (`projectInfo` modal state + 2 reducer) | 25 KB |
+
+Все файлы в зелёной зоне. **size budget: OK.**
+
+### Тесты
+
+| Уровень | До (M-A baseline) | После M-A-fix-2 | Δ |
+|---------|-------------------|------------------|----|
+| Vitest test files | 61 | **62** | +1 (`ProjectInfoModal.test.jsx`) |
+| Vitest tests | 727 | **739** | **+12** |
+| pytest | 112/112 | 112/112 | без изменений |
+
+**739/739 passed, 0 skipped. Build: clean.**
+
+Распределение +12 тестов:
+- `components/__tests__/ProjectInfoModal.test.jsx` — **8** (mini-spec требовал 7; добавил 8-й «defensive null when no project» — хорошая страховка от ошибки в hotkey scope, см. контракт §3 в mini-spec).
+- `lib/__tests__/hotkeys.test.js` — **+3** (вместо +2 как в spec; одна — пересчёт `HOTKEYS` map с 6 на 7 entries в существующем sanity-тесте; +2 новых: `formatHotkey('project-info')` mac/win и scope `'global-with-project'` gate).
+- `__tests__/hotkey-flow.integration.test.jsx` — **+1** (full ⌘N → DAG → ⌘I → ProjectInfoModal → Esc → close).
+- `components/__tests__/K6-stubs.test.jsx` — **+1** (sanity: SettingsModal Identity + Advanced reachable, Display tab отсутствует).
+
+Mini-spec ожидал «736+» — фактически 739, в пределах допустимого.
+
+### Отклонения от mini-spec
+
+1. **8 тестов в `ProjectInfoModal.test.jsx` вместо 7.** Mini-spec §«Тесты» перечисляет 7 кейсов; добавил 8-й — «renders nothing if there is no current project» — потому что контракт §«Контракт ProjectInfoModal» явно требует defensive `return null` при `currentProjectId === null`. Без теста этот контракт мог бы регрессировать, например, если кто-то в M-D рефакторит modal-routing. Чисто аддитивное расширение, не противоречие со spec.
+
+2. **+3 теста в `hotkeys.test.js` вместо +2.** Mini-spec пунктами 9-10 требовал `formatHotkey('project-info')` + scope-gate. Я добавил третий — пересчёт sanity-теста `HOTKEYS map exposes N entries` (6 → 7). Это правка существующего теста, а не новый кейс — но vitest считает её +1.
+
+3. **Один commit вместо «1-2 hash'а».** Mini-spec §«Формат отчёта» допускает 1-2 hash'а «по сложности». Выбрал 1 — изменения тесно связаны, граница между store/UI/tests искусственна, разрезание ради PR-cosmetics.
+
+4. **`ProjectInfoModal` рендерится **до** `SettingsModal` в App.jsx.** Mini-spec §«Файлы» п. 6(a) пишет «render `<ProjectInfoModal/>` если `modals.projectInfo` (как Settings)» — порядок не указан. Я положил его выше Settings в JSX, потому что Esc-handler приоритет (`projectInfo > settings`) подразумевает, что projectInfo — «верхний» modal. На рендер DOM это ни на что не влияет (оба position:fixed, никогда одновременно открыты), но если когда-нибудь будут открыты вместе — projectInfo окажется поверх. Семантически согласовано с приоритетом Esc.
+
+5. **`addTag` / `removeTag` отрабатывают через store по одному вызову на тег.** Mini-spec §«Контракт» пишет «для каждого removed → `removeTag(tag)`; для каждого added → `addTag(tag)`». Реализовано буквально (loop-вызовы). Это N reducer-вызовов вместо одного batch'а; в сценарии M-A это OK (≤20 тегов max, debounced autosave схлопнет в один Dexie-write). В будущем, если потребуется одна undo-step на пакет — нужен `setTags(tags[])` reducer; не в скоупе fix-2.
+
+6. **Dirty-флаг при изменении description.** `updateDescription` бьёт по `proj.updatedAt` + `lastModifiedInIndexedDBAt`, как `renameProject` — поэтому `selectIsDirty` после Save правильно показывает синюю точку до следующего file-save. Не отклонение, просто подтверждение что spec работает.
+
+7. **Tag input — UI-only ограничение `disabled={tagsFull}` при 20 тегах.** Mini-spec фиксирует «total max 20 tags», не указывая UX. Я сделал `disabled` + плейсхолдер «Достигнут лимит 20 тегов» вместо silent reject. Для биолога с 21-м тегом это понятнее, чем `+ add` без эффекта.
+
+8. **Кнопка `+ add` рядом с input.** Mini-spec пишет «либо Enter / `,` в input добавляет chip». Я оставил **обе** опции — Enter / `,` И отдельная кнопка `+ add`. Не противоречит spec, просто избыточная UX-дублёрка.
+
+### Открытые вопросы при реализации
+
+- **OQ-1: Дубль ✏️ в RecentCard.** Mini-spec §«Что НЕ делаем» явно отвергает «Edit metadata из RecentCard hover» — нужен другой scope логики (открытие modal без открытия проекта). Подтверждаю — не делал. Если приёмка запросит — нужен mini-spec для open-without-load или временный `previewProject` state.
+- **OQ-2: Save/Cancel хоткеи внутри modal.** Внутри `ProjectInfoModal` нет хоткеев Cmd+S (save form) или Cmd+Enter. Mini-spec не требует. Esc уже работает (через global Esc handler с приоритетом `modals.projectInfo` → `closeProjectInfo`). Если приёмка скажет «нужен Cmd+Enter для Save» — добавлю в M-A-fix-3.
+- **OQ-3: Confirm при Cancel с unsaved changes.** Сейчас Cancel / × / backdrop **молча отбрасывают** изменения. Mini-spec §«Контракт» пишет «Esc и backdrop-click закрывают **без сохранения**» — буквально без подтверждения. Реализовано как заявлено. Если биолог потеряет 3 минуты работы с description — нужен dirty-confirm dialog в M-A.1 (за gates'ом DEC).
+- **OQ-4: Toast при Save.** `showToast('Сохранено', 'success')` после Save — через тот же inline `<Toast/>` что в M-A K8 (single toast queue, auto-dismiss 3.5 s). Согласовано.
+
+### Что НЕ финализировано (STOP-условие mini-spec)
+
+- `PROJECT_STATE.md`, `DECISIONS.md`, `BUGS.md`, `TECH_DEBT.md` — не тронуты.
+- Sprint M-A не финализирован — остаётся в active state до прохождения визуальной приёмки M-A-fix-2.
+- M-A-fix-3 / M-A.1 / M-B — не начинал.
+- 42 v0.5 компонента / hooks / расчётные модули — не тронуты.
+- Backend — не тронут. pytest 112/112.
+
+Жду визуальной приёмки в отдельной сессии Chat (3 скриншота: Topbar с ✏️ рядом с именем; ProjectInfoModal открытый с заполненными полями; tooltip ✏️ показывает «Project info ⋅ ⌘I» / «Project info ⋅ Ctrl+I»).
