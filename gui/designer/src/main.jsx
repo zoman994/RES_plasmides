@@ -1,9 +1,7 @@
 import { StrictMode, Component } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
-import '@xyflow/react/dist/style.css'
 import App from './App.jsx'
-import Prototype, { isPrototypeURL } from './components/Prototype'
 
 class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { error: null }; }
@@ -19,7 +17,7 @@ class ErrorBoundary extends Component {
             {'\n\n'}
             {this.state.error.stack}
           </pre>
-          <button onClick={() => { localStorage.clear(); window.location.reload(); }}
+          <button onClick={() => { try { localStorage.clear(); } catch { /* ignore */ } window.location.reload(); }}
             style={{ marginTop: 16, padding: '8px 16px', background: '#dc2626', color: 'white',
               border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14 }}>
             Очистить данные и перезагрузить
@@ -31,12 +29,10 @@ class ErrorBoundary extends Component {
   }
 }
 
-const RootComponent = isPrototypeURL(window.location.search) ? Prototype : App;
-
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <ErrorBoundary>
-      <RootComponent />
+      <App />
     </ErrorBoundary>
   </StrictMode>,
 )
