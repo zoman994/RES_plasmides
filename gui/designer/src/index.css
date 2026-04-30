@@ -5,21 +5,282 @@
 
 body {
   margin: 0;
-  font-family: 'Inter', 'PT Sans', system-ui, sans-serif;
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
-  background: #FAFBFC;
-  color: #1A1D21;
+  background: var(--surface-base);
+  color: var(--text-primary);
 }
 
 .font-mono, code, pre, .sequence {
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-family: 'JetBrains Mono', 'Menlo', 'Consolas', monospace;
   font-variant-ligatures: none;
   font-feature-settings: 'liga' 0;
 }
 
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #C4CAD0; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #8896A4; }
+::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-tertiary); }
 
-*:focus-visible { outline: 2px solid #1565C0; outline-offset: 2px; }
+*:focus-visible { outline: 2px solid var(--accent-500); outline-offset: 2px; }
+
+/* ════════════ DESIGN_SYSTEM tokens ════════════
+ * Sources: docs/DESIGN_SYSTEM.md §2 + docs/SPRINT_M-A.md §4.7 (ss-* aliases).
+ * One light/dark palette set on [data-theme="*"]; `--ss-*` aliases shared by both
+ * via var() inheritance, no duplication. */
+
+[data-theme="light"] {
+  --surface-base: #fafaf9;
+  --surface-1: #ffffff;
+  --surface-2: #f5f5f4;
+  --surface-3: #e7e5e4;
+  --border-subtle: #e7e5e4;
+  --border-default: #d6d3d1;
+  --border-strong: #a8a29e;
+  --text-primary: #1c1917;
+  --text-secondary: #57534e;
+  --text-tertiary: #78716c;
+  --text-disabled: #a8a29e;
+
+  --accent-50: #fffbeb;
+  --accent-100: #fef3c7;
+  --accent-300: #fcd34d;
+  --accent-500: #f59e0b;
+  --accent-700: #b45309;
+  --accent-text: #78350f;
+
+  --success-bg: #dcfce7;
+  --success-fg: #15803d;
+  --warning-bg: #fef3c7;
+  --warning-fg: #a16207;
+  --danger-bg:  #fee2e2;
+  --danger-fg:  #b91c1c;
+  --info-bg:    #dbeafe;
+  --info-fg:    #1d4ed8;
+
+  --font-ui: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Menlo', 'Consolas', monospace;
+
+  --radius-sm: 3px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-pill: 9999px;
+  --border-radius-md: var(--radius-md);
+  --border-radius-lg: var(--radius-lg);
+
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+  --shadow-md: 0 2px 4px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-lg: 0 8px 16px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
+  --shadow-xl: 0 16px 32px rgba(0,0,0,0.12), 0 4px 8px rgba(0,0,0,0.06);
+}
+
+[data-theme="dark"] {
+  --surface-base: #0c0c0d;
+  --surface-1: #171717;
+  --surface-2: #1f1f1e;
+  --surface-3: #2a2a28;
+  --border-subtle: #2a2a28;
+  --border-default: #3f3f3a;
+  --border-strong: #57574f;
+  --text-primary: #f5f5f4;
+  --text-secondary: #a8a29e;
+  --text-tertiary: #78716c;
+  --text-disabled: #57574f;
+
+  --accent-50: #1c1306;
+  --accent-100: #2a1d09;
+  --accent-300: #a16207;
+  --accent-500: #d97706;
+  --accent-700: #fbbf24;
+  --accent-text: #fde68a;
+
+  --success-bg: #0a2818;
+  --success-fg: #86efac;
+  --warning-bg: #2a1d09;
+  --warning-fg: #fbbf24;
+  --danger-bg:  #2c0d0d;
+  --danger-fg:  #fca5a5;
+  --info-bg:    #0a1d33;
+  --info-fg:    #93c5fd;
+
+  --font-ui: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Menlo', 'Consolas', monospace;
+
+  --radius-sm: 3px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-pill: 9999px;
+  --border-radius-md: var(--radius-md);
+  --border-radius-lg: var(--radius-lg);
+
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+  --shadow-md: 0 2px 4px rgba(0,0,0,0.4);
+  --shadow-lg: 0 8px 16px rgba(0,0,0,0.5);
+  --shadow-xl: 0 16px 32px rgba(0,0,0,0.6);
+}
+
+/* Default light palette if no [data-theme] is set */
+:root {
+  --surface-base: #fafaf9;
+  --surface-1: #ffffff;
+  --surface-2: #f5f5f4;
+  --surface-3: #e7e5e4;
+  --border-subtle: #e7e5e4;
+  --border-default: #d6d3d1;
+  --text-primary: #1c1917;
+  --text-secondary: #57534e;
+  --text-tertiary: #78716c;
+  --accent-500: #f59e0b;
+  --accent-50:  #fffbeb;
+  --accent-text: #78350f;
+  --font-mono: 'JetBrains Mono', 'Menlo', 'Consolas', monospace;
+  --border-radius-md: 6px;
+  --border-radius-lg: 8px;
+}
+
+/* ════════════ StartScreen `--ss-*` aliases (theme-agnostic via var()) ════════════ */
+[data-theme="light"], [data-theme="dark"], :root {
+  --ss-bg-primary: var(--surface-1);
+  --ss-bg-secondary: var(--surface-base);
+  --ss-bg-tertiary: var(--surface-3);
+  --ss-text-primary: var(--text-primary);
+  --ss-text-secondary: var(--text-secondary);
+  --ss-text-tertiary: var(--text-tertiary);
+  --ss-border-tertiary: var(--border-subtle);
+  --ss-border-secondary: var(--border-default);
+  --ss-text-info: var(--info-fg);
+  --ss-accent-amber: var(--accent-500);
+  --ss-accent-amber-bg: var(--accent-50);
+  --ss-accent-amber-text: var(--accent-text);
+}
+
+/* ════════════ StartScreen v7 wireframe styles ════════════ */
+.ss-action-btn {
+  background: var(--ss-bg-primary) !important;
+  border: 0.5px solid var(--ss-border-secondary) !important;
+  border-radius: var(--border-radius-md);
+  padding: 10px 12px;
+  text-align: left;
+  font-size: 14px;
+  color: var(--ss-text-primary) !important;
+  cursor: pointer;
+  width: 100%;
+}
+.ss-action-btn:hover {
+  background: var(--ss-bg-tertiary) !important;
+  border-color: var(--ss-text-tertiary) !important;
+}
+.ss-action-btn:disabled,
+.ss-action-btn[disabled] {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.ss-action-btn-primary {
+  background: var(--ss-accent-amber-bg) !important;
+  border: 0.5px solid var(--ss-accent-amber) !important;
+  border-radius: var(--border-radius-md);
+  padding: 10px 12px;
+  text-align: left;
+  font-size: 14px;
+  color: var(--ss-accent-amber-text) !important;
+  font-weight: 500;
+  cursor: pointer;
+  width: 100%;
+}
+.ss-action-btn-primary:hover { filter: brightness(0.96); }
+
+.ss-sb-link {
+  background: transparent !important;
+  border: none !important;
+  padding: 8px 10px;
+  text-align: left;
+  font-size: 14px;
+  color: var(--ss-text-primary) !important;
+  cursor: pointer;
+  border-radius: var(--border-radius-md);
+  width: 100%;
+}
+.ss-sb-link:hover { background: var(--ss-bg-tertiary) !important; }
+.ss-sb-link-disabled {
+  background: transparent !important;
+  border: none !important;
+  padding: 8px 10px;
+  text-align: left;
+  font-size: 14px;
+  color: var(--ss-text-tertiary) !important;
+  cursor: not-allowed;
+  border-radius: var(--border-radius-md);
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.ss-header-link {
+  font-size: 13px;
+  color: var(--ss-text-secondary);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+}
+.ss-header-link:hover { color: var(--ss-text-primary); }
+.ss-recent-card {
+  background: var(--ss-bg-primary);
+  border: 0.5px solid var(--ss-border-tertiary);
+  border-radius: var(--border-radius-md);
+  padding: 12px 14px;
+  cursor: pointer;
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+.ss-recent-card:hover { border-color: var(--ss-border-secondary); }
+.ss-tag-chip {
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  white-space: nowrap;
+  line-height: 1.4;
+  background: var(--ss-bg-tertiary);
+  color: var(--ss-text-secondary);
+}
+.ss-card-desc {
+  font-size: 12px;
+  line-height: 1.5;
+  font-style: italic;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  flex: 0.9;
+  min-width: 0;
+  color: var(--ss-text-secondary);
+}
+.ss-card-left { flex: 1.1; min-width: 0; }
+.ss-card-name { font-size: 14px; font-weight: 500; color: var(--ss-text-primary); }
+.ss-card-name-untitled { font-size: 14px; font-weight: 500; color: var(--ss-text-secondary); font-style: italic; }
+.ss-card-meta { font-size: 12px; color: var(--ss-text-tertiary); margin-top: 3px; }
+.ss-card-path { font-size: 11px; color: var(--ss-text-tertiary); margin-top: 2px; font-family: var(--font-mono); }
+.ss-card-path-empty { font-size: 11px; color: var(--ss-text-tertiary); margin-top: 2px; font-style: italic; }
+.ss-card-tags { margin-top: 7px; display: flex; gap: 4px; flex-wrap: wrap; }
+.ss-card-tags-empty { margin-top: 7px; font-size: 11px; color: var(--ss-text-tertiary); font-style: italic; }
+.ss-card-chevron { color: var(--ss-text-tertiary); font-size: 14px; flex-shrink: 0; }
+.ss-view-all {
+  font-size: 13px;
+  color: var(--ss-text-info);
+  margin: 14px 0 0;
+  cursor: pointer;
+  padding: 6px 0;
+  background: transparent;
+  border: none;
+}
+.ss-view-all:hover { text-decoration: underline; }
+.ss-install-link {
+  padding-left: 10px;
+  font-size: 12px;
+  color: var(--ss-text-secondary);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+}
