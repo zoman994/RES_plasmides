@@ -1,16 +1,50 @@
-# React + Vite
+# BodgeGene designer (gui/designer)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+> **v0.6.0-dev — rewrite в работе.** Текущий main соответствует
+> v0.5.4-alpha; Sprint M-A находится в feature-ветке. v0.5
+> компоненты сохраняются на диске как orphan-файлы (не импортируются
+> в build entry) до конца rewrite-фазы — переиспользуются в M-B+ по
+> [`docs/ARCHITECTURE_v2.md`](../../docs/ARCHITECTURE_v2.md) §8.
 
-Currently, two official plugins are available:
+## Стек
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+React 19 + Vite 8 + Tailwind 4 + Zustand 5 (Immer) + React Compiler.
+Persistence: Dexie 4 (IndexedDB) + fflate (.bodge ZIP). UUIDv7 ids
+через `uuid` v10.
 
-## React Compiler
+## Команды
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+```bash
+cd gui/designer
+npm install
+npm run dev:front      # Vite dev сервер (порт 3000)
+npx vitest run         # все unit-тесты
+npx vite build         # production-сборка
+```
 
-## Expanding the ESLint configuration
+## Структура (актуальная для M-A)
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+```
+src/
+├── App.jsx                 — root layout + routing по activeFullscreen
+├── main.jsx                — bootstrap + ErrorBoundary
+├── index.css               — design tokens (light/dark) + StartScreen styles
+├── store/                  — Zustand 3 slices (project, canvas, ui)
+├── db/dexie-schema.js      — Dexie v1 (projects, containers)
+├── lib/
+│   ├── storage.js          — localStorage wrapper + memory fallback
+│   ├── file-system.js      — File System Access wrapper + fallback
+│   ├── bodge-zip.js        — .bodge ZIP I/O (fflate)
+│   ├── multi-tab-lock.js   — navigator.locks + BroadcastChannel
+│   └── v05-cleanup.js      — one-shot legacy localStorage wipe
+└── components/
+    ├── AppShell/           — Topbar + content frame
+    ├── StartScreen/        — wireframe v7 layout
+    ├── DagPlaceholder.jsx  — пустой канвас в проекте
+    ├── UnderConstruction.jsx — фулскрин-заглушка для M-F/M-H/etc
+    ├── MultiTabBlocked.jsx — multi-tab race UI
+    ├── ReadOnlyForced.jsx  — view после force-release
+    └── SettingsModal.jsx   — Display / Identity / Advanced
+```
+
+См. также `docs/SPRINT_M-A.md` (спека) и `CURRENT_TASK.md` (чеклист).
