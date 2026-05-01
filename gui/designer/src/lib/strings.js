@@ -34,8 +34,8 @@ export const STRINGS = {
     importSequence: '↓ Import sequence',
     importSequenceComingSoon: 'Sequence import — coming in M-B',
     exportBodge: '⤓ Export .bodge…',
-    exportDone: '✓ Done selecting',
-    exportEnterTitle: 'Download .bodge files',
+    exportDone: '✓ Done',
+    exportEnterTitle: 'Export .bodge files',
     exportExitTitle: 'Exit export mode',
     browse: 'Browse',
     library: 'Library',
@@ -159,7 +159,7 @@ export const STRINGS = {
     blockedTitle: 'Project already open in another tab',
     blockedDescription: 'BodgeGene prevents editing the same project in more than one tab at a time.',
     takeControlButton: 'Take control',
-    takingControlBusy: 'Confirming…',
+    takingControlBusy: 'Taking over…',
     closeProjectButton: 'Close project',
     takeoverFailed: 'Could not take control — the other tab is holding the lock',
     forcedReadOnlyTitle: 'Control of this project moved to another tab',
@@ -187,6 +187,25 @@ export const STRINGS = {
 
   app: {
     dropOverlay: 'Drop file here (M-B feature preview)',
+  },
+
+  library: {
+    title: 'Library',
+    tabContainers: 'Containers',
+    tabPrimers: 'Primers',
+    topologyAll: 'All',
+    topologyCircular: 'Circular',
+    topologyLinear: 'Linear',
+    importButton: '+ Import',
+    importDisabledTooltip: 'Available in M-B.1',
+    empty: 'Library is empty. Import containers and primers from project DAG (coming in M-B).',
+    entryDeletedToast: (name) => `Entry "${name}" deleted`,
+    addTagPlaceholder: '+ tag',
+    tagsLimit: (limit) => `Maximum ${limit} tags per entry`,
+    deleteEntryTitle: 'Delete entry',
+    deleteEntryAria: (name) => `Delete entry "${name}"`,
+    editTagsAria: (name) => `Edit tags for "${name}"`,
+    tagRemoveAria: (tag) => `remove ${tag}`,
   },
 
   common: {
