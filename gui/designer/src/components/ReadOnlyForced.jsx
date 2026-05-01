@@ -1,4 +1,5 @@
 import { useStore } from '../store';
+import { STRINGS } from '../lib/strings';
 
 export default function ReadOnlyForced() {
   const closeProject = useStore(s => s.closeProject);
@@ -19,10 +20,10 @@ export default function ReadOnlyForced() {
       }}
     >
       <p style={{ fontSize: 18, fontWeight: 500, margin: 0 }}>
-        Контроль над проектом перешёл к другой вкладке
+        {STRINGS.multiTabLock.forcedReadOnlyTitle}
       </p>
       <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0, maxWidth: 480 }}>
-        Эта вкладка переведена в режим только-чтения. Чтобы продолжить редактирование, закройте проект здесь и работайте в активной вкладке.
+        {STRINGS.multiTabLock.forcedReadOnlyDescription}
       </p>
       <button
         type="button"
@@ -34,7 +35,7 @@ export default function ReadOnlyForced() {
           background: 'var(--surface-1)',
           color: 'var(--text-primary)', cursor: 'pointer',
         }}
-      >Закрыть проект</button>
+      >{STRINGS.multiTabLock.closeProjectButton}</button>
     </div>
   );
 }

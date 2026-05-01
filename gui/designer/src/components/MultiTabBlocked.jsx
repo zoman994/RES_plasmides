@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useStore } from '../store';
 import { broadcastForceRelease } from '../lib/multi-tab-lock';
+import { STRINGS } from '../lib/strings';
 
 export default function MultiTabBlocked() {
   const currentProjectId = useStore(s => s.currentProjectId);
@@ -14,10 +15,10 @@ export default function MultiTabBlocked() {
     setBusy(true);
     try {
       broadcastForceRelease(currentProjectId);
-      // give the holding tab time to release
+      // Give the holding tab time to release the lock.
       await new Promise(r => setTimeout(r, 500));
       const ok = await retryAcquireLock();
-      if (!ok) showToast('Не удалось перенять контроль — другая вкладка не отдаёт lock', 'error');
+      if (!ok) showToast(STRINGS.multiTabLock.takeoverFailed, 'error');
     } finally {
       setBusy(false);
     }
@@ -40,10 +41,10 @@ export default function MultiTabBlocked() {
       }}
     >
       <p style={{ fontSize: 18, fontWeight: 500, margin: 0 }}>
-        Проект уже открыт в другой вкладке
+        {STRINGS.multiTabLock.blockedTitle}
       </p>
       <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0, maxWidth: 480 }}>
-        BodgeGene запрещает редактирование одного проекта в нескольких вкладках одновременно.
+        {STRINGS.multiTabLock.blockedDescription}
       </p>
       <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
         <button
@@ -60,7 +61,7 @@ export default function MultiTabBlocked() {
             fontWeight: 500, cursor: busy ? 'wait' : 'pointer',
           }}
         >
-          {busy ? 'Подтверждаем…' : 'Перенять контроль'}
+          {busy ? STRINGS.multiTabLock.takingControlBusy : STRINGS.multiTabLock.takeControlButton}
         </button>
         <button
           type="button"
@@ -72,7 +73,7 @@ export default function MultiTabBlocked() {
             background: 'var(--surface-1)',
             color: 'var(--text-primary)', cursor: 'pointer',
           }}
-        >Закрыть проект</button>
+        >{STRINGS.multiTabLock.closeProjectButton}</button>
       </div>
     </div>
   );

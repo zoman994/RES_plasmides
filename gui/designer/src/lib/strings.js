@@ -144,11 +144,23 @@ export const STRINGS = {
     },
   },
 
-  toast: {},
+  toast: {
+    undoButton: 'Undo',
+    closeAria: 'Close',
+  },
 
   pwa: {},
 
-  multiTabLock: {},
+  multiTabLock: {
+    blockedTitle: 'Project already open in another tab',
+    blockedDescription: 'BodgeGene prevents editing the same project in more than one tab at a time.',
+    takeControlButton: 'Take control',
+    takingControlBusy: 'Confirming…',
+    closeProjectButton: 'Close project',
+    takeoverFailed: 'Could not take control — the other tab is holding the lock',
+    forcedReadOnlyTitle: 'Control of this project moved to another tab',
+    forcedReadOnlyDescription: 'This tab is now read-only. To keep editing, close the project here and continue in the active tab.',
+  },
 
   hotkeys: {},
 

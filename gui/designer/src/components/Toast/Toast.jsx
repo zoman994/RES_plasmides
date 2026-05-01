@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import ToastIcon from './toast-icons';
+import { STRINGS } from '../../lib/strings';
 
 export default function Toast({ id, msg, kind = 'info', onUndo, onAutoDismiss, onDismiss, autoDismissMs = 3500 }) {
   const dismissedRef = useRef(false);
@@ -69,12 +70,12 @@ export default function Toast({ id, msg, kind = 'info', onUndo, onAutoDismiss, o
           }}
           onMouseEnter={(e) => { e.currentTarget.style.textDecoration = 'underline'; }}
           onMouseLeave={(e) => { e.currentTarget.style.textDecoration = 'none'; }}
-        >Отменить</button>
+        >{STRINGS.toast.undoButton}</button>
       )}
       <button
         type="button"
         onClick={handleClose}
-        aria-label="Закрыть"
+        aria-label={STRINGS.toast.closeAria}
         data-testid="toast-close"
         style={{
           background: 'transparent',
