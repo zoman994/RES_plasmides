@@ -24,9 +24,11 @@ describe('K1 — Dexie schema v2 + library table', () => {
     await freshDB();
   });
 
-  it('opens schema v2 with projects + containers + library tables', async () => {
-    expect(db.tables.map(t => t.name).sort()).toEqual(['containers', 'library', 'projects']);
-    expect(db.verno).toBe(2);
+  it('opens schema v3 with projects + containers + library + primers tables', async () => {
+    expect(db.tables.map(t => t.name).sort()).toEqual(
+      ['containers', 'library', 'primers', 'projects'],
+    );
+    expect(db.verno).toBe(3);
   });
 
   it('listLibraryEntries({ kind: "primer" }) returns only primer entries', async () => {

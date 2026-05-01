@@ -15,14 +15,16 @@ async function freshDB() {
   return db;
 }
 
-describe('K1 — Dexie schema v2', () => {
+describe('K1 — Dexie schema v3', () => {
   beforeEach(async () => {
     await freshDB();
   });
 
-  it('opens schema with projects + containers + library tables', async () => {
-    expect(db.tables.map(t => t.name).sort()).toEqual(['containers', 'library', 'projects']);
-    expect(db.verno).toBe(2);
+  it('opens schema with projects + containers + library + primers tables', async () => {
+    expect(db.tables.map(t => t.name).sort()).toEqual(
+      ['containers', 'library', 'primers', 'projects'],
+    );
+    expect(db.verno).toBe(3);
   });
 
   it('round-trips a project record via put/get', async () => {

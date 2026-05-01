@@ -1,6 +1,13 @@
 /**
  * Shared file import logic for GenBank, FASTA, and SnapGene .dna files.
- * Used by PartsPalette (file button) and App.jsx (OS drag-and-drop).
+ *
+ * Sprint M-B.1 K1 split (DEC-IMP-09):
+ *   - parseFile(file)               — sync parsing + sanitize + importFeatures (no enrichment)
+ *   - enrichAnnotations(item, opts) — async homology + detail-level enrichment
+ *   - handleFileImport(file, opts)  — back-compat wrapper used by v0.5 ImportStartScreen
+ *
+ * One flag controls enrichment: `autoAnnotate` (default true). Replaces the v0.5
+ * 4-combination per-file controls (DEC-IMP-09 rewrite).
  */
 
 import { parseGenBank, isGenBankFormat } from './genbank-parser';
@@ -9,22 +16,8 @@ import { sanitizeSequence } from './sequence-utils';
 
 export const ACCEPT_STRING = '.gb,.gbk,.genbank,.dna,.fasta,.fa,.fna';
 
-// Patterns for backend-leaked temp-file basenames (e.g. tmpe2oww0me, tmpA1B2C3).
 const TEMP_NAME_RE = /^tmp[a-z0-9_]{3,}$/i;
 
-/**
- * Determine the best human-readable name for a parsed file.
- * Priority:
- *   1. Internal record name from the format (LOCUS, FASTA header, SnapGene metadata)
- *      — but reject backend tempfile leaks (tmpXXXXX) and `<unknown...>` markers.
- *   2. Original file.name without extension (the upload's actual filename).
- *   3. `part_${fallbackIndex}` fallback (caller supplies).
- *
- * @param {{name?: string}} parsed — parser output.
- * @param {{name?: string} | null} file — original File object (or null for paste/catalog).
- * @param {number} fallbackIndex — index for `part_N` fallback (default 1).
- * @returns {string}
- */
 export function extractItemName(parsed, file, fallbackIndex = 1) {
   const internal = (parsed?.name || '').trim();
   const isTemp = internal && TEMP_NAME_RE.test(internal);
@@ -35,7 +28,6 @@ export function extractItemName(parsed, file, fallbackIndex = 1) {
   return `part_${fallbackIndex}`;
 }
 
-/** Parse FASTA text → { name, sequence, length, topology }. */
 export function parseFasta(text) {
   const lines = text.split(/\r?\n/);
   let name = '';
@@ -55,18 +47,8 @@ function isFasta(text) {
   return text.trimStart().startsWith('>');
 }
 
-/**
- * Read a File object, parse it, return structured data for AddFragmentModal.
- * @param {File} file
- * @returns {Promise<{ name, sequence, length, topology, organism, description, annotations }>}
- */
-/** Backend API base URL. */
 const API_BASE = '';
 
-/**
- * Import a .dna file via backend API (binary SnapGene format).
- * Falls back gracefully if backend is unavailable.
- */
 async function importViaBackend(file) {
   const form = new FormData();
   form.append('file', file);
@@ -78,16 +60,25 @@ async function importViaBackend(file) {
   return res.json();
 }
 
-export async function handleFileImport(file, opts = {}) {
-  // F5 — autoAnnotate=false skips enrichWithCommonFeatures + autoAnnotate
-  // detail enrichment. Parser features pass through unchanged.
-  const autoAnnotate = opts.autoAnnotate !== false;
+/**
+ * Synchronous parse step — no enrichment, no auto-annotate.
+ *
+ * Returns a ParsedItem shape:
+ *   { name, sequence, length, topology, ends?, organism, description,
+ *     annotations, _fromFileCount, _ext, _metadata? }
+ *
+ * `_fromFileCount` tells callers how many features came from the file (vs
+ * potential later enrichment). `_metadata` is preserved for .dna primers
+ * (PrimerWizardStepModal in K6 reads `_metadata.primers`).
+ *
+ * @param {File} file
+ * @returns {Promise<Object>}
+ */
+export async function parseFile(file) {
   const ext = file.name.toLowerCase().match(/\.[^.]+$/)?.[0] || '';
 
-  // .dna files are binary — must go through backend
   if (ext === '.dna') {
     const data = await importViaBackend(file);
-    // Sanitize backend-returned sequence — Python parser may emit non-IUPAC bytes
     if (data.sequence) data.sequence = sanitizeSequence(data.sequence);
     if (data.length != null) data.length = data.sequence?.length ?? data.length;
     let annotations = [];
@@ -95,62 +86,21 @@ export async function handleFileImport(file, opts = {}) {
       const result = importFeatures(data.features, data.length, 'genbank');
       annotations = result.annotations || [];
     }
-
-    // Enrichment: always run after import (even if features > 0)
-    if (autoAnnotate && data.sequence) {
-      try {
-        const { autoAnnotate, enrichWithCommonFeatures } = await import('./auto-annotate');
-
-        if (annotations.length === 0) {
-          // Fallback: no features from backend → full auto-annotation
-          const base = autoAnnotate({
-            name: data.name || 'imported',
-            type: 'misc_feature',
-            sequence: data.sequence,
-          });
-          annotations = await enrichWithCommonFeatures(data.sequence, base);
-        } else {
-          // Features exist → enrich with homology naming + detail detection
-          // 1. Homology-based naming via common-features.json
-          annotations = await enrichWithCommonFeatures(data.sequence, annotations);
-          for (const ann of annotations) {
-            if (ann.knownFeature && ann.level === 'region') {
-              ann.originalName = ann.name;
-              ann.name = ann.knownFeature;
-            }
-          }
-
-          // 2. Detail-level enrichment (signal peptides, tags, domains)
-          const withDetails = autoAnnotate({
-            name: data.name || 'imported',
-            type: 'misc_feature',
-            sequence: data.sequence,
-            annotations,
-          });
-          const existingKeys = new Set(annotations.map(a => `${a.start}-${a.end}-${a.level}`));
-          for (const ann of withDetails) {
-            const key = `${ann.start}-${ann.end}-${ann.level}`;
-            if (!existingKeys.has(key) && ann.level !== 'region') {
-              annotations.push(ann);
-            }
-          }
-        }
-      } catch { /* enrichment not available */ }
-    }
     return {
       name: extractItemName(data, file),
-      sequence: data.sequence,
-      length: data.length,
+      sequence: data.sequence || '',
+      length: data.length || (data.sequence?.length ?? 0),
       topology: data.topology || 'linear',
       organism: data.organism || '',
       description: data.description || '',
       annotations,
+      _fromFileCount: annotations.length,
+      _ext: ext,
+      _metadata: data.metadata || null,
     };
   }
 
-  // Text-based formats — parse on frontend
   const text = await file.text();
-
   let parsed;
   if (isGenBankFormat(text) || ['.gb', '.gbk', '.genbank'].includes(ext)) {
     parsed = parseGenBank(text);
@@ -158,62 +108,16 @@ export async function handleFileImport(file, opts = {}) {
   } else if (isFasta(text) || ['.fasta', '.fa', '.fna'].includes(ext)) {
     parsed = parseFasta(text);
   } else {
-    // Try GenBank first, then FASTA as fallback
-    try {
-      parsed = parseGenBank(text);
-    } catch { /* ignore */ }
-    if (!parsed?.sequence) {
-      parsed = parseFasta(text);
-    }
+    try { parsed = parseGenBank(text); } catch { /* ignore */ }
+    if (!parsed?.sequence) parsed = parseFasta(text);
   }
 
   if (!parsed?.sequence) throw new Error('No sequence found in file');
 
-  // Convert GenBank features to BodgeGene annotations
   let annotations = [];
   if (parsed.features?.length > 0) {
     const result = importFeatures(parsed.features, parsed.sequence.length, 'genbank');
     annotations = result.annotations || [];
-  }
-
-  // Enrichment: same pipeline as .dna files (homology naming + detail detection)
-  if (autoAnnotate && parsed.sequence) {
-    try {
-      const { autoAnnotate, enrichWithCommonFeatures } = await import('./auto-annotate');
-
-      if (annotations.length === 0) {
-        // No features in file → full auto-annotation
-        const base = autoAnnotate({
-          name: parsed.name || 'imported',
-          type: 'misc_feature',
-          sequence: parsed.sequence,
-        });
-        annotations = await enrichWithCommonFeatures(parsed.sequence, base);
-      } else {
-        // Features exist → enrich with homology naming + detail detection
-        annotations = await enrichWithCommonFeatures(parsed.sequence, annotations);
-        for (const ann of annotations) {
-          if (ann.knownFeature && ann.level === 'region') {
-            ann.originalName = ann.name;
-            ann.name = ann.knownFeature;
-          }
-        }
-        // Detail-level enrichment (signal peptides, tags, domains, RE sites)
-        const withDetails = autoAnnotate({
-          name: parsed.name || 'imported',
-          type: 'misc_feature',
-          sequence: parsed.sequence,
-          annotations,
-        });
-        const existingKeys = new Set(annotations.map(a => `${a.start}-${a.end}-${a.level}`));
-        for (const ann of withDetails) {
-          const key = `${ann.start}-${ann.end}-${ann.level}`;
-          if (!existingKeys.has(key) && ann.level !== 'region') {
-            annotations.push(ann);
-          }
-        }
-      }
-    } catch { /* enrichment not available */ }
   }
 
   return {
@@ -224,13 +128,98 @@ export async function handleFileImport(file, opts = {}) {
     organism: parsed.organism || '',
     description: parsed.description || '',
     annotations,
+    _fromFileCount: annotations.length,
+    _ext: ext,
+    _metadata: null,
+  };
+}
+
+/**
+ * Asynchronous enrichment step — homology naming + detail-level auto-annotate.
+ *
+ * Single flag (DEC-IMP-09): `autoAnnotate=true` runs `enrichWithCommonFeatures`
+ * + autoAnnotate detail enrichment; `autoAnnotate=false` returns annotations
+ * unchanged. Replaces the v0.5 4-combination per-file controls.
+ *
+ * Returns the parsedItem with `annotations` possibly extended. Mutates a copy,
+ * not the input. If the auto-annotate module is unavailable (e.g. in tests),
+ * silently returns the item unchanged.
+ *
+ * @param {Object} parsedItem — output of parseFile
+ * @param {{ autoAnnotate?: boolean }} [opts]
+ * @returns {Promise<Object>}
+ */
+export async function enrichAnnotations(parsedItem, opts = {}) {
+  const enabled = opts.autoAnnotate !== false;
+  if (!enabled || !parsedItem?.sequence) return parsedItem;
+
+  let mod;
+  try {
+    mod = await import('./auto-annotate');
+  } catch {
+    return parsedItem;
+  }
+  const { autoAnnotate, enrichWithCommonFeatures } = mod;
+  if (typeof autoAnnotate !== 'function' || typeof enrichWithCommonFeatures !== 'function') {
+    return parsedItem;
+  }
+
+  const sequence = parsedItem.sequence;
+  const name = parsedItem.name || 'imported';
+  const fromFileCount = parsedItem._fromFileCount ?? parsedItem.annotations?.length ?? 0;
+  let annotations = Array.isArray(parsedItem.annotations) ? [...parsedItem.annotations] : [];
+
+  if (annotations.length === 0) {
+    const base = autoAnnotate({ name, type: 'misc_feature', sequence });
+    annotations = await enrichWithCommonFeatures(sequence, base);
+  } else {
+    annotations = await enrichWithCommonFeatures(sequence, annotations);
+    for (const ann of annotations) {
+      if (ann.knownFeature && ann.level === 'region') {
+        ann.originalName = ann.name;
+        ann.name = ann.knownFeature;
+      }
+    }
+    const withDetails = autoAnnotate({ name, type: 'misc_feature', sequence, annotations });
+    const existingKeys = new Set(annotations.map(a => `${a.start}-${a.end}-${a.level}`));
+    for (const ann of withDetails) {
+      const key = `${ann.start}-${ann.end}-${ann.level}`;
+      if (!existingKeys.has(key) && ann.level !== 'region') {
+        annotations.push(ann);
+      }
+    }
+  }
+
+  return { ...parsedItem, annotations, _fromFileCount: fromFileCount };
+}
+
+/**
+ * Back-compat wrapper for v0.5 ImportStartScreen and other callers.
+ * Equivalent to: `enrichAnnotations(await parseFile(file), opts)`.
+ *
+ * Strips `_fromFileCount`, `_ext`, `_metadata` from the returned shape to
+ * match the v0.5 contract used by AddFragmentModal / ImportStartScreen.
+ *
+ * @param {File} file
+ * @param {{ autoAnnotate?: boolean }} [opts]
+ */
+export async function handleFileImport(file, opts = {}) {
+  const parsed = await parseFile(file);
+  const enriched = await enrichAnnotations(parsed, opts);
+  return {
+    name: enriched.name,
+    sequence: enriched.sequence,
+    length: enriched.length,
+    topology: enriched.topology,
+    organism: enriched.organism,
+    description: enriched.description,
+    annotations: enriched.annotations,
   };
 }
 
 /**
  * Sequentially parse multiple files into ParsedItem[]. Ordering matches input.
- * Errors on individual files are surfaced as `{ _fileName, _error }` entries
- * so callers can display per-file failures without aborting the batch.
+ * Errors on individual files are surfaced as `{ _fileName, _error }` entries.
  *
  * @param {File[]} files
  * @returns {Promise<Array<Object>>}
@@ -242,7 +231,11 @@ export async function handleFilesImport(files, opts = {}) {
       const data = await handleFileImport(f, opts);
       results.push({ ...data, _fileName: f.name });
     } catch (err) {
-      results.push({ _fileName: f.name, _error: err.message || String(err), sequence: '', length: 0, annotations: [], topology: 'linear', name: f.name });
+      results.push({
+        _fileName: f.name,
+        _error: err.message || String(err),
+        sequence: '', length: 0, annotations: [], topology: 'linear', name: f.name,
+      });
     }
   }
   return results;
