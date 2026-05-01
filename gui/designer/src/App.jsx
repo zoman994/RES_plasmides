@@ -8,6 +8,7 @@ import MultiTabBlocked from './components/MultiTabBlocked';
 import ReadOnlyForced from './components/ReadOnlyForced';
 import SettingsModal from './components/SettingsModal';
 import ProjectInfoModal from './components/ProjectInfoModal';
+import { ToastStack } from './components/Toast';
 import { openBodgeFilePicker, pickSaveAs, saveBlobToHandle } from './lib/file-system';
 import { writeBodge, readBodge } from './lib/bodge-zip';
 import { listenForceRelease } from './lib/multi-tab-lock';
@@ -237,7 +238,7 @@ export default function App() {
       <DropOverlay active={dragActive} />
       {projectInfoOpen && <ProjectInfoModal />}
       {settingsOpen && <SettingsModal />}
-      <ToastBar />
+      <ToastStack />
     </div>
   );
 }
@@ -261,31 +262,3 @@ function DropOverlay({ active }) {
   );
 }
 
-function ToastBar() {
-  const toast = useStore(s => s.toast);
-  const clearToast = useStore(s => s.clearToast);
-  useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => clearToast(), 3500);
-    return () => clearTimeout(t);
-  }, [toast, clearToast]);
-  if (!toast) return null;
-  const accent = toast.kind === 'error' ? '#dc2626' : toast.kind === 'warning' ? '#d97706' : '#1f2937';
-  return (
-    <div
-      data-testid="toast"
-      role="status"
-      style={{
-        position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
-        background: 'var(--surface-1, #ffffff)',
-        color: 'var(--text-primary, #1c1917)',
-        border: `0.5px solid ${accent}`,
-        padding: '10px 14px', borderRadius: 6,
-        boxShadow: '0 8px 16px rgba(0,0,0,0.08)', zIndex: 1100, fontSize: 13,
-        maxWidth: 480,
-      }}
-    >
-      {toast.msg}
-    </div>
-  );
-}

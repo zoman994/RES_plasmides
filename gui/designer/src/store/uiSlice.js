@@ -25,11 +25,21 @@ export function applyThemeToDOM(theme) {
   if (ssRoot) ssRoot.dataset.theme = theme;
 }
 
+const TOAST_CAPACITY = 3;
+const TOAST_DEFAULT_DISMISS_MS = 3500;
+
+function _newToastId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `t-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export const createUiSlice = (set) => ({
   theme: loadInitialTheme(),
   agent: loadInitialAgent(),
   modals: { settings: false, projectInfo: false },
-  toast: null,
+  toasts: [],
   canInstallPwa: false,
 
   setTheme: (theme) => {
@@ -51,8 +61,30 @@ export const createUiSlice = (set) => ({
   openProjectInfo: () => set(state => { state.modals.projectInfo = true; }),
   closeProjectInfo: () => set(state => { state.modals.projectInfo = false; }),
 
-  showToast: (msg, kind = 'info') => set(state => { state.toast = { msg, kind, at: Date.now() }; }),
-  clearToast: () => set(state => { state.toast = null; }),
+  showToast: (msg, kind = 'info', options = {}) => {
+    const id = _newToastId();
+    const entry = {
+      id,
+      msg,
+      kind,
+      createdAt: Date.now(),
+      onUndo: typeof options?.onUndo === 'function' ? options.onUndo : null,
+      onAutoDismiss: typeof options?.onAutoDismiss === 'function' ? options.onAutoDismiss : null,
+      autoDismissMs: typeof options?.autoDismissMs === 'number' ? options.autoDismissMs : TOAST_DEFAULT_DISMISS_MS,
+    };
+    set(state => {
+      while (state.toasts.length >= TOAST_CAPACITY) state.toasts.shift();
+      state.toasts.push(entry);
+    });
+    return id;
+  },
+  clearToast: (id) => set(state => {
+    if (id === undefined || id === null) {
+      state.toasts = [];
+    } else {
+      state.toasts = state.toasts.filter(t => t.id !== id);
+    }
+  }),
 
   setCanInstallPwa: (v) => set(state => { state.canInstallPwa = !!v; }),
 });

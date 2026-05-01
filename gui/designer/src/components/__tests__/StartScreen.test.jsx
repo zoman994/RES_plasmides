@@ -16,7 +16,7 @@ function reset() {
     state.canvas.activeFullscreen = 'start';
     state.canvas.navStack = [{ fullscreen: 'start', payload: null }];
     state.modals = { settings: false, projectInfo: false };
-    state.toast = null;
+    state.toasts = [];
     state.theme = 'light';
   });
 }
@@ -108,7 +108,7 @@ describe('K5 — StartScreen wireframe v7', () => {
     expect(spy).toHaveBeenCalledWith('p-1');
   });
 
-  it('Recent card × button → confirm OK → removeProjectFromIndexedDB(id)', () => {
+  it('delete × shows toast with undo, project hidden from RecentList, no DB call yet', () => {
     useStore.setState((state) => {
       state.projects['p-1'] = {
         id: 'p-1', name: 'pUC19', tags: [], description: '',
@@ -118,49 +118,45 @@ describe('K5 — StartScreen wireframe v7', () => {
       state.recentProjectIds = ['p-1'];
     });
     const removeSpy = vi.fn().mockResolvedValue(undefined);
-    const openSpy = vi.fn();
-    useStore.setState({ removeProjectFromIndexedDB: removeSpy, openProjectFromIndexedDB: openSpy });
-    const confirmStub = vi.fn(() => true);
-    const originalConfirm = window.confirm;
-    window.confirm = confirmStub;
+    useStore.setState({ removeProjectFromIndexedDB: removeSpy });
 
-    try {
-      render(<StartScreen onOpenFile={() => {}} />);
-      fireEvent.click(screen.getByTestId('ss-recent-card-delete'));
+    render(<StartScreen onOpenFile={() => {}} />);
+    fireEvent.click(screen.getByTestId('ss-recent-card-delete'));
 
-      expect(confirmStub).toHaveBeenCalledTimes(1);
-      expect(confirmStub.mock.calls[0][0]).toMatch(/pUC19/);
-      expect(removeSpy).toHaveBeenCalledWith('p-1');
-      expect(openSpy).not.toHaveBeenCalled(); // delete must not bubble to card click
-    } finally {
-      window.confirm = originalConfirm;
-    }
+    const state = useStore.getState();
+    expect(state.toasts.length).toBe(1);
+    expect(state.toasts[0].kind).toBe('info');
+    expect(state.toasts[0].msg).toMatch(/pUC19/);
+    expect(typeof state.toasts[0].onUndo).toBe('function');
+    expect(typeof state.toasts[0].onAutoDismiss).toBe('function');
+    expect(state.toasts[0].autoDismissMs).toBe(5000);
+    expect(state.projects['p-1']._pendingDelete).toBe(true);
+    expect(screen.queryByTestId('ss-recent-card')).toBeNull();
+    expect(removeSpy).not.toHaveBeenCalled();
   });
 
-  it('Recent card × button → confirm Cancel → no reducer call', () => {
+  it('soft-delete: undo callback restores the project to the RecentList', () => {
     useStore.setState((state) => {
       state.projects['p-1'] = {
-        id: 'p-1', name: 'P', tags: [], description: '',
+        id: 'p-1', name: 'pUC19', tags: [], description: '',
         containerIds: [], updatedAt: new Date().toISOString(),
       };
       state._projectLifecycle['p-1'] = {};
       state.recentProjectIds = ['p-1'];
     });
-    const removeSpy = vi.fn();
+    const removeSpy = vi.fn().mockResolvedValue(undefined);
     useStore.setState({ removeProjectFromIndexedDB: removeSpy });
-    const confirmStub = vi.fn(() => false);
-    const originalConfirm = window.confirm;
-    window.confirm = confirmStub;
 
-    try {
-      render(<StartScreen onOpenFile={() => {}} />);
-      fireEvent.click(screen.getByTestId('ss-recent-card-delete'));
+    render(<StartScreen onOpenFile={() => {}} />);
+    fireEvent.click(screen.getByTestId('ss-recent-card-delete'));
+    expect(screen.queryByTestId('ss-recent-card')).toBeNull();
 
-      expect(confirmStub).toHaveBeenCalled();
-      expect(removeSpy).not.toHaveBeenCalled();
-    } finally {
-      window.confirm = originalConfirm;
-    }
+    const onUndo = useStore.getState().toasts[0].onUndo;
+    act(() => { onUndo(); });
+
+    expect(useStore.getState().projects['p-1']._pendingDelete).toBe(false);
+    expect(screen.getByTestId('ss-recent-card')).toBeTruthy();
+    expect(removeSpy).not.toHaveBeenCalled();
   });
 
   it('+ New project triggers createProject and switches activeFullscreen to dag', () => {

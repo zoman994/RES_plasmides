@@ -13,7 +13,7 @@ function reset() {
     state.modals = { settings: false, projectInfo: false };
     state.canvas.activeFullscreen = 'start';
     state.canvas.navStack = [{ fullscreen: 'start', payload: null }];
-    state.toast = null;
+    state.toasts = [];
   });
 }
 

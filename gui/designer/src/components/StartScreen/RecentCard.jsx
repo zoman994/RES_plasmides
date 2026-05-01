@@ -30,7 +30,10 @@ export default function RecentCard({
   selected = false,
   onToggleSelect,
 }) {
-  const removeProjectFromIndexedDB = useStore(s => s.removeProjectFromIndexedDB);
+  const markPendingDelete = useStore(s => s.markPendingDelete);
+  const unmarkPendingDelete = useStore(s => s.unmarkPendingDelete);
+  const commitPendingDelete = useStore(s => s.commitPendingDelete);
+  const showToast = useStore(s => s.showToast);
 
   if (!project) return null;
   const name = project.name || '';
@@ -62,13 +65,17 @@ export default function RecentCard({
 
   function handleDelete(e) {
     e.stopPropagation();
-    const ok = (typeof window !== 'undefined' && typeof window.confirm === 'function')
-      ? window.confirm(`Удалить проект «${displayName}»? Действие нельзя отменить.`)
-      : true;
-    if (!ok) return;
-    Promise.resolve(removeProjectFromIndexedDB(project.id)).catch((err) => {
-      // eslint-disable-next-line no-console
-      console.error('[bodgegene] removeProjectFromIndexedDB failed', err);
+    const id = project.id;
+    markPendingDelete(id);
+    showToast(`Проект «${displayName}» удалён`, 'info', {
+      onUndo: () => unmarkPendingDelete(id),
+      onAutoDismiss: () => {
+        Promise.resolve(commitPendingDelete(id)).catch((err) => {
+          // eslint-disable-next-line no-console
+          console.error('[bodgegene] commitPendingDelete failed', err);
+        });
+      },
+      autoDismissMs: 5000,
     });
   }
 

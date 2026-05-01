@@ -422,6 +422,20 @@ export const createProjectSlice = (set, get) => ({
     });
   },
 
+  markPendingDelete: (id) => set(state => {
+    if (state.projects[id]) state.projects[id]._pendingDelete = true;
+  }),
+
+  unmarkPendingDelete: (id) => set(state => {
+    if (state.projects[id]) state.projects[id]._pendingDelete = false;
+  }),
+
+  commitPendingDelete: async (id) => {
+    const proj = get().projects[id];
+    if (!proj || !proj._pendingDelete) return;
+    await get().removeProjectFromIndexedDB(id);
+  },
+
   flushAutosave: async () => {
     const id = get().currentProjectId;
     if (!id) return;

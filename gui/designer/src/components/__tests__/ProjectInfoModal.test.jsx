@@ -19,7 +19,7 @@ async function reset() {
     state.canvas.activeFullscreen = 'start';
     state.canvas.navStack = [{ fullscreen: 'start', payload: null }];
     state.modals = { settings: false, projectInfo: true };
-    state.toast = null;
+    state.toasts = [];
     state.theme = 'light';
   });
 }

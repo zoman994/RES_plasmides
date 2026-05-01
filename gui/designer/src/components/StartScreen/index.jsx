@@ -84,7 +84,7 @@ export default function StartScreen({ onOpenFile }) {
 
   const recentProjects = recentProjectIds
     .map(id => projects[id])
-    .filter(Boolean);
+    .filter(p => p && !p._pendingDelete);
 
   const exportBtnDisabled = recentProjects.length === 0 && !exportMode;
 

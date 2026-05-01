@@ -29,7 +29,7 @@ async function reset() {
     state.canvas.activeFullscreen = 'start';
     state.canvas.navStack = [{ fullscreen: 'start', payload: null }];
     state.modals = { settings: false, projectInfo: false };
-    state.toast = null;
+    state.toasts = [];
     state.theme = 'light';
   });
 }
@@ -133,7 +133,7 @@ describe('K4-fixup — hotkey scenario F (round-trip via registry)', () => {
       await flushAsync();
     });
     // no toast / no save attempt because currentProjectId is null
-    expect(useStore.getState().toast).toBeNull();
+    expect(useStore.getState().toasts).toEqual([]);
     expect(useStore.getState().lastSavedToFileAt).toBeNull();
   });
 
