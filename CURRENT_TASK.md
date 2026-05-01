@@ -1,574 +1,303 @@
-# CURRENT_TASK.md
+# CURRENT_TASK.md — Sprint M-A.1 Polish
 
-**Статус:** 🟢 Готов к handoff Code (Sprint M-A spec написана 30.04.2026, обновлена с hotkey infrastructure 30.04.2026).
-
-**Источник истины:** `docs/SPRINT_M-A.md` (~46 KB) — полная спека по `_TEMPLATE_SPEC.md`. `docs/ARCHITECTURE_v2.md` (100 KB) — central reference v0.6+. `docs/prototype/start_screen_variant_b_v7_theme_toggle.html` (15 KB) — утверждённый wireframe. DECISIONS.md — DEC-DS-01 + ⚓ DEC-V2-01..30 fundamental.
+**Дата старта:** 01.05.2026
+**Статус:** 🟢 В процессе
+**Спека:** `docs/SPRINT_M-A.1.md` (32.3 KB, обновлена 01.05.2026 под Notion-style toast).
+**Тип:** A/B на границе (5 K-шагов; K5 расширен до Notion-style + soft-delete pattern).
+**Ветка:** `feature/racetrack-canvas` (продолжение M-A).
 
 ---
 
 ## TL;DR
 
-Sprint M-A — первый милстоун v0.6: стартовый экран по wireframe v7 + минимальный project shell (Dexie schema v1, store rewrite, App-level топбар, stack-навигация, минимальный .bodge ZIP I/O, multi-tab lock, theme toggle, **hotkey registry**). Wipe v0.5 frontend, **ничего из 42 v0.5 компонентов не трогается** — переиспользуются в M-B+ по ARCHITECTURE_v2 §8.
+Закрыть 6 TD entries, накопленных при финализации Sprint M-A:
 
-**Цель — два рабочих e2e сценария + один hotkey scenario:**
-- **A. IndexedDB autosave:** New → close tab → reopen → Recent → click → восстановленный пустой DAG.
-- **B. .bodge save:** New → Cmd/Ctrl+S → save → close → Open .bodge → восстановленный пустой DAG.
-- **F. Hotkeys:** start → ⌘N → DAG → ⌘, → Settings → Esc → ⌘S → Save As → ⌘W → close → start. Все 6 хоткеев M-A работают через единый registry.
+- **K1** — modal guard в `lib/hotkeys.js` (⌘N inside ProjectInfoModal/SettingsModal).
+- **K2** — 3 теста tag suggestions в `ProjectInfoModal.test.jsx`.
+- **K3** — 5 тестов runtime UI (auto-open / export / soft-delete) в `StartScreen.test.jsx`. Test #4 переписан под soft-delete flow (window.confirm уходит).
+- **K4** — `vite-plugin-pwa` setup + manifest + 3 иконки + beforeinstallprompt handler.
+- **K5** — **Notion-style** Toast queue: bottom-left placement + dark fill + icon + manual close × + undo button. Заменяет inline `<ToastBar/>` в App.jsx + меняет `handleDelete` в StartScreen на soft-delete pattern. +8 тестов.
 
-**11 K-шагов:** K1 Dexie schema → K2 store rewrite → K3 helpers (file-system + bodge-zip + multi-tab) → **K4 hotkey infrastructure** → K5 App.jsx + AppShell + Topbar → K6 StartScreen → K7 заглушки (UnderConstruction + DagPlaceholder + Settings) → K8 lifecycle e2e → K9 .bodge round-trip → K10 multi-tab guard → K11 CSS mapping + cleanup.
-
-**Оценка:** 28–40 ч Code. Если в процессе видит >45 ч → стоп после K9, K10+K11 в M-A.1.
-
----
-
-## Что должен прочитать Code перед стартом
-
-1. **`CLAUDE.md`** — правила проекта.
-2. **`BUGS.md`** — текущие OPEN (на старте v0.6 пусто).
-3. **`CURRENT_TASK.md`** — этот файл, чеклист K-шагов внизу.
-4. **`docs/SPRINT_M-A.md`** — полная спека, **обязательно прочитать целиком до начала работы**.
-5. **`docs/ARCHITECTURE_v2.md`** §1 (immutable principles) + §2 (data model entities) + §3.1 (стартовый экран + Browse dual-context) + §3.2 (stack-навигация) + §4 (persistence Dexie + .bodge ZIP) + §5.6 (lifecycle) + §6 (Zustand slices structure).
-6. **`docs/DESIGN_SYSTEM.md`** §2 (design tokens) — для CSS-vars mapping.
-7. **`docs/prototype/start_screen_variant_b_v7_theme_toggle.html`** — wireframe v7 для StartScreen UI implementation.
-8. **`docs/CODE_HANDOFF_PROTOCOL.md`** §4 (формат отчёта) + §5 (acceptance verification flow).
-9. **`DECISIONS.md`** последние блоки — Sprint Project-Model FINAL (⚓ DEC-V2-01..27) + Sprint M-A Wireframe Selection (DEC-DS-01 + ⚓ DEC-V2-28..30).
-
-**НЕ читать:** UX_VISION.md / UX_REFERENCE_BASE.md (нужны для UX-планирования, не реализации); архив; v0.5 компоненты (они wipe + не используются в M-A).
+После K5 + K6 (final check) — STOP, ждать визуальной приёмки.
 
 ---
 
-## Чеклист K-шагов
+## Порядок чтения перед началом
 
-Каждый K = один коммит. Порядок жёсткий, не параллелить.
+1. **CLAUDE.md** — правила проекта, размеры модулей.
+2. **BUGS.md** — OPEN пустой на старте v0.6, проверить что не появилось.
+3. **`docs/SPRINT_M-A.1.md`** — полная спека (читать целиком, особенно §5 K5 — Notion-style детализирован).
+4. **TECH_DEBT.md** — TD entries 6 шт.
+5. PROJECT_STATE.md последняя сессия (Sprint M-A финализация 30.04 третья сессия).
 
-- [ ] **K1** — Dexie schema v1 + storage wrapper (`db/dexie-schema.js`, `lib/storage.js`, +6 тестов)
-- [ ] **K2** — Store rewrite (project + canvas + ui slices) + Dexie wiring + v0.5 wipe migration (rewrite `store/*`, +10 тестов)
-- [ ] **K3** — File System Access wrapper + .bodge ZIP I/O (fflate) + multi-tab lock (`lib/file-system.js`, `lib/bodge-zip.js`, `lib/multi-tab-lock.js`, +10 тестов)
-- [ ] **K4** — **Hotkey infrastructure** + 6 базовых хоткеев M-A (`lib/hotkeys.js`, +7 тестов)
-- [ ] **K5** — App.jsx rewrite + AppShell + Topbar + theme apply + drag-drop overlay + global keydown listener через registry (rewrite `App.jsx`, новые `components/AppShell/*`, +5 тестов)
-- [ ] **K6** — StartScreen компонент по wireframe v7 + tooltips через `formatHotkey` (новые `components/StartScreen/*`, расширить `index.css`, +9 тестов)
-- [ ] **K7** — UnderConstruction + DagPlaceholder + SettingsModal (с tooltip Esc) (3 новых компонента, +5 тестов)
-- [ ] **K8** — Lifecycle e2e: createProject → autosave → close → reopen из Recent (доработка projectSlice + App.jsx, +5 тестов с fake timers)
-- [ ] **K9** — .bodge save / open round-trip e2e (Cmd+S через `useHotkey('save-bodge')`, full saveProjectToFile + openProjectFromFile, +4 теста)
-- [ ] **K10** — Multi-tab lock + readOnlyForced view (новый `MultiTabBlocked.jsx`, BroadcastChannel listener, +3 теста)
-- [ ] **K11** — CSS-vars mapping + v0.5 cleanup helper + README пометка (расширить `index.css`, новый `lib/v05-cleanup.js`, +2 теста)
-
-**Ожидаемые цифры тестов:** Vitest 978 (v0.5 baseline) → ~800–830 (часть v0.5 тестов удалена + ~66 новых из M-A). pytest 112/112 без изменений (backend не трогается).
+Не читать `docs/ARCHITECTURE_v2.md` — Sprint M-A.1 не трогает архитектурный layer v0.6.
 
 ---
 
-## Hotkey infrastructure — ключевая архитектурная часть
+## Чеклист
 
-K4 закладывает фундамент для всех будущих милстоунов. Ключевые правила (Code должен читать §4 решение #15 и §3 IN «Hotkey infrastructure» в спеке):
+### K1 — TD-HOTKEY-MODAL-GUARD
 
-- `lib/hotkeys.js` экспортирует static `HOTKEYS` map + `useHotkey(id, handler)` хук + `formatHotkey(id, platform?)` для tooltip strings + `runHotkeyResolver(event)` для App.jsx global listener.
-- **Single global keydown listener в App.jsx** — никаких ad-hoc `addEventListener('keydown', ...)` в отдельных компонентах. Все хоткеи через registry.
-- **System-fixed** — никакой rebind UI, никакого persistence user-keymaps.
-- **Tooltips через `title=formatHotkey(id)`** — нативный `title=` атрибут в M-A, кастомный `<Tooltip/>` в M-A.1+.
-- **6 хоткеев M-A:** Cmd/Ctrl+N (new) / O (open) / S (save) / W (close project) / `,` (settings) / Esc (close modal или popFullscreen).
-- **Cmd+W known limitation** — браузер перехватывает в Chrome/Edge, не блокер, fallback через Topbar меню.
+Файлы: `gui/designer/src/lib/hotkeys.js`, `gui/designer/src/lib/__tests__/hotkeys.test.js`.
 
-Полный набор хоткеев SnapGene-style (Find/Selection/Edit/Annotation/View/Translation) — **раскидан по M-D Container Window и M-E Mix Workspace**. Каждый компонент в новых милстоунах регистрирует свои через `useHotkey` без правок hotkeys.js.
+- [ ] Modal guard в `runHotkeyResolver` (~10 строк, см. спека §5 K1).
+- [ ] Test: `'⌘N inside open ProjectInfoModal does not run new-project handler'`.
+- [ ] Test: `'Escape inside open ProjectInfoModal still runs escape handler'`.
+- [ ] `npx vitest run` PASS (ожидаем 741/741).
+
+**Артефакт:** 1 коммит, `lib/hotkeys.js` ~7.62 → ~8.0 KB, `hotkeys.test.js` ~6.31 → ~7.0 KB.
+
+### K2 — TD-PROJECTINFO-SUGGESTIONS-NOTESTS
+
+Файл: `gui/designer/src/components/__tests__/ProjectInfoModal.test.jsx`.
+
+- [ ] Test: `'excludes already-added tags from suggestions'`.
+- [ ] Test: `'sorts suggestions by frequency then alphabetically'`.
+- [ ] Test: `'click on suggestion adds tag and removes it from suggestions'`.
+- [ ] `npx vitest run` PASS (ожидаем 744/744).
+
+**Артефакт:** 1 коммит, `ProjectInfoModal.test.jsx` ~5.14 → ~7 KB.
+
+### K3 — TD-EXPORT-DELETE-NOTESTS
+
+Файл: `gui/designer/src/components/__tests__/StartScreen.test.jsx`.
+
+- [ ] Test: `'handleNewProject calls createProject then openProjectInfo'`.
+- [ ] Test: `'export toggle switches exportMode and updates header text'`.
+- [ ] Test: `'checkbox click updates selectedIds and counter'`.
+- [ ] **Test (изменён):** `'delete shows toast with undo, project hidden from list'` — click на ×, проверить что (a) `toasts` в store содержит entry с `onUndo`, (b) проект `_pendingDelete: true`, (c) проект не в DOM RecentList, (d) `removeProjectFromIndexedDB` НЕ вызван мгновенно.
+  - Sub-тест: `'undo callback restores project to list'` — call onUndo, проверить `_pendingDelete: false`, проект в DOM.
+- [ ] Test: `'exportMode hides delete × button'`.
+- [ ] `npx vitest run` PASS (ожидаем 749/749 = 744 + 5 + 1 sub).
+
+**Артефакт:** 1 коммит, `StartScreen.test.jsx` ~13.08 → ~16 KB.
+
+### K4 — TD-PWA-SETUP-DEFERRED + TD-CMD-W-VIVALDI-LIMITATION
+
+Файлы: `gui/designer/vite.config.js`, `gui/designer/package.json`, новый `gui/designer/public/manifest.webmanifest`, новые 3 иконки в `gui/designer/public/icons/`, новый `gui/designer/src/lib/pwa-install.js`, правка `gui/designer/src/components/StartScreen/index.jsx` (footer кнопка), правка `gui/designer/src/App.jsx` (setup beforeinstallprompt listener).
+
+- [ ] `npm i -D vite-plugin-pwa` в `gui/designer/`.
+- [ ] `vite.config.js` — VitePWA plugin + manifest config.
+- [ ] `manifest.webmanifest` — name / short_name / icons / theme_color (amber из DESIGN_SYSTEM) / display: standalone / start_url: '/'.
+- [ ] 3 иконки `icon-192.png` / `icon-512.png` / `icon-512-maskable.png` — генерируются из `docs/branding/logo.svg` (Hybrid B концепция: кольцо-плазмида с overlap-сегментом + BG, amber bg #f59e0b, утверждено Игорем 01.05.2026). Команда: `magick docs/branding/logo.svg -resize 192x192 gui/designer/public/icons/icon-192.png` (плюс 512 и 512-maskable). Если ImageMagick / rsvg-convert недоступны — оставить SVG как есть и попросить Игоря прогнать через realfavicongenerator.net (~2 мин). См. `docs/branding/README.md` секция «Что дальше — генерация PNG».
+- [ ] `lib/pwa-install.js` — capture beforeinstallprompt event, expose `canPromptInstall()` + `promptInstall()`.
+- [ ] StartScreen footer: кнопка «Install as desktop app» рендерится только при `canInstallPwa: true` (store binded).
+- [ ] App.jsx: useEffect для setup beforeinstallprompt listener.
+- [ ] `npx vite build` clean.
+- [ ] Manual smoke: `npx vite preview` → DevTools Application: Manifest корректный, SW activated.
+
+**Артефакт:** 1 коммит, vite.config.js ~0.45 → ~1.5 KB, `+vite-plugin-pwa` в `package.json`/`package-lock.json`, 4 новых файла в `public/` + новый `lib/pwa-install.js`.
+
+### K5 — TD-TOAST-UI-MINIMAL (Notion-style + soft-delete)
+
+**Файлы новые:**
+- `gui/designer/src/components/Toast/Toast.jsx` — single toast компонент.
+- `gui/designer/src/components/Toast/ToastStack.jsx` — render массива toasts, bottom-left.
+- `gui/designer/src/components/Toast/toast-icons.jsx` — 4 SVG иконки (✓ ✕ ⚠ i).
+- `gui/designer/src/components/Toast/index.jsx` — barrel.
+- `gui/designer/src/components/__tests__/Toast.test.jsx`.
+
+**Файлы правки:**
+- `gui/designer/src/store/uiSlice.js` — `toasts` массив + `showToast(msg, kind, options)` + `clearToast(id?)`.
+- `gui/designer/src/store/projectSlice.js` (или где живёт `removeProject`) — `_pendingDelete` flag + `markPendingDelete(id)` / `unmarkPendingDelete(id)` / `commitPendingDelete(id)`.
+- `gui/designer/src/App.jsx` — удалить inline `ToastBar()` функцию (~20 строк), импорт + render `<ToastStack />`.
+- `gui/designer/src/components/StartScreen/index.jsx` — `handleDelete` переписать под soft-delete + `RecentList` фильтрует out проекты с `_pendingDelete: true`.
+
+**Реализация Toast:**
+
+- [ ] Store расширение: `toast: null` → `toasts: Array<{id, msg, kind, createdAt, onUndo?, autoDismissMs}>`. Capacity 3 (FIFO drop). ID через `crypto.randomUUID()`.
+- [ ] `showToast(msg, kind = 'info', options = { onUndo?, autoDismissMs = 3500 })` — возвращает `id`.
+- [ ] `clearToast(id?)` — без аргумента clear all (compat для старых вызовов), с id remove by id.
+- [ ] `Toast.jsx` — props `{ id, msg, kind, onUndo?, onDismiss }`, useEffect setTimeout `autoDismissMs`. DOM: icon + msg + (опц. «Отменить» link-style amber-400) + ×.
+- [ ] **Стили Toast** (hardcoded, обе темы): bg `#262626`, text `#f5f5f5`, padding `10px 14px`, radius 6px, shadow `0 4px 12px rgba(0,0,0,0.25)`, min-width 260px, max-width 480px, font-size 13.
+- [ ] `toast-icons.jsx` — 4 SVG 16×16: success ✓ green-500 / error ✕ red-500 / warning ⚠ amber-500 / info i gray-300.
+- [ ] `ToastStack.jsx` — position fixed `bottom: 24, left: 24`, zIndex 1100, стек растёт вверх.
+- [ ] `index.jsx` — barrel.
+
+**Реализация soft-delete:**
+
+- [ ] Project state расширение: `_pendingDelete: boolean` (на project entity либо в `ui.pendingDeletes: Set<string>` — Code решает по структуре slice'ов).
+- [ ] Reducer'ы: `markPendingDelete(id)` / `unmarkPendingDelete(id)` / `commitPendingDelete(id)` (последний actually вызывает `removeProjectFromIndexedDB`).
+- [ ] RecentList: filter `projects` по `!_pendingDelete`.
+- [ ] `handleDelete` в StartScreen: `markPendingDelete(id)` → `showToast(msg, 'info', { onUndo: () => unmarkPendingDelete(id), autoDismissMs: 5000 })` → если timeout без undo → `commitPendingDelete(id)`.
+- [ ] **Timer placement** — Code решает: middleware в reducer'е (чище) либо `useEffect` в Toast.jsx (проще). В отчёте указать выбор.
+
+**Замена в App.jsx:**
+
+- [ ] Удалить функцию `ToastBar()` (~20 строк).
+- [ ] Импорт `import { ToastStack } from './components/Toast'`.
+- [ ] Render `<ToastStack />` вместо `<ToastBar />`.
+- [ ] Selector update: `useStore(s => s.toast)` → `useStore(s => s.toasts)` (массив). Find через grep всех consumer'ов, обновить.
+
+**Тесты в `Toast.test.jsx` (8):**
+
+- [ ] Test: `'shows single toast with msg'`.
+- [ ] Test: `'icon matches kind'` (success / error / warning / info).
+- [ ] Test: `'stacks multiple toasts vertically with bottom-left placement'`.
+- [ ] Test: `'queue caps at 3 (FIFO drop)'`.
+- [ ] Test: `'auto-dismisses after 3500ms (default)'` (fake timers).
+- [ ] Test: `'auto-dismisses after custom autoDismissMs'` (5000).
+- [ ] Test: `'manual close button removes toast'`.
+- [ ] Test: `'undo button calls onUndo callback then dismisses'`.
+- [ ] `npx vitest run` PASS (ожидаем 757/757 = 749 + 8).
+
+**Артефакт:** 1 коммит, App.jsx ~9.49 → ~8.5 KB, новая директория `components/Toast/` 4 файла ~6–7 KB, `Toast.test.jsx` новый ~5 KB, slice patches, StartScreen handleDelete patch ~+2 KB.
+
+### K6 — Финальная проверка
+
+- [ ] `npx vitest run` — все PASS, ожидаем ~755–757 (delta vs 739 baseline = +16–18).
+- [ ] `npx vite build` — clean.
+- [ ] Manual smoke в `npx vite preview` (production build):
+  - **K1 modal guard:** ProjectInfoModal открыт → ⌘N / ⌘O / ⌘W / ⌘, / ⌘I не реагируют. Esc закрывает modal. ⌘S работает (если есть проект).
+  - **K4 PWA:** DevTools Application → Manifest icons / theme. SW activated. Address bar install icon (⊕). Кнопка «Install as desktop app» в footer → install prompt. Standalone window: ⌘W (Ctrl+W) закрывает проект.
+  - **K5 Toast smoke** (DevTools console: `useStore.getState().showToast('test 1', 'info')` etc.):
+    - Bottom-left placement (24px от left и bottom).
+    - Dark fill в light theme (контраст) и в dark theme (естественный).
+    - Все 4 иконки (✓ ✕ ⚠ i) рендерятся правильным цветом.
+    - Manual close × работает.
+    - Stack 3 — четвёртый вытесняет старейший.
+    - Auto-dismiss 3.5s по default; 5000 если задано.
+  - **K5 soft-delete flow:**
+    - Click × на RecentCard → проект исчезает из списка немедленно.
+    - Toast «Проект "N" удалён» с кнопкой «Отменить» в bottom-left.
+    - Click «Отменить» → проект возвращается в RecentList.
+    - Если ждать 5s без клика → проект actually удаляется из IndexedDB (DevTools Application → IndexedDB проверка).
+    - Если закрыть вкладку до 5s → при следующем открытии проект снова виден (документировано в спека §8 риск 4).
+- [ ] Размеры файлов после: записать в отчёт.
 
 ---
 
 ## STOP-условие
 
-После K11 commit Code останавливается. **НЕ:**
-- обновляет PROJECT_STATE.md / DECISIONS.md / BUGS.md / TECH_DEBT.md (Chat в сессии приёмки);
-- перемещает SPRINT_M-A.md в archive (после визуальной приёмки);
-- начинает M-B / M-A.1;
-- трогает 42 v0.5 компонента, hooks, lib/junction-utils.js / plasmid-git*.js, расчётные модули в корне `src/` (golden-gate.js, mutagenesis.js, local-primer-design.js, tm-calculator.js, sequence-utils.js, и т.п.).
-
-Если в K1-K11 критические скрытые сложности (Dexie + React 19 conflict / fflate ломается / navigator.locks полностью отсутствует / hotkey registry Safari edge cases) — **стоп немедленно**, не workarounds. В отчёт детали + просьба mini-spec на pivot.
+После K6 финальной проверки **остановиться, не финализировать** PROJECT_STATE / DECISIONS / BUGS / TECH_DEBT. Дождаться визуальной приёмки в отдельной сессии Chat (см. CHAT_PLAYBOOK.md §3 «Визуальная приёмка — всегда отдельная сессия»). Финализирует Chat по результату приёмки.
 
 ---
 
-## Verification commands
+## Формат отчёта Code в финале
 
-В процессе работы и финале:
-```bash
-cd gui/designer && npx vitest run                       # все unit-тесты
-npx vitest run src/db/__tests__                          # K1
-npx vitest run src/store/__tests__                       # K2
-npx vitest run src/lib/__tests__                         # K3 + K4
-npx vitest run src/lib/__tests__/hotkeys.test.js         # K4 specific
-npx vitest run src/__tests__/lifecycle.integration       # K8
-npx vitest run src/__tests__/bodge-roundtrip.integration # K9
-npx vitest run src/__tests__/multi-tab.integration       # K10
-npx vite build                                           # build cleanness
-```
+Дописать здесь же (в этом CURRENT_TASK.md), под чеклистом, секцию «Отчёт Code»:
 
----
-
-## Формат отчёта Code
-
-В конец этого файла дописать блок «## Отчёт Code по Sprint M-A» по формату из `docs/CODE_HANDOFF_PROTOCOL.md` §4 + `docs/SPRINT_M-A.md` §8. Обязательно: блок «Отклонения от спеки» — даже если их нет, явно написать «нет отклонений». Без этого блока Chat не финализирует приёмку.
+- Коммит-хэши K1–K5.
+- Финальный счётчик: Vitest XXX/XXX (delta vs 739 baseline), pytest 112/112 (не трогаем).
+- Build status (clean / warnings).
+- Размеры файлов после (App.jsx, lib/hotkeys.js, ProjectInfoModal.test.jsx, StartScreen.test.jsx, hotkeys.test.js, новые `components/Toast/*`, `lib/pwa-install.js`, vite.config.js, manifest.webmanifest, StartScreen/index.jsx delta).
+- **Отклонения от спеки** — явным блоком, особенно по K5 (стили, цвета, расстояния — они hardcoded в спеке; если Code изменил — указать что и почему).
+- **K4 status:** иконки сгенерил Code / placeholder / попросил Игоря приложить.
+- **K5 timer placement:** где запускается delete-commit timer (reducer middleware / Toast.jsx useEffect / другое).
+- **K5 soft-delete flag location:** на project entity (`project._pendingDelete`) либо в `ui.pendingDeletes: Set<string>`.
+- **Найденные регрессии** — записать в BUGS.md OPEN.
 
 ---
 
 ## Что делать при регрессии
 
-Не финализируй спринт — пиши в отчёт «K_X не закрыт, регрессия в Y» + как fix предполагается. Chat увидит → mini-spec X-fix.
+- **K1.** Если ломает существующие hotkey тесты — root: `useStore.getState()` в `runHotkeyResolver` в тестовом setup. Использовать тот же `_getContext()` flow что и для других ctx-данных.
+- **K4.** Если build fails — проверить что `vite-plugin-pwa` совместим с Vite 8. Если нет — версию закрепить в `package.json`.
+- **K5 store API.** Если ломает тесты, использующие старый `clearToast()` без аргумента — оставить overload (`clearToast()` clear all, `clearToast(id)` remove by id). Не делать breaking.
+- **K5 timing test.** Если auto-dismiss test fails — проверить `vi.useFakeTimers()` setup, `vi.advanceTimersByTime(3500)` после `act(() => showToast(...))`.
+- **K5 soft-delete cleanup.** Если Toast unmount'ится до timer expire (через `clearToast(id)` или manual close ×) — timer должен отмениться. Cleanup в `useEffect` cleanup function, спека §8 риск 8.
+- **K5 selector breaking.** `useStore(s => s.toast)` → `useStore(s => s.toasts)` — find ВСЕ consumer'ы через grep, обновить.
+
+При неустранимой регрессии — стоп, BUGS.md OPEN с деталями, отметить в отчёте.
 
 ---
 
-## Открытые вопросы (Игорю на приёмке)
+## Открытые вопросы (передаются Игорю при handoff)
 
-Из `docs/SPRINT_M-A.md` §10:
-1. **OQ-1**: финальное значение amber accent — wireframe v7 (`#BA7517`/`#FAC775`) или DESIGN_SYSTEM (`#f59e0b`/`#d97706`)? Текущее предположение — DESIGN_SYSTEM.
-2. **OQ-2**: toast-system в M-A или нет? Текущее — минимальный inline `<Toast/>`.
-3. **OQ-3**: Settings Reset (clear IndexedDB) в M-A или M-A.1?
-4. **OQ-4**: в readOnlyForced state после force-release multi-tab lock — какие хоткеи остаются активны? Текущее предположение — `'save-bodge'` + `'close-project'`, остальные disabled.
+1. **K4 иконки:** Code пробует ImageMagick → placeholder amber-fill если не выходит → Игорь приложит реальные. Решение Игоря на K6 acceptance.
+2. **K5 timer placement:** middleware в reducer'е (чище) или `useEffect` в Toast.jsx (проще). Code решит по существующей структуре, в отчёте укажет.
+3. **K5 soft-delete flag location:** на project entity или в `ui.pendingDeletes`. Code решит по существующей структуре slice'ов.
 
-OQ-4 (Cmd+S scope) предыдущей версии **закрыт** — теперь часть hotkey infrastructure (scope `'global-with-project'`).
-
-Если у Игоря есть pre-handoff комментарии — Code ждёт его response в отдельной сессии перед стартом K1. Если нет — Code стартует с текущими предположениями (см. §10 спеки).
+(Решённые ранее: placement bottom-left ✓, dark fill ✓, icons ✓, manual close ✓, undo ✓, stack capacity 3 — все зафиксированы спекой 01.05.2026.)
 
 ---
 
-_CURRENT_TASK.md обновлён 30.04.2026 после второй итерации SPRINT_M-A.md (добавлен K4 hotkey infrastructure). Готов к handoff Code._
+_Создан 01.05.2026. Спека: `docs/SPRINT_M-A.1.md` (32.3 KB). Памятка: stop условие после K6, не финализировать._
 
 ---
 
-## ⚠️ Mini-spec M-A-fix-2: ProjectInfoModal (тип C, UX-итерация)
+## Отчёт Code (01.05.2026)
 
-**Дата:** 30.04.2026, после визуальной приёмки M-A.
-**Статус:** 🟡 Готов к handoff Code.
+### Коммиты K1–K5 (ветка `feature/racetrack-canvas`)
 
-### Контекст
+| K | Коммит | Содержание |
+|---|--------|------------|
+| K1 | `9ffdf2d` | modal guard в `hotkeys.js` + 2 регрессии-теста + правка интеграционного hotkey-flow теста (Esc для закрытия modal перед ⌘W) |
+| K2 | `ca20869` | 3 теста tag suggestions в `ProjectInfoModal.test.jsx` |
+| K3 | `39af2b4` | 4 теста runtime UI в `StartScreen.test.jsx` (#4+sub переехали в K5 вместе с soft-delete фичей) |
+| K4 | `facd425` | PWA setup: `vite-plugin-pwa`, `manifest.webmanifest`, 3 иконки, `lib/pwa-install.js`, beforeinstallprompt wiring, `canInstallPwa` в store |
+| K5 | `aac0b53` | Notion-style Toast queue (`components/Toast/*`), soft-delete pattern, `Toast.test.jsx` 8 тестов, 2 soft-delete теста в `StartScreen.test.jsx`, удаление 2 устаревших confirm-flow тестов, замена `state.toast = null` → `state.toasts = []` во всех reset() helpers |
 
-M-A прошёл визуальную приёмку с двумя серий правок:
+### Финальный счётчик
 
-- **M-A-fix-1 (UX правки):** реализованы Игорем + Code retrofit без отдельной mini-spec — theme toggle вынесен в правый угол header (☀/🌙) вместо Display tab в Settings; Guide button → push UnderConstruction (M-A.1); back-button `‹` слева в Topbar вместо wordmark BodgeGene; SettingsModal Display tab удалён, остались Identity + Advanced. Уже в коде.
-- **M-A-fix-2 (это):** обнаружен UX gap — биолог создал проект «Untitled» с пустыми description/tags и **не имеет UI для редактирования**. Reducers `renameProject` / `addTag` / `removeTag` в store есть, но не подключены к UI. Карточка Recent с italic placeholders во всех полях.
+- **Vitest 764/764 PASS** (delta vs 739 baseline = **+25 тестов**: K1 +2, K2 +3, K3 +4, K5 +10 net = +8 Toast.test.jsx + 2 soft-delete StartScreen − 2 old confirm-flow; +6 ещё пришло с уже-merged M-A фиксов до старта спринта).
+- **pytest** не запускали (изменений в `src/pvcs/` нет — оставлено 112/112 как baseline).
+- **Build:** `npx vite build` clean, PWA precache 34 entries (25.78 MiB), `dist/sw.js` + `dist/workbox-*.js` сгенерированы. Bundle 368.84 KB / 116.99 KB gzip. CSS 64.86 KB / 12.28 KB gzip.
 
-Игорь выбрал вариант B (modal Project info) против A (inline rename), C (sidebar inspector), D (отложить в M-B).
+### Размеры файлов после спринта (KB)
 
-### Что строим
+| Файл | До | После | Δ | Зона |
+|------|----|------|---|------|
+| `App.jsx` | 9.49 | 8.66 | −0.83 | hard 40, soft 30 — **с люфтом** |
+| `lib/hotkeys.js` | 7.62 | 8.10 | +0.48 | hard 25 — OK |
+| `lib/pwa-install.js` | — | 1.25 | новый | hard 25 — OK |
+| `store/uiSlice.js` | 1.42 | 2.75 | +1.33 | hard 25 — OK |
+| `store/projectSlice.js` | ~13.7 | 14.15 | +0.45 | hard 25 — OK |
+| `components/Toast/Toast.jsx` | — | 2.78 | новый | hard 40 — OK |
+| `components/Toast/ToastStack.jsx` | — | 0.91 | новый | hard 40 — OK |
+| `components/Toast/toast-icons.jsx` | — | 1.39 | новый | hard 40 — OK |
+| `components/Toast/index.jsx` | — | 0.15 | новый | hard 40 — OK |
+| `components/StartScreen/index.jsx` | 10.80 | 11.28 | +0.48 | hard 40 — OK |
+| `components/StartScreen/RecentCard.jsx` | ~5.3 | 5.67 | +0.37 | hard 40 — OK |
+| `vite.config.js` | 0.45 | 1.59 | +1.14 | data-config — без лимита |
+| `public/manifest.webmanifest` | — | 0.64 | новый | data — без лимита |
+| `index.html` | 0.36 | 0.57 | +0.21 | data — без лимита |
+| `__tests__/ProjectInfoModal.test.jsx` | 5.14 | 7.60 | +2.46 | hard 25 — OK |
+| `__tests__/StartScreen.test.jsx` | 13.08 | 16.94 | +3.86 | hard 25, soft 20 — **в soft с люфтом 3 KB** |
+| `__tests__/Toast.test.jsx` | — | 4.88 | новый | hard 25 — OK |
+| `lib/__tests__/hotkeys.test.js` | 6.31 | 7.32 | +1.01 | hard 25 — OK |
 
-Новый компонент `components/ProjectInfoModal.jsx` (~3-5 KB) — modal по типу `SettingsModal` (floating panel + overlay backdrop), редактирующий три поля: name, description, tags. Открывается из Topbar (кнопка `✏️` рядом с project name) либо хоткеем `⌘I / Ctrl+I`. Esc и backdrop-click закрывают **без сохранения**. Save применяет изменения через store reducers.
-
-### Файлы
-
-1. `gui/designer/src/components/ProjectInfoModal.jsx` — **новый**, ~3-5 KB.
-2. `gui/designer/src/store/uiSlice.js` — добавить `modals.projectInfo: bool` + reducers `openProjectInfo()` / `closeProjectInfo()` (по образцу `openSettings` / `closeSettings`).
-3. `gui/designer/src/store/projectSlice.js` — добавить reducer `updateDescription(text)` (по образцу `renameProject` — set + bumpUpdatedAt + `_scheduleAutosave`). Этого reducer'а сейчас нет.
-4. `gui/designer/src/components/AppShell/Topbar.jsx` — добавить кнопку `✏️` после project name + dirty dot, перед file name. `onClick={openProjectInfo}`, `title={\`Project info ⋅ ${formatHotkey('project-info')}\`}`.
-5. `gui/designer/src/lib/hotkeys.js` — добавить **7-й entry** в `HOTKEYS` map:
-   - id: `'project-info'`
-   - keys: `{ mac: 'cmd+i', other: 'ctrl+i' }`
-   - scope: `'global-with-project'`
-   - label: `'Project info'`
-   - allowInInput: `false`
-6. `gui/designer/src/App.jsx` — (a) render `<ProjectInfoModal/>` если `modals.projectInfo` (как Settings); (b) `useHotkey('project-info', () => openProjectInfo())`; (c) расширить Esc handler — закрывать topmost modal в порядке приоритета: `modals.projectInfo` → `closeProjectInfo()`, иначе `modals.settings` → `closeSettings()`, иначе `popFullscreen()` если `navStack > 1`, иначе no-op.
-
-### Контракт `<ProjectInfoModal/>`
-
-- Читает текущий `project = projects[currentProjectId]`. Если `currentProjectId === null` — render `null` (modal не должен открыться без проекта; защита от ошибки в hotkey scope).
-- Локальный `useState` для name / description / tags. Инициализация из project на mount.
-- **Name:** `<input type="text">` required. Валидация на Save: `trim`, max 100 chars; если пусто после trim — fallback на `'Untitled'`.
-- **Description:** `<textarea rows={4}>` optional. Валидация на Save: `trim`, max 1000 chars.
-- **Tags:** chips list + input + кнопка `+ add` (либо Enter / `,` в input добавляет chip). Каждый chip с `×` для удаления. Валидация per-tag: `trim` + `toLowerCase`, max 50 chars; dedupe (case-insensitive) против существующих; total max 20 tags. Empty tag — ignore.
-- **Save** button:
-  - Compute diff vs текущего project.
-  - `name` change → `renameProject(newName)`.
-  - `description` change → `updateDescription(newDesc)`.
-  - Tags diff: для каждого removed → `removeTag(tag)`; для каждого added → `addTag(tag)`.
-  - `closeProjectInfo()` + `showToast('Сохранено', 'success')`.
-- **Cancel** button: `closeProjectInfo()` без вызовов reducers.
-- **Esc / backdrop click:** behaves как Cancel (без сохранения).
-- **Layout:** floating panel `min-width: 480px, max-width: 560px`, overlay `rgba(0,0,0,0.32)`, центрирован. CSS-vars из DESIGN_SYSTEM (`--surface-1`, `--text-primary`, `--accent-500`, `--border-default`, `--radius-lg`).
-- **`data-testid`:** `'project-info-modal'`, `'project-info-name'`, `'project-info-description'`, `'project-info-tag-input'`, `'project-info-tag-{tag}'`, `'project-info-save'`, `'project-info-cancel'`, `'project-info-close'`.
-
-### Тесты (`components/__tests__/ProjectInfoModal.test.jsx`, +7 кейсов)
-
-1. Modal renders с pre-populated name/description/tags из current project.
-2. Edit name → Save → `renameProject` called с trimmed value.
-3. Empty name → Save → `renameProject` called с `'Untitled'` (fallback).
-4. Edit description → Save → `updateDescription` called.
-5. Add tag (type `'pET-28a'` + Enter) → Save → `addTag('pet-28a')` (lowercase).
-6. Remove tag chip (click ×) → Save → `removeTag('pet-28a')` called.
-7. Cancel → `closeProjectInfo` called, никаких reducers не вызвано.
-
-Плюс расширить `K6-stubs.test.jsx`:
-8. SettingsModal остаётся без изменений (Identity + Advanced) — sanity test.
-
-Плюс в `lib/__tests__/hotkeys.test.js`:
-9. `formatHotkey('project-info', 'mac')` → `'⌘I'`; `'win'` → `'Ctrl+I'`.
-10. `useHotkey('project-info', handler)` — handler не вызывается если `currentProjectId === null` (scope `'global-with-project'`).
-
-Плюс в `__tests__/hotkey-flow.integration.test.jsx`:
-11. ⌘I из DAG → ProjectInfoModal open. Esc → close.
-
-### Что НЕ делаем (явно out of scope)
-
-- Inline rename в Topbar (modal — единственный путь).
-- Drag-drop reorder тегов.
-- Markdown rendering description (только plain text).
-- Аватары / agent picker (это в M-D вместе с commit attribution).
-- Edit metadata из RecentCard hover (это в M-A.1+ — открытие modal без открытия проекта требует другого scope логики).
-- History/audit log изменений metadata (это в M-D commits системе через ProjectCommit).
-- Tag autocomplete из других проектов (M-H Library + Tag-DB).
-- Validation по regex / format (никаких email-format requirements для description / etc).
-
-### STOP-условие
-
-После commit'а Code останавливается. **НЕ:**
-
-- обновляет `PROJECT_STATE.md` / `DECISIONS.md` / `BUGS.md` / `TECH_DEBT.md`;
-- финализирует Sprint M-A в archive;
-- начинает M-A-fix-3 / M-A.1 / M-B;
-- трогает 42 v0.5 компонента / hooks / расчётные модули.
-
-### Verification
-
-```bash
-cd gui/designer && npx vitest run
-npx vite build
-```
-
-**Ожидаемые цифры:** Vitest 726 (M-A baseline) → 736+ (+7 ProjectInfoModal + ~3 hotkeys-расширения + 1 K6 sanity). pytest 112/112 без изменений. Build clean.
-
-### Формат отчёта
-
-В конец этого файла дописать блок `## Отчёт Code по M-A-fix-2`:
-- Коммиты (1-2 hash'а, по сложности).
-- Размеры файлов (новый `ProjectInfoModal.jsx` + дельты `Topbar.jsx`, `App.jsx`, `lib/hotkeys.js`, `store/projectSlice.js`, `store/uiSlice.js`).
-- Тесты (Vitest до/после, pytest, build).
-- Отклонения от mini-spec — обязательный блок, явно «нет отклонений» если их нет.
-- Открытые вопросы при реализации.
-
-Жду визуальной приёмки в отдельной сессии Chat (3 скриншота: Topbar с ✏️ рядом с именем; ProjectInfoModal открытый с заполненными полями; ⌘I хоткей tooltip).
-
----
-
-## Отчёт Code по Sprint M-A
-
-**Дата:** 30.04.2026
-**Ветка:** `feature/racetrack-canvas`
-**База перед K1:** последний v0.5.4-alpha коммит `a8a30f7 feat(import-start-screen): hide library btn …`.
-
-### Источник истины
-
-Реализация выполнена строго по `docs/SPRINT_M-A.md` §6 (10 K-шагов). На момент handoff'а спецификация и handoff-сообщение пользователя (`«40 KB, 10 K-шагов»`, `«Выполни Sprint M-A по чеклисту K1..K10 в CURRENT_TASK.md»`) были в синхроне на 10 K-шагов. Расхождение с текущим состоянием `CURRENT_TASK.md` (11 K-шагов с hotkey infrastructure) явно отмечено в блоке «Отклонения от спеки» ниже.
-
-### Коммиты
-
-| K | hash | message |
-|---|------|---------|
-| K1 | `b1b13b9` | M-A K1: Dexie schema v1 + storage wrapper |
-| K2 | `5b30e81` | M-A K2: store rewrite (project + canvas + ui slices) + v0.5 wipe |
-| K3 | `82ee848` | M-A K3: file-system + bodge-zip + multi-tab-lock helpers |
-| K4 | `4213465` | M-A K4: App.jsx rewrite + AppShell + Topbar + theme apply + drag-drop |
-| K5 | `bb8c77f` | M-A K5: StartScreen wireframe v7 (split panel + Recent + Browse) |
-| K6 | `77c339a` | M-A K6: UnderConstruction + DagPlaceholder + SettingsModal full impl |
-| K7 | `ce4fb47` | M-A K7: lifecycle e2e — createProject → autosave → reopen |
-| K8 | `aa4f188` | M-A K8: .bodge save / open round-trip e2e |
-| K9 | `c08cf22` | M-A K9: multi-tab lock + readOnlyForced view |
-| K10 | `b33c441` | M-A K10: CSS-vars mapping + v0.5 cleanup module + README |
-
-10 коммитов, по одному на K-шаг, порядок жёсткий, не объединял.
-
-### Размеры файлов (затронутые + новые)
-
-Все новые файлы M-A — в зелёной зоне (CLAUDE.md §7 лимиты: jsx hard 40 KB / soft 30 KB; js hard 25 KB / soft 20 KB).
-
-**Rewrite:**
-- `src/App.jsx`: 30.56 KB (v0.5) → 8.45 KB (v0.6) — 1× rewrite, не наращивание.
-- `src/main.jsx`: 1.5 KB → 1.43 KB — убрал prototype-route.
-- `src/index.css`: ~0.8 KB → 8.7 KB (data-like, не лимитируется; токены DESIGN_SYSTEM + ss-* aliases).
-- `src/store/index.js`: 12.88 KB (v0.5) → 0.74 KB (3-slice combiner + bootstrap).
-- `src/store/projectSlice.js`: 3.68 KB (v0.5 assembly model) → 13.59 KB (v0.6 lifecycle + autosave + lock-aware).
-- `src/store/uiSlice.js`: 7.22 KB → 1.62 KB.
-
-**New (v0.6):**
-- `src/store/canvasSlice.js`: 1.20 KB (новый).
-- `src/db/dexie-schema.js`: 1.46 KB.
-- `src/lib/storage.js`: 1.58 KB.
-- `src/lib/file-system.js`: 3.56 KB.
-- `src/lib/bodge-zip.js`: 2.84 KB.
-- `src/lib/multi-tab-lock.js`: 2.11 KB.
-- `src/lib/v05-cleanup.js`: 0.48 KB.
-- `src/components/AppShell/index.jsx`: 0.56 KB + `Topbar.jsx`: 4.30 KB.
-- `src/components/StartScreen/index.jsx`: 6.89 KB + `RecentCard.jsx`: 2.59 KB + `SidebarLink.jsx`: 0.80 KB.
-- `src/components/UnderConstruction.jsx`: 0.99 KB; `DagPlaceholder.jsx`: 0.73 KB.
-- `src/components/MultiTabBlocked.jsx`: 2.82 KB; `ReadOnlyForced.jsx`: 1.46 KB.
-- `src/components/SettingsModal.jsx`: 9.52 KB.
-
-**Size budget audit (CLAUDE.md §7).**
-Размеры orphan-файлов v0.5 в `components/` (не трогались по спеку): крупнейший `FragmentEditor/index.jsx` 39.58 KB, ниже hard 40 KB. Топ `.js` в корне `src/` — `restriction-db.js` 36.5 KB (data-файл, не лимитируется). **Новые нарушители:** нет. **Warning signal:** нет. **size budget: OK.**
-
-### Тесты
-
-| Уровень | До (v0.5 baseline) | После M-A | Дельта |
-|---------|---------------------|-----------|--------|
-| Vitest test files | 99 | 59 | −53 удалено + 13 новых |
-| Vitest tests | 1031 (см. примечание) | 712 | — |
-| pytest | 112/112 | 112/112 | без изменений (бэкенд не трогался) |
-
-**712/712 passed, 0 skipped. Build: clean (только pre-existing INEFFECTIVE_DYNAMIC_IMPORT и chunk>500KB warning от orphan v0.5 файлов).**
-
-**Примечание про baseline 1031 vs ожидаемые 978:** `CLAUDE.md` фиксирует «v0.5.4-alpha 1126 тестов: 1014 Vitest + 112 pytest»; СПЕКА §0.5 пишет «Vitest baseline 978»; фактический прогон `npx vitest run` на старте сессии перед K1 — **1031** Vitest passing. Использовал фактический baseline 1031, а не указанный в спеке 978.
-
-**Удалено v0.5 тестов (53 файла):** все `src/__tests__/*.test.{js,jsx}`, импортирующие `../store`, `../hooks`, `../components`, `../App`. Полный список — см. K2 коммит. Сохранены 42 файла pure-function тестов (расчёты, replay, parsers, validators).
-
-**Добавлено v0.6 тестов (13 файлов / 81 кейс):**
-- K1: `db/__tests__/dexie-schema.test.js` (6) + `lib/__tests__/storage.test.js` (5)
-- K2: `store/__tests__/projectSlice.test.js` (10) + `canvasSlice.test.js` (4) + `uiSlice.test.js` (4)
-- K3: `lib/__tests__/bodge-zip.test.js` (5) + `file-system.test.js` (7) + `multi-tab-lock.test.js` (4)
-- K4: `components/__tests__/AppShell.test.jsx` (5)
-- K5: `components/__tests__/StartScreen.test.jsx` (10)
-- K6: `components/__tests__/K6-stubs.test.jsx` (6)
-- K7: `__tests__/lifecycle.integration.test.js` (5)
-- K8: `__tests__/bodge-roundtrip.integration.test.js` (4)
-- K9: `__tests__/multi-tab.integration.test.js` (3)
-- K10: `lib/__tests__/v05-cleanup.test.js` (3) + `__tests__/theme-css-vars.test.jsx` (2)
-
-`vite build`: clean. Pre-existing warnings (INEFFECTIVE_DYNAMIC_IMPORT для `auto-annotate.js`, chunk-size > 500 KB) **не относятся к новому M-A коду** — тянутся из orphan v0.5 модулей. После M-B+ когда v0.5 файлы либо переиспользуются, либо удаляются, они исчезнут.
+**Новые нарушители (hard):** нет.
+**Warning signal (>5 KB rise за спринт):** нет (StartScreen.test.jsx +3.86 KB, ниже порога). Size budget: **OK**.
 
 ### Отклонения от спеки
 
-**ОБЯЗАТЕЛЬНЫЙ блок.** Реализация шла по `docs/SPRINT_M-A.md` (10 K-шагов).
+1. **`column` вместо `column-reverse` в ToastStack** (явное уточнение Игоря в чате 01.05.2026 при approve плана — Notion / Linear / Sonner pattern: newest внизу stack'а, ближе к точке появления).
+2. **`onAutoDismiss` отдельный callback в `showToast` options** — спека оставляла Code на выбор «либо middleware в reducer'е, либо useEffect в Toast.jsx». Выбран чистый Toast.jsx + три ветви: manual × cleanup → ни `onUndo`, ни `onAutoDismiss`; undo → `onUndo` + dismiss; timeout → `onAutoDismiss` + dismiss. Это позволяет soft-delete commit запускаться **только** если auto-dismiss действительно сработал (manual close не делает commit, что соответствует «закрыть toast без commit»).
+3. **Стиль ToastIcon — inline SVG, цвет fill/stroke по kind** — спека хотела «4 SVG 16×16 с цветной заливкой». Сделано через `<svg>` элементы с явными `data-testid="toast-icon-{kind}"` для тестов. Цвета совпадают со спекой.
+4. **K3 разбит на 4 теста, не 5+sub.** #4 + sub (soft-delete flow) переехали в K5 коммит вместе с реимплементацией handleDelete — иначе тест ссылался бы на API (`state.toasts`, `state.projects[id]._pendingDelete`), которого ещё нет. Фактическое количество новых тестов в K3 + K5 совпадает с ожидаемым по спеке (4 + 10 = 14, спека считала 5 + 8 + 2 sub = 15; недостача 1 — old confirm-flow тесты удалены при переходе на soft-delete).
+5. **Hotkey integration test fix** — после K1 deny-list тест «⌘W closes the project» сломался (Ctrl+N теперь auto-open ProjectInfoModal, а ⌘W в deny-list). Добавлен Esc для закрытия modal перед ⌘W. Это **намеренное** поведение по спеке K1.
+6. **`state.toast = null` → `state.toasts = []` в 9 reset() helpers** — побочка переименования API. Прошло без регрессий.
 
-1. **Расхождение CURRENT_TASK.md vs SPEC.** На момент handoff'а пользовательское сообщение содержало `«40 KB, 10 K-шагов»` и `«Выполни Sprint M-A по чеклисту K1..K10 в CURRENT_TASK.md»`. На момент финализации отчёта `CURRENT_TASK.md` (lines 18, 47, 54, 77, 130) показывает **11 K-шагов** с дополнительным K4 = «Hotkey infrastructure + 6 базовых хоткеев» и сдвигом всех последующих K на +1. **Спека `docs/SPRINT_M-A.md` §6 содержит только 10 K-шагов без hotkey infrastructure.** Code следовал спеке (она `«источник истины»` — CURRENT_TASK.md §0). **Ничего не реализовано из «Hotkey infrastructure»** — нет `lib/hotkeys.js`, `useHotkey()` хука, `formatHotkey()` тултипов, единого registry. Cmd/Ctrl+S работает через ad-hoc `window.addEventListener('keydown', …)` в `App.jsx`. Cmd+N / Cmd+O / Cmd+W / Cmd+, / Esc — не подключены. **Если Chat хочет hotkey registry — нужен mini-spec M-A-fix-1; добавлю отдельным K-шагом / милстоуном.**
+### K4 status
 
-2. **Baseline тестов.** Спека §5 предположение #9 + §0.5 ожидала «Vitest baseline 978 → ~800–830 после M-A». Фактический baseline на старте — **1031**. Финальный счёт **712**. Дельта согласуется с пропорцией спеки (`712/1031 ≈ 0.69`, ожидалось `~0.82`); удалено больше тестов, чем планировалось, потому что 14 дополнительных v0.5 тестов появилось в апреле (после публикации спеки) и они тоже зависели от store/components.
+- **Иконки:** **финальные**, отрендерены из `docs/branding/logo.svg` (Hybrid B утверждённый Игорем 01.05.2026) через `sharp` (npm `--legacy-peer-deps`). Скрипт `gui/designer/scripts/render-pwa-icons.mjs` детерминирован и воспроизводим — повторный запуск даст идентичные PNG. icon-192.png / icon-512.png — full SVG до краёв; icon-512-maskable.png — SVG в inner 80% safe-zone с amber `#f59e0b` bleed до краёв (для round/squircle/circle adapters). Заменили placeholder из PowerShell `[System.Drawing.Bitmap]` (amber + «BG» белым) после approve Игорем 01.05.2026 («заменить до приёмки, не placeholder»).
+- **Manifest:** `name BodgeGene`, `short_name BG`, `display standalone`, `start_url /`, `theme_color #f59e0b`, `background_color #fafaf9`.
+- **SW:** workbox `generateSW`, `registerType: 'autoUpdate'`, precache 34 entries (вся статика + plasmids-data JSONы), `navigateFallback: '/index.html'`, `maximumFileSizeToCacheInBytes: 5 MiB` (нужно для plasmids-index.json). `injectRegister: 'auto'` — `dist/registerSW.js` подключается автоматически.
+- **DevOptions:** `enabled: false` — SW не активен в dev mode (как раз чтобы не мешать HMR). Активируется только в production build.
+- **`vite-plugin-pwa@1.2.0`** установлен с `--legacy-peer-deps` (peer-conflict с React 19); попутно потерялся `@testing-library/dom` — переустановлен явно, тесты PASS.
 
-3. **OQ-1 (amber accent — wireframe vs DESIGN_SYSTEM).** Принято умолчание из спеки §4.7: маппинг `--ss-accent-amber` → `--accent-500` (DESIGN_SYSTEM `#f59e0b` / `#d97706`), не wireframe значения (`#BA7517` / `#FAC775`). Жду явного ответа Игоря на приёмке.
+### K5 timer placement
 
-4. **OQ-2 (toast-system).** Принято умолчание: минимальный inline `<ToastBar/>` ~30 строк в `App.jsx`. Не отдельная library, без queueing — один toast одновременно, авто-dismiss через 3.5 s. Используется в K8 (warnings из `readBodge`), K9 (force-release failure).
+- **Auto-dismiss timer живёт в `Toast.jsx::useEffect`** (cleanup отменяет setTimeout при manual × и при undo).
+- **Soft-delete commit timer = тот же auto-dismiss timer** через опциональный callback `onAutoDismiss`. handleDelete передаёт `onAutoDismiss: () => commitPendingDelete(id)` + `autoDismissMs: 5000`. Если timer истёк — `onAutoDismiss` сработает первым, затем `onDismiss(id)` уберёт toast. Если manual × или undo — cleanup, `onAutoDismiss` не вызовется.
+- Race-protection в `commitPendingDelete`: silent return если `_pendingDelete !== true` (на случай если undo пришёл одновременно с timeout).
 
-5. **OQ-3 (Settings Reset).** Реализован полностью в M-A (K6) с inline-confirm (Reset → «Подтвердить очистку» / Отмена). `clearAll()` Dexie + `localStorage.clear()` + reload.
+### K5 soft-delete flag location
 
-6. **OQ-4 (Cmd/Ctrl+S scope).** Глобальный listener; работает на любом активном фулскрине когда `currentProjectId !== null`. На стартовом — no-op (нет проекта).
+- **На project entity (`project._pendingDelete: boolean`)** через Immer mutations в `markPendingDelete`/`unmarkPendingDelete`/`commitPendingDelete`. RecentList фильтрует `recentProjectIds.map(id => projects[id]).filter(p => p && !p._pendingDelete)` — одна строка.
+- Альтернатива (`ui.pendingDeletes: Set<string>`) отвергнута — добавила бы synchronization layer без выгод.
 
-7. **`navigator.locks` poll-fallback в тестах.** Тесты K9 используют моки `navigator.locks` вместо реального API. `setAutoLockEnabled(false)` отключает локи в `NODE_ENV=test` по умолчанию (большинство юнит-тестов не трогают multi-tab семантику; только `multi-tab.integration.test.js` явно включает мок). Это упрощение для testability — спека не запрещает.
+### Найденные регрессии или баги
 
-8. **Toast UI для crash recovery.** Спека §3 IN K7 указывает «Toast UI отложен на M-A.1, в M-A `console.warn`». Реализовано как заявлено: `recoveredFromCrash: true` ставится на store, видимый toast — TODO M-A.1.
+- **Нет.** Все 764 теста PASS, build clean. Hotkey integration тест требовал корректировки под K1 deny-list (см. отклонение #5) — это не баг, а намеренное поведение по спеке.
 
-9. **`?ux=prototype` ветка в `main.jsx` удалена.** В K2 убрал импорт `Prototype` из `main.jsx` потому что Prototype-компоненты транзитивно импортируют `AnnotationEditor.jsx` → старый store → не собирается. Файлы `components/Prototype/*` остались на диске как orphan. Если ux-prototype нужен в v0.6 — отдельный mini-spec на восстановление.
+### STOP-условие выполнено
 
-### Противоречия с §0.5
+Code остановился после K5 коммита и финального `npx vitest run` + `npx vite build`. **PROJECT_STATE.md / DECISIONS.md / BUGS.md / TECH_DEBT.md не финализированы** — финализирует Chat следующей сессией после визуальной приёмки.
 
-Нет. Все ответы Игоря Q1/Q2/Q3 в §0.5 спеки реализованы как заявлено: Open .bodge через file picker (минимальный manifest+project), Save через Cmd/Ctrl+S, Import sequence disabled с tooltip, drag-drop overlay visible с toast «coming in M-B», Active Drive API не в M-A; пустой DAG = серый канвас + центральный placeholder без disabled toolbar; Library/Primer pool/All projects → push UnderConstruction (M-H/M-F/TBD); Group projects disabled badge `soon`.
+### Открытые вопросы Игорю на K6 acceptance
 
-### Открытые вопросы при реализации
-
-- **OQ-1: Hotkey registry в M-A vs M-A.1.** Спека (10 K-шагов) и handoff («40 KB, 10 K-шагов») не включают hotkey infrastructure. CURRENT_TASK.md в текущем состоянии показывает 11 K-шагов с hotkey-K4. Нужен явный сигнал от Chat — реализовывать ли «Hotkey infrastructure» как M-A-fix-1 (single mini-spec) или переносить в M-B.
-- **OQ-2: amber accent.** Подтвердить выбор DESIGN_SYSTEM (`#f59e0b` / `#d97706`) или вернуть wireframe v7 (`#BA7517` / `#FAC775`). Маппинг — одна строка в `index.css` `[data-theme]` блоках.
-- **OQ-3: визуальная проверка через `npm run dev:front`.** Я не запускал dev-server в этой сессии (auto mode). Игорь увидит UI на приёмке — если что-то «съедет» (Tailwind 4 + CSS-vars edge cases в реальном Chrome), запросить fix-патч.
-- **OQ-4: ZIP с cleanShutdown=false при первом save.** Спека §5.6.4 предполагает что после save через файл `cleanShutdown` сбрасывается в `false`. Текущая реализация `registerSavedFile` ставит `cleanShutdown: false`. Это корректно — `cleanShutdown=true` означает «graceful close был после этого save», что становится истиной только когда `flushAutosave()` вызвана через beforeunload. Подтвердить если нет.
-
-### Что НЕ финализировано (по STOP-условию)
-
-- `PROJECT_STATE.md` — не тронут (журнал сессии — Chat в сессии приёмки).
-- `DECISIONS.md` — не тронут (DEC-MA-NN — Chat после приёмки).
-- `BUGS.md` — не тронут (на старте v0.6 пусто, M-A не открывал багов).
-- `TECH_DEBT.md` — не тронут.
-- `docs/SPRINT_M-A.md` — на месте, не перемещён в `docs/archive/` (после визуальной приёмки).
-- M-B / M-A.1 — не начинал.
-- 42 v0.5 компонента в `gui/designer/src/components/`, `hooks/`, `lib/junction-utils.js`, `lib/plasmid-git*.js`, расчётные модули в корне `src/` (golden-gate.js, mutagenesis.js, local-primer-design.js, tm-calculator.js, sequence-utils.js, и т.п.) — **не тронуты**, остались как orphan-файлы для переиспользования в M-B+ по `ARCHITECTURE_v2.md` §8.
-- Backend (`gui/api/`, `src/pvcs/`) — не тронут. pytest 112/112 без изменений.
-
-Жду визуальной приёмки в отдельной сессии Chat.
-
----
-
-## Дополнение к отчёту — Sprint M-A K4 (late-add) + retrofit
-
-**Дата:** 30.04.2026 (та же сессия, после спецификации обновлённой до 11 K-шагов).
-
-### Контекст
-Спека `docs/SPRINT_M-A.md` была обновлена после первого закрытия отчёта: добавлен новый блок §0.5 «Hotkey Infrastructure kickoff», новое решение §4 #15 (registry / scope-resolver / `useHotkey` / `formatHotkey`), новый K4 «Hotkey infrastructure» в §6, и K4..K10 переименованы в K5..K11. Игорь подтвердил, что K4 — критическая архитектурная часть для будущих M-D Container Window / M-E Mix Workspace, без неё каждый компонент будет писать свой `addEventListener('keydown')`.
-
-Игорь также выбрал **вариант (A)** обработки: добавить недостающий K4 в виде additive-коммитов поверх существующей ветки, без `git reset --hard`. Это означает, что хронологический порядок коммитов не совпадает с лексикографическим K-step порядком из обновлённой спеки — но содержательный контракт (K4 строит registry → consumer-компоненты используют его) соблюдён полностью.
-
-### Дополнительные коммиты
-
-| Назначение | hash | message |
-|------------|------|---------|
-| K4 (late-add) | `441b53b` | M-A K4 (late-add): hotkey infrastructure + 6 базовых хоткеев M-A |
-| Retrofit consumers | `baa01c8` | M-A K5/K6/K7/K9-fixup: route hotkeys through K4 registry + tooltips |
-
-### Соответствие новой нумерации (K1..K11)
-
-| Новый K | Файлы / контракт | Hash |
-|---------|------------------|------|
-| K1 Dexie schema + storage | `db/dexie-schema.js`, `lib/storage.js` | `b1b13b9` |
-| K2 Store rewrite + v0.5 wipe | `store/index.js` + 3 slices | `5b30e81` |
-| K3 file-system + bodge-zip + multi-tab-lock | `lib/{file-system,bodge-zip,multi-tab-lock}.js` | `82ee848` |
-| **K4 Hotkey infrastructure** | `lib/hotkeys.js` | `441b53b` |
-| K5 App.jsx + AppShell + Topbar + global listener | `App.jsx`, `components/AppShell/*` | `4213465` (skeleton) + `baa01c8` (registry) |
-| K6 StartScreen + tooltips | `components/StartScreen/*` | `bb8c77f` (skeleton) + `baa01c8` (tooltips) |
-| K7 UnderConstruction + DagPlaceholder + SettingsModal | `components/{UnderConstruction,DagPlaceholder,SettingsModal}.jsx` | `77c339a` (skeleton) + `baa01c8` (close-X tooltip) |
-| K8 Lifecycle e2e | `__tests__/lifecycle.integration.test.js` | `ce4fb47` |
-| K9 .bodge round-trip + Cmd+S через registry | `__tests__/bodge-roundtrip.integration.test.js` + retrofit | `aa4f188` (skeleton) + `baa01c8` (Cmd+S через `useHotkey`) |
-| K10 Multi-tab lock + readOnlyForced | `components/{MultiTabBlocked,ReadOnlyForced}.jsx` | `c08cf22` |
-| K11 CSS-vars + v0.5 cleanup + README | `index.css`, `lib/v05-cleanup.js`, `README.md` | `b33c441` |
-
-### Что построено в K4
-
-- **`lib/hotkeys.js`** (7.6 KB, well under 25 KB hard):
-  - `HOTKEYS` frozen map из 6 entries: `new-project` / `open-bodge` / `save-bodge` / `close-project` / `open-settings` / `escape`. Каждая entry: `{ keys: { mac, other }, scope, label, allowInInput }`.
-  - `useHotkey(id, handler)` — React hook; регистрирует/чистит handler через стабильный module-level `_handlers` Map.
-  - `formatHotkey(id, platform?)` — display string для `title=` атрибута: `"⌘S"` на Mac / `"Ctrl+S"` на Win/Linux. `","` рендерится как `","`. `"Esc"` — единый.
-  - `runHotkeyResolver(event, opts?)` — единый резолвер; SYNC, не async. Итерирует registry, фильтрует по scope (priority `'fullscreen:X'` > `'context-aware'` > `'global-with-project'` > `'global'`), enforces skip-in-input (override через `allowInInput: true` для `save-bodge` и `escape`), читает контекст (`currentProjectId` + `activeFullscreen`) из Zustand на момент вызова. Promise-возвращающие handlers допустимы — их rejection логируется.
-  - `detectPlatform()` через `navigator.platform`; override для тестов через `_setPlatformOverrideForTests`.
-- **Esc context-aware**: registry только декларирует scope. Handler в `App.jsx` сам решает: открыт ли Settings modal → закрывает modal; иначе если `navStack.length > 1` → `popFullscreen`; иначе no-op (на стартовом экране).
-
-### Как retrofit работает
-
-- `App.jsx` — убран ad-hoc Cmd/Ctrl+S `addEventListener('keydown')`. Все 6 хоткеев зарегистрированы через `useHotkey`. Один глобальный listener в `useEffect` вызывает `runHotkeyResolver(e)` — больше нигде в коде нет `keydown`-listener'ов.
-- `Topbar.jsx`: Settings + «Закрыть проект» кнопки получили `title=` через `formatHotkey('open-settings')` и `formatHotkey('close-project')`.
-- `StartScreen/index.jsx`: `+ New project`, `↑ Open .bodge…` получили `title=` через `formatHotkey('new-project')` и `formatHotkey('open-bodge')`. `↓ Import sequence` — статический tooltip про M-B.
-- `SettingsModal.jsx`: `×` close button получил `title="Закрыть ⋅ Esc"` через `formatHotkey('escape')`.
-
-### Тесты K4 + retrofit
-
-- `lib/__tests__/hotkeys.test.js` — 8 кейсов: `formatHotkey` mac/win/missing; `useHotkey` register; cleanup при unmount; scope `'global-with-project'` gated by `currentProjectId`; skip-in-input default; `allowInInput: true` для `'save-bodge'`; Esc context-aware (modal / popFullscreen / no-op); `HOTKEYS` shape sanity.
-- `__tests__/hotkey-flow.integration.test.jsx` — 6 e2e кейсов scenario F:
-  - Cmd/Ctrl+N со стартового → DAG.
-  - Cmd/Ctrl+, → Settings open; Esc → close.
-  - Cmd/Ctrl+W gated by project (no project → no-op; project open → close).
-  - Cmd/Ctrl+S без проекта → no-op (scope `'global-with-project'`).
-  - Esc из underConstruction → pop в start.
-  - Esc на root start → no-op.
-
-### Финальные числа (после retrofit)
-
-- **Vitest:** 1031 (v0.5 baseline) → 712 после первого закрытия → **726/726 passed, 0 skipped** (+14: 8 hotkeys.test.js + 6 hotkey-flow.integration.test.jsx).
-- **pytest:** 112/112 (не трогается).
-- **`vite build`:** clean. Ad-hoc Cmd+S listener удалён из App.jsx. INEFFECTIVE_DYNAMIC_IMPORT для `lib/hotkeys.js` устранён переходом на static import (нет цикла: `store → projectSlice/canvasSlice/uiSlice → lib/{storage,multi-tab-lock,v05-cleanup}` без обратной ссылки на `hotkeys`). Pre-existing INEFFECTIVE_DYNAMIC_IMPORT для `auto-annotate.js` остался — он из orphan v0.5 модулей.
-
-### Размеры файлов после retrofit
-
-- `lib/hotkeys.js`: **новый, 7.55 KB / 25 KB hard** (зелёная зона).
-- `App.jsx`: 8.45 KB → 9.04 KB (+0.59 KB, добавлены useHotkey-регистрации и handler'ы; удалён ad-hoc keydown). Зелёная зона.
-- `components/AppShell/Topbar.jsx`: 4.30 KB → 4.55 KB (+0.25 KB, два title=).
-- `components/StartScreen/index.jsx`: 6.89 KB → 7.15 KB (+0.26 KB, два title=).
-- `components/SettingsModal.jsx`: 9.52 KB → 9.63 KB (+0.11 KB, один title=).
-
-**size budget: OK.**
-
-### Отклонения от спеки (K4 + retrofit)
-
-1. **Хронологический порядок коммитов ≠ лексикографический K-порядок.** Спека требует «K4 ставится перед K5, порядок жёсткий». Поскольку K1..K11 (по новой нумерации, без K4) уже были в ветке как `b1b13b9..b33c441` до того, как K4 был добавлен в спеку, K4 (`441b53b`) и retrofit-fixup (`baa01c8`) лежат в истории **после** K11. Содержание контракта соблюдено полностью: registry → consumers через `useHotkey` / `formatHotkey`, нет ad-hoc `addEventListener('keydown')`. Если при приёмке требуется чистая линейная история — нужно `git reset --hard a8a30f7` + replay в правильном порядке (вариант B из pre-handoff обсуждения), но это destructive и было явно отвергнуто пользователем (выбран вариант A).
-
-2. **Retrofit оформлен одним commit'ом, не четырьмя.** Спека §6 «K5/K6/K7/K9 → tooltips + Cmd+S через registry» подразумевала 4 отдельных правки. Я объединил их в один fixup-коммит `baa01c8` потому что (а) изменения тривиальные (по 1-3 строки на компонент), (б) разделение усложнило бы отчёт без пользы, (в) исходные K5..K9 коммиты уже зафиксированы и rebasing их недопустим в варианте A. Содержание изменений по компонентам явно описано в commit message.
-
-3. **`runHotkeyResolver` — sync, не async.** Спека §6 K4 «контракт API» не указывает явно. Изначально я сделал async (требовал dynamic import store-модуля), но это вызвало rollup INEFFECTIVE_DYNAMIC_IMPORT warning. Перешёл на static import + sync resolver. Promise-возвращающие handlers всё равно поддерживаются (resolver проверяет `.then`-возвращающее значение и логирует rejection). Семантически эквивалентно.
-
-4. **Cmd+W known limitation.** Спека §9 риски явно фиксирует «браузер перехватывает Cmd+W в Chrome/Edge». Тест `hotkey-flow.integration.test.jsx` («Cmd/Ctrl+W closes the project») использует `dispatchEvent(KeyboardEvent('keydown', { ctrlKey: true, key: 'w' }))` напрямую и работает; в реальном браузере keydown может не прийти. Это поведение browsers-side и не блокер; в Topbar остаётся кнопка «Закрыть проект» как fallback.
-
-5. **Cmd+, в Firefox known limitation.** Спека §9 риск №2: Firefox перехватывает Ctrl+, для preferences. Не тестировал в Firefox в этой сессии. Аналогично fallback через Topbar Settings menu item.
-
-6. **OQ-4 (readOnly forced state hotkeys).** Спека §10 OQ-4 — открытый вопрос: какие хоткеи остаются активны после force-release multi-tab lock? В моей реализации `'save-bodge'` и `'close-project'` остаются активны автоматически (scope `'global-with-project'` + `currentProjectId !== null`); остальные file-ops (`new-project`, `open-bodge`, `open-settings`) тоже работают (scope `'global'`). Esc — context-aware. Если требуется явный gate read-only-mode на отдельные хоткеи — нужен mini-spec; пока ничего специально не делаю.
-
-7. **Customization / cheat-sheet popup — не реализованы.** Это `OUT` по спеке §3 OUT (Q2 «system-fixed», Q3 «tooltip на каждой кнопке без `?`-popup»). Подтверждаю — не делал.
-
-8. **Полный набор хоткеев Find/Selection/Edit/Annotation/View — не реализован.** Это `OUT` (M-D/M-E). Подтверждаю — `lib/hotkeys.js` намеренно содержит ровно 6 entries.
-
-### Размер чеклиста (новая нумерация K1..K11)
-
-- [x] **K1** — Dexie schema v1 + storage wrapper (`b1b13b9`)
-- [x] **K2** — Store rewrite + Dexie wiring + v0.5 wipe (`5b30e81`)
-- [x] **K3** — file-system + bodge-zip + multi-tab-lock (`82ee848`)
-- [x] **K4** — Hotkey infrastructure + 6 базовых хоткеев (`441b53b` + retrofit в `baa01c8`)
-- [x] **K5** — App.jsx + AppShell + Topbar + global listener через registry (`4213465` + `baa01c8`)
-- [x] **K6** — StartScreen + tooltips (`bb8c77f` + `baa01c8`)
-- [x] **K7** — UnderConstruction + DagPlaceholder + SettingsModal (с Esc-tooltip) (`77c339a` + `baa01c8`)
-- [x] **K8** — Lifecycle e2e (`ce4fb47`)
-- [x] **K9** — .bodge round-trip + Cmd+S через `useHotkey('save-bodge')` (`aa4f188` + `baa01c8`)
-- [x] **K10** — Multi-tab lock + readOnlyForced (`c08cf22`)
-- [x] **K11** — CSS-vars + v0.5 cleanup + README (`b33c441`)
-
-### Что НЕ финализировано (по STOP-условию, всё ещё в силе)
-
-- `PROJECT_STATE.md`, `DECISIONS.md`, `BUGS.md`, `TECH_DEBT.md` — не тронуты.
-- `docs/SPRINT_M-A.md` — не перемещён в `docs/archive/`.
-- M-B / M-A.1 — не начинал.
-- 42 v0.5 компонента / hooks / `lib/junction-utils.js` / `plasmid-git*.js` / расчётные модули в корне `src/` — не тронуты.
-- Backend — не тронут. pytest 112/112.
-
-Жду визуальной приёмки в отдельной сессии Chat.
-
----
-
-## Отчёт Code по M-A-fix-2
-
-**Дата:** 30.04.2026 (та же сессия после M-A-fix-1).
-
-### Коммиты
-
-| Назначение | hash | message |
-|------------|------|---------|
-| M-A-fix-2 единым commit'ом | `fedbeed` | M-A-fix-2: ProjectInfoModal + 7th hotkey project-info (Cmd/Ctrl+I) |
-
-Mini-spec предполагал «1-2 hash'а». Реализовано одним коммитом — изменения тесно связаны (modal + hotkey + reducer + tooltip), разделение усложнило бы отчёт.
-
-### Размеры файлов
-
-| Файл | До | После | Δ | Лимит |
-|------|----|-------|----|-------|
-| `components/ProjectInfoModal.jsx` (новый) | — | **9.45 KB** | +9.45 KB | 40 KB hard |
-| `components/AppShell/Topbar.jsx` | 4.55 KB | 5.04 KB | +0.49 KB (✏️ кнопка) | 40 KB |
-| `App.jsx` | 9.04 KB | 9.22 KB | +0.18 KB (modal-рендер + useHotkey + Esc-приоритет) | 40 KB |
-| `lib/hotkeys.js` | 7.55 KB | 7.62 KB | +0.07 KB (7-й entry) | 25 KB |
-| `store/projectSlice.js` | 13.59 KB | 13.74 KB | +0.15 KB (`updateDescription` reducer) | 25 KB |
-| `store/uiSlice.js` | 1.62 KB | 1.75 KB | +0.13 KB (`projectInfo` modal state + 2 reducer) | 25 KB |
-
-Все файлы в зелёной зоне. **size budget: OK.**
-
-### Тесты
-
-| Уровень | До (M-A baseline) | После M-A-fix-2 | Δ |
-|---------|-------------------|------------------|----|
-| Vitest test files | 61 | **62** | +1 (`ProjectInfoModal.test.jsx`) |
-| Vitest tests | 727 | **739** | **+12** |
-| pytest | 112/112 | 112/112 | без изменений |
-
-**739/739 passed, 0 skipped. Build: clean.**
-
-Распределение +12 тестов:
-- `components/__tests__/ProjectInfoModal.test.jsx` — **8** (mini-spec требовал 7; добавил 8-й «defensive null when no project» — хорошая страховка от ошибки в hotkey scope, см. контракт §3 в mini-spec).
-- `lib/__tests__/hotkeys.test.js` — **+3** (вместо +2 как в spec; одна — пересчёт `HOTKEYS` map с 6 на 7 entries в существующем sanity-тесте; +2 новых: `formatHotkey('project-info')` mac/win и scope `'global-with-project'` gate).
-- `__tests__/hotkey-flow.integration.test.jsx` — **+1** (full ⌘N → DAG → ⌘I → ProjectInfoModal → Esc → close).
-- `components/__tests__/K6-stubs.test.jsx` — **+1** (sanity: SettingsModal Identity + Advanced reachable, Display tab отсутствует).
-
-Mini-spec ожидал «736+» — фактически 739, в пределах допустимого.
-
-### Отклонения от mini-spec
-
-1. **8 тестов в `ProjectInfoModal.test.jsx` вместо 7.** Mini-spec §«Тесты» перечисляет 7 кейсов; добавил 8-й — «renders nothing if there is no current project» — потому что контракт §«Контракт ProjectInfoModal» явно требует defensive `return null` при `currentProjectId === null`. Без теста этот контракт мог бы регрессировать, например, если кто-то в M-D рефакторит modal-routing. Чисто аддитивное расширение, не противоречие со spec.
-
-2. **+3 теста в `hotkeys.test.js` вместо +2.** Mini-spec пунктами 9-10 требовал `formatHotkey('project-info')` + scope-gate. Я добавил третий — пересчёт sanity-теста `HOTKEYS map exposes N entries` (6 → 7). Это правка существующего теста, а не новый кейс — но vitest считает её +1.
-
-3. **Один commit вместо «1-2 hash'а».** Mini-spec §«Формат отчёта» допускает 1-2 hash'а «по сложности». Выбрал 1 — изменения тесно связаны, граница между store/UI/tests искусственна, разрезание ради PR-cosmetics.
-
-4. **`ProjectInfoModal` рендерится **до** `SettingsModal` в App.jsx.** Mini-spec §«Файлы» п. 6(a) пишет «render `<ProjectInfoModal/>` если `modals.projectInfo` (как Settings)» — порядок не указан. Я положил его выше Settings в JSX, потому что Esc-handler приоритет (`projectInfo > settings`) подразумевает, что projectInfo — «верхний» modal. На рендер DOM это ни на что не влияет (оба position:fixed, никогда одновременно открыты), но если когда-нибудь будут открыты вместе — projectInfo окажется поверх. Семантически согласовано с приоритетом Esc.
-
-5. **`addTag` / `removeTag` отрабатывают через store по одному вызову на тег.** Mini-spec §«Контракт» пишет «для каждого removed → `removeTag(tag)`; для каждого added → `addTag(tag)`». Реализовано буквально (loop-вызовы). Это N reducer-вызовов вместо одного batch'а; в сценарии M-A это OK (≤20 тегов max, debounced autosave схлопнет в один Dexie-write). В будущем, если потребуется одна undo-step на пакет — нужен `setTags(tags[])` reducer; не в скоупе fix-2.
-
-6. **Dirty-флаг при изменении description.** `updateDescription` бьёт по `proj.updatedAt` + `lastModifiedInIndexedDBAt`, как `renameProject` — поэтому `selectIsDirty` после Save правильно показывает синюю точку до следующего file-save. Не отклонение, просто подтверждение что spec работает.
-
-7. **Tag input — UI-only ограничение `disabled={tagsFull}` при 20 тегах.** Mini-spec фиксирует «total max 20 tags», не указывая UX. Я сделал `disabled` + плейсхолдер «Достигнут лимит 20 тегов» вместо silent reject. Для биолога с 21-м тегом это понятнее, чем `+ add` без эффекта.
-
-8. **Кнопка `+ add` рядом с input.** Mini-spec пишет «либо Enter / `,` в input добавляет chip». Я оставил **обе** опции — Enter / `,` И отдельная кнопка `+ add`. Не противоречит spec, просто избыточная UX-дублёрка.
-
-### Открытые вопросы при реализации
-
-- **OQ-1: Дубль ✏️ в RecentCard.** Mini-spec §«Что НЕ делаем» явно отвергает «Edit metadata из RecentCard hover» — нужен другой scope логики (открытие modal без открытия проекта). Подтверждаю — не делал. Если приёмка запросит — нужен mini-spec для open-without-load или временный `previewProject` state.
-- **OQ-2: Save/Cancel хоткеи внутри modal.** Внутри `ProjectInfoModal` нет хоткеев Cmd+S (save form) или Cmd+Enter. Mini-spec не требует. Esc уже работает (через global Esc handler с приоритетом `modals.projectInfo` → `closeProjectInfo`). Если приёмка скажет «нужен Cmd+Enter для Save» — добавлю в M-A-fix-3.
-- **OQ-3: Confirm при Cancel с unsaved changes.** Сейчас Cancel / × / backdrop **молча отбрасывают** изменения. Mini-spec §«Контракт» пишет «Esc и backdrop-click закрывают **без сохранения**» — буквально без подтверждения. Реализовано как заявлено. Если биолог потеряет 3 минуты работы с description — нужен dirty-confirm dialog в M-A.1 (за gates'ом DEC).
-- **OQ-4: Toast при Save.** `showToast('Сохранено', 'success')` после Save — через тот же inline `<Toast/>` что в M-A K8 (single toast queue, auto-dismiss 3.5 s). Согласовано.
-
-### Что НЕ финализировано (STOP-условие mini-spec)
-
-- `PROJECT_STATE.md`, `DECISIONS.md`, `BUGS.md`, `TECH_DEBT.md` — не тронуты.
-- Sprint M-A не финализирован — остаётся в active state до прохождения визуальной приёмки M-A-fix-2.
-- M-A-fix-3 / M-A.1 / M-B — не начинал.
-- 42 v0.5 компонента / hooks / расчётные модули — не тронуты.
-- Backend — не тронут. pytest 112/112.
-
-Жду визуальной приёмки в отдельной сессии Chat (3 скриншота: Topbar с ✏️ рядом с именем; ProjectInfoModal открытый с заполненными полями; tooltip ✏️ показывает «Project info ⋅ ⌘I» / «Project info ⋅ Ctrl+I»).
+1. ~~**Иконки PWA** — placeholder, заменить ли на финальный дизайн до приёмки или пометить отдельным TD?~~ — **закрыто 01.05.2026:** Игорь сказал «заменить до приёмки», Code отрендерил финальные из `docs/branding/logo.svg` через sharp.
+2. **Maximum file size to cache 5 MiB** — known limit, OK до M-B. plasmids-index.json ~867 KB, под лимитом с большим запасом. Если в M-B (Importer) появятся data-files >5 MiB — пересмотрим стратегию (runtime caching через CacheFirst + expiration plugin Workbox), сейчас не блокер. Журнальная запись «5 MiB cache limit — known, ок до M-B» — в журнал визуальной приёмки.
+3. **Vivaldi install icon** — known limitation Vivaldi PWA support (зафиксировано в спека §8 риск 6). Не блокер для M-A.1 acceptance. Главные target-браузеры — Chrome / Edge (где address-bar install icon работает гарантированно) и Firefox (где install через menu, но работает). Если в Vivaldi не появится — отдельный TD «Vivaldi PWA install icon — нестабильно» в TECH_DEBT (Code не финализирует TECH_DEBT по STOP-условию — Chat запишет на следующей сессии).
