@@ -2,10 +2,11 @@ import { useState } from 'react';
 import { useStore } from '../store';
 import { clearAll } from '../db/dexie-schema';
 import { formatHotkey } from '../lib/hotkeys';
+import { STRINGS } from '../lib/strings';
 
 const TABS = [
-  { id: 'identity', label: 'Identity' },
-  { id: 'advanced', label: 'Advanced' },
+  { id: 'identity', labelKey: 'identity' },
+  { id: 'advanced', labelKey: 'advanced' },
 ];
 
 export default function SettingsModal() {
@@ -21,7 +22,7 @@ export default function SettingsModal() {
 
   function saveIdentity() {
     setAgent({ name: name.trim(), email: email.trim() });
-    showToast('Identity сохранён', 'success');
+    showToast(STRINGS.settings.identity.savedToast, 'success');
   }
 
   async function doReset() {
@@ -30,7 +31,7 @@ export default function SettingsModal() {
       try { localStorage.clear(); } catch { /* ignore */ }
       window.location.reload();
     } catch (e) {
-      showToast(`Reset failed: ${e.message || e}`, 'error');
+      showToast(STRINGS.settings.advanced.resetFailed(e.message || String(e)), 'error');
     }
   }
 
@@ -68,14 +69,14 @@ export default function SettingsModal() {
             borderBottom: '0.5px solid var(--border-subtle, #e7e5e4)',
           }}
         >
-          <h2 style={{ fontSize: 16, fontWeight: 500, margin: 0 }}>Настройки</h2>
+          <h2 style={{ fontSize: 16, fontWeight: 500, margin: 0 }}>{STRINGS.settings.title}</h2>
           <button
             type="button"
             onClick={closeSettings}
             data-testid="settings-close"
-            title={`Закрыть ⋅ ${formatHotkey('escape')}`}
+            title={`${STRINGS.settings.closeTitle} ⋅ ${formatHotkey('escape')}`}
             style={{ background: 'transparent', border: 'none', fontSize: 18, cursor: 'pointer', color: 'var(--text-secondary)' }}
-            aria-label="close"
+            aria-label={STRINGS.settings.closeAria}
           >×</button>
         </div>
 
@@ -96,7 +97,7 @@ export default function SettingsModal() {
                 color: tab === t.id ? 'var(--text-primary)' : 'var(--text-secondary)',
                 borderBottom: tab === t.id ? '2px solid var(--accent-500)' : '2px solid transparent',
               }}
-            >{t.label}</button>
+            >{STRINGS.settings.tabs[t.labelKey]}</button>
           ))}
         </div>
 
@@ -104,10 +105,10 @@ export default function SettingsModal() {
           {tab === 'identity' && (
             <div data-testid="settings-tab-content-identity">
               <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '0 0 8px' }}>
-                Identity = label для commit attribution. Не аккаунт.
+                {STRINGS.settings.identity.hint}
               </p>
               <label style={{ display: 'block', fontSize: 12, marginBottom: 4, color: 'var(--text-secondary)' }}>
-                Имя
+                {STRINGS.settings.identity.nameLabel}
               </label>
               <input
                 data-testid="settings-name"
@@ -120,7 +121,7 @@ export default function SettingsModal() {
                 }}
               />
               <label style={{ display: 'block', fontSize: 12, marginBottom: 4, color: 'var(--text-secondary)' }}>
-                Email
+                {STRINGS.settings.identity.emailLabel}
               </label>
               <input
                 data-testid="settings-email"
@@ -144,14 +145,14 @@ export default function SettingsModal() {
                   color: 'var(--accent-text)',
                   fontWeight: 500, cursor: 'pointer',
                 }}
-              >Сохранить</button>
+              >{STRINGS.settings.identity.saveButton}</button>
             </div>
           )}
 
           {tab === 'advanced' && (
             <div data-testid="settings-tab-content-advanced">
               <p style={{ fontSize: 13, color: 'var(--danger-fg, #b91c1c)', margin: '0 0 8px' }}>
-                Reset очистит IndexedDB и localStorage. Все локальные проекты будут удалены.
+                {STRINGS.settings.advanced.resetWarning}
               </p>
               {!confirmReset ? (
                 <button
@@ -166,7 +167,7 @@ export default function SettingsModal() {
                     color: 'var(--danger-fg, #b91c1c)',
                     cursor: 'pointer',
                   }}
-                >Reset (clear IndexedDB)</button>
+                >{STRINGS.settings.advanced.resetButton}</button>
               ) : (
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button
@@ -180,7 +181,7 @@ export default function SettingsModal() {
                       background: 'var(--danger-fg, #b91c1c)',
                       color: '#fff', cursor: 'pointer',
                     }}
-                  >Подтвердить очистку</button>
+                  >{STRINGS.settings.advanced.resetConfirmButton}</button>
                   <button
                     type="button"
                     onClick={() => setConfirmReset(false)}
@@ -191,7 +192,7 @@ export default function SettingsModal() {
                       background: 'transparent', cursor: 'pointer',
                       color: 'var(--text-primary)',
                     }}
-                  >Отмена</button>
+                  >{STRINGS.settings.advanced.resetCancelButton}</button>
                 </div>
               )}
             </div>

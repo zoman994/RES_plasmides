@@ -1,6 +1,7 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useStore } from '../store';
 import { formatHotkey } from '../lib/hotkeys';
+import { STRINGS } from '../lib/strings';
 
 const NAME_MAX = 100;
 const DESC_MAX = 1000;
@@ -14,6 +15,7 @@ function normalizeTag(raw) {
 export default function ProjectInfoModal() {
   const projectId = useStore(s => s.currentProjectId);
   const project = useStore(s => (projectId ? s.projects[projectId] : null));
+  const allProjects = useStore(s => s.projects);
   const closeProjectInfo = useStore(s => s.closeProjectInfo);
   const renameProject = useStore(s => s.renameProject);
   const updateDescription = useStore(s => s.updateDescription);
@@ -51,6 +53,14 @@ export default function ProjectInfoModal() {
     setTags(tags.filter(t => t !== tag));
   }
 
+  function addTagFromSuggestion(tag) {
+    const norm = normalizeTag(tag);
+    if (!norm) return;
+    if (tags.includes(norm)) return;
+    if (tags.length >= TAG_MAX_COUNT) return;
+    setTags([...tags, norm]);
+  }
+
   function onTagKeyDown(e) {
     if (e.key === 'Enter' || e.key === ',') {
       e.preventDefault();
@@ -68,7 +78,7 @@ export default function ProjectInfoModal() {
     for (const t of initialSet) if (!finalSet.has(t)) removeTag(t);
     for (const t of finalSet) if (!initialSet.has(t)) addTag(t);
     closeProjectInfo();
-    showToast('Сохранено', 'success');
+    showToast(STRINGS.projectInfo.savedToast, 'success');
   }
 
   function onCancel() {
@@ -76,6 +86,24 @@ export default function ProjectInfoModal() {
   }
 
   const tagsFull = tags.length >= TAG_MAX_COUNT;
+
+  const tagSuggestions = useMemo(() => {
+    if (!allProjects) return [];
+    const counts = new Map();
+    for (const p of Object.values(allProjects)) {
+      if (!p || !Array.isArray(p.tags)) continue;
+      for (const t of p.tags) {
+        const norm = normalizeTag(t);
+        if (!norm) continue;
+        counts.set(norm, (counts.get(norm) || 0) + 1);
+      }
+    }
+    const tagsSet = new Set(tags);
+    return Array.from(counts.entries())
+      .filter(([t]) => !tagsSet.has(t))
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([t]) => t);
+  }, [allProjects, tags]);
 
   return (
     <div
@@ -109,13 +137,13 @@ export default function ProjectInfoModal() {
             borderBottom: '0.5px solid var(--border-subtle, #e7e5e4)',
           }}
         >
-          <h2 style={{ fontSize: 16, fontWeight: 500, margin: 0 }}>Project info</h2>
+          <h2 style={{ fontSize: 16, fontWeight: 500, margin: 0 }}>{STRINGS.projectInfo.title}</h2>
           <button
             type="button"
             onClick={onCancel}
             data-testid="project-info-close"
-            title={`Закрыть ⋅ ${formatHotkey('escape')}`}
-            aria-label="close"
+            title={`${STRINGS.projectInfo.closeTitle} ⋅ ${formatHotkey('escape')}`}
+            aria-label={STRINGS.projectInfo.closeAria}
             style={{
               background: 'transparent', border: 'none',
               fontSize: 18, cursor: 'pointer',
@@ -129,7 +157,7 @@ export default function ProjectInfoModal() {
             <label
               htmlFor="project-info-name"
               style={{ display: 'block', fontSize: 12, marginBottom: 4, color: 'var(--text-secondary)' }}
-            >Имя</label>
+            >{STRINGS.projectInfo.nameLabel}</label>
             <input
               ref={nameRef}
               id="project-info-name"
@@ -150,7 +178,7 @@ export default function ProjectInfoModal() {
             <label
               htmlFor="project-info-description"
               style={{ display: 'block', fontSize: 12, marginBottom: 4, color: 'var(--text-secondary)' }}
-            >Описание</label>
+            >{STRINGS.projectInfo.descriptionLabel}</label>
             <textarea
               id="project-info-description"
               data-testid="project-info-description"
@@ -170,7 +198,7 @@ export default function ProjectInfoModal() {
           <div>
             <label
               style={{ display: 'block', fontSize: 12, marginBottom: 4, color: 'var(--text-secondary)' }}
-            >Теги</label>
+            >{STRINGS.projectInfo.tagsLabel}</label>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
               {tags.map(tag => (
                 <span
@@ -189,7 +217,7 @@ export default function ProjectInfoModal() {
                     type="button"
                     onClick={() => removeTagAt(tag)}
                     data-testid={`project-info-tag-remove-${tag}`}
-                    aria-label={`remove ${tag}`}
+                    aria-label={STRINGS.projectInfo.tagRemoveAria(tag)}
                     style={{
                       background: 'transparent', border: 'none', cursor: 'pointer',
                       fontSize: 12, lineHeight: 1, padding: '0 4px',
@@ -199,12 +227,46 @@ export default function ProjectInfoModal() {
                 </span>
               ))}
             </div>
+            {tagSuggestions.length > 0 && !tagsFull && (
+              <div
+                data-testid="project-info-tag-suggestions"
+                style={{ marginBottom: 8 }}
+              >
+                <p style={{
+                  fontSize: 11,
+                  color: 'var(--text-tertiary)',
+                  margin: '0 0 4px',
+                }}>{STRINGS.projectInfo.tagSuggestionsHeader}</p>
+                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                  {tagSuggestions.map(tag => (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => addTagFromSuggestion(tag)}
+                      data-testid={`project-info-tag-suggestion-${tag}`}
+                      title={STRINGS.projectInfo.tagAddSuggestionTitle(tag)}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        fontSize: 11,
+                        padding: '2px 8px',
+                        borderRadius: 'var(--radius-pill, 9999px)',
+                        border: '0.5px dashed var(--border-default)',
+                        background: 'transparent',
+                        color: 'var(--text-secondary)',
+                        cursor: 'pointer',
+                      }}
+                    >+ {tag}</button>
+                  ))}
+                </div>
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 6 }}>
               <input
                 data-testid="project-info-tag-input"
                 type="text"
                 value={tagInput}
-                placeholder={tagsFull ? 'Достигнут лимит 20 тегов' : 'Добавить тег (Enter / запятая)'}
+                placeholder={tagsFull ? STRINGS.projectInfo.tagsLimitReached : STRINGS.projectInfo.tagInputPlaceholder}
                 disabled={tagsFull}
                 onChange={(e) => setTagInput(e.target.value)}
                 onKeyDown={onTagKeyDown}
@@ -228,7 +290,7 @@ export default function ProjectInfoModal() {
                   color: 'var(--text-primary)',
                   cursor: tagsFull ? 'not-allowed' : 'pointer',
                 }}
-              >+ add</button>
+              >{STRINGS.projectInfo.tagAddButton}</button>
             </div>
           </div>
         </div>
@@ -251,7 +313,7 @@ export default function ProjectInfoModal() {
               background: 'transparent', cursor: 'pointer',
               color: 'var(--text-primary)',
             }}
-          >Отмена</button>
+          >{STRINGS.projectInfo.cancelButton}</button>
           <button
             type="button"
             data-testid="project-info-save"
@@ -264,7 +326,7 @@ export default function ProjectInfoModal() {
               color: 'var(--accent-text)',
               fontWeight: 500, cursor: 'pointer',
             }}
-          >Сохранить</button>
+          >{STRINGS.projectInfo.saveButton}</button>
         </div>
       </div>
     </div>

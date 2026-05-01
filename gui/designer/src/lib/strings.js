@@ -102,9 +102,47 @@ export const STRINGS = {
     },
   },
 
-  projectInfo: {},
+  projectInfo: {
+    title: 'Project info',
+    closeTitle: 'Close',
+    closeAria: 'close',
+    nameLabel: 'Name',
+    descriptionLabel: 'Description',
+    tagsLabel: 'Tags',
+    tagsLimitReached: 'Tag limit (20) reached',
+    tagInputPlaceholder: 'Add tag (Enter or comma)',
+    tagAddButton: '+ add',
+    tagSuggestionsHeader: 'Used before:',
+    tagAddSuggestionTitle: (tag) => `Add tag "${tag}"`,
+    tagRemoveAria: (tag) => `remove ${tag}`,
+    saveButton: 'Save',
+    cancelButton: 'Cancel',
+    savedToast: 'Saved',
+  },
 
-  settings: {},
+  settings: {
+    title: 'Settings',
+    closeTitle: 'Close',
+    closeAria: 'close',
+    tabs: {
+      identity: 'Identity',
+      advanced: 'Advanced',
+    },
+    identity: {
+      hint: 'Identity = a label for commit attribution. Not an account.',
+      nameLabel: 'Name',
+      emailLabel: 'Email',
+      saveButton: 'Save',
+      savedToast: 'Identity saved',
+    },
+    advanced: {
+      resetWarning: 'Reset will clear IndexedDB and localStorage. All local projects will be deleted.',
+      resetButton: 'Reset (clear IndexedDB)',
+      resetConfirmButton: 'Confirm reset',
+      resetCancelButton: 'Cancel',
+      resetFailed: (msg) => `Reset failed: ${msg}`,
+    },
+  },
 
   toast: {},
 
