@@ -174,12 +174,6 @@ describe('K5 — StartScreen wireframe v7', () => {
     expect(useStore.getState().modals.projectInfo).toBe(true);
   });
 
-  it('↓ Import sequence is disabled (no-op click)', () => {
-    render(<StartScreen onOpenFile={() => {}} />);
-    const btn = screen.getByTestId('ss-import-sequence');
-    expect(btn.disabled).toBe(true);
-  });
-
   it('Library click pushes the library fullscreen', () => {
     render(<StartScreen onOpenFile={() => {}} />);
     fireEvent.click(screen.getByTestId('ss-browse-library'));

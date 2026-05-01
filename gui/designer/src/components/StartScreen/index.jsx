@@ -163,13 +163,6 @@ export default function StartScreen({ onOpenFile }) {
             >{STRINGS.startScreen.openBodge}</button>
             <button
               type="button"
-              className="ss-action-btn"
-              disabled
-              title={STRINGS.startScreen.importSequenceComingSoon}
-              data-testid="ss-import-sequence"
-            >{STRINGS.startScreen.importSequence}</button>
-            <button
-              type="button"
               className={exportMode ? 'ss-action-btn-primary' : 'ss-action-btn'}
               onClick={toggleExportMode}
               disabled={exportBtnDisabled}

@@ -31,8 +31,6 @@ export const STRINGS = {
     settings: 'Settings',
     newProject: '+ New project',
     openBodge: '↑ Open .bodge…',
-    importSequence: '↓ Import sequence',
-    importSequenceComingSoon: 'Sequence import — coming in M-B',
     exportBodge: '⤓ Export .bodge…',
     exportDone: '✓ Done',
     exportEnterTitle: 'Export .bodge files',
