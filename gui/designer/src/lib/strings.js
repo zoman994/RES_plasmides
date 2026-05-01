@@ -147,6 +147,10 @@ export const STRINGS = {
   toast: {
     undoButton: 'Undo',
     closeAria: 'Close',
+    saved: 'Saved',
+    openFileFailed: (msg) => `Could not open file: ${msg}`,
+    saveFailed: (msg) => `Could not save: ${msg}`,
+    dropFileComingSoon: (name) => `File drop coming in M-B (${name})`,
   },
 
   pwa: {},
@@ -162,7 +166,17 @@ export const STRINGS = {
     forcedReadOnlyDescription: 'This tab is now read-only. To keep editing, close the project here and continue in the active tab.',
   },
 
-  hotkeys: {},
+  hotkeys: {
+    actionLabels: {
+      newProject: 'New project',
+      openBodge: 'Open .bodge',
+      saveBodge: 'Save',
+      closeProject: 'Close project',
+      openSettings: 'Settings',
+      escape: 'Close',
+      projectInfo: 'Project info',
+    },
+  },
 
   placeholder: {
     emptyProject: 'Empty project. Push containers from Importer (coming in M-B).',
@@ -171,5 +185,13 @@ export const STRINGS = {
     underConstructionSubtitle: (milestone) => `Coming in ${milestone}.`,
   },
 
-  common: {},
+  app: {
+    dropOverlay: 'Drop file here (M-B feature preview)',
+  },
+
+  common: {
+    save: 'Save',
+    cancel: 'Cancel',
+    close: 'Close',
+  },
 };

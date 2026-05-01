@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useStore } from '../store';
+import { STRINGS } from './strings';
 
 /* ════════════════════════════════════════════════════════════════════════════
  * Hotkey infrastructure (Sprint M-A K4).
@@ -17,43 +18,43 @@ export const HOTKEYS = Object.freeze({
   'new-project': {
     keys: { mac: { meta: true, key: 'n' }, other: { ctrl: true, key: 'n' } },
     scope: 'global',
-    label: 'Создать проект',
+    label: STRINGS.hotkeys.actionLabels.newProject,
     allowInInput: false,
   },
   'open-bodge': {
     keys: { mac: { meta: true, key: 'o' }, other: { ctrl: true, key: 'o' } },
     scope: 'global',
-    label: 'Открыть .bodge',
+    label: STRINGS.hotkeys.actionLabels.openBodge,
     allowInInput: false,
   },
   'save-bodge': {
     keys: { mac: { meta: true, key: 's' }, other: { ctrl: true, key: 's' } },
     scope: 'global-with-project',
-    label: 'Сохранить',
+    label: STRINGS.hotkeys.actionLabels.saveBodge,
     allowInInput: true,
   },
   'close-project': {
     keys: { mac: { meta: true, key: 'w' }, other: { ctrl: true, key: 'w' } },
     scope: 'global-with-project',
-    label: 'Закрыть проект',
+    label: STRINGS.hotkeys.actionLabels.closeProject,
     allowInInput: false,
   },
   'open-settings': {
     keys: { mac: { meta: true, key: ',' }, other: { ctrl: true, key: ',' } },
     scope: 'global',
-    label: 'Настройки',
+    label: STRINGS.hotkeys.actionLabels.openSettings,
     allowInInput: false,
   },
   'escape': {
     keys: { mac: { key: 'escape' }, other: { key: 'escape' } },
     scope: 'context-aware',
-    label: 'Закрыть',
+    label: STRINGS.hotkeys.actionLabels.escape,
     allowInInput: true,
   },
   'project-info': {
     keys: { mac: { meta: true, key: 'i' }, other: { ctrl: true, key: 'i' } },
     scope: 'global-with-project',
-    label: 'Project info',
+    label: STRINGS.hotkeys.actionLabels.projectInfo,
     allowInInput: false,
   },
 });

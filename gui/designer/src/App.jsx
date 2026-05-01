@@ -14,6 +14,7 @@ import { writeBodge, readBodge } from './lib/bodge-zip';
 import { listenForceRelease } from './lib/multi-tab-lock';
 import { runHotkeyResolver, useHotkey } from './lib/hotkeys';
 import { setupBeforeInstallPromptListener } from './lib/pwa-install';
+import { STRINGS } from './lib/strings';
 
 const DROPZONE_TYPES = ['.bodge', '.fasta', '.fa', '.gb', '.dna'];
 
@@ -60,7 +61,7 @@ export default function App() {
     try {
       pick = await openBodgeFilePicker();
     } catch (e) {
-      showToast(`Не удалось открыть файл: ${e.message || e}`, 'error');
+      showToast(STRINGS.toast.openFileFailed(e.message || e), 'error');
       return;
     }
     if (!pick) return;
@@ -98,9 +99,9 @@ export default function App() {
     try {
       const { lastModified } = await saveBlobToHandle(handle, blob);
       registerSavedFile({ fileHandle: handle, fileName: name, lastModified });
-      showToast('Сохранено', 'success');
+      showToast(STRINGS.toast.saved, 'success');
     } catch (e) {
-      showToast(`Не удалось сохранить: ${e.message || e}`, 'error');
+      showToast(STRINGS.toast.saveFailed(e.message || e), 'error');
     }
   }, [registerSavedFile, showToast]);
 
@@ -193,7 +194,7 @@ export default function App() {
       const files = Array.from(e.dataTransfer?.files || []);
       const detected = files.find(f => DROPZONE_TYPES.some(ext => f.name.toLowerCase().endsWith(ext)));
       if (detected) {
-        showToast(`Перетаскивание файлов появится в M-B (${detected.name})`, 'info');
+        showToast(STRINGS.toast.dropFileComingSoon(detected.name), 'info');
       }
     }
     window.addEventListener('dragenter', onDragEnter);
@@ -257,7 +258,7 @@ function DropOverlay({ active }) {
         color: 'var(--text-primary, #1c1917)', fontSize: 16,
       }}
     >
-      Drop file here (M-B feature preview)
+      {STRINGS.app.dropOverlay}
     </div>
   );
 }
