@@ -161,4 +161,32 @@ describe('K4 — hotkey infrastructure', () => {
     expect(runHotkeyResolver(makeEvent({ key: 'i', ctrl: true }))).toBe(true);
     expect(handler).toHaveBeenCalledTimes(1);
   });
+
+  it('⌘N inside open ProjectInfoModal does not run new-project handler', () => {
+    _setPlatformOverrideForTests('other');
+    _setGetContextForTests(() => ({
+      currentProjectId: 'p-1',
+      activeFullscreen: 'dag',
+      modals: { projectInfo: true, settings: false },
+    }));
+    const handler = vi.fn();
+    renderHook(() => useHotkey('new-project', handler));
+    const ev = makeEvent({ key: 'n', ctrl: true });
+    expect(runHotkeyResolver(ev)).toBe(false);
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it('Escape inside open ProjectInfoModal still runs escape handler', () => {
+    _setPlatformOverrideForTests('other');
+    _setGetContextForTests(() => ({
+      currentProjectId: 'p-1',
+      activeFullscreen: 'dag',
+      modals: { projectInfo: true, settings: false },
+    }));
+    const handler = vi.fn();
+    renderHook(() => useHotkey('escape', handler));
+    const ev = makeEvent({ key: 'Escape' });
+    expect(runHotkeyResolver(ev)).toBe(true);
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
 });

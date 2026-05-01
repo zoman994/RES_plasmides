@@ -168,8 +168,16 @@ function _defaultGetContext() {
   return {
     currentProjectId: s.currentProjectId,
     activeFullscreen: s.canvas?.activeFullscreen || 'start',
+    modals: s.modals || {},
   };
 }
+
+// When ProjectInfoModal/SettingsModal is open, block hotkeys that would create
+// or switch project context. Esc + Save-bodge stay live so the user can still
+// dismiss the modal and persist edits.
+const MODAL_BLOCKED = new Set([
+  'new-project', 'open-bodge', 'close-project', 'open-settings', 'project-info',
+]);
 
 let _getContext = _defaultGetContext;
 
@@ -207,6 +215,8 @@ export function runHotkeyResolver(event, opts = {}) {
   const ctx = opts.context ? opts.context : _getContext();
   const inInput = _isInInputElement(event.target);
 
+  const modalOpen = !!(ctx.modals && (ctx.modals.projectInfo || ctx.modals.settings));
+
   // Find all matching entries, then pick the one with highest scope rank.
   let best = null;
   let bestRank = -1;
@@ -215,6 +225,7 @@ export function runHotkeyResolver(event, opts = {}) {
     if (!_eventMatchesCombo(event, combo)) continue;
     if (inInput && !def.allowInInput) continue;
     if (!_scopeAllowed(def.scope, ctx)) continue;
+    if (modalOpen && MODAL_BLOCKED.has(id)) continue;
     if (!_handlers.has(id)) continue;
     const rank = scopeRank(def.scope);
     if (rank > bestRank) { best = id; bestRank = rank; }

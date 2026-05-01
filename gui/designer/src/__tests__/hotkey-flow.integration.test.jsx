@@ -111,6 +111,13 @@ describe('K4-fixup — hotkey scenario F (round-trip via registry)', () => {
       await flushAsync();
     });
     expect(useStore.getState().canvas.activeFullscreen).toBe('dag');
+    // M-A.1 K1 modal-guard: handleNew opens ProjectInfoModal; close-project is
+    // in the deny-list while the modal is open. Dismiss the modal before ⌘W.
+    await act(async () => {
+      pressHotkey({ key: 'Escape' });
+      await flushAsync();
+    });
+    expect(useStore.getState().modals.projectInfo).toBe(false);
     await act(async () => {
       pressHotkey({ key: 'w', ctrl: true });
       await flushAsync();
