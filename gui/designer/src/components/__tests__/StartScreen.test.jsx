@@ -303,6 +303,95 @@ describe('K5 — StartScreen wireframe v7', () => {
     }
   });
 
+  it('handleNewProject calls createProject then openProjectInfo (in order)', () => {
+    const calls = [];
+    const createSpy = vi.fn((name) => {
+      calls.push('createProject');
+      const id = 'p-new';
+      useStore.setState((state) => {
+        state.projects[id] = {
+          id, name: name || 'Untitled', tags: [], description: '',
+          containerIds: [], updatedAt: new Date().toISOString(),
+        };
+        state.currentProjectId = id;
+        state.canvas.activeFullscreen = 'dag';
+      });
+      return id;
+    });
+    const openInfoSpy = vi.fn(() => {
+      calls.push('openProjectInfo');
+      useStore.setState((state) => { state.modals.projectInfo = true; });
+    });
+    useStore.setState({ createProject: createSpy, openProjectInfo: openInfoSpy });
+    render(<StartScreen onOpenFile={() => {}} />);
+    fireEvent.click(screen.getByTestId('ss-new-project'));
+    expect(createSpy).toHaveBeenCalledTimes(1);
+    expect(openInfoSpy).toHaveBeenCalledTimes(1);
+    expect(calls).toEqual(['createProject', 'openProjectInfo']);
+  });
+
+  it('export toggle switches exportMode and updates header text', () => {
+    useStore.setState((state) => {
+      state.projects['p-1'] = {
+        id: 'p-1', name: 'A', tags: [], description: '', containerIds: [],
+        updatedAt: new Date().toISOString(),
+      };
+      state._projectLifecycle['p-1'] = {};
+      state.recentProjectIds = ['p-1'];
+    });
+    render(<StartScreen onOpenFile={() => {}} />);
+    expect(screen.getByText('Recent projects')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('ss-export-toggle'));
+    expect(screen.getByText('Выбор для экспорта · 0 выбрано')).toBeTruthy();
+    expect(screen.queryByText('Recent projects')).toBeNull();
+  });
+
+  it('checkbox click updates selectedIds and counter in the header', () => {
+    useStore.setState((state) => {
+      state.projects['p-1'] = {
+        id: 'p-1', name: 'A', tags: [], description: '', containerIds: [],
+        updatedAt: new Date().toISOString(),
+      };
+      state.projects['p-2'] = {
+        id: 'p-2', name: 'B', tags: [], description: '', containerIds: [],
+        updatedAt: new Date().toISOString(),
+      };
+      state._projectLifecycle['p-1'] = {};
+      state._projectLifecycle['p-2'] = {};
+      state.recentProjectIds = ['p-1', 'p-2'];
+    });
+    render(<StartScreen onOpenFile={() => {}} />);
+    fireEvent.click(screen.getByTestId('ss-export-toggle'));
+    expect(screen.getByText('Выбор для экспорта · 0 выбрано')).toBeTruthy();
+    const cards = screen.getAllByTestId('ss-recent-card');
+    fireEvent.click(cards[0]);
+    expect(screen.getByText('Выбор для экспорта · 1 выбрано')).toBeTruthy();
+    fireEvent.click(cards[1]);
+    expect(screen.getByText('Выбор для экспорта · 2 выбрано')).toBeTruthy();
+    fireEvent.click(cards[0]);
+    expect(screen.getByText('Выбор для экспорта · 1 выбрано')).toBeTruthy();
+  });
+
+  it('exportMode hides every Recent card × delete button', () => {
+    useStore.setState((state) => {
+      state.projects['p-1'] = {
+        id: 'p-1', name: 'A', tags: [], description: '', containerIds: [],
+        updatedAt: new Date().toISOString(),
+      };
+      state.projects['p-2'] = {
+        id: 'p-2', name: 'B', tags: [], description: '', containerIds: [],
+        updatedAt: new Date().toISOString(),
+      };
+      state._projectLifecycle['p-1'] = {};
+      state._projectLifecycle['p-2'] = {};
+      state.recentProjectIds = ['p-1', 'p-2'];
+    });
+    render(<StartScreen onOpenFile={() => {}} />);
+    expect(screen.queryAllByTestId('ss-recent-card-delete').length).toBe(2);
+    fireEvent.click(screen.getByTestId('ss-export-toggle'));
+    expect(screen.queryAllByTestId('ss-recent-card-delete').length).toBe(0);
+  });
+
   it('formatRelativeTimeAgo handles common ranges', () => {
     const now = new Date('2026-04-30T12:00:00Z').getTime();
     expect(formatRelativeTimeAgo(new Date(now - 30_000).toISOString(), now)).toBe('только что');
