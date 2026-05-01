@@ -1,5 +1,6 @@
 import { useStore, selectIsDirty } from '../../store';
 import { formatHotkey, HOTKEYS } from '../../lib/hotkeys';
+import { STRINGS } from '../../lib/strings';
 import ThemeToggle from '../ThemeToggle';
 
 export default function Topbar() {
@@ -16,14 +17,14 @@ export default function Topbar() {
   const stackDepth = navStack.length;
   const canPop = stackDepth > 1;
 
-  const projectName = project ? (project.name || 'Untitled') : '—';
+  const projectName = project ? (project.name || STRINGS.topbar.untitled) : STRINGS.topbar.projectFallback;
   const fileName = useStore(s => s.fileName);
 
   let saveStatus;
   if (!project) saveStatus = '';
-  else if (dirty) saveStatus = lastSavedToFileAt ? 'Несохранённые изменения' : 'Не сохранено';
-  else if (lastSavedToFileAt) saveStatus = `Сохранено ${formatRelativeTime(lastSavedToFileAt)}`;
-  else saveStatus = 'Автосохранение в браузере';
+  else if (dirty) saveStatus = lastSavedToFileAt ? STRINGS.topbar.saveStatus.unsavedDirty : STRINGS.topbar.saveStatus.neverSaved;
+  else if (lastSavedToFileAt) saveStatus = STRINGS.topbar.saveStatus.savedAt(formatRelativeTime(lastSavedToFileAt));
+  else saveStatus = STRINGS.topbar.saveStatus.autosavedInBrowser;
 
   function handleBack() {
     if (canPop) popFullscreen();
@@ -31,7 +32,7 @@ export default function Topbar() {
   }
 
   const backTitle = canPop
-    ? 'Назад'
+    ? STRINGS.topbar.backTitle
     : `${HOTKEYS['close-project'].label} ⋅ ${formatHotkey('close-project')}`;
 
   return (
@@ -52,7 +53,7 @@ export default function Topbar() {
           type="button"
           data-testid="topbar-back"
           onClick={handleBack}
-          aria-label={canPop ? 'Назад' : 'Закрыть проект'}
+          aria-label={canPop ? STRINGS.topbar.backAriaPop : STRINGS.topbar.backAriaClose}
           title={backTitle}
           style={{
             background: 'transparent',
@@ -74,7 +75,7 @@ export default function Topbar() {
           {dirty && (
             <span
               data-testid="topbar-dirty-dot"
-              aria-label="несохранённые изменения"
+              aria-label={STRINGS.topbar.dirtyDotAria}
               style={{
                 width: 6, height: 6, borderRadius: '50%',
                 background: 'var(--accent-500, #f59e0b)',
@@ -87,8 +88,8 @@ export default function Topbar() {
               type="button"
               data-testid="topbar-edit-info"
               onClick={openProjectInfo}
-              title={`Project info ⋅ ${formatHotkey('project-info')}`}
-              aria-label="project info"
+              title={`${STRINGS.topbar.projectInfoTitle} ⋅ ${formatHotkey('project-info')}`}
+              aria-label={STRINGS.topbar.projectInfoAria}
               style={{
                 background: 'transparent', border: 'none',
                 cursor: 'pointer',
@@ -122,7 +123,7 @@ export default function Topbar() {
             color: 'var(--text-secondary, #57534e)', fontSize: 13,
           }}
         >
-          Settings
+          {STRINGS.topbar.settingsButton}
         </button>
         <ThemeToggle />
       </div>
@@ -137,9 +138,9 @@ function formatRelativeTime(isoTs) {
     if (!Number.isFinite(then)) return '';
     const now = Date.now();
     const diff = Math.max(0, now - then);
-    if (diff < 60_000) return 'только что';
-    if (diff < 3_600_000) return `${Math.round(diff / 60_000)} мин назад`;
-    if (diff < 86_400_000) return `${Math.round(diff / 3_600_000)} ч назад`;
+    if (diff < 60_000) return STRINGS.topbar.timeAgo.justNow;
+    if (diff < 3_600_000) return STRINGS.topbar.timeAgo.minutes(Math.round(diff / 60_000));
+    if (diff < 86_400_000) return STRINGS.topbar.timeAgo.hours(Math.round(diff / 3_600_000));
     return new Date(isoTs).toLocaleDateString();
   } catch {
     return '';

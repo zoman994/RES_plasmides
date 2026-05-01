@@ -1,11 +1,12 @@
 import { useStore } from '../store';
+import { STRINGS } from '../lib/strings';
 
 export default function ThemeToggle() {
   const theme = useStore(s => s.theme);
   const setTheme = useStore(s => s.setTheme);
   const next = theme === 'dark' ? 'light' : 'dark';
   const icon = theme === 'dark' ? '☀' : '🌙';
-  const label = theme === 'dark' ? 'Включить светлую тему' : 'Включить тёмную тему';
+  const label = theme === 'dark' ? STRINGS.topbar.themeToggle.toLight : STRINGS.topbar.themeToggle.toDark;
   return (
     <button
       type="button"

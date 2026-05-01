@@ -5,6 +5,7 @@ import { useStore } from '../../store';
 import { clearAllAutosaveTimers } from '../../store/projectSlice';
 import StartScreen from '../StartScreen';
 import { formatRelativeTimeAgo } from '../StartScreen/RecentCard';
+import { STRINGS } from '../../lib/strings';
 
 function reset() {
   clearAllAutosaveTimers();
@@ -336,10 +337,10 @@ describe('K5 — StartScreen wireframe v7', () => {
       state.recentProjectIds = ['p-1'];
     });
     render(<StartScreen onOpenFile={() => {}} />);
-    expect(screen.getByText('Recent projects')).toBeTruthy();
+    expect(screen.getByText(STRINGS.startScreen.recentProjects)).toBeTruthy();
     fireEvent.click(screen.getByTestId('ss-export-toggle'));
-    expect(screen.getByText('Выбор для экспорта · 0 выбрано')).toBeTruthy();
-    expect(screen.queryByText('Recent projects')).toBeNull();
+    expect(screen.getByText(STRINGS.startScreen.exportHeader(0))).toBeTruthy();
+    expect(screen.queryByText(STRINGS.startScreen.recentProjects)).toBeNull();
   });
 
   it('checkbox click updates selectedIds and counter in the header', () => {
@@ -358,14 +359,14 @@ describe('K5 — StartScreen wireframe v7', () => {
     });
     render(<StartScreen onOpenFile={() => {}} />);
     fireEvent.click(screen.getByTestId('ss-export-toggle'));
-    expect(screen.getByText('Выбор для экспорта · 0 выбрано')).toBeTruthy();
+    expect(screen.getByText(STRINGS.startScreen.exportHeader(0))).toBeTruthy();
     const cards = screen.getAllByTestId('ss-recent-card');
     fireEvent.click(cards[0]);
-    expect(screen.getByText('Выбор для экспорта · 1 выбрано')).toBeTruthy();
+    expect(screen.getByText(STRINGS.startScreen.exportHeader(1))).toBeTruthy();
     fireEvent.click(cards[1]);
-    expect(screen.getByText('Выбор для экспорта · 2 выбрано')).toBeTruthy();
+    expect(screen.getByText(STRINGS.startScreen.exportHeader(2))).toBeTruthy();
     fireEvent.click(cards[0]);
-    expect(screen.getByText('Выбор для экспорта · 1 выбрано')).toBeTruthy();
+    expect(screen.getByText(STRINGS.startScreen.exportHeader(1))).toBeTruthy();
   });
 
   it('exportMode hides every Recent card × delete button', () => {
@@ -390,12 +391,12 @@ describe('K5 — StartScreen wireframe v7', () => {
 
   it('formatRelativeTimeAgo handles common ranges', () => {
     const now = new Date('2026-04-30T12:00:00Z').getTime();
-    expect(formatRelativeTimeAgo(new Date(now - 30_000).toISOString(), now)).toBe('только что');
-    expect(formatRelativeTimeAgo(new Date(now - 30 * 60_000).toISOString(), now)).toContain('мин назад');
-    expect(formatRelativeTimeAgo(new Date(now - 2 * 3600_000).toISOString(), now)).toContain('ч назад');
-    expect(formatRelativeTimeAgo(new Date(now - 36 * 3600_000).toISOString(), now)).toBe('вчера');
-    expect(formatRelativeTimeAgo(new Date(now - 5 * 24 * 3600_000).toISOString(), now)).toContain('дн назад');
-    expect(formatRelativeTimeAgo(new Date(now - 14 * 24 * 3600_000).toISOString(), now)).toContain('нед назад');
-    expect(formatRelativeTimeAgo(new Date(now - 60 * 24 * 3600_000).toISOString(), now)).toContain('мес назад');
+    expect(formatRelativeTimeAgo(new Date(now - 30_000).toISOString(), now)).toBe(STRINGS.startScreen.timeAgo.justNow);
+    expect(formatRelativeTimeAgo(new Date(now - 30 * 60_000).toISOString(), now)).toContain('min ago');
+    expect(formatRelativeTimeAgo(new Date(now - 2 * 3600_000).toISOString(), now)).toContain('h ago');
+    expect(formatRelativeTimeAgo(new Date(now - 36 * 3600_000).toISOString(), now)).toBe(STRINGS.startScreen.timeAgo.yesterday);
+    expect(formatRelativeTimeAgo(new Date(now - 5 * 24 * 3600_000).toISOString(), now)).toContain('d ago');
+    expect(formatRelativeTimeAgo(new Date(now - 14 * 24 * 3600_000).toISOString(), now)).toContain('w ago');
+    expect(formatRelativeTimeAgo(new Date(now - 60 * 24 * 3600_000).toISOString(), now)).toContain('mo ago');
   });
 });

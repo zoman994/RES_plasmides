@@ -1,11 +1,12 @@
 import { useStore } from '../store';
+import { STRINGS } from '../lib/strings';
 
 export default function UnderConstruction({ payload }) {
   const navStack = useStore(s => s.canvas.navStack);
   const top = navStack[navStack.length - 1];
   const data = payload || top?.payload || {};
   const milestone = data.milestone || 'TBD';
-  const name = data.name || 'Раздел';
+  const name = data.name || STRINGS.placeholder.underConstructionFallbackName;
 
   return (
     <div
@@ -24,10 +25,10 @@ export default function UnderConstruction({ payload }) {
       }}
     >
       <p style={{ fontSize: 18, fontWeight: 500, margin: 0 }}>
-        {name} — В разработке
+        {STRINGS.placeholder.underConstructionTitle(name)}
       </p>
       <p style={{ fontSize: 14, color: 'var(--text-secondary, #57534e)', margin: 0 }}>
-        Скоро в {milestone}.
+        {STRINGS.placeholder.underConstructionSubtitle(milestone)}
       </p>
     </div>
   );

@@ -1,4 +1,5 @@
 import { useStore } from '../../store';
+import { STRINGS } from '../../lib/strings';
 
 export function formatRelativeTimeAgo(isoTs, nowMs = Date.now()) {
   if (!isoTs) return '';
@@ -10,16 +11,17 @@ export function formatRelativeTimeAgo(isoTs, nowMs = Date.now()) {
   const day = 24 * hour;
   const week = 7 * day;
   const month = 30 * day;
-  if (diff < minute) return 'только что';
-  if (diff < hour) return `${Math.round(diff / minute)} мин назад`;
+  const t = STRINGS.startScreen.timeAgo;
+  if (diff < minute) return t.justNow;
+  if (diff < hour) return t.minutes(Math.round(diff / minute));
   if (diff < day) {
     const h = Math.round(diff / hour);
-    return h === 1 ? '1 час назад' : `${h} ч назад`;
+    return h === 1 ? t.hourOne : t.hours(h);
   }
-  if (diff < 2 * day) return 'вчера';
-  if (diff < week) return `${Math.round(diff / day)} дн назад`;
-  if (diff < month) return `${Math.round(diff / week)} нед назад`;
-  return `${Math.round(diff / month)} мес назад`;
+  if (diff < 2 * day) return t.yesterday;
+  if (diff < week) return t.days(Math.round(diff / day));
+  if (diff < month) return t.weeks(Math.round(diff / week));
+  return t.months(Math.round(diff / month));
 }
 
 export default function RecentCard({
@@ -38,7 +40,7 @@ export default function RecentCard({
   if (!project) return null;
   const name = project.name || '';
   const isUntitled = !name || name === 'Untitled';
-  const displayName = isUntitled ? 'Untitled' : name;
+  const displayName = isUntitled ? STRINGS.startScreen.untitled : name;
   const containers = (project.containerIds && project.containerIds.length) || 0;
   const saved = !!(lifecycle && lifecycle.lastSavedToFileAt);
   const fileName = lifecycle && lifecycle.fileName;
@@ -47,8 +49,10 @@ export default function RecentCard({
 
   const meta = [
     formatRelativeTimeAgo(project.updatedAt || project.createdAt),
-    `${containers} containers`,
-    saved ? 'saved' : (containers === 0 ? 'only in browser' : 'unsaved'),
+    STRINGS.startScreen.containers(containers),
+    saved
+      ? STRINGS.startScreen.statusSaved
+      : (containers === 0 ? STRINGS.startScreen.statusOnlyInBrowser : STRINGS.startScreen.statusUnsaved),
   ].filter(Boolean).join(' · ');
 
   function handleCardClick() {
@@ -67,7 +71,7 @@ export default function RecentCard({
     e.stopPropagation();
     const id = project.id;
     markPendingDelete(id);
-    showToast(`Проект «${displayName}» удалён`, 'info', {
+    showToast(STRINGS.startScreen.projectDeletedToast(displayName), 'info', {
       onUndo: () => unmarkPendingDelete(id),
       onAutoDismiss: () => {
         Promise.resolve(commitPendingDelete(id)).catch((err) => {
@@ -128,14 +132,14 @@ export default function RecentCard({
         <div className="ss-card-meta">{meta}</div>
         {fileName
           ? <div className="ss-card-path">{fileName}</div>
-          : <div className="ss-card-path-empty">no file location yet</div>}
+          : <div className="ss-card-path-empty">{STRINGS.startScreen.noFileLocation}</div>}
         {tags.length > 0
           ? <div className="ss-card-tags">{tags.map(t => <span key={t} className="ss-tag-chip">{t}</span>)}</div>
-          : <div className="ss-card-tags-empty">no tags yet</div>}
+          : <div className="ss-card-tags-empty">{STRINGS.startScreen.noTags}</div>}
       </div>
       {description
         ? <div className="ss-card-desc">{description}</div>
-        : <div className="ss-card-desc" style={{ color: 'var(--ss-text-tertiary)' }}>no description yet</div>}
+        : <div className="ss-card-desc" style={{ color: 'var(--ss-text-tertiary)' }}>{STRINGS.startScreen.noDescription}</div>}
       {!exportMode && <span className="ss-card-chevron">▷</span>}
 
       {!exportMode && (
@@ -144,8 +148,8 @@ export default function RecentCard({
           onClick={handleDelete}
           onKeyDown={(e) => e.stopPropagation()}
           data-testid="ss-recent-card-delete"
-          title="Удалить проект"
-          aria-label={`Удалить проект «${displayName}»`}
+          title={STRINGS.startScreen.deleteProjectTitle}
+          aria-label={STRINGS.startScreen.deleteProjectAria(displayName)}
           style={{
             position: 'absolute',
             right: 6,

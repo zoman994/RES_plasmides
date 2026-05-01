@@ -4,6 +4,7 @@ import { formatHotkey, HOTKEYS } from '../../lib/hotkeys';
 import { writeBodge } from '../../lib/bodge-zip';
 import { downloadBlob } from '../../lib/file-system';
 import { promptInstall } from '../../lib/pwa-install';
+import { STRINGS } from '../../lib/strings';
 import RecentCard from './RecentCard';
 import SidebarLink from './SidebarLink';
 import ThemeToggle from '../ThemeToggle';
@@ -67,7 +68,7 @@ export default function StartScreen({ onOpenFile }) {
         const blob = writeBodge(proj);
         await downloadBlob(blob, fileNameFor(proj));
         exported += 1;
-        // tiny pause helps browsers handle multiple sequential downloads
+        // Tiny pause helps browsers handle multiple sequential downloads.
         await new Promise(r => setTimeout(r, 80));
       } catch (e) {
         // eslint-disable-next-line no-console
@@ -77,7 +78,9 @@ export default function StartScreen({ onOpenFile }) {
     setExportMode(false);
     setSelectedIds(new Set());
     showToast(
-      exported === 1 ? 'Экспортирован 1 проект' : `Экспортировано: ${exported} проект(ов)`,
+      exported === 1
+        ? STRINGS.startScreen.exportSuccessOne
+        : STRINGS.startScreen.exportSuccessMany(exported),
       'success',
     );
   }
@@ -112,7 +115,7 @@ export default function StartScreen({ onOpenFile }) {
         }}
       >
         <h1 style={{ fontSize: 18, fontWeight: 500, margin: 0, color: 'var(--ss-accent-amber)' }}>
-          BodgeGene
+          {STRINGS.startScreen.appName}
         </h1>
         <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
           <button
@@ -123,13 +126,13 @@ export default function StartScreen({ onOpenFile }) {
               payload: { milestone: 'M-A.1', name: 'Guide' },
             })}
             data-testid="ss-guide-link"
-          >Guide</button>
+          >{STRINGS.startScreen.guide}</button>
           <button
             type="button"
             className="ss-header-link"
             onClick={openSettings}
             data-testid="ss-settings-link"
-          >Settings</button>
+          >{STRINGS.startScreen.settings}</button>
           <ThemeToggle />
         </div>
       </div>
@@ -150,29 +153,29 @@ export default function StartScreen({ onOpenFile }) {
               onClick={handleNewProject}
               title={`${HOTKEYS['new-project'].label} ⋅ ${formatHotkey('new-project')}`}
               data-testid="ss-new-project"
-            >+ New project</button>
+            >{STRINGS.startScreen.newProject}</button>
             <button
               type="button"
               className="ss-action-btn"
               onClick={onOpenFile}
               title={`${HOTKEYS['open-bodge'].label} ⋅ ${formatHotkey('open-bodge')}`}
               data-testid="ss-open-bodge"
-            >↑ Open .bodge…</button>
+            >{STRINGS.startScreen.openBodge}</button>
             <button
               type="button"
               className="ss-action-btn"
               disabled
-              title="Импорт sequence — будет в M-B"
+              title={STRINGS.startScreen.importSequenceComingSoon}
               data-testid="ss-import-sequence"
-            >↓ Import sequence</button>
+            >{STRINGS.startScreen.importSequence}</button>
             <button
               type="button"
               className={exportMode ? 'ss-action-btn-primary' : 'ss-action-btn'}
               onClick={toggleExportMode}
               disabled={exportBtnDisabled}
-              title={exportMode ? 'Выйти из режима экспорта' : 'Выгрузить .bodge файлы'}
+              title={exportMode ? STRINGS.startScreen.exportExitTitle : STRINGS.startScreen.exportEnterTitle}
               data-testid="ss-export-toggle"
-            >{exportMode ? '✓ Выйти из выбора' : '⤓ Export .bodge…'}</button>
+            >{exportMode ? STRINGS.startScreen.exportDone : STRINGS.startScreen.exportBodge}</button>
           </div>
 
           <div style={{ borderTop: '0.5px solid var(--ss-border-tertiary)', paddingTop: 16 }}>
@@ -181,7 +184,7 @@ export default function StartScreen({ onOpenFile }) {
                 fontSize: 12, color: 'var(--ss-text-secondary)',
                 margin: '0 0 6px', padding: '0 10px',
               }}
-            >Browse</p>
+            >{STRINGS.startScreen.browse}</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <SidebarLink
                 dataTestId="ss-browse-library"
@@ -189,26 +192,26 @@ export default function StartScreen({ onOpenFile }) {
                   fullscreen: 'underConstruction',
                   payload: { milestone: 'M-H', name: 'Library' },
                 })}
-              >Library</SidebarLink>
+              >{STRINGS.startScreen.library}</SidebarLink>
               <SidebarLink
                 dataTestId="ss-browse-primer-pool"
                 onClick={() => pushFullscreen({
                   fullscreen: 'underConstruction',
                   payload: { milestone: 'M-F', name: 'Primer pool' },
                 })}
-              >Primer pool</SidebarLink>
+              >{STRINGS.startScreen.primerPool}</SidebarLink>
               <SidebarLink
                 dataTestId="ss-browse-all-projects"
                 onClick={() => pushFullscreen({
                   fullscreen: 'underConstruction',
                   payload: { milestone: 'TBD', name: 'All projects' },
                 })}
-              >All projects</SidebarLink>
+              >{STRINGS.startScreen.allProjects}</SidebarLink>
               <SidebarLink
                 disabled
-                badge="soon"
+                badge={STRINGS.startScreen.groupProjectsBadge}
                 dataTestId="ss-browse-group-projects"
-              >Group projects</SidebarLink>
+              >{STRINGS.startScreen.groupProjects}</SidebarLink>
             </div>
           </div>
 
@@ -225,12 +228,12 @@ export default function StartScreen({ onOpenFile }) {
                 onClick={async () => {
                   const outcome = await promptInstall();
                   if (outcome === 'accepted') {
-                    showToast('Приложение установлено', 'success');
+                    showToast(STRINGS.startScreen.appInstalled, 'success');
                     setCanInstallPwa(false);
                   }
                 }}
                 data-testid="ss-install-link"
-              >Install as desktop app</button>
+              >{STRINGS.startScreen.installAsDesktopApp}</button>
             </div>
           )}
         </aside>
@@ -253,8 +256,8 @@ export default function StartScreen({ onOpenFile }) {
           >
             <p style={{ fontSize: 14, color: 'var(--ss-text-secondary)', margin: 0 }}>
               {exportMode
-                ? `Выбор для экспорта · ${selectedIds.size} выбрано`
-                : 'Recent projects'}
+                ? STRINGS.startScreen.exportHeader(selectedIds.size)
+                : STRINGS.startScreen.recentProjects}
             </p>
             {exportMode && (
               <button
@@ -272,14 +275,14 @@ export default function StartScreen({ onOpenFile }) {
                   fontWeight: 500,
                   cursor: selectedIds.size === 0 ? 'not-allowed' : 'pointer',
                 }}
-              >Скачать выбранные ({selectedIds.size})</button>
+              >{STRINGS.startScreen.downloadSelected(selectedIds.size)}</button>
             )}
           </div>
           {recentProjects.length === 0 ? (
             <p
               data-testid="ss-recent-empty"
               style={{ fontSize: 13, color: 'var(--ss-text-tertiary)', fontStyle: 'italic' }}
-            >У вас пока нет проектов.</p>
+            >{STRINGS.startScreen.noRecentProjects}</p>
           ) : (
             <div
               style={{
@@ -315,7 +318,7 @@ export default function StartScreen({ onOpenFile }) {
                 payload: { milestone: 'TBD', name: 'All projects' },
               })}
               data-testid="ss-view-all"
-            >View all {recentProjects.length} projects →</button>
+            >{STRINGS.startScreen.viewAllProjects(recentProjects.length)}</button>
           )}
         </section>
       </div>

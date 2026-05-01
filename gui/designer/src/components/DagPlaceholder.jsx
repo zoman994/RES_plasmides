@@ -1,3 +1,5 @@
+import { STRINGS } from '../lib/strings';
+
 export default function DagPlaceholder() {
   return (
     <div
@@ -19,7 +21,7 @@ export default function DagPlaceholder() {
       }}
     >
       <p style={{ margin: 0, maxWidth: 480 }}>
-        Empty project. Push containers from Importer (coming in M-B).
+        {STRINGS.placeholder.emptyProject}
       </p>
     </div>
   );
