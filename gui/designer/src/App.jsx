@@ -4,6 +4,7 @@ import AppShell from './components/AppShell';
 import StartScreen from './components/StartScreen';
 import DagPlaceholder from './components/DagPlaceholder';
 import Library from './components/Library';
+import Importer from './components/Importer';
 import UnderConstruction from './components/UnderConstruction';
 import MultiTabBlocked from './components/MultiTabBlocked';
 import ReadOnlyForced from './components/ReadOnlyForced';
@@ -16,8 +17,10 @@ import { listenForceRelease } from './lib/multi-tab-lock';
 import { runHotkeyResolver, useHotkey } from './lib/hotkeys';
 import { setupBeforeInstallPromptListener } from './lib/pwa-install';
 import { STRINGS } from './lib/strings';
+import { queueImporterFiles } from './components/Importer/lib/pending-files';
 
-const DROPZONE_TYPES = ['.bodge', '.fasta', '.fa', '.gb', '.dna'];
+const DROPZONE_TYPES = ['.bodge', '.fasta', '.fa', '.gb', '.gbk', '.genbank', '.dna', '.fna'];
+const IMPORTABLE_TYPES = ['.fasta', '.fa', '.fna', '.gb', '.gbk', '.genbank', '.dna'];
 
 export default function App() {
   const theme = useStore(s => s.theme);
@@ -193,8 +196,18 @@ export default function App() {
       }
       setDragActive(false);
       const files = Array.from(e.dataTransfer?.files || []);
+      const importable = files.filter(f => IMPORTABLE_TYPES.some(ext => f.name.toLowerCase().endsWith(ext)));
+      const s = useStore.getState();
+      const fs = s.canvas.activeFullscreen;
+      // Drops on DAG / Library route into the Importer; if Importer is already
+      // mounted, its inner dropzone handles it (we no-op here).
+      if (importable.length > 0 && (fs === 'dag' || fs === 'library')) {
+        queueImporterFiles(importable);
+        s.setActiveFullscreen('importer', { target: fs === 'library' ? 'library' : 'project' });
+        return;
+      }
       const detected = files.find(f => DROPZONE_TYPES.some(ext => f.name.toLowerCase().endsWith(ext)));
-      if (detected) {
+      if (detected && fs !== 'importer') {
         showToast(STRINGS.toast.dropFileComingSoon(detected.name), 'info');
       }
     }
@@ -217,6 +230,9 @@ export default function App() {
       break;
     case 'library':
       inProjectChild = <Library />;
+      break;
+    case 'importer':
+      inProjectChild = <Importer />;
       break;
     case 'underConstruction': {
       const top = navStack[navStack.length - 1];

@@ -91,4 +91,40 @@ describe('K4 — App + AppShell + Topbar routing', () => {
     fireEvent.click(back);
     expect(useStore.getState().canvas.activeFullscreen).toBe('start');
   });
+
+  it('M-B.1 K2 — Topbar shows + Импорт button on DAG; click routes to Importer fullscreen', () => {
+    useStore.setState((state) => {
+      state.canvas.activeFullscreen = 'dag';
+      state.canvas.navStack = [{ fullscreen: 'dag', payload: null }];
+    });
+    render(<App />);
+    const btn = screen.getByTestId('topbar-import-button');
+    expect(btn).toBeTruthy();
+    fireEvent.click(btn);
+    const s = useStore.getState();
+    expect(s.canvas.activeFullscreen).toBe('importer');
+    const top = s.canvas.navStack[s.canvas.navStack.length - 1];
+    expect(top.payload?.target).toBe('project');
+  });
+
+  it('M-B.1 K2 — + Импорт button hidden in Importer (no recursive open)', () => {
+    useStore.setState((state) => {
+      state.canvas.activeFullscreen = 'importer';
+      state.canvas.navStack = [
+        { fullscreen: 'dag', payload: null },
+        { fullscreen: 'importer', payload: { target: 'project' } },
+      ];
+    });
+    render(<App />);
+    expect(screen.queryByTestId('topbar-import-button')).toBeNull();
+  });
+
+  it('M-B.1 K2 — App routes to Importer when activeFullscreen=importer', () => {
+    useStore.setState((state) => {
+      state.canvas.activeFullscreen = 'importer';
+      state.canvas.navStack = [{ fullscreen: 'importer', payload: { target: 'project' } }];
+    });
+    render(<App />);
+    expect(screen.getByTestId('importer-fullscreen')).toBeTruthy();
+  });
 });

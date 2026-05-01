@@ -2,6 +2,7 @@ export const FULLSCREENS = [
   'start',
   'dag',
   'library',
+  'importer',
   'underConstruction',
   'multiTabBlocked',
   'readOnlyForced',

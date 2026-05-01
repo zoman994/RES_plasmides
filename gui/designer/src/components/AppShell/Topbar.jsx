@@ -19,7 +19,10 @@ export default function Topbar() {
   const stackDepth = navStack.length;
   const canPop = stackDepth > 1;
   const isLibrary = activeFullscreen === 'library';
+  const isDag = activeFullscreen === 'dag';
+  const isImporter = activeFullscreen === 'importer';
   const isStandaloneLibrary = isLibrary && !projectId;
+  const showImportButton = (isDag || isLibrary) && !isImporter;
 
   const projectName = isLibrary
     ? STRINGS.library.title
@@ -118,6 +121,23 @@ export default function Topbar() {
         </div>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        {showImportButton && (
+          <button
+            type="button"
+            data-testid="topbar-import-button"
+            onClick={() => setActiveFullscreen('importer', {
+              target: isLibrary ? 'library' : 'project',
+            })}
+            style={{
+              padding: '4px 10px', fontSize: 12,
+              border: '0.5px solid var(--border-default, #d6d3d1)',
+              borderRadius: 'var(--radius-md, 6px)',
+              background: 'var(--surface-2, #f5f5f4)',
+              color: 'var(--text-primary, #1c1917)',
+              cursor: 'pointer',
+            }}
+          >{STRINGS.importer.topbarButton}</button>
+        )}
         <span
           data-testid="topbar-save-status"
           style={{ fontSize: 12, color: 'var(--text-tertiary, #78716c)' }}

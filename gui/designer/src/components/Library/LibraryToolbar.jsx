@@ -6,6 +6,7 @@ export default function LibraryToolbar() {
   const filterTopology = useStore(s => s.filterTopology);
   const setLibraryFilterKind = useStore(s => s.setLibraryFilterKind);
   const setLibraryFilterTopology = useStore(s => s.setLibraryFilterTopology);
+  const setActiveFullscreen = useStore(s => s.setActiveFullscreen);
 
   const tabBtnStyle = (active) => ({
     padding: '6px 14px',
@@ -74,17 +75,16 @@ export default function LibraryToolbar() {
 
       <button
         type="button"
-        disabled
         data-testid="library-import-button"
-        title={STRINGS.library.importDisabledTooltip}
+        onClick={() => setActiveFullscreen('importer', { target: 'library' })}
         style={{
           padding: '6px 14px',
           fontSize: 13,
-          border: '0.5px dashed var(--border-default)',
+          border: '0.5px solid var(--border-default)',
           borderRadius: 'var(--radius-md)',
-          background: 'transparent',
-          color: 'var(--text-tertiary)',
-          cursor: 'not-allowed',
+          background: 'var(--surface-2)',
+          color: 'var(--text-primary)',
+          cursor: 'pointer',
         }}
       >{STRINGS.library.importButton}</button>
     </div>

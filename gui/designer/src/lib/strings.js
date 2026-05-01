@@ -24,7 +24,11 @@
  *     as English literals at the call site. STRINGS is for user-facing UI.
  */
 
+import { IMPORTER_STRINGS } from '../components/Importer/lib/importer-strings';
+
 export const STRINGS = {
+  importer: IMPORTER_STRINGS,
+
   startScreen: {
     appName: 'BodgeGene',
     guide: 'Guide',

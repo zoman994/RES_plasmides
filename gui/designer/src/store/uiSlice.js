@@ -2,8 +2,10 @@ import { getJSON, setJSON } from '../lib/storage';
 
 export const THEME_STORAGE_KEY = 'bodgegene-theme';
 export const AGENT_STORAGE_KEY = 'bodgegene-agent';
+export const IMPORTER_MODE_STORAGE_KEY = 'bodgegene-importer-mode';
 
 const THEMES = ['light', 'dark'];
+const IMPORTER_MODES = ['advanced', 'simple'];
 
 function loadInitialTheme() {
   const t = getJSON(THEME_STORAGE_KEY, null);
@@ -15,6 +17,12 @@ function loadInitialAgent() {
   const a = getJSON(AGENT_STORAGE_KEY, null);
   if (a && typeof a === 'object') return { name: a.name || '', email: a.email || '' };
   return { name: '', email: '' };
+}
+
+function loadInitialImporterMode() {
+  const m = getJSON(IMPORTER_MODE_STORAGE_KEY, null);
+  if (IMPORTER_MODES.includes(m)) return m;
+  return 'advanced';
 }
 
 export function applyThemeToDOM(theme) {
@@ -38,9 +46,16 @@ function _newToastId() {
 export const createUiSlice = (set) => ({
   theme: loadInitialTheme(),
   agent: loadInitialAgent(),
+  importerMode: loadInitialImporterMode(),
   modals: { settings: false, projectInfo: false },
   toasts: [],
   canInstallPwa: false,
+
+  setImporterMode: (mode) => {
+    if (!IMPORTER_MODES.includes(mode)) return;
+    set(state => { state.importerMode = mode; });
+    setJSON(IMPORTER_MODE_STORAGE_KEY, mode);
+  },
 
   setTheme: (theme) => {
     if (!THEMES.includes(theme)) return;
