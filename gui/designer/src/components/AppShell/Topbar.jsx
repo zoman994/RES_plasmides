@@ -5,30 +5,41 @@ import ThemeToggle from '../ThemeToggle';
 
 export default function Topbar() {
   const navStack = useStore(s => s.canvas.navStack);
+  const activeFullscreen = useStore(s => s.canvas.activeFullscreen);
   const projectId = useStore(s => s.currentProjectId);
   const project = useStore(s => (projectId ? s.projects[projectId] : null));
   const dirty = useStore(selectIsDirty);
   const lastSavedToFileAt = useStore(s => s.lastSavedToFileAt);
   const popFullscreen = useStore(s => s.popFullscreen);
+  const setActiveFullscreen = useStore(s => s.setActiveFullscreen);
   const closeProject = useStore(s => s.closeProject);
   const openSettings = useStore(s => s.openSettings);
   const openProjectInfo = useStore(s => s.openProjectInfo);
 
   const stackDepth = navStack.length;
   const canPop = stackDepth > 1;
+  const isLibrary = activeFullscreen === 'library';
+  const isStandaloneLibrary = isLibrary && !projectId;
 
-  const projectName = project ? (project.name || STRINGS.topbar.untitled) : STRINGS.topbar.projectFallback;
+  const projectName = isLibrary
+    ? STRINGS.library.title
+    : (project ? (project.name || STRINGS.topbar.untitled) : STRINGS.topbar.projectFallback);
   const fileName = useStore(s => s.fileName);
 
   let saveStatus;
-  if (!project) saveStatus = '';
+  if (isLibrary || !project) saveStatus = '';
   else if (dirty) saveStatus = lastSavedToFileAt ? STRINGS.topbar.saveStatus.unsavedDirty : STRINGS.topbar.saveStatus.neverSaved;
   else if (lastSavedToFileAt) saveStatus = STRINGS.topbar.saveStatus.savedAt(formatRelativeTime(lastSavedToFileAt));
   else saveStatus = STRINGS.topbar.saveStatus.autosavedInBrowser;
 
   function handleBack() {
-    if (canPop) popFullscreen();
-    else closeProject();
+    if (canPop) {
+      popFullscreen();
+    } else if (isStandaloneLibrary) {
+      setActiveFullscreen('start');
+    } else {
+      closeProject();
+    }
   }
 
   const backTitle = canPop
@@ -72,7 +83,7 @@ export default function Topbar() {
           <span style={{ fontWeight: 500, fontSize: 14, color: 'var(--text-primary, #1c1917)' }}>
             {projectName}
           </span>
-          {dirty && (
+          {dirty && !isLibrary && (
             <span
               data-testid="topbar-dirty-dot"
               aria-label={STRINGS.topbar.dirtyDotAria}
@@ -83,7 +94,7 @@ export default function Topbar() {
               }}
             />
           )}
-          {project && (
+          {project && !isLibrary && (
             <button
               type="button"
               data-testid="topbar-edit-info"
@@ -99,7 +110,7 @@ export default function Topbar() {
               }}
             >✏️</button>
           )}
-          {fileName && (
+          {fileName && !isLibrary && (
             <span style={{ fontSize: 11, color: 'var(--text-tertiary, #78716c)', fontFamily: 'var(--font-mono)' }}>
               {fileName}
             </span>

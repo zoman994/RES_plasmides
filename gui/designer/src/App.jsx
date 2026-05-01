@@ -3,6 +3,7 @@ import { useStore, bootstrapStore, applyThemeToDOM } from './store';
 import AppShell from './components/AppShell';
 import StartScreen from './components/StartScreen';
 import DagPlaceholder from './components/DagPlaceholder';
+import Library from './components/Library';
 import UnderConstruction from './components/UnderConstruction';
 import MultiTabBlocked from './components/MultiTabBlocked';
 import ReadOnlyForced from './components/ReadOnlyForced';
@@ -213,6 +214,9 @@ export default function App() {
   switch (activeFullscreen) {
     case 'dag':
       inProjectChild = <DagPlaceholder />;
+      break;
+    case 'library':
+      inProjectChild = <Library />;
       break;
     case 'underConstruction': {
       const top = navStack[navStack.length - 1];

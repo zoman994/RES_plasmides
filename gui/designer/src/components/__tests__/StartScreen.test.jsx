@@ -180,13 +180,11 @@ describe('K5 — StartScreen wireframe v7', () => {
     expect(btn.disabled).toBe(true);
   });
 
-  it('Library click pushes underConstruction with milestone M-H', () => {
+  it('Library click pushes the library fullscreen', () => {
     render(<StartScreen onOpenFile={() => {}} />);
     fireEvent.click(screen.getByTestId('ss-browse-library'));
     const top = useStore.getState().canvas.navStack[useStore.getState().canvas.navStack.length - 1];
-    expect(top.fullscreen).toBe('underConstruction');
-    expect(top.payload.milestone).toBe('M-H');
-    expect(top.payload.name).toBe('Library');
+    expect(top.fullscreen).toBe('library');
   });
 
   it('Group projects link is disabled with "soon" badge', () => {
