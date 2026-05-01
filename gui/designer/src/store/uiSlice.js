@@ -30,6 +30,7 @@ export const createUiSlice = (set) => ({
   agent: loadInitialAgent(),
   modals: { settings: false, projectInfo: false },
   toast: null,
+  canInstallPwa: false,
 
   setTheme: (theme) => {
     if (!THEMES.includes(theme)) return;
@@ -52,4 +53,6 @@ export const createUiSlice = (set) => ({
 
   showToast: (msg, kind = 'info') => set(state => { state.toast = { msg, kind, at: Date.now() }; }),
   clearToast: () => set(state => { state.toast = null; }),
+
+  setCanInstallPwa: (v) => set(state => { state.canInstallPwa = !!v; }),
 });

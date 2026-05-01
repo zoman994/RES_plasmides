@@ -12,6 +12,7 @@ import { openBodgeFilePicker, pickSaveAs, saveBlobToHandle } from './lib/file-sy
 import { writeBodge, readBodge } from './lib/bodge-zip';
 import { listenForceRelease } from './lib/multi-tab-lock';
 import { runHotkeyResolver, useHotkey } from './lib/hotkeys';
+import { setupBeforeInstallPromptListener } from './lib/pwa-install';
 
 const DROPZONE_TYPES = ['.bodge', '.fasta', '.fa', '.gb', '.dna'];
 
@@ -35,6 +36,11 @@ export default function App() {
     bootstrapStore();
     hydrateProjectsFromDexie().catch(() => { /* ignore */ });
   }, [hydrateProjectsFromDexie]);
+
+  useEffect(() => {
+    const setCanInstallPwa = useStore.getState().setCanInstallPwa;
+    return setupBeforeInstallPromptListener(setCanInstallPwa);
+  }, []);
 
   useEffect(() => {
     applyThemeToDOM(theme);

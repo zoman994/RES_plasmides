@@ -3,6 +3,7 @@ import { useStore } from '../../store';
 import { formatHotkey, HOTKEYS } from '../../lib/hotkeys';
 import { writeBodge } from '../../lib/bodge-zip';
 import { downloadBlob } from '../../lib/file-system';
+import { promptInstall } from '../../lib/pwa-install';
 import RecentCard from './RecentCard';
 import SidebarLink from './SidebarLink';
 import ThemeToggle from '../ThemeToggle';
@@ -27,6 +28,8 @@ export default function StartScreen({ onOpenFile }) {
   const pushFullscreen = useStore(s => s.pushFullscreen);
   const openSettings = useStore(s => s.openSettings);
   const showToast = useStore(s => s.showToast);
+  const canInstallPwa = useStore(s => s.canInstallPwa);
+  const setCanInstallPwa = useStore(s => s.setCanInstallPwa);
 
   const [exportMode, setExportMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
@@ -209,19 +212,27 @@ export default function StartScreen({ onOpenFile }) {
             </div>
           </div>
 
-          <div
-            style={{
-              marginTop: 'auto', paddingTop: 16,
-              borderTop: '0.5px solid var(--ss-border-tertiary)',
-            }}
-          >
-            <button
-              type="button"
-              className="ss-install-link"
-              onClick={() => showToast('PWA install — будет в M-A.1', 'info')}
-              data-testid="ss-install-link"
-            >Install as desktop app</button>
-          </div>
+          {canInstallPwa && (
+            <div
+              style={{
+                marginTop: 'auto', paddingTop: 16,
+                borderTop: '0.5px solid var(--ss-border-tertiary)',
+              }}
+            >
+              <button
+                type="button"
+                className="ss-install-link"
+                onClick={async () => {
+                  const outcome = await promptInstall();
+                  if (outcome === 'accepted') {
+                    showToast('Приложение установлено', 'success');
+                    setCanInstallPwa(false);
+                  }
+                }}
+                data-testid="ss-install-link"
+              >Install as desktop app</button>
+            </div>
+          )}
         </aside>
 
         <section
