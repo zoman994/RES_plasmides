@@ -119,4 +119,54 @@ describe('M-A-fix-2 — ProjectInfoModal', () => {
     const { container } = render(<ProjectInfoModal />);
     expect(container.querySelector('[data-testid="project-info-modal"]')).toBeNull();
   });
+
+  it('tag suggestions exclude tags already added to the current project', () => {
+    const primaryId = seedProject({ tags: ['bacterial', 'gfp'] });
+    const otherIdA = useStore.getState().createProject('other A');
+    useStore.setState((state) => {
+      state.projects[otherIdA].tags = ['bacterial', 'gfp', 'plant'];
+    });
+    const otherIdB = useStore.getState().createProject('other B');
+    useStore.setState((state) => {
+      state.projects[otherIdB].tags = ['bacterial', 'mammalian'];
+      state.currentProjectId = primaryId;
+    });
+    render(<ProjectInfoModal />);
+    expect(screen.queryByTestId('project-info-tag-suggestion-bacterial')).toBeNull();
+    expect(screen.queryByTestId('project-info-tag-suggestion-gfp')).toBeNull();
+    expect(screen.getByTestId('project-info-tag-suggestion-plant')).toBeTruthy();
+    expect(screen.getByTestId('project-info-tag-suggestion-mammalian')).toBeTruthy();
+  });
+
+  it('tag suggestions are sorted by frequency desc, then alphabetically asc', () => {
+    const primaryId = seedProject({ tags: [] });
+    const otherIdA = useStore.getState().createProject('other A');
+    useStore.setState((state) => {
+      state.projects[otherIdA].tags = ['xtag', 'ytag', 'ztag'];
+    });
+    const otherIdB = useStore.getState().createProject('other B');
+    useStore.setState((state) => {
+      state.projects[otherIdB].tags = ['xtag', 'ytag'];
+      state.currentProjectId = primaryId;
+    });
+    render(<ProjectInfoModal />);
+    const container = screen.getByTestId('project-info-tag-suggestions');
+    const buttons = container.querySelectorAll('button[data-testid^="project-info-tag-suggestion-"]');
+    const labels = Array.from(buttons).map(b => b.getAttribute('data-testid').replace('project-info-tag-suggestion-', ''));
+    expect(labels).toEqual(['xtag', 'ytag', 'ztag']);
+  });
+
+  it('clicking a suggestion adds the tag to chips and removes it from suggestions', () => {
+    const primaryId = seedProject({ tags: [] });
+    const otherId = useStore.getState().createProject('other A');
+    useStore.setState((state) => {
+      state.projects[otherId].tags = ['cdna'];
+      state.currentProjectId = primaryId;
+    });
+    render(<ProjectInfoModal />);
+    expect(screen.getByTestId('project-info-tag-suggestion-cdna')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('project-info-tag-suggestion-cdna'));
+    expect(screen.getByTestId('project-info-tag-cdna')).toBeTruthy();
+    expect(screen.queryByTestId('project-info-tag-suggestion-cdna')).toBeNull();
+  });
 });
