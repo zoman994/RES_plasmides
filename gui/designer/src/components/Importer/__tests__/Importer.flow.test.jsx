@@ -117,18 +117,38 @@ describe('M-B.1 K2 — Importer flow', () => {
     expect(useStore.getState().canvas.activeFullscreen).toBe('dag');
   });
 
-  it('6) Next in simple mode surfaces the K3-pending toast (handler ships in K3)', () => {
-    useStore.setState((state) => { state.importerMode = 'simple'; });
-    render(<Importer />);
+  it('6) Next in simple mode runs the import handler, shows toast + flash, then auto-closes', async () => {
+    useStore.setState((state) => {
+      state.importerMode = 'simple';
+      // simulate Importer being mounted on top of a DAG view so popFullscreen has somewhere to go.
+      state.canvas.navStack = [
+        { fullscreen: 'dag', payload: null },
+        { fullscreen: 'importer', payload: { target: 'library' } },
+      ];
+      state.canvas.activeFullscreen = 'importer';
+    });
+    render(<Importer flashMs={20} />);
     const dz = screen.getByTestId('importer-dropzone');
     const file = fileFromText('thing.fasta', FASTA_TEXT);
-    fireEvent.drop(dz, { dataTransfer: { files: [file], types: ['Files'] } });
-    // Wait for parse to populate parsedItems (Next stays disabled until then).
-    return waitFor(() => {
+    await act(async () => {
+      fireEvent.drop(dz, { dataTransfer: { files: [file], types: ['Files'] } });
+    });
+    await waitFor(() => {
       expect(screen.getByTestId('importer-next').disabled).toBe(false);
-    }).then(() => {
+    });
+    await act(async () => {
       fireEvent.click(screen.getByTestId('importer-next'));
+    });
+    // Toast for the added Library entry — autoname-clean (no prior entry).
+    await waitFor(() => {
       expect(useStore.getState().toasts.length).toBe(1);
+      expect(useStore.getState().toasts[0].msg).toMatch(/my_seq/);
+    });
+    // Library got the entry; project unchanged (target=library).
+    expect(Object.keys(useStore.getState().libraryEntries).length).toBe(1);
+    // Flash overlay then auto-close back to the underlying DAG.
+    await waitFor(() => {
+      expect(useStore.getState().canvas.activeFullscreen).toBe('dag');
     });
   });
 });

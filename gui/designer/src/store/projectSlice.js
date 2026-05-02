@@ -412,6 +412,33 @@ export const createProjectSlice = (set, get) => ({
     if (id) _scheduleAutosave(get, id);
   },
 
+  /**
+   * Pin a Library container entry to the current project's DAG (M-B.1 K3).
+   * Idempotent: re-pinning the same entry is a no-op. Marks the project
+   * dirty + schedules autosave. The actual DAG node visualisation lands in
+   * M-C/M-D; for now the import simply records the reference so the project
+   * survives reload with its containers attached.
+   */
+  addContainerToCurrentProject: (libraryEntryId) => {
+    if (!libraryEntryId) return;
+    set(state => {
+      const id = state.currentProjectId;
+      if (!id) return;
+      const proj = state.projects[id];
+      if (!proj) return;
+      if (!Array.isArray(proj.containerIds)) proj.containerIds = [];
+      if (proj.containerIds.includes(libraryEntryId)) return;
+      proj.containerIds.push(libraryEntryId);
+      proj.updatedAt = nowIso();
+      state._projectLifecycle[id] = {
+        ...(state._projectLifecycle[id] || {}),
+        lastModifiedInIndexedDBAt: proj.updatedAt,
+      };
+    });
+    const id = get().currentProjectId;
+    if (id) _scheduleAutosave(get, id);
+  },
+
   removeProjectFromIndexedDB: async (id) => {
     await dexieDeleteProject(id);
     set(state => {

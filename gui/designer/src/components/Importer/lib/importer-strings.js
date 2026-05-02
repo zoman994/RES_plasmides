@@ -40,4 +40,17 @@ export const IMPORTER_STRINGS = {
 
   noFilesYet: 'Файлы ещё не загружены',
   busyParsing: 'Парсинг файлов…',
+
+  // Simple-mode (K3) toasts and flash UI.
+  simpleBusy: 'Импорт…',
+  simpleFlashTitle: 'Импорт завершён',
+  simpleFlashSubtitle: 'Importer закроется автоматически',
+  simpleAddedOne: (name) => `«${name}» добавлен в Library`,
+  simpleAddedOneToProject: (name) => `«${name}» добавлен в Library и проект`,
+  simpleAddedRenamedOne: (baseName, finalName) =>
+    `«${finalName}» добавлен (был дубль с «${baseName}»)`,
+  simpleAddedMany: (n) => `Добавлено ${n} файлов в Library`,
+  simpleAddedManyToProject: (n) => `Добавлено ${n} файлов в Library и проект`,
+  simpleSkipped: (n) => `Пропущено: ${n}`,
+  simpleFailed: (msg) => `Импорт не удался: ${msg}`,
 };

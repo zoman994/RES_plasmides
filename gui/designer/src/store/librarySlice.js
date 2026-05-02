@@ -3,6 +3,7 @@ import {
   listLibraryEntries,
   deleteLibraryEntry,
 } from '../db/dexie-schema';
+import { computeSuggestedName } from '../components/Importer/lib/compute-suggested-name';
 
 export const LIBRARY_TAGS_SOFT_LIMIT = 10;
 
@@ -103,6 +104,38 @@ export const createLibrarySlice = (set, get) => ({
 
   setEditingTagsEntry: (id) => {
     set(state => { state.editingTagsEntryId = id || null; });
+  },
+
+  /**
+   * Find an existing container entry whose canonical resource hash matches
+   * (M-B.1 K3, DEC-IMP-10). Searches the in-memory pool first; falls back to
+   * Dexie if the slice hasn't hydrated yet (Importer can run before the
+   * Library fullscreen is ever opened). Soft-deleted entries don't count as
+   * collisions — they're going away on next commit.
+   */
+  checkLibraryDedup: async (resourceHash) => {
+    if (!resourceHash) return undefined;
+    const inMem = Object.values(get().libraryEntries || {})
+      .find(e => e && !e._pendingDelete && e.payload?.resourceHash === resourceHash);
+    if (inMem) return inMem;
+    if (get()._libraryHydrated) return undefined;
+    const rows = await listLibraryEntries({ kind: 'container' });
+    return rows.find(r => r.payload?.resourceHash === resourceHash);
+  },
+
+  /**
+   * Suggest a name that doesn't collide with existing library entries
+   * (M-B.1 K3, SnapGene-style autoname per DEC-IMP-10). Returns `baseName`
+   * unchanged if it's free; otherwise `baseName (N)` with the smallest
+   * available N. Soft-deleted entries are excluded.
+   */
+  getSuggestedLibraryName: (baseName) => {
+    const existing = new Set(
+      Object.values(get().libraryEntries || {})
+        .filter(e => e && !e._pendingDelete && typeof e.name === 'string')
+        .map(e => e.name)
+    );
+    return computeSuggestedName(baseName, existing);
   },
 });
 
