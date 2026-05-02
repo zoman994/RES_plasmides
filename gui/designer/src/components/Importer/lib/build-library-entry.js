@@ -23,7 +23,7 @@ export function buildLibraryEntry(parsedItem, finalName, resourceHash, opts = {}
     id: opts.id || uuidv7(),
     kind: 'container',
     name: finalName,
-    tags: [],
+    tags: Array.isArray(opts.tags) ? opts.tags : [],
     addedAt: new Date().toISOString(),
     payload: {
       sequence: seq,

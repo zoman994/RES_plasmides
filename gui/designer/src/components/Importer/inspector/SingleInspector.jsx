@@ -1,5 +1,6 @@
 import { STRINGS } from '../../../lib/strings';
 import InlineEditableTitle from './InlineEditableTitle';
+import TagsEditor from './TagsEditor';
 import TabBar from './tabs/TabBar';
 import OverviewTab from './tabs/OverviewTab';
 import SequenceTab from './tabs/SequenceTab';
@@ -66,6 +67,10 @@ export default function SingleInspector({
           {length.toLocaleString()} п.н. · {topology}
           {regionCount > 0 && ` · ${S.summaryRegionCount(regionCount)}`}
         </div>
+        <TagsEditor
+          tags={Array.isArray(edits?.editedTags) ? edits.editedTags : []}
+          onChange={(next) => onUpdateEdits?.({ editedTags: next })}
+        />
       </div>
 
       <TabBar

@@ -5,6 +5,7 @@ import { writeBodge } from '../../lib/bodge-zip';
 import { downloadBlob } from '../../lib/file-system';
 import { promptInstall } from '../../lib/pwa-install';
 import { STRINGS } from '../../lib/strings';
+import { APP_VERSION } from '../../lib/version.js';
 import RecentCard from './RecentCard';
 import SidebarLink from './SidebarLink';
 import ThemeToggle from '../ThemeToggle';
@@ -180,13 +181,6 @@ export default function StartScreen({ onOpenFile }) {
             >{STRINGS.startScreen.browse}</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <SidebarLink
-                dataTestId="ss-browse-library"
-                onClick={() => pushFullscreen({
-                  fullscreen: 'library',
-                  payload: null,
-                })}
-              >{STRINGS.startScreen.library}</SidebarLink>
-              <SidebarLink
                 dataTestId="ss-browse-primer-pool"
                 onClick={() => pushFullscreen({
                   fullscreen: 'underConstruction',
@@ -208,27 +202,42 @@ export default function StartScreen({ onOpenFile }) {
             </div>
           </div>
 
-          {canInstallPwa && (
-            <div
-              style={{
-                marginTop: 'auto', paddingTop: 16,
-                borderTop: '0.5px solid var(--ss-border-tertiary)',
-              }}
-            >
-              <button
-                type="button"
-                className="ss-install-link"
-                onClick={async () => {
-                  const outcome = await promptInstall();
-                  if (outcome === 'accepted') {
-                    showToast(STRINGS.startScreen.appInstalled, 'success');
-                    setCanInstallPwa(false);
-                  }
+          <div
+            style={{
+              marginTop: 'auto', paddingTop: 16,
+              display: 'flex', flexDirection: 'column', gap: 8,
+            }}
+          >
+            {canInstallPwa && (
+              <div
+                style={{
+                  paddingTop: 16,
+                  borderTop: '0.5px solid var(--ss-border-tertiary)',
                 }}
-                data-testid="ss-install-link"
-              >{STRINGS.startScreen.installAsDesktopApp}</button>
-            </div>
-          )}
+              >
+                <button
+                  type="button"
+                  className="ss-install-link"
+                  onClick={async () => {
+                    const outcome = await promptInstall();
+                    if (outcome === 'accepted') {
+                      showToast(STRINGS.startScreen.appInstalled, 'success');
+                      setCanInstallPwa(false);
+                    }
+                  }}
+                  data-testid="ss-install-link"
+                >{STRINGS.startScreen.installAsDesktopApp}</button>
+              </div>
+            )}
+            <div
+              data-testid="ss-version-footer"
+              style={{
+                fontSize: 11,
+                color: 'var(--ss-text-tertiary)',
+                padding: '0 10px',
+              }}
+            >BodgeGene v{APP_VERSION}</div>
+          </div>
         </aside>
 
         <section

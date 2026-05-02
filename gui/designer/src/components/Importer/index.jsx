@@ -200,12 +200,10 @@ export default function Importer({ flashMs = SIMPLE_FLASH_MS } = {}) {
         }
 
         const itemForBuild = { ...it, sequence: finalSeq, annotations: finalAnns, _fileName: fn };
-        const entry = buildLibraryEntry(
-          itemForBuild,
-          finalName,
-          resourceHash,
-          replaceExisting && collision ? { id: collision.id } : undefined,
-        );
+        const finalTags = Array.isArray(edits.editedTags) ? edits.editedTags : [];
+        const buildOpts = { tags: finalTags };
+        if (replaceExisting && collision) buildOpts.id = collision.id;
+        const entry = buildLibraryEntry(itemForBuild, finalName, resourceHash, buildOpts);
         await store.addLibraryEntry(entry);
         if (replaceExisting) replaced += 1;
         if (!replaceExisting && confirmTarget === 'project' && store.currentProjectId

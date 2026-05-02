@@ -6,6 +6,7 @@ import { clearAllAutosaveTimers } from '../../store/projectSlice';
 import StartScreen from '../StartScreen';
 import { formatRelativeTimeAgo } from '../StartScreen/RecentCard';
 import { STRINGS } from '../../lib/strings';
+import { APP_VERSION } from '../../lib/version.js';
 
 function reset() {
   clearAllAutosaveTimers();
@@ -174,11 +175,10 @@ describe('K5 — StartScreen wireframe v7', () => {
     expect(useStore.getState().modals.projectInfo).toBe(true);
   });
 
-  it('Library click pushes the library fullscreen', () => {
+  it('Sidebar footer renders the BodgeGene version from lib/version.js', () => {
     render(<StartScreen onOpenFile={() => {}} />);
-    fireEvent.click(screen.getByTestId('ss-browse-library'));
-    const top = useStore.getState().canvas.navStack[useStore.getState().canvas.navStack.length - 1];
-    expect(top.fullscreen).toBe('library');
+    const footer = screen.getByTestId('ss-version-footer');
+    expect(footer.textContent).toBe(`BodgeGene v${APP_VERSION}`);
   });
 
   it('Group projects link is disabled with "soon" badge', () => {

@@ -86,6 +86,11 @@ export const IMPORTER_STRINGS = {
   // Inline title.
   inlineTitleAria: 'Имя плазмиды',
 
+  // TagsEditor (M-B.2 follow-up after Library fullscreen wipe).
+  addTagPlaceholder: '+ тег',
+  tagsLimit: (n) => `максимум ${n} тегов`,
+  tagRemoveAria: (tag) => `Убрать тег ${tag}`,
+
   // ActionsBar (single + multi)
   actionCanvas: 'На канвас',
   actionLibrary: 'В библиотеку',

@@ -3,7 +3,6 @@ import { useStore, bootstrapStore, applyThemeToDOM } from './store';
 import AppShell from './components/AppShell';
 import StartScreen from './components/StartScreen';
 import DagPlaceholder from './components/DagPlaceholder';
-import Library from './components/Library';
 import Importer from './components/Importer';
 import UnderConstruction from './components/UnderConstruction';
 import MultiTabBlocked from './components/MultiTabBlocked';
@@ -199,16 +198,16 @@ export default function App() {
       const importable = files.filter(f => IMPORTABLE_TYPES.some(ext => f.name.toLowerCase().endsWith(ext)));
       const s = useStore.getState();
       const fs = s.canvas.activeFullscreen;
-      // Drops on DAG / Library route into the Importer; if Importer is already
+      // Drops on DAG route into the Importer; if Importer is already
       // mounted, its inner dropzone handles it (we no-op here).
-      if (importable.length > 0 && (fs === 'dag' || fs === 'library')) {
+      if (importable.length > 0 && fs === 'dag') {
         queueImporterFiles(importable);
-        // pushFullscreen, not setActiveFullscreen — preserves the parent
-        // (Library or DAG) on the navStack so Cancel pops back into it
-        // instead of falling through to the start screen.
+        // pushFullscreen, not setActiveFullscreen — preserves DAG on the
+        // navStack so Cancel pops back into it instead of falling through
+        // to the start screen.
         s.pushFullscreen({
           fullscreen: 'importer',
-          payload: { target: fs === 'library' ? 'library' : 'project' },
+          payload: { target: 'project' },
         });
         return;
       }
@@ -233,9 +232,6 @@ export default function App() {
   switch (activeFullscreen) {
     case 'dag':
       inProjectChild = <DagPlaceholder />;
-      break;
-    case 'library':
-      inProjectChild = <Library />;
       break;
     case 'importer':
       inProjectChild = <Importer />;
