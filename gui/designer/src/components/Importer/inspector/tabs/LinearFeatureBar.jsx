@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState, useLayoutEffect } from 'react';
-import { featureColor } from '../../../../feature-palette';
+import { featureColor, FEATURE_STROKE } from '../../../../feature-palette';
 import { ANNOTATION_COLORS } from '../../../../auto-annotate';
 import { getTextColor } from '../../../../lib/color-utils';
 
@@ -122,6 +122,8 @@ export default function LinearFeatureBar({ annotations = [], seqLength = 0, onSe
               height={BAR_H}
               fill={it.color}
               opacity={it.opacity}
+              stroke={FEATURE_STROKE}
+              strokeWidth={0.5}
               rx={2}
               ry={2}
             />
