@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import AnnotationEditor from '../../../AnnotationEditor';
+import LinearFeatureBar from './LinearFeatureBar';
 import { STRINGS } from '../../../../lib/strings';
 
 const S = STRINGS.importer;
@@ -32,16 +33,24 @@ export default function AnnotationsTab({
         <span> · </span>
         <span>{S.annotationsCount(annotations.length)}</span>
       </div>
+      {/*
+        Linear feature strip on top — replaces AnnotationEditor's built-in
+        bar (which has no leader-labels for small features). LinearFeatureBar
+        adds callout-labels for ATG / 3xFLAG / SV40 NLS / RBS / small
+        promoters and similar features that get drowned in the colour rect
+        but stay important to read at a glance.
+      */}
+      <LinearFeatureBar annotations={annotations} seqLength={seqLength} />
+
       <div
         data-testid="importer-annotation-editor-wrap"
         className="importer-annotation-editor-wrap"
         style={{ width: '100%', minWidth: 0, flex: 1, minHeight: 0 }}
       >
         {/*
-          hideBar=false → shows the linear feature «колбаса» strip (v0.5
-          parity); compact=false so the editor uses the full Inspector
-          width with normal-size rows + visible action buttons (was
-          drowning in narrow column).
+          hideBar=true here — LinearFeatureBar above replaces it.
+          compact=false so the editor uses the full Inspector width with
+          normal-size rows + visible action buttons.
 
           AnnotationEditor sets `max-h-[180px]` on its scroll list — way
           too small for the Inspector's available vertical space. The CSS
@@ -54,6 +63,7 @@ export default function AnnotationsTab({
           seqLength={seqLength}
           onChange={onChange}
           ignoreOwnColor
+          hideBar
         />
       </div>
     </div>
