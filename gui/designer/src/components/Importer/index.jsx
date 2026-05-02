@@ -64,8 +64,15 @@ export default function Importer({ flashMs = SIMPLE_FLASH_MS } = {}) {
   useEffect(() => {
     const queued = drainImporterFiles();
     if (queued.length > 0) state.addFiles(queued);
-    // state.addFiles is stable (useCallback) but we deliberately run once
-    // per mount; opening the Importer again creates a new instance.
+    // navStack payload may carry an openCatalogSource hint (e.g. the
+    // StartScreen «Library» link drops biolog straight into «Моя
+    // библиотека» drilldown). Apply once on mount so the catalog tree
+    // shows the requested group expanded by default.
+    const initialSrc = top?.payload?.openCatalogSource;
+    if (initialSrc && initialSrc.kind) state.setActiveSource(initialSrc);
+    // state.addFiles / setActiveSource are stable (useCallback) but we
+    // deliberately run once per mount; opening the Importer again
+    // creates a new instance.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

@@ -175,6 +175,15 @@ describe('K5 — StartScreen wireframe v7', () => {
     expect(useStore.getState().modals.projectInfo).toBe(true);
   });
 
+  it('Library click opens Importer pre-focused on «Моя библиотека» catalog source', () => {
+    render(<StartScreen onOpenFile={() => {}} />);
+    fireEvent.click(screen.getByTestId('ss-browse-library'));
+    const top = useStore.getState().canvas.navStack[useStore.getState().canvas.navStack.length - 1];
+    expect(top.fullscreen).toBe('importer');
+    expect(top.payload.target).toBe('library');
+    expect(top.payload.openCatalogSource).toEqual({ kind: 'mine', value: '__all__' });
+  });
+
   it('Sidebar footer renders the BodgeGene version from lib/version.js', () => {
     render(<StartScreen onOpenFile={() => {}} />);
     const footer = screen.getByTestId('ss-version-footer');

@@ -181,6 +181,16 @@ export default function StartScreen({ onOpenFile }) {
             >{STRINGS.startScreen.browse}</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <SidebarLink
+                dataTestId="ss-browse-library"
+                onClick={() => pushFullscreen({
+                  fullscreen: 'importer',
+                  payload: {
+                    target: 'library',
+                    openCatalogSource: { kind: 'mine', value: '__all__' },
+                  },
+                })}
+              >{STRINGS.startScreen.library}</SidebarLink>
+              <SidebarLink
                 dataTestId="ss-browse-primer-pool"
                 onClick={() => pushFullscreen({
                   fullscreen: 'underConstruction',
