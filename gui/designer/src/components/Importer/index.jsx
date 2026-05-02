@@ -70,6 +70,14 @@ export default function Importer({ flashMs = SIMPLE_FLASH_MS } = {}) {
     // shows the requested group expanded by default.
     const initialSrc = top?.payload?.openCatalogSource;
     if (initialSrc && initialSrc.kind) state.setActiveSource(initialSrc);
+    // Library context conflicts with simple mode (simple = drop straight
+    // into Library without preview, but biolog opening «Library» link
+    // wants to BROWSE existing entries first). Force advanced when
+    // target=library so Inspector + tabs are available. Setting persists
+    // — biolog can flip back to simple manually if they want.
+    if (target === 'library' && importerMode === 'simple') {
+      setImporterMode('advanced');
+    }
     // state.addFiles / setActiveSource are stable (useCallback) but we
     // deliberately run once per mount; opening the Importer again
     // creates a new instance.
@@ -518,6 +526,8 @@ export default function Importer({ flashMs = SIMPLE_FLASH_MS } = {}) {
                 || !!edits.editedAnnotations
                 || !!edits.editedSequence
               }
+              isCatalogSource={currentItem?._source === 'catalog'}
+              hasCurrentProject={!!useStore.getState().currentProjectId}
               busyConfirm={busyConfirm}
               target={target}
             />

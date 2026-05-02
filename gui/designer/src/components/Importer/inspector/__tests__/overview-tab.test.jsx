@@ -27,10 +27,10 @@ const ITEM = {
 };
 
 describe('M-B.2 K3 — OverviewTab', () => {
-  it('1) renders PlasmidMiniMap (160 px) + types strip', () => {
+  it('1) renders PlasmidMiniMap (180 px) + types strip', () => {
     render(<OverviewTab item={ITEM} />);
     const mini = screen.getByTestId('mock-mini-map');
-    expect(mini.dataset.size).toBe('160');
+    expect(mini.dataset.size).toBe('180');
     expect(screen.getByTestId('importer-overview-types')).toBeTruthy();
   });
 

@@ -154,13 +154,21 @@ describe('M-B.2 K1 — Importer single-screen flow', () => {
   });
 
   it('7) Simple mode Canvas action runs handleSimpleImport, shows toast + flash, then auto-closes', async () => {
+    // target='project' here — simple mode is force-upgraded to advanced
+    // when target='library' (M-B.2 follow-up: Library context expects
+    // preview, not silent drop). Project target preserves simple mode.
+    // Need a currentProject too — Canvas button is now disabled without
+    // one (M-B.2 follow-up: «откройте проект сначала» tooltip).
     useStore.setState((state) => {
       state.importerMode = 'simple';
       state.canvas.navStack = [
         { fullscreen: 'dag', payload: null },
-        { fullscreen: 'importer', payload: { target: 'library' } },
+        { fullscreen: 'importer', payload: { target: 'project' } },
       ];
       state.canvas.activeFullscreen = 'importer';
+      state.projects = { p1: { id: 'p1', name: 'TestProj', containerIds: [], updatedAt: new Date().toISOString() } };
+      state.currentProjectId = 'p1';
+      state._projectLifecycle = { p1: {} };
     });
     render(<Importer flashMs={20} />);
     const dz = screen.getByTestId('importer-catalog-dropzone');

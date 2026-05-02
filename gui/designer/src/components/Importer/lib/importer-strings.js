@@ -96,7 +96,9 @@ export const IMPORTER_STRINGS = {
 
   // ActionsBar (single + multi)
   actionCanvas: 'На канвас',
+  actionCanvasNoProjectTitle: 'Откройте проект, чтобы добавить на канвас',
   actionLibrary: 'В библиотеку',
+  actionLibraryCopy: 'Скопировать в библиотеку',
   actionAnnotate: '📥 Авто-аннотация',
   actionDownloadGB: '💾 Скачать как .gb',
   actionDeleteSession: '🗑 Удалить из сессии',

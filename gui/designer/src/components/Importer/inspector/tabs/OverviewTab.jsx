@@ -33,7 +33,18 @@ export default function OverviewTab({ item }) {
     cats.selection.length || cats.promoters.length || cats.origins.length || cats.tags.length;
 
   return (
-    <div data-testid="importer-tab-panel-overview" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div
+      data-testid="importer-tab-panel-overview"
+      style={{
+        display: 'grid',
+        // 2-col layout: mini-map fixed 240px (enough for 160px svg +
+        // overlay leader-labels overflow), summary fills remaining space.
+        // Stops mini-map drowning in 982px of empty horizontal void.
+        gridTemplateColumns: '240px 1fr',
+        gap: 14,
+        alignItems: 'start',
+      }}
+    >
       <div
         data-testid="importer-overview-mini-map"
         style={{
@@ -48,7 +59,7 @@ export default function OverviewTab({ item }) {
           length={length}
           topology={topology}
           annotations={item.annotations || []}
-          size={160}
+          size={180}
           mode="overlay"
           disableHoverOverlay
         />
@@ -59,8 +70,9 @@ export default function OverviewTab({ item }) {
           background: 'var(--surface-1)',
           border: '0.5px solid var(--border-subtle)',
           borderRadius: 'var(--radius-md)',
-          padding: 10,
+          padding: 12,
           display: 'flex', flexDirection: 'column', gap: 10,
+          minWidth: 0,
         }}
       >
         <div

@@ -20,6 +20,8 @@ export default function ActionsBar({
   libraryEnabled = true,
   busyConfirm = false,
   target = 'project',
+  isCatalogSource = false,
+  hasCurrentProject = true,
 }) {
   const [overflowOpen, setOverflowOpen] = useState(false);
   const overflowRef = useRef(null);
@@ -54,41 +56,48 @@ export default function ActionsBar({
         {target === 'library' ? S.confirmHintLibrary : S.confirmHintProject}
       </div>
 
-      {!isMulti && (
-        <button
-          type="button"
-          data-testid="importer-action-canvas"
-          onClick={() => fire('canvas')}
-          disabled={!hasParsedItem || busyConfirm}
-          style={{
-            fontSize: 12, padding: '6px 12px',
-            background: 'var(--accent-500)',
-            color: 'var(--surface-1)',
-            border: 'none',
-            borderRadius: 'var(--radius-md)',
-            cursor: hasParsedItem && !busyConfirm ? 'pointer' : 'not-allowed',
-            opacity: hasParsedItem && !busyConfirm ? 1 : 0.5,
-            fontWeight: 500,
-          }}
-        >{busyConfirm ? S.confirmBusy : S.actionCanvas}</button>
-      )}
+      {/*
+        Action ordering depends on target: when biolog opened Library
+        (target=library), the primary action is to land the item in
+        their Library — «На канвас» becomes secondary and gated by
+        currentProject. When opened from a project (target=project),
+        canvas is primary and library is secondary.
 
-      {!isMulti && libraryEnabled && (
+        Catalog items (isCatalogSource) get «Скопировать в библиотеку»
+        instead of «В библиотеку» — explicit that we're creating a copy,
+        not modifying the catalog source.
+      */}
+      {!isMulti && target === 'library' && (
         <button
           type="button"
           data-testid="importer-action-library"
           onClick={() => fire('library')}
           disabled={!hasParsedItem || busyConfirm}
-          style={{
-            fontSize: 12, padding: '6px 12px',
-            background: 'transparent',
-            color: 'var(--text-secondary)',
-            border: '0.5px solid var(--border-default)',
-            borderRadius: 'var(--radius-md)',
-            cursor: hasParsedItem && !busyConfirm ? 'pointer' : 'not-allowed',
-            opacity: hasParsedItem && !busyConfirm ? 1 : 0.5,
-          }}
-        >{S.actionLibrary}</button>
+          style={primaryButtonStyle(hasParsedItem && !busyConfirm)}
+        >{busyConfirm ? S.confirmBusy : (isCatalogSource ? S.actionLibraryCopy : S.actionLibrary)}</button>
+      )}
+
+      {!isMulti && (
+        <button
+          type="button"
+          data-testid="importer-action-canvas"
+          onClick={() => fire('canvas')}
+          disabled={!hasParsedItem || busyConfirm || !hasCurrentProject}
+          title={!hasCurrentProject ? S.actionCanvasNoProjectTitle : undefined}
+          style={target === 'project'
+            ? primaryButtonStyle(hasParsedItem && !busyConfirm && hasCurrentProject)
+            : secondaryButtonStyle(hasParsedItem && !busyConfirm && hasCurrentProject)}
+        >{(target === 'project' && busyConfirm) ? S.confirmBusy : S.actionCanvas}</button>
+      )}
+
+      {!isMulti && target === 'project' && libraryEnabled && (
+        <button
+          type="button"
+          data-testid="importer-action-library"
+          onClick={() => fire('library')}
+          disabled={!hasParsedItem || busyConfirm}
+          style={secondaryButtonStyle(hasParsedItem && !busyConfirm)}
+        >{isCatalogSource ? S.actionLibraryCopy : S.actionLibrary}</button>
       )}
 
       <div ref={overflowRef} style={{ position: 'relative' }}>
@@ -165,5 +174,30 @@ function overflowItemStyle(disabled) {
     color: disabled ? 'var(--text-tertiary)' : 'var(--text-secondary)',
     cursor: disabled ? 'not-allowed' : 'pointer',
     opacity: disabled ? 0.5 : 1,
+  };
+}
+
+function primaryButtonStyle(enabled) {
+  return {
+    fontSize: 12, padding: '6px 12px',
+    background: 'var(--accent-500)',
+    color: 'var(--surface-1)',
+    border: 'none',
+    borderRadius: 'var(--radius-md)',
+    cursor: enabled ? 'pointer' : 'not-allowed',
+    opacity: enabled ? 1 : 0.5,
+    fontWeight: 500,
+  };
+}
+
+function secondaryButtonStyle(enabled) {
+  return {
+    fontSize: 12, padding: '6px 12px',
+    background: 'transparent',
+    color: 'var(--text-secondary)',
+    border: '0.5px solid var(--border-default)',
+    borderRadius: 'var(--radius-md)',
+    cursor: enabled ? 'pointer' : 'not-allowed',
+    opacity: enabled ? 1 : 0.5,
   };
 }
