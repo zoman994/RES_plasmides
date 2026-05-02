@@ -126,6 +126,11 @@ export const IMPORTER_STRINGS = {
   multiBatchLibrary: (n) => `В библиотеку (${n})`,
   multiActionDeleteAll: '🗑 Удалить весь batch',
   multiRemoveAria: 'Удалить из списка',
+  multiColName: 'Имя',
+  multiColLength: 'Длина',
+  multiColRegions: 'Регионов',
+  multiColAnnotate: 'Аннот.',
+  multiCanvasDisabledTitle: 'Доступно для одиночной загрузки',
 
   // Region count helper
   summaryRegionCount: (n) => `${n} регионов`,
