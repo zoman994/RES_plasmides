@@ -61,9 +61,12 @@ export const IMPORTER_STRINGS = {
   tabAnnotations: 'Аннотации',
   tabHistory: 'История',
   tabHistoryPlaceholder: 'История появится после первого commit\'а в Container Window (M-D).',
+  tabHistoryEmptyM_D: 'commits нет — появятся после M-D Container Window.',
   tabOverviewPlaceholderK1: 'Здесь будет PlasmidMiniMap + категории СЕЛЕКЦИЯ / ПРОМОТОРЫ / ORIGIN / TAGS (K3).',
   tabSequencePlaceholderK1: 'SequenceMapView read-only смонтируется тут после K4.',
   tabAnnotationsPlaceholderK1: 'AnnotationEditor смонтируется тут после K4.',
+  sequenceReadOnly: 'read-only',
+  annotationsCount: (n) => `${n} аннотаций`,
 
   // SessionSummary
   sessionSummaryTitle: '✓ Уже добавлено в этой сессии',

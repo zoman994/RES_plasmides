@@ -2,6 +2,9 @@ import { STRINGS } from '../../../lib/strings';
 import InlineEditableTitle from './InlineEditableTitle';
 import TabBar from './tabs/TabBar';
 import OverviewTab from './tabs/OverviewTab';
+import SequenceTab from './tabs/SequenceTab';
+import AnnotationsTab from './tabs/AnnotationsTab';
+import HistoryTab from './tabs/HistoryTab';
 import { getRegions } from '../../../annotation-model';
 
 const S = STRINGS.importer;
@@ -75,31 +78,31 @@ export default function SingleInspector({
         data-testid="importer-single-tab-content"
         style={{ flex: 1, overflowY: 'auto', padding: 14, minHeight: 0 }}
       >
+        {/* Tab panels: lazy-mount via React conditional render. Heavy
+            components (SequenceMapView, AnnotationEditor) only exist in
+            DOM when their tab is active — that's the V49 50-sec hang fix.
+            On switch back to overview both tabs unmount and DOM nodes
+            destroy. */}
         {activeTab === 'overview' && <OverviewTab item={displayItem} />}
-        {/* SequenceTab + AnnotationsTab + HistoryTab land in K4 — lazy
-            mount keeps V49 fix invariant: heavy components don't exist in
-            DOM until activeTab matches. K3 stub kept here so the orchestra-
-            tor still mounts something for non-overview activeTab values. */}
         {activeTab === 'sequence' && (
-          <div data-testid="importer-tab-panel-sequence" style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-            {S.tabSequencePlaceholderK1}
-          </div>
+          <SequenceTab
+            sequence={edits?.editedSequence ?? item.sequence}
+            annotations={displayAnnotations}
+            topology={item.topology || 'linear'}
+            name={item.name || item._fileName}
+          />
         )}
         {activeTab === 'annotations' && (
-          <div data-testid="importer-tab-panel-annotations" style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-            {S.tabAnnotationsPlaceholderK1}
-          </div>
+          <AnnotationsTab
+            annotations={displayAnnotations}
+            seqLength={length}
+            onUpdateEdits={onUpdateEdits}
+          />
         )}
         {activeTab === 'history' && showHistory && (
-          <div data-testid="importer-tab-panel-history" style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-            {S.tabHistoryPlaceholder}
-          </div>
+          <HistoryTab commits={item.commits || []} />
         )}
       </div>
     </div>
   );
 }
-
-// onUpdateEdits surface stays available for K4 AnnotationsTab; suppress lint.
-// eslint-disable-next-line no-unused-vars
-function _onUpdateEditsRef(p) { return p; }
