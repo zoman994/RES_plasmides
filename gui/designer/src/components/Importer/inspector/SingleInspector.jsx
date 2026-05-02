@@ -95,12 +95,14 @@ export default function SingleInspector({
       <div
         data-testid="importer-single-tab-content"
         style={{
-          flex: 1, overflowY: 'auto', padding: 14, minHeight: 0,
-          // Reserve scrollbar gutter so width doesn't jump when content
-          // overflows mid-render — prevents SequenceMapView re-measure loop
-          // (renders ~120 chars per line → scrollbar appears → width
-          // shrinks by ~17px → re-measures → ~100 chars). Now constant.
-          scrollbarGutter: 'stable',
+          flex: 1, padding: 14, minHeight: 0,
+          // overflow-y:scroll (not auto) keeps the scrollbar always
+          // visible — width never jumps mid-render. Earlier
+          // scrollbar-gutter:stable depended on browser support and
+          // applied too late on Vivaldi → SequenceMapView measured full
+          // width then re-measured narrow once content overflowed.
+          // Constant scrollbar-track width = constant clientWidth.
+          overflowY: 'scroll',
         }}
       >
         {/* Tab panels: lazy-mount via React conditional render. Heavy

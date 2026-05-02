@@ -97,7 +97,12 @@ export default function LinearFeatureBar({ annotations = [], seqLength = 0, onSe
       return 0;
     });
 
-    // Y staggering uses the post-shift label X (cx + dir * SHIFT).
+    // Y staggering uses the post-shift label X (cx + dir * SHIFT). After
+    // shifting, clamp label X within the SVG width so labels never spill
+    // outside the visible bar — and compute available text width so we
+    // can truncate names that don't fit.
+    const PADDING = 8;
+    const MIN_LABEL_W = 40;
     const ll = [];
     let lastLabelEdge = -Infinity;
     let row = 0;
@@ -105,12 +110,22 @@ export default function LinearFeatureBar({ annotations = [], seqLength = 0, onSe
       const x = small[i];
       const cx = small_cx[i];
       const dir = dirs[i];
-      const labelX = cx + dir * ANGLED_SHIFT_PX;
+      let labelX = cx + dir * ANGLED_SHIFT_PX;
+      // Clamp: keep ≥PADDING from edges. If clamp pushes label opposite
+      // to declared dir, recompute dir so anchor stays consistent.
+      if (labelX < PADDING) { labelX = PADDING; }
+      if (labelX > width - PADDING) { labelX = width - PADDING; }
+      // Available text width depends on dir + remaining space on that side.
+      const availW = dir > 0
+        ? Math.max(MIN_LABEL_W, width - labelX - 4)
+        : dir < 0
+          ? Math.max(MIN_LABEL_W, labelX - 4)
+          : Math.max(MIN_LABEL_W, Math.min(labelX, width - labelX) * 2 - 4);
       if (labelX - lastLabelEdge < COLLISION_PX) row += 1; else row = 0;
       lastLabelEdge = labelX;
       ll.push({
         idx: x.idx, ann: x.ann, color: x.color,
-        cx, dir, labelX,
+        cx, dir, labelX, availW,
         y: row * (LABEL_H + LABEL_GAP_PX),
       });
     }
@@ -199,7 +214,7 @@ export default function LinearFeatureBar({ annotations = [], seqLength = 0, onSe
                 fontFamily="var(--font-ui)"
                 fill="var(--text-primary)"
                 style={{ paintOrder: 'stroke fill', stroke: 'var(--surface-1)', strokeWidth: 2 }}
-              >{l.ann.name || l.ann.type}</text>
+              >{truncate(l.ann.name || l.ann.type, Math.max(4, Math.floor(l.availW / 6)))}</text>
             </g>
           );
         })}
