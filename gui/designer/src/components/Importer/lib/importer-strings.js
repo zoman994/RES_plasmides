@@ -1,13 +1,13 @@
 /**
- * STRINGS.importer namespace (M-B.1 K2; expanded in M-B.2 K1 with single-screen
- * + tab-bar copy, expanded again in K6 with full catalog group / summary
- * category / session badge keys). Imported and merged into the global STRINGS
- * dict by `lib/strings.js`. Kept in a sibling file so component-local strings
- * stay near their UI without forcing strings.js to grow into every component
- * during M-B.
+ * STRINGS.importer namespace (M-B.1 K2; rewritten in M-B.2 K1 for the
+ * single-screen layout, expanded again in K2 (catalog), K3 (inspector
+ * + meta + actions), K4 (lazy tabs), K5 (multi table), K6 (sweep + dead
+ * key removal). Imported and merged into the global STRINGS dict by
+ * `lib/strings.js`. Kept in a sibling file so component-local strings
+ * stay near their UI without forcing strings.js to grow into every
+ * component during M-B.
  */
 export const IMPORTER_STRINGS = {
-  fullscreenTitle: 'Импорт',
   toProjectTitle: 'Импорт в проект',
   toLibraryTitle: 'Импорт в библиотеку',
 
@@ -20,10 +20,8 @@ export const IMPORTER_STRINGS = {
 
   // Header counts
   filesReady: (n) => `Файлов: ${n}`,
-  fileError: (name, msg) => `${name}: ${msg}`,
 
   // CatalogColumn (M-B.2 K2 — full source set + drill-down + flat search).
-  catalogTitle: 'Каталог',
   catalogSearchPlaceholder: 'Поиск (имя, описание, >5kb, <2k, 2k-3k)…',
   catalogPastePlaceholder: 'Вставьте sequence (Ctrl+Enter — загрузить)',
   catalogPasteSubmit: 'Загрузить',
@@ -44,12 +42,10 @@ export const IMPORTER_STRINGS = {
   catalogFlatEmpty: 'Ничего не найдено',
   catalogFlatTruncated: (total) => `Показаны первые 60 из ${total}.`,
 
-  // Drop zone footer (inside CatalogColumn, K2).
+  // Drop zone footer (inside CatalogColumn).
   catalogDropzoneIdle: 'Перетащите или выберите файл',
   catalogDropzoneAccepts: '.dna · .gb · .gbk · .fasta',
-  dropzoneIdle: 'Перетащите файл или нажмите, чтобы выбрать',
   dropzoneHover: 'Отпустите, чтобы загрузить',
-  dropzoneAccepts: 'GenBank (.gb / .gbk), FASTA (.fa / .fasta), SnapGene (.dna)',
 
   // Inspector / TabBar
   emptyInspectorHint1: 'Выберите плазмиду из каталога слева',
@@ -62,9 +58,6 @@ export const IMPORTER_STRINGS = {
   tabHistory: 'История',
   tabHistoryPlaceholder: 'История появится после первого commit\'а в Container Window (M-D).',
   tabHistoryEmptyM_D: 'commits нет — появятся после M-D Container Window.',
-  tabOverviewPlaceholderK1: 'Здесь будет PlasmidMiniMap + категории СЕЛЕКЦИЯ / ПРОМОТОРЫ / ORIGIN / TAGS (K3).',
-  tabSequencePlaceholderK1: 'SequenceMapView read-only смонтируется тут после K4.',
-  tabAnnotationsPlaceholderK1: 'AnnotationEditor смонтируется тут после K4.',
   sequenceReadOnly: 'read-only',
   annotationsCount: (n) => `${n} аннотаций`,
 
@@ -91,7 +84,6 @@ export const IMPORTER_STRINGS = {
   summaryWarnings: (n) => `${n} замечаний валидации`,
 
   // Inline title.
-  inlineTitlePlaceholder: '(без имени)',
   inlineTitleAria: 'Имя плазмиды',
 
   // ActionsBar (single + multi)
@@ -107,8 +99,6 @@ export const IMPORTER_STRINGS = {
 
   // MetaColumn
   metaTopology: 'топология',
-  metaTopologyCircular: '◯ круглая',
-  metaTopologyLinear: '— линейная',
   metaTopologyCircularTitle: 'Круглая (плазмида)',
   metaTopologyLinearTitle: 'Линейная',
   metaLengthLabel: 'длина',
@@ -191,7 +181,6 @@ export const IMPORTER_STRINGS = {
   confirmAddedMany: (n) => `Добавлено ${n} файлов в Library`,
   confirmAddedManyToProject: (n) => `Добавлено ${n} файлов в Library и проект`,
   confirmReplaced: (name) => `«${name}» заменён`,
-  confirmSkippedOne: (name) => `«${name}» пропущен`,
   confirmPrimersAdded: (n) => `+ ${n} праймеров в pool`,
   confirmFailed: (msg) => `Импорт не удался: ${msg}`,
 };
