@@ -72,10 +72,9 @@ export default function Importer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const onCancel = useCallback(() => {
-    state.reset();
-    popFullscreen();
-  }, [popFullscreen, state]);
+  // Back-out path lives in AppShell Topbar (popFullscreen) — no in-importer
+  // cancel button. SessionSummary «Открыть холст» calls state.reset +
+  // popFullscreen inline; runConfirm pops on success.
 
   const askAutoname = useCallback((info) => new Promise((resolve) => {
     setAutonamePrompt({
@@ -345,7 +344,6 @@ export default function Importer() {
       <ImporterHeader
         title={headerTitle}
         filesCount={items.length}
-        onCancel={onCancel}
       />
 
       {/* Single-screen body: Catalog | Inspector | Meta */}
@@ -497,7 +495,10 @@ export default function Importer() {
   );
 }
 
-function ImporterHeader({ title, filesCount, onCancel }) {
+function ImporterHeader({ title, filesCount }) {
+  // No back button here — AppShell Topbar already owns the back chevron
+  // (popFullscreen / closeProject) and showing two side-by-side reads as
+  // a duplicate. Title only.
   return (
     <div
       data-testid="importer-header"
@@ -507,24 +508,6 @@ function ImporterHeader({ title, filesCount, onCancel }) {
         background: 'var(--surface-1, #fff)',
       }}
     >
-      <button
-        type="button"
-        data-testid="importer-cancel"
-        onClick={onCancel}
-        aria-label={S.backButtonAria}
-        title={S.backButtonAria}
-        style={{
-          background: 'transparent',
-          border: 'none',
-          cursor: 'pointer',
-          padding: '4px 10px',
-          fontSize: 18, lineHeight: 1,
-          color: 'var(--text-primary, #1c1917)',
-          borderRadius: 'var(--radius-md, 6px)',
-        }}
-        onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-2, #f5f5f4)'; }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-      >‹</button>
       <div
         style={{
           fontSize: 14, fontWeight: 500, color: 'var(--text-primary, #1c1917)',

@@ -48,7 +48,6 @@ export const IMPORTER_STRINGS = {
   emptyLibraryFirstTimeTitle: 'Ваша библиотека пуста',
   emptyLibraryFirstTimeBody: 'Перетащите .dna / .gb / .fasta файл в зону слева внизу — или вставьте sequence через текстовое поле. Также можно выбрать готовую плазмиду из «Учебные / demo» или каталога SnapGene слева.',
   untitledItem: '(без имени)',
-  backButtonAria: 'Закрыть Importer',
 
   tabOverview: 'Обзор',
   tabSequence: 'Последовательность',

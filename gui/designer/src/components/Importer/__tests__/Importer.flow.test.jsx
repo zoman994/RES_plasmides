@@ -132,7 +132,10 @@ describe('M-B.2 K1 — Importer single-screen flow', () => {
     expect(screen.queryByTestId('importer-tab-panel-annotations')).toBeNull();
   });
 
-  it('6) Cancel pops the importer fullscreen off the nav stack', () => {
+  it('6) Topbar back button pops Importer off the nav stack (no in-importer cancel button)', () => {
+    // Importer no longer renders its own back chevron — AppShell Topbar
+    // already owns popFullscreen. Test asserts the contract: click
+    // topbar-back → activeFullscreen returns to underlying view.
     useStore.setState((state) => {
       state.canvas.navStack = [
         { fullscreen: 'dag', payload: null },
@@ -140,8 +143,12 @@ describe('M-B.2 K1 — Importer single-screen flow', () => {
       ];
       state.canvas.activeFullscreen = 'importer';
     });
+    // Ensure no duplicate back inside Importer.
     render(<Importer />);
-    fireEvent.click(screen.getByTestId('importer-cancel'));
+    expect(screen.queryByTestId('importer-cancel')).toBeNull();
+    // Topbar isn't mounted in this isolated Importer test — assert the
+    // popFullscreen action directly so the navStack contract is covered.
+    useStore.getState().popFullscreen();
     expect(useStore.getState().canvas.activeFullscreen).toBe('dag');
   });
 
