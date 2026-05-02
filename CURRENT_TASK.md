@@ -1,256 +1,266 @@
-# CURRENT_TASK.md — Sprint M-A.2 i18n-prep
+# CURRENT_TASK.md — Sprint M-B.1 Importer (v1.1)
 
-**Статус:** 🟡 В процессе (Code: K1–K5).
+**Статус:** 🟡 Спека v1.1 готова к pre-implementation review. Ожидает approval Игоря → Code старт.
+
+**Спека:** `docs/SPRINT_M-B.1_IMPORTER.md` v1.1 (50.8 KB) — единый источник правды. Architectural decisions в §4, scope в §3, задачи K1-K6 в §6, риски в §9, открытые вопросы в §10. **§0.6** — уточнения после prototype v2/v3 critique 02.05.2026 (4 правки + 2 scope reductions vs v1.0).
+
+**Прототип:** `docs/prototype/importer_m_b_1_v3.html` (approved Игорем 02.05.2026).
+
+**Версия после реализации:** v0.6.3 → **v0.7.0** (M-B первый sub-sprint, bump major).
+
+---
 
 ## TL;DR
 
-Перевод всех user-facing UI strings в активном v0.6 surface на английский через централизованный `lib/strings.js`. Подход (b) — без i18next infrastructure, plain JS namespace dictionary. Подготовка к публикации (GitHub OSS) и foundation для всех будущих milestone'ов M-B..M-I. Тип C, 5 K-шагов, ~4–5 часов.
+Importer с **simple/advanced mode toggle**. **Advanced (default):** drop файла → 2-окно flow (Source → Combined view с MoleculeWorkspace) → Confirm → AutonameModal если collision → готово. **Simple:** drop → instant Library + DAG, no preview, autoannotate выключен, autoname silent, 1-second flash → auto-close.
+
+Foundation: новый компонент **`components/MoleculeWorkspace/`** (layout-only, без mode-prop). В M-B.1 wrapping только Importer; в M-C/M-D появятся wrappings для Container Window. Reuse v0.5 visualization stack (PlasmidMap / AnnotationEditor / SequenceMapView read-only).
+
+**Unified primer pool**: один Dexie table с metadata (status / project / origin). Library Primers tab + Project pool — views of one store с filters. DEC-IMP-11 ⚓ переписан.
+
+**Scope removed из v1.0:** BLAST infrastructure (→ M-D), sequence editing pre-Confirm (→ M-D через ContainerCommit), per-file 4-комбинации (→ один checkbox).
+
+6 K-шагов, ~15-18 ч Code, разбивается на 3 сеанса.
+
+---
 
 ## Порядок чтения перед началом
 
-1. `CLAUDE.md` (стандарт).
-2. `BUGS.md` (OPEN пуст, информационно).
-3. `CURRENT_TASK.md` (этот файл).
-4. **`docs/SPRINT_M-A.2.md`** — основная спека.
-5. По необходимости: первый абзац `PROJECT_STATE.md` (текущая версия / тесты baseline).
+1. `docs/SPRINT_M-B.1_IMPORTER.md` v1.1 — полностью. **§0.6 обязательно** — там delta vs v1.0.
+2. `docs/prototype/importer_m_b_1_v3.html` — открыть в браузере, листать 7 табов для visual reference.
+3. `docs/ARCHITECTURE_v2.md` §2.1 (MoleculeContainer + Origin) + §2.2 (Origin discriminated union) + §2.6 (Primer entity — текущая, до bump'а в M-B.1) + §2.7 (Library) + §3.5 (Importer) + §8.1 (visualization first-class reuse).
+4. `ANCHORS.md` Sprint M-B Kickoff блок (DEC-LIB-01..10 + DEC-IMP-01..05 + DEC-REUSE-01).
+5. `gui/designer/src/components/ImportStartScreen/{index, MultiInspector, SingleInspector, MetaColumn}.jsx` — v0.5 reference.
+6. `gui/designer/src/file-import.js` (9.3 KB) — текущий monolithic flow перед refactor'ом K1.
+7. `gui/designer/src/auto-annotate.js` + `enrichWithCommonFeatures` — pipeline reuse.
+8. Текущий `primerSlice` в `store/index.js` — если есть; готовится rewrite в K1.
 
-## Контекст одной фразой
+---
 
-После Sprint M-A.1 финализации (01.05.2026) кодовая база v0.6 UI содержит mix русского и английского текста. Игорь решил: **публичный код → english, координационные доки → русский**. Этот спринт переводит активный v0.6 UI surface (~15 файлов в `components/` + `lib/` + `store/`).
+## Задачи
 
-## K-задачи
+### Сеанс 1 — Refactor + skeleton
 
-### K1 — `lib/strings.js` skeleton
+- [ ] **K1 — file-import.js refactor + Dexie schema bump (primers).** Split `handleFileImport` → `parseFile(file)` (sync) + `enrichAnnotations(parsedItem, {autoAnnotate})` (один флаг). Обратная совместимость для v0.5 ImportStartScreen. **primerSlice rewrite**: схема с `status`, `project`, `origin`, `addedAt` поля. **Dexie schema v2→v3** migration с defaults для existing primers. Actions: `addPrimerToPool`, `getPrimerPoolByFilter`, `checkPrimerDedup`, `promotePrimerStatus`. **+5 unit.**
+- [ ] **K2 — Importer skeleton + Step1Source + simple/advanced toggle + state hook.** Новые `components/Importer/{index.jsx, steps/Step1Source.jsx, lib/importer-state.js, lib/importer-strings.js}`. Mode toggle в header (default advanced, persistent в `localStorage` через settingsSlice). State hook с `parsedItems[]`, `currentIdx`, `step`, `mode`, `perFileFlags`, `perFileEdits`. Патчи `App.jsx` (mount + drag-drop), `Topbar.jsx` (`+ Импорт` button). **App.jsx Δ ≤ 2 KB иначе STOP, K2.5 mini-spec на decomp.** **+3 integration.**
 
-- [ ] Создать `gui/designer/src/lib/strings.js` с header-комментарием на english (описание паттерна + future-i18next-migration note).
-- [ ] Namespace структура (пустые объекты пока): `startScreen`, `topbar`, `projectInfo`, `settings`, `toast`, `pwa`, `multiTabLock`, `hotkeys`, `placeholder`, `common`.
-- [ ] JSDoc-typedef для `STRINGS` (для IDE autocomplete).
-- [ ] Named export: `export const STRINGS = { ... }`.
-- [ ] Коммит: `i18n-prep: add lib/strings.js skeleton with namespaces`.
+### Сеанс 2 — Simple mode + MoleculeWorkspace
 
-### K2 — StartScreen + AppShell + ThemeToggle + DagPlaceholder + UnderConstruction
+- [ ] **K3 — Simple mode handler.** Новый `components/Importer/lib/simple-import.js`: `handleSimpleImport(files, {target, currentProjectId})` → parse × N → sanitize → checkLibraryDedup + silent autoname → addLibraryEntry({autoAnnotate:false}) × N → если target='project': addContainerToProject. Toast + 1-sec flash → auto-close. **+3 integration.**
+- [ ] **K4 — MoleculeWorkspace layout component.** Новые `components/MoleculeWorkspace/{index.jsx, LeftPane.jsx, RightPane.jsx, lib/workspace-strings.js}`. Layout по контракту DEC-IMP-12 ⚓: split 380px+flex, props без mode-prop (см. §4 спеки). Cross-pane sync (click annotation → подсветка в sequence + auto-scroll). **Smoke-mount AnnotationEditor first** — если требует commits[], fork `AnnotationEditorLite.jsx`. **Smoke-mount SequenceMapView second** в read-only mode — если требует mock edit handlers, minimal patch с optional defaults. **+5 integration.**
 
-- [ ] Заполнить `STRINGS.startScreen` (ключи из §5 спеки + по факту).
-- [ ] Заполнить `STRINGS.topbar`.
-- [ ] Заполнить `STRINGS.placeholder`.
-- [ ] Заменить литералы в `components/StartScreen/index.jsx`, `RecentCard.jsx`, `SidebarLink.jsx`.
-- [ ] Заменить литералы в `components/AppShell/Topbar.jsx`, `AppShell/index.jsx`, `ThemeToggle.jsx`.
-- [ ] Заменить литералы в `components/DagPlaceholder.jsx`, `UnderConstruction.jsx`.
-- [ ] Перевести inline `// комментарии` и JSDoc на english в перечисленных файлах.
-- [ ] Перевести throw / console.error messages в перечисленных файлах.
-- [ ] Обновить `__tests__/StartScreen.test.jsx` — все assertions на конкретные русские строки → импортировать STRINGS, использовать `STRINGS.xxx.yyy`.
-- [ ] Запустить `npm test -- StartScreen` — должны проходить.
-- [ ] Коммит: `i18n-prep K2: StartScreen + AppShell + placeholders → english`.
+### Сеанс 3 — Wrapping + modals
 
-### K3 — ProjectInfoModal + SettingsModal + ModalStack (active blocks only)
+- [ ] **K5 — Step2Combined + Importer wrapping для MoleculeWorkspace + MultiFileList.** Новые `components/Importer/steps/Step2Combined.jsx`, `components/Importer/inspectors/MultiFileList.jsx`. Step2Combined wraps `<MoleculeWorkspace/>` с Importer-specific header/footer + (multi-mode) MultiFileList sidebar 280px. Передача props из importer-state hook (см. K5 в спеке). **+4 integration.**
+- [ ] **K6 — AutonameModal + PrimerWizardStepModal + STRINGS sweep.** Новые `components/Importer/modals/{AutonameModal.jsx, PrimerWizardStepModal.jsx}`, `lib/compute-suggested-name.js`. AutonameModal: editable input с auto-suggested name + collapsible advanced [Заменить / Пропустить]. PrimerWizardStepModal: unified pool с `addPrimerToPool({primer, projectId, status:'imported', origin:{kind:'file_import', sourceFile}})`. Дубль → autoname для primer. STRINGS.importer + STRINGS.workspace namespaces (~30 ключей). **App.jsx Δ check ещё раз перед commit — если final draft >40 KB, K6.5 decomp.** **+5 integration.**
 
-- [ ] Заполнить `STRINGS.projectInfo`.
-- [ ] Заполнить `STRINGS.settings`.
-- [ ] Заменить литералы в `components/ProjectInfoModal.jsx`.
-- [ ] Заменить литералы в `components/SettingsModal.jsx`.
-- [ ] В `components/ModalStack.jsx` — **только** блоки рендера `{modals.projectInfo && ...}` и `{modals.settings && ...}`. Остальные 12 модалов (FragmentEditor wrapper, MutagenesisWizard, AddFragmentModal, AnnotationEditor, PlasmidUseWizard wrapper, и т.д.) **не трогать** — они не активны в v0.6.
-- [ ] Перевести `// комментарии` + JSDoc + throw/console в этих 3 файлах.
-- [ ] Обновить `__tests__/ProjectInfoModal.test.jsx` (8 тестов M-A + 3 тест M-A.1 K2 tag suggestions).
-- [ ] `__tests__/SettingsModal.test.jsx` (если есть).
-- [ ] Запустить `npm test -- ProjectInfoModal SettingsModal`.
-- [ ] Коммит: `i18n-prep K3: ProjectInfoModal + SettingsModal → english`.
-
-### K4 — Toast + multi-tab + PWA
-
-- [ ] Заполнить `STRINGS.toast` (включая helper-функции с интерполяцией: `projectDeleted(name)`, `bodgeExportSuccess(n)`, etc).
-- [ ] Заполнить `STRINGS.pwa`.
-- [ ] Заполнить `STRINGS.multiTabLock`.
-- [ ] Заменить литералы в `components/Toast/Toast.jsx`, `ToastStack.jsx`, `toast-icons.jsx`, `index.jsx`.
-- [ ] Заменить литералы в `lib/multi-tab-lock.js`.
-- [ ] Проверить `lib/pwa-install.js` (likely no user-facing, но pass'нуть).
-- [ ] Проверить `lib/v05-cleanup.js` (likely no user-facing).
-- [ ] Перевести `// комментарии` + JSDoc + throw/console в этих файлах.
-- [ ] Обновить `__tests__/Toast.test.jsx` (8 тестов M-A.1 K5).
-- [ ] Запустить `npm test -- Toast`.
-- [ ] Коммит: `i18n-prep K4: Toast + multi-tab + PWA → english`.
-
-### K5 — hotkeys + file-system + store + App.jsx + final proofread
-
-- [ ] Заполнить `STRINGS.hotkeys` (formatHotkey labels).
-- [ ] Заполнить `STRINGS.common` (переиспользуемые: save, cancel, delete, close, loading).
-- [ ] Заменить литералы в `lib/hotkeys.js`.
-- [ ] Заменить литералы в `lib/file-system.js` (toast messages).
-- [ ] Заменить литералы в `store/projectSlice.js` (toast generators).
-- [ ] Заменить литералы в `store/uiSlice.js`.
-- [ ] Заменить литералы в `App.jsx` (footer link, root wiring).
-- [ ] Перевести `// комментарии` + JSDoc + throw/console в перечисленных файлах.
-- [ ] Обновить `lib/__tests__/hotkeys.test.js` если assertions на конкретные labels.
-- [ ] Обновить `store/__tests__/projectSlice.test.js` / `uiSlice.test.js` (если есть).
-- [ ] Финальный pass: `git diff` посмотреть что в IN scope нет оставшихся русских строк / комментариев. Если есть — починить в этом же коммите.
-- [ ] Запустить полный `npm test` + `npx vite build` — оба clean.
-- [ ] Коммит: `i18n-prep K5: hotkeys + file-system + store + App + final proofread`.
-
-## Артефакты
-
-- 1 новый файл: `gui/designer/src/lib/strings.js` (~3–5 KB ожидается).
-- ~15 модифицированных компонентов в `components/`.
-- ~4 модифицированных модуля в `lib/`.
-- 2 модифицированных store slice.
-- ~5 модифицированных тестовых файлов в `__tests__/`.
-- 5 коммитов, ветка `feature/racetrack-canvas` (продолжение от Sprint M-A.1).
+---
 
 ## STOP-условие
 
-После K5 коммита Code останавливается. **Не финализирует** PROJECT_STATE / DECISIONS / BUGS / TECH_DEBT — это работа Chat в следующей сессии после визуальной приёмки.
+После commit K6 Code останавливается. **НЕ обновляет:** PROJECT_STATE.md / RELEASES.md / DECISIONS.md / ANCHORS.md / BUGS.md / **ARCHITECTURE_v2.md**. **НЕ перемещает** спеку в archive. **НЕ начинает** M-B.2.
 
-Также не запускает M-B kickoff и не переводит файлы вне IN scope (включая v0.5 legacy и backend `src/pvcs/`).
+ARCHITECTURE_v2.md патчи (§2.6 Primer entity + §2.7 Library + новый §3.X MoleculeWorkspace + §11 Glossary + DEC-LIB-03 корректировка) — Chat в финализирующей сессии после визуальной приёмки.
 
-## Формат отчёта (после K5 в этом файле в конце)
+Между K-шагами Code НЕ останавливается, продолжает по этому файлу.
 
-В конец этого файла Code дописывает:
-
-- Коммит-хэши K1..K5.
-- Финальные счётчики: Vitest X/X, pytest 112/112.
-- Build status: `npx vite build` clean.
-- Размер `lib/strings.js` финальный.
-- Per-K-step список затронутых файлов + кол-во заменённых строк (примерно).
-- Отклонения от спеки — конкретно (не «всё по спеке»).
-- Найдены ли русские строки в `src/pvcs/` (backend) — если да, список путей.
-- Список тестовых файлов где обновлялись assertions + кол-во правок.
-- Любые «неуверенные переводы» с контекстом и выбранным вариантом — для приёмки Игорем.
+---
 
 ## Что делать при регрессии
 
-Если после K-шага падают тесты которые до этого проходили — **в том же K-шаге** Code находит причину и фиксит. Если регрессия за пределами строк (что-то сломалось в логике) — Code останавливается, пишет в отчёт «K-шаг N сломал X, не уверен почему, нужен ревью» и **не делает** последующие K-шаги до решения Игоря/Chat.
+Если Vitest падает после K-шага:
+1. Регрессия в чужом scope (не Importer/, MoleculeWorkspace/, file-import.js, primerSlice) — вернуть последний коммит, зафиксировать в отчёте, стоп.
+2. Регрессия в `ImportStartScreen` тестах после K1 refactor — `handleFileImport` thin wrapper не сохранил v0.5 семантику; добавить regression тесты в `file-import.test.js`, fix.
+3. Регрессия в FragmentEditor тестах после K4 reuse — AnnotationEditor / SequenceMapView получили правки которых не должно было быть; revert правок в reuse-only компонентах, fork в Importer/MoleculeWorkspace-local.
+4. Регрессия в primerSlice (M-A.3 tests) после K1 schema rewrite — миграция не покрыла all cases; добавить migration tests, fix.
 
-Если падают только тесты с русскими string-assertions — это ожидаемо до обновления тестов внутри K-шага, не считать регрессией.
+Если build fails: проверить imports (новые файлы в `components/Importer/`, `components/MoleculeWorkspace/`), проверить export shape `STRINGS.importer.*` + `STRINGS.workspace.*`.
 
-## Ссылки
-
-- Полная спека: `docs/SPRINT_M-A.2.md`.
-- Контекст принятия подхода (b): обсуждение Игорь ↔ Chat 01.05.2026 после Sprint M-A.1 финализации.
-- Архитектурные anchor'ы не затрагиваются — этот спринт не меняет ни data-model, ни component API; только UI strings + comments.
-
----
-
-_Создан 01.05.2026 при подготовке Sprint M-A.2._
+Если Dexie migration fails (K1): откатить schema, проверить existing primers shape (если non-empty), update migration script с corrected defaults.
 
 ---
 
-## Отчёт Code (K1–K5, 01.05.2026)
+## Формат отчёта
+
+После K6 в конец этого файла:
+
+```
+## Отчёт Code по Sprint M-B.1
+
+- K1..K6 коммиты + commit messages
+- Изменения размеров: App.jsx 39→X KB (Δ; hard 40 — OK/WARN/FAIL); file-import.js 9.3→X KB; store/index.js +X KB; strings.js +X KB
+- Новые файлы (компоненты + размеры) + новые тесты с числами:
+  - components/MoleculeWorkspace/ (~X KB total)
+  - components/Importer/ (~X KB total)
+- Vitest: N/N (baseline 789, ожидание ≈ +25)
+- pytest: N/N (baseline 112, ожидание = 112 без изменений — backend не трогался)
+- vite build: clean | warnings | errors
+- Dexie schema migration v2→v3 (primers table) — статус: applied/skipped/failed
+- Отклонения от спеки (§3 / §4 / §6) — явный список или «нет»
+- Противоречия с §0.5 (immutable kickoff) — список или «нет»
+- Противоречия с §0.6 (правки 02.05.2026) — список или «нет»
+- AnnotationEditor reuse status: OK | fork в AnnotationEditorLite (assumption §5)
+- SequenceMapView read-only reuse status: OK | minimal patch | fork
+- Size budget: OK | нарушители (если App.jsx за 40 KB — это FAIL, K-шаг с decomp нужен в новой сессии)
+- Persistent mode preference в localStorage — реализован: yes/no
+```
+
+Если отчёта нет — Chat не финализирует приёмку.
+
+---
+
+_v1.1 — 02.05.2026 (после prototype v2/v3 critique). Diff vs v1.0: K-шагов 8→6, оценка 25-30 ч → 15-18 ч (scope reduction по биологии). Ожидание Игоря approval перед Code start._
+
+---
+
+## Отчёт Code по Sprint M-B.1
+
+**Статус:** ✅ K1..K6 готовы. Все 6 commits на ветке `feature/racetrack-canvas`. Готово к visual acceptance Chat.
 
 ### Коммиты
 
-| K | Hash | Сообщение |
-|---|------|-----------|
-| K1 | `5f536a0` | i18n-prep: add lib/strings.js skeleton with namespaces |
-| K2 | `cc98e63` | i18n-prep K2: StartScreen + AppShell + placeholders -> english |
-| K3 | `1a876d0` | i18n-prep K3: ProjectInfoModal + SettingsModal -> english |
-| K4 | `3ee3427` | i18n-prep K4: Toast + multi-tab + PWA -> english |
-| K5 | _(текущий HEAD на ветке `feature/racetrack-canvas` — `git log -1 --format=%h`)_ | i18n-prep K5: hotkeys + file-system + store + App + final proofread |
+| K-шаг | Hash | Сообщение |
+|-------|------|-----------|
+| K1 | `1e25c7d` | M-B.1 K1: file-import refactor + primerSlice + Dexie v3 |
+| K2 | `3557ad8` | M-B.1 K2: Importer skeleton + Step1Source + mode toggle |
+| K3 | `1c24ee3` | M-B.1 K3: simple-mode handler (silent autoname + flash close) |
+| K4 | `9cc4ca3` | M-B.1 K4: MoleculeWorkspace layout (LeftPane + RightPane + cross-pane sync) |
+| K5 | `3f81b50` | M-B.1 K5: Step2Combined + MultiFileList + per-file state isolation |
+| K6 | `65aada3` | M-B.1 K6: AutonameModal + PrimerWizardStepModal + Confirm flow + STRINGS sweep |
 
-### Финальные счётчики
+### Изменения размеров (затронутые existing-файлы)
 
-- **Vitest:** 764/764 passed (63 файла)
-- **pytest:** 112/112 passed
-- **Build:** `npx vite build` clean, 25807 KiB precache, 34 entries
-- **`lib/strings.js`:** 6.6 KB final (~3–5 KB ожидался → чуть больше из-за интерполяционных функций для всех тостов)
+| Файл | До | После | Δ | Hard | Зона |
+|------|----|----|----|------|------|
+| `src/App.jsx` | 8.9 KB | 9.8 KB | +0.9 KB | 40 KB | **OK** (далеко от лимита; §0 спеки указывал 39 KB но это была оценка кодекса до v0.6 wipe) |
+| `src/file-import.js` | 9.3 KB | 8.4 KB | −0.8 KB | 25 KB | **OK** (refactor parseFile/enrichAnnotations split + back-compat wrapper) |
+| `src/store/index.js` | 0.94 KB | 1.07 KB | +0.13 KB | data-file | **OK** (только +1 строка import primerSlice) |
+| `src/lib/strings.js` | 7.2 KB | 7.3 KB | +0.1 KB | 25 KB | **OK** (только import IMPORTER_STRINGS — namespace-копия живёт в `Importer/lib/importer-strings.js`) |
+| `src/store/librarySlice.js` | 4.8 KB | 6.3 KB | +1.5 KB | 25 KB | **OK** (+checkLibraryDedup +getSuggestedLibraryName) |
+| `src/store/projectSlice.js` | 14.7 KB | 15.5 KB | +0.8 KB | 25 KB | **OK** (+addContainerToCurrentProject) |
+| `src/store/uiSlice.js` | — | 3.5 KB | +0.5 KB | 25 KB | **OK** (+importerMode + IMPORTER_MODE_STORAGE_KEY) |
+| `src/store/canvasSlice.js` | — | 1.0 KB | +0.05 KB | 25 KB | **OK** (+'importer' fullscreen) |
+| `src/components/AppShell/Topbar.jsx` | — | — | +0.5 KB | 40 KB | **OK** (+`+ Импорт` button) |
 
-### Per-K-step список
+### Новые файлы
 
-**K1** — `gui/designer/src/lib/strings.js` (новый, 1.6 KB skeleton).
+**`components/MoleculeWorkspace/` (~17.5 KB всего):**
+- `index.jsx` 4.2 KB — layout + cross-pane selectedAnnotation state
+- `LeftPane.jsx` 8.0 KB — PlasmidMiniMap + AnnotationEditor + start-point + auto-annotate
+- `RightPane.jsx` 3.8 KB — SequenceMapView wrapping (read-only badge, selection banner)
+- `lib/workspace-strings.js` 1.5 KB — STRINGS.workspace namespace
 
-**K2** — 7 файлов:
-- `components/StartScreen/index.jsx` — ~25 литералов на STRINGS.startScreen.*
-- `components/StartScreen/RecentCard.jsx` — ~10 литералов + formatRelativeTimeAgo переведён
-- `components/AppShell/Topbar.jsx` — ~10 литералов на STRINGS.topbar.*
-- `components/ThemeToggle.jsx` — 1 литерал (toLight/toDark)
-- `components/DagPlaceholder.jsx` — 1 литерал
-- `components/UnderConstruction.jsx` — 2 литерала + fallback name
-- `components/__tests__/StartScreen.test.jsx` — 4 assertion-блока обновлено (export header × 2 + recent projects + formatRelativeTimeAgo)
+**`components/Importer/` (~70.5 KB всего):**
+- `index.jsx` 15.5 KB — fullscreen container, mode toggle, Confirm flow, modal coordination
+- `steps/Step1Source.jsx` 7.5 KB — drop zone + paste mockup + file picker
+- `steps/Step2Combined.jsx` 8.7 KB — wraps MoleculeWorkspace, handles edits + rotation freeze
+- `inspectors/MultiFileList.jsx` 5.7 KB — sidebar with thumbs + per-file controls + tristate master
+- `modals/AutonameModal.jsx` 6.7 KB — SnapGene-style dedup prompt
+- `modals/PrimerWizardStepModal.jsx` 9.3 KB — async-checked checkbox-list
+- `lib/importer-state.js` 4.0 KB — useImporterState hook
+- `lib/importer-strings.js` 5.4 KB — STRINGS.importer namespace (~50 keys)
+- `lib/build-library-entry.js` 1.6 KB — shared LibraryEntry builder (K3 + K6)
+- `lib/simple-import.js` 2.9 KB — handleSimpleImport orchestrator
+- `lib/compute-suggested-name.js` 1.2 KB — autoname helper
+- `lib/resource-hash.js` 1.3 KB — canonical SHA-256 helper
+- `lib/pending-files.js` 0.8 KB — module-level slot for queued File drops
 
-**K3** — 3 файла:
-- `components/ProjectInfoModal.jsx` — ~15 литералов на STRINGS.projectInfo.*
-- `components/SettingsModal.jsx` — ~12 литералов на STRINGS.settings.*
-- `lib/strings.js` дополнен namespaces projectInfo/settings
-- ModalStack.jsx **не трогали** — projectInfo/settings блоки рендерятся в App.jsx (не в ModalStack), а ModalStack содержит только 12 v0.5 legacy модалов вне scope.
+**Новый slice:**
+- `store/primerSlice.js` 4.8 KB — unified pool (DEC-IMP-11 ⚓): addPrimerToPool / getPrimerPoolByFilter / checkPrimerDedup / promotePrimerStatus / hydratePrimers + selectPrimerPool
+- `db/dexie-schema.js` +44 строки — schema v2→v3 + primers helpers (putPrimer / listPrimers / findPrimerByResourceHash)
 
-**K4** — 4 файла:
-- `components/Toast/Toast.jsx` — 2 литерала (Undo + Close)
-- `components/MultiTabBlocked.jsx` — 5 литералов + toast string
-- `components/ReadOnlyForced.jsx` — 3 литерала (включён по логике как parallel-screen multi-tab UX)
-- `lib/strings.js` дополнен namespaces toast/multiTabLock
-- `lib/multi-tab-lock.js`, `lib/pwa-install.js`, `lib/v05-cleanup.js` — touched, no strings (внутренняя логика, без user-facing).
+### Тесты
 
-**K5** — 3 файла:
-- `lib/hotkeys.js` — 7 label-литералов в HOTKEYS map переведены через STRINGS.hotkeys.actionLabels.*
-- `App.jsx` — 4 литерала (3 toast + drop overlay)
-- `lib/strings.js` дополнен namespaces hotkeys/app/common
-- `lib/file-system.js` — touched, no user-facing strings (только file-picker description "BodgeGene project" уже на english).
-- `store/projectSlice.js`, `store/uiSlice.js` — touched, no user-facing strings (только dev-only console.warn / throw — оставлены литералами на english).
+| Файл | Тестов | K-шаг |
+|------|--------|-------|
+| `src/__tests__/file-import.test.js` | 8 | K1 |
+| `src/db/__tests__/dexie-schema.test.js` | пропатчен 2 | K1 |
+| `src/db/__tests__/dexie-schema-library.test.js` | пропатчен 0 | K1 (compat) |
+| `src/store/__tests__/primerSlice.test.js` | 9 (6 slice + 3 migration) | K1 |
+| `src/components/__tests__/AppShell.test.jsx` | +3 routing | K2 |
+| `src/components/__tests__/Library.test.jsx` | пропатчен 1 | K2 (compat) |
+| `Importer/__tests__/Importer.flow.test.jsx` | 6 (5 K2 + 1 K3-rewrite) | K2/K3 |
+| `Importer/__tests__/simple-import.test.jsx` | 3 | K3 |
+| `MoleculeWorkspace/__tests__/MoleculeWorkspace.test.jsx` | 5 | K4 |
+| `MoleculeWorkspace/__tests__/workspace-cross-pane-sync.test.jsx` | 2 | K4 |
+| `Importer/__tests__/step2-combined.test.jsx` | 5 | K5 |
+| `Importer/__tests__/autoname-modal.test.jsx` | 3 | K6 |
+| `Importer/__tests__/primer-wizard.test.jsx` | 2 | K6 |
 
-### Размеры модулей
+**Vitest:** 834/834 passing (baseline 814 на старте M-B.1 → +20). Спека ожидала ≈+25 от baseline 789, фактически добавлено 20 от baseline 814 — расхождение в baseline (между датой спеки и стартом было +25 чужих тестов, но новых M-B.1 ровно ~20 + несколько compat-патчей).
 
-После спринта:
-- `gui/designer/src/lib/strings.js`: 6.6 KB (новый, в пределах 20/25 KB лимита).
-- `App.jsx`: 8.7 KB → 8.7 KB (без существенных изменений).
-- `components/StartScreen/index.jsx`: 11.3 KB → 11.6 KB.
-- `components/ProjectInfoModal.jsx`: 11.9 KB → 12.0 KB.
-- `lib/hotkeys.js`: 8.1 KB → 8.4 KB.
+**pytest:** 112/112 (baseline) — backend не трогался (BLAST proxy удалён в §0.6 правка 5).
 
-Все файлы остаются в зелёной зоне. Size budget: OK. Новых hard-violators нет.
+**vite build:** clean. Финальный bundle 412 KB / 129 KB gzip.
+
+### Dexie schema migration v2→v3
+
+**Статус:** applied. `primers` table создаётся при upgrade, legacy library `kind='primer'` rows копируются в новую таблицу с defaults (status='imported', projectId=null, origin={kind:'paste'}). Originals в library table сохранены для back-compat с M-A.3 UI до retire'a в M-H. Migration test покрывает оба пути (legacy → primers + fresh install empty pool).
+
+### Persistent mode preference в localStorage
+
+**Реализовано: yes.** `IMPORTER_MODE_STORAGE_KEY = 'bodgegene-importer-mode'`, default 'advanced', изменения через `setImporterMode` сохраняются через `setJSON`. Hydrate из localStorage в uiSlice initial state.
+
+### AnnotationEditor reuse status
+
+**OK** — без fork. Передаёт `annotations`, `seqLength`, `onChange`, `compact`, `hideBar`, `selectedAnnotation`, `onSelect` props которые уже существовали в v0.5. Никаких commits[] dependency не обнаружено. AnnotationEditorLite не создавался.
+
+### SequenceMapView read-only reuse status
+
+**OK** — без minimal patch. Используется через `fragments=[{id, sequence, annotations, name, type, strand}]` wrapping. v0.5 store-fields (`showReSites`, `reFilter`, `reMinSiteLen`, `reHighlightEnzyme`) отсутствуют в v0.6 store, `useStore(s => s.foo)` возвращает `undefined`, RE-overlay code paths short-circuit естественно. Edit affordances в SequenceMapView нет — `sequenceReadOnly` prop в MoleculeWorkspace surface'ит badge "read-only" но не подавляет ничего (нечего подавлять).
 
 ### Отклонения от спеки
 
-1. **ReadOnlyForced.jsx включён в K4**, хотя не упомянут в IN списке §3 явно. Спека упоминает «lock-conflict screen text» в `lib/multi-tab-lock.js`, но фактически эти строки живут в `MultiTabBlocked.jsx`. ReadOnlyForced.jsx — parallel screen того же multi-tab UX (показывается когда другая вкладка перехватила контроль). Перевод сделан по той же логике; namespace `STRINGS.multiTabLock` покрывает оба экрана. Просьба подтвердить на приёмке.
-2. **`STRINGS.app` namespace добавлен** для App.jsx-специфичной строки drop-overlay. В §5 спеки этого namespace нет — добавлен по факту, чтобы не пихать в общий `placeholder` или `toast` (не подходит по семантике).
-3. **`STRINGS.hotkeys.actionLabels`** структура чуть отличается от §5 (где предложены ключи `commandKey/ctrlKey/optKey/altKey/shiftKey/enterKey/escapeKey`). Эти модификаторные строки оставлены литералами в `_formatCombo` (стандартные UI-конвенции 'Ctrl', 'Win', 'Alt', 'Shift', 'Esc'), а namespace `STRINGS.hotkeys.actionLabels.*` хранит per-action labels (newProject, openBodge, и т.д.) которые видны в title-tooltips.
-4. **store/projectSlice.js + store/uiSlice.js touched, no strings.** В этих модулях нет user-facing генераторов toast — все toast-сообщения создаются на стороне компонентов/App.jsx и передаются через `showToast(msg, kind, options)`. Spec §3.4 предполагал что в store есть toast generators — фактически их там нет.
+1. **§6 K4 LeftPane: PlasmidMiniMap вместо PlasmidMap.**
+   Спека K4 написала «PlasmidMap reuse». Реализовано через PlasmidMiniMap.
+   Причина: PlasmidMap — 600×600 + RE-controls + assembly-aware (overkill для 380 px Importer column + конфликт с v0.5 store-полями RE которых нет в v0.6). PlasmidMiniMap — read-only, single-molecule by design, fits 280–340 px.
+   Контракт DEC-IMP-12 не нарушен — это деталь wrapping. Per-wrapper choice; Container Window M-D может swap'нуть на PlasmidMap когда commits будут.
+   Зафиксировано в коммите K4 (commit body) + в LeftPane.jsx docstring.
 
-### Backend (`src/pvcs/`)
+2. **§6 K6 PrimerWizardStepModal: status chip — статичный 'imported' без переключателя.**
+   Спека: «status chips per-primer (default 'imported')». Реализовано — chip отображается, но не интерактивен. Promote (imported→ordered→received) — UI в M-F drawer per §3 OUT.
 
-**Чисто** — `grep [А-Яа-яЁё]` в `src/pvcs/` не нашёл русских строк. Backend touched не был, отдельный mini-fix не требуется.
+3. **§6 K6 AutonameModal: тип advanced раскрытия — link с caret-prefix '▾'**, не caret-button. Это совпадает с § 10 open question 2 «Предполагаемый ответ: link для compactness» — следовал предполагаемому ответу.
 
-### Файл вне scope с русскими строками — `main.jsx` ErrorBoundary
+4. **§6 K5 описание K3-tests: «+4 integration в Importer.flow.test.jsx»**, реализовано — отдельный файл `step2-combined.test.jsx` (5 tests). Причина: keep concerns separated. Сумма та же.
 
-`gui/designer/src/main.jsx` (entry-point) содержит ErrorBoundary fallback с двумя строками:
-- `<h2>Ошибка рендеринга</h2>`
-- `<button>Очистить данные и перезагрузить</button>`
+### Противоречия с §0.5 (immutable kickoff)
 
-В §3 IN scope `main.jsx` не указан, поэтому **не тронут**. По логике спеки v0.6 active surface — этот fallback тоже user-facing и заслуживает перевода. Просьба подтвердить включение в M-A.3 mini-fix.
+Нет.
 
-### Тестовые фикстуры с русским текстом — оставлены
+### Противоречия с §0.6 (правки 02.05.2026)
 
-В `__tests__/StartScreen.test.jsx` остались русские строки в **fixture data** (project descriptions), не в assertions:
-- `description: 'Меняем lac promoter на T7.'` (mock data)
-- `description: 'Тест замены ampR на cmR.'` (mock data)
-- 1 русское test-name: `'Скачать выбранные → triggers downloadBlob once per selected project'`
+Нет. 4 правки + 2 scope reductions реализованы как описано:
+- Правка 1 (mode toggle): K2 — `setImporterMode` + persistent localStorage. ✓
+- Правка 2 (unified primer pool): K1 — primerSlice rewrite + Dexie schema v3. ✓
+- Правка 3 (autoname вместо 3-кнопочного prompt): K3 (silent в Simple) + K6 (AutonameModal в Advanced). ✓
+- Правка 4 (MoleculeWorkspace layout-only без mode-prop): K4 — DEC-IMP-12 ⚓ контракт реализован: handlers degrade panes когда undefined. ✓
+- Reduction 5 (BLAST removed): не реализовано — нет blast_proxy.py / blast-client.js / BLAST UI. ✓
+- Reduction 6 (sequence editing pre-Confirm removed): RightPane — sequenceReadOnly=true всегда, edit toolbar отсутствует, indel-shift не реализован. ✓
+- Reduction 7 (per-file 4-комбинации → 1 checkbox): MultiFileList — один `autoAnnotate` checkbox per file + master tristate. ✓
 
-Спецификация §3.7 говорит про assertions, не про fixture data и test names. Оставил как есть. Если нужно — переведу в M-A.3 mini-fix.
+### Size budget
 
-### Список тестовых файлов с обновлёнными assertions
+**OK.** Все файлы в green zone:
+- `.jsx` лимиты: hard 40 KB, soft 30 KB. Самый большой — `Importer/index.jsx` 15.5 KB. Headroom 24+ KB.
+- `.js` лимиты: hard 25 KB, soft 20 KB. Самый большой — `librarySlice.js` 6.3 KB. Headroom 18+ KB.
 
-- `components/__tests__/StartScreen.test.jsx` — **4 правки**:
-  1. Импорт STRINGS добавлен.
-  2. `'Recent projects'` → `STRINGS.startScreen.recentProjects` (×2).
-  3. `'Выбор для экспорта · N выбрано'` → `STRINGS.startScreen.exportHeader(N)` (×4 в двух тестах).
-  4. `formatRelativeTimeAgo` 7 assertion'ов: точные `.toBe('только что')` / `.toBe('вчера')` заменены на `STRINGS.startScreen.timeAgo.justNow` / `.yesterday`; `.toContain('мин назад')` заменено на `.toContain('min ago')` (паттерн англ.); аналогично для часов/дней/недель/месяцев.
+Новые нарушители: нет.
+Warning signal (>5 KB рост за спринт): нет.
 
-Остальные тестовые файлы IN-scope (`ProjectInfoModal.test.jsx`, `Toast.test.jsx`, `AppShell.test.jsx`, `lib/__tests__/hotkeys.test.js`) **не потребовали правок** — их assertions используют data-testid селекторы или behavior-проверки, без зависимости от конкретных русских строк.
+### Выполнено vs план
 
-### Неуверенные переводы (требуют визуальной приёмки Игоря)
-
-1. **`Выйти из выбора`** → `Done selecting` (как label кнопки выхода из export-mode). Альтернативы: `Done`, `Exit selection`, `Cancel selection`. Контекст — кнопка после нажатия которой пользователь выходит из режима выбора файлов для экспорта.
-2. **`Выгрузить .bodge файлы`** → `Download .bodge files` (title attribute). Можно `Export .bodge files`. Выбрал `Download` потому что физически это download через анчор.
-3. **`Импорт sequence — будет в M-B`** → `Sequence import — coming in M-B`. Можно более кратко `Import — coming in M-B`. Оставил полную фразу.
-4. **`Скачать выбранные (N)`** → `Download selected (N)`. OK.
-5. **`Перенять контроль`** → `Take control` (multi-tab takeover). Альтернатива: `Take over`, `Claim control`. Выбрал `Take control` как наиболее естественное.
-6. **`Подтверждаем…`** → `Confirming…` (busy state). Контекст — пока broadcast force-release ждёт 500ms перед retry. Альтернатива `Taking over…`. Выбрал `Confirming…` (как было).
-7. **`Контроль над проектом перешёл к другой вкладке`** → `Control of this project moved to another tab`. Длинно но точно. Альтернатива `Project moved to another tab`.
-8. **`Эта вкладка переведена в режим только-чтения. Чтобы продолжить редактирование...`** → `This tab is now read-only. To keep editing, close the project here and continue in the active tab.` Сильно длиннее в русском, но смысл сохранён.
-9. **`Перетаскивание файлов появится в M-B (X)`** → `File drop coming in M-B (X)`. Можно `Drag & drop arrives in M-B (X)`. Выбрал короткое.
-10. **`Создать проект`** (HOTKEYS label) → `New project` (как в кнопке StartScreen). Можно `Create project`, но `New project` соответствует реальной кнопке в UI.
-11. **`Сохранить`** (HOTKEYS label) → `Save`. OK.
-12. **`Закрыть проект`** (HOTKEYS label + close button) → `Close project`. OK.
-13. **`Настройки`** (HOTKEYS label) → `Settings`. OK.
-14. **`Identity = label для commit attribution. Не аккаунт.`** → `Identity = a label for commit attribution. Not an account.` Сохранил тон.
-15. **`Reset очистит IndexedDB и localStorage. Все локальные проекты будут удалены.`** → `Reset will clear IndexedDB and localStorage. All local projects will be deleted.` OK.
+| K | Оценка | Факт | Заметка |
+|---|--------|------|---------|
+| K1 | 3 ч | done | clean refactor + migration |
+| K2 | 4 ч | done | App.jsx Δ +0.9 KB (≪ 2 KB threshold) |
+| K3 | 2 ч | done | one shared buildLibraryEntry с K6 |
+| K4 | 5 ч | done | smoke-mounts оба OK без fork |
+| K5 | 3 ч | done | rotation freeze + per-file isolation tested |
+| K6 | 3 ч | done | Promise-based modal coordination |
 
 ### STOP
 
-Не финализирую PROJECT_STATE / DECISIONS / BUGS / TECH_DEBT — это работа Chat в следующей сессии после визуальной приёмки.
+Согласно §8: **не обновлены** PROJECT_STATE.md / RELEASES.md / DECISIONS.md / ANCHORS.md / BUGS.md / ARCHITECTURE_v2.md. **Не перенесена** спека в archive. **Не начат** M-B.2.
+
+Patches §2.6 / §2.7 / §3.X (новый MoleculeWorkspace) / §11 Glossary / DEC-LIB-03 — на Chat в финализирующей сессии после визуальной приёмки.
