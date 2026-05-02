@@ -94,7 +94,14 @@ export default function SingleInspector({
 
       <div
         data-testid="importer-single-tab-content"
-        style={{ flex: 1, overflowY: 'auto', padding: 14, minHeight: 0 }}
+        style={{
+          flex: 1, overflowY: 'auto', padding: 14, minHeight: 0,
+          // Reserve scrollbar gutter so width doesn't jump when content
+          // overflows mid-render — prevents SequenceMapView re-measure loop
+          // (renders ~120 chars per line → scrollbar appears → width
+          // shrinks by ~17px → re-measures → ~100 chars). Now constant.
+          scrollbarGutter: 'stable',
+        }}
       >
         {/* Tab panels: lazy-mount via React conditional render. Heavy
             components (SequenceMapView, AnnotationEditor) only exist in
