@@ -22,15 +22,31 @@ export const IMPORTER_STRINGS = {
   filesReady: (n) => `Файлов: ${n}`,
   fileError: (name, msg) => `${name}: ${msg}`,
 
-  // CatalogColumn (M-B.2 K1 placeholder strings; full set in K6).
+  // CatalogColumn (M-B.2 K2 — full source set + drill-down + flat search).
   catalogTitle: 'Каталог',
   catalogSearchPlaceholder: 'Поиск (имя, описание, >5kb, <2k, 2k-3k)…',
-  catalogPlaceholderK1: 'Источники появятся после K2 (этот проект / учебные / моя библиотека / SnapGene).',
   catalogPastePlaceholder: 'Вставьте sequence (Ctrl+Enter — загрузить)',
   catalogPasteSubmit: 'Загрузить',
   catalogReplaceModeConfirm: 'Заменить весь batch одним файлом из каталога?',
 
-  // Drop zone (still inside CatalogColumn footer).
+  // CatalogColumn — group labels.
+  catalogGroupCanvas: (name) => `Этот ${name || 'проект'}`,
+  catalogGroupDemo: 'Учебные / demo',
+  catalogGroupMine: 'Моя библиотека',
+  catalogGroupSnapgene: 'Каталог SnapGene',
+  catalogEmptyProject: 'нет контейнеров в проекте',
+  catalogEmptyGroup: 'пусто',
+  catalogLoading: 'загрузка…',
+  catalogBack: 'Назад',
+  catalogUntaggedTag: 'Без тегов',
+  catalogMineFlatLabel: 'Все контейнеры',
+  catalogFlatFound: (n) => `Найдено: ${n}`,
+  catalogFlatEmpty: 'Ничего не найдено',
+  catalogFlatTruncated: (total) => `Показаны первые 60 из ${total}.`,
+
+  // Drop zone footer (inside CatalogColumn, K2).
+  catalogDropzoneIdle: 'Перетащите или выберите файл',
+  catalogDropzoneAccepts: '.dna · .gb · .gbk · .fasta',
   dropzoneIdle: 'Перетащите файл или нажмите, чтобы выбрать',
   dropzoneHover: 'Отпустите, чтобы загрузить',
   dropzoneAccepts: 'GenBank (.gb / .gbk), FASTA (.fa / .fasta), SnapGene (.dna)',
