@@ -77,8 +77,8 @@ export default function OverviewTab({ item }) {
       >
         <div
           style={{
-            fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.4,
-            color: 'var(--text-tertiary)', fontWeight: 500,
+            fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.6,
+            color: 'var(--text-secondary)', fontWeight: 600,
           }}
         >{S.summaryWhatInFile}</div>
 
@@ -114,8 +114,8 @@ export default function OverviewTab({ item }) {
           <div data-testid="importer-overview-cds" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <div
               style={{
-                fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.4,
-                color: 'var(--text-tertiary)', fontWeight: 500,
+                fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.6,
+                color: 'var(--text-secondary)', fontWeight: 600,
               }}
             >{S.summaryCdsList(remainingCDS.length)}</div>
             {cdsTop.map((r) => <ItemRow key={r.id || `${r.start}-${r.end}-${r.name}`} region={r} />)}
@@ -132,8 +132,9 @@ export default function OverviewTab({ item }) {
           <div data-testid="importer-overview-re-sites">
             <div
               style={{
-                fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.4,
-                color: 'var(--text-tertiary)', fontWeight: 500, marginBottom: 4,
+                fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.6,
+                color: 'var(--text-secondary)', fontWeight: 600,
+                marginBottom: 4,
               }}
             >{S.summaryReSites}</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 10px', fontSize: 12 }}>

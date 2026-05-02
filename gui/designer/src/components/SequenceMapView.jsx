@@ -12,7 +12,7 @@ const gcPct = s => gcPercent(s);
 
 const LABEL_WIDTH = 8; // characters reserved for position label (left margin)
 
-export default function SequenceMapView({ fragments, primers = [], circular, onAddCustomPrimer }) {
+export default function SequenceMapView({ fragments, primers = [], circular, onAddCustomPrimer, readOnly = false }) {
   const [selection, setSelection] = useState(null);
   const [dragging, setDragging] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -25,7 +25,7 @@ export default function SequenceMapView({ fragments, primers = [], circular, onA
   useEffect(() => {
     const measure = () => {
       const el = containerRef.current;
-      if (!el) return;
+      if (!el || el.clientWidth === 0) return;
       // Create a hidden span to measure 1ch in the actual font
       const probe = document.createElement('span');
       probe.style.cssText = 'position:absolute;visibility:hidden;white-space:pre;font:inherit';
@@ -34,8 +34,12 @@ export default function SequenceMapView({ fragments, primers = [], circular, onA
       const chW = probe.getBoundingClientRect().width / 100;
       el.removeChild(probe);
       if (chW <= 0) return;
-      // Reserve space: 24px padding + ~120px for primer labels on the right
-      const available = el.clientWidth - 24 - 120;
+      // Reserve space: 24px padding + 120px for primer labels (when primers
+      // exist). Importer mode (readOnly + no primers) drops the primer
+      // reservation entirely so a 1000px-wide pane fits ~130 chars instead
+      // of ~110, dramatically less wasted whitespace.
+      const primerReserve = (readOnly && (!primers || primers.length === 0)) ? 0 : 120;
+      const available = el.clientWidth - 24 - primerReserve;
       const fitChars = Math.floor(available / chW) - LABEL_WIDTH;
       const rounded = Math.floor(fitChars / 10) * 10; // round to nearest 10
       setCharsPerLine(Math.max(30, Math.min(200, rounded)));

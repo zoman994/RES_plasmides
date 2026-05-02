@@ -22,6 +22,8 @@ export default function ActionsBar({
   target = 'project',
   isCatalogSource = false,
   hasCurrentProject = true,
+  autoAnnotate = true,
+  onToggleAutoAnnotate,
 }) {
   const [overflowOpen, setOverflowOpen] = useState(false);
   const overflowRef = useRef(null);
@@ -130,6 +132,15 @@ export default function ActionsBar({
               padding: '4px 0', zIndex: 10,
             }}
           >
+            {!isMulti && (
+              <button
+                type="button"
+                role="menuitem"
+                data-testid="importer-action-auto-annotate-toggle"
+                onClick={() => { setOverflowOpen(false); onToggleAutoAnnotate?.(!autoAnnotate); }}
+                style={overflowItemStyle(false)}
+              >{autoAnnotate ? S.actionAutoAnnotateOn : S.actionAutoAnnotateOff}</button>
+            )}
             {!isMulti && (
               <button
                 type="button"

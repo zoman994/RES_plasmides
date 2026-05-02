@@ -13,11 +13,6 @@ export const IMPORTER_STRINGS = {
 
   topbarButton: '+ Импорт',
 
-  modeAdvanced: 'Расширенный',
-  modeSimple: 'Простой',
-  modeAdvancedHint: 'Расширенный режим — single-screen с каталогом, просмотром и табами «Последовательность» / «Аннотации». Можно править аннотации и повернуть origin до подтверждения.',
-  modeSimpleHint: 'Простой режим — файл уйдёт прямо в Library и DAG, без preview. Auto-annotate выключен. Подходит для batch-импорта или быстрого просмотра.',
-
   // Header counts
   filesReady: (n) => `Файлов: ${n}`,
 
@@ -114,7 +109,7 @@ export const IMPORTER_STRINGS = {
   metaLengthLabel: 'длина',
   metaOrigin: 'начало (п.н.)',
   metaOriginApply: '↻ применить',
-  metaOriginHint: (gaps) => `межгенные участки: ${gaps}`,
+  metaOriginHintLabel: 'межгенные участки',
   metaInfo: 'информация',
   metaInfoFromFile: 'Из файла',
   metaInfoEnriched: 'Дополнено',
@@ -140,21 +135,14 @@ export const IMPORTER_STRINGS = {
   confirmHintProject: 'Будет добавлено в Library и в проект.',
   confirmHintLibrary: 'Будет добавлено только в Library.',
 
-  // Keep simple-mode + autoname/primer-wizard strings as-is from M-B.1 K6.
   busyParsing: 'Парсинг файлов…',
 
-  // Simple-mode (M-B.1 K3) toasts and flash UI.
-  simpleBusy: 'Импорт…',
-  simpleFlashTitle: 'Импорт завершён',
-  simpleFlashSubtitle: 'Importer закроется автоматически',
-  simpleAddedOne: (name) => `«${name}» добавлен в Library`,
-  simpleAddedOneToProject: (name) => `«${name}» добавлен в Library и проект`,
-  simpleAddedRenamedOne: (baseName, finalName) =>
-    `«${finalName}» добавлен (был дубль с «${baseName}»)`,
-  simpleAddedMany: (n) => `Добавлено ${n} файлов в Library`,
-  simpleAddedManyToProject: (n) => `Добавлено ${n} файлов в Library и проект`,
-  simpleSkipped: (n) => `Пропущено: ${n}`,
-  simpleFailed: (msg) => `Импорт не удался: ${msg}`,
+  // Confirm flow «skipped» toast still used (autoname Skip / parse fail).
+  confirmSkipped: (n) => `Пропущено: ${n}`,
+
+  // autoAnnotate toggle in ActionsBar overflow.
+  actionAutoAnnotateOn: '✓ Автоматическая аннотация',
+  actionAutoAnnotateOff: '☐ Автоматическая аннотация',
 
   // K6 (M-B.1) — AutonameModal.
   autonameTitle: (baseName) => `«${baseName}» уже есть в Library`,

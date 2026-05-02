@@ -32,7 +32,7 @@ export default function SequenceTab({
   const length = (sequence || '').length;
 
   return (
-    <div data-testid="importer-tab-panel-sequence" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <div data-testid="importer-tab-panel-sequence" style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%', minWidth: 0 }}>
       <div
         style={{
           display: 'flex', alignItems: 'center', gap: 8,
@@ -51,10 +51,13 @@ export default function SequenceTab({
           }}
         >{S.sequenceReadOnly}</span>
       </div>
-      <SequenceMapView
-        fragments={[fragment]}
-        circular={topology === 'circular'}
-      />
+      <div style={{ width: '100%', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+        <SequenceMapView
+          fragments={[fragment]}
+          circular={topology === 'circular'}
+          readOnly
+        />
+      </div>
     </div>
   );
 }

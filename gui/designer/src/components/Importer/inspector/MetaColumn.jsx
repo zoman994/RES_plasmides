@@ -136,8 +136,14 @@ export default function MetaColumn({
           {hints && (
             <div
               data-testid="importer-meta-origin-hints"
-              style={{ marginTop: 4, fontSize: 10, color: 'var(--text-tertiary)', fontStyle: 'italic' }}
-            >{S.metaOriginHint(hints)}</div>
+              style={{ marginTop: 6, fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.5 }}
+            >
+              <div style={{
+                fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.4,
+                color: 'var(--text-tertiary)', fontWeight: 500, marginBottom: 2,
+              }}>{S.metaOriginHintLabel}</div>
+              <div style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>{hints}</div>
+            </div>
           )}
         </Card>
       )}
@@ -193,8 +199,8 @@ function Card({ label, children }) {
     >
       <div
         style={{
-          fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.4,
-          color: 'var(--text-tertiary)', fontWeight: 500,
+          fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.6,
+          color: 'var(--text-secondary)', fontWeight: 600,
         }}
       >{label}</div>
       {children}

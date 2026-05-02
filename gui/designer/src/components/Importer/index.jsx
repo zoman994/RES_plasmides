@@ -4,7 +4,6 @@ import { useStore } from '../../store';
 import { STRINGS } from '../../lib/strings';
 import { useImporterState } from './lib/importer-state';
 import { drainImporterFiles } from './lib/pending-files';
-import { handleSimpleImport } from './lib/simple-import';
 import { buildLibraryEntry } from './lib/build-library-entry';
 import { computeResourceHash } from './lib/resource-hash';
 import { enrichAnnotations } from '../../file-import';
@@ -21,8 +20,6 @@ import ActionsBar from './inspector/ActionsBar';
 import SessionSummary from './inspector/SessionSummary';
 
 const S = STRINGS.importer;
-
-const SIMPLE_FLASH_MS = 1000;
 
 /**
  * Importer fullscreen container (M-B.2 K1 single-screen rewrite).
@@ -42,21 +39,20 @@ const SIMPLE_FLASH_MS = 1000;
  * heavy-tab mount). Расширенные виды живут табами внутри Inspector с lazy
  * mount (K4 SequenceTab + AnnotationsTab).
  */
-export default function Importer({ flashMs = SIMPLE_FLASH_MS } = {}) {
+export default function Importer() {
   const navStack = useStore(s => s.canvas.navStack);
   const popFullscreen = useStore(s => s.popFullscreen);
-  const importerMode = useStore(s => s.importerMode);
-  const setImporterMode = useStore(s => s.setImporterMode);
   const showToast = useStore(s => s.showToast);
 
   const top = navStack[navStack.length - 1];
   const target = top?.payload?.target === 'library' ? 'library' : 'project';
 
-  const state = useImporterState({ mode: importerMode });
-  const [simpleBusy, setSimpleBusy] = useState(false);
+  // Importer is always in advanced mode now (M-B.2 follow-up: Игорь dropped
+  // simple/advanced toggle — single-screen with catalog/inspector/meta is
+  // the canonical flow; «не делать аннотацию» сохраняется через autoAnnotate
+  // checkbox в overflow-menu).
+  const state = useImporterState({ mode: 'advanced' });
   const [busyConfirm, setBusyConfirm] = useState(false);
-  const [flashing, setFlashing] = useState(false);
-  const flashTimerRef = useRef(null);
   const [autonamePrompt, setAutonamePrompt] = useState(null);
   const [primerWizard, setPrimerWizard] = useState(null);
 
@@ -70,72 +66,16 @@ export default function Importer({ flashMs = SIMPLE_FLASH_MS } = {}) {
     // shows the requested group expanded by default.
     const initialSrc = top?.payload?.openCatalogSource;
     if (initialSrc && initialSrc.kind) state.setActiveSource(initialSrc);
-    // Library context conflicts with simple mode (simple = drop straight
-    // into Library without preview, but biolog opening «Library» link
-    // wants to BROWSE existing entries first). Force advanced when
-    // target=library so Inspector + tabs are available. Setting persists
-    // — biolog can flip back to simple manually if they want.
-    if (target === 'library' && importerMode === 'simple') {
-      setImporterMode('advanced');
-    }
     // state.addFiles / setActiveSource are stable (useCallback) but we
     // deliberately run once per mount; opening the Importer again
     // creates a new instance.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => () => {
-    if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
-  }, []);
-
   const onCancel = useCallback(() => {
-    if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
     state.reset();
     popFullscreen();
   }, [popFullscreen, state]);
-
-  const runSimpleImport = useCallback(async () => {
-    setSimpleBusy(true);
-    try {
-      const store = useStore.getState();
-      const result = await handleSimpleImport({
-        parsedItems: state.parsedItems,
-        target,
-        currentProjectId: store.currentProjectId,
-        store,
-      });
-      const inProject = target === 'project' && !!store.currentProjectId;
-      if (result.added.length === 1) {
-        const a = result.added[0];
-        if (a._wasCollision) {
-          showToast(S.simpleAddedRenamedOne(a._baseName, a.name), 'success');
-        } else if (inProject) {
-          showToast(S.simpleAddedOneToProject(a.name), 'success');
-        } else {
-          showToast(S.simpleAddedOne(a.name), 'success');
-        }
-      } else if (result.added.length > 1) {
-        showToast(
-          inProject ? S.simpleAddedManyToProject(result.added.length) : S.simpleAddedMany(result.added.length),
-          'success',
-        );
-      }
-      if (result.skipped.length > 0) {
-        showToast(S.simpleSkipped(result.skipped.length), 'warning');
-      }
-      setFlashing(true);
-      flashTimerRef.current = setTimeout(() => {
-        flashTimerRef.current = null;
-        setFlashing(false);
-        state.reset();
-        popFullscreen();
-      }, flashMs);
-    } catch (err) {
-      showToast(S.simpleFailed(err?.message || String(err)), 'error');
-    } finally {
-      setSimpleBusy(false);
-    }
-  }, [flashMs, popFullscreen, showToast, state, target]);
 
   const askAutoname = useCallback((info) => new Promise((resolve) => {
     setAutonamePrompt({
@@ -287,7 +227,7 @@ export default function Importer({ flashMs = SIMPLE_FLASH_MS } = {}) {
         showToast(S.confirmPrimersAdded(primersAdded), 'success');
       }
       if (skipped.length > 0) {
-        showToast(S.simpleSkipped(skipped.length), 'warning');
+        showToast(S.confirmSkipped(skipped.length), 'warning');
       }
 
       // For multi-mode batch: keep biolog in the screen so they can see the
@@ -318,10 +258,6 @@ export default function Importer({ flashMs = SIMPLE_FLASH_MS } = {}) {
 
   // ActionsBar handler — single-mode actions; multi handled inside MultiInspector.
   const onAction = useCallback(async (actionId) => {
-    if (importerMode === 'simple' && (actionId === 'canvas' || actionId === 'library')) {
-      runSimpleImport();
-      return;
-    }
     if (actionId === 'canvas') {
       await runConfirm('project');
     } else if (actionId === 'library' || actionId === 'library-batch') {
@@ -376,7 +312,7 @@ export default function Importer({ flashMs = SIMPLE_FLASH_MS } = {}) {
       if (typeof window !== 'undefined' && !window.confirm(S.deleteAllConfirm)) return;
       state.reset();
     }
-  }, [currentItem, importerMode, runConfirm, runSimpleImport, showToast, state]);
+  }, [currentItem, runConfirm, showToast, state]);
 
   const onRenameCurrentItem = useCallback((nextName) => {
     if (!currentItem) return;
@@ -395,7 +331,7 @@ export default function Importer({ flashMs = SIMPLE_FLASH_MS } = {}) {
     <div
       data-testid="importer-fullscreen"
       data-target={target}
-      data-mode={importerMode}
+      data-mode="advanced"
       data-active-tab={state.activeTab}
       style={{
         flex: 1,
@@ -408,8 +344,6 @@ export default function Importer({ flashMs = SIMPLE_FLASH_MS } = {}) {
     >
       <ImporterHeader
         title={headerTitle}
-        mode={importerMode}
-        onModeChange={setImporterMode}
         filesCount={items.length}
         onCancel={onCancel}
       />
@@ -530,14 +464,13 @@ export default function Importer({ flashMs = SIMPLE_FLASH_MS } = {}) {
               hasCurrentProject={!!useStore.getState().currentProjectId}
               busyConfirm={busyConfirm}
               target={target}
+              autoAnnotate={flags.autoAnnotate !== false}
+              onToggleAutoAnnotate={(next) => fileName && state.updateFlags(fileName, { autoAnnotate: next })}
             />
           )}
         </div>
       )}
 
-      {(simpleBusy || flashing) && (
-        <SimpleFlashOverlay busy={simpleBusy && !flashing} />
-      )}
       {autonamePrompt && (
         <AutonameModal
           baseName={autonamePrompt.baseName}
@@ -564,37 +497,7 @@ export default function Importer({ flashMs = SIMPLE_FLASH_MS } = {}) {
   );
 }
 
-function SimpleFlashOverlay({ busy }) {
-  return (
-    <div
-      data-testid="importer-simple-flash"
-      data-flash-state={busy ? 'busy' : 'done'}
-      style={{
-        position: 'absolute', inset: 0,
-        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-        background: 'rgba(255,255,255,0.92)',
-        zIndex: 50,
-      }}
-    >
-      <div
-        style={{
-          fontSize: 28, marginBottom: 8,
-          color: busy ? 'var(--text-secondary)' : 'var(--accent-text, #92400e)',
-        }}
-      >{busy ? '⏳' : '✓'}</div>
-      <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-primary)' }}>
-        {busy ? S.simpleBusy : S.simpleFlashTitle}
-      </div>
-      {!busy && (
-        <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 4 }}>
-          {S.simpleFlashSubtitle}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ImporterHeader({ title, mode, onModeChange, filesCount, onCancel }) {
+function ImporterHeader({ title, filesCount, onCancel }) {
   return (
     <div
       data-testid="importer-header"
@@ -628,38 +531,6 @@ function ImporterHeader({ title, mode, onModeChange, filesCount, onCancel }) {
         }}
       >{title}</div>
 
-      <div
-        data-testid="importer-mode-toggle"
-        role="tablist"
-        style={{
-          display: 'inline-flex', borderRadius: 'var(--radius-md, 6px)',
-          border: '0.5px solid var(--border-default, #d6d3d1)',
-          overflow: 'hidden',
-        }}
-      >
-        {['advanced', 'simple'].map(m => (
-          <button
-            key={m}
-            type="button"
-            role="tab"
-            aria-selected={mode === m}
-            data-testid={`importer-mode-${m}`}
-            onClick={() => onModeChange(m)}
-            style={{
-              padding: '4px 12px',
-              fontSize: 12,
-              border: 'none',
-              background: mode === m ? 'var(--accent-50, #fef3c7)' : 'transparent',
-              color: mode === m ? 'var(--accent-text, #92400e)' : 'var(--text-secondary)',
-              fontWeight: mode === m ? 500 : 400,
-              cursor: 'pointer',
-            }}
-          >
-            {m === 'advanced' ? S.modeAdvanced : S.modeSimple}
-          </button>
-        ))}
-      </div>
-
       {filesCount > 0 && (
         <div
           data-testid="importer-files-count"
@@ -668,10 +539,6 @@ function ImporterHeader({ title, mode, onModeChange, filesCount, onCancel }) {
       )}
 
       <div style={{ flex: 1 }} />
-
-      <div style={{ fontSize: 11, color: 'var(--text-tertiary)', maxWidth: 460 }}>
-        {mode === 'advanced' ? S.modeAdvancedHint : S.modeSimpleHint}
-      </div>
     </div>
   );
 }

@@ -23,23 +23,29 @@ export default function AnnotationsTab({
   }, [onUpdateEdits]);
 
   return (
-    <div data-testid="importer-tab-panel-annotations" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <div
-        style={{
-          fontSize: 11, color: 'var(--text-tertiary)',
-        }}
-      >
+    <div
+      data-testid="importer-tab-panel-annotations"
+      style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%', minWidth: 0 }}
+    >
+      <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
         <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{S.tabAnnotations}</span>
         <span> · </span>
         <span>{S.annotationsCount(annotations.length)}</span>
       </div>
-      <div data-testid="importer-annotation-editor-wrap">
+      <div
+        data-testid="importer-annotation-editor-wrap"
+        style={{ width: '100%', minWidth: 0 }}
+      >
+        {/*
+          hideBar=false → shows the linear feature «колбаса» strip (v0.5
+          parity); compact=false so the editor uses the full Inspector
+          width with normal-size rows + visible action buttons (was
+          drowning in narrow column).
+        */}
         <AnnotationEditor
           annotations={annotations}
           seqLength={seqLength}
           onChange={onChange}
-          compact
-          hideBar
         />
       </div>
     </div>
