@@ -158,6 +158,11 @@ export default function CatalogColumn({
         borderRight: '0.5px solid var(--border-subtle, #e7e5e4)',
         background: 'var(--surface-1, #fff)',
         minHeight: 0,
+        // overflow: hidden anchors the catalog tree's overflowY:auto inside
+        // the column itself — without it the drop-zone footer + the
+        // right-side Inspector / MetaColumn drift up with body scroll when
+        // the tree gets long.
+        overflow: 'hidden',
       }}
     >
       <div

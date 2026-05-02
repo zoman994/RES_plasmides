@@ -405,6 +405,11 @@ export default function Importer({ flashMs = SIMPLE_FLASH_MS } = {}) {
         data-testid="importer-body"
         style={{
           flex: 1, display: 'flex', minHeight: 0,
+          // overflow: hidden bounds child columns (CatalogColumn /
+          // Inspector / MetaColumn) so each can host its own scroll
+          // region. Without it, scrolling the catalog drags the right
+          // panes upward with the body.
+          overflow: 'hidden',
           borderTop: '0.5px solid var(--border-subtle, #e7e5e4)',
         }}
       >
@@ -427,7 +432,11 @@ export default function Importer({ flashMs = SIMPLE_FLASH_MS } = {}) {
         <div
           data-testid="importer-inspector-pane"
           style={{
-            flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0,
+            flex: 1, display: 'flex', flexDirection: 'column',
+            minWidth: 0, minHeight: 0,
+            // Same anchor as catalog: tab content scrolls inside the
+            // pane, not against the body.
+            overflow: 'hidden',
             background: 'var(--surface-1, #fff)',
           }}
         >

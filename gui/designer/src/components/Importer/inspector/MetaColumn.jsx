@@ -78,6 +78,7 @@ export default function MetaColumn({
         borderLeft: '0.5px solid var(--border-subtle, #e7e5e4)',
         background: 'var(--surface-2, #f5f5f4)',
         display: 'flex', flexDirection: 'column', gap: 8,
+        minHeight: 0,
         overflowY: 'auto',
       }}
     >
