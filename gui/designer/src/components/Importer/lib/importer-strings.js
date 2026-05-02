@@ -1,9 +1,10 @@
 /**
- * STRINGS.importer namespace (M-B.1 K2; expanded in K6 with autoname /
- * primer-wizard text). Imported and merged into the global STRINGS dict
- * by `lib/strings.js`. Kept in a sibling file so component-local strings
- * stay near their UI without forcing strings.js to grow into every
- * component during M-B.
+ * STRINGS.importer namespace (M-B.1 K2; expanded in M-B.2 K1 with single-screen
+ * + tab-bar copy, expanded again in K6 with full catalog group / summary
+ * category / session badge keys). Imported and merged into the global STRINGS
+ * dict by `lib/strings.js`. Kept in a sibling file so component-local strings
+ * stay near their UI without forcing strings.js to grow into every component
+ * during M-B.
  */
 export const IMPORTER_STRINGS = {
   fullscreenTitle: 'Импорт',
@@ -14,47 +15,85 @@ export const IMPORTER_STRINGS = {
 
   modeAdvanced: 'Расширенный',
   modeSimple: 'Простой',
-  modeAdvancedHint: 'Расширенный режим — после загрузки откроется Combined view: карта, аннотации (auto-annotate включён), sequence pane. Можно править аннотации, повернуть origin и Confirm.',
+  modeAdvancedHint: 'Расширенный режим — single-screen с каталогом, просмотром и табами «Последовательность» / «Аннотации». Можно править аннотации и повернуть origin до подтверждения.',
   modeSimpleHint: 'Простой режим — файл уйдёт прямо в Library и DAG, без preview. Auto-annotate выключен. Подходит для batch-импорта или быстрого просмотра.',
 
-  step1Title: 'Источник',
-  step2Title: 'Combined view',
+  // Header counts
+  filesReady: (n) => `Файлов: ${n}`,
+  fileError: (name, msg) => `${name}: ${msg}`,
 
+  // CatalogColumn (M-B.2 K1 placeholder strings; full set in K6).
+  catalogTitle: 'Каталог',
+  catalogSearchPlaceholder: 'Поиск (имя, описание, >5kb, <2k, 2k-3k)…',
+  catalogPlaceholderK1: 'Источники появятся после K2 (этот проект / учебные / моя библиотека / SnapGene).',
+  catalogPastePlaceholder: 'Вставьте sequence (Ctrl+Enter — загрузить)',
+  catalogPasteSubmit: 'Загрузить',
+  catalogReplaceModeConfirm: 'Заменить весь batch одним файлом из каталога?',
+
+  // Drop zone (still inside CatalogColumn footer).
   dropzoneIdle: 'Перетащите файл или нажмите, чтобы выбрать',
   dropzoneHover: 'Отпустите, чтобы загрузить',
   dropzoneAccepts: 'GenBank (.gb / .gbk), FASTA (.fa / .fasta), SnapGene (.dna)',
-  dropzoneSelectFile: 'Выбрать файл…',
 
-  pasteTitle: 'Или вставьте sequence',
-  pasteDisabledHint: 'Paste source — в M-B.2',
+  // Inspector / TabBar
+  emptyInspectorHint1: 'Выберите плазмиду из каталога слева',
+  emptyInspectorHint2: 'или перетащите файл в зону внизу',
+  untitledItem: '(без имени)',
 
-  filesReady: (n) => `Файлов готово: ${n}`,
-  fileError: (name, msg) => `${name}: ${msg}`,
+  tabOverview: 'Обзор',
+  tabSequence: 'Последовательность',
+  tabAnnotations: 'Аннотации',
+  tabHistory: 'История',
+  tabHistoryPlaceholder: 'История появится после первого commit\'а в Container Window (M-D).',
+  tabOverviewPlaceholderK1: 'Здесь будет PlasmidMiniMap + категории СЕЛЕКЦИЯ / ПРОМОТОРЫ / ORIGIN / TAGS (K3).',
+  tabSequencePlaceholderK1: 'SequenceMapView read-only смонтируется тут после K4.',
+  tabAnnotationsPlaceholderK1: 'AnnotationEditor смонтируется тут после K4.',
 
-  back: '← Источник',
-  next: 'Далее →',
-  cancel: 'Отмена',
-  confirm: '✓ Импортировать',
+  // SessionSummary
+  sessionSummaryTitle: '✓ Уже добавлено в этой сессии',
+  sessionSummaryOpenCanvas: 'Открыть холст →',
+  sessionBadgeCanvas: '✓ Канвас',
+  sessionBadgeLibrary: '📚 Библиотека',
+  sessionBadgeAnnotate: (n) => `🏷 +${n} регионов`,
+  sessionBadgeReplaced: '↻ заменён',
 
-  closeAria: 'Закрыть Importer',
+  // ActionsBar (single + multi)
+  actionCanvas: 'На канвас',
+  actionLibrary: 'В библиотеку',
+  actionAnnotate: '📥 Авто-аннотация',
+  actionDownloadGB: '💾 Скачать как .gb',
+  actionDeleteSession: '🗑 Удалить из сессии',
+  actionOverflowAria: 'Дополнительно',
 
-  noFilesYet: 'Файлы ещё не загружены',
-  busyParsing: 'Парсинг файлов…',
+  deleteFromSessionConfirm: 'Удалить файл из сессии?',
+  deleteAllConfirm: 'Удалить весь batch файлов?',
 
-  // Step 2 + multi-file (K5).
+  // MetaColumn
+  metaTopology: 'топология',
+  metaTopologyCircular: '◯ круглая',
+  metaTopologyLinear: '— линейная',
+  metaLengthLabel: 'длина',
+
+  // Multi-mode
+  multiHeader: (n) => `Загружено ${n} файл${n === 1 ? '' : n < 5 ? 'а' : 'ов'}`,
+  multiReplaceAll: '↻ заменить все',
+  multiBatchLibrary: (n) => `В библиотеку (${n})`,
+  multiActionDeleteAll: '🗑 Удалить весь batch',
+  multiRemoveAria: 'Удалить из списка',
+
+  // Region count helper
+  summaryRegionCount: (n) => `${n} регионов`,
+
+  // Confirm-flow hints (mode-agnostic)
   confirmBusy: 'Импорт…',
   confirmHintProject: 'Будет добавлено в Library и в проект.',
   confirmHintLibrary: 'Будет добавлено только в Library.',
 
-  multiFilesHeader: (n) => `Файлов: ${n}`,
-  multiApplyAllAutoAnnotate: 'Auto-annotate ко всем',
-  multiFileMeta: (length, regions, status) => `${length} bp · ${regions} regions · ${status}`,
-  multiStatusEnriched: 'enriched',
-  multiStatusFileOnly: 'file-only',
-  multiStatusError: 'parse error',
-  autoAnnotateLabel: 'Auto-annotate',
+  // Keep simple-mode + autoname/primer-wizard strings as-is from M-B.1 K6.
+  busyParsing: 'Парсинг файлов…',
+  closeAria: 'Закрыть Importer',
 
-  // Simple-mode (K3) toasts and flash UI.
+  // Simple-mode (M-B.1 K3) toasts and flash UI.
   simpleBusy: 'Импорт…',
   simpleFlashTitle: 'Импорт завершён',
   simpleFlashSubtitle: 'Importer закроется автоматически',
@@ -67,7 +106,7 @@ export const IMPORTER_STRINGS = {
   simpleSkipped: (n) => `Пропущено: ${n}`,
   simpleFailed: (msg) => `Импорт не удался: ${msg}`,
 
-  // K6 — AutonameModal.
+  // K6 (M-B.1) — AutonameModal.
   autonameTitle: (baseName) => `«${baseName}» уже есть в Library`,
   autonameExistingPreview: (name, length, addedAt) =>
     `Existing: ${name} · ${length} bp · ${addedAt}`,
@@ -77,8 +116,9 @@ export const IMPORTER_STRINGS = {
   autonameAdvancedHide: '▴ Свернуть advanced',
   autonameReplace: 'Заменить existing',
   autonameSkip: 'Пропустить',
+  cancel: 'Отмена',
 
-  // K6 — PrimerWizardStepModal.
+  // K6 (M-B.1) — PrimerWizardStepModal.
   primerWizardTitle: (n) => `Праймеры из файла (${n})`,
   primerWizardPoolHint:
     'Праймеры пойдут в unified pool: видны и в Library Primers, и в Project Primer Pool по фильтру projectId.',
@@ -94,7 +134,7 @@ export const IMPORTER_STRINGS = {
     return parts.join(' · ');
   },
 
-  // K6 — Confirm flow toasts.
+  // K6 (M-B.1) — Confirm flow toasts.
   confirmAddedOne: (name) => `«${name}» добавлен в Library`,
   confirmAddedOneToProject: (name) => `«${name}» добавлен в Library и проект`,
   confirmAddedMany: (n) => `Добавлено ${n} файлов в Library`,
