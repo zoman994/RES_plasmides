@@ -142,7 +142,8 @@ export default function StartScreen({ onOpenFile }) {
         <aside
           style={{
             borderRight: '0.5px solid var(--ss-border-tertiary)',
-            padding: '20px 14px',
+            // padding-left = 20 чтобы вертикально align с logo (header padding 14 20)
+            padding: '20px 14px 20px 20px',
             display: 'flex',
             flexDirection: 'column',
           }}
@@ -179,7 +180,7 @@ export default function StartScreen({ onOpenFile }) {
                 margin: '0 0 6px', padding: '0 10px',
               }}
             >{STRINGS.startScreen.browse}</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <SidebarLink
                 dataTestId="ss-browse-library"
                 onClick={() => pushFullscreen({

@@ -139,33 +139,17 @@ export default function RecentCard({
       </div>
       {description
         ? <div className="ss-card-desc">{description}</div>
-        : <div className="ss-card-desc" style={{ color: 'var(--ss-text-tertiary)' }}>{STRINGS.startScreen.noDescription}</div>}
-      {!exportMode && <span className="ss-card-chevron">▷</span>}
+        : <div className="ss-card-desc ss-card-desc-empty">{STRINGS.startScreen.noDescription}</div>}
 
       {!exportMode && (
         <button
           type="button"
+          className="ss-card-delete"
           onClick={handleDelete}
           onKeyDown={(e) => e.stopPropagation()}
           data-testid="ss-recent-card-delete"
           title={STRINGS.startScreen.deleteProjectTitle}
           aria-label={STRINGS.startScreen.deleteProjectAria(displayName)}
-          style={{
-            position: 'absolute',
-            right: 6,
-            bottom: 6,
-            background: 'transparent',
-            border: 'none',
-            cursor: 'pointer',
-            padding: '2px 6px',
-            fontSize: 14,
-            lineHeight: 1,
-            color: 'var(--ss-text-tertiary)',
-            opacity: 0.55,
-            borderRadius: 4,
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.color = 'var(--danger-fg, #b91c1c)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.55'; e.currentTarget.style.color = 'var(--ss-text-tertiary)'; }}
         >×</button>
       )}
     </div>
