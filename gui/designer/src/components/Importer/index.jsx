@@ -5,6 +5,7 @@ import { useImporterState } from './lib/importer-state';
 import { drainImporterFiles } from './lib/pending-files';
 import { handleSimpleImport } from './lib/simple-import';
 import Step1Source from './steps/Step1Source';
+import Step2Combined from './steps/Step2Combined';
 
 const S = STRINGS.importer;
 
@@ -106,6 +107,13 @@ export default function Importer({ flashMs = SIMPLE_FLASH_MS } = {}) {
     state.goNext();
   }, [importerMode, runSimpleImport, state]);
 
+  // K6 wires the real Confirm flow (AutonameModal + PrimerWizardStepModal +
+  // addLibraryEntry/addPrimerToPool). K5 surfaces a placeholder toast so the
+  // Confirm button in Step 2 is wired and testable end-to-end.
+  const onConfirm = useCallback(() => {
+    showToast('Confirm flow — K6', 'info');
+  }, [showToast]);
+
   const headerTitle = useMemo(() => (
     target === 'library' ? S.toLibraryTitle : S.toProjectTitle
   ), [target]);
@@ -144,15 +152,13 @@ export default function Importer({ flashMs = SIMPLE_FLASH_MS } = {}) {
         />
       )}
       {state.step === 2 && (
-        <div
-          data-testid="importer-step2-placeholder"
-          style={{
-            flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: 'var(--text-tertiary)', fontSize: 14,
-          }}
-        >
-          Step 2 (Combined view) — K5
-        </div>
+        <Step2Combined
+          state={state}
+          target={target}
+          onCancel={onCancel}
+          onBack={state.goBack}
+          onConfirm={onConfirm}
+        />
       )}
       {(simpleBusy || flashing) && (
         <SimpleFlashOverlay busy={simpleBusy && !flashing} />

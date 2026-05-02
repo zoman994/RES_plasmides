@@ -49,6 +49,9 @@ export default function LeftPane({
     const n = parseInt(draftOffset, 10);
     if (Number.isFinite(n) && n >= 0 && n < length && typeof onOriginRotate === 'function') {
       onOriginRotate(n);
+      // Re-anchored coord space: input snaps back to 0 so the next rotation
+      // is relative to the new origin, not the cumulative offset.
+      setDraftOffset('0');
     }
   }, [draftOffset, length, onOriginRotate]);
 

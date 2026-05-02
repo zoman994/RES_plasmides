@@ -41,6 +41,19 @@ export const IMPORTER_STRINGS = {
   noFilesYet: 'Файлы ещё не загружены',
   busyParsing: 'Парсинг файлов…',
 
+  // Step 2 + multi-file (K5).
+  confirmBusy: 'Импорт…',
+  confirmHintProject: 'Будет добавлено в Library и в проект.',
+  confirmHintLibrary: 'Будет добавлено только в Library.',
+
+  multiFilesHeader: (n) => `Файлов: ${n}`,
+  multiApplyAllAutoAnnotate: 'Auto-annotate ко всем',
+  multiFileMeta: (length, regions, status) => `${length} bp · ${regions} regions · ${status}`,
+  multiStatusEnriched: 'enriched',
+  multiStatusFileOnly: 'file-only',
+  multiStatusError: 'parse error',
+  autoAnnotateLabel: 'Auto-annotate',
+
   // Simple-mode (K3) toasts and flash UI.
   simpleBusy: 'Импорт…',
   simpleFlashTitle: 'Импорт завершён',
