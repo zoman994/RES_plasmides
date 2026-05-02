@@ -30,6 +30,9 @@ const LABEL_H = 12;
 const LABEL_GAP_PX = 2;
 const IN_LABEL_THRESHOLD_PCT = 6.5;
 const COLLISION_PX = 80;
+const DENSITY_WINDOW_PX = 140;   // sample neighbours within this window
+const ANGLED_SHIFT_PX = 32;      // how far the label slides sideways
+const ANGLED_THRESHOLD = 1;      // density delta required to angle
 
 function annColorPalette(ann) {
   return featureColor(ann?.type, ann?.name) || ANNOTATION_COLORS[ann?.type] || ANNOTATION_COLORS.misc;
@@ -74,21 +77,43 @@ export default function LinearFeatureBar({ annotations = [], seqLength = 0, onSe
     });
 
     // Leader labels for small items: pick those without inside label,
-    // sort by left edge, stagger Y when neighbours within COLLISION_PX.
+    // sort by left edge. For each, choose a horizontal direction toward
+    // the lower-density side (angled leaders away from clusters), then
+    // stagger Y when post-shift neighbours still collide.
     const small = its.filter((x) => !x.labelInside).sort((a, b) => a.left - b.left);
-    let lastX = -Infinity;
-    let row = 0;
-    const ll = small.map((x) => {
-      const cx = x.left + x.width / 2;
-      if (cx - lastX < COLLISION_PX) row += 1; else row = 0;
-      lastX = cx;
-      return {
-        idx: x.idx, ann: x.ann, color: x.color,
-        cx,
-        // y of label baseline (relative to top of leader area)
-        y: row * (LABEL_H + LABEL_GAP_PX),
-      };
+    const small_cx = small.map((x) => x.left + x.width / 2);
+
+    // Pre-compute dirX (-1 left / +1 right / 0 straight) per item by
+    // comparing neighbour count on each side within DENSITY_WINDOW_PX.
+    const dirs = small_cx.map((cx) => {
+      let leftN = 0, rightN = 0;
+      for (const ocx of small_cx) {
+        if (ocx === cx) continue;
+        if (Math.abs(ocx - cx) > DENSITY_WINDOW_PX) continue;
+        if (ocx < cx) leftN += 1; else rightN += 1;
+      }
+      if (leftN - rightN >= ANGLED_THRESHOLD) return 1;   // crowded left → angle right
+      if (rightN - leftN >= ANGLED_THRESHOLD) return -1;  // crowded right → angle left
+      return 0;
     });
+
+    // Y staggering uses the post-shift label X (cx + dir * SHIFT).
+    const ll = [];
+    let lastLabelEdge = -Infinity;
+    let row = 0;
+    for (let i = 0; i < small.length; i++) {
+      const x = small[i];
+      const cx = small_cx[i];
+      const dir = dirs[i];
+      const labelX = cx + dir * ANGLED_SHIFT_PX;
+      if (labelX - lastLabelEdge < COLLISION_PX) row += 1; else row = 0;
+      lastLabelEdge = labelX;
+      ll.push({
+        idx: x.idx, ann: x.ann, color: x.color,
+        cx, dir, labelX,
+        y: row * (LABEL_H + LABEL_GAP_PX),
+      });
+    }
 
     const maxRow = ll.reduce((m, x) => Math.max(m, x.y), 0);
     const leaderH = ll.length > 0 ? LEADER_LEN + maxRow + LABEL_H : 0;
@@ -141,25 +166,35 @@ export default function LinearFeatureBar({ annotations = [], seqLength = 0, onSe
           </g>
         ))}
 
-        {/* leader lines + outside labels for small features */}
+        {/* Leader lines + outside labels for small features. Two-segment
+            polyline: drop straight from bar to leader-row Y, then jog
+            sideways to the chosen direction (away from cluster). Pure
+            vertical when dir=0 (no neighbours to dodge). */}
         {leaderLabels.map((l) => {
           const lineY1 = BAR_H;
-          const lineY2 = BAR_H + LEADER_LEN + l.y;
-          const labelY = lineY2 + LABEL_H - 2;
+          const dropY = BAR_H + LEADER_LEN + l.y;       // joint y where line bends
+          const jointX = l.labelX - (l.dir * 4);         // tiny inset before label start
+          const labelY = dropY + LABEL_H - 2;
+          const textAnchor = l.dir > 0 ? 'start' : l.dir < 0 ? 'end' : 'start';
+          const textXOffset = l.dir > 0 ? 4 : l.dir < 0 ? -4 : 4;
           return (
             <g key={`l-${l.idx}`} onClick={() => onSelect?.(l.ann)} style={{ cursor: 'pointer' }}>
-              <line
-                x1={l.cx} y1={lineY1}
-                x2={l.cx} y2={lineY2}
+              <polyline
+                points={l.dir === 0
+                  ? `${l.cx},${lineY1} ${l.cx},${dropY}`
+                  : `${l.cx},${lineY1} ${l.cx},${dropY - 3} ${jointX},${dropY}`
+                }
+                fill="none"
                 stroke={l.color}
                 strokeWidth={1}
-                opacity={0.7}
+                strokeLinejoin="round"
+                opacity={0.75}
               />
-              <circle cx={l.cx} cy={lineY2} r={1.5} fill={l.color} opacity={0.85} />
+              <circle cx={l.cx} cy={lineY1} r={1.5} fill={l.color} opacity={0.85} />
               <text
-                x={l.cx + 4}
+                x={l.labelX + textXOffset}
                 y={labelY}
-                textAnchor="start"
+                textAnchor={textAnchor}
                 fontSize={10}
                 fontFamily="var(--font-ui)"
                 fill="var(--text-primary)"
