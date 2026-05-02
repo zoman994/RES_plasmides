@@ -203,7 +203,13 @@ export default function App() {
       // mounted, its inner dropzone handles it (we no-op here).
       if (importable.length > 0 && (fs === 'dag' || fs === 'library')) {
         queueImporterFiles(importable);
-        s.setActiveFullscreen('importer', { target: fs === 'library' ? 'library' : 'project' });
+        // pushFullscreen, not setActiveFullscreen — preserves the parent
+        // (Library or DAG) on the navStack so Cancel pops back into it
+        // instead of falling through to the start screen.
+        s.pushFullscreen({
+          fullscreen: 'importer',
+          payload: { target: fs === 'library' ? 'library' : 'project' },
+        });
         return;
       }
       const detected = files.find(f => DROPZONE_TYPES.some(ext => f.name.toLowerCase().endsWith(ext)));

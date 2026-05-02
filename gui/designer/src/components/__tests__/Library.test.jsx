@@ -129,14 +129,7 @@ describe('M-A.3 K3 — Library fullscreen', () => {
     expect(screen.getByTestId('library-tags-editor-c1')).toBeTruthy();
   });
 
-  it('10) + Import button opens Importer fullscreen with library target (M-B.1 K2)', () => {
-    render(<Library />);
-    const btn = screen.getByTestId('library-import-button');
-    expect(btn.disabled).toBe(false);
-    fireEvent.click(btn);
-    const s = useStore.getState();
-    expect(s.canvas.activeFullscreen).toBe('importer');
-    const top = s.canvas.navStack[s.canvas.navStack.length - 1];
-    expect(top.payload?.target).toBe('library');
-  });
+  // Import button moved to the Topbar (single canonical entry-point covering
+  // DAG and Library). The Topbar variant is exercised by AppShell.test.jsx;
+  // the LibraryToolbar duplicate was dropped post-K6.
 });

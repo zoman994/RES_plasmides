@@ -52,7 +52,19 @@ const API_BASE = '';
 async function importViaBackend(file) {
   const form = new FormData();
   form.append('file', file);
-  const res = await fetch(`${API_BASE}/api/import`, { method: 'POST', body: form });
+  let res;
+  try {
+    res = await fetch(`${API_BASE}/api/import`, { method: 'POST', body: form });
+  } catch (e) {
+    // fetch() throws TypeError("Failed to fetch") when the backend isn't
+    // running — give the biolog the actual remediation instead of the
+    // browser's opaque message.
+    throw new Error(
+      '.dna requires the Python backend (it isn\'t running). Start it from '
+      + 'gui/designer with `npm run dev:back`, or use a .gb / .fasta export '
+      + 'of the same molecule.',
+    );
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.detail || `Backend error ${res.status}`);

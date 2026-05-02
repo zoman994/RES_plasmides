@@ -12,6 +12,7 @@ export default function Topbar() {
   const lastSavedToFileAt = useStore(s => s.lastSavedToFileAt);
   const popFullscreen = useStore(s => s.popFullscreen);
   const setActiveFullscreen = useStore(s => s.setActiveFullscreen);
+  const pushFullscreen = useStore(s => s.pushFullscreen);
   const closeProject = useStore(s => s.closeProject);
   const openSettings = useStore(s => s.openSettings);
   const openProjectInfo = useStore(s => s.openProjectInfo);
@@ -125,8 +126,9 @@ export default function Topbar() {
           <button
             type="button"
             data-testid="topbar-import-button"
-            onClick={() => setActiveFullscreen('importer', {
-              target: isLibrary ? 'library' : 'project',
+            onClick={() => pushFullscreen({
+              fullscreen: 'importer',
+              payload: { target: isLibrary ? 'library' : 'project' },
             })}
             style={{
               padding: '4px 10px', fontSize: 12,
