@@ -1,16 +1,17 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { STRINGS } from '../../../lib/strings';
 
 const S = STRINGS.importer;
 
 /**
- * ActionsBar — single-mode footer (M-B.2 K1; multi-mode uses MultiInspector
- * footer). Buttons: На канвас (primary) / В библиотеку (secondary, gated by
- * libraryEnabled) / ⋯ overflow (Аннотировать / Скачать .gb / Удалить).
+ * ActionsBar — single-mode footer (M-B.2 K3).
  *
- * K1 wires the canvas + library buttons through onAction; overflow menu
- * actions are visible but the K3 implementation lands the annotate handler
- * + GenBank export wiring.
+ * Layout: [hint] [На канвас] [В библиотеку]? [⋯] (overflow → Аннотировать /
+ * Скачать .gb / Удалить из сессии).
+ *
+ * libraryEnabled hides «В библиотеку» for catalog items the biolog hasn't
+ * derived in-session (no annotate, no edit, no rotate). Multi-mode footer
+ * lives in MultiInspector — this component handles single only.
  */
 export default function ActionsBar({
   mode = 'single',
@@ -21,7 +22,19 @@ export default function ActionsBar({
   target = 'project',
 }) {
   const [overflowOpen, setOverflowOpen] = useState(false);
+  const overflowRef = useRef(null);
   const isMulti = mode === 'multi';
+
+  useEffect(() => {
+    if (!overflowOpen) return undefined;
+    const onDocClick = (e) => {
+      if (overflowRef.current && !overflowRef.current.contains(e.target)) {
+        setOverflowOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [overflowOpen]);
 
   const fire = (id) => {
     setOverflowOpen(false);
@@ -78,12 +91,13 @@ export default function ActionsBar({
         >{S.actionLibrary}</button>
       )}
 
-      <div style={{ position: 'relative' }}>
+      <div ref={overflowRef} style={{ position: 'relative' }}>
         <button
           type="button"
           data-testid="importer-action-overflow-toggle"
           onClick={() => setOverflowOpen(v => !v)}
           aria-label={S.actionOverflowAria}
+          aria-expanded={overflowOpen}
           style={{
             fontSize: 14, padding: '4px 10px',
             background: 'transparent',
@@ -96,6 +110,7 @@ export default function ActionsBar({
         {overflowOpen && (
           <div
             data-testid="importer-action-overflow-menu"
+            role="menu"
             style={{
               position: 'absolute', right: 0, bottom: '100%', marginBottom: 4,
               minWidth: 200,
@@ -109,24 +124,30 @@ export default function ActionsBar({
             {!isMulti && (
               <button
                 type="button"
+                role="menuitem"
                 data-testid="importer-action-annotate"
                 onClick={() => fire('annotate')}
-                style={overflowItemStyle}
+                disabled={!hasParsedItem}
+                style={overflowItemStyle(!hasParsedItem)}
               >{S.actionAnnotate}</button>
             )}
             {!isMulti && (
               <button
                 type="button"
+                role="menuitem"
                 data-testid="importer-action-download-gb"
                 onClick={() => fire('download-gb')}
-                style={overflowItemStyle}
+                disabled={!hasParsedItem}
+                style={overflowItemStyle(!hasParsedItem)}
               >{S.actionDownloadGB}</button>
             )}
             <button
               type="button"
+              role="menuitem"
               data-testid="importer-action-delete"
               onClick={() => fire('delete')}
-              style={{ ...overflowItemStyle, color: 'var(--danger-text)' }}
+              disabled={!hasParsedItem}
+              style={{ ...overflowItemStyle(!hasParsedItem), color: 'var(--danger-text)' }}
             >{S.actionDeleteSession}</button>
           </div>
         )}
@@ -135,11 +156,14 @@ export default function ActionsBar({
   );
 }
 
-const overflowItemStyle = {
-  display: 'block', width: '100%',
-  textAlign: 'left',
-  background: 'transparent', border: 'none',
-  fontSize: 12, padding: '6px 12px',
-  color: 'var(--text-secondary)',
-  cursor: 'pointer',
-};
+function overflowItemStyle(disabled) {
+  return {
+    display: 'block', width: '100%',
+    textAlign: 'left',
+    background: 'transparent', border: 'none',
+    fontSize: 12, padding: '6px 12px',
+    color: disabled ? 'var(--text-tertiary)' : 'var(--text-secondary)',
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    opacity: disabled ? 0.5 : 1,
+  };
+}

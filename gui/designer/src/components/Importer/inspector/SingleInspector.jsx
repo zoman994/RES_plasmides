@@ -1,23 +1,23 @@
 import { STRINGS } from '../../../lib/strings';
+import InlineEditableTitle from './InlineEditableTitle';
+import TabBar from './tabs/TabBar';
+import OverviewTab from './tabs/OverviewTab';
+import { getRegions } from '../../../annotation-model';
 
 const S = STRINGS.importer;
 
 /**
- * SingleInspector — title + TabBar + active tab content (M-B.2 K1
- * placeholder; full Overview / Sequence / Annotations / History tabs land
- * in K3 + K4).
+ * SingleInspector — wrapper for the active parsedItem (M-B.2 K3).
  *
- * K1 ships:
- *   - title (read-only display; InlineEditableTitle in K3)
- *   - subtitle (length · topology · regionCount)
- *   - TabBar with 3 tabs (Обзор / Последовательность / Аннотации) — История
- *     conditional (rendered only if commits.length>0; always false in K1).
- *   - Tab content panels: overview text-aggregate placeholder, sequence
- *     placeholder, annotations placeholder (real wiring in K3/K4).
+ * Layout:
+ *   [title row — InlineEditableTitle + subtitle (length · topology · regions)]
+ *   [TabBar — Обзор · Последовательность · Аннотации (· История conditional)]
+ *   [active tab content — OverviewTab eager; SequenceTab + AnnotationsTab
+ *    + HistoryTab land in K4 with lazy mount that fixes V49 50-sec hang]
  *
- * Critical: tab panels use conditional render (`{activeTab === 'sequence'
- * && ...}`) — heavy components that ship in K4 must NOT exist in DOM until
- * activeTab matches. This is the V49 50-sec hang fix scaffold.
+ * MetaColumn renders sibling-of-this in Importer/index.jsx (the 4-region
+ * layout has CatalogColumn / Inspector / MetaColumn — Inspector wraps title
+ * + tabs only).
  */
 export default function SingleInspector({
   item,
@@ -26,14 +26,20 @@ export default function SingleInspector({
   activeTab,
   onActiveTabChange,
   onUpdateFlags, // eslint-disable-line no-unused-vars
-  onUpdateEdits, // eslint-disable-line no-unused-vars
+  onUpdateEdits,
   onAppendAdded, // eslint-disable-line no-unused-vars
+  onRenameItem,
 }) {
   if (!item) return null;
   const length = item.length || item.sequence?.length || 0;
   const topology = item.topology || 'linear';
-  const regionCount = Array.isArray(item.annotations) ? item.annotations.length : 0;
+  const regionCount = getRegions(item.annotations || []).length;
   const showHistory = Array.isArray(item.commits) && item.commits.length > 0;
+  // Use edited annotations if present (live edit), otherwise fall back to file's.
+  const displayAnnotations = Array.isArray(edits?.editedAnnotations)
+    ? edits.editedAnnotations
+    : (item.annotations || []);
+  const displayItem = { ...item, annotations: displayAnnotations };
 
   return (
     <div
@@ -46,13 +52,16 @@ export default function SingleInspector({
         style={{
           padding: '10px 14px',
           borderBottom: '0.5px solid var(--border-subtle)',
+          background: 'var(--surface-1)',
         }}
       >
-        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
-          {item.name || item._fileName || S.untitledItem}
-        </div>
-        <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>
-          {length.toLocaleString()} bp · {topology}{regionCount > 0 && ` · ${S.summaryRegionCount(regionCount)}`}
+        <InlineEditableTitle
+          value={item.name || item._fileName || ''}
+          onCommit={(name) => onRenameItem?.(name)}
+        />
+        <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4 }}>
+          {length.toLocaleString()} п.н. · {topology}
+          {regionCount > 0 && ` · ${S.summaryRegionCount(regionCount)}`}
         </div>
       </div>
 
@@ -66,11 +75,11 @@ export default function SingleInspector({
         data-testid="importer-single-tab-content"
         style={{ flex: 1, overflowY: 'auto', padding: 14, minHeight: 0 }}
       >
-        {activeTab === 'overview' && (
-          <div data-testid="importer-tab-panel-overview" style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-            {S.tabOverviewPlaceholderK1}
-          </div>
-        )}
+        {activeTab === 'overview' && <OverviewTab item={displayItem} />}
+        {/* SequenceTab + AnnotationsTab + HistoryTab land in K4 — lazy
+            mount keeps V49 fix invariant: heavy components don't exist in
+            DOM until activeTab matches. K3 stub kept here so the orchestra-
+            tor still mounts something for non-overview activeTab values. */}
         {activeTab === 'sequence' && (
           <div data-testid="importer-tab-panel-sequence" style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
             {S.tabSequencePlaceholderK1}
@@ -91,47 +100,6 @@ export default function SingleInspector({
   );
 }
 
-function TabBar({ activeTab, onChange, showHistory }) {
-  const tabs = [
-    { id: 'overview', label: S.tabOverview },
-    { id: 'sequence', label: S.tabSequence },
-    { id: 'annotations', label: S.tabAnnotations },
-  ];
-  if (showHistory) tabs.push({ id: 'history', label: S.tabHistory });
-
-  return (
-    <div
-      data-testid="importer-tab-bar"
-      role="tablist"
-      style={{
-        display: 'flex', gap: 0,
-        borderBottom: '0.5px solid var(--border-subtle)',
-        background: 'var(--surface-2, #f5f5f4)',
-      }}
-    >
-      {tabs.map(t => (
-        <button
-          key={t.id}
-          type="button"
-          role="tab"
-          aria-selected={activeTab === t.id}
-          data-testid={`importer-tab-${t.id}`}
-          data-active={activeTab === t.id ? 'true' : 'false'}
-          onClick={() => onChange?.(t.id)}
-          style={{
-            padding: '6px 14px',
-            fontSize: 12,
-            background: activeTab === t.id ? 'var(--surface-1)' : 'transparent',
-            color: activeTab === t.id ? 'var(--text-primary)' : 'var(--text-secondary)',
-            border: 'none',
-            borderRight: '0.5px solid var(--border-subtle)',
-            borderBottom: activeTab === t.id ? '2px solid var(--accent-500)' : '2px solid transparent',
-            fontWeight: activeTab === t.id ? 500 : 400,
-            cursor: 'pointer',
-            marginBottom: -1,
-          }}
-        >{t.label}</button>
-      ))}
-    </div>
-  );
-}
+// onUpdateEdits surface stays available for K4 AnnotationsTab; suppress lint.
+// eslint-disable-next-line no-unused-vars
+function _onUpdateEditsRef(p) { return p; }

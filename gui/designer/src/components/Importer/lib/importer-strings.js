@@ -73,6 +73,24 @@ export const IMPORTER_STRINGS = {
   sessionBadgeAnnotate: (n) => `🏷 +${n} регионов`,
   sessionBadgeReplaced: '↻ заменён',
 
+  // Inspector overview / summary categories (K3).
+  summaryWhatInFile: 'Что в файле',
+  summarySelection: 'СЕЛЕКЦИЯ',
+  summarySelectionIcon: '🛡',
+  summaryPromoters: 'ПРОМОТОРЫ',
+  summaryPromotersIcon: '📣',
+  summaryOrigins: 'ORIGIN',
+  summaryOriginsIcon: '⚓',
+  summaryTags: 'TAGS',
+  summaryTagsIcon: '🏷',
+  summaryCdsList: (n) => `CDS (${n})`,
+  summaryReSites: '🔬 САЙТЫ РЕСТРИКЦИИ',
+  summaryWarnings: (n) => `${n} замечаний валидации`,
+
+  // Inline title.
+  inlineTitlePlaceholder: '(без имени)',
+  inlineTitleAria: 'Имя плазмиды',
+
   // ActionsBar (single + multi)
   actionCanvas: 'На канвас',
   actionLibrary: 'В библиотеку',
@@ -88,7 +106,16 @@ export const IMPORTER_STRINGS = {
   metaTopology: 'топология',
   metaTopologyCircular: '◯ круглая',
   metaTopologyLinear: '— линейная',
+  metaTopologyCircularTitle: 'Круглая (плазмида)',
+  metaTopologyLinearTitle: 'Линейная',
   metaLengthLabel: 'длина',
+  metaOrigin: 'начало (п.н.)',
+  metaOriginApply: '↻ применить',
+  metaOriginHint: (gaps) => `межгенные участки: ${gaps}`,
+  metaInfo: 'информация',
+  metaInfoFromFile: 'Из файла',
+  metaInfoEnriched: 'Дополнено',
+  metaIupac: (chars) => `Содержит IUPAC: ${chars} — праймеры по таким участкам не дизайнятся, программа предупредит при сборке.`,
 
   // Multi-mode
   multiHeader: (n) => `Загружено ${n} файл${n === 1 ? '' : n < 5 ? 'а' : 'ов'}`,

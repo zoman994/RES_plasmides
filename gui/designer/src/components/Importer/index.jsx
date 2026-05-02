@@ -7,6 +7,9 @@ import { drainImporterFiles } from './lib/pending-files';
 import { handleSimpleImport } from './lib/simple-import';
 import { buildLibraryEntry } from './lib/build-library-entry';
 import { computeResourceHash } from './lib/resource-hash';
+import { enrichAnnotations } from '../../file-import';
+import { exportGenBank } from '../../exports';
+import { getRegions } from '../../annotation-model';
 import AutonameModal from './modals/AutonameModal';
 import PrimerWizardStepModal from './modals/PrimerWizardStepModal';
 import CatalogColumn from './catalog/CatalogColumn';
@@ -166,7 +169,7 @@ export default function Importer({ flashMs = SIMPLE_FLASH_MS } = {}) {
           : (flags.autoAnnotate && Array.isArray(edits.enrichedCache))
             ? edits.enrichedCache
             : (it.annotations || []);
-        const baseName = it.name || (fn ? fn.replace(/\.[^.]+$/, '') : 'imported');
+        const baseName = edits.editedName || it.name || (fn ? fn.replace(/\.[^.]+$/, '') : 'imported');
         let resourceHash = null;
         try {
           resourceHash = await computeResourceHash({
@@ -302,7 +305,7 @@ export default function Importer({ flashMs = SIMPLE_FLASH_MS } = {}) {
 
   // ActionsBar handler — single-mode actions; multi handled inside MultiInspector.
   const onAction = useCallback(async (actionId) => {
-    if (importerMode === 'simple') {
+    if (importerMode === 'simple' && (actionId === 'canvas' || actionId === 'library')) {
       runSimpleImport();
       return;
     }
@@ -310,6 +313,45 @@ export default function Importer({ flashMs = SIMPLE_FLASH_MS } = {}) {
       await runConfirm('project');
     } else if (actionId === 'library' || actionId === 'library-batch') {
       await runConfirm('library');
+    } else if (actionId === 'annotate' && currentItem) {
+      const before = getRegions(currentItem.annotations || []).length;
+      try {
+        const enriched = await enrichAnnotations(currentItem, { autoAnnotate: true });
+        const after = getRegions(enriched.annotations || []).length;
+        state.updateEdits(currentItem._fileName, {
+          editedAnnotations: enriched.annotations || [],
+          enrichedCache: enriched.annotations || [],
+        });
+        state.appendAddedItem({
+          name: currentItem.name || currentItem._fileName,
+          action: 'annotate',
+          regionsAdded: Math.max(0, after - before),
+        });
+      } catch (err) {
+        showToast(S.confirmFailed(err?.message || String(err)), 'error');
+      }
+    } else if (actionId === 'download-gb' && currentItem) {
+      try {
+        const ann = state.perFileEdits[currentItem._fileName]?.editedAnnotations
+          ?? currentItem.annotations ?? [];
+        const seq = state.perFileEdits[currentItem._fileName]?.editedSequence
+          ?? currentItem.sequence ?? '';
+        exportGenBank(
+          [{
+            id: currentItem._fileName || 'imported',
+            name: currentItem.name || 'imported',
+            type: currentItem.topology === 'circular' ? 'plasmid' : 'misc_feature',
+            sequence: seq,
+            length: seq.length,
+            annotations: ann,
+            topology: currentItem.topology || 'linear',
+          }],
+          currentItem.name || 'imported',
+          currentItem.topology === 'circular',
+        );
+      } catch (err) {
+        showToast(S.confirmFailed(err?.message || String(err)), 'error');
+      }
     } else if (actionId === 'delete' && currentItem) {
       // eslint-disable-next-line no-alert
       if (typeof window !== 'undefined' && !window.confirm(S.deleteFromSessionConfirm)) return;
@@ -321,8 +363,17 @@ export default function Importer({ flashMs = SIMPLE_FLASH_MS } = {}) {
       if (typeof window !== 'undefined' && !window.confirm(S.deleteAllConfirm)) return;
       state.reset();
     }
-    // 'annotate' / 'download-gb' surface in K3 ActionsBar wiring; placeholder.
-  }, [currentItem, importerMode, runConfirm, runSimpleImport, state]);
+  }, [currentItem, importerMode, runConfirm, runSimpleImport, showToast, state]);
+
+  const onRenameCurrentItem = useCallback((nextName) => {
+    if (!currentItem) return;
+    state.updateEdits(currentItem._fileName, { editedName: nextName });
+    // Also reflect locally on the parsedItem so subtitle/title pick it up
+    // immediately. We patch through a state-private setter via a shim:
+    // simplest stable path is to rewrite parsedItems via a custom op, but
+    // we don't have that yet. Instead piggyback on updateEdits and let the
+    // SingleInspector display fall back to edits.editedName when present.
+  }, [currentItem, state]);
 
   const isMulti = items.length > 1;
   const hasAny = items.length > 0;
@@ -383,7 +434,7 @@ export default function Importer({ flashMs = SIMPLE_FLASH_MS } = {}) {
           {!hasAny && <EmptyInspector />}
           {hasAny && !isMulti && currentItem && (
             <SingleInspector
-              item={currentItem}
+              item={{ ...currentItem, name: edits.editedName ?? currentItem.name }}
               flags={flags}
               edits={edits}
               activeTab={state.activeTab}
@@ -391,6 +442,7 @@ export default function Importer({ flashMs = SIMPLE_FLASH_MS } = {}) {
               onUpdateFlags={(patch) => fileName && state.updateFlags(fileName, patch)}
               onUpdateEdits={(patch) => fileName && state.updateEdits(fileName, patch)}
               onAppendAdded={state.appendAddedItem}
+              onRenameItem={onRenameCurrentItem}
             />
           )}
           {isMulti && (
@@ -428,7 +480,13 @@ export default function Importer({ flashMs = SIMPLE_FLASH_MS } = {}) {
           }}
         >
           {state.addedItems.length > 0 && (
-            <SessionSummary addedItems={state.addedItems} />
+            <SessionSummary
+              addedItems={state.addedItems}
+              onOpenCanvas={() => {
+                state.reset();
+                popFullscreen();
+              }}
+            />
           )}
           {!isMulti && (
             <ActionsBar
