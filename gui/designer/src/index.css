@@ -307,6 +307,18 @@ body {
   color: var(--danger-fg, #b91c1c);
   background: var(--danger-bg, rgba(220, 38, 38, 0.1));
 }
+
+/* Importer AnnotationsTab: AnnotationEditor sets max-h-[180px] on its
+   internal scroll list (Tailwind preset for the FragmentEditor sidebar
+   context). Inside our Inspector tab content there is much more room —
+   neutralise the cap so the list uses the full vertical space. */
+.importer-annotation-editor-wrap > div { display: flex; flex-direction: column; min-height: 0; height: 100%; }
+.importer-annotation-editor-wrap .max-h-\[180px\],
+.importer-annotation-editor-wrap .max-h-\[120px\] {
+  max-height: none !important;
+  flex: 1;
+  min-height: 0;
+}
 .ss-view-all {
   font-size: 13px;
   color: var(--ss-text-info);

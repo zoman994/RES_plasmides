@@ -8,11 +8,26 @@
  */
 import { useState } from 'react';
 import { ANNOTATION_COLORS } from '../auto-annotate';
+import { featureColor } from '../feature-palette';
 import { getRegions } from '../annotation-model';
 import { generateRegionId } from '../domain-detection';
 import { getTextColor } from '../lib/color-utils';
 import { SBOLIcon } from '../sbol-glyphs';
 import { t } from '../i18n';
+
+// Single source of truth for annotation colours: prefer the unified
+// feature-palette (A+v2) used by PlasmidMap / PlasmidMiniMap so the
+// linear feature-bar и list rows здесь синхронны с круглой картой
+// плазмиды. ANNOTATION_COLORS остаётся fallback для detail/point типов
+// которых нет в FEATURE_COLORS_V2 (start_codon / stop_codon / intron /
+// mutation / propeptide / etc).
+function annColor(ann) {
+  if (ann?.color) return ann.color;
+  return featureColor(ann?.type, ann?.name) || ANNOTATION_COLORS[ann?.type] || ANNOTATION_COLORS.misc;
+}
+function typeColor(type) {
+  return featureColor(type) || ANNOTATION_COLORS[type] || '#94A3B8';
+}
 
 // ═══ Type → Level mapping ═══
 export const TYPE_TO_LEVEL = {
@@ -171,12 +186,12 @@ export default function AnnotationEditor({
   const Row = ({ ann, indent, isLast }) => {
     const idx = annIdx(ann);
     const editing = editingIdx === idx;
-    const color = ann.color || ANNOTATION_COLORS[ann.type] || ANNOTATION_COLORS.misc;
+    const color = annColor(ann);
 
     if (editing) {
       return (
         <div className={`flex items-center gap-1 ${sz} py-1 ${indent ? 'pl-5' : 'px-1'}`}>
-          <SBOLIcon type={editData.type} size={14} color={ANNOTATION_COLORS[editData.type] || '#999'} />
+          <SBOLIcon type={editData.type} size={14} color={typeColor(editData.type)} />
           <select value={editData.type} onChange={e => setEditData(d => ({ ...d, type: e.target.value }))}
             className={`${sz} border rounded px-1 py-0.5 w-24`}>
             {TYPE_GROUPS.map(g => (
@@ -231,7 +246,7 @@ export default function AnnotationEditor({
           {annotations.filter(a => a.level !== 'point').map((a, i) => {
             const left = (a.start / seqLength) * 100;
             const width = Math.max(1, ((a.end - a.start) / seqLength) * 100);
-            const color = a.color || ANNOTATION_COLORS[a.type] || ANNOTATION_COLORS.misc;
+            const color = annColor(a);
             const opacity = a.level === 'region' ? 0.9 : 0.7;
             return (
               <div key={i} className="absolute top-0 h-full flex items-center justify-center text-[6px] font-medium truncate px-0.5 cursor-pointer"
@@ -257,7 +272,7 @@ export default function AnnotationEditor({
           const children = getChildren(region);
           const hasChildren = children.length > 0;
           const isCollapsed = collapsed.has(region.id);
-          const regionColor = ANNOTATION_COLORS[region.type] || '#999';
+          const regionColor = typeColor(region.type);
 
           return (
             <div key={region.id || ri}>

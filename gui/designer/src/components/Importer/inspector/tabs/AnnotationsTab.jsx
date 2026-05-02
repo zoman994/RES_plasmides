@@ -34,13 +34,20 @@ export default function AnnotationsTab({
       </div>
       <div
         data-testid="importer-annotation-editor-wrap"
-        style={{ width: '100%', minWidth: 0 }}
+        className="importer-annotation-editor-wrap"
+        style={{ width: '100%', minWidth: 0, flex: 1, minHeight: 0 }}
       >
         {/*
           hideBar=false → shows the linear feature «колбаса» strip (v0.5
           parity); compact=false so the editor uses the full Inspector
           width with normal-size rows + visible action buttons (was
           drowning in narrow column).
+
+          AnnotationEditor sets `max-h-[180px]` on its scroll list — way
+          too small for the Inspector's available vertical space. The CSS
+          override in index.css (`.importer-annotation-editor-wrap`)
+          neutralises that limit and lets the list fill whatever room the
+          tab content has.
         */}
         <AnnotationEditor
           annotations={annotations}

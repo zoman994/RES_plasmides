@@ -270,8 +270,19 @@ export default function CatalogColumn({
               }}
               onSelect={() => onActiveSourceChange?.({ kind: 'demo', value: 'demo' })}
             />
-            {openDemo && sources.demoLoading && (
+            {openDemo && sources.demoLoading && sources.demo.length === 0 && (
               <EmptyHint label={S.catalogLoading} testId="catalog-demo-loading" />
+            )}
+            {openDemo && sources.demo.length > 0 && sources.demo.slice(0, 8).map((it) => (
+              <ItemRow key={it.id || it.name} item={it} onClick={() => onSelectItem?.(it)} />
+            ))}
+            {openDemo && sources.demo.length > 8 && (
+              <button
+                type="button"
+                data-testid="importer-catalog-demo-more"
+                onClick={() => onActiveSourceChange?.({ kind: 'demo', value: 'demo' })}
+                style={moreLinkStyle}
+              >…ещё {sources.demo.length - 8}</button>
             )}
 
             <GroupHeader
