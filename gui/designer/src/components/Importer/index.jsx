@@ -403,6 +403,7 @@ export default function Importer({ flashMs = SIMPLE_FLASH_MS } = {}) {
         mode={importerMode}
         onModeChange={setImporterMode}
         filesCount={items.length}
+        onCancel={onCancel}
       />
 
       {/* Single-screen body: Catalog | Inspector | Meta */}
@@ -445,7 +446,12 @@ export default function Importer({ flashMs = SIMPLE_FLASH_MS } = {}) {
             background: 'var(--surface-1, #fff)',
           }}
         >
-          {!hasAny && <EmptyInspector />}
+          {!hasAny && (
+            <EmptyInspector
+              target={target}
+              libraryEmpty={target === 'library' && Object.values(useStore.getState().libraryEntries || {}).filter(e => e && e.kind === 'container' && e._pendingDelete !== true).length === 0}
+            />
+          )}
           {hasAny && !isMulti && currentItem && (
             <SingleInspector
               item={{ ...currentItem, name: edits.editedName ?? currentItem.name }}
@@ -544,23 +550,6 @@ export default function Importer({ flashMs = SIMPLE_FLASH_MS } = {}) {
         />
       )}
 
-      {/* Cancel button hosted as a header action — tests need data-testid. */}
-      <button
-        type="button"
-        data-testid="importer-cancel"
-        onClick={onCancel}
-        aria-label={S.closeAria}
-        style={{
-          position: 'absolute', top: 8, right: 8,
-          width: 28, height: 28,
-          border: '0.5px solid var(--border-default)',
-          borderRadius: 'var(--radius-md)',
-          background: 'var(--surface-1)',
-          color: 'var(--text-tertiary)',
-          fontSize: 14, lineHeight: 1, cursor: 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}
-      >×</button>
     </div>
   );
 }
@@ -595,16 +584,34 @@ function SimpleFlashOverlay({ busy }) {
   );
 }
 
-function ImporterHeader({ title, mode, onModeChange, filesCount }) {
+function ImporterHeader({ title, mode, onModeChange, filesCount, onCancel }) {
   return (
     <div
       data-testid="importer-header"
       style={{
-        display: 'flex', alignItems: 'center', gap: 16,
-        padding: '12px 18px',
+        display: 'flex', alignItems: 'center', gap: 12,
+        padding: '10px 16px',
         background: 'var(--surface-1, #fff)',
       }}
     >
+      <button
+        type="button"
+        data-testid="importer-cancel"
+        onClick={onCancel}
+        aria-label={S.backButtonAria}
+        title={S.backButtonAria}
+        style={{
+          background: 'transparent',
+          border: 'none',
+          cursor: 'pointer',
+          padding: '4px 10px',
+          fontSize: 18, lineHeight: 1,
+          color: 'var(--text-primary, #1c1917)',
+          borderRadius: 'var(--radius-md, 6px)',
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-2, #f5f5f4)'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+      >‹</button>
       <div
         style={{
           fontSize: 14, fontWeight: 500, color: 'var(--text-primary, #1c1917)',

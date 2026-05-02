@@ -50,7 +50,10 @@ export const IMPORTER_STRINGS = {
   // Inspector / TabBar
   emptyInspectorHint1: 'Выберите плазмиду из каталога слева',
   emptyInspectorHint2: 'или перетащите файл в зону внизу',
+  emptyLibraryFirstTimeTitle: 'Ваша библиотека пуста',
+  emptyLibraryFirstTimeBody: 'Перетащите .dna / .gb / .fasta файл в зону слева внизу — или вставьте sequence через текстовое поле. Также можно выбрать готовую плазмиду из «Учебные / demo» или каталога SnapGene слева.',
   untitledItem: '(без имени)',
+  backButtonAria: 'Закрыть Importer',
 
   tabOverview: 'Обзор',
   tabSequence: 'Последовательность',
@@ -137,7 +140,6 @@ export const IMPORTER_STRINGS = {
 
   // Keep simple-mode + autoname/primer-wizard strings as-is from M-B.1 K6.
   busyParsing: 'Парсинг файлов…',
-  closeAria: 'Закрыть Importer',
 
   // Simple-mode (M-B.1 K3) toasts and flash UI.
   simpleBusy: 'Импорт…',

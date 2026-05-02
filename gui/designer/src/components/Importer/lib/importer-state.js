@@ -108,16 +108,22 @@ export function useImporterState({ mode } = {}) { // eslint-disable-line no-unus
   const addCatalogItem = useCallback((item) => {
     if (!item || !item.sequence) return;
     const fn = item._fileName || `${item.name || 'catalog'}.dna`;
+    const annotations = Array.isArray(item.annotations) ? item.annotations : [];
     const next = {
       name: item.name || 'catalog',
       sequence: item.sequence,
       length: item.length || item.sequence.length,
       topology: item.topology || 'linear',
-      annotations: Array.isArray(item.annotations) ? item.annotations : [],
+      annotations,
       organism: item.organism || '',
       description: (item.description || '').replace(/<[^>]*>/g, '').trim(),
       _fileName: fn,
       _source: 'catalog',
+      // MetaColumn reads _fromFileCount to show «Из файла: N». Catalog
+      // items already carry annotations from their source (SnapGene /
+      // Library entry), so count them here — without this the column
+      // shows 0 and biolog thinks the entry is empty.
+      _fromFileCount: annotations.length,
     };
     setParsedItems([next]);
     setCurrentIdxState(0);
