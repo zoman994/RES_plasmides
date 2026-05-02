@@ -47,6 +47,7 @@ export const STRINGS = {
     groupProjectsBadge: 'soon',
     installAsDesktopApp: 'Install as desktop app',
     appInstalled: 'App installed',
+    installManualHint: 'Установка через меню браузера: ⋮ → «Установить BodgeGene» (или «Создать ярлык» в Vivaldi). Если пункт отсутствует — у браузера нет required PWA criteria для текущей вкладки.',
     recentProjects: 'Recent projects',
     noRecentProjects: 'No projects yet.',
     exportHeader: (count) => `Selecting for export · ${count} selected`,

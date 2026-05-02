@@ -51,21 +51,34 @@ export default function SingleInspector({
       data-current-file={item._fileName}
       style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}
     >
+      {/* Title row compacted (Medium polish): padding 10/14 → 6/14, title +
+          subtitle on a single flex row with subtitle right-aligned to the
+          left of free space (saves ~26px vertical). TagsEditor stays on
+          its own row underneath. */}
       <div
         data-testid="importer-single-title"
         style={{
-          padding: '10px 14px',
+          padding: '6px 14px 8px',
           borderBottom: '0.5px solid var(--border-subtle)',
           background: 'var(--surface-1)',
         }}
       >
-        <InlineEditableTitle
-          value={item.name || item._fileName || ''}
-          onCommit={(name) => onRenameItem?.(name)}
-        />
-        <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4 }}>
-          {length.toLocaleString()} п.н. · {topology}
-          {regionCount > 0 && ` · ${S.summaryRegionCount(regionCount)}`}
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, minWidth: 0 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <InlineEditableTitle
+              value={item.name || item._fileName || ''}
+              onCommit={(name) => onRenameItem?.(name)}
+            />
+          </div>
+          <div
+            style={{
+              fontSize: 11, color: 'var(--text-tertiary)',
+              fontFamily: 'var(--font-mono)', flexShrink: 0,
+            }}
+          >
+            {length.toLocaleString()} п.н. · {topology}
+            {regionCount > 0 && ` · ${S.summaryRegionCount(regionCount)}`}
+          </div>
         </div>
         <TagsEditor
           tags={Array.isArray(edits?.editedTags) ? edits.editedTags : []}

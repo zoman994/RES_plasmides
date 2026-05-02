@@ -216,27 +216,39 @@ export default function StartScreen({ onOpenFile }) {
               display: 'flex', flexDirection: 'column', gap: 8,
             }}
           >
-            {canInstallPwa && (
-              <div
-                style={{
-                  paddingTop: 16,
-                  borderTop: '0.5px solid var(--ss-border-tertiary)',
-                }}
-              >
-                <button
-                  type="button"
-                  className="ss-install-link"
-                  onClick={async () => {
+            {/*
+              PWA install link: always rendered now (was gated by
+              canInstallPwa, but Chrome only fires beforeinstallprompt
+              when ALL its criteria pass — biolog could legitimately want
+              to install even when Chrome's heuristic skipped the event).
+              Click path:
+                - canInstallPwa=true → run promptInstall (browser dialog).
+                - canInstallPwa=false → toast with manual instructions
+                  («⋮ → Установить BodgeGene»).
+            */}
+            <div
+              style={{
+                paddingTop: 16,
+                borderTop: '0.5px solid var(--ss-border-tertiary)',
+              }}
+            >
+              <button
+                type="button"
+                className="ss-install-link"
+                onClick={async () => {
+                  if (canInstallPwa) {
                     const outcome = await promptInstall();
                     if (outcome === 'accepted') {
                       showToast(STRINGS.startScreen.appInstalled, 'success');
                       setCanInstallPwa(false);
                     }
-                  }}
-                  data-testid="ss-install-link"
-                >{STRINGS.startScreen.installAsDesktopApp}</button>
-              </div>
-            )}
+                  } else {
+                    showToast(STRINGS.startScreen.installManualHint, 'info');
+                  }
+                }}
+                data-testid="ss-install-link"
+              >{STRINGS.startScreen.installAsDesktopApp}</button>
+            </div>
             <div
               data-testid="ss-version-footer"
               style={{

@@ -113,6 +113,19 @@ export const IMPORTER_STRINGS = {
   metaInfo: 'информация',
   metaInfoFromFile: 'Из файла',
   metaInfoEnriched: 'Дополнено',
+  metaDescription: 'описание',
+  metaOrganism: 'организм',
+  metaSource: 'источник',
+  metaSourceValue: (s) => {
+    if (s === 'catalog') return 'каталог';
+    if (s === 'mine') return 'моя библиотека';
+    if (s === 'project') return 'этот проект';
+    if (s === 'demo') return 'учебный';
+    if (s === 'snapgene') return 'каталог SnapGene';
+    if (s === 'paste') return 'вставка';
+    if (s === 'file') return 'файл';
+    return s;
+  },
   metaIupac: (chars) => `Содержит IUPAC: ${chars} — праймеры по таким участкам не дизайнятся, программа предупредит при сборке.`,
 
   // Multi-mode

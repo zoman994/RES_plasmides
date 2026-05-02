@@ -182,6 +182,39 @@ export default function MetaColumn({
           }}
         >{S.metaIupac(sanitize.iupacChars.join(', '))}</div>
       )}
+
+      {/* Description / organism cards: shown only if data exists. Fills the
+          MetaColumn vertical void (was 650px empty under the topology + length
+          + info stack) with actually useful context, not filler. */}
+      {item.description && (
+        <Card label={S.metaDescription}>
+          <div
+            data-testid="importer-meta-description"
+            style={{
+              fontSize: 11, color: 'var(--text-primary)',
+              lineHeight: 1.5,
+              maxHeight: 240, overflowY: 'auto',
+              wordBreak: 'break-word',
+            }}
+          >{item.description}</div>
+        </Card>
+      )}
+      {item.organism && (
+        <Card label={S.metaOrganism}>
+          <div
+            data-testid="importer-meta-organism"
+            style={{ fontSize: 11, color: 'var(--text-primary)', fontStyle: 'italic' }}
+          >{item.organism}</div>
+        </Card>
+      )}
+      {item._source && (
+        <Card label={S.metaSource}>
+          <div
+            data-testid="importer-meta-source"
+            style={{ fontSize: 11, color: 'var(--text-secondary)', textTransform: 'capitalize' }}
+          >{S.metaSourceValue(item._source)}</div>
+        </Card>
+      )}
     </aside>
   );
 }

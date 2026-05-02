@@ -12,10 +12,12 @@ const S = STRINGS.importer;
  * cross-project / Container Window imports).
  */
 export default function TabBar({ activeTab, onChange, showHistory = false }) {
+  // ✎ glyph on «Аннотации» signals that the tab is editable (vs. read-only
+  // sequence preview). 🔒 reserved for read-only tabs in M-D commits flow.
   const tabs = [
     { id: 'overview', label: S.tabOverview },
     { id: 'sequence', label: S.tabSequence },
-    { id: 'annotations', label: S.tabAnnotations },
+    { id: 'annotations', label: S.tabAnnotations, glyph: '✎' },
   ];
   if (showHistory) tabs.push({ id: 'history', label: S.tabHistory });
 
@@ -49,8 +51,17 @@ export default function TabBar({ activeTab, onChange, showHistory = false }) {
             fontWeight: activeTab === t.id ? 500 : 400,
             cursor: 'pointer',
             marginBottom: -1,
+            display: 'inline-flex', alignItems: 'center', gap: 5,
           }}
-        >{t.label}</button>
+        >
+          {t.glyph && (
+            <span
+              aria-hidden
+              style={{ fontSize: 11, opacity: activeTab === t.id ? 0.7 : 0.5 }}
+            >{t.glyph}</span>
+          )}
+          {t.label}
+        </button>
       ))}
     </div>
   );
