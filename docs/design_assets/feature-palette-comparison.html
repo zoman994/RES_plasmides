@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="light">
+<head>
+<meta charset="utf-8">
+<title>Feature palette comparison — BodgeGene v0.6+</title>
+<style>
+  :root {
+    --bg: #fafaf9;
+    --surface: #ffffff;
+    --border: #e7e5e4;
+    --text: #1c1917;
+    --muted: #78716c;
+    --stroke: #1c1917;
+  }
+  [data-theme="dark"] {
+    --bg: #0c0c0d;
+    --surface: #171717;
+    --border: #2a2a28;
+    --text: #f5f5f4;
+    --muted: #a8a29e;
+    --stroke: #f5f5f4;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px;
+    font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    background: var(--bg); color: var(--text);
+    transition: background 200ms, color 200ms;
+  }
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 24px; padding-bottom: 12px;
+    border-bottom: 0.5px solid var(--border);
+  }
+  h1 { margin: 0; font-size: 18px; font-weight: 600; }
+  h2 { font-size: 14px; font-weight: 600; margin: 0 0 4px; }
+  .sub { font-size: 12px; color: var(--muted); margin: 0 0 16px; }
+
+  .toggle {
+    background: var(--surface); border: 0.5px solid var(--border);
+    color: var(--text); padding: 6px 14px; font-size: 12px;
+    border-radius: 6px; cursor: pointer; font-family: inherit;
+  }
+  .toggle:hover { background: var(--border); }
+
+  .palettes {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+    margin-bottom: 24px;
+  }
+  .pal {
+    background: var(--surface); border: 0.5px solid var(--border);
+    border-radius: 8px; padding: 16px;
+  }
+  .pal-tag {
+    display: inline-block; font-size: 10px; text-transform: uppercase;
+    letter-spacing: 0.5px; padding: 2px 8px; border-radius: 999px;
+    margin-bottom: 8px;
+  }
+  .pal-A .pal-tag { background: rgba(245, 158, 11, 0.15); color: #b45309; }
+  .pal-Aplus .pal-tag { background: rgba(217, 131, 107, 0.18); color: #9a3a20; border: 1px solid rgba(217,131,107,0.4); }
+  .pal-B .pal-tag { background: rgba(59, 130, 246, 0.15); color: #1d4ed8; }
+  .pal-C .pal-tag { background: rgba(16, 185, 129, 0.15); color: #047857; }
+  [data-theme="dark"] .pal-A .pal-tag { background: rgba(245, 158, 11, 0.2); color: #fde68a; }
+  [data-theme="dark"] .pal-Aplus .pal-tag { background: rgba(217, 131, 107, 0.25); color: #fda4af; border-color: rgba(217,131,107,0.4); }
+  [data-theme="dark"] .pal-B .pal-tag { background: rgba(59, 130, 246, 0.2); color: #93c5fd; }
+  [data-theme="dark"] .pal-C .pal-tag { background: rgba(16, 185, 129, 0.2); color: #86efac; }
+
+  .plasmid-svg {
+    display: block; margin: 8px auto; width: 280px; height: 280px;
+  }
+  .legend {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px;
+    font-size: 11px; margin-top: 12px;
+  }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 2px 0;
+  }
+  .chip-dot {
+    width: 12px; height: 12px; border-radius: 3px;
+    flex-shrink: 0; border: 0.5px solid rgba(0,0,0,0.15);
+  }
+  .chip-name { color: var(--text); font-weight: 500; }
+  .chip-type { color: var(--muted); font-size: 10px; }
+
+  table {
+    width: 100%; border-collapse: collapse; font-size: 12px;
+    margin-top: 8px;
+  }
+  th, td {
+    text-align: left; padding: 6px 10px;
+    border-bottom: 0.5px solid var(--border);
+  }
+  th {
+    background: var(--bg); font-weight: 500; font-size: 10px;
+    text-transform: uppercase; letter-spacing: 0.4px; color: var(--muted);
+  }
+  td.swatch-cell {
+    width: 24px; padding: 6px 4px;
+  }
+  .swatch {
+    width: 18px; height: 18px; border-radius: 4px;
+    border: 0.5px solid rgba(0,0,0,0.15);
+    display: inline-block; vertical-align: middle;
+  }
+  td.hex { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); }
+  .hex-table-wrap { background: var(--surface); border: 0.5px solid var(--border); border-radius: 8px; padding: 16px; }
+
+  .takeaway {
+    background: var(--surface); border-left: 3px solid var(--text);
+    padding: 12px 16px; margin: 24px 0;
+    font-size: 12px; line-height: 1.6;
+  }
+  .takeaway strong { display: block; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Feature palette comparison — BodgeGene v0.6+</h1>
+      <div class="sub">Та же плазмида (5 кб, 11 features) под тремя палитрами. Кликни Light/Dark чтобы сравнить.</div>
+    </div>
+    <button class="toggle" onclick="document.documentElement.dataset.theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'">Light / Dark</button>
+  </header>
+
+  <div class="palettes">
+    <!-- ============== Palette A — current ============== -->
+    <div class="pal pal-A">
+      <span class="pal-tag">A · текущая</span>
+      <h2>warm sepia</h2>
+      <div class="sub">feature-palette.js v0.5 — desaturated «под бумагу», stroke #3A2F1F</div>
+      <svg class="plasmid-svg" viewBox="0 0 280 280" id="svg-A"></svg>
+      <div class="legend" id="legend-A"></div>
+    </div>
+
+    <!-- ============== Palette A+ — refined (Игорь 02.05.2026) ============== -->
+    <div class="pal pal-Aplus">
+      <span class="pal-tag">A+ · refined</span>
+      <h2>warm sepia · правки</h2>
+      <div class="sub">resistance → коралл, promoter → насыщенный янтарь, CDS → ярче. Stroke остаётся тёплый.</div>
+      <svg class="plasmid-svg" viewBox="0 0 280 280" id="svg-Aplus"></svg>
+      <div class="legend" id="legend-Aplus"></div>
+    </div>
+
+    <!-- ============== Palette B — proposed ============== -->
+    <div class="pal pal-B">
+      <span class="pal-tag">B · DESIGN_SYSTEM §2.1</span>
+      <h2>Tailwind 500 rainbow</h2>
+      <div class="sub">Saturated, разнообразные оттенки, нейтральный stroke #1c1917</div>
+      <svg class="plasmid-svg" viewBox="0 0 280 280" id="svg-B"></svg>
+      <div class="legend" id="legend-B"></div>
+    </div>
+
+    <!-- ============== Palette C — compromise ============== -->
+    <div class="pal pal-C">
+      <span class="pal-tag">C · компромисс</span>
+      <h2>Wong colorblind-safe</h2>
+      <div class="sub">Менее яркие чем B, но контраст между категориями выше A. CB-friendly.</div>
+      <svg class="plasmid-svg" viewBox="0 0 280 280" id="svg-C"></svg>
+      <div class="legend" id="legend-C"></div>
+    </div>
+  </div>
+
+  <div class="takeaway">
+    <strong>Что смотреть глазами</strong>
+    <b>A</b> — почти всё в жёлто-беж кластере, AmpR / lac promoter / lacZα / pUC ori / RBS / linker сливаются. Тёплая сепия-эстетика приятная, но дифференциация плохая.<br>
+    <b>A+ v2</b> — четыре правки относительно A: <b>resistance</b> → коралл (отделить от CDS), <b>promoter</b> → насыщенный янтарь (отделить от ori), <b>CDS</b> ярче, <b>reporter</b> → sky-cyan (вышел из зелёного семейства, теперь зелёный только у CDS). Плюс <b>сильный shade-by-name</b> (lightness ±20%, hue ±18°, saturation ±20%): три CDS (lacZα / mCherry / csrA), два promoter (lac / T7), два resistance (AmpR / KanR) — каждый сосед в своей семье явно разный. Sepia-дух A сохранён, stroke #3A2F1F тот же.<br>
+    <b>B</b> — каждый тип явно отделён hue. CDS (синий) / promoter (зелёный) / terminator (оранжевый) / origin (циан). Saturated, в dark яркий.<br>
+    <b>C</b> — Wong-палитра (Nature Methods 2011), CB-safe. Менее «попсовая» чем B.
+  </div>
+
+  <div class="hex-table-wrap">
+    <h2>Hex side-by-side</h2>
+    <div class="sub">Жирным — те, где новая палитра меняет hue, а не только насыщенность.</div>
+    <table id="hex-table">
+      <thead>
+        <tr>
+          <th>тип</th>
+          <th colspan="2">A · current</th>
+          <th colspan="2">A+ · refined</th>
+          <th colspan="2">B · Tailwind 500</th>
+          <th colspan="2">C · Wong CB-safe</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+<script>
+// ─── Палитры ───────────────────────────────────────────────────────
+const PAL_A = {  // current — feature-palette.js v0.5
+  CDS:         '#C8D570',
+  promoter:    '#F2C84B',
+  terminator:  '#D97B3B',
+  ori:         '#E8B333',
+  resistance:  '#9BC07C',
+  reporter:    '#7CB49E',
+  tag:         '#E091A2',
+  his:         '#B884B8',
+  signal:      '#B8AA8A',
+  linker:      '#C4B8A8',
+  primer_bind: '#9EBAD9',
+  operator:    '#6DA4C4',
+  misc:        '#EEE7D5',
+  stroke:      '#3A2F1F',
+};
+const PAL_Aplus = {  // A + правки v2 (Игорь 02.05.2026)
+  CDS:         '#B0C84A',  // ↑ ярче и насыщеннее (был #C8D570)
+  promoter:    '#FFC400',  // ↑ насыщенный янтарь, отделить от ori (был #F2C84B)
+  terminator:  '#D97B3B',  // = (тот же)
+  ori:         '#E8B333',  // = (тот же)
+  resistance:  '#D9836B',  // ⇒ коралл, выйти из зелёного кластера (был #9BC07C)
+  reporter:    '#5DA5C4',  // ⇒ sky-cyan — увели из зелёных (было #7CB49E мятный)
+  tag:         '#E091A2',  // =
+  his:         '#B884B8',  // =
+  signal:      '#B8AA8A',  // =
+  linker:      '#C4B8A8',  // =
+  primer_bind: '#9EBAD9',  // =
+  operator:    '#6DA4C4',  // =
+  misc:        '#EEE7D5',  // =
+  stroke:      '#3A2F1F',  // = (warm-sepia stroke сохраняем)
+};
+const PAL_B = {  // Tailwind 500 rainbow — DESIGN_SYSTEM §2.1
+  CDS:         '#3b82f6',
+  promoter:    '#22c55e',
+  terminator:  '#f97316',
+  ori:         '#06b6d4',
+  resistance:  '#f59e0b',
+  reporter:    '#14b8a6',
+  tag:         '#ec4899',
+  his:         '#d946ef',
+  signal:      '#a855f7',
+  linker:      '#94a3b8',
+  primer_bind: '#8b5cf6',
+  operator:    '#0ea5e9',
+  misc:        '#64748b',
+  stroke:      '#1c1917',
+};
+const PAL_C = {  // Wong colorblind-safe (Nature Methods 2011)
+  CDS:         '#56B4E9',  // sky blue
+  promoter:    '#009E73',  // bluish green
+  terminator:  '#D55E00',  // vermilion
+  ori:         '#0072B2',  // blue
+  resistance:  '#E69F00',  // orange
+  reporter:    '#56B4E9',  // sky (same as CDS — distinguished by ring)
+  tag:         '#CC79A7',  // reddish purple
+  his:         '#CC79A7',  // reddish purple (shade)
+  signal:      '#999999',  // gray
+  linker:      '#999999',  // gray
+  primer_bind: '#0072B2',  // blue (shade)
+  operator:    '#0072B2',  // blue (shade)
+  misc:        '#999999',  // gray
+  stroke:      '#1c1917',
+};
+
+// ─── Features (типичная плазмида 5 кб с дублирующимися типами) ────
+// Несколько CDS / promoter / resistance специально — чтобы увидеть
+// shade-by-name vs flat colors.
+const SEQ_LEN = 5000;
+const FEATURES = [
+  { name: 'lac promoter',   type: 'promoter',    start: 350,  end: 450 },
+  { name: 'RBS',            type: 'signal',      start: 460,  end: 480 },
+  { name: 'lacZα',          type: 'CDS',         start: 490,  end: 700 },
+  { name: '6xHis',          type: 'his',         start: 700,  end: 740 },
+  { name: 'lac operator',   type: 'operator',    start: 750,  end: 820 },
+  { name: 'sfGFP',          type: 'reporter',    start: 1000, end: 1700 },
+  { name: 'T7 promoter',    type: 'promoter',    start: 1750, end: 1820 },
+  { name: 'AmpR',           type: 'resistance',  start: 1900, end: 2750 },
+  { name: 'KanR',           type: 'resistance',  start: 2780, end: 3000 },
+  { name: 'pUC ori',        type: 'ori',         start: 3000, end: 3700 },
+  { name: 'rrnB terminator',type: 'terminator',  start: 3800, end: 3920 },
+  { name: 'GS-linker',      type: 'linker',      start: 4000, end: 4030 },
+  { name: 'mCherry',        type: 'CDS',         start: 4060, end: 4400 },
+  { name: 'csrA',           type: 'CDS',         start: 4420, end: 4490 },
+  { name: 'M13 fwd',        type: 'primer_bind', start: 4500, end: 4530 },
+];
+
+// ─── Shade-by-name (применяется ТОЛЬКО в A+) ───────────────────────
+// Хеш имени фичи → стабильный сдвиг lightness ±10% и hue ±6°. Несколько
+// CDS / promoters одного типа получат разные оттенки, но из одной hue-
+// семьи — биолог сразу видит что это «несколько CDS», просто разных.
+function hashStr(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
+function hexToHsl(hex) {
+  const m = hex.replace('#','').match(/.{2}/g);
+  const r = parseInt(m[0],16)/255, g = parseInt(m[1],16)/255, b = parseInt(m[2],16)/255;
+  const max = Math.max(r,g,b), min = Math.min(r,g,b);
+  let h = 0, s = 0, l = (max+min)/2;
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d/(2-max-min) : d/(max+min);
+    switch (max) {
+      case r: h = ((g-b)/d + (g<b?6:0)); break;
+      case g: h = ((b-r)/d + 2); break;
+      case b: h = ((r-g)/d + 4); break;
+    }
+    h *= 60;
+  }
+  return [h, s*100, l*100];
+}
+function hslToHex(h, s, l) {
+  s /= 100; l /= 100;
+  const k = n => (n + h/30) % 12;
+  const a = s * Math.min(l, 1-l);
+  const f = n => {
+    const c = l - a * Math.max(-1, Math.min(k(n)-3, Math.min(9-k(n), 1)));
+    return Math.round(c*255).toString(16).padStart(2,'0');
+  };
+  return `#${f(0)}${f(8)}${f(4)}`;
+}
+function shadeFromName(baseHex, name) {
+  if (!name) return baseHex;
+  const hash = hashStr(name);
+  // Сильный спред: lightness ±20%, hue ±18°, saturation ±20%.
+  // Семейство визуально сохраняется (CDS всё ещё зелёный), но соседние
+  // одно-типовые регионы разительно разные.
+  const lOffset = ((hash % 1000) / 1000 - 0.5) * 40;            // -20..+20
+  const hOffset = (((hash >> 10) % 1000) / 1000 - 0.5) * 36;    // -18..+18
+  const sOffset = (((hash >> 20) % 1000) / 1000 - 0.5) * 40;    // -20..+20
+  const [h, s, l] = hexToHsl(baseHex);
+  const nh = (h + hOffset + 360) % 360;
+  const ns = Math.max(20, Math.min(95, s + sOffset));
+  const nl = Math.max(25, Math.min(78, l + lOffset));
+  return hslToHex(nh, ns, nl);
+}
+
+// ─── SVG render ────────────────────────────────────────────────────
+function arcPath(cx, cy, rOuter, rInner, startA, endA) {
+  const large = (endA - startA) > Math.PI ? 1 : 0;
+  const x1 = cx + rOuter * Math.cos(startA);
+  const y1 = cy + rOuter * Math.sin(startA);
+  const x2 = cx + rOuter * Math.cos(endA);
+  const y2 = cy + rOuter * Math.sin(endA);
+  const x3 = cx + rInner * Math.cos(endA);
+  const y3 = cy + rInner * Math.sin(endA);
+  const x4 = cx + rInner * Math.cos(startA);
+  const y4 = cy + rInner * Math.sin(startA);
+  return `M ${x1} ${y1} A ${rOuter} ${rOuter} 0 ${large} 1 ${x2} ${y2} L ${x3} ${y3} A ${rInner} ${rInner} 0 ${large} 0 ${x4} ${y4} Z`;
+}
+
+function renderPlasmid(svgId, pal, shadeByName = false) {
+  const svg = document.getElementById(svgId);
+  svg.innerHTML = '';
+  const ns = 'http://www.w3.org/2000/svg';
+  const cx = 140, cy = 140, rOuter = 110, rInner = 80;
+
+  // Background ring (the plasmid backbone).
+  const bg = document.createElementNS(ns, 'circle');
+  bg.setAttribute('cx', cx); bg.setAttribute('cy', cy);
+  bg.setAttribute('r', (rOuter + rInner) / 2);
+  bg.setAttribute('fill', 'none');
+  bg.setAttribute('stroke', 'var(--border)');
+  bg.setAttribute('stroke-width', rOuter - rInner);
+  svg.appendChild(bg);
+
+  for (const f of FEATURES) {
+    // bp → angle: 0bp at top (12 o'clock), clockwise.
+    const startA = (f.start / SEQ_LEN) * 2 * Math.PI - Math.PI / 2;
+    const endA   = (f.end   / SEQ_LEN) * 2 * Math.PI - Math.PI / 2;
+    const path = document.createElementNS(ns, 'path');
+    path.setAttribute('d', arcPath(cx, cy, rOuter, rInner, startA, endA));
+    const baseColor = pal[f.type] || pal.misc;
+    const finalColor = shadeByName ? shadeFromName(baseColor, f.name) : baseColor;
+    path.setAttribute('fill', finalColor);
+    path.setAttribute('stroke', pal.stroke);
+    path.setAttribute('stroke-width', '0.6');
+    path.setAttribute('stroke-linejoin', 'round');
+    svg.appendChild(path);
+  }
+
+  // Center label.
+  const label = document.createElementNS(ns, 'text');
+  label.setAttribute('x', cx); label.setAttribute('y', cy);
+  label.setAttribute('text-anchor', 'middle');
+  label.setAttribute('dominant-baseline', 'central');
+  label.setAttribute('font-family', 'JetBrains Mono, monospace');
+  label.setAttribute('font-size', '10');
+  label.setAttribute('fill', 'currentColor');
+  label.setAttribute('opacity', '0.55');
+  label.textContent = `5,000 bp`;
+  svg.appendChild(label);
+}
+
+function renderLegend(legendId, pal, shadeByName = false) {
+  const el = document.getElementById(legendId);
+  el.innerHTML = '';
+  for (const f of FEATURES) {
+    const chip = document.createElement('div');
+    chip.className = 'chip';
+    const base = pal[f.type] || pal.misc;
+    const final = shadeByName ? shadeFromName(base, f.name) : base;
+    chip.innerHTML = `
+      <span class="chip-dot" style="background:${final}"></span>
+      <span class="chip-name">${f.name}</span>
+      <span class="chip-type">${f.type}</span>
+    `;
+    el.appendChild(chip);
+  }
+}
+
+// ─── Hex table ─────────────────────────────────────────────────────
+const HEX_ROWS = [
+  'CDS','promoter','terminator','ori','resistance','reporter',
+  'tag','his','signal','linker','primer_bind','operator','misc',
+];
+function renderHexTable() {
+  const tbody = document.querySelector('#hex-table tbody');
+  tbody.innerHTML = '';
+  for (const t of HEX_ROWS) {
+    const a = PAL_A[t], aplus = PAL_Aplus[t], b = PAL_B[t], c = PAL_C[t];
+    const changed = (col1, col2) => {
+      if (!col1 || !col2) return false;
+      return col1.toLowerCase() !== col2.toLowerCase();
+    };
+    const aPlusChanged = changed(a, aplus);
+    const bChanged = changed(a, b);
+    const cChanged = changed(a, c);
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td>${t}</td>
+      <td class="swatch-cell"><span class="swatch" style="background:${a}"></span></td>
+      <td class="hex">${a.toUpperCase()}</td>
+      <td class="swatch-cell"><span class="swatch" style="background:${aplus}"></span></td>
+      <td class="hex" style="font-weight:${aPlusChanged ? '700' : '400'}; color:${aPlusChanged ? '#9a3a20' : 'var(--muted)'}">${aplus.toUpperCase()}</td>
+      <td class="swatch-cell"><span class="swatch" style="background:${b}"></span></td>
+      <td class="hex" style="font-weight:${bChanged ? '600' : '400'}; color:${bChanged ? 'var(--text)' : 'var(--muted)'}">${b.toUpperCase()}</td>
+      <td class="swatch-cell"><span class="swatch" style="background:${c}"></span></td>
+      <td class="hex" style="font-weight:${cChanged ? '600' : '400'}; color:${cChanged ? 'var(--text)' : 'var(--muted)'}">${c.toUpperCase()}</td>
+    `;
+    tbody.appendChild(row);
+  }
+}
+
+// ─── Render ────────────────────────────────────────────────────────
+renderPlasmid('svg-A', PAL_A); renderLegend('legend-A', PAL_A);
+// A+ ИСПОЛЬЗУЕТ shade-by-name — несколько CDS / promoter / resistance
+// получают разные оттенки в рамках своего hue.
+renderPlasmid('svg-Aplus', PAL_Aplus, true); renderLegend('legend-Aplus', PAL_Aplus, true);
+renderPlasmid('svg-B', PAL_B); renderLegend('legend-B', PAL_B);
+renderPlasmid('svg-C', PAL_C); renderLegend('legend-C', PAL_C);
+renderHexTable();
+</script>
+</body>
+</html>

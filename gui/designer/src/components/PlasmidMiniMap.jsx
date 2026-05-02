@@ -33,7 +33,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { featureColor, FEATURE_STROKE, FEATURE_COLORS_V2 } from '../feature-palette';
+import { featureColor, featureColorShaded, FEATURE_STROKE, FEATURE_COLORS_V2 } from '../feature-palette';
 import { getRegions } from '../annotation-model';
 
 const LEADER_LEN = 10;                    // px the leader sticks out past outer radius / above bar
@@ -90,7 +90,7 @@ function buildCircularLabels(regions, totalLen, cx, cy, r) {
       key: region.id,
       ang,
       label: region.name || region.type || 'region',
-      color: featureColor(region.type, region.name),
+      color: featureColorShaded(region.type, region.name),
       innerX, innerY, outerX, outerY, anchor,
       textX, textY: outerY + 3,
     };
@@ -123,7 +123,7 @@ function buildLinearLabels(regions, totalLen, size, cy, strokeWidth) {
       key: region.id,
       anchor: 'middle',
       label: region.name || region.type || 'region',
-      color: featureColor(region.type, region.name),
+      color: featureColorShaded(region.type, region.name),
       innerX, innerY, outerX, outerY,
       textX: outerX, textY: outerY - 2,
     };
@@ -247,7 +247,7 @@ export default function PlasmidMiniMap({
     const start = Math.max(0, Math.min(totalLen, region.start || 0));
     const end = Math.max(0, Math.min(totalLen, region.end || 0));
     if (end <= start) continue;
-    const color = featureColor(region.type, region.name);
+    const color = featureColorShaded(region.type, region.name);
     const titleText = `${region.name || region.type || 'region'} · ${start + 1}–${end} bp`;
 
     if (isCircular) {

@@ -9,7 +9,7 @@ import { getFragColor, isMarker, FEATURE_COLORS } from '../theme';
 import { DOMAIN_COLORS } from '../domain-detection';
 import { getRegions, getDetails } from '../annotation-model';
 import { scanAllSites, detectMCS, getCompatible, RE_ENZYMES } from '../restriction-db';
-import { featureColor, FEATURE_STROKE } from '../feature-palette';
+import { featureColorShaded, FEATURE_STROKE } from '../feature-palette';
 import { useStore } from '../store';
 
 const TAU = 2 * Math.PI;
@@ -260,7 +260,7 @@ export default function PlasmidMap({ fragments, constructName, totalBp, junction
 
                 // Build unified sub-arc list: { id, ftype, startBp, endBp, color, name, label }
                 const rawSubs = subArcs
-                  ? subArcs.map(r => ({ id: r.id, ftype: r.type, startBp: r.start, endBp: r.end, color: featureColor(r.type, r.name), name: r.name, label: r.name }))
+                  ? subArcs.map(r => ({ id: r.id, ftype: r.type, startBp: r.start, endBp: r.end, color: featureColorShaded(r.type, r.name), name: r.name, label: r.name }))
                   : legacyDoms.map(dom => {
                       const isCDS = a.type === 'CDS' || a.type === 'gene';
                       return { id: null, ftype: dom.type, startBp: isCDS ? (dom.startAA - 1) * 3 : dom.startAA - 1, endBp: isCDS ? dom.endAA * 3 : dom.endAA, color: dom.color || DOMAIN_COLORS[dom.type] || a.color, name: dom.name, label: dom.name };
