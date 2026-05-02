@@ -21,8 +21,13 @@ import { t } from '../i18n';
 // плазмиды. ANNOTATION_COLORS остаётся fallback для detail/point типов
 // которых нет в FEATURE_COLORS_V2 (start_codon / stop_codon / intron /
 // mutation / propeptide / etc).
-function annColor(ann) {
-  if (ann?.color) return ann.color;
+//
+// `ignoreOwn=true` skips the per-annotation `color` field — used in
+// Importer (catalog SnapGene .dna files carry their own SnapGene colour
+// per annotation, which diverges from our A+v2 palette). FragmentEditor
+// keeps default behaviour so biolog-set custom colours stay respected.
+function annColor(ann, ignoreOwn = false) {
+  if (!ignoreOwn && ann?.color) return ann.color;
   return featureColor(ann?.type, ann?.name) || ANNOTATION_COLORS[ann?.type] || ANNOTATION_COLORS.misc;
 }
 function typeColor(type) {
@@ -97,6 +102,7 @@ export const PART_TYPE_GROUPS = TYPE_GROUPS.filter(g => g.labelKey !== 'typegrou
 export default function AnnotationEditor({
   annotations = [], seqLength = 0, onChange, compact, readOnly, hideBar,
   onSelect, selectedAnnotation,
+  ignoreOwnColor = false,
 }) {
   const [collapsed, setCollapsed] = useState(new Set());
   const [showAdd, setShowAdd] = useState(false);
@@ -186,7 +192,7 @@ export default function AnnotationEditor({
   const Row = ({ ann, indent, isLast }) => {
     const idx = annIdx(ann);
     const editing = editingIdx === idx;
-    const color = annColor(ann);
+    const color = annColor(ann, ignoreOwnColor);
 
     if (editing) {
       return (
@@ -246,7 +252,7 @@ export default function AnnotationEditor({
           {annotations.filter(a => a.level !== 'point').map((a, i) => {
             const left = (a.start / seqLength) * 100;
             const width = Math.max(1, ((a.end - a.start) / seqLength) * 100);
-            const color = annColor(a);
+            const color = annColor(a, ignoreOwnColor);
             const opacity = a.level === 'region' ? 0.9 : 0.7;
             return (
               <div key={i} className="absolute top-0 h-full flex items-center justify-center text-[6px] font-medium truncate px-0.5 cursor-pointer"

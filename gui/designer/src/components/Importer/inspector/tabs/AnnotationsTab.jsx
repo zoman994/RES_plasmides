@@ -53,6 +53,7 @@ export default function AnnotationsTab({
           annotations={annotations}
           seqLength={seqLength}
           onChange={onChange}
+          ignoreOwnColor
         />
       </div>
     </div>
