@@ -175,13 +175,15 @@ describe('K5 — StartScreen wireframe v7', () => {
     expect(useStore.getState().modals.projectInfo).toBe(true);
   });
 
-  it('Library click opens Importer pre-focused on «Моя библиотека» catalog source', () => {
+  it('Library click opens Importer with target=library and full catalog visible', () => {
     render(<StartScreen onOpenFile={() => {}} />);
     fireEvent.click(screen.getByTestId('ss-browse-library'));
     const top = useStore.getState().canvas.navStack[useStore.getState().canvas.navStack.length - 1];
     expect(top.fullscreen).toBe('importer');
     expect(top.payload.target).toBe('library');
-    expect(top.payload.openCatalogSource).toEqual({ kind: 'mine', value: '__all__' });
+    // No openCatalogSource → catalog tree renders all 4 groups
+    // («Моя библиотека» is open by default via persistent localStorage).
+    expect(top.payload.openCatalogSource).toBeUndefined();
   });
 
   it('Sidebar footer renders the BodgeGene version from lib/version.js', () => {

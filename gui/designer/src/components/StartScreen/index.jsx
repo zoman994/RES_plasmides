@@ -184,10 +184,7 @@ export default function StartScreen({ onOpenFile }) {
                 dataTestId="ss-browse-library"
                 onClick={() => pushFullscreen({
                   fullscreen: 'importer',
-                  payload: {
-                    target: 'library',
-                    openCatalogSource: { kind: 'mine', value: '__all__' },
-                  },
+                  payload: { target: 'library' },
                 })}
               >{STRINGS.startScreen.library}</SidebarLink>
               <SidebarLink
