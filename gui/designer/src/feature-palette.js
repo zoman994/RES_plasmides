@@ -246,9 +246,11 @@ function hslToHex(h, s, l) {
 
 /**
  * Deterministic shade variant of a base hex, keyed by `name`. Same name
- * always produces the same shade. Spread: lightness ±20%, hue ±18°,
- * saturation ±20% — strong enough to differentiate 3-4 same-type
- * features on one plasmid, narrow enough to stay in the hue family.
+ * always produces the same shade. Spread: lightness ±10%, hue ±6° —
+ * subtle but visible. Saturation is preserved (no modulation) so the
+ * family stays cohesive. Strong enough to tell AmpR from KanR, narrow
+ * enough that biolog still reads «family of resistance markers» at a
+ * glance.
  *
  * @param {string} baseHex — palette base (e.g. FEATURE_COLORS_V2.CDS)
  * @param {string} [name] — feature name (already canonicalized by caller, or raw)
@@ -257,14 +259,12 @@ function hslToHex(h, s, l) {
 export function shadeFromName(baseHex, name) {
   if (!name) return baseHex;
   const hash = hashStr(name);
-  const lOffset = ((hash % 1000) / 1000 - 0.5) * 40;            // -20..+20
-  const hOffset = (((hash >> 10) % 1000) / 1000 - 0.5) * 36;    // -18..+18
-  const sOffset = (((hash >> 20) % 1000) / 1000 - 0.5) * 40;    // -20..+20
+  const lOffset = ((hash % 1000) / 1000 - 0.5) * 20;            // -10..+10
+  const hOffset = (((hash >> 10) % 1000) / 1000 - 0.5) * 12;    // -6..+6
   const [h, s, l] = hexToHsl(baseHex);
   const nh = (h + hOffset + 360) % 360;
-  const ns = Math.max(20, Math.min(95, s + sOffset));
   const nl = Math.max(25, Math.min(78, l + lOffset));
-  return hslToHex(nh, ns, nl);
+  return hslToHex(nh, s, nl);
 }
 
 /**

@@ -166,7 +166,7 @@
   <div class="takeaway">
     <strong>Что смотреть глазами</strong>
     <b>A</b> — почти всё в жёлто-беж кластере, AmpR / lac promoter / lacZα / pUC ori / RBS / linker сливаются. Тёплая сепия-эстетика приятная, но дифференциация плохая.<br>
-    <b>A+ v2</b> — четыре правки относительно A: <b>resistance</b> → коралл (отделить от CDS), <b>promoter</b> → насыщенный янтарь (отделить от ori), <b>CDS</b> ярче, <b>reporter</b> → sky-cyan (вышел из зелёного семейства, теперь зелёный только у CDS). Плюс <b>сильный shade-by-name</b> (lightness ±20%, hue ±18°, saturation ±20%): три CDS (lacZα / mCherry / csrA), два promoter (lac / T7), два resistance (AmpR / KanR) — каждый сосед в своей семье явно разный. Sepia-дух A сохранён, stroke #3A2F1F тот же.<br>
+    <b>A+ v2 (final)</b> — четыре правки относительно A: <b>resistance</b> → коралл (отделить от CDS), <b>promoter</b> → насыщенный янтарь (отделить от ori), <b>CDS</b> ярче, <b>reporter</b> → sky-cyan (вышел из зелёного семейства, теперь зелёный только у CDS). Плюс <b>shade-by-name</b> (lightness ±10%, hue ±6°): три CDS (lacZα / mCherry / csrA), два promoter (lac / T7), два resistance (AmpR / KanR) получают разные оттенки в рамках своего hue. Sepia-дух A сохранён, stroke #3A2F1F тот же.<br>
     <b>B</b> — каждый тип явно отделён hue. CDS (синий) / promoter (зелёный) / terminator (оранжевый) / origin (циан). Saturated, в dark яркий.<br>
     <b>C</b> — Wong-палитра (Nature Methods 2011), CB-safe. Менее «попсовая» чем B.
   </div>
@@ -316,17 +316,14 @@ function hslToHex(h, s, l) {
 function shadeFromName(baseHex, name) {
   if (!name) return baseHex;
   const hash = hashStr(name);
-  // Сильный спред: lightness ±20%, hue ±18°, saturation ±20%.
-  // Семейство визуально сохраняется (CDS всё ещё зелёный), но соседние
-  // одно-типовые регионы разительно разные.
-  const lOffset = ((hash % 1000) / 1000 - 0.5) * 40;            // -20..+20
-  const hOffset = (((hash >> 10) % 1000) / 1000 - 0.5) * 36;    // -18..+18
-  const sOffset = (((hash >> 20) % 1000) / 1000 - 0.5) * 40;    // -20..+20
+  // Спред: lightness ±10%, hue ±6°. Saturation не модулируется —
+  // семейство остаётся когезивным.
+  const lOffset = ((hash % 1000) / 1000 - 0.5) * 20;            // -10..+10
+  const hOffset = (((hash >> 10) % 1000) / 1000 - 0.5) * 12;    // -6..+6
   const [h, s, l] = hexToHsl(baseHex);
   const nh = (h + hOffset + 360) % 360;
-  const ns = Math.max(20, Math.min(95, s + sOffset));
   const nl = Math.max(25, Math.min(78, l + lOffset));
-  return hslToHex(nh, ns, nl);
+  return hslToHex(nh, s, nl);
 }
 
 // ─── SVG render ────────────────────────────────────────────────────
