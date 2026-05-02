@@ -47,15 +47,15 @@ const LABEL_TYPE_BLACKLIST = new Set([    // GenBank metadata that always covers
   'source',
 ]);
 
-// F4 (Sprint Catalog Polish FIX): paint-order: stroke fill + white halo so
-// labels read on any background tile (cards, popover, anything underneath).
-// FIX-2 (28.04.2026): K2 restored white-card bg behind the overlay; halo stays
-// because labels can sit outside the white card during 1A viewBox expansion.
+// Theme-aware label rendering: halo matches surface so it «punches» the
+// background cleanly on both light (white halo on white card) and dark
+// (#171717 halo on dark card) without leaving a dirty grey ring. No
+// drop-shadow — was adding extra noise on dark theme.
 const OVERLAY_TEXT_STYLE = {
   paintOrder: 'stroke fill',
-  stroke: 'white',
+  stroke: 'var(--surface-1, #fff)',
   strokeWidth: 3,
-  filter: 'drop-shadow(0 0 1px rgba(0, 0, 0, 0.4))',
+  fill: 'var(--text-primary, #1c1917)',
 };
 
 function pickRegionsForLabels(regions) {
@@ -441,10 +441,21 @@ export default function PlasmidMiniMap({
           overflow: isOverlay ? 'visible' : 'hidden',
         }}
       >
+        {/* Backbone — theme-aware via CSS var. FEATURE_STROKE (#3A2F1F)
+            на dark теме слипался с фоном; var(--border-default) видим
+            на обеих темах + opacity 0.6 чтобы не доминировать над arcs. */}
         {isCircular ? (
-          <circle cx={cx} cy={cy} r={r} fill="none" stroke={FEATURE_STROKE} strokeWidth={0.5} opacity={0.4} />
+          <circle
+            cx={cx} cy={cy} r={r} fill="none"
+            style={{ stroke: 'var(--border-default, #d6d3d1)' }}
+            strokeWidth={0.5} opacity={0.6}
+          />
         ) : (
-          <line x1={4} y1={cy} x2={size - 4} y2={cy} stroke={FEATURE_STROKE} strokeWidth={0.5} opacity={0.4} />
+          <line
+            x1={4} y1={cy} x2={size - 4} y2={cy}
+            style={{ stroke: 'var(--border-default, #d6d3d1)' }}
+            strokeWidth={0.5} opacity={0.6}
+          />
         )}
         {paths}
         {labels.map((l) => (
@@ -458,9 +469,10 @@ export default function PlasmidMiniMap({
               x={l.textX} y={l.textY}
               fontSize="9"
               fontFamily="system-ui, sans-serif"
-              fill={FEATURE_STROKE}
               textAnchor={l.anchor}
-              style={isOverlay ? OVERLAY_TEXT_STYLE : undefined}
+              style={isOverlay
+                ? OVERLAY_TEXT_STYLE
+                : { fill: 'var(--text-primary, #1c1917)' }}
             >
               {l.label}
             </text>
