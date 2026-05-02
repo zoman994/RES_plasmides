@@ -1,8 +1,13 @@
-# PROJECT_STATE.md — BodgeGene
+# PROJECT_STATE.md — BodgeGene snapshot
 
-> **Обновлено:** 22 апреля 2026
-> **Версия:** v0.5.1-alpha (~241 коммит)
-> **Тесты:** 850 (738 Vitest + 112 pytest)
+> **Версия:** **v0.6.4** — M-B.2 Importer Rework + post-acceptance polish (02.05.2026). Patch поверх v0.6.3 M-A.3; formal v0.7.0 release будет создан Chat'ом при финальной M-B.2 acceptance.
+> **Тесты:** 1003 (891 Vitest + 112 pytest), build clean (~570 KB / gzip 172 KB).
+> **Архитектура:** `docs/ARCHITECTURE_v2.md` v1.2 (~117 KB) · 48 ⚓ fundamental decisions в `ANCHORS.md` · sprint-level DEC в `DECISIONS.md` · DEC-IMP-13..18 + новые palette decisions ждут добавления Chat'ом в финализирующей сессии.
+> **Журнал версий:** `RELEASES.md` (текущие) + `docs/archive/SESSIONS_2026_Q2.md` (исторические сессии до v0.6) + `docs/archive/PROJECT_STATE_v0.6.3_pre_split.md` (полный pre-split snapshot с журналом 6 сессий апреля).
+> **Дизайн-система:** `docs/DESIGN_SYSTEM.md` §2.1 обновлена под feature palette A+v2 (warm sepia + 4 fixes) + shade-by-name + canonical-key. Mockup: `docs/design_assets/feature-palette-comparison.html`.
+> **Открытые TD:** см. `TECH_DEBT.md`. Новые в v0.6.4: TD-V05-IMPORTSTARTSCREEN-DELETE, TD-LIBRARY-CRUD-M-D.
+> **Открытые баги:** см. `BUGS.md` (V49 50-сек hang fixed в M-B.2 K4 lazy-mount; OPEN секция пуста).
+> **Текущая задача:** см. `CURRENT_TASK.md` (M-B.2 K1..K6 + 3 round'а post-acceptance polish закрыты; финальная visual acceptance + bump до v0.7.0 ждёт Chat'а).
 
 ---
 
@@ -23,6 +28,22 @@
 - Compact header, type-dependent context menu
 - Undo/Redo (50 levels)
 
+### Library (data layer survives, fullscreen wiped в v0.6.4)
+- `librarySlice` data API сохранён: `addLibraryEntry` / `checkLibraryDedup` / `getSuggestedLibraryName` / `selectVisibleLibraryEntries` / `selectAllLibraryTags` — нужны Importer Confirm flow + CatalogColumn → «Моя библиотека»
+- Schema v2 table `library` без изменений
+- **Library fullscreen window удалён в v0.6.4.** Browse function переехала в Importer CatalogColumn → группа «Моя библиотека»; tag-editing — только при импорте через TagsEditor; soft-delete отложен в M-D Container Window
+- Тесты M-A.3 групп D/E/F/H удалены вместе с фуллскрином (`Library.test.jsx`); coverage Library data API остаётся в integration-тестах Importer
+
+### Importer (M-B.2 + post-acceptance polish, v0.6.4)
+- **Single-screen 4-column layout:** CatalogColumn 320 / Inspector flex / MetaColumn 200 / footer (SessionSummary + ActionsBar). Always-advanced (simple/advanced toggle убран в v0.6.4 round 2)
+- **CatalogColumn 4 sources:** «Этот проект» (containerIds resolve) / «Учебные / demo» (basic_cloning_vectors slice 0-12) / «Моя библиотека» (sub-grouped by entry.tags / flat fallback) / «Каталог SnapGene» (lazy fetchCategory). Sticky search с length-pattern (`>5kb` / `<2k` / `2k-3k`). Drop zone footer + paste textarea (Ctrl+Enter). Persistent group-state в localStorage
+- **Inspector tabs lazy-mount:** Обзор (eager: PlasmidMiniMap 180px overlay + categorised summary) / Последовательность (lazy SequenceMapView readOnly) / Аннотации (lazy AnnotationEditor с linear feature-bar) / История (conditional rendered только при commits.length>0). **V49 50-сек hang fix** через React conditional render — heavy components не существуют в DOM пока tab не активен
+- **MetaColumn 200px:** topology toggle / origin offset+apply / intergenic gap hints (label-stacked monospace) / from-file vs enriched counts / IUPAC warning
+- **MultiInspector:** table layout с тристейт master autoAnnotate checkbox + per-row inline rename / annotate-flag / × remove
+- **TagsEditor inline в SingleInspector:** chip list + add-input + suggestions из existing Library tag pool. Запись в `perFileEdits.editedTags` → Confirm flow промотит в `entry.tags`
+- **AutonameModal + PrimerWizardStepModal** (M-B.1 K6 keep): collision detection через resourceHash, primer wizard с unified pool + dupe detection
+- **Feature palette A+v2 + shade-by-name + canonical-key collapse:** PlasmidMap + PlasmidMiniMap arc-fills используют `featureColorShaded(type, name)` — base hex для типа + HSL ±10% L / ±6° H shade keyed by canonical-key (AmpR ≡ ApR ≡ bla → один shade)
+
 ### Assembly & Primer Design
 - Авто-расчёт праймеров (клиентский, без API)
 - 6 методов сборки: Overlap PCR, Gibson, Golden Gate, KLD, RE ligation, Restriction Cloning
@@ -32,6 +53,15 @@
 - Tag-aware primer design (`findBindingTagAware()` — extend past low-complexity tags)
 - Мутагенез + KLD primer design
 - Фрагменты <18bp → warning "merge с соседним (Ctrl+Click)"
+- **Single-circular self-closure primers** (Sprint X-fix K5, 26.04.2026): `designPrimersLocal` при `fragments.length === 1 && circular` генерирует пару праймеров с overhang-tails для физического самозамыкания (V24 closed)
+
+### Plasmid-Git data model (Sprint X cycle, 26.04.2026)
+- `fragment.baseSnapshot` (immutable sequence + annotations + length) + `fragment.commits[]` (упорядоченный список `op` с абсолютными координатами относительно baseline + `applied: bool`) + replay для sequence/Tm/GC%
+- Mutagenesis-workflow ходит через `applyMutationsBatch` (один pushUndo на batch)
+- Toggle «применить/откатить» на уровне commit (V27 closed)
+- Indel-aware mutation highlights из commit op + start/end (V22 closed)
+- Backward-compat: lazy migration при первом коммите (current sequence → baseSnapshot, commits=[])
+- `pushUndo` захватывает snapshot синхронно при первом вызове в 300мс-окне
 
 ### PlasmidViewer
 - Circular map: track-based arc layout (features по дорожкам, не пересекаются)
@@ -65,10 +95,6 @@
 - Auto-annotate: CDS (signal peptide, tags, domains), promoter (-10/-35/TATA/CAAT), terminator (poly-A)
 - RE sites: 63 фермента с IUPAC regex (restriction-db.js)
 - ORF detection: ATG→stop ≥100aa, обе цепи, 3 рамки
-- CRIT-1 fixed: DNA insert/delete в FragmentEditor сдвигает аннотации
-- CRIT-2 fixed: autoAnnotate() перезапускается после мутаций (useEffect 500ms debounce)
-- CRIT-4 fixed: flipFragment в GG → re-run autoDesignGGOverhangs() + apiWarning
-- HIGH-1 fixed: flipFragment инвертирует strand аннотаций
 
 ### Import/Export
 - .dna import: свой binary парсер (snapgene_parser.py) PRIMARY, BioPython FALLBACK
@@ -77,127 +103,45 @@
 - Enrichment: common-features.json (415 фичей из 2822 SnapGene плазмид) + ORF detection
 - GenBank export, протокол export, clipboard
 
-### Parts Library
+### Parts Library (v0.5 legacy, по дорожной карте v0.6 мигрирует в LibraryEntry)
 - 94+ parts, draft/verified/archived lifecycle
 - Duplicate detection при добавлении
 - Part variants (мутагенез → новый part)
 - Split/fuse/insert/delete operations
-- Двойной клик "Создать фланки" — protection от дублирования
 
 ### Project Flow
 - 5 node types (PlasmidNode, PCRNode, AssemblyNode, OligoNode, CheckpointNode)
 - 3 edge types, dagre layout
 - PCR node edit, real assemblies, MIRO+ с RE/KLD/лигирование
 
+### v0.6 infrastructure (M-A core, M-A.1, M-A.2, M-A.3)
+- IndexedDB schema v2 (Dexie · `projects` + `library` tables)
+- Multi-tab guard (`navigator.locks`) + multi-tab UI overlay (DEC-MA1-XX)
+- `.bodge` round-trip (File System Access API + fflate ZIP, fallback `<a download>`)
+- Hotkey registry 7 entries (`new-project`/`open-bodge`/`save-bodge`/`close-project`/`open-settings`/`escape`/`project-info`) + ⌘I
+- ProjectInfoModal (auto-open after createProject + edit)
+- PWA setup (`vite-plugin-pwa@1.2.0`, `manifest.webmanifest`, 3 иконки Hybrid B)
+- Notion-style Toast queue + soft-delete pattern (`_pendingDelete` flag + race-protected commit)
+- i18n-prep: STRINGS namespace dictionary (`lib/strings.js` 6.6 KB, 11 namespaces, ~15 компонентов переведены)
+- App version footer в StartScreen sidebar (`BodgeGene v{APP_VERSION}` из `lib/version.js`, single source of truth, обновляется при финализации каждого спринта)
+
 ## Открытые баги
 
-**BUGS.md** — 2 критичных (P1, V1), 2 высоких (P4, V7). 8 средних, 3 низких. 1 feature request (F1: custom primers).
+См. `BUGS.md`. На v0.6.3 OPEN секция пуста — v0.6 wipe phase, баги появятся по мере реализации M-A.4..M-I функционала. Исторические v0.5 баги → `docs/archive/BUGS_v05.md` (38 KB, последняя запись 28.04.2026: Sprint Catalog Polish + FIX cycle закрыл 11 import-related багов V35–V48).
 
 ## Что дальше
 
-**Текущий статус:** Блоки 4b–10d завершены (03.04.2026). Визуальное тестирование проведено.
+**v0.6.3 закрыт полностью** (Sprint M-A.3 Library minimal CRUD + версионирование в коде). Версия теперь отображается в StartScreen sidebar footer (`BodgeGene v{APP_VERSION}` из `lib/version.js`); `package.json` бамп на 0.6.3.
 
-### Roadmap до публикации
-1. Оставшиеся MED/LOW баги (один блок)
-2. Docker Compose deployment
-3. GitHub README + screenshots
-4. Статья (Bioinformatics / JOSS)
+**Кандидаты следующих сессий:**
 
----
+1. **M-B.1 Importer** (приоритет 1) — 3 формата (.dna PRIMARY через `snapgene_parser.py` reuse / .gb BioPython / .fasta BioPython), 2 контекста (in-project DAG-toolbar + into-library Library-toolbar, DEC-IMP-04), preview-step с PlasmidMiniMap reuse (DEC-IMP-05), wizard primer-step при primer_bind+sequence в .dna (DEC-LIB-08). Закрывает M-A.3 отложенную приёмку (D/E/F/H группы) реальным контентом.
+2. **DESIGN_SYSTEM.md финализация** v1.0 → v1.1 — собрать design-decisions из M-A.1 (Notion-style Toast паттерн) + M-A.3 (Library design tokens: chips inline editing visual, hover-`×` opacity, empty state typography).
+3. **All projects милстоун** — dashboard ranged Recent (DEC-V2-28 dual-context: standalone со Start screen и в проектном DAG-toolbar) с facet filters по tags/agent/lifecycle status.
+4. **Ротация старых journal-записей** (27.04 + 28.04 × 3 + 30.04 × 2 = 6 записей в архивном `PROJECT_STATE_v0.6.3_pre_split.md`) → `docs/archive/SESSIONS_2026_Q2.md` — §4 playbook regular hygiene, ~30 минут сессии. Может закрыться параллельно с любой milestone-сессией в начале.
 
-## Журнал сессий
-
-### Сессия 22.04.2026 — Sprint 1.7 «Unified Editor + Virtual Full Sequence + Topology» (full visual acceptance)
-
-Визуальная приёмка 4 блоков на HygroR (1023 bp) + мутагенез (5 substitution: G26A, R135A, G77C, C403G, G404C + deletion regression). Все четыре блока Sprint 1.7 приняты.
-
-- **Блок 1 — K10 Unified Editor (PASS).** Tabs удалены, mode switcher + sequence primary + 3 collapsible panel, AA-клики mode-dependent, mode-specific hint в footer. Отклонение Code от спеки (баннер «Режим просмотра» убран, заменён подсказкой в footer) — функционально эквивалентно.
-- **Блок 2 — K9 V15/V16 (PASS).** На HygroR_2/HygroR_5 (sub'ы с templateStart > 0) подсвечены только реальные позиции мутаций (не «весь ген красный»), AA 3/5/6 больше не подсвечиваются от substring-match. **Deletion тоже корректна** — mapping не съезжает после indel (важный regression-проверка).
-- **Блок 3 — K11 Virtual Full Sequence (PASS).** Toggle «Фрагмент / Полный ген», баннер «Виртуальный вид», read-only sequence, highlightRegion на sub, notice «аннотации недоступны», мутации в координатах parent по всей группе.
-- **Блок 4 — K12 Topology + V17 (PASS).** `fragment.topology` персистится, toggle 📏/⭕ в header Editor и «Сделать линейной» в PartBlock context menu оба работают. Single-linear — нет decorative junction справа (V17 fix). Single-circular — self-closure (+30 bp PCR-тейлы, arc-indicator «⟲ замыкание»). Два linear рядом — 1 junction между ними. Split-группа — все sub'ы topology='linear'.
-
-**Коммиты:** K9 `1cffe1b`, K10 `853535f`, K11 `b2e21ed`, K12 `2c6d735`, финализация спринта — предстоит. Тесты: 700 → **738 Vitest** (+38) + 112 pytest. Build clean на всех 4 коммитах.
-
-**Новые находки в BUGS.md/OPEN по ходу приёмки:**
-- **V18** — full-view DNA и Protein overview разорваны (в обычном fragment-view AA под кодоном, в full-view только отдельный блок «Белок (обзор)»). UX Sprint 3.
-- **V19** — кнопка «Редакт. кодоны» непонятного назначения: нет bulk-delete по выделению, нет явного codon-usage table. Полный UX-редизайн Sprint 3.
-- **V20** — split-алгоритм мутагенеза плодит микро-PCR 30–60 bp при близких мутациях; нужен `minFragmentLength` ~60–80 bp + multi-site primer. Алгоритм Sprint 2+.
-- **V21** — single-circular arc-indicator не считывается как «замкнутая молекула». UX Sprint 3.
-
-**Самое важное по ходу приёмки:** Игорь на установочном уровне попросил не упарываться по тестам (+38 Vitest на 4 коммита — избыточный темп). Фиксировано как ⚓ в DECISIONS.md: Тесты соразмерны коду — TDD для биологических алгоритмов/state management, для UX-компонентов — только happy path + 1–2 edge case. Ссылка для Code на будущие спринты.
-
-Спека `docs/SPRINT_1_7_UNIFIED_EDITOR.md` → `docs/archive/` с пометкой ·✅ РЕАЛИЗОВАНО». CURRENT_TASK.md → заглушка. Visible успех спринта: суб-фрагменты мутагенеза теперь показывают биологически адекватную картину мутаций, есть виртуальный «полный ген» для навигации по split-группе, и каждый фрагмент имеет явную топологию linear/circular.
-
-### Сессия 21.04.2026 — Sprint 1.6 «Мутагенез UX v2.1» (partial visual acceptance)
-
-После технической приёмки Sprint 1.5 (663 Vitest, 4 коммита K1–K4) визуальная приёмка выявила 4 проблемы архитектурного уровня в K2 mode switcher. Sprint 1.6 закрывал их 4 коммитами:
-
-- **K5** (`c899f6e`): белок read-only в `mode='edit'` — баннер «Режим просмотра» + кнопка «→ Мутагенез», AA-clicks no-op. Биологическое обоснование: bookkeeping белка без кодона невозможен.
-- **K6** (`acbf515`): новый `lib/split-annotations.js::trimAnnotationsForSubFragment` с биологически корректными правилами (signal_peptide drop, CDS/gene rename с (5'/3' trimmed), point-like drop на границе). Заменил coordinate-only inline-логику в `handleSaveFragment`.
-- **K8** (`b2ac6ec`): `computeMutationHighlights(fragment, parent)` через `sequenceDiff` → Map\<ntPos, 'silent'|'nonsilent'\>. Red/yellow подсветка в DNA и protein views. Fallback на `fragment.mutations` когда нет parent.
-- **K7** (`d110272`): split-группа на canvas. `splitGroupId` + метаданные на sub-фрагментах. `DesignCanvas` оборачивает consecutive same-groupId в `.split-group-container` с 4 визуальными эффектами (пунктирная рамка, фон, badge, линия). Internal/external junction routing сохраняет цепочечную семантику.
-
-Тесты: 663 → **700** (+37). Build clean на всех четырёх коммитах.
-
-**Визуальная приёмка — partial acceptance.** Игорь протестировал на Gibson сборке HygroR+EGFP → обнаружил 3 критические проблемы и 1 архитектурный запрос:
-
-- **V15** — `FragmentEditor.isMutated` использует `m.label?.includes(String(pos))` — substring match вместо числового сравнения. Для mutations с номерами `G26A, R135A, G77C, C403G, G404C` любая AA-позиция, номер которой встречается как подстрока, подсвечивается ложно. Фикс в Sprint 1.7 K10 (Unified Editor переписывает рендер).
-- **V16** — `computeMutationHighlights` игнорирует `fragment.templateStart`. Для HygroR_2 (templateStart=42) diff с parent HygroR сравнивает «в лоб» → показывает всё как мутации. Фикс в Sprint 1.7 K9.
-- **V17** — одиночный линейный фрагмент рендерит decorative 30-bp overlap-junction справа. Нужен явный topology toggle. Фикс в Sprint 1.7 K12.
-- **Архитектурный запрос:** убрать tabs (Последовательность / Белок) из FragmentEditor. Последовательность — primary view, аннотации/белок — панель под ней. Mode (Правка/Мутагенез) остаётся как ортогональная ось. Реализация в Sprint 1.7 K10 Unified Editor.
-
-**Решение:** Sprint 1.6 закрыт **partial** — технически реализованные фичи (K5–K8) остаются в ветке, все 700 тестов зелёные, билд чистый. Три новых бага (V15/V16/V17) + архитектурный запрос идут в Sprint 1.7. K2 mode switcher, `switchMode` helper и identity-guard в `handleSaveFragment` — база, на которую Sprint 1.7 K10 накладывает Unified Editor рефакторинг.
-
-Спеку Sprint 1.7 пишет Claude Chat в следующей сессии.
-
-### Сессия 21.04.2026 — Sprint 1.5 «Мутагенез v2» (formal acceptance, visual partial)
-
-После Sprint 1 + визуальной приёмки сформирована спека `docs/SPRINT_1_5_MUTAGENESIS_V2.md` на 4 фикса мутагенеза. Реализованы в 4 коммитах:
-
-- **K1 V14** (`f342c57`): `chooseStrategy(mutations, fragmentContext)` — KLD разрешён только при `topology==='circular' && isStandalone===true`. Linear/non-standalone → `two_fragment`/`multi_fragment` независимо от числа мутаций. Для single-mutation linear cut ставится в позиции мутации → мутация в overlap-зоне. `handleSaveFragment` + `MutagenesisWizard.compute` прокидывают context. +15 тестов.
-- **K4 V11** (`67d2269`): KLD primers теперь с реальными Tm/GC через `calcTmNN` + готовую `gcPercent` из `tm-calculator.js` (DRY, не создавали новый `gcPctInt` helper из спеки CLEANUP_DEAD_CODE.md). `tmFull === tmBinding` для KLD (no tail). +2 теста.
-- **K3 V13** (`e983fed`): Новое поле `uiSlice.mutagenesisInitialPlasmid` + setter. `PlasmidUseWizard` (оба пути — useEffect и menu-click при `presetMode='mutate'`) сохраняет plasmid перед закрытием. `MutagenesisWizard` принимает `initialTemplateSeq/Name/Organism/CdsStart/CdsEnd`, при наличии `initialTemplateSeq` стартует на Step 2. Initial seq санитизируется на mount. +3 теста.
-- **K2 V12** (`c394c64`): Top-level mode switcher `edit | mutagenesis` в `FragmentEditor` (radio над tabs). AA-popup заблокирован в edit mode; DNA handlers не пишут в mutations в edit mode. Quick actions disabled в mutagenesis. `handleSave` разделён на `handleSaveEdit` (+editHistory writer) и `handleSaveMutagenesis`. Save button routed по mode. `switchMode` helper с confirm при накопленных mutations. +6 integration-тестов.
-
-Тесты: 637 → **663** (+26). Build clean.
-
-**Визуальная приёмка — partial.** K1/K3/K4 приняты. K2 технически правильный, но визуально обнаружены 4 проблемы (см. Sprint 1.6 сессия выше) → доработки в Sprint 1.6 и далее в Sprint 1.7.
-
-### Сессия 20.04.2026 — Визуальная приёмка Sprint 1 + планирование Sprint 1.5
-
-Игорь провёл 8-блочную визуальную приёмочную сессию Sprint 1 на живом UI (25+ скриншотов).
-
-**Sprint 1 принят формально** — ключевые фичи работают:
-- V5 контраст annotation bar — подтверждено на pUC-like плазмиде с AmpR/ori/f1_ori
-- V3 junction reset в context-menu — подтверждено
-- V3-bulk: bulk-переключение всей сборки на GG — подтверждено
-- V4 Wizard KLD — `IS001_mut_fwd_pET-23(+)` пара корректно сгенерирована с полным protocolSteps
-- V4 in-place KLD на circular standalone — Q35A на CmR: single fragment + 2 мутагенезных олига сохраняются после auto-design re-run
-
-**Найдены 7 новых багов, вне скоупа Sprint 1:**
-- V14 (CRIT, арх) — `chooseStrategy` слеп к контексту фрагмента. Линейный фрагмент в сборке получает KLD вместо two_fragment.
-- V12 (HIGH) — вкладки «Редактирование» и «Мутагенез» в FragmentEditor имеют одинаковый UI но разное поведение при Save → пользователь-ловушка, мутации с «Редактирования» теряются.
-- V13 (HIGH) — кнопка «Мутагенез» в footer PlasmidViewer открывает пустой Wizard без template.
-- V11 (MED) — KLD-праймеры приходят с `tmBinding: 0, gcPercent: 0` вместо расчёта через `calcTmNN`.
-- V8 (MED) — CDS validation warnings перекрывают sequence view в PlasmidViewer на плазмидах с partial CDS (28+ warnings).
-- V9 (LOW) — подписи коротких аннотаций (<10%) скрыты в annotation bar.
-- V10 (LOW) — SBOL глифы в tree list бледные (fillOpacity 0.15 на 14px).
-
-**V11, V12, V13, V14 сгруппированы в Sprint 1.5 «Мутагенез v2»** — спека в `docs/SPRINT_1_5_MUTAGENESIS_V2.md`. Архитектурное решение: top-level mode switcher в FragmentEditor разделяет bookkeeping-правку sequence (без мутаций) от реального мутагенеза (с strategy engine). `chooseStrategy` расширяется до `chooseStrategy(mutations, fragmentContext)` с учётом topology + isStandalone.
-
-V8, V9, V10 записаны в BUGS как UX-долг для Sprint 3.
-
-**Решение:** Sprint 2 (V7 InsertionClock + V1/V2/V6) откладывается до завершения Sprint 1.5. Причина: V7 InsertionClock зависит от корректной работы мутагенеза, InsertionClock US-2 (cursor по кольцу для выбора позиции мутации) не имеет смысла без правильной стратегии.
-
-### Сессия 20.04.2026 — MUTWIZ-SANITIZE quick-fix
-
-Мелкая, но архитектурно чистая правка: `MutagenesisWizard.jsx` использовал два legacy inline-regex (`/[^ATCGatcg]/g`, `/[^ATCG]/g`) в обход `sanitizeSequence` — нарушение контракта Этапа 1.1. Биологическая цена: saturation codons (NNK/NNN/MNN) молча стирались из template/insert-вводов.
-
-Фикс: импорт `sanitizeSequence` + 2 onChange-замены + обновлённый placeholder insert-поля (подсказка про saturation). +3 integration-теста (`mutagenesis-wizard-sanitize.test.jsx`) через `@testing-library/react` с fetch-моком.
-
-Тесты: 634 → **637 ✅** (+3). Build: clean. `MUTWIZ-SANITIZE` перенесён из OPEN/MED в FIXED.
+**Roadmap до v1.0** — `docs/ARCHITECTURE_v2.md` §7 (M-A start screen → M-B importer → M-C container window → M-D editable container → M-E mix workspace → M-F primer pool → M-G остальные reactions → M-H library polish → M-I DAG polish).
 
 ---
 
-**Сессии старше MUTWIZ-SANITIZE (Sprint 1 за 19–20.04.2026; Этап 1.1 и 1.2 за 18.04.2026; 12 сессий 03.04.2026, блоки 4b–11b)** → архив `docs/archive/SESSIONS_2026_Q2.md`.
-
+**Snapshot rotation:** при каждой финализации спринта Chat обновляет шапку (версия / тесты / коммиты), «Что работает» (новый функционал в существующие секции), «Что дальше» (актуализация candidate списка). Журнал по версиям ведётся отдельно в `RELEASES.md`. Этот файл не должен расти больше 12 KB — иначе в нём накопилось то что должно быть в RELEASES.md.
