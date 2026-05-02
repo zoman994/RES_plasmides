@@ -66,4 +66,41 @@ export const IMPORTER_STRINGS = {
   simpleAddedManyToProject: (n) => `Добавлено ${n} файлов в Library и проект`,
   simpleSkipped: (n) => `Пропущено: ${n}`,
   simpleFailed: (msg) => `Импорт не удался: ${msg}`,
+
+  // K6 — AutonameModal.
+  autonameTitle: (baseName) => `«${baseName}» уже есть в Library`,
+  autonameExistingPreview: (name, length, addedAt) =>
+    `Existing: ${name} · ${length} bp · ${addedAt}`,
+  autonameInputLabel: 'Имя для новой записи',
+  autonamePrimary: (name) => `✓ Сохранить как «${name}»`,
+  autonameAdvancedShow: '▾ Advanced: заменить existing / пропустить',
+  autonameAdvancedHide: '▴ Свернуть advanced',
+  autonameReplace: 'Заменить existing',
+  autonameSkip: 'Пропустить',
+
+  // K6 — PrimerWizardStepModal.
+  primerWizardTitle: (n) => `Праймеры из файла (${n})`,
+  primerWizardPoolHint:
+    'Праймеры пойдут в unified pool: видны и в Library Primers, и в Project Primer Pool по фильтру projectId.',
+  primerWizardSelectedCount: (sel, total) => `Выбрано: ${sel}/${total}`,
+  primerWizardAdd: (n) => n > 0 ? `+ Добавить ${n}` : '+ Добавить',
+  primerWizardSkip: 'Пропустить праймеры',
+  primerStatusImported: 'imported',
+  primerDupeBadge: '⚠ дубль',
+  primerMeta: (len, tm, direction) => {
+    const parts = [`${len} bp`];
+    if (typeof tm === 'number') parts.push(`Tm ${tm.toFixed(1)}°C`);
+    if (direction) parts.push(direction);
+    return parts.join(' · ');
+  },
+
+  // K6 — Confirm flow toasts.
+  confirmAddedOne: (name) => `«${name}» добавлен в Library`,
+  confirmAddedOneToProject: (name) => `«${name}» добавлен в Library и проект`,
+  confirmAddedMany: (n) => `Добавлено ${n} файлов в Library`,
+  confirmAddedManyToProject: (n) => `Добавлено ${n} файлов в Library и проект`,
+  confirmReplaced: (name) => `«${name}» заменён`,
+  confirmSkippedOne: (name) => `«${name}» пропущен`,
+  confirmPrimersAdded: (n) => `+ ${n} праймеров в pool`,
+  confirmFailed: (msg) => `Импорт не удался: ${msg}`,
 };

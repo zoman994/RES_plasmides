@@ -1,5 +1,5 @@
-import { v7 as uuidv7 } from 'uuid';
 import { computeResourceHash } from './resource-hash';
+import { buildLibraryEntry } from './build-library-entry';
 
 /**
  * Simple-mode import handler (M-B.1 K3, DEC-IMP-06 ⚓ rewrite v1.1).
@@ -29,28 +29,6 @@ import { computeResourceHash } from './resource-hash';
  *   _baseName    : the parsed name before autoname
  *   _wasCollision: true iff dedup found an existing entry with the same hash
  */
-
-function buildLibraryEntry(parsedItem, finalName, resourceHash) {
-  return {
-    id: uuidv7(),
-    kind: 'container',
-    name: finalName,
-    tags: [],
-    addedAt: new Date().toISOString(),
-    payload: {
-      sequence: parsedItem.sequence || '',
-      length: parsedItem.length || (parsedItem.sequence ? parsedItem.sequence.length : 0),
-      topology: parsedItem.topology || 'linear',
-      ends: parsedItem.ends || null,
-      annotations: Array.isArray(parsedItem.annotations) ? parsedItem.annotations : [],
-      organism: parsedItem.organism || '',
-      description: parsedItem.description || '',
-      resourceHash: resourceHash || null,
-      origin: { kind: 'file_import', sourceFile: parsedItem._fileName || null },
-    },
-    ext: {},
-  };
-}
 
 export async function handleSimpleImport({
   parsedItems = [],
