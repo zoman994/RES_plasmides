@@ -76,8 +76,24 @@ def parse_dna_file(filepath):
         pos += 5 + seg_len
 
         if seg_type == 0x00:
-            # DNA sequence
-            result['sequence'] = seg_data.decode('ascii', errors='ignore').upper()
+            # DNA sequence — byte 0 of the segment is a topology / flags
+            # byte (0x02 = circular, 0x01 = linear, 0x1f = multi-flag,
+            # etc), NOT part of the actual nucleotide string. Strip it
+            # before decoding. Without this, every imported .dna file
+            # carried a phantom non-ATGCN char at index 0 (visible to
+            # the biolog as a tiny garbled glyph at the very start of
+            # the sequence in SequenceView), AND every feature DNA
+            # extraction was off-by-1 because the V50 0-based-exclusive
+            # coordinate convention assumes index 0 = real position 1.
+            # Length-1 now matches snapgene_reader.snapgene_file_to_dict()
+            # ['seq'] and BioPython's record.seq exactly. Biolog feedback
+            # 04.05.2026 evening: «почему N при импорте добавился? я
+            # специально просил всё перепарсить и перекачать чтобы
+            # убрать это».
+            if len(seg_data) > 0:
+                result['sequence'] = seg_data[1:].decode('ascii', errors='ignore').upper()
+            else:
+                result['sequence'] = ''
 
         elif seg_type == 0x06:
             # Notes (XML with name, description, accession)
