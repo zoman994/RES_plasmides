@@ -243,11 +243,26 @@ export default function LinearFeatureBar({
         {cursorPosition != null && seqLength > 0 && (() => {
           const cx = (cursorPosition / seqLength) * width;
           const clamped = Math.max(0, Math.min(width, cx));
+          // Black outline (biolog 04.05.2026: «сама каретка должна
+          // иметь чёрную обводку и на колбасе и на сиквенсе»). SVG
+          // doesn't have boxShadow so we layer a wider black line +
+          // black-stroked polygons UNDER the orange ones — same
+          // visual effect as the boxShadow ring on the SequenceView
+          // caret.
           return (
             <g
               data-testid="importer-linear-feature-bar-cursor"
               style={{ pointerEvents: 'none' }}
             >
+              {/* Black outline line (rendered first → painted under). */}
+              <line
+                x1={clamped} x2={clamped}
+                y1={-2} y2={BAR_H + 2}
+                stroke="#000"
+                strokeWidth={2.5}
+                opacity={0.9}
+              />
+              {/* Orange core line on top. */}
               <line
                 x1={clamped} x2={clamped}
                 y1={-2} y2={BAR_H + 2}
@@ -256,15 +271,20 @@ export default function LinearFeatureBar({
                 opacity={0.95}
               />
               {/* Top + bottom carets so the scrubber thumb reads
-                  visually as a draggable handle, not just a tick. */}
+                  visually as a draggable handle, not just a tick.
+                  Stroke="#000" provides the matching black outline. */}
               <polygon
                 points={`${clamped - 4},${-2} ${clamped + 4},${-2} ${clamped},${4}`}
                 fill="var(--accent-500, #f97316)"
+                stroke="#000"
+                strokeWidth={0.75}
                 opacity={0.95}
               />
               <polygon
                 points={`${clamped - 4},${BAR_H + 2} ${clamped + 4},${BAR_H + 2} ${clamped},${BAR_H - 4}`}
                 fill="var(--accent-500, #f97316)"
+                stroke="#000"
+                strokeWidth={0.75}
                 opacity={0.95}
               />
             </g>

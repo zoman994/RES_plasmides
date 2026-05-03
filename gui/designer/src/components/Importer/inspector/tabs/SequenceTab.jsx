@@ -75,6 +75,18 @@ export default function SequenceTab({
     type: topology === 'circular' ? 'plasmid' : 'misc_feature',
     strand: 1,
   }), [sequence, annotations, topology, name]);
+  // Memoize the fragments array too — `<SequenceView fragments={[fragment]}>`
+  // would create a new array literal on every SequenceTab render
+  // (every pendingScroll change = every keystroke from the SequenceView
+  // caret nav). That fresh reference invalidates SequenceView's
+  // `confidentFeatures` / `predictedRegions` / `orfRanges` / `lines`
+  // useMemos which depend on `[fragments]`, causing buildFeatureMap +
+  // runPredictors + detectORFRanges to re-run per keystroke. On a
+  // typical 5-10 kb plasmid that's 10s of ms per arrow-key press —
+  // exactly the «прям беда» lag biolog reported 04.05.2026 evening.
+  // With the array memoized, those useMemos stay cached and the only
+  // work per keystroke is the cheap CaretOverlay DOM probe.
+  const fragments = useMemo(() => [fragment], [fragment]);
   const length = (sequence || '').length;
 
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -156,7 +168,7 @@ export default function SequenceTab({
       <div style={{ width: '100%', minWidth: 0, display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
         <SequenceView
           ref={sequenceViewRef}
-          fragments={[fragment]}
+          fragments={fragments}
           circular={topology === 'circular'}
           readOnly
           caretPos={caretPos}

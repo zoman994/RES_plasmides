@@ -553,11 +553,61 @@ const SequenceView = forwardRef(function SequenceView({
     onCaretChange(next);
   };
 
+  // Click-to-caret (biolog 04.05.2026: «при нажатии мышкой на сиквенс
+  // каретка явно адресуется туда»). Walks up from the click target to
+  // find the surrounding `[data-line-start]` element, then converts
+  // (clientX − lineLeft − gutterWidth) / charPx into an offset within
+  // the line. Clamps to [0, line-end]. Skipped when the click started
+  // a drag-select (mouseup with movement → don't yank caret away
+  // mid-selection); detected via a `dragStartedAt` ref pair.
+  const dragStartXY = useRef(null);
+  const onRootMouseDown = (e) => {
+    dragStartXY.current = { x: e.clientX, y: e.clientY };
+  };
+  const onRootClick = (e) => {
+    if (typeof onCaretChange !== "function") return;
+    if (!seqLength || !charPx) return;
+    // Suppress click-to-caret on drag-select. Threshold = 4 px so a
+    // jittery click still registers as a click.
+    if (dragStartXY.current) {
+      const dx = Math.abs(e.clientX - dragStartXY.current.x);
+      const dy = Math.abs(e.clientY - dragStartXY.current.y);
+      dragStartXY.current = null;
+      if (dx > 4 || dy > 4) return;
+    }
+    let el = e.target;
+    while (el && el !== containerRef.current) {
+      if (el.dataset && el.dataset.lineStart != null) break;
+      el = el.parentElement;
+    }
+    if (!el || el === containerRef.current) return;
+    const lineStart = parseInt(el.dataset.lineStart, 10);
+    if (Number.isNaN(lineStart)) return;
+    let rect;
+    try { rect = el.getBoundingClientRect(); } catch { return; }
+    if (!rect || !rect.width) return;
+    const x = e.clientX - rect.left;
+    // Subtract gutter (LABEL_WIDTH * charPx) — letters start at
+    // column LABEL_WIDTH inside the line.
+    const offsetCh = Math.round(x / charPx) - LABEL_WIDTH;
+    const lineLen = Math.min(charsPerLine || 80, seqLength - lineStart);
+    const clamped = Math.max(0, Math.min(lineLen, offsetCh));
+    const pos = Math.max(0, Math.min(seqLength - 1, lineStart + clamped));
+    onCaretChange(pos);
+    // Refocus the container so subsequent arrow keys land on
+    // onRootKeyDown — without this, native text selection during the
+    // click can pull focus into a span ancestor that doesn't bubble
+    // keydown back here.
+    try { containerRef.current?.focus({ preventScroll: true }); } catch { /* noop */ }
+  };
+
   return (
     <div
       ref={containerRef}
       tabIndex={0}
       onKeyDown={onRootKeyDown}
+      onMouseDown={onRootMouseDown}
+      onClick={onRootClick}
       data-testid="sequence-view-root"
       data-circular={circular ? "true" : "false"}
       data-chars-per-line={charsPerLine}
@@ -577,6 +627,11 @@ const SequenceView = forwardRef(function SequenceView({
         fontSize: 11,
         lineHeight: 1.4,
         padding: "0 12px",
+        // position:relative so the absolutely-positioned CaretOverlay
+        // child resolves its top/left against this scroll container.
+        // Without it the caret would anchor to a more distant
+        // ancestor (body) and drift on scroll / resize.
+        position: "relative",
         // `overflow-anchor: none` disables Chromium's scroll anchoring
         // calculations (which try to keep the user's scroll position
         // stable when content shifts above the viewport). For a
@@ -609,9 +664,20 @@ const SequenceView = forwardRef(function SequenceView({
           renderHybrid={renderHybrid}
           onAnnotationClick={onAnnotationClick}
           tracksReady={tracksReady}
-          caretPos={caretPos}
         />
       ))}
+      {/* Caret overlay — absolutely positioned, scrolls with content
+          (parent has position:relative). Lives OUTSIDE the lines map
+          so caretPos changes don't blow the SequenceLine memo cache
+          (biolog 04.05.2026: «при перемещении каретки лагает … такое
+          ощущение что рендер каждый раз плазмиды заново при движении
+          каретки»). Pure DOM measure on caretPos / charPx flip; no
+          line re-renders. */}
+      <CaretOverlay
+        caretPos={caretPos}
+        charPx={charPx}
+        containerRef={containerRef}
+      />
     </div>
   );
 });
@@ -676,21 +742,85 @@ function attachScrollHandle(ref, containerRef) {
         }
       } catch {
         // happy-dom + some jsdom builds throw on getBoundingClientRect
-        // when the element isn't laid out. The flash class still
-        // highlights the target so consumer feedback works.
+        // when the element isn't laid out — accept the no-op, the
+        // caret marker still tells the biolog where the jump landed.
       }
-      // Brief highlight — class auto-removed via setTimeout so multiple
-      // jumps don't stack flashes. CSS provides the visual.
-      target.classList.add("sequence-view-line-flash");
-      const timer = setTimeout(() => {
-        target.classList.remove("sequence-view-line-flash");
-      }, 1500);
-      // Stash so a subsequent jump cancels the previous flash promptly.
-      const prev = root.__svFlashTimer;
-      if (prev) clearTimeout(prev);
-      root.__svFlashTimer = timer;
+      // Flash highlight removed (biolog 04.05.2026: «убери золотистую
+      // рамку на ОРФ при жимканье»). The caret + smooth scroll already
+      // signal the jump; the gold flash was double-redundant feedback.
     },
   });
+}
+
+/**
+ * CaretOverlay — single absolutely-positioned div drawn over the
+ * lines in the scroll container. Lives outside the SequenceLine
+ * memoization so caret movement re-renders only THIS component, not
+ * the ~60 lines of a typical 8.8 kb plasmid (biolog 04.05.2026:
+ * «при перемещении каретки очень лагает … ощущение что рендер каждый
+ * раз плазмиды заново при движении каретки»). On caretPos / charPx
+ * change a useLayoutEffect probes the DOM for the line containing the
+ * caret, reads its offsetTop + offsetHeight, and writes a small
+ * box state; React re-renders the overlay div only.
+ *
+ * Visual: 1.5 px wide accent fill, 0.5 px black box-shadow ring so
+ * the caret reads on top of any feature tint underneath (biolog same
+ * session: «сама картека должна иметь чёрную обводку и на колбасе и
+ * на сиквенсе»). Spans the full line height minus the dashed-divider
+ * gap (14 px) so it ties together ruler + DNA + annotation + AA
+ * tracks at the column.
+ */
+function CaretOverlay({ caretPos, charPx, containerRef }) {
+  const [box, setBox] = useState(null);
+  useLayoutEffect(() => {
+    if (caretPos == null || !Number.isFinite(caretPos)) {
+      setBox((prev) => (prev === null ? prev : null));
+      return undefined;
+    }
+    const root = containerRef.current;
+    if (!root) return undefined;
+    const lines = root.querySelectorAll('[data-testid="sequence-view-line"]');
+    if (lines.length === 0) return undefined;
+    let target = null;
+    for (const el of lines) {
+      const start = parseInt(el.dataset.lineStart || "", 10);
+      if (Number.isNaN(start)) continue;
+      if (start > caretPos) break;
+      target = el;
+    }
+    if (!target) return undefined;
+    const lineStart = parseInt(target.dataset.lineStart, 10);
+    const offsetCh = caretPos - lineStart;
+    const left = (target.offsetLeft || 0) + (LABEL_WIDTH + offsetCh) * charPx;
+    const top = target.offsetTop;
+    // 14 px = the line's paddingBottom (dashed-divider gap). Skip it
+    // so the caret doesn't extend into the empty space between line
+    // blocks.
+    const height = Math.max(8, target.offsetHeight - 14);
+    setBox({ left, top, height });
+    return undefined;
+  }, [caretPos, charPx, containerRef]);
+
+  if (!box) return null;
+  return (
+    <div
+      data-testid="sequence-view-caret"
+      data-caret-pos={caretPos}
+      style={{
+        position: "absolute",
+        left: box.left,
+        top: box.top,
+        height: box.height,
+        width: 1.5,
+        background: "var(--accent-500, #f97316)",
+        // 0.5 px black ring all the way around. boxShadow with no
+        // offset / no blur and a positive spread = pure outline.
+        boxShadow: "0 0 0 0.5px #000",
+        pointerEvents: "none",
+        zIndex: 5,
+      }}
+    />
+  );
 }
 
 /**
@@ -729,27 +859,11 @@ const SequenceLine = memo(function SequenceLine({
   renderHybrid,
   onAnnotationClick,
   tracksReady,
-  caretPos,
 }) {
   const annMap = useMemo(
     () => buildLineAnnMap(features, line.start, line.seq.length),
     [features, line.start, line.seq.length],
   );
-
-  // Caret rendering — only the line containing `caretPos` paints a
-  // vertical bar; all other lines skip the work entirely. The bar
-  // sits between the (caretPos - 1)-th and caretPos-th nucleotide,
-  // which matches the convention biolog's familiar with from
-  // SnapGene / Geneious. Placed inside the line div so React
-  // co-locates the paint with the rest of the line's tracks; the
-  // line div itself gains position:relative below so the
-  // absolutely-positioned caret resolves against it.
-  const caretInLine =
-    typeof caretPos === "number"
-    && Number.isFinite(caretPos)
-    && caretPos >= line.start
-    && caretPos <= line.start + line.seq.length;
-  const caretOffsetCh = caretInLine ? (caretPos - line.start) : -1;
 
   return (
     <div
@@ -757,7 +871,6 @@ const SequenceLine = memo(function SequenceLine({
       data-line-start={line.start}
       data-tracks-ready={tracksReady ? "true" : "false"}
       style={{
-        position: "relative",
         // Block hierarchy: each line = ruler + DNA + annotation + AA is
         // ONE logical unit. Inter-block separator (paddingBottom 14 +
         // 1 px dashed divider + marginBottom 14 → ≈28 px gap) tells
@@ -909,32 +1022,6 @@ const SequenceLine = memo(function SequenceLine({
           visibleFrames={settings.visibleFrames}
         />
       ) : null}
-      {/* Caret bar — rendered LAST so it paints on top of the
-          tracks. Position math: nucleotide cells start after a
-          gutter of LABEL_WIDTH characters. Caret sits on the LEFT
-          edge of the (caretOffsetCh)-th cell, i.e. between
-          letters (caretOffsetCh - 1) and (caretOffsetCh) — same
-          convention as a normal text editor. Spans the full line
-          height (top:0 bottom:14 to skip the dashed-divider gap)
-          so the biolog sees the whole vertical column highlighted,
-          tying together the ruler, both DNA strands, the
-          annotation rect, and AA tracks at this position. */}
-      {caretInLine && (
-        <div
-          data-testid="sequence-view-caret"
-          data-caret-pos={caretPos}
-          style={{
-            position: "absolute",
-            left: `${(LABEL_WIDTH + caretOffsetCh) * charPx}px`,
-            top: 0,
-            bottom: 14,
-            width: 0,
-            borderLeft: "1.5px solid var(--accent-500, #f97316)",
-            pointerEvents: "none",
-            zIndex: 5,
-          }}
-        />
-      )}
     </div>
   );
 });

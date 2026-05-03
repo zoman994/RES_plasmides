@@ -41,7 +41,12 @@ describe("SequenceView.scrollToPosition — Importer-merge-tabs K1", () => {
     expect(() => ref.current.scrollToPosition(-1)).not.toThrow();
   });
 
-  it("flags the target line via .sequence-view-line-flash class", () => {
+  it("regression — no .sequence-view-line-flash class is added (gold flash removed)", () => {
+    // 04.05.2026 evening — биолог: «убери золотистую рамку на ОРФ при
+    // жимканье». The caret + smooth scroll already signal the jump;
+    // the flash class was double-redundant feedback. Test stays as a
+    // regression guard so a future refactor that resurrects the
+    // flash fails fast.
     const ref = createRef();
     const { container } = render(
       <SequenceView ref={ref} fragments={[FRAGMENT]} circular={false} />,
@@ -53,23 +58,6 @@ describe("SequenceView.scrollToPosition — Importer-merge-tabs K1", () => {
     const targetLine = lines[2];
     const targetStart = parseInt(targetLine.dataset.lineStart, 10);
     ref.current.scrollToPosition(targetStart + 5);
-    // Briefly highlights the target line so the biolog notices the jump.
-    expect(targetLine.classList.contains("sequence-view-line-flash")).toBe(true);
-  });
-
-  it("picks the LATEST line whose start ≤ position (containment rule)", () => {
-    const ref = createRef();
-    const { container } = render(
-      <SequenceView ref={ref} fragments={[FRAGMENT]} circular={false} />,
-    );
-    const lines = Array.from(
-      container.querySelectorAll('[data-testid="sequence-view-line"]'),
-    );
-    // Pick a position inside line index 4 (between line[4].start and line[5].start).
-    if (lines.length < 6) return; // skip if narrow render mode
-    const inLine4 = parseInt(lines[4].dataset.lineStart, 10) + 1;
-    ref.current.scrollToPosition(inLine4);
-    expect(lines[4].classList.contains("sequence-view-line-flash")).toBe(true);
-    expect(lines[5].classList.contains("sequence-view-line-flash")).toBe(false);
+    expect(targetLine.classList.contains("sequence-view-line-flash")).toBe(false);
   });
 });

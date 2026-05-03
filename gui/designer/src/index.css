@@ -443,18 +443,7 @@ body {
   border: none;
 }
 
-/* SequenceView scroll-to-feature flash highlight (Importer-merge-tabs
-   K1). Brief amber outline + tinted bg so the biolog notices which
-   line the «колбаса» click jumped to. CSS animation auto-fades; the
-   class itself is removed by JS after 1.5 s for cleanup. */
-@keyframes sv-line-flash-fade {
-  0%   { background: rgba(251, 191, 36, 0.30); outline-color: rgba(251, 191, 36, 0.95); }
-  60%  { background: rgba(251, 191, 36, 0.18); outline-color: rgba(251, 191, 36, 0.65); }
-  100% { background: transparent; outline-color: transparent; }
-}
-.sequence-view-line-flash {
-  animation: sv-line-flash-fade 1.5s ease-out;
-  outline: 2px solid transparent;
-  outline-offset: 2px;
-  border-radius: 4px;
-}
+/* SequenceView scroll-to-feature flash highlight removed
+   (biolog 04.05.2026: «убери золотистую рамку на ОРФ при жимканье»).
+   The caret + smooth scroll already signal the jump; the gold flash
+   was double-redundant feedback. */
