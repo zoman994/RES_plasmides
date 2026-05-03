@@ -550,8 +550,50 @@ const SequenceView = forwardRef(function SequenceView({
     next = Math.max(0, Math.min(seqLength - 1, next));
     if (next === cur && caretPos != null) return;
     e.preventDefault();
-    onCaretChange(next);
+    // `needsScroll` — only ask the parent to scroll when the caret
+    // crosses a line boundary. For held ArrowLeft/Right the caret
+    // stays on the same line ~150-300 keystrokes long; skipping
+    // scrollIntoView for those (~99 % of the time) lifts a per-frame
+    // browser layout call out of the hot path. Up/Down/Home/End/PgUp/
+    // PgDn always change lines, so they keep their scroll request.
+    const oldLine = Math.floor(cur / cpl);
+    const newLine = Math.floor(next / cpl);
+    onCaretChange(next, { needsScroll: oldLine !== newLine });
   };
+
+  // Memoize the entire lines JSX subtree. caretPos is INTENTIONALLY
+  // not in deps — the caret renders as a separate CaretOverlay layer
+  // and doesn't touch the lines array. So when only caretPos changes
+  // (every arrow keystroke), React reuses the memoized React element
+  // tree and skips reconciliation of all ~60 SequenceLine children
+  // entirely. Combined with `needsScroll: oldLine === newLine ⇒ false`,
+  // a held ←/→ does effectively zero React work per keystroke — only
+  // the small CaretOverlay div re-renders.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const linesJsx = useMemo(() => {
+    if (!measured && !__IS_TEST_ENV__) return null;
+    return lines.map((line) => (
+      <SequenceLine
+        key={line.start}
+        line={line}
+        fullSeq={fullSeq}
+        features={features}
+        primers={primers}
+        reSites={reSites}
+        charPx={charPx}
+        settings={settings}
+        framesResolution={framesResolution}
+        orfRanges={orfRanges}
+        renderHybrid={renderHybrid}
+        onAnnotationClick={onAnnotationClick}
+        tracksReady={tracksReady}
+      />
+    ));
+  }, [
+    measured, lines, fullSeq, features, primers, reSites, charPx,
+    settings, framesResolution, orfRanges, renderHybrid,
+    onAnnotationClick, tracksReady,
+  ]);
 
   // Click-to-caret (biolog 04.05.2026: «при нажатии мышкой на сиквенс
   // каретка явно адресуется туда»). Walks up from the click target to
@@ -649,23 +691,7 @@ const SequenceView = forwardRef(function SequenceView({
         * circuits the gate so existing assertions on rendered lines
         * keep finding them after `render()`.
         */}
-      {(!measured && !__IS_TEST_ENV__) ? null : lines.map((line) => (
-        <SequenceLine
-          key={line.start}
-          line={line}
-          fullSeq={fullSeq}
-          features={features}
-          primers={primers}
-          reSites={reSites}
-          charPx={charPx}
-          settings={settings}
-          framesResolution={framesResolution}
-          orfRanges={orfRanges}
-          renderHybrid={renderHybrid}
-          onAnnotationClick={onAnnotationClick}
-          tracksReady={tracksReady}
-        />
-      ))}
+      {linesJsx}
       {/* Caret overlay — absolutely positioned, scrolls with content
           (parent has position:relative). Lives OUTSIDE the lines map
           so caretPos changes don't blow the SequenceLine memo cache

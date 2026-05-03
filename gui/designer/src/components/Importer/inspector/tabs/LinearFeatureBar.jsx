@@ -168,6 +168,46 @@ export default function LinearFeatureBar({
     });
   }, [annotations, seqLength, width]);
 
+  // Memoized features layer — the rendered React element tree for
+  // the rect/label per feature. Cursor position is NOT in deps, so
+  // when only `cursorPosition` changes (every drag-scrub or arrow
+  // keystroke) React reuses this exact element tree and skips
+  // reconciliation of the ~50-200 feature <g>'s entirely. Per-frame
+  // cost during a held drag drops to just the cursor <line> +
+  // <polygon> updates.
+  const featuresLayer = useMemo(() => items.map((it) => (
+    <g
+      key={it.idx}
+      data-feature-start={it.ann.start || 0}
+      style={{ cursor: 'pointer' }}
+    >
+      <title>{`${it.ann.name || it.ann.type}: ${(it.ann.start || 0) + 1}..${it.ann.end || 0}`}</title>
+      <rect
+        x={it.left}
+        y={0}
+        width={it.width}
+        height={BAR_H}
+        fill={it.color}
+        opacity={it.opacity}
+        stroke={FEATURE_STROKE}
+        strokeWidth={0.5}
+        rx={2}
+        ry={2}
+      />
+      {it.labelInside && it.width > 24 && (
+        <text
+          x={it.left + it.width / 2}
+          y={BAR_H / 2 + 3}
+          textAnchor="middle"
+          fontSize={10}
+          fontWeight={500}
+          fill={getTextColor(it.color)}
+          style={{ pointerEvents: 'none', userSelect: 'none' }}
+        >{truncate(it.ann.name || it.ann.type, Math.floor(it.width / 7))}</text>
+      )}
+    </g>
+  )), [items]);
+
   if (!annotations.length || !seqLength) return null;
 
   return (
@@ -197,43 +237,13 @@ export default function LinearFeatureBar({
         <rect x={0} y={0} width={width} height={BAR_H}
           fill="var(--surface-2)" rx={3} ry={3} />
 
-        {/* feature blocks + inside labels — purely visual now;
-            pointer interaction lives on the SVG itself. The
-            cursor:'pointer' hint stays so hovering still tells the
-            biolog the bar is interactive, AND the existing K4
-            test selector (`g[style*="cursor"]`) keeps matching. */}
-        {items.map((it) => (
-          <g
-            key={it.idx}
-            data-feature-start={it.ann.start || 0}
-            style={{ cursor: 'pointer' }}
-          >
-            <title>{`${it.ann.name || it.ann.type}: ${(it.ann.start || 0) + 1}..${it.ann.end || 0}`}</title>
-            <rect
-              x={it.left}
-              y={0}
-              width={it.width}
-              height={BAR_H}
-              fill={it.color}
-              opacity={it.opacity}
-              stroke={FEATURE_STROKE}
-              strokeWidth={0.5}
-              rx={2}
-              ry={2}
-            />
-            {it.labelInside && it.width > 24 && (
-              <text
-                x={it.left + it.width / 2}
-                y={BAR_H / 2 + 3}
-                textAnchor="middle"
-                fontSize={10}
-                fontWeight={500}
-                fill={getTextColor(it.color)}
-                style={{ pointerEvents: 'none', userSelect: 'none' }}
-              >{truncate(it.ann.name || it.ann.type, Math.floor(it.width / 7))}</text>
-            )}
-          </g>
-        ))}
+        {/* feature blocks + inside labels — memoized via featuresLayer
+            so the SVG reconciler reuses the same React elements when
+            only `cursorPosition` changes. Pointer interaction lives
+            on the SVG itself; the per-feature cursor:'pointer' hint
+            keeps hovering interactive AND the existing K4 test
+            selector (`g[style*="cursor"]`) keeps matching. */}
+        {featuresLayer}
 
         {/* Cursor marker — vertical line + small downward triangle at
             the controlled `cursorPosition`. Hidden when null.

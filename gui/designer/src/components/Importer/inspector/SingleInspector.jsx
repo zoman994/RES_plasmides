@@ -191,9 +191,15 @@ export default function SingleInspector({
   // and would feel laggy. Doesn't auto-switch tabs (the user is
   // already focused inside SequenceView, so by definition `activeTab
   // === 'sequence'`).
-  const onCaretChangeFromView = useCallback((pos) => {
+  // `opts.needsScroll === false` — set by SequenceView when the
+  // caret stayed on the same line (held ←/→). We still update the
+  // visual caret + bar cursor, but skip the scrollIntoView call —
+  // the caret is already in view, scrolling would be a no-op layout
+  // hit per keystroke.
+  const onCaretChangeFromView = useCallback((pos, opts) => {
     if (typeof pos !== 'number' || !Number.isFinite(pos)) return;
     setCursorPos(pos);
+    if (opts && opts.needsScroll === false) return;
     setPendingScroll({ pos, tick: Date.now(), instant: true });
   }, []);
 
