@@ -383,21 +383,21 @@ export async function enrichWithCommonFeatures(sequence, annotations) {
       }
     }
 
-    // ORF detection: find unknown genes not in common-features.json
-    // Dynamic import — if orf-detection.js fails, enrichment continues without ORF scan
-    try {
-      const { detectORFs } = await import('./orf-detection');
-      const orfAnnotations = detectORFs(sequence, enriched);
-      enriched.push(...orfAnnotations);
-    } catch (e) {
-      console.warn('ORF detection skipped:', e.message);
-    }
+    // ORF detection moved out of enrichWithCommonFeatures in Sprint
+    // M-X.1 K3 (DEC-PRED-06). ORFs are now transient: produced by
+    // `runPredictors()` inside the SequenceView consumer (useMemo),
+    // not persisted into baseSnapshot.regions[]. This function stays
+    // responsible only for confident hits from common-features.json.
+    // To re-enable ORF rendering on the SequenceView, toggle
+    // `settings.predictions.cds` (default ON).
 
-    // If real regions were found (from DB or ORF scan), remove generic misc_feature
-    // that covers >80% of the sequence (artifact from autoAnnotate fallback)
+    // If real regions were found from the DB, remove generic
+    // misc_feature that covers >80% of the sequence (artifact from
+    // autoAnnotate fallback). The orf-scan check is dropped together
+    // with the in-line ORF call above.
     const hasRealRegions = enriched.some(a =>
       a.level === 'region' && a.type !== 'misc_feature' &&
-      (a.source === 'common_db' || a.detector === 'orf_scan')
+      a.source === 'common_db'
     );
     if (hasRealRegions) {
       const seqLen = sequence.length;

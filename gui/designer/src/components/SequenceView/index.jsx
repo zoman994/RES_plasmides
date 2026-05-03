@@ -38,6 +38,7 @@ import {
 import { detectORFRanges } from "./lib/orf-ranges.js";
 import { resolveFramesMode } from "./lib/frames-mode.js";
 import { useRowSelectionIsolation } from "./lib/row-selection-isolation.js";
+import { runPredictors } from "../../predicted-detection.js";
 import { getRegions } from "../../annotation-model.js";
 import { featureColorShaded, FEATURE_STROKE } from "../../feature-palette.js";
 import { scanAllSites, RE_ENZYMES } from "../../restriction-db.js";
@@ -61,6 +62,13 @@ export const LABEL_WIDTH = 8;
 // plasmids when an unrelated parent state shifts. Hoisting to a
 // module constant gives every default-call the SAME array instance.
 const EMPTY_PRIMERS = Object.freeze([]);
+
+// Stable empty-object reference used as the predictions-settings
+// default before the K5 store migration. Same memo-bail rationale as
+// EMPTY_PRIMERS — without a hoisted constant, the `settings.predictions
+// || {}` fallback would emit a fresh `{}` on every render and force
+// `runPredictors` useMemo to recompute uselessly.
+const EMPTY_PREDICTIONS = Object.freeze({});
 
 // Test-env detector — used both for `tracksReady` initial value (so
 // vitest assertions on heavy tracks find them synchronously) and for
@@ -116,6 +124,15 @@ function buildFeatureMap(fragments) {
           strand: r.strand || f.strand || 1,
           level: "region",
           kind: r.kind,
+          // Sprint M-X.1 K4 — propagate predicted fields if the source
+          // annotation already carries them (e.g. user-stored predicted
+          // ORF accepted as confident in M-X.2). For confident hits
+          // these are simply undefined → AnnotationTrack falls back to
+          // the filled-solid path.
+          predicted: r.predicted,
+          source: r.source,
+          confidence: r.confidence,
+          signals: r.signals,
         });
       });
     } else {
@@ -132,6 +149,38 @@ function buildFeatureMap(fragments) {
     }
   });
   return { fullSeq: seq, features: feats };
+}
+
+/**
+ * Merge confident features (from `buildFeatureMap`) with the predicted
+ * regions returned by `runPredictors()`. Predicted regions get a
+ * resolved `color` via `featureColorShaded()` so the AnnotationTrack
+ * dashed-stroke render (K4) picks the same hue as the confident
+ * feature would have — visual consistency.
+ *
+ * Single source of truth for downstream tracks: AnnotationTrack +
+ * StrandsTrack tint + AATrack receive ONE merged `features` array.
+ */
+function mergeWithPredicted(features, predictedRegions) {
+  if (!Array.isArray(predictedRegions) || predictedRegions.length === 0) {
+    return features;
+  }
+  const decorated = predictedRegions.map((r, i) => ({
+    id: r.id || `pred_${i}`,
+    name: r.name,
+    type: r.type,
+    start: r.start,
+    end: r.end,
+    color: featureColorShaded(r.type, r.name),
+    strand: r.strand || 1,
+    level: "region",
+    kind: r.kind,
+    predicted: true,
+    source: r.source,
+    confidence: r.confidence,
+    signals: r.signals,
+  }));
+  return features.concat(decorated);
 }
 
 /**
@@ -276,7 +325,31 @@ export default function SequenceView({
   const reFilter = useStore((s) => s.reFilter);
   const reMinSiteLen = useStore((s) => s.reMinSiteLen);
 
-  const { fullSeq, features } = useMemo(() => buildFeatureMap(fragments), [fragments]);
+  const { fullSeq, features: confidentFeatures } = useMemo(
+    () => buildFeatureMap(fragments),
+    [fragments],
+  );
+
+  // Sprint M-X.1 K3 — Structural Predictor consumer integration
+  // (DEC-PRED-06). Predicted regions are TRANSIENT: computed here on
+  // every (fullSeq, settings.predictions, confidentFeatures) shift,
+  // not persisted into baseSnapshot. settings.predictions defaults to
+  // an empty object on stores that haven't been migrated to the K5
+  // shape yet — runPredictors then runs no detectors (`cds=false`,
+  // `promoter=false`, …) and returns []. Once the user toggles
+  // anything in SettingsPopover (K5), this useMemo re-runs reactively
+  // and the AnnotationTrack picks the new regions up via the merged
+  // `features` prop.
+  const predictionsSettings = settings.predictions || EMPTY_PREDICTIONS;
+  const predictedRegions = useMemo(
+    () => runPredictors(fullSeq, predictionsSettings, confidentFeatures),
+    [fullSeq, predictionsSettings, confidentFeatures],
+  );
+
+  const features = useMemo(
+    () => mergeWithPredicted(confidentFeatures, predictedRegions),
+    [confidentFeatures, predictedRegions],
+  );
 
   // Detect ORFs once per fullSeq for the Smart-6-frame trinity.
   const orfRanges = useMemo(() => detectORFRanges(fullSeq, 20), [fullSeq]);

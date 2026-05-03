@@ -1,18 +1,15 @@
 import { describe, it, expect, vi } from 'vitest';
 
-// Mock feature-detection module (dynamic import in enrichWithCommonFeatures)
+// Mock feature-detection module (dynamic import in enrichWithCommonFeatures).
+// orf-detection is no longer imported here after Sprint M-X.1 K3 — ORFs
+// are produced transiently by `runPredictors()` in the SequenceView
+// consumer (DEC-PRED-06), not by `enrichWithCommonFeatures`.
 vi.mock('../feature-detection', () => ({
   detectCommonFeaturesAsync: vi.fn().mockResolvedValue([]),
 }));
 
-// Mock orf-detection module (dynamic import in enrichWithCommonFeatures)
-vi.mock('../orf-detection', () => ({
-  detectORFs: vi.fn().mockReturnValue([]),
-}));
-
 import { enrichWithCommonFeatures } from '../auto-annotate';
 import { detectCommonFeaturesAsync } from '../feature-detection';
-import { detectORFs } from '../orf-detection';
 
 describe('enrichWithCommonFeatures', () => {
   const genericMisc = (seqLen) => ({
@@ -84,26 +81,12 @@ describe('enrichWithCommonFeatures', () => {
     expect(amprs[0].description).toBe('TEM-1');
   });
 
-  it('ORF detection runs even when common-features DB returns nothing', async () => {
-    const seqLen = 4000;
-    const sequence = 'A'.repeat(seqLen);
-    const annotations = [genericMisc(seqLen)];
-
-    // Common features: nothing found
-    detectCommonFeaturesAsync.mockResolvedValueOnce([]);
-    // ORF detection: finds one gene
-    detectORFs.mockReturnValueOnce([
-      { id: 'orf1', name: 'ORF (200 aa)', type: 'CDS', start: 100, end: 700, strand: 1, level: 'region', auto: true, detector: 'orf_scan', source: 'orf_detection' },
-    ]);
-
-    const enriched = await enrichWithCommonFeatures(sequence, annotations);
-
-    // ORF should be present
-    expect(enriched.find(a => a.name === 'ORF (200 aa)')).toBeDefined();
-    // Generic misc_feature (100% coverage) should be removed because orf_scan found real region
-    const miscFeatures = enriched.filter(a => a.type === 'misc_feature' && (a.end - a.start) / seqLen >= 0.8);
-    expect(miscFeatures).toHaveLength(0);
-  });
+  // The «ORF detection runs ...» case from M-B.1 was deleted in
+  // Sprint M-X.1 K3 — `enrichWithCommonFeatures` no longer imports or
+  // calls `detectORFs`. ORF prediction is now transient (DEC-PRED-06)
+  // and lives in `runPredictors()`/SequenceView. Coverage of the
+  // ORF→render path is in `components/SequenceView/__tests__/
+  // index-composition.test.jsx` cases 4–7.
 
   it('small misc_feature (<80% coverage) is preserved', async () => {
     const seqLen = 4000;
