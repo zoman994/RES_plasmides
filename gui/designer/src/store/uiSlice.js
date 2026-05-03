@@ -25,6 +25,22 @@ const DEFAULT_VISIBLE_FRAMES = Object.freeze({
   '-1': true, '-2': true, '-3': true,
 });
 
+// Sprint M-X.1 K5 — Structural Predictor defaults (DEC-PRED-03 Variant
+// B). High-precision detectors (ORF + sgRNA scaffold) ON; PWM-based
+// detectors (σ70 promoter, stem-loop terminator) OFF until the biolog
+// explicitly opts in (those have low specificity on noisy plasmids).
+// `threshold = 0.7` is a generic confidence cutoff applied uniformly
+// across detectors (see runPredictors in predicted-detection.js).
+export const PREDICTIONS_DEFAULTS = Object.freeze({
+  cds: true,
+  sgRNA: true,
+  promoter: false,
+  terminator: false,
+  threshold: 0.7,
+});
+
+const PREDICTION_TOGGLE_KEYS = ['cds', 'sgRNA', 'promoter', 'terminator'];
+
 export const SEQUENCE_VIEW_DEFAULTS = Object.freeze({
   showBottomStrand: true,
   // Default 'single' — biolog feedback 02.05.2026: don't dump 6-frame
@@ -39,6 +55,7 @@ export const SEQUENCE_VIEW_DEFAULTS = Object.freeze({
   visibleFrames: { ...DEFAULT_VISIBLE_FRAMES },
   primerStyle: 'filled',
   reOrientation: 'vertical',
+  predictions: { ...PREDICTIONS_DEFAULTS },
 });
 
 function sanitizeVisibleFrames(raw) {
@@ -50,9 +67,38 @@ function sanitizeVisibleFrames(raw) {
   return out;
 }
 
+/**
+ * Defensive parser for the predictions block — validates each toggle
+ * + threshold range. Missing field → fall back to default. Bad payload
+ * (string instead of bool, NaN threshold, …) → default. Used both at
+ * initial load and at setSequenceViewSetting time.
+ */
+function sanitizePredictions(raw) {
+  if (!raw || typeof raw !== 'object') return { ...PREDICTIONS_DEFAULTS };
+  const out = { ...PREDICTIONS_DEFAULTS };
+  for (const k of PREDICTION_TOGGLE_KEYS) {
+    if (typeof raw[k] === 'boolean') out[k] = raw[k];
+  }
+  if (
+    typeof raw.threshold === 'number'
+    && Number.isFinite(raw.threshold)
+    && raw.threshold >= 0.5
+    && raw.threshold <= 1.0
+  ) {
+    out.threshold = raw.threshold;
+  }
+  return out;
+}
+
 function loadInitialSequenceView() {
   const raw = getJSON(SEQUENCE_VIEW_STORAGE_KEY, null);
-  if (!raw || typeof raw !== 'object') return { ...SEQUENCE_VIEW_DEFAULTS, visibleFrames: { ...DEFAULT_VISIBLE_FRAMES } };
+  if (!raw || typeof raw !== 'object') {
+    return {
+      ...SEQUENCE_VIEW_DEFAULTS,
+      visibleFrames: { ...DEFAULT_VISIBLE_FRAMES },
+      predictions: { ...PREDICTIONS_DEFAULTS },
+    };
+  }
   return {
     showBottomStrand:
       typeof raw.showBottomStrand === 'boolean'
@@ -72,6 +118,10 @@ function loadInitialSequenceView() {
     reOrientation: RE_ORIENTATIONS.includes(raw.reOrientation)
       ? raw.reOrientation
       : SEQUENCE_VIEW_DEFAULTS.reOrientation,
+    // Sprint M-X.1 K5 — defensive fallback for the new predictions
+    // block. Old stored payloads (pre-K5) lack this field; we fill it
+    // with PREDICTIONS_DEFAULTS so the consumer never sees undefined.
+    predictions: sanitizePredictions(raw.predictions),
   };
 }
 
@@ -184,6 +234,42 @@ export const createUiSlice = (set) => ({
 
   // ───────── SequenceView settings (Sprint M-B.3 K7) ─────────
   setSequenceViewSetting: (key, value) => {
+    // Sprint M-X.1 K5 — nested `predictions.X` keys for the new
+    // structural-predictor settings. The dotted key syntax keeps the
+    // setter call sites simple (one helper, one entry point) without
+    // requiring callers to spread the predictions object themselves.
+    if (typeof key === 'string' && key.startsWith('predictions.')) {
+      const sub = key.slice('predictions.'.length);
+      if (PREDICTION_TOGGLE_KEYS.includes(sub)) {
+        if (typeof value !== 'boolean') return;
+      } else if (sub === 'threshold') {
+        const v = Number(value);
+        if (!Number.isFinite(v) || v < 0.5 || v > 1.0) return;
+        value = v;
+      } else {
+        return; // unknown sub-key
+      }
+      set(state => {
+        if (!state.sequenceView) {
+          state.sequenceView = {
+            ...SEQUENCE_VIEW_DEFAULTS,
+            visibleFrames: { ...DEFAULT_VISIBLE_FRAMES },
+            predictions: { ...PREDICTIONS_DEFAULTS },
+          };
+        }
+        if (!state.sequenceView.predictions) {
+          state.sequenceView.predictions = { ...PREDICTIONS_DEFAULTS };
+        }
+        state.sequenceView.predictions[sub] = value;
+        persistSequenceView({
+          ...state.sequenceView,
+          visibleFrames: { ...state.sequenceView.visibleFrames },
+          predictions: { ...state.sequenceView.predictions },
+        });
+      });
+      return;
+    }
+
     if (key === 'framesMode' && !FRAMES_MODES.includes(value)) return;
     if (key === 'primerStyle' && !PRIMER_STYLES.includes(value)) return;
     if (key === 'reOrientation' && !RE_ORIENTATIONS.includes(value)) return;
@@ -196,12 +282,22 @@ export const createUiSlice = (set) => ({
     if (key === 'visibleFrames') {
       value = sanitizeVisibleFrames(value);
     }
+    if (key === 'predictions') {
+      value = sanitizePredictions(value);
+    }
     set(state => {
-      if (!state.sequenceView) state.sequenceView = { ...SEQUENCE_VIEW_DEFAULTS, visibleFrames: { ...DEFAULT_VISIBLE_FRAMES } };
+      if (!state.sequenceView) {
+        state.sequenceView = {
+          ...SEQUENCE_VIEW_DEFAULTS,
+          visibleFrames: { ...DEFAULT_VISIBLE_FRAMES },
+          predictions: { ...PREDICTIONS_DEFAULTS },
+        };
+      }
       state.sequenceView[key] = value;
       persistSequenceView({
         ...state.sequenceView,
         visibleFrames: { ...state.sequenceView.visibleFrames },
+        predictions: { ...state.sequenceView.predictions },
       });
     });
   },
@@ -224,10 +320,12 @@ export const createUiSlice = (set) => ({
       state.sequenceView = {
         ...SEQUENCE_VIEW_DEFAULTS,
         visibleFrames: { ...DEFAULT_VISIBLE_FRAMES },
+        predictions: { ...PREDICTIONS_DEFAULTS },
       };
       persistSequenceView({
         ...state.sequenceView,
         visibleFrames: { ...state.sequenceView.visibleFrames },
+        predictions: { ...state.sequenceView.predictions },
       });
     });
   },

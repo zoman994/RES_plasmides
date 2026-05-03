@@ -90,6 +90,15 @@ export const IMPORTER_STRINGS = {
     reOrientationLabel: 'RE-ярлыки',
     reOrientationVertical: 'Вертикально',
     reOrientationHorizontal: 'Горизонтально',
+    // Sprint M-X.1 K5 — Structural Predictor settings.
+    predictionsLabel: 'Предсказания',
+    predictionsCds: 'CDS (ORF detection)',
+    predictionsPromoter: 'Промоторы (σ70 PWM)',
+    predictionsTerminator: 'Терминаторы (stem-loop)',
+    predictionsSgrna: 'Guide RNAs (sgRNA scaffold)',
+    predictionsThresholdLabel: (n) => `Минимальная уверенность: ${(n * 100).toFixed(0)}%`,
+    predictionsThresholdHint:
+      'Предсказания ниже порога не показываются. Поднимай для более строгой фильтрации.',
     resetButton: 'Сбросить к умолчаниям',
     closeAria: 'Закрыть настройки',
   },

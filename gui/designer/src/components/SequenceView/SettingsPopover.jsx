@@ -305,7 +305,64 @@ export default function SettingsPopover({ open, onClose, anchor }) {
         ))}
       </fieldset>
 
-      {/* 6. Reset */}
+      {/* 6. Predictions (Sprint M-X.1 K5) */}
+      <fieldset
+        data-testid="sequence-view-setting-predictions"
+        style={{ border: "none", padding: 0, margin: "0 0 10px 0" }}
+      >
+        <legend style={{ fontWeight: 500, marginBottom: 4 }}>{S.predictionsLabel}</legend>
+        {[
+          { key: "cds", label: S.predictionsCds },
+          { key: "promoter", label: S.predictionsPromoter },
+          { key: "terminator", label: S.predictionsTerminator },
+          { key: "sgRNA", label: S.predictionsSgrna },
+        ].map((opt) => (
+          <label
+            key={opt.key}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "2px 0",
+              cursor: "pointer",
+            }}
+          >
+            <input
+              type="checkbox"
+              data-testid={`sequence-view-setting-prediction-${opt.key}`}
+              checked={!!(settings.predictions && settings.predictions[opt.key])}
+              onChange={(e) =>
+                setSetting(`predictions.${opt.key}`, !!e.target.checked)
+              }
+            />
+            {opt.label}
+          </label>
+        ))}
+        <div style={{ marginTop: 6 }}>
+          <label style={{ display: "block", fontWeight: 500, marginBottom: 2 }}>
+            {S.predictionsThresholdLabel(
+              settings.predictions ? settings.predictions.threshold : 0.7,
+            )}
+          </label>
+          <input
+            type="range"
+            min={0.5}
+            max={1.0}
+            step={0.05}
+            value={settings.predictions ? settings.predictions.threshold : 0.7}
+            data-testid="sequence-view-setting-predictions-threshold"
+            onChange={(e) =>
+              setSetting("predictions.threshold", Number(e.target.value))
+            }
+            style={{ width: "100%" }}
+          />
+          <p style={{ fontSize: 11, color: "var(--text-tertiary, #9ca3af)", margin: "4px 0 0" }}>
+            {S.predictionsThresholdHint}
+          </p>
+        </div>
+      </fieldset>
+
+      {/* 7. Reset */}
       <button
         type="button"
         data-testid="sequence-view-settings-reset"
