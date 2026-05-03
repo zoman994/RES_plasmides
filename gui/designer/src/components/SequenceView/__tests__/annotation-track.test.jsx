@@ -95,4 +95,152 @@ describe("AnnotationTrack — K3 integration", () => {
       expect(el.dataset.labelFeature).toBe("CMV enhancer");
     });
   });
+
+  // ─── Sprint M-X.1 K4 — predicted region visual ───────────────────
+
+  it("4) predicted region renders dashed-stroke + transparent-ish fill + data-predicted=true", () => {
+    const region = {
+      id: "pred-1",
+      start: 0,
+      end: 50,
+      name: "Probable σ70 promoter",
+      type: "promoter",
+      color: "#009E73",
+      predicted: true,
+      source: "sigma70_pwm",
+      confidence: 0.78,
+    };
+    const { container } = render(
+      <AnnotationTrack
+        regions={[region]}
+        lineStart={0}
+        lineLen={100}
+        charPx={7.2}
+        labelChars={8}
+      />,
+    );
+    const annotation = screen.getByTestId("sequence-view-annotation");
+    expect(annotation.dataset.predicted).toBe("true");
+    // Look up the rect inside the annotation group.
+    const rect = annotation.querySelector("rect");
+    expect(rect).toBeTruthy();
+    // Dashed stroke, no solid fill.
+    expect(rect.getAttribute("stroke-dasharray")).toBeTruthy();
+    const fill = rect.getAttribute("fill");
+    // Either explicit transparent or very low alpha.
+    expect(fill === "transparent" || /^#?[0-9a-f]+$/i.test(fill)).toBe(true);
+    // SVG attribute ratchet sanity: container is alive.
+    expect(container).toBeTruthy();
+  });
+
+  it("5) confident region has no data-predicted, solid filled rect (regression)", () => {
+    const region = {
+      id: "conf-1",
+      start: 0,
+      end: 50,
+      name: "AmpR",
+      type: "marker",
+      color: "#56B4E9",
+    };
+    render(
+      <AnnotationTrack
+        regions={[region]}
+        lineStart={0}
+        lineLen={100}
+        charPx={7.2}
+        labelChars={8}
+      />,
+    );
+    const annotation = screen.getByTestId("sequence-view-annotation");
+    expect(annotation.dataset.predicted).toBeUndefined();
+    const rect = annotation.querySelector("rect");
+    expect(rect.getAttribute("stroke-dasharray")).toBeNull();
+  });
+
+  it("6) mixed render: 2 confident + 2 predicted → 4 rects, 2 dashed", () => {
+    const regions = [
+      { id: "c1", start: 0, end: 30, name: "AmpR", type: "marker", color: "#56B4E9" },
+      { id: "c2", start: 100, end: 130, name: "ori", type: "rep_origin", color: "#E69F00" },
+      { id: "p1", start: 200, end: 240, name: "Probable σ70 promoter", type: "promoter", color: "#009E73", predicted: true },
+      { id: "p2", start: 260, end: 350, name: "ORF (120 aa)", type: "CDS", color: "#9ca3af", predicted: true },
+    ];
+    render(
+      <AnnotationTrack
+        regions={regions}
+        lineStart={0}
+        lineLen={400}
+        charPx={7.2}
+        labelChars={8}
+      />,
+    );
+    const annotations = screen.getAllByTestId("sequence-view-annotation");
+    expect(annotations.length).toBe(4);
+    const predicted = annotations.filter((a) => a.dataset.predicted === "true");
+    expect(predicted.length).toBe(2);
+    const dashedRects = predicted
+      .map((a) => a.querySelector("rect").getAttribute("stroke-dasharray"))
+      .filter(Boolean);
+    expect(dashedRects.length).toBe(2);
+  });
+
+  it("7) predicted label gets `~` prefix and italic style", () => {
+    const region = {
+      id: "p-italic",
+      start: 0,
+      end: 200,                         // wide enough to render label inside
+      name: "Probable σ70 promoter",
+      type: "promoter",
+      color: "#009E73",
+      predicted: true,
+      source: "sigma70_pwm",
+    };
+    const { container } = render(
+      <AnnotationTrack
+        regions={[region]}
+        lineStart={0}
+        lineLen={250}
+        charPx={7.2}
+        labelChars={8}
+      />,
+    );
+    const labelEl = container.querySelector(
+      '[data-testid="sequence-view-annotation-label"]',
+    );
+    expect(labelEl).toBeTruthy();
+    expect(labelEl.textContent).toMatch(/^~/); // tilde prefix
+    expect(labelEl.textContent).toContain("Probable σ70 promoter");
+    // SVG `font-style="italic"` attribute (preferred over inline-style for
+    // SVG text — happy-dom also reflects `style.fontStyle`).
+    const fontStyle =
+      labelEl.getAttribute("font-style") || labelEl.style.fontStyle;
+    expect(fontStyle).toBe("italic");
+  });
+
+  it("8) confident label has NO tilde and is non-italic (regression)", () => {
+    const region = {
+      id: "c-plain",
+      start: 0,
+      end: 200,
+      name: "AmpR",
+      type: "marker",
+      color: "#56B4E9",
+    };
+    const { container } = render(
+      <AnnotationTrack
+        regions={[region]}
+        lineStart={0}
+        lineLen={250}
+        charPx={7.2}
+        labelChars={8}
+      />,
+    );
+    const labelEl = container.querySelector(
+      '[data-testid="sequence-view-annotation-label"]',
+    );
+    expect(labelEl).toBeTruthy();
+    expect(labelEl.textContent).not.toMatch(/^~/);
+    const fontStyle =
+      labelEl.getAttribute("font-style") || labelEl.style.fontStyle || "";
+    expect(fontStyle).not.toBe("italic");
+  });
 });

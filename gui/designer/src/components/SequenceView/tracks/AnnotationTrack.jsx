@@ -200,19 +200,32 @@ function AnnotationTrack({
           const xLeft = (labelChars + (visStart - lineStart)) * charPx;
           const widthRect = visLen * charPx;
           const yTop = rowIdx * (ROW_HEIGHT + ROW_GAP);
-          // Darkened fill (~10 % toward black) — final tuning after
-          // three iterations:
-          //   1) raw palette colour (original) — слишком светлые
-          //   2) darken(0.25) — биолог: «слишком тёмно, ещё более
-          //      светлый фон»
-          //   3) darken(0.10) (current) — лёгкое приглушение, плашка
-          //      читается на dark theme без glare, но всё ещё узнаваема
-          //      по hue.
-          const fill = darkenColor(ensureColor(region.color), 0.10);
+
+          // Sprint M-X.1 K4 — predicted vs confident rendering split.
+          // Predicted regions (predicted-detection.js K2 + consumer
+          // merge K3) render unfilled+dashed with italic + tilde-prefixed
+          // labels per pLannotate convention (DEC-PRED-05). Confident
+          // regions keep the existing solid+darkened look.
+          const isPredicted = region.predicted === true;
+          const baseColor = ensureColor(region.color);
+          const fill = isPredicted
+            ? 'transparent'
+            : darkenColor(baseColor, 0.10);
+          const rectStroke = isPredicted
+            ? baseColor
+            : 'var(--text-secondary, #3A2F1F)';
+          const rectStrokeWidth = isPredicted ? 1 : 0.6;
+          const rectStrokeDash = isPredicted ? '3,2' : undefined;
+          const baseName = region.name || "feature";
           const labelText =
             (region.end - region.start) > 12
-              ? `${region.name || "feature"} (${region.end - region.start})`
-              : region.name || "feature";
+              ? `${baseName} (${region.end - region.start})`
+              : baseName;
+          // Tilde-prefixed italic label for predicted regions
+          // (DEC-PRED-05 / pLannotate convention). Confident regions
+          // keep their plain label.
+          const displayLabel = isPredicted ? `~${labelText}` : labelText;
+          const labelFontStyle = isPredicted ? "italic" : "normal";
           const labelChWidth = labelLengthChars(region.name, region);
           // Convert label char width to px-equivalent for fit comparison.
           const labelPx = labelChWidth * charPx;
@@ -238,6 +251,8 @@ function AnnotationTrack({
               data-region-name={region.name || ""}
               data-region-row={rowIdx}
               data-region-line-start={lineStart}
+              data-predicted={isPredicted ? "true" : undefined}
+              data-region-source={region.source || undefined}
               transform={`translate(${xLeft}, ${yTop})`}
             >
               <rect
@@ -247,19 +262,21 @@ function AnnotationTrack({
                 height={ROW_HEIGHT}
                 rx={2}
                 fill={fill}
-                // Theme-aware stroke (var(--text-secondary), fallback
-                // `#3A2F1F` for legacy light-theme look). Width tuned
-                // to 0.6 px after biolog said 1 px looked «слишком
-                // толсто, неаккуратно».
-                stroke="var(--text-secondary, #3A2F1F)"
-                strokeWidth={0.6}
+                // Confident: theme-aware stroke (var(--text-secondary)),
+                // 0.6 px (biolog visual review M-B.3 polish). Predicted:
+                // feature-coloured stroke, 1 px, dashed pattern (3,2)
+                // per DEC-PRED-05 / pLannotate convention.
+                stroke={rectStroke}
+                strokeWidth={rectStrokeWidth}
+                strokeDasharray={rectStrokeDash}
               />
               {drawChevron ? (
                 <path
                   d={chevronPath(strand, strand === -1 ? 0 : widthRect, 0, ROW_HEIGHT)}
                   fill={fill}
-                  stroke="var(--text-secondary, #3A2F1F)"
-                  strokeWidth={0.6}
+                  stroke={rectStroke}
+                  strokeWidth={rectStrokeWidth}
+                  strokeDasharray={rectStrokeDash}
                 />
               ) : null}
               {showLabelInside ? (
@@ -267,10 +284,12 @@ function AnnotationTrack({
                   data-testid="sequence-view-annotation-label"
                   data-label-mode="inside"
                   data-label-feature={region.name || ""}
+                  data-label-predicted={isPredicted ? "true" : undefined}
                   x={widthRect / 2}
                   y={ROW_HEIGHT / 2 + LABEL_FONT_SIZE / 2 - 1}
                   textAnchor="middle"
                   fontSize={LABEL_FONT_SIZE}
+                  fontStyle={labelFontStyle}
                   // Halo tuned across iterations:
                   //   2.5 px solid + bold → биолог: «слишком пухлый»
                   //   0.7 px translucent → «всё равно плохо читаются»
@@ -284,10 +303,11 @@ function AnnotationTrack({
                   style={{
                     pointerEvents: "none",
                     fontFamily: "inherit",
+                    fontStyle: labelFontStyle,
                     paintOrder: "stroke fill",
                   }}
                 >
-                  {labelText}
+                  {displayLabel}
                 </text>
               ) : null}
               {showLeader ? (
@@ -305,14 +325,16 @@ function AnnotationTrack({
                     data-testid="sequence-view-annotation-label"
                     data-label-mode="leader"
                     data-label-feature={region.name || ""}
+                    data-label-predicted={isPredicted ? "true" : undefined}
                     x={widthRect / 2 + CHEVRON_PAD}
                     y={ROW_HEIGHT + LEADER_LINE_LENGTH_PX}
                     textAnchor="start"
                     fontSize={LABEL_FONT_SIZE}
+                    fontStyle={labelFontStyle}
                     fill="var(--text-secondary, #4b5563)"
-                    style={{ fontFamily: "inherit" }}
+                    style={{ fontFamily: "inherit", fontStyle: labelFontStyle }}
                   >
-                    {labelText}
+                    {displayLabel}
                   </text>
                 </g>
               ) : null}
