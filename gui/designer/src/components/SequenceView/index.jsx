@@ -26,7 +26,17 @@
  * reusable in Importer / Container Window / Mix Workspace.
  */
 
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  forwardRef,
+  memo,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useStore } from "../../store";
 import { SEQUENCE_VIEW_DEFAULTS } from "../../store/uiSlice.js";
 import {
@@ -245,7 +255,12 @@ function flattenSites(scanResult, filterMode) {
  * @param {(primer: object) => void} [props.onAddPrimer]
  * @param {(site: object) => void} [props.onRestrictionClick]
  */
-export default function SequenceView({
+// forwardRef so consumers (Importer-merge-tabs K4: SequenceTab + the
+// LinearFeatureBar «колбаса» below it) can imperatively scroll the
+// viewer to a specific absolute sequence position. The annotator (a
+// future separate module — sprint «не смешивай» / 04.05.2026) will
+// reuse the same imperative handle for jumping to highlighted hits.
+const SequenceView = forwardRef(function SequenceView({
   fragments,
   circular = false,
   primers = EMPTY_PRIMERS,
@@ -260,7 +275,7 @@ export default function SequenceView({
   onAddPrimer,
   // eslint-disable-next-line no-unused-vars
   onRestrictionClick,
-}) {
+}, ref) {
   const containerRef = useRef(null);
   const [charPx, setCharPx] = useState(7.2);
   const [charsPerLine, setCharsPerLine] = useState(80);
@@ -284,6 +299,12 @@ export default function SequenceView({
   // user can copy e.g. just the reverse strand or just one AA frame
   // without picking up neighbours. See lib/row-selection-isolation.js.
   useRowSelectionIsolation(containerRef);
+
+  // Imperative scroll-to-position handle (Importer-merge-tabs K1).
+  // `attachScrollHandle` lives at module scope so the closure can be
+  // re-used cheaply. Empty deps — the handle reads from refs at call
+  // time, never stale.
+  useImperativeHandle(ref, attachScrollHandle(ref, containerRef), []);
 
   // Two-phase render to keep first paint cheap on slow hardware.
   // Initial mount on a 8 GB / mid-tier CPU laptop (typical academic
@@ -491,6 +512,69 @@ export default function SequenceView({
       ))}
     </div>
   );
+});
+
+/**
+ * Imperative `scrollToPosition` handle. Importer-merge-tabs K1.
+ * Resolves the line containing `absolutePos` via the per-line
+ * `data-line-start` attribute (no React state required), scrolls
+ * its element into view, and flashes a brief highlight class so
+ * the biolog notices the jump. Used by the LinearFeatureBar
+ * «колбаса» click handler in SequenceTab (K4) and by the future
+ * Annotator hit-list. Uses `containerRef` already set up for the
+ * scroll container.
+ *
+ * Wrapped in `useImperativeHandle` and bound to `containerRef`
+ * via the closure — the handle is recreated only when the
+ * containerRef itself changes (i.e. effectively never). The
+ * scrollToPosition call itself does no React work — pure DOM.
+ */
+function attachScrollHandle(ref, containerRef) {
+  return () => ({
+    scrollToPosition(absolutePos) {
+      const root = containerRef.current;
+      if (!root) return;
+      const lines = root.querySelectorAll(
+        '[data-testid="sequence-view-line"]',
+      );
+      if (lines.length === 0) return;
+      let target = null;
+      for (const el of lines) {
+        const start = parseInt(el.dataset.lineStart || "", 10);
+        if (Number.isNaN(start)) continue;
+        if (start > absolutePos) break;
+        target = el;
+      }
+      if (!target) return;
+      // Scroll the line into view at the top of the viewport. Smooth
+      // behaviour preferred; fallback for jsdom / happy-dom (no real
+      // layout) — direct scrollTop assignment.
+      try {
+        const containerRect = root.getBoundingClientRect();
+        const targetRect = target.getBoundingClientRect();
+        const offset = targetRect.top - containerRect.top + root.scrollTop;
+        if (typeof root.scrollTo === "function") {
+          root.scrollTo({ top: offset, behavior: "smooth" });
+        } else {
+          root.scrollTop = offset;
+        }
+      } catch {
+        // happy-dom + some jsdom builds throw on getBoundingClientRect
+        // when the element isn't laid out. The flash class still
+        // highlights the target so consumer feedback works.
+      }
+      // Brief highlight — class auto-removed via setTimeout so multiple
+      // jumps don't stack flashes. CSS provides the visual.
+      target.classList.add("sequence-view-line-flash");
+      const timer = setTimeout(() => {
+        target.classList.remove("sequence-view-line-flash");
+      }, 1500);
+      // Stash so a subsequent jump cancels the previous flash promptly.
+      const prev = root.__svFlashTimer;
+      if (prev) clearTimeout(prev);
+      root.__svFlashTimer = timer;
+    },
+  });
 }
 
 /**
@@ -695,3 +779,5 @@ const SequenceLine = memo(function SequenceLine({
     </div>
   );
 });
+
+export default SequenceView;

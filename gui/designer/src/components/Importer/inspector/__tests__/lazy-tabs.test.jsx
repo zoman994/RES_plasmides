@@ -3,32 +3,35 @@
  *
  * The headline test (`default-overview-no-annotation-editor`) is the V49
  * 50-sec hang regression guard: on default Inspector open with activeTab
- * === 'overview', AnnotationEditor must NOT be present in the DOM. The
- * other three tests cover toggling tabs and edit propagation.
+ * === 'overview', the heavy SequenceView must NOT be present in the DOM.
+ *
+ * Importer-merge-tabs (04.05.2026): the dedicated «Аннотации» tab is
+ * gone — Inspector is now read-only viewer-only. SequenceTab embeds a
+ * LinearFeatureBar «колбаса» at the bottom that calls
+ * SequenceView.scrollToPosition(...) on feature click. The
+ * AnnotationEditor (heavy edit UI) is no longer imported here.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
+import { forwardRef, useImperativeHandle } from 'react';
+import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import SingleInspector from '../SingleInspector';
 
-// Mock heavy components so the test stays fast and the assertions can
-// detect their presence/absence via stable testids.
-vi.mock('../../../AnnotationEditor', () => ({
-  default: ({ annotations = [], onChange }) => (
-    <div data-testid="mock-annotation-editor" data-count={annotations.length}>
-      <button
-        type="button"
-        data-testid="mock-ann-trigger"
-        onClick={() => onChange?.([...annotations, { id: 'new', name: 'added', start: 0, end: 5, level: 'detail' }])}
-      >+1</button>
-    </div>
-  ),
-}));
-// Sprint M-B.3 K8: SequenceTab now mounts SequenceView (not SequenceMapView).
-// Stub both so the lazy-mount assertions stay focused on tab switching.
+// Capture scrollToPosition calls on the SequenceView mock so the K4
+// integration test can verify «click on feature in strip → scroll».
+const scrollSpy = vi.fn();
+
 vi.mock('../../../SequenceView', () => ({
-  default: ({ fragments }) => (
-    <div data-testid="mock-sequence-map-view" data-frag-len={fragments?.[0]?.sequence?.length || 0} />
-  ),
+  default: forwardRef(function MockSequenceView({ fragments }, ref) {
+    useImperativeHandle(ref, () => ({
+      scrollToPosition: (pos) => scrollSpy(pos),
+    }), []);
+    return (
+      <div
+        data-testid="mock-sequence-map-view"
+        data-frag-len={fragments?.[0]?.sequence?.length || 0}
+      />
+    );
+  }),
 }));
 vi.mock('../../../SequenceView/SettingsPopover', () => ({
   default: () => null,
@@ -71,69 +74,66 @@ function harness({ activeTab = 'overview', edits = {}, onUpdateEdits = vi.fn() }
   return { Wrapper, onActiveTabChange, get captured() { return captured; } };
 }
 
-beforeEach(() => { vi.clearAllMocks(); });
+beforeEach(() => {
+  scrollSpy.mockClear();
+  vi.clearAllMocks();
+});
 afterEach(cleanup);
 
-describe('M-B.2 K4 — lazy-tabs', () => {
-  it('1) default-overview-no-annotation-editor — V49 regression guard', () => {
+describe('M-B.2 K4 — lazy-tabs (Importer-merge-tabs revision)', () => {
+  it('1) default-overview-no-sequence-view — V49 regression guard', () => {
     const { Wrapper } = harness({ activeTab: 'overview' });
     render(<Wrapper tab="overview" />);
 
-    // OverviewTab is mounted; SequenceMapView + AnnotationEditor are NOT.
+    // OverviewTab is mounted; SequenceView is NOT (lazy mount only on
+    // sequence tab). The annotations tab was deleted entirely
+    // (Importer-merge-tabs); its panel testid must never appear.
     expect(screen.getByTestId('importer-tab-panel-overview')).toBeTruthy();
-    expect(screen.queryByTestId('mock-annotation-editor')).toBeNull();
     expect(screen.queryByTestId('mock-sequence-map-view')).toBeNull();
     expect(screen.queryByTestId('importer-tab-panel-sequence')).toBeNull();
     expect(screen.queryByTestId('importer-tab-panel-annotations')).toBeNull();
   });
 
-  it('2) switching to annotations tab mounts AnnotationEditor', () => {
-    const { Wrapper } = harness({ activeTab: 'annotations' });
-    render(<Wrapper tab="annotations" />);
-
-    expect(screen.getByTestId('importer-tab-panel-annotations')).toBeTruthy();
-    expect(screen.getByTestId('mock-annotation-editor')).toBeTruthy();
-    expect(screen.queryByTestId('importer-tab-panel-overview')).toBeNull();
-    expect(screen.queryByTestId('mock-sequence-map-view')).toBeNull();
-  });
-
-  it('3) switching back to overview unmounts AnnotationEditor (DOM destroy)', () => {
-    const { Wrapper } = harness({ activeTab: 'annotations' });
-    const { rerender } = render(<Wrapper tab="annotations" />);
-    expect(screen.getByTestId('mock-annotation-editor')).toBeTruthy();
-
-    rerender(<Wrapper tab="overview" />);
-    expect(screen.queryByTestId('mock-annotation-editor')).toBeNull();
-    expect(screen.getByTestId('importer-tab-panel-overview')).toBeTruthy();
-  });
-
-  it('4) edit annotation in AnnotationsTab calls onUpdateEdits with new array', async () => {
-    const onUpdateEdits = vi.fn();
-    const { Wrapper } = harness({ activeTab: 'annotations', onUpdateEdits });
-    render(<Wrapper tab="annotations" />);
-
-    fireEvent.click(screen.getByTestId('mock-ann-trigger'));
-    await waitFor(() => {
-      expect(onUpdateEdits).toHaveBeenCalled();
-    });
-    const patch = onUpdateEdits.mock.calls[0][0];
-    expect(Array.isArray(patch.editedAnnotations)).toBe(true);
-    expect(patch.editedAnnotations.length).toBe(ITEM.annotations.length + 1);
-  });
-
-  it('5) sequence tab mounts SequenceMapView read-only (no onAddCustomPrimer)', () => {
+  it('2) sequence tab mounts SequenceView + LinearFeatureBar feature strip', () => {
     const { Wrapper } = harness({ activeTab: 'sequence' });
     render(<Wrapper tab="sequence" />);
     expect(screen.getByTestId('importer-tab-panel-sequence')).toBeTruthy();
     const seq = screen.getByTestId('mock-sequence-map-view');
     expect(parseInt(seq.dataset.fragLen, 10)).toBe(ITEM.sequence.length);
-    // AnnotationEditor still not in DOM.
-    expect(screen.queryByTestId('mock-annotation-editor')).toBeNull();
+    // The «колбаса» wrapper must be rendered alongside the viewer.
+    expect(screen.getByTestId('importer-sequence-feature-strip')).toBeTruthy();
+    // The internal SVG bar that LinearFeatureBar renders.
+    expect(screen.getByTestId('importer-linear-feature-bar')).toBeTruthy();
   });
 
-  it('6) HistoryTab tab not present in TabBar when commits empty (M-B.2 default)', () => {
+  it('3) clicking a feature on the LinearFeatureBar scrolls SequenceView to its start', () => {
+    const { Wrapper } = harness({ activeTab: 'sequence' });
+    render(<Wrapper tab="sequence" />);
+    // LinearFeatureBar emits an SVG <g> per feature; click any one.
+    const featureGroups = screen
+      .getByTestId('importer-linear-feature-bar')
+      .querySelectorAll('g[style*="cursor"]');
+    expect(featureGroups.length).toBeGreaterThan(0);
+    fireEvent.click(featureGroups[0]);
+    // First annotation in ITEM is `AmpR` at start=0 — verify scrollToPosition
+    // was called with that absolute position.
+    expect(scrollSpy).toHaveBeenCalled();
+    const lastCall = scrollSpy.mock.calls[scrollSpy.mock.calls.length - 1];
+    expect(typeof lastCall[0]).toBe('number');
+    // The clicked feature must match one of the source annotations.
+    const knownStarts = ITEM.annotations.map((a) => a.start);
+    expect(knownStarts).toContain(lastCall[0]);
+  });
+
+  it('4) HistoryTab tab not present in TabBar when commits empty (M-B.2 default)', () => {
     const { Wrapper } = harness({ activeTab: 'overview' });
     render(<Wrapper tab="overview" />);
     expect(screen.queryByTestId('importer-tab-history')).toBeNull();
+  });
+
+  it('5) annotations tab is no longer in TabBar (regression — Importer-merge-tabs)', () => {
+    const { Wrapper } = harness({ activeTab: 'overview' });
+    render(<Wrapper tab="overview" />);
+    expect(screen.queryByTestId('importer-tab-annotations')).toBeNull();
   });
 });

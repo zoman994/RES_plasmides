@@ -107,7 +107,11 @@ describe('M-B.2 K1 — Importer single-screen flow', () => {
     expect(screen.queryByTestId('importer-tab-panel-annotations')).toBeNull();
   });
 
-  it('5) TabBar click switches activeTab, prior tab content unmounts', async () => {
+  it('5) TabBar click switches activeTab between overview and sequence', async () => {
+    // Updated 04.05.2026 (Importer-merge-tabs) — the dedicated
+    // «Аннотации» tab is gone; the merged «Последовательность» tab is
+    // the only non-overview content surface. Test toggles between
+    // overview ↔ sequence to exercise the same TabBar contract.
     render(<Importer />);
     const dz = screen.getByTestId('importer-catalog-dropzone');
     await act(async () => {
@@ -117,19 +121,22 @@ describe('M-B.2 K1 — Importer single-screen flow', () => {
     });
     await waitFor(() => expect(screen.getByTestId('importer-single-inspector')).toBeTruthy());
 
-    fireEvent.click(screen.getByTestId('importer-tab-annotations'));
+    fireEvent.click(screen.getByTestId('importer-tab-sequence'));
     await waitFor(() => {
-      expect(screen.getByTestId('importer-fullscreen').dataset.activeTab).toBe('annotations');
+      expect(screen.getByTestId('importer-fullscreen').dataset.activeTab).toBe('sequence');
     });
-    expect(screen.getByTestId('importer-tab-panel-annotations')).toBeTruthy();
-    expect(screen.queryByTestId('importer-tab-panel-overview')).toBeNull();
-    expect(screen.queryByTestId('importer-tab-panel-sequence')).toBeNull();
+    expect(screen.getByTestId('importer-tab-panel-sequence')).toBeTruthy();
+    // Annotations tab no longer exists in the bar.
+    expect(screen.queryByTestId('importer-tab-annotations')).toBeNull();
+    expect(screen.queryByTestId('importer-tab-panel-annotations')).toBeNull();
 
     fireEvent.click(screen.getByTestId('importer-tab-overview'));
     await waitFor(() => {
       expect(screen.getByTestId('importer-fullscreen').dataset.activeTab).toBe('overview');
     });
-    expect(screen.queryByTestId('importer-tab-panel-annotations')).toBeNull();
+    // Sequence panel can stay mounted (warm-then-hide) but must be
+    // hidden via display:none — overview panel must be visible.
+    expect(screen.getByTestId('importer-tab-panel-overview')).toBeTruthy();
   });
 
   it('6) Topbar back button pops Importer off the nav stack (no in-importer cancel button)', () => {

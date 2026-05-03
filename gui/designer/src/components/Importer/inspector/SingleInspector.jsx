@@ -5,7 +5,11 @@ import TagsEditor from './TagsEditor';
 import TabBar from './tabs/TabBar';
 import OverviewTab from './tabs/OverviewTab';
 import SequenceTab from './tabs/SequenceTab';
-import AnnotationsTab from './tabs/AnnotationsTab';
+// AnnotationsTab removed from Importer (Importer-merge-tabs, 04.05.2026)
+// — the Inspector is now read-only viewer territory. The merged
+// «Последовательность» tab embeds a LinearFeatureBar at the bottom for
+// click-to-scroll navigation; annotation EDITING moves to a dedicated
+// future Annotator module per the «не смешивай» architecture decision.
 import HistoryTab from './tabs/HistoryTab';
 import { getRegions } from '../../../annotation-model';
 
@@ -41,10 +45,11 @@ export default function SingleInspector({
   edits,
   activeTab,
   onActiveTabChange,
-  onUpdateFlags,
+  onUpdateFlags, // eslint-disable-line no-unused-vars -- reserved for future Annotator hand-off
   onUpdateEdits,
   onAppendAdded, // eslint-disable-line no-unused-vars
   onRenameItem,
+  // eslint-disable-next-line no-unused-vars -- ditto
   onRunAutoAnnotate,
 }) {
   // Idle pre-warm: when biolog clicks a plasmid in the catalog list,
@@ -132,28 +137,10 @@ export default function SingleInspector({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [itemKey, warmedTabs.has('sequence')]);
 
-  // Pre-warm Annotations (second chunk — fires after Sequence has
-  // had a chance to paint, so consecutive tab mounts don't pile up
-  // into one giant commit).
-  useEffect(() => {
-    if (__PREWARM_DISABLED__) return undefined;
-    if (!itemKey) return undefined;
-    if (warmedTabs.has('annotations')) return undefined;
-    let cancelled = false;
-    const flush = () => {
-      if (cancelled) return;
-      setWarmedTabs(prev => (prev.has('annotations') ? prev : new Set([...prev, 'annotations'])));
-    };
-    const useRIC = typeof requestIdleCallback !== 'undefined';
-    const handle = useRIC
-      ? requestIdleCallback(flush, { timeout: 1500 })
-      : setTimeout(flush, 600);
-    return () => {
-      cancelled = true;
-      if (useRIC) cancelIdleCallback(handle); else clearTimeout(handle);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [itemKey, warmedTabs.has('annotations')]);
+  // Annotations pre-warm removed (Importer-merge-tabs, 04.05.2026) —
+  // there is no longer an annotations tab. Sequence pre-warm above
+  // remains; the LinearFeatureBar mounts as part of SequenceTab and
+  // doesn't need a separate idle slot.
 
   if (!item) return null;
   const length = item.length || item.sequence?.length || 0;
@@ -261,18 +248,8 @@ export default function SingleInspector({
             />
           </div>
         )}
-        {isMounted('annotations') && (
-          <div style={visibilityStyle('annotations')}>
-            <AnnotationsTab
-              annotations={displayAnnotations}
-              seqLength={length}
-              onUpdateEdits={onUpdateEdits}
-              autoAnnotate={flags?.autoAnnotate !== false}
-              onToggleAutoAnnotate={(next) => onUpdateFlags?.({ autoAnnotate: next })}
-              onRunAutoAnnotate={onRunAutoAnnotate}
-            />
-          </div>
-        )}
+        {/* annotations tab block removed — see comment near
+            AnnotationsTab import above. */}
         {activeTab === 'history' && showHistory && (
           <HistoryTab commits={item.commits || []} />
         )}

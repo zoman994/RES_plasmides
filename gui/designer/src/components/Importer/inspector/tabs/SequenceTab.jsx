@@ -1,6 +1,7 @@
-import { useMemo, useState, useEffect, useRef } from 'react';
+import { useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import SequenceView from '../../../SequenceView';
 import SettingsPopover from '../../../SequenceView/SettingsPopover';
+import LinearFeatureBar from './LinearFeatureBar';
 import { STRINGS } from '../../../../lib/strings';
 import { rotateOriginToPosition } from '../../../../rotate-origin';
 import { computeIntergenicHints } from '../lib/intergenic-hints';
@@ -33,6 +34,13 @@ const S = STRINGS.importer;
  *   - RE labels orientation (Vertical / Horizontal)
  *   - Reset to defaults
  * Settings persist under localStorage key `bodgegene-ui-sequenceview`.
+ *
+ * Importer-merge-tabs (04.05.2026): the dedicated «Аннотации» tab was
+ * dropped — annotation-editing UI moves to a future Annotator module
+ * («не смешивай»). The viewer + a `LinearFeatureBar` «колбаса» pinned
+ * at the bottom now live together here. Clicking a feature in the
+ * strip imperatively scrolls SequenceView to that feature's start via
+ * the new `scrollToPosition` ref handle.
  */
 export default function SequenceTab({
   sequence,
@@ -42,6 +50,19 @@ export default function SequenceTab({
   fileKey,
   onUpdateEdits,
 }) {
+  const sequenceViewRef = useRef(null);
+
+  // Click-to-scroll: when biolog clicks a feature on the LinearFeatureBar
+  // strip below the viewer, jump to that feature's start position. The
+  // feature start is in the SAME coordinate system as SequenceView's
+  // `fullSeq` (single fragment in this Inspector), so we can pass
+  // `feature.start` straight through.
+  const onFeatureSelect = useCallback((ann) => {
+    if (!ann) return;
+    const ref = sequenceViewRef.current;
+    if (!ref || typeof ref.scrollToPosition !== 'function') return;
+    ref.scrollToPosition(Number(ann.start) || 0);
+  }, []);
   const fragment = useMemo(() => ({
     id: 'importer-current',
     name: name || 'imported',
@@ -213,13 +234,40 @@ export default function SequenceTab({
         </div>
       )}
 
-      <div style={{ width: '100%', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ width: '100%', minWidth: 0, display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
         <SequenceView
+          ref={sequenceViewRef}
           fragments={[fragment]}
           circular={topology === 'circular'}
           readOnly
         />
       </div>
+
+      {/* «Колбаса аннотации» pinned at the bottom of the merged tab.
+          Click a feature → SequenceView scrolls to that feature's
+          start (Importer-merge-tabs K4). The bar is sticky relative
+          to the tab content's scroll container so it stays in view
+          as the biolog scrolls through the sequence above. */}
+      {annotations.length > 0 && length > 0 && (
+        <div
+          data-testid="importer-sequence-feature-strip"
+          style={{
+            position: 'sticky',
+            bottom: 0,
+            background: 'var(--surface-1)',
+            borderTop: '0.5px solid var(--border-subtle)',
+            paddingTop: 6,
+            paddingBottom: 4,
+            zIndex: 4,
+          }}
+        >
+          <LinearFeatureBar
+            annotations={annotations}
+            seqLength={length}
+            onSelect={onFeatureSelect}
+          />
+        </div>
+      )}
     </div>
   );
 }

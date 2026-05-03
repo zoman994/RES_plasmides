@@ -10,14 +10,19 @@ const S = STRINGS.importer;
  * parsedItem already carries `commits.length > 0`, which never happens
  * in the file-import flow shipped in M-B.2; the slot is in place for M-D
  * cross-project / Container Window imports).
+ *
+ * Importer-merge-tabs (04.05.2026): the dedicated «Аннотации» tab was
+ * removed — Inspector is now read-only viewer territory (per «не
+ * смешивай»: SequenceView vs Annotator separation). The merged
+ * «Последовательность» tab embeds the SequenceView at the top with a
+ * `LinearFeatureBar` «колбаса» pinned at the bottom; clicking a feature
+ * in the strip scrolls the viewer to that feature's start. Annotation
+ * editing moves to a dedicated future Annotator module.
  */
 export default function TabBar({ activeTab, onChange, showHistory = false }) {
-  // ✎ glyph on «Аннотации» signals that the tab is editable (vs. read-only
-  // sequence preview). 🔒 reserved for read-only tabs in M-D commits flow.
   const tabs = [
     { id: 'overview', label: S.tabOverview },
     { id: 'sequence', label: S.tabSequence },
-    { id: 'annotations', label: S.tabAnnotations, glyph: '✎' },
   ];
   if (showHistory) tabs.push({ id: 'history', label: S.tabHistory });
 
