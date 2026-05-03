@@ -538,9 +538,14 @@ const SequenceView = forwardRef(function SequenceView({
     // Copy hotkeys — biolog 04.05.2026: «обычный Ctrl+C копирует
     // прямую цепь, Ctrl+Alt+C копирует обратную». Reverse strand =
     // reverse complement, so the user can paste it 5'→3' into other
-    // tools without manually flipping. Ctrl+Shift+C reserved for
-    // future "copy with annotations" workflow.
-    if ((e.ctrlKey || e.metaKey) && (e.key === "c" || e.key === "C")) {
+    // tools without manually flipping.
+    //
+    // KEY DETECTION: use `e.code === "KeyC"` (layout-independent
+    // physical key) instead of `e.key === "c"`. On a Russian
+    // keyboard layout, the same physical C key emits `e.key === "с"`
+    // (Cyrillic ес) — the check on `"c"` would silently fail and
+    // biolog reported «Ctrl+C не работает» (04.05.2026 evening).
+    if ((e.ctrlKey || e.metaKey) && e.code === "KeyC") {
       const a = (typeof caretAnchor === "number" && Number.isFinite(caretAnchor)) ? caretAnchor : null;
       const f = (typeof caretPos === "number" && Number.isFinite(caretPos)) ? caretPos : null;
       if (a == null || f == null || a === f) return; // no selection — let browser handle native copy
@@ -624,51 +629,125 @@ const SequenceView = forwardRef(function SequenceView({
     onAnnotationClick, tracksReady,
   ]);
 
-  // Click-to-caret (biolog 04.05.2026: «при нажатии мышкой на сиквенс
-  // каретка явно адресуется туда»). Walks up from the click target to
-  // find the surrounding `[data-line-start]` element, then converts
-  // (clientX − lineLeft − gutterWidth) / charPx into an offset within
-  // the line. Clamps to [0, line-end]. Skipped when the click started
-  // a drag-select (mouseup with movement → don't yank caret away
-  // mid-selection); detected via a `dragStartedAt` ref pair.
-  const dragStartXY = useRef(null);
-  const onRootMouseDown = (e) => {
-    dragStartXY.current = { x: e.clientX, y: e.clientY };
-  };
-  const onRootClick = (e) => {
-    if (typeof onCaretChange !== "function") return;
-    if (!seqLength || !charPx) return;
-    // Suppress click-to-caret on drag-select. Threshold = 4 px so a
-    // jittery click still registers as a click.
-    if (dragStartXY.current) {
-      const dx = Math.abs(e.clientX - dragStartXY.current.x);
-      const dy = Math.abs(e.clientY - dragStartXY.current.y);
-      dragStartXY.current = null;
-      if (dx > 4 || dy > 4) return;
-    }
+  // Mouse drag selection — biolog 04.05.2026: «давай чтобы каретка
+  // двигалась за мышью при выделении». PointerDown anywhere on the
+  // sequence sets the caret + collapses any prior selection;
+  // PointerMove (with the button held) extends the selection by
+  // moving focus while keeping the anchor pinned at the down-point.
+  // PointerUp ends the drag.
+  //
+  // We don't preventDefault on pointerdown — native text selection
+  // still works alongside, so the existing per-row selection
+  // isolation (StrandsTrack drag-to-copy) keeps functioning if biolog
+  // prefers browser-native copy instead of Ctrl+C. The orange overlay
+  // + the native selection are both visible; the browser uses native
+  // selection for unmodified Ctrl+C, our hotkey handler reads our
+  // own anchor/focus state for strand-aware copy.
+  const dragRef = useRef({ active: false, pointerId: null });
+  // `pointerMovedRef` — set to true the first time pointermove fires
+  // during a drag. Used by onClickFallback to skip the
+  // collapse-on-click when the click is actually the tail of a real
+  // drag-select. Without it, biolog reported «когда тянешь мышкой и
+  // отпускаешь, то выделение пропадает» (04.05.2026 evening) —
+  // pointerup fires with the selection in place, then the browser
+  // synthesises a click event which our fallback was treating as a
+  // fresh click and collapsing the selection.
+  const pointerMovedRef = useRef(false);
+  const posFromPointerEvent = (e) => {
+    if (!seqLength || !charPx) return null;
     let el = e.target;
     while (el && el !== containerRef.current) {
       if (el.dataset && el.dataset.lineStart != null) break;
       el = el.parentElement;
     }
-    if (!el || el === containerRef.current) return;
+    // Pointer can drag off into the gutter / padding — fall back to
+    // the line under the cursor's Y by scanning all lines.
+    if (!el || el === containerRef.current) {
+      const lines = containerRef.current?.querySelectorAll('[data-testid="sequence-view-line"]');
+      if (!lines) return null;
+      for (const candidate of lines) {
+        let r;
+        try { r = candidate.getBoundingClientRect(); } catch { continue; }
+        if (e.clientY >= r.top && e.clientY <= r.bottom) {
+          el = candidate;
+          break;
+        }
+      }
+      if (!el) return null;
+    }
     const lineStart = parseInt(el.dataset.lineStart, 10);
-    if (Number.isNaN(lineStart)) return;
+    if (Number.isNaN(lineStart)) return null;
     let rect;
-    try { rect = el.getBoundingClientRect(); } catch { return; }
-    if (!rect || !rect.width) return;
+    try { rect = el.getBoundingClientRect(); } catch { return null; }
+    if (!rect || !rect.width) return null;
     const x = e.clientX - rect.left;
-    // Subtract gutter (LABEL_WIDTH * charPx) — letters start at
-    // column LABEL_WIDTH inside the line.
     const offsetCh = Math.round(x / charPx) - LABEL_WIDTH;
     const lineLen = Math.min(charsPerLine || 80, seqLength - lineStart);
     const clamped = Math.max(0, Math.min(lineLen, offsetCh));
-    const pos = Math.max(0, Math.min(seqLength - 1, lineStart + clamped));
-    onCaretChange(pos);
-    // Refocus the container so subsequent arrow keys land on
-    // onRootKeyDown — without this, native text selection during the
-    // click can pull focus into a span ancestor that doesn't bubble
-    // keydown back here.
+    return Math.max(0, Math.min(seqLength - 1, lineStart + clamped));
+  };
+
+  const onRootPointerDown = (e) => {
+    if (typeof onCaretChange !== "function") return;
+    if (e.button != null && e.button !== 0) return; // primary button only
+    const pos = posFromPointerEvent(e);
+    if (pos == null) return;
+    dragRef.current = { active: true, pointerId: e.pointerId };
+    pointerMovedRef.current = false;
+    try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* ignore */ }
+    // Collapse selection on press, then extend with subsequent moves.
+    onCaretChange(pos, { extendSelection: false, needsScroll: false });
+    // Refocus so subsequent arrow keys + Ctrl+C land on onKeyDown.
+    try { containerRef.current?.focus({ preventScroll: true }); } catch { /* noop */ }
+    // preventDefault stops the browser from initiating its own native
+    // text-selection drag on top of ours (biolog 04.05.2026: «можем
+    // отключить нативное выделение? которое чёрным выделяет как
+    // обычный текст»). We render our own translucent orange overlay,
+    // so we don't want the browser drawing its blue/dark selection
+    // over the same range.
+    e.preventDefault();
+  };
+
+  const onRootPointerMove = (e) => {
+    if (!dragRef.current.active) return;
+    if (dragRef.current.pointerId != null && e.pointerId !== dragRef.current.pointerId) return;
+    const pos = posFromPointerEvent(e);
+    if (pos == null) return;
+    pointerMovedRef.current = true;
+    // extendSelection:true → anchor stays at pointerdown spot, focus
+    // (= caretPos) tracks the pointer. needsScroll:false during the
+    // active drag — held down the cursor stays on screen by virtue
+    // of the user actively pointing at it, no auto-scroll needed
+    // (and auto-scrolling mid-drag would re-trigger pointermove
+    // and feedback-loop the selection).
+    onCaretChange(pos, { extendSelection: true, needsScroll: false });
+  };
+
+  const onRootPointerUp = (e) => {
+    if (!dragRef.current.active) return;
+    if (dragRef.current.pointerId != null && e.pointerId !== dragRef.current.pointerId) return;
+    try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch { /* ignore */ }
+    dragRef.current = { active: false, pointerId: null };
+    // pointerMovedRef stays set until the synthetic click event that
+    // follows pointerup; onClickFallback reads it and resets it.
+  };
+
+  // Click fallback for synthetic-event environments (happy-dom test
+  // fixtures) and assistive tech that fires click without
+  // pointerdown/up. Positions the caret at the click point + does
+  // NOT extend selection. Skips when a real pointer drag just ended
+  // (pointerMovedRef === true) so the selection survives the
+  // synthetic mouseup→click that the browser fires after a drag.
+  const onRootClickFallback = (e) => {
+    if (typeof onCaretChange !== "function") return;
+    if (dragRef.current.active) return;
+    if (pointerMovedRef.current) {
+      pointerMovedRef.current = false;
+      return;
+    }
+    const pos = posFromPointerEvent(e);
+    if (pos == null) return;
+    onCaretChange(pos, { extendSelection: false });
     try { containerRef.current?.focus({ preventScroll: true }); } catch { /* noop */ }
   };
 
@@ -677,8 +756,11 @@ const SequenceView = forwardRef(function SequenceView({
       ref={containerRef}
       tabIndex={0}
       onKeyDown={onRootKeyDown}
-      onMouseDown={onRootMouseDown}
-      onClick={onRootClick}
+      onPointerDown={onRootPointerDown}
+      onPointerMove={onRootPointerMove}
+      onPointerUp={onRootPointerUp}
+      onPointerCancel={onRootPointerUp}
+      onClick={onRootClickFallback}
       data-testid="sequence-view-root"
       data-circular={circular ? "true" : "false"}
       data-chars-per-line={charsPerLine}
@@ -703,6 +785,19 @@ const SequenceView = forwardRef(function SequenceView({
         // Without it the caret would anchor to a more distant
         // ancestor (body) and drift on scroll / resize.
         position: "relative",
+        // user-select:none — biolog 04.05.2026: «можем отключить
+        // нативное выделение? которое чёрным выделяет как обычный
+        // текст». We have our own translucent orange overlay; the
+        // browser's native blue/dark text selection drawing on top
+        // looked like a double highlight. Pointer-driven custom
+        // selection (anchor + focus) drives the only highlight now.
+        // The legacy per-row `useRowSelectionIsolation` mechanism
+        // was tuned to the native selection model; with this
+        // disabled, copy-via-browser through native Ctrl+C is also
+        // off — biolog uses our Ctrl+C / Ctrl+Alt+C hotkey instead
+        // for strand-aware copy.
+        userSelect: "none",
+        WebkitUserSelect: "none",
         // `overflow-anchor: none` disables Chromium's scroll anchoring
         // calculations (which try to keep the user's scroll position
         // stable when content shifts above the viewport). For a
