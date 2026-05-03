@@ -933,9 +933,24 @@ const SequenceView = forwardRef(function SequenceView({
       {contextMenu && (
         <div
           data-testid="sequence-view-context-menu"
-          // Stop propagation so clicks INSIDE the menu don't bubble
-          // to the document mousedown listener that closes it.
+          // Stop propagation on EVERY pointer/mouse event the
+          // SequenceView root cares about. Without this:
+          //   - pointerdown bubbles → onRootPointerDown collapses
+          //     the selection BEFORE the menu item's onClick runs
+          //     (biolog 04.05.2026 evening: «когда пытаюсь
+          //     скопировать через контекстное меню клик
+          //     обрабатывается на сиквенсе. поэтому нажать его
+          //     нельзя»).
+          //   - mousedown bubbles → document listener closes the
+          //     menu before the button click registers.
+          //   - click bubbles → onRootClickFallback runs the
+          //     caret-position math and collapses the selection.
+          // pointerdown ≠ mousedown ≠ click — all three need
+          // their own stopPropagation.
+          onPointerDown={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+          onContextMenu={(e) => e.preventDefault()}
           style={{
             position: "fixed",
             left: contextMenu.x,
