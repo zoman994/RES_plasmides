@@ -173,8 +173,21 @@ def _parse_features(xml_str, sequence=''):
                     f['color'] = color
 
             if segments:
-                f['start'] = min(s[0] for s in segments)  # 0-based
-                f['end'] = max(s[1] for s in segments)
+                # SnapGene .dna XML stores ranges as 1-based INCLUSIVE
+                # (e.g. AmpR "1626-2486" means positions 1626..2486
+                # inclusive, length 861). We normalise to the same shape
+                # as `snapgene_reader.snapgene_file_to_dict()` and
+                # BioPython's `loc.start/.end`, i.e. 0-based half-open
+                # `[start, end)`. This was a 02.05.2026 visual review
+                # finding: the previous code labelled the value «0-based»
+                # but kept the raw 1-based number, then `pvcs.parser`
+                # did `start + 1` AGAIN, shifting every CDS by 2 nt and
+                # breaking reading frames everywhere (lacZα 322 instead
+                # of 324, AmpR 859 instead of 861, etc.).
+                xml_start = min(s[0] for s in segments)  # 1-based inclusive
+                xml_end = max(s[1] for s in segments)    # 1-based inclusive
+                f['start'] = xml_start - 1               # → 0-based inclusive start
+                f['end'] = xml_end                       # 1-based inclusive end == 0-based exclusive end
 
                 # Extract sequence for this feature
                 if sequence and f['start'] >= 0 and f['end'] <= len(sequence):
