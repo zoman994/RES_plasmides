@@ -504,6 +504,73 @@ const SequenceView = forwardRef(function SequenceView({
   void onSelect;
   void onAnnotationClick;
 
+  // Hook hoist (Rules of Hooks fix, biolog 04.05.2026 evening: «рендер
+  // отвалился, белый экран в браузере»). These useState / useRef were
+  // declared further down past the `if (!fullSeq) return ...` early
+  // exit. On a fresh inspector mount fullSeq is empty, the function
+  // returns the placeholder div, and these hooks are SKIPPED — then
+  // when the user opens a plasmid fullSeq becomes populated, all
+  // hooks run, React detects a count mismatch, crashes the tree.
+  // Hoisted up here they're called unconditionally on every render
+  // and the early return below is safe again.
+  const [contextMenu, setContextMenu] = useState(null);
+  const dragRef = useRef({ active: false, pointerId: null });
+  const pointerMovedRef = useRef(false);
+  const lastPointerCoordsRef = useRef(null);
+  const autoScrollRafRef = useRef(null);
+
+  // Close the context menu on any pointer-down outside it. Hoisted
+  // above the early return for the same Rules-of-Hooks reason as
+  // the state above. pointerdown (not mousedown) — onRootPointerDown
+  // does e.preventDefault() which suppresses the synthetic mousedown
+  // that follows the primary pointer, so a mousedown listener would
+  // miss those clicks.
+  useEffect(() => {
+    if (!contextMenu) return undefined;
+    const close = () => setContextMenu(null);
+    const onKey = (e) => { if (e.key === "Escape") close(); };
+    document.addEventListener("pointerdown", close);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", close);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [contextMenu]);
+
+  // Hoisted derived constant + memoized lines JSX subtree. Both must
+  // run before the early `if (!fullSeq) return` so the hook order
+  // (useMemo) stays stable across the empty/non-empty transition.
+  // `renderHybrid` is just a constant — cheap to compute even when
+  // the sequence is empty (framesResolution is a useMemo above with
+  // a stable shape regardless of fullSeq).
+  const renderHybrid = framesResolution.strategy === "hybrid";
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const linesJsx = useMemo(() => {
+    if (!fullSeq) return null;
+    if (!measured && !__IS_TEST_ENV__) return null;
+    return lines.map((line) => (
+      <SequenceLine
+        key={line.start}
+        line={line}
+        fullSeq={fullSeq}
+        features={features}
+        primers={primers}
+        reSites={reSites}
+        charPx={charPx}
+        settings={settings}
+        framesResolution={framesResolution}
+        orfRanges={orfRanges}
+        renderHybrid={renderHybrid}
+        onAnnotationClick={onAnnotationClick}
+        tracksReady={tracksReady}
+      />
+    ));
+  }, [
+    measured, lines, fullSeq, features, primers, reSites, charPx,
+    settings, framesResolution, orfRanges, renderHybrid,
+    onAnnotationClick, tracksReady,
+  ]);
+
   if (!fullSeq) {
     return (
       <div
@@ -522,7 +589,8 @@ const SequenceView = forwardRef(function SequenceView({
     );
   }
 
-  const renderHybrid = framesResolution.strategy === "hybrid";
+  // (renderHybrid hoisted above the early return — see Rules-of-Hooks
+  // fix near the top of the component.)
 
   // Keyboard caret nav — fires when the SequenceView root has focus.
   // Maps Arrow / Home / End / PageUp / PageDown to a new absolute
@@ -654,39 +722,8 @@ const SequenceView = forwardRef(function SequenceView({
     });
   };
 
-  // Memoize the entire lines JSX subtree. caretPos is INTENTIONALLY
-  // not in deps — the caret renders as a separate CaretOverlay layer
-  // and doesn't touch the lines array. So when only caretPos changes
-  // (every arrow keystroke), React reuses the memoized React element
-  // tree and skips reconciliation of all ~60 SequenceLine children
-  // entirely. Combined with `needsScroll: oldLine === newLine ⇒ false`,
-  // a held ←/→ does effectively zero React work per keystroke — only
-  // the small CaretOverlay div re-renders.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const linesJsx = useMemo(() => {
-    if (!measured && !__IS_TEST_ENV__) return null;
-    return lines.map((line) => (
-      <SequenceLine
-        key={line.start}
-        line={line}
-        fullSeq={fullSeq}
-        features={features}
-        primers={primers}
-        reSites={reSites}
-        charPx={charPx}
-        settings={settings}
-        framesResolution={framesResolution}
-        orfRanges={orfRanges}
-        renderHybrid={renderHybrid}
-        onAnnotationClick={onAnnotationClick}
-        tracksReady={tracksReady}
-      />
-    ));
-  }, [
-    measured, lines, fullSeq, features, primers, reSites, charPx,
-    settings, framesResolution, orfRanges, renderHybrid,
-    onAnnotationClick, tracksReady,
-  ]);
+  // (linesJsx useMemo hoisted above the early return — see
+  // Rules-of-Hooks fix near the top of the component.)
 
   // Mouse drag selection — biolog 04.05.2026: «давай чтобы каретка
   // двигалась за мышью при выделении». PointerDown anywhere on the
@@ -702,30 +739,16 @@ const SequenceView = forwardRef(function SequenceView({
   // + the native selection are both visible; the browser uses native
   // selection for unmodified Ctrl+C, our hotkey handler reads our
   // own anchor/focus state for strand-aware copy.
-  // Context menu (right-click) — biolog 04.05.2026 evening: «надо
-  // добавить клик правой кнопкой мыши который будет вызывать меню
-  // дублирующее копировать и копировать вторую цепь. для тех у кого
-  // с горячими клавишами плохо». Two items, each calls the same
-  // copy logic as the Ctrl+C / Ctrl+Alt+C hotkeys. Position is
-  // viewport-fixed so the menu doesn't drift on scroll mid-display.
-  const [contextMenu, setContextMenu] = useState(null);
-  const dragRef = useRef({ active: false, pointerId: null });
-  // `pointerMovedRef` — set to true the first time pointermove fires
-  // during a drag. Used by onClickFallback to skip the
-  // collapse-on-click when the click is actually the tail of a real
-  // drag-select. Without it, biolog reported «когда тянешь мышкой и
-  // отпускаешь, то выделение пропадает» (04.05.2026 evening) —
-  // pointerup fires with the selection in place, then the browser
-  // synthesises a click event which our fallback was treating as a
-  // fresh click and collapsing the selection.
-  const pointerMovedRef = useRef(false);
-  // Auto-scroll during drag — biolog 04.05.2026 evening: «когда тяну
-  // выделение мышью до низа экрана, не происходит скрола
-  // последовательности». Cache the last pointer coords so the rAF
-  // loop can re-extend selection as content scrolls under the
-  // (stationary) pointer.
-  const lastPointerCoordsRef = useRef(null);
-  const autoScrollRafRef = useRef(null);
+  // Context menu state + drag refs are hoisted above the early
+  // `if (!fullSeq)` return — see the hoist comment near the top of
+  // this component. Notes preserved here:
+  //   - dragRef tracks active pointer drag (anchor at pointerdown).
+  //   - pointerMovedRef gates the synthetic click after pointerup so
+  //     dragged-out selections don't collapse on the trailing click
+  //     (biolog: «когда тянешь мышкой и отпускаешь, выделение
+  //     пропадает» — fixed by reading this flag in onClickFallback).
+  //   - lastPointerCoordsRef + autoScrollRafRef power the
+  //     edge-auto-scroll while drag-selecting near the viewport edge.
   const posFromPointerEvent = (e) => {
     if (!seqLength || !charPx) return null;
     let el = e.target;
@@ -956,27 +979,8 @@ const SequenceView = forwardRef(function SequenceView({
     } catch { /* clipboard unavailable — silently no-op */ }
   };
 
-  // Close the context menu on any pointer-down outside it. The menu
-  // container swallows its own pointerdown so clicks inside don't
-  // close it. Listen for `pointerdown` (not `mousedown`) — biolog
-  // 04.05.2026 evening: «клик в другое место должен сбрасывать
-  // контекстное меню. пока не сбрасывает». The SequenceView root
-  // calls e.preventDefault() on its own pointerdown, which suppresses
-  // the synthetic mousedown that would have followed; a mousedown
-  // listener therefore never fires when clicking back into the
-  // sequence area. pointerdown fires regardless and bubbles to
-  // document normally.
-  useEffect(() => {
-    if (!contextMenu) return undefined;
-    const close = () => setContextMenu(null);
-    const onKey = (e) => { if (e.key === "Escape") close(); };
-    document.addEventListener("pointerdown", close);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("pointerdown", close);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [contextMenu]);
+  // (close-context-menu useEffect was hoisted above the early
+  // return — see Rules-of-Hooks fix near the top of the component.)
 
   // Click fallback for synthetic-event environments (happy-dom test
   // fixtures) and assistive tech that fires click without
