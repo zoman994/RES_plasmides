@@ -167,6 +167,12 @@ export default function SingleInspector({
   // Ctrl+Alt+C (reverse complement). Set/extended by SequenceView's
   // shift-arrow keys; collapsed on plain caret moves.
   const [cursorAnchor, setCursorAnchor] = useState(null);
+  // Selection mode — 'aa' when biolog clicked an AA cell to select
+  // its underlying triplet, 'dna' otherwise. Drives whether Copy AA
+  // (Ctrl+Shift+C / context menu) is reachable: biolog 04.05.2026
+  // evening: «"копировать АА" можно только если ты выделяешь
+  // непосредственно АА сиквенс».
+  const [cursorSelectionMode, setCursorSelectionMode] = useState(null);
 
   // Click / pointer-up settle from the bar — final position. Switch
   // to Sequence tab if biolog initiated from Overview, then queue
@@ -180,6 +186,7 @@ export default function SingleInspector({
     }
     setCursorPos(pos);
     setCursorAnchor(pos);
+    setCursorSelectionMode('dna');
     setPendingScroll({ pos, tick: Date.now(), instant: false });
   }, [activeTab, onActiveTabChange]);
 
@@ -192,6 +199,7 @@ export default function SingleInspector({
     if (typeof pos !== 'number' || !Number.isFinite(pos)) return;
     setCursorPos(pos);
     setCursorAnchor(pos);
+    setCursorSelectionMode('dna');
     if (activeTab === 'sequence') {
       setPendingScroll({ pos, tick: Date.now(), instant: true });
     }
@@ -213,6 +221,11 @@ export default function SingleInspector({
     if (!opts || !opts.extendSelection) {
       setCursorAnchor(pos);
     }
+    // Caret moves and drag-extends are always DNA-mode — biolog
+    // selected DNA letters, not AA letters. AA-mode is set ONLY by
+    // the AA-click branch in SequenceView (via onSelectRange with
+    // mode='aa').
+    setCursorSelectionMode('dna');
     if (opts && opts.needsScroll === false) return;
     setPendingScroll({ pos, tick: Date.now(), instant: true });
   }, []);
@@ -223,18 +236,26 @@ export default function SingleInspector({
   // SelectionOverlay highlights the whole feature region. Queues a
   // smooth scroll to the start so the biolog sees the beginning of
   // the feature even if the click happened on its tail end.
-  const onSelectRangeFromView = useCallback((start, end) => {
+  const onSelectRangeFromView = useCallback((start, end, mode) => {
     if (typeof start !== 'number' || typeof end !== 'number') return;
     if (!Number.isFinite(start) || !Number.isFinite(end)) return;
     if (end <= start) return;
     setCursorAnchor(start);
     setCursorPos(end);
+    // mode === 'aa' → AA-cell click; gates the Copy AA hotkey /
+    // menu item. Anything else (feature click, future bar lasso) →
+    // 'dna'.
+    setCursorSelectionMode(mode === 'aa' ? 'aa' : 'dna');
     setPendingScroll({ pos: start, tick: Date.now(), instant: false });
   }, []);
 
   const onPendingScrollHandled = useCallback(() => setPendingScroll(null), []);
   // Reset cursor / selection when biolog switches plasmids.
-  useEffect(() => { setCursorPos(null); setCursorAnchor(null); }, [itemKey]);
+  useEffect(() => {
+    setCursorPos(null);
+    setCursorAnchor(null);
+    setCursorSelectionMode(null);
+  }, [itemKey]);
 
   if (!item) return null;
   const length = item.length || item.sequence?.length || 0;
@@ -372,6 +393,7 @@ export default function SingleInspector({
               onPendingScrollHandled={onPendingScrollHandled}
               caretPos={cursorPos}
               caretAnchor={cursorAnchor}
+              selectionMode={cursorSelectionMode}
               onCaretChange={onCaretChangeFromView}
               onSelectRange={onSelectRangeFromView}
             />

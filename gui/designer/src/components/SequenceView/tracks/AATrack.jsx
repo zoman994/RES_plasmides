@@ -291,9 +291,29 @@ function AATrack({
     // (right edge). Mid cells stay flat-edged so multi-line CDSes
     // continue seamlessly across line breaks.
     const regionColors = new Map();
+    const regionById = new Map();
     for (const r of regions || []) {
-      if (r && r.id && r.color) regionColors.set(r.id, r.color);
+      if (r && r.id) {
+        if (r.color) regionColors.set(r.id, r.color);
+        regionById.set(r.id, r);
+      }
     }
+
+    // AA index for a codon — biolog 04.05.2026 evening: «у каждой
+    // аминокислоты должно быть номер». Forward CDS: AA #N's codon
+    // middle = region.start + 1 + 3*(N-1). Reverse CDS: AA #N's
+    // middle = region.end - 2 - 3*(N-1). Returns null when the
+    // codon's region isn't in the regions map (auto-detected ORFs
+    // without a registered region — leave them unnumbered).
+    const aaNumberFor = (codon, absMid) => {
+      const region = regionById.get(codon.regionId);
+      if (!region) return null;
+      const isReverse = (codon.strand === -1) || (region.strand === -1);
+      const idx = isReverse
+        ? Math.floor((region.end + 1 - absMid) / 3)
+        : Math.floor((absMid - region.start + 2) / 3);
+      return Number.isFinite(idx) && idx >= 1 ? idx : null;
+    };
 
     return (
       <div
@@ -349,9 +369,84 @@ function AATrack({
             return null;
           };
 
+          // Per-row AA numbering ruler (biolog 04.05.2026 evening:
+          // «у каждой аминокислоты должно быть номер»). Rendered
+          // ABOVE the AA row, between the annotation track and the
+          // AA letters. Every codon mid cell prints its AA index
+          // centered horizontally on the codon (translateX(-50%) so
+          // 2-3 digit numbers stay symmetric over the AA letter).
+          // fontSize 8 fits comfortably inside the codon's 3 ch
+          // width without touching the neighbouring codon's number.
+          // height 11 + marginBottom 2 give a clean ~3 px gap before
+          // the AA letters so numbers don't visually overlap.
+          const aaNumberingCells = Array.from({ length: lineLen }, (_, ci) => {
+            const cover = findCovering(ci);
+            if (!cover || cover.role !== "mid") {
+              return (
+                <span key={ci} style={{ display: "inline-block", width: "1ch" }}>{" "}</span>
+              );
+            }
+            const absMid = lineStart + ci;
+            const aaIdx = aaNumberFor(cover.codon, absMid);
+            if (aaIdx == null) {
+              return (
+                <span key={ci} style={{ display: "inline-block", width: "1ch" }}>{" "}</span>
+              );
+            }
+            return (
+              <span
+                key={ci}
+                data-testid="sequence-view-aa-number"
+                data-aa-number={aaIdx}
+                style={{ display: "inline-block", width: "1ch", position: "relative", overflow: "visible" }}
+              >
+                <span
+                  style={{
+                    position: "absolute",
+                    left: "50%",
+                    top: 0,
+                    transform: "translateX(-50%)",
+                    whiteSpace: "nowrap",
+                    // fontSize 7 — at parent-row 11 px each codon
+                    // spans ~19.5 px. 3-digit numbers at 7 px ~13 px
+                    // wide, leaves ~6 px gutter between adjacent
+                    // codon labels (biolog 04.05.2026 evening:
+                    // «наезжает номера»). At 8 px the labels were
+                    // touching for high indices (200+) on dense rows.
+                    fontSize: 7,
+                    lineHeight: "8px",
+                    color: "var(--text-tertiary, #9ca3af)",
+                    pointerEvents: "none",
+                    fontFamily: "var(--font-mono, monospace)",
+                  }}
+                >{aaIdx}</span>
+              </span>
+            );
+          });
+
           return (
+            <div key={row.rowKey + ":wrap"}>
             <div
-              key={row.rowKey}
+              data-testid="sequence-view-aa-numbering"
+              data-aa-numbering-row={row.label}
+              style={{
+                // Compact height — biolog 04.05.2026 evening: «слишком
+                // далеко от ДНК цепи АА цепь». Was 11+2 = 13 px which
+                // pushed AA letters way down. 8 px text band + 0
+                // bottom margin lands the AA letters ~9 px below the
+                // annotation rect, on par with the original gap
+                // before numbering existed.
+                height: 8,
+                lineHeight: "8px",
+                whiteSpace: "pre",
+                userSelect: "none",
+                WebkitUserSelect: "none",
+              }}
+            >
+              <span aria-hidden="true">{`${"".padStart(labelChars - 1)} `}</span>
+              {aaNumberingCells}
+            </div>
+            <div
               data-testid="sequence-view-aa-row"
               data-aa-strand={row.strand}
               data-aa-frame={row.frame}
@@ -477,6 +572,7 @@ function AATrack({
                   </span>
                 );
               })}
+            </div>
             </div>
           );
         })}

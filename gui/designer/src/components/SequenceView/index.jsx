@@ -50,6 +50,7 @@ import { resolveFramesMode } from "./lib/frames-mode.js";
 import { useRowSelectionIsolation } from "./lib/row-selection-isolation.js";
 import { runPredictors } from "../../predicted-detection.js";
 import { reverseComplement } from "../../sequence-utils";
+import { translateDNA } from "../../codons";
 import { getRegions } from "../../annotation-model.js";
 import { featureColorShaded, FEATURE_STROKE } from "../../feature-palette.js";
 import { scanAllSites, RE_ENZYMES } from "../../restriction-db.js";
@@ -295,6 +296,7 @@ const SequenceView = forwardRef(function SequenceView({
   // collapse it (anchor = focus). null = no caret.
   caretPos = null,
   caretAnchor = null,
+  selectionMode = null,
   onCaretChange,
   onSelectRange,
 }, ref) {
@@ -550,19 +552,34 @@ const SequenceView = forwardRef(function SequenceView({
       const a = (typeof caretAnchor === "number" && Number.isFinite(caretAnchor)) ? caretAnchor : null;
       const f = (typeof caretPos === "number" && Number.isFinite(caretPos)) ? caretPos : null;
       if (a == null || f == null || a === f) return; // no selection — let browser handle native copy
-      // Convention 1 caret semantics: position N = LEFT edge of
-      // letter[N] (caret renders just BEFORE letter N). Selection
-      // range [min(a,f) .. max(a,f)) covers exactly the letters
-      // visually under the highlight rect — no `+1`. Earlier the
-      // copy + the overlay both had `+1` which extended one letter
-      // past the caret (biolog 04.05.2026 evening: «каретка и
-      // выделение не совпадает в конце»).
       const start = Math.min(a, f);
       const end = Math.max(a, f);
       const slice = (fullSeq || "").slice(start, end);
       if (!slice) return;
       e.preventDefault();
-      const text = e.altKey ? reverseComplement(slice) : slice;
+      // Three copy modes (biolog 04.05.2026 evening: «обычный
+      // Ctrl+C копирует прямую, Ctrl+Alt+C копирует обратную»;
+      // adding Ctrl+Shift+C as the natural extension for AA copy
+      // since C-keyed hotkeys already form the copy family):
+      //   Ctrl+C            → forward DNA strand
+      //   Ctrl+Alt+C        → reverse-complement (bottom strand 5'→3')
+      //   Ctrl+Shift+C      → translated AA — ONLY allowed when the
+      //                       selection was made by clicking a CDS
+      //                       feature (selectionMode === 'aa').
+      //                       biolog 04.05.2026 evening: «копировать
+      //                       АА можно только при выделении ФИЧИ С
+      //                       КДС». Translating an arbitrary slice
+      //                       of DNA (or an ori, a UTR, a promoter)
+      //                       would yield biological nonsense.
+      let text;
+      if (e.shiftKey) {
+        if (selectionMode !== "aa") return; // not a CDS selection — no-op
+        text = translateDNA(slice);
+      } else if (e.altKey) {
+        text = reverseComplement(slice);
+      } else {
+        text = slice;
+      }
       try {
         navigator.clipboard?.writeText?.(text);
       } catch { /* clipboard unavailable — silently no-op */ }
@@ -745,6 +762,34 @@ const SequenceView = forwardRef(function SequenceView({
 
   const onRootPointerDown = (e) => {
     if (e.button != null && e.button !== 0) return; // primary button only
+    // AA cell under the pointer? Select the underlying triplet
+    // (biolog 04.05.2026 evening: «при нажатии на АК должен
+    // выделятся триплет»). data-aa-pos is the codon's MIDDLE base
+    // position; the codon spans [mid-1 .. mid+2) on the top strand
+    // (3 nucleotides) regardless of strand orientation.
+    if (typeof onSelectRange === "function") {
+      let aaEl = e.target;
+      while (aaEl && aaEl !== containerRef.current) {
+        if (
+          aaEl.getAttribute
+          && aaEl.getAttribute("data-testid") === "sequence-view-aa-char"
+        ) break;
+        aaEl = aaEl.parentElement;
+      }
+      if (aaEl && aaEl !== containerRef.current && aaEl.dataset && aaEl.dataset.aaPos != null) {
+        const aaMid = parseInt(aaEl.dataset.aaPos, 10);
+        if (Number.isFinite(aaMid)) {
+          e.preventDefault();
+          const start = Math.max(0, aaMid - 1);
+          const end = Math.min(seqLength, aaMid + 2);
+          onSelectRange(start, end);
+          try { containerRef.current?.focus({ preventScroll: true }); } catch { /* noop */ }
+          pointerMovedRef.current = true;
+          return;
+        }
+      }
+    }
+
     // Annotation rect under the pointer? Select the WHOLE feature
     // (biolog 04.05.2026 evening: «при нажатии на фичу в ВИВЕРЕ
     // должна выделятся вся область фичи»). Walk up looking for the
@@ -767,7 +812,14 @@ const SequenceView = forwardRef(function SequenceView({
         const re = parseInt(el.dataset.regionEnd, 10);
         if (Number.isFinite(rs) && Number.isFinite(re) && re > rs) {
           e.preventDefault();
-          onSelectRange(rs, re);
+          // Copy AA is reachable ONLY when the selected feature is
+          // a CDS / gene-like region (biolog 04.05.2026 evening:
+          // «копировать АА можно только при выделении ФИЧИ С КДС»).
+          // Translating an arbitrary non-coding region (a promoter,
+          // a UTR, an ori) makes no biological sense.
+          const t = String(el.dataset.regionType || "").toLowerCase();
+          const isCdsLike = t === "cds" || t === "gene" || t === "marker" || t === "reporter";
+          onSelectRange(rs, re, isCdsLike ? "aa" : "dna");
           try { containerRef.current?.focus({ preventScroll: true }); } catch { /* noop */ }
           // Mark the synthetic click that follows pointerup as
           // already-handled. Without this flag, onRootClickFallback
@@ -886,7 +938,8 @@ const SequenceView = forwardRef(function SequenceView({
     setContextMenu({ x: e.clientX, y: e.clientY });
   };
 
-  const copySelection = (reverse) => {
+  // mode: 'forward' | 'reverse' | 'aa'
+  const copySelection = (mode) => {
     const a = (typeof caretAnchor === "number" && Number.isFinite(caretAnchor)) ? caretAnchor : null;
     const f = (typeof caretPos === "number" && Number.isFinite(caretPos)) ? caretPos : null;
     if (a == null || f == null || a === f) return;
@@ -894,7 +947,9 @@ const SequenceView = forwardRef(function SequenceView({
     const end = Math.max(a, f);
     const slice = (fullSeq || "").slice(start, end);
     if (!slice) return;
-    const text = reverse ? reverseComplement(slice) : slice;
+    let text = slice;
+    if (mode === "reverse") text = reverseComplement(slice);
+    else if (mode === "aa") text = translateDNA(slice);
     try {
       navigator.clipboard?.writeText?.(text);
     } catch { /* clipboard unavailable — silently no-op */ }
@@ -1070,13 +1125,20 @@ const SequenceView = forwardRef(function SequenceView({
           <MenuItem
             label="Копировать (прямая цепь)"
             shortcut="Ctrl+C"
-            onClick={() => { copySelection(false); setContextMenu(null); }}
+            onClick={() => { copySelection("forward"); setContextMenu(null); }}
           />
           <MenuItem
             label="Копировать обратную цепь"
             shortcut="Ctrl+Alt+C"
-            onClick={() => { copySelection(true); setContextMenu(null); }}
+            onClick={() => { copySelection("reverse"); setContextMenu(null); }}
           />
+          {selectionMode === "aa" && (
+            <MenuItem
+              label="Копировать аминокислоты"
+              shortcut="Ctrl+Shift+C"
+              onClick={() => { copySelection("aa"); setContextMenu(null); }}
+            />
+          )}
         </div>
       )}
     </div>

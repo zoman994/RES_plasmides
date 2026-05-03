@@ -258,6 +258,7 @@ function AnnotationTrack({
               // фичу в вивере должна выделятся вся область фичи»).
               data-region-start={region.start}
               data-region-end={region.end}
+              data-region-type={region.type || ""}
               data-predicted={isPredicted ? "true" : undefined}
               data-region-source={region.source || undefined}
               transform={`translate(${xLeft}, ${yTop})`}

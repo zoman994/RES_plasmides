@@ -44,6 +44,7 @@ export default function SequenceTab({
   onPendingScrollHandled,
   caretPos,
   caretAnchor,
+  selectionMode,
   onCaretChange,
   onSelectRange,
 }) {
@@ -175,6 +176,7 @@ export default function SequenceTab({
           readOnly
           caretPos={caretPos}
           caretAnchor={caretAnchor}
+          selectionMode={selectionMode}
           onCaretChange={onCaretChange}
           onSelectRange={onSelectRange}
         />
