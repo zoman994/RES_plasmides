@@ -146,31 +146,45 @@ export default function SingleInspector({
   // doesn't need a separate idle slot.
 
   // Pending scroll request from the LinearFeatureBar (lives at
-  // SingleInspector level). When the biolog clicks a feature on the
+  // SingleInspector level). When the biolog clicks/drags on the
   // bar from the Overview tab we auto-switch to Sequence and queue
   // the absolute position; SequenceTab consumes the queue via a prop
   // + clears it back to null. `tick` bumps on each new request even
   // if the position repeats — useEffect deps catch the change.
+  // `instant: true` asks SequenceView to use behavior:'auto' for
+  // responsive live-scrubbing during drag.
   const [pendingScroll, setPendingScroll] = useState(null);
-  // Cursor marker on the strip — persistent (last clicked position)
-  // even after the scroll is applied + pendingScroll cleared. Lets
-  // the biolog visually see where the last click landed on the bar.
+  // Cursor marker on the strip — persistent (last set position) even
+  // after the scroll is applied + pendingScroll cleared. Lets the
+  // biolog visually see where the last navigation landed AND drives
+  // the scrubber thumb on the bar (drag updates this state, the bar
+  // re-renders the cursor at the new x).
   const [cursorPos, setCursorPos] = useState(null);
-  const onFeatureClickFromBar = useCallback((ann, clickPos) => {
-    if (!ann) return;
-    // Biolog 04.05.2026 evening: «ставлю на середину — в середину».
-    // LinearFeatureBar now sends the precise click x→seq position
-    // as the second arg; fall back to ann.start only when the bar
-    // couldn't measure (e.g. happy-dom test fixture clientX=0).
-    const pos = (typeof clickPos === 'number' && Number.isFinite(clickPos))
-      ? clickPos
-      : (Number(ann.start) || 0);
+
+  // Click / pointer-up settle from the bar — final position. Switch
+  // to Sequence tab if biolog initiated from Overview, then queue
+  // a smooth scroll to land the viewer there.
+  const onBarSettle = useCallback((pos) => {
+    if (typeof pos !== 'number' || !Number.isFinite(pos)) return;
     if (activeTab !== 'sequence') {
       onActiveTabChange?.('sequence');
     }
-    setPendingScroll({ pos, tick: Date.now() });
     setCursorPos(pos);
+    setPendingScroll({ pos, tick: Date.now(), instant: false });
   }, [activeTab, onActiveTabChange]);
+
+  // Live drag scrub — fires every pointermove. Always update the
+  // cursor visual; only push a scroll when biolog is already on the
+  // Sequence tab (no point auto-switching tabs mid-drag, that would
+  // yank context away while they're still aiming).
+  const onBarScrub = useCallback((pos) => {
+    if (typeof pos !== 'number' || !Number.isFinite(pos)) return;
+    setCursorPos(pos);
+    if (activeTab === 'sequence') {
+      setPendingScroll({ pos, tick: Date.now(), instant: true });
+    }
+  }, [activeTab]);
+
   const onPendingScrollHandled = useCallback(() => setPendingScroll(null), []);
   // Reset cursor when biolog switches plasmids.
   useEffect(() => { setCursorPos(null); }, [itemKey]);
@@ -262,7 +276,8 @@ export default function SingleInspector({
           <LinearFeatureBar
             annotations={displayAnnotations}
             seqLength={length}
-            onSelect={onFeatureClickFromBar}
+            onSelect={onBarSettle}
+            onScrub={onBarScrub}
             cursorPosition={cursorPos}
           />
         </div>

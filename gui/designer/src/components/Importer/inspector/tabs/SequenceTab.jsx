@@ -56,7 +56,13 @@ export default function SequenceTab({
     if (!pendingScroll) return;
     const ref = sequenceViewRef.current;
     if (!ref || typeof ref.scrollToPosition !== 'function') return;
-    ref.scrollToPosition(Number(pendingScroll.pos) || 0);
+    // `instant: true` comes from the LinearFeatureBar drag-scrub —
+    // smooth animation can't keep up with pointermove cadence so the
+    // viewer would always be a few hundred ms behind the cursor.
+    // 'auto' makes scroll snap each frame; settle (click / pointer
+    // release) reverts to 'smooth' for a polished landing.
+    const behavior = pendingScroll.instant ? 'auto' : 'smooth';
+    ref.scrollToPosition(Number(pendingScroll.pos) || 0, { behavior });
     onPendingScrollHandled?.();
   }, [pendingScroll, onPendingScrollHandled]);
   const fragment = useMemo(() => ({

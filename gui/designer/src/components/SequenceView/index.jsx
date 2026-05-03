@@ -316,23 +316,31 @@ const SequenceView = forwardRef(function SequenceView({
   // strip while still on Overview tab → SequenceTab pre-warm not
   // mounted → ref.scrollToPosition runs, finds 0 lines, no-op.
   const pendingScrollPosRef = useRef(null);
+  const pendingScrollOptsRef = useRef(null);
   const performScrollRef = useRef(null);
   performScrollRef.current = useMemo(() => {
     const factory = attachScrollHandle(ref, containerRef);
     return factory().scrollToPosition;
   }, [ref]);
   useImperativeHandle(ref, () => ({
-    scrollToPosition(absolutePos) {
+    // `opts.behavior` controls smooth-vs-instant scroll. Live-drag
+    // scrubbing on the LinearFeatureBar passes 'auto' so the viewer
+    // tracks the pointer in real time; click / settle uses the
+    // default 'smooth' so the final landing has motion the eye can
+    // follow.
+    scrollToPosition(absolutePos, opts) {
       const root = containerRef.current;
       const haveLines = !!(root && root.querySelector(
         '[data-testid="sequence-view-line"]',
       ));
       if (!haveLines) {
         pendingScrollPosRef.current = absolutePos;
+        pendingScrollOptsRef.current = opts || null;
         return;
       }
-      performScrollRef.current?.(absolutePos);
+      performScrollRef.current?.(absolutePos, opts);
       pendingScrollPosRef.current = null;
+      pendingScrollOptsRef.current = null;
     },
   }), []);
   // Drain the queue once lines actually appear (after the
@@ -344,8 +352,9 @@ const SequenceView = forwardRef(function SequenceView({
     // scroll math reads offsetTop.
     const id = requestAnimationFrame(() => {
       if (pendingScrollPosRef.current == null) return;
-      performScrollRef.current?.(pendingScrollPosRef.current);
+      performScrollRef.current?.(pendingScrollPosRef.current, pendingScrollOptsRef.current);
       pendingScrollPosRef.current = null;
+      pendingScrollOptsRef.current = null;
     });
     return () => cancelAnimationFrame(id);
   }, [measured]);
@@ -575,7 +584,7 @@ const SequenceView = forwardRef(function SequenceView({
  */
 function attachScrollHandle(ref, containerRef) {
   return () => ({
-    scrollToPosition(absolutePos) {
+    scrollToPosition(absolutePos, opts) {
       const root = containerRef.current;
       if (!root) return;
       const lines = root.querySelectorAll(
@@ -590,16 +599,30 @@ function attachScrollHandle(ref, containerRef) {
         target = el;
       }
       if (!target) return;
-      // Scroll the line into view at the top of the viewport. Smooth
-      // behaviour preferred; fallback for jsdom / happy-dom (no real
-      // layout) — direct scrollTop assignment.
+      // Scroll the line into view. We can't always assume `root`
+      // (SequenceView's own containerRef) is the actual scrolling
+      // ancestor — when SequenceView lives inside a parent that owns
+      // the scrollbar (like Importer's `importer-single-tab-content`
+      // with `overflowY: scroll`), our own div has no internal
+      // overflow and `root.scrollTop = N` is a no-op (biolog
+      // 04.05.2026 evening: «всеравно не телепортирует на нужный
+      // участок сиквенса»). `Element.scrollIntoView` walks up to the
+      // nearest scrollable ancestor automatically, so it works
+      // regardless of where the scroll container actually lives. We
+      // pass `block: 'center'` so the highlighted line shows up in
+      // the middle of the viewport — biolog still has context above
+      // and below the jump target.
+      const behavior = (opts && opts.behavior) || "smooth";
       try {
-        const containerRect = root.getBoundingClientRect();
-        const targetRect = target.getBoundingClientRect();
-        const offset = targetRect.top - containerRect.top + root.scrollTop;
-        if (typeof root.scrollTo === "function") {
-          root.scrollTo({ top: offset, behavior: "smooth" });
+        if (typeof target.scrollIntoView === "function") {
+          target.scrollIntoView({ behavior, block: "center" });
         } else {
+          // Fallback for environments without scrollIntoView (rare —
+          // covered by jsdom/happy-dom shims). Best-effort scrollTop
+          // assumes `root` is the scroller, same as before.
+          const containerRect = root.getBoundingClientRect();
+          const targetRect = target.getBoundingClientRect();
+          const offset = targetRect.top - containerRect.top + root.scrollTop;
           root.scrollTop = offset;
         }
       } catch {
