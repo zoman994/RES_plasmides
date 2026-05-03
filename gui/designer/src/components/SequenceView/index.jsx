@@ -574,14 +574,36 @@ const SequenceView = forwardRef(function SequenceView({
       ? caretPos
       : 0;
     const cpl = charsPerLine || 80;
+    const ctrlOrMeta = e.ctrlKey || e.metaKey;
     let next = cur;
     switch (e.key) {
-      case "ArrowLeft":  next = cur - 1; break;
-      case "ArrowRight": next = cur + 1; break;
+      case "ArrowLeft":
+        if (ctrlOrMeta) {
+          // Ctrl+Left: jump to start of current line; if already at
+          // the start, hop one full line up so repeated presses walk
+          // up the sequence (biolog 04.05.2026: «контрол шифт
+          // вправо/влево должно выделять по строкам и идти по
+          // строкам ниже. сейчас тормозится на границе строки»).
+          const lineStart = Math.floor(cur / cpl) * cpl;
+          next = cur <= lineStart ? Math.max(0, lineStart - cpl) : lineStart;
+        } else {
+          next = cur - 1;
+        }
+        break;
+      case "ArrowRight":
+        if (ctrlOrMeta) {
+          // Ctrl+Right: jump to end of current line, then keep
+          // going line-by-line on subsequent presses.
+          const lineEnd = Math.floor(cur / cpl) * cpl + cpl - 1;
+          next = cur >= lineEnd ? Math.min(seqLength - 1, lineEnd + cpl) : lineEnd;
+        } else {
+          next = cur + 1;
+        }
+        break;
       case "ArrowUp":    next = cur - cpl; break;
       case "ArrowDown":  next = cur + cpl; break;
-      case "Home":       next = Math.floor(cur / cpl) * cpl; break;
-      case "End":        next = Math.floor(cur / cpl) * cpl + (cpl - 1); break;
+      case "Home":       next = ctrlOrMeta ? 0 : Math.floor(cur / cpl) * cpl; break;
+      case "End":        next = ctrlOrMeta ? (seqLength - 1) : Math.floor(cur / cpl) * cpl + (cpl - 1); break;
       case "PageUp":     next = cur - cpl * 10; break;
       case "PageDown":   next = cur + cpl * 10; break;
       default: return;
