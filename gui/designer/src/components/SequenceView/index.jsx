@@ -863,6 +863,32 @@ const SequenceView = forwardRef(function SequenceView({
  * containerRef itself changes (i.e. effectively never). The
  * scrollToPosition call itself does no React work — pure DOM.
  */
+/**
+ * Walk up the DOM from `el` looking for the nearest ancestor whose
+ * computed overflow-y is `auto` or `scroll` AND that actually has
+ * scrollable content (scrollHeight > clientHeight). Falls back to
+ * the document scrolling element if nothing closer scrolls.
+ *
+ * Used by scrollToPosition's «is the target already visible?» check
+ * — needs to know which container's viewport bounds to compare
+ * against. The Importer wraps SequenceView in a parent that owns
+ * the scrollbar, so SequenceView's own containerRef isn't always
+ * the right answer.
+ */
+function findScrollingAncestor(el) {
+  if (!el || typeof getComputedStyle !== "function") return null;
+  let cur = el.parentElement;
+  while (cur && cur !== document.body && cur !== document.documentElement) {
+    const style = getComputedStyle(cur);
+    const oy = style.overflowY;
+    if ((oy === "auto" || oy === "scroll") && cur.scrollHeight > cur.clientHeight) {
+      return cur;
+    }
+    cur = cur.parentElement;
+  }
+  return document.scrollingElement || document.documentElement;
+}
+
 function attachScrollHandle(ref, containerRef) {
   return () => ({
     scrollToPosition(absolutePos, opts) {
@@ -880,6 +906,36 @@ function attachScrollHandle(ref, containerRef) {
         target = el;
       }
       if (!target) return;
+      // Skip the scroll entirely when the target line is already
+      // fully inside the visible viewport (biolog 04.05.2026:
+      // «если около края нажимать то не центрировалось на каретку
+      // sequence view»). Recentering on every click felt like the
+      // viewer was «yanking» the user's eye for no reason when the
+      // click target was already on screen. Now the viewer only
+      // jumps when the caret actually leaves the visible area —
+      // for in-viewport clicks the cursor moves silently. Walk up
+      // from `root` to find the real scrolling ancestor (since
+      // SequenceView's own containerRef may live inside a parent
+      // that owns the scrollbar — Importer's
+      // `importer-single-tab-content` with `overflowY: scroll`).
+      // Caller can opt out via { force: true } if a future workflow
+      // needs an unconditional center.
+      const force = !!(opts && opts.force);
+      try {
+        if (!force && target.getBoundingClientRect) {
+          const targetRect = target.getBoundingClientRect();
+          const scroller = findScrollingAncestor(root);
+          const scrollerRect = scroller && scroller !== document.body && scroller !== document.documentElement
+            ? scroller.getBoundingClientRect()
+            : { top: 0, bottom: window.innerHeight || document.documentElement.clientHeight };
+          if (
+            targetRect.top >= scrollerRect.top
+            && targetRect.bottom <= scrollerRect.bottom
+          ) {
+            return; // already on screen — don't recenter
+          }
+        }
+      } catch { /* fall through to scrollIntoView */ }
       // Scroll the line into view. We can't always assume `root`
       // (SequenceView's own containerRef) is the actual scrolling
       // ancestor — when SequenceView lives inside a parent that owns
