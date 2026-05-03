@@ -147,6 +147,7 @@ export const IMPORTER_STRINGS = {
   deleteAllConfirm: 'Удалить весь batch файлов?',
 
   // MetaColumn
+  metaTagsLabel: 'теги',
   metaTopology: 'топология',
   metaTopologyCircularTitle: 'Круглая (плазмида)',
   metaTopologyLinearTitle: 'Линейная',

@@ -94,44 +94,53 @@ describe('M-B.2 K4 — lazy-tabs (Importer-merge-tabs revision)', () => {
     expect(screen.queryByTestId('importer-tab-panel-annotations')).toBeNull();
   });
 
-  it('2) sequence tab mounts SequenceView + LinearFeatureBar feature strip', () => {
+  it('2) feature strip is HIDDEN on the Overview tab (Overview owns its own visualisation)', () => {
+    // Reshuffle 04.05.2026 — биолог: «убрать из вкладки обзор».
+    // The PlasmidMiniMap + categorised sections inside OverviewTab
+    // already give the visual feature breakdown; the «колбаса» would
+    // duplicate that. It only renders on tabs whose body shows
+    // sequence content (Sequence + History).
+    const { Wrapper } = harness({ activeTab: 'overview' });
+    render(<Wrapper tab="overview" />);
+    expect(screen.queryByTestId('importer-single-feature-strip')).toBeNull();
+    expect(screen.queryByTestId('importer-linear-feature-bar')).toBeNull();
+    expect(screen.queryByTestId('mock-sequence-map-view')).toBeNull();
+  });
+
+  it('3) sequence tab mounts SequenceView and the strip is at top of Inspector', () => {
     const { Wrapper } = harness({ activeTab: 'sequence' });
     render(<Wrapper tab="sequence" />);
     expect(screen.getByTestId('importer-tab-panel-sequence')).toBeTruthy();
     const seq = screen.getByTestId('mock-sequence-map-view');
     expect(parseInt(seq.dataset.fragLen, 10)).toBe(ITEM.sequence.length);
-    // The «колбаса» wrapper must be rendered alongside the viewer.
-    expect(screen.getByTestId('importer-sequence-feature-strip')).toBeTruthy();
-    // The internal SVG bar that LinearFeatureBar renders.
-    expect(screen.getByTestId('importer-linear-feature-bar')).toBeTruthy();
+    // Strip lives at SingleInspector header (above TabBar) — one
+    // instance, not duplicated inside SequenceTab.
+    const strips = screen.getAllByTestId('importer-single-feature-strip');
+    expect(strips.length).toBe(1);
   });
 
-  it('3) clicking a feature on the LinearFeatureBar scrolls SequenceView to its start', () => {
+  it('4) clicking a feature on the strip from the Sequence tab scrolls SequenceView', () => {
     const { Wrapper } = harness({ activeTab: 'sequence' });
     render(<Wrapper tab="sequence" />);
-    // LinearFeatureBar emits an SVG <g> per feature; click any one.
     const featureGroups = screen
       .getByTestId('importer-linear-feature-bar')
       .querySelectorAll('g[style*="cursor"]');
     expect(featureGroups.length).toBeGreaterThan(0);
     fireEvent.click(featureGroups[0]);
-    // First annotation in ITEM is `AmpR` at start=0 — verify scrollToPosition
-    // was called with that absolute position.
     expect(scrollSpy).toHaveBeenCalled();
     const lastCall = scrollSpy.mock.calls[scrollSpy.mock.calls.length - 1];
     expect(typeof lastCall[0]).toBe('number');
-    // The clicked feature must match one of the source annotations.
     const knownStarts = ITEM.annotations.map((a) => a.start);
     expect(knownStarts).toContain(lastCall[0]);
   });
 
-  it('4) HistoryTab tab not present in TabBar when commits empty (M-B.2 default)', () => {
+  it('5) HistoryTab tab not present in TabBar when commits empty (M-B.2 default)', () => {
     const { Wrapper } = harness({ activeTab: 'overview' });
     render(<Wrapper tab="overview" />);
     expect(screen.queryByTestId('importer-tab-history')).toBeNull();
   });
 
-  it('5) annotations tab is no longer in TabBar (regression — Importer-merge-tabs)', () => {
+  it('6) annotations tab is no longer in TabBar (regression — Importer-merge-tabs)', () => {
     const { Wrapper } = harness({ activeTab: 'overview' });
     render(<Wrapper tab="overview" />);
     expect(screen.queryByTestId('importer-tab-annotations')).toBeNull();

@@ -1,15 +1,18 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { STRINGS } from '../../../lib/strings';
 import InlineEditableTitle from './InlineEditableTitle';
-import TagsEditor from './TagsEditor';
 import TabBar from './tabs/TabBar';
 import OverviewTab from './tabs/OverviewTab';
 import SequenceTab from './tabs/SequenceTab';
+import LinearFeatureBar from './tabs/LinearFeatureBar';
 // AnnotationsTab removed from Importer (Importer-merge-tabs, 04.05.2026)
-// — the Inspector is now read-only viewer territory. The merged
-// «Последовательность» tab embeds a LinearFeatureBar at the bottom for
-// click-to-scroll navigation; annotation EDITING moves to a dedicated
-// future Annotator module per the «не смешивай» architecture decision.
+// — Inspector is now read-only viewer territory. Annotation EDITING
+// moves to a dedicated future Annotator module per the «не смешивай»
+// architecture decision. The LinearFeatureBar «колбаса» now lives at
+// the SingleInspector level (not inside SequenceTab) — always visible
+// regardless of active tab; click on a feature auto-switches to the
+// sequence tab and scrolls SequenceView to that feature's start.
+// TagsEditor moved out of the title row into MetaColumn (right rail).
 import HistoryTab from './tabs/HistoryTab';
 import { getRegions } from '../../../annotation-model';
 
@@ -142,6 +145,30 @@ export default function SingleInspector({
   // remains; the LinearFeatureBar mounts as part of SequenceTab and
   // doesn't need a separate idle slot.
 
+  // Pending scroll request from the LinearFeatureBar (lives at
+  // SingleInspector level). When the biolog clicks a feature on the
+  // bar from the Overview tab we auto-switch to Sequence and queue
+  // the absolute position; SequenceTab consumes the queue via a prop
+  // + clears it back to null. `tick` bumps on each new request even
+  // if the position repeats — useEffect deps catch the change.
+  const [pendingScroll, setPendingScroll] = useState(null);
+  // Cursor marker on the strip — persistent (last clicked position)
+  // even after the scroll is applied + pendingScroll cleared. Lets
+  // the biolog visually see where the last click landed on the bar.
+  const [cursorPos, setCursorPos] = useState(null);
+  const onFeatureClickFromBar = useCallback((ann) => {
+    if (!ann) return;
+    const pos = Number(ann.start) || 0;
+    if (activeTab !== 'sequence') {
+      onActiveTabChange?.('sequence');
+    }
+    setPendingScroll({ pos, tick: Date.now() });
+    setCursorPos(pos);
+  }, [activeTab, onActiveTabChange]);
+  const onPendingScrollHandled = useCallback(() => setPendingScroll(null), []);
+  // Reset cursor when biolog switches plasmids.
+  useEffect(() => { setCursorPos(null); }, [itemKey]);
+
   if (!item) return null;
   const length = item.length || item.sequence?.length || 0;
   const topology = item.topology || 'linear';
@@ -166,14 +193,20 @@ export default function SingleInspector({
       data-current-file={item._fileName}
       style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}
     >
-      {/* Title row compacted (Medium polish): padding 10/14 → 6/14, title +
-          subtitle on a single flex row with subtitle right-aligned to the
-          left of free space (saves ~26px vertical). TagsEditor stays on
-          its own row underneath. */}
+      {/*
+        * Header (04.05.2026 reshuffle):
+        *   - Title row at the very top (plasmid name + length /
+        *     topology / region-count subtitle).
+        *   - TagsEditor moved out → MetaColumn right rail.
+        *   - LinearFeatureBar «колбаса» moved here from
+        *     SequenceTab's bottom — always visible regardless of
+        *     active tab. Click on a feature auto-switches to the
+        *     Sequence tab and scrolls SequenceView to its start.
+        */}
       <div
         data-testid="importer-single-title"
         style={{
-          padding: '6px 14px 8px',
+          padding: '6px 14px 4px',
           borderBottom: '0.5px solid var(--border-subtle)',
           background: 'var(--surface-1)',
         }}
@@ -195,10 +228,6 @@ export default function SingleInspector({
             {regionCount > 0 && ` · ${S.summaryRegionCount(regionCount)}`}
           </div>
         </div>
-        <TagsEditor
-          tags={Array.isArray(edits?.editedTags) ? edits.editedTags : []}
-          onChange={(next) => onUpdateEdits?.({ editedTags: next })}
-        />
       </div>
 
       <TabBar
@@ -206,6 +235,32 @@ export default function SingleInspector({
         onChange={onActiveTabChange}
         showHistory={showHistory}
       />
+
+      {/* Compact feature strip — moved below TabBar 04.05.2026 evening
+          (биолог: «колбаса должна под вкладками появляться»). Hidden
+          on the Overview tab — Overview already has the PlasmidMiniMap
+          + categorised sections, the strip would duplicate the
+          visualisation there. Click = jump-to-feature in Sequence tab.
+          A small caret cursor below the bar tracks the
+          most-recently-targeted feature so the biolog sees where the
+          last click landed. */}
+      {activeTab !== 'overview' && displayAnnotations.length > 0 && length > 0 && (
+        <div
+          data-testid="importer-single-feature-strip"
+          style={{
+            padding: '4px 14px 6px',
+            borderBottom: '0.5px solid var(--border-subtle)',
+            background: 'var(--surface-1)',
+          }}
+        >
+          <LinearFeatureBar
+            annotations={displayAnnotations}
+            seqLength={length}
+            onSelect={onFeatureClickFromBar}
+            cursorPosition={cursorPos}
+          />
+        </div>
+      )}
 
       <div
         data-testid="importer-single-tab-content"
@@ -245,6 +300,8 @@ export default function SingleInspector({
               name={item.name || item._fileName}
               fileKey={item._fileName}
               onUpdateEdits={onUpdateEdits}
+              pendingScroll={pendingScroll}
+              onPendingScrollHandled={onPendingScrollHandled}
             />
           </div>
         )}

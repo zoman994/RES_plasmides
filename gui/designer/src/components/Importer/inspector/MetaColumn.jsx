@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { STRINGS } from '../../../lib/strings';
 import { sanitizeWithReport } from '../../../sequence-utils';
+import TagsEditor from './TagsEditor';
 
 const S = STRINGS.importer;
 
@@ -60,6 +61,18 @@ export default function MetaColumn({
         overflowY: 'auto',
       }}
     >
+      {/* TagsEditor moved here from the Inspector title row
+          (Importer-merge-tabs reshuffle, 04.05.2026 — биолог: «теги
+          убираем в боковую панель»). The compact card sits at the top
+          of the right rail with a hint label so biolog finds it via
+          the same visual taxonomy as the rest of MetaColumn. */}
+      <Card label={S.metaTagsLabel}>
+        <TagsEditor
+          tags={Array.isArray(edits.editedTags) ? edits.editedTags : []}
+          onChange={(next) => onUpdateEdits?.({ editedTags: next })}
+        />
+      </Card>
+
       <Card label={S.metaTopology}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <ToggleButton

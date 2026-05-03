@@ -260,6 +260,12 @@ function flattenSites(scanResult, filterMode) {
 // viewer to a specific absolute sequence position. The annotator (a
 // future separate module — sprint «не смешивай» / 04.05.2026) will
 // reuse the same imperative handle for jumping to highlighted hits.
+//
+// `onVisibleRangeChange({ start, end })` (Importer-merge-tabs cursor
+// follow-up, 04.05.2026): consumer is notified of the
+// currently-on-screen absolute sequence span as the user scrolls.
+// LinearFeatureBar uses this to render a draggable viewport-window
+// indicator that mirrors what the biolog is looking at.
 const SequenceView = forwardRef(function SequenceView({
   fragments,
   circular = false,
@@ -269,6 +275,7 @@ const SequenceView = forwardRef(function SequenceView({
   readOnly = true,
   onSelect,
   onAnnotationClick,
+  onVisibleRangeChange,
   // eslint-disable-next-line no-unused-vars
   onMutate,
   // eslint-disable-next-line no-unused-vars
@@ -301,10 +308,47 @@ const SequenceView = forwardRef(function SequenceView({
   useRowSelectionIsolation(containerRef);
 
   // Imperative scroll-to-position handle (Importer-merge-tabs K1).
-  // `attachScrollHandle` lives at module scope so the closure can be
-  // re-used cheaply. Empty deps — the handle reads from refs at call
-  // time, never stale.
-  useImperativeHandle(ref, attachScrollHandle(ref, containerRef), []);
+  // The bare implementation lives in `attachScrollHandle` (module
+  // scope) but we wrap it here so a request that arrives BEFORE the
+  // viewer has measured its container (and therefore before lines
+  // have rendered) is queued and re-applied once `measured` flips.
+  // Without the queue, biolog clicks a feature on the SingleInspector
+  // strip while still on Overview tab → SequenceTab pre-warm not
+  // mounted → ref.scrollToPosition runs, finds 0 lines, no-op.
+  const pendingScrollPosRef = useRef(null);
+  const performScrollRef = useRef(null);
+  performScrollRef.current = useMemo(() => {
+    const factory = attachScrollHandle(ref, containerRef);
+    return factory().scrollToPosition;
+  }, [ref]);
+  useImperativeHandle(ref, () => ({
+    scrollToPosition(absolutePos) {
+      const root = containerRef.current;
+      const haveLines = !!(root && root.querySelector(
+        '[data-testid="sequence-view-line"]',
+      ));
+      if (!haveLines) {
+        pendingScrollPosRef.current = absolutePos;
+        return;
+      }
+      performScrollRef.current?.(absolutePos);
+      pendingScrollPosRef.current = null;
+    },
+  }), []);
+  // Drain the queue once lines actually appear (after the
+  // measure-gate flips and React commits the line list).
+  useEffect(() => {
+    if (!measured) return;
+    if (pendingScrollPosRef.current == null) return;
+    // Wait one frame so the lines DOM is materialised before the
+    // scroll math reads offsetTop.
+    const id = requestAnimationFrame(() => {
+      if (pendingScrollPosRef.current == null) return;
+      performScrollRef.current?.(pendingScrollPosRef.current);
+      pendingScrollPosRef.current = null;
+    });
+    return () => cancelAnimationFrame(id);
+  }, [measured]);
 
   // Two-phase render to keep first paint cheap on slow hardware.
   // Initial mount on a 8 GB / mid-tier CPU laptop (typical academic

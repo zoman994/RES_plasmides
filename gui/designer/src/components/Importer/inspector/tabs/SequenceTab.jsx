@@ -1,7 +1,6 @@
-import { useCallback, useMemo, useState, useEffect, useRef } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import SequenceView from '../../../SequenceView';
 import SettingsPopover from '../../../SequenceView/SettingsPopover';
-import LinearFeatureBar from './LinearFeatureBar';
 import { STRINGS } from '../../../../lib/strings';
 import { rotateOriginToPosition } from '../../../../rotate-origin';
 import { computeIntergenicHints } from '../lib/intergenic-hints';
@@ -37,10 +36,15 @@ const S = STRINGS.importer;
  *
  * Importer-merge-tabs (04.05.2026): the dedicated «Аннотации» tab was
  * dropped — annotation-editing UI moves to a future Annotator module
- * («не смешивай»). The viewer + a `LinearFeatureBar` «колбаса» pinned
- * at the bottom now live together here. Clicking a feature in the
- * strip imperatively scrolls SequenceView to that feature's start via
- * the new `scrollToPosition` ref handle.
+ * («не смешивай»).
+ *
+ * Layout reshuffle (same evening): the LinearFeatureBar «колбаса»
+ * moved UP to the SingleInspector level (always visible, regardless
+ * of active tab). SequenceTab now only owns the viewer + origin
+ * control. Click on a feature in the bar lands here as a
+ * `pendingScroll` prop — useEffect calls
+ * `sequenceViewRef.scrollToPosition(...)` and clears the queue back
+ * to null via `onPendingScrollHandled`.
  */
 export default function SequenceTab({
   sequence,
@@ -49,20 +53,25 @@ export default function SequenceTab({
   name,
   fileKey,
   onUpdateEdits,
+  pendingScroll,
+  onPendingScrollHandled,
 }) {
   const sequenceViewRef = useRef(null);
 
-  // Click-to-scroll: when biolog clicks a feature on the LinearFeatureBar
-  // strip below the viewer, jump to that feature's start position. The
-  // feature start is in the SAME coordinate system as SequenceView's
-  // `fullSeq` (single fragment in this Inspector), so we can pass
-  // `feature.start` straight through.
-  const onFeatureSelect = useCallback((ann) => {
-    if (!ann) return;
+  // Pending-scroll effect: SingleInspector queues a `{pos, tick}`
+  // when biolog clicks a feature on the top-level LinearFeatureBar
+  // («колбаса»). The bar lives at SingleInspector level now — when
+  // the click happens from the Overview tab, SingleInspector
+  // auto-switches to Sequence first, then this effect runs once
+  // SequenceView's ref is ready. `tick` ensures repeat clicks on
+  // the same feature still trigger a scroll.
+  useEffect(() => {
+    if (!pendingScroll) return;
     const ref = sequenceViewRef.current;
     if (!ref || typeof ref.scrollToPosition !== 'function') return;
-    ref.scrollToPosition(Number(ann.start) || 0);
-  }, []);
+    ref.scrollToPosition(Number(pendingScroll.pos) || 0);
+    onPendingScrollHandled?.();
+  }, [pendingScroll, onPendingScrollHandled]);
   const fragment = useMemo(() => ({
     id: 'importer-current',
     name: name || 'imported',
@@ -242,32 +251,6 @@ export default function SequenceTab({
           readOnly
         />
       </div>
-
-      {/* «Колбаса аннотации» pinned at the bottom of the merged tab.
-          Click a feature → SequenceView scrolls to that feature's
-          start (Importer-merge-tabs K4). The bar is sticky relative
-          to the tab content's scroll container so it stays in view
-          as the biolog scrolls through the sequence above. */}
-      {annotations.length > 0 && length > 0 && (
-        <div
-          data-testid="importer-sequence-feature-strip"
-          style={{
-            position: 'sticky',
-            bottom: 0,
-            background: 'var(--surface-1)',
-            borderTop: '0.5px solid var(--border-subtle)',
-            paddingTop: 6,
-            paddingBottom: 4,
-            zIndex: 4,
-          }}
-        >
-          <LinearFeatureBar
-            annotations={annotations}
-            seqLength={length}
-            onSelect={onFeatureSelect}
-          />
-        </div>
-      )}
     </div>
   );
 }

@@ -4,40 +4,36 @@ import { ANNOTATION_COLORS } from '../../../../auto-annotate';
 import { getTextColor } from '../../../../lib/color-utils';
 
 /**
- * LinearFeatureBar — SVG-based linear feature strip with leader-labels
- * for small features (M-B.2 polish round 4).
+ * LinearFeatureBar — SVG-based compact linear feature strip.
  *
- * Replaces the AnnotationEditor's built-in <hideBar=false> strip in
- * Importer's AnnotationsTab. The built-in version only shows the label
- * INSIDE the block, so anything narrower than ~10% (ATG, 3xFLAG, NLS,
- * promoter regions, RBS sites) stays nameless. Here:
+ * Compact mode (04.05.2026): single-row 22 px coloured-rect strip,
+ * inside-only labels. Outside leader-line labels were dropped per
+ * biolog «компактный элемент». Narrow rects render as colour ticks
+ * — name surfaces via SVG `<title>` tooltip on hover. Click on any
+ * rect calls `onSelect(annotation)`.
  *
- *   - Bar row 22 px: filled coloured rects per region, label inside if
- *     width >= IN_LABEL_THRESHOLD_PCT.
- *   - Leader row underneath: each region with width below threshold
- *     emits a 1 px vertical leader + label down with horizontal
- *     collision-staggering (similar to PlasmidMiniMap circular labels).
- *
- * Colour source: featureColor(type, name) — same A+v2 palette PlasmidMap
- * + AnnotationEditor (with ignoreOwnColor) use. Per-annotation `color`
- * field from .dna files is intentionally ignored — Importer is read-only
- * catalog context, palette must be unified.
+ * Colour source: featureColor(type, name) — same A+v2 palette
+ * PlasmidMap + AnnotationEditor (with ignoreOwnColor) use.
+ * Per-annotation `color` field from .dna files is intentionally
+ * ignored — palette stays unified.
  */
 
 const BAR_H = 22;
-const LEADER_LEN = 8;
-const LABEL_H = 12;
-const LABEL_GAP_PX = 2;
 const IN_LABEL_THRESHOLD_PCT = 6.5;
-const DENSITY_WINDOW_PX = 140;   // sample neighbours within this window
-const ANGLED_SHIFT_PX = 32;      // how far the label slides sideways
-const ANGLED_THRESHOLD = 1;      // density delta required to angle
+// Leader-label constants removed (compact mode 04.05.2026): LEADER_LEN /
+// LABEL_H / LABEL_GAP_PX / DENSITY_WINDOW_PX / ANGLED_SHIFT_PX /
+// ANGLED_THRESHOLD. Bar no longer renders outside leader labels.
 
 function annColorPalette(ann) {
   return featureColor(ann?.type, ann?.name) || ANNOTATION_COLORS[ann?.type] || ANNOTATION_COLORS.misc;
 }
 
-export default function LinearFeatureBar({ annotations = [], seqLength = 0, onSelect }) {
+export default function LinearFeatureBar({
+  annotations = [],
+  seqLength = 0,
+  onSelect,
+  cursorPosition = null, // absolute seq pos (nullable) — vertical marker
+}) {
   const wrapRef = useRef(null);
   const [width, setWidth] = useState(800);
 
@@ -54,9 +50,9 @@ export default function LinearFeatureBar({ annotations = [], seqLength = 0, onSe
     return () => ro.disconnect();
   }, []);
 
-  const { items, leaderLabels, totalH } = useMemo(() => {
+  const { items, totalH } = useMemo(() => {
     if (!annotations.length || !seqLength) {
-      return { items: [], leaderLabels: [], totalH: BAR_H };
+      return { items: [], totalH: BAR_H };
     }
     const visible = annotations.filter((a) => a.level !== 'point');
     const its = visible.map((a, i) => {
@@ -75,94 +71,13 @@ export default function LinearFeatureBar({ annotations = [], seqLength = 0, onSe
       };
     });
 
-    // Leader labels for small items: pick those without inside label,
-    // sort by left edge. For each, choose a horizontal direction toward
-    // the lower-density side (angled leaders away from clusters), then
-    // stagger Y when post-shift neighbours still collide.
-    const small = its.filter((x) => !x.labelInside).sort((a, b) => a.left - b.left);
-    const small_cx = small.map((x) => x.left + x.width / 2);
-
-    // Pre-compute dirX (-1 left / +1 right / 0 straight) per item by
-    // comparing neighbour count on each side within DENSITY_WINDOW_PX.
-    const dirs = small_cx.map((cx) => {
-      let leftN = 0, rightN = 0;
-      for (const ocx of small_cx) {
-        if (ocx === cx) continue;
-        if (Math.abs(ocx - cx) > DENSITY_WINDOW_PX) continue;
-        if (ocx < cx) leftN += 1; else rightN += 1;
-      }
-      if (leftN - rightN >= ANGLED_THRESHOLD) return 1;   // crowded left → angle right
-      if (rightN - leftN >= ANGLED_THRESHOLD) return -1;  // crowded right → angle left
-      return 0;
-    });
-
-    // First pass: compute every label's horizontal extent (text bounding
-    // box on the leader row) using its post-shift labelX, anchor direction
-    // and the truncated text width. Only by knowing the actual text box can
-    // we tell whether two labels visually overlap — earlier algorithm used
-    // labelX gap < COLLISION_PX which missed mixed-anchor collisions
-    // (label A anchored right + label B anchored left near the same x both
-    // claim the same horizontal stripe).
-    const PADDING = 8;
-    const MIN_LABEL_W = 40;
-    const CHAR_W = 5.6;       // ≈ width of one char at fontSize=10 system-ui
-    const LABEL_GAP_X = 4;    // horizontal min-gap between sibling labels on a row
-    const prelim = [];
-    for (let i = 0; i < small.length; i++) {
-      const x = small[i];
-      const cx = small_cx[i];
-      const dir = dirs[i];
-      let labelX = cx + dir * ANGLED_SHIFT_PX;
-      if (labelX < PADDING) labelX = PADDING;
-      if (labelX > width - PADDING) labelX = width - PADDING;
-      const availW = dir > 0
-        ? Math.max(MIN_LABEL_W, width - labelX - 4)
-        : dir < 0
-          ? Math.max(MIN_LABEL_W, labelX - 4)
-          : Math.max(MIN_LABEL_W, Math.min(labelX, width - labelX) * 2 - 4);
-      // Predict the truncated label string length, then convert to px.
-      const rawText = x.ann.name || x.ann.type || 'region';
-      const maxChars = Math.max(4, Math.floor(availW / 6));
-      const visibleChars = Math.min(rawText.length, maxChars);
-      const textWidth = Math.max(MIN_LABEL_W, visibleChars * CHAR_W + 6);
-      let textLeft;
-      let textRight;
-      if (dir > 0) { textLeft = labelX; textRight = labelX + textWidth; }
-      else if (dir < 0) { textRight = labelX; textLeft = labelX - textWidth; }
-      else { textLeft = labelX; textRight = labelX + textWidth; }
-      prelim.push({
-        idx: x.idx, ann: x.ann, color: x.color,
-        cx, dir, labelX, availW, textLeft, textRight,
-      });
-    }
-
-    // Second pass: greedy interval packing — place each label on the LOWEST
-    // row whose existing right-edge clears `textLeft - LABEL_GAP_X`. New
-    // row is added only when no existing row fits. Labels are processed in
-    // their already-sorted-by-cx order; greedy packing is near-optimal for
-    // this monotonic input and avoids pessimistic always-stagger.
-    const rowRights = []; // rowRights[r] = furthest textRight placed on row r
-    const ll = prelim.map((lab) => {
-      let placed = -1;
-      for (let r = 0; r < rowRights.length; r++) {
-        if (lab.textLeft >= rowRights[r] + LABEL_GAP_X) {
-          placed = r;
-          rowRights[r] = Math.max(rowRights[r], lab.textRight);
-          break;
-        }
-      }
-      if (placed < 0) {
-        placed = rowRights.length;
-        rowRights.push(lab.textRight);
-      }
-      return { ...lab, y: placed * (LABEL_H + LABEL_GAP_PX) };
-    });
-
-    const maxRow = ll.reduce((m, x) => Math.max(m, x.y), 0);
-    const leaderH = ll.length > 0 ? LEADER_LEN + maxRow + LABEL_H : 0;
-    const total = BAR_H + leaderH + (ll.length > 0 ? 4 : 0);
-
-    return { items: its, leaderLabels: ll, totalH: total };
+    // Compact mode (Importer-merge-tabs follow-up, 04.05.2026) — biolog:
+    // «у колбасы убрать выносные подписи. пишем только то что влезает.
+    // она должна оставаться компактным элементом». Outside leader-line
+    // labels removed entirely; only inside-rect labels survive. Total
+    // height collapses to BAR_H (22 px) — fits in the inspector header
+    // without eating tab content space.
+    return { items: its, totalH: BAR_H };
   }, [annotations, seqLength, width]);
 
   if (!annotations.length || !seqLength) return null;
@@ -209,43 +124,40 @@ export default function LinearFeatureBar({ annotations = [], seqLength = 0, onSe
           </g>
         ))}
 
-        {/* Leader lines + outside labels for small features. Two-segment
-            polyline: drop straight from bar to leader-row Y, then jog
-            sideways to the chosen direction (away from cluster). Pure
-            vertical when dir=0 (no neighbours to dodge). */}
-        {leaderLabels.map((l) => {
-          const lineY1 = BAR_H;
-          const dropY = BAR_H + LEADER_LEN + l.y;       // joint y where line bends
-          const jointX = l.labelX - (l.dir * 4);         // tiny inset before label start
-          const labelY = dropY + LABEL_H - 2;
-          const textAnchor = l.dir > 0 ? 'start' : l.dir < 0 ? 'end' : 'start';
-          const textXOffset = l.dir > 0 ? 4 : l.dir < 0 ? -4 : 4;
+        {/*
+          * Outside leader-line labels removed in compact mode (biolog
+          * 04.05.2026). Only `labelInside` rects keep their text;
+          * narrow rects show as plain coloured ticks (hover tooltip
+          * via the `<title>` element above provides the name).
+          */}
+        {/* Cursor marker (04.05.2026 evening — биолог: «не вижу
+            курсора»). Vertical line + small downward triangle at the
+            x corresponding to the last-clicked feature start. Hidden
+            when cursorPosition is null. The marker is decorative —
+            doesn't intercept clicks. */}
+        {cursorPosition != null && seqLength > 0 && (() => {
+          const cx = (cursorPosition / seqLength) * width;
+          const clamped = Math.max(0, Math.min(width, cx));
           return (
-            <g key={`l-${l.idx}`} onClick={() => onSelect?.(l.ann)} style={{ cursor: 'pointer' }}>
-              <polyline
-                points={l.dir === 0
-                  ? `${l.cx},${lineY1} ${l.cx},${dropY}`
-                  : `${l.cx},${lineY1} ${l.cx},${dropY - 3} ${jointX},${dropY}`
-                }
-                fill="none"
-                stroke={l.color}
-                strokeWidth={1}
-                strokeLinejoin="round"
-                opacity={0.75}
+            <g
+              data-testid="importer-linear-feature-bar-cursor"
+              style={{ pointerEvents: 'none' }}
+            >
+              <line
+                x1={clamped} x2={clamped}
+                y1={0} y2={BAR_H}
+                stroke="var(--accent-500, #f97316)"
+                strokeWidth={1.5}
+                opacity={0.95}
               />
-              <circle cx={l.cx} cy={lineY1} r={1.5} fill={l.color} opacity={0.85} />
-              <text
-                x={l.labelX + textXOffset}
-                y={labelY}
-                textAnchor={textAnchor}
-                fontSize={10}
-                fontFamily="var(--font-ui)"
-                fill="var(--text-primary)"
-                style={{ paintOrder: 'stroke fill', stroke: 'var(--surface-1)', strokeWidth: 2 }}
-              >{truncate(l.ann.name || l.ann.type, Math.max(4, Math.floor(l.availW / 6)))}</text>
+              <polygon
+                points={`${clamped - 4},${BAR_H + 1} ${clamped + 4},${BAR_H + 1} ${clamped},${BAR_H + 6}`}
+                fill="var(--accent-500, #f97316)"
+                opacity={0.95}
+              />
             </g>
           );
-        })}
+        })()}
       </svg>
     </div>
   );
