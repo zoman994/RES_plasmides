@@ -728,6 +728,13 @@ const SequenceView = forwardRef(function SequenceView({
           e.preventDefault();
           onSelectRange(rs, re);
           try { containerRef.current?.focus({ preventScroll: true }); } catch { /* noop */ }
+          // Mark the synthetic click that follows pointerup as
+          // already-handled. Without this flag, onRootClickFallback
+          // re-runs the caret-position math on the same click coords
+          // and collapses the freshly-set selection (biolog
+          // 04.05.2026 evening: «выделяет но при отпускании
+          // выделение пропадает»).
+          pointerMovedRef.current = true;
           return;
         }
       }
