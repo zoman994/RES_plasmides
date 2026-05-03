@@ -575,40 +575,45 @@ const SequenceView = forwardRef(function SequenceView({
       : 0;
     const cpl = charsPerLine || 80;
     const ctrlOrMeta = e.ctrlKey || e.metaKey;
+    // Caret-position convention: position N renders at the LEFT
+    // edge of letter[N] (so position N is "before letter N"). Hence
+    // end-of-line caret = lineStart + cpl, NOT lineStart + cpl - 1
+    // (biolog 04.05.2026 evening: «контрол шифт вправо/влево всё
+    // равно стопится на границе»). Earlier the off-by-one left the
+    // last letter of every line outside the selection.
+    const lineStartOf = (n) => Math.floor(n / cpl) * cpl;
+    const lineEndOf = (n) => Math.min(seqLength, lineStartOf(n) + cpl);
     let next = cur;
     switch (e.key) {
       case "ArrowLeft":
         if (ctrlOrMeta) {
-          // Ctrl+Left: jump to start of current line; if already at
-          // the start, hop one full line up so repeated presses walk
-          // up the sequence (biolog 04.05.2026: «контрол шифт
-          // вправо/влево должно выделять по строкам и идти по
-          // строкам ниже. сейчас тормозится на границе строки»).
-          const lineStart = Math.floor(cur / cpl) * cpl;
-          next = cur <= lineStart ? Math.max(0, lineStart - cpl) : lineStart;
+          const ls = lineStartOf(cur);
+          next = cur > ls ? ls : Math.max(0, ls - cpl);
         } else {
           next = cur - 1;
         }
         break;
       case "ArrowRight":
         if (ctrlOrMeta) {
-          // Ctrl+Right: jump to end of current line, then keep
-          // going line-by-line on subsequent presses.
-          const lineEnd = Math.floor(cur / cpl) * cpl + cpl - 1;
-          next = cur >= lineEnd ? Math.min(seqLength - 1, lineEnd + cpl) : lineEnd;
+          const le = lineEndOf(cur);
+          next = cur < le ? le : Math.min(seqLength, le + cpl);
         } else {
           next = cur + 1;
         }
         break;
       case "ArrowUp":    next = cur - cpl; break;
       case "ArrowDown":  next = cur + cpl; break;
-      case "Home":       next = ctrlOrMeta ? 0 : Math.floor(cur / cpl) * cpl; break;
-      case "End":        next = ctrlOrMeta ? (seqLength - 1) : Math.floor(cur / cpl) * cpl + (cpl - 1); break;
+      case "Home":       next = ctrlOrMeta ? 0 : lineStartOf(cur); break;
+      case "End":        next = ctrlOrMeta ? seqLength : lineEndOf(cur); break;
       case "PageUp":     next = cur - cpl * 10; break;
       case "PageDown":   next = cur + cpl * 10; break;
       default: return;
     }
-    next = Math.max(0, Math.min(seqLength - 1, next));
+    // Allow caret at seqLength (the slot AFTER the last letter)
+    // — that's a valid caret position. Earlier clamp at
+    // seqLength - 1 prevented selecting up to and including the
+    // sequence's final letter.
+    next = Math.max(0, Math.min(seqLength, next));
     if (next === cur && caretPos != null) return;
     e.preventDefault();
     // `needsScroll` — only ask the parent to scroll when the caret
@@ -622,6 +627,13 @@ const SequenceView = forwardRef(function SequenceView({
     onCaretChange(next, {
       needsScroll: oldLine !== newLine,
       extendSelection: !!e.shiftKey,
+      // anchorIfNull lets SingleInspector pin the selection's
+      // start when biolog presses shift+arrow without a prior
+      // explicit selection. Without it, anchor would stay null
+      // and SelectionOverlay would draw nothing — biolog
+      // 04.05.2026 evening: «вверх вниз с нажатым шифтом всё
+      // выделялось».
+      anchorIfNull: cur,
     });
   };
 
