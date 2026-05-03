@@ -809,17 +809,24 @@ const SequenceView = forwardRef(function SequenceView({
     } catch { /* clipboard unavailable — silently no-op */ }
   };
 
-  // Close the context menu on any document click outside it. The
-  // menu container itself swallows its own clicks before they reach
-  // the document.
+  // Close the context menu on any pointer-down outside it. The menu
+  // container swallows its own pointerdown so clicks inside don't
+  // close it. Listen for `pointerdown` (not `mousedown`) — biolog
+  // 04.05.2026 evening: «клик в другое место должен сбрасывать
+  // контекстное меню. пока не сбрасывает». The SequenceView root
+  // calls e.preventDefault() on its own pointerdown, which suppresses
+  // the synthetic mousedown that would have followed; a mousedown
+  // listener therefore never fires when clicking back into the
+  // sequence area. pointerdown fires regardless and bubbles to
+  // document normally.
   useEffect(() => {
     if (!contextMenu) return undefined;
     const close = () => setContextMenu(null);
     const onKey = (e) => { if (e.key === "Escape") close(); };
-    document.addEventListener("mousedown", close);
+    document.addEventListener("pointerdown", close);
     document.addEventListener("keydown", onKey);
     return () => {
-      document.removeEventListener("mousedown", close);
+      document.removeEventListener("pointerdown", close);
       document.removeEventListener("keydown", onKey);
     };
   }, [contextMenu]);
