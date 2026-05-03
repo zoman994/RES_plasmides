@@ -22,9 +22,20 @@ export default function Topbar() {
   const isImporter = activeFullscreen === 'importer';
   const showImportButton = isDag && !isImporter;
 
-  const projectName = project
-    ? (project.name || STRINGS.topbar.untitled)
-    : STRINGS.topbar.projectFallback;
+  // Contextual title: in Importer with target=library the user is browsing /
+  // adding to their library and there's no project loaded — showing «—»
+  // (the projectFallback) confused biologs into thinking the screen was
+  // broken. Surface «Библиотека» so the topbar tells you where you are.
+  const activeNavEntry = navStack[navStack.length - 1];
+  const importerTarget = (isImporter && activeNavEntry?.payload?.target) || null;
+  let projectName;
+  if (isImporter && importerTarget === 'library') {
+    projectName = STRINGS.topbar.libraryTitle;
+  } else if (project) {
+    projectName = project.name || STRINGS.topbar.untitled;
+  } else {
+    projectName = STRINGS.topbar.projectFallback;
+  }
   const fileName = useStore(s => s.fileName);
 
   let saveStatus;
@@ -52,7 +63,11 @@ export default function Topbar() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        padding: '10px 16px',
+        // Padding tightened 10/16 → 4/16 (биолог 03.05.2026: «у нас
+        // сверху и снизу много места отжирается»). Buttons keep
+        // their own size; only the strip's vertical breathing room
+        // shrinks.
+        padding: '4px 16px',
         borderBottom: '0.5px solid var(--border-subtle, #e7e5e4)',
         background: 'var(--surface-1, #ffffff)',
         gap: 12,

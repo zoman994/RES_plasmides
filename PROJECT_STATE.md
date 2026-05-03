@@ -1,13 +1,13 @@
 # PROJECT_STATE.md — BodgeGene snapshot
 
-> **Версия:** **v0.6.4** — M-B.2 Importer Rework + post-acceptance polish (02.05.2026). Patch поверх v0.6.3 M-A.3; formal v0.7.0 release будет создан Chat'ом при финальной M-B.2 acceptance.
-> **Тесты:** 1003 (891 Vitest + 112 pytest), build clean (~570 KB / gzip 172 KB).
-> **Архитектура:** `docs/ARCHITECTURE_v2.md` v1.2 (~117 KB) · 48 ⚓ fundamental decisions в `ANCHORS.md` · sprint-level DEC в `DECISIONS.md` · DEC-IMP-13..18 + новые palette decisions ждут добавления Chat'ом в финализирующей сессии.
-> **Журнал версий:** `RELEASES.md` (текущие) + `docs/archive/SESSIONS_2026_Q2.md` (исторические сессии до v0.6) + `docs/archive/PROJECT_STATE_v0.6.3_pre_split.md` (полный pre-split snapshot с журналом 6 сессий апреля).
-> **Дизайн-система:** `docs/DESIGN_SYSTEM.md` §2.1 обновлена под feature palette A+v2 (warm sepia + 4 fixes) + shade-by-name + canonical-key. Mockup: `docs/design_assets/feature-palette-comparison.html`.
-> **Открытые TD:** см. `TECH_DEBT.md`. Новые в v0.6.4: TD-V05-IMPORTSTARTSCREEN-DELETE, TD-LIBRARY-CRUD-M-D.
-> **Открытые баги:** см. `BUGS.md` (V49 50-сек hang fixed в M-B.2 K4 lazy-mount; OPEN секция пуста).
-> **Текущая задача:** см. `CURRENT_TASK.md` (M-B.2 K1..K6 + 3 round'а post-acceptance polish закрыты; финальная visual acceptance + bump до v0.7.0 ждёт Chat'а).
+> **Версия:** **v0.7.0** — M-B finale: Catalog tree rewrite, folder-in-folder, auto-annotate cleanup (02.05.2026). Minor bump поверх v0.6.4 M-B.2 после ещё одного round'а biolog-driven visual polish.
+> **Тесты:** 997 (885 Vitest + 112 pytest), build clean (~570 KB).
+> **Архитектура:** `docs/ARCHITECTURE_v2.md` v1.2 (~117 KB) · 48 ⚓ fundamental decisions в `ANCHORS.md` · sprint-level DEC в `DECISIONS.md` · DEC-IMP-13..18 + DEC-DS-NN (A+v2 палитра) + новые DEC-CAT-01..04 (catalog tree дизайн: no-drilldown / depth-tint / hover-icons / folder-as-slash-path) ждут добавления Chat'ом.
+> **Журнал версий:** `RELEASES.md` (текущие) + `docs/archive/SESSIONS_2026_Q2.md` (исторические сессии до v0.6) + `docs/archive/PROJECT_STATE_v0.6.3_pre_split.md` (полный pre-split snapshot).
+> **Дизайн-система:** `docs/DESIGN_SYSTEM.md` §2.1 — feature palette A+v2 + shade-by-name + canonical-key (от v0.6.4). Catalog tree depth-tint + folder-as-path documentation pending под §2.2.
+> **Открытые TD:** см. `TECH_DEBT.md`. Новые в v0.7.0: TD-DRAG-DROP-LIBRARY-CARDS (drag уже-импортированных entries между папками), TD-PER-CDS-SIGNALIP (on-demand аннотация при клике на CDS region).
+> **Открытые баги:** см. `BUGS.md` — OPEN секция пуста.
+> **Текущая задача:** см. `CURRENT_TASK.md` — M-B finale закрыт. Следующий sprint: M-C (kickoff).
 
 ---
 

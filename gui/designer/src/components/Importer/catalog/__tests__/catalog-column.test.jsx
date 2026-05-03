@@ -2,8 +2,9 @@
  * Sprint M-B.2 K2 — CatalogColumn integration tests.
  *
  * Mounts CatalogColumn standalone (without the full Importer orchestrator)
- * and verifies the four sources, drill-down + back navigation, flat search
- * mode, paste textarea Ctrl+Enter shortcut, and the Этот проект empty path.
+ * and verifies the four sources, inline-collapsible nested groups (no
+ * drill-down / back navigation as of M-B.2 polish), flat search mode, paste
+ * textarea Ctrl+Enter shortcut, and the «+ Новая папка» stub.
  */
 import 'fake-indexeddb/auto';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -77,7 +78,7 @@ describe('M-B.2 K2 — CatalogColumn integration', () => {
     expect(screen.getByTestId('catalog-mine-empty')).toBeTruthy();
   });
 
-  it('2) Library entries with tags surface as sub-groups; drill-down click sets activeSource', async () => {
+  it('2) Library entries with tags surface as nested folder rows; click toggles inline expansion', async () => {
     useStore.setState((s) => {
       s.libraryEntries = {
         e1: { id: 'e1', kind: 'container', name: 'pUC-A', tags: ['vector'], addedAt: '2026-05-01', payload: { length: 2700, sequence: 'A'.repeat(2700), topology: 'circular', annotations: [] } },
@@ -85,24 +86,26 @@ describe('M-B.2 K2 — CatalogColumn integration', () => {
         e3: { id: 'e3', kind: 'container', name: 'sfGFP-cds', tags: [], addedAt: '2026-05-01', payload: { length: 720, sequence: 'A'.repeat(720), topology: 'linear', annotations: [] } },
       };
     });
-    const onSrc = vi.fn();
     render(
       <CatalogColumn
         query="" onQueryChange={() => {}}
-        activeSource={null} onActiveSourceChange={onSrc}
+        activeSource={null} onActiveSourceChange={() => {}}
         onSelectItem={() => {}}
         onFiles={() => {}} onPasteText={() => {}}
       />,
     );
-    // Two tag buckets + the untagged bucket.
+    // Two tag buckets + the untagged bucket render as nested collapsible folders.
     await waitFor(() => {
-      expect(screen.getByTestId('importer-catalog-mine-group-vector')).toBeTruthy();
+      expect(screen.getByTestId('importer-catalog-mine-folder-vector')).toBeTruthy();
     });
-    expect(screen.getByTestId('importer-catalog-mine-group-expression')).toBeTruthy();
-    expect(screen.getByTestId('importer-catalog-mine-group-__untagged__')).toBeTruthy();
+    expect(screen.getByTestId('importer-catalog-mine-folder-expression')).toBeTruthy();
+    expect(screen.getByTestId('importer-catalog-mine-folder-__untagged__')).toBeTruthy();
 
-    fireEvent.click(screen.getByTestId('importer-catalog-mine-group-vector'));
-    expect(onSrc).toHaveBeenCalledWith({ kind: 'mine', value: 'vector' });
+    // Items inside «vector» folder are hidden until the row is expanded.
+    expect(screen.queryByTestId('importer-catalog-item-e1')).toBeNull();
+    fireEvent.click(screen.getByTestId('importer-catalog-mine-folder-vector'));
+    expect(screen.getByTestId('importer-catalog-item-e1')).toBeTruthy();
+    expect(screen.getByTestId('importer-catalog-item-e2')).toBeTruthy();
   });
 
   it('3) flat search activates banner + filters across loaded items', async () => {
@@ -157,19 +160,36 @@ describe('M-B.2 K2 — CatalogColumn integration', () => {
     expect(onPasteText).toHaveBeenCalledWith('ATGCATGC');
   });
 
-  it('5) drilldown back button calls onActiveSourceChange(null)', () => {
-    const onSrc = vi.fn();
+  it('5) folder/file creation is Mine-only: «＋»/«⤓» on Mine header, none on Canvas/Demo/SnapGene', () => {
     render(
       <CatalogColumn
         query="" onQueryChange={() => {}}
-        activeSource={{ kind: 'demo', value: 'demo' }}
-        onActiveSourceChange={onSrc}
+        activeSource={null} onActiveSourceChange={() => {}}
         onSelectItem={() => {}}
         onFiles={() => {}} onPasteText={() => {}}
       />,
     );
-    fireEvent.click(screen.getByTestId('importer-catalog-back'));
-    expect(onSrc).toHaveBeenCalledWith(null);
+    // Mine — «＋» (new folder) and «⤓» (import file) live on the header.
+    expect(screen.getByTestId('importer-catalog-add-child-mine-root')).toBeTruthy();
+    expect(screen.getByTestId('importer-catalog-add-file-mine-root')).toBeTruthy();
+    // Canvas / Demo / SnapGene are read-only or driven by other flows —
+    // biolog: «запрети создавать папки и файлы внутри снапген демо и
+    // прочих кроме библиотеки».
+    expect(screen.queryByTestId('importer-catalog-add-child-canvas-root')).toBeNull();
+    expect(screen.queryByTestId('importer-catalog-add-child-demo-root')).toBeNull();
+    expect(screen.queryByTestId('importer-catalog-add-child-snapgene-root')).toBeNull();
+
+    // Folder creation flow on Mine: ＋ → inline input → Enter creates folder.
+    fireEvent.click(screen.getByTestId('importer-catalog-add-child-mine-root'));
+    const input = screen.getByTestId('importer-catalog-new-folder-input-mine');
+    expect(input).toBeTruthy();
+    fireEvent.change(input, { target: { value: 'Vectors-2026' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(screen.getByTestId('importer-catalog-mine-folder-Vectors-2026')).toBeTruthy();
+    // The new folder gets its own «＋» + «⤓» — Mine sub-folders stay
+    // creation-enabled too, up to MAX_INDENT_DEPTH.
+    expect(screen.getByTestId('importer-catalog-add-child-mine-Vectors-2026')).toBeTruthy();
+    expect(screen.getByTestId('importer-catalog-add-file-mine-Vectors-2026')).toBeTruthy();
   });
 
   it('6) drop file fires onFiles with the dropped File', async () => {

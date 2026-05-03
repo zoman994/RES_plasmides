@@ -9,7 +9,7 @@
  */
 export const IMPORTER_STRINGS = {
   toProjectTitle: 'Импорт в проект',
-  toLibraryTitle: 'Импорт в библиотеку',
+  toLibraryTitle: 'Библиотека',
 
   topbarButton: '+ Импорт',
 
@@ -30,12 +30,22 @@ export const IMPORTER_STRINGS = {
   catalogEmptyProject: 'нет контейнеров в проекте',
   catalogEmptyGroup: 'пусто',
   catalogLoading: 'загрузка…',
-  catalogBack: 'Назад',
   catalogUntaggedTag: 'Без тегов',
-  catalogMineFlatLabel: 'Все контейнеры',
   catalogFlatFound: (n) => `Найдено: ${n}`,
   catalogFlatEmpty: 'Ничего не найдено',
   catalogFlatTruncated: (total) => `Показаны первые 60 из ${total}.`,
+  catalogNewFolder: 'Новая папка',
+  catalogNewFolderPrompt: 'Имя новой папки:',
+  catalogAddFileToFolder: (folderName) => `Добавить файл в «${folderName}»`,
+  catalogFolderDropHint: (folderName) => `Импорт в «${folderName}»`,
+  catalogDeleteFolder: (folderName) => `Удалить папку «${folderName}»`,
+  catalogDeleteFolderConfirm: (folderName, itemCount) => itemCount > 0
+    ? `Удалить папку «${folderName}» вместе с её содержимым?\n\nВ папке: ${itemCount} контейнер(ов). Они будут перемещены в корень «Моя библиотека» (тег «${folderName}» снят с них). Сами контейнеры НЕ удаляются — это безопасная операция.\n\nЕсли хотите удалить контейнеры, делайте это отдельно по одному (× на строке контейнера).`
+    : `Удалить пустую папку «${folderName}»?`,
+  catalogDragHandleAria: 'Перетащить в другую папку',
+  catalogDeleteContainer: (name) => `Удалить контейнер «${name}»`,
+  catalogDeleteContainerConfirm: (name) =>
+    `Удалить контейнер «${name}» из библиотеки?\n\nВНИМАНИЕ: контейнеры могут использоваться в проектах. Если контейнер привязан к canvas — удаление сломает ссылки. Сначала отвяжите его от всех проектов, затем удаляйте.`,
 
   // Drop zone footer (inside CatalogColumn).
   catalogDropzoneIdle: 'Перетащите или выберите файл',
@@ -57,6 +67,32 @@ export const IMPORTER_STRINGS = {
   tabHistoryEmptyM_D: 'commits нет — появятся после M-D Container Window.',
   sequenceReadOnly: 'read-only',
   annotationsCount: (n) => `${n} аннотаций`,
+
+  // SequenceView settings popover (Sprint M-B.3 K7).
+  sequenceView: {
+    settingsButton: 'Настройки отображения',
+    settingsTitle: 'Настройки SequenceView',
+    showBottomStrandLabel: 'Нижняя цепь',
+    showBottomStrandHint: 'Показывать антисмысловую цепь под основной',
+    framesModeLabel: 'AA-рамки',
+    framesModeAuto: 'Авто (по покрытию)',
+    framesModeSingle: 'Только дом. CDS',
+    framesModeAll: 'Множественные рамки',
+    autoThresholdLabel: (n) => `Порог авто: ${(n * 100).toFixed(0)}%`,
+    autoThresholdHint:
+      'Покрытие dominant CDS, при котором переключаемся в single forward frame',
+    visibleFramesLabel: 'Видимые рамки',
+    visibleFramesHint:
+      'Влияет в режимах «Множественные» и «Авто» при низком покрытии',
+    primerStyleLabel: 'Праймеры',
+    primerStyleFilled: 'Закрашенные',
+    primerStyleOutline: 'Контурные',
+    reOrientationLabel: 'RE-ярлыки',
+    reOrientationVertical: 'Вертикально',
+    reOrientationHorizontal: 'Горизонтально',
+    resetButton: 'Сбросить к умолчаниям',
+    closeAria: 'Закрыть настройки',
+  },
 
   // SessionSummary
   sessionSummaryTitle: '✓ Уже добавлено в этой сессии',
@@ -92,8 +128,8 @@ export const IMPORTER_STRINGS = {
   actionCanvas: 'На канвас',
   actionCanvasNoProjectTitle: 'Откройте проект, чтобы добавить на канвас',
   actionLibrary: 'В библиотеку',
-  actionLibraryCopy: 'Скопировать в библиотеку',
   actionAnnotate: '📥 Авто-аннотация',
+  actionAnnotateStubHint: 'Скоро будет — пока работает только авто-аннотация при импорте.',
   actionDownloadGB: '💾 Скачать как .gb',
   actionDeleteSession: '🗑 Удалить из сессии',
   actionOverflowAria: 'Дополнительно',
@@ -144,17 +180,18 @@ export const IMPORTER_STRINGS = {
 
   // Confirm-flow hints (mode-agnostic)
   confirmBusy: 'Импорт…',
-  confirmHintProject: 'Будет добавлено в Library и в проект.',
-  confirmHintLibrary: 'Будет добавлено только в Library.',
+  // `confirmHintProject` / `confirmHintLibrary` removed 03.05.2026
+  // evening — биолог: «можем убрать эту панель внизу? и кнопки сделать
+  // парящими поверх канваса?». ActionsBar больше не показывает
+  // text-hint, primary button colour сам коммуницирует destination.
 
   busyParsing: 'Парсинг файлов…',
 
   // Confirm flow «skipped» toast still used (autoname Skip / parse fail).
   confirmSkipped: (n) => `Пропущено: ${n}`,
 
-  // autoAnnotate toggle in ActionsBar overflow.
-  actionAutoAnnotateOn: '✓ Автоматическая аннотация',
-  actionAutoAnnotateOff: '☐ Автоматическая аннотация',
+  // autoAnnotate toggle — moved from ActionsBar overflow into AnnotationsTab.
+  tabAnnotateOnImport: 'авто-аннотация при импорте',
 
   // K6 (M-B.1) — AutonameModal.
   autonameTitle: (baseName) => `«${baseName}» уже есть в Library`,

@@ -69,8 +69,13 @@ export function useImporterState({ mode } = {}) { // eslint-disable-line no-unus
   /**
    * Parse a batch of files in parallel, append to parsedItems, default
    * `autoAnnotate=true` per file. Failures land as `{ _fileName, _error }`.
+   *
+   * `opts.targetFolderTag` (optional) pre-fills `editedTags` for each parsed
+   * file with the folder's path — used by per-folder import buttons in the
+   * CatalogColumn so dropped files auto-land inside the target folder once
+   * confirmed to Library.
    */
-  const addFiles = useCallback(async (files) => {
+  const addFiles = useCallback(async (files, opts = {}) => {
     if (!files || files.length === 0) return [];
     const myToken = ++cancelToken.current;
     setBusy(true);
@@ -97,6 +102,20 @@ export function useImporterState({ mode } = {}) { // eslint-disable-line no-unus
       }
       return next;
     });
+    if (opts.targetFolderTag) {
+      setPerFileEdits(prev => {
+        const next = { ...prev };
+        for (const r of results) {
+          if (r._error) continue;
+          const cur = next[r._fileName] || {};
+          const tags = Array.isArray(cur.editedTags) ? cur.editedTags : [];
+          if (!tags.includes(opts.targetFolderTag)) {
+            next[r._fileName] = { ...cur, editedTags: [...tags, opts.targetFolderTag] };
+          }
+        }
+        return next;
+      });
+    }
     setBusy(false);
     return results;
   }, []);
@@ -124,6 +143,12 @@ export function useImporterState({ mode } = {}) { // eslint-disable-line no-unus
       // Library entry), so count them here — without this the column
       // shows 0 and biolog thinks the entry is empty.
       _fromFileCount: annotations.length,
+      // Preserve source library-entry id for Mine items so ActionsBar can
+      // hide «В библиотеку» — биолог: «всё что в библиотеке НЕ ИМЕЕТ
+      // этой клавиши, импорт со стороны — имеет». For Demo/SnapGene the
+      // item.id is a synthetic catalog id (not in libraryEntries) — we
+      // only carry it when source is the user's own library.
+      _libraryEntryId: item._source === 'mine' && item.id ? item.id : undefined,
     };
     setParsedItems([next]);
     setCurrentIdxState(0);

@@ -319,6 +319,111 @@ body {
   flex: 1;
   min-height: 0;
 }
+/* Theme-aware overrides for the v0.5 AnnotationEditor add/edit forms.
+   The legacy code uses Tailwind defaults (white bg, gray-200 border,
+   text-gray-400 …) which become invisible on the dark theme. Scope the
+   fix to .importer-annotation-editor-wrap so FragmentEditor (which still
+   relies on its original light-theme styling) is unaffected. */
+.importer-annotation-editor-wrap input,
+.importer-annotation-editor-wrap select {
+  background: var(--surface-1);
+  color: var(--text-primary);
+  border-color: var(--border-default);
+}
+.importer-annotation-editor-wrap input::placeholder {
+  color: var(--text-tertiary);
+}
+.importer-annotation-editor-wrap select option,
+.importer-annotation-editor-wrap select optgroup {
+  background: var(--surface-1);
+  color: var(--text-primary);
+}
+.importer-annotation-editor-wrap .bg-gray-50 { background: var(--surface-2); }
+.importer-annotation-editor-wrap .border-gray-200 { border-color: var(--border-subtle); }
+.importer-annotation-editor-wrap .bg-gray-100 { background: var(--surface-2); }
+.importer-annotation-editor-wrap .text-gray-300,
+.importer-annotation-editor-wrap .text-gray-400,
+.importer-annotation-editor-wrap .text-gray-500 { color: var(--text-tertiary); }
+.importer-annotation-editor-wrap .text-gray-700 { color: var(--text-primary); }
+.importer-annotation-editor-wrap .hover\:text-gray-600:hover { color: var(--text-secondary); }
+.importer-annotation-editor-wrap .hover\:bg-gray-50:hover { background: var(--surface-2); }
+.importer-annotation-editor-wrap .bg-blue-50 { background: color-mix(in srgb, var(--accent-500) 15%, transparent); }
+.importer-annotation-editor-wrap .bg-blue-100 { background: color-mix(in srgb, var(--accent-500) 22%, transparent); color: var(--accent-500); }
+.importer-annotation-editor-wrap .text-blue-600 { color: var(--accent-500); }
+.importer-annotation-editor-wrap .hover\:text-blue-800:hover { color: var(--accent-500); filter: brightness(1.15); }
+.importer-annotation-editor-wrap .bg-amber-100 { background: color-mix(in srgb, var(--accent-500) 22%, transparent); color: var(--accent-500); }
+.importer-annotation-editor-wrap .text-amber-600 { color: var(--accent-500); }
+.importer-annotation-editor-wrap .bg-blue-600 { background: var(--accent-500); color: var(--surface-1); }
+.importer-annotation-editor-wrap .hover\:bg-blue-700:hover { background: var(--accent-500); filter: brightness(1.1); }
+
+/* Catalog item rows: bg + hover lives on the wrapper `.item-row` div now
+   that the item splits into [click button | × delete]. The button itself
+   stays transparent so hover state belongs to the whole row. */
+
+/* Folder action icons: «＋» (new sub-folder), «⤓» (import file), «×» (delete
+   folder/container). Always visible at low opacity so biolog discovers them
+   by sight — on row hover they brighten, focus/hover give accent color
+   («×» turns danger-red instead). */
+.importer-catalog-add-child,
+.importer-catalog-add-file,
+.importer-catalog-delete {
+  opacity: 0.5;
+  transition: opacity 120ms ease-out, color 120ms ease-out;
+}
+.importer-catalog-nested-row:hover .importer-catalog-add-child,
+.importer-catalog-nested-row:hover .importer-catalog-add-file,
+.importer-catalog-nested-row:hover .importer-catalog-delete,
+.importer-catalog-group-header:hover .importer-catalog-add-child,
+.importer-catalog-group-header:hover .importer-catalog-add-file,
+.importer-catalog-item-row:hover .importer-catalog-delete,
+.importer-catalog-add-child:focus-visible,
+.importer-catalog-add-file:focus-visible,
+.importer-catalog-delete:focus-visible {
+  opacity: 1;
+}
+.importer-catalog-add-child:hover,
+.importer-catalog-add-file:hover {
+  color: var(--accent-500) !important;
+}
+.importer-catalog-delete:hover {
+  color: var(--danger-fg, #b91c1c) !important;
+}
+/* Item row wrapper provides the depth-tinted bg + hover state for the
+   delete-«×» (item is now a wrapper div around button + delete-button). */
+.importer-catalog-item-row {
+  background: var(--depth-bg, transparent);
+}
+.importer-catalog-item-row:hover {
+  background: var(--surface-2);
+}
+.importer-catalog-item-row:hover .importer-catalog-item > span:nth-child(2) {
+  color: var(--text-primary);
+}
+/* Drag handle: subtle by default (opacity 0.4), brighter on row hover so
+   biolog notices «hold here to drag». Keep cursor: grab → grabbing for
+   the standard OS feel. The handle uses letter-spacing -2px so the two
+   ⋮ chars draw close enough to read as a single «grip dots» glyph. */
+.importer-catalog-drag-handle {
+  opacity: 0.4;
+  letter-spacing: -2px;
+  transition: opacity 120ms ease-out, color 120ms ease-out;
+}
+.importer-catalog-item-row:hover .importer-catalog-drag-handle,
+.importer-catalog-drag-handle:focus-visible {
+  opacity: 1;
+}
+.importer-catalog-drag-handle:hover {
+  color: var(--accent-500) !important;
+}
+.importer-catalog-drag-handle:active {
+  cursor: grabbing;
+}
+/* Drop hover state — folder/group row glows so biolog sees exactly where
+   the dropped files will land. Outline + bg via inline style. */
+.importer-catalog-nested-row[data-folder-drop-hover="true"],
+.importer-catalog-group-header[data-folder-drop-hover="true"] {
+  /* Reserved for future visual tuning. */
+}
 .ss-view-all {
   font-size: 13px;
   color: var(--ss-text-info);

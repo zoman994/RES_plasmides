@@ -81,6 +81,7 @@ export const STRINGS = {
   topbar: {
     projectFallback: '—',
     untitled: 'Untitled',
+    libraryTitle: 'Библиотека',
     backTitle: 'Back',
     backAriaPop: 'Back',
     backAriaClose: 'Close project',
@@ -186,10 +187,6 @@ export const STRINGS = {
     underConstructionFallbackName: 'Section',
     underConstructionTitle: (name) => `${name} — Under construction`,
     underConstructionSubtitle: (milestone) => `Coming in ${milestone}.`,
-  },
-
-  app: {
-    dropOverlay: 'Drop file here (M-B feature preview)',
   },
 
   library: {

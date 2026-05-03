@@ -1,0 +1,1399 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>BodgeGene — старт сборки (прототип v2)</title>
+<style>
+  :root {
+    /* фоновая палитра — тёплая бумажная, как в feature-palette */
+    --bg: #f5f3ed;
+    --panel: #ffffff;
+    --border: #d8d4c8;
+    --border-strong: #b8b0a0;
+    --text: #1a1a1a;
+    --text-muted: #6b6658;
+    --text-faint: #9a9484;
+    --accent: #2d6a4f;
+    --accent-soft: #d5e8dc;
+    --warn: #c9722b;
+    --warn-soft: #fbe6d2;
+    --info: #2c5d8f;
+    --info-soft: #d8e6f2;
+    --hover: #efebe0;
+    --feature-stroke: #3A2F1F;
+
+    /* feature colors (из feature-palette.js) */
+    --c-promoter: #F2C84B;
+    --c-ori: #E8B333;
+    --c-terminator: #D97B3B;
+    --c-cds: #C8D570;
+    --c-resistance: #9BC07C;
+    --c-reporter: #7CB49E;
+    --c-tag: #E091A2;
+    --c-his: #B884B8;
+    --c-misc: #EEE7D5;
+    --c-primer: #9EBAD9;
+    --c-operator: #6DA4C4;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 13px;
+    line-height: 1.45;
+  }
+  .frame {
+    max-width: 1200px;
+    margin: 16px auto;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .titlebar {
+    padding: 8px 14px;
+    background: #ede9dc;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .titlebar .dot { width: 9px; height: 9px; border-radius: 50%; }
+  .titlebar .dot.r { background: #e06c75; }
+  .titlebar .dot.y { background: #d8b14a; }
+  .titlebar .dot.g { background: #6da46d; }
+  .tabs {
+    display: flex;
+    background: #e8e4d6;
+    border-bottom: 1px solid var(--border);
+    padding: 0 12px;
+    flex-wrap: wrap;
+  }
+  .tab {
+    padding: 10px 14px;
+    border: none;
+    background: none;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--text-muted);
+    border-bottom: 2px solid transparent;
+    font-family: inherit;
+  }
+  .tab.active {
+    color: var(--text);
+    border-bottom-color: var(--accent);
+    font-weight: 500;
+  }
+  .tab:hover { background: var(--hover); }
+  .legend {
+    padding: 10px 18px;
+    background: #faf8ef;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .stage {
+    padding: 20px;
+    background: var(--bg);
+    min-height: 660px;
+  }
+
+  /* ============ ГЛАВНОЕ ПОЛЕ (сверху, во всю ширину) ============ */
+  .primary {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 18px;
+    margin-bottom: 14px;
+  }
+  .primary.compact {
+    padding: 10px 16px;
+  }
+  .primary.compact .actions-bar {
+    display: none;
+  }
+  .compact-hint {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    color: var(--text-muted);
+    font-size: 12px;
+  }
+  .compact-hint .left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .compact-hint .left .icon { font-size: 14px; opacity: 0.6; }
+  .compact-hint .kbd {
+    background: #ededea;
+    border: 1px solid var(--border);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-family: "SF Mono", Monaco, Consolas, monospace;
+    font-size: 10px;
+  }
+  .actions-bar {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+  }
+  .actions-bar.hidden { display: none; }
+
+  /* checkbox-toggle вместо пунктирной линии */
+  .annot-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    color: var(--text-muted);
+    cursor: pointer;
+    user-select: none;
+  }
+  .annot-check input { margin: 0; cursor: pointer; }
+  .annot-check:hover { color: var(--text); }
+  .primary-body {
+    display: grid;
+    grid-template-columns: 1fr 280px;
+    gap: 14px;
+    align-items: stretch;
+  }
+  .input-zone {
+    border: 2px dashed var(--border-strong);
+    border-radius: 6px;
+    background: #fafaf3;
+    transition: all 0.15s;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 200px;
+  }
+  .input-zone.over {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+  .input-zone.filled {
+    border-style: solid;
+    border-color: var(--border);
+    background: #fff;
+  }
+  .input-empty {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    color: var(--text-muted);
+    padding: 30px;
+    text-align: center;
+  }
+  .input-empty .big {
+    font-size: 14px;
+    color: var(--text);
+    font-weight: 500;
+  }
+  .input-empty .small {
+    font-size: 11px;
+    color: var(--text-faint);
+  }
+  .input-empty .kbd {
+    background: #ededea;
+    border: 1px solid var(--border);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-family: "SF Mono", Monaco, Consolas, monospace;
+    font-size: 10px;
+  }
+  .input-textarea {
+    width: 100%;
+    flex: 1;
+    border: none;
+    background: transparent;
+    padding: 14px;
+    font-family: "SF Mono", Monaco, Consolas, monospace;
+    font-size: 12px;
+    resize: none;
+    color: var(--text);
+    outline: none;
+    line-height: 1.5;
+  }
+  .input-status {
+    border-top: 1px solid var(--border);
+    padding: 8px 12px;
+    background: #fafaf3;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+  .input-status .filtered {
+    color: var(--text-faint);
+    font-style: italic;
+  }
+  .input-status .iupac-warn {
+    color: var(--warn);
+  }
+  .input-status .invalid-warn {
+    color: #c14545;
+  }
+  .input-status .valid {
+    color: var(--accent);
+  }
+
+  .meta-zone {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .meta-field label {
+    display: block;
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .meta-field input {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 7px 10px;
+    font-size: 13px;
+    background: #fff;
+    color: var(--text);
+    font-family: inherit;
+  }
+  .meta-field input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-soft);
+  }
+  .meta-field .auto-hint {
+    font-size: 10px;
+    color: var(--text-faint);
+    margin-top: 3px;
+    font-style: italic;
+  }
+  .meta-info-card {
+    background: #fafaf3;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 10px 12px;
+    font-size: 12px;
+  }
+  .meta-info-card .row {
+    display: flex;
+    justify-content: space-between;
+    padding: 2px 0;
+  }
+  .meta-info-card .row .k { color: var(--text-muted); }
+  .meta-info-card .row .v { font-weight: 500; }
+
+  /* toggle топологии */
+  .topo-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+  }
+  .topo-toggle-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    flex: 1;
+  }
+  .topo-btn {
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    background: #fff;
+    cursor: pointer;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    font-family: inherit;
+    transition: all 0.1s;
+    padding: 0;
+  }
+  .topo-btn:hover {
+    background: var(--hover);
+    border-color: var(--border-strong);
+  }
+  .topo-btn.active {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  /* поле начала кольцевания */
+  .origin-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+  }
+  .origin-row .lbl {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    flex: 1;
+  }
+  .origin-row input[type="number"] {
+    width: 70px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 4px 6px;
+    font-size: 12px;
+    background: #fff;
+    font-family: "SF Mono", Monaco, Consolas, monospace;
+    text-align: right;
+  }
+  .origin-row input[type="number"]:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+  .origin-hint {
+    font-size: 10px;
+    color: var(--text-faint);
+    margin-top: 4px;
+    line-height: 1.4;
+    font-style: italic;
+  }
+  /* toast после добавления на канвас */
+  .toast {
+    position: fixed;
+    bottom: 18px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--text);
+    color: #fff;
+    padding: 10px 16px;
+    border-radius: 6px;
+    font-size: 12px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    z-index: 100;
+    max-width: 600px;
+  }
+  .toast .added {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .toast .added-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .toast .added-item .check {
+    color: #9BC07C;
+    font-weight: 600;
+  }
+  .toast .open-btn {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+    white-space: nowrap;
+  }
+  .toast .open-btn:hover { background: #245a42; }
+  .toast .close {
+    background: none;
+    border: none;
+    color: rgba(255,255,255,0.5);
+    cursor: pointer;
+    font-size: 16px;
+    padding: 0 4px;
+    line-height: 1;
+  }
+  .toast .close:hover { color: #fff; }
+
+  /* действия */
+  .actions {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .btn {
+    border: 1px solid var(--border);
+    background: #fff;
+    padding: 8px 14px;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    color: var(--text);
+    font-family: inherit;
+    transition: background 0.1s;
+  }
+  .btn:hover { background: var(--hover); }
+  .btn.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+    font-weight: 500;
+  }
+  .btn.primary:hover { background: #245a42; }
+  .btn.disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+  .btn-dropdown {
+    position: relative;
+  }
+  .btn-dropdown .arrow {
+    margin-left: 4px;
+    font-size: 9px;
+    opacity: 0.6;
+  }
+
+  /* ============ КАТАЛОГ (снизу, свёрнут до строки) ============ */
+  .catalog-wrap {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .catalog-toggle {
+    padding: 14px 18px;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    user-select: none;
+  }
+  .catalog-toggle:hover { background: #fafaf3; }
+  .catalog-toggle .label {
+    font-weight: 600;
+    font-size: 13px;
+  }
+  .catalog-toggle .meta {
+    color: var(--text-muted);
+    font-weight: normal;
+    margin-left: 8px;
+    font-size: 12px;
+  }
+  .catalog-toggle .chev {
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+  .catalog-body {
+    border-top: 1px solid var(--border);
+    display: none;
+    height: 420px;
+  }
+  .catalog-body.open { display: flex; }
+  .tree {
+    width: 220px;
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    background: #fafaf3;
+  }
+  .tree-search {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .tree-search input {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 5px 8px;
+    font-size: 11px;
+    background: #fff;
+    font-family: inherit;
+  }
+  .tree-section { padding: 6px 0; }
+  .tree-section-header {
+    padding: 4px 14px;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .tree-item {
+    padding: 5px 14px;
+    font-size: 12px;
+    cursor: pointer;
+    color: var(--text);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .tree-item:hover { background: var(--hover); }
+  .tree-item.active {
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-weight: 500;
+  }
+  .tree-item .count {
+    font-size: 10px;
+    color: var(--text-faint);
+  }
+  .tree-item.active .count { color: var(--accent); }
+
+  /* список карточек */
+  .items {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 10px;
+    align-content: start;
+  }
+  .empty-cat {
+    grid-column: 1 / -1;
+    padding: 60px 30px;
+    text-align: center;
+    color: var(--text-faint);
+    font-size: 12px;
+  }
+  .card {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 12px;
+    cursor: pointer;
+    background: #fff;
+    transition: all 0.1s;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  .card:hover {
+    border-color: var(--accent);
+    box-shadow: 0 2px 6px rgba(45,106,79,0.12);
+    transform: translateY(-1px);
+  }
+  .card .mini-map {
+    flex-shrink: 0;
+  }
+  .card .info {
+    flex: 1;
+    min-width: 0;
+  }
+  .card .name {
+    font-weight: 600;
+    font-size: 12px;
+    margin-bottom: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .card .desc {
+    color: var(--text-muted);
+    font-size: 11px;
+    margin-bottom: 6px;
+    line-height: 1.35;
+  }
+  .card .row {
+    display: flex;
+    gap: 10px;
+    font-size: 10px;
+    color: var(--text-faint);
+    align-items: center;
+  }
+  .card .row .pill {
+    background: rgba(0,0,0,0.04);
+    padding: 1px 5px;
+    border-radius: 8px;
+    font-family: "SF Mono", Monaco, Consolas, monospace;
+  }
+  .card .row .badge {
+    font-size: 9px;
+    padding: 1px 5px;
+    border-radius: 8px;
+    background: var(--info-soft);
+    color: var(--info);
+  }
+  .card .row .badge.user {
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+  .card .row .res-icon {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--c-resistance);
+    border: 1px solid var(--feature-stroke);
+    display: inline-block;
+  }
+
+  /* multi-file */
+  .multi-bar {
+    background: var(--warn-soft);
+    color: var(--warn);
+    padding: 10px 14px;
+    border-radius: 4px;
+    font-size: 12px;
+    margin-bottom: 12px;
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  .multi-list {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    margin-bottom: 12px;
+    background: #fff;
+  }
+  .multi-row {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 10px;
+    padding: 9px 14px;
+    align-items: center;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+  }
+  .multi-row:last-child { border-bottom: none; }
+  .multi-row .name { font-weight: 500; }
+  .multi-row .name[contenteditable="true"] {
+    cursor: text;
+    padding: 1px 5px;
+    margin: -1px -5px;
+    border-radius: 3px;
+    outline: none;
+    transition: background 0.1s;
+  }
+  .multi-row .name[contenteditable="true"]:hover {
+    background: var(--hover);
+  }
+  .multi-row .name[contenteditable="true"]:hover::after {
+    content: ' ✎';
+    color: var(--text-faint);
+    font-size: 10px;
+  }
+  .multi-row .name[contenteditable="true"]:focus {
+    background: #fff;
+    box-shadow: 0 0 0 2px var(--accent-soft);
+    border: 1px solid var(--accent);
+  }
+  .multi-row .meta { color: var(--text-muted); font-size: 11px; }
+  .multi-row .annot {
+    font-size: 11px;
+    color: var(--text-muted);
+    cursor: help;
+  }
+
+  /* загруженный файл — карточка */
+  .file-card {
+    background: #fafaf3;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 16px;
+    display: flex;
+    gap: 14px;
+    align-items: center;
+  }
+  .file-card .info { flex: 1; }
+  .file-card .info .title { font-weight: 600; font-size: 14px; margin-bottom: 3px; }
+  .file-card .info .meta { color: var(--text-muted); font-size: 12px; }
+
+  /* подвал-аннотация */
+  .annot {
+    margin-top: 14px;
+    padding: 12px 16px;
+    background: #ede9dc;
+    border-left: 3px solid var(--accent);
+    font-size: 12px;
+    color: var(--text-muted);
+    border-radius: 0 4px 4px 0;
+  }
+  .annot strong { color: var(--text); }
+</style>
+</head>
+<body>
+
+<div class="frame">
+  <div class="titlebar">
+    <div class="dot r"></div><div class="dot y"></div><div class="dot g"></div>
+    <span>BodgeGene — старт сборки (прототип v2, не финальный визуал)</span>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" data-state="empty">1. Пустой старт</button>
+    <button class="tab" data-state="catalog">2. Каталог раскрыт</button>
+    <button class="tab" data-state="single">3. Один файл загружен</button>
+    <button class="tab" data-state="multi">4. Пять файлов</button>
+    <button class="tab" data-state="seq-clean">5. Текст чистый</button>
+    <button class="tab" data-state="seq-dirty">6. Текст с цифрами и пробелами</button>
+    <button class="tab" data-state="seq-iupac">7. Текст с IUPAC</button>
+    <button class="tab" data-state="seq-circular">8. Текст → кольцевали</button>
+    <button class="tab" data-state="toast">9. Toast: 2 на канвасе</button>
+  </div>
+
+  <div class="legend" id="legend"></div>
+
+  <div class="stage">
+
+    <!-- ============ ГЛАВНОЕ ПОЛЕ ============ -->
+    <div class="primary" id="primary">
+      <div class="primary-body" id="primaryBody"></div>
+      <div class="actions-bar" id="actionsBar">
+        <div class="actions" id="actions"></div>
+      </div>
+    </div>
+
+    <!-- ============ КАТАЛОГ ============ -->
+    <div class="catalog-wrap">
+      <div class="catalog-toggle" id="catToggle">
+        <div>
+          <span class="label">Готовые плазмиды и запчасти</span>
+          <span class="meta">35 моих · 2822 SnapGene</span>
+        </div>
+        <span class="chev" id="catChev">▾</span>
+      </div>
+      <div class="catalog-body" id="catBody">
+        <div class="tree">
+          <div class="tree-search">
+            <input type="text" placeholder="Поиск по имени, длине, типу…">
+          </div>
+          <div class="tree-section">
+            <div class="tree-section-header">Учебные / demo</div>
+            <div class="tree-item" data-cat="demo">Базовые плазмиды <span class="count">10</span></div>
+          </div>
+          <div class="tree-section">
+            <div class="tree-section-header">Моя библиотека</div>
+            <div class="tree-item" data-cat="my-prom">Промоторы <span class="count">12</span></div>
+            <div class="tree-item" data-cat="my-cds">CDS <span class="count">8</span></div>
+            <div class="tree-item" data-cat="my-term">Терминаторы <span class="count">5</span></div>
+            <div class="tree-item" data-cat="my-rep">Репортёры <span class="count">3</span></div>
+            <div class="tree-item" data-cat="my-tag">Теги и сигналы <span class="count">7</span></div>
+          </div>
+          <div class="tree-section">
+            <div class="tree-section-header">Каталог SnapGene</div>
+            <div class="tree-item" data-cat="cat-back">Backbones <span class="count">847</span></div>
+            <div class="tree-item" data-cat="cat-rep">Reporter constructs <span class="count">234</span></div>
+            <div class="tree-item" data-cat="cat-exp">Expression vectors <span class="count">612</span></div>
+            <div class="tree-item" data-cat="cat-clone">Cloning vectors <span class="count">498</span></div>
+            <div class="tree-item" data-cat="cat-crispr">CRISPR <span class="count">183</span></div>
+            <div class="tree-item" data-cat="cat-misc">Прочее <span class="count">448</span></div>
+          </div>
+        </div>
+        <div class="items" id="items">
+          <div class="empty-cat">Выбери категорию слева</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="annot" id="annot"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast" style="display:none;"></div>
+
+<script>
+/* ===========================================================
+   МИНИ-КАРТА ПЛАЗМИДЫ (SVG circle + arcs по features)
+   =========================================================== */
+function miniMap(length, features, isCircular = true, size = 64) {
+  const cx = size / 2, cy = size / 2;
+  const r = size / 2 - 5;
+  const stroke = '#3A2F1F';
+  // толщина пропорционально размеру: 6 px при size=64, 14 px при size=180
+  const w = Math.max(4, Math.round(size / 13));
+
+  function arc(start, end, color, name) {
+    const tip = name ? `<title>${name} · ${start}–${end} п.н.</title>` : `<title>${start}–${end} п.н.</title>`;
+    if (!isCircular) {
+      const x1 = (start / length) * (size - 8) + 4;
+      const x2 = (end / length) * (size - 8) + 4;
+      return `<g style="cursor:help;">${tip}<rect x="${x1}" y="${cy - w/2}" width="${x2 - x1}" height="${w}" fill="${color}" stroke="${stroke}" stroke-width="0.7"/></g>`;
+    }
+    const a1 = (start / length) * 2 * Math.PI - Math.PI / 2;
+    const a2 = (end / length) * 2 * Math.PI - Math.PI / 2;
+    const x1 = cx + r * Math.cos(a1), y1 = cy + r * Math.sin(a1);
+    const x2 = cx + r * Math.cos(a2), y2 = cy + r * Math.sin(a2);
+    const large = (a2 - a1) > Math.PI ? 1 : 0;
+    return `<g style="cursor:help;">${tip}<path d="M ${x1.toFixed(2)} ${y1.toFixed(2)} A ${r} ${r} 0 ${large} 1 ${x2.toFixed(2)} ${y2.toFixed(2)}" stroke="${color}" stroke-width="${w}" fill="none" stroke-linecap="butt"/></g>`;
+  }
+
+  const empty = !features || features.length === 0;
+  let arcs;
+  if (empty) {
+    // один сплошной блок-аннотация: вся последовательность как одно целое
+    if (isCircular) {
+      arcs = `<g style="cursor:help;"><title>${length} п.н. · аннотации одним блоком</title>
+        <circle cx="${cx}" cy="${cy}" r="${r}" stroke="#C4B8A8" stroke-width="${w}" fill="none"/>
+      </g>`;
+    } else {
+      arcs = `<g style="cursor:help;"><title>${length} п.н. · аннотация одним блоком</title>
+        <rect x="4" y="${cy - w/2}" width="${size - 8}" height="${w}" fill="#C4B8A8" stroke="${stroke}" stroke-width="0.5"/>
+      </g>`;
+    }
+  } else {
+    arcs = features.map(f => arc(f.start, f.end, f.color, f.name)).join('');
+  }
+
+  if (isCircular) {
+    return `<svg class="mini-map" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+      <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${stroke}" stroke-width="0.5" opacity="0.4"/>
+      ${arcs}
+    </svg>`;
+  } else {
+    return `<svg class="mini-map" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+      <line x1="4" y1="${cy}" x2="${size - 4}" y2="${cy}" stroke="${stroke}" stroke-width="0.5" opacity="0.4"/>
+      ${arcs}
+    </svg>`;
+  }
+}
+
+const C = {
+  promoter: '#F2C84B', ori: '#E8B333', terminator: '#D97B3B',
+  cds: '#C8D570', resistance: '#9BC07C', reporter: '#7CB49E',
+  tag: '#E091A2', primer: '#9EBAD9', operator: '#6DA4C4',
+};
+
+/* ===========================================================
+   ДАННЫЕ ДЛЯ СОСТОЯНИЙ
+   =========================================================== */
+const catalogData = {
+  demo: [
+    { name: 'pUC19', desc: 'Классический клонирующий вектор', size: '2686 п.н.', circ: true, badge: 'demo', badgeClass: '',
+      features: [
+        { start: 100, end: 460, color: C.cds, name: 'lacZα' },
+        { start: 1626, end: 2486, color: C.resistance, name: 'AmpR' },
+        { start: 867, end: 1551, color: C.ori, name: 'pMB1 ori' }
+      ] },
+    { name: 'pET28a', desc: 'T7 expression, His-tag, KanR', size: '5369 п.н.', circ: true, badge: 'demo', badgeClass: '',
+      features: [
+        { start: 0, end: 250, color: C.promoter, name: 'T7 promoter' },
+        { start: 200, end: 800, color: C.cds, name: 'MCS + 6×His' },
+        { start: 3700, end: 4500, color: C.resistance, name: 'KanR' },
+        { start: 4900, end: 5300, color: C.ori, name: 'pBR322 ori' }
+      ] },
+    { name: 'pcDNA3.1(+)', desc: 'CMV-промотор, mammalian, AmpR/NeoR', size: '5428 п.н.', circ: true, badge: 'demo', badgeClass: '',
+      features: [
+        { start: 209, end: 863, color: C.promoter, name: 'CMV promoter' },
+        { start: 1300, end: 2100, color: C.resistance, name: 'NeoR/KanR' },
+        { start: 3700, end: 4540, color: C.resistance, name: 'AmpR' },
+        { start: 4700, end: 5300, color: C.ori, name: 'ColE1 ori' }
+      ] },
+  ],
+  'my-prom': [
+    { name: 'CMV', desc: 'cytomegalovirus IE, mammalian', size: '589 п.н.', circ: false, badge: 'моё', badgeClass: 'user',
+      features: [{ start: 0, end: 589, color: C.promoter, name: 'CMV promoter' }] },
+    { name: 'EF-1α', desc: 'human elongation factor', size: '1182 п.н.', circ: false, badge: 'моё', badgeClass: 'user',
+      features: [{ start: 0, end: 1182, color: C.promoter, name: 'EF-1α promoter' }] },
+    { name: 'T7', desc: 'фаговый, in vitro transcription', size: '17 п.н.', circ: false, badge: 'моё', badgeClass: 'user',
+      features: [{ start: 0, end: 17, color: C.promoter, name: 'T7 promoter' }] },
+    { name: 'lac', desc: 'IPTG-индуцируемый, E. coli', size: '37 п.н.', circ: false, badge: 'моё', badgeClass: 'user',
+      features: [{ start: 0, end: 37, color: C.promoter, name: 'lac promoter' }] },
+    { name: 'tac', desc: 'гибрид trp+lac, сильный', size: '46 п.н.', circ: false, badge: 'моё', badgeClass: 'user',
+      features: [{ start: 0, end: 46, color: C.promoter, name: 'tac promoter' }] },
+    { name: 'AOX1', desc: 'methanol-индуцируемый, Pichia', size: '946 п.н.', circ: false, badge: 'моё', badgeClass: 'user',
+      features: [{ start: 0, end: 946, color: C.promoter, name: 'AOX1 promoter' }] },
+    { name: 'gpdA', desc: 'для Aspergillus, конститутивный', size: '1131 п.н.', circ: false, badge: 'моё', badgeClass: 'user',
+      features: [{ start: 0, end: 1131, color: C.promoter, name: 'gpdA promoter' }] },
+    { name: 'GAP', desc: 'GAPDH, конститутивный', size: '486 п.н.', circ: false, badge: 'моё', badgeClass: 'user',
+      features: [{ start: 0, end: 486, color: C.promoter, name: 'GAP promoter' }] },
+  ],
+};
+
+/* ===========================================================
+   СОСТОЯНИЯ ИНТЕРФЕЙСА
+   =========================================================== */
+const states = {
+  empty: {
+    legend: 'Пустой стартовый экран. Главное действие — большое поле сверху во всю ширину. Каталог свёрнут до строки и не отвлекает. Поле ввода и поле «Имя» сразу видны. Кнопки действий — три равноценных пути: на канвас, в библиотеку, аннотировать.',
+    annot: '<strong>Структура.</strong> Левая зона ввода занимает основное пространство, справа — узкая колонка с именем и метаданными. Никакой симметрии, никакого drag-паттерна. Каталог — отдельная строка снизу, разворачивается по клику.',
+    title: 'Начать с последовательности',
+    hint: 'Вставьте текст или перетащите файл',
+    inputZone: `<div class="input-empty">
+        <div style="font-size:32px;opacity:0.4;line-height:1;">⬇</div>
+        <div class="big">Перетащите файл сюда</div>
+        <div class="small">.dna · .gb · .gbk · .fasta — формат определится сам</div>
+        <div class="small" style="margin-top:8px;">или вставьте последовательность в это поле <span class="kbd">Ctrl+V</span></div>
+      </div>`,
+    metaZone: `<div class="meta-field">
+        <label>Имя</label>
+        <input type="text" placeholder="part_1">
+        <div class="auto-hint">если оставить пустым — присвоится автоматически</div>
+      </div>`,
+    actionsLeft: '',
+    actions: ``,
+    hideActions: true,
+    catOpen: false, catCat: null,
+  },
+
+  catalog: {
+    legend: 'Каталог раскрыт. Карточки с миниатюрами плазмид и запчастей. Цветные дуги на миниатюрах = регионы из аннотаций. Hover-эффект усиленный (тень, поднятие): явное «нажми меня», не «потяни».',
+    annot: '<strong>Карточки каталога.</strong> Слева мини-карта (SVG, без подписей — только цветные регионы). Справа имя, описание, размер. Клик карточки — превью элемента (отдельный экран, проектируется следующей сессией). Drag-and-drop запчасти на канвас работает из активной сборки, на стартовом экране сборки ещё нет — drag не нужен.',
+    title: 'Начать с последовательности',
+    hint: 'Вставьте текст или перетащите файл',
+    inputZone: `<div class="input-empty">
+        <div style="font-size:32px;opacity:0.4;line-height:1;">⬇</div>
+        <div class="big">Перетащите файл сюда</div>
+        <div class="small">.dna · .gb · .gbk · .fasta</div>
+      </div>`,
+    metaZone: `<div class="meta-field">
+        <label>Имя</label>
+        <input type="text" placeholder="part_1">
+      </div>`,
+    actionsLeft: '',
+    actions: ``,
+    compact: true,
+    hideActions: true,
+    catOpen: true, catCat: 'my-prom',
+  },
+
+  single: {
+    legend: 'Загружен один файл pUC19_with_EGFP.dna. В мета-карточке справа: топология `◯` (взято из файла), длина 5642 п.н., features 12+6, начало 2486 (предзаполнено из файла, текущая позиция ColE1 ori). Биолог может изменить начало одним числом если хочет.',
+    annot: '<strong>Поле начала — всегда при кольцевой топологии.</strong> Не зависит от того, импорт или вставка текста. Для `.dna`/`.gb` — предзаполнено из файла, для FASTA или сырого текста — `1`. Биолог трогает поле только если хочет; иначе оно мирно сидит в карточке.',
+    title: 'Файл загружен',
+    hint: 'pUC19_with_EGFP.dna · 5642 п.н.',
+    inputZone: `<div class="filled" style="display:flex;gap:24px;padding:24px;background:#fff;align-items:center;height:100%;border-radius:6px;">
+        ${miniMap(5642, [
+          { start: 50, end: 180, color: C.cds, name: 'lacI repressor' },
+          { start: 200, end: 790, color: C.promoter, name: 'CMV promoter' },
+          { start: 800, end: 1520, color: C.reporter, name: 'EGFP' },
+          { start: 1525, end: 1560, color: C.tag, name: '6×His tag' },
+          { start: 1570, end: 1700, color: C.terminator, name: 'SV40 polyA' },
+          { start: 2400, end: 3100, color: C.ori, name: 'ColE1 ori' },
+          { start: 3500, end: 4360, color: C.resistance, name: 'AmpR' },
+          { start: 4400, end: 4480, color: C.promoter, name: 'AmpR promoter' },
+          { start: 4500, end: 4900, color: C.ori, name: 'f1 ori' },
+          { start: 5000, end: 5300, color: C.cds, name: 'lacZα' },
+          { start: 4960, end: 4985, color: C.operator, name: 'lac operator' },
+        ], true, 180)}
+        <div>
+          <div class="big" style="font-size:15px;margin-bottom:4px;">pUC19_with_EGFP.dna</div>
+          <div class="small" style="margin-bottom:6px;">SnapGene · круглая · 5642 п.н.</div>
+          <div class="small" style="line-height:1.5;">
+            <strong style="color:var(--accent);">12 регионов из файла + 6 распознали по гомологии.</strong><br>
+            Аннотация выглядит полной — можно сразу на канвас или в библиотеку.<br>
+            <span style="color:var(--text-faint);font-style:italic;">Наведи на любую дугу — покажет имя региона.</span>
+          </div>
+        </div>
+      </div>`,
+    metaZone: `<div class="meta-field">
+        <label>Имя</label>
+        <input type="text" value="pUC19_with_EGFP">
+        <div class="auto-hint">взято из имени файла</div>
+      </div>
+      <div class="meta-info-card">
+        <div class="topo-toggle">
+          <span class="topo-toggle-label">топология</span>
+          <button class="topo-btn active" title="круглая">◯</button>
+          <button class="topo-btn" title="линейная">—</button>
+        </div>
+        <div class="row"><span class="k">Длина</span><span class="v">5642 п.н.</span></div>
+        <div class="row"><span class="k">Features из файла</span><span class="v">12</span></div>
+        <div class="row"><span class="k">Дополнено GenoLIB</span><span class="v">+6</span></div>
+        <div class="origin-row">
+          <span class="lbl">начало (п.н.)</span>
+          <input type="number" value="2486" min="1" max="5642">
+        </div>
+        <div class="origin-hint">
+          из файла: ColE1 ori → start. Можно поменять.
+        </div>
+      </div>`,
+    actionsLeft: 'Дальше — превью или сразу действие',
+    actions: `
+      <button class="btn primary">На канвас</button>
+      <button class="btn">В библиотеку</button>
+      <button class="btn">Аннотировать</button>
+      <button class="btn">Действия <span class="arrow">▾</span></button>`,
+    catOpen: false, catCat: null,
+  },
+
+  multi: {
+    legend: 'Перетащено пять файлов. У каждого слева мини-карта результата авто-распознавания. Видно сразу: pUC19 и pET28a богаты регионами, pTRC99a и pSB1A3 умеренно, linear_insert.fasta — пусто (выделен жёлтым). Биолог понимает, что один файл потребует ручной аннотации.',
+    annot: '<strong>Мини-карта в multi = карта плотности.</strong> Сразу видно, у каких файлов аннотация полная, у каких частичная, у каких не нашлось ничего. Метрика «суммарно п.н.» убрана — биологу безразлично, сколько в сумме нуклеотидов в пакете. Доступны два пути: «В библиотеку (5)» — все запчасти в каталог как есть; «Аннотировать → в библиотеку» — пройти превью каждого файла перед сохранением.',
+    title: 'Загружено 5 файлов',
+    hint: 'все пойдут в библиотеку',
+    inputZone: `<div style="padding:14px;flex:1;overflow-y:auto;">
+        <div class="multi-bar">
+          <span style="font-size:16px;line-height:1;">⚠</span>
+          <span>Несколько файлов сразу можно только в библиотеку. Для других действий загружайте по одному.</span>
+        </div>
+        <div class="multi-list">
+          <div class="multi-row">
+            ${miniMap(5642, [
+              { start: 200, end: 790, color: C.promoter, name: 'CMV promoter' },
+              { start: 800, end: 1520, color: C.reporter, name: 'EGFP' },
+              { start: 1570, end: 1700, color: C.terminator, name: 'SV40 polyA' },
+              { start: 2400, end: 3100, color: C.ori, name: 'ColE1 ori' },
+              { start: 3500, end: 4360, color: C.resistance, name: 'AmpR' },
+              { start: 5000, end: 5300, color: C.cds, name: 'lacZα' },
+            ], true, 46)}
+            <div><div class="name" contenteditable="true" spellcheck="false">pUC19_with_EGFP.dna</div><div class="meta">5642 п.н. · 18 регионов</div></div>
+            <label class="annot-check"><input type="checkbox" checked><span>авто-аннотация</span></label>
+          </div>
+          <div class="multi-row">
+            ${miniMap(5369, [
+              { start: 0, end: 250, color: C.promoter, name: 'T7 promoter' },
+              { start: 200, end: 800, color: C.cds, name: 'MCS' },
+              { start: 3700, end: 4500, color: C.resistance, name: 'KanR' },
+              { start: 4900, end: 5300, color: C.ori, name: 'pBR322 ori' },
+            ], true, 46)}
+            <div><div class="name" contenteditable="true" spellcheck="false">pET28a_lacI.gb</div><div class="meta">5369 п.н. · 9 регионов</div></div>
+            <label class="annot-check"><input type="checkbox" checked><span>авто-аннотация</span></label>
+          </div>
+          <div class="multi-row">
+            ${miniMap(1240, [], false, 46)}
+            <div><div class="name" contenteditable="true" spellcheck="false">linear_insert.fasta</div><div class="meta">1240 п.н. · линейный</div></div>
+            <label class="annot-check"><input type="checkbox" checked><span>авто-аннотация</span></label>
+          </div>
+          <div class="multi-row">
+            ${miniMap(4176, [
+              { start: 100, end: 200, color: C.promoter, name: 'trc promoter' },
+              { start: 250, end: 1700, color: C.cds, name: 'CDS' },
+              { start: 2400, end: 3260, color: C.resistance, name: 'AmpR' },
+              { start: 3400, end: 3960, color: C.ori, name: 'pMB1 ori' },
+            ], true, 46)}
+            <div><div class="name" contenteditable="true" spellcheck="false">pTRC99a_modified.dna</div><div class="meta">4176 п.н. · 7 регионов</div></div>
+            <label class="annot-check"><input type="checkbox" checked><span>авто-аннотация</span></label>
+          </div>
+          <div class="multi-row">
+            ${miniMap(2155, [
+              { start: 100, end: 960, color: C.resistance, name: 'AmpR' },
+              { start: 1200, end: 1900, color: C.ori, name: 'pSC101 ori' },
+            ], true, 46)}
+            <div><div class="name" contenteditable="true" spellcheck="false">backbone_pSB1A3.gb</div><div class="meta">2155 п.н. · 3 региона</div></div>
+            <label class="annot-check"><input type="checkbox" checked><span>авто-аннотация</span></label>
+          </div>
+        </div>
+      </div>`,
+    metaZone: `<div class="meta-info-card" style="height:fit-content;">
+        <div class="row"><span class="k">Файлов</span><span class="v">5</span></div>
+        <div class="row"><span class="k">С регионами</span><span class="v">4 из 5</span></div>
+      </div>
+      <div style="display:flex;gap:6px;">
+        <button class="btn" style="font-size:11px;padding:5px 8px;flex:1;">☑ всем</button>
+        <button class="btn" style="font-size:11px;padding:5px 8px;flex:1;">☐ никому</button>
+      </div>`,
+    actionsLeft: 'Клик на имя — поправить',
+    actions: `
+      <button class="btn disabled">На канвас</button>
+      <button class="btn disabled">Restriction</button>
+      <button class="btn disabled">Мутагенез</button>
+      <button class="btn">Аннотировать → в библиотеку</button>
+      <button class="btn primary">В библиотеку (5)</button>`,
+    catOpen: false, catCat: null,
+  },
+
+  'seq-clean': {
+    legend: 'Биолог вставил случайную последовательность 268 нт. Авто-распознавание ничего не нашло — мини-карта пустая. Кнопка «Аннотировать» подсветилась как primary, остальные действия серые но кликабельные (биолог волен идти на канвас и без аннотации).',
+    annot: '<strong>Пустая мини-карта = триггер.</strong> Биолог сразу видит: программа ничего не распознала. Жирное «Аннотировать» зовёт пройти в редактор и расставить регионы вручную. Если человеку всё равно — может пойти на канвас как есть.',
+    title: 'Последовательность вставлена',
+    hint: '268 нт',
+    inputZone: `<textarea class="input-textarea filled" style="background:#fff;">ATGCGTACGTAGCTAGCTAGCTAGCTAGCATCGATCGATCGATCGTAGCTAGCATCGTACGATCGATCGATCGTAGCTAGCTAGCATGCGTACGTAGCTAGCTAGCTAGCTAGCATCGATCGATCGATCGTAGCTAGCATCGTACGATCGATCGATCGTAGCTAGCTAGCATGCGTACGTAGCTAGCTAGCTAGCTAGCATCGATCGATCGATCGTAGCTAGCATCGTACGATCGATCGATCGTAGCTAGCTAGC</textarea>
+        <div class="input-status">
+          <span class="valid">✓ 268 нт · валидно</span>
+          <span></span>
+        </div>`,
+    metaZone: `<div class="meta-info-card" style="text-align:center;padding:12px;">
+        ${miniMap(268, [], false, 90)}
+        <div class="topo-toggle" style="margin-top:10px;justify-content:center;">
+          <span class="topo-toggle-label">топология</span>
+          <button class="topo-btn" title="круглая">◯</button>
+          <button class="topo-btn active" title="линейная">—</button>
+        </div>
+      </div>
+      <div class="meta-field">
+        <label>Имя</label>
+        <input type="text" placeholder="part_1">
+        <div class="auto-hint">пусто → присвоится part_1</div>
+      </div>`,
+    actionsLeft: '',
+    actions: `
+      <button class="btn">На канвас</button>
+      <button class="btn">В библиотеку</button>
+      <button class="btn primary">Аннотировать</button>
+      <button class="btn">Действия <span class="arrow">▾</span></button>`,
+    catOpen: false, catCat: null,
+  },
+
+  'seq-dirty': {
+    legend: 'Биолог вставил кусок FASTA-вывода с нумерацией. Цифры и пробелы тихо отфильтровались. Авто-распознавание нашло 1 ORF — в мини-карте появилась одна салатовая полоска. Биолог понимает: что-то распознано, но скорее всего этого мало, лучше глянуть в аннотацию.',
+    annot: '<strong>Частичная аннотация.</strong> Один ORF — это уже что-то, но за ним обычно стоят детали (промотор, терминатор, тег). Зелёная подпись «аннотация частичная» подсказывает: на канвас можно, но проверить аннотацию полезно.',
+    title: 'Последовательность вставлена',
+    hint: '240 нт после очистки',
+    inputZone: `<textarea class="input-textarea filled" style="background:#fff;">   1 ATGCGTACGT AGCTAGCTAG CTAGCTAGCA TCGATCGATC
+  41 GATCGTAGCT AGCATCGTAC GATCGATCGA TCGTAGCTAG
+  81 CTAGCATGCG TACGTAGCTA GCTAGCTAGC TAGCATCGAT
+ 121 CGATCGATCG TAGCTAGCAT CGTACGATCG ATCGATCGTA
+ 161 GCTAGCTAGC ATGCGTACGT AGCTAGCTAG CTAGCTAGCA
+ 201 TCGATCGATC GATCGTAGCT AGCATCGTAC GATCGATCGA</textarea>
+        <div class="input-status">
+          <span class="valid">✓ 240 нт · валидно</span>
+          <span class="filtered">убрано: 47 цифр, 32 пробела</span>
+        </div>`,
+    metaZone: `<div class="meta-info-card" style="text-align:center;padding:12px;">
+        ${miniMap(240, [
+          { start: 80, end: 200, color: C.cds, name: 'предполагаемый ORF' }
+        ], false, 90)}
+        <div style="font-size:11px;color:var(--text-faint);margin-top:6px;">распознано: 1 ORF</div>
+        <div class="topo-toggle" style="margin-top:10px;justify-content:center;">
+          <span class="topo-toggle-label">топология</span>
+          <button class="topo-btn" title="круглая">◯</button>
+          <button class="topo-btn active" title="линейная">—</button>
+        </div>
+      </div>
+      <div class="meta-field">
+        <label>Имя</label>
+        <input type="text" placeholder="part_1">
+      </div>`,
+    actionsLeft: '',
+    actions: `
+      <button class="btn primary">На канвас</button>
+      <button class="btn">В библиотеку</button>
+      <button class="btn">Аннотировать</button>
+      <button class="btn">Действия <span class="arrow">▾</span></button>`,
+    catOpen: false, catCat: null,
+  },
+
+  'seq-iupac': {
+    legend: 'Вставлена последовательность с IUPAC-кодами неоднозначности (R, Y, N). Программа их сохраняет — это валидная ДНК. Но дизайн праймеров по таким участкам не сработает, поэтому жёлтое предупреждение в статусе.',
+    annot: '<strong>Когда сохранять, когда предупредить.</strong> R/Y/S/W/K/M/B/D/H/V и N — это легальные символы по IUPAC. Программа их не выкидывает (вдруг это специально). Но предупреждает: при наличии неоднозначности праймеры по этому участку дизайнить нельзя — стандартный нюанс молекулярной биологии.',
+    title: 'Последовательность вставлена',
+    hint: '180 нт, есть IUPAC',
+    inputZone: `<textarea class="input-textarea filled" style="background:#fff;">ATGCGTACGTAGCTAGCTRGCTAGCTAGCATCGATCGATCYATCGTAGCTAGCATCGTACGATCGATCGATCGTAGNNNAGCTAGCATGCGTACGTAGCTAGCTAGCTAGCTAGCATCGATCGATCGATCGTAGCTAGCATCGTACGATCGATCGATCGTAGCTAGCWAG</textarea>
+        <div class="input-status">
+          <span class="iupac-warn">⚠ 180 нт · содержит IUPAC: R, Y, N, W</span>
+          <span class="filtered">убрано: 0 пробелов</span>
+        </div>`,
+    metaZone: `<div class="meta-info-card" style="text-align:center;padding:12px;">
+        ${miniMap(180, [], false, 90)}
+        <div class="topo-toggle" style="margin-top:10px;justify-content:center;">
+          <span class="topo-toggle-label">топология</span>
+          <button class="topo-btn" title="круглая">◯</button>
+          <button class="topo-btn active" title="линейная">—</button>
+        </div>
+      </div>
+      <div class="meta-field">
+        <label>Имя</label>
+        <input type="text" placeholder="part_1">
+      </div>
+      <div class="meta-info-card" style="background:var(--warn-soft);border-color:var(--warn);">
+        <div style="color:var(--warn);font-size:11px;line-height:1.4;">
+          Символы неоднозначности (R, Y, N, W) сохранены. Праймеры по таким участкам не дизайнятся — программа предупредит при сборке.
+        </div>
+      </div>`,
+    actionsLeft: '',
+    actions: `
+      <button class="btn primary">На канвас</button>
+      <button class="btn">В библиотеку</button>
+      <button class="btn">Аннотировать</button>
+      <button class="btn">Действия <span class="arrow">▾</span></button>`,
+    catOpen: false, catCat: null,
+  },
+
+  'seq-circular': {
+    legend: "Биолог переключил линейный фрагмент в кольцевую плазмиду. Под toggle'ом топологии появилось поле «начало». По умолчанию 1 — кольцо стартует с начала текста. Биолог может ввести любую позицию; ниже подсказка с межгенными промежутками для удобства.",
+    annot: "<strong>Выбор начала только при кольцевании.</strong> Линейному фрагменту начало неважно, поле скрыто. Как только включён ◯ — поле появляется, биолог решает где у плазмиды позиция 1. По умолчанию остаётся 1, ничего ни у кого не ломается. Подсказка с межгенными промежутками — для тех, кто хочет, остальные просто не смотрят.",
+    inputZone: `<textarea class="input-textarea filled" style="background:#fff;">ATGCGTACGTAGCTAGCTAGCTAGCTAGCATCGATCGATCGATCGTAGCTAGCATCGTACGATCGATCGATCGTAGCTAGCTAGCATGCGTACGTAGCTAGCTAGCTAGCTAGCATCGATCGATCGATCGTAGCTAGCATCGTACGATCGATCGATCGTAGCTAGCTAGCATGCGTACGTAGCTAGCTAGCTAGCTAGCATCGATCGATCGATCGTAGCTAGCATCGTACGATCGATCGATCGTAGCTAGCTAGC</textarea>
+        <div class="input-status">
+          <span class="valid">✓ 268 нт · валидно</span>
+          <span></span>
+        </div>`,
+    metaZone: `<div class="meta-info-card" style="text-align:center;padding:12px;">
+        ${miniMap(268, [
+          { start: 60, end: 130, color: C.cds, name: 'ORF 1' },
+          { start: 180, end: 240, color: C.cds, name: 'ORF 2' },
+        ], true, 90)}
+        <div style="font-size:11px;color:var(--text-faint);margin-top:6px;">распознано: 2 ORF</div>
+        <div class="topo-toggle" style="margin-top:10px;justify-content:center;">
+          <span class="topo-toggle-label">топология</span>
+          <button class="topo-btn" title="линейная">—</button>
+          <button class="topo-btn active" title="круглая">◯</button>
+        </div>
+        <div class="origin-row">
+          <span class="lbl">начало (п.н.)</span>
+          <input type="number" value="1" min="1" max="268">
+        </div>
+        <div class="origin-hint">
+          межгенные участки: 1–60, 130–180, 240–268
+        </div>
+      </div>
+      <div class="meta-field">
+        <label>Имя</label>
+        <input type="text" placeholder="part_1">
+      </div>`,
+    actions: `
+      <button class="btn primary">На канвас</button>
+      <button class="btn">В библиотеку</button>
+      <button class="btn">Аннотировать</button>
+      <button class="btn">Действия <span class="arrow">▾</span></button>`,
+    catOpen: false, catCat: null,
+  },
+
+  toast: {
+    legend: 'Биолог уже отправил две плазмиды на канвас и сейчас открыл третью. Окно импорта осталось — можно продолжать. Внизу плавающий toast со списком добавленного и кнопкой «Открыть холст». Стэк показывает, что обе плазмиды успешно добавлены.',
+    annot: '<strong>Toast не исчезает.</strong> Биолог решает сам когда переключиться на канвас. Toast накапливает добавления — каждое новое имя приписывается через точку. Закрыть можно крестиком справа, если мешает; повторное добавление вернёт toast.',
+    inputZone: `<div class="filled" style="display:flex;gap:24px;padding:24px;background:#fff;align-items:center;height:100%;border-radius:6px;">
+        ${miniMap(4176, [
+          { start: 100, end: 200, color: C.promoter, name: 'trc promoter' },
+          { start: 250, end: 1700, color: C.cds, name: 'lacI repressor' },
+          { start: 2400, end: 3260, color: C.resistance, name: 'AmpR' },
+          { start: 3400, end: 3960, color: C.ori, name: 'pMB1 ori' },
+        ], true, 180)}
+        <div>
+          <div class="big" style="font-size:15px;margin-bottom:4px;">pTRC99a_modified.dna</div>
+          <div class="small" style="margin-bottom:6px;">SnapGene · круглая · 4176 п.н.</div>
+          <div class="small" style="line-height:1.5;">
+            7 регионов из файла. Третья плазмида к двум уже добавленным.
+          </div>
+        </div>
+      </div>`,
+    metaZone: `<div class="meta-info-card">
+        <div class="topo-toggle">
+          <span class="topo-toggle-label">топология</span>
+          <button class="topo-btn active" title="круглая">◯</button>
+          <button class="topo-btn" title="линейная">—</button>
+        </div>
+        <div class="row"><span class="k">Длина</span><span class="v">4176 п.н.</span></div>
+        <div class="row"><span class="k">Features из файла</span><span class="v">7</span></div>
+        <div class="origin-row">
+          <span class="lbl">начало (п.н.)</span>
+          <input type="number" value="3400" min="1" max="4176">
+        </div>
+      </div>
+      <div class="meta-field">
+        <label>Имя</label>
+        <input type="text" value="pTRC99a_modified">
+      </div>`,
+    actions: `
+      <button class="btn primary">На канвас</button>
+      <button class="btn">В библиотеку</button>
+      <button class="btn">Аннотировать</button>
+      <button class="btn">Действия <span class="arrow">▾</span></button>`,
+    catOpen: false, catCat: null,
+    toast: ['pUC19_with_EGFP', 'pET28a_lacI'],
+  },
+};
+
+/* ===========================================================
+   РЕНДЕР
+   =========================================================== */
+const tabs = document.querySelectorAll('.tab');
+const legend = document.getElementById('legend');
+const annot = document.getElementById('annot');
+const primary = document.getElementById('primary');
+const primaryBody = document.getElementById('primaryBody');
+const actionsBar = document.getElementById('actionsBar');
+const actions = document.getElementById('actions');
+const catBody = document.getElementById('catBody');
+const catChev = document.getElementById('catChev');
+const items = document.getElementById('items');
+const toast = document.getElementById('toast');
+
+function renderCards(cat) {
+  const list = catalogData[cat];
+  if (!list) {
+    items.innerHTML = '<div class="empty-cat">Категория без элементов или не выбрана</div>';
+    return;
+  }
+  items.innerHTML = list.map(p => `
+    <div class="card">
+      ${miniMap(parseInt(p.size), p.features, p.circ)}
+      <div class="info">
+        <div class="name">${p.name}</div>
+        <div class="desc">${p.desc}</div>
+        <div class="row">
+          <span class="pill">${p.size}</span>
+          <span class="pill">${p.features.length} features</span>
+          <span class="badge ${p.badgeClass}">${p.badge}</span>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+function setState(name) {
+  const s = states[name];
+  tabs.forEach(t => t.classList.toggle('active', t.dataset.state === name));
+  legend.textContent = s.legend;
+  annot.innerHTML = s.annot;
+
+  // компактный режим для catalog — primary становится тонкой плашкой
+  primary.classList.toggle('compact', !!s.compact);
+  if (s.compact) {
+    primaryBody.innerHTML = `<div class="compact-hint">
+      <div class="left"><span class="icon">⬇</span><span>Или вставьте свой файл / последовательность</span></div>
+      <div><span class="kbd">Ctrl+V</span> в любом месте окна</div>
+    </div>`;
+  } else {
+    primaryBody.innerHTML = `<div class="input-zone">${s.inputZone}</div><div class="meta-zone">${s.metaZone}</div>`;
+  }
+
+  // actions: скрыть если их нет или все приглушены
+  if (s.hideActions) {
+    actionsBar.classList.add('hidden');
+  } else {
+    actionsBar.classList.remove('hidden');
+    actions.innerHTML = s.actions;
+  }
+
+  catBody.classList.toggle('open', s.catOpen);
+  catChev.textContent = s.catOpen ? '▴' : '▾';
+
+  document.querySelectorAll('.tree-item').forEach(it => {
+    it.classList.toggle('active', it.dataset.cat === s.catCat);
+  });
+  if (s.catOpen) renderCards(s.catCat);
+
+  // toast — список добавленных на канвас плазмид
+  if (s.toast && s.toast.length) {
+    toast.style.display = 'flex';
+    toast.innerHTML = `
+      <div class="added">${s.toast.map(n => `<span class="added-item"><span class="check">✓</span>${n}</span>`).join('')}</div>
+      <button class="open-btn">Открыть холст →</button>
+      <button class="close" title="Скрыть">✕</button>`;
+    toast.querySelector('.close').onclick = () => toast.style.display = 'none';
+  } else {
+    toast.style.display = 'none';
+  }
+}
+
+document.getElementById('catToggle').addEventListener('click', () => {
+  const open = !catBody.classList.contains('open');
+  catBody.classList.toggle('open', open);
+  catChev.textContent = open ? '▴' : '▾';
+  if (open && !document.querySelector('.tree-item.active')) {
+    document.querySelector('[data-cat="my-prom"]').classList.add('active');
+    renderCards('my-prom');
+  }
+});
+
+document.querySelectorAll('.tree-item').forEach(it => {
+  it.addEventListener('click', () => {
+    document.querySelectorAll('.tree-item').forEach(x => x.classList.remove('active'));
+    it.classList.add('active');
+    renderCards(it.dataset.cat);
+  });
+});
+
+tabs.forEach(t => t.addEventListener('click', () => setState(t.dataset.state)));
+setState('empty');
+</script>
+
+</body>
+</html>

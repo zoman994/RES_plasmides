@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useCallback } from 'react';
 import { useStore, bootstrapStore, applyThemeToDOM } from './store';
 import AppShell from './components/AppShell';
 import StartScreen from './components/StartScreen';
@@ -34,13 +34,16 @@ export default function App() {
   const showToast = useStore(s => s.showToast);
   const flushAutosave = useStore(s => s.flushAutosave);
   const hydrateProjectsFromDexie = useStore(s => s.hydrateProjectsFromDexie);
-
-  const [dragActive, setDragActive] = useState(false);
+  const hydrateLibrary = useStore(s => s.hydrateLibrary);
 
   useEffect(() => {
     bootstrapStore();
     hydrateProjectsFromDexie().catch(() => { /* ignore */ });
-  }, [hydrateProjectsFromDexie]);
+    // Library entries live in the same Dexie schema but used to be lazy-
+    // loaded; without this call, reload of the page wiped «Моя библиотека»
+    // visually (the rows were still in IndexedDB but never read into store).
+    hydrateLibrary().catch(() => { /* ignore */ });
+  }, [hydrateProjectsFromDexie, hydrateLibrary]);
 
   useEffect(() => {
     const setCanInstallPwa = useStore.getState().setCanInstallPwa;
@@ -175,36 +178,30 @@ export default function App() {
   }, [currentProjectId]);
 
   useEffect(() => {
-    function onDragEnter(e) {
-      if (e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files')) {
-        e.preventDefault();
-        setDragActive(true);
-      }
-    }
+    // Window-level drag handlers exist solely to ROUTE drops on the DAG
+    // screen into the Importer (push it onto navStack with the dropped
+    // files queued). The earlier full-screen «Drop file here (M-B feature
+    // preview)» overlay was removed — it intercepted the visual feedback
+    // for per-folder drop targets in CatalogColumn and biolog asked to
+    // strip the placeholder. dragenter/over still need preventDefault so
+    // the drop event fires; dragleave handler is no longer necessary.
     function onDragOver(e) {
       if (Array.from(e.dataTransfer?.types || []).includes('Files')) {
         e.preventDefault();
       }
     }
-    function onDragLeave(e) {
-      if (e.relatedTarget == null) setDragActive(false);
-    }
     function onDrop(e) {
-      if (Array.from(e.dataTransfer?.types || []).includes('Files')) {
-        e.preventDefault();
-      }
-      setDragActive(false);
+      if (!Array.from(e.dataTransfer?.types || []).includes('Files')) return;
+      // Inner targets (CatalogColumn folder rows, footer dropzone, etc.)
+      // call e.stopPropagation() in their own handlers — so this listener
+      // only fires when no inner consumer caught the drop.
+      e.preventDefault();
       const files = Array.from(e.dataTransfer?.files || []);
       const importable = files.filter(f => IMPORTABLE_TYPES.some(ext => f.name.toLowerCase().endsWith(ext)));
       const s = useStore.getState();
       const fs = s.canvas.activeFullscreen;
-      // Drops on DAG route into the Importer; if Importer is already
-      // mounted, its inner dropzone handles it (we no-op here).
       if (importable.length > 0 && fs === 'dag') {
         queueImporterFiles(importable);
-        // pushFullscreen, not setActiveFullscreen — preserves DAG on the
-        // navStack so Cancel pops back into it instead of falling through
-        // to the start screen.
         s.pushFullscreen({
           fullscreen: 'importer',
           payload: { target: 'project' },
@@ -216,14 +213,10 @@ export default function App() {
         showToast(STRINGS.toast.dropFileComingSoon(detected.name), 'info');
       }
     }
-    window.addEventListener('dragenter', onDragEnter);
     window.addEventListener('dragover', onDragOver);
-    window.addEventListener('dragleave', onDragLeave);
     window.addEventListener('drop', onDrop);
     return () => {
-      window.removeEventListener('dragenter', onDragEnter);
       window.removeEventListener('dragover', onDragOver);
-      window.removeEventListener('dragleave', onDragLeave);
       window.removeEventListener('drop', onDrop);
     };
   }, [showToast]);
@@ -258,29 +251,9 @@ export default function App() {
       {activeFullscreen === 'start'
         ? <StartScreen onOpenFile={handleOpen} />
         : <AppShell>{inProjectChild}</AppShell>}
-      <DropOverlay active={dragActive} />
       {projectInfoOpen && <ProjectInfoModal />}
       {settingsOpen && <SettingsModal />}
       <ToastStack />
-    </div>
-  );
-}
-
-function DropOverlay({ active }) {
-  if (!active) return null;
-  return (
-    <div
-      data-testid="drop-overlay"
-      style={{
-        position: 'fixed', inset: 0, zIndex: 1000,
-        background: 'rgba(245, 158, 11, 0.12)',
-        border: '2px dashed var(--accent-500, #f59e0b)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        pointerEvents: 'none',
-        color: 'var(--text-primary, #1c1917)', fontSize: 16,
-      }}
-    >
-      {STRINGS.app.dropOverlay}
     </div>
   );
 }

@@ -43,6 +43,12 @@ export default function Importer() {
   const navStack = useStore(s => s.canvas.navStack);
   const popFullscreen = useStore(s => s.popFullscreen);
   const showToast = useStore(s => s.showToast);
+  // Reactive selector — re-renders Importer when libraryEntries changes,
+  // so EmptyInspector flips from «Ваша библиотека пуста» to the standard
+  // hint as soon as `hydrateLibrary` populates entries on app boot.
+  // Returns a boolean (selector value stable until count crosses zero).
+  const libraryHasContainers = useStore(s => Object.values(s.libraryEntries || {})
+    .some(e => e && e.kind === 'container' && e._pendingDelete !== true));
 
   const top = navStack[navStack.length - 1];
   const target = top?.payload?.target === 'library' ? 'library' : 'project';
@@ -123,11 +129,18 @@ export default function Importer() {
           : (flags.autoAnnotate && Array.isArray(edits.enrichedCache))
             ? edits.enrichedCache
             : (it.annotations || []);
+        // Pull edited topology from MetaColumn's toggle (`editedTopology`).
+        // Without this, biolog could click «linear» on a parsed-circular
+        // catalog item but the resulting Library entry would still carry
+        // the original `topology: 'circular'` — biolog 03.05.2026
+        // evening: «при добавлении в библиотеку плазмиды в линейной форме,
+        // она добавляется всё равно в кольцевой. непорядок».
+        const finalTopology = edits.editedTopology ?? it.topology;
         const baseName = edits.editedName || it.name || (fn ? fn.replace(/\.[^.]+$/, '') : 'imported');
         let resourceHash = null;
         try {
           resourceHash = await computeResourceHash({
-            sequence: finalSeq, topology: it.topology, ends: it.ends,
+            sequence: finalSeq, topology: finalTopology, ends: it.ends,
           });
         } catch { /* leave null */ }
 
@@ -153,7 +166,13 @@ export default function Importer() {
           }
         }
 
-        const itemForBuild = { ...it, sequence: finalSeq, annotations: finalAnns, _fileName: fn };
+        const itemForBuild = {
+          ...it,
+          sequence: finalSeq,
+          annotations: finalAnns,
+          topology: finalTopology,
+          _fileName: fn,
+        };
         const finalTags = Array.isArray(edits.editedTags) ? edits.editedTags : [];
         const buildOpts = { tags: finalTags };
         if (replaceExisting && collision) buildOpts.id = collision.id;
@@ -341,10 +360,14 @@ export default function Importer() {
         background: 'var(--surface-base, #fafaf9)',
       }}
     >
-      <ImporterHeader
-        title={headerTitle}
-        filesCount={items.length}
-      />
+      {/*
+        * ImporterHeader removed 03.05.2026 evening — биолог: «вторую
+        * строку "Библиотека" тоже убрать, у меня есть что туда
+        * запихнуть». AppShell Topbar already shows the "Библиотека"
+        * title + back button; the duplicate row underneath was just
+        * eating ~30 px of vertical space. The wrapper div is freed
+        * for future content (file-drop hint, breadcrumbs, etc.).
+        */}
 
       {/* Single-screen body: Catalog | Inspector | Meta */}
       <div
@@ -389,7 +412,7 @@ export default function Importer() {
           {!hasAny && (
             <EmptyInspector
               target={target}
-              libraryEmpty={target === 'library' && Object.values(useStore.getState().libraryEntries || {}).filter(e => e && e.kind === 'container' && e._pendingDelete !== true).length === 0}
+              libraryEmpty={target === 'library' && !libraryHasContainers}
             />
           )}
           {hasAny && !isMulti && currentItem && (
@@ -403,6 +426,7 @@ export default function Importer() {
               onUpdateEdits={(patch) => fileName && state.updateEdits(fileName, patch)}
               onAppendAdded={state.appendAddedItem}
               onRenameItem={onRenameCurrentItem}
+              onRunAutoAnnotate={() => onAction('annotate')}
             />
           )}
           {isMulti && (
@@ -429,44 +453,58 @@ export default function Importer() {
         )}
       </div>
 
-      {/* Footer: SessionSummary + ActionsBar */}
-      {hasAny && (
-        <div
-          data-testid="importer-footer"
-          style={{
-            display: 'flex', flexDirection: 'column',
-            borderTop: '0.5px solid var(--border-subtle, #e7e5e4)',
-            background: 'var(--surface-1, #fff)',
+      {/*
+        * Floating ActionsBar (биолог 03.05.2026 evening: «можем убрать
+        * эту панель внизу? и кнопки сделать парящими поверх канваса?»).
+        * No more bottom strip — the importer-body now extends all the
+        * way to the bottom of the screen, and the action buttons float
+        * over the bottom-right corner. SessionSummary moved INSIDE the
+        * inspector tab area when needed; the external "Будет добавлено
+        * в Library" hint dropped — destination is implied by which
+        * button (primary orange) the user clicks.
+        */}
+      {hasAny && !isMulti && (
+        <ActionsBar
+          mode="single"
+          onAction={onAction}
+          hasParsedItem={!!currentItem?.sequence}
+          libraryEnabled={
+            currentItem?._source !== 'catalog'
+            || !!edits.editedAnnotations
+            || !!edits.editedSequence
+          }
+          alreadyAddedToLibrary={(() => {
+            if (!currentItem) return false;
+            // Rule per biolog: items already in the user's library don't
+            // expose the «В библиотеку» button at all (it makes no sense
+            // — they're already there). External imports (file / paste /
+            // Demo / SnapGene catalog) keep the button.
+            if (currentItem._libraryEntryId) {
+              const lib = useStore.getState().libraryEntries;
+              if (lib && lib[currentItem._libraryEntryId]) return true;
+            }
+            const name = edits.editedName ?? currentItem.name ?? currentItem._fileName;
+            return state.addedItems.some((it) => it.action === 'library' && it.name === name);
+          })()}
+          hasCurrentProject={!!useStore.getState().currentProjectId}
+          busyConfirm={busyConfirm}
+          target={target}
+        />
+      )}
+      {/*
+        * SessionSummary moved out of the chrome-mounted footer — it's
+        * still rendered inside the inspector body if there are added
+        * items. Most flows finish a single import and return to canvas;
+        * the persistent strip was rarely useful.
+        */}
+      {hasAny && state.addedItems.length > 0 && (
+        <SessionSummary
+          addedItems={state.addedItems}
+          onOpenCanvas={() => {
+            state.reset();
+            popFullscreen();
           }}
-        >
-          {state.addedItems.length > 0 && (
-            <SessionSummary
-              addedItems={state.addedItems}
-              onOpenCanvas={() => {
-                state.reset();
-                popFullscreen();
-              }}
-            />
-          )}
-          {!isMulti && (
-            <ActionsBar
-              mode="single"
-              onAction={onAction}
-              hasParsedItem={!!currentItem?.sequence}
-              libraryEnabled={
-                currentItem?._source !== 'catalog'
-                || !!edits.editedAnnotations
-                || !!edits.editedSequence
-              }
-              isCatalogSource={currentItem?._source === 'catalog'}
-              hasCurrentProject={!!useStore.getState().currentProjectId}
-              busyConfirm={busyConfirm}
-              target={target}
-              autoAnnotate={flags.autoAnnotate !== false}
-              onToggleAutoAnnotate={(next) => fileName && state.updateFlags(fileName, { autoAnnotate: next })}
-            />
-          )}
-        </div>
+        />
       )}
 
       {autonamePrompt && (

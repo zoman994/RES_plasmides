@@ -1,6 +1,8 @@
-# BUGS.md — BodgeGene
+# BUGS.md — BodgeGene v0.6+
 
 Баги → сюда. Починены → `[x]`. Claude Code читает при старте сессии.
+
+**Trekking новой архитектуры (v0.6+).** v0.5 баги архивированы в `docs/archive/BUGS_v05.md` — большинство закрывается через wipe data + полный rewrite frontend под новую data model (DEC-V2-01 / DEC-V2-12). Открытые v0.5 баги, которые могут проявиться в v0.6 (биологические alg-баги P6 mutagenesis triplet, V20 split-PCR micro-fragments, V23 GG orthogonal palindromes), переоткрываются здесь по факту воспроизведения на v0.6 коде.
 
 ---
 
@@ -8,128 +10,46 @@
 
 ### Критичные
 
-- [ ] **P1 (повтор):** 1 фрагмент → 4 праймера. Корень: App.jsx auto-design useEffect не очищает stale-праймеры.
-- [ ] **V1 REGION-OVERFLOW:** PlasmidMap нечитаем для плазмид с крупными region-аннотациями (repeat_region 2440 bp на 10791 bp pDHG25 → 22% внешнего кольца серого цвета). Текст меток по арке не читается, мелкие regions (on, AmpR, platformer) перекрываются большими. Детектировано визуально после Этапа 1.2 — repeat_region теперь region-тип (раньше уходил в unknown-heuristic как misc_feature, но визуально было то же). Возможные направления: (а) limit для layout — regions >N% кольца → собственный внутренний track; (б) smarter font rotation + truncation rules; (в) интерактивный hover с полным именем при усечении; (г) top-K filter по priority. 19.04.2026 (after 1.2 visual testing).
+(пусто на старте v0.6)
 
 ### Высокие
 
-- [ ] **P4 (повтор):** Нет аннотаций на PartBlock после «Как backbone». migratePartAnnotations не помог.
-- [ ] **V7 INSERTION-CLOCK:** При сборке insert+backbone не видно в какое место backbone идёт вставка. Решение: reusable `<InsertionClock>` компонент (циферблат), стандартная метафора plasmid editors (SnapGene, Benchling, Geneious).
-
-  **Дизайн:**
-  - **Q1 (семантика):** Clock выбирает середину insert-region, cut = центр выбранного региона (интуитивно для юзера: «solid» вместо «как разорвать»).
-  - **Q2 (размещение):** inline mini-clock в PartBlock (маленькая круговая иконка с pointer + маркер insert position); клик раскрывает full-modal с draggable cursor по кольцу + sequence-view ±50 nt внизу.
-  - **Q3 (default):** авто-выбор safest place — середина самого длинного межгенного gap между features. Если авто не нашло (gaps < min-size или полное покрытие features) → блокировка сборки до явного выбора юзером.
-
-  **User stories:**
-  - **US-1 Assembly:** pUC118 + AsCpf1 → PartBlock backbone показывает mini-clock с pointer на autoshot safest position (напр. midgap между lacZα и AmpR). Клик → full clock modal → драг cursor по lacZα → inline warning "вставка разорвёт lacZα". «Выбрать» → пересчёт праймеров под новую cut position.
-  - **US-2 Mutagenesis:** тот же компонент в MutagenesisWizard для выбора позиции мутации. Cursor по кольцу → внизу triplet highlight «AmpR кодон 245, AA=Glu».
-  - **US-3 Linear:** для линейных фрагментов Clock вырождается в горизонтальную полоску (linear timeline), та же синхронизация с sequence-view.
-
-  **Новые файлы:** `components/InsertionClock.jsx` (reusable). **Влияет на:** PartBlock.jsx (inline mini-clock), MutagenesisWizard.jsx (US-2), DesignCanvas.jsx (wiring), fragment-slice (поле `insertionPoint` у backbone-type fragments). **Влияет на primer design:** `local-primer-design.js` пересчитывает overlap-tails от `insertionPoint` backbone'а, не от позиции 0. **Sprint 2.** Оценка: ~8-10 ч. 19.04.2026.
+(пусто на v0.7.0)
 
 ### Средние
 
-- [ ] **P6:** Мутагенез: клик на 1 нуклеотид подсвечивает 2 соседних (весь кодон). При режиме "Нуклеотид → мутация ДНК" должен подсвечиваться только 1 нуклеотид, не триплет. 03.04.2026.
-- [ ] **V2 DUP-REGIONS:** Дубликаты перекрывающихся regions при импорте (pDHG25: AMA1 5256 bp + AMA1 5226 bp, разница 30 bp). Gene-filter (`GENE_CHILD_TYPES` из 1.2) не срабатывает, если gene и CDS почти совпадают по координатам, но не в contained-отношении. Плюс длинные имена ("Repeat Region 1") усекаются до "platfor" на арках — UX проблема. Связано с V1. 19.04.2026.
-- [ ] **V6 RE-LABELS-OVERLAP:** Метки рестриктаз в MCS пересекаются и нечитаемы (pUC118: HindIII/EcoRI/KpnI/BamHI/XbaI/SalI сгруппированы в ~50 bp → labels сливаются в одну точку). Классическая проблема плазмидной визуализации. Варианты: (а) leader lines с разной длиной (vertical stacking); (б) cluster labels ("6 sites" + hover-popup); (в) hide-on-zoom <X% с опцией показать; (г) минимум 2-пиксельный gap между labels. Файл: PlasmidMap.jsx (RE site rendering). Связано с V1/V2 — UX-sprint на circular map. 19.04.2026.
-- [ ] **V37 PLASMID-MINIMAP-TOOLTIP-DUPLICATE:** При hover на sub-arc в `PlasmidMiniMap` (180 px MetaColumn / 64 px карточка каталога / overlay 180 px на маленькой mini-map) видны **два tooltip'а одновременно**: (1) custom React-tooltip (`<div>` overlay в container coords, тёмный фон, белый текст, instant) — спроектирован Kfix-4 как замена native; (2) native browser SVG `<title>` (через ~700 мс задержки) — оставлен «для accessibility» (Report Code п.2 F-K). Native подъезжает поверх custom со смещением и без фона → выглядит «криво» и читается как баг. Решение: заменить `<title>` на `aria-label` (screen readers прочитают одинаково — оба читаются по AccName), либо удалить `<title>` полностью если accessibility не критична для декоративной mini-map. Файлы: `components/PlasmidMiniMap.jsx` (вероятно: убрать `<title>{region.name}</title>` внутри `<g onMouseEnter>` обёрток sub-arc, заменить на `aria-label` на родительском `<g>`). Найден на ручной приёмке 27.04.2026 (BlueScribe в каталоге + lacZα в overlay). Приоритет: **Средний**, видимый визуальный дефект, биолог сразу замечает «второй текст». 27.04.2026.
-
-- [ ] **V8 CDS-WARNINGS-OVERFLOW:** В `PlasmidViewer` при просмотре плазмид с множественными CDS без ATG/stop (пример: `pET_lacZ(35-1025)_6HIS` даёт 28 warning'ов) — блок валидации не имеет max-height и перекрывает sequence view + annotation bar (60% видимой высоты модалки). Классическая проблема UX «слишком длинный список предупреждений». Варианты: (а) collapsible блок с "N замечаний — развернуть/свернуть" (по умолчанию свёрнут); (б) max-height + внутренний scroll; (в) фильтр «только errors (красные)» / «только warnings (жёлтые)»; (г) группировка по CDS-фиче. Файл: `PlasmidViewer.jsx` (секция рендеринга validation warnings). Низкий приоритет для чистых каталожных плазмид (0–2 warnings), критично для плазмид с partial CDS. 19.04.2026.
-- [ ] **V18 FULL-VIEW-SEQ-PROTEIN-DISJOINT:** В full-view FragmentEditor (K11) DNA рендерится в sequence grid вверху, белок — в отдельной панели «Белок (обзор)» внизу. В обычном fragment-view под каждым кодоном стоит AA (single character grid); в full-view этой связи нет — биолог теряет привычную модель «AA под кодоном». Решение: либо в full-view тоже рендерить AA под каждым кодоном как read-only char grid (убрав или сократив панель «Белок (обзор)»), либо добавить synced scroll между sequence grid и protein overview. Файл: `FragmentEditor` full-view branch (K11). Приоритет: Средний. Sprint 3 UX Polish. 22.04.2026.
-- [ ] **V19 CODON-EDIT-UX-REDESIGN:** Кнопка «✏️ Редакт. кодоны» под sequence grid в FragmentEditor не соответствует ожиданиям. При тестировании обнаружилось: (1) пользователь ждал функцию **bulk-удаления нуклеотидов** (выделить диапазон → удалить) — её нет; (2) при AA-замене через этот механизм неясно, на какой **codon usage table** ориентируется выбор синонимичного кодона (E. coli / yeast / human / none?) — нет явной стратегии; (3) после K10 основная редактура кодонов доступна через mode switcher Правка/Мутагенез — существующая кнопка воспринимается как дубль непонятного назначения. Решение: полный UX-редизайн — разделить на явные операции «Удалить nt-диапазон» (bulk delete по выделению) + «Оптимизировать codon usage» (с явным выбором organism table). Файл: `FragmentEditor` footer + связанный editor. Приоритет: Средний. Sprint 3 UX Polish. 22.04.2026.
-- [ ] **V20 MUTAGENESIS-SPLIT-MICRO-PCR:** Split-алгоритм in-place мутагенеза создаёт избыточно мелкие PCR-фрагменты при близко расположенных мутациях. Пример HygroR (1023 bp) + 5 замен (G26A, R135A, G77C, C403G, G404C) → split на 5 фрагментов, из которых HygroR_2=31 bp (PCR 61), HygroR_3=30 bp (PCR 60) — биологически/экономически неразумно пцрить фрагмент в 60 bp. При расстоянии между мутациями <~80 bp рационально объединить в один fragment с длинным multi-site primer (70–120 nt, IDT Ultramer). Предложение: параметр `minFragmentLength` в split-стратегии, пороговое значение ~60–80 bp; при попытке создать фрагмент ниже порога — merge с соседней мутацией + многосайтовый праймер. Файл: `mutagenesis.js::makeFragmentStrategy`. Приоритет: Средний, алгоритм. Sprint 2+. 22.04.2026.
-- [ ] **V21 SINGLE-CIRCULAR-ARC-INDICATOR-INVISIBLE:** При переключении topology одиночного фрагмента в circular визуальное изменение на canvas слишком неочевидно. Корректные изменения есть: PCR +30 bp (тейлы на self-closure), счётчик стыков 0→1, пунктирная скобка «⟲ замыкание» под фрагментом. Но пользователь не считывает скобку как «замкнутая молекула» — ждёт дискретного значка или изменения рамки. Предложение: усилить arc-indicator (толще линия, явный значок ⭕ над фрагментом, изменение цвета рамки при topology='circular'), tooltip на hover «самозамыкание через overhang-tails (+30 bp)». Файл: `DesignCanvas.jsx` (single-circular render branch). Приоритет: Средний, UX. Sprint 3 UX Polish. 22.04.2026.
-- [ ] **V23 GG-ORTHOGONAL-CLAIM-FALSE:** Константа `ORTHOGONAL_OVERHANGS_4` в `golden-gate.js:150-155` (32 overhang'а 4 nt для Type IIS ligation) содержит **6 палиндромов** (CATG, GATC, TGCA, ACGT, GTAC, TCGA — все RC-инвариантны, самолигируются) и **5 RC-пар** (GCTA↔TAGC, GACT↔AGTC, TCAG↔CTGA, ATCG↔CGAT, CAGT↔ACTG — conflict на сборке). Комментарий на line 148 утверждает «no palindromes, no RC conflicts, good ligation» — **ложь**.
-
-  Runtime guard в `resolveConflicts` (line 191) отфильтровывает палиндромы (`continue`), поэтому на практике эффективный пул — 32 − 6 − 5 = **21 overhang** (5 RC-пар схлопываются в 5 уникальных представителей). Для сборок с ≤21 фрагментом (уникальных junction'ов) проблема не проявляется. Для сложных сборок ≥22 фрагментов — `resolveConflicts` исчерпает пул, автодизайн молча упадёт или вернёт невалидный набор.
-
-  Дополнительно: комментарий на line 148 вводит в заблуждение разработчика при чтении кода, что маскирует проблему.
-
-  **Направления fix:**
-  - (a) Чистка самой константы — удалить 6 палиндромов и дедуп 5 RC-пар → массив из 21 уникального overhang. `resolveConflicts` упрощается (guard можно удалить, т.к. вход уже чистый). Unit test: `ORTHOGONAL_OVERHANGS_4.every(o => o !== rc(o))` + pairwise RC-check.
-  - (b) Сохранить константу как есть, но исправить комментарий и добавить явный комментарий про runtime-фильтрацию. Менее хорошо: не решает проблему «пул меньше чем ожидается» при сложных сборках.
-
-  Предпочтительно (a) — чистая data-структура без runtime-фильтрации. Отдельный вопрос: если эффективных 21 overhang недостаточно для большой сборки, переходить на 6-nt overhangs или на tree-based scar-minimal стратегию — отдельный backlog.
-
-  Файл: `golden-gate.js` + unit test в `__tests__/`. Приоритет: **Средний** — edge case ≥22 фрагментов, но catastrophic когда проявляется. 23.04.2026 (deep code analysis Claude Code).
-
-- [ ] **V31 MAP-RESCALES-ON-WINDOW-RESIZE:** PlasmidMap масштабируется вместе с окном браузера — при увеличении window карта растягивается на весь top-pane, при сжатии уменьшается. Ожидание биолога: фиксированный визуальный размер circular map (~600 px diameter как в печатных статьях), независимо от canvas size — зум/вписать уже есть как явные контролы. **Подозрение на регрессию Map-WS-1 Skeleton K4:** раньше DesignCanvas Map view branch был `<div className="flex-1 items-center justify-center overflow-hidden min-h-0">` — `items-center justify-center` центровал карту без растяжения; в Skeleton K4 обёртка заменена на `flex-1 overflow-hidden min-h-0` (см. `docs/archive/SPRINT_MAP_WS_1_SKELETON.md` §5 DesignCanvas.jsx diff). Файлы: `components/PlasmidMap.jsx` (SVG `viewBox`/`preserveAspectRatio`, width/height 100% вероятно) + `components/PlasmidWorkspace.jsx` (top-pane layout). Нужно max-width/max-height cap или возврат centered-wrapper. Sprint UX-1. 21.04.2026.
-
-- [ ] **V33 CREATE-ASSEMBLY-WITH-PENDING-MUTATIONS:** Кнопка «🧪 Создать сборку (N)» в footer FragmentEditor активна при наличии pending (ещё не applied через «🧬 Применить мутагенез») мутаций в panel «Мутации». В Plasmid-Git модели pending-мутации существуют только локально в `mutations[]` до Apply, не попадают в `commits[]`. Поведение «Создать сборку» при pending не определено: (а) использовать baseline sequence (игнорируя pending) — пользователь может думать что собирает с мутациями, фактически нет; (б) применить pending перед сборкой — но тогда зачем отдельная кнопка Apply; (в) блокировать кнопку при pending — самое safe, но требует UX-доработки disabled-state с подсказкой. Решение в обсуждении. Найден на приёмке Sprint X-fix-2 + X-fix-3 (26.04.2026, EGFP). Файл: `components/FragmentEditor/index.jsx` footer + handler «Создать сборку». Приоритет: **Средний**, biology-critical UX (биолог может перепутать «накопил» и «применил»). Sprint UX-1 или Sprint X-fix-4 (если потребуется фикс быстро).
-
-- [ ] **V34 AA-TRANSLATION-NOISE:** В PlasmidViewer (`components/PlasmidViewer.jsx` ~стр. 290) AA-перевод (purple-строка под последовательностью) рисуется под каждой region типа `CDS`/`gene` без фильтра длины. Каталожные плазмиды и SnapGene `.dna` часто содержат частичные CDS-аннотации (обрывки 5–15 aa из `enrichWithCommonFeatures` matches, короткие ORF от `auto-annotate`). Каждая получает свою purple-строку → визуальный шум (пример: 21 nt CDS-region даёт перевод «L E K L I E H» не несущий биологической информации). Решение: (а) фильтр `(r.end - r.start) >= minNt` в `lineCDS` filter PlasmidViewer; (б) вынести threshold в `⚙️ Настройки` header App.jsx (новый store-field `aaTranslationMinAa` в uiSlice, default **30 aa = 90 nt**); (в) проверить FragmentEditor sequence grid — если та же логика, единый helper. При confidence-based ORF detection (см. предложение 27.04.2026 по orf-detection.js в chat-истории) расширить фильтр на confidence-threshold. Приоритет: **Средний**, UX. Sprint UX-1 backlog либо отдельный мини-фикс 30–60 мин. 27.04.2026.
+(пусто на старте v0.6)
 
 ### Низкие
 
-- [ ] **B7 (deferred):** GG overhang palette: stale state after re-render.
-- [ ] **V9 SHORT-ANNOTATION-LABELS:** В `AnnotationEditor.jsx` annotation bar — подписи аннотаций скрываются если `width <= 10%` (код: `{width > 10 ? a.name : ''}`). На плотно аннотированных плазмидах (43 аннотации на 8 КБ) среднее окошко ~2% ширины, и практически все имена скрыты — видны только штрихи. Существующее поведение, не регрессия Sprint 1, но UX-долг. Варианты: (а) tooltip при hover показывает полное имя; (б) rotated/abbreviated labels; (в) leader lines с именами наружу полосы; (г) адаптивный threshold (если много коротких — показывать с truncation). 19.04.2026.
-- [ ] **V10 SBOL-GLYPH-PALENESS:** SBOL глифы в `AnnotationEditor` tree list (размер 14px) выглядят бледными: в `sbol-glyphs.jsx` все глифы с заливкой используют `fillOpacity="0.15"` и `strokeWidth={2}` на viewBox 36×36. На 14px canvas stroke даёт <1px экранной линии, 15% fill — практически невидим на белом фоне списка. Fix: поднять `fillOpacity` до 0.3–0.4 и `strokeWidth` до 2.5 (или 3.0) в базовых глифах (CDSGlyph, MarkerGlyph, SignalGlyph, промоторы). Outline-only глифы (OriginGlyph, MiscGlyph, TerminatorGlyph) не требуют изменения fill. Проверить что не перегружает визуально tree list. 19.04.2026.
-
-- [ ] **V28 SEQUENCEPANE-AFFORDANCE:** Region-фон в `SequencePane` (строка 80/90/100/110/120 nt моноширью, пастельная подсветка за spans с regionColor + alpha `26`/`58`/`12`/`30`) читается как декоративный, а не как интерактивный. Биолог не догадывается, что клик по нуклеотиду внутри region даёт back-sync на карту. `cursor: pointer` на region-span'ах отсутствует; при hover никакого ответа UI нет. Предложение: `cursor: pointer` на span'ах с региональным фоном + усиление opacity при hover (напр. alpha `26` → `40` при hover). Файл: `components/SequencePane.jsx`. Приоритет: Низкий, UX affordance. Sprint UX-1. 21.04.2026 (visual acceptance Map-WS-1-fix-B).
-
-- [ ] **V29 MAP-HOVER-SCALE-GROUP:** При наведении курсора на любую точку группы sub-arc'ов в `PlasmidMap` увеличивается весь трек арок (все регионы разом «наезжают» на курсор), а не тот регион, над которым курсор. Чёрная обводка на hovered sub-arc работает корректно — scale же глобальный. Pre-existing с момента появления hover-анимации в PlasmidMap (не регрессия Map-WS-1 / fix / fix-B — hover-behavior ни в одной подзадаче не трогался; просто раньше back-sync не работал, и hover не успевали заметить). Ожидаемо: scale только у sub-arc под курсором + уже работающая обводка. Файл: `components/PlasmidMap.jsx` (sub-arc hover transform). Приоритет: Низкий, UX polish. Sprint UX-1. 21.04.2026 (visual acceptance Map-WS-1-fix-B).
-
-- [ ] **V30 MAP-SMALL-REGION-LEADER-LINES:** Регионы, которые занимают <X% окружности (оценочно <2–3%, напр. два оранжевых sub-arc'а на «Сборке 7» между lacI/ORF наверху и между ORF/f1 ori справа), не получают внутренней подписи (не влезает текст внутри arc'а) и остаются немыми. Нужны выносные подписи наружу кольца через leader-line — стандартный приём plasmid editors (SnapGene, Benchling). Частично родственно V9 SHORT-ANNOTATION-LABELS (тот про AnnotationEditor annotation bar, этот — про PlasmidMap); рассматривать вместе при UX-спринте по readability. Файл: `components/PlasmidMap.jsx` (sub-arc label render branch — сейчас `fontSize: arcLen < 40 ? '5px' : '7px'`, но при arcLen << 40 текст всё равно не влезает). Приоритет: Низкий, UX readability. UX-спринт circular map (пакет с V1/V2/V6/V9). 21.04.2026 (visual acceptance Map-WS-1-fix-B).
-
-- [ ] **V32 LEGACY-WARNING-PRE-APPLY-MUTATIONS:** В Plasmid-Git модели до клика «🧬 Применить мутагенез» накопленные в panel «Мутации» pending-мутации показываются с текстом «Legacy-мутации: revert недоступен». После Apply warning исчезает (мутации перешли в `commits[]` с корректным undo). Текст misleading: для биолога «legacy» читается как «устаревшее, удалить, не работает», на деле же это нормальное состояние pending до Apply. Предложение: переписать текст на «Мутации накоплены, для применения нажмите «🧬 Применить мутагенез»» либо вообще убрать warning до Apply — после Apply panel показывает applied commits, warning не нужен. Найден на приёмке Sprint X-fix-2 + X-fix-3 (26.04.2026, EGFP). Файл: `components/FragmentEditor/EditorPanels.jsx` (Mutations panel header). Приоритет: **Низкий**, текстовая правка UX, недвижение биологии. Sprint UX-1.
-
-- [ ] **V35 MULTI-MODE-BATCH-TOGGLE-UX:** В ImportStartScreen multi-file mode (два+ файлов в batch) внизу списка MultiFileList две отдельные кнопки-чекбокса `☑ всем` / `☐ никому` для batch-toggle поля «авто-аннотация». Читается как «уродство» (слова Игоря на приёмке 27.04.2026). Нормальный паттерн — один трёхсостоянный master-checkbox в хедере/сверху списка (состояния: ничего не выбрано / выбрано частью [-]/ выбрано всё [✓]) с подписью «Авто-аннотация всем». Toggle «всем → никому → всем» по клику. Файл: `components/ImportStartScreen/MultiFileList.jsx` (блок `[☑ всем] [☐ никому]` в конце файла). Приоритет: **Низкий**, UX-полишинг. Sprint UX-1 либо отдельный мини-фикс (~30 мин). 27.04.2026 (найден на приёмке Sprint Import-Start-Screen-fix при ручной проверке F-E).
-
-- [ ] **V38 PLASMID-MINIMAP-CARD-OVERLAY-TRIGGER:** В CatalogTree карточках 64 px и MultiFileList 46 px увеличенная 180 px версия mini-map с leader-labels открывается по **click** (modal-style overlay с `✕ закрыть` + click outside). Игорь на приёмке 27.04.2026: «лучше наверное при наведении на карту её большая версия появлялась, а не по клику. Это будет удобнее.» Биолог skim'ает каталог — hover-trigger даёт визуальный preview без обязательного клика и без явного закрытия. Code в Report (отклонение #5) сам признал «modal-style — проще, без новой зависимости» и помечал OQfix-3 как preference popover. Решение: переключить trigger с `onClick` на `onMouseEnter` / `onMouseLeave`, оставить тот же 180 px content + leader-labels, убрать `✕ закрыть` (закрытие по mouse-leave). Floating-UI можно добавить если простой absolute-positioned overlay даёт коллизии при граничных позициях. Файл: `components/PlasmidMiniMap.jsx` либо обёртка над ним в `CatalogTree.jsx` / `MultiFileList.jsx` (где сейчас живёт click-handler). Найден на ручной приёмке 27.04.2026. Приоритет: **Низкий**, UX-полишинг (текущее click-поведение работает корректно). Sprint UX-1 либо мини-фикс ~30 мин. Меняет отклонение #5 от Code на принятое-с-доработкой.
-
-- [ ] **V36 NO-FILE-PICKER-IN-INPUTZONE:** В ImportStartScreen empty mode InputZone предлагает только два способа загрузки файла — drag-drop из Проводника и Ctrl+V (paste sequence text). Отсутствует классический file picker через native dialog `<input type="file">`. Биолог на приёмке 27.04.2026: «не всегда удобно перетаскивать», особенно когда файл лежит вглубь файловой системы. Решение (стандартный приём): сделать саму dropzone `<label>` для скрытого `<input type="file" multiple accept=".dna,.gb,.gbk,.fasta">` — click по dropzone открывает native picker, drag-drop продолжает работать, multi-select поддерживается; либо добавить отдельную маленькую кнопку `📁 Выбрать файл` под подсказкой `или вставьте последовательность Ctrl+V`. Файл: `components/ImportStartScreen/InputZone.jsx` (mode `empty`). Приоритет: **Низкий**, UX-gap (отсутствует в базовой спеке `docs/SPRINT_IMPORT_START_SCREEN.md` §6.1 InputZone, не регрессия Kfix). Sprint UX-1 либо отдельный мини-фикс (~30 мин). 27.04.2026 (найден на приёмке Sprint Import-Start-Screen-fix при ручной проверке F-F).
+(пусто на старте v0.6)
 
 ---
 
 ## FEATURE REQUESTS
 
-- [ ] **F1:** Добавить свои праймеры на последовательность в PlasmidViewer. Primer mapping + визуализация на circular map и sequence view. Запрос 03.04.2026.
+(пусто на старте v0.6 — фичи живут в `docs/ARCHITECTURE_v2.md` §7 Roadmap до момента, когда становятся конкретным дизайн-вопросом)
 
 ---
 
 ## FIXED
 
-### 27.04.2026 — V37 mini-map double tooltip (mini-fix)
-
-- [x] **V37 MAP-NATIVE-TOOLTIP-RACE:** PlasmidMiniMap (после Sprint Import-Start-Screen-fix Kfix-4) рисовала кастомный React-tooltip instant + параллельно браузер показывал нативный SVG `<title>` через ~700 мс — на каждый hover биолог видел двойной popup (свой тёмный + поверх него белый системный). Решение: убрать `<title>` элементы, навесить `aria-label` на каждый `<g>` обёртку. Screen-readers продолжают анонсировать region name через aria-label; native browser-tooltip не появляется (browsers рендерят его только для дочернего `<title>`, не для aria-label). Файл: `components/PlasmidMiniMap.jsx`. Тесты обновлены: `plasmid-mini-map.test.jsx` + `plasmid-mini-map-kfix4.test.jsx` теперь проверяют `aria-label` count вместо `<title>` count. 27.04.2026.
-
----
-
-### 26.04.2026 — Sprint X cycle (Plasmid-Git): закрытие V22 / V24 / V27 + corrected undo timing
-
-Цикл из 4 спринтов (Sprint X / X-fix / X-fix-2 / X-fix-3) финализирован единым событием после визуальной приёмки 26.04.2026 на EGFP (196 bp): 5 сценариев PASS (multi-mutation undo/redo, editor persistence, footer buttons, single-mutation regression, race-test rapid keystrokes <300ms). Архитектурный сдвиг: data-модель `fragment.mutations[]` (мутации поверх applied sequence) заменена на Plasmid-Git (`baseSnapshot` + `commits[]` + `HEAD` + replay). Undo/redo переписан с поправкой debounce timing бага.
-
-- [x] **V22 HIGHLIGHT-INDEL-TAIL → закрыт через Plasmid-Git replay.** Корень V22 (positional diff `parent.sequence.slice(templateStart, ...)` vs `fragment.sequence` ломается на indel'ах в sub-фрагменте — даёт ложный красный хвост до конца) устранён архитектурно: в Git-модели `fragment.commits[]` хранит mutation-объекты с `op` и абсолютными координатами относительно `baseSnapshot`. Highlights считаются по списку commits, не через positional diff applied vs parent. Indel-aware classification получается естественно из replay-цепочки. Sprint X K3–K4 (commit `16c58c5` baseline Sprint X / X-fix объединён) + Sprint X-fix-2 (commits `0f8211b`, `1bd69f4`).
-
-- [x] **V24 SINGLE-CIRCULAR-NO-PRIMERS → закрыт extension в Sprint X-fix K5.** `local-primer-design.js::designPrimersLocal` при `fragments.length === 1 && circular` теперь генерирует пару праймеров для self-closure (binding + tail из `rc(seq.slice(-half))` для fwd, binding + tail из `seq.slice(0, half)` для rev). Контракт K12 Sprint 1.7 (single-circular = self-closure через overhang-tails, +30 bp в PCR) теперь физически собирается: биолог получает реальные oligos для синтеза при «Заказе олигов». Sprint X-fix K5 (commit в составе `16c58c5` baseline).
-
-- [x] **V27 MUTATION-DELETE-NO-REVERT → закрыт через Plasmid-Git revert/applied-toggle.** Кнопка ✕ в Mutations panel `EditorPanels.jsx` теперь оперирует над `fragment.commits[]` корректно: каждый commit имеет `applied: true|false`, ✕ переключает флаг + replay на baseline пересчитывает sequence/Tm/GC%. Coordinate-remap проблема (которая раньше делала вариант (B) непригодным) снимается тем, что commits хранят координаты в координатах `baseSnapshot`, не в координатах applied-state. Sprint X K3–K6 + Sprint X-fix workflow rewire.
-
-**Sprint X-fix-3 — pushUndo timing fix (commit `4292506`).** Баг pre-existing с момента введения debounced `pushUndo`: snapshot снимался **внутри setTimeout** (через 300мс после вызова) → захватывал post-apply state, undo не возвращал к baseline. Не проявлялся на одиночных user-actions (паузы между кликами >300мс), но Sprint X-fix-2 ввёл `applyMutationsBatch` (5 мутаций за один тик) — первый сценарий, где pushUndo + set + setTimeout-fire упаковались в окно <300мс, баг проявился. Fix: `_pendingSnapshot` module-level let — первый pushUndo в окне захватывает `shallowSnapshot(get())` синхронно до любого `set()`, последующие в окне продлевают timer но не перезаписывают snapshot. По срабатыванию timeout snapshot уходит в `_undoStack`. Race-сценарий «apply → Ctrl+Z <300мс → новый apply» закрыт обязательной очисткой `_pendingSnapshot` + `_pushTimeout` в `undo()` / `redo()`. Семантика debounce 300мс для merge серии быстрых действий в один Ctrl+Z step сохранена.
-
-**Тесты:** 774 → 846 Vitest (+72 за весь цикл: +70 Sprint X / X-fix / X-fix-2 + 2 Sprint X-fix-3). pytest 112/112. vite build clean.
-
-**Размеры (новые / изменённые):**
-- `lib/plasmid-git-reducers.js`: новый, 5.02 KB.
-- `store/index.js`: 10.70 → 12.06 KB (+1.36 KB; pushUndo + undo/redo очистка + комментарии).
-- `components/FragmentEditor/index.jsx`: 39.55 → 39.32 KB (small refactor handleSaveMutagenesis).
-- `store/__tests__/undo-batch.test.js`: новый, 3.77 KB.
-- `store/__tests__/fragmentSlice-git.test.js`: новый.
-
-**Приёмочный отчёт автоматизированной Cowork-сессии (Claude in Chrome):**
-- K-fix2-1: 3 мутации (V2A/K4A/E6A) на EGFP → Apply → Ctrl+Z вернул GC% 67.9% → 65.8% (baseline), Mutations panel очищен → Ctrl+Y восстановил GC% и мутации. **PASS.**
-- K-fix2-2: editor открыт после Apply / Ctrl+Z / Ctrl+Y / «Сохранить как запчасть». **PASS.**
-- K-fix2-3: footer без «🔀 Как вариант», есть «Создать сборку (3)» / «Сохранить как запчасть» / «Отмена». **PASS.**
-- SC-4 (single mutation): V2A → Apply → Ctrl+Z → GC% 66.3% → 65.8%. **PASS.**
-- SC-5 (race-test): apply → Ctrl+Z (0мс) → Ctrl+Y (100мс) → Ctrl+Z (200мс) → Ctrl+Y финальная проверка. Все откаты корректные, redo stack intact. **PASS.**
-
-### Новые находки приёмки 26.04.2026 (→ OPEN):
-- **V32** (Низкий) — «Legacy-мутации: revert недоступен» warning misleading до Apply (текстовая правка UX).
-- **V33** (Средний) — «Создать сборку (N)» активна с pending (не applied) мутациями; UX-вопрос что собирается (pre-apply или post-apply state).
-
-**Архитектурный итог цикла Sprint X:** один из крупнейших архитектурных сдвигов проекта со времён Zustand-миграции (28.03.2026). Plasmid-Git data model открывает дорогу для «коммитов» как первоклассной сущности UX (Sprint X+1: panel истории мутаций с точкой возврата на любой commit, branching). Новый ⚓ DECISIONS «pushUndo synchronous capture» закрывает класс багов debounced-side-effect-функций для всего проекта.
+**V50 — Parser double-+1 на start coordinate, длины CDS не кратны 3 → AA-translation broken** (FIXED 03.05.2026 PRE-K1, ветка `feature/racetrack-canvas`).
+- **Корень:** каскадный off-by-1 в backend pipeline. `src/pvcs/snapgene_parser.py` хранил координаты из SnapGene .dna XML как **1-based inclusive** (хотя комментарий говорил «0-based»). Затем `src/pvcs/parser.py` поверх ещё раз делал `+1` на start. Итог: каждый CDS сдвинут на 2 nt → длина не кратна 3 → reading frame ехал → ATG real-стартового кодона не попадал в позицию которую ожидал AA-translation → AmpR / lacZα reverse-strand CDS отображались без M, ложные STOP-кодоны в середине, ATG'и на pUC19 не подсвечивались как M.
+- **Фикс:** в `snapgene_parser.py` — `xml_start - 1` чтобы получить настоящий 0-based, как у `snapgene_reader.snapgene_file_to_dict()` и BioPython. Контракт по всему pipeline теперь: **0-based exclusive end** (длина `= end - start`, для CDS `(end - start) % 3 === 0`).
+- **Верификация на pUC19:** lacZα 147..469 (322, ✗ не÷3) → 146..469 (324 ÷3 ✓); AmpR 1627..2486 (859 ✗) → 1626..2486 (861 ÷3 ✓); AmpR promoter 2488..2591 (103) → 2487..2591 (105) ✓.
+- **Strand был ОК изначально** — кастомный pvcs.snapgene_parser даёт `int(-1)` правильно. Подозрение про '-'/'+' строки относилось к другому parser path не используемому в основном flow.
+- **Тесты:** pytest 112/112 PASS, vitest 947/947 PASS. Backend перезапущен.
+- **Связанная сессия Code (03.05.2026 morning):** последовательная отладка 4 фиксов — (A) ruler line-end label убран целиком (major ticks 10 bp покрывают), (B) `buildCdsAAMap` поддерживает strand=-1 через `frame = (seqLen − end) % 3` + walkCodons antisense от 3'-конца, (C) regression test reverse-strand CDS показывает M на правом краю, (D) AA-track render разнесён по (strand, frame) на свои строки, ORF fallback убран как noise. **Эта V50 — root cause всего каскада** — после её фикса все 4 sub-фикса работают на правильных координатах.
+- **Регрессия-guard:** `aa-track.test.jsx::reverse-strand CDS shows M at the 3'-end of top strand` (новый 02.05.2026), `aa-track.test.jsx::single renders M for EACH forward CDS`. Backend regression — pytest на pvcs/parser/snapgene_parser.
 
 ---
 
-История FIXED до Sprint X cycle (Sprint 1.7 Unified Editor 22.04.2026, Sprint Map-WS-1 cycle 21.04.2026, Sprint 1.6 K5–K8, Sprint 1.5, MUTWIZ-SANITIZE, Sprint 1, Этап 1.1/1.2, Блоки 4b–11b, CRIT/HIGH, BUG-01..83) → `docs/archive/BUGS_HISTORY.md`.
+**V49 — 50-секундный hang при default open M-B.1 Step2Combined на 5333 bp / 12 регионов** (FIXED 02.05.2026, M-B.2 K4 коммит `4351552`).
+- **Корень:** Step2Combined default mount `<MoleculeWorkspace>` → `<SequenceMapView>` (двуцепочечная 5333×2 + ~1700 AA codon rows) + `<AnnotationEditor>` (compact + hideBar) → ~12-15K DOM nodes на default render.
+- **Фикс:** lazy mount табов в M-B.2. SequenceTab и AnnotationsTab создаются ТОЛЬКО при `activeTab === 'sequence'` / `=== 'annotations'` через React conditional render. Default tab `'overview'` рендерит лёгкий PlasmidMiniMap + categorized summary inline (~50-100 nodes).
+- **Регрессия-guard:** `Importer/inspector/__tests__/lazy-tabs.test.jsx::default-overview-no-annotation-editor` PASS (M-B.2 K4).
+
+---
+
+История FIXED v0.5 → `docs/archive/BUGS_v05.md` (38 KB, последняя запись 28.04.2026: Sprint Catalog Polish + FIX cycle закрыл 11 import-related багов V35–V48).

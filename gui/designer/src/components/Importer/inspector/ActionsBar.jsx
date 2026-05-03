@@ -20,10 +20,8 @@ export default function ActionsBar({
   libraryEnabled = true,
   busyConfirm = false,
   target = 'project',
-  isCatalogSource = false,
   hasCurrentProject = true,
-  autoAnnotate = true,
-  onToggleAutoAnnotate,
+  alreadyAddedToLibrary = false,
 }) {
   const [overflowOpen, setOverflowOpen] = useState(false);
   const overflowRef = useRef(null);
@@ -49,34 +47,46 @@ export default function ActionsBar({
     <div
       data-testid="importer-actions-bar"
       style={{
+        // Floating panel (биолог 03.05.2026 evening: «можем убрать
+        // эту панель внизу? и кнопки сделать парящими поверх
+        // канваса?»). Anchored to bottom-right of the importer body
+        // via position:absolute (parent .importer-body has
+        // position:relative). No surrounding strip / hint text /
+        // border — just buttons with a soft drop shadow so they
+        // pop over scrolling content. Whole row fits inside one
+        // floating box for inline overflow-menu positioning.
+        position: 'absolute',
+        right: 16,
+        bottom: 16,
+        zIndex: 30,
         display: 'flex', alignItems: 'center', gap: 8,
-        padding: '10px 14px',
-        borderTop: '0.5px solid var(--border-subtle)',
+        // Pointer events on the surface itself stay default; the
+        // padding gives a small click-shield around buttons so the
+        // user doesn't have to pixel-hunt.
+        padding: 4,
       }}
     >
-      <div style={{ flex: 1, fontSize: 11, color: 'var(--text-tertiary)' }}>
-        {target === 'library' ? S.confirmHintLibrary : S.confirmHintProject}
-      </div>
-
       {/*
         Action ordering depends on target: when biolog opened Library
         (target=library), the primary action is to land the item in
         their Library — «На канвас» becomes secondary and gated by
         currentProject. When opened from a project (target=project),
-        canvas is primary and library is secondary.
-
-        Catalog items (isCatalogSource) get «Скопировать в библиотеку»
-        instead of «В библиотеку» — explicit that we're creating a copy,
-        not modifying the catalog source.
+        canvas is primary and library is secondary. Wording is just
+        «В библиотеку» in both directions — the destination is obvious
+        from the visible context, no need to spell out «Скопировать».
       */}
-      {!isMulti && target === 'library' && (
+      {/* «В библиотеку» hides entirely once the file has already been added
+          in the current session — keeping it visible let biologs accidentally
+          double-import the same plasmid. The session-summary footer entry
+          («✓ Уже добавлено …») now serves as the confirmation. */}
+      {!isMulti && target === 'library' && !alreadyAddedToLibrary && (
         <button
           type="button"
           data-testid="importer-action-library"
           onClick={() => fire('library')}
           disabled={!hasParsedItem || busyConfirm}
           style={primaryButtonStyle(hasParsedItem && !busyConfirm)}
-        >{busyConfirm ? S.confirmBusy : (isCatalogSource ? S.actionLibraryCopy : S.actionLibrary)}</button>
+        >{busyConfirm ? S.confirmBusy : S.actionLibrary}</button>
       )}
 
       {!isMulti && (
@@ -92,14 +102,14 @@ export default function ActionsBar({
         >{(target === 'project' && busyConfirm) ? S.confirmBusy : S.actionCanvas}</button>
       )}
 
-      {!isMulti && target === 'project' && libraryEnabled && (
+      {!isMulti && target === 'project' && libraryEnabled && !alreadyAddedToLibrary && (
         <button
           type="button"
           data-testid="importer-action-library"
           onClick={() => fire('library')}
           disabled={!hasParsedItem || busyConfirm}
           style={secondaryButtonStyle(hasParsedItem && !busyConfirm)}
-        >{isCatalogSource ? S.actionLibraryCopy : S.actionLibrary}</button>
+        >{S.actionLibrary}</button>
       )}
 
       <div ref={overflowRef} style={{ position: 'relative' }}>
@@ -132,25 +142,9 @@ export default function ActionsBar({
               padding: '4px 0', zIndex: 10,
             }}
           >
-            {!isMulti && (
-              <button
-                type="button"
-                role="menuitem"
-                data-testid="importer-action-auto-annotate-toggle"
-                onClick={() => { setOverflowOpen(false); onToggleAutoAnnotate?.(!autoAnnotate); }}
-                style={overflowItemStyle(false)}
-              >{autoAnnotate ? S.actionAutoAnnotateOn : S.actionAutoAnnotateOff}</button>
-            )}
-            {!isMulti && (
-              <button
-                type="button"
-                role="menuitem"
-                data-testid="importer-action-annotate"
-                onClick={() => fire('annotate')}
-                disabled={!hasParsedItem}
-                style={overflowItemStyle(!hasParsedItem)}
-              >{S.actionAnnotate}</button>
-            )}
+            {/* Auto-annotate toggle + run-now moved to AnnotationsTab —
+                they had no business living behind a ⋯ overflow when there's
+                a dedicated Аннотации tab right above. */}
             {!isMulti && (
               <button
                 type="button"

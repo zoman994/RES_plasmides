@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import { useStore } from '../../../store';
 import { STRINGS } from '../../../lib/strings';
 import { ACCEPT_STRING } from '../../../file-import';
@@ -27,6 +27,55 @@ const S = STRINGS.importer;
  */
 const GROUP_KEYS = ['canvas', 'demo', 'mine', 'snapgene'];
 
+// Depth-based indent: every nesting level shifts text 12 px right.
+// Capped at 5 levels so ultra-deep folders still fit the 320 px column.
+const INDENT_STEP = 12;
+const INDENT_BASE = 12;
+const MAX_INDENT_DEPTH = 5;
+// Chevron(10px) + flex gap(6px) — group/sub-group rows put their text
+// 16 px past padding-left because the chevron span sits in front of it.
+// Items (no chevron) need to add this offset to align UNDER the parent's
+// text column instead of UNDER the parent's chevron.
+const CHEVRON_GUTTER = 16;
+function indentForDepth(depth) {
+  const d = Math.min(MAX_INDENT_DEPTH, Math.max(0, depth));
+  return INDENT_BASE + d * INDENT_STEP;
+}
+// Per-depth background tint — translucent accent band so deeply-nested
+// content reads as «inside» its parent without relying on indent alone.
+// Stops cleanly at depth 0 (no tint for top-level group rows).
+function depthBackground(depth) {
+  if (depth <= 0) return 'transparent';
+  const d = Math.min(MAX_INDENT_DEPTH, depth);
+  const pct = Math.min(8, 2.5 * d); // 2.5% per level, capped at 8%
+  return `color-mix(in srgb, var(--accent-500) ${pct}%, transparent)`;
+}
+
+/** Parse a flat list of slash-separated paths into a forest.
+ *  ['Vectors', 'Vectors/CRISPR', 'Promoters'] →
+ *  [{name:'Vectors', path:'Vectors', children:[{name:'CRISPR', path:'Vectors/CRISPR', children:[]}]},
+ *   {name:'Promoters', path:'Promoters', children:[]}] */
+function buildFolderTree(paths) {
+  const roots = [];
+  const byPath = new Map();
+  // Sort so parents always materialise before children.
+  const sorted = [...paths].sort();
+  for (const p of sorted) {
+    if (!p) continue;
+    const slash = p.lastIndexOf('/');
+    const parentPath = slash >= 0 ? p.slice(0, slash) : '';
+    const name = slash >= 0 ? p.slice(slash + 1) : p;
+    const node = { name, path: p, children: [] };
+    byPath.set(p, node);
+    if (parentPath && byPath.has(parentPath)) {
+      byPath.get(parentPath).children.push(node);
+    } else {
+      roots.push(node);
+    }
+  }
+  return roots;
+}
+
 function readGroupState(key, fallback) {
   try {
     const v = localStorage.getItem(`pvcs-catalog-group-${key}`);
@@ -37,6 +86,16 @@ function readGroupState(key, fallback) {
 }
 function writeGroupState(key, open) {
   try { localStorage.setItem(`pvcs-catalog-group-${key}`, open ? 'open' : 'closed'); } catch { /* */ }
+}
+function readSet(suffix) {
+  try {
+    const raw = localStorage.getItem(`pvcs-catalog-set-${suffix}`);
+    if (raw) return new Set(JSON.parse(raw));
+  } catch { /* */ }
+  return new Set();
+}
+function writeSet(suffix, s) {
+  try { localStorage.setItem(`pvcs-catalog-set-${suffix}`, JSON.stringify([...s])); } catch { /* */ }
 }
 
 export default function CatalogColumn({
@@ -56,19 +115,131 @@ export default function CatalogColumn({
   const sources = useCatalogSources();
 
   const fileInputRef = useRef(null);
+  // Shared file picker for per-folder imports — `pendingFolderTag` carries
+  // the target folder's path so the onChange handler can forward it to
+  // onFiles({targetFolderTag}). Avoids a separate <input> per folder.
+  const folderFileInputRef = useRef(null);
+  const pendingFolderTag = useRef(null);
   const [pasteDraft, setPasteDraft] = useState('');
   const [hover, setHover] = useState(false);
   const [openCanvas, setOpenCanvas] = useState(() => readGroupState('canvas', true));
   const [openDemo, setOpenDemo] = useState(() => readGroupState('demo', true));
   const [openMine, setOpenMine] = useState(() => readGroupState('mine', true));
   const [openSnap, setOpenSnap] = useState(() => readGroupState('snapgene', false));
+  // Nested inline-expansion state. Persisted so the user's last-opened
+  // SnapGene categories / Mine tag groups stay open across navigation.
+  const [openTags, setOpenTags] = useState(() => readSet('tags'));
+  const [openCats, setOpenCats] = useState(() => readSet('cats'));
+
+  // User-defined folders, scoped per top-level group. Persisted in
+  // localStorage as `{canvas: [...], demo: [...], mine: [...], snapgene: [...]}`.
+  // For Mine they merge with the auto-tag groups (any library entry whose
+  // tags include a folder name lands inside it); for the other sections
+  // folders sit alongside items as empty containers until drag-drop lands.
+  // Folder-in-folder creation is intentionally NOT supported yet.
+  const [userFoldersByGroup, setUserFoldersByGroup] = useState(() => {
+    const empty = { canvas: [], demo: [], mine: [], snapgene: [] };
+    try {
+      const raw = localStorage.getItem('pvcs-catalog-user-folders-by-group');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        return { ...empty, ...parsed };
+      }
+      // Migrate legacy single-array key (folders used to live only in Mine).
+      const legacy = localStorage.getItem('pvcs-catalog-user-folders');
+      if (legacy) {
+        const arr = JSON.parse(legacy);
+        if (Array.isArray(arr)) return { ...empty, mine: arr };
+      }
+    } catch { /* */ }
+    return empty;
+  });
+
+  const toggleTag = useCallback((tag) => {
+    setOpenTags((s) => {
+      const next = new Set(s);
+      next.has(tag) ? next.delete(tag) : next.add(tag);
+      writeSet('tags', next);
+      return next;
+    });
+  }, []);
+
+  // Inline folder-create state. `folderDraftKey` is `${groupKey}|${parentPath}`
+  // — empty parentPath means «top of this group», non-empty means «inside an
+  // existing folder». `folderDraft` is the typed value. Only one input is
+  // open at a time across the whole column.
+  const [folderDraftKey, setFolderDraftKey] = useState(null);
+  const [folderDraft, setFolderDraft] = useState('');
+
+  const startNewFolder = useCallback((groupKey, parentPath = '') => {
+    if (groupKey === 'canvas') { setOpenCanvas(true); writeGroupState('canvas', true); }
+    if (groupKey === 'demo') { setOpenDemo(true); writeGroupState('demo', true); }
+    if (groupKey === 'mine') { setOpenMine(true); writeGroupState('mine', true); }
+    if (groupKey === 'snapgene') { setOpenSnap(true); writeGroupState('snapgene', true); }
+    // If we're creating inside an existing folder, ensure the parent stays open.
+    if (parentPath) {
+      setOpenTags((s) => {
+        const n = new Set(s);
+        n.add(parentPath);
+        writeSet('tags', n);
+        return n;
+      });
+    }
+    setFolderDraftKey(`${groupKey}|${parentPath}`);
+    setFolderDraft('');
+  }, []);
+  const commitNewFolder = useCallback(() => {
+    setFolderDraftKey((currentKey) => {
+      if (!currentKey) return null;
+      const sep = currentKey.indexOf('|');
+      const groupKey = sep >= 0 ? currentKey.slice(0, sep) : currentKey;
+      const parentPath = sep >= 0 ? currentKey.slice(sep + 1) : '';
+      const name = folderDraft.trim();
+      if (!name || name.includes('/')) return null;
+      const fullPath = parentPath ? `${parentPath}/${name}` : name;
+      setUserFoldersByGroup((prev) => {
+        const list = prev[groupKey] || [];
+        if (list.includes(fullPath)) return prev;
+        const next = { ...prev, [groupKey]: [...list, fullPath] };
+        try { localStorage.setItem('pvcs-catalog-user-folders-by-group', JSON.stringify(next)); } catch { /* */ }
+        return next;
+      });
+      // Auto-open the brand-new folder so its empty state is visible.
+      setOpenTags((s) => {
+        const n = new Set(s);
+        n.add(fullPath);
+        writeSet('tags', n);
+        return n;
+      });
+      setFolderDraft('');
+      return null;
+    });
+  }, [folderDraft]);
+  const cancelNewFolder = useCallback(() => {
+    setFolderDraftKey(null);
+    setFolderDraft('');
+  }, []);
+
+  const toggleCat = useCallback((slug) => {
+    setOpenCats((s) => {
+      const next = new Set(s);
+      if (next.has(slug)) {
+        next.delete(slug);
+      } else {
+        next.add(slug);
+        // Lazy-load this SnapGene category on first open.
+        sources.loadSnapgeneCategory(slug);
+      }
+      writeSet('cats', next);
+      return next;
+    });
+  }, [sources]);
 
   const flatActive = !!query.trim();
 
   // Touch SnapGene flat cache lazily on first non-empty query.
   if (flatActive) sources.ensureSnapgeneFlat();
 
-  // Touch SnapGene categories on expand.
   const onToggleSnap = useCallback(() => {
     setOpenSnap((v) => {
       const next = !v;
@@ -82,6 +253,114 @@ export default function CatalogColumn({
     if (files.length > 0 && onFiles) onFiles(files);
     e.target.value = '';
   }, [onFiles]);
+
+  const triggerFolderImport = useCallback((folderPath) => {
+    pendingFolderTag.current = folderPath;
+    folderFileInputRef.current?.click();
+  }, []);
+  const onFolderImportPick = useCallback((e) => {
+    const files = Array.from(e.target.files || []);
+    const tag = pendingFolderTag.current;
+    if (files.length > 0 && onFiles) {
+      onFiles(files, tag ? { targetFolderTag: tag } : undefined);
+    }
+    pendingFolderTag.current = null;
+    e.target.value = '';
+  }, [onFiles]);
+  const onFolderDropFiles = useCallback((folderPath, files) => {
+    if (files.length > 0 && onFiles) {
+      onFiles(files, { targetFolderTag: folderPath });
+    }
+  }, [onFiles]);
+
+  // Folder deletion: removes the folder + any sub-folders from
+  // userFoldersByGroup, AND untags any library entries currently tagged with
+  // those paths (the items themselves stay in Library — only their tag is
+  // dropped). Containers must be deleted separately (см. deleteContainer)
+  // because they may be referenced by projects.
+  const deleteFolder = useCallback((groupKey, folderPath) => {
+    if (!folderPath) return;
+    const prefix = `${folderPath}/`;
+    let affectedCount = 0;
+    if (groupKey === 'mine') {
+      affectedCount = sources.mine.filter((it) => {
+        const tags = Array.isArray(it.tags) ? it.tags : [];
+        return tags.some((t) => t === folderPath || t.startsWith(prefix));
+      }).length;
+    }
+    // eslint-disable-next-line no-alert
+    if (typeof window !== 'undefined' && !window.confirm(
+      S.catalogDeleteFolderConfirm(folderPath, affectedCount),
+    )) return;
+    setUserFoldersByGroup((prev) => {
+      const list = prev[groupKey] || [];
+      const next = {
+        ...prev,
+        [groupKey]: list.filter((p) => p !== folderPath && !p.startsWith(prefix)),
+      };
+      try { localStorage.setItem('pvcs-catalog-user-folders-by-group', JSON.stringify(next)); } catch { /* */ }
+      return next;
+    });
+    if (groupKey === 'mine' && affectedCount > 0) {
+      const updateTags = useStore.getState().updateLibraryEntryTags;
+      if (typeof updateTags === 'function') {
+        for (const it of sources.mine) {
+          const tags = Array.isArray(it.tags) ? it.tags : [];
+          const filtered = tags.filter((t) => t !== folderPath && !t.startsWith(prefix));
+          if (filtered.length !== tags.length) {
+            updateTags(it.id, filtered).catch(() => { /* swallow — UI re-renders on next state push */ });
+          }
+        }
+      }
+    }
+    setOpenTags((s) => {
+      const n = new Set([...s].filter((p) => p !== folderPath && !p.startsWith(prefix)));
+      writeSet('tags', n);
+      return n;
+    });
+  }, [sources.mine]);
+
+  // Internal drag: dragging a library entry between folders rewrites its
+  // tags — drop SOURCE folder tag, add TARGET folder tag. Both source and
+  // target are slash-paths ('' = top of Mine, no folder; '__untagged__' =
+  // virtual bucket → treat as no real source). Multi-tagged entries lose
+  // only the dragged-from tag (others stay), so the item moves rather than
+  // being copied — matches OS file-manager «drag = move» convention.
+  const moveItemToFolder = useCallback((itemId, sourceFolder, targetFolder) => {
+    if (!itemId) return;
+    if (sourceFolder === targetFolder) return;
+    const store = useStore.getState();
+    const entry = store.libraryEntries?.[itemId];
+    if (!entry) return;
+    const realSource = sourceFolder === '__untagged__' ? '' : sourceFolder;
+    const realTarget = targetFolder === '__untagged__' ? '' : targetFolder;
+    const tags = Array.isArray(entry.tags) ? [...entry.tags] : [];
+    const filtered = realSource ? tags.filter((t) => t !== realSource) : tags;
+    const final = realTarget && !filtered.includes(realTarget)
+      ? [...filtered, realTarget]
+      : filtered;
+    if (typeof store.updateLibraryEntryTags === 'function') {
+      store.updateLibraryEntryTags(itemId, final).catch(() => { /* */ });
+    }
+  }, []);
+
+  // Container deletion: only valid for Mine items (other groups are read-only).
+  // Routes through the existing soft-delete: mark + commit. Confirm dialog
+  // warns biolog that containers may be referenced by projects.
+  const deleteContainer = useCallback((item) => {
+    if (!item || !item.id) return;
+    // eslint-disable-next-line no-alert
+    if (typeof window !== 'undefined' && !window.confirm(
+      S.catalogDeleteContainerConfirm(item.name || item.id),
+    )) return;
+    const state = useStore.getState();
+    if (typeof state.markLibraryEntryPendingDelete === 'function') {
+      state.markLibraryEntryPendingDelete(item.id);
+    }
+    if (typeof state.commitLibraryEntryPendingDelete === 'function') {
+      state.commitLibraryEntryPendingDelete(item.id).catch(() => { /* */ });
+    }
+  }, []);
 
   const onDrop = useCallback((e) => {
     if (!Array.from(e.dataTransfer?.types || []).includes('Files')) return;
@@ -114,40 +393,97 @@ export default function CatalogColumn({
     [flatActive, flatPool, query],
   );
 
-  // Replace-mode (drill-down): single source's items take over the scroll area.
-  const drilldownItems = useMemo(() => {
-    if (flatActive || !activeSource) return null;
-    if (activeSource.kind === 'project') return sources.thisProject;
-    if (activeSource.kind === 'demo') return sources.demo;
-    if (activeSource.kind === 'mine') {
-      if (activeSource.value === '__all__') return sources.mine;
-      const grp = sources.mineGroups.find((g) => g.tag === activeSource.value);
-      return grp ? grp.items : [];
-    }
-    if (activeSource.kind === 'snapgene') {
-      if (sources.snapgeneCategoryItems[activeSource.value] === undefined) {
-        sources.loadSnapgeneCategory(activeSource.value);
-        return null; // loading
-      }
-      return sources.snapgeneCategoryItems[activeSource.value] || [];
-    }
-    return null;
-  }, [flatActive, activeSource, sources]);
+  // Drill-down mode (back button + replaced view) is gone — every group is
+  // now an inline-collapsible dropdown. activeSource stays in the props
+  // signature for backward compat, but the UI no longer reads it.
 
-  const drilldownLabel = useMemo(() => {
-    if (!activeSource) return '';
-    if (activeSource.kind === 'project') return S.catalogGroupCanvas(projectName);
-    if (activeSource.kind === 'demo') return S.catalogGroupDemo;
-    if (activeSource.kind === 'mine') {
-      if (activeSource.value === '__all__') return S.catalogGroupMine;
-      return activeSource.value === '__untagged__' ? S.catalogUntaggedTag : activeSource.value;
-    }
-    if (activeSource.kind === 'snapgene') {
-      const cat = sources.snapgeneCategories.find((c) => c.slug === activeSource.value);
-      return cat?.name || activeSource.value;
-    }
-    return '';
-  }, [activeSource, projectName, sources.snapgeneCategories]);
+  // Recursive folder renderer. `itemsByPath` maps a folder's full path to
+  // the items belonging to it (only Mine populates this — by tag match).
+  // Sub-folders deeper than MAX_INDENT_DEPTH won't get their own «+ Новая
+  // папка» row but can still display existing children.
+  const renderFolderNodes = useCallback((nodes, groupKey, depth, itemsByPath) => (
+    nodes.map((node) => {
+      const folderItems = itemsByPath?.get(node.path) || [];
+      const open = openTags.has(node.path);
+      const childDepth = Math.min(MAX_INDENT_DEPTH, depth + 1);
+      const isAtMaxDepth = depth >= MAX_INDENT_DEPTH;
+      const displayLabel = node.name === '__untagged__' ? S.catalogUntaggedTag : node.name;
+      const childDraftKey = `${groupKey}|${node.path}`;
+      const isCreatingChild = folderDraftKey === childDraftKey;
+      // Folder/file creation + drag-drop + tag-based moves are ONLY meaningful
+      // for the user's own Library (Mine). Demo / SnapGene / Canvas are
+      // read-only or driven by separate flows — biolog asked: «запрети
+      // создавать папки и файлы внутри снапген демо и прочих кроме
+      // билиотеки». __untagged__ is a virtual bucket inside Mine — no
+      // sub-folder creation, no delete, no rename.
+      const isMine = groupKey === 'mine';
+      const isUntagged = node.name === '__untagged__';
+      const allowCreate = isMine && !isUntagged && !isAtMaxDepth;
+      const allowImport = isMine && !isUntagged;
+      const allowDelete = isMine && !isUntagged;
+      return (
+        <NestedSubGroup
+          key={node.path}
+          testId={`importer-catalog-${groupKey}-folder-${node.path}`}
+          label={displayLabel}
+          count={folderItems.length || node.children.length || 0}
+          open={open}
+          onToggle={() => toggleTag(node.path)}
+          depth={depth}
+          onAddChild={allowCreate ? () => startNewFolder(groupKey, node.path) : null}
+          addChildTitle={S.catalogNewFolder}
+          addChildTestId={`importer-catalog-add-child-${groupKey}-${node.path}`}
+          onAddFile={allowImport ? () => triggerFolderImport(node.path) : null}
+          addFileTitle={S.catalogAddFileToFolder(displayLabel)}
+          addFileTestId={`importer-catalog-add-file-${groupKey}-${node.path}`}
+          onFolderDrop={allowImport ? (files) => onFolderDropFiles(node.path, files) : null}
+          onItemDrop={isMine ? (itemId, sourceFolder) => moveItemToFolder(itemId, sourceFolder, node.path) : null}
+          folderDropHint={S.catalogFolderDropHint(displayLabel)}
+          onDelete={allowDelete ? () => deleteFolder(groupKey, node.path) : null}
+          deleteTitle={S.catalogDeleteFolder(displayLabel)}
+          deleteTestId={`importer-catalog-delete-folder-${groupKey}-${node.path}`}
+        >
+          {renderFolderNodes(node.children, groupKey, childDepth, itemsByPath)}
+          {folderItems.length > 0 && (
+            <InlineItemList
+              items={folderItems}
+              onSelectItem={onSelectItem}
+              depth={childDepth}
+              onDeleteItem={groupKey === 'mine' ? deleteContainer : null}
+              draggableItems={groupKey === 'mine'}
+              sourceFolder={node.path}
+            />
+          )}
+          {/* Inline input for «новая папка внутри папки» — appears only when
+              biolog clicked the hover-revealed «＋» on this folder header. */}
+          {isCreatingChild && (
+            <input
+              type="text"
+              autoFocus
+              data-testid={`importer-catalog-new-folder-input-${groupKey}-${node.path}`}
+              placeholder={S.catalogNewFolderPrompt}
+              value={folderDraft}
+              onChange={(e) => setFolderDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') { e.preventDefault(); commitNewFolder(); }
+                else if (e.key === 'Escape') { e.preventDefault(); cancelNewFolder(); }
+              }}
+              onBlur={commitNewFolder}
+              style={{
+                ...newFolderInputStyle,
+                marginLeft: indentForDepth(childDepth),
+                width: `calc(100% - ${indentForDepth(childDepth) + 10}px)`,
+              }}
+            />
+          )}
+          {/* Empty-folder «пусто» hint deliberately removed — biolog: после
+              удаления папки оно появлялось лишним шумом. The folder header
+              already shows count=0 (or just no number); the absence of
+              children speaks for itself. */}
+        </NestedSubGroup>
+      );
+    })
+  ), [openTags, toggleTag, onSelectItem, folderDraftKey, folderDraft, startNewFolder, commitNewFolder, cancelNewFolder, triggerFolderImport, onFolderDropFiles, deleteFolder, deleteContainer, moveItemToFolder]);
 
   return (
     <aside
@@ -191,7 +527,15 @@ export default function CatalogColumn({
 
       <div
         data-testid="importer-catalog-tree"
-        style={{ flex: 1, overflowY: 'auto' }}
+        style={{
+          flex: 1,
+          overflowY: 'auto',
+          // overflow-anchor: none — disables Chromium's scroll-anchoring
+          // computation (no-op for this read-only catalog tree where
+          // content doesn't reflow during scroll). Pairs with
+          // content-visibility on individual rows for smooth scroll.
+          overflowAnchor: 'none',
+        }}
       >
         {flatActive && (
           <div
@@ -205,36 +549,71 @@ export default function CatalogColumn({
           >{S.catalogFlatFound(flatResults.length)}</div>
         )}
 
-        {!flatActive && activeSource && (
-          <button
-            type="button"
-            data-testid="importer-catalog-back"
-            onClick={() => onActiveSourceChange?.(null)}
-            style={{
-              width: '100%',
-              display: 'flex', alignItems: 'center', gap: 6,
-              padding: '6px 12px',
-              fontSize: 11,
-              color: 'var(--accent-text)',
-              background: 'var(--accent-50)',
-              border: 'none',
-              borderBottom: '0.5px solid var(--border-subtle)',
-              cursor: 'pointer',
-              textAlign: 'left',
-            }}
-          >
-            <span aria-hidden>←</span>
-            <span style={{ flex: 1 }}>{S.catalogBack} · {drilldownLabel}</span>
-            {drilldownItems && (
-              <span style={{ fontSize: 10, color: 'var(--accent-text)', fontFamily: 'var(--font-mono)' }}>
-                ({drilldownItems.length})
-              </span>
-            )}
-          </button>
-        )}
-
-        {!flatActive && !activeSource && (
+        {!flatActive && (
           <div data-testid="importer-catalog-tree-groups">
+            {/* Order per biolog request: Моя библиотека первой, далее проекты,
+                затем демо и каталог SnapGene. Each section gets its own
+                folder tree (recursive — folder-in-folder up to MAX_INDENT_DEPTH)
+                and «+ Новая папка» rows at every level past depth 1. */}
+            <GroupHeader
+              groupKey="mine"
+              label={S.catalogGroupMine}
+              count={sources.mine.length}
+              open={openMine}
+              onToggle={() => {
+                setOpenMine((v) => { writeGroupState('mine', !v); return !v; });
+              }}
+              onAddChild={() => startNewFolder('mine', '')}
+              addChildTitle={S.catalogNewFolder}
+              addChildTestId="importer-catalog-add-child-mine-root"
+              onAddFile={() => triggerFolderImport('')}
+              addFileTitle={S.catalogAddFileToFolder(S.catalogGroupMine)}
+              addFileTestId="importer-catalog-add-file-mine-root"
+              onFolderDrop={(files) => onFolderDropFiles('', files)}
+              onItemDrop={(itemId, sourceFolder) => moveItemToFolder(itemId, sourceFolder, '')}
+              folderDropHint={S.catalogFolderDropHint(S.catalogGroupMine)}
+            />
+            {openMine && folderDraftKey === 'mine|' && (
+              <input
+                type="text"
+                autoFocus
+                data-testid="importer-catalog-new-folder-input-mine"
+                placeholder={S.catalogNewFolderPrompt}
+                value={folderDraft}
+                onChange={(e) => setFolderDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { e.preventDefault(); commitNewFolder(); }
+                  else if (e.key === 'Escape') { e.preventDefault(); cancelNewFolder(); }
+                }}
+                onBlur={commitNewFolder}
+                style={{ ...newFolderInputStyle, marginLeft: indentForDepth(1), width: `calc(100% - ${indentForDepth(1) + 10}px)` }}
+              />
+            )}
+            {openMine && (() => {
+              // Mine tags act as folder paths: any library entry tagged
+              // 'Vectors/CRISPR' lands inside the «CRISPR» folder under
+              // «Vectors». User-created (empty) folders are unioned in.
+              // When the library has entries but NONE carry tags,
+              // sources.mineGroups returns [] (legacy flat-fallback marker)
+              // — bucket those items into a synthetic «__untagged__»
+              // folder so they actually render under Mine. Without this,
+              // 3 untagged vectors showed counter «3» but invisible tree.
+              let effectiveGroups = sources.mineGroups;
+              if (effectiveGroups.length === 0 && sources.mine.length > 0) {
+                effectiveGroups = [{ tag: '__untagged__', items: sources.mine }];
+              }
+              const allPaths = new Set([
+                ...(userFoldersByGroup.mine || []),
+                ...effectiveGroups.map((g) => g.tag),
+              ]);
+              const tree = buildFolderTree([...allPaths]);
+              const itemsByPath = new Map(effectiveGroups.map((g) => [g.tag, g.items]));
+              if (tree.length === 0 && sources.mine.length === 0 && folderDraftKey !== 'mine|') {
+                return <EmptyHint label={S.catalogEmptyGroup} testId="catalog-mine-empty" depth={1} />;
+              }
+              return renderFolderNodes(tree, 'mine', 1, itemsByPath);
+            })()}
+
             <GroupHeader
               groupKey="canvas"
               label={S.catalogGroupCanvas(projectName)}
@@ -243,22 +622,22 @@ export default function CatalogColumn({
               onToggle={() => {
                 setOpenCanvas((v) => { writeGroupState('canvas', !v); return !v; });
               }}
-              onSelect={() => onActiveSourceChange?.({ kind: 'project', value: '__pinned__' })}
             />
-            {openCanvas && sources.thisProject.length === 0 && (
-              <EmptyHint label={S.catalogEmptyProject} testId="catalog-canvas-empty" />
-            )}
-            {openCanvas && sources.thisProject.length > 0 && sources.thisProject.slice(0, 8).map((it) => (
-              <ItemRow key={it.id} item={it} onClick={() => onSelectItem?.(it)} />
-            ))}
-            {openCanvas && sources.thisProject.length > 8 && (
-              <button
-                type="button"
-                data-testid="importer-catalog-canvas-more"
-                onClick={() => onActiveSourceChange?.({ kind: 'project', value: '__pinned__' })}
-                style={moreLinkStyle}
-              >…ещё {sources.thisProject.length - 8}</button>
-            )}
+            {openCanvas && (() => {
+              const tree = buildFolderTree(userFoldersByGroup.canvas || []);
+              return (
+                <>
+                  {renderFolderNodes(tree, 'canvas', 1, null)}
+                  <InlineItemList
+                    items={sources.thisProject}
+                    emptyLabel={tree.length === 0 ? S.catalogEmptyProject : null}
+                    emptyTestId="catalog-canvas-empty"
+                    onSelectItem={onSelectItem}
+                    depth={1}
+                  />
+                </>
+              );
+            })()}
 
             <GroupHeader
               groupKey="demo"
@@ -268,61 +647,24 @@ export default function CatalogColumn({
               onToggle={() => {
                 setOpenDemo((v) => { writeGroupState('demo', !v); return !v; });
               }}
-              onSelect={() => onActiveSourceChange?.({ kind: 'demo', value: 'demo' })}
             />
-            {openDemo && sources.demoLoading && sources.demo.length === 0 && (
-              <EmptyHint label={S.catalogLoading} testId="catalog-demo-loading" />
-            )}
-            {openDemo && sources.demo.length > 0 && sources.demo.slice(0, 8).map((it) => (
-              <ItemRow key={it.id || it.name} item={it} onClick={() => onSelectItem?.(it)} />
-            ))}
-            {openDemo && sources.demo.length > 8 && (
-              <button
-                type="button"
-                data-testid="importer-catalog-demo-more"
-                onClick={() => onActiveSourceChange?.({ kind: 'demo', value: 'demo' })}
-                style={moreLinkStyle}
-              >…ещё {sources.demo.length - 8}</button>
-            )}
-
-            <GroupHeader
-              groupKey="mine"
-              label={S.catalogGroupMine}
-              count={sources.mine.length}
-              open={openMine}
-              onToggle={() => {
-                setOpenMine((v) => { writeGroupState('mine', !v); return !v; });
-              }}
-              onSelect={() => onActiveSourceChange?.({ kind: 'mine', value: '__all__' })}
-            />
-            {openMine && sources.mine.length === 0 && (
-              <EmptyHint label={S.catalogEmptyGroup} testId="catalog-mine-empty" />
-            )}
-            {openMine && sources.mineGroups.length > 0 && sources.mineGroups.map((g) => (
-              <button
-                key={g.tag}
-                type="button"
-                data-testid={`importer-catalog-mine-group-${g.tag}`}
-                onClick={() => onActiveSourceChange?.({ kind: 'mine', value: g.tag })}
-                style={tagLinkStyle}
-              >
-                <span style={{ flex: 1, textAlign: 'left' }}>
-                  {g.tag === '__untagged__' ? S.catalogUntaggedTag : g.tag}
-                </span>
-                <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>{g.items.length}</span>
-              </button>
-            ))}
-            {openMine && sources.mineGroups.length === 0 && sources.mine.length > 0 && (
-              <button
-                type="button"
-                data-testid="importer-catalog-mine-flat"
-                onClick={() => onActiveSourceChange?.({ kind: 'mine', value: '__all__' })}
-                style={tagLinkStyle}
-              >
-                <span style={{ flex: 1, textAlign: 'left' }}>{S.catalogMineFlatLabel}</span>
-                <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>{sources.mine.length}</span>
-              </button>
-            )}
+            {openDemo && (() => {
+              const tree = buildFolderTree(userFoldersByGroup.demo || []);
+              return (
+                <>
+                  {renderFolderNodes(tree, 'demo', 1, null)}
+                  <InlineItemList
+                    items={sources.demo}
+                    loading={sources.demoLoading && sources.demo.length === 0}
+                    emptyLabel={S.catalogEmptyGroup}
+                    emptyTestId="catalog-demo-empty"
+                    loadingTestId="catalog-demo-loading"
+                    onSelectItem={onSelectItem}
+                    depth={1}
+                  />
+                </>
+              );
+            })()}
 
             <GroupHeader
               groupKey="snapgene"
@@ -334,18 +676,39 @@ export default function CatalogColumn({
             {openSnap && !sources.indexReady && (
               <EmptyHint label={S.catalogLoading} testId="catalog-snapgene-loading" />
             )}
-            {openSnap && sources.snapgeneCategories.map((c) => (
-              <button
-                key={c.slug}
-                type="button"
-                data-testid={`importer-catalog-snapgene-${c.slug}`}
-                onClick={() => onActiveSourceChange?.({ kind: 'snapgene', value: c.slug })}
-                style={tagLinkStyle}
-              >
-                <span style={{ flex: 1, textAlign: 'left' }}>{c.name}</span>
-                <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>{c.count}</span>
-              </button>
-            ))}
+            {openSnap && (() => {
+              const tree = buildFolderTree(userFoldersByGroup.snapgene || []);
+              return (
+                <>
+                  {renderFolderNodes(tree, 'snapgene', 1, null)}
+                  {sources.snapgeneCategories.map((c) => {
+                    const catOpen = openCats.has(c.slug);
+                    const items = sources.snapgeneCategoryItems[c.slug];
+                    const isLoading = catOpen && items === undefined;
+                    return (
+                      <NestedSubGroup
+                        key={c.slug}
+                        testId={`importer-catalog-snapgene-${c.slug}`}
+                        label={c.name}
+                        count={c.count}
+                        open={catOpen}
+                        onToggle={() => toggleCat(c.slug)}
+                        depth={1}
+                      >
+                        <InlineItemList
+                          items={items || []}
+                          loading={isLoading}
+                          emptyLabel={S.catalogEmptyGroup}
+                          loadingTestId={`catalog-snapgene-loading-${c.slug}`}
+                          onSelectItem={onSelectItem}
+                          depth={2}
+                        />
+                      </NestedSubGroup>
+                    );
+                  })}
+                </>
+              );
+            })()}
           </div>
         )}
 
@@ -362,17 +725,6 @@ export default function CatalogColumn({
                 {S.catalogFlatTruncated(flatResults.length)}
               </div>
             )}
-          </div>
-        )}
-
-        {!flatActive && drilldownItems && (
-          <div data-testid="importer-catalog-drilldown-items" style={{ padding: '6px 8px' }}>
-            {drilldownItems.length === 0 && (
-              <EmptyHint label={S.catalogEmptyGroup} testId="catalog-drilldown-empty" />
-            )}
-            {drilldownItems.map((it) => (
-              <CatalogCard key={it.id || `${it._slug || it._source}:${it.name}`} item={it} onClick={() => onSelectItem?.(it)} />
-            ))}
           </div>
         )}
       </div>
@@ -427,6 +779,18 @@ export default function CatalogColumn({
           hidden
           data-testid="importer-catalog-file-input"
         />
+        {/* Shared per-folder file picker — `pendingFolderTag` ref is set by
+            triggerFolderImport(folderPath), forwarded as `targetFolderTag`
+            so confirm flow lands the entry directly inside that folder. */}
+        <input
+          ref={folderFileInputRef}
+          type="file"
+          multiple
+          accept={ACCEPT_STRING}
+          onChange={onFolderImportPick}
+          hidden
+          data-testid="importer-catalog-folder-file-input"
+        />
         <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
           <textarea
             value={pasteDraft}
@@ -478,20 +842,85 @@ export default function CatalogColumn({
   );
 }
 
-function GroupHeader({ groupKey, label, count, open, onToggle, onSelect }) {
+/** Top-level group header. Optional `onAddChild` / `onAddFile` / `onFolderDrop`
+ *  let the user create a folder, import a file, or drag-drop files directly
+ *  onto the section root — replaces the visible «+ Новая папка» row that
+ *  used to live at the bottom of each group. */
+function GroupHeader({
+  groupKey, label, count, open, onToggle,
+  onAddChild, addChildTitle, addChildTestId,
+  onAddFile, addFileTitle, addFileTestId,
+  onFolderDrop, folderDropHint,
+  onItemDrop, // internal item drag → ungroup (move out of any folder)
+}) {
+  const [dragOver, setDragOver] = useState(false);
+  // Same enter/leave depth-counter pattern as NestedSubGroup so the row
+  // highlight doesn't flicker when the cursor crosses inner buttons
+  // (chevron, ＋, ⤓).
+  const dragDepth = useRef(0);
+  const fileDropEnabled = typeof onFolderDrop === 'function';
+  const itemDropEnabled = typeof onItemDrop === 'function';
+  const dropEnabled = fileDropEnabled || itemDropEnabled;
+  const acceptsTypes = (e) => {
+    const types = Array.from(e.dataTransfer?.types || []);
+    return (fileDropEnabled && types.includes('Files'))
+      || (itemDropEnabled && types.includes('application/x-bodgegene-item-id'));
+  };
   return (
     <div
-      data-testid={`importer-catalog-group-${groupKey}`}
+      className="importer-catalog-group-header"
+      data-folder-drop-hover={dragOver ? 'true' : undefined}
+      title={dropEnabled && dragOver ? folderDropHint : undefined}
+      onDragEnter={dropEnabled ? (e) => {
+        if (!acceptsTypes(e)) return;
+        e.preventDefault();
+        dragDepth.current += 1;
+        if (dragDepth.current === 1) setDragOver(true);
+      } : undefined}
+      onDragOver={dropEnabled ? (e) => {
+        if (!acceptsTypes(e)) return;
+        e.preventDefault();
+        const types = Array.from(e.dataTransfer?.types || []);
+        if (e.dataTransfer) {
+          e.dataTransfer.dropEffect = types.includes('application/x-bodgegene-item-id') ? 'move' : 'copy';
+        }
+      } : undefined}
+      onDragLeave={dropEnabled ? () => {
+        dragDepth.current = Math.max(0, dragDepth.current - 1);
+        if (dragDepth.current === 0) setDragOver(false);
+      } : undefined}
+      onDrop={dropEnabled ? (e) => {
+        if (!acceptsTypes(e)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        dragDepth.current = 0;
+        setDragOver(false);
+        const types = Array.from(e.dataTransfer?.types || []);
+        if (itemDropEnabled && types.includes('application/x-bodgegene-item-id')) {
+          const itemId = e.dataTransfer.getData('application/x-bodgegene-item-id');
+          const sourceFolder = e.dataTransfer.getData('application/x-bodgegene-source-folder') || '';
+          if (itemId) onItemDrop(itemId, sourceFolder);
+          return;
+        }
+        if (fileDropEnabled && types.includes('Files')) {
+          const files = Array.from(e.dataTransfer.files || []);
+          if (files.length > 0) onFolderDrop(files);
+        }
+      } : undefined}
       style={{
-        display: 'flex', alignItems: 'center',
+        display: 'flex', alignItems: 'stretch',
+        background: dragOver
+          ? 'color-mix(in srgb, var(--accent-500) 18%, transparent)'
+          : 'var(--surface-2, #f5f5f4)',
         borderBottom: '0.5px solid var(--border-subtle)',
-        background: 'var(--surface-2, #f5f5f4)',
+        outline: dragOver ? '1px dashed var(--accent-500)' : 'none',
+        outlineOffset: '-1px',
       }}
     >
       <button
         type="button"
         onClick={onToggle}
-        data-testid={`importer-catalog-group-${groupKey}-toggle`}
+        data-testid={`importer-catalog-group-${groupKey}`}
         aria-expanded={open}
         style={{
           flex: 1,
@@ -499,7 +928,8 @@ function GroupHeader({ groupKey, label, count, open, onToggle, onSelect }) {
           padding: '6px 12px',
           fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.4,
           color: 'var(--text-secondary)',
-          background: 'transparent', border: 'none',
+          background: 'transparent',
+          border: 'none',
           cursor: 'pointer',
           textAlign: 'left',
           fontWeight: 500,
@@ -511,49 +941,382 @@ function GroupHeader({ groupKey, label, count, open, onToggle, onSelect }) {
           <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>{count}</span>
         )}
       </button>
-      {onSelect && typeof count === 'number' && count > 0 && (
+      {onAddFile && (
         <button
           type="button"
-          onClick={onSelect}
-          data-testid={`importer-catalog-group-${groupKey}-open`}
-          aria-label="Открыть группу"
+          className="importer-catalog-add-file"
+          data-testid={addFileTestId}
+          onClick={(e) => { e.stopPropagation(); onAddFile(); }}
+          title={addFileTitle}
+          aria-label={addFileTitle}
           style={{
-            background: 'transparent', border: 'none',
+            padding: '0 6px',
+            background: 'transparent',
+            border: 'none',
             color: 'var(--text-tertiary)',
-            padding: '4px 10px', cursor: 'pointer',
-            fontSize: 12,
+            fontSize: 12, lineHeight: 1,
+            cursor: 'pointer',
           }}
-        >→</button>
+        >⤓</button>
+      )}
+      {onAddChild && (
+        <button
+          type="button"
+          className="importer-catalog-add-child"
+          data-testid={addChildTestId}
+          onClick={(e) => { e.stopPropagation(); onAddChild(); }}
+          title={addChildTitle}
+          aria-label={addChildTitle}
+          style={{
+            padding: '0 10px',
+            background: 'transparent',
+            border: 'none',
+            color: 'var(--text-tertiary)',
+            fontSize: 14, lineHeight: 1,
+            cursor: 'pointer',
+          }}
+        >＋</button>
       )}
     </div>
   );
 }
 
-function ItemRow({ item, onClick }) {
+/** Sub-group: nested collapsible row inside Mine (per-folder/tag) and
+ *  SnapGene (per-category). `depth` (1-based) drives the indent step.
+ *  Optional `onAddChild` adds a hover-revealed «＋» button on the right
+ *  of the header — clicking it opens a child-folder input WITHOUT making
+ *  the parent toggle. This pattern (file-manager style) keeps the visible
+ *  «+ Новая папка» count down to one-per-section while still allowing
+ *  folder-in-folder creation. */
+function NestedSubGroup({
+  testId, label, count, open, onToggle, children, depth = 1,
+  onAddChild, addChildTitle, addChildTestId,
+  onAddFile, addFileTitle, addFileTestId,
+  onFolderDrop, folderDropHint,
+  onItemDrop, // (itemId, sourceFolder) — internal drag of a library entry
+  onDelete, deleteTitle, deleteTestId,
+}) {
+  const [dragOver, setDragOver] = useState(false);
+  // dragenter/leave fire for every nested child element (chevron, label,
+  // ＋ icon, ⤓ icon, …). Without depth counting, leave→child looks like
+  // leave→row and the highlight flickers off. Track enter/leave depth so
+  // dragOver stays true the entire time the cursor is anywhere inside the
+  // row's bounding box.
+  const dragDepth = useRef(0);
+  const fileDropEnabled = typeof onFolderDrop === 'function';
+  const itemDropEnabled = typeof onItemDrop === 'function';
+  const dropEnabled = fileDropEnabled || itemDropEnabled;
+  const acceptsTypes = (e) => {
+    const types = Array.from(e.dataTransfer?.types || []);
+    return (fileDropEnabled && types.includes('Files'))
+      || (itemDropEnabled && types.includes('application/x-bodgegene-item-id'));
+  };
   return (
-    <button
-      type="button"
-      data-testid={`importer-catalog-item-${item.id || item.name}`}
-      onClick={onClick}
-      style={{
-        width: '100%',
-        display: 'flex', alignItems: 'center', gap: 8,
-        padding: '6px 12px',
-        background: 'transparent', border: 'none',
-        borderBottom: '0.5px solid var(--border-subtle)',
-        cursor: 'pointer',
-        textAlign: 'left',
-      }}
-    >
-      <span style={{ flex: 1, fontSize: 12, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {item.name}
-      </span>
-      <span style={{ fontSize: 10, color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>
-        {(item.length || 0).toLocaleString()}
-      </span>
-    </button>
+    <>
+      <div
+        className="importer-catalog-nested-row"
+        data-folder-drop-hover={dragOver ? 'true' : undefined}
+        title={dropEnabled && dragOver ? folderDropHint : undefined}
+        onDragEnter={dropEnabled ? (e) => {
+          if (!acceptsTypes(e)) return;
+          e.preventDefault();
+          dragDepth.current += 1;
+          if (dragDepth.current === 1) setDragOver(true);
+        } : undefined}
+        onDragOver={dropEnabled ? (e) => {
+          if (!acceptsTypes(e)) return;
+          e.preventDefault();
+          const types = Array.from(e.dataTransfer?.types || []);
+          if (e.dataTransfer) {
+            e.dataTransfer.dropEffect = types.includes('application/x-bodgegene-item-id') ? 'move' : 'copy';
+          }
+        } : undefined}
+        onDragLeave={dropEnabled ? () => {
+          dragDepth.current = Math.max(0, dragDepth.current - 1);
+          if (dragDepth.current === 0) setDragOver(false);
+        } : undefined}
+        onDrop={dropEnabled ? (e) => {
+          if (!acceptsTypes(e)) return;
+          e.preventDefault();
+          e.stopPropagation();
+          dragDepth.current = 0;
+          setDragOver(false);
+          const types = Array.from(e.dataTransfer?.types || []);
+          if (itemDropEnabled && types.includes('application/x-bodgegene-item-id')) {
+            const itemId = e.dataTransfer.getData('application/x-bodgegene-item-id');
+            const sourceFolder = e.dataTransfer.getData('application/x-bodgegene-source-folder') || '';
+            if (itemId) onItemDrop(itemId, sourceFolder);
+            return;
+          }
+          if (fileDropEnabled && types.includes('Files')) {
+            const files = Array.from(e.dataTransfer.files || []);
+            if (files.length > 0) onFolderDrop(files);
+          }
+        } : undefined}
+        style={{
+          display: 'flex', alignItems: 'stretch',
+          background: dragOver
+            ? 'var(--accent-50, color-mix(in srgb, var(--accent-500) 18%, transparent))'
+            : depthBackground(depth),
+          outline: dragOver ? '1px dashed var(--accent-500)' : 'none',
+          outlineOffset: '-1px',
+        }}
+      >
+        <button
+          type="button"
+          onClick={onToggle}
+          data-testid={testId}
+          aria-expanded={open}
+          style={{
+            flex: 1,
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: `4px 10px 4px ${indentForDepth(depth)}px`,
+            fontSize: 12,
+            background: 'transparent',
+            border: 'none',
+            color: 'var(--text-secondary)',
+            cursor: 'pointer',
+            textAlign: 'left',
+          }}
+        >
+          <span style={{ width: 10, color: 'var(--text-tertiary)' }}>{open ? '▾' : '▸'}</span>
+          <span style={{ flex: 1, textAlign: 'left' }}>{label}</span>
+          {typeof count === 'number' && (
+            <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>{count}</span>
+          )}
+        </button>
+        {onAddFile && (
+          <button
+            type="button"
+            className="importer-catalog-add-file"
+            data-testid={addFileTestId}
+            onClick={(e) => { e.stopPropagation(); onAddFile(); }}
+            title={addFileTitle}
+            aria-label={addFileTitle}
+            style={{
+              padding: '0 6px',
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--text-tertiary)',
+              fontSize: 12, lineHeight: 1,
+              cursor: 'pointer',
+            }}
+          >⤓</button>
+        )}
+        {onAddChild && (
+          <button
+            type="button"
+            className="importer-catalog-add-child"
+            data-testid={addChildTestId}
+            onClick={(e) => { e.stopPropagation(); onAddChild(); }}
+            title={addChildTitle}
+            aria-label={addChildTitle}
+            style={{
+              padding: '0 10px',
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--text-tertiary)',
+              fontSize: 14, lineHeight: 1,
+              cursor: 'pointer',
+            }}
+          >＋</button>
+        )}
+        {onDelete && (
+          <button
+            type="button"
+            className="importer-catalog-delete"
+            data-testid={deleteTestId}
+            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+            title={deleteTitle}
+            aria-label={deleteTitle}
+            style={{
+              padding: '0 8px',
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--text-tertiary)',
+              fontSize: 12, lineHeight: 1,
+              cursor: 'pointer',
+            }}
+          >×</button>
+        )}
+      </div>
+      {open && children}
+    </>
   );
 }
+
+/** Inline item list — renders the WHOLE list when its parent group is
+ *  expanded (no «Показать все/меньше» toggle). `depth` (1-based) controls
+ *  the per-item left indent via indentForDepth(). While items are still
+ *  fetching we render nothing — biolog asked for «загрузка…» to be removed
+ *  because it appeared at column-zero indent and looked like a misplaced
+ *  section header rather than a child of the just-opened sub-group. */
+function InlineItemList({
+  items, loading, emptyLabel, emptyTestId,
+  loadingTestId, // eslint-disable-line no-unused-vars -- legacy callers still pass it
+  onSelectItem, depth = 1,
+  onDeleteItem, // optional — only Mine entries get «×» delete handler
+  draggableItems = false, // Mine only — items can be dragged to other folders
+  sourceFolder = '',     // path of the parent folder these items live in
+}) {
+  if (loading) return null;
+  if (!items || items.length === 0) {
+    return emptyLabel
+      ? <EmptyHint label={emptyLabel} testId={emptyTestId} depth={depth} />
+      : null;
+  }
+  return (
+    <>
+      {items.map((it) => (
+        <ItemRow
+          key={it.id || `${it._slug || it._source}:${it.name}`}
+          item={it}
+          onClick={() => onSelectItem?.(it)}
+          depth={depth}
+          onDelete={onDeleteItem ? () => onDeleteItem(it) : null}
+          deleteTitle={onDeleteItem ? S.catalogDeleteContainer(it.name || it.id) : undefined}
+          draggable={draggableItems}
+          sourceFolder={sourceFolder}
+        />
+      ))}
+    </>
+  );
+}
+
+/** Individual item row inside a (possibly nested) collapsible group.
+ *  Visual rules — items must NOT look like section headers:
+ *    - lighter weight + secondary text colour
+ *    - deeper indent than its parent group/sub-group header (one INDENT_STEP)
+ *    - no inter-row dividers; hover bg signals interactivity.
+ *  `depth` is 1-based — 1 = direct child of a top-level group, 2 = inside a
+ *  nested sub-group, …, capped at MAX_INDENT_DEPTH.
+ *  Optional `onDelete` shows a hover-revealed «×» on the right (used for
+ *  Mine entries only — catalog items from Demo/SnapGene are read-only). */
+const ItemRow = memo(function ItemRow({ item, onClick, depth = 1, onDelete, deleteTitle, draggable = false, sourceFolder = '' }) {
+  // Pad: when there's a drag handle on the left, the click button starts a
+  // bit deeper so handle + content don't overlap. Without handle the row
+  // pads from indentForDepth + CHEVRON_GUTTER as before.
+  const HANDLE_W = 14;
+  const dragEnabled = draggable && !!item.id;
+  const padLeft = indentForDepth(depth) + CHEVRON_GUTTER + (dragEnabled ? HANDLE_W : 0);
+  const length = item.length || item.sequence?.length || 0;
+  return (
+    <div
+      className="importer-catalog-item-row"
+      style={{
+        '--depth-bg': depthBackground(depth),
+        display: 'flex', alignItems: 'stretch',
+        position: 'relative',
+        // Per-row scroll perf: each ItemRow carries an SVG mini-map +
+        // labels + buttons; with ~700 SnapGene catalog entries open
+        // simultaneously, the cumulative paint cost causes scroll
+        // micro-jitter (биолог 03.05.2026 evening: «как ускорить
+        // скролл левой панели в библиотеке, там тоже подлагивает,
+        // хочу плавность»). `content-visibility: auto` lets the
+        // browser skip layout + paint of off-screen rows entirely;
+        // `contain: paint` localises the paint area for visible
+        // ones; `contain-intrinsic-size: auto 28px` keeps scroll
+        // height accurate before realisation.
+        contentVisibility: 'auto',
+        containIntrinsicSize: 'auto 28px',
+        contain: 'paint',
+      }}
+    >
+      {dragEnabled && (
+        // Dedicated drag handle — Chrome/Vivaldi often refuse to start
+        // an HTML5 drag from inside a <button> (mousedown gets captured
+        // for the click). A separate draggable element with grip icon
+        // gives biolog a clear «hold here to move» affordance.
+        <span
+          draggable
+          onDragStart={(e) => {
+            e.dataTransfer.setData('application/x-bodgegene-item-id', item.id);
+            e.dataTransfer.setData('application/x-bodgegene-source-folder', sourceFolder || '');
+            e.dataTransfer.effectAllowed = 'move';
+          }}
+          className="importer-catalog-drag-handle"
+          data-testid={`importer-catalog-drag-${item.id}`}
+          aria-label={S.catalogDragHandleAria}
+          title={S.catalogDragHandleAria}
+          style={{
+            position: 'absolute',
+            left: indentForDepth(depth) + CHEVRON_GUTTER - 2,
+            top: 0, bottom: 0,
+            width: HANDLE_W,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: 'var(--text-tertiary)',
+            cursor: 'grab',
+            userSelect: 'none',
+            fontSize: 10, lineHeight: 1,
+          }}
+        >⋮⋮</span>
+      )}
+      <button
+        type="button"
+        data-testid={`importer-catalog-item-${item.id || item.name}`}
+        onClick={onClick}
+        className="importer-catalog-item"
+        style={{
+          flex: 1,
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: `3px 10px 3px ${padLeft}px`,
+          background: 'transparent',
+          border: 'none',
+          cursor: 'pointer',
+          textAlign: 'left',
+        }}
+      >
+        <PlasmidMiniMap
+          length={length}
+          topology={item.topology || 'circular'}
+          annotations={item.annotations || []}
+          size={20}
+          mode="inline"
+        />
+        <span style={{
+          flex: 1, fontSize: 11.5, fontWeight: 400,
+          color: 'var(--text-secondary)',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
+          {item.name}
+        </span>
+        <span style={{ fontSize: 10, color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>
+          {length.toLocaleString()}
+        </span>
+      </button>
+      {onDelete && (
+        <button
+          type="button"
+          className="importer-catalog-delete"
+          data-testid={`importer-catalog-delete-item-${item.id || item.name}`}
+          onClick={(e) => { e.stopPropagation(); onDelete(); }}
+          title={deleteTitle}
+          aria-label={deleteTitle}
+          style={{
+            padding: '0 8px',
+            background: 'transparent',
+            border: 'none',
+            color: 'var(--text-tertiary)',
+            fontSize: 12, lineHeight: 1,
+            cursor: 'pointer',
+          }}
+        >×</button>
+      )}
+    </div>
+  );
+}, (prev, next) => (
+  // Skip re-render for unchanged catalog items — onClick / onDelete arrows
+  // are recreated each parent render but the item object + flags don't
+  // shift unless the underlying entry changes. Big perf win for 400-item
+  // SnapGene categories where parent state churn (drag highlights, hover
+  // bridges) used to bubble through every row.
+  prev.item === next.item
+  && prev.depth === next.depth
+  && prev.draggable === next.draggable
+  && prev.sourceFolder === next.sourceFolder
+  && (prev.onDelete == null) === (next.onDelete == null)
+  && prev.deleteTitle === next.deleteTitle
+));
 
 function CatalogCard({ item, onClick }) {
   const length = item.length || item.sequence?.length || 0;
@@ -599,33 +1362,32 @@ function CatalogCard({ item, onClick }) {
   );
 }
 
-function EmptyHint({ label, testId }) {
+function EmptyHint({ label, testId, depth = 0 }) {
+  // Match ItemRow's CHEVRON_GUTTER offset when used inside a list, so the
+  // hint sits under the parent's text column rather than its chevron.
+  const padLeft = depth > 0 ? indentForDepth(depth) + CHEVRON_GUTTER : indentForDepth(depth);
   return (
     <div
       data-testid={testId}
-      style={{ padding: '6px 12px', fontSize: 11, color: 'var(--text-tertiary)', fontStyle: 'italic' }}
+      style={{
+        padding: `4px 10px 4px ${padLeft}px`,
+        background: depthBackground(depth),
+        fontSize: 11, color: 'var(--text-tertiary)', fontStyle: 'italic',
+      }}
     >{label}</div>
   );
 }
 
-const tagLinkStyle = {
-  width: '100%',
-  display: 'flex', alignItems: 'center', gap: 6,
-  padding: '4px 22px',
+const newFolderInputStyle = {
+  width: 'calc(100% - 24px)',
+  margin: '4px 10px 4px 24px',
+  padding: '3px 8px',
   fontSize: 12,
-  background: 'transparent', border: 'none',
-  color: 'var(--text-secondary)',
-  cursor: 'pointer',
-  textAlign: 'left',
-};
-
-const moreLinkStyle = {
-  width: '100%',
-  padding: '4px 22px',
-  fontSize: 11, fontStyle: 'italic',
-  color: 'var(--accent-text)',
-  background: 'transparent', border: 'none',
-  cursor: 'pointer', textAlign: 'left',
+  color: 'var(--text-primary)',
+  background: 'var(--surface-1)',
+  border: '0.5px solid var(--accent-500)',
+  borderRadius: 'var(--radius-md)',
+  outline: 'none',
 };
 
 export const __test__ = { GROUP_KEYS };

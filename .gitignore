@@ -29,3 +29,8 @@ htmlcov/
 Thumbs.db
 
 *.dna
+
+# Local tooling (Claude Code worktrees, IDE settings)
+.claude/
+.vscode/
+node_modules/

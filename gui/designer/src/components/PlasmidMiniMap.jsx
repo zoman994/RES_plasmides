@@ -31,7 +31,7 @@
  * 250 ms hover-bridge debounce.
  */
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { featureColor, featureColorShaded, FEATURE_STROKE, FEATURE_COLORS_V2 } from '../feature-palette';
 import { getRegions } from '../annotation-model';
@@ -40,12 +40,26 @@ const LEADER_LEN = 10;                    // px the leader sticks out past outer
 const LABEL_RING = 32;                    // px radial ring reserved for labels (circular ≥180 px)
 const COLLISION_RAD = 0.26;               // ≈ 15° — circular labels closer than this get staggered
 const COLLISION_PX = 40;                  // px — linear labels with anchors closer get staggered
-const HOVER_BRIDGE_MS = 250;              // K5.1 hover-bridge debounce (mouseleave → close)
-const GROW_DURATION_MS = 200;             // F4 transform/opacity transition for the grow-overlay
+const HOVER_BRIDGE_MS = 80;               // K5.1 hover-bridge debounce (mouseleave → close).
+                                          // Was 250 ms — biolog asked for «быстрее исчезали при
+                                          // убирании курсора»; 80 ms still allows mouse to cross
+                                          // the small gap between source tile and overlay portal.
+const GROW_DURATION_MS = 140;             // F4 transform/opacity transition for the grow-overlay
+                                          // — also tightened (was 200) so dismiss feels snappy.
 const LABEL_LENGTH_THRESHOLD_BP = 300;    // K6 (V46): every region ≥300 bp gets a label
+const LABEL_MAX_CHARS = 14;               // truncate noun-phrase labels so post-getBBox SVG stays
+                                          // close to `size`. SnapGene names like "trpC terminator
+                                          // sequence from A. nidulans" otherwise blow vbox.drawW
+                                          // past 400 px and overflow the 240 px OverviewTab cell.
 const LABEL_TYPE_BLACKLIST = new Set([    // GenBank metadata that always covers full plasmid
   'source',
 ]);
+
+function truncateLabel(s) {
+  if (!s) return '';
+  if (s.length <= LABEL_MAX_CHARS) return s;
+  return s.slice(0, Math.max(1, LABEL_MAX_CHARS - 1)) + '…';
+}
 
 // Theme-aware label rendering: halo matches surface so it «punches» the
 // background cleanly on both light (white halo on white card) and dark
@@ -89,7 +103,7 @@ function buildCircularLabels(regions, totalLen, cx, cy, r) {
     return {
       key: region.id,
       ang,
-      label: region.name || region.type || 'region',
+      label: truncateLabel(region.name || region.type || 'region'),
       color: featureColorShaded(region.type, region.name),
       innerX, innerY, outerX, outerY, anchor,
       textX, textY: outerY + 3,
@@ -122,7 +136,7 @@ function buildLinearLabels(regions, totalLen, size, cy, strokeWidth) {
     return {
       key: region.id,
       anchor: 'middle',
-      label: region.name || region.type || 'region',
+      label: truncateLabel(region.name || region.type || 'region'),
       color: featureColorShaded(region.type, region.name),
       innerX, innerY, outerX, outerY,
       textX: outerX, textY: outerY - 2,
@@ -142,7 +156,7 @@ function buildLinearLabels(regions, totalLen, size, cy, strokeWidth) {
   return items;
 }
 
-export default function PlasmidMiniMap({
+function PlasmidMiniMap({
   length, topology, annotations, size = 64,
   mode = 'inline',
   disableHoverOverlay = false,
@@ -197,19 +211,19 @@ export default function PlasmidMiniMap({
 
   // V46 viewBox post-render expansion (variant 1A): if real bbox of SVG content
   // overflows the initial 0,0,size,size box, widen viewBox + width/height with
-  // 4 px padding so labels never clip. jsdom lacks getBBox → effect no-ops.
-  // F1: only in overlay mode — inline mode keeps a fixed `0 0 size size` box
-  // so the SVG fits its parent grid cell (the F1 fix for V46-acceptance bug).
-  const [vbox, setVbox] = useState({ x: 0, y: 0, w: size, h: size, drawW: size, drawH: size });
+  // 4 px padding so labels never clip. Only the OVERLAY mode runs getBBox —
+  // inline mode (catalog tree, 400× per opened SnapGene category) computes
+  // vbox synchronously from `size` so we skip an unconditional setState that
+  // forced 400 extra renders right after mount. Perf: ~30% faster expand of
+  // large categories.
+  const defaultVbox = { x: 0, y: 0, w: size, h: size, drawW: size, drawH: size };
+  const [overlayVbox, setOverlayVbox] = useState(null);
+  const vbox = isOverlay && overlayVbox ? overlayVbox : defaultVbox;
   useLayoutEffect(() => {
-    if (!isOverlay) {
-      // Inline mode: lock viewBox to the host size on every prop change.
-      setVbox({ x: 0, y: 0, w: size, h: size, drawW: size, drawH: size });
-      return;
-    }
+    if (!isOverlay) return;
     if (!svgRef.current) return;
     if (!labels.length) {
-      setVbox({ x: 0, y: 0, w: size, h: size, drawW: size, drawH: size });
+      setOverlayVbox(null);
       return;
     }
     let bbox;
@@ -230,8 +244,11 @@ export default function PlasmidMiniMap({
     const maxY = Math.max(size, Math.ceil(bbox.y + bbox.height + PAD));
     const w = maxX - minX;
     const h = maxY - minY;
-    if (minX === 0 && minY === 0 && w === size && h === size) return;
-    setVbox({ x: minX, y: minY, w, h, drawW: w, drawH: h });
+    if (minX === 0 && minY === 0 && w === size && h === size) {
+      setOverlayVbox(null);
+      return;
+    }
+    setOverlayVbox({ x: minX, y: minY, w, h, drawW: w, drawH: h });
   }, [size, totalLen, isCircular, regions.length, labels.length, isOverlay]);
 
   const showHover = (titleText, evt) => {
@@ -251,6 +268,53 @@ export default function PlasmidMiniMap({
     const titleText = `${region.name || region.type || 'region'} · ${start + 1}–${end} bp`;
 
     if (isCircular) {
+      // Full-length annotation (e.g. dTomato 702 bp inside a 702 bp
+      // circular plasmid, where the imported file's only feature spans
+      // the whole backbone). With the standard arc math, a1 and a2
+      // collapse to the SAME point at the top of the circle and the
+      // SVG `<path A …>` becomes degenerate — Chrome rendered it as a
+      // tiny green slice on the right edge of the ring (biolog visual
+      // review 03.05.2026 evening on 702 bp dTomato CDS). Fix: when
+      // the visible span equals the total length, fall back to a full
+      // <circle> stroke. Approximate match (`>= totalLen - 1`) covers
+      // off-by-1 imports where end is `totalLen-1` after coordinate
+      // normalisation in pvcs.snapgene_parser.
+      const span = end - start;
+      if (span >= totalLen - 1) {
+        paths.push(
+          <g
+            key={region.id}
+            role="img"
+            aria-label={titleText}
+            style={{ cursor: 'help' }}
+            onMouseMove={(e) => showHover(titleText, e)}
+            onMouseLeave={clearHover}
+          >
+            {/*
+              * Two-layer stroke: a slightly wider FEATURE_STROKE
+              * (#3A2F1F) circle UNDER the coloured one — restores
+              * the black sector outline biolog liked («куда то
+              * обводка делась у минимапов, верни чёрную обводку
+              * секторов оно было красиво»). 0.8 px wider gives a
+              * ~0.4 px visible black rim on each side of the
+              * coloured band.
+              */}
+            <circle
+              cx={cx} cy={cy} r={r}
+              stroke={FEATURE_STROKE}
+              strokeWidth={strokeWidth + 0.8}
+              fill="none"
+            />
+            <circle
+              cx={cx} cy={cy} r={r}
+              stroke={color}
+              strokeWidth={strokeWidth}
+              fill="none"
+            />
+          </g>
+        );
+        continue;
+      }
       const a1 = (start / totalLen) * 2 * Math.PI - Math.PI / 2;
       const a2 = (end / totalLen) * 2 * Math.PI - Math.PI / 2;
       const x1 = cx + r * Math.cos(a1);
@@ -258,6 +322,7 @@ export default function PlasmidMiniMap({
       const x2 = cx + r * Math.cos(a2);
       const y2 = cy + r * Math.sin(a2);
       const large = (a2 - a1) > Math.PI ? 1 : 0;
+      const arcPath = `M ${x1.toFixed(2)} ${y1.toFixed(2)} A ${r} ${r} 0 ${large} 1 ${x2.toFixed(2)} ${y2.toFixed(2)}`;
       paths.push(
         <g
           key={region.id}
@@ -267,8 +332,20 @@ export default function PlasmidMiniMap({
           onMouseMove={(e) => showHover(titleText, e)}
           onMouseLeave={clearHover}
         >
+          {/*
+            * Two-layer stroke (see same pattern in the full-length
+            * branch above): wider FEATURE_STROKE arc underneath gives
+            * each sector a thin black rim.
+            */}
           <path
-            d={`M ${x1.toFixed(2)} ${y1.toFixed(2)} A ${r} ${r} 0 ${large} 1 ${x2.toFixed(2)} ${y2.toFixed(2)}`}
+            d={arcPath}
+            stroke={FEATURE_STROKE}
+            strokeWidth={strokeWidth + 0.8}
+            fill="none"
+            strokeLinecap="butt"
+          />
+          <path
+            d={arcPath}
             stroke={color}
             strokeWidth={strokeWidth}
             fill="none"
@@ -388,16 +465,24 @@ export default function PlasmidMiniMap({
     let top = 0;
     if (el) {
       const rect = el.getBoundingClientRect();
-      // overlayPos stores the overlay CENTER. CSS `translate(-50%, -50%)` on
-      // the portal then offsets by half its real dimensions, so the overlay
-      // visually centres on the source tile regardless of how wide labels
-      // grew. Clamp the centre point against the viewport using OVERLAY_BOX
-      // as worst-case half-budget.
+      // Position the overlay to the RIGHT of the source tile (biolog asked
+      // «сместить вправо чтобы другие значки были видны»). overlayPos stores
+      // the overlay CENTER (CSS `translate(-50%, -50%)` re-centres). If
+      // there isn't enough room on the right, fall back to the left side;
+      // last resort — clamp to viewport so the overlay never escapes.
       const halfBox = OVERLAY_BOX / 2;
-      left = rect.left + rect.width / 2;
+      const GAP = 8;
+      const minLeft = halfBox + GAP;
+      const maxLeft = (typeof window !== 'undefined' ? window.innerWidth : 1024) - halfBox - GAP;
+      const rightSide = rect.right + GAP + halfBox;
+      const leftSide = rect.left - GAP - halfBox;
+      if (rightSide <= maxLeft) left = rightSide;
+      else if (leftSide >= minLeft) left = leftSide;
+      else left = Math.max(minLeft, Math.min(maxLeft, rect.left + rect.width / 2));
       top = rect.top + rect.height / 2;
-      left = Math.max(8 + halfBox, Math.min(window.innerWidth - 8 - halfBox, left));
-      top = Math.max(8 + halfBox, Math.min(window.innerHeight - 8 - halfBox, top));
+      const minTop = halfBox + GAP;
+      const maxTop = (typeof window !== 'undefined' ? window.innerHeight : 768) - halfBox - GAP;
+      top = Math.max(minTop, Math.min(maxTop, top));
     }
     setOverlayPos({ left, top });
     if (!overlayMounted) {
@@ -420,11 +505,23 @@ export default function PlasmidMiniMap({
   const wrapperWidth = isOverlay ? vbox.drawW : size;
   const wrapperHeight = isOverlay ? vbox.drawH : size;
 
+  // Inline tile chip-frame REMOVED on biolog feedback 02.05.2026:
+  // «круглую обводку вокруг значков плазмид убрать на панеле слева. они
+  // должны в своих прозрачных микроконтейнерах быть без обводки.»
+  // The catalog list looks cleaner with bare icons floating on the row
+  // background — the inner SVG backbone (<circle stroke="var(--border-default)"
+  // opacity=0.6 strokeWidth=0.5>) already gives the necessary plasmid
+  // silhouette without an extra container ring.
   return (
     <span
       ref={wrapperRef}
       className={`relative inline-block ${cursorClass}`}
-      style={{ width: wrapperWidth, height: wrapperHeight, lineHeight: 0 }}
+      style={{
+        width: wrapperWidth,
+        height: wrapperHeight,
+        lineHeight: 0,
+        background: 'transparent',
+      }}
       data-testid="plasmid-mini-map"
       onMouseEnter={overlayEnabled ? openOverlay : undefined}
       onMouseLeave={overlayEnabled ? scheduleClose : undefined}
@@ -494,16 +591,19 @@ export default function PlasmidMiniMap({
           {hovered.text}
         </span>
       )}
-      {/* F4 grow-overlay portal — white card (bg/border/shadow), CSS transform
-          animation, sits above catalog content via z-index 100. K2 (FIX-2):
-          biolog asked for the white-bg card back; перекрытие соседних карточек
-          приемлемо по требованию. FIX-2 follow-up: dropped fixed
-          width/height — container shrinks to the inner mini-map (which itself
-          grows with leader-labels) + `p-3` padding, so the rectangle hugs
-          plasmid + labels with a small inset, не разъезжается до OVERLAY_BOX. */}
+      {/* F4 grow-overlay portal — theme-aware card (was hardcoded
+          bg-white/border-gray-200; биолог жаловался на белое поле на dark
+          теме). Inner mini-map at size=144 (~20% smaller than прежние 180)
+          per «вылетающую плазмиду уменьшить процентов на 20». */}
       {overlayMounted && typeof document !== 'undefined' && createPortal(
+        // Re-apply data-theme on the portal node so CSS variables (surface-1,
+        // border-default, text-primary, …) cascade into it. Portals mount at
+        // document.body, while data-theme lives on document.documentElement;
+        // inheritance normally works, but Vivaldi + Tailwind 4 occasionally
+        // resolves CSS vars from the document defaults instead of the dark
+        // palette, leaving the overlay card visibly white on dark background.
         <span
-          className="bg-white shadow-lg border border-gray-200 rounded p-3"
+          data-theme={typeof document !== 'undefined' ? document.documentElement?.dataset?.theme : undefined}
           style={{
             position: 'fixed',
             left: overlayPos.left,
@@ -513,6 +613,11 @@ export default function PlasmidMiniMap({
             justifyContent: 'center',
             zIndex: 100,
             pointerEvents: 'auto',
+            padding: 12,
+            borderRadius: 'var(--radius-md, 6px)',
+            background: 'var(--surface-1, #fff)',
+            border: '0.5px solid var(--border-default, #d6d3d1)',
+            boxShadow: '0 6px 20px rgba(0, 0, 0, 0.28)',
             transform: overlayActive
               ? 'translate(-50%, -50%) scale(1)'
               : 'translate(-50%, -50%) scale(0.5)',
@@ -530,7 +635,7 @@ export default function PlasmidMiniMap({
             length={length}
             topology={topology}
             annotations={annotations}
-            size={180}
+            size={144}
             mode="overlay"
           />
         </span>,
@@ -539,3 +644,17 @@ export default function PlasmidMiniMap({
     </span>
   );
 }
+
+// Memo with shallow comparator: skip re-render if these primitives + the
+// annotations array reference are unchanged. Catalog data sources (Mine /
+// SnapGene / Demo) keep stable annotation refs across catalog re-renders,
+// so 400-item lists no longer rebuild every map on parent state churn
+// (drag highlight, hover bridges, etc.).
+export default memo(PlasmidMiniMap, (prev, next) => (
+  prev.length === next.length
+  && prev.topology === next.topology
+  && prev.size === next.size
+  && prev.mode === next.mode
+  && prev.disableHoverOverlay === next.disableHoverOverlay
+  && prev.annotations === next.annotations
+));

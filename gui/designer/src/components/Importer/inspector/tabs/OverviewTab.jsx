@@ -1,8 +1,8 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import PlasmidMiniMap from '../../../PlasmidMiniMap';
 import { featureColor } from '../../../../feature-palette';
 import { STRINGS } from '../../../../lib/strings';
-import { buildFileSummary } from '../lib/file-summary';
+import { buildFileSummary, summarizeRESitesCached } from '../lib/file-summary';
 
 const S = STRINGS.importer;
 
@@ -21,12 +21,54 @@ const S = STRINGS.importer;
  * and AnnotationsTab (K4) ship as React conditional render — they don't
  * exist in DOM until activeTab matches. That's the V49 50-sec hang fix.
  */
+// Test-mode bypass for the lazy reSites scan. In production we defer the
+// ~150–250 ms RE scan to the next idle frame so the overview paints
+// immediately on click, but Vitest assertions on `importer-overview-re-sites`
+// (none today, but safe-guarded for future) need the section synchronously.
+const __PREWARM_DISABLED__ =
+  typeof import.meta !== 'undefined'
+  && typeof import.meta.env !== 'undefined'
+  && import.meta.env.MODE === 'test';
+
 export default function OverviewTab({ item }) {
   const summary = useMemo(() => buildFileSummary(item), [item]);
+  // Lazy reSites: in production we paint the rest of the overview first
+  // (mini-map, type counts, categories, CDS list — fast), then schedule
+  // the RE scan via requestIdleCallback. The scan result is cached at
+  // the file-summary module level so re-opening the same plasmid in
+  // the same session is instant. In test mode we run synchronously.
+  const sequence = item?.sequence;
+  const topology = item?.topology || 'linear';
+  const [reSites, setReSites] = useState(() =>
+    __PREWARM_DISABLED__ ? summarizeRESitesCached(sequence, topology) : []
+  );
+  useEffect(() => {
+    if (__PREWARM_DISABLED__) return undefined;
+    if (!sequence || sequence.length < 10) {
+      setReSites([]);
+      return undefined;
+    }
+    // Reset on sequence change so we don't briefly show STALE sites
+    // from a previously selected plasmid.
+    setReSites([]);
+    let cancelled = false;
+    const flush = () => {
+      if (cancelled) return;
+      setReSites(summarizeRESitesCached(sequence, topology));
+    };
+    const useRIC = typeof requestIdleCallback !== 'undefined';
+    const handle = useRIC
+      ? requestIdleCallback(flush, { timeout: 1200 })
+      : setTimeout(flush, 50);
+    return () => {
+      cancelled = true;
+      if (useRIC) cancelIdleCallback(handle); else clearTimeout(handle);
+    };
+  }, [sequence, topology]);
+
   if (!summary || !item) return null;
   const length = item.length || item.sequence?.length || 0;
-  const topology = item.topology || 'linear';
-  const { typeCounts, cats, remainingCDS, reSites, warnings } = summary;
+  const { typeCounts, cats, remainingCDS, warnings } = summary;
   const cdsTop = remainingCDS.slice(0, 5);
   const cdsOverflow = Math.max(0, remainingCDS.length - cdsTop.length);
   const hasCategoryLine =
@@ -37,10 +79,11 @@ export default function OverviewTab({ item }) {
       data-testid="importer-tab-panel-overview"
       style={{
         display: 'grid',
-        // 2-col layout: mini-map fixed 240px (enough for 160px svg +
-        // overlay leader-labels overflow), summary fills remaining space.
-        // Stops mini-map drowning in 982px of empty horizontal void.
-        gridTemplateColumns: '240px 1fr',
+        // 2-col layout: mini-map cell 320px (180px svg + ~70px label text
+        // each side after LABEL_MAX_CHARS=14 truncate). 240px was too tight
+        // and let leader-labels overflow past the dark cell border on the
+        // left. Summary takes remaining width and still has ~600 px.
+        gridTemplateColumns: '320px 1fr',
         gap: 14,
         alignItems: 'start',
       }}

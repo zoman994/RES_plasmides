@@ -29,7 +29,6 @@ const LEADER_LEN = 8;
 const LABEL_H = 12;
 const LABEL_GAP_PX = 2;
 const IN_LABEL_THRESHOLD_PCT = 6.5;
-const COLLISION_PX = 80;
 const DENSITY_WINDOW_PX = 140;   // sample neighbours within this window
 const ANGLED_SHIFT_PX = 32;      // how far the label slides sideways
 const ANGLED_THRESHOLD = 1;      // density delta required to angle
@@ -97,38 +96,67 @@ export default function LinearFeatureBar({ annotations = [], seqLength = 0, onSe
       return 0;
     });
 
-    // Y staggering uses the post-shift label X (cx + dir * SHIFT). After
-    // shifting, clamp label X within the SVG width so labels never spill
-    // outside the visible bar — and compute available text width so we
-    // can truncate names that don't fit.
+    // First pass: compute every label's horizontal extent (text bounding
+    // box on the leader row) using its post-shift labelX, anchor direction
+    // and the truncated text width. Only by knowing the actual text box can
+    // we tell whether two labels visually overlap — earlier algorithm used
+    // labelX gap < COLLISION_PX which missed mixed-anchor collisions
+    // (label A anchored right + label B anchored left near the same x both
+    // claim the same horizontal stripe).
     const PADDING = 8;
     const MIN_LABEL_W = 40;
-    const ll = [];
-    let lastLabelEdge = -Infinity;
-    let row = 0;
+    const CHAR_W = 5.6;       // ≈ width of one char at fontSize=10 system-ui
+    const LABEL_GAP_X = 4;    // horizontal min-gap between sibling labels on a row
+    const prelim = [];
     for (let i = 0; i < small.length; i++) {
       const x = small[i];
       const cx = small_cx[i];
       const dir = dirs[i];
       let labelX = cx + dir * ANGLED_SHIFT_PX;
-      // Clamp: keep ≥PADDING from edges. If clamp pushes label opposite
-      // to declared dir, recompute dir so anchor stays consistent.
-      if (labelX < PADDING) { labelX = PADDING; }
-      if (labelX > width - PADDING) { labelX = width - PADDING; }
-      // Available text width depends on dir + remaining space on that side.
+      if (labelX < PADDING) labelX = PADDING;
+      if (labelX > width - PADDING) labelX = width - PADDING;
       const availW = dir > 0
         ? Math.max(MIN_LABEL_W, width - labelX - 4)
         : dir < 0
           ? Math.max(MIN_LABEL_W, labelX - 4)
           : Math.max(MIN_LABEL_W, Math.min(labelX, width - labelX) * 2 - 4);
-      if (labelX - lastLabelEdge < COLLISION_PX) row += 1; else row = 0;
-      lastLabelEdge = labelX;
-      ll.push({
+      // Predict the truncated label string length, then convert to px.
+      const rawText = x.ann.name || x.ann.type || 'region';
+      const maxChars = Math.max(4, Math.floor(availW / 6));
+      const visibleChars = Math.min(rawText.length, maxChars);
+      const textWidth = Math.max(MIN_LABEL_W, visibleChars * CHAR_W + 6);
+      let textLeft;
+      let textRight;
+      if (dir > 0) { textLeft = labelX; textRight = labelX + textWidth; }
+      else if (dir < 0) { textRight = labelX; textLeft = labelX - textWidth; }
+      else { textLeft = labelX; textRight = labelX + textWidth; }
+      prelim.push({
         idx: x.idx, ann: x.ann, color: x.color,
-        cx, dir, labelX, availW,
-        y: row * (LABEL_H + LABEL_GAP_PX),
+        cx, dir, labelX, availW, textLeft, textRight,
       });
     }
+
+    // Second pass: greedy interval packing — place each label on the LOWEST
+    // row whose existing right-edge clears `textLeft - LABEL_GAP_X`. New
+    // row is added only when no existing row fits. Labels are processed in
+    // their already-sorted-by-cx order; greedy packing is near-optimal for
+    // this monotonic input and avoids pessimistic always-stagger.
+    const rowRights = []; // rowRights[r] = furthest textRight placed on row r
+    const ll = prelim.map((lab) => {
+      let placed = -1;
+      for (let r = 0; r < rowRights.length; r++) {
+        if (lab.textLeft >= rowRights[r] + LABEL_GAP_X) {
+          placed = r;
+          rowRights[r] = Math.max(rowRights[r], lab.textRight);
+          break;
+        }
+      }
+      if (placed < 0) {
+        placed = rowRights.length;
+        rowRights.push(lab.textRight);
+      }
+      return { ...lab, y: placed * (LABEL_H + LABEL_GAP_PX) };
+    });
 
     const maxRow = ll.reduce((m, x) => Math.max(m, x.y), 0);
     const leaderH = ll.length > 0 ? LEADER_LEN + maxRow + LABEL_H : 0;

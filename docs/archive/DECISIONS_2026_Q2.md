@@ -26,6 +26,7 @@ Q1 2026 (январь–март, решения 25–31.03.2026) → при н�
 
 _(наполняется при первой ротации)_
 
+- Sprint 1.7 — 22.04.2026 — Unified Editor + Virtual Full Sequence + Topology
 - Sprint 1.6 — 21.04.2026 — Мутагенез UX v2.1
 - Sprint 1.5 — 21.04.2026 — Визуальная приёмка Sprint 1 → 4 архитектурных решения
 - Sprint 1 — 19–20.04.2026 — Читаемые метки, чистые стыки, настоящий мутагенез
@@ -293,3 +294,35 @@ _(наполняется при первой ротации)_
 [2026-04-20] **MutagenesisWizard принимает initial template через props** (V13).
 
 [2026-04-20] **`makeKLDStrategy` вычисляет Tm и GC через `calcTmNN`** (V11).
+
+## Sprint 1.6 — Мутагенез UX v2.1 + приёмка (21.04.2026)
+
+[2026-04-21] **Белок в режиме Правка — read-only (K5).**
+Bookkeeping-edit белка невозможен: из одной AA нельзя выбрать codon, нужна исходная ДНК. Поэтому в `mode='edit'` tab «Белок» показывает синюю полосу «Режим просмотра» + кнопку «→ Мутагенез». AA-span теряет `cursor: pointer` и `onClick`; `openMutMenu` сохраняет early-return guard как defence-in-depth. Semantics после K5: **Правка = только ДНК**, **Мутагенез = ДНК + AA**. Радио-лейблы mode switcher'а из Sprint 1.5 K2 не меняются.
+
+[2026-04-21] **Биологически корректная обрезка аннотаций при split — `lib/split-annotations.js` (K6).**
+Coordinate-only map+filter в `handleSaveFragment` был филологически верным, но биологически слеп: signal peptide в середине sub-фрагмента, половина restriction-сайта, трёхбуквенный start-codon в несуществующем месте. Введён helper `trimAnnotationsForSubFragment(parentAnns, sf)` с тремя классами правил: N-terminal (signal_peptide/transit_peptide/propeptide) — drop на partial overlap, survive только при fully-inside + `subStart === 0` + `a.start === 0`; point-like (restriction_site/primer_bind/mutation/variation/modified_base) — drop на любом partial overlap (половина не работает); start_codon — только при `a.start === subStart`; stop_codon — только при `a.end === subEnd`; CDS/gene — rename с (5' trimmed) / (3' trimmed) / (trimmed) суффиксом. Идемпотентность: `!a.name.includes('trimmed')` guard. Всё остальное — trim + flag без rename. `useFragmentHandlers.handleSaveFragment` делегирует helper'у.
+
+[2026-04-21] **Split-группа как явная сущность данных — `splitGroupId` + метаданные (K7).**
+При two_fragment/multi_fragment split новые фрагменты несут `splitGroupId` (shared), `splitGroupParentName`, `splitGroupIndex`, `splitGroupTotal`. `DesignCanvas` группирует consecutive same-groupId элементы в `.split-group-container` с 4 визуальными эффектами (dashed border + tinted backdrop + badge + connector line). Internal junctions (между членами группы) рендерятся внутри контейнера; external (группа ↔ соседний фрагмент/next row/circular close) — снаружи. KLD не создаёт группу (single fragment in place). **Финальное решение по визуалу** (какие из 4 эффектов оставить) — после приёмки; решено отложить в Sprint 1.7.
+
+[2026-04-21] **Подсветка мутаций относительно parent-part — `computeMutationHighlights` (K8, partial).**
+FragmentEditor вычисляет per-nt мутации через `sequenceDiff(parent.sequence, fragment.sequence, cdsRegions)` и рисует red/yellow backdrop + underline (nonsilent/silent). Fallback на `fragment.mutations` если parent не найден — conservatively nonsilent. Protein view: per-codon priority (any nonsilent nt → весь AA nonsilent). **Известный дефект (V16):** diff не учитывает `fragment.templateStart` → для sub-фрагментов после split подсветка ложная. Исправление перенесено в Sprint 1.7 K9.
+
+[2026-04-21] **`isMutated` по `label.includes(String(pos))` — баг, не работает для цифр (V15).**
+В `FragmentEditor.jsx` (~строки 760, 852) подсветка «применённых» мутаций использовала `mutations.some(m => m.label?.includes(String(pos)))`. Для мутаций с номерами `G26A, R135A, G77C, C403G, G404C` любая AA-позиция, номер которой встречается как подстрока в номере любой мутации, подсвечивалась ложно. **Ключевое правило для будущего:** сопоставление позиций всегда через числовое сравнение полей `codonStart` / `position`, никогда через `.label.includes(String(pos))`. Если сравнивать надо через label — минимум word-boundary regex (`\bNNN\b`) и числовой парсинг. Переделка в Sprint 1.7 K10 Unified Editor.
+
+[2026-04-21] **Unified Editor — направление Sprint 1.7.**
+Tabs (Последовательность / Белок) в FragmentEditor — артефакт Sprint 1.5 K2: добавлены чтобы вместить radio mode switcher. Правильная информационная модель: **sequence = primary view**, аннотации/белок/список мутаций — panel(s) под ней или сбоку. Mode (Правка / Мутагенез) остаётся как ортогональная ось — он меняет семантику кликов, а не разделение контента. Реализация в Sprint 1.7 K10 Unified Editor. До тех пор: K2 mode switcher, `switchMode` helper, identity-guard в `handleSaveFragment` — сохраняются как база.
+
+## Sprint 1.7 — Unified Editor + Virtual Full Sequence + Topology (22.04.2026)
+
+[2026-04-22] **V15 fix: `isMutated` через числовое сравнение `codonStart`/`position`.** Старая проверка `m.label?.includes(String(pos))` ломалась на мутациях вида `G26A, R135A, C403G, G404C` — любая позиция-substring подсвечивалась ложно. Теперь сопоставление позиций — только числовое; парсинг числа из `label` — через word-boundary regex как fallback. Правило для будущего: **никогда** не матчить позиции через substring `label.includes`.
+
+[2026-04-22] **V16 fix: `computeMutationHighlights` учитывает `fragment.templateStart`.** Для sub-фрагментов split-группы (templateStart > 0) diff с parent теперь сравнивает `parent.sequence.slice(templateStart, templateStart + fragment.length)` с `fragment.sequence`, а не от индекса 0 (что давало «весь ген красный»). Протестировано на substitution и deletion — mapping не съезжает после indel.
+
+[2026-04-22] **Unified Editor layout (K10).** Tabs «Последовательность / Белок» удалены. Информационная модель: sequence = primary view (DNA + AA под каждым кодоном), под ней — три collapsible panel (Annotations, Mutations, Protein). Mode switcher Правка/Мутагенез — ортогональная ось, меняет семантику кликов (AA-клики no-op в Правке, mut-menu в Мутагенезе), не разделение контента. UX-паттерн — не ⚓: может пересматриваться при декомпозиции FragmentEditor в v1.1.
+
+[2026-04-22] **`splitGroupFullSequence` virtual view (K11).** Для sub-фрагментов split-группы в header Editor — toggle «Фрагмент / Полный ген». Full-view режим: sequence read-only, баннер  «Виртуальный вид», `highlightRegion(templateStart, length)`, notice «Аннотации недоступны в полном обзоре», мутации в координатах parent по всей длине гена. Виртуальная последовательность не сохраняется как фрагмент — вычисляется на лету из `parent.sequence` + applied mutations от всей группы. UX-паттерн — не ⚓.
+
+[2026-04-22] **`renderSequenceGrid` — извлечённый helper.** В ходе K10 рефакторинга sequence-рендер вынесен из `FragmentEditor.jsx` в отдельный helper для переиспользования в fragment-view и full-view. Не ⚓: внутренняя декомпозиция, потенциально переедет в hooks в рамках v1.1 FragmentEditor-декомпозиции.

@@ -10,7 +10,7 @@ class ErrorBoundary extends Component {
     if (this.state.error) {
       return (
         <div style={{ padding: 40, fontFamily: 'monospace', maxWidth: 800, margin: '0 auto' }}>
-          <h2 style={{ color: '#dc2626' }}>Ошибка рендеринга</h2>
+          <h2 style={{ color: '#dc2626' }}>Render error</h2>
           <pre style={{ background: '#fef2f2', padding: 16, borderRadius: 8, overflow: 'auto',
             border: '1px solid #fca5a5', fontSize: 13, lineHeight: 1.5 }}>
             {this.state.error.message}
@@ -20,7 +20,7 @@ class ErrorBoundary extends Component {
           <button onClick={() => { try { localStorage.clear(); } catch { /* ignore */ } window.location.reload(); }}
             style={{ marginTop: 16, padding: '8px 16px', background: '#dc2626', color: 'white',
               border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14 }}>
-            Очистить данные и перезагрузить
+            Clear data and reload
           </button>
         </div>
       );

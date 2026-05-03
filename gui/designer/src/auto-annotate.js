@@ -12,7 +12,7 @@
 
 import { translateDNA } from './codons';
 import {
-  detectSignalPeptide, detectHisTag, detectPropeptide, detectLinkers,
+  detectHisTag,
   generateRegionId, detectDomainsAsAnnotations,
 } from './domain-detection';
 import { PEPTIDE_TAGS, FUSION_PARTNERS } from './tags-db';
@@ -26,37 +26,15 @@ const KNOWN_TAGS = [
 
 const STOP_CODONS = { TAA: 'TAA', TAG: 'TAG', TGA: 'TGA' };
 
-// Prokaryotic organism keywords
-const PROKARYOTE_KEYWORDS = ['ecoli', 'e. coli', 'e.coli', 'bacillus', 'streptomyces', 'pseudomonas', 'salmonella', 'lactobacillus'];
-
-function isProkaryote(organism) {
-  if (!organism) return false;
-  const low = organism.toLowerCase();
-  return PROKARYOTE_KEYWORDS.some(k => low.includes(k));
-}
-
-// ═══ Consensus finder with mismatches ═══
-function findConsensus(seq, pattern, { maxMismatches = 0, regionStart = 0, regionEnd = null } = {}) {
-  const end = regionEnd ?? seq.length;
-  const pLen = pattern.length;
-  let bestPos = -1;
-  let bestMismatches = pLen;
-
-  for (let i = regionStart; i <= end - pLen; i++) {
-    let mm = 0;
-    for (let j = 0; j < pLen; j++) {
-      if (seq[i + j] !== pattern[j]) mm++;
-      if (mm > maxMismatches) break;
-    }
-    if (mm <= maxMismatches && mm < bestMismatches) {
-      bestMismatches = mm;
-      bestPos = i;
-    }
-  }
-
-  if (bestPos < 0) return null;
-  return { start: bestPos, end: bestPos + pLen, mismatches: bestMismatches };
-}
+// NOTE: linker / -10 / -35 / RBS / TATA / CAAT / poly-A / signal-peptide /
+// pro-peptide consensus detectors were dropped from auto-annotate. Their 6–8 bp
+// (or N-terminal hydrophobic-window heuristic) signatures had high false-
+// positive rates and produced 25+ "Linker N" + a flock of "-10 element" /
+// "RBS (Shine-Dalgarno)" / spurious "Signal peptide" entries on every plasmid,
+// drowning the LinearFeatureBar in leader-labels. The types stay supported in
+// TYPE_GROUPS / palette so users can add them manually; the auto-annotator
+// just doesn't guess them anymore. A future per-CDS context action will let
+// the user run SignalIP / Phobius on demand from the annotation editor.
 
 // ═══════════════════════════════════════════════════════════
 // Type-specific detectors
@@ -65,7 +43,7 @@ function findConsensus(seq, pattern, { maxMismatches = 0, regionStart = 0, regio
 // ═══════════════════════════════════════════════════════════
 
 /**
- * CDS details: stop codon, signal peptide, propeptide, tags, linkers, Kozak.
+ * CDS details: start/stop codon, His-tag, named protein tags.
  * Coordinates are 0-based relative to the region sequence.
  */
 function annotateCDS(seq) {
@@ -109,36 +87,6 @@ function annotateCDS(seq) {
   const protein = translateDNA(upper);
   if (protein.length < 20) return annotations;
 
-  // Signal peptide
-  const sp = detectSignalPeptide(protein);
-  if (sp.found) {
-    annotations.push({
-      name: 'Signal peptide',
-      type: 'signal_peptide',
-      start: 0,
-      end: sp.cleavageSite * 3,
-      level: 'detail',
-      auto: true,
-      confidence: sp.confidence,
-      detector: 'vonHeijne',
-    });
-
-    // Propeptide (Kex2 cleavage)
-    const pro = detectPropeptide(protein, sp.cleavageSite);
-    if (pro) {
-      annotations.push({
-        name: 'Pro-peptide',
-        type: 'propeptide',
-        start: sp.cleavageSite * 3,
-        end: pro.endAA * 3,
-        level: 'detail',
-        auto: true,
-        confidence: 0.7,
-        detector: 'kex2_scan',
-      });
-    }
-  }
-
   // His-tag
   const his = detectHisTag(protein);
   if (his) {
@@ -169,120 +117,6 @@ function annotateCDS(seq) {
       auto: true,
       confidence: 0.9,
       detector: 'tag_scan',
-    });
-  }
-
-  // Linkers
-  const linkers = detectLinkers(protein);
-  linkers.forEach((lnk, i) => {
-    annotations.push({
-      name: `Linker${linkers.length > 1 ? ` ${i + 1}` : ''}`,
-      type: 'linker',
-      start: (lnk.startAA - 1) * 3,
-      end: lnk.endAA * 3,
-      level: 'detail',
-      auto: true,
-      confidence: 0.7,
-      detector: 'linker_scan',
-    });
-  });
-
-  return annotations;
-}
-
-/**
- * Promoter details: -10, -35, RBS, TATA, CAAT.
- * Coordinates 0-based relative to region sequence.
- */
-function annotatePromoter(seq, organism, organismType) {
-  const annotations = [];
-  const upper = seq.toUpperCase();
-  const len = upper.length;
-
-  const prokaryote = organismType === 'prokaryote' || (!organismType && isProkaryote(organism));
-  const eukaryote = organismType === 'eukaryote' || (!organismType && !isProkaryote(organism));
-  const searchAll = !organismType;
-
-  if (prokaryote || searchAll) {
-    const m10 = findConsensus(upper, 'TATAAT', {
-      maxMismatches: 2, regionStart: Math.max(0, len - 50), regionEnd: Math.max(0, len - 5),
-    });
-    if (m10) {
-      annotations.push({
-        name: '-10 element', type: 'core_promoter',
-        start: m10.start, end: m10.end, level: 'detail',
-        auto: true, confidence: +(1 - m10.mismatches / 6).toFixed(2),
-        detector: 'prokaryotic_promoter',
-      });
-    }
-
-    const m35 = findConsensus(upper, 'TTGACA', {
-      maxMismatches: 2, regionStart: Math.max(0, len - 60), regionEnd: Math.max(0, len - 25),
-    });
-    if (m35) {
-      annotations.push({
-        name: '-35 element', type: 'core_promoter',
-        start: m35.start, end: m35.end, level: 'detail',
-        auto: true, confidence: +(1 - m35.mismatches / 6).toFixed(2),
-        detector: 'prokaryotic_promoter',
-      });
-    }
-
-    const rbs = findConsensus(upper, 'AGGAGG', {
-      maxMismatches: 2, regionStart: Math.max(0, len - 25),
-    });
-    if (rbs) {
-      annotations.push({
-        name: 'RBS (Shine-Dalgarno)', type: 'regulatory',
-        start: rbs.start, end: rbs.end, level: 'detail',
-        auto: true, confidence: +(1 - rbs.mismatches / 6).toFixed(2),
-        detector: 'rbs_scan',
-      });
-    }
-  }
-  if (eukaryote || searchAll) {
-    const tataRegion = upper.slice(Math.max(0, len - 50), Math.max(0, len - 15));
-    const tataOffset = Math.max(0, len - 50);
-    const tataMatch = tataRegion.match(/TATAA[AT][AG]/);
-    if (tataMatch) {
-      const pos = tataOffset + tataMatch.index;
-      annotations.push({
-        name: 'TATA box', type: 'core_promoter',
-        start: pos, end: pos + 7, level: 'detail',
-        auto: true, confidence: 0.8, detector: 'eukaryotic_promoter',
-      });
-    }
-
-    const caatRegion = upper.slice(Math.max(0, len - 120), Math.max(0, len - 50));
-    const caatOffset = Math.max(0, len - 120);
-    const caatIdx = caatRegion.indexOf('CCAAT');
-    if (caatIdx >= 0) {
-      const pos = caatOffset + caatIdx;
-      annotations.push({
-        name: 'CAAT box', type: 'core_promoter',
-        start: pos, end: pos + 5, level: 'detail',
-        auto: true, confidence: 0.7, detector: 'eukaryotic_promoter',
-      });
-    }
-  }
-
-  return annotations;
-}
-
-/**
- * Terminator details: Poly-A signal.
- * Coordinates 0-based relative to region sequence.
- */
-function annotateTerminator(seq) {
-  const annotations = [];
-  const upper = seq.toUpperCase();
-
-  const idx = upper.indexOf('AATAAA');
-  if (idx >= 0) {
-    annotations.push({
-      name: 'Poly-A signal', type: 'polyA_signal',
-      start: idx, end: idx + 6, level: 'detail',
-      auto: true, confidence: 0.85, detector: 'polyA_scan',
     });
   }
 
@@ -462,11 +296,8 @@ export function autoAnnotate(part) {
 
     if (CDS_TYPES.has(region.type)) {
       details = annotateCDS(regionSeq);
-    } else if (region.type === 'promoter') {
-      details = annotatePromoter(regionSeq, part.organism, part.organismType);
-    } else if (region.type === 'terminator') {
-      details = annotateTerminator(regionSeq);
     }
+    // promoter / terminator detail-detection removed — see note at top of file.
 
     // Offset all detail coordinates by region start + assign regionId
     for (const d of details) {

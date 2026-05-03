@@ -118,6 +118,10 @@ describe('generateAutoAnnotations', () => {
   });
 
   // ═══ Promoter ═══
+  // Sub-feature detection (-10, -35, RBS, TATA, CAAT) was removed — 6-bp
+  // consensus matchers had >50% false-positive rate and produced label spam
+  // on every plasmid. Types stay supported, but auto-annotator no longer
+  // guesses them. See header note in auto-annotate.js.
   describe('promoter annotations', () => {
     it('creates base promoter annotation', () => {
       const part = makePart({ type: 'promoter', sequence: PROM_TATA });
@@ -127,76 +131,31 @@ describe('generateAutoAnnotations', () => {
       expect(base.end).toBe(PROM_TATA.length);
     });
 
-    it('detects TATA box', () => {
-      const part = makePart({ type: 'promoter', sequence: PROM_TATA });
-      const result = generateAutoAnnotations(part);
-      const tata = result.find(a => a.name === 'TATA box');
-      expect(tata).toBeDefined();
-      expect(tata.type).toBe('core_promoter');
-      expect(tata.auto).toBe(true);
-      // TATA box should be 7 nt long (TATAAWR)
-      expect(tata.end - tata.start).toBe(7);
-    });
-
-    it('detects CAAT box', () => {
-      const part = makePart({ type: 'promoter', sequence: PROM_CAAT });
-      const result = generateAutoAnnotations(part);
-      const caat = result.find(a => a.name === 'CAAT box');
-      expect(caat).toBeDefined();
-      expect(caat.type).toBe('core_promoter');
-      expect(caat.end - caat.start).toBe(5);
-    });
-
-    it('detects prokaryotic -10 element', () => {
-      const part = makePart({ type: 'promoter', sequence: PROK_PROM, organism: 'E. coli' });
-      const result = generateAutoAnnotations(part);
-      const m10 = result.find(a => a.name === '-10 element');
-      expect(m10).toBeDefined();
-      expect(m10.type).toBe('core_promoter');
-    });
-
-    it('detects prokaryotic -35 element', () => {
-      const part = makePart({ type: 'promoter', sequence: PROK_PROM, organism: 'E. coli' });
-      const result = generateAutoAnnotations(part);
-      const m35 = result.find(a => a.name === '-35 element');
-      expect(m35).toBeDefined();
-      expect(m35.type).toBe('core_promoter');
-    });
-
-    it('detects RBS (Shine-Dalgarno)', () => {
-      const part = makePart({ type: 'promoter', sequence: RBS_PROM, organism: 'E. coli' });
-      const result = generateAutoAnnotations(part);
-      const rbs = result.find(a => a.name.includes('RBS'));
-      expect(rbs).toBeDefined();
-      expect(rbs.type).toBe('regulatory');
-    });
-
-    it('promoter without TATA returns only base annotation', () => {
-      const seq = 'GCGCGCGCGCGCGCGCGCGCGCGCGCGCGCGCGCGCGCGC';
-      const part = makePart({ type: 'promoter', sequence: seq });
-      const result = generateAutoAnnotations(part);
-      const promoterAnns = result.filter(a => a.type === 'promoter' || a.type === 'core_promoter');
-      expect(promoterAnns.length).toBe(1); // only base
-      expect(promoterAnns[0].start).toBe(0);
+    it('does NOT auto-detect TATA / CAAT / -10 / -35 / RBS', () => {
+      for (const seq of [PROM_TATA, PROM_CAAT, PROK_PROM, RBS_PROM]) {
+        const part = makePart({ type: 'promoter', sequence: seq, organism: 'E. coli' });
+        const result = generateAutoAnnotations(part);
+        const noisy = result.filter(a =>
+          a.name === 'TATA box' || a.name === 'CAAT box'
+          || a.name === '-10 element' || a.name === '-35 element'
+          || (a.name && a.name.includes('RBS'))
+        );
+        expect(noisy).toEqual([]);
+      }
     });
   });
 
   // ═══ Terminator ═══
+  // Poly-A signal detection (6-bp AATAAA scan) removed for the same reason —
+  // 6-bp matches occur ~once per 4 kb of random DNA and were noise.
   describe('terminator annotations', () => {
-    it('detects poly-A signal', () => {
-      const part = makePart({ type: 'terminator', sequence: TERM_POLYA });
-      const result = generateAutoAnnotations(part);
-      const polyA = result.find(a => a.name === 'Poly-A signal');
-      expect(polyA).toBeDefined();
-      expect(polyA.type).toBe('polyA_signal');
-      expect(polyA.end - polyA.start).toBe(6);
-    });
-
-    it('terminator without poly-A returns only base annotation', () => {
-      const part = makePart({ type: 'terminator', sequence: TERM_NO_POLYA });
-      const result = generateAutoAnnotations(part);
-      const termAnns = result.filter(a => a.type === 'terminator' || a.type === 'polyA_signal');
-      expect(termAnns.length).toBe(1); // only base
+    it('terminator returns only base annotation (no auto poly-A)', () => {
+      for (const seq of [TERM_POLYA, TERM_NO_POLYA]) {
+        const part = makePart({ type: 'terminator', sequence: seq });
+        const result = generateAutoAnnotations(part);
+        const polyA = result.find(a => a.type === 'polyA_signal');
+        expect(polyA).toBeUndefined();
+      }
     });
   });
 

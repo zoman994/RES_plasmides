@@ -18,6 +18,9 @@ export default function AnnotationsTab({
   annotations = [],
   seqLength = 0,
   onUpdateEdits,
+  autoAnnotate = true,
+  onToggleAutoAnnotate,
+  onRunAutoAnnotate, // eslint-disable-line no-unused-vars -- stub state, see button below
 }) {
   const onChange = useCallback((next) => {
     onUpdateEdits?.({ editedAnnotations: next });
@@ -28,10 +31,57 @@ export default function AnnotationsTab({
       data-testid="importer-tab-panel-annotations"
       style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%', minWidth: 0 }}
     >
-      <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
-        <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{S.tabAnnotations}</span>
-        <span> · </span>
-        <span>{S.annotationsCount(annotations.length)}</span>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+        fontSize: 11, color: 'var(--text-tertiary)',
+      }}>
+        <span>
+          <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{S.tabAnnotations}</span>
+          <span> · </span>
+          <span>{S.annotationsCount(annotations.length)}</span>
+        </span>
+        <span style={{ flex: 1 }} />
+        {/*
+          Auto-annotate is currently a stub: the manual «Запустить» button
+          stays in place so the user knows where it'll live, but it's
+          disabled until the new annotator (per-CDS SignalIP, smarter ORF
+          scoring, less consensus noise) lands. The «при импорте» checkbox
+          still flips the per-file flag — confirm flow will auto-annotate
+          using the existing pipeline regardless of the stub.
+        */}
+        <button
+          type="button"
+          data-testid="annotations-auto-run"
+          disabled
+          title={S.actionAnnotateStubHint}
+          style={{
+            fontSize: 11, padding: '4px 10px',
+            background: 'transparent',
+            color: 'var(--text-tertiary)',
+            border: '0.5px dashed var(--border-default)',
+            borderRadius: 'var(--radius-md)',
+            cursor: 'not-allowed',
+            opacity: 0.7,
+          }}
+        >{S.actionAnnotate}</button>
+        {onToggleAutoAnnotate && (
+          <label
+            data-testid="annotations-auto-toggle"
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 5,
+              fontSize: 11, color: 'var(--text-secondary)', cursor: 'pointer',
+              userSelect: 'none',
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={!!autoAnnotate}
+              onChange={(e) => onToggleAutoAnnotate(e.target.checked)}
+              style={{ accentColor: 'var(--accent-500)', cursor: 'pointer' }}
+            />
+            {S.tabAnnotateOnImport}
+          </label>
+        )}
       </div>
       {/*
         Linear feature strip on top — replaces AnnotationEditor's built-in

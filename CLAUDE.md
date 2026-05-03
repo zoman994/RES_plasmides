@@ -3,10 +3,10 @@
 ## Восстановление контекста
 
 ```
-Прочитай CLAUDE.md → BUGS.md → CURRENT_TASK.md
+Прочитай CLAUDE.md → BUGS.md → CURRENT_TASK.md → PROJECT_STATE.md → DECISIONS.md
 ```
 
-Трёх файлов хватит. НЕ читай docs/ без явной инструкции в CURRENT_TASK.md.
+Пяти файлов хватит (~30 KB). RELEASES.md / ANCHORS.md / docs/ — только по явной инструкции в CURRENT_TASK.md или по триггерам из CHAT_PLAYBOOK_CORE.md §1.
 
 ---
 
@@ -16,7 +16,9 @@ BodgeGene — визуальный конструктор генетически
 
 **Автор:** Игорь Синельников, ФИЦ Биотехнологии РАН  
 **Путь:** `C:\Users\Zoman\Desktop\RESplasmide`  
-**Версия:** v0.5.1-alpha (~241 коммит, 850 тестов: 738 Vitest + 112 pytest). Sprint 1.7 закрыт 22.04.2026 (full visual acceptance).
+**Версия:** v0.6.3 (Sprint M-A.3 Library minimal CRUD, 01.05.2026). Архитектура v0.6+ — в `docs/ARCHITECTURE_v2.md` v1.2 (~117 KB). Фундаментальные решения — в `ANCHORS.md` (48 ⚓). Sprint-level — в `DECISIONS.md`. Журнал по версиям — в `RELEASES.md`. Тесты: 900 (788 Vitest + 112 pytest). Предыдущая v0.5.4-alpha (~290 коммитов, 1126 тестов) — feature-complete, **wipe data при переходе на v0.6** (⚓ DEC-V2-08 «quality > speed»).
+
+**Стартовая ссылка:** вся архитектура v0.6+ — в `docs/ARCHITECTURE_v2.md`. Читается перед любой M-A...M-I сессией, не в стартовом пакете (CURRENT_TASK.md явно направляет туда).
 
 ---
 
@@ -46,20 +48,24 @@ cd gui/designer && npx vitest run && npx vite build
 
 ### 5. Обновляй документацию после сессии
 
-- PROJECT_STATE.md: журнал сессии (что сделано, коммиты)
-- BUGS.md: обновить статусы
-- DECISIONS.md: если было архитектурное решение
-- CURRENT_TASK.md: отметить выполненные задачи
+- `RELEASES.md`: новый версионный блок (при бампе версии) / дополнение текущего (без бампа).
+- `PROJECT_STATE.md`: обновить snapshot (версия / тесты / «Что работает» / «Что дальше»).
+- `BUGS.md`: обновить статусы.
+- `DECISIONS.md`: если было спринт-level решение; `ANCHORS.md` — если фундаментальное (⚓).
+- `CURRENT_TASK.md`: отметить выполненные задачи.
+- `gui/designer/package.json` + `gui/designer/src/lib/version.js`: bump при финализации спринта (M-A.x = v0.6.x, M-B = v0.7.0, ...).
 
 ### 6. Координация Claude Chat ↔ Claude Code
 
 | Документ | Кто пишет | Кто обновляет |
 |----------|-----------|---------------|
-| CURRENT_TASK.md | Chat создаёт задачу | Code отмечает ✅ |
-| PROJECT_STATE.md | — | Code обновляет после сессии |
-| DECISIONS.md | Chat добавляет решения | Code может добавлять |
-| BUGS.md | Оба добавляют баги | Code отмечает [x] |
-| docs/*.md (спеки) | Chat создаёт | Code НЕ редактирует спеки |
+| `CURRENT_TASK.md` | Chat создаёт задачу | Code отмечает ✅ |
+| `RELEASES.md` | Chat финализирует версионный блок | Chat при бампе версии |
+| `PROJECT_STATE.md` | Chat (snapshot при финализации) | Chat |
+| `DECISIONS.md` | Chat добавляет sprint-level | Chat |
+| `ANCHORS.md` | Chat добавляет фундаментальные ⚓ | Chat |
+| `BUGS.md` | Оба добавляют баги | Code отмечает [x] |
+| `docs/*.md` (спеки) | Chat создаёт | Code НЕ редактирует спеки |
 
 **Жизненный цикл спеки:**
 1. Chat пишет спеку в docs/ (напр. docs/RESTRICTION_CLONING.md)
@@ -254,8 +260,18 @@ Polymerase + primer prefix вынесены из header в collapsible dropdown.
 | `CLAUDE.md` | Правила, архитектура, координация |
 | `BUGS.md` | Единственный трекер багов |
 | `CURRENT_TASK.md` | Текущая задача |
-| `PROJECT_STATE.md` | Что работает, журнал сессий |
-| `DECISIONS.md` | Архитектурные решения (append-only) |
+| `PROJECT_STATE.md` | Snapshot only (версия / тесты / «Что работает» / «Что дальше») без журнала |
+| `DECISIONS.md` | Sprint-level решения последних 2 спринтов |
+
+### Оперативные (корень репо) — читаются по необходимости
+
+| Файл | Назначение |
+|------|-----------|
+| `CHAT_PLAYBOOK_CORE.md` | Операционные правила Chat (§1-3 + §13-14) — обязательное чтение в начале сессии |
+| `CHAT_PLAYBOOK_APPENDIX.md` | Справочные правила (§4-12 + §15-16) — по триггерам (файловая гигиена, антипаттерны, recovery) |
+| `RELEASES.md` | Журнал по версиям (блок 1.5–3 KB на версию) — при финализации спринта и по запросу |
+| `ANCHORS.md` | Фундаментальные решения (⚓, 48 записей) — в milestone-сессиях (M-A..M-I) и при вводе новых ⚓ |
+| `TECH_DEBT.md` | Реестр технодолга — при финализации спринта и планировании спеки |
 
 ### Справочные (docs/) — читать по необходимости
 
@@ -265,6 +281,13 @@ Polymerase + primer prefix вынесены из header в collapsible dropdown.
 | `PARTS_LIFECYCLE.md` | Реализовано | Статусы draft/verified/archived |
 | `FLOW_V2_DESIGN.md` | План | Universal ReactionNode (не реализован) |
 | `TASK_FLOW_PHASE2_3.md` | Частично | Flow Phase 2+3 |
+| `_TEMPLATE_SPEC.md` | Шаблон | Пустой скелет спеки (синхронизирован с CHAT_PLAYBOOK_CORE.md §2) |
+| `UX_REFERENCE_BASE.md` | Активный | UX-референс по 5 ПО (SnapGene, Benchling, Geneious, ApE, pLannotate) — читать при планировании UX-спеки |
+| `UX_VISION.md` | Активный | UX-видение BodgeGene — 7 ставок + 5 отказов + 10 принципов + per-workflow процесс. Якорь для всех UX-сессий после 26.04.2026 |
+| `ARCHITECTURE_v2.md` | Активный (v0.6+ central) | ~117 KB агрегатор архитектуры: principles + data model + окна + persistence + distribution + roadmap. Читается перед любой M-A…M-I сессией |
+| `DESIGN_SYSTEM.md` | Активный | Design tokens (цвета, типографика, spacing, компонентарий, язык, motion). Single source of truth для визуала v0.6+. v1.0 от 29.04.2026, ~47 KB — принципы, tokens, компоненты, открытые вопросы. Эволюционирует через дизайн-сессии M-A → M-I, новые DEC-DS-NN |
+| `CODE_HANDOFF_PROTOCOL.md` | Активный | Регламент Chat → Code (что в спеке, как Code выдаёт отчёт) |
+| `SPEC_CHECKLIST.md` | Активный | Pre-handoff чеклист (Chat перед «спека готова» проходит этот лист) |
 
 ### Пользовательские гайды (docs/guides/) — НЕ читаются при старте сессии
 

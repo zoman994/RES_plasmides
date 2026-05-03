@@ -6,6 +6,96 @@
 
 ---
 
+## v0.7.0 — M-B finale: Catalog tree + folder-in-folder + auto-annotate cleanup (02.05.2026)
+
+**Тесты:** Vitest 885 / 885 (от v0.6.4 baseline 891: −6 нетто — выкинул 6 obsolete promoter/terminator/linker auto-detect ассертов в `auto-annotate.test.js`/`auto-annotate-regions.test.js`, добавил 2 «no auto-detect» guards). pytest 112 / 112.
+**Build:** clean, размер примерно ~570 KB (scope не вырос значимо — удалил больше кода чем добавил).
+
+**Catalog perf — большие списки.** SnapGene категории на 300-400 items раньше тормозили при раскрытии. Три точечных оптимизации:
+- `PlasmidMiniMap` обёрнут в `React.memo` с shallow-comparator — родительские state-обновления (drag highlight, hover bridges) не перерисовывают каждую mini-map.
+- `PlasmidMiniMap` inline-mode пропускает связку `useState(vbox)` + `useLayoutEffect(setVbox)` — `vbox` теперь синхронный const от `size`. Раньше на mount каждый из 400 mini-map делал лишний re-render через `setVbox`. ~30% быстрее раскрытие.
+- `ItemRow` тоже `React.memo` с custom-comparator (игнорит callback ref-churn, опирается на стабильный `item` ref).
+
+**Drag-and-drop библиотечных items между папками + read-only protections + reload restore.**
+- **Drag handle ⋮⋮** слева у каждого Mine ItemRow (Chrome/Vivaldi не пускают HTML5-drag из `<button>`, поэтому отдельный `<span draggable>`). MIME `application/x-bodgegene-item-id` + `-source-folder`. Drop на любую Mine-папку — move (untag source, add target). Drop на Mine GroupHeader — ungroup в корень.
+- **Folder/file creation Mine-only** — биолог: «запрети создавать папки и файлы внутри снапген демо и прочих кроме библиотеки». Canvas/Demo/SnapGene GroupHeader без `onAddChild`. `renderFolderNodes` гейтит `onAddChild`/`onAddFile`/`onItemDrop`/`onFolderDrop`/`onDelete` через `isMine && !isUntagged`.
+- **«Пусто» внутри пустых папок убрано** — после удаления папки оставляло визуальный шум.
+- **«В библиотеку» точное правило** — `_libraryEntryId` propagated только для Mine-source items, проверка против `state.libraryEntries`. Item уже в библиотеке → кнопка скрыта; внешний импорт → видна.
+- **Untagged-fallback** — когда `mineGroups = []` (legacy маркер) но `mine.length > 0`, синтетический `__untagged__` bucket. Раньше счётчик показывал N, на expand пусто.
+- **`hydrateLibrary` подключён в bootstrap** — раньше определён но не вызывался, reload показывал пустую библиотеку (rows в Dexie оставались).
+- **navStack persist для importer/library** — reload в Library больше не выбрасывает на стартовую. localStorage `bodgegene-nav-top` хранит top entry если это safe-state (importer + target=library).
+- **Drag highlight depth-counter** — `useRef` enter/leave счётчик чтобы yellow-dashed не флипалось при пересечении inner-элементов (chevron, label, иконки).
+- **Per-folder file import** — `addFiles(files, {targetFolderTag})` пробрасывает folder-path в `editedTags`. Триггеры: `⤓` hover-icon + drag-drop на folder row.
+- **Folder + container delete (×)** — folder: убирает path + sub-paths из userFoldersByGroup + untags entries (контейнеры остаются); container: routes через `markLibraryEntryPendingDelete` → `commit`. Confirm dialogs предупреждают о project references.
+- **Folder-in-folder через slash-paths** — `Vectors/CRISPR`. `buildFolderTree` парсит flat list в forest, `renderFolderNodes` рекурсивно до `MAX_INDENT_DEPTH=5`. Hover `＋` на header'е каждой папки.
+
+**Mini-map polish (catalog list)**:
+- Hover overlay смещён вправо (с fallback на лево) — биолог: «сместить чтобы другие значки видны».
+- `data-theme` attribute на portal-span — dark theme через body-portal каскад теперь работает.
+- Overlay 180 → 144 (~20% меньше).
+- `HOVER_BRIDGE_MS` 250 → 80, `GROW_DURATION_MS` 200 → 140 — снапнее dismiss.
+- Inline frame только для circular (`50%` border-radius merge с backbone-кругом). Linear — голая палочка.
+- Inline size 20 px.
+
+**LinearFeatureBar — greedy interval packing.** Старый алгоритм проверял anchor-X gap `< 80`, пропускал collision'ы при противоположных `dir`. Новый: pre-compute `textLeft`/`textRight` из `dir` + truncated text width, greedy-pack по rows. Корректно на плотных плазмидах, компактно на разреженных.
+
+**Origin-rotate переехал из MetaColumn на SequenceTab.** Биолог: «выбор точки начала для плазмид должна быть доступна только на сиквенс вью, где можно тыкнуть на нуклеотид (там хоть номера видны)». Перенёс input + apply + intergenic-hints из правого sidebar (`MetaColumn`) в верхний toolbar `SequenceTab` — над `SequenceMapView`, где видны номера позиций. MetaColumn потерял: origin Card, `originOffset` state, `useEffect` reset, `onApplyOrigin`, импорт `computeIntergenicHints`. Топология toggle + length / info / IUPAC / description / organism / source остались. SequenceTab принимает новые пропы `fileKey` + `onUpdateEdits`, рендерит control только при `topology === 'circular'`. Тесты: новый `sequence-tab-origin.test.jsx` (4 теста), `meta-column.test.jsx` обновлён (origin-тесты удалены, добавлен guard что control больше не в MetaColumn). Vitest 887/887 (было 885, -2 +4).
+
+**Удаление папок + контейнеров + минимапы вернулись в ItemRow.**
+- **Минимапы**: каждая строка в catalog tree теперь префиксует 20 px `PlasmidMiniMap` (mode='inline', `disableHoverOverlay`) — биолог опять распознаёт плазмиды по форме. Были утеряны в первой v0.7.0 переписи.
+- **Удаление папки (×)** — hover-revealed на header'е любой user или tag-derived папки (кроме `__untagged__` и SnapGene категорий). Confirm dialog показывает количество affected items и явно говорит «Контейнеры НЕ удаляются — это безопасная операция». Действие: убирает folder path + все sub-paths из `userFoldersByGroup[groupKey]`, untags затронутые library entries через `updateLibraryEntryTags`. Сами контейнеры остаются в библиотеке на корне.
+- **Удаление контейнера (×)** — hover-revealed на каждой Mine `ItemRow`. Confirm dialog предупреждает: «Контейнеры могут использоваться в проектах — сначала отвяжите от всех проектов». Маршрутизируется через soft-delete: `markLibraryEntryPendingDelete(id)` → `commitLibraryEntryPendingDelete(id)`. Demo/SnapGene/Canvas/__untagged__ не имеют delete — read-only или отдельный flow.
+- Новые строки: `catalogDeleteFolder/Confirm`, `catalogDeleteContainer/Confirm`.
+- CSS: `.importer-catalog-delete` opacity 0.5 → 1 on row hover, на hover самой иконки — danger-red. ItemRow реструктурирован в wrapper `div.item-row` + click-button + delete-button: фон/hover теперь на wrapper, не на inner button.
+
+**Финальная UX-полировка catalog tree.** «+ Новая папка» visible button-row убран целиком — иконки `＋` (создать папку) и `⤓` (импорт файла) теперь висят и на header'е каждой top-level группы, и на каждой папке внутри. Иконки **всегда видны** при opacity 0.5 (не hover-only — биолог пропускал) → opacity 1 на row hover. Эмодзи `📥` → Unicode `⤓` (DOWNWARDS ARROW TO BAR) — соответствует стилю символов проекта (▾ ▸ ＋ ‹ ⋯ ↻). Drop file на section header «Моя библиотека» → импорт в root; drop на folder row → импорт с folder-path в `editedTags`.
+
+**Убран глобальный `DropOverlay`** в `App.jsx` — full-screen «Drop file here (M-B feature preview)» оверлей перекрывал per-folder drop targets в CatalogColumn (биолог жаловался, что «главное окно перехватывает загрузку»). Удалены: компонент `DropOverlay`, state `dragActive`, window-listeners `dragenter`/`dragleave`, строка `STRINGS.app.dropOverlay`. Остались только `dragover` + `drop` window handlers — они нужны для DAG → Importer routing (inner folder targets делают `e.stopPropagation()`, поэтому глобальный handler срабатывает только когда никакой child не поймал drop). Dead code: `NewFolderRow`, `newFolderActionStyle`, `catalogNewFolderHint`.
+
+**Скоуп — Catalog tree rewrite (drill-down → fully inline).** Убрал режим drilldown/`←Назад` в `CatalogColumn.jsx`. Все группы — collapsible dropdown'ы:
+- Top-level (Mine / Canvas / Demo / SnapGene) — порядок по запросу биолога: **Моя библиотека первой**, далее проекты, демо, SnapGene.
+- Mine tag groups + SnapGene категории — nested `NestedSubGroup` collapsible inline (lazy-load для SnapGene категорий на первое раскрытие).
+- Items внутри: рендерится **полный список**, без «Показать все/меньше» пагинации.
+- **Depth-based indent** до 5 уровней: `indentForDepth(d) = 12 + d*12`, capped at 72 px. `CHEVRON_GUTTER = 16` добавлен к items чтобы text лёг под parent text column (раньше — под parent chevron).
+- **Per-depth translucent accent tint** (`depthBackground(d) = 2.5%·d`, max 8%) — banded визуальная иерархия. Через CSS `--depth-bg` чтобы `:hover` не блокировался inline-style'ом.
+
+**Скоуп — User folders (per-group, folder-in-folder).** Папки теперь можно создавать **в любом разделе** каталога:
+- `userFoldersByGroup: {canvas, demo, mine, snapgene}` в `pvcs-catalog-user-folders-by-group` localStorage; миграция со старого single-array `pvcs-catalog-user-folders` ⇒ `mine`.
+- Видимая «+ Новая папка» кнопка одна на раздел (внизу каждой top-level группы) — inline-input заменил `window.prompt` v0.6.4. Enter сохраняет, Esc/blur отменяет.
+- **Folder-in-folder** через slash-paths (`Vectors/CRISPR`). `buildFolderTree(paths)` парсит flat list в forest, `renderFolderNodes` рекурсивно рендерит до `MAX_INDENT_DEPTH=5`.
+- **File-manager паттерн для sub-folder creation:** на header каждой папки hover-revealed «＋» иконка справа (одна видимая «+ Новая папка» на раздел вместо buttons-flood). CSS `.importer-catalog-add-child { opacity: 0 }` + `.importer-catalog-nested-row:hover .importer-catalog-add-child { opacity: 1 }`.
+- **Per-folder file import** (для Mine): hover-revealed «📥» иконка → shared `<input type="file">` с `pendingFolderTag` ref. Drag-drop файлов на folder row → импорт + folder-path тег на каждом imported entry. `addFiles(files, {targetFolderTag})` в `importer-state.js` пробрасывает тег в `editedTags`.
+- `__untagged__` — виртуальный bucket, не получает «＋»/«📥» иконок.
+
+**Скоуп — Auto-annotate cleanup (биолог: «не надо НАСТОЛЬКО МНОГО»).** Удалил детекторы шума из `auto-annotate.js`:
+- **Linker detection** в `annotateCDS` (производил 25+ «Linker N» на каждой плазмиде).
+- Promoter sub-features: `-10 element`, `-35 element`, `RBS (Shine-Dalgarno)`, `TATA box`, `CAAT box` — `annotatePromoter()` целиком удалён.
+- Terminator sub-features: `Poly-A signal` — `annotateTerminator()` целиком удалён.
+- **Signal peptide + Pro-peptide** — биолог: «отдельно при нажатии на CDS можно выбрать через сигнал IP». Удалены из CDS auto-flow; функции `detectSignalPeptide`/`detectPropeptide` остаются в `domain-detection.js` под будущий per-CDS on-demand action.
+- Все типы (`linker`, `core_promoter`, `regulatory`, `polyA_signal`, `signal_peptide`, `propeptide`) **остались** в `TYPE_GROUPS` + палитре — пользователь добавляет вручную.
+- Unused helpers (`findConsensus`, `isProkaryote`, `PROKARYOTE_KEYWORDS`) удалены.
+
+**Скоуп — Auto-annotate UI moved.** «📥 Авто-аннотация» + «авто-аннотация при импорте» checkbox перенесены из ActionsBar overflow ⋯ menu в **AnnotationsTab toolbar** (биолог: «явно вынести на вкладку аннотаций»). Manual-trigger button сейчас disabled stub (новый annotator с per-CDS SignalIP — следующая итерация); checkbox по-прежнему рабочий — конфирм-flow auto-annotates автоматически.
+
+**Скоуп — Critical AnnotationEditor fixes.**
+- **Дубликаты edit-форм при клике карандашом.** Два корня:
+  1. Non-region аннотация в нескольких вложенных регионах рендерилась как child каждого. Fix: `parentMap` (annotation → AT MOST ONE region: regionId match wins, else smallest containing).
+  2. **`getRegions` synthetic-id substitution** — `getRegions(annotations).map(a => a.id ? a : {...a, id: ...})` возвращает NEW objects для id-less регионов; `annotations.indexOf(synthetic) === -1` для всех → клик ✎ ставит `editingIdx=-1` → каждый id-less регион в edit mode одновременно. После авто-аннотации (которая создавала регионы без id) — массовый «edit-everywhere». Fix: `annotations.filter(a => a.level === 'region')` (reference equality).
+- Edit-form coord inputs `w-12 → w-16 + tabular-nums` под 5-значные плазмидные позиции.
+- Theme-aware add/edit forms через scoped CSS overrides под `.importer-annotation-editor-wrap` — Tailwind defaults (`bg-gray-50`, `text-gray-400`, `bg-blue-100/-600`) → CSS-vars (`var(--surface-1/-2)`, `var(--text-tertiary/-secondary/-primary)`, `var(--accent-500)`).
+
+**Скоуп — UX мелочи.**
+- **«В библиотеку» прячется** когда файл уже добавлен в этой сессии. `Importer/index.jsx` считает `alreadyAddedToLibrary` через `state.addedItems`, ActionsBar скрывает обе library-кнопки. SessionSummary footer entry («✓ Уже добавлено …») остаётся как подтверждение.
+- **«Скопировать в библиотеку»** wording убран — везде «В библиотеку». `actionLibraryCopy` + `isCatalogSource` prop удалены.
+- **Topbar contextual title** «Библиотека» при `target=library` (заменяет `projectFallback: '—'` который смущал).
+- **OverviewTab mini-map column** 240 → 320 px, **PlasmidMiniMap label truncate** 14 chars + `LinearFeatureBar` clamp + dynamic availW.
+
+**Закрытые TD:** TD-V05-IMPORTSTARTSCREEN-DELETE (legacy `components/ImportStartScreen/` уже удалён в M-B.2; в v0.7.0 окончательно подчищены orphan-строки `actionLibraryCopy/AutoAnnotateOn|Off/catalogBack/MineFlatLabel/ShowAll|Less`).
+**Открытые TD:** TD-MOLECULEWORKSPACE-M-D, TD-LIBRARY-CRUD-M-D, новый **TD-DRAG-DROP-LIBRARY-CARDS** (drag library cards между папками — сейчас drag-drop работает только для файлов с диска, не для уже-импортированных entries).
+**DEC-блок:** DEC-IMP-13..18 + новые DEC-DS-NN по A+v2 палитре (из v0.6.4) + новые DEC-CAT-01..04 по дизайну дерева (no drilldown / depth-tint / file-manager hover-icons / folder-as-slash-path) — ждут добавления Chat'ом в `ANCHORS.md` / `DECISIONS.md` при финальной приёмке M-B.
+
+---
+
 ## v0.6.4 — M-B.2 Importer Rework + post-acceptance polish (02.05.2026)
 
 **Коммиты на ветке `feature/racetrack-canvas`:** M-B.2 K1..K6 (`f2554fd` → `c36d7bc`) + catalog-scroll-anchor (`8e9debe`) + Library wipe + TagsEditor (`3281779`) + StartScreen Library link (`18e86ce`, `a547f26`) + palette A+v2 + shade + canonical-key (`23bf484`, `7146af9`) + DESIGN_SYSTEM §2.1 (`03e3c11`) + StartScreen UX (`20508d5`) + Importer Critical (`219c2d7`) + Importer High (`98172f7`) + Polish round 2 (`c1f66ed`).

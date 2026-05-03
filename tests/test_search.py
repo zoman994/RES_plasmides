@@ -9,7 +9,10 @@ def test_search_features(tmp_project, simple_v1_gb):
 
     results = search_features("testGene", project_root=tmp_project)
     assert len(results) >= 1
-    assert results[0]["feature"].name == "testGene"
+    # Name extraction priority: label→product→gene→note (BUG-68)
+    # The fixture has no "label", so "product" = "test protein" is used as name.
+    # But "testGene" is found via qualifier search (gene: "testGene").
+    assert results[0]["feature"].name == "test protein"
     assert results[0]["construct_name"] == "pTEST"
 
 

@@ -1,0 +1,151 @@
+/**
+ * strands-track.test.jsx — K2 integration coverage for StrandsTrack +
+ * RulerTrack basics.
+ *
+ * Updated 03.05.2026 evening for the DOM-reduction refactor: nt spans
+ * are now grouped into RUNS by (tint, intron) — see
+ * `tracks/StrandsTrack.jsx` `buildRuns`. Tests assert on `data-strand`
+ * + `data-testid="sequence-view-nt-run"` + concatenated text instead
+ * of one span per nucleotide. The visual contract is identical — same
+ * monospace cells, same colours, same lowercased intron letters —
+ * just an order-of-magnitude fewer DOM nodes for paint.
+ */
+import { describe, it, expect, afterEach } from "vitest";
+import { render, screen, cleanup } from "@testing-library/react";
+import StrandsTrack from "../tracks/StrandsTrack";
+import RulerTrack from "../tracks/RulerTrack";
+
+afterEach(cleanup);
+
+const SEQ_100 = "ATGC".repeat(25);
+
+const annNull = (n) => new Array(n).fill(null);
+
+function joinRunsText(strand) {
+  const runs = screen
+    .getAllByTestId("sequence-view-nt-run")
+    .filter((el) => el.dataset.strand === strand);
+  return runs.map((el) => el.textContent).join("");
+}
+
+describe("StrandsTrack — K2", () => {
+  it("1) renders 100 bp top strand text (grouped into runs)", () => {
+    render(
+      <StrandsTrack
+        lineStart={0}
+        seq={SEQ_100}
+        annMap={annNull(SEQ_100.length)}
+        labelChars={8}
+        showBottomStrand
+      />,
+    );
+    // No annotations → all 100 nt collapse into a single run.
+    expect(joinRunsText("top")).toBe(SEQ_100);
+    expect(joinRunsText("top").length).toBe(100);
+  });
+
+  it("2) renders top + bottom by default and bottom carries complement", () => {
+    render(
+      <StrandsTrack
+        lineStart={0}
+        seq="ATGC"
+        annMap={annNull(4)}
+        labelChars={8}
+        showBottomStrand
+      />,
+    );
+    expect(screen.getByTestId("sequence-view-strands-top")).toBeTruthy();
+    expect(screen.getByTestId("sequence-view-strands-bottom")).toBeTruthy();
+    // ATGC complement (3'->5') = TACG
+    expect(joinRunsText("bottom")).toBe("TACG");
+  });
+
+  it("3) region tint is applied via inline background style on the tinted run", () => {
+    const ann = { id: "r1", color: "#56B4E9", type: "CDS" };
+    const annMap = [ann, ann, null, null];
+    render(
+      <StrandsTrack
+        lineStart={0}
+        seq="ATGC"
+        annMap={annMap}
+        labelChars={8}
+        showBottomStrand
+      />,
+    );
+    const topRuns = screen
+      .getAllByTestId("sequence-view-nt-run")
+      .filter((el) => el.dataset.strand === "top");
+    // Two runs expected: tinted (AT, positions 0-1) + transparent (GC, 2-3).
+    expect(topRuns).toHaveLength(2);
+    expect(topRuns[0].textContent).toBe("AT");
+    expect(topRuns[1].textContent).toBe("GC");
+    // happy-dom keeps 8-digit hex (#RRGGBBAA) verbatim instead of
+    // normalising to rgba(); just assert the alpha-suffixed value made
+    // it onto the inline style.
+    expect(topRuns[0].style.background.toLowerCase()).toContain("#56b4e9");
+    expect(topRuns[1].style.background).toBe("transparent");
+    // Position metadata preserved on the run boundaries.
+    expect(topRuns[0].dataset.posStart).toBe("0");
+    expect(topRuns[0].dataset.posEnd).toBe("1");
+    expect(topRuns[1].dataset.posStart).toBe("2");
+    expect(topRuns[1].dataset.posEnd).toBe("3");
+  });
+
+  it("4) intron annotation lowercases and adds diagonal hatching", () => {
+    const intron = { id: "i1", type: "intron", color: "#999999" };
+    const annMap = [null, intron, intron, null];
+    render(
+      <StrandsTrack
+        lineStart={0}
+        seq="ATGC"
+        annMap={annMap}
+        labelChars={8}
+        showBottomStrand
+      />,
+    );
+    const topRuns = screen
+      .getAllByTestId("sequence-view-nt-run")
+      .filter((el) => el.dataset.strand === "top");
+    // Three runs: A (no intron), tg (intron, lowercased), C (no intron).
+    expect(topRuns).toHaveLength(3);
+    expect(topRuns[0].textContent).toBe("A");
+    expect(topRuns[0].dataset.intron).toBe("false");
+    expect(topRuns[1].textContent).toBe("tg");
+    expect(topRuns[1].dataset.intron).toBe("true");
+    expect(topRuns[1].style.backgroundImage).toContain("repeating-linear-gradient");
+    expect(topRuns[2].textContent).toBe("C");
+    expect(topRuns[2].dataset.intron).toBe("false");
+    // happy-dom returns "initial"/"" for unset background-image; either is fine.
+    expect(topRuns[2].style.backgroundImage || "").not.toContain(
+      "repeating-linear-gradient",
+    );
+  });
+
+  it("5) showBottomStrand=false hides the bottom row entirely", () => {
+    render(
+      <StrandsTrack
+        lineStart={0}
+        seq="ATGC"
+        annMap={annNull(4)}
+        labelChars={8}
+        showBottomStrand={false}
+      />,
+    );
+    expect(screen.queryByTestId("sequence-view-strands-top")).toBeTruthy();
+    expect(screen.queryByTestId("sequence-view-strands-bottom")).toBeNull();
+  });
+});
+
+describe("RulerTrack — smoke", () => {
+  it("renders SVG with major+minor ticks for a 60 bp line", () => {
+    render(<RulerTrack lineStart={0} lineLen={60} charPx={7.2} labelChars={8} />);
+    const svg = screen.getByTestId("sequence-view-ruler");
+    expect(svg.tagName).toBe("svg");
+    // Major tick labels at positions 10, 20, 30, 40, 50, 60.
+    const majorTexts = svg.querySelectorAll("text");
+    const labels = Array.from(majorTexts).map((t) => t.textContent);
+    // Includes line-end label (60) plus per-major labels.
+    expect(labels).toContain("10");
+    expect(labels).toContain("60");
+  });
+});

@@ -23,10 +23,16 @@ vi.mock('../../../AnnotationEditor', () => ({
     </div>
   ),
 }));
-vi.mock('../../../SequenceMapView', () => ({
+// Sprint M-B.3 K8: SequenceTab now mounts SequenceView (not SequenceMapView).
+// Stub both so the lazy-mount assertions stay focused on tab switching.
+vi.mock('../../../SequenceView', () => ({
   default: ({ fragments }) => (
     <div data-testid="mock-sequence-map-view" data-frag-len={fragments?.[0]?.sequence?.length || 0} />
   ),
+}));
+vi.mock('../../../SequenceView/SettingsPopover', () => ({
+  default: () => null,
+  SEQUENCE_VIEW_DEFAULTS: {},
 }));
 vi.mock('../../../PlasmidMiniMap', () => ({
   default: () => <div data-testid="mock-mini-map" />,

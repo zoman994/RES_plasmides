@@ -10,6 +10,9 @@
 
 _(наполняется при первой ротации)_
 
+- Sprint X cycle — 26.04.2026 — «Plasmid-Git data model + corrected undo timing» (закрыты V22 / V24 / V27)
+- Sprint 1.7 — 22.04.2026 — «Unified Editor + Virtual Full Sequence + Topology»
+- Sprint Map-WS-1 cycle — 21.04.2026 — «PlasmidWorkspace + sync cursor + feature palette»
 - Sprint 1.6 — 21.04.2026 — «Мутагенез UX v2.1»
 - Sprint 1 — 19–20.04.2026 — «Читаемые метки, чистые стыки, настоящий мутагенез»
 - MUTWIZ-SANITIZE — 20.04.2026
@@ -29,6 +32,89 @@ _(наполняется при первой ротации)_
 ---
 
 ## Содержимое
+
+### 26.04.2026 — Sprint X cycle (Plasmid-Git): закрытие V22 / V24 / V27 + corrected undo timing
+
+Цикл из 4 спринтов (Sprint X / X-fix / X-fix-2 / X-fix-3) финализирован единым событием после визуальной приёмки 26.04.2026 на EGFP (196 bp): 5 сценариев PASS (multi-mutation undo/redo, editor persistence, footer buttons, single-mutation regression, race-test rapid keystrokes <300ms). Архитектурный сдвиг: data-модель `fragment.mutations[]` (мутации поверх applied sequence) заменена на Plasmid-Git (`baseSnapshot` + `commits[]` + `HEAD` + replay). Undo/redo переписан с поправкой debounce timing бага.
+
+- [x] **V22 HIGHLIGHT-INDEL-TAIL → закрыт через Plasmid-Git replay.** Корень V22 (positional diff `parent.sequence.slice(templateStart, ...)` vs `fragment.sequence` ломается на indel'ах в sub-фрагменте — даёт ложный красный хвост до конца) устранён архитектурно: в Git-модели `fragment.commits[]` хранит mutation-объекты с `op` и абсолютными координатами относительно `baseSnapshot`. Highlights считаются по списку commits, не через positional diff applied vs parent. Indel-aware classification получается естественно из replay-цепочки. Sprint X K3–K4 (commit `16c58c5` baseline Sprint X / X-fix объединён) + Sprint X-fix-2 (commits `0f8211b`, `1bd69f4`).
+
+- [x] **V24 SINGLE-CIRCULAR-NO-PRIMERS → закрыт extension в Sprint X-fix K5.** `local-primer-design.js::designPrimersLocal` при `fragments.length === 1 && circular` теперь генерирует пару праймеров для self-closure (binding + tail из `rc(seq.slice(-half))` для fwd, binding + tail из `seq.slice(0, half)` для rev). Контракт K12 Sprint 1.7 (single-circular = self-closure через overhang-tails, +30 bp в PCR) теперь физически собирается: биолог получает реальные oligos для синтеза при «Заказе олигов». Sprint X-fix K5 (commit в составе `16c58c5` baseline).
+
+- [x] **V27 MUTATION-DELETE-NO-REVERT → закрыт через Plasmid-Git revert/applied-toggle.** Кнопка ✕ в Mutations panel `EditorPanels.jsx` теперь оперирует над `fragment.commits[]` корректно: каждый commit имеет `applied: true|false`, ✕ переключает флаг + replay на baseline пересчитывает sequence/Tm/GC%. Coordinate-remap проблема (которая раньше делала вариант (B) непригодным) снимается тем, что commits хранят координаты в координатах `baseSnapshot`, не в координатах applied-state. Sprint X K3–K6 + Sprint X-fix workflow rewire.
+
+**Sprint X-fix-3 — pushUndo timing fix (commit `4292506`).** Баг pre-existing с момента введения debounced `pushUndo`: snapshot снимался **внутри setTimeout** (через 300мс после вызова) → захватывал post-apply state, undo не возвращал к baseline. Не проявлялся на одиночных user-actions (паузы между кликами >300мс), но Sprint X-fix-2 ввёл `applyMutationsBatch` (5 мутаций за один тик) — первый сценарий, где pushUndo + set + setTimeout-fire упаковались в окно <300мс, баг проявился. Fix: `_pendingSnapshot` module-level let — первый pushUndo в окне захватывает `shallowSnapshot(get())` синхронно до любого `set()`, последующие в окне продлевают timer но не перезаписывают snapshot. По срабатыванию timeout snapshot уходит в `_undoStack`. Race-сценарий «apply → Ctrl+Z <300мс → новый apply» закрыт обязательной очисткой `_pendingSnapshot` + `_pushTimeout` в `undo()` / `redo()`. Семантика debounce 300мс для merge серии быстрых действий в один Ctrl+Z step сохранена.
+
+**Тесты:** 774 → 846 Vitest (+72 за весь цикл: +70 Sprint X / X-fix / X-fix-2 + 2 Sprint X-fix-3). pytest 112/112. vite build clean.
+
+**Размеры (новые / изменённые):**
+- `lib/plasmid-git-reducers.js`: новый, 5.02 KB.
+- `store/index.js`: 10.70 → 12.06 KB (+1.36 KB; pushUndo + undo/redo очистка + комментарии).
+- `components/FragmentEditor/index.jsx`: 39.55 → 39.32 KB (small refactor handleSaveMutagenesis).
+- `store/__tests__/undo-batch.test.js`: новый, 3.77 KB.
+- `store/__tests__/fragmentSlice-git.test.js`: новый.
+
+**Приёмочный отчёт автоматизированной Cowork-сессии (Claude in Chrome):**
+- K-fix2-1: 3 мутации (V2A/K4A/E6A) на EGFP → Apply → Ctrl+Z вернул GC% 67.9% → 65.8% (baseline), Mutations panel очищен → Ctrl+Y восстановил GC% и мутации. **PASS.**
+- K-fix2-2: editor открыт после Apply / Ctrl+Z / Ctrl+Y / «Сохранить как запчасть». **PASS.**
+- K-fix2-3: footer без «🔀 Как вариант», есть «Создать сборку (3)» / «Сохранить как запчасть» / «Отмена». **PASS.**
+- SC-4 (single mutation): V2A → Apply → Ctrl+Z → GC% 66.3% → 65.8%. **PASS.**
+- SC-5 (race-test): apply → Ctrl+Z (0мс) → Ctrl+Y (100мс) → Ctrl+Z (200мс) → Ctrl+Y финальная проверка. Все откаты корректные, redo stack intact. **PASS.**
+
+### Новые находки приёмки 26.04.2026 (→ OPEN):
+- **V32** (Низкий) — «Legacy-мутации: revert недоступен» warning misleading до Apply (текстовая правка UX).
+- **V33** (Средний) — «Создать сборку (N)» активна с pending (не applied) мутациями; UX-вопрос что собирается (pre-apply или post-apply state).
+
+**Архитектурный итог цикла Sprint X:** один из крупнейших архитектурных сдвигов проекта со времён Zustand-миграции (28.03.2026). Plasmid-Git data model открывает дорогу для «коммитов» как первоклассной сущности UX (Sprint X+1: panel истории мутаций с точкой возврата на любой commit, branching). Новый ⚓ DECISIONS «pushUndo synchronous capture» закрывает класс багов debounced-side-effect-функций для всего проекта.
+
+---
+
+### 22.04.2026 — Sprint 1.7: Unified Editor + Virtual Full Sequence + Topology (full visual acceptance)
+
+Sprint 1.7 закрыт по всем 4 блокам после визуальной приёмки на HygroR (1023 bp): 5 substitution (G26A, R135A, G77C, C403G, G404C) + deletion regression. K9/K10/K11/K12 приняты. 700 → 738 Vitest (+38), pytest 112. 4 новых UX/алгоритмических гэпа (V18/V19/V20/V21) зафиксированы сепаратно для Sprint 2+/Sprint 3.
+
+- [x] **K9 V15+V16 FIX (commit `1cffe1b`):** в `FragmentEditor.jsx` `isMutated` переведён на численное сравнение `codonStart`/`position` вместо substring-match по `label` (фикс V15); `computeMutationHighlights` учитывает `fragment.templateStart` и сравнивает `parent.sequence.slice(templateStart, templateStart+length)` с `fragment.sequence` (фикс V16). Приёмка: на HygroR_2/HygroR_5 (sub'ы с templateStart > 0) подсвечены только реальные позиции мутаций; AA 3/5/6 больше не подсвечиваются от substring-match с 135/403/26. Deletion тоже корректно — mapping не съезжает после indel. _Примечание 23.04.2026: deep code analysis обнаружил V22 — indel в sub-фрагменте даёт ложный красный хвост до конца (V16 fix закрыл только equal-length substitutions). V22 закрыт через Plasmid-Git replay в Sprint X (26.04.2026)._
+- [x] **K10 UNIFIED EDITOR (commit `853535f`):** tabs «Последовательность/Белок» удалены. Layout: mode switcher (Правка/Мутагенез) → sequence primary (DNA + AA под каждым codon) → 3 collapsible panel (Annotations, Mutations, Protein). AA-клики mode-dependent: default cursor в Правке, mut menu в Мутагенезе. Sequence footer: mode-specific hint. Отклонение от спеки: баннер «Режим просмотра» удалён целиком, заменён mode-specific подсказкой в footer — функционально эквивалентно. _Примечание 23.04.2026: Sprint 2a.1 acceptance обнаружила V27 — кнопка ✕ в Mutations panel не откатывает sequence (pre-existing с K10). V27 закрыт в Sprint X (26.04.2026)._
+- [x] **K11 VIRTUAL FULL SEQUENCE (commit `b2e21ed`):** toggle «Фрагмент N bp / Полный ген M bp» в header Editor для split-group sub-фрагментов. Full-view: sequence read-only + баннер «Виртуальный вид» + highlightRegion на текущий sub (templateStart..+length) + notice в annotations «В полном обзоре аннотации недоступны». Мутации в координатах parent по всей группе. Добавлен `data-testid="fragment-editor-full-view"` для integration-тестов.
+- [x] **K12 TOPOLOGY + V17 FIX (commit `2c6d735`):** `fragment.topology` как persisted поле (linear|circular). Header Editor: toggle 📏 Линейная / ⭕ Кольцевая; PartBlock context menu: «Сделать линейной/кольцевой». Single-linear больше не рендерит decorative 30-bp junction справа (фикс V17). Single-circular: self-closure через overhang-tails, +30 bp в PCR, arc-indicator «⟲ замыкание» под фрагментом. Split-группа → все sub'ы topology='linear'. `expectedJunctionCount` = 0 для single-circular (self-closure без отдельного junction-объекта отложен до v1.1). _Примечание 23.04.2026: deep code analysis обнаружил V24 — primers для self-closure не собираются в `local-primer-design.js` (early-return при `fragments.length < 2`); +30 bp в PCR — только display-calculation. V24 закрыт extension в Sprint X-fix K5 (26.04.2026)._
+
+#### Новые находки Sprint 1.7 (зафиксированы в OPEN на момент закрытия):
+- **V18** — full-view DNA и Protein overview разорваны, нет AA под кодоном.
+- **V19** — кнопка «Редакт. кодоны»: непонятный UX, нет bulk-delete, нет явного codon-usage table.
+- **V20** — split плодит микро-PCR 30–60 bp при близких мутациях.
+- **V21** — single-circular arc-indicator не считывается визуально.
+
+#### Новые находки deep code analysis 23.04.2026 (зафиксированы в OPEN на момент закрытия):
+- **V22** (Высокий) — indel в sub-фрагменте даёт ложный красный хвост до конца. **Закрыт Sprint X cycle 26.04.2026.**
+- **V23** (Средний) — `ORTHOGONAL_OVERHANGS_4` содержит 6 палиндромов + 5 RC-пар, эффективный пул ~21 вместо 32.
+- **V24** (Высокий) — single-circular self-closure не генерирует primers. **Закрыт Sprint X-fix K5 26.04.2026.**
+
+#### Новые находки visual acceptance Sprint 2a.1 (23.04.2026):
+- **V27** (Высокий) — кнопка ✕ в Mutations panel убирает мутацию из списка, но не откатывает sequence. Pre-existing с K10. **Закрыт Sprint X cycle 26.04.2026.**
+
+---
+
+### 21.04.2026 — Sprint Map-WS-1 cycle (Skeleton + fix + fix-B): полная визуальная приёмка
+
+Три последовательных спринта на multi-pane Map view DesignCanvas + sequence-pane с synced cursor. Первый спринт Map-WS-1 (Skeleton, commits `e59c44e`..`ea1427a`) — приёмка на «Сборка 5» дала FAIL на D1/D2/D3. Map-WS-1-fix (K1–K3, commits `994ed79`..`a7cbbee`) — приёмка на «Сборка 7» (whole-plasmid catalog import) дала D2 PASS, D1/D3 FAIL + новая находка LABEL-читаемость на pastel. Map-WS-1-fix-B (K4.1–K4.5, commits `27cc518`..`5ac282a`) — полная визуальная приёмка на «Сборка 7» PASS.
+
+- [x] **Map-WS-1 K1–K4 (Skeleton):** новый `PlasmidWorkspace` vertical split (PlasmidMap + SequencePane read-only) с resizable splitter (persist в localStorage `plasmid-workspace-bottom-h`), `selectedRegionId` state как синхронизированный cursor, `buildPlasmidSequence(fragments)` helper. DesignCanvas Map view branch заменён на `<PlasmidWorkspace>`. 738 → 756 Vitest (+18 синхронизация/helper/render), pytest 112, build clean.
+- [x] **Map-WS-1-fix K1–K3 (D2 PASS, D1/D3 FAIL):** новый `feature-palette.js` (15 семейств + misc + `FEATURE_STROKE` warm-dark-brown `#3A2F1F` + normalizer `featureColor(type, name?)` с CDS→resistance/reporter/his/tag/linker refine, GenBank-aliases); `PlasmidMap` получил controlled `selectedRegionId` + `onSelectRegion` callback, `id`/`ftype` в `rawSubs`, highlight-branch с drop-shadow, `data-testid="sub-arc-<id>"`. `SequencePane` перешёл на `featureColor` + `min-w-full` на content-div. `PlasmidWorkspace` перестроил mapping idx→regionId через `regionsByFragment` + fallback `onMapFragmentFallback` (первый region фрагмента). 756 → 768 Vitest (+12).
+- [x] **Map-WS-1-fix-B K4.1 (commit `27cc518`):** `annotation-model.js::getRegions` backfillит deterministic `id = region:${start}:${end}:${type}:${name}` для annotations без id (catalog whole-plasmid import через визард). Закрывает D1 root cause — до fix-B `sub.id = undefined` ломал и forward sync (через fragment-index fallback на первый region фрагмента), и back-sync (`setSelectedRegionId(undefined)` → `isRegSel` всегда false). Id детерминированный, stable между рендерами, существующий dedup в PlasmidMap по `start-end-type` остаётся корректным. +4 Vitest.
+- [x] **Map-WS-1-fix-B K4.2 (commit `53247ac`):** defensive guard в `SequencePane.handleNucleotideClick` — `region.id != null` перед `onSelectRegion`. После K4.1 через normal render-path сюда не дотянуться, но страховка от будущих регрессий источника аннотаций. +1 Vitest (end-to-end: annotations без id → click → onSelectRegion вызван со строкой backfilled-id, не с undefined).
+- [x] **Map-WS-1-fix-B K4.3 (commit `b9f59f8`):** `PlasmidWorkspace.regionsByFragment` через `getRegions(rawAnns)` вместо рукописного filter. После K4.1 это автоматически даёт fallback id для fallback-пути `onMapFragmentFallback`, `frs[0].id` всегда валиден. Regression-тесты `plasmid-workspace.test.jsx` PASS без правок.
+- [x] **Map-WS-1-fix-B K4.4 (commit `e14994c`):** labels и directional markers на карте `fill: '#fff'` → `fill: FEATURE_STROKE` в трёх точках (sub-arc textPath ~327, direction arrow polygon ~353 с opacity 0.5→0.6, feature arc textPath ~491). `textShadow` убран полностью (по open question §14.3 fix-B spec — pastel + warm-dark контрастен, shadow только мутит). Hover tooltip text, center construct name, primer labels, RE labels, junction hover label — не тронуты (они на тёмных rect-фонах / на белом фоне карты, уже читаемы).
+- [x] **Map-WS-1-fix-B K4.5 (commit `5ac282a`):** responsive `charsPerLine` в SequencePane через `ResizeObserver` на containerRef — clamp `[60, 120]` кратно 10 (GenBank-habit-compat). `CHAR_PX = 7.3` (`JetBrains Mono 11px`), `useState(80)` дефолт. `min-w-full` из K3 убран (responsive делает его ненужным). ResizeObserver mock в локальном `beforeEach` тестов; runtime `typeof ResizeObserver === 'undefined'` fallback. +2 Vitest (1 удалён старый `min-w-full` snapshot).
+
+Итого: 768 → **774 Vitest** (+6), pytest 112, build clean (pre-existing warnings INEFFECTIVE_DYNAMIC_IMPORT auto-annotate.js + chunk >500 KB оставлены). Size budget: OK (PlasmidMap 34.30→35.12 / SequencePane 11.81→12.81 / PlasmidWorkspace 5.48→6.31 / annotation-model 2.47→2.78 — все далеко от hard 40/25 KB).
+
+#### Новые находки Map-WS-1-fix-B visual acceptance (зафиксированы в OPEN на момент закрытия):
+- **V28** — SequencePane region-фон не читается как интерактив, нужен cursor: pointer + hover-state.
+- **V29** — PlasmidMap hover-scale затрагивает всю группу арок вместо hovered (pre-existing, не регрессия).
+- **V30** — выносные подписи для микро-регионов (<2–3% окружности), leader-lines наружу кольца.
+- **V31** — PlasmidMap масштабируется при resize окна (подозрение на регрессию Map-WS-1 Skeleton K4 — убранный `items-center justify-center` wrapper).
+
+---
 
 ### 21.04.2026 — Sprint 1.6: Мутагенез UX v2.1 (partial visual acceptance)
 

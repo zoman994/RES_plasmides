@@ -1,0 +1,624 @@
+/**
+ * SequenceView — display-only sequence viewer (Sprint M-B.3, K6 final).
+ *
+ * Replaces 5 v0.5/v0.6 carryovers (SequenceMapView/SequencePane/
+ * SequencePreview/SequenceViewer/PlasmidWorkspace, ~70 KB) with one
+ * orchestrator + per-track components in this folder.
+ *
+ * Render order per line (revised 03.05.2026 evening — DNA-first layout
+ * per biolog feedback: «первично будет всё же ДНК, а фичи аннотации и
+ * АА под ДНК»):
+ *   PrimerTrack          — top, points at DNA below
+ *   RestrictionTrack     — top, RE sites mark DNA below
+ *   RulerTrack           — top, numbers DNA below
+ *   StrandsTrack top     — DNA forward (primary)
+ *   StrandsTrack bottom  — DNA reverse (only when settings.showBottomStrand)
+ *   AnnotationTrack      — feature bars BELOW DNA (was above pre-03.05.2026)
+ *   AATrack forward      — translation, below annotation (always)
+ *   AATrack reverse      — only when strategy === 'hybrid'
+ *
+ * Settings come from `uiSlice.sequenceView` (introduced in K7). When the
+ * slice is absent (e.g. older store, isolated tests), defaults apply
+ * automatically via `selectSequenceViewSettings`.
+ *
+ * Layer separation (DEC-SQV-07): NO container imports. Plain `fragments`
+ * shape only. M-C wraps this with commit-resolution; this file stays
+ * reusable in Importer / Container Window / Mix Workspace.
+ */
+
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useStore } from "../../store";
+import { SEQUENCE_VIEW_DEFAULTS } from "../../store/uiSlice.js";
+import {
+  SEQUENCE_FONT_FAMILY,
+  measureCharPx,
+  clampCharsPerLine,
+  linesFromSeq,
+} from "./lib/grid.js";
+import { detectORFRanges } from "./lib/orf-ranges.js";
+import { resolveFramesMode } from "./lib/frames-mode.js";
+import { useRowSelectionIsolation } from "./lib/row-selection-isolation.js";
+import { getRegions } from "../../annotation-model.js";
+import { featureColorShaded, FEATURE_STROKE } from "../../feature-palette.js";
+import { scanAllSites, RE_ENZYMES } from "../../restriction-db.js";
+
+export { FEATURE_STROKE };
+
+import RulerTrack from "./tracks/RulerTrack.jsx";
+import StrandsTrack from "./tracks/StrandsTrack.jsx";
+import AnnotationTrack from "./tracks/AnnotationTrack.jsx";
+import AATrack from "./tracks/AATrack.jsx";
+import PrimerTrack from "./tracks/PrimerTrack.jsx";
+import RestrictionTrack from "./tracks/RestrictionTrack.jsx";
+
+export const LABEL_WIDTH = 8;
+
+// Stable empty-array reference used when consumer omits `primers`.
+// JS default-parameter syntax `primers = []` evaluates the array
+// LITERAL on every call, producing a new reference. Each new
+// reference makes `<SequenceLine memo>` bail (shallow-equal compare
+// fails) and re-render every line — perceptible lag on long
+// plasmids when an unrelated parent state shifts. Hoisting to a
+// module constant gives every default-call the SAME array instance.
+const EMPTY_PRIMERS = Object.freeze([]);
+
+// Test-env detector — used both for `tracksReady` initial value (so
+// vitest assertions on heavy tracks find them synchronously) and for
+// the per-line `content-visibility` opt-out (happy-dom doesn't fully
+// implement content-visibility skip-rendering, which historically
+// drifted timing of `primer-wizard.test.jsx` and friends — see V49
+// regression notes).
+const __IS_TEST_ENV__ =
+  typeof import.meta !== "undefined"
+  && typeof import.meta.env !== "undefined"
+  && import.meta.env.MODE === "test";
+
+/**
+ * Selector — direct slice read so React doesn't see a new object on
+ * every render (a wrapping selector that returned `{...}` would feed
+ * Zustand a fresh reference each call → "Maximum update depth exceeded"
+ * loop in React 19). The slice is initialised by uiSlice.loadInitialSequenceView()
+ * which already validates every field; we only need to fall back when
+ * isolated test harnesses set `state.sequenceView` to undefined.
+ */
+const sliceSelector = (state) =>
+  state && state.sequenceView ? state.sequenceView : SEQUENCE_VIEW_DEFAULTS;
+
+/**
+ * Build the construct-level features + per-position annotation map.
+ *
+ * Colour palette comes from `feature-palette.featureColorShaded(type, name)`
+ * — same source as the circular PlasmidMap (DEC-DS-02 ⚓), so the same
+ * GAL1 promoter / AmpR / etc. read the SAME shade in both views. Using
+ * `theme.FEATURE_COLORS` (v0.5 carryover) made the SequenceView clash
+ * against the PlasmidMap colours during M-B.3 visual review.
+ */
+function buildFeatureMap(fragments) {
+  let seq = "";
+  const feats = [];
+  if (!Array.isArray(fragments)) return { fullSeq: "", features: [] };
+  fragments.forEach((f, i) => {
+    if (!f) return;
+    const fragStart = seq.length;
+    seq += f.sequence || "";
+    const fragEnd = seq.length;
+    const fragColor = f.customColor || featureColorShaded(f.type, f.name);
+    const regions = getRegions(f.annotations);
+    if (regions.length > 1) {
+      regions.forEach((r, ri) => {
+        feats.push({
+          id: `${f.id || i}_r${ri}`,
+          name: r.name,
+          type: r.type,
+          start: fragStart + r.start,
+          end: fragStart + r.end,
+          color: featureColorShaded(r.type, r.name),
+          strand: r.strand || f.strand || 1,
+          level: "region",
+          kind: r.kind,
+        });
+      });
+    } else {
+      feats.push({
+        id: f.id || i,
+        name: f.name,
+        type: f.type,
+        start: fragStart,
+        end: fragEnd,
+        color: fragColor,
+        strand: f.strand || 1,
+        level: "region",
+      });
+    }
+  });
+  return { fullSeq: seq, features: feats };
+}
+
+/**
+ * For a given line, build the per-position annotation map (length === lineLen)
+ * — one slot per nt holding the topmost feature at that position. Used by
+ * StrandsTrack for tint and intron lowercase.
+ */
+function buildLineAnnMap(features, lineStart, lineLen) {
+  const map = new Array(lineLen).fill(null);
+  if (!features || features.length === 0) return map;
+  const lineEnd = lineStart + lineLen;
+  for (const f of features) {
+    if (f.end <= lineStart || f.start >= lineEnd) continue;
+    const from = Math.max(0, f.start - lineStart);
+    const to = Math.min(lineLen, f.end - lineStart);
+    for (let k = from; k < to; k++) {
+      // Latest-wins is OK here because the StrandsTrack tint is
+      // intentionally a low-alpha hint; the real multi-row track lives
+      // in AnnotationTrack and uses the unmutated regions list.
+      map[k] = f;
+    }
+  }
+  return map;
+}
+
+/**
+ * Convert v0.5 scanAllSites output into a flat per-cut-position array
+ * the RestrictionTrack can consume.
+ */
+function flattenSites(scanResult, filterMode) {
+  if (!Array.isArray(scanResult)) return [];
+  const rows =
+    filterMode === "unique"
+      ? scanResult.filter((re) => re.isUnique)
+      : filterMode === "double"
+        ? scanResult.filter((re) => re.cutCount <= 2)
+        : scanResult;
+  const out = [];
+  for (const re of rows) {
+    const cutOffset = (RE_ENZYMES[re.enzyme] && RE_ENZYMES[re.enzyme].cut[0]) || 0;
+    for (const pos of re.positions) {
+      out.push({
+        enzyme: re.enzyme,
+        position: pos.position + cutOffset,
+      });
+    }
+  }
+  return out;
+}
+
+/**
+ * SequenceView — display-only.
+ *
+ * @param {object} props
+ * @param {Array<{ id?, sequence, annotations?, type?, name?, strand?, customColor? }>} props.fragments
+ * @param {boolean} [props.circular=false]
+ * @param {Array<object>} [props.primers=[]]
+ * @param {boolean} [props.readOnly=true]   reserved for M-D
+ * @param {(start: number, end: number) => void} [props.onSelect]
+ * @param {(annotation: object) => void} [props.onAnnotationClick]
+ * @param {(op: object) => void} [props.onMutate]
+ * @param {(primer: object) => void} [props.onAddPrimer]
+ * @param {(site: object) => void} [props.onRestrictionClick]
+ */
+export default function SequenceView({
+  fragments,
+  circular = false,
+  primers = EMPTY_PRIMERS,
+  // Reserved props — wired to no behaviour in M-B.3 (display-only).
+  // eslint-disable-next-line no-unused-vars
+  readOnly = true,
+  onSelect,
+  onAnnotationClick,
+  // eslint-disable-next-line no-unused-vars
+  onMutate,
+  // eslint-disable-next-line no-unused-vars
+  onAddPrimer,
+  // eslint-disable-next-line no-unused-vars
+  onRestrictionClick,
+}) {
+  const containerRef = useRef(null);
+  const [charPx, setCharPx] = useState(7.2);
+  const [charsPerLine, setCharsPerLine] = useState(80);
+  // `measured` gate — the container starts mounted (so ResizeObserver
+  // can attach + observe), but actual lines don't render until the
+  // first valid width measurement comes back. Pre-warm scenario is
+  // the prime offender: SingleInspector mounts SequenceView inside a
+  // `display: none` div for idle pre-warm; clientWidth is 0 there, so
+  // useLayoutEffect's remeasure bails. The ResizeObserver then fires
+  // ASYNCHRONOUSLY when the user clicks the tab and display flips to
+  // `block`. Between display:block and the re-render that lands the
+  // measurement, the user used to see the old default (80
+  // chars/line) → narrow render flash → ~0.5 s later snap-to-wide
+  // (биолог: «сначала в узком формате... потом приходит в норму»).
+  // The gate trades that flash for a brief blank container, which
+  // reads as a clean "still loading" instead of "broken layout".
+  const [measured, setMeasured] = useState(false);
+
+  // Per-row selection scoping (DNA-first layout follow-up,
+  // 03.05.2026): drag-to-select stays inside ONE row at a time, so the
+  // user can copy e.g. just the reverse strand or just one AA frame
+  // without picking up neighbours. See lib/row-selection-isolation.js.
+  useRowSelectionIsolation(containerRef);
+
+  // Two-phase render to keep first paint cheap on slow hardware.
+  // Initial mount on a 8 GB / mid-tier CPU laptop (typical academic
+  // workstation) was freezing for ~1-1.5 s on a 8.8 kb plasmid because
+  // ALL tracks (DNA strands + ruler + annotations + AA + primers + RE)
+  // rendered synchronously — ~480 components × ~3 ms = ~1.5 s blocked
+  // main thread. Quick win (perf review 04.05.2026 PM): render only
+  // the cheap, orientation-critical tracks (strands + ruler) on the
+  // first paint; defer annotation / AA / primer / restriction tracks
+  // to the next idle frame via requestIdleCallback. The biolog sees
+  // DNA + position numbers within ~200 ms even on slow hardware,
+  // tracks "fill in" ~150-300 ms later. Real cost unchanged, perceived
+  // perf dramatically better — first paint is no longer blocked.
+  //
+  // Tests bypass the defer (import.meta.env.MODE === 'test') so the
+  // existing assertions on annotation / AA tracks still find them
+  // synchronously after `render()` without needing `await waitFor`.
+  const [tracksReady, setTracksReady] = useState(__IS_TEST_ENV__);
+  useEffect(() => {
+    if (tracksReady) return undefined;
+    if (typeof requestIdleCallback !== "undefined") {
+      const id = requestIdleCallback(
+        () => setTracksReady(true),
+        { timeout: 250 },
+      );
+      return () => cancelIdleCallback(id);
+    }
+    // Fallback (Safari < 16.4, JSDom): a 0-ms timeout still yields to
+    // the browser between first paint and the deferred render.
+    const t = setTimeout(() => setTracksReady(true), 0);
+    return () => clearTimeout(t);
+  }, [tracksReady]);
+
+  const settings = useStore(sliceSelector);
+
+  // V0.5 RE state — `useStore(s => s.showReSites)` returns undefined on v0.6
+  // and the track silently collapses. No mount gate needed.
+  const showReSites = useStore((s) => s.showReSites);
+  const reFilter = useStore((s) => s.reFilter);
+  const reMinSiteLen = useStore((s) => s.reMinSiteLen);
+
+  const { fullSeq, features } = useMemo(() => buildFeatureMap(fragments), [fragments]);
+
+  // Detect ORFs once per fullSeq for the Smart-6-frame trinity.
+  const orfRanges = useMemo(() => detectORFRanges(fullSeq, 20), [fullSeq]);
+
+  const framesResolution = useMemo(
+    () =>
+      resolveFramesMode(
+        settings.framesMode,
+        settings.autoThreshold,
+        features,
+        fullSeq.length,
+        orfRanges,
+      ),
+    [settings.framesMode, settings.autoThreshold, features, fullSeq.length, orfRanges],
+  );
+
+  const reSites = useMemo(() => {
+    if (!showReSites || !fullSeq) return [];
+    const scan = scanAllSites(fullSeq, { circular, minSiteLen: reMinSiteLen || 6 });
+    return flattenSites(scan, reFilter);
+  }, [showReSites, fullSeq, circular, reMinSiteLen, reFilter]);
+
+  // Container measurement — useLayoutEffect (not useEffect) so the
+  // remeasure happens BEFORE the first paint instead of after. With
+  // useEffect, the first painted frame had the default `charsPerLine
+  // = 80` value (narrow), then ~1 frame later React committed the
+  // real measurement and the layout snapped wider — biolog 03.05.2026
+  // evening: «когда заходишь в сиквенс вью то сразу происходит рендер
+  // сначала в узком формате (как будто в пол экрана сиквенс
+  // рендерится) а потом приходит в норму — занимает примерно пол
+  // секунды». Switching to useLayoutEffect closes that gap to zero.
+  useLayoutEffect(() => {
+    const host = containerRef.current;
+    if (!host) return;
+
+    const remeasure = () => {
+      const chW = measureCharPx(host);
+      if (!chW) return;
+      const available = host.clientWidth - 24;
+      if (available <= 0) return; // host hidden / collapsed — wait for ResizeObserver
+      const fitChars = Math.floor(available / chW) - LABEL_WIDTH;
+      setCharPx(chW);
+      setCharsPerLine(clampCharsPerLine(fitChars));
+      setMeasured(true);
+    };
+
+    remeasure();
+    if (typeof ResizeObserver === "undefined") return undefined;
+    const ro = new ResizeObserver(remeasure);
+    ro.observe(host);
+    return () => ro.disconnect();
+  }, []);
+
+  const lines = useMemo(
+    () => linesFromSeq(fullSeq, charsPerLine),
+    [fullSeq, charsPerLine],
+  );
+
+  // Forward selection callbacks (no-op in M-B.3 because there is no
+  // selection state yet — wired for M-D Container Window).
+  void onSelect;
+  void onAnnotationClick;
+
+  if (!fullSeq) {
+    return (
+      <div
+        ref={containerRef}
+        data-testid="sequence-view-root"
+        data-empty="true"
+        style={{
+          padding: 12,
+          fontSize: 11,
+          color: "var(--text-tertiary)",
+          textAlign: "center",
+        }}
+      >
+        Нет последовательности
+      </div>
+    );
+  }
+
+  const renderHybrid = framesResolution.strategy === "hybrid";
+
+  return (
+    <div
+      ref={containerRef}
+      data-testid="sequence-view-root"
+      data-circular={circular ? "true" : "false"}
+      data-chars-per-line={charsPerLine}
+      data-line-count={lines.length}
+      data-show-bottom-strand={settings.showBottomStrand ? "true" : "false"}
+      data-frames-mode={settings.framesMode}
+      data-frames-strategy={framesResolution.strategy}
+      data-primer-style={settings.primerStyle}
+      data-re-orientation={settings.reOrientation}
+      style={{
+        flex: "1 1 auto",
+        minWidth: 0,
+        overflowX: "hidden",
+        overflowY: "auto",
+        outline: "none",
+        fontFamily: SEQUENCE_FONT_FAMILY,
+        fontSize: 11,
+        lineHeight: 1.4,
+        padding: "0 12px",
+        // `overflow-anchor: none` disables Chromium's scroll anchoring
+        // calculations (which try to keep the user's scroll position
+        // stable when content shifts above the viewport). For a
+        // sequence-view that doesn't reflow during scroll, the anchor
+        // computation is pure overhead per scroll frame — observable
+        // as micro-jitter on long plasmids.
+        overflowAnchor: "none",
+      }}
+    >
+      {/*
+        * Don't render any lines until the first valid measurement
+        * comes back — see `measured` state comment above. In test
+        * environments (where layout queries return synthetic values
+        * and ResizeObserver may not fire), `__IS_TEST_ENV__` short-
+        * circuits the gate so existing assertions on rendered lines
+        * keep finding them after `render()`.
+        */}
+      {(!measured && !__IS_TEST_ENV__) ? null : lines.map((line) => (
+        <SequenceLine
+          key={line.start}
+          line={line}
+          fullSeq={fullSeq}
+          features={features}
+          primers={primers}
+          reSites={reSites}
+          charPx={charPx}
+          settings={settings}
+          framesResolution={framesResolution}
+          orfRanges={orfRanges}
+          renderHybrid={renderHybrid}
+          onAnnotationClick={onAnnotationClick}
+          tracksReady={tracksReady}
+        />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * SequenceLine — single line of the sequence view (one DNA chunk plus
+ * all its track overlays). Wrapped in `React.memo` so a line whose
+ * inputs don't change between renders skips its sub-tree entirely.
+ *
+ * Why this exists (perf review 04.05.2026 evening): on a typical 8.8 kb
+ * plasmid at 150 chars / line we render ~60 lines × 8 tracks × ~150
+ * inline-block spans ≈ 70 000 DOM nodes. Without memo, ANY parent
+ * state change (settings popover open / close, theme toggle, an
+ * unrelated zustand subscription elsewhere) re-renders all 70 000
+ * nodes. With memo + the orchestrator passing stable refs (primers /
+ * reSites / features / orfRanges / settings via useMemo + zustand
+ * slice subscription), unchanged lines bail at the React level — only
+ * the lines whose props actually shifted (rare) re-render.
+ *
+ * Also: each line div now has `contain: paint` so the browser can
+ * paint each line in its own layer and skip re-painting siblings on
+ * scroll (which is the dominant cost on long plasmids).
+ *
+ * `annMap` (per-position annotation lookup for the strand tint) is
+ * memoized inside the line so it's recomputed only when (features,
+ * line.start, line.seq.length) shift.
+ */
+const SequenceLine = memo(function SequenceLine({
+  line,
+  fullSeq,
+  features,
+  primers,
+  reSites,
+  charPx,
+  settings,
+  framesResolution,
+  orfRanges,
+  renderHybrid,
+  onAnnotationClick,
+  tracksReady,
+}) {
+  const annMap = useMemo(
+    () => buildLineAnnMap(features, line.start, line.seq.length),
+    [features, line.start, line.seq.length],
+  );
+
+  return (
+    <div
+      data-testid="sequence-view-line"
+      data-line-start={line.start}
+      data-tracks-ready={tracksReady ? "true" : "false"}
+      style={{
+        // Block hierarchy: each line = ruler + DNA + annotation + AA is
+        // ONE logical unit. Inter-block separator (paddingBottom 14 +
+        // 1 px dashed divider + marginBottom 14 → ≈28 px gap) tells
+        // the biolog where one DNA segment ends and the next begins —
+        // without it, ruler of line N+1 looked like it belonged to AA
+        // of line N (visual review 03.05.2026 evening on
+        // pBR322-GST-fusion 4.9 kb).
+        marginBottom: 14,
+        paddingBottom: 14,
+        // 1 px dashed `--border-default` — was 0.5 px `--border-subtle`,
+        // biolog visual review 03.05.2026 evening: «бледный пунктир,
+        // чуть ярче». Still subtle enough to read as a line-block
+        // separator, not a hard rule.
+        borderBottom: "1px dashed var(--border-default, #c9c5c1)",
+        // Browser-level paint isolation: scroll-induced repaints stay
+        // inside this line's box, neighbours don't repaint. ~5-10×
+        // scroll smoothness on long plasmids per Chrome dev-tools
+        // performance profile (perf review 04.05.2026).
+        contain: "paint",
+        // `content-visibility: auto` — the big scroll-perf win
+        // (биолог 03.05.2026 evening: «когда скроллишь
+        // последовательности есть микрофризы»). The browser SKIPS
+        // layout + paint of off-screen lines entirely (intersecting
+        // viewport ± a generous overflow margin), keeping only the
+        // reserved height (`contain-intrinsic-size`). Effectively
+        // virtualization-without-React-rewrite. Initial first paint
+        // is also faster because lines below the fold defer their
+        // expensive work.
+        //
+        // Trade-offs:
+        //   • Find-in-page may not surface text inside skipped lines
+        //     until they're scrolled into view — acceptable for a
+        //     read-only sequence display where the biolog navigates
+        //     by position number, not browser find.
+        //   • happy-dom doesn't fully implement skip-rendering —
+        //     historically caused timing drift in `primer-wizard.test`
+        //     and similar. Gated via `__IS_TEST_ENV__` so tests keep
+        //     their fully-mounted DOM tree.
+        //
+        // `220px` is a rough average line height (ruler + DNA top +
+        // bottom + annotation rect + 2 AA rows + dashed divider gap)
+        // so the scroll bar's overall height stays close to the real
+        // value before lines are realised. Mis-estimation only
+        // affects scrollbar accuracy, not correctness.
+        contentVisibility: __IS_TEST_ENV__ ? "visible" : "auto",
+        containIntrinsicSize: "auto 220px",
+      }}
+    >
+      {/*
+        * Two-phase render. First paint shows only the cheap,
+        * orientation-critical tracks (ruler + DNA strands). Heavier
+        * tracks (annotations, AA, primer, restriction) render after
+        * `tracksReady` flips via requestIdleCallback at the parent —
+        * keeps initial mount fast on 8 GB / mid-tier CPU machines
+        * where the synchronous full mount was freezing for ~1-1.5 s
+        * on an 8.8 kb plasmid.
+        */}
+      {tracksReady ? (
+        <PrimerTrack
+          primers={primers}
+          fullSeq={fullSeq}
+          lineStart={line.start}
+          lineLen={line.seq.length}
+          charPx={charPx}
+          labelChars={LABEL_WIDTH}
+          primerStyle={settings.primerStyle}
+        />
+      ) : null}
+      {tracksReady ? (
+        <RestrictionTrack
+          sites={reSites}
+          lineStart={line.start}
+          lineLen={line.seq.length}
+          charPx={charPx}
+          labelChars={LABEL_WIDTH}
+          reOrientation={settings.reOrientation}
+        />
+      ) : null}
+      <RulerTrack
+        lineStart={line.start}
+        lineLen={line.seq.length}
+        charPx={charPx}
+        labelChars={LABEL_WIDTH}
+      />
+      {/*
+        * DNA-first layout (03.05.2026): both DNA strands render
+        * IMMEDIATELY after the ruler so the biolog's eye lands on
+        * nucleotide letters first. The dsDNA pair stays glued (top
+        * + bottom adjacent) — biolog feedback 02.05.2026: «dsDNA
+        * pair — primary visual unit, splitting it around AA chars
+        * made the helix hard to read». Annotations + AA render
+        * BELOW the DNA strands.
+        */}
+      <StrandsTrack
+        lineStart={line.start}
+        seq={line.seq}
+        annMap={annMap}
+        labelChars={LABEL_WIDTH}
+        showBottomStrand={settings.showBottomStrand}
+        which="top"
+      />
+      {settings.showBottomStrand && (
+        <StrandsTrack
+          lineStart={line.start}
+          seq={line.seq}
+          annMap={annMap}
+          labelChars={LABEL_WIDTH}
+          showBottomStrand
+          which="bottom"
+        />
+      )}
+      {tracksReady ? (
+        <AnnotationTrack
+          regions={features}
+          lineStart={line.start}
+          lineLen={line.seq.length}
+          charPx={charPx}
+          labelChars={LABEL_WIDTH}
+          onAnnotationClick={onAnnotationClick}
+        />
+      ) : null}
+      {tracksReady ? (
+        <AATrack
+          fullSeq={fullSeq}
+          lineStart={line.start}
+          lineLen={line.seq.length}
+          labelChars={LABEL_WIDTH}
+          strategy={framesResolution.strategy}
+          framesMode={settings.framesMode}
+          orfRanges={orfRanges}
+          dominantCDS={framesResolution.dominant}
+          regions={features}
+          strandFilter="forward"
+          visibleFrames={settings.visibleFrames}
+        />
+      ) : null}
+      {tracksReady && renderHybrid ? (
+        <AATrack
+          fullSeq={fullSeq}
+          lineStart={line.start}
+          lineLen={line.seq.length}
+          labelChars={LABEL_WIDTH}
+          strategy={framesResolution.strategy}
+          framesMode={settings.framesMode}
+          orfRanges={orfRanges}
+          dominantCDS={framesResolution.dominant}
+          regions={features}
+          strandFilter="reverse"
+          visibleFrames={settings.visibleFrames}
+        />
+      ) : null}
+    </div>
+  );
+});

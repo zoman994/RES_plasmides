@@ -1,0 +1,1704 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>BodgeGene — Importer M-B.1 prototype v1</title>
+<style>
+  :root {
+    --bg: #f5f3ed;
+    --panel: #ffffff;
+    --panel-2: #faf8ef;
+    --border: #d8d4c8;
+    --border-strong: #b8b0a0;
+    --text: #1a1a1a;
+    --text-muted: #6b6658;
+    --text-faint: #9a9484;
+    --accent: #2d6a4f;
+    --accent-soft: #d5e8dc;
+    --accent-amber: #BA7517;
+    --accent-amber-bg: #FFF4E0;
+    --warn: #c9722b;
+    --warn-soft: #fbe6d2;
+    --info: #2c5d8f;
+    --info-soft: #d8e6f2;
+    --danger: #b8434f;
+    --danger-soft: #f5dfe1;
+    --hover: #efebe0;
+    --feature-stroke: #3A2F1F;
+    --c-promoter: #F2C84B;
+    --c-ori: #E8B333;
+    --c-terminator: #D97B3B;
+    --c-cds: #C8D570;
+    --c-resistance: #9BC07C;
+    --c-reporter: #7CB49E;
+    --c-tag: #E091A2;
+    --c-his: #B884B8;
+    --c-misc: #EEE7D5;
+    --c-primer: #9EBAD9;
+    --c-operator: #6DA4C4;
+    --c-blast: #f5d56a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 13px;
+    line-height: 1.45;
+  }
+  .frame {
+    max-width: 1240px;
+    margin: 16px auto;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .titlebar {
+    padding: 9px 14px;
+    background: #ede9dc;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .titlebar .dot { width: 9px; height: 9px; border-radius: 50%; }
+  .titlebar .dot.r { background: #e06c75; }
+  .titlebar .dot.y { background: #d8b14a; }
+  .titlebar .dot.g { background: #6da46d; }
+  .titlebar .title { margin-left: 6px; font-weight: 500; color: var(--text); }
+  .titlebar .meta { margin-left: auto; color: var(--text-faint); font-size: 11px; }
+  .tabs {
+    display: flex;
+    background: #e8e4d6;
+    border-bottom: 1px solid var(--border);
+    padding: 0 12px;
+    flex-wrap: wrap;
+  }
+  .tab {
+    padding: 10px 14px;
+    border: none;
+    background: none;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--text-muted);
+    border-bottom: 2px solid transparent;
+    font-family: inherit;
+  }
+  .tab.active {
+    color: var(--text);
+    border-bottom-color: var(--accent);
+    font-weight: 500;
+  }
+  .tab:hover { background: var(--hover); }
+  .legend {
+    padding: 10px 18px;
+    background: var(--panel-2);
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .legend strong { color: var(--text); font-weight: 500; }
+  .stage {
+    padding: 0;
+    background: var(--bg);
+    min-height: 720px;
+  }
+  .view { display: none; padding: 0; }
+  .view.active { display: block; }
+
+  /* ===== App-shell ===== */
+  .app-topbar {
+    display: flex;
+    align-items: center;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    padding: 8px 16px;
+    gap: 16px;
+    font-size: 12px;
+  }
+  .app-topbar .back-btn {
+    border: 1px solid var(--border);
+    background: var(--panel-2);
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .app-topbar .back-btn:hover { background: var(--hover); }
+  .app-topbar .breadcrumb { color: var(--text-muted); }
+  .app-topbar .breadcrumb .crumb-active { color: var(--text); font-weight: 500; }
+  .app-topbar .save-status { margin-left: auto; color: var(--text-faint); font-size: 11px; }
+
+  /* ===== Importer container ===== */
+  .importer {
+    display: flex;
+    flex-direction: column;
+    background: var(--panel);
+    height: 720px;
+  }
+  .importer-header {
+    display: flex;
+    align-items: center;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel-2);
+    gap: 16px;
+  }
+  .importer-title {
+    font-size: 15px;
+    font-weight: 500;
+  }
+  .importer-stepper {
+    display: flex;
+    gap: 4px;
+    margin-left: auto;
+    align-items: center;
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+  .step-pill {
+    padding: 4px 10px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: var(--panel);
+  }
+  .step-pill.active {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent);
+    font-weight: 500;
+  }
+  .step-pill.done {
+    background: var(--panel-2);
+    color: var(--text-muted);
+    border-color: var(--border);
+  }
+  .step-arrow { color: var(--text-faint); font-size: 10px; }
+
+  .importer-body {
+    flex: 1;
+    overflow: auto;
+    display: flex;
+  }
+  .importer-footer {
+    display: flex;
+    align-items: center;
+    padding: 12px 20px;
+    border-top: 1px solid var(--border);
+    background: var(--panel-2);
+    gap: 8px;
+  }
+  .footer-spacer { flex: 1; }
+  .btn {
+    padding: 8px 18px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--panel);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    color: var(--text);
+  }
+  .btn:hover { background: var(--hover); }
+  .btn.primary {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+  }
+  .btn.primary:hover { background: #245a40; }
+  .btn.danger {
+    color: var(--danger);
+    border-color: var(--danger);
+  }
+  .btn.amber {
+    background: var(--accent-amber);
+    color: white;
+    border-color: var(--accent-amber);
+  }
+  .btn.subtle {
+    background: transparent;
+    border-color: transparent;
+    color: var(--text-muted);
+  }
+
+  /* ===== Step 1: Source ===== */
+  .source-body {
+    flex: 1;
+    padding: 32px 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+  .drop-zone {
+    border: 2px dashed var(--border-strong);
+    border-radius: 8px;
+    padding: 48px;
+    text-align: center;
+    background: var(--panel-2);
+    color: var(--text-muted);
+    cursor: pointer;
+  }
+  .drop-zone:hover { background: var(--hover); border-color: var(--accent); }
+  .drop-zone .icon { font-size: 32px; margin-bottom: 12px; }
+  .drop-zone .title { font-size: 14px; color: var(--text); margin-bottom: 6px; }
+  .drop-zone .hint { font-size: 11px; color: var(--text-faint); }
+  .drop-zone .formats {
+    display: inline-flex;
+    gap: 6px;
+    margin-top: 14px;
+  }
+  .format-chip {
+    padding: 3px 10px;
+    border-radius: 10px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    font-size: 11px;
+    font-family: 'Menlo', 'Monaco', monospace;
+    color: var(--text-muted);
+  }
+
+  .or-divider {
+    text-align: center;
+    color: var(--text-faint);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .paste-area {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--panel-2);
+    padding: 14px;
+    min-height: 80px;
+    color: var(--text-faint);
+    font-size: 12px;
+    font-family: 'Menlo', 'Monaco', monospace;
+    cursor: not-allowed;
+    position: relative;
+  }
+  .paste-area .badge {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: var(--warn-soft);
+    color: var(--warn);
+    border: 1px solid var(--warn);
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 10px;
+  }
+
+  /* ===== Step 1 multi-dropped — file list ===== */
+  .multi-files-list {
+    flex: 1;
+    padding: 24px 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .multi-summary {
+    font-size: 13px;
+    color: var(--text);
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .file-table {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--panel);
+    overflow: hidden;
+    font-size: 12px;
+  }
+  .file-table .row {
+    display: grid;
+    grid-template-columns: 50px 1.5fr 70px 70px 80px 80px 30px;
+    gap: 10px;
+    align-items: center;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .file-table .row:last-child { border-bottom: none; }
+  .file-table .row.header {
+    background: var(--panel-2);
+    font-size: 10px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    letter-spacing: 0.5px;
+    font-weight: 500;
+  }
+  .file-mini-thumb {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: 1px solid var(--feature-stroke);
+    background: conic-gradient(
+      var(--c-cds) 0 90deg,
+      var(--c-promoter) 90deg 130deg,
+      var(--c-resistance) 130deg 220deg,
+      var(--c-ori) 220deg 270deg,
+      var(--c-misc) 270deg 360deg
+    );
+    position: relative;
+  }
+  .file-mini-thumb.linear {
+    border-radius: 4px;
+    background: linear-gradient(90deg,
+      var(--c-cds) 0 35%,
+      var(--c-promoter) 35% 50%,
+      var(--c-resistance) 50% 80%,
+      var(--c-misc) 80% 100%);
+    height: 16px;
+    width: 40px;
+    align-self: center;
+    margin-top: 12px;
+  }
+  .file-mini-thumb.empty {
+    background: var(--panel-2);
+    border-style: dashed;
+  }
+
+  .col-name {
+    font-weight: 500;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .col-num {
+    text-align: right;
+    font-family: 'Menlo', 'Monaco', monospace;
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+  .col-check {
+    text-align: center;
+  }
+  .col-check input[type="checkbox"] { cursor: pointer; }
+  .col-x {
+    text-align: center;
+    color: var(--text-faint);
+    cursor: pointer;
+  }
+  .col-x:hover { color: var(--danger); }
+
+  .controls-explanation {
+    background: var(--info-soft);
+    border-left: 3px solid var(--info);
+    padding: 10px 14px;
+    border-radius: 4px;
+    font-size: 11px;
+    color: var(--text);
+    margin-top: 6px;
+  }
+  .controls-explanation strong { color: var(--info); }
+
+  /* ===== Step 2: Features view ===== */
+  .features-body {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 360px;
+    grid-template-rows: 1fr auto;
+    gap: 0;
+  }
+  .map-panel {
+    border-right: 1px solid var(--border);
+    padding: 16px;
+    background: var(--panel);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+  .plasmid-svg {
+    background: var(--panel-2);
+    border-radius: 8px;
+  }
+  .plasmid-meta {
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+  .plasmid-meta b { color: var(--text); font-weight: 500; }
+
+  .right-panel {
+    display: flex;
+    flex-direction: column;
+    border-bottom: 1px solid var(--border);
+  }
+  .annotation-editor {
+    flex: 1;
+    overflow: auto;
+    padding: 0;
+  }
+  .annotation-editor .ed-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel-2);
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 500;
+  }
+  .annotation-editor .add-btn {
+    background: var(--accent-soft);
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 10px;
+    cursor: pointer;
+  }
+  .ann-row {
+    display: grid;
+    grid-template-columns: 12px 1fr 60px 22px;
+    gap: 8px;
+    align-items: center;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+  }
+  .ann-row:hover { background: var(--hover); }
+  .ann-color {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    border: 1px solid var(--feature-stroke);
+  }
+  .ann-name { font-weight: 500; }
+  .ann-coords { color: var(--text-muted); font-family: 'Menlo', monospace; font-size: 10px; }
+  .ann-x { text-align: center; color: var(--text-faint); cursor: pointer; }
+
+  .start-point {
+    padding: 14px 16px;
+    background: var(--panel-2);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+  .start-point .label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+  }
+  .start-point .row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .start-point input {
+    width: 80px;
+    padding: 4px 8px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    text-align: right;
+    font-family: 'Menlo', monospace;
+    font-size: 11px;
+  }
+  .start-point .apply-btn {
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 4px 12px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 11px;
+  }
+  .start-point .hint {
+    font-size: 10px;
+    color: var(--text-faint);
+    margin-top: 6px;
+    font-style: italic;
+  }
+
+  /* ===== BLAST panel ===== */
+  .blast-panel {
+    grid-column: 1 / -1;
+    border-top: 1px solid var(--border);
+    background: var(--panel-2);
+    padding: 14px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 220px;
+    overflow: auto;
+  }
+  .blast-panel .ph-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+  }
+  .blast-panel .ph-header b { color: var(--text); font-weight: 500; }
+  .blast-panel .ph-header .ph-meta { color: var(--text-faint); font-size: 11px; }
+  .gap-row {
+    display: grid;
+    grid-template-columns: 130px 70px 1fr auto;
+    gap: 12px;
+    align-items: center;
+    padding: 8px 12px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 12px;
+  }
+  .gap-coords {
+    font-family: 'Menlo', monospace;
+    color: var(--text);
+    font-size: 11px;
+  }
+  .gap-len {
+    color: var(--text-muted);
+    font-family: 'Menlo', monospace;
+    font-size: 11px;
+  }
+  .gap-blast-btn {
+    background: var(--c-blast);
+    border: 1px solid var(--feature-stroke);
+    color: var(--feature-stroke);
+    padding: 4px 12px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 500;
+  }
+  .gap-blast-btn:hover { background: #f0c850; }
+
+  .blast-results {
+    margin-top: 4px;
+    padding: 10px 12px;
+    background: var(--c-blast);
+    background-image: linear-gradient(rgba(255,255,255,0.7), rgba(255,255,255,0.7));
+    border: 1px solid var(--feature-stroke);
+    border-radius: 4px;
+    font-size: 11px;
+  }
+  .blast-results .results-header {
+    font-weight: 500;
+    color: var(--text);
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+  }
+  .blast-results .hit-row {
+    display: grid;
+    grid-template-columns: 1fr 70px 70px 90px;
+    gap: 8px;
+    align-items: center;
+    padding: 4px 0;
+    font-family: 'Menlo', monospace;
+    font-size: 10px;
+    color: var(--text-muted);
+    border-bottom: 1px solid rgba(0,0,0,0.05);
+  }
+  .blast-results .hit-row:last-child { border-bottom: none; }
+  .blast-results .hit-name { color: var(--text); }
+  .blast-results .hit-add-btn {
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 2px 8px;
+    border-radius: 2px;
+    cursor: pointer;
+    font-size: 10px;
+  }
+
+  .blast-pending {
+    padding: 14px;
+    background: var(--info-soft);
+    border: 1px dashed var(--info);
+    border-radius: 4px;
+    color: var(--info);
+    font-size: 11px;
+    text-align: center;
+  }
+
+  /* ===== Step 3: Sequence ===== */
+  .sequence-body {
+    flex: 1;
+    padding: 16px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .sequence-toolbar {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px 12px;
+    font-size: 11px;
+  }
+  .sequence-toolbar .group { display: flex; gap: 6px; align-items: center; }
+  .sequence-toolbar .small-btn {
+    padding: 3px 8px;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    border-radius: 3px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 10px;
+    color: var(--text-muted);
+  }
+  .sequence-toolbar .small-btn.active {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .sequence-toolbar input[type="text"] {
+    padding: 3px 8px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    font-family: 'Menlo', monospace;
+    font-size: 10px;
+    width: 120px;
+  }
+  .sequence-toolbar .edit-status {
+    margin-left: auto;
+    color: var(--accent);
+    font-weight: 500;
+  }
+
+  .seq-grid {
+    flex: 1;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 14px 18px;
+    font-family: 'Menlo', 'Monaco', monospace;
+    font-size: 12px;
+    line-height: 1.7;
+    overflow: auto;
+  }
+  .seq-line { display: grid; grid-template-columns: 60px 1fr; gap: 12px; }
+  .seq-pos { color: var(--text-faint); text-align: right; user-select: none; }
+  .seq-bases { letter-spacing: 0.5px; }
+  .seq-bases .b { padding: 0 0.5px; }
+  .seq-bases .b.cds { background: var(--c-cds); }
+  .seq-bases .b.promoter { background: var(--c-promoter); }
+  .seq-bases .b.tag { background: var(--c-tag); }
+  .seq-bases .b.ori { background: var(--c-ori); }
+  .seq-bases .b.cursor {
+    border-left: 2px solid var(--accent);
+    background: var(--accent-soft);
+    margin-left: -2px;
+    padding-left: 0;
+  }
+  .seq-bases .b.edited {
+    background: var(--warn-soft);
+    color: var(--warn);
+    font-weight: bold;
+  }
+  .seq-bases .b.selection {
+    background: var(--info-soft);
+  }
+  .seq-comp {
+    color: var(--text-faint);
+    user-select: none;
+  }
+  .seq-aa {
+    color: var(--text-muted);
+    font-size: 11px;
+    user-select: none;
+    text-align: center;
+  }
+  .seq-aa span {
+    display: inline-block;
+    width: calc(3ch);
+    text-align: center;
+  }
+
+  /* ===== Modal overlays ===== */
+  .modal-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(20, 18, 12, 0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+  }
+  .modal-box {
+    background: var(--panel);
+    border-radius: 8px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+    min-width: 480px;
+    max-width: 600px;
+    overflow: hidden;
+  }
+  .modal-header {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+    font-weight: 500;
+  }
+  .modal-body {
+    padding: 18px 20px;
+    font-size: 13px;
+    color: var(--text);
+  }
+  .modal-footer {
+    padding: 12px 20px;
+    border-top: 1px solid var(--border);
+    background: var(--panel-2);
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+  .dedup-existing {
+    padding: 12px;
+    background: var(--warn-soft);
+    border-left: 3px solid var(--warn);
+    margin: 12px 0;
+    border-radius: 3px;
+    font-size: 12px;
+  }
+  .dedup-existing .name { font-weight: 500; }
+  .dedup-existing .meta { color: var(--text-muted); margin-top: 4px; font-size: 11px; }
+
+  .primer-list {
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    margin-top: 10px;
+  }
+  .primer-row {
+    display: grid;
+    grid-template-columns: 24px 1fr 100px 80px;
+    gap: 10px;
+    align-items: center;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+  }
+  .primer-row:last-child { border-bottom: none; }
+  .primer-row .seq {
+    font-family: 'Menlo', monospace;
+    font-size: 10px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .primer-row .tm {
+    font-family: 'Menlo', monospace;
+    font-size: 10px;
+    text-align: right;
+    color: var(--text-muted);
+  }
+
+  .footnote {
+    font-size: 10px;
+    color: var(--text-faint);
+    font-style: italic;
+    margin-top: 8px;
+  }
+
+  /* ===== Caption block (annotation for Игорь) ===== */
+  .caption-block {
+    padding: 14px 20px;
+    background: var(--accent-soft);
+    border-top: 2px solid var(--accent);
+    font-size: 11px;
+    color: var(--text);
+  }
+  .caption-block b { color: var(--accent); font-weight: 600; }
+  .caption-block ul { margin: 6px 0 0 18px; padding: 0; }
+  .caption-block li { margin: 2px 0; }
+</style>
+</head>
+<body>
+<div class="frame">
+  <div class="titlebar">
+    <span class="dot r"></span>
+    <span class="dot y"></span>
+    <span class="dot g"></span>
+    <span class="title">BodgeGene — Importer M-B.1 prototype v1</span>
+    <span class="meta">spec: docs/SPRINT_M-B.1_IMPORTER.md · 01.05.2026</span>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" data-target="step-1">Step 1 · Source</button>
+    <button class="tab" data-target="step-1-multi">Step 1 · Multi-file</button>
+    <button class="tab" data-target="step-2">Step 2 · Features</button>
+    <button class="tab" data-target="step-2-blast">Step 2 · BLAST expanded</button>
+    <button class="tab" data-target="step-3">Step 3 · Sequence</button>
+    <button class="tab" data-target="multi-controls">Multi-file controls</button>
+    <button class="tab" data-target="modal-dedup">Modal · Dedup</button>
+    <button class="tab" data-target="modal-primer">Modal · Primer wizard</button>
+  </div>
+
+  <div class="legend">
+    <strong>Контекст:</strong> in-project (target=DAG), pUC19.gb (2686 bp circular). Все экраны — десктоп 1240×720. Footer кнопки реальны для wizard navigation.
+    <strong>Reuse:</strong> PlasmidMap (карта в Step 2), AnnotationEditor (table справа), SequenceMapView (Step 3 grid), auto-annotate.js (enrichment), rotate-origin.js (start-point).
+  </div>
+
+  <div class="stage">
+
+    <!-- ==================== Step 1: Source (single empty) ==================== -->
+    <div class="view active" id="step-1">
+      <div class="app-topbar">
+        <button class="back-btn">← Назад</button>
+        <span class="breadcrumb">Project «GFP-fusion 2026» / <span class="crumb-active">Importer</span></span>
+        <span class="save-status">⚪ нет правок</span>
+      </div>
+      <div class="importer">
+        <div class="importer-header">
+          <div class="importer-title">Импорт в проект</div>
+          <div class="importer-stepper">
+            <span class="step-pill active">1 · Source</span>
+            <span class="step-arrow">→</span>
+            <span class="step-pill">2 · Features</span>
+            <span class="step-arrow">→</span>
+            <span class="step-pill">3 · Sequence</span>
+          </div>
+        </div>
+        <div class="importer-body">
+          <div class="source-body">
+            <div class="drop-zone">
+              <div class="icon">📂</div>
+              <div class="title">Перетащите файл сюда</div>
+              <div class="hint">или нажмите чтобы выбрать</div>
+              <div class="formats">
+                <span class="format-chip">.dna</span>
+                <span class="format-chip">.gb / .gbk</span>
+                <span class="format-chip">.fasta / .fa</span>
+              </div>
+            </div>
+            <div class="or-divider">или</div>
+            <div class="paste-area">
+              <span class="badge">M-B.2</span>
+              Вставьте sequence (paste — следующий sub-sprint)<br>
+              ATGCGT...
+            </div>
+          </div>
+        </div>
+        <div class="importer-footer">
+          <button class="btn subtle">Отмена</button>
+          <div class="footer-spacer"></div>
+          <button class="btn" disabled style="opacity: 0.4">← Назад</button>
+          <button class="btn primary" disabled style="opacity: 0.4">Далее →</button>
+        </div>
+      </div>
+      <div class="caption-block">
+        <b>Step 1 · Source (single empty).</b>
+        <ul>
+          <li>Drop-zone в центре + 3 формата chip'ом — биолог сразу видит что поддерживается.</li>
+          <li>Paste textarea ниже как visible mockup с badge «M-B.2» — даёт понять что появится в следующем спринте.</li>
+          <li>Stepper справа в header показывает 3 окна — биолог понимает scope.</li>
+          <li>Кнопки «← Назад» и «Далее →» disabled пока файл не загружен. «Отмена» = закрыть Importer.</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ==================== Step 1: Multi-file dropped ==================== -->
+    <div class="view" id="step-1-multi">
+      <div class="app-topbar">
+        <button class="back-btn">← Назад</button>
+        <span class="breadcrumb">Project «GFP-fusion 2026» / <span class="crumb-active">Importer</span></span>
+        <span class="save-status">🔵 3 файла загружено</span>
+      </div>
+      <div class="importer">
+        <div class="importer-header">
+          <div class="importer-title">Импорт в проект</div>
+          <div class="importer-stepper">
+            <span class="step-pill active">1 · Source</span>
+            <span class="step-arrow">→</span>
+            <span class="step-pill">2 · Features</span>
+            <span class="step-arrow">→</span>
+            <span class="step-pill">3 · Sequence</span>
+          </div>
+        </div>
+        <div class="importer-body">
+          <div class="multi-files-list">
+            <div class="multi-summary">
+              Загружено <b>3 файла</b>. Просмотрите каждый по 3 окнам Importer'а или импортируйте сразу с настройками по умолчанию.
+            </div>
+            <div class="file-table">
+              <div class="row header">
+                <div></div>
+                <div>Имя</div>
+                <div class="col-num">Длина</div>
+                <div class="col-num">Регионов</div>
+                <div class="col-check">☑ из&nbsp;файла</div>
+                <div class="col-check">☑ дополнить</div>
+                <div></div>
+              </div>
+              <div class="row">
+                <div class="file-mini-thumb"></div>
+                <div class="col-name">pUC19</div>
+                <div class="col-num">2 686</div>
+                <div class="col-num">5</div>
+                <div class="col-check"><input type="checkbox" checked></div>
+                <div class="col-check"><input type="checkbox" checked></div>
+                <div class="col-x">✕</div>
+              </div>
+              <div class="row">
+                <div class="file-mini-thumb linear"></div>
+                <div class="col-name">GFP_insert.fasta</div>
+                <div class="col-num">734</div>
+                <div class="col-num">—</div>
+                <div class="col-check"><input type="checkbox" disabled></div>
+                <div class="col-check"><input type="checkbox" checked></div>
+                <div class="col-x">✕</div>
+              </div>
+              <div class="row">
+                <div class="file-mini-thumb"></div>
+                <div class="col-name">pET28a-myFusion</div>
+                <div class="col-num">5 821</div>
+                <div class="col-num">12</div>
+                <div class="col-check"><input type="checkbox" checked></div>
+                <div class="col-check"><input type="checkbox"></div>
+                <div class="col-x">✕</div>
+              </div>
+            </div>
+            <div class="controls-explanation">
+              <strong>Два checkbox'а на файл</strong> — <b>«из файла»</b> = features извлечённые парсером .gb/.dna; <b>«дополнить»</b> = naming homology по common-features.json + signal peptide / tags / RE sites через auto-annotate. <em>FASTA не имеет features в файле — checkbox «из файла» disabled.</em>
+            </div>
+          </div>
+        </div>
+        <div class="importer-footer">
+          <button class="btn subtle">Отмена</button>
+          <div class="footer-spacer"></div>
+          <button class="btn" disabled style="opacity: 0.4">← Назад</button>
+          <button class="btn primary">Далее → (3 файла)</button>
+        </div>
+      </div>
+      <div class="caption-block">
+        <b>Step 1 · Multi-file dropped.</b>
+        <ul>
+          <li>Биолог dropped 3 файла — таблица показывает все три с per-file checkbox'ами «из файла» / «дополнить» (4 комбинации, DEC-IMP-09).</li>
+          <li>Mini-thumb 40×40: circular plasmid (conic-gradient по features) или linear bar.</li>
+          <li>FASTA → checkbox «из файла» disabled, потому что features в FASTA нет.</li>
+          <li>Кнопка «Далее → (3 файла)» — переход в Step 2 с current=первый файл из списка. Биолог проходит wizard для каждого, переключаясь через MultiFileList side-panel (см. таб «Multi-file controls»).</li>
+          <li>Master-checkbox на колонках в этом виде не показан — рендерится в таб «Multi-file controls» где список переезжает в left-pane Step 2/3.</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ==================== Step 2: Features ==================== -->
+    <div class="view" id="step-2">
+      <div class="app-topbar">
+        <button class="back-btn">← Назад</button>
+        <span class="breadcrumb">Project «GFP-fusion 2026» / Importer / <span class="crumb-active">pUC19</span></span>
+        <span class="save-status">🔵 правок: 1</span>
+      </div>
+      <div class="importer">
+        <div class="importer-header">
+          <div class="importer-title">pUC19 · 2686 bp · circular</div>
+          <div class="importer-stepper">
+            <span class="step-pill done">1 · Source ✓</span>
+            <span class="step-arrow">→</span>
+            <span class="step-pill active">2 · Features</span>
+            <span class="step-arrow">→</span>
+            <span class="step-pill">3 · Sequence</span>
+          </div>
+        </div>
+        <div class="importer-body" style="display: grid; grid-template-columns: 1fr 360px; grid-template-rows: 1fr auto;">
+          <div class="map-panel">
+            <svg class="plasmid-svg" width="380" height="380" viewBox="0 0 380 380">
+              <defs>
+                <marker id="arrow1" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+                  <path d="M0,0 L10,5 L0,10 Z" fill="#3A2F1F"/>
+                </marker>
+              </defs>
+              <!-- backbone circle -->
+              <circle cx="190" cy="190" r="120" fill="none" stroke="#d8d4c8" stroke-width="2"/>
+              <!-- features as arcs -->
+              <!-- AmpR (resistance) — large arc 0° to 100° -->
+              <path d="M 190 70 A 120 120 0 0 1 308 207" fill="none" stroke="#9BC07C" stroke-width="22" stroke-linecap="butt" marker-end="url(#arrow1)"/>
+              <text x="270" y="120" font-size="11" fill="#3A2F1F" font-weight="500">AmpR</text>
+              <!-- ori — arc 110° to 170° -->
+              <path d="M 305 215 A 120 120 0 0 1 240 305" fill="none" stroke="#E8B333" stroke-width="22" stroke-linecap="butt"/>
+              <text x="295" y="285" font-size="11" fill="#3A2F1F" font-weight="500">ori</text>
+              <!-- lacZα (CDS) — arc 200° to 260° -->
+              <path d="M 235 305 A 120 120 0 0 1 75 215" fill="none" stroke="#C8D570" stroke-width="22" stroke-linecap="butt" marker-end="url(#arrow1)"/>
+              <text x="115" y="290" font-size="11" fill="#3A2F1F" font-weight="500">lacZα</text>
+              <!-- MCS (point markers) — arc -->
+              <path d="M 75 210 A 120 120 0 0 1 90 130" fill="none" stroke="#9EBAD9" stroke-width="22" stroke-linecap="butt"/>
+              <text x="40" y="180" font-size="10" fill="#3A2F1F">MCS</text>
+              <!-- promoter (lac) — small arc -->
+              <path d="M 90 130 A 120 120 0 0 1 130 80" fill="none" stroke="#F2C84B" stroke-width="22" stroke-linecap="butt" marker-end="url(#arrow1)"/>
+              <text x="80" y="100" font-size="10" fill="#3A2F1F">P_lac</text>
+              <!-- start point indicator -->
+              <line x1="190" y1="70" x2="190" y2="50" stroke="#2d6a4f" stroke-width="2"/>
+              <circle cx="190" cy="50" r="5" fill="#2d6a4f"/>
+              <text x="170" y="40" font-size="10" fill="#2d6a4f" font-weight="500">1</text>
+              <!-- center label -->
+              <text x="190" y="190" text-anchor="middle" font-size="13" font-weight="500" fill="#3A2F1F">pUC19</text>
+              <text x="190" y="208" text-anchor="middle" font-size="11" fill="#6b6658">2686 bp</text>
+            </svg>
+            <div class="plasmid-meta">
+              5 регионов · 12 деталей · GC: <b>50.5%</b> · ori: <b>pMB1</b> · resistance: <b>Amp</b>
+            </div>
+          </div>
+          <div class="right-panel">
+            <div class="annotation-editor">
+              <div class="ed-header">
+                <span>Аннотации</span>
+                <button class="add-btn">+ Добавить</button>
+              </div>
+              <div class="ann-row">
+                <div class="ann-color" style="background: var(--c-resistance)"></div>
+                <div>
+                  <div class="ann-name">AmpR</div>
+                  <div class="ann-coords">1626..2486 →</div>
+                </div>
+                <div class="ann-coords">CDS</div>
+                <div class="ann-x">✕</div>
+              </div>
+              <div class="ann-row">
+                <div class="ann-color" style="background: var(--c-ori)"></div>
+                <div>
+                  <div class="ann-name">ori (pMB1)</div>
+                  <div class="ann-coords">868..1456 ←</div>
+                </div>
+                <div class="ann-coords">rep_origin</div>
+                <div class="ann-x">✕</div>
+              </div>
+              <div class="ann-row">
+                <div class="ann-color" style="background: var(--c-cds)"></div>
+                <div>
+                  <div class="ann-name">lacZα</div>
+                  <div class="ann-coords">146..469 ←</div>
+                </div>
+                <div class="ann-coords">CDS</div>
+                <div class="ann-x">✕</div>
+              </div>
+              <div class="ann-row">
+                <div class="ann-color" style="background: var(--c-primer)"></div>
+                <div>
+                  <div class="ann-name">M13/pUC FWD</div>
+                  <div class="ann-coords">439..461 →</div>
+                </div>
+                <div class="ann-coords">primer_bind</div>
+                <div class="ann-x">✕</div>
+              </div>
+              <div class="ann-row">
+                <div class="ann-color" style="background: var(--c-promoter)"></div>
+                <div>
+                  <div class="ann-name">lac promoter</div>
+                  <div class="ann-coords">496..526 ←</div>
+                </div>
+                <div class="ann-coords">promoter</div>
+                <div class="ann-x">✕</div>
+              </div>
+            </div>
+            <div class="start-point">
+              <div class="label">Стартовая точка (origin)</div>
+              <div class="row">
+                <input type="number" value="1" min="1" max="2686">
+                <button class="apply-btn">↻ применить</button>
+              </div>
+              <div class="hint">Подсказка: межгенные участки на 467, 868, 1456, 2486</div>
+            </div>
+          </div>
+          <div class="blast-panel">
+            <div class="ph-header">
+              <b>Неизвестные регионы</b>
+              <span class="ph-meta">5 промежутков, top 3 по длине</span>
+            </div>
+            <div class="gap-row">
+              <span class="gap-coords">527..865 ←</span>
+              <span class="gap-len">338 bp</span>
+              <span style="color: var(--text-muted);">между lac promoter и ori</span>
+              <button class="gap-blast-btn">🔍 BLAST</button>
+            </div>
+            <div class="gap-row">
+              <span class="gap-coords">2487..2685 ←</span>
+              <span class="gap-len">198 bp</span>
+              <span style="color: var(--text-muted);">после AmpR (terminator зона?)</span>
+              <button class="gap-blast-btn">🔍 BLAST</button>
+            </div>
+            <div class="gap-row">
+              <span class="gap-coords">1..145 →</span>
+              <span class="gap-len">145 bp</span>
+              <span style="color: var(--text-muted);">перед lacZα</span>
+              <button class="gap-blast-btn">🔍 BLAST</button>
+            </div>
+          </div>
+        </div>
+        <div class="importer-footer">
+          <button class="btn subtle">Отмена</button>
+          <div class="footer-spacer"></div>
+          <button class="btn">← Назад</button>
+          <button class="btn primary">Далее →</button>
+        </div>
+      </div>
+      <div class="caption-block">
+        <b>Step 2 · Features view (single, без active BLAST).</b>
+        <ul>
+          <li>Левая колонка: PlasmidMap (reuse 35 KB) — circular 380×380 с feature arcs, центральная label «pUC19 / 2686 bp», маркер start-point на 12-часовом положении.</li>
+          <li>Правая колонка 360 px: AnnotationEditor (reuse 15 KB) — table с цветными свотчами + name + coords + type + удалить. «+ Добавить» создаёт пустую annotation, биолог заполняет.</li>
+          <li>Под AnnotationEditor: start-point input + кнопка «↻ применить» + межгенные подсказки (rotateOriginToPosition reuse).</li>
+          <li>Снизу — panel «Неизвестные регионы» с top-3 gap'ами и кнопкой «🔍 BLAST» рядом с каждым. Для linear-фрагментов (FASTA без features) gaps = весь sequence как один gap.</li>
+          <li>Footer кнопки активны: «← Назад» (в Step 1), «Далее →» (в Step 3).</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ==================== Step 2: BLAST expanded ==================== -->
+    <div class="view" id="step-2-blast">
+      <div class="app-topbar">
+        <button class="back-btn">← Назад</button>
+        <span class="breadcrumb">Project «GFP-fusion 2026» / Importer / <span class="crumb-active">pUC19</span></span>
+        <span class="save-status">🔵 правок: 1 · BLAST running…</span>
+      </div>
+      <div class="importer">
+        <div class="importer-header">
+          <div class="importer-title">pUC19 · 2686 bp · circular</div>
+          <div class="importer-stepper">
+            <span class="step-pill done">1 · Source ✓</span>
+            <span class="step-arrow">→</span>
+            <span class="step-pill active">2 · Features</span>
+            <span class="step-arrow">→</span>
+            <span class="step-pill">3 · Sequence</span>
+          </div>
+        </div>
+        <div class="importer-body" style="display: grid; grid-template-columns: 1fr 360px; grid-template-rows: 1fr auto;">
+          <div class="map-panel">
+            <svg class="plasmid-svg" width="380" height="380" viewBox="0 0 380 380">
+              <circle cx="190" cy="190" r="120" fill="none" stroke="#d8d4c8" stroke-width="2"/>
+              <path d="M 190 70 A 120 120 0 0 1 308 207" fill="none" stroke="#9BC07C" stroke-width="22"/>
+              <text x="270" y="120" font-size="11" fill="#3A2F1F" font-weight="500">AmpR</text>
+              <path d="M 305 215 A 120 120 0 0 1 240 305" fill="none" stroke="#E8B333" stroke-width="22"/>
+              <text x="295" y="285" font-size="11" fill="#3A2F1F" font-weight="500">ori</text>
+              <path d="M 235 305 A 120 120 0 0 1 75 215" fill="none" stroke="#C8D570" stroke-width="22"/>
+              <text x="115" y="290" font-size="11" fill="#3A2F1F" font-weight="500">lacZα</text>
+              <!-- BLAST hit highlight on gap 527..865 -->
+              <path d="M 130 80 A 120 120 0 0 1 305 215" fill="none" stroke="#f5d56a" stroke-width="22" stroke-dasharray="4,3" opacity="0.7"/>
+              <text x="155" y="65" font-size="10" fill="#BA7517" font-weight="500">BLAST gap</text>
+              <text x="190" y="190" text-anchor="middle" font-size="13" font-weight="500" fill="#3A2F1F">pUC19</text>
+              <text x="190" y="208" text-anchor="middle" font-size="11" fill="#6b6658">2686 bp</text>
+            </svg>
+            <div class="plasmid-meta">
+              Подсвечен gap <b>527..865 (338 bp)</b> — выбран для BLAST'а
+            </div>
+          </div>
+          <div class="right-panel">
+            <div class="annotation-editor">
+              <div class="ed-header">
+                <span>Аннотации <span style="color: var(--accent); font-weight: normal;">(+1 от BLAST)</span></span>
+                <button class="add-btn">+ Добавить</button>
+              </div>
+              <div class="ann-row" style="background: rgba(245, 213, 106, 0.15);">
+                <div class="ann-color" style="background: var(--c-blast)"></div>
+                <div>
+                  <div class="ann-name">lac operator (BLAST)</div>
+                  <div class="ann-coords">540..580 ← · 95% ident</div>
+                </div>
+                <div class="ann-coords">misc_feature</div>
+                <div class="ann-x">✕</div>
+              </div>
+              <div class="ann-row">
+                <div class="ann-color" style="background: var(--c-resistance)"></div>
+                <div>
+                  <div class="ann-name">AmpR</div>
+                  <div class="ann-coords">1626..2486 →</div>
+                </div>
+                <div class="ann-coords">CDS</div>
+                <div class="ann-x">✕</div>
+              </div>
+              <div class="ann-row">
+                <div class="ann-color" style="background: var(--c-ori)"></div>
+                <div>
+                  <div class="ann-name">ori (pMB1)</div>
+                  <div class="ann-coords">868..1456 ←</div>
+                </div>
+                <div class="ann-coords">rep_origin</div>
+                <div class="ann-x">✕</div>
+              </div>
+              <div class="ann-row">
+                <div class="ann-color" style="background: var(--c-cds)"></div>
+                <div>
+                  <div class="ann-name">lacZα</div>
+                  <div class="ann-coords">146..469 ←</div>
+                </div>
+                <div class="ann-coords">CDS</div>
+                <div class="ann-x">✕</div>
+              </div>
+            </div>
+            <div class="start-point">
+              <div class="label">Стартовая точка (origin)</div>
+              <div class="row">
+                <input type="number" value="1" min="1" max="2686">
+                <button class="apply-btn">↻ применить</button>
+              </div>
+            </div>
+          </div>
+          <div class="blast-panel">
+            <div class="ph-header">
+              <b>BLAST: gap 527..865 (338 bp)</b>
+              <span class="ph-meta">database: nt · status: <span style="color: var(--accent);">done in 47s</span></span>
+            </div>
+            <div class="blast-results">
+              <div class="results-header">
+                <span>Найдено 5 hits, top 3:</span>
+                <span style="color: var(--text-faint);">⊗ закрыть</span>
+              </div>
+              <div class="hit-row">
+                <span class="hit-name">lac operator (E. coli K-12)</span>
+                <span>540..580</span>
+                <span>95% ident · e=2e-15</span>
+                <button class="hit-add-btn">+ Add</button>
+              </div>
+              <div class="hit-row">
+                <span class="hit-name">CAP binding site (E. coli)</span>
+                <span>586..621</span>
+                <span>89% ident · e=4e-9</span>
+                <button class="hit-add-btn">+ Add</button>
+              </div>
+              <div class="hit-row">
+                <span class="hit-name">M13 ori (filamentous phage)</span>
+                <span>700..820</span>
+                <span>62% ident · e=3e-3</span>
+                <button class="hit-add-btn">+ Add</button>
+              </div>
+            </div>
+            <div class="footnote">
+              ⓘ NCBI BLAST REST через backend proxy (rate limit 3 req/s, max 120s/job). Биолог жмёт «+ Add» — hit становится annotation в editedAnnotations с origin: blast.
+            </div>
+          </div>
+        </div>
+        <div class="importer-footer">
+          <button class="btn subtle">Отмена</button>
+          <div class="footer-spacer"></div>
+          <button class="btn">← Назад</button>
+          <button class="btn primary">Далее →</button>
+        </div>
+      </div>
+      <div class="caption-block">
+        <b>Step 2 · BLAST expanded.</b>
+        <ul>
+          <li>Биолог нажал BLAST на gap 527..865 → backend proxy submit в NCBI → polling exponential backoff (5/10/20s) → done за 47s.</li>
+          <li>На карте gap подсвечен dashed yellow stroke поверх backbone — биолог видит где идёт поиск.</li>
+          <li>Snapshot этой панели в момент когда уже пришли результаты. До результата: «🔄 BLAST running… 47s elapsed» с возможностью «⊗ Cancel».</li>
+          <li>3 top-hits показаны с identity / e-value / coords. «+ Add» добавляет в editedAnnotations (annotation editor выше — первая подсвечена жёлто-полупрозрачным как «added by BLAST»).</li>
+          <li>Open question §10.1 спеки: что если BLAST hit overlap'ает existing annotation на 80%+ — пометка «overlap with [name]» рядом с «+ Add», биолог решает.</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ==================== Step 3: Sequence ==================== -->
+    <div class="view" id="step-3">
+      <div class="app-topbar">
+        <button class="back-btn">← Назад</button>
+        <span class="breadcrumb">Project «GFP-fusion 2026» / Importer / <span class="crumb-active">pUC19</span></span>
+        <span class="save-status">🔵 правок: 3 (1 substitution, 1 insertion)</span>
+      </div>
+      <div class="importer">
+        <div class="importer-header">
+          <div class="importer-title">pUC19 · 2686 bp · circular</div>
+          <div class="importer-stepper">
+            <span class="step-pill done">1 · Source ✓</span>
+            <span class="step-arrow">→</span>
+            <span class="step-pill done">2 · Features ✓</span>
+            <span class="step-arrow">→</span>
+            <span class="step-pill active">3 · Sequence</span>
+          </div>
+        </div>
+        <div class="importer-body">
+          <div class="sequence-body">
+            <div class="sequence-toolbar">
+              <div class="group">
+                <span style="color: var(--text-muted); margin-right: 4px;">Mode:</span>
+                <button class="small-btn active">Substitute</button>
+                <button class="small-btn">Insert</button>
+                <button class="small-btn">Select range</button>
+              </div>
+              <div class="group" style="border-left: 1px solid var(--border); padding-left: 12px;">
+                <span style="color: var(--text-muted);">Find:</span>
+                <input type="text" placeholder="GACTC...">
+                <span style="color: var(--text-muted);">→</span>
+                <input type="text" placeholder="">
+                <button class="small-btn">Replace all</button>
+              </div>
+              <span class="edit-status">3 правки</span>
+            </div>
+            <div class="seq-grid">
+              <div class="seq-line">
+                <span class="seq-pos">141</span>
+                <span class="seq-bases">
+                  <span class="b">A</span><span class="b">G</span><span class="b">G</span><span class="b">A</span><span class="b">A</span>
+                  <span class="b cds">A</span><span class="b cds">T</span><span class="b cds">G</span><span class="b cds">A</span><span class="b cds">C</span>
+                  <span class="b cds">C</span><span class="b cds">A</span><span class="b cds">T</span><span class="b cds">G</span><span class="b cds">A</span>
+                  <span class="b cds">T</span><span class="b cds">T</span><span class="b cds">A</span><span class="b cds">C</span><span class="b cds">G</span>
+                  <span class="b cds">G</span><span class="b cds">A</span><span class="b cds">T</span><span class="b cds">T</span><span class="b cds">C</span>
+                  <span class="b cds">A</span><span class="b cds">C</span><span class="b cds">T</span><span class="b cds">G</span><span class="b cds">G</span>
+                </span>
+              </div>
+              <div class="seq-line">
+                <span class="seq-pos"></span>
+                <span class="seq-aa"><span></span><span></span><span>M</span><span>T</span><span>M</span><span>I</span><span>T</span><span>D</span><span>F</span><span>T</span></span>
+              </div>
+              <div class="seq-line">
+                <span class="seq-pos">171</span>
+                <span class="seq-bases">
+                  <span class="b cds">C</span><span class="b cds">C</span><span class="b cds">G</span><span class="b cds">T</span><span class="b cds">C</span>
+                  <span class="b cds">G</span><span class="b cds">T</span><span class="b cds edited">A</span><span class="b cds">T</span><span class="b cds">T</span>
+                  <span class="b cds">A</span><span class="b cds">C</span><span class="b cds">A</span><span class="b cds">A</span><span class="b cds">C</span>
+                  <span class="b cds">G</span><span class="b cds">T</span><span class="b cds">C</span><span class="b cds">G</span><span class="b cds">T</span>
+                  <span class="b cds">G</span><span class="b cds">A</span><span class="b cds">C</span><span class="b cds">T</span><span class="b cds">G</span>
+                  <span class="b cds">G</span><span class="b cds">G</span><span class="b cds">A</span><span class="b cds">A</span><span class="b cds">A</span>
+                </span>
+              </div>
+              <div class="seq-line">
+                <span class="seq-pos"></span>
+                <span class="seq-aa"><span>P</span><span>V</span><span>I</span><span>T</span><span>N</span><span>V</span><span>D</span><span>W</span><span>G</span><span>K</span></span>
+              </div>
+              <div class="seq-line">
+                <span class="seq-pos">201</span>
+                <span class="seq-bases">
+                  <span class="b cds">A</span><span class="b cds">A</span><span class="b cds">C</span><span class="b cds">C</span><span class="b cds">C</span>
+                  <span class="b cds">T</span><span class="b cds">G</span><span class="b cds">G</span><span class="b cds">C</span><span class="b cds">G</span>
+                  <span class="b cds">T</span><span class="b cds">T</span><span class="b cds cursor">A</span><span class="b cds">C</span><span class="b cds">C</span>
+                  <span class="b cds">C</span><span class="b cds">A</span><span class="b cds">A</span><span class="b cds">C</span><span class="b cds">T</span>
+                  <span class="b cds">T</span><span class="b cds">A</span><span class="b cds">A</span><span class="b cds">T</span><span class="b cds">C</span>
+                  <span class="b cds">G</span><span class="b cds">C</span><span class="b cds">C</span><span class="b cds">T</span><span class="b cds">T</span>
+                </span>
+              </div>
+              <div class="seq-line">
+                <span class="seq-pos"></span>
+                <span class="seq-aa"><span>N</span><span>P</span><span>W</span><span>R</span><span>Y</span><span>P</span><span>N</span><span>L</span><span>I</span><span>A</span></span>
+              </div>
+              <div class="seq-line">
+                <span class="seq-pos">231</span>
+                <span class="seq-bases">
+                  <span class="b cds">G</span><span class="b cds">C</span><span class="b cds">A</span><span class="b cds">A</span><span class="b cds">T</span>
+                  <span class="b cds">A</span><span class="b cds">C</span><span class="b cds">G</span><span class="b cds">C</span><span class="b cds">A</span>
+                  <span class="b cds">A</span><span class="b cds">A</span><span class="b cds">C</span><span class="b cds">C</span><span class="b cds">G</span>
+                  <span class="b cds">C</span><span class="b cds">C</span><span class="b cds">T</span><span class="b cds">C</span><span class="b cds">T</span>
+                  <span class="b cds">C</span><span class="b cds">C</span><span class="b cds">C</span><span class="b cds">C</span><span class="b cds">G</span>
+                  <span class="b cds">C</span><span class="b cds">G</span><span class="b cds">C</span><span class="b cds">G</span><span class="b cds">T</span>
+                </span>
+              </div>
+              <div class="seq-line">
+                <span class="seq-pos"></span>
+                <span class="seq-aa"><span>A</span><span>I</span><span>R</span><span>K</span><span>P</span><span>L</span><span>L</span><span>P</span><span>A</span><span>R</span></span>
+              </div>
+              <div class="seq-line">
+                <span class="seq-pos">261</span>
+                <span class="seq-bases">
+                  <span class="b cds">T</span><span class="b cds">G</span><span class="b cds selection">A</span><span class="b cds selection">G</span><span class="b cds selection">G</span>
+                  <span class="b cds selection">T</span><span class="b cds selection">A</span><span class="b cds">T</span><span class="b cds">A</span><span class="b cds">A</span>
+                  <span class="b">A</span><span class="b">G</span><span class="b">C</span><span class="b">G</span><span class="b">G</span>
+                  <span class="b">A</span><span class="b">A</span><span class="b">G</span><span class="b">A</span><span class="b">G</span>
+                  <span class="b">C</span><span class="b promoter">T</span><span class="b promoter">A</span><span class="b promoter">T</span><span class="b promoter">G</span>
+                  <span class="b promoter">A</span><span class="b promoter">C</span><span class="b promoter">G</span><span class="b promoter">T</span><span class="b promoter">C</span>
+                </span>
+              </div>
+              <div class="seq-line">
+                <span class="seq-pos"></span>
+                <span class="seq-aa"><span>*</span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="importer-footer">
+          <button class="btn subtle">Отмена</button>
+          <div class="footer-spacer"></div>
+          <button class="btn">← Назад</button>
+          <button class="btn amber">✓ Импортировать в проект + Library</button>
+        </div>
+      </div>
+      <div class="caption-block">
+        <b>Step 3 · Sequence view (with edits).</b>
+        <ul>
+          <li>SequenceMapView (reuse 22 KB, edit mode добавляется или fork в SequenceEditorPane если cope трудно — assumption §5).</li>
+          <li>Toolbar: mode toggle (Substitute / Insert / Select), find→replace, edit-status (3 правки).</li>
+          <li>Sequence в моноширинном шрифте, 30 bp/line, position prefix слева. Цветной фон по annotations (CDS зелёный, promoter жёлтый и т.п.).</li>
+          <li>AA-strip между линиями DNA (3 nt = 1 aa, обозначен codon). Stop-codon = `*`, M = start.</li>
+          <li>Edited base (pos 178) подсвечен warning-orange (substitution). Selection range pos 263-267 — info-blue (выделено для deletion). Cursor (pos 213) — accent border слева.</li>
+          <li>Footer кнопка «✓ Импортировать в проект + Library» (amber accent, primary action). На click → DedupPromptModal если collision, иначе сразу commit. baseSnapshot.sequence = editedSequence, commits=[].</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ==================== Multi-file controls (sidebar) ==================== -->
+    <div class="view" id="multi-controls">
+      <div class="app-topbar">
+        <button class="back-btn">← Назад</button>
+        <span class="breadcrumb">Project «GFP-fusion 2026» / Importer / <span class="crumb-active">3 файла</span></span>
+        <span class="save-status">🔵 1 из 3 пройден</span>
+      </div>
+      <div class="importer">
+        <div class="importer-header">
+          <div class="importer-title">Импорт 3 файлов</div>
+          <div class="importer-stepper">
+            <span class="step-pill done">1 · Source ✓</span>
+            <span class="step-arrow">→</span>
+            <span class="step-pill active">2 · Features (file 2 of 3)</span>
+            <span class="step-arrow">→</span>
+            <span class="step-pill">3 · Sequence</span>
+          </div>
+        </div>
+        <div class="importer-body" style="display: grid; grid-template-columns: 280px 1fr; gap: 0;">
+          <!-- Left: MultiFileList sidebar -->
+          <div style="border-right: 1px solid var(--border); background: var(--panel-2); padding: 10px;">
+            <div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); padding: 8px 6px 4px; font-weight: 500;">Файлы (3) · Аннот.</div>
+            <!-- File 1 — done -->
+            <div style="padding: 8px 10px; border-radius: 4px; background: var(--accent-soft); border: 1px solid var(--accent); margin-bottom: 4px; display: flex; align-items: center; gap: 8px; cursor: pointer;">
+              <div class="file-mini-thumb" style="width: 28px; height: 28px;"></div>
+              <div style="flex: 1; min-width: 0;">
+                <div style="font-size: 12px; font-weight: 500;">pUC19 ✓</div>
+                <div style="font-size: 10px; color: var(--text-muted);">2 686 bp · 6 регионов</div>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 2px;">
+                <input type="checkbox" checked style="margin: 0;" title="из файла">
+                <input type="checkbox" checked style="margin: 0;" title="дополнить">
+              </div>
+            </div>
+            <!-- File 2 — current -->
+            <div style="padding: 8px 10px; border-radius: 4px; background: var(--panel); border: 2px solid var(--accent-amber); margin-bottom: 4px; display: flex; align-items: center; gap: 8px; cursor: pointer;">
+              <div class="file-mini-thumb linear" style="margin: 0; height: 28px;"></div>
+              <div style="flex: 1; min-width: 0;">
+                <div style="font-size: 12px; font-weight: 500;">GFP_insert</div>
+                <div style="font-size: 10px; color: var(--accent-amber);">▸ Step 2 · current</div>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 2px;">
+                <input type="checkbox" disabled style="margin: 0;" title="нет features в FASTA">
+                <input type="checkbox" checked style="margin: 0;" title="дополнить">
+              </div>
+            </div>
+            <!-- File 3 — pending -->
+            <div style="padding: 8px 10px; border-radius: 4px; background: var(--panel); border: 1px solid var(--border); margin-bottom: 4px; display: flex; align-items: center; gap: 8px; cursor: pointer;">
+              <div class="file-mini-thumb" style="width: 28px; height: 28px;"></div>
+              <div style="flex: 1; min-width: 0;">
+                <div style="font-size: 12px; font-weight: 500;">pET28a-myFusion</div>
+                <div style="font-size: 10px; color: var(--text-faint);">5 821 bp · ожидает</div>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 2px;">
+                <input type="checkbox" checked style="margin: 0;" title="из файла">
+                <input type="checkbox" style="margin: 0;" title="дополнить">
+              </div>
+            </div>
+            <!-- Master checkboxes -->
+            <div style="margin-top: 12px; padding: 10px; background: var(--panel); border: 1px dashed var(--border); border-radius: 4px;">
+              <div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 6px;">Применить ко всем</div>
+              <label style="display: flex; align-items: center; gap: 8px; font-size: 11px; padding: 4px 0;">
+                <input type="checkbox" checked> «из файла» (2 из 3)
+              </label>
+              <label style="display: flex; align-items: center; gap: 8px; font-size: 11px; padding: 4px 0;">
+                <input type="checkbox" checked> «дополнить» (2 из 3)
+              </label>
+            </div>
+            <button class="btn subtle" style="width: 100%; margin-top: 12px; font-size: 11px; padding: 6px;">+ Добавить ещё файл</button>
+          </div>
+          <!-- Right: current file Step 2 (compact view) -->
+          <div style="padding: 16px; display: flex; flex-direction: column; gap: 12px;">
+            <div style="text-align: center;">
+              <div class="file-mini-thumb linear" style="width: 200px; height: 24px; margin: 8px auto;"></div>
+              <div style="font-size: 12px; color: var(--text-muted);">GFP_insert · 734 bp · linear · features: 0 (FASTA)</div>
+            </div>
+            <div style="background: var(--panel-2); border: 1px solid var(--border); border-radius: 4px; padding: 14px; font-size: 12px; color: var(--text-muted);">
+              <b style="color: var(--text);">Аннотации</b><br>
+              FASTA не содержит features. После «дополнить» auto-annotate подобрал 1 ORF (GFP, ATG→stop, 715 bp, 238 aa).
+            </div>
+            <div style="background: var(--c-blast); background-image: linear-gradient(rgba(255,255,255,0.6), rgba(255,255,255,0.6)); border: 1px solid var(--feature-stroke); border-radius: 4px; padding: 12px;">
+              <div style="font-size: 12px; font-weight: 500; margin-bottom: 6px;">Неизвестные регионы (2)</div>
+              <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 6px;">1..18 (18 bp · 5'-UTR?), 734 (terminator?)</div>
+              <button class="gap-blast-btn">🔍 BLAST все 2 региона</button>
+            </div>
+          </div>
+        </div>
+        <div class="importer-footer">
+          <button class="btn subtle">Отмена</button>
+          <div class="footer-spacer"></div>
+          <button class="btn">← Назад (file 1)</button>
+          <button class="btn primary">Далее (file 3) →</button>
+        </div>
+      </div>
+      <div class="caption-block">
+        <b>Multi-file controls — sidebar в Step 2/3.</b>
+        <ul>
+          <li>Левый sidebar 280 px появляется только в multi-mode (когда parsedItems.length > 1). Скрывается в single-mode.</li>
+          <li>Каждый файл — карточка с thumb + name + meta + два per-file checkbox'а («из файла» / «дополнить»). Текущий — amber border, completed — accent-soft fill, pending — neutral.</li>
+          <li>Block «Применить ко всем» — два master-tristate checkbox'а (none/some/all) для batch-toggle всех файлов.</li>
+          <li>Биолог переключается между файлами кликом на карточку — current step остаётся (если был на Step 2 для file 1, переключился на file 2 — Step 2 для file 2). Per-file step state isolated.</li>
+          <li>Footer кнопки контекстные: «Далее (file 3) →» — переход на следующий файл в том же step, либо «Импортировать N файлов» когда все пройдены.</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ==================== Modal: Dedup ==================== -->
+    <div class="view" id="modal-dedup">
+      <div class="app-topbar">
+        <button class="back-btn">← Назад</button>
+        <span class="breadcrumb">Project «GFP-fusion 2026» / Importer / <span class="crumb-active">pUC19</span></span>
+        <span class="save-status">🟡 confirm pending</span>
+      </div>
+      <div class="importer" style="position: relative;">
+        <div class="importer-header">
+          <div class="importer-title">pUC19 · 2686 bp · circular</div>
+          <div class="importer-stepper">
+            <span class="step-pill done">1 · Source ✓</span>
+            <span class="step-arrow">→</span>
+            <span class="step-pill done">2 · Features ✓</span>
+            <span class="step-arrow">→</span>
+            <span class="step-pill done">3 · Sequence ✓</span>
+          </div>
+        </div>
+        <div class="importer-body" style="opacity: 0.4; pointer-events: none;">
+          <div class="sequence-body">
+            <div style="text-align: center; color: var(--text-faint); padding: 40px;">— Step 3 background, content blurred —</div>
+          </div>
+        </div>
+        <div class="importer-footer" style="opacity: 0.4;">
+          <button class="btn subtle">Отмена</button>
+          <div class="footer-spacer"></div>
+          <button class="btn">← Назад</button>
+          <button class="btn amber">✓ Импортировать в проект + Library</button>
+        </div>
+        <!-- Modal overlay -->
+        <div class="modal-overlay" style="position: absolute;">
+          <div class="modal-box">
+            <div class="modal-header">⚠ Похожий контейнер уже в Library</div>
+            <div class="modal-body">
+              Контейнер с такой же sequence (sha256 совпадает) уже есть в вашей библиотеке.
+              <div class="dedup-existing">
+                <div class="name">pUC19 (Addgene #50005)</div>
+                <div class="meta">2 686 bp · circular · добавлен 14.04.2026 · теги: <em>backbone, cloning, e.coli</em></div>
+              </div>
+              <div style="font-size: 12px;">Что сделать с новым импортом?</div>
+            </div>
+            <div class="modal-footer">
+              <button class="btn subtle">Пропустить</button>
+              <button class="btn">Добавить оба</button>
+              <button class="btn primary">Заменить</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="caption-block">
+        <b>Modal · Dedup prompt при resourceHash collision.</b>
+        <ul>
+          <li>Триггерится на финальный Confirm — `checkLibraryDedup(resourceHash)` нашёл существующий entry.</li>
+          <li>Body: показывает existing entry (name + meta + теги) — биолог сразу видит что у него уже есть.</li>
+          <li>3 кнопки: <b>Заменить</b> (primary) — старая entry overwrites, теги старой merge в новую; <b>Добавить оба</b> — два entries с одинаковым resourceHash; <b>Пропустить</b> (subtle) — abort, ничего не сохраняется.</li>
+          <li>В multi-file mode dedup проверяется per-file, prompt появляется на каждый collision файл.</li>
+          <li>DEC-IMP-10 — explicit prompt не silent overwrite (биолог не знает о потере tags).</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ==================== Modal: Primer wizard ==================== -->
+    <div class="view" id="modal-primer">
+      <div class="app-topbar">
+        <button class="back-btn">← Назад</button>
+        <span class="breadcrumb">Project «GFP-fusion 2026» / Importer / <span class="crumb-active">pET28a-myFusion</span></span>
+        <span class="save-status">🟡 primer step</span>
+      </div>
+      <div class="importer" style="position: relative;">
+        <div class="importer-header">
+          <div class="importer-title">pET28a-myFusion · 5 821 bp · circular</div>
+          <div class="importer-stepper">
+            <span class="step-pill done">1 ✓</span>
+            <span class="step-arrow">→</span>
+            <span class="step-pill done">2 ✓</span>
+            <span class="step-arrow">→</span>
+            <span class="step-pill done">3 ✓</span>
+          </div>
+        </div>
+        <div class="importer-body" style="opacity: 0.4; pointer-events: none;">
+          <div style="text-align: center; padding: 60px; color: var(--text-faint);">— Step 3 background blurred —</div>
+        </div>
+        <div class="importer-footer" style="opacity: 0.4;">
+          <button class="btn subtle">Отмена</button>
+          <div class="footer-spacer"></div>
+          <button class="btn">← Назад</button>
+          <button class="btn amber">✓ Импортировать в проект + Library</button>
+        </div>
+        <div class="modal-overlay" style="position: absolute;">
+          <div class="modal-box" style="min-width: 540px;">
+            <div class="modal-header">🧬 Найдены праймеры с последовательностью</div>
+            <div class="modal-body">
+              В файле <b>pET28a-myFusion.dna</b> (SnapGene) найдено 4 primer_bind features с прикреплённой sequence. Добавить отмеченные в Library → раздел Праймеры?
+              <div class="primer-list">
+                <div class="primer-row">
+                  <input type="checkbox" checked>
+                  <div>
+                    <div style="font-weight: 500;">M13 Forward</div>
+                    <div class="seq">GTAAAACGACGGCCAG</div>
+                  </div>
+                  <div class="tm">Tm 56°C · 16 nt</div>
+                  <div style="font-size: 10px; color: var(--text-faint);">forward</div>
+                </div>
+                <div class="primer-row">
+                  <input type="checkbox" checked>
+                  <div>
+                    <div style="font-weight: 500;">T7 promoter</div>
+                    <div class="seq">TAATACGACTCACTATAGGG</div>
+                  </div>
+                  <div class="tm">Tm 53°C · 20 nt</div>
+                  <div style="font-size: 10px; color: var(--text-faint);">forward</div>
+                </div>
+                <div class="primer-row">
+                  <input type="checkbox" checked>
+                  <div>
+                    <div style="font-weight: 500;">T7 terminator</div>
+                    <div class="seq">GCTAGTTATTGCTCAGCGG</div>
+                  </div>
+                  <div class="tm">Tm 56°C · 19 nt</div>
+                  <div style="font-size: 10px; color: var(--text-faint);">reverse</div>
+                </div>
+                <div class="primer-row" style="background: var(--warn-soft);">
+                  <input type="checkbox">
+                  <div>
+                    <div style="font-weight: 500;">myInsert_F (custom)</div>
+                    <div class="seq">CACGGTACCATGCTGCAA</div>
+                  </div>
+                  <div class="tm">Tm 60°C · 18 nt</div>
+                  <div style="font-size: 10px; color: var(--warn);" title="Уже в Library">⚠ дубль</div>
+                </div>
+              </div>
+              <div class="footnote">
+                ⓘ Праймеры идут <b>только в Library</b> (раздел Праймеры). В <em>проектный primer pool</em> автоматом не добавляются — это ваш «банк референс-олигов», заказы делаются явно в Mix Workspace либо через `+ Заказать» в M-F. <b>(DEC-IMP-11 ⚓)</b>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button class="btn subtle">Skip (продолжить без primers)</button>
+              <button class="btn primary">+ Add 3 в Library</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="caption-block">
+        <b>Modal · Primer wizard step (DEC-LIB-08 / DEC-IMP-11 ⚓).</b>
+        <ul>
+          <li>Триггерится только при .dna с primer_bind features где есть `sequence`. Для .gb / .fasta без primer metadata — модалка не показывается.</li>
+          <li>Default: все checked (биолог явно снимает что не нужно). Дубль (resourceHash совпадает с existing primer в Library) — checkbox unchecked + warning row + tooltip «Уже в Library» (open Q3 §10 спеки).</li>
+          <li>Per-row: name (редактируемое inline?) + sequence в моноширинном + Tm/length + direction tag.</li>
+          <li>Footer: «Skip» (продолжить без primers, primers пропускаются) или «+ Add N в Library» (где N = checked count).</li>
+          <li><b>Критичная нота</b>: footnote в body явно говорит «только в Library, не в project pool» — биолог понимает разницу между «банк олигов» (Library) и «заказанные для текущего проекта» (project primer pool, M-F).</li>
+        </ul>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      const target = tab.dataset.target;
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+      document.getElementById(target).classList.add('active');
+    });
+  });
+</script>
+</body>
+</html>

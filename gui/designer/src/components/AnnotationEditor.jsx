@@ -9,7 +9,6 @@
 import { useState } from 'react';
 import { ANNOTATION_COLORS } from '../auto-annotate';
 import { featureColor } from '../feature-palette';
-import { getRegions } from '../annotation-model';
 import { generateRegionId } from '../domain-detection';
 import { getTextColor } from '../lib/color-utils';
 import { SBOLIcon } from '../sbol-glyphs';
@@ -113,25 +112,45 @@ export default function AnnotationEditor({
   const [editingIdx, setEditingIdx] = useState(null);
   const [editData, setEditData] = useState({ name: '', type: '', start: '', end: '' });
 
-  const regions = getRegions(annotations);
+  // IMPORTANT: take regions as REFERENCES from the source array, not via
+  // getRegions(). getRegions backfills a synthetic `id` on id-less regions
+  // by returning a *new object* — those new objects are not in `annotations`,
+  // so `annotations.indexOf(region)` returns -1 for ALL of them. Clicking ✎
+  // on one then puts every id-less region into edit mode at once (and
+  // saveEdit silently no-ops because it can't find index -1). Reference
+  // equality is the only way to keep edit/delete/save targeted at the row
+  // the user actually clicked.
+  const regions = annotations.filter(a => a.level === 'region');
   const sz = compact ? 'text-[9px]' : 'text-[10px]';
 
-  // Build tree: for each region, find children (details + points inside it)
-  function getChildren(region) {
-    return annotations.filter(a => {
-      if (a === region || a.level === 'region') return false;
-      // By regionId
-      if (a.regionId && a.regionId === region.id) return true;
-      // By coordinate containment
-      if (!a.regionId && a.start >= region.start && a.end <= region.end) return true;
-      return false;
-    });
+  // Resolve each non-region annotation to AT MOST ONE parent region:
+  // regionId match wins, else smallest containing region by coords.
+  // Without this, nested regions (MCS inside backbone, CDS inside operon)
+  // caused the same annotation to render as a child of multiple parents
+  // — clicking ✎ on one row put ALL copies into edit mode at once and
+  // visually flooded the tree with duplicate rows that hid the real
+  // delete button.
+  const parentMap = new Map();
+  for (const a of annotations) {
+    if (a.level === 'region') continue;
+    let parent = null;
+    if (a.regionId) {
+      parent = regions.find(r => r.id === a.regionId) || null;
+    } else {
+      for (const r of regions) {
+        if (a.start >= r.start && a.end <= r.end) {
+          if (!parent || (r.end - r.start) < (parent.end - parent.start)) parent = r;
+        }
+      }
+    }
+    if (parent) parentMap.set(a, parent);
   }
 
-  // Orphans: annotations not in any region and not regions themselves
-  const assignedSet = new Set();
-  regions.forEach(r => getChildren(r).forEach(c => assignedSet.add(c)));
-  const orphans = annotations.filter(a => a.level !== 'region' && !assignedSet.has(a));
+  function getChildren(region) {
+    return annotations.filter(a => parentMap.get(a) === region);
+  }
+
+  const orphans = annotations.filter(a => a.level !== 'region' && !parentMap.has(a));
 
   const toggleCollapse = (id) => {
     setCollapsed(prev => {
@@ -209,10 +228,10 @@ export default function AnnotationEditor({
           <input value={editData.name} onChange={e => setEditData(d => ({ ...d, name: e.target.value }))}
             className={`flex-1 ${sz} border rounded px-1 py-0.5 min-w-0`} />
           <input type="number" value={editData.start} onChange={e => setEditData(d => ({ ...d, start: e.target.value }))}
-            className={`w-12 ${sz} border rounded px-1 py-0.5`} min={1} />
-          <span className="text-gray-300">..</span>
+            className={`w-16 ${sz} border rounded px-1 py-0.5 tabular-nums`} min={1} />
+          <span className="text-gray-300 shrink-0">..</span>
           <input type="number" value={editData.end} onChange={e => setEditData(d => ({ ...d, end: e.target.value }))}
-            className={`w-12 ${sz} border rounded px-1 py-0.5`} min={1} max={seqLength} />
+            className={`w-16 ${sz} border rounded px-1 py-0.5 tabular-nums`} min={1} max={seqLength} />
           <button onClick={() => saveEdit(idx)}
             className={`${sz} bg-blue-600 text-white px-1.5 py-0.5 rounded`}>OK</button>
           <button onClick={() => setEditingIdx(null)}

@@ -60,31 +60,28 @@ describe('autoAnnotate — single-region Parts', () => {
     expect(stop.end).toBe(CDS_SEQ.length);
   });
 
-  it('promoter Part: creates 1 region + regulatory details', () => {
+  it('promoter Part: creates 1 region, no auto sub-features', () => {
+    // Sub-feature scan (-10, -35, TATA, CAAT, RBS) was removed because 6-bp
+    // consensus produced too many false positives. Region annotation stays.
     const anns = autoAnnotate({ name: 'TestProm', type: 'promoter', sequence: PROMOTER_SEQ });
 
     const regions = anns.filter(a => a.level === 'region');
     expect(regions).toHaveLength(1);
     expect(regions[0].type).toBe('promoter');
 
-    // Should detect TATA box
-    const details = anns.filter(a => a.level === 'detail');
-    const tata = details.find(d => d.name.includes('TATA'));
-    expect(tata).toBeDefined();
-    expect(tata.regionId).toBe(regions[0].id);
+    const promoterDetails = anns.filter(a => a.level === 'detail' && a.type === 'core_promoter');
+    expect(promoterDetails).toEqual([]);
   });
 
-  it('terminator Part: creates 1 region + poly-A detail', () => {
+  it('terminator Part: creates 1 region, no auto poly-A', () => {
     const anns = autoAnnotate({ name: 'TestTerm', type: 'terminator', sequence: TERM_SEQ });
 
     const regions = anns.filter(a => a.level === 'region');
     expect(regions).toHaveLength(1);
     expect(regions[0].type).toBe('terminator');
 
-    const details = anns.filter(a => a.level === 'detail');
-    const polyA = details.find(d => d.type === 'polyA_signal');
-    expect(polyA).toBeDefined();
-    expect(polyA.regionId).toBe(regions[0].id);
+    const polyA = anns.find(a => a.type === 'polyA_signal');
+    expect(polyA).toBeUndefined();
   });
 });
 
@@ -111,14 +108,9 @@ describe('autoAnnotate — multi-region (fusion) Parts', () => {
     expect(regions.map(r => r.id)).toContain('r_prom');
     expect(regions.map(r => r.id)).toContain('r_cds');
 
-    // Promoter details bound to r_prom
+    // Promoter no longer has auto details; CDS still does.
     const promDetails = anns.filter(a => a.level === 'detail' && a.regionId === 'r_prom');
-    expect(promDetails.length).toBeGreaterThan(0);
-    // All promoter detail coords should be within promoter region
-    for (const d of promDetails) {
-      expect(d.start).toBeGreaterThanOrEqual(0);
-      expect(d.end).toBeLessThanOrEqual(junctionPos);
-    }
+    expect(promDetails).toEqual([]);
 
     // CDS details bound to r_cds
     const cdsDetails = anns.filter(a => a.level === 'detail' && a.regionId === 'r_cds');
