@@ -21,12 +21,22 @@ import json
 import os
 import sys
 import time
-import struct
 import hashlib
 from pathlib import Path
 from datetime import datetime, timezone
 from collections import defaultdict
-from xml.etree import ElementTree as ET
+
+# ── DEC-PARSER-UNIFY-01: pvcs.snapgene_parser is the single source of
+# truth for .dna byte-level parsing. Make it importable when this
+# script is run straight from repo root. The catalog still applies its
+# own TYPE_MAP overlay below to remap pvcs's preserved feature types
+# (gene / sig_peptide / polyA_signal / misc_recomb) into the wider
+# catalog vocabulary the frontend Importer expects.
+_REPO_SRC = Path(__file__).resolve().parent.parent / 'src'
+if _REPO_SRC.is_dir() and str(_REPO_SRC) not in sys.path:
+    sys.path.insert(0, str(_REPO_SRC))
+
+from pvcs.snapgene_parser import parse_dna_file as _pvcs_parse_dna_file  # noqa: E402
 
 import requests
 
@@ -147,135 +157,61 @@ ONBOARDING_GROUPS = {
 }
 
 
-# ═══ SnapGene .dna binary parser ═══
+# ═══ SnapGene .dna parser — catalog wrapper around pvcs ═══
+#
+# Single source of truth for byte-level parsing: pvcs.snapgene_parser.
+# This module is the catalog-flavoured layer on top: the same parsed
+# dict, with feature types remapped via CATALOG_TYPE_MAP so the catalog
+# JSON exposes the wider type vocabulary the frontend Importer expects.
+#
+# Differences vs pvcs._TYPE_MAP (intentional, catalog-only):
+#   gene          → CDS                  (collapse for marker matching)
+#   sig_peptide   → signal_peptide       (SBOL-canonical name)
+#   polyA_signal  → terminator           (collapse for biology-grouping)
+#   misc_recomb   → recombination_site   (descriptive)
+# All other types pass through pvcs as-is.
+#
+# Sprint Parser-Unification follow-up (DEC-PARSER-UNIFY-01): closes
+# TD-PARSER-UNIFY-CATALOG. The phantom-byte fix (V50.1, commit ba43007)
+# now lives in exactly one place — pvcs.snapgene_parser.parse_dna_file.
 
-def parse_snapgene_dna(data):
-    """Parse a SnapGene .dna binary. Returns dict or None."""
-    if isinstance(data, (str, Path)):
-        data = Path(data).read_bytes()
-
-    if len(data) < 20 or data[0] != 0x09:
-        return None
-
-    result = {'sequence': '', 'features': [], 'topology': 'circular', 'description': ''}
-
-    header_len = struct.unpack('>I', data[1:5])[0]
-    header = data[5:5 + header_len]
-    if len(header) >= 3:
-        result['topology'] = 'circular' if (header[2] & 0x01) else 'linear'
-
-    pos = 5 + header_len
-    while pos + 5 <= len(data):
-        seg_type = data[pos]
-        seg_len = struct.unpack('>I', data[pos+1:pos+5])[0]
-        seg_data = data[pos+5:pos+5+seg_len]
-        pos += 5 + seg_len
-
-        if seg_type == 0x00:
-            # V50.1 fix mirror: byte 0 of the DNA segment is a topology
-            # / flags marker (0x02 = circular, 0x01 = linear, 0x1f =
-            # multi-flag), NOT part of the actual nucleotide string.
-            # Without this strip every plasmid's sequence in
-            # public/plasmids-data/*.json (pre-built catalog cache used
-            # by Importer) carried a phantom control char at index 0,
-            # surfacing in SequenceView as a tiny garbled glyph the
-            # biolog read as "N" (visual review 04.05.2026 evening:
-            # «я все еще вижу N во всех плазмидах перезагруженных»).
-            # The live import path through pvcs/snapgene_parser.py was
-            # already fixed in commit ba43007; this script also feeds
-            # the public catalog cache directly, so it needs the same
-            # fix. TD-PARSER-UNIFY-CATALOG: fold this back into
-            # pvcs.snapgene_parser.parse_dna_file for full
-            # DEC-PARSER-UNIFY-01 conformance — kept inline here for
-            # now to preserve the catalog-specific TYPE_MAP normalisation
-            # (which differs from pvcs's _TYPE_MAP).
-            if len(seg_data) > 0:
-                result['sequence'] = seg_data[1:].decode('ascii', errors='ignore')
-            else:
-                result['sequence'] = ''
-        elif seg_type == 0x06:
-            _parse_notes(seg_data.decode('utf-8', errors='ignore'), result)
-        elif seg_type == 0x0A:
-            result['features'] = _parse_features(seg_data.decode('utf-8', errors='ignore'))
-
-    result['length'] = len(result['sequence'])
-    return result if result['sequence'] else None
-
-
-def _parse_notes(xml_str, result):
-    try:
-        if not xml_str.strip().startswith('<'):
-            return
-        root = ET.fromstring(xml_str if xml_str.strip().startswith('<Notes') or xml_str.strip().startswith('<?xml')
-                             else f'<Notes>{xml_str}</Notes>')
-        for tag in ['Description', './/Description']:
-            el = root.find(tag)
-            if el is not None and el.text:
-                result['description'] = el.text.strip()[:300]
-                break
-        acc = root.find('.//AccessionNumber')
-        if acc is not None and acc.text:
-            result['accession'] = acc.text.strip()
-    except Exception:
-        pass
-
-
-TYPE_MAP = {
-    'CDS': 'CDS', 'gene': 'CDS', 'promoter': 'promoter', 'terminator': 'terminator',
-    'rep_origin': 'rep_origin', 'origin of replication': 'rep_origin',
-    'primer_bind': 'primer_bind', 'misc_feature': 'misc_feature',
-    'sig_peptide': 'signal_peptide', 'regulatory': 'regulatory',
-    'protein_bind': 'protein_bind', 'polyA_signal': 'terminator',
-    'misc_recomb': 'recombination_site', 'LTR': 'LTR',
+CATALOG_TYPE_MAP = {
+    # Mappings here are applied OVER pvcs's already-normalised types.
+    # Keys are the type strings that pvcs produces; values are catalog
+    # canonical types. Anything not in this map passes through unchanged.
+    'gene': 'CDS',
+    'sig_peptide': 'signal_peptide',
+    'polyA_signal': 'terminator',
+    'misc_recomb': 'recombination_site',
 }
 
 
-def _parse_features(xml_str):
-    features = []
-    try:
-        if not xml_str.strip().startswith('<'):
-            return features
-        root = ET.fromstring(xml_str if xml_str.strip().startswith('<Features') or xml_str.strip().startswith('<?xml')
-                             else f'<Features>{xml_str}</Features>')
-        for feat in root.iter('Feature'):
-            f = {
-                'name': feat.get('name', ''),
-                'type': TYPE_MAP.get(feat.get('type', ''), feat.get('type', 'misc_feature')),
-                'strand': 1 if feat.get('directionality', '1') != '2' else -1,
-            }
-            for q in feat.iter('Q'):
-                v = q.find('V')
-                val = (v.get('text', '') or v.text or '') if v is not None else ''
-                qn = q.get('name', '')
-                if qn == 'label' and val:
-                    f['name'] = val
-                elif qn == 'note' and val:
-                    f['description'] = val[:200]
-                elif qn == 'translation' and val:
-                    f['protein'] = val
+def parse_snapgene_dna(data):
+    """Parse a SnapGene .dna binary for CATALOG consumption.
 
-            segments = []
-            for seg in feat.iter('Segment'):
-                rng = seg.get('range', '')
-                if '-' in rng:
-                    try:
-                        parts = rng.split('-')
-                        segments.append((int(parts[0]), int(parts[1])))
-                    except (ValueError, IndexError):
-                        pass
-                color = seg.get('color', '')
-                if color and 'color' not in f:
-                    f['color'] = color
+    Thin wrapper around `pvcs.snapgene_parser.parse_dna_file` — delegates
+    all byte-level parsing (sequence + features + topology + name +
+    description) to the production parser, then post-processes feature
+    types into the catalog's wider vocabulary via CATALOG_TYPE_MAP.
 
-            if segments:
-                f['start'] = min(s[0] for s in segments)
-                f['end'] = max(s[1] for s in segments)
+    Returns the same dict shape as pvcs.parse_dna_file, with
+    `feature['type']` remapped per CATALOG_TYPE_MAP. Returns None for
+    invalid / non-.dna input.
+    """
+    parsed = _pvcs_parse_dna_file(data)
+    if not parsed:
+        return None
+    for f in parsed.get('features', []):
+        original = f.get('type', '')
+        f['type'] = CATALOG_TYPE_MAP.get(original, original)
+    return parsed
 
-            if f.get('name') and f.get('start') is not None:
-                features.append(f)
-    except Exception:
-        pass
-    return features
+
+# Back-compat alias for callers that historically imported `TYPE_MAP`
+# from this module. Points at the catalog overlay; the FULL effective
+# mapping (pvcs._TYPE_MAP composed with this overlay) is the actual
+# behaviour applied by parse_snapgene_dna.
+TYPE_MAP = CATALOG_TYPE_MAP
 
 
 # ═══ Download pipeline ═══
