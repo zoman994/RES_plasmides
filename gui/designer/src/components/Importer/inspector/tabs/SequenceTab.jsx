@@ -43,6 +43,7 @@ export default function SequenceTab({
   pendingScroll,
   onPendingScrollHandled,
   caretPos,
+  caretAnchor,
   onCaretChange,
 }) {
   const sequenceViewRef = useRef(null);
@@ -172,6 +173,7 @@ export default function SequenceTab({
           circular={topology === 'circular'}
           readOnly
           caretPos={caretPos}
+          caretAnchor={caretAnchor}
           onCaretChange={onCaretChange}
         />
       </div>

@@ -160,26 +160,38 @@ export default function SingleInspector({
   // the scrubber thumb on the bar (drag updates this state, the bar
   // re-renders the cursor at the new x).
   const [cursorPos, setCursorPos] = useState(null);
+  // Selection anchor — the OTHER end of the selection range. When
+  // anchor === cursorPos, no selection. When they differ, the range
+  // [min(anchor,cursor)..max(anchor,cursor)] is highlighted on the
+  // SequenceView and copyable via Ctrl+C (forward strand) /
+  // Ctrl+Alt+C (reverse complement). Set/extended by SequenceView's
+  // shift-arrow keys; collapsed on plain caret moves.
+  const [cursorAnchor, setCursorAnchor] = useState(null);
 
   // Click / pointer-up settle from the bar — final position. Switch
   // to Sequence tab if biolog initiated from Overview, then queue
-  // a smooth scroll to land the viewer there.
+  // a smooth scroll to land the viewer there. Bar interactions
+  // ALWAYS collapse selection (anchor = focus = pos) — biolog hasn't
+  // asked for shift-click on the bar so we keep its UX simple.
   const onBarSettle = useCallback((pos) => {
     if (typeof pos !== 'number' || !Number.isFinite(pos)) return;
     if (activeTab !== 'sequence') {
       onActiveTabChange?.('sequence');
     }
     setCursorPos(pos);
+    setCursorAnchor(pos);
     setPendingScroll({ pos, tick: Date.now(), instant: false });
   }, [activeTab, onActiveTabChange]);
 
   // Live drag scrub — fires every pointermove. Always update the
   // cursor visual; only push a scroll when biolog is already on the
   // Sequence tab (no point auto-switching tabs mid-drag, that would
-  // yank context away while they're still aiming).
+  // yank context away while they're still aiming). Same selection-
+  // collapse rule as onBarSettle.
   const onBarScrub = useCallback((pos) => {
     if (typeof pos !== 'number' || !Number.isFinite(pos)) return;
     setCursorPos(pos);
+    setCursorAnchor(pos);
     if (activeTab === 'sequence') {
       setPendingScroll({ pos, tick: Date.now(), instant: true });
     }
@@ -187,25 +199,27 @@ export default function SingleInspector({
 
   // Keyboard caret nav inside SequenceView (arrow keys etc.). Same
   // shape as `onBarSettle` but always uses the instant scroll
-  // behavior — smooth animation can't keep up with held arrow keys
-  // and would feel laggy. Doesn't auto-switch tabs (the user is
-  // already focused inside SequenceView, so by definition `activeTab
-  // === 'sequence'`).
-  // `opts.needsScroll === false` — set by SequenceView when the
-  // caret stayed on the same line (held ←/→). We still update the
-  // visual caret + bar cursor, but skip the scrollIntoView call —
-  // the caret is already in view, scrolling would be a no-op layout
-  // hit per keystroke.
+  // behavior — smooth animation can't keep up with held arrow keys.
+  //
+  // `opts.extendSelection` — set by SequenceView when biolog held
+  // Shift while pressing an arrow / Home / End / PageUp / PageDown.
+  // True ⇒ anchor stays where it was, focus moves (extends the
+  // selection range). False ⇒ collapse, anchor = focus.
+  // `opts.needsScroll === false` — caret stayed on the same line so
+  // skip the scrollIntoView call.
   const onCaretChangeFromView = useCallback((pos, opts) => {
     if (typeof pos !== 'number' || !Number.isFinite(pos)) return;
     setCursorPos(pos);
+    if (!opts || !opts.extendSelection) {
+      setCursorAnchor(pos);
+    }
     if (opts && opts.needsScroll === false) return;
     setPendingScroll({ pos, tick: Date.now(), instant: true });
   }, []);
 
   const onPendingScrollHandled = useCallback(() => setPendingScroll(null), []);
-  // Reset cursor when biolog switches plasmids.
-  useEffect(() => { setCursorPos(null); }, [itemKey]);
+  // Reset cursor / selection when biolog switches plasmids.
+  useEffect(() => { setCursorPos(null); setCursorAnchor(null); }, [itemKey]);
 
   if (!item) return null;
   const length = item.length || item.sequence?.length || 0;
@@ -342,6 +356,7 @@ export default function SingleInspector({
               pendingScroll={pendingScroll}
               onPendingScrollHandled={onPendingScrollHandled}
               caretPos={cursorPos}
+              caretAnchor={cursorAnchor}
               onCaretChange={onCaretChangeFromView}
             />
           </div>

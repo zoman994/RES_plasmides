@@ -49,6 +49,7 @@ import { detectORFRanges } from "./lib/orf-ranges.js";
 import { resolveFramesMode } from "./lib/frames-mode.js";
 import { useRowSelectionIsolation } from "./lib/row-selection-isolation.js";
 import { runPredictors } from "../../predicted-detection.js";
+import { reverseComplement } from "../../sequence-utils";
 import { getRegions } from "../../annotation-model.js";
 import { featureColorShaded, FEATURE_STROKE } from "../../feature-palette.js";
 import { scanAllSites, RE_ENZYMES } from "../../restriction-db.js";
@@ -286,10 +287,14 @@ const SequenceView = forwardRef(function SequenceView({
   // биолог: «курсор должен жить и на сиквенс вью. чтобы я мог
   // спокойно выделять текст с помощью клавиатуры»). `caretPos` is
   // controlled by the parent (synced with the LinearFeatureBar);
-  // arrow keys + Home/End/PageUp/Down call `onCaretChange(newPos)`
-  // so the parent can mirror the move and queue an instant scroll.
-  // null = no caret (parent hasn't picked a position yet).
+  // arrow keys + Home/End/PageUp/Down call
+  // `onCaretChange(newPos, { extendSelection, needsScroll })` so the
+  // parent can mirror the move and queue an instant scroll.
+  // `caretAnchor` is the OTHER end of the selection range; when it
+  // differs from caretPos, [min..max+1] is highlighted. Plain arrows
+  // collapse it (anchor = focus). null = no caret.
   caretPos = null,
+  caretAnchor = null,
   onCaretChange,
 }, ref) {
   const containerRef = useRef(null);
@@ -529,8 +534,29 @@ const SequenceView = forwardRef(function SequenceView({
     ? fragments[0].sequence.length
     : 0;
   const onRootKeyDown = (e) => {
-    if (typeof onCaretChange !== "function") return;
     if (!seqLength) return;
+    // Copy hotkeys — biolog 04.05.2026: «обычный Ctrl+C копирует
+    // прямую цепь, Ctrl+Alt+C копирует обратную». Reverse strand =
+    // reverse complement, so the user can paste it 5'→3' into other
+    // tools without manually flipping. Ctrl+Shift+C reserved for
+    // future "copy with annotations" workflow.
+    if ((e.ctrlKey || e.metaKey) && (e.key === "c" || e.key === "C")) {
+      const a = (typeof caretAnchor === "number" && Number.isFinite(caretAnchor)) ? caretAnchor : null;
+      const f = (typeof caretPos === "number" && Number.isFinite(caretPos)) ? caretPos : null;
+      if (a == null || f == null || a === f) return; // no selection — let browser handle native copy
+      const start = Math.min(a, f);
+      const end = Math.max(a, f) + 1; // half-open → include the focus letter
+      const slice = (fullSeq || "").slice(start, end);
+      if (!slice) return;
+      e.preventDefault();
+      const text = e.altKey ? reverseComplement(slice) : slice;
+      try {
+        navigator.clipboard?.writeText?.(text);
+      } catch { /* clipboard unavailable — silently no-op */ }
+      return;
+    }
+
+    if (typeof onCaretChange !== "function") return;
     const cur = (typeof caretPos === "number" && Number.isFinite(caretPos))
       ? caretPos
       : 0;
@@ -558,7 +584,10 @@ const SequenceView = forwardRef(function SequenceView({
     // PgDn always change lines, so they keep their scroll request.
     const oldLine = Math.floor(cur / cpl);
     const newLine = Math.floor(next / cpl);
-    onCaretChange(next, { needsScroll: oldLine !== newLine });
+    onCaretChange(next, {
+      needsScroll: oldLine !== newLine,
+      extendSelection: !!e.shiftKey,
+    });
   };
 
   // Memoize the entire lines JSX subtree. caretPos is INTENTIONALLY
@@ -699,10 +728,19 @@ const SequenceView = forwardRef(function SequenceView({
           ощущение что рендер каждый раз плазмиды заново при движении
           каретки»). Pure DOM measure on caretPos / charPx flip; no
           line re-renders. */}
+      <SelectionOverlay
+        caretPos={caretPos}
+        caretAnchor={caretAnchor}
+        charPx={charPx}
+        charsPerLine={charsPerLine}
+        containerRef={containerRef}
+        showBottomStrand={settings.showBottomStrand}
+      />
       <CaretOverlay
         caretPos={caretPos}
         charPx={charPx}
         containerRef={containerRef}
+        showBottomStrand={settings.showBottomStrand}
       />
     </div>
   );
@@ -796,7 +834,92 @@ function attachScrollHandle(ref, containerRef) {
  * gap (14 px) so it ties together ruler + DNA + annotation + AA
  * tracks at the column.
  */
-function CaretOverlay({ caretPos, charPx, containerRef }) {
+/**
+ * SelectionOverlay — paints a translucent rectangle on every line
+ * that intersects the [min(anchor,focus) .. max(anchor,focus)+1]
+ * range. Like CaretOverlay, lives outside the SequenceLine memo
+ * cache so extending a selection with shift-arrow doesn't re-render
+ * any line. Same sizing logic as CaretOverlay (DNA strand row(s)
+ * only; collapses to one row when bottom strand is hidden), giving
+ * the highlight a tight visual link to the strand the user is
+ * selecting.
+ */
+function SelectionOverlay({
+  caretPos, caretAnchor, charPx, charsPerLine, containerRef, showBottomStrand,
+}) {
+  const [rects, setRects] = useState([]);
+  useLayoutEffect(() => {
+    if (
+      caretPos == null || !Number.isFinite(caretPos)
+      || caretAnchor == null || !Number.isFinite(caretAnchor)
+      || caretAnchor === caretPos
+    ) {
+      setRects((prev) => (prev.length === 0 ? prev : []));
+      return undefined;
+    }
+    const root = containerRef.current;
+    if (!root) return undefined;
+    const start = Math.min(caretAnchor, caretPos);
+    const end = Math.max(caretAnchor, caretPos) + 1; // half-open
+    const cpl = charsPerLine || 80;
+    const lines = root.querySelectorAll('[data-testid="sequence-view-line"]');
+    const out = [];
+    for (const el of lines) {
+      const lineStart = parseInt(el.dataset.lineStart || "", 10);
+      if (Number.isNaN(lineStart)) continue;
+      const lineEnd = lineStart + cpl;
+      if (lineEnd <= start || lineStart >= end) continue;
+      const fromCh = Math.max(0, start - lineStart);
+      const toCh = Math.min(cpl, end - lineStart);
+      const topStrand = el.querySelector('[data-testid="sequence-view-strands-top"]');
+      let top;
+      let height;
+      if (topStrand) {
+        const bottomStrand = el.querySelector('[data-testid="sequence-view-strands-bottom"]');
+        top = el.offsetTop + topStrand.offsetTop;
+        if (bottomStrand) {
+          const bottomY = el.offsetTop + bottomStrand.offsetTop + bottomStrand.offsetHeight;
+          height = bottomY - top;
+        } else {
+          height = topStrand.offsetHeight;
+        }
+      } else {
+        top = el.offsetTop;
+        height = Math.max(8, el.offsetHeight - 14);
+      }
+      const left = (el.offsetLeft || 0) + (LABEL_WIDTH + fromCh) * charPx;
+      const width = (toCh - fromCh) * charPx;
+      out.push({ left, top, width, height, key: lineStart });
+    }
+    setRects(out);
+    return undefined;
+  }, [caretPos, caretAnchor, charPx, charsPerLine, containerRef, showBottomStrand]);
+
+  if (rects.length === 0) return null;
+  return (
+    <>
+      {rects.map((r) => (
+        <div
+          key={r.key}
+          data-testid="sequence-view-selection"
+          style={{
+            position: "absolute",
+            left: r.left,
+            top: r.top,
+            width: r.width,
+            height: r.height,
+            background: "rgba(249, 115, 22, 0.22)",
+            outline: "0.5px solid rgba(0, 0, 0, 0.35)",
+            pointerEvents: "none",
+            zIndex: 4, // below caret (zIndex 5)
+          }}
+        />
+      ))}
+    </>
+  );
+}
+
+function CaretOverlay({ caretPos, charPx, containerRef, showBottomStrand }) {
   const [box, setBox] = useState(null);
   useLayoutEffect(() => {
     if (caretPos == null || !Number.isFinite(caretPos)) {
@@ -818,14 +941,35 @@ function CaretOverlay({ caretPos, charPx, containerRef }) {
     const lineStart = parseInt(target.dataset.lineStart, 10);
     const offsetCh = caretPos - lineStart;
     const left = (target.offsetLeft || 0) + (LABEL_WIDTH + offsetCh) * charPx;
-    const top = target.offsetTop;
-    // 14 px = the line's paddingBottom (dashed-divider gap). Skip it
-    // so the caret doesn't extend into the empty space between line
-    // blocks.
-    const height = Math.max(8, target.offsetHeight - 14);
+    // Caret spans only the DNA strand row(s) (biolog 04.05.2026:
+    // «давай каретку сделаем не такую огромную. пусть она исключительно
+    // по двум строкам ёлозит — по цепи ДНК. при переключении на 1
+    // цепь она ещё уменьшаться должна»). Find the top strand element
+    // → caret starts at its top. If the bottom strand is visible (two-
+    // strand mode), caret extends to the bottom of the bottom strand.
+    // If only the top strand is rendered (showBottomStrand=false),
+    // caret height collapses to one row.
+    const topStrand = target.querySelector('[data-testid="sequence-view-strands-top"]');
+    let top;
+    let height;
+    if (topStrand) {
+      const bottomStrand = target.querySelector('[data-testid="sequence-view-strands-bottom"]');
+      top = target.offsetTop + topStrand.offsetTop;
+      if (bottomStrand) {
+        const bottomY = target.offsetTop + bottomStrand.offsetTop + bottomStrand.offsetHeight;
+        height = bottomY - top;
+      } else {
+        height = topStrand.offsetHeight;
+      }
+    } else {
+      // Strand DOM not yet mounted — fall back to the whole line
+      // minus the divider gap so the caret is at least visible.
+      top = target.offsetTop;
+      height = Math.max(8, target.offsetHeight - 14);
+    }
     setBox({ left, top, height });
     return undefined;
-  }, [caretPos, charPx, containerRef]);
+  }, [caretPos, charPx, containerRef, showBottomStrand]);
 
   if (!box) return null;
   return (
