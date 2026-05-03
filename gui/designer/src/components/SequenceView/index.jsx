@@ -549,8 +549,15 @@ const SequenceView = forwardRef(function SequenceView({
       const a = (typeof caretAnchor === "number" && Number.isFinite(caretAnchor)) ? caretAnchor : null;
       const f = (typeof caretPos === "number" && Number.isFinite(caretPos)) ? caretPos : null;
       if (a == null || f == null || a === f) return; // no selection — let browser handle native copy
+      // Convention 1 caret semantics: position N = LEFT edge of
+      // letter[N] (caret renders just BEFORE letter N). Selection
+      // range [min(a,f) .. max(a,f)) covers exactly the letters
+      // visually under the highlight rect — no `+1`. Earlier the
+      // copy + the overlay both had `+1` which extended one letter
+      // past the caret (biolog 04.05.2026 evening: «каретка и
+      // выделение не совпадает в конце»).
       const start = Math.min(a, f);
-      const end = Math.max(a, f) + 1; // half-open → include the focus letter
+      const end = Math.max(a, f);
       const slice = (fullSeq || "").slice(start, end);
       if (!slice) return;
       e.preventDefault();
@@ -954,8 +961,14 @@ function SelectionOverlay({
     }
     const root = containerRef.current;
     if (!root) return undefined;
+    // Half-open range [start, end). Caret at position N renders at
+    // the LEFT edge of letter[N], so the selection rect should also
+    // end at the left edge of letter[end] — no `+1`. With the prior
+    // `+1` the rect overshot the caret by one cell at the focus end
+    // (biolog 04.05.2026: «каретка и выделение не совпадает в
+    // конце»).
     const start = Math.min(caretAnchor, caretPos);
-    const end = Math.max(caretAnchor, caretPos) + 1; // half-open
+    const end = Math.max(caretAnchor, caretPos);
     const cpl = charsPerLine || 80;
     const lines = root.querySelectorAll('[data-testid="sequence-view-line"]');
     const out = [];
