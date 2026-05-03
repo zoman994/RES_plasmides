@@ -321,14 +321,11 @@ function AATrack({
         data-line-start={lineStart}
         data-strategy="single"
         data-row-count={visibleCdsRows.length}
-        // 1 px — the minimum visible gap that keeps DNA descenders and
-        // AA ascenders from touching while still reading as "attached
-        // to the DNA above" (biolog feedback 03.05.2026 evening:
-        // «уберём гап между АА и ДНК ... но не так чтобы надписи
-        // налезали»). Was 5 px; the AA row felt detached and the user
-        // saw it as a separate panel rather than the codon translation
-        // of the DNA right above it.
-        style={{ marginTop: 1 }}
+        // Zero top margin — the numbering row's own height already
+        // provides visual separation from the annotation track
+        // above. Earlier 1 px combined with numbering's height felt
+        // like the AA section "floated" too far below DNA.
+        style={{ marginTop: 0 }}
       >
         {visibleCdsRows.map((row) => {
           // Compute per-region run bounds on THIS line: smallest codon
@@ -379,6 +376,14 @@ function AATrack({
           // width without touching the neighbouring codon's number.
           // height 11 + marginBottom 2 give a clean ~3 px gap before
           // the AA letters so numbers don't visually overlap.
+          // Render the number INLINE with textAlign:center +
+          // overflow:visible — wider numbers (2-3 digits) overflow
+          // symmetrically left and right around the codon middle
+          // column. No absolute positioning means no sub-pixel
+          // alignment slop (biolog 04.05.2026 evening: «номера всё
+          // так же неровно»). Empty cells are <span> "&nbsp;" so
+          // they consume exactly 1 ch each and the column grid stays
+          // perfectly aligned with the AA row below.
           const aaNumberingCells = Array.from({ length: lineLen }, (_, ci) => {
             const cover = findCovering(ci);
             if (!cover || cover.role !== "mid") {
@@ -398,29 +403,19 @@ function AATrack({
                 key={ci}
                 data-testid="sequence-view-aa-number"
                 data-aa-number={aaIdx}
-                style={{ display: "inline-block", width: "1ch", position: "relative", overflow: "visible" }}
-              >
-                <span
-                  style={{
-                    position: "absolute",
-                    left: "50%",
-                    top: 0,
-                    transform: "translateX(-50%)",
-                    whiteSpace: "nowrap",
-                    // fontSize 7 — at parent-row 11 px each codon
-                    // spans ~19.5 px. 3-digit numbers at 7 px ~13 px
-                    // wide, leaves ~6 px gutter between adjacent
-                    // codon labels (biolog 04.05.2026 evening:
-                    // «наезжает номера»). At 8 px the labels were
-                    // touching for high indices (200+) on dense rows.
-                    fontSize: 7,
-                    lineHeight: "8px",
-                    color: "var(--text-tertiary, #9ca3af)",
-                    pointerEvents: "none",
-                    fontFamily: "var(--font-mono, monospace)",
-                  }}
-                >{aaIdx}</span>
-              </span>
+                style={{
+                  display: "inline-block",
+                  width: "1ch",
+                  textAlign: "center",
+                  overflow: "visible",
+                  whiteSpace: "nowrap",
+                  fontSize: 7,
+                  lineHeight: "8px",
+                  color: "var(--text-tertiary, #9ca3af)",
+                  pointerEvents: "none",
+                  fontFamily: "var(--font-mono, monospace)",
+                }}
+              >{aaIdx}</span>
             );
           });
 
@@ -430,15 +425,17 @@ function AATrack({
               data-testid="sequence-view-aa-numbering"
               data-aa-numbering-row={row.label}
               style={{
-                // Compact height — biolog 04.05.2026 evening: «слишком
-                // далеко от ДНК цепи АА цепь». Was 11+2 = 13 px which
-                // pushed AA letters way down. 8 px text band + 0
-                // bottom margin lands the AA letters ~9 px below the
-                // annotation rect, on par with the original gap
-                // before numbering existed.
+                // Tight band: 8 px text row + 1 px buffer. Numbers
+                // are fontSize 7 with lineHeight 8 so they fit
+                // comfortably inside; the 1 px marginBottom is just
+                // a hairline that prevents the digit's bottom edge
+                // from sitting flush against the AA letter ascenders
+                // below (biolog 04.05.2026 evening: «АА всё так же
+                // далек от цепи ДНК»). Earlier 13 px gap was too big.
                 height: 8,
                 lineHeight: "8px",
                 whiteSpace: "pre",
+                marginBottom: 1,
                 userSelect: "none",
                 WebkitUserSelect: "none",
               }}
@@ -562,9 +559,20 @@ function AATrack({
                 // copyable — only the mid cell (the AA char itself) is
                 // pulled into clipboard, so dragging across N codons
                 // produces N AA letters with no whitespace gaps.
+                //
+                // data-aa-pos points at the codon MIDDLE so a click on
+                // the side cell selects the same triplet as a click
+                // on the AA letter itself (biolog 04.05.2026 evening:
+                // «при нажатии на АА надо нажать на саму букву, если
+                // рядом то не обрабатывается. давай сделаем так чтобы
+                // и пробелы с боков от буквы давали тот же эффект»).
+                // role 'start' → mid is at ci+1; role 'end' → mid at ci-1.
+                const sideMidAbs = role === "start" ? (lineStart + ci + 1) : (lineStart + ci - 1);
                 return (
                   <span
                     key={ci}
+                    data-testid="sequence-view-aa-side"
+                    data-aa-pos={sideMidAbs}
                     data-aa-region-fill={c.regionId || ""}
                     style={{ ...cellStyle, userSelect: "none", WebkitUserSelect: "none" }}
                   >

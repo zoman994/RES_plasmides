@@ -766,14 +766,15 @@ const SequenceView = forwardRef(function SequenceView({
     // (biolog 04.05.2026 evening: «при нажатии на АК должен
     // выделятся триплет»). data-aa-pos is the codon's MIDDLE base
     // position; the codon spans [mid-1 .. mid+2) on the top strand
-    // (3 nucleotides) regardless of strand orientation.
+    // (3 nucleotides) regardless of strand orientation. We look
+    // for `data-aa-pos` on ANY ancestor (not just the AA letter
+    // span itself) so clicks on the side cells either side of the
+    // letter still pick up the codon — biolog: «и пробелы с боков
+    // от буквы давали тот же эффект выделения триплета».
     if (typeof onSelectRange === "function") {
       let aaEl = e.target;
       while (aaEl && aaEl !== containerRef.current) {
-        if (
-          aaEl.getAttribute
-          && aaEl.getAttribute("data-testid") === "sequence-view-aa-char"
-        ) break;
+        if (aaEl.dataset && aaEl.dataset.aaPos != null) break;
         aaEl = aaEl.parentElement;
       }
       if (aaEl && aaEl !== containerRef.current && aaEl.dataset && aaEl.dataset.aaPos != null) {
