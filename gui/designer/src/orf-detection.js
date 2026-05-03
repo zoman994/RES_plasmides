@@ -9,6 +9,7 @@
  */
 
 import { generateRegionId } from './domain-detection';
+import { PREDICTOR_SOURCES } from './annotation-model';
 
 const RC_MAP = { A: 'T', T: 'A', G: 'C', C: 'G', N: 'N' };
 const STOPS = new Set(['TAA', 'TAG', 'TGA']);
@@ -83,6 +84,11 @@ export function detectORFs(sequence, existingAnnotations, minAA = 100) {
     if (overlapsExisting) continue;
 
     usedRanges.push([orf.start, orf.end]);
+    // Sprint M-X.1 K1 retrofit: ORFs now flagged `predicted: true` and
+    // carry internal evidence in `signals[]` per DEC-PRED-01. `source`
+    // aligns with PREDICTOR_SOURCES.ORF_SCAN so consumers can match by
+    // canonical id; legacy `detector: 'orf_scan'` preserved alongside
+    // (any module that grew around the old name keeps working).
     results.push({
       id: generateRegionId(),
       name: `ORF (${orf.aaLen} aa)`,
@@ -92,9 +98,11 @@ export function detectORFs(sequence, existingAnnotations, minAA = 100) {
       strand: orf.strand,
       level: 'region',
       auto: true,
+      predicted: true,
+      source: PREDICTOR_SOURCES.ORF_SCAN,
       confidence: orf.aaLen > 200 ? 0.9 : orf.aaLen > 150 ? 0.7 : 0.5,
-      detector: 'orf_scan',
-      source: 'orf_detection',
+      detector: 'orf_scan', // legacy
+      signals: [{ type: 'orf', aaLen: orf.aaLen }],
     });
 
     // Limit to 6 ORFs max (avoid noise)

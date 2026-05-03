@@ -5,9 +5,72 @@
  *   region  — what this DNA IS (CDS, promoter, terminator, …)
  *   detail  — sub-elements within a region (domains, tags, regulatory elements)
  *   point   — point markers (RE sites, stop codons, mutations)
+ *
+ * Annotation shape (region-level, current canonical):
+ *   {
+ *     id: string,                  // backfilled via getRegions if missing
+ *     name: string,
+ *     type: string,                // 'CDS' | 'promoter' | 'terminator' | ...
+ *     start: number,               // 0-based inclusive
+ *     end: number,                 // 0-based exclusive
+ *     strand: 1 | -1,
+ *     level: 'region',
+ *
+ *     // Optional — confident vs predicted (Sprint M-X.1 K1)
+ *     predicted?: true,            // truthy iff produced by an algorithm
+ *     source?: string,             // PREDICTOR_SOURCES value, e.g. 'orf_scan'
+ *     confidence?: number,         // 0..1, source-specific scale
+ *     signals?: Array<{type, ...}> // internal evidence (DEC-PRED-01):
+ *                                  //   { type: '-35', start, end, score, sequence }
+ *                                  //   { type: '-10', start, end, score, sequence }
+ *                                  //   { type: 'spacer', start, end, length }
+ *                                  //   { type: 'hairpin', stemStart, stemEnd, ... }
+ *                                  //   { type: 'scaffold', identity, variant }
+ *                                  //   { type: 'orf', aaLen }
+ *
+ *     // Legacy (still propagated for back-compat)
+ *     auto?: boolean,
+ *     detector?: string,           // older tag, kept alongside `source`
+ *     color?: string,
+ *   }
  */
 
 export const LEVELS = { REGION: 'region', DETAIL: 'detail', POINT: 'point' };
+
+/**
+ * Identifiers for each predicted-region detector (Sprint M-X.1 K1).
+ *
+ * - `orf_scan`        — ATG→stop ≥100 aa scanner (orf-detection.js).
+ * - `sigma70_pwm`     — σ70 promoter PWM (predicted-detection.js K2).
+ * - `stem_loop`       — terminator stem-loop heuristic (K2).
+ * - `sgrna_scaffold`  — Cas9 scaffold DNA-identity match (K2).
+ *
+ * Consumers compare `region.source === PREDICTOR_SOURCES.X`. Frozen so
+ * accidental writes throw in dev (catches typos in detector source ids
+ * faster than silent string mismatch).
+ */
+export const PREDICTOR_SOURCES = Object.freeze({
+  ORF_SCAN: 'orf_scan',
+  SIGMA70_PWM: 'sigma70_pwm',
+  STEM_LOOP: 'stem_loop',
+  SGRNA_SCAFFOLD: 'sgrna_scaffold',
+});
+
+/**
+ * `true` iff the annotation came from a predictor (transient detection
+ * layer, not the confident-regions baseline). Canonical idiom for
+ * consumers — AnnotationTrack uses this to switch render mode (filled
+ * solid vs unfilled+dashed), Settings popover threshold filter applies
+ * only to predicted, M-X.2 Modal "Принять как confident" opens only on
+ * predicted regions.
+ *
+ * Identity check (`=== true`) — accepts only the explicit boolean to
+ * avoid surprises with legacy fields named `predicted` carrying counts
+ * or strings from defunct migrations.
+ */
+export function isPredicted(annotation) {
+  return !!annotation && annotation.predicted === true;
+}
 
 /**
  * Per-region-type rendering and detection rules.

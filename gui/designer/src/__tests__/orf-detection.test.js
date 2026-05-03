@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { detectORFs } from '../orf-detection';
+import { PREDICTOR_SOURCES, isPredicted } from '../annotation-model';
 
 // Helper: build a CDS of given length in amino acids (ATG + codons + stop)
 function buildCDS(aaLen) {
@@ -24,8 +25,15 @@ describe('detectORFs', () => {
     expect(orf).toBeDefined();
     expect(orf.type).toBe('CDS');
     expect(orf.level).toBe('region');
+    // Sprint M-X.1 K1 — ORF detector retrofitted to predicted-flagged
+    // shape. `source` aligns with PREDICTOR_SOURCES.ORF_SCAN; legacy
+    // `detector` field preserved for any downstream consumer that grew
+    // around it.
+    expect(orf.predicted).toBe(true);
+    expect(isPredicted(orf)).toBe(true);
+    expect(orf.source).toBe(PREDICTOR_SOURCES.ORF_SCAN);
     expect(orf.detector).toBe('orf_scan');
-    expect(orf.source).toBe('orf_detection');
+    expect(orf.signals).toEqual([{ type: 'orf', aaLen: 200 }]);
     expect(orf.confidence).toBe(0.7); // 200 is not > 200, so 0.7
   });
 
@@ -119,8 +127,15 @@ describe('detectORFs', () => {
     expect(orf).toHaveProperty('level', 'region');
     expect(orf).toHaveProperty('auto', true);
     expect(orf).toHaveProperty('confidence');
+    // K1 retrofit (M-X.1): predicted shape replaces legacy
+    // `source: 'orf_detection'`. New canonical fields:
+    expect(orf).toHaveProperty('predicted', true);
+    expect(orf).toHaveProperty('source', PREDICTOR_SOURCES.ORF_SCAN);
     expect(orf).toHaveProperty('detector', 'orf_scan');
-    expect(orf).toHaveProperty('source', 'orf_detection');
+    expect(orf).toHaveProperty('signals');
+    expect(Array.isArray(orf.signals)).toBe(true);
+    expect(orf.signals[0]).toMatchObject({ type: 'orf' });
+    expect(orf.signals[0].aaLen).toBeGreaterThanOrEqual(100);
     expect(orf.name).toMatch(/^ORF \(\d+ aa\)$/);
   });
 
