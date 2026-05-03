@@ -746,8 +746,13 @@ const SequenceView = forwardRef(function SequenceView({
     dragRef.current = { active: true, pointerId: e.pointerId };
     pointerMovedRef.current = false;
     try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* ignore */ }
-    // Collapse selection on press, then extend with subsequent moves.
-    onCaretChange(pos, { extendSelection: false, needsScroll: false });
+    // Plain click → collapse (anchor = focus = pos), drag will then
+    // extend on each move. Shift+click → keep anchor, move focus to
+    // click point (biolog 04.05.2026 evening: «при нажатии на
+    // сиквенс с зажатой Shift должна выделятся вся область от
+    // текущего положения курсора до места клика»). Subsequent
+    // shift+drag continues extending.
+    onCaretChange(pos, { extendSelection: !!e.shiftKey, needsScroll: false });
     // Refocus so subsequent arrow keys + Ctrl+C land on onKeyDown.
     try { containerRef.current?.focus({ preventScroll: true }); } catch { /* noop */ }
     // preventDefault stops the browser from initiating its own native
@@ -846,7 +851,10 @@ const SequenceView = forwardRef(function SequenceView({
     }
     const pos = posFromPointerEvent(e);
     if (pos == null) return;
-    onCaretChange(pos, { extendSelection: false });
+    // Shift+click extends selection here too (in case the env
+    // dispatches click without pointerdown — synthetic test
+    // fixtures, assistive tech).
+    onCaretChange(pos, { extendSelection: !!e.shiftKey });
     try { containerRef.current?.focus({ preventScroll: true }); } catch { /* noop */ }
   };
 
