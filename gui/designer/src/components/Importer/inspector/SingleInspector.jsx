@@ -156,9 +156,15 @@ export default function SingleInspector({
   // even after the scroll is applied + pendingScroll cleared. Lets
   // the biolog visually see where the last click landed on the bar.
   const [cursorPos, setCursorPos] = useState(null);
-  const onFeatureClickFromBar = useCallback((ann) => {
+  const onFeatureClickFromBar = useCallback((ann, clickPos) => {
     if (!ann) return;
-    const pos = Number(ann.start) || 0;
+    // Biolog 04.05.2026 evening: «ставлю на середину — в середину».
+    // LinearFeatureBar now sends the precise click x→seq position
+    // as the second arg; fall back to ann.start only when the bar
+    // couldn't measure (e.g. happy-dom test fixture clientX=0).
+    const pos = (typeof clickPos === 'number' && Number.isFinite(clickPos))
+      ? clickPos
+      : (Number(ann.start) || 0);
     if (activeTab !== 'sequence') {
       onActiveTabChange?.('sequence');
     }

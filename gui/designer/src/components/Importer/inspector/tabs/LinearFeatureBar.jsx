@@ -96,7 +96,36 @@ export default function LinearFeatureBar({
 
         {/* feature blocks + inside labels */}
         {items.map((it) => (
-          <g key={it.idx} onClick={() => onSelect?.(it.ann)} style={{ cursor: 'pointer' }}>
+          <g
+            key={it.idx}
+            onClick={(e) => {
+              // Map click x within the SVG to an absolute sequence
+              // position. Biolog 04.05.2026 evening: «при нажатии на
+              // условный ori я хочу чтобы курсор ставился в начало
+              // ори … ставлю на середину — в середину». Use
+              // event-x → seq-pos so a click anywhere inside the rect
+              // lands at that fraction of the feature, not always at
+              // its start. Fallback to ann.start when the SVG hasn't
+              // measured (e.g. happy-dom in tests where clientX = 0
+              // and getBoundingClientRect returns zeros) — keeps the
+              // lazy-tabs.test.jsx K4 assertion (last call ∈ knownStarts)
+              // green.
+              let pos = it.ann.start || 0;
+              try {
+                const svg = e.currentTarget.ownerSVGElement;
+                const rect = svg && svg.getBoundingClientRect();
+                if (rect && rect.width > 0 && typeof e.clientX === 'number' && e.clientX > 0) {
+                  const x = e.clientX - rect.left;
+                  const computed = Math.round((x / rect.width) * seqLength);
+                  if (Number.isFinite(computed)) {
+                    pos = Math.max(0, Math.min(seqLength - 1, computed));
+                  }
+                }
+              } catch { /* fall back to ann.start */ }
+              onSelect?.(it.ann, pos);
+            }}
+            style={{ cursor: 'pointer' }}
+          >
             <title>{`${it.ann.name || it.ann.type}: ${(it.ann.start || 0) + 1}..${it.ann.end || 0}`}</title>
             <rect
               x={it.left}

@@ -1,6 +1,8 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { STRINGS } from '../../../lib/strings';
 import { sanitizeWithReport } from '../../../sequence-utils';
+import { rotateOriginToPosition } from '../../../rotate-origin';
+import { computeIntergenicHints } from './lib/intergenic-hints';
 import TagsEditor from './TagsEditor';
 
 const S = STRINGS.importer;
@@ -9,14 +11,18 @@ const S = STRINGS.importer;
  * MetaColumn — 200 px sibling column right of Inspector (M-B.2 K3).
  *
  * Hosts:
+ *   - Tags editor
  *   - Topology toggle (◯ / —)
+ *   - Origin offset control + intergenic hints (circular only)
  *   - Length / Info / IUPAC cards
  *   - Description / Organism / Source cards (when present)
  *
- * Origin offset control moved to SequenceTab (v0.7.x): biolog wants to pick
- * the start position visually with nucleotide numbers in front of them, not
- * blindly type into a sidebar input. The «межгенные участки» hints follow
- * the control to its new home.
+ * Origin control history: was here originally → moved to SequenceTab
+ * v0.7.x so biolog could pick a start with nucleotide numbers visible →
+ * moved back to MetaColumn 04.05.2026 evening (биолог: «эту панель на
+ * право, под топологию»). Sequence-tab now stays viewer-only — picking
+ * a start point is a metadata edit, sits with topology + length on the
+ * right rail.
  *
  * Edit semantics: changes go through `onUpdateEdits(patch)` (parent passes
  * the editor that scopes by fileName). topologyChange writes
@@ -28,16 +34,47 @@ export default function MetaColumn({
   edits = {},
   onUpdateEdits,
 }) {
-  if (!item) return null; // eslint-disable-line react-hooks/rules-of-hooks
+  // Origin offset state — must live above the early-return so hooks
+  // ordering is stable across re-renders. `null` value means "no item
+  // yet"; the input itself only renders when item + isCircular are
+  // both true (further down in the JSX).
+  const [originOffset, setOriginOffset] = useState(1);
+  const itemKey = item ? (item._fileName || item.id || item.name || '') : null;
+  // Reset the origin input back to 1 when biolog switches plasmids.
+  useEffect(() => { setOriginOffset(1); }, [itemKey]);
 
-  const length = item.length || item.sequence?.length || 0;
-  const topology = edits.editedTopology ?? item.topology ?? 'linear';
-  const isCircular = topology === 'circular';
+  // Compute current sequence + annotations (post-edits) up here so the
+  // hooks below can depend on them deterministically. When `item` is
+  // null we still need to call useMemo with stable inputs to keep the
+  // hook count constant — fall back to empty values.
+  const liveSequence = (item && (edits?.editedSequence ?? item.sequence)) || '';
+  const liveAnnotations = (item && (Array.isArray(edits?.editedAnnotations)
+    ? edits.editedAnnotations
+    : (item.annotations || []))) || [];
+  const liveTopology = (item && (edits?.editedTopology ?? item.topology)) || 'linear';
+  const length = (item && (item.length || liveSequence.length)) || 0;
 
-  const sanitize = useMemo(() => { // eslint-disable-line react-hooks/rules-of-hooks
-    if (!item.sequence) return null;
+  const sanitize = useMemo(() => {
+    if (!item?.sequence) return null;
     try { return sanitizeWithReport(item.sequence); } catch { return null; }
-  }, [item.sequence]);
+  }, [item?.sequence]);
+
+  // Intergenic-hint string («1-145, 604-926, …») — same algorithm as
+  // SequenceTab used. Only meaningful for circular topology, but cheap
+  // to compute regardless; gating happens at render-time.
+  const hints = useMemo(
+    () => computeIntergenicHints({
+      sequence: liveSequence,
+      annotations: liveAnnotations,
+      topology: liveTopology,
+      length,
+    }),
+    [liveSequence, liveAnnotations, liveTopology, length],
+  );
+
+  if (!item) return null;
+
+  const isCircular = liveTopology === 'circular';
 
   const onTopologyChange = (next) => {
     if (next === item.topology) {
@@ -46,6 +83,26 @@ export default function MetaColumn({
     } else {
       onUpdateEdits?.({ editedTopology: next });
     }
+  };
+
+  const canApplyOrigin = isCircular
+    && !!liveSequence
+    && originOffset > 1
+    && originOffset <= length
+    && typeof onUpdateEdits === 'function';
+  const onApplyOrigin = () => {
+    if (!canApplyOrigin) return;
+    const out = rotateOriginToPosition(
+      liveSequence,
+      liveAnnotations,
+      originOffset,
+      { topology: 'circular' },
+    );
+    onUpdateEdits({
+      editedSequence: out.sequence,
+      editedAnnotations: out.annotations,
+    });
+    setOriginOffset(1);
   };
 
   return (
@@ -90,8 +147,73 @@ export default function MetaColumn({
         </div>
       </Card>
 
-      {/* Origin control moved to SequenceTab — see <SequenceTab>. Length
-          card stays here as a quick reference field. */}
+      {/* Origin offset — circular only. Sits right under the topology
+          card per biolog's 04.05.2026 layout request («эту панель на
+          право, под топологию»). Apply rotates the sequence + all
+          region/detail/point annotations so the user-picked nucleotide
+          number becomes the new position 1. Intergenic hints suggest
+          stretches of bare DNA where rotation won't bisect any
+          feature. */}
+      {isCircular && (
+        <Card label={S.metaOrigin}>
+          <div
+            data-testid="importer-meta-origin"
+            style={{ display: 'flex', flexDirection: 'column', gap: 6 }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <input
+                type="number"
+                min={1}
+                max={Math.max(1, length)}
+                value={originOffset}
+                data-testid="importer-meta-origin-input"
+                onChange={(e) => setOriginOffset(Number(e.target.value) || 1)}
+                style={{
+                  width: 72, fontSize: 12, fontFamily: 'var(--font-mono)',
+                  padding: '3px 6px', textAlign: 'right',
+                  background: 'var(--surface-1)', color: 'var(--text-primary)',
+                  border: '0.5px solid var(--border-default)',
+                  borderRadius: 'var(--radius-md)', outline: 'none',
+                }}
+              />
+              <button
+                type="button"
+                onClick={onApplyOrigin}
+                disabled={!canApplyOrigin}
+                data-testid="importer-meta-origin-apply"
+                style={{
+                  fontSize: 11,
+                  padding: '4px 8px',
+                  background: 'var(--accent-500)',
+                  color: 'var(--surface-1)',
+                  border: 'none',
+                  borderRadius: 'var(--radius-md)',
+                  cursor: canApplyOrigin ? 'pointer' : 'not-allowed',
+                  opacity: canApplyOrigin ? 1 : 0.4,
+                  whiteSpace: 'nowrap',
+                }}
+              >{S.metaOriginApply}</button>
+            </div>
+            {hints && (
+              <div
+                data-testid="importer-meta-origin-hints"
+                style={{ fontSize: 10, color: 'var(--text-secondary)', lineHeight: 1.4 }}
+              >
+                <span style={{
+                  textTransform: 'uppercase', letterSpacing: 0.4,
+                  color: 'var(--text-tertiary)', fontWeight: 500, marginRight: 4,
+                }}>{S.metaOriginHintLabel}:</span>
+                <span style={{
+                  fontFamily: 'var(--font-mono)',
+                  color: 'var(--text-primary)',
+                  wordBreak: 'break-word',
+                }}>{hints}</span>
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
+
       <Card label={S.metaLengthLabel}>
         <div style={{ fontSize: 13, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)', fontWeight: 500 }}>
           {length.toLocaleString()} bp

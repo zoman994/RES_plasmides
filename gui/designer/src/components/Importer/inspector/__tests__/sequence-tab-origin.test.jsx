@@ -1,16 +1,21 @@
 /**
- * SequenceTab — origin-rotate control (moved from MetaColumn in v0.7.x).
- * Origin set on Sequence tab where biolog can see nucleotide numbers.
+ * SequenceTab — regression: origin control NO LONGER lives here.
+ *
+ * History: was in MetaColumn → moved to SequenceTab v0.7.x → moved BACK to
+ * MetaColumn 04.05.2026 evening (биолог: «эту панель на право, под
+ * топологию»). Origin behaviour now lives in `meta-column.test.jsx`. This
+ * file stays as a regression guard so a future refactor that resurrects
+ * the in-tab control fails fast.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
+import { render, screen, cleanup } from '@testing-library/react';
+import { forwardRef } from 'react';
 import SequenceTab from '../tabs/SequenceTab';
 
-// Sprint M-B.3 K8 — SequenceTab now mounts the new SequenceView. Mock it
-// to keep the origin-rotate test focused on the input + apply button
-// behaviour, not the full sequence rendering pipeline.
 vi.mock('../../../SequenceView', () => ({
-  default: () => <div data-testid="mock-sequence-view" />,
+  default: forwardRef(function MockSequenceView(_props, _ref) {
+    return <div data-testid="mock-sequence-view" />;
+  }),
 }));
 vi.mock('../../../SequenceView/SettingsPopover', () => ({
   default: () => null,
@@ -24,8 +29,8 @@ const ANNOTATIONS = [
   { id: 'r1', type: 'CDS', name: 'AmpR', start: 5, end: 40, level: 'region' },
 ];
 
-describe('SequenceTab — origin-rotate', () => {
-  it('1) circular topology renders the origin input + apply button', () => {
+describe('SequenceTab — origin control absent (moved to MetaColumn)', () => {
+  it('1) circular topology — origin testids are NOT present', () => {
     render(
       <SequenceTab
         sequence={SEQUENCE}
@@ -36,11 +41,12 @@ describe('SequenceTab — origin-rotate', () => {
         onUpdateEdits={() => {}}
       />,
     );
-    expect(screen.getByTestId('importer-sequence-origin-input')).toBeTruthy();
-    expect(screen.getByTestId('importer-sequence-origin-apply')).toBeTruthy();
+    expect(screen.queryByTestId('importer-sequence-origin')).toBeNull();
+    expect(screen.queryByTestId('importer-sequence-origin-input')).toBeNull();
+    expect(screen.queryByTestId('importer-sequence-origin-apply')).toBeNull();
   });
 
-  it('2) linear topology hides the origin control entirely', () => {
+  it('2) linear topology — origin testids are also absent', () => {
     render(
       <SequenceTab
         sequence={SEQUENCE}
@@ -52,43 +58,5 @@ describe('SequenceTab — origin-rotate', () => {
       />,
     );
     expect(screen.queryByTestId('importer-sequence-origin')).toBeNull();
-    expect(screen.queryByTestId('importer-sequence-origin-input')).toBeNull();
-  });
-
-  it('3) apply rotates sequence + annotations, then resets input to 1', async () => {
-    const onUpdateEdits = vi.fn();
-    render(
-      <SequenceTab
-        sequence={SEQUENCE}
-        annotations={ANNOTATIONS}
-        topology="circular"
-        name="pUC19"
-        fileKey="pUC19.gb"
-        onUpdateEdits={onUpdateEdits}
-      />,
-    );
-    const input = screen.getByTestId('importer-sequence-origin-input');
-    fireEvent.change(input, { target: { value: '20' } });
-    fireEvent.click(screen.getByTestId('importer-sequence-origin-apply'));
-    expect(onUpdateEdits).toHaveBeenCalledTimes(1);
-    const patch = onUpdateEdits.mock.calls[0][0];
-    expect(typeof patch.editedSequence).toBe('string');
-    expect(patch.editedSequence.length).toBe(SEQUENCE.length);
-    expect(Array.isArray(patch.editedAnnotations)).toBe(true);
-    await waitFor(() => expect(screen.getByTestId('importer-sequence-origin-input').value).toBe('1'));
-  });
-
-  it('4) apply disabled while offset === 1 (no-op)', () => {
-    render(
-      <SequenceTab
-        sequence={SEQUENCE}
-        annotations={ANNOTATIONS}
-        topology="circular"
-        name="pUC19"
-        fileKey="pUC19.gb"
-        onUpdateEdits={() => {}}
-      />,
-    );
-    expect(screen.getByTestId('importer-sequence-origin-apply').disabled).toBe(true);
   });
 });
