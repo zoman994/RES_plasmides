@@ -217,6 +217,21 @@ export default function SingleInspector({
     setPendingScroll({ pos, tick: Date.now(), instant: true });
   }, []);
 
+  // Feature click in the SequenceView (biolog 04.05.2026 evening:
+  // «при нажатии на фичу в ВИВЕРЕ должна выделятся вся область
+  // фичи»). Set anchor at start, focus (caret) at end so the
+  // SelectionOverlay highlights the whole feature region. Queues a
+  // smooth scroll to the start so the biolog sees the beginning of
+  // the feature even if the click happened on its tail end.
+  const onSelectRangeFromView = useCallback((start, end) => {
+    if (typeof start !== 'number' || typeof end !== 'number') return;
+    if (!Number.isFinite(start) || !Number.isFinite(end)) return;
+    if (end <= start) return;
+    setCursorAnchor(start);
+    setCursorPos(end);
+    setPendingScroll({ pos: start, tick: Date.now(), instant: false });
+  }, []);
+
   const onPendingScrollHandled = useCallback(() => setPendingScroll(null), []);
   // Reset cursor / selection when biolog switches plasmids.
   useEffect(() => { setCursorPos(null); setCursorAnchor(null); }, [itemKey]);
@@ -358,6 +373,7 @@ export default function SingleInspector({
               caretPos={cursorPos}
               caretAnchor={cursorAnchor}
               onCaretChange={onCaretChangeFromView}
+              onSelectRange={onSelectRangeFromView}
             />
           </div>
         )}

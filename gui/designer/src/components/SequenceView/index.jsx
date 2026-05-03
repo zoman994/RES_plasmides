@@ -296,6 +296,7 @@ const SequenceView = forwardRef(function SequenceView({
   caretPos = null,
   caretAnchor = null,
   onCaretChange,
+  onSelectRange,
 }, ref) {
   const containerRef = useRef(null);
   const [charPx, setCharPx] = useState(7.2);
@@ -702,8 +703,37 @@ const SequenceView = forwardRef(function SequenceView({
   };
 
   const onRootPointerDown = (e) => {
-    if (typeof onCaretChange !== "function") return;
     if (e.button != null && e.button !== 0) return; // primary button only
+    // Annotation rect under the pointer? Select the WHOLE feature
+    // (biolog 04.05.2026 evening: «при нажатии на фичу в ВИВЕРЕ
+    // должна выделятся вся область фичи»). Walk up looking for the
+    // feature rect's wrapper <g>, read its data-region-start /
+    // -end. Bypasses the caret-position math entirely so a click
+    // ON a feature is "select feature", not "place caret here +
+    // collapse".
+    if (typeof onSelectRange === "function") {
+      let el = e.target;
+      while (el && el !== containerRef.current) {
+        if (
+          el.getAttribute
+          && el.getAttribute("data-testid") === "sequence-view-annotation"
+        ) break;
+        el = el.parentElement;
+      }
+      if (el && el !== containerRef.current && el.dataset
+          && el.dataset.regionStart != null && el.dataset.regionEnd != null) {
+        const rs = parseInt(el.dataset.regionStart, 10);
+        const re = parseInt(el.dataset.regionEnd, 10);
+        if (Number.isFinite(rs) && Number.isFinite(re) && re > rs) {
+          e.preventDefault();
+          onSelectRange(rs, re);
+          try { containerRef.current?.focus({ preventScroll: true }); } catch { /* noop */ }
+          return;
+        }
+      }
+    }
+
+    if (typeof onCaretChange !== "function") return;
     const pos = posFromPointerEvent(e);
     if (pos == null) return;
     dragRef.current = { active: true, pointerId: e.pointerId };

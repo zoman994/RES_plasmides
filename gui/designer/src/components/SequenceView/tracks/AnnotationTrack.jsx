@@ -251,9 +251,17 @@ function AnnotationTrack({
               data-region-name={region.name || ""}
               data-region-row={rowIdx}
               data-region-line-start={lineStart}
+              // data-region-start / -end carry the feature's absolute
+              // sequence positions so the SequenceView root can pick
+              // them up on pointerdown without needing a JS lookup
+              // by id (biolog 04.05.2026 evening: «при нажатии на
+              // фичу в вивере должна выделятся вся область фичи»).
+              data-region-start={region.start}
+              data-region-end={region.end}
               data-predicted={isPredicted ? "true" : undefined}
               data-region-source={region.source || undefined}
               transform={`translate(${xLeft}, ${yTop})`}
+              style={{ cursor: "pointer" }}
             >
               <rect
                 x={0}

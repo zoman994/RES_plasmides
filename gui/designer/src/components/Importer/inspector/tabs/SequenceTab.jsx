@@ -45,6 +45,7 @@ export default function SequenceTab({
   caretPos,
   caretAnchor,
   onCaretChange,
+  onSelectRange,
 }) {
   const sequenceViewRef = useRef(null);
 
@@ -175,6 +176,7 @@ export default function SequenceTab({
           caretPos={caretPos}
           caretAnchor={caretAnchor}
           onCaretChange={onCaretChange}
+          onSelectRange={onSelectRange}
         />
       </div>
     </div>
