@@ -185,6 +185,18 @@ export default function SingleInspector({
     }
   }, [activeTab]);
 
+  // Keyboard caret nav inside SequenceView (arrow keys etc.). Same
+  // shape as `onBarSettle` but always uses the instant scroll
+  // behavior — smooth animation can't keep up with held arrow keys
+  // and would feel laggy. Doesn't auto-switch tabs (the user is
+  // already focused inside SequenceView, so by definition `activeTab
+  // === 'sequence'`).
+  const onCaretChangeFromView = useCallback((pos) => {
+    if (typeof pos !== 'number' || !Number.isFinite(pos)) return;
+    setCursorPos(pos);
+    setPendingScroll({ pos, tick: Date.now(), instant: true });
+  }, []);
+
   const onPendingScrollHandled = useCallback(() => setPendingScroll(null), []);
   // Reset cursor when biolog switches plasmids.
   useEffect(() => { setCursorPos(null); }, [itemKey]);
@@ -323,6 +335,8 @@ export default function SingleInspector({
               onUpdateEdits={onUpdateEdits}
               pendingScroll={pendingScroll}
               onPendingScrollHandled={onPendingScrollHandled}
+              caretPos={cursorPos}
+              onCaretChange={onCaretChangeFromView}
             />
           </div>
         )}

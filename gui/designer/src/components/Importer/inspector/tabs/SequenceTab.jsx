@@ -42,6 +42,8 @@ export default function SequenceTab({
   fileKey,
   pendingScroll,
   onPendingScrollHandled,
+  caretPos,
+  onCaretChange,
 }) {
   const sequenceViewRef = useRef(null);
 
@@ -157,6 +159,8 @@ export default function SequenceTab({
           fragments={[fragment]}
           circular={topology === 'circular'}
           readOnly
+          caretPos={caretPos}
+          onCaretChange={onCaretChange}
         />
       </div>
     </div>

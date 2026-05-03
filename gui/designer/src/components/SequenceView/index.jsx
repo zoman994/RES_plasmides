@@ -282,6 +282,15 @@ const SequenceView = forwardRef(function SequenceView({
   onAddPrimer,
   // eslint-disable-next-line no-unused-vars
   onRestrictionClick,
+  // Keyboard caret (Importer drag-scrubber follow-up, 04.05.2026 —
+  // биолог: «курсор должен жить и на сиквенс вью. чтобы я мог
+  // спокойно выделять текст с помощью клавиатуры»). `caretPos` is
+  // controlled by the parent (synced with the LinearFeatureBar);
+  // arrow keys + Home/End/PageUp/Down call `onCaretChange(newPos)`
+  // so the parent can mirror the move and queue an instant scroll.
+  // null = no caret (parent hasn't picked a position yet).
+  caretPos = null,
+  onCaretChange,
 }, ref) {
   const containerRef = useRef(null);
   const [charPx, setCharPx] = useState(7.2);
@@ -507,9 +516,48 @@ const SequenceView = forwardRef(function SequenceView({
 
   const renderHybrid = framesResolution.strategy === "hybrid";
 
+  // Keyboard caret nav — fires when the SequenceView root has focus.
+  // Maps Arrow / Home / End / PageUp / PageDown to a new absolute
+  // sequence position and hands it to the parent via onCaretChange,
+  // which is responsible for the actual state update + instant
+  // scroll (see SingleInspector.onCaretChangeFromView). If the parent
+  // hasn't supplied a caret yet (`caretPos == null`), the first key
+  // press initialises to position 0 — biolog's «if I tab into the
+  // sequence and start pressing arrows, just put the caret at the
+  // start so I can drive from there».
+  const seqLength = (fragments && fragments[0] && fragments[0].sequence)
+    ? fragments[0].sequence.length
+    : 0;
+  const onRootKeyDown = (e) => {
+    if (typeof onCaretChange !== "function") return;
+    if (!seqLength) return;
+    const cur = (typeof caretPos === "number" && Number.isFinite(caretPos))
+      ? caretPos
+      : 0;
+    const cpl = charsPerLine || 80;
+    let next = cur;
+    switch (e.key) {
+      case "ArrowLeft":  next = cur - 1; break;
+      case "ArrowRight": next = cur + 1; break;
+      case "ArrowUp":    next = cur - cpl; break;
+      case "ArrowDown":  next = cur + cpl; break;
+      case "Home":       next = Math.floor(cur / cpl) * cpl; break;
+      case "End":        next = Math.floor(cur / cpl) * cpl + (cpl - 1); break;
+      case "PageUp":     next = cur - cpl * 10; break;
+      case "PageDown":   next = cur + cpl * 10; break;
+      default: return;
+    }
+    next = Math.max(0, Math.min(seqLength - 1, next));
+    if (next === cur && caretPos != null) return;
+    e.preventDefault();
+    onCaretChange(next);
+  };
+
   return (
     <div
       ref={containerRef}
+      tabIndex={0}
+      onKeyDown={onRootKeyDown}
       data-testid="sequence-view-root"
       data-circular={circular ? "true" : "false"}
       data-chars-per-line={charsPerLine}
@@ -561,6 +609,7 @@ const SequenceView = forwardRef(function SequenceView({
           renderHybrid={renderHybrid}
           onAnnotationClick={onAnnotationClick}
           tracksReady={tracksReady}
+          caretPos={caretPos}
         />
       ))}
     </div>
@@ -680,11 +729,27 @@ const SequenceLine = memo(function SequenceLine({
   renderHybrid,
   onAnnotationClick,
   tracksReady,
+  caretPos,
 }) {
   const annMap = useMemo(
     () => buildLineAnnMap(features, line.start, line.seq.length),
     [features, line.start, line.seq.length],
   );
+
+  // Caret rendering — only the line containing `caretPos` paints a
+  // vertical bar; all other lines skip the work entirely. The bar
+  // sits between the (caretPos - 1)-th and caretPos-th nucleotide,
+  // which matches the convention biolog's familiar with from
+  // SnapGene / Geneious. Placed inside the line div so React
+  // co-locates the paint with the rest of the line's tracks; the
+  // line div itself gains position:relative below so the
+  // absolutely-positioned caret resolves against it.
+  const caretInLine =
+    typeof caretPos === "number"
+    && Number.isFinite(caretPos)
+    && caretPos >= line.start
+    && caretPos <= line.start + line.seq.length;
+  const caretOffsetCh = caretInLine ? (caretPos - line.start) : -1;
 
   return (
     <div
@@ -692,6 +757,7 @@ const SequenceLine = memo(function SequenceLine({
       data-line-start={line.start}
       data-tracks-ready={tracksReady ? "true" : "false"}
       style={{
+        position: "relative",
         // Block hierarchy: each line = ruler + DNA + annotation + AA is
         // ONE logical unit. Inter-block separator (paddingBottom 14 +
         // 1 px dashed divider + marginBottom 14 → ≈28 px gap) tells
@@ -843,6 +909,32 @@ const SequenceLine = memo(function SequenceLine({
           visibleFrames={settings.visibleFrames}
         />
       ) : null}
+      {/* Caret bar — rendered LAST so it paints on top of the
+          tracks. Position math: nucleotide cells start after a
+          gutter of LABEL_WIDTH characters. Caret sits on the LEFT
+          edge of the (caretOffsetCh)-th cell, i.e. between
+          letters (caretOffsetCh - 1) and (caretOffsetCh) — same
+          convention as a normal text editor. Spans the full line
+          height (top:0 bottom:14 to skip the dashed-divider gap)
+          so the biolog sees the whole vertical column highlighted,
+          tying together the ruler, both DNA strands, the
+          annotation rect, and AA tracks at this position. */}
+      {caretInLine && (
+        <div
+          data-testid="sequence-view-caret"
+          data-caret-pos={caretPos}
+          style={{
+            position: "absolute",
+            left: `${(LABEL_WIDTH + caretOffsetCh) * charPx}px`,
+            top: 0,
+            bottom: 14,
+            width: 0,
+            borderLeft: "1.5px solid var(--accent-500, #f97316)",
+            pointerEvents: "none",
+            zIndex: 5,
+          }}
+        />
+      )}
     </div>
   );
 });
