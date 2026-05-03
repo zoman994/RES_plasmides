@@ -650,6 +650,13 @@ const SequenceView = forwardRef(function SequenceView({
   // + the native selection are both visible; the browser uses native
   // selection for unmodified Ctrl+C, our hotkey handler reads our
   // own anchor/focus state for strand-aware copy.
+  // Context menu (right-click) — biolog 04.05.2026 evening: «надо
+  // добавить клик правой кнопкой мыши который будет вызывать меню
+  // дублирующее копировать и копировать вторую цепь. для тех у кого
+  // с горячими клавишами плохо». Two items, each calls the same
+  // copy logic as the Ctrl+C / Ctrl+Alt+C hotkeys. Position is
+  // viewport-fixed so the menu doesn't drift on scroll mid-display.
+  const [contextMenu, setContextMenu] = useState(null);
   const dragRef = useRef({ active: false, pointerId: null });
   // `pointerMovedRef` — set to true the first time pointermove fires
   // during a drag. Used by onClickFallback to skip the
@@ -739,6 +746,47 @@ const SequenceView = forwardRef(function SequenceView({
     // follows pointerup; onClickFallback reads it and resets it.
   };
 
+  // Right-click → context menu. Doesn't move the caret or change
+  // the selection — the menu is purely a copy launcher.
+  const onRootContextMenu = (e) => {
+    // Only show menu if biolog has a selection AND the click was
+    // inside the sequence area (not on a button or other control).
+    const a = (typeof caretAnchor === "number" && Number.isFinite(caretAnchor)) ? caretAnchor : null;
+    const f = (typeof caretPos === "number" && Number.isFinite(caretPos)) ? caretPos : null;
+    if (a == null || f == null || a === f) return; // no selection — let native menu show
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY });
+  };
+
+  const copySelection = (reverse) => {
+    const a = (typeof caretAnchor === "number" && Number.isFinite(caretAnchor)) ? caretAnchor : null;
+    const f = (typeof caretPos === "number" && Number.isFinite(caretPos)) ? caretPos : null;
+    if (a == null || f == null || a === f) return;
+    const start = Math.min(a, f);
+    const end = Math.max(a, f);
+    const slice = (fullSeq || "").slice(start, end);
+    if (!slice) return;
+    const text = reverse ? reverseComplement(slice) : slice;
+    try {
+      navigator.clipboard?.writeText?.(text);
+    } catch { /* clipboard unavailable — silently no-op */ }
+  };
+
+  // Close the context menu on any document click outside it. The
+  // menu container itself swallows its own clicks before they reach
+  // the document.
+  useEffect(() => {
+    if (!contextMenu) return undefined;
+    const close = () => setContextMenu(null);
+    const onKey = (e) => { if (e.key === "Escape") close(); };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [contextMenu]);
+
   // Click fallback for synthetic-event environments (happy-dom test
   // fixtures) and assistive tech that fires click without
   // pointerdown/up. Positions the caret at the click point + does
@@ -768,6 +816,7 @@ const SequenceView = forwardRef(function SequenceView({
       onPointerUp={onRootPointerUp}
       onPointerCancel={onRootPointerUp}
       onClick={onRootClickFallback}
+      onContextMenu={onRootContextMenu}
       data-testid="sequence-view-root"
       data-circular={circular ? "true" : "false"}
       data-chars-per-line={charsPerLine}
@@ -844,9 +893,72 @@ const SequenceView = forwardRef(function SequenceView({
         containerRef={containerRef}
         showBottomStrand={settings.showBottomStrand}
       />
+      {contextMenu && (
+        <div
+          data-testid="sequence-view-context-menu"
+          // Stop propagation so clicks INSIDE the menu don't bubble
+          // to the document mousedown listener that closes it.
+          onMouseDown={(e) => e.stopPropagation()}
+          style={{
+            position: "fixed",
+            left: contextMenu.x,
+            top: contextMenu.y,
+            background: "var(--surface-1, #fff)",
+            border: "0.5px solid var(--border-default, #d4d4d4)",
+            borderRadius: "var(--radius-md, 6px)",
+            boxShadow: "0 4px 16px rgba(0,0,0,0.15)",
+            padding: "4px 0",
+            minWidth: 220,
+            zIndex: 100,
+            fontSize: 12,
+            userSelect: "none",
+          }}
+        >
+          <MenuItem
+            label="Копировать (прямая цепь)"
+            shortcut="Ctrl+C"
+            onClick={() => { copySelection(false); setContextMenu(null); }}
+          />
+          <MenuItem
+            label="Копировать обратную цепь"
+            shortcut="Ctrl+Alt+C"
+            onClick={() => { copySelection(true); setContextMenu(null); }}
+          />
+        </div>
+      )}
     </div>
   );
 });
+
+function MenuItem({ label, shortcut, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        width: "100%",
+        padding: "6px 14px",
+        border: "none",
+        background: "transparent",
+        color: "var(--text-primary, #111)",
+        fontSize: 12,
+        textAlign: "left",
+        cursor: "pointer",
+        gap: 12,
+      }}
+      onMouseEnter={(e) => { e.currentTarget.style.background = "var(--surface-2, #f5f5f4)"; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+    >
+      <span>{label}</span>
+      <span style={{ color: "var(--text-tertiary, #999)", fontFamily: "var(--font-mono, monospace)", fontSize: 10 }}>
+        {shortcut}
+      </span>
+    </button>
+  );
+}
 
 /**
  * Imperative `scrollToPosition` handle. Importer-merge-tabs K1.
