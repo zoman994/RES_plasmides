@@ -702,6 +702,13 @@ const SequenceView = forwardRef(function SequenceView({
   // synthesises a click event which our fallback was treating as a
   // fresh click and collapsing the selection.
   const pointerMovedRef = useRef(false);
+  // Auto-scroll during drag — biolog 04.05.2026 evening: «когда тяну
+  // выделение мышью до низа экрана, не происходит скрола
+  // последовательности». Cache the last pointer coords so the rAF
+  // loop can re-extend selection as content scrolls under the
+  // (stationary) pointer.
+  const lastPointerCoordsRef = useRef(null);
+  const autoScrollRafRef = useRef(null);
   const posFromPointerEvent = (e) => {
     if (!seqLength || !charPx) return null;
     let el = e.target;
@@ -798,18 +805,61 @@ const SequenceView = forwardRef(function SequenceView({
     e.preventDefault();
   };
 
+  // Drag auto-scroll: when the pointer sits within EDGE_THRESHOLD
+  // pixels of the scroll container's top or bottom edge, scroll the
+  // container in that direction at SCROLL_SPEED px per frame and
+  // re-extend the selection on each tick (the pointer is stationary
+  // but the DOM underneath is moving). Stops when the pointer leaves
+  // the edge zone or the drag ends.
+  const stopAutoScroll = () => {
+    if (autoScrollRafRef.current != null) {
+      cancelAnimationFrame(autoScrollRafRef.current);
+      autoScrollRafRef.current = null;
+    }
+  };
+  const tickAutoScroll = (direction, scroller) => {
+    const EDGE_SPEED = 18; // px/frame — enough to keep up at typical line heights
+    scroller.scrollBy({ top: direction * EDGE_SPEED, behavior: "auto" });
+    // Re-extend selection at the (stationary) pointer's screen coords
+    // so the focus tracks newly-revealed lines under the cursor.
+    const last = lastPointerCoordsRef.current;
+    if (last && dragRef.current.active) {
+      const target = document.elementFromPoint(last.clientX, last.clientY) || last.target;
+      const synth = { clientX: last.clientX, clientY: last.clientY, target };
+      const pos = posFromPointerEvent(synth);
+      if (pos != null && typeof onCaretChange === "function") {
+        onCaretChange(pos, { extendSelection: true, needsScroll: false });
+      }
+    }
+    autoScrollRafRef.current = requestAnimationFrame(() => tickAutoScroll(direction, scroller));
+  };
+  const updateAutoScroll = (clientY) => {
+    if (!dragRef.current.active) { stopAutoScroll(); return; }
+    const scroller = findScrollingAncestor(containerRef.current);
+    if (!scroller) { stopAutoScroll(); return; }
+    let rect;
+    try { rect = scroller.getBoundingClientRect(); } catch { stopAutoScroll(); return; }
+    const EDGE_THRESHOLD = 28;
+    let direction = 0;
+    if (clientY < rect.top + EDGE_THRESHOLD) direction = -1;
+    else if (clientY > rect.bottom - EDGE_THRESHOLD) direction = +1;
+    if (direction === 0) { stopAutoScroll(); return; }
+    if (autoScrollRafRef.current != null) return; // already ticking
+    autoScrollRafRef.current = requestAnimationFrame(() => tickAutoScroll(direction, scroller));
+  };
+
   const onRootPointerMove = (e) => {
     if (!dragRef.current.active) return;
     if (dragRef.current.pointerId != null && e.pointerId !== dragRef.current.pointerId) return;
+    lastPointerCoordsRef.current = { clientX: e.clientX, clientY: e.clientY, target: e.target };
+    updateAutoScroll(e.clientY);
     const pos = posFromPointerEvent(e);
     if (pos == null) return;
     pointerMovedRef.current = true;
     // extendSelection:true → anchor stays at pointerdown spot, focus
     // (= caretPos) tracks the pointer. needsScroll:false during the
     // active drag — held down the cursor stays on screen by virtue
-    // of the user actively pointing at it, no auto-scroll needed
-    // (and auto-scrolling mid-drag would re-trigger pointermove
-    // and feedback-loop the selection).
+    // of the user actively pointing at it.
     onCaretChange(pos, { extendSelection: true, needsScroll: false });
   };
 
@@ -818,6 +868,8 @@ const SequenceView = forwardRef(function SequenceView({
     if (dragRef.current.pointerId != null && e.pointerId !== dragRef.current.pointerId) return;
     try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch { /* ignore */ }
     dragRef.current = { active: false, pointerId: null };
+    stopAutoScroll();
+    lastPointerCoordsRef.current = null;
     // pointerMovedRef stays set until the synthetic click event that
     // follows pointerup; onClickFallback reads it and resets it.
   };
