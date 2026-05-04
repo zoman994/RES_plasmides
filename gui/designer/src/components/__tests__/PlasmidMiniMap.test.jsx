@@ -59,4 +59,44 @@ describe('PlasmidMiniMap — intergenic track band', () => {
     const band = container.querySelector('[data-testid="plasmid-track-band"]');
     expect(band.getAttribute('fill')).toBe('none');
   });
+
+  // Biolog: «черную обводку им дай. её не хватает». The white track
+  // needs a thin dark contour on its inner + outer edges so it
+  // reads as a defined «channel» rather than a soft blob — the
+  // canonical plasmid-map silhouette.
+  it('circular track has TWO black rim circles (inner + outer)', () => {
+    const { container } = render(
+      <PlasmidMiniMap length={SEQ_LEN} topology="circular" annotations={ANNOTATIONS} size={120} />
+    );
+    const rims = container.querySelectorAll('[data-testid="plasmid-track-rim"]');
+    expect(rims.length).toBe(2);
+    // Both must be circles (not lines) for the circular case.
+    for (const rim of rims) expect(rim.tagName.toLowerCase()).toBe('circle');
+    // Different radii — inner < outer.
+    const radii = Array.from(rims).map((r) => Number(r.getAttribute('r'))).sort((a, b) => a - b);
+    expect(radii[0]).toBeLessThan(radii[1]);
+  });
+
+  it('linear track has TWO black rim lines (top + bottom)', () => {
+    const { container } = render(
+      <PlasmidMiniMap length={SEQ_LEN} topology="linear" annotations={ANNOTATIONS} size={120} />
+    );
+    const rims = container.querySelectorAll('[data-testid="plasmid-track-rim"]');
+    expect(rims.length).toBe(2);
+    for (const rim of rims) expect(rim.tagName.toLowerCase()).toBe('line');
+    // Different y values — top above, bottom below.
+    const ys = Array.from(rims).map((r) => Number(r.getAttribute('y1'))).sort((a, b) => a - b);
+    expect(ys[0]).toBeLessThan(ys[1]);
+  });
+
+  it('rims have no fill and a non-zero stroke-width', () => {
+    const { container } = render(
+      <PlasmidMiniMap length={SEQ_LEN} topology="circular" annotations={ANNOTATIONS} size={120} />
+    );
+    const rims = container.querySelectorAll('[data-testid="plasmid-track-rim"]');
+    for (const rim of rims) {
+      expect(rim.getAttribute('fill') === 'none' || !rim.getAttribute('fill')).toBe(true);
+      expect(Number(rim.getAttribute('stroke-width'))).toBeGreaterThan(0);
+    }
+  });
 });

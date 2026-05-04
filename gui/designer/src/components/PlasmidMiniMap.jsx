@@ -568,20 +568,50 @@ function PlasmidMiniMap({
             strokeWidth={strokeWidth}
           />
         )}
-        {/* Thin backbone hairline kept as a subtle inner line so the
-            track edge has a definite contour. */}
+        {/* Sprint M-X.3 follow-up — biolog «чёрную обводку им дай.
+            Её не хватает». Two thin dark rims bound the track band's
+            inner + outer edges so the channel reads as a defined
+            silhouette rather than a soft blob. Rims sit at
+            ±strokeWidth/2 from the band centre — exactly the band's
+            outer pixel boundary. */}
         {isCircular ? (
-          <circle
-            cx={cx} cy={cy} r={r} fill="none"
-            style={{ stroke: 'var(--border-default, #d6d3d1)' }}
-            strokeWidth={0.5} opacity={0.6}
-          />
+          <>
+            <circle
+              data-testid="plasmid-track-rim"
+              cx={cx} cy={cy} r={r - strokeWidth / 2}
+              fill="none"
+              stroke="var(--text-primary, #1c1917)"
+              strokeWidth={0.6}
+              opacity={0.85}
+            />
+            <circle
+              data-testid="plasmid-track-rim"
+              cx={cx} cy={cy} r={r + strokeWidth / 2}
+              fill="none"
+              stroke="var(--text-primary, #1c1917)"
+              strokeWidth={0.6}
+              opacity={0.85}
+            />
+          </>
         ) : (
-          <line
-            x1={4} y1={cy} x2={size - 4} y2={cy}
-            style={{ stroke: 'var(--border-default, #d6d3d1)' }}
-            strokeWidth={0.5} opacity={0.6}
-          />
+          <>
+            <line
+              data-testid="plasmid-track-rim"
+              x1={4} y1={cy - strokeWidth / 2}
+              x2={size - 4} y2={cy - strokeWidth / 2}
+              stroke="var(--text-primary, #1c1917)"
+              strokeWidth={0.6}
+              opacity={0.85}
+            />
+            <line
+              data-testid="plasmid-track-rim"
+              x1={4} y1={cy + strokeWidth / 2}
+              x2={size - 4} y2={cy + strokeWidth / 2}
+              stroke="var(--text-primary, #1c1917)"
+              strokeWidth={0.6}
+              opacity={0.85}
+            />
+          </>
         )}
         {paths}
         {labels.map((l) => (
