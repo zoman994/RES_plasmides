@@ -70,6 +70,15 @@ export const orfScanPlugin = {
   },
 };
 
+// Sprint M-X.2 K9-fix (post-K10 review): plugins are now run with
+// a FIXED minimum-confidence threshold (`PLUGIN_MIN_THRESHOLD`)
+// so the slider in the Annotator UI is the *single* filter point.
+// Pre-fix the slider was a double filter — moving it down didn't
+// reveal previously-skipped hits (the plugin was called with the
+// slider value as a hard cutoff). Now run() over-fetches; the
+// render layer respects the slider live.
+const PLUGIN_MIN_THRESHOLD = 0.5;
+
 export const sigma70PromoterPlugin = {
   id: 'sigma70-promoter',
   name: 'σ70 promoter (PWM)',
@@ -80,12 +89,13 @@ export const sigma70PromoterPlugin = {
     speedHint: 'fast',
   },
   isAvailable: () => true,
-  run: async (sequence, region, options = {}) => {
+  run: async (sequence, region, _options = {}) => {
     const t0 = Date.now();
     const { sub, offset } = maybeSlice(sequence, region);
-    const threshold = typeof options.threshold === 'number' ? options.threshold : 0.7;
-    const out = detectPromotersSigma70(sub, threshold);
-    return buildResult('sigma70-promoter', sigma70PromoterPlugin.name, shiftRegions(out, offset), { threshold, region }, t0);
+    // Always over-fetch — slider does the user-visible filter at
+    // render time so dragging it is instant (no re-run).
+    const out = detectPromotersSigma70(sub, PLUGIN_MIN_THRESHOLD);
+    return buildResult('sigma70-promoter', sigma70PromoterPlugin.name, shiftRegions(out, offset), { threshold: PLUGIN_MIN_THRESHOLD, region }, t0);
   },
 };
 
@@ -99,12 +109,13 @@ export const stemLoopTerminatorPlugin = {
     speedHint: 'fast',
   },
   isAvailable: () => true,
-  run: async (sequence, region, options = {}) => {
+  run: async (sequence, region, _options = {}) => {
     const t0 = Date.now();
     const { sub, offset } = maybeSlice(sequence, region);
-    const threshold = typeof options.threshold === 'number' ? options.threshold : 0.7;
-    const out = detectTerminatorsStemLoop(sub, threshold);
-    return buildResult('stem-loop-terminator', stemLoopTerminatorPlugin.name, shiftRegions(out, offset), { threshold, region }, t0);
+    // Same single-filter-point rule as sigma70-promoter — plugin
+    // over-fetches, slider filters at render.
+    const out = detectTerminatorsStemLoop(sub, PLUGIN_MIN_THRESHOLD);
+    return buildResult('stem-loop-terminator', stemLoopTerminatorPlugin.name, shiftRegions(out, offset), { threshold: PLUGIN_MIN_THRESHOLD, region }, t0);
   },
 };
 

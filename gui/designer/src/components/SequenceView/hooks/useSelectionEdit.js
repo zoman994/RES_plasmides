@@ -34,6 +34,50 @@
 
 import { useCallback, useState } from 'react';
 
+/**
+ * Resolve a viewport-coords anchor for the CreateAnnotationPopup
+ * near the right edge of the selection's end line. We probe each
+ * mounted SequenceLine for `data-line-start` and pick the one
+ * containing `selEnd`; the popup is anchored at the line's right
+ * edge plus a small offset, with a fallback to the viewer's top-
+ * left corner if no line matches (empty viewer / not measured yet).
+ *
+ * Sprint M-X.2 K9-fix (04.05.2026 evening review): the original
+ * implementation hard-coded `containerRef.left + 80, top + 80`,
+ * which rendered the popup in the viewer's top-left regardless of
+ * where the biolog made the selection — confusing because the
+ * popup didn't appear near where the eye was.
+ */
+export function computePopupAnchor(root, selEnd) {
+  if (!root) return { x: 80, y: 80 };
+  let rect;
+  try { rect = root.getBoundingClientRect(); } catch { return { x: 80, y: 80 }; }
+  const fallback = { x: rect.left + 80, y: rect.top + 80 };
+  if (typeof selEnd !== 'number' || !Number.isFinite(selEnd)) return fallback;
+  const lines = root.querySelectorAll('[data-testid="sequence-view-line"]');
+  if (!lines || lines.length === 0) return fallback;
+  let target = null;
+  let lastStart = -1;
+  for (const el of lines) {
+    const start = parseInt(el.dataset.lineStart || '', 10);
+    if (Number.isNaN(start)) continue;
+    if (start <= selEnd && start > lastStart) {
+      lastStart = start;
+      target = el;
+    }
+  }
+  if (!target) return fallback;
+  let lineRect;
+  try { lineRect = target.getBoundingClientRect(); } catch { return fallback; }
+  // Anchor at the line's right edge plus a small horizontal gap so
+  // the popup doesn't overlap the DNA letters; vertically centred
+  // on the line so the form sits next to the selection.
+  return {
+    x: lineRect.right + 8,
+    y: lineRect.top,
+  };
+}
+
 function isFormElement(target) {
   if (!target || !target.tagName) return false;
   const tag = target.tagName;
@@ -43,16 +87,40 @@ function isFormElement(target) {
 }
 
 /**
- * Find the region whose [start, end) exactly matches the
- * selection range. Returns null if no exact match.
+ * Find the region the current selection refers to. Two-pass:
+ *   1. Exact match (selStart === region.start && selEnd === region.end) —
+ *      the canonical case from a feature click.
+ *   2. Selection that fully covers a region (selStart ≤ region.start
+ *      AND selEnd ≥ region.end). Tolerates the «shift+arrow nudged
+ *      the selection by 1 nt» scenario without slipping into the
+ *      slippery-slope «delete every region inside the selection».
+ *
+ * If the second pass finds multiple covered regions, the smallest
+ * is returned (least surprising — biolog probably aimed at the
+ * tight feature, not its parent operon).
+ *
+ * Sprint M-X.2 K9-fix (post-K10 review): pre-fix required EXACT
+ * coord equality, so a Del after shift+arrow extending the
+ * selection by 1 nt was a no-op — biolog: «Del не работает».
  */
-function findRegionExact(annotations, selStart, selEnd) {
+function findRegionForSelection(annotations, selStart, selEnd) {
   if (!Array.isArray(annotations)) return null;
+  // Exact match first — most common case.
   for (const a of annotations) {
     if (!a || a.level !== 'region') continue;
     if (a.start === selStart && a.end === selEnd) return a;
   }
-  return null;
+  // Cover match — pick the smallest covered region.
+  let best = null;
+  let bestLen = Infinity;
+  for (const a of annotations) {
+    if (!a || a.level !== 'region') continue;
+    if (selStart <= a.start && selEnd >= a.end) {
+      const len = a.end - a.start;
+      if (len < bestLen) { best = a; bestLen = len; }
+    }
+  }
+  return best;
 }
 
 export function useSelectionEdit({
@@ -80,7 +148,7 @@ export function useSelectionEdit({
     const selEnd = Math.max(a, f);
 
     if (e.key === 'Delete' || e.key === 'Backspace') {
-      const region = findRegionExact(annotations, selStart, selEnd);
+      const region = findRegionForSelection(annotations, selStart, selEnd);
       if (!region) return false; // selection not aligned to a region — no-op
       e.preventDefault();
       onAnnotationEdit?.({ kind: 'delete', id: region.id });
@@ -89,25 +157,15 @@ export function useSelectionEdit({
 
     if (e.key === 'h' || e.key === 'H' || e.key === 'р' || e.key === 'Р') {
       // 'h' / 'H' (Latin) + 'р' / 'Р' (Cyrillic, same physical key
-      // on Russian layout) — biolog 04.05.2026: Russian layout
-      // means 'h' is рендер'd as Cyrillic «р», so accept both
-      // characters for the same hotkey just like Ctrl+C uses
-      // e.code. Plain alpha keys give us e.key but not a stable
-      // physical mapping when typing without modifiers, so we
-      // accept both characters.
+      // on Russian layout). Plain alpha keys give us e.key but not
+      // a stable physical mapping without modifiers — accept both.
       e.preventDefault();
-      const root = containerRef?.current;
-      // Anchor the popup near the right edge of the selection by
-      // probing the per-line caret column for the selection's end.
-      // Cheap approximation: use containerRef bounding rect + a
-      // fixed offset; the popup re-clamps inside the viewport.
-      let anchor = { x: 80, y: 80 };
-      try {
-        if (root) {
-          const r = root.getBoundingClientRect();
-          anchor = { x: r.left + 80, y: r.top + 80 };
-        }
-      } catch { /* noop */ }
+      // _ctxAnchor — synthesised when the create command comes
+      // from the right-click context menu (so the popup opens at
+      // the click location, not the line edge).
+      const anchor = e._ctxAnchor
+        ? e._ctxAnchor
+        : computePopupAnchor(containerRef?.current, selEnd);
       setCreatePopupState({
         selectionStart: selStart,
         selectionEnd: selEnd,
@@ -120,7 +178,7 @@ export function useSelectionEdit({
       // 'e' / 'E' Latin + Cyrillic 'у' / 'У' (same physical key on
       // Russian layout). E only triggers when selection covers a
       // region exactly — otherwise nothing to edit.
-      const region = findRegionExact(annotations, selStart, selEnd);
+      const region = findRegionForSelection(annotations, selStart, selEnd);
       if (!region) return false;
       e.preventDefault();
       setEditModalAnnotation(region);

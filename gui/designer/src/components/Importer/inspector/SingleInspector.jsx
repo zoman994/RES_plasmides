@@ -5,14 +5,15 @@ import TabBar from './tabs/TabBar';
 import OverviewTab from './tabs/OverviewTab';
 import SequenceTab from './tabs/SequenceTab';
 import LinearFeatureBar from './tabs/LinearFeatureBar';
-// AnnotationsTab removed from Importer (Importer-merge-tabs, 04.05.2026)
-// — Inspector is now read-only viewer territory. Annotation EDITING
-// moves to a dedicated future Annotator module per the «не смешивай»
-// architecture decision. The LinearFeatureBar «колбаса» now lives at
-// the SingleInspector level (not inside SequenceTab) — always visible
-// regardless of active tab; click on a feature auto-switches to the
-// sequence tab and scrolls SequenceView to that feature's start.
-// TagsEditor moved out of the title row into MetaColumn (right rail).
+// AnnotationsTab re-introduced in Sprint M-X.2 K9-fix as the
+// full-plasmid Annotator entry point. The tab still renders the
+// legacy table-style AnnotationEditor (so biolog can scan / sort
+// existing annotations), but the dominant CTA is the «🔍 Аннотатор»
+// button which opens the fullscreen orchestrator (DEC-ANN-03).
+// LinearFeatureBar stays at SingleInspector level — always visible,
+// regardless of active tab; clicking a feature auto-switches to
+// Sequence and scrolls.
+import AnnotationsTab from './tabs/AnnotationsTab';
 import HistoryTab from './tabs/HistoryTab';
 import { getRegions } from '../../../annotation-model';
 import { applyAnnotationEdit } from '../../../lib/annotation-edit.js';
@@ -144,10 +145,28 @@ export default function SingleInspector({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [itemKey, warmedTabs.has('sequence')]);
 
-  // Annotations pre-warm removed (Importer-merge-tabs, 04.05.2026) —
-  // there is no longer an annotations tab. Sequence pre-warm above
-  // remains; the LinearFeatureBar mounts as part of SequenceTab and
-  // doesn't need a separate idle slot.
+  // Annotations pre-warm — re-introduced 04.05.2026 evening with
+  // the «Аннотации» tab. Same chunked pattern as Sequence above:
+  // separate idle frame so the browser can paint between mounts.
+  useEffect(() => {
+    if (__PREWARM_DISABLED__) return undefined;
+    if (!itemKey) return undefined;
+    if (warmedTabs.has('annotations')) return undefined;
+    let cancelled = false;
+    const flush = () => {
+      if (cancelled) return;
+      setWarmedTabs(prev => (prev.has('annotations') ? prev : new Set([...prev, 'annotations'])));
+    };
+    const useRIC = typeof requestIdleCallback !== 'undefined';
+    const handle = useRIC
+      ? requestIdleCallback(flush, { timeout: 1500 })
+      : setTimeout(flush, 400);
+    return () => {
+      cancelled = true;
+      if (useRIC) cancelIdleCallback(handle); else clearTimeout(handle);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itemKey, warmedTabs.has('annotations')]);
 
   // Pending scroll request from the LinearFeatureBar (lives at
   // SingleInspector level). When the biolog clicks/drags on the
@@ -494,18 +513,34 @@ export default function SingleInspector({
             />
           </div>
         )}
-        {/* annotations tab block removed — see comment near
-            AnnotationsTab import above. */}
+        {isMounted('annotations') && (
+          <div style={visibilityStyle('annotations')}>
+            <AnnotationsTab
+              annotations={displayAnnotations}
+              seqLength={length}
+              onUpdateEdits={onUpdateEdits}
+              onOpenAnnotator={onOpenAnnotator}
+            />
+          </div>
+        )}
         {activeTab === 'history' && showHistory && (
           <HistoryTab commits={item.commits || []} />
         )}
       </div>
       {/*
         Sprint M-X.2 K9 — Annotator fullscreen overlay. Mounted
-        unconditionally; the component returns null when
-        annotator.open is false (zero render cost). Mounted INSIDE
-        the inspector so it has direct access to the displayed
+        INSIDE the inspector for direct access to the displayed
         item's sequence + annotations + onUpdateEdits flow.
+
+        TD-ANNOTATOR-MOUNT (post-K10 review): the spec K8 step
+        called for «Root mount в App.jsx» so the Annotator can be
+        re-used from the future M-D Container Window without
+        Importer in the path. Lifting requires either Context or
+        a store-level «active target» registration; deferred to
+        M-D Container Window kickoff so we can pick the right
+        boundary once the second consumer exists. Until then this
+        mount works fine for the Importer pathway (the only one
+        biolog reaches today).
       */}
       {annotatorOpen && (
         <Annotator

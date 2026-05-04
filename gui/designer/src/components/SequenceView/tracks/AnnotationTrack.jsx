@@ -252,11 +252,53 @@ function AnnotationTrack({
             (strand === 1 && endsHere) || (strand === -1 && startsHere);
 
           // Drag-handle overlay state — when this region is being
-          // dragged, render a translucent preview at the new coords.
+          // dragged, render a translucent live-preview rect at the
+          // NEW coords (bottom orange outline). Original rect stays
+          // dim (opacity 0.4) so biolog sees both before/after.
           const isBeingDragged = region.id && draggedAnnotationId === region.id;
           const showLeftHandle = startsHere && typeof onPointerDownEdge === 'function';
           const showRightHandle = endsHere && typeof onPointerDownEdge === 'function';
           const HANDLE_WIDTH = 6;
+
+          // Live preview rect: while dragging, project the moving
+          // edge onto the current line and draw a faint accent outline
+          // showing where the new region would be after pointerup.
+          let previewRect = null;
+          if (
+            isBeingDragged
+            && Number.isFinite(draggedCurrentCoord)
+            && draggedEdge === 'left'
+          ) {
+            const newStart = draggedCurrentCoord;
+            const fromAbs = Math.max(newStart, lineStart);
+            const toAbs = Math.min(region.end, lineEnd);
+            if (toAbs > fromAbs) {
+              previewRect = {
+                x: (fromAbs - lineStart) * charPx, // relative to <g> translate
+                width: (toAbs - fromAbs) * charPx,
+              };
+            }
+          } else if (
+            isBeingDragged
+            && Number.isFinite(draggedCurrentCoord)
+            && draggedEdge === 'right'
+          ) {
+            const newEnd = draggedCurrentCoord;
+            const fromAbs = Math.max(region.start, lineStart);
+            const toAbs = Math.min(newEnd, lineEnd);
+            if (toAbs > fromAbs) {
+              previewRect = {
+                x: (fromAbs - lineStart) * charPx,
+                width: (toAbs - fromAbs) * charPx,
+              };
+            }
+          }
+          // Convert the relative offset into the SAME `<g>`'s
+          // local coords by subtracting the rect's xLeft origin
+          // (the <g> is translated by xLeft already).
+          if (previewRect) {
+            previewRect.x = previewRect.x - (visStart - lineStart) * charPx;
+          }
 
           return (
             <g
@@ -279,7 +321,7 @@ function AnnotationTrack({
               data-region-source={region.source || undefined}
               data-dragged={isBeingDragged ? "true" : undefined}
               transform={`translate(${xLeft}, ${yTop})`}
-              style={{ cursor: "pointer", opacity: isBeingDragged ? 0.7 : 1 }}
+              style={{ cursor: "pointer", opacity: isBeingDragged ? 0.4 : 1 }}
               onDoubleClick={(e) => {
                 if (typeof onAnnotationDoubleClick !== 'function') return;
                 e.stopPropagation();
@@ -341,6 +383,22 @@ function AnnotationTrack({
                 >
                   {displayLabel}
                 </text>
+              ) : null}
+              {previewRect ? (
+                <rect
+                  data-testid="sequence-view-annotation-preview"
+                  data-region-edge={draggedEdge}
+                  x={previewRect.x}
+                  y={0}
+                  width={previewRect.width}
+                  height={ROW_HEIGHT}
+                  rx={2}
+                  fill="rgba(249, 115, 22, 0.18)"
+                  stroke="var(--accent-500, #f97316)"
+                  strokeWidth={1}
+                  strokeDasharray="3,2"
+                  style={{ pointerEvents: "none" }}
+                />
               ) : null}
               {showLeftHandle ? (
                 <rect

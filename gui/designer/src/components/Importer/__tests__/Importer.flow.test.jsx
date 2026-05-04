@@ -126,9 +126,10 @@ describe('M-B.2 K1 — Importer single-screen flow', () => {
       expect(screen.getByTestId('importer-fullscreen').dataset.activeTab).toBe('sequence');
     });
     expect(screen.getByTestId('importer-tab-panel-sequence')).toBeTruthy();
-    // Annotations tab no longer exists in the bar.
-    expect(screen.queryByTestId('importer-tab-annotations')).toBeNull();
-    expect(screen.queryByTestId('importer-tab-panel-annotations')).toBeNull();
+    // Annotations tab IS back as the Annotator entry point
+    // (Sprint M-X.2 K9-fix). Body still respects the lazy-mount
+    // pattern — only mounts when active.
+    expect(screen.getByTestId('importer-tab-annotations')).toBeTruthy();
 
     fireEvent.click(screen.getByTestId('importer-tab-overview'));
     await waitFor(() => {

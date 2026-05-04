@@ -140,9 +140,13 @@ describe('M-B.2 K4 — lazy-tabs (Importer-merge-tabs revision)', () => {
     expect(screen.queryByTestId('importer-tab-history')).toBeNull();
   });
 
-  it('6) annotations tab is no longer in TabBar (regression — Importer-merge-tabs)', () => {
+  it('6) annotations tab IS in TabBar (Sprint M-X.2 K9-fix re-introduction as Annotator entry point)', () => {
     const { Wrapper } = harness({ activeTab: 'overview' });
     render(<Wrapper tab="overview" />);
-    expect(screen.queryByTestId('importer-tab-annotations')).toBeNull();
+    // Tab is back in the TabBar — but its body stays unmounted on
+    // Overview (lazy-mount preserved). It only mounts when biolog
+    // navigates to it; even then the dominant CTA is the Annotator
+    // entry button, not the legacy table editor.
+    expect(screen.getByTestId('importer-tab-annotations')).toBeTruthy();
   });
 });

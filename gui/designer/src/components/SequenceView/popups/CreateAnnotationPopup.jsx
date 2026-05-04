@@ -220,31 +220,44 @@ export default function CreateAnnotationPopup({
       {error ? (
         <div data-testid="sequence-view-create-annotation-error" style={{ color: 'var(--accent-warn, #c2410c)', fontSize: 11 }}>{error}</div>
       ) : null}
-      <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 4 }}>
+      {/*
+        DEC-ANN-03 explicit equal-weight buttons. Cancel sits
+        flush-left, Find/Create sit flush-right with a generous
+        12 px gap between them so the biolog can't accidentally
+        click one when aiming at the other (post-K10 review
+        04.05.2026 evening).
+      */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
         <PopupButton onClick={onCancel} data-testid="sequence-view-create-annotation-cancel">
           {S.createCancel}
         </PopupButton>
-        <PopupButton onClick={handleOpenAnnotator} data-testid="sequence-view-create-annotation-open-annotator">
-          {S.createOpenAnnotator}
-        </PopupButton>
-        <PopupButton onClick={handleCreate} primary data-testid="sequence-view-create-annotation-submit">
-          {S.createSubmit}
-        </PopupButton>
+        <div style={{ display: 'flex', gap: 12 }}>
+          <PopupButton onClick={handleOpenAnnotator} data-testid="sequence-view-create-annotation-open-annotator">
+            {S.createOpenAnnotator}
+          </PopupButton>
+          <PopupButton onClick={handleCreate} data-testid="sequence-view-create-annotation-submit">
+            {S.createSubmit}
+          </PopupButton>
+        </div>
       </div>
     </div>
   );
 }
 
-function PopupButton({ onClick, children, primary, ...rest }) {
+function PopupButton({ onClick, children, ...rest }) {
+  // All three buttons render with the same neutral styling
+  // (DEC-ANN-03: «равноправная кнопка»). No primary-orange CTA —
+  // biolog should choose between Create / Find based on the task,
+  // not visual hierarchy.
   return (
     <button
       type="button"
       onClick={onClick}
       style={{
-        padding: '4px 10px',
+        padding: '5px 12px',
         border: '0.5px solid var(--border-default, #d4d4d4)',
-        background: primary ? 'var(--accent-500, #f97316)' : 'var(--surface-1, #fff)',
-        color: primary ? '#fff' : 'var(--text-primary, #111)',
+        background: 'var(--surface-1, #fff)',
+        color: 'var(--text-primary, #111)',
         fontSize: 11,
         borderRadius: 'var(--radius-sm, 4px)',
         cursor: 'pointer',

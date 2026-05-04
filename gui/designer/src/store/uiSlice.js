@@ -366,6 +366,15 @@ export const createUiSlice = (set) => ({
           visibleFrames: { ...state.sequenceView.visibleFrames },
           predictions: { ...state.sequenceView.predictions },
         });
+        // Sync into Annotator slice so the two threshold sliders
+        // stay in lockstep (post-K10 review fix).
+        if (sub === 'threshold' && state.annotator) {
+          state.annotator.threshold = value;
+          persistAnnotator({
+            enabledPluginIds: { ...state.annotator.enabledPluginIds },
+            threshold: value,
+          });
+        }
       });
       return;
     }
@@ -490,6 +499,24 @@ export const createUiSlice = (set) => ({
         enabledPluginIds: { ...state.annotator.enabledPluginIds },
         threshold: v,
       });
+      // Sync into the SequenceView Settings popover threshold so
+      // both surfaces stay in lockstep — biolog 04.05.2026 evening
+      // post-K10 review: «два независимых threshold'а UX-confusing»
+      // (DEC-ANN-07 risk #6). When uiSlice has both slices loaded
+      // (the normal case) we mirror; if sequenceView is missing
+      // (test isolation) we just skip.
+      if (state.sequenceView && state.sequenceView.predictions) {
+        // Settings popover lives in [0.5, 1.0] only — clamp to that
+        // range so the popover slider doesn't jump to a value it
+        // can't display.
+        const popoverV = Math.max(0.5, Math.min(1.0, v));
+        state.sequenceView.predictions.threshold = popoverV;
+        persistSequenceView({
+          ...state.sequenceView,
+          visibleFrames: { ...state.sequenceView.visibleFrames },
+          predictions: { ...state.sequenceView.predictions },
+        });
+      }
     });
   },
 

@@ -23,7 +23,7 @@
  * purely a controlled view + dispatch surface.
  */
 
-import { useEffect, useMemo } from 'react';
+import { useMemo } from 'react';
 import { useStore } from '../../store';
 import { selectAnnotator } from '../../store/uiSlice.js';
 import { STRINGS } from '../../lib/strings';
@@ -51,10 +51,6 @@ export default function Annotator({
   const editPendingRegion = useStore((s) => s.editPendingRegion);
 
   const plugins = useMemo(() => getAllPlugins(), []);
-
-  // Don't mount any subscribed effects when closed — the wrapper
-  // already conditionally renders based on annotator.open.
-  useEffect(() => { /* no-op effect placeholder for K10 hooks */ }, []);
 
   const seqLength = (sequence || '').length;
   const scope = annotator.scope;

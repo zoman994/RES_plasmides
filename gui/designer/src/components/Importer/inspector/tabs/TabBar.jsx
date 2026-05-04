@@ -23,6 +23,13 @@ export default function TabBar({ activeTab, onChange, showHistory = false }) {
   const tabs = [
     { id: 'overview', label: S.tabOverview },
     { id: 'sequence', label: S.tabSequence },
+    // Re-introduced in Sprint M-X.2 K9-fix (04.05.2026 evening review):
+    // the «Аннотации» tab is back — but its sole purpose now is the
+    // entry point into the new Annotator (DEC-ANN-08). The legacy
+    // table-style AnnotationEditor still renders there as the visual
+    // layer for current annotations; the dominant CTA is the
+    // 🔍 Аннотатор button which opens the fullscreen orchestrator.
+    { id: 'annotations', label: S.tabAnnotations },
   ];
   if (showHistory) tabs.push({ id: 'history', label: S.tabHistory });
 

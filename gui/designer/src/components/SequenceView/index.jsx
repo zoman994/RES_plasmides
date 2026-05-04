@@ -366,6 +366,7 @@ const SequenceView = forwardRef(function SequenceView({
   const draggedAnnotationId = annDrag.draggedAnnotationId;
   const draggedEdge = annDrag.draggedEdge;
   const draggedCurrentCoord = annDrag.currentCoord;
+  const dragTooltip = annDrag.tooltip;
 
   // K5 — inline rename on double-click. Only wired when consumer
   // supplied onAnnotationEdit; otherwise the doubleclick handler
@@ -539,13 +540,23 @@ const SequenceView = forwardRef(function SequenceView({
             key: "create",
             label: ANN_EDIT_STRINGS.contextMenuCreateRegion,
             onClick: () => {
+              const menuX = contextMenu.x;
+              const menuY = contextMenu.y;
               setContextMenu(null);
-              const fakeEvent = { key: "h", preventDefault: () => {} };
-              // Open create popup directly via the same pathway as
-              // the H key — we already have selStart/selEnd in
-              // hand from the menu state, so synthesize through
-              // useSelectionEdit by re-invoking handleKeyDown.
-              onEditKeyDown(fakeEvent);
+              // Open the create popup at the menu's last position
+              // (where the biolog right-clicked) instead of
+              // synthesizing an H-key dispatch — that route would
+              // anchor the popup near the line's right edge,
+              // which is far from where the cursor was. Direct
+              // call into useSelectionEdit's setter would be
+              // cleaner; until that surface is exposed, the H
+              // pathway falls back to the line-edge anchor which
+              // is still better than the corner.
+              onEditKeyDown({
+                key: "h",
+                preventDefault: () => {},
+                _ctxAnchor: { x: menuX, y: menuY },
+              });
             },
           });
           if (matchedRegion) {
@@ -619,6 +630,26 @@ const SequenceView = forwardRef(function SequenceView({
           onCancel={renameApi.cancelRename}
         />
       )}
+      {dragTooltip ? (
+        <div
+          data-testid="sequence-view-drag-tooltip"
+          style={{
+            position: "fixed",
+            left: dragTooltip.x,
+            top: dragTooltip.y,
+            background: "var(--surface-1, #fff)",
+            border: "0.5px solid var(--accent-500, #f97316)",
+            borderRadius: "var(--radius-sm, 3px)",
+            padding: "2px 6px",
+            fontSize: 10,
+            fontFamily: "var(--font-mono, monospace)",
+            color: "var(--text-primary, #111)",
+            boxShadow: "0 2px 6px rgba(0,0,0,0.18)",
+            pointerEvents: "none",
+            zIndex: 50,
+          }}
+        >{dragTooltip.label}</div>
+      ) : null}
     </div>
   );
 });
