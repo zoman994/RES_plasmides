@@ -1148,6 +1148,7 @@ const SequenceView = forwardRef(function SequenceView({
         charsPerLine={charsPerLine}
         containerRef={containerRef}
         showBottomStrand={settings.showBottomStrand}
+        selectionMode={selectionMode}
       />
       <CaretOverlay
         caretPos={caretPos}
@@ -1201,24 +1202,24 @@ const SequenceView = forwardRef(function SequenceView({
             shortcut="Ctrl+Alt+C"
             onClick={() => { copySelection("reverse"); setContextMenu(null); }}
           />
-          {selectionMode === "aa" && (
-            <MenuItem
-              label="Копировать аминокислоты"
-              shortcut="Ctrl+Shift+C"
-              onClick={() => { copySelection("aa"); setContextMenu(null); }}
-            />
-          )}
+          <MenuItem
+            label="Копировать аминокислоты"
+            shortcut="Ctrl+Shift+C"
+            disabled={selectionMode !== "aa"}
+            onClick={() => { copySelection("aa"); setContextMenu(null); }}
+          />
         </div>
       )}
     </div>
   );
 });
 
-function MenuItem({ label, shortcut, onClick }) {
+function MenuItem({ label, shortcut, onClick, disabled }) {
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={disabled ? undefined : onClick}
+      disabled={!!disabled}
       style={{
         display: "flex",
         alignItems: "center",
@@ -1227,17 +1228,26 @@ function MenuItem({ label, shortcut, onClick }) {
         padding: "6px 14px",
         border: "none",
         background: "transparent",
-        color: "var(--text-primary, #111)",
+        // Disabled state — biolog 04.05.2026 evening: «когда
+        // выделяешь ДНК просто скопировать АК делать неактивную
+        // при нажатии правой кнопки мыши». Item stays in the
+        // menu (so biolog learns the hotkey lives there) but
+        // greyed out + non-clickable.
+        color: disabled ? "var(--text-tertiary, #999)" : "var(--text-primary, #111)",
         fontSize: 12,
         textAlign: "left",
-        cursor: "pointer",
+        cursor: disabled ? "not-allowed" : "pointer",
         gap: 12,
       }}
-      onMouseEnter={(e) => { e.currentTarget.style.background = "var(--surface-2, #f5f5f4)"; }}
-      onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+      onMouseEnter={disabled ? undefined : (e) => { e.currentTarget.style.background = "var(--surface-2, #f5f5f4)"; }}
+      onMouseLeave={disabled ? undefined : (e) => { e.currentTarget.style.background = "transparent"; }}
     >
       <span>{label}</span>
-      <span style={{ color: "var(--text-tertiary, #999)", fontFamily: "var(--font-mono, monospace)", fontSize: 10 }}>
+      <span style={{
+        color: disabled ? "var(--text-tertiary, #bbb)" : "var(--text-tertiary, #999)",
+        fontFamily: "var(--font-mono, monospace)",
+        fontSize: 10,
+      }}>
         {shortcut}
       </span>
     </button>
@@ -1399,7 +1409,7 @@ function attachScrollHandle(ref, containerRef) {
  * selecting.
  */
 function SelectionOverlay({
-  caretPos, caretAnchor, charPx, charsPerLine, containerRef, showBottomStrand,
+  caretPos, caretAnchor, charPx, charsPerLine, containerRef, showBottomStrand, selectionMode,
 }) {
   const [rects, setRects] = useState([]);
   useLayoutEffect(() => {
@@ -1455,27 +1465,30 @@ function SelectionOverlay({
 
       // AA letter blocks (blue) — biolog 04.05.2026 evening: «можно
       // ещё добавить параллельный блок выделения на АА строке? чтобы
-      // явно было видно. синеватым как жёлтый у ДНК». Each visible
-      // AA frame row gets its own rect spanning the same DNA columns,
-      // independent of the numbering / wrapper margins so the block
-      // hugs the AA letters specifically.
-      const aaRows = el.querySelectorAll('[data-testid="sequence-view-aa-row"]');
-      for (const aaRow of aaRows) {
-        const aaTop = el.offsetTop + aaRow.offsetTop;
-        const aaHeight = aaRow.offsetHeight;
-        out.push({
-          left,
-          top: aaTop,
-          width,
-          height: aaHeight,
-          key: `${lineStart}:aa:${aaRow.dataset.aaLabel || aaRow.dataset.aaFrame || aaRows.length}-${aaTop}`,
-          kind: "aa",
-        });
+      // явно было видно. синеватым как жёлтый у ДНК». ONLY rendered
+      // when biolog explicitly selected an AA codon / CDS feature
+      // (selectionMode === 'aa') — biolog same session: «когда мы
+      // явно выделяем ДНК то на АК не должно появляться выделения».
+      // A plain DNA drag-select highlights only the DNA strands.
+      if (selectionMode === "aa") {
+        const aaRows = el.querySelectorAll('[data-testid="sequence-view-aa-row"]');
+        for (const aaRow of aaRows) {
+          const aaTop = el.offsetTop + aaRow.offsetTop;
+          const aaHeight = aaRow.offsetHeight;
+          out.push({
+            left,
+            top: aaTop,
+            width,
+            height: aaHeight,
+            key: `${lineStart}:aa:${aaRow.dataset.aaLabel || aaRow.dataset.aaFrame || aaRows.length}-${aaTop}`,
+            kind: "aa",
+          });
+        }
       }
     }
     setRects(out);
     return undefined;
-  }, [caretPos, caretAnchor, charPx, charsPerLine, containerRef, showBottomStrand]);
+  }, [caretPos, caretAnchor, charPx, charsPerLine, containerRef, showBottomStrand, selectionMode]);
 
   if (rects.length === 0) return null;
   return (
