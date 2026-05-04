@@ -15,7 +15,7 @@
  *    7) clicking 'All 6 frames' updates store + hides slider
  *    8) Reset button clears any prior overrides
  */
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 import SettingsPopover from "../SettingsPopover";
 import { useStore } from "../../../store";
@@ -196,6 +196,40 @@ describe("SettingsPopover — Sprint M-X.1 K5 integration", () => {
     const slider = screen.getByTestId("sequence-view-setting-predictions-threshold");
     fireEvent.change(slider, { target: { value: "0.85" } });
     expect(useStore.getState().sequenceView.predictions.threshold).toBe(0.85);
+  });
+});
+
+describe("Bug-rush #15 — outside click closes the popover", () => {
+  it("pointerdown OUTSIDE the popover (and outside trigger) calls onClose", () => {
+    const onClose = vi.fn();
+    render(
+      <div>
+        <SettingsPopover open onClose={onClose} />
+        <div data-testid="outside-target" style={{ width: 100, height: 100 }} />
+      </div>,
+    );
+    const outside = screen.getByTestId("outside-target");
+    fireEvent.pointerDown(outside);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("pointerdown INSIDE the popover does not close", () => {
+    const onClose = vi.fn();
+    render(<SettingsPopover open onClose={onClose} />);
+    const popover = screen.getByTestId("sequence-view-settings-popover");
+    fireEvent.pointerDown(popover);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("pointerdown on the trigger ref does not close (parent handles toggle)", () => {
+    const onClose = vi.fn();
+    const trigger = document.createElement("button");
+    document.body.appendChild(trigger);
+    const triggerRef = { current: trigger };
+    render(<SettingsPopover open onClose={onClose} triggerRef={triggerRef} />);
+    fireEvent.pointerDown(trigger);
+    expect(onClose).not.toHaveBeenCalled();
+    document.body.removeChild(trigger);
   });
 });
 

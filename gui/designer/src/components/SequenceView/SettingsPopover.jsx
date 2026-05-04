@@ -97,18 +97,28 @@ export default function SettingsPopover({ open, onClose, anchor, triggerRef }) {
     const onKey = (e) => {
       if (e.key === "Escape") onClose?.();
     };
-    const onMouseDown = (e) => {
-      if (popoverRef.current && !popoverRef.current.contains(e.target)) {
-        onClose?.();
-      }
+    // Bug-rush #15 (04.05.2026 evening): «окно настройки должно
+    // закрываться при клике вне окна». Pre-fix this listener was
+    // `mousedown` which gets suppressed when SequenceView's own
+    // pointerdown calls e.preventDefault() — the synthetic
+    // mousedown never fires, so clicks inside the sequence area
+    // never closed the popover. Switch to `pointerdown` (capture
+    // phase) so the listener wins regardless. Also exclude the
+    // trigger button explicitly: tapping the ⚙ should round-trip
+    // through the parent's toggle, not «outside-click close →
+    // toggle reopen».
+    const onOutsidePointer = (e) => {
+      if (popoverRef.current && popoverRef.current.contains(e.target)) return;
+      if (triggerRef && triggerRef.current && triggerRef.current.contains(e.target)) return;
+      onClose?.();
     };
     document.addEventListener("keydown", onKey);
-    document.addEventListener("mousedown", onMouseDown);
+    document.addEventListener("pointerdown", onOutsidePointer, true);
     return () => {
       document.removeEventListener("keydown", onKey);
-      document.removeEventListener("mousedown", onMouseDown);
+      document.removeEventListener("pointerdown", onOutsidePointer, true);
     };
-  }, [open, onClose]);
+  }, [open, onClose, triggerRef]);
 
   if (!open) return null;
 
