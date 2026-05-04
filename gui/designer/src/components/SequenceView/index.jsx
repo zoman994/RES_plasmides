@@ -1431,25 +1431,47 @@ function SelectionOverlay({
       if (lineEnd <= start || lineStart >= end) continue;
       const fromCh = Math.max(0, start - lineStart);
       const toCh = Math.min(cpl, end - lineStart);
-      const topStrand = el.querySelector('[data-testid="sequence-view-strands-top"]');
-      let top;
-      let height;
-      if (topStrand) {
-        const bottomStrand = el.querySelector('[data-testid="sequence-view-strands-bottom"]');
-        top = el.offsetTop + topStrand.offsetTop;
-        if (bottomStrand) {
-          const bottomY = el.offsetTop + bottomStrand.offsetTop + bottomStrand.offsetHeight;
-          height = bottomY - top;
-        } else {
-          height = topStrand.offsetHeight;
-        }
-      } else {
-        top = el.offsetTop;
-        height = Math.max(8, el.offsetHeight - 14);
-      }
       const left = (el.offsetLeft || 0) + (LABEL_WIDTH + fromCh) * charPx;
       const width = (toCh - fromCh) * charPx;
-      out.push({ left, top, width, height, key: lineStart });
+
+      // DNA strand block (orange) — top strand → bottom strand band.
+      const topStrand = el.querySelector('[data-testid="sequence-view-strands-top"]');
+      let dnaTop;
+      let dnaHeight;
+      if (topStrand) {
+        const bottomStrand = el.querySelector('[data-testid="sequence-view-strands-bottom"]');
+        dnaTop = el.offsetTop + topStrand.offsetTop;
+        if (bottomStrand) {
+          const bottomY = el.offsetTop + bottomStrand.offsetTop + bottomStrand.offsetHeight;
+          dnaHeight = bottomY - dnaTop;
+        } else {
+          dnaHeight = topStrand.offsetHeight;
+        }
+      } else {
+        dnaTop = el.offsetTop;
+        dnaHeight = Math.max(8, el.offsetHeight - 14);
+      }
+      out.push({ left, top: dnaTop, width, height: dnaHeight, key: `${lineStart}:dna`, kind: "dna" });
+
+      // AA letter blocks (blue) — biolog 04.05.2026 evening: «можно
+      // ещё добавить параллельный блок выделения на АА строке? чтобы
+      // явно было видно. синеватым как жёлтый у ДНК». Each visible
+      // AA frame row gets its own rect spanning the same DNA columns,
+      // independent of the numbering / wrapper margins so the block
+      // hugs the AA letters specifically.
+      const aaRows = el.querySelectorAll('[data-testid="sequence-view-aa-row"]');
+      for (const aaRow of aaRows) {
+        const aaTop = el.offsetTop + aaRow.offsetTop;
+        const aaHeight = aaRow.offsetHeight;
+        out.push({
+          left,
+          top: aaTop,
+          width,
+          height: aaHeight,
+          key: `${lineStart}:aa:${aaRow.dataset.aaLabel || aaRow.dataset.aaFrame || aaRows.length}-${aaTop}`,
+          kind: "aa",
+        });
+      }
     }
     setRects(out);
     return undefined;
@@ -1458,23 +1480,33 @@ function SelectionOverlay({
   if (rects.length === 0) return null;
   return (
     <>
-      {rects.map((r) => (
-        <div
-          key={r.key}
-          data-testid="sequence-view-selection"
-          style={{
-            position: "absolute",
-            left: r.left,
-            top: r.top,
-            width: r.width,
-            height: r.height,
-            background: "rgba(249, 115, 22, 0.22)",
-            outline: "0.5px solid rgba(0, 0, 0, 0.35)",
-            pointerEvents: "none",
-            zIndex: 4, // below caret (zIndex 5)
-          }}
-        />
-      ))}
+      {rects.map((r) => {
+        // DNA: warm orange tint matching the caret accent. AA: cool
+        // blue at similar alpha so the two highlights read as
+        // companions, not competitors (biolog 04.05.2026 evening:
+        // «синеватым как жёлтый у ДНК»).
+        const isAa = r.kind === "aa";
+        return (
+          <div
+            key={r.key}
+            data-testid={isAa ? "sequence-view-selection-aa" : "sequence-view-selection"}
+            data-selection-kind={r.kind}
+            style={{
+              position: "absolute",
+              left: r.left,
+              top: r.top,
+              width: r.width,
+              height: r.height,
+              background: isAa
+                ? "rgba(59, 130, 246, 0.22)"   // blue-500 @ 22%
+                : "rgba(249, 115, 22, 0.22)",  // orange-500 @ 22%
+              outline: "0.5px solid rgba(0, 0, 0, 0.35)",
+              pointerEvents: "none",
+              zIndex: 4, // below caret (zIndex 5)
+            }}
+          />
+        );
+      })}
     </>
   );
 }
