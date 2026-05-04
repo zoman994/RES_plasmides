@@ -27,7 +27,7 @@
  * configures.
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useStore } from "../../store";
 import {
   selectSequenceViewSettings,
@@ -44,13 +44,52 @@ const S = STRINGS.importer.sequenceView;
  * @param {() => void} props.onClose
  * @param {{ x: number, y: number }} [props.anchor] — viewport coords for
  *   the top-left corner of the popover (relative to a positioned ancestor).
+ * @param {{ current: HTMLElement | null }} [props.triggerRef] — optional
+ *   ref to the ⚙ button so the popover can re-anchor in viewport space
+ *   and clamp its max height to fit between trigger.bottom and the
+ *   viewport bottom (bug-rush #12 — biolog «окно с настройками теряется
+ *   за меню пуск»).
  */
-export default function SettingsPopover({ open, onClose, anchor }) {
+export default function SettingsPopover({ open, onClose, anchor, triggerRef }) {
   const settings = useStore(selectSequenceViewSettings);
   const setSetting = useStore((s) => s.setSequenceViewSetting);
   const setFrame = useStore((s) => s.setVisibleFrame);
   const reset = useStore((s) => s.resetSequenceViewSettings);
   const popoverRef = useRef(null);
+  const [viewportFit, setViewportFit] = useState(null); // { left, top, maxHeight } | null
+
+  // Bug-rush #12: when triggerRef is provided we render `position:
+  // fixed` based on the trigger's viewport rect and clamp maxHeight
+  // so the bottom of the popover never falls under the OS taskbar
+  // / browser bottom chrome. Recompute on open + window resize.
+  useLayoutEffect(() => {
+    if (!open) return undefined;
+    if (!triggerRef || !triggerRef.current) {
+      setViewportFit(null);
+      return undefined;
+    }
+    const recompute = () => {
+      const el = triggerRef.current;
+      if (!el) return;
+      let r;
+      try { r = el.getBoundingClientRect(); } catch { return; }
+      const SAFE_BOTTOM = 80; // taskbar + breathing room
+      const top = r.bottom + 4;
+      const maxH = Math.max(180, (window.innerHeight || 800) - top - SAFE_BOTTOM);
+      setViewportFit({
+        left: r.left,
+        top,
+        maxHeight: maxH,
+      });
+    };
+    recompute();
+    window.addEventListener('resize', recompute);
+    window.addEventListener('scroll', recompute, true);
+    return () => {
+      window.removeEventListener('resize', recompute);
+      window.removeEventListener('scroll', recompute, true);
+    };
+  }, [open, triggerRef]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -75,31 +114,47 @@ export default function SettingsPopover({ open, onClose, anchor }) {
   const isAuto = settings.framesMode === "auto";
   const showFrameCheckboxes = settings.framesMode !== "single";
   const visibleFrames = settings.visibleFrames || {};
-  const style = {
-    position: "absolute",
-    top: anchor?.y ?? 32,
-    left: anchor?.x ?? 0,
-    // Bumped 50 → 200 so the popover sits ABOVE the importer footer
-    // (ActionsBar / SessionSummary) — биолог 03.05.2026 evening:
-    // «нижняя часть выпадающего окна с настройками недоступна и
-    // скрывается под панелью».
-    zIndex: 200,
-    minWidth: 280,
-    maxWidth: 340,
-    // Cap height to viewport with internal scroll, so taller-than-screen
-    // popover content doesn't extend below the visible area. `42px`
-    // budget covers the topbar + sticky tab header above the popover
-    // anchor; `100px` covers the importer footer below.
-    maxHeight: "calc(100vh - 142px)",
-    overflowY: "auto",
-    background: "var(--surface-1, #ffffff)",
-    border: "0.5px solid var(--border-default, #d1d5db)",
-    borderRadius: "var(--radius-lg, 8px)",
-    boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
-    padding: 12,
-    fontSize: 12,
-    color: "var(--text-primary, #111827)",
-  };
+  const style = viewportFit
+    ? {
+      // Bug-rush #12: triggerRef-driven viewport-fixed placement so
+      // the popover top tracks the ⚙ button's screen position and
+      // the maxHeight stays inside the visible viewport regardless
+      // of OS chrome (Windows taskbar, browser footer).
+      position: "fixed",
+      top: viewportFit.top,
+      left: viewportFit.left,
+      zIndex: 200,
+      minWidth: 280,
+      maxWidth: 340,
+      maxHeight: viewportFit.maxHeight,
+      overflowY: "auto",
+      background: "var(--surface-1, #ffffff)",
+      border: "0.5px solid var(--border-default, #d1d5db)",
+      borderRadius: "var(--radius-lg, 8px)",
+      boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
+      padding: 12,
+      fontSize: 12,
+      color: "var(--text-primary, #111827)",
+    }
+    : {
+      // Legacy positioning — used by tests / fixtures that don't
+      // pass a triggerRef.
+      position: "absolute",
+      top: anchor?.y ?? 32,
+      left: anchor?.x ?? 0,
+      zIndex: 200,
+      minWidth: 280,
+      maxWidth: 340,
+      maxHeight: "calc(100vh - 142px)",
+      overflowY: "auto",
+      background: "var(--surface-1, #ffffff)",
+      border: "0.5px solid var(--border-default, #d1d5db)",
+      borderRadius: "var(--radius-lg, 8px)",
+      boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
+      padding: 12,
+      fontSize: 12,
+      color: "var(--text-primary, #111827)",
+    };
 
   return (
     <div

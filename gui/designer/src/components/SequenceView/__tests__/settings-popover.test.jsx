@@ -198,3 +198,29 @@ describe("SettingsPopover — Sprint M-X.1 K5 integration", () => {
     expect(useStore.getState().sequenceView.predictions.threshold).toBe(0.85);
   });
 });
+
+describe("Bug-rush #12 — popover anchored to triggerRef + clamped to viewport", () => {
+  it("uses position:fixed + viewport-clamped maxHeight when triggerRef is provided", () => {
+    // Mock the trigger button with a known viewport rect; the
+    // popover should anchor at trigger.bottom + 4 and cap its
+    // maxHeight to fit between top and viewport bottom minus the
+    // 80 px safety margin.
+    const trigger = document.createElement('button');
+    document.body.appendChild(trigger);
+    Object.defineProperty(trigger, 'getBoundingClientRect', {
+      value: () => ({ left: 50, top: 20, right: 70, bottom: 40, width: 20, height: 20 }),
+    });
+    const triggerRef = { current: trigger };
+    Object.defineProperty(window, 'innerHeight', { value: 600, configurable: true });
+    render(
+      <SettingsPopover open onClose={() => {}} triggerRef={triggerRef} />,
+    );
+    const popover = screen.getByTestId('sequence-view-settings-popover');
+    expect(popover.style.position).toBe('fixed');
+    expect(popover.style.top).toBe('44px');     // trigger.bottom (40) + 4
+    expect(popover.style.left).toBe('50px');    // trigger.left
+    // window.innerHeight (600) - top (44) - SAFE_BOTTOM (80) = 476
+    expect(popover.style.maxHeight).toBe('476px');
+    document.body.removeChild(trigger);
+  });
+});

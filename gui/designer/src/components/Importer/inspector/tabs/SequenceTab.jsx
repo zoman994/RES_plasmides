@@ -167,6 +167,7 @@ export default function SequenceTab({
             open={settingsOpen}
             onClose={() => setSettingsOpen(false)}
             anchor={{ x: 0, y: 30 }}
+            triggerRef={settingsButtonRef}
           />
         )}
       </div>
