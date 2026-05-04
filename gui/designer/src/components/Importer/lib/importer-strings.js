@@ -352,6 +352,10 @@ export const IMPORTER_STRINGS = {
   // ── Sprint M-X.3 follow-up — FeatureEditorModal (dblclick on a
   //    feature opens this instead of the Annotator). ────────────────
   featureEditorTitle: 'Edit feature',
+  featureEditorLevelRegion: 'Feature',
+  featureEditorLevelDetail: 'Sub-feature',
+  featureEditorTabFeature: 'Feature',
+  featureEditorTabSubfeatures: (n) => n > 0 ? `Subfeatures (${n})` : 'Subfeatures',
   featureEditorNameLabel: 'Name',
   featureEditorTypeLabel: 'Type',
   featureEditorCoordsLabel: 'Coordinates',
@@ -360,7 +364,6 @@ export const IMPORTER_STRINGS = {
   featureEditorStrandLabel: 'Strand',
   featureEditorStrandFwd: '+ (forward)',
   featureEditorStrandRev: '− (reverse)',
-  featureEditorOperationsLabel: 'Operations',
   featureEditorSplit: 'Split',
   featureEditorSplitHint: 'Add a sub-feature inside this region (e.g. exon, intron, signal peptide). Both halves stay one parent feature.',
   featureEditorSubfeaturesLabel: 'Sub-features',

@@ -179,6 +179,15 @@ describe('FeatureEditorModal — Save with edits', () => {
 });
 
 describe('FeatureEditorModal — Split sub-features / Merge / Delete', () => {
+  // Sprint M-X.3 follow-up — modal got two tabs: Feature (name /
+  // type / coords / strand / merge / delete) and Subfeatures
+  // (split + child list). Tests in this block switch to the
+  // Subfeatures tab before exercising the split UI.
+  function switchToSubfeaturesTab() {
+    const tab = screen.queryByTestId('feature-editor-tab-subfeatures');
+    if (tab) fireEvent.click(tab);
+  }
+
   it('Split button creates two sub-feature rows (parent halves)', () => {
     render(
       <FeatureEditorModal
@@ -186,6 +195,7 @@ describe('FeatureEditorModal — Split sub-features / Merge / Delete', () => {
         onSave={() => {}} onClose={() => {}} onMerge={() => {}} onDelete={() => {}}
       />
     );
+    switchToSubfeaturesTab();
     // Initially no sub-feature rows.
     expect(screen.queryAllByTestId('feature-editor-subfeature-row').length).toBe(0);
     fireEvent.click(screen.getByTestId('feature-editor-split'));
@@ -200,6 +210,7 @@ describe('FeatureEditorModal — Split sub-features / Merge / Delete', () => {
         onSave={() => {}} onClose={() => {}} onMerge={() => {}} onDelete={() => {}}
       />
     );
+    switchToSubfeaturesTab();
     fireEvent.click(screen.getByTestId('feature-editor-split'));
     const rows = screen.getAllByTestId('feature-editor-subfeature-row');
     expect(rows[0].querySelector('[data-testid="subfeature-name"]')).toBeTruthy();
@@ -216,6 +227,7 @@ describe('FeatureEditorModal — Split sub-features / Merge / Delete', () => {
         onSave={onSave} onClose={() => {}} onMerge={() => {}} onDelete={() => {}}
       />
     );
+    switchToSubfeaturesTab();
     fireEvent.click(screen.getByTestId('feature-editor-split'));
     fireEvent.click(screen.getByTestId('feature-editor-save'));
     expect(onSave).toHaveBeenCalledTimes(1);
@@ -237,6 +249,7 @@ describe('FeatureEditorModal — Split sub-features / Merge / Delete', () => {
         onSave={onSave} onClose={() => {}} onMerge={() => {}} onDelete={() => {}}
       />
     );
+    switchToSubfeaturesTab();
     fireEvent.click(screen.getByTestId('feature-editor-split'));
     const rows = screen.getAllByTestId('feature-editor-subfeature-row');
     const nameInput = rows[0].querySelector('[data-testid="subfeature-name"]');
@@ -254,6 +267,7 @@ describe('FeatureEditorModal — Split sub-features / Merge / Delete', () => {
         onSave={onSave} onClose={() => {}} onMerge={() => {}} onDelete={() => {}}
       />
     );
+    switchToSubfeaturesTab();
     fireEvent.click(screen.getByTestId('feature-editor-split'));
     const rows = screen.getAllByTestId('feature-editor-subfeature-row');
     // Edit second row's start to 501 (1-based) — store should see 500.
@@ -271,6 +285,7 @@ describe('FeatureEditorModal — Split sub-features / Merge / Delete', () => {
         onSave={() => {}} onClose={() => {}} onMerge={() => {}} onDelete={() => {}}
       />
     );
+    switchToSubfeaturesTab();
     fireEvent.click(screen.getByTestId('feature-editor-split'));
     expect(screen.getAllByTestId('feature-editor-subfeature-row')).toHaveLength(2);
     fireEvent.click(screen.getByTestId('feature-editor-split'));
@@ -284,11 +299,87 @@ describe('FeatureEditorModal — Split sub-features / Merge / Delete', () => {
         onSave={() => {}} onClose={() => {}} onMerge={() => {}} onDelete={() => {}}
       />
     );
+    switchToSubfeaturesTab();
     fireEvent.click(screen.getByTestId('feature-editor-split'));
     const rows = screen.getAllByTestId('feature-editor-subfeature-row');
     expect(rows).toHaveLength(2);
     fireEvent.click(rows[0].querySelector('[data-testid="subfeature-delete"]'));
     expect(screen.getAllByTestId('feature-editor-subfeature-row')).toHaveLength(1);
+  });
+
+  // Biolog: «ребёнка поделить нельзя же больше? Если можно — то
+  // надо чтобы нельзя». Sub-feature-level annotations don't get the
+  // Split / sub-features section in the modal — that path is reserved
+  // for top-level (region) features only.
+  it('opening the modal on a sub-feature (level: detail) hides the Split section', () => {
+    const subFeature = {
+      id: 'sub-1', name: 'sig-peptide', type: 'signal_peptide',
+      start: 100, end: 250, strand: 1,
+      level: 'detail', regionId: 'parent-1',
+    };
+    render(
+      <FeatureEditorModal
+        feature={subFeature} seqLength={5000} neighbours={[]}
+        onSave={() => {}} onClose={() => {}} onMerge={() => {}} onDelete={() => {}}
+      />
+    );
+    expect(screen.queryByTestId('feature-editor-split')).toBeNull();
+    expect(screen.queryAllByTestId('feature-editor-subfeature-row').length).toBe(0);
+  });
+
+  it('opening the modal on a region keeps the Subfeatures tab', () => {
+    render(
+      <FeatureEditorModal
+        feature={FEATURE} seqLength={5000} neighbours={[]}
+        onSave={() => {}} onClose={() => {}} onMerge={() => {}} onDelete={() => {}}
+      />
+    );
+    expect(screen.getByTestId('feature-editor-tab-subfeatures')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('feature-editor-tab-subfeatures'));
+    expect(screen.getByTestId('feature-editor-split')).toBeTruthy();
+  });
+
+  it('Sub-feature modal has NO Subfeatures tab (no nesting)', () => {
+    const subFeature = {
+      id: 'sub-1', name: 'sig', type: 'signal_peptide',
+      start: 100, end: 250, strand: 1, level: 'detail', regionId: 'parent-1',
+    };
+    render(
+      <FeatureEditorModal
+        feature={subFeature} seqLength={5000} neighbours={[]}
+        onSave={() => {}} onClose={() => {}} onMerge={() => {}} onDelete={() => {}}
+      />
+    );
+    expect(screen.queryByTestId('feature-editor-tab-subfeatures')).toBeNull();
+  });
+
+  it('header shows a level badge: Sub-feature for detail', () => {
+    const subFeature = {
+      id: 'sub-1', name: 'sig', type: 'signal_peptide',
+      start: 100, end: 250, strand: 1,
+      level: 'detail', regionId: 'parent-1',
+    };
+    render(
+      <FeatureEditorModal
+        feature={subFeature} seqLength={5000} neighbours={[]}
+        onSave={() => {}} onClose={() => {}} onMerge={() => {}} onDelete={() => {}}
+      />
+    );
+    const badge = screen.getByTestId('feature-editor-level-badge');
+    expect(badge).toBeTruthy();
+    expect(badge.textContent.toLowerCase()).toMatch(/sub|detail/);
+  });
+
+  it('header level badge says Feature for level: region', () => {
+    render(
+      <FeatureEditorModal
+        feature={FEATURE} seqLength={5000} neighbours={[]}
+        onSave={() => {}} onClose={() => {}} onMerge={() => {}} onDelete={() => {}}
+      />
+    );
+    const badge = screen.getByTestId('feature-editor-level-badge');
+    expect(badge.textContent.toLowerCase()).toMatch(/feature/);
+    expect(badge.textContent.toLowerCase()).not.toMatch(/sub/);
   });
 
   it('Pre-existing detail-level annotations under the parent show up as sub-feature rows on open', () => {
@@ -304,6 +395,7 @@ describe('FeatureEditorModal — Split sub-features / Merge / Delete', () => {
         onSave={() => {}} onClose={() => {}} onMerge={() => {}} onDelete={() => {}}
       />
     );
+    fireEvent.click(screen.getByTestId('feature-editor-tab-subfeatures'));
     const rows = screen.getAllByTestId('feature-editor-subfeature-row');
     expect(rows).toHaveLength(2);
     const namesInDom = rows.map((r) => r.querySelector('[data-testid="subfeature-name"]').value);
@@ -362,16 +454,16 @@ describe('FeatureEditorModal — Split sub-features / Merge / Delete', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it('Introns section is rendered as a stub (button disabled with hint text)', () => {
+  it('Introns section is rendered as a stub on the Subfeatures tab', () => {
     render(
       <FeatureEditorModal
         feature={FEATURE} seqLength={5000} neighbours={[]}
-        onSave={() => {}} onClose={() => {}} onSplit={() => {}} onMerge={() => {}} onDelete={() => {}}
+        onSave={() => {}} onClose={() => {}} onMerge={() => {}} onDelete={() => {}}
       />
     );
+    fireEvent.click(screen.getByTestId('feature-editor-tab-subfeatures'));
     const stub = screen.getByTestId('feature-editor-introns');
     expect(stub).toBeTruthy();
-    // Stub button should be disabled (or carry the «coming soon» note).
     const btn = stub.querySelector('button');
     if (btn) expect(btn.disabled).toBe(true);
   });

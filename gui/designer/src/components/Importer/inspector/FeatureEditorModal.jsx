@@ -65,6 +65,12 @@ export default function FeatureEditorModal({
   // субфичи (типо сигнальный пептид в белке)» — split adds a row
   // here without touching the parent annotation.
   const [subFeatures, setSubFeatures] = useState([]);
+  // Sprint M-X.3 follow-up — modal got two tabs «Feature» /
+  // «Subfeatures». Top-level features (level: 'region') see both;
+  // sub-features (level: 'detail') see only the Feature tab so
+  // they can't be split into nested grandchildren.
+  const [activeTab, setActiveTab] = useState('feature');
+  const isSubFeature = feature?.level === 'detail';
   const nameRef = useRef(null);
 
   const featureKey = feature ? (feature.id || `${feature.start}:${feature.end}`) : null;
@@ -91,6 +97,7 @@ export default function FeatureEditorModal({
       strand: a.strand === -1 ? -1 : 1,
       color: a.color,
     })));
+    setActiveTab('feature');
   }, [featureKey]); // eslint-disable-line react-hooks/exhaustive-deps -- featureKey is the gate
 
   // Esc closes — bound only while the modal is open. Listener runs
@@ -234,150 +241,185 @@ export default function FeatureEditorModal({
           display: 'flex', flexDirection: 'column', overflow: 'hidden',
         }}
       >
-        <Header onClose={onClose} />
+        <Header isSubFeature={isSubFeature} onClose={onClose} />
+
+        {/* Tab bar — hidden for sub-features (they can't have nested
+            grandchildren, so the «Subfeatures» tab makes no sense). */}
+        {!isSubFeature && (
+          <div
+            data-testid="feature-editor-tabs"
+            style={{
+              display: 'flex',
+              borderBottom: '0.5px solid var(--border-subtle, #e7e5e4)',
+              padding: '0 12px',
+            }}
+          >
+            <TabButton
+              testid="feature-editor-tab-feature"
+              active={activeTab === 'feature'}
+              onClick={() => setActiveTab('feature')}
+            >{S.featureEditorTabFeature}</TabButton>
+            <TabButton
+              testid="feature-editor-tab-subfeatures"
+              active={activeTab === 'subfeatures'}
+              onClick={() => setActiveTab('subfeatures')}
+            >{S.featureEditorTabSubfeatures(subFeatures.length)}</TabButton>
+          </div>
+        )}
 
         <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <Field label={S.featureEditorNameLabel}>
-            <input
-              ref={nameRef}
-              data-testid="feature-editor-name"
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              style={inputStyle()}
-            />
-          </Field>
+          {/* «Feature» tab body — name / type / coords / strand /
+              merge. Always rendered for sub-feature mode (no tabs). */}
+          {(isSubFeature || activeTab === 'feature') && (
+            <>
+              <Field label={S.featureEditorNameLabel}>
+                <input
+                  ref={nameRef}
+                  data-testid="feature-editor-name"
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  style={inputStyle()}
+                />
+              </Field>
 
-          <Field label={S.featureEditorTypeLabel}>
-            <select
-              data-testid="feature-editor-type"
-              value={type}
-              onChange={(e) => setType(e.target.value)}
-              style={{ ...inputStyle(), padding: '4px 6px' }}
-            >
-              {PART_TYPE_GROUPS.map((g) => (
-                <optgroup key={g.labelKey} label={g.labelKey.replace('typegroup.', '')}>
-                  {g.types.map((t) => <option key={t} value={t}>{t}</option>)}
-                </optgroup>
-              ))}
-            </select>
-          </Field>
-
-          <Field label={S.featureEditorCoordsLabel}>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <span style={{ fontSize: 9, color: 'var(--text-tertiary)' }}>{S.featureEditorCoordsStart}</span>
-              <input
-                data-testid="feature-editor-start"
-                type="number"
-                value={start}
-                onChange={(e) => setStart(e.target.value)}
-                style={{ ...inputStyle(), width: 90 }}
-                min={1}
-              />
-              <span style={{ fontSize: 9, color: 'var(--text-tertiary)' }}>{S.featureEditorCoordsEnd}</span>
-              <input
-                data-testid="feature-editor-end"
-                type="number"
-                value={end}
-                onChange={(e) => setEnd(e.target.value)}
-                style={{ ...inputStyle(), width: 90 }}
-                min={1}
-              />
-            </div>
-          </Field>
-
-          <Field label={S.featureEditorStrandLabel}>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <ToggleBtn
-                data-testid="feature-editor-strand-fwd"
-                active={strand === 1} onClick={() => setStrand(1)}
-              >{S.featureEditorStrandFwd}</ToggleBtn>
-              <ToggleBtn
-                data-testid="feature-editor-strand-rev"
-                active={strand === -1} onClick={() => setStrand(-1)}
-              >{S.featureEditorStrandRev}</ToggleBtn>
-            </div>
-          </Field>
-
-          <Divider label={S.featureEditorOperationsLabel} />
-
-          <Field label={S.featureEditorSubfeaturesLabel}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {subFeatures.length === 0 ? (
-                <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
-                  {S.featureEditorNoSubfeatures}
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  {subFeatures.map((sf, i) => (
-                    <SubFeatureRow
-                      key={sf.id || `sf-${i}`}
-                      subFeature={sf}
-                      onChange={(patch) => updateSubFeature(i, patch)}
-                      onDelete={() => removeSubFeature(i)}
-                    />
+              <Field label={S.featureEditorTypeLabel}>
+                <select
+                  data-testid="feature-editor-type"
+                  value={type}
+                  onChange={(e) => setType(e.target.value)}
+                  style={{ ...inputStyle(), padding: '4px 6px' }}
+                >
+                  {PART_TYPE_GROUPS.map((g) => (
+                    <optgroup key={g.labelKey} label={g.labelKey.replace('typegroup.', '')}>
+                      {g.types.map((t) => <option key={t} value={t}>{t}</option>)}
+                    </optgroup>
                   ))}
+                </select>
+              </Field>
+
+              <Field label={S.featureEditorCoordsLabel}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <span style={{ fontSize: 9, color: 'var(--text-tertiary)' }}>{S.featureEditorCoordsStart}</span>
+                  <input
+                    data-testid="feature-editor-start"
+                    type="number"
+                    value={start}
+                    onChange={(e) => setStart(e.target.value)}
+                    style={{ ...inputStyle(), width: 90 }}
+                    min={1}
+                  />
+                  <span style={{ fontSize: 9, color: 'var(--text-tertiary)' }}>{S.featureEditorCoordsEnd}</span>
+                  <input
+                    data-testid="feature-editor-end"
+                    type="number"
+                    value={end}
+                    onChange={(e) => setEnd(e.target.value)}
+                    style={{ ...inputStyle(), width: 90 }}
+                    min={1}
+                  />
                 </div>
-              )}
-              <button
-                type="button"
-                data-testid="feature-editor-split"
-                onClick={handleSplit}
-                style={{ ...secondaryBtnStyle(), alignSelf: 'flex-start' }}
-                title={S.featureEditorSplitHint}
-              >+ {S.featureEditorSplit}</button>
-            </div>
-          </Field>
+              </Field>
 
-          <Field label={S.featureEditorMergeLabel}>
-            {adjacent.length === 0 ? (
-              <div
-                data-testid="feature-editor-merge-empty"
-                style={{ fontSize: 11, color: 'var(--text-tertiary)' }}
-              >{S.featureEditorMergeNone}</div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {adjacent.map((n) => (
-                  <label
-                    key={n.id}
-                    style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 11 }}
-                  >
-                    <input
-                      type="radio"
-                      name="merge-pick"
-                      data-testid={`feature-editor-merge-${n.id}`}
-                      checked={mergePick === n.id}
-                      onChange={() => setMergePick(n.id)}
-                    />
-                    {n.end === feature.start
-                      ? S.featureEditorMergePrev(n.name)
-                      : S.featureEditorMergeNext(n.name)}
-                  </label>
-                ))}
-                <button
-                  type="button"
-                  data-testid="feature-editor-merge-apply"
-                  onClick={handleMerge}
-                  disabled={!mergePick}
-                  style={{
-                    ...secondaryBtnStyle(),
-                    opacity: mergePick ? 1 : 0.5,
-                    cursor: mergePick ? 'pointer' : 'not-allowed',
-                    alignSelf: 'flex-start',
-                  }}
-                >{S.featureEditorMergeApply}</button>
-              </div>
-            )}
-          </Field>
+              <Field label={S.featureEditorStrandLabel}>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <ToggleBtn
+                    data-testid="feature-editor-strand-fwd"
+                    active={strand === 1} onClick={() => setStrand(1)}
+                  >{S.featureEditorStrandFwd}</ToggleBtn>
+                  <ToggleBtn
+                    data-testid="feature-editor-strand-rev"
+                    active={strand === -1} onClick={() => setStrand(-1)}
+                  >{S.featureEditorStrandRev}</ToggleBtn>
+                </div>
+              </Field>
 
-          <Field label={S.featureEditorIntronsLabel}>
-            <div data-testid="feature-editor-introns" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <button type="button" disabled style={{ ...secondaryBtnStyle(), opacity: 0.55, cursor: 'not-allowed', alignSelf: 'flex-start' }}>
-                + intron
-              </button>
-              <span style={{ fontSize: 9, color: 'var(--text-tertiary)' }}>{S.featureEditorIntronsStub}</span>
-            </div>
-          </Field>
+              <Field label={S.featureEditorMergeLabel}>
+                {adjacent.length === 0 ? (
+                  <div
+                    data-testid="feature-editor-merge-empty"
+                    style={{ fontSize: 11, color: 'var(--text-tertiary)' }}
+                  >{S.featureEditorMergeNone}</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {adjacent.map((n) => (
+                      <label
+                        key={n.id}
+                        style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 11 }}
+                      >
+                        <input
+                          type="radio"
+                          name="merge-pick"
+                          data-testid={`feature-editor-merge-${n.id}`}
+                          checked={mergePick === n.id}
+                          onChange={() => setMergePick(n.id)}
+                        />
+                        {n.end === feature.start
+                          ? S.featureEditorMergePrev(n.name)
+                          : S.featureEditorMergeNext(n.name)}
+                      </label>
+                    ))}
+                    <button
+                      type="button"
+                      data-testid="feature-editor-merge-apply"
+                      onClick={handleMerge}
+                      disabled={!mergePick}
+                      style={{
+                        ...secondaryBtnStyle(),
+                        opacity: mergePick ? 1 : 0.5,
+                        cursor: mergePick ? 'pointer' : 'not-allowed',
+                        alignSelf: 'flex-start',
+                      }}
+                    >{S.featureEditorMergeApply}</button>
+                  </div>
+                )}
+              </Field>
+            </>
+          )}
+
+          {/* «Subfeatures» tab body — only for top-level features.
+              Hidden entirely for level: 'detail' so children can't be
+              split into nested grandchildren. */}
+          {!isSubFeature && activeTab === 'subfeatures' && (
+            <>
+              <Field label={S.featureEditorSubfeaturesLabel}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {subFeatures.length === 0 ? (
+                    <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
+                      {S.featureEditorNoSubfeatures}
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {subFeatures.map((sf, i) => (
+                        <SubFeatureRow
+                          key={sf.id || `sf-${i}`}
+                          subFeature={sf}
+                          onChange={(patch) => updateSubFeature(i, patch)}
+                          onDelete={() => removeSubFeature(i)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    data-testid="feature-editor-split"
+                    onClick={handleSplit}
+                    style={{ ...secondaryBtnStyle(), alignSelf: 'flex-start' }}
+                    title={S.featureEditorSplitHint}
+                  >+ {S.featureEditorSplit}</button>
+                </div>
+              </Field>
+
+              <Field label={S.featureEditorIntronsLabel}>
+                <div data-testid="feature-editor-introns" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <button type="button" disabled style={{ ...secondaryBtnStyle(), opacity: 0.55, cursor: 'not-allowed', alignSelf: 'flex-start' }}>
+                    + intron
+                  </button>
+                  <span style={{ fontSize: 9, color: 'var(--text-tertiary)' }}>{S.featureEditorIntronsStub}</span>
+                </div>
+              </Field>
+            </>
+          )}
         </div>
 
         {/* Footer */}
@@ -424,14 +466,32 @@ export default function FeatureEditorModal({
   );
 }
 
-function Header({ onClose }) {
+function Header({ isSubFeature, onClose }) {
   return (
     <div style={{
       display: 'flex', alignItems: 'baseline', gap: 12,
       padding: '12px 16px',
       borderBottom: '0.5px solid var(--border-subtle, #e7e5e4)',
     }}>
-      <div style={{ fontSize: 14, fontWeight: 500, flex: 1 }}>{S.featureEditorTitle}</div>
+      <div style={{ fontSize: 14, fontWeight: 500 }}>{S.featureEditorTitle}</div>
+      <span
+        data-testid="feature-editor-level-badge"
+        style={{
+          fontSize: 9,
+          padding: '2px 6px',
+          borderRadius: 8,
+          background: isSubFeature
+            ? 'rgba(155, 89, 182, 0.15)'
+            : 'var(--surface-2, #f5f5f4)',
+          color: isSubFeature
+            ? 'rgb(125, 60, 152)'
+            : 'var(--text-secondary)',
+          textTransform: 'uppercase',
+          letterSpacing: '0.04em',
+          fontWeight: 500,
+        }}
+      >{isSubFeature ? S.featureEditorLevelDetail : S.featureEditorLevelRegion}</span>
+      <span style={{ flex: 1 }} />
       <button
         type="button"
         onClick={onClose}
@@ -447,6 +507,31 @@ function Header({ onClose }) {
   );
 }
 
+function TabButton({ active, onClick, testid, children }) {
+  return (
+    <button
+      type="button"
+      data-testid={testid}
+      data-active={active ? 'true' : 'false'}
+      onClick={onClick}
+      style={{
+        padding: '8px 14px',
+        fontSize: 12,
+        fontWeight: active ? 500 : 400,
+        color: active ? 'var(--accent-500, #f97316)' : 'var(--text-secondary)',
+        background: 'transparent',
+        border: 'none',
+        borderBottom: active
+          ? '2px solid var(--accent-500, #f97316)'
+          : '2px solid transparent',
+        cursor: 'pointer',
+        outline: 'none',
+        marginBottom: -0.5,
+      }}
+    >{children}</button>
+  );
+}
+
 function Field({ label, children }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -455,21 +540,6 @@ function Field({ label, children }) {
         textTransform: 'uppercase', color: 'var(--text-secondary)',
       }}>{label}</span>
       {children}
-    </div>
-  );
-}
-
-function Divider({ label }) {
-  return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: 8,
-      paddingTop: 4, marginTop: 4,
-      borderTop: '0.5px solid var(--border-subtle)',
-    }}>
-      <span style={{
-        fontSize: 9, fontWeight: 600, letterSpacing: '0.06em',
-        textTransform: 'uppercase', color: 'var(--text-secondary)',
-      }}>{label}</span>
     </div>
   );
 }
