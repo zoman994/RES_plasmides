@@ -28,6 +28,7 @@
  */
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useStore } from "../../store";
 import {
   selectSequenceViewSettings,
@@ -156,7 +157,14 @@ export default function SettingsPopover({ open, onClose, anchor, triggerRef }) {
       color: "var(--text-primary, #111827)",
     };
 
-  return (
+  // Bug-rush #14 (04.05.2026 evening): biolog screenshot shows the
+  // SequenceView caret line bleeding through the popover. Cause:
+  // popover's z-index 200 sits inside the sticky-header parent
+  // (z-index 5), which forms its own stacking context — so the
+  // popover never wins against sibling z-indices in the document
+  // root context. Portal to document.body escapes every parent
+  // stacking context and lets `position: fixed` actually fix.
+  const node = (
     <div
       ref={popoverRef}
       role="dialog"
@@ -437,6 +445,13 @@ export default function SettingsPopover({ open, onClose, anchor, triggerRef }) {
       </button>
     </div>
   );
+
+  // Portal to document.body (when DOM is available — happy-dom in
+  // tests has document, jsdom has document, SSR doesn't).
+  if (typeof document !== "undefined" && document.body) {
+    return createPortal(node, document.body);
+  }
+  return node;
 }
 
 export { SEQUENCE_VIEW_DEFAULTS };
