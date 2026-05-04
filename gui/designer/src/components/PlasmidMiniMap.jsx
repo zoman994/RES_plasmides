@@ -538,9 +538,38 @@ function PlasmidMiniMap({
           overflow: isOverlay ? 'visible' : 'hidden',
         }}
       >
-        {/* Backbone — theme-aware via CSS var. FEATURE_STROKE (#3A2F1F)
-            на dark теме слипался с фоном; var(--border-default) видим
-            на обеих темах + opacity 0.6 чтобы не доминировать над arcs. */}
+        {/* Sprint M-X.3 follow-up — track band beneath the feature
+            arcs. Biolog «хочу чтобы межгенные участки были видны
+            более чётко, может добавить просто белую арку?». Without
+            this band the gaps between features rendered as just the
+            thin backbone hairline — visually they read as «empty
+            space» rather than «non-coding region». The big
+            PlasmidMap (canvas) already has the same band; this
+            brings the mini map in line.
+
+            Stroke = surface-1 (white in light, dark grey in dark)
+            so the track contrasts against the surface-2 / page
+            background while leaving the feature arcs as the dominant
+            colour layer. strokeWidth matches the feature width so
+            arcs sit flush inside the track. */}
+        {isCircular ? (
+          <circle
+            data-testid="plasmid-track-band"
+            cx={cx} cy={cy} r={r} fill="none"
+            stroke="var(--surface-1, #ffffff)"
+            strokeWidth={strokeWidth}
+          />
+        ) : (
+          <line
+            data-testid="plasmid-track-band"
+            x1={4} y1={cy} x2={size - 4} y2={cy}
+            fill="none"
+            stroke="var(--surface-1, #ffffff)"
+            strokeWidth={strokeWidth}
+          />
+        )}
+        {/* Thin backbone hairline kept as a subtle inner line so the
+            track edge has a definite contour. */}
         {isCircular ? (
           <circle
             cx={cx} cy={cy} r={r} fill="none"
