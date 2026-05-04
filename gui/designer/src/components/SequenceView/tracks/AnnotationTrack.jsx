@@ -434,20 +434,39 @@ function AnnotationTrack({
                 </text>
               ) : null}
               {previewRect ? (
-                <rect
-                  data-testid="sequence-view-annotation-preview"
-                  data-region-edge={draggedEdge}
-                  x={previewRect.x}
-                  y={0}
-                  width={previewRect.width}
-                  height={ROW_HEIGHT}
-                  rx={2}
-                  fill="rgba(249, 115, 22, 0.18)"
-                  stroke="var(--accent-500, #f97316)"
-                  strokeWidth={1}
-                  strokeDasharray="3,2"
-                  style={{ pointerEvents: "none" }}
-                />
+                <>
+                  {/* Bug-rush #11 (04.05.2026 evening): bump the
+                      preview rect's saturation — biolog: «когда тянешь
+                      фичу и растягиваешь или сжимаешь то не видно
+                      докуда, слишком блёкло». Higher fill alpha + a
+                      solid (not dashed) outline + a 2 px solid bar at
+                      the moving edge so the new boundary jumps out. */}
+                  <rect
+                    data-testid="sequence-view-annotation-preview"
+                    data-region-edge={draggedEdge}
+                    x={previewRect.x}
+                    y={0}
+                    width={previewRect.width}
+                    height={ROW_HEIGHT}
+                    rx={2}
+                    fill="rgba(249, 115, 22, 0.42)"
+                    stroke="var(--accent-500, #f97316)"
+                    strokeWidth={1.4}
+                    style={{ pointerEvents: "none" }}
+                  />
+                  {/* Edge marker — solid orange bar at the moving
+                      coord so the position is unmistakable. */}
+                  <rect
+                    data-testid="sequence-view-annotation-preview-edge"
+                    data-region-edge={draggedEdge}
+                    x={draggedEdge === 'left' ? previewRect.x : previewRect.x + previewRect.width - 2}
+                    y={-2}
+                    width={2}
+                    height={ROW_HEIGHT + 4}
+                    fill="var(--accent-500, #f97316)"
+                    style={{ pointerEvents: "none" }}
+                  />
+                </>
               ) : null}
               {showLeftHandle ? (
                 <>

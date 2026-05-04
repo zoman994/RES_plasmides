@@ -35,6 +35,7 @@ export function useAnnotationDrag({
   charsPerLine,
   containerRef,
   onAnnotationEdit,
+  onCaretChange,
   seqLength,
 }) {
   // Visible state — drives preview rect + tooltip rerenders.
@@ -96,6 +97,17 @@ export function useAnnotationDrag({
       // re-render (AnnotationTrack via draggedCurrentCoord prop +
       // tooltip portal).
       setDrag({ ...cur });
+      // Bug-rush #11 (04.05.2026 evening): make the orange caret
+      // follow the moving edge so biolog sees the precise position
+      // (was: only the dim preview rect — «не видно докуда»). We
+      // collapse the selection (extendSelection:false) so this
+      // doesn't trample any pre-drag selection state, and skip the
+      // scroll request — the biolog is actively pointing at the
+      // edge, the viewport already has it.
+      if (typeof onCaretChange === 'function') {
+        try { onCaretChange(newCoord, { extendSelection: false, needsScroll: false }); }
+        catch { /* noop */ }
+      }
     }
     // Tooltip follows the pointer regardless of coord change so the
     // biolog sees current 1-based position (DEC-ANN-02).

@@ -381,6 +381,7 @@ const SequenceView = forwardRef(function SequenceView({
     charsPerLine,
     containerRef,
     onAnnotationEdit,
+    onCaretChange,
     seqLength,
   });
   const onAnnotationEdgePointerDown = onAnnotationEdit ? annDrag.onPointerDownEdge : null;
