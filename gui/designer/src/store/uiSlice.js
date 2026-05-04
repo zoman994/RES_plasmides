@@ -4,6 +4,7 @@ export const THEME_STORAGE_KEY = 'bodgegene-theme';
 export const AGENT_STORAGE_KEY = 'bodgegene-agent';
 export const IMPORTER_MODE_STORAGE_KEY = 'bodgegene-importer-mode';
 export const SEQUENCE_VIEW_STORAGE_KEY = 'bodgegene-ui-sequenceview';
+export const ANNOTATOR_STORAGE_KEY = 'bodgegene-ui-annotator';
 
 const THEMES = ['light', 'dark'];
 const IMPORTER_MODES = ['advanced', 'simple'];
@@ -161,6 +162,104 @@ export function applyThemeToDOM(theme) {
   if (ssRoot) ssRoot.dataset.theme = theme;
 }
 
+// ───────── Annotator (Sprint M-X.2 K6, DEC-ANN-07) ─────────
+//
+// Fullscreen annotation orchestrator state. Persists ONLY the
+// `enabledPluginIds` map + `threshold` between sessions; results /
+// accepted / rejected / pendingEdits live for the duration of the
+// open + close cycle. When the biolog opens the Annotator on a new
+// plasmid, transient state is reset (DEC-ANN-07 §risk #4).
+//
+// Plain-object record shape — Zustand+Immer doesn't play well with
+// Set / Map, so the dedup containers are `Record<id, true>`.
+
+export const ANNOTATOR_DEFAULTS = Object.freeze({
+  open: false,
+  scope: null,
+  // Default plugin selection — DEC-PRED-03 priors. ORF + sgRNA
+  // scaffold + common-features homology start ON; the noisier PWM
+  // detectors stay OFF until the biolog opts in.
+  enabledPluginIds: Object.freeze({
+    'orf-scan': true,
+    'common-features-homology': true,
+    'sgrna-scaffold': true,
+    'sigma70-promoter': false,
+    'stem-loop-terminator': false,
+    'blast-ncbi': false,
+  }),
+  results: Object.freeze({}),
+  acceptedRegionIds: Object.freeze({}),
+  rejectedRegionIds: Object.freeze({}),
+  pendingEdits: Object.freeze({}),
+  threshold: 0.7,
+  running: Object.freeze({}),
+});
+
+function sanitizeEnabledPluginIds(raw) {
+  if (!raw || typeof raw !== 'object') {
+    return { ...ANNOTATOR_DEFAULTS.enabledPluginIds };
+  }
+  const out = { ...ANNOTATOR_DEFAULTS.enabledPluginIds };
+  for (const k of Object.keys(raw)) {
+    if (typeof raw[k] === 'boolean') out[k] = raw[k];
+  }
+  return out;
+}
+
+function loadInitialAnnotator() {
+  const raw = getJSON(ANNOTATOR_STORAGE_KEY, null);
+  if (!raw || typeof raw !== 'object') {
+    return {
+      ...ANNOTATOR_DEFAULTS,
+      enabledPluginIds: { ...ANNOTATOR_DEFAULTS.enabledPluginIds },
+      results: {},
+      acceptedRegionIds: {},
+      rejectedRegionIds: {},
+      pendingEdits: {},
+      running: {},
+    };
+  }
+  return {
+    ...ANNOTATOR_DEFAULTS,
+    enabledPluginIds: sanitizeEnabledPluginIds(raw.enabledPluginIds),
+    threshold:
+      typeof raw.threshold === 'number'
+      && Number.isFinite(raw.threshold)
+      && raw.threshold >= 0
+      && raw.threshold <= 1
+        ? raw.threshold
+        : ANNOTATOR_DEFAULTS.threshold,
+    results: {},
+    acceptedRegionIds: {},
+    rejectedRegionIds: {},
+    pendingEdits: {},
+    running: {},
+  };
+}
+
+function persistAnnotator(value) {
+  setJSON(ANNOTATOR_STORAGE_KEY, {
+    enabledPluginIds: { ...value.enabledPluginIds },
+    threshold: value.threshold,
+  });
+}
+
+/** Selector returning the annotator slice (or defaults). */
+export function selectAnnotator(state) {
+  if (!state || !state.annotator) {
+    return {
+      ...ANNOTATOR_DEFAULTS,
+      enabledPluginIds: { ...ANNOTATOR_DEFAULTS.enabledPluginIds },
+      results: {},
+      acceptedRegionIds: {},
+      rejectedRegionIds: {},
+      pendingEdits: {},
+      running: {},
+    };
+  }
+  return state.annotator;
+}
+
 const TOAST_CAPACITY = 3;
 const TOAST_DEFAULT_DISMISS_MS = 3500;
 
@@ -176,6 +275,7 @@ export const createUiSlice = (set) => ({
   agent: loadInitialAgent(),
   importerMode: loadInitialImporterMode(),
   sequenceView: loadInitialSequenceView(),
+  annotator: loadInitialAnnotator(),
   modals: { settings: false, projectInfo: false },
   toasts: [],
   canInstallPwa: false,
@@ -327,6 +427,146 @@ export const createUiSlice = (set) => ({
         visibleFrames: { ...state.sequenceView.visibleFrames },
         predictions: { ...state.sequenceView.predictions },
       });
+    });
+  },
+
+  // ───────── Annotator (Sprint M-X.2 K6, DEC-ANN-07) ─────────
+
+  openAnnotator: (scope) => {
+    set(state => {
+      if (!state.annotator) {
+        state.annotator = loadInitialAnnotator();
+      }
+      const prevScope = state.annotator.scope;
+      const sequenceChanged = !!prevScope
+        && !!scope
+        && prevScope.sequenceId !== scope.sequenceId;
+      // When the plasmid changes between Annotator sessions, reset
+      // the transient verdict containers so a fresh «accept N» pass
+      // doesn't carry over from the previous plasmid (DEC-ANN-07
+      // risk #4).
+      if (sequenceChanged) {
+        state.annotator.results = {};
+        state.annotator.acceptedRegionIds = {};
+        state.annotator.rejectedRegionIds = {};
+        state.annotator.pendingEdits = {};
+        state.annotator.running = {};
+      }
+      state.annotator.open = true;
+      state.annotator.scope = scope || null;
+    });
+  },
+
+  closeAnnotator: () => {
+    set(state => {
+      if (!state.annotator) return;
+      state.annotator.open = false;
+      // scope, results, accepted, rejected, pendingEdits — preserved
+      // so a re-open within the session restores the work.
+    });
+  },
+
+  togglePlugin: (pluginId) => {
+    if (typeof pluginId !== 'string' || !pluginId) return;
+    set(state => {
+      if (!state.annotator) state.annotator = loadInitialAnnotator();
+      if (!state.annotator.enabledPluginIds) state.annotator.enabledPluginIds = {};
+      const cur = !!state.annotator.enabledPluginIds[pluginId];
+      state.annotator.enabledPluginIds[pluginId] = !cur;
+      persistAnnotator({
+        enabledPluginIds: { ...state.annotator.enabledPluginIds },
+        threshold: state.annotator.threshold,
+      });
+    });
+  },
+
+  setAnnotatorThreshold: (value) => {
+    const v = Number(value);
+    if (!Number.isFinite(v) || v < 0 || v > 1) return;
+    set(state => {
+      if (!state.annotator) state.annotator = loadInitialAnnotator();
+      state.annotator.threshold = v;
+      persistAnnotator({
+        enabledPluginIds: { ...state.annotator.enabledPluginIds },
+        threshold: v,
+      });
+    });
+  },
+
+  setAnnotatorRunning: (pluginId, running) => {
+    if (typeof pluginId !== 'string' || !pluginId) return;
+    set(state => {
+      if (!state.annotator) state.annotator = loadInitialAnnotator();
+      if (!state.annotator.running) state.annotator.running = {};
+      if (running) state.annotator.running[pluginId] = true;
+      else delete state.annotator.running[pluginId];
+    });
+  },
+
+  setAnnotatorResult: (pluginId, result) => {
+    if (typeof pluginId !== 'string' || !pluginId) return;
+    set(state => {
+      if (!state.annotator) state.annotator = loadInitialAnnotator();
+      if (!state.annotator.results) state.annotator.results = {};
+      if (state.annotator.running) delete state.annotator.running[pluginId];
+      if (result === null) {
+        delete state.annotator.results[pluginId];
+      } else {
+        state.annotator.results[pluginId] = result;
+      }
+    });
+  },
+
+  acceptRegion: (regionId) => {
+    if (typeof regionId !== 'string' || !regionId) return;
+    set(state => {
+      if (!state.annotator) state.annotator = loadInitialAnnotator();
+      if (!state.annotator.acceptedRegionIds) state.annotator.acceptedRegionIds = {};
+      if (!state.annotator.rejectedRegionIds) state.annotator.rejectedRegionIds = {};
+      // Mutually exclusive: accept clears reject.
+      delete state.annotator.rejectedRegionIds[regionId];
+      state.annotator.acceptedRegionIds[regionId] = true;
+    });
+  },
+
+  rejectRegion: (regionId) => {
+    if (typeof regionId !== 'string' || !regionId) return;
+    set(state => {
+      if (!state.annotator) state.annotator = loadInitialAnnotator();
+      if (!state.annotator.acceptedRegionIds) state.annotator.acceptedRegionIds = {};
+      if (!state.annotator.rejectedRegionIds) state.annotator.rejectedRegionIds = {};
+      delete state.annotator.acceptedRegionIds[regionId];
+      state.annotator.rejectedRegionIds[regionId] = true;
+    });
+  },
+
+  clearRegionVerdict: (regionId) => {
+    if (typeof regionId !== 'string' || !regionId) return;
+    set(state => {
+      if (!state.annotator) return;
+      if (state.annotator.acceptedRegionIds) delete state.annotator.acceptedRegionIds[regionId];
+      if (state.annotator.rejectedRegionIds) delete state.annotator.rejectedRegionIds[regionId];
+    });
+  },
+
+  editPendingRegion: (regionId, patch) => {
+    if (typeof regionId !== 'string' || !regionId || !patch || typeof patch !== 'object') return;
+    set(state => {
+      if (!state.annotator) state.annotator = loadInitialAnnotator();
+      if (!state.annotator.pendingEdits) state.annotator.pendingEdits = {};
+      const cur = state.annotator.pendingEdits[regionId] || {};
+      state.annotator.pendingEdits[regionId] = { ...cur, ...patch };
+    });
+  },
+
+  resetAnnotatorScope: () => {
+    set(state => {
+      if (!state.annotator) state.annotator = loadInitialAnnotator();
+      state.annotator.results = {};
+      state.annotator.acceptedRegionIds = {};
+      state.annotator.rejectedRegionIds = {};
+      state.annotator.pendingEdits = {};
+      state.annotator.running = {};
     });
   },
 });
