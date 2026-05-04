@@ -336,6 +336,24 @@ describe('LinearFeatureBar — unified cluster frame', () => {
     expect(outline.getAttribute('fill')).toBe('none');
   });
 
+  // Biolog: «обводку общую сделать чуть меньше сейчас толстая».
+  // Both the coloured cluster frame and the outer halo got their
+  // stroke-widths slimmed down. This guards against a future
+  // regression that bumps them back to the heavier values.
+  it('cluster frame + outline are slim — strokeWidth bounded', () => {
+    const big   = { id: 'b', name: 'big', type: 'CDS', start: 1000, end: 5000, level: 'region' };
+    const small = { id: 's', name: 'rbs', type: 'RBS', start: 2000, end: 3000, level: 'region' };
+    const { container } = render(
+      <LinearFeatureBar annotations={[big, small]} seqLength={9000} />
+    );
+    const frame = container.querySelector('rect[data-cluster-frame="true"]');
+    const outline = container.querySelector('rect[data-cluster-outline="true"]');
+    // Coloured inner frame slimmer than ≤ 1.2 px (was 1.6 px).
+    expect(Number(frame.getAttribute('stroke-width'))).toBeLessThanOrEqual(1.2);
+    // Outer halo slimmer than ≤ 0.5 px (was 0.6 px).
+    expect(Number(outline.getAttribute('stroke-width'))).toBeLessThanOrEqual(0.5);
+  });
+
   it('singleton (no cluster frame) → no outline either', () => {
     const a = { id: 'a', name: 'a', type: 'CDS', start: 1000, end: 5000, level: 'region' };
     const { container } = render(

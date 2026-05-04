@@ -465,17 +465,23 @@ export default function LinearFeatureBar({
               2. Inner coloured frame — stroke=mainColor, current. */}
         {clusterFrames.map((f) => (
           <g key={f.key} style={{ pointerEvents: 'none' }}>
+            {/* Sprint M-X.3 follow-up — biolog «обводку общую
+                сделать чуть меньше сейчас толстая». Both rings slimmed:
+                  outer halo:  0.6 → 0.4 px,  inset 1.0 → 0.5 px
+                  inner frame: 1.6 → 1.0 px
+                Cluster boundary still reads as a hard contour but
+                doesn't visually dominate the smaller features inside. */}
             <rect
               data-cluster-outline="true"
-              x={f.x - 1}
-              y={-1}
-              width={f.width + 2}
-              height={BAR_H + 2}
-              rx={3.5}
-              ry={3.5}
+              x={f.x - 0.5}
+              y={-0.5}
+              width={f.width + 1}
+              height={BAR_H + 1}
+              rx={3}
+              ry={3}
               fill="none"
               stroke="var(--text-primary, #1c1917)"
-              strokeWidth={0.6}
+              strokeWidth={0.4}
               opacity={0.85}
             />
             <rect
@@ -488,7 +494,7 @@ export default function LinearFeatureBar({
               ry={2.5}
               fill="none"
               stroke={f.color}
-              strokeWidth={1.6}
+              strokeWidth={1.0}
               strokeDasharray={f.predicted ? '3,2' : undefined}
               opacity={0.95}
             />
