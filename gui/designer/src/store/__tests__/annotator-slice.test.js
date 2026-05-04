@@ -113,9 +113,12 @@ describe('K6 annotator slice', () => {
   });
 
   // ─── Sprint M-X.3 K3 — Annotator dual-tab activeTab ─────────────
-  it('activeTab defaults to "table"', () => {
+  // Sprint M-X.3 follow-up (05.05.2026, Stage A) — biolog wants the
+  // map (Preview) to be the default landing surface, not the table:
+  // «открыватся аннотатор … и на этой карте показывают гост фичи».
+  it('activeTab defaults to "preview"', () => {
     const a = selectAnnotator(useStore.getState());
-    expect(a.activeTab).toBe('table');
+    expect(a.activeTab).toBe('preview');
   });
 
   it('setAnnotatorActiveTab switches between table and preview', () => {

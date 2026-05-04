@@ -206,7 +206,12 @@ export const ANNOTATOR_DEFAULTS = Object.freeze({
   // ResultsPane (PluginPanel left + accept/reject rows right);
   // 'preview' (K4) mounts a SequenceView with merged confirmed +
   // predicted annotations rendered as ghosts.
-  activeTab: 'table',
+  //
+  // Sprint M-X.3 follow-up (05.05.2026, Stage A) — biolog: «Дальше
+  // сразу открыватся аннотатор … и на этой карте показывают гост
+  // фичи». Default landing surface is now the map (Preview), not
+  // the table.
+  activeTab: 'preview',
   // Sprint M-X.3 K4 — id of the ghost feature whose drill-in panel
   // is open in the Preview tab. `null` means no panel.
   selectedGhostId: null,

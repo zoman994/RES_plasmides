@@ -34,6 +34,11 @@ function resetAnnotatorState() {
       running: {},
       open: true,
       scope: { kind: 'full', sequenceId: 'p1' },
+      // Stage A flipped the default landing tab to 'preview' so the
+      // user sees the map first. These K8 UI tests still target the
+      // Table-tab surface (PluginPanel + ResultsPane + accept/reject
+      // rows), so explicitly land on 'table' here.
+      activeTab: 'table',
     };
   });
 }

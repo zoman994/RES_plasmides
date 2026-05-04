@@ -70,6 +70,11 @@ function setupSlice() {
       running: {},
       open: false,
       scope: null,
+      // Stage A flipped the default landing tab to 'preview'. K10
+      // integration scenarios target the Table-tab path (open
+      // Annotator → click Run → accept rows → save), so pin Table
+      // here for the existing assertions.
+      activeTab: 'table',
     };
   });
 }

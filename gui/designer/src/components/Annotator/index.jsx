@@ -23,12 +23,21 @@
  * purely a controlled view + dispatch surface.
  */
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useStore } from '../../store';
 import { selectAnnotator } from '../../store/uiSlice.js';
 import { STRINGS } from '../../lib/strings';
-import { getAllPlugins } from '../../lib/annotator-plugins';
+import { getAllPlugins, getPluginById } from '../../lib/annotator-plugins';
 import { runAnnotatorPipeline } from '../../lib/annotator-pipeline.js';
+
+// Sprint M-X.3 follow-up (05.05.2026, Stage A) — biolog: «Дальше
+// сразу открыватся аннотатор … и на этой карте показывают гост
+// фичи». Level-1 detector (homology lookup against the curated
+// known-features DB) auto-runs on annotator open so the user
+// sees ghost annotations immediately, with no «press Run» step.
+// Levels 2 (structural predictors) and 3 (BLAST) keep their
+// manual-trigger semantics — they're slower / noisier.
+const LEVEL_1_PLUGIN_ID = 'common-features-homology';
 import TargetPreview from './TargetPreview.jsx';
 import PluginPanel from './PluginPanel.jsx';
 import ResultsPane from './ResultsPane.jsx';
@@ -76,6 +85,36 @@ export default function Annotator({
   const seqLength = (sequence || '').length;
   const scope = annotator.scope;
   const region = scope?.kind === 'region' ? scope.region : null;
+
+  // Stage A — fire-once-per-sequenceId ref so re-renders (threshold
+  // tweaks, tab toggles, etc.) don't re-trigger the L1 plugin.
+  const autoRunFiredFor = useRef(null);
+  useEffect(() => {
+    if (!annotator.open) return;
+    const sid = scope?.sequenceId || 'default';
+    if (autoRunFiredFor.current === sid) return;
+    const results = annotator.results || {};
+    const running = annotator.running || {};
+    if (results[LEVEL_1_PLUGIN_ID]) return;       // already have output
+    if (running[LEVEL_1_PLUGIN_ID]) return;        // race-guard
+    const plugin = getPluginById(LEVEL_1_PLUGIN_ID);
+    if (!plugin) return;                           // registry not populated yet
+    autoRunFiredFor.current = sid;
+    setRunning(LEVEL_1_PLUGIN_ID, true);
+    Promise.resolve()
+      .then(() => plugin.run(sequence || '', region, { threshold: annotator.threshold }))
+      .then((res) => { if (res) setResult(LEVEL_1_PLUGIN_ID, res); })
+      .catch((err) => {
+        // Surface failures via the running flag clearing — same
+        // pattern handleRun uses; an error toast lives one layer
+        // up in SingleInspector if needed.
+        // eslint-disable-next-line no-console
+        console.warn('[Annotator] L1 auto-run failed:', err?.message || err);
+      })
+      .finally(() => setRunning(LEVEL_1_PLUGIN_ID, false));
+    // Deps intentionally narrow — see autoRunFiredFor guard above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [annotator.open, scope?.sequenceId]);
 
   const handleRun = async () => {
     const enabled = annotator.enabledPluginIds || {};
