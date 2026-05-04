@@ -23,7 +23,7 @@
  * purely a controlled view + dispatch surface.
  */
 
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useStore } from '../../store';
 import { selectAnnotator } from '../../store/uiSlice.js';
 import { STRINGS } from '../../lib/strings';
@@ -51,6 +51,21 @@ export default function Annotator({
   const editPendingRegion = useStore((s) => s.editPendingRegion);
 
   const plugins = useMemo(() => getAllPlugins(), []);
+
+  // Esc closes the modal (third escape route alongside Back button
+  // + backdrop click). Bound only while open so the global escape
+  // doesn't fight other modals.
+  useEffect(() => {
+    if (!annotator.open) return undefined;
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeAnnotator();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [annotator.open, closeAnnotator]);
 
   const seqLength = (sequence || '').length;
   const scope = annotator.scope;
@@ -105,16 +120,49 @@ export default function Annotator({
 
   if (!annotator.open) return null;
 
+  // Bug-rush #10 (04.05.2026 evening): biolog wants the Annotator
+  // to render as a LARGE MODAL — big enough to drive but with the
+  // surrounding UI still visible at the edges, so clicking outside
+  // dismisses (alternative to the Back button). Pre-fix it was
+  // `inset: 0` fullscreen which fully eclipsed the main window —
+  // no «outside» to click.
+  //
+  // Layout: a translucent backdrop covers everything (clickable
+  // dismiss), the modal panel sits centered with ~92 vw / 88 vh.
   return (
     <div
-      data-testid="annotator-root"
+      data-testid="annotator-backdrop"
+      onPointerDown={(e) => {
+        // Backdrop click → close. Stop propagation INSIDE the
+        // modal panel so its own pointer events don't bubble back
+        // here.
+        if (e.target === e.currentTarget) closeAnnotator();
+      }}
       style={{
         position: 'fixed',
         inset: 0,
         zIndex: 200,
+        background: 'rgba(0, 0, 0, 0.35)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '4vh 4vw',
+      }}
+    >
+    <div
+      data-testid="annotator-root"
+      onPointerDown={(e) => e.stopPropagation()}
+      style={{
+        width: '100%',
+        height: '100%',
+        maxWidth: '1400px',
         background: 'var(--surface-0, #fafaf9)',
+        border: '0.5px solid var(--border-default, #d4d4d4)',
+        borderRadius: 'var(--radius-md, 6px)',
+        boxShadow: '0 24px 64px rgba(0,0,0,0.35)',
         display: 'flex',
         flexDirection: 'column',
+        overflow: 'hidden',
       }}
     >
       {/* Header */}
@@ -224,6 +272,7 @@ export default function Annotator({
           }}
         >{acceptedCount > 0 ? S.saveCount(acceptedCount) : S.saveButton}</button>
       </div>
+    </div>
     </div>
   );
 }

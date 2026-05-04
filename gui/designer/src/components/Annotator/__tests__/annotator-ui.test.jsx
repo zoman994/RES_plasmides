@@ -169,4 +169,24 @@ describe('K8 Annotator UI', () => {
     fireEvent.click(screen.getByTestId('annotator-back-button'));
     expect(useStore.getState().annotator.open).toBe(false);
   });
+
+  // Bug-rush #10 — modal-style Annotator (not fullscreen).
+  it('renders a backdrop wrapping the modal panel', () => {
+    render(<Annotator sequence={SEQ} annotations={ANNS} onApplyAnnotatorResults={vi.fn()} />);
+    expect(screen.getByTestId('annotator-backdrop')).toBeTruthy();
+    expect(screen.getByTestId('annotator-root')).toBeTruthy();
+  });
+
+  it('clicking the backdrop closes the Annotator', () => {
+    render(<Annotator sequence={SEQ} annotations={ANNS} onApplyAnnotatorResults={vi.fn()} />);
+    const backdrop = screen.getByTestId('annotator-backdrop');
+    fireEvent.pointerDown(backdrop, { target: backdrop, currentTarget: backdrop });
+    expect(useStore.getState().annotator.open).toBe(false);
+  });
+
+  it('Esc key closes the Annotator', () => {
+    render(<Annotator sequence={SEQ} annotations={ANNS} onApplyAnnotatorResults={vi.fn()} />);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(useStore.getState().annotator.open).toBe(false);
+  });
 });
