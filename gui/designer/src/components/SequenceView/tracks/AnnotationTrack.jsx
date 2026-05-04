@@ -415,53 +415,88 @@ function AnnotationTrack({
                   }}
                 />
               ) : null}
-              {/* Sprint M-X.3 follow-up — SBOL glyph badge.
-                  Renders at the left of the rect when the rect is
-                  wide enough (≥ 14 px) and the region carries a
-                  recognisable type. Decorative — pointerEvents:none
-                  so dblclick still flows to the rect handler.
+              {/* Sprint M-X.3 follow-up — SBOL glyph + label as one
+                  centred unit. Biolog «глифы давай у названия, как
+                  будто бы так будет лучше» — pre-fix the glyph was
+                  pinned at fixed x=2 and the label was centred
+                  separately, so on a wide rect the two ended up
+                  visually disconnected. Now we estimate the label
+                  text width, pack glyph + gap + text into one
+                  «content» strip, centre that strip in the rect
+                  (with a 2 px floor so a narrow rect still leaves
+                  the glyph a slot), and anchor the text at the
+                  glyph's right edge.
 
                   Reverse-strand features (`strand === -1`) get a
                   scale(-1, 1) flip so the SBOL directional glyphs
                   (CDS arrow, promoter L-arrow, terminator T) point
-                  AWAY from the start codon side. Per biolog «глифы
-                  на CDS должны смотреть от метионина, и когда мы
-                  делаем в фиче форвард или реверс — фичи должны
-                  вращаться». Translate-then-scale puts the post-
-                  flip rect at the same x as the unflipped one
-                  (otherwise the glyph would slide off-screen). */}
-              {widthRect >= GLYPH_MIN_PX ? (() => {
+                  AWAY from the start codon side. Translate-then-
+                  scale puts the post-flip rect at the same x as
+                  the unflipped one. */}
+              {(() => {
+                const showGlyph = widthRect >= GLYPH_MIN_PX;
+                if (!showGlyph && !showLabelInside) return null;
+                const APPROX_CHAR_PX = 5.5; // sans-serif at fontSize 9
+                const GLYPH_GAP = 3;
+                const labelTextWidth = showLabelInside
+                  ? displayLabel.length * APPROX_CHAR_PX
+                  : 0;
+                const contentWidth = (showGlyph ? GLYPH_SIZE : 0)
+                  + (showGlyph && showLabelInside ? GLYPH_GAP : 0)
+                  + labelTextWidth;
+                const contentLeft = Math.max(2, (widthRect - contentWidth) / 2);
                 const glyphY = (ROW_HEIGHT - GLYPH_SIZE) / 2;
                 const isReverse = region.strand === -1;
-                const transform = isReverse
-                  ? `translate(${2 + GLYPH_SIZE}, ${glyphY}) scale(-1, 1)`
-                  : `translate(2, ${glyphY})`;
+                const glyphX = contentLeft;
+                const labelStartX = showGlyph
+                  ? glyphX + GLYPH_SIZE + GLYPH_GAP
+                  : contentLeft;
+                const glyphTransform = isReverse
+                  ? `translate(${glyphX + GLYPH_SIZE}, ${glyphY}) scale(-1, 1)`
+                  : `translate(${glyphX}, ${glyphY})`;
                 return (
-                  <g
-                    data-testid="annotation-feature-glyph"
-                    data-glyph-type={region.type || ''}
-                    data-glyph-strand={isReverse ? '-1' : '1'}
-                    transform={transform}
-                    style={{ pointerEvents: 'none' }}
-                  >
-                    <SBOLIcon
-                      type={region.type}
-                      size={GLYPH_SIZE}
-                      color={isPredicted ? baseColor : 'var(--text-primary, #1c1917)'}
-                    />
-                  </g>
+                  <>
+                    {showGlyph ? (
+                      <g
+                        data-testid="annotation-feature-glyph"
+                        data-glyph-type={region.type || ''}
+                        data-glyph-strand={isReverse ? '-1' : '1'}
+                        transform={glyphTransform}
+                        style={{ pointerEvents: 'none' }}
+                      >
+                        <SBOLIcon
+                          type={region.type}
+                          size={GLYPH_SIZE}
+                          color={isPredicted ? baseColor : 'var(--text-primary, #1c1917)'}
+                        />
+                      </g>
+                    ) : null}
+                    {showLabelInside ? (
+                      <LabelText
+                        x={labelStartX}
+                        region={region}
+                        displayLabel={displayLabel}
+                        isPredicted={isPredicted}
+                        labelFontStyle={labelFontStyle}
+                        lineStart={lineStart}
+                        onAnnotationDoubleClick={onAnnotationDoubleClick}
+                      />
+                    ) : null}
+                  </>
                 );
-              })() : null}
-              {showLabelInside ? (
+              })()}
+              {/* Below: legacy centred-label render (kept inside an
+                  always-false guard for git-diff readability — the
+                  paired glyph+label block above is the active path).
+                  TODO: drop in a follow-up once visual review signs
+                  off on the new placement. */}
+              {false ? (
                 <text
-                  data-testid="sequence-view-annotation-label"
+                  data-testid="sequence-view-annotation-label-legacy"
                   data-label-mode="inside"
                   data-label-feature={region.name || ""}
                   data-label-predicted={isPredicted ? "true" : undefined}
-                  // Centre x shifts past the glyph when one renders,
-                  // so the label sits in the post-glyph space rather
-                  // than overlapping the badge.
-                  x={(widthRect >= GLYPH_MIN_PX ? GLYPH_SIZE + 4 : 0) / 2 + widthRect / 2}
+                  x={widthRect / 2}
                   y={ROW_HEIGHT / 2 + LABEL_FONT_SIZE / 2 - 1}
                   textAnchor="middle"
                   fontSize={LABEL_FONT_SIZE}
@@ -676,3 +711,51 @@ function AnnotationTrack({
 const MemoAnnotationTrack = memo(AnnotationTrack);
 export default MemoAnnotationTrack;
 export { MAX_VISIBLE_ROWS };
+
+/**
+ * Sprint M-X.3 follow-up — small inline label with the same halo
+ * + dblclick-rename hookup the legacy centred render had, but
+ * `text-anchor="start"` so the caller can pin the label x to the
+ * glyph's right edge (paired centring of glyph + name as one unit).
+ */
+function LabelText({
+  x,
+  region,
+  displayLabel,
+  isPredicted, // eslint-disable-line no-unused-vars -- reserved for future fill tweaks
+  labelFontStyle,
+  lineStart,
+  onAnnotationDoubleClick,
+}) {
+  return (
+    <text
+      data-testid="sequence-view-annotation-label"
+      data-label-mode="inside"
+      data-label-feature={region.name || ''}
+      data-label-predicted={isPredicted ? 'true' : undefined}
+      x={x}
+      y={ROW_HEIGHT / 2 + LABEL_FONT_SIZE / 2 - 1}
+      textAnchor="start"
+      fontSize={LABEL_FONT_SIZE}
+      fontStyle={labelFontStyle}
+      fill="#ffffff"
+      stroke="#000000"
+      strokeWidth={1.5}
+      style={{
+        pointerEvents: 'auto',
+        cursor: 'text',
+        fontFamily: 'inherit',
+        fontStyle: labelFontStyle,
+        paintOrder: 'stroke fill',
+      }}
+      onDoubleClick={(e) => {
+        if (typeof onAnnotationDoubleClick !== 'function') return;
+        e.stopPropagation();
+        e.preventDefault();
+        onAnnotationDoubleClick(region, lineStart);
+      }}
+    >
+      {displayLabel}
+    </text>
+  );
+}

@@ -406,4 +406,79 @@ describe("AnnotationTrack — SBOL glyph badge", () => {
     expect(strands).toContain('1');
     expect(strands).toContain('-1');
   });
+
+  // Biolog: «глифы давай у названия, как будто бы так будет лучше».
+  // When a feature shows its inside label, the glyph re-positions
+  // next to the name (centred together) rather than sitting at a
+  // fixed left offset that visually disconnects it from the label.
+  it("glyph sits near the centred label, not at fixed left, when label is shown", () => {
+    const regions = [
+      { id: "wide", start: 0, end: 200, name: "AmpR", type: "CDS", strand: 1, color: "#888", level: "region" },
+    ];
+    const { container } = render(
+      <AnnotationTrack
+        regions={regions}
+        lineStart={0}
+        lineLen={250}
+        charPx={7.2}
+        labelChars={8}
+      />,
+    );
+    const g = container.querySelector('[data-testid="annotation-feature-glyph"]');
+    expect(g).toBeTruthy();
+    const t = g.getAttribute('transform') || '';
+    // Glyph is no longer pinned to translate(2, …) — it now sits
+    // somewhere closer to the rect centre when a label exists.
+    const m = t.match(/translate\(([-\d.]+)/);
+    expect(m).toBeTruthy();
+    const tx = Number(m[1]);
+    expect(tx).toBeGreaterThan(2.5); // moved past the old fixed-left
+  });
+
+  it("glyph + label are visually adjacent — text-anchor=start with label x just after glyph", () => {
+    const regions = [
+      { id: "wide", start: 0, end: 200, name: "lacZ", type: "CDS", strand: 1, color: "#888", level: "region" },
+    ];
+    const { container } = render(
+      <AnnotationTrack
+        regions={regions}
+        lineStart={0}
+        lineLen={250}
+        charPx={7.2}
+        labelChars={8}
+      />,
+    );
+    const glyph = container.querySelector('[data-testid="annotation-feature-glyph"]');
+    const label = container.querySelector('[data-testid="sequence-view-annotation-label"]');
+    expect(glyph).toBeTruthy();
+    expect(label).toBeTruthy();
+    // Label must use text-anchor="start" now (so its x sits at the
+    // glyph's right edge); centre-anchored layouts would break the
+    // «glyph hugs the name» visual.
+    expect(label.getAttribute('text-anchor')).toBe('start');
+    // Label x is just past the glyph (within ~4 px of glyph's
+    // right edge).
+    const gM = (glyph.getAttribute('transform') || '').match(/translate\(([-\d.]+)/);
+    const gX = Number(gM[1]);
+    const labelX = Number(label.getAttribute('x'));
+    expect(labelX).toBeGreaterThanOrEqual(gX);
+    expect(labelX - (gX + 11)).toBeLessThanOrEqual(6); // within 6 px after the 11-px glyph
+  });
+
+  it("reverse-strand glyph still flips when positioned next to the label", () => {
+    const regions = [
+      { id: "rev", start: 0, end: 200, name: "lacZ", type: "CDS", strand: -1, color: "#888", level: "region" },
+    ];
+    const { container } = render(
+      <AnnotationTrack
+        regions={regions}
+        lineStart={0}
+        lineLen={250}
+        charPx={7.2}
+        labelChars={8}
+      />,
+    );
+    const g = container.querySelector('[data-testid="annotation-feature-glyph"]');
+    expect((g.getAttribute('transform') || '')).toMatch(/scale\(-1\s*,?\s*1\)/);
+  });
 });
