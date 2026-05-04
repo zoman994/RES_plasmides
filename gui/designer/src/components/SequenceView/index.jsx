@@ -282,6 +282,26 @@ const SequenceView = forwardRef(function SequenceView({
     ? fragments[0].sequence.length
     : 0;
 
+  // Bug-rush #8 (04.05.2026 evening): when the AA selection is
+  // active, derive the reading frame from (selection range, strand)
+  // so SelectionOverlay can pick exactly ONE matching aa-row to
+  // light blue. Forward strand: frame = selStart % 3 (matches
+  // AATrack's `frame: 0/1/2` mapping for labels +1/+2/+3). Reverse
+  // strand: frame = (seqLen − selEnd) % 3 (V50 walkCodons
+  // antisense convention). null when selection is empty / DNA-only.
+  const selectionAaFrame = (() => {
+    if (selectionMode !== 'aa') return null;
+    const a = (typeof caretAnchor === 'number' && Number.isFinite(caretAnchor)) ? caretAnchor : null;
+    const f = (typeof caretPos === 'number' && Number.isFinite(caretPos)) ? caretPos : null;
+    if (a == null || f == null || a === f) return null;
+    const start = Math.min(a, f);
+    const end = Math.max(a, f);
+    if (selectionStrand === -1) {
+      return ((seqLength - end) % 3 + 3) % 3;
+    }
+    return ((start % 3) + 3) % 3;
+  })();
+
   // Selection state hook — owns the contextMenu state, drag refs,
   // pointer handlers, copy dispatcher, click fallback. Returns a
   // bundle of callbacks the JSX wires onto the root <div>.
@@ -531,6 +551,7 @@ const SequenceView = forwardRef(function SequenceView({
         showBottomStrand={settings.showBottomStrand}
         selectionMode={selectionMode}
         selectionStrand={selectionStrand}
+        selectionFrame={selectionAaFrame}
       />
       <CaretOverlay
         caretPos={caretPos}
