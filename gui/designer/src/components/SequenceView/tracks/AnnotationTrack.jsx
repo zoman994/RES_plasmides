@@ -259,6 +259,7 @@ function AnnotationTrack({
               data-region-start={region.start}
               data-region-end={region.end}
               data-region-type={region.type || ""}
+              data-region-strand={region.strand === -1 ? -1 : 1}
               data-predicted={isPredicted ? "true" : undefined}
               data-region-source={region.source || undefined}
               transform={`translate(${xLeft}, ${yTop})`}

@@ -45,6 +45,7 @@ export default function SequenceTab({
   caretPos,
   caretAnchor,
   selectionMode,
+  selectionStrand,
   onCaretChange,
   onSelectRange,
 }) {
@@ -177,6 +178,7 @@ export default function SequenceTab({
           caretPos={caretPos}
           caretAnchor={caretAnchor}
           selectionMode={selectionMode}
+          selectionStrand={selectionStrand}
           onCaretChange={onCaretChange}
           onSelectRange={onSelectRange}
         />

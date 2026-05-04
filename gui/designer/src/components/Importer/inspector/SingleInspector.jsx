@@ -173,6 +173,12 @@ export default function SingleInspector({
   // evening: «"копировать АА" можно только если ты выделяешь
   // непосредственно АА сиквенс».
   const [cursorSelectionMode, setCursorSelectionMode] = useState(null);
+  // Strand of the selected CDS feature (1 forward / -1 reverse) —
+  // needed by Copy AA to know whether to reverse-complement the
+  // slice before translating. lacZα and friends sit on the reverse
+  // strand and translating the top-strand slice directly gives
+  // gibberish (biolog 04.05.2026 evening lab session).
+  const [cursorSelectionStrand, setCursorSelectionStrand] = useState(1);
 
   // Click / pointer-up settle from the bar — final position. Switch
   // to Sequence tab if biolog initiated from Overview, then queue
@@ -236,16 +242,18 @@ export default function SingleInspector({
   // SelectionOverlay highlights the whole feature region. Queues a
   // smooth scroll to the start so the biolog sees the beginning of
   // the feature even if the click happened on its tail end.
-  const onSelectRangeFromView = useCallback((start, end, mode) => {
+  const onSelectRangeFromView = useCallback((start, end, mode, strand) => {
     if (typeof start !== 'number' || typeof end !== 'number') return;
     if (!Number.isFinite(start) || !Number.isFinite(end)) return;
     if (end <= start) return;
     setCursorAnchor(start);
     setCursorPos(end);
-    // mode === 'aa' → AA-cell click; gates the Copy AA hotkey /
-    // menu item. Anything else (feature click, future bar lasso) →
-    // 'dna'.
+    // mode === 'aa' → CDS feature click; gates the Copy AA hotkey /
+    // menu item. Anything else (non-CDS feature, AA-cell click, …)
+    // → 'dna'. strand from the feature's data-region-strand drives
+    // the AA copy path through reverseComplement() for reverse CDSes.
     setCursorSelectionMode(mode === 'aa' ? 'aa' : 'dna');
+    setCursorSelectionStrand(strand === -1 ? -1 : 1);
     setPendingScroll({ pos: start, tick: Date.now(), instant: false });
   }, []);
 
@@ -394,6 +402,7 @@ export default function SingleInspector({
               caretPos={cursorPos}
               caretAnchor={cursorAnchor}
               selectionMode={cursorSelectionMode}
+              selectionStrand={cursorSelectionStrand}
               onCaretChange={onCaretChangeFromView}
               onSelectRange={onSelectRangeFromView}
             />

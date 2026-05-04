@@ -297,6 +297,7 @@ const SequenceView = forwardRef(function SequenceView({
   caretPos = null,
   caretAnchor = null,
   selectionMode = null,
+  selectionStrand = 1,
   onCaretChange,
   onSelectRange,
 }, ref) {
@@ -642,7 +643,13 @@ const SequenceView = forwardRef(function SequenceView({
       let text;
       if (e.shiftKey) {
         if (selectionMode !== "aa") return; // not a CDS selection — no-op
-        text = translateDNA(slice);
+        // Reverse-strand CDS (lacZα, AmpR, …) is read 3'→5' on the
+        // top strand. Take the bottom strand 5'→3' = reverseComplement
+        // of the top-strand slice, then translate (biolog 04.05.2026
+        // evening: lacZα copy gave gibberish because we were
+        // translating the forward strand of a reverse CDS).
+        const dna = selectionStrand === -1 ? reverseComplement(slice) : slice;
+        text = translateDNA(dna);
       } else if (e.altKey) {
         text = reverseComplement(slice);
       } else {
@@ -843,7 +850,8 @@ const SequenceView = forwardRef(function SequenceView({
           // a UTR, an ori) makes no biological sense.
           const t = String(el.dataset.regionType || "").toLowerCase();
           const isCdsLike = t === "cds" || t === "gene" || t === "marker" || t === "reporter";
-          onSelectRange(rs, re, isCdsLike ? "aa" : "dna");
+          const strand = parseInt(el.dataset.regionStrand || "", 10) === -1 ? -1 : 1;
+          onSelectRange(rs, re, isCdsLike ? "aa" : "dna", strand);
           try { containerRef.current?.focus({ preventScroll: true }); } catch { /* noop */ }
           // Mark the synthetic click that follows pointerup as
           // already-handled. Without this flag, onRootClickFallback
@@ -973,7 +981,10 @@ const SequenceView = forwardRef(function SequenceView({
     if (!slice) return;
     let text = slice;
     if (mode === "reverse") text = reverseComplement(slice);
-    else if (mode === "aa") text = translateDNA(slice);
+    else if (mode === "aa") {
+      const dna = selectionStrand === -1 ? reverseComplement(slice) : slice;
+      text = translateDNA(dna);
+    }
     try {
       navigator.clipboard?.writeText?.(text);
     } catch { /* clipboard unavailable — silently no-op */ }
