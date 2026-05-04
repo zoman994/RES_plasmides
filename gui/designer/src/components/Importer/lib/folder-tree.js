@@ -100,3 +100,33 @@ export function readFolders(group = 'mine') {
 export function readFolderTree(group = 'mine') {
   return buildFolderTree(readFolders(group));
 }
+
+const KNOWN_GROUPS = new Set(['canvas', 'demo', 'mine', 'snapgene']);
+
+/**
+ * Append a folder path to the given group in localStorage. No-op
+ * for empty / non-string paths, unknown groups, or paths that are
+ * already present (de-duped). Used by:
+ *   - PreImportModal — when the user types a new folder name and
+ *     clicks «+ folder», we persist after commit so it shows up in
+ *     CatalogColumn next time.
+ *   - createProject (auto-folder per new project) — pushes the
+ *     project name into the `canvas` group so each project carries
+ *     its own folder under «This project».
+ */
+export function addFolder(group, path) {
+  if (typeof localStorage === 'undefined') return;
+  if (!KNOWN_GROUPS.has(group)) return;
+  const trimmed = typeof path === 'string' ? path.trim() : '';
+  if (!trimmed) return;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    const empty = { canvas: [], demo: [], mine: [], snapgene: [] };
+    const next = parsed && typeof parsed === 'object' ? { ...empty, ...parsed } : empty;
+    const cur = Array.isArray(next[group]) ? next[group] : [];
+    if (cur.includes(trimmed)) return;
+    next[group] = [...cur, trimmed];
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  } catch { /* private mode / quota */ }
+}

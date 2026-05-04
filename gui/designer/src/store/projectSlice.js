@@ -1,6 +1,7 @@
 import { v7 as uuidv7 } from 'uuid';
 import { putProject, getProject, deleteProject as dexieDeleteProject, listAllProjects } from '../db/dexie-schema';
 import { acquireProjectLock } from '../lib/multi-tab-lock';
+import { addFolder } from '../components/Importer/lib/folder-tree';
 
 const _lockReleaseFns = new Map();
 const _isTestEnv = typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'test';
@@ -168,6 +169,12 @@ export const createProjectSlice = (set, get) => ({
       state.canvas.activeFullscreen = 'dag';
       state.canvas.navStack = [{ fullscreen: 'dag', payload: { projectId: project.id } }];
     });
+    // Sprint M-X.3 follow-up: each new project gets a matching
+    // folder in the «canvas» group so CatalogColumn's «This project»
+    // tree surfaces a per-project bucket without requiring the user
+    // to create one manually. addFolder is idempotent — repeated
+    // creates with the same name don't double-register.
+    addFolder('canvas', project.name || 'Untitled');
     _scheduleAutosave(get, project.id);
     return project.id;
   },

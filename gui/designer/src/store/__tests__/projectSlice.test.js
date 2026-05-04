@@ -48,6 +48,35 @@ describe('K2 — store rewrite + project slice', () => {
     expect(s.canvas.navStack[s.canvas.navStack.length - 1].fullscreen).toBe('dag');
   });
 
+  // ─── Sprint M-X.3 follow-up — auto-folder per project ─────────────
+  it('createProject pushes the project name into the canvas folder group', () => {
+    if (typeof localStorage === 'undefined') return; // jsdom-safe.
+    localStorage.removeItem('pvcs-catalog-user-folders-by-group');
+    useStore.getState().createProject('pCloning2026');
+    const raw = localStorage.getItem('pvcs-catalog-user-folders-by-group');
+    expect(raw).toBeTruthy();
+    const stored = JSON.parse(raw);
+    expect(Array.isArray(stored.canvas)).toBe(true);
+    expect(stored.canvas).toContain('pCloning2026');
+  });
+
+  it('two createProject calls with the same name only register the folder once', () => {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.removeItem('pvcs-catalog-user-folders-by-group');
+    useStore.getState().createProject('Lab');
+    useStore.getState().createProject('Lab');
+    const stored = JSON.parse(localStorage.getItem('pvcs-catalog-user-folders-by-group'));
+    expect(stored.canvas.filter((n) => n === 'Lab')).toHaveLength(1);
+  });
+
+  it('createProject with no name (default «Untitled») still registers the folder', () => {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.removeItem('pvcs-catalog-user-folders-by-group');
+    useStore.getState().createProject();
+    const stored = JSON.parse(localStorage.getItem('pvcs-catalog-user-folders-by-group'));
+    expect(stored.canvas).toContain('Untitled');
+  });
+
   it('renameProject updates name + bumps lastModifiedInIndexedDBAt', async () => {
     const id = useStore.getState().createProject('A');
     const before = useStore.getState()._projectLifecycle[id].lastModifiedInIndexedDBAt;

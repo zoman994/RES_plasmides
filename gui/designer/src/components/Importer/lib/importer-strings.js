@@ -332,6 +332,8 @@ export const IMPORTER_STRINGS = {
   preImportTopologyCircular: 'Circular',
   preImportFolderLabel: 'Folder',
   preImportFolderRoot: '(root)',
+  preImportFolderGroupLibrary: 'Library folders',
+  preImportFolderGroupProject: (name) => name ? `Project: ${name}` : 'This project',
   preImportNewFolderInput: 'New folder name…',
   preImportNewFolderAdd: '+ folder',
   preImportTagsLabel: 'Tags',

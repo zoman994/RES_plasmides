@@ -328,3 +328,101 @@ describe('PreImportModal — K2a multi-file mode', () => {
     expect(screen.getByTestId('pre-import-modal').textContent).toMatch(/3/);
   });
 });
+
+// ─── Sprint M-X.3 follow-up — folder picker bug fix + sections ─────
+describe('PreImportModal — folder picker (+ button + sections)', () => {
+  const beforeAll = () => {
+    if (typeof localStorage !== 'undefined') localStorage.clear();
+  };
+
+  it('clicking + folder selects the new folder in the dropdown', () => {
+    beforeAll();
+    render(
+      <PreImportModal pendingImport={PASTE_ENVELOPE} onConfirm={() => {}} onCancel={() => {}} />
+    );
+    const input = screen.getByTestId('pre-import-new-folder-input');
+    const addBtn = screen.getByTestId('pre-import-new-folder-add');
+    fireEvent.change(input, { target: { value: 'Vectors' } });
+    fireEvent.click(addBtn);
+    // The input clears + the select shows the new option as selected.
+    expect(input.value).toBe('');
+    const select = screen.getByTestId('pre-import-folder');
+    expect(select.value).toBe('Vectors');
+    // The new option is in the dropdown.
+    const opts = Array.from(select.querySelectorAll('option')).map((o) => o.value);
+    expect(opts).toContain('Vectors');
+  });
+
+  it('+ folder pressing Enter in the input also adds + selects', () => {
+    beforeAll();
+    render(
+      <PreImportModal pendingImport={PASTE_ENVELOPE} onConfirm={() => {}} onCancel={() => {}} />
+    );
+    const input = screen.getByTestId('pre-import-new-folder-input');
+    fireEvent.change(input, { target: { value: 'Lab/2026' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(screen.getByTestId('pre-import-folder').value).toBe('Lab/2026');
+  });
+
+  it('+ folder ignores empty input', () => {
+    beforeAll();
+    render(
+      <PreImportModal pendingImport={PASTE_ENVELOPE} onConfirm={() => {}} onCancel={() => {}} />
+    );
+    const select = screen.getByTestId('pre-import-folder');
+    const optsBefore = select.querySelectorAll('option').length;
+    fireEvent.click(screen.getByTestId('pre-import-new-folder-add'));
+    expect(select.querySelectorAll('option').length).toBe(optsBefore);
+  });
+
+  it('submitting persists newly-added folders to localStorage', () => {
+    beforeAll();
+    const onConfirm = vi.fn();
+    render(
+      <PreImportModal pendingImport={PASTE_ENVELOPE} onConfirm={onConfirm} onCancel={() => {}} />
+    );
+    fireEvent.change(screen.getByTestId('pre-import-new-folder-input'), { target: { value: 'Lab' } });
+    fireEvent.click(screen.getByTestId('pre-import-new-folder-add'));
+    fireEvent.click(screen.getByTestId('pre-import-submit'));
+    const stored = JSON.parse(localStorage.getItem('pvcs-catalog-user-folders-by-group'));
+    expect(stored.mine).toContain('Lab');
+  });
+
+  it('canceling does NOT persist newly-typed folders', () => {
+    beforeAll();
+    const onCancel = vi.fn();
+    render(
+      <PreImportModal pendingImport={PASTE_ENVELOPE} onConfirm={() => {}} onCancel={onCancel} />
+    );
+    fireEvent.change(screen.getByTestId('pre-import-new-folder-input'), { target: { value: 'Discard' } });
+    fireEvent.click(screen.getByTestId('pre-import-new-folder-add'));
+    fireEvent.click(screen.getByTestId('pre-import-cancel'));
+    const raw = localStorage.getItem('pvcs-catalog-user-folders-by-group');
+    expect(raw).toBeNull();
+  });
+
+  it('reads existing folders from localStorage and groups them under «Library»', () => {
+    beforeAll();
+    localStorage.setItem(
+      'pvcs-catalog-user-folders-by-group',
+      JSON.stringify({ mine: ['Vectors', 'Promoters'], canvas: ['ProjectA'] })
+    );
+    render(
+      <PreImportModal pendingImport={PASTE_ENVELOPE} onConfirm={() => {}} onCancel={() => {}} />
+    );
+    const select = screen.getByTestId('pre-import-folder');
+    // Sections: Library (mine) and Project (canvas) — implementations
+    // should use <optgroup> so the test can probe by label.
+    const groups = Array.from(select.querySelectorAll('optgroup'));
+    const labels = groups.map((g) => g.getAttribute('label')).filter(Boolean);
+    // At least the «Library» group must appear when mine has folders.
+    expect(labels.some((l) => /library/i.test(l))).toBe(true);
+    // Project section appears when canvas has folders.
+    expect(labels.some((l) => /project/i.test(l))).toBe(true);
+    // Both folders are reachable as <option>s.
+    const opts = Array.from(select.querySelectorAll('option')).map((o) => o.value);
+    expect(opts).toContain('Vectors');
+    expect(opts).toContain('Promoters');
+    expect(opts).toContain('ProjectA');
+  });
+});

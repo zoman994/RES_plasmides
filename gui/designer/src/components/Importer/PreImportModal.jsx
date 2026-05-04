@@ -42,9 +42,10 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useStore } from '../../store';
 import { STRINGS } from '../../lib/strings';
 import TagsEditor from './inspector/TagsEditor';
-import { readFolders } from './lib/folder-tree';
+import { readFolders, addFolder } from './lib/folder-tree';
 
 const S = STRINGS.importer;
 
@@ -61,12 +62,27 @@ export default function PreImportModal({
   const [tags, setTags] = useState([]);
   const [folderTag, setFolderTag] = useState('');
   const [newFolderInput, setNewFolderInput] = useState('');
+  // Library + project folders read from localStorage on each open;
+  // newly-added folders go into `pendingNewFolders` and merge into
+  // the dropdown so «+ folder» actually shows the new entry as the
+  // selected option (the bug biolog hit on 04.05.2026 evening).
+  const [libraryFolders, setLibraryFolders] = useState([]);
+  const [projectFolders, setProjectFolders] = useState([]);
+  const [pendingNewFolders, setPendingNewFolders] = useState([]);
   const [annotateNow, setAnnotateNow] = useState(true);
   const [keepExisting, setKeepExisting] = useState(true);
   // K2a — multi mode: per-file name overrides keyed by `_fileName`.
   // Single mode leaves this map empty and uses the shared `name`.
   const [perFileNames, setPerFileNames] = useState({});
   const nameInputRef = useRef(null);
+
+  // Read current project's name so the project folder section
+  // surfaces a meaningful label («Project: pCloning2026») in the
+  // dropdown.
+  const currentProjectName = useStore((s) => {
+    const id = s.currentProjectId;
+    return id ? (s.projects?.[id]?.name || '') : '';
+  });
 
   const isMulti = pendingImport?.kind === 'multi';
 
@@ -95,6 +111,9 @@ export default function PreImportModal({
     setTags(Array.isArray(pendingImport.suggestedTags) ? pendingImport.suggestedTags : []);
     setFolderTag('');
     setNewFolderInput('');
+    setLibraryFolders(readFolders('mine'));
+    setProjectFolders(readFolders('canvas'));
+    setPendingNewFolders([]);
     setAnnotateNow(true);
     setKeepExisting(true);
   }, [envelopeKey]); // eslint-disable-line react-hooks/exhaustive-deps -- envelopeKey IS the identity gate
@@ -121,18 +140,14 @@ export default function PreImportModal({
     }
   }, [envelopeKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Read user-defined library folders once per envelope. Empty list
-  // is fine — the folder card just hides.
-  const folderTree = useMemo(() => {
-    // K1 ships a flat select; K2 swaps in the recursive tree
-    // renderer. The data comes from the same readFolders() call so
-    // CatalogColumn + PreImportModal stay in sync.
-    return readFolders('mine');
-  }, [envelopeKey]); // eslint-disable-line react-hooks/exhaustive-deps
-
   if (!pendingImport) return null;
 
   const handleSubmit = () => {
+    // Persist any newly-typed folders so they show up in
+    // CatalogColumn + the next PreImportModal open. Library folders
+    // (mine group) — the modal's domain.
+    for (const f of pendingNewFolders) addFolder('mine', f);
+
     const meta = {
       name: name.trim() || pendingImport.suggestedName || 'imported',
       topology,
@@ -160,6 +175,11 @@ export default function PreImportModal({
   const onAddNewFolder = () => {
     const v = newFolderInput.trim();
     if (!v) return;
+    // De-dup: don't push the same folder twice.
+    setPendingNewFolders((prev) => prev.includes(v) ? prev : [...prev, v]);
+    // Auto-select so the user sees the new folder picked up
+    // immediately (the bug fixed — pre-fix the dropdown only
+    // showed pre-existing folders, so the new value was orphaned).
     setFolderTag(v);
     setNewFolderInput('');
   };
@@ -299,7 +319,11 @@ export default function PreImportModal({
             </div>
           </Field>
 
-          {/* Folder picker (K1: simple select + new-folder input) */}
+          {/* Folder picker — sections + new-folder input.
+              Library (mine), Project (canvas), and any folders the
+              user just typed via «+ folder» merge into the same
+              <select> with <optgroup>s so the user sees what each
+              folder belongs to without leaving the modal. */}
           <Field label={S.preImportFolderLabel}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <select
@@ -309,9 +333,27 @@ export default function PreImportModal({
                 style={{ ...inputStyle(), padding: '4px 6px' }}
               >
                 <option value="">{S.preImportFolderRoot}</option>
-                {folderTree.map((path) => (
-                  <option key={path} value={path}>{path}</option>
-                ))}
+                {libraryFolders.length > 0 && (
+                  <optgroup label={S.preImportFolderGroupLibrary}>
+                    {libraryFolders.map((path) => (
+                      <option key={`mine:${path}`} value={path}>{path}</option>
+                    ))}
+                  </optgroup>
+                )}
+                {projectFolders.length > 0 && (
+                  <optgroup label={S.preImportFolderGroupProject(currentProjectName)}>
+                    {projectFolders.map((path) => (
+                      <option key={`canvas:${path}`} value={path}>{path}</option>
+                    ))}
+                  </optgroup>
+                )}
+                {pendingNewFolders.length > 0 && (
+                  <optgroup label={S.preImportFolderGroupLibrary + ' (new)'}>
+                    {pendingNewFolders.map((path) => (
+                      <option key={`new:${path}`} value={path}>{path}</option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
               <div style={{ display: 'flex', gap: 6 }}>
                 <input

@@ -88,3 +88,58 @@ describe('readFolders + readFolderTree', () => {
     expect(readFolders('mine')).toEqual([]);
   });
 });
+
+describe('addFolder — write-back into per-group localStorage', () => {
+  beforeEach(() => {
+    if (typeof localStorage !== 'undefined') localStorage.clear();
+  });
+
+  it('appends a new folder path to an empty group', async () => {
+    const { addFolder } = await import('../lib/folder-tree');
+    addFolder('mine', 'Vectors');
+    expect(readFolders('mine')).toEqual(['Vectors']);
+  });
+
+  it('appends without duplicating an existing path', async () => {
+    const { addFolder } = await import('../lib/folder-tree');
+    localStorage.setItem(
+      'pvcs-catalog-user-folders-by-group',
+      JSON.stringify({ mine: ['Vectors'] })
+    );
+    addFolder('mine', 'Vectors');
+    expect(readFolders('mine')).toEqual(['Vectors']);
+    addFolder('mine', 'Promoters');
+    expect(readFolders('mine')).toEqual(['Vectors', 'Promoters']);
+  });
+
+  it('keeps other groups intact', async () => {
+    const { addFolder } = await import('../lib/folder-tree');
+    localStorage.setItem(
+      'pvcs-catalog-user-folders-by-group',
+      JSON.stringify({ mine: ['M1'], canvas: ['C1'] })
+    );
+    addFolder('mine', 'M2');
+    expect(readFolders('mine')).toEqual(['M1', 'M2']);
+    expect(readFolders('canvas')).toEqual(['C1']);
+  });
+
+  it('ignores empty / non-string paths', async () => {
+    const { addFolder } = await import('../lib/folder-tree');
+    addFolder('mine', '');
+    addFolder('mine', null);
+    addFolder('mine', '   ');
+    expect(readFolders('mine')).toEqual([]);
+  });
+
+  it('ignores unknown groups silently', async () => {
+    const { addFolder } = await import('../lib/folder-tree');
+    addFolder('garbage', 'X');
+    expect(readFolders('mine')).toEqual([]);
+  });
+
+  it('trims whitespace from the path', async () => {
+    const { addFolder } = await import('../lib/folder-tree');
+    addFolder('mine', '  Lab/2026  ');
+    expect(readFolders('mine')).toEqual(['Lab/2026']);
+  });
+});
