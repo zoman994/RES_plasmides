@@ -376,14 +376,16 @@ function AATrack({
           // width without touching the neighbouring codon's number.
           // height 11 + marginBottom 2 give a clean ~3 px gap before
           // the AA letters so numbers don't visually overlap.
-          // Render the number INLINE with textAlign:center +
-          // overflow:visible — wider numbers (2-3 digits) overflow
-          // symmetrically left and right around the codon middle
-          // column. No absolute positioning means no sub-pixel
-          // alignment slop (biolog 04.05.2026 evening: «номера всё
-          // так же неровно»). Empty cells are <span> "&nbsp;" so
-          // they consume exactly 1 ch each and the column grid stays
-          // perfectly aligned with the AA row below.
+          // CRITICAL: outer cell stays at parent fontSize so its
+          // `width: 1ch` resolves to the SAME pixel value as every
+          // other 1 ch cell (gutter, AA letter, empty filler). Earlier
+          // I set fontSize: 7 on the outer cell — that shrunk 1 ch
+          // to ~4.5 px while AA cells were ~6.5 px, so the numbering
+          // row drifted left as columns accumulated and numbers no
+          // longer landed above their letters (biolog 04.05.2026
+          // evening: «нумерация АА все ещё кривая, сдвиг»). The 7 px
+          // text size now lives on an INNER span — it shrinks the
+          // glyphs without disturbing the cell width.
           const aaNumberingCells = Array.from({ length: lineLen }, (_, ci) => {
             const cover = findCovering(ci);
             if (!cover || cover.role !== "mid") {
@@ -409,13 +411,17 @@ function AATrack({
                   textAlign: "center",
                   overflow: "visible",
                   whiteSpace: "nowrap",
-                  fontSize: 7,
-                  lineHeight: "8px",
-                  color: "var(--text-tertiary, #9ca3af)",
-                  pointerEvents: "none",
-                  fontFamily: "var(--font-mono, monospace)",
                 }}
-              >{aaIdx}</span>
+              >
+                <span
+                  style={{
+                    fontSize: 7,
+                    lineHeight: "8px",
+                    color: "var(--text-tertiary, #9ca3af)",
+                    pointerEvents: "none",
+                  }}
+                >{aaIdx}</span>
+              </span>
             );
           });
 
@@ -425,17 +431,16 @@ function AATrack({
               data-testid="sequence-view-aa-numbering"
               data-aa-numbering-row={row.label}
               style={{
-                // Tight band: 8 px text row + 1 px buffer. Numbers
-                // are fontSize 7 with lineHeight 8 so they fit
-                // comfortably inside; the 1 px marginBottom is just
-                // a hairline that prevents the digit's bottom edge
-                // from sitting flush against the AA letter ascenders
-                // below (biolog 04.05.2026 evening: «АА всё так же
-                // далек от цепи ДНК»). Earlier 13 px gap was too big.
+                // Symmetric 2 px buffer above + below the 8 px text
+                // band so the gap from annotation rect → numbers
+                // visually equals the gap from numbers → AA letters
+                // (biolog 04.05.2026 evening: «отступ от ДНК до
+                // номеров и от номеров до АА цепи неравномерный»).
                 height: 8,
                 lineHeight: "8px",
                 whiteSpace: "pre",
-                marginBottom: 1,
+                marginTop: 2,
+                marginBottom: 2,
                 userSelect: "none",
                 WebkitUserSelect: "none",
               }}
