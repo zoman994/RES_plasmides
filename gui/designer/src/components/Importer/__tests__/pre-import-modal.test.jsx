@@ -228,3 +228,82 @@ describe('PreImportModal — K2 existing-annotations radio', () => {
     expect(screen.getByTestId('pre-import-modal').textContent).toMatch(/bacterial/);
   });
 });
+
+// ─── Sprint M-X.3 K2a — multi-file mode ──────────────────────────────
+const MULTI_ENVELOPE = {
+  kind: 'multi',
+  parsedItems: [
+    {
+      name: 'pUC19', sequence: 'A'.repeat(2700), length: 2700,
+      topology: 'circular', annotations: [], _fileName: 'pUC19.gb', _source: 'file',
+    },
+    {
+      name: 'pET28a', sequence: 'A'.repeat(5400), length: 5400,
+      topology: 'circular', annotations: [], _fileName: 'pET28a.gb', _source: 'file',
+    },
+    {
+      name: 'gfp', sequence: 'A'.repeat(720), length: 720,
+      topology: 'linear', annotations: [], _fileName: 'gfp.fasta', _source: 'file',
+    },
+  ],
+  suggestedName: '',
+  defaultTopology: 'linear',
+  hasAnnotations: false,
+  source: 'file',
+};
+
+describe('PreImportModal — K2a multi-file mode', () => {
+  it('shows a per-file name list instead of single name input', () => {
+    render(
+      <PreImportModal pendingImport={MULTI_ENVELOPE} onConfirm={() => {}} onCancel={() => {}} />
+    );
+    // Single name input is hidden in multi mode.
+    expect(screen.queryByTestId('pre-import-name')).toBeNull();
+    // Per-file rows render.
+    expect(screen.getByTestId('pre-import-multi-list')).toBeTruthy();
+    const rows = screen.getAllByTestId('pre-import-multi-row');
+    expect(rows).toHaveLength(3);
+    expect(rows[0].textContent).toMatch(/pUC19/);
+    expect(rows[1].textContent).toMatch(/pET28a/);
+    expect(rows[2].textContent).toMatch(/gfp/);
+  });
+
+  it('editing a per-file name flows through commit as perFileNames', () => {
+    const onConfirm = vi.fn();
+    render(
+      <PreImportModal pendingImport={MULTI_ENVELOPE} onConfirm={onConfirm} onCancel={() => {}} />
+    );
+    const inputs = screen.getAllByTestId('pre-import-multi-name-input');
+    fireEvent.change(inputs[0], { target: { value: 'pAlpha' } });
+    fireEvent.click(screen.getByTestId('pre-import-submit'));
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    const meta = onConfirm.mock.calls[0][0];
+    expect(meta.perFileNames).toEqual({
+      'pUC19.gb': 'pAlpha',
+      'pET28a.gb': 'pET28a',
+      'gfp.fasta': 'gfp',
+    });
+  });
+
+  it('shared topology / tags / annotateNow apply once for the whole batch', () => {
+    const onConfirm = vi.fn();
+    render(
+      <PreImportModal pendingImport={MULTI_ENVELOPE} onConfirm={onConfirm} onCancel={() => {}} />
+    );
+    fireEvent.click(screen.getByTestId('pre-import-topology-circular'));
+    fireEvent.click(screen.getByTestId('pre-import-annotate-now'));
+    fireEvent.click(screen.getByTestId('pre-import-submit'));
+    const meta = onConfirm.mock.calls[0][0];
+    expect(meta.topology).toBe('circular');
+    expect(meta.annotateNow).toBe(false);
+  });
+
+  it('header subtitle shows the count of files in batch', () => {
+    render(
+      <PreImportModal pendingImport={MULTI_ENVELOPE} onConfirm={() => {}} onCancel={() => {}} />
+    );
+    // Should mention "3" (file count) somewhere visible — typically
+    // in the subtitle slot next to the title.
+    expect(screen.getByTestId('pre-import-modal').textContent).toMatch(/3/);
+  });
+});

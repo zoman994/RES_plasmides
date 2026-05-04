@@ -63,15 +63,34 @@ export default function PreImportModal({
   const [newFolderInput, setNewFolderInput] = useState('');
   const [annotateNow, setAnnotateNow] = useState(true);
   const [keepExisting, setKeepExisting] = useState(true);
+  // K2a — multi mode: per-file name overrides keyed by `_fileName`.
+  // Single mode leaves this map empty and uses the shared `name`.
+  const [perFileNames, setPerFileNames] = useState({});
   const nameInputRef = useRef(null);
+
+  const isMulti = pendingImport?.kind === 'multi';
 
   // Re-seed the form whenever a fresh envelope opens. The
   // `pendingImport` reference doubles as our identity key — when it
   // flips from null → object (or object A → object B) we reset.
-  const envelopeKey = pendingImport ? (pendingImport.parsedItem?._fileName || 'pending') : null;
+  const envelopeKey = pendingImport
+    ? (isMulti
+        ? `multi:${(pendingImport.parsedItems || []).map((p) => p._fileName).join('|')}`
+        : (pendingImport.parsedItem?._fileName || 'pending'))
+    : null;
   useEffect(() => {
     if (!pendingImport) return;
-    setName(pendingImport.suggestedName || pendingImport.parsedItem?.name || '');
+    if (isMulti) {
+      setName('');
+      const seed = {};
+      for (const p of (pendingImport.parsedItems || [])) {
+        seed[p._fileName] = p.name || p._fileName;
+      }
+      setPerFileNames(seed);
+    } else {
+      setName(pendingImport.suggestedName || pendingImport.parsedItem?.name || '');
+      setPerFileNames({});
+    }
     setTopology(pendingImport.defaultTopology || pendingImport.parsedItem?.topology || 'linear');
     setTags(Array.isArray(pendingImport.suggestedTags) ? pendingImport.suggestedTags : []);
     setFolderTag('');
@@ -94,9 +113,9 @@ export default function PreImportModal({
     return () => window.removeEventListener('keydown', onKey);
   }, [pendingImport, onCancel]);
 
-  // Autofocus name on open.
+  // Autofocus name on open. Skip in multi mode (no single name input).
   useEffect(() => {
-    if (pendingImport && nameInputRef.current) {
+    if (pendingImport && !isMulti && nameInputRef.current) {
       nameInputRef.current.focus();
       nameInputRef.current.select();
     }
@@ -114,14 +133,21 @@ export default function PreImportModal({
   if (!pendingImport) return null;
 
   const handleSubmit = () => {
-    onConfirm?.({
+    const meta = {
       name: name.trim() || pendingImport.suggestedName || 'imported',
       topology,
       tags: [...tags],
       folderTag: folderTag || undefined,
       annotateNow,
       keepExistingAnnotations: keepExisting,
-    });
+    };
+    if (isMulti) {
+      // In multi mode the shared name is meaningless; per-file names
+      // own the rename. Drop the top-level `name` and pass the map.
+      delete meta.name;
+      meta.perFileNames = { ...perFileNames };
+    }
+    onConfirm?.(meta);
   };
 
   const handleNameKeyDown = (e) => {
@@ -138,9 +164,14 @@ export default function PreImportModal({
     setNewFolderInput('');
   };
 
-  const seqLength = pendingImport.parsedItem?.length || pendingImport.parsedItem?.sequence?.length || 0;
+  const seqLength = isMulti
+    ? 0
+    : (pendingImport.parsedItem?.length || pendingImport.parsedItem?.sequence?.length || 0);
   const hasAnns = !!pendingImport.hasAnnotations;
-  const annCount = (pendingImport.parsedItem?.annotations || []).length;
+  const annCount = isMulti
+    ? (pendingImport.parsedItems || []).reduce((s, p) => s + (p.annotations?.length || 0), 0)
+    : (pendingImport.parsedItem?.annotations || []).length;
+  const multiCount = isMulti ? (pendingImport.parsedItems || []).length : 0;
 
   return (
     <div
@@ -185,7 +216,7 @@ export default function PreImportModal({
         >
           <div style={{ fontSize: 14, fontWeight: 500 }}>{S.preImportTitle}</div>
           <div style={{ fontSize: 11, color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
-            {S.preImportSubtitle(seqLength)}
+            {isMulti ? `${multiCount} files` : S.preImportSubtitle(seqLength)}
           </div>
           <span style={{ flex: 1 }} />
           <SourceBadge source={pendingImport.source} parsedItem={pendingImport.parsedItem} />
@@ -193,19 +224,60 @@ export default function PreImportModal({
 
         {/* Body */}
         <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {/* Name */}
-          <Field label={S.preImportNameLabel}>
-            <input
-              ref={nameInputRef}
-              data-testid="pre-import-name"
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              onKeyDown={handleNameKeyDown}
-              placeholder={S.preImportNamePlaceholder}
-              style={inputStyle()}
-            />
-          </Field>
+          {/* Name — single mode only. Multi mode shows the per-file
+              list instead, since each file gets its own name. */}
+          {isMulti ? (
+            <Field label={`${S.preImportNameLabel} · ${multiCount}`}>
+              <div
+                data-testid="pre-import-multi-list"
+                style={{
+                  display: 'flex', flexDirection: 'column', gap: 4,
+                  maxHeight: 180, overflowY: 'auto',
+                  padding: '4px 6px',
+                  background: 'var(--surface-2, #f5f5f4)',
+                  borderRadius: 'var(--radius-sm, 3px)',
+                }}
+              >
+                {(pendingImport.parsedItems || []).map((p) => (
+                  <div
+                    key={p._fileName}
+                    data-testid="pre-import-multi-row"
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11 }}
+                  >
+                    <span style={{
+                      fontFamily: 'var(--font-mono)', fontSize: 10,
+                      color: 'var(--text-tertiary)',
+                      flex: '0 0 auto', minWidth: 80,
+                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                    }}>{p._fileName}</span>
+                    <input
+                      data-testid="pre-import-multi-name-input"
+                      type="text"
+                      value={perFileNames[p._fileName] || ''}
+                      onChange={(e) => setPerFileNames((prev) => ({
+                        ...prev, [p._fileName]: e.target.value,
+                      }))}
+                      placeholder={p.name || p._fileName}
+                      style={{ ...inputStyle(), flex: 1 }}
+                    />
+                  </div>
+                ))}
+              </div>
+            </Field>
+          ) : (
+            <Field label={S.preImportNameLabel}>
+              <input
+                ref={nameInputRef}
+                data-testid="pre-import-name"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={handleNameKeyDown}
+                placeholder={S.preImportNamePlaceholder}
+                style={inputStyle()}
+              />
+            </Field>
+          )}
 
           {/* Topology */}
           <Field label={S.preImportTopologyLabel}>

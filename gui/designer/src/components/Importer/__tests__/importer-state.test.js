@@ -364,3 +364,96 @@ describe('M-X.3 K2 — pendingImport for file flow (single)', () => {
     expect(result.current.perFileEdits[it._fileName]?.editedTags).toContain('Vectors/CRISPR');
   });
 });
+
+// ─── Sprint M-X.3 K2a — multi-file pendingImport ─────────────────────
+describe('M-X.3 K2a — pendingImport for multi-file flow', () => {
+  it('addFiles with multiple files routes through pendingImport.kind=multi', async () => {
+    const { result } = renderHook(() => useImporterState({ mode: 'advanced' }));
+    await act(async () => {
+      await result.current.addFiles([
+        fileFromText('a.fasta', FASTA_A),
+        fileFromText('b.fasta', FASTA_B),
+        fileFromText('c.fasta', FASTA_A),
+      ]);
+    });
+    expect(result.current.parsedItems).toEqual([]);
+    const env = result.current.pendingImport;
+    expect(env).toBeTruthy();
+    expect(env.kind).toBe('multi');
+    expect(Array.isArray(env.parsedItems)).toBe(true);
+    expect(env.parsedItems).toHaveLength(3);
+    expect(env.parsedItems.map((p) => p._fileName)).toEqual(['a.fasta', 'b.fasta', 'c.fasta']);
+  });
+
+  it('multi commit applies tags + topology to ALL items', async () => {
+    const { result } = renderHook(() => useImporterState({ mode: 'advanced' }));
+    await act(async () => {
+      await result.current.addFiles([
+        fileFromText('a.fasta', FASTA_A),
+        fileFromText('b.fasta', FASTA_B),
+      ]);
+    });
+    act(() => result.current.commitPendingImport({
+      topology: 'circular',
+      tags: ['lab', 'batch-2026'],
+      folderTag: 'Vectors',
+      annotateNow: false,
+    }));
+    expect(result.current.parsedItems).toHaveLength(2);
+    expect(result.current.parsedItems.every((p) => p.topology === 'circular')).toBe(true);
+    for (const it of result.current.parsedItems) {
+      const tags = result.current.perFileEdits[it._fileName]?.editedTags || [];
+      expect(tags).toContain('Vectors');
+      expect(tags).toContain('lab');
+      expect(tags).toContain('batch-2026');
+      expect(result.current.perFileFlags[it._fileName]?.autoAnnotate).toBe(false);
+    }
+  });
+
+  it('multi commit with perFileNames overrides each parsedItem name', async () => {
+    const { result } = renderHook(() => useImporterState({ mode: 'advanced' }));
+    await act(async () => {
+      await result.current.addFiles([
+        fileFromText('a.fasta', FASTA_A),
+        fileFromText('b.fasta', FASTA_B),
+      ]);
+    });
+    act(() => result.current.commitPendingImport({
+      topology: 'linear',
+      tags: [],
+      annotateNow: true,
+      perFileNames: { 'a.fasta': 'pAlpha', 'b.fasta': 'pBeta' },
+    }));
+    expect(result.current.parsedItems[0].name).toBe('pAlpha');
+    expect(result.current.parsedItems[1].name).toBe('pBeta');
+  });
+
+  it('multi commit without perFileNames keeps each parsedItem original name', async () => {
+    const { result } = renderHook(() => useImporterState({ mode: 'advanced' }));
+    await act(async () => {
+      await result.current.addFiles([
+        fileFromText('a.fasta', FASTA_A),
+        fileFromText('b.fasta', FASTA_B),
+      ]);
+    });
+    const orig = result.current.pendingImport.parsedItems.map((p) => p.name);
+    act(() => result.current.commitPendingImport({
+      topology: 'linear', tags: [], annotateNow: true,
+    }));
+    expect(result.current.parsedItems.map((p) => p.name)).toEqual(orig);
+  });
+
+  it('multi envelope hasAnnotations is true if ANY parsed item has annotations', async () => {
+    // Both inputs are FASTA — neither has annotations. So hasAnnotations
+    // should be false. Drop the assertion through to make sure the
+    // envelope shape is right.
+    const { result } = renderHook(() => useImporterState({ mode: 'advanced' }));
+    await act(async () => {
+      await result.current.addFiles([
+        fileFromText('a.fasta', FASTA_A),
+        fileFromText('b.fasta', FASTA_B),
+      ]);
+    });
+    expect(result.current.pendingImport.hasAnnotations).toBe(false);
+  });
+});

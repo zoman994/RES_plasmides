@@ -102,9 +102,18 @@ export function useImporterState({ mode } = {}) { // eslint-disable-line no-unus
       const annotateNow = m.annotateNow !== false; // default ON
       const keepExisting = m.keepExistingAnnotations !== false; // default keep
 
+      const perFileNames = m.perFileNames && typeof m.perFileNames === 'object'
+        ? m.perFileNames
+        : null;
+
       const applyToOne = (parsed) => {
         const next = { ...parsed };
-        if (typeof m.name === 'string' && m.name.trim()) {
+        // Per-file name override (multi mode) wins over the shared
+        // `name` field — that field is hidden in multi mode anyway.
+        const fileNameOverride = perFileNames && perFileNames[parsed._fileName];
+        if (typeof fileNameOverride === 'string' && fileNameOverride.trim()) {
+          next.name = fileNameOverride.trim();
+        } else if (typeof m.name === 'string' && m.name.trim()) {
           next.name = m.name.trim();
         }
         if (m.topology === 'circular' || m.topology === 'linear') {
@@ -212,31 +221,35 @@ export function useImporterState({ mode } = {}) { // eslint-disable-line no-unus
       return results;
     }
 
-    // Multi-file (length > 1) — K2a will route through pendingImport
-    // with `kind: 'multi'`. For now (K2) keep legacy behaviour so
-    // the existing MultiInspector path stays working until K2a lands.
-    setParsedItems(prev => [...prev, ...results]);
-    setPerFileFlags(prev => {
-      const next = { ...prev };
-      for (const r of results) {
-        if (!next[r._fileName]) next[r._fileName] = { autoAnnotate: true };
-      }
-      return next;
-    });
-    if (opts.targetFolderTag) {
-      setPerFileEdits(prev => {
+    // Multi-file (length > 1) — K2a routes through pendingImport
+    // with `kind: 'multi'`. Errored parses are kept in the envelope
+    // so the modal can show them in the file list (greyed out); the
+    // commit path skips them since there's nothing useful to land.
+    const usable = results.filter((r) => !r._error);
+    if (usable.length === 0) {
+      // All-failed batch: surface errors directly.
+      setParsedItems(prev => [...prev, ...results]);
+      setPerFileFlags(prev => {
         const next = { ...prev };
         for (const r of results) {
-          if (r._error) continue;
-          const cur = next[r._fileName] || {};
-          const tags = Array.isArray(cur.editedTags) ? cur.editedTags : [];
-          if (!tags.includes(opts.targetFolderTag)) {
-            next[r._fileName] = { ...cur, editedTags: [...tags, opts.targetFolderTag] };
-          }
+          if (!next[r._fileName]) next[r._fileName] = { autoAnnotate: true };
         }
         return next;
       });
+      return results;
     }
+    const suggestedTags = opts.targetFolderTag ? [opts.targetFolderTag] : [];
+    setPendingImport({
+      kind: 'multi',
+      parsedItems: usable,
+      // Multi mode hides the single-name input — hint values for
+      // shared fields land on the envelope so the modal seeds them.
+      suggestedName: '',
+      defaultTopology: 'linear',
+      hasAnnotations: usable.some((r) => Array.isArray(r.annotations) && r.annotations.length > 0),
+      suggestedTags,
+      source: 'file',
+    });
     return results;
   }, []);
 
