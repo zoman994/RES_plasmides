@@ -80,6 +80,32 @@ describe("AATrack — K4", () => {
     expect(screen.getAllByTestId("sequence-view-aa-row")).toHaveLength(6);
   });
 
+  // Bug-rush #16 (04.05.2026 evening): per-line auto-hide of
+  // empty AA rows. With a tiny line (3 nt) only ONE forward
+  // frame can produce a codon — the other 5 (+2, +3, -1, -2,
+  // -3) come back empty for this line and must NOT render their
+  // label-only row.
+  it("Bug-rush #16: per-line, hides AA rows with no codons on this line", () => {
+    render(
+      <AATrack
+        fullSeq={PROTEIN_SEQ}
+        lineStart={0}
+        lineLen={3} // exactly one forward codon (frame 0)
+        labelChars={8}
+        strategy="hybrid"
+        framesMode="all"
+        orfRanges={orfRanges}
+        dominantCDS={dominant}
+        regions={REGIONS}
+      />,
+    );
+    const rows = screen.getAllByTestId("sequence-view-aa-row");
+    // At minimum, +1 (frame 0 forward) renders. Rows for frames
+    // with zero codons on this 3-nt window must be filtered.
+    expect(rows.length).toBeLessThan(6);
+    expect(rows.length).toBeGreaterThanOrEqual(1);
+  });
+
   it("3) framesMode='auto' hybrid: AA outside ORF is hidden (opacity 0)", () => {
     // Updated 03.05.2026 evening — biolog asked for clean rendering:
     // «авто по покрытию должно расставлять автоматические рамки

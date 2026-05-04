@@ -645,14 +645,19 @@ function AATrack({
         const onLine = codons.filter(
           (c) => c.position >= lineStart && c.position < lineEnd,
         );
+        // Bug-rush #16 (04.05.2026 evening): per-line auto-hide
+        // for empty rows. Biolog: «при включенном АА режиме
+        // хотелось бы чтобы рамки с нумерацией не показывались
+        // автоматически если на них нет АА». A row with zero
+        // codons on this line was rendering as just the «+1 / +2
+        // / -2 …» label gutter, taking ~10 px of vertical space
+        // for nothing. Skip the row entirely when nothing lands
+        // on this specific line — neighbours collapse up.
+        if (onLine.length === 0) return null;
         // Annotated CDS / gene / marker regions whose own (frame,
         // strand) matches THIS row. Used to tint the AA cell with the
         // feature's annotation colour so the matching frame visually
-        // pops in hybrid `auto` mode (биолог 03.05.2026 evening: «в
-        // этом режиме можно сделать чтобы рамки [наиболее вероятные]
-        // так же окрашивались в цвет фичи?»). Pre-filtered per row
-        // so the per-codon `find` below is O(rowCdsRegions.length)
-        // — typically 0 or 1.
+        // pops in hybrid `auto` mode.
         const rowCdsRegions = (regions || []).filter((r) => {
           if (!r || !CDS_TYPES.has(r.type)) return false;
           const rs = r.strand === -1 ? -1 : 1;
