@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect } from 'react';
+import { useCallback, useState, useEffect, useRef } from 'react';
 import { STRINGS } from '../../../lib/strings';
 import InlineEditableTitle from './InlineEditableTitle';
 import TabBar from './tabs/TabBar';
@@ -308,6 +308,29 @@ export default function SingleInspector({
     openAnnotator(scope);
   }, [openAnnotator, item]);
 
+  // Bug-rush #5 (04.05.2026 evening): Ctrl+Z / Ctrl+Y for annotation
+  // edits. Track a rolling stack of pre-edit snapshots; each edit
+  // pushes the BEFORE-state, undo pops it back into editedAnnotations.
+  // Redo stack populated only when an undo happens; any fresh edit
+  // clears the redo branch (standard editor behavior).
+  const undoStackRef = useRef([]);
+  const redoStackRef = useRef([]);
+  const UNDO_LIMIT = 50;
+
+  // Reset history when the displayed item changes.
+  useEffect(() => {
+    undoStackRef.current = [];
+    redoStackRef.current = [];
+  }, [itemKey]);
+
+  // Ref-tracked current annotations so undo/redo callbacks stay
+  // stable across renders (otherwise the keydown listener rebinds
+  // on every edit).
+  const currentAnnotationsRef = useRef([]);
+  currentAnnotationsRef.current = Array.isArray(edits?.editedAnnotations)
+    ? edits.editedAnnotations
+    : (item?.annotations || []);
+
   const onAnnotationEditFromView = useCallback((edit) => {
     if (!edit || !onUpdateEdits) return;
     try {
@@ -317,7 +340,15 @@ export default function SingleInspector({
         : (item?.annotations || []);
       const result = applyAnnotationEdit(baseAnnotations, edit, seqLength);
       const next = Array.isArray(result) ? result : result?.next;
-      if (Array.isArray(next)) {
+      if (Array.isArray(next) && next !== baseAnnotations) {
+        // Push the BEFORE state onto the undo stack; clear redo
+        // so a new edit branch overrides any future-branch we
+        // might have been holding from a sequence of undos.
+        undoStackRef.current = [
+          ...undoStackRef.current.slice(-UNDO_LIMIT + 1),
+          baseAnnotations,
+        ];
+        redoStackRef.current = [];
         onUpdateEdits({ editedAnnotations: next });
       }
     } catch (err) {
@@ -327,6 +358,55 @@ export default function SingleInspector({
       console.warn('[SingleInspector] annotation edit failed:', err.message);
     }
   }, [onUpdateEdits, item, edits]);
+
+  const undoAnnotation = useCallback(() => {
+    if (!onUpdateEdits) return;
+    const stack = undoStackRef.current;
+    if (stack.length === 0) return;
+    const prev = stack[stack.length - 1];
+    undoStackRef.current = stack.slice(0, -1);
+    redoStackRef.current = [...redoStackRef.current, currentAnnotationsRef.current];
+    onUpdateEdits({ editedAnnotations: prev });
+  }, [onUpdateEdits]);
+
+  const redoAnnotation = useCallback(() => {
+    if (!onUpdateEdits) return;
+    const stack = redoStackRef.current;
+    if (stack.length === 0) return;
+    const next = stack[stack.length - 1];
+    redoStackRef.current = stack.slice(0, -1);
+    undoStackRef.current = [...undoStackRef.current, currentAnnotationsRef.current];
+    onUpdateEdits({ editedAnnotations: next });
+  }, [onUpdateEdits]);
+
+  // Bind Ctrl+Z (undo) / Ctrl+Y / Ctrl+Shift+Z (redo) at the
+  // window level. Layout-independent — uses e.code so the Russian
+  // keyboard's Cyrillic «я» / «н» on the same physical keys still
+  // fires the hotkeys.
+  useEffect(() => {
+    const onKey = (e) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      // Skip when biolog is typing into a form (popup name input,
+      // edit modal, inline rename, AnnotationEditor inputs).
+      const t = e.target;
+      if (t && t.tagName) {
+        const tag = t.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+        if (t.isContentEditable) return;
+      }
+      if (e.code === 'KeyZ' && !e.shiftKey) {
+        if (undoStackRef.current.length === 0) return;
+        e.preventDefault();
+        undoAnnotation();
+      } else if ((e.code === 'KeyY') || (e.code === 'KeyZ' && e.shiftKey)) {
+        if (redoStackRef.current.length === 0) return;
+        e.preventDefault();
+        redoAnnotation();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [undoAnnotation, redoAnnotation]);
 
   // Reset cursor / selection when biolog switches plasmids.
   useEffect(() => {

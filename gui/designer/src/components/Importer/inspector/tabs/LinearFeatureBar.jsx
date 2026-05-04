@@ -1,6 +1,5 @@
 import { useMemo, useRef, useState, useLayoutEffect, useCallback } from 'react';
-import { featureColor, FEATURE_STROKE } from '../../../../feature-palette';
-import { ANNOTATION_COLORS } from '../../../../auto-annotate';
+import { featureColorShaded, FEATURE_STROKE } from '../../../../feature-palette';
 import { getTextColor } from '../../../../lib/color-utils';
 
 /**
@@ -42,8 +41,16 @@ const IN_LABEL_THRESHOLD_PCT = 6.5;
 // LABEL_H / LABEL_GAP_PX / DENSITY_WINDOW_PX / ANGLED_SHIFT_PX /
 // ANGLED_THRESHOLD. Bar no longer renders outside leader labels.
 
+// Bug-rush #4 (04.05.2026 evening, second take): switched to
+// `featureColorShaded` so the bar's coloured rect lands on the
+// SAME shade as the matching arc in PlasmidMiniMap and the matching
+// rect in SequenceView's AnnotationTrack — biolog «все цвета должны
+// быть одинаковые между элементами». Pre-fix the bar used the
+// type-level base hex (no per-name variation), so AmpR / KanR /
+// HygR all collapsed into one resistance shade in the bar but
+// rendered distinct in the arcs — visually inconsistent.
 function annColorPalette(ann) {
-  return featureColor(ann?.type, ann?.name) || ANNOTATION_COLORS[ann?.type] || ANNOTATION_COLORS.misc;
+  return featureColorShaded(ann?.type, ann?.name);
 }
 
 export default function LinearFeatureBar({

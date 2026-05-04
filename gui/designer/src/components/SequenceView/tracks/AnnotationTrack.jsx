@@ -221,9 +221,15 @@ function AnnotationTrack({
           // regions keep the existing solid+darkened look.
           const isPredicted = region.predicted === true;
           const baseColor = ensureColor(region.color);
-          const fill = isPredicted
-            ? 'transparent'
-            : darkenColor(baseColor, 0.10);
+          // Bug-rush #4 (04.05.2026 evening, second take): biolog
+          // «фичи должны быть именно более прозрачные а не другого
+          // цвета». Drop the darken/saturation tweaks entirely —
+          // fill stays the palette base, fillOpacity controls
+          // perceived «paleness» so the colour family across
+          // LinearFeatureBar / PlasmidMiniMap / AnnotationTrack
+          // stays in lock-step (single palette source of truth).
+          const fill = isPredicted ? 'transparent' : baseColor;
+          const rectFillOpacity = isPredicted ? 1 : 0.55;
           const rectStroke = isPredicted
             ? baseColor
             : 'var(--text-secondary, #3A2F1F)';
@@ -335,6 +341,7 @@ function AnnotationTrack({
                 height={ROW_HEIGHT}
                 rx={2}
                 fill={fill}
+                fillOpacity={rectFillOpacity}
                 // Confident: theme-aware stroke (var(--text-secondary)),
                 // 0.6 px (biolog visual review M-B.3 polish). Predicted:
                 // feature-coloured stroke, 1 px, dashed pattern (3,2)
@@ -353,6 +360,7 @@ function AnnotationTrack({
                 <path
                   d={chevronPath(strand, strand === -1 ? 0 : widthRect, 0, ROW_HEIGHT)}
                   fill={fill}
+                  fillOpacity={rectFillOpacity}
                   stroke={rectStroke}
                   strokeWidth={rectStrokeWidth}
                   strokeDasharray={rectStrokeDash}
