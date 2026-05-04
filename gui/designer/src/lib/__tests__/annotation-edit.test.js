@@ -227,6 +227,37 @@ describe('annotation-edit — applyAnnotationEdit dispatcher', () => {
   });
 });
 
+describe('annotation-edit — backfill-id matching for imported annotations', () => {
+  // Bug-rush 1 (04.05.2026 evening): existing annotations parsed from
+  // .dna / .gb arrived without an `id` field. SequenceView dispatched
+  // drag-resize edits using the deterministic backfill id (the same
+  // shape that getRegions stamps on read). Pre-fix, updateAnnotation
+  // looked for strict a.id === annotationId and silently skipped.
+  // Now the matcher accepts both forms and stamps the canonical id
+  // on the way out.
+  const noId = { name: 'lacZα', type: 'CDS', start: 145, end: 469, level: 'region', strand: -1 };
+
+  it('updateAnnotation finds a region without id by its backfill id', () => {
+    const arr = [noId];
+    const next = updateAnnotation(arr, 'region:145:469:CDS:lacZα', { end: 500 }, SEQLEN);
+    expect(next).not.toBe(arr);
+    expect(next[0].end).toBe(500);
+    expect(next[0].id).toBe('region:145:500:CDS:lacZα');
+  });
+
+  it('updateAnnotation stamps the canonical id even when the patch only changes strand', () => {
+    const arr = [noId];
+    const next = updateAnnotation(arr, 'region:145:469:CDS:lacZα', { strand: 1 }, SEQLEN);
+    expect(next[0].id).toBe('region:145:469:CDS:lacZα');
+  });
+
+  it('deleteAnnotation removes a region without id by its backfill id', () => {
+    const arr = [noId];
+    const next = deleteAnnotation(arr, 'region:145:469:CDS:lacZα');
+    expect(next).toHaveLength(0);
+  });
+});
+
 describe('annotation-edit — toUiCoords / fromUiCoords round-trip', () => {
   it('toUiCoords adds 1 to start, leaves end untouched', () => {
     expect(toUiCoords(145, 469)).toEqual({ uiStart: 146, uiEnd: 469 });

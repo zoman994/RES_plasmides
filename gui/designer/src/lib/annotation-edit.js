@@ -106,9 +106,29 @@ export function createAnnotation({
  * the original array reference unchanged — caller can detect a no-op
  * by reference equality.
  */
+/**
+ * Match by stored id OR by the deterministic backfill id for
+ * imported annotations that arrived without one. Source files
+ * (.dna / .gb / SnapGene catalog) often omit the id field; consumers
+ * that read through `getRegions` see the backfilled form
+ * (`region:start:end:type:name`) and dispatch edits with THAT id,
+ * but the underlying array still has `id: undefined`. Strict
+ * `a.id === id` would silently miss them — biolog reported drag-resize
+ * worked on freshly-created annotations but не работало на existing
+ * imports.
+ */
+function matchesAnnotationId(a, id) {
+  if (!a || !id) return false;
+  if (a.id === id) return true;
+  if (!a.id && a.level === 'region') {
+    return generateAnnotationId(a) === id;
+  }
+  return false;
+}
+
 export function deleteAnnotation(annotations, annotationId) {
   if (!Array.isArray(annotations)) return [];
-  const next = annotations.filter((a) => a && a.id !== annotationId);
+  const next = annotations.filter((a) => !matchesAnnotationId(a, annotationId));
   return next.length === annotations.length ? annotations : next;
 }
 
@@ -125,15 +145,18 @@ export function updateAnnotation(annotations, annotationId, patch, seqLength) {
   if (!Array.isArray(annotations)) return [];
   let found = false;
   const next = annotations.map((a) => {
-    if (!a || a.id !== annotationId) return a;
+    if (!matchesAnnotationId(a, annotationId)) return a;
     found = true;
     const merged = { ...a, ...patch };
     const v = validateAnnotationCoords(merged.start, merged.end, seqLength);
     if (!v.valid) throw new Error(`updateAnnotation: ${v.error}`);
     if (merged.strand !== -1) merged.strand = 1;
-    // Regenerate id when the identifying fields shifted.
+    // Regenerate id when the identifying fields shifted, OR when
+    // the annotation came in without one (now we stamp the
+    // deterministic backfill so subsequent edits round-trip cleanly).
     if (
-      patch.start !== undefined
+      !a.id
+      || patch.start !== undefined
       || patch.end !== undefined
       || patch.type !== undefined
       || patch.name !== undefined
