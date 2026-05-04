@@ -156,13 +156,24 @@ export default function Annotator({
         width: '100%',
         height: '100%',
         maxWidth: '1400px',
-        background: 'var(--surface-0, #fafaf9)',
+        // Bug-rush #26 (04.05.2026 evening): «в темной теме аннотатор
+        // имеет кривой интерфейс». Pre-fix this was
+        // `var(--surface-0, #fafaf9)` — but `--surface-0` is NOT
+        // defined anywhere in index.css (only --surface-1 / --surface-2
+        // exist). In dark theme the variable resolved to its inline
+        // fallback `#fafaf9` (near-white) and `--text-primary`
+        // resolved to the dark-theme light grey, leaving the results
+        // pane unreadable. --surface-1 is dark-theme-aware (#171717
+        // dark / #ffffff light), so the panel now contrasts properly
+        // against the text.
+        background: 'var(--surface-1, #ffffff)',
         border: '0.5px solid var(--border-default, #d4d4d4)',
         borderRadius: 'var(--radius-md, 6px)',
         boxShadow: '0 24px 64px rgba(0,0,0,0.35)',
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
+        color: 'var(--text-primary, #111)',
       }}
     >
       {/* Header */}

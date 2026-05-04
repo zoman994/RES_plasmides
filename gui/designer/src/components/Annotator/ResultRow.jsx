@@ -81,6 +81,11 @@ export default function ResultRow({
               flex: 1, padding: '2px 6px', fontSize: 11,
               border: '0.5px solid var(--accent-500, #f97316)',
               borderRadius: 'var(--radius-sm, 3px)',
+              // Bug-rush #26: explicit theme-aware fill so dark mode
+              // doesn't fall back to the browser's white default.
+              background: 'var(--surface-1, #fff)',
+              color: 'var(--text-primary, #111)',
+              outline: 'none',
             }}
             autoFocus
           />
