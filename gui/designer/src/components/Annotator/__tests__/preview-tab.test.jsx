@@ -197,4 +197,88 @@ describe('PreviewTab — K4 SequenceView merge + drill-in', () => {
     expect(a.acceptedRegionIds.g1).toBeUndefined();
     expect(a.rejectedRegionIds.g1).toBeUndefined();
   });
+
+  // Sprint M-X.3 follow-up (05.05.2026) — biolog: «после нажатия
+  // ассепт на превью аннотатора фича должна явно появлятся перестая
+  // быть призрачной». Verdicts have to flow back into the merged
+  // fragment immediately:
+  //   - Accept → region stays in the list but `predicted: false`
+  //     (AnnotationTrack renders solid + non-italic label).
+  //   - Reject → region disappears from the merged list entirely
+  //     (no ghost, no solid).
+  //   - No verdict → unchanged ghost rendering.
+  describe('verdict feedback in preview', () => {
+    it('accepted ghost re-renders without the predicted flag (becomes solid)', () => {
+      setResults({
+        'sigma70-promoter': {
+          pluginId: 'sigma70-promoter', pluginName: 'σ70',
+          regions: [ghost('g1', 'σ70 hit')],
+        },
+      });
+      const { rerender } = render(
+        <PreviewTab sequence={SEQUENCE} annotations={CONFIRMED} name="pTest" />
+      );
+      // Pre-accept: the region IS predicted.
+      expect(
+        screen.getByTestId('mock-ann-g1').getAttribute('data-region-predicted')
+      ).toBe('true');
+      // Accept it.
+      fireEvent.click(screen.getByTestId('mock-ann-g1'));
+      fireEvent.click(screen.getByTestId('annotator-ghost-accept'));
+      rerender(
+        <PreviewTab sequence={SEQUENCE} annotations={CONFIRMED} name="pTest" />
+      );
+      // Post-accept: still in the list, but no longer a ghost.
+      expect(screen.getByTestId('mock-ann-g1')).toBeTruthy();
+      expect(
+        screen.getByTestId('mock-ann-g1').getAttribute('data-region-predicted')
+      ).toBeNull();
+    });
+
+    it('rejected ghost disappears from the merged fragment', () => {
+      setResults({
+        'sigma70-promoter': {
+          pluginId: 'sigma70-promoter', pluginName: 'σ70',
+          regions: [ghost('g1', 'σ70 hit'), ghost('g2', 'σ70 hit 2')],
+        },
+      });
+      const { rerender } = render(
+        <PreviewTab sequence={SEQUENCE} annotations={CONFIRMED} name="pTest" />
+      );
+      // Pre-reject: 1 confirmed + 2 ghosts.
+      expect(screen.getByTestId('mock-ann-count').textContent).toBe('3');
+      // Reject g1.
+      fireEvent.click(screen.getByTestId('mock-ann-g1'));
+      fireEvent.click(screen.getByTestId('annotator-ghost-reject'));
+      rerender(
+        <PreviewTab sequence={SEQUENCE} annotations={CONFIRMED} name="pTest" />
+      );
+      // Post-reject: 1 confirmed + 1 ghost (g2 only).
+      expect(screen.getByTestId('mock-ann-count').textContent).toBe('2');
+      expect(screen.queryByTestId('mock-ann-g1')).toBeNull();
+      expect(screen.queryByTestId('mock-ann-g2')).toBeTruthy();
+    });
+
+    it('non-verdicted ghosts keep their predicted flag (no false positives)', () => {
+      setResults({
+        'sigma70-promoter': {
+          pluginId: 'sigma70-promoter', pluginName: 'σ70',
+          regions: [ghost('g1', 'σ70 hit'), ghost('g2', 'σ70 hit 2')],
+        },
+      });
+      const { rerender } = render(
+        <PreviewTab sequence={SEQUENCE} annotations={CONFIRMED} name="pTest" />
+      );
+      // Accept g1 only.
+      fireEvent.click(screen.getByTestId('mock-ann-g1'));
+      fireEvent.click(screen.getByTestId('annotator-ghost-accept'));
+      rerender(
+        <PreviewTab sequence={SEQUENCE} annotations={CONFIRMED} name="pTest" />
+      );
+      // g2 is untouched — still predicted.
+      expect(
+        screen.getByTestId('mock-ann-g2').getAttribute('data-region-predicted')
+      ).toBe('true');
+    });
+  });
 });

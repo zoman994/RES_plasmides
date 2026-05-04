@@ -45,7 +45,20 @@ export default function PreviewTab({
   // verdict bucket. Without the synthetic-id fallback, regions that
   // arrived from a plugin without an `id` field would silently fail
   // the verdict step.
+  //
+  // Sprint M-X.3 follow-up (05.05.2026) — biolog: «после нажатия
+  // ассепт на превью аннотатора фича должна явно появлятся перестая
+  // быть призрачной». Verdicts now flow back into the merged fragment
+  // immediately:
+  //   - Rejected regions are dropped from the predicted list (no
+  //     ghost, no solid — they vanish until the user un-rejects).
+  //   - Accepted regions stay in the list but with `predicted: false`
+  //     so AnnotationTrack renders them solid + non-italic, matching
+  //     the eventual «save» outcome where they migrate into the real
+  //     annotations array.
   const threshold = annotator.threshold ?? 0;
+  const acceptedIds = annotator.acceptedRegionIds || {};
+  const rejectedIds = annotator.rejectedRegionIds || {};
   const predicted = useMemo(() => {
     const out = [];
     const results = annotator.results || {};
@@ -53,14 +66,16 @@ export default function PreviewTab({
       for (const r of (res?.regions || [])) {
         if (Number.isFinite(r.confidence) && r.confidence < threshold) continue;
         const id = r.id || `${r.start}:${r.end}:${r.type || ''}:${r.name || ''}`;
-        // Mark every pipeline-emitted region as predicted so
-        // AnnotationTrack renders it as a ghost, even if the
-        // underlying detector forgot to set the flag (defensive).
-        out.push({ ...r, id, predicted: true });
+        if (rejectedIds[id]) continue; // dropped — vanish from preview
+        const accepted = !!acceptedIds[id];
+        // Accepted regions render solid (predicted: false); the rest
+        // stay ghosts. Defensive `predicted: true` for un-flagged
+        // detector output unless explicitly accepted.
+        out.push({ ...r, id, predicted: accepted ? false : true });
       }
     }
     return out;
-  }, [annotator.results, threshold]);
+  }, [annotator.results, threshold, acceptedIds, rejectedIds]);
 
   const merged = useMemo(() => [
     ...((annotations || []).map((a) => ({ ...a, predicted: a.predicted === true ? true : false }))),
