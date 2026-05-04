@@ -20,6 +20,7 @@ import { applyAnnotationEdit } from '../../../lib/annotation-edit.js';
 import { useStore } from '../../../store';
 import { selectAnnotator } from '../../../store/uiSlice.js';
 import Annotator from '../../Annotator';
+import SettingsPopover from '../../SequenceView/SettingsPopover';
 
 const S = STRINGS.importer;
 
@@ -419,6 +420,17 @@ export default function SingleInspector({
     setCursorSelectionMode(null);
   }, [itemKey]);
 
+  // Bug-rush #22 — SequenceView settings popover state hoisted from
+  // SequenceTab to SingleInspector so the ⚙ trigger can live next
+  // to the plasmid title regardless of active tab. Closed on plasmid
+  // switch and on tab change away from 'sequence'.
+  const [seqSettingsOpen, setSeqSettingsOpen] = useState(false);
+  const seqSettingsTriggerRef = useRef(null);
+  useEffect(() => { setSeqSettingsOpen(false); }, [itemKey]);
+  useEffect(() => {
+    if (activeTab !== 'sequence') setSeqSettingsOpen(false);
+  }, [activeTab]);
+
   // Sprint M-X.2 K10 — Annotator save flow. Accepted regions land
   // here as a flat array; we pipe through `applyAnnotationEdit`
   // with kind='create-batch' (DEC-ANN-09 dedup) into the existing
@@ -494,20 +506,56 @@ export default function SingleInspector({
           background: 'var(--surface-1)',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <InlineEditableTitle
               value={item.name || item._fileName || ''}
               onCommit={(name) => onRenameItem?.(name)}
             />
           </div>
+          {/* Bug-rush #22: ⚙ + READ-ONLY pill relocated here from
+              SequenceTab's removed sticky header. Only visible while
+              the Sequence tab is active. */}
+          {activeTab === 'sequence' && (
+            <>
+              <button
+                ref={seqSettingsTriggerRef}
+                type="button"
+                aria-haspopup="dialog"
+                aria-expanded={seqSettingsOpen ? 'true' : 'false'}
+                aria-label={S.sequenceView?.settingsButton || 'Display settings'}
+                title={S.sequenceView?.settingsButton || 'Display settings'}
+                data-testid="importer-sequence-view-settings-trigger"
+                onClick={() => setSeqSettingsOpen((v) => !v)}
+                style={{
+                  border: '0.5px solid var(--border-default)',
+                  background: 'var(--surface-1)',
+                  color: 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  fontSize: 12,
+                  padding: '2px 6px',
+                  borderRadius: 'var(--radius-md)',
+                  lineHeight: 1,
+                  flexShrink: 0,
+                }}
+              >⚙</button>
+              <span
+                style={{
+                  padding: '2px 6px', borderRadius: 'var(--radius-sm)',
+                  background: 'var(--surface-2)', color: 'var(--text-secondary)',
+                  fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.4,
+                  flexShrink: 0,
+                }}
+              >{S.sequenceReadOnly}</span>
+            </>
+          )}
           <div
             style={{
               fontSize: 11, color: 'var(--text-tertiary)',
               fontFamily: 'var(--font-mono)', flexShrink: 0,
             }}
           >
-            {length.toLocaleString()} п.н. · {topology}
+            {length.toLocaleString()} bp · {topology}
             {regionCount > 0 && ` · ${S.summaryRegionCount(regionCount)}`}
           </div>
         </div>
@@ -631,6 +679,13 @@ export default function SingleInspector({
           sequence={edits?.editedSequence ?? item.sequence}
           annotations={displayAnnotations}
           onApplyAnnotatorResults={onApplyAnnotatorResults}
+        />
+      )}
+      {seqSettingsOpen && (
+        <SettingsPopover
+          open={seqSettingsOpen}
+          onClose={() => setSeqSettingsOpen(false)}
+          triggerRef={seqSettingsTriggerRef}
         />
       )}
     </div>

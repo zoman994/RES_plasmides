@@ -1,9 +1,6 @@
-import { useMemo, useState, useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import SequenceView from '../../../SequenceView';
-import SettingsPopover from '../../../SequenceView/SettingsPopover';
-import { STRINGS } from '../../../../lib/strings';
-
-const S = STRINGS.importer;
+// Settings popover trigger + state moved to SingleInspector (bug-rush #22).
 
 /**
  * SequenceTab — read-only SequenceView wrap (M-B.2 K4).
@@ -95,83 +92,13 @@ export default function SequenceTab({
   const fragments = useMemo(() => [fragment], [fragment]);
   const length = (sequence || '').length;
 
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const settingsButtonRef = useRef(null);
-  useEffect(() => { setSettingsOpen(false); }, [fileKey]);
-
+  // Bug-rush #22 (04.05.2026 evening): the sticky «Sequence · 10 444
+  // bp · READ-ONLY» strip was visually heavy and redundant — the same
+  // numbers + the ⚙ gear now live in SingleInspector's title row, the
+  // tab panel renders only the SequenceView itself. State + settings
+  // popover hoisted out of this file.
   return (
     <div data-testid="importer-tab-panel-sequence" style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%', minWidth: 0, position: 'relative' }}>
-      {/*
-        * Header — sticky to top-left of the scrollable tab content
-        * area so the ⚙ Settings button stays visible during scroll
-        * (biolog 03.05.2026 evening: «настройки отображения кнопка
-        * должна всегда висеть в верхнем левом углу независимо от
-        * скрола и панель должна открываться под ней а не в левой
-        * части»). Background is surface-1 so the DNA letters that
-        * scroll past behind don't bleed through.
-        */}
-      <div
-        style={{
-          position: 'sticky',
-          top: 0,
-          zIndex: 5,
-          background: 'var(--surface-1)',
-          display: 'flex', alignItems: 'center', gap: 8,
-          fontSize: 11, color: 'var(--text-tertiary)',
-          paddingTop: 4, paddingBottom: 6,
-        }}
-      >
-        <button
-          ref={settingsButtonRef}
-          type="button"
-          aria-haspopup="dialog"
-          aria-expanded={settingsOpen ? 'true' : 'false'}
-          aria-label={S.sequenceView?.settingsButton || 'Display settings'}
-          title={S.sequenceView?.settingsButton || 'Display settings'}
-          data-testid="importer-sequence-view-settings-trigger"
-          onClick={() => setSettingsOpen(v => !v)}
-          style={{
-            border: '0.5px solid var(--border-default)',
-            background: 'var(--surface-1)',
-            color: 'var(--text-secondary)',
-            cursor: 'pointer',
-            fontSize: 13,
-            padding: '2px 6px',
-            borderRadius: 'var(--radius-md)',
-            lineHeight: 1,
-            flexShrink: 0,
-          }}
-        >⚙</button>
-        <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{S.tabSequence}</span>
-        <span>·</span>
-        <span style={{ fontFamily: 'var(--font-mono)' }}>{length.toLocaleString()} bp</span>
-        <span>·</span>
-        <span
-          style={{
-            padding: '2px 6px', borderRadius: 'var(--radius-sm)',
-            background: 'var(--surface-2)', color: 'var(--text-secondary)',
-            fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.4,
-          }}
-        >{S.sequenceReadOnly}</span>
-        {/*
-          * Popover lives INSIDE the sticky header so it travels with
-          * the button — was a sibling of the header (anchored at
-          * `{x:0, y:32}` of the SequenceTab div), which made it
-          * appear "in the left part" of the panel and scroll away
-          * with the content. Now position:absolute inside the
-          * sticky parent → drops down right under the ⚙ button and
-          * stays attached during scroll.
-          */}
-        {settingsOpen && (
-          <SettingsPopover
-            open={settingsOpen}
-            onClose={() => setSettingsOpen(false)}
-            anchor={{ x: 0, y: 30 }}
-            triggerRef={settingsButtonRef}
-          />
-        )}
-      </div>
-
       <div style={{ width: '100%', minWidth: 0, display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
         <SequenceView
           ref={sequenceViewRef}

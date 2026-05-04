@@ -39,24 +39,10 @@ describe("SequenceTab — K8 SequenceView rewire", () => {
     expect(screen.getByTestId("mock-sequence-view")).toBeTruthy();
   });
 
-  it("⚙ Settings trigger toggles SettingsPopover mount", () => {
-    render(
-      <SequenceTab
-        sequence={SEQUENCE}
-        annotations={[]}
-        topology="circular"
-        name="rewire-test"
-        fileKey="rewire.gb"
-        onUpdateEdits={() => {}}
-      />,
-    );
-    const trigger = screen.getByTestId("importer-sequence-view-settings-trigger");
-    expect(trigger.getAttribute("aria-expanded")).toBe("false");
-    expect(screen.queryByTestId("mock-settings-popover")).toBeNull();
-    fireEvent.click(trigger);
-    expect(trigger.getAttribute("aria-expanded")).toBe("true");
-    expect(screen.getByTestId("mock-settings-popover")).toBeTruthy();
-    fireEvent.click(trigger);
-    expect(screen.queryByTestId("mock-settings-popover")).toBeNull();
-  });
+  // Bug-rush #22 (04.05.2026 evening): the ⚙ Settings trigger and
+  // SettingsPopover moved out of SequenceTab into SingleInspector's
+  // title row («panel below tabs is unwieldy, move it next to the
+  // name»). SequenceTab no longer mounts either — this test is
+  // covered at the SettingsPopover level instead (see
+  // settings-popover.test.jsx Bug-rush #12 / #15 / #19).
 });
