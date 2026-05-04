@@ -49,10 +49,17 @@ const LABEL_EXPOSED_MIN_PX = 24;
 // уменьшались внутренние фичи». Cluster CHILDREN (every cluster
 // member except the widest) render with this top + bottom inset so
 // they sit nested inside the main rect rather than crammed flush
-// against the cluster frame. 4 px on each side keeps the child
-// rectangles ~14 px tall on the 22 px bar — readable but visibly
-// «inside» the parent.
-const CLUSTER_CHILD_INSET_Y = 4;
+// against the cluster frame. 3 px on each side keeps the child
+// rectangles 16 px tall on the 22 px bar — bumped up from the
+// initial 4 px (= 14 px) per biolog «сами блоки чуть увеличить».
+const CLUSTER_CHILD_INSET_Y = 3;
+// Sprint M-X.3 follow-up — biolog «более прозрачно надо, так как
+// мы не видим блоков за ним». The cluster MAIN feature renders at
+// this reduced opacity so it acts as a wash backdrop rather than a
+// solid block; children stamped on top of it stay clearly visible.
+// Confirmed-region default is 0.92, so dropping to 0.55 gives an
+// obvious lightening without losing the «this is a feature» cue.
+const CLUSTER_MAIN_OPACITY = 0.55;
 
 /**
  * Group items into clusters by transitive pixel overlap. Two items
@@ -312,14 +319,21 @@ export default function LinearFeatureBar({
       const labelInside = it.widthPct >= IN_LABEL_THRESHOLD_PCT
         && exposedW >= LABEL_EXPOSED_MIN_PX;
       const isClusterChild = memberFlags[i].inCluster && !memberFlags[i].isMain;
+      const isClusterMain = memberFlags[i].inCluster && memberFlags[i].isMain;
       const yTop = isClusterChild ? CLUSTER_CHILD_INSET_Y : 0;
       const rectH = isClusterChild ? BAR_H - 2 * CLUSTER_CHILD_INSET_Y : BAR_H;
+      // Cluster main acts as a backdrop — drop opacity so the
+      // smaller features stamped on top of it stay clearly visible
+      // (biolog «более прозрачно надо»).
+      const opacity = isClusterMain ? CLUSTER_MAIN_OPACITY : it.opacity;
       return {
         ...it,
+        opacity,
         labelInside,
         labelX: exposed ? (exposed[0] + exposed[1]) / 2 : (it.left + it.width / 2),
         labelMaxChars: exposed ? Math.floor(exposedW / 7) : Math.floor(it.width / 7),
         isClusterChild,
+        isClusterMain,
         yTop,
         rectH,
       };

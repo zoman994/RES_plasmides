@@ -450,3 +450,46 @@ describe('LinearFeatureBar — cluster children render inset', () => {
     expect(rectHeight(container.querySelector('g[data-feature-start="6000"]'))).toBeLessThan(BAR_H_TOTAL);
   });
 });
+
+// ─── Sprint M-X.3 follow-up — cluster main acts as a backdrop ────────
+// Biolog: «более прозрачно надо, так как мы не видим блоков за ним.
+// и сами блоки чуть увеличить». The cluster main feature now renders
+// at REDUCED opacity so it reads as a backdrop / container rather
+// than a solid block — children popping over it stay clearly
+// visible. Children themselves grew a touch (3 px inset instead of
+// 4 px) so they're more legible against the wash backdrop.
+describe('LinearFeatureBar — cluster main opacity + child size polish', () => {
+  it('cluster main rect has LOWER opacity than its child', () => {
+    const big   = { id: 'b', name: 'lacZα', type: 'CDS', start: 1000, end: 7000, level: 'region' };
+    const small = { id: 's', name: 'rbs',   type: 'RBS', start: 3000, end: 4000, level: 'region' };
+    const { container } = render(
+      <LinearFeatureBar annotations={[big, small]} seqLength={9000} />
+    );
+    const bigRect = container.querySelector('g[data-feature-start="1000"] rect');
+    const smallRect = container.querySelector('g[data-feature-start="3000"] rect');
+    const bigOpacity = Number(bigRect.getAttribute('opacity'));
+    const smallOpacity = Number(smallRect.getAttribute('opacity'));
+    expect(bigOpacity).toBeLessThan(smallOpacity);
+    // Cluster main should be visibly washy — pin it under 0.7.
+    expect(bigOpacity).toBeLessThanOrEqual(0.65);
+  });
+
+  it('singleton keeps its full-saturation opacity (≥ 0.9 for a region)', () => {
+    const a = { id: 'a', name: 'a', type: 'CDS', start: 1000, end: 5000, level: 'region' };
+    const { container } = render(
+      <LinearFeatureBar annotations={[a]} seqLength={9000} />
+    );
+    const rect = container.querySelector('g[data-feature-start="1000"] rect');
+    expect(Number(rect.getAttribute('opacity'))).toBeGreaterThanOrEqual(0.9);
+  });
+
+  it('cluster child rect height ≥ 16 px (only ~3 px inset on a 22 px bar)', () => {
+    const big   = { id: 'b', name: 'b', type: 'CDS', start: 1000, end: 7000, level: 'region' };
+    const small = { id: 's', name: 's', type: 'RBS', start: 3000, end: 4000, level: 'region' };
+    const { container } = render(
+      <LinearFeatureBar annotations={[big, small]} seqLength={9000} />
+    );
+    const smallG = container.querySelector('g[data-feature-start="3000"]');
+    expect(rectHeight(smallG)).toBeGreaterThanOrEqual(16);
+  });
+});
