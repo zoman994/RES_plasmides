@@ -75,6 +75,8 @@ import { useSequenceKeyboard } from "./hooks/useSequenceKeyboard.js";
 import { useSelectionState } from "./hooks/useSelectionState.js";
 import { useSelectionEdit } from "./hooks/useSelectionEdit.js";
 import { useAnnotationDrag } from "./hooks/useAnnotationDrag.js";
+import { useAnnotationRename } from "./hooks/useAnnotationRename.js";
+import InlineRenameInput from "./popups/InlineRenameInput.jsx";
 import SequenceLine from "./SequenceLine.jsx";
 import { STRINGS } from "../../lib/strings";
 
@@ -365,6 +367,35 @@ const SequenceView = forwardRef(function SequenceView({
   const draggedEdge = annDrag.draggedEdge;
   const draggedCurrentCoord = annDrag.currentCoord;
 
+  // K5 — inline rename on double-click. Only wired when consumer
+  // supplied onAnnotationEdit; otherwise the doubleclick handler
+  // is null and AnnotationTrack ignores the event.
+  const renameApi = useAnnotationRename({ onAnnotationEdit });
+  const onAnnotationDoubleClick = onAnnotationEdit ? renameApi.startRename : null;
+  // Probe the dragged-or-renamed region's DOM rect for input
+  // positioning. Layout effect would be cleaner but this is
+  // single-shot per rename — re-running on every render only when
+  // the renaming target changes is fine.
+  const renameInputPosition = useMemo(() => {
+    if (!renameApi.renaming || !containerRef.current) return null;
+    const sel = `[data-testid="sequence-view-annotation"][data-region-id="${renameApi.renaming.id.replace(/"/g, '\\"')}"]`;
+    let target;
+    try { target = containerRef.current.querySelector(sel); } catch { return null; }
+    if (!target) return null;
+    const rectEl = target.querySelector('rect');
+    if (!rectEl) return null;
+    let r;
+    try { r = rectEl.getBoundingClientRect(); } catch { return null; }
+    let rootRect;
+    try { rootRect = containerRef.current.getBoundingClientRect(); } catch { return null; }
+    return {
+      left: r.left - rootRect.left + containerRef.current.scrollLeft,
+      top: r.top - rootRect.top + containerRef.current.scrollTop,
+      width: r.width,
+      height: r.height,
+    };
+  }, [renameApi.renaming]);
+
   // Hoisted derived constant + memoized lines JSX subtree. Both must
   // run before the early `if (!fullSeq) return` so the hook order
   // (useMemo) stays stable across the empty/non-empty transition.
@@ -392,6 +423,7 @@ const SequenceView = forwardRef(function SequenceView({
         draggedAnnotationId={draggedAnnotationId}
         draggedEdge={draggedEdge}
         draggedCurrentCoord={draggedCurrentCoord}
+        onAnnotationDoubleClick={onAnnotationDoubleClick}
       />
     ));
   }, [
@@ -399,6 +431,7 @@ const SequenceView = forwardRef(function SequenceView({
     settings, framesResolution, orfRanges, renderHybrid,
     onAnnotationClick, tracksReady,
     onAnnotationEdgePointerDown, draggedAnnotationId, draggedEdge, draggedCurrentCoord,
+    onAnnotationDoubleClick,
   ]);
 
   if (!fullSeq) {
@@ -562,6 +595,14 @@ const SequenceView = forwardRef(function SequenceView({
             onAnnotationEdit?.({ kind: "update", id, patch });
             closeEditModal();
           }}
+        />
+      )}
+      {renameApi.renaming && renameInputPosition && (
+        <InlineRenameInput
+          initialName={renameApi.renaming.name}
+          position={renameInputPosition}
+          onSave={renameApi.saveRename}
+          onCancel={renameApi.cancelRename}
         />
       )}
     </div>
