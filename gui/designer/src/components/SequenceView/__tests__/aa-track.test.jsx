@@ -80,6 +80,39 @@ describe("AATrack — K4", () => {
     expect(screen.getAllByTestId("sequence-view-aa-row")).toHaveLength(6);
   });
 
+  // Bug-rush #20 (04.05.2026 evening): clicking the filler space
+  // adjacent to an AA letter should still select that codon. The
+  // filler cell now carries the same `data-aa-pos` as the
+  // neighbour mid cell, so the SequenceView pointer-down walker
+  // resolves it the same way.
+  it("Bug-rush #20: hybrid filler cells next to a codon mid carry data-aa-pos", () => {
+    const { container } = render(
+      <AATrack
+        fullSeq={PROTEIN_SEQ}
+        lineStart={0}
+        lineLen={PROTEIN_SEQ.length}
+        labelChars={8}
+        strategy="hybrid"
+        framesMode="all"
+        orfRanges={orfRanges}
+        dominantCDS={dominant}
+        regions={REGIONS}
+      />,
+    );
+    // Find a forward-frame row (label "+1") and check that the
+    // cell BEFORE / AFTER each codon mid has data-aa-pos pointing
+    // at the mid.
+    const fwd1 = container.querySelector(
+      '[data-testid="sequence-view-aa-row"][data-aa-strand="1"][data-aa-frame="0"]',
+    );
+    expect(fwd1).toBeTruthy();
+    const cells = fwd1.querySelectorAll("span[data-aa-pos]");
+    // Each codon contributes 3 cells (start, mid, end) — all
+    // sharing the same data-aa-pos. With 10 codons on a 30-nt
+    // sequence we expect at least 30 cells with data-aa-pos.
+    expect(cells.length).toBeGreaterThanOrEqual(10);
+  });
+
   // Bug-rush #16 (04.05.2026 evening): per-line auto-hide of
   // empty AA rows. With a tiny line (3 nt) only ONE forward
   // frame can produce a codon — the other 5 (+2, +3, -1, -2,

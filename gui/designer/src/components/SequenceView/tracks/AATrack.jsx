@@ -736,14 +736,15 @@ function AATrack({
               const codon = onLine.find((c) => c.position === absPos);
               if (!codon) {
                 // Filler between codon midpoints — never copyable
-                // (biolog: «когда копируем, то не должно копироваться
-                // с пробелами»). BUT — if the filler falls inside
-                // an annotated CDS in this row's (frame, strand),
-                // tint it with the feature colour so the entire
-                // run reads as a continuous coloured band, not just
-                // the AA letters. Биолог 03.05.2026 evening: «ты
-                // цветным фоном залил только буквы, а надо всю
-                // последовательность и пробелы между ними».
+                // but Bug-rush #20 (04.05.2026 evening): biolog «при
+                // попытке выделить АА если курсор тыкнул на пробел
+                // рядом с буквой то не всегда появляется выделение
+                // этой АК и нельзя тащить дальше». Stamp the
+                // adjacent codon's middle position on the filler
+                // cell so a click on the empty space immediately to
+                // the left or right of the AA letter still selects
+                // the same triplet.
+                const adjacent = onLine.find((c) => Math.abs(c.position - absPos) <= 1);
                 const fillerCds = rowCdsRegions.find(
                   (r) => absPos >= r.start && absPos < r.end,
                 );
@@ -753,12 +754,16 @@ function AATrack({
                 return (
                   <span
                     key={ci}
+                    data-aa-pos={adjacent ? adjacent.position : undefined}
+                    data-aa-strand={adjacent ? row.strand : undefined}
+                    data-aa-frame={adjacent ? row.frame : undefined}
                     style={{
                       display: "inline-block",
                       width: "1ch",
                       userSelect: "none",
                       WebkitUserSelect: "none",
                       background: fillerBg || undefined,
+                      cursor: adjacent ? "pointer" : undefined,
                     }}
                   >
                     {" "}
