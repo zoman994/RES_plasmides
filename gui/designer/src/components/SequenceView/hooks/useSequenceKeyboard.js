@@ -11,6 +11,12 @@
  * the existing handler unchanged.
  *
  * Mapping:
+ *   - Ctrl+A        → select the WHOLE forward strand (biolog
+ *                     «Ctrl+A должен копировать всю первую цепь
+ *                     ДНК»; standard «select all», then Ctrl+C
+ *                     copies)
+ *   - Ctrl+Alt+A    → select the WHOLE reverse strand (biolog
+ *                     «контрол альт А всю обратную цепь»)
  *   - Ctrl+C        → copy forward DNA strand
  *   - Ctrl+Alt+C    → copy reverse-complement (bottom strand 5'→3')
  *   - Ctrl+Shift+C  → copy translated AA (selectionMode === 'aa' only)
@@ -40,9 +46,23 @@ export function useSequenceKeyboard({
   selectionMode,
   selectionStrand,
   onCaretChange,
+  onSelectRange,
 }) {
   return function onRootKeyDown(e) {
     if (!seqLength) return;
+
+    // Sprint M-X.3 follow-up — Ctrl+A select-all hotkey (and the
+    // Alt-modified reverse-strand variant). Layout-independent via
+    // `e.code === "KeyA"` so Russian «ф» on the same physical key
+    // still triggers. No-op when `onSelectRange` is missing
+    // (legacy callers — preserves backward compat).
+    if ((e.ctrlKey || e.metaKey) && e.code === "KeyA") {
+      e.preventDefault();
+      if (typeof onSelectRange !== "function") return;
+      const strand = e.altKey ? -1 : 1;
+      onSelectRange(0, seqLength, "dna", strand);
+      return;
+    }
 
     // Copy hotkeys
     if ((e.ctrlKey || e.metaKey) && e.code === "KeyC") {

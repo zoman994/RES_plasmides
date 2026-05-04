@@ -337,6 +337,12 @@ const SequenceView = forwardRef(function SequenceView({
     selectionMode,
     selectionStrand,
     onCaretChange,
+    // Sprint M-X.3 follow-up — Ctrl+A / Ctrl+Alt+A select-all
+    // hotkeys delegate to the same onSelectRange that mouse drag
+    // already drives, so the parent's selection state machine
+    // (caretAnchor / caretPos / selectionStrand) ends up in the
+    // exact same shape as a manual select-all drag.
+    onSelectRange,
   });
 
   // K3 — Del / H / E edit handlers + popup state. Mounts above the
