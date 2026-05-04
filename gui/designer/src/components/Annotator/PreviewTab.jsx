@@ -27,6 +27,7 @@ import { useStore } from '../../store';
 import { selectAnnotator } from '../../store/uiSlice.js';
 import SequenceView from '../SequenceView';
 import GhostDrillInPanel from './GhostDrillInPanel.jsx';
+import AnnotatorProgressBar from './AnnotatorProgressBar.jsx';
 
 export default function PreviewTab({
   sequence = '',
@@ -120,6 +121,10 @@ export default function PreviewTab({
       }}
     >
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        {/* L1 auto-run + manual L2/L3 runs surface the running plugin
+            here so the user sees the modal isn't frozen («аннотация
+            требует времени»). Renders nothing when idle. */}
+        <AnnotatorProgressBar />
         <SequenceView
           fragments={fragments}
           circular={topology === 'circular'}

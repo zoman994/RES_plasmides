@@ -18,6 +18,19 @@ body {
 }
 
 ::-webkit-scrollbar { width: 6px; height: 6px; }
+
+/* Sprint M-X.3 follow-up — Annotator L1 progress bar.
+   Indeterminate animated stripe so biolog sees the plugin is
+   working («аннотация требует времени») and isn't tempted to
+   click around assuming the modal froze. */
+@keyframes annotator-progress-slide {
+  0%   { transform: translateX(-100%); }
+  50%  { transform: translateX(0%); }
+  100% { transform: translateX(100%); }
+}
+.annotator-progress-bar-fill {
+  animation: annotator-progress-slide 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-tertiary); }
