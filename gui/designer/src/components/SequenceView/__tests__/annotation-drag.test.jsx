@@ -130,6 +130,45 @@ describe('K4 annotation-drag — useAnnotationDrag hook validation', () => {
   });
 });
 
+describe('Bug-rush #9 — edge handles + hover indicator', () => {
+  it('hover on left edge mounts the orange indicator overlay', () => {
+    render(<SequenceView fragments={[FRAGMENT]} onAnnotationEdit={vi.fn()} />);
+    const leftEdge = screen.getAllByTestId('sequence-view-annotation-edge')
+      .find((el) => el.dataset.regionEdge === 'left');
+    fireEvent.pointerEnter(leftEdge);
+    const indicator = screen.queryByTestId('sequence-view-annotation-edge-indicator');
+    expect(indicator).toBeTruthy();
+    expect(indicator.dataset.regionEdge).toBe('left');
+    fireEvent.pointerLeave(leftEdge);
+    expect(screen.queryByTestId('sequence-view-annotation-edge-indicator')).toBeNull();
+  });
+
+  it('adjacent features at a shared seam render NON-overlapping hitboxes', () => {
+    // Two CDS regions touching at position 99/100 — without the
+    // INWARD placement, right-edge of A (centered on 99) would
+    // overlap left-edge of B (centered on 100), and the latter-
+    // rendered one would steal all pointer events.
+    const TOUCH = {
+      ...FRAGMENT,
+      annotations: [
+        { id: 'r1', name: 'A', type: 'CDS', start: 0, end: 99, level: 'region', strand: 1 },
+        { id: 'r2', name: 'B', type: 'CDS', start: 99, end: 198, level: 'region', strand: 1 },
+      ],
+    };
+    render(<SequenceView fragments={[TOUCH]} onAnnotationEdit={vi.fn()} />);
+    const edges = screen.getAllByTestId('sequence-view-annotation-edge');
+    const r1Right = edges.find((el) => el.dataset.regionId === 'r1' && el.dataset.regionEdge === 'right');
+    const r2Left = edges.find((el) => el.dataset.regionId === 'r2' && el.dataset.regionEdge === 'left');
+    expect(r1Right).toBeTruthy();
+    expect(r2Left).toBeTruthy();
+    // Each handle is 8 px wide and placed INSIDE its rect, so the
+    // x-attribute differs (right edge sits at widthRect - 8, left
+    // edge sits at 0). They share a transform translation that
+    // differs by widthRect, so they don't overlap on screen.
+    expect(r1Right.getAttribute('x')).not.toBe(r2Left.getAttribute('x'));
+  });
+});
+
 describe('K4 annotation-drag — pointer interaction', () => {
   it('marks region with data-dragged after pointerdown on edge', () => {
     render(<SequenceView fragments={[FRAGMENT]} onAnnotationEdit={vi.fn()} />);

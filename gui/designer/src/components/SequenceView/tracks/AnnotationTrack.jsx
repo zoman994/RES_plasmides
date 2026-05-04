@@ -25,7 +25,7 @@
  * without losing the visible features.
  */
 
-import { memo } from "react";
+import { memo, useState } from "react";
 import { stackAnnotations, MAX_VISIBLE_ROWS } from "../lib/annotation-stacking.js";
 
 const ROW_HEIGHT = 14;
@@ -123,6 +123,14 @@ function AnnotationTrack({
   // surface, label stays the «rename» surface.
   onAnnotationFeatureDoubleClick,
 }) {
+  // Bug-rush #9 (04.05.2026 evening): hover state on the resize
+  // handles. Lets the rect get a visible accent line when biolog
+  // brushes the edge — answer to «как-то трансформировать кончики
+  // чтобы явно было видно при наведении курсора на кончик».
+  // Per-line state — AnnotationTrack is already memoised per line
+  // so a hover only re-renders this single line.
+  const [hover, setHover] = useState(null); // { id, edge } | null
+
   if (!regions || regions.length === 0 || lineLen === 0 || charPx <= 0) return null;
 
   const lineEnd = lineStart + lineLen;
@@ -269,7 +277,15 @@ function AnnotationTrack({
           const isBeingDragged = region.id && draggedAnnotationId === region.id;
           const showLeftHandle = startsHere && typeof onPointerDownEdge === 'function';
           const showRightHandle = endsHere && typeof onPointerDownEdge === 'function';
-          const HANDLE_WIDTH = 6;
+          // Bug-rush #9: 8 px wide so it's easier to grab on a
+          // touchpad. Placed INWARD from the rect's edge (was
+          // centered on the boundary), so adjacent features at a
+          // shared seam don't end up with overlapping hitboxes —
+          // biolog: «на стыке фичей можно схватить только одну
+          // фичу и тянуть, вторую не получается».
+          const HANDLE_WIDTH = 8;
+          const isHoverLeft = hover && hover.id === region.id && hover.edge === 'left';
+          const isHoverRight = hover && hover.id === region.id && hover.edge === 'right';
 
           // Live preview rect: while dragging, project the moving
           // edge onto the current line and draw a faint accent outline
@@ -434,32 +450,66 @@ function AnnotationTrack({
                 />
               ) : null}
               {showLeftHandle ? (
-                <rect
-                  data-testid="sequence-view-annotation-edge"
-                  data-region-edge="left"
-                  data-region-id={region.id || ""}
-                  x={-HANDLE_WIDTH / 2}
-                  y={-2}
-                  width={HANDLE_WIDTH}
-                  height={ROW_HEIGHT + 4}
-                  fill="transparent"
-                  style={{ cursor: "ew-resize", pointerEvents: "all" }}
-                  onPointerDown={(e) => onPointerDownEdge(e, region.id, 'left', region)}
-                />
+                <>
+                  <rect
+                    data-testid="sequence-view-annotation-edge"
+                    data-region-edge="left"
+                    data-region-id={region.id || ""}
+                    data-region-line-start={lineStart}
+                    x={0}
+                    y={-2}
+                    width={HANDLE_WIDTH}
+                    height={ROW_HEIGHT + 4}
+                    fill="transparent"
+                    style={{ cursor: "ew-resize", pointerEvents: "all" }}
+                    onPointerDown={(e) => onPointerDownEdge(e, region.id, 'left', region)}
+                    onPointerEnter={() => setHover({ id: region.id, edge: 'left' })}
+                    onPointerLeave={() => setHover(null)}
+                  />
+                  {isHoverLeft ? (
+                    <rect
+                      data-testid="sequence-view-annotation-edge-indicator"
+                      data-region-edge="left"
+                      x={0}
+                      y={-2}
+                      width={2.5}
+                      height={ROW_HEIGHT + 4}
+                      fill="var(--accent-500, #f97316)"
+                      style={{ pointerEvents: "none" }}
+                    />
+                  ) : null}
+                </>
               ) : null}
               {showRightHandle ? (
-                <rect
-                  data-testid="sequence-view-annotation-edge"
-                  data-region-edge="right"
-                  data-region-id={region.id || ""}
-                  x={widthRect - HANDLE_WIDTH / 2}
-                  y={-2}
-                  width={HANDLE_WIDTH}
-                  height={ROW_HEIGHT + 4}
-                  fill="transparent"
-                  style={{ cursor: "ew-resize", pointerEvents: "all" }}
-                  onPointerDown={(e) => onPointerDownEdge(e, region.id, 'right', region)}
-                />
+                <>
+                  <rect
+                    data-testid="sequence-view-annotation-edge"
+                    data-region-edge="right"
+                    data-region-id={region.id || ""}
+                    data-region-line-start={lineStart}
+                    x={widthRect - HANDLE_WIDTH}
+                    y={-2}
+                    width={HANDLE_WIDTH}
+                    height={ROW_HEIGHT + 4}
+                    fill="transparent"
+                    style={{ cursor: "ew-resize", pointerEvents: "all" }}
+                    onPointerDown={(e) => onPointerDownEdge(e, region.id, 'right', region)}
+                    onPointerEnter={() => setHover({ id: region.id, edge: 'right' })}
+                    onPointerLeave={() => setHover(null)}
+                  />
+                  {isHoverRight ? (
+                    <rect
+                      data-testid="sequence-view-annotation-edge-indicator"
+                      data-region-edge="right"
+                      x={widthRect - 2.5}
+                      y={-2}
+                      width={2.5}
+                      height={ROW_HEIGHT + 4}
+                      fill="var(--accent-500, #f97316)"
+                      style={{ pointerEvents: "none" }}
+                    />
+                  ) : null}
+                </>
               ) : null}
               {showLeader ? (
                 <g data-testid="sequence-view-annotation-leader" data-label-mode="leader">
