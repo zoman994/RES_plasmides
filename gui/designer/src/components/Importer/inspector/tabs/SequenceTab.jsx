@@ -48,6 +48,8 @@ export default function SequenceTab({
   selectionStrand,
   onCaretChange,
   onSelectRange,
+  onAnnotationEdit,
+  onOpenAnnotator,
 }) {
   const sequenceViewRef = useRef(null);
 
@@ -181,6 +183,8 @@ export default function SequenceTab({
           selectionStrand={selectionStrand}
           onCaretChange={onCaretChange}
           onSelectRange={onSelectRange}
+          onAnnotationEdit={onAnnotationEdit}
+          onOpenAnnotator={onOpenAnnotator}
         />
       </div>
     </div>

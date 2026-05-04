@@ -69,9 +69,15 @@ import { attachScrollHandle } from "./lib/scroll-handle.js";
 import CaretOverlay from "./overlays/CaretOverlay.jsx";
 import SelectionOverlay from "./overlays/SelectionOverlay.jsx";
 import SelectionContextMenu from "./popups/SelectionContextMenu.jsx";
+import CreateAnnotationPopup from "./popups/CreateAnnotationPopup.jsx";
+import EditAnnotationModal from "./popups/EditAnnotationModal.jsx";
 import { useSequenceKeyboard } from "./hooks/useSequenceKeyboard.js";
 import { useSelectionState } from "./hooks/useSelectionState.js";
+import { useSelectionEdit } from "./hooks/useSelectionEdit.js";
 import SequenceLine from "./SequenceLine.jsx";
+import { STRINGS } from "../../lib/strings";
+
+const ANN_EDIT_STRINGS = STRINGS.importer.annotationEdit;
 
 export { FEATURE_STROKE, LABEL_WIDTH };
 
@@ -106,6 +112,12 @@ const SequenceView = forwardRef(function SequenceView({
   selectionStrand = 1,
   onCaretChange,
   onSelectRange,
+  // Sprint M-X.2 K3 — annotation edit operations. Parent wires
+  // `onAnnotationEdit({kind, id?, patch?, payload?})` into its
+  // `onUpdateEdits({editedAnnotations})` flow. `onOpenAnnotator`
+  // opens the fullscreen Annotator (K8) scoped to a region.
+  onAnnotationEdit,
+  onOpenAnnotator,
 }, ref) {
   const containerRef = useRef(null);
   const [charPx, setCharPx] = useState(7.2);
@@ -292,7 +304,7 @@ const SequenceView = forwardRef(function SequenceView({
     containerRef,
   });
 
-  const onRootKeyDown = useSequenceKeyboard({
+  const keyboardHandler = useSequenceKeyboard({
     fullSeq,
     seqLength,
     charsPerLine,
@@ -302,6 +314,37 @@ const SequenceView = forwardRef(function SequenceView({
     selectionStrand,
     onCaretChange,
   });
+
+  // K3 — Del / H / E edit handlers + popup state. Mounts above the
+  // keyboard navigation handler so edit-keys claim the event first.
+  const annotations = useMemo(() => {
+    // Flatten all fragments' annotations (consumers in Importer mode
+    // pass a single fragment; Container Window M-D will pass many).
+    if (!Array.isArray(fragments)) return [];
+    const flat = [];
+    fragments.forEach((f) => {
+      if (f && Array.isArray(f.annotations)) flat.push(...f.annotations);
+    });
+    return flat;
+  }, [fragments]);
+  const {
+    handleKeyDown: onEditKeyDown,
+    createPopupState,
+    closeCreatePopup,
+    editModalAnnotation,
+    closeEditModal,
+  } = useSelectionEdit({
+    annotations,
+    caretPos,
+    caretAnchor,
+    onAnnotationEdit,
+    containerRef,
+  });
+
+  const onRootKeyDown = (e) => {
+    if (onEditKeyDown(e)) return;
+    keyboardHandler(e);
+  };
 
   // Hoisted derived constant + memoized lines JSX subtree. Both must
   // run before the early `if (!fullSeq) return` so the hook order
@@ -417,7 +460,86 @@ const SequenceView = forwardRef(function SequenceView({
         selectionMode={selectionMode}
         onCopy={copySelection}
         onClose={() => setContextMenu(null)}
+        extraItems={(() => {
+          // Build extra context-menu items lazily so we don't
+          // re-allocate on every render. K3 wires «Создать
+          // аннотацию» / «Удалить аннотацию» / «Редактировать»
+          // here — biolog can right-click on a selection and reach
+          // the same edit ops as the H / Del / E hotkeys. K9 will
+          // append «Аннотировать выделение...» as a separator-
+          // delimited group.
+          if (!contextMenu) return null;
+          const a = (typeof caretAnchor === "number" && Number.isFinite(caretAnchor)) ? caretAnchor : null;
+          const f = (typeof caretPos === "number" && Number.isFinite(caretPos)) ? caretPos : null;
+          if (a == null || f == null || a === f) return null;
+          const selStart = Math.min(a, f);
+          const selEnd = Math.max(a, f);
+          const matchedRegion = annotations.find(
+            (x) => x && x.level === "region" && x.start === selStart && x.end === selEnd,
+          );
+          const items = [];
+          items.push({
+            key: "create",
+            label: ANN_EDIT_STRINGS.contextMenuCreateRegion,
+            onClick: () => {
+              setContextMenu(null);
+              const fakeEvent = { key: "h", preventDefault: () => {} };
+              // Open create popup directly via the same pathway as
+              // the H key — we already have selStart/selEnd in
+              // hand from the menu state, so synthesize through
+              // useSelectionEdit by re-invoking handleKeyDown.
+              onEditKeyDown(fakeEvent);
+            },
+          });
+          if (matchedRegion) {
+            items.push({
+              key: "edit",
+              label: ANN_EDIT_STRINGS.contextMenuEditRegion,
+              onClick: () => {
+                setContextMenu(null);
+                onEditKeyDown({ key: "e", preventDefault: () => {} });
+              },
+            });
+            items.push({
+              key: "delete",
+              label: ANN_EDIT_STRINGS.contextMenuDeleteRegion,
+              onClick: () => {
+                setContextMenu(null);
+                onAnnotationEdit?.({ kind: "delete", id: matchedRegion.id });
+              },
+            });
+          }
+          return items;
+        })()}
       />
+      {createPopupState && (
+        <CreateAnnotationPopup
+          position={createPopupState.anchor}
+          selectionStart={createPopupState.selectionStart}
+          selectionEnd={createPopupState.selectionEnd}
+          seqLength={seqLength}
+          onCancel={closeCreatePopup}
+          onCreate={(payload) => {
+            onAnnotationEdit?.({ kind: "create", payload });
+            closeCreatePopup();
+          }}
+          onOpenAnnotator={({ start, end }) => {
+            onOpenAnnotator?.({ kind: "region", region: { start, end } });
+            closeCreatePopup();
+          }}
+        />
+      )}
+      {editModalAnnotation && (
+        <EditAnnotationModal
+          annotation={editModalAnnotation}
+          seqLength={seqLength}
+          onCancel={closeEditModal}
+          onApply={({ id, patch }) => {
+            onAnnotationEdit?.({ kind: "update", id, patch });
+            closeEditModal();
+          }}
+        />
+      )}
     </div>
   );
 });

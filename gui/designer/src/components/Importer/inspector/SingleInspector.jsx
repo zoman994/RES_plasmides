@@ -15,6 +15,7 @@ import LinearFeatureBar from './tabs/LinearFeatureBar';
 // TagsEditor moved out of the title row into MetaColumn (right rail).
 import HistoryTab from './tabs/HistoryTab';
 import { getRegions } from '../../../annotation-model';
+import { applyAnnotationEdit } from '../../../lib/annotation-edit.js';
 
 const S = STRINGS.importer;
 
@@ -263,6 +264,32 @@ export default function SingleInspector({
   }, []);
 
   const onPendingScrollHandled = useCallback(() => setPendingScroll(null), []);
+
+  // Sprint M-X.2 K3 — edit operations from inside SequenceView. The
+  // viewer dispatches `onAnnotationEdit({kind, id?, patch?, payload?})`
+  // for Del / H / E + drag-handles + inline rename; we pipe that
+  // through `applyAnnotationEdit` and forward the new array via the
+  // existing `onUpdateEdits({editedAnnotations})` flow.
+  const onAnnotationEditFromView = useCallback((edit) => {
+    if (!edit || !onUpdateEdits) return;
+    try {
+      const seqLength = (item?.sequence || '').length;
+      const baseAnnotations = Array.isArray(edits?.editedAnnotations)
+        ? edits.editedAnnotations
+        : (item?.annotations || []);
+      const result = applyAnnotationEdit(baseAnnotations, edit, seqLength);
+      const next = Array.isArray(result) ? result : result?.next;
+      if (Array.isArray(next)) {
+        onUpdateEdits({ editedAnnotations: next });
+      }
+    } catch (err) {
+      // Validation errors surface via popup error states; if one
+      // makes it here, log to console but don't crash the viewer.
+      // eslint-disable-next-line no-console
+      console.warn('[SingleInspector] annotation edit failed:', err.message);
+    }
+  }, [onUpdateEdits, item, edits]);
+
   // Reset cursor / selection when biolog switches plasmids.
   useEffect(() => {
     setCursorPos(null);
@@ -410,6 +437,7 @@ export default function SingleInspector({
               selectionStrand={cursorSelectionStrand}
               onCaretChange={onCaretChangeFromView}
               onSelectRange={onSelectRangeFromView}
+              onAnnotationEdit={onAnnotationEditFromView}
             />
           </div>
         )}

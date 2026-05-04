@@ -103,6 +103,68 @@ export const IMPORTER_STRINGS = {
     closeAria: 'Закрыть настройки',
   },
 
+  // Sprint M-X.2 — annotation editing inside SequenceView.
+  annotationEdit: {
+    // CreateAnnotationPopup (selection + H, or context menu).
+    createTitle: 'Новая аннотация',
+    createNamePlaceholder: 'Название (lacZα, AmpR, …)',
+    createTypeLabel: 'Тип',
+    createStartLabel: 'Начало',
+    createEndLabel: 'Конец',
+    createStrandLabel: 'Цепь',
+    createStrandForward: '→ прямая',
+    createStrandReverse: '← обратная',
+    createCancel: 'Отмена',
+    createOpenAnnotator: 'Найти в Аннотаторе',
+    createSubmit: 'Создать',
+    createInvalidCoords: 'Проверь координаты — начало < конца, и обе в пределах последовательности.',
+    // EditAnnotationModal (E key on selected region).
+    editTitle: 'Редактировать аннотацию',
+    editApply: 'OK',
+    editCancel: 'Отмена',
+    // Inline rename (double-click).
+    renamePlaceholder: 'Имя...',
+    // Selection context menu — Sprint M-X.2 K9 entry point.
+    contextMenuAnnotate: 'Аннотировать выделение...',
+    contextMenuCreateRegion: 'Создать аннотацию (H)',
+    contextMenuDeleteRegion: 'Удалить аннотацию (Del)',
+    contextMenuEditRegion: 'Редактировать аннотацию (E)',
+  },
+
+  // Sprint M-X.2 — Annotator fullscreen shell.
+  annotator: {
+    title: 'Аннотатор',
+    backButton: '← Назад',
+    runButton: (n) => `Запустить (${n})`,
+    runningSpinner: '…',
+    saveButton: 'Сохранить',
+    saveCount: (n) => `Сохранить (${n})`,
+    thresholdLabel: (n) => `Порог уверенности: ${(n * 100).toFixed(0)}%`,
+    scopeFull: 'Вся последовательность',
+    scopeRegion: (start, end) => `Участок ${start}..${end}`,
+    pluginsHeader: 'Плагины',
+    resultsHeader: 'Результаты',
+    resultsEmpty: 'Запустите плагины — результаты появятся здесь.',
+    resultPredicted: 'предсказан',
+    resultAccept: 'Принять',
+    resultReject: 'Отклонить',
+    resultEdit: 'Редактировать',
+    resultAccepted: '✓ Принят',
+    resultRejected: '✗ Отклонён',
+    summaryAccepted: (n) => `Принято: ${n}`,
+    summaryRejected: (n) => `Отклонено: ${n}`,
+    summaryEdited: (n) => `Изменено: ${n}`,
+    summarySkipped: (n) => `Пропущено как дубликаты: ${n}`,
+    pluginUnavailable: 'Недоступен',
+    speedHintInstant: 'мгновенно',
+    speedHintFast: 'быстро',
+    speedHintSlow: 'медленно',
+    pluginBadgeMock: '(mock)',
+    pluginNetworkBadge: '🌐',
+    annotatorButtonLabel: '🔍 Аннотатор',
+    annotatorButtonHint: 'Открыть Аннотатор для всей последовательности',
+  },
+
   // SessionSummary
   sessionSummaryTitle: '✓ Уже добавлено в этой сессии',
   sessionSummaryOpenCanvas: 'Открыть холст →',
