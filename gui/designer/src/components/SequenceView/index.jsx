@@ -506,6 +506,7 @@ const SequenceView = forwardRef(function SequenceView({
         containerRef={containerRef}
         showBottomStrand={settings.showBottomStrand}
         selectionMode={selectionMode}
+        selectionStrand={selectionStrand}
       />
       <CaretOverlay
         caretPos={caretPos}

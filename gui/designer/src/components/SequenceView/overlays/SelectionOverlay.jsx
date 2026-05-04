@@ -33,6 +33,7 @@ export default function SelectionOverlay({
   containerRef,
   showBottomStrand,
   selectionMode,
+  selectionStrand,
 }) {
   const [rects, setRects] = useState([]);
   useLayoutEffect(() => {
@@ -81,10 +82,17 @@ export default function SelectionOverlay({
       out.push({ left, top: dnaTop, width, height: dnaHeight, key: `${lineStart}:dna`, kind: "dna" });
 
       // AA letter blocks (blue) — only when biolog explicitly selected
-      // a CDS feature / dragged AA cells.
+      // a CDS feature / dragged AA cells. Bug-rush 04.05.2026: previously
+      // we highlighted ALL aa rows, so a hybrid (3 forward + 3 reverse)
+      // render lit BOTH strands at once. Filter by `selectionStrand`
+      // (the strand of the originating CDS / AA cell) so only the
+      // matching side glows blue.
       if (selectionMode === "aa") {
+        const targetStrand = selectionStrand === -1 ? -1 : 1;
         const aaRows = el.querySelectorAll('[data-testid="sequence-view-aa-row"]');
         for (const aaRow of aaRows) {
+          const rowStrand = parseInt(aaRow.dataset.aaStrand || "", 10) === -1 ? -1 : 1;
+          if (rowStrand !== targetStrand) continue;
           const aaTop = el.offsetTop + aaRow.offsetTop;
           const aaHeight = aaRow.offsetHeight;
           out.push({
@@ -100,7 +108,7 @@ export default function SelectionOverlay({
     }
     setRects(out);
     return undefined;
-  }, [caretPos, caretAnchor, charPx, charsPerLine, containerRef, showBottomStrand, selectionMode]);
+  }, [caretPos, caretAnchor, charPx, charsPerLine, containerRef, showBottomStrand, selectionMode, selectionStrand]);
 
   if (rects.length === 0) return null;
   return (
