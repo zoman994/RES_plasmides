@@ -178,31 +178,138 @@ describe('FeatureEditorModal — Save with edits', () => {
   });
 });
 
-describe('FeatureEditorModal — Split / Merge / Delete / Introns', () => {
-  it('Split into 2 calls onSplit(2) and closes the modal via onClose', () => {
-    const onSplit = vi.fn();
-    const onClose = vi.fn();
+describe('FeatureEditorModal — Split sub-features / Merge / Delete', () => {
+  it('Split button creates two sub-feature rows (parent halves)', () => {
     render(
       <FeatureEditorModal
         feature={FEATURE} seqLength={5000} neighbours={[]}
-        onSave={() => {}} onClose={onClose} onSplit={onSplit} onMerge={() => {}} onDelete={() => {}}
+        onSave={() => {}} onClose={() => {}} onMerge={() => {}} onDelete={() => {}}
       />
     );
-    fireEvent.click(screen.getByTestId('feature-editor-split-2'));
-    expect(onSplit).toHaveBeenCalledWith(2);
-    expect(onClose).toHaveBeenCalled();
+    // Initially no sub-feature rows.
+    expect(screen.queryAllByTestId('feature-editor-subfeature-row').length).toBe(0);
+    fireEvent.click(screen.getByTestId('feature-editor-split'));
+    const rows = screen.getAllByTestId('feature-editor-subfeature-row');
+    expect(rows).toHaveLength(2);
   });
 
-  it('Split into 4 fires onSplit(4)', () => {
-    const onSplit = vi.fn();
+  it('Each sub-feature row exposes name / type / start / end inputs', () => {
     render(
       <FeatureEditorModal
         feature={FEATURE} seqLength={5000} neighbours={[]}
-        onSave={() => {}} onClose={() => {}} onSplit={onSplit} onMerge={() => {}} onDelete={() => {}}
+        onSave={() => {}} onClose={() => {}} onMerge={() => {}} onDelete={() => {}}
       />
     );
-    fireEvent.click(screen.getByTestId('feature-editor-split-4'));
-    expect(onSplit).toHaveBeenCalledWith(4);
+    fireEvent.click(screen.getByTestId('feature-editor-split'));
+    const rows = screen.getAllByTestId('feature-editor-subfeature-row');
+    expect(rows[0].querySelector('[data-testid="subfeature-name"]')).toBeTruthy();
+    expect(rows[0].querySelector('[data-testid="subfeature-type"]')).toBeTruthy();
+    expect(rows[0].querySelector('[data-testid="subfeature-start"]')).toBeTruthy();
+    expect(rows[0].querySelector('[data-testid="subfeature-end"]')).toBeTruthy();
+  });
+
+  it('Save with split sub-features emits subFeatures array in meta', () => {
+    const onSave = vi.fn();
+    render(
+      <FeatureEditorModal
+        feature={FEATURE} seqLength={5000} neighbours={[]}
+        onSave={onSave} onClose={() => {}} onMerge={() => {}} onDelete={() => {}}
+      />
+    );
+    fireEvent.click(screen.getByTestId('feature-editor-split'));
+    fireEvent.click(screen.getByTestId('feature-editor-save'));
+    expect(onSave).toHaveBeenCalledTimes(1);
+    const meta = onSave.mock.calls[0][0];
+    expect(Array.isArray(meta.subFeatures)).toBe(true);
+    expect(meta.subFeatures).toHaveLength(2);
+    expect(meta.subFeatures[0]).toMatchObject({ name: expect.any(String), start: expect.any(Number), end: expect.any(Number) });
+    // Together they cover the full parent range.
+    const sortedByStart = [...meta.subFeatures].sort((a, b) => a.start - b.start);
+    expect(sortedByStart[0].start).toBe(FEATURE.start);
+    expect(sortedByStart[sortedByStart.length - 1].end).toBe(FEATURE.end);
+  });
+
+  it('Editing a sub-feature name flows through to onSave meta', () => {
+    const onSave = vi.fn();
+    render(
+      <FeatureEditorModal
+        feature={FEATURE} seqLength={5000} neighbours={[]}
+        onSave={onSave} onClose={() => {}} onMerge={() => {}} onDelete={() => {}}
+      />
+    );
+    fireEvent.click(screen.getByTestId('feature-editor-split'));
+    const rows = screen.getAllByTestId('feature-editor-subfeature-row');
+    const nameInput = rows[0].querySelector('[data-testid="subfeature-name"]');
+    fireEvent.change(nameInput, { target: { value: 'signal-peptide' } });
+    fireEvent.click(screen.getByTestId('feature-editor-save'));
+    const subs = onSave.mock.calls[0][0].subFeatures;
+    expect(subs.some((s) => s.name === 'signal-peptide')).toBe(true);
+  });
+
+  it('Editing sub-feature coords (1-based UI ↔ 0-based store) flows through', () => {
+    const onSave = vi.fn();
+    render(
+      <FeatureEditorModal
+        feature={FEATURE} seqLength={5000} neighbours={[]}
+        onSave={onSave} onClose={() => {}} onMerge={() => {}} onDelete={() => {}}
+      />
+    );
+    fireEvent.click(screen.getByTestId('feature-editor-split'));
+    const rows = screen.getAllByTestId('feature-editor-subfeature-row');
+    // Edit second row's start to 501 (1-based) — store should see 500.
+    const startInput = rows[1].querySelector('[data-testid="subfeature-start"]');
+    fireEvent.change(startInput, { target: { value: '501' } });
+    fireEvent.click(screen.getByTestId('feature-editor-save'));
+    const subs = onSave.mock.calls[0][0].subFeatures;
+    expect(subs.some((s) => s.start === 500)).toBe(true);
+  });
+
+  it('Clicking Split again adds a third sub-feature by halving the last one', () => {
+    render(
+      <FeatureEditorModal
+        feature={FEATURE} seqLength={5000} neighbours={[]}
+        onSave={() => {}} onClose={() => {}} onMerge={() => {}} onDelete={() => {}}
+      />
+    );
+    fireEvent.click(screen.getByTestId('feature-editor-split'));
+    expect(screen.getAllByTestId('feature-editor-subfeature-row')).toHaveLength(2);
+    fireEvent.click(screen.getByTestId('feature-editor-split'));
+    expect(screen.getAllByTestId('feature-editor-subfeature-row')).toHaveLength(3);
+  });
+
+  it('Delete sub-feature button removes that row from the list', () => {
+    render(
+      <FeatureEditorModal
+        feature={FEATURE} seqLength={5000} neighbours={[]}
+        onSave={() => {}} onClose={() => {}} onMerge={() => {}} onDelete={() => {}}
+      />
+    );
+    fireEvent.click(screen.getByTestId('feature-editor-split'));
+    const rows = screen.getAllByTestId('feature-editor-subfeature-row');
+    expect(rows).toHaveLength(2);
+    fireEvent.click(rows[0].querySelector('[data-testid="subfeature-delete"]'));
+    expect(screen.getAllByTestId('feature-editor-subfeature-row')).toHaveLength(1);
+  });
+
+  it('Pre-existing detail-level annotations under the parent show up as sub-feature rows on open', () => {
+    const existingDetails = [
+      { id: 'd1', regionId: FEATURE.id, level: 'detail', name: 'sig-peptide', type: 'signal_peptide', start: 100, end: 200, strand: 1 },
+      { id: 'd2', regionId: FEATURE.id, level: 'detail', name: 'mature',     type: 'misc_feature',    start: 200, end: 900, strand: 1 },
+      // Detail of a DIFFERENT region — must not show up.
+      { id: 'd3', regionId: 'other',  level: 'detail', name: 'x',           type: 'misc_feature',    start: 0,   end: 50,  strand: 1 },
+    ];
+    render(
+      <FeatureEditorModal
+        feature={FEATURE} seqLength={5000} neighbours={existingDetails}
+        onSave={() => {}} onClose={() => {}} onMerge={() => {}} onDelete={() => {}}
+      />
+    );
+    const rows = screen.getAllByTestId('feature-editor-subfeature-row');
+    expect(rows).toHaveLength(2);
+    const namesInDom = rows.map((r) => r.querySelector('[data-testid="subfeature-name"]').value);
+    expect(namesInDom).toContain('sig-peptide');
+    expect(namesInDom).toContain('mature');
+    expect(namesInDom).not.toContain('x');
   });
 
   it('Merge picker shows only adjacent neighbours (touching start or end)', () => {

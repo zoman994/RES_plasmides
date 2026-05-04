@@ -16,7 +16,7 @@ import LinearFeatureBar from './tabs/LinearFeatureBar';
 import AnnotationsTab from './tabs/AnnotationsTab';
 import HistoryTab from './tabs/HistoryTab';
 import { getRegions } from '../../../annotation-model';
-import { applyAnnotationEdit, splitAnnotation, mergeAnnotations } from '../../../lib/annotation-edit.js';
+import { applyAnnotationEdit, mergeAnnotations, generateAnnotationId } from '../../../lib/annotation-edit.js';
 import { useStore } from '../../../store';
 import { selectAnnotator } from '../../../store/uiSlice.js';
 import Annotator from '../../Annotator';
@@ -396,26 +396,62 @@ export default function SingleInspector({
     onUpdateEdits({ editedAnnotations: nextAnnotations });
   }, [onUpdateEdits, item, edits]);
 
-  const onFeatureSave = useCallback(({ patch }) => {
+  /**
+   * Save a feature edit + its sub-feature roster (level: 'detail').
+   * Sub-features are managed entirely inside FeatureEditorModal —
+   * here we DIFF the new list against existing detail annotations
+   * keyed on the parent's region id, then build one composite next-
+   * annotations array (parent-updated + sub-features replaced).
+   *
+   * The whole composite update goes through `applyOpToAnnotations`
+   * so Ctrl+Z / Ctrl+Y rolls the parent + sub-features back to the
+   * single pre-edit snapshot — biolog gets «one undo per Save»
+   * regardless of how many sub-features they tweaked.
+   */
+  const onFeatureSave = useCallback(({ patch, subFeatures }) => {
     if (!featureUnderEdit) return;
-    onAnnotationEditFromView({ kind: 'update', id: featureUnderEdit.id, patch });
-    closeFeatureEditor();
-  }, [featureUnderEdit, onAnnotationEditFromView, closeFeatureEditor]);
+    const baseAnnotations = Array.isArray(edits?.editedAnnotations)
+      ? edits.editedAnnotations
+      : (item?.annotations || []);
+    const parentId = featureUnderEdit.id;
 
-  const onFeatureSplit = useCallback((n) => {
-    if (!featureUnderEdit) return;
+    // Apply parent patch via the same dispatcher to keep validation
+    // + id-regen consistent.
+    let next;
     try {
-      const seqLength = (item?.sequence || '').length;
-      const baseAnnotations = Array.isArray(edits?.editedAnnotations)
-        ? edits.editedAnnotations
-        : (item?.annotations || []);
-      const next = splitAnnotation(baseAnnotations, featureUnderEdit.id, n, seqLength);
-      applyOpToAnnotations(next);
+      next = applyAnnotationEdit(baseAnnotations, { kind: 'update', id: parentId, patch }, (item?.sequence || '').length);
     } catch (err) {
       // eslint-disable-next-line no-console
-      console.warn('[SingleInspector] split failed:', err.message);
+      console.warn('[SingleInspector] parent update failed:', err.message);
+      return;
     }
-  }, [featureUnderEdit, item, edits, applyOpToAnnotations]);
+    const updatedParent = next.find((a) => a.id === (patch.id || parentId)) || next.find((a) => a.start === patch.start && a.end === patch.end);
+    const finalParentId = updatedParent ? updatedParent.id : parentId;
+
+    // Replace existing details under this parent with the new roster.
+    const withoutOldDetails = next.filter(
+      (a) => !(a.level === 'detail' && a.regionId === parentId),
+    );
+    const newDetails = (subFeatures || [])
+      .filter((sf) => Number.isFinite(sf.start) && Number.isFinite(sf.end) && sf.end > sf.start)
+      .map((sf) => {
+        const det = {
+          name: (sf.name || 'sub').trim() || 'sub',
+          type: sf.type || 'misc_feature',
+          start: Math.max(0, sf.start | 0),
+          end: Math.max(1, sf.end | 0),
+          strand: sf.strand === -1 ? -1 : 1,
+          level: 'detail',
+          regionId: finalParentId,
+        };
+        if (sf.color) det.color = sf.color;
+        det.id = sf.id || generateAnnotationId(det);
+        return det;
+      });
+    const composite = [...withoutOldDetails, ...newDetails];
+    applyOpToAnnotations(composite);
+    closeFeatureEditor();
+  }, [featureUnderEdit, item, edits, applyOpToAnnotations, closeFeatureEditor]);
 
   const onFeatureMerge = useCallback((neighbourId) => {
     if (!featureUnderEdit) return;
@@ -795,7 +831,6 @@ export default function SingleInspector({
         seqLength={length}
         neighbours={displayAnnotations}
         onSave={onFeatureSave}
-        onSplit={onFeatureSplit}
         onMerge={onFeatureMerge}
         onDelete={onFeatureDelete}
         onClose={closeFeatureEditor}

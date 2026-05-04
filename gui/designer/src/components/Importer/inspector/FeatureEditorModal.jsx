@@ -47,7 +47,6 @@ export default function FeatureEditorModal({
   seqLength = 0,
   neighbours = [],
   onSave,
-  onSplit,
   onMerge,
   onDelete,
   onClose,
@@ -59,6 +58,13 @@ export default function FeatureEditorModal({
   const [end, setEnd] = useState('1');
   const [strand, setStrand] = useState(1);
   const [mergePick, setMergePick] = useState(null);
+  // Sub-features (level: 'detail' annotations under this region).
+  // Owned by the modal; emitted on Save as `meta.subFeatures`.
+  // Each entry: { id?, name, type, start, end, strand, color? }.
+  // Biolog «оба фрагмента всё ещё одна фича просто условно
+  // субфичи (типо сигнальный пептид в белке)» — split adds a row
+  // here without touching the parent annotation.
+  const [subFeatures, setSubFeatures] = useState([]);
   const nameRef = useRef(null);
 
   const featureKey = feature ? (feature.id || `${feature.start}:${feature.end}`) : null;
@@ -70,6 +76,21 @@ export default function FeatureEditorModal({
     setEnd(String(feature.end || 0));
     setStrand(feature.strand === -1 ? -1 : 1);
     setMergePick(null);
+    // Pre-seed sub-features from the parent's existing detail
+    // annotations in `neighbours` (any annotation with
+    // level: 'detail' AND regionId === feature.id).
+    const existing = (neighbours || []).filter(
+      (a) => a && a.level === 'detail' && a.regionId === feature.id,
+    );
+    setSubFeatures(existing.map((a) => ({
+      id: a.id,
+      name: a.name || '',
+      type: a.type || 'misc_feature',
+      start: a.start || 0,
+      end: a.end || 0,
+      strand: a.strand === -1 ? -1 : 1,
+      color: a.color,
+    })));
   }, [featureKey]); // eslint-disable-line react-hooks/exhaustive-deps -- featureKey is the gate
 
   // Esc closes — bound only while the modal is open. Listener runs
@@ -123,12 +144,59 @@ export default function FeatureEditorModal({
       end: Number.isFinite(endStore) ? Math.max(startStore + 1, Math.min(seqLength || endStore, endStore)) : feature.end,
       strand: strand === -1 ? -1 : 1,
     };
-    onSave?.({ patch });
+    // Sub-features come back as { id?, name, type, start, end,
+    // strand, color? }. Numeric coords already in store-space (the
+    // row inputs convert from 1-based UI to 0-based store on
+    // change). Parent inspector handles the create/update/delete
+    // diff against the previous detail set.
+    onSave?.({ patch, subFeatures: subFeatures.map((sf) => ({ ...sf })) });
   };
 
-  const handleSplit = (n) => {
-    onSplit?.(n);
-    onClose?.();
+  /**
+   * Single «Split» button. First click splits the parent at its
+   * midpoint into two halves (Part-1 / Part-2). Subsequent clicks
+   * halve the LAST sub-feature so biolog can keep adding marker
+   * regions without a per-N button. Each new sub-feature defaults
+   * to type=`misc_feature` so it doesn't collide with the parent's
+   * type semantics — biolog can change to exon / intron /
+   * signal_peptide etc. inline.
+   */
+  const handleSplit = () => {
+    setSubFeatures((prev) => {
+      // Clone for immutable replace.
+      const next = [...prev];
+      if (next.length === 0) {
+        const fStart = feature.start || 0;
+        const fEnd = feature.end || 0;
+        const mid = Math.floor((fStart + fEnd) / 2);
+        next.push({ name: 'Part-1', type: 'misc_feature', start: fStart, end: mid, strand: feature.strand === -1 ? -1 : 1 });
+        next.push({ name: 'Part-2', type: 'misc_feature', start: mid,    end: fEnd, strand: feature.strand === -1 ? -1 : 1 });
+        return next;
+      }
+      // Halve the last entry.
+      const last = next[next.length - 1];
+      const lastMid = Math.floor((last.start + last.end) / 2);
+      if (lastMid <= last.start || lastMid >= last.end) return next; // too short to halve
+      const replacement = { ...last, end: lastMid };
+      const fresh = {
+        name: `Part-${next.length + 1}`,
+        type: 'misc_feature',
+        start: lastMid,
+        end: last.end,
+        strand: last.strand === -1 ? -1 : 1,
+      };
+      next[next.length - 1] = replacement;
+      next.push(fresh);
+      return next;
+    });
+  };
+
+  const updateSubFeature = (idx, patch) => {
+    setSubFeatures((prev) => prev.map((sf, i) => (i === idx ? { ...sf, ...patch } : sf)));
+  };
+
+  const removeSubFeature = (idx) => {
+    setSubFeatures((prev) => prev.filter((_, i) => i !== idx));
   };
 
   const handleMerge = () => {
@@ -233,18 +301,31 @@ export default function FeatureEditorModal({
 
           <Divider label={S.featureEditorOperationsLabel} />
 
-          <Field label="Split">
-            <div style={{ display: 'flex', gap: 6 }}>
-              {[2, 3, 4].map((n) => (
-                <button
-                  key={n}
-                  type="button"
-                  data-testid={`feature-editor-split-${n}`}
-                  onClick={() => handleSplit(n)}
-                  style={secondaryBtnStyle()}
-                  title={S.featureEditorSplitHint}
-                >{S.featureEditorSplit(n)}</button>
-              ))}
+          <Field label={S.featureEditorSubfeaturesLabel}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {subFeatures.length === 0 ? (
+                <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
+                  {S.featureEditorNoSubfeatures}
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {subFeatures.map((sf, i) => (
+                    <SubFeatureRow
+                      key={sf.id || `sf-${i}`}
+                      subFeature={sf}
+                      onChange={(patch) => updateSubFeature(i, patch)}
+                      onDelete={() => removeSubFeature(i)}
+                    />
+                  ))}
+                </div>
+              )}
+              <button
+                type="button"
+                data-testid="feature-editor-split"
+                onClick={handleSplit}
+                style={{ ...secondaryBtnStyle(), alignSelf: 'flex-start' }}
+                title={S.featureEditorSplitHint}
+              >+ {S.featureEditorSplit}</button>
             </div>
           </Field>
 
@@ -422,6 +503,86 @@ function inputStyle() {
     borderRadius: 'var(--radius-sm, 3px)',
     outline: 'none', width: '100%',
   };
+}
+
+/**
+ * One sub-feature row inside the FeatureEditorModal — name + type
+ * + start/end + delete. Coords are 1-based UI; the change handler
+ * normalises them to 0-based store coords on the way out so the
+ * modal's outgoing meta uses the canonical convention.
+ */
+function SubFeatureRow({ subFeature, onChange, onDelete }) {
+  return (
+    <div
+      data-testid="feature-editor-subfeature-row"
+      style={{
+        display: 'grid',
+        gridTemplateColumns: '1fr 110px 70px 70px 24px',
+        gap: 4,
+        alignItems: 'center',
+      }}
+    >
+      <input
+        data-testid="subfeature-name"
+        type="text"
+        value={subFeature.name || ''}
+        onChange={(e) => onChange({ name: e.target.value })}
+        placeholder={S.featureEditorSubfeatureNamePlaceholder}
+        style={inputStyle()}
+      />
+      <select
+        data-testid="subfeature-type"
+        value={subFeature.type || 'misc_feature'}
+        onChange={(e) => onChange({ type: e.target.value })}
+        style={{ ...inputStyle(), padding: '4px 6px' }}
+      >
+        {PART_TYPE_GROUPS.map((g) => (
+          <optgroup key={g.labelKey} label={g.labelKey.replace('typegroup.', '')}>
+            {g.types.map((t) => <option key={t} value={t}>{t}</option>)}
+          </optgroup>
+        ))}
+      </select>
+      <input
+        data-testid="subfeature-start"
+        type="number"
+        // 1-based UI display: store start + 1.
+        value={String((subFeature.start || 0) + 1)}
+        onChange={(e) => {
+          const v = Number(e.target.value);
+          if (!Number.isFinite(v)) return;
+          onChange({ start: Math.max(0, v - 1) });
+        }}
+        style={{ ...inputStyle(), padding: '4px 6px' }}
+        min={1}
+      />
+      <input
+        data-testid="subfeature-end"
+        type="number"
+        value={String(subFeature.end || 0)}
+        onChange={(e) => {
+          const v = Number(e.target.value);
+          if (!Number.isFinite(v)) return;
+          onChange({ end: Math.max(0, v) });
+        }}
+        style={{ ...inputStyle(), padding: '4px 6px' }}
+        min={1}
+      />
+      <button
+        type="button"
+        data-testid="subfeature-delete"
+        onClick={onDelete}
+        title="Remove"
+        style={{
+          fontSize: 11, padding: '4px 0',
+          background: 'transparent',
+          color: 'rgb(220, 38, 38)',
+          border: '0.5px solid var(--border-default)',
+          borderRadius: 'var(--radius-sm, 3px)',
+          cursor: 'pointer',
+        }}
+      >{S.featureEditorSubfeatureDelete}</button>
+    </div>
+  );
 }
 
 function secondaryBtnStyle() {
