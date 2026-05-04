@@ -47,6 +47,47 @@ const IN_LABEL_THRESHOLD_PCT = 6.5;
 const LABEL_EXPOSED_MIN_PX = 24;
 
 /**
+ * Group items into clusters by transitive pixel overlap. Two items
+ * are connected when their pixel ranges overlap (any shared x).
+ * Returns an array of clusters, each cluster a list of item indices
+ * into the input array.
+ *
+ * Plain union-find on N items, O(N²) which is plenty for the typical
+ * 50–200 feature bar.
+ *
+ * Used for the unified-frame render: clusters with size ≥ 2 get a
+ * single outer stroke in the «main» (widest) member's colour so the
+ * bar reads as one grouped entity rather than a smear.
+ */
+function clusterByOverlap(items) {
+  const N = items.length;
+  if (N === 0) return [];
+  const parent = items.map((_, i) => i);
+  const find = (i) => {
+    while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; }
+    return i;
+  };
+  const union = (i, j) => {
+    const ri = find(i), rj = find(j);
+    if (ri !== rj) parent[ri] = rj;
+  };
+  for (let i = 0; i < N; i++) {
+    for (let j = i + 1; j < N; j++) {
+      const a = items[i], b = items[j];
+      const aR = a.left + a.width, bR = b.left + b.width;
+      if (a.left < bR && b.left < aR) union(i, j); // overlap
+    }
+  }
+  const buckets = new Map();
+  for (let i = 0; i < N; i++) {
+    const r = find(i);
+    if (!buckets.has(r)) buckets.set(r, []);
+    buckets.get(r).push(i);
+  }
+  return Array.from(buckets.values());
+}
+
+/**
  * For each item in `items`, find its longest CONTIGUOUS exposed
  * sub-segment — pixels where this item is the WIDEST overlapping
  * one. Larger siblings carve out their range; same-width siblings
@@ -254,6 +295,36 @@ export default function LinearFeatureBar({
     });
   }, [annotations, seqLength, width]);
 
+  /** Sprint M-X.3 follow-up — unified cluster frames. Each cluster
+   *  with ≥ 2 features gets one outline rect in the WIDEST member's
+   *  palette colour so overlapping features read as one grouped
+   *  visual entity. Singletons (size === 1) get nothing — their own
+   *  rect is the visual. */
+  const clusterFrames = useMemo(() => {
+    if (items.length < 2) return [];
+    const clusters = clusterByOverlap(items);
+    const frames = [];
+    for (const idxs of clusters) {
+      if (idxs.length < 2) continue;
+      let left = Infinity, right = -Infinity;
+      let widest = items[idxs[0]];
+      for (const i of idxs) {
+        const it = items[i];
+        if (it.left < left) left = it.left;
+        if (it.left + it.width > right) right = it.left + it.width;
+        if (it.width > widest.width) widest = it;
+      }
+      frames.push({
+        key: `cluster-${idxs.join('-')}`,
+        x: left,
+        width: right - left,
+        color: widest.color,
+        predicted: widest.predicted,
+      });
+    }
+    return frames;
+  }, [items]);
+
   // Memoized features layer — the rendered React element tree for
   // the rect/label per feature. Cursor position is NOT in deps, so
   // when only `cursorPosition` changes (every drag-scrub or arrow
@@ -343,6 +414,32 @@ export default function LinearFeatureBar({
             keeps hovering interactive AND the existing K4 test
             selector (`g[style*="cursor"]`) keeps matching. */}
         {featuresLayer}
+
+        {/* Sprint M-X.3 follow-up — unified cluster frames overlay
+            on top of feature rects. Each cluster with ≥ 2 members
+            renders one outline in the widest member's palette colour
+            so overlapping features read as one grouped entity per
+            biolog «надо добавить все же единую рамку, в цвет
+            основной фичи». Decorative — pointerEvents:none so the
+            SVG-level scrubber still claims pointerdown. */}
+        {clusterFrames.map((f) => (
+          <rect
+            key={f.key}
+            data-cluster-frame="true"
+            x={f.x}
+            y={0}
+            width={f.width}
+            height={BAR_H}
+            rx={2.5}
+            ry={2.5}
+            fill="none"
+            stroke={f.color}
+            strokeWidth={1.6}
+            strokeDasharray={f.predicted ? '3,2' : undefined}
+            opacity={0.95}
+            style={{ pointerEvents: 'none' }}
+          />
+        ))}
 
         {/* Cursor marker — vertical line + small downward triangle at
             the controlled `cursorPosition`. Hidden when null.

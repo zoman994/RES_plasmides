@@ -197,3 +197,103 @@ describe('LinearFeatureBar — overlap label dedup', () => {
     expect(longG.querySelector('text')).toBeTruthy();
   });
 });
+
+// ─── Sprint M-X.3 follow-up — unified cluster frame ─────────────────
+// Biolog: «надо добавить все же единую рамку. в цвет основной фичи».
+// When ≥ 2 features overlap, draw a single outline around the
+// cluster's bounding box in the «main» (widest) feature's colour
+// so the bar reads as ONE grouped entity rather than a smear of
+// disjoint rects.
+describe('LinearFeatureBar — unified cluster frame', () => {
+  it('a single non-overlapping feature does NOT get a cluster frame', () => {
+    const a = { id: 'a', name: 'AmpR', type: 'CDS', start: 0, end: 3000, level: 'region' };
+    const { container } = render(
+      <LinearFeatureBar annotations={[a]} seqLength={9000} />
+    );
+    expect(container.querySelectorAll('rect[data-cluster-frame="true"]').length).toBe(0);
+  });
+
+  it('two non-overlapping features each stand alone — no cluster frame', () => {
+    const a = { id: 'a', name: 'A', type: 'CDS', start: 0,    end: 2000, level: 'region' };
+    const b = { id: 'b', name: 'B', type: 'CDS', start: 5000, end: 7000, level: 'region' };
+    const { container } = render(
+      <LinearFeatureBar annotations={[a, b]} seqLength={9000} />
+    );
+    expect(container.querySelectorAll('rect[data-cluster-frame="true"]').length).toBe(0);
+  });
+
+  it('two overlapping features render exactly ONE cluster frame', () => {
+    const big   = { id: 'b', name: 'CDS-big',   type: 'CDS', start: 1000, end: 5000, level: 'region' };
+    const small = { id: 's', name: 'rbs',       type: 'RBS', start: 2000, end: 3000, level: 'region' };
+    const { container } = render(
+      <LinearFeatureBar annotations={[big, small]} seqLength={9000} />
+    );
+    const frames = container.querySelectorAll('rect[data-cluster-frame="true"]');
+    expect(frames.length).toBe(1);
+  });
+
+  it('cluster frame stroke = the widest feature\'s palette colour', () => {
+    const big   = { id: 'b', name: 'CDS-big', type: 'CDS', start: 1000, end: 5000, level: 'region' };
+    const small = { id: 's', name: 'rbs',     type: 'RBS', start: 2000, end: 3000, level: 'region' };
+    const { container } = render(
+      <LinearFeatureBar annotations={[big, small]} seqLength={9000} />
+    );
+    const frame = container.querySelector('rect[data-cluster-frame="true"]');
+    // Find the widest feature's own rect to read its fill (= palette
+    // colour). The frame's stroke must match.
+    const bigGroup = Array.from(container.querySelectorAll('g[data-feature-start]'))
+      .find((g) => g.getAttribute('data-feature-start') === '1000');
+    const bigRect = bigGroup.querySelector('rect');
+    expect(frame.getAttribute('stroke')).toBe(bigRect.getAttribute('fill'));
+  });
+
+  it('cluster frame x..x+width spans the union of cluster member ranges', () => {
+    const a = { id: 'a', name: 'A', type: 'CDS', start: 1000, end: 4000, level: 'region' };
+    const b = { id: 'b', name: 'B', type: 'CDS', start: 3000, end: 6000, level: 'region' }; // overlaps a
+    const c = { id: 'c', name: 'C', type: 'CDS', start: 5000, end: 7000, level: 'region' }; // overlaps b → same cluster as a, b
+    const { container } = render(
+      <LinearFeatureBar annotations={[a, b, c]} seqLength={9000} />
+    );
+    const frames = container.querySelectorAll('rect[data-cluster-frame="true"]');
+    expect(frames.length).toBe(1); // a-b-c form one connected cluster
+    const f = frames[0];
+    const x = Number(f.getAttribute('x'));
+    const w = Number(f.getAttribute('width'));
+    // Cluster bounds: 1000..7000 of 9000 nt → fractions 0.111..0.778.
+    // Bar default width is 800 (from LinearFeatureBar's useLayoutEffect
+    // initial value before measurement) — fine for ratio assertions.
+    // Use proportional checks rather than exact pixels.
+    expect(x).toBeLessThan(w + x); // sanity
+    // Frame's right edge >= rect of feature 'c' (which starts at 5000).
+    const cGroup = Array.from(container.querySelectorAll('g[data-feature-start]'))
+      .find((g) => g.getAttribute('data-feature-start') === '5000');
+    const cRect = cGroup.querySelector('rect');
+    const cLeft = Number(cRect.getAttribute('x'));
+    const cWidth = Number(cRect.getAttribute('width'));
+    expect(x).toBeLessThanOrEqual(cLeft);            // frame starts no later than c
+    expect(x + w).toBeGreaterThanOrEqual(cLeft + cWidth); // and ends no earlier than c's right
+  });
+
+  it('two separate clusters render two separate frames', () => {
+    // Cluster 1: a + b overlap.
+    const a = { id: 'a', name: 'A', type: 'CDS', start: 0,    end: 2000, level: 'region' };
+    const b = { id: 'b', name: 'B', type: 'CDS', start: 1500, end: 3000, level: 'region' };
+    // Cluster 2: c + d overlap, far from cluster 1.
+    const c = { id: 'c', name: 'C', type: 'CDS', start: 5000, end: 6500, level: 'region' };
+    const d = { id: 'd', name: 'D', type: 'CDS', start: 6000, end: 8000, level: 'region' };
+    const { container } = render(
+      <LinearFeatureBar annotations={[a, b, c, d]} seqLength={9000} />
+    );
+    expect(container.querySelectorAll('rect[data-cluster-frame="true"]').length).toBe(2);
+  });
+
+  it('cluster frame has no fill (just stroke) so feature rects show through', () => {
+    const big   = { id: 'b', name: 'big', type: 'CDS', start: 1000, end: 5000, level: 'region' };
+    const small = { id: 's', name: 'rbs', type: 'RBS', start: 2000, end: 3000, level: 'region' };
+    const { container } = render(
+      <LinearFeatureBar annotations={[big, small]} seqLength={9000} />
+    );
+    const frame = container.querySelector('rect[data-cluster-frame="true"]');
+    expect(frame.getAttribute('fill')).toBe('none');
+  });
+});
