@@ -25,7 +25,7 @@
  *     RestrictionTrack consumes.
  */
 
-import { getRegions } from "../../../annotation-model.js";
+import { getRegions, getAllDetails } from "../../../annotation-model.js";
 import { featureColorShaded } from "../../../feature-palette.js";
 import { RE_ENZYMES } from "../../../restriction-db.js";
 
@@ -75,6 +75,26 @@ export function buildFeatureMap(fragments) {
         level: "region",
       });
     }
+    // Sprint M-X.3 follow-up — detail-level sub-features need to
+    // surface in the SequenceView too. Biolog «сплит не отражается
+    // визуально, только в навигационной колбасе вижу потомков».
+    // Include them with `level: 'detail'` + a parentId so
+    // AnnotationTrack can render them stacked under their parent
+    // (and style them differently if needed).
+    const details = getAllDetails(f.annotations);
+    details.forEach((d, di) => {
+      feats.push({
+        id: d.id || `${f.id || i}_d${di}`,
+        name: d.name,
+        type: d.type,
+        start: fragStart + d.start,
+        end: fragStart + d.end,
+        color: featureColorShaded(d.type, d.name),
+        strand: d.strand || f.strand || 1,
+        level: "detail",
+        parentId: d.regionId || null,
+      });
+    });
   });
   return { fullSeq: seq, features: feats };
 }
