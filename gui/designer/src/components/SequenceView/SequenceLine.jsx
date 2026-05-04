@@ -53,8 +53,10 @@ const SequenceLine = memo(function SequenceLine({
   draggedAnnotationId,
   draggedEdge,
   draggedCurrentCoord,
-  // Sprint M-X.2 K5 — inline rename on double-click.
+  // Sprint M-X.2 K5 — inline rename on double-click of the LABEL.
   onAnnotationDoubleClick,
+  // Bug-rush #3 — double-click on the FEATURE BAR opens Annotator.
+  onAnnotationFeatureDoubleClick,
 }) {
   const annMap = useMemo(
     () => buildLineAnnMap(features, line.start, line.seq.length),
@@ -153,6 +155,7 @@ const SequenceLine = memo(function SequenceLine({
           draggedEdge={draggedEdge}
           draggedCurrentCoord={draggedCurrentCoord}
           onAnnotationDoubleClick={onAnnotationDoubleClick}
+          onAnnotationFeatureDoubleClick={onAnnotationFeatureDoubleClick}
         />
       ) : null}
       {tracksReady ? (

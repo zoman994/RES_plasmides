@@ -49,11 +49,50 @@ function resetSettings() {
 beforeEach(() => { resetSettings(); });
 afterEach(() => { cleanup(); });
 
+describe('Bug-rush #3 — bar dblclick opens Annotator, label dblclick renames', () => {
+  it('double-clicking the feature rect (bar) calls onOpenAnnotator with region scope', () => {
+    const onOpenAnnotator = vi.fn();
+    render(
+      <SequenceView
+        fragments={[FRAGMENT]}
+        onAnnotationEdit={vi.fn()}
+        onOpenAnnotator={onOpenAnnotator}
+      />
+    );
+    // The rect lives inside the annotation <g> as a direct child.
+    const region = screen.getAllByTestId('sequence-view-annotation')[0];
+    const rect = region.querySelector('rect');
+    fireEvent.doubleClick(rect);
+    expect(onOpenAnnotator).toHaveBeenCalledWith({
+      kind: 'region',
+      region: { start: 0, end: 99 },
+    });
+  });
+
+  it('double-clicking the LABEL renames (does NOT open Annotator)', () => {
+    const onOpenAnnotator = vi.fn();
+    const onAnnotationEdit = vi.fn();
+    render(
+      <SequenceView
+        fragments={[FRAGMENT]}
+        onAnnotationEdit={onAnnotationEdit}
+        onOpenAnnotator={onOpenAnnotator}
+      />
+    );
+    const label = screen.getAllByTestId('sequence-view-annotation-label')[0];
+    fireEvent.doubleClick(label);
+    expect(onOpenAnnotator).not.toHaveBeenCalled();
+    expect(screen.getByTestId('sequence-view-inline-rename')).toBeTruthy();
+  });
+});
+
 describe('K5 inline rename', () => {
   it('mounts the rename input on double-click', () => {
     render(<SequenceView fragments={[FRAGMENT]} onAnnotationEdit={vi.fn()} />);
-    const region = screen.getAllByTestId('sequence-view-annotation')[0];
-    fireEvent.doubleClick(region);
+    // Bug-rush #3 (04.05.2026): rename now fires from the LABEL,
+    // not the bar — bar dblclick opens Annotator instead.
+    const label = screen.getAllByTestId('sequence-view-annotation-label')[0];
+    fireEvent.doubleClick(label);
     const input = screen.getByTestId('sequence-view-inline-rename');
     expect(input).toBeTruthy();
     expect(input.value).toBe('lacZ');
@@ -62,8 +101,10 @@ describe('K5 inline rename', () => {
   it('Enter saves and dispatches update', () => {
     const onAnnotationEdit = vi.fn();
     render(<SequenceView fragments={[FRAGMENT]} onAnnotationEdit={onAnnotationEdit} />);
-    const region = screen.getAllByTestId('sequence-view-annotation')[0];
-    fireEvent.doubleClick(region);
+    // Bug-rush #3 (04.05.2026): rename now fires from the LABEL,
+    // not the bar — bar dblclick opens Annotator instead.
+    const label = screen.getAllByTestId('sequence-view-annotation-label')[0];
+    fireEvent.doubleClick(label);
     const input = screen.getByTestId('sequence-view-inline-rename');
     fireEvent.change(input, { target: { value: 'lacZ-renamed' } });
     fireEvent.keyDown(input, { key: 'Enter' });
@@ -77,8 +118,10 @@ describe('K5 inline rename', () => {
   it('Esc cancels — no callback', () => {
     const onAnnotationEdit = vi.fn();
     render(<SequenceView fragments={[FRAGMENT]} onAnnotationEdit={onAnnotationEdit} />);
-    const region = screen.getAllByTestId('sequence-view-annotation')[0];
-    fireEvent.doubleClick(region);
+    // Bug-rush #3 (04.05.2026): rename now fires from the LABEL,
+    // not the bar — bar dblclick opens Annotator instead.
+    const label = screen.getAllByTestId('sequence-view-annotation-label')[0];
+    fireEvent.doubleClick(label);
     const input = screen.getByTestId('sequence-view-inline-rename');
     fireEvent.change(input, { target: { value: 'lacZ-renamed' } });
     fireEvent.keyDown(input, { key: 'Escape' });
@@ -89,8 +132,10 @@ describe('K5 inline rename', () => {
   it('blur (outside-click) saves', () => {
     const onAnnotationEdit = vi.fn();
     render(<SequenceView fragments={[FRAGMENT]} onAnnotationEdit={onAnnotationEdit} />);
-    const region = screen.getAllByTestId('sequence-view-annotation')[0];
-    fireEvent.doubleClick(region);
+    // Bug-rush #3 (04.05.2026): rename now fires from the LABEL,
+    // not the bar — bar dblclick opens Annotator instead.
+    const label = screen.getAllByTestId('sequence-view-annotation-label')[0];
+    fireEvent.doubleClick(label);
     const input = screen.getByTestId('sequence-view-inline-rename');
     fireEvent.change(input, { target: { value: 'lacZ-blur-save' } });
     fireEvent.blur(input);
@@ -104,8 +149,10 @@ describe('K5 inline rename', () => {
   it('Empty / whitespace-only name → no callback', () => {
     const onAnnotationEdit = vi.fn();
     render(<SequenceView fragments={[FRAGMENT]} onAnnotationEdit={onAnnotationEdit} />);
-    const region = screen.getAllByTestId('sequence-view-annotation')[0];
-    fireEvent.doubleClick(region);
+    // Bug-rush #3 (04.05.2026): rename now fires from the LABEL,
+    // not the bar — bar dblclick opens Annotator instead.
+    const label = screen.getAllByTestId('sequence-view-annotation-label')[0];
+    fireEvent.doubleClick(label);
     const input = screen.getByTestId('sequence-view-inline-rename');
     fireEvent.change(input, { target: { value: '   ' } });
     fireEvent.keyDown(input, { key: 'Enter' });

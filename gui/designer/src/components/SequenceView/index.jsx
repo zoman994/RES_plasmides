@@ -373,6 +373,14 @@ const SequenceView = forwardRef(function SequenceView({
   // is null and AnnotationTrack ignores the event.
   const renameApi = useAnnotationRename({ onAnnotationEdit });
   const onAnnotationDoubleClick = onAnnotationEdit ? renameApi.startRename : null;
+  // Bug-rush #3 — double-click on the FEATURE BAR opens the Annotator
+  // scoped to the region. Distinct from the label dblclick (rename).
+  const onAnnotationFeatureDoubleClick = onOpenAnnotator
+    ? (region) => onOpenAnnotator({
+      kind: 'region',
+      region: { start: region.start, end: region.end },
+    })
+    : null;
   // Probe the dragged-or-renamed region's DOM rect for input
   // positioning. Layout effect would be cleaner but this is
   // single-shot per rename — re-running on every render only when
@@ -425,6 +433,7 @@ const SequenceView = forwardRef(function SequenceView({
         draggedEdge={draggedEdge}
         draggedCurrentCoord={draggedCurrentCoord}
         onAnnotationDoubleClick={onAnnotationDoubleClick}
+        onAnnotationFeatureDoubleClick={onAnnotationFeatureDoubleClick}
       />
     ));
   }, [
@@ -432,7 +441,7 @@ const SequenceView = forwardRef(function SequenceView({
     settings, framesResolution, orfRanges, renderHybrid,
     onAnnotationClick, tracksReady,
     onAnnotationEdgePointerDown, draggedAnnotationId, draggedEdge, draggedCurrentCoord,
-    onAnnotationDoubleClick,
+    onAnnotationDoubleClick, onAnnotationFeatureDoubleClick,
   ]);
 
   if (!fullSeq) {

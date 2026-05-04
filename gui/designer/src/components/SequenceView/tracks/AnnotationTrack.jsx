@@ -115,8 +115,13 @@ function AnnotationTrack({
   draggedAnnotationId,
   draggedEdge,
   draggedCurrentCoord,
-  // Sprint M-X.2 K5 — inline rename on double-click.
+  // Sprint M-X.2 K5 — inline rename on double-click of the LABEL.
   onAnnotationDoubleClick,
+  // Sprint M-X.2 bug-rush #3 (04.05.2026 evening): double-click on
+  // the FEATURE BAR (rect / chevron) opens the Annotator scoped to
+  // the region — biolog wants the bar itself to be the «explore»
+  // surface, label stays the «rename» surface.
+  onAnnotationFeatureDoubleClick,
 }) {
   if (!regions || regions.length === 0 || lineLen === 0 || charPx <= 0) return null;
 
@@ -322,12 +327,6 @@ function AnnotationTrack({
               data-dragged={isBeingDragged ? "true" : undefined}
               transform={`translate(${xLeft}, ${yTop})`}
               style={{ cursor: "pointer", opacity: isBeingDragged ? 0.4 : 1 }}
-              onDoubleClick={(e) => {
-                if (typeof onAnnotationDoubleClick !== 'function') return;
-                e.stopPropagation();
-                e.preventDefault();
-                onAnnotationDoubleClick(region);
-              }}
             >
               <rect
                 x={0}
@@ -343,6 +342,12 @@ function AnnotationTrack({
                 stroke={rectStroke}
                 strokeWidth={rectStrokeWidth}
                 strokeDasharray={rectStrokeDash}
+                onDoubleClick={(e) => {
+                  if (typeof onAnnotationFeatureDoubleClick !== 'function') return;
+                  e.stopPropagation();
+                  e.preventDefault();
+                  onAnnotationFeatureDoubleClick(region);
+                }}
               />
               {drawChevron ? (
                 <path
@@ -351,6 +356,12 @@ function AnnotationTrack({
                   stroke={rectStroke}
                   strokeWidth={rectStrokeWidth}
                   strokeDasharray={rectStrokeDash}
+                  onDoubleClick={(e) => {
+                    if (typeof onAnnotationFeatureDoubleClick !== 'function') return;
+                    e.stopPropagation();
+                    e.preventDefault();
+                    onAnnotationFeatureDoubleClick(region);
+                  }}
                 />
               ) : null}
               {showLabelInside ? (
@@ -374,11 +385,21 @@ function AnnotationTrack({
                   fill="#ffffff"
                   stroke="#000000"
                   strokeWidth={1.5}
+                  // pointerEvents: 'auto' — bug-rush #3: dblclick on
+                  // the label triggers rename (different from dblclick
+                  // on the rect, which opens the Annotator).
                   style={{
-                    pointerEvents: "none",
+                    pointerEvents: "auto",
+                    cursor: "text",
                     fontFamily: "inherit",
                     fontStyle: labelFontStyle,
                     paintOrder: "stroke fill",
+                  }}
+                  onDoubleClick={(e) => {
+                    if (typeof onAnnotationDoubleClick !== 'function') return;
+                    e.stopPropagation();
+                    e.preventDefault();
+                    onAnnotationDoubleClick(region);
                   }}
                 >
                   {displayLabel}
@@ -450,7 +471,13 @@ function AnnotationTrack({
                     fontSize={LABEL_FONT_SIZE}
                     fontStyle={labelFontStyle}
                     fill="var(--text-secondary, #4b5563)"
-                    style={{ fontFamily: "inherit", fontStyle: labelFontStyle }}
+                    style={{ fontFamily: "inherit", fontStyle: labelFontStyle, cursor: "text" }}
+                    onDoubleClick={(e) => {
+                      if (typeof onAnnotationDoubleClick !== 'function') return;
+                      e.stopPropagation();
+                      e.preventDefault();
+                      onAnnotationDoubleClick(region);
+                    }}
                   >
                     {displayLabel}
                   </text>
