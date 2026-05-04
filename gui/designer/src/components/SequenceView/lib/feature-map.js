@@ -40,10 +40,15 @@ export function buildFeatureMap(fragments) {
     const fragEnd = seq.length;
     const fragColor = f.customColor || featureColorShaded(f.type, f.name);
     const regions = getRegions(f.annotations);
-    if (regions.length > 1) {
+    if (regions.length >= 1) {
+      // Preserve the underlying annotation's id (Sprint M-X.2 K4 —
+      // drag-handles dispatch update by id, so the region must
+      // surface its REAL annotation id, not a synthesized fragment-
+      // index combo). Falls back to the synthesized form when the
+      // raw annotation lacks an id (legacy + freshly-parsed .gb).
       regions.forEach((r, ri) => {
         feats.push({
-          id: `${f.id || i}_r${ri}`,
+          id: r.id || `${f.id || i}_r${ri}`,
           name: r.name,
           type: r.type,
           start: fragStart + r.start,

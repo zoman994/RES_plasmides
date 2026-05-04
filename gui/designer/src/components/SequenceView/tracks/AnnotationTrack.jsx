@@ -109,6 +109,14 @@ function AnnotationTrack({
   labelChars,
   // eslint-disable-next-line no-unused-vars
   onAnnotationClick,
+  // Sprint M-X.2 K4 — drag-handles for region edges. Optional;
+  // when omitted (legacy callers), edge overlays don't render.
+  onPointerDownEdge,
+  draggedAnnotationId,
+  draggedEdge,
+  draggedCurrentCoord,
+  // Sprint M-X.2 K5 — inline rename on double-click.
+  onAnnotationDoubleClick,
 }) {
   if (!regions || regions.length === 0 || lineLen === 0 || charPx <= 0) return null;
 
@@ -243,6 +251,13 @@ function AnnotationTrack({
           const drawChevron =
             (strand === 1 && endsHere) || (strand === -1 && startsHere);
 
+          // Drag-handle overlay state — when this region is being
+          // dragged, render a translucent preview at the new coords.
+          const isBeingDragged = region.id && draggedAnnotationId === region.id;
+          const showLeftHandle = startsHere && typeof onPointerDownEdge === 'function';
+          const showRightHandle = endsHere && typeof onPointerDownEdge === 'function';
+          const HANDLE_WIDTH = 6;
+
           return (
             <g
               key={`${region.id || region.start + ":" + region.end}-r${rowIdx}`}
@@ -262,8 +277,15 @@ function AnnotationTrack({
               data-region-strand={region.strand === -1 ? -1 : 1}
               data-predicted={isPredicted ? "true" : undefined}
               data-region-source={region.source || undefined}
+              data-dragged={isBeingDragged ? "true" : undefined}
               transform={`translate(${xLeft}, ${yTop})`}
-              style={{ cursor: "pointer" }}
+              style={{ cursor: "pointer", opacity: isBeingDragged ? 0.7 : 1 }}
+              onDoubleClick={(e) => {
+                if (typeof onAnnotationDoubleClick !== 'function') return;
+                e.stopPropagation();
+                e.preventDefault();
+                onAnnotationDoubleClick(region);
+              }}
             >
               <rect
                 x={0}
@@ -319,6 +341,34 @@ function AnnotationTrack({
                 >
                   {displayLabel}
                 </text>
+              ) : null}
+              {showLeftHandle ? (
+                <rect
+                  data-testid="sequence-view-annotation-edge"
+                  data-region-edge="left"
+                  data-region-id={region.id || ""}
+                  x={-HANDLE_WIDTH / 2}
+                  y={-2}
+                  width={HANDLE_WIDTH}
+                  height={ROW_HEIGHT + 4}
+                  fill="transparent"
+                  style={{ cursor: "ew-resize", pointerEvents: "all" }}
+                  onPointerDown={(e) => onPointerDownEdge(e, region.id, 'left', region)}
+                />
+              ) : null}
+              {showRightHandle ? (
+                <rect
+                  data-testid="sequence-view-annotation-edge"
+                  data-region-edge="right"
+                  data-region-id={region.id || ""}
+                  x={widthRect - HANDLE_WIDTH / 2}
+                  y={-2}
+                  width={HANDLE_WIDTH}
+                  height={ROW_HEIGHT + 4}
+                  fill="transparent"
+                  style={{ cursor: "ew-resize", pointerEvents: "all" }}
+                  onPointerDown={(e) => onPointerDownEdge(e, region.id, 'right', region)}
+                />
               ) : null}
               {showLeader ? (
                 <g data-testid="sequence-view-annotation-leader" data-label-mode="leader">

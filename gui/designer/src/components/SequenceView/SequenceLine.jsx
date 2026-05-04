@@ -48,6 +48,13 @@ const SequenceLine = memo(function SequenceLine({
   renderHybrid,
   onAnnotationClick,
   tracksReady,
+  // Sprint M-X.2 K4 — drag-handles for region edges.
+  onAnnotationEdgePointerDown,
+  draggedAnnotationId,
+  draggedEdge,
+  draggedCurrentCoord,
+  // Sprint M-X.2 K5 — inline rename on double-click.
+  onAnnotationDoubleClick,
 }) {
   const annMap = useMemo(
     () => buildLineAnnMap(features, line.start, line.seq.length),
@@ -141,6 +148,11 @@ const SequenceLine = memo(function SequenceLine({
           charPx={charPx}
           labelChars={LABEL_WIDTH}
           onAnnotationClick={onAnnotationClick}
+          onPointerDownEdge={onAnnotationEdgePointerDown}
+          draggedAnnotationId={draggedAnnotationId}
+          draggedEdge={draggedEdge}
+          draggedCurrentCoord={draggedCurrentCoord}
+          onAnnotationDoubleClick={onAnnotationDoubleClick}
         />
       ) : null}
       {tracksReady ? (

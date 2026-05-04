@@ -74,6 +74,7 @@ import EditAnnotationModal from "./popups/EditAnnotationModal.jsx";
 import { useSequenceKeyboard } from "./hooks/useSequenceKeyboard.js";
 import { useSelectionState } from "./hooks/useSelectionState.js";
 import { useSelectionEdit } from "./hooks/useSelectionEdit.js";
+import { useAnnotationDrag } from "./hooks/useAnnotationDrag.js";
 import SequenceLine from "./SequenceLine.jsx";
 import { STRINGS } from "../../lib/strings";
 
@@ -346,6 +347,24 @@ const SequenceView = forwardRef(function SequenceView({
     keyboardHandler(e);
   };
 
+  // K4 — drag-handles on region edges. PointerDown on a left/right
+  // edge starts a document-level drag that updates a local coord
+  // ref; pointerUp dispatches an `update` annotation edit. Only
+  // wired into the AnnotationTrack when the consumer supplied
+  // `onAnnotationEdit` — read-only viewers (no parent handler) skip
+  // the edge overlays entirely.
+  const annDrag = useAnnotationDrag({
+    charPx,
+    charsPerLine,
+    containerRef,
+    onAnnotationEdit,
+    seqLength,
+  });
+  const onAnnotationEdgePointerDown = onAnnotationEdit ? annDrag.onPointerDownEdge : null;
+  const draggedAnnotationId = annDrag.draggedAnnotationId;
+  const draggedEdge = annDrag.draggedEdge;
+  const draggedCurrentCoord = annDrag.currentCoord;
+
   // Hoisted derived constant + memoized lines JSX subtree. Both must
   // run before the early `if (!fullSeq) return` so the hook order
   // (useMemo) stays stable across the empty/non-empty transition.
@@ -369,12 +388,17 @@ const SequenceView = forwardRef(function SequenceView({
         renderHybrid={renderHybrid}
         onAnnotationClick={onAnnotationClick}
         tracksReady={tracksReady}
+        onAnnotationEdgePointerDown={onAnnotationEdgePointerDown}
+        draggedAnnotationId={draggedAnnotationId}
+        draggedEdge={draggedEdge}
+        draggedCurrentCoord={draggedCurrentCoord}
       />
     ));
   }, [
     measured, lines, fullSeq, features, primers, reSites, charPx,
     settings, framesResolution, orfRanges, renderHybrid,
     onAnnotationClick, tracksReady,
+    onAnnotationEdgePointerDown, draggedAnnotationId, draggedEdge, draggedCurrentCoord,
   ]);
 
   if (!fullSeq) {
