@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState, useLayoutEffect, useCallback } from 'react';
 import { featureColorShaded, FEATURE_STROKE } from '../../../../feature-palette';
 import { getTextColor } from '../../../../lib/color-utils';
+import { isPredicted } from '../../../../annotation-model';
 
 /**
  * LinearFeatureBar — SVG-based compact linear feature strip.
@@ -165,12 +166,21 @@ export default function LinearFeatureBar({
       const w = Math.max(2, widthFrac * width);
       const widthPct = widthFrac * 100;
       const color = annColorPalette(a);
+      // Sprint M-X.3 K5 — predicted features render as ghosts on the
+      // bar (transparent fill + dashed stroke) so the «колбаса» stays
+      // consistent with AnnotationTrack's per-line ghost styling
+      // (DEC-PRED-05). Confidence-bearing predictions still keep the
+      // type-coloured stroke so the bar remains the colour-keyed
+      // overview biolog already trusts.
+      const predicted = isPredicted(a);
       return {
         idx: i, ann: a,
         left, width: w, widthPct,
-        color,
+        color, predicted,
         labelInside: widthPct >= IN_LABEL_THRESHOLD_PCT,
-        opacity: a.level === 'region' ? 0.92 : 0.7,
+        opacity: predicted
+          ? (a.level === 'region' ? 0.78 : 0.62) // softer for ghosts
+          : (a.level === 'region' ? 0.92 : 0.7),
       };
     });
   }, [annotations, seqLength, width]);
@@ -186,18 +196,22 @@ export default function LinearFeatureBar({
     <g
       key={it.idx}
       data-feature-start={it.ann.start || 0}
+      data-feature-predicted={it.predicted ? 'true' : undefined}
       style={{ cursor: 'pointer' }}
     >
-      <title>{`${it.ann.name || it.ann.type}: ${(it.ann.start || 0) + 1}..${it.ann.end || 0}`}</title>
+      <title>{`${it.predicted ? '~' : ''}${it.ann.name || it.ann.type}: ${(it.ann.start || 0) + 1}..${it.ann.end || 0}`}</title>
       <rect
         x={it.left}
         y={0}
         width={it.width}
         height={BAR_H}
-        fill={it.color}
+        // Predicted: transparent fill, type-colour dashed stroke,
+        // matches AnnotationTrack ghost styling (DEC-PRED-05).
+        fill={it.predicted ? 'transparent' : it.color}
         opacity={it.opacity}
-        stroke={FEATURE_STROKE}
-        strokeWidth={0.5}
+        stroke={it.predicted ? it.color : FEATURE_STROKE}
+        strokeWidth={it.predicted ? 1 : 0.5}
+        strokeDasharray={it.predicted ? '3,2' : undefined}
         rx={2}
         ry={2}
       />
@@ -208,9 +222,14 @@ export default function LinearFeatureBar({
           textAnchor="middle"
           fontSize={10}
           fontWeight={500}
-          fill={getTextColor(it.color)}
+          fontStyle={it.predicted ? 'italic' : 'normal'}
+          // Ghost text rides on top of transparent fill, so the dark
+          // theme's --text-primary on the parent surface is the
+          // right contrast — getTextColor would key off the rect
+          // fill which is now empty.
+          fill={it.predicted ? 'var(--text-primary, #111)' : getTextColor(it.color)}
           style={{ pointerEvents: 'none', userSelect: 'none' }}
-        >{truncate(it.ann.name || it.ann.type, Math.floor(it.width / 7))}</text>
+        >{truncate(`${it.predicted ? '~' : ''}${it.ann.name || it.ann.type}`, Math.floor(it.width / 7))}</text>
       )}
     </g>
   )), [items]);
