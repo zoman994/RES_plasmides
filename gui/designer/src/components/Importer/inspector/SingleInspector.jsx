@@ -16,11 +16,12 @@ import LinearFeatureBar from './tabs/LinearFeatureBar';
 import AnnotationsTab from './tabs/AnnotationsTab';
 import HistoryTab from './tabs/HistoryTab';
 import { getRegions } from '../../../annotation-model';
-import { applyAnnotationEdit } from '../../../lib/annotation-edit.js';
+import { applyAnnotationEdit, splitAnnotation, mergeAnnotations } from '../../../lib/annotation-edit.js';
 import { useStore } from '../../../store';
 import { selectAnnotator } from '../../../store/uiSlice.js';
 import Annotator from '../../Annotator';
 import SettingsPopover from '../../SequenceView/SettingsPopover';
+import FeatureEditorModal from './FeatureEditorModal';
 
 const S = STRINGS.importer;
 
@@ -364,6 +365,73 @@ export default function SingleInspector({
     }
   }, [onUpdateEdits, item, edits]);
 
+  // Sprint M-X.3 follow-up — FeatureEditorModal owns single-feature
+  // edit (rename / type / coords / strand) AND the Split / Merge /
+  // Delete operations. Mounts on dblclick of a feature in the
+  // SequenceView. State here = the region currently under edit
+  // (`null` means no modal open).
+  const [featureUnderEdit, setFeatureUnderEdit] = useState(null);
+  const openFeatureEditor = useCallback((region) => {
+    setFeatureUnderEdit(region || null);
+  }, []);
+  const closeFeatureEditor = useCallback(() => {
+    setFeatureUnderEdit(null);
+  }, []);
+
+  // Apply a non-edit operation (split / merge / delete) directly
+  // against `editedAnnotations` and push the BEFORE state onto the
+  // undo stack so Ctrl+Z works the same way it does for inline
+  // edits.
+  const applyOpToAnnotations = useCallback((nextAnnotations) => {
+    if (!onUpdateEdits) return;
+    const baseAnnotations = Array.isArray(edits?.editedAnnotations)
+      ? edits.editedAnnotations
+      : (item?.annotations || []);
+    if (!Array.isArray(nextAnnotations) || nextAnnotations === baseAnnotations) return;
+    undoStackRef.current = [
+      ...undoStackRef.current.slice(-UNDO_LIMIT + 1),
+      baseAnnotations,
+    ];
+    redoStackRef.current = [];
+    onUpdateEdits({ editedAnnotations: nextAnnotations });
+  }, [onUpdateEdits, item, edits]);
+
+  const onFeatureSave = useCallback(({ patch }) => {
+    if (!featureUnderEdit) return;
+    onAnnotationEditFromView({ kind: 'update', id: featureUnderEdit.id, patch });
+    closeFeatureEditor();
+  }, [featureUnderEdit, onAnnotationEditFromView, closeFeatureEditor]);
+
+  const onFeatureSplit = useCallback((n) => {
+    if (!featureUnderEdit) return;
+    try {
+      const seqLength = (item?.sequence || '').length;
+      const baseAnnotations = Array.isArray(edits?.editedAnnotations)
+        ? edits.editedAnnotations
+        : (item?.annotations || []);
+      const next = splitAnnotation(baseAnnotations, featureUnderEdit.id, n, seqLength);
+      applyOpToAnnotations(next);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[SingleInspector] split failed:', err.message);
+    }
+  }, [featureUnderEdit, item, edits, applyOpToAnnotations]);
+
+  const onFeatureMerge = useCallback((neighbourId) => {
+    if (!featureUnderEdit) return;
+    const baseAnnotations = Array.isArray(edits?.editedAnnotations)
+      ? edits.editedAnnotations
+      : (item?.annotations || []);
+    const next = mergeAnnotations(baseAnnotations, featureUnderEdit.id, neighbourId);
+    applyOpToAnnotations(next);
+  }, [featureUnderEdit, item, edits, applyOpToAnnotations]);
+
+  const onFeatureDelete = useCallback(() => {
+    if (!featureUnderEdit) return;
+    onAnnotationEditFromView({ kind: 'delete', id: featureUnderEdit.id });
+    closeFeatureEditor();
+  }, [featureUnderEdit, onAnnotationEditFromView, closeFeatureEditor]);
+
   const undoAnnotation = useCallback(() => {
     if (!onUpdateEdits) return;
     const stack = undoStackRef.current;
@@ -671,6 +739,7 @@ export default function SingleInspector({
               onSelectRange={onSelectRangeFromView}
               onAnnotationEdit={onAnnotationEditFromView}
               onOpenAnnotator={onOpenAnnotator}
+              onOpenFeatureEditor={openFeatureEditor}
             />
           </div>
         )}
@@ -717,6 +786,20 @@ export default function SingleInspector({
           triggerRef={seqSettingsTriggerRef}
         />
       )}
+      {/* Sprint M-X.3 follow-up — single-feature edit modal, opened
+          by dblclick on a feature in the SequenceView. Owns rename
+          / type / coords / strand / split / merge / delete; intron
+          markup is a stub here. */}
+      <FeatureEditorModal
+        feature={featureUnderEdit}
+        seqLength={length}
+        neighbours={displayAnnotations}
+        onSave={onFeatureSave}
+        onSplit={onFeatureSplit}
+        onMerge={onFeatureMerge}
+        onDelete={onFeatureDelete}
+        onClose={closeFeatureEditor}
+      />
     </div>
   );
 }

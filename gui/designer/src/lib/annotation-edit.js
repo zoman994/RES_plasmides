@@ -273,3 +273,98 @@ export function toUiCoords(start, end) {
 export function fromUiCoords(uiStart, uiEnd) {
   return { start: uiStart - 1, end: uiEnd };
 }
+
+/**
+ * Sprint M-X.3 follow-up — split a single feature into N equal-
+ * length child features. Used by FeatureEditorModal's «Split into
+ * 2 / 3 / 4» buttons.
+ *
+ *   in:  [{ id: 'r1', start: 100, end: 1000, name: 'lacZα', type: 'CDS' }]
+ *   call: splitAnnotation(in, 'r1', 3, seqLen)
+ *   out: [
+ *     { id: …, start: 100,  end: 400,  name: 'lacZα-1', type: 'CDS' },
+ *     { id: …, start: 400,  end: 700,  name: 'lacZα-2', type: 'CDS' },
+ *     { id: …, start: 700,  end: 1000, name: 'lacZα-3', type: 'CDS' },
+ *   ]
+ *
+ * Children inherit `type` / `strand` / `level` from the parent.
+ * Coordinates are computed via integer slicing — the LAST child
+ * picks up any remainder so total length is preserved exactly.
+ *
+ * Throws on N <= 1, on (end - start) < N, and on coords that
+ * `validateAnnotationCoords` rejects post-split.
+ *
+ * Unknown id → no-op (returns input array unchanged).
+ */
+export function splitAnnotation(annotations, annotationId, n, seqLength) {
+  if (typeof n !== 'number' || !Number.isFinite(n) || n < 2) {
+    throw new Error(`splitAnnotation: n must be ≥ 2, got ${n}`);
+  }
+  const idx = (annotations || []).findIndex((a) => matchesAnnotationId(a, annotationId));
+  if (idx < 0) return annotations || [];
+  const parent = annotations[idx];
+  const total = (parent.end || 0) - (parent.start || 0);
+  if (total < n) {
+    throw new Error(`splitAnnotation: feature length ${total} too short for ${n}-way split`);
+  }
+  const chunk = Math.floor(total / n);
+  const children = [];
+  for (let i = 0; i < n; i++) {
+    const cs = (parent.start || 0) + i * chunk;
+    const ce = i === n - 1 ? (parent.end || 0) : cs + chunk;
+    if (typeof seqLength === 'number') validateAnnotationCoords(cs, ce, seqLength);
+    const name = parent.name ? `${parent.name}-${i + 1}` : `(unnamed)-${i + 1}`;
+    const child = {
+      ...parent,
+      start: cs,
+      end: ce,
+      name,
+    };
+    child.id = generateAnnotationId(child);
+    children.push(child);
+  }
+  const next = [...annotations];
+  next.splice(idx, 1, ...children);
+  return next;
+}
+
+/**
+ * Sprint M-X.3 follow-up — merge two ADJACENT features into one
+ * union range. Used by FeatureEditorModal's merge picker.
+ *
+ * «Adjacent» means they touch on a boundary: one's `end` equals the
+ * other's `start`. Non-adjacent merges are refused — returns input
+ * unchanged so the caller can show «no adjacent neighbour» in the
+ * UI without a separate guard.
+ *
+ * Result keeps the LARGER feature's `name` / `type` / `strand` /
+ * `level` (so a tiny RBS merging into a long CDS reads as a longer
+ * CDS, not as a stretched RBS — biolog UX call).
+ *
+ * Order of `idA` / `idB` doesn't matter.
+ */
+export function mergeAnnotations(annotations, idA, idB) {
+  const list = annotations || [];
+  const a = list.find((x) => matchesAnnotationId(x, idA));
+  const b = list.find((x) => matchesAnnotationId(x, idB));
+  if (!a || !b) return list;
+  const adjacent = a.end === b.start || b.end === a.start;
+  if (!adjacent) return list;
+  const lenA = (a.end || 0) - (a.start || 0);
+  const lenB = (b.end || 0) - (b.start || 0);
+  const dominant = lenA >= lenB ? a : b;
+  const merged = {
+    ...dominant,
+    start: Math.min(a.start || 0, b.start || 0),
+    end: Math.max(a.end || 0, b.end || 0),
+  };
+  merged.id = generateAnnotationId(merged);
+  const aId = a.id || generateAnnotationId(a);
+  const bId = b.id || generateAnnotationId(b);
+  return list
+    .filter((x) => {
+      const xid = x.id || generateAnnotationId(x);
+      return xid !== aId && xid !== bId;
+    })
+    .concat(merged);
+}

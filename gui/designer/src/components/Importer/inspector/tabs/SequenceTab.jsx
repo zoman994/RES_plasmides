@@ -47,6 +47,10 @@ export default function SequenceTab({
   onSelectRange,
   onAnnotationEdit,
   onOpenAnnotator,
+  // Sprint M-X.3 follow-up — dblclick on a feature opens the
+  // FeatureEditorModal (rename / type / coords / split / merge /
+  // delete). Wired by SingleInspector.
+  onOpenFeatureEditor,
 }) {
   const sequenceViewRef = useRef(null);
 
@@ -113,6 +117,7 @@ export default function SequenceTab({
           onSelectRange={onSelectRange}
           onAnnotationEdit={onAnnotationEdit}
           onOpenAnnotator={onOpenAnnotator}
+          onOpenFeatureEditor={onOpenFeatureEditor}
         />
       </div>
     </div>

@@ -122,6 +122,12 @@ const SequenceView = forwardRef(function SequenceView({
   // opens the fullscreen Annotator (K8) scoped to a region.
   onAnnotationEdit,
   onOpenAnnotator,
+  // Sprint M-X.3 follow-up — double-click on a feature now routes
+  // to a dedicated FeatureEditorModal (rename / type / coords /
+  // strand / split / merge / introns) instead of opening the
+  // fullscreen Annotator. Falls back to `onOpenAnnotator` only
+  // when this prop is missing (legacy callers preserved).
+  onOpenFeatureEditor,
 }, ref) {
   const containerRef = useRef(null);
   const [charPx, setCharPx] = useState(7.2);
@@ -402,14 +408,19 @@ const SequenceView = forwardRef(function SequenceView({
   // is null and AnnotationTrack ignores the event.
   const renameApi = useAnnotationRename({ onAnnotationEdit });
   const onAnnotationDoubleClick = onAnnotationEdit ? renameApi.startRename : null;
-  // Bug-rush #3 — double-click on the FEATURE BAR opens the Annotator
-  // scoped to the region. Distinct from the label dblclick (rename).
-  const onAnnotationFeatureDoubleClick = onOpenAnnotator
-    ? (region) => onOpenAnnotator({
-      kind: 'region',
-      region: { start: region.start, end: region.end },
-    })
-    : null;
+  // Sprint M-X.3 follow-up — double-click on the FEATURE BAR now
+  // opens the per-feature edit modal (FeatureEditorModal). Falls
+  // back to the previous «open Annotator scoped to region» flow
+  // only when no editor callback is wired (legacy embed sites).
+  // Distinct from the label dblclick (rename).
+  const onAnnotationFeatureDoubleClick = onOpenFeatureEditor
+    ? (region) => onOpenFeatureEditor(region)
+    : (onOpenAnnotator
+      ? (region) => onOpenAnnotator({
+        kind: 'region',
+        region: { start: region.start, end: region.end },
+      })
+      : null);
   // Probe the dragged-or-renamed region's DOM rect for input
   // positioning. Layout effect would be cleaner but this is
   // single-shot per rename — re-running on every render only when

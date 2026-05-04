@@ -9,6 +9,8 @@ import {
   applyAnnotationEdit,
   toUiCoords,
   fromUiCoords,
+  splitAnnotation,
+  mergeAnnotations,
 } from '../annotation-edit.js';
 
 const SEQLEN = 5000;
@@ -270,5 +272,121 @@ describe('annotation-edit — toUiCoords / fromUiCoords round-trip', () => {
   it('round-trips losslessly', () => {
     const { uiStart, uiEnd } = toUiCoords(145, 469);
     expect(fromUiCoords(uiStart, uiEnd)).toEqual({ start: 145, end: 469 });
+  });
+});
+
+// ─── Sprint M-X.3 follow-up — split / merge helpers for the
+//     FeatureEditorModal. ─────────────────────────────────────────
+describe('splitAnnotation', () => {
+  const cds = {
+    id: 'r1', name: 'lacZα', type: 'CDS',
+    start: 100, end: 1000, strand: 1, level: 'region',
+  };
+
+  it('splits a feature into N equal-length child features', () => {
+    const next = splitAnnotation([cds], 'r1', 3, 5000);
+    expect(next).toHaveLength(3);
+    expect(next[0].start).toBe(100);
+    expect(next[0].end).toBe(400);
+    expect(next[1].start).toBe(400);
+    expect(next[1].end).toBe(700);
+    expect(next[2].start).toBe(700);
+    expect(next[2].end).toBe(1000);
+  });
+
+  it('children inherit type + strand from the parent', () => {
+    const next = splitAnnotation([{ ...cds, strand: -1, type: 'gene' }], 'r1', 2, 5000);
+    expect(next.every((c) => c.type === 'gene' && c.strand === -1)).toBe(true);
+  });
+
+  it('children get «Name-1», «Name-2», … numbered names', () => {
+    const next = splitAnnotation([cds], 'r1', 3, 5000);
+    expect(next[0].name).toBe('lacZα-1');
+    expect(next[1].name).toBe('lacZα-2');
+    expect(next[2].name).toBe('lacZα-3');
+  });
+
+  it('children get fresh deterministic ids', () => {
+    const next = splitAnnotation([cds], 'r1', 2, 5000);
+    expect(next[0].id).toBeTruthy();
+    expect(next[1].id).toBeTruthy();
+    expect(next[0].id).not.toBe(next[1].id);
+  });
+
+  it('rounding: total length preserved on uneven divisions', () => {
+    // 1000 - 100 = 900; 900 / 4 = 225 (exact) — pick uneven 7 chunks of 900.
+    const next = splitAnnotation([cds], 'r1', 7, 5000);
+    expect(next[0].start).toBe(100);
+    expect(next[next.length - 1].end).toBe(1000);
+    // Internal segments are contiguous (next.start === prev.end).
+    for (let i = 1; i < next.length; i++) {
+      expect(next[i].start).toBe(next[i - 1].end);
+    }
+  });
+
+  it('preserves other annotations unchanged', () => {
+    const other = { id: 'r2', name: 'X', type: 'misc', start: 2000, end: 2500, strand: 1, level: 'region' };
+    const next = splitAnnotation([cds, other], 'r1', 2, 5000);
+    expect(next).toHaveLength(3); // 2 children + other
+    expect(next.find((a) => a.id === 'r2')).toEqual(other);
+  });
+
+  it('N <= 1 throws (no point splitting into one)', () => {
+    expect(() => splitAnnotation([cds], 'r1', 1, 5000)).toThrow();
+    expect(() => splitAnnotation([cds], 'r1', 0, 5000)).toThrow();
+  });
+
+  it('unknown id is a no-op (returns input array unchanged)', () => {
+    const next = splitAnnotation([cds], 'nope', 2, 5000);
+    expect(next).toEqual([cds]);
+  });
+
+  it('feature too short to split (length < N) throws', () => {
+    const tiny = { ...cds, start: 100, end: 102 }; // length 2
+    expect(() => splitAnnotation([tiny], 'r1', 4, 5000)).toThrow();
+  });
+});
+
+describe('mergeAnnotations', () => {
+  const left  = { id: 'L', name: 'Left',  type: 'CDS', start: 0,    end: 500,  strand: 1, level: 'region' };
+  const mid   = { id: 'M', name: 'Mid',   type: 'CDS', start: 500,  end: 900,  strand: 1, level: 'region' };
+  const right = { id: 'R', name: 'Right', type: 'CDS', start: 900,  end: 1300, strand: 1, level: 'region' };
+  const far   = { id: 'F', name: 'Far',   type: 'CDS', start: 5000, end: 6000, strand: 1, level: 'region' };
+
+  it('merges two adjacent features into one (union range)', () => {
+    const next = mergeAnnotations([left, mid], 'L', 'M');
+    expect(next).toHaveLength(1);
+    expect(next[0].start).toBe(0);
+    expect(next[0].end).toBe(900);
+  });
+
+  it('keeps the LARGER feature\'s name when merging', () => {
+    // mid is shorter (400 nt) than left (500 nt) — left's name wins.
+    const next = mergeAnnotations([left, mid], 'L', 'M');
+    expect(next[0].name).toBe('Left');
+  });
+
+  it('refuses to merge non-adjacent features (returns input unchanged)', () => {
+    const next = mergeAnnotations([left, far], 'L', 'F');
+    expect(next).toHaveLength(2);
+    expect(next).toEqual([left, far]);
+  });
+
+  it('order of args (left-to-right vs right-to-left) doesn\'t matter', () => {
+    const a = mergeAnnotations([left, mid], 'L', 'M');
+    const b = mergeAnnotations([left, mid], 'M', 'L');
+    expect(a[0].start).toBe(b[0].start);
+    expect(a[0].end).toBe(b[0].end);
+  });
+
+  it('preserves the third (untouched) feature when merging two of three', () => {
+    const next = mergeAnnotations([left, mid, right], 'L', 'M');
+    expect(next).toHaveLength(2); // {L+M} + R
+    expect(next.find((a) => a.id === 'R')).toBeTruthy();
+  });
+
+  it('unknown ids are no-op', () => {
+    expect(mergeAnnotations([left, mid], 'X', 'M')).toEqual([left, mid]);
+    expect(mergeAnnotations([left, mid], 'L', 'Y')).toEqual([left, mid]);
   });
 });

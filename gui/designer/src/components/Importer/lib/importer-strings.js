@@ -348,4 +348,29 @@ export const IMPORTER_STRINGS = {
   preImportSourceBadgeFile: (ext) => ext ? `.${ext.toUpperCase()} file` : 'File',
   // catalog badge dropped — catalog items skip the modal entirely
   // (they're already named / annotated; nothing to capture).
+
+  // ── Sprint M-X.3 follow-up — FeatureEditorModal (dblclick on a
+  //    feature opens this instead of the Annotator). ────────────────
+  featureEditorTitle: 'Edit feature',
+  featureEditorNameLabel: 'Name',
+  featureEditorTypeLabel: 'Type',
+  featureEditorCoordsLabel: 'Coordinates',
+  featureEditorCoordsStart: 'Start',
+  featureEditorCoordsEnd: 'End',
+  featureEditorStrandLabel: 'Strand',
+  featureEditorStrandFwd: '+ (forward)',
+  featureEditorStrandRev: '− (reverse)',
+  featureEditorOperationsLabel: 'Operations',
+  featureEditorSplit: (n) => `Split into ${n} parts`,
+  featureEditorSplitHint: 'Replaces this feature with N equal-length child features',
+  featureEditorMergeLabel: 'Merge with neighbour',
+  featureEditorMergeNone: 'No adjacent feature available',
+  featureEditorMergePrev: (name) => `← ${name || 'previous'}`,
+  featureEditorMergeNext: (name) => `${name || 'next'} →`,
+  featureEditorMergeApply: 'Apply merge',
+  featureEditorIntronsLabel: 'Introns',
+  featureEditorIntronsStub: '(intron markup — coming soon)',
+  featureEditorSave: 'Save',
+  featureEditorCancel: 'Cancel',
+  featureEditorDelete: 'Delete feature',
 };
