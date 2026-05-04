@@ -27,12 +27,19 @@
 
 import { memo, useState } from "react";
 import { stackAnnotations, MAX_VISIBLE_ROWS } from "../lib/annotation-stacking.js";
+import { SBOLIcon } from "../../../sbol-glyphs";
 
 const ROW_HEIGHT = 14;
 const ROW_GAP = 2;
 const LABEL_FONT_SIZE = 9;
 const CHEVRON_PAD = 2;
 const SHORT_VISIBLE_THRESHOLD = 4; // chars
+// Sprint M-X.3 follow-up — small SBOL glyph badge sits at the left
+// of every wide-enough region so biolog can scan feature TYPES at
+// a glance without reading every label. Glyph is 11×11; rect needs
+// at least 14 px of width to fit it without crowding the label.
+const GLYPH_SIZE = 11;
+const GLYPH_MIN_PX = 14;
 // Shortened from 14 → 8 px (biolog visual review 03.05.2026 evening,
 // pBR322 lac operator/promoter pair: «ещё есть куда приближать»). The
 // leader still reads clearly as a tick connecting the rect to its
@@ -408,13 +415,35 @@ function AnnotationTrack({
                   }}
                 />
               ) : null}
+              {/* Sprint M-X.3 follow-up — SBOL glyph badge.
+                  Renders at the left of the rect when the rect is
+                  wide enough (≥ 14 px) and the region carries a
+                  recognisable type. Decorative — pointerEvents:none
+                  so dblclick still flows to the rect handler. */}
+              {widthRect >= GLYPH_MIN_PX ? (
+                <g
+                  data-testid="annotation-feature-glyph"
+                  data-glyph-type={region.type || ''}
+                  transform={`translate(2, ${(ROW_HEIGHT - GLYPH_SIZE) / 2})`}
+                  style={{ pointerEvents: 'none' }}
+                >
+                  <SBOLIcon
+                    type={region.type}
+                    size={GLYPH_SIZE}
+                    color={isPredicted ? baseColor : 'var(--text-primary, #1c1917)'}
+                  />
+                </g>
+              ) : null}
               {showLabelInside ? (
                 <text
                   data-testid="sequence-view-annotation-label"
                   data-label-mode="inside"
                   data-label-feature={region.name || ""}
                   data-label-predicted={isPredicted ? "true" : undefined}
-                  x={widthRect / 2}
+                  // Centre x shifts past the glyph when one renders,
+                  // so the label sits in the post-glyph space rather
+                  // than overlapping the badge.
+                  x={(widthRect >= GLYPH_MIN_PX ? GLYPH_SIZE + 4 : 0) / 2 + widthRect / 2}
                   y={ROW_HEIGHT / 2 + LABEL_FONT_SIZE / 2 - 1}
                   textAnchor="middle"
                   fontSize={LABEL_FONT_SIZE}

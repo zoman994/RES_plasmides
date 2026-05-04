@@ -244,3 +244,85 @@ describe("AnnotationTrack — K3 integration", () => {
     expect(fontStyle).not.toBe("italic");
   });
 });
+
+// Sprint M-X.3 follow-up — biolog «у нас кстати нет глифов, можем
+// красиво добавить на сиквенс вью?». Each typed feature wide enough
+// to fit the icon now renders an SBOL glyph at the left of its
+// rect. Narrow features (< GLYPH_MIN_PX) skip the glyph; sub-region
+// (level !== 'region') features do too — only top-level features
+// get the type-cue treatment.
+describe("AnnotationTrack — SBOL glyph badge", () => {
+  it("renders an SBOL glyph for a wide CDS region", () => {
+    const regions = [
+      { id: "amp", start: 0, end: 200, name: "AmpR", type: "CDS", color: "#7CB342", level: "region" },
+    ];
+    const { container } = render(
+      <AnnotationTrack
+        regions={regions}
+        lineStart={0}
+        lineLen={250}
+        charPx={7.2}
+        labelChars={8}
+      />,
+    );
+    expect(
+      container.querySelector('[data-testid="annotation-feature-glyph"]')
+    ).toBeTruthy();
+  });
+
+  it("the glyph carries data-glyph-type matching the region type", () => {
+    const regions = [
+      { id: "p", start: 0, end: 200, name: "T7", type: "promoter", color: "#009E73", level: "region" },
+    ];
+    const { container } = render(
+      <AnnotationTrack
+        regions={regions}
+        lineStart={0}
+        lineLen={250}
+        charPx={7.2}
+        labelChars={8}
+      />,
+    );
+    const g = container.querySelector('[data-testid="annotation-feature-glyph"]');
+    expect(g.getAttribute('data-glyph-type')).toBe('promoter');
+  });
+
+  it("very narrow region (< GLYPH_MIN_PX wide) does NOT render a glyph", () => {
+    // 5 nt at 7.2 px/char ≈ 36 px. Make it 1 nt to drop below the
+    // 14 px glyph minimum.
+    const regions = [
+      { id: "tiny", start: 0, end: 1, name: "x", type: "CDS", color: "#7CB342", level: "region" },
+    ];
+    const { container } = render(
+      <AnnotationTrack
+        regions={regions}
+        lineStart={0}
+        lineLen={250}
+        charPx={7.2}
+        labelChars={8}
+      />,
+    );
+    expect(
+      container.querySelector('[data-testid="annotation-feature-glyph"]')
+    ).toBeNull();
+  });
+
+  it("fallback to misc glyph for unknown type (stays renderable)", () => {
+    const regions = [
+      { id: "u", start: 0, end: 200, name: "X", type: "totally-made-up", color: "#888", level: "region" },
+    ];
+    const { container } = render(
+      <AnnotationTrack
+        regions={regions}
+        lineStart={0}
+        lineLen={250}
+        charPx={7.2}
+        labelChars={8}
+      />,
+    );
+    // Glyph element still exists — SBOLIcon falls back to MiscGlyph.
+    expect(
+      container.querySelector('[data-testid="annotation-feature-glyph"]')
+    ).toBeTruthy();
+  });
+});
