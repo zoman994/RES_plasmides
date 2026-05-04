@@ -69,6 +69,10 @@ export const IMPORTER_STRINGS = {
   sequenceReadOnly: 'read-only',
   annotationsCount: (n) => `${n} annotations`,
 
+  // Bug-rush #23 (04.05.2026): selection counter in the title row.
+  selectionCountBp: (n) => `${n.toLocaleString()} bp`,
+  selectionCountAa: (n) => `${n.toLocaleString()} aa`,
+
   // SequenceView settings popover (Sprint M-B.3 K7).
   sequenceView: {
     settingsButton: 'Display settings',

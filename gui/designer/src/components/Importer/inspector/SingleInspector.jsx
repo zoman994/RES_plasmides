@@ -549,6 +549,35 @@ export default function SingleInspector({
               >{S.sequenceReadOnly}</span>
             </>
           )}
+          {/* Bug-rush #23 (04.05.2026): live selection counter — bp
+              always, aa appended when selection mode is 'aa' (codon-
+              aligned). Only renders while a non-collapsed selection
+              exists, so the title row stays clean otherwise. */}
+          {(() => {
+            const a = (typeof cursorAnchor === 'number' && Number.isFinite(cursorAnchor)) ? cursorAnchor : null;
+            const f = (typeof cursorPos === 'number' && Number.isFinite(cursorPos)) ? cursorPos : null;
+            if (a == null || f == null || a === f) return null;
+            const bp = Math.abs(a - f);
+            const showAa = cursorSelectionMode === 'aa';
+            const aa = showAa ? Math.floor(bp / 3) : 0;
+            return (
+              <div
+                data-testid="importer-selection-counter"
+                style={{
+                  padding: '2px 8px',
+                  borderRadius: 'var(--radius-sm)',
+                  background: 'var(--accent-50, rgba(249, 115, 22, 0.12))',
+                  color: 'var(--accent-700, #c2410c)',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 11,
+                  fontWeight: 500,
+                  flexShrink: 0,
+                }}
+              >
+                {S.selectionCountBp(bp)}{showAa ? ` · ${S.selectionCountAa(aa)}` : ''}
+              </div>
+            );
+          })()}
           <div
             style={{
               fontSize: 11, color: 'var(--text-tertiary)',
