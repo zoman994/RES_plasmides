@@ -88,6 +88,35 @@ describe('FeatureEditorModal — open / close', () => {
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  it('Escape stops propagation so App\'s global hotkey resolver doesn\'t fire popFullscreen', () => {
+    // Biolog «из модалки этих фичес на эскейп выбрасывает из
+    // библиотеки совсем. На стартовый. А должно обратно на вивер.
+    // Бесит». Without capture-phase listening + stopPropagation, the
+    // App-level Escape hotkey (`navStack.length > 1 → popFullscreen`)
+    // would fire alongside the modal's onClose and dump the user out
+    // of the Importer back to Start. The fix: modal listener runs in
+    // CAPTURE phase, calls preventDefault + stopPropagation, so any
+    // global resolver checking `event.defaultPrevented` bails out.
+    const onClose = vi.fn();
+    const bubblePhaseListener = vi.fn();
+    window.addEventListener('keydown', bubblePhaseListener);
+    render(
+      <FeatureEditorModal
+        feature={FEATURE} seqLength={5000} neighbours={[]}
+        onSave={() => {}} onClose={onClose} onSplit={() => {}} onMerge={() => {}} onDelete={() => {}}
+      />
+    );
+    const evt = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    window.dispatchEvent(evt);
+    expect(onClose).toHaveBeenCalledTimes(1);
+    // App's bubble-phase listener is shielded by stopPropagation.
+    expect(bubblePhaseListener).not.toHaveBeenCalled();
+    // Belt + suspenders — `defaultPrevented` is also set so any
+    // resolver that checks it bails out anyway.
+    expect(evt.defaultPrevented).toBe(true);
+    window.removeEventListener('keydown', bubblePhaseListener);
+  });
 });
 
 describe('FeatureEditorModal — Save with edits', () => {

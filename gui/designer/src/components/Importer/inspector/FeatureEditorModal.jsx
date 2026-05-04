@@ -72,17 +72,23 @@ export default function FeatureEditorModal({
     setMergePick(null);
   }, [featureKey]); // eslint-disable-line react-hooks/exhaustive-deps -- featureKey is the gate
 
-  // Esc closes — bound only while the modal is open.
+  // Esc closes — bound only while the modal is open. Listener runs
+  // in CAPTURE phase + calls stopPropagation so the App-level
+  // global Escape hotkey (`navStack.length > 1 → popFullscreen`)
+  // can't also fire and dump biolog out of the Importer back to
+  // Start. Biolog «из модалки этих фичес на эскейп выбрасывает из
+  // библиотеки совсем».
   useEffect(() => {
     if (!feature) return undefined;
     const onKey = (e) => {
       if (e.key === 'Escape') {
         e.preventDefault();
+        e.stopPropagation();
         onClose?.();
       }
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
   }, [feature, onClose]);
 
   useEffect(() => {

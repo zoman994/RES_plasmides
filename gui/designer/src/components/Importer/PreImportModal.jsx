@@ -118,18 +118,22 @@ export default function PreImportModal({
     setKeepExisting(true);
   }, [envelopeKey]); // eslint-disable-line react-hooks/exhaustive-deps -- envelopeKey IS the identity gate
 
-  // Escape closes — same pattern as Annotator (effect bound only
-  // while modal is open so other key handlers aren't fighting it).
+  // Escape closes — capture-phase + stopPropagation so the App's
+  // global Escape hotkey doesn't also pop the Importer fullscreen
+  // and dump biolog all the way back to Start (same fix the
+  // FeatureEditorModal got, same root cause — App.jsx wires
+  // useHotkey('escape', popFullscreen) at the window level).
   useEffect(() => {
     if (!pendingImport) return undefined;
     const onKey = (e) => {
       if (e.key === 'Escape') {
         e.preventDefault();
+        e.stopPropagation();
         onCancel?.();
       }
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
   }, [pendingImport, onCancel]);
 
   // Autofocus name on open. Skip in multi mode (no single name input).

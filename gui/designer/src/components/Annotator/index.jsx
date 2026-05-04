@@ -56,18 +56,21 @@ export default function Annotator({
   const plugins = useMemo(() => getAllPlugins(), []);
 
   // Esc closes the modal (third escape route alongside Back button
-  // + backdrop click). Bound only while open so the global escape
-  // doesn't fight other modals.
+  // + backdrop click). Capture-phase + stopPropagation so the App's
+  // global Escape hotkey doesn't also fire popFullscreen and dump
+  // biolog out of the Importer back to Start (same fix the
+  // FeatureEditorModal + PreImportModal got).
   useEffect(() => {
     if (!annotator.open) return undefined;
     const onKey = (e) => {
       if (e.key === 'Escape') {
         e.preventDefault();
+        e.stopPropagation();
         closeAnnotator();
       }
     };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
+    document.addEventListener('keydown', onKey, true);
+    return () => document.removeEventListener('keydown', onKey, true);
   }, [annotator.open, closeAnnotator]);
 
   const seqLength = (sequence || '').length;
