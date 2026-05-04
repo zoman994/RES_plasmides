@@ -50,6 +50,15 @@ export function useImporterState({ mode } = {}) { // eslint-disable-line no-unus
   const [addedItems, setAddedItems] = useState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  // Sprint M-X.3 K1 — PreImportModal envelope. While non-null, the
+  // user is inside the metadata modal; on commit it's promoted into
+  // `parsedItems` (the existing terminal state). On clear it's just
+  // dropped (cancel path). Shape:
+  //   { kind: 'paste' | 'file' | 'catalog' | 'multi',
+  //     parsedItem?, parsedItems?,
+  //     suggestedName, defaultTopology, hasAnnotations,
+  //     suggestedTags?, source }
+  const [pendingImport, setPendingImport] = useState(null);
   const cancelToken = useRef(0);
 
   const reset = useCallback(() => {
@@ -64,6 +73,85 @@ export function useImporterState({ mode } = {}) { // eslint-disable-line no-unus
     setAddedItems([]);
     setBusy(false);
     setError(null);
+    setPendingImport(null);
+  }, []);
+
+  /** Drop the pending envelope without writing to parsedItems (cancel). */
+  const clearPendingImport = useCallback(() => {
+    setPendingImport(null);
+  }, []);
+
+  /**
+   * Apply the user-chosen meta to the pending parsedItem(s) and
+   * promote into `parsedItems`. Meta shape:
+   *   { name, topology, tags: string[], folderTag?, annotateNow,
+   *     keepExistingAnnotations? }  // last only relevant for file/catalog
+   *
+   * Multi-file (kind: 'multi') applies tags + folderTag + annotateNow
+   * to ALL items but leaves per-file `name` untouched (those are
+   * pre-edited inline in the modal's file list).
+   */
+  const commitPendingImport = useCallback((meta) => {
+    setPendingImport((prev) => {
+      if (!prev) return null;
+      const m = meta || {};
+      const tags = Array.isArray(m.tags) ? m.tags.filter(Boolean) : [];
+      const allTags = m.folderTag && !tags.includes(m.folderTag)
+        ? [m.folderTag, ...tags]
+        : tags;
+      const annotateNow = m.annotateNow !== false; // default ON
+      const keepExisting = m.keepExistingAnnotations !== false; // default keep
+
+      const applyToOne = (parsed) => {
+        const next = { ...parsed };
+        if (typeof m.name === 'string' && m.name.trim()) {
+          next.name = m.name.trim();
+        }
+        if (m.topology === 'circular' || m.topology === 'linear') {
+          next.topology = m.topology;
+        }
+        if (!keepExisting) {
+          next.annotations = [];
+          next._fromFileCount = 0;
+        }
+        return next;
+      };
+
+      const newItems = prev.kind === 'multi'
+        ? (prev.parsedItems || []).map(applyToOne)
+        : [applyToOne(prev.parsedItem)];
+
+      // Append into `parsedItems` (preserve existing — matches the
+      // append-not-replace contract of `addFiles`).
+      setParsedItems((prevItems) => [...prevItems, ...newItems]);
+
+      // Seed flags / edits per file.
+      setPerFileFlags((prevFlags) => {
+        const next = { ...prevFlags };
+        for (const it of newItems) {
+          next[it._fileName] = { ...(next[it._fileName] || {}), autoAnnotate: annotateNow };
+        }
+        return next;
+      });
+      setPerFileEdits((prevEdits) => {
+        const next = { ...prevEdits };
+        for (const it of newItems) {
+          const cur = next[it._fileName] || {};
+          next[it._fileName] = {
+            ...cur,
+            ...(allTags.length > 0 ? { editedTags: allTags } : {}),
+          };
+        }
+        return next;
+      });
+
+      // After commit the inspector should focus the freshly added
+      // item — keep the index pointing at the newest entry.
+      setCurrentIdxState((prevIdx) => prevIdx); // unchanged unless we want last
+      setActiveTabState('overview');
+
+      return null; // close the modal
+    });
   }, []);
 
   /**
@@ -177,9 +265,18 @@ export function useImporterState({ mode } = {}) { // eslint-disable-line no-unus
         _source: 'paste',
         _sanitizeReport: report,
       };
-      setParsedItems(prev => prev.length === 0 ? [next] : [...prev, next]);
-      setPerFileFlags(prev => ({ ...prev, [fn]: { autoAnnotate: true } }));
-      setActiveTabState('overview');
+      // Sprint M-X.3 K1 — route through PreImportModal envelope.
+      // Pre-K1 this called setParsedItems directly; now the user
+      // confirms metadata in PreImportModal first, then
+      // commitPendingImport promotes the item.
+      setPendingImport({
+        kind: 'paste',
+        parsedItem: next,
+        suggestedName: 'pasted',
+        defaultTopology: 'linear',
+        hasAnnotations: false,
+        source: 'paste',
+      });
     }
     // GenBank/FASTA pasted text could be parsed via parseFile by wrapping
     // in a Blob/File — out of scope for K1 minimal port; stays raw-only.
@@ -248,6 +345,7 @@ export function useImporterState({ mode } = {}) { // eslint-disable-line no-unus
     addedItems,
     busy,
     error,
+    pendingImport,
     setCurrentIdx,
     setActiveTab,
     setActiveSource,
@@ -259,6 +357,8 @@ export function useImporterState({ mode } = {}) { // eslint-disable-line no-unus
     updateFlags,
     updateEdits,
     appendAddedItem,
+    clearPendingImport,
+    commitPendingImport,
     reset,
     setError,
   };

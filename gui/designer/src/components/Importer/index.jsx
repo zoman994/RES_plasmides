@@ -11,6 +11,7 @@ import { exportGenBank } from '../../exports';
 import { getRegions } from '../../annotation-model';
 import AutonameModal from './modals/AutonameModal';
 import PrimerWizardStepModal from './modals/PrimerWizardStepModal';
+import PreImportModal from './PreImportModal';
 import CatalogColumn from './catalog/CatalogColumn';
 import SingleInspector from './inspector/SingleInspector';
 import MultiInspector from './inspector/MultiInspector';
@@ -528,6 +529,17 @@ export default function Importer() {
           onCancel={() => primerWizard.resolve([])}
         />
       )}
+
+      {/* Sprint M-X.3 K1 — PreImportModal sits on top of everything
+          else. While `pendingImport` is set, the user MUST resolve the
+          metadata form before the parsedItem reaches SingleInspector.
+          The envelope is held by useImporterState (paste path in K1;
+          file/catalog paths join in K2). */}
+      <PreImportModal
+        pendingImport={state.pendingImport}
+        onConfirm={(meta) => state.commitPendingImport(meta)}
+        onCancel={() => state.clearPendingImport()}
+      />
 
     </div>
   );

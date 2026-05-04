@@ -145,3 +145,97 @@ describe('M-B.2 K1 — useImporterState', () => {
     expect(result.current.error).toBe(null);
   });
 });
+
+// ─── Sprint M-X.3 K1 — pendingImport state machine ──────────────────
+// PreImportModal sits between an entry-point (paste / drop / catalog
+// click) and the Inspector. The hook holds a `pendingImport` envelope
+// while the modal is open; `commitPendingImport(meta)` applies the
+// user-chosen metadata and promotes the parsed item into `parsedItems`
+// (the existing terminal state). `clearPendingImport()` is the cancel
+// path. K1 covers ONLY the paste flow — file / catalog paths land in
+// K2 / K2a.
+describe('M-X.3 K1 — pendingImport for paste flow', () => {
+  it('addPasteItem populates pendingImport, NOT parsedItems', () => {
+    const { result } = renderHook(() => useImporterState({ mode: 'advanced' }));
+    expect(result.current.pendingImport).toBeNull();
+
+    act(() => result.current.addPasteItem('ATGCATGCATGCATGC'));
+    expect(result.current.parsedItems).toEqual([]);
+    expect(result.current.pendingImport).toBeTruthy();
+    expect(result.current.pendingImport.kind).toBe('paste');
+    expect(result.current.pendingImport.parsedItem.sequence).toBe('ATGCATGCATGCATGC');
+    expect(result.current.pendingImport.parsedItem._source).toBe('paste');
+    expect(result.current.pendingImport.suggestedName).toBe('pasted');
+    expect(result.current.pendingImport.defaultTopology).toBe('linear');
+    expect(result.current.pendingImport.hasAnnotations).toBe(false);
+  });
+
+  it('addPasteItem with empty / whitespace-only input is a no-op', () => {
+    const { result } = renderHook(() => useImporterState({ mode: 'advanced' }));
+    act(() => result.current.addPasteItem(''));
+    act(() => result.current.addPasteItem('   \n\t  '));
+    expect(result.current.pendingImport).toBeNull();
+    expect(result.current.parsedItems).toEqual([]);
+  });
+
+  it('clearPendingImport drops the envelope without touching parsedItems', () => {
+    const { result } = renderHook(() => useImporterState({ mode: 'advanced' }));
+    act(() => result.current.addPasteItem('ATGCATGCATGC'));
+    expect(result.current.pendingImport).toBeTruthy();
+
+    act(() => result.current.clearPendingImport());
+    expect(result.current.pendingImport).toBeNull();
+    expect(result.current.parsedItems).toEqual([]);
+  });
+
+  it('commitPendingImport applies meta + promotes parsedItem into parsedItems', () => {
+    const { result } = renderHook(() => useImporterState({ mode: 'advanced' }));
+    act(() => result.current.addPasteItem('ATGCATGCATGCATGC'));
+
+    act(() => result.current.commitPendingImport({
+      name: 'pTest',
+      topology: 'circular',
+      tags: ['vec', 'lab'],
+      annotateNow: false,
+    }));
+
+    expect(result.current.pendingImport).toBeNull();
+    expect(result.current.parsedItems).toHaveLength(1);
+    const it = result.current.parsedItems[0];
+    expect(it.name).toBe('pTest');
+    expect(it.topology).toBe('circular');
+    expect(it.sequence).toBe('ATGCATGCATGCATGC');
+    expect(it._source).toBe('paste');
+    // perFileFlags + perFileEdits seeded so MetaColumn / OverviewTab
+    // see the chosen tags + autoAnnotate flag.
+    expect(result.current.perFileFlags[it._fileName]?.autoAnnotate).toBe(false);
+    expect(result.current.perFileEdits[it._fileName]?.editedTags).toEqual(['vec', 'lab']);
+  });
+
+  it('commitPendingImport with annotateNow=true defaults the autoAnnotate flag ON', () => {
+    const { result } = renderHook(() => useImporterState({ mode: 'advanced' }));
+    act(() => result.current.addPasteItem('ATGCATGCATGC'));
+    act(() => result.current.commitPendingImport({
+      name: 'p', topology: 'linear', tags: [], annotateNow: true,
+    }));
+    const it = result.current.parsedItems[0];
+    expect(result.current.perFileFlags[it._fileName]?.autoAnnotate).toBe(true);
+  });
+
+  it('commitPendingImport without an open envelope is a safe no-op', () => {
+    const { result } = renderHook(() => useImporterState({ mode: 'advanced' }));
+    act(() => result.current.commitPendingImport({
+      name: 'x', topology: 'linear', tags: [], annotateNow: false,
+    }));
+    expect(result.current.parsedItems).toEqual([]);
+    expect(result.current.pendingImport).toBeNull();
+  });
+
+  it('reset() clears any open pendingImport too', () => {
+    const { result } = renderHook(() => useImporterState({ mode: 'advanced' }));
+    act(() => result.current.addPasteItem('ATGCATGCATGC'));
+    expect(result.current.pendingImport).toBeTruthy();
+    act(() => result.current.reset());
+    expect(result.current.pendingImport).toBeNull();
+  });
+});
