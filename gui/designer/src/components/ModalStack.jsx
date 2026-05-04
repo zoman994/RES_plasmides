@@ -131,6 +131,16 @@ export default function ModalStack({
             useStore.getState().setViewerPart(null);
             useStore.getState().setWizardPlasmid(part);
           }}
+          /* Bug-rush #25: persist annotation edits/deletes from inside
+             the viewer back into the parts library. Re-seed
+             `viewerPart` with the new annotations so the modal updates
+             without remount (ann list / map / sequence colours all
+             refresh) and the rest of the app — palette, canvas, etc.
+             — sees the canonical part via the store. */
+          onAnnotationsChange={(next) => {
+            updatePart(viewerPart.id, { annotations: next });
+            useStore.getState().setViewerPart({ ...viewerPart, annotations: next });
+          }}
         />
       )}
       {wizardPlasmid && (

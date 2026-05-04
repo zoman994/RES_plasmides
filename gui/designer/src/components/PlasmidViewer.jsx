@@ -1,14 +1,32 @@
 /**
- * PlasmidViewer — read-only modal for viewing a plasmid Part.
+ * PlasmidViewer — modal for viewing a plasmid Part.
  *
  * Three sections:
- *   1. Left: SVG circular map (reuses PlasmidMap)
- *   2. Right: Annotation table (AnnotationEditor, readOnly)
- *   3. Bottom: Colored sequence with region backgrounds + AA translation under CDS
+ *   1. Top: LinearFeatureBar — «колбаса» strip across the full sequence,
+ *      same component the Importer's SingleInspector mounts. Shown only
+ *      when the part actually has annotations (otherwise the strip
+ *      reduces to an empty rectangle and adds visual noise).
+ *   2. Left: SVG circular map (reuses PlasmidMap) + annotation table
+ *      (AnnotationEditor, EDITABLE — biolog needs to delete features
+ *      after a linearisation/save round-trip).
+ *   3. Bottom: Colored sequence with region backgrounds + AA translation
+ *      under CDS regions.
+ *
+ * Bug-rush #25 (04.05.2026 evening): biolog «после линеаризации
+ * плазмиды и сохранения в библиотеку, при открытии фрагмента у него
+ * нет колбасы аннотации и фичи не удаляются и в целом как то
+ * неполноценно все». Pre-fix the annotation pane was hard-coded
+ * `readOnly` and there was no LinearFeatureBar at all — for a
+ * linearised backbone (where the circular PlasmidMap is the WRONG
+ * visualisation) that left the user with no usable feature view and
+ * no way to delete a wrongly-saved annotation. Now the bar surfaces
+ * features at a glance and the editor accepts edits / deletes via the
+ * `onAnnotationsChange` prop (ModalStack persists via store.updatePart).
  */
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import PlasmidMap from './PlasmidMap';
 import AnnotationEditor from './AnnotationEditor';
+import LinearFeatureBar from './Importer/inspector/tabs/LinearFeatureBar';
 import { getRegions } from '../annotation-model';
 import { ANNOTATION_COLORS } from '../auto-annotate';
 import { FEATURE_COLORS } from '../theme';
@@ -27,8 +45,13 @@ const COMPLEMENT = { A: 'T', T: 'A', G: 'C', C: 'G', N: 'N' };
  * @param {Object} props.part — Part object with sequence, annotations, etc.
  * @param {Function} props.onClose
  * @param {Function} [props.onOpenWizard] — opens PlasmidUseWizard
+ * @param {Function} [props.onAnnotationsChange] — `(nextAnnotations) =>
+ *   void` writeback for AnnotationEditor edits + deletes. Wired in
+ *   ModalStack to `useStore.getState().updatePart(part.id, {
+ *   annotations })` so the change persists. Without it the editor
+ *   falls back to read-only (legacy behaviour).
  */
-export default function PlasmidViewer({ part, onClose, onOpenWizard }) {
+export default function PlasmidViewer({ part, onClose, onOpenWizard, onAnnotationsChange }) {
   const [selectedRegionId, setSelectedRegionId] = useState(null);
   const seqContainerRef = useRef(null);
 
@@ -184,6 +207,35 @@ export default function PlasmidViewer({ part, onClose, onOpenWizard }) {
           </div>
         )}
 
+        {/* Bug-rush #25: «колбаса» strip across the full sequence,
+            same component the Importer's SingleInspector mounts. Sits
+            BELOW the header and ABOVE the map/annotations split so a
+            linearised backbone — where the circular map on the left is
+            useless — still has a usable feature visualisation at a
+            glance. Hidden when the part has zero annotations. */}
+        {(part.annotations || []).length > 0 && totalBp > 0 && (
+          <div
+            style={{
+              padding: '4px 14px 6px',
+              borderBottom: '0.5px solid var(--border-subtle, #e7e5e4)',
+              background: 'var(--surface-1, #fff)',
+              flexShrink: 0,
+            }}
+          >
+            <LinearFeatureBar
+              annotations={part.annotations || []}
+              seqLength={totalBp}
+              onSelect={(pos) => {
+                // Reuse the existing «sequence-scroll on selection» effect:
+                // selecting a region in the bar lands on its first nt,
+                // selectedRegionId then drives the seqContainerRef scroll.
+                const r = regions.find(reg => pos >= reg.start && pos < reg.end);
+                if (r) setSelectedRegionId(r.id === selectedRegionId ? null : r.id);
+              }}
+            />
+          </div>
+        )}
+
         {/* Main: map + annotations */}
         <div className="flex flex-1 overflow-hidden min-h-0">
           {/* Left: circular map (or linear info for very short sequences) */}
@@ -213,7 +265,12 @@ export default function PlasmidViewer({ part, onClose, onOpenWizard }) {
             <AnnotationEditor
               annotations={part.annotations || []}
               seqLength={totalBp}
-              readOnly
+              /* Bug-rush #25: editable when the parent (ModalStack)
+                 wires `onAnnotationsChange`. Without that callback we
+                 can't persist the change anywhere — fall back to read-
+                 only so the user doesn't see edits silently swallowed. */
+              readOnly={typeof onAnnotationsChange !== 'function'}
+              onChange={onAnnotationsChange}
               onSelect={(ann) => {
                 if (ann.level === 'region') {
                   setSelectedRegionId(ann.id === selectedRegionId ? null : ann.id);
