@@ -612,4 +612,43 @@ describe("AnnotationTrack — sub-feature inset rendering (Variant A)", () => {
     );
     expect(container.querySelectorAll('[data-testid="annotation-subfeature-rect"]').length).toBe(0);
   });
+
+  // Biolog: «имя детей не отражается». Each sub-feature wide enough
+  // to fit a tiny label gets its name rendered inside its rect.
+  it("a wide sub-feature renders its name as a label inside the kid rect", () => {
+    const { container } = render(
+      <AnnotationTrack
+        regions={[PARENT, SUB_LEFT, SUB_RIGHT]}
+        lineStart={0}
+        lineLen={250}
+        charPx={7.2}
+        labelChars={8}
+      />,
+    );
+    const kidLabels = container.querySelectorAll('[data-testid="annotation-subfeature-label"]');
+    expect(kidLabels.length).toBeGreaterThanOrEqual(1);
+    const labelTexts = Array.from(kidLabels).map((t) => t.textContent);
+    // SUB_LEFT.name = 'sig' is short — should fit easily.
+    expect(labelTexts).toContain('sig');
+  });
+
+  it("a very narrow sub-feature (< minimum width) does NOT render a label", () => {
+    const tinyKid = {
+      id: "tiny-sub", start: 0, end: 2, name: "x", type: "misc_feature",
+      color: "#888", level: "detail", parentId: "p1", strand: 1,
+    };
+    const { container } = render(
+      <AnnotationTrack
+        regions={[PARENT, tinyKid]}
+        lineStart={0}
+        lineLen={250}
+        charPx={7.2}
+        labelChars={8}
+      />,
+    );
+    // Rect still renders, but no label inside.
+    expect(container.querySelectorAll('[data-testid="annotation-subfeature-rect"]').length).toBe(1);
+    const labels = container.querySelectorAll('[data-testid="annotation-subfeature-label"]');
+    expect(labels.length).toBe(0);
+  });
 });

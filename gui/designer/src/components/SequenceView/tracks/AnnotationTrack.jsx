@@ -452,6 +452,11 @@ function AnnotationTrack({
                 const SUB_INSET = 3;
                 const subY = SUB_INSET;
                 const subH = ROW_HEIGHT - 2 * SUB_INSET;
+                // Tiny font for kid labels — they sit inside an 8 px
+                // tall rect, so the label has to be smaller than the
+                // parent's 9 px LABEL_FONT_SIZE.
+                const KID_FONT = 7;
+                const KID_CHAR_W = 4; // approx 7 px sans-serif glyph width
                 // Parent <g> is translated so local x=0 maps to the
                 // parent's visible-on-line LEFT edge, i.e. coord
                 // `max(region.start, lineStart)`. Kid local coords
@@ -466,35 +471,69 @@ function AnnotationTrack({
                   const kidX = (kidVisStart - parentVisStart) * charPx;
                   const kidW = kidVisLen * charPx;
                   const kidColor = ensureColor(kid.color);
+                  const kidName = kid.name || kid.type || '';
+                  // Show kid label when there's enough room for at
+                  // least a couple of glyphs; truncate to fit.
+                  const maxKidChars = Math.max(0, Math.floor((kidW - 4) / KID_CHAR_W));
+                  const kidLabel = (kidName.length > maxKidChars && maxKidChars > 1)
+                    ? kidName.slice(0, Math.max(1, maxKidChars - 1)) + '…'
+                    : kidName;
+                  // Hide the label on very narrow rects — even a
+                  // single-char name reads like noise below ~18 px
+                  // of visible width.
+                  const KID_LABEL_MIN_PX = 18;
+                  const showKidLabel = kidName.length > 0
+                    && kidW >= KID_LABEL_MIN_PX
+                    && maxKidChars >= 2;
                   return (
-                    <rect
-                      key={`sub-${kid.id}`}
-                      data-testid="annotation-subfeature-rect"
-                      data-region-id={kid.id || ''}
-                      data-region-level="detail"
-                      data-parent-id={kid.parentId || ''}
-                      data-region-name={kid.name || ''}
-                      x={kidX}
-                      y={subY}
-                      width={kidW}
-                      height={subH}
-                      rx={1.5}
-                      fill={kidColor}
-                      fillOpacity={0.85}
-                      stroke="var(--text-secondary, #3A2F1F)"
-                      strokeWidth={0.5}
-                      onClick={(e) => {
-                        if (typeof onAnnotationClick !== 'function') return;
-                        e.stopPropagation();
-                        onAnnotationClick(kid);
-                      }}
-                      onDoubleClick={(e) => {
-                        if (typeof onAnnotationFeatureDoubleClick !== 'function') return;
-                        e.stopPropagation();
-                        e.preventDefault();
-                        onAnnotationFeatureDoubleClick(kid);
-                      }}
-                    />
+                    <g key={`sub-${kid.id}`}>
+                      <rect
+                        data-testid="annotation-subfeature-rect"
+                        data-region-id={kid.id || ''}
+                        data-region-level="detail"
+                        data-parent-id={kid.parentId || ''}
+                        data-region-name={kid.name || ''}
+                        x={kidX}
+                        y={subY}
+                        width={kidW}
+                        height={subH}
+                        rx={1.5}
+                        fill={kidColor}
+                        fillOpacity={0.85}
+                        stroke="var(--text-secondary, #3A2F1F)"
+                        strokeWidth={0.5}
+                        onClick={(e) => {
+                          if (typeof onAnnotationClick !== 'function') return;
+                          e.stopPropagation();
+                          onAnnotationClick(kid);
+                        }}
+                        onDoubleClick={(e) => {
+                          if (typeof onAnnotationFeatureDoubleClick !== 'function') return;
+                          e.stopPropagation();
+                          e.preventDefault();
+                          onAnnotationFeatureDoubleClick(kid);
+                        }}
+                      />
+                      {showKidLabel ? (
+                        <text
+                          data-testid="annotation-subfeature-label"
+                          data-region-name={kid.name || ''}
+                          x={kidX + kidW / 2}
+                          y={subY + subH / 2 + KID_FONT / 2 - 1.5}
+                          textAnchor="middle"
+                          fontSize={KID_FONT}
+                          fill="#ffffff"
+                          stroke="#000000"
+                          strokeWidth={1.0}
+                          style={{
+                            pointerEvents: 'none',
+                            userSelect: 'none',
+                            fontFamily: 'inherit',
+                            paintOrder: 'stroke fill',
+                          }}
+                        >{kidLabel}</text>
+                      ) : null}
+                    </g>
                   );
                 });
               })()}
