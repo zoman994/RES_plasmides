@@ -419,21 +419,39 @@ function AnnotationTrack({
                   Renders at the left of the rect when the rect is
                   wide enough (≥ 14 px) and the region carries a
                   recognisable type. Decorative — pointerEvents:none
-                  so dblclick still flows to the rect handler. */}
-              {widthRect >= GLYPH_MIN_PX ? (
-                <g
-                  data-testid="annotation-feature-glyph"
-                  data-glyph-type={region.type || ''}
-                  transform={`translate(2, ${(ROW_HEIGHT - GLYPH_SIZE) / 2})`}
-                  style={{ pointerEvents: 'none' }}
-                >
-                  <SBOLIcon
-                    type={region.type}
-                    size={GLYPH_SIZE}
-                    color={isPredicted ? baseColor : 'var(--text-primary, #1c1917)'}
-                  />
-                </g>
-              ) : null}
+                  so dblclick still flows to the rect handler.
+
+                  Reverse-strand features (`strand === -1`) get a
+                  scale(-1, 1) flip so the SBOL directional glyphs
+                  (CDS arrow, promoter L-arrow, terminator T) point
+                  AWAY from the start codon side. Per biolog «глифы
+                  на CDS должны смотреть от метионина, и когда мы
+                  делаем в фиче форвард или реверс — фичи должны
+                  вращаться». Translate-then-scale puts the post-
+                  flip rect at the same x as the unflipped one
+                  (otherwise the glyph would slide off-screen). */}
+              {widthRect >= GLYPH_MIN_PX ? (() => {
+                const glyphY = (ROW_HEIGHT - GLYPH_SIZE) / 2;
+                const isReverse = region.strand === -1;
+                const transform = isReverse
+                  ? `translate(${2 + GLYPH_SIZE}, ${glyphY}) scale(-1, 1)`
+                  : `translate(2, ${glyphY})`;
+                return (
+                  <g
+                    data-testid="annotation-feature-glyph"
+                    data-glyph-type={region.type || ''}
+                    data-glyph-strand={isReverse ? '-1' : '1'}
+                    transform={transform}
+                    style={{ pointerEvents: 'none' }}
+                  >
+                    <SBOLIcon
+                      type={region.type}
+                      size={GLYPH_SIZE}
+                      color={isPredicted ? baseColor : 'var(--text-primary, #1c1917)'}
+                    />
+                  </g>
+                );
+              })() : null}
               {showLabelInside ? (
                 <text
                   data-testid="sequence-view-annotation-label"

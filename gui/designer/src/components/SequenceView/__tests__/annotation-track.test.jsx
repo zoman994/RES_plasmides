@@ -325,4 +325,85 @@ describe("AnnotationTrack — SBOL glyph badge", () => {
       container.querySelector('[data-testid="annotation-feature-glyph"]')
     ).toBeTruthy();
   });
+
+  // Biolog: «глифы на CDS должны смотреть от метионина (направление
+  // показывать), и когда мы делаем в фиче форвард или реверс — фичи
+  // должны вращаться». The glyph wrapper applies a scale(-1, 1)
+  // mirror when the region's strand is reverse, so SBOL directional
+  // glyphs (CDS arrow, promoter L-arrow, terminator T) point AWAY
+  // from the start codon side.
+  it("forward-strand glyph has no horizontal flip", () => {
+    const regions = [
+      { id: "f", start: 0, end: 200, name: "AmpR", type: "CDS", strand: 1, color: "#7CB342", level: "region" },
+    ];
+    const { container } = render(
+      <AnnotationTrack
+        regions={regions}
+        lineStart={0}
+        lineLen={250}
+        charPx={7.2}
+        labelChars={8}
+      />,
+    );
+    const g = container.querySelector('[data-testid="annotation-feature-glyph"]');
+    const t = g.getAttribute('transform') || '';
+    // Should NOT contain a negative-x scale.
+    expect(t).not.toMatch(/scale\(-1/);
+  });
+
+  it("reverse-strand glyph applies scale(-1, 1) (horizontal mirror)", () => {
+    const regions = [
+      { id: "r", start: 0, end: 200, name: "AmpR-rev", type: "CDS", strand: -1, color: "#7CB342", level: "region" },
+    ];
+    const { container } = render(
+      <AnnotationTrack
+        regions={regions}
+        lineStart={0}
+        lineLen={250}
+        charPx={7.2}
+        labelChars={8}
+      />,
+    );
+    const g = container.querySelector('[data-testid="annotation-feature-glyph"]');
+    const t = g.getAttribute('transform') || '';
+    expect(t).toMatch(/scale\(-1\s*,?\s*1\)/);
+  });
+
+  it("region without strand defaults to forward (no flip)", () => {
+    const regions = [
+      { id: "n", start: 0, end: 200, name: "lacZα", type: "CDS", color: "#888", level: "region" },
+      // strand intentionally omitted
+    ];
+    const { container } = render(
+      <AnnotationTrack
+        regions={regions}
+        lineStart={0}
+        lineLen={250}
+        charPx={7.2}
+        labelChars={8}
+      />,
+    );
+    const g = container.querySelector('[data-testid="annotation-feature-glyph"]');
+    expect((g.getAttribute('transform') || '')).not.toMatch(/scale\(-1/);
+  });
+
+  it("data-glyph-strand attribute mirrors region.strand for downstream test selectors", () => {
+    const regions = [
+      { id: "fwd", start: 0,   end: 100, name: "f", type: "CDS", strand: 1,  color: "#888", level: "region" },
+      { id: "rev", start: 110, end: 200, name: "r", type: "CDS", strand: -1, color: "#888", level: "region" },
+    ];
+    const { container } = render(
+      <AnnotationTrack
+        regions={regions}
+        lineStart={0}
+        lineLen={250}
+        charPx={7.2}
+        labelChars={8}
+      />,
+    );
+    const glyphs = container.querySelectorAll('[data-testid="annotation-feature-glyph"]');
+    const strands = Array.from(glyphs).map((g) => g.getAttribute('data-glyph-strand'));
+    expect(strands).toContain('1');
+    expect(strands).toContain('-1');
+  });
 });
