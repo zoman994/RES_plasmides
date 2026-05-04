@@ -296,4 +296,51 @@ describe('LinearFeatureBar — unified cluster frame', () => {
     const frame = container.querySelector('rect[data-cluster-frame="true"]');
     expect(frame.getAttribute('fill')).toBe('none');
   });
+
+  // Biolog: «и вокруг этой общей рамки черную обводку». A second
+  // outer outline ring sits just outside the coloured cluster frame
+  // so the cluster boundary reads as a hard, theme-aware contour
+  // even when the main feature's palette colour is light against
+  // the bar surface.
+  it('every coloured cluster frame is paired with a black outline ring', () => {
+    const big   = { id: 'b', name: 'big', type: 'CDS', start: 1000, end: 5000, level: 'region' };
+    const small = { id: 's', name: 'rbs', type: 'RBS', start: 2000, end: 3000, level: 'region' };
+    const { container } = render(
+      <LinearFeatureBar annotations={[big, small]} seqLength={9000} />
+    );
+    const frames = container.querySelectorAll('rect[data-cluster-frame="true"]');
+    const outlines = container.querySelectorAll('rect[data-cluster-outline="true"]');
+    expect(frames.length).toBe(1);
+    expect(outlines.length).toBe(1);
+  });
+
+  it('outline ring sits OUTSIDE the coloured frame (slightly larger box)', () => {
+    const big   = { id: 'b', name: 'big', type: 'CDS', start: 1000, end: 5000, level: 'region' };
+    const small = { id: 's', name: 'rbs', type: 'RBS', start: 2000, end: 3000, level: 'region' };
+    const { container } = render(
+      <LinearFeatureBar annotations={[big, small]} seqLength={9000} />
+    );
+    const frame = container.querySelector('rect[data-cluster-frame="true"]');
+    const outline = container.querySelector('rect[data-cluster-outline="true"]');
+    expect(Number(outline.getAttribute('x'))).toBeLessThan(Number(frame.getAttribute('x')));
+    expect(Number(outline.getAttribute('width'))).toBeGreaterThan(Number(frame.getAttribute('width')));
+  });
+
+  it('outline ring fill is "none" — it\'s a stroke-only halo', () => {
+    const big   = { id: 'b', name: 'big', type: 'CDS', start: 1000, end: 5000, level: 'region' };
+    const small = { id: 's', name: 'rbs', type: 'RBS', start: 2000, end: 3000, level: 'region' };
+    const { container } = render(
+      <LinearFeatureBar annotations={[big, small]} seqLength={9000} />
+    );
+    const outline = container.querySelector('rect[data-cluster-outline="true"]');
+    expect(outline.getAttribute('fill')).toBe('none');
+  });
+
+  it('singleton (no cluster frame) → no outline either', () => {
+    const a = { id: 'a', name: 'a', type: 'CDS', start: 1000, end: 5000, level: 'region' };
+    const { container } = render(
+      <LinearFeatureBar annotations={[a]} seqLength={9000} />
+    );
+    expect(container.querySelectorAll('rect[data-cluster-outline="true"]').length).toBe(0);
+  });
 });

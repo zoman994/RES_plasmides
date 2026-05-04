@@ -421,24 +421,47 @@ export default function LinearFeatureBar({
             so overlapping features read as one grouped entity per
             biolog «надо добавить все же единую рамку, в цвет
             основной фичи». Decorative — pointerEvents:none so the
-            SVG-level scrubber still claims pointerdown. */}
+            SVG-level scrubber still claims pointerdown.
+
+            Each cluster gets a TWO-rect treatment per biolog «и
+            вокруг этой общей рамки черную обводку»:
+              1. Outer halo — stroke=var(--text-primary) (theme-aware
+                 «black» that flips to light grey in dark mode), thin,
+                 sits 1 px outside the coloured frame so the cluster
+                 boundary reads as a hard contour even when the main
+                 feature's palette colour is pale against the bar
+                 surface.
+              2. Inner coloured frame — stroke=mainColor, current. */}
         {clusterFrames.map((f) => (
-          <rect
-            key={f.key}
-            data-cluster-frame="true"
-            x={f.x}
-            y={0}
-            width={f.width}
-            height={BAR_H}
-            rx={2.5}
-            ry={2.5}
-            fill="none"
-            stroke={f.color}
-            strokeWidth={1.6}
-            strokeDasharray={f.predicted ? '3,2' : undefined}
-            opacity={0.95}
-            style={{ pointerEvents: 'none' }}
-          />
+          <g key={f.key} style={{ pointerEvents: 'none' }}>
+            <rect
+              data-cluster-outline="true"
+              x={f.x - 1}
+              y={-1}
+              width={f.width + 2}
+              height={BAR_H + 2}
+              rx={3.5}
+              ry={3.5}
+              fill="none"
+              stroke="var(--text-primary, #1c1917)"
+              strokeWidth={0.6}
+              opacity={0.85}
+            />
+            <rect
+              data-cluster-frame="true"
+              x={f.x}
+              y={0}
+              width={f.width}
+              height={BAR_H}
+              rx={2.5}
+              ry={2.5}
+              fill="none"
+              stroke={f.color}
+              strokeWidth={1.6}
+              strokeDasharray={f.predicted ? '3,2' : undefined}
+              opacity={0.95}
+            />
+          </g>
         ))}
 
         {/* Cursor marker — vertical line + small downward triangle at
