@@ -45,6 +45,14 @@ const IN_LABEL_THRESHOLD_PCT = 6.5;
 // cleanly. Threshold matches the label's actual character footprint
 // (~7 px per glyph + 8 px breathing room).
 const LABEL_EXPOSED_MIN_PX = 24;
+// Sprint M-X.3 follow-up — biolog «надо еще сделать так чтобы
+// уменьшались внутренние фичи». Cluster CHILDREN (every cluster
+// member except the widest) render with this top + bottom inset so
+// they sit nested inside the main rect rather than crammed flush
+// against the cluster frame. 4 px on each side keeps the child
+// rectangles ~14 px tall on the 22 px bar — readable but visibly
+// «inside» the parent.
+const CLUSTER_CHILD_INSET_Y = 4;
 
 /**
  * Group items into clusters by transitive pixel overlap. Two items
@@ -281,16 +289,39 @@ export default function LinearFeatureBar({
     // The label x-position uses the exposed segment's centre, not
     // the rect's centre, so a half-eclipsed feature labels its
     // visible half rather than centring under a wider sibling.
-    return base.map((it) => {
+    // Cluster membership flags. Same union-find pass that drives
+    // the cluster-frame layer below; we re-use the result here to
+    // tag each item with `isClusterChild` (= part of a cluster of
+    // size ≥ 2 AND not its widest member). Children render INSET
+    // so they sit visually nested inside the main rect.
+    const clusters = clusterByOverlap(base);
+    const memberFlags = base.map(() => ({ inCluster: false, isMain: false }));
+    for (const idxs of clusters) {
+      if (idxs.length < 2) continue;
+      let mainIdx = idxs[0];
+      for (const i of idxs) {
+        if (base[i].width > base[mainIdx].width) mainIdx = i;
+        memberFlags[i].inCluster = true;
+      }
+      memberFlags[mainIdx].isMain = true;
+    }
+
+    return base.map((it, i) => {
       const exposed = widestExposedSegment(it, base);
       const exposedW = exposed ? exposed[1] - exposed[0] : 0;
       const labelInside = it.widthPct >= IN_LABEL_THRESHOLD_PCT
         && exposedW >= LABEL_EXPOSED_MIN_PX;
+      const isClusterChild = memberFlags[i].inCluster && !memberFlags[i].isMain;
+      const yTop = isClusterChild ? CLUSTER_CHILD_INSET_Y : 0;
+      const rectH = isClusterChild ? BAR_H - 2 * CLUSTER_CHILD_INSET_Y : BAR_H;
       return {
         ...it,
         labelInside,
         labelX: exposed ? (exposed[0] + exposed[1]) / 2 : (it.left + it.width / 2),
         labelMaxChars: exposed ? Math.floor(exposedW / 7) : Math.floor(it.width / 7),
+        isClusterChild,
+        yTop,
+        rectH,
       };
     });
   }, [annotations, seqLength, width]);
@@ -342,9 +373,9 @@ export default function LinearFeatureBar({
       <title>{`${it.predicted ? '~' : ''}${it.ann.name || it.ann.type}: ${(it.ann.start || 0) + 1}..${it.ann.end || 0}`}</title>
       <rect
         x={it.left}
-        y={0}
+        y={it.yTop}
         width={it.width}
-        height={BAR_H}
+        height={it.rectH}
         // Predicted: transparent fill, type-colour dashed stroke,
         // matches AnnotationTrack ghost styling (DEC-PRED-05).
         fill={it.predicted ? 'transparent' : it.color}
@@ -362,7 +393,7 @@ export default function LinearFeatureBar({
           // sits on the visible half (or skips entirely if no strip
           // is wide enough — `it.labelInside` already checked that).
           x={it.labelX}
-          y={BAR_H / 2 + 3}
+          y={it.yTop + it.rectH / 2 + 3}
           textAnchor="middle"
           fontSize={10}
           fontWeight={500}

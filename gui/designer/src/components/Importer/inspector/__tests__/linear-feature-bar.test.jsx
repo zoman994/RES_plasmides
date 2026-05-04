@@ -344,3 +344,91 @@ describe('LinearFeatureBar — unified cluster frame', () => {
     expect(container.querySelectorAll('rect[data-cluster-outline="true"]').length).toBe(0);
   });
 });
+
+// ─── Sprint M-X.3 follow-up — cluster children sit INSET inside main ─
+// Biolog: «надо еще сделать так чтобы уменьшались внутренние фичи,
+// чтобы аккуратно выглядело». Inside a cluster, only the WIDEST
+// («main») member renders at full bar height — every other member
+// is inset top + bottom so it sits visually nested inside the
+// main rect, like child features inside a parent operon.
+const BAR_H_TOTAL = 22;
+
+function rectHeight(g) {
+  return Number(g.querySelector('rect').getAttribute('height'));
+}
+
+describe('LinearFeatureBar — cluster children render inset', () => {
+  it('singleton renders at full bar height', () => {
+    const a = { id: 'a', name: 'lonely', type: 'CDS', start: 1000, end: 5000, level: 'region' };
+    const { container } = render(
+      <LinearFeatureBar annotations={[a]} seqLength={9000} />
+    );
+    const g = container.querySelector('g[data-feature-start="1000"]');
+    expect(rectHeight(g)).toBe(BAR_H_TOTAL);
+  });
+
+  it('two non-overlapping features both render at full height', () => {
+    const a = { id: 'a', name: 'A', type: 'CDS', start: 0,    end: 2000, level: 'region' };
+    const b = { id: 'b', name: 'B', type: 'CDS', start: 5000, end: 8000, level: 'region' };
+    const { container } = render(
+      <LinearFeatureBar annotations={[a, b]} seqLength={9000} />
+    );
+    const ga = container.querySelector('g[data-feature-start="0"]');
+    const gb = container.querySelector('g[data-feature-start="5000"]');
+    expect(rectHeight(ga)).toBe(BAR_H_TOTAL);
+    expect(rectHeight(gb)).toBe(BAR_H_TOTAL);
+  });
+
+  it('cluster main (widest) keeps full height; cluster child shrinks', () => {
+    const big   = { id: 'b', name: 'lacZα', type: 'CDS', start: 1000, end: 7000, level: 'region' };
+    const small = { id: 's', name: 'rbs',   type: 'RBS', start: 3000, end: 4000, level: 'region' };
+    const { container } = render(
+      <LinearFeatureBar annotations={[big, small]} seqLength={9000} />
+    );
+    const bigG = container.querySelector('g[data-feature-start="1000"]');
+    const smallG = container.querySelector('g[data-feature-start="3000"]');
+    expect(rectHeight(bigG)).toBe(BAR_H_TOTAL);
+    expect(rectHeight(smallG)).toBeLessThan(BAR_H_TOTAL);
+  });
+
+  it('cluster child y > 0 — top inset', () => {
+    const big   = { id: 'b', name: 'b', type: 'CDS', start: 1000, end: 7000, level: 'region' };
+    const small = { id: 's', name: 's', type: 'RBS', start: 3000, end: 4000, level: 'region' };
+    const { container } = render(
+      <LinearFeatureBar annotations={[big, small]} seqLength={9000} />
+    );
+    const smallRect = container.querySelector('g[data-feature-start="3000"] rect');
+    expect(Number(smallRect.getAttribute('y'))).toBeGreaterThan(0);
+  });
+
+  it('three nested overlaps: outer full height; middle + inner inset', () => {
+    const outer  = { id: 'o', name: 'op', type: 'misc_feature', start: 0,    end: 9000, level: 'region' };
+    const middle = { id: 'm', name: 'm',  type: 'CDS',          start: 1500, end: 6000, level: 'region' };
+    const inner  = { id: 'i', name: 'i',  type: 'RBS',          start: 3500, end: 3900, level: 'region' };
+    const { container } = render(
+      <LinearFeatureBar annotations={[outer, middle, inner]} seqLength={9000} />
+    );
+    const outerG  = container.querySelector('g[data-feature-start="0"]');
+    const middleG = container.querySelector('g[data-feature-start="1500"]');
+    const innerG  = container.querySelector('g[data-feature-start="3500"]');
+    expect(rectHeight(outerG)).toBe(BAR_H_TOTAL);
+    expect(rectHeight(middleG)).toBeLessThan(BAR_H_TOTAL);
+    expect(rectHeight(innerG)).toBeLessThan(BAR_H_TOTAL);
+  });
+
+  it('two non-overlapping clusters — each cluster\'s own main is full, children inset', () => {
+    // cluster 1: a (big) ⊃ a2 (small)
+    const a  = { id: 'a',  name: 'a',  type: 'CDS', start: 0,    end: 4000, level: 'region' };
+    const a2 = { id: 'a2', name: 'a2', type: 'RBS', start: 1000, end: 1500, level: 'region' };
+    // cluster 2: b (big) ⊃ b2 (small)
+    const b  = { id: 'b',  name: 'b',  type: 'CDS', start: 5000, end: 9000, level: 'region' };
+    const b2 = { id: 'b2', name: 'b2', type: 'RBS', start: 6000, end: 6500, level: 'region' };
+    const { container } = render(
+      <LinearFeatureBar annotations={[a, a2, b, b2]} seqLength={9000} />
+    );
+    expect(rectHeight(container.querySelector('g[data-feature-start="0"]'))).toBe(BAR_H_TOTAL);
+    expect(rectHeight(container.querySelector('g[data-feature-start="1000"]'))).toBeLessThan(BAR_H_TOTAL);
+    expect(rectHeight(container.querySelector('g[data-feature-start="5000"]'))).toBe(BAR_H_TOTAL);
+    expect(rectHeight(container.querySelector('g[data-feature-start="6000"]'))).toBeLessThan(BAR_H_TOTAL);
+  });
+});
