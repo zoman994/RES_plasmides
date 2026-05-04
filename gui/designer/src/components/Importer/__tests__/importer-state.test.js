@@ -7,6 +7,7 @@
  * boundary, FASTA path triggered by .fasta extension).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { StrictMode } from 'react';
 import { renderHook, act } from '@testing-library/react';
 import { useImporterState, isCatalogFlatMode } from '../lib/importer-state';
 
@@ -252,6 +253,26 @@ describe('M-X.3 K1 — pendingImport for paste flow', () => {
     expect(result.current.pendingImport).toBeTruthy();
     act(() => result.current.reset());
     expect(result.current.pendingImport).toBeNull();
+  });
+
+  // StrictMode regression — biolog «загружаю 1 сиквенс а на выходе
+  // два». React 18 StrictMode in dev double-invokes state updaters
+  // to surface impure logic. Pre-fix, `commitPendingImport` called
+  // `setParsedItems` (and friends) INSIDE the `setPendingImport`
+  // updater — the inner setters fired twice, doubling parsedItems
+  // every commit. This test wraps the hook in <StrictMode> so the
+  // regression would re-surface here.
+  it('StrictMode: paste + commit lands EXACTLY one item (no double-fire)', () => {
+    const { result } = renderHook(
+      () => useImporterState({ mode: 'advanced' }),
+      { wrapper: StrictMode },
+    );
+    act(() => result.current.addPasteItem('ATGCATGCATGC'));
+    act(() => result.current.commitPendingImport({
+      name: 'pStrict', topology: 'linear', tags: [], annotateNow: true,
+    }));
+    expect(result.current.parsedItems).toHaveLength(1);
+    expect(result.current.parsedItems[0].name).toBe('pStrict');
   });
 });
 

@@ -90,78 +90,81 @@ export function useImporterState({ mode } = {}) { // eslint-disable-line no-unus
    * Multi-file (kind: 'multi') applies tags + folderTag + annotateNow
    * to ALL items but leaves per-file `name` untouched (those are
    * pre-edited inline in the modal's file list).
+   *
+   * StrictMode safety (regression «загружаю 1 сиквенс а на выходе
+   * два», 04.05.2026 evening): React 18 StrictMode dev mode double-
+   * invokes state updaters to surface impure logic. Pre-fix this
+   * function was implemented as one big `setPendingImport` updater
+   * with `setParsedItems` / `setPerFileFlags` / `setPerFileEdits`
+   * nested INSIDE — every inner setter fired twice, doubling every
+   * commit. The fix snapshots the pending envelope via the closed-
+   * over `pendingImport` ref and runs all setX calls at the top
+   * level, where their own updaters are pure.
    */
   const commitPendingImport = useCallback((meta) => {
-    setPendingImport((prev) => {
-      if (!prev) return null;
-      const m = meta || {};
-      const tags = Array.isArray(m.tags) ? m.tags.filter(Boolean) : [];
-      const allTags = m.folderTag && !tags.includes(m.folderTag)
-        ? [m.folderTag, ...tags]
-        : tags;
-      const annotateNow = m.annotateNow !== false; // default ON
-      const keepExisting = m.keepExistingAnnotations !== false; // default keep
+    if (!pendingImport) return;
+    const prev = pendingImport;
+    const m = meta || {};
+    const tags = Array.isArray(m.tags) ? m.tags.filter(Boolean) : [];
+    const allTags = m.folderTag && !tags.includes(m.folderTag)
+      ? [m.folderTag, ...tags]
+      : tags;
+    const annotateNow = m.annotateNow !== false; // default ON
+    const keepExisting = m.keepExistingAnnotations !== false; // default keep
 
-      const perFileNames = m.perFileNames && typeof m.perFileNames === 'object'
-        ? m.perFileNames
-        : null;
+    const perFileNames = m.perFileNames && typeof m.perFileNames === 'object'
+      ? m.perFileNames
+      : null;
 
-      const applyToOne = (parsed) => {
-        const next = { ...parsed };
-        // Per-file name override (multi mode) wins over the shared
-        // `name` field — that field is hidden in multi mode anyway.
-        const fileNameOverride = perFileNames && perFileNames[parsed._fileName];
-        if (typeof fileNameOverride === 'string' && fileNameOverride.trim()) {
-          next.name = fileNameOverride.trim();
-        } else if (typeof m.name === 'string' && m.name.trim()) {
-          next.name = m.name.trim();
-        }
-        if (m.topology === 'circular' || m.topology === 'linear') {
-          next.topology = m.topology;
-        }
-        if (!keepExisting) {
-          next.annotations = [];
-          next._fromFileCount = 0;
-        }
-        return next;
-      };
+    const applyToOne = (parsed) => {
+      const next = { ...parsed };
+      // Per-file name override (multi mode) wins over the shared
+      // `name` field — that field is hidden in multi mode anyway.
+      const fileNameOverride = perFileNames && perFileNames[parsed._fileName];
+      if (typeof fileNameOverride === 'string' && fileNameOverride.trim()) {
+        next.name = fileNameOverride.trim();
+      } else if (typeof m.name === 'string' && m.name.trim()) {
+        next.name = m.name.trim();
+      }
+      if (m.topology === 'circular' || m.topology === 'linear') {
+        next.topology = m.topology;
+      }
+      if (!keepExisting) {
+        next.annotations = [];
+        next._fromFileCount = 0;
+      }
+      return next;
+    };
 
-      const newItems = prev.kind === 'multi'
-        ? (prev.parsedItems || []).map(applyToOne)
-        : [applyToOne(prev.parsedItem)];
+    const newItems = prev.kind === 'multi'
+      ? (prev.parsedItems || []).map(applyToOne)
+      : [applyToOne(prev.parsedItem)];
 
-      // Append into `parsedItems` (preserve existing — matches the
-      // append-not-replace contract of `addFiles`).
-      setParsedItems((prevItems) => [...prevItems, ...newItems]);
-
-      // Seed flags / edits per file.
-      setPerFileFlags((prevFlags) => {
-        const next = { ...prevFlags };
-        for (const it of newItems) {
-          next[it._fileName] = { ...(next[it._fileName] || {}), autoAnnotate: annotateNow };
-        }
-        return next;
-      });
-      setPerFileEdits((prevEdits) => {
-        const next = { ...prevEdits };
-        for (const it of newItems) {
-          const cur = next[it._fileName] || {};
-          next[it._fileName] = {
-            ...cur,
-            ...(allTags.length > 0 ? { editedTags: allTags } : {}),
-          };
-        }
-        return next;
-      });
-
-      // After commit the inspector should focus the freshly added
-      // item — keep the index pointing at the newest entry.
-      setCurrentIdxState((prevIdx) => prevIdx); // unchanged unless we want last
-      setActiveTabState('overview');
-
-      return null; // close the modal
+    // Top-level setX calls — each updater is pure (just transforms
+    // its own previous value). StrictMode-safe because React only
+    // re-runs the updater itself, not the surrounding code.
+    setParsedItems((prevItems) => [...prevItems, ...newItems]);
+    setPerFileFlags((prevFlags) => {
+      const next = { ...prevFlags };
+      for (const it of newItems) {
+        next[it._fileName] = { ...(next[it._fileName] || {}), autoAnnotate: annotateNow };
+      }
+      return next;
     });
-  }, []);
+    setPerFileEdits((prevEdits) => {
+      const next = { ...prevEdits };
+      for (const it of newItems) {
+        const cur = next[it._fileName] || {};
+        next[it._fileName] = {
+          ...cur,
+          ...(allTags.length > 0 ? { editedTags: allTags } : {}),
+        };
+      }
+      return next;
+    });
+    setActiveTabState('overview');
+    setPendingImport(null); // close the modal
+  }, [pendingImport]);
 
   /**
    * Parse a batch of files in parallel, append to parsedItems, default
