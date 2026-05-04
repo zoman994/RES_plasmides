@@ -529,6 +529,10 @@ const SequenceView = forwardRef(function SequenceView({
         fontSize: 11,
         lineHeight: 1.4,
         padding: "0 12px",
+        // Bug-rush #21: dedicated canvas surface so dark theme has
+        // a lighter «paper» behind the DNA letters / feature bars.
+        // Light theme keeps it white via the same token.
+        background: "var(--sequence-canvas-bg, var(--surface-1, #fff))",
         // position:relative — caret + selection overlays anchor here.
         position: "relative",
         // user-select:none — biolog 04.05.2026: «можем отключить

@@ -34,6 +34,8 @@ body {
   --surface-1: #ffffff;
   --surface-2: #f5f5f4;
   --surface-3: #e7e5e4;
+  /* Bug-rush #21 — light theme canvas keeps --surface-1 (white). */
+  --sequence-canvas-bg: #ffffff;
   --border-subtle: #e7e5e4;
   --border-default: #d6d3d1;
   --border-strong: #a8a29e;
@@ -80,6 +82,13 @@ body {
   --surface-1: #171717;
   --surface-2: #1f1f1e;
   --surface-3: #2a2a28;
+  /* Bug-rush #21 (04.05.2026 evening): biolog «в тёмной теме слишком
+     тёмная подложка на сиквенс вьюере. надо существенно светлее, но
+     не белое». Dedicated canvas surface, lighter than --surface-1
+     so DNA letters and feature bars read as printed on paper rather
+     than scratched into the void. Light theme keeps --surface-1
+     (pure white) — see the override below. */
+  --sequence-canvas-bg: #3a3a3a;
   --border-subtle: #2a2a28;
   --border-default: #3f3f3a;
   --border-strong: #57574f;
@@ -127,6 +136,7 @@ body {
   --surface-1: #ffffff;
   --surface-2: #f5f5f4;
   --surface-3: #e7e5e4;
+  --sequence-canvas-bg: #ffffff;
   --border-subtle: #e7e5e4;
   --border-default: #d6d3d1;
   --text-primary: #1c1917;
