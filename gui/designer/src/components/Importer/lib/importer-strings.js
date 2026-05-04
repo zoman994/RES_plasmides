@@ -193,6 +193,23 @@ export const IMPORTER_STRINGS = {
     // видел что оно грузится а не прсто зависло. аннотация требует
     // времени».
     progressRunning: (pluginName) => `Annotating: ${pluginName}…`,
+    // Sprint M-X.3 follow-up — three-level annotation progression.
+    // Biolog: «аннотация имеет три уровня - комон фичи, предиктор
+    // ОРФ+предиктор промоторов терминаторов+ сложный анализ виде
+    // бласта и тд». LevelPanel surfaces them as a stacked progression.
+    levelPanelTitle: 'Annotation levels',
+    level1Title: 'Level 1: Common features',
+    level1Hint: 'Database lookup of known sequences (AmpR, ori, lacZ, …).',
+    level2Title: 'Level 2: Predictors',
+    level2Hint: 'ORF, σ70 promoter, terminator, sgRNA scaffold.',
+    level3Title: 'Level 3: BLAST (NCBI)',
+    level3Hint: 'Remote homology search — slow, network required.',
+    levelRun: 'Run',
+    levelRunAgain: 'Run again',
+    levelRunning: 'Running…',
+    levelHits: (n) => `${n} hit${n === 1 ? '' : 's'}`,
+    levelEmpty: 'No hits.',
+    levelNotRunYet: 'Not run yet.',
   },
 
   // SessionSummary

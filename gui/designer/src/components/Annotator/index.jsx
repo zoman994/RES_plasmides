@@ -23,11 +23,11 @@
  * purely a controlled view + dispatch surface.
  */
 
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useStore } from '../../store';
 import { selectAnnotator } from '../../store/uiSlice.js';
 import { STRINGS } from '../../lib/strings';
-import { getAllPlugins, getPluginById } from '../../lib/annotator-plugins';
+import { getPluginById } from '../../lib/annotator-plugins';
 import { runAnnotatorPipeline } from '../../lib/annotator-pipeline.js';
 
 // Sprint M-X.3 follow-up (05.05.2026, Stage A) — biolog: «Дальше
@@ -39,10 +39,8 @@ import { runAnnotatorPipeline } from '../../lib/annotator-pipeline.js';
 // manual-trigger semantics — they're slower / noisier.
 const LEVEL_1_PLUGIN_ID = 'common-features-homology';
 import TargetPreview from './TargetPreview.jsx';
-import PluginPanel from './PluginPanel.jsx';
-import ResultsPane from './ResultsPane.jsx';
-import AnnotatorTabBar from './TabBar.jsx';
 import PreviewTab from './PreviewTab.jsx';
+import LevelPanel, { LEVELS } from './LevelPanel.jsx';
 
 const S = STRINGS.importer.annotator;
 
@@ -53,16 +51,12 @@ export default function Annotator({
 }) {
   const annotator = useStore(selectAnnotator);
   const closeAnnotator = useStore((s) => s.closeAnnotator);
-  const togglePlugin = useStore((s) => s.togglePlugin);
   const setThreshold = useStore((s) => s.setAnnotatorThreshold);
   const setRunning = useStore((s) => s.setAnnotatorRunning);
   const setResult = useStore((s) => s.setAnnotatorResult);
   const acceptRegion = useStore((s) => s.acceptRegion);
   const rejectRegion = useStore((s) => s.rejectRegion);
   const editPendingRegion = useStore((s) => s.editPendingRegion);
-  const setActiveTab = useStore((s) => s.setAnnotatorActiveTab);
-
-  const plugins = useMemo(() => getAllPlugins(), []);
 
   // Esc closes the modal (third escape route alongside Back button
   // + backdrop click). Capture-phase + stopPropagation so the App's
@@ -116,12 +110,19 @@ export default function Annotator({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [annotator.open, scope?.sequenceId]);
 
-  const handleRun = async () => {
-    const enabled = annotator.enabledPluginIds || {};
-    // Mark all enabled plugins as running upfront.
-    for (const p of plugins) {
-      if (enabled[p.id]) setRunning(p.id, true);
-    }
+  // Stage B-2 — per-level Run dispatcher. LevelPanel emits
+  // `onRunLevel('L2' | 'L3' | …)` from its level-section Run
+  // buttons; we translate that into a runAnnotatorPipeline call
+  // forcing the level's plugin ids ON for one shot, regardless of
+  // the user's `enabledPluginIds` checkbox state. (The old per-
+  // plugin checkbox UI is gone — opting in to a level means «run
+  // everything in this level».)
+  const handleRunLevel = async (levelId) => {
+    const ids = LEVELS[levelId];
+    if (!Array.isArray(ids) || ids.length === 0) return;
+    const enabled = {};
+    for (const id of ids) enabled[id] = true;
+    for (const id of ids) setRunning(id, true);
     const { results, errors } = await runAnnotatorPipeline(
       sequence || '',
       region,
@@ -136,9 +137,6 @@ export default function Annotator({
         },
       },
     );
-    // Final sweep — populate any plugin that the onPluginEnd hook
-    // didn't catch (shouldn't happen, defensive). Also clear any
-    // running flags for plugins that errored.
     for (const id of Object.keys(results)) setResult(id, results[id]);
     for (const id of Object.keys(errors)) setRunning(id, false);
   };
@@ -270,48 +268,38 @@ export default function Annotator({
         <TargetPreview annotations={annotations} sequenceLength={seqLength} scope={scope} />
       </div>
 
-      {/* Body — plugin panel + (tabbed) right pane.
-          Sprint M-X.3 K3 — split body. PluginPanel stays on the
-          left across both tabs (it owns the «what to run» surface).
-          The right side is a TabBar + active tab content:
-            - 'table'   → existing ResultsPane (accept/reject rows)
-            - 'preview' → PreviewTab (K4 mounts SequenceView with
-                          ghost-rendered predicted regions). */}
+      {/* Body — Sprint M-X.3 follow-up Stage B-2 (05.05.2026).
+          Biolog: «И справа должно показываться таблица с комон фичами.
+          С вариантом принять не принять каждую». The dual-tab body
+          (Table | Preview) and the per-plugin PluginPanel are gone:
+            - LEFT  = always the map (linear SequenceView; Stage C
+                      will add a Linear/Circular sub-tab).
+            - RIGHT = LevelPanel — three-section progression
+                      (L1 auto-runs, L2/L3 have Run buttons), with
+                      per-row Accept/Reject reusing ResultRow.
+          The legacy `state.annotator.activeTab` is now reused by
+          Stage C for the linear/circular toggle inside PreviewTab. */}
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-        <PluginPanel
-          plugins={plugins}
-          enabledPluginIds={annotator.enabledPluginIds}
-          running={annotator.running}
-          results={annotator.results}
-          onToggle={togglePlugin}
-          onRun={handleRun}
-          runtimeContext={{ sequenceLength: seqLength, hasNetwork: typeof navigator !== 'undefined' ? !!navigator.onLine : true }}
-        />
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
-          <AnnotatorTabBar
-            activeTab={annotator.activeTab || 'table'}
-            onChange={setActiveTab}
+          <PreviewTab
+            sequence={sequence || ''}
+            annotations={annotations || []}
+            topology={scope?.topology || 'linear'}
+            name="annotator-preview"
           />
-          {(annotator.activeTab || 'table') === 'table' ? (
-            <ResultsPane
-              results={annotator.results}
-              acceptedRegionIds={annotator.acceptedRegionIds}
-              rejectedRegionIds={annotator.rejectedRegionIds}
-              pendingEdits={annotator.pendingEdits}
-              threshold={annotator.threshold}
-              onAccept={acceptRegion}
-              onReject={rejectRegion}
-              onEditPatch={editPendingRegion}
-            />
-          ) : (
-            <PreviewTab
-              sequence={sequence || ''}
-              annotations={annotations || []}
-              topology="linear"
-              name="annotator-preview"
-            />
-          )}
         </div>
+        <LevelPanel
+          results={annotator.results}
+          running={annotator.running}
+          acceptedRegionIds={annotator.acceptedRegionIds}
+          rejectedRegionIds={annotator.rejectedRegionIds}
+          pendingEdits={annotator.pendingEdits}
+          threshold={annotator.threshold}
+          onAccept={acceptRegion}
+          onReject={rejectRegion}
+          onEditPatch={editPendingRegion}
+          onRunLevel={handleRunLevel}
+        />
       </div>
 
       {/* Footer */}

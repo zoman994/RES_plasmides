@@ -22,7 +22,7 @@
  *      silently skipped.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, cleanup, fireEvent, act } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, act, waitFor } from '@testing-library/react';
 import SingleInspector from '../../Importer/inspector/SingleInspector';
 import { useStore } from '../../../store';
 import { ANNOTATOR_DEFAULTS } from '../../../store/uiSlice.js';
@@ -62,7 +62,7 @@ function setupSlice() {
   useStore.setState((state) => {
     state.annotator = {
       ...ANNOTATOR_DEFAULTS,
-      enabledPluginIds: { 'fake-orf': true, 'fake-noise': true },
+      enabledPluginIds: { 'common-features-homology': true },
       results: {},
       acceptedRegionIds: {},
       rejectedRegionIds: {},
@@ -70,14 +70,16 @@ function setupSlice() {
       running: {},
       open: false,
       scope: null,
-      // Stage A flipped the default landing tab to 'preview'. K10
-      // integration scenarios target the Table-tab path (open
-      // Annotator → click Run → accept rows → save), so pin Table
-      // here for the existing assertions.
-      activeTab: 'table',
     };
   });
 }
+
+// Stage B-2 — the Run-all button is gone (PluginPanel removed). Each
+// scenario now hijacks the L1 plugin id so the auto-run-on-open path
+// emits the test's deterministic regions, then the test interacts
+// with LevelPanel rows the same way it used to interact with
+// ResultsPane rows. waitFor catches the async run.
+const L1_ID = 'common-features-homology';
 
 beforeEach(() => {
   _resetRegistry();
@@ -87,7 +89,7 @@ afterEach(() => { cleanup(); });
 
 describe('K10 Annotator integration flow', () => {
   it('1) full bulk pass — accept 1 → editedAnnotations contains existing + new', async () => {
-    registerPlugin(makeFakePlugin('fake-orf', [
+    registerPlugin(makeFakePlugin(L1_ID, [
       { id: 'orf:250:300', name: 'predicted-orf', type: 'CDS', start: 250, end: 300, confidence: 0.85 },
     ]));
     const onUpdateEdits = vi.fn();
@@ -100,17 +102,16 @@ describe('K10 Annotator integration flow', () => {
         onUpdateEdits={onUpdateEdits}
       />
     );
-    // Open Annotator from store directly (the AnnotationsTab button
-    // isn't currently mounted in SingleInspector — bypass via store).
     act(() => { useStore.getState().openAnnotator({ kind: 'full', sequenceId: 'p1' }); });
     expect(screen.getByTestId('annotator-root')).toBeTruthy();
-    await act(async () => { fireEvent.click(screen.getByTestId('annotator-run-button')); });
+    // L1 auto-runs on open — wait for results to populate the L1
+    // section in LevelPanel. accept buttons appear inside.
+    await waitFor(() => expect(screen.getAllByTestId('annotator-result-accept').length).toBeGreaterThan(0));
     fireEvent.click(screen.getAllByTestId('annotator-result-accept')[0]);
     fireEvent.click(screen.getByTestId('annotator-save-button'));
     expect(onUpdateEdits).toHaveBeenCalledTimes(1);
     const arg = onUpdateEdits.mock.calls[0][0];
     expect(Array.isArray(arg.editedAnnotations)).toBe(true);
-    // Existing lacZα + the predicted-orf
     const names = arg.editedAnnotations.map((a) => a.name);
     expect(names).toContain('lacZα');
     expect(names).toContain('predicted-orf');
@@ -125,7 +126,7 @@ describe('K10 Annotator integration flow', () => {
   });
 
   it('3) edit + apply — pendingEdits patch flows through to editedAnnotations', async () => {
-    registerPlugin(makeFakePlugin('fake-orf', [
+    registerPlugin(makeFakePlugin(L1_ID, [
       { id: 'orf:300:330', name: 'auto-detected', type: 'CDS', start: 300, end: 330, confidence: 0.85 },
     ]));
     const onUpdateEdits = vi.fn();
@@ -139,9 +140,8 @@ describe('K10 Annotator integration flow', () => {
       />
     );
     act(() => { useStore.getState().openAnnotator({ kind: 'full', sequenceId: 'p1' }); });
-    await act(async () => { fireEvent.click(screen.getByTestId('annotator-run-button')); });
+    await waitFor(() => expect(screen.getAllByTestId('annotator-result-accept').length).toBeGreaterThan(0));
     fireEvent.click(screen.getAllByTestId('annotator-result-accept')[0]);
-    // Patch the pending name via store action.
     act(() => { useStore.getState().editPendingRegion('orf:300:330', { name: 'orf-renamed' }); });
     fireEvent.click(screen.getByTestId('annotator-save-button'));
     const arg = onUpdateEdits.mock.calls[0][0];
@@ -151,7 +151,7 @@ describe('K10 Annotator integration flow', () => {
   });
 
   it('4) reject doesn’t apply — only accepted regions reach editedAnnotations', async () => {
-    registerPlugin(makeFakePlugin('fake-orf', [
+    registerPlugin(makeFakePlugin(L1_ID, [
       { id: 'orf:200:250', name: 'good-hit', type: 'CDS', start: 200, end: 250, confidence: 0.85 },
       { id: 'orf:280:330', name: 'bad-hit', type: 'CDS', start: 280, end: 330, confidence: 0.85 },
     ]));
@@ -166,7 +166,7 @@ describe('K10 Annotator integration flow', () => {
       />
     );
     act(() => { useStore.getState().openAnnotator({ kind: 'full', sequenceId: 'p1' }); });
-    await act(async () => { fireEvent.click(screen.getByTestId('annotator-run-button')); });
+    await waitFor(() => expect(screen.getAllByTestId('annotator-result-accept').length).toBe(2));
     const accepts = screen.getAllByTestId('annotator-result-accept');
     const rejects = screen.getAllByTestId('annotator-result-reject');
     fireEvent.click(accepts[0]);  // good-hit
@@ -180,7 +180,7 @@ describe('K10 Annotator integration flow', () => {
 
   it('5) append-only re-annotate — DEC-ANN-09 dedup skips overlapping same-type', async () => {
     // Predicted region overlaps existing lacZα 145..200 same-type CDS.
-    registerPlugin(makeFakePlugin('fake-orf', [
+    registerPlugin(makeFakePlugin(L1_ID, [
       { id: 'orf:140:210', name: 'overlapping-orf', type: 'CDS', start: 140, end: 210, confidence: 0.85 },
     ]));
     const onUpdateEdits = vi.fn();
@@ -194,7 +194,7 @@ describe('K10 Annotator integration flow', () => {
       />
     );
     act(() => { useStore.getState().openAnnotator({ kind: 'full', sequenceId: 'p1' }); });
-    await act(async () => { fireEvent.click(screen.getByTestId('annotator-run-button')); });
+    await waitFor(() => expect(screen.getAllByTestId('annotator-result-accept').length).toBeGreaterThan(0));
     fireEvent.click(screen.getAllByTestId('annotator-result-accept')[0]);
     fireEvent.click(screen.getByTestId('annotator-save-button'));
     // The accepted overlapping hit should be silently dropped by the
