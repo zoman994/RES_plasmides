@@ -199,8 +199,6 @@ export const IMPORTER_STRINGS = {
   actionCanvas: 'На канвас',
   actionCanvasNoProjectTitle: 'Откройте проект, чтобы добавить на канвас',
   actionLibrary: 'В библиотеку',
-  actionAnnotate: '📥 Авто-аннотация',
-  actionAnnotateStubHint: 'Скоро будет — пока работает только авто-аннотация при импорте.',
   actionDownloadGB: '💾 Скачать как .gb',
   actionDeleteSession: '🗑 Удалить из сессии',
   actionOverflowAria: 'Дополнительно',

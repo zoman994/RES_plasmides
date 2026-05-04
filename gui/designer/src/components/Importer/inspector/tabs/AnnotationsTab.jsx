@@ -21,6 +21,7 @@ export default function AnnotationsTab({
   autoAnnotate = true,
   onToggleAutoAnnotate,
   onRunAutoAnnotate, // eslint-disable-line no-unused-vars -- stub state, see button below
+  onOpenAnnotator,
 }) {
   const onChange = useCallback((next) => {
     onUpdateEdits?.({ editedAnnotations: next });
@@ -49,21 +50,31 @@ export default function AnnotationsTab({
           still flips the per-file flag — confirm flow will auto-annotate
           using the existing pipeline regardless of the stub.
         */}
+        {/*
+          Sprint M-X.2 K9 — replaces the disabled `actionAnnotate`
+          stub. Active button opens the fullscreen Annotator with a
+          full-sequence scope. Per-CDS SignalIP / smarter ORF /
+          BLAST integration is the actual annotator now.
+        */}
         <button
           type="button"
-          data-testid="annotations-auto-run"
-          disabled
-          title={S.actionAnnotateStubHint}
+          data-testid="annotations-open-annotator"
+          onClick={onOpenAnnotator
+            ? () => onOpenAnnotator({ kind: 'full' })
+            : undefined}
+          disabled={!onOpenAnnotator}
+          title={STRINGS.importer.annotator.annotatorButtonHint}
           style={{
             fontSize: 11, padding: '4px 10px',
-            background: 'transparent',
-            color: 'var(--text-tertiary)',
-            border: '0.5px dashed var(--border-default)',
+            background: onOpenAnnotator ? 'var(--accent-500, #f97316)' : 'transparent',
+            color: onOpenAnnotator ? '#fff' : 'var(--text-tertiary)',
+            border: '0.5px solid var(--border-default)',
             borderRadius: 'var(--radius-md)',
-            cursor: 'not-allowed',
-            opacity: 0.7,
+            cursor: onOpenAnnotator ? 'pointer' : 'not-allowed',
+            opacity: onOpenAnnotator ? 1 : 0.7,
+            fontWeight: 500,
           }}
-        >{S.actionAnnotate}</button>
+        >{STRINGS.importer.annotator.annotatorButtonLabel}</button>
         {onToggleAutoAnnotate && (
           <label
             data-testid="annotations-auto-toggle"

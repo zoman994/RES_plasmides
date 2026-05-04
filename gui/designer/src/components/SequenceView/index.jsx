@@ -566,6 +566,20 @@ const SequenceView = forwardRef(function SequenceView({
               },
             });
           }
+          // K9 — «Аннотировать выделение...» entry. Opens the
+          // fullscreen Annotator with a region-scoped run on the
+          // current selection. Requires onOpenAnnotator to be
+          // wired by the consumer.
+          if (typeof onOpenAnnotator === "function") {
+            items.push({
+              key: "annotate",
+              label: ANN_EDIT_STRINGS.contextMenuAnnotate,
+              onClick: () => {
+                setContextMenu(null);
+                onOpenAnnotator({ kind: "region", region: { start: selStart, end: selEnd } });
+              },
+            });
+          }
           return items;
         })()}
       />

@@ -16,6 +16,9 @@ import LinearFeatureBar from './tabs/LinearFeatureBar';
 import HistoryTab from './tabs/HistoryTab';
 import { getRegions } from '../../../annotation-model';
 import { applyAnnotationEdit } from '../../../lib/annotation-edit.js';
+import { useStore } from '../../../store';
+import { selectAnnotator } from '../../../store/uiSlice.js';
+import Annotator from '../../Annotator';
 
 const S = STRINGS.importer;
 
@@ -270,6 +273,22 @@ export default function SingleInspector({
   // for Del / H / E + drag-handles + inline rename; we pipe that
   // through `applyAnnotationEdit` and forward the new array via the
   // existing `onUpdateEdits({editedAnnotations})` flow.
+  // Sprint M-X.2 K9 — Annotator entry points. SingleInspector is
+  // the natural mount point for the fullscreen Annotator: it owns
+  // the item / edits / onUpdateEdits trio that the Save flow
+  // needs, so the round-trip (open → run → accept → save) stays
+  // inside one component without prop-drilling through App.
+  const annotatorOpen = useStore((s) => selectAnnotator(s).open);
+  const openAnnotator = useStore((s) => s.openAnnotator);
+
+  const onOpenAnnotator = useCallback((scopeArg) => {
+    const sequenceId = item ? (item.id || item._fileName || item.name || 'unknown') : 'unknown';
+    const scope = scopeArg && scopeArg.kind === 'region'
+      ? { kind: 'region', sequenceId, region: scopeArg.region }
+      : { kind: 'full', sequenceId };
+    openAnnotator(scope);
+  }, [openAnnotator, item]);
+
   const onAnnotationEditFromView = useCallback((edit) => {
     if (!edit || !onUpdateEdits) return;
     try {
@@ -296,6 +315,39 @@ export default function SingleInspector({
     setCursorAnchor(null);
     setCursorSelectionMode(null);
   }, [itemKey]);
+
+  // Sprint M-X.2 K10 — Annotator save flow. Accepted regions land
+  // here as a flat array; we pipe through `applyAnnotationEdit`
+  // with kind='create-batch' (DEC-ANN-09 dedup) into the existing
+  // perFileEdits.editedAnnotations channel. Closes the Annotator
+  // on success.
+  const closeAnnotator = useStore((s) => s.closeAnnotator);
+  const onApplyAnnotatorResults = useCallback((acceptedRegions) => {
+    if (!Array.isArray(acceptedRegions) || acceptedRegions.length === 0) {
+      closeAnnotator?.();
+      return;
+    }
+    if (!onUpdateEdits) { closeAnnotator?.(); return; }
+    try {
+      const seqLength = (item?.sequence || '').length;
+      const baseAnnotations = Array.isArray(edits?.editedAnnotations)
+        ? edits.editedAnnotations
+        : (item?.annotations || []);
+      const result = applyAnnotationEdit(
+        baseAnnotations,
+        { kind: 'create-batch', payload: acceptedRegions },
+        seqLength,
+      );
+      const next = result?.next;
+      if (Array.isArray(next)) {
+        onUpdateEdits({ editedAnnotations: next });
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[SingleInspector] annotator apply failed:', err.message);
+    }
+    closeAnnotator?.();
+  }, [onUpdateEdits, item, edits, closeAnnotator]);
 
   if (!item) return null;
   const length = item.length || item.sequence?.length || 0;
@@ -438,6 +490,7 @@ export default function SingleInspector({
               onCaretChange={onCaretChangeFromView}
               onSelectRange={onSelectRangeFromView}
               onAnnotationEdit={onAnnotationEditFromView}
+              onOpenAnnotator={onOpenAnnotator}
             />
           </div>
         )}
@@ -447,6 +500,20 @@ export default function SingleInspector({
           <HistoryTab commits={item.commits || []} />
         )}
       </div>
+      {/*
+        Sprint M-X.2 K9 — Annotator fullscreen overlay. Mounted
+        unconditionally; the component returns null when
+        annotator.open is false (zero render cost). Mounted INSIDE
+        the inspector so it has direct access to the displayed
+        item's sequence + annotations + onUpdateEdits flow.
+      */}
+      {annotatorOpen && (
+        <Annotator
+          sequence={edits?.editedSequence ?? item.sequence}
+          annotations={displayAnnotations}
+          onApplyAnnotatorResults={onApplyAnnotatorResults}
+        />
+      )}
     </div>
   );
 }
