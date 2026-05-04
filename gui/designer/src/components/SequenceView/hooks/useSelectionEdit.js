@@ -143,6 +143,7 @@ export function useSelectionEdit({
   caretPos,
   caretAnchor,
   onAnnotationEdit,
+  onCaretChange,
   containerRef,
 }) {
   const [createPopupState, setCreatePopupState] = useState(null);
@@ -167,6 +168,18 @@ export function useSelectionEdit({
       if (!region) return false; // selection not aligned to a region — no-op
       e.preventDefault();
       onAnnotationEdit?.({ kind: 'delete', id: resolveRegionId(region) });
+      // Bug-rush #18 (04.05.2026 evening): collapse the selection
+      // after a successful delete so the orange / blue rect stops
+      // hovering over the removed region's coords. Pre-fix the
+      // caret state still pointed at [selStart..selEnd], so
+      // SelectionOverlay re-rendered the highlight on top of empty
+      // space until biolog clicked elsewhere — biolog: «после Del
+      // фичи надо обновлять рендер. до ещё одного щелчка я вижу
+      // старое выделение». Anchor and focus collapse to selStart;
+      // needsScroll false because the viewport is already there.
+      if (typeof onCaretChange === 'function') {
+        onCaretChange(selStart, { extendSelection: false, needsScroll: false });
+      }
       return true;
     }
 
@@ -204,7 +217,7 @@ export function useSelectionEdit({
     }
 
     return false;
-  }, [annotations, caretPos, caretAnchor, onAnnotationEdit, containerRef]);
+  }, [annotations, caretPos, caretAnchor, onAnnotationEdit, onCaretChange, containerRef]);
 
   return {
     handleKeyDown,

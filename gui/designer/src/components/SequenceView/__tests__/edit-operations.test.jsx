@@ -56,6 +56,32 @@ function resetSettings() {
 beforeEach(() => { resetSettings(); });
 afterEach(() => { cleanup(); });
 
+describe('Bug-rush #18 — Del collapses selection so the rect doesn\'t linger', () => {
+  it('Del fires onCaretChange to collapse selection at the deleted region\'s start', () => {
+    const onAnnotationEdit = vi.fn();
+    const onCaretChange = vi.fn();
+    render(
+      <SequenceView
+        fragments={[FRAGMENT]}
+        caretPos={99}
+        caretAnchor={0}
+        onAnnotationEdit={onAnnotationEdit}
+        onCaretChange={onCaretChange}
+      />,
+    );
+    fireEvent.keyDown(screen.getByTestId('sequence-view-root'), { key: 'Delete' });
+    expect(onAnnotationEdit).toHaveBeenCalledWith({
+      kind: 'delete',
+      id: 'region:0:99:CDS:lacZ',
+    });
+    // After dispatch, selection collapses to selStart (0 here).
+    expect(onCaretChange).toHaveBeenCalledWith(
+      0,
+      expect.objectContaining({ extendSelection: false }),
+    );
+  });
+});
+
 describe('Bug-rush #6 — Del / E work on imported annotations without id', () => {
   // Imported .dna / .gb annotations often arrive without an `id`
   // field. Pre-fix the dispatch carried `id: undefined`, which made

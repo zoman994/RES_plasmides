@@ -362,6 +362,7 @@ const SequenceView = forwardRef(function SequenceView({
     caretPos,
     caretAnchor,
     onAnnotationEdit,
+    onCaretChange,
     containerRef,
   });
 
