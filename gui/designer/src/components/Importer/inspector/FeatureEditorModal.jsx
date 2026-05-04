@@ -39,6 +39,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { STRINGS } from '../../../lib/strings';
 import { PART_TYPE_GROUPS } from '../../AnnotationEditor';
+import { featureColorShaded } from '../../../feature-palette';
+import { shadeFromBaseByIndex } from '../../../lib/color-utils';
 
 const S = STRINGS.importer;
 
@@ -161,23 +163,44 @@ export default function FeatureEditorModal({
 
   /**
    * Single «Split» button. First click splits the parent at its
-   * midpoint into two halves (Part-1 / Part-2). Subsequent clicks
-   * halve the LAST sub-feature so biolog can keep adding marker
-   * regions without a per-N button. Each new sub-feature defaults
-   * to type=`misc_feature` so it doesn't collide with the parent's
-   * type semantics — biolog can change to exon / intron /
-   * signal_peptide etc. inline.
+   * midpoint into two halves named «{parentName}-1» / «{parentName}-2».
+   * Subsequent clicks halve the LAST sub-feature so biolog can keep
+   * adding marker regions without a per-N button.
+   *
+   * Per biolog «сабфичи должны окрашиваться в схожий цвет но с
+   * другим тоном» each child gets a colour shaded from the parent's
+   * palette base — same hue family, walking lightness so siblings
+   * stay distinguishable. «И они должны наследовать имя родителя
+   * только с индексами 1 2 3....n» → name = `${parentName}-${i}`.
    */
   const handleSplit = () => {
+    const parentName = (feature?.name && feature.name.trim())
+      || feature?.type
+      || 'feature';
+    const parentBaseColor = featureColorShaded(feature?.type, feature?.name);
+    const parentStrand = feature?.strand === -1 ? -1 : 1;
     setSubFeatures((prev) => {
       // Clone for immutable replace.
       const next = [...prev];
+      const colorAt = (i) => shadeFromBaseByIndex(parentBaseColor, i);
       if (next.length === 0) {
         const fStart = feature.start || 0;
         const fEnd = feature.end || 0;
         const mid = Math.floor((fStart + fEnd) / 2);
-        next.push({ name: 'Part-1', type: 'misc_feature', start: fStart, end: mid, strand: feature.strand === -1 ? -1 : 1 });
-        next.push({ name: 'Part-2', type: 'misc_feature', start: mid,    end: fEnd, strand: feature.strand === -1 ? -1 : 1 });
+        next.push({
+          name: `${parentName}-1`,
+          type: feature?.type || 'misc_feature',
+          start: fStart, end: mid,
+          strand: parentStrand,
+          color: colorAt(0),
+        });
+        next.push({
+          name: `${parentName}-2`,
+          type: feature?.type || 'misc_feature',
+          start: mid, end: fEnd,
+          strand: parentStrand,
+          color: colorAt(1),
+        });
         return next;
       }
       // Halve the last entry.
@@ -186,11 +209,12 @@ export default function FeatureEditorModal({
       if (lastMid <= last.start || lastMid >= last.end) return next; // too short to halve
       const replacement = { ...last, end: lastMid };
       const fresh = {
-        name: `Part-${next.length + 1}`,
-        type: 'misc_feature',
+        name: `${parentName}-${next.length + 1}`,
+        type: feature?.type || last.type || 'misc_feature',
         start: lastMid,
         end: last.end,
         strand: last.strand === -1 ? -1 : 1,
+        color: colorAt(next.length),
       };
       next[next.length - 1] = replacement;
       next.push(fresh);

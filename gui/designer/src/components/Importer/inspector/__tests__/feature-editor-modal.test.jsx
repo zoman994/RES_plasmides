@@ -219,6 +219,40 @@ describe('FeatureEditorModal — Split sub-features / Merge / Delete', () => {
     expect(rows[0].querySelector('[data-testid="subfeature-end"]')).toBeTruthy();
   });
 
+  it('split children inherit parent name + sequential indices (lacZα-1, lacZα-2)', () => {
+    const onSave = vi.fn();
+    render(
+      <FeatureEditorModal
+        feature={FEATURE} seqLength={5000} neighbours={[]}
+        onSave={onSave} onClose={() => {}} onMerge={() => {}} onDelete={() => {}}
+      />
+    );
+    switchToSubfeaturesTab();
+    fireEvent.click(screen.getByTestId('feature-editor-split'));
+    fireEvent.click(screen.getByTestId('feature-editor-save'));
+    const subs = onSave.mock.calls[0][0].subFeatures;
+    expect(subs.map((s) => s.name).sort()).toEqual([`${FEATURE.name}-1`, `${FEATURE.name}-2`]);
+  });
+
+  it('split children carry colour shaded from parent (related but distinct)', () => {
+    const onSave = vi.fn();
+    render(
+      <FeatureEditorModal
+        feature={FEATURE} seqLength={5000} neighbours={[]}
+        onSave={onSave} onClose={() => {}} onMerge={() => {}} onDelete={() => {}}
+      />
+    );
+    switchToSubfeaturesTab();
+    fireEvent.click(screen.getByTestId('feature-editor-split'));
+    fireEvent.click(screen.getByTestId('feature-editor-save'));
+    const subs = onSave.mock.calls[0][0].subFeatures;
+    // Each child has a `color` field set (inherited shade from parent).
+    expect(subs[0].color).toMatch(/^#[0-9a-f]{6}$/i);
+    expect(subs[1].color).toMatch(/^#[0-9a-f]{6}$/i);
+    // Shades differ — siblings don't collide on the same colour.
+    expect(subs[0].color).not.toBe(subs[1].color);
+  });
+
   it('Save with split sub-features emits subFeatures array in meta', () => {
     const onSave = vi.fn();
     render(

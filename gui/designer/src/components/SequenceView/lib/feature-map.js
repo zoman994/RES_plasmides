@@ -89,7 +89,12 @@ export function buildFeatureMap(fragments) {
         type: d.type,
         start: fragStart + d.start,
         end: fragStart + d.end,
-        color: featureColorShaded(d.type, d.name),
+        // Honour an explicit `d.color` when set (Sprint M-X.3
+        // follow-up — split children inherit a parent-shaded colour,
+        // and the user can recolour them in the modal). Falls back
+        // to the type-based palette for legacy detail annotations
+        // that don't carry a stored colour.
+        color: d.color || featureColorShaded(d.type, d.name),
         strand: d.strand || f.strand || 1,
         level: "detail",
         parentId: d.regionId || null,
