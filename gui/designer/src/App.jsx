@@ -14,6 +14,7 @@ import { openBodgeFilePicker, pickSaveAs, saveBlobToHandle } from './lib/file-sy
 import { writeBodge, readBodge } from './lib/bodge-zip';
 import { listenForceRelease } from './lib/multi-tab-lock';
 import { runHotkeyResolver, useHotkey } from './lib/hotkeys';
+import { installGlobalCtrlAGuard } from './lib/global-ctrl-a-guard';
 import { setupBeforeInstallPromptListener } from './lib/pwa-install';
 import { STRINGS } from './lib/strings';
 import { queueImporterFiles } from './components/Importer/lib/pending-files';
@@ -53,6 +54,14 @@ export default function App() {
   useEffect(() => {
     applyThemeToDOM(theme);
   }, [theme]);
+
+  // Sprint M-X.3 follow-up — biolog «можно запретить Ctrl+A везде
+  // кроме окна вивера? иногда бывает что выделяю всё вокруг».
+  // Browser-native Ctrl+A on canvas / catalog / project shell
+  // selects whatever's focused → confusing «everything around»
+  // selection. Capture-phase guard kills the default everywhere
+  // EXCEPT inside the SequenceView root and inside text inputs.
+  useEffect(() => installGlobalCtrlAGuard(), []);
 
   // ─── Hotkey handlers (registered through registry, never via ad-hoc keydown) ───
 
