@@ -199,6 +199,17 @@ describe("SettingsPopover — Sprint M-X.1 K5 integration", () => {
   });
 });
 
+describe("Bug-rush #19 — scroll-on-feature-click toggle", () => {
+  it("renders a checkbox bound to sequenceView.scrollOnFeatureClick", () => {
+    render(<SettingsPopover open onClose={() => {}} />);
+    const check = screen.getByTestId("sequence-view-setting-scroll-on-feature-click");
+    // Default is true.
+    expect(check.checked).toBe(true);
+    fireEvent.click(check);
+    expect(useStore.getState().sequenceView.scrollOnFeatureClick).toBe(false);
+  });
+});
+
 describe("Bug-rush #15 — outside click closes the popover", () => {
   it("pointerdown OUTSIDE the popover (and outside trigger) calls onClose", () => {
     const onClose = vi.fn();

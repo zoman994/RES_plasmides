@@ -270,19 +270,23 @@ export default function SingleInspector({
   // SelectionOverlay highlights the whole feature region. Queues a
   // smooth scroll to the start so the biolog sees the beginning of
   // the feature even if the click happened on its tail end.
+  // Bug-rush #19 (04.05.2026 evening): the «scroll-to-start when
+  // biolog clicks a feature» behavior is now opt-out via the
+  // sequenceView.scrollOnFeatureClick setting. Read once from the
+  // store via getState() inside the callback so the callback
+  // doesn't re-create on every store change.
   const onSelectRangeFromView = useCallback((start, end, mode, strand) => {
     if (typeof start !== 'number' || typeof end !== 'number') return;
     if (!Number.isFinite(start) || !Number.isFinite(end)) return;
     if (end <= start) return;
     setCursorAnchor(start);
     setCursorPos(end);
-    // mode === 'aa' → CDS feature click; gates the Copy AA hotkey /
-    // menu item. Anything else (non-CDS feature, AA-cell click, …)
-    // → 'dna'. strand from the feature's data-region-strand drives
-    // the AA copy path through reverseComplement() for reverse CDSes.
     setCursorSelectionMode(mode === 'aa' ? 'aa' : 'dna');
     setCursorSelectionStrand(strand === -1 ? -1 : 1);
-    setPendingScroll({ pos: start, tick: Date.now(), instant: false });
+    const scrollOn = useStore.getState().sequenceView?.scrollOnFeatureClick;
+    if (scrollOn !== false) {
+      setPendingScroll({ pos: start, tick: Date.now(), instant: false });
+    }
   }, []);
 
   const onPendingScrollHandled = useCallback(() => setPendingScroll(null), []);

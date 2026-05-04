@@ -222,6 +222,25 @@ export default function SettingsPopover({ open, onClose, anchor, triggerRef }) {
         </span>
       </label>
 
+      {/* 1.b — Bug-rush #19: scroll-on-feature-click toggle. */}
+      <label
+        style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, cursor: "pointer" }}
+      >
+        <input
+          type="checkbox"
+          data-testid="sequence-view-setting-scroll-on-feature-click"
+          checked={settings.scrollOnFeatureClick !== false}
+          onChange={(e) => setSetting("scrollOnFeatureClick", !!e.target.checked)}
+        />
+        <span>
+          <span style={{ fontWeight: 500 }}>{S.scrollOnFeatureClickLabel}</span>
+          <br />
+          <span style={{ fontSize: 11, color: "var(--text-tertiary, #9ca3af)" }}>
+            {S.scrollOnFeatureClickHint}
+          </span>
+        </span>
+      </label>
+
       {/* 2. AA frames mode */}
       <fieldset
         data-testid="sequence-view-setting-frames-mode"

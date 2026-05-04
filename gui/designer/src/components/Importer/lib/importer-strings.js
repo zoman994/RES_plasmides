@@ -75,6 +75,8 @@ export const IMPORTER_STRINGS = {
     settingsTitle: 'SequenceView settings',
     showBottomStrandLabel: 'Bottom strand',
     showBottomStrandHint: 'Show the antisense strand below the main one',
+    scrollOnFeatureClickLabel: 'Scroll to feature on click',
+    scrollOnFeatureClickHint: 'Jump to the feature\'s start when biolog clicks its bar',
     framesModeLabel: 'AA frames',
     framesModeAuto: 'Auto (by coverage)',
     framesModeSingle: 'Dominant CDS only',

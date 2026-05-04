@@ -57,6 +57,11 @@ export const SEQUENCE_VIEW_DEFAULTS = Object.freeze({
   primerStyle: 'filled',
   reOrientation: 'vertical',
   predictions: { ...PREDICTIONS_DEFAULTS },
+  // Bug-rush #19 (04.05.2026 evening): biolog «при нажатии на фичу
+  // идёт телепорт к её началу, это мы сделаем опцией и возможность
+  // включить/отключить в настройках». Default true — preserves the
+  // existing behavior so the change is opt-out.
+  scrollOnFeatureClick: true,
 });
 
 function sanitizeVisibleFrames(raw) {
@@ -123,6 +128,10 @@ function loadInitialSequenceView() {
     // block. Old stored payloads (pre-K5) lack this field; we fill it
     // with PREDICTIONS_DEFAULTS so the consumer never sees undefined.
     predictions: sanitizePredictions(raw.predictions),
+    scrollOnFeatureClick:
+      typeof raw.scrollOnFeatureClick === 'boolean'
+        ? raw.scrollOnFeatureClick
+        : SEQUENCE_VIEW_DEFAULTS.scrollOnFeatureClick,
   };
 }
 
@@ -383,6 +392,7 @@ export const createUiSlice = (set) => ({
     if (key === 'primerStyle' && !PRIMER_STYLES.includes(value)) return;
     if (key === 'reOrientation' && !RE_ORIENTATIONS.includes(value)) return;
     if (key === 'showBottomStrand' && typeof value !== 'boolean') return;
+    if (key === 'scrollOnFeatureClick' && typeof value !== 'boolean') return;
     if (key === 'autoThreshold') {
       const v = Number(value);
       if (!Number.isFinite(v) || v < 0.5 || v > 0.95) return;
