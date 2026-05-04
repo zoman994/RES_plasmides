@@ -51,6 +51,15 @@ async function reset() {
     state._libraryHydrated = true;
     state.primersById = {};
     state._primersHydrated = true;
+    // Reset Annotator state — the post-commit auto-open feature
+    // (M-X.3 follow-up) leaves it open across tests if a previous
+    // test triggered it; tests checking `annotator.open === false`
+    // need a clean slate.
+    state.annotator = {
+      ...(state.annotator || {}),
+      open: false,
+      scope: null,
+    };
   });
 }
 
@@ -154,6 +163,52 @@ describe('M-B.2 K1 — Importer single-screen flow', () => {
     // Sequence panel can stay mounted (warm-then-hide) but must be
     // hidden via display:none — overview panel must be visible.
     expect(screen.getByTestId('importer-tab-panel-overview')).toBeTruthy();
+  });
+
+  it('6a) PreImportModal submit with annotateNow=true opens the Annotator on the new item', async () => {
+    // Sprint M-X.3 follow-up (05.05.2026) — biolog: «после добавления
+    // сиквенса тебя бросает на обзор но это же не логично! открываться
+    // сразу должен аннотатор, мы же явно указали галкой что надо
+    // аннотировать». PreImportModal already has the checkbox; the
+    // commit path must dispatch openAnnotator on the just-imported
+    // item when annotateNow is true (single + paste flows).
+    render(<Importer />);
+    const dz = screen.getByTestId('importer-catalog-dropzone');
+    await act(async () => {
+      fireEvent.drop(dz, {
+        dataTransfer: { files: [fileFromText('anno.fasta', FASTA_TEXT)], types: ['Files'] },
+      });
+    });
+    await waitFor(() => expect(screen.getByTestId('pre-import-modal')).toBeTruthy());
+    // Default state of the «Аннотировать сейчас» checkbox is ON; submit
+    // straight through.
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('pre-import-submit'));
+    });
+    await waitFor(() => expect(useStore.getState().annotator.open).toBe(true));
+    expect(useStore.getState().annotator.scope?.kind).toBe('full');
+    // sequenceId derived from item.id || item._fileName.
+    expect(useStore.getState().annotator.scope?.sequenceId).toBe('anno.fasta');
+  });
+
+  it('6b) PreImportModal submit with annotateNow=false leaves the Annotator closed', async () => {
+    render(<Importer />);
+    const dz = screen.getByTestId('importer-catalog-dropzone');
+    await act(async () => {
+      fireEvent.drop(dz, {
+        dataTransfer: { files: [fileFromText('silent.fasta', FASTA_TEXT)], types: ['Files'] },
+      });
+    });
+    await waitFor(() => expect(screen.getByTestId('pre-import-modal')).toBeTruthy());
+    // Uncheck «Аннотировать сейчас» before submitting.
+    const cb = screen.getByTestId('pre-import-annotate-now');
+    fireEvent.click(cb);
+    expect(cb.checked).toBe(false);
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('pre-import-submit'));
+    });
+    await waitFor(() => expect(screen.getByTestId('importer-single-inspector')).toBeTruthy());
+    expect(useStore.getState().annotator.open).toBe(false);
   });
 
   it('6) Topbar back button pops Importer off the nav stack (no in-importer cancel button)', () => {

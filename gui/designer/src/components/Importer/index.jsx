@@ -44,6 +44,7 @@ export default function Importer() {
   const navStack = useStore(s => s.canvas.navStack);
   const popFullscreen = useStore(s => s.popFullscreen);
   const showToast = useStore(s => s.showToast);
+  const openAnnotator = useStore(s => s.openAnnotator);
   // Reactive selector — re-renders Importer when libraryEntries changes,
   // so EmptyInspector flips from «Ваша библиотека пуста» to the standard
   // hint as soon as `hydrateLibrary` populates entries on app boot.
@@ -78,6 +79,33 @@ export default function Importer() {
     // creates a new instance.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Sprint M-X.3 follow-up (05.05.2026) — biolog: «после добавления
+  // сиквенса тебя бросает на обзор но это же не логично! открываться
+  // сразу должен аннотатор, мы же явно указали галкой что надо
+  // аннотировать». PreImportModal already captures the «Аннотировать
+  // сейчас» checkbox; commitPendingImport stashes the just-committed
+  // file name into `pendingAnnotatorFile`. We watch the field, find
+  // the matching parsedItem, switch the importer's currentIdx to it
+  // (so the Annotator's onApplyAnnotatorResults targets the right
+  // SingleInspector), then dispatch openAnnotator + clear the flag.
+  useEffect(() => {
+    const fn = state.pendingAnnotatorFile;
+    if (!fn) return;
+    const items = state.parsedItems;
+    const idx = items.findIndex((p) => p && p._fileName === fn);
+    if (idx < 0) {
+      // Item disappeared (e.g. user removed it before the effect ran);
+      // drop the signal without firing the Annotator.
+      state.clearPendingAnnotator();
+      return;
+    }
+    const it = items[idx];
+    if (state.currentIdx !== idx) state.setCurrentIdx(idx);
+    const sequenceId = it.id || it._fileName || it.name || 'unknown';
+    openAnnotator({ kind: 'full', sequenceId });
+    state.clearPendingAnnotator();
+  }, [state.pendingAnnotatorFile]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Back-out path lives in AppShell Topbar (popFullscreen) — no in-importer
   // cancel button. SessionSummary «Открыть холст» calls state.reset +

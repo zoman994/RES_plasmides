@@ -59,6 +59,16 @@ export function useImporterState({ mode } = {}) { // eslint-disable-line no-unus
   //     suggestedName, defaultTopology, hasAnnotations,
   //     suggestedTags?, source }
   const [pendingImport, setPendingImport] = useState(null);
+  // Sprint M-X.3 follow-up (05.05.2026) — biolog: «после добавления
+  // сиквенса тебя бросает на обзор но это же не логично! открываться
+  // сразу должен аннотатор, мы же явно указали галкой что надо
+  // аннотировать». commitPendingImport stashes the just-committed
+  // item's _fileName here when annotateNow=true (single + paste only;
+  // multi-file batches don't auto-open Annotator — see comment in
+  // commitPendingImport). Importer/index.jsx watches the field and
+  // dispatches `openAnnotator({ kind: 'full', sequenceId })` once,
+  // then calls `clearPendingAnnotator()`.
+  const [pendingAnnotatorFile, setPendingAnnotatorFile] = useState(null);
   const cancelToken = useRef(0);
 
   const reset = useCallback(() => {
@@ -74,11 +84,20 @@ export function useImporterState({ mode } = {}) { // eslint-disable-line no-unus
     setBusy(false);
     setError(null);
     setPendingImport(null);
+    setPendingAnnotatorFile(null);
   }, []);
 
   /** Drop the pending envelope without writing to parsedItems (cancel). */
   const clearPendingImport = useCallback(() => {
     setPendingImport(null);
+  }, []);
+
+  /**
+   * Clear the post-commit «open Annotator for this file» flag once the
+   * Importer container has dispatched `openAnnotator` for it.
+   */
+  const clearPendingAnnotator = useCallback(() => {
+    setPendingAnnotatorFile(null);
   }, []);
 
   /**
@@ -164,6 +183,14 @@ export function useImporterState({ mode } = {}) { // eslint-disable-line no-unus
     });
     setActiveTabState('overview');
     setPendingImport(null); // close the modal
+    // Single-file / paste with annotateNow=true → arm the post-commit
+    // signal so Importer/index.jsx opens the Annotator on the new
+    // item. Multi-file batches are skipped: there's no "the" file
+    // to annotate, and the per-file autoAnnotate flag still routes
+    // through MultiInspector's per-row controls.
+    if (annotateNow && prev.kind !== 'multi' && newItems.length > 0) {
+      setPendingAnnotatorFile(newItems[0]._fileName);
+    }
   }, [pendingImport]);
 
   /**
@@ -404,6 +431,7 @@ export function useImporterState({ mode } = {}) { // eslint-disable-line no-unus
     busy,
     error,
     pendingImport,
+    pendingAnnotatorFile,
     setCurrentIdx,
     setActiveTab,
     setActiveSource,
@@ -417,6 +445,7 @@ export function useImporterState({ mode } = {}) { // eslint-disable-line no-unus
     appendAddedItem,
     clearPendingImport,
     commitPendingImport,
+    clearPendingAnnotator,
     reset,
     setError,
   };

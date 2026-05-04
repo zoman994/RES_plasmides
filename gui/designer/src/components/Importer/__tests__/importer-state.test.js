@@ -458,3 +458,87 @@ describe('M-X.3 K2a — pendingImport for multi-file flow', () => {
     expect(result.current.pendingImport.hasAnnotations).toBe(false);
   });
 });
+
+// ─── Sprint M-X.3 follow-up — annotateNow auto-opens the Annotator ────
+// Biolog 05.05.2026: «после добавления сиквенса тебя бросает на обзор
+// но это же не логично! открываться сразу должен аннотатор, мы же явно
+// указали галкой что надо аннотировать». PreImportModal already has the
+// "Аннотировать сейчас" checkbox; commitPendingImport with annotateNow=
+// true stashes the just-committed item's _fileName into
+// `pendingAnnotatorFile` so the Importer container can pick it up and
+// dispatch `openAnnotator` for that sequence. Multi-file commits do NOT
+// set the flag — we'd have to pick one of N files arbitrarily, and the
+// per-file annotate flag still routes through MultiInspector's per-row
+// flow. The "Annotator on first file" behaviour is single + paste only.
+describe('M-X.3 follow-up — pendingAnnotatorFile post-commit signal', () => {
+  it('default value is null', () => {
+    const { result } = renderHook(() => useImporterState({ mode: 'advanced' }));
+    expect(result.current.pendingAnnotatorFile).toBeNull();
+  });
+
+  it('paste commit with annotateNow=true sets pendingAnnotatorFile to the new item _fileName', () => {
+    const { result } = renderHook(() => useImporterState({ mode: 'advanced' }));
+    act(() => result.current.addPasteItem('ATGCATGCATGCATGC'));
+    act(() => result.current.commitPendingImport({
+      name: 'pAnno', topology: 'linear', tags: [], annotateNow: true,
+    }));
+    const it = result.current.parsedItems[0];
+    expect(result.current.pendingAnnotatorFile).toBe(it._fileName);
+  });
+
+  it('paste commit with annotateNow=false leaves pendingAnnotatorFile null', () => {
+    const { result } = renderHook(() => useImporterState({ mode: 'advanced' }));
+    act(() => result.current.addPasteItem('ATGCATGCATGC'));
+    act(() => result.current.commitPendingImport({
+      name: 'pSilent', topology: 'linear', tags: [], annotateNow: false,
+    }));
+    expect(result.current.pendingAnnotatorFile).toBeNull();
+  });
+
+  it('single file commit with annotateNow=true sets pendingAnnotatorFile', async () => {
+    const { result } = renderHook(() => useImporterState({ mode: 'advanced' }));
+    await act(async () => {
+      await result.current.addFiles([fileFromText('a.fasta', FASTA_A)]);
+    });
+    act(() => result.current.commitPendingImport({
+      name: 'a', topology: 'linear', tags: [], annotateNow: true,
+    }));
+    expect(result.current.pendingAnnotatorFile).toBe('a.fasta');
+  });
+
+  it('multi commit with annotateNow=true does NOT set pendingAnnotatorFile (stays null)', async () => {
+    const { result } = renderHook(() => useImporterState({ mode: 'advanced' }));
+    await act(async () => {
+      await result.current.addFiles([
+        fileFromText('a.fasta', FASTA_A),
+        fileFromText('b.fasta', FASTA_B),
+      ]);
+    });
+    act(() => result.current.commitPendingImport({
+      topology: 'linear', tags: [], annotateNow: true,
+    }));
+    expect(result.current.pendingAnnotatorFile).toBeNull();
+  });
+
+  it('clearPendingAnnotator() drops the stashed file name', () => {
+    const { result } = renderHook(() => useImporterState({ mode: 'advanced' }));
+    act(() => result.current.addPasteItem('ATGCATGCATGC'));
+    act(() => result.current.commitPendingImport({
+      name: 'p', topology: 'linear', tags: [], annotateNow: true,
+    }));
+    expect(result.current.pendingAnnotatorFile).toBeTruthy();
+    act(() => result.current.clearPendingAnnotator());
+    expect(result.current.pendingAnnotatorFile).toBeNull();
+  });
+
+  it('reset() clears pendingAnnotatorFile', () => {
+    const { result } = renderHook(() => useImporterState({ mode: 'advanced' }));
+    act(() => result.current.addPasteItem('ATGCATGCATGC'));
+    act(() => result.current.commitPendingImport({
+      name: 'p', topology: 'linear', tags: [], annotateNow: true,
+    }));
+    expect(result.current.pendingAnnotatorFile).toBeTruthy();
+    act(() => result.current.reset());
+    expect(result.current.pendingAnnotatorFile).toBeNull();
+  });
+});
