@@ -823,7 +823,13 @@ const SequenceView = forwardRef(function SequenceView({
             anchorMid: aaMid,
             strand: aaStrand,
           };
-          pointerMovedRef.current = false;
+          // pointerMovedRef = true so the synthetic click that
+          // follows pointerup is treated as the tail of a drag, not
+          // a fresh click — without this, onClickFallback runs
+          // onCaretChange and the freshly-set AA selection collapses
+          // (biolog 04.05.2026 evening: «кодоны после нажатия на АА
+          // и отпускания стали слетать»).
+          pointerMovedRef.current = true;
           try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* ignore */ }
           try { containerRef.current?.focus({ preventScroll: true }); } catch { /* noop */ }
           return;
@@ -950,11 +956,19 @@ const SequenceView = forwardRef(function SequenceView({
 
     // AA-drag mode (biolog 04.05.2026 evening: «если тянешь курсор
     // по АА то выделилось бы последовательность но выделялась
-    // триплетами»). Walk up from the current pointer target looking
-    // for an AA cell (data-aa-pos). If found, snap selection to the
-    // codon-aligned range from anchor codon to current codon.
+    // триплетами»). Walk up from the element UNDER the pointer
+    // looking for an AA cell (data-aa-pos). Crucial: use
+    // document.elementFromPoint instead of e.target — once we call
+    // setPointerCapture in pointerdown, every subsequent pointer
+    // event is dispatched to the captured element (the SequenceView
+    // root), so e.target is no longer the AA cell the user is
+    // hovering. elementFromPoint queries the real DOM stack at the
+    // pointer's screen coords.
     if (dragRef.current.mode === "aa" && typeof onSelectRange === "function") {
-      let aaEl = e.target;
+      const hit = (typeof document !== "undefined" && typeof document.elementFromPoint === "function")
+        ? document.elementFromPoint(e.clientX, e.clientY)
+        : e.target;
+      let aaEl = hit;
       while (aaEl && aaEl !== containerRef.current) {
         if (aaEl.dataset && aaEl.dataset.aaPos != null) break;
         aaEl = aaEl.parentElement;
