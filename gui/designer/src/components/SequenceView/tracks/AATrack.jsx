@@ -654,6 +654,33 @@ function AATrack({
         // for nothing. Skip the row entirely when nothing lands
         // on this specific line — neighbours collapse up.
         if (onLine.length === 0) return null;
+        // Bug-rush #16 follow-up («не вижу отличий»): in
+        // framesMode='auto' / 'hybrid' the codons exist but have
+        // opacity 0 outside the dominant CDS — visually empty
+        // gutter row. Probe each codon's computed opacity; skip
+        // the row if every cell is invisible.
+        const rowCdsRegionsForOpacity = (regions || []).filter((r) => {
+          if (!r || !CDS_TYPES.has(r.type)) return false;
+          const rs = r.strand === -1 ? -1 : 1;
+          if (rs !== row.strand) return false;
+          return regionFrame(r, fullSeq.length) === row.frame;
+        });
+        const anyVisible = onLine.some((c) => {
+          const op = computeAAOpacity({
+            position: c.position,
+            frame: row.frame,
+            strand: row.strand,
+            strategy,
+            framesMode,
+            orfRanges,
+            dominantCDS,
+            inAnnotatedCDS: rowCdsRegionsForOpacity.some(
+              (r) => c.position >= r.start && c.position < r.end,
+            ),
+          });
+          return op > 0;
+        });
+        if (!anyVisible) return null;
         // Annotated CDS / gene / marker regions whose own (frame,
         // strand) matches THIS row. Used to tint the AA cell with the
         // feature's annotation colour so the matching frame visually
