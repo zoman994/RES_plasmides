@@ -1,13 +1,13 @@
 # PROJECT_STATE.md — BodgeGene snapshot
 
-> **Версия:** **v0.7.0** — M-B finale: Catalog tree rewrite, folder-in-folder, auto-annotate cleanup (02.05.2026). Minor bump поверх v0.6.4 M-B.2 после ещё одного round'а biolog-driven visual polish.
-> **Тесты:** 997 (885 Vitest + 112 pytest), build clean (~570 KB).
-> **Архитектура:** `docs/ARCHITECTURE_v2.md` v1.2 (~117 KB) · 48 ⚓ fundamental decisions в `ANCHORS.md` · sprint-level DEC в `DECISIONS.md` · DEC-IMP-13..18 + DEC-DS-NN (A+v2 палитра) + новые DEC-CAT-01..04 (catalog tree дизайн: no-drilldown / depth-tint / hover-icons / folder-as-slash-path) ждут добавления Chat'ом.
+> **Версия:** **v0.7.1** — V50 parser fix + Parser-Unification + SnapGene Refresh + M-B.3 Sequence Viewer Rewrite + interaction extensions (drag-scrubber + caret + tri-modal copy + selection context menu) (03–04.05.2026).
+> **Тесты:** ~947 Vitest + 112 pytest (последний authoritative счёт от V50 fix; B.3 cycle test count в координационных файлах не зафиксирован, build clean).
+> **Архитектура:** `docs/ARCHITECTURE_v2.md` v1.2 (~117 KB) · 52 ⚓ fundamental decisions в `ANCHORS.md` · sprint-level DEC в `DECISIONS.md` (DEC-SV-01..04 caret/scrollIntoView/drag-scrubber/selection-context-menu, DEC-MB-03 supersedes DEC-MB-02 origin location) · ⚓ DEC-PARSER-COORD-01 (03.05.2026, 0-based exclusive end end-to-end) · ⚓ DEC-PARSER-UNIFY-01..03 (кандидаты, сейчас в commit message — перенос в ANCHORS.md отложен).
 > **Журнал версий:** `RELEASES.md` (текущие) + `docs/archive/SESSIONS_2026_Q2.md` (исторические сессии до v0.6) + `docs/archive/PROJECT_STATE_v0.6.3_pre_split.md` (полный pre-split snapshot).
 > **Дизайн-система:** `docs/DESIGN_SYSTEM.md` §2.1 — feature palette A+v2 + shade-by-name + canonical-key (от v0.6.4). Catalog tree depth-tint + folder-as-path documentation pending под §2.2.
-> **Открытые TD:** см. `TECH_DEBT.md`. Новые в v0.7.0: TD-DRAG-DROP-LIBRARY-CARDS (drag уже-импортированных entries между папками), TD-PER-CDS-SIGNALIP (on-demand аннотация при клике на CDS region).
-> **Открытые баги:** см. `BUGS.md` — OPEN секция пуста.
-> **Текущая задача:** см. `CURRENT_TASK.md` — M-B finale закрыт. Следующий sprint: M-C (kickoff).
+> **Открытые TD:** см. `TECH_DEBT.md`. Новые в v0.7.1: TD-SEQUENCEVIEW-SHIFT-SELECTION (M-D), TD-SEQUENCEVIEW-FOCUS-RING (low priority a11y), TD-LINEAR-BAR-PREDICTIONS (M-X.1 K4 либо M-X.2). От v0.7.0 остаются: TD-DRAG-DROP-LIBRARY-CARDS, TD-PER-CDS-SIGNALIP.
+> **Открытые баги:** см. `BUGS.md` — OPEN секция пуста. V50 closed в FIXED.
+> **Текущая задача:** см. `CURRENT_TASK.md` — Wave 1 **Sprint M-X.1 Structural Predictor** (frontend baseline ML-annotator), spec v1.1 готова, Code реализовал на ветке `feature/structural-predictor` HEAD `1c75857`, визуальная приёмка в ожидании отчёта Code и fixture plasmids.
 
 ---
 
@@ -131,16 +131,25 @@
 
 ## Что дальше
 
-**v0.6.3 закрыт полностью** (Sprint M-A.3 Library minimal CRUD + версионирование в коде). Версия теперь отображается в StartScreen sidebar footer (`BodgeGene v{APP_VERSION}` из `lib/version.js`); `package.json` бамп на 0.6.3.
+**v0.7.1 закрыт полностью** (V50 parser fix + Parser-Unification + SnapGene Refresh + M-B.3 Sequence Viewer Rewrite + interaction extensions). Следующая финализация — после визуальной приёмки M-X.1 (Sprint Structural Predictor, Code реализовал на ветке `feature/structural-predictor` HEAD `1c75857`).
 
 **Кандидаты следующих сессий:**
 
-1. **M-B.1 Importer** (приоритет 1) — 3 формата (.dna PRIMARY через `snapgene_parser.py` reuse / .gb BioPython / .fasta BioPython), 2 контекста (in-project DAG-toolbar + into-library Library-toolbar, DEC-IMP-04), preview-step с PlasmidMiniMap reuse (DEC-IMP-05), wizard primer-step при primer_bind+sequence в .dna (DEC-LIB-08). Закрывает M-A.3 отложенную приёмку (D/E/F/H группы) реальным контентом.
-2. **DESIGN_SYSTEM.md финализация** v1.0 → v1.1 — собрать design-decisions из M-A.1 (Notion-style Toast паттерн) + M-A.3 (Library design tokens: chips inline editing visual, hover-`×` opacity, empty state typography).
-3. **All projects милстоун** — dashboard ranged Recent (DEC-V2-28 dual-context: standalone со Start screen и в проектном DAG-toolbar) с facet filters по tags/agent/lifecycle status.
-4. **Ротация старых journal-записей** (27.04 + 28.04 × 3 + 30.04 × 2 = 6 записей в архивном `PROJECT_STATE_v0.6.3_pre_split.md`) → `docs/archive/SESSIONS_2026_Q2.md` — §4 playbook regular hygiene, ~30 минут сессии. Может закрыться параллельно с любой milestone-сессией в начале.
+1. **Приёмка Wave 1 M-X.1 Structural Predictor** (в ожидании отчёта Code + fixture plasmids от Игоря) — визуальный acceptance по §6 спеки (12 критериев, 3-4 plasmid fixtures: pUC19 / pET-28b / CRISPR / synthetic_predictors). PASS → финализация v0.7.2 либо v0.7.1 patch (решает Игорь по bump-policy). FAIL → mini-spec в CURRENT_TASK.md, FAIL-pass cycle.
 
-**Roadmap до v1.0** — `docs/ARCHITECTURE_v2.md` §7 (M-A start screen → M-B importer → M-C container window → M-D editable container → M-E mix workspace → M-F primer pool → M-G остальные reactions → M-H library polish → M-I DAG polish).
+2. **Wave 1 M-X.2 Analyze Modal** (после M-X.1 acceptance) — клик на predicted region → modal с Region info tab + Evidence tab (signals[] разворачиваются в табличный вид) + «Принять как confident» action (создаёт ContainerCommit type='annotation_edit', единственный path от transient к persisted, DEC-PRED-06). Использует caret-state из DEC-SV-01 + selection context menu из DEC-SV-04 как entry-point.
+
+3. **Wave 1 M-X.3 Backend Pfam (pyhmmer) + Domains tab** — первый backend dependency. Требует решения 4 open questions (deployment / SignalP лицензия / AUGUSTUS species / Pfam scope) — kickoff сессия до спеки. M-X.4 SignalP / Phobius и M-X.5 AUGUSTUS introns — после.
+
+4. **Sprint NCBI GenBank Integration** (TD-OPEN-PLASMID-REPOS roadmap step 1) — public domain, no approval. Fungal-focused queries (Aspergillus / Trichoderma / Pichia / Yarrowia + common cloning backbones pET / pUC / pGEM / pBR322 / pcDNA / pmKate2). BioPython `Bio.Entrez` уже в stack. Может идти параллельно с Wave 1 milestones.
+
+5. **Sprint CAZy Integration** (TD-CAZY-INTEGRATION) — автоматическая классификация carbohydrate-active enzymes при импорте plasmid (GH families приоритетны для Игоря тематики с GH18 chitinase). 3 approach options (HMMER+dbCAN / reference seqs / hybrid) — kickoff сессия до спеки. После NCBI либо параллельно (если Approach B).
+
+6. **Sprint Addgene Integration** (TD-ADDGENE-API-PENDING) — после approval'а от developers.addgene.org на scope «Bulk Download: Plasmids with Sequences». Approval workflow ~неделя. Fallback через NCBI + JBEI ICE если denied.
+
+7. **M-C Container Window kickoff** — следующий milestone по Roadmap (после Wave 1 closeout либо параллельно с M-X.3+). Использует SequenceView (B.3 foundation) + caret sync (DEC-SV-01) + scrollIntoView pattern (DEC-SV-02). Edit interactions через optional callbacks из B.3. Там же решается судьба TD-PER-CDS-SIGNALIP.
+
+**Roadmap до v1.0** — `docs/ARCHITECTURE_v2.md` §7 (M-A start screen → M-B importer → M-C container window → M-D editable container → M-E mix workspace → M-F primer pool → M-G остальные reactions → M-H library polish → M-I DAG polish). Wave 1 M-X.1..M-X.5 — параллельная backend annotator track (frontend baseline → Analyze Modal → Pfam → SignalP → AUGUSTUS), интегрируется в Container Window M-C/M-D через UI hooks.
 
 ---
 

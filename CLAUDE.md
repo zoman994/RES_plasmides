@@ -15,8 +15,8 @@
 BodgeGene — визуальный конструктор генетических сборок (плазмид). React SPA + Python CLI бэкенд.
 
 **Автор:** Игорь Синельников, ФИЦ Биотехнологии РАН  
-**Путь:** `C:\Users\Zoman\Desktop\RESplasmide`  
-**Версия:** v0.6.3 (Sprint M-A.3 Library minimal CRUD, 01.05.2026). Архитектура v0.6+ — в `docs/ARCHITECTURE_v2.md` v1.2 (~117 KB). Фундаментальные решения — в `ANCHORS.md` (48 ⚓). Sprint-level — в `DECISIONS.md`. Журнал по версиям — в `RELEASES.md`. Тесты: 900 (788 Vitest + 112 pytest). Предыдущая v0.5.4-alpha (~290 коммитов, 1126 тестов) — feature-complete, **wipe data при переходе на v0.6** (⚓ DEC-V2-08 «quality > speed»).
+**Путь:** `C:\Users\sinig\Desktop\RESplasmide`  
+**Версия:** v0.7.1 (Sprint M-B.3 Sequence Viewer + V50 parser coord fix + Snapgene Refresh, 03–04.05.2026). Архитектура v0.6+ — в `docs/ARCHITECTURE_v2.md` v1.2 (~117 KB). Фундаментальные решения — в `ANCHORS.md` (52 ⚓, последний DEC-PARSER-COORD-01 от 03.05.2026). Sprint-level — в `DECISIONS.md`. Журнал по версиям — в `RELEASES.md`. Тесты: ~947 Vitest + 112 pytest (последний authoritative счёт от V50 fix 03.05; B.3 cycle 04.05 не оставил test count в координационных файлах — итог уточнится при ближайшей финализации). Предыдущая v0.5.4-alpha (~290 коммитов, 1126 тестов) — feature-complete, **wipe data при переходе на v0.6** (⚓ DEC-V2-08 «quality > speed»).
 
 **Стартовая ссылка:** вся архитектура v0.6+ — в `docs/ARCHITECTURE_v2.md`. Читается перед любой M-A...M-I сессией, не в стартовом пакете (CURRENT_TASK.md явно направляет туда).
 

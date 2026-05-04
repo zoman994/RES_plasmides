@@ -183,6 +183,24 @@
   - **Окно:** Sprint M-H Library polish (после M-B/C/D/E/F/G core).
   - **Фикс.:** 01.05.2026 (по итогам финализации Sprint M-A.3).
 
+- **TD-SEQUENCEVIEW-SHIFT-SELECTION** (OPEN, M-D Container Window 04.05.2026, medium priority): Shift+arrow расширение нативного выделения в SequenceView (Range API + window.getSelection манипуляции).
+  - **Эффект:** mouse-drag selection работает через existing useRowSelectionIsolation, но клавиатурное расширение selection (стандартный текст-эдитор паттерн) не реализовано. Биолог не может precision-extend selection с клавиатуры — приходится использовать мышку или начинать сначала с правильной позиции.
+  - **Fix:** Range API (`window.getSelection().modify('extend', 'forward', 'character')`) либо custom selection model в SequenceView state (selectionStart + selectionEnd + caretAnchor + extendDirection). Custom модель проще интегрируется с existing caret + selection separation. ~50–80 LOC + 5–8 тестов на keymap edge cases.
+  - **Окно:** Sprint M-D Container Window (там SequenceView станет first-class editor + потребуется precise selection editing).
+  - **Фикс.:** 04.05.2026 (зафиксирован в Sprint M-B.3 §3 OUT и в документе сессии 04.05 «Что отложено явно»).
+
+- **TD-SEQUENCEVIEW-FOCUS-RING** (OPEN, low priority 04.05.2026): visible focus-ring на SequenceView root container при tab-фокусе.
+  - **Эффект:** SequenceView root с tabIndex={0} принимает keyboard focus, но `outline:none` подавляет visible focus indicator. Индикатор фокуса сейчас — движущаяся каретка, что работает только когда биолог уже знает что компонент сфокусирован. Tab-навигация через Importer сейчас «скрытно» переходит в SequenceView без visual cue — a11y-issue.
+  - **Fix:** добавить ring CSS через CSS-vars (не Tailwind hardcode) на focus-visible state SequenceView root. ~10 LOC + 1 visual test.
+  - **Окно:** v1.0 publication-prep либо параллельно с TD-A11Y-CATEGORY-BUTTONS как a11y-baseline mini-fix.
+  - **Фикс.:** 04.05.2026.
+
+- **TD-LINEAR-BAR-PREDICTIONS** (OPEN, M-X.1 либо M-X.2 04.05.2026, medium priority): ORF-предсказания computed в SequenceView (через runPredictors useMemo на M-X.1 K3) не пробрасываются в LinearFeatureBar.
+  - **Эффект:** биолог видит predicted ORFs unfilled+dashed contours в SequenceView нуклеотидной view, но на навигационной колбасе их не видит — нельзя быстро drag-scrubbed к predicted CDS, нельзя оценить на overview уровне сколько predicted regions на плазмиде. **Релевантно для M-X.1 acceptance §6:** если acceptance ожидает что биолог увидит predicted на колбасе — этот пункт включается в скоуп M-X.1 K4.
+  - **Fix:** propagate `predictedRegions` array из SequenceView consumer (после mergeWithPredicted) в SingleInspector → LinearFeatureBar via prop. LinearFeatureBar расширяет render на predicted-style (dashed border, italic tilde-prefixed label при hover). +behavioral test `linear-feature-bar.test.jsx::renders predicted regions with dashed style`. ~30–50 LOC + 3–4 теста.
+  - **Окно:** Sprint M-X.1 K4 (если acceptance §6 так требует) либо M-X.2 (если M-X.1 ограничивается SequenceView only).
+  - **Фикс.:** 04.05.2026 (зафиксирован в документе сессии 04.05 «Что отложено явно»).
+
 ---
 
 ## Расширение auto-annotate БД (запросы 03.05.2026 evening)

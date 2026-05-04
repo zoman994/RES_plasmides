@@ -1,67 +1,16 @@
 # Sprint M-B.2 — Importer Rework: single-screen + lazy tabs
 
-**Статус:** ✅ РЕАЛИЗОВАНО 02.05.2026 (M-B.2 K1..K6 commits `f2554fd` → `c36d7bc`, ветка `feature/racetrack-canvas`).
+**Статус:** ✅ РЕАЛИЗОВАНО 02.05.2026 (K1..K6 commits `f2554fd` → `c36d7bc` на ветке `feature/racetrack-canvas`, поверх M-B.1 baseline + 2 fix-коммита).
 
-> **Архивная копия исходной спеки v1.0 от 02.05.2026.** Реализована Code one-shot за одну сессию (881 тест, build clean). После M-B.2 acceptance baseline прошёл 3 round'а post-acceptance polish напрямую с Code (Игорь правил UI fine-tuning без Chat-spec — см. CHAT_PLAYBOOK §13 type C/D классификация) и затем v0.7.0 catalog tree rewrite (DEC-CAT-01..04). Финальная версия после всего цикла — v0.7.0, 885 тестов.
->
-> **Корневой триггер M-B.2:** M-B.1 на pre-acceptance review показал (а) UX-mismatch с v0.5 single-screen эталоном — Step1→Step2 двухэкранный flow расходился с привычным workflow биолога; (б) V49 50-сек hang на default open Step2Combined (5333 bp / 12 регионов) из-за heavy MoleculeWorkspace mount. M-B.2 закрыл оба провала одним rework'ом UI слоя поверх стабильной M-B.1 K1+K3+K6 infrastructure.
->
-> **Решённые архитектурные вопросы (sprint-level → DECISIONS.md Sprint M-B FINAL):**
-> - DEC-IMP-13 single-screen 4-column layout
-> - DEC-IMP-14 CatalogColumn 4 sources
-> - DEC-IMP-16 perFileEdits as edit channel
-> - DEC-IMP-17 SessionSummary footer accumulating
-> - DEC-IMP-18 MoleculeWorkspace keep but not imported in Importer
->
-> **⚓ Fundamental decisions (→ ANCHORS.md Sprint M-B FINAL):**
-> - DEC-IMP-15 lazy-mount heavy tab content as performance & memory invariant
->
-> **Финал v0.7.0 после polish + catalog tree rewrite (→ DECISIONS.md / ANCHORS.md Sprint M-B FINAL):**
-> - DEC-CAT-01..03 sprint-level (no drilldown / depth-tint / file-manager hover-icons)
-> - DEC-CAT-04 ⚓ folder-as-slash-path
-> - DEC-DS-02 ⚓ feature palette A+v2 + canonical-key
-> - DEC-AA-01 sprint-level (auto-annotate cleanup)
-> - DEC-MB-01 sprint-level (Library fullscreen wipe → Importer CatalogColumn)
-> - DEC-MB-02 sprint-level (origin-rotate moved from MetaColumn to SequenceTab)
->
-> **Где смотреть итоги:**
-> - `RELEASES.md` v0.6.4 sprint block (M-B.2 + 3 polish round'а) + v0.7.0 sprint block (catalog tree rewrite + folder-in-folder + auto-annotate cleanup).
-> - `BUGS.md` FIXED V49.
-> - `TECH_DEBT.md` DONE TD-V49-IMPORTER-HANG, новые TD: TD-DRAG-DROP-LIBRARY-CARDS, TD-PER-CDS-SIGNALIP, TD-MINE-TAG-GROUPING-DEPRECATED.
+**Этот файл — заглушка-redirect.** Полный архивный stub с post-implementation summary живёт в `docs/archive/SPRINT_M-B.2_IMPORTER_REWORK.md`. Где смотреть итоги:
 
----
+- `RELEASES.md` блок **v0.6.4** — M-B.2 K1..K6 + 3 round'а post-acceptance polish (Игорь напрямую с Code: catalog scroll-anchor, Library wipe + TagsEditor, palette A+v2 + canonical-key, StartScreen UX, simple-mode rip).
+- `RELEASES.md` блок **v0.7.0** — M-B finale: catalog tree rewrite (no drilldown / depth-tint / file-manager hover-icons / folder-as-slash-path) + drag-and-drop library cards + auto-annotate cleanup + AnnotationEditor critical fixes + UI mini-map polish + LinearFeatureBar greedy-pack + origin-rotate moved on SequenceTab.
+- `BUGS.md` FIXED — V49 50-сек hang (закрыт через M-B.2 K4 lazy-mount, регрессия-guard `lazy-tabs.test.jsx::default-overview-no-annotation-editor`).
+- `TECH_DEBT.md` DONE — TD-V49-IMPORTER-HANG, TD-V05-IMPORTSTARTSCREEN-DELETE; новые OPEN — TD-DRAG-DROP-LIBRARY-CARDS (M-H), TD-PER-CDS-SIGNALIP (M-D), TD-MINE-TAG-GROUPING-DEPRECATED (M-H, post-mortem default approval ошибки).
+- `DECISIONS.md` Sprint M-B FINAL block — sprint-level DEC-IMP-13..14, DEC-IMP-16..18, DEC-CAT-01..03, DEC-AA-01, DEC-MB-01..02.
+- `ANCHORS.md` Sprint M-B FINAL — 3 ⚓ (DEC-IMP-15 lazy-mount tabs, DEC-DS-02 palette A+v2 + canonical-key, DEC-CAT-04 folder-as-slash-path), counter 48 → 51.
 
-# (Исходная спека v1.0 от 02.05.2026 ниже, не правится)
+**Note про процесс.** Цикл M-B оказался ≥6 итераций (M-B.1 v1.0 → M-B.1 v1.1 prototype-driven → 2 fix-коммита → M-B.2 K1..K6 single-screen rewrite → 3 round'а direct Code polish → v0.7.0 catalog tree rewrite + drag-and-drop + AnnotationEditor critical). Рабочий вывод (зафиксирован в userMemories + кандидат правила в CHAT_PLAYBOOK.md): после того как baseline собран архитектурным спринтом — UI fine-tuning идёт direct Code editing напрямую, не Chat-spec. Chat возвращается на: новая архитектурная развилка, неочевидный bug, кросс-компонентная инвариантность. Tag-grouping default approval по §10.1 спеки (sub-grouping «Моя библиотека» по `entry.tags`) был ошибкой Chat'а — не проверил готовность tag-search infrastructure. v0.7.0 catalog tree rewrite фактически заменил tag-grouping на folder-as-slash-path без отдельной Chat-спеки. Antipattern 7 «эстетика подменяет функцию» из CHAT_PLAYBOOK §6 поймал бы это, не сработал.
 
-**Тип:** refactor (UI rewrite поверх M-B.1 infrastructure) + регрессионный bugfix
-**База:** v0.6.3, ветка `feature/racetrack-canvas`, M-B.1 финальный коммит `65aada3` (K6).
-
-§0.5 kickoff Q&A (immutable snapshot 02.05.2026), §0.6 approval defaults по §10.1-10.4, §1 контекст про M-B.1 pre-acceptance review + V49 root cause, §2 стратегия (single-screen 4-column + lazy tabs), §3 IN/OUT scope, §4 архитектурные решения DEC-IMP-13..18, §5 предположения, §6 K1..K6 задачи, §7 порядок K1→K6, §8 STOP + формат отчёта, §9 риски, §10 open questions (closed by §0.6 approval defaults).
-
-[Полный текст спеки v1.0 (53 KB) не дублируется в архивной копии для экономии места — лежит в git history до момента архивации. Все архитектурные решения зафиксированы в `DECISIONS.md` Sprint M-B FINAL block + `ANCHORS.md` Sprint M-B FINAL block. Если нужна точная формулировка scope IN/OUT или K-шага — ищи в git log по дате 2026-05-02.]
-
-**Post-mortem (≥2 итераций цикл).**
-
-Цикл M-B имел **6+ итераций** between Chat и Code:
-1. M-B.1 spec v1.0 (Chat) → Code one-shot K1..K6.
-2. Pre-acceptance review (Chat) — обнаружил UX-mismatch + V49 hang → переход в M-B.2.
-3. M-B.2 spec v1.0 (Chat, 53 KB) → Code one-shot K1..K6.
-4. Post-acceptance polish round 1 «Critical» (Code+Игорь напрямую): AppShell layout fix, addCatalogItem props, EmptyInspector context-aware.
-5. Post-acceptance polish round 2 «Visual + simple-mode rip» (Code+Игорь напрямую): simple/advanced toggle убран, uppercase labels recolor, AnnotationsTab feature-bar v0.5-style.
-6. Post-acceptance polish round 3 «Palette A+v2» (Code+Игорь напрямую): feature palette переписана, shade-by-canonical-key, DESIGN_SYSTEM §2.1.
-7. v0.7.0 catalog tree rewrite (Code+Игорь напрямую): drilldown → fully inline, depth-tint, folder-as-slash-path, file-manager hover-icons.
-8. v0.7.0 auto-annotate cleanup (Code+Игорь напрямую): linker / promoter / terminator sub-features удалены.
-9. v0.7.0 catalog perf (Code+Игорь напрямую): React.memo + ItemRow comparator + inline vbox sync.
-10. v0.7.0 drag-drop + read-only protections (Code+Игорь напрямую).
-
-**Root causes не выловленные в спеках:**
-- M-B.1 спеку v1.0 Chat писал без чтения v0.5 ImportStartScreen кода — пропустил single-screen эталон. **Болевой урок:** перед спекой на любой компонент с v0.5 аналогом — `Filesystem:read_text_file` на v0.5 код ИЛИ скриншот, без исключений (зафиксировано в userMemories 02.05.2026).
-- M-B.2 спека v1.0 (53 KB) переразмерна по сравнению с план-целью §13 CHAT_PLAYBOOK type A (20-30 KB). Принято в «красном режиме» при approval Игоря. После v0.7.0 — стало ясно что для UI fine-tuning после baseline собран Chat-spec process не оправдан: rounds 1-3 + v0.7.0 polish сделаны Игорем напрямую с Code за минуты, аналог Chat-spec → Code-implement цикла занял бы часы.
-- DEC-IMP-14 default approval по §10.1 (sub-grouping «Моя библиотека» по `entry.tags`) был ошибкой Chat'а — не проверил что tag-search infrastructure готова. Биолог явно сказал «таги вообще лишнее, пока поиск по тегам не реализован». v0.7.0 catalog tree rewrite фактически исправил выбор без Chat-spec — antipattern 7 (эстетика подменяет функцию) из CHAT_PLAYBOOK §6.
-
-**Вывод:**
-- Для архитектурных слоёв (state hook refactor, lazy-mount strategy, multi-source CatalogColumn) Chat-spec оправдан и работает.
-- Для UI fine-tuning после baseline собран — direct Code editing default. Chat подключается обратно когда: (а) появилась новая архитектурная развилка; (б) баг с неочевидной причиной; (в) кросс-компонентная инвариантность ломается. Простое «подкрути цвет / добавь поле / переставь блок» — Code напрямую.
-- Третий sanity-вопрос §2 CHAT_PLAYBOOK (решит ли это проблему / сделает хуже) должен ловить case'ы как DEC-IMP-14 default tag-grouping. Не поймал — не проверил готовность инфраструктуры. Пополнить опыт.
-
-_Архивный stub создан 02.05.2026 при v0.7.0 финализации._
+**Этот стаб может быть удалён вручную** (Filesystem MCP не имеет delete-операции). При следующей ротации: `Remove-Item docs\SPRINT_M-B.2_IMPORTER_REWORK.md`.

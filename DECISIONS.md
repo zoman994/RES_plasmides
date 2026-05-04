@@ -12,6 +12,26 @@
 
 ---
 
+## Sprint v0.7.1 — V50 PRE-K1 + Parser-Unification + SnapGene Refresh + M-B.3 Sequence Viewer + interaction extensions (03–04.05.2026)
+
+Финализация четырёх под-спринтов одной release-волной v0.7.1. ⚓ fundamentals в `ANCHORS.md` (DEC-PARSER-COORD-01 уже там от 03.05.2026; DEC-PARSER-UNIFY-01..03 — кандидаты, сейчас только в commit message Parser-Unification, перенос отложен до следующей milestone-сессии). Ниже — sprint-level outputs.
+
+### M-B.3 SequenceView interaction extensions (sprint-level, DEC-SV-01..04)
+
+**[2026-05-04] DEC-SV-01 — Caret synchronization across LinearFeatureBar и SequenceView через single state.** Один `cursorPos` в SingleInspector управляет LinearFeatureBar cursor + SequenceView caret одновременно. Каждая SequenceLine самостоятельно проверяет попадает ли caretPos в её диапазон и рисует 1.5 px оранжевую вертикальную полоску на левом крае колонки нуклеотида во всю высоту строки; линии вне диапазона полностью пропускают рендер (no perf cost). Клавиатурная навигация: ←/→ ±1 nt, ↑/↓ ±charsPerLine, Home/End границы строки, PageUp/PageDown ±10 строк; clamps в [0, seqLength-1], push в onCaretChange → mirrors в cursorPos + emits `{instant:true}` pendingScroll (smooth не успевает за зажатой стрелкой). **Применимость:** все surfaces где есть navigation overview + detail view (Container Window M-D map↔sequence, Mix Workspace M-E component overview↔detail). **Кандидат на ⚓** если паттерн повторится в M-D без модификаций.
+
+**[2026-05-04] DEC-SV-02 — `scrollIntoView({block:'center'})` вместо `containerRef.scrollTop = offset` когда контейнер в foreign overflow.** SequenceView containerRef в M-B.3 не overflow-ит сам по себе — overflow живёт у родительского `importer-single-tab-content`. Прямая запись `root.scrollTop = offset` игнорировалась — биолог видел курсор на колбасе но viewer не двигался. **Fix:** `target.scrollIntoView({block:'center', behavior})` — находит ближайшего скроллируемого предка автоматически. **Применимость:** все nested fullscreen layouts где компонент не управляет своим viewport'ом (Container Window M-D, Mix Workspace M-E с inline plasmid views). **Кандидат на ⚓** — universal pattern, ловушка будет повторяться в любом нестед fullscreen.
+
+**[2026-05-04] DEC-SV-03 — Drag-scrubber на LinearFeatureBar как interaction pattern.** PointerDown стартует drag, pointermove живо двигает курсор + scroll'ит viewer instant'ом, pointerup финализирует smooth-scroll'ом. `setPointerCapture` держит drag живым когда указатель ушёл за SVG. `touchAction:'none'` запрещает браузеру забирать жест на native scroll/zoom. `scrollToPosition` принимает `{ behavior }` opts через всю цепочку (drag-scrub → 'auto' instant, settle → 'smooth'). SingleInspector разделил callbacks: `onBarSettle` (smooth, может переключить таб) vs `onBarScrub` (instant, не переключает таб посреди drag'а). **Применимость:** Racetrack timeline в M-E, DAG-overview scrubber в M-I, любые navigation bar'ы в проекте.
+
+**[2026-05-04] DEC-SV-04 — Selection context menu с tri-modal copy.** ContextMenu на selection с тремя опциями: «Копировать (прямая цепь) Ctrl+C» / «Копировать обратную цепь Ctrl+Alt+C» / «Копировать аминокислоты Ctrl+Shift+C». Selection highlight (бледно-розовый с прозрачным fill) корректно работает над forward+reverse strands в reverse-strand context (numbers count down 249→200, AA-track перевёрнут, CDS region перевёрнут). selection.start/end остаются в forward sequence coords — visual orientation separate. Selection и caret coexist как separate states (можно иметь selection и двигать caret стрелками). Tri-modal copy — каркас под будущие selection-actions: «Создать праймер из выделения», «Аннотировать как...», «Перевести в AA с frame...», «Найти ферменты в выделении». **Применимость:** все sequence views в M-D Container Window + M-E Mix Workspace component sequence preview.
+
+### Origin location reverse (sprint-level, DEC-MB-03 supersedes DEC-MB-02)
+
+**[2026-05-04] DEC-MB-03 — Origin-rotate возвращён в MetaColumn (supersedes DEC-MB-02 от 02.05.2026).** В Sprint M-B FINAL (DEC-MB-02) origin-offset input + apply + intergenic-hints были перенесены из MetaColumn в SequenceTab toolbar (логика: «выбор точки начала доступен только на сиквенс вью где видны номера»). После rewrite SequenceView в M-B.3 SequenceTab стал чисто viewer-only — origin контролы семантически в правом sidebar'е возле топологии и intergenic information. Биолог в сессии 04.05: «Origin/межгенные участки/применить переехали в MetaColumn под Topology. SequenceTab теперь чисто viewer-only». MetaColumn получил обратно: Origin Card, originOffset state, useEffect reset, onApplyOrigin handler, computeIntergenicHints импорт. SequenceTab потерял те же. Control рендерится при `topology === 'circular'`. Тесты: `meta-column.test.jsx::origin block for circular`, `sequence-tab-origin.test.jsx::regression guard "in-tab панель не должна вернуться"`.
+
+---
+
 ## Sprint M-B FINAL — Importer rework + post-acceptance polish + Catalog tree rewrite (02.05.2026, v0.7.0)
 
 Финализация в одной сессии после Code one-shot M-B.1 + M-B.2 + 3 round'а post-acceptance polish (Игорь напрямую с Code) + v0.7.0 catalog tree rewrite. ⚓ fundamentals (DEC-IMP-15 lazy-mount tabs, DEC-DS-02 palette A+v2 + canonical-key, DEC-CAT-04 folder-as-slash-path) — в `ANCHORS.md`. Ниже — sprint-level outputs цикла.
