@@ -793,14 +793,13 @@ const SequenceView = forwardRef(function SequenceView({
   const onRootPointerDown = (e) => {
     if (e.button != null && e.button !== 0) return; // primary button only
     // AA cell under the pointer? Select the underlying triplet
-    // (biolog 04.05.2026 evening: «при нажатии на АК должен
-    // выделятся триплет»). data-aa-pos is the codon's MIDDLE base
-    // position; the codon spans [mid-1 .. mid+2) on the top strand
-    // (3 nucleotides) regardless of strand orientation. We look
-    // for `data-aa-pos` on ANY ancestor (not just the AA letter
-    // span itself) so clicks on the side cells either side of the
-    // letter still pick up the codon — biolog: «и пробелы с боков
-    // от буквы давали тот же эффект выделения триплета».
+    // and start an AA-drag (biolog 04.05.2026 evening: «при нажатии
+    // на АК должен выделятся триплет … так же если тянешь курсор
+    // по АА то выделилось бы последовательность, но выделялась
+    // триплетами»). The drag extends triplet-by-triplet as the
+    // pointer hovers over more AA cells; selection is always
+    // codon-aligned and stays in mode 'aa' so Copy AA stays
+    // available all the way through the drag.
     if (typeof onSelectRange === "function") {
       let aaEl = e.target;
       while (aaEl && aaEl !== containerRef.current) {
@@ -811,11 +810,22 @@ const SequenceView = forwardRef(function SequenceView({
         const aaMid = parseInt(aaEl.dataset.aaPos, 10);
         if (Number.isFinite(aaMid)) {
           e.preventDefault();
+          const aaStrand = parseInt(aaEl.dataset.aaStrand || "", 10) === -1 ? -1 : 1;
           const start = Math.max(0, aaMid - 1);
           const end = Math.min(seqLength, aaMid + 2);
-          onSelectRange(start, end);
+          onSelectRange(start, end, "aa", aaStrand);
+          // Mark drag as AA-mode so pointermove extends triplet-by-
+          // triplet instead of nt-by-nt.
+          dragRef.current = {
+            active: true,
+            pointerId: e.pointerId,
+            mode: "aa",
+            anchorMid: aaMid,
+            strand: aaStrand,
+          };
+          pointerMovedRef.current = false;
+          try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* ignore */ }
           try { containerRef.current?.focus({ preventScroll: true }); } catch { /* noop */ }
-          pointerMovedRef.current = true;
           return;
         }
       }
@@ -937,6 +947,35 @@ const SequenceView = forwardRef(function SequenceView({
     if (dragRef.current.pointerId != null && e.pointerId !== dragRef.current.pointerId) return;
     lastPointerCoordsRef.current = { clientX: e.clientX, clientY: e.clientY, target: e.target };
     updateAutoScroll(e.clientY);
+
+    // AA-drag mode (biolog 04.05.2026 evening: «если тянешь курсор
+    // по АА то выделилось бы последовательность но выделялась
+    // триплетами»). Walk up from the current pointer target looking
+    // for an AA cell (data-aa-pos). If found, snap selection to the
+    // codon-aligned range from anchor codon to current codon.
+    if (dragRef.current.mode === "aa" && typeof onSelectRange === "function") {
+      let aaEl = e.target;
+      while (aaEl && aaEl !== containerRef.current) {
+        if (aaEl.dataset && aaEl.dataset.aaPos != null) break;
+        aaEl = aaEl.parentElement;
+      }
+      if (aaEl && aaEl !== containerRef.current && aaEl.dataset && aaEl.dataset.aaPos != null) {
+        const curMid = parseInt(aaEl.dataset.aaPos, 10);
+        if (Number.isFinite(curMid)) {
+          const a = dragRef.current.anchorMid;
+          const lo = Math.min(a, curMid) - 1;
+          const hi = Math.max(a, curMid) + 2;
+          const start = Math.max(0, lo);
+          const end = Math.min(seqLength, hi);
+          pointerMovedRef.current = true;
+          onSelectRange(start, end, "aa", dragRef.current.strand || 1);
+        }
+      }
+      // If pointer is OFF an AA cell, just don't extend — keep the
+      // last AA-aligned selection. Don't fall through to nt-mode.
+      return;
+    }
+
     const pos = posFromPointerEvent(e);
     if (pos == null) return;
     pointerMovedRef.current = true;

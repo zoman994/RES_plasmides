@@ -390,14 +390,14 @@ function AATrack({
             const cover = findCovering(ci);
             if (!cover || cover.role !== "mid") {
               return (
-                <span key={ci} style={{ display: "inline-block", width: "1ch" }}>{" "}</span>
+                <span key={ci} style={{ display: "inline-block", width: "1ch", verticalAlign: "top" }}>{" "}</span>
               );
             }
             const absMid = lineStart + ci;
             const aaIdx = aaNumberFor(cover.codon, absMid);
             if (aaIdx == null) {
               return (
-                <span key={ci} style={{ display: "inline-block", width: "1ch" }}>{" "}</span>
+                <span key={ci} style={{ display: "inline-block", width: "1ch", verticalAlign: "top" }}>{" "}</span>
               );
             }
             return (
@@ -406,10 +406,23 @@ function AATrack({
                 data-testid="sequence-view-aa-number"
                 data-aa-number={aaIdx}
                 style={{
+                  // Outer cell at parent fontSize so 1 ch matches
+                  // the AA row column grid. textAlign: center
+                  // distributes overflow symmetrically (the inner
+                  // glyphs at fontSize 7 spill equally left and
+                  // right of the codon middle). overflow: visible
+                  // allows the spill horizontally; verticalAlign:
+                  // top keeps the cell aligned to the top of the
+                  // line box so the inner text doesn't drift down
+                  // into the AA letters below (biolog 04.05.2026
+                  // evening: «опять наехало на АА сиквенс» — was
+                  // happening because absolute-positioned inner
+                  // span collapsed the cell to zero height).
                   display: "inline-block",
                   width: "1ch",
                   textAlign: "center",
                   overflow: "visible",
+                  verticalAlign: "top",
                   whiteSpace: "nowrap",
                 }}
               >
@@ -578,6 +591,7 @@ function AATrack({
                     key={ci}
                     data-testid="sequence-view-aa-side"
                     data-aa-pos={sideMidAbs}
+                    data-aa-strand={c.strand || 1}
                     data-aa-region-fill={c.regionId || ""}
                     style={{ ...cellStyle, userSelect: "none", WebkitUserSelect: "none" }}
                   >
