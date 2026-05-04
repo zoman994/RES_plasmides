@@ -1,6 +1,10 @@
 import { useCallback } from 'react';
 import AnnotationEditor from '../../../AnnotationEditor';
-import LinearFeatureBar from './LinearFeatureBar';
+// Bug-rush #13 (04.05.2026 evening): LinearFeatureBar import dropped.
+// SingleInspector already renders it once at the top of the panel
+// (above the TabBar) so it's visible regardless of active tab.
+// AnnotationsTab used to render its own copy too — biolog: «дублируется
+// колбаса в разделе Аннотация».
 import { STRINGS } from '../../../../lib/strings';
 
 const S = STRINGS.importer;
@@ -95,14 +99,11 @@ export default function AnnotationsTab({
         )}
       </div>
       {/*
-        Linear feature strip on top — replaces AnnotationEditor's built-in
-        bar (which has no leader-labels for small features). LinearFeatureBar
-        adds callout-labels for ATG / 3xFLAG / SV40 NLS / RBS / small
-        promoters and similar features that get drowned in the colour rect
-        but stay important to read at a glance.
+        Bug-rush #13: LinearFeatureBar moved out — SingleInspector now
+        owns the single «колбаса» above the TabBar, visible across all
+        tabs. Pre-fix this duplicated the bar inside the Annotations
+        panel.
       */}
-      <LinearFeatureBar annotations={annotations} seqLength={seqLength} />
-
       <div
         data-testid="importer-annotation-editor-wrap"
         className="importer-annotation-editor-wrap"
