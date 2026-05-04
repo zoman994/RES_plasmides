@@ -482,3 +482,134 @@ describe("AnnotationTrack — SBOL glyph badge", () => {
     expect((g.getAttribute('transform') || '')).toMatch(/scale\(-1\s*,?\s*1\)/);
   });
 });
+
+// Sprint M-X.3 follow-up — sub-features rendered INSET inside parent
+// (Variant A). Biolog «нужно так чтобы однозначно было видно что
+// это сплит фича... давай А реализуем». Children share the parent's
+// row, render at smaller height so the parent's colour shows around
+// them. They do NOT participate in the stacker's row-packing pass.
+describe("AnnotationTrack — sub-feature inset rendering (Variant A)", () => {
+  const PARENT = {
+    id: "p1", start: 0, end: 200, name: "lacZα", type: "CDS",
+    color: "#7CB342", level: "region", strand: 1,
+  };
+  const SUB_LEFT = {
+    id: "sub-l", start: 0, end: 80, name: "sig", type: "signal_peptide",
+    color: "#9B59B6", level: "detail", parentId: "p1", strand: 1,
+  };
+  const SUB_RIGHT = {
+    id: "sub-r", start: 80, end: 200, name: "mature", type: "misc_feature",
+    color: "#E67E22", level: "detail", parentId: "p1", strand: 1,
+  };
+
+  it("a parent with two children renders 1 stacked row + 2 child overlay rects", () => {
+    const { container } = render(
+      <AnnotationTrack
+        regions={[PARENT, SUB_LEFT, SUB_RIGHT]}
+        lineStart={0}
+        lineLen={250}
+        charPx={7.2}
+        labelChars={8}
+      />,
+    );
+    const root = container.querySelector('[data-testid="sequence-view-annotations"]');
+    // Stacker only packs the parent → single row.
+    expect(root.dataset.rowCount).toBe("1");
+    // Two detail rects were rendered as overlays.
+    const subRects = container.querySelectorAll('[data-testid="annotation-subfeature-rect"]');
+    expect(subRects.length).toBe(2);
+  });
+
+  it("sub-feature rect height < parent rect height (visible inset)", () => {
+    const { container } = render(
+      <AnnotationTrack
+        regions={[PARENT, SUB_LEFT]}
+        lineStart={0}
+        lineLen={250}
+        charPx={7.2}
+        labelChars={8}
+      />,
+    );
+    const parentRect = container.querySelector('rect[data-region-id="p1"]');
+    const subRect = container.querySelector('[data-testid="annotation-subfeature-rect"]');
+    expect(parentRect).toBeTruthy();
+    expect(subRect).toBeTruthy();
+    expect(Number(subRect.getAttribute('height'))).toBeLessThan(Number(parentRect.getAttribute('height')));
+  });
+
+  it("sub-feature rect y > 0 — top inset off the parent's top edge", () => {
+    const { container } = render(
+      <AnnotationTrack
+        regions={[PARENT, SUB_LEFT]}
+        lineStart={0}
+        lineLen={250}
+        charPx={7.2}
+        labelChars={8}
+      />,
+    );
+    const subRect = container.querySelector('[data-testid="annotation-subfeature-rect"]');
+    expect(Number(subRect.getAttribute('y'))).toBeGreaterThan(0);
+  });
+
+  it("sub-feature uses its OWN palette colour (not the parent's)", () => {
+    const { container } = render(
+      <AnnotationTrack
+        regions={[PARENT, SUB_LEFT]}
+        lineStart={0}
+        lineLen={250}
+        charPx={7.2}
+        labelChars={8}
+      />,
+    );
+    const subRect = container.querySelector('[data-testid="annotation-subfeature-rect"]');
+    // The sub uses featureColorShaded(type, name) → not equal to the
+    // parent's CDS green palette colour. We just need them to differ.
+    const parentRect = container.querySelector('rect[data-region-id="p1"]');
+    expect(subRect.getAttribute('fill')).not.toBe(parentRect.getAttribute('fill'));
+  });
+
+  it("sub-feature carries data-region-level=\"detail\" + data-parent-id for inspection", () => {
+    const { container } = render(
+      <AnnotationTrack
+        regions={[PARENT, SUB_LEFT]}
+        lineStart={0}
+        lineLen={250}
+        charPx={7.2}
+        labelChars={8}
+      />,
+    );
+    const subRect = container.querySelector('[data-testid="annotation-subfeature-rect"]');
+    expect(subRect.getAttribute('data-region-level')).toBe('detail');
+    expect(subRect.getAttribute('data-parent-id')).toBe('p1');
+  });
+
+  it("orphan detail (no matching parent on this line) is skipped (no rect)", () => {
+    const orphan = {
+      id: "orph", start: 0, end: 50, name: "x", type: "misc_feature",
+      color: "#888", level: "detail", parentId: "nonexistent", strand: 1,
+    };
+    const { container } = render(
+      <AnnotationTrack
+        regions={[orphan]}
+        lineStart={0}
+        lineLen={250}
+        charPx={7.2}
+        labelChars={8}
+      />,
+    );
+    expect(container.querySelectorAll('[data-testid="annotation-subfeature-rect"]').length).toBe(0);
+  });
+
+  it("a parent without children renders normally (no overlay rects)", () => {
+    const { container } = render(
+      <AnnotationTrack
+        regions={[PARENT]}
+        lineStart={0}
+        lineLen={250}
+        charPx={7.2}
+        labelChars={8}
+      />,
+    );
+    expect(container.querySelectorAll('[data-testid="annotation-subfeature-rect"]').length).toBe(0);
+  });
+});

@@ -149,7 +149,24 @@ function AnnotationTrack({
   if (!regions || regions.length === 0 || lineLen === 0 || charPx <= 0) return null;
 
   const lineEnd = lineStart + lineLen;
-  const stack = stackAnnotations(regions, lineStart, lineEnd);
+  // Sprint M-X.3 follow-up — Variant A. Sub-features (level: 'detail')
+  // do NOT participate in the stacker — they overlay their parent's
+  // row at smaller height so biolog reads them as «inside this
+  // feature». Filter them out of the stacker input and group them
+  // by parentId so each parent rect can later render its kids on
+  // top with INSET coords.
+  const parentRegions = [];
+  const detailsByParent = new Map();
+  for (const r of regions) {
+    if (r.level === 'detail' && r.parentId) {
+      const list = detailsByParent.get(r.parentId) || [];
+      list.push(r);
+      detailsByParent.set(r.parentId, list);
+    } else {
+      parentRegions.push(r);
+    }
+  }
+  const stack = stackAnnotations(parentRegions, lineStart, lineEnd);
   if (stack.rows.length === 0 && stack.overflowCount === 0) return null;
 
   // Reserve constant vertical space at the bottom of every annotation
@@ -415,6 +432,72 @@ function AnnotationTrack({
                   }}
                 />
               ) : null}
+              {/* Sprint M-X.3 follow-up — Variant A sub-feature
+                  overlays. Biolog «нужно так чтобы однозначно было
+                  видно что это сплит фича... давай А реализуем».
+                  Children with `parentId === region.id` render as
+                  inset rects ON TOP of the parent rect (sharing its
+                  row), at smaller height so the parent's colour
+                  shows around them. Labels render after, so the
+                  parent name still reads through.
+
+                  Each child uses its OWN palette colour (so biolog
+                  can mark exon/intron/signal_peptide visually
+                  distinct from the parent CDS). Inset 3 px top +
+                  bottom keeps a 1.5 px frame of parent colour at
+                  every edge. */}
+              {(() => {
+                const kids = detailsByParent.get(region.id) || [];
+                if (kids.length === 0) return null;
+                const SUB_INSET = 3;
+                const subY = SUB_INSET;
+                const subH = ROW_HEIGHT - 2 * SUB_INSET;
+                // Parent <g> is translated so local x=0 maps to the
+                // parent's visible-on-line LEFT edge, i.e. coord
+                // `max(region.start, lineStart)`. Kid local coords
+                // must use the same origin or the inset rect lands
+                // off-by-the-clipped-prefix on wrapped lines.
+                const parentVisStart = Math.max(region.start, lineStart);
+                return kids.map((kid) => {
+                  const kidVisStart = Math.max(kid.start, lineStart);
+                  const kidVisEnd = Math.min(kid.end, lineEnd);
+                  const kidVisLen = Math.max(0, kidVisEnd - kidVisStart);
+                  if (kidVisLen === 0) return null;
+                  const kidX = (kidVisStart - parentVisStart) * charPx;
+                  const kidW = kidVisLen * charPx;
+                  const kidColor = ensureColor(kid.color);
+                  return (
+                    <rect
+                      key={`sub-${kid.id}`}
+                      data-testid="annotation-subfeature-rect"
+                      data-region-id={kid.id || ''}
+                      data-region-level="detail"
+                      data-parent-id={kid.parentId || ''}
+                      data-region-name={kid.name || ''}
+                      x={kidX}
+                      y={subY}
+                      width={kidW}
+                      height={subH}
+                      rx={1.5}
+                      fill={kidColor}
+                      fillOpacity={0.85}
+                      stroke="var(--text-secondary, #3A2F1F)"
+                      strokeWidth={0.5}
+                      onClick={(e) => {
+                        if (typeof onAnnotationClick !== 'function') return;
+                        e.stopPropagation();
+                        onAnnotationClick(kid);
+                      }}
+                      onDoubleClick={(e) => {
+                        if (typeof onAnnotationFeatureDoubleClick !== 'function') return;
+                        e.stopPropagation();
+                        e.preventDefault();
+                        onAnnotationFeatureDoubleClick(kid);
+                      }}
+                    />
+                  );
+                });
+              })()}
               {/* Sprint M-X.3 follow-up — SBOL glyph + label as one
                   centred unit. Biolog «глифы давай у названия, как
                   будто бы так будет лучше» — pre-fix the glyph was
