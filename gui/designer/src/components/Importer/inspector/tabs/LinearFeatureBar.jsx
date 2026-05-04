@@ -38,6 +38,52 @@ import { isPredicted } from '../../../../annotation-model';
 
 const BAR_H = 22;
 const IN_LABEL_THRESHOLD_PCT = 6.5;
+// Sprint M-X.3 follow-up — when several features overlap, only the
+// «main» (widest) one keeps its label. Smaller features whose
+// exposed strip (= portion not covered by any wider sibling) is
+// narrower than this threshold drop the label so the bar reads
+// cleanly. Threshold matches the label's actual character footprint
+// (~7 px per glyph + 8 px breathing room).
+const LABEL_EXPOSED_MIN_PX = 24;
+
+/**
+ * For each item in `items`, find its longest CONTIGUOUS exposed
+ * sub-segment — pixels where this item is the WIDEST overlapping
+ * one. Larger siblings carve out their range; same-width siblings
+ * never carve (so two adjacent CDSs of equal width both keep their
+ * labels). Returns `[start, end]` for the widest exposed segment
+ * (or null when the item is fully covered by a wider one).
+ *
+ * O(N²) on number of features; the bar typically caps at ~50–200
+ * features so this is fine — the heavy lifting in the bar is the
+ * SVG renderer, not the geometry math.
+ */
+function widestExposedSegment(item, items) {
+  let segments = [[item.left, item.left + item.width]];
+  for (const other of items) {
+    if (other === item) continue;
+    if (other.width <= item.width) continue; // same or narrower → never carves
+    const oStart = other.left;
+    const oEnd = other.left + other.width;
+    const next = [];
+    for (const [s, e] of segments) {
+      if (oEnd <= s || oStart >= e) {
+        next.push([s, e]);
+      } else {
+        if (oStart > s) next.push([s, oStart]);
+        if (oEnd < e) next.push([oEnd, e]);
+      }
+    }
+    segments = next;
+    if (segments.length === 0) return null;
+  }
+  if (segments.length === 0) return null;
+  let best = segments[0];
+  for (const seg of segments) {
+    if (seg[1] - seg[0] > best[1] - best[0]) best = seg;
+  }
+  return best;
+}
 // Leader-label constants removed (compact mode 04.05.2026): LEADER_LEN /
 // LABEL_H / LABEL_GAP_PX / DENSITY_WINDOW_PX / ANGLED_SHIFT_PX /
 // ANGLED_THRESHOLD. Bar no longer renders outside leader labels.
@@ -159,7 +205,7 @@ export default function LinearFeatureBar({
   const items = useMemo(() => {
     if (!annotations.length || !seqLength) return [];
     const visible = annotations.filter((a) => a.level !== 'point');
-    return visible.map((a, i) => {
+    const base = visible.map((a, i) => {
       const startFrac = (a.start || 0) / seqLength;
       const widthFrac = Math.max(0, ((a.end || 0) - (a.start || 0))) / seqLength;
       const left = startFrac * width;
@@ -177,10 +223,33 @@ export default function LinearFeatureBar({
         idx: i, ann: a,
         left, width: w, widthPct,
         color, predicted,
-        labelInside: widthPct >= IN_LABEL_THRESHOLD_PCT,
         opacity: predicted
           ? (a.level === 'region' ? 0.78 : 0.62) // softer for ghosts
           : (a.level === 'region' ? 0.92 : 0.7),
+      };
+    });
+    // Sprint M-X.3 follow-up — biolog «когда много фичей
+    // накладываются друг на друга получается каша. Можно выводить
+    // только название основной фичи поверх?». Compute each item's
+    // widest exposed segment (= where this item is the «main» / widest
+    // covering one). Label renders ONLY if:
+    //   1. The feature itself is wide enough overall (legacy
+    //      6.5 % gate so 1-bp markers still don't try labels).
+    //   2. The exposed segment is wide enough to fit a few glyphs
+    //      (LABEL_EXPOSED_MIN_PX).
+    // The label x-position uses the exposed segment's centre, not
+    // the rect's centre, so a half-eclipsed feature labels its
+    // visible half rather than centring under a wider sibling.
+    return base.map((it) => {
+      const exposed = widestExposedSegment(it, base);
+      const exposedW = exposed ? exposed[1] - exposed[0] : 0;
+      const labelInside = it.widthPct >= IN_LABEL_THRESHOLD_PCT
+        && exposedW >= LABEL_EXPOSED_MIN_PX;
+      return {
+        ...it,
+        labelInside,
+        labelX: exposed ? (exposed[0] + exposed[1]) / 2 : (it.left + it.width / 2),
+        labelMaxChars: exposed ? Math.floor(exposedW / 7) : Math.floor(it.width / 7),
       };
     });
   }, [annotations, seqLength, width]);
@@ -215,9 +284,13 @@ export default function LinearFeatureBar({
         rx={2}
         ry={2}
       />
-      {it.labelInside && it.width > 24 && (
+      {it.labelInside && (
         <text
-          x={it.left + it.width / 2}
+          // Centre on the EXPOSED strip, not the rect centre — when
+          // a wider sibling carves part of the feature, the label
+          // sits on the visible half (or skips entirely if no strip
+          // is wide enough — `it.labelInside` already checked that).
+          x={it.labelX}
           y={BAR_H / 2 + 3}
           textAnchor="middle"
           fontSize={10}
@@ -229,7 +302,7 @@ export default function LinearFeatureBar({
           // fill which is now empty.
           fill={it.predicted ? 'var(--text-primary, #111)' : getTextColor(it.color)}
           style={{ pointerEvents: 'none', userSelect: 'none' }}
-        >{truncate(`${it.predicted ? '~' : ''}${it.ann.name || it.ann.type}`, Math.floor(it.width / 7))}</text>
+        >{truncate(`${it.predicted ? '~' : ''}${it.ann.name || it.ann.type}`, it.labelMaxChars)}</text>
       )}
     </g>
   )), [items]);
