@@ -255,9 +255,13 @@ describe('M-X.3 K1 — pendingImport for paste flow', () => {
   });
 });
 
-// ─── Sprint M-X.3 K2 — pendingImport for file/catalog flows ──────────
-describe('M-X.3 K2 — pendingImport for catalog flow', () => {
-  it('addCatalogItem opens the modal instead of writing parsedItems directly', () => {
+// ─── Sprint M-X.3 K2 — pendingImport for file flow ───────────────────
+// (catalog flow intentionally bypasses the modal — biolog «при
+// открытии плазмид из каталога не надо давать модалку с названием»;
+// catalog items are already named, topology'd and annotated, no
+// metadata to capture.)
+describe('M-X.3 K2 — addCatalogItem skips PreImportModal (revert from K2 routing)', () => {
+  it('addCatalogItem writes directly to parsedItems (no modal envelope)', () => {
     const { result } = renderHook(() => useImporterState({ mode: 'advanced' }));
     act(() => result.current.addCatalogItem({
       id: 'cat-1', name: 'pUC19', sequence: 'ATGC'.repeat(50),
@@ -268,18 +272,14 @@ describe('M-X.3 K2 — pendingImport for catalog flow', () => {
       ],
       _source: 'mine',
     }));
-    expect(result.current.parsedItems).toEqual([]);
-    const env = result.current.pendingImport;
-    expect(env).toBeTruthy();
-    expect(env.kind).toBe('catalog');
-    expect(env.parsedItem.name).toBe('pUC19');
-    expect(env.parsedItem.topology).toBe('circular');
-    expect(env.hasAnnotations).toBe(true);
-    expect(env.suggestedName).toBe('pUC19');
-    expect(env.defaultTopology).toBe('circular');
-    // For 'mine' library items, we pre-fill suggestedTags from entry.tags.
-    // K2 makes that explicit so PreImportModal can default the chip list.
-    expect(env.parsedItem._libraryEntryId).toBe('cat-1');
+    expect(result.current.pendingImport).toBeNull();
+    expect(result.current.parsedItems).toHaveLength(1);
+    const it = result.current.parsedItems[0];
+    expect(it.name).toBe('pUC19');
+    expect(it.topology).toBe('circular');
+    expect(it.annotations).toHaveLength(2);
+    expect(it._source).toBe('catalog');
+    expect(it._libraryEntryId).toBe('cat-1');
   });
 
   it('addCatalogItem with no sequence is a no-op', () => {
@@ -289,7 +289,7 @@ describe('M-X.3 K2 — pendingImport for catalog flow', () => {
     expect(result.current.parsedItems).toEqual([]);
   });
 
-  it('catalog commit with keepExistingAnnotations=true preserves annotations', () => {
+  it('addCatalogItem from snapgene preserves annotations as-is', () => {
     const { result } = renderHook(() => useImporterState({ mode: 'advanced' }));
     const annotations = [
       { id: 'a1', name: 'AmpR', type: 'CDS', start: 10, end: 100, level: 'region' },
@@ -298,29 +298,9 @@ describe('M-X.3 K2 — pendingImport for catalog flow', () => {
       id: 'c1', name: 'pX', sequence: 'ATGC'.repeat(50),
       length: 200, topology: 'circular', annotations, _source: 'snapgene',
     }));
-    act(() => result.current.commitPendingImport({
-      name: 'pX', topology: 'circular', tags: [],
-      annotateNow: false, keepExistingAnnotations: true,
-    }));
     expect(result.current.parsedItems[0].annotations).toEqual(annotations);
-  });
-
-  it('catalog commit with keepExistingAnnotations=false drops annotations', () => {
-    const { result } = renderHook(() => useImporterState({ mode: 'advanced' }));
-    act(() => result.current.addCatalogItem({
-      id: 'c1', name: 'pX', sequence: 'ATGC'.repeat(50),
-      length: 200, topology: 'circular',
-      annotations: [
-        { id: 'a1', name: 'AmpR', type: 'CDS', start: 10, end: 100, level: 'region' },
-      ],
-      _source: 'snapgene',
-    }));
-    act(() => result.current.commitPendingImport({
-      name: 'pX', topology: 'circular', tags: [],
-      annotateNow: true, keepExistingAnnotations: false,
-    }));
-    expect(result.current.parsedItems[0].annotations).toEqual([]);
-    expect(result.current.parsedItems[0]._fromFileCount).toBe(0);
+    expect(result.current.parsedItems[0]._fromFileCount).toBe(1);
+    expect(result.current.perFileFlags[result.current.parsedItems[0]._fileName]?.autoAnnotate).toBe(true);
   });
 });
 

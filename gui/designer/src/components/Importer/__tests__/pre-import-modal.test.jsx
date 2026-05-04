@@ -195,16 +195,37 @@ describe('PreImportModal — K2 existing-annotations radio', () => {
     expect(label.textContent).toMatch(/3/);
   });
 
-  it('source badge matches the envelope kind', () => {
-    const { rerender } = render(
+  it('source badge reflects file extension for file kind', () => {
+    render(
       <PreImportModal pendingImport={FILE_ENVELOPE_WITH_ANNS} onConfirm={() => {}} onCancel={() => {}} />
     );
+    // File envelope has _fileName 'pUC19.gb' → badge shows .GB FILE.
     expect(screen.getByTestId('pre-import-source-badge').textContent).toMatch(/file|gb/i);
+  });
 
-    rerender(
-      <PreImportModal pendingImport={{ ...FILE_ENVELOPE_WITH_ANNS, kind: 'catalog', source: 'catalog' }} onConfirm={() => {}} onCancel={() => {}} />
+  it('FASTA file shows the .FASTA badge', () => {
+    const fastaEnv = {
+      ...FILE_ENVELOPE_WITH_ANNS,
+      parsedItem: { ...FILE_ENVELOPE_WITH_ANNS.parsedItem, _fileName: 'p.fasta', annotations: [] },
+      hasAnnotations: false,
+    };
+    render(
+      <PreImportModal pendingImport={fastaEnv} onConfirm={() => {}} onCancel={() => {}} />
     );
-    expect(screen.getByTestId('pre-import-source-badge').textContent).toMatch(/catalog/i);
+    expect(screen.getByTestId('pre-import-source-badge').textContent).toMatch(/fasta/i);
+    // No existing-annotations radio for FASTA (no anns to keep / discard).
+    expect(screen.queryByTestId('pre-import-existing-anns')).toBeNull();
+  });
+
+  it('SnapGene .DNA file shows the .DNA badge', () => {
+    const dnaEnv = {
+      ...FILE_ENVELOPE_WITH_ANNS,
+      parsedItem: { ...FILE_ENVELOPE_WITH_ANNS.parsedItem, _fileName: 'pUC19.dna' },
+    };
+    render(
+      <PreImportModal pendingImport={dnaEnv} onConfirm={() => {}} onCancel={() => {}} />
+    );
+    expect(screen.getByTestId('pre-import-source-badge').textContent).toMatch(/dna/i);
   });
 
   it('initial topology reflects defaultTopology (circular for plasmid imports)', () => {

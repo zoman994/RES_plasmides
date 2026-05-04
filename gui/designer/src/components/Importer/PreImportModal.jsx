@@ -478,10 +478,12 @@ function ToggleButton({ active, onClick, children, ...rest }) {
 }
 
 function SourceBadge({ source, parsedItem }) {
+  // Catalog items skip the modal entirely (they're already named /
+  // annotated). Two badges left: «Pasted» for raw text, «.EXT file»
+  // (.GB / .DNA / .FASTA) for file drops.
   const ext = (parsedItem?._fileName || '').split('.').pop();
-  const text =
-    source === 'paste' ? S.preImportSourceBadgePaste
-    : source === 'catalog' ? S.preImportSourceBadgeCatalog
+  const text = source === 'paste'
+    ? S.preImportSourceBadgePaste
     : S.preImportSourceBadgeFile(ext);
   return (
     <span

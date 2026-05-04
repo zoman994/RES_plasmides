@@ -254,10 +254,13 @@ export function useImporterState({ mode } = {}) { // eslint-disable-line no-unus
   }, []);
 
   /**
-   * Add a catalog item — Sprint M-X.3 K2 routes this through the
-   * PreImportModal envelope rather than writing to parsedItems
-   * directly. Multi-mode confirm is still the caller's responsibility
-   * (handled in CatalogColumn before this function fires).
+   * Add a catalog item — Sprint M-X.3 follow-up: catalog items
+   * (SnapGene / demo / user library / this-project) bypass the
+   * PreImportModal entirely. Biolog «при открытии плазмид из
+   * каталога не надо давать модалку с названием» — these items
+   * already have a name + topology + annotations from their source,
+   * so there's nothing for the metadata modal to capture. Drops
+   * straight into parsedItems just like pre-K2.
    */
   const addCatalogItem = useCallback((item) => {
     if (!item || !item.sequence) return;
@@ -285,21 +288,16 @@ export function useImporterState({ mode } = {}) { // eslint-disable-line no-unus
       // only carry it when source is the user's own library.
       _libraryEntryId: item._source === 'mine' && item.id ? item.id : undefined,
     };
-    // Pre-fill suggestedTags from existing library-entry tags so the
-    // chip list in PreImportModal reflects what biolog already
-    // labelled the source as. Not all catalog sources carry tags
-    // (snapgene/demo don't); fall back to []. Only library ('mine')
-    // entries carry user tags.
-    const suggestedTags = Array.isArray(item._tags) ? item._tags : [];
-    setPendingImport({
-      kind: 'catalog',
-      parsedItem: next,
-      suggestedName: next.name,
-      defaultTopology: next.topology,
-      hasAnnotations: annotations.length > 0,
-      suggestedTags,
-      source: 'catalog',
-    });
+    setParsedItems([next]);
+    setCurrentIdxState(0);
+    setActiveTabState('overview');
+    setPerFileFlags({ [fn]: { autoAnnotate: true } });
+    // Carry library entry's existing tags through the perFileEdits
+    // override so they show up in MetaColumn / TagsEditor without
+    // re-typing. Only meaningful for 'mine' (user library); demo /
+    // snapgene don't carry user-defined tags.
+    const tags = Array.isArray(item._tags) ? item._tags : [];
+    setPerFileEdits(tags.length > 0 ? { [fn]: { editedTags: [...tags] } } : {});
   }, []);
 
   /**

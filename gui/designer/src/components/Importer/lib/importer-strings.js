@@ -344,5 +344,6 @@ export const IMPORTER_STRINGS = {
   preImportCancel: 'Cancel',
   preImportSourceBadgePaste: 'Pasted',
   preImportSourceBadgeFile: (ext) => ext ? `.${ext.toUpperCase()} file` : 'File',
-  preImportSourceBadgeCatalog: 'From catalog',
+  // catalog badge dropped — catalog items skip the modal entirely
+  // (they're already named / annotated; nothing to capture).
 };
