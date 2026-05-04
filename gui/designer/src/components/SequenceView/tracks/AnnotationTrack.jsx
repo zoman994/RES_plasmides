@@ -407,7 +407,11 @@ function AnnotationTrack({
                     if (typeof onAnnotationDoubleClick !== 'function') return;
                     e.stopPropagation();
                     e.preventDefault();
-                    onAnnotationDoubleClick(region);
+                    // Bug-rush #7: pass the line's lineStart so the
+                    // orchestrator can position the rename input on
+                    // the same row where biolog actually clicked,
+                    // not just the first line of a multi-line feature.
+                    onAnnotationDoubleClick(region, lineStart);
                   }}
                 >
                   {displayLabel}

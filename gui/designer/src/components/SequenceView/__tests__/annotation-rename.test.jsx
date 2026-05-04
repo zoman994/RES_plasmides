@@ -86,6 +86,37 @@ describe('Bug-rush #3 — bar dblclick opens Annotator, label dblclick renames',
   });
 });
 
+describe('Bug-rush #7 — rename works on EVERY line of a multi-line feature', () => {
+  // Long enough to span >1 SequenceView line at any reasonable
+  // chars-per-line. The annotation covers the entire fragment so
+  // `data-testid="sequence-view-annotation"` is rendered once per
+  // line (with the same data-region-id, distinct
+  // data-region-line-start).
+  const LONG_FRAGMENT = {
+    id: 'frag-long',
+    name: 'demo',
+    type: 'CDS',
+    sequence: 'ATGGCC'.repeat(120), // 720 nt → ≥3 lines at 80 cpl
+    strand: 1,
+    annotations: [
+      { id: 'region:0:720:CDS:longCDS', name: 'longCDS', type: 'CDS', start: 0, end: 720, level: 'region', strand: 1 },
+    ],
+  };
+
+  it('dblclick on the SECOND line label still mounts the rename input', () => {
+    render(
+      <SequenceView fragments={[LONG_FRAGMENT]} onAnnotationEdit={vi.fn()} />
+    );
+    const labels = screen.getAllByTestId('sequence-view-annotation-label');
+    // Need at least two repeated labels to exercise the bug.
+    expect(labels.length).toBeGreaterThanOrEqual(2);
+    fireEvent.doubleClick(labels[1]);
+    const input = screen.getByTestId('sequence-view-inline-rename');
+    expect(input).toBeTruthy();
+    expect(input.value).toBe('longCDS');
+  });
+});
+
 describe('K5 inline rename', () => {
   it('mounts the rename input on double-click', () => {
     render(<SequenceView fragments={[FRAGMENT]} onAnnotationEdit={vi.fn()} />);

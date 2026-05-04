@@ -33,6 +33,21 @@
  */
 
 import { useCallback, useState } from 'react';
+import { generateAnnotationId } from '../../../lib/annotation-edit.js';
+
+/**
+ * Bug-rush #6 (04.05.2026 evening): imported annotations parsed from
+ * .dna / .gb / SnapGene catalog often arrive without an `id` field.
+ * Their region.id at dispatch time is `undefined`, which collapses
+ * `matchesAnnotationId` to false → delete / update silently
+ * skipped. Resolve a stable id at the dispatch site so the receiver
+ * always has something to match against.
+ */
+function resolveRegionId(region) {
+  if (!region) return null;
+  if (region.id) return region.id;
+  return generateAnnotationId(region);
+}
 
 /**
  * Resolve a viewport-coords anchor for the CreateAnnotationPopup
@@ -151,7 +166,7 @@ export function useSelectionEdit({
       const region = findRegionForSelection(annotations, selStart, selEnd);
       if (!region) return false; // selection not aligned to a region — no-op
       e.preventDefault();
-      onAnnotationEdit?.({ kind: 'delete', id: region.id });
+      onAnnotationEdit?.({ kind: 'delete', id: resolveRegionId(region) });
       return true;
     }
 
@@ -181,7 +196,10 @@ export function useSelectionEdit({
       const region = findRegionForSelection(annotations, selStart, selEnd);
       if (!region) return false;
       e.preventDefault();
-      setEditModalAnnotation(region);
+      // Stamp a resolved id so EditAnnotationModal -> applyAnnotationEdit
+      // 'update' dispatch lands on the right annotation even when the
+      // import omitted the id (bug-rush #6).
+      setEditModalAnnotation({ ...region, id: resolveRegionId(region) });
       return true;
     }
 

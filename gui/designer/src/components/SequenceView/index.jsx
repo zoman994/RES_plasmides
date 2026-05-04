@@ -57,6 +57,7 @@ import { useRowSelectionIsolation } from "./lib/row-selection-isolation.js";
 import { runPredictors } from "../../predicted-detection.js";
 import { scanAllSites } from "../../restriction-db.js";
 import { FEATURE_STROKE } from "../../feature-palette.js";
+import { generateAnnotationId } from "../../lib/annotation-edit.js";
 
 import {
   LABEL_WIDTH,
@@ -387,9 +388,23 @@ const SequenceView = forwardRef(function SequenceView({
   // the renaming target changes is fine.
   const renameInputPosition = useMemo(() => {
     if (!renameApi.renaming || !containerRef.current) return null;
-    const sel = `[data-testid="sequence-view-annotation"][data-region-id="${renameApi.renaming.id.replace(/"/g, '\\"')}"]`;
+    // Bug-rush #7: scope by both region id AND originating line so
+    // multi-line features (the same id repeats on N rows) open the
+    // rename input on the line biolog actually double-clicked.
+    const idEsc = renameApi.renaming.id.replace(/"/g, '\\"');
+    const lineStart = renameApi.renaming.lineStart;
+    let sel = `[data-testid="sequence-view-annotation"][data-region-id="${idEsc}"]`;
+    if (Number.isFinite(lineStart)) {
+      sel += `[data-region-line-start="${lineStart}"]`;
+    }
     let target;
     try { target = containerRef.current.querySelector(sel); } catch { return null; }
+    // Fallback: if the line-scoped selector misses (e.g. test fixture
+    // without data-region-line-start), drop back to id-only.
+    if (!target && Number.isFinite(lineStart)) {
+      const fb = `[data-testid="sequence-view-annotation"][data-region-id="${idEsc}"]`;
+      try { target = containerRef.current.querySelector(fb); } catch { /* noop */ }
+    }
     if (!target) return null;
     const rectEl = target.querySelector('rect');
     if (!rectEl) return null;
@@ -583,7 +598,11 @@ const SequenceView = forwardRef(function SequenceView({
               label: ANN_EDIT_STRINGS.contextMenuDeleteRegion,
               onClick: () => {
                 setContextMenu(null);
-                onAnnotationEdit?.({ kind: "delete", id: matchedRegion.id });
+                // Bug-rush #6 — imported annotations may have no id;
+                // resolve to the deterministic backfill so the
+                // dispatch lands on the right entry.
+                const id = matchedRegion.id || generateAnnotationId(matchedRegion);
+                onAnnotationEdit?.({ kind: "delete", id });
               },
             });
           }

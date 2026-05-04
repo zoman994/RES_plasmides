@@ -18,15 +18,24 @@
 import { useCallback, useState } from 'react';
 
 export function useAnnotationRename({ onAnnotationEdit }) {
-  const [renaming, setRenaming] = useState(null); // { id, name, start, end, color }
+  // `renaming.lineStart` — bug-rush #7 (04.05.2026 evening). When a
+  // multi-line feature renders one `<g>` per line, every line's
+  // label calls startRename. Pre-fix the orchestrator's
+  // `data-region-id` querySelector returned only the FIRST match,
+  // so dblclick on line 2/3/etc. opened the input over line 1 —
+  // biolog: «работает только первое название». We now stash the
+  // originating line's `data-line-start` alongside the id and the
+  // orchestrator scopes its lookup with BOTH.
+  const [renaming, setRenaming] = useState(null);
 
-  const startRename = useCallback((region) => {
+  const startRename = useCallback((region, lineStart) => {
     if (!region || !region.id) return;
     setRenaming({
       id: region.id,
       name: region.name || '',
       start: region.start,
       end: region.end,
+      lineStart: Number.isFinite(lineStart) ? lineStart : null,
     });
   }, []);
 

@@ -56,6 +56,57 @@ function resetSettings() {
 beforeEach(() => { resetSettings(); });
 afterEach(() => { cleanup(); });
 
+describe('Bug-rush #6 — Del / E work on imported annotations without id', () => {
+  // Imported .dna / .gb annotations often arrive without an `id`
+  // field. Pre-fix the dispatch carried `id: undefined`, which made
+  // applyAnnotationEdit silently skip. Now Del / E resolve to the
+  // deterministic backfill id at the dispatch site so receivers
+  // (using matchesAnnotationId) find the right entry.
+  const FRAGMENT_NO_ID = {
+    id: 'frag-imported',
+    name: 'pUC19',
+    type: 'plasmid',
+    sequence: 'ATGGCC'.repeat(50),
+    strand: 1,
+    annotations: [
+      // notice — no `id` field, mimicking SnapGene-imported regions
+      { name: 'lacZα', type: 'CDS', start: 0, end: 99, level: 'region', strand: 1 },
+    ],
+  };
+
+  it('Del dispatches with the deterministic backfill id', () => {
+    const onAnnotationEdit = vi.fn();
+    render(
+      <SequenceView
+        fragments={[FRAGMENT_NO_ID]}
+        caretPos={99}
+        caretAnchor={0}
+        onAnnotationEdit={onAnnotationEdit}
+      />
+    );
+    fireEvent.keyDown(screen.getByTestId('sequence-view-root'), { key: 'Delete' });
+    expect(onAnnotationEdit).toHaveBeenCalledWith({
+      kind: 'delete',
+      id: 'region:0:99:CDS:lacZα',
+    });
+  });
+
+  it('E mounts modal with the backfill id stamped', () => {
+    render(
+      <SequenceView
+        fragments={[FRAGMENT_NO_ID]}
+        caretPos={99}
+        caretAnchor={0}
+        onAnnotationEdit={vi.fn()}
+      />
+    );
+    fireEvent.keyDown(screen.getByTestId('sequence-view-root'), { key: 'e' });
+    // The modal should mount with the resolved backfill id so
+    // subsequent Apply dispatches the right update.
+    expect(screen.getByTestId('sequence-view-edit-annotation-modal')).toBeTruthy();
+  });
+});
+
 describe('K3 edit operations — Del key', () => {
   it('dispatches delete edit when selection covers a region exactly', () => {
     const onAnnotationEdit = vi.fn();
