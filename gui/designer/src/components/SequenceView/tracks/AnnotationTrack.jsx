@@ -107,7 +107,15 @@ function AnnotationTrack({
   lineLen,
   charPx,
   labelChars,
-  // eslint-disable-next-line no-unused-vars
+  // Sprint M-X.3 K4 — single-click on a feature rect / chevron
+  // fires `onAnnotationClick(region)`. Consumers (Annotator's
+  // PreviewTab) can use this to open a drill-in panel on ghost
+  // (predicted) features. The previous double-click handler
+  // (`onAnnotationFeatureDoubleClick` → opens the Annotator) wins
+  // when both fire — the `onClick` runs first, but the consumer
+  // is expected to be idempotent. K4 PreviewTab explicitly only
+  // reacts to predicted features so a confirmed-feature click
+  // can't fight the double-click semantics.
   onAnnotationClick,
   // Sprint M-X.2 K4 — drag-handles for region edges. Optional;
   // when omitted (legacy callers), edge overlays don't render.
@@ -351,6 +359,8 @@ function AnnotationTrack({
               style={{ cursor: "pointer", opacity: isBeingDragged ? 0.4 : 1 }}
             >
               <rect
+                data-region-id={region.id || ''}
+                data-region-predicted={isPredicted ? 'true' : undefined}
                 x={0}
                 y={0}
                 width={widthRect}
@@ -365,6 +375,11 @@ function AnnotationTrack({
                 stroke={rectStroke}
                 strokeWidth={rectStrokeWidth}
                 strokeDasharray={rectStrokeDash}
+                onClick={(e) => {
+                  if (typeof onAnnotationClick !== 'function') return;
+                  e.stopPropagation();
+                  onAnnotationClick(region);
+                }}
                 onDoubleClick={(e) => {
                   if (typeof onAnnotationFeatureDoubleClick !== 'function') return;
                   e.stopPropagation();
@@ -380,6 +395,11 @@ function AnnotationTrack({
                   stroke={rectStroke}
                   strokeWidth={rectStrokeWidth}
                   strokeDasharray={rectStrokeDash}
+                  onClick={(e) => {
+                    if (typeof onAnnotationClick !== 'function') return;
+                    e.stopPropagation();
+                    onAnnotationClick(region);
+                  }}
                   onDoubleClick={(e) => {
                     if (typeof onAnnotationFeatureDoubleClick !== 'function') return;
                     e.stopPropagation();

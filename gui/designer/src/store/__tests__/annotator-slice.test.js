@@ -132,4 +132,35 @@ describe('K6 annotator slice', () => {
     useStore.getState().setAnnotatorActiveTab(null);
     expect(selectAnnotator(useStore.getState()).activeTab).toBe('table');
   });
+
+  // ─── Sprint M-X.3 K4 — selectedGhostId for the drill-in panel ──
+  it('selectedGhostId defaults to null', () => {
+    const a = selectAnnotator(useStore.getState());
+    expect(a.selectedGhostId).toBeNull();
+  });
+
+  it('setSelectedGhost sets and clears the id', () => {
+    useStore.getState().setSelectedGhost('ghost-r1');
+    expect(selectAnnotator(useStore.getState()).selectedGhostId).toBe('ghost-r1');
+    useStore.getState().setSelectedGhost(null);
+    expect(selectAnnotator(useStore.getState()).selectedGhostId).toBeNull();
+  });
+
+  it('acceptRegion clears selectedGhostId if it matches', () => {
+    useStore.getState().setSelectedGhost('ghost-r1');
+    useStore.getState().acceptRegion('ghost-r1');
+    expect(selectAnnotator(useStore.getState()).selectedGhostId).toBeNull();
+  });
+
+  it('rejectRegion clears selectedGhostId if it matches', () => {
+    useStore.getState().setSelectedGhost('ghost-r1');
+    useStore.getState().rejectRegion('ghost-r1');
+    expect(selectAnnotator(useStore.getState()).selectedGhostId).toBeNull();
+  });
+
+  it('accepting a different region leaves selectedGhostId untouched', () => {
+    useStore.getState().setSelectedGhost('ghost-r1');
+    useStore.getState().acceptRegion('ghost-r2');
+    expect(selectAnnotator(useStore.getState()).selectedGhostId).toBe('ghost-r1');
+  });
 });

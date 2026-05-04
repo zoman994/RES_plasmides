@@ -207,6 +207,9 @@ export const ANNOTATOR_DEFAULTS = Object.freeze({
   // 'preview' (K4) mounts a SequenceView with merged confirmed +
   // predicted annotations rendered as ghosts.
   activeTab: 'table',
+  // Sprint M-X.3 K4 — id of the ghost feature whose drill-in panel
+  // is open in the Preview tab. `null` means no panel.
+  selectedGhostId: null,
 });
 
 const ANNOTATOR_TABS = ['table', 'preview'];
@@ -580,6 +583,12 @@ export const createUiSlice = (set) => ({
       // Mutually exclusive: accept clears reject.
       delete state.annotator.rejectedRegionIds[regionId];
       state.annotator.acceptedRegionIds[regionId] = true;
+      // Sprint M-X.3 K4 — verdict on the currently-drilled-in ghost
+      // closes the drill-in panel automatically. Other regions stay
+      // unaffected.
+      if (state.annotator.selectedGhostId === regionId) {
+        state.annotator.selectedGhostId = null;
+      }
     });
   },
 
@@ -591,6 +600,19 @@ export const createUiSlice = (set) => ({
       if (!state.annotator.rejectedRegionIds) state.annotator.rejectedRegionIds = {};
       delete state.annotator.acceptedRegionIds[regionId];
       state.annotator.rejectedRegionIds[regionId] = true;
+      if (state.annotator.selectedGhostId === regionId) {
+        state.annotator.selectedGhostId = null;
+      }
+    });
+  },
+
+  /** Sprint M-X.3 K4 — drive the drill-in panel for a predicted
+   *  region. `null` closes it. */
+  setSelectedGhost: (regionId) => {
+    set(state => {
+      if (!state.annotator) state.annotator = loadInitialAnnotator();
+      state.annotator.selectedGhostId =
+        typeof regionId === 'string' && regionId ? regionId : null;
     });
   },
 

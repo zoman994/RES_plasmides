@@ -262,7 +262,12 @@ export default function Annotator({
               onEditPatch={editPendingRegion}
             />
           ) : (
-            <PreviewTab />
+            <PreviewTab
+              sequence={sequence || ''}
+              annotations={annotations || []}
+              topology="linear"
+              name="annotator-preview"
+            />
           )}
         </div>
       </div>

@@ -177,6 +177,17 @@ export const IMPORTER_STRINGS = {
     tabPreviewHint: 'Sequence with predicted features as ghosts',
     previewEmpty: 'Run a plugin to see ghost features here.',
     previewDrillInHint: 'Click a ghost feature to inspect it.',
+    // Sprint M-X.3 K4 — drill-in panel.
+    ghostDrillInTitle: 'Predicted feature',
+    ghostDrillInRange: (start, end) => `${start.toLocaleString()}..${end.toLocaleString()}`,
+    ghostDrillInConfidence: (pct) => `Confidence: ${pct.toFixed(0)}%`,
+    ghostDrillInSource: (s) => `Source: ${s}`,
+    ghostDrillInAccept: '✓ Accept',
+    ghostDrillInReject: '✗ Reject',
+    ghostDrillInBlast: 'Run BLAST on this region',
+    ghostDrillInPredictors: 'Re-run predictors',
+    ghostDrillInClose: 'Close',
+    ghostDrillInBlastHint: '(K-BLAST stub — wires to live BLAST in M-X.4)',
   },
 
   // SessionSummary
