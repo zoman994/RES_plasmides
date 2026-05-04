@@ -144,7 +144,7 @@ function libraryEntryToCatalogItem(entry, source) {
     sequence: entry.payload?.sequence || '',
     organism: entry.payload?.organism || '',
     _tags: Array.isArray(entry.tags) ? entry.tags : [],
-    _badge: source === 'mine' ? 'моё' : source === 'project' ? 'проект' : source,
+    _badge: source === 'mine' ? 'mine' : source === 'project' ? 'project' : source,
     _source: source,
   };
 }

@@ -47,7 +47,7 @@ export const STRINGS = {
     groupProjectsBadge: 'soon',
     installAsDesktopApp: 'Install as desktop app',
     appInstalled: 'App installed',
-    installManualHint: 'Установка через меню браузера: ⋮ → «Установить BodgeGene» (или «Создать ярлык» в Vivaldi). Если пункт отсутствует — у браузера нет required PWA criteria для текущей вкладки.',
+    installManualHint: 'Install via the browser menu: ⋮ → "Install BodgeGene" (or "Create shortcut" in Vivaldi). If the entry is missing, the browser does not consider the current tab to meet the PWA criteria.',
     recentProjects: 'Recent projects',
     noRecentProjects: 'No projects yet.',
     exportHeader: (count) => `Selecting for export · ${count} selected`,
@@ -81,7 +81,7 @@ export const STRINGS = {
   topbar: {
     projectFallback: '—',
     untitled: 'Untitled',
-    libraryTitle: 'Библиотека',
+    libraryTitle: 'Library',
     backTitle: 'Back',
     backAriaPop: 'Back',
     backAriaClose: 'Close project',

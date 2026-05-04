@@ -55,17 +55,17 @@ export default function SelectionContextMenu({
       }}
     >
       <MenuItem
-        label="Копировать (прямая цепь)"
+        label="Copy (forward strand)"
         shortcut="Ctrl+C"
         onClick={() => { onCopy("forward"); onClose(); }}
       />
       <MenuItem
-        label="Копировать обратную цепь"
+        label="Copy reverse strand"
         shortcut="Ctrl+Alt+C"
         onClick={() => { onCopy("reverse"); onClose(); }}
       />
       <MenuItem
-        label="Копировать аминокислоты"
+        label="Copy amino acids"
         shortcut="Ctrl+Shift+C"
         disabled={selectionMode !== "aa"}
         onClick={() => { onCopy("aa"); onClose(); }}

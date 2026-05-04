@@ -3,7 +3,7 @@
  *
  * Tests the three entry points that fire `openAnnotator`:
  *  1) AnnotationsTab `🔍 Аннотатор` button → openAnnotator({kind:'full'})
- *  2) SelectionContextMenu «Аннотировать выделение...» item →
+ *  2) SelectionContextMenu «Annotate selection...» item →
  *     openAnnotator({kind:'region', region}) + closes the menu.
  *  3) CreateAnnotationPopup [Найти в Аннотаторе] →
  *     openAnnotator({kind:'region'}) + closes the popup.
@@ -69,7 +69,7 @@ describe('K9 entry points', () => {
     expect(screen.getByTestId('annotations-open-annotator').disabled).toBe(true);
   });
 
-  it('SequenceView context menu has «Аннотировать выделение...» entry when selection + onOpenAnnotator wired', () => {
+  it('SequenceView context menu has «Annotate selection...» entry when selection + onOpenAnnotator wired', () => {
     const onOpenAnnotator = vi.fn();
     render(
       <SequenceView
@@ -85,7 +85,7 @@ describe('K9 entry points', () => {
     const menu = screen.getByTestId('sequence-view-context-menu');
     // The annotate entry is the last extraItem when matchedRegion=false.
     const annotateEntry = Array.from(menu.querySelectorAll('button')).find(
-      (b) => b.textContent && b.textContent.includes('Аннотировать выделение')
+      (b) => b.textContent && b.textContent.includes('Annotate selection')
     );
     expect(annotateEntry).toBeTruthy();
   });
@@ -104,7 +104,7 @@ describe('K9 entry points', () => {
     const root = screen.getByTestId('sequence-view-root');
     fireEvent.contextMenu(root, { clientX: 100, clientY: 100 });
     const annotateBtn = Array.from(screen.getByTestId('sequence-view-context-menu').querySelectorAll('button'))
-      .find((b) => b.textContent && b.textContent.includes('Аннотировать выделение'));
+      .find((b) => b.textContent && b.textContent.includes('Annotate selection'));
     fireEvent.click(annotateBtn);
     expect(onOpenAnnotator).toHaveBeenCalledWith({
       kind: 'region',

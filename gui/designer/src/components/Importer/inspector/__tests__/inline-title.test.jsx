@@ -41,6 +41,6 @@ describe('M-B.2 K3 — InlineEditableTitle', () => {
   it('4) Empty value renders placeholder (default S.untitledItem)', () => {
     render(<InlineEditableTitle value="" onCommit={() => {}} />);
     const button = screen.getByTestId('importer-inline-title');
-    expect(button.textContent).toContain('(без имени)');
+    expect(button.textContent).toContain('(untitled)');
   });
 });

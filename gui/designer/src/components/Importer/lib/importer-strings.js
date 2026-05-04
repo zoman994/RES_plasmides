@@ -1,289 +1,286 @@
 /**
- * STRINGS.importer namespace (M-B.1 K2; rewritten in M-B.2 K1 for the
- * single-screen layout, expanded again in K2 (catalog), K3 (inspector
- * + meta + actions), K4 (lazy tabs), K5 (multi table), K6 (sweep + dead
- * key removal). Imported and merged into the global STRINGS dict by
- * `lib/strings.js`. Kept in a sibling file so component-local strings
- * stay near their UI without forcing strings.js to grow into every
- * component during M-B.
+ * STRINGS.importer namespace.
+ *
+ * Bug-rush #17 (04.05.2026 evening): switched the surface to English
+ * ahead of the planned language toggle. Russian strings preserved in
+ * git history; the language switcher will rehydrate them once the
+ * localisation infrastructure (provider + locale lookup) lands.
+ *
+ * Imported and merged into the global STRINGS dict by `lib/strings.js`.
  */
 export const IMPORTER_STRINGS = {
-  toProjectTitle: 'Импорт в проект',
-  toLibraryTitle: 'Библиотека',
+  toProjectTitle: 'Import to project',
+  toLibraryTitle: 'Library',
 
-  topbarButton: '+ Импорт',
+  topbarButton: '+ Import',
 
   // Header counts
-  filesReady: (n) => `Файлов: ${n}`,
+  filesReady: (n) => `Files: ${n}`,
 
   // CatalogColumn (M-B.2 K2 — full source set + drill-down + flat search).
-  catalogSearchPlaceholder: 'Поиск (имя, описание, >5kb, <2k, 2k-3k)…',
-  catalogPastePlaceholder: 'Вставьте sequence (Ctrl+Enter — загрузить)',
-  catalogPasteSubmit: 'Загрузить',
-  catalogReplaceModeConfirm: 'Заменить весь batch одним файлом из каталога?',
+  catalogSearchPlaceholder: 'Search (name, description, >5kb, <2k, 2k-3k)…',
+  catalogPastePlaceholder: 'Paste sequence (Ctrl+Enter to load)',
+  catalogPasteSubmit: 'Load',
+  catalogReplaceModeConfirm: 'Replace the entire batch with one file from the catalog?',
 
   // CatalogColumn — group labels.
-  catalogGroupCanvas: (name) => `Этот ${name || 'проект'}`,
-  catalogGroupDemo: 'Учебные / demo',
-  catalogGroupMine: 'Моя библиотека',
-  catalogGroupSnapgene: 'Каталог SnapGene',
-  catalogEmptyProject: 'нет контейнеров в проекте',
-  catalogEmptyGroup: 'пусто',
-  catalogLoading: 'загрузка…',
-  catalogUntaggedTag: 'Без тегов',
-  catalogFlatFound: (n) => `Найдено: ${n}`,
-  catalogFlatEmpty: 'Ничего не найдено',
-  catalogFlatTruncated: (total) => `Показаны первые 60 из ${total}.`,
-  catalogNewFolder: 'Новая папка',
-  catalogNewFolderPrompt: 'Имя новой папки:',
-  catalogAddFileToFolder: (folderName) => `Добавить файл в «${folderName}»`,
-  catalogFolderDropHint: (folderName) => `Импорт в «${folderName}»`,
-  catalogDeleteFolder: (folderName) => `Удалить папку «${folderName}»`,
+  catalogGroupCanvas: (name) => `This ${name || 'project'}`,
+  catalogGroupDemo: 'Tutorial / demo',
+  catalogGroupMine: 'My library',
+  catalogGroupSnapgene: 'SnapGene catalog',
+  catalogEmptyProject: 'no containers in this project',
+  catalogEmptyGroup: 'empty',
+  catalogLoading: 'loading…',
+  catalogUntaggedTag: 'Untagged',
+  catalogFlatFound: (n) => `Found: ${n}`,
+  catalogFlatEmpty: 'Nothing found',
+  catalogFlatTruncated: (total) => `Showing the first 60 of ${total}.`,
+  catalogNewFolder: 'New folder',
+  catalogNewFolderPrompt: 'New folder name:',
+  catalogAddFileToFolder: (folderName) => `Add file to "${folderName}"`,
+  catalogFolderDropHint: (folderName) => `Import to "${folderName}"`,
+  catalogDeleteFolder: (folderName) => `Delete folder "${folderName}"`,
   catalogDeleteFolderConfirm: (folderName, itemCount) => itemCount > 0
-    ? `Удалить папку «${folderName}» вместе с её содержимым?\n\nВ папке: ${itemCount} контейнер(ов). Они будут перемещены в корень «Моя библиотека» (тег «${folderName}» снят с них). Сами контейнеры НЕ удаляются — это безопасная операция.\n\nЕсли хотите удалить контейнеры, делайте это отдельно по одному (× на строке контейнера).`
-    : `Удалить пустую папку «${folderName}»?`,
-  catalogDragHandleAria: 'Перетащить в другую папку',
-  catalogDeleteContainer: (name) => `Удалить контейнер «${name}»`,
+    ? `Delete folder "${folderName}" along with its contents?\n\nFolder contents: ${itemCount} container(s). They will be moved to the root of "My library" (the "${folderName}" tag is removed). The containers themselves are NOT deleted — this is a safe operation.\n\nIf you want to delete the containers, do it separately one by one (× on the container row).`
+    : `Delete the empty folder "${folderName}"?`,
+  catalogDragHandleAria: 'Drag to another folder',
+  catalogDeleteContainer: (name) => `Delete container "${name}"`,
   catalogDeleteContainerConfirm: (name) =>
-    `Удалить контейнер «${name}» из библиотеки?\n\nВНИМАНИЕ: контейнеры могут использоваться в проектах. Если контейнер привязан к canvas — удаление сломает ссылки. Сначала отвяжите его от всех проектов, затем удаляйте.`,
+    `Delete container "${name}" from the library?\n\nWARNING: containers may be used in projects. If a container is bound to a canvas, deleting it will break references. Detach it from all projects first, then delete.`,
 
   // Drop zone footer (inside CatalogColumn).
-  catalogDropzoneIdle: 'Перетащите или выберите файл',
+  catalogDropzoneIdle: 'Drop or pick a file',
   catalogDropzoneAccepts: '.dna · .gb · .gbk · .fasta',
-  dropzoneHover: 'Отпустите, чтобы загрузить',
+  dropzoneHover: 'Release to upload',
 
   // Inspector / TabBar
-  emptyInspectorHint1: 'Выберите плазмиду из каталога слева',
-  emptyInspectorHint2: 'или перетащите файл в зону внизу',
-  emptyLibraryFirstTimeTitle: 'Ваша библиотека пуста',
-  emptyLibraryFirstTimeBody: 'Перетащите .dna / .gb / .fasta файл в зону слева внизу — или вставьте sequence через текстовое поле. Также можно выбрать готовую плазмиду из «Учебные / demo» или каталога SnapGene слева.',
-  untitledItem: '(без имени)',
+  emptyInspectorHint1: 'Pick a plasmid from the catalog on the left',
+  emptyInspectorHint2: 'or drop a file into the zone below',
+  emptyLibraryFirstTimeTitle: 'Your library is empty',
+  emptyLibraryFirstTimeBody: 'Drop a .dna / .gb / .fasta file into the zone in the lower left — or paste a sequence into the text field. You can also pick a ready-made plasmid from "Tutorial / demo" or the SnapGene catalog on the left.',
+  untitledItem: '(untitled)',
 
-  tabOverview: 'Обзор',
-  tabSequence: 'Последовательность',
-  tabAnnotations: 'Аннотации',
-  tabHistory: 'История',
-  tabHistoryPlaceholder: 'История появится после первого commit\'а в Container Window (M-D).',
-  tabHistoryEmptyM_D: 'commits нет — появятся после M-D Container Window.',
+  tabOverview: 'Overview',
+  tabSequence: 'Sequence',
+  tabAnnotations: 'Annotations',
+  tabHistory: 'History',
+  tabHistoryPlaceholder: 'History will appear after the first commit in Container Window (M-D).',
+  tabHistoryEmptyM_D: 'No commits — they will appear after M-D Container Window.',
   sequenceReadOnly: 'read-only',
-  annotationsCount: (n) => `${n} аннотаций`,
+  annotationsCount: (n) => `${n} annotations`,
 
   // SequenceView settings popover (Sprint M-B.3 K7).
   sequenceView: {
-    settingsButton: 'Настройки отображения',
-    settingsTitle: 'Настройки SequenceView',
-    showBottomStrandLabel: 'Нижняя цепь',
-    showBottomStrandHint: 'Показывать антисмысловую цепь под основной',
-    framesModeLabel: 'AA-рамки',
-    framesModeAuto: 'Авто (по покрытию)',
-    framesModeSingle: 'Только дом. CDS',
-    framesModeAll: 'Множественные рамки',
-    autoThresholdLabel: (n) => `Порог авто: ${(n * 100).toFixed(0)}%`,
+    settingsButton: 'Display settings',
+    settingsTitle: 'SequenceView settings',
+    showBottomStrandLabel: 'Bottom strand',
+    showBottomStrandHint: 'Show the antisense strand below the main one',
+    framesModeLabel: 'AA frames',
+    framesModeAuto: 'Auto (by coverage)',
+    framesModeSingle: 'Dominant CDS only',
+    framesModeAll: 'All six frames',
+    autoThresholdLabel: (n) => `Auto threshold: ${(n * 100).toFixed(0)}%`,
     autoThresholdHint:
-      'Покрытие dominant CDS, при котором переключаемся в single forward frame',
-    visibleFramesLabel: 'Видимые рамки',
+      'Dominant CDS coverage at which we switch to a single forward frame',
+    visibleFramesLabel: 'Visible frames',
     visibleFramesHint:
-      'Влияет в режимах «Множественные» и «Авто» при низком покрытии',
-    primerStyleLabel: 'Праймеры',
-    primerStyleFilled: 'Закрашенные',
-    primerStyleOutline: 'Контурные',
-    reOrientationLabel: 'RE-ярлыки',
-    reOrientationVertical: 'Вертикально',
-    reOrientationHorizontal: 'Горизонтально',
+      'Applies in "All frames" and "Auto" mode at low coverage',
+    primerStyleLabel: 'Primers',
+    primerStyleFilled: 'Filled',
+    primerStyleOutline: 'Outline',
+    reOrientationLabel: 'RE labels',
+    reOrientationVertical: 'Vertical',
+    reOrientationHorizontal: 'Horizontal',
     // Sprint M-X.1 K5 — Structural Predictor settings.
-    predictionsLabel: 'Предсказания',
+    predictionsLabel: 'Predictions',
     predictionsCds: 'CDS (ORF detection)',
-    predictionsPromoter: 'Промоторы (σ70 PWM)',
-    predictionsTerminator: 'Терминаторы (stem-loop)',
+    predictionsPromoter: 'Promoters (σ70 PWM)',
+    predictionsTerminator: 'Terminators (stem-loop)',
     predictionsSgrna: 'Guide RNAs (sgRNA scaffold)',
-    predictionsThresholdLabel: (n) => `Минимальная уверенность: ${(n * 100).toFixed(0)}%`,
+    predictionsThresholdLabel: (n) => `Minimum confidence: ${(n * 100).toFixed(0)}%`,
     predictionsThresholdHint:
-      'Предсказания ниже порога не показываются. Поднимай для более строгой фильтрации.',
-    resetButton: 'Сбросить к умолчаниям',
-    closeAria: 'Закрыть настройки',
+      'Predictions below the threshold are hidden. Raise it for stricter filtering.',
+    resetButton: 'Reset to defaults',
+    closeAria: 'Close settings',
   },
 
   // Sprint M-X.2 — annotation editing inside SequenceView.
   annotationEdit: {
     // CreateAnnotationPopup (selection + H, or context menu).
-    createTitle: 'Новая аннотация',
-    createNamePlaceholder: 'Название (lacZα, AmpR, …)',
-    createTypeLabel: 'Тип',
-    createStartLabel: 'Начало',
-    createEndLabel: 'Конец',
-    createStrandLabel: 'Цепь',
-    createStrandForward: '→ прямая',
-    createStrandReverse: '← обратная',
-    createCancel: 'Отмена',
-    createOpenAnnotator: 'Найти в Аннотаторе',
-    createSubmit: 'Создать',
-    createInvalidCoords: 'Проверь координаты — начало < конца, и обе в пределах последовательности.',
+    createTitle: 'New annotation',
+    createNamePlaceholder: 'Name (lacZα, AmpR, …)',
+    createTypeLabel: 'Type',
+    createStartLabel: 'Start',
+    createEndLabel: 'End',
+    createStrandLabel: 'Strand',
+    createStrandForward: '→ forward',
+    createStrandReverse: '← reverse',
+    createCancel: 'Cancel',
+    createOpenAnnotator: 'Find in Annotator',
+    createSubmit: 'Create',
+    createInvalidCoords: 'Check the coordinates — start < end, and both within the sequence.',
     // EditAnnotationModal (E key on selected region).
-    editTitle: 'Редактировать аннотацию',
+    editTitle: 'Edit annotation',
     editApply: 'OK',
-    editCancel: 'Отмена',
+    editCancel: 'Cancel',
     // Inline rename (double-click).
-    renamePlaceholder: 'Имя...',
+    renamePlaceholder: 'Name...',
     // Selection context menu — Sprint M-X.2 K9 entry point.
-    contextMenuAnnotate: 'Аннотировать выделение...',
-    contextMenuCreateRegion: 'Создать аннотацию (H)',
-    contextMenuDeleteRegion: 'Удалить аннотацию (Del)',
-    contextMenuEditRegion: 'Редактировать аннотацию (E)',
+    contextMenuAnnotate: 'Annotate selection...',
+    contextMenuCreateRegion: 'Create annotation (H)',
+    contextMenuDeleteRegion: 'Delete annotation (Del)',
+    contextMenuEditRegion: 'Edit annotation (E)',
   },
 
   // Sprint M-X.2 — Annotator fullscreen shell.
   annotator: {
-    title: 'Аннотатор',
-    backButton: '← Назад',
-    runButton: (n) => `Запустить (${n})`,
+    title: 'Annotator',
+    backButton: '← Back',
+    runButton: (n) => `Run (${n})`,
     runningSpinner: '…',
-    saveButton: 'Сохранить',
-    saveCount: (n) => `Сохранить (${n})`,
-    thresholdLabel: (n) => `Порог уверенности: ${(n * 100).toFixed(0)}%`,
-    scopeFull: 'Вся последовательность',
-    scopeRegion: (start, end) => `Участок ${start}..${end}`,
-    pluginsHeader: 'Плагины',
-    resultsHeader: 'Результаты',
-    resultsEmpty: 'Запустите плагины — результаты появятся здесь.',
-    resultPredicted: 'предсказан',
-    resultAccept: 'Принять',
-    resultReject: 'Отклонить',
-    resultEdit: 'Редактировать',
-    resultAccepted: '✓ Принят',
-    resultRejected: '✗ Отклонён',
-    summaryAccepted: (n) => `Принято: ${n}`,
-    summaryRejected: (n) => `Отклонено: ${n}`,
-    summaryEdited: (n) => `Изменено: ${n}`,
-    summarySkipped: (n) => `Пропущено как дубликаты: ${n}`,
-    pluginUnavailable: 'Недоступен',
-    speedHintInstant: 'мгновенно',
-    speedHintFast: 'быстро',
-    speedHintSlow: 'медленно',
+    saveButton: 'Save',
+    saveCount: (n) => `Save (${n})`,
+    thresholdLabel: (n) => `Confidence threshold: ${(n * 100).toFixed(0)}%`,
+    scopeFull: 'Whole sequence',
+    scopeRegion: (start, end) => `Region ${start}..${end}`,
+    pluginsHeader: 'Plugins',
+    resultsHeader: 'Results',
+    resultsEmpty: 'Run plugins — results will appear here.',
+    resultPredicted: 'predicted',
+    resultAccept: 'Accept',
+    resultReject: 'Reject',
+    resultEdit: 'Edit',
+    resultAccepted: '✓ Accepted',
+    resultRejected: '✗ Rejected',
+    summaryAccepted: (n) => `Accepted: ${n}`,
+    summaryRejected: (n) => `Rejected: ${n}`,
+    summaryEdited: (n) => `Edited: ${n}`,
+    summarySkipped: (n) => `Skipped as duplicates: ${n}`,
+    pluginUnavailable: 'Unavailable',
+    speedHintInstant: 'instant',
+    speedHintFast: 'fast',
+    speedHintSlow: 'slow',
     pluginBadgeMock: '(mock)',
     pluginNetworkBadge: '🌐',
-    annotatorButtonLabel: '🔍 Аннотатор',
-    annotatorButtonHint: 'Открыть Аннотатор для всей последовательности',
+    annotatorButtonLabel: '🔍 Annotator',
+    annotatorButtonHint: 'Open the Annotator on the whole sequence',
   },
 
   // SessionSummary
-  sessionSummaryTitle: '✓ Уже добавлено в этой сессии',
-  sessionSummaryOpenCanvas: 'Открыть холст →',
-  sessionBadgeCanvas: '✓ Канвас',
-  sessionBadgeLibrary: '📚 Библиотека',
-  sessionBadgeAnnotate: (n) => `🏷 +${n} регионов`,
-  sessionBadgeReplaced: '↻ заменён',
+  sessionSummaryTitle: '✓ Already added in this session',
+  sessionSummaryOpenCanvas: 'Open canvas →',
+  sessionBadgeCanvas: '✓ Canvas',
+  sessionBadgeLibrary: '📚 Library',
+  sessionBadgeAnnotate: (n) => `🏷 +${n} regions`,
+  sessionBadgeReplaced: '↻ replaced',
 
   // Inspector overview / summary categories (K3).
-  summaryWhatInFile: 'Что в файле',
-  summarySelection: 'СЕЛЕКЦИЯ',
+  summaryWhatInFile: 'What is in this file',
+  summarySelection: 'SELECTION',
   summarySelectionIcon: '🛡',
-  summaryPromoters: 'ПРОМОТОРЫ',
+  summaryPromoters: 'PROMOTERS',
   summaryPromotersIcon: '📣',
   summaryOrigins: 'ORIGIN',
   summaryOriginsIcon: '⚓',
   summaryTags: 'TAGS',
   summaryTagsIcon: '🏷',
   summaryCdsList: (n) => `CDS (${n})`,
-  summaryReSites: '🔬 САЙТЫ РЕСТРИКЦИИ',
-  summaryWarnings: (n) => `${n} замечаний валидации`,
+  summaryReSites: '🔬 RESTRICTION SITES',
+  summaryWarnings: (n) => `${n} validation warnings`,
 
   // Inline title.
-  inlineTitleAria: 'Имя плазмиды',
+  inlineTitleAria: 'Plasmid name',
 
   // TagsEditor (M-B.2 follow-up after Library fullscreen wipe).
-  addTagPlaceholder: '+ тег',
-  tagsLimit: (n) => `максимум ${n} тегов`,
-  tagRemoveAria: (tag) => `Убрать тег ${tag}`,
+  addTagPlaceholder: '+ tag',
+  tagsLimit: (n) => `maximum ${n} tags`,
+  tagRemoveAria: (tag) => `Remove tag ${tag}`,
 
   // ActionsBar (single + multi)
-  actionCanvas: 'На канвас',
-  actionCanvasNoProjectTitle: 'Откройте проект, чтобы добавить на канвас',
-  actionLibrary: 'В библиотеку',
-  actionDownloadGB: '💾 Скачать как .gb',
-  actionDeleteSession: '🗑 Удалить из сессии',
-  actionOverflowAria: 'Дополнительно',
+  actionCanvas: 'To canvas',
+  actionCanvasNoProjectTitle: 'Open a project first to add to canvas',
+  actionLibrary: 'To library',
+  actionDownloadGB: '💾 Download as .gb',
+  actionDeleteSession: '🗑 Remove from session',
+  actionOverflowAria: 'More',
 
-  deleteFromSessionConfirm: 'Удалить файл из сессии?',
-  deleteAllConfirm: 'Удалить весь batch файлов?',
+  deleteFromSessionConfirm: 'Remove file from this session?',
+  deleteAllConfirm: 'Remove the entire batch?',
 
   // MetaColumn
-  metaTagsLabel: 'теги',
-  metaTopology: 'топология',
-  metaTopologyCircularTitle: 'Круглая (плазмида)',
-  metaTopologyLinearTitle: 'Линейная',
-  metaLengthLabel: 'длина',
-  metaOrigin: 'начало (п.н.)',
-  metaOriginApply: '↻ применить',
-  metaOriginHintLabel: 'межгенные участки',
-  metaInfo: 'информация',
-  metaInfoFromFile: 'Из файла',
-  metaInfoEnriched: 'Дополнено',
-  metaDescription: 'описание',
-  metaOrganism: 'организм',
-  metaSource: 'источник',
+  metaTagsLabel: 'tags',
+  metaTopology: 'topology',
+  metaTopologyCircularTitle: 'Circular (plasmid)',
+  metaTopologyLinearTitle: 'Linear',
+  metaLengthLabel: 'length',
+  metaOrigin: 'origin (bp)',
+  metaOriginApply: '↻ apply',
+  metaOriginHintLabel: 'intergenic regions',
+  metaInfo: 'info',
+  metaInfoFromFile: 'From file',
+  metaInfoEnriched: 'Enriched',
+  metaDescription: 'description',
+  metaOrganism: 'organism',
+  metaSource: 'source',
   metaSourceValue: (s) => {
-    if (s === 'catalog') return 'каталог';
-    if (s === 'mine') return 'моя библиотека';
-    if (s === 'project') return 'этот проект';
-    if (s === 'demo') return 'учебный';
-    if (s === 'snapgene') return 'каталог SnapGene';
-    if (s === 'paste') return 'вставка';
-    if (s === 'file') return 'файл';
+    if (s === 'catalog') return 'catalog';
+    if (s === 'mine') return 'my library';
+    if (s === 'project') return 'this project';
+    if (s === 'demo') return 'tutorial';
+    if (s === 'snapgene') return 'SnapGene catalog';
+    if (s === 'paste') return 'paste';
+    if (s === 'file') return 'file';
     return s;
   },
-  metaIupac: (chars) => `Содержит IUPAC: ${chars} — праймеры по таким участкам не дизайнятся, программа предупредит при сборке.`,
+  metaIupac: (chars) => `Contains IUPAC: ${chars} — primers will not be designed across these regions; the program will warn during assembly.`,
 
   // Multi-mode
-  multiHeader: (n) => `Загружено ${n} файл${n === 1 ? '' : n < 5 ? 'а' : 'ов'}`,
-  multiReplaceAll: '↻ заменить все',
-  multiBatchLibrary: (n) => `В библиотеку (${n})`,
-  multiActionDeleteAll: '🗑 Удалить весь batch',
-  multiRemoveAria: 'Удалить из списка',
-  multiColName: 'Имя',
-  multiColLength: 'Длина',
-  multiColRegions: 'Регионов',
-  multiColAnnotate: 'Аннот.',
-  multiCanvasDisabledTitle: 'Доступно для одиночной загрузки',
+  multiHeader: (n) => `Loaded ${n} file${n === 1 ? '' : 's'}`,
+  multiReplaceAll: '↻ replace all',
+  multiBatchLibrary: (n) => `To library (${n})`,
+  multiActionDeleteAll: '🗑 Remove the entire batch',
+  multiRemoveAria: 'Remove from list',
+  multiColName: 'Name',
+  multiColLength: 'Length',
+  multiColRegions: 'Regions',
+  multiColAnnotate: 'Annot.',
+  multiCanvasDisabledTitle: 'Available for single-file imports',
 
   // Region count helper
-  summaryRegionCount: (n) => `${n} регионов`,
+  summaryRegionCount: (n) => `${n} regions`,
 
   // Confirm-flow hints (mode-agnostic)
-  confirmBusy: 'Импорт…',
-  // `confirmHintProject` / `confirmHintLibrary` removed 03.05.2026
-  // evening — биолог: «можем убрать эту панель внизу? и кнопки сделать
-  // парящими поверх канваса?». ActionsBar больше не показывает
-  // text-hint, primary button colour сам коммуницирует destination.
+  confirmBusy: 'Importing…',
 
-  busyParsing: 'Парсинг файлов…',
+  busyParsing: 'Parsing files…',
 
   // Confirm flow «skipped» toast still used (autoname Skip / parse fail).
-  confirmSkipped: (n) => `Пропущено: ${n}`,
+  confirmSkipped: (n) => `Skipped: ${n}`,
 
   // autoAnnotate toggle — moved from ActionsBar overflow into AnnotationsTab.
-  tabAnnotateOnImport: 'авто-аннотация при импорте',
+  tabAnnotateOnImport: 'auto-annotate on import',
 
   // K6 (M-B.1) — AutonameModal.
-  autonameTitle: (baseName) => `«${baseName}» уже есть в Library`,
+  autonameTitle: (baseName) => `"${baseName}" already exists in Library`,
   autonameExistingPreview: (name, length, addedAt) =>
     `Existing: ${name} · ${length} bp · ${addedAt}`,
-  autonameInputLabel: 'Имя для новой записи',
-  autonamePrimary: (name) => `✓ Сохранить как «${name}»`,
-  autonameAdvancedShow: '▾ Advanced: заменить existing / пропустить',
-  autonameAdvancedHide: '▴ Свернуть advanced',
-  autonameReplace: 'Заменить existing',
-  autonameSkip: 'Пропустить',
-  cancel: 'Отмена',
+  autonameInputLabel: 'Name for the new entry',
+  autonamePrimary: (name) => `✓ Save as "${name}"`,
+  autonameAdvancedShow: '▾ Advanced: replace existing / skip',
+  autonameAdvancedHide: '▴ Collapse advanced',
+  autonameReplace: 'Replace existing',
+  autonameSkip: 'Skip',
+  cancel: 'Cancel',
 
   // K6 (M-B.1) — PrimerWizardStepModal.
-  primerWizardTitle: (n) => `Праймеры из файла (${n})`,
+  primerWizardTitle: (n) => `Primers from file (${n})`,
   primerWizardPoolHint:
-    'Праймеры пойдут в unified pool: видны и в Library Primers, и в Project Primer Pool по фильтру projectId.',
-  primerWizardSelectedCount: (sel, total) => `Выбрано: ${sel}/${total}`,
-  primerWizardAdd: (n) => n > 0 ? `+ Добавить ${n}` : '+ Добавить',
-  primerWizardSkip: 'Пропустить праймеры',
+    'Primers go into the unified pool: visible both in Library Primers and in the Project Primer Pool filtered by projectId.',
+  primerWizardSelectedCount: (sel, total) => `Selected: ${sel}/${total}`,
+  primerWizardAdd: (n) => n > 0 ? `+ Add ${n}` : '+ Add',
+  primerWizardSkip: 'Skip primers',
   primerStatusImported: 'imported',
-  primerDupeBadge: '⚠ дубль',
+  primerDupeBadge: '⚠ duplicate',
   primerMeta: (len, tm, direction) => {
     const parts = [`${len} bp`];
     if (typeof tm === 'number') parts.push(`Tm ${tm.toFixed(1)}°C`);
@@ -292,11 +289,11 @@ export const IMPORTER_STRINGS = {
   },
 
   // K6 (M-B.1) — Confirm flow toasts.
-  confirmAddedOne: (name) => `«${name}» добавлен в Library`,
-  confirmAddedOneToProject: (name) => `«${name}» добавлен в Library и проект`,
-  confirmAddedMany: (n) => `Добавлено ${n} файлов в Library`,
-  confirmAddedManyToProject: (n) => `Добавлено ${n} файлов в Library и проект`,
-  confirmReplaced: (name) => `«${name}» заменён`,
-  confirmPrimersAdded: (n) => `+ ${n} праймеров в pool`,
-  confirmFailed: (msg) => `Импорт не удался: ${msg}`,
+  confirmAddedOne: (name) => `"${name}" added to Library`,
+  confirmAddedOneToProject: (name) => `"${name}" added to Library and project`,
+  confirmAddedMany: (n) => `Added ${n} files to Library`,
+  confirmAddedManyToProject: (n) => `Added ${n} files to Library and project`,
+  confirmReplaced: (name) => `"${name}" replaced`,
+  confirmPrimersAdded: (n) => `+ ${n} primers in the pool`,
+  confirmFailed: (msg) => `Import failed: ${msg}`,
 };
