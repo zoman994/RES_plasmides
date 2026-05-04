@@ -667,14 +667,16 @@ const SequenceView = forwardRef(function SequenceView({
       : 0;
     const cpl = charsPerLine || 80;
     const ctrlOrMeta = e.ctrlKey || e.metaKey;
-    // Caret-position convention: position N renders at the LEFT
-    // edge of letter[N] (so position N is "before letter N"). Hence
-    // end-of-line caret = lineStart + cpl, NOT lineStart + cpl - 1
-    // (biolog 04.05.2026 evening: «контрол шифт вправо/влево всё
-    // равно стопится на границе»). Earlier the off-by-one left the
-    // last letter of every line outside the selection.
     const lineStartOf = (n) => Math.floor(n / cpl) * cpl;
     const lineEndOf = (n) => Math.min(seqLength, lineStartOf(n) + cpl);
+    // AA-mode + shift held → walk by codon (3 nt) so selection
+    // grows triplet-by-triplet just like an AA drag (biolog
+    // 04.05.2026 evening: «если поставил курсор на АА и потом с
+    // зажатым шифтом идёшь по АК влево или вправо то выделяются
+    // триплетами»). Plain (no shift) arrow still moves by 1 nt and
+    // collapses the selection — that's the user's "exit AA mode"
+    // affordance.
+    const aaStep = selectionMode === "aa" && e.shiftKey ? 3 : 1;
     let next = cur;
     switch (e.key) {
       case "ArrowLeft":
@@ -682,7 +684,7 @@ const SequenceView = forwardRef(function SequenceView({
           const ls = lineStartOf(cur);
           next = cur > ls ? ls : Math.max(0, ls - cpl);
         } else {
-          next = cur - 1;
+          next = cur - aaStep;
         }
         break;
       case "ArrowRight":
@@ -690,7 +692,7 @@ const SequenceView = forwardRef(function SequenceView({
           const le = lineEndOf(cur);
           next = cur < le ? le : Math.min(seqLength, le + cpl);
         } else {
-          next = cur + 1;
+          next = cur + aaStep;
         }
         break;
       case "ArrowUp":    next = cur - cpl; break;

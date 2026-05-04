@@ -226,12 +226,17 @@ export default function SingleInspector({
     setCursorPos(pos);
     if (!opts || !opts.extendSelection) {
       setCursorAnchor(pos);
+      // Plain caret moves (no shift) collapse selection AND drop
+      // back to DNA mode — biolog explicitly leaves AA territory by
+      // pressing arrow without shift.
+      setCursorSelectionMode('dna');
     }
-    // Caret moves and drag-extends are always DNA-mode — biolog
-    // selected DNA letters, not AA letters. AA-mode is set ONLY by
-    // the AA-click branch in SequenceView (via onSelectRange with
-    // mode='aa').
-    setCursorSelectionMode('dna');
+    // Shift+arrow extends selection AND PRESERVES the current mode:
+    // an AA selection stays 'aa' so the blue overlay + Copy AA
+    // hotkey remain valid as the user walks codon-by-codon (biolog
+    // 04.05.2026 evening: «с зажатым шифтом идёшь по АК … выделяются
+    // триплетами»). DNA-mode shift+arrow keeps DNA mode by default
+    // (no mode change in this branch).
     if (opts && opts.needsScroll === false) return;
     setPendingScroll({ pos, tick: Date.now(), instant: true });
   }, []);
