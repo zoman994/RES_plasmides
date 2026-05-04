@@ -182,6 +182,39 @@ export function useImporterState({ mode } = {}) { // eslint-disable-line no-unus
       }
     }));
     if (cancelToken.current !== myToken) return [];
+
+    // Sprint M-X.3 K2 — single file routes through PreImportModal
+    // envelope instead of straight to parsedItems. Multi-file
+    // (length > 1) opens a `kind: 'multi'` envelope with shared
+    // metadata + per-file name list (PreImportModal handles the
+    // multi mode in K2a).
+    setBusy(false);
+    if (results.length === 1) {
+      const r = results[0];
+      // Errored parse — still surface it without the modal so the
+      // user sees the toast / inspector error path. (Failed parses
+      // can't be «edited» into something useful via metadata.)
+      if (r._error) {
+        setParsedItems(prev => [...prev, r]);
+        setPerFileFlags(prev => ({ ...prev, [r._fileName]: { autoAnnotate: true } }));
+        return results;
+      }
+      const suggestedTags = opts.targetFolderTag ? [opts.targetFolderTag] : [];
+      setPendingImport({
+        kind: 'file',
+        parsedItem: r,
+        suggestedName: r.name || r._fileName,
+        defaultTopology: r.topology || 'linear',
+        hasAnnotations: Array.isArray(r.annotations) && r.annotations.length > 0,
+        suggestedTags,
+        source: 'file',
+      });
+      return results;
+    }
+
+    // Multi-file (length > 1) — K2a will route through pendingImport
+    // with `kind: 'multi'`. For now (K2) keep legacy behaviour so
+    // the existing MultiInspector path stays working until K2a lands.
     setParsedItems(prev => [...prev, ...results]);
     setPerFileFlags(prev => {
       const next = { ...prev };
@@ -204,13 +237,14 @@ export function useImporterState({ mode } = {}) { // eslint-disable-line no-unus
         return next;
       });
     }
-    setBusy(false);
     return results;
   }, []);
 
   /**
-   * Add a catalog item as a parsedItem (silent single replacement).
-   * Multi-mode confirm is the caller's responsibility.
+   * Add a catalog item — Sprint M-X.3 K2 routes this through the
+   * PreImportModal envelope rather than writing to parsedItems
+   * directly. Multi-mode confirm is still the caller's responsibility
+   * (handled in CatalogColumn before this function fires).
    */
   const addCatalogItem = useCallback((item) => {
     if (!item || !item.sequence) return;
@@ -238,11 +272,21 @@ export function useImporterState({ mode } = {}) { // eslint-disable-line no-unus
       // only carry it when source is the user's own library.
       _libraryEntryId: item._source === 'mine' && item.id ? item.id : undefined,
     };
-    setParsedItems([next]);
-    setCurrentIdxState(0);
-    setActiveTabState('overview');
-    setPerFileFlags({ [fn]: { autoAnnotate: true } });
-    setPerFileEdits({});
+    // Pre-fill suggestedTags from existing library-entry tags so the
+    // chip list in PreImportModal reflects what biolog already
+    // labelled the source as. Not all catalog sources carry tags
+    // (snapgene/demo don't); fall back to []. Only library ('mine')
+    // entries carry user tags.
+    const suggestedTags = Array.isArray(item._tags) ? item._tags : [];
+    setPendingImport({
+      kind: 'catalog',
+      parsedItem: next,
+      suggestedName: next.name,
+      defaultTopology: next.topology,
+      hasAnnotations: annotations.length > 0,
+      suggestedTags,
+      source: 'catalog',
+    });
   }, []);
 
   /**

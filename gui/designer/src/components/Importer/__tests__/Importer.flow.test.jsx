@@ -89,14 +89,25 @@ describe('M-B.2 K1 — Importer single-screen flow', () => {
     expect(screen.getByTestId('importer-fullscreen').dataset.target).toBe('library');
   });
 
-  it('4) drop file into CatalogColumn dropzone parses + appends to parsedItems → SingleInspector mounts', async () => {
+  it('4) drop file into CatalogColumn dropzone parses + opens PreImportModal → submit → SingleInspector mounts', async () => {
+    // Sprint M-X.3 K2 — single-file drop now opens PreImportModal
+    // first; the user confirms metadata, THEN the inspector mounts.
     render(<Importer />);
     const dz = screen.getByTestId('importer-catalog-dropzone');
     const file = fileFromText('thing.fasta', FASTA_TEXT);
     await act(async () => {
       fireEvent.drop(dz, { dataTransfer: { files: [file], types: ['Files'] } });
     });
+    // Modal mounts first.
+    await waitFor(() => expect(screen.getByTestId('pre-import-modal')).toBeTruthy());
+    expect(screen.queryByTestId('importer-single-inspector')).toBeNull();
+    // Submit — accept the suggested name + topology.
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('pre-import-submit'));
+    });
+    // Modal gone, inspector mounted.
     await waitFor(() => {
+      expect(screen.queryByTestId('pre-import-modal')).toBeNull();
       expect(screen.getByTestId('importer-single-inspector')).toBeTruthy();
     });
     expect(screen.queryByTestId('importer-empty-inspector')).toBeNull();
@@ -112,12 +123,17 @@ describe('M-B.2 K1 — Importer single-screen flow', () => {
     // «Аннотации» tab is gone; the merged «Последовательность» tab is
     // the only non-overview content surface. Test toggles between
     // overview ↔ sequence to exercise the same TabBar contract.
+    // M-X.3 K2 — drop file now goes through PreImportModal first.
     render(<Importer />);
     const dz = screen.getByTestId('importer-catalog-dropzone');
     await act(async () => {
       fireEvent.drop(dz, {
         dataTransfer: { files: [fileFromText('x.fasta', FASTA_TEXT)], types: ['Files'] },
       });
+    });
+    await waitFor(() => expect(screen.getByTestId('pre-import-modal')).toBeTruthy());
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('pre-import-submit'));
     });
     await waitFor(() => expect(screen.getByTestId('importer-single-inspector')).toBeTruthy());
 

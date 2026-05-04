@@ -31,9 +31,17 @@ describe('M-B.2 K1 — useImporterState', () => {
     const { result } = renderHook(() => useImporterState({ mode: 'advanced' }));
     expect(result.current.parsedItems).toEqual([]);
 
+    // K2: single-file `addFiles` opens PreImportModal envelope; the
+    // commit step is what writes to parsedItems. Mirror the live
+    // flow here — parse → commit, parse → commit.
     await act(async () => {
       await result.current.addFiles([fileFromText('a.fasta', FASTA_A)]);
     });
+    expect(result.current.parsedItems).toEqual([]);
+    expect(result.current.pendingImport?.kind).toBe('file');
+    act(() => result.current.commitPendingImport({
+      name: 'a', topology: 'linear', tags: [], annotateNow: true,
+    }));
     expect(result.current.parsedItems.length).toBe(1);
     expect(result.current.parsedItems[0]._fileName).toBe('a.fasta');
     expect(result.current.parsedItems[0]._source).toBe('file');
@@ -41,6 +49,9 @@ describe('M-B.2 K1 — useImporterState', () => {
     await act(async () => {
       await result.current.addFiles([fileFromText('b.fasta', FASTA_B)]);
     });
+    act(() => result.current.commitPendingImport({
+      name: 'b', topology: 'linear', tags: [], annotateNow: true,
+    }));
     expect(result.current.parsedItems.length).toBe(2);
     expect(result.current.parsedItems.map(p => p._fileName)).toEqual(['a.fasta', 'b.fasta']);
   });
@@ -122,6 +133,10 @@ describe('M-B.2 K1 — useImporterState', () => {
     await act(async () => {
       await result.current.addFiles([fileFromText('x.fasta', FASTA_A)]);
     });
+    // K2 — addFiles opens the modal; commit to land in parsedItems.
+    act(() => result.current.commitPendingImport({
+      name: 'x', topology: 'linear', tags: [], annotateNow: true,
+    }));
     act(() => result.current.updateFlags('x.fasta', { autoAnnotate: false }));
     act(() => result.current.updateEdits('x.fasta', { editedAnnotations: [{ id: 'a' }] }));
     act(() => result.current.setActiveTab('annotations'));
@@ -237,5 +252,115 @@ describe('M-X.3 K1 — pendingImport for paste flow', () => {
     expect(result.current.pendingImport).toBeTruthy();
     act(() => result.current.reset());
     expect(result.current.pendingImport).toBeNull();
+  });
+});
+
+// ─── Sprint M-X.3 K2 — pendingImport for file/catalog flows ──────────
+describe('M-X.3 K2 — pendingImport for catalog flow', () => {
+  it('addCatalogItem opens the modal instead of writing parsedItems directly', () => {
+    const { result } = renderHook(() => useImporterState({ mode: 'advanced' }));
+    act(() => result.current.addCatalogItem({
+      id: 'cat-1', name: 'pUC19', sequence: 'ATGC'.repeat(50),
+      length: 200, topology: 'circular',
+      annotations: [
+        { id: 'a1', name: 'AmpR', type: 'CDS', start: 10, end: 100, level: 'region' },
+        { id: 'a2', name: 'lac', type: 'promoter', start: 110, end: 150, level: 'region' },
+      ],
+      _source: 'mine',
+    }));
+    expect(result.current.parsedItems).toEqual([]);
+    const env = result.current.pendingImport;
+    expect(env).toBeTruthy();
+    expect(env.kind).toBe('catalog');
+    expect(env.parsedItem.name).toBe('pUC19');
+    expect(env.parsedItem.topology).toBe('circular');
+    expect(env.hasAnnotations).toBe(true);
+    expect(env.suggestedName).toBe('pUC19');
+    expect(env.defaultTopology).toBe('circular');
+    // For 'mine' library items, we pre-fill suggestedTags from entry.tags.
+    // K2 makes that explicit so PreImportModal can default the chip list.
+    expect(env.parsedItem._libraryEntryId).toBe('cat-1');
+  });
+
+  it('addCatalogItem with no sequence is a no-op', () => {
+    const { result } = renderHook(() => useImporterState({ mode: 'advanced' }));
+    act(() => result.current.addCatalogItem({ id: 'x', name: 'empty' }));
+    expect(result.current.pendingImport).toBeNull();
+    expect(result.current.parsedItems).toEqual([]);
+  });
+
+  it('catalog commit with keepExistingAnnotations=true preserves annotations', () => {
+    const { result } = renderHook(() => useImporterState({ mode: 'advanced' }));
+    const annotations = [
+      { id: 'a1', name: 'AmpR', type: 'CDS', start: 10, end: 100, level: 'region' },
+    ];
+    act(() => result.current.addCatalogItem({
+      id: 'c1', name: 'pX', sequence: 'ATGC'.repeat(50),
+      length: 200, topology: 'circular', annotations, _source: 'snapgene',
+    }));
+    act(() => result.current.commitPendingImport({
+      name: 'pX', topology: 'circular', tags: [],
+      annotateNow: false, keepExistingAnnotations: true,
+    }));
+    expect(result.current.parsedItems[0].annotations).toEqual(annotations);
+  });
+
+  it('catalog commit with keepExistingAnnotations=false drops annotations', () => {
+    const { result } = renderHook(() => useImporterState({ mode: 'advanced' }));
+    act(() => result.current.addCatalogItem({
+      id: 'c1', name: 'pX', sequence: 'ATGC'.repeat(50),
+      length: 200, topology: 'circular',
+      annotations: [
+        { id: 'a1', name: 'AmpR', type: 'CDS', start: 10, end: 100, level: 'region' },
+      ],
+      _source: 'snapgene',
+    }));
+    act(() => result.current.commitPendingImport({
+      name: 'pX', topology: 'circular', tags: [],
+      annotateNow: true, keepExistingAnnotations: false,
+    }));
+    expect(result.current.parsedItems[0].annotations).toEqual([]);
+    expect(result.current.parsedItems[0]._fromFileCount).toBe(0);
+  });
+});
+
+describe('M-X.3 K2 — pendingImport for file flow (single)', () => {
+  it('addFiles with one file routes through pendingImport (kind=file)', async () => {
+    const { result } = renderHook(() => useImporterState({ mode: 'advanced' }));
+    await act(async () => {
+      await result.current.addFiles([fileFromText('a.fasta', FASTA_A)]);
+    });
+    expect(result.current.parsedItems).toEqual([]);
+    const env = result.current.pendingImport;
+    expect(env).toBeTruthy();
+    expect(env.kind).toBe('file');
+    expect(env.parsedItem._fileName).toBe('a.fasta');
+    expect(env.parsedItem._source).toBe('file');
+    expect(env.suggestedName).toBeTruthy();
+  });
+
+  it('addFiles with one file: hasAnnotations reflects parsedItem.annotations', async () => {
+    const { result } = renderHook(() => useImporterState({ mode: 'advanced' }));
+    await act(async () => {
+      await result.current.addFiles([fileFromText('a.fasta', FASTA_A)]);
+    });
+    // FASTA path produces no annotations.
+    expect(result.current.pendingImport.hasAnnotations).toBe(false);
+  });
+
+  it('addFiles with targetFolderTag carries it through commit as a tag', async () => {
+    const { result } = renderHook(() => useImporterState({ mode: 'advanced' }));
+    await act(async () => {
+      await result.current.addFiles(
+        [fileFromText('a.fasta', FASTA_A)],
+        { targetFolderTag: 'Vectors/CRISPR' }
+      );
+    });
+    expect(result.current.pendingImport.suggestedTags).toContain('Vectors/CRISPR');
+    act(() => result.current.commitPendingImport({
+      name: 'a', topology: 'linear', tags: ['Vectors/CRISPR'], annotateNow: true,
+    }));
+    const it = result.current.parsedItems[0];
+    expect(result.current.perFileEdits[it._fileName]?.editedTags).toContain('Vectors/CRISPR');
   });
 });
