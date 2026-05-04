@@ -111,4 +111,25 @@ describe('K6 annotator slice', () => {
     expect(a.acceptedRegionIds).toEqual({});
     expect(a.results).toEqual({});
   });
+
+  // ─── Sprint M-X.3 K3 — Annotator dual-tab activeTab ─────────────
+  it('activeTab defaults to "table"', () => {
+    const a = selectAnnotator(useStore.getState());
+    expect(a.activeTab).toBe('table');
+  });
+
+  it('setAnnotatorActiveTab switches between table and preview', () => {
+    useStore.getState().setAnnotatorActiveTab('preview');
+    expect(selectAnnotator(useStore.getState()).activeTab).toBe('preview');
+    useStore.getState().setAnnotatorActiveTab('table');
+    expect(selectAnnotator(useStore.getState()).activeTab).toBe('table');
+  });
+
+  it('setAnnotatorActiveTab ignores garbage values', () => {
+    useStore.getState().setAnnotatorActiveTab('table');
+    useStore.getState().setAnnotatorActiveTab('not-a-tab');
+    expect(selectAnnotator(useStore.getState()).activeTab).toBe('table');
+    useStore.getState().setAnnotatorActiveTab(null);
+    expect(selectAnnotator(useStore.getState()).activeTab).toBe('table');
+  });
 });

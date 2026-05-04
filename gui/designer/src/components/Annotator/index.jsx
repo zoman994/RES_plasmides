@@ -32,6 +32,8 @@ import { runAnnotatorPipeline } from '../../lib/annotator-pipeline.js';
 import TargetPreview from './TargetPreview.jsx';
 import PluginPanel from './PluginPanel.jsx';
 import ResultsPane from './ResultsPane.jsx';
+import AnnotatorTabBar from './TabBar.jsx';
+import PreviewTab from './PreviewTab.jsx';
 
 const S = STRINGS.importer.annotator;
 
@@ -49,6 +51,7 @@ export default function Annotator({
   const acceptRegion = useStore((s) => s.acceptRegion);
   const rejectRegion = useStore((s) => s.rejectRegion);
   const editPendingRegion = useStore((s) => s.editPendingRegion);
+  const setActiveTab = useStore((s) => s.setAnnotatorActiveTab);
 
   const plugins = useMemo(() => getAllPlugins(), []);
 
@@ -225,7 +228,13 @@ export default function Annotator({
         <TargetPreview annotations={annotations} sequenceLength={seqLength} scope={scope} />
       </div>
 
-      {/* Body — plugin panel + results pane */}
+      {/* Body — plugin panel + (tabbed) right pane.
+          Sprint M-X.3 K3 — split body. PluginPanel stays on the
+          left across both tabs (it owns the «what to run» surface).
+          The right side is a TabBar + active tab content:
+            - 'table'   → existing ResultsPane (accept/reject rows)
+            - 'preview' → PreviewTab (K4 mounts SequenceView with
+                          ghost-rendered predicted regions). */}
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
         <PluginPanel
           plugins={plugins}
@@ -236,16 +245,26 @@ export default function Annotator({
           onRun={handleRun}
           runtimeContext={{ sequenceLength: seqLength, hasNetwork: typeof navigator !== 'undefined' ? !!navigator.onLine : true }}
         />
-        <ResultsPane
-          results={annotator.results}
-          acceptedRegionIds={annotator.acceptedRegionIds}
-          rejectedRegionIds={annotator.rejectedRegionIds}
-          pendingEdits={annotator.pendingEdits}
-          threshold={annotator.threshold}
-          onAccept={acceptRegion}
-          onReject={rejectRegion}
-          onEditPatch={editPendingRegion}
-        />
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
+          <AnnotatorTabBar
+            activeTab={annotator.activeTab || 'table'}
+            onChange={setActiveTab}
+          />
+          {(annotator.activeTab || 'table') === 'table' ? (
+            <ResultsPane
+              results={annotator.results}
+              acceptedRegionIds={annotator.acceptedRegionIds}
+              rejectedRegionIds={annotator.rejectedRegionIds}
+              pendingEdits={annotator.pendingEdits}
+              threshold={annotator.threshold}
+              onAccept={acceptRegion}
+              onReject={rejectRegion}
+              onEditPatch={editPendingRegion}
+            />
+          ) : (
+            <PreviewTab />
+          )}
+        </div>
       </div>
 
       {/* Footer */}

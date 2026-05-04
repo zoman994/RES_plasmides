@@ -202,7 +202,14 @@ export const ANNOTATOR_DEFAULTS = Object.freeze({
   pendingEdits: Object.freeze({}),
   threshold: 0.7,
   running: Object.freeze({}),
+  // Sprint M-X.3 K3 — dual-tab body. 'table' shows the existing
+  // ResultsPane (PluginPanel left + accept/reject rows right);
+  // 'preview' (K4) mounts a SequenceView with merged confirmed +
+  // predicted annotations rendered as ghosts.
+  activeTab: 'table',
 });
+
+const ANNOTATOR_TABS = ['table', 'preview'];
 
 function sanitizeEnabledPluginIds(raw) {
   if (!raw || typeof raw !== 'object') {
@@ -482,6 +489,16 @@ export const createUiSlice = (set) => ({
       state.annotator.open = false;
       // scope, results, accepted, rejected, pendingEdits — preserved
       // so a re-open within the session restores the work.
+    });
+  },
+
+  /** Sprint M-X.3 K3 — switch between Annotator's «Table» / «Preview»
+   *  tabs. Garbage / unknown tab ids are silently ignored. */
+  setAnnotatorActiveTab: (tab) => {
+    if (!ANNOTATOR_TABS.includes(tab)) return;
+    set(state => {
+      if (!state.annotator) state.annotator = loadInitialAnnotator();
+      state.annotator.activeTab = tab;
     });
   },
 

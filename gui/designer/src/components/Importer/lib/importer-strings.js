@@ -170,6 +170,13 @@ export const IMPORTER_STRINGS = {
     pluginNetworkBadge: '🌐',
     annotatorButtonLabel: '🔍 Annotator',
     annotatorButtonHint: 'Open the Annotator on the whole sequence',
+    // Sprint M-X.3 K3 — dual-tab body labels.
+    tabTable: 'Table',
+    tabPreview: 'Preview',
+    tabTableHint: 'Plugin results — accept / reject / edit',
+    tabPreviewHint: 'Sequence with predicted features as ghosts',
+    previewEmpty: 'Run a plugin to see ghost features here.',
+    previewDrillInHint: 'Click a ghost feature to inspect it.',
   },
 
   // SessionSummary
