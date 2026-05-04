@@ -170,11 +170,19 @@ export const IMPORTER_STRINGS = {
     pluginNetworkBadge: '🌐',
     annotatorButtonLabel: '🔍 Annotator',
     annotatorButtonHint: 'Open the Annotator on the whole sequence',
-    // Sprint M-X.3 K3 — dual-tab body labels.
+    // Sprint M-X.3 K3 — dual-tab body labels (deprecated Stage B
+    // 05.05.2026; kept for back-compat / dark-theme test). Stage C
+    // tabLinear / tabCircular below replace the user-visible labels.
     tabTable: 'Table',
     tabPreview: 'Preview',
     tabTableHint: 'Plugin results — accept / reject / edit',
     tabPreviewHint: 'Sequence with predicted features as ghosts',
+    // Sprint M-X.3 follow-up Stage C — map view sub-tab inside
+    // PreviewTab.
+    tabLinear: 'Linear',
+    tabCircular: 'Circular',
+    tabLinearHint: 'Linear sequence view with ghost features',
+    tabCircularHint: 'Circular plasmid map with ghost features',
     previewEmpty: 'Run a plugin to see ghost features here.',
     previewDrillInHint: 'Click a ghost feature to inspect it.',
     // Sprint M-X.3 K4 — drill-in panel.

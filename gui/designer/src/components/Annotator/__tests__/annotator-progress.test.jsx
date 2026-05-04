@@ -42,7 +42,7 @@ function setRunning(map, results = {}) {
       running: map,
       open: true,
       scope: { kind: 'full', sequenceId: 'p1' },
-      activeTab: 'preview',
+      activeTab: 'linear',
       selectedGhostId: null,
     };
   });

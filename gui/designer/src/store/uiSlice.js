@@ -202,22 +202,18 @@ export const ANNOTATOR_DEFAULTS = Object.freeze({
   pendingEdits: Object.freeze({}),
   threshold: 0.7,
   running: Object.freeze({}),
-  // Sprint M-X.3 K3 — dual-tab body. 'table' shows the existing
-  // ResultsPane (PluginPanel left + accept/reject rows right);
-  // 'preview' (K4) mounts a SequenceView with merged confirmed +
-  // predicted annotations rendered as ghosts.
-  //
-  // Sprint M-X.3 follow-up (05.05.2026, Stage A) — biolog: «Дальше
-  // сразу открыватся аннотатор … и на этой карте показывают гост
-  // фичи». Default landing surface is now the map (Preview), not
-  // the table.
-  activeTab: 'preview',
+  // Sprint M-X.3 follow-up (05.05.2026, Stage C) — repurposed.
+  // Was: 'table' | 'preview' (dual-body shell, gone in Stage B).
+  // Now: 'linear' | 'circular' — picks the map view inside
+  // PreviewTab. Biolog: «по вкладке можно еще переключиться в окно
+  // просмотра кольцевой ерсии плазмиды/фрагмента».
+  activeTab: 'linear',
   // Sprint M-X.3 K4 — id of the ghost feature whose drill-in panel
   // is open in the Preview tab. `null` means no panel.
   selectedGhostId: null,
 });
 
-const ANNOTATOR_TABS = ['table', 'preview'];
+const ANNOTATOR_TABS = ['linear', 'circular'];
 
 function sanitizeEnabledPluginIds(raw) {
   if (!raw || typeof raw !== 'object') {

@@ -65,7 +65,7 @@ function setResults(results) {
       running: {},
       open: true,
       scope: { kind: 'full', sequenceId: 'p1' },
-      activeTab: 'preview',
+      activeTab: 'linear',
       selectedGhostId: null,
     };
   });

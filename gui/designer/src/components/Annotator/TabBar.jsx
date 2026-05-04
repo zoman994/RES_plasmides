@@ -1,13 +1,14 @@
 /**
- * Annotator/TabBar — Sprint M-X.3 K3.
+ * Annotator/TabBar — Sprint M-X.3 follow-up Stage C (05.05.2026).
  *
- * Two-button tab strip that sits above the Annotator body. Switches
- * between «Table» (the existing `ResultsPane` with accept/reject
- * rows) and «Preview» (the K4 `PreviewTab` that mounts SequenceView
- * with ghost-rendered predicted regions).
+ * Two-button tab strip that picks the MAP VIEW inside PreviewTab.
+ * Was: «Table | Preview» (gone in Stage B). Now: «Linear | Circular»,
+ * matching biolog's mental model: «по вкладке можно еще
+ * переключиться в окно просмотра кольцевой ерсии плазмиды/
+ * фрагмента».
  *
- * Stateless — receives `activeTab` + `onChange` from the parent
- * (which reads `state.annotator.activeTab` from the store).
+ * Stateless — `activeTab` + `onChange` come from the store via
+ * `selectAnnotator(s).activeTab` / `setAnnotatorActiveTab`.
  */
 
 import { STRINGS } from '../../lib/strings';
@@ -15,11 +16,11 @@ import { STRINGS } from '../../lib/strings';
 const S = STRINGS.importer.annotator;
 
 const TABS = [
-  { id: 'table',   label: () => S.tabTable,   hint: () => S.tabTableHint },
-  { id: 'preview', label: () => S.tabPreview, hint: () => S.tabPreviewHint },
+  { id: 'linear',   label: () => S.tabLinear,   hint: () => S.tabLinearHint },
+  { id: 'circular', label: () => S.tabCircular, hint: () => S.tabCircularHint },
 ];
 
-export default function AnnotatorTabBar({ activeTab = 'table', onChange }) {
+export default function AnnotatorTabBar({ activeTab = 'linear', onChange }) {
   return (
     <div
       data-testid="annotator-tab-bar"

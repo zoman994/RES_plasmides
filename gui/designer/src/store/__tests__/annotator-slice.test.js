@@ -112,28 +112,32 @@ describe('K6 annotator slice', () => {
     expect(a.results).toEqual({});
   });
 
-  // ─── Sprint M-X.3 K3 — Annotator dual-tab activeTab ─────────────
-  // Sprint M-X.3 follow-up (05.05.2026, Stage A) — biolog wants the
-  // map (Preview) to be the default landing surface, not the table:
-  // «открыватся аннотатор … и на этой карте показывают гост фичи».
-  it('activeTab defaults to "preview"', () => {
+  // ─── Sprint M-X.3 follow-up (05.05.2026, Stage C) — Annotator
+  // map sub-tab (Linear / Circular). The dual-body Table/Preview
+  // shell is gone (Stage B); activeTab now selects the map view
+  // inside PreviewTab. Biolog: «по вкладке можно еще переключиться
+  // в окно просмотра кольцевой ерсии плазмиды/фрагмента».
+  it('activeTab defaults to "linear"', () => {
     const a = selectAnnotator(useStore.getState());
-    expect(a.activeTab).toBe('preview');
+    expect(a.activeTab).toBe('linear');
   });
 
-  it('setAnnotatorActiveTab switches between table and preview', () => {
-    useStore.getState().setAnnotatorActiveTab('preview');
-    expect(selectAnnotator(useStore.getState()).activeTab).toBe('preview');
-    useStore.getState().setAnnotatorActiveTab('table');
-    expect(selectAnnotator(useStore.getState()).activeTab).toBe('table');
+  it('setAnnotatorActiveTab switches between linear and circular', () => {
+    useStore.getState().setAnnotatorActiveTab('circular');
+    expect(selectAnnotator(useStore.getState()).activeTab).toBe('circular');
+    useStore.getState().setAnnotatorActiveTab('linear');
+    expect(selectAnnotator(useStore.getState()).activeTab).toBe('linear');
   });
 
   it('setAnnotatorActiveTab ignores garbage values', () => {
-    useStore.getState().setAnnotatorActiveTab('table');
+    useStore.getState().setAnnotatorActiveTab('linear');
     useStore.getState().setAnnotatorActiveTab('not-a-tab');
-    expect(selectAnnotator(useStore.getState()).activeTab).toBe('table');
+    expect(selectAnnotator(useStore.getState()).activeTab).toBe('linear');
     useStore.getState().setAnnotatorActiveTab(null);
-    expect(selectAnnotator(useStore.getState()).activeTab).toBe('table');
+    expect(selectAnnotator(useStore.getState()).activeTab).toBe('linear');
+    // Old value 'preview' is no longer valid.
+    useStore.getState().setAnnotatorActiveTab('preview');
+    expect(selectAnnotator(useStore.getState()).activeTab).toBe('linear');
   });
 
   // ─── Sprint M-X.3 K4 — selectedGhostId for the drill-in panel ──

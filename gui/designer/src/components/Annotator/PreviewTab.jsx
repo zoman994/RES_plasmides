@@ -26,8 +26,10 @@ import { useMemo } from 'react';
 import { useStore } from '../../store';
 import { selectAnnotator } from '../../store/uiSlice.js';
 import SequenceView from '../SequenceView';
+import PlasmidMiniMap from '../PlasmidMiniMap.jsx';
 import GhostDrillInPanel from './GhostDrillInPanel.jsx';
 import AnnotatorProgressBar from './AnnotatorProgressBar.jsx';
+import AnnotatorTabBar from './TabBar.jsx';
 
 export default function PreviewTab({
   sequence = '',
@@ -39,6 +41,11 @@ export default function PreviewTab({
   const setSelectedGhost = useStore((s) => s.setSelectedGhost);
   const acceptRegion = useStore((s) => s.acceptRegion);
   const rejectRegion = useStore((s) => s.rejectRegion);
+  const setActiveTab = useStore((s) => s.setAnnotatorActiveTab);
+  // Stage C — `activeTab` repurposed: 'linear' | 'circular'.
+  // Default to 'linear' if a stale value sneaks through (the slice
+  // sanitizes input, but tests sometimes set state directly).
+  const activeTab = (annotator.activeTab === 'circular') ? 'circular' : 'linear';
 
   // Flatten predicted regions from every plugin result, filter by
   // threshold, and tag each with a stable id (same shape ResultsPane
@@ -125,12 +132,47 @@ export default function PreviewTab({
             here so the user sees the modal isn't frozen («аннотация
             требует времени»). Renders nothing when idle. */}
         <AnnotatorProgressBar />
-        <SequenceView
-          fragments={fragments}
-          circular={topology === 'circular'}
-          readOnly
-          onAnnotationClick={onAnnotationClick}
+        {/* Stage C — Linear/Circular sub-tab switches between the
+            SequenceView (linear strip) and PlasmidMiniMap (circular
+            plot). Both see the same merged confirmed + ghost
+            annotations array; ghost styling is automatic in
+            SequenceView (AnnotationTrack predicted branch) and
+            comes through via fill/opacity in MiniMap (regions only,
+            no dashed stroke, but dashes are hard to read at the
+            mini-map's tight scale anyway). */}
+        <AnnotatorTabBar
+          activeTab={activeTab}
+          onChange={setActiveTab}
         />
+        {activeTab === 'circular' ? (
+          <div
+            data-testid="annotator-preview-circular"
+            style={{
+              flex: 1,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 16,
+              minHeight: 0,
+              overflow: 'auto',
+            }}
+          >
+            <PlasmidMiniMap
+              length={(sequence || '').length}
+              topology="circular"
+              annotations={merged}
+              size={420}
+              disableHoverOverlay
+            />
+          </div>
+        ) : (
+          <SequenceView
+            fragments={fragments}
+            circular={topology === 'circular'}
+            readOnly
+            onAnnotationClick={onAnnotationClick}
+          />
+        )}
       </div>
       <GhostDrillInPanel
         region={selectedRegion}
