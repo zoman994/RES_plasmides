@@ -44,6 +44,23 @@ export default defineConfig({
   ],
   server: {
     port: 3000,
+    // Sprint M-X.3 follow-up (05.05.2026) — explicit HMR endpoint.
+    // Without these, Vite auto-detects the WS host/port from
+    // `location`, which fell over for biolog: «при открытом окне
+    // постоянно счетчик ошибок +30 в секунду прибавляет», CPU pegged
+    // ~25%. Root cause: stale PWA service worker (or VPN — system
+    // has AmneziaVPN + Tailscale installed) intercepted the
+    // auto-detected WS URL → handshake failed → ws=undefined → the
+    // forwardConsole handler tried to ws.send() → TypeError →
+    // unhandled-rejection → forwarder ran again → infinite recursion
+    // inside @vite/client. Pinning the URL deterministically makes
+    // the failure visible early instead of cascading.
+    hmr: {
+      host: 'localhost',
+      protocol: 'ws',
+      clientPort: 3000,
+      port: 3000,
+    },
     proxy: {
       '/api': 'http://localhost:8000',
     },

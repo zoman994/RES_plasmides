@@ -37,11 +37,25 @@ export default function DesignCanvas({
   const junctions  = useJunctions();
   const primers    = usePrimers();
   const customPrimers = useCustomPrimers();
-  const circular   = useStore(s => { const asm = s.assemblies.find(a => a.id === s.activeId); return asm?.circular || false; });
-  const calculated = useStore(s => { const asm = s.assemblies.find(a => a.id === s.activeId); return asm?.calculated || false; });
+  // Sprint M-X.3 follow-up — pre-fix this was four separate
+  // `useStore(s => s.assemblies.find(...).fooField)` selectors. Each
+  // re-ran a full `.find()` on EVERY zustand state mutation (primer
+  // hover, theme toggle, anything), wasting work proportional to the
+  // assembly count. Subscribing once to `assemblies` + `activeId`
+  // and deriving the four fields locally with useMemo cuts that to
+  // a single search per actual assemblies/activeId change.
+  const assemblies = useStore(s => s.assemblies);
+  const activeId   = useStore(s => s.activeId);
   const parts      = useStore(s => s.parts);
-  const constructName = useStore(s => { const asm = s.assemblies.find(a => a.id === s.activeId); return asm?.name || ''; });
-  const completed  = useStore(s => { const asm = s.assemblies.find(a => a.id === s.activeId); return asm?.completed || false; });
+  const { circular, calculated, constructName, completed } = useMemo(() => {
+    const asm = assemblies.find(a => a.id === activeId);
+    return {
+      circular: asm?.circular || false,
+      calculated: asm?.calculated || false,
+      constructName: asm?.name || '',
+      completed: asm?.completed || false,
+    };
+  }, [assemblies, activeId]);
   const selectedFragIndices = useStore(s => s.selectedFragIndices);
   const clearFragSelection = useStore(s => s.clearFragSelection);
 

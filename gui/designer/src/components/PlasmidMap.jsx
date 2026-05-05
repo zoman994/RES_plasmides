@@ -123,41 +123,53 @@ export default function PlasmidMap({ fragments, constructName, totalBp, junction
     return () => document.removeEventListener('mousedown', h);
   }, [selJunc]);
 
-  if (!fragments?.length || !totalBp) return null;
-
-  // Build arcs
-  let offset = 0;
-  const arcs = fragments.map((f, i) => {
-    const len = (f.sequence || '').length || f.length || 0;
-    const startBp = offset; offset += len;
-    const sA = (startBp / totalBp) * TAU, eA = (offset / totalBp) * TAU;
-    const color = isMarker(f.name) ? '#F0E442' : getFragColor(f.type, i);
-    return { ...f, index: i, startAngle: sA, endAngle: eA, midAngle: (sA + eA) / 2, color, len };
-  });
-  assignTracks(arcs);
+  // Sprint M-X.3 follow-up (05.05.2026) — biolog: «стабильно 25%
+  // жрет при открытой мапе». Pre-fix, every parent re-render
+  // (selectedFragIndices change, hover state, splitter drag, store
+  // mutation) re-walked all fragments and primers from scratch. With
+  // 30-50 fragments × 50 annotations the work is real (mutation by
+  // assignTracks too). Memo on `fragments` + `totalBp` lets identity-
+  // stable parent renders skip the recompute entirely.
+  const arcs = useMemo(() => {
+    if (!fragments?.length || !totalBp) return [];
+    let offset = 0;
+    const out = fragments.map((f, i) => {
+      const len = (f.sequence || '').length || f.length || 0;
+      const startBp = offset; offset += len;
+      const sA = (startBp / totalBp) * TAU, eA = (offset / totalBp) * TAU;
+      const color = isMarker(f.name) ? '#F0E442' : getFragColor(f.type, i);
+      return { ...f, index: i, startAngle: sA, endAngle: eA, midAngle: (sA + eA) / 2, color, len };
+    });
+    assignTracks(out);
+    return out;
+  }, [fragments, totalBp]);
   const trackH = 6; // px per track level
 
   // Primer arcs for inner ring
-  const primerArcs = primers.map((p, pi) => {
-    const frag = fragments.find(f => p.name.includes(f.name));
-    if (!frag) return null;
-    const arc = arcs[fragments.indexOf(frag)];
-    if (!arc) return null;
-    const bL = (p.bindingSequence || '').length, tL = (p.tailSequence || '').length;
-    if (!bL) return null;
-    const bpR = arc.len > 0 ? (arc.endAngle - arc.startAngle) / arc.len : 0;
-    const isFwd = p.direction === 'forward';
-    // Binding at fragment edge, tail extends into neighbor
-    const MIN_ANG = 0.03; // minimum visible angle (~2°)
-    const bAng = Math.max(bL * bpR, MIN_ANG);
-    const tAng = tL > 0 ? Math.max(tL * bpR, MIN_ANG * 0.5) : 0;
-    const bindS = isFwd ? arc.startAngle : arc.endAngle - bAng;
-    const bindE = isFwd ? arc.startAngle + bAng : arc.endAngle;
-    const tailS = isFwd ? bindS - tAng : bindE;
-    const tailE = isFwd ? bindS : bindE + tAng;
-    const fullS = Math.min(bindS, tailS), fullE = Math.max(bindE, tailE);
-    return { ...p, pi, isFwd, bindS, bindE, tailS, tailE, fullS, fullE, midAngle: (fullS + fullE) / 2 };
-  }).filter(Boolean);
+  const primerArcs = useMemo(() => {
+    if (!arcs.length) return [];
+    return primers.map((p, pi) => {
+      const frag = fragments.find(f => p.name.includes(f.name));
+      if (!frag) return null;
+      const arc = arcs[fragments.indexOf(frag)];
+      if (!arc) return null;
+      const bL = (p.bindingSequence || '').length, tL = (p.tailSequence || '').length;
+      if (!bL) return null;
+      const bpR = arc.len > 0 ? (arc.endAngle - arc.startAngle) / arc.len : 0;
+      const isFwd = p.direction === 'forward';
+      const MIN_ANG = 0.03;
+      const bAng = Math.max(bL * bpR, MIN_ANG);
+      const tAng = tL > 0 ? Math.max(tL * bpR, MIN_ANG * 0.5) : 0;
+      const bindS = isFwd ? arc.startAngle : arc.endAngle - bAng;
+      const bindE = isFwd ? arc.startAngle + bAng : arc.endAngle;
+      const tailS = isFwd ? bindS - tAng : bindE;
+      const tailE = isFwd ? bindS : bindE + tAng;
+      const fullS = Math.min(bindS, tailS), fullE = Math.max(bindE, tailE);
+      return { ...p, pi, isFwd, bindS, bindE, tailS, tailE, fullS, fullE, midAngle: (fullS + fullE) / 2 };
+    }).filter(Boolean);
+  }, [arcs, fragments, primers]);
+
+  if (!fragments?.length || !totalBp) return null;
 
   // RE site computation
   const reSites = useMemo(() => {
