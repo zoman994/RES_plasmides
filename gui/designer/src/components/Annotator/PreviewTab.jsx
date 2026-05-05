@@ -96,7 +96,10 @@ export default function PreviewTab({
         // Suppress hits that duplicate an already-confirmed region of
         // the same type (>50% overlap). Accepted-this-session ghosts
         // stay visible (the user actively chose them).
-        if (!acceptedIds[id] && isDuplicateOfConfirmed(r, annotations)) continue;
+        // Honour the «show duplicates» opt-in toggle in the header.
+        if (!annotator.showDuplicates
+            && !acceptedIds[id]
+            && isDuplicateOfConfirmed(r, annotations)) continue;
         const accepted = !!acceptedIds[id];
         // Accepted regions render solid (predicted: false); the rest
         // stay ghosts. Defensive `predicted: true` for un-flagged
@@ -105,7 +108,7 @@ export default function PreviewTab({
       }
     }
     return out;
-  }, [annotator.results, threshold, acceptedIds, rejectedIds, annotations]);
+  }, [annotator.results, threshold, acceptedIds, rejectedIds, annotations, annotator.showDuplicates]);
 
   const merged = useMemo(() => [
     ...((annotations || []).map((a) => ({ ...a, predicted: a.predicted === true ? true : false }))),

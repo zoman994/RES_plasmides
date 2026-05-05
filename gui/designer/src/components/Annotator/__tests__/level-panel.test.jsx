@@ -240,6 +240,23 @@ describe('LevelPanel — three-level progression', () => {
       expect(rows).toHaveLength(2);
     });
 
+    it('with showDuplicates=true, the duplicate is shown again', () => {
+      render(
+        <LevelPanel
+          results={{ 'common-features-homology': PREDICTED_OVERLAPPING }}
+          threshold={0}
+          existingAnnotations={[
+            { id: 'existing-ampr', name: 'AmpR', type: 'CDS', start: 100, end: 250, level: 'region', strand: 1 },
+          ]}
+          showDuplicates
+        />,
+      );
+      // Both predicted regions show — biolog opted in to seeing
+      // duplicates.
+      const rows = screen.getAllByTestId('annotator-result-row');
+      expect(rows).toHaveLength(2);
+    });
+
     it('Accept-all count excludes suppressed duplicates', () => {
       const onAcceptMany = vi.fn();
       render(

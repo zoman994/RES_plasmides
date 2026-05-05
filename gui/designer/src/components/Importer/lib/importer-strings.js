@@ -221,6 +221,10 @@ export const IMPORTER_STRINGS = {
     // кликом согласиться со всеми комон фичами которые нашел на L1».
     levelAcceptAll: (n) => `Accept all (${n})`,
     levelAcceptAllHint: 'Accept every pending hit (already-rejected ones are kept rejected).',
+    // Sprint M-X.3 follow-up — biolog: «На скрытие дубликата
+    // поставь галку, вдруг кто то и захочет их видеть».
+    showDuplicatesLabel: 'Show duplicates',
+    showDuplicatesHint: 'Surface predicted regions even when they overlap an already-confirmed feature of the same type.',
   },
 
   // SessionSummary

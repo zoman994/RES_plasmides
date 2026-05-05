@@ -224,4 +224,28 @@ describe('K6 annotator slice', () => {
       expect(Object.keys(a.acceptedRegionIds)).toHaveLength(2);
     });
   });
+
+  // Sprint M-X.3 follow-up — biolog: «На скрытие дубликата поставь
+  // галку, вдруг кто то и захочет их видеть». User-controlled
+  // duplicate-visibility toggle.
+  describe('setAnnotatorShowDuplicates', () => {
+    it('defaults to false', () => {
+      const a = selectAnnotator(useStore.getState());
+      expect(a.showDuplicates).toBe(false);
+    });
+
+    it('flips the flag', () => {
+      useStore.getState().setAnnotatorShowDuplicates(true);
+      expect(selectAnnotator(useStore.getState()).showDuplicates).toBe(true);
+      useStore.getState().setAnnotatorShowDuplicates(false);
+      expect(selectAnnotator(useStore.getState()).showDuplicates).toBe(false);
+    });
+
+    it('coerces truthy/falsy inputs to booleans', () => {
+      useStore.getState().setAnnotatorShowDuplicates('yes');
+      expect(selectAnnotator(useStore.getState()).showDuplicates).toBe(true);
+      useStore.getState().setAnnotatorShowDuplicates(0);
+      expect(selectAnnotator(useStore.getState()).showDuplicates).toBe(false);
+    });
+  });
 });

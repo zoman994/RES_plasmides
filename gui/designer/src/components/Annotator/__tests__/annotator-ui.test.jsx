@@ -96,6 +96,18 @@ describe('K8 Annotator UI (Stage B-2)', () => {
     expect(useStore.getState().annotator.threshold).toBe(0.85);
   });
 
+  // Sprint M-X.3 follow-up — biolog: «На скрытие дубликата поставь
+  // галку».
+  it('Show-duplicates checkbox toggles state.annotator.showDuplicates', () => {
+    render(<Annotator sequence={SEQ} annotations={ANNS} onApplyAnnotatorResults={vi.fn()} />);
+    const cb = screen.getByTestId('annotator-show-duplicates-checkbox');
+    expect(cb.checked).toBe(false);
+    fireEvent.click(cb);
+    expect(useStore.getState().annotator.showDuplicates).toBe(true);
+    fireEvent.click(cb);
+    expect(useStore.getState().annotator.showDuplicates).toBe(false);
+  });
+
   it('Save button disabled when no accepted; enabled after one accept', async () => {
     render(<Annotator sequence={SEQ} annotations={ANNS} onApplyAnnotatorResults={vi.fn()} />);
     expect(screen.getByTestId('annotator-save-button').disabled).toBe(true);

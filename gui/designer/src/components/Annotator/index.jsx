@@ -70,6 +70,7 @@ export default function Annotator({
   const rejectRegion = useStore((s) => s.rejectRegion);
   const acceptManyRegions = useStore((s) => s.acceptManyRegions);
   const editPendingRegion = useStore((s) => s.editPendingRegion);
+  const setShowDuplicates = useStore((s) => s.setAnnotatorShowDuplicates);
 
   // Esc closes the modal (third escape route alongside Back button
   // + backdrop click). Capture-phase + stopPropagation so the App's
@@ -231,6 +232,24 @@ export default function Annotator({
             ? S.scopeRegion(scope.region.start + 1, scope.region.end)
             : S.scopeFull}
         </div>
+        <label
+          data-testid="annotator-show-duplicates"
+          title={S.showDuplicatesHint}
+          style={{
+            fontSize: 11, color: 'var(--text-secondary)',
+            display: 'flex', alignItems: 'center', gap: 5,
+            cursor: 'pointer', userSelect: 'none',
+          }}
+        >
+          <input
+            type="checkbox"
+            data-testid="annotator-show-duplicates-checkbox"
+            checked={!!annotator.showDuplicates}
+            onChange={(e) => setShowDuplicates(e.target.checked)}
+            style={{ accentColor: 'var(--accent-500)', cursor: 'pointer' }}
+          />
+          <span>{S.showDuplicatesLabel}</span>
+        </label>
         <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 6 }}>
           <span>{S.thresholdLabel(annotator.threshold)}</span>
           <input
@@ -278,6 +297,7 @@ export default function Annotator({
           pendingEdits={annotator.pendingEdits}
           threshold={annotator.threshold}
           existingAnnotations={annotations}
+          showDuplicates={!!annotator.showDuplicates}
           onAccept={acceptRegion}
           onReject={rejectRegion}
           onAcceptMany={acceptManyRegions}

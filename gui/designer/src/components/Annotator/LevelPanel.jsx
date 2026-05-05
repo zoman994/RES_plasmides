@@ -68,7 +68,7 @@ const LEVEL_COPY = {
   L3: { title: 'level3Title', hint: 'level3Hint' },
 };
 
-function regionsForLevel(levelId, results, threshold, existingAnnotations) {
+function regionsForLevel(levelId, results, threshold, existingAnnotations, showDuplicates) {
   const ids = LEVELS[levelId];
   const out = [];
   for (const pid of ids) {
@@ -76,8 +76,9 @@ function regionsForLevel(levelId, results, threshold, existingAnnotations) {
     if (!res) continue;
     for (const r of (res.regions || [])) {
       if (Number.isFinite(r.confidence) && r.confidence < (threshold ?? 0)) continue;
-      // Suppress duplicates of already-confirmed annotations.
-      if (isDuplicateOfConfirmed(r, existingAnnotations)) continue;
+      // Suppress duplicates of already-confirmed annotations unless
+      // the user toggled «show duplicates» on.
+      if (!showDuplicates && isDuplicateOfConfirmed(r, existingAnnotations)) continue;
       const id = r.id || `${r.start}:${r.end}:${r.type || ''}:${r.name || ''}`;
       out.push({ ...r, id, _pluginName: res.pluginName || pid });
     }
@@ -101,6 +102,7 @@ export default function LevelPanel({
   pendingEdits = {},
   threshold = 0,
   existingAnnotations = [],
+  showDuplicates = false,
   onAccept,
   onReject,
   onEditPatch,
@@ -150,6 +152,7 @@ export default function LevelPanel({
           pendingEdits={pendingEdits}
           threshold={threshold}
           existingAnnotations={existingAnnotations}
+          showDuplicates={showDuplicates}
           onAccept={onAccept}
           onReject={onReject}
           onEditPatch={onEditPatch}
@@ -172,6 +175,7 @@ function LevelSection({
   pendingEdits,
   threshold,
   existingAnnotations,
+  showDuplicates,
   onAccept,
   onReject,
   onEditPatch,
@@ -179,8 +183,8 @@ function LevelSection({
   onAcceptMany,
 }) {
   const regions = useMemo(
-    () => regionsForLevel(levelId, results, threshold, existingAnnotations),
-    [levelId, results, threshold, existingAnnotations],
+    () => regionsForLevel(levelId, results, threshold, existingAnnotations, showDuplicates),
+    [levelId, results, threshold, existingAnnotations, showDuplicates],
   );
   const isRunning = isRunningLevel(levelId, running);
   const hasResults = hasResultsForLevel(levelId, results);

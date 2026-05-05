@@ -208,6 +208,13 @@ export const ANNOTATOR_DEFAULTS = Object.freeze({
   // PreviewTab. Biolog: «по вкладке можно еще переключиться в окно
   // просмотра кольцевой ерсии плазмиды/фрагмента».
   activeTab: 'linear',
+  // Sprint M-X.3 follow-up — duplicate-suppression toggle.
+  // Biolog: «На скрытие дубликата поставь галку, вдруг кто то и
+  // захочет их видеть». When false (default) predicted regions
+  // that overlap >50% with same-type confirmed annotations are
+  // hidden from PreviewTab + LevelPanel. When true the user opts
+  // in to seeing every plugin hit, duplicates included.
+  showDuplicates: false,
   // Sprint M-X.3 K4 — id of the ghost feature whose drill-in panel
   // is open in the Preview tab. `null` means no panel.
   selectedGhostId: null,
@@ -249,6 +256,10 @@ function loadInitialAnnotator() {
       && raw.threshold <= 1
         ? raw.threshold
         : ANNOTATOR_DEFAULTS.threshold,
+    showDuplicates:
+      typeof raw.showDuplicates === 'boolean'
+        ? raw.showDuplicates
+        : ANNOTATOR_DEFAULTS.showDuplicates,
     results: {},
     acceptedRegionIds: {},
     rejectedRegionIds: {},
@@ -261,6 +272,7 @@ function persistAnnotator(value) {
   setJSON(ANNOTATOR_STORAGE_KEY, {
     enabledPluginIds: { ...value.enabledPluginIds },
     threshold: value.threshold,
+    showDuplicates: !!value.showDuplicates,
   });
 }
 
@@ -393,6 +405,7 @@ export const createUiSlice = (set) => ({
           persistAnnotator({
             enabledPluginIds: { ...state.annotator.enabledPluginIds },
             threshold: value,
+            showDuplicates: !!state.annotator.showDuplicates,
           });
         }
       });
@@ -516,6 +529,7 @@ export const createUiSlice = (set) => ({
       persistAnnotator({
         enabledPluginIds: { ...state.annotator.enabledPluginIds },
         threshold: state.annotator.threshold,
+        showDuplicates: !!state.annotator.showDuplicates,
       });
     });
   },
@@ -529,6 +543,7 @@ export const createUiSlice = (set) => ({
       persistAnnotator({
         enabledPluginIds: { ...state.annotator.enabledPluginIds },
         threshold: v,
+        showDuplicates: !!state.annotator.showDuplicates,
       });
       // Sync into the SequenceView Settings popover threshold so
       // both surfaces stay in lockstep — biolog 04.05.2026 evening
@@ -548,6 +563,27 @@ export const createUiSlice = (set) => ({
           predictions: { ...state.sequenceView.predictions },
         });
       }
+    });
+  },
+
+  /**
+   * Sprint M-X.3 follow-up — biolog: «На скрытие дубликата поставь
+   * галку, вдруг кто то и захочет их видеть». Toggle whether
+   * predicted regions overlapping confirmed annotations of the same
+   * type should still be surfaced in PreviewTab + LevelPanel. Off
+   * by default (matches the original «не должен давать поверх те
+   * же фичи» complaint). Persists alongside threshold.
+   */
+  setAnnotatorShowDuplicates: (value) => {
+    const v = !!value;
+    set(state => {
+      if (!state.annotator) state.annotator = loadInitialAnnotator();
+      state.annotator.showDuplicates = v;
+      persistAnnotator({
+        enabledPluginIds: { ...state.annotator.enabledPluginIds },
+        threshold: state.annotator.threshold,
+        showDuplicates: v,
+      });
     });
   },
 
