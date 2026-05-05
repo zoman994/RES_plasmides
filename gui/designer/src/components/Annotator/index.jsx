@@ -298,10 +298,16 @@ export default function Annotator({
         </label>
       </div>
 
-      {/* TargetPreview */}
-      <div style={{ padding: '8px 16px', flexShrink: 0 }}>
-        <TargetPreview annotations={annotations} sequenceLength={seqLength} scope={scope} />
-      </div>
+      {/* TargetPreview — only in modal mode. The embedded path lives
+          inside SingleInspector, which already mounts the labelled
+          LinearFeatureBar at the top; rendering TargetPreview here
+          would stack two visually-similar strips («с надписями и
+          без» — biolog asked to keep only the labelled one). */}
+      {!embedded && (
+        <div style={{ padding: '8px 16px', flexShrink: 0 }}>
+          <TargetPreview annotations={annotations} sequenceLength={seqLength} scope={scope} />
+        </div>
+      )}
 
       {/* Body — Sprint M-X.3 follow-up Stage B-2 (05.05.2026).
           Biolog: «И справа должно показываться таблица с комон фичами.
@@ -335,48 +341,16 @@ export default function Annotator({
           threshold={annotator.threshold}
           existingAnnotations={annotations}
           showDuplicates={!!annotator.showDuplicates}
+          acceptedCount={acceptedCount}
+          rejectedCount={rejectedCount}
+          editedCount={editedCount}
           onAccept={acceptRegion}
           onReject={rejectRegion}
           onAcceptMany={acceptManyRegions}
           onEditPatch={editPendingRegion}
           onRunLevel={handleRunLevel}
+          onSave={handleSave}
         />
-      </div>
-
-      {/* Footer */}
-      <div
-        style={{
-          display: 'flex', alignItems: 'center', gap: 16,
-          padding: '8px 16px',
-          borderTop: '0.5px solid var(--border-default, #d4d4d4)',
-          background: 'var(--surface-1, #fff)',
-          fontSize: 11,
-          color: 'var(--text-secondary)',
-          flexShrink: 0,
-        }}
-      >
-        <span>{S.summaryAccepted(acceptedCount)}</span>
-        <span>·</span>
-        <span>{S.summaryRejected(rejectedCount)}</span>
-        <span>·</span>
-        <span>{S.summaryEdited(editedCount)}</span>
-        <div style={{ flex: 1 }} />
-        <button
-          type="button"
-          data-testid="annotator-save-button"
-          disabled={acceptedCount === 0}
-          onClick={handleSave}
-          style={{
-            padding: '6px 14px',
-            background: acceptedCount > 0 ? 'var(--accent-500, #f97316)' : 'var(--surface-2, #e7e5e4)',
-            color: acceptedCount > 0 ? '#fff' : 'var(--text-tertiary)',
-            border: 'none',
-            borderRadius: 'var(--radius-sm, 3px)',
-            cursor: acceptedCount > 0 ? 'pointer' : 'not-allowed',
-            fontSize: 12,
-            fontWeight: 500,
-          }}
-        >{acceptedCount > 0 ? S.saveCount(acceptedCount) : S.saveButton}</button>
       </div>
     </>
   );

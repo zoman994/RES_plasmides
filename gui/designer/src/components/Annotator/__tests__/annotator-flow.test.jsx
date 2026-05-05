@@ -97,7 +97,7 @@ describe('K10 Annotator integration flow', () => {
       <SingleInspector
         item={ITEM}
         edits={null}
-        activeTab="overview"
+        activeTab="annotations"
         onActiveTabChange={vi.fn()}
         onUpdateEdits={onUpdateEdits}
       />
@@ -134,7 +134,7 @@ describe('K10 Annotator integration flow', () => {
       <SingleInspector
         item={ITEM}
         edits={null}
-        activeTab="overview"
+        activeTab="annotations"
         onActiveTabChange={vi.fn()}
         onUpdateEdits={onUpdateEdits}
       />
@@ -160,7 +160,7 @@ describe('K10 Annotator integration flow', () => {
       <SingleInspector
         item={ITEM}
         edits={null}
-        activeTab="overview"
+        activeTab="annotations"
         onActiveTabChange={vi.fn()}
         onUpdateEdits={onUpdateEdits}
       />
@@ -193,7 +193,7 @@ describe('K10 Annotator integration flow', () => {
       <SingleInspector
         item={ITEM}
         edits={null}
-        activeTab="overview"
+        activeTab="annotations"
         onActiveTabChange={vi.fn()}
         onUpdateEdits={onUpdateEdits}
       />

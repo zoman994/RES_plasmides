@@ -107,6 +107,13 @@ export default function LevelPanel({
   threshold = 0,
   existingAnnotations = [],
   showDuplicates = false,
+  // Save toolbar — biolog asked to pin Save up near the
+  // «Annotation levels» header instead of leaving it at the
+  // bottom under the sequence (out of sight on long plasmids).
+  acceptedCount = 0,
+  rejectedCount = 0,
+  editedCount = 0,
+  onSave,
   onAccept,
   onReject,
   onEditPatch,
@@ -135,13 +142,52 @@ export default function LevelPanel({
       <div
         style={{
           padding: '8px 12px',
-          fontSize: 12, fontWeight: 600,
-          color: 'var(--text-primary, #111)',
           borderBottom: '0.5px solid var(--border-default, #d4d4d4)',
           flexShrink: 0,
+          background: 'var(--surface-1, #fff)',
+          position: 'sticky',
+          top: 0,
+          zIndex: 1,
         }}
       >
-        {S.levelPanelTitle}
+        <div
+          style={{
+            fontSize: 12, fontWeight: 600,
+            color: 'var(--text-primary, #111)',
+            marginBottom: 6,
+          }}
+        >
+          {S.levelPanelTitle}
+        </div>
+        <div
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            fontSize: 10, color: 'var(--text-secondary)',
+          }}
+        >
+          <span>{S.summaryAccepted(acceptedCount)}</span>
+          <span>·</span>
+          <span>{S.summaryRejected(rejectedCount)}</span>
+          <span>·</span>
+          <span>{S.summaryEdited(editedCount)}</span>
+          <div style={{ flex: 1 }} />
+          <button
+            type="button"
+            data-testid="annotator-save-button"
+            disabled={acceptedCount === 0}
+            onClick={onSave}
+            style={{
+              padding: '4px 12px',
+              background: acceptedCount > 0 ? 'var(--accent-500, #f97316)' : 'var(--surface-2, #e7e5e4)',
+              color: acceptedCount > 0 ? '#fff' : 'var(--text-tertiary)',
+              border: 'none',
+              borderRadius: 'var(--radius-sm, 3px)',
+              cursor: acceptedCount > 0 ? 'pointer' : 'not-allowed',
+              fontSize: 11,
+              fontWeight: 500,
+            }}
+          >{acceptedCount > 0 ? S.saveCount(acceptedCount) : S.saveButton}</button>
+        </div>
       </div>
       {LEVEL_ORDER.map((levelId) => (
         <LevelSection

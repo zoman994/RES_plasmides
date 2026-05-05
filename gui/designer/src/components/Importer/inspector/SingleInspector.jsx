@@ -16,14 +16,72 @@ import LinearFeatureBar from './tabs/LinearFeatureBar';
 import AnnotationsTab from './tabs/AnnotationsTab';
 import HistoryTab from './tabs/HistoryTab';
 import { getRegions } from '../../../annotation-model';
-import { applyAnnotationEdit, mergeAnnotations, generateAnnotationId } from '../../../lib/annotation-edit.js';
+import {
+  applyAnnotationEdit,
+  mergeAnnotations,
+  generateAnnotationId,
+  overlapFraction,
+} from '../../../lib/annotation-edit.js';
 import { useStore } from '../../../store';
 import { selectAnnotator } from '../../../store/uiSlice.js';
-import Annotator from '../../Annotator';
+// selectAnnotator import removed — the modal-Annotator mount was the
+// only consumer here, and that mount is gone (Annotations tab embeds
+// the Annotator inline now).
+// Annotator import removed — the modal mount is gone. Annotations
+// tab embeds the same component via AnnotationsTab.
 import SettingsPopover from '../../SequenceView/SettingsPopover';
 import FeatureEditorModal from './FeatureEditorModal';
 
 const S = STRINGS.importer;
+
+/**
+ * Merge predicted regions from the Annotator's results into the
+ * confirmed-annotations array used by LinearFeatureBar, so the
+ * navigation strip surfaces ghost features the Annotator is showing
+ * on the map. Mirrors the filter rules PreviewTab and LevelPanel
+ * already use:
+ *   - drop regions below the confidence threshold
+ *   - drop user-rejected regions
+ *   - skip same-type duplicates of confirmed annotations unless
+ *     the user opted in via «Show duplicates»
+ *   - accepted-this-session ghosts render as solid (predicted: false)
+ */
+function mergeStripWithPredicted(
+  confirmed,
+  results,
+  threshold,
+  acceptedIds,
+  rejectedIds,
+  showDuplicates,
+) {
+  if (!results || typeof results !== 'object') return confirmed;
+  const out = (confirmed || []).slice();
+  const seenIds = new Set();
+  for (const ann of out) {
+    if (ann && ann.id) seenIds.add(ann.id);
+  }
+  for (const res of Object.values(results)) {
+    for (const r of (res?.regions || [])) {
+      if (Number.isFinite(r.confidence) && r.confidence < (threshold ?? 0)) continue;
+      const id = r.id || `${r.start}:${r.end}:${r.type || ''}:${r.name || ''}`;
+      if (rejectedIds && rejectedIds[id]) continue;
+      if (seenIds.has(id)) continue;
+      const accepted = !!(acceptedIds && acceptedIds[id]);
+      if (!showDuplicates && !accepted) {
+        let dup = false;
+        for (const c of confirmed || []) {
+          if (!c || (c.level && c.level !== 'region')) continue;
+          if ((c.type || '') !== (r.type || '')) continue;
+          if (overlapFraction(c, r) > 0.5) { dup = true; break; }
+        }
+        if (dup) continue;
+      }
+      out.push({ ...r, id, predicted: accepted ? false : true });
+      seenIds.add(id);
+    }
+  }
+  return out;
+}
 
 // Idle pre-warm bypass for the V49 lazy-tabs vitest assertions.
 // In production / dev (MODE !== 'test') the inspector mounts heavy
@@ -56,12 +114,40 @@ export default function SingleInspector({
   activeTab,
   onActiveTabChange,
   onUpdateFlags, // eslint-disable-line no-unused-vars -- reserved for future Annotator hand-off
-  onUpdateEdits,
+  onUpdateEdits: rawOnUpdateEdits,
   onAppendAdded, // eslint-disable-line no-unused-vars
   onRenameItem,
   // eslint-disable-next-line no-unused-vars -- ditto
   onRunAutoAnnotate,
 }) {
+  // Live-update the source library entry's annotations whenever the
+  // user edits annotations on a library-sourced item. Fixes the bug
+  // «после добавления аннотации не обновляется иконка в левой
+  // панели» — without this, perFileEdits captured the change but the
+  // catalog mini-map icon kept rendering against the stale library
+  // entry payload until the user clicked «Save to library».
+  const updateLibraryEntryAnnotations = useStore(
+    (s) => s.updateLibraryEntryAnnotations,
+  );
+  // Annotator state for the navigation-strip ghost overlay (only
+  // consumed when activeTab === 'annotations'; cheap subscriptions
+  // because each selector returns a primitive or a stable slice ref).
+  const annotatorResults = useStore((s) => selectAnnotator(s).results);
+  const annotatorThreshold = useStore((s) => selectAnnotator(s).threshold);
+  const annotatorAccepted = useStore((s) => selectAnnotator(s).acceptedRegionIds);
+  const annotatorRejected = useStore((s) => selectAnnotator(s).rejectedRegionIds);
+  const annotatorShowDuplicates = useStore((s) => selectAnnotator(s).showDuplicates);
+  const onUpdateEdits = useCallback((patch) => {
+    rawOnUpdateEdits?.(patch);
+    if (
+      patch
+      && Array.isArray(patch.editedAnnotations)
+      && item?._libraryEntryId
+      && typeof updateLibraryEntryAnnotations === 'function'
+    ) {
+      updateLibraryEntryAnnotations(item._libraryEntryId, patch.editedAnnotations);
+    }
+  }, [rawOnUpdateEdits, item?._libraryEntryId, updateLibraryEntryAnnotations]);
   // Idle pre-warm: when biolog clicks a plasmid in the catalog list,
   // mount Sequence + Annotations tabs in the background (display:none)
   // so a subsequent tab click is instant. Without this, the tab click
@@ -303,16 +389,23 @@ export default function SingleInspector({
   // the item / edits / onUpdateEdits trio that the Save flow
   // needs, so the round-trip (open → run → accept → save) stays
   // inside one component without prop-drilling through App.
-  const annotatorOpen = useStore((s) => selectAnnotator(s).open);
   const openAnnotator = useStore((s) => s.openAnnotator);
 
+  // Region-scope entry points (SequenceView right-click "Annotate
+  // selection...") set scope and switch the active tab to
+  // 'annotations'. The embedded Annotator there picks up the new
+  // scope and runs L1 against it. The legacy modal Annotator path
+  // is gone: it used to flicker on top of the Sequence tab whenever
+  // the user left the Annotations tab with `annotator.open` still
+  // true, since the modal mount only checked the open flag.
   const onOpenAnnotator = useCallback((scopeArg) => {
     const sequenceId = item ? (item.id || item._fileName || item.name || 'unknown') : 'unknown';
     const scope = scopeArg && scopeArg.kind === 'region'
       ? { kind: 'region', sequenceId, region: scopeArg.region }
       : { kind: 'full', sequenceId };
     openAnnotator(scope);
-  }, [openAnnotator, item]);
+    onActiveTabChange?.('annotations');
+  }, [openAnnotator, item, onActiveTabChange]);
 
   // Bug-rush #5 (04.05.2026 evening): Ctrl+Z / Ctrl+Y for annotation
   // edits. Track a rolling stack of pre-edit snapshots; each edit
@@ -579,6 +672,16 @@ export default function SingleInspector({
     : (item.annotations || []);
   const displayItem = { ...item, annotations: displayAnnotations };
 
+  // When the user is on the Annotations tab, also project the
+  // Annotator's predicted regions onto the navigation strip so the
+  // ghost features biolog sees on the map are visible on the «колбаса»
+  // too. Confirmed regions render solid; predicted ones inherit the
+  // dashed/transparent style LinearFeatureBar already implements.
+  const stripAnnotations = activeTab === 'annotations'
+    ? mergeStripWithPredicted(displayAnnotations, annotatorResults, annotatorThreshold,
+        annotatorAccepted, annotatorRejected, annotatorShowDuplicates)
+    : displayAnnotations;
+
   // Helper: is a tab pre-warmed (= mounted)? In test mode only the
   // active tab is ever warmed (preserves V49 lazy-tabs assertions).
   const isMounted = (tab) => warmedTabs.has(tab);
@@ -718,7 +821,7 @@ export default function SingleInspector({
           }}
         >
           <LinearFeatureBar
-            annotations={displayAnnotations}
+            annotations={stripAnnotations}
             seqLength={length}
             onSelect={onBarSettle}
             onScrub={onBarScrub}
@@ -811,19 +914,11 @@ export default function SingleInspector({
         mount works fine for the Importer pathway (the only one
         biolog reaches today).
       */}
-      {/* Modal Annotator — kept for entry points that don't go through
-          the AnnotationsTab (e.g. region-scope «Annotate selection» from
-          SequenceView's context menu). Suppressed when the user is on
-          the annotations tab — that tab embeds the same Annotator
-          inline, and double-mounting would create two competing
-          subscribers to the shared store slice. */}
-      {annotatorOpen && activeTab !== 'annotations' && (
-        <Annotator
-          sequence={edits?.editedSequence ?? item.sequence}
-          annotations={displayAnnotations}
-          onApplyAnnotatorResults={onApplyAnnotatorResults}
-        />
-      )}
+      {/* Modal Annotator removed: the embedded Annotator inside the
+          Annotations tab is the only entry surface now. Region-scope
+          right-clicks from the Sequence tab navigate to that tab via
+          onOpenAnnotator, which sets the scope and switches activeTab
+          to 'annotations' — no more modal flicker on tab switches. */}
       {seqSettingsOpen && (
         <SettingsPopover
           open={seqSettingsOpen}
