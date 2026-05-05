@@ -27,6 +27,12 @@ export default function AnnotationsTab({
   sequence = '',
   annotations = [],
   fileName,
+  // True when this tab is the user-facing active tab. SingleInspector
+  // pre-warms hidden tabs (display:none) for instant switching;
+  // when `active` is false, the embedded Annotator suppresses its
+  // auto-open dispatch so the modal Annotator doesn't surface
+  // over the actually-active Overview/Sequence tab.
+  active = true,
   onApplyAnnotatorResults,
   onAnnotationEdit,
   onOpenFeatureEditor,
@@ -45,6 +51,7 @@ export default function AnnotationsTab({
     >
       <Annotator
         embedded
+        embeddedActive={active}
         embeddedSequenceId={fileName || 'annotations-tab'}
         sequence={sequence}
         annotations={annotations}

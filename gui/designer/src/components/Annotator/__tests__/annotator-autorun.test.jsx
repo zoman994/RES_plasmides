@@ -143,4 +143,73 @@ describe('Annotator — Stage A: auto-run Level-1 (common features) on open', ()
     await new Promise((r) => setTimeout(r, 30));
     expect(cfRun).not.toHaveBeenCalled();
   });
+
+  // Sprint M-X.3 follow-up — biolog: «при нажатии на плазмиду в
+  // билиотеке снапгена опять бросает на аннотатор модалку, а должно
+  // просто овервью показывать». SingleInspector pre-warms the
+  // Annotations tab in display:none; the embedded Annotator must
+  // NOT auto-open while it's hidden, otherwise the modal Annotator
+  // surfaces on top of the actually-active Overview tab.
+  describe('embeddedActive gate', () => {
+    it('embedded mode does NOT auto-open when embeddedActive=false', async () => {
+      openAnnotatorWith({ open: false, scope: null });
+      render(
+        <Annotator
+          sequence={SEQUENCE}
+          annotations={[]}
+          onApplyAnnotatorResults={() => {}}
+          embedded
+          embeddedActive={false}
+          embeddedSequenceId="hidden-tab"
+        />,
+      );
+      await new Promise((r) => setTimeout(r, 30));
+      const a = useStore.getState().annotator;
+      expect(a.open).toBe(false);
+      expect(cfRun).not.toHaveBeenCalled();
+    });
+
+    it('embedded mode auto-opens when embeddedActive=true', async () => {
+      openAnnotatorWith({ open: false, scope: null });
+      render(
+        <Annotator
+          sequence={SEQUENCE}
+          annotations={[]}
+          onApplyAnnotatorResults={() => {}}
+          embedded
+          embeddedActive
+          embeddedSequenceId="visible-tab"
+        />,
+      );
+      await waitFor(() => expect(useStore.getState().annotator.open).toBe(true));
+    });
+
+    it('flipping embeddedActive false → true triggers auto-open', async () => {
+      openAnnotatorWith({ open: false, scope: null });
+      const { rerender } = render(
+        <Annotator
+          sequence={SEQUENCE}
+          annotations={[]}
+          onApplyAnnotatorResults={() => {}}
+          embedded
+          embeddedActive={false}
+          embeddedSequenceId="lazy-tab"
+        />,
+      );
+      await new Promise((r) => setTimeout(r, 30));
+      expect(useStore.getState().annotator.open).toBe(false);
+      // User clicks the Annotations tab — parent flips active to true.
+      rerender(
+        <Annotator
+          sequence={SEQUENCE}
+          annotations={[]}
+          onApplyAnnotatorResults={() => {}}
+          embedded
+          embeddedActive
+          embeddedSequenceId="lazy-tab"
+        />,
+      );
+      await waitFor(() => expect(useStore.getState().annotator.open).toBe(true));
+    });
+  });
 });

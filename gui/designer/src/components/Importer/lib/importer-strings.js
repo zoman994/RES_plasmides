@@ -224,6 +224,8 @@ export const IMPORTER_STRINGS = {
     // кликом согласиться со всеми комон фичами которые нашел на L1».
     levelAcceptAll: (n) => `Accept all (${n})`,
     levelAcceptAllHint: 'Accept every pending hit (already-rejected ones are kept rejected).',
+    levelComingSoonLabel: 'Coming soon',
+    levelComingSoonBody: 'BLAST against NCBI requires a backend proxy and is not yet wired up. The plugin slot is ready — drop a real run() into blast-ncbi-stub.js.',
     // Sprint M-X.3 follow-up — biolog: «На скрытие дубликата
     // поставь галку, вдруг кто то и захочет их видеть».
     showDuplicatesLabel: 'Show duplicates',

@@ -59,6 +59,16 @@ export default function Annotator({
   // Sequence id for openAnnotator dispatch when embedded mode mounts
   // and no scope is set yet.
   embeddedSequenceId = 'embedded',
+  // Sprint M-X.3 follow-up — biolog: «при нажатии на плазмиду в
+  // билиотеке снапгена опять бросает на аннотатор модалку, а должно
+  // просто овервью показывать». SingleInspector pre-warms hidden
+  // tabs (display:none) — without this gate, the embedded Annotator
+  // mounted-but-hidden would dispatch openAnnotator on mount,
+  // which flips annotator.open to true and surfaces the MODAL
+  // Annotator over the visible Overview tab. Default true so
+  // direct tests that mount Annotator without a tab wrapper still
+  // exercise the auto-open path.
+  embeddedActive = true,
   // Sprint M-X.3 follow-up — biolog: «надо дать возможность
   // растягивать сжимать фичи, редачить двойным кликом». Forwarded
   // to PreviewTab → SequenceView so embedded mode is fully editable.
@@ -98,15 +108,20 @@ export default function Annotator({
     return () => document.removeEventListener('keydown', onKey, true);
   }, [annotator.open, closeAnnotator, embedded]);
 
-  // Embedded mode — open the annotator slice on mount so the
-  // L1 auto-run effect fires and the body has a scope. Idempotent
-  // (openAnnotator with the same sequenceId is a no-op).
+  // Embedded mode — open the annotator slice on mount (and on tab
+  // activation) so the L1 auto-run effect fires and the body has a
+  // scope. The `embeddedActive` gate prevents this from firing
+  // while the AnnotationsTab is pre-warmed-but-hidden in
+  // SingleInspector (clicking a SnapGene catalog item used to
+  // trigger this and surface the modal Annotator on top of the
+  // intended Overview tab).
   useEffect(() => {
     if (!embedded) return;
+    if (!embeddedActive) return;
     if (annotator.open && annotator.scope?.sequenceId === embeddedSequenceId) return;
     openAnnotatorAction({ kind: 'full', sequenceId: embeddedSequenceId });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [embedded, embeddedSequenceId]);
+  }, [embedded, embeddedActive, embeddedSequenceId]);
 
   const seqLength = (sequence || '').length;
   const scope = annotator.scope;

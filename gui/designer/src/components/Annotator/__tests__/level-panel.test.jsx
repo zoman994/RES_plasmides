@@ -276,6 +276,41 @@ describe('LevelPanel — three-level progression', () => {
     });
   });
 
+  // Sprint M-X.3 follow-up — biolog: «ок поставь пока заглушку».
+  // L3 BLAST plugin is a placeholder until the backend proxy lands.
+  describe('L3 «Coming soon» placeholder', () => {
+    it('L3 expanded shows the placeholder card and hides the Run button', () => {
+      render(<LevelPanel />);
+      // Expand L3.
+      fireEvent.click(screen.getAllByTestId('annotator-level-header')[2]);
+      const placeholder = screen.getByTestId('annotator-level-placeholder');
+      expect(placeholder).toBeTruthy();
+      expect(placeholder.textContent).toMatch(/coming soon/i);
+      // Run button is gone for L3 (only L1's run remains in the DOM,
+      // since L1 is the only other expanded level by default).
+      const runs = screen.queryAllByTestId('annotator-level-run');
+      // L1 always has a Run button; L3 doesn't. Verify exactly L1's
+      // is still present and L3 doesn't add a second.
+      expect(runs).toHaveLength(1);
+    });
+
+    it('L3 status reads «Coming soon» even before any run', () => {
+      render(<LevelPanel />);
+      const statuses = screen.getAllByTestId('annotator-level-status');
+      // L1 / L2 / L3 in DOM order — L3 is index 2.
+      expect(statuses[2].textContent).toMatch(/coming soon/i);
+    });
+
+    it('L1 and L2 still render their Run buttons normally', () => {
+      render(<LevelPanel />);
+      // Expand L2.
+      fireEvent.click(screen.getAllByTestId('annotator-level-header')[1]);
+      const runs = screen.getAllByTestId('annotator-level-run');
+      // L1 + L2 = 2 Run buttons; L3 still placeholder.
+      expect(runs).toHaveLength(2);
+    });
+  });
+
   it('LEVELS map exports the canonical plugin → level grouping', () => {
     expect(LEVELS.L1).toContain('common-features-homology');
     expect(LEVELS.L2).toContain('orf-scan');

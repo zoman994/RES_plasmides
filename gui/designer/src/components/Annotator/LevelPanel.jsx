@@ -65,7 +65,11 @@ const LEVEL_ORDER = ['L1', 'L2', 'L3'];
 const LEVEL_COPY = {
   L1: { title: 'level1Title', hint: 'level1Hint' },
   L2: { title: 'level2Title', hint: 'level2Hint' },
-  L3: { title: 'level3Title', hint: 'level3Hint' },
+  // Sprint M-X.3 follow-up — biolog: «ок поставь пока заглушку».
+  // L3 (BLAST against NCBI) needs a backend proxy that isn't built
+  // yet; flag it so LevelSection renders a «Coming soon» card
+  // instead of the Run button.
+  L3: { title: 'level3Title', hint: 'level3Hint', comingSoon: true },
 };
 
 function regionsForLevel(levelId, results, threshold, existingAnnotations, showDuplicates) {
@@ -189,6 +193,7 @@ function LevelSection({
   const isRunning = isRunningLevel(levelId, running);
   const hasResults = hasResultsForLevel(levelId, results);
   const copy = LEVEL_COPY[levelId];
+  const isPlaceholder = !!copy.comingSoon;
 
   // Pending = surfaced in the panel AND not yet accepted/rejected.
   // The «Accept all» shortcut targets exactly these.
@@ -204,9 +209,11 @@ function LevelSection({
 
   const status = isRunning
     ? S.levelRunning
-    : hasResults
-      ? S.levelHits(regions.length)
-      : S.levelNotRunYet;
+    : isPlaceholder
+      ? S.levelComingSoonLabel
+      : hasResults
+        ? S.levelHits(regions.length)
+        : S.levelNotRunYet;
 
   return (
     <div
@@ -265,36 +272,60 @@ function LevelSection({
           <div style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>
             {S[copy.hint]}
           </div>
+          {isPlaceholder && (
+            <div
+              data-testid="annotator-level-placeholder"
+              style={{
+                padding: '8px 10px',
+                fontSize: 11,
+                lineHeight: 1.4,
+                color: 'var(--text-secondary)',
+                background: 'var(--surface-2, #f5f5f4)',
+                border: '0.5px dashed var(--border-default, #d4d4d4)',
+                borderRadius: 'var(--radius-sm, 3px)',
+              }}
+            >
+              <div style={{ fontWeight: 500, color: 'var(--text-primary, #111)', marginBottom: 4 }}>
+                {S.levelComingSoonLabel}
+              </div>
+              {S.levelComingSoonBody}
+            </div>
+          )}
           {/* Run button — visible for L2/L3 (manual triggers) and as
               «Run again» for L1 once it has already auto-run.
               Sprint M-X.3 follow-up — «Accept all (N)» pinned right
               of Run when there's at least one pending hit. Manually
               rejected hits are NOT touched (acceptManyRegions skips
-              them in the store). */}
+              them in the store).
+              Placeholder levels (L3 BLAST until backend lands) hide
+              the Run button — clicking it would just produce another
+              empty placeholder result. */}
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            <button
-              type="button"
-              data-testid="annotator-level-run"
-              disabled={isRunning}
-              onClick={() => onRunLevel?.(levelId)}
-              style={{
-                padding: '4px 10px',
-                fontSize: 11,
-                borderRadius: 'var(--radius-sm, 3px)',
-                border: '0.5px solid var(--border-default, #d4d4d4)',
-                background: isRunning
-                  ? 'var(--surface-2, #f5f5f4)'
-                  : (hasResults ? 'transparent' : 'var(--accent-500, #f97316)'),
-                color: isRunning
-                  ? 'var(--text-tertiary)'
-                  : (hasResults ? 'var(--text-primary, #111)' : '#fff'),
-                cursor: isRunning ? 'not-allowed' : 'pointer',
-              }}
-            >
-              {isRunning
-                ? S.levelRunning
-                : (hasResults ? S.levelRunAgain : S.levelRun)}
-            </button>
+            {!isPlaceholder && (
+              <button
+                type="button"
+                data-testid="annotator-level-run"
+                disabled={isRunning}
+                onClick={() => onRunLevel?.(levelId)}
+                style={{
+                  padding: '4px 10px',
+                  fontSize: 11,
+                  borderRadius: 'var(--radius-sm, 3px)',
+                  border: '0.5px solid var(--border-default, #d4d4d4)',
+                  background: isRunning
+                    ? 'var(--surface-2, #f5f5f4)'
+                    : (hasResults ? 'transparent' : 'var(--accent-500, #f97316)'),
+                  color: isRunning
+                    ? 'var(--text-tertiary)'
+                    : (hasResults ? 'var(--text-primary, #111)' : '#fff'),
+                  cursor: isRunning ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {isRunning
+                  ? S.levelRunning
+                  : (hasResults ? S.levelRunAgain : S.levelRun)}
+              </button>
+            )}
             {pendingIds.length > 0 && (
               <button
                 type="button"

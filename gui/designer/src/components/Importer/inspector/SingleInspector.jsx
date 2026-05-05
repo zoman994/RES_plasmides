@@ -785,6 +785,7 @@ export default function SingleInspector({
               sequence={edits?.editedSequence ?? item.sequence ?? ''}
               annotations={displayAnnotations}
               fileName={item._fileName}
+              active={activeTab === 'annotations'}
               onApplyAnnotatorResults={onApplyAnnotatorResults}
               onAnnotationEdit={onAnnotationEditFromView}
               onOpenFeatureEditor={openFeatureEditor}
