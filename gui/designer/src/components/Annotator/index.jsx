@@ -68,6 +68,7 @@ export default function Annotator({
   const setResult = useStore((s) => s.setAnnotatorResult);
   const acceptRegion = useStore((s) => s.acceptRegion);
   const rejectRegion = useStore((s) => s.rejectRegion);
+  const acceptManyRegions = useStore((s) => s.acceptManyRegions);
   const editPendingRegion = useStore((s) => s.editPendingRegion);
 
   // Esc closes the modal (third escape route alongside Back button
@@ -278,6 +279,7 @@ export default function Annotator({
           threshold={annotator.threshold}
           onAccept={acceptRegion}
           onReject={rejectRegion}
+          onAcceptMany={acceptManyRegions}
           onEditPatch={editPendingRegion}
           onRunLevel={handleRunLevel}
         />

@@ -87,6 +87,7 @@ export default function LevelPanel({
   onReject,
   onEditPatch,
   onRunLevel,
+  onAcceptMany,
 }) {
   // Each level has independent expand/collapse state. L1 starts open
   // (auto-run produces results on open, so the user wants to see
@@ -134,6 +135,7 @@ export default function LevelPanel({
           onReject={onReject}
           onEditPatch={onEditPatch}
           onRunLevel={onRunLevel}
+          onAcceptMany={onAcceptMany}
         />
       ))}
     </div>
@@ -154,6 +156,7 @@ function LevelSection({
   onReject,
   onEditPatch,
   onRunLevel,
+  onAcceptMany,
 }) {
   const regions = useMemo(
     () => regionsForLevel(levelId, results, threshold),
@@ -162,6 +165,18 @@ function LevelSection({
   const isRunning = isRunningLevel(levelId, running);
   const hasResults = hasResultsForLevel(levelId, results);
   const copy = LEVEL_COPY[levelId];
+
+  // Pending = surfaced in the panel AND not yet accepted/rejected.
+  // The «Accept all» shortcut targets exactly these.
+  const pendingIds = useMemo(() => {
+    const out = [];
+    for (const r of regions) {
+      if (acceptedRegionIds?.[r.id]) continue;
+      if (rejectedRegionIds?.[r.id]) continue;
+      out.push(r.id);
+    }
+    return out;
+  }, [regions, acceptedRegionIds, rejectedRegionIds]);
 
   const status = isRunning
     ? S.levelRunning
@@ -227,31 +242,56 @@ function LevelSection({
             {S[copy.hint]}
           </div>
           {/* Run button — visible for L2/L3 (manual triggers) and as
-              «Run again» for L1 once it has already auto-run. */}
-          <button
-            type="button"
-            data-testid="annotator-level-run"
-            disabled={isRunning}
-            onClick={() => onRunLevel?.(levelId)}
-            style={{
-              padding: '4px 10px',
-              fontSize: 11,
-              borderRadius: 'var(--radius-sm, 3px)',
-              border: '0.5px solid var(--border-default, #d4d4d4)',
-              background: isRunning
-                ? 'var(--surface-2, #f5f5f4)'
-                : (hasResults ? 'transparent' : 'var(--accent-500, #f97316)'),
-              color: isRunning
-                ? 'var(--text-tertiary)'
-                : (hasResults ? 'var(--text-primary, #111)' : '#fff'),
-              cursor: isRunning ? 'not-allowed' : 'pointer',
-              alignSelf: 'flex-start',
-            }}
-          >
-            {isRunning
-              ? S.levelRunning
-              : (hasResults ? S.levelRunAgain : S.levelRun)}
-          </button>
+              «Run again» for L1 once it has already auto-run.
+              Sprint M-X.3 follow-up — «Accept all (N)» pinned right
+              of Run when there's at least one pending hit. Manually
+              rejected hits are NOT touched (acceptManyRegions skips
+              them in the store). */}
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              data-testid="annotator-level-run"
+              disabled={isRunning}
+              onClick={() => onRunLevel?.(levelId)}
+              style={{
+                padding: '4px 10px',
+                fontSize: 11,
+                borderRadius: 'var(--radius-sm, 3px)',
+                border: '0.5px solid var(--border-default, #d4d4d4)',
+                background: isRunning
+                  ? 'var(--surface-2, #f5f5f4)'
+                  : (hasResults ? 'transparent' : 'var(--accent-500, #f97316)'),
+                color: isRunning
+                  ? 'var(--text-tertiary)'
+                  : (hasResults ? 'var(--text-primary, #111)' : '#fff'),
+                cursor: isRunning ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {isRunning
+                ? S.levelRunning
+                : (hasResults ? S.levelRunAgain : S.levelRun)}
+            </button>
+            {pendingIds.length > 0 && (
+              <button
+                type="button"
+                data-testid="annotator-level-accept-all"
+                title={S.levelAcceptAllHint}
+                onClick={() => onAcceptMany?.(pendingIds)}
+                style={{
+                  padding: '4px 10px',
+                  fontSize: 11,
+                  borderRadius: 'var(--radius-sm, 3px)',
+                  border: '0.5px solid var(--accent-500, #f97316)',
+                  background: 'var(--accent-500, #f97316)',
+                  color: '#fff',
+                  cursor: 'pointer',
+                  fontWeight: 500,
+                }}
+              >
+                {S.levelAcceptAll(pendingIds.length)}
+              </button>
+            )}
+          </div>
           {/* Region rows — only after the level has produced results. */}
           {hasResults && regions.length === 0 && (
             <div

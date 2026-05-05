@@ -593,6 +593,42 @@ export const createUiSlice = (set) => ({
     });
   },
 
+  /**
+   * Sprint M-X.3 follow-up (05.05.2026) — biolog: «добавь возможность
+   * одним кликом согласиться со всеми комон фичами которые нашел на
+   * L1». Accept many region ids in a single store update.
+   *
+   * Semantics:
+   *   - Pending → accepted.
+   *   - Already accepted → no-op.
+   *   - Already rejected → SKIPPED (preserves the user's manual
+   *     reject; the bulk button is a shortcut for «accept the
+   *     unverdicted ones», not a force-override).
+   *   - Closes the drill-in panel if the selected ghost is among the
+   *     newly-accepted ids.
+   *
+   * One set() call so subscribers get a single render, not N.
+   */
+  acceptManyRegions: (regionIds) => {
+    if (!Array.isArray(regionIds) || regionIds.length === 0) return;
+    set(state => {
+      if (!state.annotator) state.annotator = loadInitialAnnotator();
+      if (!state.annotator.acceptedRegionIds) state.annotator.acceptedRegionIds = {};
+      if (!state.annotator.rejectedRegionIds) state.annotator.rejectedRegionIds = {};
+      const accepted = state.annotator.acceptedRegionIds;
+      const rejected = state.annotator.rejectedRegionIds;
+      for (const id of regionIds) {
+        if (typeof id !== 'string' || !id) continue;
+        if (rejected[id]) continue; // preserve manual reject
+        accepted[id] = true;
+      }
+      if (state.annotator.selectedGhostId
+          && accepted[state.annotator.selectedGhostId]) {
+        state.annotator.selectedGhostId = null;
+      }
+    });
+  },
+
   rejectRegion: (regionId) => {
     if (typeof regionId !== 'string' || !regionId) return;
     set(state => {

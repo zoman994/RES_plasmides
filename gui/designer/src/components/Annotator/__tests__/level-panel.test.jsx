@@ -180,4 +180,92 @@ describe('LevelPanel — three-level progression', () => {
     expect(LEVELS.L2).toContain('sgrna-scaffold');
     expect(LEVELS.L3).toContain('blast-ncbi');
   });
+
+  // Sprint M-X.3 follow-up — biolog «добавь возможность одним кликом
+  // согласиться со всеми комон фичами которые нашел на L1». Accept-
+  // all shortcut on each level section.
+  describe('Accept all', () => {
+    it('button is hidden when there are no pending hits', () => {
+      render(<LevelPanel />);
+      expect(screen.queryByTestId('annotator-level-accept-all')).toBeNull();
+    });
+
+    it('button shows on L1 when results have pending (unverdicted) hits, with a count', () => {
+      render(
+        <LevelPanel
+          results={{ 'common-features-homology': COMMON_RESULT }}
+          threshold={0}
+        />,
+      );
+      const btn = screen.getAllByTestId('annotator-level-accept-all')[0];
+      expect(btn).toBeTruthy();
+      expect(btn.textContent).toMatch(/2/);
+    });
+
+    it('clicking Accept all dispatches onAcceptMany with all pending ids in this level', () => {
+      const onAcceptMany = vi.fn();
+      render(
+        <LevelPanel
+          results={{ 'common-features-homology': COMMON_RESULT }}
+          threshold={0}
+          onAcceptMany={onAcceptMany}
+        />,
+      );
+      const btns = screen.getAllByTestId('annotator-level-accept-all');
+      fireEvent.click(btns[0]);
+      expect(onAcceptMany).toHaveBeenCalledTimes(1);
+      const ids = onAcceptMany.mock.calls[0][0];
+      expect(ids).toEqual(expect.arrayContaining(['cf-1', 'cf-2']));
+      expect(ids).toHaveLength(2);
+    });
+
+    it('button count drops as the user accepts hits one by one', () => {
+      const { rerender } = render(
+        <LevelPanel
+          results={{ 'common-features-homology': COMMON_RESULT }}
+          threshold={0}
+        />,
+      );
+      expect(screen.getAllByTestId('annotator-level-accept-all')[0].textContent).toMatch(/2/);
+      // After accepting cf-1 manually, only 1 pending left.
+      rerender(
+        <LevelPanel
+          results={{ 'common-features-homology': COMMON_RESULT }}
+          threshold={0}
+          acceptedRegionIds={{ 'cf-1': true }}
+        />,
+      );
+      expect(screen.getAllByTestId('annotator-level-accept-all')[0].textContent).toMatch(/1/);
+    });
+
+    it('button disappears when every hit has a verdict (accepted or rejected)', () => {
+      render(
+        <LevelPanel
+          results={{ 'common-features-homology': COMMON_RESULT }}
+          threshold={0}
+          acceptedRegionIds={{ 'cf-1': true }}
+          rejectedRegionIds={{ 'cf-2': true }}
+        />,
+      );
+      expect(screen.queryByTestId('annotator-level-accept-all')).toBeNull();
+    });
+
+    it('threshold-filtered hits are excluded from the pending count', () => {
+      const lowConfidence = {
+        ...COMMON_RESULT,
+        regions: [
+          { ...COMMON_RESULT.regions[0], confidence: 0.95 },
+          { ...COMMON_RESULT.regions[1], confidence: 0.40 },
+        ],
+      };
+      render(
+        <LevelPanel
+          results={{ 'common-features-homology': lowConfidence }}
+          threshold={0.7}
+        />,
+      );
+      // Only the 0.95-confidence hit survives the threshold → count of 1.
+      expect(screen.getAllByTestId('annotator-level-accept-all')[0].textContent).toMatch(/1/);
+    });
+  });
 });

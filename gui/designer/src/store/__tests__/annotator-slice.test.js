@@ -170,4 +170,58 @@ describe('K6 annotator slice', () => {
     useStore.getState().acceptRegion('ghost-r2');
     expect(selectAnnotator(useStore.getState()).selectedGhostId).toBe('ghost-r1');
   });
+
+  // ─── Sprint M-X.3 follow-up — bulk accept ─────────────────────────
+  // Biolog: «добавь возможность одним кликом согласиться со всеми
+  // комон фичами которые нашел на L1». Bulk shortcut for the
+  // unverdicted hits without trampling the user's manual rejects.
+  describe('acceptManyRegions', () => {
+    it('accepts every id in the list', () => {
+      useStore.getState().acceptManyRegions(['a', 'b', 'c']);
+      const a = selectAnnotator(useStore.getState());
+      expect(a.acceptedRegionIds.a).toBe(true);
+      expect(a.acceptedRegionIds.b).toBe(true);
+      expect(a.acceptedRegionIds.c).toBe(true);
+    });
+
+    it('preserves a manually rejected id (does not flip to accepted)', () => {
+      useStore.getState().rejectRegion('a');
+      useStore.getState().acceptManyRegions(['a', 'b']);
+      const a = selectAnnotator(useStore.getState());
+      // 'a' stays rejected — bulk shortcut respects manual choices.
+      expect(a.acceptedRegionIds.a).toBeUndefined();
+      expect(a.rejectedRegionIds.a).toBe(true);
+      // 'b' was pending, now accepted.
+      expect(a.acceptedRegionIds.b).toBe(true);
+    });
+
+    it('clears selectedGhostId when the drilled-in ghost is bulk-accepted', () => {
+      useStore.getState().setSelectedGhost('ghost-x');
+      useStore.getState().acceptManyRegions(['ghost-x', 'ghost-y']);
+      expect(selectAnnotator(useStore.getState()).selectedGhostId).toBeNull();
+    });
+
+    it('keeps selectedGhostId when none of the bulk ids matches', () => {
+      useStore.getState().setSelectedGhost('ghost-x');
+      useStore.getState().acceptManyRegions(['ghost-y', 'ghost-z']);
+      expect(selectAnnotator(useStore.getState()).selectedGhostId).toBe('ghost-x');
+    });
+
+    it('empty / non-array input is a safe no-op', () => {
+      const before = selectAnnotator(useStore.getState()).acceptedRegionIds;
+      useStore.getState().acceptManyRegions([]);
+      useStore.getState().acceptManyRegions(null);
+      useStore.getState().acceptManyRegions(undefined);
+      const after = selectAnnotator(useStore.getState()).acceptedRegionIds;
+      expect(after).toEqual(before);
+    });
+
+    it('skips garbage entries (non-string / empty) without throwing', () => {
+      useStore.getState().acceptManyRegions(['valid-id', '', null, 42, 'another']);
+      const a = selectAnnotator(useStore.getState());
+      expect(a.acceptedRegionIds['valid-id']).toBe(true);
+      expect(a.acceptedRegionIds['another']).toBe(true);
+      expect(Object.keys(a.acceptedRegionIds)).toHaveLength(2);
+    });
+  });
 });
