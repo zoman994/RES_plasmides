@@ -33,9 +33,33 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,json}'],
+        // Precache only app shell + small assets. Excluding `json` keeps the
+        // 24 MB plasmid pack (`/plasmids-data/*.json` + `plasmids-index.json`
+        // + `common-features.json`) out of the first-install download — they
+        // fetch on demand below and are CacheFirst from then on.
+        globPatterns: ['**/*.{js,css,html,svg,png}'],
         navigateFallback: '/index.html',
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+        runtimeCaching: [
+          {
+            urlPattern: /\/plasmids-(index\.json|data\/.+\.json)$/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'plasmid-pack-v1',
+              expiration: { maxEntries: 60, maxAgeSeconds: 60 * 60 * 24 * 90 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+          {
+            urlPattern: /\/common-features\.json$/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'common-features-v1',
+              expiration: { maxEntries: 2, maxAgeSeconds: 60 * 60 * 24 * 90 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+        ],
       },
       devOptions: {
         enabled: false,
