@@ -1,5 +1,11 @@
 /** Golden Gate assembly: enzyme database, overhang design, validation. */
 
+// `reverseComplement` is re-exported for backward compatibility —
+// `validate.js` and `JunctionBlock.jsx` import it through this module.
+// Single source of truth lives in `sequence-utils.js`.
+import { reverseComplement } from './sequence-utils';
+export { reverseComplement };
+
 export const GG_ENZYMES = {
   BsaI: {
     name: 'BsaI', recognition: 'GGTCTC', cutOffset: 7, overhangLength: 4,
@@ -27,12 +33,6 @@ export const GG_ENZYMES = {
     spacer: '', notes: '3-нт овехенги. Меньше комбинаций, но проще.',
   },
 };
-
-const COMPLEMENT = { A: 'T', T: 'A', G: 'C', C: 'G', N: 'N' };
-
-export function reverseComplement(seq) {
-  return seq.split('').reverse().map(c => COMPLEMENT[c.toUpperCase()] || 'N').join('');
-}
 
 /** Check if enzyme recognition site exists inside any fragment. */
 export function checkInternalSites(fragments, enzymeKey) {

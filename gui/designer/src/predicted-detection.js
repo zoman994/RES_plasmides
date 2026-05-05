@@ -25,6 +25,7 @@
 import { generateRegionId } from './domain-detection';
 import { PREDICTOR_SOURCES } from './annotation-model';
 import { detectORFs } from './orf-detection';
+import { reverseComplement } from './sequence-utils';
 
 // ─── Constants ────────────────────────────────────────────────────────
 
@@ -72,11 +73,6 @@ const SIGMA70_MINUS10_PWM = [
 ];
 
 const BASE_INDEX = { A: 0, C: 1, G: 2, T: 3 };
-
-const RC_MAP = { A: 'T', T: 'A', G: 'C', C: 'G', N: 'N' };
-function reverseComplement(seq) {
-  return seq.split('').reverse().map((c) => RC_MAP[c] || 'N').join('');
-}
 
 // ─── PWM scoring ──────────────────────────────────────────────────────
 

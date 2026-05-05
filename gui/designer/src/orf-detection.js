@@ -10,8 +10,8 @@
 
 import { generateRegionId } from './domain-detection';
 import { PREDICTOR_SOURCES } from './annotation-model';
+import { reverseComplement } from './sequence-utils';
 
-const RC_MAP = { A: 'T', T: 'A', G: 'C', C: 'G', N: 'N' };
 const STOPS = new Set(['TAA', 'TAG', 'TGA']);
 
 /**
@@ -27,7 +27,7 @@ const STOPS = new Set(['TAA', 'TAG', 'TGA']);
 export function detectORFs(sequence, existingAnnotations, minAA = 100) {
   const seq = sequence.toUpperCase();
   const seqLen = seq.length;
-  const rcSeq = seq.split('').reverse().map(c => RC_MAP[c] || 'N').join('');
+  const rcSeq = reverseComplement(seq);
 
   // Existing CDS regions — don't duplicate
   const existingCDS = (existingAnnotations || []).filter(a =>

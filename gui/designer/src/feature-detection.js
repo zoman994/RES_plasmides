@@ -11,6 +11,7 @@
  */
 
 import { CODON_TABLE } from './codons';
+import { reverseComplement as revComp } from './sequence-utils';
 
 let _db = null;
 let _loading = null;
@@ -60,14 +61,6 @@ function translateFrame(seq) {
   }
   out.length = n;
   return out.join('');
-}
-
-/**
- * Get reverse complement.
- */
-function revComp(seq) {
-  const comp = { A: 'T', T: 'A', G: 'C', C: 'G', N: 'N' };
-  return seq.split('').reverse().map(c => comp[c] || 'N').join('');
 }
 
 /**

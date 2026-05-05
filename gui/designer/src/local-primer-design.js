@@ -6,10 +6,13 @@ import { calcTmNN } from './tm-calculator';
 import { GG_ENZYMES } from './golden-gate';
 import { getTagByName } from './tags-db';
 import { generateRETail } from './restriction-db';
+import { reverseComplement } from './sequence-utils';
 
+// `rc` is kept as a thin wrapper so the per-call uppercasing stays
+// local to primer design; the canonical `reverseComplement` assumes
+// already-sanitized input. Callers here pass raw fragment slices.
 function rc(seq) {
-  const comp = { A: 'T', T: 'A', G: 'C', C: 'G', N: 'N' };
-  return seq.split('').reverse().map(c => comp[c.toUpperCase()] || 'N').join('');
+  return reverseComplement(String(seq).toUpperCase());
 }
 
 /**

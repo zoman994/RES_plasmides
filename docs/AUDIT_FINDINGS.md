@@ -38,7 +38,7 @@ Topmost pending P0/P1 takes priority each iteration.
 | HOOK-02 | pending | `Importer.runConfirm` closes over whole `state` object → callback churn → memo churn |
 | HOOK-11 | pending | `Importer.alreadyAddedToLibrary` IIFE reads `useStore.getState()` in render — no subscription |
 | PERF-04 | pending | `useCatalogSources.mine` rebuilt from `Object.values(libraryEntries)` on every store tick |
-| PERF-05 | pending | Five duplicate `revComp` impls using `split('').reverse().join('')` — generalize the `translateFrame` array+join refactor |
+| ~~PERF-05~~ | resolved | ~~Five duplicate `revComp` impls~~ → consolidated into a single fast `reverseComplement` in `sequence-utils.js` (pre-sized array walk, no split/reverse/map). `feature-detection`, `predicted-detection`, `orf-detection`, `local-primer-design`, `mutagenesis`, `golden-gate` now all import from one source. |
 | PERF-06 | pending | `enrichWithCommonFeatures` dedup is O(annotations × hits) |
 | PERF-07 | pending | `AnnotationTrack` filters parents/details + runs stacker per line, but the split is line-invariant |
 | PERF-08 | pending | `buildLineAnnMap` allocates a per-line `Array(lineLen)` per render |

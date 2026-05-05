@@ -73,8 +73,24 @@ export function complement(nt) {
   return COMPLEMENT_MAP[nt] || 'N';
 }
 
+/**
+ * Reverse complement.
+ *
+ * Hot-path: ORF detection / primer design / annotation pipelines all hit
+ * this on every plasmid. The previous `split('').reverse().map().join('')`
+ * spelling allocated three intermediate arrays of length N — measurable
+ * GC pressure on long plasmids on weak machines. The walk below builds
+ * a single pre-sized array backwards through the input, no slice / no
+ * intermediate strings.
+ */
 export function reverseComplement(seq) {
-  return seq.split('').reverse().map(c => complement(c)).join('');
+  if (!seq) return '';
+  const len = seq.length;
+  const out = new Array(len);
+  for (let i = 0; i < len; i++) {
+    out[i] = COMPLEMENT_MAP[seq[len - 1 - i]] || 'N';
+  }
+  return out.join('');
 }
 
 const IUPAC_AMBIG_REGEX = /[RYSWKMBDHVNryswkmbdhvn]/g;

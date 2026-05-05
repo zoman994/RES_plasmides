@@ -2,9 +2,9 @@
 
 import { translateDNA, translateCodon, getBestCodon, CODON_TABLE } from './codons';
 import { calcTm as calcTmNN, gcPercent } from './tm-calculator';
+import { reverseComplement } from './sequence-utils';
 
-const RC = { A: 'T', T: 'A', G: 'C', C: 'G' };
-const revComp = s => s.split('').reverse().map(c => RC[c.toUpperCase()] || 'N').join('');
+const revComp = s => reverseComplement(String(s).toUpperCase());
 
 /**
  * Choose strategy based on mutation count, spacing, AND fragment context.
@@ -337,7 +337,7 @@ export function designInlineKLDPrimers(sequence, mutationSiteBp, targetTm = 60) 
   let rStart = mutationSiteBp - 18;
   while (rStart > 0 && rStart > mutationSiteBp - 35 && tm(seq.slice(rStart, mutationSiteBp)) < targetTm) rStart--;
   const revRegion = seq.slice(Math.max(0, rStart), mutationSiteBp);
-  const rev = revRegion.split('').reverse().map(c => ({ A:'T',T:'A',G:'C',C:'G' }[c]||'N')).join('');
+  const rev = revComp(revRegion);
 
   return {
     forward: { sequence: fwd, tm: Math.round(tm(fwd)) },
@@ -368,7 +368,7 @@ export function designQuikChangePrimers(sequence, mutationSiteBp, mutationLength
   const fStart = Math.max(0, mutCenter - halfLen);
   const fEnd = Math.min(seq.length, mutCenter + halfLen);
   const fwd = seq.slice(fStart, fEnd);
-  const rev = fwd.split('').reverse().map(c => ({ A: 'T', T: 'A', G: 'C', C: 'G' }[c] || 'N')).join('');
+  const rev = revComp(fwd);
 
   return {
     forward: {
