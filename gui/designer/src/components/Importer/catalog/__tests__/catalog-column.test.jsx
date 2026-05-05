@@ -78,12 +78,16 @@ describe('M-B.2 K2 — CatalogColumn integration', () => {
     expect(screen.getByTestId('catalog-mine-empty')).toBeTruthy();
   });
 
-  it('2) Library entries with tags surface as nested folder rows; click toggles inline expansion', async () => {
+  it('2) Library entries with folderPath surface as nested folder rows; tags do NOT create folders', async () => {
     useStore.setState((s) => {
       s.libraryEntries = {
-        e1: { id: 'e1', kind: 'container', name: 'pUC-A', tags: ['vector'], addedAt: '2026-05-01', payload: { length: 2700, sequence: 'A'.repeat(2700), topology: 'circular', annotations: [] } },
-        e2: { id: 'e2', kind: 'container', name: 'pET-B', tags: ['vector', 'expression'], addedAt: '2026-05-01', payload: { length: 5300, sequence: 'A'.repeat(5300), topology: 'circular', annotations: [] } },
-        e3: { id: 'e3', kind: 'container', name: 'sfGFP-cds', tags: [], addedAt: '2026-05-01', payload: { length: 720, sequence: 'A'.repeat(720), topology: 'linear', annotations: [] } },
+        // Two entries pinned to the «vector» folder (different tags
+        // should NOT split them — folder placement is the only
+        // grouping dimension).
+        e1: { id: 'e1', kind: 'container', name: 'pUC-A', tags: ['cloning'], folderPath: 'vector', addedAt: '2026-05-01', payload: { length: 2700, sequence: 'A'.repeat(2700), topology: 'circular', annotations: [] } },
+        e2: { id: 'e2', kind: 'container', name: 'pET-B', tags: ['expression', 'lab'], folderPath: 'vector', addedAt: '2026-05-01', payload: { length: 5300, sequence: 'A'.repeat(5300), topology: 'circular', annotations: [] } },
+        // Tagged but unfoldered → top of Mine, not in any folder.
+        e3: { id: 'e3', kind: 'container', name: 'sfGFP-cds', tags: ['fluorescent'], folderPath: '', addedAt: '2026-05-01', payload: { length: 720, sequence: 'A'.repeat(720), topology: 'linear', annotations: [] } },
       };
     });
     render(
@@ -94,14 +98,16 @@ describe('M-B.2 K2 — CatalogColumn integration', () => {
         onFiles={() => {}} onPasteText={() => {}}
       />,
     );
-    // Two tag buckets + the untagged bucket render as nested collapsible folders.
+    // Only the «vector» folder bucket exists — tags don't spawn
+    // folders any more.
     await waitFor(() => {
       expect(screen.getByTestId('importer-catalog-mine-folder-vector')).toBeTruthy();
     });
-    expect(screen.getByTestId('importer-catalog-mine-folder-expression')).toBeTruthy();
-    expect(screen.getByTestId('importer-catalog-mine-folder-__untagged__')).toBeTruthy();
+    expect(screen.queryByTestId('importer-catalog-mine-folder-expression')).toBeNull();
+    expect(screen.queryByTestId('importer-catalog-mine-folder-cloning')).toBeNull();
+    expect(screen.queryByTestId('importer-catalog-mine-folder-fluorescent')).toBeNull();
 
-    // Items inside «vector» folder are hidden until the row is expanded.
+    // Items inside «vector» are hidden until the row is expanded.
     expect(screen.queryByTestId('importer-catalog-item-e1')).toBeNull();
     fireEvent.click(screen.getByTestId('importer-catalog-mine-folder-vector'));
     expect(screen.getByTestId('importer-catalog-item-e1')).toBeTruthy();

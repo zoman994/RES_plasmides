@@ -349,20 +349,22 @@ describe('M-X.3 K2 — pendingImport for file flow (single)', () => {
     expect(result.current.pendingImport.hasAnnotations).toBe(false);
   });
 
-  it('addFiles with targetFolderTag carries it through commit as a tag', async () => {
+  it('addFiles with targetFolderPath carries it through commit as folderPath (not as a tag)', async () => {
     const { result } = renderHook(() => useImporterState({ mode: 'advanced' }));
     await act(async () => {
       await result.current.addFiles(
         [fileFromText('a.fasta', FASTA_A)],
-        { targetFolderTag: 'Vectors/CRISPR' }
+        { targetFolderPath: 'Vectors/CRISPR' }
       );
     });
-    expect(result.current.pendingImport.suggestedTags).toContain('Vectors/CRISPR');
+    expect(result.current.pendingImport.suggestedFolderPath).toBe('Vectors/CRISPR');
+    expect(result.current.pendingImport.suggestedTags).toEqual([]);
     act(() => result.current.commitPendingImport({
-      name: 'a', topology: 'linear', tags: ['Vectors/CRISPR'], annotateNow: true,
+      name: 'a', topology: 'linear', tags: [], folderPath: 'Vectors/CRISPR', annotateNow: true,
     }));
     const it = result.current.parsedItems[0];
-    expect(result.current.perFileEdits[it._fileName]?.editedTags).toContain('Vectors/CRISPR');
+    expect(result.current.perFileEdits[it._fileName]?.editedFolderPath).toBe('Vectors/CRISPR');
+    expect(result.current.perFileEdits[it._fileName]?.editedTags || []).toEqual([]);
   });
 });
 
@@ -386,7 +388,7 @@ describe('M-X.3 K2a — pendingImport for multi-file flow', () => {
     expect(env.parsedItems.map((p) => p._fileName)).toEqual(['a.fasta', 'b.fasta', 'c.fasta']);
   });
 
-  it('multi commit applies tags + topology to ALL items', async () => {
+  it('multi commit applies tags + topology + folderPath to ALL items', async () => {
     const { result } = renderHook(() => useImporterState({ mode: 'advanced' }));
     await act(async () => {
       await result.current.addFiles([
@@ -397,16 +399,18 @@ describe('M-X.3 K2a — pendingImport for multi-file flow', () => {
     act(() => result.current.commitPendingImport({
       topology: 'circular',
       tags: ['lab', 'batch-2026'],
-      folderTag: 'Vectors',
+      folderPath: 'Vectors',
       annotateNow: false,
     }));
     expect(result.current.parsedItems).toHaveLength(2);
     expect(result.current.parsedItems.every((p) => p.topology === 'circular')).toBe(true);
     for (const it of result.current.parsedItems) {
-      const tags = result.current.perFileEdits[it._fileName]?.editedTags || [];
-      expect(tags).toContain('Vectors');
+      const edits = result.current.perFileEdits[it._fileName] || {};
+      const tags = edits.editedTags || [];
+      expect(tags).not.toContain('Vectors'); // folder is no longer auto-tagged
       expect(tags).toContain('lab');
       expect(tags).toContain('batch-2026');
+      expect(edits.editedFolderPath).toBe('Vectors');
       expect(result.current.perFileFlags[it._fileName]?.autoAnnotate).toBe(false);
     }
   });

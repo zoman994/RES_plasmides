@@ -154,7 +154,7 @@ export default function CatalogColumn({
   const fileInputRef = useRef(null);
   // Shared file picker for per-folder imports — `pendingFolderTag` carries
   // the target folder's path so the onChange handler can forward it to
-  // onFiles({targetFolderTag}). Avoids a separate <input> per folder.
+  // onFiles({targetFolderPath}). Avoids a separate <input> per folder.
   const folderFileInputRef = useRef(null);
   const pendingFolderTag = useRef(null);
   const [pasteDraft, setPasteDraft] = useState('');
@@ -299,14 +299,14 @@ export default function CatalogColumn({
     const files = Array.from(e.target.files || []);
     const tag = pendingFolderTag.current;
     if (files.length > 0 && onFiles) {
-      onFiles(files, tag ? { targetFolderTag: tag } : undefined);
+      onFiles(files, tag ? { targetFolderPath: tag } : undefined);
     }
     pendingFolderTag.current = null;
     e.target.value = '';
   }, [onFiles]);
   const onFolderDropFiles = useCallback((folderPath, files) => {
     if (files.length > 0 && onFiles) {
-      onFiles(files, { targetFolderTag: folderPath });
+      onFiles(files, { targetFolderPath: folderPath });
     }
   }, [onFiles]);
 
@@ -321,8 +321,8 @@ export default function CatalogColumn({
     let affectedCount = 0;
     if (groupKey === 'mine') {
       affectedCount = sources.mine.filter((it) => {
-        const tags = Array.isArray(it.tags) ? it.tags : [];
-        return tags.some((t) => t === folderPath || t.startsWith(prefix));
+        const p = typeof it._folderPath === 'string' ? it._folderPath : '';
+        return p === folderPath || p.startsWith(prefix);
       }).length;
     }
     // eslint-disable-next-line no-alert
@@ -338,14 +338,15 @@ export default function CatalogColumn({
       try { localStorage.setItem('pvcs-catalog-user-folders-by-group', JSON.stringify(next)); } catch { /* */ }
       return next;
     });
+    // Move affected entries up to the top of «Mine» (folderPath = '')
+    // so they don't disappear with the deleted folder.
     if (groupKey === 'mine' && affectedCount > 0) {
-      const updateTags = useStore.getState().updateLibraryEntryTags;
-      if (typeof updateTags === 'function') {
+      const updatePath = useStore.getState().updateLibraryEntryFolderPath;
+      if (typeof updatePath === 'function') {
         for (const it of sources.mine) {
-          const tags = Array.isArray(it.tags) ? it.tags : [];
-          const filtered = tags.filter((t) => t !== folderPath && !t.startsWith(prefix));
-          if (filtered.length !== tags.length) {
-            updateTags(it.id, filtered).catch(() => { /* swallow — UI re-renders on next state push */ });
+          const p = typeof it._folderPath === 'string' ? it._folderPath : '';
+          if (p === folderPath || p.startsWith(prefix)) {
+            updatePath(it.id, '').catch(() => { /* */ });
           }
         }
       }
@@ -357,27 +358,18 @@ export default function CatalogColumn({
     });
   }, [sources.mine]);
 
-  // Internal drag: dragging a library entry between folders rewrites its
-  // tags — drop SOURCE folder tag, add TARGET folder tag. Both source and
-  // target are slash-paths ('' = top of Mine, no folder; '__untagged__' =
-  // virtual bucket → treat as no real source). Multi-tagged entries lose
-  // only the dragged-from tag (others stay), so the item moves rather than
-  // being copied — matches OS file-manager «drag = move» convention.
+  // Internal drag: dragging a library entry between folders writes the
+  // entry's `folderPath` field — tags stay untouched. Both source and
+  // target are slash-paths ('' = top of Mine).
   const moveItemToFolder = useCallback((itemId, sourceFolder, targetFolder) => {
     if (!itemId) return;
     if (sourceFolder === targetFolder) return;
     const store = useStore.getState();
     const entry = store.libraryEntries?.[itemId];
     if (!entry) return;
-    const realSource = sourceFolder === '__untagged__' ? '' : sourceFolder;
     const realTarget = targetFolder === '__untagged__' ? '' : targetFolder;
-    const tags = Array.isArray(entry.tags) ? [...entry.tags] : [];
-    const filtered = realSource ? tags.filter((t) => t !== realSource) : tags;
-    const final = realTarget && !filtered.includes(realTarget)
-      ? [...filtered, realTarget]
-      : filtered;
-    if (typeof store.updateLibraryEntryTags === 'function') {
-      store.updateLibraryEntryTags(itemId, final).catch(() => { /* */ });
+    if (typeof store.updateLibraryEntryFolderPath === 'function') {
+      store.updateLibraryEntryFolderPath(itemId, realTarget).catch(() => { /* */ });
     }
   }, []);
 
@@ -817,7 +809,7 @@ export default function CatalogColumn({
           data-testid="importer-catalog-file-input"
         />
         {/* Shared per-folder file picker — `pendingFolderTag` ref is set by
-            triggerFolderImport(folderPath), forwarded as `targetFolderTag`
+            triggerFolderImport(folderPath), forwarded as `targetFolderPath`
             so confirm flow lands the entry directly inside that folder. */}
         <input
           ref={folderFileInputRef}

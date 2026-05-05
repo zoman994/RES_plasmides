@@ -72,22 +72,20 @@ export function useCatalogSources() {
   }, [libraryEntries]);
 
   /**
-   * Sub-group `mine` by entry.tags. §10.1 approval default: any entry with
-   * tags lands once per tag (multi-bucket); entries without tags fall into
-   * the flat "Без тегов" bucket. When ALL entries are tagless, return flat
-   * list (no grouping noise).
+   * Sub-group `mine` by `folderPath` — each entry sits in exactly one
+   * folder bucket (top of «Mine» when folderPath is empty). Tags are
+   * NOT used for grouping any more (biolog: «такги просто атрибут
+   * который мы можем использовать потом для поиска но папки с
+   * названиями тагов не создавать»). Empty top-level placement uses
+   * the synthetic '' key.
    */
   const mineGroups = useMemo(() => {
     if (mine.length === 0) return [];
-    const tagged = mine.filter((it) => Array.isArray(it._tags) && it._tags.length > 0);
-    if (tagged.length === 0) return []; // flat fallback consumed by CatalogColumn
     const buckets = new Map();
     for (const it of mine) {
-      const tags = Array.isArray(it._tags) && it._tags.length > 0 ? it._tags : ['__untagged__'];
-      for (const t of tags) {
-        if (!buckets.has(t)) buckets.set(t, []);
-        buckets.get(t).push(it);
-      }
+      const path = typeof it._folderPath === 'string' ? it._folderPath : '';
+      if (!buckets.has(path)) buckets.set(path, []);
+      buckets.get(path).push(it);
     }
     return Array.from(buckets.entries())
       .sort((a, b) => a[0].localeCompare(b[0]))
@@ -144,6 +142,7 @@ function libraryEntryToCatalogItem(entry, source) {
     sequence: entry.payload?.sequence || '',
     organism: entry.payload?.organism || '',
     _tags: Array.isArray(entry.tags) ? entry.tags : [],
+    _folderPath: typeof entry.folderPath === 'string' ? entry.folderPath : '',
     _badge: source === 'mine' ? 'mine' : source === 'project' ? 'project' : source,
     _source: source,
   };

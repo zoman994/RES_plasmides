@@ -58,6 +58,25 @@ export const createLibrarySlice = (set, get) => ({
     await putLibraryEntry({ ...existing, tags: safeTags });
   },
 
+  /**
+   * Move a library entry to a folder path (slash-separated). '' means
+   * the top of «Mine». Tags stay untouched — folder placement is a
+   * separate dimension (biolog: «такги просто атрибут который мы
+   * можем использовать потом для поиска но папки с названиями тагов
+   * не создавать»).
+   */
+  updateLibraryEntryFolderPath: async (id, folderPath) => {
+    const existing = get().libraryEntries[id];
+    if (!existing) return;
+    const safe = typeof folderPath === 'string' ? folderPath : '';
+    set(state => {
+      const e = state.libraryEntries[id];
+      if (!e) return;
+      e.folderPath = safe;
+    });
+    await putLibraryEntry({ ...existing, folderPath: safe });
+  },
+
 
   markLibraryEntryPendingDelete: (id) => {
     const existing = get().libraryEntries[id];

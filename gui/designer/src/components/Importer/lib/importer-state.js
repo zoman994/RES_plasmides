@@ -104,12 +104,16 @@ export function useImporterState({ mode } = {}) { // eslint-disable-line no-unus
   /**
    * Apply the user-chosen meta to the pending parsedItem(s) and
    * promote into `parsedItems`. Meta shape:
-   *   { name, topology, tags: string[], folderTag?, annotateNow,
+   *   { name, topology, tags: string[], folderPath?, annotateNow,
    *     keepExistingAnnotations? }  // last only relevant for file/catalog
    *
-   * Multi-file (kind: 'multi') applies tags + folderTag + annotateNow
+   * Multi-file (kind: 'multi') applies tags + folderPath + annotateNow
    * to ALL items but leaves per-file `name` untouched (those are
    * pre-edited inline in the modal's file list).
+   *
+   * Tags and folder placement are independent dimensions — the
+   * folder picker writes `folderPath`, the tags chips write `tags`.
+   * Either can be empty.
    *
    * StrictMode safety (regression «загружаю 1 сиквенс а на выходе
    * два», 04.05.2026 evening): React 18 StrictMode dev mode double-
@@ -126,9 +130,7 @@ export function useImporterState({ mode } = {}) { // eslint-disable-line no-unus
     const prev = pendingImport;
     const m = meta || {};
     const tags = Array.isArray(m.tags) ? m.tags.filter(Boolean) : [];
-    const allTags = m.folderTag && !tags.includes(m.folderTag)
-      ? [m.folderTag, ...tags]
-      : tags;
+    const folderPath = typeof m.folderPath === 'string' ? m.folderPath : '';
     const annotateNow = m.annotateNow !== false; // default ON
     const keepExisting = m.keepExistingAnnotations !== false; // default keep
 
@@ -177,7 +179,8 @@ export function useImporterState({ mode } = {}) { // eslint-disable-line no-unus
         const cur = next[it._fileName] || {};
         next[it._fileName] = {
           ...cur,
-          ...(allTags.length > 0 ? { editedTags: allTags } : {}),
+          ...(tags.length > 0 ? { editedTags: tags } : {}),
+          ...(folderPath ? { editedFolderPath: folderPath } : {}),
         };
       }
       return next;
@@ -198,10 +201,12 @@ export function useImporterState({ mode } = {}) { // eslint-disable-line no-unus
    * Parse a batch of files in parallel, append to parsedItems, default
    * `autoAnnotate=true` per file. Failures land as `{ _fileName, _error }`.
    *
-   * `opts.targetFolderTag` (optional) pre-fills `editedTags` for each parsed
-   * file with the folder's path — used by per-folder import buttons in the
-   * CatalogColumn so dropped files auto-land inside the target folder once
-   * confirmed to Library.
+   * `opts.targetFolderPath` (optional) pre-fills the parsed item's
+   * folder path — used by per-folder import buttons in the
+   * CatalogColumn so dropped files land inside the target folder once
+   * confirmed to Library. Tags are no longer auto-derived from the
+   * folder path (biolog: «такги просто атрибут … папки с названиями
+   * тагов не создавать»).
    */
   const addFiles = useCallback(async (files, opts = {}) => {
     if (!files || files.length === 0) return [];
@@ -239,14 +244,14 @@ export function useImporterState({ mode } = {}) { // eslint-disable-line no-unus
         setPerFileFlags(prev => ({ ...prev, [r._fileName]: { autoAnnotate: true } }));
         return results;
       }
-      const suggestedTags = opts.targetFolderTag ? [opts.targetFolderTag] : [];
       setPendingImport({
         kind: 'file',
         parsedItem: r,
         suggestedName: r.name || r._fileName,
         defaultTopology: r.topology || 'linear',
         hasAnnotations: Array.isArray(r.annotations) && r.annotations.length > 0,
-        suggestedTags,
+        suggestedTags: [],
+        suggestedFolderPath: typeof opts.targetFolderPath === 'string' ? opts.targetFolderPath : '',
         source: 'file',
       });
       return results;
@@ -269,7 +274,6 @@ export function useImporterState({ mode } = {}) { // eslint-disable-line no-unus
       });
       return results;
     }
-    const suggestedTags = opts.targetFolderTag ? [opts.targetFolderTag] : [];
     setPendingImport({
       kind: 'multi',
       parsedItems: usable,
@@ -278,7 +282,8 @@ export function useImporterState({ mode } = {}) { // eslint-disable-line no-unus
       suggestedName: '',
       defaultTopology: 'linear',
       hasAnnotations: usable.some((r) => Array.isArray(r.annotations) && r.annotations.length > 0),
-      suggestedTags,
+      suggestedTags: [],
+      suggestedFolderPath: typeof opts.targetFolderPath === 'string' ? opts.targetFolderPath : '',
       source: 'file',
     });
     return results;

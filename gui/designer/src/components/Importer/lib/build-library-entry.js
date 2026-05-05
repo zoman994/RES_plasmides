@@ -24,6 +24,11 @@ export function buildLibraryEntry(parsedItem, finalName, resourceHash, opts = {}
     kind: 'container',
     name: finalName,
     tags: Array.isArray(opts.tags) ? opts.tags : [],
+    // Where the entry lives in the catalog tree. Slash-separated path
+    // (e.g. 'Vectors/CRISPR'); empty string = top of «Mine». Decoupled
+    // from `tags` — tags are free-form metadata for search, the
+    // folder path is structural placement.
+    folderPath: typeof opts.folderPath === 'string' ? opts.folderPath : '',
     addedAt: new Date().toISOString(),
     payload: {
       sequence: seq,

@@ -25,7 +25,7 @@
  *   - (K2 only — when hasAnnotations=true) Keep existing / Discard radio
  *
  * Submit emits:
- *   onConfirm({ name, topology, tags, folderTag?, annotateNow,
+ *   onConfirm({ name, topology, tags, folderPath?, annotateNow,
  *              keepExistingAnnotations })
  *
  * The component is purely controlled: it owns FORM state internally,
@@ -60,7 +60,7 @@ export default function PreImportModal({
   const [name, setName] = useState('');
   const [topology, setTopology] = useState('linear');
   const [tags, setTags] = useState([]);
-  const [folderTag, setFolderTag] = useState('');
+  const [folderPath, setFolderPath] = useState('');
   const [newFolderInput, setNewFolderInput] = useState('');
   // Library + project folders read from localStorage on each open;
   // newly-added folders go into `pendingNewFolders` and merge into
@@ -109,7 +109,7 @@ export default function PreImportModal({
     }
     setTopology(pendingImport.defaultTopology || pendingImport.parsedItem?.topology || 'linear');
     setTags(Array.isArray(pendingImport.suggestedTags) ? pendingImport.suggestedTags : []);
-    setFolderTag('');
+    setFolderPath(typeof pendingImport.suggestedFolderPath === 'string' ? pendingImport.suggestedFolderPath : '');
     setNewFolderInput('');
     setLibraryFolders(readFolders('mine'));
     setProjectFolders(readFolders('canvas'));
@@ -156,7 +156,7 @@ export default function PreImportModal({
       name: name.trim() || pendingImport.suggestedName || 'imported',
       topology,
       tags: [...tags],
-      folderTag: folderTag || undefined,
+      folderPath: folderPath || undefined,
       annotateNow,
       keepExistingAnnotations: keepExisting,
     };
@@ -184,7 +184,7 @@ export default function PreImportModal({
     // Auto-select so the user sees the new folder picked up
     // immediately (the bug fixed — pre-fix the dropdown only
     // showed pre-existing folders, so the new value was orphaned).
-    setFolderTag(v);
+    setFolderPath(v);
     setNewFolderInput('');
   };
 
@@ -332,8 +332,8 @@ export default function PreImportModal({
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <select
                 data-testid="pre-import-folder"
-                value={folderTag}
-                onChange={(e) => setFolderTag(e.target.value)}
+                value={folderPath}
+                onChange={(e) => setFolderPath(e.target.value)}
                 style={{ ...inputStyle(), padding: '4px 6px' }}
               >
                 <option value="">{S.preImportFolderRoot}</option>

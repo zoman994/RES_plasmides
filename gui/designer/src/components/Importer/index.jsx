@@ -210,7 +210,8 @@ export default function Importer() {
           _fileName: fn,
         };
         const finalTags = Array.isArray(edits.editedTags) ? edits.editedTags : [];
-        const buildOpts = { tags: finalTags };
+        const finalFolderPath = typeof edits.editedFolderPath === 'string' ? edits.editedFolderPath : '';
+        const buildOpts = { tags: finalTags, folderPath: finalFolderPath };
         if (replaceExisting && collision) buildOpts.id = collision.id;
         const entry = buildLibraryEntry(itemForBuild, finalName, resourceHash, buildOpts);
         await store.addLibraryEntry(entry);
