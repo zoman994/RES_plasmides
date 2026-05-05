@@ -12,17 +12,17 @@ Topmost pending P0/P1 takes priority each iteration.
 
 | ID | Status | Title |
 |----|--------|-------|
-| BUNDLE-10 | pending | PWA Workbox precaches every `**/*.json` — pulls 24 MB plasmid pack on first install |
-| BUNDLE-01 | pending | No `manualChunks` — single 726 KB main bundle, no vendor split |
+| ~~BUNDLE-10~~ | resolved (f362f07) | ~~PWA Workbox precaches every `**/*.json`~~ → globPatterns drops `json`; CacheFirst runtime rules for plasmid pack + common-features. Precache 24 MB → 833 KiB / 16 entries. |
+| ~~BUNDLE-01~~ | resolved (5de98f7) | ~~No `manualChunks`, single 726 KB main bundle~~ → split into react / db / dnd / xyflow / compress chunks. Main bundle 726→427 KB (gz 212→116). |
 | BUNDLE-04 | pending | Project Flow `flow/*` mounted from nowhere; `@xyflow/react` may ship as dead weight |
 | PERF-01 | pending | `AATrack` hybrid render translates entire plasmid per line × per frame (~3M codon ops) |
 | PERF-02 | pending | `runPredictors` PWM scan re-slices 6-mers on every settings tick |
 | PERF-03 | pending | `CatalogColumn` flat-search rebuilds 2800-element pool per keystroke |
-| HOOK-09 | pending | `CatalogColumn` calls `sources.ensureSnapgeneFlat()` in render body (state mutation in render) |
+| ~~HOOK-09~~ | resolved | ~~`CatalogColumn` calls `sources.ensureSnapgeneFlat()` in render body~~ → moved into `useEffect([flatActive, sources])`. |
 | SAFE-01 | pending | Importer Dexie writes uncoordinated — autosave can snapshot project pointing at unflushed library entry |
-| SAFE-06 | pending | `ProtocolTracker` photo upload base64 → unbounded localStorage write (quota crash) |
+| ~~SAFE-06~~ | resolved | ~~`ProtocolTracker` photo upload base64 → unbounded localStorage write~~ → 12 MB input cap, downscale via canvas to 1024 px / 82% JPEG (~150 KB), localStorage setItem wrapped in try/catch with friendly alert on quota overflow. |
 | DEAD-01 | blocked | `components/ImportStartScreen/` (~2378 LOC) — agent claimed dead, but `DesignCanvas.handleQuickStart` still opens it. Need user decision: retire QuickStart→ImportStartScreen path in favour of the new `Importer`? |
-| DEAD-04 | pending | Five stranded panel components never imported (`SequenceViewer`, `RestrictionPanel`, `VerificationPanel`, `ExperimentStats`, `ExperimentSelector`) ~770 LOC |
+| ~~DEAD-04~~ | resolved | ~~Five stranded panel components~~ → deleted 5 files (~770 LOC: `SequenceViewer`, `RestrictionPanel`, `VerificationPanel`, `ExperimentStats`, `ExperimentSelector`). |
 | TEST-01 | pending | `CatalogColumn` drag-drop reordering / cross-folder moves untested |
 | TEST-02 | pending | LevelPanel save flow integration coverage stops at callback fire — no fragment-state assertion |
 | TEST-06 | pending | `lib/plasmid-git-reducers.js` (137 LOC, critical mutation history) has no tests |
@@ -76,7 +76,7 @@ Topmost pending P0/P1 takes priority each iteration.
 | DEAD-06 | pending | Duplicate `loadSavedDomains/persistDomains/DOMAINS_LS_KEY` in CDSEditor + region-types |
 | DEAD-11 | pending | `assembly-utils.js` `adjustDomains`/`convertDomainsToAnnotations` never called |
 | DEAD-12 | pending | `collections.js` `deleteCollection`/`renameCollection` never called |
-| DEAD-13 | pending | `OligoManager.jsx` private `calcTm` shadows the canonical SantaLucia impl in `tm-calculator.js` |
+| ~~DEAD-13~~ | resolved | ~~`OligoManager.jsx` private `calcTm` shadows the canonical SantaLucia impl~~ → import `calcTm` from `tm-calculator.js` directly; oligo-registry Tm now matches primer-design / junction-validation. |
 | HOOK-01 | pending | `App.jsx` window drop handler — pattern fragile, but works via `getState()` |
 | HOOK-04 | pending | `SequenceView` `useImperativeHandle` writes `performScrollRef` during render |
 | HOOK-07 | pending | Annotator L1 auto-run effect doesn't include `sequence` in re-run key |

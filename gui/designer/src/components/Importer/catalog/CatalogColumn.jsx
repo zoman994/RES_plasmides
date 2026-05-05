@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../../../store';
 import { STRINGS } from '../../../lib/strings';
 import { ACCEPT_STRING } from '../../../file-import';
@@ -274,8 +274,12 @@ export default function CatalogColumn({
 
   const flatActive = !!query.trim();
 
-  // Touch SnapGene flat cache lazily on first non-empty query.
-  if (flatActive) sources.ensureSnapgeneFlat();
+  // Touch SnapGene flat cache lazily on first non-empty query. Done in
+  // an effect (not the render body) so React 19 strict-mode + concurrent
+  // rendering can't trip over a state mutation observed mid-render.
+  useEffect(() => {
+    if (flatActive) sources.ensureSnapgeneFlat();
+  }, [flatActive, sources]);
 
   const onToggleSnap = useCallback(() => {
     setOpenSnap((v) => {

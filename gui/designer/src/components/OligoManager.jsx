@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { calcTm as calcTmNN } from '../tm-calculator';
 
 const OLIGO_KEY = 'pvcs-oligo-registry';
 const STATUSES = [
@@ -9,12 +10,13 @@ const STATUSES = [
   { value: 'bad', label: '❌ Плохой', color: 'text-red-600' },
 ];
 
+// Use the canonical SantaLucia 1998 NN calculator from tm-calculator.js
+// rather than the cruder Wallace + GC formula we used to keep here —
+// otherwise the oligo registry's Tm column drifts from primer-design /
+// junction-validation / inspector. calcTmNN returns NaN for empty input.
 function calcTm(seq) {
-  const s = (seq || '').toUpperCase();
-  if (s.length < 6) return 0;
-  const gc = (s.match(/[GC]/g) || []).length;
-  if (s.length < 14) return 2 * (s.length - gc) + 4 * gc;
-  return Math.round(64.9 + 41 * (gc - 16.4) / s.length);
+  const t = calcTmNN(seq || '');
+  return Number.isFinite(t) ? Math.round(t) : 0;
 }
 
 function calcGC(seq) {

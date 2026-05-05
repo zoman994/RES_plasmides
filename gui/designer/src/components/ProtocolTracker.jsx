@@ -49,10 +49,62 @@ export default function ProtocolTracker({ fragments, junctions, primers, pcrSize
       if (data.photo && !step.photo) ts.gelUploaded = now;
       if (data.measured && !step.measured) ts.measured = now;
       const next = { ...prev, [id]: { ...step, ...data, timestamps: ts, updatedAt: now } };
-      localStorage.setItem(stateKey, JSON.stringify(next));
+      try {
+        localStorage.setItem(stateKey, JSON.stringify(next));
+      } catch (err) {
+        // QuotaExceededError or storage unavailable. Keep the in-memory
+        // state (so the UI doesn't lose what the user just typed) but
+        // surface the failure: with photos this typically means the gel
+        // image alone overflowed the per-origin quota.
+        console.warn('[bodgegene] protocol state localStorage write failed', err);
+        if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+          window.alert('Не удалось сохранить шаг протокола: переполнение локального хранилища. Попробуйте удалить старые фото гелей.');
+        }
+      }
       return next;
     });
   };
+
+  // Downscale a user-picked image to <=PHOTO_MAX_DIM px on its longest
+  // side and serialize as JPEG. Keeps storage footprint <~150 KB even
+  // for 12 MP camera shots, which protects the localStorage quota for
+  // protocol state. Resolves to null if the file is unreadable.
+  const PHOTO_MAX_DIM = 1024;
+  const PHOTO_QUALITY = 0.82;
+  const PHOTO_MAX_INPUT_BYTES = 12 * 1024 * 1024; // refuse >12 MB inputs outright
+  function readAndCompressPhoto(file) {
+    return new Promise((resolve) => {
+      if (!file || !file.type || !file.type.startsWith('image/')) { resolve(null); return; }
+      if (file.size > PHOTO_MAX_INPUT_BYTES) {
+        if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+          window.alert(`Файл слишком большой (${Math.round(file.size / (1024 * 1024))} МБ). Загрузите фото меньше 12 МБ.`);
+        }
+        resolve(null); return;
+      }
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const scale = Math.min(1, PHOTO_MAX_DIM / Math.max(img.naturalWidth, img.naturalHeight));
+          const w = Math.max(1, Math.round(img.naturalWidth * scale));
+          const h = Math.max(1, Math.round(img.naturalHeight * scale));
+          const canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) { resolve(null); return; }
+          ctx.drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL('image/jpeg', PHOTO_QUALITY));
+        } catch (err) {
+          console.warn('[bodgegene] photo compression failed', err);
+          resolve(null);
+        } finally {
+          URL.revokeObjectURL(url);
+        }
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+      img.src = url;
+    });
+  }
 
   // ═══ Build STAGED protocol from junction types ═══
   const stages = useMemo(() => {
@@ -347,7 +399,11 @@ export default function ProtocolTracker({ fragments, junctions, primers, pcrSize
                         <div>
                           <label className="text-[10px] text-gray-500">{'📷'} Фото</label>
                           <input type="file" accept="image/*" className="w-full text-[10px]"
-                            onChange={e => { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = () => upd(step.id, { photo: r.result }); r.readAsDataURL(f); }} />
+                            onChange={async e => {
+                              const f = e.target.files?.[0]; if (!f) return;
+                              const dataUrl = await readAndCompressPhoto(f);
+                              if (dataUrl) upd(step.id, { photo: dataUrl });
+                            }} />
                         </div>
                         <div>
                           <label className="text-[10px] text-gray-500">Комментарий</label>
