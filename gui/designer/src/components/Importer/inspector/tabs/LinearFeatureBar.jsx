@@ -402,7 +402,7 @@ export default function LinearFeatureBar({
         rx={2}
         ry={2}
       />
-      {it.labelInside && (
+      {it.labelInside && !it.ann._suppressLabel && (
         <text
           // Centre on the EXPOSED strip, not the rect centre — when
           // a wider sibling carves part of the feature, the label

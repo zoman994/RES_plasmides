@@ -20,7 +20,7 @@ import {
   applyAnnotationEdit,
   mergeAnnotations,
   generateAnnotationId,
-  overlapFraction,
+  isDuplicatePrediction,
 } from '../../../lib/annotation-edit.js';
 import { useStore } from '../../../store';
 import { selectAnnotator } from '../../../store/uiSlice.js';
@@ -57,8 +57,17 @@ function mergeStripWithPredicted(
   if (!results || typeof results !== 'object') return confirmed;
   const out = (confirmed || []).slice();
   const seenIds = new Set();
+  // Lower-cased names of the confirmed regions — used to suppress
+  // duplicate labels on the strip when «Show duplicates» is on
+  // (biolog: «когда показываем дубликаты — то их имена не должны
+  // дублироваться на колбасе»). The predicted region still renders
+  // its dashed rect so the user sees the ghost; we just hide the
+  // text label that would echo the existing confirmed entry.
+  const confirmedNames = new Set();
   for (const ann of out) {
     if (ann && ann.id) seenIds.add(ann.id);
+    const nm = (ann?.name || '').toLowerCase().trim();
+    if (nm) confirmedNames.add(nm);
   }
   for (const res of Object.values(results)) {
     for (const r of (res?.regions || [])) {
@@ -67,16 +76,15 @@ function mergeStripWithPredicted(
       if (rejectedIds && rejectedIds[id]) continue;
       if (seenIds.has(id)) continue;
       const accepted = !!(acceptedIds && acceptedIds[id]);
-      if (!showDuplicates && !accepted) {
-        let dup = false;
-        for (const c of confirmed || []) {
-          if (!c || (c.level && c.level !== 'region')) continue;
-          if ((c.type || '') !== (r.type || '')) continue;
-          if (overlapFraction(c, r) > 0.5) { dup = true; break; }
-        }
-        if (dup) continue;
-      }
-      out.push({ ...r, id, predicted: accepted ? false : true });
+      if (!showDuplicates && !accepted && isDuplicatePrediction(r, confirmed)) continue;
+      const predName = (r.name || '').toLowerCase().trim();
+      const suppressLabel = !!(predName && confirmedNames.has(predName));
+      out.push({
+        ...r,
+        id,
+        predicted: accepted ? false : true,
+        _suppressLabel: suppressLabel,
+      });
       seenIds.add(id);
     }
   }

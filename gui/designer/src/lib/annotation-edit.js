@@ -184,6 +184,44 @@ export function overlapFraction(a, b) {
 }
 
 /**
+ * Decide whether a predicted region duplicates a confirmed
+ * annotation already present on the same plasmid. The previous
+ * heuristic required EXACT type equality, but the bundled
+ * common-features DB tags AmpR as `marker` while a SnapGene-imported
+ * plasmid tags it as `CDS` — same region, different label, dedup
+ * missed it.
+ *
+ * Two-strike rule:
+ *   1. Same name (case-insensitive trimmed) + ≥30 % overlap → dup.
+ *      Catches the type-drift case described above.
+ *   2. Same type (case-insensitive) + ≥50 % overlap → dup. Default
+ *      DEC-ANN-09 path.
+ *
+ * Different name AND different type, even with full coord overlap,
+ * are KEPT — a gene and its internal promoter can occupy the same
+ * span and biolog needs to see both.
+ *
+ * Skips entries whose `level` is set and not 'region' (sub-features
+ * shouldn't shadow predicted parents).
+ */
+export function isDuplicatePrediction(predicted, confirmedRegions) {
+  if (!Array.isArray(confirmedRegions) || confirmedRegions.length === 0) return false;
+  const pName = (predicted.name || '').toLowerCase().trim();
+  const pType = (predicted.type || '').toLowerCase();
+  for (const c of confirmedRegions) {
+    if (!c) continue;
+    if (c.level && c.level !== 'region') continue;
+    const overlap = overlapFraction(c, predicted);
+    if (overlap <= 0) continue;
+    const cName = (c.name || '').toLowerCase().trim();
+    const cType = (c.type || '').toLowerCase();
+    if (pName && cName && pName === cName && overlap > 0.3) return true;
+    if (pType && cType && pType === cType && overlap > 0.5) return true;
+  }
+  return false;
+}
+
+/**
  * Append a batch of new regions to an existing annotations array.
  * DEC-ANN-09 — for each candidate, if it overlaps >50% with an
  * existing region of the same type, silently skip and bump the

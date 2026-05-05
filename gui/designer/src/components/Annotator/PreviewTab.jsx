@@ -25,29 +25,17 @@
 import { useMemo } from 'react';
 import { useStore } from '../../store';
 import { selectAnnotator } from '../../store/uiSlice.js';
-import { overlapFraction } from '../../lib/annotation-edit.js';
+import { isDuplicatePrediction } from '../../lib/annotation-edit.js';
 import SequenceView from '../SequenceView';
 import PlasmidMiniMap from '../PlasmidMiniMap.jsx';
 import GhostDrillInPanel from './GhostDrillInPanel.jsx';
 import AnnotatorProgressBar from './AnnotatorProgressBar.jsx';
 import AnnotatorTabBar from './TabBar.jsx';
 
-// Sprint M-X.3 follow-up (05.05.2026) — biolog: «когда последо-
-// вательность аннотирована, он не должен давать поверх те же фичи
-// что уже есть на плазмиде если они совпадают». Hide a predicted
-// region from the ghost layer if it overlaps >50% with an already-
-// confirmed annotation of the same type. The same heuristic
-// (DEC-ANN-09) is used at save time for create-batch dedup, so
-// the user no longer sees ghosts they'd never accept anyway.
-function isDuplicateOfConfirmed(predicted, confirmedRegions) {
-  if (!Array.isArray(confirmedRegions) || confirmedRegions.length === 0) return false;
-  for (const c of confirmedRegions) {
-    if (!c || (c.level && c.level !== 'region')) continue;
-    if ((c.type || '') !== (predicted.type || '')) continue;
-    if (overlapFraction(c, predicted) > 0.5) return true;
-  }
-  return false;
-}
+// Duplicate-detection heuristic lives in lib/annotation-edit.js so
+// PreviewTab, LevelPanel, and SingleInspector's nav-strip merge all
+// share the same rules.
+const isDuplicateOfConfirmed = isDuplicatePrediction;
 
 export default function PreviewTab({
   sequence = '',

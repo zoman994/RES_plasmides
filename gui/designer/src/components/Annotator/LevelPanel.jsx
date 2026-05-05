@@ -35,22 +35,11 @@
 
 import { useState, useMemo } from 'react';
 import { STRINGS } from '../../lib/strings';
-import { overlapFraction } from '../../lib/annotation-edit.js';
+import { isDuplicatePrediction } from '../../lib/annotation-edit.js';
 import ResultRow from './ResultRow.jsx';
 
-// Sprint M-X.3 follow-up — biolog: «когда последовательность
-// аннотирована, он не должен давать поверх те же фичи что уже есть
-// на плазмиде если они совпадают». Hide a predicted region from the
-// table if it overlaps >50% with a same-type confirmed annotation.
-function isDuplicateOfConfirmed(predicted, confirmedRegions) {
-  if (!Array.isArray(confirmedRegions) || confirmedRegions.length === 0) return false;
-  for (const c of confirmedRegions) {
-    if (!c || (c.level && c.level !== 'region')) continue;
-    if ((c.type || '') !== (predicted.type || '')) continue;
-    if (overlapFraction(c, predicted) > 0.5) return true;
-  }
-  return false;
-}
+// Shared duplicate-detection heuristic — see lib/annotation-edit.js.
+const isDuplicateOfConfirmed = isDuplicatePrediction;
 
 const S = STRINGS.importer.annotator;
 
