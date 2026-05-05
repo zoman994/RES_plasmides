@@ -262,9 +262,18 @@ const SequenceView = forwardRef(function SequenceView({
       const available = host.clientWidth - 24;
       if (available <= 0) return; // host hidden / collapsed — wait for ResizeObserver
       const fitChars = Math.floor(available / chW) - LABEL_WIDTH;
-      setCharPx(chW);
-      setCharsPerLine(clampCharsPerLine(fitChars));
-      setMeasured(true);
+      const nextCpl = clampCharsPerLine(fitChars);
+      // Sprint M-X.3 follow-up (05.05.2026) — biolog: «грузит процессор
+      // на 30-60% даже просто в открытой вкладке без работы». The
+      // ResizeObserver fires on every layout pass; without an equality
+      // guard here, sub-pixel container width oscillation (scrollbar
+      // appearing, theme repaint, animated sibling) re-runs setCharPx
+      // / setCharsPerLine on every frame, which re-runs the whole
+      // lines memo + downstream feature stacker. Functional setter
+      // form lets React skip the update when the value is unchanged.
+      setCharPx((prev) => (prev === chW ? prev : chW));
+      setCharsPerLine((prev) => (prev === nextCpl ? prev : nextCpl));
+      setMeasured((prev) => (prev ? prev : true));
     };
     remeasure();
     if (typeof ResizeObserver === "undefined") return undefined;

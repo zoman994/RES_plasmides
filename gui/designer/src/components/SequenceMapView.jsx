@@ -42,7 +42,11 @@ export default function SequenceMapView({ fragments, primers = [], circular, onA
       const available = el.clientWidth - 24 - primerReserve;
       const fitChars = Math.floor(available / chW) - LABEL_WIDTH;
       const rounded = Math.floor(fitChars / 10) * 10; // round to nearest 10
-      setCharsPerLine(Math.max(30, Math.min(200, rounded)));
+      const next = Math.max(30, Math.min(200, rounded));
+      // Sprint M-X.3 follow-up — equality guard so a stable layout
+      // doesn't re-fire setState every ResizeObserver tick (idle CPU
+      // hog source).
+      setCharsPerLine((prev) => (prev === next ? prev : next));
     };
     measure();
     const observer = new ResizeObserver(measure);

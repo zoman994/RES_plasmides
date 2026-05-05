@@ -57,7 +57,15 @@ export default function RacetrackView({
     if (!el) return;
     const ro = new ResizeObserver(entries => {
       const { width, height } = entries[0].contentRect;
-      if (width > 0 && height > 0) setSize({ width, height });
+      if (width <= 0 || height <= 0) return;
+      // Equality guard prevents the layout-recompute → DOM-shift →
+      // observer-fire cycle from re-running computeRacetrackLayout
+      // on every frame in steady state.
+      setSize((prev) => (
+        prev.width === width && prev.height === height
+          ? prev
+          : { width, height }
+      ));
     });
     ro.observe(el);
     return () => ro.disconnect();

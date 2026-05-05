@@ -176,7 +176,9 @@ export default function LinearFeatureBar({
     const measure = () => {
       if (!wrapRef.current) return;
       const w = wrapRef.current.clientWidth;
-      if (w > 0) setWidth(w);
+      // Equality guard — without it, sub-pixel layout thrash re-runs
+      // every region-stack memo at 60 fps (idle CPU hog source).
+      if (w > 0) setWidth((prev) => (prev === w ? prev : w));
     };
     measure();
     const ro = new ResizeObserver(measure);
