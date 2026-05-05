@@ -67,7 +67,6 @@ export const IMPORTER_STRINGS = {
   tabHistoryPlaceholder: 'History will appear after the first commit in Container Window (M-D).',
   tabHistoryEmptyM_D: 'No commits — they will appear after M-D Container Window.',
   sequenceReadOnly: 'read-only',
-  annotationsCount: (n) => `${n} annotations`,
 
   // Bug-rush #23 (04.05.2026): selection counter in the title row.
   selectionCountBp: (n) => `${n.toLocaleString()} bp`,
@@ -310,9 +309,6 @@ export const IMPORTER_STRINGS = {
 
   // Confirm flow «skipped» toast still used (autoname Skip / parse fail).
   confirmSkipped: (n) => `Skipped: ${n}`,
-
-  // autoAnnotate toggle — moved from ActionsBar overflow into AnnotationsTab.
-  tabAnnotateOnImport: 'auto-annotate on import',
 
   // K6 (M-B.1) — AutonameModal.
   autonameTitle: (baseName) => `"${baseName}" already exists in Library`,

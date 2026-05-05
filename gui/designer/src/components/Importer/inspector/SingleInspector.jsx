@@ -782,10 +782,10 @@ export default function SingleInspector({
         {isMounted('annotations') && (
           <div style={visibilityStyle('annotations')}>
             <AnnotationsTab
+              sequence={edits?.editedSequence ?? item.sequence ?? ''}
               annotations={displayAnnotations}
-              seqLength={length}
-              onUpdateEdits={onUpdateEdits}
-              onOpenAnnotator={onOpenAnnotator}
+              fileName={item._fileName}
+              onApplyAnnotatorResults={onApplyAnnotatorResults}
             />
           </div>
         )}
@@ -808,7 +808,13 @@ export default function SingleInspector({
         mount works fine for the Importer pathway (the only one
         biolog reaches today).
       */}
-      {annotatorOpen && (
+      {/* Modal Annotator — kept for entry points that don't go through
+          the AnnotationsTab (e.g. region-scope «Annotate selection» from
+          SequenceView's context menu). Suppressed when the user is on
+          the annotations tab — that tab embeds the same Annotator
+          inline, and double-mounting would create two competing
+          subscribers to the shared store slice. */}
+      {annotatorOpen && activeTab !== 'annotations' && (
         <Annotator
           sequence={edits?.editedSequence ?? item.sequence}
           annotations={displayAnnotations}

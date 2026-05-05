@@ -13,7 +13,6 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
-import AnnotationsTab from '../../Importer/inspector/tabs/AnnotationsTab';
 import SequenceView from '../../SequenceView';
 import { useStore } from '../../../store';
 
@@ -46,28 +45,10 @@ beforeEach(() => { resetSettings(); });
 afterEach(() => { cleanup(); });
 
 describe('K9 entry points', () => {
-  it('AnnotationsTab Аннотатор button → onOpenAnnotator(full)', () => {
-    const onOpenAnnotator = vi.fn();
-    render(
-      <AnnotationsTab
-        annotations={FRAGMENT.annotations}
-        seqLength={FRAGMENT.sequence.length}
-        onOpenAnnotator={onOpenAnnotator}
-      />
-    );
-    fireEvent.click(screen.getByTestId('annotations-open-annotator'));
-    expect(onOpenAnnotator).toHaveBeenCalledWith({ kind: 'full' });
-  });
-
-  it('AnnotationsTab Аннотатор button disabled when no callback', () => {
-    render(
-      <AnnotationsTab
-        annotations={FRAGMENT.annotations}
-        seqLength={FRAGMENT.sequence.length}
-      />
-    );
-    expect(screen.getByTestId('annotations-open-annotator').disabled).toBe(true);
-  });
+  // Sprint M-X.3 follow-up — the «open Annotator» button inside
+  // AnnotationsTab is gone. The tab now embeds the Annotator UI
+  // directly (no modal indirection). Region-scope entries below
+  // still apply.
 
   it('SequenceView context menu has «Annotate selection...» entry when selection + onOpenAnnotator wired', () => {
     const onOpenAnnotator = vi.fn();

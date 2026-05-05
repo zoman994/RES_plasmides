@@ -102,6 +102,13 @@ export default function Importer() {
     }
     const it = items[idx];
     if (state.currentIdx !== idx) state.setCurrentIdx(idx);
+    // Sprint M-X.3 follow-up — biolog: «давай меню аннотатора прям
+    // во вкладке». Switch SingleInspector to the Annotations tab,
+    // which embeds the Annotator UI inline. Also dispatch
+    // openAnnotator so the L1 auto-run effect fires for the right
+    // sequenceId (the embedded mode reads scope from the same store
+    // slice).
+    state.setActiveTab('annotations');
     const sequenceId = it.id || it._fileName || it.name || 'unknown';
     openAnnotator({ kind: 'full', sequenceId });
     state.clearPendingAnnotator();

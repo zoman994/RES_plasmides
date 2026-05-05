@@ -48,9 +48,21 @@ export default function Annotator({
   sequence,
   annotations,
   onApplyAnnotatorResults,
+  // Sprint M-X.3 follow-up (05.05.2026) — biolog: «давай меню
+  // аннотатора прям во вкладке. сейчас вкладка инвалид». Embedded
+  // mode skips the modal chrome (backdrop, centred panel, back
+  // button) and renders the body inline so AnnotationsTab can host
+  // the whole Annotator UI directly. The store's annotator slice
+  // is shared either way; embedded just bypasses the open-flag
+  // visibility gate (fullscreen modal stays gated as before).
+  embedded = false,
+  // Sequence id for openAnnotator dispatch when embedded mode mounts
+  // and no scope is set yet.
+  embeddedSequenceId = 'embedded',
 }) {
   const annotator = useStore(selectAnnotator);
   const closeAnnotator = useStore((s) => s.closeAnnotator);
+  const openAnnotatorAction = useStore((s) => s.openAnnotator);
   const setThreshold = useStore((s) => s.setAnnotatorThreshold);
   const setRunning = useStore((s) => s.setAnnotatorRunning);
   const setResult = useStore((s) => s.setAnnotatorResult);
@@ -63,7 +75,10 @@ export default function Annotator({
   // global Escape hotkey doesn't also fire popFullscreen and dump
   // biolog out of the Importer back to Start (same fix the
   // FeatureEditorModal + PreImportModal got).
+  // Embedded mode has no «close» — ignored, the tab itself handles
+  // navigation.
   useEffect(() => {
+    if (embedded) return undefined;
     if (!annotator.open) return undefined;
     const onKey = (e) => {
       if (e.key === 'Escape') {
@@ -74,7 +89,17 @@ export default function Annotator({
     };
     document.addEventListener('keydown', onKey, true);
     return () => document.removeEventListener('keydown', onKey, true);
-  }, [annotator.open, closeAnnotator]);
+  }, [annotator.open, closeAnnotator, embedded]);
+
+  // Embedded mode — open the annotator slice on mount so the
+  // L1 auto-run effect fires and the body has a scope. Idempotent
+  // (openAnnotator with the same sequenceId is a no-op).
+  useEffect(() => {
+    if (!embedded) return;
+    if (annotator.open && annotator.scope?.sequenceId === embeddedSequenceId) return;
+    openAnnotatorAction({ kind: 'full', sequenceId: embeddedSequenceId });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [embedded, embeddedSequenceId]);
 
   const seqLength = (sequence || '').length;
   const scope = annotator.scope;
@@ -161,64 +186,16 @@ export default function Annotator({
   const rejectedCount = Object.keys(annotator.rejectedRegionIds || {}).length;
   const editedCount = Object.keys(annotator.pendingEdits || {}).length;
 
-  if (!annotator.open) return null;
+  // Embedded mode renders inline regardless of the annotator.open
+  // visibility flag (the parent tab is the visibility gate). Modal
+  // mode keeps the previous «only render when open» semantic.
+  if (!embedded && !annotator.open) return null;
 
-  // Bug-rush #10 (04.05.2026 evening): biolog wants the Annotator
-  // to render as a LARGE MODAL — big enough to drive but with the
-  // surrounding UI still visible at the edges, so clicking outside
-  // dismisses (alternative to the Back button). Pre-fix it was
-  // `inset: 0` fullscreen which fully eclipsed the main window —
-  // no «outside» to click.
-  //
-  // Layout: a translucent backdrop covers everything (clickable
-  // dismiss), the modal panel sits centered with ~92 vw / 88 vh.
-  return (
-    <div
-      data-testid="annotator-backdrop"
-      onPointerDown={(e) => {
-        // Backdrop click → close. Stop propagation INSIDE the
-        // modal panel so its own pointer events don't bubble back
-        // here.
-        if (e.target === e.currentTarget) closeAnnotator();
-      }}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 200,
-        background: 'rgba(0, 0, 0, 0.35)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '4vh 4vw',
-      }}
-    >
-    <div
-      data-testid="annotator-root"
-      onPointerDown={(e) => e.stopPropagation()}
-      style={{
-        width: '100%',
-        height: '100%',
-        maxWidth: '1400px',
-        // Bug-rush #26 (04.05.2026 evening): «в темной теме аннотатор
-        // имеет кривой интерфейс». Pre-fix this was
-        // `var(--surface-0, #fafaf9)` — but `--surface-0` is NOT
-        // defined anywhere in index.css (only --surface-1 / --surface-2
-        // exist). In dark theme the variable resolved to its inline
-        // fallback `#fafaf9` (near-white) and `--text-primary`
-        // resolved to the dark-theme light grey, leaving the results
-        // pane unreadable. --surface-1 is dark-theme-aware (#171717
-        // dark / #ffffff light), so the panel now contrasts properly
-        // against the text.
-        background: 'var(--surface-1, #ffffff)',
-        border: '0.5px solid var(--border-default, #d4d4d4)',
-        borderRadius: 'var(--radius-md, 6px)',
-        boxShadow: '0 24px 64px rgba(0,0,0,0.35)',
-        display: 'flex',
-        flexDirection: 'column',
-        overflow: 'hidden',
-        color: 'var(--text-primary, #111)',
-      }}
-    >
+  // Inner body shared between modal and embedded rendering paths —
+  // header (back button + threshold) → TargetPreview → body
+  // (PreviewTab + LevelPanel) → footer (counts + Save).
+  const innerContent = (
+    <>
       {/* Header */}
       <div
         style={{
@@ -229,20 +206,24 @@ export default function Annotator({
           flexShrink: 0,
         }}
       >
-        <button
-          type="button"
-          data-testid="annotator-back-button"
-          onClick={closeAnnotator}
-          style={{
-            padding: '4px 10px',
-            background: 'transparent',
-            border: '0.5px solid var(--border-default, #d4d4d4)',
-            borderRadius: 'var(--radius-sm, 3px)',
-            cursor: 'pointer',
-            fontSize: 12,
-            color: 'var(--text-primary, #111)',
-          }}
-        >{S.backButton}</button>
+        {/* Back button only in modal mode — embedded version lives
+            inside a tab so navigation goes through the TabBar. */}
+        {!embedded && (
+          <button
+            type="button"
+            data-testid="annotator-back-button"
+            onClick={closeAnnotator}
+            style={{
+              padding: '4px 10px',
+              background: 'transparent',
+              border: '0.5px solid var(--border-default, #d4d4d4)',
+              borderRadius: 'var(--radius-sm, 3px)',
+              cursor: 'pointer',
+              fontSize: 12,
+              color: 'var(--text-primary, #111)',
+            }}
+          >{S.backButton}</button>
+        )}
         <div style={{ fontWeight: 500, fontSize: 14 }}>{S.title}</div>
         <div style={{ flex: 1, fontSize: 11, color: 'var(--text-secondary)' }} data-testid="annotator-scope-info">
           {scope?.kind === 'region' && scope.region
@@ -337,7 +318,68 @@ export default function Annotator({
           }}
         >{acceptedCount > 0 ? S.saveCount(acceptedCount) : S.saveButton}</button>
       </div>
-    </div>
+    </>
+  );
+
+  // Embedded mode — render inline inside the parent tab. The tab
+  // owns the surrounding chrome (its own padding, scroll, etc.).
+  if (embedded) {
+    return (
+      <div
+        data-testid="annotator-root"
+        data-embedded="true"
+        style={{
+          flex: 1,
+          minHeight: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          background: 'var(--surface-1, #ffffff)',
+          color: 'var(--text-primary, #111)',
+          overflow: 'hidden',
+        }}
+      >{innerContent}</div>
+    );
+  }
+
+  // Modal mode — translucent backdrop + centred panel. Bug-rush
+  // #10 (04.05.2026 evening): biolog wants the Annotator to render
+  // as a LARGE MODAL — big enough to drive but with the
+  // surrounding UI still visible at the edges, so clicking outside
+  // dismisses (alternative to the Back button).
+  return (
+    <div
+      data-testid="annotator-backdrop"
+      onPointerDown={(e) => {
+        if (e.target === e.currentTarget) closeAnnotator();
+      }}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 200,
+        background: 'rgba(0, 0, 0, 0.35)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '4vh 4vw',
+      }}
+    >
+      <div
+        data-testid="annotator-root"
+        onPointerDown={(e) => e.stopPropagation()}
+        style={{
+          width: '100%',
+          height: '100%',
+          maxWidth: '1400px',
+          background: 'var(--surface-1, #ffffff)',
+          border: '0.5px solid var(--border-default, #d4d4d4)',
+          borderRadius: 'var(--radius-md, 6px)',
+          boxShadow: '0 24px 64px rgba(0,0,0,0.35)',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          color: 'var(--text-primary, #111)',
+        }}
+      >{innerContent}</div>
     </div>
   );
 }

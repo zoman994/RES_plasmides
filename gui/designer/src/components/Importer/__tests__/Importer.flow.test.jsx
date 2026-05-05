@@ -121,10 +121,11 @@ describe('M-B.2 K1 — Importer single-screen flow', () => {
     });
     expect(screen.queryByTestId('importer-empty-inspector')).toBeNull();
     expect(screen.getByTestId('importer-single-inspector').dataset.currentFile).toBe('thing.fasta');
-    expect(screen.getByTestId('importer-fullscreen').dataset.activeTab).toBe('overview');
-    expect(screen.getByTestId('importer-tab-panel-overview')).toBeTruthy();
-    // Annotations tab not mounted yet — V49 guard pattern, even with K1 placeholders.
-    expect(screen.queryByTestId('importer-tab-panel-annotations')).toBeNull();
+    // Sprint M-X.3 follow-up — when annotateNow=true (default in
+    // PreImportModal), commit auto-switches to the Annotations tab
+    // so the embedded Annotator UI is the first thing biolog sees.
+    expect(screen.getByTestId('importer-fullscreen').dataset.activeTab).toBe('annotations');
+    expect(screen.getByTestId('importer-tab-panel-annotations')).toBeTruthy();
   });
 
   it('5) TabBar click switches activeTab between overview and sequence', async () => {
