@@ -12,7 +12,12 @@ function PCRNodeInner({ id, data }) {
   const [expanded, setExpanded] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
-  const part = useStore(s => s.parts.find(p => p.id === data.templatePartId));
+  // Subscribe to `parts` once and look up locally so the selector
+  // returns a stable primitive on most state changes — instead of
+  // re-running .find() over the whole library on every store
+  // dispatch (one of the audit's high-severity hot paths).
+  const parts = useStore(s => s.parts);
+  const part = parts.find(p => p.id === data.templatePartId);
   const addFlowAssembly = useStore(s => s.addFlowAssembly);
   const addFlowCheckpoint = useStore(s => s.addFlowCheckpoint);
 

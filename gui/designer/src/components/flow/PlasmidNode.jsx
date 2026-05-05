@@ -66,7 +66,11 @@ function MiniRacetrack({ regions, part }) {
 
 /* ─── PlasmidNode ─── */
 function PlasmidNode({ id, data }) {
-  const part = useStore(s => s.parts.find(p => p.id === data.partId));
+  // Same pattern as PCRNode — subscribe to `parts` and resolve
+  // locally instead of re-running .find() on every store dispatch
+  // (audit P3/C6 hot path).
+  const parts = useStore(s => s.parts);
+  const part = parts.find(p => p.id === data.partId);
   const assemblies = useStore(s => s.assemblies);
   const switchAssembly = useStore(s => s.switchAssembly);
   const setProjectView = useStore(s => s.setProjectView);
