@@ -54,6 +54,17 @@ export default function PreviewTab({
   annotations = [],
   topology = 'linear',
   name = 'preview',
+  // Sprint M-X.3 follow-up — biolog: «надо дать возможность
+  // растягивать сжимать фичи, редачить двойным кликом и выдлять
+  // последовательность - а дальше уже эту последоватность дать
+  // возможность бластить». Wired by the parent (AnnotationsTab →
+  // SingleInspector) so drag-edges + Del/H/E hotkeys + dbl-click
+  // edit work the same way they do in the regular Sequence tab.
+  // Read-only consumers leave them unwired and fall back to
+  // selection-only behaviour.
+  onAnnotationEdit,
+  onOpenFeatureEditor,
+  onBlastSelection,
 }) {
   const annotator = useStore(selectAnnotator);
   const setSelectedGhost = useStore((s) => s.setSelectedGhost);
@@ -194,8 +205,11 @@ export default function PreviewTab({
           <SequenceView
             fragments={fragments}
             circular={topology === 'circular'}
-            readOnly
+            readOnly={!onAnnotationEdit}
             onAnnotationClick={onAnnotationClick}
+            onAnnotationEdit={onAnnotationEdit}
+            onOpenFeatureEditor={onOpenFeatureEditor}
+            onBlastSelection={onBlastSelection}
           />
         )}
       </div>

@@ -59,6 +59,11 @@ export default function Annotator({
   // Sequence id for openAnnotator dispatch when embedded mode mounts
   // and no scope is set yet.
   embeddedSequenceId = 'embedded',
+  // Sprint M-X.3 follow-up — biolog: «надо дать возможность
+  // растягивать сжимать фичи, редачить двойным кликом». Forwarded
+  // to PreviewTab → SequenceView so embedded mode is fully editable.
+  onAnnotationEdit,
+  onOpenFeatureEditor,
 }) {
   const annotator = useStore(selectAnnotator);
   const closeAnnotator = useStore((s) => s.closeAnnotator);
@@ -144,15 +149,19 @@ export default function Annotator({
   // the user's `enabledPluginIds` checkbox state. (The old per-
   // plugin checkbox UI is gone — opting in to a level means «run
   // everything in this level».)
-  const handleRunLevel = async (levelId) => {
+  const handleRunLevel = async (levelId, regionOverride) => {
     const ids = LEVELS[levelId];
     if (!Array.isArray(ids) || ids.length === 0) return;
     const enabled = {};
     for (const id of ids) enabled[id] = true;
     for (const id of ids) setRunning(id, true);
+    // Sprint M-X.3 follow-up — regionOverride lets the «BLAST this
+    // region» context-menu entry run a sub-region without touching
+    // annotator.scope (which would re-trigger L1 auto-run).
+    const effectiveRegion = regionOverride || region;
     const { results, errors } = await runAnnotatorPipeline(
       sequence || '',
-      region,
+      effectiveRegion,
       enabled,
       {
         threshold: annotator.threshold,
@@ -166,6 +175,16 @@ export default function Annotator({
     );
     for (const id of Object.keys(results)) setResult(id, results[id]);
     for (const id of Object.keys(errors)) setRunning(id, false);
+  };
+
+  // Selection → BLAST handler. Wires the SequenceView context-menu
+  // «BLAST this region» entry to a one-shot L3 run scoped to the
+  // selection. The full-sequence scope and existing L1 / L2 results
+  // stay untouched.
+  const handleBlastSelection = (regionRange) => {
+    if (!regionRange || !Number.isFinite(regionRange.start) || !Number.isFinite(regionRange.end)) return;
+    if (regionRange.end <= regionRange.start) return;
+    handleRunLevel('L3', { region: regionRange });
   };
 
   const handleSave = () => {
@@ -287,6 +306,9 @@ export default function Annotator({
             annotations={annotations || []}
             topology={scope?.topology || 'linear'}
             name="annotator-preview"
+            onAnnotationEdit={onAnnotationEdit}
+            onOpenFeatureEditor={onOpenFeatureEditor}
+            onBlastSelection={handleBlastSelection}
           />
         </div>
         <LevelPanel

@@ -786,6 +786,8 @@ export default function SingleInspector({
               annotations={displayAnnotations}
               fileName={item._fileName}
               onApplyAnnotatorResults={onApplyAnnotatorResults}
+              onAnnotationEdit={onAnnotationEditFromView}
+              onOpenFeatureEditor={openFeatureEditor}
             />
           </div>
         )}

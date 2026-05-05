@@ -128,6 +128,11 @@ const SequenceView = forwardRef(function SequenceView({
   // fullscreen Annotator. Falls back to `onOpenAnnotator` only
   // when this prop is missing (legacy callers preserved).
   onOpenFeatureEditor,
+  // Sprint M-X.3 follow-up — biolog: «выдлять последовательность - а
+  // дальше уже эту последоватность дать возможность бластить».
+  // Wired by the embedded Annotator's PreviewTab to dispatch a
+  // region-scoped Level-3 BLAST run.
+  onBlastSelection,
 }, ref) {
   const containerRef = useRef(null);
   const [charPx, setCharPx] = useState(7.2);
@@ -670,6 +675,21 @@ const SequenceView = forwardRef(function SequenceView({
               onClick: () => {
                 setContextMenu(null);
                 onOpenAnnotator({ kind: "region", region: { start: selStart, end: selEnd } });
+              },
+            });
+          }
+          // Sprint M-X.3 follow-up — biolog: «выдлять последовательность
+          // - а дальше уже эту последоватность дать возможность
+          // бластить». Embedded Annotator wires this to Level-3 BLAST
+          // with a region override; SingleInspector outside the
+          // Annotator leaves it unwired.
+          if (typeof onBlastSelection === "function") {
+            items.push({
+              key: "blast",
+              label: ANN_EDIT_STRINGS.contextMenuBlast,
+              onClick: () => {
+                setContextMenu(null);
+                onBlastSelection({ start: selStart, end: selEnd });
               },
             });
           }

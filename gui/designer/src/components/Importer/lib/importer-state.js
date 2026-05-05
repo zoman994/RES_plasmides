@@ -3,6 +3,7 @@ import { parseFile } from '../../../file-import';
 import { sanitizeWithReport } from '../../../sequence-utils';
 import { detectFormat } from '../../../format-detect';
 import { appendSessionEntry } from '../inspector/lib/session-log';
+import { useStore } from '../../../store';
 
 /**
  * Importer-local state hook (M-B.2 K1 rewrite).
@@ -322,6 +323,14 @@ export function useImporterState({ mode } = {}) { // eslint-disable-line no-unus
     setCurrentIdxState(0);
     setActiveTabState('overview');
     setPerFileFlags({ [fn]: { autoAnnotate: true } });
+    // Sprint M-X.3 follow-up — biolog: «при клике на левой панели мы
+    // сразу не попадали в аннотатор базово - превью. в аннотатор мы
+    // попадаем для свежезагруженных последоватльностей». Catalog
+    // items are pre-annotated; nothing to auto-annotate. Stomp any
+    // leftover annotator.open state from a prior PreImportModal flow
+    // so the modal doesn't surface over the new catalog item.
+    try { useStore.getState().closeAnnotator?.(); } catch { /* ignore */ }
+    setPendingAnnotatorFile(null);
     // Carry library entry's existing tags through the perFileEdits
     // override so they show up in MetaColumn / TagsEditor without
     // re-typing. Only meaningful for 'mine' (user library); demo /

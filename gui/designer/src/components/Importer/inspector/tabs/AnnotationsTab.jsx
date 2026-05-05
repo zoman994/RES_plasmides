@@ -11,17 +11,25 @@ import Annotator from '../../../Annotator';
  *
  * The tab is now a thin wrapper around <Annotator embedded ... />.
  * Embedded mode skips the modal chrome (backdrop, centred panel,
- * back button) and renders the body directly into the tab. The
- * onApplyAnnotatorResults callback is piped straight through from
- * SingleInspector — same dedup pipeline (applyAnnotationEdit with
- * `create-batch`) that the modal Annotator uses, so accepted
- * regions land in editedAnnotations consistently.
+ * back button) and renders the body directly into the tab.
+ *
+ * Sprint M-X.3 follow-up (05.05.2026 evening) — biolog: «надо дать
+ * возможность растягивать сжимать фичи, редачить двойным кликом и
+ * выдлять последовательность - а дальше уже эту последоватность
+ * дать возможность бластить». The SequenceView in the embedded
+ * Annotator now also accepts the same drag-edit / dbl-click / BLAST
+ * callbacks the regular Sequence tab uses. SingleInspector owns the
+ * heavy lifting (FeatureEditorModal mount, undo stack,
+ * applyAnnotationEdit dispatch); we just forward the callbacks
+ * down.
  */
 export default function AnnotationsTab({
   sequence = '',
   annotations = [],
   fileName,
   onApplyAnnotatorResults,
+  onAnnotationEdit,
+  onOpenFeatureEditor,
 }) {
   return (
     <div
@@ -41,6 +49,8 @@ export default function AnnotationsTab({
         sequence={sequence}
         annotations={annotations}
         onApplyAnnotatorResults={onApplyAnnotatorResults}
+        onAnnotationEdit={onAnnotationEdit}
+        onOpenFeatureEditor={onOpenFeatureEditor}
       />
     </div>
   );

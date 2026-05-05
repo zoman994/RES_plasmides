@@ -132,6 +132,9 @@ export const IMPORTER_STRINGS = {
     renamePlaceholder: 'Name...',
     // Selection context menu — Sprint M-X.2 K9 entry point.
     contextMenuAnnotate: 'Annotate selection...',
+    // Sprint M-X.3 follow-up — biolog: «выдлять последовательность
+    // - а дальше уже эту последоватность дать возможность бластить».
+    contextMenuBlast: 'BLAST this region',
     contextMenuCreateRegion: 'Create annotation (H)',
     contextMenuDeleteRegion: 'Delete annotation (Del)',
     contextMenuEditRegion: 'Edit annotation (E)',

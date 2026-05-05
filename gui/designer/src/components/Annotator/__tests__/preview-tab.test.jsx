@@ -17,11 +17,21 @@ import { ANNOTATOR_DEFAULTS } from '../../../store/uiSlice.js';
 
 // Mock SequenceView with a minimal stub that exposes onAnnotationClick
 // + receives `fragments` so the test can assert what was merged in.
+// Also surfaces optional onAnnotationEdit / onOpenFeatureEditor /
+// onBlastSelection plumbing so Sprint M-X.3 follow-up tests can
+// trigger those code paths directly.
 vi.mock('../../SequenceView', () => ({
-  default: ({ fragments, onAnnotationClick }) => {
+  default: ({
+    fragments,
+    onAnnotationClick,
+    onAnnotationEdit,
+    onOpenFeatureEditor,
+    onBlastSelection,
+    readOnly,
+  }) => {
     const ann = (fragments?.[0]?.annotations) || [];
     return (
-      <div data-testid="mock-sequence-view">
+      <div data-testid="mock-sequence-view" data-readonly={readOnly ? 'true' : 'false'}>
         <div data-testid="mock-fragment-name">{fragments?.[0]?.name || ''}</div>
         <div data-testid="mock-ann-count">{ann.length}</div>
         {ann.map((a) => (
@@ -32,6 +42,24 @@ vi.mock('../../SequenceView', () => ({
             onClick={() => onAnnotationClick?.(a)}
           >{a.name || a.type}</button>
         ))}
+        {onAnnotationEdit && (
+          <button
+            data-testid="mock-trigger-edit"
+            onClick={() => onAnnotationEdit({ kind: 'delete', id: 'c1' })}
+          >edit</button>
+        )}
+        {onOpenFeatureEditor && (
+          <button
+            data-testid="mock-trigger-feature-editor"
+            onClick={() => onOpenFeatureEditor({ id: 'c1', name: 'AmpR' })}
+          >open editor</button>
+        )}
+        {onBlastSelection && (
+          <button
+            data-testid="mock-trigger-blast"
+            onClick={() => onBlastSelection({ start: 100, end: 200 })}
+          >blast</button>
+        )}
       </div>
     );
   },
@@ -178,6 +206,63 @@ describe('PreviewTab — K4 SequenceView merge + drill-in', () => {
     const a = useStore.getState().annotator;
     expect(a.rejectedRegionIds.g1).toBe(true);
     expect(a.selectedGhostId).toBeNull();
+  });
+
+  // Sprint M-X.3 follow-up — biolog: «надо дать возможность
+  // растягивать сжимать фичи, редачить двойным кликом и выдлять
+  // последовательность - а дальше уже эту последоватность дать
+  // возможность бластить». PreviewTab now forwards edit + BLAST
+  // callbacks to SequenceView.
+  describe('Edit + BLAST callbacks', () => {
+    it('forwards onAnnotationEdit + sets SequenceView non-readOnly when wired', () => {
+      const onEdit = vi.fn();
+      render(
+        <PreviewTab
+          sequence={SEQUENCE}
+          annotations={CONFIRMED}
+          name="pTest"
+          onAnnotationEdit={onEdit}
+        />,
+      );
+      expect(screen.getByTestId('mock-sequence-view').dataset.readonly).toBe('false');
+      fireEvent.click(screen.getByTestId('mock-trigger-edit'));
+      expect(onEdit).toHaveBeenCalledWith({ kind: 'delete', id: 'c1' });
+    });
+
+    it('SequenceView stays readOnly when onAnnotationEdit is NOT wired', () => {
+      render(
+        <PreviewTab sequence={SEQUENCE} annotations={CONFIRMED} name="pTest" />,
+      );
+      expect(screen.getByTestId('mock-sequence-view').dataset.readonly).toBe('true');
+    });
+
+    it('forwards onOpenFeatureEditor', () => {
+      const onOpen = vi.fn();
+      render(
+        <PreviewTab
+          sequence={SEQUENCE}
+          annotations={CONFIRMED}
+          name="pTest"
+          onOpenFeatureEditor={onOpen}
+        />,
+      );
+      fireEvent.click(screen.getByTestId('mock-trigger-feature-editor'));
+      expect(onOpen).toHaveBeenCalledWith({ id: 'c1', name: 'AmpR' });
+    });
+
+    it('forwards onBlastSelection with the selection range', () => {
+      const onBlast = vi.fn();
+      render(
+        <PreviewTab
+          sequence={SEQUENCE}
+          annotations={CONFIRMED}
+          name="pTest"
+          onBlastSelection={onBlast}
+        />,
+      );
+      fireEvent.click(screen.getByTestId('mock-trigger-blast'));
+      expect(onBlast).toHaveBeenCalledWith({ start: 100, end: 200 });
+    });
   });
 
   it('drill-in Close button clears selectedGhost without verdict', () => {
