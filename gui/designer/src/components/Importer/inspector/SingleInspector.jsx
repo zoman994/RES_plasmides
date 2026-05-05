@@ -833,14 +833,19 @@ export default function SingleInspector({
       <div
         data-testid="importer-single-tab-content"
         style={{
-          flex: 1, padding: 14, minHeight: 0,
-          // overflow-y:scroll (not auto) keeps the scrollbar always
-          // visible — width never jumps mid-render. Earlier
-          // scrollbar-gutter:stable depended on browser support and
-          // applied too late on Vivaldi → SequenceMapView measured full
-          // width then re-measured narrow once content overflowed.
-          // Constant scrollbar-track width = constant clientWidth.
-          overflowY: 'scroll',
+          flex: 1, minHeight: 0,
+          // Annotations tab has its own two-pane layout (map +
+          // LevelPanel) that needs to fit the viewport with its own
+          // internal scroll regions — outer scroll would float
+          // LevelPanel off-screen as the user scrolls the sequence
+          // (biolog: «окно с аннотациями остается ввеху а сиквенс
+          // листается вниз. по итогу не могу принять»). Other tabs
+          // keep the constant scrollbar-track width to avoid the
+          // SequenceMapView re-measure flicker noted earlier.
+          overflowY: activeTab === 'annotations' ? 'hidden' : 'scroll',
+          padding: activeTab === 'annotations' ? 0 : 14,
+          display: activeTab === 'annotations' ? 'flex' : 'block',
+          flexDirection: activeTab === 'annotations' ? 'column' : undefined,
         }}
       >
         {/* Tab panels: warm-then-hide. Each tab mounts when it enters
@@ -883,7 +888,17 @@ export default function SingleInspector({
           </div>
         )}
         {isMounted('annotations') && (
-          <div style={visibilityStyle('annotations')}>
+          <div style={{
+            // Annotations-tab wrap fills the entire tab-content
+            // height with a flex column so AnnotationsTab can
+            // proceed to lay out the embedded Annotator's two
+            // panes (map + LevelPanel) at full height. Other tabs
+            // keep the simple block visibility toggle.
+            display: activeTab === 'annotations' ? 'flex' : 'none',
+            flex: activeTab === 'annotations' ? 1 : undefined,
+            flexDirection: 'column',
+            minHeight: 0,
+          }}>
             <AnnotationsTab
               sequence={edits?.editedSequence ?? item.sequence ?? ''}
               annotations={displayAnnotations}

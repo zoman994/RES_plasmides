@@ -113,6 +113,7 @@ export default function LevelPanel({
   acceptedCount = 0,
   rejectedCount = 0,
   editedCount = 0,
+  justSaved = false,
   onSave,
   onAccept,
   onReject,
@@ -174,19 +175,32 @@ export default function LevelPanel({
           <button
             type="button"
             data-testid="annotator-save-button"
+            data-save-state={
+              justSaved ? 'just-saved' : (acceptedCount > 0 ? 'pending' : 'idle')
+            }
             disabled={acceptedCount === 0}
             onClick={onSave}
             style={{
               padding: '4px 12px',
-              background: acceptedCount > 0 ? 'var(--accent-500, #f97316)' : 'var(--surface-2, #e7e5e4)',
-              color: acceptedCount > 0 ? '#fff' : 'var(--text-tertiary)',
+              // Three-state colour: green-tint right after a Save
+              // click, accent-orange while there are unsaved
+              // accepted regions, neutral when nothing to save.
+              background: justSaved
+                ? '#22c55e'
+                : (acceptedCount > 0 ? 'var(--accent-500, #f97316)' : 'var(--surface-2, #e7e5e4)'),
+              color: justSaved || acceptedCount > 0 ? '#fff' : 'var(--text-tertiary)',
               border: 'none',
               borderRadius: 'var(--radius-sm, 3px)',
               cursor: acceptedCount > 0 ? 'pointer' : 'not-allowed',
               fontSize: 11,
               fontWeight: 500,
+              transition: 'background 200ms ease',
             }}
-          >{acceptedCount > 0 ? S.saveCount(acceptedCount) : S.saveButton}</button>
+          >{
+            justSaved
+              ? S.saveJustDone
+              : (acceptedCount > 0 ? S.saveCount(acceptedCount) : S.saveButton)
+          }</button>
         </div>
       </div>
       {LEVEL_ORDER.map((levelId) => (

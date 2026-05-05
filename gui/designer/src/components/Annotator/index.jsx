@@ -23,7 +23,7 @@
  * purely a controlled view + dispatch surface.
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../../store';
 import { selectAnnotator } from '../../store/uiSlice.js';
 import { STRINGS } from '../../lib/strings';
@@ -202,10 +202,22 @@ export default function Annotator({
     handleRunLevel('L3', { region: regionRange });
   };
 
+  // Visible save confirmation. Biolog: «после сейв кнопка должна
+  // явно сообщать что сохранение завершено и пересохранять ли?».
+  // After a Save click, flip `justSavedAt` so the LevelPanel button
+  // briefly renders «Saved ✓» (green); after 2 seconds it reverts to
+  // its normal style. Repeat clicks safely re-apply — DEC-ANN-09
+  // dedup at create-batch drops same-type >50% overlaps, so a
+  // double-save can't introduce duplicates.
+  const [justSavedAt, setJustSavedAt] = useState(0);
+  useEffect(() => {
+    if (!justSavedAt) return undefined;
+    const t = setTimeout(() => setJustSavedAt(0), 2000);
+    return () => clearTimeout(t);
+  }, [justSavedAt]);
   const handleSave = () => {
     const accepted = annotator.acceptedRegionIds || {};
     const pending = annotator.pendingEdits || {};
-    // Flatten all results, pick accepted, apply patches.
     const out = [];
     for (const res of Object.values(annotator.results || {})) {
       for (const region of res.regions || []) {
@@ -216,6 +228,7 @@ export default function Annotator({
       }
     }
     onApplyAnnotatorResults?.(out);
+    setJustSavedAt(Date.now());
   };
 
   const acceptedCount = Object.keys(annotator.acceptedRegionIds || {}).length;
@@ -344,6 +357,7 @@ export default function Annotator({
           acceptedCount={acceptedCount}
           rejectedCount={rejectedCount}
           editedCount={editedCount}
+          justSaved={!!justSavedAt}
           onAccept={acceptRegion}
           onReject={rejectRegion}
           onAcceptMany={acceptManyRegions}

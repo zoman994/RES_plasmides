@@ -148,6 +148,8 @@ export const IMPORTER_STRINGS = {
     runningSpinner: '…',
     saveButton: 'Save',
     saveCount: (n) => `Save (${n})`,
+    // Sprint M-X.3 follow-up — explicit save-completed feedback.
+    saveJustDone: 'Saved ✓',
     thresholdLabel: (n) => `Confidence threshold: ${(n * 100).toFixed(0)}%`,
     scopeFull: 'Whole sequence',
     scopeRegion: (start, end) => `Region ${start}..${end}`,
