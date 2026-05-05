@@ -30,12 +30,5 @@ export function removeFromCollection(collId, partId) {
   if (c) { c.partIds = c.partIds.filter(id => id !== partId); saveCollections(colls); }
 }
 
-export function deleteCollection(collId) {
-  saveCollections(getCollections().filter(c => c.id !== collId));
-}
-
-export function renameCollection(collId, name) {
-  const colls = getCollections();
-  const c = colls.find(x => x.id === collId);
-  if (c) { c.name = name; saveCollections(colls); }
-}
+// `deleteCollection` and `renameCollection` were exported but never
+// imported. Reintroduce them when a collections-management UI ships.

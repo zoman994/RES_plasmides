@@ -55,47 +55,9 @@ export function buildPlainJunctions(frags, asmType, isCirc) {
   }));
 }
 
-/** Adjust domain positions when a fragment is split or trimmed. */
-export function adjustDomains(domains, cutAA, action) {
-  if (!domains?.length) return [];
-  if (action === 'remove_part1') {
-    return domains.filter(d => d.endAA > cutAA)
-      .map(d => ({ ...d, startAA: Math.max(1, d.startAA - cutAA), endAA: d.endAA - cutAA }));
-  }
-  if (action === 'remove_part2') {
-    return domains.filter(d => d.startAA <= cutAA)
-      .map(d => ({ ...d, endAA: Math.min(d.endAA, cutAA) }));
-  }
-  if (action === 'split') {
-    return {
-      part1: domains.filter(d => d.startAA <= cutAA)
-        .map(d => ({ ...d, endAA: Math.min(d.endAA, cutAA) })),
-      part2: domains.filter(d => d.endAA > cutAA)
-        .map(d => ({ ...d, startAA: Math.max(1, d.startAA - cutAA), endAA: d.endAA - cutAA })),
-    };
-  }
-  return domains;
-}
-
-/**
- * Convert legacy domain objects (AA coords) → detail-level annotations (nt coords).
- * Used during migration from old domain model to region-based annotations.
- *
- * @param {Array} domains     — [{ name, type, startAA, endAA, color, … }]
- * @param {string} regionId   — parent region ID
- * @param {number} regionStart — nucleotide offset of the region within the Part
- * @returns {Array} detail-level annotation objects
- */
-export function convertDomainsToAnnotations(domains, regionId, regionStart = 0) {
-  if (!domains?.length) return [];
-  return domains.map(d => ({
-    name: d.name,
-    type: d.type || 'domain',
-    start: (d.startAA - 1) * 3 + regionStart,
-    end: d.endAA * 3 + regionStart,
-    level: 'detail',
-    regionId,
-    color: d.color,
-    migrated: true,
-  }));
-}
+// `adjustDomains` and `convertDomainsToAnnotations` were removed in the
+// v0.6 architectural shift away from a separate domains[] field — every
+// domain-level entity now lives in annotations[] with level: 'detail'.
+// See ⚓ DECISIONS.md ("ВСЁ в annotations[]"). The migration pass that
+// used `convertDomainsToAnnotations` ran once during the v0.5 → v0.6
+// upgrade and is no longer reachable.

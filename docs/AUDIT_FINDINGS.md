@@ -70,12 +70,12 @@ Topmost pending P0/P1 takes priority each iteration.
 | BUNDLE-09 | pending | `immer` direct dep redundant — comes via Zustand middleware |
 | BUNDLE-11 | pending | `sharp` (30+ MB native) in devDeps but not invoked anywhere |
 | BUNDLE-12 | pending | Two CSS systems coexist (Tailwind 4 + `Prototype/prototype-tokens.css`) |
-| DEAD-02 | pending | `api.js` `designPrimers`/`validateGoldenGate`/`calcTm` orphan exports |
-| DEAD-03 | pending | `hooks/useGeneratePrimers.js` orphan (~201 LOC) |
-| DEAD-05 | pending | `Annotator/PluginPanel.jsx` superseded by LevelPanel |
+| ~~DEAD-02~~ | resolved | ~~`api.js` orphan exports~~ → dropped `designPrimers`/`validateGoldenGate`/`calcTm` (server-side; v0.6+ does these on the client). Kept `fetchParts`/`fetchConstructs`/`fetchFeatures`. |
+| ~~DEAD-03~~ | resolved | ~~`hooks/useGeneratePrimers.js` orphan~~ → file deleted (~201 LOC). |
+| ~~DEAD-05~~ | resolved | ~~`Annotator/PluginPanel.jsx` superseded~~ → file deleted (134 LOC). |
 | DEAD-06 | pending | Duplicate `loadSavedDomains/persistDomains/DOMAINS_LS_KEY` in CDSEditor + region-types |
-| DEAD-11 | pending | `assembly-utils.js` `adjustDomains`/`convertDomainsToAnnotations` never called |
-| DEAD-12 | pending | `collections.js` `deleteCollection`/`renameCollection` never called |
+| ~~DEAD-11~~ | resolved | ~~`assembly-utils.js` domain helpers~~ → dropped `adjustDomains`/`convertDomainsToAnnotations` (~50 LOC). |
+| ~~DEAD-12~~ | resolved | ~~`collections.js` `deleteCollection`/`renameCollection`~~ → dropped (~9 LOC). Reintroduce when a collections-management UI ships. |
 | ~~DEAD-13~~ | resolved | ~~`OligoManager.jsx` private `calcTm` shadows the canonical SantaLucia impl~~ → import `calcTm` from `tm-calculator.js` directly; oligo-registry Tm now matches primer-design / junction-validation. |
 | HOOK-01 | pending | `App.jsx` window drop handler — pattern fragile, but works via `getState()` |
 | HOOK-04 | pending | `SequenceView` `useImperativeHandle` writes `performScrollRef` during render |

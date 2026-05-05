@@ -1,3 +1,9 @@
+// Thin REST helpers for the legacy backend (FastAPI).
+// v0.6+ does primer design / Tm / Golden-Gate validation entirely on the
+// client (`local-primer-design.js`, `tm-calculator.js`, `golden-gate.js`),
+// so the server-side variants that used to live here have been dropped.
+// Only the read-side metadata calls remain.
+
 const BASE = '/api';
 
 export async function fetchParts(type) {
@@ -13,35 +19,5 @@ export async function fetchConstructs() {
 
 export async function fetchFeatures(constructId) {
   const r = await fetch(`${BASE}/constructs/${constructId}/features`);
-  return r.json();
-}
-
-export async function designPrimers(fragments, junctions, method, circular, bindingTm) {
-  const r = await fetch(`${BASE}/design/primers`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      fragments, junctions, method, circular,
-      bindingTmTarget: bindingTm || 60,
-    }),
-  });
-  return r.json();
-}
-
-export async function validateGoldenGate(overhangs, enzyme, fragments) {
-  const r = await fetch(`${BASE}/validate/golden-gate`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ overhangs, enzyme, fragments }),
-  });
-  return r.json();
-}
-
-export async function calcTm(sequence) {
-  const r = await fetch(`${BASE}/calc/tm`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sequence }),
-  });
   return r.json();
 }
