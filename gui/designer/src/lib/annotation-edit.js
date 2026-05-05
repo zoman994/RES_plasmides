@@ -204,6 +204,60 @@ export function overlapFraction(a, b) {
  * Skips entries whose `level` is set and not 'region' (sub-features
  * shouldn't shadow predicted parents).
  */
+/**
+ * Merge predicted regions from the Annotator's results into a
+ * confirmed-annotations array (used by SingleInspector's
+ * LinearFeatureBar nav-strip overlay). Mirrors the filter rules
+ * PreviewTab and LevelPanel apply:
+ *   - drop regions below the confidence threshold
+ *   - drop user-rejected regions
+ *   - skip duplicates (`isDuplicatePrediction`) unless the user
+ *     opted in via «Show duplicates»
+ *   - accepted-this-session predictions render as solid
+ *     (`predicted: false`); the rest stay ghosts
+ *   - on the strip, suppress duplicate name labels when the
+ *     predicted region's name already exists among confirmed
+ *     regions (`_suppressLabel: true`)
+ */
+export function mergeStripWithPredicted(
+  confirmed,
+  results,
+  threshold,
+  acceptedIds,
+  rejectedIds,
+  showDuplicates,
+) {
+  if (!results || typeof results !== 'object') return confirmed;
+  const out = (confirmed || []).slice();
+  const seenIds = new Set();
+  const confirmedNames = new Set();
+  for (const ann of out) {
+    if (ann && ann.id) seenIds.add(ann.id);
+    const nm = (ann?.name || '').toLowerCase().trim();
+    if (nm) confirmedNames.add(nm);
+  }
+  for (const res of Object.values(results)) {
+    for (const r of (res?.regions || [])) {
+      if (Number.isFinite(r.confidence) && r.confidence < (threshold ?? 0)) continue;
+      const id = r.id || `${r.start}:${r.end}:${r.type || ''}:${r.name || ''}`;
+      if (rejectedIds && rejectedIds[id]) continue;
+      if (seenIds.has(id)) continue;
+      const accepted = !!(acceptedIds && acceptedIds[id]);
+      if (!showDuplicates && !accepted && isDuplicatePrediction(r, confirmed)) continue;
+      const predName = (r.name || '').toLowerCase().trim();
+      const suppressLabel = !!(predName && confirmedNames.has(predName));
+      out.push({
+        ...r,
+        id,
+        predicted: accepted ? false : true,
+        _suppressLabel: suppressLabel,
+      });
+      seenIds.add(id);
+    }
+  }
+  return out;
+}
+
 export function isDuplicatePrediction(predicted, confirmedRegions) {
   if (!Array.isArray(confirmedRegions) || confirmedRegions.length === 0) return false;
   const pName = (predicted.name || '').toLowerCase().trim();

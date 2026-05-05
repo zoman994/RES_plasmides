@@ -107,12 +107,49 @@ export default function CatalogColumn({
   onFiles,
   onPasteText,
   busy = false,
+  // Optional `{ [libraryEntryId]: annotations[] }` map. When the
+  // user is editing a library-sourced parsed item in the inspector,
+  // this carries the LIVE editedAnnotations so the catalog mini-map
+  // icon stays in sync without persisting to the source library
+  // entry on every keystroke (the explicit «To library» click is
+  // still the only way to update the saved entry).
+  liveAnnotationsByLibId,
 }) {
   const projectName = useStore((s) => {
     const p = s.currentProjectId ? s.projects[s.currentProjectId] : null;
     return p?.name || '';
   });
   const sources = useCatalogSources();
+
+  // Apply live-edit overrides (passed from Importer/index.jsx) to
+  // the library-sourced item lists. The override flips ONLY the
+  // matched item's reference, so ItemRow's `prev.item === next.item`
+  // memo gate still bails for the other 99 % of rows.
+  const hasLive = !!liveAnnotationsByLibId
+    && Object.keys(liveAnnotationsByLibId).length > 0;
+  const overrideAnns = (it) => {
+    if (!hasLive || !it) return it;
+    const live = liveAnnotationsByLibId[it.id];
+    return live ? { ...it, annotations: live } : it;
+  };
+  const liveMine = useMemo(
+    () => (hasLive ? sources.mine.map(overrideAnns) : sources.mine),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sources.mine, liveAnnotationsByLibId, hasLive],
+  );
+  const liveThisProject = useMemo(
+    () => (hasLive ? sources.thisProject.map(overrideAnns) : sources.thisProject),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sources.thisProject, liveAnnotationsByLibId, hasLive],
+  );
+  const liveMineGroups = useMemo(() => {
+    if (!hasLive) return sources.mineGroups;
+    return sources.mineGroups.map((g) => ({
+      ...g,
+      items: g.items.map(overrideAnns),
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sources.mineGroups, liveAnnotationsByLibId, hasLive]);
 
   const fileInputRef = useRef(null);
   // Shared file picker for per-folder imports — `pendingFolderTag` carries
@@ -382,12 +419,12 @@ export default function CatalogColumn({
     if (!flatActive) return [];
     const snapgene = sources.snapgeneFlat || Object.values(sources.snapgeneCategoryItems).flat();
     return [
-      ...sources.thisProject,
+      ...liveThisProject,
       ...sources.demo,
-      ...sources.mine,
+      ...liveMine,
       ...snapgene,
     ];
-  }, [flatActive, sources.thisProject, sources.demo, sources.mine, sources.snapgeneFlat, sources.snapgeneCategoryItems]);
+  }, [flatActive, liveThisProject, sources.demo, liveMine, sources.snapgeneFlat, sources.snapgeneCategoryItems]);
   const flatResults = useMemo(
     () => flatActive ? applyCatalogFilter(flatPool, query) : [],
     [flatActive, flatPool, query],
@@ -598,9 +635,9 @@ export default function CatalogColumn({
               // — bucket those items into a synthetic «__untagged__»
               // folder so they actually render under Mine. Without this,
               // 3 untagged vectors showed counter «3» but invisible tree.
-              let effectiveGroups = sources.mineGroups;
-              if (effectiveGroups.length === 0 && sources.mine.length > 0) {
-                effectiveGroups = [{ tag: '__untagged__', items: sources.mine }];
+              let effectiveGroups = liveMineGroups;
+              if (effectiveGroups.length === 0 && liveMine.length > 0) {
+                effectiveGroups = [{ tag: '__untagged__', items: liveMine }];
               }
               const allPaths = new Set([
                 ...(userFoldersByGroup.mine || []),
@@ -608,7 +645,7 @@ export default function CatalogColumn({
               ]);
               const tree = buildFolderTree([...allPaths]);
               const itemsByPath = new Map(effectiveGroups.map((g) => [g.tag, g.items]));
-              if (tree.length === 0 && sources.mine.length === 0 && folderDraftKey !== 'mine|') {
+              if (tree.length === 0 && liveMine.length === 0 && folderDraftKey !== 'mine|') {
                 return <EmptyHint label={S.catalogEmptyGroup} testId="catalog-mine-empty" depth={1} />;
               }
               return renderFolderNodes(tree, 'mine', 1, itemsByPath);
@@ -629,7 +666,7 @@ export default function CatalogColumn({
                 <>
                   {renderFolderNodes(tree, 'canvas', 1, null)}
                   <InlineItemList
-                    items={sources.thisProject}
+                    items={liveThisProject}
                     emptyLabel={tree.length === 0 ? S.catalogEmptyProject : null}
                     emptyTestId="catalog-canvas-empty"
                     onSelectItem={onSelectItem}

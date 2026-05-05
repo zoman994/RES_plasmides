@@ -310,6 +310,26 @@ export default function Importer() {
   const flags = (fileName && state.perFileFlags[fileName]) || { autoAnnotate: true };
   const edits = (fileName && state.perFileEdits[fileName]) || {};
 
+  // Render-time merge for the catalog mini-map icon. When the user
+  // edits annotations on a library-sourced parsed item, the source
+  // library entry stays untouched (clean separation between
+  // session-local edits and persisted state — biolog explicitly
+  // saves «To library» when ready). To keep the icon in sync visually
+  // we pass live edited annotations to CatalogColumn keyed by the
+  // source library-entry id; the row renderer overrides the entry's
+  // stored annotations with the live ones where present.
+  const liveAnnotationsByLibId = useMemo(() => {
+    const out = {};
+    for (const it of state.parsedItems || []) {
+      if (!it || !it._libraryEntryId) continue;
+      const e = state.perFileEdits[it._fileName];
+      if (e && Array.isArray(e.editedAnnotations)) {
+        out[it._libraryEntryId] = e.editedAnnotations;
+      }
+    }
+    return out;
+  }, [state.parsedItems, state.perFileEdits]);
+
   // ActionsBar handler — single-mode actions; multi handled inside MultiInspector.
   const onAction = useCallback(async (actionId) => {
     if (actionId === 'canvas') {
@@ -432,6 +452,7 @@ export default function Importer() {
           onFiles={state.addFiles}
           onPasteText={state.addPasteItem}
           busy={state.busy}
+          liveAnnotationsByLibId={liveAnnotationsByLibId}
         />
 
         <div

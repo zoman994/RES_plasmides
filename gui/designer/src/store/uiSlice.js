@@ -4,7 +4,15 @@ export const THEME_STORAGE_KEY = 'bodgegene-theme';
 export const AGENT_STORAGE_KEY = 'bodgegene-agent';
 export const IMPORTER_MODE_STORAGE_KEY = 'bodgegene-importer-mode';
 export const SEQUENCE_VIEW_STORAGE_KEY = 'bodgegene-ui-sequenceview';
-export const ANNOTATOR_STORAGE_KEY = 'bodgegene-ui-annotator';
+// Annotator state lives in store/annotatorSlice — keys / defaults /
+// selector re-exported here for back-compat with existing imports.
+import {
+  ANNOTATOR_STORAGE_KEY,
+  ANNOTATOR_DEFAULTS,
+  selectAnnotator,
+  createAnnotatorSlice,
+} from './annotatorSlice.js';
+export { ANNOTATOR_STORAGE_KEY, ANNOTATOR_DEFAULTS, selectAnnotator };
 
 const THEMES = ['light', 'dark'];
 const IMPORTER_MODES = ['advanced', 'simple'];
@@ -182,115 +190,8 @@ export function applyThemeToDOM(theme) {
 // Plain-object record shape — Zustand+Immer doesn't play well with
 // Set / Map, so the dedup containers are `Record<id, true>`.
 
-export const ANNOTATOR_DEFAULTS = Object.freeze({
-  open: false,
-  scope: null,
-  // Default plugin selection — DEC-PRED-03 priors. ORF + sgRNA
-  // scaffold + common-features homology start ON; the noisier PWM
-  // detectors stay OFF until the biolog opts in.
-  enabledPluginIds: Object.freeze({
-    'orf-scan': true,
-    'common-features-homology': true,
-    'sgrna-scaffold': true,
-    'sigma70-promoter': false,
-    'stem-loop-terminator': false,
-    'blast-ncbi': false,
-  }),
-  results: Object.freeze({}),
-  acceptedRegionIds: Object.freeze({}),
-  rejectedRegionIds: Object.freeze({}),
-  pendingEdits: Object.freeze({}),
-  threshold: 0.7,
-  running: Object.freeze({}),
-  // Sprint M-X.3 follow-up (05.05.2026, Stage C) — repurposed.
-  // Was: 'table' | 'preview' (dual-body shell, gone in Stage B).
-  // Now: 'linear' | 'circular' — picks the map view inside
-  // PreviewTab. Biolog: «по вкладке можно еще переключиться в окно
-  // просмотра кольцевой ерсии плазмиды/фрагмента».
-  activeTab: 'linear',
-  // Sprint M-X.3 follow-up — duplicate-suppression toggle.
-  // Biolog: «На скрытие дубликата поставь галку, вдруг кто то и
-  // захочет их видеть». When false (default) predicted regions
-  // that overlap >50% with same-type confirmed annotations are
-  // hidden from PreviewTab + LevelPanel. When true the user opts
-  // in to seeing every plugin hit, duplicates included.
-  showDuplicates: false,
-  // Sprint M-X.3 K4 — id of the ghost feature whose drill-in panel
-  // is open in the Preview tab. `null` means no panel.
-  selectedGhostId: null,
-});
-
-const ANNOTATOR_TABS = ['linear', 'circular'];
-
-function sanitizeEnabledPluginIds(raw) {
-  if (!raw || typeof raw !== 'object') {
-    return { ...ANNOTATOR_DEFAULTS.enabledPluginIds };
-  }
-  const out = { ...ANNOTATOR_DEFAULTS.enabledPluginIds };
-  for (const k of Object.keys(raw)) {
-    if (typeof raw[k] === 'boolean') out[k] = raw[k];
-  }
-  return out;
-}
-
-function loadInitialAnnotator() {
-  const raw = getJSON(ANNOTATOR_STORAGE_KEY, null);
-  if (!raw || typeof raw !== 'object') {
-    return {
-      ...ANNOTATOR_DEFAULTS,
-      enabledPluginIds: { ...ANNOTATOR_DEFAULTS.enabledPluginIds },
-      results: {},
-      acceptedRegionIds: {},
-      rejectedRegionIds: {},
-      pendingEdits: {},
-      running: {},
-    };
-  }
-  return {
-    ...ANNOTATOR_DEFAULTS,
-    enabledPluginIds: sanitizeEnabledPluginIds(raw.enabledPluginIds),
-    threshold:
-      typeof raw.threshold === 'number'
-      && Number.isFinite(raw.threshold)
-      && raw.threshold >= 0
-      && raw.threshold <= 1
-        ? raw.threshold
-        : ANNOTATOR_DEFAULTS.threshold,
-    showDuplicates:
-      typeof raw.showDuplicates === 'boolean'
-        ? raw.showDuplicates
-        : ANNOTATOR_DEFAULTS.showDuplicates,
-    results: {},
-    acceptedRegionIds: {},
-    rejectedRegionIds: {},
-    pendingEdits: {},
-    running: {},
-  };
-}
-
-function persistAnnotator(value) {
-  setJSON(ANNOTATOR_STORAGE_KEY, {
-    enabledPluginIds: { ...value.enabledPluginIds },
-    threshold: value.threshold,
-    showDuplicates: !!value.showDuplicates,
-  });
-}
-
-/** Selector returning the annotator slice (or defaults). */
-export function selectAnnotator(state) {
-  if (!state || !state.annotator) {
-    return {
-      ...ANNOTATOR_DEFAULTS,
-      enabledPluginIds: { ...ANNOTATOR_DEFAULTS.enabledPluginIds },
-      results: {},
-      acceptedRegionIds: {},
-      rejectedRegionIds: {},
-      pendingEdits: {},
-      running: {},
-    };
-  }
-  return state.annotator;
-}
+// Annotator state + actions live in store/annotatorSlice.js — see
+// the createAnnotatorSlice spread inside createUiSlice below.
 
 const TOAST_CAPACITY = 3;
 const TOAST_DEFAULT_DISMISS_MS = 3500;
@@ -303,11 +204,11 @@ function _newToastId() {
 }
 
 export const createUiSlice = (set) => ({
+  ...createAnnotatorSlice(set),
   theme: loadInitialTheme(),
   agent: loadInitialAgent(),
   importerMode: loadInitialImporterMode(),
   sequenceView: loadInitialSequenceView(),
-  annotator: loadInitialAnnotator(),
   modals: { settings: false, projectInfo: false },
   toasts: [],
   canInstallPwa: false,
@@ -399,10 +300,12 @@ export const createUiSlice = (set) => ({
           predictions: { ...state.sequenceView.predictions },
         });
         // Sync into Annotator slice so the two threshold sliders
-        // stay in lockstep (post-K10 review fix).
+        // stay in lockstep (post-K10 review fix). Persistence
+        // mirrors annotatorSlice's persistAnnotator format —
+        // factored inline here to avoid a circular import.
         if (sub === 'threshold' && state.annotator) {
           state.annotator.threshold = value;
-          persistAnnotator({
+          setJSON(ANNOTATOR_STORAGE_KEY, {
             enabledPluginIds: { ...state.annotator.enabledPluginIds },
             threshold: value,
             showDuplicates: !!state.annotator.showDuplicates,
@@ -473,249 +376,4 @@ export const createUiSlice = (set) => ({
     });
   },
 
-  // ───────── Annotator (Sprint M-X.2 K6, DEC-ANN-07) ─────────
-
-  openAnnotator: (scope) => {
-    set(state => {
-      if (!state.annotator) {
-        state.annotator = loadInitialAnnotator();
-      }
-      const prevScope = state.annotator.scope;
-      const sequenceChanged = !!prevScope
-        && !!scope
-        && prevScope.sequenceId !== scope.sequenceId;
-      // When the plasmid changes between Annotator sessions, reset
-      // the transient verdict containers so a fresh «accept N» pass
-      // doesn't carry over from the previous plasmid (DEC-ANN-07
-      // risk #4).
-      if (sequenceChanged) {
-        state.annotator.results = {};
-        state.annotator.acceptedRegionIds = {};
-        state.annotator.rejectedRegionIds = {};
-        state.annotator.pendingEdits = {};
-        state.annotator.running = {};
-      }
-      state.annotator.open = true;
-      state.annotator.scope = scope || null;
-    });
-  },
-
-  closeAnnotator: () => {
-    set(state => {
-      if (!state.annotator) return;
-      state.annotator.open = false;
-      // scope, results, accepted, rejected, pendingEdits — preserved
-      // so a re-open within the session restores the work.
-    });
-  },
-
-  /** Sprint M-X.3 K3 — switch between Annotator's «Table» / «Preview»
-   *  tabs. Garbage / unknown tab ids are silently ignored. */
-  setAnnotatorActiveTab: (tab) => {
-    if (!ANNOTATOR_TABS.includes(tab)) return;
-    set(state => {
-      if (!state.annotator) state.annotator = loadInitialAnnotator();
-      state.annotator.activeTab = tab;
-    });
-  },
-
-  togglePlugin: (pluginId) => {
-    if (typeof pluginId !== 'string' || !pluginId) return;
-    set(state => {
-      if (!state.annotator) state.annotator = loadInitialAnnotator();
-      if (!state.annotator.enabledPluginIds) state.annotator.enabledPluginIds = {};
-      const cur = !!state.annotator.enabledPluginIds[pluginId];
-      state.annotator.enabledPluginIds[pluginId] = !cur;
-      persistAnnotator({
-        enabledPluginIds: { ...state.annotator.enabledPluginIds },
-        threshold: state.annotator.threshold,
-        showDuplicates: !!state.annotator.showDuplicates,
-      });
-    });
-  },
-
-  setAnnotatorThreshold: (value) => {
-    const v = Number(value);
-    if (!Number.isFinite(v) || v < 0 || v > 1) return;
-    set(state => {
-      if (!state.annotator) state.annotator = loadInitialAnnotator();
-      state.annotator.threshold = v;
-      persistAnnotator({
-        enabledPluginIds: { ...state.annotator.enabledPluginIds },
-        threshold: v,
-        showDuplicates: !!state.annotator.showDuplicates,
-      });
-      // Sync into the SequenceView Settings popover threshold so
-      // both surfaces stay in lockstep — biolog 04.05.2026 evening
-      // post-K10 review: «два независимых threshold'а UX-confusing»
-      // (DEC-ANN-07 risk #6). When uiSlice has both slices loaded
-      // (the normal case) we mirror; if sequenceView is missing
-      // (test isolation) we just skip.
-      if (state.sequenceView && state.sequenceView.predictions) {
-        // Settings popover lives in [0.5, 1.0] only — clamp to that
-        // range so the popover slider doesn't jump to a value it
-        // can't display.
-        const popoverV = Math.max(0.5, Math.min(1.0, v));
-        state.sequenceView.predictions.threshold = popoverV;
-        persistSequenceView({
-          ...state.sequenceView,
-          visibleFrames: { ...state.sequenceView.visibleFrames },
-          predictions: { ...state.sequenceView.predictions },
-        });
-      }
-    });
-  },
-
-  /**
-   * Sprint M-X.3 follow-up — biolog: «На скрытие дубликата поставь
-   * галку, вдруг кто то и захочет их видеть». Toggle whether
-   * predicted regions overlapping confirmed annotations of the same
-   * type should still be surfaced in PreviewTab + LevelPanel. Off
-   * by default (matches the original «не должен давать поверх те
-   * же фичи» complaint). Persists alongside threshold.
-   */
-  setAnnotatorShowDuplicates: (value) => {
-    const v = !!value;
-    set(state => {
-      if (!state.annotator) state.annotator = loadInitialAnnotator();
-      state.annotator.showDuplicates = v;
-      persistAnnotator({
-        enabledPluginIds: { ...state.annotator.enabledPluginIds },
-        threshold: state.annotator.threshold,
-        showDuplicates: v,
-      });
-    });
-  },
-
-  setAnnotatorRunning: (pluginId, running) => {
-    if (typeof pluginId !== 'string' || !pluginId) return;
-    set(state => {
-      if (!state.annotator) state.annotator = loadInitialAnnotator();
-      if (!state.annotator.running) state.annotator.running = {};
-      if (running) state.annotator.running[pluginId] = true;
-      else delete state.annotator.running[pluginId];
-    });
-  },
-
-  setAnnotatorResult: (pluginId, result) => {
-    if (typeof pluginId !== 'string' || !pluginId) return;
-    set(state => {
-      if (!state.annotator) state.annotator = loadInitialAnnotator();
-      if (!state.annotator.results) state.annotator.results = {};
-      if (state.annotator.running) delete state.annotator.running[pluginId];
-      if (result === null) {
-        delete state.annotator.results[pluginId];
-      } else {
-        state.annotator.results[pluginId] = result;
-      }
-    });
-  },
-
-  acceptRegion: (regionId) => {
-    if (typeof regionId !== 'string' || !regionId) return;
-    set(state => {
-      if (!state.annotator) state.annotator = loadInitialAnnotator();
-      if (!state.annotator.acceptedRegionIds) state.annotator.acceptedRegionIds = {};
-      if (!state.annotator.rejectedRegionIds) state.annotator.rejectedRegionIds = {};
-      // Mutually exclusive: accept clears reject.
-      delete state.annotator.rejectedRegionIds[regionId];
-      state.annotator.acceptedRegionIds[regionId] = true;
-      // Sprint M-X.3 K4 — verdict on the currently-drilled-in ghost
-      // closes the drill-in panel automatically. Other regions stay
-      // unaffected.
-      if (state.annotator.selectedGhostId === regionId) {
-        state.annotator.selectedGhostId = null;
-      }
-    });
-  },
-
-  /**
-   * Sprint M-X.3 follow-up (05.05.2026) — biolog: «добавь возможность
-   * одним кликом согласиться со всеми комон фичами которые нашел на
-   * L1». Accept many region ids in a single store update.
-   *
-   * Semantics:
-   *   - Pending → accepted.
-   *   - Already accepted → no-op.
-   *   - Already rejected → SKIPPED (preserves the user's manual
-   *     reject; the bulk button is a shortcut for «accept the
-   *     unverdicted ones», not a force-override).
-   *   - Closes the drill-in panel if the selected ghost is among the
-   *     newly-accepted ids.
-   *
-   * One set() call so subscribers get a single render, not N.
-   */
-  acceptManyRegions: (regionIds) => {
-    if (!Array.isArray(regionIds) || regionIds.length === 0) return;
-    set(state => {
-      if (!state.annotator) state.annotator = loadInitialAnnotator();
-      if (!state.annotator.acceptedRegionIds) state.annotator.acceptedRegionIds = {};
-      if (!state.annotator.rejectedRegionIds) state.annotator.rejectedRegionIds = {};
-      const accepted = state.annotator.acceptedRegionIds;
-      const rejected = state.annotator.rejectedRegionIds;
-      for (const id of regionIds) {
-        if (typeof id !== 'string' || !id) continue;
-        if (rejected[id]) continue; // preserve manual reject
-        accepted[id] = true;
-      }
-      if (state.annotator.selectedGhostId
-          && accepted[state.annotator.selectedGhostId]) {
-        state.annotator.selectedGhostId = null;
-      }
-    });
-  },
-
-  rejectRegion: (regionId) => {
-    if (typeof regionId !== 'string' || !regionId) return;
-    set(state => {
-      if (!state.annotator) state.annotator = loadInitialAnnotator();
-      if (!state.annotator.acceptedRegionIds) state.annotator.acceptedRegionIds = {};
-      if (!state.annotator.rejectedRegionIds) state.annotator.rejectedRegionIds = {};
-      delete state.annotator.acceptedRegionIds[regionId];
-      state.annotator.rejectedRegionIds[regionId] = true;
-      if (state.annotator.selectedGhostId === regionId) {
-        state.annotator.selectedGhostId = null;
-      }
-    });
-  },
-
-  /** Sprint M-X.3 K4 — drive the drill-in panel for a predicted
-   *  region. `null` closes it. */
-  setSelectedGhost: (regionId) => {
-    set(state => {
-      if (!state.annotator) state.annotator = loadInitialAnnotator();
-      state.annotator.selectedGhostId =
-        typeof regionId === 'string' && regionId ? regionId : null;
-    });
-  },
-
-  clearRegionVerdict: (regionId) => {
-    if (typeof regionId !== 'string' || !regionId) return;
-    set(state => {
-      if (!state.annotator) return;
-      if (state.annotator.acceptedRegionIds) delete state.annotator.acceptedRegionIds[regionId];
-      if (state.annotator.rejectedRegionIds) delete state.annotator.rejectedRegionIds[regionId];
-    });
-  },
-
-  editPendingRegion: (regionId, patch) => {
-    if (typeof regionId !== 'string' || !regionId || !patch || typeof patch !== 'object') return;
-    set(state => {
-      if (!state.annotator) state.annotator = loadInitialAnnotator();
-      if (!state.annotator.pendingEdits) state.annotator.pendingEdits = {};
-      const cur = state.annotator.pendingEdits[regionId] || {};
-      state.annotator.pendingEdits[regionId] = { ...cur, ...patch };
-    });
-  },
-
-  resetAnnotatorScope: () => {
-    set(state => {
-      if (!state.annotator) state.annotator = loadInitialAnnotator();
-      state.annotator.results = {};
-      state.annotator.acceptedRegionIds = {};
-      state.annotator.rejectedRegionIds = {};
-      state.annotator.pendingEdits = {};
-      state.annotator.running = {};
-    });
-  },
 });

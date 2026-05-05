@@ -20,7 +20,7 @@ import {
   applyAnnotationEdit,
   mergeAnnotations,
   generateAnnotationId,
-  isDuplicatePrediction,
+  mergeStripWithPredicted,
 } from '../../../lib/annotation-edit.js';
 import { useStore } from '../../../store';
 import { selectAnnotator } from '../../../store/uiSlice.js';
@@ -31,65 +31,11 @@ import { selectAnnotator } from '../../../store/uiSlice.js';
 // tab embeds the same component via AnnotationsTab.
 import SettingsPopover from '../../SequenceView/SettingsPopover';
 import FeatureEditorModal from './FeatureEditorModal';
+import { useIdlePrewarm } from './hooks/useIdlePrewarm';
+import { useAnnotationUndoRedo } from './hooks/useAnnotationUndoRedo';
+import { useFeatureEditorFlow } from './hooks/useFeatureEditorFlow';
 
 const S = STRINGS.importer;
-
-/**
- * Merge predicted regions from the Annotator's results into the
- * confirmed-annotations array used by LinearFeatureBar, so the
- * navigation strip surfaces ghost features the Annotator is showing
- * on the map. Mirrors the filter rules PreviewTab and LevelPanel
- * already use:
- *   - drop regions below the confidence threshold
- *   - drop user-rejected regions
- *   - skip same-type duplicates of confirmed annotations unless
- *     the user opted in via «Show duplicates»
- *   - accepted-this-session ghosts render as solid (predicted: false)
- */
-function mergeStripWithPredicted(
-  confirmed,
-  results,
-  threshold,
-  acceptedIds,
-  rejectedIds,
-  showDuplicates,
-) {
-  if (!results || typeof results !== 'object') return confirmed;
-  const out = (confirmed || []).slice();
-  const seenIds = new Set();
-  // Lower-cased names of the confirmed regions — used to suppress
-  // duplicate labels on the strip when «Show duplicates» is on
-  // (biolog: «когда показываем дубликаты — то их имена не должны
-  // дублироваться на колбасе»). The predicted region still renders
-  // its dashed rect so the user sees the ghost; we just hide the
-  // text label that would echo the existing confirmed entry.
-  const confirmedNames = new Set();
-  for (const ann of out) {
-    if (ann && ann.id) seenIds.add(ann.id);
-    const nm = (ann?.name || '').toLowerCase().trim();
-    if (nm) confirmedNames.add(nm);
-  }
-  for (const res of Object.values(results)) {
-    for (const r of (res?.regions || [])) {
-      if (Number.isFinite(r.confidence) && r.confidence < (threshold ?? 0)) continue;
-      const id = r.id || `${r.start}:${r.end}:${r.type || ''}:${r.name || ''}`;
-      if (rejectedIds && rejectedIds[id]) continue;
-      if (seenIds.has(id)) continue;
-      const accepted = !!(acceptedIds && acceptedIds[id]);
-      if (!showDuplicates && !accepted && isDuplicatePrediction(r, confirmed)) continue;
-      const predName = (r.name || '').toLowerCase().trim();
-      const suppressLabel = !!(predName && confirmedNames.has(predName));
-      out.push({
-        ...r,
-        id,
-        predicted: accepted ? false : true,
-        _suppressLabel: suppressLabel,
-      });
-      seenIds.add(id);
-    }
-  }
-  return out;
-}
 
 // Idle pre-warm bypass for the V49 lazy-tabs vitest assertions.
 // In production / dev (MODE !== 'test') the inspector mounts heavy
@@ -122,21 +68,12 @@ export default function SingleInspector({
   activeTab,
   onActiveTabChange,
   onUpdateFlags, // eslint-disable-line no-unused-vars -- reserved for future Annotator hand-off
-  onUpdateEdits: rawOnUpdateEdits,
+  onUpdateEdits,
   onAppendAdded, // eslint-disable-line no-unused-vars
   onRenameItem,
   // eslint-disable-next-line no-unused-vars -- ditto
   onRunAutoAnnotate,
 }) {
-  // Live-update the source library entry's annotations whenever the
-  // user edits annotations on a library-sourced item. Fixes the bug
-  // «после добавления аннотации не обновляется иконка в левой
-  // панели» — without this, perFileEdits captured the change but the
-  // catalog mini-map icon kept rendering against the stale library
-  // entry payload until the user clicked «Save to library».
-  const updateLibraryEntryAnnotations = useStore(
-    (s) => s.updateLibraryEntryAnnotations,
-  );
   // Annotator state for the navigation-strip ghost overlay (only
   // consumed when activeTab === 'annotations'; cheap subscriptions
   // because each selector returns a primitive or a stable slice ref).
@@ -145,17 +82,6 @@ export default function SingleInspector({
   const annotatorAccepted = useStore((s) => selectAnnotator(s).acceptedRegionIds);
   const annotatorRejected = useStore((s) => selectAnnotator(s).rejectedRegionIds);
   const annotatorShowDuplicates = useStore((s) => selectAnnotator(s).showDuplicates);
-  const onUpdateEdits = useCallback((patch) => {
-    rawOnUpdateEdits?.(patch);
-    if (
-      patch
-      && Array.isArray(patch.editedAnnotations)
-      && item?._libraryEntryId
-      && typeof updateLibraryEntryAnnotations === 'function'
-    ) {
-      updateLibraryEntryAnnotations(item._libraryEntryId, patch.editedAnnotations);
-    }
-  }, [rawOnUpdateEdits, item?._libraryEntryId, updateLibraryEntryAnnotations]);
   // Idle pre-warm: when biolog clicks a plasmid in the catalog list,
   // mount Sequence + Annotations tabs in the background (display:none)
   // so a subsequent tab click is instant. Without this, the tab click
@@ -173,96 +99,7 @@ export default function SingleInspector({
   // plasmid starts pre-warm from scratch and doesn't carry over the
   // previous plasmid's tab content.
   const itemKey = item ? (item.id || item._fileName || item.name || '') : null;
-  const [warmedTabs, setWarmedTabs] = useState(() => new Set([activeTab]));
-
-  // Reset warmed set when a different plasmid is selected.
-  useEffect(() => {
-    setWarmedTabs(new Set([activeTab]));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [itemKey]);
-
-  // Warm whichever tab the user navigates to.
-  //   - In production: ACCUMULATE — once a tab is warmed, it stays
-  //     mounted in display:none even when the user navigates away.
-  //     Subsequent re-visits are instant (just visibility toggle).
-  //   - In test mode: REPLACE — `warmedTabs` always equals the
-  //     single active tab, mirroring the original V49 lazy-mount
-  //     semantics so `lazy-tabs.test.jsx` tests 2/3/4 (which assert
-  //     unmount on navigate-away) keep passing.
-  useEffect(() => {
-    if (__PREWARM_DISABLED__) {
-      setWarmedTabs(new Set([activeTab]));
-    } else {
-      setWarmedTabs(prev => (prev.has(activeTab) ? prev : new Set([...prev, activeTab])));
-    }
-  }, [activeTab]);
-
-  // Idle pre-warm — production only. Mounts Sequence and Annotations
-  // tabs in display:none AFTER first paint so a subsequent tab click
-  // toggles visibility instantly instead of triggering a synchronous
-  // mount of ~70 k DOM nodes (~1-1.5 s freeze on 8 GB / mid-tier CPU).
-  //
-  // Chunked: TWO independent effects, each scheduling its OWN
-  // requestIdleCallback. Sequence pre-warm fires first (the biolog's
-  // most likely next click after Overview); Annotations follows in a
-  // separate idle frame so the browser can paint between mounts and
-  // doesn't experience back-to-back ~500 ms commits.
-  //
-  // Cancellation: each effect returns a cleanup that cancels its
-  // pending idle callback. When the biolog selects a different
-  // plasmid, `itemKey` shifts → the reset effect wipes warmedTabs,
-  // both pre-warm effects re-evaluate (cleanup runs, cancelling any
-  // in-flight idle callback for the previous plasmid; new effect
-  // runs, scheduling pre-warm for the new plasmid). No leaked work.
-  //
-  // Acceptance criterion (Igor's spec, 04.05.2026 evening): on 8 GB /
-  // mid-tier CPU, click on plasmid in catalog → ~1 s overview load →
-  // click "Последовательность" → instant (no freeze). Verified on
-  // 3xFLAG-dCas9 pCMV-7.1 (8.8 kb) by biolog visual review.
-
-  // Pre-warm Sequence (first chunk).
-  useEffect(() => {
-    if (__PREWARM_DISABLED__) return undefined;
-    if (!itemKey) return undefined;
-    if (warmedTabs.has('sequence')) return undefined;
-    let cancelled = false;
-    const flush = () => {
-      if (cancelled) return;
-      setWarmedTabs(prev => (prev.has('sequence') ? prev : new Set([...prev, 'sequence'])));
-    };
-    const useRIC = typeof requestIdleCallback !== 'undefined';
-    const handle = useRIC
-      ? requestIdleCallback(flush, { timeout: 800 })
-      : setTimeout(flush, 250);
-    return () => {
-      cancelled = true;
-      if (useRIC) cancelIdleCallback(handle); else clearTimeout(handle);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [itemKey, warmedTabs.has('sequence')]);
-
-  // Annotations pre-warm — re-introduced 04.05.2026 evening with
-  // the «Аннотации» tab. Same chunked pattern as Sequence above:
-  // separate idle frame so the browser can paint between mounts.
-  useEffect(() => {
-    if (__PREWARM_DISABLED__) return undefined;
-    if (!itemKey) return undefined;
-    if (warmedTabs.has('annotations')) return undefined;
-    let cancelled = false;
-    const flush = () => {
-      if (cancelled) return;
-      setWarmedTabs(prev => (prev.has('annotations') ? prev : new Set([...prev, 'annotations'])));
-    };
-    const useRIC = typeof requestIdleCallback !== 'undefined';
-    const handle = useRIC
-      ? requestIdleCallback(flush, { timeout: 1500 })
-      : setTimeout(flush, 400);
-    return () => {
-      cancelled = true;
-      if (useRIC) cancelIdleCallback(handle); else clearTimeout(handle);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [itemKey, warmedTabs.has('annotations')]);
+  const warmedTabs = useIdlePrewarm({ itemKey, activeTab, testMode: __PREWARM_DISABLED__ });
 
   // Pending scroll request from the LinearFeatureBar (lives at
   // SingleInspector level). When the biolog clicks/drags on the
@@ -420,23 +257,15 @@ export default function SingleInspector({
   // pushes the BEFORE-state, undo pops it back into editedAnnotations.
   // Redo stack populated only when an undo happens; any fresh edit
   // clears the redo branch (standard editor behavior).
-  const undoStackRef = useRef([]);
-  const redoStackRef = useRef([]);
-  const UNDO_LIMIT = 50;
-
-  // Reset history when the displayed item changes.
-  useEffect(() => {
-    undoStackRef.current = [];
-    redoStackRef.current = [];
-  }, [itemKey]);
-
-  // Ref-tracked current annotations so undo/redo callbacks stay
-  // stable across renders (otherwise the keydown listener rebinds
-  // on every edit).
-  const currentAnnotationsRef = useRef([]);
-  currentAnnotationsRef.current = Array.isArray(edits?.editedAnnotations)
+  // Annotation undo/redo stack — see hooks/useAnnotationUndoRedo.
+  const currentAnnotationsForUndo = Array.isArray(edits?.editedAnnotations)
     ? edits.editedAnnotations
     : (item?.annotations || []);
+  const { pushSnapshot, undo: undoAnnotation, redo: redoAnnotation } = useAnnotationUndoRedo({
+    itemKey,
+    currentAnnotations: currentAnnotationsForUndo,
+    onUpdateEdits,
+  });
 
   const onAnnotationEditFromView = useCallback((edit) => {
     if (!edit || !onUpdateEdits) return;
@@ -448,14 +277,7 @@ export default function SingleInspector({
       const result = applyAnnotationEdit(baseAnnotations, edit, seqLength);
       const next = Array.isArray(result) ? result : result?.next;
       if (Array.isArray(next) && next !== baseAnnotations) {
-        // Push the BEFORE state onto the undo stack; clear redo
-        // so a new edit branch overrides any future-branch we
-        // might have been holding from a sequence of undos.
-        undoStackRef.current = [
-          ...undoStackRef.current.slice(-UNDO_LIMIT + 1),
-          baseAnnotations,
-        ];
-        redoStackRef.current = [];
+        pushSnapshot(baseAnnotations);
         onUpdateEdits({ editedAnnotations: next });
       }
     } catch (err) {
@@ -465,19 +287,6 @@ export default function SingleInspector({
       console.warn('[SingleInspector] annotation edit failed:', err.message);
     }
   }, [onUpdateEdits, item, edits]);
-
-  // Sprint M-X.3 follow-up — FeatureEditorModal owns single-feature
-  // edit (rename / type / coords / strand) AND the Split / Merge /
-  // Delete operations. Mounts on dblclick of a feature in the
-  // SequenceView. State here = the region currently under edit
-  // (`null` means no modal open).
-  const [featureUnderEdit, setFeatureUnderEdit] = useState(null);
-  const openFeatureEditor = useCallback((region) => {
-    setFeatureUnderEdit(region || null);
-  }, []);
-  const closeFeatureEditor = useCallback(() => {
-    setFeatureUnderEdit(null);
-  }, []);
 
   // Apply a non-edit operation (split / merge / delete) directly
   // against `editedAnnotations` and push the BEFORE state onto the
@@ -489,134 +298,24 @@ export default function SingleInspector({
       ? edits.editedAnnotations
       : (item?.annotations || []);
     if (!Array.isArray(nextAnnotations) || nextAnnotations === baseAnnotations) return;
-    undoStackRef.current = [
-      ...undoStackRef.current.slice(-UNDO_LIMIT + 1),
-      baseAnnotations,
-    ];
-    redoStackRef.current = [];
+    pushSnapshot(baseAnnotations);
     onUpdateEdits({ editedAnnotations: nextAnnotations });
-  }, [onUpdateEdits, item, edits]);
+  }, [onUpdateEdits, item, edits, pushSnapshot]);
 
-  /**
-   * Save a feature edit + its sub-feature roster (level: 'detail').
-   * Sub-features are managed entirely inside FeatureEditorModal —
-   * here we DIFF the new list against existing detail annotations
-   * keyed on the parent's region id, then build one composite next-
-   * annotations array (parent-updated + sub-features replaced).
-   *
-   * The whole composite update goes through `applyOpToAnnotations`
-   * so Ctrl+Z / Ctrl+Y rolls the parent + sub-features back to the
-   * single pre-edit snapshot — biolog gets «one undo per Save»
-   * regardless of how many sub-features they tweaked.
-   */
-  const onFeatureSave = useCallback(({ patch, subFeatures }) => {
-    if (!featureUnderEdit) return;
-    const baseAnnotations = Array.isArray(edits?.editedAnnotations)
-      ? edits.editedAnnotations
-      : (item?.annotations || []);
-    const parentId = featureUnderEdit.id;
-
-    // Apply parent patch via the same dispatcher to keep validation
-    // + id-regen consistent.
-    let next;
-    try {
-      next = applyAnnotationEdit(baseAnnotations, { kind: 'update', id: parentId, patch }, (item?.sequence || '').length);
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.warn('[SingleInspector] parent update failed:', err.message);
-      return;
-    }
-    const updatedParent = next.find((a) => a.id === (patch.id || parentId)) || next.find((a) => a.start === patch.start && a.end === patch.end);
-    const finalParentId = updatedParent ? updatedParent.id : parentId;
-
-    // Replace existing details under this parent with the new roster.
-    const withoutOldDetails = next.filter(
-      (a) => !(a.level === 'detail' && a.regionId === parentId),
-    );
-    const newDetails = (subFeatures || [])
-      .filter((sf) => Number.isFinite(sf.start) && Number.isFinite(sf.end) && sf.end > sf.start)
-      .map((sf) => {
-        const det = {
-          name: (sf.name || 'sub').trim() || 'sub',
-          type: sf.type || 'misc_feature',
-          start: Math.max(0, sf.start | 0),
-          end: Math.max(1, sf.end | 0),
-          strand: sf.strand === -1 ? -1 : 1,
-          level: 'detail',
-          regionId: finalParentId,
-        };
-        if (sf.color) det.color = sf.color;
-        det.id = sf.id || generateAnnotationId(det);
-        return det;
-      });
-    const composite = [...withoutOldDetails, ...newDetails];
-    applyOpToAnnotations(composite);
-    closeFeatureEditor();
-  }, [featureUnderEdit, item, edits, applyOpToAnnotations, closeFeatureEditor]);
-
-  const onFeatureMerge = useCallback((neighbourId) => {
-    if (!featureUnderEdit) return;
-    const baseAnnotations = Array.isArray(edits?.editedAnnotations)
-      ? edits.editedAnnotations
-      : (item?.annotations || []);
-    const next = mergeAnnotations(baseAnnotations, featureUnderEdit.id, neighbourId);
-    applyOpToAnnotations(next);
-  }, [featureUnderEdit, item, edits, applyOpToAnnotations]);
-
-  const onFeatureDelete = useCallback(() => {
-    if (!featureUnderEdit) return;
-    onAnnotationEditFromView({ kind: 'delete', id: featureUnderEdit.id });
-    closeFeatureEditor();
-  }, [featureUnderEdit, onAnnotationEditFromView, closeFeatureEditor]);
-
-  const undoAnnotation = useCallback(() => {
-    if (!onUpdateEdits) return;
-    const stack = undoStackRef.current;
-    if (stack.length === 0) return;
-    const prev = stack[stack.length - 1];
-    undoStackRef.current = stack.slice(0, -1);
-    redoStackRef.current = [...redoStackRef.current, currentAnnotationsRef.current];
-    onUpdateEdits({ editedAnnotations: prev });
-  }, [onUpdateEdits]);
-
-  const redoAnnotation = useCallback(() => {
-    if (!onUpdateEdits) return;
-    const stack = redoStackRef.current;
-    if (stack.length === 0) return;
-    const next = stack[stack.length - 1];
-    redoStackRef.current = stack.slice(0, -1);
-    undoStackRef.current = [...undoStackRef.current, currentAnnotationsRef.current];
-    onUpdateEdits({ editedAnnotations: next });
-  }, [onUpdateEdits]);
-
-  // Bind Ctrl+Z (undo) / Ctrl+Y / Ctrl+Shift+Z (redo) at the
-  // window level. Layout-independent — uses e.code so the Russian
-  // keyboard's Cyrillic «я» / «н» on the same physical keys still
-  // fires the hotkeys.
-  useEffect(() => {
-    const onKey = (e) => {
-      if (!(e.ctrlKey || e.metaKey)) return;
-      // Skip when biolog is typing into a form (popup name input,
-      // edit modal, inline rename, AnnotationEditor inputs).
-      const t = e.target;
-      if (t && t.tagName) {
-        const tag = t.tagName;
-        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-        if (t.isContentEditable) return;
-      }
-      if (e.code === 'KeyZ' && !e.shiftKey) {
-        if (undoStackRef.current.length === 0) return;
-        e.preventDefault();
-        undoAnnotation();
-      } else if ((e.code === 'KeyY') || (e.code === 'KeyZ' && e.shiftKey)) {
-        if (redoStackRef.current.length === 0) return;
-        e.preventDefault();
-        redoAnnotation();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [undoAnnotation, redoAnnotation]);
+  // FeatureEditorModal flow — see hooks/useFeatureEditorFlow.
+  const {
+    featureUnderEdit,
+    openFeatureEditor,
+    closeFeatureEditor,
+    onFeatureSave,
+    onFeatureMerge,
+    onFeatureDelete,
+  } = useFeatureEditorFlow({
+    item,
+    edits,
+    applyOp: applyOpToAnnotations,
+    dispatchEdit: onAnnotationEditFromView,
+  });
 
   // Reset cursor / selection when biolog switches plasmids.
   useEffect(() => {

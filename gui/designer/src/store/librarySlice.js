@@ -58,34 +58,6 @@ export const createLibrarySlice = (set, get) => ({
     await putLibraryEntry({ ...existing, tags: safeTags });
   },
 
-  /**
-   * Live-update the annotations array on a library entry. Called by
-   * SingleInspector whenever the user edits annotations on a parsed
-   * item that originated from the library (`_libraryEntryId` set), so
-   * the catalog mini-map icon refreshes immediately instead of
-   * waiting for an explicit «Save to library» click.
-   *
-   * The new array is assigned by reference (not spread) so memoized
-   * consumers like PlasmidMiniMap pick up the change on the existing
-   * shallow-equality comparator.
-   */
-  updateLibraryEntryAnnotations: async (id, annotations) => {
-    const existing = get().libraryEntries[id];
-    if (!existing) return;
-    if (!Array.isArray(annotations)) return;
-    set(state => {
-      const e = state.libraryEntries[id];
-      if (!e || !e.payload) return;
-      e.payload.annotations = annotations;
-    });
-    const updated = get().libraryEntries[id];
-    if (updated) {
-      try { await putLibraryEntry(updated); } catch (err) {
-        // eslint-disable-next-line no-console
-        console.warn('[bodgegene] live annotation persist failed', err);
-      }
-    }
-  },
 
   markLibraryEntryPendingDelete: (id) => {
     const existing = get().libraryEntries[id];
