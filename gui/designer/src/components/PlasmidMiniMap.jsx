@@ -372,7 +372,7 @@ function PlasmidMiniMap({
             height={strokeWidth}
             fill={color}
             stroke={FEATURE_STROKE}
-            strokeWidth={0.7}
+            strokeWidth={0.25}
           />
         </g>
       );
@@ -412,7 +412,7 @@ function PlasmidMiniMap({
             height={strokeWidth}
             fill={linkerColor}
             stroke={FEATURE_STROKE}
-            strokeWidth={0.5}
+            strokeWidth={0.25}
           />
         </g>
       );
