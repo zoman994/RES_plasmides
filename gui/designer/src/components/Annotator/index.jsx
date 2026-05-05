@@ -277,6 +277,7 @@ export default function Annotator({
           rejectedRegionIds={annotator.rejectedRegionIds}
           pendingEdits={annotator.pendingEdits}
           threshold={annotator.threshold}
+          existingAnnotations={annotations}
           onAccept={acceptRegion}
           onReject={rejectRegion}
           onAcceptMany={acceptManyRegions}

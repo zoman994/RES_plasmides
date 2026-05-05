@@ -174,7 +174,7 @@ export function updateAnnotation(annotations, annotationId, patch, seqLength) {
  * would otherwise look like a small overlap %). Used by the
  * create-batch dedup heuristic (DEC-ANN-09).
  */
-function overlapFraction(a, b) {
+export function overlapFraction(a, b) {
   const lo = Math.max(a.start, b.start);
   const hi = Math.min(a.end, b.end);
   if (hi <= lo) return 0;

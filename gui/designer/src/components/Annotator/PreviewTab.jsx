@@ -25,11 +25,29 @@
 import { useMemo } from 'react';
 import { useStore } from '../../store';
 import { selectAnnotator } from '../../store/uiSlice.js';
+import { overlapFraction } from '../../lib/annotation-edit.js';
 import SequenceView from '../SequenceView';
 import PlasmidMiniMap from '../PlasmidMiniMap.jsx';
 import GhostDrillInPanel from './GhostDrillInPanel.jsx';
 import AnnotatorProgressBar from './AnnotatorProgressBar.jsx';
 import AnnotatorTabBar from './TabBar.jsx';
+
+// Sprint M-X.3 follow-up (05.05.2026) — biolog: «когда последо-
+// вательность аннотирована, он не должен давать поверх те же фичи
+// что уже есть на плазмиде если они совпадают». Hide a predicted
+// region from the ghost layer if it overlaps >50% with an already-
+// confirmed annotation of the same type. The same heuristic
+// (DEC-ANN-09) is used at save time for create-batch dedup, so
+// the user no longer sees ghosts they'd never accept anyway.
+function isDuplicateOfConfirmed(predicted, confirmedRegions) {
+  if (!Array.isArray(confirmedRegions) || confirmedRegions.length === 0) return false;
+  for (const c of confirmedRegions) {
+    if (!c || (c.level && c.level !== 'region')) continue;
+    if ((c.type || '') !== (predicted.type || '')) continue;
+    if (overlapFraction(c, predicted) > 0.5) return true;
+  }
+  return false;
+}
 
 export default function PreviewTab({
   sequence = '',
@@ -75,6 +93,10 @@ export default function PreviewTab({
         if (Number.isFinite(r.confidence) && r.confidence < threshold) continue;
         const id = r.id || `${r.start}:${r.end}:${r.type || ''}:${r.name || ''}`;
         if (rejectedIds[id]) continue; // dropped — vanish from preview
+        // Suppress hits that duplicate an already-confirmed region of
+        // the same type (>50% overlap). Accepted-this-session ghosts
+        // stay visible (the user actively chose them).
+        if (!acceptedIds[id] && isDuplicateOfConfirmed(r, annotations)) continue;
         const accepted = !!acceptedIds[id];
         // Accepted regions render solid (predicted: false); the rest
         // stay ghosts. Defensive `predicted: true` for un-flagged
@@ -83,7 +105,7 @@ export default function PreviewTab({
       }
     }
     return out;
-  }, [annotator.results, threshold, acceptedIds, rejectedIds]);
+  }, [annotator.results, threshold, acceptedIds, rejectedIds, annotations]);
 
   const merged = useMemo(() => [
     ...((annotations || []).map((a) => ({ ...a, predicted: a.predicted === true ? true : false }))),

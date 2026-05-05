@@ -172,6 +172,93 @@ describe('LevelPanel — three-level progression', () => {
     expect(rows).toHaveLength(2);
   });
 
+  // Sprint M-X.3 follow-up — biolog: «когда последовательность
+  // аннотирована, он не должен давать поверх те же фичи что уже
+  // есть на плазмиде если они совпадают». Predicted regions that
+  // duplicate an existing same-type annotation (>50% overlap) are
+  // hidden from the panel before the user even sees them.
+  describe('Existing-annotation overlap suppression', () => {
+    const PREDICTED_OVERLAPPING = {
+      pluginId: 'common-features-homology',
+      pluginName: 'Common features (homology)',
+      regions: [
+        // cf-1 overlaps the existing «AmpR» CDS at 100..250 (>50%
+        // overlap, same type) — should be hidden.
+        { id: 'cf-1', name: 'AmpR', type: 'CDS', start: 105, end: 245, strand: 1, level: 'region', confidence: 0.95, predicted: true },
+        // cf-2 hits a different region — should remain visible.
+        { id: 'cf-2', name: 'lacZα', type: 'CDS', start: 600, end: 800, strand: 1, level: 'region', confidence: 0.92, predicted: true },
+      ],
+      runAt: 0, parameters: {}, durationMs: 0,
+    };
+
+    it('hides predicted regions that overlap existing same-type annotations >50%', () => {
+      render(
+        <LevelPanel
+          results={{ 'common-features-homology': PREDICTED_OVERLAPPING }}
+          threshold={0}
+          existingAnnotations={[
+            { id: 'existing-ampr', name: 'AmpR', type: 'CDS', start: 100, end: 250, level: 'region', strand: 1 },
+          ]}
+        />,
+      );
+      const rows = screen.getAllByTestId('annotator-result-row');
+      expect(rows).toHaveLength(1);
+      expect(rows[0].dataset.regionId).toBe('cf-2');
+    });
+
+    it('keeps predicted regions whose type differs from the overlapping confirmed one', () => {
+      render(
+        <LevelPanel
+          results={{ 'common-features-homology': PREDICTED_OVERLAPPING }}
+          threshold={0}
+          existingAnnotations={[
+            // Same coords, different type — predicted CDS should NOT
+            // be hidden by an existing «promoter» occupying the same
+            // span.
+            { id: 'existing-prom', name: 'p_lac', type: 'promoter', start: 100, end: 250, level: 'region', strand: 1 },
+          ]}
+        />,
+      );
+      const rows = screen.getAllByTestId('annotator-result-row');
+      expect(rows).toHaveLength(2);
+    });
+
+    it('keeps predicted regions that do not overlap with any same-type confirmed region', () => {
+      render(
+        <LevelPanel
+          results={{ 'common-features-homology': PREDICTED_OVERLAPPING }}
+          threshold={0}
+          existingAnnotations={[
+            // Existing 50..80 — neither cf-1 (105..245) nor cf-2
+            // (600..800) overlaps it, so both predicted regions
+            // remain visible.
+            { id: 'existing-elsewhere', name: 'tag', type: 'CDS', start: 50, end: 80, level: 'region', strand: 1 },
+          ]}
+        />,
+      );
+      const rows = screen.getAllByTestId('annotator-result-row');
+      expect(rows).toHaveLength(2);
+    });
+
+    it('Accept-all count excludes suppressed duplicates', () => {
+      const onAcceptMany = vi.fn();
+      render(
+        <LevelPanel
+          results={{ 'common-features-homology': PREDICTED_OVERLAPPING }}
+          threshold={0}
+          existingAnnotations={[
+            { id: 'existing-ampr', name: 'AmpR', type: 'CDS', start: 100, end: 250, level: 'region', strand: 1 },
+          ]}
+          onAcceptMany={onAcceptMany}
+        />,
+      );
+      const btn = screen.getAllByTestId('annotator-level-accept-all')[0];
+      expect(btn.textContent).toMatch(/1/);
+      fireEvent.click(btn);
+      expect(onAcceptMany).toHaveBeenCalledWith(['cf-2']);
+    });
+  });
+
   it('LEVELS map exports the canonical plugin → level grouping', () => {
     expect(LEVELS.L1).toContain('common-features-homology');
     expect(LEVELS.L2).toContain('orf-scan');

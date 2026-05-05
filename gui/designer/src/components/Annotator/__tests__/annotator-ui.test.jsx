@@ -46,7 +46,10 @@ function resetAnnotatorState() {
 }
 
 const SEQ = 'ATGGCC'.repeat(20);
-const ANNS = [{ id: 'r1', name: 'lacZ', type: 'CDS', start: 0, end: 60, level: 'region', strand: 1 }];
+// Existing CDS placed AWAY from the plugin's predicted region
+// (10..30) so the new same-type overlap filter (Sprint M-X.3
+// follow-up) doesn't hide the predicted hit these tests rely on.
+const ANNS = [{ id: 'r1', name: 'lacZ', type: 'CDS', start: 80, end: 110, level: 'region', strand: 1 }];
 
 beforeEach(() => {
   _resetRegistry();

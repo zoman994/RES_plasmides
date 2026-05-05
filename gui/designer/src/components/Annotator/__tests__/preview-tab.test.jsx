@@ -259,6 +259,33 @@ describe('PreviewTab — K4 SequenceView merge + drill-in', () => {
       expect(screen.queryByTestId('mock-ann-g2')).toBeTruthy();
     });
 
+    // Sprint M-X.3 follow-up — biolog: «когда последовательность
+    // аннотирована, он не должен давать поверх те же фичи что уже
+    // есть на плазмиде если они совпадают». Predicted regions that
+    // duplicate (>50% same-type overlap) an existing confirmed
+    // annotation are filtered out of the merged fragment.
+    it('hides predicted regions that overlap existing same-type annotations', () => {
+      const overlapping = {
+        pluginId: 'sigma70-promoter', pluginName: 'σ70',
+        regions: [
+          // Overlaps existing CONFIRMED `c1` AmpR CDS (10..100) >50%
+          // with same type — suppressed.
+          { ...ghost('dup1'), name: 'AmpR-pred', type: 'CDS', start: 20, end: 90, confidence: 0.9 },
+          // Different region — visible.
+          { ...ghost('keep1'), name: 'sigma70', type: 'promoter', start: 500, end: 530, confidence: 0.85 },
+        ],
+      };
+      setResults({ 'sigma70-promoter': overlapping });
+      render(
+        <PreviewTab sequence={SEQUENCE} annotations={CONFIRMED} name="pTest" />
+      );
+      // 1 confirmed + 1 surviving predicted (the AmpR duplicate is
+      // filtered out, the sigma70 promoter survives).
+      expect(screen.getByTestId('mock-ann-count').textContent).toBe('2');
+      expect(screen.queryByTestId('mock-ann-dup1')).toBeNull();
+      expect(screen.queryByTestId('mock-ann-keep1')).toBeTruthy();
+    });
+
     it('non-verdicted ghosts keep their predicted flag (no false positives)', () => {
       setResults({
         'sigma70-promoter': {

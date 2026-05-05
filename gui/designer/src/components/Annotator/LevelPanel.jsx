@@ -35,7 +35,22 @@
 
 import { useState, useMemo } from 'react';
 import { STRINGS } from '../../lib/strings';
+import { overlapFraction } from '../../lib/annotation-edit.js';
 import ResultRow from './ResultRow.jsx';
+
+// Sprint M-X.3 follow-up — biolog: «когда последовательность
+// аннотирована, он не должен давать поверх те же фичи что уже есть
+// на плазмиде если они совпадают». Hide a predicted region from the
+// table if it overlaps >50% with a same-type confirmed annotation.
+function isDuplicateOfConfirmed(predicted, confirmedRegions) {
+  if (!Array.isArray(confirmedRegions) || confirmedRegions.length === 0) return false;
+  for (const c of confirmedRegions) {
+    if (!c || (c.level && c.level !== 'region')) continue;
+    if ((c.type || '') !== (predicted.type || '')) continue;
+    if (overlapFraction(c, predicted) > 0.5) return true;
+  }
+  return false;
+}
 
 const S = STRINGS.importer.annotator;
 
@@ -53,7 +68,7 @@ const LEVEL_COPY = {
   L3: { title: 'level3Title', hint: 'level3Hint' },
 };
 
-function regionsForLevel(levelId, results, threshold) {
+function regionsForLevel(levelId, results, threshold, existingAnnotations) {
   const ids = LEVELS[levelId];
   const out = [];
   for (const pid of ids) {
@@ -61,6 +76,8 @@ function regionsForLevel(levelId, results, threshold) {
     if (!res) continue;
     for (const r of (res.regions || [])) {
       if (Number.isFinite(r.confidence) && r.confidence < (threshold ?? 0)) continue;
+      // Suppress duplicates of already-confirmed annotations.
+      if (isDuplicateOfConfirmed(r, existingAnnotations)) continue;
       const id = r.id || `${r.start}:${r.end}:${r.type || ''}:${r.name || ''}`;
       out.push({ ...r, id, _pluginName: res.pluginName || pid });
     }
@@ -83,6 +100,7 @@ export default function LevelPanel({
   rejectedRegionIds = {},
   pendingEdits = {},
   threshold = 0,
+  existingAnnotations = [],
   onAccept,
   onReject,
   onEditPatch,
@@ -131,6 +149,7 @@ export default function LevelPanel({
           rejectedRegionIds={rejectedRegionIds}
           pendingEdits={pendingEdits}
           threshold={threshold}
+          existingAnnotations={existingAnnotations}
           onAccept={onAccept}
           onReject={onReject}
           onEditPatch={onEditPatch}
@@ -152,6 +171,7 @@ function LevelSection({
   rejectedRegionIds,
   pendingEdits,
   threshold,
+  existingAnnotations,
   onAccept,
   onReject,
   onEditPatch,
@@ -159,8 +179,8 @@ function LevelSection({
   onAcceptMany,
 }) {
   const regions = useMemo(
-    () => regionsForLevel(levelId, results, threshold),
-    [levelId, results, threshold],
+    () => regionsForLevel(levelId, results, threshold, existingAnnotations),
+    [levelId, results, threshold, existingAnnotations],
   );
   const isRunning = isRunningLevel(levelId, running);
   const hasResults = hasResultsForLevel(levelId, results);

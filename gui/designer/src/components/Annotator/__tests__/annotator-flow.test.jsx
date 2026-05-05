@@ -180,6 +180,11 @@ describe('K10 Annotator integration flow', () => {
 
   it('5) append-only re-annotate — DEC-ANN-09 dedup skips overlapping same-type', async () => {
     // Predicted region overlaps existing lacZα 145..200 same-type CDS.
+    // Sprint M-X.3 follow-up — biolog: «не должен давать поверх те
+    // же фичи». The overlap is now caught at DISPLAY time (LevelPanel
+    // / PreviewTab filter the duplicate before the row is even
+    // rendered), so the user can't accept what they shouldn't see.
+    // The save-side DEC-ANN-09 dedup remains as a defence in depth.
     registerPlugin(makeFakePlugin(L1_ID, [
       { id: 'orf:140:210', name: 'overlapping-orf', type: 'CDS', start: 140, end: 210, confidence: 0.85 },
     ]));
@@ -194,13 +199,12 @@ describe('K10 Annotator integration flow', () => {
       />
     );
     act(() => { useStore.getState().openAnnotator({ kind: 'full', sequenceId: 'p1' }); });
-    await waitFor(() => expect(screen.getAllByTestId('annotator-result-accept').length).toBeGreaterThan(0));
-    fireEvent.click(screen.getAllByTestId('annotator-result-accept')[0]);
-    fireEvent.click(screen.getByTestId('annotator-save-button'));
-    // The accepted overlapping hit should be silently dropped by the
-    // create-batch dedup guard. editedAnnotations stays at 1 item.
-    const arg = onUpdateEdits.mock.calls[0][0];
-    expect(arg.editedAnnotations).toHaveLength(1);
-    expect(arg.editedAnnotations[0].name).toBe('lacZα');
+    // Wait for L1 results to land in the slice — the slice update
+    // is what would have produced rows, but the duplicate filter
+    // suppresses the only hit.
+    await waitFor(() => expect(useStore.getState().annotator.results[L1_ID]).toBeTruthy());
+    expect(screen.queryAllByTestId('annotator-result-accept')).toHaveLength(0);
+    expect(screen.queryAllByTestId('annotator-result-row')).toHaveLength(0);
+    expect(screen.getByTestId('annotator-save-button').disabled).toBe(true);
   });
 });
