@@ -14,7 +14,7 @@ Topmost pending P0/P1 takes priority each iteration.
 |----|--------|-------|
 | ~~BUNDLE-10~~ | resolved (f362f07) | ~~PWA Workbox precaches every `**/*.json`~~ → globPatterns drops `json`; CacheFirst runtime rules for plasmid pack + common-features. Precache 24 MB → 833 KiB / 16 entries. |
 | ~~BUNDLE-01~~ | resolved (5de98f7) | ~~No `manualChunks`, single 726 KB main bundle~~ → split into react / db / dnd / xyflow / compress chunks. Main bundle 726→427 KB (gz 212→116). |
-| BUNDLE-04 | pending | Project Flow `flow/*` mounted from nowhere; `@xyflow/react` may ship as dead weight |
+| ~~BUNDLE-04~~ | resolved (verified) | ~~`@xyflow/react` may ship as dead weight~~ → confirmed tree-shaken from production bundle (`grep "xyflow" dist/assets/*.js` returns nothing). The `flow/` directory has no entry-point reach so Rolldown elides it entirely. |
 | PERF-01 | pending | `AATrack` hybrid render translates entire plasmid per line × per frame (~3M codon ops) |
 | ~~PERF-02~~ | resolved | ~~`runPredictors` PWM scan re-slices 6-mers~~ → `scorePwmAt(seq, start, ...)` reads via `charCodeAt` (no slice); PWM theoretical maxima cached at module load (no per-call `Math.max(...row)`); stem-loop matcher walks via charCodeAt + complement-charcode lookup (eliminates slice/reverseComplement/regex match per probe). |
 | ~~PERF-03~~ | resolved | ~~`CatalogColumn` flat-search rebuilds 2800-element pool per keystroke~~ → pre-sized array build (no spread allocation), gated fallback to `Object.values(...).flat()` only when `snapgeneFlat` not yet warm; `ensureSnapgeneFlat()` already fires from useEffect on first non-empty query. |
@@ -43,7 +43,7 @@ Topmost pending P0/P1 takes priority each iteration.
 | PERF-07 | pending | `AnnotationTrack` filters parents/details + runs stacker per line, but the split is line-invariant |
 | PERF-08 | pending | `buildLineAnnMap` allocates a per-line `Array(lineLen)` per render |
 | PERF-09 | pending | Hybrid AATrack hidden-row probe runs `regions.filter` twice + `computeAAOpacity` per cell twice |
-| BUNDLE-03 | pending | `@dagrejs/dagre` declared but never imported |
+| BUNDLE-03 | blocked | `@dagrejs/dagre` declared but never imported. Verified absent from production bundle. Removal via `npm uninstall @dagrejs/dagre` — needs user approval (Project Flow comment says "auto-layout via dagre LR" but actual import is missing). |
 | BUNDLE-05 | pending | `Importer` (~8.7 KLOC) eagerly imported in App.jsx — should lazy via React.lazy |
 | BUNDLE-07 | pending | `restriction-db.js` (40 KB) eagerly imported into 14 files |
 | BUNDLE-08 | pending | `sbol-glyphs.jsx` (24 KB SVG strings) eagerly imported by 8 components |
@@ -66,9 +66,9 @@ Topmost pending P0/P1 takes priority each iteration.
 
 | ID | Status | Title |
 |----|--------|-------|
-| BUNDLE-02 | pending | `zundo` declared, never imported |
-| BUNDLE-09 | pending | `immer` direct dep redundant — comes via Zustand middleware |
-| BUNDLE-11 | pending | `sharp` (30+ MB native) in devDeps but not invoked anywhere |
+| BUNDLE-02 | blocked | `zundo` declared, never imported. Verified absent from production bundle (tree-shaken). Drop via `npm uninstall zundo` to also shrink lockfile/install size — needs user approval. |
+| BUNDLE-09 | blocked | `immer` direct dep is technically redundant (comes via `zustand/middleware/immer`), but removing it from package.json relies on transitive resolution — may break under stricter package managers. Defer to user. |
+| BUNDLE-11 | blocked | `sharp` (30+ MB native) is in devDependencies but no `scripts/` reference. Probably an asset-pipeline reliquary. Removal via `npm uninstall sharp` — needs user approval (ask first: do you have a build script that uses it that I missed?). |
 | BUNDLE-12 | pending | Two CSS systems coexist (Tailwind 4 + `Prototype/prototype-tokens.css`) |
 | ~~DEAD-02~~ | resolved | ~~`api.js` orphan exports~~ → dropped `designPrimers`/`validateGoldenGate`/`calcTm` (server-side; v0.6+ does these on the client). Kept `fetchParts`/`fetchConstructs`/`fetchFeatures`. |
 | ~~DEAD-03~~ | resolved | ~~`hooks/useGeneratePrimers.js` orphan~~ → file deleted (~201 LOC). |
