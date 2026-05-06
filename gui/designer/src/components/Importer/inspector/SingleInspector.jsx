@@ -157,7 +157,14 @@ export default function SingleInspector({
   // asked for shift-click on the bar so we keep its UX simple.
   const onBarSettle = useCallback((pos) => {
     if (typeof pos !== 'number' || !Number.isFinite(pos)) return;
-    if (activeTab !== 'sequence') {
+    // 2026-05-06 — biolog: «при нажатии на колбасу в аннотаторе стало
+    // отправлять сразу обратно на сиквенс вью». Tab strip click used
+    // to force-switch to Sequence regardless of context. Now: jumping
+    // back to Sequence happens only from Overview / History (where
+    // there's no inline sequence view). The Annotations tab embeds
+    // its own sequence preview, so we keep biolog there and let
+    // PreviewTab consume the same `cursorPos` to highlight the click.
+    if (activeTab !== 'sequence' && activeTab !== 'annotations') {
       onActiveTabChange?.('sequence');
     }
     setCursorPos(pos);
@@ -424,13 +431,29 @@ export default function SingleInspector({
   // reference (it's a render-time merge), but the merge itself is the
   // expensive part — useMemo guards against re-running it when only an
   // unrelated piece of state ticks.
+  // While the Annotator is open (activeTab === 'annotations'), surface
+  // ALL predicted regions on the strip — including ones that overlap a
+  // confirmed feature of the same type. 2026-05-06 biolog: «ОРФ на
+  // колбасе аннотатора не показываются (а вот предсказанные промоторы
+  // например показываются)». ORF detector emits `type: 'CDS'`, which
+  // matches existing `CDS` annotations under the duplicate rule and
+  // got silently dropped. In the Annotator the user actively wants to
+  // SEE the ghosts (that's the point), so we force showDuplicates=true
+  // for the strip merge regardless of the global toggle. The toggle in
+  // the Annotator header still controls per-row list filtering.
   const stripAnnotations = useMemo(() => (
     activeTab === 'annotations'
-      ? mergeStripWithPredicted(displayAnnotations, annotatorResults, annotatorThreshold,
-          annotatorAccepted, annotatorRejected, annotatorShowDuplicates)
+      ? mergeStripWithPredicted(
+          displayAnnotations,
+          annotatorResults,
+          annotatorThreshold,
+          annotatorAccepted,
+          annotatorRejected,
+          true, // showDuplicates — see comment above
+        )
       : displayAnnotations
   ), [activeTab, displayAnnotations, annotatorResults, annotatorThreshold,
-      annotatorAccepted, annotatorRejected, annotatorShowDuplicates]);
+      annotatorAccepted, annotatorRejected]);
 
   // Helper: is a tab pre-warmed (= mounted)? In test mode only the
   // active tab is ever warmed (preserves V49 lazy-tabs assertions).
