@@ -175,6 +175,114 @@ export const createLibrarySlice = (set, get) => ({
   },
 
   /**
+   * M-X.5 K5 — onboarding bulk loader. Pulls the demo plasmids from
+   * `/plasmids-data/${slug}.json` for each requested category, builds
+   * a LibraryEntry per plasmid with:
+   *
+   *   tags:        ['demo', `demo:${slug}`, categoryLabel] — three
+   *                tag levels for filtering: «demo» (all demo),
+   *                «demo:<slug>» (specific category), categoryLabel
+   *                (human-readable filter chip).
+   *   folderPath:  `Demo / ${categoryLabel}` — structural placement
+   *                inside the Mine tree.
+   *   origin:      { kind: 'demo_category', categorySlug,
+   *                  sourcePlasmidName, importedAt }.
+   *
+   * Returns `{ ok: true, count, byCategory: { [slug]: count } }`.
+   * On any I/O failure for a category, that category's count is 0
+   * and the others are still loaded — partial success is acceptable
+   * onboarding UX.
+   *
+   * Q1 plan decision: hybrid catalog. The 19-category plasmids-index
+   * stays public/static; only the categories biolog selects via the
+   * onboarding picker materialise into IndexedDB. The other ~12
+   * categories remain accessible through a future «Browse all demo»
+   * mode (out of M-X.5 scope).
+   */
+  loadOnboardingPlasmids: async (categoryEntries) => {
+    if (!Array.isArray(categoryEntries) || categoryEntries.length === 0) {
+      return { ok: false, count: 0, byCategory: {} };
+    }
+    const byCategory = {};
+    let totalCount = 0;
+    const newEntries = [];
+    for (const cat of categoryEntries) {
+      if (!cat || !cat.slug) continue;
+      try {
+        const url = `/plasmids-data/${cat.slug}.json`;
+        const response = await fetch(url);
+        if (!response.ok) {
+          // eslint-disable-next-line no-console
+          console.warn(`[bodgegene] loadOnboardingPlasmids: ${cat.slug} fetch ${response.status}`);
+          byCategory[cat.slug] = 0;
+          continue;
+        }
+        const json = await response.json();
+        const plasmids = Array.isArray(json?.plasmids) ? json.plasmids : [];
+        const importedAt = new Date().toISOString();
+        const folderLabel = cat.label || cat.slug;
+        for (const p of plasmids) {
+          if (!p || !p.sequence) continue;
+          const id = uuidv7();
+          let resourceHash = null;
+          try {
+            resourceHash = await computeResourceHash({
+              sequence: p.sequence,
+              topology: p.topology || 'circular',
+              ends: p.ends || null,
+            });
+          } catch { /* fallback to null */ }
+          newEntries.push({
+            id,
+            kind: 'container',
+            name: p.name || 'unnamed',
+            tags: ['demo', `demo:${cat.slug}`, folderLabel],
+            folderPath: `Demo / ${folderLabel}`,
+            addedAt: importedAt,
+            origin: {
+              kind: 'demo_category',
+              categorySlug: cat.slug,
+              sourcePlasmidName: p.name || 'unnamed',
+              importedAt,
+            },
+            version: 1,
+            payload: {
+              sequence: p.sequence,
+              length: p.length || p.sequence.length,
+              topology: p.topology || 'circular',
+              ends: p.ends || null,
+              annotations: Array.isArray(p.annotations) ? p.annotations : [],
+              organism: p.organism || '',
+              description: p.description || '',
+              resourceHash,
+            },
+            ext: {},
+          });
+        }
+        byCategory[cat.slug] = plasmids.length;
+        totalCount += plasmids.length;
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn(`[bodgegene] loadOnboardingPlasmids: ${cat.slug} error`, err);
+        byCategory[cat.slug] = 0;
+      }
+    }
+    if (newEntries.length === 0) {
+      return { ok: false, count: 0, byCategory };
+    }
+    set(state => {
+      for (const e of newEntries) state.libraryEntries[e.id] = e;
+    });
+    try {
+      await putLibraryEntriesBulk(newEntries);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[bodgegene] loadOnboardingPlasmids bulk persist failed', err);
+    }
+    return { ok: true, count: totalCount, byCategory };
+  },
+
+  /**
    * M-X.5 K10 — manual-edit branching (DEC-LIB-12 ⚓). Sequence in
    * library entries is mutable through branching: any character-level
    * edit creates a new entry with `origin.kind = 'manual_edit'` and a

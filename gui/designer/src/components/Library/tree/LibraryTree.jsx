@@ -15,6 +15,7 @@ import {
 import { LibraryGroupHeader } from './LibraryGroupHeader';
 import { LibraryNestedSubGroup, InlineItemList, SnapgeneCategoryRow } from './LibraryNestedSubGroup';
 import { LibraryItemRow, CatalogCard, EmptyHint, newFolderInputStyle } from './LibraryItemRow';
+import OnboardingNudge from '../onboarding/OnboardingNudge';
 
 const S = STRINGS.importer;
 
@@ -624,7 +625,15 @@ export default function LibraryTree({
               const tree = buildFolderTree([...allPaths]);
               const itemsByPath = new Map(folderGroups.map((g) => [g.tag, g.items]));
               if (tree.length === 0 && topLevelItems.length === 0 && folderDraftKey !== 'mine|') {
-                return <EmptyHint label={S.catalogEmptyGroup} testId="catalog-mine-empty" depth={1} />;
+                // M-X.5 K5 — non-blocking onboarding nudge surfaces inside
+                // the empty Mine group (DEC-LIB-17 ⚓). Click → category
+                // picker → bulk-load demo plasmids.
+                return (
+                  <>
+                    <OnboardingNudge />
+                    <EmptyHint label={S.catalogEmptyGroup} testId="catalog-mine-empty" depth={1} />
+                  </>
+                );
               }
               return (
                 <>
