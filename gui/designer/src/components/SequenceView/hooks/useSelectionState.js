@@ -139,12 +139,31 @@ export function useSelectionState({
     if (!opts.extending && kind !== 'main') return null;
     const lineStart = parseInt(el.dataset.lineStart, 10);
     if (Number.isNaN(lineStart)) return null;
+    // Round-14: bridge line carries data-wraps-origin + data-wrap-at.
+    // Pointer in its WRAP-HALF (offsetCh >= wrapAt) needs to emit an
+    // extended-domain caret (> seqLength), same as a true trailing-
+    // wrap row — biolog «одна буква в призраке не выделяется» came
+    // from bridge wrap-half clamping caret to seqLength when the
+    // pointer was actually past origin.
+    const wrapsOrigin = el.getAttribute && el.getAttribute('data-wraps-origin') === 'true';
+    const bridgeWrapAt = wrapsOrigin
+      ? parseInt(el.dataset.wrapAt || '0', 10)
+      : 0;
     let rect;
     try { rect = el.getBoundingClientRect(); } catch { return null; }
     if (!rect || !rect.width) return null;
     const x = e.clientX - rect.left;
     const rawOffset = x / charPx - LABEL_WIDTH;
     const offsetCh = opts.extending ? Math.ceil(rawOffset) : Math.round(rawOffset);
+    // Bridge wrap-half engagement: pointer at column >= wrapAt is
+    // POST-origin. Map to (offsetCh - wrapAt) plasmid coord +
+    // seqLength to put the caret in the extended-trailing domain.
+    if (wrapsOrigin && Number.isFinite(bridgeWrapAt) && bridgeWrapAt > 0
+        && offsetCh > bridgeWrapAt) {
+      const cpl = charsPerLine || 80;
+      const wrapPos = Math.max(0, Math.min(cpl - bridgeWrapAt, offsetCh - bridgeWrapAt));
+      return wrapPos + seqLength;
+    }
     const lineLen = Math.min(charsPerLine || 80, seqLength - lineStart);
     const clamped = Math.max(0, Math.min(lineLen, offsetCh));
     const realPos = lineStart + clamped;
