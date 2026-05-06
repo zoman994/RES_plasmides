@@ -357,6 +357,17 @@ body {
   .save-flash-bounce { animation: none; }
 }
 
+/* ─── SequenceView caret glide ──────────────────────────────────── */
+.sequence-view-caret-anim {
+  /* 80 ms linear is fast enough that arrow-key holds don't feel
+     laggy yet smooth enough that strip-drag visibly glides through
+     the nucleotides. Transform-only animation = pure GPU. */
+  transition: transform 80ms linear;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sequence-view-caret-anim { transition: none; }
+}
+
 /* ─── Splash fade-in (root) ─────────────────────────────────────── */
 @keyframes app-fade-in {
   from { opacity: 0; }

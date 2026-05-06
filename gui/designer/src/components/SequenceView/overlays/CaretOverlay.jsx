@@ -67,20 +67,30 @@ export default function CaretOverlay({ caretPos, charPx, containerRef, showBotto
   }, [caretPos, charPx, containerRef, showBottomStrand]);
 
   if (!box) return null;
+  // 2026-05-06 — biolog: «хочу чтобы каретка курсора двигалась не
+  // рывками а как бы быстро проходила визуально через каждый
+  // нуклеотид». Translate via `transform` instead of `left`/`top`
+  // so the position update can be GPU-composited; pair with a short
+  // 80 ms linear transition. On a fast drag through the strip the
+  // caret glides instead of jumping. honoured `prefers-reduced-motion`
+  // through CSS class below — no animation when user opted out.
   return (
     <div
       data-testid="sequence-view-caret"
       data-caret-pos={caretPos}
+      className="sequence-view-caret-anim"
       style={{
         position: "absolute",
-        left: box.left,
-        top: box.top,
+        left: 0,
+        top: 0,
         height: box.height,
         width: 1.5,
+        transform: `translate3d(${box.left}px, ${box.top}px, 0)`,
         background: "var(--accent-500, #f97316)",
         boxShadow: "0 0 0 0.5px #000",
         pointerEvents: "none",
         zIndex: 5,
+        willChange: "transform",
       }}
     />
   );

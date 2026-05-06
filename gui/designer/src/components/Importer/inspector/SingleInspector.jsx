@@ -174,16 +174,17 @@ export default function SingleInspector({
   }, [activeTab, onActiveTabChange]);
 
   // Live drag scrub — fires every pointermove. Always update the
-  // cursor visual; only push a scroll when biolog is already on the
-  // Sequence tab (no point auto-switching tabs mid-drag, that would
-  // yank context away while they're still aiming). Same selection-
-  // collapse rule as onBarSettle.
+  // cursor visual; push a scroll when biolog is on a tab that hosts
+  // a sequence view — Sequence (the regular path) OR Annotations
+  // (the embedded Annotator's PreviewTab also consumes pendingScroll
+  // since 2026-05-06). Other tabs just update cursor metadata
+  // (Overview shows the caret on the strip itself).
   const onBarScrub = useCallback((pos) => {
     if (typeof pos !== 'number' || !Number.isFinite(pos)) return;
     setCursorPos(pos);
     setCursorAnchor(pos);
     setCursorSelectionMode('dna');
-    if (activeTab === 'sequence') {
+    if (activeTab === 'sequence' || activeTab === 'annotations') {
       setPendingScroll({ pos, tick: Date.now(), instant: true });
     }
   }, [activeTab]);
