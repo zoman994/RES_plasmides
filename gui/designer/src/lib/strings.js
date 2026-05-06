@@ -138,6 +138,8 @@ export const STRINGS = {
     closeAria: 'close',
     tabs: {
       identity: 'Identity',
+      // UX-006
+      display: 'Display & Defaults',
       advanced: 'Advanced',
     },
     identity: {
@@ -146,6 +148,22 @@ export const STRINGS = {
       emailLabel: 'Email',
       saveButton: 'Save',
       savedToast: 'Identity saved',
+    },
+    // UX-006 — Display & Defaults aggregates user prefs that used to
+    // be invisible or scattered. Theme + sequence wrap + polymerase +
+    // primer prefix + annotate-on-import default.
+    display: {
+      hint: 'Visual + cloning defaults. Saved to your browser.',
+      themeLabel: 'Theme',
+      seqWrapLabel: 'Sequence wrap',
+      seqWrapHint: 'Characters per line in the Sequence tab. 60 is the GenBank default.',
+      polymeraseLabel: 'Default polymerase',
+      polymeraseHint: 'Used by primer-design Tm + extension-time calculators. Phusion/Q5 += 3 °C, Taq −5 °C.',
+      primerPrefixLabel: 'Primer name prefix',
+      primerPrefixHint: 'Prepended to auto-generated oligo names (e.g. p_ → p_amp_F).',
+      annotateOnImportLabel: 'Annotate on import',
+      annotateOnImportHint: 'Default state of «Annotate now» in the import modal.',
+      annotateOnImportToggle: 'Run predictors automatically',
     },
     advanced: {
       resetWarning: 'Reset will clear IndexedDB and localStorage. All local projects will be deleted.',

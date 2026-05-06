@@ -69,7 +69,13 @@ export default function PreImportModal({
   const [libraryFolders, setLibraryFolders] = useState([]);
   const [projectFolders, setProjectFolders] = useState([]);
   const [pendingNewFolders, setPendingNewFolders] = useState([]);
-  const [annotateNow, setAnnotateNow] = useState(true);
+  // UX-006 — default «Annotate now» honours the user-tunable preference
+  // from Settings → Display & Defaults. Falls back to true when the
+  // store hasn't been hydrated (e.g. test mocks).
+  const annotateOnImportDefault = useStore(
+    (s) => (s.displaySettings ? s.displaySettings.annotateOnImport !== false : true),
+  );
+  const [annotateNow, setAnnotateNow] = useState(annotateOnImportDefault);
   const [keepExisting, setKeepExisting] = useState(true);
   // K2a — multi mode: per-file name overrides keyed by `_fileName`.
   // Single mode leaves this map empty and uses the shared `name`.

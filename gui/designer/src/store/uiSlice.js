@@ -17,6 +17,36 @@ export { ANNOTATOR_STORAGE_KEY, ANNOTATOR_DEFAULTS, selectAnnotator };
 const THEMES = ['light', 'dark'];
 const IMPORTER_MODES = ['advanced', 'simple'];
 
+// UX-006 — Display & Defaults are user preferences that used to be
+// scattered (theme in Topbar only; sequence wrap hardcoded; polymerase
+// implicit; primer prefix invisible; annotate-now flag was a per-modal
+// checkbox without a project-wide default). All consolidated here.
+export const DISPLAY_SETTINGS_STORAGE_KEY = 'bodgegene-display-settings';
+const SEQUENCE_WRAPS = [60, 80, 100, 150];
+const POLYMERASES = ['phusion', 'q5', 'taq', 'kod'];
+export const DISPLAY_SETTINGS_DEFAULTS = Object.freeze({
+  sequenceWrap: 150,
+  polymerase: 'q5',
+  primerPrefix: 'p_',
+  annotateOnImport: true,
+});
+
+function sanitizeDisplaySettings(raw) {
+  const out = { ...DISPLAY_SETTINGS_DEFAULTS };
+  if (!raw || typeof raw !== 'object') return out;
+  if (SEQUENCE_WRAPS.includes(raw.sequenceWrap)) out.sequenceWrap = raw.sequenceWrap;
+  if (POLYMERASES.includes(raw.polymerase)) out.polymerase = raw.polymerase;
+  if (typeof raw.primerPrefix === 'string' && raw.primerPrefix.length <= 12) {
+    out.primerPrefix = raw.primerPrefix;
+  }
+  if (typeof raw.annotateOnImport === 'boolean') out.annotateOnImport = raw.annotateOnImport;
+  return out;
+}
+
+function loadInitialDisplaySettings() {
+  return sanitizeDisplaySettings(getJSON(DISPLAY_SETTINGS_STORAGE_KEY));
+}
+
 // Sprint M-B.3 K7 — user-facing display settings for the new SequenceView.
 // Persisted under SEQUENCE_VIEW_STORAGE_KEY so a biolog's choices survive
 // reload. Defaults match SnapGene-equivalent rendering (DEC-SQV-06 ⚓
@@ -209,9 +239,25 @@ export const createUiSlice = (set) => ({
   agent: loadInitialAgent(),
   importerMode: loadInitialImporterMode(),
   sequenceView: loadInitialSequenceView(),
+  // UX-006 — user-tunable Display & Defaults (theme stays separate so
+  // the Topbar quick-toggle can keep flipping it without going through
+  // the modal). Persisted under DISPLAY_SETTINGS_STORAGE_KEY.
+  displaySettings: loadInitialDisplaySettings(),
   modals: { settings: false, projectInfo: false },
   toasts: [],
   canInstallPwa: false,
+
+  setDisplaySetting: (patch) => {
+    if (!patch || typeof patch !== 'object') return;
+    set((state) => {
+      const merged = sanitizeDisplaySettings({
+        ...state.displaySettings,
+        ...patch,
+      });
+      state.displaySettings = merged;
+      setJSON(DISPLAY_SETTINGS_STORAGE_KEY, merged);
+    });
+  },
 
   setImporterMode: (mode) => {
     if (!IMPORTER_MODES.includes(mode)) return;

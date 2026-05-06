@@ -6,7 +6,23 @@ import { STRINGS } from '../lib/strings';
 
 const TABS = [
   { id: 'identity', labelKey: 'identity' },
+  // UX-006 — Display & Defaults aggregates the user-tunable knobs
+  // that used to be invisible (sequence wrap, polymerase, primer
+  // prefix, annotate-on-import) or scattered (theme in topbar only).
+  { id: 'display', labelKey: 'display' },
   { id: 'advanced', labelKey: 'advanced' },
+];
+
+const SEQ_WRAP_OPTIONS = [60, 80, 100, 150];
+const POLYMERASE_OPTIONS = [
+  { id: 'phusion', label: 'Phusion' },
+  { id: 'q5',      label: 'Q5' },
+  { id: 'taq',     label: 'Taq' },
+  { id: 'kod',     label: 'KOD' },
+];
+const THEME_OPTIONS = [
+  { id: 'light', label: 'Light' },
+  { id: 'dark',  label: 'Dark' },
 ];
 
 export default function SettingsModal() {
@@ -14,6 +30,11 @@ export default function SettingsModal() {
   const agent = useStore(s => s.agent);
   const setAgent = useStore(s => s.setAgent);
   const showToast = useStore(s => s.showToast);
+  // UX-006
+  const theme = useStore(s => s.theme);
+  const setTheme = useStore(s => s.setTheme);
+  const displaySettings = useStore(s => s.displaySettings);
+  const setDisplaySetting = useStore(s => s.setDisplaySetting);
 
   const [tab, setTab] = useState('identity');
   const [name, setName] = useState(agent?.name || '');
@@ -149,6 +170,74 @@ export default function SettingsModal() {
             </div>
           )}
 
+          {tab === 'display' && (
+            <div data-testid="settings-tab-content-display" style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+              <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0 }}>
+                {STRINGS.settings.display.hint}
+              </p>
+
+              {/* Theme */}
+              <SettingRow label={STRINGS.settings.display.themeLabel}>
+                <RadioPills
+                  testId="settings-display-theme"
+                  options={THEME_OPTIONS}
+                  value={theme}
+                  onChange={(v) => setTheme(v)}
+                />
+              </SettingRow>
+
+              {/* Sequence wrap */}
+              <SettingRow label={STRINGS.settings.display.seqWrapLabel} hint={STRINGS.settings.display.seqWrapHint}>
+                <RadioPills
+                  testId="settings-display-seqwrap"
+                  options={SEQ_WRAP_OPTIONS.map((n) => ({ id: n, label: String(n) }))}
+                  value={displaySettings.sequenceWrap}
+                  onChange={(v) => setDisplaySetting({ sequenceWrap: Number(v) })}
+                />
+              </SettingRow>
+
+              {/* Polymerase */}
+              <SettingRow label={STRINGS.settings.display.polymeraseLabel} hint={STRINGS.settings.display.polymeraseHint}>
+                <RadioPills
+                  testId="settings-display-polymerase"
+                  options={POLYMERASE_OPTIONS}
+                  value={displaySettings.polymerase}
+                  onChange={(v) => setDisplaySetting({ polymerase: v })}
+                />
+              </SettingRow>
+
+              {/* Primer prefix */}
+              <SettingRow label={STRINGS.settings.display.primerPrefixLabel} hint={STRINGS.settings.display.primerPrefixHint}>
+                <input
+                  data-testid="settings-display-primer-prefix"
+                  value={displaySettings.primerPrefix}
+                  maxLength={12}
+                  onChange={(e) => setDisplaySetting({ primerPrefix: e.target.value })}
+                  style={{
+                    width: 140, padding: '4px 8px', fontSize: 13,
+                    fontFamily: 'var(--font-mono)',
+                    border: '0.5px solid var(--border-default)',
+                    borderRadius: 'var(--radius-md)',
+                    background: 'var(--surface-2)', color: 'var(--text-primary)',
+                  }}
+                />
+              </SettingRow>
+
+              {/* Annotate-on-import default */}
+              <SettingRow label={STRINGS.settings.display.annotateOnImportLabel} hint={STRINGS.settings.display.annotateOnImportHint}>
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+                  <input
+                    type="checkbox"
+                    data-testid="settings-display-annotate-on-import"
+                    checked={!!displaySettings.annotateOnImport}
+                    onChange={(e) => setDisplaySetting({ annotateOnImport: e.target.checked })}
+                  />
+                  <span>{STRINGS.settings.display.annotateOnImportToggle}</span>
+                </label>
+              </SettingRow>
+            </div>
+          )}
+
           {tab === 'advanced' && (
             <div data-testid="settings-tab-content-advanced">
               <p style={{ fontSize: 13, color: 'var(--danger-fg, #b91c1c)', margin: '0 0 8px' }}>
@@ -199,6 +288,52 @@ export default function SettingsModal() {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// UX-006 — small layout primitives kept inline to avoid spinning up a
+// new file. `SettingRow` is just label-on-top + control-below with a
+// soft hint text underneath. `RadioPills` is a horizontal segmented
+// control rendered as a row of buttons; the active one carries the
+// accent fill.
+function SettingRow({ label, hint, children }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <label style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 500 }}>{label}</label>
+      {children}
+      {hint && (
+        <span style={{ fontSize: 11, color: 'var(--text-tertiary)', lineHeight: 1.4 }}>{hint}</span>
+      )}
+    </div>
+  );
+}
+
+function RadioPills({ options, value, onChange, testId }) {
+  return (
+    <div data-testid={testId} style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap' }}>
+      {options.map((opt) => {
+        const active = opt.id === value;
+        return (
+          <button
+            key={opt.id}
+            type="button"
+            onClick={() => onChange?.(opt.id)}
+            data-testid={testId ? `${testId}-${opt.id}` : undefined}
+            style={{
+              padding: '4px 10px',
+              fontSize: 12,
+              borderRadius: 'var(--radius-md, 6px)',
+              border: active
+                ? '0.5px solid var(--accent-500)'
+                : '0.5px solid var(--border-default, #d6d3d1)',
+              background: active ? 'var(--accent-50)' : 'var(--surface-2)',
+              color: active ? 'var(--accent-text)' : 'var(--text-primary)',
+              cursor: 'pointer',
+            }}
+          >{opt.label}</button>
+        );
+      })}
     </div>
   );
 }

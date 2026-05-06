@@ -58,19 +58,25 @@ describe('K6 — UnderConstruction + DagPlaceholder + SettingsModal', () => {
     expect(document.documentElement.dataset.theme).toBe('light');
   });
 
-  it('SettingsModal no longer has Display tab — defaults to Identity', () => {
+  // UX-006 — Display tab restored 2026-05-06 to host theme + sequence
+  // wrap + polymerase + primer prefix + annotate-on-import default.
+  // (The earlier «no longer has Display tab» assertion came from an
+  // intermediate state where preferences had been moved to localStorage
+  // without a UI surface — see legacy comment in DECISIONS.md.)
+  it('SettingsModal defaults to Identity on open', () => {
     render(<SettingsModal />);
-    expect(screen.queryByTestId('settings-tab-display')).toBeNull();
     expect(screen.getByTestId('settings-tab-content-identity')).toBeTruthy();
   });
 
-  it('SettingsModal sanity: Identity + Advanced tabs only, both reachable', () => {
+  it('SettingsModal: Identity, Display, Advanced tabs all reachable', () => {
     render(<SettingsModal />);
     expect(screen.getByTestId('settings-tab-identity')).toBeTruthy();
+    expect(screen.getByTestId('settings-tab-display')).toBeTruthy();
     expect(screen.getByTestId('settings-tab-advanced')).toBeTruthy();
-    expect(screen.queryByTestId('settings-tab-display')).toBeNull();
     fireEvent.click(screen.getByTestId('settings-tab-advanced'));
     expect(screen.getByTestId('settings-tab-content-advanced')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('settings-tab-display'));
+    expect(screen.getByTestId('settings-tab-content-display')).toBeTruthy();
     fireEvent.click(screen.getByTestId('settings-tab-identity'));
     expect(screen.getByTestId('settings-tab-content-identity')).toBeTruthy();
   });
