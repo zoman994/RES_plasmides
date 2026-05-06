@@ -1,27 +1,66 @@
 # CURRENT_TASK.md
 
-## v0.7.2 финализирован 06.05.2026
+## Sprint M-X.3 — Wrap-tail rendering for circular plasmids in SequenceView
 
-**Статус:** ✅ ЗАКРЫТ — `feature/sequence-view-feature-strip` на коммите `322031c`, версия в `package.json` + `lib/version.js` бампнута 0.7.0 → 0.7.2.
-**Что вошло:** см. `RELEASES.md` блок v0.7.2 — M-X.2 Annotation Editing + embedded Annotator (three-level LevelPanel + ghost drill-in) + UX-1/2/3 + perf wave (predictor Worker + idle prewarm + content-visibility removal) + animation polish.
-**Тесты:** 1421/1422 (1 pre-existing flake `primer-wizard.test.jsx:79`). Build clean. Predictor.worker chunk 12.62 KB.
-**Архив спек:** `docs/SPRINT_M-X.2_ANNOTATION_EDITING_AND_ANNOTATOR.md` + `docs/SPRINT_M-X.2-FIX_ARCH_CLEANUP.md` → `docs/archive/` со штампом `**Статус:** ✅ РЕАЛИЗОВАНО 06.05.2026`.
+**Статус:** 🟢 IN PROGRESS (06.05.2026, ветка `feature/sequence-view-feature-strip` от HEAD `253420a` v0.7.2 release).
+**Спека:** `docs/SPRINT_M-X.3_WRAPTAIL_RENDERING.md`.
+**Закрывает:** TD-WRAPTAIL-RENDERING.
+**Не закрывает:** TD-CIRCULAR-SELECTION (отдельно), TD-ANNOTATIONTRACK-DECOMPOSE-V2 (M-X.3 trick — feature filtering at SequenceLine level, AnnotationTrack не трогаем).
+
+---
+
+## TL;DR
+
+Биолог проектирует праймер на стыке через origin pUC19 (e.g. tail на 2580..18 — спан **через 0**). Сейчас линейный SequenceView обрывается на seqLength → биолог теряет контекст начала. Этот sprint рендерит **2 leading wrap-tail lines** (последние ~160 nt plasmid'а) ПЕРЕД первой реальной строкой и **2 trailing wrap-tail lines** (первые ~160 nt) ПОСЛЕ последней — приглушенно (opacity 0.5 + italic numbers + pointer-events: none). Origin marker (dashed accent-500 line + label «origin / 1») на стыках wrap-tail ↔ main. Auto-disable когда plasmid + 3 reserve lines умещается в viewport. Linear topology — никаких изменений.
 
 ---
 
-## Следующий цикл — биолог решает
+## K-план
 
-**Кандидаты (по `PROJECT_STATE.md` «Что дальше» + `docs/ARCHITECTURE_v2.md` §7 Roadmap):**
+### K1 — `lib/wrap-tail.js` pure helpers + tests (TDD-first)
+- [ ] `shouldEnableWrapTail({ circular, seqLength, cpl, viewportHeight, lineHeight })` → bool
+- [ ] `pickWrapTailLines({ totalMainLines })` → 0/1/2
+- [ ] `buildWrapTailLines({ fullSeq, cpl, leadingCount, trailingCount })` → `{leading: [], trailing: []}`
+- [ ] `filterAnnotationsForLine(annotations, lineStart, lineEnd)` → filtered array
+- [ ] `wrap-tail.test.js` — ~7 unit tests, все green
 
-1. **M-X.3 Wrap-tail rendering** — circular plasmid SequenceView wraps от 3' до 5' конца через origin (TD-WRAPTAIL-RENDERING).
-2. **M-X.4 Library Save Flow** — overwrite / save as version / migration accepted ghosts → confirmed annotations в `entry.payload.annotations` (закроет TD-LIBRARY-WRITE-API).
-3. **M-C Container Window kickoff** — следующий milestone по Roadmap. Использует SequenceView (B.3) + caret sync (DEC-SV-01) + scrollIntoView pattern (DEC-SV-02). Промоция кандидатов ⚓ DEC-LIB-11 / DEC-EDIT-PARITY-01 / DEC-IMPORTER-TARGETS-01 если паттерн повторяется.
-4. **AnnotationTrack декомпозиция** (TD-ANNOTATIONTRACK-DECOMPOSE-V2) — 41.6 KB hard violation остался, разнести на ~3 sub-modules (predicted styling / drag handlers / hover overlays). Может идти параллельно с любым выше.
-5. **NCBI GenBank integration** (TD-OPEN-PLASMID-REPOS) — public domain, fungal-focused queries для тематики Игоря.
+### K2 — Wire wrap-tail lines into SequenceView render
+- [ ] `SequenceView/index.jsx` — импорт helpers, useMemo wrapTailLines, [...leading, ...main, ...trailing] linesJsx
+- [ ] `SequenceLine.jsx` — `kind` prop ('main' | 'leading-wrap' | 'trailing-wrap'), wrapper opacity 0.5 + italic numbers + pointer-events:none при kind!=='main', `data-wraptail-kind={kind}`
+- [ ] `wrap-tail-render.test.jsx` — 3 render tests (circular long → leading+main+trailing, linear → main only, circular short auto-disabled)
 
-**До старта следующего:** биолог открывает CHAT_PLAYBOOK_CORE.md §1, перечисляет приоритеты, Chat пишет спеку в `docs/SPRINT_*.md` и копирует задачи сюда.
+### K3 — `OriginMarkerOverlay`
+- [ ] Новый файл `overlays/OriginMarkerOverlay.jsx`
+- [ ] Mount в SequenceView ниже CaretOverlay (z-index)
+- [ ] `origin-marker.test.jsx` — 3 tests
+
+### K4 — Caret + selection фильтрация по `data-wraptail-kind="main"`
+- [ ] `CaretOverlay.jsx` — querySelector добавить `[data-wraptail-kind="main"]`
+- [ ] `useSelectionState.js` — coord-from-pointer ignore non-main lines
+- [ ] `caret-overlay.test.jsx` + `selection-state.test.jsx` — 2 tests
+
+### K5 — Edge cases + ResizeObserver wiring
+- [ ] viewportHeight state в SequenceView, ResizeObserver
+- [ ] `wrapTailEnabled` через `shouldEnableWrapTail`
+- [ ] `wrap-tail-edge.test.jsx` — 2 edge tests
+
+### K6 — Visual acceptance + integration
+- [ ] `wrap-tail-integration.test.jsx` — 3 fixture tests (pUC19)
+- [ ] Биолог проходит 6 visual scenarios (см. §3 K6 спеки)
+- [ ] PASS → финализация (RELEASES.md блок, archive спеки, bump version)
 
 ---
+
+## Команды verification
+
+```bash
+cd gui/designer && npx vitest run && npx vite build
+```
+
+Цель к концу K6: vitest 1422 + ~20 = ~1442 passing.
+
+---
+
+**Запуск:** Code начинает с K1 (pure helpers + TDD). После каждого K — отчёт в этот файл (отметка `[x]` + 1-3 строки итога).
 
 **Дата:** 06.05.2026.
-**Финализатор:** Claude (loop /loop тик).
