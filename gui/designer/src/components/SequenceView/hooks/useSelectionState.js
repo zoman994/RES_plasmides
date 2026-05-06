@@ -97,6 +97,15 @@ export function useSelectionState({
       const lines = containerRef.current?.querySelectorAll('[data-testid="sequence-view-line"]');
       if (!lines) return null;
       for (const candidate of lines) {
+        // Sprint M-X.3 K4 — fallback hit-test ignores wrap-tail
+        // lines so a click on a leading-/trailing-wrap row doesn't
+        // teleport the caret into the dimmed context strip. The
+        // event itself shouldn't reach the wrap-tail wrapper
+        // (pointer-events:none), but the y-bounded fallback
+        // iterates over every <div data-testid="sequence-view-line">
+        // regardless of which one received the original click.
+        const k = candidate.getAttribute('data-wraptail-kind');
+        if (k && k !== 'main') continue;
         let r;
         try { r = candidate.getBoundingClientRect(); } catch { continue; }
         if (e.clientY >= r.top && e.clientY <= r.bottom) {
@@ -105,6 +114,14 @@ export function useSelectionState({
         }
       }
       if (!el) return null;
+    }
+    // Defensive: even if pointer-events:none + the fallback filter
+    // skipped wrap-tail, double-check before reading lineStart so
+    // the resolver returns null for any wrap-tail row that slipped
+    // through (e.g. user-disabled CSS).
+    {
+      const k = el.getAttribute && el.getAttribute('data-wraptail-kind');
+      if (k && k !== 'main') return null;
     }
     const lineStart = parseInt(el.dataset.lineStart, 10);
     if (Number.isNaN(lineStart)) return null;

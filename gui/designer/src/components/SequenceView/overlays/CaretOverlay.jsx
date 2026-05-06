@@ -33,7 +33,19 @@ export default function CaretOverlay({ caretPos, charPx, containerRef, showBotto
     }
     const root = containerRef.current;
     if (!root) return undefined;
-    const lines = root.querySelectorAll('[data-testid="sequence-view-line"]');
+    // Sprint M-X.3 K4 — restrict the caret to the main band. Wrap-tail
+    // lines (data-wraptail-kind="leading-wrap" | "trailing-wrap")
+    // share `data-line-start` values with main:first-child / main:
+    // last-child, so without the kind filter the caret would land on
+    // the dimmed context strip and read as «moved out of plasmid».
+    // Lines without the attribute (legacy / linear topology) are
+    // treated as main.
+    const allLines = root.querySelectorAll('[data-testid="sequence-view-line"]');
+    const lines = [];
+    for (const el of allLines) {
+      const k = el.getAttribute('data-wraptail-kind');
+      if (!k || k === 'main') lines.push(el);
+    }
     if (lines.length === 0) return undefined;
     let target = null;
     for (const el of lines) {
