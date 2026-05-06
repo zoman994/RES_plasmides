@@ -129,6 +129,7 @@ export function buildWrapTailLines({
   cpl,
   leadingCount,
   trailingCount,
+  trailingStart = 0,
 }) {
   const empty = { leading: [], trailing: [] };
   if (!fullSeq || typeof fullSeq !== 'string') return empty;
@@ -167,19 +168,18 @@ export function buildWrapTailLines({
     }
   }
 
-  // Round-12 (06.05.2026): biolog «надо поправить, чтобы вниз так же
-  // был призрачный сиквенс на 200-300 п.о. и можно было вести
-  // выделение через». Trailing wrap-tail strip restored AFTER the
-  // wrap-bridge line — gives the biolog a long ghost-strip to drag
-  // selection across when a feature spans the origin from the
-  // start-of-plasmid side. Bridge keeps inline vertical divider as
-  // the visual «origin» cue; trailing rows duplicate the same
-  // start-of-plasmid chars that bridge's wrap-half already shows
-  // for the first (cpl - wrapAt) positions, then extend further —
-  // symmetric with leading wrap-tail's overlap on main:last.
+  // Round-13 (06.05.2026): biolog «дублирование начала
+  // последовательности, из-за чего она странно выделяется с гапом».
+  // Trailing rows now start AFTER bridge's wrap-half (param
+  // `trailingStart`, computed by the caller as cpl - bridge.wrapAt
+  // — the number of plasmid chars bridge already shows past origin).
+  // No more duplicated chars between bridge wrap-half and
+  // trailing[0]; the visual tape reads as one continuous strip
+  // bridge → trailing[0] → trailing[1] without overlap.
   const trailing = [];
+  const tStartFloor = Math.max(0, Math.floor(trailingStart || 0));
   for (let i = 0; i < trailCnt; i += 1) {
-    const start = i * cplFloor;
+    const start = tStartFloor + i * cplFloor;
     if (start >= seqLen) break;
     const sliceEnd = Math.min(start + cplFloor, seqLen);
     trailing.push({

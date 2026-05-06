@@ -380,13 +380,22 @@ const SequenceView = forwardRef(function SequenceView({
     }
     const count = pickWrapTailLines({ totalMainLines: lines.length });
     if (count === 0) return { leading: [], trailing: [] };
+    // Round-13: trailing rows start where the bridge wrap-half ends,
+    // not at 0. Bridge already shows the first (cpl - wrapAt) chars
+    // past origin; trailing[0] picks up at that position so there's
+    // no duplication and selection paints continuously.
+    const bridge = lines[lines.length - 1];
+    const bridgeWrapped = (bridge && bridge.wrapsOrigin)
+      ? Math.max(0, charsPerLine - bridge.wrapAt)
+      : 0;
     return buildWrapTailLines({
       fullSeq,
       cpl: charsPerLine,
       leadingCount: count,
       trailingCount: count,
+      trailingStart: bridgeWrapped,
     });
-  }, [circular, fullSeq, charsPerLine, lines.length, viewportHeight, mainLineHeight]);
+  }, [circular, fullSeq, charsPerLine, lines, viewportHeight, mainLineHeight]);
   // Hoist filterAnnotationsForLine reference (reserved for a future
   // pre-filter optimisation in AnnotationTrack — for now per-line
   // tracks already clip features by lineStart/lineLen internally).

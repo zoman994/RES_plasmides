@@ -67,6 +67,25 @@ export default function SelectionOverlay({
     // the initial click). caret may have wrapped in either direction.
     const segments = computeSegments(caretAnchor, caretPos, seqLength);
     const out = [];
+    // Round-13: locate the wrap-bridge row (line carrying
+    // `data-wraps-origin="true"`) so trailing-wrap segments can
+    // also paint inside its wrap-half — that half visually
+    // continues the trailing strip across origin and was missed
+    // before, leaving a gap in the highlight.
+    let bridgeEl = null;
+    let bridgeStart = 0;
+    let bridgeWrapAt = 0;
+    for (const el of lines) {
+      if (el.getAttribute('data-wraps-origin') === 'true') {
+        bridgeEl = el;
+        bridgeStart = parseInt(el.dataset.lineStart || '', 10);
+        bridgeWrapAt = parseInt(el.dataset.wrapAt || '', 10);
+        break;
+      }
+    }
+    const hasBridge = bridgeEl != null
+      && Number.isFinite(bridgeStart)
+      && Number.isFinite(bridgeWrapAt);
     for (const seg of segments) {
       // For each segment, restrict the line-iteration to rows of the
       // matching kind — leading-wrap rows for «leading» segments,
@@ -131,6 +150,44 @@ export default function SelectionOverlay({
           });
         }
       }
+      }
+      // Round-13: if this is a trailing-wrap segment AND a wrap-
+      // bridge row exists, also paint inside the bridge's wrap-half.
+      // Bridge wrap-half visually shows plasmid coords [0 .. cpl-wrapAt)
+      // at columns [wrapAt .. cpl). Selection rect within bridge wrap-
+      // half: fromCh = wrapAt + max(0, seg.start),
+      //                  toCh = wrapAt + min(cpl-wrapAt, seg.end).
+      if (seg.kind === 'trailing-wrap' && hasBridge && bridgeWrapAt < cpl) {
+        const bridgeWrapLen = cpl - bridgeWrapAt;
+        const fromInWrap = Math.max(0, seg.start);
+        const toInWrap = Math.min(bridgeWrapLen, seg.end);
+        if (toInWrap > fromInWrap) {
+          const fromCh = bridgeWrapAt + fromInWrap;
+          const toCh = bridgeWrapAt + toInWrap;
+          const left = (bridgeEl.offsetLeft || 0) + (LABEL_WIDTH + fromCh) * charPx;
+          const width = (toCh - fromCh) * charPx;
+          const topStrand = bridgeEl.querySelector('[data-testid="sequence-view-strands-top"]');
+          let dnaTop;
+          let dnaHeight;
+          if (topStrand) {
+            const bottomStrand = bridgeEl.querySelector('[data-testid="sequence-view-strands-bottom"]');
+            dnaTop = bridgeEl.offsetTop + topStrand.offsetTop;
+            if (bottomStrand) {
+              const bottomY = bridgeEl.offsetTop + bottomStrand.offsetTop + bottomStrand.offsetHeight;
+              dnaHeight = bottomY - dnaTop;
+            } else {
+              dnaHeight = topStrand.offsetHeight;
+            }
+          } else {
+            dnaTop = bridgeEl.offsetTop;
+            dnaHeight = Math.max(8, bridgeEl.offsetHeight - 14);
+          }
+          out.push({
+            left, top: dnaTop, width, height: dnaHeight,
+            key: `${bridgeStart}:bridge-wrap:dna`,
+            kind: 'dna',
+          });
+        }
       }
     }
     setRects(out);

@@ -98,6 +98,8 @@ const SequenceLine = memo(function SequenceLine({
       data-testid="sequence-view-line"
       data-line-start={line.start}
       data-wraptail-kind={kind}
+      data-wraps-origin={line.wrapsOrigin ? "true" : undefined}
+      data-wrap-at={line.wrapsOrigin ? String(line.wrapAt) : undefined}
       data-tracks-ready={tracksReady ? "true" : "false"}
       style={{
         // Wrap-tail lines render dimmed so they read as «context»;
