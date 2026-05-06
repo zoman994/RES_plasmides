@@ -53,19 +53,22 @@ beforeEach(() => {
 afterEach(() => { cleanup(); });
 
 describe('M-X.3 K6 — pUC19 fixture integration', () => {
-  it('renders wrap-tail strips on both sides of the main band', { timeout: TEST_TIMEOUT }, () => {
+  it('renders leading wrap-tail; trailing folded inline (round-10)', { timeout: TEST_TIMEOUT }, () => {
     render(<SequenceView fragments={[pucShaped]} circular />);
     const lines = screen.getAllByTestId('sequence-view-line');
     const kinds = lines.map((el) => el.getAttribute('data-wraptail-kind'));
     expect(kinds.filter((k) => k === 'leading-wrap').length).toBe(2);
-    expect(kinds.filter((k) => k === 'trailing-wrap').length).toBe(2);
+    // Round-10: trailing wrap-tail no longer separate rows.
+    expect(kinds.filter((k) => k === 'trailing-wrap').length).toBe(0);
     expect(kinds.filter((k) => k === 'main').length).toBe(Math.ceil(2686 / 80));
   });
 
-  it('renders both origin markers for the wrap-tail-enabled fixture', { timeout: TEST_TIMEOUT }, () => {
+  it('renders top origin marker; bottom folded inline (round-10)', { timeout: TEST_TIMEOUT }, () => {
     render(<SequenceView fragments={[pucShaped]} circular />);
     expect(screen.queryByTestId('sequence-view-origin-marker-top')).toBeTruthy();
-    expect(screen.queryByTestId('sequence-view-origin-marker-bottom')).toBeTruthy();
+    // Round-10: bottom marker replaced by inline vertical divider
+    // INSIDE the wrap-bridge line.
+    expect(screen.queryByTestId('sequence-view-origin-marker-bottom')).toBeFalsy();
   });
 
   it('linear toggle drops every wrap-tail strip and origin marker', { timeout: TEST_TIMEOUT }, () => {

@@ -79,6 +79,12 @@ const SequenceLine = memo(function SequenceLine({
   // visible separator across the boundary — biolog: «внизу с новой
   // строки идёт призрачная часть» fix.
   nextKind = 'main',
+  // Round-10 (06.05.2026): wrap-bridge metadata. When `line.wrapsOrigin`
+  // is true, the row covers [line.start..seqLength) ∪ [0..wrapAt-...]
+  // — the LAST main row extended to a full cpl by appending wrap
+  // chars from the plasmid start. RulerTrack splits its labels at
+  // wrapAt; an inline vertical divider goes there too.
+  seqLength = 0,
 }) {
   const annMap = useMemo(
     () => buildLineAnnMap(features, line.start, line.seq.length),
@@ -100,6 +106,7 @@ const SequenceLine = memo(function SequenceLine({
         // useSelectionState resolver gates wrap-tail engagement by
         // its `extending` flag — pointermove during a drag accepts,
         // a plain click bails.
+        position: 'relative',
         opacity: isWrapTail ? 0.6 : undefined,
         borderLeft: isWrapTail ? '3px solid var(--accent-500, #f97316)' : undefined,
         background: isWrapTail ? 'color-mix(in oklab, var(--accent-500, #f97316) 4%, transparent)' : undefined,
@@ -167,7 +174,46 @@ const SequenceLine = memo(function SequenceLine({
         lineLen={line.seq.length}
         charPx={charPx}
         labelChars={LABEL_WIDTH}
+        wrapAt={line.wrapsOrigin ? line.wrapAt : undefined}
+        seqLength={line.wrapsOrigin ? seqLength : undefined}
       />
+      {/* Round-10 inline origin divider: vertical bar + label INSIDE
+          the line at column `wrapAt`. Biolog «просто поставить
+          вертикальный разделитель и все. но новой строки быть не
+          должно». */}
+      {line.wrapsOrigin && line.wrapAt > 0 && (
+        <div
+          aria-hidden
+          style={{
+            position: 'absolute',
+            left: (LABEL_WIDTH + line.wrapAt) * charPx - 1,
+            top: 0,
+            bottom: 0,
+            width: 2,
+            background: 'var(--accent-500, #f97316)',
+            pointerEvents: 'none',
+            zIndex: 3,
+          }}
+        >
+          <span
+            style={{
+              position: 'absolute',
+              left: -28,
+              top: -2,
+              fontSize: 9,
+              fontWeight: 600,
+              color: '#fff',
+              background: 'var(--accent-500, #f97316)',
+              padding: '1px 5px',
+              borderRadius: 3,
+              fontFamily: 'var(--font-mono, monospace)',
+              letterSpacing: '0.04em',
+              whiteSpace: 'nowrap',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
+            }}
+          >▶ 1</span>
+        </div>
+      )}
       {/*
         * DNA-first layout (03.05.2026): both DNA strands render
         * IMMEDIATELY after the ruler so the biolog's eye lands on

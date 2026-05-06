@@ -82,6 +82,48 @@ export function pickWrapTailLines({ totalMainLines }) {
   return 0;
 }
 
+/**
+ * Round-10 (06.05.2026 biolog «новой строки быть не должно»):
+ * trailing wrap-tail moved INLINE — the last main line is widened to
+ * a full cpl by appending wrap chars from the plasmid start, with a
+ * vertical origin divider INSIDE the line at `wrapAt` (= number of
+ * real-plasmid chars before the wrap). Returns null when the last
+ * line is already a full cpl (no wrap needed) or when the inputs
+ * are invalid / linear.
+ *
+ * Output: {
+ *   start, seq, wrapAt, kind: 'main', wrapsOrigin: true
+ * }
+ *  - `start` is the plasmid coord where this line begins
+ *  - `seq` is `cpl` chars: real_chars_to_seqLen + wrap_chars_from_origin
+ *  - `wrapAt` is the column index where origin sits (== number of
+ *     real chars in the line)
+ */
+export function buildWrapBridgeLine({ fullSeq, cpl, circular }) {
+  if (!circular || !fullSeq || typeof fullSeq !== 'string') return null;
+  const cplFloor = Math.max(1, Math.floor(cpl || 0));
+  const seqLen = fullSeq.length;
+  if (seqLen === 0) return null;
+  const totalLines = Math.ceil(seqLen / cplFloor);
+  if (totalLines < 2) return null; // 1-line plasmid: nothing to bridge
+  const lastStart = (totalLines - 1) * cplFloor;
+  const realChars = seqLen - lastStart;
+  if (realChars >= cplFloor) return null; // last line already full cpl
+  const wrapNeeded = cplFloor - realChars;
+  // Defensive: don't wrap past plasmid (a tiny plasmid where
+  // wrapNeeded > seqLen would just re-render the whole thing —
+  // pointless context).
+  const wrapTake = Math.min(wrapNeeded, seqLen);
+  const seq = fullSeq.slice(lastStart) + fullSeq.slice(0, wrapTake);
+  return {
+    start: lastStart,
+    seq,
+    wrapAt: realChars,
+    kind: 'main',
+    wrapsOrigin: true,
+  };
+}
+
 export function buildWrapTailLines({
   fullSeq,
   cpl,
@@ -125,22 +167,14 @@ export function buildWrapTailLines({
     }
   }
 
+  // Round-10 (06.05.2026): trailing wrap-tail is no longer a
+  // separate strip below main:last. It's now folded INLINE via
+  // buildWrapBridgeLine — main:last extends to a full cpl with
+  // wrap chars and a vertical origin divider. Trailing return
+  // stays empty for compatibility with code that still iterates
+  // wrapTailLines.trailing (call sites have been updated).
+  void trailCnt;
   const trailing = [];
-  // Trailing wrap-tail = first trailCnt × cpl nucleotides of the
-  // plasmid, naive grid alignment from 0. Symmetric to the leading
-  // shift-anchor on the other side of the origin marker: main:last
-  // ends on the plasmid's final nucleotide, then the origin marker,
-  // then trailing starts fresh from position 0.
-  for (let i = 0; i < trailCnt; i += 1) {
-    const start = i * cplFloor;
-    if (start >= seqLen) break;
-    const sliceEnd = Math.min(start + cplFloor, seqLen);
-    trailing.push({
-      start,
-      seq: fullSeq.slice(start, sliceEnd),
-      kind: 'trailing-wrap',
-    });
-  }
 
   return { leading, trailing };
 }

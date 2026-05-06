@@ -31,20 +31,35 @@ const ROW_HEIGHT = LABEL_BAND_HEIGHT + TICK_BAND_HEIGHT;
  * @param {number} props.lineLen — number of nucleotides on this row
  * @param {number} props.charPx — pixel width of one monospace character
  * @param {number} props.labelChars — gutter width in characters
+ * @param {number} [props.wrapAt] — Round-10 wrap-bridge: column index
+ *   where the line crosses origin. Chars before wrapAt belong to the
+ *   end-of-plasmid coords (lineStart + ci + 1); chars at or after
+ *   wrapAt belong to the START of plasmid (ci - wrapAt + 1).
+ * @param {number} [props.seqLength] — total plasmid length (for the
+ *   wrap-bridge label split).
  */
-function RulerTrack({ lineStart, lineLen, charPx, labelChars }) {
+function RulerTrack({ lineStart, lineLen, charPx, labelChars, wrapAt, seqLength }) {
   if (!lineLen || charPx <= 0) return null;
   const widthPx = (labelChars + lineLen) * charPx;
   const lineEnd = lineStart + lineLen;
   const tickTop = LABEL_BAND_HEIGHT;
   const tickBottom = ROW_HEIGHT - 1;
   const minorTickTop = LABEL_BAND_HEIGHT + 3;
+  const hasWrap = Number.isFinite(wrapAt) && wrapAt > 0
+    && Number.isFinite(seqLength) && seqLength > 0
+    && wrapAt < lineLen;
 
   const ticks = [];
   for (let ci = 0; ci < lineLen; ci++) {
-    const absPos = lineStart + ci + 1; // 1-based for biolog convention
+    // Round-10 wrap-bridge label split: ci >= wrapAt → second-half
+    // chars are the START of the plasmid wrapped onto this line.
+    const inWrapHalf = hasWrap && ci >= wrapAt;
+    const absPos = inWrapHalf ? (ci - wrapAt + 1) : (lineStart + ci + 1);
     const isMajor = absPos % TICK_MAJOR_EVERY === 0;
     const isMinor = !isMajor && absPos % TICK_MINOR_EVERY === 0;
+    // Suppress the major tick that would land RIGHT on the wrap
+    // seam — looks ugly with the vertical divider overlay there.
+    if (hasWrap && ci === wrapAt && (isMajor || isMinor)) continue;
     if (!isMajor && !isMinor) continue;
     const x = (labelChars + ci + 0.5) * charPx;
     ticks.push(

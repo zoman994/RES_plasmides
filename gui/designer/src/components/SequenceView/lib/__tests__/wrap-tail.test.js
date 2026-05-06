@@ -81,28 +81,20 @@ describe('pickWrapTailLines', () => {
   });
 });
 
-describe('buildWrapTailLines', () => {
-  it('shift-anchors leading so the LAST leading line ends on seqLen', () => {
-    // 320 chars / cpl=80 = 4 grid-aligned main lines. leading=2 →
-    // shift anchor: leading covers seqLen-160..seqLen = 160..320,
-    // splits into [160..240, 240..320] which IS grid-aligned here.
+describe('buildWrapTailLines (round-10: trailing folded inline)', () => {
+  it('returns leading shift-anchored to seqLen; trailing always empty (round-10)', () => {
     const seq = 'A'.repeat(80) + 'C'.repeat(80) + 'G'.repeat(80) + 'T'.repeat(80);
     const out = buildWrapTailLines({ fullSeq: seq, cpl: 80, leadingCount: 2, trailingCount: 2 });
     expect(out.leading).toHaveLength(2);
     expect(out.leading[0]).toEqual({ start: 160, seq: 'G'.repeat(80), kind: 'leading-wrap' });
     expect(out.leading[1]).toEqual({ start: 240, seq: 'T'.repeat(80), kind: 'leading-wrap' });
-    // trailing keeps grid alignment from 0.
-    expect(out.trailing[0]).toEqual({ start: 0, seq: 'A'.repeat(80), kind: 'trailing-wrap' });
-    expect(out.trailing[1]).toEqual({ start: 80, seq: 'C'.repeat(80), kind: 'trailing-wrap' });
+    // Round 10: trailing wrap-tail is folded INLINE into a wrap-bridge
+    // line built by buildWrapBridgeLine, not returned here. Biolog
+    // «новой строки быть не должно».
+    expect(out.trailing).toEqual([]);
   });
 
   it('shift-anchors leading even when seqLen is not a multiple of cpl', () => {
-    // 250 chars / cpl=80. Without shift the last main line was 240..250
-    // (10 chars). With shift, leading 2 × 80 = 160 nt before seqLen:
-    // leading[0] = 90..170 (80 chars), leading[1] = 170..250 (80 chars).
-    // Both lines are FULL width — biolog 06.05.2026 round 6:
-    // «должно быть черта и сразу за чертой призрачный сиквенс
-    // другого конца» (no fragmentary trailing line).
     const seq = 'A'.repeat(80) + 'C'.repeat(80) + 'G'.repeat(80) + 'T'.repeat(10);
     const out = buildWrapTailLines({ fullSeq: seq, cpl: 80, leadingCount: 2, trailingCount: 1 });
     expect(out.leading).toHaveLength(2);
@@ -110,17 +102,10 @@ describe('buildWrapTailLines', () => {
     expect(out.leading[0].seq.length).toBe(80);
     expect(out.leading[1].start).toBe(170);
     expect(out.leading[1].seq.length).toBe(80);
-    // Last leading line MUST end exactly at seqLen.
     expect(out.leading[1].start + out.leading[1].seq.length).toBe(seq.length);
-    // Trailing still grid-aligned from 0.
-    expect(out.trailing[0]).toEqual({ start: 0, seq: 'A'.repeat(80), kind: 'trailing-wrap' });
   });
 
   it('pUC19-shaped 4948 bp / cpl=140 — leading ends at 4948', () => {
-    // Real biolog fixture (pGEX-2T 4948 bp). Round-6 specifically
-    // pinned this case: leading should be 4668..4948 split into
-    // 4668..4808 (140 nt) and 4808..4948 (140 nt), no fragmentary
-    // 48-char tail.
     const seq = 'X'.repeat(4948);
     const out = buildWrapTailLines({ fullSeq: seq, cpl: 140, leadingCount: 2, trailingCount: 2 });
     expect(out.leading).toHaveLength(2);
@@ -131,10 +116,40 @@ describe('buildWrapTailLines', () => {
     expect(out.leading[1].start + out.leading[1].seq.length).toBe(4948);
   });
 
-  it('returns empty arrays when leadingCount or trailingCount is 0', () => {
+  it('returns empty arrays when leadingCount is 0', () => {
     const seq = 'A'.repeat(160);
     expect(buildWrapTailLines({ fullSeq: seq, cpl: 80, leadingCount: 0, trailingCount: 0 }))
       .toEqual({ leading: [], trailing: [] });
+  });
+});
+
+describe('buildWrapBridgeLine (round-10 inline trailing wrap)', () => {
+  it('extends partial last main line to a full cpl with wrap chars', async () => {
+    const { buildWrapBridgeLine } = await import('../wrap-tail.js');
+    // 100 chars / cpl=80: last main line was 80..100 (20 chars).
+    // Bridge extends with first (80-20)=60 chars from origin.
+    const seq = 'A'.repeat(80) + 'C'.repeat(20);
+    const bridge = buildWrapBridgeLine({ fullSeq: seq, cpl: 80, circular: true });
+    expect(bridge).not.toBeNull();
+    expect(bridge.start).toBe(80);
+    expect(bridge.wrapAt).toBe(20);
+    expect(bridge.seq.length).toBe(80);
+    expect(bridge.seq.slice(0, 20)).toBe('C'.repeat(20));
+    expect(bridge.seq.slice(20)).toBe('A'.repeat(60));
+    expect(bridge.kind).toBe('main');
+    expect(bridge.wrapsOrigin).toBe(true);
+  });
+
+  it('returns null on linear topology', async () => {
+    const { buildWrapBridgeLine } = await import('../wrap-tail.js');
+    const seq = 'A'.repeat(100);
+    expect(buildWrapBridgeLine({ fullSeq: seq, cpl: 80, circular: false })).toBeNull();
+  });
+
+  it('returns null when last line is already full cpl', async () => {
+    const { buildWrapBridgeLine } = await import('../wrap-tail.js');
+    const seq = 'A'.repeat(160); // 2 lines × 80, both full
+    expect(buildWrapBridgeLine({ fullSeq: seq, cpl: 80, circular: true })).toBeNull();
   });
 });
 

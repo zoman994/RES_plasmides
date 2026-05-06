@@ -56,6 +56,7 @@ import {
   shouldEnableWrapTail,
   pickWrapTailLines,
   buildWrapTailLines,
+  buildWrapBridgeLine,
   filterAnnotationsForLine,
 } from "./lib/wrap-tail.js";
 import { detectORFRanges } from "./lib/orf-ranges.js";
@@ -340,10 +341,24 @@ const SequenceView = forwardRef(function SequenceView({
     return () => ro.disconnect();
   }, []);
 
-  const lines = useMemo(
+  const baseLines = useMemo(
     () => linesFromSeq(fullSeq, charsPerLine),
     [fullSeq, charsPerLine],
   );
+  // Round-10 (06.05.2026): when circular and last line is partial,
+  // replace it with a wrap-bridge line that extends to a full cpl
+  // by appending chars from the plasmid start. The bridge carries
+  // wrapAt + wrapsOrigin so tracks + the inline origin divider can
+  // adapt. Linear / full-cpl-last falls through unchanged.
+  const lines = useMemo(() => {
+    if (!circular) return baseLines;
+    const bridge = buildWrapBridgeLine({ fullSeq, cpl: charsPerLine, circular });
+    if (!bridge) return baseLines;
+    if (baseLines.length === 0) return baseLines;
+    const out = baseLines.slice(0, -1);
+    out.push(bridge);
+    return out;
+  }, [baseLines, circular, fullSeq, charsPerLine]);
 
   // Sprint M-X.3 K5 — wrap-tail lines with viewport-aware auto-disable.
   // shouldEnableWrapTail returns false when (plasmid + 3 reserve
@@ -603,6 +618,7 @@ const SequenceView = forwardRef(function SequenceView({
         line={line}
         kind={kind}
         nextKind={nextKind}
+        seqLength={seqLength}
         fullSeq={fullSeq}
         features={features}
         primers={primers}
@@ -754,7 +770,11 @@ const SequenceView = forwardRef(function SequenceView({
       />
       <OriginMarkerOverlay
         circular={circular}
-        hasTrailingWrap={wrapTailLines.trailing.length > 0}
+        // Round-10 (06.05.2026): trailing wrap-tail folded inline into
+        // a wrap-bridge line — no separate trailing strip → no bottom
+        // marker. The vertical divider rendered INSIDE the bridge
+        // line by SequenceLine is the trailing-side origin cue now.
+        hasTrailingWrap={false}
         containerRef={containerRef}
       />
       <SelectionContextMenu

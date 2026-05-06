@@ -52,10 +52,12 @@ beforeEach(() => {
 afterEach(() => { cleanup(); });
 
 describe('M-X.3 K3 — OriginMarkerOverlay', () => {
-  it('circular plasmid with wrap-tail renders both top + bottom markers', () => {
+  it('circular plasmid renders top marker; bottom folded inline (round-10)', () => {
     render(<SequenceView fragments={[longCircular]} circular />);
     expect(screen.queryByTestId('sequence-view-origin-marker-top')).toBeTruthy();
-    expect(screen.queryByTestId('sequence-view-origin-marker-bottom')).toBeTruthy();
+    // Round-10: trailing wrap-tail folded into a wrap-bridge line
+    // with an inline vertical divider — no bottom marker overlay.
+    expect(screen.queryByTestId('sequence-view-origin-marker-bottom')).toBeFalsy();
   });
 
   it('linear plasmid renders no origin markers', () => {
