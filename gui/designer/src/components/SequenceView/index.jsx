@@ -144,6 +144,14 @@ const SequenceView = forwardRef(function SequenceView({
   const containerRef = useRef(null);
   const [charPx, setCharPx] = useState(7.2);
   const [charsPerLine, setCharsPerLine] = useState(80);
+  // Sprint M-X.3 K5 — viewport height + measured main-line height
+  // drive `shouldEnableWrapTail`. Updated alongside charPx in the
+  // ResizeObserver below. Defaults are pessimistic so wrap-tail
+  // turns ON on first paint for circular plasmids ≥3 lines (matches
+  // K2 baseline behaviour); the auto-disable kicks in once the real
+  // measurements come back.
+  const [viewportHeight, setViewportHeight] = useState(800);
+  const [mainLineHeight, setMainLineHeight] = useState(120);
   // `measured` gate — see Sprint M-B.3 K7 notes: container mounts
   // immediately so ResizeObserver can observe, but lines don't render
   // until the first valid width measurement comes back. Pre-warm
@@ -305,6 +313,24 @@ const SequenceView = forwardRef(function SequenceView({
       setCharPx((prev) => (prev === chW ? prev : chW));
       setCharsPerLine((prev) => (prev === nextCpl ? prev : nextCpl));
       setMeasured((prev) => (prev ? prev : true));
+      // K5 — viewport + line height for wrap-tail auto-disable.
+      // Read host.clientHeight (visible area) and try to measure
+      // a real main-line height by probing the first
+      // [data-wraptail-kind="main"] line; fall back to the
+      // pessimistic default if no line is in the DOM yet.
+      const vh = host.clientHeight;
+      if (Number.isFinite(vh) && vh > 0) {
+        setViewportHeight((prev) => (prev === vh ? prev : vh));
+      }
+      const firstMain = host.querySelector(
+        '[data-testid="sequence-view-line"][data-wraptail-kind="main"]',
+      );
+      if (firstMain) {
+        const lh = firstMain.offsetHeight;
+        if (Number.isFinite(lh) && lh > 0) {
+          setMainLineHeight((prev) => (prev === lh ? prev : lh));
+        }
+      }
     };
     remeasure();
     if (typeof ResizeObserver === "undefined") return undefined;
@@ -318,14 +344,22 @@ const SequenceView = forwardRef(function SequenceView({
     [fullSeq, charsPerLine],
   );
 
-  // Sprint M-X.3 K2 — wrap-tail lines for circular plasmids. Math
-  // lives in `lib/wrap-tail.js` (K1). On K2 we use a baseline
-  // enable rule (`circular && totalMainLines >= 3`); the full
-  // viewport-aware auto-disable comes in K5 once we wire a
-  // ResizeObserver onto containerRef. Linear topology returns
-  // empty arrays so existing render path is untouched.
+  // Sprint M-X.3 K5 — wrap-tail lines with viewport-aware auto-disable.
+  // shouldEnableWrapTail returns false when (plasmid + 3 reserve
+  // lines) fits the current viewport — biolog already sees the
+  // whole plasmid, no need to dim-duplicate context. Linear
+  // topology, short plasmids (<3 main lines), and tiny seq lengths
+  // also disable. Origin marker still renders for any circular
+  // topology (handled by OriginMarkerOverlay independently).
   const wrapTailLines = useMemo(() => {
-    if (!circular || !fullSeq || lines.length < 3) {
+    if (!circular || !fullSeq) return { leading: [], trailing: [] };
+    if (!shouldEnableWrapTail({
+      circular,
+      seqLength: fullSeq.length,
+      cpl: charsPerLine,
+      viewportHeight,
+      lineHeight: mainLineHeight,
+    })) {
       return { leading: [], trailing: [] };
     }
     const count = pickWrapTailLines({ totalMainLines: lines.length });
@@ -336,11 +370,10 @@ const SequenceView = forwardRef(function SequenceView({
       leadingCount: count,
       trailingCount: count,
     });
-  }, [circular, fullSeq, charsPerLine, lines.length]);
-  // Reference-only consumption guard (kept stable for next K-step's
-  // ResizeObserver-driven wrapTailEnabled refactor — hoists the import
-  // so eslint no-unused-vars isn't tripped during multi-step rollout).
-  void shouldEnableWrapTail;
+  }, [circular, fullSeq, charsPerLine, lines.length, viewportHeight, mainLineHeight]);
+  // Hoist filterAnnotationsForLine reference (reserved for a future
+  // pre-filter optimisation in AnnotationTrack — for now per-line
+  // tracks already clip features by lineStart/lineLen internally).
   void filterAnnotationsForLine;
 
   // Forward-declare some unused (M-D reserved) callbacks so React
