@@ -95,6 +95,9 @@ export const STRINGS = {
     settingsButton: 'Settings',
     projectInfoTitle: 'Project info',
     projectInfoAria: 'project info',
+    // UX-037
+    hotkeyHelpTitle: 'Keyboard shortcuts',
+    hotkeyHelpAria: 'show keyboard shortcuts',
     timeAgo: {
       justNow: 'just now',
       minutes: (n) => `${n} min ago`,
@@ -104,6 +107,11 @@ export const STRINGS = {
       toLight: 'Switch to light theme',
       toDark: 'Switch to dark theme',
     },
+  },
+
+  hotkeyCheatsheet: {
+    title: 'Keyboard shortcuts',
+    hint: 'Press Esc to close.',
   },
 
   projectInfo: {

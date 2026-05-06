@@ -56,13 +56,46 @@ export default function ResultRow({
           {ui.uiStart}..{ui.uiEnd}
         </span>
         {Number.isFinite(merged.confidence) ? (
-          <span style={{
-            padding: '1px 5px', borderRadius: 8, fontSize: 9,
-            background: 'var(--surface-2, #f5f5f4)',
-            color: 'var(--text-secondary)',
-          }}>
-            {(merged.confidence * 100).toFixed(0)}%
-          </span>
+          // UX-016 — was a plain «91%» text pill. pLannotate-style
+          // visual bar gives biolog a glance-readable signal: green
+          // ≥90 «strong», amber 75-89 «moderate», gray <75 «weak».
+          // Width tracks score so high-confidence rows pop visually
+          // before user even reads the number.
+          (() => {
+            const pct = Math.max(0, Math.min(1, merged.confidence));
+            const band = pct >= 0.90 ? 'strong' : pct >= 0.75 ? 'moderate' : 'weak';
+            const fill = band === 'strong'
+              ? 'color-mix(in srgb, #16a34a 70%, transparent)'   // green
+              : band === 'moderate'
+                ? 'color-mix(in srgb, #f59e0b 70%, transparent)' // amber
+                : 'color-mix(in srgb, #9ca3af 60%, transparent)'; // gray
+            const label = `${(pct * 100).toFixed(0)}%`;
+            return (
+              <span
+                title={`Confidence: ${label} (${band})`}
+                aria-label={`confidence ${label} ${band}`}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                  padding: '1px 5px', borderRadius: 8, fontSize: 9,
+                  background: 'var(--surface-2, #f5f5f4)',
+                  color: 'var(--text-secondary)',
+                }}
+              >
+                <span aria-hidden="true" style={{
+                  display: 'inline-block', width: 24, height: 5,
+                  borderRadius: 3, background: 'rgba(0,0,0,0.08)',
+                  position: 'relative', overflow: 'hidden',
+                }}>
+                  <span style={{
+                    position: 'absolute', left: 0, top: 0, bottom: 0,
+                    width: `${(pct * 100).toFixed(0)}%`,
+                    background: fill,
+                  }} />
+                </span>
+                {label}
+              </span>
+            );
+          })()
         ) : null}
       </div>
       {editing ? (

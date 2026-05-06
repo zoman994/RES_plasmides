@@ -999,6 +999,10 @@ function GroupHeader({
         onClick={onToggle}
         data-testid={`importer-catalog-group-${groupKey}`}
         aria-expanded={open}
+        // UX-008 — without an aria-label the group header just announces
+        // «expanded button»; this gives the SR user the actual group
+        // name + item count + state. Matches the visual sighted users see.
+        aria-label={`${label}, ${count ?? 0} items, ${open ? 'expanded' : 'collapsed'}`}
         style={{
           flex: 1,
           display: 'flex', alignItems: 'center', gap: 6,
@@ -1144,6 +1148,7 @@ function NestedSubGroup({
           onClick={onToggle}
           data-testid={testId}
           aria-expanded={open}
+          aria-label={`${label} folder, ${count ?? 0} items, ${open ? 'expanded' : 'collapsed'}`}
           style={{
             flex: 1,
             display: 'flex', alignItems: 'center', gap: 6,
@@ -1156,7 +1161,7 @@ function NestedSubGroup({
             textAlign: 'left',
           }}
         >
-          <span style={{ width: 10, color: 'var(--text-tertiary)' }}>{open ? '▾' : '▸'}</span>
+          <span style={{ width: 10, color: 'var(--text-tertiary)' }} aria-hidden="true">{open ? '▾' : '▸'}</span>
           <span style={{ flex: 1, textAlign: 'left' }}>{label}</span>
           {typeof count === 'number' && (
             <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>{count}</span>
@@ -1333,6 +1338,11 @@ const ItemRow = memo(function ItemRow({ item, onClick, depth = 1, onDelete, dele
         data-testid={`importer-catalog-item-${item.id || item.name}`}
         onClick={onClick}
         className="importer-catalog-item"
+        // UX-008 — screen reader friendliness. Without an aria-label the
+        // catalog button just announces «button» — useless when there
+        // are 700+ rows in the SnapGene tree. The label assembles the
+        // visible text bits the sighted user reads off the row.
+        aria-label={`${item.name || 'unnamed'}, ${length} bp, ${item.topology || 'circular'}`}
         style={{
           flex: 1,
           display: 'flex', alignItems: 'center', gap: 8,

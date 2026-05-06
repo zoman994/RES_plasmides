@@ -250,7 +250,11 @@ export const IMPORTER_STRINGS = {
 
   // Inspector overview / summary categories (K3).
   summaryWhatInFile: 'What is in this file',
-  summarySelection: 'SELECTION',
+  // UX-038 — was «SELECTION» which biolog read as "current text/seq
+  // selection" (UI selection state). The actual content is the marker
+  // gene set used as a selectable phenotype during cloning. Clearer
+  // label removes that confusion.
+  summarySelection: 'MARKERS',
   summarySelectionIcon: '🛡',
   summaryPromoters: 'PROMOTERS',
   summaryPromotersIcon: '📣',
@@ -295,8 +299,12 @@ export const IMPORTER_STRINGS = {
   metaOriginApply: '↻ apply',
   metaOriginHintLabel: 'intergenic regions',
   metaInfo: 'info',
-  metaInfoFromFile: 'From file',
-  metaInfoEnriched: 'Enriched',
+  // UX-029 — was «From file» bare; biolog read it as a property name
+  // and assumed the number was meaningless. Now: «From file: N regions»
+  // (count is appended in the consumer; here we just give the prefix
+  // its full form).
+  metaInfoFromFile: 'Loaded from file',
+  metaInfoEnriched: 'Auto-annotated',
   metaDescription: 'description',
   metaOrganism: 'organism',
   metaSource: 'source',
@@ -393,7 +401,10 @@ export const IMPORTER_STRINGS = {
   preImportExistingAnnsLabel: 'Existing annotations',
   preImportExistingAnnsKeep: (n) => `Keep ${n} existing`,
   preImportExistingAnnsDiscard: 'Discard and re-annotate',
-  preImportSubmit: 'Next',
+  // UX-031 — was «Next» which suggested a multi-step wizard; this is
+  // actually the final commit action that promotes the prepared
+  // import into parsedItems. «Add» reads as the actual outcome.
+  preImportSubmit: 'Add',
   preImportCancel: 'Cancel',
   preImportSourceBadgePaste: 'Pasted',
   preImportSourceBadgeFile: (ext) => ext ? `.${ext.toUpperCase()} file` : 'File',

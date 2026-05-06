@@ -132,26 +132,24 @@ export default function MetaColumn({
 
       <Card label={S.metaTopology}>
         {/* UX-014 — radio buttons used to be icon-only (◯ / —), which
-            biolog couldn't read at a glance and which was inconsistent
-            with PreImportModal where the same toggle has explicit
-            «Linear» / «Circular» labels. Adding text + icon together
-            keeps the compact MetaColumn footprint while removing the
-            guesswork. */}
+            biolog couldn't read at a glance. First fix tried mixing
+            icon + label in one button but the Unicode glyphs collided
+            with the text («значки кривые», 2026-05-06). Now: text-only
+            labels — same compact footprint, zero ambiguity. The
+            ToggleButton's active outline already conveys the state. */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <ToggleButton
             active={isCircular}
             onClick={() => onTopologyChange('circular')}
             title={S.metaTopologyCircularTitle}
             data-testid="importer-meta-topology-circular"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px' }}
-          ><span aria-hidden="true">◯</span><span style={{ fontSize: 11 }}>{S.metaTopologyCircularLabel || 'Circular'}</span></ToggleButton>
+          >{S.metaTopologyCircularLabel || 'Circular'}</ToggleButton>
           <ToggleButton
             active={!isCircular}
             onClick={() => onTopologyChange('linear')}
             title={S.metaTopologyLinearTitle}
             data-testid="importer-meta-topology-linear"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px' }}
-          ><span aria-hidden="true">—</span><span style={{ fontSize: 11 }}>{S.metaTopologyLinearLabel || 'Linear'}</span></ToggleButton>
+          >{S.metaTopologyLinearLabel || 'Linear'}</ToggleButton>
         </div>
       </Card>
 

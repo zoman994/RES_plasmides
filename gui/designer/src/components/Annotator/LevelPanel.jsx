@@ -376,6 +376,12 @@ function LevelSection({
               </button>
             )}
             {pendingIds.length > 0 && (
+              // UX-021 — was primary orange. «Accept all» is a heavy
+              // batch action; primary styling encouraged biolog to
+              // commit without reviewing per-row confidence. Secondary
+              // outline keeps it discoverable while pushing the user
+              // to per-row Accept (or threshold tuning) when they
+              // care about precision.
               <button
                 type="button"
                 data-testid="annotator-level-accept-all"
@@ -386,8 +392,8 @@ function LevelSection({
                   fontSize: 11,
                   borderRadius: 'var(--radius-sm, 3px)',
                   border: '0.5px solid var(--accent-500, #f97316)',
-                  background: 'var(--accent-500, #f97316)',
-                  color: '#fff',
+                  background: 'transparent',
+                  color: 'var(--accent-500, #f97316)',
                   cursor: 'pointer',
                   fontWeight: 500,
                 }}

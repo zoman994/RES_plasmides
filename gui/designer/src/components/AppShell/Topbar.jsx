@@ -1,9 +1,15 @@
+import { useState } from 'react';
 import { useStore, selectIsDirty } from '../../store';
 import { formatHotkey, HOTKEYS } from '../../lib/hotkeys';
 import { STRINGS } from '../../lib/strings';
 import ThemeToggle from '../ThemeToggle';
+import HotkeyCheatsheet from '../HotkeyCheatsheet';
 
 export default function Topbar() {
+  // UX-037 — local state for the keyboard-shortcut cheatsheet overlay.
+  // Toggled from the `?` button in the topbar; mounting is gated so
+  // there's no DOM cost when closed.
+  const [hotkeyHelpOpen, setHotkeyHelpOpen] = useState(false);
   const navStack = useStore(s => s.canvas.navStack);
   const activeFullscreen = useStore(s => s.canvas.activeFullscreen);
   const projectId = useStore(s => s.currentProjectId);
@@ -140,6 +146,7 @@ export default function Topbar() {
               fullscreen: 'importer',
               payload: { target: 'project' },
             })}
+            title={STRINGS.importer.topbarButton}
             style={{
               padding: '4px 10px', fontSize: 12,
               border: '0.5px solid var(--border-default, #d6d3d1)',
@@ -150,6 +157,21 @@ export default function Topbar() {
             }}
           >{STRINGS.importer.topbarButton}</button>
         )}
+        {/* UX-037 — `?` cheatsheet trigger. Single source of truth for
+            every shortcut the app registers. */}
+        <button
+          type="button"
+          data-testid="topbar-hotkey-help"
+          onClick={() => setHotkeyHelpOpen(true)}
+          title={STRINGS.topbar.hotkeyHelpTitle}
+          aria-label={STRINGS.topbar.hotkeyHelpAria}
+          style={{
+            background: 'transparent', border: 'none',
+            padding: '4px 8px', cursor: 'pointer',
+            color: 'var(--text-secondary, #57534e)', fontSize: 13,
+            fontWeight: 500,
+          }}
+        >?</button>
         <span
           data-testid="topbar-save-status"
           style={{ fontSize: 12, color: 'var(--text-tertiary, #78716c)' }}
@@ -170,6 +192,10 @@ export default function Topbar() {
         </button>
         <ThemeToggle />
       </div>
+      <HotkeyCheatsheet
+        open={hotkeyHelpOpen}
+        onClose={() => setHotkeyHelpOpen(false)}
+      />
     </header>
   );
 }
