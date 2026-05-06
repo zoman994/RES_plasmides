@@ -387,13 +387,14 @@ function AnnotationTrack({
                 data-region-predicted={isPredicted ? 'true' : undefined}
                 x={0}
                 y={0}
-                // Round-9 (06.05.2026 biolog): adjacent features
-                // packed onto the same stacking row by lastEnd <= start
-                // used to render with their strokes touching, looking
-                // like a single bounded frame around both. Subtract
-                // 1 px from the right edge so the next rect starts
-                // 1 px past this one, leaving a visible gap.
-                width={Math.max(1, widthRect - 1)}
+                // Round-9/11 (06.05.2026 biolog: «рядом стоящие фичи
+                // не имеющие перекрытия объединяются одной рамкой»):
+                // adjacent features packed on the same stacking row
+                // used to render with strokes touching, reading as a
+                // single bounded frame. Subtract 2 px from the right
+                // edge so the gap is visible at 1× scale on a
+                // typical monitor.
+                width={Math.max(1, widthRect - 2)}
                 height={ROW_HEIGHT}
                 rx={2}
                 fill={fill}

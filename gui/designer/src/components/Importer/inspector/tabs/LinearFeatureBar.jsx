@@ -86,11 +86,20 @@ function clusterByOverlap(items) {
     const ri = find(i), rj = find(j);
     if (ri !== rj) parent[ri] = rj;
   };
+  // 06.05.2026 round-11 (biolog: «рядом стоящие фичи не имеющие
+  // перекрытия объединяются одной рамкой»): require a meaningful
+  // overlap (at least 1 px) — float-precision touching ends used to
+  // cluster two adjacent features into one «общая рамка» when their
+  // pixel ranges drifted by ≤ 0.5 px on rendering. Now neighbours
+  // that only touch stay independent.
+  const OVERLAP_EPSILON = 1; // px
   for (let i = 0; i < N; i++) {
     for (let j = i + 1; j < N; j++) {
       const a = items[i], b = items[j];
       const aR = a.left + a.width, bR = b.left + b.width;
-      if (a.left < bR && b.left < aR) union(i, j); // overlap
+      // Overlap = positive intersection wider than the epsilon.
+      const intersection = Math.min(aR, bR) - Math.max(a.left, b.left);
+      if (intersection > OVERLAP_EPSILON) union(i, j);
     }
   }
   const buckets = new Map();
