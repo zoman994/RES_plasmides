@@ -387,7 +387,13 @@ function AnnotationTrack({
                 data-region-predicted={isPredicted ? 'true' : undefined}
                 x={0}
                 y={0}
-                width={widthRect}
+                // Round-9 (06.05.2026 biolog): adjacent features
+                // packed onto the same stacking row by lastEnd <= start
+                // used to render with their strokes touching, looking
+                // like a single bounded frame around both. Subtract
+                // 1 px from the right edge so the next rect starts
+                // 1 px past this one, leaving a visible gap.
+                width={Math.max(1, widthRect - 1)}
                 height={ROW_HEIGHT}
                 rx={2}
                 fill={fill}

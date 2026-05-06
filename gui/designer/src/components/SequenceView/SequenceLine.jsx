@@ -72,6 +72,13 @@ const SequenceLine = memo(function SequenceLine({
   // so caret/click never lands on a context line. Default 'main'
   // keeps the shape backwards-compatible with linear consumers.
   kind = 'main',
+  // Round-9 (06.05.2026): nextKind tells the wrapper if this line
+  // is the LAST one before a wrap-tail / main boundary. When the
+  // next line is a different kind, we drop the divider (border-bottom
+  // + paddingBottom + marginBottom) so the origin marker is the only
+  // visible separator across the boundary — biolog: «внизу с новой
+  // строки идёт призрачная часть» fix.
+  nextKind = 'main',
 }) {
   const annMap = useMemo(
     () => buildLineAnnMap(features, line.start, line.seq.length),
@@ -101,9 +108,15 @@ const SequenceLine = memo(function SequenceLine({
         // is ONE logical unit. Inter-block separator (paddingBottom 14
         // + 1 px dashed divider + marginBottom 14 → ≈28 px gap) tells
         // the biolog where one DNA segment ends and the next begins.
-        marginBottom: 14,
-        paddingBottom: 14,
-        borderBottom: "1px dashed var(--border-default, #c9c5c1)",
+        // Round-9: SUPPRESS the divider on a wrap-tail / main
+        // boundary — origin marker takes over as the visual cue.
+        // boundaryAhead is true when this row precedes a different-
+        // kind row (last main before trailing-wrap, last leading-wrap
+        // before main). Tighten the gap to a few px for the marker
+        // to sit in.
+        marginBottom: kind !== nextKind ? 6 : 14,
+        paddingBottom: kind !== nextKind ? 4 : 14,
+        borderBottom: kind !== nextKind ? 'none' : "1px dashed var(--border-default, #c9c5c1)",
         // Browser-level paint isolation: scroll-induced repaints stay
         // inside this line's box, neighbours don't repaint.
         contain: "paint",

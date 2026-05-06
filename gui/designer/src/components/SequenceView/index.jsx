@@ -597,20 +597,17 @@ const SequenceView = forwardRef(function SequenceView({
     // include `kind` because leading-wrap and main may share a
     // line.start (degenerate case if main and trailing start
     // overlap); the prefix prevents a React duplicate-key warning.
-    const renderLine = (line, kind) => (
+    const renderLine = (line, kind, nextKind) => (
       <SequenceLine
         key={`${kind}:${line.start}`}
         line={line}
         kind={kind}
+        nextKind={nextKind}
         fullSeq={fullSeq}
         features={features}
         primers={primers}
         reSites={reSites}
         charPx={charPx}
-        // PERF-4 (06.05.2026 round 3): pass scalars instead of the
-        // `settings` object so SequenceLine.memo bails on identity
-        // checks per-field. zustand emitting a fresh slice object on
-        // ANY field change used to invalidate memo for every line.
         showBottomStrand={settings.showBottomStrand}
         framesMode={settings.framesMode}
         primerStyle={settings.primerStyle}
@@ -630,9 +627,30 @@ const SequenceView = forwardRef(function SequenceView({
       />
     );
     const out = [];
-    for (const line of wrapTailLines.leading) out.push(renderLine(line, 'leading-wrap'));
-    for (const line of lines) out.push(renderLine(line, 'main'));
-    for (const line of wrapTailLines.trailing) out.push(renderLine(line, 'trailing-wrap'));
+    // Round-9: each line knows the kind of the NEXT line so the wrap-
+    // tail / main boundary can collapse its divider (origin marker
+    // takes over visually). Build the kind sequence in the right
+    // order — leading first, then main, then trailing.
+    const leading = wrapTailLines.leading;
+    const trailing = wrapTailLines.trailing;
+    for (let i = 0; i < leading.length; i += 1) {
+      const next = i < leading.length - 1
+        ? 'leading-wrap'
+        : (lines.length > 0 ? 'main' : (trailing.length > 0 ? 'trailing-wrap' : 'main'));
+      out.push(renderLine(leading[i], 'leading-wrap', next));
+    }
+    for (let i = 0; i < lines.length; i += 1) {
+      const next = i < lines.length - 1
+        ? 'main'
+        : (trailing.length > 0 ? 'trailing-wrap' : 'main');
+      out.push(renderLine(lines[i], 'main', next));
+    }
+    for (let i = 0; i < trailing.length; i += 1) {
+      // Last trailing line has no following row — keep its divider
+      // for the «end of viewport» visual cue.
+      const next = i < trailing.length - 1 ? 'trailing-wrap' : 'trailing-wrap';
+      out.push(renderLine(trailing[i], 'trailing-wrap', next));
+    }
     return out;
   }, [
     measured, lines, wrapTailLines, fullSeq, features, primers, reSites, charPx,
