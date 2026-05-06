@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { parseFile } from '../../../file-import';
 import { sanitizeWithReport } from '../../../sequence-utils';
 import { detectFormat } from '../../../format-detect';
@@ -71,6 +71,13 @@ export function useImporterState({ mode } = {}) { // eslint-disable-line no-unus
   // then calls `clearPendingAnnotator()`.
   const [pendingAnnotatorFile, setPendingAnnotatorFile] = useState(null);
   const cancelToken = useRef(0);
+  // Live mirror of parsedItems for `updateEdits` write-through (07.05.2026
+  // hot-fix). useCallback closures capture parsedItems lazily — without
+  // a ref the lookup runs on a stale snapshot from before the most recent
+  // setParsedItems. Sync ref on every render so the active edit can read
+  // the current item (in particular `_libraryEntryId`).
+  const parsedItemsRef = useRef([]);
+  useEffect(() => { parsedItemsRef.current = parsedItems; }, [parsedItems]);
 
   const reset = useCallback(() => {
     cancelToken.current += 1;
@@ -420,6 +427,36 @@ export function useImporterState({ mode } = {}) { // eslint-disable-line no-unus
       ...prev,
       [fileName]: { ...(prev[fileName] || {}), ...patch },
     }));
+    // Hot-fix write-through (07.05.2026 — TD-LIBRARY-WRITE-API
+    // until M-X.5 K7 explicit save flow lands). Биолог: «после
+    // сохранения и обновления страницы, аннотация не сохраняется
+    // на сохраненном (импортированном) неаннотированном фрагменте».
+    // Per DEC-LIB-11 Library entries were frozen and edits stayed
+    // transient — refresh dropped them. Quick fix: when patch carries
+    // editedAnnotations AND the active item is a Mine-source library
+    // entry (has _libraryEntryId), forward the array straight to the
+    // library entry's payload. Catalog/paste/file imports stay
+    // transient — they don't have a library entry yet, the user has
+    // to «В библиотеку» first.
+    //
+    // Will be replaced in M-X.5 K7 by a deliberate two-button save
+    // flow («Перезаписать» / «Сохранить как версию» с version
+    // counter + parent reference). Until then, silent overwrite is
+    // closer to what biolog expects than transient state loss.
+    if (patch && Object.prototype.hasOwnProperty.call(patch, 'editedAnnotations')
+        && Array.isArray(patch.editedAnnotations)) {
+      const item = parsedItemsRef.current.find(p => p && p._fileName === fileName);
+      const libId = item && item._libraryEntryId;
+      if (libId) {
+        try {
+          const writer = useStore.getState().writeLibraryEntryAnnotations;
+          if (typeof writer === 'function') {
+            // Fire-and-forget — UI state update is independent.
+            writer(libId, patch.editedAnnotations);
+          }
+        } catch { /* silent — write-through is best-effort */ }
+      }
+    }
   }, []);
 
   const setActiveTab = useCallback((tab) => {

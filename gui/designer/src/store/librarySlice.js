@@ -78,6 +78,49 @@ export const createLibrarySlice = (set, get) => ({
     return safe;
   },
 
+  /**
+   * Hot-fix write-through for annotations on existing library entries.
+   *
+   * Background. Per DEC-LIB-11 (v0.7.2) Library entries are frozen,
+   * annotations live in transient `perFileEdits.editedAnnotations`
+   * inside the Importer state machine. Biolog 07.05.2026 hit the
+   * obvious gap: edit annotation in FeatureEditorModal / drag edges
+   * / H/E hotkeys → save → refresh page → annotations gone (transient
+   * state lost on remount).
+   *
+   * M-X.5 K7 closes this architecturally with explicit save flow
+   * (`Перезаписать` / `Сохранить как версию`). Until K7 lands, this
+   * action provides a silent overwrite — `Importer/lib/importer-state.js`
+   * `updateEdits` calls it whenever a patch carries `editedAnnotations`
+   * AND the active item has a `_libraryEntryId` (Mine source). Catalog
+   * /paste/file imports stay transient until the user explicitly adds
+   * them to the library.
+   *
+   * **Will be replaced by `overwriteLibraryEntryAnnotations` (with
+   * version increment + confirm dialog) and `saveLibraryEntryAsVersion`
+   * (parent reference) in M-X.5 K7.**
+   */
+  writeLibraryEntryAnnotations: async (id, annotations) => {
+    if (!id || !Array.isArray(annotations)) return;
+    const existing = get().libraryEntries[id];
+    if (!existing || existing._pendingDelete) return;
+    const nextPayload = {
+      ...(existing.payload || {}),
+      annotations,
+    };
+    const updated = { ...existing, payload: nextPayload };
+    set(state => {
+      const e = state.libraryEntries[id];
+      if (e) e.payload = nextPayload;
+    });
+    try {
+      await putLibraryEntry(updated);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[bodgegene] writeLibraryEntryAnnotations failed', err);
+    }
+  },
+
   updateLibraryEntryTags: async (id, tags) => {
     const existing = get().libraryEntries[id];
     if (!existing) return;
