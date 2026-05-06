@@ -94,27 +94,46 @@ export function buildWrapTailLines({
   if (!Number.isFinite(cplFloor)) return empty;
 
   const seqLen = fullSeq.length;
+  if (seqLen === 0) return empty;
   const totalLines = Math.ceil(seqLen / cplFloor);
   const leadCnt = Math.max(0, Math.min(Math.floor(leadingCount || 0), totalLines));
   const trailCnt = Math.max(0, Math.min(Math.floor(trailingCount || 0), totalLines));
 
   const leading = [];
-  // Last leadCnt main lines. Start indices = (totalLines - leadCnt) * cpl,
-  // ..., (totalLines - 1) * cpl.
-  for (let i = totalLines - leadCnt; i < totalLines; i += 1) {
-    const start = i * cplFloor;
-    const sliceEnd = Math.min(start + cplFloor, seqLen);
-    leading.push({
-      start,
-      seq: fullSeq.slice(start, sliceEnd),
-      kind: 'leading-wrap',
-    });
+  // Leading wrap-tail is the LAST `leadCnt` × cpl nucleotides of the
+  // plasmid, aligned so the FINAL leading line ends exactly at seqLen.
+  // Biolog 06.05.2026 round 6: «там должно быть черта и сразу за
+  // чертой призрачный сиквенс другого конца, а не с новой строки» —
+  // i.e. visual continuity with main:first across the origin marker.
+  // The naive grid alignment (start = i × cpl) used to leave the last
+  // leading line short (e.g. 48 chars on 4948 bp / cpl=140) which
+  // looked like an «обрыв» before the origin. Shift-anchor: each
+  // leading line is exactly cpl characters wide and the strip ends on
+  // the last nucleotide of the plasmid.
+  if (leadCnt > 0) {
+    const leadingTotalLen = Math.min(leadCnt * cplFloor, seqLen);
+    const leadingStart = seqLen - leadingTotalLen;
+    for (let i = 0; i < leadCnt; i += 1) {
+      const start = leadingStart + i * cplFloor;
+      if (start >= seqLen) break;
+      const sliceEnd = Math.min(start + cplFloor, seqLen);
+      leading.push({
+        start,
+        seq: fullSeq.slice(start, sliceEnd),
+        kind: 'leading-wrap',
+      });
+    }
   }
 
   const trailing = [];
-  // First trailCnt main lines. Start indices = 0, cpl, 2*cpl, ...
+  // Trailing wrap-tail = first trailCnt × cpl nucleotides of the
+  // plasmid, naive grid alignment from 0. Symmetric to the leading
+  // shift-anchor on the other side of the origin marker: main:last
+  // ends on the plasmid's final nucleotide, then the origin marker,
+  // then trailing starts fresh from position 0.
   for (let i = 0; i < trailCnt; i += 1) {
     const start = i * cplFloor;
+    if (start >= seqLen) break;
     const sliceEnd = Math.min(start + cplFloor, seqLen);
     trailing.push({
       start,
