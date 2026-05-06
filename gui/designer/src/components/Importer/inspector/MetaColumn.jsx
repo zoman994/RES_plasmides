@@ -144,36 +144,42 @@ export default function MetaColumn({
       </Card>
 
       <Card label={S.metaTopology}>
-        {/* UX-014 — proper SVG icons (no Unicode collisions) + text
-            label inside each ToggleButton. The 12×12 SVGs are sized
-            to match the 11px label baseline. */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <ToggleButton
+        {/* 06.05.2026 round-7: biolog reported «жопа какая-то, всё кривое
+            и не влезает». The shared ToggleButton component is hard-
+            coded to 32×32 round shape (icon-only) — putting text
+            children inside was clipped to the circle, biolog saw
+            «Circul» / «Linear» fragments rather than the full labels.
+            Switched to a pair of dedicated full-width pill buttons
+            stacked vertically — each fills MetaColumn's 200 px column,
+            icon on the left, label on the right. No clipping. */}
+        <div
+          role="radiogroup"
+          style={{ display: 'flex', flexDirection: 'column', gap: 4 }}
+        >
+          <TopologyPill
             active={isCircular}
             onClick={() => onTopologyChange('circular')}
             title={S.metaTopologyCircularTitle}
             data-testid="importer-meta-topology-circular"
-          >
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            label={S.metaTopologyCircularLabel || 'Circular'}
+            icon={(
               <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
                 <circle cx="6" cy="6" r="4.5" fill="none" stroke="currentColor" strokeWidth="1.4" />
               </svg>
-              <span>{S.metaTopologyCircularLabel || 'Circular'}</span>
-            </span>
-          </ToggleButton>
-          <ToggleButton
+            )}
+          />
+          <TopologyPill
             active={!isCircular}
             onClick={() => onTopologyChange('linear')}
             title={S.metaTopologyLinearTitle}
             data-testid="importer-meta-topology-linear"
-          >
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            label={S.metaTopologyLinearLabel || 'Linear'}
+            icon={(
               <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
                 <line x1="1" y1="6" x2="11" y2="6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
               </svg>
-              <span>{S.metaTopologyLinearLabel || 'Linear'}</span>
-            </span>
-          </ToggleButton>
+            )}
+          />
         </div>
       </Card>
 
@@ -190,7 +196,15 @@ export default function MetaColumn({
             data-testid="importer-meta-origin"
             style={{ display: 'flex', flexDirection: 'column', gap: 6 }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {/* 06.05.2026 round-7: same MetaColumn 200 px squeeze.
+                Input + Apply button used to share a row with width:72
+                input + nowrap label, total ~150 px excluding card
+                padding — fits but tight, biolog screenshot showed
+                visual overlap. Input now flex:1 fills the row;
+                Apply button keeps its compact label. flex-wrap
+                lets the button drop to a second line on truly
+                narrow viewports. */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
               <input
                 type="number"
                 min={1}
@@ -200,11 +214,14 @@ export default function MetaColumn({
                 title="Координата нового начала кольцевой плазмиды (1 = первая база)"
                 onChange={(e) => setOriginOffset(Number(e.target.value) || 1)}
                 style={{
-                  width: 72, fontSize: 12, fontFamily: 'var(--font-mono)',
+                  flex: '1 1 64px',
+                  minWidth: 0,
+                  fontSize: 12, fontFamily: 'var(--font-mono)',
                   padding: '3px 6px', textAlign: 'right',
                   background: 'var(--surface-1)', color: 'var(--text-primary)',
                   border: '0.5px solid var(--border-default)',
                   borderRadius: 'var(--radius-md)', outline: 'none',
+                  boxSizing: 'border-box',
                 }}
               />
               <button
@@ -214,6 +231,7 @@ export default function MetaColumn({
                 title="Применить: повернуть кольцо чтобы выбранная база стала позицией 1. Все аннотации пересчитаются."
                 data-testid="importer-meta-origin-apply"
                 style={{
+                  flex: '0 0 auto',
                   fontSize: 11,
                   padding: '4px 8px',
                   background: 'var(--accent-500)',
@@ -387,5 +405,47 @@ function ToggleButton({ active, children, onClick, title, ...rest }) {
         fontSize: 14, cursor: 'pointer',
       }}
     >{children}</button>
+  );
+}
+
+// Round-7 helper (06.05.2026): full-width pill with icon + label,
+// stacked vertically inside the 200 px MetaColumn so the «Circular»
+// / «Linear» labels never clip («жопа какая-то, всё кривое и не
+// влезает» — biolog). Active state mirrors the orange accent ring
+// from the rest of the inspector. role=radio so the radiogroup
+// wrapper a11y-tree reads correctly.
+function TopologyPill({ active, onClick, title, label, icon, ...rest }) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={active ? 'true' : 'false'}
+      onClick={onClick}
+      title={title}
+      {...rest}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 8,
+        width: '100%',
+        padding: '5px 10px',
+        borderRadius: 'var(--radius-md)',
+        border: `1px solid ${active ? 'var(--accent-500)' : 'var(--border-default)'}`,
+        background: active ? 'var(--accent-50, #fff7ed)' : 'var(--surface-1)',
+        color: active ? 'var(--accent-text, var(--accent-500))' : 'var(--text-secondary)',
+        fontWeight: active ? 600 : 400,
+        fontSize: 12,
+        cursor: 'pointer',
+        boxSizing: 'border-box',
+        textAlign: 'left',
+        transition: 'background 80ms linear, border-color 80ms linear',
+      }}
+    >
+      <span
+        aria-hidden
+        style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto' }}
+      >{icon}</span>
+      <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
+    </button>
   );
 }
