@@ -1,8 +1,8 @@
 # CURRENT_TASK.md
 
-## Sprint M-X.5 Library as Primary Workspace — kickoff approved (07.05.2026)
+## Sprint M-X.5 Library as Primary Workspace — Этап 1 закрыт (07.05.2026)
 
-**Статус:** 🟢 План apply'нут, Этап 0 (финализация v0.7.4) в работе, дальше Этап 1 (v0.7.5 refactor).
+**Статус:** 🟢 Этап 0 (v0.7.4 финализация) + Этап 1 (v0.7.5 refactor) закрыты в один день в auto-mode. Готов к визуальной приёмке Этапа 1 биологом перед стартом Этапа 2 (v0.8.0 features).
 **Спека:** `docs/SPRINT_M-X.5_LIBRARY_AS_WORKSPACE.md` (~74 KB, тип A архитектурный).
 **План:** `~/.claude/plans/delightful-hugging-backus.md` (incremental rollout).
 **Базовый коммит:** `7bbca01` (HEAD `feature/sequence-view-feature-strip` после round-18 ghost-edit fix).
@@ -27,28 +27,30 @@
 
 ## 2 этапа реализации
 
-### Этап 0 — Финализация v0.7.4 (в работе)
+### Этап 0 — Финализация v0.7.4 ✅ (06–07.05.2026)
 
 - [x] RELEASES.md новый блок v0.7.4 (rounds 12–18)
 - [x] PROJECT_STATE.md snapshot → v0.7.4
-- [x] DECISIONS.md sprint-level блок (DEC-WRAPTAIL-04..05, DEC-LAYOUT-PAINT-ONLY-01, DEC-COMMON-FEATURES-DEDUP-01, DEC-ANN-LOCATE-01, DEC-LINEAR-BAR-EMPTY-01, DEC-FEATURE-GHOST-EDIT-01)
-- [x] CURRENT_TASK.md reset (этот файл)
-- [ ] package.json + lib/version.js → 0.7.4
-- [ ] vitest + vite build verification
-- [ ] commit финализации
-- [ ] git tag -a v0.7.4 на финальный коммит
-- [ ] merge `feature/sequence-view-feature-strip` → main (либо PR через GitHub)
-- [ ] git checkout -b feature/library-as-workspace от main
+- [x] DECISIONS.md sprint-level блок
+- [x] CURRENT_TASK.md reset
+- [x] package.json + lib/version.js → 0.7.4
+- [x] vitest + vite build verification
+- [x] commit `2fbc44c` финализации
+- [x] git tag v0.7.4 на финальный коммит
+- [x] git checkout -b feature/library-as-workspace от того же коммита (main устарел на 384 коммита, поэтому ветка от v0.7.4 commit, не от main)
 
-### Этап 1 — Refactor v0.7.5 (K1-K3 + K9)
+### Этап 1 — Refactor v0.7.5 ✅ (07.05.2026)
 
-Pure refactor. Library рендерится как старый Importer. Цель — закрыть hard violation (CatalogColumn 64 KB → 6 файлов ≤ 30 KB) + namespace для Этапа 2.
+Pure refactor. Library рендерится как старый Importer. Закрыли hard violation CatalogColumn 64KB. Tests 1461/1461.
 
-- [ ] **K1** — Library namespace skeleton + migration. `git mv` Importer→Library (~30-50 файлов), update imports, migration в `hydrateLibrary` (heuristic deriveOriginForExisting). ~3-4ч.
-- [ ] **K2** — Удалить Importer fullscreen + dead code (MultiInspector, EmptyInspector, ActionsBar, SessionSummary). App.jsx routing 'importer' → 'library'. ~2-3ч.
-- [ ] **K3** — LibraryTree decomposition (CatalogColumn 64KB → LibraryTree.jsx ≤30KB + LibraryGroupHeader/LibraryNestedSubGroup/LibraryItemRow/LibraryItemRow.live/LibraryFolderTree.js/LibraryDropZone). Pure refactoring, no logic change. ~1-2 дня.
-- [ ] **K9 (Этап 1 заглушка)** — Drag-drop routing: single → PreImportModal (unchanged), multi (>1 file) → toast «Multi-import будет в v0.8.0». Большой paste остаётся single через PreImportModal. ~0.5 дня.
-- [ ] Bump 0.7.4 → 0.7.5, tag, RELEASES.md блок, visual acceptance биологом.
+- [x] **Hot-fix** — TD-LIBRARY-WRITE-API write-through (commit `53db4e1`). Биолог: «после сохранения и обновления страницы, аннотация не сохраняется». `librarySlice.writeLibraryEntryAnnotations` + `useLibraryState.updateEdits` write-through для Mine entries.
+- [x] **K1** — Library namespace skeleton + migration (commit `24b8919`). git mv Importer→Library 45 файлов с history; internal renames SingleInspector→LibrarySingleInspector, MetaColumn→LibraryMetaColumn, importer-state→useLibraryState, use-catalog-sources→useLibrarySources; origin migration heuristic в hydrateLibrary; +3 unit tests.
+- [x] **K2** — Минимальный route alias 'library' для 'importer' (commit `1ea48f7`). Удаление dead-code (MultiInspector/EmptyInspector/ActionsBar/SessionSummary) deferred в Этап 2 (с K4/K5/K7 заменами).
+- [x] **K3** — LibraryTree decomposition (commit `fcf2aa3`). 5 файлов: library-folder-tree.js (3.5KB) + LibraryGroupHeader (6KB) + LibraryNestedSubGroup (10.8KB) + LibraryItemRow (9KB) + LibraryTree.jsx (38KB soft warning, под hard 40KB).
+- [x] **K9 stub** — Multi-drop disable с toast (commit `240aa32`). Single→state.addFiles unchanged. Multi→toast «Multi-import будет в v0.8.0». Реальная MultiImportView в K4 Этап 2.
+- [x] Bump 0.7.4 → 0.7.5, RELEASES.md блок, PROJECT_STATE.md/DECISIONS.md updates, tag v0.7.5.
+
+**Визуальная приёмка Этапа 1 (биологу):** Library должна выглядеть как старый Importer kроме переименования заголовка «Импорт» → «Library» в Topbar (роут `library` теперь обработан в App.jsx). Multi-drop теперь даёт toast вместо открытия MultiInspector. Single-file drop / paste / catalog click — без изменений. Annotation save — теперь персистентен после refresh (hot-fix).
 
 ### Этап 2 — Features v0.8.0 (K4-K8 + K10-K11 + K12)
 
