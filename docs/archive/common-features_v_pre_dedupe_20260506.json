@@ -1,17 +1,17 @@
 {
   "version": "2.0",
-  "generated": "2026-05-06T17:22:23.775954+00:00",
+  "generated": "2026-05-03T15:27:43.308118+00:00",
   "source": "SnapGene plasmid library (2822 files)",
   "stats": {
-    "total_unique": 408,
+    "total_unique": 419,
     "by_type": {
-      "marker": 21,
-      "reporter": 48,
-      "CDS": 165,
-      "promoter": 75,
-      "terminator": 29,
+      "marker": 22,
       "rep_origin": 21,
-      "misc_feature": 49
+      "reporter": 48,
+      "promoter": 77,
+      "misc_feature": 54,
+      "CDS": 168,
+      "terminator": 29
     },
     "source_plasmids": 2822
   },
@@ -24,9 +24,7 @@
       "length": 861,
       "description": "<html><body>confers resistance to ampicillin, carbenicillin, and related antibiotics</body></html>",
       "source": "snapgene_library",
-      "aliases": [
-        "Amp(R)"
-      ],
+      "aliases": [],
       "sourceFiles": [
         "pCLIP-Cas9-Nickase-TRE3G-ZsGreen",
         "pCW-Cas9",
@@ -37,10 +35,7 @@
         "pE-SUMOpro3 Amp",
         "pSF-Core",
         "pGL3-Enhancer",
-        "pMAL-p5E",
-        "pRetroX-Tight-Pur",
-        "pRetroX-Tight-Hyg",
-        "pEF1α-IRES"
+        "pMAL-p5E"
       ],
       "variants": 27,
       "occurrences": 1846,
@@ -369,6 +364,31 @@
       "id": "cf_9385a2"
     },
     {
+      "name": "Tet-On® 3G",
+      "type": "marker",
+      "sequence": "ATGTCTAGACTGGACAAGAGCAAAGTCATAAACTCTGCTCTGGAATTACTCAATGGAGTCGGTATCGAAGGCCTGACGACAAGGAAACTCGCTCAAAAGCTGGGAGTTGAGCAGCCTACCCTGTACTGGCACGTGAAGAACAAGCGGGCCCTGCTCGATGCCCTGCCAATCGAGATGCTGGACAGGCATCATACCCACTCCTGCCCCCTGGAAGGCGAGTCATGGCAAGACTTTCTGCGGAACAACGCCAAGTCATACCGCTGTGCTCTCCTCTCACATCGCGACGGGGCTAAAGTGCATCTCGGCACCCGCCCAACAGAGAAACAGTACGAAACCCTGGAAAATCAGCTCGCGTTCCTGTGTCAGCAAGGCTTCTCCCTGGAGAACGCACTGTACGCTCTGTCCGCCGTGGGCCACTTTACACTGGGCTGCGTATTGGAGGAACAGGAGCATCAAGTAGCAAAAGAGGAAAGAGAGACACCTACCACCGATTCTATGCCCCCACTTCTGAAACAAGCAATTGAGCTGTTCGACCGGCAGGGAGCCGAACCTGCCTTCCTTTTCGGCCTGGAACTAATCATATGTGGCCTGGAGAAACAGCTAAAGTGCGAAAGCGGCGGGCCGACCGACGCCCTTGACGATTTTGACTTAGACATGCTCCCAGCCGATGCCCTTGACGACTTTGACCTTGATATGCTGCCTGCTGACGCTCTTGACGATTTTGACCTTGACATGCTCCCCGGGTAA",
+      "protein": "MSRLDKSKVINSALELLNGVGIEGLTTRKLAQKLGVEQPTLYWHVKNKRALLDALPIEMLDRHHTHSCPLEGESWQDFLRNNAKSYRCALLSHRDGAKVHLGTRPTEKQYETLENQLAFLCQQGFSLENALYALSAVGHFTLGCVLEEQEHQVAKEERETPTTDSMPPLLKQAIELFDRQGAEPAFLFGLELIICGLEKQLKCESGGPTDALDDFDLDMLPADALDDFDLDMLPADALDDFDLDMLPG*",
+      "length": 747,
+      "description": "",
+      "source": "snapgene_library",
+      "aliases": [],
+      "sourceFiles": [
+        "pEF1α-Tet3G",
+        "pLVX-TetOne™",
+        "pRetroX-TetOne™-Puro",
+        "pRetroX-TetOne™",
+        "pCMV-Tet3G",
+        "pTetOne™",
+        "pLVX-TetOne™-Puro",
+        "pRetroX-Tet3G",
+        "pTOL-hCMV-TET3G-Hygro Transactivator",
+        "pZIP-TRE3G-ZsGreen-Puro"
+      ],
+      "variants": 1,
+      "occurrences": 10,
+      "id": "cf_998024"
+    },
+    {
       "name": "HIS3MX6",
       "type": "marker",
       "sequence": "GACATGGAGGCCCAGAATACCCTCCTTGACAGTCTTGACGTGCGCAGCTCAGGGGCATGATGTGACTGTCGCCCGTACATTTAGCCCATACATCCCCATGTATAATCATTTGCATCCATACATTTTGATGGCCGCACGGCGCGAAGCAAAAATTACGGCTCCTCGCTGCAGACCTGCGAGCAGGGAAACGCTCCCCTCACAGACGCGTTGAATTGTCCCCACGCCGCGCCCCTGTAGAGAAATATAAAAGGTTAGGATTTGCCACTGAGGTTCTTCTTTCATATACTTCCTTTTAAAATCTTGCTAGGATACAGTTCTCACATCACATCCGAACATAAACAACCATGGGTAGGAGGGCTTTTGTAGAAAGAAATACGAACGAAACGAAAATCAGCGTTGCCATCGCTTTGGACAAAGCTCCCTTACCTGAAGAGTCGAATTTTATTGATGAACTTATAACTTCCAAGCATGCAAACCAAAAGGGAGAACAAGTAATCCAAGTAGACACGGGAATTGGATTCTTGGATCACATGTATCATGCACTGGCTAAACATGCAGGCTGGAGCTTACGACTTTACTCAAGAGGTGATTTAATCATCGATGATCATCACACTGCAGAAGATACTGCTATTGCACTTGGTATTGCATTCAAGCAGGCTATGGGTAACTTTGCCGGCGTTAAAAGATTTGGACATGCTTATTGTCCACTTGACGAAGCTCTTTCTAGAAGCGTAGTTGACTTGTCGGGACGGCCCTATGCTGTTATCGATTTGGGATTAAAGCGTGAAAAGGTTGGGGAATTGTCCTGTGAAATGATCCCTCACTTACTATATTCCTTTTCGGTAGCAGCTGGAATTACTTTGCATGTTACCTGCTTATATGGTAGTAATGACCATCATCGTGCTGAAAGCGCTTTTAAATCTCTGGCTGTTGCCATGCGCGCGGCTACTAGTCTTACTGGAAGTTCTGAAGTCCCAAGCACGAAGGGAGTGTTGTAAAGGATACTGACAATAAAAAGATTCTTGTTTTCAAGAACTTGTCATTTGTATAGTTTTTTTATATTGTAGTTGTTCTATTTTAATCAAATGTTAGCGTGATTTATATTTTTTTTCGCCTCGACATCATCTGCCCAGATGCGAAGTTAAGTGCGCAGAAAGTAATATCATGCGTCAATCGTATGTGAATGCTGGTCGCTATACTG",
@@ -446,23 +466,11 @@
       "length": 747,
       "description": "",
       "source": "snapgene_library",
-      "aliases": [
-        "Tet-On® 3G"
-      ],
+      "aliases": [],
       "sourceFiles": [
         "pAdenoX-Tet3G Linear",
         "pLVX-Tet3G",
-        "pLVX-EF1α-Tet3G",
-        "pEF1α-Tet3G",
-        "pLVX-TetOne™",
-        "pRetroX-TetOne™-Puro",
-        "pRetroX-TetOne™",
-        "pCMV-Tet3G",
-        "pTetOne™",
-        "pLVX-TetOne™-Puro",
-        "pRetroX-Tet3G",
-        "pTOL-hCMV-TET3G-Hygro Transactivator",
-        "pZIP-TRE3G-ZsGreen-Puro"
+        "pLVX-EF1α-Tet3G"
       ],
       "variants": 1,
       "occurrences": 3,
@@ -2246,9 +2254,7 @@
       "length": 33,
       "description": "",
       "source": "snapgene_library",
-      "aliases": [
-        "T7 tag (gene 10 leader)"
-      ],
+      "aliases": [],
       "sourceFiles": [
         "pET-11d",
         "pRSET-BFP",
@@ -2259,7 +2265,22 @@
         "pET-23d(+)",
         "pET-21a(+)",
         "pET-33b(+)",
-        "pRSET-CFP",
+        "pRSET-CFP"
+      ],
+      "variants": 1,
+      "occurrences": 34,
+      "id": "cf_a93c89"
+    },
+    {
+      "name": "T7 tag (gene 10 leader)",
+      "type": "CDS",
+      "sequence": "ATGGCTAGCATGACTGGTGGACAGCAAATGGGT",
+      "protein": "MASMTGGQQMG",
+      "length": 33,
+      "description": "<html><body>promotes efficient translation in <i>E. coli</i></body></html>",
+      "source": "snapgene_library",
+      "aliases": [],
+      "sourceFiles": [
         "pRSET C",
         "pDB.GST",
         "pYC2/NT B",
@@ -2272,8 +2293,8 @@
         "pYES2/NT A"
       ],
       "variants": 1,
-      "occurrences": 34,
-      "id": "cf_a93c89"
+      "occurrences": 31,
+      "id": "cf_89648a"
     },
     {
       "name": "GmR",
@@ -2589,6 +2610,31 @@
       "variants": 2,
       "occurrences": 17,
       "id": "cf_33f7e2"
+    },
+    {
+      "name": "SacB",
+      "type": "CDS",
+      "sequence": "ATGAACATCAAAAAGTTTGCAAAACAAGCAACAGTATTAACCTTTACTACCGCACTGCTGGCAGGAGGCGCAACTCAAGCGTTTGCGAAAGAAACGAACCAAAAGCCATATAAGGAAACATACGGCATTTCCCATATTACACGCCATGATATGCTGCAAATCCCTGAACAGCAAAAAAATGAAAAATATCAAGTTCCTGAGTTCGATTCGTCCACAATTAAAAATATCTCTTCTGCAAAAGGCCTGGACGTTTGGGACAGCTGGCCATTACAAAACGCTGACGGCACTGTCGCAAACTATCACGGCTACCACATCGTCTTTGCATTAGCCGGAGATCCTAAAAATGCGGATGACACATCGATTTACATGTTCTATCAAAAAGTCGGCGAAACTTCTATTGACAGCTGGAAAAACGCTGGCCGCGTCTTTAAAGACAGCGACAAATTCGATGCAAATGATTCTATCCTAAAAGACCAAACACAAGAATGGTCAGGTTCAGCCACATTTACATCTGACGGAAAAATCCGTTTATTCTACACTGATTTCTCCGGTAAACATTACGGCAAACAAACACTGACAACTGCACAAGTTAACGTATCAGCATCAGACAGCTCTTTGAACATCAACGGTGTAGAGGATTATAAATCAATCTTTGACGGTGACGGAAAAACGTATCAAAATGTACAGCAGTTCATCGATGAAGGCAACTACAGCTCAGGCGACAACCATACGCTGAGAGATCCTCACTACGTAGAAGATAAAGGCCACAAATACTTAGTATTTGAAGCAAACACTGGAACTGAAGATGGCTACCAAGGCGAAGAATCTTTATTTAACAAAGCATACTATGGCAAAAGCACATCATTCTTCCGTCAAGAAAGTCAAAAACTTCTGCAAAGCGATAAAAAACGCACGGCTGAGTTAGCAAACGGCGCTCTCGGTATGATTGAGCTAAACGATGATTACACACTGAAAAAAGTGATGAAACCGCTGATTGCATCTAACACAGTAACAGATGAAATTGAACGCGCGAACGTCTTTAAAATGAACGGCAAATGGTACCTGTTCACTGACTCCCGCGGATCAAAAATGACGATTGACGGCATTACGTCTAACGATATTTACATGCTTGGTTATGTTTCTAATTCTTTAACTGGCCCATACAAGCCGCTGAACAAAACTGGCCTTGTGTTAAAAATGGATCTTGATCCTAACGATGTAACCTTTACTTACTCACACTTCGCTGTACCTCAAGCGAAAGGAAACAATGTCGTGATTACAAGCTATATGACAAACAGAGGATTCTACGCAGACAAACAATCAACGTTTGCGCCTAGCTTCCTGCTGAACATCAAAGGCAAGAAAACATCTGTTGTCAAAGACAGCATCCTTGAACAAGGACAATTAACAGTTAACAAATAA",
+      "protein": "MNIKKFAKQATVLTFTTALLAGGATQAFA,KETNQKPYKETYGISHITRHDMLQIPEQQKNEKYQVPEFDSSTIKNISSAKGLDVWDSWPLQNADGTVANYHGYHIVFALAGDPKNADDTSIYMFYQKVGETSIDSWKNAGRVFKDSDKFDANDSILKDQTQEWSGSATFTSDGKIRLFYTDFSGKHYGKQTLTTAQVNVSASDSSLNINGVEDYKSIFDGDGKTYQNVQQFIDEGNYSSGDNHTLRDPHYVEDKGHKYLVFEANTGTEDGYQGEESLFNKAYYGKSTSFFRQESQKLLQSDKKRTAELANGALGMIELNDDYTLKKVMKPLIASNTVTDEIERANVFKMNGKWYLFTDSRGSKMTIDGITSNDIYMLGYVSNSLTGPYKPLNKTGLVLKMDLDPNDVTFTYSHFAVPQAKGNNVVITSYMTNRGFYADKQSTFAPSFLLNIKGKKTSVVKDSILEQGQLTVNK*",
+      "length": 1422,
+      "description": "<html><body>negative selection marker</body></html>",
+      "source": "snapgene_library",
+      "aliases": [],
+      "sourceFiles": [
+        "pFB-LIC-Bse",
+        "pVP91A",
+        "pBEN1-SGC",
+        "pNIC-CTHF",
+        "pNIC28-Bsa4",
+        "pDNR-LIB",
+        "pNH-TrxT",
+        "p15Tv-L",
+        "pDNR-Dual",
+        "pEU-HSBC"
+      ],
+      "variants": 3,
+      "occurrences": 16,
+      "id": "cf_7bcfc9"
     },
     {
       "name": "VP64",
@@ -3883,20 +3929,10 @@
       "length": 1422,
       "description": "<html><body>negative selection marker</body></html>",
       "source": "snapgene_library",
-      "aliases": [
-        "SacB"
-      ],
+      "aliases": [],
       "sourceFiles": [
         "pDNR-Dual",
-        "pDNR-LIB",
-        "pFB-LIC-Bse",
-        "pVP91A",
-        "pBEN1-SGC",
-        "pNIC-CTHF",
-        "pNIC28-Bsa4",
-        "pNH-TrxT",
-        "p15Tv-L",
-        "pEU-HSBC"
+        "pDNR-LIB"
       ],
       "variants": 2,
       "occurrences": 4,
@@ -4964,6 +5000,24 @@
       "id": "cf_e1c3d6"
     },
     {
+      "name": "Amp(R)",
+      "type": "CDS",
+      "sequence": "ATGAGTATTCAACATTTCCGTGTCGCCCTTATTCCCTTTTTTGCGGCATTTTGCCTTCCTGTTTTTGCTCACCCAGAAACGCTGGTGAAAGTAAAAGATGCTGAAGATCAGTTGGGTGCACGAGTGGGTTACATCGAACTGGATCTCAACAGCGGTAAGATCCTTGAGAGTTTTCGCCCCGAAGAACGTTTTCCAATGATGAGCACTTTTAAAGTTCTGCTATGTGGCGCGGTATTATCCCGTGTTGACGCCGGGCAAGAGCAACTCGGTCGCCGCATACACTATTCTCAGAATGACTTGGTTGAGTACTCACCAGTCACAGAAAAGCATCTTACGGATGGCATGACAGTAAGAGAATTATGCAGTGCTGCCATAACCATGAGTGATAACACTGCGGCCAACTTACTTCTGACAACGATCGGAGGACCGAAGGAGCTAACCGCTTTTTTGCACAACATGGGGGATCATGTAACTCGCCTTGATCGTTGGGAACCGGAGCTGAATGAAGCCATACCAAACGACGAGCGTGACACCACGATGCCTGCAGCAATGGCAACAACGTTGCGCAAACTATTAACTGGCGAACTACTTACTCTAGCTTCCCGGCAACAATTAATAGACTGGATGGAGGCGGATAAAGTTGCAGGACCACTTCTGCGCTCGGCCCTTCCGGCTGGCTGGTTTATTGCTGATAAATCTGGAGCCGGTGAGCGTGGGTCTCGCGGTATCATTGCAGCACTGGGGCCAGATGGTAAGCCCTCCCGTATCGTAGTTATCTACACGACGGGGAGTCAGGCAACTATGGATGAACGAAATAGACAGATCGCTGAGATAGGTGCCTCACTGATTAAGCATTGGTAA",
+      "protein": "MSIQHFRVALIPFFAAFCLPVFAHPETLVKVKDAEDQLGARVGYIELDLNSGKILESFRPEERFPMMSTFKVLLCGAVLSRVDAGQEQLGRRIHYSQNDLVEYSPVTEKHLTDGMTVRELCSAAITMSDNTAANLLLTTIGGPKELTAFLHNMGDHVTRLDRWEPELNEAIPNDERDTTMPAAMATTLRKLLTGELLTLASRQQLIDWMEADKVAGPLLRSALPAGWFIADKSGAGERGSRGIIAALGPDGKPSRIVVIYTTGSQATMDERNRQIAEIGASLIKHW*",
+      "length": 861,
+      "description": "",
+      "source": "snapgene_library",
+      "aliases": [],
+      "sourceFiles": [
+        "pRetroX-Tight-Pur",
+        "pRetroX-Tight-Hyg",
+        "pEF1α-IRES"
+      ],
+      "variants": 2,
+      "occurrences": 3,
+      "id": "cf_e55650"
+    },
+    {
       "name": "VSV-G",
       "type": "CDS",
       "sequence": "ATGAAGTGCCTTTTGTACTTAGCCTTTTTATTCATTGGGGTGAATTGCAAGTTCACCATAGTTTTTCCACACAACCAAAAAGGAAACTGGAAAAATGTTCCTTCTAATTACCATTATTGCCCGTCAAGCTCAGATTTAAATTGGCATAATGACTTAATAGGCACAGCCTTACAAGTCAAAATGCCCAAGAGTCACAAGGCTATTCAAGCAGACGGTTGGATGTGTCATGCTTCCAAATGGGTCACTACTTGTGATTTCCGCTGGTATGGACCGAAGTATATAACACATTCCATCCGATCCTTCACTCCATCTGTAGAACAATGCAAGGAAAGCATTGAACAAACGAAACAAGGAACTTGGCTGAATCCAGGCTTCCCTCCTCAAAGTTGTGGATATGCAACTGTGACGGATGCCGAAGCAGTGATTGTCCAGGTGACTCCTCACCATGTGCTGGTTGATGAATACACAGGAGAATGGGTTGATTCACAGTTCATCAACGGAAAATGCAGCAATTACATATGCCCCACTGTCCATAACTCTACAACCTGGCATTCTGACTATAAGGTCAAAGGGCTATGTGATTCTAACCTCATTTCCATGGACATCACCTTCTTCTCAGAGGACGGAGAGCTATCATCCCTGGGAAAGGAGGGCACAGGGTTCAGAAGTAACTACTTTGCTTATGAAACTGGAGGCAAGGCCTGCAAAATGCAATACTGCAAGCATTGGGGAGTCAGACTCCCATCAGGTGTCTGGTTCGAGATGGCTGATAAGGATCTCTTTGCTGCAGCCAGATTCCCTGAATGCCCAGAAGGGTCAAGTATCTCTGCTCCATCTCAGACCTCAGTGGATGTAAGTCTAATTCAGGACGTTGAGAGGATCTTGGATTATTCCCTCTGCCAAGAAACCTGGAGCAAAATCAGAGCGGGTCTTCCAATCTCTCCAGTGGATCTCAGCTATCTTGCTCCTAAAAACCCAGGAACCGGTCCTGCTTTCACCATAATCAATGGTACCCTAAAATACTTTGAGACCAGATACATCAGAGTCGATATTGCTGCTCCAATCCTCTCAAGAATGGTCGGAATGATCAGTGGAACTACCACAGAAAGGGAACTGTGGGATGACTGGGCACCATATGAAGACGTGGAAATTGGACCCAATGGAGTTCTGAGGACCAGTTCAGGATATAAGTTTCCTTTATACATGATTGGACATGGTATGTTGGACTCCGATCTTCATCTTAGCTCAAAGGCTCAGGTGTTCGAACATCCTCACATTCAAGACGCTGCTTCGCAACTTCCTGATGATGAGAGTTTATTTTTTGGTGATACTGGGCTATCCAAAAATCCAATCGAGCTTGTAGAAGGTTGGTTCAGTAGTTGGAAAAGCTCTATTGCCTCTTTTTTCTTTATCATAGGGTTAATCATTGGACTATTCTTGGTTCTCCGAGTTGGTATCCATCTTTGCATTAAATTAAAGCACACCAAGAAAAGACAGATTTATACAGACATAGAGATGAACCGACTTGGAAAGTAA",
@@ -5093,9 +5147,7 @@
       "length": 330,
       "description": "<html><body>SV40 enhancer and early promoter</body></html>",
       "source": "snapgene_library",
-      "aliases": [
-        "SV40"
-      ],
+      "aliases": [],
       "sourceFiles": [
         "pCLIP-Cas9-Nickase-TRE3G-ZsGreen",
         "pPAmCherry-N1",
@@ -5106,12 +5158,7 @@
         "pcDNA™4/HisMax B",
         "pCMV6-AC-mGFP",
         "pcDNA™6.2/N-YFP-DEST",
-        "pLenti6/V5-DEST",
-        "pCLIP-gRNA-hCMV-Puro",
-        "pCLIP-gRNA-EFS-Puro",
-        "pCLIP-gRNA-EFS-tRFP",
-        "pCLIP-gRNA-EFS-ZsGreen",
-        "pCLIP-gRNA-EFS-Blast"
+        "pLenti6/V5-DEST"
       ],
       "variants": 19,
       "occurrences": 706,
@@ -6403,6 +6450,46 @@
       "id": "cf_10c7f7"
     },
     {
+      "name": "SV40",
+      "type": "promoter",
+      "sequence": "GTGTGTCAGTTAGGGTGTGGAAAGTCCCCAGGCTCCCCAGCAGGCAGAAGTATGCAAAGCATGCATCTCAATTAGTCAGCAACCAGGTGTGGAAAGTCCCCAGGCTCCCCAGCAGGCAGAAGTATGCAAAGCATGCATCTCAATTAGTCAGCAACCATAGTCCCGCCCCTAACTCCGCCCATCCCGCCCCTAACTCCGCCCAGTTCCGCCCATTCTCCGCCCCATGGCTGACTAATTTTTTTTATTTATGCAGAGGCCGAGGCCGCCTCTGCCTCTGAGCTATTCCAGAAGTAGTGAGGAGGCTTTTTTGGAGGCCTAGGCTTTTGCAAA",
+      "protein": "",
+      "length": 330,
+      "description": "<html><body>SV40 enhancer and early promoter</body></html>",
+      "source": "snapgene_library",
+      "aliases": [],
+      "sourceFiles": [
+        "pCLIP-gRNA-hCMV-Puro",
+        "pCLIP-gRNA-EFS-Puro",
+        "pCLIP-gRNA-EFS-tRFP",
+        "pCLIP-gRNA-EFS-ZsGreen",
+        "pCLIP-gRNA-EFS-Blast"
+      ],
+      "variants": 1,
+      "occurrences": 5,
+      "id": "cf_789b49"
+    },
+    {
+      "name": "Ubi Promoter",
+      "type": "promoter",
+      "sequence": "GGCCTCCGCGCCGGGTTTTGGCGCCTCCCGCGGGCGCCCCCCTCCTCACGGCGAGCGCTGCCACGTCAGACGAAGGGCGCAGCGAGCGTCCTGATCCTTCCGCCCGGACGCTCAGGACAGCGGCCCGCTGCTCATAAGACTCGGCCTTAGAACCCCAGTATCAGCAGAAGGACATTTTAGGACGGGACTTGGGTGACTCTAGGGCACTGGTTTTCTTTCCAGAGAGCGGAACAGGCGAGGAAAAGTAGTCCCTTCTCGGCGATTCTGCGGAGGGATCTCCGTGGGGCGGTGAACGCCGATGATTATATAAGGACGCGCCGGGTGTGGCACAGCTAGTTCCGTCGCAGCCGGGATTTGGGTCGCGGTTCTTGTTTGTGGATCGCTGTGATCGTCACTTGGT",
+      "protein": "",
+      "length": 400,
+      "description": "<html><body>human ubiquitin C promoter</body></html>",
+      "source": "snapgene_library",
+      "aliases": [],
+      "sourceFiles": [
+        "pRSI17-U6-sh-HTS6-UbiC-TagGFP2-2A-Puro",
+        "pRSI16cb-U6-sh-13kCB18-HTS6-UbiC-TagRFP-2A-Puro",
+        "pRSI17cb-U6-sh-13kCB18-HTS6-UbiC-TagGFP2-2A-Puro",
+        "pRSI16-U6-sh-HTS6-UbiC-TagRFP-2A-Puro",
+        "pRSI12-U6-sh-HTS4-UbiC-TagRFP-2A-Puro"
+      ],
+      "variants": 1,
+      "occurrences": 5,
+      "id": "cf_df6e48"
+    },
+    {
       "name": "U6-Tet promoter",
       "type": "promoter",
       "sequence": "GAGGGCCTATTTCCCATGATTCCTTCATATTTGCATATACGATACAAGGCTGTTAGAGAGATAATTGGAATTAATTTGACTGTAAACACAAAGATATTAGTACAAAATACGTGACGTAGAAAGTAATAATTTCTTGGGTAGTTTGCAGTTTTAAAATTATGTTTTAAAATGGACTATCATATGCTTACCGTAACTTGAAAGCCCTATCAGTGATAGAGATTTATATATCCCTATCAGTGATAGAGA",
@@ -6705,18 +6792,11 @@
       "length": 400,
       "description": "<html><body>human ubiquitin C promoter</body></html>",
       "source": "snapgene_library",
-      "aliases": [
-        "Ubi Promoter"
-      ],
+      "aliases": [],
       "sourceFiles": [
         "pRSGC2-U6-sg-HTS6-UbiC-Cas9-2A-Puro",
         "pRSITUR-U6Tet-sh-HTS3-UbiC-TetRep-2A-TagRFP",
-        "pMSCV16URP-U6-sh-HTS6-UbiC-TagRFP-2A-Puro",
-        "pRSI17-U6-sh-HTS6-UbiC-TagGFP2-2A-Puro",
-        "pRSI16cb-U6-sh-13kCB18-HTS6-UbiC-TagRFP-2A-Puro",
-        "pRSI17cb-U6-sh-13kCB18-HTS6-UbiC-TagGFP2-2A-Puro",
-        "pRSI16-U6-sh-HTS6-UbiC-TagRFP-2A-Puro",
-        "pRSI12-U6-sh-HTS4-UbiC-TagRFP-2A-Puro"
+        "pMSCV16URP-U6-sh-HTS6-UbiC-TagRFP-2A-Puro"
       ],
       "variants": 1,
       "occurrences": 3,
@@ -7950,6 +8030,56 @@
       "id": "cf_511f62"
     },
     {
+      "name": "5' LTR (truncated)",
+      "type": "misc_feature",
+      "sequence": "GGGTCTCTCTGGTTAGACCAGATCTGAGCCTGGGAGCTCTCTGGCTAACTAGGGAACCCACTGCTTAAGCCTCAATAAAGCTTGCCTTGAGTGCTTCAAGTAGTGTGTGCCCGTCTGTTGTGTGACTCTGGTAACTAGAGATCCCTCAGACCCTTTTAGTCAGTGTGGAAAATCTCTAGCA",
+      "protein": "",
+      "length": 181,
+      "description": "<html><body>truncated 5' long terminal repeat (LTR) from HIV-1</body></html>",
+      "source": "snapgene_library",
+      "aliases": [],
+      "sourceFiles": [
+        "pLenti-Guide-Puro",
+        "pLenti-N-tGFP",
+        "pLenti-EF1a-C-mGFP",
+        "pCLIP-Cas9-Nickase-TRE3G-ZsGreen",
+        "pCW-Cas9",
+        "pZIP-mCMV-RFP-Puro",
+        "pRSITUR-U6Tet-sh-HTS3-UbiC-TetRep-2A-TagRFP",
+        "pZIP-hCMV-ZSGreen-Puro",
+        "pCLIP-All-TRE3G-Puro",
+        "pCLIP-Cas9-Nuclease-TRE3G-tRFP"
+      ],
+      "variants": 4,
+      "occurrences": 194,
+      "id": "cf_581c93"
+    },
+    {
+      "name": "3' LTR (ΔU3)",
+      "type": "misc_feature",
+      "sequence": "TGGAAGGGCTAATTCACTCCCAACGAAGACAAGATCTGCTTTTTGCTTGTACTGGGTCTCTCTGGTTAGACCAGATCTGAGCCTGGGAGCTCTCTGGCTAACTAGGGAACCCACTGCTTAAGCCTCAATAAAGCTTGCCTTGAGTGCTTCAAGTAGTGTGTGCCCGTCTGTTGTGTGACTCTGGTAACTAGAGATCCCTCAGACCCTTTTAGTCAGTGTGGAAAATCTCTAGCA",
+      "protein": "",
+      "length": 234,
+      "description": "<html><body>self-inactivating&nbsp;3' long terminal repeat (LTR) from HIV-1</body></html>",
+      "source": "snapgene_library",
+      "aliases": [],
+      "sourceFiles": [
+        "pCLIP-Cas9-Nickase-TRE3G-ZsGreen",
+        "pCW-Cas9",
+        "pZIP-mCMV-RFP-Puro",
+        "pRSITUR-U6Tet-sh-HTS3-UbiC-TetRep-2A-TagRFP",
+        "pZIP-hCMV-ZSGreen-Puro",
+        "pCLIP-All-TRE3G-Puro",
+        "pCLIP-Cas9-Nuclease-TRE3G-tRFP",
+        "pGIPZ",
+        "pLenti6/V5-DEST",
+        "pLKO.1 puro"
+      ],
+      "variants": 5,
+      "occurrences": 156,
+      "id": "cf_f0d538"
+    },
+    {
       "name": "gRNA scaffold",
       "type": "misc_feature",
       "sequence": "GTTTTAGAGCTAGAAATAGCAAGTTAAAATAAGGCTAGTCCGTTATCAACTTGAAAAAGTGGCACCGAGTCGGTGC",
@@ -8095,6 +8225,31 @@
       "id": "cf_ee4a36"
     },
     {
+      "name": "5' LTR",
+      "type": "misc_feature",
+      "sequence": "TGGAAGGGCTAATTCACTCCCAAAGAAGACAAGATATCCTTGATCTGTGGATCTACCACACACAAGGCTACTTCCCTGATTAGCAGAACTACACACCAGGGCCAGGGGTCAGATATCCACTGACCTTTGGATGGTGCTACAAGCTAGTACCAGTTGAGCCAGATAAGGTAGAAGAGGCCAATAAAGGAGAGAACACCAGCTTGTTACACCCTGTGAGCCTGCATGGGATGGATGACCCGGAGAGAGAAGTGTTAGAGTGGAGGTTTGACAGCCGCCTAGCATTTCATCACGTGGCCCGAGAGCTGCATCCGGAGTACTTCAAGAACTGCTGATATCGAGCTTGCTACAAGGGACTTTCCGCTGGGGACTTTCCAGGGAGGCGTGGCCTGGGCGGGACTGGGGAGTGGCGAGCCCTCAGATCCTGCATATAAGCAGCTGCTTTTTGCCTGTACTGGGTCTCTCTGGTTAGACCAGATCTGAGCCTGGGAGCTCTCTGGCTAACTAGGGAACCCACTGCTTAAGCCTCAATAAAGCTTGCCTTGAGTGCTTCAAGTAGTGTGTGCCCGTCTGTTGTGTGACTCTGGTAACTAGAGATCCCTCAGACCCTTTTAGTCAGTGTGGAAAATCTCTAGCA",
+      "protein": "",
+      "length": 634,
+      "description": "<html><body>5' long terminal repeat (LTR) from HIV-1</body></html>",
+      "source": "snapgene_library",
+      "aliases": [],
+      "sourceFiles": [
+        "pLVX-TRE3G-Hom1",
+        "pLVX-PTuner",
+        "pLVX-PTuner Green",
+        "pLVX-Puro",
+        "pLVX-TRE3G-IRES",
+        "pLVX-Het-1",
+        "pLVX-Hom-Mem1",
+        "pLPCX",
+        "pGIPZ",
+        "pLEX-MCS"
+      ],
+      "variants": 5,
+      "occurrences": 45,
+      "id": "cf_0dd2f6"
+    },
+    {
       "name": "Exon 2",
       "type": "misc_feature",
       "sequence": "CTCCTGGGCAACGTGCTGGTTATTGTGCTGTCTCATCATTTTGGCAAAGAATTGGATCGGACCGAAATTAATACGACTCACTATAGGGGAATTGTGAGCGGATAACAATTCCCCGGAGTTAATCCGGGACCTTTAATTCAACCCAACACAATATATTATAGTTAAATAAGAATTATTATCAAATCATTTGTATATTAATTAAAATACTATACTGTAAATTACATTTTATTTACAATCAAAGGAGATATACCATGAAGCACCACCACCATCACCATCATCACCACCATCAGTGAAGAGCGATATCCCGGGTGGATCCGAATTCTCAGATCTCGGCGCGCCTGCAGGGTTCGAAGCTTATACTCGAGAAGCGTTGAAATAGCGTACAAGTCGAGCACCACCATCACCATCACCATCACTAAGTGATTAACCTCAGGTGCAGGCTGCCTATCAGAAGGTGGTGGCTGGTGTGGCCAATGCCCTGGCTCACAAATACCACTGAGATCGATCTTTTTCCCTCTGCCAAAAATTATGGGGACATCATGAAGCCCCTTGAGCATCTGACTTCTGGCTAATAAAGGAAATTTATTTTCATTGC",
@@ -8227,9 +8382,7 @@
       "length": 634,
       "description": "<html><body>long terminal repeat (LTR) from HIV-1</body></html>",
       "source": "snapgene_library",
-      "aliases": [
-        "5' LTR"
-      ],
+      "aliases": [],
       "sourceFiles": [
         "pRetroX-PTuner",
         "3xFLAG-dCas9/pMXs-neo",
@@ -8240,17 +8393,7 @@
         "pTOL-hCMV-TET3G-Hygro Transactivator",
         "pZIP-TRE3G-ZsGreen-Puro",
         "pBABE-Puro",
-        "pHRdSV40-dCas9-10xGCN4_v4-P2A-BFP",
-        "pLVX-TRE3G-Hom1",
-        "pLVX-PTuner",
-        "pLVX-PTuner Green",
-        "pLVX-Puro",
-        "pLVX-TRE3G-IRES",
-        "pLVX-Het-1",
-        "pLVX-Hom-Mem1",
-        "pLPCX",
-        "pGIPZ",
-        "pLEX-MCS"
+        "pHRdSV40-dCas9-10xGCN4_v4-P2A-BFP"
       ],
       "variants": 7,
       "occurrences": 27,
@@ -8482,6 +8625,31 @@
       "id": "cf_cd40e3"
     },
     {
+      "name": "3' LTR (truncated)",
+      "type": "misc_feature",
+      "sequence": "GGGTCTCTCTGGTTAGACCAGATCTGAGCCTGGGAGCTCTCTGGCTAACTAGGGAACCCACTGCTTAAGCCTCAATAAAGCTTGCCTTGAGTGCTTCAAGTAGTGTGTGCCCGTCTGTTGTGTGACTCTGGTAACTAGAGATCCCTCAGACCCTTTTAGTCAGTGTGGAAAATCTCTAGCA",
+      "protein": "",
+      "length": 181,
+      "description": "<html><body>truncated long terminal repeat (LTR) from HIV-1</body></html>",
+      "source": "snapgene_library",
+      "aliases": [],
+      "sourceFiles": [
+        "pLenti-N-tGFP",
+        "pLenti-EF1a-C-mGFP",
+        "pLenti-C-Myc-DDK-IRES-tRFP",
+        "pLenti-C-tYFP",
+        "pLenti-C-GFP",
+        "pLenti-C-mGFP",
+        "pLenti-EF1a-C-Myc-DDK-IRES-Puro",
+        "pGFP-C-shLenti",
+        "pLenti-EF1a-C-tGFP",
+        "pLenti-N-tYFP"
+      ],
+      "variants": 1,
+      "occurrences": 19,
+      "id": "cf_fd8087"
+    },
+    {
       "name": "LTR (truncated)",
       "type": "misc_feature",
       "sequence": "GGGTCTCTCTGGTTAGACCAGATCTGAGCCTGGGAGCTCTCTGGCTAACTAGGGAACCCACTGCTTAAGCCTCAATAAAGCTTGCCTTGAGTGCTTCAAGTAGTGTGTGCCCGTCTGTTGTGTGACTCTGGTAACTAGAGATCCCTCAGACCCTTTTAGTCAGTGTGGAAAATCTCTAGCA",
@@ -8489,10 +8657,7 @@
       "length": 181,
       "description": "<html><body>truncated long terminal repeat (LTR) from HIV-1</body></html>",
       "source": "snapgene_library",
-      "aliases": [
-        "5' LTR (truncated)",
-        "3' LTR (truncated)"
-      ],
+      "aliases": [],
       "sourceFiles": [
         "CRISPRi library backbone",
         "dCAS9-VP64_GFP",
@@ -8503,25 +8668,7 @@
         "pLV hUbC-dCas9 VP64-T2A-GFP",
         "lenti dCAS-VP64_Blast",
         "pBABE-Hygro",
-        "pBABE-Zeo",
-        "pLenti-Guide-Puro",
-        "pLenti-N-tGFP",
-        "pLenti-EF1a-C-mGFP",
-        "pCLIP-Cas9-Nickase-TRE3G-ZsGreen",
-        "pCW-Cas9",
-        "pZIP-mCMV-RFP-Puro",
-        "pRSITUR-U6Tet-sh-HTS3-UbiC-TetRep-2A-TagRFP",
-        "pZIP-hCMV-ZSGreen-Puro",
-        "pCLIP-All-TRE3G-Puro",
-        "pCLIP-Cas9-Nuclease-TRE3G-tRFP",
-        "pLenti-C-Myc-DDK-IRES-tRFP",
-        "pLenti-C-tYFP",
-        "pLenti-C-GFP",
-        "pLenti-C-mGFP",
-        "pLenti-EF1a-C-Myc-DDK-IRES-Puro",
-        "pGFP-C-shLenti",
-        "pLenti-EF1a-C-tGFP",
-        "pLenti-N-tYFP"
+        "pBABE-Zeo"
       ],
       "variants": 2,
       "occurrences": 18,
@@ -8599,9 +8746,7 @@
       "length": 103,
       "description": "<html><body>inverted terminal repeat of human adenovirus serotype 5</body></html>",
       "source": "snapgene_library",
-      "aliases": [
-        "5' ITR"
-      ],
+      "aliases": [],
       "sourceFiles": [
         "pAdenoX-CMV Linear",
         "pAdenoX-ZsGreen1 Linear",
@@ -8609,10 +8754,7 @@
         "pAdenoX-Tet3G Linear",
         "pAdenoX-PRLS Linear",
         "pAdenoX-PRLS-ZsGreen1 Linear",
-        "pAdenoX-DsRed-Express Linear",
-        "pAd/BLOCK-iT™-DEST",
-        "pAd/PL-DEST™",
-        "pAd/CMV/V5-DEST™"
+        "pAdenoX-DsRed-Express Linear"
       ],
       "variants": 2,
       "occurrences": 14,
@@ -8751,9 +8893,7 @@
       "length": 234,
       "description": "<html><body>self-inactivating&nbsp;3' long terminal repeat (LTR) from HIV-1</body></html>",
       "source": "snapgene_library",
-      "aliases": [
-        "3' LTR (ΔU3)"
-      ],
+      "aliases": [],
       "sourceFiles": [
         "pHR-SFFV-dCas9-BFP-KRAB",
         "pHAGE EF1α dCas9-VP64",
@@ -8764,17 +8904,7 @@
         "pHR-SFFV-KRAB-dCas9-P2A-mCherry",
         "pHAGE-TO-dCas9-3XmCherry",
         "pHR-SFFV-dCas9-BFP",
-        "pTOL-hCMV-TET3G-Hygro Transactivator",
-        "pCLIP-Cas9-Nickase-TRE3G-ZsGreen",
-        "pCW-Cas9",
-        "pZIP-mCMV-RFP-Puro",
-        "pRSITUR-U6Tet-sh-HTS3-UbiC-TetRep-2A-TagRFP",
-        "pZIP-hCMV-ZSGreen-Puro",
-        "pCLIP-All-TRE3G-Puro",
-        "pCLIP-Cas9-Nuclease-TRE3G-tRFP",
-        "pGIPZ",
-        "pLenti6/V5-DEST",
-        "pLKO.1 puro"
+        "pTOL-hCMV-TET3G-Hygro Transactivator"
       ],
       "variants": 1,
       "occurrences": 11,
@@ -8903,6 +9033,24 @@
       "variants": 1,
       "occurrences": 6,
       "id": "cf_c39298"
+    },
+    {
+      "name": "5' ITR",
+      "type": "misc_feature",
+      "sequence": "CATCATCAATAATATACCTTATTTTGGATTGAAGCCAATATGATAATGAGGGGGTGGAGTTTGTGACGTGGCGCGGGGCGTGGGAACGGGGCGGGTGACGTAG",
+      "protein": "",
+      "length": 103,
+      "description": "<html><body>inverted terminal repeat of human adenovirus serotype 5</body></html>",
+      "source": "snapgene_library",
+      "aliases": [],
+      "sourceFiles": [
+        "pAd/BLOCK-iT™-DEST",
+        "pAd/PL-DEST™",
+        "pAd/CMV/V5-DEST™"
+      ],
+      "variants": 1,
+      "occurrences": 6,
+      "id": "cf_56c836"
     },
     {
       "name": "cspA 3'UTR",
