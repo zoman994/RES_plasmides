@@ -23,6 +23,54 @@ function complementChar(c) {
   return RC_MAP[c] || "N";
 }
 
+// Bounded LRU-ish cache for codon walks, keyed by the actual sequence
+// string. AATrack renders one instance per SequenceLine — typically
+// 60+ for an 8 kb plasmid — and each instance previously called
+// walkCodons(fullSeq, frame, strand) for every (frame, strand) row,
+// burning ~360 full-plasmid translations per render. With this cache
+// each (sequence, frame, strand) tuple translates exactly once across
+// every line that shares the sequence reference.
+//
+// Implementation note: WeakMap can't be keyed on strings, so we use a
+// plain Map and trim from the oldest when it grows past a small bound.
+// The bound is sized to comfortably hold a handful of distinct plasmid
+// strings; collisions would only force a re-translate, never corrupt.
+const STRING_CACHE_MAX = 32;
+const _stringCache = new Map();
+function _trimStringCache() {
+  while (_stringCache.size > STRING_CACHE_MAX) {
+    const oldest = _stringCache.keys().next().value;
+    _stringCache.delete(oldest);
+  }
+}
+
+/**
+ * Cached variant of walkCodons. Returns the codons array AND a
+ * `byPosition` Map from middle-base position → codon record so the
+ * caller can do O(1) lookups instead of per-cell `Array.find`. Both
+ * references are stable for the same (sequence, frame, strand) tuple.
+ */
+export function walkCodonsCached(sequence, frame, strand) {
+  if (typeof sequence !== 'string') return { codons: [], byPosition: new Map() };
+  const cacheKey = `${frame}:${strand}`;
+  let perSeq = _stringCache.get(sequence);
+  if (perSeq) {
+    const hit = perSeq.get(cacheKey);
+    if (hit) return hit;
+  }
+  const codons = walkCodons(sequence, frame, strand);
+  const byPosition = new Map();
+  for (let i = 0; i < codons.length; i++) byPosition.set(codons[i].position, codons[i]);
+  const entry = { codons, byPosition };
+  if (!perSeq) {
+    perSeq = new Map();
+    _stringCache.set(sequence, perSeq);
+    _trimStringCache();
+  }
+  perSeq.set(cacheKey, entry);
+  return entry;
+}
+
 /**
  * Walk codons for a given frame and strand.
  *

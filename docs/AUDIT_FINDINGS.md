@@ -15,7 +15,7 @@ Topmost pending P0/P1 takes priority each iteration.
 | ~~BUNDLE-10~~ | resolved (f362f07) | ~~PWA Workbox precaches every `**/*.json`~~ → globPatterns drops `json`; CacheFirst runtime rules for plasmid pack + common-features. Precache 24 MB → 833 KiB / 16 entries. |
 | ~~BUNDLE-01~~ | resolved (5de98f7) | ~~No `manualChunks`, single 726 KB main bundle~~ → split into react / db / dnd / xyflow / compress chunks. Main bundle 726→427 KB (gz 212→116). |
 | ~~BUNDLE-04~~ | resolved (verified) | ~~`@xyflow/react` may ship as dead weight~~ → confirmed tree-shaken from production bundle (`grep "xyflow" dist/assets/*.js` returns nothing). The `flow/` directory has no entry-point reach so Rolldown elides it entirely. |
-| PERF-01 | pending | `AATrack` hybrid render translates entire plasmid per line × per frame (~3M codon ops) |
+| ~~PERF-01~~ | resolved | ~~`AATrack` hybrid translates entire plasmid per line × per frame~~ → introduced `walkCodonsCached(seq, frame, strand)` in `lib/codon-walker.js` with a bounded LRU keyed on the sequence string. AATrack uses it + the returned `byPosition` map for O(1) cell lookup. ~360 full-plasmid translations per render → 1× per (sequence, frame, strand) tuple. Tests run ~13 s faster end-to-end. |
 | ~~PERF-02~~ | resolved | ~~`runPredictors` PWM scan re-slices 6-mers~~ → `scorePwmAt(seq, start, ...)` reads via `charCodeAt` (no slice); PWM theoretical maxima cached at module load (no per-call `Math.max(...row)`); stem-loop matcher walks via charCodeAt + complement-charcode lookup (eliminates slice/reverseComplement/regex match per probe). |
 | ~~PERF-03~~ | resolved | ~~`CatalogColumn` flat-search rebuilds 2800-element pool per keystroke~~ → pre-sized array build (no spread allocation), gated fallback to `Object.values(...).flat()` only when `snapgeneFlat` not yet warm; `ensureSnapgeneFlat()` already fires from useEffect on first non-empty query. |
 | ~~HOOK-09~~ | resolved | ~~`CatalogColumn` calls `sources.ensureSnapgeneFlat()` in render body~~ → moved into `useEffect([flatActive, sources])`. |
@@ -42,7 +42,7 @@ Topmost pending P0/P1 takes priority each iteration.
 | PERF-06 | pending | `enrichWithCommonFeatures` dedup is O(annotations × hits) |
 | PERF-07 | pending | `AnnotationTrack` filters parents/details + runs stacker per line, but the split is line-invariant |
 | PERF-08 | pending | `buildLineAnnMap` allocates a per-line `Array(lineLen)` per render |
-| PERF-09 | pending | Hybrid AATrack hidden-row probe runs `regions.filter` twice + `computeAAOpacity` per cell twice |
+| ~~PERF-09~~ | resolved | ~~Hybrid AATrack ran `regions.filter` twice per row~~ → folded `rowCdsRegionsForOpacity` into the single `rowCdsRegions` walk. |
 | BUNDLE-03 | blocked | `@dagrejs/dagre` declared but never imported. Verified absent from production bundle. Removal via `npm uninstall @dagrejs/dagre` — needs user approval (Project Flow comment says "auto-layout via dagre LR" but actual import is missing). |
 | BUNDLE-05 | pending | `Importer` (~8.7 KLOC) eagerly imported in App.jsx — should lazy via React.lazy |
 | BUNDLE-07 | pending | `restriction-db.js` (40 KB) eagerly imported into 14 files |
@@ -86,7 +86,7 @@ Topmost pending P0/P1 takes priority each iteration.
 | ~~PERF-11~~ | resolved | ~~`mergeStripWithPredicted` runs in render body of SingleInspector with no memo~~ → wrapped in `useMemo` keyed on the 7 inputs; LinearFeatureBar gets a stable `stripAnnotations` ref across unrelated re-renders. |
 | PERF-12 | pending | `SequenceView.annotations` flattens fragments[].annotations on every fragments shift |
 | ~~PERF-13~~ | resolved | ~~`annotateRESites` 16 sequential `indexOf` scans~~ → single O(N) walk; sites bucketed by first base via `RE_BUCKETS` lookup; only enzymes whose recognition starts with the current char are tested. |
-| PERF-14 | pending | AATrack `lineEndAbs` filter probes `row.map.keys()` per line |
+| ~~PERF-14~~ | resolved | ~~`Array.find` cell lookup in AATrack hot path~~ → replaced with `byPosition.get(absPos)` from `walkCodonsCached`. O(lineLen²) → O(1) per cell. |
 | ~~PERF-15~~ | resolved | ~~`selectAllLibraryTags` walks all entries every call~~ → memoised on `libraryEntries` reference (same applied to `selectVisibleLibraryEntries`); consumers via `useStore(...)` now get stable array refs across unrelated store ticks. |
 | SAFE-05 | pending | `siteToRegex` falls through to raw user char — guard inputs |
 | SAFE-07 | pending | Empty `catch {}` swallows IndexedDB / localStorage failures silently |

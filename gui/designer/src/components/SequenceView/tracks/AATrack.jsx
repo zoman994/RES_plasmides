@@ -23,7 +23,7 @@
  */
 
 import { memo } from "react";
-import { walkCodons } from "../lib/codon-walker.js";
+import { walkCodons, walkCodonsCached } from "../lib/codon-walker.js";
 import { computeAAOpacity, frameHasSignal, regionFrame } from "../lib/aa-opacity.js";
 
 const ROW_HEIGHT = 12;
@@ -641,7 +641,12 @@ function AATrack({
       style={{ marginTop: 1 }}
     >
       {rows.map((row) => {
-        const codons = walkCodons(fullSeq, row.frame, row.strand);
+        // PERF-01 — fetch codons + byPosition map from the module-level
+        // cache. With ~60 SequenceLine instances each rendering up to 6
+        // (frame, strand) rows, the previous spelling re-translated the
+        // entire plasmid 360× per render. Now: 1× per (sequence, frame,
+        // strand) tuple, shared across every line.
+        const { codons, byPosition } = walkCodonsCached(fullSeq, row.frame, row.strand);
         const onLine = codons.filter(
           (c) => c.position >= lineStart && c.position < lineEnd,
         );
@@ -659,7 +664,11 @@ function AATrack({
         // opacity 0 outside the dominant CDS — visually empty
         // gutter row. Probe each codon's computed opacity; skip
         // the row if every cell is invisible.
-        const rowCdsRegionsForOpacity = (regions || []).filter((r) => {
+        // PERF-01 — compute the matching CDS regions for THIS row
+        // ONCE (was twice — `rowCdsRegionsForOpacity` then
+        // `rowCdsRegions`, identical). Used by both the visibility
+        // probe and the per-cell opacity / colour tint below.
+        const rowCdsRegions = (regions || []).filter((r) => {
           if (!r || !CDS_TYPES.has(r.type)) return false;
           const rs = r.strand === -1 ? -1 : 1;
           if (rs !== row.strand) return false;
@@ -674,23 +683,13 @@ function AATrack({
             framesMode,
             orfRanges,
             dominantCDS,
-            inAnnotatedCDS: rowCdsRegionsForOpacity.some(
+            inAnnotatedCDS: rowCdsRegions.some(
               (r) => c.position >= r.start && c.position < r.end,
             ),
           });
           return op > 0;
         });
         if (!anyVisible) return null;
-        // Annotated CDS / gene / marker regions whose own (frame,
-        // strand) matches THIS row. Used to tint the AA cell with the
-        // feature's annotation colour so the matching frame visually
-        // pops in hybrid `auto` mode.
-        const rowCdsRegions = (regions || []).filter((r) => {
-          if (!r || !CDS_TYPES.has(r.type)) return false;
-          const rs = r.strand === -1 ? -1 : 1;
-          if (rs !== row.strand) return false;
-          return regionFrame(r, fullSeq.length) === row.frame;
-        });
         return (
           <div
             key={`f${row.frame}s${row.strand}`}
@@ -733,7 +732,11 @@ function AATrack({
             </span>
             {Array.from({ length: lineLen }, (_, ci) => {
               const absPos = lineStart + ci;
-              const codon = onLine.find((c) => c.position === absPos);
+              // O(1) lookup via the cached `byPosition` map — was
+              // O(lineLen) `Array.find` per cell, i.e. O(lineLen²) per
+              // row before. byPosition is shared across all lines that
+              // render the same (frame, strand).
+              const codon = byPosition.get(absPos);
               if (!codon) {
                 // Filler between codon midpoints — never copyable
                 // but Bug-rush #20 (04.05.2026 evening): biolog «при
@@ -744,7 +747,7 @@ function AATrack({
                 // cell so a click on the empty space immediately to
                 // the left or right of the AA letter still selects
                 // the same triplet.
-                const adjacent = onLine.find((c) => Math.abs(c.position - absPos) <= 1);
+                const adjacent = byPosition.get(absPos - 1) || byPosition.get(absPos + 1);
                 const fillerCds = rowCdsRegions.find(
                   (r) => absPos >= r.start && absPos < r.end,
                 );
