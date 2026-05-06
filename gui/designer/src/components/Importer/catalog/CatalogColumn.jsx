@@ -643,28 +643,52 @@ export default function CatalogColumn({
               />
             )}
             {openMine && (() => {
-              // Mine tags act as folder paths: any library entry tagged
-              // 'Vectors/CRISPR' lands inside the «CRISPR» folder under
-              // «Vectors». User-created (empty) folders are unioned in.
-              // When the library has entries but NONE carry tags,
-              // sources.mineGroups returns [] (legacy flat-fallback marker)
-              // — bucket those items into a synthetic «__untagged__»
-              // folder so they actually render under Mine. Without this,
-              // 3 untagged vectors showed counter «3» but invisible tree.
-              let effectiveGroups = liveMineGroups;
-              if (effectiveGroups.length === 0 && liveMine.length > 0) {
-                effectiveGroups = [{ tag: '__untagged__', items: liveMine }];
-              }
+              // «Mine» groups library entries by `_folderPath` (separate
+              // from tags since the folder/tag decoupling, 3482400). An
+              // entry with an empty folderPath sits at the TOP of «Mine»,
+              // outside any folder — biolog: «такги просто атрибут который
+              // мы можем использовать потом для поиска но папки с
+              // названиями тагов не создавать». Sub-folder buckets feed
+              // the folder tree; top-level items render directly inside
+              // the Mine group via InlineItemList.
+              //
+              // 2026-05-06 fix: previously the `''`-keyed bucket was
+              // passed to `buildFolderTree` which dropped empty strings,
+              // so freshly-imported untagged entries showed a counter but
+              // never rendered. Now: peel the `''` bucket off and feed
+              // its items into InlineItemList; pass the rest to the tree.
+              const folderGroups = liveMineGroups.filter((g) => g.tag && g.tag !== '');
+              const topLevelItems = (() => {
+                const empty = liveMineGroups.find((g) => g.tag === '' || g.tag === '__untagged__');
+                if (empty && Array.isArray(empty.items)) return empty.items;
+                // Legacy fallback: if no '' bucket but there's flat liveMine
+                // (e.g. the catalog hasn't grouped yet), treat the whole
+                // pool as top-level. Without this, very early renders
+                // before mineGroups settles would flash empty.
+                if (folderGroups.length === 0 && liveMine.length > 0) return liveMine;
+                return [];
+              })();
               const allPaths = new Set([
                 ...(userFoldersByGroup.mine || []),
-                ...effectiveGroups.map((g) => g.tag),
+                ...folderGroups.map((g) => g.tag),
               ]);
               const tree = buildFolderTree([...allPaths]);
-              const itemsByPath = new Map(effectiveGroups.map((g) => [g.tag, g.items]));
-              if (tree.length === 0 && liveMine.length === 0 && folderDraftKey !== 'mine|') {
+              const itemsByPath = new Map(folderGroups.map((g) => [g.tag, g.items]));
+              if (tree.length === 0 && topLevelItems.length === 0 && folderDraftKey !== 'mine|') {
                 return <EmptyHint label={S.catalogEmptyGroup} testId="catalog-mine-empty" depth={1} />;
               }
-              return renderFolderNodes(tree, 'mine', 1, itemsByPath);
+              return (
+                <>
+                  {renderFolderNodes(tree, 'mine', 1, itemsByPath)}
+                  {topLevelItems.length > 0 && (
+                    <InlineItemList
+                      items={topLevelItems}
+                      onSelectItem={onSelectItem}
+                      depth={1}
+                    />
+                  )}
+                </>
+              );
             })()}
 
             <GroupHeader
