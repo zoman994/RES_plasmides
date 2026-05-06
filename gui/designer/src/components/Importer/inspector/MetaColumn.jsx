@@ -131,25 +131,36 @@ export default function MetaColumn({
       </Card>
 
       <Card label={S.metaTopology}>
-        {/* UX-014 — radio buttons used to be icon-only (◯ / —), which
-            biolog couldn't read at a glance. First fix tried mixing
-            icon + label in one button but the Unicode glyphs collided
-            with the text («значки кривые», 2026-05-06). Now: text-only
-            labels — same compact footprint, zero ambiguity. The
-            ToggleButton's active outline already conveys the state. */}
+        {/* UX-014 — proper SVG icons (no Unicode collisions) + text
+            label inside each ToggleButton. The 12×12 SVGs are sized
+            to match the 11px label baseline. */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <ToggleButton
             active={isCircular}
             onClick={() => onTopologyChange('circular')}
             title={S.metaTopologyCircularTitle}
             data-testid="importer-meta-topology-circular"
-          >{S.metaTopologyCircularLabel || 'Circular'}</ToggleButton>
+          >
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+              <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+                <circle cx="6" cy="6" r="4.5" fill="none" stroke="currentColor" strokeWidth="1.4" />
+              </svg>
+              <span>{S.metaTopologyCircularLabel || 'Circular'}</span>
+            </span>
+          </ToggleButton>
           <ToggleButton
             active={!isCircular}
             onClick={() => onTopologyChange('linear')}
             title={S.metaTopologyLinearTitle}
             data-testid="importer-meta-topology-linear"
-          >{S.metaTopologyLinearLabel || 'Linear'}</ToggleButton>
+          >
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+              <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+                <line x1="1" y1="6" x2="11" y2="6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+              </svg>
+              <span>{S.metaTopologyLinearLabel || 'Linear'}</span>
+            </span>
+          </ToggleButton>
         </div>
       </Card>
 
