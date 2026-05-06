@@ -35,24 +35,28 @@ describe('shouldEnableWrapTail', () => {
     })).toBe(false);
   });
 
-  it('returns false when plasmid + 3 reserve lines fits in viewport', () => {
-    // 1000 bp / cpl=80 = 13 lines (Math.ceil), 13 * 18 = 234 px,
-    // + 3 * 18 = 288 px reserve, viewport 400 px → fits → disabled.
-    expect(shouldEnableWrapTail({
-      circular: true, seqLength: 1000, cpl: 80, viewportHeight: 400, lineHeight: 18,
-    })).toBe(false);
-  });
-
-  it('returns true on a long circular plasmid in a small viewport', () => {
-    // 5000 bp / cpl=80 = 63 lines, 63 * 18 = 1134 px > 400 → enabled.
+  it('returns true on a long circular plasmid (viewport size irrelevant)', () => {
+    // 5000 bp / cpl=80 = 63 main lines → enabled regardless of
+    // viewport height since round 4 (06.05.2026 — see helper notes
+    // for the rationale: nested scroll parents made the viewport
+    // probe unreliable).
     expect(shouldEnableWrapTail({
       circular: true, seqLength: 5000, cpl: 80, viewportHeight: 400, lineHeight: 18,
     })).toBe(true);
   });
 
+  it('returns true even when plasmid would visually fit in viewport (round-4 simplification)', () => {
+    // 1000 bp / cpl=80 = 13 main lines → enabled. The previous
+    // viewport-fit short-circuit was dropped because nested scroll
+    // parents broke the probe (biolog 06.05.2026 feedback).
+    expect(shouldEnableWrapTail({
+      circular: true, seqLength: 1000, cpl: 80, viewportHeight: 400, lineHeight: 18,
+    })).toBe(true);
+  });
+
   it('returns false when totalMainLines < 3 (degenerate)', () => {
-    // 100 bp / cpl=80 = 2 lines. Even with tiny viewport → disabled,
-    // wrap-tail lines would equal the entire plasmid.
+    // 100 bp / cpl=80 = 2 lines. Wrap-tail lines would equal the
+    // entire plasmid → no useful context.
     expect(shouldEnableWrapTail({
       circular: true, seqLength: 100, cpl: 80, viewportHeight: 50, lineHeight: 18,
     })).toBe(false);

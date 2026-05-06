@@ -36,6 +36,7 @@
 
 import {
   forwardRef,
+  useCallback,
   useEffect,
   useImperativeHandle,
   useLayoutEffect,
@@ -495,7 +496,17 @@ const SequenceView = forwardRef(function SequenceView({
     onCaretChange,
     seqLength,
   });
-  const onAnnotationEdgePointerDown = onAnnotationEdit ? annDrag.onPointerDownEdge : null;
+  // 06.05.2026 PERF-1 — stabilise prop identity for handlers passed
+  // into <SequenceLine>. SequenceLine is React.memo'd over ~60 lines;
+  // a fresh closure per render breaks shallow-equal and triggers
+  // a full ~70k-DOM-node re-render on every parent state change
+  // (cursor step, drag-scrub tick, idle-prewarm flip). useCallback
+  // pins identity so memo skips lines whose own inputs are unchanged.
+  const dragOnPointerDownEdge = annDrag.onPointerDownEdge;
+  const onAnnotationEdgePointerDown = useMemo(
+    () => (onAnnotationEdit ? dragOnPointerDownEdge : null),
+    [onAnnotationEdit, dragOnPointerDownEdge],
+  );
   const draggedAnnotationId = annDrag.draggedAnnotationId;
   const draggedEdge = annDrag.draggedEdge;
   const draggedCurrentCoord = annDrag.currentCoord;
@@ -505,20 +516,32 @@ const SequenceView = forwardRef(function SequenceView({
   // supplied onAnnotationEdit; otherwise the doubleclick handler
   // is null and AnnotationTrack ignores the event.
   const renameApi = useAnnotationRename({ onAnnotationEdit });
-  const onAnnotationDoubleClick = onAnnotationEdit ? renameApi.startRename : null;
+  const renameStart = renameApi.startRename;
+  const onAnnotationDoubleClick = useMemo(
+    () => (onAnnotationEdit ? renameStart : null),
+    [onAnnotationEdit, renameStart],
+  );
   // Sprint M-X.3 follow-up — double-click on the FEATURE BAR now
   // opens the per-feature edit modal (FeatureEditorModal). Falls
   // back to the previous «open Annotator scoped to region» flow
   // only when no editor callback is wired (legacy embed sites).
-  // Distinct from the label dblclick (rename).
-  const onAnnotationFeatureDoubleClick = onOpenFeatureEditor
-    ? (region) => onOpenFeatureEditor(region)
-    : (onOpenAnnotator
-      ? (region) => onOpenAnnotator({
-        kind: 'region',
-        region: { start: region.start, end: region.end },
-      })
-      : null);
+  // PERF-1: useCallback so the closure identity is stable across
+  // renders even when parent re-renders for unrelated reasons.
+  const onAnnotationFeatureDoubleClick = useCallback(
+    (region) => {
+      if (onOpenFeatureEditor) {
+        onOpenFeatureEditor(region);
+        return;
+      }
+      if (onOpenAnnotator) {
+        onOpenAnnotator({
+          kind: 'region',
+          region: { start: region.start, end: region.end },
+        });
+      }
+    },
+    [onOpenFeatureEditor, onOpenAnnotator],
+  );
   // Probe the dragged-or-renamed region's DOM rect for input
   // positioning. Layout effect would be cleaner but this is
   // single-shot per rename — re-running on every render only when
@@ -584,7 +607,15 @@ const SequenceView = forwardRef(function SequenceView({
         primers={primers}
         reSites={reSites}
         charPx={charPx}
-        settings={settings}
+        // PERF-4 (06.05.2026 round 3): pass scalars instead of the
+        // `settings` object so SequenceLine.memo bails on identity
+        // checks per-field. zustand emitting a fresh slice object on
+        // ANY field change used to invalidate memo for every line.
+        showBottomStrand={settings.showBottomStrand}
+        framesMode={settings.framesMode}
+        primerStyle={settings.primerStyle}
+        reOrientation={settings.reOrientation}
+        visibleFrames={settings.visibleFrames}
         framesResolution={framesResolution}
         orfRanges={orfRanges}
         renderHybrid={renderHybrid}
@@ -605,7 +636,9 @@ const SequenceView = forwardRef(function SequenceView({
     return out;
   }, [
     measured, lines, wrapTailLines, fullSeq, features, primers, reSites, charPx,
-    settings, framesResolution, orfRanges, renderHybrid,
+    settings.showBottomStrand, settings.framesMode, settings.primerStyle,
+    settings.reOrientation, settings.visibleFrames,
+    framesResolution, orfRanges, renderHybrid,
     onAnnotationClick, tracksReady,
     onAnnotationEdgePointerDown, draggedAnnotationId, draggedEdge, draggedCurrentCoord,
     onAnnotationDoubleClick, onAnnotationFeatureDoubleClick,

@@ -42,7 +42,14 @@ const SequenceLine = memo(function SequenceLine({
   primers,
   reSites,
   charPx,
-  settings,
+  // PERF-4 — settings split into scalars so memo bails per-field.
+  // The orchestrator destructures the slice once; SequenceLine just
+  // sees primitives that React.memo's shallow-equal handles cleanly.
+  showBottomStrand,
+  framesMode,
+  primerStyle,
+  reOrientation,
+  visibleFrames,
   framesResolution,
   orfRanges,
   renderHybrid,
@@ -80,13 +87,19 @@ const SequenceLine = memo(function SequenceLine({
       data-wraptail-kind={kind}
       data-tracks-ready={tracksReady ? "true" : "false"}
       style={{
-        // Wrap-tail lines render dimmed (0.5 opacity) and inert
-        // (pointer-events: none) so they read as «context» without
-        // hijacking caret / drag / click interactions. The actual
-        // tracks render identically — feature filtering happens at
-        // the parent before features arrive here.
-        opacity: isWrapTail ? 0.5 : undefined,
+        // Wrap-tail lines render dimmed and inert so they read as
+        // «context» without hijacking caret / drag / click. 06.05.2026
+        // biolog feedback: bump visibility cues — opacity 0.6 (was 0.5,
+        // numbers were unreadable on light theme), accent-500 stripe
+        // on the left edge so the eye groups the strip immediately
+        // and tells «this is wrap-around context, scroll target is
+        // the next zone». Subtle accent-tinted background reinforces
+        // the boundary without clashing with feature colours.
+        opacity: isWrapTail ? 0.6 : undefined,
         pointerEvents: isWrapTail ? 'none' : undefined,
+        borderLeft: isWrapTail ? '3px solid var(--accent-500, #f97316)' : undefined,
+        background: isWrapTail ? 'color-mix(in oklab, var(--accent-500, #f97316) 4%, transparent)' : undefined,
+        paddingLeft: isWrapTail ? 4 : undefined,
         // Block hierarchy: each line = ruler + DNA + annotation + AA
         // is ONE logical unit. Inter-block separator (paddingBottom 14
         // + 1 px dashed divider + marginBottom 14 → ≈28 px gap) tells
@@ -102,12 +115,14 @@ const SequenceLine = memo(function SequenceLine({
         // realises off-screen lines as they enter the viewport, which
         // costs ~16-32 ms per realisation pass and breaks the
         // 11-ms frame budget for high-refresh displays. Eager paint
-        // + GPU layers (translateZ(0) below) keeps every line
-        // pre-rendered, so scroll is a pure compositor translate.
-        // Memory cost: ~60 layers per plasmid, well within budget.
-        // GPU compositing — promotes each line into its own layer.
-        transform: "translateZ(0)",
-        backfaceVisibility: "hidden",
+        // keeps every line pre-rendered, so scroll is a paint-only
+        // pass within the contain:paint box.
+        // PERF-5 (06.05.2026 round 3): translateZ(0) + backfaceVisibility
+        // hidden was DROPPED. On weak integrated GPUs, ~60 forced
+        // layers per plasmid generated more compositor work than the
+        // contain:paint isolation already provides. contain:paint
+        // alone keeps repaints localised; we skip the layer
+        // promotion to reduce GPU memory + composite cost.
       }}
     >
       {/*
@@ -124,7 +139,7 @@ const SequenceLine = memo(function SequenceLine({
           lineLen={line.seq.length}
           charPx={charPx}
           labelChars={LABEL_WIDTH}
-          primerStyle={settings.primerStyle}
+          primerStyle={primerStyle}
         />
       ) : null}
       {tracksReady ? (
@@ -134,7 +149,7 @@ const SequenceLine = memo(function SequenceLine({
           lineLen={line.seq.length}
           charPx={charPx}
           labelChars={LABEL_WIDTH}
-          reOrientation={settings.reOrientation}
+          reOrientation={reOrientation}
         />
       ) : null}
       <RulerTrack
@@ -153,10 +168,10 @@ const SequenceLine = memo(function SequenceLine({
         seq={line.seq}
         annMap={annMap}
         labelChars={LABEL_WIDTH}
-        showBottomStrand={settings.showBottomStrand}
+        showBottomStrand={showBottomStrand}
         which="top"
       />
-      {settings.showBottomStrand && (
+      {showBottomStrand && (
         <StrandsTrack
           lineStart={line.start}
           seq={line.seq}
@@ -189,12 +204,12 @@ const SequenceLine = memo(function SequenceLine({
           lineLen={line.seq.length}
           labelChars={LABEL_WIDTH}
           strategy={framesResolution.strategy}
-          framesMode={settings.framesMode}
+          framesMode={framesMode}
           orfRanges={orfRanges}
           dominantCDS={framesResolution.dominant}
           regions={features}
           strandFilter="forward"
-          visibleFrames={settings.visibleFrames}
+          visibleFrames={visibleFrames}
         />
       ) : null}
       {tracksReady && renderHybrid ? (
@@ -204,12 +219,12 @@ const SequenceLine = memo(function SequenceLine({
           lineLen={line.seq.length}
           labelChars={LABEL_WIDTH}
           strategy={framesResolution.strategy}
-          framesMode={settings.framesMode}
+          framesMode={framesMode}
           orfRanges={orfRanges}
           dominantCDS={framesResolution.dominant}
           regions={features}
           strandFilter="reverse"
-          visibleFrames={settings.visibleFrames}
+          visibleFrames={visibleFrames}
         />
       ) : null}
     </div>

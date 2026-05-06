@@ -102,6 +102,11 @@ export default function OriginMarkerOverlay({ containerRef, circular, hasTrailin
 }
 
 function Marker({ testId, top, left, width }) {
+  // 06.05.2026 biolog: «оранжевую линию вижу с трудом». Bumped
+  // visibility — solid 2 px instead of dashed 1 px, label has a
+  // contrasting accent-500 background so it doesn't disappear over
+  // light surface-1, two end-cap arrows ◀ ▶ that flag where the
+  // plasmid loops back. Same pointer-events:none invariant.
   return (
     <div
       data-testid={testId}
@@ -113,10 +118,7 @@ function Marker({ testId, top, left, width }) {
         width,
         height: 0,
         pointerEvents: 'none',
-        // Dashed accent line: matches the dashed border-bottom on
-        // line dividers but in accent colour and a hair thicker so
-        // it reads as «boundary marker», not just another line gap.
-        borderTop: '1px dashed var(--accent-500, #f97316)',
+        borderTop: '2px solid var(--accent-500, #f97316)',
         zIndex: 4, // below CaretOverlay (5), above SelectionOverlay (3)
       }}
     >
@@ -124,16 +126,19 @@ function Marker({ testId, top, left, width }) {
         style={{
           position: 'absolute',
           right: 4,
-          top: -8,
-          fontSize: 9,
-          color: 'var(--accent-500, #f97316)',
-          background: 'var(--surface-1, #fff)',
-          padding: '0 4px',
+          top: -10,
+          fontSize: 10,
+          fontWeight: 600,
+          color: '#fff',
+          background: 'var(--accent-500, #f97316)',
+          padding: '1px 6px',
+          borderRadius: 3,
           fontFamily: 'var(--font-mono, monospace)',
-          letterSpacing: '0.02em',
+          letterSpacing: '0.04em',
           pointerEvents: 'none',
+          boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
         }}
-      >origin / 1</span>
+      >▲ origin / 1 ▼</span>
     </div>
   );
 }

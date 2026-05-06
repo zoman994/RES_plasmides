@@ -51,17 +51,26 @@ export function shouldEnableWrapTail({
   if (!circular) return false;
   if (!Number.isFinite(seqLength) || seqLength <= 0) return false;
   if (!Number.isFinite(cpl) || cpl <= 0) return false;
-  if (!Number.isFinite(viewportHeight) || viewportHeight <= 0) return false;
-  if (!Number.isFinite(lineHeight) || lineHeight <= 0) return false;
 
   const totalMainLines = Math.ceil(seqLength / cpl);
   if (totalMainLines < MIN_TOTAL_LINES_FOR_WRAP_TAIL) return false;
 
-  // If plasmid + reserve fits in viewport, the biolog already sees
-  // everything and wrap-tail just clutters the band.
-  const mainHeight = totalMainLines * lineHeight;
-  const reserveHeight = RESERVE_LINES_FOR_FIT_CHECK * lineHeight;
-  if (mainHeight + reserveHeight < viewportHeight) return false;
+  // Auto-disable «plasmid fits in viewport» check (06.05.2026 round 4):
+  // SequenceView is mounted INSIDE a scroll-parent that owns the
+  // overflow (importer-single-tab-content has overflow:scroll), so
+  // SequenceView's own clientHeight equals the full content height —
+  // not the visible viewport. The fit-check therefore always
+  // succeeded, disabling wrap-tail for any plasmid that fully
+  // mounted in the DOM. Biolog 06.05: «origin прячется под колбасой
+  // и в нижней части сиквенса нет ничего» — exactly the symptom of
+  // wrap-tail disabled. Until we have a reliable parent-viewport
+  // probe, just enable wrap-tail whenever there are ≥3 main lines
+  // — the duplicate strips cost ~2 lines of vertical space, which
+  // is acceptable on every plasmid biolog has shipped through.
+  // viewportHeight + lineHeight kept on the signature for a future
+  // scroll-parent-aware variant.
+  void viewportHeight;
+  void lineHeight;
 
   return true;
 }

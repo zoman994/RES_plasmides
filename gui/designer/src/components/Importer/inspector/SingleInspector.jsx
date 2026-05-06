@@ -173,20 +173,37 @@ export default function SingleInspector({
     setPendingScroll({ pos, tick: Date.now(), instant: false });
   }, [activeTab, onActiveTabChange]);
 
-  // Live drag scrub — fires every pointermove. Always update the
-  // cursor visual; push a scroll when biolog is on a tab that hosts
-  // a sequence view — Sequence (the regular path) OR Annotations
-  // (the embedded Annotator's PreviewTab also consumes pendingScroll
-  // since 2026-05-06). Other tabs just update cursor metadata
-  // (Overview shows the caret on the strip itself).
+  // Live drag scrub — fires every pointermove (≥100/sec on a
+  // touchpad). PERF-3 (06.05.2026 biolog feedback): without
+  // coalescing, every move kicks 4 setState calls + a full
+  // SequenceView re-render. rAF-coalesce reduces it to one batch
+  // per animation frame: the latest pos goes into a ref, an rAF
+  // tick reads + flushes once. Cursor updates and pendingScroll
+  // both stay sub-frame; the visible jitter biolog reports goes
+  // away because we no longer ship 6+ React passes per frame.
+  const scrubFrameRef = useRef(null);
+  const scrubLatestRef = useRef(null);
+  useEffect(() => () => {
+    if (scrubFrameRef.current != null) {
+      cancelAnimationFrame(scrubFrameRef.current);
+      scrubFrameRef.current = null;
+    }
+  }, []);
   const onBarScrub = useCallback((pos) => {
     if (typeof pos !== 'number' || !Number.isFinite(pos)) return;
-    setCursorPos(pos);
-    setCursorAnchor(pos);
-    setCursorSelectionMode('dna');
-    if (activeTab === 'sequence' || activeTab === 'annotations') {
-      setPendingScroll({ pos, tick: Date.now(), instant: true });
-    }
+    scrubLatestRef.current = pos;
+    if (scrubFrameRef.current != null) return; // already scheduled
+    scrubFrameRef.current = requestAnimationFrame(() => {
+      scrubFrameRef.current = null;
+      const next = scrubLatestRef.current;
+      if (next == null) return;
+      setCursorPos(next);
+      setCursorAnchor(next);
+      setCursorSelectionMode('dna');
+      if (activeTab === 'sequence' || activeTab === 'annotations') {
+        setPendingScroll({ pos: next, tick: Date.now(), instant: true });
+      }
+    });
   }, [activeTab]);
 
   // Keyboard caret nav inside SequenceView (arrow keys etc.). Same
