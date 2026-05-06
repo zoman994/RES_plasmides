@@ -33,7 +33,7 @@ Topmost pending P0/P1 takes priority each iteration.
 |----|--------|-------|
 | HOOK-03 | pending | Importer effect `pendingAnnotatorFile` reads stale `parsedItems` — Annotator-open race |
 | HOOK-06 | pending | `SingleInspector.onAnnotationEditFromView` callback identity churns every render → drag flakiness |
-| HOOK-08 | pending | Annotator promise chains have no cancellation — settled promise calls setState on unmounted |
+| ~~HOOK-08~~ | resolved | ~~Annotator L1 auto-run promise has no cancellation~~ → effect now returns cleanup that flips a `cancelled` flag, gating `setResult`/`setRunning` and the `console.warn` on failure. Closing the Annotator mid-scan no longer warns or leaks results into a different plasmid's store slice. |
 | HOOK-05 | pending | `SequenceView` ResizeObserver may attach to discarded empty-state node |
 | HOOK-02 | pending | `Importer.runConfirm` closes over whole `state` object → callback churn → memo churn |
 | HOOK-11 | pending | `Importer.alreadyAddedToLibrary` IIFE reads `useStore.getState()` in render — no subscription |

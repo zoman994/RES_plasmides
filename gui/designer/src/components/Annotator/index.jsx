@@ -142,17 +142,26 @@ export default function Annotator({
     if (!plugin) return;                           // registry not populated yet
     autoRunFiredFor.current = sid;
     setRunning(LEVEL_1_PLUGIN_ID, true);
+    // Cancellation flag so a settled L1 promise doesn't write into a
+    // stale store after the Annotator unmounts (or the user opens a
+    // different plasmid before L1 completes). Without this guard,
+    // closing the Annotator mid-run produced a "Can't perform a React
+    // state update on an unmounted component" warning and could land
+    // old plasmid's regions in the new annotator.results slice.
+    let cancelled = false;
     Promise.resolve()
       .then(() => plugin.run(sequence || '', region, { threshold: annotator.threshold }))
-      .then((res) => { if (res) setResult(LEVEL_1_PLUGIN_ID, res); })
+      .then((res) => { if (!cancelled && res) setResult(LEVEL_1_PLUGIN_ID, res); })
       .catch((err) => {
+        if (cancelled) return;
         // Surface failures via the running flag clearing — same
         // pattern handleRun uses; an error toast lives one layer
         // up in SingleInspector if needed.
         // eslint-disable-next-line no-console
         console.warn('[Annotator] L1 auto-run failed:', err?.message || err);
       })
-      .finally(() => setRunning(LEVEL_1_PLUGIN_ID, false));
+      .finally(() => { if (!cancelled) setRunning(LEVEL_1_PLUGIN_ID, false); });
+    return () => { cancelled = true; };
     // Deps intentionally narrow — see autoRunFiredFor guard above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [annotator.open, scope?.sequenceId]);
