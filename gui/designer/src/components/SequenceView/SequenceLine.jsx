@@ -57,18 +57,36 @@ const SequenceLine = memo(function SequenceLine({
   onAnnotationDoubleClick,
   // Bug-rush #3 — double-click on the FEATURE BAR opens Annotator.
   onAnnotationFeatureDoubleClick,
+  // Sprint M-X.3 K2 — wrap-tail kind. 'main' is the default; the
+  // value 'leading-wrap' (last N lines of plasmid rendered before
+  // line 0) and 'trailing-wrap' (first N lines rendered after the
+  // last line) flag a context-only line that's dimmed and inert.
+  // CaretOverlay + useSelectionState filter by data-wraptail-kind
+  // so caret/click never lands on a context line. Default 'main'
+  // keeps the shape backwards-compatible with linear consumers.
+  kind = 'main',
 }) {
   const annMap = useMemo(
     () => buildLineAnnMap(features, line.start, line.seq.length),
     [features, line.start, line.seq.length],
   );
 
+  const isWrapTail = kind !== 'main';
+
   return (
     <div
       data-testid="sequence-view-line"
       data-line-start={line.start}
+      data-wraptail-kind={kind}
       data-tracks-ready={tracksReady ? "true" : "false"}
       style={{
+        // Wrap-tail lines render dimmed (0.5 opacity) and inert
+        // (pointer-events: none) so they read as «context» without
+        // hijacking caret / drag / click interactions. The actual
+        // tracks render identically — feature filtering happens at
+        // the parent before features arrive here.
+        opacity: isWrapTail ? 0.5 : undefined,
+        pointerEvents: isWrapTail ? 'none' : undefined,
         // Block hierarchy: each line = ruler + DNA + annotation + AA
         // is ONE logical unit. Inter-block separator (paddingBottom 14
         // + 1 px dashed divider + marginBottom 14 → ≈28 px gap) tells

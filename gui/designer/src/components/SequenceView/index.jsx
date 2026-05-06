@@ -51,6 +51,12 @@ import {
   clampCharsPerLine,
   linesFromSeq,
 } from "./lib/grid.js";
+import {
+  shouldEnableWrapTail,
+  pickWrapTailLines,
+  buildWrapTailLines,
+  filterAnnotationsForLine,
+} from "./lib/wrap-tail.js";
 import { detectORFRanges } from "./lib/orf-ranges.js";
 import { resolveFramesMode } from "./lib/frames-mode.js";
 import { useRowSelectionIsolation } from "./lib/row-selection-isolation.js";
@@ -311,6 +317,31 @@ const SequenceView = forwardRef(function SequenceView({
     [fullSeq, charsPerLine],
   );
 
+  // Sprint M-X.3 K2 — wrap-tail lines for circular plasmids. Math
+  // lives in `lib/wrap-tail.js` (K1). On K2 we use a baseline
+  // enable rule (`circular && totalMainLines >= 3`); the full
+  // viewport-aware auto-disable comes in K5 once we wire a
+  // ResizeObserver onto containerRef. Linear topology returns
+  // empty arrays so existing render path is untouched.
+  const wrapTailLines = useMemo(() => {
+    if (!circular || !fullSeq || lines.length < 3) {
+      return { leading: [], trailing: [] };
+    }
+    const count = pickWrapTailLines({ totalMainLines: lines.length });
+    if (count === 0) return { leading: [], trailing: [] };
+    return buildWrapTailLines({
+      fullSeq,
+      cpl: charsPerLine,
+      leadingCount: count,
+      trailingCount: count,
+    });
+  }, [circular, fullSeq, charsPerLine, lines.length]);
+  // Reference-only consumption guard (kept stable for next K-step's
+  // ResizeObserver-driven wrapTailEnabled refactor — hoists the import
+  // so eslint no-unused-vars isn't tripped during multi-step rollout).
+  void shouldEnableWrapTail;
+  void filterAnnotationsForLine;
+
   // Forward-declare some unused (M-D reserved) callbacks so React
   // doesn't warn — they're props the consumer can wire later.
   void onSelect;
@@ -500,10 +531,20 @@ const SequenceView = forwardRef(function SequenceView({
   const linesJsx = useMemo(() => {
     if (!fullSeq) return null;
     if (!measured && !__IS_TEST_ENV__) return null;
-    return lines.map((line) => (
+    // Sprint M-X.3 K2 — wrap-tail leading + main + trailing.
+    // Each wrap-tail line is a SequenceLine with `kind` set so the
+    // wrapper applies opacity 0.5 + pointer-events:none + a
+    // data-wraptail-kind attribute. Tracks (annotations / primers /
+    // RE / AA) per-line filter by lineStart + lineLen internally,
+    // so we pass the full arrays as for main lines. Keys must
+    // include `kind` because leading-wrap and main may share a
+    // line.start (degenerate case if main and trailing start
+    // overlap); the prefix prevents a React duplicate-key warning.
+    const renderLine = (line, kind) => (
       <SequenceLine
-        key={line.start}
+        key={`${kind}:${line.start}`}
         line={line}
+        kind={kind}
         fullSeq={fullSeq}
         features={features}
         primers={primers}
@@ -522,9 +563,14 @@ const SequenceView = forwardRef(function SequenceView({
         onAnnotationDoubleClick={onAnnotationDoubleClick}
         onAnnotationFeatureDoubleClick={onAnnotationFeatureDoubleClick}
       />
-    ));
+    );
+    const out = [];
+    for (const line of wrapTailLines.leading) out.push(renderLine(line, 'leading-wrap'));
+    for (const line of lines) out.push(renderLine(line, 'main'));
+    for (const line of wrapTailLines.trailing) out.push(renderLine(line, 'trailing-wrap'));
+    return out;
   }, [
-    measured, lines, fullSeq, features, primers, reSites, charPx,
+    measured, lines, wrapTailLines, fullSeq, features, primers, reSites, charPx,
     settings, framesResolution, orfRanges, renderHybrid,
     onAnnotationClick, tracksReady,
     onAnnotationEdgePointerDown, draggedAnnotationId, draggedEdge, draggedCurrentCoord,
