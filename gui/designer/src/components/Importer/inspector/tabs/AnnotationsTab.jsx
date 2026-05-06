@@ -36,6 +36,11 @@ export default function AnnotationsTab({
   onApplyAnnotatorResults,
   onAnnotationEdit,
   onOpenFeatureEditor,
+  // Strip-driven scroll signal — same shape SequenceTab consumes.
+  // SingleInspector forwards it only when this tab is active so a
+  // hidden Annotator doesn't snap-scroll on every bar drag.
+  pendingScroll = null,
+  onPendingScrollHandled,
 }) {
   return (
     <div
@@ -58,6 +63,8 @@ export default function AnnotationsTab({
         onApplyAnnotatorResults={onApplyAnnotatorResults}
         onAnnotationEdit={onAnnotationEdit}
         onOpenFeatureEditor={onOpenFeatureEditor}
+        pendingScroll={pendingScroll}
+        onPendingScrollHandled={onPendingScrollHandled}
       />
     </div>
   );

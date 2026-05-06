@@ -74,6 +74,11 @@ export default function Annotator({
   // to PreviewTab → SequenceView so embedded mode is fully editable.
   onAnnotationEdit,
   onOpenFeatureEditor,
+  // 2026-05-06 — SingleInspector wires the same `pendingScroll` it
+  // sends to SequenceTab so the LinearFeatureBar's click/drag also
+  // navigates the embedded preview.
+  pendingScroll = null,
+  onPendingScrollHandled,
 }) {
   const annotator = useStore(selectAnnotator);
   const closeAnnotator = useStore((s) => s.closeAnnotator);
@@ -148,20 +153,37 @@ export default function Annotator({
     // closing the Annotator mid-run produced a "Can't perform a React
     // state update on an unmounted component" warning and could land
     // old plasmid's regions in the new annotator.results slice.
+    //
+    // 2026-05-06 (perf profile via Chrome MCP) — L1 auto-run on a
+    // 14 kb plasmid is a ~450 ms synchronous scan of common-features.
+    // Used to fire in microtask, which blocked the main thread BEFORE
+    // the Annotations tab could even paint — biolog saw 1 s of frozen
+    // UI on tab click. Deferred to a double-rAF: tab paints first
+    // (16 ms), THEN the heavy scan starts, so the user sees the tab
+    // snap into place and «Running…» badge before the freeze. Same
+    // total CPU cost, much better perceived responsiveness.
     let cancelled = false;
-    Promise.resolve()
-      .then(() => plugin.run(sequence || '', region, { threshold: annotator.threshold }))
-      .then((res) => { if (!cancelled && res) setResult(LEVEL_1_PLUGIN_ID, res); })
-      .catch((err) => {
-        if (cancelled) return;
-        // Surface failures via the running flag clearing — same
-        // pattern handleRun uses; an error toast lives one layer
-        // up in SingleInspector if needed.
-        // eslint-disable-next-line no-console
-        console.warn('[Annotator] L1 auto-run failed:', err?.message || err);
-      })
-      .finally(() => { if (!cancelled) setRunning(LEVEL_1_PLUGIN_ID, false); });
-    return () => { cancelled = true; };
+    let rafId = 0;
+    const startScan = () => {
+      if (cancelled) return;
+      Promise.resolve()
+        .then(() => plugin.run(sequence || '', region, { threshold: annotator.threshold }))
+        .then((res) => { if (!cancelled && res) setResult(LEVEL_1_PLUGIN_ID, res); })
+        .catch((err) => {
+          if (cancelled) return;
+          // eslint-disable-next-line no-console
+          console.warn('[Annotator] L1 auto-run failed:', err?.message || err);
+        })
+        .finally(() => { if (!cancelled) setRunning(LEVEL_1_PLUGIN_ID, false); });
+    };
+    rafId = requestAnimationFrame(() => {
+      if (cancelled) return;
+      rafId = requestAnimationFrame(startScan);
+    });
+    return () => {
+      cancelled = true;
+      if (rafId) cancelAnimationFrame(rafId);
+    };
     // Deps intentionally narrow — see autoRunFiredFor guard above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [annotator.open, scope?.sequenceId]);
@@ -376,6 +398,8 @@ export default function Annotator({
             onAnnotationEdit={onAnnotationEdit}
             onOpenFeatureEditor={onOpenFeatureEditor}
             onBlastSelection={handleBlastSelection}
+            pendingScroll={pendingScroll}
+            onPendingScrollHandled={onPendingScrollHandled}
           />
         </div>
         <LevelPanel

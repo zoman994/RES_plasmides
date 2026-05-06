@@ -22,7 +22,7 @@
  * slide-over on the right.
  */
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useStore } from '../../store';
 import { selectAnnotator } from '../../store/uiSlice.js';
 import { isDuplicatePrediction } from '../../lib/annotation-edit.js';
@@ -53,7 +53,22 @@ export default function PreviewTab({
   onAnnotationEdit,
   onOpenFeatureEditor,
   onBlastSelection,
+  // 2026-05-06 — strip-driven nav. SingleInspector forwards
+  // pendingScroll only when activeTab='annotations'; we apply it to
+  // the embedded SequenceView and acknowledge via the same handler
+  // SequenceTab uses.
+  pendingScroll = null,
+  onPendingScrollHandled,
 }) {
+  const seqRef = useRef(null);
+  useEffect(() => {
+    if (!pendingScroll) return;
+    const ref = seqRef.current;
+    if (!ref || typeof ref.scrollToPosition !== 'function') return;
+    const behavior = pendingScroll.instant ? 'auto' : 'smooth';
+    ref.scrollToPosition(Number(pendingScroll.pos) || 0, { behavior });
+    onPendingScrollHandled?.();
+  }, [pendingScroll, onPendingScrollHandled]);
   const annotator = useStore(selectAnnotator);
   const setSelectedGhost = useStore((s) => s.setSelectedGhost);
   const acceptRegion = useStore((s) => s.acceptRegion);
@@ -199,6 +214,7 @@ export default function PreviewTab({
           </div>
         ) : (
           <SequenceView
+            ref={seqRef}
             fragments={fragments}
             circular={topology === 'circular'}
             readOnly={!onAnnotationEdit}

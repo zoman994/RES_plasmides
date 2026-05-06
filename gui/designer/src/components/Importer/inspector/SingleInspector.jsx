@@ -680,6 +680,13 @@ export default function SingleInspector({
               onApplyAnnotatorResults={onApplyAnnotatorResults}
               onAnnotationEdit={onAnnotationEditFromView}
               onOpenFeatureEditor={openFeatureEditor}
+              // 2026-05-06 — biolog: «навигация по колбасе аннотатора
+              // не даёт навигацию в аннотаторе». Wire the same
+              // pendingScroll signal that SequenceTab consumes so the
+              // bar's click/drag scrolls the Annotator's preview view
+              // when the user is on the Annotations tab.
+              pendingScroll={activeTab === 'annotations' ? pendingScroll : null}
+              onPendingScrollHandled={onPendingScrollHandled}
             />
           </div>
         )}
