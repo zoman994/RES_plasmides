@@ -241,6 +241,28 @@ export default function Annotator({
   // dedup at create-batch drops same-type >50% overlaps, so a
   // double-save can't introduce duplicates.
   const [justSavedAt, setJustSavedAt] = useState(0);
+  // Round-16 (06.05.2026 biolog «нужно чтобы когда нажимаешь на имя
+  // комон фичи она тебя телепортировала»): local pendingScroll
+  // overlay so a click on a ResultRow name in the LevelPanel scrolls
+  // the embedded SequenceView to that region's start. Merged with
+  // the parent's pendingScroll (LinearFeatureBar drag) — most recent
+  // tick wins. Cleared via the same onPendingScrollHandled callback.
+  const [innerScroll, setInnerScroll] = useState(null);
+  const handleLocateRegion = (region) => {
+    if (!region || !Number.isFinite(region.start)) return;
+    setInnerScroll({ pos: region.start, tick: Date.now(), instant: false });
+  };
+  const mergedPendingScroll = (() => {
+    if (!innerScroll) return pendingScroll || null;
+    if (!pendingScroll) return innerScroll;
+    return (innerScroll.tick || 0) >= (pendingScroll.tick || 0)
+      ? innerScroll
+      : pendingScroll;
+  })();
+  const handlePendingScrollHandled = () => {
+    setInnerScroll(null);
+    onPendingScrollHandled?.();
+  };
   useEffect(() => {
     if (!justSavedAt) return undefined;
     const t = setTimeout(() => setJustSavedAt(0), 2000);
@@ -398,8 +420,8 @@ export default function Annotator({
             onAnnotationEdit={onAnnotationEdit}
             onOpenFeatureEditor={onOpenFeatureEditor}
             onBlastSelection={handleBlastSelection}
-            pendingScroll={pendingScroll}
-            onPendingScrollHandled={onPendingScrollHandled}
+            pendingScroll={mergedPendingScroll}
+            onPendingScrollHandled={handlePendingScrollHandled}
           />
         </div>
         <LevelPanel
@@ -420,6 +442,7 @@ export default function Annotator({
           onAcceptMany={acceptManyRegions}
           onEditPatch={editPendingRegion}
           onRunLevel={handleRunLevel}
+          onLocateRegion={handleLocateRegion}
           onSave={handleSave}
         />
       </div>

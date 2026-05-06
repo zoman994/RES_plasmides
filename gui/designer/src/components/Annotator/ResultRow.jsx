@@ -23,6 +23,11 @@ export default function ResultRow({
   onAccept,
   onReject,
   onEditPatch,
+  // 2026-05-06 round-16 — biolog: «нужно чтобы когда нажимаешь на имя
+  // комон фичи она тебя телепортировала на нее в сиквенс вью». Click
+  // on the name span calls onLocate(region) so the parent can scroll
+  // the embedded SequenceView to region.start.
+  onLocate,
 }) {
   const [editing, setEditing] = useState(false);
   const merged = { ...region, ...(pendingPatch || {}) };
@@ -49,9 +54,28 @@ export default function ResultRow({
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <span style={{ flex: 1, fontWeight: 500, color: 'var(--text-primary, #111)' }}>
+        <button
+          type="button"
+          data-testid="annotator-result-locate"
+          onClick={() => onLocate?.(merged)}
+          title="Перейти к этой фиче в Sequence view"
+          disabled={typeof onLocate !== 'function'}
+          style={{
+            flex: 1,
+            textAlign: 'left',
+            background: 'transparent',
+            border: 'none',
+            padding: 0,
+            fontWeight: 500,
+            fontSize: 11,
+            color: 'var(--text-primary, #111)',
+            cursor: typeof onLocate === 'function' ? 'pointer' : 'default',
+            textDecoration: typeof onLocate === 'function' ? 'underline dotted color-mix(in srgb, currentColor 40%, transparent)' : 'none',
+            textUnderlineOffset: 2,
+          }}
+        >
           {merged.name || merged.type || '(unnamed)'}
-        </span>
+        </button>
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-secondary)' }}>
           {ui.uiStart}..{ui.uiEnd}
         </span>

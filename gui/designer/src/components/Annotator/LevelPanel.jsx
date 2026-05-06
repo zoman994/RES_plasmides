@@ -109,6 +109,10 @@ export default function LevelPanel({
   onEditPatch,
   onRunLevel,
   onAcceptMany,
+  // Round-16 (06.05.2026) — forward to ResultRow so clicking the
+  // feature name in the panel teleports the embedded SequenceView
+  // to that region's start.
+  onLocateRegion,
 }) {
   // Each level has independent expand/collapse state. L1 starts open
   // (auto-run produces results on open, so the user wants to see
@@ -211,6 +215,7 @@ export default function LevelPanel({
           onEditPatch={onEditPatch}
           onRunLevel={onRunLevel}
           onAcceptMany={onAcceptMany}
+          onLocateRegion={onLocateRegion}
         />
       ))}
     </div>
@@ -234,6 +239,7 @@ function LevelSection({
   onEditPatch,
   onRunLevel,
   onAcceptMany,
+  onLocateRegion,
 }) {
   const regions = useMemo(
     () => regionsForLevel(levelId, results, threshold, existingAnnotations, showDuplicates),
@@ -432,6 +438,7 @@ function LevelSection({
               onAccept={() => onAccept?.(region.id)}
               onReject={() => onReject?.(region.id)}
               onEditPatch={(patch) => onEditPatch?.(region.id, patch)}
+              onLocate={onLocateRegion}
             />
           ))}
         </div>
