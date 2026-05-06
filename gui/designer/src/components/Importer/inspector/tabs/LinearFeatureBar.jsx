@@ -434,7 +434,13 @@ export default function LinearFeatureBar({
     </g>
   )), [items]);
 
-  if (!annotations.length || !seqLength) return null;
+  // Round-17 (06.05.2026 biolog: «колбаса пропала... Аннотации у
+  // него нет, но колбаса и пустая с гост фичами должна быть»):
+  // render the empty plasmid bar (background track + cursor) even
+  // when annotations is empty — biolog uses the bar as the
+  // navigation surface, ghost (predicted) features merge in once
+  // the Annotator runs. Only seqLength gates the render.
+  if (!seqLength) return null;
 
   return (
     <div ref={wrapRef} style={{ width: '100%', minWidth: 0 }}>

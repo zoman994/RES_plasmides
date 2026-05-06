@@ -624,7 +624,17 @@ export default function SingleInspector({
           A small caret cursor below the bar tracks the
           most-recently-targeted feature so the biolog sees where the
           last click landed. */}
-      {activeTab !== 'overview' && displayAnnotations.length > 0 && length > 0 && (
+      {/* Round-17 (06.05.2026 biolog: «колбаса пропала... Аннотации
+          у него нет, но колбаса и пустая с гост фичами должна
+          быть»). Strip used to gate on `displayAnnotations.length > 0`,
+          so a plasmid with zero confirmed annotations rendered no
+          bar at all. But Annotator's predicted (ghost) features
+          merge into `stripAnnotations` on the Annotations tab — and
+          even on the Sequence tab, the empty plasmid outline is
+          still useful as a navigation surface. Show the bar
+          whenever a plasmid is loaded (length > 0); empty
+          annotations array just yields a clean plasmid bar. */}
+      {activeTab !== 'overview' && length > 0 && (
         <div
           data-testid="importer-single-feature-strip"
           style={{
