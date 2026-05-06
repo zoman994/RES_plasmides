@@ -64,10 +64,30 @@ export default function Importer() {
   const [autonamePrompt, setAutonamePrompt] = useState(null);
   const [primerWizard, setPrimerWizard] = useState(null);
 
+  // M-X.5 K9 Этап 1 — single-vs-multi drag-drop gate. Until K4 lands the
+  // proper MultiImportView in Этап 2 (v0.8.0), we route only single-file
+  // drops through PreImportModal and surface a toast for multi-drop. The
+  // legacy MultiInspector path (selecting N files at once + per-row
+  // table) is intentionally broken until K4 — the existing UX was
+  // confusing biolog (multi-mode appears unexpectedly, hides interface,
+  // «Loaded N files» unclear). For Этап 1 acceptance the trade is
+  // explicit: multi-drop = no-op + toast «Multi-import будет в v0.8.0».
+  const handleAddFiles = useCallback((files, opts) => {
+    if (!Array.isArray(files) || files.length === 0) return;
+    if (files.length > 1) {
+      showToast('Multi-import будет в v0.8.0. Пока загружайте по одному файлу.', { kind: 'info', duration: 4000 });
+      return;
+    }
+    // Forward `opts` (carries `{ targetFolderPath }` when biolog dropped
+    // onto a specific folder) so single-file folder-targeted drops keep
+    // landing inside the right Mine sub-folder.
+    state.addFiles(files, opts);
+  }, [state, showToast]);
+
   // Drain any files App-level drag-drop queued for us before routing here.
   useEffect(() => {
     const queued = drainImporterFiles();
-    if (queued.length > 0) state.addFiles(queued);
+    if (queued.length > 0) handleAddFiles(queued);
     // navStack payload may carry an openCatalogSource hint (e.g. the
     // StartScreen «Library» link drops biolog straight into «Моя
     // библиотека» drilldown). Apply once on mount so the catalog tree
@@ -507,7 +527,7 @@ export default function Importer() {
             }
             state.addCatalogItem(it);
           }}
-          onFiles={state.addFiles}
+          onFiles={handleAddFiles}
           onPasteText={state.addPasteItem}
           busy={state.busy}
           liveAnnotationsByLibId={liveAnnotationsByLibId}
