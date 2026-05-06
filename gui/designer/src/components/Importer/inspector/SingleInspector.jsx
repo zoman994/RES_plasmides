@@ -634,12 +634,20 @@ export default function SingleInspector({
             History tab stays strictly conditional (it only mounts when
             commits exist AND the user navigates to it — not pre-warmed). */}
         {isMounted('overview') && (
-          <div style={visibilityStyle('overview')}>
+          <div
+            className="importer-tab-pane"
+            data-tab-active={activeTab === 'overview' ? 'true' : 'false'}
+            style={visibilityStyle('overview')}
+          >
             <OverviewTab item={displayItem} />
           </div>
         )}
         {isMounted('sequence') && (
-          <div style={visibilityStyle('sequence')}>
+          <div
+            className="importer-tab-pane"
+            data-tab-active={activeTab === 'sequence' ? 'true' : 'false'}
+            style={visibilityStyle('sequence')}
+          >
             <SequenceTab
               sequence={edits?.editedSequence ?? item.sequence}
               annotations={displayAnnotations}
@@ -662,17 +670,20 @@ export default function SingleInspector({
           </div>
         )}
         {isMounted('annotations') && (
-          <div style={{
-            // Annotations-tab wrap fills the entire tab-content
-            // height with a flex column so AnnotationsTab can
-            // proceed to lay out the embedded Annotator's two
-            // panes (map + LevelPanel) at full height. Other tabs
-            // keep the simple block visibility toggle.
-            display: activeTab === 'annotations' ? 'flex' : 'none',
-            flex: activeTab === 'annotations' ? 1 : undefined,
-            flexDirection: 'column',
-            minHeight: 0,
-          }}>
+          <div
+            className="importer-tab-pane"
+            data-tab-active={activeTab === 'annotations' ? 'true' : 'false'}
+            style={{
+              // Annotations-tab wrap fills the entire tab-content
+              // height with a flex column so AnnotationsTab can
+              // proceed to lay out the embedded Annotator's two
+              // panes (map + LevelPanel) at full height. Other tabs
+              // keep the simple block visibility toggle.
+              display: activeTab === 'annotations' ? 'flex' : 'none',
+              flex: activeTab === 'annotations' ? 1 : undefined,
+              flexDirection: 'column',
+              minHeight: 0,
+            }}>
             <AnnotationsTab
               sequence={edits?.editedSequence ?? item.sequence ?? ''}
               annotations={displayAnnotations}

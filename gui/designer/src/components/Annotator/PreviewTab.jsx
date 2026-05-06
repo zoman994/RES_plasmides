@@ -194,6 +194,8 @@ export default function PreviewTab({
         {activeTab === 'circular' ? (
           <div
             data-testid="annotator-preview-circular"
+            className="importer-tab-pane"
+            data-tab-active="true"
             style={{
               flex: 1,
               display: 'flex',
@@ -213,16 +215,25 @@ export default function PreviewTab({
             />
           </div>
         ) : (
-          <SequenceView
-            ref={seqRef}
-            fragments={fragments}
-            circular={topology === 'circular'}
-            readOnly={!onAnnotationEdit}
-            onAnnotationClick={onAnnotationClick}
-            onAnnotationEdit={onAnnotationEdit}
-            onOpenFeatureEditor={onOpenFeatureEditor}
-            onBlastSelection={onBlastSelection}
-          />
+          // Wrap SequenceView so the tab-pane crossfade picks it up
+          // on Linear↔Circular switch. The flex children inside
+          // SequenceView keep their layout — wrapper is a passthrough.
+          <div
+            className="importer-tab-pane"
+            data-tab-active="true"
+            style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}
+          >
+            <SequenceView
+              ref={seqRef}
+              fragments={fragments}
+              circular={topology === 'circular'}
+              readOnly={!onAnnotationEdit}
+              onAnnotationClick={onAnnotationClick}
+              onAnnotationEdit={onAnnotationEdit}
+              onOpenFeatureEditor={onOpenFeatureEditor}
+              onBlastSelection={onBlastSelection}
+            />
+          </div>
         )}
       </div>
       <GhostDrillInPanel
