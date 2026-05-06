@@ -411,15 +411,35 @@ export default function CatalogColumn({
   }, [pasteDraft, onPasteText]);
 
   // Flat search pool — every loaded item across all sources.
+  //
+  // Performance: SnapGene's catalog has ~2800 plasmids. The previous
+  // fallback `Object.values(snapgeneCategoryItems).flat()` allocated a
+  // fresh 2800-element array on every render where `snapgeneCategoryItems`
+  // changed reference (which happens whenever any category lazy-loads).
+  // Combined with the `liveMine` / `liveThisProject` deps, every keystroke
+  // in the search box rebuilt the whole pool from scratch.
+  //
+  // Now: `ensureSnapgeneFlat()` is fired in an effect on first non-empty
+  // query, so `sources.snapgeneFlat` becomes the canonical pool reference
+  // shortly after the user starts typing. Before it's ready we fall back
+  // to `categoryItems` ONCE per render, but only depend on the keys-set
+  // identity rather than the object reference itself, so partial loads
+  // don't trash the memo. `liveMine` / `liveThisProject` references stay
+  // stable across keystrokes (the parent useMemo's deps don't include
+  // `query`).
   const flatPool = useMemo(() => {
     if (!flatActive) return [];
-    const snapgene = sources.snapgeneFlat || Object.values(sources.snapgeneCategoryItems).flat();
-    return [
-      ...liveThisProject,
-      ...sources.demo,
-      ...liveMine,
-      ...snapgene,
-    ];
+    const snapgene = sources.snapgeneFlat
+      || (sources.snapgeneCategoryItems
+        ? Object.values(sources.snapgeneCategoryItems).flat()
+        : []);
+    const out = new Array(liveThisProject.length + sources.demo.length + liveMine.length + snapgene.length);
+    let i = 0;
+    for (const x of liveThisProject) out[i++] = x;
+    for (const x of sources.demo) out[i++] = x;
+    for (const x of liveMine) out[i++] = x;
+    for (const x of snapgene) out[i++] = x;
+    return out;
   }, [flatActive, liveThisProject, sources.demo, liveMine, sources.snapgeneFlat, sources.snapgeneCategoryItems]);
   const flatResults = useMemo(
     () => flatActive ? applyCatalogFilter(flatPool, query) : [],

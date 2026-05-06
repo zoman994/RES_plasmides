@@ -131,7 +131,28 @@ export function useCatalogSources() {
   };
 }
 
+// Per-entry catalog-item cache. Library entries are immutable from the
+// perspective of any one slice tick: Immer/Zustand swap the whole entry
+// reference only when something inside actually changes. Caching by the
+// entry object identity (WeakMap) means that on the next render — when
+// the parent useMemo re-walks `Object.values(libraryEntries)` because
+// _some_ entry changed — the rows that didn't change still hand back
+// their previously-built item. Downstream `ItemRow` then memoizes via
+// `prev.item === next.item` and skips render entirely.
+const ITEM_CACHE = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
 function libraryEntryToCatalogItem(entry, source) {
+  if (ITEM_CACHE) {
+    let bySource = ITEM_CACHE.get(entry);
+    if (bySource && bySource[source]) return bySource[source];
+    if (!bySource) { bySource = {}; ITEM_CACHE.set(entry, bySource); }
+    const item = buildCatalogItem(entry, source);
+    bySource[source] = item;
+    return item;
+  }
+  return buildCatalogItem(entry, source);
+}
+
+function buildCatalogItem(entry, source) {
   return {
     id: entry.id,
     name: entry.name,

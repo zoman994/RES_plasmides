@@ -17,7 +17,7 @@ Topmost pending P0/P1 takes priority each iteration.
 | BUNDLE-04 | pending | Project Flow `flow/*` mounted from nowhere; `@xyflow/react` may ship as dead weight |
 | PERF-01 | pending | `AATrack` hybrid render translates entire plasmid per line × per frame (~3M codon ops) |
 | PERF-02 | pending | `runPredictors` PWM scan re-slices 6-mers on every settings tick |
-| PERF-03 | pending | `CatalogColumn` flat-search rebuilds 2800-element pool per keystroke |
+| ~~PERF-03~~ | resolved | ~~`CatalogColumn` flat-search rebuilds 2800-element pool per keystroke~~ → pre-sized array build (no spread allocation), gated fallback to `Object.values(...).flat()` only when `snapgeneFlat` not yet warm; `ensureSnapgeneFlat()` already fires from useEffect on first non-empty query. |
 | ~~HOOK-09~~ | resolved | ~~`CatalogColumn` calls `sources.ensureSnapgeneFlat()` in render body~~ → moved into `useEffect([flatActive, sources])`. |
 | SAFE-01 | pending | Importer Dexie writes uncoordinated — autosave can snapshot project pointing at unflushed library entry |
 | ~~SAFE-06~~ | resolved | ~~`ProtocolTracker` photo upload base64 → unbounded localStorage write~~ → 12 MB input cap, downscale via canvas to 1024 px / 82% JPEG (~150 KB), localStorage setItem wrapped in try/catch with friendly alert on quota overflow. |
@@ -37,7 +37,7 @@ Topmost pending P0/P1 takes priority each iteration.
 | HOOK-05 | pending | `SequenceView` ResizeObserver may attach to discarded empty-state node |
 | HOOK-02 | pending | `Importer.runConfirm` closes over whole `state` object → callback churn → memo churn |
 | HOOK-11 | pending | `Importer.alreadyAddedToLibrary` IIFE reads `useStore.getState()` in render — no subscription |
-| PERF-04 | pending | `useCatalogSources.mine` rebuilt from `Object.values(libraryEntries)` on every store tick |
+| ~~PERF-04~~ | resolved | ~~`useCatalogSources.mine` allocates fresh items per entry on every store tick~~ → WeakMap cache keyed on entry identity (`buildCatalogItem` runs once per entry per source); unchanged rows hand back the same reference, so downstream `ItemRow.memo` skips render. |
 | ~~PERF-05~~ | resolved | ~~Five duplicate `revComp` impls~~ → consolidated into a single fast `reverseComplement` in `sequence-utils.js` (pre-sized array walk, no split/reverse/map). `feature-detection`, `predicted-detection`, `orf-detection`, `local-primer-design`, `mutagenesis`, `golden-gate` now all import from one source. |
 | PERF-06 | pending | `enrichWithCommonFeatures` dedup is O(annotations × hits) |
 | PERF-07 | pending | `AnnotationTrack` filters parents/details + runs stacker per line, but the split is line-invariant |
