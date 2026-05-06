@@ -85,7 +85,7 @@ describe('M-X.3 K2 — wrap-tail rendering', () => {
     expect(kinds.every((k) => k === 'main')).toBe(true);
   });
 
-  it('wrap-tail wrappers carry dimmed opacity + pointer-events:none', () => {
+  it('wrap-tail wrappers carry dimmed opacity (live for drag-extend)', () => {
     render(<SequenceView fragments={[longFragment]} circular />);
     const lines = screen.getAllByTestId('sequence-view-line');
     const wrapTailLines = lines.filter(
@@ -94,13 +94,15 @@ describe('M-X.3 K2 — wrap-tail rendering', () => {
     expect(wrapTailLines.length).toBeGreaterThan(0);
     for (const el of wrapTailLines) {
       const style = el.getAttribute('style') || '';
-      // Opacity is < 1 (currently 0.6 — was 0.5 before biolog
-      // feedback). Keep the assertion loose so cosmetic tweaks don't
-      // break the test.
+      // Opacity is < 1 (currently 0.6). Loose regex so cosmetic
+      // tweaks don't break the test.
       expect(style).toContain('opacity');
       expect(/opacity:\s*0\.[1-9]/i.test(style)).toBe(true);
-      expect(style).toContain('pointer-events');
-      expect(style).toContain('none');
+      // Round 8 (06.05.2026): pointer-events: none was DROPPED so
+      // biolog can extend selection across origin into wrap-tail.
+      // Click protection moved into useSelectionState's
+      // posFromPointerEvent (bails on wrap-tail unless extending).
+      expect(style).not.toContain('pointer-events: none');
     }
   });
 });

@@ -87,16 +87,13 @@ const SequenceLine = memo(function SequenceLine({
       data-wraptail-kind={kind}
       data-tracks-ready={tracksReady ? "true" : "false"}
       style={{
-        // Wrap-tail lines render dimmed and inert so they read as
-        // «context» without hijacking caret / drag / click. 06.05.2026
-        // biolog feedback: bump visibility cues — opacity 0.6 (was 0.5,
-        // numbers were unreadable on light theme), accent-500 stripe
-        // on the left edge so the eye groups the strip immediately
-        // and tells «this is wrap-around context, scroll target is
-        // the next zone». Subtle accent-tinted background reinforces
-        // the boundary without clashing with feature colours.
+        // Wrap-tail lines render dimmed so they read as «context»;
+        // pointer-events stay live during a drag so biolog can
+        // extend a selection across the origin (round-8). The
+        // useSelectionState resolver gates wrap-tail engagement by
+        // its `extending` flag — pointermove during a drag accepts,
+        // a plain click bails.
         opacity: isWrapTail ? 0.6 : undefined,
-        pointerEvents: isWrapTail ? 'none' : undefined,
         borderLeft: isWrapTail ? '3px solid var(--accent-500, #f97316)' : undefined,
         background: isWrapTail ? 'color-mix(in oklab, var(--accent-500, #f97316) 4%, transparent)' : undefined,
         paddingLeft: isWrapTail ? 4 : undefined,

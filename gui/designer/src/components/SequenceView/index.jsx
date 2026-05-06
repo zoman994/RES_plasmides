@@ -725,12 +725,14 @@ const SequenceView = forwardRef(function SequenceView({
         selectionMode={selectionMode}
         selectionStrand={selectionStrand}
         selectionFrame={selectionAaFrame}
+        seqLength={seqLength}
       />
       <CaretOverlay
         caretPos={caretPos}
         charPx={charPx}
         containerRef={containerRef}
         showBottomStrand={settings.showBottomStrand}
+        seqLength={seqLength}
       />
       <OriginMarkerOverlay
         circular={circular}

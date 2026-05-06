@@ -86,26 +86,45 @@ export function useSelectionState({
   // ---------------------------------------------------------------
   // Pointer → seq position resolver
   // ---------------------------------------------------------------
-  const posFromPointerEvent = (e) => {
+  // Round 8 (06.05.2026 biolog): «не выделяется последняя буква» +
+  // «хотелось бы перенести выделение на призрачный участок сверху и
+  // снизу — фича может быть на обоих концах».
+  //
+  // Three behaviours combined here:
+  //   1) Last-char inclusion. Old code clamped to `seqLength - 1`, so
+  //      selection [start, end) could never reach the final nt. Now
+  //      caret can land at `seqLength` (= «after the last nt»), and
+  //      a drag uses Math.ceil so partial cover counts as included.
+  //   2) Wrap-tail rows are LIVE during a drag (not on plain click).
+  //      A pointermove that lands on a leading-wrap row reports caret
+  //      in the EXTENDED domain (negative coord = «before position 0
+  //      via the wrap»). A pointermove on a trailing-wrap row reports
+  //      caret > seqLength. Anchor stays where biolog initially
+  //      pressed (always in main band — pointer-events: none on
+  //      wrap-tail keeps initial click in main).
+  //   3) Click on wrap-tail row remains no-op (returns null) so the
+  //      caret never «teleports» into the dim context strip.
+  //
+  // Extended caret domain: caret ∈ (-seqLength, 2 × seqLength).
+  // Negative = wrapped from leading-wrap; > seqLength = wrapped via
+  // trailing-wrap. Selection rendering + copy slice the modular range
+  // accordingly.
+  const posFromPointerEvent = (e, opts = {}) => {
     if (!seqLength || !charPx) return null;
     let el = e.target;
     while (el && el !== containerRef.current) {
       if (el.dataset && el.dataset.lineStart != null) break;
       el = el.parentElement;
     }
+    // Fallback: y-bounded line search. During a drag, INCLUDE
+    // wrap-tail rows so the extended-domain caret can engage.
     if (!el || el === containerRef.current) {
       const lines = containerRef.current?.querySelectorAll('[data-testid="sequence-view-line"]');
       if (!lines) return null;
       for (const candidate of lines) {
-        // Sprint M-X.3 K4 — fallback hit-test ignores wrap-tail
-        // lines so a click on a leading-/trailing-wrap row doesn't
-        // teleport the caret into the dimmed context strip. The
-        // event itself shouldn't reach the wrap-tail wrapper
-        // (pointer-events:none), but the y-bounded fallback
-        // iterates over every <div data-testid="sequence-view-line">
-        // regardless of which one received the original click.
         const k = candidate.getAttribute('data-wraptail-kind');
-        if (k && k !== 'main') continue;
+        // Skip wrap-tail on plain click; engage on drag.
+        if (!opts.extending && k && k !== 'main') continue;
         let r;
         try { r = candidate.getBoundingClientRect(); } catch { continue; }
         if (e.clientY >= r.top && e.clientY <= r.bottom) {
@@ -115,24 +134,29 @@ export function useSelectionState({
       }
       if (!el) return null;
     }
-    // Defensive: even if pointer-events:none + the fallback filter
-    // skipped wrap-tail, double-check before reading lineStart so
-    // the resolver returns null for any wrap-tail row that slipped
-    // through (e.g. user-disabled CSS).
-    {
-      const k = el.getAttribute && el.getAttribute('data-wraptail-kind');
-      if (k && k !== 'main') return null;
-    }
+    const kind = (el.getAttribute && el.getAttribute('data-wraptail-kind')) || 'main';
+    // Click on wrap-tail row → bail (anchor must live in main band).
+    if (!opts.extending && kind !== 'main') return null;
     const lineStart = parseInt(el.dataset.lineStart, 10);
     if (Number.isNaN(lineStart)) return null;
     let rect;
     try { rect = el.getBoundingClientRect(); } catch { return null; }
     if (!rect || !rect.width) return null;
     const x = e.clientX - rect.left;
-    const offsetCh = Math.round(x / charPx) - LABEL_WIDTH;
+    const rawOffset = x / charPx - LABEL_WIDTH;
+    const offsetCh = opts.extending ? Math.ceil(rawOffset) : Math.round(rawOffset);
     const lineLen = Math.min(charsPerLine || 80, seqLength - lineStart);
     const clamped = Math.max(0, Math.min(lineLen, offsetCh));
-    return Math.max(0, Math.min(seqLength - 1, lineStart + clamped));
+    const realPos = lineStart + clamped;
+    // Wrap-aware emission: leading-wrap → negative coord, trailing-
+    // wrap → > seqLength. Main → in [0, seqLength].
+    if (kind === 'leading-wrap') {
+      return realPos - seqLength; // e.g. 4900 → -48 on 4948 bp
+    }
+    if (kind === 'trailing-wrap') {
+      return realPos + seqLength; // e.g. 100 → 5048 on 4948 bp
+    }
+    return Math.max(0, Math.min(seqLength, realPos));
   };
 
   // ---------------------------------------------------------------
@@ -225,7 +249,7 @@ export function useSelectionState({
     if (last && dragRef.current.active) {
       const target = document.elementFromPoint(last.clientX, last.clientY) || last.target;
       const synth = { clientX: last.clientX, clientY: last.clientY, target };
-      const pos = posFromPointerEvent(synth);
+      const pos = posFromPointerEvent(synth, { extending: true });
       if (pos != null && typeof onCaretChange === "function") {
         onCaretChange(pos, { extendSelection: true, needsScroll: false });
       }
@@ -281,7 +305,7 @@ export function useSelectionState({
       return;
     }
 
-    const pos = posFromPointerEvent(e);
+    const pos = posFromPointerEvent(e, { extending: true });
     if (pos == null) return;
     pointerMovedRef.current = true;
     onCaretChange(pos, { extendSelection: true, needsScroll: false });
@@ -312,9 +336,33 @@ export function useSelectionState({
     const a = (typeof caretAnchor === "number" && Number.isFinite(caretAnchor)) ? caretAnchor : null;
     const f = (typeof caretPos === "number" && Number.isFinite(caretPos)) ? caretPos : null;
     if (a == null || f == null || a === f) return;
-    const start = Math.min(a, f);
-    const end = Math.max(a, f);
-    const slice = (fullSeq || "").slice(start, end);
+    // Round-8 wrap-aware copy: if either end is in extended domain
+    // (negative or > seqLength) the slice walks across origin.
+    let slice;
+    if (seqLength > 0 && (Math.min(a, f) < 0 || Math.max(a, f) > seqLength)) {
+      // Identify the wrap direction. Leading-wrap (negative) puts
+      // the «end of plasmid» first; trailing-wrap (>seqLength) puts
+      // the start-of-plasmid last. Both produce a single linear
+      // string by concatenating the two halves around origin.
+      let head;
+      let tail;
+      if (Math.min(a, f) < 0) {
+        const negEnd = Math.min(a, f); // < 0
+        const posEnd = Math.max(a, f); // ≥ 0
+        head = (fullSeq || "").slice(negEnd + seqLength, seqLength);
+        tail = (fullSeq || "").slice(0, posEnd);
+      } else {
+        const lo = Math.min(a, f); // ≤ seqLength
+        const hi = Math.max(a, f); // > seqLength
+        head = (fullSeq || "").slice(lo, seqLength);
+        tail = (fullSeq || "").slice(0, hi - seqLength);
+      }
+      slice = head + tail;
+    } else {
+      const start = Math.min(a, f);
+      const end = Math.max(a, f);
+      slice = (fullSeq || "").slice(start, end);
+    }
     if (!slice) return;
     let text = slice;
     if (mode === "reverse") text = reverseComplement(slice);

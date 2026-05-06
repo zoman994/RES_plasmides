@@ -24,7 +24,7 @@
 import { useLayoutEffect, useState } from "react";
 import { LABEL_WIDTH } from "../constants.js";
 
-export default function CaretOverlay({ caretPos, charPx, containerRef, showBottomStrand }) {
+export default function CaretOverlay({ caretPos, charPx, containerRef, showBottomStrand, seqLength = 0 }) {
   const [box, setBox] = useState(null);
   useLayoutEffect(() => {
     if (caretPos == null || !Number.isFinite(caretPos)) {
@@ -33,30 +33,40 @@ export default function CaretOverlay({ caretPos, charPx, containerRef, showBotto
     }
     const root = containerRef.current;
     if (!root) return undefined;
-    // Sprint M-X.3 K4 — restrict the caret to the main band. Wrap-tail
-    // lines (data-wraptail-kind="leading-wrap" | "trailing-wrap")
-    // share `data-line-start` values with main:first-child / main:
-    // last-child, so without the kind filter the caret would land on
-    // the dimmed context strip and read as «moved out of plasmid».
-    // Lines without the attribute (legacy / linear topology) are
-    // treated as main.
     const allLines = root.querySelectorAll('[data-testid="sequence-view-line"]');
+    if (allLines.length === 0) return undefined;
+    // Round-8 wrap-aware caret: extended-domain caretPos can be < 0
+    // (came from leading-wrap row) or > seqLength (trailing-wrap).
+    // Render in the matching wrap-tail row; otherwise stick to main.
+    let kindFilter = 'main';
+    let realPos = caretPos;
+    if (Number.isFinite(seqLength) && seqLength > 0) {
+      if (caretPos < 0) {
+        kindFilter = 'leading-wrap';
+        realPos = caretPos + seqLength;
+      } else if (caretPos > seqLength) {
+        kindFilter = 'trailing-wrap';
+        realPos = caretPos - seqLength;
+      }
+    }
     const lines = [];
     for (const el of allLines) {
-      const k = el.getAttribute('data-wraptail-kind');
-      if (!k || k === 'main') lines.push(el);
+      const k = el.getAttribute('data-wraptail-kind') || 'main';
+      if (k === kindFilter || (kindFilter === 'main' && !el.hasAttribute('data-wraptail-kind'))) {
+        lines.push(el);
+      }
     }
     if (lines.length === 0) return undefined;
     let target = null;
     for (const el of lines) {
       const start = parseInt(el.dataset.lineStart || "", 10);
       if (Number.isNaN(start)) continue;
-      if (start > caretPos) break;
+      if (start > realPos) break;
       target = el;
     }
     if (!target) return undefined;
     const lineStart = parseInt(target.dataset.lineStart, 10);
-    const offsetCh = caretPos - lineStart;
+    const offsetCh = realPos - lineStart;
     const left = (target.offsetLeft || 0) + (LABEL_WIDTH + offsetCh) * charPx;
     const topStrand = target.querySelector('[data-testid="sequence-view-strands-top"]');
     let top;
@@ -76,7 +86,7 @@ export default function CaretOverlay({ caretPos, charPx, containerRef, showBotto
     }
     setBox({ left, top, height });
     return undefined;
-  }, [caretPos, charPx, containerRef, showBottomStrand]);
+  }, [caretPos, charPx, containerRef, showBottomStrand, seqLength]);
 
   if (!box) return null;
   // 2026-05-06 — biolog: «хочу чтобы каретка курсора двигалась не

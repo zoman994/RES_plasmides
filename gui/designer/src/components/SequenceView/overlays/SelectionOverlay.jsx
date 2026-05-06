@@ -35,6 +35,7 @@ export default function SelectionOverlay({
   selectionMode,
   selectionStrand,
   selectionFrame,
+  seqLength = 0,
 }) {
   const [rects, setRects] = useState([]);
   useLayoutEffect(() => {
@@ -48,20 +49,40 @@ export default function SelectionOverlay({
     }
     const root = containerRef.current;
     if (!root) return undefined;
-    const start = Math.min(caretAnchor, caretPos);
-    const end = Math.max(caretAnchor, caretPos);
     const cpl = charsPerLine || 80;
     const lines = root.querySelectorAll('[data-testid="sequence-view-line"]');
+
+    // Round-8 wrap-aware selection: each end of [anchor, caret] may
+    // live in extended domain (negative = leading-wrap, > seqLength
+    // = trailing-wrap). The selection is one-or-two rect segments
+    // each scoped to a specific wrap-tail kind:
+    //   - normal (both ends in main): one segment in main band only.
+    //   - extended via leading-wrap (one end < 0):
+    //         segment 1 in leading-wrap [end+seqLen .. seqLen)
+    //         segment 2 in main         [0 .. anchor)
+    //   - extended via trailing-wrap (one end > seqLen):
+    //         segment 1 in main         [anchor .. seqLen)
+    //         segment 2 in trailing-wrap [0 .. end-seqLen)
+    // Anchor stays in main band by construction (the resolver gates
+    // the initial click). caret may have wrapped in either direction.
+    const segments = computeSegments(caretAnchor, caretPos, seqLength);
     const out = [];
-    for (const el of lines) {
-      const lineStart = parseInt(el.dataset.lineStart || "", 10);
-      if (Number.isNaN(lineStart)) continue;
-      const lineEnd = lineStart + cpl;
-      if (lineEnd <= start || lineStart >= end) continue;
-      const fromCh = Math.max(0, start - lineStart);
-      const toCh = Math.min(cpl, end - lineStart);
-      const left = (el.offsetLeft || 0) + (LABEL_WIDTH + fromCh) * charPx;
-      const width = (toCh - fromCh) * charPx;
+    for (const seg of segments) {
+      // For each segment, restrict the line-iteration to rows of the
+      // matching kind — leading-wrap rows for «leading» segments,
+      // trailing-wrap rows for «trailing», main rows otherwise.
+      const wantKind = seg.kind;
+      for (const el of lines) {
+        const elKind = el.getAttribute('data-wraptail-kind') || 'main';
+        if (elKind !== wantKind) continue;
+        const lineStart = parseInt(el.dataset.lineStart || "", 10);
+        if (Number.isNaN(lineStart)) continue;
+        const lineEnd = lineStart + cpl;
+        if (lineEnd <= seg.start || lineStart >= seg.end) continue;
+        const fromCh = Math.max(0, seg.start - lineStart);
+        const toCh = Math.min(cpl, seg.end - lineStart);
+        const left = (el.offsetLeft || 0) + (LABEL_WIDTH + fromCh) * charPx;
+        const width = (toCh - fromCh) * charPx;
 
       // DNA strand block (orange) — top strand → bottom strand band.
       const topStrand = el.querySelector('[data-testid="sequence-view-strands-top"]');
@@ -110,10 +131,11 @@ export default function SelectionOverlay({
           });
         }
       }
+      }
     }
     setRects(out);
     return undefined;
-  }, [caretPos, caretAnchor, charPx, charsPerLine, containerRef, showBottomStrand, selectionMode, selectionStrand, selectionFrame]);
+  }, [caretPos, caretAnchor, charPx, charsPerLine, containerRef, showBottomStrand, selectionMode, selectionStrand, selectionFrame, seqLength]);
 
   if (rects.length === 0) return null;
   return (
@@ -143,4 +165,69 @@ export default function SelectionOverlay({
       })}
     </>
   );
+}
+
+/**
+ * Round-8 wrap-aware segments. Translates an extended-domain
+ * (anchor, caret) pair into 1 or 2 rendering segments:
+ *   { kind, start, end }
+ * where `kind ∈ {'main','leading-wrap','trailing-wrap'}` selects
+ * which DOM rows to overlay and `[start, end)` are the absolute
+ * plasmid coords inside that kind's coordinate frame.
+ *
+ * Rules:
+ *   - both ends in [0, seqLen]: single main segment.
+ *   - one end < 0 (came from leading-wrap drag): two segments —
+ *       leading-wrap [end+seqLen, seqLen)  +  main [0, anchor]
+ *     (covers the «end of plasmid» context strip + the start of
+ *     main, i.e. visually two strips around the top origin marker.)
+ *   - one end > seqLen (trailing-wrap drag): two segments —
+ *       main [anchor, seqLen)  +  trailing-wrap [0, end-seqLen)
+ *     (covers main:last + first strip after bottom origin marker.)
+ *
+ * Anchor is assumed to live in main band (resolver pins it). Both
+ * cases above are symmetric — swap anchor/caret as needed.
+ */
+function computeSegments(anchor, caret, seqLength) {
+  const a = anchor;
+  const c = caret;
+  if (!Number.isFinite(seqLength) || seqLength <= 0) {
+    const start = Math.min(a, c);
+    const end = Math.max(a, c);
+    if (start === end) return [];
+    return [{ kind: 'main', start, end }];
+  }
+  // Caret wrapped via leading-wrap: caret < 0.
+  if (c < 0) {
+    return [
+      { kind: 'leading-wrap', start: c + seqLength, end: seqLength },
+      { kind: 'main', start: 0, end: a },
+    ].filter((s) => s.end > s.start);
+  }
+  // Anchor wrapped via leading-wrap (rare — biolog clicked into
+  // wrap-tail first; resolver normally prevents this but symmetry).
+  if (a < 0) {
+    return [
+      { kind: 'leading-wrap', start: a + seqLength, end: seqLength },
+      { kind: 'main', start: 0, end: c },
+    ].filter((s) => s.end > s.start);
+  }
+  // Caret wrapped via trailing-wrap: caret > seqLength.
+  if (c > seqLength) {
+    return [
+      { kind: 'main', start: a, end: seqLength },
+      { kind: 'trailing-wrap', start: 0, end: c - seqLength },
+    ].filter((s) => s.end > s.start);
+  }
+  if (a > seqLength) {
+    return [
+      { kind: 'main', start: c, end: seqLength },
+      { kind: 'trailing-wrap', start: 0, end: a - seqLength },
+    ].filter((s) => s.end > s.start);
+  }
+  // Normal: both in main, single segment.
+  const start = Math.min(a, c);
+  const end = Math.max(a, c);
+  if (start === end) return [];
+  return [{ kind: 'main', start, end }];
 }
