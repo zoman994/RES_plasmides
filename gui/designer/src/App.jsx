@@ -244,6 +244,15 @@ export default function App() {
       inProjectChild = <DagPlaceholder />;
       break;
     case 'importer':
+    case 'library':
+      // M-X.5 K2 — `importer` and `library` routes are aliases during
+      // the Этап 1 refactor. Both mount the Library workspace. The
+      // `importer` literal stays valid for backward compat with
+      // existing callsites in StartScreen / Topbar / canvasSlice
+      // FULLSCREENS / project-flow toolbar — they will be flipped to
+      // `library` in M-X.5 Этап 2 (DEC-IMP-06 ⚓ promotion). Until
+      // then, keeping the alias prevents a sweeping rename across
+      // ~10 callsites + ~15 test fixtures.
       inProjectChild = <Importer />;
       break;
     case 'underConstruction': {
