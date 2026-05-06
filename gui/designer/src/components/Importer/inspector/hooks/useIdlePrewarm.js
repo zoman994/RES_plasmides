@@ -67,24 +67,35 @@ export function useIdlePrewarm({ itemKey, activeTab, testMode = false }) {
 
   // Annotations pre-warm.
   //
-  // 2026-05-06 (round 3) — biolog: «между вкладками должно быстрее
-  // мысли переключаться». Earlier rAF schedule meant Annotations
-  // finished warming ~48 ms after Inspector mount; quick Sequence →
-  // Annotations switches caught it half-warmed and React still had
-  // to mount the heavy Annotator inline. Microtask now — both
-  // Sequence and Annotations land in the same React batch as the
-  // Overview render, so any tab switch from second 1 onwards is a
-  // pure display:none → display:block flip.
+  // 2026-05-06 (round 4) — Chrome MCP profile showed a 183 ms long
+  // task on Inspector first-mount of a 10 kb plasmid: the Overview
+  // render + Sequence mount + Annotator mount all collapsed into one
+  // React batch (microtask schedule). Going back to a paint-deferred
+  // schedule for the heaviest of the three (the Annotator with its
+  // own SequenceView + LevelPanel + tracks):
+  //   • Sequence still microtask — instant click reaction.
+  //   • Annotator double-rAF — lands ~32 ms later, AFTER the user
+  //     has seen the Inspector paint. Sequence ↔ Annotations switch
+  //     within ~32 ms of opening still costs a beat, but every
+  //     subsequent switch is a pure display flip.
   useEffect(() => {
     if (testMode) return undefined;
     if (!itemKey) return undefined;
     if (warmedTabs.has('annotations')) return undefined;
     let cancelled = false;
-    Promise.resolve().then(() => {
+    let r2 = 0;
+    const r1 = requestAnimationFrame(() => {
       if (cancelled) return;
-      setWarmedTabs((prev) => (prev.has('annotations') ? prev : new Set([...prev, 'annotations'])));
+      r2 = requestAnimationFrame(() => {
+        if (cancelled) return;
+        setWarmedTabs((prev) => (prev.has('annotations') ? prev : new Set([...prev, 'annotations'])));
+      });
     });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(r1);
+      if (r2) cancelAnimationFrame(r2);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [itemKey, warmedTabs.has('annotations'), testMode]);
 
