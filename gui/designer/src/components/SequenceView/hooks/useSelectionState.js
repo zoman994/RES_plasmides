@@ -154,7 +154,25 @@ export function useSelectionState({
     if (!rect || !rect.width) return null;
     const x = e.clientX - rect.left;
     const rawOffset = x / charPx - LABEL_WIDTH;
-    const offsetCh = opts.extending ? Math.ceil(rawOffset) : Math.round(rawOffset);
+    // Round-15 (06.05.2026 «всё ещё есть буква»): direction-aware
+    // rounding for drag-extend. Math.ceil works for RIGHTWARD drag
+    // (extends past pointer-cell's right edge → cell included), but
+    // for LEFTWARD drag the same `ceil` puts caret PAST the cell's
+    // left edge → cell excluded. Pass `opts.anchor` in plasmid coords;
+    // when pointer's provisional position is LEFT of anchor, use
+    // `floor` instead so the hovered char is always inside [start, end).
+    let offsetCh;
+    if (opts.extending) {
+      const provisional = lineStart + rawOffset;
+      const anchorPos = Number.isFinite(opts.anchor) ? opts.anchor : null;
+      if (anchorPos != null && provisional < anchorPos) {
+        offsetCh = Math.floor(rawOffset);
+      } else {
+        offsetCh = Math.ceil(rawOffset);
+      }
+    } else {
+      offsetCh = Math.round(rawOffset);
+    }
     // Bridge wrap-half engagement: pointer at column >= wrapAt is
     // POST-origin. Map to (offsetCh - wrapAt) plasmid coord +
     // seqLength to put the caret in the extended-trailing domain.
@@ -268,7 +286,7 @@ export function useSelectionState({
     if (last && dragRef.current.active) {
       const target = document.elementFromPoint(last.clientX, last.clientY) || last.target;
       const synth = { clientX: last.clientX, clientY: last.clientY, target };
-      const pos = posFromPointerEvent(synth, { extending: true });
+      const pos = posFromPointerEvent(synth, { extending: true, anchor: caretAnchor });
       if (pos != null && typeof onCaretChange === "function") {
         onCaretChange(pos, { extendSelection: true, needsScroll: false });
       }
@@ -324,7 +342,7 @@ export function useSelectionState({
       return;
     }
 
-    const pos = posFromPointerEvent(e, { extending: true });
+    const pos = posFromPointerEvent(e, { extending: true, anchor: caretAnchor });
     if (pos == null) return;
     pointerMovedRef.current = true;
     onCaretChange(pos, { extendSelection: true, needsScroll: false });
