@@ -112,5 +112,15 @@ export default defineConfig({
   test: {
     environment: 'happy-dom',
     globals: true,
+    // M-X.5 K6 (07.05.2026) — switched from default `threads` to `forks`.
+    // Symptom: ~half the test files (everything that calls `render()`)
+    // started failing with «document is not defined» / `environment 0ms`.
+    // Diagnosis: happy-dom cannot initialise inside the worker_threads
+    // pool on Windows once the suite is large enough to spawn many
+    // workers (resource-limit / fs-handle exhaustion). Forks pool
+    // gives each test file its own process — slower (~30%) but
+    // reliable. Pre-existing tests that depended on shared module state
+    // across workers don't exist in this codebase, so forks is safe.
+    pool: 'forks',
   },
 })

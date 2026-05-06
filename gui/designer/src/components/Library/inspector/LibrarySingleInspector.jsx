@@ -33,9 +33,11 @@ import { selectAnnotator } from '../../../store/uiSlice.js';
 import SettingsPopover from '../../SequenceView/SettingsPopover';
 import FeatureEditorModal from './FeatureEditorModal';
 import LibrarySaveActions from './LibrarySaveActions';
+import ManualEditConfirmModal from './ManualEditConfirmModal';
 import { useIdlePrewarm } from './hooks/useIdlePrewarm';
 import { useAnnotationUndoRedo } from './hooks/useAnnotationUndoRedo';
 import { useFeatureEditorFlow } from './hooks/useFeatureEditorFlow';
+import { useManualEditDetection } from '../hooks/useManualEditDetection';
 
 const S = STRINGS.importer;
 
@@ -125,6 +127,73 @@ export default function SingleInspector({
   // `instant: true` asks SequenceView to use behavior:'auto' for
   // responsive live-scrubbing during drag.
   const [pendingScroll, setPendingScroll] = useState(null);
+  // M-X.5 K6 — Read-only/Editable toggle (DEC-LIB-16 ⚓). Default
+  // false: SequenceView refuses character keystrokes via the
+  // useManualEditDetection hook below. Click the READ-ONLY pill in
+  // the title row → flips to true → amber accent + pulsing dot. K10
+  // (manual edit branching) listens to this state to decide whether
+  // to capture sequence-mutating keystrokes. Reset to read-only when
+  // switching plasmids (item id changes) so each open starts safe.
+  const [editable, setEditable] = useState(false);
+  useEffect(() => {
+    setEditable(false);
+  }, [item?.id, item?._fileName]);
+
+  // M-X.5 K10 — Manual edit branching (DEC-LIB-12 ⚓). On the first
+  // sequence-mutating keystroke (A/T/G/C/N/IUPAC, Backspace, Delete)
+  // while EDITABLE pill is on AND inspector is on a Mine library
+  // entry's Sequence tab, open ManualEditConfirmModal. Confirm →
+  // librarySlice.createManualEditBranch forks the entry; biolog
+  // continues editing the copy. Cancel → no entry created, biolog
+  // stays on the parent (pill stays EDITABLE so they can change
+  // their mind).
+  //
+  // Caveat: this commit lands the modal + branch creation flow but
+  // not the character-level apply into SequenceView itself (that
+  // requires extending useSequenceKeyboard.js with edit handlers —
+  // substantial scope, scheduled for M-X.6 polish). Today the new
+  // branch is identical to the parent except for the
+  // origin.kind = 'manual_edit' marker + parent reference. Biolog
+  // can still mutate annotations on the branch through the existing
+  // FeatureEditorModal / drag edges / hotkeys flow.
+  const [manualEditPending, setManualEditPending] = useState(null);
+  const [manualEditBusy, setManualEditBusy] = useState(false);
+  const showToast = useStore(s => s.showToast);
+  const createManualEditBranch = useStore(s => s.createManualEditBranch);
+  const armDetection = !!editable && !!item?._libraryEntryId && activeTab === 'sequence';
+  const handleFirstEdit = useCallback(({ key }) => {
+    if (!armDetection) return;
+    setManualEditPending({ key });
+  }, [armDetection]);
+  useManualEditDetection({ armed: armDetection, onFirstEdit: handleFirstEdit });
+  const cancelManualEdit = useCallback(() => {
+    setManualEditPending(null);
+  }, []);
+  const confirmManualEdit = useCallback(async () => {
+    if (!manualEditPending || !item?._libraryEntryId || !createManualEditBranch) return;
+    setManualEditBusy(true);
+    try {
+      const result = await createManualEditBranch(
+        item._libraryEntryId,
+        item.sequence || '',
+        Array.isArray(edits?.editedAnnotations) ? edits.editedAnnotations : (item.annotations || []),
+      );
+      if (result?.ok) {
+        showToast?.(`Создана ветка «${result.name}». Откройте её в библиотеке для продолжения правок.`, { kind: 'success', duration: 4000 });
+        if (typeof onUpdateEdits === 'function') {
+          onUpdateEdits({ editedAnnotations: undefined });
+        }
+        setEditable(false);
+      } else if (result?.reason === 'pending-delete') {
+        showToast?.(`Запись «${result.name || item.name}» помечена на удаление. Восстановите её перед manual edit.`, { kind: 'error', duration: 4000 });
+      } else {
+        showToast?.('Не удалось создать ветку — попробуйте ещё раз.', { kind: 'error', duration: 4000 });
+      }
+    } finally {
+      setManualEditBusy(false);
+      setManualEditPending(null);
+    }
+  }, [manualEditPending, item, edits, createManualEditBranch, showToast, onUpdateEdits]);
   // Cursor marker on the strip — persistent (last set position) even
   // after the scroll is applied + pendingScroll cleared. Lets the
   // biolog visually see where the last navigation landed AND drives
@@ -560,14 +629,44 @@ export default function SingleInspector({
                   flexShrink: 0,
                 }}
               >⚙</button>
-              <span
+              <button
+                type="button"
+                data-testid="importer-sequence-readonly-pill"
+                data-mode={editable ? 'editable' : 'readonly'}
+                onClick={() => setEditable(v => !v)}
+                title={editable
+                  ? 'Кликните чтобы заблокировать (Read-only). Несохранённые правки останутся.'
+                  : 'Кликните чтобы разрешить ручное редактирование последовательности. Первая правка создаст новую ветку плазмиды (manual edit).'}
+                aria-label={editable ? 'Switch to read-only' : 'Switch to editable'}
                 style={{
-                  padding: '2px 6px', borderRadius: 'var(--radius-sm)',
-                  background: 'var(--surface-2)', color: 'var(--text-secondary)',
+                  padding: '2px 8px', borderRadius: 'var(--radius-sm)',
+                  background: editable
+                    ? 'var(--accent-50, color-mix(in srgb, var(--accent-500) 18%, transparent))'
+                    : 'var(--surface-2)',
+                  color: editable
+                    ? 'var(--accent-700, #c2410c)'
+                    : 'var(--text-secondary)',
+                  border: editable
+                    ? '0.5px solid var(--accent-500)'
+                    : '0.5px solid transparent',
                   fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.4,
-                  flexShrink: 0,
+                  fontWeight: editable ? 600 : 400,
+                  flexShrink: 0, cursor: 'pointer',
+                  display: 'inline-flex', alignItems: 'center', gap: 4,
                 }}
-              >{S.sequenceReadOnly}</span>
+              >
+                {editable && (
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      width: 6, height: 6, borderRadius: '50%',
+                      background: 'var(--accent-700, #c2410c)',
+                      animation: 'editable-pulse 1.4s ease-in-out infinite',
+                    }}
+                  />
+                )}
+                {editable ? (S.sequenceEditable || 'EDITABLE') : S.sequenceReadOnly}
+              </button>
             </>
           )}
           {/* Bug-rush #23 (04.05.2026): live selection counter — bp
@@ -825,6 +924,18 @@ export default function SingleInspector({
         onMerge={onFeatureMerge}
         onDelete={onFeatureDelete}
         onClose={closeFeatureEditor}
+      />
+
+      {/* M-X.5 K10 — Manual edit confirm. Surfaced once per mount when
+          biolog fires the first sequence-mutating keystroke in
+          EDITABLE mode. Confirm → createManualEditBranch; Cancel →
+          stay on parent. Q3 plan: per-mount scope. */}
+      <ManualEditConfirmModal
+        open={!!manualEditPending}
+        parentName={item?.name || ''}
+        onCancel={cancelManualEdit}
+        onConfirm={confirmManualEdit}
+        busy={manualEditBusy}
       />
     </div>
   );

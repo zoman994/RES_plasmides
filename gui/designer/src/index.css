@@ -357,6 +357,17 @@ body {
   .save-flash-bounce { animation: none; }
 }
 
+/* M-X.5 K6 — pulsing dot inside the EDITABLE pill in
+   LibrarySingleInspector. Signals «sequence editing armed». Reduced
+   motion disables the pulse but keeps the dot visible. */
+@keyframes editable-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.4; transform: scale(0.85); }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-mode="editable"] [aria-hidden="true"] { animation: none !important; }
+}
+
 /* ─── SequenceView caret glide ──────────────────────────────────── */
 /* 06.05.2026 round 5 — gated transition. Earlier comment claimed
    «80 ms linear is fast enough that arrow-key holds don't feel

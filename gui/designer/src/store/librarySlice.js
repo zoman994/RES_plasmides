@@ -174,6 +174,78 @@ export const createLibrarySlice = (set, get) => ({
     }
   },
 
+  /**
+   * M-X.5 K10 — manual-edit branching (DEC-LIB-12 ⚓). Sequence in
+   * library entries is mutable through branching: any character-level
+   * edit creates a new entry with `origin.kind = 'manual_edit'` and a
+   * parent reference. The parent stays unchanged.
+   *
+   * Q5 plan guard: parent.pendingDelete (soft-deleted) → hard-fail
+   * with `pending-delete` reason. Biolog must un-delete the parent
+   * first.
+   *
+   * Returns `{ ok, id?, name?, reason? }`. The caller switches the
+   * inspector to the new branch on success so subsequent character
+   * keystrokes write into the copy, not back into the parent.
+   */
+  createManualEditBranch: async (parentId, sequence, annotations) => {
+    if (!parentId || typeof sequence !== 'string') return { ok: false, reason: 'invalid-args' };
+    const parent = get().libraryEntries[parentId];
+    if (!parent) return { ok: false, reason: 'not-found' };
+    if (parent._pendingDelete) {
+      return { ok: false, reason: 'pending-delete', name: parent.name };
+    }
+    const newId = uuidv7();
+    const baseName = `${parent.name || 'plasmid'} (manual edit)`;
+    const safeName = get().getSuggestedLibraryName(baseName);
+    const parentPayload = parent.payload || {};
+    let resourceHash = parentPayload.resourceHash;
+    try {
+      resourceHash = await computeResourceHash({
+        sequence,
+        topology: parentPayload.topology,
+        ends: parentPayload.ends,
+      });
+    } catch { /* fallback */ }
+    const editedAt = new Date().toISOString();
+    const newEntry = {
+      id: newId,
+      kind: parent.kind,
+      name: safeName,
+      tags: Array.isArray(parent.tags) ? [...parent.tags] : [],
+      folderPath: parent.folderPath || '',
+      addedAt: editedAt,
+      origin: {
+        kind: 'manual_edit',
+        parentEntryId: parentId,
+        parentEntryHash: parentPayload.resourceHash || resourceHash,
+        editedAt,
+      },
+      version: 1,
+      parentEntryId: parentId,
+      parentEntryHash: parentPayload.resourceHash || resourceHash,
+      manualEditFlag: true,
+      payload: {
+        ...parentPayload,
+        sequence,
+        length: sequence.length,
+        annotations: Array.isArray(annotations) ? annotations : (parentPayload.annotations || []),
+        resourceHash,
+      },
+      ext: parent.ext || {},
+    };
+    set(state => { state.libraryEntries[newId] = newEntry; });
+    try {
+      await putLibraryEntry(newEntry);
+      return { ok: true, id: newId, name: safeName };
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[bodgegene] createManualEditBranch failed', err);
+      set(state => { delete state.libraryEntries[newId]; });
+      return { ok: false, reason: 'persist-error' };
+    }
+  },
+
   saveLibraryEntryAsVersion: async (parentId, annotations, requestedName) => {
     if (!parentId || !Array.isArray(annotations)) return { ok: false, reason: 'invalid-args' };
     const parent = get().libraryEntries[parentId];
