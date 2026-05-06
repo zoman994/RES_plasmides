@@ -1,5 +1,7 @@
 # SPRINT M-X.5 — Library as Primary Workspace
 
+**Статус:** ✅ РЕАЛИЗОВАНО 07.05.2026 (Этап 1 → v0.7.5, Этап 2 → v0.8.0). Архивная копия. См. RELEASES.md v0.7.5 + v0.8.0 для итогового scope. K2 deferred + K10 character-level apply + K4 view preview перенесены в M-X.6 cleanup (TD-LIB-K2-DEAD-CODE-PURGE / TD-LIB-K10-CHARACTER-APPLY / TD-LIB-K4-VIEW-PREVIEW).
+
 **Тип:** A (архитектурный, фундаментальная переработка Library/Importer)
 **Объём:** ~35-40 KB спека, ~3-4 недели Code work, ~80-120 коммитов
 **Ветка:** `feature/library-as-workspace` (новая, ответвлённая от `main` после v0.7.3 финализации)

@@ -6,6 +6,49 @@
 
 ---
 
+## v0.8.0 — M-X.5 Этап 2 Library features (07.05.2026, MAJOR)
+
+**Коммиты:** 7 на ветке `feature/library-as-workspace` от `d0f04a3` (K7+K11) до `36b6163` (K4 MultiImportView). Финал bump 0.7.5 → 0.8.0 (major architectural milestone — Library is now the primary workspace for sequence data, with explicit save flow, manual edit branching, onboarding, multi-import, and project quick-add).
+**Тесты:** Vitest 1460/1461 passing (1 known primer-wizard flake on full-suite, isolated PASS — pre-existing). pytest 112/112.
+**Build:** clean. PWA precache ~892 KiB.
+**Тип релиза:** **Major** — six new K-step features ship together. Functional UX significantly expanded vs v0.7.5.
+
+**Скоуп — K11 visual origin icons (07.05.2026 morning).** `LibraryItemRow` stamps a small Unicode glyph next to the entry name based on `entry.origin.kind`: `file_import` → no icon (default, reduces clutter); `paste_import` → 📋; `demo_category` → 📚 with categorySlug tooltip; `manual_edit` → ✎ in amber accent (var(--accent-700)); `version` → ⎘ with parent id prefix in tooltip. Paint-only Unicode, no SVG / no extra DOM. Memo comparator extended.
+
+**Скоуп — K7 Library Save Flow (07.05.2026 morning).** DEC-LIB-13 ⚓ Annotations mutable through explicit save flow. Two new buttons surfaced in LibrarySingleInspector title row when biolog has unsaved annotation edits on a Mine entry:
+- **«Перезаписать»** — `librarySlice.overwriteLibraryEntryAnnotations(id, annotations)`. Confirm dialog → bumps `entry.version` → toast «Сохранено · v{N}». Q5 plan guard: hard-fail with `pending-delete` toast if entry is soft-deleted.
+- **«Сохранить как версию»** — `librarySlice.saveLibraryEntryAsVersion(parentId, …)`. Modal name input prefilled с `${parent.name} (v2)` через autoname collision (Q4 plan). Creates new entry с `origin: { kind: 'version', parentEntryId, parentEntryHash, createdAt }`, recomputes resourceHash, leaves parent unchanged.
+
+Both slice actions return `{ ok, id?, version?, name?, reason? }` для specific error toasts. Hybrid persistence model: v0.7.5 silent write-through (`writeLibraryEntryAnnotations`) сохраняется как safety-net (every keystroke флушит в Dexie — refresh не теряет правки). К7 explicit Save buttons добавляют COMMIT POINT layer с version bump.
+
+**Скоуп — K6 Read-only/Editable toggle (07.05.2026 day).** DEC-LIB-16 ⚓ Read-only по умолчанию. READ-ONLY pill в title row становится `<button data-mode="readonly|editable">`. EDITABLE state — amber accent + 1.4s pulsing dot (CSS @keyframes editable-pulse, honours prefers-reduced-motion). State resets to read-only every time inspector switches plasmids — каждый open starts safe.
+
+**Скоуп — K10 Manual edit branching (07.05.2026 day).** DEC-LIB-12 ⚓ Sequence mutable через manual-edit branching. Новая `librarySlice.createManualEditBranch(parentId, sequence, annotations)`: forks entry в new library row с `origin.kind = 'manual_edit'` + parent reference + `manualEditFlag: true`, recomputes resourceHash, returns `{ ok, id, name, reason? }`. Q5 guard: parent.pendingDelete → hard-fail. Detection layer: `Library/hooks/useManualEditDetection.js` — window-level keydown listener active только при armed=true (editable && Mine entry && Sequence tab). Filters: not in input/textarea/contenteditable, no Ctrl/Meta/Alt chord, key matches IUPAC ACGTUNRYWSKMBDHV или Backspace/Delete. Fires `onFirstEdit` once per arm cycle (latch resets when armed flips). UI: `Library/inspector/ManualEditConfirmModal.jsx` confirm dialog с Russian copy. Q3 plan: «per-mount» scope — switching plasmid triggers modal again. **Caveat:** commit lands modal + branch creation flow but не wires character-level apply в SequenceView (M-X.6 polish, requires extending useSequenceKeyboard.js with edit handlers). Today new branch identical к parent except origin marker; biolog can still mutate annotations on branch через FeatureEditorModal / drag edges / hotkeys.
+
+**Скоуп — K5 Onboarding nudge + curated 7 categories picker (07.05.2026 day).** DEC-LIB-17 ⚓ Onboarding through nudge, not modal. Inline banner внутри empty Mine group offers «Загрузить базовые плазмиды». Click → CategoryPickerModal с 7 curated categories (Q1 plan: hybrid catalog — selected categories materialise в IndexedDB; other 12 categories accessible через future «Browse all demo» mode):
+- basic_cloning_vectors (308) · pet_and_duet_vectors (120) · mammalian_expression_vectors (349) · yeast_plasmids (192) · crispr_plasmids (286) · plant_vectors (95) · fluorescent_protein_genes (398).
+
+New `librarySlice.loadOnboardingPlasmids(categoryEntries)`: per category fetch `/plasmids-data/${slug}.json` → bulk-build LibraryEntries с `tags = ['demo', 'demo:<slug>', categoryLabel]`, `folderPath = 'Demo / categoryLabel'`, `origin.kind = 'demo_category'`. Per-category fetch errors tolerated — partial success counts returned.
+
+**Скоуп — K8 Quick-add icon hover-revealed (07.05.2026 day).** DEC-LIB-QUICKADD-01. When biolog has active project + opens Library (e.g. from project DAG toolbar's «+ Из библиотеки»), Mine entries surface hover-revealed `➤` button. Click → `addContainerToCurrentProject(id)` + toast + `popFullscreen()` → biolog returns to canvas with entry attached as container reference. Renders ONLY когда есть `currentProjectId` И item has `id` И row hovered (CSS opacity 0 default → 1 on hover, 120ms transition). No clutter on standalone Library opened from Start screen.
+
+**Скоуп — K4 MultiImportView (07.05.2026 evening).** DEC-LIB-MULTI-01..03. Replaces v0.7.5 K9-stub toast guard. Drop N>1 files → MultiImportView mounts in place of CatalogColumn, parses each file via existing `parseFile`, surfaces table per file (checkbox · name · per-file annotation choice dropdown). Header bar: batch annotation choice radio (Авто/Вручную/Не нужно) + folder text input. Cancel returns to tree without committing; «Готово (N)» fires `librarySlice.commitMultiImport(entries, defaults)`. Soft cap warning at >20 files (no hard limit per Q plan). New entries get `ext.annotationChoice` metadata recorded (auto-trigger wiring deferred to M-X.6 polish).
+
+**Закрытые TD:** TD-LIBRARY-WRITE-API closed (DEC-LIB-13 explicit save flow + DEC-LIB-WRITE-THROUGH-HOTFIX-01 safety-net hybrid).
+**Открытые TD:** TD-WRAP-BRIDGE-WRAP-AWARE-TRACKS, TD-CIRCULAR-SELECTION (round-8 partial), TD-ANNOTATIONTRACK-DECOMPOSE-V2 (41.6 KB hard violation, M-X.6), TD-SINGLEINSPECTOR-SELECTIONSTATE-EXTRACT, TD-SEQUENCEVIEW-SHIFT-SELECTION, TD-SEQUENCEVIEW-FOCUS-RING, TD-LINEAR-BAR-PREDICTIONS, TD-DRAG-DROP-LIBRARY-CARDS, TD-PER-CDS-SIGNALIP. New: LibraryTree.jsx 38KB soft warning (под hard 40KB).
+
+**Deferred work (M-X.6):**
+- **K2 deferred:** dead-code purge (MultiInspector / EmptyInspector / ActionsBar / SessionSummary) и flip всех `'importer'` callsites на `'library'` (Topbar / StartScreen / canvasSlice FULLSCREENS / ~15 test fixtures). Этап 2 K2 не коснулся этого scope потому что aggressive purge во время user-facing rollout создал бы broken UX intermediate (нет multi-import view, нет empty state, нет save flow). Сейчас K4/K5/K7 заменители готовы — следующий cleanup pass переключит callsites + удалит legacy components.
+- **K10 character-level sequence apply:** ManualEditConfirmModal + branch creation готовы, но реальное character editing в SequenceView требует extending useSequenceKeyboard.js (substantial scope).
+- **K4 view button (PlasmidMiniMap preview в multi-import row):** план spec, skipped для K4 minimal landing.
+- **K4 annotation-choice apply on mount:** ext.annotationChoice metadata recorded но не yet acted on. AnnotationsTab inside LibrarySingleInspector уже auto-runs L1 при open, поэтому `auto` is de-facto today.
+
+**DEC-блок:** **Sprint-level в DECISIONS.md:** DEC-LIB-K7-OVERWRITE-01 (overwrite + version bump), DEC-LIB-K7-VERSION-COW-01 (save-as-version copy-on-write), DEC-LIB-K6-EDIT-PILL-01 (button toggle pill + pulsing dot), DEC-LIB-K10-MANUAL-BRANCH-01 (branch creation + per-mount confirm), DEC-LIB-K10-DETECTION-WINDOW-01 (window-level keydown listener), DEC-LIB-K5-CURATED-7-01 (curated subset + tag triple), DEC-LIB-K8-QUICKADD-01 (hover-revealed + active-project gate), DEC-LIB-K4-MULTIIMPORT-01 (in-place table + soft cap), DEC-LIB-WRITE-THROUGH-HYBRID-01 (write-through safety-net coexists с explicit save flow), DEC-VITEST-POOL-FORKS-01 (Windows worker_threads regression workaround). **⚓ promoted в ANCHORS.md:** DEC-IMP-06 (Importer fullscreen abolished, Library = primary workspace — supersedes DEC-IMP-01..05); DEC-LIB-12 (sequence mutable через manual-edit branching — supersedes DEC-LIB-05); DEC-LIB-13 (annotations mutable через explicit save flow — extends DEC-LIB-06); DEC-LIB-14 (edit parity SequenceView ↔ Annotator через single dispatcher); DEC-LIB-15 (import targets — Library only / Library + project); DEC-LIB-16 (read-only по умолчанию для sequence editing); DEC-LIB-17 (onboarding through nudge, not modal).
+
+**Post-mortem.** Этап 2 закрыт за один день в auto-mode (07.05). Six К-steps + finalization = ~7 коммитов на ветке. Vitest pool=forks (DEC-VITEST-POOL-FORKS-01) — критическая infrastructure правка mid-sprint когда обнаружилось что worker_threads pool не поднимает happy-dom env под нагрузкой Windows; switch на forks pool восстановил полный suite (~30% медленнее но reliable). К2 deferred dead-code purge оставлен на M-X.6 cleanup чтобы избежать broken intermediate UX. K10 character-level apply deferred — modal + branch creation готовы, реальное editing в SequenceView переносится в M-X.6 (substantial scope, needs useSequenceKeyboard.js extension). Биолог принимает оба deferred items как expected при майоре.
+
+---
+
 ## v0.7.5 — M-X.5 Этап 1 Library namespace refactor (07.05.2026)
 
 **Коммиты:** 5 на ветке `feature/library-as-workspace` от `53db4e1` (TD-LIBRARY-WRITE-API hot-fix) до `240aa32` (K9 multi-drop gate). Финал bump 0.7.4 → 0.7.5.
