@@ -358,14 +358,27 @@ body {
 }
 
 /* ─── SequenceView caret glide ──────────────────────────────────── */
-.sequence-view-caret-anim {
-  /* 80 ms linear is fast enough that arrow-key holds don't feel
-     laggy yet smooth enough that strip-drag visibly glides through
-     the nucleotides. Transform-only animation = pure GPU. */
+/* 06.05.2026 round 5 — gated transition. Earlier comment claimed
+   «80 ms linear is fast enough that arrow-key holds don't feel
+   laggy» — biolog diagnosed that as wrong: key-repeat fires at
+   ~30 Hz (~33 ms between events), so an 80 ms transition is
+   constantly interrupted mid-flight. Caret lags the real cursorPos
+   by 50–80 ms during a key hold and then takes another 80 ms to
+   «catch up» on key-up — looks like jitter.
+   Fix: transition is OFF by default. SingleInspector toggles
+   body.caret-gliding during drag-scrub, where the glide is the
+   point (mouse pointermove rAF-coalesces to ~16 ms, transition
+   smooths between samples). Class is removed 120 ms after the
+   last rAF tick. Keyboard nav and click-on-feature stay instant. */
+.sequence-view-caret-anim { transition: none; }
+body.caret-gliding .sequence-view-caret-anim {
   transition: transform 80ms linear;
 }
 @media (prefers-reduced-motion: reduce) {
-  .sequence-view-caret-anim { transition: none; }
+  .sequence-view-caret-anim,
+  body.caret-gliding .sequence-view-caret-anim {
+    transition: none;
+  }
 }
 
 /* ─── Splash fade-in (root) ─────────────────────────────────────── */

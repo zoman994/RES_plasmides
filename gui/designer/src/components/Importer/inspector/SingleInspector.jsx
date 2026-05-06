@@ -183,10 +183,23 @@ export default function SingleInspector({
   // away because we no longer ship 6+ React passes per frame.
   const scrubFrameRef = useRef(null);
   const scrubLatestRef = useRef(null);
+  // 06.05.2026 round 5 — body.caret-gliding gates the caret CSS
+  // transition. Set on each scrub-rAF tick, cleared 120 ms after
+  // the last tick (`scrubGlideTimerRef`). Keyboard nav and clicks
+  // bypass this path entirely so the caret stays instant for
+  // discrete movements; only continuous drag-scrub gets the glide.
+  const scrubGlideTimerRef = useRef(null);
   useEffect(() => () => {
     if (scrubFrameRef.current != null) {
       cancelAnimationFrame(scrubFrameRef.current);
       scrubFrameRef.current = null;
+    }
+    if (scrubGlideTimerRef.current != null) {
+      clearTimeout(scrubGlideTimerRef.current);
+      scrubGlideTimerRef.current = null;
+    }
+    if (typeof document !== 'undefined') {
+      document.body.classList.remove('caret-gliding');
     }
   }, []);
   const onBarScrub = useCallback((pos) => {
@@ -202,6 +215,15 @@ export default function SingleInspector({
       setCursorSelectionMode('dna');
       if (activeTab === 'sequence' || activeTab === 'annotations') {
         setPendingScroll({ pos: next, tick: Date.now(), instant: true });
+      }
+      // Engage caret glide for the duration of this scrub burst.
+      if (typeof document !== 'undefined') {
+        document.body.classList.add('caret-gliding');
+        if (scrubGlideTimerRef.current != null) clearTimeout(scrubGlideTimerRef.current);
+        scrubGlideTimerRef.current = setTimeout(() => {
+          document.body.classList.remove('caret-gliding');
+          scrubGlideTimerRef.current = null;
+        }, 120);
       }
     });
   }, [activeTab]);
