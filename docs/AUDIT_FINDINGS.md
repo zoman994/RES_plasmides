@@ -16,7 +16,7 @@ Topmost pending P0/P1 takes priority each iteration.
 | ~~BUNDLE-01~~ | resolved (5de98f7) | ~~No `manualChunks`, single 726 KB main bundle~~ → split into react / db / dnd / xyflow / compress chunks. Main bundle 726→427 KB (gz 212→116). |
 | BUNDLE-04 | pending | Project Flow `flow/*` mounted from nowhere; `@xyflow/react` may ship as dead weight |
 | PERF-01 | pending | `AATrack` hybrid render translates entire plasmid per line × per frame (~3M codon ops) |
-| PERF-02 | pending | `runPredictors` PWM scan re-slices 6-mers on every settings tick |
+| ~~PERF-02~~ | resolved | ~~`runPredictors` PWM scan re-slices 6-mers~~ → `scorePwmAt(seq, start, ...)` reads via `charCodeAt` (no slice); PWM theoretical maxima cached at module load (no per-call `Math.max(...row)`); stem-loop matcher walks via charCodeAt + complement-charcode lookup (eliminates slice/reverseComplement/regex match per probe). |
 | ~~PERF-03~~ | resolved | ~~`CatalogColumn` flat-search rebuilds 2800-element pool per keystroke~~ → pre-sized array build (no spread allocation), gated fallback to `Object.values(...).flat()` only when `snapgeneFlat` not yet warm; `ensureSnapgeneFlat()` already fires from useEffect on first non-empty query. |
 | ~~HOOK-09~~ | resolved | ~~`CatalogColumn` calls `sources.ensureSnapgeneFlat()` in render body~~ → moved into `useEffect([flatActive, sources])`. |
 | SAFE-01 | pending | Importer Dexie writes uncoordinated — autosave can snapshot project pointing at unflushed library entry |

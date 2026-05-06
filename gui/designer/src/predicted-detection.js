@@ -74,33 +74,74 @@ const SIGMA70_MINUS10_PWM = [
 
 const BASE_INDEX = { A: 0, C: 1, G: 2, T: 3 };
 
+// Cached PWM maxima (computed once at module init below).
+let SIGMA70_MINUS35_MAX = 0;
+let SIGMA70_MINUS10_MAX = 0;
+
+// charCode → BASE_INDEX lookup, populated below. -1 means "not ACGT".
+// Lets the hot scoring loop avoid per-base object dereference.
+const BASE_INDEX_CHAR = new Int8Array(256).fill(-1);
+BASE_INDEX_CHAR[0x41] = 0; // A
+BASE_INDEX_CHAR[0x43] = 1; // C
+BASE_INDEX_CHAR[0x47] = 2; // G
+BASE_INDEX_CHAR[0x54] = 3; // T
+// Lowercase fallback so that loosely-cased input still scores.
+BASE_INDEX_CHAR[0x61] = 0; BASE_INDEX_CHAR[0x63] = 1;
+BASE_INDEX_CHAR[0x67] = 2; BASE_INDEX_CHAR[0x74] = 3;
+
 // ─── PWM scoring ──────────────────────────────────────────────────────
 
 /**
- * Score a hexamer against a 6×4 PWM. Returns log-odds (sum of
- * log2(P / 0.25) per position), then normalises to 0..1 using the PWM's
- * theoretical max as the upper bound. Zero or negative log-odds saturate
- * to 0 — only positive evidence (above-background P) contributes.
+ * Pre-compute the theoretical maximum log-odds score for a 6×4 PWM.
+ * The previous `scorePwm` recomputed this on every call by spreading
+ * each row into `Math.max(...row)` — six spreads per probe at every
+ * position of the sequence. Now: one walk per PWM at module load.
  */
-function scorePwm(hexamer, pwm) {
-  if (hexamer.length !== 6) return 0;
-  let score = 0;
-  let maxScore = 0;
+function pwmTheoreticalMax(pwm) {
+  let m = 0;
   for (let i = 0; i < 6; i++) {
-    const idx = BASE_INDEX[hexamer[i]];
     const row = pwm[i];
-    if (idx === undefined) {
-      // N or non-canonical → no contribution.
-      continue;
-    }
-    const p = row[idx];
-    if (p > 0.25) score += Math.log2(p / 0.25);
-    const maxP = Math.max(...row);
-    maxScore += Math.log2(maxP / 0.25);
+    let rowMax = row[0];
+    for (let j = 1; j < 4; j++) if (row[j] > rowMax) rowMax = row[j];
+    if (rowMax > 0.25) m += Math.log2(rowMax / 0.25);
   }
-  if (maxScore <= 0) return 0;
-  return Math.max(0, Math.min(1, score / maxScore));
+  return m;
 }
+
+/**
+ * Score the 6-mer starting at `seq[start]` against `pwm`. Reads the
+ * sequence via `charCodeAt` to avoid the slice-and-allocate that the
+ * old `scorePwm(hexamer, pwm)` paid per call. `maxScore` must be the
+ * cached `pwmTheoreticalMax(pwm)` value.
+ */
+function scorePwmAt(seq, start, pwm, maxScore) {
+  if (maxScore <= 0) return 0;
+  if (start + 6 > seq.length) return 0;
+  let score = 0;
+  for (let i = 0; i < 6; i++) {
+    const idx = BASE_INDEX_CHAR[seq.charCodeAt(start + i)];
+    if (idx < 0) continue; // N / non-canonical → no contribution
+    const p = pwm[i][idx];
+    if (p > 0.25) score += Math.log2(p / 0.25);
+  }
+  if (score <= 0) return 0;
+  const normalised = score / maxScore;
+  return normalised > 1 ? 1 : normalised;
+}
+
+// Initialise the cached maxima once at module load.
+SIGMA70_MINUS35_MAX = pwmTheoreticalMax(SIGMA70_MINUS35_PWM);
+SIGMA70_MINUS10_MAX = pwmTheoreticalMax(SIGMA70_MINUS10_PWM);
+
+// charCode → complement charCode lookup. -1 means "not ACGT".
+// Powers the stem-loop matcher: instead of building a reverseComplement
+// of stem2 (allocates a string per stem-length × loop-length probe),
+// we compare stem1[k] directly against complement(stem2[stemLen-1-k]).
+const COMPLEMENT_CHAR = new Int16Array(256).fill(-1);
+COMPLEMENT_CHAR[0x41] = 0x54; COMPLEMENT_CHAR[0x54] = 0x41; // A↔T
+COMPLEMENT_CHAR[0x47] = 0x43; COMPLEMENT_CHAR[0x43] = 0x47; // G↔C
+COMPLEMENT_CHAR[0x61] = 0x74; COMPLEMENT_CHAR[0x74] = 0x61;
+COMPLEMENT_CHAR[0x67] = 0x63; COMPLEMENT_CHAR[0x63] = 0x67;
 
 // ─── Detector 1: σ70 promoter PWM ────────────────────────────────────
 
@@ -128,10 +169,13 @@ export function detectPromotersSigma70(sequence, threshold = 0.7) {
   // overlapping candidates don't multiply.
   const claimed = new Set();
 
+  // Cached PWM maxima — avoids 12 Math.max(...row) calls per probe.
+  const m35Max = SIGMA70_MINUS35_MAX;
+  const m10Max = SIGMA70_MINUS10_MAX;
+
   for (let i = 0; i < seq.length - (6 + SPACER_MIN + 6); i++) {
     if (claimed.has(i)) continue;
-    const minus35 = seq.slice(i, i + 6);
-    const score35 = scorePwm(minus35, SIGMA70_MINUS35_PWM);
+    const score35 = scorePwmAt(seq, i, SIGMA70_MINUS35_PWM, m35Max);
     if (score35 < threshold) continue;
 
     let bestComposite = 0;
@@ -141,8 +185,7 @@ export function detectPromotersSigma70(sequence, threshold = 0.7) {
     for (let sp = SPACER_MIN; sp <= SPACER_MAX; sp++) {
       const m10Start = i + 6 + sp;
       if (m10Start + 6 > seq.length) break;
-      const minus10 = seq.slice(m10Start, m10Start + 6);
-      const score10 = scorePwm(minus10, SIGMA70_MINUS10_PWM);
+      const score10 = scorePwmAt(seq, m10Start, SIGMA70_MINUS10_PWM, m10Max);
       if (score10 < threshold) continue;
       const composite = (score35 + score10) / 2;
       if (composite > bestComposite) {
@@ -174,7 +217,7 @@ export function detectPromotersSigma70(sequence, threshold = 0.7) {
           start: i,
           end: i + 6,
           score: Number(score35.toFixed(3)),
-          sequence: minus35,
+          sequence: seq.slice(i, i + 6),
         },
         {
           type: 'spacer',
@@ -227,15 +270,23 @@ export function detectTerminatorsStemLoop(sequence, threshold = 0.7) {
         const stem2Start = loopEnd;
         const stem2End = stem2Start + stemLen;
         if (stem2End > seq.length) break;
-        const stem1 = seq.slice(stem1Start, stem1End);
-        const stem2 = seq.slice(stem2Start, stem2End);
-        const stem2Rc = reverseComplement(stem2);
+        // Compare stem1[k] vs complement(stem2[stemLen-1-k]) directly,
+        // counting GC of stem1 in the same pass. This collapses three
+        // string allocations (slice stem1, slice stem2, reverseComplement)
+        // and one regex match into a single charCodeAt walk.
         let mismatches = 0;
+        let gcCount = 0;
         for (let k = 0; k < stemLen; k++) {
-          if (stem1[k] !== stem2Rc[k]) mismatches += 1;
+          const c1 = seq.charCodeAt(stem1Start + k);
+          if (c1 === 0x47 || c1 === 0x43 || c1 === 0x67 || c1 === 0x63) gcCount += 1;
+          const c2 = seq.charCodeAt(stem2End - 1 - k);
+          const wanted = COMPLEMENT_CHAR[c2];
+          if (wanted < 0 || wanted !== (c1 & 0xDF) /* uppercase compare */) {
+            mismatches += 1;
+            if (mismatches > 1) break;
+          }
         }
         if (mismatches > 1) continue;
-        const gcCount = (stem1.match(/[GC]/g) || []).length;
         const gcFrac = gcCount / stemLen;
         // Score grows with longer GC-rich stems, penalised by mismatch.
         const score =
