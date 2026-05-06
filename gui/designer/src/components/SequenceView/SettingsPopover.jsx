@@ -85,10 +85,15 @@ export default function SettingsPopover({ open, onClose, anchor, triggerRef }) {
     };
     recompute();
     window.addEventListener('resize', recompute);
-    window.addEventListener('scroll', recompute, true);
+    // PERF — listener used to be `(scroll, recompute, true)`, which
+    // forces the browser to wait for our handler before emitting the
+    // scroll. On long sequences that's a perceptible jitter. Passive
+    // capture lets the browser scroll first and call us afterwards.
+    const scrollOpts = { capture: true, passive: true };
+    window.addEventListener('scroll', recompute, scrollOpts);
     return () => {
       window.removeEventListener('resize', recompute);
-      window.removeEventListener('scroll', recompute, true);
+      window.removeEventListener('scroll', recompute, scrollOpts);
     };
   }, [open, triggerRef]);
 

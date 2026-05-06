@@ -206,6 +206,7 @@ export default function PreImportModal({
   return (
     <div
       data-testid="pre-import-modal-backdrop"
+      className="modal-anim-backdrop"
       onPointerDown={(e) => {
         if (e.target === e.currentTarget) onCancel?.();
       }}
@@ -222,6 +223,7 @@ export default function PreImportModal({
     >
       <div
         data-testid="pre-import-modal"
+        className="modal-anim-body"
         onPointerDown={(e) => e.stopPropagation()}
         style={{
           width: '100%',

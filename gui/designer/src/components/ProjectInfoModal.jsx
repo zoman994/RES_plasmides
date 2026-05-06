@@ -110,6 +110,7 @@ export default function ProjectInfoModal() {
       data-testid="project-info-modal-backdrop"
       role="dialog"
       onClick={onCancel}
+      className="modal-anim-backdrop"
       style={{
         position: 'fixed', inset: 0, zIndex: 1200,
         background: 'rgba(0, 0, 0, 0.32)',
@@ -119,6 +120,7 @@ export default function ProjectInfoModal() {
       <div
         data-testid="project-info-modal"
         onClick={(e) => e.stopPropagation()}
+        className="modal-anim-body"
         style={{
           background: 'var(--surface-1, #ffffff)',
           color: 'var(--text-primary, #1c1917)',

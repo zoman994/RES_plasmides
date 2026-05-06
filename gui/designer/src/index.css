@@ -306,6 +306,89 @@ body {
 .ss-card-path-empty { font-size: 11px; color: var(--ss-text-tertiary); margin-top: 2px; font-style: italic; }
 .ss-card-tags { margin-top: 10px; display: flex; gap: 4px; flex-wrap: wrap; }
 .ss-card-tags-empty { margin-top: 10px; font-size: 11px; color: var(--ss-text-tertiary); font-style: italic; }
+/* ─── Modal entrance / exit polish ──────────────────────────────────
+   Backdrop fades in over 120 ms; the body adds a subtle scale-in so
+   it «settles» rather than pops. Both honour reduced-motion. Modals
+   that opt-in apply class `.modal-anim-backdrop` / `.modal-anim-body`. */
+@keyframes modal-backdrop-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes modal-body-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.modal-anim-backdrop {
+  animation: modal-backdrop-in 120ms ease-out;
+  will-change: opacity;
+}
+.modal-anim-body {
+  animation: modal-body-in 150ms cubic-bezier(0.2, 0.9, 0.32, 1);
+  transform-origin: center;
+  will-change: transform, opacity;
+}
+@media (prefers-reduced-motion: reduce) {
+  .modal-anim-backdrop, .modal-anim-body { animation: none; }
+}
+
+/* ─── Toast slide-up ────────────────────────────────────────────── */
+@keyframes toast-slide-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+.toast-anim-in {
+  animation: toast-slide-in 180ms cubic-bezier(0.2, 0.9, 0.32, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast-anim-in { animation: none; }
+}
+
+/* ─── Save flash micro-bounce ──────────────────────────────────── */
+@keyframes save-flash-bounce {
+  0%   { opacity: 0; transform: scale(0.7); }
+  50%  { opacity: 1; transform: scale(1.18); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.save-flash-bounce {
+  display: inline-block;
+  animation: save-flash-bounce 320ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .save-flash-bounce { animation: none; }
+}
+
+/* ─── Splash fade-in (root) ─────────────────────────────────────── */
+@keyframes app-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+body[data-app-ready="true"] {
+  animation: app-fade-in 220ms ease-out;
+}
+
+/* ─── Loading skeleton rows (snapgene category open) ─────────────── */
+@keyframes skeleton-pulse {
+  0%   { background-position: -200px 0; }
+  100% { background-position: calc(200px + 100%) 0; }
+}
+.catalog-skeleton-row {
+  height: 24px;
+  margin: 2px 8px;
+  border-radius: 3px;
+  background: linear-gradient(
+    90deg,
+    var(--surface-2, #f5f5f4) 0%,
+    color-mix(in srgb, var(--surface-2, #f5f5f4) 40%, transparent) 50%,
+    var(--surface-2, #f5f5f4) 100%
+  );
+  background-size: 200px 100%;
+  background-repeat: no-repeat;
+  animation: skeleton-pulse 1.4s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .catalog-skeleton-row { animation: none; }
+}
+
 .ss-card-delete {
   position: absolute;
   right: 6px;
@@ -428,16 +511,17 @@ body {
 .importer-catalog-item-row:hover {
   background: var(--surface-2);
 }
-/* Chunked-render fade-in. New rows that appear during a chunk-tick
-   slide in over 180 ms instead of pop-flashing — masks the visual
-   jump when 50→130→200→308 rows materialise across idle frames.
-   `prefers-reduced-motion` honours OS accessibility settings. */
+/* Chunked-render fade-in. Short (80 ms) and one-shot — anything
+   longer triggered re-animation every time a row scrolled back into
+   the viewport (content-visibility: auto re-realisation re-runs
+   CSS animations), creating perceptible jitter on slow scroll
+   passes. */
 @keyframes catalog-row-fade-in {
-  from { opacity: 0; transform: translateY(-2px); }
-  to   { opacity: 1; transform: none; }
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 .importer-catalog-item-row {
-  animation: catalog-row-fade-in 180ms ease-out;
+  animation: catalog-row-fade-in 80ms ease-out 1 backwards;
 }
 @media (prefers-reduced-motion: reduce) {
   .importer-catalog-item-row {

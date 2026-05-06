@@ -1293,7 +1293,26 @@ function InlineItemList({
   draggableItems = false, // Mine only — items can be dragged to other folders
   sourceFolder = '',     // path of the parent folder these items live in
 }) {
-  if (loading) return null;
+  // Skeleton placeholder during load. Without it the user clicks a
+  // SnapGene category and sees nothing for ~200 ms while the JSON
+  // parses — feels like the click was lost. Now a few pulsing rows
+  // appear instantly as a click-ack signal.
+  if (loading) {
+    return (
+      <div data-testid={loadingTestId || 'catalog-loading-skeleton'}>
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div
+            key={i}
+            className="catalog-skeleton-row"
+            style={{
+              marginLeft: indentForDepth(depth) + CHEVRON_GUTTER,
+              marginRight: 12,
+            }}
+          />
+        ))}
+      </div>
+    );
+  }
   if (!items || items.length === 0) {
     return emptyLabel
       ? <EmptyHint label={emptyLabel} testId={emptyTestId} depth={depth} />

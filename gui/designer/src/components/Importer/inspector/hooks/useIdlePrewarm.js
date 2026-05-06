@@ -42,6 +42,15 @@ export function useIdlePrewarm({ itemKey, activeTab, testMode = false }) {
   }, [activeTab, testMode]);
 
   // Sequence pre-warm.
+  //
+  // 2026-05-06 — biolog: «первое нажатие на сиквенс открывает с
+  // секундной задержкой». Cause: idle-callback timeout was 800 ms,
+  // so on busy main thread the prewarm fired AFTER the user already
+  // clicked → React mounted the heavy SequenceView synchronously
+  // inside the click handler. Switched to a double-rAF schedule:
+  // we wait for ONE paint to land Overview, then prewarm Sequence on
+  // the next frame (~16 ms later). Biolog now has the heavy tree
+  // mounted hidden by the time their finger reaches the Sequence tab.
   useEffect(() => {
     if (testMode) return undefined;
     if (!itemKey) return undefined;
@@ -51,18 +60,21 @@ export function useIdlePrewarm({ itemKey, activeTab, testMode = false }) {
       if (cancelled) return;
       setWarmedTabs((prev) => (prev.has('sequence') ? prev : new Set([...prev, 'sequence'])));
     };
-    const useRIC = typeof requestIdleCallback !== 'undefined';
-    const handle = useRIC
-      ? requestIdleCallback(flush, { timeout: 800 })
-      : setTimeout(flush, 250);
+    const r1 = requestAnimationFrame(() => {
+      if (cancelled) return;
+      requestAnimationFrame(flush);
+    });
     return () => {
       cancelled = true;
-      if (useRIC) cancelIdleCallback(handle); else clearTimeout(handle);
+      cancelAnimationFrame(r1);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [itemKey, warmedTabs.has('sequence'), testMode]);
 
-  // Annotations pre-warm.
+  // Annotations pre-warm — same double-rAF pattern but one extra
+  // frame later than Sequence so the browser can paint between the
+  // two heavy mounts. Both are still mounted before the user's
+  // finger reaches the tab strip.
   useEffect(() => {
     if (testMode) return undefined;
     if (!itemKey) return undefined;
@@ -72,13 +84,19 @@ export function useIdlePrewarm({ itemKey, activeTab, testMode = false }) {
       if (cancelled) return;
       setWarmedTabs((prev) => (prev.has('annotations') ? prev : new Set([...prev, 'annotations'])));
     };
-    const useRIC = typeof requestIdleCallback !== 'undefined';
-    const handle = useRIC
-      ? requestIdleCallback(flush, { timeout: 1500 })
-      : setTimeout(flush, 400);
+    let r2 = 0;
+    const r1 = requestAnimationFrame(() => {
+      if (cancelled) return;
+      r2 = requestAnimationFrame(() => {
+        if (cancelled) return;
+        // Extra frame so Sequence prewarm finishes first.
+        requestAnimationFrame(flush);
+      });
+    });
     return () => {
       cancelled = true;
-      if (useRIC) cancelIdleCallback(handle); else clearTimeout(handle);
+      cancelAnimationFrame(r1);
+      if (r2) cancelAnimationFrame(r2);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [itemKey, warmedTabs.has('annotations'), testMode]);

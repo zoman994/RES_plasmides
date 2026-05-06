@@ -44,6 +44,14 @@ export default function App() {
     // loaded; without this call, reload of the page wiped «Моя библиотека»
     // visually (the rows were still in IndexedDB but never read into store).
     hydrateLibrary().catch(() => { /* ignore */ });
+    // Splash fade-in. body[data-app-ready] CSS rule animates opacity
+    // 0→1 over 220 ms once initial bootstrap finishes, masking FOUC
+    // and any slow Dexie hydration on cold start.
+    if (typeof document !== 'undefined' && document.body) {
+      requestAnimationFrame(() => {
+        if (document.body) document.body.dataset.appReady = 'true';
+      });
+    }
   }, [hydrateProjectsFromDexie, hydrateLibrary]);
 
   useEffect(() => {

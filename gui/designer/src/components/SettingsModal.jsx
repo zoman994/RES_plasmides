@@ -61,6 +61,7 @@ export default function SettingsModal() {
       data-testid="settings-modal-backdrop"
       role="dialog"
       onClick={closeSettings}
+      className="modal-anim-backdrop"
       style={{
         position: 'fixed', inset: 0, zIndex: 1200,
         background: 'rgba(0, 0, 0, 0.32)',
@@ -70,6 +71,7 @@ export default function SettingsModal() {
       <div
         data-testid="settings-modal"
         onClick={(e) => e.stopPropagation()}
+        className="modal-anim-body"
         style={{
           background: 'var(--surface-1, #ffffff)',
           color: 'var(--text-primary, #1c1917)',

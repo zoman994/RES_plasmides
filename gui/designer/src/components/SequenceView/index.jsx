@@ -574,6 +574,10 @@ const SequenceView = forwardRef(function SequenceView({
         minWidth: 0,
         overflowX: "hidden",
         overflowY: "auto",
+        // Keep room for the scrollbar even when the content is short
+        // — avoids the layout reshuffle (and accompanying ~1-frame
+        // jitter) when the scrollbar appears/disappears.
+        scrollbarGutter: "stable",
         outline: "none",
         fontFamily: SEQUENCE_FONT_FAMILY,
         fontSize: 11,

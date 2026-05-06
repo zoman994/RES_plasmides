@@ -211,6 +211,7 @@ export default function Topbar() {
             <span
               data-testid="topbar-save-flash"
               aria-hidden="true"
+              className="save-flash-bounce"
               style={{ color: '#16a34a', fontWeight: 600 }}
             >✓</span>
           )}

@@ -37,6 +37,7 @@ export default function Toast({ id, msg, kind = 'info', onUndo, onAutoDismiss, o
       data-toast-id={id}
       data-toast-kind={kind}
       role="status"
+      className="toast-anim-in"
       style={{
         background: '#262626',
         color: '#f5f5f5',

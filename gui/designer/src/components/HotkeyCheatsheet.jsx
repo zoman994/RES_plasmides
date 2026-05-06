@@ -40,6 +40,7 @@ export default function HotkeyCheatsheet({ open, onClose }) {
       aria-modal="true"
       aria-label={STRINGS.hotkeyCheatsheet?.title || 'Keyboard shortcuts'}
       onClick={onClose}
+      className="modal-anim-backdrop"
       style={{
         position: 'fixed', inset: 0,
         background: 'rgba(0, 0, 0, 0.45)',
@@ -50,6 +51,7 @@ export default function HotkeyCheatsheet({ open, onClose }) {
       <div
         data-testid="hotkey-cheatsheet"
         onClick={(e) => e.stopPropagation()}
+        className="modal-anim-body"
         style={{
           background: 'var(--surface-1, #fff)',
           color: 'var(--text-primary, #111)',

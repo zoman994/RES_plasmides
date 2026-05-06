@@ -84,6 +84,13 @@ const SequenceLine = memo(function SequenceLine({
         // existing tests find the full DOM tree synchronously.
         contentVisibility: __IS_TEST_ENV__ ? "visible" : "auto",
         containIntrinsicSize: "auto 220px",
+        // GPU compositing — promotes each line into its own layer so
+        // scroll becomes a pure GPU translate of pre-rendered tiles.
+        // 2026-05-06 biolog: «всё равно есть микрофризы на слабых
+        // машинах». translateZ(0) is the canonical hint; backface
+        // hidden is paired so Safari opts into the same layer.
+        transform: "translateZ(0)",
+        backfaceVisibility: "hidden",
       }}
     >
       {/*
