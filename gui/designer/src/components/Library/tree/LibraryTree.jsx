@@ -1,17 +1,33 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../../../store';
 import { STRINGS } from '../../../lib/strings';
 import { ACCEPT_STRING } from '../../../file-import';
-import PlasmidMiniMap from '../../PlasmidMiniMap';
 import { useCatalogSources } from '../hooks/useLibrarySources';
-import { applyCatalogFilter } from './length-pattern';
+import { applyCatalogFilter } from '../catalog/length-pattern';
+import {
+  GROUP_KEYS,
+  MAX_INDENT_DEPTH,
+  indentForDepth,
+  buildFolderTree,
+  readGroupState, writeGroupState,
+  readSet, writeSet,
+} from './library-folder-tree';
+import { LibraryGroupHeader } from './LibraryGroupHeader';
+import { LibraryNestedSubGroup, InlineItemList, SnapgeneCategoryRow } from './LibraryNestedSubGroup';
+import { LibraryItemRow, CatalogCard, EmptyHint, newFolderInputStyle } from './LibraryItemRow';
 
 const S = STRINGS.importer;
 
 /**
- * CatalogColumn — single sticky-search header + 4 sources (Этот проект /
+ * LibraryTree — single sticky-search header + 4 sources (Этот проект /
  * Учебные / Моя библиотека / Каталог SnapGene) + drop zone footer with
- * paste textarea (M-B.2 K2; DEC-IMP-14).
+ * paste textarea (M-B.2 K2; DEC-IMP-14). Decomposed in M-X.5 K3 from
+ * the 64 KB CatalogColumn.jsx into:
+ *   • this file (orchestration + sticky search + flat-search overlay
+ *     + Mine folder rendering + DropZone footer);
+ *   • LibraryGroupHeader / LibraryNestedSubGroup / SnapgeneCategoryRow
+ *     / InlineItemList / LibraryItemRow / CatalogCard / EmptyHint;
+ *   • library-folder-tree.js helpers.
  *
  * Two viewing modes:
  *   - tree mode (default): collapsible group headers with persistent state
@@ -24,81 +40,14 @@ const S = STRINGS.importer;
  * Item click: catalog item → onSelectItem(item) (single-mode auto replace,
  * multi-mode replace-batch confirm at parent index.jsx). Drop file →
  * onFiles(files). Paste textarea Ctrl+Enter → onPasteText(text).
+ *
+ * The default export keeps the legacy `CatalogColumn` symbol for
+ * backward-compatible callers while file-system-level the file is
+ * `LibraryTree.jsx` (to be the canonical name in M-X.5 Этап 2 once
+ * Library/index.jsx switches to the new symbol).
  */
-const GROUP_KEYS = ['canvas', 'demo', 'mine', 'snapgene'];
 
-// Depth-based indent: every nesting level shifts text 12 px right.
-// Capped at 5 levels so ultra-deep folders still fit the 320 px column.
-const INDENT_STEP = 12;
-const INDENT_BASE = 12;
-const MAX_INDENT_DEPTH = 5;
-// Chevron(10px) + flex gap(6px) — group/sub-group rows put their text
-// 16 px past padding-left because the chevron span sits in front of it.
-// Items (no chevron) need to add this offset to align UNDER the parent's
-// text column instead of UNDER the parent's chevron.
-const CHEVRON_GUTTER = 16;
-function indentForDepth(depth) {
-  const d = Math.min(MAX_INDENT_DEPTH, Math.max(0, depth));
-  return INDENT_BASE + d * INDENT_STEP;
-}
-// Per-depth background tint — translucent accent band so deeply-nested
-// content reads as «inside» its parent without relying on indent alone.
-// Stops cleanly at depth 0 (no tint for top-level group rows).
-function depthBackground(depth) {
-  if (depth <= 0) return 'transparent';
-  const d = Math.min(MAX_INDENT_DEPTH, depth);
-  const pct = Math.min(8, 2.5 * d); // 2.5% per level, capped at 8%
-  return `color-mix(in srgb, var(--accent-500) ${pct}%, transparent)`;
-}
-
-/** Parse a flat list of slash-separated paths into a forest.
- *  ['Vectors', 'Vectors/CRISPR', 'Promoters'] →
- *  [{name:'Vectors', path:'Vectors', children:[{name:'CRISPR', path:'Vectors/CRISPR', children:[]}]},
- *   {name:'Promoters', path:'Promoters', children:[]}] */
-function buildFolderTree(paths) {
-  const roots = [];
-  const byPath = new Map();
-  // Sort so parents always materialise before children.
-  const sorted = [...paths].sort();
-  for (const p of sorted) {
-    if (!p) continue;
-    const slash = p.lastIndexOf('/');
-    const parentPath = slash >= 0 ? p.slice(0, slash) : '';
-    const name = slash >= 0 ? p.slice(slash + 1) : p;
-    const node = { name, path: p, children: [] };
-    byPath.set(p, node);
-    if (parentPath && byPath.has(parentPath)) {
-      byPath.get(parentPath).children.push(node);
-    } else {
-      roots.push(node);
-    }
-  }
-  return roots;
-}
-
-function readGroupState(key, fallback) {
-  try {
-    const v = localStorage.getItem(`pvcs-catalog-group-${key}`);
-    if (v === 'open') return true;
-    if (v === 'closed') return false;
-  } catch { /* private mode / jsdom */ }
-  return fallback;
-}
-function writeGroupState(key, open) {
-  try { localStorage.setItem(`pvcs-catalog-group-${key}`, open ? 'open' : 'closed'); } catch { /* */ }
-}
-function readSet(suffix) {
-  try {
-    const raw = localStorage.getItem(`pvcs-catalog-set-${suffix}`);
-    if (raw) return new Set(JSON.parse(raw));
-  } catch { /* */ }
-  return new Set();
-}
-function writeSet(suffix, s) {
-  try { localStorage.setItem(`pvcs-catalog-set-${suffix}`, JSON.stringify([...s])); } catch { /* */ }
-}
-
-export default function CatalogColumn({
+export default function LibraryTree({
   query = '',
   onQueryChange,
   activeSource,
@@ -475,7 +424,7 @@ export default function CatalogColumn({
       const allowImport = isMine && !isUntagged;
       const allowDelete = isMine && !isUntagged;
       return (
-        <NestedSubGroup
+        <LibraryNestedSubGroup
           key={node.path}
           testId={`importer-catalog-${groupKey}-folder-${node.path}`}
           label={displayLabel}
@@ -533,7 +482,7 @@ export default function CatalogColumn({
               удаления папки оно появлялось лишним шумом. The folder header
               already shows count=0 (or just no number); the absence of
               children speaks for itself. */}
-        </NestedSubGroup>
+        </LibraryNestedSubGroup>
       );
     })
   ), [openTags, toggleTag, onSelectItem, folderDraftKey, folderDraft, startNewFolder, commitNewFolder, cancelNewFolder, triggerFolderImport, onFolderDropFiles, deleteFolder, deleteContainer, moveItemToFolder]);
@@ -608,7 +557,7 @@ export default function CatalogColumn({
                 затем демо и каталог SnapGene. Each section gets its own
                 folder tree (recursive — folder-in-folder up to MAX_INDENT_DEPTH)
                 and «+ Новая папка» rows at every level past depth 1. */}
-            <GroupHeader
+            <LibraryGroupHeader
               groupKey="mine"
               label={S.catalogGroupMine}
               count={sources.mine.length}
@@ -691,7 +640,7 @@ export default function CatalogColumn({
               );
             })()}
 
-            <GroupHeader
+            <LibraryGroupHeader
               groupKey="canvas"
               label={S.catalogGroupCanvas(projectName)}
               count={sources.thisProject.length}
@@ -716,7 +665,7 @@ export default function CatalogColumn({
               );
             })()}
 
-            <GroupHeader
+            <LibraryGroupHeader
               groupKey="demo"
               label={S.catalogGroupDemo}
               count={sources.demo.length}
@@ -743,7 +692,7 @@ export default function CatalogColumn({
               );
             })()}
 
-            <GroupHeader
+            <LibraryGroupHeader
               groupKey="snapgene"
               label={S.catalogGroupSnapgene}
               count={sources.snapgeneCategories.reduce((s, c) => s + (c.count || 0), 0)}
@@ -911,629 +860,8 @@ export default function CatalogColumn({
   );
 }
 
-/** Top-level group header. Optional `onAddChild` / `onAddFile` / `onFolderDrop`
- *  let the user create a folder, import a file, or drag-drop files directly
- *  onto the section root — replaces the visible «+ Новая папка» row that
- *  used to live at the bottom of each group. */
-function GroupHeader({
-  groupKey, label, count, open, onToggle,
-  onAddChild, addChildTitle, addChildTestId,
-  onAddFile, addFileTitle, addFileTestId,
-  onFolderDrop, folderDropHint,
-  onItemDrop, // internal item drag → ungroup (move out of any folder)
-}) {
-  const [dragOver, setDragOver] = useState(false);
-  // Same enter/leave depth-counter pattern as NestedSubGroup so the row
-  // highlight doesn't flicker when the cursor crosses inner buttons
-  // (chevron, ＋, ⤓).
-  const dragDepth = useRef(0);
-  const fileDropEnabled = typeof onFolderDrop === 'function';
-  const itemDropEnabled = typeof onItemDrop === 'function';
-  const dropEnabled = fileDropEnabled || itemDropEnabled;
-  const acceptsTypes = (e) => {
-    const types = Array.from(e.dataTransfer?.types || []);
-    return (fileDropEnabled && types.includes('Files'))
-      || (itemDropEnabled && types.includes('application/x-bodgegene-item-id'));
-  };
-  return (
-    <div
-      className="importer-catalog-group-header"
-      data-folder-drop-hover={dragOver ? 'true' : undefined}
-      title={dropEnabled && dragOver ? folderDropHint : undefined}
-      onDragEnter={dropEnabled ? (e) => {
-        if (!acceptsTypes(e)) return;
-        e.preventDefault();
-        dragDepth.current += 1;
-        if (dragDepth.current === 1) setDragOver(true);
-      } : undefined}
-      onDragOver={dropEnabled ? (e) => {
-        if (!acceptsTypes(e)) return;
-        e.preventDefault();
-        const types = Array.from(e.dataTransfer?.types || []);
-        if (e.dataTransfer) {
-          e.dataTransfer.dropEffect = types.includes('application/x-bodgegene-item-id') ? 'move' : 'copy';
-        }
-      } : undefined}
-      onDragLeave={dropEnabled ? () => {
-        dragDepth.current = Math.max(0, dragDepth.current - 1);
-        if (dragDepth.current === 0) setDragOver(false);
-      } : undefined}
-      onDrop={dropEnabled ? (e) => {
-        if (!acceptsTypes(e)) return;
-        e.preventDefault();
-        e.stopPropagation();
-        dragDepth.current = 0;
-        setDragOver(false);
-        const types = Array.from(e.dataTransfer?.types || []);
-        if (itemDropEnabled && types.includes('application/x-bodgegene-item-id')) {
-          const itemId = e.dataTransfer.getData('application/x-bodgegene-item-id');
-          const sourceFolder = e.dataTransfer.getData('application/x-bodgegene-source-folder') || '';
-          if (itemId) onItemDrop(itemId, sourceFolder);
-          return;
-        }
-        if (fileDropEnabled && types.includes('Files')) {
-          const files = Array.from(e.dataTransfer.files || []);
-          if (files.length > 0) onFolderDrop(files);
-        }
-      } : undefined}
-      style={{
-        display: 'flex', alignItems: 'stretch',
-        background: dragOver
-          ? 'color-mix(in srgb, var(--accent-500) 18%, transparent)'
-          : 'var(--surface-2, #f5f5f4)',
-        borderBottom: '0.5px solid var(--border-subtle)',
-        outline: dragOver ? '1px dashed var(--accent-500)' : 'none',
-        outlineOffset: '-1px',
-      }}
-    >
-      <button
-        type="button"
-        onClick={onToggle}
-        data-testid={`importer-catalog-group-${groupKey}`}
-        aria-expanded={open}
-        // UX-008 — without an aria-label the group header just announces
-        // «expanded button»; this gives the SR user the actual group
-        // name + item count + state. Matches the visual sighted users see.
-        aria-label={`${label}, ${count ?? 0} items, ${open ? 'expanded' : 'collapsed'}`}
-        style={{
-          flex: 1,
-          display: 'flex', alignItems: 'center', gap: 6,
-          padding: '6px 12px',
-          fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.4,
-          color: 'var(--text-secondary)',
-          background: 'transparent',
-          border: 'none',
-          cursor: 'pointer',
-          textAlign: 'left',
-          fontWeight: 500,
-        }}
-      >
-        <span
-          aria-hidden="true"
-          className="importer-catalog-chevron"
-          data-open={open ? 'true' : 'false'}
-          style={{
-            width: 10, color: 'var(--text-tertiary)',
-            display: 'inline-block',
-            transition: 'transform 140ms ease-out',
-            transform: open ? 'rotate(0deg)' : 'rotate(-90deg)',
-          }}
-        >▾</span>
-        <span style={{ flex: 1 }}>{label}</span>
-        {typeof count === 'number' && (
-          <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>{count}</span>
-        )}
-      </button>
-      {onAddFile && (
-        <button
-          type="button"
-          className="importer-catalog-add-file"
-          data-testid={addFileTestId}
-          onClick={(e) => { e.stopPropagation(); onAddFile(); }}
-          title={addFileTitle}
-          aria-label={addFileTitle}
-          style={{
-            padding: '0 6px',
-            background: 'transparent',
-            border: 'none',
-            color: 'var(--text-tertiary)',
-            fontSize: 12, lineHeight: 1,
-            cursor: 'pointer',
-          }}
-        >⤓</button>
-      )}
-      {onAddChild && (
-        <button
-          type="button"
-          className="importer-catalog-add-child"
-          data-testid={addChildTestId}
-          onClick={(e) => { e.stopPropagation(); onAddChild(); }}
-          title={addChildTitle}
-          aria-label={addChildTitle}
-          style={{
-            padding: '0 10px',
-            background: 'transparent',
-            border: 'none',
-            color: 'var(--text-tertiary)',
-            fontSize: 14, lineHeight: 1,
-            cursor: 'pointer',
-          }}
-        >＋</button>
-      )}
-    </div>
-  );
-}
-
-/** Sub-group: nested collapsible row inside Mine (per-folder/tag) and
- *  SnapGene (per-category). `depth` (1-based) drives the indent step.
- *  Optional `onAddChild` adds a hover-revealed «＋» button on the right
- *  of the header — clicking it opens a child-folder input WITHOUT making
- *  the parent toggle. This pattern (file-manager style) keeps the visible
- *  «+ Новая папка» count down to one-per-section while still allowing
- *  folder-in-folder creation. */
-function NestedSubGroup({
-  testId, label, count, open, onToggle, children, depth = 1,
-  onAddChild, addChildTitle, addChildTestId,
-  onAddFile, addFileTitle, addFileTestId,
-  onFolderDrop, folderDropHint,
-  onItemDrop, // (itemId, sourceFolder) — internal drag of a library entry
-  onDelete, deleteTitle, deleteTestId,
-}) {
-  const [dragOver, setDragOver] = useState(false);
-  // dragenter/leave fire for every nested child element (chevron, label,
-  // ＋ icon, ⤓ icon, …). Without depth counting, leave→child looks like
-  // leave→row and the highlight flickers off. Track enter/leave depth so
-  // dragOver stays true the entire time the cursor is anywhere inside the
-  // row's bounding box.
-  const dragDepth = useRef(0);
-  const fileDropEnabled = typeof onFolderDrop === 'function';
-  const itemDropEnabled = typeof onItemDrop === 'function';
-  const dropEnabled = fileDropEnabled || itemDropEnabled;
-  const acceptsTypes = (e) => {
-    const types = Array.from(e.dataTransfer?.types || []);
-    return (fileDropEnabled && types.includes('Files'))
-      || (itemDropEnabled && types.includes('application/x-bodgegene-item-id'));
-  };
-  return (
-    <>
-      <div
-        className="importer-catalog-nested-row"
-        data-folder-drop-hover={dragOver ? 'true' : undefined}
-        title={dropEnabled && dragOver ? folderDropHint : undefined}
-        onDragEnter={dropEnabled ? (e) => {
-          if (!acceptsTypes(e)) return;
-          e.preventDefault();
-          dragDepth.current += 1;
-          if (dragDepth.current === 1) setDragOver(true);
-        } : undefined}
-        onDragOver={dropEnabled ? (e) => {
-          if (!acceptsTypes(e)) return;
-          e.preventDefault();
-          const types = Array.from(e.dataTransfer?.types || []);
-          if (e.dataTransfer) {
-            e.dataTransfer.dropEffect = types.includes('application/x-bodgegene-item-id') ? 'move' : 'copy';
-          }
-        } : undefined}
-        onDragLeave={dropEnabled ? () => {
-          dragDepth.current = Math.max(0, dragDepth.current - 1);
-          if (dragDepth.current === 0) setDragOver(false);
-        } : undefined}
-        onDrop={dropEnabled ? (e) => {
-          if (!acceptsTypes(e)) return;
-          e.preventDefault();
-          e.stopPropagation();
-          dragDepth.current = 0;
-          setDragOver(false);
-          const types = Array.from(e.dataTransfer?.types || []);
-          if (itemDropEnabled && types.includes('application/x-bodgegene-item-id')) {
-            const itemId = e.dataTransfer.getData('application/x-bodgegene-item-id');
-            const sourceFolder = e.dataTransfer.getData('application/x-bodgegene-source-folder') || '';
-            if (itemId) onItemDrop(itemId, sourceFolder);
-            return;
-          }
-          if (fileDropEnabled && types.includes('Files')) {
-            const files = Array.from(e.dataTransfer.files || []);
-            if (files.length > 0) onFolderDrop(files);
-          }
-        } : undefined}
-        style={{
-          display: 'flex', alignItems: 'stretch',
-          background: dragOver
-            ? 'var(--accent-50, color-mix(in srgb, var(--accent-500) 18%, transparent))'
-            : depthBackground(depth),
-          outline: dragOver ? '1px dashed var(--accent-500)' : 'none',
-          outlineOffset: '-1px',
-        }}
-      >
-        <button
-          type="button"
-          onClick={onToggle}
-          data-testid={testId}
-          aria-expanded={open}
-          aria-label={`${label} folder, ${count ?? 0} items, ${open ? 'expanded' : 'collapsed'}`}
-          style={{
-            flex: 1,
-            display: 'flex', alignItems: 'center', gap: 6,
-            padding: `4px 10px 4px ${indentForDepth(depth)}px`,
-            fontSize: 12,
-            background: 'transparent',
-            border: 'none',
-            color: 'var(--text-secondary)',
-            cursor: 'pointer',
-            textAlign: 'left',
-          }}
-        >
-          <span style={{ width: 10, color: 'var(--text-tertiary)' }} aria-hidden="true">{open ? '▾' : '▸'}</span>
-          <span style={{ flex: 1, textAlign: 'left' }}>{label}</span>
-          {typeof count === 'number' && (
-            <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>{count}</span>
-          )}
-        </button>
-        {onAddFile && (
-          <button
-            type="button"
-            className="importer-catalog-add-file"
-            data-testid={addFileTestId}
-            onClick={(e) => { e.stopPropagation(); onAddFile(); }}
-            title={addFileTitle}
-            aria-label={addFileTitle}
-            style={{
-              padding: '0 6px',
-              background: 'transparent',
-              border: 'none',
-              color: 'var(--text-tertiary)',
-              fontSize: 12, lineHeight: 1,
-              cursor: 'pointer',
-            }}
-          >⤓</button>
-        )}
-        {onAddChild && (
-          <button
-            type="button"
-            className="importer-catalog-add-child"
-            data-testid={addChildTestId}
-            onClick={(e) => { e.stopPropagation(); onAddChild(); }}
-            title={addChildTitle}
-            aria-label={addChildTitle}
-            style={{
-              padding: '0 10px',
-              background: 'transparent',
-              border: 'none',
-              color: 'var(--text-tertiary)',
-              fontSize: 14, lineHeight: 1,
-              cursor: 'pointer',
-            }}
-          >＋</button>
-        )}
-        {onDelete && (
-          <button
-            type="button"
-            className="importer-catalog-delete"
-            data-testid={deleteTestId}
-            onClick={(e) => { e.stopPropagation(); onDelete(); }}
-            title={deleteTitle}
-            aria-label={deleteTitle}
-            style={{
-              padding: '0 8px',
-              background: 'transparent',
-              border: 'none',
-              color: 'var(--text-tertiary)',
-              fontSize: 12, lineHeight: 1,
-              cursor: 'pointer',
-            }}
-          >×</button>
-        )}
-      </div>
-      {open && children}
-    </>
-  );
-}
-
-/** Inline item list — renders the WHOLE list when its parent group is
- *  expanded (no «Показать все/меньше» toggle). `depth` (1-based) controls
- *  the per-item left indent via indentForDepth(). While items are still
- *  fetching we render nothing — biolog asked for «загрузка…» to be removed
- *  because it appeared at column-zero indent and looked like a misplaced
- *  section header rather than a child of the just-opened sub-group. */
-// Single SnapGene category row with **debounced** hover-prefetch.
-//
-// Why debounce: a flat onMouseEnter prefetch caused the «first clicks
-// feel ignored» symptom — when biolog ran the cursor through 30
-// categories quickly, 30 fetch calls fired and each `response.json()`
-// parse blocked main thread for a few hundred ms. Now we only kick
-// the prefetch if the cursor actually lingers ≥250 ms.
-function SnapgeneCategoryRow({
-  category, open, items, isLoading, onToggle, onPrefetch, onSelectItem,
-}) {
-  const hoverTimer = useRef(null);
-  const cancelHoverPrefetch = () => {
-    if (hoverTimer.current) {
-      clearTimeout(hoverTimer.current);
-      hoverTimer.current = null;
-    }
-  };
-  const armHoverPrefetch = () => {
-    if (!onPrefetch || items !== undefined) return;
-    cancelHoverPrefetch();
-    hoverTimer.current = setTimeout(() => {
-      onPrefetch(category.slug);
-      hoverTimer.current = null;
-    }, 250);
-  };
-  useEffect(() => () => cancelHoverPrefetch(), []);
-
-  return (
-    <div onMouseEnter={armHoverPrefetch} onMouseLeave={cancelHoverPrefetch} onFocus={armHoverPrefetch}>
-      <NestedSubGroup
-        testId={`importer-catalog-snapgene-${category.slug}`}
-        label={category.name}
-        count={category.count}
-        open={open}
-        onToggle={onToggle}
-        depth={1}
-      >
-        <InlineItemList
-          items={items || []}
-          loading={isLoading}
-          emptyLabel={S.catalogEmptyGroup}
-          loadingTestId={`catalog-snapgene-loading-${category.slug}`}
-          onSelectItem={onSelectItem}
-          depth={2}
-        />
-      </NestedSubGroup>
-    </div>
-  );
-}
-
-function InlineItemList({
-  items, loading, emptyLabel, emptyTestId,
-  loadingTestId, // eslint-disable-line no-unused-vars -- legacy callers still pass it
-  onSelectItem, depth = 1,
-  onDeleteItem, // optional — only Mine entries get «×» delete handler
-  draggableItems = false, // Mine only — items can be dragged to other folders
-  sourceFolder = '',     // path of the parent folder these items live in
-}) {
-  // Reverted 2026-05-06 — earlier in this session I tried surfacing 4
-  // pulsing skeleton rows during loading as «click-ack feedback». User
-  // pushed back («зачем ты сделал визуализацию загрузки?»): the
-  // skeletons look like fake/empty rows rather than a load signal,
-  // and they show longer than the actual fetch (so they read as «the
-  // app is broken» more than «items are coming»). Going back to a
-  // silent null while loading.
-  if (loading) return null;
-  if (!items || items.length === 0) {
-    return emptyLabel
-      ? <EmptyHint label={emptyLabel} testId={emptyTestId} depth={depth} />
-      : null;
-  }
-  return (
-    <>
-      {items.map((it) => (
-        <ItemRow
-          key={it.id || `${it._slug || it._source}:${it.name}`}
-          item={it}
-          onClick={() => onSelectItem?.(it)}
-          depth={depth}
-          onDelete={onDeleteItem ? () => onDeleteItem(it) : null}
-          deleteTitle={onDeleteItem ? S.catalogDeleteContainer(it.name || it.id) : undefined}
-          draggable={draggableItems}
-          sourceFolder={sourceFolder}
-        />
-      ))}
-    </>
-  );
-}
-
-/** Individual item row inside a (possibly nested) collapsible group.
- *  Visual rules — items must NOT look like section headers:
- *    - lighter weight + secondary text colour
- *    - deeper indent than its parent group/sub-group header (one INDENT_STEP)
- *    - no inter-row dividers; hover bg signals interactivity.
- *  `depth` is 1-based — 1 = direct child of a top-level group, 2 = inside a
- *  nested sub-group, …, capped at MAX_INDENT_DEPTH.
- *  Optional `onDelete` shows a hover-revealed «×» on the right (used for
- *  Mine entries only — catalog items from Demo/SnapGene are read-only). */
-const ItemRow = memo(function ItemRow({ item, onClick, depth = 1, onDelete, deleteTitle, draggable = false, sourceFolder = '' }) {
-  // Pad: when there's a drag handle on the left, the click button starts a
-  // bit deeper so handle + content don't overlap. Without handle the row
-  // pads from indentForDepth + CHEVRON_GUTTER as before.
-  const HANDLE_W = 14;
-  const dragEnabled = draggable && !!item.id;
-  const padLeft = indentForDepth(depth) + CHEVRON_GUTTER + (dragEnabled ? HANDLE_W : 0);
-  const length = item.length || item.sequence?.length || 0;
-  return (
-    <div
-      className="importer-catalog-item-row"
-      style={{
-        '--depth-bg': depthBackground(depth),
-        display: 'flex', alignItems: 'stretch',
-        position: 'relative',
-        // Per-row scroll perf: each ItemRow carries an SVG mini-map +
-        // labels + buttons; with ~700 SnapGene catalog entries open
-        // simultaneously, the cumulative paint cost causes scroll
-        // micro-jitter (биолог 03.05.2026 evening: «как ускорить
-        // скролл левой панели в библиотеке, там тоже подлагивает,
-        // хочу плавность»). `content-visibility: auto` lets the
-        // browser skip layout + paint of off-screen rows entirely;
-        // `contain: paint` localises the paint area for visible
-        // ones; `contain-intrinsic-size: auto 28px` keeps scroll
-        // height accurate before realisation.
-        contentVisibility: 'auto',
-        containIntrinsicSize: 'auto 28px',
-        contain: 'paint',
-      }}
-    >
-      {dragEnabled && (
-        // Dedicated drag handle — Chrome/Vivaldi often refuse to start
-        // an HTML5 drag from inside a <button> (mousedown gets captured
-        // for the click). A separate draggable element with grip icon
-        // gives biolog a clear «hold here to move» affordance.
-        <span
-          draggable
-          onDragStart={(e) => {
-            e.dataTransfer.setData('application/x-bodgegene-item-id', item.id);
-            e.dataTransfer.setData('application/x-bodgegene-source-folder', sourceFolder || '');
-            e.dataTransfer.effectAllowed = 'move';
-          }}
-          className="importer-catalog-drag-handle"
-          data-testid={`importer-catalog-drag-${item.id}`}
-          aria-label={S.catalogDragHandleAria}
-          title={S.catalogDragHandleAria}
-          style={{
-            position: 'absolute',
-            left: indentForDepth(depth) + CHEVRON_GUTTER - 2,
-            top: 0, bottom: 0,
-            width: HANDLE_W,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: 'var(--text-tertiary)',
-            cursor: 'grab',
-            userSelect: 'none',
-            fontSize: 10, lineHeight: 1,
-          }}
-        >⋮⋮</span>
-      )}
-      <button
-        type="button"
-        data-testid={`importer-catalog-item-${item.id || item.name}`}
-        onClick={onClick}
-        className="importer-catalog-item"
-        // UX-008 — screen reader friendliness. Without an aria-label the
-        // catalog button just announces «button» — useless when there
-        // are 700+ rows in the SnapGene tree. The label assembles the
-        // visible text bits the sighted user reads off the row.
-        aria-label={`${item.name || 'unnamed'}, ${length} bp, ${item.topology || 'circular'}`}
-        style={{
-          flex: 1,
-          display: 'flex', alignItems: 'center', gap: 8,
-          padding: `3px 10px 3px ${padLeft}px`,
-          background: 'transparent',
-          border: 'none',
-          cursor: 'pointer',
-          textAlign: 'left',
-        }}
-      >
-        <PlasmidMiniMap
-          length={length}
-          topology={item.topology || 'circular'}
-          annotations={item.annotations || []}
-          size={20}
-          mode="inline"
-        />
-        <span style={{
-          flex: 1, fontSize: 11.5, fontWeight: 400,
-          color: 'var(--text-secondary)',
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>
-          {item.name}
-        </span>
-        <span style={{ fontSize: 10, color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>
-          {length.toLocaleString()}
-        </span>
-      </button>
-      {onDelete && (
-        <button
-          type="button"
-          className="importer-catalog-delete"
-          data-testid={`importer-catalog-delete-item-${item.id || item.name}`}
-          onClick={(e) => { e.stopPropagation(); onDelete(); }}
-          title={deleteTitle}
-          aria-label={deleteTitle}
-          style={{
-            padding: '0 8px',
-            background: 'transparent',
-            border: 'none',
-            color: 'var(--text-tertiary)',
-            fontSize: 12, lineHeight: 1,
-            cursor: 'pointer',
-          }}
-        >×</button>
-      )}
-    </div>
-  );
-}, (prev, next) => (
-  // Skip re-render for unchanged catalog items — onClick / onDelete arrows
-  // are recreated each parent render but the item object + flags don't
-  // shift unless the underlying entry changes. Big perf win for 400-item
-  // SnapGene categories where parent state churn (drag highlights, hover
-  // bridges) used to bubble through every row.
-  prev.item === next.item
-  && prev.depth === next.depth
-  && prev.draggable === next.draggable
-  && prev.sourceFolder === next.sourceFolder
-  && (prev.onDelete == null) === (next.onDelete == null)
-  && prev.deleteTitle === next.deleteTitle
-));
-
-function CatalogCard({ item, onClick }) {
-  const length = item.length || item.sequence?.length || 0;
-  return (
-    <button
-      type="button"
-      data-testid={`importer-catalog-card-${item.id || item.name}`}
-      onClick={onClick}
-      style={{
-        width: '100%',
-        display: 'flex', alignItems: 'flex-start', gap: 8,
-        padding: '6px 8px', marginBottom: 4,
-        background: 'var(--surface-1)',
-        border: '0.5px solid var(--border-subtle)',
-        borderRadius: 'var(--radius-md)',
-        cursor: 'pointer',
-        textAlign: 'left',
-      }}
-    >
-      <PlasmidMiniMap
-        length={length}
-        topology={item.topology || 'circular'}
-        annotations={item.annotations || []}
-        size={40}
-        mode="inline"
-        name={item.name}
-      />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {item.name}
-        </div>
-        <div style={{ fontSize: 10, color: 'var(--text-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {(item.description || '').replace(/<[^>]*>/g, '').trim() || item._badge}
-        </div>
-        <div style={{ fontSize: 10, color: 'var(--text-tertiary)', display: 'flex', gap: 8, marginTop: 2 }}>
-          <span style={{ fontFamily: 'var(--font-mono)' }}>{length.toLocaleString()} bp</span>
-          {item._badge && (
-            <span style={{ padding: '0 6px', borderRadius: 'var(--radius-sm)', background: 'var(--surface-2)' }}>{item._badge}</span>
-          )}
-        </div>
-      </div>
-    </button>
-  );
-}
-
-function EmptyHint({ label, testId, depth = 0 }) {
-  // Match ItemRow's CHEVRON_GUTTER offset when used inside a list, so the
-  // hint sits under the parent's text column rather than its chevron.
-  const padLeft = depth > 0 ? indentForDepth(depth) + CHEVRON_GUTTER : indentForDepth(depth);
-  return (
-    <div
-      data-testid={testId}
-      style={{
-        padding: `4px 10px 4px ${padLeft}px`,
-        background: depthBackground(depth),
-        fontSize: 11, color: 'var(--text-tertiary)', fontStyle: 'italic',
-      }}
-    >{label}</div>
-  );
-}
-
-const newFolderInputStyle = {
-  width: 'calc(100% - 24px)',
-  margin: '4px 10px 4px 24px',
-  padding: '3px 8px',
-  fontSize: 12,
-  color: 'var(--text-primary)',
-  background: 'var(--surface-1)',
-  border: '0.5px solid var(--accent-500)',
-  borderRadius: 'var(--radius-md)',
-  outline: 'none',
-};
-
+// K3 test hook — keep the legacy `__test__` export so existing tests
+// (`library-tree.test.jsx`) can assert on the group ordering. GROUP_KEYS
+// itself now lives in `library-folder-tree.js` but the value is the same
+// constant.
 export const __test__ = { GROUP_KEYS };

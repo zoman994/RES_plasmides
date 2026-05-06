@@ -11,8 +11,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, cleanup, waitFor, act } from '@testing-library/react';
 import { useStore } from '../../../../store';
 import { resetDBForTests } from '../../../../db/dexie-schema';
-import CatalogColumn from '../CatalogColumn';
-import { __resetCachesForTest } from '../catalog-cache';
+import CatalogColumn from '../LibraryTree';
+import { __resetCachesForTest } from '../../catalog/catalog-cache';
 
 vi.mock('../../../PlasmidMiniMap', () => ({
   default: ({ name }) => <div data-testid={`mini-map-${name}`} />,

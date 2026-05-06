@@ -12,7 +12,7 @@ import { getRegions } from '../../annotation-model';
 import AutonameModal from './modals/AutonameModal';
 import PrimerWizardStepModal from './modals/PrimerWizardStepModal';
 import PreImportModal from './PreImportModal';
-import CatalogColumn from './catalog/CatalogColumn';
+import CatalogColumn from './tree/LibraryTree';
 import SingleInspector from './inspector/LibrarySingleInspector';
 import MultiInspector from './inspector/MultiInspector';
 import EmptyInspector from './inspector/EmptyInspector';
