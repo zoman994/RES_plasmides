@@ -26,7 +26,7 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import PlasmidMap from './PlasmidMap';
 import AnnotationEditor from './AnnotationEditor';
-import LinearFeatureBar from './Importer/inspector/tabs/LinearFeatureBar';
+import LinearFeatureBar from './Library/inspector/tabs/LinearFeatureBar';
 import { getRegions } from '../annotation-model';
 import { ANNOTATION_COLORS } from '../auto-annotate';
 import { FEATURE_COLORS } from '../theme';

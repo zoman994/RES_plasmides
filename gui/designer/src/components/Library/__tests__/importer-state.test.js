@@ -9,7 +9,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { StrictMode } from 'react';
 import { renderHook, act } from '@testing-library/react';
-import { useImporterState, isCatalogFlatMode } from '../lib/importer-state';
+import { useImporterState, isCatalogFlatMode } from '../hooks/useLibraryState';
 
 vi.mock('../../../auto-annotate', () => ({
   autoAnnotate: vi.fn(({ annotations = [] }) => annotations),

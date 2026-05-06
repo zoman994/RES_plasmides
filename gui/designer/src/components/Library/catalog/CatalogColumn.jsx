@@ -3,7 +3,7 @@ import { useStore } from '../../../store';
 import { STRINGS } from '../../../lib/strings';
 import { ACCEPT_STRING } from '../../../file-import';
 import PlasmidMiniMap from '../../PlasmidMiniMap';
-import { useCatalogSources } from './use-catalog-sources';
+import { useCatalogSources } from '../hooks/useLibrarySources';
 import { applyCatalogFilter } from './length-pattern';
 
 const S = STRINGS.importer;

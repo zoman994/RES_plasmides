@@ -6,7 +6,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent, act } from '@testing-library/react';
-import SingleInspector from '../SingleInspector';
+import SingleInspector from '../LibrarySingleInspector';
 import { useStore } from '../../../../store';
 import { ANNOTATOR_DEFAULTS } from '../../../../store/uiSlice.js';
 

@@ -3,7 +3,7 @@ import { useStore, bootstrapStore, applyThemeToDOM } from './store';
 import AppShell from './components/AppShell';
 import StartScreen from './components/StartScreen';
 import DagPlaceholder from './components/DagPlaceholder';
-import Importer from './components/Importer';
+import Importer from './components/Library';
 import UnderConstruction from './components/UnderConstruction';
 import MultiTabBlocked from './components/MultiTabBlocked';
 import ReadOnlyForced from './components/ReadOnlyForced';
@@ -17,7 +17,7 @@ import { runHotkeyResolver, useHotkey } from './lib/hotkeys';
 import { installGlobalCtrlAGuard } from './lib/global-ctrl-a-guard';
 import { setupBeforeInstallPromptListener } from './lib/pwa-install';
 import { STRINGS } from './lib/strings';
-import { queueImporterFiles } from './components/Importer/lib/pending-files';
+import { queueImporterFiles } from './components/Library/lib/pending-files';
 
 const DROPZONE_TYPES = ['.bodge', '.fasta', '.fa', '.gb', '.gbk', '.genbank', '.dna', '.fna'];
 const IMPORTABLE_TYPES = ['.fasta', '.fa', '.fna', '.gb', '.gbk', '.genbank', '.dna'];

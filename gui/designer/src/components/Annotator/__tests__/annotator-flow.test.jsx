@@ -23,7 +23,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent, act, waitFor } from '@testing-library/react';
-import SingleInspector from '../../Importer/inspector/SingleInspector';
+import SingleInspector from '../../Library/inspector/LibrarySingleInspector';
 import { useStore } from '../../../store';
 import { ANNOTATOR_DEFAULTS } from '../../../store/uiSlice.js';
 import { _resetRegistry, registerPlugin } from '../../../lib/annotator-plugins/registry.js';

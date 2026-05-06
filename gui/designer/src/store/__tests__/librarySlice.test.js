@@ -120,3 +120,60 @@ describe('K2 — librarySlice', () => {
     expect(selectAllLibraryTags(useStore.getState())).toEqual(['bacterial', 'cds', 'gfp']);
   });
 });
+
+describe('M-X.5 K1.3 — origin migration heuristic', () => {
+  beforeEach(reset);
+
+  it('hydrateLibrary stamps origin.kind=file_import on entries without origin', async () => {
+    // Seed Dexie with a pre-M-X.5 entry (no origin field).
+    const legacy = makeEntry({
+      id: 'leg1',
+      name: 'pUC19',
+      addedAt: '2026-04-01T00:00:00Z',
+      tags: ['mine'],
+    });
+    await useStore.getState().addLibraryEntry(legacy);
+    // Force re-hydrate to exercise migration path.
+    useStore.setState(s => { s._libraryHydrated = false; s.libraryEntries = {}; });
+    await useStore.getState().hydrateLibrary();
+    const migrated = useStore.getState().libraryEntries.leg1;
+    expect(migrated).toBeDefined();
+    expect(migrated.origin).toBeDefined();
+    expect(migrated.origin.kind).toBe('file_import');
+    expect(migrated.origin.sourceFileName).toBe('pUC19');
+    expect(migrated.version).toBe(1);
+  });
+
+  it('hydrateLibrary stamps origin.kind=demo_category for tags with demo: prefix', async () => {
+    const demoEntry = makeEntry({
+      id: 'demo1',
+      name: 'pET28b',
+      addedAt: '2026-04-02T00:00:00Z',
+      tags: ['demo:basic_cloning_vectors', 'mine'],
+    });
+    await useStore.getState().addLibraryEntry(demoEntry);
+    useStore.setState(s => { s._libraryHydrated = false; s.libraryEntries = {}; });
+    await useStore.getState().hydrateLibrary();
+    const migrated = useStore.getState().libraryEntries.demo1;
+    expect(migrated.origin).toBeDefined();
+    expect(migrated.origin.kind).toBe('demo_category');
+    expect(migrated.origin.categorySlug).toBe('basic_cloning_vectors');
+    expect(migrated.origin.sourcePlasmidName).toBe('pET28b');
+  });
+
+  it('hydrateLibrary leaves entries with existing origin untouched (idempotent)', async () => {
+    const fresh = makeEntry({
+      id: 'fresh1',
+      name: 'pBR322',
+      addedAt: '2026-05-07T00:00:00Z',
+      origin: { kind: 'manual_edit', parentEntryId: 'src1', editedAt: '2026-05-07T00:00:00Z' },
+      version: 3,
+    });
+    await useStore.getState().addLibraryEntry(fresh);
+    useStore.setState(s => { s._libraryHydrated = false; s.libraryEntries = {}; });
+    await useStore.getState().hydrateLibrary();
+    const after = useStore.getState().libraryEntries.fresh1;
+    expect(after.origin.kind).toBe('manual_edit');
+    expect(after.version).toBe(3);
+  });
+});

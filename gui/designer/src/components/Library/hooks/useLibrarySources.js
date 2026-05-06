@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useStore } from '../../../store';
-import { fetchIndex, fetchCategory, prefetchAllCategories } from './catalog-cache';
+import { fetchIndex, fetchCategory, prefetchAllCategories } from '../catalog/catalog-cache';
 
 /**
  * useCatalogSources — assembles the four CatalogColumn sources (M-B.2 K2,

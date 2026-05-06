@@ -1,7 +1,7 @@
 import { v7 as uuidv7 } from 'uuid';
 import { putProject, getProject, deleteProject as dexieDeleteProject, listAllProjects } from '../db/dexie-schema';
 import { acquireProjectLock } from '../lib/multi-tab-lock';
-import { addFolder } from '../components/Importer/lib/folder-tree';
+import { addFolder } from '../components/Library/lib/folder-tree';
 
 const _lockReleaseFns = new Map();
 const _isTestEnv = typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'test';

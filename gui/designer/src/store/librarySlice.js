@@ -4,12 +4,59 @@ import {
   listLibraryEntries,
   deleteLibraryEntry,
 } from '../db/dexie-schema';
-import { computeSuggestedName } from '../components/Importer/lib/compute-suggested-name';
+import { computeSuggestedName } from '../components/Library/lib/compute-suggested-name';
 
 export const LIBRARY_TAGS_SOFT_LIMIT = 10;
 
 const DEFAULT_FILTER_KIND = 'container';
 const DEFAULT_FILTER_TOPOLOGY = 'all';
+
+/**
+ * Lazy migration heuristic for entries created before M-X.5 (07.05.2026).
+ *
+ * Pre-M-X.5 entries lack `origin` / `version` / `parentEntry*` fields.
+ * Per the M-X.5 plan we don't I/O during hydrate (would slow startup
+ * for biologists with 100+ entries) — we infer the origin kind from
+ * what's already on the entry:
+ *
+ *   • Tag prefix `demo:<slug>` → entry came in via the SnapGene
+ *     catalog flow (M-A.3). Origin → `demo_category`.
+ *   • Otherwise → `file_import` fallback. Lossy for paste/manual-edit
+ *     entries from earlier versions, but not a blocker — biolog can
+ *     re-import if provenance matters. Recorded in RELEASES.md v0.7.5.
+ *
+ * Idempotent: re-running on an already-migrated entry returns it
+ * unchanged. Pure — no Dexie writes (lazy: each future
+ * `putLibraryEntry` will persist whatever the in-memory copy holds).
+ *
+ * Q2 in the M-X.5 plan: heuristic chosen over full match against
+ * `plasmids-index.json` because the index is 867 KB and reading it
+ * during hydrate adds I/O cost without proportional value.
+ */
+function deriveOriginForExisting(entry) {
+  if (!entry || entry.origin) return entry;
+  const tags = Array.isArray(entry.tags) ? entry.tags : [];
+  const demoTag = tags.find(t => typeof t === 'string' && t.startsWith('demo:'));
+  const importedAt = entry.addedAt || new Date().toISOString();
+  const origin = demoTag
+    ? {
+        kind: 'demo_category',
+        categorySlug: demoTag.slice(5),
+        sourcePlasmidName: entry.name,
+        importedAt,
+      }
+    : {
+        kind: 'file_import',
+        sourceFileName: entry.name,
+        sourceFormat: 'gb',
+        importedAt,
+      };
+  return {
+    ...entry,
+    origin,
+    version: entry.version || 1,
+  };
+}
 
 /**
  * Library Zustand slice — flat personal collection of containers and primers
@@ -30,7 +77,7 @@ export const createLibrarySlice = (set, get) => ({
     set(state => {
       state.libraryEntries = {};
       for (const r of rows) {
-        if (r && r.id) state.libraryEntries[r.id] = r;
+        if (r && r.id) state.libraryEntries[r.id] = deriveOriginForExisting(r);
       }
       state._libraryHydrated = true;
     });
@@ -90,7 +137,7 @@ export const createLibrarySlice = (set, get) => ({
    *
    * M-X.5 K7 closes this architecturally with explicit save flow
    * (`Перезаписать` / `Сохранить как версию`). Until K7 lands, this
-   * action provides a silent overwrite — `Importer/lib/importer-state.js`
+   * action provides a silent overwrite — `Library/hooks/useLibraryState.js`
    * `updateEdits` calls it whenever a patch carries `editedAnnotations`
    * AND the active item has a `_libraryEntryId` (Mine source). Catalog
    * /paste/file imports stay transient until the user explicitly adds

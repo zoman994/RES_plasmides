@@ -8,7 +8,7 @@
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
-import MetaColumn from '../MetaColumn';
+import MetaColumn from '../LibraryMetaColumn';
 
 afterEach(cleanup);
 

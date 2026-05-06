@@ -15,7 +15,7 @@ import { join, resolve } from 'node:path';
 import { IMPORTER_STRINGS } from '../lib/importer-strings';
 
 const REPO_ROOT = resolve(__dirname, '../../../../');
-const IMPORTER_DIR = resolve(REPO_ROOT, 'src/components/Importer');
+const IMPORTER_DIR = resolve(REPO_ROOT, 'src/components/Library');
 const SEQUENCE_VIEW_DIR = resolve(REPO_ROOT, 'src/components/SequenceView');
 const EXTERNAL_KNOWN_FILES = [
   resolve(REPO_ROOT, 'src/components/AppShell/Topbar.jsx'),

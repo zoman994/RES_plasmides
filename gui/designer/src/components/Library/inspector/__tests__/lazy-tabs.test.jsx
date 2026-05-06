@@ -14,7 +14,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { forwardRef, useImperativeHandle } from 'react';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
-import SingleInspector from '../SingleInspector';
+import SingleInspector from '../LibrarySingleInspector';
 
 // Capture scrollToPosition calls on the SequenceView mock so the K4
 // integration test can verify «click on feature in strip → scroll».
