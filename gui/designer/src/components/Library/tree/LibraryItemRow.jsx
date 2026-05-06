@@ -6,6 +6,48 @@ import { indentForDepth, depthBackground, CHEVRON_GUTTER } from './library-folde
 const S = STRINGS.importer;
 
 /**
+ * Origin icon glyph + tooltip per `entry.origin.kind`. Returns
+ * `{ glyph, color, title }` for visual differentiation in the Library
+ * tree (M-X.5 K11). Returns `null` for `file_import` (default — no
+ * icon clutter for the common case) and any unknown kind. Glyphs
+ * deliberately use Unicode characters that render at body font-size
+ * without needing extra paint cost (no SVG / no extra DOM).
+ */
+function originIconFor(origin) {
+  if (!origin || !origin.kind || origin.kind === 'file_import') return null;
+  switch (origin.kind) {
+    case 'paste_import':
+      return { glyph: '📋', color: 'var(--text-tertiary)', title: 'Paste import' };
+    case 'demo_category':
+      return {
+        glyph: '📚',
+        color: 'var(--text-tertiary)',
+        title: origin.categorySlug
+          ? `Demo plasmid (${origin.categorySlug})`
+          : 'Demo plasmid',
+      };
+    case 'manual_edit':
+      return {
+        glyph: '✎',
+        color: 'var(--accent-700, #c2410c)',
+        title: origin.parentEntryId
+          ? `Manual edit branch — parent ${origin.parentEntryId.slice(0, 6)}…`
+          : 'Manual edit branch',
+      };
+    case 'version':
+      return {
+        glyph: '⎘',
+        color: 'var(--text-tertiary)',
+        title: origin.parentEntryId
+          ? `Version of ${origin.parentEntryId.slice(0, 6)}…`
+          : 'Version',
+      };
+    default:
+      return null;
+  }
+}
+
+/**
  * Library tree row variants — extracted from the pre-K3
  * `Library/catalog/CatalogColumn.jsx` (lines 1336–1525) as part of the
  * M-X.5 K3 decomposition. Pure relocate, no behaviour change.
@@ -36,6 +78,7 @@ export const LibraryItemRow = memo(function LibraryItemRow({
   const dragEnabled = draggable && !!item.id;
   const padLeft = indentForDepth(depth) + CHEVRON_GUTTER + (dragEnabled ? HANDLE_W : 0);
   const length = item.length || item.sequence?.length || 0;
+  const originIcon = originIconFor(item.origin);
   return (
     <div
       className="importer-catalog-item-row"
@@ -118,8 +161,27 @@ export const LibraryItemRow = memo(function LibraryItemRow({
           flex: 1, fontSize: 11.5, fontWeight: 400,
           color: 'var(--text-secondary)',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          display: 'flex', alignItems: 'center', gap: 4, minWidth: 0,
         }}>
-          {item.name}
+          {originIcon && (
+            <span
+              data-testid={`importer-catalog-origin-${item.id || item.name}`}
+              data-origin={item.origin?.kind || ''}
+              title={originIcon.title}
+              style={{
+                fontSize: 10,
+                color: originIcon.color,
+                cursor: 'help',
+                flex: '0 0 auto',
+                lineHeight: 1,
+              }}
+              aria-label={originIcon.title}
+            >{originIcon.glyph}</span>
+          )}
+          <span style={{
+            flex: '1 1 auto', minWidth: 0,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>{item.name}</span>
         </span>
         <span style={{ fontSize: 10, color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>
           {length.toLocaleString()}

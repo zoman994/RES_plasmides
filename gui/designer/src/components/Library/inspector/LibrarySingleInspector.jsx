@@ -32,6 +32,7 @@ import { selectAnnotator } from '../../../store/uiSlice.js';
 // tab embeds the same component via AnnotationsTab.
 import SettingsPopover from '../../SequenceView/SettingsPopover';
 import FeatureEditorModal from './FeatureEditorModal';
+import LibrarySaveActions from './LibrarySaveActions';
 import { useIdlePrewarm } from './hooks/useIdlePrewarm';
 import { useAnnotationUndoRedo } from './hooks/useAnnotationUndoRedo';
 import { useFeatureEditorFlow } from './hooks/useFeatureEditorFlow';
@@ -573,6 +574,36 @@ export default function SingleInspector({
               always, aa appended when selection mode is 'aa' (codon-
               aligned). Only renders while a non-collapsed selection
               exists, so the title row stays clean otherwise. */}
+          {/* M-X.5 K7 Library Save Flow (DEC-LIB-13 ⚓). Surface the two
+              explicit Save buttons in the title row when the inspector is
+              looking at a Mine library entry that has unsaved annotation
+              edits. Only Mine entries have `_libraryEntryId` — catalog /
+              paste / file imports stay transient until biolog explicitly
+              «В библиотеку» (handled elsewhere). The silent write-through
+              safety-net inside `useLibraryState.updateEdits` keeps edits
+              durable across browser refresh; these buttons are the
+              explicit «commit point» that bumps version / forks history. */}
+          {item._libraryEntryId && (
+            <LibrarySaveActions
+              libraryEntryId={item._libraryEntryId}
+              hasChanges={Array.isArray(edits?.editedAnnotations)}
+              editedAnnotations={Array.isArray(edits?.editedAnnotations) ? edits.editedAnnotations : []}
+              parentName={item.name || ''}
+              onAfterOverwrite={() => {
+                // Clear pending edits so the buttons disable until next change.
+                if (typeof onUpdateEdits === 'function') {
+                  onUpdateEdits({ editedAnnotations: undefined });
+                }
+              }}
+              onAfterSaveAsVersion={() => {
+                // Same — leave biolog viewing the parent (the new version
+                // appears in Library tree); biolog clicks it to switch.
+                if (typeof onUpdateEdits === 'function') {
+                  onUpdateEdits({ editedAnnotations: undefined });
+                }
+              }}
+            />
+          )}
           {(() => {
             const a = (typeof cursorAnchor === 'number' && Number.isFinite(cursorAnchor)) ? cursorAnchor : null;
             const f = (typeof cursorPos === 'number' && Number.isFinite(cursorPos)) ? cursorPos : null;

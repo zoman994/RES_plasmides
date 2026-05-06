@@ -1,3 +1,4 @@
+import { v7 as uuidv7 } from 'uuid';
 import {
   putLibraryEntry,
   putLibraryEntriesBulk,
@@ -5,6 +6,7 @@ import {
   deleteLibraryEntry,
 } from '../db/dexie-schema';
 import { computeSuggestedName } from '../components/Library/lib/compute-suggested-name';
+import { computeResourceHash } from '../components/Library/lib/resource-hash';
 
 export const LIBRARY_TAGS_SOFT_LIMIT = 10;
 
@@ -126,35 +128,129 @@ export const createLibrarySlice = (set, get) => ({
   },
 
   /**
-   * Hot-fix write-through for annotations on existing library entries.
+   * Library Save Flow (M-X.5 K7, DEC-LIB-13 ⚓): Annotations mutable
+   * through explicit two-button save. Replaces the v0.7.5 hot-fix
+   * `writeLibraryEntryAnnotations` (which silently overwrote on every
+   * keystroke) — that was a stop-gap until biolog had explicit control.
    *
-   * Background. Per DEC-LIB-11 (v0.7.2) Library entries are frozen,
-   * annotations live in transient `perFileEdits.editedAnnotations`
-   * inside the Importer state machine. Biolog 07.05.2026 hit the
-   * obvious gap: edit annotation in FeatureEditorModal / drag edges
-   * / H/E hotkeys → save → refresh page → annotations gone (transient
-   * state lost on remount).
+   * `overwriteLibraryEntryAnnotations` — destructive replace. Bumps
+   * `entry.version` so consumers can tell «something changed» without
+   * diffing payloads. Q5 plan decision: hard-fail on soft-deleted
+   * entry (parent.pendingDelete) — biolog must un-delete first.
    *
-   * M-X.5 K7 closes this architecturally with explicit save flow
-   * (`Перезаписать` / `Сохранить как версию`). Until K7 lands, this
-   * action provides a silent overwrite — `Library/hooks/useLibraryState.js`
-   * `updateEdits` calls it whenever a patch carries `editedAnnotations`
-   * AND the active item has a `_libraryEntryId` (Mine source). Catalog
-   * /paste/file imports stay transient until the user explicitly adds
-   * them to the library.
+   * `saveLibraryEntryAsVersion` — non-destructive copy-on-write.
+   * Creates a new entry with `origin: { kind: 'version', parentEntryId,
+   * parentEntryHash, createdAt }`, recomputes resourceHash, returns
+   * the new id (caller can switch the inspector to it). Same Q5 guard.
    *
-   * **Will be replaced by `overwriteLibraryEntryAnnotations` (with
-   * version increment + confirm dialog) and `saveLibraryEntryAsVersion`
-   * (parent reference) in M-X.5 K7.**
+   * Both actions return a `{ ok, id?, reason? }` tuple so the UI can
+   * surface specific toast messages (success vs. soft-deleted parent
+   * vs. unknown id).
+   */
+  overwriteLibraryEntryAnnotations: async (id, annotations) => {
+    if (!id || !Array.isArray(annotations)) return { ok: false, reason: 'invalid-args' };
+    const existing = get().libraryEntries[id];
+    if (!existing) return { ok: false, reason: 'not-found' };
+    if (existing._pendingDelete) {
+      return { ok: false, reason: 'pending-delete', name: existing.name };
+    }
+    const nextVersion = (existing.version || 1) + 1;
+    const nextPayload = { ...(existing.payload || {}), annotations };
+    const updated = { ...existing, version: nextVersion, payload: nextPayload };
+    set(state => {
+      const e = state.libraryEntries[id];
+      if (e) {
+        e.payload = nextPayload;
+        e.version = nextVersion;
+      }
+    });
+    try {
+      await putLibraryEntry(updated);
+      return { ok: true, id, version: nextVersion };
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[bodgegene] overwriteLibraryEntryAnnotations failed', err);
+      return { ok: false, reason: 'persist-error' };
+    }
+  },
+
+  saveLibraryEntryAsVersion: async (parentId, annotations, requestedName) => {
+    if (!parentId || !Array.isArray(annotations)) return { ok: false, reason: 'invalid-args' };
+    const parent = get().libraryEntries[parentId];
+    if (!parent) return { ok: false, reason: 'not-found' };
+    if (parent._pendingDelete) {
+      return { ok: false, reason: 'pending-delete', name: parent.name };
+    }
+    const newId = uuidv7();
+    const baseName = (requestedName && requestedName.trim()) || `${parent.name} (v2)`;
+    const safeName = get().getSuggestedLibraryName(baseName);
+    const parentPayload = parent.payload || {};
+    let resourceHash = parentPayload.resourceHash;
+    try {
+      resourceHash = await computeResourceHash({
+        sequence: parentPayload.sequence,
+        topology: parentPayload.topology,
+        ends: parentPayload.ends,
+      });
+    } catch { /* fallback to parent hash */ }
+    const newEntry = {
+      id: newId,
+      kind: parent.kind,
+      name: safeName,
+      tags: Array.isArray(parent.tags) ? [...parent.tags] : [],
+      folderPath: parent.folderPath || '',
+      addedAt: new Date().toISOString(),
+      origin: {
+        kind: 'version',
+        parentEntryId: parentId,
+        parentEntryHash: parentPayload.resourceHash || resourceHash,
+        createdAt: new Date().toISOString(),
+      },
+      version: 1,
+      parentEntryId: parentId,
+      parentEntryHash: parentPayload.resourceHash || resourceHash,
+      payload: {
+        ...parentPayload,
+        annotations,
+        resourceHash,
+      },
+      ext: parent.ext || {},
+    };
+    set(state => { state.libraryEntries[newId] = newEntry; });
+    try {
+      await putLibraryEntry(newEntry);
+      return { ok: true, id: newId, name: safeName };
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[bodgegene] saveLibraryEntryAsVersion failed', err);
+      // Roll back in-memory if persist failed.
+      set(state => { delete state.libraryEntries[newId]; });
+      return { ok: false, reason: 'persist-error' };
+    }
+  },
+
+  /**
+   * Silent safety-net write-through (07.05.2026 hot-fix, kept active
+   * in M-X.5 K7 hybrid model). Persists annotations to the library
+   * entry without bumping `version` — every keystroke flushes through
+   * `useLibraryState.updateEdits` so a browser refresh never wipes
+   * uncommitted edits.
+   *
+   * Coexists with `overwriteLibraryEntryAnnotations` (explicit «Save»
+   * click that bumps version + emits toast). The K7 hybrid: silent
+   * persistence keeps biolog data safe, explicit Save is a visible
+   * commit point + clears the local `perFileEdits` flag so the Save
+   * buttons disable. If a stricter «edits transient until Save»
+   * model becomes desired (DEC-LIB-13 ⚓ pure form), drop the call
+   * site in `useLibraryState.updateEdits` and this function becomes
+   * a thin wrapper around `overwriteLibraryEntryAnnotations` minus
+   * the version bump.
    */
   writeLibraryEntryAnnotations: async (id, annotations) => {
-    if (!id || !Array.isArray(annotations)) return;
+    if (!id || !Array.isArray(annotations)) return false;
     const existing = get().libraryEntries[id];
-    if (!existing || existing._pendingDelete) return;
-    const nextPayload = {
-      ...(existing.payload || {}),
-      annotations,
-    };
+    if (!existing || existing._pendingDelete) return false;
+    const nextPayload = { ...(existing.payload || {}), annotations };
     const updated = { ...existing, payload: nextPayload };
     set(state => {
       const e = state.libraryEntries[id];
@@ -162,9 +258,11 @@ export const createLibrarySlice = (set, get) => ({
     });
     try {
       await putLibraryEntry(updated);
+      return true;
     } catch (err) {
       // eslint-disable-next-line no-console
-      console.warn('[bodgegene] writeLibraryEntryAnnotations failed', err);
+      console.warn('[bodgegene] writeLibraryEntryAnnotations safety-net failed', err);
+      return false;
     }
   },
 
