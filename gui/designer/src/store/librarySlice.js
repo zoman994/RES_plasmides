@@ -175,6 +175,101 @@ export const createLibrarySlice = (set, get) => ({
   },
 
   /**
+   * M-X.5 K4 — multi-file import commit (DEC-LIB-MULTI-01..03). Used
+   * by MultiImportView when biolog has dropped N>1 files and reviewed
+   * the per-file table. Atomic-ish: builds all entries in memory
+   * first, then bulk-persists via `addLibraryEntriesBulk` (single
+   * Dexie tx). Per-file annotation choice is stored on
+   * `entry.ext.annotationChoice` so a future open of the entry can
+   * decide whether to auto-run L1 (auto) / leave empty (manual) /
+   * suppress prompts (none) — the wiring of that decision into
+   * AnnotationsTab is M-X.6 polish; today the metadata is recorded
+   * but not yet acted on.
+   *
+   * `entries` shape:
+   *   [{ name, sequence, topology, length, ends?, annotations[]?,
+   *      organism?, description?, _fileName, _annotationChoice,
+   *      _folderPath }]
+   *
+   * Returns `{ ok, ids[], failed[] }`. Failed entries (validation
+   * miss, duplicate hash collision in the same batch) come back
+   * without ids; the rest persist successfully.
+   */
+  commitMultiImport: async (entries, defaults = {}) => {
+    if (!Array.isArray(entries) || entries.length === 0) {
+      return { ok: false, ids: [], failed: [] };
+    }
+    const folderPath = (defaults.folderPath || '').trim();
+    const built = [];
+    const failed = [];
+    for (const item of entries) {
+      if (!item || !item.sequence) {
+        failed.push({ name: item?.name || '<no-name>', reason: 'no-sequence' });
+        continue;
+      }
+      const id = uuidv7();
+      const importedAt = new Date().toISOString();
+      let resourceHash = null;
+      try {
+        resourceHash = await computeResourceHash({
+          sequence: item.sequence,
+          topology: item.topology || 'linear',
+          ends: item.ends || null,
+        });
+      } catch { /* fallback null */ }
+      const annotations = (item._annotationChoice === 'discard' || item._annotationChoice === 'none')
+        ? []
+        : (Array.isArray(item.annotations) ? item.annotations : []);
+      built.push({
+        id,
+        kind: 'container',
+        name: get().getSuggestedLibraryName(item.name || item._fileName || 'untitled'),
+        tags: [],
+        folderPath: typeof item._folderPath === 'string' ? item._folderPath : folderPath,
+        addedAt: importedAt,
+        origin: {
+          kind: item._fileName?.startsWith('paste-') ? 'paste_import' : 'file_import',
+          sourceFileName: item._fileName || item.name || '',
+          sourceFormat: (item._fileName || '').toLowerCase().endsWith('.dna') ? 'dna'
+            : (item._fileName || '').toLowerCase().endsWith('.fasta') ? 'fasta'
+              : 'gb',
+          importedAt,
+        },
+        version: 1,
+        payload: {
+          sequence: item.sequence,
+          length: item.length || item.sequence.length,
+          topology: item.topology || 'linear',
+          ends: item.ends || null,
+          annotations,
+          organism: item.organism || '',
+          description: item.description || '',
+          resourceHash,
+        },
+        ext: {
+          annotationChoice: item._annotationChoice || defaults.annotationChoice || 'auto',
+        },
+      });
+    }
+    if (built.length === 0) {
+      return { ok: false, ids: [], failed };
+    }
+    set(state => {
+      for (const e of built) state.libraryEntries[e.id] = e;
+    });
+    try {
+      await putLibraryEntriesBulk(built);
+      return { ok: true, ids: built.map(e => e.id), failed };
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[bodgegene] commitMultiImport bulk persist failed', err);
+      // Rollback in-memory if persist failed
+      set(state => { for (const e of built) delete state.libraryEntries[e.id]; });
+      return { ok: false, ids: [], failed: [...failed, ...built.map(e => ({ name: e.name, reason: 'persist-error' }))] };
+    }
+  },
+
+  /**
    * M-X.5 K5 — onboarding bulk loader. Pulls the demo plasmids from
    * `/plasmids-data/${slug}.json` for each requested category, builds
    * a LibraryEntry per plasmid with:

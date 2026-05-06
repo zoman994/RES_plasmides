@@ -12,6 +12,7 @@ import { getRegions } from '../../annotation-model';
 import AutonameModal from './modals/AutonameModal';
 import PrimerWizardStepModal from './modals/PrimerWizardStepModal';
 import PreImportModal from './PreImportModal';
+import MultiImportView from './import/MultiImportView';
 import CatalogColumn from './tree/LibraryTree';
 import SingleInspector from './inspector/LibrarySingleInspector';
 import MultiInspector from './inspector/MultiInspector';
@@ -96,17 +97,25 @@ export default function Importer() {
     ? `Добавить в проект «${currentProjectName}»`
     : 'Добавить в активный проект';
 
+  // M-X.5 K4 — multi-file drop opens MultiImportView (DEC-LIB-MULTI-01).
+  // Replaces the v0.7.5 K9-stub toast guard.
+  const [multiImportFiles, setMultiImportFiles] = useState(null);
   const handleAddFiles = useCallback((files, opts) => {
     if (!Array.isArray(files) || files.length === 0) return;
     if (files.length > 1) {
-      showToast('Multi-import будет в v0.8.0. Пока загружайте по одному файлу.', { kind: 'info', duration: 4000 });
+      // Stash files for MultiImportView (parsing happens inside the
+      // component on mount). The single-file PreImportModal flow
+      // remains untouched for files.length === 1.
+      setMultiImportFiles(files);
       return;
     }
     // Forward `opts` (carries `{ targetFolderPath }` when biolog dropped
     // onto a specific folder) so single-file folder-targeted drops keep
     // landing inside the right Mine sub-folder.
     state.addFiles(files, opts);
-  }, [state, showToast]);
+  }, [state]);
+  const dismissMultiImport = useCallback(() => setMultiImportFiles(null), []);
+  const completeMultiImport = useCallback(() => setMultiImportFiles(null), []);
 
   // Drain any files App-level drag-drop queued for us before routing here.
   useEffect(() => {
@@ -540,24 +549,35 @@ export default function Importer() {
           borderTop: '0.5px solid var(--border-subtle, #e7e5e4)',
         }}
       >
-        <CatalogColumn
-          activeSource={state.activeSource}
-          onActiveSourceChange={state.setActiveSource}
-          query={state.catalogQuery}
-          onQueryChange={state.setCatalogQuery}
-          onSelectItem={(it) => {
-            if (isMulti && typeof window !== 'undefined') {
-              if (!window.confirm(S.catalogReplaceModeConfirm)) return;
-            }
-            state.addCatalogItem(it);
-          }}
-          onFiles={handleAddFiles}
-          onPasteText={state.addPasteItem}
-          busy={state.busy}
-          liveAnnotationsByLibId={liveAnnotationsByLibId}
-          onQuickAdd={quickAddCallback}
-          quickAddTitle={quickAddTitle}
-        />
+        {multiImportFiles ? (
+          // M-X.5 K4 — MultiImportView replaces the catalog column
+          // inline while biolog is reviewing a multi-file drop.
+          // Cancel / Done returns to the regular tree.
+          <MultiImportView
+            files={multiImportFiles}
+            onCancel={dismissMultiImport}
+            onComplete={completeMultiImport}
+          />
+        ) : (
+          <CatalogColumn
+            activeSource={state.activeSource}
+            onActiveSourceChange={state.setActiveSource}
+            query={state.catalogQuery}
+            onQueryChange={state.setCatalogQuery}
+            onSelectItem={(it) => {
+              if (isMulti && typeof window !== 'undefined') {
+                if (!window.confirm(S.catalogReplaceModeConfirm)) return;
+              }
+              state.addCatalogItem(it);
+            }}
+            onFiles={handleAddFiles}
+            onPasteText={state.addPasteItem}
+            busy={state.busy}
+            liveAnnotationsByLibId={liveAnnotationsByLibId}
+            onQuickAdd={quickAddCallback}
+            quickAddTitle={quickAddTitle}
+          />
+        )}
 
         <div
           data-testid="importer-inspector-pane"
