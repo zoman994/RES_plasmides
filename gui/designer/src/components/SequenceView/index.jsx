@@ -75,6 +75,7 @@ import { buildFeatureMap, mergeWithPredicted, flattenSites } from "./lib/feature
 import { attachScrollHandle } from "./lib/scroll-handle.js";
 import CaretOverlay from "./overlays/CaretOverlay.jsx";
 import SelectionOverlay from "./overlays/SelectionOverlay.jsx";
+import OriginMarkerOverlay from "./overlays/OriginMarkerOverlay.jsx";
 import SelectionContextMenu from "./popups/SelectionContextMenu.jsx";
 import CreateAnnotationPopup from "./popups/CreateAnnotationPopup.jsx";
 import EditAnnotationModal from "./popups/EditAnnotationModal.jsx";
@@ -664,6 +665,11 @@ const SequenceView = forwardRef(function SequenceView({
         charPx={charPx}
         containerRef={containerRef}
         showBottomStrand={settings.showBottomStrand}
+      />
+      <OriginMarkerOverlay
+        circular={circular}
+        hasTrailingWrap={wrapTailLines.trailing.length > 0}
+        containerRef={containerRef}
       />
       <SelectionContextMenu
         contextMenu={contextMenu}
