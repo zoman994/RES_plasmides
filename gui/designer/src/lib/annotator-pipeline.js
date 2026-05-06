@@ -19,6 +19,22 @@
  */
 
 import { getAllPlugins } from './annotator-plugins/registry.js';
+import { runPluginInWorker } from './annotator-worker-client.js';
+
+// Plugins routed through the predictor Worker. Network/backend
+// plugins (BLAST stub) stay on the main thread — Worker fetch
+// policies differ from the page's, and they're not the long-task
+// offenders. Pure-CPU detectors (L1 common-features-homology + L2
+// structural orf-scan / sigma70 / stem-loop / sgrna-scaffold) are
+// the freeze source we're targeting (06.05.2026 biolog: «между
+// переключением между сиквенсом и аннотатором секунда ожидания»).
+function shouldRunInWorker(plugin) {
+  const cap = plugin && plugin.capabilities;
+  if (!cap) return false;
+  if (cap.requiresNetwork === true) return false;
+  if (cap.requiresBackend === true) return false;
+  return true;
+}
 
 export async function runAnnotatorPipeline(sequence, region, enabledPluginIds, options = {}) {
   const enabled = enabledPluginIds || {};
@@ -36,7 +52,29 @@ export async function runAnnotatorPipeline(sequence, region, enabledPluginIds, o
       try { onStart(p.id); } catch { /* swallow callback throws */ }
     }
     try {
-      const res = await p.run(sequence, region || null, sharedOptions);
+      let res;
+      // Try Worker first for CPU-only plugins. `runPluginInWorker`
+      // returns null when the Worker can't be constructed (vitest's
+      // happy-dom stub, SSR, very old browsers) — fall back to
+      // synchronous main-thread run, preserving every existing test
+      // contract.
+      if (shouldRunInWorker(p)) {
+        const workerPromise = runPluginInWorker(p.id, sequence, region || null, sharedOptions);
+        if (workerPromise) {
+          try {
+            res = await workerPromise;
+          } catch {
+            // Worker crashed mid-run — recover on the main thread so
+            // a one-off worker failure doesn't surface as a plugin
+            // error to the UI.
+            res = await p.run(sequence, region || null, sharedOptions);
+          }
+        } else {
+          res = await p.run(sequence, region || null, sharedOptions);
+        }
+      } else {
+        res = await p.run(sequence, region || null, sharedOptions);
+      }
       if (onEnd) {
         try { onEnd(p.id, res); } catch { /* noop */ }
       }

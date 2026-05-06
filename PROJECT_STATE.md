@@ -6,6 +6,7 @@
 > **Журнал версий:** `RELEASES.md` (текущие) + `docs/archive/SESSIONS_2026_Q2.md` (исторические сессии до v0.6) + `docs/archive/PROJECT_STATE_v0.6.3_pre_split.md` (полный pre-split snapshot).
 > **Дизайн-система:** `docs/DESIGN_SYSTEM.md` §2.1 — feature palette A+v2 + shade-by-name + canonical-key (от v0.6.4). Catalog tree depth-tint + folder-as-path documentation pending под §2.2.
 > **Открытые TD:** см. `TECH_DEBT.md`. Новые в v0.7.1: TD-SEQUENCEVIEW-SHIFT-SELECTION (M-D), TD-SEQUENCEVIEW-FOCUS-RING (low priority a11y), TD-LINEAR-BAR-PREDICTIONS (M-X.1 K4 либо M-X.2). От v0.7.0 остаются: TD-DRAG-DROP-LIBRARY-CARDS, TD-PER-CDS-SIGNALIP.
+> **In-progress v0.7.2 (06.05.2026):** Annotator perf — predictor plugins (L1 + L2 structural) выехали в Web Worker (`lib/workers/predictor.worker.js` + `lib/annotator-worker-client.js`, DEC-PERF-WORKER-01). Pipeline сохраняет fallback на main thread (vitest happy-dom + старые браузеры). 1422 vitest tests (+2 worker-client coverage). Финализация версии — после визуальной приёмки M-X.2.
 > **Открытые баги:** см. `BUGS.md` — OPEN секция пуста. V50 closed в FIXED.
 > **Текущая задача:** см. `CURRENT_TASK.md` — Wave 1 **Sprint M-X.1 Structural Predictor** (frontend baseline ML-annotator), spec v1.1 готова, Code реализовал на ветке `feature/structural-predictor` HEAD `1c75857`, визуальная приёмка в ожидании отчёта Code и fixture plasmids.
 
