@@ -1,13 +1,13 @@
 # PROJECT_STATE.md — BodgeGene snapshot
 
-> **Версия:** **v0.7.2** — M-X.2 Annotation Editing + embedded Annotator (three-level LevelPanel + ghost drill-in) + UX-1/2/3 + perf wave (predictor Worker + idle prewarm + content-visibility removal) + animation polish (06.05.2026).
-> **Тесты:** Vitest 1421/1422 passing (1 pre-existing flake `primer-wizard.test.jsx:79`, изолированно проходит) + pytest 112/112. Build clean, predictor.worker chunk 12.62 KB.
+> **Версия:** **v0.7.3** — M-X.3 Wrap-tail rendering (leading wrap-tail strip + origin marker + inline wrap-bridge with vertical divider) + 11 polish rounds (caret-transition gating, shift-anchor leading, scroll-handle filter, perf wave PERF-1/3/4/5, MetaColumn TopologyPill, last-char fix, wrap-aware selection, boundary collapse, frame-merge epsilon) (06.05.2026).
+> **Тесты:** Vitest ~1455/1455 passing (+27 нетто vs v0.7.2). pytest 112/112. Build clean, predictor.worker chunk 12.62 KB, PWA precache ~873 KiB.
 > **Архитектура:** `docs/ARCHITECTURE_v2.md` v1.2 (~117 KB) · 52 ⚓ fundamental decisions в `ANCHORS.md` · sprint-level DEC в `DECISIONS.md` — v0.7.2 sprint block: DEC-PERF-WORKER-01, DEC-FEATURE-SUBFEATURES-01, DEC-ANN-SBOL-01, DEC-ANN-12..13, DEC-IMPORTER-PRE-01, DEC-FEATURE-EDIT-FLOW-01, DEC-IDLE-PREWARM-01, DEC-PLUGIN-OVERFETCH-01, DEC-ANN-01..11. **⚓ кандидаты в ANCHORS.md** (промоция при reuse в M-D): DEC-LIB-11 (Library entry annotations frozen, mutable through explicit save flow only), DEC-EDIT-PARITY-01 (edit parity SequenceView ↔ Annotator через `applyAnnotationEdit`), DEC-IMPORTER-TARGETS-01 (Library only / Library + project), DEC-PARSER-UNIFY-01..03 (от v0.7.1).
 > **Журнал версий:** `RELEASES.md` (v0.7.2 + v0.7.1 + v0.7.0) + `docs/archive/SESSIONS_2026_Q2.md` (исторические сессии до v0.6) + `docs/archive/PROJECT_STATE_v0.6.3_pre_split.md` (полный pre-split snapshot).
 > **Дизайн-система:** `docs/DESIGN_SYSTEM.md` §2.1 — feature palette A+v2 + shade-by-name + canonical-key (от v0.6.4). Catalog tree depth-tint + folder-as-path documentation pending под §2.2. Animation token convention — single `.importer-tab-pane` / `.annotator-drill-in-anim` / `.save-flash-bounce` shared across surfaces, все gated `prefers-reduced-motion`.
-> **Открытые TD:** см. `TECH_DEBT.md`. Новые в v0.7.2: TD-ANNOTATIONTRACK-DECOMPOSE-V2 (41.6 KB, hard violation остался — M-X.4 либо параллельно M-D), TD-SINGLEINSPECTOR-SELECTIONSTATE-EXTRACT, TD-WRAPTAIL-RENDERING (M-X.3), TD-CIRCULAR-SELECTION, TD-LIBRARY-WRITE-API. От v0.7.1: TD-SEQUENCEVIEW-SHIFT-SELECTION, TD-SEQUENCEVIEW-FOCUS-RING, TD-LINEAR-BAR-PREDICTIONS. От v0.7.0: TD-DRAG-DROP-LIBRARY-CARDS, TD-PER-CDS-SIGNALIP.
+> **Открытые TD:** см. `TECH_DEBT.md`. Закрыт в v0.7.3: TD-WRAPTAIL-RENDERING. Новые в v0.7.3: TD-WRAP-BRIDGE-WRAP-AWARE-TRACKS (AnnotationTrack / PrimerTrack / RestrictionTrack / AATrack не рендерят features в wrap-half bridge line — DNA strands + ruler работают, остальные tracks гасятся). От v0.7.2 остаются: TD-ANNOTATIONTRACK-DECOMPOSE-V2 (41.6 KB), TD-SINGLEINSPECTOR-SELECTIONSTATE-EXTRACT, TD-CIRCULAR-SELECTION (round-8 partial — selection rendering + copy slice работают, click on wrap-tail остаётся blocked), TD-LIBRARY-WRITE-API. От v0.7.1: TD-SEQUENCEVIEW-SHIFT-SELECTION, TD-SEQUENCEVIEW-FOCUS-RING, TD-LINEAR-BAR-PREDICTIONS. От v0.7.0: TD-DRAG-DROP-LIBRARY-CARDS, TD-PER-CDS-SIGNALIP.
 > **Открытые баги:** см. `BUGS.md` — OPEN секция пуста.
-> **Текущая задача:** см. `CURRENT_TASK.md` — v0.7.2 финализирован 06.05.2026. Следующий цикл выбирает биолог: M-X.3 wrap-tail rendering / M-X.4 Library Save Flow / M-C Container Window kickoff / NCBI integration.
+> **Текущая задача:** см. `CURRENT_TASK.md` — v0.7.3 финализирован 06.05.2026. Следующий цикл выбирает биолог: M-X.4 Library Save Flow / M-C Container Window kickoff / TD-CIRCULAR-SELECTION (полноценная wrap-aware navigation) / TD-WRAP-BRIDGE-WRAP-AWARE-TRACKS / NCBI integration.
 
 ---
 
@@ -142,7 +142,7 @@
 
 ## Что дальше
 
-**v0.7.2 закрыт полностью** (M-X.2 Annotation Editing + embedded Annotator three-level + UX-1/2/3 + perf wave с predictor Worker + animation polish). Прошлый кандидат M-X.1 Structural Predictor поглощён M-X.2 (L2 structural plugins вошли в Annotator pipeline).
+**v0.7.3 закрыт полностью** (M-X.3 Wrap-tail rendering K1-K6 + 11 раундов polish: caret-transition gating, shift-anchor leading, perf wave PERF-1/3/4/5, MetaColumn TopologyPill, last-char fix, wrap-aware selection, inline wrap-bridge с vertical divider, frame-merge epsilon).
 
 **Кандидаты следующих сессий:**
 

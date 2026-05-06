@@ -12,7 +12,23 @@
 
 ---
 
-## Sprint v0.7.2 (in-progress) — Annotator perf + animation polish (05–06.05.2026)
+## Sprint v0.7.3 — M-X.3 Wrap-tail rendering + 11 polish rounds (06.05.2026)
+
+**[2026-05-06] DEC-WRAPTAIL-01 — Wrap-tail visual layer без data-model изменений.** Selection через origin (TD-CIRCULAR-SELECTION) — отдельный sprint; в M-X.3 caretAnchor + caretPos остаются в [0, seqLength] для click-time, расширяются в (-seqLength, 2×seqLength) ТОЛЬКО для drag-extend через wrap-tail rows (round-8 partial). Точка в данных (annotation start/end) не меняется. Render layer плюс dragsemantic — это всё.
+
+**[2026-05-06] DEC-WRAPTAIL-02 — Feature filtering at SequenceLine level вместо AnnotationTrack.** Позволил отложить TD-ANNOTATIONTRACK-DECOMPOSE-V2 (41.6 KB hard violation). SequenceLine принимает `features` как полный массив, AnnotationTrack клипает по `[lineStart, lineLen)` внутри. Wrap-tail rows получают тот же массив; AnnotationTrack рендерит features которые попадают в их absolute coords (что для leading-wrap = end-of-plasmid features, для trailing — start-of-plasmid).
+
+**[2026-05-06] DEC-WRAPTAIL-03 — Round-10 inline wrap-bridge supersedes отдельные trailing-wrap rows.** Биолог: «продолжать должно дальше, просто поставить вертикальный разделитель и все. но новой строки быть не должно». Trailing wrap-tail strip больше не существует — last main row расширяется до full cpl с wrap chars от plasmid start, vertical orange divider INSIDE the line at wrapAt column. Leading wrap-tail остаётся как 2 строки выше main:first (DEC-WRAPTAIL-01). Asymmetric — биолог принял. **Trade-off:** AnnotationTrack / PrimerTrack / RestrictionTrack / AATrack не клипают по wrap-half bridge line (они filter [lineStart, lineLen) что для bridge line uncircularly extends past seqLength). Только RulerTrack + StrandsTrack рендерят корректно. **Кандидат на ⚓** если pattern переиспользуется в M-D Container Window.
+
+**[2026-05-06] DEC-CARET-TRANSITION-01 — body.caret-gliding gating для caret transition.** Биолог round-5: 80 ms CSS transition на каретке конфликтует с keyboard repeat ~30 Hz (~33 ms между events) — каждый next transform-target прерывает текущую анимацию на полпути, каретка отстаёт от cursorPos на 50–80 ms, при отпускании клавиши «докатывается» ещё 80 ms. Fix: transition OFF по умолчанию (`.sequence-view-caret-anim { transition: none }`), `body.caret-gliding .sequence-view-caret-anim { transition: transform 80ms linear }`. SingleInspector тогглит class на body во время drag-scrub'а (внутри rAF callback), снимает через 120 ms таймером после last tick. Keyboard nav и click — instant; drag-scrub сохраняет glide через нуклеотиды. **Применимость:** любые caret-like overlays where keyboard cadence != mouse cadence.
+
+**[2026-05-06] DEC-PERF-MEMO-01 — useCallback / scalar props для React.memo bail.** Биолог 5-point perf review: identity-нестабильные handlers (inline closures + `annDrag.onPointerDownEdge` через ref) ломали `React.memo` на SequenceLine — каждый cursorPos update регенерировал closure'ы → memo bail-out не срабатывал → все ~60 lines re-render. Fix: useMemo / useCallback на `onAnnotationEdgePointerDown` / `onAnnotationDoubleClick` / `onAnnotationFeatureDoubleClick` (PERF-1). Также `settings` prop split на скаляры (showBottomStrand / framesMode / primerStyle / reOrientation / visibleFrames) — zustand emitting fresh slice object на ANY field change инвалидировал каждую memo (PERF-4). PERF-3 rAF-coalesce drag-scrub в SingleInspector (latest pos в ref + один rAF tick на frame, 4 setStates → 1 batch). PERF-5 dropped translateZ(0) + backfaceVisibility:hidden на line wrappers — на слабых интегрированных GPU 60 forced layers стоили больше чем contain:paint уже даёт. **Применимость:** все React-memo'd lists в проекте (PartsPalette, CatalogColumn, AnnotationEditor rows).
+
+**[2026-05-06] DEC-LFB-OVERLAP-EPSILON-01 — LinearFeatureBar `clusterByOverlap` требует ≥1 px intersection.** Биолог round-11: features которые НЕ overlap всё равно объединяются в общую рамку. Корень — float-rounding на пикселях делал touching features (AmpR end vs AmpR promoter start at same plasmid coord) overlapping на ≤0.5 px → `clusterByOverlap` группировал в один outer stroke. Fix: `intersection > OVERLAP_EPSILON` (= 1 px) вместо строгого `<` ranges. Touching pairs остаются independent. Также bumped AnnotationTrack rect width subtract from 1 px → 2 px for visible gap on 1× scale.
+
+---
+
+## Sprint v0.7.2 — Annotator perf + animation polish (05–06.05.2026)
 
 Не финализирован. Здесь копятся sprint-level решения текущей волны UX/perf правок поверх v0.7.1 baseline. Финализация — после визуальной приёмки M-X.2 (CURRENT_TASK.md).
 

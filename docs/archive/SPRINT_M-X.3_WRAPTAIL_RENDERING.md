@@ -1,5 +1,6 @@
 # Sprint M-X.3 — Wrap-tail rendering for circular plasmids in SequenceView
 
+**Статус:** ✅ РЕАЛИЗОВАНО 06.05.2026 (см. `RELEASES.md` блок v0.7.3). Финал отличается от исходной спеки: trailing wrap-tail в round-10 свёрнут INLINE в wrap-bridge line (биолог: «новой строки быть не должно») вместо отдельных trailing rows. Plus 11 polish rounds после K6 visual acceptance.
 **Тип:** B (visual extension существующего viewer + опциональный prerequisite K0 декомпозиция AnnotationTrack)
 **База:** v0.7.2 (M-X.2 closed 06.05.2026, ветка `feature/sequence-view-feature-strip` HEAD `253420a`)
 **Закрывает:** TD-WRAPTAIL-RENDERING (TECH_DEBT.md). Опционально закрывает TD-ANNOTATIONTRACK-DECOMPOSE-V2 если K0 берётся в скоуп.

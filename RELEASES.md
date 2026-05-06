@@ -6,6 +6,45 @@
 
 ---
 
+## v0.7.3 — M-X.3 Wrap-tail rendering + 11 polish rounds (06.05.2026)
+
+**Коммиты:** ~25 на ветке `feature/sequence-view-feature-strip` от `2a695e2` (M-X.3 K1 helpers) до `20f1c7f` (round-11 frame-merge fix). Финал bump 0.7.2 → 0.7.3.
+**Тесты:** Vitest 1455 (+27 нетто vs v0.7.2: K1 wrap-tail unit tests, K2-K6 render/origin/edge/integration, round-8 wrap-aware, round-10 bridge). pytest 112/112.
+**Build:** clean. PWA precache ~873 KiB.
+
+**Скоуп — Sprint M-X.3 K1-K6 Wrap-tail rendering (06.05.2026 утро–день).** Закрывает TD-WRAPTAIL-RENDERING. Circular plasmid SequenceView теперь рендерит «контекст конца плазмиды» как leading wrap-tail (2 строки последних ~160 nt с opacity 0.6 + accent-stripe слева + 4% accent-tinted фон) ПЕРЕД main:first и origin marker (yellow pill с label «origin / 1») между wrap-tail и main band. Linear topology — без изменений. Auto-disable для коротких плазмид (<3 main lines). Wrap-tail row pointer-events:none стартом → click-protected, активируется на drag-extend. Caret + selection фильтруют по `data-wraptail-kind="main"` чтобы не залезать в context strip. ~7 unit тестов wrap-tail.js + render/origin-marker/edge/integration + caret-filter тесты.
+
+**Скоуп — Round-5 caret transition gating (06.05.2026 day).** Биолог: keyboard arrow holds at ~30 Hz конфликтуют с 80 ms CSS transition на каретке — каретка отстаёт от cursorPos на 50–80 ms, при отпускании клавиши «докатывается» ещё 80 ms. Fix: transition теперь OFF по умолчанию, `body.caret-gliding` toggle во время drag-scrub'а (rAF coalesce + 120 ms сброс таймером). Keyboard nav и click — instant; drag-scrub сохраняет glide через каждый нуклеотид.
+
+**Скоуп — Round-6 shift-anchor leading + scroll-handle filter (06.05.2026 day).** Биолог скрин pGEX-2T: «должно быть черта и сразу за чертой призрачный сиквенс». Naive grid alignment leading wrap-tail оставляла последнюю строку короткой (e.g. 48 chars из 140). Fix: `buildWrapTailLines` shift-anchor leading by END — каждая leading line ровно `cpl` chars, последняя ENDS at seqLen точно. Полная visual continuity с main:first после origin marker. Также `scroll-handle.scrollToPosition` фильтрует rows по `data-wraptail-kind="main"` — без фильтра drag-scrub стрелял на первую leading-wrap row (start=4668 > absolutePos) и `target=null` → `scrollIntoView` не вызывался → caret уползал, viewer не следовал.
+
+**Скоуп — Round-7 perf wave + MetaColumn polish (06.05.2026 evening).** Биолог 5-point perf review:
+- **PERF-1** useCallback/useMemo на inline handlers passed в `<SequenceLine>`. Identity-stable across parent re-renders → React.memo bails on lines с unchanged inputs. Раньше каждый cursor step / drag-scrub tick re-rendered все ~60 lines (full ~70k DOM nodes pass).
+- **PERF-3** rAF-coalesce drag-scrub в SingleInspector. `onBarScrub` стэшит latest pos в ref + schedules один rAF tick который flushes 4 setState'а раз в кадр. Раньше 100+ Hz pointermove × 4 setStates = 400+ React-passes/sec.
+- **PERF-4** split `settings` prop на скаляры (showBottomStrand / framesMode / primerStyle / reOrientation / visibleFrames). zustand emitting fresh slice object на ANY field change инвалидировал memo каждой line.
+- **PERF-5** dropped `translateZ(0)` + `backfaceVisibility: hidden` на line wrappers. ~60 forced GPU layers на слабых интегрированных GPU стоили больше чем `contain:paint` уже даёт.
+- **MetaColumn round-7** — TopologyPill компонент был referenced в JSX но не определён → runtime error, биолог видел кривой rendering. Добавил helper: full-width pill stacked vertically с SVG icon + label. ORIGIN row перевёл на `flex:1 1 64px` input + `flex:0 0 auto` apply button + flex-wrap fallback для узких viewport'ов.
+
+**Скоуп — Round-8 last-char + wrap-aware selection (06.05.2026 evening).** Биолог: «не выделяется последняя буква» + «хотелось бы перенести выделение на призрачный участок сверху и снизу — фича может быть на обоих концах».
+- **Last-char fix.** Outer clamp в `posFromPointerEvent` зажимал caret к `seqLength - 1` → selection [start, end) с end ≤ seqLength-1 всегда исключал final nt. Теперь clamp до `seqLength`. Drag использует `Math.ceil` (любое касание буквы = включена), click стаётся на `Math.round`.
+- **Wrap-aware selection.** Extended caret domain: `caretPos ∈ (-seqLength, 2 × seqLength)`. Negative = wrapped из leading-wrap row; > seqLength = wrapped через trailing-wrap. Anchor stays in main (resolver gates initial click). SequenceLine.jsx — `pointer-events: none` DROPPED with wrap-tail wrappers; click protection moved into `posFromPointerEvent` (bails on wrap-tail unless `extending`). CaretOverlay accepts seqLength prop, picks leading-wrap rows для caret < 0 и trailing-wrap rows для caret > seqLength. SelectionOverlay's `computeSegments` helper делит (anchor, caret) пару на 1 или 2 rendering сегмента — wrapped selection paints два strip'а, один в relevant wrap-tail row + один в main band. `copySelection` склеивает head + tail через origin: forward / reverse-complement / AA copies все знают как ходить через wrap.
+
+**Скоуп — Round-9 boundary collapse + adjacent feature gap (06.05.2026 evening).** Биолог: «рядом стоящие фичи без перекрытия объединяются одной рамкой» + «внизу с новой строки идёт призрачная часть».
+- AnnotationTrack rect width subtract 1 px → adjacent stacked features имеют видимый gap.
+- SequenceLine accepts `nextKind`, on wrap-tail ↔ main boundary collapses divider (border-bottom dashed dropped, paddingBottom 14→4, marginBottom 14→6) — origin marker становится единственным cue.
+
+**Скоуп — Round-10 inline wrap-bridge (06.05.2026 evening).** Биолог: «продолжать должно дальше, просто поставить вертикальный разделитель и все. но новой строки быть не должно». Trailing wrap-tail strip moved INLINE — last main row widened to a full cpl by appending wrap chars from plasmid start, with vertical origin divider INSIDE the line at the seam. New `buildWrapBridgeLine` helper. RulerTrack accepts `wrapAt` + `seqLength` — tick numbering splits at wrap. SequenceLine renders absolute-positioned vertical accent bar with «▶ 1» pill. OriginMarkerOverlay bottom marker disabled. **Trade-off:** wrap half currently doesn't render annotations / primers / RE / AA (those tracks still filter by [lineStart, lineLen) without wrap awareness) — DNA strands + ruler labels работают корректно. Acceptable per биолог: «просто поставить вертикальный разделитель и все».
+
+**Скоуп — Round-11 frame-merge fix (06.05.2026 evening).** Биолог скрин 3xFLAG-dCas9 pMXs-neo: features всё ещё в общей рамке. Корень в LinearFeatureBar `clusterByOverlap` — pixel-overlap clustering группирует фичи в один outer stroke. Float-rounding на границе делал touching features (AmpR end vs AmpR promoter start) cluster. Fix: overlap test now requires ≥1 px intersection (was strict `<` of ranges). Также bumped AnnotationTrack rect width subtract from 1 px → 2 px для visible gap на 1× scale.
+
+**Закрытые TD:** TD-WRAPTAIL-RENDERING (M-X.3 K1-K6 + rounds 6, 9, 10).
+**Открытые TD:** TD-CIRCULAR-SELECTION (data model + selection math через origin полноценно — round-8 partial: selection rendering + copy slice работают, но selection from-leading-wrap requires drag-extend, click on wrap-tail остаётся blocked). TD-ANNOTATIONTRACK-DECOMPOSE-V2 (41.6 KB, не тронули в M-X.3 — feature filtering at SequenceLine level позволил отложить). TD-WRAP-BRIDGE-WRAP-AWARE-TRACKS (новый: AnnotationTrack / PrimerTrack / RestrictionTrack / AATrack не рендерят features в wrap-half bridge line). От v0.7.2 остаются: TD-SINGLEINSPECTOR-SELECTIONSTATE-EXTRACT, TD-LIBRARY-WRITE-API. От v0.7.1: TD-SEQUENCEVIEW-SHIFT-SELECTION, TD-SEQUENCEVIEW-FOCUS-RING, TD-LINEAR-BAR-PREDICTIONS. От v0.7.0: TD-DRAG-DROP-LIBRARY-CARDS, TD-PER-CDS-SIGNALIP.
+**DEC-блок:** **Sprint-level в DECISIONS.md:** DEC-WRAPTAIL-01 (visual layer без data-model изменений; selection через origin = TD-CIRCULAR-SELECTION), DEC-WRAPTAIL-02 (feature filtering at SequenceLine level вместо AnnotationTrack — позволил отложить TD-ANNOTATIONTRACK-DECOMPOSE-V2), DEC-WRAPTAIL-03 (round-10 inline bridge supersedes отдельные trailing-wrap rows — биолог «новой строки быть не должно»), DEC-CARET-TRANSITION-01 (round-5 — body.caret-gliding gating, transition только во время drag-scrub'а), DEC-PERF-MEMO-01 (round-7 PERF-1 — useCallback/scalars для memo bail), DEC-LFB-OVERLAP-EPSILON-01 (round-11 — overlap test ≥1 px чтобы touching features не cluster).
+
+**Post-mortem.** 11 раундов polish после M-X.3 K6 — сигнал что K6 visual acceptance под happy-dom недостаточно для UI работающей под real browsers + biolog real workflow. Большая часть rounds — micro-UX fixes биолог→Code пинг-понг. v0.7.3 финализирован сразу после round-11 принятия — biolog: «работает».
+
+---
+
 ## v0.7.2 — M-X.2 Annotation Editing + Annotator + UX/perf wave (05–06.05.2026)
 
 **Коммиты:** ~50 на ветке `feature/sequence-view-feature-strip` от `7176f7d` (CPU 25% idle bug fix через Vite HMR pin) до `322031c` (drill-in animations). Финальный bump 0.7.0 → 0.7.2 одним прыжком (v0.7.1 в коде не бампался — журнал проскочил, синхронизация при этом релизе).
