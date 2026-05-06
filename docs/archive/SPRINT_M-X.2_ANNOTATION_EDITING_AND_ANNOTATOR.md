@@ -1,5 +1,6 @@
 # Sprint M-X.2 — Annotation Editing in SequenceView + Annotator
 
+**Статус:** ✅ РЕАЛИЗОВАНО 06.05.2026 (см. `RELEASES.md` блок v0.7.2).
 **Тип:** A (новая UX-механика поверх существующего viewer + новый fullscreen + plugin contract).
 **База:** v0.7.1 (M-X.1 closed informally 04.05.2026, ветка `feature/structural-predictor` HEAD `1c75857`).
 **Предпосылка:** биологу нужен интегрированный workflow редактирования аннотаций в SequenceView (selection+Del удалить, selection+H создать, drag-handles за края подвинуть, двойной клик inline rename, E-key edit modal) — плюс «нырнуть в Аннотатор» когда не уверен что аннотировать. M-X.1 положил frontend baseline предсказательного слоя и transient `runPredictors`; M-X.2 строит поверх него интегрированный editor + fullscreen plugin orchestrator.

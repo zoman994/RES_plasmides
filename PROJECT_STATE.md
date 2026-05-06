@@ -1,18 +1,28 @@
 # PROJECT_STATE.md — BodgeGene snapshot
 
-> **Версия:** **v0.7.1** — V50 parser fix + Parser-Unification + SnapGene Refresh + M-B.3 Sequence Viewer Rewrite + interaction extensions (drag-scrubber + caret + tri-modal copy + selection context menu) (03–04.05.2026).
-> **Тесты:** ~947 Vitest + 112 pytest (последний authoritative счёт от V50 fix; B.3 cycle test count в координационных файлах не зафиксирован, build clean).
-> **Архитектура:** `docs/ARCHITECTURE_v2.md` v1.2 (~117 KB) · 52 ⚓ fundamental decisions в `ANCHORS.md` · sprint-level DEC в `DECISIONS.md` (DEC-SV-01..04 caret/scrollIntoView/drag-scrubber/selection-context-menu, DEC-MB-03 supersedes DEC-MB-02 origin location) · ⚓ DEC-PARSER-COORD-01 (03.05.2026, 0-based exclusive end end-to-end) · ⚓ DEC-PARSER-UNIFY-01..03 (кандидаты, сейчас в commit message — перенос в ANCHORS.md отложен).
-> **Журнал версий:** `RELEASES.md` (текущие) + `docs/archive/SESSIONS_2026_Q2.md` (исторические сессии до v0.6) + `docs/archive/PROJECT_STATE_v0.6.3_pre_split.md` (полный pre-split snapshot).
-> **Дизайн-система:** `docs/DESIGN_SYSTEM.md` §2.1 — feature palette A+v2 + shade-by-name + canonical-key (от v0.6.4). Catalog tree depth-tint + folder-as-path documentation pending под §2.2.
-> **Открытые TD:** см. `TECH_DEBT.md`. Новые в v0.7.1: TD-SEQUENCEVIEW-SHIFT-SELECTION (M-D), TD-SEQUENCEVIEW-FOCUS-RING (low priority a11y), TD-LINEAR-BAR-PREDICTIONS (M-X.1 K4 либо M-X.2). От v0.7.0 остаются: TD-DRAG-DROP-LIBRARY-CARDS, TD-PER-CDS-SIGNALIP.
-> **In-progress v0.7.2 (06.05.2026):** Annotator perf — predictor plugins (L1 + L2 structural) выехали в Web Worker (`lib/workers/predictor.worker.js` + `lib/annotator-worker-client.js`, DEC-PERF-WORKER-01). Pipeline сохраняет fallback на main thread (vitest happy-dom + старые браузеры). 1422 vitest tests (+2 worker-client coverage). Финализация версии — после визуальной приёмки M-X.2.
-> **Открытые баги:** см. `BUGS.md` — OPEN секция пуста. V50 closed в FIXED.
-> **Текущая задача:** см. `CURRENT_TASK.md` — Wave 1 **Sprint M-X.1 Structural Predictor** (frontend baseline ML-annotator), spec v1.1 готова, Code реализовал на ветке `feature/structural-predictor` HEAD `1c75857`, визуальная приёмка в ожидании отчёта Code и fixture plasmids.
+> **Версия:** **v0.7.2** — M-X.2 Annotation Editing + embedded Annotator (three-level LevelPanel + ghost drill-in) + UX-1/2/3 + perf wave (predictor Worker + idle prewarm + content-visibility removal) + animation polish (06.05.2026).
+> **Тесты:** Vitest 1421/1422 passing (1 pre-existing flake `primer-wizard.test.jsx:79`, изолированно проходит) + pytest 112/112. Build clean, predictor.worker chunk 12.62 KB.
+> **Архитектура:** `docs/ARCHITECTURE_v2.md` v1.2 (~117 KB) · 52 ⚓ fundamental decisions в `ANCHORS.md` · sprint-level DEC в `DECISIONS.md` — v0.7.2 sprint block: DEC-PERF-WORKER-01, DEC-FEATURE-SUBFEATURES-01, DEC-ANN-SBOL-01, DEC-ANN-12..13, DEC-IMPORTER-PRE-01, DEC-FEATURE-EDIT-FLOW-01, DEC-IDLE-PREWARM-01, DEC-PLUGIN-OVERFETCH-01, DEC-ANN-01..11. **⚓ кандидаты в ANCHORS.md** (промоция при reuse в M-D): DEC-LIB-11 (Library entry annotations frozen, mutable through explicit save flow only), DEC-EDIT-PARITY-01 (edit parity SequenceView ↔ Annotator через `applyAnnotationEdit`), DEC-IMPORTER-TARGETS-01 (Library only / Library + project), DEC-PARSER-UNIFY-01..03 (от v0.7.1).
+> **Журнал версий:** `RELEASES.md` (v0.7.2 + v0.7.1 + v0.7.0) + `docs/archive/SESSIONS_2026_Q2.md` (исторические сессии до v0.6) + `docs/archive/PROJECT_STATE_v0.6.3_pre_split.md` (полный pre-split snapshot).
+> **Дизайн-система:** `docs/DESIGN_SYSTEM.md` §2.1 — feature palette A+v2 + shade-by-name + canonical-key (от v0.6.4). Catalog tree depth-tint + folder-as-path documentation pending под §2.2. Animation token convention — single `.importer-tab-pane` / `.annotator-drill-in-anim` / `.save-flash-bounce` shared across surfaces, все gated `prefers-reduced-motion`.
+> **Открытые TD:** см. `TECH_DEBT.md`. Новые в v0.7.2: TD-ANNOTATIONTRACK-DECOMPOSE-V2 (41.6 KB, hard violation остался — M-X.4 либо параллельно M-D), TD-SINGLEINSPECTOR-SELECTIONSTATE-EXTRACT, TD-WRAPTAIL-RENDERING (M-X.3), TD-CIRCULAR-SELECTION, TD-LIBRARY-WRITE-API. От v0.7.1: TD-SEQUENCEVIEW-SHIFT-SELECTION, TD-SEQUENCEVIEW-FOCUS-RING, TD-LINEAR-BAR-PREDICTIONS. От v0.7.0: TD-DRAG-DROP-LIBRARY-CARDS, TD-PER-CDS-SIGNALIP.
+> **Открытые баги:** см. `BUGS.md` — OPEN секция пуста.
+> **Текущая задача:** см. `CURRENT_TASK.md` — v0.7.2 финализирован 06.05.2026. Следующий цикл выбирает биолог: M-X.3 wrap-tail rendering / M-X.4 Library Save Flow / M-C Container Window kickoff / NCBI integration.
 
 ---
 
 ## Что работает
+
+### Annotator + Annotation Editing (M-X.2 + perf wave, v0.7.2)
+- **Integrated edit-annotations workflow в SequenceView:** Del two-pass (exact → smallest covered), H key → CreateAnnotationPopup рядом с правым краем строки selection, E key → EditAnnotationModal на coords региона, drag edges с live preview rect + tooltip + 8 px hover indicator, double-click label → inline rename, double-click bar → FeatureEditorModal (tabs Feature + Subfeatures), context menu ПКМ. Ctrl+Z/Y на edit
+- **Sub-features (`level: 'detail'` + `parentId`):** inset rendering, shaded color по индексу, child labels внутри child rects. Split button делит последнего ребёнка пополам
+- **SBOL glyphs paired с label:** mirror на reverse strand, default fallback для unknown types
+- **PreImportModal flow:** paste / drop / catalog click → name / topology / folder / tags / annotate-now checkbox; multi-file shared metadata; existing-annotations radio (keep / discard); catalog click pre-fills tags из entry
+- **Embedded Annotator (default, fullscreen modal только для region-scope):** three-level LevelPanel (L1 common-features-homology auto-run на open Annotations tab, L2 structural predictors orf-scan/sigma70/stem-loop/sgrna-scaffold manual «Run», L3 BLAST stub) + PreviewTab с linear/circular sub-tabs + ghost drill-in side panel (Accept / Reject / BLAST / re-run)
+- **Threshold slider live:** over-fetch PLUGIN_MIN_THRESHOLD=0.5 + render-time filter, mirrors SequenceView Settings ⚙ predictions threshold
+- **Accept ghost → solid annotation:** predicted: false на принятых, render solid + non-italic. Hide-duplicates toggle (default ON). Per-level «Accept all» bulk
+- **Library entry annotations frozen** (DEC-LIB-11): правки только через `perFileEdits.editedAnnotations` transient; catalog mini-map обновляется через render-time merge `liveAnnotationsByLibId` без write-through
+- **Predictor Worker (DEC-PERF-WORKER-01):** L1 + L2 structural бегут off-main-thread в `lib/workers/predictor.worker.js`. Pipeline через `lib/annotator-worker-client.js` lazy singleton, vitest happy-dom через `import.meta.env.VITEST` early-return → fallback на синхронный path. BLAST stub (`requiresNetwork:true`) на main thread
 
 ### Canvas & UI
 - Canvas: 4 вида (Blocks, Sequence, Map, Racetrack) + Project Flow DAG
@@ -132,7 +142,7 @@
 
 ## Что дальше
 
-**v0.7.1 закрыт полностью** (V50 parser fix + Parser-Unification + SnapGene Refresh + M-B.3 Sequence Viewer Rewrite + interaction extensions). Следующая финализация — после визуальной приёмки M-X.1 (Sprint Structural Predictor, Code реализовал на ветке `feature/structural-predictor` HEAD `1c75857`).
+**v0.7.2 закрыт полностью** (M-X.2 Annotation Editing + embedded Annotator three-level + UX-1/2/3 + perf wave с predictor Worker + animation polish). Прошлый кандидат M-X.1 Structural Predictor поглощён M-X.2 (L2 structural plugins вошли в Annotator pipeline).
 
 **Кандидаты следующих сессий:**
 
