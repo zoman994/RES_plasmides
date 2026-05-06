@@ -51,16 +51,12 @@ describe('M-X.3 K4 — caret restricted to main band', () => {
     }
   });
 
-  it('leading-wrap + main rows can share data-line-start values (round-10)', () => {
-    // Round 10: trailing-wrap folded inline via wrap-bridge, so
-    // duplicate data-line-start now only happens on the leading
-    // side — leading-wrap[1] can share a start with main:last when
-    // the shift-anchor lands on the same grid cell.
+  it('leading-wrap + main + trailing-wrap rows all present (round-12)', () => {
     render(<SequenceView fragments={[longCircular]} circular />);
     const allLines = screen.getAllByTestId('sequence-view-line');
     const kinds = allLines.map((el) => el.getAttribute('data-wraptail-kind'));
     expect(kinds).toContain('main');
     expect(kinds).toContain('leading-wrap');
-    expect(kinds).not.toContain('trailing-wrap');
+    expect(kinds).toContain('trailing-wrap');
   });
 });

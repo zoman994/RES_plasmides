@@ -81,17 +81,20 @@ describe('pickWrapTailLines', () => {
   });
 });
 
-describe('buildWrapTailLines (round-10: trailing folded inline)', () => {
-  it('returns leading shift-anchored to seqLen; trailing always empty (round-10)', () => {
+describe('buildWrapTailLines (round-12: trailing strip restored after bridge)', () => {
+  it('returns leading shift-anchored to seqLen + trailing grid-aligned from 0', () => {
     const seq = 'A'.repeat(80) + 'C'.repeat(80) + 'G'.repeat(80) + 'T'.repeat(80);
     const out = buildWrapTailLines({ fullSeq: seq, cpl: 80, leadingCount: 2, trailingCount: 2 });
     expect(out.leading).toHaveLength(2);
     expect(out.leading[0]).toEqual({ start: 160, seq: 'G'.repeat(80), kind: 'leading-wrap' });
     expect(out.leading[1]).toEqual({ start: 240, seq: 'T'.repeat(80), kind: 'leading-wrap' });
-    // Round 10: trailing wrap-tail is folded INLINE into a wrap-bridge
-    // line built by buildWrapBridgeLine, not returned here. Biolog
-    // «новой строки быть не должно».
-    expect(out.trailing).toEqual([]);
+    // Round 12: trailing wrap-tail RESTORED — biolog «надо чтобы
+    // вниз тоже был призрачный сиквенс на 200-300 п.о.». Lives
+    // BELOW the inline wrap-bridge line, gives a drag-selection
+    // surface for features that span origin from the start-side.
+    expect(out.trailing).toHaveLength(2);
+    expect(out.trailing[0]).toEqual({ start: 0, seq: 'A'.repeat(80), kind: 'trailing-wrap' });
+    expect(out.trailing[1]).toEqual({ start: 80, seq: 'C'.repeat(80), kind: 'trailing-wrap' });
   });
 
   it('shift-anchors leading even when seqLen is not a multiple of cpl', () => {

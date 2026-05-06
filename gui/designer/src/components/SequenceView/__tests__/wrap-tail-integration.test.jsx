@@ -53,13 +53,12 @@ beforeEach(() => {
 afterEach(() => { cleanup(); });
 
 describe('M-X.3 K6 — pUC19 fixture integration', () => {
-  it('renders leading wrap-tail; trailing folded inline (round-10)', { timeout: TEST_TIMEOUT }, () => {
+  it('renders leading + main + trailing wrap-tail strips (round-12)', { timeout: TEST_TIMEOUT }, () => {
     render(<SequenceView fragments={[pucShaped]} circular />);
     const lines = screen.getAllByTestId('sequence-view-line');
     const kinds = lines.map((el) => el.getAttribute('data-wraptail-kind'));
     expect(kinds.filter((k) => k === 'leading-wrap').length).toBe(2);
-    // Round-10: trailing wrap-tail no longer separate rows.
-    expect(kinds.filter((k) => k === 'trailing-wrap').length).toBe(0);
+    expect(kinds.filter((k) => k === 'trailing-wrap').length).toBe(2);
     expect(kinds.filter((k) => k === 'main').length).toBe(Math.ceil(2686 / 80));
   });
 

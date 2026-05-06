@@ -167,14 +167,27 @@ export function buildWrapTailLines({
     }
   }
 
-  // Round-10 (06.05.2026): trailing wrap-tail is no longer a
-  // separate strip below main:last. It's now folded INLINE via
-  // buildWrapBridgeLine — main:last extends to a full cpl with
-  // wrap chars and a vertical origin divider. Trailing return
-  // stays empty for compatibility with code that still iterates
-  // wrapTailLines.trailing (call sites have been updated).
-  void trailCnt;
+  // Round-12 (06.05.2026): biolog «надо поправить, чтобы вниз так же
+  // был призрачный сиквенс на 200-300 п.о. и можно было вести
+  // выделение через». Trailing wrap-tail strip restored AFTER the
+  // wrap-bridge line — gives the biolog a long ghost-strip to drag
+  // selection across when a feature spans the origin from the
+  // start-of-plasmid side. Bridge keeps inline vertical divider as
+  // the visual «origin» cue; trailing rows duplicate the same
+  // start-of-plasmid chars that bridge's wrap-half already shows
+  // for the first (cpl - wrapAt) positions, then extend further —
+  // symmetric with leading wrap-tail's overlap on main:last.
   const trailing = [];
+  for (let i = 0; i < trailCnt; i += 1) {
+    const start = i * cplFloor;
+    if (start >= seqLen) break;
+    const sliceEnd = Math.min(start + cplFloor, seqLen);
+    trailing.push({
+      start,
+      seq: fullSeq.slice(start, sliceEnd),
+      kind: 'trailing-wrap',
+    });
+  }
 
   return { leading, trailing };
 }

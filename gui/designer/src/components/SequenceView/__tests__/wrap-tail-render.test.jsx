@@ -60,15 +60,16 @@ beforeEach(() => {
 afterEach(() => { cleanup(); });
 
 describe('M-X.3 K2 — wrap-tail rendering', () => {
-  it('circular long plasmid renders leading-wrap + main; trailing folded inline (round-10)', () => {
+  it('circular long plasmid renders leading-wrap + main + trailing-wrap (round-12)', () => {
     render(<SequenceView fragments={[longFragment]} circular />);
     const lines = screen.getAllByTestId('sequence-view-line');
     const kinds = lines.map((el) => el.getAttribute('data-wraptail-kind'));
     expect(kinds.filter((k) => k === 'leading-wrap').length).toBeGreaterThan(0);
-    // Round-10: trailing wrap-tail is folded INLINE into a wrap-bridge
-    // line (last main row extended with wrap chars + vertical divider),
-    // not rendered as separate trailing-wrap rows.
-    expect(kinds.filter((k) => k === 'trailing-wrap').length).toBe(0);
+    // Round-12 (06.05.2026 biolog): trailing wrap-tail strip
+    // restored AFTER the inline wrap-bridge line. Provides a
+    // drag-selection surface so biolog can highlight a feature
+    // spanning origin from the start-of-plasmid side.
+    expect(kinds.filter((k) => k === 'trailing-wrap').length).toBeGreaterThan(0);
     expect(kinds.filter((k) => k === 'main').length).toBeGreaterThan(0);
   });
 
