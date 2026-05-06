@@ -10,6 +10,20 @@ function normalizeTag(raw) {
   return (raw || '').trim().toLowerCase();
 }
 
+// UX-012 — guard against junk that polluted the suggestion pool
+// (biolog spotted a stale `332123` tag from an earlier session
+// surfaced as a chip everywhere). A real biological tag has at least
+// one letter; pure-numeric / single-character / leading-symbol
+// strings are almost always typos that nobody intends to reuse.
+function isMeaningfulTag(t) {
+  if (typeof t !== 'string') return false;
+  const s = t.trim();
+  if (s.length < 2) return false;
+  if (/^\d+$/.test(s)) return false;          // pure numeric → junk
+  if (!/[a-zа-я]/i.test(s)) return false;     // must contain a letter
+  return true;
+}
+
 /**
  * TagsEditor — inline tag chips + add-input (M-B.2 follow-up).
  *
@@ -31,6 +45,7 @@ export default function TagsEditor({ tags = [], onChange }) {
     setInput('');
     if (!norm) return;
     if (norm.length > TAG_MAX_CHARS) return;
+    if (!isMeaningfulTag(norm)) return;
     if (tags.includes(norm)) return;
     if (tags.length >= LIBRARY_TAGS_SOFT_LIMIT) return;
     onChange?.([...tags, norm]);
@@ -54,7 +69,13 @@ export default function TagsEditor({ tags = [], onChange }) {
   }
 
   const tagsFull = tags.length >= LIBRARY_TAGS_SOFT_LIMIT;
-  const suggestions = allTags.filter((t) => !tags.includes(t)).slice(0, 6);
+  // UX-012 — filter the suggestion pool by `isMeaningfulTag` so legacy
+  // junk tags (e.g. a stray `332123` typo) stop bubbling up in every
+  // editor instance. The underlying library tag is left in place — we
+  // only hide the suggestion chip.
+  const suggestions = allTags
+    .filter((t) => !tags.includes(t) && isMeaningfulTag(t))
+    .slice(0, 6);
 
   return (
     <div

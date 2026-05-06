@@ -131,19 +131,27 @@ export default function MetaColumn({
       </Card>
 
       <Card label={S.metaTopology}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        {/* UX-014 — radio buttons used to be icon-only (◯ / —), which
+            biolog couldn't read at a glance and which was inconsistent
+            with PreImportModal where the same toggle has explicit
+            «Linear» / «Circular» labels. Adding text + icon together
+            keeps the compact MetaColumn footprint while removing the
+            guesswork. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <ToggleButton
             active={isCircular}
             onClick={() => onTopologyChange('circular')}
             title={S.metaTopologyCircularTitle}
             data-testid="importer-meta-topology-circular"
-          >◯</ToggleButton>
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px' }}
+          ><span aria-hidden="true">◯</span><span style={{ fontSize: 11 }}>{S.metaTopologyCircularLabel || 'Circular'}</span></ToggleButton>
           <ToggleButton
             active={!isCircular}
             onClick={() => onTopologyChange('linear')}
             title={S.metaTopologyLinearTitle}
             data-testid="importer-meta-topology-linear"
-          >—</ToggleButton>
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px' }}
+          ><span aria-hidden="true">—</span><span style={{ fontSize: 11 }}>{S.metaTopologyLinearLabel || 'Linear'}</span></ToggleButton>
         </div>
       </Card>
 

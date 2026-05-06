@@ -396,13 +396,24 @@ function LevelSection({
               </button>
             )}
           </div>
-          {/* Region rows — only after the level has produced results. */}
+          {/* Region rows — only after the level has produced results.
+              UX-007 — bare "No hits." was a silent failure for biolog
+              who tested on a known plasmid: gave no hint whether the
+              database was loaded, the threshold was tight, or there
+              were genuinely no matches. Adds a one-line diagnostic
+              that mentions the active threshold and points at L2 as
+              an alternative search. */}
           {hasResults && regions.length === 0 && (
             <div
               data-testid="annotator-level-empty"
-              style={{ fontSize: 11, color: 'var(--text-tertiary)' }}
+              style={{ fontSize: 11, color: 'var(--text-tertiary)', display: 'flex', flexDirection: 'column', gap: 4 }}
             >
-              {S.levelEmpty}
+              <div>{S.levelEmpty}</div>
+              {typeof S.levelEmptyDiagnostic === 'function' && (
+                <div style={{ fontSize: 10, lineHeight: 1.4 }}>
+                  {S.levelEmptyDiagnostic(threshold)}
+                </div>
+              )}
             </div>
           )}
           {regions.map((region) => (

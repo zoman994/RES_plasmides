@@ -354,8 +354,20 @@ export function useImporterState({ mode } = {}) { // eslint-disable-line no-unus
     const fn = `paste-${Date.now()}.txt`;
     if (fmt === 'raw') {
       const report = sanitizeWithReport(text);
+      // UX-011 — bumping every paste through library autoname so the
+      // second paste in a session lands as «pasted (2)» instead of
+      // colliding with the first. Falls back to plain «pasted» if the
+      // store hasn't wired up the suggester (test mocks).
+      let suggestedName = 'pasted';
+      try {
+        const get = useStore.getState().getSuggestedLibraryName;
+        if (typeof get === 'function') {
+          const fresh = get('pasted');
+          if (typeof fresh === 'string' && fresh) suggestedName = fresh;
+        }
+      } catch { /* fallback to 'pasted' */ }
       const next = {
-        name: 'pasted',
+        name: suggestedName,
         sequence: report.sequence,
         length: report.sequence.length,
         topology: 'linear',
@@ -371,7 +383,7 @@ export function useImporterState({ mode } = {}) { // eslint-disable-line no-unus
       setPendingImport({
         kind: 'paste',
         parsedItem: next,
-        suggestedName: 'pasted',
+        suggestedName,
         defaultTopology: 'linear',
         hasAnnotations: false,
         source: 'paste',

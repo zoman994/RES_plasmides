@@ -119,15 +119,28 @@ export default function StartScreen({ onOpenFile }) {
           {STRINGS.startScreen.appName}
         </h1>
         <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+          {/* UX-001 — Guide used to land biolog on a blank "Under
+              construction / Coming in M-A.1" page with no fallback
+              copy or external link. That is the worst possible
+              first-click experience for a newcomer searching for
+              help. Disabled + `soon` badge until M-A.1 ships the real
+              tutorial; the actual guide content lives in
+              docs/guides/USER_GUIDE_*.md and can be wired here later. */}
           <button
             type="button"
             className="ss-header-link"
-            onClick={() => pushFullscreen({
-              fullscreen: 'underConstruction',
-              payload: { milestone: 'M-A.1', name: 'Guide' },
-            })}
+            disabled
+            title={STRINGS.startScreen.guideSoonTitle || 'Guide coming soon'}
             data-testid="ss-guide-link"
-          >{STRINGS.startScreen.guide}</button>
+            style={{ opacity: 0.45, cursor: 'not-allowed', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+          >
+            <span>{STRINGS.startScreen.guide}</span>
+            <span style={{
+              fontSize: 10, padding: '1px 6px',
+              borderRadius: 9, background: 'var(--ss-bg-tertiary, #444)',
+              color: 'var(--ss-text-secondary, #aaa)',
+            }}>{STRINGS.startScreen.groupProjectsBadge}</span>
+          </button>
           <button
             type="button"
             className="ss-header-link"
@@ -188,19 +201,22 @@ export default function StartScreen({ onOpenFile }) {
                   payload: { target: 'library' },
                 })}
               >{STRINGS.startScreen.library}</SidebarLink>
+              {/* UX-010 — Primer pool / All projects used to be live
+                  links that dropped biolog into Under construction
+                  (M-F / TBD). That created a frustration trap: same
+                  visual style as Library (which works), opposite
+                  outcome. Mirroring the existing groupProjects pattern
+                  — disabled + `soon` badge — makes the unbuilt status
+                  visible at a glance and stops the dead-end click. */}
               <SidebarLink
+                disabled
+                badge={STRINGS.startScreen.groupProjectsBadge}
                 dataTestId="ss-browse-primer-pool"
-                onClick={() => pushFullscreen({
-                  fullscreen: 'underConstruction',
-                  payload: { milestone: 'M-F', name: 'Primer pool' },
-                })}
               >{STRINGS.startScreen.primerPool}</SidebarLink>
               <SidebarLink
+                disabled
+                badge={STRINGS.startScreen.groupProjectsBadge}
                 dataTestId="ss-browse-all-projects"
-                onClick={() => pushFullscreen({
-                  fullscreen: 'underConstruction',
-                  payload: { milestone: 'TBD', name: 'All projects' },
-                })}
               >{STRINGS.startScreen.allProjects}</SidebarLink>
               <SidebarLink
                 disabled

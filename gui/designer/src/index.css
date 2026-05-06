@@ -309,7 +309,7 @@ body {
 .ss-card-delete {
   position: absolute;
   right: 6px;
-  bottom: 6px;
+  top: 6px;
   background: transparent;
   border: none;
   cursor: pointer;
@@ -317,13 +317,18 @@ body {
   font-size: 14px;
   line-height: 1;
   color: var(--ss-text-tertiary);
-  opacity: 0;
+  /* UX-002 — was opacity: 0 + hover-only reveal. Biolog reported the
+     button "didn't exist" because it required perfect hover discovery.
+     Now: faintly visible at rest (0.35), hover/focus brightens. The
+     × is moved to top-right (out of the way of meta lines) and is
+     keyboard-reachable via tab. */
+  opacity: 0.35;
   border-radius: 4px;
   transition: opacity 100ms, color 100ms, background 100ms;
 }
 .ss-recent-card:hover .ss-card-delete,
 .ss-card-delete:focus-visible {
-  opacity: 0.7;
+  opacity: 0.85;
 }
 .ss-card-delete:hover {
   opacity: 1;

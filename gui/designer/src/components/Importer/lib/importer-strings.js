@@ -221,6 +221,12 @@ export const IMPORTER_STRINGS = {
     levelRunning: 'Running…',
     levelHits: (n) => `${n} hit${n === 1 ? '' : 's'}`,
     levelEmpty: 'No hits.',
+    // UX-007 — diagnostic body shown under the empty-state header so
+    // biolog isn't left guessing "is the database loaded? threshold
+    // wrong? actually no matches?" The previous bare "No hits." felt
+    // like a silent failure for known plasmids.
+    levelEmptyDiagnostic: (threshold) => `Совпадений ≥${Math.round((threshold ?? 0.96) * 100)}% identity не найдено в базе общих фич. Можно снизить порог или запустить L2 предикторы.`,
+    levelEmptyLowerThreshold: 'Снизить порог до 90%',
     levelNotRunYet: 'Not run yet.',
     // Sprint M-X.3 follow-up — biolog: «добавь возможность одним
     // кликом согласиться со всеми комон фичами которые нашел на L1».
@@ -280,6 +286,10 @@ export const IMPORTER_STRINGS = {
   metaTopology: 'topology',
   metaTopologyCircularTitle: 'Circular (plasmid)',
   metaTopologyLinearTitle: 'Linear',
+  // UX-014 — visible button labels (kept concise to fit the 200 px
+  // MetaColumn rail). Removes the icon-only ambiguity biolog reported.
+  metaTopologyCircularLabel: 'Circular',
+  metaTopologyLinearLabel: 'Linear',
   metaLengthLabel: 'length',
   metaOrigin: 'origin (bp)',
   metaOriginApply: '↻ apply',
