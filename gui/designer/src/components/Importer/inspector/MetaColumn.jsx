@@ -3,6 +3,7 @@ import { STRINGS } from '../../../lib/strings';
 import { sanitizeWithReport } from '../../../sequence-utils';
 import { rotateOriginToPosition } from '../../../rotate-origin';
 import { computeIntergenicHints } from './lib/intergenic-hints';
+import { useStore } from '../../../store';
 import TagsEditor from './TagsEditor';
 
 const S = STRINGS.importer;
@@ -90,6 +91,11 @@ export default function MetaColumn({
     && originOffset > 1
     && originOffset <= length
     && typeof onUpdateEdits === 'function';
+  // UX-036 — surface a toast after origin rotation so biolog has
+  // explicit confirmation that all region coords got pushed. Without
+  // it the change happens silently and the only sign was the input
+  // resetting to 1.
+  const showToast = useStore((s) => s.showToast);
   const onApplyOrigin = () => {
     if (!canApplyOrigin) return;
     const out = rotateOriginToPosition(
@@ -98,6 +104,13 @@ export default function MetaColumn({
       originOffset,
       { topology: 'circular' },
     );
+    const regionsCount = Array.isArray(out?.annotations) ? out.annotations.length : 0;
+    if (typeof showToast === 'function') {
+      showToast(
+        `Origin сменён на ${originOffset} bp · ${regionsCount} регионов пересчитано`,
+        'success',
+      );
+    }
     onUpdateEdits({
       editedSequence: out.sequence,
       editedAnnotations: out.annotations,
@@ -184,6 +197,7 @@ export default function MetaColumn({
                 max={Math.max(1, length)}
                 value={originOffset}
                 data-testid="importer-meta-origin-input"
+                title="Координата нового начала кольцевой плазмиды (1 = первая база)"
                 onChange={(e) => setOriginOffset(Number(e.target.value) || 1)}
                 style={{
                   width: 72, fontSize: 12, fontFamily: 'var(--font-mono)',
@@ -197,6 +211,7 @@ export default function MetaColumn({
                 type="button"
                 onClick={onApplyOrigin}
                 disabled={!canApplyOrigin}
+                title="Применить: повернуть кольцо чтобы выбранная база стала позицией 1. Все аннотации пересчитаются."
                 data-testid="importer-meta-origin-apply"
                 style={{
                   fontSize: 11,
@@ -220,11 +235,40 @@ export default function MetaColumn({
                   textTransform: 'uppercase', letterSpacing: 0.4,
                   color: 'var(--text-tertiary)', fontWeight: 500, marginRight: 4,
                 }}>{S.metaOriginHintLabel}:</span>
-                <span style={{
-                  fontFamily: 'var(--font-mono)',
-                  color: 'var(--text-primary)',
-                  wordBreak: 'break-word',
-                }}>{hints}</span>
+                {/* UX-035 — intergenic ranges used to be plain text. Now
+                    each `start–end` is a chip; clicking it pops the
+                    matching coordinate into the origin input AND marks
+                    it as a candidate. Saves biolog typing the boundary
+                    they already see on screen. */}
+                <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 4 }}>
+                  {hints.split(',').map((range) => {
+                    const trimmed = range.trim();
+                    if (!trimmed) return null;
+                    const startStr = trimmed.split(/[–-]/)[0];
+                    const startBp = parseInt(startStr, 10);
+                    const valid = Number.isFinite(startBp) && startBp > 0;
+                    return (
+                      <button
+                        key={trimmed}
+                        type="button"
+                        data-testid={`importer-meta-origin-hint-${trimmed}`}
+                        title={`Set origin to bp ${startBp}`}
+                        onClick={() => valid && setOriginOffset(startBp)}
+                        disabled={!valid}
+                        style={{
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: 10,
+                          padding: '1px 6px',
+                          borderRadius: 9,
+                          border: '0.5px solid var(--border-default)',
+                          background: 'var(--surface-1)',
+                          color: 'var(--text-primary)',
+                          cursor: valid ? 'pointer' : 'default',
+                        }}
+                      >{trimmed}</button>
+                    );
+                  })}
+                </span>
               </div>
             )}
           </div>

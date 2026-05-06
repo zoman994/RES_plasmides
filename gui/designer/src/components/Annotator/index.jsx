@@ -308,15 +308,39 @@ export default function Annotator({
         </label>
         <label style={{ fontSize: 11, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 6 }}>
           <span>{S.thresholdLabel(annotator.threshold)}</span>
-          <input
-            type="range"
-            data-testid="annotator-threshold-slider"
-            min={0}
-            max={1}
-            step={0.05}
-            value={annotator.threshold}
-            onChange={(e) => setThreshold(Number(e.target.value))}
-          />
+          {/* UX-018 — slider used to be markless, biolog had no idea
+              what 75% meant in the wild. Tick datalist gives 50/75/90
+              anchors (browsers render tiny notches under the track),
+              and a click on each value jumps the slider for free. */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+            <input
+              type="range"
+              data-testid="annotator-threshold-slider"
+              min={0}
+              max={1}
+              step={0.05}
+              value={annotator.threshold}
+              list="annotator-threshold-ticks"
+              onChange={(e) => setThreshold(Number(e.target.value))}
+            />
+            <datalist id="annotator-threshold-ticks">
+              <option value="0.5" label="50%" />
+              <option value="0.75" label="75%" />
+              <option value="0.9" label="90%" />
+            </datalist>
+            <div
+              aria-hidden="true"
+              style={{
+                display: 'flex', justifyContent: 'space-between',
+                fontSize: 8, color: 'var(--text-tertiary)',
+                marginTop: -2, padding: '0 4px',
+              }}
+            >
+              <span>50</span>
+              <span style={{ marginLeft: 16 }}>75</span>
+              <span>90</span>
+            </div>
+          </div>
         </label>
       </div>
 

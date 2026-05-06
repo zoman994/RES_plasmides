@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useStore, selectIsDirty } from '../../store';
 import { formatHotkey, HOTKEYS } from '../../lib/hotkeys';
 import { STRINGS } from '../../lib/strings';
@@ -49,6 +49,28 @@ export default function Topbar() {
   else if (dirty) saveStatus = lastSavedToFileAt ? STRINGS.topbar.saveStatus.unsavedDirty : STRINGS.topbar.saveStatus.neverSaved;
   else if (lastSavedToFileAt) saveStatus = STRINGS.topbar.saveStatus.savedAt(formatRelativeTime(lastSavedToFileAt));
   else saveStatus = STRINGS.topbar.saveStatus.autosavedInBrowser;
+
+  // UX-022 — flash a green ✓ for ~1.5s after a successful flush so
+  // biolog has a glance-readable confirmation. The bare grey
+  // «Saved at …» text was easy to miss on long sessions. Watches
+  // `lastSavedToFileAt` flips and times the flag out automatically.
+  const [justSaved, setJustSaved] = useState(false);
+  const lastSavedRef = useRef(lastSavedToFileAt);
+  useEffect(() => {
+    if (lastSavedToFileAt && lastSavedToFileAt !== lastSavedRef.current && !dirty) {
+      setJustSaved(true);
+      const t = setTimeout(() => setJustSaved(false), 1500);
+      lastSavedRef.current = lastSavedToFileAt;
+      return () => clearTimeout(t);
+    }
+    lastSavedRef.current = lastSavedToFileAt;
+    return undefined;
+  }, [lastSavedToFileAt, dirty]);
+  // Stale-unsaved warning — if biolog has had unsaved changes for over
+  // ~30 s, the status text bolds + recolors amber so it stops being
+  // perceived as ambient grey chrome.
+  const staleUnsaved = dirty && lastSavedToFileAt
+    && (Date.now() - new Date(lastSavedToFileAt).getTime() > 30_000);
 
   function handleBack() {
     if (canPop) {
@@ -174,8 +196,24 @@ export default function Topbar() {
         >?</button>
         <span
           data-testid="topbar-save-status"
-          style={{ fontSize: 12, color: 'var(--text-tertiary, #78716c)' }}
+          style={{
+            fontSize: 12,
+            display: 'inline-flex', alignItems: 'center', gap: 4,
+            // UX-022 — bold amber while sit-and-stew unsaved, default
+            // grey while clean, default grey + green ✓ on the flash.
+            color: staleUnsaved
+              ? 'var(--accent-500, #f59e0b)'
+              : 'var(--text-tertiary, #78716c)',
+            fontWeight: staleUnsaved ? 600 : 400,
+          }}
         >
+          {justSaved && (
+            <span
+              data-testid="topbar-save-flash"
+              aria-hidden="true"
+              style={{ color: '#16a34a', fontWeight: 600 }}
+            >✓</span>
+          )}
           {saveStatus}
         </span>
         <button
