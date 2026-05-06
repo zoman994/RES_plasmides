@@ -16,9 +16,33 @@
  * PreviewTab owns the wiring to `acceptRegion / rejectRegion`.
  */
 
+import { useRef } from 'react';
 import { STRINGS } from '../../lib/strings';
 
 const S = STRINGS.importer.annotator;
+
+// 06.05.2026 — biolog feedback after the M-X.3 K4 ship: Accept/Reject
+// closes the panel instantly with no visible confirmation, so a fast
+// double-click sometimes registers as «didn't work». Use a 140 ms
+// press animation on the clicked button before delegating to the
+// store. requestAnimationFrame batching means the animation kicks
+// off in the same frame as the click; the parent's setSelectedGhost
+// → null is the next paint, by which time the eye has already
+// caught the pulse.
+function pressAndDispatch(btnRef, fn) {
+  if (!fn) return;
+  const el = btnRef && btnRef.current;
+  if (el) {
+    // Force restart by removing then re-adding the class within the
+    // same microtask so a second click in quick succession still
+    // animates.
+    el.classList.remove('annotator-drill-in-press-accept');
+    // eslint-disable-next-line no-unused-expressions
+    el.offsetWidth;
+    el.classList.add('annotator-drill-in-press-accept');
+  }
+  fn();
+}
 
 export default function GhostDrillInPanel({
   region,
@@ -28,6 +52,8 @@ export default function GhostDrillInPanel({
   onRunPredictors,
   onClose,
 }) {
+  const acceptBtnRef = useRef(null);
+  const rejectBtnRef = useRef(null);
   if (!region) return null;
 
   const start = (region.start || 0) + 1; // 1-based for the UI
@@ -40,6 +66,7 @@ export default function GhostDrillInPanel({
     <div
       data-testid="annotator-ghost-drill-in"
       data-region-id={region.id || ''}
+      className="annotator-drill-in-anim"
       style={{
         position: 'absolute',
         right: 0,
@@ -105,15 +132,17 @@ export default function GhostDrillInPanel({
         padding: '0 14px 12px', display: 'flex', flexDirection: 'column', gap: 6,
       }}>
         <button
+          ref={acceptBtnRef}
           type="button"
           data-testid="annotator-ghost-accept"
-          onClick={onAccept}
+          onClick={() => pressAndDispatch(acceptBtnRef, onAccept)}
           style={primaryBtnStyle('var(--accent-500, #f97316)')}
         >{S.ghostDrillInAccept}</button>
         <button
+          ref={rejectBtnRef}
           type="button"
           data-testid="annotator-ghost-reject"
-          onClick={onReject}
+          onClick={() => pressAndDispatch(rejectBtnRef, onReject)}
           style={secondaryBtnStyle()}
         >{S.ghostDrillInReject}</button>
       </div>
