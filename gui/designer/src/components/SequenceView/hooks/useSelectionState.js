@@ -154,21 +154,37 @@ export function useSelectionState({
     if (!rect || !rect.width) return null;
     const x = e.clientX - rect.left;
     const rawOffset = x / charPx - LABEL_WIDTH;
-    // Round-15 (06.05.2026 «всё ещё есть буква»): direction-aware
-    // rounding for drag-extend. Math.ceil works for RIGHTWARD drag
-    // (extends past pointer-cell's right edge → cell included), but
-    // for LEFTWARD drag the same `ceil` puts caret PAST the cell's
-    // left edge → cell excluded. Pass `opts.anchor` in plasmid coords;
-    // when pointer's provisional position is LEFT of anchor, use
-    // `floor` instead so the hovered char is always inside [start, end).
+    // Round-15b (06.05.2026 «всё равно есть буква»): direction-aware
+    // rounding by ROW KIND, not numeric anchor comparison. Numeric
+    // compare misfires on wrap-aware drag — leading-wrap row coords
+    // (e.g. 4668) are numerically GREATER than a main anchor (e.g. 100)
+    // even though the drag direction is conceptually LEFTWARD through
+    // origin.
+    //
+    //   - main row: compare provisional vs anchor (true L/R direction).
+    //   - leading-wrap row: drag walks LEFT from main:first through
+    //     origin → use floor so the hovered cell stays inside the
+    //     [c+seqLen, seqLen) leading segment.
+    //   - trailing-wrap row OR bridge wrap-half: drag walks RIGHT from
+    //     main:last through origin → ceil so the hovered cell stays
+    //     inside [0, c-seqLen) trailing segment.
     let offsetCh;
     if (opts.extending) {
-      const provisional = lineStart + rawOffset;
-      const anchorPos = Number.isFinite(opts.anchor) ? opts.anchor : null;
-      if (anchorPos != null && provisional < anchorPos) {
+      if (kind === 'leading-wrap') {
         offsetCh = Math.floor(rawOffset);
-      } else {
+      } else if (kind === 'trailing-wrap') {
         offsetCh = Math.ceil(rawOffset);
+      } else if (wrapsOrigin && rawOffset > bridgeWrapAt) {
+        offsetCh = Math.ceil(rawOffset);
+      } else {
+        // main row drag — anchor compare
+        const provisional = lineStart + rawOffset;
+        const anchorPos = Number.isFinite(opts.anchor) ? opts.anchor : null;
+        if (anchorPos != null && provisional < anchorPos) {
+          offsetCh = Math.floor(rawOffset);
+        } else {
+          offsetCh = Math.ceil(rawOffset);
+        }
       }
     } else {
       offsetCh = Math.round(rawOffset);
