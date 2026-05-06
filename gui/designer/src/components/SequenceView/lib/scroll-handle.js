@@ -44,9 +44,25 @@ export function attachScrollHandle(_ref, containerRef) {
     scrollToPosition(absolutePos, opts) {
       const root = containerRef.current;
       if (!root) return;
-      const lines = root.querySelectorAll(
+      // Round 6 (06.05.2026 biolog «по колбасе елозит плавно но
+      // перестало адресовать на сиквенс»): with wrap-tail enabled,
+      // leading-wrap rows render BEFORE main rows in DOM order with
+      // large data-line-start values (e.g. 4668, 4808). The naive
+      // single-pass loop tripped on the first leading row's
+      // `start > absolutePos` and broke out with target = null,
+      // skipping scrollIntoView entirely — caret moved, viewer froze.
+      // Filter to main rows (or anything without the wraptail-kind
+      // attribute, for legacy / linear plasmids) so the «pick the
+      // last row whose start ≤ pos» invariant matches the real
+      // plasmid coordinate system.
+      const allLines = root.querySelectorAll(
         '[data-testid="sequence-view-line"]',
       );
+      const lines = [];
+      for (const el of allLines) {
+        const k = el.getAttribute('data-wraptail-kind');
+        if (!k || k === 'main') lines.push(el);
+      }
       if (lines.length === 0) return;
       let target = null;
       for (const el of lines) {
