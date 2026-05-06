@@ -253,12 +253,75 @@ Additional hooks: ~12 KB total new.
 
 ### 3.3 Что остаётся unchanged
 
-- **`SequenceView/`** (полностью, ~145 KB) — добавится только Editable mode toggle handler.
-- **`Annotator/`** (полностью, ~70 KB) — embedded mode уже работает с M-X.2.
-- **`FeatureEditorModal.jsx`** (25.6 KB) — без изменений.
-- **`SequenceView/tracks/AnnotationTrack.jsx`** (41.6 KB hard violation) — TD-ANNOTATIONTRACK-DECOMPOSE-V2 остаётся в TECH_DEBT, не закрываем в этом sprint'е (отдельный M-X.6 после acceptance).
-- **`store/projectSlice.js`, `store/annotatorSlice.js`, `store/uiSlice.js`** — без изменений в logic, только мелкие правки в slice creators для новых actions.
-- **DAG, Container Window, Mix Workspace** — не трогаем.
+**Production baseline на 06.05.2026 (v0.7.3 release).** Биолог явно подтвердил эти элементы как working as intended (визуальная приёмка через скриншот pGEX-2T inspector view, 06.05.2026 23:37 MSK) — не переписываются в M-X.5, только переезжают из `Importer/` namespace в `Library/` (K1-K2 rename, без functional changes):
+
+**Sequence view core (`SequenceView/`, ~145 KB):**
+- Multi-line wrap с rulers + complement strand + AA translation row под CDS.
+- LinearFeatureBar «колбаса» в header — instant visual map, click-navigation.
+- Annotation rectangles с inline labels + SBOL glyphs (chevron icons показывают strand direction).
+- Ruler ticks каждые 10 bp + numbered позиции.
+- AA translation row с цветами по гидрофобности.
+- Wrap-tail rendering для circular plasmids (M-X.3 finalized v0.7.3).
+- Drag-handle edge resizing для regions с live preview rect.
+- Caret + selection с keyboard shortcuts (Ctrl+C, Ctrl+Alt+C, Shift+arrow extend).
+- Settings popover ⚙ с display options.
+
+В M-X.5 добавится **только**: Editable mode toggle handler (K6) — keyboard listener активируется когда `editable: true`.
+
+**Annotator (`Annotator/`, ~70 KB) — "работает шикарно, визуал отличный" (биолог 06.05.2026):**
+- Embedded mode в AnnotationsTab (DEC-ANN-13).
+- Three-level LevelPanel (L1 homology auto-run, L2 predictors manual, L3 BLAST stub).
+- PreviewTab linear / circular sub-tabs.
+- Region-scope context menu из SequenceView.
+- Idle pre-warm для instant tab switch (DEC-IDLE-PREWARM-01).
+- Save flow с `justSavedAt` confirmation.
+- Threshold bidirectional sync с SequenceView.
+
+**Feature editing:**
+- `FeatureEditorModal.jsx` (25.6 KB) — двухtabовая (Feature / Subfeatures), split + merge + delete.
+- Sub-features data model (level: 'detail' + parentId, DEC-FEATURE-SUBFEATURES-01).
+- SBOL glyphs (DEC-ANN-SBOL-01) — paired с label, flips on reverse strand.
+- Inline rename через dblclick на label.
+
+**Inspector header (M-X.2-fix baseline):**
+- Title row: InlineEditableTitle + ⚙ settings + READ-ONLY pill + length · topology · regions counter.
+- Selection live counter (bp + aa когда mode = 'aa').
+- LinearFeatureBar «колбаса» под TabBar.
+- TabBar overview / sequence / annotations + history (conditional).
+- Idle pre-warm visibility toggle для tabs.
+
+**MetaColumn (right rail, ~12 KB):**
+- TAGS editor inline.
+- TOPOLOGY toggle Circular / Linear с persisted edit (`editedTopology`).
+- ORIGIN (BP) input для circular (DEC-MB-03 origin returned to MetaColumn).
+- INTERGENIC REGIONS chips list (computed).
+- LENGTH bp display.
+- INFO + DESCRIPTION + ORGANISM + SOURCE из metadata.
+
+**Library tree (was CatalogColumn, переезжает в `Library/tree/` в K3) — "колбаса работает, рендер быстрый":**
+- Folder hierarchy с MAX_INDENT_DEPTH=5 + recursive nesting.
+- Drag-drop файлов в любую папку (`targetFolderTag`).
+- Drag-drop entries между папками (rewrites tags).
+- Hover-revealed delete `×`, add child folder `+`, add file `⤓`.
+- Per-row plasmid mini-icon (PlasmidMiniMap inline mode).
+- `content-visibility: auto` + `contain: paint` + ItemRow memo gate (perf на ~700 SnapGene entries).
+- localStorage persistence: open/closed groups, opened folders, user folders.
+- Render-time merge для catalog icon (`liveAnnotationsByLibId`).
+- Search bar overlay flat search через все 4 sources.
+
+**Performance baselines (acked 06.05.2026):**
+- Render быстрый, no jank на ~5 KB plasmids с 11+ regions.
+- CPU idle 1-2% (после Vite HMR pin + PlasmidMap memo).
+- Memory ~300 MB stable.
+- Scroll smooth даже на 700 SnapGene entries.
+
+**Не переписывается в M-X.5:**
+- `SequenceView/tracks/AnnotationTrack.jsx` (41.6 KB hard violation) — TD-ANNOTATIONTRACK-DECOMPOSE-V2 carries в M-X.6.
+- `store/projectSlice.js`, `store/annotatorSlice.js`, `store/uiSlice.js` — без изменений в logic, только мелкие правки в slice creators для новых actions из §3.4.
+- DAG проекта (`flow/`), Container Window, Mix Workspace, Primer Pool — не трогаем.
+- Cross-project import modal (DagView readOnly) — не трогаем.
+
+**Объём unmodified кода:** ~250 KB сохраняется как есть из v0.7.3 baseline. Только rename (K1) + dead code removal (K2) + декомпозиция CatalogColumn (K3) — ~25% кода трогается mechanically. Остальное (K4-K11) — добавление новой функциональности на чистом ground.
 
 ### 3.4 Что меняется в `librarySlice.js`
 
