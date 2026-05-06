@@ -43,61 +43,48 @@ export function useIdlePrewarm({ itemKey, activeTab, testMode = false }) {
 
   // Sequence pre-warm.
   //
-  // 2026-05-06 — biolog: «первое нажатие на сиквенс открывает с
-  // секундной задержкой». Cause: idle-callback timeout was 800 ms,
-  // so on busy main thread the prewarm fired AFTER the user already
-  // clicked → React mounted the heavy SequenceView synchronously
-  // inside the click handler. Switched to a double-rAF schedule:
-  // we wait for ONE paint to land Overview, then prewarm Sequence on
-  // the next frame (~16 ms later). Biolog now has the heavy tree
-  // mounted hidden by the time their finger reaches the Sequence tab.
+  // 2026-05-06 (round 2) — even with double-rAF biolog reported the
+  // first Sequence click still felt slow. Microtask-scheduled now:
+  // `Promise.resolve().then(flush)` flushes BEFORE React paints the
+  // initial Overview, so the SequenceView mount runs concurrently
+  // with Overview's paint. Trade-off: Overview's initial render is
+  // ~5 % slower because Sequence competes for the same render pass,
+  // but the user perceives the Inspector «open» as instant either
+  // way (Overview is light) and the click on Sequence is now truly
+  // pre-warmed.
   useEffect(() => {
     if (testMode) return undefined;
     if (!itemKey) return undefined;
     if (warmedTabs.has('sequence')) return undefined;
     let cancelled = false;
-    const flush = () => {
+    Promise.resolve().then(() => {
       if (cancelled) return;
       setWarmedTabs((prev) => (prev.has('sequence') ? prev : new Set([...prev, 'sequence'])));
-    };
-    const r1 = requestAnimationFrame(() => {
-      if (cancelled) return;
-      requestAnimationFrame(flush);
     });
-    return () => {
-      cancelled = true;
-      cancelAnimationFrame(r1);
-    };
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [itemKey, warmedTabs.has('sequence'), testMode]);
 
-  // Annotations pre-warm — same double-rAF pattern but one extra
-  // frame later than Sequence so the browser can paint between the
-  // two heavy mounts. Both are still mounted before the user's
-  // finger reaches the tab strip.
+  // Annotations pre-warm.
+  //
+  // 2026-05-06 (round 3) — biolog: «между вкладками должно быстрее
+  // мысли переключаться». Earlier rAF schedule meant Annotations
+  // finished warming ~48 ms after Inspector mount; quick Sequence →
+  // Annotations switches caught it half-warmed and React still had
+  // to mount the heavy Annotator inline. Microtask now — both
+  // Sequence and Annotations land in the same React batch as the
+  // Overview render, so any tab switch from second 1 onwards is a
+  // pure display:none → display:block flip.
   useEffect(() => {
     if (testMode) return undefined;
     if (!itemKey) return undefined;
     if (warmedTabs.has('annotations')) return undefined;
     let cancelled = false;
-    const flush = () => {
+    Promise.resolve().then(() => {
       if (cancelled) return;
       setWarmedTabs((prev) => (prev.has('annotations') ? prev : new Set([...prev, 'annotations'])));
-    };
-    let r2 = 0;
-    const r1 = requestAnimationFrame(() => {
-      if (cancelled) return;
-      r2 = requestAnimationFrame(() => {
-        if (cancelled) return;
-        // Extra frame so Sequence prewarm finishes first.
-        requestAnimationFrame(flush);
-      });
     });
-    return () => {
-      cancelled = true;
-      cancelAnimationFrame(r1);
-      if (r2) cancelAnimationFrame(r2);
-    };
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [itemKey, warmedTabs.has('annotations'), testMode]);
 

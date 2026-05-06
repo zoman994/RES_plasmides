@@ -366,29 +366,6 @@ body[data-app-ready="true"] {
   animation: app-fade-in 220ms ease-out;
 }
 
-/* ─── Loading skeleton rows (snapgene category open) ─────────────── */
-@keyframes skeleton-pulse {
-  0%   { background-position: -200px 0; }
-  100% { background-position: calc(200px + 100%) 0; }
-}
-.catalog-skeleton-row {
-  height: 24px;
-  margin: 2px 8px;
-  border-radius: 3px;
-  background: linear-gradient(
-    90deg,
-    var(--surface-2, #f5f5f4) 0%,
-    color-mix(in srgb, var(--surface-2, #f5f5f4) 40%, transparent) 50%,
-    var(--surface-2, #f5f5f4) 100%
-  );
-  background-size: 200px 100%;
-  background-repeat: no-repeat;
-  animation: skeleton-pulse 1.4s linear infinite;
-}
-@media (prefers-reduced-motion: reduce) {
-  .catalog-skeleton-row { animation: none; }
-}
-
 .ss-card-delete {
   position: absolute;
   right: 6px;

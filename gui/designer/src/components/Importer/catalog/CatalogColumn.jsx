@@ -1293,26 +1293,14 @@ function InlineItemList({
   draggableItems = false, // Mine only — items can be dragged to other folders
   sourceFolder = '',     // path of the parent folder these items live in
 }) {
-  // Skeleton placeholder during load. Without it the user clicks a
-  // SnapGene category and sees nothing for ~200 ms while the JSON
-  // parses — feels like the click was lost. Now a few pulsing rows
-  // appear instantly as a click-ack signal.
-  if (loading) {
-    return (
-      <div data-testid={loadingTestId || 'catalog-loading-skeleton'}>
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div
-            key={i}
-            className="catalog-skeleton-row"
-            style={{
-              marginLeft: indentForDepth(depth) + CHEVRON_GUTTER,
-              marginRight: 12,
-            }}
-          />
-        ))}
-      </div>
-    );
-  }
+  // Reverted 2026-05-06 — earlier in this session I tried surfacing 4
+  // pulsing skeleton rows during loading as «click-ack feedback». User
+  // pushed back («зачем ты сделал визуализацию загрузки?»): the
+  // skeletons look like fake/empty rows rather than a load signal,
+  // and they show longer than the actual fetch (so they read as «the
+  // app is broken» more than «items are coming»). Going back to a
+  // silent null while loading.
+  if (loading) return null;
   if (!items || items.length === 0) {
     return emptyLabel
       ? <EmptyHint label={emptyLabel} testId={emptyTestId} depth={depth} />

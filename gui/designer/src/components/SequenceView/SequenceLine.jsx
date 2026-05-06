@@ -79,16 +79,15 @@ const SequenceLine = memo(function SequenceLine({
         // Browser-level paint isolation: scroll-induced repaints stay
         // inside this line's box, neighbours don't repaint.
         contain: "paint",
-        // `content-visibility: auto` — skips layout + paint of
-        // off-screen lines entirely. happy-dom bypasses this so
-        // existing tests find the full DOM tree synchronously.
-        contentVisibility: __IS_TEST_ENV__ ? "visible" : "auto",
-        containIntrinsicSize: "auto 220px",
-        // GPU compositing — promotes each line into its own layer so
-        // scroll becomes a pure GPU translate of pre-rendered tiles.
-        // 2026-05-06 biolog: «всё равно есть микрофризы на слабых
-        // машинах». translateZ(0) is the canonical hint; backface
-        // hidden is paired so Safari opts into the same layer.
+        // `content-visibility: auto` was removed 2026-05-06 (round 2)
+        // — biolog: «как будто 60 Hz а хочется 90-120». auto-mode
+        // realises off-screen lines as they enter the viewport, which
+        // costs ~16-32 ms per realisation pass and breaks the
+        // 11-ms frame budget for high-refresh displays. Eager paint
+        // + GPU layers (translateZ(0) below) keeps every line
+        // pre-rendered, so scroll is a pure compositor translate.
+        // Memory cost: ~60 layers per plasmid, well within budget.
+        // GPU compositing — promotes each line into its own layer.
         transform: "translateZ(0)",
         backfaceVisibility: "hidden",
       }}
