@@ -763,24 +763,16 @@ export default function CatalogColumn({
                     const items = sources.snapgeneCategoryItems[c.slug];
                     const isLoading = catOpen && items === undefined;
                     return (
-                      <NestedSubGroup
+                      <SnapgeneCategoryRow
                         key={c.slug}
-                        testId={`importer-catalog-snapgene-${c.slug}`}
-                        label={c.name}
-                        count={c.count}
+                        category={c}
                         open={catOpen}
+                        items={items}
+                        isLoading={isLoading}
                         onToggle={() => toggleCat(c.slug)}
-                        depth={1}
-                      >
-                        <InlineItemList
-                          items={items || []}
-                          loading={isLoading}
-                          emptyLabel={S.catalogEmptyGroup}
-                          loadingTestId={`catalog-snapgene-loading-${c.slug}`}
-                          onSelectItem={onSelectItem}
-                          depth={2}
-                        />
-                      </NestedSubGroup>
+                        onPrefetch={sources.prefetchSnapgeneCategory}
+                        onSelectItem={onSelectItem}
+                      />
                     );
                   })}
                 </>
@@ -1016,7 +1008,17 @@ function GroupHeader({
           fontWeight: 500,
         }}
       >
-        <span style={{ width: 10, color: 'var(--text-tertiary)' }}>{open ? '▾' : '▸'}</span>
+        <span
+          aria-hidden="true"
+          className="importer-catalog-chevron"
+          data-open={open ? 'true' : 'false'}
+          style={{
+            width: 10, color: 'var(--text-tertiary)',
+            display: 'inline-block',
+            transition: 'transform 140ms ease-out',
+            transform: open ? 'rotate(0deg)' : 'rotate(-90deg)',
+          }}
+        >▾</span>
         <span style={{ flex: 1 }}>{label}</span>
         {typeof count === 'number' && (
           <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>{count}</span>
@@ -1233,6 +1235,56 @@ function NestedSubGroup({
  *  fetching we render nothing — biolog asked for «загрузка…» to be removed
  *  because it appeared at column-zero indent and looked like a misplaced
  *  section header rather than a child of the just-opened sub-group. */
+// Single SnapGene category row with **debounced** hover-prefetch.
+//
+// Why debounce: a flat onMouseEnter prefetch caused the «first clicks
+// feel ignored» symptom — when biolog ran the cursor through 30
+// categories quickly, 30 fetch calls fired and each `response.json()`
+// parse blocked main thread for a few hundred ms. Now we only kick
+// the prefetch if the cursor actually lingers ≥250 ms.
+function SnapgeneCategoryRow({
+  category, open, items, isLoading, onToggle, onPrefetch, onSelectItem,
+}) {
+  const hoverTimer = useRef(null);
+  const cancelHoverPrefetch = () => {
+    if (hoverTimer.current) {
+      clearTimeout(hoverTimer.current);
+      hoverTimer.current = null;
+    }
+  };
+  const armHoverPrefetch = () => {
+    if (!onPrefetch || items !== undefined) return;
+    cancelHoverPrefetch();
+    hoverTimer.current = setTimeout(() => {
+      onPrefetch(category.slug);
+      hoverTimer.current = null;
+    }, 250);
+  };
+  useEffect(() => () => cancelHoverPrefetch(), []);
+
+  return (
+    <div onMouseEnter={armHoverPrefetch} onMouseLeave={cancelHoverPrefetch} onFocus={armHoverPrefetch}>
+      <NestedSubGroup
+        testId={`importer-catalog-snapgene-${category.slug}`}
+        label={category.name}
+        count={category.count}
+        open={open}
+        onToggle={onToggle}
+        depth={1}
+      >
+        <InlineItemList
+          items={items || []}
+          loading={isLoading}
+          emptyLabel={S.catalogEmptyGroup}
+          loadingTestId={`catalog-snapgene-loading-${category.slug}`}
+          onSelectItem={onSelectItem}
+          depth={2}
+        />
+      </NestedSubGroup>
+    </div>
+  );
+}
+
 function InlineItemList({
   items, loading, emptyLabel, emptyTestId,
   loadingTestId, // eslint-disable-line no-unused-vars -- legacy callers still pass it

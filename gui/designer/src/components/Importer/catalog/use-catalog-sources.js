@@ -94,14 +94,68 @@ export function useCatalogSources() {
 
   const snapgeneCategories = index?.categories || [];
 
-  // Helper: ensure category items are loaded on demand.
+  // Snappier category opening (biolog: «когда там 300+ плазмид,
+  // открывается с явной задержкой»). Two improvements over the old
+  // one-shot setState:
+  //
+  //   1. CHUNKED SET — instead of dropping all ~300 items into state
+  //      at once (which forces React to mount ~300 ItemRow nodes +
+  //      their PlasmidMiniMap SVGs in one frame), we land the first
+  //      INITIAL_CHUNK rows immediately and append the rest via
+  //      requestIdleCallback / setTimeout fallback. The list visibly
+  //      grows over ~2 frames but the user sees the first dozen rows
+  //      and a usable scroll surface in <50 ms.
+  //
+  //   2. PREFETCH — `prefetchSnapgeneCategory(slug)` exposes the
+  //      fetch-only path (no setState). CatalogColumn calls it on
+  //      mouse-enter of a category header, so by the time the user
+  //      actually clicks, the JSON is already in the catalog-cache
+  //      and `loadSnapgeneCategory` only pays the chunked-render cost.
+  // Smaller first chunk so the click → first-paint is sub-frame even
+  // when the JSON parse just finished. Subsequent chunks are larger
+  // because by then the user is already scrolling and we want the
+  // tail to land quickly.
+  const INITIAL_CHUNK = 20;
+  const NEXT_CHUNK = 60;
+  const idleSchedule = (cb) => {
+    if (typeof requestIdleCallback === 'function') return requestIdleCallback(cb, { timeout: 100 });
+    return setTimeout(cb, 0);
+  };
+
+  const prefetchSnapgeneCategory = (slug) => {
+    if (!slug) return;
+    if (snapgeneCategoryItems[slug] !== undefined) return;
+    // Fire-and-forget — the catalog-cache layer dedups concurrent
+    // fetches, so multiple hovers don't multiply network hits.
+    fetchCategory(slug).catch(() => { /* ignore — load will retry */ });
+  };
+
   const loadSnapgeneCategory = (slug) => {
     if (snapgeneCategoryItems[slug] !== undefined) return;
     fetchCategory(slug).then((cat) => {
-      const items = (cat.plasmids || []).map((p) => ({
+      const all = (cat.plasmids || []).map((p) => ({
         ...p, _badge: cat.name || slug, _source: 'snapgene', _slug: slug,
       }));
-      setSnapgeneCategoryItems((prev) => ({ ...prev, [slug]: items }));
+      if (all.length === 0) {
+        setSnapgeneCategoryItems((prev) => ({ ...prev, [slug]: [] }));
+        return;
+      }
+      // First chunk — synchronous, so the first paint shows real
+      // rows instead of an empty group.
+      const first = all.slice(0, INITIAL_CHUNK);
+      setSnapgeneCategoryItems((prev) => ({ ...prev, [slug]: first }));
+      if (all.length <= INITIAL_CHUNK) return;
+      // Remaining chunks — landed during idle frames so the user can
+      // already scroll / interact while the rest fills in.
+      let cursor = INITIAL_CHUNK;
+      const tick = () => {
+        const end = Math.min(all.length, cursor + NEXT_CHUNK);
+        const next = all.slice(0, end);
+        setSnapgeneCategoryItems((prev) => ({ ...prev, [slug]: next }));
+        cursor = end;
+        if (cursor < all.length) idleSchedule(tick);
+      };
+      idleSchedule(tick);
     }).catch(() => {
       setSnapgeneCategoryItems((prev) => ({ ...prev, [slug]: [] }));
     });
@@ -121,6 +175,7 @@ export function useCatalogSources() {
     demoLoading,
     mine,
     mineGroups,
+    prefetchSnapgeneCategory,
     snapgeneCategories,
     snapgeneCategoryItems,
     loadSnapgeneCategory,

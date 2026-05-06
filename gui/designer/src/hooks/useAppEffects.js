@@ -20,8 +20,19 @@ import { designPrimersLocal } from '../local-primer-design';
 export function useAppEffects() {
   const fragments = useFragments();
   const junctions = useJunctions();
-  const polymerase = useStore(s => s.polymerase);
-  const primerPrefix = useStore(s => s.primerPrefix);
+  // UX-006 wire-up — Settings → Display & Defaults stores polymerase
+  // and primerPrefix under `displaySettings`. The previous reads of
+  // top-level `s.polymerase` / `s.primerPrefix` were silently
+  // undefined (no such root keys exist), so designPrimersLocal fell
+  // back to its hardcoded defaults («phusion» / «P»). Now Settings
+  // actually drives the calculator: changing polymerase in the modal
+  // re-runs the auto-design memo on the next tick.
+  const polymerase = useStore(s => (
+    s.displaySettings ? s.displaySettings.polymerase : 'q5'
+  ));
+  const primerPrefix = useStore(s => (
+    s.displaySettings ? s.displaySettings.primerPrefix : 'P'
+  ));
   const assemblies = useStore(s => s.assemblies);
   const activeId = useStore(s => s.activeId);
   const active = useMemo(

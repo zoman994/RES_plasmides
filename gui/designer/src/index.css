@@ -417,12 +417,33 @@ body {
   color: var(--danger-fg, #b91c1c) !important;
 }
 /* Item row wrapper provides the depth-tinted bg + hover state for the
-   delete-«×» (item is now a wrapper div around button + delete-button). */
+   delete-«×» (item is now a wrapper div around button + delete-button).
+   Subtle hover transition removes the abrupt color flip while still
+   feeling instant — 120 ms is below the perception threshold for
+   «laggy». */
 .importer-catalog-item-row {
   background: var(--depth-bg, transparent);
+  transition: background 120ms ease-out;
 }
 .importer-catalog-item-row:hover {
   background: var(--surface-2);
+}
+/* Chunked-render fade-in. New rows that appear during a chunk-tick
+   slide in over 180 ms instead of pop-flashing — masks the visual
+   jump when 50→130→200→308 rows materialise across idle frames.
+   `prefers-reduced-motion` honours OS accessibility settings. */
+@keyframes catalog-row-fade-in {
+  from { opacity: 0; transform: translateY(-2px); }
+  to   { opacity: 1; transform: none; }
+}
+.importer-catalog-item-row {
+  animation: catalog-row-fade-in 180ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .importer-catalog-item-row {
+    animation: none;
+    transition: none;
+  }
 }
 .importer-catalog-item-row:hover .importer-catalog-item > span:nth-child(2) {
   color: var(--text-primary);

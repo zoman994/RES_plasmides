@@ -258,6 +258,24 @@ const SequenceView = forwardRef(function SequenceView({
   // useEffect produced a narrow-then-wide flash on tab activation
   // (биолог 03.05.2026: «когда заходишь в сиквенс вью то сразу
   // происходит рендер сначала в узком формате…»).
+  // UX-006 wire-up — Settings → Display & Defaults exposes a
+  // user-tunable upper bound on row width. ResizeObserver still drives
+  // auto-fit so a narrow viewport never overflows; the user knob just
+  // says «but don't go wider than N». Read inside the layout effect
+  // so a Settings change recomputes on next observer tick.
+  const wrapPreferenceRef = useRef(150);
+  const wrapPreference = useStore((s) => (
+    s.displaySettings && Number.isFinite(s.displaySettings.sequenceWrap)
+      ? s.displaySettings.sequenceWrap
+      : 150
+  ));
+  useEffect(() => { wrapPreferenceRef.current = wrapPreference; }, [wrapPreference]);
+  // Re-clamp current charsPerLine if the user shrinks the preference
+  // mid-session (no remount / resize event needed).
+  useEffect(() => {
+    setCharsPerLine((prev) => Math.min(prev, wrapPreference));
+  }, [wrapPreference]);
+
   useLayoutEffect(() => {
     const host = containerRef.current;
     if (!host) return;
@@ -267,7 +285,8 @@ const SequenceView = forwardRef(function SequenceView({
       const available = host.clientWidth - 24;
       if (available <= 0) return; // host hidden / collapsed — wait for ResizeObserver
       const fitChars = Math.floor(available / chW) - LABEL_WIDTH;
-      const nextCpl = clampCharsPerLine(fitChars);
+      const cap = wrapPreferenceRef.current || 150;
+      const nextCpl = Math.min(clampCharsPerLine(fitChars), cap);
       // Sprint M-X.3 follow-up (05.05.2026) — biolog: «грузит процессор
       // на 30-60% даже просто в открытой вкладке без работы». The
       // ResizeObserver fires on every layout pass; without an equality
