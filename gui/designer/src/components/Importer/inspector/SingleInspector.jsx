@@ -1,4 +1,5 @@
-import { useCallback, useState, useEffect, useRef } from 'react';
+import { useCallback, useState, useEffect, useRef, useMemo } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { STRINGS } from '../../../lib/strings';
 import InlineEditableTitle from './InlineEditableTitle';
 import TabBar from './tabs/TabBar';
@@ -74,14 +75,27 @@ export default function SingleInspector({
   // eslint-disable-next-line no-unused-vars -- ditto
   onRunAutoAnnotate,
 }) {
-  // Annotator state for the navigation-strip ghost overlay (only
-  // consumed when activeTab === 'annotations'; cheap subscriptions
-  // because each selector returns a primitive or a stable slice ref).
-  const annotatorResults = useStore((s) => selectAnnotator(s).results);
-  const annotatorThreshold = useStore((s) => selectAnnotator(s).threshold);
-  const annotatorAccepted = useStore((s) => selectAnnotator(s).acceptedRegionIds);
-  const annotatorRejected = useStore((s) => selectAnnotator(s).rejectedRegionIds);
-  const annotatorShowDuplicates = useStore((s) => selectAnnotator(s).showDuplicates);
+  // Annotator state for the navigation-strip ghost overlay. Single
+  // shallow-equality subscription instead of five separate ones — five
+  // calls each compared with `Object.is` against their previous result
+  // every store tick was real overhead; this collapses to one shallow
+  // compare over the five fields we actually need.
+  const {
+    results: annotatorResults,
+    threshold: annotatorThreshold,
+    acceptedRegionIds: annotatorAccepted,
+    rejectedRegionIds: annotatorRejected,
+    showDuplicates: annotatorShowDuplicates,
+  } = useStore(useShallow((s) => {
+    const a = selectAnnotator(s);
+    return {
+      results: a.results,
+      threshold: a.threshold,
+      acceptedRegionIds: a.acceptedRegionIds,
+      rejectedRegionIds: a.rejectedRegionIds,
+      showDuplicates: a.showDuplicates,
+    };
+  }));
   // Idle pre-warm: when biolog clicks a plasmid in the catalog list,
   // mount Sequence + Annotations tabs in the background (display:none)
   // so a subsequent tab click is instant. Without this, the tab click
@@ -384,10 +398,17 @@ export default function SingleInspector({
   // ghost features biolog sees on the map are visible on the «колбаса»
   // too. Confirmed regions render solid; predicted ones inherit the
   // dashed/transparent style LinearFeatureBar already implements.
-  const stripAnnotations = activeTab === 'annotations'
-    ? mergeStripWithPredicted(displayAnnotations, annotatorResults, annotatorThreshold,
-        annotatorAccepted, annotatorRejected, annotatorShowDuplicates)
-    : displayAnnotations;
+  // Memoised: every type-edit upstream creates a fresh `displayAnnotations`
+  // reference (it's a render-time merge), but the merge itself is the
+  // expensive part — useMemo guards against re-running it when only an
+  // unrelated piece of state ticks.
+  const stripAnnotations = useMemo(() => (
+    activeTab === 'annotations'
+      ? mergeStripWithPredicted(displayAnnotations, annotatorResults, annotatorThreshold,
+          annotatorAccepted, annotatorRejected, annotatorShowDuplicates)
+      : displayAnnotations
+  ), [activeTab, displayAnnotations, annotatorResults, annotatorThreshold,
+      annotatorAccepted, annotatorRejected, annotatorShowDuplicates]);
 
   // Helper: is a tab pre-warmed (= mounted)? In test mode only the
   // active tab is ever warmed (preserves V49 lazy-tabs assertions).

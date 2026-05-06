@@ -82,8 +82,8 @@ Topmost pending P0/P1 takes priority each iteration.
 | HOOK-07 | pending | Annotator L1 auto-run effect doesn't include `sequence` in re-run key |
 | HOOK-10 | pending | Verify `useAnnotationUndoRedo` itemKey effect doesn't reset stack on every type-edit |
 | HOOK-12 | pending | `App.jsx` beforeunload handler rebinds on every project switch |
-| PERF-10 | pending | SingleInspector subscribes to 5 separate annotator slices — collapse via `useShallow` |
-| PERF-11 | pending | `mergeStripWithPredicted` runs in render body of SingleInspector with no memo |
+| ~~PERF-10~~ | resolved | ~~SingleInspector subscribes to 5 separate annotator slices~~ → single `useShallow` selector returns the 5 fields as one object; one shallow compare per tick instead of five `Object.is` compares. |
+| ~~PERF-11~~ | resolved | ~~`mergeStripWithPredicted` runs in render body of SingleInspector with no memo~~ → wrapped in `useMemo` keyed on the 7 inputs; LinearFeatureBar gets a stable `stripAnnotations` ref across unrelated re-renders. |
 | PERF-12 | pending | `SequenceView.annotations` flattens fragments[].annotations on every fragments shift |
 | ~~PERF-13~~ | resolved | ~~`annotateRESites` 16 sequential `indexOf` scans~~ → single O(N) walk; sites bucketed by first base via `RE_BUCKETS` lookup; only enzymes whose recognition starts with the current char are tested. |
 | PERF-14 | pending | AATrack `lineEndAbs` filter probes `row.map.keys()` per line |
