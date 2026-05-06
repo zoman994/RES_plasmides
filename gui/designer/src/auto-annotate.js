@@ -143,6 +143,21 @@ const COMMON_RE_SITES = {
   FseI:    'GGCCGGCC',
 };
 
+// Pre-bucket common RE sites by first base. The single-pass scanner
+// below does one O(N) walk through the sequence and only candidate-tests
+// enzymes whose recognition site starts with the current base — instead
+// of running 16 full-sequence indexOf scans (16×N → ~N+~3N work).
+const RE_BUCKETS = (() => {
+  const m = Object.create(null);
+  for (const name of Object.keys(COMMON_RE_SITES)) {
+    const site = COMMON_RE_SITES[name];
+    const c = site.charCodeAt(0);
+    if (!m[c]) m[c] = [];
+    m[c].push({ name, site, len: site.length });
+  }
+  return m;
+})();
+
 /**
  * Detect common restriction enzyme sites in a sequence.
  * @param {string} seq — DNA sequence
@@ -151,19 +166,26 @@ const COMMON_RE_SITES = {
 function annotateRESites(seq) {
   const annotations = [];
   const upper = seq.toUpperCase();
-  for (const [name, site] of Object.entries(COMMON_RE_SITES)) {
-    let idx = upper.indexOf(site);
-    while (idx >= 0) {
-      annotations.push({
-        name,
-        type: 'restriction_site',
-        start: idx,
-        end: idx + site.length,
-        level: 'point',
-        auto: true,
-        detector: 're_scan',
-      });
-      idx = upper.indexOf(site, idx + 1);
+  const len = upper.length;
+  for (let i = 0; i < len; i++) {
+    const candidates = RE_BUCKETS[upper.charCodeAt(i)];
+    if (!candidates) continue;
+    for (let c = 0; c < candidates.length; c++) {
+      const cand = candidates[c];
+      if (i + cand.len > len) continue;
+      // startsWith with a position arg compiles to a fast inlined check
+      // in V8; faster than upper.slice(i, i + cand.len) === cand.site.
+      if (upper.startsWith(cand.site, i)) {
+        annotations.push({
+          name: cand.name,
+          type: 'restriction_site',
+          start: i,
+          end: i + cand.len,
+          level: 'point',
+          auto: true,
+          detector: 're_scan',
+        });
+      }
     }
   }
   return annotations;

@@ -85,9 +85,9 @@ Topmost pending P0/P1 takes priority each iteration.
 | PERF-10 | pending | SingleInspector subscribes to 5 separate annotator slices — collapse via `useShallow` |
 | PERF-11 | pending | `mergeStripWithPredicted` runs in render body of SingleInspector with no memo |
 | PERF-12 | pending | `SequenceView.annotations` flattens fragments[].annotations on every fragments shift |
-| PERF-13 | pending | `auto-annotate.annotateRESites` 16 sequential `indexOf` scans |
+| ~~PERF-13~~ | resolved | ~~`annotateRESites` 16 sequential `indexOf` scans~~ → single O(N) walk; sites bucketed by first base via `RE_BUCKETS` lookup; only enzymes whose recognition starts with the current char are tested. |
 | PERF-14 | pending | AATrack `lineEndAbs` filter probes `row.map.keys()` per line |
-| PERF-15 | pending | `selectAllLibraryTags` walks all entries every call |
+| ~~PERF-15~~ | resolved | ~~`selectAllLibraryTags` walks all entries every call~~ → memoised on `libraryEntries` reference (same applied to `selectVisibleLibraryEntries`); consumers via `useStore(...)` now get stable array refs across unrelated store ticks. |
 | SAFE-05 | pending | `siteToRegex` falls through to raw user char — guard inputs |
 | SAFE-07 | pending | Empty `catch {}` swallows IndexedDB / localStorage failures silently |
 | SAFE-11 | pending | `ProtocolTracker` reparses localStorage in effect, zeroes state on bad JSON |

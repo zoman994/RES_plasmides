@@ -163,34 +163,58 @@ export const createLibrarySlice = (set, get) => ({
  * Filter visible library entries by current `filterKind` (and `filterTopology`
  * when `filterKind === 'container'`), excluding soft-deleted rows.
  * Sorted by `addedAt` desc.
+ *
+ * Performance: results memoised on the (libraryEntries, kind, topology) tuple.
+ * Without this, every consumer using `useStore(selectVisibleLibraryEntries)`
+ * gets a fresh array reference per store tick, defeating shallow-equality
+ * memoisation downstream and forcing PartsLibrary etc. to re-render.
  */
+let _visEntriesCache = null;
 export function selectVisibleLibraryEntries(state) {
+  const lib = state.libraryEntries || {};
   const kind = state.filterKind;
   const topology = state.filterTopology;
-  const list = Object.values(state.libraryEntries || {})
+  if (_visEntriesCache
+      && _visEntriesCache.lib === lib
+      && _visEntriesCache.kind === kind
+      && _visEntriesCache.topology === topology) {
+    return _visEntriesCache.result;
+  }
+  const list = Object.values(lib)
     .filter(e => e && e._pendingDelete !== true && e.kind === kind);
   const filtered = (kind === 'container' && topology !== 'all')
     ? list.filter(e => e.payload && e.payload.topology === topology)
     : list;
   filtered.sort((a, b) => (b.addedAt || '').localeCompare(a.addedAt || ''));
+  _visEntriesCache = { lib, kind, topology, result: filtered };
   return filtered;
 }
 
 /**
  * Distinct tags across all visible (non-deleted) entries, sorted by frequency
  * desc then alphabetical (DEC-MA-04 pattern from ProjectInfoModal).
+ *
+ * Performance: results memoised on `libraryEntries` reference (Immer/Zustand
+ * swaps the whole map only when something inside actually changed).
  */
+let _allTagsCache = null;
 export function selectAllLibraryTags(state) {
+  const lib = state.libraryEntries || {};
+  if (_allTagsCache && _allTagsCache.lib === lib) return _allTagsCache.result;
   const counts = new Map();
-  for (const e of Object.values(state.libraryEntries || {})) {
+  for (const id in lib) {
+    const e = lib[id];
     if (!e || e._pendingDelete === true) continue;
     if (!Array.isArray(e.tags)) continue;
-    for (const t of e.tags) {
+    for (let j = 0; j < e.tags.length; j++) {
+      const t = e.tags[j];
       if (typeof t !== 'string' || t.length === 0) continue;
       counts.set(t, (counts.get(t) || 0) + 1);
     }
   }
-  return Array.from(counts.entries())
+  const result = Array.from(counts.entries())
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .map(([t]) => t);
+  _allTagsCache = { lib, result };
+  return result;
 }
