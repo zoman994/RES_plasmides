@@ -19,7 +19,7 @@ Topmost pending P0/P1 takes priority each iteration.
 | ~~PERF-02~~ | resolved | ~~`runPredictors` PWM scan re-slices 6-mers~~ → `scorePwmAt(seq, start, ...)` reads via `charCodeAt` (no slice); PWM theoretical maxima cached at module load (no per-call `Math.max(...row)`); stem-loop matcher walks via charCodeAt + complement-charcode lookup (eliminates slice/reverseComplement/regex match per probe). |
 | ~~PERF-03~~ | resolved | ~~`CatalogColumn` flat-search rebuilds 2800-element pool per keystroke~~ → pre-sized array build (no spread allocation), gated fallback to `Object.values(...).flat()` only when `snapgeneFlat` not yet warm; `ensureSnapgeneFlat()` already fires from useEffect on first non-empty query. |
 | ~~HOOK-09~~ | resolved | ~~`CatalogColumn` calls `sources.ensureSnapgeneFlat()` in render body~~ → moved into `useEffect([flatActive, sources])`. |
-| ~~SAFE-01~~ | resolved | ~~Importer Dexie writes uncoordinated~~ → `runConfirm` now runs in three phases: (1) prepare-only walk that resolves names + collisions + hashes, (2) atomic `addLibraryEntriesBulk` (single Dexie `rw` transaction; either every row lands or none), (3) project-attach + UI summary. An autosave can no longer snapshot a project pointing at a not-yet-flushed library entry. In-batch dedup via `usedNames` / `usedHashes`. |
+| SAFE-01 | partial (c0286f6) | Phase 1 (prepare/dedup) and Phase 3 (project-attach) kept; Phase 2 atomic bulk commit reverted to per-row `addLibraryEntry` after biolog reported the library panel went blank. Atomicity is a follow-up — needs a careful test harness that mocks the Dexie txn. |
 | ~~SAFE-06~~ | resolved | ~~`ProtocolTracker` photo upload base64 → unbounded localStorage write~~ → 12 MB input cap, downscale via canvas to 1024 px / 82% JPEG (~150 KB), localStorage setItem wrapped in try/catch with friendly alert on quota overflow. |
 | DEAD-01 | blocked | `components/ImportStartScreen/` (~2378 LOC) — agent claimed dead, but `DesignCanvas.handleQuickStart` still opens it. Need user decision: retire QuickStart→ImportStartScreen path in favour of the new `Importer`? |
 | ~~DEAD-04~~ | resolved | ~~Five stranded panel components~~ → deleted 5 files (~770 LOC: `SequenceViewer`, `RestrictionPanel`, `VerificationPanel`, `ExperimentStats`, `ExperimentSelector`). |
@@ -37,7 +37,7 @@ Topmost pending P0/P1 takes priority each iteration.
 | HOOK-05 | pending | `SequenceView` ResizeObserver may attach to discarded empty-state node |
 | HOOK-02 | pending | `Importer.runConfirm` closes over whole `state` object → callback churn → memo churn |
 | HOOK-11 | pending | `Importer.alreadyAddedToLibrary` IIFE reads `useStore.getState()` in render — no subscription |
-| ~~PERF-04~~ | resolved | ~~`useCatalogSources.mine` allocates fresh items per entry on every store tick~~ → WeakMap cache keyed on entry identity (`buildCatalogItem` runs once per entry per source); unchanged rows hand back the same reference, so downstream `ItemRow.memo` skips render. |
+| PERF-04 | reverted (c0286f6) | WeakMap entry cache reverted — biolog reported regression in «Моя библиотека». ItemRow.memo still helps via shallow prop diffs. Re-attempt requires a test that opens a freshly-imported entry and asserts it's visible in the catalog row. |
 | ~~PERF-05~~ | resolved | ~~Five duplicate `revComp` impls~~ → consolidated into a single fast `reverseComplement` in `sequence-utils.js` (pre-sized array walk, no split/reverse/map). `feature-detection`, `predicted-detection`, `orf-detection`, `local-primer-design`, `mutagenesis`, `golden-gate` now all import from one source. |
 | PERF-06 | pending | `enrichWithCommonFeatures` dedup is O(annotations × hits) |
 | PERF-07 | pending | `AnnotationTrack` filters parents/details + runs stacker per line, but the split is line-invariant |
@@ -49,7 +49,7 @@ Topmost pending P0/P1 takes priority each iteration.
 | BUNDLE-08 | pending | `sbol-glyphs.jsx` (24 KB SVG strings) eagerly imported by 8 components |
 | SAFE-02 | pending | `parseImportFile` raw `JSON.parse` with no try/catch — corrupted backup crashes |
 | SAFE-03 | pending | Multiple `localStorage.setItem` paths bypass `lib/storage.js` quota guard |
-| SAFE-04 | pending | No size or count limit on file imports — 100 MB FASTA freezes UI |
+| ~~SAFE-04 / SAFE-16~~ | resolved (c0286f6) | ~~No size limit on file imports~~ → `parseFile` rejects `file.size > 25 MB` for text imports (.gb/.gbk/.fasta) before reading; surfaces a friendly Russian error message with the actual file size. |
 | ~~SAFE-08~~ | resolved | ~~`markLibraryEntryPendingDelete` unawaited~~ → action is now async + `await`s the `putLibraryEntry`, same for `unmarkLibraryEntryPendingDelete`. Caller can now serialise mark/commit/unmark cycles without an interleaving put resurrecting state. |
 | SAFE-09 | pending | `removeProjectFromIndexedDB` doesn't await `complete` on page unload |
 | SAFE-10 | pending | `App.jsx` lacks per-pane error boundaries; root boundary's "Clear data" wipes everything |
@@ -87,7 +87,7 @@ Topmost pending P0/P1 takes priority each iteration.
 | PERF-12 | pending | `SequenceView.annotations` flattens fragments[].annotations on every fragments shift |
 | ~~PERF-13~~ | resolved | ~~`annotateRESites` 16 sequential `indexOf` scans~~ → single O(N) walk; sites bucketed by first base via `RE_BUCKETS` lookup; only enzymes whose recognition starts with the current char are tested. |
 | ~~PERF-14~~ | resolved | ~~`Array.find` cell lookup in AATrack hot path~~ → replaced with `byPosition.get(absPos)` from `walkCodonsCached`. O(lineLen²) → O(1) per cell. |
-| ~~PERF-15~~ | resolved | ~~`selectAllLibraryTags` walks all entries every call~~ → memoised on `libraryEntries` reference (same applied to `selectVisibleLibraryEntries`); consumers via `useStore(...)` now get stable array refs across unrelated store ticks. |
+| PERF-15 | reverted (c0286f6) | `selectAllLibraryTags` + `selectVisibleLibraryEntries` memo reverted; both selectors now build a fresh array per call. The memo was implicated in biolog's «Моя библиотека» regression. Consumers that need stable identity should `useShallow` the slice instead. |
 | SAFE-05 | pending | `siteToRegex` falls through to raw user char — guard inputs |
 | SAFE-07 | pending | Empty `catch {}` swallows IndexedDB / localStorage failures silently |
 | SAFE-11 | pending | `ProtocolTracker` reparses localStorage in effect, zeroes state on bad JSON |
