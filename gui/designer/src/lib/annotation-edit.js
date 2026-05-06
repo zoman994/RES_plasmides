@@ -243,7 +243,12 @@ export function mergeStripWithPredicted(
       if (rejectedIds && rejectedIds[id]) continue;
       if (seenIds.has(id)) continue;
       const accepted = !!(acceptedIds && acceptedIds[id]);
-      if (!showDuplicates && !accepted && isDuplicatePrediction(r, confirmed)) continue;
+      // Mirror the PreviewTab fix (2026-05-06): always skip predicted
+      // duplicates of an existing confirmed region — even if the user
+      // accepted them — because after Save the accepted region lives
+      // in `confirmed` and the strip would otherwise stack two copies
+      // (the confirmed one + the same prediction rendered solid).
+      if (!showDuplicates && isDuplicatePrediction(r, confirmed)) continue;
       const predName = (r.name || '').toLowerCase().trim();
       const suppressLabel = !!(predName && confirmedNames.has(predName));
       out.push({

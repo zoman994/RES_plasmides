@@ -96,8 +96,16 @@ export default function PreviewTab({
         // the same type (>50% overlap). Accepted-this-session ghosts
         // stay visible (the user actively chose them).
         // Honour the «show duplicates» opt-in toggle in the header.
+        // Suppress hits that duplicate an already-confirmed region of
+        // the same type. 2026-05-06 biolog report: «после Accept all
+        // выдаёт две аннотации». Cause: after Save, the accepted
+        // region landed in `annotations`, but `acceptedRegionIds`
+        // persists across close/open within the session — the previous
+        // `&& !acceptedIds[id]` override let the now-redundant ghost
+        // through, so the strip showed both the confirmed region AND
+        // the accepted-rendered-solid duplicate. Honour the «show
+        // duplicates» opt-in either way.
         if (!annotator.showDuplicates
-            && !acceptedIds[id]
             && isDuplicateOfConfirmed(r, annotations)) continue;
         const accepted = !!acceptedIds[id];
         // Accepted regions render solid (predicted: false); the rest
