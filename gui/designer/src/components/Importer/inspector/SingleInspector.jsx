@@ -281,13 +281,33 @@ export default function SingleInspector({
     onUpdateEdits,
   });
 
+  // HOOK-06 — keep these callbacks identity-stable across renders.
+  // The previous spelling listed `item` and `edits` in deps, so the
+  // callback re-created every time biolog typed into the title input
+  // or any other state nudged SingleInspector. SequenceView forwards
+  // these callbacks into useSelectionEdit / useAnnotationDrag /
+  // useAnnotationRename hook deps, which then teared down + reinstalled
+  // document-level pointer listeners mid-drag — felt like dropping the
+  // cursor while moving a feature edge.
+  //
+  // Pattern: keep the latest values in refs (synced via useEffect),
+  // read from refs inside the callback, and depend only on
+  // `onUpdateEdits` + the stable `pushSnapshot`. Callback identity is
+  // now stable for the lifetime of `onUpdateEdits`.
+  const itemRef = useRef(item);
+  const editsRef = useRef(edits);
+  useEffect(() => { itemRef.current = item; }, [item]);
+  useEffect(() => { editsRef.current = edits; }, [edits]);
+
   const onAnnotationEditFromView = useCallback((edit) => {
     if (!edit || !onUpdateEdits) return;
     try {
-      const seqLength = (item?.sequence || '').length;
-      const baseAnnotations = Array.isArray(edits?.editedAnnotations)
-        ? edits.editedAnnotations
-        : (item?.annotations || []);
+      const curItem = itemRef.current;
+      const curEdits = editsRef.current;
+      const seqLength = (curItem?.sequence || '').length;
+      const baseAnnotations = Array.isArray(curEdits?.editedAnnotations)
+        ? curEdits.editedAnnotations
+        : (curItem?.annotations || []);
       const result = applyAnnotationEdit(baseAnnotations, edit, seqLength);
       const next = Array.isArray(result) ? result : result?.next;
       if (Array.isArray(next) && next !== baseAnnotations) {
@@ -300,21 +320,23 @@ export default function SingleInspector({
       // eslint-disable-next-line no-console
       console.warn('[SingleInspector] annotation edit failed:', err.message);
     }
-  }, [onUpdateEdits, item, edits]);
+  }, [onUpdateEdits, pushSnapshot]);
 
   // Apply a non-edit operation (split / merge / delete) directly
   // against `editedAnnotations` and push the BEFORE state onto the
   // undo stack so Ctrl+Z works the same way it does for inline
-  // edits.
+  // edits. Same ref-pattern as above — stable identity.
   const applyOpToAnnotations = useCallback((nextAnnotations) => {
     if (!onUpdateEdits) return;
-    const baseAnnotations = Array.isArray(edits?.editedAnnotations)
-      ? edits.editedAnnotations
-      : (item?.annotations || []);
+    const curItem = itemRef.current;
+    const curEdits = editsRef.current;
+    const baseAnnotations = Array.isArray(curEdits?.editedAnnotations)
+      ? curEdits.editedAnnotations
+      : (curItem?.annotations || []);
     if (!Array.isArray(nextAnnotations) || nextAnnotations === baseAnnotations) return;
     pushSnapshot(baseAnnotations);
     onUpdateEdits({ editedAnnotations: nextAnnotations });
-  }, [onUpdateEdits, item, edits, pushSnapshot]);
+  }, [onUpdateEdits, pushSnapshot]);
 
   // FeatureEditorModal flow — see hooks/useFeatureEditorFlow.
   const {

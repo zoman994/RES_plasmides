@@ -31,8 +31,8 @@ Topmost pending P0/P1 takes priority each iteration.
 
 | ID | Status | Title |
 |----|--------|-------|
-| HOOK-03 | pending | Importer effect `pendingAnnotatorFile` reads stale `parsedItems` — Annotator-open race |
-| HOOK-06 | pending | `SingleInspector.onAnnotationEditFromView` callback identity churns every render → drag flakiness |
+| ~~HOOK-03~~ | resolved | ~~Importer effect reads stale `parsedItems`~~ → effect now also depends on `parsedItems`, and only clears `pendingAnnotatorFile` once the matching file is found. Re-runs harmlessly until the new item lands in the array. |
+| ~~HOOK-06~~ | resolved | ~~`SingleInspector` callbacks churn every render~~ → `onAnnotationEditFromView` and `applyOpToAnnotations` now read `item`/`edits` via refs synced in `useEffect`; deps reduced to `[onUpdateEdits, pushSnapshot]` — callback identity stable for the lifetime of those props. SequenceView's pointer-listener teardown mid-drag goes away. |
 | ~~HOOK-08~~ | resolved | ~~Annotator L1 auto-run promise has no cancellation~~ → effect now returns cleanup that flips a `cancelled` flag, gating `setResult`/`setRunning` and the `console.warn` on failure. Closing the Annotator mid-scan no longer warns or leaks results into a different plasmid's store slice. |
 | HOOK-05 | pending | `SequenceView` ResizeObserver may attach to discarded empty-state node |
 | HOOK-02 | pending | `Importer.runConfirm` closes over whole `state` object → callback churn → memo churn |

@@ -95,9 +95,14 @@ export default function Importer() {
     const items = state.parsedItems;
     const idx = items.findIndex((p) => p && p._fileName === fn);
     if (idx < 0) {
-      // Item disappeared (e.g. user removed it before the effect ran);
-      // drop the signal without firing the Annotator.
-      state.clearPendingAnnotator();
+      // HOOK-03 — the file may not have landed in `parsedItems` yet:
+      // PreImportModal's commitPendingImport sets pendingAnnotatorFile
+      // and the parsedItems push in the same Immer mutation, but React
+      // 19 effect ordering can drive this hook between two paint
+      // commits before the consumer of parsedItems sees the new array.
+      // Don't clear the signal yet — wait for the next render where
+      // parsedItems includes the file. The clearPendingAnnotator() call
+      // only happens once we successfully resolved the index.
       return;
     }
     const it = items[idx];
@@ -112,7 +117,10 @@ export default function Importer() {
     const sequenceId = it.id || it._fileName || it.name || 'unknown';
     openAnnotator({ kind: 'full', sequenceId });
     state.clearPendingAnnotator();
-  }, [state.pendingAnnotatorFile]); // eslint-disable-line react-hooks/exhaustive-deps
+    // Depend on parsedItems too: if the file lands on a later render,
+    // re-run and pick it up. Once we cleared the signal, the early
+    // `if (!fn) return` prevents repeats.
+  }, [state.pendingAnnotatorFile, state.parsedItems]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Back-out path lives in AppShell Topbar (popFullscreen) — no in-importer
   // cancel button. SessionSummary «Открыть холст» calls state.reset +
