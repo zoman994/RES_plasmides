@@ -110,9 +110,16 @@ const SequenceLine = memo(function SequenceLine({
         // a plain click bails.
         position: 'relative',
         opacity: isWrapTail ? 0.6 : undefined,
-        borderLeft: isWrapTail ? '3px solid var(--accent-500, #f97316)' : undefined,
+        // Round-15c (06.05.2026 «рамка выделения сдвинута»): accent
+        // stripe was border-left:3px + padding-left:4px. That 7 px
+        // push shifted the row's CONTENT BOX 7 px right of
+        // el.offsetLeft, but SelectionOverlay / CaretOverlay measure
+        // from el.offsetLeft directly → selection rects landed 7 px
+        // LEFT of the actual chars on wrap-tail rows. Switched to an
+        // INSET box-shadow (paint-only, zero layout cost) so wrap-tail
+        // rows share the exact char-grid origin with main rows.
+        boxShadow: isWrapTail ? 'inset 3px 0 0 var(--accent-500, #f97316)' : undefined,
         background: isWrapTail ? 'color-mix(in oklab, var(--accent-500, #f97316) 4%, transparent)' : undefined,
-        paddingLeft: isWrapTail ? 4 : undefined,
         // Block hierarchy: each line = ruler + DNA + annotation + AA
         // is ONE logical unit. Inter-block separator (paddingBottom 14
         // + 1 px dashed divider + marginBottom 14 → ≈28 px gap) tells
