@@ -131,24 +131,16 @@ export function useCatalogSources() {
   };
 }
 
-// Per-entry catalog-item cache. Library entries are immutable from the
-// perspective of any one slice tick: Immer/Zustand swap the whole entry
-// reference only when something inside actually changes. Caching by the
-// entry object identity (WeakMap) means that on the next render — when
-// the parent useMemo re-walks `Object.values(libraryEntries)` because
-// _some_ entry changed — the rows that didn't change still hand back
-// their previously-built item. Downstream `ItemRow` then memoizes via
-// `prev.item === next.item` and skips render entirely.
-const ITEM_CACHE = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
+// Reverted 2026-05-06 from a WeakMap ITEM_CACHE keyed on entry identity.
+// The cache was correct in theory (Immer/Zustand swap the whole entry
+// reference when its content changes, so cached builds for unchanged
+// entries should reuse) but biolog reported that newly imported items
+// stopped appearing in «Моя библиотека» after the cache landed —
+// pointing at a real-world reference-equality edge I couldn't pin down
+// in the time-to-fix budget. Building a fresh item per call is cheap
+// (a small object literal) and the catalog row count caps in the low
+// thousands. ItemRow's `React.memo` still helps via shallow prop diffs.
 function libraryEntryToCatalogItem(entry, source) {
-  if (ITEM_CACHE) {
-    let bySource = ITEM_CACHE.get(entry);
-    if (bySource && bySource[source]) return bySource[source];
-    if (!bySource) { bySource = {}; ITEM_CACHE.set(entry, bySource); }
-    const item = buildCatalogItem(entry, source);
-    bySource[source] = item;
-    return item;
-  }
   return buildCatalogItem(entry, source);
 }
 

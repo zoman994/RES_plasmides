@@ -81,16 +81,25 @@ export default function AddFragmentModal({ mode, onAdd, onClose }) {
     }
   }, [importedData]);
 
+  // HOOK-13 — cancellable fetches. Closing the modal mid-fetch warns
+  // about setState on unmounted; rapid construct switching can land an
+  // older fetch's features over a newer construct.
   useEffect(() => {
-    if (mode === 'construct') {
-      fetchConstructs().then(setConstructs).catch(() => {});
-    }
+    if (mode !== 'construct') return undefined;
+    let cancelled = false;
+    fetchConstructs()
+      .then((cs) => { if (!cancelled) setConstructs(cs); })
+      .catch(() => { /* silent */ });
+    return () => { cancelled = true; };
   }, [mode]);
 
   useEffect(() => {
-    if (selectedConstruct) {
-      fetchFeatures(selectedConstruct.id).then(setFeatures).catch(() => {});
-    }
+    if (!selectedConstruct) return undefined;
+    let cancelled = false;
+    fetchFeatures(selectedConstruct.id)
+      .then((fs) => { if (!cancelled) setFeatures(fs); })
+      .catch(() => { /* silent */ });
+    return () => { cancelled = true; };
   }, [selectedConstruct]);
 
   // GenBank ORIGIN-style formatting for textarea display

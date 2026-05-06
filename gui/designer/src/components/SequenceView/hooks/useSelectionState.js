@@ -69,6 +69,20 @@ export function useSelectionState({
     };
   }, [contextMenu]);
 
+  // HOOK-11 — clean up the auto-scroll RAF chain on unmount. The
+  // recursive `tickAutoScroll` only stops on `pointerup` / a 0-direction
+  // probe; if the SequenceView unmounts mid-drag (modal close, route
+  // change, parent re-mount) `pointerup` never fires on the lost root,
+  // so the RAF chain keeps calling `scroller.scrollBy` and
+  // `onCaretChange` against an unmounted component → setState warnings
+  // + leaked closures. This guards against that case.
+  useEffect(() => () => {
+    if (autoScrollRafRef.current != null) {
+      cancelAnimationFrame(autoScrollRafRef.current);
+      autoScrollRafRef.current = null;
+    }
+  }, []);
+
   // ---------------------------------------------------------------
   // Pointer → seq position resolver
   // ---------------------------------------------------------------

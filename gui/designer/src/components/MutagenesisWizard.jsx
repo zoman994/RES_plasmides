@@ -36,9 +36,24 @@ export default function MutagenesisWizard({
   const [features, setFeatures] = useState([]);
   const [selConstruct, setSelConstruct] = useState(null);
 
-  useEffect(() => { fetchConstructs().then(setConstructs).catch(() => {}); }, []);
+  // HOOK-12 — cancellable fetches. Without the cancelled flag, two
+  // problems show up: (1) closing the wizard mid-fetch warns about
+  // setState on an unmounted component, and (2) rapid construct
+  // switching can land an older fetch's features over a newer one.
   useEffect(() => {
-    if (selConstruct) fetchFeatures(selConstruct.id).then(setFeatures).catch(() => {});
+    let cancelled = false;
+    fetchConstructs()
+      .then((cs) => { if (!cancelled) setConstructs(cs); })
+      .catch(() => { /* silent — server may be offline in tests */ });
+    return () => { cancelled = true; };
+  }, []);
+  useEffect(() => {
+    if (!selConstruct) return undefined;
+    let cancelled = false;
+    fetchFeatures(selConstruct.id)
+      .then((fs) => { if (!cancelled) setFeatures(fs); })
+      .catch(() => { /* silent */ });
+    return () => { cancelled = true; };
   }, [selConstruct]);
 
   const protein = useMemo(() => {

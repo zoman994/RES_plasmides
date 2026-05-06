@@ -254,13 +254,18 @@ export default function Importer() {
         pending.push({ entry, replaceExisting, baseName, finalName });
       }
 
-      // Phase 2 — commit the whole batch atomically. Awaiting this
-      // before any addContainerToCurrentProject call closes SAFE-01.
-      if (pending.length > 0 && typeof store.addLibraryEntriesBulk === 'function') {
-        await store.addLibraryEntriesBulk(pending.map(p => p.entry));
-      } else if (pending.length > 0) {
-        // Defensive fallback for tests that mount with a stripped store.
-        for (const p of pending) await store.addLibraryEntry(p.entry);
+      // Phase 2 — commit the prepared entries. Originally a single
+      // bulk transaction (SAFE-01 atomicity), but biolog reported
+      // 2026-05-06 that after a recent perf wave the catalog «Моя
+      // библиотека» panel stopped showing newly imported items. The
+      // bulk path landed too many subtle changes at once
+      // (transaction + in-memory set order + UI cache); reverting to
+      // a per-row commit restores the v0.7 behaviour. Each call
+      // already awaits both the in-memory set and the Dexie put.
+      // (SAFE-01 atomicity remains a known follow-up — see
+      // AUDIT_FINDINGS.md.)
+      for (const p of pending) {
+        await store.addLibraryEntry(p.entry);
       }
 
       // Phase 3 — surface to project + UI summary. Library rows are

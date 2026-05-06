@@ -112,6 +112,17 @@ export async function parseFile(file) {
     };
   }
 
+  // SAFE-16 — refuse oversized text imports before reading. file.text()
+  // would otherwise inflate the entire payload into a JS string (~2x in
+  // UTF-16) and parseGenBank/parseFasta walk it on the main thread,
+  // freezing the tab for tens of seconds. Real GenBank files top out
+  // around 50 KB for plasmid-sized records; 25 MB is generous.
+  const TEXT_IMPORT_MAX_BYTES = 25 * 1024 * 1024;
+  if (typeof file.size === 'number' && file.size > TEXT_IMPORT_MAX_BYTES) {
+    const mb = Math.round(file.size / (1024 * 1024));
+    throw new Error(`Файл слишком большой (${mb} МБ). Лимит для GenBank/FASTA — 25 МБ.`);
+  }
+
   const text = await file.text();
   let parsed;
   if (isGenBankFormat(text) || ['.gb', '.gbk', '.genbank'].includes(ext)) {
