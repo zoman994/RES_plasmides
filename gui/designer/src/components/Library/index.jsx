@@ -72,6 +72,30 @@ export default function Importer() {
   // confusing biolog (multi-mode appears unexpectedly, hides interface,
   // «Loaded N files» unclear). For Этап 1 acceptance the trade is
   // explicit: multi-drop = no-op + toast «Multi-import будет в v0.8.0».
+  // M-X.5 K8 — Quick-add icon (DEC-LIB-QUICKADD-01). Build the
+  // callback only when there is an active project; otherwise leave
+  // `undefined` so LibraryItemRow renders no `➤` button (no clutter
+  // on the standalone Library workspace opened from Start screen).
+  const currentProjectId = useStore(s => s.currentProjectId);
+  const currentProjectName = useStore(s => {
+    const id = s.currentProjectId;
+    return id && s.projects[id] ? (s.projects[id].name || 'project') : '';
+  });
+  const handleQuickAdd = useCallback((libItem) => {
+    if (!libItem?.id) return;
+    const store = useStore.getState();
+    if (!store.currentProjectId) return;
+    if (typeof store.addContainerToCurrentProject !== 'function') return;
+    store.addContainerToCurrentProject(libItem.id);
+    showToast?.(`«${libItem.name}» добавлен в «${currentProjectName || 'проект'}»`, { kind: 'success', duration: 2500 });
+    // Pop Library workspace off the navStack — biolog returns to canvas.
+    if (typeof popFullscreen === 'function') popFullscreen();
+  }, [showToast, currentProjectName, popFullscreen]);
+  const quickAddCallback = currentProjectId ? handleQuickAdd : undefined;
+  const quickAddTitle = currentProjectName
+    ? `Добавить в проект «${currentProjectName}»`
+    : 'Добавить в активный проект';
+
   const handleAddFiles = useCallback((files, opts) => {
     if (!Array.isArray(files) || files.length === 0) return;
     if (files.length > 1) {
@@ -531,6 +555,8 @@ export default function Importer() {
           onPasteText={state.addPasteItem}
           busy={state.busy}
           liveAnnotationsByLibId={liveAnnotationsByLibId}
+          onQuickAdd={quickAddCallback}
+          quickAddTitle={quickAddTitle}
         />
 
         <div

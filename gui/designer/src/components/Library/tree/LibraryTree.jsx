@@ -64,6 +64,13 @@ export default function LibraryTree({
   // entry on every keystroke (the explicit «To library» click is
   // still the only way to update the saved entry).
   liveAnnotationsByLibId,
+  // M-X.5 K8 — Quick-add icon (DEC-LIB-QUICKADD-01). When provided
+  // (Library/index.jsx passes a callback only when there is an active
+  // project), Mine items render a hover-revealed `➤` button that
+  // fires `onQuickAdd(item)` to drop the entry into the current
+  // project's containerIds + close the Library workspace.
+  onQuickAdd,
+  quickAddTitle,
 }) {
   const projectName = useStore((s) => {
     const p = s.currentProjectId ? s.projects[s.currentProjectId] : null;
@@ -455,6 +462,8 @@ export default function LibraryTree({
               onDeleteItem={groupKey === 'mine' ? deleteContainer : null}
               draggableItems={groupKey === 'mine'}
               sourceFolder={node.path}
+              onQuickAdd={groupKey === 'mine' ? onQuickAdd : undefined}
+              quickAddTitle={quickAddTitle}
             />
           )}
           {/* Inline input for «новая папка внутри папки» — appears only when
@@ -643,6 +652,8 @@ export default function LibraryTree({
                       items={topLevelItems}
                       onSelectItem={onSelectItem}
                       depth={1}
+                      onQuickAdd={onQuickAdd}
+                      quickAddTitle={quickAddTitle}
                     />
                   )}
                 </>

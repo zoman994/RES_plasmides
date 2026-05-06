@@ -357,6 +357,15 @@ body {
   .save-flash-bounce { animation: none; }
 }
 
+/* M-X.5 K8 — Quick-add icon hover-reveal (DEC-LIB-QUICKADD-01).
+   The `➤` button is positioned inside `.importer-catalog-item-row`
+   and starts fully hidden; only when biolog hovers the row does the
+   icon fade in. Pairs with the LibraryTree gating that only renders
+   the prop when there is an active project — no clutter when biolog
+   opens Library standalone from the Start screen. */
+.importer-catalog-item-row:hover .library-quick-add { opacity: 1; }
+.library-quick-add:focus-visible { opacity: 1; }
+
 /* M-X.5 K6 — pulsing dot inside the EDITABLE pill in
    LibrarySingleInspector. Signals «sequence editing armed». Reduced
    motion disables the pulse but keeps the dot visible. */

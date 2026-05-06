@@ -191,6 +191,7 @@ export function InlineItemList({
   onDeleteItem, // optional — only Mine entries get «×» delete handler
   draggableItems = false, // Mine only — items can be dragged to other folders
   sourceFolder = '',     // path of the parent folder these items live in
+  onQuickAdd, quickAddTitle, // M-X.5 K8 — forward to LibraryItemRow
 }) {
   // Reverted 2026-05-06 — earlier in this session I tried surfacing 4
   // pulsing skeleton rows during loading as «click-ack feedback». User
@@ -217,6 +218,8 @@ export function InlineItemList({
           deleteTitle={onDeleteItem ? S.catalogDeleteContainer(it.name || it.id) : undefined}
           draggable={draggableItems}
           sourceFolder={sourceFolder}
+          onQuickAdd={onQuickAdd}
+          quickAddTitle={quickAddTitle}
         />
       ))}
     </>

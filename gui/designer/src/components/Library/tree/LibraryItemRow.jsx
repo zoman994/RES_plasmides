@@ -70,6 +70,14 @@ export const LibraryItemRow = memo(function LibraryItemRow({
   deleteTitle,
   draggable = false,
   sourceFolder = '',
+  // M-X.5 K8 — Quick-add icon (DEC-LIB-QUICKADD-01). When provided
+  // and the row is hovered, render a `➤` button that fires
+  // onQuickAdd(item) without expanding the inspector. Library/index.jsx
+  // wires this only when there's an active project (`currentProjectId`).
+  // Hover-revealed via CSS (.library-quick-add { opacity: 0 } +
+  // .importer-catalog-item-row:hover .library-quick-add { opacity: 1 }).
+  onQuickAdd,
+  quickAddTitle,
 }) {
   // Pad: when there's a drag handle on the left, the click button starts a
   // bit deeper so handle + content don't overlap. Without handle the row
@@ -187,6 +195,26 @@ export const LibraryItemRow = memo(function LibraryItemRow({
           {length.toLocaleString()}
         </span>
       </button>
+      {onQuickAdd && item.id && (
+        <button
+          type="button"
+          className="library-quick-add"
+          data-testid={`library-quick-add-${item.id}`}
+          onClick={(e) => { e.stopPropagation(); onQuickAdd(item); }}
+          title={quickAddTitle || 'Добавить в активный проект'}
+          aria-label={quickAddTitle || 'Добавить в активный проект'}
+          style={{
+            padding: '0 8px',
+            background: 'transparent',
+            border: 'none',
+            color: 'var(--accent-700, #b45309)',
+            fontSize: 13, lineHeight: 1,
+            cursor: 'pointer',
+            opacity: 0,
+            transition: 'opacity 120ms ease-out',
+          }}
+        >➤</button>
+      )}
       {onDelete && (
         <button
           type="button"
@@ -219,6 +247,8 @@ export const LibraryItemRow = memo(function LibraryItemRow({
   && prev.sourceFolder === next.sourceFolder
   && (prev.onDelete == null) === (next.onDelete == null)
   && prev.deleteTitle === next.deleteTitle
+  && (prev.onQuickAdd == null) === (next.onQuickAdd == null)
+  && prev.quickAddTitle === next.quickAddTitle
 ));
 
 export function CatalogCard({ item, onClick }) {
