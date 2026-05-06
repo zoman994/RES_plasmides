@@ -19,7 +19,7 @@ Topmost pending P0/P1 takes priority each iteration.
 | ~~PERF-02~~ | resolved | ~~`runPredictors` PWM scan re-slices 6-mers~~ → `scorePwmAt(seq, start, ...)` reads via `charCodeAt` (no slice); PWM theoretical maxima cached at module load (no per-call `Math.max(...row)`); stem-loop matcher walks via charCodeAt + complement-charcode lookup (eliminates slice/reverseComplement/regex match per probe). |
 | ~~PERF-03~~ | resolved | ~~`CatalogColumn` flat-search rebuilds 2800-element pool per keystroke~~ → pre-sized array build (no spread allocation), gated fallback to `Object.values(...).flat()` only when `snapgeneFlat` not yet warm; `ensureSnapgeneFlat()` already fires from useEffect on first non-empty query. |
 | ~~HOOK-09~~ | resolved | ~~`CatalogColumn` calls `sources.ensureSnapgeneFlat()` in render body~~ → moved into `useEffect([flatActive, sources])`. |
-| SAFE-01 | pending | Importer Dexie writes uncoordinated — autosave can snapshot project pointing at unflushed library entry |
+| ~~SAFE-01~~ | resolved | ~~Importer Dexie writes uncoordinated~~ → `runConfirm` now runs in three phases: (1) prepare-only walk that resolves names + collisions + hashes, (2) atomic `addLibraryEntriesBulk` (single Dexie `rw` transaction; either every row lands or none), (3) project-attach + UI summary. An autosave can no longer snapshot a project pointing at a not-yet-flushed library entry. In-batch dedup via `usedNames` / `usedHashes`. |
 | ~~SAFE-06~~ | resolved | ~~`ProtocolTracker` photo upload base64 → unbounded localStorage write~~ → 12 MB input cap, downscale via canvas to 1024 px / 82% JPEG (~150 KB), localStorage setItem wrapped in try/catch with friendly alert on quota overflow. |
 | DEAD-01 | blocked | `components/ImportStartScreen/` (~2378 LOC) — agent claimed dead, but `DesignCanvas.handleQuickStart` still opens it. Need user decision: retire QuickStart→ImportStartScreen path in favour of the new `Importer`? |
 | ~~DEAD-04~~ | resolved | ~~Five stranded panel components~~ → deleted 5 files (~770 LOC: `SequenceViewer`, `RestrictionPanel`, `VerificationPanel`, `ExperimentStats`, `ExperimentSelector`). |
@@ -50,7 +50,7 @@ Topmost pending P0/P1 takes priority each iteration.
 | SAFE-02 | pending | `parseImportFile` raw `JSON.parse` with no try/catch — corrupted backup crashes |
 | SAFE-03 | pending | Multiple `localStorage.setItem` paths bypass `lib/storage.js` quota guard |
 | SAFE-04 | pending | No size or count limit on file imports — 100 MB FASTA freezes UI |
-| SAFE-08 | pending | `markLibraryEntryPendingDelete` fires unawaited Dexie put |
+| ~~SAFE-08~~ | resolved | ~~`markLibraryEntryPendingDelete` unawaited~~ → action is now async + `await`s the `putLibraryEntry`, same for `unmarkLibraryEntryPendingDelete`. Caller can now serialise mark/commit/unmark cycles without an interleaving put resurrecting state. |
 | SAFE-09 | pending | `removeProjectFromIndexedDB` doesn't await `complete` on page unload |
 | SAFE-10 | pending | `App.jsx` lacks per-pane error boundaries; root boundary's "Clear data" wipes everything |
 | TEST-03 | pending | PreImportModal multi-file mixed-topology untested |

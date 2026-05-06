@@ -1,5 +1,6 @@
 import {
   putLibraryEntry,
+  putLibraryEntriesBulk,
   listLibraryEntries,
   deleteLibraryEntry,
 } from '../db/dexie-schema';
@@ -46,6 +47,37 @@ export const createLibrarySlice = (set, get) => ({
     await putLibraryEntry(safe);
   },
 
+  /**
+   * Atomic bulk import — write N library entries in a single Dexie
+   * `rw` transaction and apply all in-memory updates in one immer
+   * mutation. Used by the Importer commit so:
+   *
+   *   • either every library row lands or none do (no half-imports
+   *     after a quota / I/O failure mid-batch);
+   *   • the caller's `await` resolves only after every row is durable,
+   *     so `addContainerToCurrentProject(...)` calls that follow can
+   *     never reference a not-yet-flushed entry (SAFE-01).
+   *
+   * Skips invalid rows defensively. Returns the array of entries that
+   * actually committed.
+   */
+  addLibraryEntriesBulk: async (entries) => {
+    if (!Array.isArray(entries) || entries.length === 0) return [];
+    const safe = entries
+      .filter(e => e && e.id)
+      .map(e => ({
+        ...e,
+        tags: Array.isArray(e.tags) ? e.tags.slice(0, LIBRARY_TAGS_SOFT_LIMIT) : [],
+        addedAt: e.addedAt || new Date().toISOString(),
+      }));
+    if (safe.length === 0) return [];
+    set(state => {
+      for (const e of safe) state.libraryEntries[e.id] = e;
+    });
+    await putLibraryEntriesBulk(safe);
+    return safe;
+  },
+
   updateLibraryEntryTags: async (id, tags) => {
     const existing = get().libraryEntries[id];
     if (!existing) return;
@@ -78,31 +110,40 @@ export const createLibrarySlice = (set, get) => ({
   },
 
 
-  markLibraryEntryPendingDelete: (id) => {
+  /**
+   * Soft-delete the entry — flips _pendingDelete and writes the flag to
+   * Dexie. Awaited (was fire-and-forget; SAFE-08): a follow-up
+   * commit/unmark/mark cycle would otherwise interleave with the
+   * unfinished put and could resurrect or lose state.
+   */
+  markLibraryEntryPendingDelete: async (id) => {
     const existing = get().libraryEntries[id];
     if (!existing) return;
     set(state => {
       const e = state.libraryEntries[id];
       if (e) e._pendingDelete = true;
     });
-    // Persist soft-delete flag so it survives reload before commit.
-    putLibraryEntry({ ...existing, _pendingDelete: true }).catch(err => {
+    try {
+      await putLibraryEntry({ ...existing, _pendingDelete: true });
+    } catch (err) {
       // eslint-disable-next-line no-console
       console.warn('[bodgegene] persist soft-delete failed', err);
-    });
+    }
   },
 
-  unmarkLibraryEntryPendingDelete: (id) => {
+  unmarkLibraryEntryPendingDelete: async (id) => {
     const existing = get().libraryEntries[id];
     if (!existing) return;
     set(state => {
       const e = state.libraryEntries[id];
       if (e) e._pendingDelete = false;
     });
-    putLibraryEntry({ ...existing, _pendingDelete: false }).catch(err => {
+    try {
+      await putLibraryEntry({ ...existing, _pendingDelete: false });
+    } catch (err) {
       // eslint-disable-next-line no-console
       console.warn('[bodgegene] unmark soft-delete failed', err);
-    });
+    }
   },
 
   commitLibraryEntryPendingDelete: async (id) => {

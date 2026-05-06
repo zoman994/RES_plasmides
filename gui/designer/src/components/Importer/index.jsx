@@ -151,6 +151,20 @@ export default function Importer() {
       const skipped = [];
       let replaced = 0;
 
+      // SAFE-01 — phase 1 is preparation only: name resolution,
+      // collision dialogs, hash computation. We collect everything in
+      // `pending[]` and DO NOT touch the store or Dexie yet. Phase 2
+      // commits the whole batch atomically via addLibraryEntriesBulk
+      // (one Dexie transaction). Phase 3 attaches new containers to
+      // the project — only after every library row is durable, so an
+      // autosave can't snapshot a project pointing at a not-yet-flushed
+      // entry. In-flight names + hashes are tracked locally so two
+      // collisions inside the same batch don't both grab the same
+      // suggested name.
+      const pending = [];
+      const usedNames = new Set();
+      const usedHashes = new Set();
+
       for (const it of items) {
         if (!it || it._error || !it.sequence) {
           if (it) skipped.push({ fileName: it._fileName, reason: it._error || 'no-sequence' });
@@ -180,8 +194,20 @@ export default function Importer() {
           });
         } catch { /* leave null */ }
 
+        // Skip a duplicate within the same batch (same hash → same
+        // resource); also dedup against the persisted library.
+        if (resourceHash && usedHashes.has(resourceHash)) {
+          skipped.push({ fileName: fn, reason: 'in-batch-dupe' });
+          continue;
+        }
         const collision = resourceHash ? await store.checkLibraryDedup(resourceHash) : null;
         let finalName = store.getSuggestedLibraryName(baseName);
+        // Keep the in-batch reservations from clashing.
+        while (usedNames.has(finalName)) {
+          finalName = store.getSuggestedLibraryName(`${baseName} (batch)`);
+          if (!usedNames.has(finalName)) break;
+          finalName = `${baseName} (${usedNames.size + 1})`;
+        }
         let replaceExisting = false;
 
         if (collision) {
@@ -214,7 +240,25 @@ export default function Importer() {
         const buildOpts = { tags: finalTags, folderPath: finalFolderPath };
         if (replaceExisting && collision) buildOpts.id = collision.id;
         const entry = buildLibraryEntry(itemForBuild, finalName, resourceHash, buildOpts);
-        await store.addLibraryEntry(entry);
+
+        usedNames.add(finalName);
+        if (resourceHash) usedHashes.add(resourceHash);
+        pending.push({ entry, replaceExisting, baseName, finalName });
+      }
+
+      // Phase 2 — commit the whole batch atomically. Awaiting this
+      // before any addContainerToCurrentProject call closes SAFE-01.
+      if (pending.length > 0 && typeof store.addLibraryEntriesBulk === 'function') {
+        await store.addLibraryEntriesBulk(pending.map(p => p.entry));
+      } else if (pending.length > 0) {
+        // Defensive fallback for tests that mount with a stripped store.
+        for (const p of pending) await store.addLibraryEntry(p.entry);
+      }
+
+      // Phase 3 — surface to project + UI summary. Library rows are
+      // already durable at this point.
+      for (const p of pending) {
+        const { entry, replaceExisting, baseName, finalName } = p;
         if (replaceExisting) replaced += 1;
         if (!replaceExisting && confirmTarget === 'project' && store.currentProjectId
             && typeof store.addContainerToCurrentProject === 'function') {

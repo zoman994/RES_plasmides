@@ -118,6 +118,22 @@ export async function putLibraryEntry(entry) {
 }
 
 /**
+ * Atomic bulk import — write a batch of library entries in a single
+ * `rw` transaction. Used by the Importer commit so that either all
+ * library rows land or none do. Combined with awaiting this from the
+ * caller before issuing `addContainerToCurrentProject`, it closes
+ * SAFE-01: an autosave timer can no longer snapshot a project that
+ * references a library entry whose Dexie write is still in flight.
+ */
+export async function putLibraryEntriesBulk(entries) {
+  if (!Array.isArray(entries) || entries.length === 0) return;
+  const db = getDB();
+  await db.transaction('rw', db.library, async () => {
+    await db.library.bulkPut(entries);
+  });
+}
+
+/**
  * Fetch a single LibraryEntry by id.
  */
 export async function getLibraryEntry(id) {
