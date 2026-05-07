@@ -2,7 +2,8 @@ import { useEffect, useCallback } from 'react';
 import { useStore, bootstrapStore, applyThemeToDOM } from './store';
 import AppShell from './components/AppShell';
 import StartScreen from './components/StartScreen';
-import DagPlaceholder from './components/DagPlaceholder';
+import DagWorkspace from './components/Dag/DagWorkspace';
+import ContainerWindowPlaceholder from './components/Dag/ContainerWindowPlaceholder';
 import Importer from './components/Library';
 import UnderConstruction from './components/UnderConstruction';
 import MultiTabBlocked from './components/MultiTabBlocked';
@@ -241,8 +242,18 @@ export default function App() {
   let inProjectChild = null;
   switch (activeFullscreen) {
     case 'dag':
-      inProjectChild = <DagPlaceholder />;
+      // M-C.1 K4 — DAG workspace replaces the v0.6 DagPlaceholder.
+      // DagWorkspace mounts DagPalette (left) + PreviewDrawer (slide-
+      // in) + DagCanvas (ReactFlow surface).
+      inProjectChild = <DagWorkspace />;
       break;
+    case 'containerWindow': {
+      // M-C.1 K4 (DEC-MC1-05) — drill-in placeholder. Real Container
+      // Window fullscreen lands in M-C.2.
+      const top = navStack[navStack.length - 1];
+      inProjectChild = <ContainerWindowPlaceholder containerId={top?.payload?.containerId} />;
+      break;
+    }
     case 'library':
       // M-X.6 K1 — flipped from M-X.5 alias `'importer' | 'library'`
       // to the canonical `'library'` literal (DEC-IMP-06 ⚓ purge).

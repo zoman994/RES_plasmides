@@ -44,14 +44,17 @@ describe('K4 — App + AppShell + Topbar routing', () => {
     expect(screen.queryByTestId('app-shell')).toBeNull();
   });
 
-  it('renders AppShell + DagPlaceholder when activeFullscreen=dag', () => {
+  it('renders AppShell + DagWorkspace when activeFullscreen=dag', () => {
+    // M-C.1 K4 — DAG fullscreen now renders DagWorkspace (which hosts
+    // DagPalette + PreviewDrawer + DagCanvas) instead of the old
+    // DagPlaceholder dotted-grid stub.
     useStore.setState((state) => {
       state.canvas.activeFullscreen = 'dag';
       state.canvas.navStack = [{ fullscreen: 'dag', payload: null }];
     });
     render(<App />);
     expect(screen.getByTestId('app-shell')).toBeTruthy();
-    expect(screen.getByTestId('dag-placeholder')).toBeTruthy();
+    expect(screen.getByTestId('dag-workspace')).toBeTruthy();
   });
 
   it('renders AppShell + UnderConstruction when activeFullscreen=underConstruction', () => {

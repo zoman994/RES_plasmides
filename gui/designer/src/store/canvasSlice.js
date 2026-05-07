@@ -2,6 +2,9 @@ export const FULLSCREENS = [
   'start',
   'dag',
   'library',
+  // M-C.1 K4 (DEC-MC1-05) — drill-in placeholder route. Real
+  // Container Window fullscreen lands in M-C.2.
+  'containerWindow',
   'underConstruction',
   'multiTabBlocked',
   'readOnlyForced',
