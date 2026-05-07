@@ -1,9 +1,11 @@
 # Sprint M-X.6 — Mini-cleanup после v0.8.0
 
-**Статус:** 🟡 Спека готова, ожидает Code  
+**Статус:** ⏸️ **ОТЛОЖЕН** (07.05.2026, после v0.8.0 acceptance: решение биолога — приоритет M-C Container Window. Cleanup может вернуться как M-X.7 polish после M-C/M-D acceptance, либо включаться частично в смежные спринты по принципу «трогаешь зону — декомпозируешь её первым пунктом» из ⚓ ANCHORS.md size-budget guidance.)  
 **Тип:** mixed (K0 — A; K1 — C; K2 — B; K3 — C companion; K12 — C/D polish)  
-**Версия после финализации:** **v0.8.1**  
+**Целевая версия:** v0.8.1 (когда вернётся)  
 **Источник:** drift check 07.05.2026 + M-X.5 deferred + M-X.5 K12 polish.
+
+> **Что зафиксировано про deferred (07.05.2026):** Все 8 TD entries (TD-LIBRARYSINGLEINSPECTOR-DECOMP-V2, TD-LIB-K2-DEAD-CODE-PURGE, TD-LIB-K10-CHARACTER-APPLY, TD-WRAP-KEYBOARD-NAV, TD-LIB-K4-VIEW-PREVIEW, TD-LIB-K4-AUTO-TRIGGER, TD-LIB-PREIMPORT-LOCATION, TD-LIB-CATALOG-RENAME) остаются OPEN в TECH_DEBT.md. Hotfix-ы 07.05 (`5e468a8` bridge annotation, `c17899f` caret bridge wrap-half) лендят в RELEASES.md при ближайшем version bump (вероятно v0.9.0 после M-C). Hard violations LibrarySingleInspector 45.94 KB и AnnotationTrack 48.54 KB остаются как есть — не блокируют M-C (DAG canvas пишет в новый projectSlice, container window read-only reuse'ит SequenceView/AnnotationTrack без правок).
 
 ---
 
