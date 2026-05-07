@@ -24,7 +24,7 @@
 import { useLayoutEffect, useState } from "react";
 import { LABEL_WIDTH } from "../constants.js";
 
-export default function CaretOverlay({ caretPos, charPx, containerRef, showBottomStrand, seqLength = 0 }) {
+export default function CaretOverlay({ caretPos, charPx, containerRef, showBottomStrand, seqLength = 0, charsPerLine = 0 }) {
   const [box, setBox] = useState(null);
   useLayoutEffect(() => {
     if (caretPos == null || !Number.isFinite(caretPos)) {
@@ -35,6 +35,68 @@ export default function CaretOverlay({ caretPos, charPx, containerRef, showBotto
     if (!root) return undefined;
     const allLines = root.querySelectorAll('[data-testid="sequence-view-line"]');
     if (allLines.length === 0) return undefined;
+
+    // Reusable strand-band math — pulled into a helper so the bridge
+    // branch and the main/leading/trailing branches share the same
+    // top/height resolution.
+    const measureStrandBand = (el) => {
+      const topStrand = el.querySelector('[data-testid="sequence-view-strands-top"]');
+      let top;
+      let height;
+      if (topStrand) {
+        const bottomStrand = el.querySelector('[data-testid="sequence-view-strands-bottom"]');
+        top = el.offsetTop + topStrand.offsetTop;
+        if (bottomStrand) {
+          const bottomY = el.offsetTop + bottomStrand.offsetTop + bottomStrand.offsetHeight;
+          height = bottomY - top;
+        } else {
+          height = topStrand.offsetHeight;
+        }
+      } else {
+        top = el.offsetTop;
+        height = Math.max(8, el.offsetHeight - 14);
+      }
+      return { top, height };
+    };
+
+    // M-X.5 hotfix (07.05.2026) — bridge wrap-half caret rendering.
+    // Round-10 (06.05.2026) folded the trailing wrap-tail into the
+    // last main row (the «bridge» line carrying `data-wraps-origin
+    // = "true"` + `data-wrap-at = N`). SelectionOverlay round-13
+    // already paints inside this bridge wrap-half, but CaretOverlay
+    // was still looking for vanished trailing-wrap rows for any
+    // caretPos > seqLength → caret stayed invisible / stuck on the
+    // last main position. Mirror SelectionOverlay's lookup pattern
+    // here: when the extended-domain caret falls into the bridge
+    // wrap-half range, render directly on the bridge row at column
+    // wrapAt + (caretPos - seqLength). The legacy trailing-wrap
+    // path remains as a fallback (round-12 restored those rows
+    // BELOW the bridge for drag-selection — the caret should still
+    // track there if the wrap offset exceeds the bridge wrap-half
+    // length).
+    if (Number.isFinite(seqLength) && seqLength > 0 && caretPos > seqLength && charsPerLine > 0) {
+      let bridgeEl = null;
+      let bridgeWrapAt = 0;
+      for (const el of allLines) {
+        if (el.getAttribute('data-wraps-origin') === 'true') {
+          bridgeEl = el;
+          bridgeWrapAt = parseInt(el.dataset.wrapAt || '', 10);
+          break;
+        }
+      }
+      if (bridgeEl && Number.isFinite(bridgeWrapAt) && bridgeWrapAt >= 0 && bridgeWrapAt < charsPerLine) {
+        const wrapOffset = caretPos - seqLength;
+        const wrapHalfLen = charsPerLine - bridgeWrapAt;
+        if (wrapOffset >= 0 && wrapOffset <= wrapHalfLen) {
+          const offsetCh = bridgeWrapAt + wrapOffset;
+          const left = (bridgeEl.offsetLeft || 0) + (LABEL_WIDTH + offsetCh) * charPx;
+          const { top, height } = measureStrandBand(bridgeEl);
+          setBox({ left, top, height });
+          return undefined;
+        }
+      }
+    }
+
     // Round-8 wrap-aware caret: extended-domain caretPos can be < 0
     // (came from leading-wrap row) or > seqLength (trailing-wrap).
     // Render in the matching wrap-tail row; otherwise stick to main.
@@ -68,25 +130,10 @@ export default function CaretOverlay({ caretPos, charPx, containerRef, showBotto
     const lineStart = parseInt(target.dataset.lineStart, 10);
     const offsetCh = realPos - lineStart;
     const left = (target.offsetLeft || 0) + (LABEL_WIDTH + offsetCh) * charPx;
-    const topStrand = target.querySelector('[data-testid="sequence-view-strands-top"]');
-    let top;
-    let height;
-    if (topStrand) {
-      const bottomStrand = target.querySelector('[data-testid="sequence-view-strands-bottom"]');
-      top = target.offsetTop + topStrand.offsetTop;
-      if (bottomStrand) {
-        const bottomY = target.offsetTop + bottomStrand.offsetTop + bottomStrand.offsetHeight;
-        height = bottomY - top;
-      } else {
-        height = topStrand.offsetHeight;
-      }
-    } else {
-      top = target.offsetTop;
-      height = Math.max(8, target.offsetHeight - 14);
-    }
+    const { top, height } = measureStrandBand(target);
     setBox({ left, top, height });
     return undefined;
-  }, [caretPos, charPx, containerRef, showBottomStrand, seqLength]);
+  }, [caretPos, charPx, containerRef, showBottomStrand, seqLength, charsPerLine]);
 
   if (!box) return null;
   // 2026-05-06 — biolog: «хочу чтобы каретка курсора двигалась не

@@ -10,7 +10,9 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:related": "vitest run --changed HEAD"
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.0.0",

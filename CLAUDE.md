@@ -27,7 +27,7 @@ BodgeGene — визуальный конструктор генетически
 ### 1. Тесты ПЕРВЫМИ, код вторым
 
 ```
-Написать тесты (red) → Написать код (green) → npx vitest run
+Написать тесты (red) → Написать код (green) → npm test
 ```
 
 Никогда не писать код без теста. Это главное правило проекта.
@@ -39,7 +39,7 @@ BodgeGene — визуальный конструктор генетически
 ### 3. Проверка после каждого изменения
 
 ```bash
-cd gui/designer && npx vitest run && npx vite build
+cd gui/designer && npm test && npx vite build
 ```
 
 ### 4. Баги — ТОЛЬКО в BUGS.md
@@ -306,7 +306,11 @@ Polymerase + primer prefix вынесены из header в collapsible dropdown.
 ## Команды
 
 ```bash
-cd gui/designer && npm run dev     # dev server
-cd gui/designer && npx vitest run  # тесты
+cd gui/designer && npm run dev     # dev server (фронт + бэк)
+cd gui/designer && npm test        # все тесты (vitest run)
+cd gui/designer && npm run test:watch       # watch mode
+cd gui/designer && npm run test:related      # только changed-since-HEAD
 cd gui/designer && npx vite build  # билд
 ```
+
+**НЕ использовать `npx vitest`** — `npx` резолвит vitest из global npm cache (возможна устаревшая версия без happy-dom config) вместо local `node_modules/.bin/vitest`. Симптом: фейковые ошибки `document is not defined` в component тестах. Команды выше через npm scripts корректно резолвят local. Если нужен один файл: `npm test -- path/to/file.test.jsx` либо `./node_modules/.bin/vitest run path/...`.

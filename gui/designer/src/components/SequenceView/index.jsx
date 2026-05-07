@@ -776,6 +776,7 @@ const SequenceView = forwardRef(function SequenceView({
         containerRef={containerRef}
         showBottomStrand={settings.showBottomStrand}
         seqLength={seqLength}
+        charsPerLine={charsPerLine}
       />
       <OriginMarkerOverlay
         circular={circular}
