@@ -210,11 +210,15 @@ export default function Importer() {
    *   addPrimerToPool × selected
    *   toast + reset + popFullscreen
    */
-  const runConfirm = useCallback(async (confirmTarget = target) => {
+  const runConfirm = useCallback(async (confirmTarget = target, itemsOverride = null) => {
     setBusyConfirm(true);
     try {
       const store = useStore.getState();
-      const items = state.parsedItems;
+      // M-X.6 K1 follow-up — caller may pass freshly-committed items
+      // directly (the parsedItems closure is stale right after
+      // commitPendingImport because React batches setX). Default to
+      // state.parsedItems for legacy callers (project-target Confirm).
+      const items = Array.isArray(itemsOverride) ? itemsOverride : state.parsedItems;
       const added = [];
       const skipped = [];
       let replaced = 0;
@@ -404,8 +408,12 @@ export default function Importer() {
 
       // For multi-mode batch: keep biolog in the screen so they can see the
       // SessionSummary update; for single, close out.
-      if (state.parsedItems.length === 1 && added.length > 0) {
-        state.removeFile(state.parsedItems[0]._fileName);
+      // M-X.6 K1 follow-up — when PreImportModal triggered runConfirm
+      // via override, parsedItems is the JUST-committed batch (the
+      // closure capture from useLibraryState is stale because setX
+      // is async). Drive cleanup off `items` (the working set).
+      if (items.length === 1 && added.length > 0) {
+        state.removeFile(items[0]._fileName);
       } else if (added.length > 0) {
         state.reset();
         popFullscreen();
@@ -631,10 +639,67 @@ export default function Importer() {
       </div>
 
       {/* M-X.6 K1 — ActionsBar + SessionSummary deleted (DEC-MX6-04).
-          See import-header comment block above for the migration
-          notes. PreImportModal already commits the import on confirm
-          for single-file flows; multi-file commits via MultiImportView's
-          «Готово» button. */}
+          The K1 plan note assumed PreImportModal confirm would persist
+          straight to libraryEntries; in fact commitPendingImport only
+          stages to parsedItems, so the legacy ActionsBar «В библиотеку»
+          button was the actual persist trigger. K1 follow-up: a single
+          floating «Сохранить в библиотеку» button surfaces when biolog
+          has a transient parsedItem (no _libraryEntryId) — replaces
+          the deleted bar's primary action. Multi-file commits keep
+          flowing through MultiImportView's «Готово» button (K4). */}
+      {hasAny && !isMulti && currentItem && !currentItem._libraryEntryId && (
+        <div
+          data-testid="library-transient-save-bar"
+          style={{
+            position: 'absolute',
+            right: 24,
+            bottom: 24,
+            zIndex: 20,
+            display: 'flex',
+            gap: 8,
+            alignItems: 'center',
+          }}
+        >
+          {target === 'project' && useStore.getState().currentProjectId && (
+            <button
+              type="button"
+              data-testid="library-save-to-project"
+              onClick={() => onAction('canvas')}
+              disabled={busyConfirm}
+              style={{
+                padding: '8px 14px',
+                fontSize: 13,
+                fontWeight: 500,
+                background: 'var(--surface-2)',
+                color: 'var(--text-primary)',
+                border: '0.5px solid var(--border-default)',
+                borderRadius: 'var(--radius-md)',
+                cursor: busyConfirm ? 'not-allowed' : 'pointer',
+                boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+              }}
+            >На canvas</button>
+          )}
+          <button
+            type="button"
+            data-testid="library-save-to-library"
+            onClick={() => onAction('library')}
+            disabled={busyConfirm || !currentItem.sequence}
+            title="Сохранить запись в библиотеку"
+            style={{
+              padding: '8px 14px',
+              fontSize: 13,
+              fontWeight: 500,
+              background: 'var(--accent-500)',
+              color: 'var(--surface-1)',
+              border: 'none',
+              borderRadius: 'var(--radius-md)',
+              cursor: busyConfirm ? 'not-allowed' : 'pointer',
+              boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
+              opacity: busyConfirm ? 0.6 : 1,
+            }}
+          >{busyConfirm ? 'Сохраняем…' : 'Сохранить в библиотеку'}</button>
+        </div>
+      )}
 
       {autonamePrompt && (
         <AutonameModal

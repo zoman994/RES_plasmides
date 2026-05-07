@@ -215,6 +215,45 @@ describe('M-B.2 K1 — Importer single-screen flow', () => {
     expect(useStore.getState().annotator.open).toBe(false);
   });
 
+  // M-X.6 K1 follow-up — regression guard: K1 deleted ActionsBar,
+  // assuming PreImportModal confirm would persist to libraryEntries.
+  // It only stages to parsedItems, so the persist never happens
+  // until biolog clicks an explicit save button. The replacement is
+  // a single floating «Сохранить в библиотеку» button visible while
+  // the inspector holds a transient parsedItem (no _libraryEntryId).
+  it('7) transient parsedItem surfaces «Сохранить в библиотеку» bar; click persists to libraryEntries', async () => {
+    render(<Importer />);
+    const dz = screen.getByTestId('importer-catalog-dropzone');
+    await act(async () => {
+      fireEvent.drop(dz, {
+        dataTransfer: { files: [fileFromText('regress.fasta', FASTA_TEXT)], types: ['Files'] },
+      });
+    });
+    await waitFor(() => expect(screen.getByTestId('pre-import-modal')).toBeTruthy());
+    // Uncheck so the post-commit auto-open Annotator doesn't pop and
+    // hide the save bar in the test snapshot.
+    fireEvent.click(screen.getByTestId('pre-import-annotate-now'));
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('pre-import-submit'));
+    });
+    await waitFor(() => expect(screen.getByTestId('importer-single-inspector')).toBeTruthy());
+    // Save bar visible for transient items.
+    const bar = screen.getByTestId('library-transient-save-bar');
+    expect(bar).toBeTruthy();
+    const saveBtn = screen.getByTestId('library-save-to-library');
+    expect(saveBtn).toBeTruthy();
+    // Click → runConfirm('library') → addLibraryEntry → libraryEntries grows.
+    await act(async () => {
+      fireEvent.click(saveBtn);
+    });
+    await waitFor(() => {
+      const entries = Object.values(useStore.getState().libraryEntries || {});
+      expect(entries.length).toBeGreaterThanOrEqual(1);
+      const found = entries.find(e => e.name === 'my_seq' || e.name?.startsWith('my_seq'));
+      expect(found).toBeTruthy();
+    });
+  });
+
   it('6) Topbar back button pops Importer off the nav stack (no in-importer cancel button)', () => {
     // Importer no longer renders its own back chevron — AppShell Topbar
     // already owns popFullscreen. Test asserts the contract: click

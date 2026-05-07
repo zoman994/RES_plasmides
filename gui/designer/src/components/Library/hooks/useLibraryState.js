@@ -202,6 +202,15 @@ export function useImporterState({ mode } = {}) { // eslint-disable-line no-unus
     if (annotateNow && prev.kind !== 'multi' && newItems.length > 0) {
       setPendingAnnotatorFile(newItems[0]._fileName);
     }
+    // M-X.6 K1 follow-up — return the just-committed items so the
+    // caller (Library/index.jsx PreImportModal callback) can chain
+    // `runConfirm('library')` to persist them to libraryEntries
+    // without waiting for the next render cycle. Pre-M-X.6 this
+    // commit was triggered by ActionsBar's «В библиотеку» button;
+    // K1 deleted that bar (DEC-MX6-04) on the assumption that
+    // PreImportModal commits straight to the library, but the
+    // legacy commitPendingImport only staged to parsedItems.
+    return newItems;
   }, [pendingImport]);
 
   /**
