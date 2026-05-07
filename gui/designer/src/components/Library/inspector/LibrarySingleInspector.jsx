@@ -33,11 +33,14 @@ import { selectAnnotator } from '../../../store/uiSlice.js';
 import SettingsPopover from '../../SequenceView/SettingsPopover';
 import FeatureEditorModal from './FeatureEditorModal';
 import LibrarySaveActions from './LibrarySaveActions';
+import LibraryInspectorTitleRow from './LibraryInspectorTitleRow';
 import ManualEditConfirmModal from './ManualEditConfirmModal';
 import { useIdlePrewarm } from './hooks/useIdlePrewarm';
 import { useAnnotationUndoRedo } from './hooks/useAnnotationUndoRedo';
 import { useFeatureEditorFlow } from './hooks/useFeatureEditorFlow';
-import { useManualEditDetection } from '../hooks/useManualEditDetection';
+import { useEditableModeToggle } from './hooks/useEditableModeToggle';
+import { useManualEditBranching } from './hooks/useManualEditBranching';
+import { useLibrarySaveFlow } from './hooks/useLibrarySaveFlow';
 
 const S = STRINGS.importer;
 
@@ -134,66 +137,48 @@ export default function SingleInspector({
   // (manual edit branching) listens to this state to decide whether
   // to capture sequence-mutating keystrokes. Reset to read-only when
   // switching plasmids (item id changes) so each open starts safe.
-  const [editable, setEditable] = useState(false);
-  useEffect(() => {
-    setEditable(false);
-  }, [item?.id, item?._fileName]);
+  // M-X.6 K0 — extracted via useEditableModeToggle (DEC-MX6-01).
+  // K6 read-only/editable pill state (DEC-LIB-16 ⚓), auto-resets
+  // on plasmid switch.
+  const { editable, toggle: toggleEditable, disable: disableEditable } = useEditableModeToggle(item);
 
-  // M-X.5 K10 — Manual edit branching (DEC-LIB-12 ⚓). On the first
-  // sequence-mutating keystroke (A/T/G/C/N/IUPAC, Backspace, Delete)
-  // while EDITABLE pill is on AND inspector is on a Mine library
-  // entry's Sequence tab, open ManualEditConfirmModal. Confirm →
-  // librarySlice.createManualEditBranch forks the entry; biolog
-  // continues editing the copy. Cancel → no entry created, biolog
-  // stays on the parent (pill stays EDITABLE so they can change
-  // their mind).
+  // M-X.6 K0 — extracted via useManualEditBranching (DEC-MX6-01).
+  // K10 manual-edit branching (DEC-LIB-12 ⚓): listens window-level
+  // keydown when armed, opens ManualEditConfirmModal on first
+  // sequence-mutating keystroke, confirm → createManualEditBranch.
   //
-  // Caveat: this commit lands the modal + branch creation flow but
-  // not the character-level apply into SequenceView itself (that
-  // requires extending useSequenceKeyboard.js with edit handlers —
-  // substantial scope, scheduled for M-X.6 polish). Today the new
-  // branch is identical to the parent except for the
-  // origin.kind = 'manual_edit' marker + parent reference. Biolog
-  // can still mutate annotations on the branch through the existing
-  // FeatureEditorModal / drag edges / hotkeys flow.
-  const [manualEditPending, setManualEditPending] = useState(null);
-  const [manualEditBusy, setManualEditBusy] = useState(false);
-  const showToast = useStore(s => s.showToast);
-  const createManualEditBranch = useStore(s => s.createManualEditBranch);
-  const armDetection = !!editable && !!item?._libraryEntryId && activeTab === 'sequence';
-  const handleFirstEdit = useCallback(({ key }) => {
-    if (!armDetection) return;
-    setManualEditPending({ key });
-  }, [armDetection]);
-  useManualEditDetection({ armed: armDetection, onFirstEdit: handleFirstEdit });
-  const cancelManualEdit = useCallback(() => {
-    setManualEditPending(null);
-  }, []);
-  const confirmManualEdit = useCallback(async () => {
-    if (!manualEditPending || !item?._libraryEntryId || !createManualEditBranch) return;
-    setManualEditBusy(true);
-    try {
-      const result = await createManualEditBranch(
-        item._libraryEntryId,
-        item.sequence || '',
-        Array.isArray(edits?.editedAnnotations) ? edits.editedAnnotations : (item.annotations || []),
-      );
-      if (result?.ok) {
-        showToast?.(`Создана ветка «${result.name}». Откройте её в библиотеке для продолжения правок.`, { kind: 'success', duration: 4000 });
-        if (typeof onUpdateEdits === 'function') {
-          onUpdateEdits({ editedAnnotations: undefined });
-        }
-        setEditable(false);
-      } else if (result?.reason === 'pending-delete') {
-        showToast?.(`Запись «${result.name || item.name}» помечена на удаление. Восстановите её перед manual edit.`, { kind: 'error', duration: 4000 });
-      } else {
-        showToast?.('Не удалось создать ветку — попробуйте ещё раз.', { kind: 'error', duration: 4000 });
-      }
-    } finally {
-      setManualEditBusy(false);
-      setManualEditPending(null);
+  // Caveat (M-X.6 K2 follow-up): branch is created with sequence
+  // IDENTICAL to parent. Real character-level apply (insert /
+  // Backspace / Delete with indel-aware annotation shift) lands in
+  // K2 via the `onSequenceEdit` composite handler. Annotation
+  // editing on the branch already works through FeatureEditorModal
+  // / drag edges / hotkeys.
+  const clearPendingEdits = useCallback(() => {
+    if (typeof onUpdateEdits === 'function') {
+      onUpdateEdits({ editedAnnotations: undefined });
     }
-  }, [manualEditPending, item, edits, createManualEditBranch, showToast, onUpdateEdits]);
+  }, [onUpdateEdits]);
+
+  // M-X.6 K0 — extracted via useLibrarySaveFlow (DEC-MX6-01).
+  // Packages the K7 save buttons' props (DEC-LIB-13 ⚓): «Перезаписать»
+  // (overwrite + version bump) и «Сохранить как версию» (copy-on-write
+  // с parent reference). Both `onAfterOverwrite` / `onAfterSaveAsVersion`
+  // clear the inspector's pending edits so the buttons disable until
+  // the next annotation change.
+  const saveFlow = useLibrarySaveFlow({ item, edits, onUpdateEdits });
+  const {
+    pending: manualEditPending,
+    busy: manualEditBusy,
+    cancel: cancelManualEdit,
+    confirm: confirmManualEdit,
+  } = useManualEditBranching({
+    item,
+    edits,
+    activeTab,
+    editable,
+    onClearEdits: clearPendingEdits,
+    onDisableEditable: disableEditable,
+  });
   // Cursor marker on the strip — persistent (last set position) even
   // after the scroll is applied + pendingScroll cleared. Lets the
   // biolog visually see where the last navigation landed AND drives
@@ -588,157 +573,26 @@ export default function SingleInspector({
         *     active tab. Click on a feature auto-switches to the
         *     Sequence tab and scrolls SequenceView to its start.
         */}
-      <div
-        data-testid="importer-single-title"
-        style={{
-          padding: '6px 14px 4px',
-          borderBottom: '0.5px solid var(--border-subtle)',
-          background: 'var(--surface-1)',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <InlineEditableTitle
-              value={item.name || item._fileName || ''}
-              onCommit={(name) => onRenameItem?.(name)}
-            />
-          </div>
-          {/* Bug-rush #22: ⚙ + READ-ONLY pill relocated here from
-              SequenceTab's removed sticky header. Only visible while
-              the Sequence tab is active. */}
-          {activeTab === 'sequence' && (
-            <>
-              <button
-                ref={seqSettingsTriggerRef}
-                type="button"
-                aria-haspopup="dialog"
-                aria-expanded={seqSettingsOpen ? 'true' : 'false'}
-                aria-label={S.sequenceView?.settingsButton || 'Display settings'}
-                title={S.sequenceView?.settingsButton || 'Display settings'}
-                data-testid="importer-sequence-view-settings-trigger"
-                onClick={() => setSeqSettingsOpen((v) => !v)}
-                style={{
-                  border: '0.5px solid var(--border-default)',
-                  background: 'var(--surface-1)',
-                  color: 'var(--text-secondary)',
-                  cursor: 'pointer',
-                  fontSize: 12,
-                  padding: '2px 6px',
-                  borderRadius: 'var(--radius-md)',
-                  lineHeight: 1,
-                  flexShrink: 0,
-                }}
-              >⚙</button>
-              <button
-                type="button"
-                data-testid="importer-sequence-readonly-pill"
-                data-mode={editable ? 'editable' : 'readonly'}
-                onClick={() => setEditable(v => !v)}
-                title={editable
-                  ? 'Кликните чтобы заблокировать (Read-only). Несохранённые правки останутся.'
-                  : 'Кликните чтобы разрешить ручное редактирование последовательности. Первая правка создаст новую ветку плазмиды (manual edit).'}
-                aria-label={editable ? 'Switch to read-only' : 'Switch to editable'}
-                style={{
-                  padding: '2px 8px', borderRadius: 'var(--radius-sm)',
-                  background: editable
-                    ? 'var(--accent-50, color-mix(in srgb, var(--accent-500) 18%, transparent))'
-                    : 'var(--surface-2)',
-                  color: editable
-                    ? 'var(--accent-700, #c2410c)'
-                    : 'var(--text-secondary)',
-                  border: editable
-                    ? '0.5px solid var(--accent-500)'
-                    : '0.5px solid transparent',
-                  fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.4,
-                  fontWeight: editable ? 600 : 400,
-                  flexShrink: 0, cursor: 'pointer',
-                  display: 'inline-flex', alignItems: 'center', gap: 4,
-                }}
-              >
-                {editable && (
-                  <span
-                    aria-hidden="true"
-                    style={{
-                      width: 6, height: 6, borderRadius: '50%',
-                      background: 'var(--accent-700, #c2410c)',
-                      animation: 'editable-pulse 1.4s ease-in-out infinite',
-                    }}
-                  />
-                )}
-                {editable ? (S.sequenceEditable || 'EDITABLE') : S.sequenceReadOnly}
-              </button>
-            </>
-          )}
-          {/* Bug-rush #23 (04.05.2026): live selection counter — bp
-              always, aa appended when selection mode is 'aa' (codon-
-              aligned). Only renders while a non-collapsed selection
-              exists, so the title row stays clean otherwise. */}
-          {/* M-X.5 K7 Library Save Flow (DEC-LIB-13 ⚓). Surface the two
-              explicit Save buttons in the title row when the inspector is
-              looking at a Mine library entry that has unsaved annotation
-              edits. Only Mine entries have `_libraryEntryId` — catalog /
-              paste / file imports stay transient until biolog explicitly
-              «В библиотеку» (handled elsewhere). The silent write-through
-              safety-net inside `useLibraryState.updateEdits` keeps edits
-              durable across browser refresh; these buttons are the
-              explicit «commit point» that bumps version / forks history. */}
-          {item._libraryEntryId && (
-            <LibrarySaveActions
-              libraryEntryId={item._libraryEntryId}
-              hasChanges={Array.isArray(edits?.editedAnnotations)}
-              editedAnnotations={Array.isArray(edits?.editedAnnotations) ? edits.editedAnnotations : []}
-              parentName={item.name || ''}
-              onAfterOverwrite={() => {
-                // Clear pending edits so the buttons disable until next change.
-                if (typeof onUpdateEdits === 'function') {
-                  onUpdateEdits({ editedAnnotations: undefined });
-                }
-              }}
-              onAfterSaveAsVersion={() => {
-                // Same — leave biolog viewing the parent (the new version
-                // appears in Library tree); biolog clicks it to switch.
-                if (typeof onUpdateEdits === 'function') {
-                  onUpdateEdits({ editedAnnotations: undefined });
-                }
-              }}
-            />
-          )}
-          {(() => {
-            const a = (typeof cursorAnchor === 'number' && Number.isFinite(cursorAnchor)) ? cursorAnchor : null;
-            const f = (typeof cursorPos === 'number' && Number.isFinite(cursorPos)) ? cursorPos : null;
-            if (a == null || f == null || a === f) return null;
-            const bp = Math.abs(a - f);
-            const showAa = cursorSelectionMode === 'aa';
-            const aa = showAa ? Math.floor(bp / 3) : 0;
-            return (
-              <div
-                data-testid="importer-selection-counter"
-                style={{
-                  padding: '2px 8px',
-                  borderRadius: 'var(--radius-sm)',
-                  background: 'var(--accent-50, rgba(249, 115, 22, 0.12))',
-                  color: 'var(--accent-700, #c2410c)',
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: 11,
-                  fontWeight: 500,
-                  flexShrink: 0,
-                }}
-              >
-                {S.selectionCountBp(bp)}{showAa ? ` · ${S.selectionCountAa(aa)}` : ''}
-              </div>
-            );
-          })()}
-          <div
-            style={{
-              fontSize: 11, color: 'var(--text-tertiary)',
-              fontFamily: 'var(--font-mono)', flexShrink: 0,
-            }}
-          >
-            {length.toLocaleString()} bp · {topology}
-            {regionCount > 0 && ` · ${S.summaryRegionCount(regionCount)}`}
-          </div>
-        </div>
-      </div>
+      <LibraryInspectorTitleRow
+        item={item}
+        activeTab={activeTab}
+        length={length}
+        topology={topology}
+        regionCount={regionCount}
+        onRenameItem={onRenameItem}
+        seqSettingsTriggerRef={seqSettingsTriggerRef}
+        seqSettingsOpen={seqSettingsOpen}
+        onToggleSeqSettings={() => setSeqSettingsOpen((v) => !v)}
+        editable={editable}
+        toggleEditable={toggleEditable}
+        saveFlow={saveFlow}
+        cursorPos={cursorPos}
+        cursorAnchor={cursorAnchor}
+        cursorSelectionMode={cursorSelectionMode}
+      />
+      {/* M-X.6 K0 — title row JSX moved into LibraryInspectorTitleRow.
+          Legacy inline structure dropped below; the comment block
+          above used to wrap the visible markup. */}
 
       <TabBar
         activeTab={activeTab}
