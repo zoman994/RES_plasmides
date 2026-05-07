@@ -220,13 +220,13 @@ export default function App() {
       if (importable.length > 0 && fs === 'dag') {
         queueImporterFiles(importable);
         s.pushFullscreen({
-          fullscreen: 'importer',
+          fullscreen: 'library',
           payload: { target: 'project' },
         });
         return;
       }
       const detected = files.find(f => DROPZONE_TYPES.some(ext => f.name.toLowerCase().endsWith(ext)));
-      if (detected && fs !== 'importer') {
+      if (detected && fs !== 'library') {
         showToast(STRINGS.toast.dropFileComingSoon(detected.name), 'info');
       }
     }
@@ -243,16 +243,11 @@ export default function App() {
     case 'dag':
       inProjectChild = <DagPlaceholder />;
       break;
-    case 'importer':
     case 'library':
-      // M-X.5 K2 — `importer` and `library` routes are aliases during
-      // the Этап 1 refactor. Both mount the Library workspace. The
-      // `importer` literal stays valid for backward compat with
-      // existing callsites in StartScreen / Topbar / canvasSlice
-      // FULLSCREENS / project-flow toolbar — they will be flipped to
-      // `library` in M-X.5 Этап 2 (DEC-IMP-06 ⚓ promotion). Until
-      // then, keeping the alias prevents a sweeping rename across
-      // ~10 callsites + ~15 test fixtures.
+      // M-X.6 K1 — flipped from M-X.5 alias `'importer' | 'library'`
+      // to the canonical `'library'` literal (DEC-IMP-06 ⚓ purge).
+      // The `'importer'` literal is no longer accepted as a fullscreen
+      // route — see canvasSlice FULLSCREENS array.
       inProjectChild = <Importer />;
       break;
     case 'underConstruction': {

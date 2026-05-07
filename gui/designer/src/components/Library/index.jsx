@@ -15,18 +15,25 @@ import PreImportModal from './PreImportModal';
 import MultiImportView from './import/MultiImportView';
 import CatalogColumn from './tree/LibraryTree';
 import SingleInspector from './inspector/LibrarySingleInspector';
-import MultiInspector from './inspector/MultiInspector';
-import EmptyInspector from './inspector/EmptyInspector';
+// M-X.6 K1 — MultiInspector / EmptyInspector deleted (DEC-MX6-04).
+// Multi-drop now flows через MultiImportView (K4); empty-state
+// hint lives inside the LibraryTree's OnboardingNudge banner (K5).
 import MetaColumn from './inspector/LibraryMetaColumn';
-import ActionsBar from './inspector/ActionsBar';
-import SessionSummary from './inspector/SessionSummary';
+// M-X.6 K1 — ActionsBar / SessionSummary deleted (DEC-MX6-04).
+// «В библиотеку» / «На canvas» / «Аннотировать» actions now live as
+// per-item interactions: the catalog quick-add icon (K8) drops a
+// Mine entry into the active project; transient catalog/paste/file
+// imports route through the K4 single-PreImportModal flow which
+// commits straight to the library on confirm. Session-level
+// «added items» summary concept retired with the Importer
+// fullscreen surface (DEC-IMP-06 ⚓).
 
 const S = STRINGS.importer;
 
 /**
  * Importer fullscreen container (M-B.2 K1 single-screen rewrite).
  *
- * Mounts when canvas.activeFullscreen === 'importer'. Reads `target` from
+ * Mounts when canvas.activeFullscreen === 'library'. Reads `target` from
  * the navStack payload (`'project' | 'library'`). Owns local importer state
  * via useImporterState; nothing persists until Confirm.
  *
@@ -590,12 +597,9 @@ export default function Importer() {
             background: 'var(--surface-1, #fff)',
           }}
         >
-          {!hasAny && (
-            <EmptyInspector
-              target={target}
-              libraryEmpty={target === 'library' && !libraryHasContainers}
-            />
-          )}
+          {/* M-X.6 K1 — EmptyInspector deleted. Empty inspector slot
+              renders nothing; the LibraryTree's OnboardingNudge banner
+              (K5) handles the «no entries yet» messaging. */}
           {hasAny && !isMulti && currentItem && (
             <SingleInspector
               item={{ ...currentItem, name: edits.editedName ?? currentItem.name }}
@@ -610,19 +614,11 @@ export default function Importer() {
               onRunAutoAnnotate={() => onAction('annotate')}
             />
           )}
-          {isMulti && (
-            <MultiInspector
-              items={items}
-              currentIdx={idx}
-              perFileFlags={state.perFileFlags}
-              perFileEdits={state.perFileEdits}
-              onSelect={state.setCurrentIdx}
-              onUpdateFlags={state.updateFlags}
-              onUpdateEdits={state.updateEdits}
-              onRemove={state.removeFile}
-              onAction={onAction}
-            />
-          )}
+          {/* M-X.6 K1 — MultiInspector deleted. Multi-file drops route
+              through MultiImportView (K4); `isMulti` should never be
+              true post-K4 because state.addFiles paths only fire for
+              single-file. Belt-and-braces: render nothing if it
+              somehow does. */}
         </div>
 
         {hasAny && !isMulti && currentItem && (
@@ -634,59 +630,11 @@ export default function Importer() {
         )}
       </div>
 
-      {/*
-        * Floating ActionsBar (биолог 03.05.2026 evening: «можем убрать
-        * эту панель внизу? и кнопки сделать парящими поверх канваса?»).
-        * No more bottom strip — the importer-body now extends all the
-        * way to the bottom of the screen, and the action buttons float
-        * over the bottom-right corner. SessionSummary moved INSIDE the
-        * inspector tab area when needed; the external "Будет добавлено
-        * в Library" hint dropped — destination is implied by which
-        * button (primary orange) the user clicks.
-        */}
-      {hasAny && !isMulti && (
-        <ActionsBar
-          mode="single"
-          onAction={onAction}
-          hasParsedItem={!!currentItem?.sequence}
-          libraryEnabled={
-            currentItem?._source !== 'catalog'
-            || !!edits.editedAnnotations
-            || !!edits.editedSequence
-          }
-          alreadyAddedToLibrary={(() => {
-            if (!currentItem) return false;
-            // Rule per biolog: items already in the user's library don't
-            // expose the «В библиотеку» button at all (it makes no sense
-            // — they're already there). External imports (file / paste /
-            // Demo / SnapGene catalog) keep the button.
-            if (currentItem._libraryEntryId) {
-              const lib = useStore.getState().libraryEntries;
-              if (lib && lib[currentItem._libraryEntryId]) return true;
-            }
-            const name = edits.editedName ?? currentItem.name ?? currentItem._fileName;
-            return state.addedItems.some((it) => it.action === 'library' && it.name === name);
-          })()}
-          hasCurrentProject={!!useStore.getState().currentProjectId}
-          busyConfirm={busyConfirm}
-          target={target}
-        />
-      )}
-      {/*
-        * SessionSummary moved out of the chrome-mounted footer — it's
-        * still rendered inside the inspector body if there are added
-        * items. Most flows finish a single import and return to canvas;
-        * the persistent strip was rarely useful.
-        */}
-      {hasAny && state.addedItems.length > 0 && (
-        <SessionSummary
-          addedItems={state.addedItems}
-          onOpenCanvas={() => {
-            state.reset();
-            popFullscreen();
-          }}
-        />
-      )}
+      {/* M-X.6 K1 — ActionsBar + SessionSummary deleted (DEC-MX6-04).
+          See import-header comment block above for the migration
+          notes. PreImportModal already commits the import on confirm
+          for single-file flows; multi-file commits via MultiImportView's
+          «Готово» button. */}
 
       {autonamePrompt && (
         <AutonameModal

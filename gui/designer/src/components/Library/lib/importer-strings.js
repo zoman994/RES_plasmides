@@ -54,10 +54,10 @@ export const IMPORTER_STRINGS = {
   dropzoneHover: 'Release to upload',
 
   // Inspector / TabBar
-  emptyInspectorHint1: 'Pick a plasmid from the catalog on the left',
-  emptyInspectorHint2: 'or drop a file into the zone below',
-  emptyLibraryFirstTimeTitle: 'Your library is empty',
-  emptyLibraryFirstTimeBody: 'Drop a .dna / .gb / .fasta file into the zone in the lower left — or paste a sequence into the text field. You can also pick a ready-made plasmid from "Tutorial / demo" or the SnapGene catalog on the left.',
+  // M-X.6 K1 (DEC-MX6-04) — emptyInspectorHint1/2 +
+  // emptyLibraryFirstTimeTitle/Body removed together with
+  // EmptyInspector.jsx. Empty-state hint now lives in
+  // OnboardingNudge inside the LibraryTree.
   untitledItem: '(untitled)',
 
   tabOverview: 'Overview',
@@ -240,13 +240,9 @@ export const IMPORTER_STRINGS = {
     showDuplicatesHint: 'Surface predicted regions even when they overlap an already-confirmed feature of the same type.',
   },
 
-  // SessionSummary
-  sessionSummaryTitle: '✓ Already added in this session',
-  sessionSummaryOpenCanvas: 'Open canvas →',
-  sessionBadgeCanvas: '✓ Canvas',
-  sessionBadgeLibrary: '📚 Library',
-  sessionBadgeAnnotate: (n) => `🏷 +${n} regions`,
-  sessionBadgeReplaced: '↻ replaced',
+  // M-X.6 K1 (DEC-MX6-04) — SessionSummary block deleted with the
+  // component. Session-level «added items» summary concept retired
+  // along with the Importer fullscreen surface (DEC-IMP-06 ⚓).
 
   // Inspector overview / summary categories (K3).
   summaryWhatInFile: 'What is in this file',
@@ -274,16 +270,10 @@ export const IMPORTER_STRINGS = {
   tagsLimit: (n) => `maximum ${n} tags`,
   tagRemoveAria: (tag) => `Remove tag ${tag}`,
 
-  // ActionsBar (single + multi)
-  actionCanvas: 'To canvas',
-  actionCanvasNoProjectTitle: 'Open a project first to add to canvas',
-  actionLibrary: 'To library',
-  actionDownloadGB: '💾 Download as .gb',
-  actionDeleteSession: '🗑 Remove from session',
-  actionOverflowAria: 'More',
-
-  deleteFromSessionConfirm: 'Remove file from this session?',
-  deleteAllConfirm: 'Remove the entire batch?',
+  // M-X.6 K1 (DEC-MX6-04) — ActionsBar block deleted with the
+  // component. Action affordances now live as per-item interactions
+  // (catalog quick-add icon for canvas, PreImportModal for library
+  // commits) per DEC-IMP-06 ⚓ migration.
 
   // MetaColumn
   metaTagsLabel: 'tags',
@@ -320,23 +310,17 @@ export const IMPORTER_STRINGS = {
   },
   metaIupac: (chars) => `Contains IUPAC: ${chars} — primers will not be designed across these regions; the program will warn during assembly.`,
 
-  // Multi-mode
-  multiHeader: (n) => `Loaded ${n} file${n === 1 ? '' : 's'}`,
-  multiReplaceAll: '↻ replace all',
-  multiBatchLibrary: (n) => `To library (${n})`,
-  multiActionDeleteAll: '🗑 Remove the entire batch',
-  multiRemoveAria: 'Remove from list',
-  multiColName: 'Name',
-  multiColLength: 'Length',
-  multiColRegions: 'Regions',
-  multiColAnnotate: 'Annot.',
-  multiCanvasDisabledTitle: 'Available for single-file imports',
+  // M-X.6 K1 (DEC-MX6-04) — Multi-mode strings deleted with
+  // MultiInspector.jsx. Multi-file flow now goes through
+  // MultiImportView (K4); its UI strings live inline in the
+  // component for now (small footprint, low reuse risk).
 
   // Region count helper
   summaryRegionCount: (n) => `${n} regions`,
 
   // Confirm-flow hints (mode-agnostic)
-  confirmBusy: 'Importing…',
+  // M-X.6 K1 (DEC-MX6-04) — `confirmBusy` removed; the busy hint
+  // was rendered by ActionsBar / SessionSummary which are gone.
 
   busyParsing: 'Parsing files…',
 

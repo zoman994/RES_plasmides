@@ -2,7 +2,6 @@ export const FULLSCREENS = [
   'start',
   'dag',
   'library',
-  'importer',
   'underConstruction',
   'multiTabBlocked',
   'readOnlyForced',
@@ -24,7 +23,7 @@ const NAV_STORAGE_KEY = 'bodgegene-nav-top';
 
 function isRestorableEntry(entry) {
   if (!entry || !isValidFullscreen(entry.fullscreen)) return false;
-  if (entry.fullscreen === 'importer') {
+  if (entry.fullscreen === 'library') {
     return entry.payload?.target === 'library';
   }
   return false;

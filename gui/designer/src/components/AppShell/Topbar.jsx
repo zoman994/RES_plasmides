@@ -25,17 +25,17 @@ export default function Topbar() {
   const stackDepth = navStack.length;
   const canPop = stackDepth > 1;
   const isDag = activeFullscreen === 'dag';
-  const isImporter = activeFullscreen === 'importer';
-  const showImportButton = isDag && !isImporter;
+  const isLibrary = activeFullscreen === 'library';
+  const showImportButton = isDag && !isLibrary;
 
   // Contextual title: in Importer with target=library the user is browsing /
   // adding to their library and there's no project loaded — showing «—»
   // (the projectFallback) confused biologs into thinking the screen was
   // broken. Surface «Библиотека» so the topbar tells you where you are.
   const activeNavEntry = navStack[navStack.length - 1];
-  const importerTarget = (isImporter && activeNavEntry?.payload?.target) || null;
+  const importerTarget = (isLibrary && activeNavEntry?.payload?.target) || null;
   let projectName;
-  if (isImporter && importerTarget === 'library') {
+  if (isLibrary && importerTarget === 'library') {
     projectName = STRINGS.topbar.libraryTitle;
   } else if (project) {
     projectName = project.name || STRINGS.topbar.untitled;
@@ -165,7 +165,7 @@ export default function Topbar() {
             type="button"
             data-testid="topbar-import-button"
             onClick={() => pushFullscreen({
-              fullscreen: 'importer',
+              fullscreen: 'library',
               payload: { target: 'project' },
             })}
             title={STRINGS.importer.topbarButton}

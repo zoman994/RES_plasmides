@@ -179,7 +179,7 @@ describe('K5 — StartScreen wireframe v7', () => {
     render(<StartScreen onOpenFile={() => {}} />);
     fireEvent.click(screen.getByTestId('ss-browse-library'));
     const top = useStore.getState().canvas.navStack[useStore.getState().canvas.navStack.length - 1];
-    expect(top.fullscreen).toBe('importer');
+    expect(top.fullscreen).toBe('library');
     expect(top.payload.target).toBe('library');
     // No openCatalogSource → catalog tree renders all 4 groups
     // («Моя библиотека» is open by default via persistent localStorage).

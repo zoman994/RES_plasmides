@@ -43,8 +43,8 @@ async function reset() {
   await freshDB();
   removeItem(IMPORTER_MODE_STORAGE_KEY);
   useStore.setState((state) => {
-    state.canvas.activeFullscreen = 'importer';
-    state.canvas.navStack = [{ fullscreen: 'importer', payload: { target: 'project' } }];
+    state.canvas.activeFullscreen = 'library';
+    state.canvas.navStack = [{ fullscreen: 'library', payload: { target: 'project' } }];
     state.importerMode = 'advanced';
     state.toasts = [];
     state.libraryEntries = {};
@@ -77,14 +77,17 @@ beforeEach(async () => {
 });
 
 describe('M-B.2 K1 — Importer single-screen flow', () => {
-  it('1) mounts in advanced mode by default with CatalogColumn + EmptyInspector visible', () => {
+  it('1) mounts in advanced mode by default with CatalogColumn visible', () => {
     render(<Importer />);
     const root = screen.getByTestId('importer-fullscreen');
     expect(root.dataset.target).toBe('project');
     expect(root.dataset.mode).toBe('advanced');
     expect(root.dataset.activeTab).toBe('overview');
     expect(screen.getByTestId('importer-catalog-column')).toBeTruthy();
-    expect(screen.getByTestId('importer-empty-inspector')).toBeTruthy();
+    // M-X.6 K1 — EmptyInspector deleted (DEC-MX6-04). Empty inspector
+    // slot now renders nothing; the LibraryTree's OnboardingNudge
+    // handles «no entries yet» messaging.
+    expect(screen.queryByTestId('importer-empty-inspector')).toBeNull();
     // No single-inspector / footer until a file lands.
     expect(screen.queryByTestId('importer-single-inspector')).toBeNull();
     expect(screen.queryByTestId('importer-footer')).toBeNull();
@@ -92,7 +95,7 @@ describe('M-B.2 K1 — Importer single-screen flow', () => {
 
   it('2) target=library shows the to-library header copy', () => {
     useStore.setState((state) => {
-      state.canvas.navStack = [{ fullscreen: 'importer', payload: { target: 'library' } }];
+      state.canvas.navStack = [{ fullscreen: 'library', payload: { target: 'library' } }];
     });
     render(<Importer />);
     expect(screen.getByTestId('importer-fullscreen').dataset.target).toBe('library');
@@ -219,9 +222,9 @@ describe('M-B.2 K1 — Importer single-screen flow', () => {
     useStore.setState((state) => {
       state.canvas.navStack = [
         { fullscreen: 'dag', payload: null },
-        { fullscreen: 'importer', payload: { target: 'project' } },
+        { fullscreen: 'library', payload: { target: 'project' } },
       ];
-      state.canvas.activeFullscreen = 'importer';
+      state.canvas.activeFullscreen = 'library';
     });
     // Ensure no duplicate back inside Importer.
     render(<Importer />);
