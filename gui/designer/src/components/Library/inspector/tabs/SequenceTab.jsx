@@ -51,6 +51,9 @@ export default function SequenceTab({
   // FeatureEditorModal (rename / type / coords / split / merge /
   // delete). Wired by SingleInspector.
   onOpenFeatureEditor,
+  // M-X.6 K2 — char-apply gate (DEC-MX6-02). Pass-through to SequenceView.
+  editable = false,
+  onSequenceEdit,
 }) {
   const sequenceViewRef = useRef(null);
 
@@ -118,6 +121,8 @@ export default function SequenceTab({
           onAnnotationEdit={onAnnotationEdit}
           onOpenAnnotator={onOpenAnnotator}
           onOpenFeatureEditor={onOpenFeatureEditor}
+          editable={editable}
+          onSequenceEdit={onSequenceEdit}
         />
       </div>
     </div>

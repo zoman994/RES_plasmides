@@ -125,6 +125,9 @@ const SequenceView = forwardRef(function SequenceView({
   selectionStrand = 1,
   onCaretChange,
   onSelectRange,
+  // M-X.6 K2 — DEC-MX6-02 char-apply gate. See useSequenceKeyboard.
+  editable = false,
+  onSequenceEdit,
   // Sprint M-X.2 K3 — annotation edit operations. Parent wires
   // `onAnnotationEdit({kind, id?, patch?, payload?})` into its
   // `onUpdateEdits({editedAnnotations})` flow. `onOpenAnnotator`
@@ -466,6 +469,10 @@ const SequenceView = forwardRef(function SequenceView({
     selectionMode,
     selectionStrand,
     onCaretChange,
+    // M-X.6 K2/K3 — char-apply + circular keyboard nav (DEC-MX6-02/03).
+    editable,
+    topology: circular ? 'circular' : 'linear',
+    onSequenceEdit,
     // Sprint M-X.3 follow-up — Ctrl+A / Ctrl+Alt+A select-all
     // hotkeys delegate to the same onSelectRange that mouse drag
     // already drives, so the parent's selection state machine

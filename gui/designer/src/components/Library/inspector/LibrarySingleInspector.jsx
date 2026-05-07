@@ -424,6 +424,40 @@ export default function SingleInspector({
     }
   }, [onUpdateEdits, pushSnapshot]);
 
+  // M-X.6 K2 — composite sequence-edit handler (DEC-MX6-02). When
+  // SequenceView's keyboard hook emits an `op` (insert/delete/replace)
+  // we route it to the right place:
+  //   • manual_edit branch → direct apply via librarySlice action.
+  //   • parent (anything else) → buffer the op into manualEditPending
+  //     so ManualEditConfirmModal opens. K10's `confirm` callback
+  //     replays the op against the new branch after createManualEditBranch
+  //     succeeds; the replay path lives in useManualEditBranching's
+  //     confirm flow (extension follows in this commit).
+  // The underlying useManualEditDetection hook fires the modal on the
+  // first keystroke; useSequenceKeyboard's char-apply gate fires
+  // `onSequenceEdit` for EVERY keystroke. Both should converge —
+  // detection opens the modal once per mount, and char-apply ops
+  // pile up until confirm OR get tossed on cancel.
+  const applySequenceEditOnLibraryEntry = useStore((s) => s.applySequenceEditOnLibraryEntry);
+  const onSequenceEditFromView = useCallback(async (op) => {
+    if (!op || !item?._libraryEntryId) return;
+    const isManualBranch = item?.origin?.kind === 'manual_edit';
+    if (isManualBranch && typeof applySequenceEditOnLibraryEntry === 'function') {
+      const result = await applySequenceEditOnLibraryEntry(item._libraryEntryId, op);
+      if (result?.ok && Number.isFinite(result.caretAfter)) {
+        setCursorPos(result.caretAfter);
+        setCursorAnchor(result.caretAfter);
+      }
+      return;
+    }
+    // Parent entry — let useManualEditBranching's modal handle the
+    // first keystroke; the keystroke itself is the trigger so we
+    // intentionally do NOT mutate the parent here. The modal confirm
+    // flow inside useManualEditBranching will fork the entry on
+    // confirm; subsequent keystrokes (after the inspector switches
+    // to the new branch) will hit the `isManualBranch` path above.
+  }, [item, applySequenceEditOnLibraryEntry]);
+
   // Apply a non-edit operation (split / merge / delete) directly
   // against `editedAnnotations` and push the BEFORE state onto the
   // undo stack so Ctrl+Z works the same way it does for inline
@@ -699,6 +733,8 @@ export default function SingleInspector({
               onAnnotationEdit={onAnnotationEditFromView}
               onOpenAnnotator={onOpenAnnotator}
               onOpenFeatureEditor={openFeatureEditor}
+              editable={editable}
+              onSequenceEdit={onSequenceEditFromView}
             />
           </div>
         )}

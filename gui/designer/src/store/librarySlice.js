@@ -7,6 +7,7 @@ import {
 } from '../db/dexie-schema';
 import { computeSuggestedName } from '../components/Library/lib/compute-suggested-name';
 import { computeResourceHash } from '../components/Library/lib/resource-hash';
+import { applySequenceEditToEntry } from '../components/Library/lib/library-sequence-edit';
 
 export const LIBRARY_TAGS_SOFT_LIMIT = 10;
 
@@ -375,6 +376,56 @@ export const createLibrarySlice = (set, get) => ({
       console.warn('[bodgegene] loadOnboardingPlasmids bulk persist failed', err);
     }
     return { ok: true, count: totalCount, byCategory };
+  },
+
+  /**
+   * M-X.6 K2 — character-level sequence edit on a library entry
+   * (DEC-MX6-02). Thin wrapper: call the pure helper
+   * `applySequenceEditToEntry`, recompute resourceHash, persist.
+   * No version bump (silent safety-net path per
+   * DEC-LIB-WRITE-THROUGH-HYBRID-01); explicit «Перезаписать» /
+   * «Сохранить как версию» buttons remain the user-visible commit
+   * point.
+   *
+   * Returns `{ ok, sequence, caretAfter, reason? }`. Caller (composite
+   * handler in LibrarySingleInspector) uses `caretAfter` to advance
+   * the caret one position past the edit.
+   */
+  applySequenceEditOnLibraryEntry: async (id, op) => {
+    if (!id || !op) return { ok: false, reason: 'invalid-args' };
+    const entry = get().libraryEntries[id];
+    if (!entry) return { ok: false, reason: 'not-found' };
+    if (entry._pendingDelete) return { ok: false, reason: 'pending-delete', name: entry.name };
+    const result = applySequenceEditToEntry(entry, op);
+    if (!result?.ok) return result || { ok: false, reason: 'invalid-args' };
+    let resourceHash = entry.payload?.resourceHash || null;
+    try {
+      resourceHash = await computeResourceHash({
+        sequence: result.sequence,
+        topology: entry.payload?.topology,
+        ends: entry.payload?.ends,
+      });
+    } catch { /* keep previous hash on hash failure */ }
+    const nextPayload = {
+      ...(entry.payload || {}),
+      sequence: result.sequence,
+      length: result.length,
+      annotations: result.annotations,
+      resourceHash,
+    };
+    const updated = { ...entry, payload: nextPayload };
+    set((state) => {
+      const e = state.libraryEntries[id];
+      if (e) e.payload = nextPayload;
+    });
+    try {
+      await putLibraryEntry(updated);
+      return { ok: true, sequence: result.sequence, caretAfter: result.caretAfter };
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[bodgegene] applySequenceEditOnLibraryEntry persist failed', err);
+      return { ok: false, reason: 'persist-error' };
+    }
   },
 
   /**
