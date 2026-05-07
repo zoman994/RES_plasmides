@@ -42,6 +42,34 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+// M-C.1 K1 (DEC-MC1-04) — DAG schema extension on Project. M-D will
+// migrate to a containerSlice; the dag.* keys travel with the entities.
+export const DEFAULT_DAG = Object.freeze({
+  positions: {},
+  edges: [],
+  viewport: { x: 0, y: 0, zoom: 1 },
+});
+
+// Lazy migration for legacy projects. Mutates in place (Immer-friendly).
+export function ensureDagShape(project) {
+  if (!project) return project;
+  if (project.dag && typeof project.dag === 'object'
+      && project.dag.positions && typeof project.dag.positions === 'object'
+      && Array.isArray(project.dag.edges)
+      && project.dag.viewport && typeof project.dag.viewport === 'object') {
+    return project;
+  }
+  // Partial migration safe — keep whatever half is already valid.
+  const next = project.dag && typeof project.dag === 'object' ? project.dag : {};
+  if (!next.positions || typeof next.positions !== 'object') next.positions = {};
+  if (!Array.isArray(next.edges)) next.edges = [];
+  if (!next.viewport || typeof next.viewport !== 'object') {
+    next.viewport = { x: 0, y: 0, zoom: 1 };
+  }
+  project.dag = next;
+  return project;
+}
+
 export function makeBlankProject(name = 'Untitled') {
   const ts = nowIso();
   return {
@@ -58,6 +86,9 @@ export function makeBlankProject(name = 'Untitled') {
     primerIds: [],
     settings: {},
     ext: {},
+    // DEC-MC1-04 — fresh projects ship with default DAG shape; legacy
+    // projects are migrated lazily via `ensureDagShape` on first touch.
+    dag: { positions: {}, edges: [], viewport: { x: 0, y: 0, zoom: 1 } },
   };
 }
 
@@ -420,13 +451,12 @@ export const createProjectSlice = (set, get) => ({
   },
 
   /**
-   * Pin a Library container entry to the current project's DAG (M-B.1 K3).
-   * Idempotent: re-pinning the same entry is a no-op. Marks the project
-   * dirty + schedules autosave. The actual DAG node visualisation lands in
-   * M-C/M-D; for now the import simply records the reference so the project
-   * survives reload with its containers attached.
+   * Pin a Library container entry to the current project's DAG.
+   * Idempotent: a re-pin is a no-op (legacy M-X.5 K8 contract).
+   * M-C.1 K1 (DEC-MC1-04) — optional `position: {x,y}` records the
+   * drop point in `Project.dag.positions[id]` on first add only.
    */
-  addContainerToCurrentProject: (libraryEntryId) => {
+  addContainerToCurrentProject: (libraryEntryId, position = null) => {
     if (!libraryEntryId) return;
     set(state => {
       const id = state.currentProjectId;
@@ -434,8 +464,130 @@ export const createProjectSlice = (set, get) => ({
       const proj = state.projects[id];
       if (!proj) return;
       if (!Array.isArray(proj.containerIds)) proj.containerIds = [];
+      ensureDagShape(proj);
       if (proj.containerIds.includes(libraryEntryId)) return;
       proj.containerIds.push(libraryEntryId);
+      if (position && typeof position.x === 'number' && typeof position.y === 'number') {
+        proj.dag.positions[libraryEntryId] = { x: position.x, y: position.y };
+      }
+      proj.updatedAt = nowIso();
+      state._projectLifecycle[id] = {
+        ...(state._projectLifecycle[id] || {}),
+        lastModifiedInIndexedDBAt: proj.updatedAt,
+      };
+    });
+    const id = get().currentProjectId;
+    if (id) _scheduleAutosave(get, id);
+  },
+
+  // Backspace/Delete handler. Drops containerIds entry + dag.positions
+  // + any edge that touches the node (orphan edges break ReactFlow).
+  removeContainerFromProject: (libraryEntryId) => {
+    if (!libraryEntryId) return;
+    set(state => {
+      const id = state.currentProjectId;
+      if (!id) return;
+      const proj = state.projects[id];
+      if (!proj) return;
+      ensureDagShape(proj);
+      if (!Array.isArray(proj.containerIds)) proj.containerIds = [];
+      proj.containerIds = proj.containerIds.filter(c => c !== libraryEntryId);
+      if (proj.dag.positions[libraryEntryId]) delete proj.dag.positions[libraryEntryId];
+      proj.dag.edges = proj.dag.edges.filter(
+        e => e.from !== libraryEntryId && e.to !== libraryEntryId,
+      );
+      proj.updatedAt = nowIso();
+      state._projectLifecycle[id] = {
+        ...(state._projectLifecycle[id] || {}),
+        lastModifiedInIndexedDBAt: proj.updatedAt,
+      };
+    });
+    const id = get().currentProjectId;
+    if (id) _scheduleAutosave(get, id);
+  },
+
+  // Merge a batch of {id:{x,y}} into dag.positions. Existing keys
+  // overwritten; absent keys kept. DagCanvas debounces drag events.
+  setDagPositions: (patch) => {
+    if (!patch || typeof patch !== 'object') return;
+    set(state => {
+      const id = state.currentProjectId;
+      if (!id) return;
+      const proj = state.projects[id];
+      if (!proj) return;
+      ensureDagShape(proj);
+      for (const [nodeId, pos] of Object.entries(patch)) {
+        if (!nodeId || !pos) continue;
+        if (typeof pos.x !== 'number' || typeof pos.y !== 'number') continue;
+        proj.dag.positions[nodeId] = { x: pos.x, y: pos.y };
+      }
+      proj.updatedAt = nowIso();
+      state._projectLifecycle[id] = {
+        ...(state._projectLifecycle[id] || {}),
+        lastModifiedInIndexedDBAt: proj.updatedAt,
+      };
+    });
+    const id = get().currentProjectId;
+    if (id) _scheduleAutosave(get, id);
+  },
+
+  // onConnect handler. Dedups on (from,to). Edge id is uuidv7.
+  addDagEdge: ({ from, to } = {}) => {
+    if (!from || !to || from === to) return;
+    set(state => {
+      const id = state.currentProjectId;
+      if (!id) return;
+      const proj = state.projects[id];
+      if (!proj) return;
+      ensureDagShape(proj);
+      if (proj.dag.edges.some(e => e.from === from && e.to === to)) return;
+      proj.dag.edges.push({ id: uuidv7(), from, to });
+      proj.updatedAt = nowIso();
+      state._projectLifecycle[id] = {
+        ...(state._projectLifecycle[id] || {}),
+        lastModifiedInIndexedDBAt: proj.updatedAt,
+      };
+    });
+    const id = get().currentProjectId;
+    if (id) _scheduleAutosave(get, id);
+  },
+
+  // Drop one edge by id (K5 Backspace/Delete on selected edge).
+  removeDagEdge: (edgeId) => {
+    if (!edgeId) return;
+    set(state => {
+      const id = state.currentProjectId;
+      if (!id) return;
+      const proj = state.projects[id];
+      if (!proj) return;
+      ensureDagShape(proj);
+      const before = proj.dag.edges.length;
+      proj.dag.edges = proj.dag.edges.filter(e => e.id !== edgeId);
+      if (proj.dag.edges.length === before) return;
+      proj.updatedAt = nowIso();
+      state._projectLifecycle[id] = {
+        ...(state._projectLifecycle[id] || {}),
+        lastModifiedInIndexedDBAt: proj.updatedAt,
+      };
+    });
+    const id = get().currentProjectId;
+    if (id) _scheduleAutosave(get, id);
+  },
+
+  // Persist ReactFlow viewport so reload restores framing. DagCanvas
+  // debounces — one autosave per pan, not per-frame.
+  setDagViewport: (viewport) => {
+    if (!viewport) return;
+    set(state => {
+      const id = state.currentProjectId;
+      if (!id) return;
+      const proj = state.projects[id];
+      if (!proj) return;
+      ensureDagShape(proj);
+      const x = typeof viewport.x === 'number' ? viewport.x : proj.dag.viewport.x;
+      const y = typeof viewport.y === 'number' ? viewport.y : proj.dag.viewport.y;
+      const zoom = typeof viewport.zoom === 'number' ? viewport.zoom : proj.dag.viewport.zoom;
+      proj.dag.viewport = { x, y, zoom };
       proj.updatedAt = nowIso();
       state._projectLifecycle[id] = {
         ...(state._projectLifecycle[id] || {}),
