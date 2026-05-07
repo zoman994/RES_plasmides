@@ -21,6 +21,52 @@
 
 Лимиты (⚓ ANCHORS.md, 22.04.2026): `.jsx` hard 40 KB / soft 30 KB; `.js` hard 25 KB / soft 20 KB; data-файлы без лимита.
 
+### M-X.5 entries (07.05.2026)
+
+- **TD-LIBRARYSINGLEINSPECTOR-DECOMP-V2** (OPEN, hard violation): `components/Library/inspector/LibrarySingleInspector.jsx` ≈ **45.94 KB** (hard 40 KB +5.94 KB over). M-X.2-fix снизил 44 → 32 KB; K6/K7/K10 wiring в v0.8.0 вернул к 45.94. Был closed как TD-SINGLEINSPECTOR-SELECTIONSTATE-EXTRACT at 32 KB — reopen.
+  - **Эффект:** hard violation. LibrarySingleInspector — point of contact для всего edit-flow в Library workspace (K6 EDITABLE pill / K7 save actions / K10 manual-edit detection / K11 origin icons / SequenceView caret sync / TagsEditor / FeatureEditorModal launch). Любая правка одного блока рискует ломать другой. M-X.6 cleanup, M-C Container Window, TD-LIB-K10-CHARACTER-APPLY все попадают сюда — без декомпозиции файл превратится в untouchable.
+  - **Fix:** extract в hooks: `useLibrarySaveFlow` (K7 overwrite + save-as-version), `useEditableModeToggle` (K6 read-only ↔ editable + pulsing dot), `useManualEditBranching` (K10 detection + confirm modal + branch creation). Title row + ActionsBar wire через хуки. Возможен отдельный `<LibraryInspectorTitleRow>` под title + EDITABLE pill + save actions (~6-8 KB). Цель: LibrarySingleInspector ≤ 28 KB (soft).
+  - **Окно:** M-X.6 K0 (первым пунктом, ДО других K-step). Аналог TD-SINGLEINSPECTOR-SELECTIONSTATE-EXTRACT pattern.
+  - **Фикс.:** 07.05.2026 (drift catch — Code не зафиксировал в отчёте v0.8.0; обнаружено в drift check сессии после compact).
+
+- **TD-LIB-K2-DEAD-CODE-PURGE** (OPEN, hygiene, deferred from v0.8.0): MultiInspector.jsx (10.71 KB) + EmptyInspector.jsx (1.54 KB) + ActionsBar.jsx (7.90 KB) + SessionSummary.jsx (3.74 KB) — живые в `Library/inspector/`, но dead code после Library route переключения. Также: 'importer' callsites в Topbar / StartScreen / canvasSlice FULLSCREENS / ~15 test fixtures всё ещё используются (route alias DEC-LIB-K2-ROUTE-ALIAS-01 — historical baggage).
+  - **Эффект:** confusing dead code в зоне actively-handling Library workspace. ~24 KB inactive .jsx + 'importer' alias путают reading. Risk: при следующем рефакторе Code может случайно ссылаться на dead-code component (тесты PASS т.к. покрыт, но dead путь). Deferred из v0.8.0 потому что aggressive purge во время Этап 2 user-facing rollout создал бы broken intermediate UX.
+  - **Fix:** delete 4 файла + соответствующие тесты. Flip 'importer' callsites на 'library' (Topbar, StartScreen, canvasSlice FULLSCREENS, ~15 test fixtures). Удалить 'importer' route alias из FULLSCREENS array если все callsites flipped.
+  - **Окно:** M-X.6 K1 (после LibrarySingleInspector decomp).
+  - **Фикс.:** 07.05.2026.
+
+- **TD-LIB-K10-CHARACTER-APPLY** (OPEN, functional gap, ⚓ DEC-LIB-12 promoted с partial impl): real character-level editing в SequenceView не работает. K10 wiring v0.8.0 landed — `createManualEditBranch` slice action + `useManualEditDetection` window-keydown hook + `ManualEditConfirmModal` создают branch entry «{name} (manual edit)», но новая branch identical к parent. Биолог нажимает букву в EDITABLE mode → modal → confirm → branch создан, но sequence НЕ изменён.
+  - **Эффект:** S5 acceptance scenario заведомо fail. Семантика сломана для пользователя — pulsing dot, EDITABLE pill, confirm modal обещают character apply, но он не происходит. Биолог mutates annotations через FeatureEditorModal вместо character editing — workaround полупустой. ⚓ DEC-LIB-12 promoted в ANCHORS.md без полной реализации — нужен caveat либо closure через эту fix.
+  - **Fix:** extension `useSequenceKeyboard.js` — после confirm-flow OK + branch created, accept keydown char и применить через store action (insert/replace/delete на baseSnapshot новой branch). Reuse существующих indel-aware highlights pattern. ~50-80 LOC + 5-8 тестов на keymap edge cases (insert mid / replace selection / delete with backspace / arrow nav после edit / undo).
+  - **Окно:** M-X.6 K2 — блокирует honest S5 acceptance.
+  - **Фикс.:** 07.05.2026.
+
+- **TD-LIB-K4-VIEW-PREVIEW** (OPEN, UX polish, skipped в K4 minimal): per-file PlasmidMiniMap preview button в multi-import row. K4 minimal landed без preview — биолог в MultiImportView видит row с filename/topology/length/folder selector/annotation choice, без glance на содержимое.
+  - **Эффект:** при batch import 5-20 файлов биолог не может быстро отличить «правильный pUC19» от «pUC19 с custom вставкой клиента» без открытия каждого по отдельности после импорта. Cognitive load высокий.
+  - **Fix:** add preview button (eye-icon) в row, expand → inline 180×180 PlasmidMiniMap (existing component, тот же что в Library tree row hover). Reuse mini-map cache из catalog.
+  - **Окно:** M-X.6 K12 polish.
+  - **Фикс.:** 07.05.2026.
+
+- **TD-LIB-K4-AUTO-TRIGGER** (OPEN, semantic gap, low priority): `ext.annotationChoice === 'auto'` в multi-import metadata recorded но не acted on. Сейчас auto работает de facto: biolog opens Library entry → AnnotationsTab embedded Annotator auto-runs L1 (existing pattern). Но это не explicit auto-trigger при first-open в LibrarySingleInspector — semantically `'auto'` choice обещает «без участия биолога», но requires AnnotationsTab mount чтобы fire.
+  - **Эффект:** не блокер (auto работает defacto через AnnotationsTab). Но semantics неточная — biolog при batch import выбирающий 'auto' для 10 файлов ожидает что entries уже annotated при первом открытии, не «при первом mount AnnotationsTab».
+  - **Fix:** в LibrarySingleInspector `useEffect` на mount: если `entry.ext.annotationChoice === 'auto'` && `!entry.ext.autoRun?.done` → trigger L1 через annotator-worker-client. Mark `entry.ext.autoRun.done = true` чтобы не повторять. ~30 LOC + 2 теста.
+  - **Окно:** M-X.6 либо tactical ad-hoc fix.
+  - **Фикс.:** 07.05.2026.
+
+- **TD-LIB-PREIMPORT-LOCATION** (OPEN, cosmetic): `Library/PreImportModal.jsx` (21.51 KB) на top-level `Library/`, должен быть в `Library/import/` per K1 namespace plan.
+  - **Эффект:** косметика. Reading misleads — PreImportModal logically часть import flow, должен жить рядом с MultiImportView.
+  - **Fix:** `move_file` PreImportModal.jsx + соответствующего теста в `Library/import/`. Обновить импорты (~5-7 callsites).
+  - **Окно:** M-X.6 K12 polish либо ad-hoc.
+  - **Фикс.:** 07.05.2026.
+
+- **TD-LIB-CATALOG-RENAME** (OPEN, cosmetic): `Library/catalog/` directory не renamed в `Library/lib/` per K1 plan. `catalog-cache.js`, `length-pattern.js` остались в catalog/, отдельно от других helper'ов в Library/lib/.
+  - **Эффект:** косметика. Два helper directories вместо одного — confusing boundaries.
+  - **Fix:** `move_file` содержимого `Library/catalog/` → `Library/lib/`. Обновить импорты.
+  - **Окно:** M-X.6 K12 polish либо ad-hoc.
+  - **Фикс.:** 07.05.2026.
+
+---
+
 ### M-X.2-fix entries (05.05.2026)
 
 - **TD-ANNOTATIONTRACK-DECOMPOSE-V2** (OPEN, hard violation): `components/SequenceView/tracks/AnnotationTrack.jsx` ≈ **41.6 KB** (hard 40 KB +1.6 KB over). M-X.2-fix K4 deferred Code'ом — tightly-woven render body.

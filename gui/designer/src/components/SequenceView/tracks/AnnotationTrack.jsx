@@ -25,7 +25,7 @@
  * without losing the visible features.
  */
 
-import { memo, useState } from "react";
+import { Fragment, memo, useState } from "react";
 import { stackAnnotations, MAX_VISIBLE_ROWS } from "../lib/annotation-stacking.js";
 import { SBOLIcon } from "../../../sbol-glyphs";
 
@@ -137,6 +137,31 @@ function AnnotationTrack({
   // the region — biolog wants the bar itself to be the «explore»
   // surface, label stays the «rename» surface.
   onAnnotationFeatureDoubleClick,
+  // M-X.5 hotfix (07.05.2026) — bridge-line wrap awareness. Round-10
+  // (06.05.2026) introduced the inline wrap-bridge: the last main row
+  // of a circular plasmid is physically extended past the origin with
+  // wrap chars from plasmid start. SequenceLine passes `wrapsOrigin =
+  // true`, `wrapAt = N` (column where the orange origin divider sits;
+  // chars 0..wrapAt are the real end of the plasmid, chars wrapAt..cpl
+  // are the wrap-half showing chars 0..(cpl-wrapAt) from plasmid
+  // start), and `seqLength` (full plasmid length, used to clamp the
+  // real-segment's effective lineEnd at seqLength so an annotation
+  // ending exactly at seqLen doesn't bleed past the divider).
+  //
+  // Without these props, an annotation that covers the origin (e.g. a
+  // whole-plasmid feature 0..seqLength) only renders in the
+  // real-segment — biolog reports a gap right after the orange
+  // divider where the wrap-half should also paint. With them, every
+  // region overlapping `[0, lineLen-wrapAt)` gets a SECOND rect at
+  // x = (labelChars + wrapAt + max(start,0)) × charPx so the
+  // annotation reads as one continuous bar split by the origin
+  // divider.
+  //
+  // Backward-compatible: when omitted (regular non-bridge rows /
+  // legacy callers), behaviour is exactly as before.
+  wrapsOrigin = false,
+  wrapAt,
+  seqLength,
 }) {
   // Bug-rush #9 (04.05.2026 evening): hover state on the resize
   // handles. Lets the rect get a visible accent line when biolog
@@ -359,9 +384,46 @@ function AnnotationTrack({
             previewRect.x = previewRect.x - (visStart - lineStart) * charPx;
           }
 
+          // M-X.5 hotfix — bridge-line wrap-segment (07.05.2026). When
+          // the inspector is rendering the inline wrap-bridge row
+          // (`wrapsOrigin === true`, columns wrapAt..lineLen show
+          // chars 0..(lineLen - wrapAt) from plasmid start), an
+          // annotation that overlaps the wrap-half gets a SECOND rect
+          // at columns wrapAt..wrapAt+wrapVisLen. Without it, an
+          // annotation covering the origin (e.g. whole-plasmid
+          // 0..seqLength) only paints the real-half and biolog reports
+          // a gap right after the orange divider.
+          let wrapSegmentInfo = null;
+          if (wrapsOrigin && Number.isFinite(wrapAt) && wrapAt < lineLen) {
+            const wrapWidthChars = lineLen - wrapAt;
+            const wAnnStart = Math.max(region.start, 0);
+            const wAnnEnd = Math.min(region.end, wrapWidthChars);
+            const wVisLen = Math.max(0, wAnnEnd - wAnnStart);
+            if (wVisLen > 0) {
+              wrapSegmentInfo = {
+                xLeft: (labelChars + wrapAt + wAnnStart) * charPx,
+                widthRect: wVisLen * charPx,
+                visLen: wVisLen,
+                wAnnStart,
+                wAnnEnd,
+                wrapWidthChars,
+                // Chevron rule for wrap-segment: same as real-segment
+                // but evaluated against wrap-part bounds.
+                drawChevron:
+                  (strand === 1 && region.end <= wrapWidthChars) ||
+                  (strand === -1 && region.start >= 0 && wAnnStart === region.start),
+              };
+            }
+          }
+          // Label appears once on the wider segment (plan §K-fix).
+          // When wrap-segment is wider than real, the real-side label
+          // is suppressed and re-rendered on the wrap-segment instead.
+          const labelGoesOnWrap = !!wrapSegmentInfo
+            && wrapSegmentInfo.widthRect > widthRect;
+
           return (
+            <Fragment key={`${region.id || region.start + ":" + region.end}-r${rowIdx}`}>
             <g
-              key={`${region.id || region.start + ":" + region.end}-r${rowIdx}`}
               data-testid="sequence-view-annotation"
               data-region-id={region.id || ""}
               data-region-name={region.name || ""}
@@ -600,7 +662,7 @@ function AnnotationTrack({
                         />
                       </g>
                     ) : null}
-                    {showLabelInside ? (
+                    {showLabelInside && !labelGoesOnWrap ? (
                       <LabelText
                         x={labelStartX}
                         region={region}
@@ -761,7 +823,7 @@ function AnnotationTrack({
                   ) : null}
                 </>
               ) : null}
-              {showLeader ? (
+              {showLeader && !labelGoesOnWrap ? (
                 <g data-testid="sequence-view-annotation-leader" data-label-mode="leader">
                   <line
                     x1={widthRect / 2}
@@ -796,6 +858,94 @@ function AnnotationTrack({
                 </g>
               ) : null}
             </g>
+            {/* M-X.5 hotfix — wrap-segment rect for bridge line.
+                Renders only when `wrapsOrigin === true` and the
+                annotation overlaps `[0, lineLen - wrapAt)` plasmid
+                coords. Same id + same row index, so hover / click /
+                stacking semantics line up across the orange origin
+                divider. Sub-features (kids), drag-handle previews and
+                edge-resize handles intentionally render only on the
+                real-segment for the K-fix landing — splitting them
+                across the divider needs careful hit-test math (drag
+                across origin, kid clipping into wrap-half). Deferred
+                to M-X.6 polish. */}
+            {wrapSegmentInfo ? (
+              <g
+                data-testid="sequence-view-annotation"
+                data-region-id={region.id || ""}
+                data-region-name={region.name || ""}
+                data-region-row={rowIdx}
+                data-region-line-start={lineStart}
+                data-region-segment="wrap"
+                data-region-start={region.start}
+                data-region-end={region.end}
+                data-region-type={region.type || ""}
+                data-region-strand={region.strand === -1 ? -1 : 1}
+                data-predicted={isPredicted ? "true" : undefined}
+                transform={`translate(${wrapSegmentInfo.xLeft}, ${yTop})`}
+                style={{ cursor: "pointer", opacity: isBeingDragged ? 0.4 : 1 }}
+              >
+                <rect
+                  data-region-id={region.id || ''}
+                  data-region-segment="wrap"
+                  data-region-predicted={isPredicted ? 'true' : undefined}
+                  x={0}
+                  y={0}
+                  width={Math.max(1, wrapSegmentInfo.widthRect - 2)}
+                  height={ROW_HEIGHT}
+                  rx={2}
+                  fill={fill}
+                  fillOpacity={rectFillOpacity}
+                  stroke={rectStroke}
+                  strokeWidth={rectStrokeWidth}
+                  strokeDasharray={rectStrokeDash}
+                  onClick={(e) => {
+                    if (typeof onAnnotationClick !== 'function') return;
+                    e.stopPropagation();
+                    onAnnotationClick(region);
+                  }}
+                  onDoubleClick={(e) => {
+                    if (typeof onAnnotationFeatureDoubleClick !== 'function') return;
+                    e.stopPropagation();
+                    e.preventDefault();
+                    onAnnotationFeatureDoubleClick(region);
+                  }}
+                />
+                {wrapSegmentInfo.drawChevron ? (
+                  <path
+                    d={chevronPath(strand, strand === -1 ? 0 : wrapSegmentInfo.widthRect, 0, ROW_HEIGHT)}
+                    fill={fill}
+                    fillOpacity={rectFillOpacity}
+                    stroke={rectStroke}
+                    strokeWidth={rectStrokeWidth}
+                    strokeDasharray={rectStrokeDash}
+                    onClick={(e) => {
+                      if (typeof onAnnotationClick !== 'function') return;
+                      e.stopPropagation();
+                      onAnnotationClick(region);
+                    }}
+                    onDoubleClick={(e) => {
+                      if (typeof onAnnotationFeatureDoubleClick !== 'function') return;
+                      e.stopPropagation();
+                      e.preventDefault();
+                      onAnnotationFeatureDoubleClick(region);
+                    }}
+                  />
+                ) : null}
+                {labelGoesOnWrap && wrapSegmentInfo.widthRect >= 12 ? (
+                  <LabelText
+                    x={wrapSegmentInfo.widthRect / 2 - (labelLengthChars(region.name, region) * charPx) / 2}
+                    region={region}
+                    displayLabel={displayLabel}
+                    isPredicted={isPredicted}
+                    labelFontStyle={labelFontStyle}
+                    lineStart={lineStart}
+                    onAnnotationDoubleClick={onAnnotationDoubleClick}
+                  />
+                ) : null}
+              </g>
+            ) : null}
+            </Fragment>
           );
         }),
       )}

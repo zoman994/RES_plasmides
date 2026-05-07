@@ -260,6 +260,16 @@ const SequenceLine = memo(function SequenceLine({
           draggedCurrentCoord={draggedCurrentCoord}
           onAnnotationDoubleClick={onAnnotationDoubleClick}
           onAnnotationFeatureDoubleClick={onAnnotationFeatureDoubleClick}
+          // M-X.5 hotfix (07.05.2026) — bridge-line wrap awareness.
+          // Passes through `line.wrapsOrigin` / `line.wrapAt` /
+          // `seqLength` so AnnotationTrack can paint a paired rect
+          // for annotations that span the orange origin divider.
+          // For non-bridge rows these props are undefined / false
+          // and AnnotationTrack falls through to its legacy
+          // single-rect render path.
+          wrapsOrigin={line.wrapsOrigin === true}
+          wrapAt={line.wrapsOrigin ? line.wrapAt : undefined}
+          seqLength={line.wrapsOrigin ? seqLength : undefined}
         />
       ) : null}
       {tracksReady ? (
