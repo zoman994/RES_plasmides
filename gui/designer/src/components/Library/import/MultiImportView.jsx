@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useStore } from '../../../store';
 import { parseFile } from '../../../file-import';
+import PlasmidMiniMap from '../../PlasmidMiniMap';
 
 /**
  * MultiImportView — the in-place table that replaces the Library tree
@@ -49,6 +50,11 @@ export default function MultiImportView({
   const [batchAnnotation, setBatchAnnotation] = useState('auto');
   const [folderPath, setFolderPath] = useState('');
   const [perFile, setPerFile] = useState({}); // fileName → { included, annotationChoice }
+  // M-X.6 K12.3 — single-row preview state (DEC-MX6 §K-fix). Only one
+  // row's PlasmidMiniMap expanded at a time; click eye icon again to
+  // collapse. Plan: container kind only — primer items have no
+  // sequence-level preview surface.
+  const [previewFileName, setPreviewFileName] = useState(null);
 
   // Parse all files on mount; store per-file state.
   useEffect(() => {
@@ -252,53 +258,96 @@ export default function MultiImportView({
         {!parsing && parsed.map((p) => {
           const state = perFile[p.fileName] || { included: true, annotationChoice: 'auto' };
           const length = p.parsedContent?.length || p.parsedContent?.sequence?.length || 0;
+          const isPreviewOpen = previewFileName === p.fileName;
           return (
             <div
               key={p.fileName}
               data-testid={`multi-import-row-${p.fileName}`}
               data-included={state.included ? 'true' : 'false'}
+              data-preview-open={isPreviewOpen ? 'true' : undefined}
               style={{
-                display: 'flex', alignItems: 'center', gap: 10,
-                padding: '6px 14px',
                 borderBottom: '0.5px solid var(--border-subtle)',
                 opacity: p.parseError ? 0.6 : 1,
               }}
             >
-              <input
-                type="checkbox"
-                checked={state.included && !p.parseError}
-                disabled={!!p.parseError}
-                onChange={() => togglePerFile(p.fileName)}
-                style={{ accentColor: 'var(--accent-500)' }}
-              />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {p.fileName}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 14px' }}>
+                <input
+                  type="checkbox"
+                  checked={state.included && !p.parseError}
+                  disabled={!!p.parseError}
+                  onChange={() => togglePerFile(p.fileName)}
+                  style={{ accentColor: 'var(--accent-500)' }}
+                />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {p.fileName}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
+                    {p.parseError
+                      ? <span style={{ color: 'var(--danger-fg, #b91c1c)' }}>Не удалось разобрать: {p.parseError}</span>
+                      : `${length.toLocaleString('ru-RU')} bp · ${p.parsedContent?.topology || 'linear'} · ${(p.parsedContent?.annotations?.length || 0)} аннотаций`}
+                  </div>
                 </div>
-                <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
-                  {p.parseError
-                    ? <span style={{ color: 'var(--danger-fg, #b91c1c)' }}>Не удалось разобрать: {p.parseError}</span>
-                    : `${length.toLocaleString('ru-RU')} bp · ${p.parsedContent?.topology || 'linear'} · ${(p.parsedContent?.annotations?.length || 0)} аннотаций`}
-                </div>
+                {!p.parseError && (
+                  <button
+                    type="button"
+                    data-testid={`multi-import-row-preview-${p.fileName}`}
+                    onClick={() => setPreviewFileName((prev) => (prev === p.fileName ? null : p.fileName))}
+                    title={isPreviewOpen ? 'Скрыть превью' : 'Показать превью'}
+                    aria-label={isPreviewOpen ? 'Hide preview' : 'Show preview'}
+                    aria-pressed={isPreviewOpen}
+                    style={{
+                      padding: '3px 8px',
+                      fontSize: 12,
+                      background: isPreviewOpen ? 'var(--accent-50)' : 'var(--surface-1)',
+                      border: '0.5px solid var(--border-default)',
+                      borderRadius: 'var(--radius-md)',
+                      cursor: 'pointer',
+                      color: isPreviewOpen ? 'var(--accent-700)' : 'var(--text-secondary)',
+                    }}
+                  >👁</button>
+                )}
+                {!p.parseError && (
+                  <select
+                    data-testid={`multi-import-row-choice-${p.fileName}`}
+                    value={state.annotationChoice}
+                    onChange={(e) => setPerFileChoice(p.fileName, e.target.value)}
+                    disabled={!state.included}
+                    style={{
+                      fontSize: 12,
+                      padding: '3px 6px',
+                      background: 'var(--surface-1)',
+                      border: '0.5px solid var(--border-default)',
+                      borderRadius: 'var(--radius-md)',
+                    }}
+                  >
+                    {ANNOTATION_CHOICES.map(c => (
+                      <option key={c.value} value={c.value}>{c.label}</option>
+                    ))}
+                  </select>
+                )}
               </div>
-              {!p.parseError && (
-                <select
-                  data-testid={`multi-import-row-choice-${p.fileName}`}
-                  value={state.annotationChoice}
-                  onChange={(e) => setPerFileChoice(p.fileName, e.target.value)}
-                  disabled={!state.included}
+              {isPreviewOpen && p.parsedContent && (
+                <div
+                  data-testid={`multi-import-row-preview-pane-${p.fileName}`}
                   style={{
-                    fontSize: 12,
-                    padding: '3px 6px',
-                    background: 'var(--surface-1)',
-                    border: '0.5px solid var(--border-default)',
-                    borderRadius: 'var(--radius-md)',
+                    padding: '4px 14px 10px 38px',
+                    display: 'flex', alignItems: 'flex-start', gap: 12,
                   }}
                 >
-                  {ANNOTATION_CHOICES.map(c => (
-                    <option key={c.value} value={c.value}>{c.label}</option>
-                  ))}
-                </select>
+                  <PlasmidMiniMap
+                    length={length}
+                    topology={p.parsedContent.topology || 'linear'}
+                    annotations={p.parsedContent.annotations || []}
+                    size={180}
+                    name={p.parsedContent.name || p.fileName}
+                  />
+                  <div style={{ fontSize: 11, color: 'var(--text-tertiary)', maxWidth: 320 }}>
+                    {p.parsedContent.description
+                      ? p.parsedContent.description.replace(/<[^>]*>/g, '').slice(0, 240)
+                      : null}
+                  </div>
+                </div>
               )}
             </div>
           );

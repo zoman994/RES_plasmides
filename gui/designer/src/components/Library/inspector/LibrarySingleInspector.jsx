@@ -368,6 +368,33 @@ export default function SingleInspector({
     onActiveTabChange?.('annotations');
   }, [openAnnotator, item, onActiveTabChange]);
 
+  // M-X.6 K12.4 (TD-LIB-K4-AUTO-TRIGGER) — auto-trigger L1 on first
+  // open of an entry imported with `ext.annotationChoice === 'auto'`
+  // (set by MultiImportView's commitMultiImport). Plan: run once per
+  // entry — `ext.autoRun.done` flag prevents re-triggering on
+  // subsequent opens. Switches to the Annotations tab so biolog sees
+  // the L1 progress; embedded Annotator's auto-run pipeline picks up
+  // the new scope on its own.
+  const markAutoRunDone = useStore((s) => s.markLibraryEntryAutoRunDone);
+  useEffect(() => {
+    const libId = item?._libraryEntryId;
+    if (!libId) return;
+    const entry = useStore.getState().libraryEntries?.[libId];
+    if (!entry) return;
+    const ext = entry.ext || {};
+    if (ext.annotationChoice !== 'auto') return;
+    if (ext.autoRun?.done) return;
+    // Open Annotator + mark done. Fire-and-forget — embedded
+    // Annotator handles the actual L1 run via runAnnotatorPipeline.
+    onOpenAnnotator({ kind: 'full' });
+    if (typeof markAutoRunDone === 'function') {
+      markAutoRunDone(libId);
+    }
+    // We intentionally depend only on item identity — re-running the
+    // effect on store changes would loop with the slice action mutation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item?._libraryEntryId]);
+
   // Bug-rush #5 (04.05.2026 evening): Ctrl+Z / Ctrl+Y for annotation
   // edits. Track a rolling stack of pre-edit snapshots; each edit
   // pushes the BEFORE-state, undo pops it back into editedAnnotations.

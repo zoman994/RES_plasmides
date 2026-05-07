@@ -119,6 +119,22 @@ describe('K2 — librarySlice', () => {
     useStore.getState().markLibraryEntryPendingDelete('3');
     expect(selectAllLibraryTags(useStore.getState())).toEqual(['bacterial', 'cds', 'gfp']);
   });
+
+  // M-X.6 K12.4 (TD-LIB-K4-AUTO-TRIGGER)
+  it('markLibraryEntryAutoRunDone sets ext.autoRun.done = true', async () => {
+    await useStore.getState().addLibraryEntry(makeEntry({ id: 'e1', ext: { annotationChoice: 'auto' } }));
+    await useStore.getState().markLibraryEntryAutoRunDone('e1');
+    const entry = useStore.getState().libraryEntries.e1;
+    expect(entry.ext?.autoRun?.done).toBe(true);
+    expect(entry.ext?.autoRun?.runAt).toBeTruthy();
+    // Original `annotationChoice` survives.
+    expect(entry.ext.annotationChoice).toBe('auto');
+  });
+
+  it('markLibraryEntryAutoRunDone is idempotent (no crash on missing entry)', async () => {
+    // Calling on an unknown id is a no-op — should not throw.
+    await expect(useStore.getState().markLibraryEntryAutoRunDone('missing')).resolves.toBeUndefined();
+  });
 });
 
 describe('M-X.5 K1.3 — origin migration heuristic', () => {

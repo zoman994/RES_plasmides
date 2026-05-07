@@ -379,6 +379,32 @@ export const createLibrarySlice = (set, get) => ({
   },
 
   /**
+   * M-X.6 K12.4 (TD-LIB-K4-AUTO-TRIGGER) — mark a library entry's
+   * auto-annotation as «already run» so the next open of the same
+   * entry doesn't re-trigger. Sets `entry.ext.autoRun = { done: true,
+   * runAt: ISO }`. Idempotent — safe to call multiple times.
+   */
+  markLibraryEntryAutoRunDone: async (id) => {
+    if (!id) return;
+    const entry = get().libraryEntries[id];
+    if (!entry) return;
+    const nextExt = {
+      ...(entry.ext || {}),
+      autoRun: { done: true, runAt: new Date().toISOString() },
+    };
+    set((state) => {
+      const e = state.libraryEntries[id];
+      if (e) e.ext = nextExt;
+    });
+    try {
+      await putLibraryEntry({ ...entry, ext: nextExt });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[bodgegene] markLibraryEntryAutoRunDone persist failed', err);
+    }
+  },
+
+  /**
    * M-X.6 K2 — character-level sequence edit on a library entry
    * (DEC-MX6-02). Thin wrapper: call the pure helper
    * `applySequenceEditToEntry`, recompute resourceHash, persist.
