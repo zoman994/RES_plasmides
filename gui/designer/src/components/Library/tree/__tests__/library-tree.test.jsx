@@ -12,7 +12,7 @@ import { render, screen, fireEvent, cleanup, waitFor, act } from '@testing-libra
 import { useStore } from '../../../../store';
 import { resetDBForTests } from '../../../../db/dexie-schema';
 import CatalogColumn from '../LibraryTree';
-import { __resetCachesForTest } from '../../catalog/catalog-cache';
+import { __resetCachesForTest } from '../../lib/catalog-cache';
 
 vi.mock('../../../PlasmidMiniMap', () => ({
   default: ({ name }) => <div data-testid={`mini-map-${name}`} />,

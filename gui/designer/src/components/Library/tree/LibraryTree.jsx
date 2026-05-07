@@ -3,7 +3,7 @@ import { useStore } from '../../../store';
 import { STRINGS } from '../../../lib/strings';
 import { ACCEPT_STRING } from '../../../file-import';
 import { useCatalogSources } from '../hooks/useLibrarySources';
-import { applyCatalogFilter } from '../catalog/length-pattern';
+import { applyCatalogFilter } from '../lib/length-pattern';
 import {
   GROUP_KEYS,
   MAX_INDENT_DEPTH,

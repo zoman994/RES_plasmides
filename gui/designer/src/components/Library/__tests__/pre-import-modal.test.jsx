@@ -9,7 +9,7 @@
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
-import PreImportModal from '../PreImportModal';
+import PreImportModal from '../import/PreImportModal';
 
 afterEach(cleanup);
 

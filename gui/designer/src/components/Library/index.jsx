@@ -11,7 +11,7 @@ import { exportGenBank } from '../../exports';
 import { getRegions } from '../../annotation-model';
 import AutonameModal from './modals/AutonameModal';
 import PrimerWizardStepModal from './modals/PrimerWizardStepModal';
-import PreImportModal from './PreImportModal';
+import PreImportModal from './import/PreImportModal';
 import MultiImportView from './import/MultiImportView';
 import CatalogColumn from './tree/LibraryTree';
 import SingleInspector from './inspector/LibrarySingleInspector';

@@ -42,10 +42,10 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useStore } from '../../store';
-import { STRINGS } from '../../lib/strings';
-import TagsEditor from './inspector/TagsEditor';
-import { readFolders, addFolder } from './lib/folder-tree';
+import { useStore } from '../../../store';
+import { STRINGS } from '../../../lib/strings';
+import TagsEditor from '../inspector/TagsEditor';
+import { readFolders, addFolder } from '../lib/folder-tree';
 
 const S = STRINGS.importer;
 
