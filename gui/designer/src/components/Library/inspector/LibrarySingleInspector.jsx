@@ -102,69 +102,30 @@ export default function SingleInspector({
       showDuplicates: a.showDuplicates,
     };
   }));
-  // Idle pre-warm: when biolog clicks a plasmid in the catalog list,
-  // mount Sequence + Annotations tabs in the background (display:none)
-  // so a subsequent tab click is instant. Without this, the tab click
-  // triggers a synchronous mount of ~70k DOM nodes (~1-1.5 s freeze
-  // on 8 GB / mid-tier CPU). The pre-warm fires AFTER first paint via
-  // requestIdleCallback, so it doesn't block the initial overview
-  // render — V49 50-sec-hang guarantee preserved on slow hardware
-  // (heavy work happens in background, not in the main thread of the
-  // open click). Biolog feedback 04.05.2026 evening: «можно сделать
-  // так чтобы плазмида сразу рендерилась когда на неё нажали в списке?
-  // пока человек дотянется до вкладки и нажмёт на аннотацию /
-  // последовательность — всё уже будет отрендерено».
-  //
-  // Reset on plasmid switch (item._fileName / item.id) so the new
-  // plasmid starts pre-warm from scratch and doesn't carry over the
-  // previous plasmid's tab content.
+  // Idle pre-warm: mount heavy tabs in background (display:none) via
+  // requestIdleCallback so subsequent tab click is instant. Resets on
+  // plasmid switch. V49 50-sec-hang guard preserved (test mode = OFF).
   const itemKey = item ? (item.id || item._fileName || item.name || '') : null;
   const warmedTabs = useIdlePrewarm({ itemKey, activeTab, testMode: __PREWARM_DISABLED__ });
 
-  // Pending scroll request from the LinearFeatureBar (lives at
-  // SingleInspector level). When the biolog clicks/drags on the
-  // bar from the Overview tab we auto-switch to Sequence and queue
-  // the absolute position; SequenceTab consumes the queue via a prop
-  // + clears it back to null. `tick` bumps on each new request even
-  // if the position repeats — useEffect deps catch the change.
-  // `instant: true` asks SequenceView to use behavior:'auto' for
-  // responsive live-scrubbing during drag.
+  // Pending scroll request from LinearFeatureBar — bar click/drag
+  // queues absolute pos, SequenceTab consumes + clears. `tick` bumps
+  // even on repeat positions. instant:true → behavior:'auto'.
   const [pendingScroll, setPendingScroll] = useState(null);
-  // M-X.5 K6 — Read-only/Editable toggle (DEC-LIB-16 ⚓). Default
-  // false: SequenceView refuses character keystrokes via the
-  // useManualEditDetection hook below. Click the READ-ONLY pill in
-  // the title row → flips to true → amber accent + pulsing dot. K10
-  // (manual edit branching) listens to this state to decide whether
-  // to capture sequence-mutating keystrokes. Reset to read-only when
-  // switching plasmids (item id changes) so each open starts safe.
-  // M-X.6 K0 — extracted via useEditableModeToggle (DEC-MX6-01).
-  // K6 read-only/editable pill state (DEC-LIB-16 ⚓), auto-resets
-  // on plasmid switch.
+  // K6 read-only/editable pill (DEC-LIB-16 ⚓) — extracted in M-X.6 K0
+  // (DEC-MX6-01). Auto-resets on plasmid switch.
   const { editable, toggle: toggleEditable, disable: disableEditable } = useEditableModeToggle(item);
 
-  // M-X.6 K0 — extracted via useManualEditBranching (DEC-MX6-01).
-  // K10 manual-edit branching (DEC-LIB-12 ⚓): listens window-level
-  // keydown when armed, opens ManualEditConfirmModal on first
-  // sequence-mutating keystroke, confirm → createManualEditBranch.
-  //
-  // Caveat (M-X.6 K2 follow-up): branch is created with sequence
-  // IDENTICAL to parent. Real character-level apply (insert /
-  // Backspace / Delete with indel-aware annotation shift) lands in
-  // K2 via the `onSequenceEdit` composite handler. Annotation
-  // editing on the branch already works through FeatureEditorModal
-  // / drag edges / hotkeys.
+  // K10 manual-edit branching (DEC-LIB-12 ⚓) — extracted in M-X.6 K0.
+  // K2 ships character-level apply via `onSequenceEdit` below.
   const clearPendingEdits = useCallback(() => {
     if (typeof onUpdateEdits === 'function') {
       onUpdateEdits({ editedAnnotations: undefined });
     }
   }, [onUpdateEdits]);
 
-  // M-X.6 K0 — extracted via useLibrarySaveFlow (DEC-MX6-01).
-  // Packages the K7 save buttons' props (DEC-LIB-13 ⚓): «Перезаписать»
-  // (overwrite + version bump) и «Сохранить как версию» (copy-on-write
-  // с parent reference). Both `onAfterOverwrite` / `onAfterSaveAsVersion`
-  // clear the inspector's pending edits so the buttons disable until
-  // the next annotation change.
+  // K7 save buttons (DEC-LIB-13 ⚓) — extracted in M-X.6 K0.
+  // Both onAfter* clear pending edits so buttons disable post-save.
   const saveFlow = useLibrarySaveFlow({ item, edits, onUpdateEdits });
   const {
     pending: manualEditPending,
