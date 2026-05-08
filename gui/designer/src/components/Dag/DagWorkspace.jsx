@@ -20,9 +20,12 @@
  */
 import { useCallback, useState } from 'react';
 import { useStore } from '../../store';
+import { STRINGS } from '../../lib/strings';
 import DagCanvas from './DagCanvas';
 import DagPalette from './Palette/DagPalette';
 import PreviewDrawer from './PreviewDrawer';
+
+const S = STRINGS.dag;
 
 export default function DagWorkspace() {
   const [previewEntry, setPreviewEntry] = useState(null);
@@ -44,7 +47,7 @@ export default function DagWorkspace() {
     const proj = projectId ? useStore.getState().projects[projectId] : null;
     const alreadyOn = proj?.containerIds?.includes(entry.id);
     if (alreadyOn) {
-      showToast?.('Уже добавлено', 'info');
+      showToast?.(S.toastAlreadyOnCanvas, 'info');
       setPreviewEntry(null);
       return;
     }

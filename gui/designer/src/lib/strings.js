@@ -239,4 +239,40 @@ export const STRINGS = {
     cancel: 'Cancel',
     close: 'Close',
   },
+
+  // M-C.1 K5 — DAG canvas namespace. Surface text is Russian (matches
+  // the Library workspace tone biolog has been seeing). EN fallbacks
+  // live in code comments next to each key. The dictionary still
+  // mirrors the i18next key shape (DEC-MA2-01) so a future migration
+  // is mechanical.
+  dag: {
+    // Empty state when the project has no containers yet.
+    emptyHint: 'Перетащите плазмиду из библиотеки', // EN: "Drag a plasmid from the library"
+    emptyCta: 'Открыть библиотеку для импорта',     // EN: "Open library to import"
+    // Palette group labels (canonical order: thisProject → demo → mine → snapgene).
+    paletteGroupThisProject: 'Этот проект',         // EN: "This project"
+    paletteGroupDemo: 'Учебные / demo',             // EN: "Learning / demo"
+    paletteGroupMine: 'Моя библиотека',             // EN: "My library"
+    paletteGroupSnapgene: 'Каталог SnapGene',       // EN: "SnapGene catalog"
+    // Sticky search placeholder. The «>5kb / <2k / 2k-3k» hints expose
+    // the length-pattern shorthand inline so biolog doesn't have to
+    // hunt for documentation.
+    paletteSearchPlaceholder: 'Поиск (имя, >5kb, <2k, 2k-3k…)',
+    paletteEmpty: 'пусто',
+    paletteDragHandleAria: 'Перетащите на canvas',
+    paletteCategoryCount: (n) => `${n} кат.`,
+    // Drawer CTAs.
+    drawerAddToCanvas: 'Добавить на canvas',        // EN: "Add to canvas"
+    drawerClose: 'Закрыть',                          // EN: "Close"
+    drawerRegionOverflow: (n) => `+${n} ещё`,        // EN: `+${n} more`
+    // Container Window drill-in placeholder (DEC-MC1-05).
+    containerWindowBack: '← Назад',
+    containerWindowMessage: 'M-C.2 Container Window — В разработке',
+    containerWindowFallbackName: (idShort) => `Контейнер ${idShort}…`,
+    // Toast triggered when biolog drops the same library entry twice.
+    toastAlreadyOnCanvas: 'Уже добавлено',          // EN: "Already on canvas"
+    // Auto-layout button on the canvas top-right panel.
+    autoLayoutButton: 'Авто-раскладка',              // EN: "Auto-layout"
+    autoLayoutTooltip: 'Авто-раскладка (dagre LR)',
+  },
 };

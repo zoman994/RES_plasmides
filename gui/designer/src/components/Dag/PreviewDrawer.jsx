@@ -18,9 +18,12 @@
  * `prefers-reduced-motion` (K5) skips the slide-in transform.
  */
 import { useEffect, useMemo } from 'react';
+import { STRINGS } from '../../lib/strings';
 import { getRegions } from '../../annotation-model';
 import { featureColor } from '../../feature-palette';
 import PlasmidMiniMap from '../PlasmidMiniMap';
+
+const S = STRINGS.dag;
 
 const DRAWER_WIDTH = 340;
 const MAX_REGIONS = 8;
@@ -88,8 +91,8 @@ export default function PreviewDrawer({ entry, onClose, onAddToCanvas }) {
           type="button"
           data-testid="dag-preview-drawer-close"
           onClick={() => onClose?.()}
-          aria-label="Закрыть"
-          title="Закрыть (Esc)"
+          aria-label={S.drawerClose}
+          title={`${S.drawerClose} (Esc)`}
           style={{
             width: 24,
             height: 24,
@@ -167,7 +170,7 @@ export default function PreviewDrawer({ entry, onClose, onAddToCanvas }) {
                 color: 'var(--text-tertiary)',
                 paddingLeft: 14,
               }}
-            >+{overflow} ещё</div>
+            >{S.drawerRegionOverflow(overflow)}</div>
           )}
         </div>
       </div>
@@ -194,7 +197,7 @@ export default function PreviewDrawer({ entry, onClose, onAddToCanvas }) {
             color: 'var(--text-primary)',
             cursor: 'pointer',
           }}
-        >Закрыть</button>
+        >{S.drawerClose}</button>
         <button
           type="button"
           data-testid="dag-preview-drawer-add"
@@ -209,7 +212,7 @@ export default function PreviewDrawer({ entry, onClose, onAddToCanvas }) {
             cursor: 'pointer',
             fontWeight: 500,
           }}
-        >Добавить на canvas</button>
+        >{S.drawerAddToCanvas}</button>
       </div>
     </div>
   );

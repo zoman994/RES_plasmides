@@ -27,14 +27,17 @@
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useStore } from '../../../store';
+import { STRINGS } from '../../../lib/strings';
 import { useCatalogSources } from '../../Library/hooks/useLibrarySources';
 import DagPaletteItemRow from './DagPaletteItemRow';
 
+const S = STRINGS.dag;
+
 const GROUP_LABELS = {
-  thisProject: 'Этот проект',
-  demo: 'Учебные / demo',
-  mine: 'Моя библиотека',
-  snapgene: 'Каталог SnapGene',
+  thisProject: S.paletteGroupThisProject,
+  demo: S.paletteGroupDemo,
+  mine: S.paletteGroupMine,
+  snapgene: S.paletteGroupSnapgene,
 };
 const GROUP_ORDER = ['thisProject', 'demo', 'mine', 'snapgene'];
 const STORAGE_PREFIX = 'pvcs-dag-palette-group-';
@@ -177,7 +180,7 @@ export default function DagPalette({ onPreview }) {
           data-testid="dag-palette-search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Поиск (имя, &gt;5kb, &lt;2k, 2k-3k…)"
+          placeholder={S.paletteSearchPlaceholder}
           style={{
             width: '100%',
             padding: '6px 8px',
@@ -227,7 +230,7 @@ export default function DagPalette({ onPreview }) {
                 <span style={{ width: 10, color: 'var(--text-tertiary)' }}>{isOpen ? '▾' : '▸'}</span>
                 <span style={{ flex: 1 }}>{GROUP_LABELS[groupKey]}</span>
                 <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>
-                  {isSnapgene ? `${sources.snapgeneCategories.length} кат.` : items.length}
+                  {isSnapgene ? S.paletteCategoryCount(sources.snapgeneCategories.length) : items.length}
                 </span>
               </button>
               {isOpen && !isSnapgene && (
@@ -241,7 +244,7 @@ export default function DagPalette({ onPreview }) {
                         color: 'var(--text-tertiary, #a8a29e)',
                         fontStyle: 'italic',
                       }}
-                    >пусто</div>
+                    >{S.paletteEmpty}</div>
                   )}
                   {items.map((item) => (
                     <DagPaletteItemRow

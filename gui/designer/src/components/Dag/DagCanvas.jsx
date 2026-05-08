@@ -33,9 +33,12 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useStore } from '../../store';
+import { STRINGS } from '../../lib/strings';
 import PlasmidNode from './PlasmidNode';
 import NeutralEdge from './NeutralEdge';
 import { computeAutoLayout } from '../../lib/dag-layout';
+
+const S = STRINGS.dag;
 
 const nodeTypes = { plasmid: PlasmidNode };
 const edgeTypes = { neutral: NeutralEdge };
@@ -154,7 +157,7 @@ function DagCanvasInner() {
       : { x: e.clientX, y: e.clientY };
     const alreadyOnCanvas = containerIds.includes(libraryEntryId);
     if (alreadyOnCanvas) {
-      showToast?.('Уже добавлено', 'info');
+      showToast?.(S.toastAlreadyOnCanvas, 'info');
       // Lift highlight on the existing node so biolog spots it.
       setHighlightId(libraryEntryId);
       setTimeout(() => setHighlightId(null), 700);
@@ -238,7 +241,7 @@ function DagCanvasInner() {
             data-testid="dag-canvas-auto-layout"
             onClick={onAutoLayout}
             disabled={isEmpty}
-            title="Auto-layout (dagre LR)"
+            title={S.autoLayoutTooltip}
             style={{
               padding: '6px 10px',
               fontSize: 12,
@@ -249,7 +252,7 @@ function DagCanvasInner() {
               cursor: isEmpty ? 'not-allowed' : 'pointer',
               opacity: isEmpty ? 0.5 : 1,
             }}
-          >Авто-раскладка</button>
+          >{S.autoLayoutButton}</button>
         </Panel>
       </ReactFlow>
 
@@ -274,7 +277,7 @@ function DagCanvasInner() {
             textAlign: 'center',
             maxWidth: 360,
           }}>
-            Перетащите плазмиду из библиотеки
+            {S.emptyHint}
           </div>
           <button
             type="button"
@@ -290,7 +293,7 @@ function DagCanvasInner() {
               color: 'var(--accent-500, #d97706)',
               cursor: 'pointer',
             }}
-          >Открыть библиотеку для импорта</button>
+          >{S.emptyCta}</button>
         </div>
       )}
     </div>

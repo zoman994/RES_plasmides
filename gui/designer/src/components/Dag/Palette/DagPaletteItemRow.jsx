@@ -11,7 +11,10 @@
  * DndProvider mounted, so we keep the same pattern.
  */
 import { memo } from 'react';
+import { STRINGS } from '../../../lib/strings';
 import PlasmidMiniMap from '../../PlasmidMiniMap';
+
+const S = STRINGS.dag;
 
 const HANDLE_W = 14;
 const ROW_H = 32;
@@ -57,8 +60,8 @@ export const DagPaletteItemRow = memo(function DagPaletteItemRow({
           draggable
           onDragStart={onDragStart}
           data-testid={`dag-palette-drag-handle-${item.id}`}
-          aria-label="Перетащите на canvas"
-          title="Перетащите на canvas"
+          aria-label={S.paletteDragHandleAria}
+          title={S.paletteDragHandleAria}
           style={{
             position: 'absolute',
             left: 4,

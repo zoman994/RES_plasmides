@@ -11,11 +11,17 @@
  * work) without having to imitate the future UI.
  */
 import { useStore } from '../../store';
+import { STRINGS } from '../../lib/strings';
+
+const S = STRINGS.dag;
 
 export default function ContainerWindowPlaceholder({ containerId }) {
   const entry = useStore(s => (containerId ? s.libraryEntries?.[containerId] : null));
   const popFullscreen = useStore(s => s.popFullscreen);
-  const name = entry?.name || (containerId ? `Контейнер ${containerId.slice(0, 6)}…` : 'Контейнер');
+  const name = entry?.name
+    || (containerId
+      ? S.containerWindowFallbackName(containerId.slice(0, 6))
+      : S.containerWindowFallbackName(''));
 
   return (
     <div
@@ -42,8 +48,8 @@ export default function ContainerWindowPlaceholder({ containerId }) {
           type="button"
           data-testid="container-window-placeholder-back"
           onClick={() => popFullscreen()}
-          aria-label="Назад"
-          title="Назад"
+          aria-label={S.containerWindowBack}
+          title={S.containerWindowBack}
           style={{
             padding: '4px 10px',
             fontSize: 13,
@@ -53,7 +59,7 @@ export default function ContainerWindowPlaceholder({ containerId }) {
             color: 'var(--text-primary, #1c1917)',
             cursor: 'pointer',
           }}
-        >← Назад</button>
+        >{S.containerWindowBack}</button>
         <div
           data-testid="container-window-placeholder-name"
           style={{
@@ -82,7 +88,7 @@ export default function ContainerWindowPlaceholder({ containerId }) {
           data-testid="container-window-placeholder-msg"
           style={{ margin: 0, maxWidth: 480 }}
         >
-          M-C.2 Container Window — В разработке
+          {S.containerWindowMessage}
         </p>
       </div>
     </div>
