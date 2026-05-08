@@ -1,109 +1,154 @@
 # CURRENT_TASK.md
 
-## Sprint M-C.1 Container Canvas Baseline — реализация
+## Sprint M-X.7a Library Structure rebuild — реализация
 
-**Статус:** 🟢 Спека визуально принята 07.05.2026. K1-K5 готовы к реализации Code.
-**Тип:** B (новый workflow + новые компоненты).
+**Статус:** 🟢 Спека визуально принята 08.05.2026 (после Library.html acceptance). K1-K6 готовы к реализации Code.
+**Тип:** A (новый workspace + top-level routing change + librarySlice extension).
 **Целевая версия:** v0.9.0.
-**Спека:** `docs/SPRINT_M-C-1_CONTAINER_CANVAS_BASELINE.md` (20.99 KB).
-**Парный спринт:** M-C.2 Container Window real implementation — отдельная сессия после M-C.1 acceptance.
+**Спека:** `docs/SPRINT_M-X.7a_LIBRARY_STRUCTURE.md` (~53 KB).
+**Парные документы:** `docs/LIBRARY_MODEL_DRAFT.md` (data model + 3 зоны), `docs/LIBRARY_WIREFRAME_DRAFT.md` rev 3 (rationale + OQs), `docs/design_assets/Library.html` (визуальный SoT от дизайнера 08.05.2026), `docs/guides/USER_GUIDE_LIBRARY.md` (user-facing guide).
+**Парный спринт:** M-X.7b — Versioning UI (содержимое таба «История», version-actions). Отдельная сессия после M-X.7a acceptance.
+**Предыдущий спринт:** M-C.1 Container Canvas Baseline — STOP awaiting visual acceptance на ветке `feature/m-c-1-baseline` (40a40a1). M-X.7a forked отсюда, не от main; M-C.1 work стоит unfinalized до acceptance.
 
 ---
 
 ## TL;DR
 
-После v0.8.0 (Library = primary workspace) `Project.containerIds[]` пинаются в проект через K8 quick-add, но визуально нигде не отображаются. M-C.1 даёт первый user-facing функционал v0.6 за пределами Library: project-level DAG canvas с draggable палеткой слева, PlasmidNode карточками с embedded PlasmidMiniMap, single neutral edge, double-click drill-in placeholder. Reactions / MIRO+ / typed edges / multi-select / undo — OUT (M-G/M-D/M-I).
+В v0.8.0 Library признана primary workspace через ⚓ DEC-IMP-06, но реализация осталась встроенной в Importer (CatalogColumn группа «Моя библиотека»). Биологу некуда идти после открытия app — workspace выбирается через Importer flow. M-X.7a даёт Library как **top-level workspace** с собственной структурой: 3 зоны (`⚐ Без проекта` / `📦 .bodge` archives / `🧬 Лабораторный пул`), Tree + Inspector + AddModal + TopBar по паттерну `Library.html`.
 
-Архитектурный pattern из v0.5 `components/flow/` (ReactFlow + dagre + react-dnd + minimap) — read-only reference, не extend. Новые компоненты в `components/Dag/`. Project.dag schema extension в существующем projectSlice (DEC-MC1-04). Container Window — placeholder через canvasSlice route, не имитация UI (DEC-MC1-05).
+`librarySlice` расширяется fields `zone` / `projectId` / `inLabStock` / `manualEditFlag` / `parentEntryId` / `parentEntryHash` без breaking changes (lazy migration в hydrate). `App.jsx` получает top-level route `library` — landing default, вытесняет старый landing screen. `canvas.activeFullscreen` остаётся для Container Window и DAG fullscreen — Library это **не** fullscreen, а корневой view рядом с Construct.
+
+Версионирование (tab «История» content + version-actions) — out of scope, M-X.7b. Cross-project import wizard — M-X.9. Command palette ⌘K — M-X.7c. ⚓ DEC-LIB-K11 (Library = unified projection of IndexedDB grouped by ownership zones) — promote после acceptance.
 
 ---
 
 ## Порядок чтения перед началом
 
 1. **CLAUDE.md** — корневые правила.
-2. **BUGS.md** — текущий OPEN (после v0.8.0 пуст; убедиться что не появилось).
+2. **BUGS.md** — текущий OPEN.
 3. **CURRENT_TASK.md** — этот файл.
 4. **PROJECT_STATE.md** — first-line + последняя запись журнала (drift check).
-5. **docs/SPRINT_M-C-1_CONTAINER_CANVAS_BASELINE.md** — главный документ. Читать целиком, особенно §3 (Scope IN/OUT), §4 (DEC-MC1-01..05), §5 (файлы / helpers / тесты), §8 (риски).
+5. **docs/SPRINT_M-X.7a_LIBRARY_STRUCTURE.md** — главный документ. Читать целиком, особенно §3 (Scope IN/OUT), §4 (DEC-MX7A-01..12), §5 (файлы / helper signatures / action+banner tables), §9 (риски R1-R8), §10 (open questions).
+6. **docs/LIBRARY_MODEL_DRAFT.md** — data model + 3 зоны (для K1).
 
-**Targeted reading при работе** (не читать на старте, подгружать по K):
+**Targeted reading при работе** (по K, не на старте):
 
-- K1: `store/projectSlice.js`, `store/canvasSlice.js`.
-- K2: `components/flow/ProjectFlowCanvas.jsx`, `components/flow/PlasmidNode.jsx`, `components/flow/FlowEdges.jsx` (read-only reference); `components/Library/PlasmidMiniMap.jsx` (для embedding).
-- K3: `components/Library/tree/LibraryTree.jsx`, `LibraryGroupHeader.jsx`, `LibraryItemRow.jsx`, `hooks/useCatalogSources.js` (reuse строительных блоков).
-- K4: `App.jsx` (root layout switch), `store/canvasSlice.js`.
-- K5: `lib/strings.js` (расширение namespace).
+- K1: `store/librarySlice.js`, `store/canvasSlice.js`, `store/projectSlice.js` (containerIds / primerIds для migration heuristic).
+- K2: существующие `components/Library/*` файлы (на удаление при TD-LIB-K2-DEAD-CODE-PURGE), `docs/design_assets/Library.html` для tree wireframe.
+- K3: `components/Importer/inspector/SequenceMapView.jsx`, `components/Importer/inspector/AnnotationEditor.jsx` (R1: prop `readOnly`), `Library.html` для Inspector wireframe.
+- K4: existing Importer flow (PreImport DEC-IMP-13), `useCatalogSources` hook для Catalog source.
+- K5: `App.jsx`, `store/projectSlice.js` openProjectFromIndexedDB.
+- K6: `lib/strings.js`, `LIBRARY_WIREFRAME_DRAFT.md` rev 3 (для polish details).
 
-Не читать ARCHITECTURE_v2.md / ANCHORS.md / DESIGN_SYSTEM.md целиком — спека самодостаточна. Если возникает развилка которой нет в спеке — STOP и спросить у Игоря.
+Не читать ARCHITECTURE_v2.md / ANCHORS.md / DESIGN_SYSTEM.md целиком — спека самодостаточна. Если развилка не покрыта спекой — STOP и спросить у Игоря.
 
 ---
 
 ## Чеклист K-step
 
-### K1 — projectSlice.dag + dag-layout
+### K1 — Data model + migration
 
-- [x] `lib/dag-layout.js` (~3 KB): `computeAutoLayout(nodes, edges, direction='LR') → { [id]: {x,y} }` через dagre. Default LR (см. спека §9 — TB альтернатива пробуется при приёмке).
-- [x] Helper `ensureDagShape(project)` в projectSlice — lazy migration legacy projects: добавляет `dag: { positions: {}, edges: [], viewport: {x:0,y:0,zoom:1} }` если отсутствует.
-- [x] Расширение `addContainerToCurrentProject(libraryEntryId, position?)` — без breaking changes для existing M-X.5 K8 callsites (position optional).
-- [x] Новые actions: `setDagPositions(positions)`, `addDagEdge({from,to})`, `removeDagEdge(id)`, `setDagViewport({x,y,zoom})`, `removeContainerFromProject(id)` (последний удаляет + связанные dag entries + edges).
-- [x] **Тесты:** +5-7 unit `__tests__/store/projectSlice.dag.test.js`. Включить: ensureDagShape на legacy fixture, setDagPositions персистится через autosave (mock putProject), removeContainerFromProject убирает edges связанные с node.
-- [x] **Регрессия-guard:** existing `addContainerToCurrentProject` без position продолжает работать. Все librarySlice / Library workspace тесты — green.
+- [ ] `store/workspaceSlice.js` (~2 KB новый): top-level workspace router (`active: 'library'|'construct'|'flow'`, `history: []`, `setActiveWorkspace(name)`, `goBack()`, селекторы `selectActiveWorkspace`, `selectIsInLibrary`). **Решить OQ1** (новый slice vs append в canvasSlice) — Code в этом K1 определяет; рекомендация спеки — отдельный slice ради изоляции. Решение зафиксировать в отчёте.
+- [ ] `store/librarySlice.js` extend (+~3 KB): новые fields в LibraryEntry (`zone`, `projectId`, `inLabStock`, `manualEditFlag`, `parentEntryId`, `parentEntryHash`); новые actions (`moveEntryToFolder`, `cloneEntryToActiveProject`, `extractEntryToLoose`, `toggleLabStock`, `createLooseFolder`, `renameLooseFolder`, `deleteLooseFolder`); новые селекторы (`selectEntriesByZone`, `selectContainersByProject`, `selectPrimersByProject`, `selectLooseTreeStructure`, `selectLabPoolStructure`, `selectPrimerUsageCount`, `selectMatchingLabStockPrimer`).
+- [ ] `lib/library-migration.js` (~2 KB): `migrateLibraryEntry(entry, projects)` идемпотентен; `migrateAllEntries(entries, projects)` возвращает `{entries, migratedCount: {loose, project, lab_pool}}`. Heuristic из DEC-MX7A-02: zone preset → tags Lab/In freezer → containerIds/primerIds match → fallback Loose. Logged через console на dev mode.
+- [ ] `lib/library-actions.js` (~6 KB): `getActionsFor(selection): Action[]` per zone × kind (полная таблица §5.4 спеки); `getInspectorBanner(selection)` per zone (таблица §5.5); `canDrop(source, target): boolean`; `getDropOperation(source, target): 'move'|'clone'|'copy-out'|'promote'|null`. Всё version-related actions (`saveAsVersion`, `manualEditBranch`, `revertToVersion`, `branchFromHere`) — `disabled: true, tooltip: 'M-X.7b: версионирование'`.
+- [ ] `lib/library-origin.js` (~3 KB): `getOriginSummary(entry): string|null` per origin.kind (DEC-MX7A-10 mapping); `getLineageChain(entry, library, projects): LineageStep[]` resolves cross_project_clone refs.
+- [ ] **R7 follow-up:** добавить `'project_extract'` в Origin discriminated union (поля `{kind: 'project_extract', sourceProjectId, sourceContainerId, sourceContainerHash, extractedAt}`). Mini-lineage helper обновляется.
+- [ ] **Тесты K1:** +29 unit (8 migration + 12 actions + 6 origin + 3 workspace).
+- [ ] **Регрессия-guard:** existing librarySlice API (`addLibraryEntry`, `checkLibraryDedup`, `getSuggestedLibraryName`, `selectVisibleLibraryEntries`, `selectAllLibraryTags`) — green. Importer CatalogColumn «Моя библиотека» group работоспособна (читает ту же entries[]).
 
-**Артефакты K1:** `lib/dag-layout.js` (~3 KB новый) + `store/projectSlice.js` (~15.62 → ~18 KB, +2-3 KB).
+**Артефакты K1:** 4 новых файла (`workspaceSlice.js`, `library-migration.js`, `library-actions.js`, `library-origin.js`) + delta `librarySlice.js` ~+3 KB.
 
-### K2 — DagCanvas + PlasmidNode + NeutralEdge
+### K2 — Tree component
 
-- [x] `components/Dag/DagCanvas.jsx` (~10 KB): ReactFlow + nodeTypes + edgeTypes + drag-drop drop target (`'DAG_ADD'`) + auto-layout button + empty state («Перетащите плазмиду из библиотеки» + CTA-link на library fullscreen) + viewport persist через `setDagViewport` debounced.
-- [x] `components/Dag/PlasmidNode.jsx` (~12 KB): M-D-style карточка ~280×220 px (DEC-MC1-01). Top — embedded `<PlasmidMiniMap>` 200×140 inline через props (НЕ extend). Под ним: title (truncate), meta line (length kb · topology icon ○/—), до 4 region badges с feature-palette A+v2 + `+N` chip. Border / radius / shadow токены DESIGN_SYSTEM. Selected: `--accent-500` 2 px + `--shadow-focus`. Hover: `--shadow-md`. ReactFlow handles target/source single port. `React.memo` обязательно. Click → select. Double-click → `pushFullscreen('containerWindow', {containerId})`.
-- [x] `components/Dag/NeutralEdge.jsx` (~1 KB): BaseEdge smoothStepPath, stroke `--text-secondary`, width 1.5 px, без markers. Default edge type через `edgeTypes = { neutral: NeutralEdge }`. `onConnect` создаёт edge с `type:'neutral'`.
-- [x] Drop handler: `screenToFlowPosition({x,y})` → `addContainerToCurrentProject(libraryEntryId, position)`. Двойной drop того же id → toast «Уже добавлено» + lift highlight на existing node (animate `--accent-500` glow 600 ms).
-- [x] Backspace/Delete на selected node → `removeContainerFromProject(id)` (с подтверждением через `window.confirm` или toast undo — Code определит UX в рамках playbook §2 sanity).
-- [x] **Тесты:** +8-10 component `__tests__/components/Dag/DagCanvas.test.jsx` + `PlasmidNode.test.jsx`. Характерные: drop from palette adds node + persists position; PlasmidNode renders embedded mini-map + ≥4 region badges; double drop same id → toast + highlight; double-click → pushes containerWindow route; auto-layout button computes LR positions через dag-layout.
+- [ ] **TD-LIB-K2-DEAD-CODE-PURGE first:** инвентаризация существующих `components/Library/*` файлов. Удалить старые M-A.3 / pre-M-X.7 если уже не используются. В отчёте — состояние (purged / not found / partial).
+- [ ] `components/Library/Library.jsx` (~4 KB): корневой workspace, `<LibraryTopBar>` + split-pane `<LibraryTree>` | `<Inspector>`. Selection state в `uiSlice.libSelection` (persists между перерендерами Tree).
+- [ ] `components/Library/LibraryTopBar.jsx` (~3 KB): app branding (`b. BodgeGene`) слева + breadcrumb «Активный проект: <name>» (с status indicator «сохранён» / «не сохранён», fallback «Без активного проекта» — R8) + simple search field справа. Search фильтрует tree по `entry.name` (case-insensitive substring). ⌘K hotkey + length-pattern + feature-filter — отложены в M-X.7c.
+- [ ] `components/Library/Tree/LibraryTree.jsx` (~6 KB): drag-drop корневой контейнер, рендерит 3 зоны через `<ZoneHeader>` + соответствующие children, handles cross-zone drops через `canDrop` + `getDropOperation`.
+- [ ] `components/Library/Tree/ZoneHeader.jsx` (~2 KB): heading зоны + collapse toggle.
+- [ ] `components/Library/Tree/ItemRow.jsx` (~4 KB): строка container/primer + mini-lineage через `getOriginSummary`. Origin icon (↑/✎/🔗) inline.
+- [ ] `components/Library/Tree/FolderRow.jsx` (~3 KB): папка Loose с children, context-menu actions (создать / переименовать / удалить).
+- [ ] `components/Library/Tree/ProjectFolder.jsx` (~4 KB): `📦` папка с фиксированными sub-rows `🔀 DAG` / `📥 Контейнеры` / `🧬 Праймеры`. Read-only marker (lock icon + cursor not-allowed) для импортированных `.bodge`.
+- [ ] `components/Library/Tree/LabPoolSection.jsx` (~3 KB): Lab pool с двумя sub-секциями («❄️ В лаборатории» с `inLabStock=true` + «📚 Из чужих проектов» с `inLabStock=false`).
+- [ ] Folder operations в Loose: создать (через context-menu на zone heading — OQ2 closed: explicit), переименовать (slash-path tags batch update), удалить (confirm dialog с warning).
+- [ ] **OQ2 решение:** Folder создание через explicit context-menu «Новая папка» (закрыто §10 спеки).
+- [ ] **R6:** Folder = derived view над `entry.tags` slash-paths (DEC-CAT-04). Empty folder исчезает после move последнего item'а — это feature.
+- [ ] **Тесты K2:** +8 component (LibraryTree.test).
 
-**Артефакты K2:** 3 новых файла в `components/Dag/` (~23 KB суммарно).
+**Артефакты K2:** 8 новых файлов в `components/Library/` (root + Tree/) + потенциальные deletions старого Library кода.
 
-### K3 — DagPalette + PreviewDrawer
+### K3 — Inspector + tabs
 
-- [x] `components/Dag/Palette/DagPalette.jsx` (~10 KB): split-pane left ~280 px. Reuse `useCatalogSources` (data identical Library) + `LibraryGroupHeader` + `LibraryItemRow`. 4 группы в порядке: «Этот проект» → «Учебные / demo» → «Моя библиотека» → «Каталог SnapGene». Sticky search field наверху (length-pattern `>5kb` / `<2k` / `2k-3k` + name match). **Без:** folder tree, folder/file creation, dropzone, paste textarea, full flat search overlay. Persistent group-state localStorage `pvcs-dag-palette-group-{key}` (отдельные ключи от Library workspace).
-- [x] `components/Dag/Palette/DagPaletteItemRow.jsx` (~3 KB): wrapper над `LibraryItemRow`. Drag handle ⋮⋮ → react-dnd source `'DAG_ADD'` payload `{libraryEntryId}`. Click row → `onPreview(entry)`. Drag source ограничен handle (не вся строка) — Risk #2 в спеке.
-- [x] `components/Dag/PreviewDrawer.jsx` (~7 KB): slide-in overlay 340 px справа от палетки. Содержимое: PlasmidMiniMap 180×180 + metadata (name, length, topology, feature count) + region list (max 8 с `+N more`) + кнопки «Добавить на canvas» / «Закрыть». Закрывается на: Esc, click outside, drag start, успешный «Добавить на canvas». «Добавить на canvas» из drawer (без drag) → drop в центр текущего viewport (Q2 спека §9).
-- [x] **Тесты:** +7-9 component `__tests__/components/Dag/Palette/`. Характерные: 4 группы в правильном порядке, sticky search с length-pattern фильтрацией, drag handle ⋮⋮ initiates `'DAG_ADD'`, click row opens drawer, Esc closes drawer, «Добавить на canvas» из drawer drop'ает в viewport center.
+- [ ] **R1 ПЕРВОЙ задачей:** Code проверяет `readOnly` prop в `components/Importer/inspector/SequenceMapView.jsx` и `AnnotationEditor.jsx`. Если есть — go. Если нет — добавляет с default `false` (no-op для existing Importer callsites). Если внутри много hard-coded edit-логики — STOP коммита K3, эскалация Игорю (возможно вынос readOnly mode в M-X.7c).
+- [ ] `components/Library/Inspector/Inspector.jsx` (~4 KB): корневой Inspector. Заголовок (`<InspectorHeader>` + `<InspectorBanner>`) + tab bar (`<InspectorTabs>`) + active tab content.
+- [ ] `components/Library/Inspector/InspectorHeader.jsx` (~2 KB): name + meta-line + breadcrumb.
+- [ ] `components/Library/Inspector/InspectorBanner.jsx` (~2 KB): per zone tone/icon/text через `getInspectorBanner` (таблица §5.5). Persistent (не dismissable). null banner = no render.
+- [ ] `components/Library/Inspector/InspectorTabs.jsx` (~2 KB): tab bar Обзор / Последовательность / Аннотации / История(N).
+- [ ] `components/Library/Inspector/tabs/OverviewTab.jsx` (~5 KB): lineage trail (через `<LineageTrail>`) + preview + metadata.
+- [ ] `components/Library/Inspector/tabs/SequenceTab.jsx` (~2 KB): wrapper над `SequenceMapView` с `readOnly={true}` + inline read-only banner (DEC-MX7A-08): «🔒 Просмотр read-only. Edit аннотаций / последовательности — в Container Window.» с link `→ Container Window`.
+- [ ] `components/Library/Inspector/tabs/AnnotationsTab.jsx` (~2 KB): wrapper над `AnnotationEditor` с `readOnly={true}` + inline banner.
+- [ ] `components/Library/Inspector/tabs/HistoryTab.jsx` (~2 KB): placeholder card «Список коммитов и version-actions — M-X.7b». Tab counter в InspectorTabs = `commits.length`. Tab скрыт целиком если `commits.length === 0` (OQ6 closed: hide).
+- [ ] `components/Library/Inspector/LineageTrail.jsx` (~3 KB): chain rendering через `getLineageChain`.
+- [ ] `components/Library/Inspector/ActionRow.jsx` (~2 KB): variant-styled buttons из `getActionsFor`. Empty actions = no render. Disabled actions с tooltip.
+- [ ] Tab persistence (DEC-MX7A-04): тот же selection после повторного select → последний tab; новый selection → reset на «Обзор» (OQ5 closed: Обзор default).
+- [ ] **Тесты K3:** +10 component (Inspector.test).
 
-**Артефакты K3:** 3 новых файла в `components/Dag/Palette/` + `components/Dag/PreviewDrawer.jsx` (~20 KB суммарно).
+**Артефакты K3:** 11-12 новых файлов в `components/Library/Inspector/` + delta `SequenceMapView` / `AnnotationEditor` (если R1 потребует).
 
-### K4 — ContainerWindowPlaceholder + canvasSlice route
+### K4 — AddModal
 
-- [x] `store/canvasSlice.js`: добавить route `'containerWindow'` в FULLSCREENS (+~0.5 KB).
-- [x] `components/Dag/ContainerWindowPlaceholder.jsx` (~3 KB): `← Назад` button (popFullscreen) + название контейнера (lookup `libraryEntries[containerId]`) + центрированный текст «M-C.2 Container Window — В разработке». Стили DESIGN_SYSTEM tokens.
-- [x] `App.jsx` (root layout): switch case `'dag'` → `<DagCanvas>`, case `'containerWindow'` → `<ContainerWindowPlaceholder containerId={fullscreen.payload.containerId}/>`.
-- [x] При open-project в projectSlice.openProjectFromIndexedDB — `state.canvas.activeFullscreen = 'dag'` (биолог попадает на DAG canvas автоматически).
-- [x] **Тесты:** +3-5 integration. Характерные: double-click PlasmidNode → containerWindow в stack, `← Назад` pops back на dag, open-project автоматически открывает dag fullscreen.
+- [ ] `components/Library/AddModal/AddModal.jsx` (~3 KB): корневой modal, multi-step (source → target → preview wizard через DEC-IMP-13 reuse).
+- [ ] `components/Library/AddModal/SourceTiles.jsx` (~3 KB): 4 source tiles (Файл / Вставить последовательность / Каталог / Из другого .bodge).
+- [ ] `components/Library/AddModal/TargetZonePicker.jsx` (~2 KB): 3 radio (project / loose / lab) с default per источник из таблицы DEC-MX7A-09 (FILE→project|loose, PASTE→same as file, CATALOG→loose, CROSS→project).
+- [ ] `components/Library/AddModal/sources/FileSourceFlow.jsx` (~3 KB): file picker + format detect.
+- [ ] `components/Library/AddModal/sources/PasteSourceFlow.jsx` (~3 KB): textarea + format detect.
+- [ ] `components/Library/AddModal/sources/CatalogSourceFlow.jsx` (~3 KB): reuse CatalogColumn data через `useCatalogSources`.
+- [ ] `components/Library/AddModal/sources/CrossProjectStub.jsx` (~1 KB): placeholder M-X.9 («В разработке (M-X.9). Используйте Файл → выберите .bodge для импорта проекта.» — R4 hint).
+- [ ] Integration с PreImport flow (DEC-IMP-13).
+- [ ] Esc / click outside closes modal без сохранения.
+- [ ] **Тесты K4:** +5 component (AddModal.test).
 
-**Артефакты K4:** 1 новый файл `ContainerWindowPlaceholder.jsx` + дельта `canvasSlice.js` / `App.jsx` (~4 KB суммарно).
+**Артефакты K4:** 7 новых файлов в `components/Library/AddModal/`.
 
-### K5 — STRINGS namespace + edge cases
+### K5 — App routing + landing
 
-- [x] `lib/strings.js`: namespace `STRINGS.dag` — empty-state, palette labels (4 группы), sticky search placeholder, drawer CTAs, drill-in placeholder, toast «Уже добавлено», auto-layout button label, undo confirmation. EN + RU mirror (DEC-MA2-01).
-- [x] Toast «Уже добавлено» при двойном drop same containerId (visual lift на existing node).
-- [x] Backspace / Delete на selected edge → removeDagEdge.
-- [x] Полировка empty state, hover/focus states, prefers-reduced-motion для slide-in drawer.
-- [x] **Тесты:** +3-5. Характерные: STRINGS.dag доступны в EN + RU, toast triggers на дубль, Delete на edge удаляет.
+- [ ] `App.jsx` top-level switch для workspace (+~1 KB): `library` | `construct` | `flow` + fullscreen overlay (Container Window / DagWorkspace остаются).
+- [ ] Default landing на Library (вытесняет старый landing — Quick Start panel etc.).
+- [ ] `projectSlice.openProjectFromIndexedDB` обновляет `workspace.active='library'`; активный `📦` появляется как папка в Tree (не fullscreen DAG canvas как было в M-C.1).
+- [ ] **R2 mitigation:** workspace = root, fullscreen = overlay. `active='library'` + `canvas.activeFullscreen='containerWindow'` — валидная конфигурация (Container Window перекрывает Library view; close → возврат в Library). Смена workspace на Construct из Library — fullscreen закрывается автоматически.
+- [ ] Construct (DAG) и Container Window остаются доступны через actions / breadcrumb.
+- [ ] Старые landing screens / quick-start panels — оценка Code: переезжают как secondary actions в `LibraryTopBar` либо удаляются.
+- [ ] **OQ4:** empty state Library когда IndexedDB пустая — большая `+ Add` CTA по центру правого pane, Tree пустой, Inspector пустой. Onboarding nudge — отложить в M-X.7c.
+- [ ] **Тесты K5:** +5 integration (Library.integration.test).
 
-**Артефакты K5:** дельта `lib/strings.js` (+~1 KB) + edge polish across K2-K4 файлов.
+**Артефакты K5:** delta `App.jsx` + `workspaceSlice.js` finalization.
+
+### K6 — STRINGS + Lab pool details + edge cases
+
+- [ ] `lib/strings.js` namespace `STRINGS.library` (+~2 KB) — все labels EN+RU mirror per DEC-MA2-01. Если применить prior art M-C.1 K5 (RU values + EN comments) — Code решает в финале и фиксирует в отчёте как deviation.
+- [ ] Lab pool: PrimerUsage rendering inline («used in N проектах») в `ItemRow` через `selectPrimerUsageCount`.
+- [ ] Lab pool: sequence-match подсветка между cross-project primer и lab-stock entry (DEC-MX7A-12) через `selectMatchingLabStockPrimer`. UI badge на cross-project entry.
+- [ ] Empty states per zone (Loose / `.bodge` archives / Lab pool) — что показывается когда зона пустая.
+- [ ] Hover/focus states polish.
+- [ ] Read-only markers (lock icon + cursor not-allowed на rows импортированных `.bodge`).
+- [ ] prefers-reduced-motion для drag-drop animations (если есть transform-based feedback).
+- [ ] **Тесты K6:** +5-7.
+
+**Артефакты K6:** delta `lib/strings.js` + edge polish across K2-K4 файлов.
 
 ---
 
 ## STOP-условие
 
-После K1-K5 commits Code останавливается на ветке `feature/m-c-1-baseline`:
+После K1-K6 commits Code останавливается на ветке `feature/m-x-7a-library-structure`:
 
-> «K1-K5 landed. Финальные счётчики: Vitest XXX passing, pytest 112/112 passing. Build clean. Жду визуальной приёмки M-C.1 — не финализирую PROJECT_STATE / RELEASES / DECISIONS / ANCHORS / TECH_DEBT.»
+> «K1-K6 landed. Финальные счётчики: Vitest XXX passing, pytest 115/115 passing. Build clean. Жду визуальной приёмки M-X.7a — не финализирую PROJECT_STATE / RELEASES / DECISIONS / ANCHORS / TECH_DEBT.»
 
 **Не финализировать:**
-- PROJECT_STATE.md (журнал сессии + first-line).
+- PROJECT_STATE.md (журнал сессии + first-line) — только после acceptance.
 - RELEASES.md.
-- DECISIONS.md (DEC-MC1-01..05 уже в спеке, promotion в DECISIONS только после acceptance).
-- ANCHORS.md (никаких ⚓ promotions без явного запроса Игоря).
+- DECISIONS.md (DEC-MX7A-01..12 уже в спеке, promotion в DECISIONS только после acceptance).
+- ANCHORS.md (DEC-LIB-K11 — кандидат, решает Игорь).
 - TECH_DEBT.md (новые TD только если Code обнаружил соответствующие в процессе).
 - BUGS.md (только если найден existing bug — добавить в OPEN, не закрывать ничего).
 
@@ -111,122 +156,47 @@
 
 ## Формат отчёта Code в конце сессии
 
-В конце реализации Code дописывает в этот CURRENT_TASK.md секцию «Отчёт K1-K5»:
+В конце реализации Code дописывает в этот CURRENT_TASK.md секцию «Отчёт K1-K6»:
 
-1. **Коммит-хэши** по каждому K-step (5 hashes).
-2. **Финальные счётчики:** Vitest passing/total, pytest 112/112, build status, PWA precache size delta.
-3. **Размеры новых файлов** (точные KB) + дельта `projectSlice.js` / `canvasSlice.js` / `lib/strings.js`.
-4. **Отклонения от спеки** — явный блок «Что отличается от §3-§5 спеки», конкретно: split K на под-коммиты, drawer auto-close behavior tweaks, edge polish решения, mismatch размеров файлов от targets, и т.д. Не «всё по спеке» — конкретные расхождения.
-5. **Hard violation flag** — если хоть один файл влез в hard зону (40 KB .jsx / 25 KB .js) — явный red flag с предложением декомпозиции в M-X.6 / M-X.7.
-6. **TD-pencil-marks** — если в K3 пришлось добавить новые props в `PlasmidMiniMap` (Risk #4) — флаг с цитатой изменений.
+1. **Коммит-хэши** по каждому K-step (~6 hashes).
+2. **Финальные счётчики:** Vitest passing/total, pytest 115/115, build status, PWA precache size delta.
+3. **Размеры новых файлов** — таблица с топ-15 крупнейших новых файлов в `components/Library/` + delta `librarySlice.js` / `App.jsx` / `lib/strings.js`.
+4. **Отклонения от спеки** — explicit блок:
+   - Split K на под-коммиты.
+   - Decisions Code где спека была неоднозначна (особенно OQ1 — workspaceSlice scope: новый slice или append в canvasSlice).
+   - Mismatch размеров файлов от §5.1 targets.
+   - R1 result: prop `readOnly` найден готовым либо добавлен.
+5. **Hard violation flag** — explicit red flag если файл влез в hard зону (40 KB .jsx / 25 KB .js).
+6. **TD-pencil-marks:**
+   - TD-LIB-K2-DEAD-CODE-PURGE состояние (purged / not found / partial).
+   - Importer CatalogColumn «Моя библиотека» group теперь redundant — флаг для M-X.6 cleanup.
+   - SequenceMapView / AnnotationEditor требуют значительных изменений для readOnly mode → TD «readOnly mode hardening».
+7. **Migration heuristic результаты** — на dev fixture сколько entries попало в каждую зону `{loose: N, project: N, lab_pool: N}`.
 
 ---
 
 ## Что делать при регрессии
 
-Если в любом K-step ломаются existing тесты (librarySlice / Library workspace / Importer / Annotator):
+Если в любом K-step ломаются existing тесты (librarySlice CRUD / Importer flow / Library quick-add):
 
 1. STOP коммита, не пушить.
-2. Проверить задели ли regression-guard зону: `addContainerToCurrentProject` без position (legacy callsites M-X.5 K8 quick-add) — должен работать как раньше.
-3. Если регрессия в проекте, который Code не считает зоной M-C.1 (например Annotator / SequenceView / Library tree) — вернуться в CURRENT_TASK и зафлагать это Игорю отдельным сообщением, не «починю по ходу». Скорее всего митигация — изоляция нового кода через ensureDagShape lazy + `?? DEFAULT_DAG` defensive в селекторах.
-4. Регрессия legacy projects (без `dag` field) при load — Risk #3 в спеке. Митигация в K1: `ensureDagShape` lazy + write-on-mutate. Test fixture legacy project обязателен.
+2. Проверить regression-guard зону: existing API librarySlice без `zone`/`projectId` должен работать (lazy migration через `migrateLibraryEntry` идемпотентен).
+3. Если регрессия в проекте, который Code не считает зоной M-X.7a (Annotator / SequenceView / Container Window / DAG из M-C.1) — STOP и эскалация Игорю.
+4. R3 mitigation: migration loss-of-data acceptable (entries без явного projectId уходят в Loose). Логирование `migratedCount` per zone в console на dev mode для отладки.
 
 ---
 
-## Контекст-бюджет реализации
+## Что не делается в M-X.7a (явно отложено)
 
-Code-сессия M-C.1 K1-K5 — обычная реализационная сессия не milestone-планировочная. Бюджет ~50 KB на старте: CLAUDE.md + BUGS.md + CURRENT_TASK.md + PROJECT_STATE.md first-line + спека M-C.1 (20.99 KB) ≈ 45 KB. Targeted reading подгружается по K (см. «Порядок чтения»).
-
-Compact между K3 и K4 не нужен (K4 = 1 файл). Compact обязателен после K1-K5 commit + STOP — приёмка идёт в свежей сессии.
-
----
-
-## Что не делается в M-C.1 (явно отложено)
-
-- Reactions / typed edges / mix / pcr / digest / clone — M-G.
-- MIRO+ hover-handle dropdown — Q3, сырая для baseline.
-- Stage column indicators — M-I, зависят от commit.rank.
-- Multi-select / box-select / undo для DAG операций — M-D + M-I.
-- Side-panel список контейнеров (drawer left) — M-I polish.
-- **Container Window real implementation — M-C.2.**
-- DAG export PNG/JSON — v0.5 функционал, не приоритет.
-- Tag-filter overlay на canvas — M-I polish.
-- M-X.6 cleanup, NCBI integration, AnnotationTrack decomposition — отложены биологом, post-M-C.
+- **Версионирование (M-X.7b):** содержимое таба «История», version-actions (`Сохранить как версию`, `Manual-edit ветка`, `Откатить`, `Ветка от этого`). M-X.7a показывает counter + placeholder + disabled actions.
+- **Cross-project import wizard (M-X.9):** AddModal source `Из другого .bodge` triggers stub modal «В разработке (M-X.9)». Остальные 3 источника (File / Paste / Catalog) полнофункциональны.
+- **«Открыть как активный проект» switch (M-X.9):** action в read-only `.bodge` action-row — показан, при клике alert «В разработке (M-X.9)». Импорт `.bodge` в read-only зону работает (для view), edit-переключение — нет.
+- **Command palette ⌘K (M-X.7c):** в M-X.7a search field — простой text-фильтр по name. ⌘K hotkey + length-pattern (`>5kb`) + feature-filter (`CDS`) — отложены.
+- **Group projects (post-M-I):** один agent одновременно — DEC-V2-29 не пересекается.
+- **Mobile layout:** out-of-scope per DEC-V2-19.
+- **Multi-select / box-select:** M-X.10+.
 
 ---
 
-**Дата:** 07.05.2026 (визуальная приёмка спеки + K-step plan для Code).
-**Спека source-of-truth:** `docs/SPRINT_M-C-1_CONTAINER_CANVAS_BASELINE.md`.
-
----
-
-## Отчёт K1-K5 (08.05.2026, Code-сессия)
-
-### 1. Коммит-хэши
-
-| K | hash | заголовок |
-|---|------|-----------|
-| K1 | `072c6c3` | projectSlice.dag schema + dag-layout helper |
-| K2 | `fbe83e3` | DagCanvas + PlasmidNode + NeutralEdge |
-| K3 | `2afe652` | DagPalette + DagPaletteItemRow + PreviewDrawer |
-| K4 | `9316f2f` | ContainerWindowPlaceholder + canvasSlice route + DagWorkspace |
-| K5 | `80860af` | STRINGS.dag namespace + edge-case tests |
-
-### 2. Финальные счётчики
-
-- **Vitest:** 1572 / 1572 passing (154 файла, 20.73 s).
-- **pytest:** 115 / 115 passing (1.91 s) — backend счёт уехал с 112 → 115 за период между acceptance v0.8.0 и началом M-C.1; M-C.1 backend не трогал.
-- **Build:** clean. Vite 8.0.2, 365 modules transformed, 566 ms. PWA precache 23 entries 1153.62 KiB. Pre-M-C.1 baseline precache не зафиксирован — дельту не от чего считать.
-
-### 3. Размеры новых файлов и дельты
-
-**Новые файлы:**
-
-| Файл | Размер | Spec target |
-|------|--------|-------------|
-| `lib/dag-layout.js` | 2.5 KB | ~3 KB |
-| `components/Dag/NeutralEdge.jsx` | 0.86 KB | ~1 KB |
-| `components/Dag/PlasmidNode.jsx` | 5.9 KB | ~12 KB |
-| `components/Dag/DagCanvas.jsx` | 11.2 KB | ~10 KB |
-| `components/Dag/PreviewDrawer.jsx` | 7.0 KB | ~7 KB |
-| `components/Dag/DagWorkspace.jsx` | 3.3 KB | (K4 add) |
-| `components/Dag/ContainerWindowPlaceholder.jsx` | 3.0 KB | ~3 KB |
-| `components/Dag/Palette/DagPalette.jsx` | 12.5 KB | ~10 KB |
-| `components/Dag/Palette/DagPaletteItemRow.jsx` | 3.7 KB | ~3 KB |
-
-Все под hard 40 KB (.jsx) / 25 KB (.js). PlasmidNode заметно меньше target (5.9 vs ~12 KB) — embedded mini-map делегирован готовому `<PlasmidMiniMap disableHoverOverlay>` без локальной SVG-копии.
-
-**Дельты existing файлов:**
-
-| Файл | Было | Стало | Δ | Hard |
-|------|------|-------|---|------|
-| `store/projectSlice.js` | ~15.6 KB | 21.8 KB | +6.2 KB | 25 KB |
-| `store/canvasSlice.js` | ~3.1 KB | 3.2 KB | +0.1 KB | 25 KB |
-| `lib/strings.js` | 9.6 KB | 11.2 KB | +1.6 KB | data-file (не лимитируется) |
-
-### 4. Отклонения от спеки
-
-- **K1 projectSlice.js +6.2 KB vs spec target +2-3 KB.** `ensureDagShape` lazy migration + 5 новых actions (`setDagPositions`, `addDagEdge`, `removeDagEdge`, `setDagViewport`, `removeContainerFromProject`) + autosave wiring + selectors съели больше места. Под hard 25 KB остаётся ~3 KB запаса; в Watch list по DEC-SIZE-CALIBRATION-01 (rate-of-change >5 KB за один спринт — если повторится в M-C.2 → перевод в Active).
-- **K3 DagPalette.jsx 12.5 KB vs target ~10 KB.** Per-group localStorage hydration + length-pattern фильтр (`>5kb` / `<2k` / `2k-3k`) растянули файл. Поведение в скоупе спеки.
-- **K5 STRINGS.dag — RU only с EN в комментариях, не «EN + RU mirror» в строгом смысле DEC-MA2-01.** Ключевая форма (i18next-совместимая) сохранена → миграция на полноценный `en` namespace механическая, но runtime словаря для английского нет. Прагматика: вся палитра/Library у биолога уже на русском, синтетический английский для тестового UI преждевременен. Если Чат настаивает на parity — отдельный TD в M-D.
-- **K5 prefers-reduced-motion вакуумен.** PreviewDrawer не имеет slide-in transform (K3 анимацию входа не добавлял), `@media (prefers-reduced-motion: reduce)` нечего гасить. Docstring упоминает фичу, реализации нет. Если хотите реальный slide-in — оформить в M-D polish.
-- **K5 «undo confirmation» строка не добавлена.** Undo для DAG операций — out of scope (§«Что не делается»). Спека K5 включила ключ по инерции; добавим когда undo реальный.
-- **K5 Toast «Уже добавлено» и Backspace/Delete на edge — реализованы в K2.** Спека K5 перечислила их повторно как edge-polish; K5 поднял литералы в STRINGS namespace и зафиксировал `removeDagEdge` контракт-тестом. Backspace/Delete на edge идёт через ReactFlow `onEdgesChange` → slice action, локальный `keydown` listener не нужен.
-- **K5 тесты +7 vs spec range +3-5.** Шесть exposure-assertions для STRINGS.dag (по группам ключей) + один edge-deletion contract test. Сокращать не стал — каждое утверждение покрывает отдельный поднабор namespace.
-
-### 5. Hard violation flag
-
-**Новых нарушителей K1-K5 нет.** Pre-existing файлы над hard (вне M-C.1 зоны) без изменений за этот спринт:
-
-- `components/SequenceView/tracks/AnnotationTrack.jsx` 49.7 KB
-- `components/FragmentEditor/index.jsx` 40.5 KB
-
-Watch zone (>35 KB, не вырос за M-C.1): `SequenceView/tracks/AATrack.jsx` 39.8, `PlasmidUseWizard.jsx` 39.7, `SequenceView/index.jsx` 39.7, `Library/inspector/LibrarySingleInspector.jsx` 39.3, `Library/tree/LibraryTree.jsx` 39.2, `DesignCanvas.jsx` 37.9, `restriction-db.js` 37.4 (data-file, не лимитируется).
-
-### 6. TD pencil-marks
-
-**Risk #4 (новые props на PlasmidMiniMap) не сработал.** K2/K3 используют существующие `length / topology / annotations / size / disableHoverOverlay` — последний пришёл из FIX-2 follow-up 28.04.2026, до K1. Новых полей минимэпу не пришлось добавлять.
-
-### STOP
-
-K1-K5 landed. Финальные счётчики: Vitest 1572 passing, pytest 115/115 passing. Build clean. Жду визуальной приёмки M-C.1 — не финализирую PROJECT_STATE / RELEASES / DECISIONS / ANCHORS / TECH_DEBT.
+**Дата:** 08.05.2026 (kickoff Sprint M-X.7a после M-C.1 STOP; визуальная приёмка спеки + K-step plan для Code).
+**Спека source-of-truth:** `docs/SPRINT_M-X.7a_LIBRARY_STRUCTURE.md`.
