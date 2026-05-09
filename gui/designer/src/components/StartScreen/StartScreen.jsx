@@ -20,21 +20,27 @@
  * dispatches setActiveWorkspace + setActiveFullscreen to enter
  * the LibraryWorkspace per spec acceptance #10.
  */
+import { useCallback, useState } from 'react';
 import Sidebar from './Sidebar';
 import MainPanel from './MainPanel';
 import { useSidebarCollapsed } from './hooks/useSidebarCollapsed';
+import HotkeyCheatsheet from '../HotkeyCheatsheet';
 import './StartScreen.css';
 
 export default function StartScreen() {
   const { collapsed, toggle } = useSidebarCollapsed();
+  const [hotkeysOpen, setHotkeysOpen] = useState(false);
+  const openHotkeys = useCallback(() => setHotkeysOpen(true), []);
+  const closeHotkeys = useCallback(() => setHotkeysOpen(false), []);
   return (
     <div
       className="start-screen-root"
       data-testid="start-screen-root"
       data-collapsed={collapsed ? 'true' : 'false'}
     >
-      <Sidebar collapsed={collapsed} onToggle={toggle} />
+      <Sidebar collapsed={collapsed} onToggle={toggle} onOpenHotkeys={openHotkeys} />
       <MainPanel />
+      <HotkeyCheatsheet open={hotkeysOpen} onClose={closeHotkeys} />
     </div>
   );
 }

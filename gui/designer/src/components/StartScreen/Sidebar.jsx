@@ -21,21 +21,39 @@ function todo(label) {
   };
 }
 
-function Logo() {
-  return (
-    <div className="sb-logo" aria-hidden>
-      <svg width="26" height="26" viewBox="0 0 256 256">
-        <circle cx="128" cy="128" r="92" fill="none" stroke="currentColor" strokeWidth="10" />
-        <path
-          d="M 192.95 64.95 A 92 92 0 0 1 220 128"
-          fill="none" stroke="#f59e0b" strokeWidth="22" strokeLinecap="round"
-        />
-      </svg>
-    </div>
+function Logo({ collapsed, onExpand }) {
+  const inner = (
+    <svg width="26" height="26" viewBox="0 0 256 256">
+      <circle cx="128" cy="128" r="92" fill="none" stroke="currentColor" strokeWidth="10" />
+      <path
+        d="M 192.95 64.95 A 92 92 0 0 1 220 128"
+        fill="none" stroke="#f59e0b" strokeWidth="22" strokeLinecap="round"
+      />
+    </svg>
   );
+  // In collapsed state, the ‹‹ toggle is hidden per mockup CSS — make
+  // the logo itself a click target so biolog can expand without
+  // memorising Ctrl+B. Tooltip surfaces the hotkey.
+  if (collapsed) {
+    return (
+      <button
+        type="button"
+        className="sb-logo"
+        data-testid="ss-sidebar-logo-expand"
+        onClick={onExpand}
+        title="Развернуть (Ctrl B)"
+        aria-label="Развернуть боковую панель"
+        style={{
+          background: 'transparent', border: 'none', cursor: 'pointer',
+          padding: 0,
+        }}
+      >{inner}</button>
+    );
+  }
+  return <div className="sb-logo" aria-hidden>{inner}</div>;
 }
 
-export default function Sidebar({ collapsed, onToggle }) {
+export default function Sidebar({ collapsed, onToggle, onOpenHotkeys }) {
   const activeWorkspace = useStore((s) => s.workspace?.active || 'startup');
   const setActiveWorkspace = useStore((s) => s.setActiveWorkspace);
   const setActiveFullscreen = useStore((s) => s.setActiveFullscreen);
@@ -66,7 +84,7 @@ export default function Sidebar({ collapsed, onToggle }) {
       data-collapsed={collapsed ? 'true' : 'false'}
     >
       <div className="sb-head">
-        <Logo />
+        <Logo collapsed={collapsed} onExpand={onToggle} />
         {!collapsed && (
           <>
             <div className="sb-name">BodgeGene</div>
@@ -163,7 +181,7 @@ export default function Sidebar({ collapsed, onToggle }) {
           label="Хоткеи"
           right="?"
           tip="Хоткеи"
-          onClick={todo('open-hotkeys')}
+          onClick={onOpenHotkeys || todo('open-hotkeys')}
           testId="ss-help-hotkeys"
         />
       </div>

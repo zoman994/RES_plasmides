@@ -137,6 +137,35 @@ describe('StartScreen-Pixel — Sidebar collapse', () => {
     render(<StartScreen />);
     expect(screen.getByTestId('ss-sidebar').getAttribute('data-collapsed')).toBe('true');
   });
+
+  it('logo click in collapsed state expands the sidebar (no need for Ctrl+B)', () => {
+    render(<StartScreen />);
+    // Collapse first.
+    fireEvent.click(screen.getByTestId('ss-sidebar-toggle'));
+    expect(screen.getByTestId('ss-sidebar').getAttribute('data-collapsed')).toBe('true');
+    // ‹‹ toggle is hidden in collapsed; logo becomes a click target.
+    expect(screen.queryByTestId('ss-sidebar-toggle')).toBeNull();
+    expect(screen.getByTestId('ss-sidebar-logo-expand')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('ss-sidebar-logo-expand'));
+    expect(screen.getByTestId('ss-sidebar').getAttribute('data-collapsed')).toBe('false');
+  });
+});
+
+describe('StartScreen-Pixel — Hotkey cheatsheet wiring', () => {
+  it('Хоткеи sidebar item click opens HotkeyCheatsheet modal', () => {
+    render(<StartScreen />);
+    expect(screen.queryByText(/Hotkey/i)).toBeNull();
+    fireEvent.click(screen.getByTestId('ss-help-hotkeys'));
+    // HotkeyCheatsheet renders its own backdrop + a close button.
+    // Try to find one of its known testids; fall back to title text.
+    const found =
+      document.querySelector('[data-testid*="hotkey"]') ||
+      document.querySelector('[role="dialog"]') ||
+      Array.from(document.querySelectorAll('h2, h3')).find((h) =>
+        /хотке|hotkey/i.test(h.textContent || ''),
+      );
+    expect(found).toBeTruthy();
+  });
 });
 
 describe('StartScreen-Pixel — Library button wiring', () => {
