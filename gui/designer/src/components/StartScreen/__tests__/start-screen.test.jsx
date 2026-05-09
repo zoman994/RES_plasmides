@@ -17,13 +17,33 @@
  *  12. Reload-style state survives via localStorage (collapsed)
  */
 import 'fake-indexeddb/auto';
-import React from 'react';
+import React, { useState } from 'react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';
 import { useStore } from '../../../store';
 import { resetDBForTests } from '../../../db/dexie-schema';
 import StartScreen from '../StartScreen';
+import Sidebar from '../Sidebar';
+import HotkeyCheatsheet from '../../HotkeyCheatsheet';
+import { useSidebarCollapsed } from '../hooks/useSidebarCollapsed';
 import { APP_VERSION } from '../../../lib/version';
+
+// Sprint Single-Sidebar (09.05.2026): Sidebar moved out of
+// StartScreen into App.jsx so it can stay mounted across all
+// workspaces. Tests still want to assert the integration
+// (Sidebar + StartScreen content + HotkeyCheatsheet) — small
+// wrapper reproduces what App.jsx now does.
+function StartScreenIntegration() {
+  const { collapsed, toggle } = useSidebarCollapsed();
+  const [hk, setHk] = useState(false);
+  return (
+    <div className="start-screen-root">
+      <Sidebar collapsed={collapsed} onToggle={toggle} onOpenHotkeys={() => setHk(true)} />
+      <StartScreen />
+      <HotkeyCheatsheet open={hk} onClose={() => setHk(false)} />
+    </div>
+  );
+}
 
 async function freshDB() {
   const name = `bodgegene-ss-${Math.random().toString(36).slice(2)}`;
@@ -55,7 +75,7 @@ afterEach(cleanup);
 
 describe('StartScreen-Pixel — Sidebar shell', () => {
   it('mounts root + sidebar expanded by default (232 px state)', () => {
-    render(<StartScreen />);
+    render(<StartScreenIntegration />);
     expect(screen.getByTestId('start-screen-root')).toBeTruthy();
     const sidebar = screen.getByTestId('ss-sidebar');
     expect(sidebar.getAttribute('data-collapsed')).toBe('false');
@@ -63,7 +83,7 @@ describe('StartScreen-Pixel — Sidebar shell', () => {
   });
 
   it('renders all 3 actions, 5 workspace items, 2 help items, 3 footer items', () => {
-    render(<StartScreen />);
+    render(<StartScreenIntegration />);
     // Actions
     expect(screen.getByTestId('ss-action-create-project')).toBeTruthy();
     expect(screen.getByTestId('ss-action-open-bodge')).toBeTruthy();
@@ -85,13 +105,13 @@ describe('StartScreen-Pixel — Sidebar shell', () => {
   });
 
   it('Главная is the active item when workspace.active=\'startup\'', () => {
-    render(<StartScreen />);
+    render(<StartScreenIntegration />);
     expect(screen.getByTestId('ss-nav-home').getAttribute('data-active')).toBe('true');
     expect(screen.getByTestId('ss-nav-library').getAttribute('data-active')).toBe('false');
   });
 
   it('disabled items (Конструкции / Реакции / Праймеры) are not clickable', () => {
-    render(<StartScreen />);
+    render(<StartScreenIntegration />);
     const constructs = screen.getByTestId('ss-nav-constructs');
     expect(constructs.disabled).toBe(true);
     expect(constructs.textContent).toMatch(/soon/);
@@ -100,7 +120,7 @@ describe('StartScreen-Pixel — Sidebar shell', () => {
   });
 
   it('items carry data-tip for collapsed-state tooltip', () => {
-    render(<StartScreen />);
+    render(<StartScreenIntegration />);
     expect(screen.getByTestId('ss-nav-home').getAttribute('data-tip')).toBe('Главная');
     expect(screen.getByTestId('ss-nav-library').getAttribute('data-tip')).toBe('Библиотека плазмид');
   });
@@ -108,7 +128,7 @@ describe('StartScreen-Pixel — Sidebar shell', () => {
 
 describe('StartScreen-Pixel — Sidebar collapse', () => {
   it('toggle button flips collapsed state (works in both directions)', () => {
-    render(<StartScreen />);
+    render(<StartScreenIntegration />);
     const sidebar = screen.getByTestId('ss-sidebar');
     expect(sidebar.getAttribute('data-collapsed')).toBe('false');
     // Expanded: shows ‹‹ icon.
@@ -124,7 +144,7 @@ describe('StartScreen-Pixel — Sidebar collapse', () => {
   });
 
   it('Ctrl+B hotkey toggles collapse', () => {
-    render(<StartScreen />);
+    render(<StartScreenIntegration />);
     const sidebar = screen.getByTestId('ss-sidebar');
     expect(sidebar.getAttribute('data-collapsed')).toBe('false');
     fireEvent.keyDown(window, { key: 'b', code: 'KeyB', ctrlKey: true });
@@ -134,17 +154,17 @@ describe('StartScreen-Pixel — Sidebar collapse', () => {
   });
 
   it('collapsed state persists via localStorage between mounts', () => {
-    const { unmount } = render(<StartScreen />);
+    const { unmount } = render(<StartScreenIntegration />);
     fireEvent.click(screen.getByTestId('ss-sidebar-toggle'));
     expect(localStorage.getItem('sidebar.collapsed')).toBe('true');
     unmount();
     cleanup();
-    render(<StartScreen />);
+    render(<StartScreenIntegration />);
     expect(screen.getByTestId('ss-sidebar').getAttribute('data-collapsed')).toBe('true');
   });
 
   it('toggle button stays visible in collapsed state with ›› icon', () => {
-    render(<StartScreen />);
+    render(<StartScreenIntegration />);
     fireEvent.click(screen.getByTestId('ss-sidebar-toggle'));
     expect(screen.getByTestId('ss-sidebar').getAttribute('data-collapsed')).toBe('true');
     const toggle = screen.getByTestId('ss-sidebar-toggle');
@@ -156,7 +176,7 @@ describe('StartScreen-Pixel — Sidebar collapse', () => {
 
 describe('StartScreen-Pixel — Hotkey cheatsheet wiring', () => {
   it('Хоткеи sidebar item click opens HotkeyCheatsheet modal', () => {
-    render(<StartScreen />);
+    render(<StartScreenIntegration />);
     expect(screen.queryByText(/Hotkey/i)).toBeNull();
     fireEvent.click(screen.getByTestId('ss-help-hotkeys'));
     // HotkeyCheatsheet renders its own backdrop + a close button.
@@ -173,7 +193,7 @@ describe('StartScreen-Pixel — Hotkey cheatsheet wiring', () => {
 
 describe('StartScreen-Pixel — Library button wiring', () => {
   it('clicking Библиотека dispatches setActiveWorkspace + setActiveFullscreen', () => {
-    render(<StartScreen />);
+    render(<StartScreenIntegration />);
     fireEvent.click(screen.getByTestId('ss-nav-library'));
     const s = useStore.getState();
     expect(s.workspace.active).toBe('library');
@@ -185,7 +205,7 @@ describe('StartScreen-Pixel — Library button wiring', () => {
       s.workspace.active = 'library';
       s.canvas.activeFullscreen = 'library';
     });
-    render(<StartScreen />);
+    render(<StartScreenIntegration />);
     fireEvent.click(screen.getByTestId('ss-nav-home'));
     const s = useStore.getState();
     expect(s.workspace.active).toBe('startup');
@@ -195,19 +215,19 @@ describe('StartScreen-Pixel — Library button wiring', () => {
 
 describe('StartScreen-Pixel — MainPanel', () => {
   it('topbar shows «Главная» h2 + search + ? button', () => {
-    render(<StartScreen />);
+    render(<StartScreenIntegration />);
     expect(screen.getByTestId('ss-topbar-title').textContent).toBe('Главная');
     expect(screen.getByTestId('ss-topbar-search')).toBeTruthy();
     expect(screen.getByTestId('ss-topbar-help')).toBeTruthy();
   });
 
   it('recent header shows hardcoded counter «· 7»', () => {
-    render(<StartScreen />);
+    render(<StartScreenIntegration />);
     expect(screen.getByTestId('ss-recent-header').textContent).toMatch(/Недавние проекты · 7/);
   });
 
   it('renders 4 hardcoded recent project rows in the right order', () => {
-    render(<StartScreen />);
+    render(<StartScreenIntegration />);
     expect(screen.getByTestId('ss-recent-P43_Cas_Uni_Tr')).toBeTruthy();
     expect(screen.getByTestId('ss-recent-pEXP-glaA-XynTL')).toBeTruthy();
     expect(screen.getByTestId('ss-recent-pHDR-pepA')).toBeTruthy();
@@ -215,7 +235,7 @@ describe('StartScreen-Pixel — MainPanel', () => {
   });
 
   it('row 1 carries status-dot ok; row 2 carries status-dot unsaved', () => {
-    render(<StartScreen />);
+    render(<StartScreenIntegration />);
     const r1 = screen.getByTestId('ss-recent-P43_Cas_Uni_Tr');
     expect(r1.querySelector('[data-testid="ss-recent-status-ok"]')).toBeTruthy();
     const r2 = screen.getByTestId('ss-recent-pEXP-glaA-XynTL');
@@ -223,7 +243,7 @@ describe('StartScreen-Pixel — MainPanel', () => {
   });
 
   it('filter pills toggle active state', () => {
-    render(<StartScreen />);
+    render(<StartScreenIntegration />);
     const all = screen.getByTestId('ss-filter-all');
     const active = screen.getByTestId('ss-filter-active');
     expect(all.getAttribute('data-active')).toBe('true');
@@ -234,7 +254,7 @@ describe('StartScreen-Pixel — MainPanel', () => {
   });
 
   it('empty card mounts with CTA «Выбрать набор»', () => {
-    render(<StartScreen />);
+    render(<StartScreenIntegration />);
     expect(screen.getByTestId('ss-empty-card')).toBeTruthy();
     expect(screen.getByTestId('ss-empty-cta').textContent).toBe('Выбрать набор');
   });
@@ -243,7 +263,7 @@ describe('StartScreen-Pixel — MainPanel', () => {
 describe('StartScreen-Pixel — stub callbacks (console.log TODO)', () => {
   it('Создать проект click logs TODO: create-project', () => {
     const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    render(<StartScreen />);
+    render(<StartScreenIntegration />);
     fireEvent.click(screen.getByTestId('ss-action-create-project'));
     expect(spy).toHaveBeenCalledWith('TODO: create-project');
     spy.mockRestore();
@@ -251,7 +271,7 @@ describe('StartScreen-Pixel — stub callbacks (console.log TODO)', () => {
 
   it('Empty CTA click logs TODO: pick-set (sample stub coverage)', () => {
     const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    render(<StartScreen />);
+    render(<StartScreenIntegration />);
     fireEvent.click(screen.getByTestId('ss-empty-cta'));
     expect(spy).toHaveBeenCalledWith('TODO: pick-set');
     spy.mockRestore();
@@ -261,19 +281,19 @@ describe('StartScreen-Pixel — stub callbacks (console.log TODO)', () => {
 describe('StartScreen-Pixel — theme toggle (LIVE, not stub)', () => {
   it('Тема label reflects current theme value (light)', () => {
     useStore.setState((s) => { s.theme = 'light'; });
-    render(<StartScreen />);
+    render(<StartScreenIntegration />);
     expect(screen.getByTestId('ss-foot-theme').textContent).toMatch(/светлая/);
   });
 
   it('Тема label reflects current theme value (dark)', () => {
     useStore.setState((s) => { s.theme = 'dark'; });
-    render(<StartScreen />);
+    render(<StartScreenIntegration />);
     expect(screen.getByTestId('ss-foot-theme').textContent).toMatch(/тёмная/);
   });
 
   it('clicking Тема flips theme via setTheme (light → dark)', () => {
     useStore.setState((s) => { s.theme = 'light'; });
-    render(<StartScreen />);
+    render(<StartScreenIntegration />);
     fireEvent.click(screen.getByTestId('ss-foot-theme'));
     expect(useStore.getState().theme).toBe('dark');
     expect(screen.getByTestId('ss-foot-theme').textContent).toMatch(/тёмная/);
@@ -281,14 +301,14 @@ describe('StartScreen-Pixel — theme toggle (LIVE, not stub)', () => {
 
   it('clicking Тема again flips back (dark → light)', () => {
     useStore.setState((s) => { s.theme = 'dark'; });
-    render(<StartScreen />);
+    render(<StartScreenIntegration />);
     fireEvent.click(screen.getByTestId('ss-foot-theme'));
     expect(useStore.getState().theme).toBe('light');
   });
 
   it('theme value applied to <html> data-theme via setTheme side-effect', () => {
     useStore.setState((s) => { s.theme = 'light'; });
-    render(<StartScreen />);
+    render(<StartScreenIntegration />);
     fireEvent.click(screen.getByTestId('ss-foot-theme'));
     expect(document.documentElement.dataset.theme).toBe('dark');
   });

@@ -37,10 +37,19 @@ function Logo() {
 
 export default function Sidebar({ collapsed, onToggle, onOpenHotkeys }) {
   const activeWorkspace = useStore((s) => s.workspace?.active || 'startup');
+  const activeFullscreen = useStore((s) => s.canvas?.activeFullscreen);
   const setActiveWorkspace = useStore((s) => s.setActiveWorkspace);
   const setActiveFullscreen = useStore((s) => s.setActiveFullscreen);
+  const openSettings = useStore((s) => s.openSettings);
   const theme = useStore((s) => s.theme);
   const setTheme = useStore((s) => s.setTheme);
+
+  // Sprint Single-Sidebar — active state derives from activeFullscreen
+  // (which the Sidebar handlers also drive). ⌂ Главная active when
+  // viewing the StartScreen content; ▦ Библиотека active when on the
+  // library workspace surface.
+  const isHomeActive = activeFullscreen === 'start';
+  const isLibraryActive = activeFullscreen === 'library' || activeWorkspace === 'library';
 
   const onLibraryClick = () => {
     setActiveWorkspace?.('library');
@@ -49,6 +58,9 @@ export default function Sidebar({ collapsed, onToggle, onOpenHotkeys }) {
   const onHomeClick = () => {
     setActiveWorkspace?.('startup');
     setActiveFullscreen?.('start');
+  };
+  const onSettingsClick = () => {
+    openSettings?.();
   };
   const onThemeToggle = () => {
     // Live theme flip — uses existing uiSlice.setTheme which persists
@@ -109,7 +121,7 @@ export default function Sidebar({ collapsed, onToggle, onOpenHotkeys }) {
           icon="⌂"
           label="Главная"
           tip="Главная"
-          active={activeWorkspace === 'startup'}
+          active={isHomeActive}
           onClick={onHomeClick}
           testId="ss-nav-home"
         />
@@ -118,7 +130,7 @@ export default function Sidebar({ collapsed, onToggle, onOpenHotkeys }) {
           label="Библиотека"
           right="142"
           tip="Библиотека плазмид"
-          active={activeWorkspace === 'library'}
+          active={isLibraryActive}
           onClick={onLibraryClick}
           testId="ss-nav-library"
         />
@@ -185,7 +197,7 @@ export default function Sidebar({ collapsed, onToggle, onOpenHotkeys }) {
           icon="⚙"
           label="Настройки"
           tip="Настройки (Ctrl ,)"
-          onClick={todo('open-settings')}
+          onClick={onSettingsClick}
           testId="ss-foot-settings"
         />
         {!collapsed && (

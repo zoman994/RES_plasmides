@@ -1,36 +1,23 @@
 /**
- * AppShell — Sprint M-X.7a v2 K5 (DEC-MX7A-V2-01 + 06).
+ * AppShell — Sprint Single-Sidebar (09.05.2026, supersedes K5).
  *
- * Layout per Library.html `.app-shell`:
- *   ┌─────────────────────────────────────────────────────────┐
- *   │ Topbar (M-A.x baseline)                                 │
- *   ├──────┬──────────────────────────────────────────────────┤
- *   │ Nav  │  WorkspaceContent — switches on workspace.active │
- *   │ Rail │   • 'library'  → LibraryWorkspace (M-X.7a v2)    │
- *   │ 56px │   • 'flow'     → DagWorkspace (M-C.1 baseline)   │
- *   │      │   • 'importer' → legacy Importer (deprecated)    │
- *   │      │   • 'startup'  → Quick Start placeholder         │
- *   │      │   • 'mix'      → M-E placeholder                 │
- *   │      │   • children   → overlay-mode (App.jsx supplies  │
- *   │      │                  ContainerWindowPlaceholder /    │
- *   │      │                  MultiTabBlocked / etc.)         │
- *   └──────┴──────────────────────────────────────────────────┘
+ * Stripped to a thin WorkspaceRouter. Topbar + NavRail were
+ * retired this sprint — the StartScreen Sidebar is now the
+ * single left panel for ALL workspaces. App.jsx renders Sidebar
+ * outside, then mounts AppShell here for `workspace.active`
+ * driven content (Library / DAG / Importer / placeholders).
  *
- * children-overlay convention: when App.jsx passes a node as
- * children, it REPLACES the workspace content (used by routes
- * like 'containerWindow' that take over the viewport). When
- * children is null/undefined, the workspace router shows the
- * `workspace.active`-driven content.
+ * Old NavRail.jsx + Topbar.jsx files kept on disk with a
+ * DEPRECATED comment; not imported anywhere. They get deleted
+ * in a follow-up cleanup once the test suite confirms zero
+ * references.
+ *
+ * Lazy-mount preserved — heavy workspace bundles still split
+ * out so the shell paint stays cheap.
  */
 import { lazy, Suspense } from 'react';
 import { useStore } from '../../store';
-import Topbar from './Topbar';
-import NavRail from './NavRail';
 
-// Lazy-mount the heavy workspace components so the AppShell
-// itself stays import-cheap. LibraryWorkspace pulls in the
-// inspector + tree + tons of helpers; loading it conditionally
-// keeps Topbar/NavRail fast.
 const LibraryWorkspace = lazy(() => import('../Library/LibraryWorkspace'));
 const DagWorkspace = lazy(() => import('../Dag/DagWorkspace'));
 const Importer = lazy(() => import('../Library'));
@@ -53,7 +40,7 @@ function WorkspacePlaceholder({ name, message }) {
   );
 }
 
-function WorkspaceRouter() {
+export function WorkspaceRouter() {
   const active = useStore((s) => s.workspace?.active || 'library');
   return (
     <Suspense fallback={<WorkspacePlaceholder name="loading" message="Загрузка…" />}>
@@ -63,7 +50,7 @@ function WorkspaceRouter() {
       {active === 'startup' && (
         <WorkspacePlaceholder
           name="startup"
-          message="Стартовый экран — в разработке. Используйте 📚 Библиотека для работы."
+          message="Стартовый экран рендерится через ⌂ Главная в Sidebar."
         />
       )}
       {active === 'mix' && (
@@ -82,35 +69,34 @@ function WorkspaceRouter() {
   );
 }
 
+/**
+ * AppShell — content-area-only wrapper. App.jsx owns the Sidebar
+ * outside; this component renders either explicit `children`
+ * (overlay routes like containerWindow / multiTabBlocked) or the
+ * WorkspaceRouter content.
+ *
+ * The `app-shell` testid is preserved for back-compat with one
+ * legacy test (AppShell.test.jsx «activeFullscreen=library mounts
+ * AppShell»). No more `app-shell-body` / `app-shell-content`
+ * structural testids — those wrapped Topbar+NavRail+main, which
+ * are gone.
+ */
 export default function AppShell({ children }) {
   return (
-    <div
+    <main
       data-testid="app-shell"
       style={{
+        flex: 1,
         display: 'flex',
         flexDirection: 'column',
-        // height (not min-height) + overflow:hidden anchors viewport so
-        // children that declare flex:1 + overflow:hidden actually constrain
-        // to the visible area.
-        height: '100vh',
+        minWidth: 0,
+        minHeight: 0,
         overflow: 'hidden',
         background: 'var(--surface-base, #fafaf9)',
         color: 'var(--text-primary, #1c1917)',
       }}
     >
-      <Topbar />
-      <div
-        data-testid="app-shell-body"
-        style={{ flex: 1, display: 'flex', flexDirection: 'row', minHeight: 0 }}
-      >
-        <NavRail />
-        <main
-          data-testid="app-shell-content"
-          style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}
-        >
-          {children ? children : <WorkspaceRouter />}
-        </main>
-      </div>
-    </div>
+      {children ? children : <WorkspaceRouter />}
+    </main>
   );
 }

@@ -1,14 +1,18 @@
-import { useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useStore, bootstrapStore, applyThemeToDOM } from './store';
 import AppShell from './components/AppShell';
 import StartScreen from './components/StartScreen';
+import Sidebar from './components/StartScreen/Sidebar';
+import HotkeyCheatsheet from './components/HotkeyCheatsheet';
+import { useSidebarCollapsed } from './components/StartScreen/hooks/useSidebarCollapsed';
+import './components/StartScreen/StartScreen.css';
 import DagWorkspace from './components/Dag/DagWorkspace';
 import ContainerWindowPlaceholder from './components/Dag/ContainerWindowPlaceholder';
-// M-X.7a v2 K5: Importer no longer imported here. The legacy
-// fullscreen Importer (deprecated by DEC-IMP-06 ⚓) is now mounted
-// via AppShell's WorkspaceRouter when workspace.active === 'importer'.
-// LibraryWorkspace (M-X.7a v2) is the default workspace via
-// workspace.active === 'library'.
+// Sprint Single-Sidebar (09.05.2026): Importer / DagWorkspace
+// stay imported only for the activeFullscreen overlay paths
+// (legacy `pushFullscreen('dag' | 'library')` callsites). The
+// canonical workspace render goes through AppShell.WorkspaceRouter
+// driven by `workspace.active`.
 import UnderConstruction from './components/UnderConstruction';
 import MultiTabBlocked from './components/MultiTabBlocked';
 import ReadOnlyForced from './components/ReadOnlyForced';
@@ -243,53 +247,72 @@ export default function App() {
     };
   }, [showToast]);
 
-  let inProjectChild = null;
+  // Sprint Single-Sidebar — overlay routes (containerWindow,
+  // multiTabBlocked, readOnlyForced, underConstruction) take over
+  // the content area but the Sidebar stays. `dag` ALSO renders
+  // through this path for legacy `pushFullscreen('dag')` callers
+  // (NavRail's 🔀 icon is gone; biolog will land via AppShell's
+  // WorkspaceRouter once workspace.active flow becomes the
+  // canonical entry).
+  let overlayContent = null;
   switch (activeFullscreen) {
     case 'dag':
-      // M-C.1 K4 — DAG workspace replaces the v0.6 DagPlaceholder.
-      // DagWorkspace mounts DagPalette (left) + PreviewDrawer (slide-
-      // in) + DagCanvas (ReactFlow surface).
-      inProjectChild = <DagWorkspace />;
+      overlayContent = <DagWorkspace />;
       break;
     case 'containerWindow': {
-      // M-C.1 K4 (DEC-MC1-05) — drill-in placeholder. Real Container
-      // Window fullscreen lands in M-C.2.
       const top = navStack[navStack.length - 1];
-      inProjectChild = <ContainerWindowPlaceholder containerId={top?.payload?.containerId} />;
+      overlayContent = <ContainerWindowPlaceholder containerId={top?.payload?.containerId} />;
       break;
     }
-    case 'library':
-      // M-X.7a v2 K5 — `'library'` no longer mounts the legacy
-      // Importer fullscreen. AppShell's WorkspaceRouter handles
-      // workspace switching internally via workspace.active
-      // (defaults to 'library', see workspaceSlice / DEC-MX7A-V2-08).
-      // Setting inProjectChild=null lets AppShell render its router
-      // instead of the children-overlay path. Legacy Importer is
-      // still accessible via NavRail ⤓ icon (workspace.active='importer').
-      inProjectChild = null;
-      break;
     case 'underConstruction': {
       const top = navStack[navStack.length - 1];
-      inProjectChild = <UnderConstruction payload={top?.payload} />;
+      overlayContent = <UnderConstruction payload={top?.payload} />;
       break;
     }
     case 'multiTabBlocked':
-      inProjectChild = <MultiTabBlocked />;
+      overlayContent = <MultiTabBlocked />;
       break;
     case 'readOnlyForced':
-      inProjectChild = <ReadOnlyForced />;
+      overlayContent = <ReadOnlyForced />;
       break;
     default:
-      inProjectChild = null;
+      overlayContent = null;
   }
 
   void project;
 
+  // Sprint Single-Sidebar — Sidebar always rendered outside; content
+  // area picks one of three sources:
+  //   1) activeFullscreen === 'start' → StartScreen MainPanel
+  //   2) overlayContent set by the switch above → that overlay
+  //   3) otherwise → AppShell.WorkspaceRouter (Library / DAG / etc.
+  //      via workspace.active)
+  // `start-screen-root` className on the root flex-row container is
+  // legacy-named (was StartScreen-only); now scopes the Sidebar +
+  // content CSS for the entire app shell. Renaming deferred —
+  // function is correct.
+  const { collapsed: sidebarCollapsed, toggle: toggleSidebar } = useSidebarCollapsed();
+  const [hotkeysOpen, setHotkeysOpen] = useState(false);
+  const openHotkeys = useCallback(() => setHotkeysOpen(true), []);
+  const closeHotkeys = useCallback(() => setHotkeysOpen(false), []);
+
+  let mainContent;
+  if (activeFullscreen === 'start') {
+    mainContent = <StartScreen />;
+  } else if (overlayContent) {
+    mainContent = <AppShell>{overlayContent}</AppShell>;
+  } else {
+    // 'library' (canonical) and any other non-overlay → workspace router.
+    mainContent = <AppShell />;
+  }
+
   return (
     <div data-theme={theme} style={{ minHeight: '100vh' }}>
-      {activeFullscreen === 'start'
-        ? <StartScreen onOpenFile={handleOpen} />
-        : <AppShell>{inProjectChild}</AppShell>}
+      <div className="start-screen-root" data-testid="app-root">
+        <Sidebar collapsed={sidebarCollapsed} onToggle={toggleSidebar} onOpenHotkeys={openHotkeys} />
+        {mainContent}
+      </div>
+      <HotkeyCheatsheet open={hotkeysOpen} onClose={closeHotkeys} />
       {projectInfoOpen && <ProjectInfoModal />}
       {settingsOpen && <SettingsModal />}
       <ToastStack />

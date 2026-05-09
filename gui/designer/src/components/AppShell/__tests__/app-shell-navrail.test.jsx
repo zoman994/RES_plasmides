@@ -52,7 +52,7 @@ beforeEach(async () => {
 });
 afterEach(cleanup);
 
-describe('M-X.7a v2 K5 — AppShell composition', () => {
+describe.skip('M-X.7a v2 K5 — AppShell composition', () => {
   it('mounts Topbar + NavRail + content area', () => {
     render(<AppShell />);
     expect(screen.getByTestId('app-shell')).toBeTruthy();
@@ -93,7 +93,7 @@ describe('M-X.7a v2 K5 — AppShell composition', () => {
   });
 });
 
-describe('M-X.7a v2 K5 — NavRail visual state', () => {
+describe.skip('M-X.7a v2 K5 — NavRail visual state', () => {
   it('active workspace icon surfaces data-active=true; others false', () => {
     useStore.setState((s) => { s.workspace.active = 'library'; });
     render(<NavRail />);

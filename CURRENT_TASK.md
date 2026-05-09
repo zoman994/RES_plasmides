@@ -1,98 +1,129 @@
 # CURRENT_TASK.md
 
-## Поручение Code: привести Library к дизайну (минимально понятный уровень)
+## Поручение Code: единый Sidebar во всех режимах
 
 **Статус:** 🟡 Готово к handoff Code.
-**Цель:** Library workspace выглядит как `docs/design_assets/Library.html` — с учётом обсуждения 09.05.2026 (две зоны вместо трёх; Lab pool — View, не зона; зоны по `projectId`).
-**Visual reference:** `docs/design_assets/Library.html`. Читать целиком.
-
-«Минимально понятный уровень» = биолог открыл Library, сразу видит где что (зоны Tree, выбор записи → Inspector справа, TopBar с контекстом). Без точной пиксель-в-пиксель сверки — структура и общий вид по дизайну.
+**Цель:** убрать скачки интерфейса при переходе StartScreen ↔ Library ↔ другие режимы. Sidebar StartScreen (232/56 px) — единственный shell на всех экранах. Меняется только content area справа.
 
 ---
 
 ## Что делать
 
-### 1. Tree — две зоны вместо трёх
+**Сделать `components/StartScreen/Sidebar.jsx` единственной левой панелью для всех workspace'ов.** При любых переключениях:
 
-**Селектор по `entry.projectId`** (поле `entry.zone` в shape остаётся, но в визуальном слое игнорируется):
+- Кликаешь `▦ Библиотека` → справа рендерится Library content (тот что сейчас работает в LibraryWorkspace). Sidebar остаётся тот же.
+- Кликаешь `⌂ Главная` → справа рендерится StartScreen content (Главная: topbar «Главная» + поиск + recent + empty card). Sidebar остаётся тот же.
+- Аналогично для DAG / Importer / placeholders — sidebar не меняется, только справа другое содержимое.
 
-- `entry.projectId === null` → зона `⚐ БЕЗ ПРОЕКТА` (свободная зона / рабочий стол биолога)
-- `entry.projectId === <id>` → блок зоны `📦 <имя_проекта>.bodge` (по одному блоку на каждый существующий проект)
+Active item в Sidebar меняется по контексту:
+- StartScreen workspace → `⌂ Главная` active.
+- Library workspace → `▦ Библиотека` active.
+- DAG / Importer / Mix — пока активен НИ один из существующих пунктов Sidebar (они под `Конструкции/Реакции/Праймеры (soon)`, что не совпадает). Active state в этом случае не подсвечивается. Доступ к DAG/Importer временно — через ту же навигацию что есть сейчас (старая `canvas.activeFullscreen='dag'` через какие-то существующие триггеры). Это не идеально, но в этой задаче DAG и Importer **не трогаем**.
 
-`LabPoolZone.jsx` **убрать из Tree** (файл оставить либо удалить — на усмотрение Code, мы вернёмся к нему позже как View «Только праймеры»). Под-секции `❄ В лаборатории` / `📚 Из чужих проектов` — нет.
+---
 
-Структура `.bodge` блока — пока **плоский список записей проекта**. Внутренние folder'ы (`📥 Контейнеры`, `🧬 Праймеры`, `🔀 DAG` subrow) — отложены, появятся когда будет реальный механизм проекта.
+## Конкретные изменения
 
-Каждый проект отображать как **активный** по дефолту (без active/readonly modifier'ов pill'ов). Это станет важно когда мы научимся импортировать `.bodge` как readonly — пока не сейчас.
+### 1. `App.jsx` — реструктурировать root
 
-### 2. TopBar по дизайну
+Сейчас:
+```
+{activeFullscreen === 'start'
+  ? <StartScreen onOpenFile={handleOpen} />
+  : <AppShell>{inProjectChild}</AppShell>}
+```
 
-- Breadcrumb слева: «BodgeGene › Активный проект: \<имя\>» когда есть активный проект, либо «BodgeGene › Без активного проекта» когда нет.
-- Search input справа (макс. 280 px по дизайну) с placeholder «Поиск по библиотеке…» — **только визуал**, без логики поиска. ⌘K — отложено.
-- Иконка `🔔` (placeholder, без логики).
-- Avatar `IS` (placeholder).
+Меняется на единый layout: всегда снаружи Sidebar (StartScreen Sidebar), внутри — content area, в которую рендерится либо StartScreen MainPanel (Главная), либо AppShell.WorkspaceRouter content, либо overlay (`inProjectChild` для `containerWindow` / `multiTabBlocked` / `readOnlyForced`).
 
-### 3. Inspector
+Псевдо-структура (Code сам реализует):
+```
+<div data-theme>
+  <Layout>  ← новый, минималистичный
+    <Sidebar />  ← из components/StartScreen/Sidebar.jsx
+    <ContentArea>
+      {если activeFullscreen === 'start' → <StartScreen.MainPanel />}
+      {иначе если есть inProjectChild → inProjectChild (overlay режимы)}
+      {иначе → <WorkspaceRouter /> из AppShell}
+    </ContentArea>
+  </Layout>
+  {modals: ProjectInfo, Settings}
+  <ToastStack />
+</div>
+```
 
-`LibrarySingleInspector` тело и 4 таба (Обзор / Последовательность / Аннотации / История) — **не трогаем**. Уже работают.
+### 2. `components/AppShell/index.jsx`
 
-Сверху Inspector проверить наличие insp-head по дизайну (breadcrumb зоны + title-row с именем + meta-row с topology / bp / folder path / added date). Если чего-то не хватает по дизайну — допиши. Если всё уже есть — не трогай.
+Удалить из AppShell **NavRail** и **Topbar** — они дублируются Sidebar'ом. Оставить только `WorkspaceRouter` (если он остаётся самостоятельным компонентом — экспортировать его, чтобы App.jsx использовал напрямую). Или вообще растащить AppShell — App.jsx сам делает switch по `workspace.active`.
 
-Empty placeholder когда запись не выбрана: текст «Выберите запись в дереве слева» по центру, как сейчас. По дизайну — оставить как есть.
+Сам файл `components/AppShell/index.jsx` после правки либо **минимальный wrapper** (только WorkspaceRouter, без shell), либо удаляется и его содержимое переезжает в App.jsx. На усмотрение Code — главное что результат: ноль NavRail и ноль AppShell.Topbar в DOM.
 
-### 4. Action-row под Inspector — упрощённый
+`components/AppShell/NavRail.jsx` — **удалить** (или оставить файл с пометкой `// DEPRECATED, removed from layout` если удаление ломает тесты — Code решит).
 
-Только два варианта по контексту записи:
+`components/AppShell/Topbar.jsx` — **удалить** (или оставить-deprecate). Внутри него были: HotkeyCheatsheet триггер, ThemeToggle, breadcrumb с save status, settings/projectInfo триггеры. Из них:
+- HotkeyCheatsheet — он есть в Sidebar StartScreen как `⌨ Хоткеи` (stub). Если Code хочет — может прокинуть открытие модалки на эту кнопку Sidebar'а в этой же задаче. Если сложно — оставит stub'ом, отдельной задачей.
+- ThemeToggle — есть в Sidebar StartScreen как `◐ Тема` (stub сейчас). Аналогично — если Code может прокинуть существующий ThemeToggle на эту кнопку — пусть прокинет. Иначе stub.
+- Settings / ProjectInfo триггеры — есть в Sidebar как `⚙ Настройки` (stub). Аналогично.
+- Save status / breadcrumb — теряется. Это глобальный state «текущий проект сохранён или нет». На текущем этапе мы можем без него обойтись — биолог увидит save status внутри content area workspace'а который этим занимается (например в Library Inspector в будущем). В этой задаче save status не возвращаем.
 
-- **Loose container** (`projectId === null`): «Использовать в активном» (primary, пока stub) · «Открыть» · «Manual-edit ветка» (stub) · «Переместить» (stub) · «Экспорт» (stub) · «Удалить» (danger)
-- **Project container** (`projectId !== null`): «Container Window» (primary, пока stub) · «Показать в DAG» (stub) · «Извлечь в Loose» (stub) · «Сохранить как версию» (stub) · «Клонировать» (stub) · «Экспорт GenBank» (stub) · «Удалить из проекта» (danger)
+### 3. `components/StartScreen/StartScreen.jsx` — реструктурировать
 
-**Lab variant и Read-only variant — НЕ делать** в этой задаче (нет данных для них пока). LibraryActionRow существует, оставить — просто два варианта вместо четырёх.
+Сейчас StartScreen рендерит **Sidebar + MainPanel** вместе (это полноэкранный компонент). После правки:
+- `Sidebar.jsx` — переезжает на корень (используется App.jsx как outer shell).
+- `MainPanel.jsx` — становится **content только для `activeFullscreen === 'start'`** (рендерит «Главная» с topbar + recent + empty card).
 
-### 5. AddModal
+То есть `StartScreen.jsx` — либо превращается в тонкий wrapper над `MainPanel.jsx` (для случая когда выбран Главная), либо полностью убирается, App.jsx рендерит MainPanel напрямую.
 
-Оставить как есть (4 source tiles + target radio + CrossProjectStub). Submit продолжает быть toast stub. Реальный wiring в PreImportModal — отдельная задача.
+### 4. Sidebar — пункты меню переключают workspace
 
-### 6. Empty state
+При клике `⌂ Главная` → `setActiveFullscreen('start')` (текущий механизм через canvasSlice).
 
-Когда `БЕЗ ПРОЕКТА` пустая и проектов нет — большая `+ Добавить` CTA по центру правой части + existing OnboardingNudge. По дизайну.
+При клике `▦ Библиотека` → `setActiveWorkspace('library')` + `setActiveFullscreen('library')` (или как сейчас работает — Code сам разберётся, главное что Library content появляется справа).
 
-При наличии 192 записей в `БЕЗ ПРОЕКТА` empty state не показывается — это OK.
+Остальные пункты sidebar (`⏣ Конструкции`, `⌬ Реакции`, `⊟ Праймеры`) — disabled stubs, не трогаем.
+
+`+ Создать проект`, `↑ Открыть .bodge…`, `⤓ Импорт .gb / .dna…` — действия, не workspace'ы. Существующая логика (то что есть сейчас в Sidebar StartScreen) сохраняется.
+
+`📖 Руководство`, `⌨ Хоткеи` — stubs, не трогаем.
+
+### 5. Active state в Sidebar по workspace
+
+`⌂ Главная` active при `activeFullscreen === 'start'`.
+`▦ Библиотека` active при `workspace.active === 'library'` (или эквивалентном условии).
+Остальные — никогда active в этой задаче.
 
 ---
 
 ## Acceptance
 
-1. Открыть `localhost:3000` → StartScreen → клик `▦ Библиотека` → попадаем в Library workspace.
-2. Tree слева: зона `⚐ БЕЗ ПРОЕКТА` с counter показывает 192 (или сколько там реально записей с `projectId === null`).
-3. Если есть проекты — внизу под Loose видим блоки `📦 <имя>.bodge`. Если проектов нет — только Loose зона.
-4. Под-секций `Лабораторный пул` / `В лаборатории` / `Из чужих проектов` — **нет**.
-5. TopBar сверху по дизайну (breadcrumb + search visual + 🔔 + IS).
-6. Клик по записи → справа Inspector с этой записью (4 таба работают).
-7. Под Inspector — action-row с правильным набором кнопок по контексту записи (Loose vs Project).
-8. Кнопка `+ Добавить` в tree-head открывает AddModal (4 tiles + target radio).
-9. Когда нет ни одной записи и нет проектов — empty state с большой CTA + OnboardingNudge.
-10. Возврат на StartScreen через `⌂ Главная` в Sidebar работает.
+1. Открыть `localhost:3000` → видим StartScreen (Главная + recent + empty card). Слева Sidebar 232 px.
+2. Кликнуть `▦ Библиотека` → справа открывается Library workspace (Tree + Inspector pane). **Sidebar слева не двигается, не меняет ширину, не перемещает кнопки. Сворачиваемость 232 ↔ 56 продолжает работать.**
+3. Active в Sidebar переключился: `⌂ Главная` → не active; `▦ Библиотека` → active (амбер фон + полоска слева).
+4. Кликнуть `⌂ Главная` → справа возвращается StartScreen content. Sidebar опять не двигается. Active вернулся на `⌂ Главная`.
+5. Так по кругу: туда-сюда без скачков.
+6. AppShell.NavRail и AppShell.Topbar — **их больше нет в DOM**.
+7. Theme switch — продолжает работать (через footer `◐ Тема` в Sidebar).
+8. Ctrl+B sidebar collapse — продолжает работать как раньше.
+9. Hotkey escape, hotkey new-project, hotkey open-bodge, hotkey save-bodge — продолжают работать (они в App.jsx через `useHotkey`, не в AppShell).
+10. Modals (ProjectInfo, Settings, Toast) — продолжают появляться поверх всего.
 
 ---
 
 ## Чего Code НЕ делает
 
-- Не трогает StartScreen / Sidebar — работают.
-- Не трогает `LibrarySingleInspector` body, hooks (`useEditableModeToggle`, `useFeatureEditorFlow` и т.п.), tabs (Sequence / Annotations / Overview / History), modals (FeatureEditor / ManualEditConfirm / Autoname / PrimerWizard).
-- Не трогает `librarySlice` shape (поле `zone` остаётся как было).
-- Не правит `db.js`, не делает миграцию, не трогает IndexedDB.
-- Не делает active/readonly modifier на зонах проектов.
-- Не делает DAG subrow / фильтры / сортировку / drag-drop / read-only banner.
-- Не правит AddModal Submit (toast stub остаётся).
-- Не удаляет старый NavRail в AppShell — он мертвеет, но удалим отдельной задачей.
+- Не трогает Library workspace внутрянку (Tree, Inspector, ActionRow, AddModal — всё работает как сейчас).
+- Не трогает StartScreen MainPanel внутрянку (recent + empty card — как есть).
+- Не трогает DAG, Importer, Container, Mix workspace'ы.
+- Не правит navigation state (`canvas.activeFullscreen` ↔ `workspace.active` дубль остаётся, разрулим отдельно).
+- Не трогает `librarySlice`, `db.js`, IndexedDB, никакие данные.
 - Не финализирует PROJECT_STATE / RELEASES / DECISIONS / ANCHORS / TECH_DEBT / CLAUDE.md / BUGS.md.
+- AddModal Submit (R4) не трогаем.
+- Старый `components/Library/index.jsx` (легаси Importer) — не трогаем, остаётся доступен через свой путь.
 
 ---
 
 ## Handoff фраза (одной строкой)
 
-> Прочитай CLAUDE.md и CURRENT_TASK.md полностью. Приведи Library workspace к дизайну `docs/design_assets/Library.html` минимально: Tree рендерит две зоны (`⚐ БЕЗ ПРОЕКТА` для `entry.projectId === null` + блоки `📦 *.bodge` для каждого projectId), Lab pool из Tree убрать, TopBar по дизайну (breadcrumb + search visual + 🔔 + IS), Inspector не трогать (только insp-head по дизайну если не хватает), action-row упрощённый (loose-container / project-container варианты), AddModal оставить как есть, empty state по дизайну. Поле `entry.zone` не удалять. После landing коммита — STOP, жду визуальной приёмки. Не финализируй PROJECT_STATE / RELEASES / DECISIONS / ANCHORS / TECH_DEBT / CLAUDE.md / BUGS.md.
+> Прочитай CLAUDE.md и CURRENT_TASK.md. Сделай Sidebar (`components/StartScreen/Sidebar.jsx`) единственной левой панелью на всех режимах: при переключении StartScreen ↔ Library ↔ DAG ↔ Importer Sidebar остаётся неподвижным, меняется только content area справа. AppShell.NavRail и AppShell.Topbar удалить (или съёжить до `// DEPRECATED` если удаление ломает тесты). Theme/Settings/Hotkeys триггеры из старого Topbar — прокинуть на существующие пункты Sidebar если просто (footer `◐ Тема`, `⚙ Настройки`, секция `⌨ Хоткеи`); если сложно — пусть остаются stubs. Active state в Sidebar по workspace: `⌂ Главная` при activeFullscreen='start', `▦ Библиотека` при workspace.active='library'. Internals Library / StartScreen / DAG / Importer — не трогать. Старый `components/Library/index.jsx` (легаси Importer) — не трогать. После landing коммита — STOP, жду визуальной приёмки. Не финализируй PROJECT_STATE / RELEASES / DECISIONS / ANCHORS / TECH_DEBT / CLAUDE.md / BUGS.md.
 
 ---
 
@@ -104,68 +135,13 @@ Empty placeholder когда запись не выбрана: текст «Вы
 
 **StartScreen pixel-perfect** ✅ — работает, sidebar 232/56, тёмная тема, Ctrl+B, кнопка `▦ Библиотека` → Library workspace.
 
-**Sprint M-X.7a v2** — landed на ветке `feature/m-x-7a-library-structure-v2`, FAIL acceptance закрыт неформально (мы перешли на маленькие шаги). Файлы существуют: librarySlice v2 + db v4 + новый Tree (LibraryTreeRoot + LooseZone + ProjectZone + LabPoolZone + TreeItemRow + TreeFolderRow), LibraryActionRow, AddModal, LibraryWorkspace, LibraryTopBar.
+**Library workspace** — работает в новом виде (по последнему скриншоту: Tree с Loose+Lab pool, Inspector с табами Overview/Sequence/Annotations, action-row снизу с Использовать/Открыть/Manual-edit/Переместить/Экспорт/Удалить, footer `192 entries`). Внутрянка хорошая, не трогаем.
 
-**Известные хвосты** (не активны, для памяти):
-- AddModal Submit = toast stub (не запускает PreImportModal).
-- 192 записи в librarySlice от старого Importer flow.
-- Поле `entry.zone` концептуально лишнее.
-- NavRail в AppShell мёртвый (заменён Sidebar из StartScreen).
-- Старый Importer workspace (`flow`) рендерит дубль данных через CatalogColumn `МОЯ БИБЛИОТЕКА`.
+**Известные дубли** (для памяти, не активные задачи):
+- `canvas.activeFullscreen` vs `workspace.active` — два navigation state machines. Эта задача не решает. Решим отдельно когда дозреем.
+- `components/Library/index.jsx` (легаси Importer) vs `LibraryWorkspace.jsx` (новый workspace). Первый деpr, второй основной. Importer пока остаётся живым.
+- AddModal.Submit = toast stub (R4 не доделан). Реальный путь импорта — через старый Importer.
+- Поле `entry.zone` — концептуально лишнее, игнорируется визуально, но не удалено.
+- DAG и Container Window — отдельные workspace'ы пока, концептуальное переосмысление позже.
 
 Эти хвосты НЕ берём в текущее поручение. Возьмём по одному маленькому шагу позже.
-
----
-
-## Отчёт Library minimum-pass refresh (09.05.2026, end-of-task, STOP перед визуальной приёмкой)
-
-### Коммит-хэш
-
-Один коммит, branch `feature/m-x-7a-library-structure-v2` (продолжаю на текущей рабочей ветке).
-
-### Финальные счётчики
-
-- **Vitest:** 1688 / 1688 passing + 29 skipped (1 известный primer-wizard flake на full-suite — pre-existing per PROJECT_STATE, isolated PASS).
-- **Build:** clean, PWA 28 entries 1179.37 KiB.
-
-### Что сделано (per acceptance §1-#10)
-
-1. **Tree — две зоны вместо трёх.** LooseZone теперь фильтрует по `entry.projectId === null` (поле `entry.zone` игнорируется в визуальном слое, в shape остаётся). ProjectZone — flat list всех записей с этим `projectId`, без DAG subrow / Контейнеры / Праймеры folders. LabPoolZone выпилена из Tree (файл `LabPoolZone.jsx` оставлен — вернётся как View «Только праймеры»).
-2. **TopBar.** Already done в K4 — breadcrumb (BodgeGene › Активный проект: <name> либо «Без активного проекта») + 280px search visual + 🔔 + IS. Поправил один баг: использовал `s.projectsById` (несуществующее поле); переключил на `s.projects` (live projectSlice map).
-3. **Inspector.** `LibrarySingleInspector` body не тронут. insp-head по дизайну уже был в Inspector — InspectorHeader содержит breadcrumb + title + meta-row.
-4. **Action-row упрощённый.** LibraryWorkspace теперь выводит zone из `item.projectId` напрямую (`projectId ? 'active_bodge' : 'loose'`) — `classifyEntryZone` helper больше не используется. `getActionsFor` возвращает 2 варианта (loose-container / active_bodge-container), readonly/lab варианты не вызываются (но в `library-actions.js` остаются — спека сказала «оставить»).
-5. **AddModal** не тронут.
-6. **Empty state.** Триггер изменился: было `totalEntries === 0`, стало `totalEntries === 0 && totalProjects === 0`. Когда есть projects (даже пустые) — показывается tree, не empty CTA.
-
-### Изменённые файлы
-
-| Файл | Изменение |
-|------|-----------|
-| `Library/tree/LibraryTreeRoot.jsx` | discoverProjects() теперь union из `state.projects` + entry.projectId set; LabPoolZone import + mount убран; readonly logic убрана |
-| `Library/tree/LooseZone.jsx` | filter по `entry.projectId === null`; убрана зависимость от selectEntriesByZone/selectLooseTreeStructure (inline buildLooseTree); selectLooseTreeStructure в librarySlice не тронут (фильтрует по `e.zone !== 'loose'`, можно почистить позже) |
-| `Library/tree/ProjectZone.jsx` | flat list по `entry.projectId`; убраны DAG subrow + Containers/Primers folders; всегда `variant="active"`; pill testid убран (LibraryZone сама оборачивает) |
-| `Library/LibraryWorkspace.jsx` | zone derivation: `item.projectId ? 'active_bodge' : 'loose'`; `classifyEntryZone` import убран; empty state триггер: `totalEntries === 0 && totalProjects === 0` |
-| `Library/LibraryTopBar.jsx` | `s.projectsById` → `s.projects` (был баг, поле не существовало) |
-
-### Тесты обновлены
-
-- `library-tree-v2.test.jsx` — K2 ProjectZone тесты переписаны (DAG/folders/readonly variants убраны → новые тесты на flat list + always active + projectId filter); LibraryTreeRoot «3 zones» → «Loose only, no LabPool».
-- `library-tree-v2-k7.test.jsx` — readonly drop-target test → describe.skip (вернётся когда readonly variant вернётся).
-- `library-workspace.test.jsx` — `projectsById` → `projects`.
-
-### Acceptance verification
-
-1. ✓ localhost:3000 → StartScreen → ▦ Библиотека → Library workspace.
-2. ✓ Tree: ⚐ БЕЗ ПРОЕКТА с counter (= entries с projectId === null).
-3. ✓ Под Loose — блоки 📦 <name>.bodge per project (если есть). Если проектов нет — только Loose.
-4. ✓ Лабораторный пул / В лаборатории / Из чужих проектов — НЕТ.
-5. ✓ TopBar: breadcrumb + search visual + 🔔 + IS.
-6. ✓ Inspector + 4 таба работают (тело не тронуто).
-7. ✓ Action-row 2 варианта (Loose-container / Project-container) per `entry.projectId`.
-8. ✓ + Добавить → AddModal (4 tiles + target radio).
-9. ✓ Empty state when 0 entries AND 0 projects.
-10. ✓ ⌂ Главная в Sidebar возвращает на StartScreen (это уже работало с предыдущей итерации).
-
-### STOP
-
-Per CURRENT_TASK STOP-условие: жду визуальной приёмки. **НЕ финализирую** PROJECT_STATE / RELEASES / DECISIONS / ANCHORS / TECH_DEBT / CLAUDE.md / BUGS.md.

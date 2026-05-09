@@ -32,7 +32,12 @@ function reset() {
   });
 }
 
-describe('K4 — App + AppShell + Topbar routing', () => {
+// Sprint Single-Sidebar (09.05.2026): AppShell.Topbar + NavRail
+// retired — Sidebar now the single shell. Topbar-specific tests
+// (project name display, Back button, +Импорт routing, Topbar
+// presence) are obsolete. The library-route test was rewritten
+// to assert the new app-shell mount path.
+describe.skip('K4 — App + AppShell + Topbar routing (Topbar removed in Single-Sidebar refactor)', () => {
   beforeEach(() => {
     reset();
     cleanup();
