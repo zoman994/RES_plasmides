@@ -91,7 +91,17 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
   const moveEntryToFolder = useStore((s) => s.moveEntryToFolder);
   const setActiveWorkspace = useStore((s) => s.setActiveWorkspace);
 
-  const item = selectedId ? entriesById[selectedId] : null;
+  const rawEntry = selectedId ? entriesById[selectedId] : null;
+  // LibrarySingleInspector + Overview/Sequence/Annotations tabs +
+  // PlasmidMiniMap all read FLAT fields off `item` (item.sequence,
+  // item.length, item.topology, item.annotations) — that's the
+  // legacy shape the existing Inspector body was built for. Library
+  // entries store the same data nested under `entry.payload`. Hoist
+  // payload onto the item before handing it to the Inspector so
+  // every existing reader keeps working without per-component
+  // refactor. New code can still read entry.payload via item.payload
+  // (the spread preserves the original key).
+  const item = rawEntry ? { ...rawEntry, ...(rawEntry.payload || {}) } : null;
   // Action-row variant derives from `entry.projectId` per the
   // 09.05.2026 minimum-pass refresh — `entry.zone` is intentionally
   // ignored (zone field stays in shape, see CURRENT_TASK.md). All
