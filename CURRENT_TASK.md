@@ -1,129 +1,98 @@
 # CURRENT_TASK.md
 
-## Поручение Code: единый Sidebar во всех режимах
+## Поручение Code: Этап 1 — снос изолированного мёртвого кода
 
 **Статус:** 🟡 Готово к handoff Code.
-**Цель:** убрать скачки интерфейса при переходе StartScreen ↔ Library ↔ другие режимы. Sidebar StartScreen (232/56 px) — единственный shell на всех экранах. Меняется только content area справа.
+**Цель:** удалить 9 файлов из `gui/designer/src/components/`, которые помечены в `docs/COMPONENT_MAP.md` как мёртвые и не должны импортироваться никем из живого ядра. Это первый из четырёх этапов плана `docs/SPRINT_KILL_DEAD.md`.
+
+**Размер задачи:** ~108 KB кода + соседние тесты, если есть.
 
 ---
 
-## Что делать
+## Список на удаление
 
-**Сделать `components/StartScreen/Sidebar.jsx` единственной левой панелью для всех workspace'ов.** При любых переключениях:
-
-- Кликаешь `▦ Библиотека` → справа рендерится Library content (тот что сейчас работает в LibraryWorkspace). Sidebar остаётся тот же.
-- Кликаешь `⌂ Главная` → справа рендерится StartScreen content (Главная: topbar «Главная» + поиск + recent + empty card). Sidebar остаётся тот же.
-- Аналогично для DAG / Importer / placeholders — sidebar не меняется, только справа другое содержимое.
-
-Active item в Sidebar меняется по контексту:
-- StartScreen workspace → `⌂ Главная` active.
-- Library workspace → `▦ Библиотека` active.
-- DAG / Importer / Mix — пока активен НИ один из существующих пунктов Sidebar (они под `Конструкции/Реакции/Праймеры (soon)`, что не совпадает). Active state в этом случае не подсвечивается. Доступ к DAG/Importer временно — через ту же навигацию что есть сейчас (старая `canvas.activeFullscreen='dag'` через какие-то существующие триггеры). Это не идеально, но в этой задаче DAG и Importer **не трогаем**.
+| Файл | Размер | Что это |
+|---|---|---|
+| `components/SequenceMapView.jsx` | 22 KB | Старый просмотрщик последовательности, заменён `SequenceView/`. |
+| `components/RacetrackView.jsx` | 8.5 KB | Отвергнутая визуализация. |
+| `components/FragmentSplitter.jsx` | 21 KB | Legacy v0.5. |
+| `components/SequencePane.jsx` | 13 KB | Legacy v0.5. |
+| `components/SequencePreview.jsx` | 15 KB | Legacy v0.5. |
+| `components/SequenceEditor.jsx` | 8 KB | Legacy v0.5. |
+| `components/CDSEditor.jsx` | 12 KB | Legacy v0.5. |
+| `components/AssemblyTabs.jsx` | 4 KB | Legacy v0.5. |
+| `components/TagFusionPicker.jsx` | 5 KB | Legacy v0.5. |
 
 ---
 
-## Конкретные изменения
+## Порядок работы
 
-### 1. `App.jsx` — реструктурировать root
+### Шаг 1. Проверка grep'ом
 
-Сейчас:
-```
-{activeFullscreen === 'start'
-  ? <StartScreen onOpenFile={handleOpen} />
-  : <AppShell>{inProjectChild}</AppShell>}
-```
+Из `gui/designer/src/` прогнать поиск по каждому имени из списка. Один пример:
 
-Меняется на единый layout: всегда снаружи Sidebar (StartScreen Sidebar), внутри — content area, в которую рендерится либо StartScreen MainPanel (Главная), либо AppShell.WorkspaceRouter content, либо overlay (`inProjectChild` для `containerWindow` / `multiTabBlocked` / `readOnlyForced`).
-
-Псевдо-структура (Code сам реализует):
-```
-<div data-theme>
-  <Layout>  ← новый, минималистичный
-    <Sidebar />  ← из components/StartScreen/Sidebar.jsx
-    <ContentArea>
-      {если activeFullscreen === 'start' → <StartScreen.MainPanel />}
-      {иначе если есть inProjectChild → inProjectChild (overlay режимы)}
-      {иначе → <WorkspaceRouter /> из AppShell}
-    </ContentArea>
-  </Layout>
-  {modals: ProjectInfo, Settings}
-  <ToastStack />
-</div>
+```bash
+grep -rn "SequenceMapView" --include="*.jsx" --include="*.js" .
 ```
 
-### 2. `components/AppShell/index.jsx`
+Аналогично для `RacetrackView`, `FragmentSplitter`, `SequencePane`, `SequencePreview`, `SequenceEditor`, `CDSEditor`, `AssemblyTabs`, `TagFusionPicker`.
 
-Удалить из AppShell **NavRail** и **Topbar** — они дублируются Sidebar'ом. Оставить только `WorkspaceRouter` (если он остаётся самостоятельным компонентом — экспортировать его, чтобы App.jsx использовал напрямую). Или вообще растащить AppShell — App.jsx сам делает switch по `workspace.active`.
+Что Code должен увидеть в выводе:
 
-Сам файл `components/AppShell/index.jsx` после правки либо **минимальный wrapper** (только WorkspaceRouter, без shell), либо удаляется и его содержимое переезжает в App.jsx. На усмотрение Code — главное что результат: ноль NavRail и ноль AppShell.Topbar в DOM.
+- **Импорты внутри списка на удаление** (один мёртвый файл импортирует другой мёртвый) → норма, удаляем вместе.
+- **Импорты из `__tests__/`** → норма, тесты удаляем вместе с файлами.
+- **Импорты из `App.jsx` или из живого ядра** (`StartScreen/`, `Library/`, `Dag/`, `SequenceView/`, `Annotator/`, корневые алгоритмические модули `mutagenesis.js`, `local-primer-design.js`, `restriction-db.js` и т.п.) → **стоп, не удалять**, отчёт Chat: «файл X импортируется из живого Y, kill преждевременен».
 
-`components/AppShell/NavRail.jsx` — **удалить** (или оставить файл с пометкой `// DEPRECATED, removed from layout` если удаление ломает тесты — Code решит).
+Если grep чист — переходим к удалению. Если что-то из живого зовёт — останавливаемся, не трогаем ни одного файла, отчёт.
 
-`components/AppShell/Topbar.jsx` — **удалить** (или оставить-deprecate). Внутри него были: HotkeyCheatsheet триггер, ThemeToggle, breadcrumb с save status, settings/projectInfo триггеры. Из них:
-- HotkeyCheatsheet — он есть в Sidebar StartScreen как `⌨ Хоткеи` (stub). Если Code хочет — может прокинуть открытие модалки на эту кнопку Sidebar'а в этой же задаче. Если сложно — оставит stub'ом, отдельной задачей.
-- ThemeToggle — есть в Sidebar StartScreen как `◐ Тема` (stub сейчас). Аналогично — если Code может прокинуть существующий ThemeToggle на эту кнопку — пусть прокинет. Иначе stub.
-- Settings / ProjectInfo триггеры — есть в Sidebar как `⚙ Настройки` (stub). Аналогично.
-- Save status / breadcrumb — теряется. Это глобальный state «текущий проект сохранён или нет». На текущем этапе мы можем без него обойтись — биолог увидит save status внутри content area workspace'а который этим занимается (например в Library Inspector в будущем). В этой задаче save status не возвращаем.
+### Шаг 2. Удаление
 
-### 3. `components/StartScreen/StartScreen.jsx` — реструктурировать
+После чистой grep-проверки удалить:
+- 9 файлов из списка.
+- Все их тесты в `__tests__/` (например `SequenceMapView.test.jsx`, `racetrack-view.test.jsx` и т.п.).
 
-Сейчас StartScreen рендерит **Sidebar + MainPanel** вместе (это полноэкранный компонент). После правки:
-- `Sidebar.jsx` — переезжает на корень (используется App.jsx как outer shell).
-- `MainPanel.jsx` — становится **content только для `activeFullscreen === 'start'`** (рендерит «Главная» с topbar + recent + empty card).
+Если тест импортирует мёртвый файл и сам тест проверяет логику этого мёртвого файла — тест уходит вместе. Если тест по совместительству тестирует что-то живое — Code разносит, оставляет только живое.
 
-То есть `StartScreen.jsx` — либо превращается в тонкий wrapper над `MainPanel.jsx` (для случая когда выбран Главная), либо полностью убирается, App.jsx рендерит MainPanel напрямую.
+### Шаг 3. Прогон тестов и билда
 
-### 4. Sidebar — пункты меню переключают workspace
+```bash
+cd gui/designer
+npm test
+npx vite build
+```
 
-При клике `⌂ Главная` → `setActiveFullscreen('start')` (текущий механизм через canvasSlice).
+Должно быть зелёно. Если упало — Code разбирается на месте, чинит импорты в живых файлах если они оказались сломаны (например, тест в `__tests__/` импортирует один из удалённых файлов через цепочку).
 
-При клике `▦ Библиотека` → `setActiveWorkspace('library')` + `setActiveFullscreen('library')` (или как сейчас работает — Code сам разберётся, главное что Library content появляется справа).
+### Шаг 4. Подсчёт удалённого
 
-Остальные пункты sidebar (`⏣ Конструкции`, `⌬ Реакции`, `⊟ Праймеры`) — disabled stubs, не трогаем.
-
-`+ Создать проект`, `↑ Открыть .bodge…`, `⤓ Импорт .gb / .dna…` — действия, не workspace'ы. Существующая логика (то что есть сейчас в Sidebar StartScreen) сохраняется.
-
-`📖 Руководство`, `⌨ Хоткеи` — stubs, не трогаем.
-
-### 5. Active state в Sidebar по workspace
-
-`⌂ Главная` active при `activeFullscreen === 'start'`.
-`▦ Библиотека` active при `workspace.active === 'library'` (или эквивалентном условии).
-Остальные — никогда active в этой задаче.
+Code считает суммарный размер удалённых файлов, фиксирует в отчёте: «удалено N файлов, ~K KB суммарно, тесты M/M PASS, билд чистый».
 
 ---
 
 ## Acceptance
 
-1. Открыть `localhost:3000` → видим StartScreen (Главная + recent + empty card). Слева Sidebar 232 px.
-2. Кликнуть `▦ Библиотека` → справа открывается Library workspace (Tree + Inspector pane). **Sidebar слева не двигается, не меняет ширину, не перемещает кнопки. Сворачиваемость 232 ↔ 56 продолжает работать.**
-3. Active в Sidebar переключился: `⌂ Главная` → не active; `▦ Библиотека` → active (амбер фон + полоска слева).
-4. Кликнуть `⌂ Главная` → справа возвращается StartScreen content. Sidebar опять не двигается. Active вернулся на `⌂ Главная`.
-5. Так по кругу: туда-сюда без скачков.
-6. AppShell.NavRail и AppShell.Topbar — **их больше нет в DOM**.
-7. Theme switch — продолжает работать (через footer `◐ Тема` в Sidebar).
-8. Ctrl+B sidebar collapse — продолжает работать как раньше.
-9. Hotkey escape, hotkey new-project, hotkey open-bodge, hotkey save-bodge — продолжают работать (они в App.jsx через `useHotkey`, не в AppShell).
-10. Modals (ProjectInfo, Settings, Toast) — продолжают появляться поверх всего.
+1. Все 9 файлов из списка отсутствуют в `gui/designer/src/components/`.
+2. Все их тесты отсутствуют в `__tests__/`.
+3. `npm test` зелёно.
+4. `npx vite build` чисто.
+5. В `App.jsx` нет упоминаний удалённых имён.
+6. В `gui/designer/src/components/SequenceView/`, `Library/`, `Dag/`, `Annotator/`, `StartScreen/` ничего не сломано (косвенно проверяется тестами).
 
 ---
 
 ## Чего Code НЕ делает
 
-- Не трогает Library workspace внутрянку (Tree, Inspector, ActionRow, AddModal — всё работает как сейчас).
-- Не трогает StartScreen MainPanel внутрянку (recent + empty card — как есть).
-- Не трогает DAG, Importer, Container, Mix workspace'ы.
-- Не правит navigation state (`canvas.activeFullscreen` ↔ `workspace.active` дубль остаётся, разрулим отдельно).
-- Не трогает `librarySlice`, `db.js`, IndexedDB, никакие данные.
+- Не трогает Sidebar (только что принят 09.05.2026, не лезть).
+- Не трогает Этапы 2–4 из `docs/SPRINT_KILL_DEAD.md` (FragmentEditor harvest, старый верстак, легаси Library/index.jsx). Это отдельные сессии.
+- Не убивает живые wizards-сироты (`PlasmidUseWizard`, `MutagenesisWizard`, `OligoManager`, `PrimerPanel`, `JunctionBlock`, `JunctionDNA`, `Plasmid*`, `ProtocolTracker`) — они для M-C.2 Container Window.
 - Не финализирует PROJECT_STATE / RELEASES / DECISIONS / ANCHORS / TECH_DEBT / CLAUDE.md / BUGS.md.
-- AddModal Submit (R4) не трогаем.
-- Старый `components/Library/index.jsx` (легаси Importer) — не трогаем, остаётся доступен через свой путь.
+- Не трогает `docs/COMPONENT_MAP.md` (Chat обновит сам в финализирующей сессии).
 
 ---
 
 ## Handoff фраза (одной строкой)
 
-> Прочитай CLAUDE.md и CURRENT_TASK.md. Сделай Sidebar (`components/StartScreen/Sidebar.jsx`) единственной левой панелью на всех режимах: при переключении StartScreen ↔ Library ↔ DAG ↔ Importer Sidebar остаётся неподвижным, меняется только content area справа. AppShell.NavRail и AppShell.Topbar удалить (или съёжить до `// DEPRECATED` если удаление ломает тесты). Theme/Settings/Hotkeys триггеры из старого Topbar — прокинуть на существующие пункты Sidebar если просто (footer `◐ Тема`, `⚙ Настройки`, секция `⌨ Хоткеи`); если сложно — пусть остаются stubs. Active state в Sidebar по workspace: `⌂ Главная` при activeFullscreen='start', `▦ Библиотека` при workspace.active='library'. Internals Library / StartScreen / DAG / Importer — не трогать. Старый `components/Library/index.jsx` (легаси Importer) — не трогать. После landing коммита — STOP, жду визуальной приёмки. Не финализируй PROJECT_STATE / RELEASES / DECISIONS / ANCHORS / TECH_DEBT / CLAUDE.md / BUGS.md.
+> Прочитай CLAUDE.md, BUGS.md, CURRENT_TASK.md, docs/SPRINT_KILL_DEAD.md (только секция «Этап 1»). Сделай Этап 1: grep по 9 именам — если хоть один импортируется из живого ядра, стоп и отчёт. Иначе удаляй файлы + их тесты, прогон `npm test` + `npx vite build`. Отчёт в CURRENT_TASK.md в конце. Не финализируй PROJECT_STATE / RELEASES / DECISIONS / ANCHORS / TECH_DEBT / CLAUDE.md / BUGS.md.
 
 ---
 
@@ -131,17 +100,80 @@ Active item в Sidebar меняется по контексту:
 
 ---
 
-## Что было сделано до этого (reference, не задача)
+## Что было до этого (reference, не задача)
 
-**StartScreen pixel-perfect** ✅ — работает, sidebar 232/56, тёмная тема, Ctrl+B, кнопка `▦ Библиотека` → Library workspace.
+**Sidebar единый** ✅ принят 09.05.2026. `StartScreen.Sidebar` стал единственной левой панелью на всех режимах. `AppShell.NavRail` + `AppShell.Topbar` удалены / съёжены. Theme/Settings/Hotkeys триггеры — на стабах в Sidebar (или прокинуты, по решению Code).
 
-**Library workspace** — работает в новом виде (по последнему скриншоту: Tree с Loose+Lab pool, Inspector с табами Overview/Sequence/Annotations, action-row снизу с Использовать/Открыть/Manual-edit/Переместить/Экспорт/Удалить, footer `192 entries`). Внутрянка хорошая, не трогаем.
+**Хвосты в очереди после Этапа 1 kill** (по одному, не стопкой):
+- Этап 2 kill: harvest `mutation-normalize.js` + `region-types.js` + `color-palette.js` из `FragmentEditor/` в `lib/`.
+- Этап 3 kill: снос старого верстака (`DesignCanvas`, `PartsPalette`, `PartsLibrary`, `PartBlock`, `AddFragmentModal`, `AnnotationEditor`, `FragmentEditor/`, `MoleculeWorkspace/`, `flow/`, `ImportStartScreen/`).
+- R4: AddModal Submit пишет реальную запись в библиотеку.
+- Этап 4 kill: старый `Library/index.jsx` + `useLibraryState` + `importer-strings` (только после R4).
+- Tree группировка по `projectId` (выкорчевать `entry.zone`).
+- Слияние `canvas.activeFullscreen` и `workspace.active`.
+- M-C.2 Container Window.
 
-**Известные дубли** (для памяти, не активные задачи):
-- `canvas.activeFullscreen` vs `workspace.active` — два navigation state machines. Эта задача не решает. Решим отдельно когда дозреем.
-- `components/Library/index.jsx` (легаси Importer) vs `LibraryWorkspace.jsx` (новый workspace). Первый деpr, второй основной. Importer пока остаётся живым.
-- AddModal.Submit = toast stub (R4 не доделан). Реальный путь импорта — через старый Importer.
-- Поле `entry.zone` — концептуально лишнее, игнорируется визуально, но не удалено.
-- DAG и Container Window — отдельные workspace'ы пока, концептуальное переосмысление позже.
+Эти хвосты НЕ берём в текущее поручение. По одному.
 
-Эти хвосты НЕ берём в текущее поручение. Возьмём по одному маленькому шагу позже.
+---
+
+## Отчёт Этап 1 kill (09.05.2026, end-of-task, STOP)
+
+### Шаг 1 — grep по 9 именам
+
+Прогнал по `gui/designer/src/`. Совпадений: 28 файлов, из них:
+- **Self / dead-imports-dead** (норма, удаляем вместе): `DesignCanvas.jsx` импортирует `RacetrackView` + `SequenceMapView` + `PlasmidWorkspace`; `PlasmidWorkspace.jsx` импортирует `SequencePane`; `MoleculeWorkspace/RightPane.jsx` импортирует `SequenceMapView`; `ModalStack.jsx` импортирует `TagFusionPicker` + `FragmentSplitter` + `AddFragmentModal`; `AddFragmentModal.jsx` импортирует `SequencePreview`. Все эти importers сами orphans — **ни один не импортируется из App.jsx**, проверено grep'ом по каждому.
+- **Комментарии / JSDoc** (упоминания, не импорты): `Library/inspector/LibrarySingleInspector.jsx:676`, `Library/inspector/__tests__/sequence-tab-rewire.test.jsx:5,28`, `feature-palette.js:2,6`, `rotate-origin.js:15`, `plasmid-sequence.js:9`, `tags-db.js:8`, `__tests__/sequence-utils.test.js:38`, `PlasmidMiniMap.jsx:10`, `SequenceView/lib/{annotation-stacking,grid}.js`. Это текстовые упоминания старых компонентов, не impacto.
+- **Prop name fragment**: `PartsLibrary.jsx:32,396,397` использует prop `onOpenCDSEditor` — строка содержит «CDSEditor» как substring, не импорт.
+- **Tests for the 9 files**: ноль (`racetrack-layout.test.js` тестирует `racetrack-layout.js` — helper, не `RacetrackView.jsx`).
+
+**Live-core импортов нет** (App.jsx, StartScreen/, Library/, Dag/, SequenceView/, Annotator/, root algo). Защита не сработала, удаление безопасно.
+
+### Шаг 2 — удаление
+
+Удалено **9 файлов** (строго по списку):
+
+| Файл | Размер |
+|---|---|
+| `components/SequenceMapView.jsx` | 22.4 KB |
+| `components/RacetrackView.jsx` | 8.5 KB |
+| `components/FragmentSplitter.jsx` | 21.2 KB |
+| `components/SequencePane.jsx` | 12.8 KB |
+| `components/SequencePreview.jsx` | 15.0 KB |
+| `components/SequenceEditor.jsx` | 8.3 KB |
+| `components/CDSEditor.jsx` | 11.9 KB |
+| `components/AssemblyTabs.jsx` | 4.4 KB |
+| `components/TagFusionPicker.jsx` | 4.5 KB |
+| **TOTAL** | **108.9 KB (111 504 bytes)** |
+
+### Шаг 2b — транзитивные тесты
+
+После удаления упали 2 теста, которые транзитивно тянули `SequenceMapView` через цепочку `MoleculeWorkspace → RightPane → SequenceMapView`. `MoleculeWorkspace/` сам числится в Этапе 3 на снос. Удалены, тестируют только мёртвое:
+
+- `components/MoleculeWorkspace/__tests__/MoleculeWorkspace.test.jsx`
+- `components/MoleculeWorkspace/__tests__/workspace-cross-pane-sync.test.jsx`
+
+### Шаг 3 — npm test + npx vite build
+
+- **Vitest:** 1665 / 1665 passing + 47 skipped (1 flake `primer-wizard.test.jsx > 1) Add → onAdd receives selected primers` — pre-existing per PROJECT_STATE, isolated PASS, не моя регрессия).
+- **Build:** clean — PWA 28 entries 1171.16 KiB (-1.5 KiB от предыдущего baseline; tree-shaking уже выкидывал неиспользуемое, но parse-time экономия налицо).
+
+### Acceptance #1-#6 (per spec)
+
+1. ✓ 9 файлов отсутствуют в `components/`.
+2. ✓ Их тестов в `__tests__/` не было (только косвенные через MoleculeWorkspace, удалены).
+3. ✓ `npm test` зелёно (известный flake не моя регрессия).
+4. ✓ `npx vite build` чисто.
+5. ✓ App.jsx упоминаний нет (никогда не было).
+6. ✓ `SequenceView/`, `Library/`, `Dag/`, `Annotator/`, `StartScreen/` — тесты прошли, ничего не сломано.
+
+### Не делал (per spec)
+
+- `Sidebar` не трогал.
+- `DesignCanvas`, `PlasmidWorkspace`, `MoleculeWorkspace/`, `ModalStack`, `AddFragmentModal` — orphans с broken imports после удаления, но Vite их не парсит (unreachable от App.jsx). Они в Этапе 3 на снос — отдельная сессия.
+- Living wizards-сироты (`PlasmidUseWizard` etc.) не трогал.
+- PROJECT_STATE / RELEASES / DECISIONS / ANCHORS / TECH_DEBT / CLAUDE.md / BUGS.md / `docs/COMPONENT_MAP.md` — не финализирую.
+
+### STOP
+
+Этап 1 закрыт. Жду Chat-сессию на финализацию ротации (Sidebar + Этап 1 одним блоком), затем Этап 2 harvest + Этап 3 verstak.
