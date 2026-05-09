@@ -17,41 +17,12 @@ export const IMPORTER_STRINGS = {
   // Header counts
   filesReady: (n) => `Files: ${n}`,
 
-  // CatalogColumn (M-B.2 K2 — full source set + drill-down + flat search).
-  catalogSearchPlaceholder: 'Search (name, description, >5kb, <2k, 2k-3k)…',
-  catalogPastePlaceholder: 'Paste sequence (Ctrl+Enter to load)',
-  catalogPasteSubmit: 'Load',
-  catalogReplaceModeConfirm: 'Replace the entire batch with one file from the catalog?',
-
-  // CatalogColumn — group labels.
-  catalogGroupCanvas: (name) => `This ${name || 'project'}`,
-  catalogGroupDemo: 'Tutorial / demo',
-  catalogGroupMine: 'My library',
-  catalogGroupSnapgene: 'SnapGene catalog',
-  catalogEmptyProject: 'no containers in this project',
-  catalogEmptyGroup: 'empty',
-  catalogLoading: 'loading…',
-  catalogUntaggedTag: 'Untagged',
-  catalogFlatFound: (n) => `Found: ${n}`,
-  catalogFlatEmpty: 'Nothing found',
-  catalogFlatTruncated: (total) => `Showing the first 60 of ${total}.`,
-  catalogNewFolder: 'New folder',
-  catalogNewFolderPrompt: 'New folder name:',
-  catalogAddFileToFolder: (folderName) => `Add file to "${folderName}"`,
-  catalogFolderDropHint: (folderName) => `Import to "${folderName}"`,
-  catalogDeleteFolder: (folderName) => `Delete folder "${folderName}"`,
-  catalogDeleteFolderConfirm: (folderName, itemCount) => itemCount > 0
-    ? `Delete folder "${folderName}" along with its contents?\n\nFolder contents: ${itemCount} container(s). They will be moved to the root of "My library" (the "${folderName}" tag is removed). The containers themselves are NOT deleted — this is a safe operation.\n\nIf you want to delete the containers, do it separately one by one (× on the container row).`
-    : `Delete the empty folder "${folderName}"?`,
-  catalogDragHandleAria: 'Drag to another folder',
-  catalogDeleteContainer: (name) => `Delete container "${name}"`,
-  catalogDeleteContainerConfirm: (name) =>
-    `Delete container "${name}" from the library?\n\nWARNING: containers may be used in projects. If a container is bound to a canvas, deleting it will break references. Detach it from all projects first, then delete.`,
-
-  // Drop zone footer (inside CatalogColumn).
-  catalogDropzoneIdle: 'Drop or pick a file',
-  catalogDropzoneAccepts: '.dna · .gb · .gbk · .fasta',
-  dropzoneHover: 'Release to upload',
+  // M-X.7a v2 K2 — CatalogColumn STRINGS purged. The 28 catalog* +
+  // dropzoneHover keys lived on the deleted LibraryTree.jsx +
+  // LibraryGroupHeader/ItemRow/NestedSubGroup. New tree's strings
+  // (zone titles, folder labels, +Add button, etc.) live under
+  // STRINGS.libraryWorkspace and land in K7. K2 leaves the catalog
+  // namespace empty so strings-coverage stays green.
 
   // Inspector / TabBar
   // M-X.6 K1 (DEC-MX6-04) — emptyInspectorHint1/2 +
@@ -321,8 +292,9 @@ export const IMPORTER_STRINGS = {
   // Confirm-flow hints (mode-agnostic)
   // M-X.6 K1 (DEC-MX6-04) — `confirmBusy` removed; the busy hint
   // was rendered by ActionsBar / SessionSummary which are gone.
-
-  busyParsing: 'Parsing files…',
+  // M-X.7a v2 K2 — `busyParsing` was wired to the deleted CatalogColumn
+  // dropzone busy indicator; new AddModal flow (K6) emits its own
+  // busy state directly to PreImportModal.
 
   // Confirm flow «skipped» toast still used (autoname Skip / parse fail).
   confirmSkipped: (n) => `Skipped: ${n}`,

@@ -13,7 +13,30 @@ import AutonameModal from './modals/AutonameModal';
 import PrimerWizardStepModal from './modals/PrimerWizardStepModal';
 import PreImportModal from './import/PreImportModal';
 import MultiImportView from './import/MultiImportView';
-import CatalogColumn from './tree/LibraryTree';
+// M-X.7a v2 K2 — old CatalogColumn (LibraryTree 38 KB) deleted per
+// DEC-MX7A-V2-04. Importer fullscreen surface deprecated by
+// DEC-IMP-06 ⚓ — full replacement is the new LibraryWorkspace
+// landing in K4. Until then this file mounts a tiny placeholder
+// in the catalog slot so the rest of the Importer (PreImportModal,
+// SingleInspector, MetaColumn) keeps working for the transition
+// window.
+function LibraryTreeStub() {
+  return (
+    <aside
+      data-testid="library-tree-stub"
+      style={{
+        width: 320, flex: '0 0 320px', minWidth: 0,
+        borderRight: '1px solid var(--border-subtle)',
+        background: 'var(--surface-1)',
+        padding: 12, fontSize: 11, color: 'var(--text-tertiary)',
+        display: 'flex', flexDirection: 'column', gap: 8,
+      }}
+    >
+      <strong style={{ color: 'var(--text-secondary)' }}>Library tree (M-X.7a v2)</strong>
+      <span>Browser tree migration in progress. Full LibraryWorkspace lands in K4 — Importer fullscreen surface is deprecated by DEC-IMP-06 ⚓.</span>
+    </aside>
+  );
+}
 import SingleInspector from './inspector/LibrarySingleInspector';
 // M-X.6 K1 — MultiInspector / EmptyInspector deleted (DEC-MX6-04).
 // Multi-drop now flows через MultiImportView (K4); empty-state
@@ -574,24 +597,7 @@ export default function Importer() {
             onComplete={completeMultiImport}
           />
         ) : (
-          <CatalogColumn
-            activeSource={state.activeSource}
-            onActiveSourceChange={state.setActiveSource}
-            query={state.catalogQuery}
-            onQueryChange={state.setCatalogQuery}
-            onSelectItem={(it) => {
-              if (isMulti && typeof window !== 'undefined') {
-                if (!window.confirm(S.catalogReplaceModeConfirm)) return;
-              }
-              state.addCatalogItem(it);
-            }}
-            onFiles={handleAddFiles}
-            onPasteText={state.addPasteItem}
-            busy={state.busy}
-            liveAnnotationsByLibId={liveAnnotationsByLibId}
-            onQuickAdd={quickAddCallback}
-            quickAddTitle={quickAddTitle}
-          />
+          <LibraryTreeStub />
         )}
 
         <div

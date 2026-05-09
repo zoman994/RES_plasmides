@@ -76,7 +76,13 @@ beforeEach(async () => {
   cleanup();
 });
 
-describe('M-B.2 K1 — Importer single-screen flow', () => {
+// M-X.7a v2 K2: Importer fullscreen surface deprecated by DEC-IMP-06 ⚓.
+// Tree column replaced with stub in K2 (full LibraryWorkspace lands in
+// K4). These tests exercised the CatalogColumn-driven Importer flow
+// which no longer mounts. Skipping for the K2-K4 transition window;
+// replacement integration tests will live next to LibraryWorkspace.jsx
+// in K4.
+describe.skip('M-B.2 K1 — Importer single-screen flow (deprecated by M-X.7a v2 / DEC-IMP-06)', () => {
   it('1) mounts in advanced mode by default with CatalogColumn visible', () => {
     render(<Importer />);
     const root = screen.getByTestId('importer-fullscreen');
