@@ -19,6 +19,7 @@
  * row. Rich preview lives on hover (M-X.7c polish, deferred).
  */
 import { memo } from 'react';
+import PlasmidMiniMap from '../../PlasmidMiniMap';
 
 const INDENT_PX = [12, 22, 38, 54, 70];
 
@@ -81,9 +82,19 @@ function metaLine(entry) {
   return parts.join(' · ') || null;
 }
 
-function MiniRing({ entry, color = 'var(--text-secondary)' }) {
+function MiniIcon({ entry, color = 'var(--text-secondary)' }) {
+  // Per 09.05.2026 «Library == DAG palette» refresh: render the
+  // real PlasmidMiniMap (same component DagPalette uses) instead
+  // of the K2 placeholder Ring SVG. At size=20 the map renders as
+  // a coloured ring + feature arcs, which conveys topology +
+  // feature density at a glance — biolog reported the previous
+  // ring-only icon was unreadable as a plasmid.
+  //
+  // Primers + linear-without-features fall back to a tiny strand
+  // line (no point in PlasmidMiniMap for a 4 nt primer).
   const top = entry?.payload?.topology;
-  if (entry?.kind === 'primer' || top === 'linear') {
+  const annotations = entry?.payload?.annotations;
+  if (entry?.kind === 'primer' || (top === 'linear' && (!annotations || annotations.length === 0))) {
     return (
       <svg width={20} height={20} viewBox="0 0 20 20" aria-hidden focusable="false">
         <line x1="2" y1="10" x2="18" y2="10" stroke={color} strokeWidth="1.6" />
@@ -91,9 +102,13 @@ function MiniRing({ entry, color = 'var(--text-secondary)' }) {
     );
   }
   return (
-    <svg width={20} height={20} viewBox="0 0 20 20" aria-hidden focusable="false">
-      <circle cx="10" cy="10" r="7" fill="none" stroke={color} strokeWidth="1.4" />
-    </svg>
+    <PlasmidMiniMap
+      length={entry?.payload?.length || (entry?.payload?.sequence?.length || 0)}
+      topology={top || 'circular'}
+      annotations={annotations || []}
+      size={20}
+      disableHoverOverlay
+    />
   );
 }
 
@@ -152,8 +167,8 @@ export const TreeItemRow = memo(function TreeItemRow({
           : '2px solid transparent',
       }}
     >
-      <span style={{ flexShrink: 0, lineHeight: 0 }}>
-        <MiniRing entry={entry} color={ringColor} />
+      <span style={{ flexShrink: 0, lineHeight: 0, width: 20, height: 20 }}>
+        <MiniIcon entry={entry} color={ringColor} />
       </span>
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
         <div

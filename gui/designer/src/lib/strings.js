@@ -282,8 +282,8 @@ export const STRINGS = {
   // LabPoolZone, AddModal, and the read-only banners in
   // SequenceTab + AnnotationsTab.
   libraryWorkspace: {
-    zoneLooseTitle: 'Без проекта',                              // EN: "No project"
-    zoneLooseSub: 'свободная зона',                             // EN: "free zone"
+    zoneLooseTitle: 'Коллекция',                                // EN: "Collection" (was «Без проекта» pre 09.05.2026 minimum-pass refresh)
+    zoneLooseSub: 'личная подборка плазмид',                    // EN: "personal plasmid collection"
     zoneLabTitle: 'Лабораторный пул',                            // EN: "Lab pool"
     zoneLabSub: 'primer\'ы в морозильнике',                      // EN: "primers in the freezer"
     dagSubrow: 'DAG',                                            // EN: "DAG" (process graph)

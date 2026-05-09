@@ -58,8 +58,9 @@ describe('M-X.7a v2 K7 — STRINGS namespaces', () => {
   it('STRINGS.libraryWorkspace exposes the canonical zone titles + button + banners', () => {
     const ws = STRINGS.libraryWorkspace;
     expect(ws).toBeDefined();
-    expect(ws.zoneLooseTitle).toBe('Без проекта');
-    expect(ws.zoneLooseSub).toBe('свободная зона');
+    // Renamed 09.05.2026: «Без проекта» → «Коллекция».
+    expect(ws.zoneLooseTitle).toBe('Коллекция');
+    expect(ws.zoneLooseSub).toMatch(/коллекция|подборка/i);
     expect(ws.zoneLabTitle).toBe('Лабораторный пул');
     expect(ws.zoneLabSub).toMatch(/морозильнике/);
     expect(ws.dagSubrow).toBe('DAG');
@@ -106,8 +107,8 @@ describe('M-X.7a v2 K7 — STRINGS namespaces', () => {
     }));
     render(<LooseZone />);
     const head = screen.getByTestId('library-zone-loose-head');
-    expect(head.textContent).toMatch(/Без проекта/);
-    expect(head.textContent).toMatch(/свободная зона/);
+    expect(head.textContent).toMatch(/Коллекция/);
+    expect(head.textContent).toMatch(/подборка/i);
   });
 });
 
