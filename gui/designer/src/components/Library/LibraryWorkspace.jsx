@@ -34,16 +34,41 @@ import LibraryTreeRoot from './tree/LibraryTreeRoot';
 import LibrarySingleInspector from './inspector/LibrarySingleInspector';
 import LibraryActionRow from './inspector/LibraryActionRow';
 import OnboardingNudge from './onboarding/OnboardingNudge';
+import AddModal from './AddModal/AddModal';
 
 function emptyEntryState() {
   return { flags: {}, edits: {}, activeTab: 'overview' };
 }
 
-export default function LibraryWorkspace({ onAddClick }) {
+export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
   const ws = STRINGS.libraryWorkspace || {};
   const [selectedId, setSelectedId] = useState(null);
   const [query, setQuery] = useState('');
   const [perEntryState, setPerEntryState] = useState({});
+  const [addModalOpen, setAddModalOpen] = useState(false);
+  const showToast = useStore((s) => s.showToast);
+
+  // K6: +Add button click opens the modal. External `onAddClick`
+  // (passed by AppShell wrappers / future LayoutHost) gets a chance
+  // to intercept first — when not provided, default to opening the
+  // AddModal here.
+  const onAddClick = useCallback(() => {
+    if (onAddClickExternal) onAddClickExternal();
+    else setAddModalOpen(true);
+  }, [onAddClickExternal]);
+  const closeAddModal = useCallback(() => setAddModalOpen(false), []);
+  const onLaunchPreImport = useCallback((preset) => {
+    // R4 mitigation: PreImportModal handoff is a single string-message
+    // toast in K6 — full preset routing into PreImportModal lands as
+    // a follow-up patch (the modal itself ships in M-X.5 and accepts
+    // file/paste payloads through its own flow). The toast confirms
+    // the source+target choice landed so biolog sees feedback.
+    if (typeof showToast === 'function') {
+      showToast(`AddModal: source=${preset?.source} · target=${preset?.target} → PreImport handoff (K6 stub).`, {
+        kind: 'info', duration: 3000,
+      });
+    }
+  }, [showToast]);
 
   const entriesById = useStore((s) => s.libraryEntries);
   const currentProjectId = useStore((s) => s.currentProjectId);
@@ -186,6 +211,11 @@ export default function LibraryWorkspace({ onAddClick }) {
           )}
         </main>
       </div>
+      <AddModal
+        open={addModalOpen}
+        onClose={closeAddModal}
+        onLaunchPreImport={onLaunchPreImport}
+      />
     </div>
   );
 }
