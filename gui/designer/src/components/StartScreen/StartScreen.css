@@ -63,23 +63,46 @@
 }
 .start-screen-root .sb-toggle {
   background: none; border: none; color: var(--text-tertiary);
-  cursor: pointer; width: 28px; height: 28px;
-  border-radius: 4px; font-size: 14px;
+  cursor: pointer; width: 22px; height: 22px;
+  border-radius: 4px; font-size: 11px;
   font-family: var(--ss-font-ui);
+  /* «Уезжают внутрь логотипа» — transform animation lets the
+     arrow slide toward the logo as the panel collapses, then
+     slides back out as the panel expands. Paired with the
+     sidebar's own width transition it reads as «arrows tuck
+     into / out of the logo with the panel». */
+  transition: transform .18s ease, opacity .14s ease;
+  transform: translateX(0);
+  opacity: 1;
 }
 .start-screen-root .sb-toggle:hover {
   background: var(--surface-2); color: var(--text-primary);
 }
 .start-screen-root .sb.collapsed .sb-name { display: none; }
-/* Mockup hides .sb-toggle in collapsed; we keep it visible because
-   biolog needs an obvious expand affordance — the previous «click
-   the logo» pattern was invisible. Toggle icon flips ‹‹ / ›› via
-   the React component (data-collapsed attribute on the parent). */
+/* Logo + toggle BOTH stay visible in collapsed mode. Logo
+   centred (padding 0), toggle slides leftward by enough px to
+   tuck behind the logo's right edge — partly overlapping so
+   biolog still has an obvious click affordance, but it reads
+   as «retracted into the logo». Click expands. */
 .start-screen-root .sb.collapsed .sb-head {
   justify-content: center;
   padding: 0;
+  gap: 2px;
 }
-.start-screen-root .sb.collapsed .sb-logo { display: none; }
+.start-screen-root .sb.collapsed .sb-toggle {
+  /* Pull the arrow ~14 px leftward so its left edge sits just
+     past the logo SVG centre. Combined with opacity .55 the
+     arrow reads as a faded affordance peeking out from the
+     logo's shadow. */
+  transform: translateX(-14px);
+  opacity: 0.55;
+}
+.start-screen-root .sb.collapsed .sb-toggle:hover {
+  /* Hover snaps the arrow back to full opacity so biolog
+     sees the click target clearly when intent is signalled. */
+  transform: translateX(-14px);
+  opacity: 1;
+}
 
 .start-screen-root .sb-body {
   padding: 8px; display: flex; flex-direction: column;
