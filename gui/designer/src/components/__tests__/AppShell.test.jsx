@@ -122,12 +122,21 @@ describe('K4 — App + AppShell + Topbar routing', () => {
     expect(screen.queryByTestId('topbar-import-button')).toBeNull();
   });
 
-  it('M-B.1 K2 — App routes to Importer when activeFullscreen=importer', () => {
+  it('M-X.7a v2 K5 — activeFullscreen=library mounts AppShell with WorkspaceRouter (LibraryWorkspace)', () => {
+    // Pre-K5 behavior: activeFullscreen='library' mounted the legacy
+    // Importer fullscreen surface. K5 flipped this — `'library'`
+    // route now passes null children to AppShell so its WorkspaceRouter
+    // takes over (workspace.active='library' default → LibraryWorkspace).
+    // The legacy `importer-fullscreen` testid is gone from this path;
+    // assert the new surface is present (app-shell + workspace router
+    // either rendering the Library workspace or its lazy fallback).
     useStore.setState((state) => {
       state.canvas.activeFullscreen = 'library';
       state.canvas.navStack = [{ fullscreen: 'library', payload: { target: 'project' } }];
     });
     render(<App />);
-    expect(screen.getByTestId('importer-fullscreen')).toBeTruthy();
+    expect(screen.getByTestId('app-shell')).toBeTruthy();
+    expect(screen.getByTestId('app-shell-content')).toBeTruthy();
+    expect(screen.queryByTestId('importer-fullscreen')).toBeNull();
   });
 });

@@ -4,7 +4,11 @@ import AppShell from './components/AppShell';
 import StartScreen from './components/StartScreen';
 import DagWorkspace from './components/Dag/DagWorkspace';
 import ContainerWindowPlaceholder from './components/Dag/ContainerWindowPlaceholder';
-import Importer from './components/Library';
+// M-X.7a v2 K5: Importer no longer imported here. The legacy
+// fullscreen Importer (deprecated by DEC-IMP-06 ⚓) is now mounted
+// via AppShell's WorkspaceRouter when workspace.active === 'importer'.
+// LibraryWorkspace (M-X.7a v2) is the default workspace via
+// workspace.active === 'library'.
 import UnderConstruction from './components/UnderConstruction';
 import MultiTabBlocked from './components/MultiTabBlocked';
 import ReadOnlyForced from './components/ReadOnlyForced';
@@ -255,11 +259,14 @@ export default function App() {
       break;
     }
     case 'library':
-      // M-X.6 K1 — flipped from M-X.5 alias `'importer' | 'library'`
-      // to the canonical `'library'` literal (DEC-IMP-06 ⚓ purge).
-      // The `'importer'` literal is no longer accepted as a fullscreen
-      // route — see canvasSlice FULLSCREENS array.
-      inProjectChild = <Importer />;
+      // M-X.7a v2 K5 — `'library'` no longer mounts the legacy
+      // Importer fullscreen. AppShell's WorkspaceRouter handles
+      // workspace switching internally via workspace.active
+      // (defaults to 'library', see workspaceSlice / DEC-MX7A-V2-08).
+      // Setting inProjectChild=null lets AppShell render its router
+      // instead of the children-overlay path. Legacy Importer is
+      // still accessible via NavRail ⤓ icon (workspace.active='importer').
+      inProjectChild = null;
       break;
     case 'underConstruction': {
       const top = navStack[navStack.length - 1];
