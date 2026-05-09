@@ -70,9 +70,16 @@
 .start-screen-root .sb-toggle:hover {
   background: var(--surface-2); color: var(--text-primary);
 }
-.start-screen-root .sb.collapsed .sb-name,
-.start-screen-root .sb.collapsed .sb-toggle { display: none; }
-.start-screen-root .sb.collapsed .sb-head { justify-content: center; padding: 0; }
+.start-screen-root .sb.collapsed .sb-name { display: none; }
+/* Mockup hides .sb-toggle in collapsed; we keep it visible because
+   biolog needs an obvious expand affordance — the previous «click
+   the logo» pattern was invisible. Toggle icon flips ‹‹ / ›› via
+   the React component (data-collapsed attribute on the parent). */
+.start-screen-root .sb.collapsed .sb-head {
+  justify-content: center;
+  padding: 0;
+}
+.start-screen-root .sb.collapsed .sb-logo { display: none; }
 
 .start-screen-root .sb-body {
   padding: 8px; display: flex; flex-direction: column;

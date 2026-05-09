@@ -21,36 +21,18 @@ function todo(label) {
   };
 }
 
-function Logo({ collapsed, onExpand }) {
-  const inner = (
-    <svg width="26" height="26" viewBox="0 0 256 256">
-      <circle cx="128" cy="128" r="92" fill="none" stroke="currentColor" strokeWidth="10" />
-      <path
-        d="M 192.95 64.95 A 92 92 0 0 1 220 128"
-        fill="none" stroke="#f59e0b" strokeWidth="22" strokeLinecap="round"
-      />
-    </svg>
+function Logo() {
+  return (
+    <div className="sb-logo" aria-hidden>
+      <svg width="26" height="26" viewBox="0 0 256 256">
+        <circle cx="128" cy="128" r="92" fill="none" stroke="currentColor" strokeWidth="10" />
+        <path
+          d="M 192.95 64.95 A 92 92 0 0 1 220 128"
+          fill="none" stroke="#f59e0b" strokeWidth="22" strokeLinecap="round"
+        />
+      </svg>
+    </div>
   );
-  // In collapsed state, the ‹‹ toggle is hidden per mockup CSS — make
-  // the logo itself a click target so biolog can expand without
-  // memorising Ctrl+B. Tooltip surfaces the hotkey.
-  if (collapsed) {
-    return (
-      <button
-        type="button"
-        className="sb-logo"
-        data-testid="ss-sidebar-logo-expand"
-        onClick={onExpand}
-        title="Развернуть (Ctrl B)"
-        aria-label="Развернуть боковую панель"
-        style={{
-          background: 'transparent', border: 'none', cursor: 'pointer',
-          padding: 0,
-        }}
-      >{inner}</button>
-    );
-  }
-  return <div className="sb-logo" aria-hidden>{inner}</div>;
 }
 
 export default function Sidebar({ collapsed, onToggle, onOpenHotkeys }) {
@@ -84,19 +66,16 @@ export default function Sidebar({ collapsed, onToggle, onOpenHotkeys }) {
       data-collapsed={collapsed ? 'true' : 'false'}
     >
       <div className="sb-head">
-        <Logo collapsed={collapsed} onExpand={onToggle} />
-        {!collapsed && (
-          <>
-            <div className="sb-name">BodgeGene</div>
-            <button
-              type="button"
-              className="sb-toggle"
-              data-testid="ss-sidebar-toggle"
-              title="Свернуть (Ctrl B)"
-              onClick={onToggle}
-            >‹‹</button>
-          </>
-        )}
+        <Logo />
+        {!collapsed && <div className="sb-name">BodgeGene</div>}
+        <button
+          type="button"
+          className="sb-toggle"
+          data-testid="ss-sidebar-toggle"
+          title={collapsed ? 'Развернуть (Ctrl B)' : 'Свернуть (Ctrl B)'}
+          aria-label={collapsed ? 'Развернуть боковую панель' : 'Свернуть боковую панель'}
+          onClick={onToggle}
+        >{collapsed ? '››' : '‹‹'}</button>
       </div>
 
       <div className="sb-body">

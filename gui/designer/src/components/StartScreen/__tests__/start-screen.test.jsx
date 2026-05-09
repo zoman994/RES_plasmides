@@ -107,15 +107,20 @@ describe('StartScreen-Pixel — Sidebar shell', () => {
 });
 
 describe('StartScreen-Pixel — Sidebar collapse', () => {
-  it('toggle button flips collapsed state', () => {
+  it('toggle button flips collapsed state (works in both directions)', () => {
     render(<StartScreen />);
     const sidebar = screen.getByTestId('ss-sidebar');
     expect(sidebar.getAttribute('data-collapsed')).toBe('false');
+    // Expanded: shows ‹‹ icon.
+    expect(screen.getByTestId('ss-sidebar-toggle').textContent).toBe('‹‹');
     fireEvent.click(screen.getByTestId('ss-sidebar-toggle'));
     expect(sidebar.getAttribute('data-collapsed')).toBe('true');
-    expect(sidebar.classList.contains('collapsed')).toBe(true);
-    // Toggle button hidden in collapsed state.
-    expect(screen.queryByTestId('ss-sidebar-toggle')).toBeNull();
+    // Collapsed: same button stays visible, icon flips to ››.
+    expect(screen.getByTestId('ss-sidebar-toggle').textContent).toBe('››');
+    // Click again to expand.
+    fireEvent.click(screen.getByTestId('ss-sidebar-toggle'));
+    expect(sidebar.getAttribute('data-collapsed')).toBe('false');
+    expect(screen.getByTestId('ss-sidebar-toggle').textContent).toBe('‹‹');
   });
 
   it('Ctrl+B hotkey toggles collapse', () => {
@@ -138,16 +143,14 @@ describe('StartScreen-Pixel — Sidebar collapse', () => {
     expect(screen.getByTestId('ss-sidebar').getAttribute('data-collapsed')).toBe('true');
   });
 
-  it('logo click in collapsed state expands the sidebar (no need for Ctrl+B)', () => {
+  it('toggle button stays visible in collapsed state with ›› icon', () => {
     render(<StartScreen />);
-    // Collapse first.
     fireEvent.click(screen.getByTestId('ss-sidebar-toggle'));
     expect(screen.getByTestId('ss-sidebar').getAttribute('data-collapsed')).toBe('true');
-    // ‹‹ toggle is hidden in collapsed; logo becomes a click target.
-    expect(screen.queryByTestId('ss-sidebar-toggle')).toBeNull();
-    expect(screen.getByTestId('ss-sidebar-logo-expand')).toBeTruthy();
-    fireEvent.click(screen.getByTestId('ss-sidebar-logo-expand'));
-    expect(screen.getByTestId('ss-sidebar').getAttribute('data-collapsed')).toBe('false');
+    const toggle = screen.getByTestId('ss-sidebar-toggle');
+    expect(toggle).toBeTruthy();
+    expect(toggle.textContent).toBe('››');
+    expect(toggle.getAttribute('title')).toMatch(/Развернуть/);
   });
 });
 
