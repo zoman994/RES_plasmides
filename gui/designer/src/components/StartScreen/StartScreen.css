@@ -53,7 +53,7 @@
   gap: 8px; flex-shrink: 0;
 }
 .start-screen-root .sb-logo {
-  width: 36px; height: 36px;
+  width: 40px; height: 40px;
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0; color: var(--text-primary);
 }
@@ -63,44 +63,39 @@
 }
 .start-screen-root .sb-toggle {
   background: none; border: none; color: var(--text-tertiary);
-  cursor: pointer; width: 22px; height: 22px;
-  border-radius: 4px; font-size: 11px;
+  cursor: pointer; width: 16px; height: 16px;
+  border-radius: 4px; font-size: 10px;
+  line-height: 1;
   font-family: var(--ss-font-ui);
-  /* «Уезжают внутрь логотипа» — transform animation lets the
-     arrow slide toward the logo as the panel collapses, then
-     slides back out as the panel expands. Paired with the
-     sidebar's own width transition it reads as «arrows tuck
-     into / out of the logo with the panel». */
-  transition: transform .18s ease, opacity .14s ease;
-  transform: translateX(0);
+  /* «Уезжают внутрь логотипа» — opacity transition lets the
+     arrow fade as the panel collapses; combined with the
+     sidebar's own width transition (.18s) it reads as «arrow
+     tucks into the logo» when collapsing and «slides back out
+     with the panel» when expanding. */
+  transition: opacity .14s ease;
   opacity: 1;
 }
 .start-screen-root .sb-toggle:hover {
   background: var(--surface-2); color: var(--text-primary);
 }
 .start-screen-root .sb.collapsed .sb-name { display: none; }
-/* Logo + toggle BOTH stay visible in collapsed mode. Logo
-   centred (padding 0), toggle slides leftward by enough px to
-   tuck behind the logo's right edge — partly overlapping so
-   biolog still has an obvious click affordance, but it reads
-   as «retracted into the logo». Click expands. */
+/* Logo + toggle BOTH stay visible in collapsed. Logo on left,
+   arrow tight to its right (gap 0, no translate offset) so they
+   read as one «logo + expand affordance» group. Sidebar 56 px
+   = logo 40 + arrow 22 − a touch of overflow padded by
+   centred justify. Arrow opacity dims to .55 so the logo
+   stays the visual anchor; hover snaps arrow back to full
+   opacity. */
 .start-screen-root .sb.collapsed .sb-head {
   justify-content: center;
   padding: 0;
-  gap: 2px;
+  gap: 0;
 }
 .start-screen-root .sb.collapsed .sb-toggle {
-  /* Pull the arrow ~14 px leftward so its left edge sits just
-     past the logo SVG centre. Combined with opacity .55 the
-     arrow reads as a faded affordance peeking out from the
-     logo's shadow. */
-  transform: translateX(-14px);
   opacity: 0.55;
+  transform: translateX(0);
 }
 .start-screen-root .sb.collapsed .sb-toggle:hover {
-  /* Hover snaps the arrow back to full opacity so biolog
-     sees the click target clearly when intent is signalled. */
-  transform: translateX(-14px);
   opacity: 1;
 }
 
