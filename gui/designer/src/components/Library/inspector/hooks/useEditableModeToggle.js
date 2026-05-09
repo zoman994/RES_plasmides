@@ -23,7 +23,16 @@ export function useEditableModeToggle(item) {
   useEffect(() => {
     setEditable(false);
   }, [item?.id, item?._fileName]);
-  const toggle = useCallback(() => setEditable((v) => !v), []);
+  // M-X.7a v2 K3 R1: read-only `.bodge` zone (imported foreign
+  // project) requires explicit manual-edit branch creation —
+  // simple toggle is a silent no-op. Caller's action-row
+  // surfaces «Открыть как активный» / «Создать manual-edit
+  // ветку» (handled by useManualEditBranching) instead.
+  const isReadOnlyZone = item?.zone === 'readonly_bodge';
+  const toggle = useCallback(() => {
+    if (isReadOnlyZone) return;
+    setEditable((v) => !v);
+  }, [isReadOnlyZone]);
   const disable = useCallback(() => setEditable(false), []);
-  return { editable, toggle, disable };
+  return { editable, toggle, disable, isReadOnlyZone };
 }

@@ -41,6 +41,10 @@ export default function AnnotationsTab({
   // hidden Annotator doesn't snap-scroll on every bar drag.
   pendingScroll = null,
   onPendingScrollHandled,
+  // M-X.7a v2 K3 — banner only when read-only `.bodge` zone (DEC-MX7A-V2-05).
+  // For other zones, annotation editing surface stays untouched —
+  // Annotator embedded continues to behave per M-X.5 baseline.
+  isReadOnlyZone = false,
 }) {
   return (
     <div
@@ -54,6 +58,18 @@ export default function AnnotationsTab({
         minHeight: 0,
       }}
     >
+      {isReadOnlyZone && (
+        <div
+          data-testid="annotations-readonly-banner"
+          style={{
+            padding: '6px 16px',
+            background: 'var(--surface-2)',
+            color: 'var(--text-secondary)',
+            fontSize: 11,
+            borderBottom: '1px solid var(--border-subtle)',
+          }}
+        >🔒 Просмотр read-only. Edit аннотаций — в Container Window.</div>
+      )}
       <Annotator
         embedded
         embeddedActive={active}

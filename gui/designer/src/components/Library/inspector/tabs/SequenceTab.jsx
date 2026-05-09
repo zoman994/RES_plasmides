@@ -54,6 +54,10 @@ export default function SequenceTab({
   // M-X.6 K2 — char-apply gate (DEC-MX6-02). Pass-through to SequenceView.
   editable = false,
   onSequenceEdit,
+  // M-X.7a v2 K3 — banner only when read-only `.bodge` zone (DEC-MX7A-V2-05).
+  // Loose / active_bodge / lab_pool render no banner; their edit story
+  // lives in the action-row + DAG operations.
+  isReadOnlyZone = false,
 }) {
   const sequenceViewRef = useRef(null);
 
@@ -104,8 +108,21 @@ export default function SequenceTab({
   // numbers + the ⚙ gear now live in SingleInspector's title row, the
   // tab panel renders only the SequenceView itself. State + settings
   // popover hoisted out of this file.
+  const showReadOnlyBanner = !editable && isReadOnlyZone;
   return (
     <div data-testid="importer-tab-panel-sequence" style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%', minWidth: 0, position: 'relative' }}>
+      {showReadOnlyBanner && (
+        <div
+          data-testid="sequence-readonly-banner"
+          style={{
+            padding: '6px 16px',
+            background: 'var(--surface-2)',
+            color: 'var(--text-secondary)',
+            fontSize: 11,
+            borderBottom: '1px solid var(--border-subtle)',
+          }}
+        >🔒 Просмотр read-only. Для редактирования откройте в Container Window или создайте manual-edit ветку.</div>
+      )}
       <div style={{ width: '100%', minWidth: 0, display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
         <SequenceView
           ref={sequenceViewRef}

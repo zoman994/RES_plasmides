@@ -114,7 +114,10 @@ export default function SingleInspector({
   const [pendingScroll, setPendingScroll] = useState(null);
   // K6 read-only/editable pill (DEC-LIB-16 ⚓) — extracted in M-X.6 K0
   // (DEC-MX6-01). Auto-resets on plasmid switch.
-  const { editable, toggle: toggleEditable, disable: disableEditable } = useEditableModeToggle(item);
+  // M-X.7a v2 K3 R1: hook also returns `isReadOnlyZone` derived from
+  // `item.zone === 'readonly_bodge'`; tabs render the read-only
+  // banner when both `editable === false` AND `isReadOnlyZone`.
+  const { editable, toggle: toggleEditable, disable: disableEditable, isReadOnlyZone } = useEditableModeToggle(item);
 
   // K10 manual-edit branching (DEC-LIB-12 ⚓) — extracted in M-X.6 K0.
   // K2 ships character-level apply via `onSequenceEdit` below.
@@ -722,6 +725,7 @@ export default function SingleInspector({
               onOpenAnnotator={onOpenAnnotator}
               onOpenFeatureEditor={openFeatureEditor}
               editable={editable}
+              isReadOnlyZone={isReadOnlyZone}
               onSequenceEdit={onSequenceEditFromView}
             />
           </div>
@@ -746,6 +750,7 @@ export default function SingleInspector({
               annotations={displayAnnotations}
               fileName={item._fileName}
               active={activeTab === 'annotations'}
+              isReadOnlyZone={isReadOnlyZone}
               onApplyAnnotatorResults={onApplyAnnotatorResults}
               onAnnotationEdit={onAnnotationEditFromView}
               onOpenFeatureEditor={openFeatureEditor}
