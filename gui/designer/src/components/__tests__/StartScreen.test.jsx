@@ -1,10 +1,20 @@
+// Sprint StartScreen-Pixel: legacy M-A.x StartScreen replaced by
+// pixel-perfect rebuild per docs/design_assets/start_screen.html.
+// SidebarLink + RecentCard removed; legacy «Recent projects from
+// store» / «Library» SidebarLink / «Open .bodge» / hotkey wiring
+// no longer exists — biolog flow is now Sidebar (with stub
+// callbacks) → Library workspace via setActiveWorkspace.
+//
+// Test file kept (skipped) so the historical assertions remain
+// findable for context. New StartScreen has its own coverage in
+// `components/StartScreen/__tests__/start-screen.test.jsx`.
 import 'fake-indexeddb/auto';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, cleanup, act, waitFor } from '@testing-library/react';
 import { useStore } from '../../store';
 import { clearAllAutosaveTimers } from '../../store/projectSlice';
 import StartScreen from '../StartScreen';
-import { formatRelativeTimeAgo } from '../StartScreen/RecentCard';
+const formatRelativeTimeAgo = () => 'stub';
 import { STRINGS } from '../../lib/strings';
 import { APP_VERSION } from '../../lib/version.js';
 
@@ -23,7 +33,7 @@ function reset() {
   });
 }
 
-describe('K5 — StartScreen wireframe v7', () => {
+describe.skip('K5 — StartScreen wireframe v7 (deprecated by Sprint StartScreen-Pixel rebuild)', () => {
   beforeEach(() => {
     reset();
     cleanup();

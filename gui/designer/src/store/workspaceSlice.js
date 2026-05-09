@@ -6,9 +6,12 @@
  * active workspace.
  *
  * Workspaces:
- *   'startup'   — Quick Start panel (M-A) — stub icon in K1, full
- *                 routing lands when biolog asks for it explicitly.
- *   'library'   — default landing per DEC-MX7A-V2-08.
+ *   'startup'   — pixel-perfect StartScreen (Sidebar + Recent
+ *                 projects + EmptyCard). Default landing post
+ *                 StartScreen-Pixel sprint (was 'library' from
+ *                 the M-X.7a v2 K1 DEC-MX7A-V2-08 default;
+ *                 default flipped per CURRENT_TASK.md).
+ *   'library'   — Library workspace (M-X.7a v2 LibraryWorkspace).
  *   'construct' — DesignCanvas (Project's primary canvas).
  *   'flow'      — DAG (Project Flow). DEC-MX7A-V2-09 wires DAG
  *                 sub-row clicks via `setActiveWorkspace('flow', { projectId })`.
@@ -35,7 +38,7 @@ export const WORKSPACE_HISTORY_LIMIT = 10;
 
 export function createWorkspaceSlice(set, get) {
   return {
-    workspace: { active: 'library', history: [], context: {} },
+    workspace: { active: 'startup', history: [], context: {} },
 
     setActiveWorkspace: (name, context) => {
       if (!VALID_WORKSPACES.has(name)) return;
@@ -71,7 +74,7 @@ export function createWorkspaceSlice(set, get) {
 }
 
 export function selectActiveWorkspace(state) {
-  return state?.workspace?.active || 'library';
+  return state?.workspace?.active || 'startup';
 }
 
 export function selectIsInLibrary(state) {

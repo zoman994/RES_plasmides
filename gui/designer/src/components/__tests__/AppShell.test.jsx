@@ -39,8 +39,10 @@ describe('K4 — App + AppShell + Topbar routing', () => {
   });
 
   it('renders StartScreen when activeFullscreen=start (no AppShell)', () => {
+    // Sprint StartScreen-Pixel: legacy `start-screen` testid replaced
+    // by `start-screen-root` in the pixel-perfect rebuild.
     render(<App />);
-    expect(screen.getByTestId('start-screen')).toBeTruthy();
+    expect(screen.getByTestId('start-screen-root')).toBeTruthy();
     expect(screen.queryByTestId('app-shell')).toBeNull();
   });
 
