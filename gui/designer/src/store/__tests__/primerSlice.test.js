@@ -138,17 +138,24 @@ describe('K1 — primerSlice (unified pool)', () => {
   });
 });
 
-describe('K1 — Dexie schema v2→v3 migration (legacy library primers)', () => {
-  it('opens at v3 with the new primers table', async () => {
+describe('M-X.7a v2 K1 — Dexie schema v4 wipes legacy primers (DEC-MX7A-V2-03)', () => {
+  // The v2→v3 primer-migration code path is preserved in
+  // dexie-schema.js (defensive — chained upgrade still runs) but
+  // v3→v4 wipes everything per DEC-MX7A-V2-03. Tests below reflect
+  // post-K1 reality: any pre-v4 entries are gone after the
+  // upgrade.
+  it('opens at v4 with the same 4 tables', async () => {
     const db = await freshDB();
     expect(db.tables.map(t => t.name).sort()).toEqual(
       ['containers', 'library', 'primers', 'projects'],
     );
-    expect(db.verno).toBe(3);
+    expect(db.verno).toBe(4);
   });
 
-  it('migrates kind="primer" library rows into the new primers table with defaults', async () => {
-    // Open at v2 first, seed legacy primer entries, then re-open at v3.
+  it('upgrade chain v2 → v4 wipes legacy library primers (no migration survives)', async () => {
+    // Open at v2 first, seed legacy primer entries, then re-open
+    // via the app's BodgeDB which now runs through v3 (migrate) →
+    // v4 (wipe). End state: primers + library tables empty.
     const Dexie = (await import('dexie')).default;
     const name = `bodgegene-mig-${Math.random().toString(36).slice(2)}`;
     const v2 = new Dexie(name);
@@ -166,26 +173,16 @@ describe('K1 — Dexie schema v2→v3 migration (legacy library primers)', () =>
     });
     v2.close();
 
-    // Re-open via app schema to trigger v2→v3 upgrade.
+    // Re-open via app schema — chains upgrades v2 → v3 → v4.
     const db = resetDBForTests(name);
     await db.open();
 
-    const migrated = await db.table('primers').get('lib-p1');
-    expect(migrated).toBeDefined();
-    expect(migrated.name).toBe('M13 Forward');
-    expect(migrated.sequence).toBe('GTAAAACGACGGCCAGT');
-    expect(migrated.projectId).toBeNull();
-    expect(migrated.status).toBe('imported');
-    expect(migrated.origin).toEqual({ kind: 'paste' });
-    expect(migrated.addedAt).toBe('2026-04-30T11:00:00Z');
-
-    // Original library row preserved (back-compat with M-A.3 UI until M-H).
-    const libRow = await db.table('library').get('lib-p1');
-    expect(libRow).toBeDefined();
-    expect(libRow.kind).toBe('primer');
+    // v3 upgrade migrated the primer; v4 wipe cleared both tables.
+    expect(await db.table('primers').count()).toBe(0);
+    expect(await db.table('library').count()).toBe(0);
   });
 
-  it('fresh v3 install (no legacy primers) leaves the primers table empty', async () => {
+  it('fresh v4 install leaves the primers table empty', async () => {
     await freshDB();
     // Add a library container; it must NOT show up in primers.
     await putLibraryEntry({

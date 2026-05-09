@@ -8,8 +8,34 @@ import {
 import { computeSuggestedName } from '../components/Library/lib/compute-suggested-name';
 import { computeResourceHash } from '../components/Library/lib/resource-hash';
 import { applySequenceEditToEntry } from '../components/Library/lib/library-sequence-edit';
+import { buildFolderTree } from '../components/Library/tree/library-folder-tree';
 
 export const LIBRARY_TAGS_SOFT_LIMIT = 10;
+
+/**
+ * M-X.7a v2 K1 — entry shape defaults. Post-K1 wipe every new entry
+ * carries these fields explicitly. The defaults here apply when an
+ * entry comes through `addLibraryEntry` without them set, mostly for
+ * test fixtures + defensive backfill against pre-v2 paths that may
+ * not have been updated yet.
+ */
+function withZoneDefaults(entry) {
+  return {
+    zone: entry.zone || 'loose',
+    projectId: entry.projectId ?? null,
+    inLabStock: entry.inLabStock === true,
+    parentEntryId: entry.parentEntryId ?? null,
+    parentEntryHash: entry.parentEntryHash ?? null,
+    ...entry,
+    // Re-apply defaults AFTER spread so explicit values win but
+    // `undefined` from spread doesn't blank the defaults.
+    zone: entry.zone || 'loose',
+    projectId: entry.projectId ?? null,
+    inLabStock: entry.inLabStock === true,
+    parentEntryId: entry.parentEntryId ?? null,
+    parentEntryHash: entry.parentEntryHash ?? null,
+  };
+}
 
 const DEFAULT_FILTER_KIND = 'container';
 const DEFAULT_FILTER_TOPOLOGY = 'all';
@@ -86,10 +112,18 @@ export const createLibrarySlice = (set, get) => ({
     });
   },
 
+  // M-X.7a v2 K1 — workspaceSlice + librarySlice extensions track a
+  // separate `looseFolders` list so empty folders survive between
+  // sessions (even when no entry is tagged yet). Tag-derived folders
+  // continue to surface via selectLooseTreeStructure — the explicit
+  // list is a UNION over the two sources.
+  looseFolders: [],
+
   addLibraryEntry: async (entry) => {
     if (!entry || !entry.id) return;
+    const withDefaults = withZoneDefaults(entry);
     const safe = {
-      ...entry,
+      ...withDefaults,
       tags: Array.isArray(entry.tags) ? entry.tags.slice(0, LIBRARY_TAGS_SOFT_LIMIT) : [],
       addedAt: entry.addedAt || new Date().toISOString(),
     };
@@ -724,6 +758,174 @@ export const createLibrarySlice = (set, get) => ({
     return rows.find(r => r.payload?.resourceHash === resourceHash);
   },
 
+  // ─────────────────────────────────────────────────────────────────
+  // M-X.7a v2 K1 — zone-aware actions (DEC-MX7A-V2-04 → §5.3 of spec)
+  //
+  // Folder semantics: tags WITHOUT a colon are treated as folder
+  // paths (slash-separated). Tags WITH a colon are meta tags
+  // (`demo:slug`, future `cat:plasmid`, etc.) and never get touched
+  // by folder operations.
+  // ─────────────────────────────────────────────────────────────────
+
+  moveEntryToFolder: (entryId, slashPath) => {
+    set((state) => {
+      const e = state.libraryEntries[entryId];
+      if (!e) return;
+      const meta = (Array.isArray(e.tags) ? e.tags : []).filter(
+        (t) => typeof t === 'string' && t.includes(':'),
+      );
+      if (typeof slashPath === 'string' && slashPath.length > 0) {
+        e.tags = [...meta, slashPath];
+      } else {
+        e.tags = meta;
+      }
+    });
+    const updated = get().libraryEntries[entryId];
+    if (updated) {
+      // Persist async; UI doesn't block on this. Tag-only update —
+      // no version bump.
+      putLibraryEntry(updated).catch((err) => {
+        // eslint-disable-next-line no-console
+        console.warn('[bodgegene] moveEntryToFolder persist failed', err?.message);
+      });
+    }
+  },
+
+  cloneEntryToActiveProject: async (entryId) => {
+    const projectId = get().currentProjectId;
+    if (!projectId) return { ok: false, reason: 'no-active-project' };
+    const src = get().libraryEntries[entryId];
+    if (!src) return { ok: false, reason: 'not-found' };
+    const newId = uuidv7();
+    const child = {
+      ...src,
+      id: newId,
+      zone: 'active_bodge',
+      projectId,
+      parentEntryId: src.id,
+      parentEntryHash: src.payload?.resourceHash || null,
+      addedAt: new Date().toISOString(),
+      version: 1,
+      // Copy payload by value so future mutations on child don't
+      // bleed into parent (Immer would CoW, but we're inserting via
+      // putLibraryEntry which serialises to Dexie anyway).
+      payload: { ...(src.payload || {}) },
+      tags: Array.isArray(src.tags) ? [...src.tags] : [],
+    };
+    set((state) => { state.libraryEntries[newId] = child; });
+    try {
+      await putLibraryEntry(child);
+      return { ok: true, id: newId };
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[bodgegene] cloneEntryToActiveProject persist failed', err?.message);
+      return { ok: false, reason: 'persist-error' };
+    }
+  },
+
+  extractEntryToLoose: async (entryId) => {
+    const src = get().libraryEntries[entryId];
+    if (!src) return { ok: false, reason: 'not-found' };
+    set((state) => {
+      const e = state.libraryEntries[entryId];
+      if (!e) return;
+      e.zone = 'loose';
+      e.projectId = null;
+    });
+    const updated = get().libraryEntries[entryId];
+    try {
+      await putLibraryEntry(updated);
+      return { ok: true };
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[bodgegene] extractEntryToLoose persist failed', err?.message);
+      return { ok: false, reason: 'persist-error' };
+    }
+  },
+
+  toggleLabStock: async (entryId) => {
+    const src = get().libraryEntries[entryId];
+    if (!src) return { ok: false, reason: 'not-found' };
+    const nextInLab = !src.inLabStock;
+    set((state) => {
+      const e = state.libraryEntries[entryId];
+      if (!e) return;
+      e.inLabStock = nextInLab;
+      e.zone = nextInLab ? 'lab_pool' : 'loose';
+      // Cross-project provenance preserved when leaving the freezer
+      // — biolog can still see «used in projects A/B/C» list.
+    });
+    const updated = get().libraryEntries[entryId];
+    try {
+      await putLibraryEntry(updated);
+      return { ok: true, inLabStock: nextInLab };
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[bodgegene] toggleLabStock persist failed', err?.message);
+      return { ok: false, reason: 'persist-error' };
+    }
+  },
+
+  createLooseFolder: (slashPath) => {
+    if (typeof slashPath !== 'string' || slashPath.length === 0) return;
+    set((state) => {
+      if (!Array.isArray(state.looseFolders)) state.looseFolders = [];
+      if (!state.looseFolders.includes(slashPath)) {
+        state.looseFolders.push(slashPath);
+      }
+    });
+  },
+
+  renameLooseFolder: (oldPath, newPath) => {
+    if (!oldPath || !newPath || oldPath === newPath) return;
+    set((state) => {
+      if (!Array.isArray(state.looseFolders)) state.looseFolders = [];
+      state.looseFolders = state.looseFolders.map(
+        (p) => (p === oldPath || p.startsWith(`${oldPath}/`))
+          ? `${newPath}${p.slice(oldPath.length)}`
+          : p,
+      );
+      for (const id of Object.keys(state.libraryEntries)) {
+        const e = state.libraryEntries[id];
+        if (!Array.isArray(e?.tags)) continue;
+        e.tags = e.tags.map(
+          (t) => (typeof t === 'string' && (t === oldPath || t.startsWith(`${oldPath}/`)))
+            ? `${newPath}${t.slice(oldPath.length)}`
+            : t,
+        );
+      }
+    });
+    // Persist all touched entries — small-N typical (folder rename
+    // rarely affects 100+ entries; if it does, batch via Dexie tx
+    // is a follow-up).
+    const all = Object.values(get().libraryEntries);
+    Promise.all(
+      all
+        .filter((e) => e && e.tags && e.tags.some((t) => typeof t === 'string' && t.startsWith(newPath)))
+        .map((e) => putLibraryEntry(e)),
+    ).catch((err) => {
+      // eslint-disable-next-line no-console
+      console.warn('[bodgegene] renameLooseFolder persist failed', err?.message);
+    });
+  },
+
+  deleteLooseFolder: (slashPath) => {
+    if (typeof slashPath !== 'string' || slashPath.length === 0) return;
+    set((state) => {
+      if (!Array.isArray(state.looseFolders)) state.looseFolders = [];
+      state.looseFolders = state.looseFolders.filter(
+        (p) => p !== slashPath && !p.startsWith(`${slashPath}/`),
+      );
+      for (const id of Object.keys(state.libraryEntries)) {
+        const e = state.libraryEntries[id];
+        if (!Array.isArray(e?.tags)) continue;
+        e.tags = e.tags.filter(
+          (t) => !(typeof t === 'string' && (t === slashPath || t.startsWith(`${slashPath}/`))),
+        );
+      }
+    });
+  },
+
   /**
    * Suggest a name that doesn't collide with existing library entries
    * (M-B.1 K3, SnapGene-style autoname per DEC-IMP-10). Returns `baseName`
@@ -764,6 +966,109 @@ export function selectVisibleLibraryEntries(state) {
     : list;
   filtered.sort((a, b) => (b.addedAt || '').localeCompare(a.addedAt || ''));
   return filtered;
+}
+
+// ─────────────────────────────────────────────────────────────────
+// M-X.7a v2 K1 — zone-aware selectors (spec §5.3)
+// ─────────────────────────────────────────────────────────────────
+
+/**
+ * All entries belonging to the requested zone, soft-delete excluded.
+ * Order: addedAt desc (matches selectVisibleLibraryEntries).
+ */
+export function selectEntriesByZone(state, zone) {
+  return Object.values(state.libraryEntries || {})
+    .filter((e) => e && e._pendingDelete !== true && e.zone === zone)
+    .sort((a, b) => (b.addedAt || '').localeCompare(a.addedAt || ''));
+}
+
+/**
+ * Containers attached to a specific project (ProjectZone tree row
+ * source). Soft-delete excluded.
+ */
+export function selectContainersByProject(state, projectId) {
+  if (!projectId) return [];
+  return Object.values(state.libraryEntries || {})
+    .filter((e) => e && e._pendingDelete !== true
+      && e.kind === 'container' && e.projectId === projectId)
+    .sort((a, b) => (b.addedAt || '').localeCompare(a.addedAt || ''));
+}
+
+/** Mirror of selectContainersByProject for primers. */
+export function selectPrimersByProject(state, projectId) {
+  if (!projectId) return [];
+  return Object.values(state.libraryEntries || {})
+    .filter((e) => e && e._pendingDelete !== true
+      && e.kind === 'primer' && e.projectId === projectId)
+    .sort((a, b) => (b.addedAt || '').localeCompare(a.addedAt || ''));
+}
+
+/**
+ * Folder forest for the LooseZone tree. Union of (a) explicit
+ * `looseFolders` (empty folders survive between sessions per
+ * createLooseFolder) + (b) folder paths derived from loose entry
+ * tags (the slash-path-as-tag pattern, DEC-CAT-04).
+ *
+ * Pre-processing: every path emits all its prefixes too, so that
+ * `Backbones/CRISPR` implicitly creates the `Backbones` parent node
+ * even when no entry is tagged with the bare parent path. Without
+ * this `buildFolderTree` would orphan the leaf as a top-level row.
+ */
+export function selectLooseTreeStructure(state) {
+  const explicit = Array.isArray(state.looseFolders) ? state.looseFolders : [];
+  const fromTags = new Set();
+  for (const e of Object.values(state.libraryEntries || {})) {
+    if (!e || e._pendingDelete === true || e.zone !== 'loose') continue;
+    if (!Array.isArray(e.tags)) continue;
+    for (const t of e.tags) {
+      if (typeof t === 'string' && !t.includes(':')) fromTags.add(t);
+    }
+  }
+  for (const p of explicit) fromTags.add(p);
+  const withParents = new Set();
+  for (const p of fromTags) {
+    const parts = p.split('/').filter(Boolean);
+    for (let i = 1; i <= parts.length; i++) {
+      withParents.add(parts.slice(0, i).join('/'));
+    }
+  }
+  return buildFolderTree(Array.from(withParents));
+}
+
+/**
+ * Lab pool split: `inLab` = primers physically in the freezer
+ * (`inLabStock=true`), `crossProject` = primers from foreign
+ * projects available for reuse (zone='lab_pool' and inLabStock=false).
+ */
+export function selectLabPoolStructure(state) {
+  const all = Object.values(state.libraryEntries || {})
+    .filter((e) => e && e._pendingDelete !== true
+      && e.kind === 'primer' && e.zone === 'lab_pool');
+  return {
+    inLab: all
+      .filter((e) => e.inLabStock === true)
+      .sort((a, b) => (b.addedAt || '').localeCompare(a.addedAt || '')),
+    crossProject: all
+      .filter((e) => e.inLabStock !== true)
+      .sort((a, b) => (b.addedAt || '').localeCompare(a.addedAt || '')),
+  };
+}
+
+/**
+ * Count of distinct projects that have a clone (parentEntryId chain)
+ * of the given primer. Used by ProjectZone primer rows to surface
+ * usage badges + warn on delete.
+ */
+export function selectPrimerUsageCount(state, primerId) {
+  if (!primerId) return 0;
+  const projects = new Set();
+  for (const e of Object.values(state.libraryEntries || {})) {
+    if (!e || e._pendingDelete === true) continue;
+    if (e.kind !== 'primer') continue;
+    if (e.parentEntryId !== primerId) continue;
+    if (e.projectId) projects.add(e.projectId);
+  }
+  return projects.size;
 }
 
 /**

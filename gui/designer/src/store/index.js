@@ -5,11 +5,13 @@ import { createCanvasSlice } from './canvasSlice';
 import { createUiSlice, applyThemeToDOM } from './uiSlice';
 import { createLibrarySlice, selectVisibleLibraryEntries, selectAllLibraryTags } from './librarySlice';
 import { createPrimerSlice, selectPrimerPool } from './primerSlice';
+import { createWorkspaceSlice, selectActiveWorkspace, selectIsInLibrary, selectCanGoBack } from './workspaceSlice';
 import { wipeLegacyV05Storage } from '../lib/v05-cleanup';
 
 export { wipeLegacyV05Storage };
 export { selectVisibleLibraryEntries, selectAllLibraryTags };
 export { selectPrimerPool };
+export { selectActiveWorkspace, selectIsInLibrary, selectCanGoBack };
 
 const stateCreator = (set, get) => ({
   ...createProjectSlice(set, get),
@@ -17,6 +19,7 @@ const stateCreator = (set, get) => ({
   ...createUiSlice(set, get),
   ...createLibrarySlice(set, get),
   ...createPrimerSlice(set, get),
+  ...createWorkspaceSlice(set, get),
 });
 
 export const useStore = create(immer(stateCreator));

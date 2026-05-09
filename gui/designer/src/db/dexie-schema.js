@@ -1,7 +1,7 @@
 import Dexie from 'dexie';
 
 export const DB_NAME = 'bodgegene-db';
-export const DB_VERSION = 3;
+export const DB_VERSION = 4;
 
 /**
  * Schema v3 (M-B.1 K1, DEC-IMP-11 ⚓):
@@ -12,6 +12,15 @@ export const DB_VERSION = 3;
  *   left in place for back-compat with existing M-A.3 UI until M-H retires
  *   the dual storage. Empty pool migrations are trivial (BUGS.md note: v0.6
  *   wipe leaves no real primer entries pre-M-B.1).
+ *
+ * Schema v4 (M-X.7a v2 K1, DEC-MX7A-V2-03):
+ *   Library entries gain new shape fields (zone / projectId /
+ *   inLabStock / parentEntryId / parentEntryHash) for zone-aware
+ *   tree placement + per-zone action-row + zone-aware editability.
+ *   No data migration — dev environment, no live data → wipe
+ *   library + primers + containers + projects on upgrade. Biolog
+ *   re-imports through the new flow; the new entry shape is the
+ *   sole post-K1 surface.
  */
 export class BodgeDB extends Dexie {
   constructor(name = DB_NAME) {
@@ -55,6 +64,19 @@ export class BodgeDB extends Dexie {
           addedAt: row.addedAt || new Date().toISOString(),
         });
       }
+    });
+    this.version(4).stores({
+      projects: 'id, name, createdAt, updatedAt',
+      containers: 'id, projectId, kind, name, [projectId+kind]',
+      library: 'id, kind, addedAt, [kind+addedAt], *tags, zone, projectId',
+      primers: 'id, name, projectId, status, addedAt, resourceHash, [projectId+status]',
+    }).upgrade(async (tx) => {
+      // DEC-MX7A-V2-03: full wipe on schema bump. No migration — dev
+      // environment, biolog re-imports through the new flow.
+      await tx.table('library').clear();
+      await tx.table('primers').clear();
+      await tx.table('containers').clear();
+      await tx.table('projects').clear();
     });
   }
 }

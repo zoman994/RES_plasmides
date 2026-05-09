@@ -15,7 +15,7 @@ async function freshDB() {
   return db;
 }
 
-describe('K1 — Dexie schema v3', () => {
+describe('K1 — Dexie schema v4 (M-X.7a v2 K1 bump from v3)', () => {
   beforeEach(async () => {
     await freshDB();
   });
@@ -24,7 +24,7 @@ describe('K1 — Dexie schema v3', () => {
     expect(db.tables.map(t => t.name).sort()).toEqual(
       ['containers', 'library', 'primers', 'projects'],
     );
-    expect(db.verno).toBe(3);
+    expect(db.verno).toBe(4);
   });
 
   it('round-trips a project record via put/get', async () => {
