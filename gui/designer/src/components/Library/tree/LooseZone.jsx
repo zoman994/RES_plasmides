@@ -96,6 +96,7 @@ export default function LooseZone({
                 onSelect={onSelectEntry}
                 indent={depth + 1}
                 testId={`tree-item-loose-${entry.id}`}
+                draggable
               />
             ))}
           </>
@@ -124,6 +125,7 @@ export default function LooseZone({
           onSelect={onSelectEntry}
           indent={1}
           testId={`tree-item-loose-${entry.id}`}
+          draggable
         />
       ))}
     </LibraryZone>

@@ -275,4 +275,81 @@ export const STRINGS = {
     autoLayoutButton: 'Авто-раскладка',              // EN: "Auto-layout"
     autoLayoutTooltip: 'Авто-раскладка (dagre LR)',
   },
+
+  // M-X.7a v2 K7 — STRINGS namespace per spec §5.6. EN-comment beside
+  // every RU value (M-C.1 K5 pattern). Consumed by LibraryWorkspace,
+  // LibraryTopBar, LibraryTreeRoot, LooseZone / ProjectZone /
+  // LabPoolZone, AddModal, and the read-only banners in
+  // SequenceTab + AnnotationsTab.
+  libraryWorkspace: {
+    zoneLooseTitle: 'Без проекта',                              // EN: "No project"
+    zoneLooseSub: 'свободная зона',                             // EN: "free zone"
+    zoneLabTitle: 'Лабораторный пул',                            // EN: "Lab pool"
+    zoneLabSub: 'primer\'ы в морозильнике',                      // EN: "primers in the freezer"
+    dagSubrow: 'DAG',                                            // EN: "DAG" (process graph)
+    containersFolder: 'Контейнеры',                              // EN: "Containers"
+    primersFolder: 'Праймеры',                                   // EN: "Primers"
+    inLab: 'В лаборатории',                                      // EN: "In the lab"
+    crossProject: 'Из чужих проектов',                           // EN: "From foreign projects"
+    addBtn: '+ Добавить',                                        // EN: "+ Add"
+    breadcrumbActive: 'Активный проект:',                        // EN: "Active project:"
+    breadcrumbNoProject: 'Без активного проекта',                // EN: "No active project"
+    searchPlaceholder: 'Поиск по библиотеке…',                   // EN: "Search the library…"
+    treeFilterPlaceholder: 'Фильтр в дереве…',                   // EN: "Filter in the tree…"
+    roBannerSequence:
+      '🔒 Просмотр read-only. Для редактирования откройте в Container Window или создайте manual-edit ветку.',
+      // EN: "Read-only view. To edit, open in Container Window or create a manual-edit branch."
+    roBannerAnnotations:
+      '🔒 Просмотр read-only. Edit аннотаций — в Container Window.',
+      // EN: "Read-only view. Annotation editing happens in Container Window."
+
+    // Per-zone action labels (spec §5.4). Consumed by lib/library-actions.js
+    // when the action surface needs translation. K7 adds the namespace;
+    // M-X.7c i18n pass swaps in actual STRINGS lookups for full EN/RU
+    // toggle.
+    actionsLoose: {
+      useInActiveContainer: 'Использовать в активном',           // EN: "Use in active project"
+      useInActivePrimer: 'Использовать в проекте',               // EN: "Use in project"
+      open: 'Открыть',                                            // EN: "Open"
+      manualEditBranch: 'Manual-edit ветка',                     // EN: "Manual-edit branch"
+      moveFolder: 'Переместить',                                 // EN: "Move"
+      exportGenBank: 'Экспорт',                                  // EN: "Export"
+      delete: 'Удалить',                                         // EN: "Delete"
+      editPrimer: 'Редактировать',                               // EN: "Edit"
+    },
+    actionsActive: {
+      containerWindow: 'Container Window',                       // EN: "Container Window"
+      showInDag: 'Показать в DAG',                              // EN: "Show in DAG"
+      extractToLoose: 'Извлечь в Loose',                        // EN: "Extract to Loose"
+      saveAsVersion: 'Сохранить как версию',                    // EN: "Save as version"
+      clone: 'Клонировать',                                      // EN: "Clone"
+      exportGenBank: 'Экспорт GenBank',                         // EN: "Export GenBank"
+      deleteFromProject: 'Удалить из проекта',                  // EN: "Delete from project"
+      useInDag: 'Использовать в DAG',                           // EN: "Use in DAG"
+    },
+    actionsReadonly: {
+      copyToActive: 'Скопировать в активный',                   // EN: "Copy to active"
+      copyToLoose: 'Скопировать в Loose',                       // EN: "Copy to Loose"
+      openAsActive: 'Открыть как активный',                     // EN: "Open as active"
+      view: 'Просмотр',                                          // EN: "View"
+    },
+    actionsLab: {
+      useInProject: 'Использовать в проекте',                   // EN: "Use in project"
+      editNotes: 'Редактировать заметки',                       // EN: "Edit notes"
+      toggleStockOff: 'Снять метку',                            // EN: "Remove freezer mark"
+      toggleStockOn: 'Поставить метку',                         // EN: "Add freezer mark"
+      delete: 'Удалить',                                         // EN: "Delete"
+    },
+  },
+
+  // M-X.7a v2 K7 — AppShell + NavRail tooltip strings.
+  appShell: {
+    navTooltipStartup: 'Стартовый — в разработке',               // EN: "Start screen — in development"
+    navTooltipLibrary: 'Библиотека',                             // EN: "Library"
+    navTooltipFlow: 'DAG / Project Flow',                        // EN: "DAG / Project Flow"
+    navTooltipImporter: 'Importer (legacy)',                     // EN: "Importer (legacy)"
+    navTooltipMix: 'Mix Workspace — в разработке',               // EN: "Mix Workspace — in development"
+    navTooltipSettings: 'Настройки — в разработке',              // EN: "Settings — in development"
+    navTooltipTheme: 'Тема — в разработке',                      // EN: "Theme — in development"
+  },
 };

@@ -21,18 +21,21 @@
 import { memo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore } from '../../store';
+import { STRINGS } from '../../lib/strings';
+
+const A = STRINGS.appShell;
 
 const ITEMS = [
-  { id: 'startup', icon: '⌂', tooltip: 'Стартовый — в разработке', stub: true },
-  { id: 'library', icon: '📚', tooltip: 'Библиотека' },
-  { id: 'flow', icon: '🔀', tooltip: 'DAG / Project Flow' },
-  { id: 'importer', icon: '⤓', tooltip: 'Importer (legacy)' },
-  { id: 'mix', icon: '⚗', tooltip: 'Mix Workspace — в разработке', stub: true },
+  { id: 'startup', icon: '⌂', tooltip: A.navTooltipStartup, stub: true },
+  { id: 'library', icon: '📚', tooltip: A.navTooltipLibrary },
+  { id: 'flow', icon: '🔀', tooltip: A.navTooltipFlow },
+  { id: 'importer', icon: '⤓', tooltip: A.navTooltipImporter },
+  { id: 'mix', icon: '⚗', tooltip: A.navTooltipMix, stub: true },
 ];
 
 const FOOTER_ITEMS = [
-  { id: 'settings', icon: '⚙', tooltip: 'Настройки — в разработке' },
-  { id: 'theme', icon: '◐', tooltip: 'Тема — в разработке' },
+  { id: 'settings', icon: '⚙', tooltip: A.navTooltipSettings },
+  { id: 'theme', icon: '◐', tooltip: A.navTooltipTheme },
 ];
 
 export const NavRail = memo(function NavRail() {

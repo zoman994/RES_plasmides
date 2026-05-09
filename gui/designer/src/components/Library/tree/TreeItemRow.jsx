@@ -103,6 +103,12 @@ export const TreeItemRow = memo(function TreeItemRow({
   onSelect,
   indent = 2,
   testId,
+  // M-X.7a v2 K7: native HTML5 drag-drop. Loose-zone rows get
+  // `draggable=true` so biolog can drop them onto an active
+  // ProjectZone for a clone (DEC-MX7A-V2-10 minimum). Read-only
+  // zones stay non-draggable — biolog can copy them via the
+  // action-row's «Скопировать в активный» button instead.
+  draggable = false,
 }) {
   if (!entry) return null;
   const meta = metaLine(entry);
@@ -115,6 +121,15 @@ export const TreeItemRow = memo(function TreeItemRow({
       data-selected={isSelected ? 'true' : 'false'}
       role="button"
       tabIndex={0}
+      draggable={draggable}
+      onDragStart={(e) => {
+        if (!draggable) return;
+        try {
+          e.dataTransfer.setData('application/x-bodge-entry-id', entry.id);
+          e.dataTransfer.setData('text/plain', entry.name || entry.id);
+          e.dataTransfer.effectAllowed = 'copyMove';
+        } catch { /* jsdom / happy-dom may throw */ }
+      }}
       onClick={() => onSelect?.(entry)}
       onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onSelect?.(entry); } }}
       onMouseEnter={(e) => {

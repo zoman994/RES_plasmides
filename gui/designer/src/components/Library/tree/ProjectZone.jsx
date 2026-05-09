@@ -64,6 +64,29 @@ export default function ProjectZone({
     setActiveWorkspace?.('flow', { projectId });
   }, [projectId, setActiveWorkspace]);
 
+  // M-X.7a v2 K7: native HTML5 drop target. Loose entries dropped
+  // onto an active project zone clone into that project via
+  // librarySlice.cloneEntryToActiveProject. Read-only zones are
+  // not drop targets — biolog uses the action-row instead.
+  const cloneEntryToActiveProject = useStore((s) => s.cloneEntryToActiveProject);
+  const [dropActive, setDropActive] = useState(false);
+  const onDragOver = useCallback((e) => {
+    if (isReadOnly) return;
+    e.preventDefault();
+    try { e.dataTransfer.dropEffect = 'copy'; } catch { /* ignore */ }
+    setDropActive(true);
+  }, [isReadOnly]);
+  const onDragLeave = useCallback(() => setDropActive(false), []);
+  const onDrop = useCallback((e) => {
+    if (isReadOnly) return;
+    e.preventDefault();
+    setDropActive(false);
+    let id = '';
+    try { id = e.dataTransfer.getData('application/x-bodge-entry-id'); } catch { /* ignore */ }
+    if (!id) return;
+    cloneEntryToActiveProject?.(id);
+  }, [isReadOnly, cloneEntryToActiveProject]);
+
   const pill = isReadOnly ? (
     <span
       style={{
@@ -87,6 +110,17 @@ export default function ProjectZone({
   );
 
   return (
+    <div
+      data-testid={`tree-zone-drop-${projectId}`}
+      data-drop-active={dropActive ? 'true' : 'false'}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+      style={{
+        background: dropActive ? 'var(--accent-50)' : 'transparent',
+        transition: 'background 80ms',
+      }}
+    >
     <LibraryZone
       variant={variant}
       icon="📦"
@@ -163,5 +197,6 @@ export default function ProjectZone({
         />
       ))}
     </LibraryZone>
+    </div>
   );
 }
