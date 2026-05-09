@@ -28,7 +28,6 @@ import { useCallback, useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore } from '../../store';
 import { STRINGS } from '../../lib/strings';
-import { classifyEntryZone } from '../../lib/library-zones';
 import LibraryTopBar from './LibraryTopBar';
 import LibraryTreeRoot from './tree/LibraryTreeRoot';
 import LibrarySingleInspector from './inspector/LibrarySingleInspector';
@@ -71,10 +70,15 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
   }, [showToast]);
 
   const entriesById = useStore((s) => s.libraryEntries);
+  const projectsById = useStore((s) => s.projects);
   const currentProjectId = useStore((s) => s.currentProjectId);
   const totalEntries = useMemo(
     () => Object.values(entriesById || {}).filter((e) => e && !e._pendingDelete).length,
     [entriesById],
+  );
+  const totalProjects = useMemo(
+    () => Object.keys(projectsById || {}).length,
+    [projectsById],
   );
 
   // Wire concrete handlers for the action-row context. Each is a
@@ -88,7 +92,12 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
   const setActiveWorkspace = useStore((s) => s.setActiveWorkspace);
 
   const item = selectedId ? entriesById[selectedId] : null;
-  const zone = item ? classifyEntryZone(item, { activeProjectId: currentProjectId }) : null;
+  // Action-row variant derives from `entry.projectId` per the
+  // 09.05.2026 minimum-pass refresh — `entry.zone` is intentionally
+  // ignored (zone field stays in shape, see CURRENT_TASK.md). All
+  // project entries are «active» (no readonly/lab variants until
+  // those features arrive).
+  const zone = item ? (item.projectId ? 'active_bodge' : 'loose') : null;
   const entryState = perEntryState[selectedId] || emptyEntryState();
 
   const onSelectEntry = useCallback((entry) => {
@@ -204,7 +213,7 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
               </div>
               <LibraryActionRow entry={item} zone={zone} ctx={actionCtx} />
             </>
-          ) : totalEntries === 0 ? (
+          ) : (totalEntries === 0 && totalProjects === 0) ? (
             <EmptyState onAddClick={onAddClick} />
           ) : (
             <NoSelection />

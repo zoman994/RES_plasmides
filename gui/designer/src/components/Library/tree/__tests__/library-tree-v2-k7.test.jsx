@@ -120,7 +120,7 @@ describe('M-X.7a v2 K7 — drag-drop minimum (DEC-MX7A-V2-10)', () => {
     render(
       <>
         <LooseZone />
-        <ProjectZone project={{ id: 'pa', name: 'X' }} isReadOnly={false} />
+        <ProjectZone project={{ id: 'pa', name: 'X' }} />
       </>,
     );
     const drop = screen.getByTestId('tree-zone-drop-pa');
@@ -138,12 +138,12 @@ describe('M-X.7a v2 K7 — drag-drop minimum (DEC-MX7A-V2-10)', () => {
     expect(cloned.projectId).toBe('pa');
   });
 
-  it('ProjectZone (readonly) does not surface drop-active on dragover', () => {
-    render(<ProjectZone project={{ id: 'pb', name: 'Borrowed' }} isReadOnly />);
-    const drop = screen.getByTestId('tree-zone-drop-pb');
-    fireEvent.dragOver(drop);
-    expect(drop.getAttribute('data-drop-active')).toBe('false');
-  });
+  // 09.05.2026 minimum-pass refresh: read-only project variant
+  // dropped from ProjectZone — all projects render as «active»
+  // until read-only `.bodge` import lands as a separate feature.
+  // The «readonly is not a drop target» guard is moot until then;
+  // skipped, will return when readonly variant comes back.
+  it.skip('ProjectZone (readonly) does not surface drop-active on dragover (deprecated until readonly returns)', () => {});
 
   it('Loose item rows are draggable; readonly items are not', async () => {
     await useStore.getState().addLibraryEntry(makeContainer({

@@ -166,35 +166,45 @@ describe('K2 — LooseZone', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────
-describe('K2 — ProjectZone', () => {
-  it('renders DAG subrow + Containers folder + Primers folder', async () => {
+describe('K2 — ProjectZone (post 09.05.2026 minimum-pass refresh)', () => {
+  it('renders flat list of all entries with the projectId (no DAG / Containers / Primers folders)', async () => {
     await useStore.getState().addLibraryEntry(makeContainer({
-      id: 'c1', name: 'pET28b', zone: 'active_bodge', projectId: 'pa',
+      id: 'c1', name: 'pET28b', projectId: 'pa',
     }));
     await useStore.getState().addLibraryEntry(makePrimer({
-      id: 'pr1', name: 'M13F', zone: 'active_bodge', projectId: 'pa',
+      id: 'pr1', name: 'M13F', projectId: 'pa',
     }));
     render(<ProjectZone project={{ id: 'pa', name: 'ChitinaseExpr' }} />);
-    expect(screen.getByTestId('tree-subrow-dag-pa')).toBeTruthy();
-    expect(screen.getByTestId('tree-folder-containers-pa')).toBeTruthy();
-    expect(screen.getByTestId('tree-folder-primers-pa')).toBeTruthy();
+    // Flat container + primer rows, no folder/DAG sub-rows.
     expect(screen.getByTestId('tree-item-project-c1')).toBeTruthy();
     expect(screen.getByTestId('tree-item-project-pr1')).toBeTruthy();
+    expect(screen.queryByTestId('tree-subrow-dag-pa')).toBeNull();
+    expect(screen.queryByTestId('tree-folder-containers-pa')).toBeNull();
+    expect(screen.queryByTestId('tree-folder-primers-pa')).toBeNull();
   });
 
-  it('DAG subrow click switches workspace to flow with projectId', () => {
-    render(<ProjectZone project={{ id: 'pa', name: 'X' }} />);
-    fireEvent.click(screen.getByTestId('tree-subrow-dag-pa'));
-    expect(useStore.getState().workspace.active).toBe('flow');
-    expect(useStore.getState().workspace.context).toEqual({ projectId: 'pa' });
-  });
-
-  it('readonly variant exposes data-variant=readonly + 🔒 pill', () => {
-    render(<ProjectZone project={{ id: 'pb', name: 'Borrowed' }} isReadOnly />);
+  it('always renders as «active» variant (no readonly/lab paths in this pass)', () => {
+    render(<ProjectZone project={{ id: 'pb', name: 'Borrowed' }} />);
     const z = screen.getByTestId('library-zone-project-pb');
-    expect(z.getAttribute('data-variant')).toBe('readonly');
+    expect(z.getAttribute('data-variant')).toBe('active');
     const pill = screen.getByTestId('library-zone-project-pb-pill');
-    expect(pill.textContent).toMatch(/read-only/);
+    expect(pill.textContent).toMatch(/active/);
+  });
+
+  it('only includes entries with matching projectId', async () => {
+    await useStore.getState().addLibraryEntry(makeContainer({
+      id: 'a', name: 'in-pa', projectId: 'pa',
+    }));
+    await useStore.getState().addLibraryEntry(makeContainer({
+      id: 'b', name: 'in-pb', projectId: 'pb',
+    }));
+    await useStore.getState().addLibraryEntry(makeContainer({
+      id: 'c', name: 'loose', projectId: null,
+    }));
+    render(<ProjectZone project={{ id: 'pa', name: 'X' }} />);
+    expect(screen.getByTestId('tree-item-project-a')).toBeTruthy();
+    expect(screen.queryByTestId('tree-item-project-b')).toBeNull();
+    expect(screen.queryByTestId('tree-item-project-c')).toBeNull();
   });
 });
 
@@ -219,13 +229,14 @@ describe('K2 — LabPoolZone', () => {
 
 // ─────────────────────────────────────────────────────────────────
 describe('K2 — LibraryTreeRoot', () => {
-  it('renders tree-head + 3 zones + tree-foot', () => {
+  it('renders tree-head + Loose zone + tree-foot (LabPool removed in 09.05.2026 refresh)', () => {
     render(<LibraryTreeRoot />);
     expect(screen.getByTestId('tree-head')).toBeTruthy();
     expect(screen.getByTestId('tree-body')).toBeTruthy();
     expect(screen.getByTestId('tree-foot')).toBeTruthy();
     expect(screen.getByTestId('library-zone-loose')).toBeTruthy();
-    expect(screen.getByTestId('library-zone-lab')).toBeTruthy();
+    // Lab pool no longer in tree per spec — it returns later as a View.
+    expect(screen.queryByTestId('library-zone-lab')).toBeNull();
     expect(screen.getByTestId('tree-add-btn')).toBeTruthy();
   });
 

@@ -20,8 +20,8 @@ export const LibraryTopBar = memo(function LibraryTopBar({
 }) {
   const ws = STRINGS.libraryWorkspace || {};
   const currentProjectId = useStore((s) => s.currentProjectId);
-  const projectsById = useStore((s) => s.projectsById);
-  const activeProject = currentProjectId ? projectsById?.[currentProjectId] : null;
+  const projects = useStore((s) => s.projects);
+  const activeProject = currentProjectId ? projects?.[currentProjectId] : null;
   const projectLabel = activeProject?.name || currentProjectId;
 
   return (

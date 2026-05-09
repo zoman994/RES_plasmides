@@ -1,23 +1,24 @@
 /**
- * LooseZone — Sprint M-X.7a v2 K2.
+ * LooseZone — Library workspace tree zone «⚐ БЕЗ ПРОЕКТА»
+ * (the biolog's free workspace).
  *
- * `⚐ Без проекта · свободная зона` zone per Library.html ZONE 1.
- * Renders folder forest derived from loose-entry slash-path tags +
- * explicit `looseFolders` (createLooseFolder records empty folder
- * placeholders). Items at root or inside folders all render
- * through TreeItemRow.
- *
- * Folder expansion is local component state — folder tree shape
- * comes from `selectLooseTreeStructure(state)` (memoised forest).
+ * Driven by `entry.projectId === null` per the 09.05.2026
+ * minimum-pass refresh: zone derivation moved off the `entry.zone`
+ * field (which stays in the data shape but is ignored at the
+ * visual layer per CURRENT_TASK.md). Folder forest still derives
+ * from slash-path tags + the explicit `looseFolders` list.
  */
 import { useMemo, useState, useCallback } from 'react';
-import { useShallow } from 'zustand/react/shallow';
 import { STRINGS } from '../../../lib/strings';
 import { useStore } from '../../../store';
-import { selectEntriesByZone, selectLooseTreeStructure } from '../../../store/librarySlice';
+import { buildFolderTree } from './library-folder-tree';
 import LibraryZone from './LibraryZone';
 import TreeFolderRow from './TreeFolderRow';
 import TreeItemRow from './TreeItemRow';
+
+function isLooseEntry(entry) {
+  return entry && !entry._pendingDelete && (entry.projectId == null);
+}
 
 function entriesUnderPath(entries, path) {
   return entries.filter((e) => Array.isArray(e.tags) && e.tags.includes(path));
@@ -36,6 +37,29 @@ function matchesQuery(entry, q) {
   return name.includes(q.toLowerCase());
 }
 
+function buildLooseTree(entries, looseFolders) {
+  // Union of folder paths derived from loose tags + explicit
+  // looseFolders, with all parent prefixes pre-emitted so
+  // `Backbones/CRISPR` implicitly creates the `Backbones` parent
+  // node even when no entry sits directly on it.
+  const fromTags = new Set();
+  for (const e of entries) {
+    if (!Array.isArray(e.tags)) continue;
+    for (const t of e.tags) {
+      if (typeof t === 'string' && !t.includes(':')) fromTags.add(t);
+    }
+  }
+  for (const p of (looseFolders || [])) fromTags.add(p);
+  const withParents = new Set();
+  for (const p of fromTags) {
+    const parts = p.split('/').filter(Boolean);
+    for (let i = 1; i <= parts.length; i++) {
+      withParents.add(parts.slice(0, i).join('/'));
+    }
+  }
+  return buildFolderTree(Array.from(withParents));
+}
+
 export default function LooseZone({
   query = '',
   selectedId = null,
@@ -43,20 +67,23 @@ export default function LooseZone({
   expanded = true,
   onToggle,
 }) {
-  // Subscribe to primitive refs only — selectLooseTreeStructure
-  // builds fresh `{name, path, children}` nodes every call which
-  // breaks shallow-equality and causes useStore to infinite-loop.
+  const ws = STRINGS.libraryWorkspace || {};
   const entriesById = useStore((s) => s.libraryEntries);
   const looseFolders = useStore((s) => s.looseFolders);
+
+  const looseEntries = useMemo(
+    () => Object.values(entriesById || {}).filter(isLooseEntry),
+    [entriesById],
+  );
   const tree = useMemo(
-    () => selectLooseTreeStructure({ libraryEntries: entriesById, looseFolders }),
-    [entriesById, looseFolders],
+    () => buildLooseTree(looseEntries, looseFolders),
+    [looseEntries, looseFolders],
   );
-  const entries = useStore(useShallow((s) => selectEntriesByZone(s, 'loose')));
   const filtered = useMemo(
-    () => entries.filter((e) => matchesQuery(e, query)),
-    [entries, query],
+    () => looseEntries.filter((e) => matchesQuery(e, query)),
+    [looseEntries, query],
   );
+
   const [openFolders, setOpenFolders] = useState(() => new Set());
   const toggleFolder = useCallback((path) => {
     setOpenFolders((prev) => {
@@ -65,9 +92,6 @@ export default function LooseZone({
       return next;
     });
   }, []);
-
-  const total = filtered.length;
-  const looseStrings = STRINGS.libraryWorkspace || {};
 
   const renderFolderNode = (node, depth) => {
     const folderItems = entriesUnderPath(filtered, node.path);
@@ -109,9 +133,9 @@ export default function LooseZone({
     <LibraryZone
       variant="loose"
       icon="⚐"
-      title={looseStrings.zoneLooseTitle || 'Без проекта'}
-      sub={looseStrings.zoneLooseSub || 'свободная зона'}
-      count={total}
+      title={ws.zoneLooseTitle || 'Без проекта'}
+      sub={ws.zoneLooseSub || 'свободная зона'}
+      count={filtered.length}
       expanded={expanded}
       onToggle={onToggle}
       testId="library-zone-loose"

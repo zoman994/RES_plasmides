@@ -19,32 +19,32 @@ import { useStore } from '../../../store';
 import { STRINGS } from '../../../lib/strings';
 import LooseZone from './LooseZone';
 import ProjectZone from './ProjectZone';
-import LabPoolZone from './LabPoolZone';
 import { APP_VERSION } from '../../../lib/version';
 
-function projectsFromEntries(entriesById, currentProjectId) {
-  // Distinct project ids referenced by entries with zone in {active_bodge,
-  // readonly_bodge}. Active project pinned first; foreign ones follow
-  // alphabetically by id (no project name registry yet — projectSlice
-  // tracks current only).
+function discoverProjects(entriesById, projectsById, currentProjectId) {
+  // Project zones come from two sources unioned:
+  //   • the live projectSlice map (`state.projects`) so empty
+  //     projects still render
+  //   • distinct `entry.projectId` referenced from libraryEntries
+  //     (covers entries whose project metadata isn't in projectSlice
+  //     yet — happens during transition from the old Importer flow)
+  // Active project pinned first; rest sorted by name then id.
   const ids = new Set();
+  for (const id of Object.keys(projectsById || {})) ids.add(id);
   for (const e of Object.values(entriesById || {})) {
     if (!e || e._pendingDelete) continue;
-    if (e.zone === 'active_bodge' || e.zone === 'readonly_bodge') {
-      if (e.projectId) ids.add(e.projectId);
-    }
+    if (e.projectId) ids.add(e.projectId);
   }
-  const list = Array.from(ids);
-  list.sort((a, b) => {
-    if (a === currentProjectId) return -1;
-    if (b === currentProjectId) return 1;
-    return a.localeCompare(b);
-  });
-  return list.map((id) => ({
+  const list = Array.from(ids).map((id) => ({
     id,
-    name: id,
-    isReadOnly: id !== currentProjectId,
+    name: projectsById?.[id]?.name || id,
   }));
+  list.sort((a, b) => {
+    if (a.id === currentProjectId) return -1;
+    if (b.id === currentProjectId) return 1;
+    return (a.name || a.id).localeCompare(b.name || b.id);
+  });
+  return list;
 }
 
 export default function LibraryTreeRoot({
@@ -57,9 +57,10 @@ export default function LibraryTreeRoot({
   const ws = STRINGS.libraryWorkspace || {};
   const currentProjectId = useStore((s) => s.currentProjectId);
   const entriesById = useStore((s) => s.libraryEntries);
+  const projectsById = useStore((s) => s.projects);
   const projects = useMemo(
-    () => projectsFromEntries(entriesById, currentProjectId),
-    [entriesById, currentProjectId],
+    () => discoverProjects(entriesById, projectsById, currentProjectId),
+    [entriesById, projectsById, currentProjectId],
   );
   const totalEntries = useMemo(
     () => Object.values(entriesById || {}).filter((e) => e && !e._pendingDelete).length,
@@ -177,17 +178,11 @@ export default function LibraryTreeRoot({
           <ProjectZone
             key={p.id}
             project={p}
-            isReadOnly={p.isReadOnly}
             query={query}
             selectedId={selectedId}
             onSelectEntry={onSelectEntry}
           />
         ))}
-        <LabPoolZone
-          query={query}
-          selectedId={selectedId}
-          onSelectEntry={onSelectEntry}
-        />
       </div>
 
       <div

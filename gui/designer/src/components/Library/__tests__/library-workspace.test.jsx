@@ -72,7 +72,7 @@ beforeEach(async () => {
     s.looseFolders = [];
     s.workspace = { active: 'library', history: [], context: {} };
     s.currentProjectId = null;
-    s.projectsById = s.projectsById || {};
+    s.projects = s.projects || {};
   });
 });
 afterEach(cleanup);
@@ -122,7 +122,7 @@ describe('M-X.7a v2 K4 — LibraryWorkspace', () => {
   it('breadcrumb shows active project name + saved pill when currentProjectId set', () => {
     useStore.setState((s) => {
       s.currentProjectId = 'p1';
-      s.projectsById = { ...(s.projectsById || {}), p1: { id: 'p1', name: 'ChitinaseExpr' } };
+      s.projects = { ...(s.projects || {}), p1: { id: 'p1', name: 'ChitinaseExpr' } };
     });
     render(<LibraryWorkspace />);
     expect(screen.getByTestId('library-topbar-project-name').textContent).toBe('ChitinaseExpr');
