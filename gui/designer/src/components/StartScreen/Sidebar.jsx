@@ -39,6 +39,8 @@ export default function Sidebar({ collapsed, onToggle }) {
   const activeWorkspace = useStore((s) => s.workspace?.active || 'startup');
   const setActiveWorkspace = useStore((s) => s.setActiveWorkspace);
   const setActiveFullscreen = useStore((s) => s.setActiveFullscreen);
+  const theme = useStore((s) => s.theme);
+  const setTheme = useStore((s) => s.setTheme);
 
   const onLibraryClick = () => {
     setActiveWorkspace?.('library');
@@ -48,6 +50,14 @@ export default function Sidebar({ collapsed, onToggle }) {
     setActiveWorkspace?.('startup');
     setActiveFullscreen?.('start');
   };
+  const onThemeToggle = () => {
+    // Live theme flip — uses existing uiSlice.setTheme which persists
+    // to localStorage `bodgegene-theme` and applies `data-theme` to
+    // <html> + #ss-root. 2-way cycle (light ↔ dark); 'system' option
+    // (matchMedia) deferred to a follow-up.
+    setTheme?.(theme === 'dark' ? 'light' : 'dark');
+  };
+  const themeLabel = theme === 'dark' ? 'Тема: тёмная' : 'Тема: светлая';
 
   return (
     <aside
@@ -169,9 +179,9 @@ export default function Sidebar({ collapsed, onToggle }) {
         />
         <SidebarItem
           icon="◐"
-          label="Тема: системная"
-          tip="Тема"
-          onClick={todo('theme-toggle')}
+          label={themeLabel}
+          tip={`Тема: ${theme} (клик переключит)`}
+          onClick={onThemeToggle}
           testId="ss-foot-theme"
         />
         <SidebarItem

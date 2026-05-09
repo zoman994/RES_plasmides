@@ -217,19 +217,47 @@ describe('StartScreen-Pixel — stub callbacks (console.log TODO)', () => {
     spy.mockRestore();
   });
 
-  it('Тема click logs TODO: theme-toggle', () => {
-    const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    render(<StartScreen />);
-    fireEvent.click(screen.getByTestId('ss-foot-theme'));
-    expect(spy).toHaveBeenCalledWith('TODO: theme-toggle');
-    spy.mockRestore();
-  });
-
-  it('Empty CTA click logs TODO: pick-set', () => {
+  it('Empty CTA click logs TODO: pick-set (sample stub coverage)', () => {
     const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
     render(<StartScreen />);
     fireEvent.click(screen.getByTestId('ss-empty-cta'));
     expect(spy).toHaveBeenCalledWith('TODO: pick-set');
     spy.mockRestore();
+  });
+});
+
+describe('StartScreen-Pixel — theme toggle (LIVE, not stub)', () => {
+  it('Тема label reflects current theme value (light)', () => {
+    useStore.setState((s) => { s.theme = 'light'; });
+    render(<StartScreen />);
+    expect(screen.getByTestId('ss-foot-theme').textContent).toMatch(/светлая/);
+  });
+
+  it('Тема label reflects current theme value (dark)', () => {
+    useStore.setState((s) => { s.theme = 'dark'; });
+    render(<StartScreen />);
+    expect(screen.getByTestId('ss-foot-theme').textContent).toMatch(/тёмная/);
+  });
+
+  it('clicking Тема flips theme via setTheme (light → dark)', () => {
+    useStore.setState((s) => { s.theme = 'light'; });
+    render(<StartScreen />);
+    fireEvent.click(screen.getByTestId('ss-foot-theme'));
+    expect(useStore.getState().theme).toBe('dark');
+    expect(screen.getByTestId('ss-foot-theme').textContent).toMatch(/тёмная/);
+  });
+
+  it('clicking Тема again flips back (dark → light)', () => {
+    useStore.setState((s) => { s.theme = 'dark'; });
+    render(<StartScreen />);
+    fireEvent.click(screen.getByTestId('ss-foot-theme'));
+    expect(useStore.getState().theme).toBe('light');
+  });
+
+  it('theme value applied to <html> data-theme via setTheme side-effect', () => {
+    useStore.setState((s) => { s.theme = 'light'; });
+    render(<StartScreen />);
+    fireEvent.click(screen.getByTestId('ss-foot-theme'));
+    expect(document.documentElement.dataset.theme).toBe('dark');
   });
 });
