@@ -32,14 +32,19 @@ export default function ProjectZone({
 }) {
   const projectId = project?.id;
   const entriesById = useStore((s) => s.libraryEntries);
+  const projectsById = useStore((s) => s.projects);
   const cloneEntryToActiveProject = useStore((s) => s.cloneEntryToActiveProject);
 
-  const projectEntries = useMemo(
-    () => Object.values(entriesById || {})
-      .filter((e) => e && !e._pendingDelete && e.projectId === projectId)
-      .sort((a, b) => (b.addedAt || '').localeCompare(a.addedAt || '')),
-    [entriesById, projectId],
-  );
+  const projectEntries = useMemo(() => {
+    // Two link paths: (a) `entry.projectId === projectId`,
+    // (b) entry id appears in this project's `containerIds` array
+    // (legacy import flow). Union of both.
+    const containerIds = new Set(projectsById?.[projectId]?.containerIds || []);
+    return Object.values(entriesById || {})
+      .filter((e) => e && !e._pendingDelete
+        && (e.projectId === projectId || containerIds.has(e.id)))
+      .sort((a, b) => (b.addedAt || '').localeCompare(a.addedAt || ''));
+  }, [entriesById, projectsById, projectId]);
   const filtered = useMemo(
     () => projectEntries.filter((e) => matchesQuery(e, query)),
     [projectEntries, query],

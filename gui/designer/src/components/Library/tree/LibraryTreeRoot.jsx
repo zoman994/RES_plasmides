@@ -21,23 +21,15 @@ import LooseZone from './LooseZone';
 import ProjectZone from './ProjectZone';
 import { APP_VERSION } from '../../../lib/version';
 
-function discoverProjects(entriesById, projectsById, currentProjectId) {
-  // Project zones come from two sources unioned:
-  //   • the live projectSlice map (`state.projects`) so empty
-  //     projects still render
-  //   • distinct `entry.projectId` referenced from libraryEntries
-  //     (covers entries whose project metadata isn't in projectSlice
-  //     yet — happens during transition from the old Importer flow)
-  // Active project pinned first; rest sorted by name then id.
-  const ids = new Set();
-  for (const id of Object.keys(projectsById || {})) ids.add(id);
-  for (const e of Object.values(entriesById || {})) {
-    if (!e || e._pendingDelete) continue;
-    if (e.projectId) ids.add(e.projectId);
-  }
-  const list = Array.from(ids).map((id) => ({
-    id,
-    name: projectsById?.[id]?.name || id,
+function discoverProjects(projectsById, currentProjectId) {
+  // Project zones come ONLY from the live projectSlice map. Orphan
+  // `entry.projectId` (project deleted, entry not cleaned up) is
+  // intentionally not surfaced as a phantom zone — those entries
+  // fall through to the Loose zone via LooseZone's claimed-set
+  // logic so biolog never «loses» plasmids to a deleted project.
+  const list = Object.values(projectsById || {}).map((p) => ({
+    id: p.id,
+    name: p.name || p.id,
   }));
   list.sort((a, b) => {
     if (a.id === currentProjectId) return -1;
@@ -59,8 +51,8 @@ export default function LibraryTreeRoot({
   const entriesById = useStore((s) => s.libraryEntries);
   const projectsById = useStore((s) => s.projects);
   const projects = useMemo(
-    () => discoverProjects(entriesById, projectsById, currentProjectId),
-    [entriesById, projectsById, currentProjectId],
+    () => discoverProjects(projectsById, currentProjectId),
+    [projectsById, currentProjectId],
   );
   const totalEntries = useMemo(
     () => Object.values(entriesById || {}).filter((e) => e && !e._pendingDelete).length,

@@ -254,17 +254,53 @@ describe('K2 — LibraryTreeRoot', () => {
     expect(onQ).toHaveBeenCalledWith('puc');
   });
 
-  it('discovers project zones from libraryEntries (active first, foreign after)', async () => {
-    useStore.setState((s) => { s.currentProjectId = 'pa'; });
+  it('discovers project zones from state.projects (post 09.05.2026 refresh — orphan projectIds fall to Loose)', async () => {
+    useStore.setState((s) => {
+      s.currentProjectId = 'pa';
+      s.projects = {
+        pa: { id: 'pa', name: 'Active', containerIds: ['a1'] },
+        pb: { id: 'pb', name: 'Foreign', containerIds: ['b1'] },
+      };
+    });
     await useStore.getState().addLibraryEntry(makeContainer({
-      id: 'a1', zone: 'active_bodge', projectId: 'pa',
+      id: 'a1', projectId: 'pa',
     }));
     await useStore.getState().addLibraryEntry(makeContainer({
-      id: 'b1', zone: 'readonly_bodge', projectId: 'pb',
+      id: 'b1', projectId: 'pb',
     }));
     render(<LibraryTreeRoot />);
     expect(screen.getByTestId('library-zone-project-pa')).toBeTruthy();
     expect(screen.getByTestId('library-zone-project-pb')).toBeTruthy();
+  });
+
+  it('orphan projectId entries fall back to Loose (project not in state.projects)', async () => {
+    // Entry references a non-existent project — must not vanish, must
+    // surface in Loose so biolog can re-link or delete it.
+    await useStore.getState().addLibraryEntry(makeContainer({
+      id: 'orphan1', name: 'orphan', projectId: 'deleted-pid',
+    }));
+    render(<LibraryTreeRoot />);
+    // No phantom project zone for the orphan.
+    expect(screen.queryByTestId('library-zone-project-deleted-pid')).toBeNull();
+    // Entry surfaces in Loose instead.
+    expect(screen.getByTestId('tree-item-loose-orphan1')).toBeTruthy();
+  });
+
+  it('legacy entries linked via project.containerIds (no entry.projectId) surface in the project zone', async () => {
+    useStore.setState((s) => {
+      s.projects = {
+        pa: { id: 'pa', name: 'Legacy', containerIds: ['legacy1'] },
+      };
+    });
+    await useStore.getState().addLibraryEntry(makeContainer({
+      id: 'legacy1', name: 'pUC19',
+      // projectId left null — entry knows nothing about the project,
+      // but the project's containerIds claims it (legacy import flow).
+    }));
+    render(<LibraryTreeRoot />);
+    expect(screen.getByTestId('tree-item-project-legacy1')).toBeTruthy();
+    // Loose does NOT also show it.
+    expect(screen.queryByTestId('tree-item-loose-legacy1')).toBeNull();
   });
 
   it('displays total entries count in tree-foot', async () => {

@@ -130,9 +130,12 @@ describe('M-X.7a v2 K4 — LibraryWorkspace', () => {
   });
 
   it('selecting an active_bodge entry surfaces the active-zone action-row', async () => {
-    useStore.setState((s) => { s.currentProjectId = 'pa'; });
+    useStore.setState((s) => {
+      s.currentProjectId = 'pa';
+      s.projects = { pa: { id: 'pa', name: 'X', containerIds: [] } };
+    });
     await useStore.getState().addLibraryEntry(makeContainer({
-      id: 'a1', zone: 'active_bodge', projectId: 'pa', name: 'pET28b-Chit',
+      id: 'a1', projectId: 'pa', name: 'pET28b-Chit',
     }));
     render(<LibraryWorkspace />);
     fireEvent.click(screen.getByTestId('tree-item-project-a1'));

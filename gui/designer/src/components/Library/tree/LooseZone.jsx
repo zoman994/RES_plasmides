@@ -16,8 +16,33 @@ import LibraryZone from './LibraryZone';
 import TreeFolderRow from './TreeFolderRow';
 import TreeItemRow from './TreeItemRow';
 
-function isLooseEntry(entry) {
-  return entry && !entry._pendingDelete && (entry.projectId == null);
+function buildClaimedSet(projectsById, entriesById) {
+  // An entry is «claimed» by a project if either:
+  //   (a) entry.projectId matches an existing project id, OR
+  //   (b) the entry id appears in some project's containerIds array
+  //       (legacy import flow linked containers via project.containerIds
+  //       without setting entry.projectId).
+  // Entries NOT claimed by any project surface in the Loose zone —
+  // covers orphan-projectId rows whose project was deleted, plus
+  // legacy-import entries whose own projectId field stayed null
+  // while the project's containerIds array referenced them.
+  const claimed = new Set();
+  for (const proj of Object.values(projectsById || {})) {
+    if (!proj) continue;
+    if (Array.isArray(proj.containerIds)) {
+      for (const cid of proj.containerIds) claimed.add(cid);
+    }
+  }
+  for (const e of Object.values(entriesById || {})) {
+    if (!e || e._pendingDelete) continue;
+    if (e.projectId && projectsById?.[e.projectId]) claimed.add(e.id);
+  }
+  return claimed;
+}
+
+function isLooseEntry(entry, claimed) {
+  if (!entry || entry._pendingDelete) return false;
+  return !claimed.has(entry.id);
 }
 
 function entriesUnderPath(entries, path) {
@@ -69,11 +94,16 @@ export default function LooseZone({
 }) {
   const ws = STRINGS.libraryWorkspace || {};
   const entriesById = useStore((s) => s.libraryEntries);
+  const projectsById = useStore((s) => s.projects);
   const looseFolders = useStore((s) => s.looseFolders);
 
+  const claimed = useMemo(
+    () => buildClaimedSet(projectsById, entriesById),
+    [projectsById, entriesById],
+  );
   const looseEntries = useMemo(
-    () => Object.values(entriesById || {}).filter(isLooseEntry),
-    [entriesById],
+    () => Object.values(entriesById || {}).filter((e) => isLooseEntry(e, claimed)),
+    [entriesById, claimed],
   );
   const tree = useMemo(
     () => buildLooseTree(looseEntries, looseFolders),
