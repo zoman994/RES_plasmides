@@ -34,6 +34,29 @@ import LibrarySingleInspector from './inspector/LibrarySingleInspector';
 import LibraryActionRow from './inspector/LibraryActionRow';
 import OnboardingNudge from './onboarding/OnboardingNudge';
 import AddModal from './AddModal/AddModal';
+import SequenceSearchPopover from '../SequenceSearchPopover';
+import { parseFile, extractItemName, ACCEPT_STRING } from '../../file-import';
+import { buildLibraryEntry } from './lib/build-library-entry';
+import { buildStarterSet } from './lib/starter-set';
+import { downloadEntryAsGenbank, downloadProjectAsZip } from '../../lib/export-genbank';
+
+function openFilePicker() {
+  if (typeof document === 'undefined') return Promise.resolve([]);
+  return new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = ACCEPT_STRING;
+    input.multiple = true;
+    input.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0';
+    input.addEventListener('change', () => {
+      const files = Array.from(input.files || []);
+      try { document.body.removeChild(input); } catch { /* ignore */ }
+      resolve(files);
+    }, { once: true });
+    document.body.appendChild(input);
+    input.click();
+  });
+}
 
 function emptyEntryState() {
   return { flags: {}, edits: {}, activeTab: 'overview' };
@@ -51,27 +74,152 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
   // (passed by AppShell wrappers / future LayoutHost) gets a chance
   // to intercept first — when not provided, default to opening the
   // AddModal here.
+  const addLibraryEntry = useStore((s) => s.addLibraryEntry);
+  const addLibraryEntriesBulk = useStore((s) => s.addLibraryEntriesBulk);
+  const currentProjectId = useStore((s) => s.currentProjectId);
+
   const onAddClick = useCallback(() => {
     if (onAddClickExternal) onAddClickExternal();
     else setAddModalOpen(true);
   }, [onAddClickExternal]);
   const closeAddModal = useCallback(() => setAddModalOpen(false), []);
-  const onLaunchPreImport = useCallback((preset) => {
-    // R4 mitigation: PreImportModal handoff is a single string-message
-    // toast in K6 — full preset routing into PreImportModal lands as
-    // a follow-up patch (the modal itself ships in M-X.5 and accepts
-    // file/paste payloads through its own flow). The toast confirms
-    // the source+target choice landed so biolog sees feedback.
-    if (typeof showToast === 'function') {
-      showToast(`AddModal: source=${preset?.source} · target=${preset?.target} → PreImport handoff (K6 stub).`, {
-        kind: 'info', duration: 3000,
-      });
+
+  // Import files and add to store. `projectId` = null → LooseZone, id → project zone.
+  const importFiles = useCallback(async (files, projectId) => {
+    if (!files.length) return;
+    let added = 0;
+    const errors = [];
+    for (const file of files) {
+      try {
+        const parsed = await parseFile(file);
+        const name = extractItemName(parsed, file);
+        const entry = buildLibraryEntry(parsed, name, null);
+        entry.projectId = projectId || null;
+        if (projectId) entry.origin = { kind: 'file_import', sourceFileName: file.name, importedAt: new Date().toISOString() };
+        await addLibraryEntry(entry);
+        added++;
+      } catch (e) {
+        errors.push(`${file.name}: ${e?.message || e}`);
+      }
     }
+    if (added > 0) showToast(`Добавлено: ${added} файл(ов)`, 'success');
+    if (errors.length > 0) showToast(errors[0], 'error');
+  }, [addLibraryEntry, showToast]);
+
+  // Resolve the modal's `target` string to a projectId or null.
+  // Accepts: 'loose' → null; 'project:<id>' → that id; legacy
+  // 'active' → currentProjectId for back-compat with older UI.
+  const resolveTargetProjectId = useCallback((target) => {
+    if (typeof target !== 'string') return null;
+    if (target === 'loose') return null;
+    if (target === 'active') return currentProjectId || null;
+    if (target.startsWith('project:')) {
+      const id = target.slice('project:'.length);
+      return id || null;
+    }
+    return null;
+  }, [currentProjectId]);
+
+  const onLaunchPreImport = useCallback(async (preset) => {
+    if (preset?.source === 'file') {
+      const files = await openFilePicker();
+      const projId = resolveTargetProjectId(preset?.target);
+      await importFiles(files, projId);
+    } else if (preset?.source === 'paste') {
+      // Paste sequence flow: wrap the textarea contents in a synthetic
+      // File so the existing parseFile pipeline (GenBank / FASTA /
+      // sniffed-on-content) handles it without a separate code path.
+      const text = (preset?.text || '').trim();
+      if (!text) {
+        showToast?.('Вставьте последовательность', 'info');
+        return;
+      }
+      // Pick a likely extension so isGenBankFormat / isFasta can
+      // hint the parser; final detection still uses the content.
+      const looksLikeGenBank = /^LOCUS\s/i.test(text);
+      const filename = looksLikeGenBank ? 'pasted.gb' : 'pasted.fasta';
+      const file = new File([text], filename, { type: 'text/plain' });
+      const projId = resolveTargetProjectId(preset?.target);
+      await importFiles([file], projId);
+    } else {
+      showToast?.(`${preset?.source} — в разработке`, 'info');
+    }
+  }, [importFiles, resolveTargetProjectId, showToast]);
+
+  // Direct "add to Коллекция" — skips AddModal, opens file picker immediately.
+  const onAddToLoose = useCallback(async () => {
+    const files = await openFilePicker();
+    await importFiles(files, null);
+  }, [importFiles]);
+
+  // Starter set — adds 4 synthetic reference vectors to Коллекция.
+  const onAddStarterSet = useCallback(async () => {
+    try {
+      const entries = buildStarterSet();
+      await addLibraryEntriesBulk(entries);
+      showToast?.(`Базовый набор добавлен: ${entries.length} вектора`, 'success');
+    } catch (e) {
+      showToast?.(e?.message || 'Ошибка', 'error');
+    }
+  }, [addLibraryEntriesBulk, showToast]);
+
+  // Soft-delete pushes the entry into the Trash zone. The undo toast
+  // gives a one-click revert; the entry otherwise lives in Trash
+  // until the user explicitly purges it via the TrashZone surface
+  // (no auto-commit-on-dismiss — items must survive a tab close).
+  const markPendingDelete = useStore((s) => s.markLibraryEntryPendingDelete);
+  const unmarkPendingDelete = useStore((s) => s.unmarkLibraryEntryPendingDelete);
+  const deleteEntry = useCallback(async (entryId) => {
+    const e = useStore.getState().libraryEntries?.[entryId];
+    if (!e) return;
+    const name = e.name || entryId;
+    await markPendingDelete?.(entryId);
+    setSelectedId((prev) => (prev === entryId ? null : prev));
+    const toastFn = STRINGS.libraryWorkspace?.treeRow?.quickDeleteDoneToast;
+    const msg = typeof toastFn === 'function' ? toastFn(name) : `Удалено: ${name} (в Корзине)`;
+    showToast?.(msg, 'info', {
+      onUndo: () => unmarkPendingDelete?.(entryId),
+    });
+  }, [markPendingDelete, unmarkPendingDelete, showToast]);
+
+  // Per-entry GenBank export. Reads the live entry from the store so
+  // the action picks up the latest payload (no stale closure).
+  const exportEntry = useCallback((entryId) => {
+    const e = useStore.getState().libraryEntries?.[entryId];
+    if (!e) {
+      showToast?.('Запись не найдена', 'error');
+      return;
+    }
+    const ok = downloadEntryAsGenbank(e);
+    if (ok) showToast?.(`Экспортировано: ${e.name || e.id}.gb`, 'success');
+  }, [showToast]);
+
+  // Project-wide export: bundles every entry that belongs to the
+  // project (by entry.projectId or project.containerIds) into a
+  // single .zip of .gb files.
+  const onExportProject = useCallback((projectId) => {
+    if (!projectId) return;
+    const state = useStore.getState();
+    const project = state.projects?.[projectId];
+    if (!project) {
+      showToast?.('Проект не найден', 'error');
+      return;
+    }
+    const containerIds = new Set(project.containerIds || []);
+    const all = Object.values(state.libraryEntries || {});
+    const entries = all.filter((e) => e && !e._pendingDelete
+      && (e.projectId === projectId || containerIds.has(e.id)));
+    if (!entries.length) {
+      showToast?.('В проекте нет записей для экспорта', 'info');
+      return;
+    }
+    const written = downloadProjectAsZip(project.name || projectId, entries);
+    if (written > 0) showToast?.(`Экспортировано: ${written} файл(ов) в .zip`, 'success');
+    else showToast?.('Нет файлов с последовательностью', 'info');
   }, [showToast]);
 
   const entriesById = useStore((s) => s.libraryEntries);
   const projectsById = useStore((s) => s.projects);
-  const currentProjectId = useStore((s) => s.currentProjectId);
   const totalEntries = useMemo(
     () => Object.values(entriesById || {}).filter((e) => e && !e._pendingDelete).length,
     [entriesById],
@@ -152,8 +300,8 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
     openContainerWindow: noop,
     createManualEditBranch: noop,
     openFolderPicker: (id) => moveEntryToFolder(id, ''),
-    exportEntry: noop,
-    deleteEntry: noop,
+    exportEntry,
+    deleteEntry,
     editPrimer: noop,
     editPrimerNotes: noop,
     showInDag: () => setActiveWorkspace('flow', { projectId: currentProjectId }),
@@ -163,6 +311,7 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
   }), [
     currentProjectId, cloneEntryToActiveProject, extractEntryToLoose,
     toggleLabStock, moveEntryToFolder, setActiveWorkspace, noop,
+    exportEntry, deleteEntry,
   ]);
 
   return (
@@ -177,7 +326,22 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
         background: 'var(--surface-1)',
       }}
     >
-      <LibraryTopBar query={query} onQueryChange={setQuery} />
+      <LibraryTopBar
+        query={query}
+        onQueryChange={setQuery}
+        onPickGlobalHit={(entryId /* , hit */) => {
+          // M-X.9 K3 — global DNA hit click: select the entry +
+          // activate its project if it belongs to one. Hit `pos`
+          // navigation lives in K2 popover until SequenceView
+          // overlay rendering lands.
+          const entry = useStore.getState().libraryEntries?.[entryId];
+          if (!entry) return;
+          if (entry.projectId) {
+            useStore.getState().activateProject?.(entry.projectId);
+          }
+          setSelectedId(entryId);
+        }}
+      />
 
       <div
         data-testid="library-workspace-body"
@@ -194,6 +358,9 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
           selectedId={selectedId}
           onSelectEntry={onSelectEntry}
           onAddClick={onAddClick}
+          onAddToLoose={onAddToLoose}
+          onAddStarterSet={onAddStarterSet}
+          onExportProject={onExportProject}
         />
         <main
           data-testid="library-workspace-inspector"
@@ -224,7 +391,7 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
               <LibraryActionRow entry={item} zone={zone} ctx={actionCtx} />
             </>
           ) : (totalEntries === 0 && totalProjects === 0) ? (
-            <EmptyState onAddClick={onAddClick} />
+            <EmptyState onAddClick={onAddClick} onAddStarterSet={onAddStarterSet} />
           ) : (
             <NoSelection />
           )}
@@ -235,11 +402,31 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
         onClose={closeAddModal}
         onLaunchPreImport={onLaunchPreImport}
       />
+      {/* M-X.9 K2 — Ctrl+F sequence search popover, scoped to the
+          currently selected library entry. SequenceView overlay-rect
+          rendering is deferred to a follow-up iteration. */}
+      <SearchHost item={item} />
     </div>
   );
 }
 
-function EmptyState({ onAddClick }) {
+// Sub-component so the popover can read the modal flag without
+// re-rendering the full LibraryWorkspace on every key press.
+function SearchHost({ item }) {
+  const open = useStore((s) => s.modals?.sequenceSearch);
+  const close = useStore((s) => s.closeSequenceSearch);
+  return (
+    <SequenceSearchPopover
+      open={!!open}
+      onClose={close}
+      targetSequence={item?.sequence || ''}
+      targetName={item?.name || item?.id || null}
+      entryId={item?.id || null}
+    />
+  );
+}
+
+function EmptyState({ onAddClick, onAddStarterSet }) {
   const ws = STRINGS.libraryWorkspace || {};
   return (
     <div
@@ -270,6 +457,22 @@ function EmptyState({ onAddClick }) {
           fontWeight: 500,
         }}
       >{ws.addBtn || '+ Добавить'}</button>
+      {onAddStarterSet && (
+        <button
+          type="button"
+          data-testid="library-workspace-empty-starter"
+          onClick={onAddStarterSet}
+          style={{
+            fontSize: 13,
+            padding: '8px 18px',
+            background: 'var(--surface-2)',
+            color: 'var(--text-secondary)',
+            border: '1px solid var(--border-subtle)',
+            borderRadius: 6,
+            cursor: 'pointer',
+          }}
+        >+ Базовый набор</button>
+      )}
       <OnboardingNudge />
     </div>
   );

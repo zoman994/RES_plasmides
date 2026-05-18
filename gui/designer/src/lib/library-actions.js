@@ -21,10 +21,23 @@
  *     for the K3 acceptance pass; K6+ wires the missing pipes).
  */
 
+import { STRINGS } from './strings';
+
 const noop = () => {};
 
 const TOOLTIP_M_X_7B = 'M-X.7b: версионирование';
 const TOOLTIP_M_X_9 = 'M-X.9: импорт из чужих .bodge';
+
+// M-X.7c K6 — STRINGS lookup with safe fallbacks for the new
+// loose-container/primer button labels and the «no active project»
+// disabled tooltip.
+const A_LOOSE = STRINGS?.libraryWorkspace?.actionsLoose || {};
+const LBL = {
+  addToActiveProject: A_LOOSE.addToActiveProject || 'Добавить в активный проект',
+  addToActiveProjectDisabled: A_LOOSE.addToActiveProjectDisabled || 'Нет активного проекта',
+  createCopyForEdit: A_LOOSE.createCopyForEdit || 'Создать копию для правки',
+  moveToFolder: A_LOOSE.moveToFolder || 'Переместить в папку…',
+};
 
 function action(id, opts) {
   return {
@@ -39,27 +52,29 @@ function action(id, opts) {
 }
 
 function looseContainerActions(entry, ctx) {
+  // M-X.7c K6 — bottom-bar refactor (DEC-UIRREV-OPEN-DOUBLECLICK-ONLY-01).
+  //   • «Использовать в активном» → «Добавить в активный проект» (id renamed
+  //     to addToActiveProject).
+  //   • «Открыть» button removed; double-click on the Tree row is the
+  //     single entry point into Container Window / full-Inspector.
+  //   • «Manual-edit ветка» → «Создать копию для правки».
+  //   • «Переместить» → «Переместить в папку…».
   return [
-    action('useInActive', {
-      label: 'Использовать в активном',
+    action('addToActiveProject', {
+      label: LBL.addToActiveProject,
       icon: '📋',
       variant: 'primary',
       onClick: () => ctx.cloneEntryToActiveProject?.(entry.id),
       disabled: !ctx.hasActiveProject,
-      tooltip: !ctx.hasActiveProject ? 'Откройте активный проект' : null,
+      tooltip: !ctx.hasActiveProject ? LBL.addToActiveProjectDisabled : null,
     }),
-    action('open', {
-      label: 'Открыть',
-      icon: '↗',
-      onClick: () => ctx.openContainerWindow?.(entry.id),
-    }),
-    action('manualEditBranch', {
-      label: 'Manual-edit ветка',
+    action('createCopyForEdit', {
+      label: LBL.createCopyForEdit,
       icon: '✎',
       onClick: () => ctx.createManualEditBranch?.(entry.id),
     }),
-    action('moveFolder', {
-      label: 'Переместить',
+    action('moveToFolder', {
+      label: LBL.moveToFolder,
       icon: '📁',
       onClick: () => ctx.openFolderPicker?.(entry.id),
     }),
@@ -78,22 +93,26 @@ function looseContainerActions(entry, ctx) {
 }
 
 function loosePrimerActions(entry, ctx) {
+  // M-X.7c K6 — primer variant: «Использовать в проекте» → «Добавить
+  // в активный проект» (id addToActiveProject), «Переместить» →
+  // «Переместить в папку…». Primers don't get «Открыть» / Container
+  // Window (different workflow).
   return [
-    action('useInActive', {
-      label: 'Использовать в проекте',
+    action('addToActiveProject', {
+      label: LBL.addToActiveProject,
       icon: '🧪',
       variant: 'primary',
       onClick: () => ctx.cloneEntryToActiveProject?.(entry.id),
       disabled: !ctx.hasActiveProject,
-      tooltip: !ctx.hasActiveProject ? 'Откройте активный проект' : null,
+      tooltip: !ctx.hasActiveProject ? LBL.addToActiveProjectDisabled : null,
     }),
     action('editPrimer', {
       label: 'Редактировать',
       icon: '✎',
       onClick: () => ctx.editPrimer?.(entry.id),
     }),
-    action('moveFolder', {
-      label: 'Переместить',
+    action('moveToFolder', {
+      label: LBL.moveToFolder,
       icon: '📁',
       onClick: () => ctx.openFolderPicker?.(entry.id),
     }),

@@ -32,6 +32,7 @@ export const LibraryZone = memo(function LibraryZone({
   pill,
   expanded = true,
   onToggle,
+  headerAction,
   children,
   testId,
 }) {
@@ -63,7 +64,11 @@ export const LibraryZone = memo(function LibraryZone({
           fontSize: 11,
           fontWeight: 600,
           letterSpacing: '0.04em',
-          textTransform: 'uppercase',
+          // FAIL-fix-pass 3 — UPPERCASE only for the «section
+          // label» variants (loose / readonly / lab). Project-zone
+          // headers carry the user-typed project name and should
+          // stay in natural case.
+          textTransform: variant === 'active' ? 'none' : 'uppercase',
           color: 'var(--text-secondary)',
           borderLeft: variant === 'active'
             ? '2px solid var(--accent-500)'
@@ -101,6 +106,13 @@ export const LibraryZone = memo(function LibraryZone({
               letterSpacing: 0,
             }}
           >{count}</span>
+        )}
+        {headerAction && (
+          <span
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+            style={{ display: 'flex', alignItems: 'center' }}
+          >{headerAction}</span>
         )}
       </header>
       {expanded && children}

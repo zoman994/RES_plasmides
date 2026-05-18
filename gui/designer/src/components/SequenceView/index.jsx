@@ -65,7 +65,6 @@ import { useRowSelectionIsolation } from "./lib/row-selection-isolation.js";
 import { runPredictors } from "../../predicted-detection.js";
 import { scanAllSites } from "../../restriction-db.js";
 import { FEATURE_STROKE } from "../../feature-palette.js";
-import { generateAnnotationId } from "../../lib/annotation-edit.js";
 
 import {
   LABEL_WIDTH,
@@ -78,19 +77,33 @@ import { attachScrollHandle } from "./lib/scroll-handle.js";
 import CaretOverlay from "./overlays/CaretOverlay.jsx";
 import SelectionOverlay from "./overlays/SelectionOverlay.jsx";
 import OriginMarkerOverlay from "./overlays/OriginMarkerOverlay.jsx";
+import SearchHitsOverlay from "./overlays/SearchHitsOverlay.jsx";
+import SegmentZonesOverlay from "./overlays/SegmentZonesOverlay.jsx";
+import { flankedSpan } from "./lib/primer-flank.js";
+import PrimerFromSelectionModal from "./popups/PrimerFromSelectionModal.jsx";
+import { reverseComplement } from "../../sequence-utils.js";
 import SelectionContextMenu from "./popups/SelectionContextMenu.jsx";
+import { buildSelectionMenuItems } from "./popups/build-selection-menu-items.js";
+import SequenceFloatingTooltips from "./overlays/SequenceFloatingTooltips.jsx";
+// V76 — annealing Tm for the near-cursor selection readout. Reuses the
+// v0.5-derived SantaLucia NN model; no new formula.
+import { calcTm } from "../../tm-calculator";
 import CreateAnnotationPopup from "./popups/CreateAnnotationPopup.jsx";
 import EditAnnotationModal from "./popups/EditAnnotationModal.jsx";
 import { useSequenceKeyboard } from "./hooks/useSequenceKeyboard.js";
+import { usePieceHotkey } from "./hooks/usePieceHotkey";
+import { usePrimerHotkeys } from "./hooks/usePrimerHotkeys";
 import { useSelectionState } from "./hooks/useSelectionState.js";
 import { useSelectionEdit } from "./hooks/useSelectionEdit.js";
 import { useAnnotationDrag } from "./hooks/useAnnotationDrag.js";
 import { useAnnotationRename } from "./hooks/useAnnotationRename.js";
 import InlineRenameInput from "./popups/InlineRenameInput.jsx";
 import SequenceLine from "./SequenceLine.jsx";
-import { STRINGS } from "../../lib/strings";
 
-const ANN_EDIT_STRINGS = STRINGS.importer.annotationEdit;
+// Stable empty default for the optional `searchHits` prop — keeps
+// memo deps cheap (a fresh `[]` per render would invalidate child
+// useMemos that depend on the array reference).
+const EMPTY_SEARCH_HITS = Object.freeze([]);
 
 export { FEATURE_STROKE, LABEL_WIDTH };
 
@@ -117,11 +130,17 @@ const SequenceView = forwardRef(function SequenceView({
   onMutate,
   // eslint-disable-next-line no-unused-vars
   onAddPrimer,
-  // eslint-disable-next-line no-unused-vars
+  // 12.05.2026 — clickable RE sites (skeleton container editor).
+  // Library/Importer не передают prop → RestrictionTrack остаётся
+  // display-only.
   onRestrictionClick,
+  restrictionHighlightKey,
   caretPos = null,
   caretAnchor = null,
   selectionMode = null,
+  // V76 — opt-in near-cursor annealing-Tm readout for DNA selections
+  // (PCR viewer enables it; Library/Importer leave it off).
+  showSelectionTm = false,
   selectionStrand = 1,
   onCaretChange,
   onSelectRange,
@@ -145,6 +164,33 @@ const SequenceView = forwardRef(function SequenceView({
   // Wired by the embedded Annotator's PreviewTab to dispatch a
   // region-scoped Level-3 BLAST run.
   onBlastSelection,
+  // V74 — PCR viewer: when wired, the right-click selection menu gains
+  // «Прямой праймер» / «Обратный праймер». Called with
+  // { direction:'forward'|'reverse', start, end }. Consumer-gated, same
+  // as onBlastSelection — Library/Importer leave it undefined.
+  onWritePrimer,
+  // T5 DEC-T5-01 — consumer-gated piece authoring (same pattern as
+  // onWritePrimer). Container Editor passes it; other consumers don't.
+  onCreatePiece,
+  // M-X.9 K2 follow-up (TD-SEARCH-OVERLAY-RECTS) — Ctrl+F search
+  // hits to render as overlay rects + mismatch ticks. Each hit:
+  //   { targetStart, targetEnd, queryIdentity, mismatchPositions[], strand }
+  // Empty array = no overlays. Caller (SequenceTab) reads from
+  // `state.searchHits` and filters by entryId.
+  searchHits = EMPTY_SEARCH_HITS,
+  // A2 / G2 (DEC-CANVAS-ASM-14) — opt-in coloured segment backdrop for
+  // the assembly editor. `coloredZones: [{zoneId,start,end,color,
+  // label?,isOrphan?}]`. onZoneClick/onZoneHover delegate to the shell
+  // (open SegmentDetailPanel). Library / Importer / PCR leave undefined
+  // → SegmentZonesOverlay renders null (back-compat).
+  coloredZones,
+  // T6 K13 (DEC-T6 §5.7) — 4-tier vocabulary alias for `coloredZones`.
+  // Assembly / sequence mode passes `pieceZones`; legacy callers
+  // (Library / Importer / PCR) keep passing `coloredZones`. Resolution:
+  // `pieceZones ?? coloredZones` (R-T6-6 back-compat).
+  pieceZones,
+  onZoneClick,
+  onZoneHover,
 }, ref) {
   const containerRef = useRef(null);
   const [charPx, setCharPx] = useState(7.2);
@@ -215,6 +261,46 @@ const SequenceView = forwardRef(function SequenceView({
   // Tests bypass via __IS_TEST_ENV__ so existing assertions on
   // annotation / AA tracks find them synchronously after `render()`.
   const [tracksReady, setTracksReady] = useState(__IS_TEST_ENV__);
+  // V76 — last pointer position for the near-cursor Tm readout.
+  const [tmPt, setTmPt] = useState(null);
+  // 13.05.2026 — hover-only strand cut overlay. RestrictionTrack
+  // notifies us on enter/leave; SequenceLine.reCutLayout gates strand
+  // bars + overhang by this key.
+  const [hoveredRestrictionKey, setHoveredRestrictionKey] = useState(null);
+
+  // 18.05.2026 (Игорь) — primer redesign: primers are clickable
+  // everywhere; selecting TWO highlights the fragment they flank
+  // (reuses SegmentZonesOverlay — no new overlay). Keep at most 2
+  // (a fwd/rev pair); a 3rd click drops the oldest. Toggle to deselect.
+  const [selectedPrimers, setSelectedPrimers] = useState([]); // [{key,hit}]
+  const onPrimerClick = useCallback((key, hit) => {
+    setSelectedPrimers((prev) => {
+      if (prev.some((s) => s.key === key)) return prev.filter((s) => s.key !== key);
+      const next = [...prev, { key, hit }];
+      return next.length > 2 ? next.slice(next.length - 2) : next;
+    });
+  }, []);
+  const selectedPrimerKeys = useMemo(
+    () => selectedPrimers.map((s) => s.key),
+    [selectedPrimers],
+  );
+  const flankZone = useMemo(() => {
+    if (selectedPrimers.length !== 2) return null;
+    const span = flankedSpan(selectedPrimers[0].hit, selectedPrimers[1].hit);
+    if (!span || span.end <= span.start) return null;
+    // amber attention fill (design-system: not red/punk).
+    return {
+      zoneId: "__primer-flank__", start: span.start, end: span.end, color: "#B87A0E",
+    };
+  }, [selectedPrimers]);
+
+  // 18.05.2026 — «добавить праймер» opens a modal pre-filled from the
+  // selection (RC-oriented), editable name/seq/RC, then creates. The
+  // right-click "primer" item routes here instead of creating directly.
+  const [primerDraft, setPrimerDraft] = useState(null);
+  // requestWritePrimer is defined AFTER `fullSeq` (declared below) to
+  // avoid a TDZ — see just past the fullSeq/orfRanges memos.
+
   useEffect(() => {
     if (tracksReady) return undefined;
     if (typeof requestIdleCallback !== "undefined") {
@@ -254,6 +340,38 @@ const SequenceView = forwardRef(function SequenceView({
   );
 
   const orfRanges = useMemo(() => detectORFRanges(fullSeq, 20), [fullSeq]);
+
+  // Primer-from-selection: pre-fill the modal with the selected DNA
+  // (RC-oriented for a reverse primer). Declared here — after `fullSeq`.
+  const requestWritePrimer = useCallback(({ direction, start, end }) => {
+    const lo = Math.min(start, end);
+    const hi = Math.max(start, end);
+    const slice = String(fullSeq || "").slice(lo, hi).toUpperCase();
+    const dir = direction === "reverse" ? "reverse" : "forward";
+    setPrimerDraft({
+      direction: dir,
+      start: lo,
+      end: hi,
+      sequence: dir === "reverse" ? reverseComplement(slice) : slice,
+    });
+  }, [fullSeq]);
+
+  // 18.05.2026 (Игорь) — double-click an existing primer opens the
+  // SAME modal, seeded from THAT primer (its own ПСО + name + dir),
+  // so the biolog can review / tweak it. Submit routes through the
+  // existing onWritePrimer path (the single write channel). Gated on
+  // onWritePrimer — without it the modal can't render anyway.
+  const onPrimerDoubleClick = useCallback((hit) => {
+    if (!onWritePrimer || !hit) return;
+    const dir = hit.direction === "reverse" ? "reverse" : "forward";
+    setPrimerDraft({
+      direction: dir,
+      start: hit.start,
+      end: hit.end,
+      sequence: String(hit.sequence || hit.bindingSequence || "").toUpperCase(),
+      name: hit.name || "",
+    });
+  }, [onWritePrimer]);
 
   const framesResolution = useMemo(
     () =>
@@ -434,6 +552,27 @@ const SequenceView = forwardRef(function SequenceView({
     return ((start % 3) + 3) % 3;
   })();
 
+  // V76 — annealing Tm of the current DNA selection, shown near the
+  // cursor. Opt-in (showSelectionTm), DNA-only (Tm is meaningless for
+  // an aa selection), needs a non-empty range + a known pointer pos.
+  const selectionTm = (() => {
+    if (!showSelectionTm || !tmPt) return null;
+    if (selectionMode === 'aa') return null;
+    const a = (typeof caretAnchor === 'number' && Number.isFinite(caretAnchor)) ? caretAnchor : null;
+    const f = (typeof caretPos === 'number' && Number.isFinite(caretPos)) ? caretPos : null;
+    if (a == null || f == null || a === f) return null;
+    const lo = Math.max(0, Math.min(a, f));
+    const hi = Math.max(a, f);
+    const sub = (fullSeq || '').slice(lo, hi);
+    if (!sub.length) return null;
+    // Игорь 18.05.2026: счётчик нуклеотидов остаётся ВСЕГДА; убирается
+    // только Tm вне 1–150 п.о. — праймер длиннее физически невозможен
+    // (и считать тяжело на огромных выделениях); <2 — Tm одной базы не
+    // определён. tm=null → подсказка показывает только «N bp».
+    const tm = (sub.length >= 2 && sub.length <= 150) ? calcTm(sub) : null;
+    return { tm, len: sub.length };
+  })();
+
   // Selection state hook — owns the contextMenu state, drag refs,
   // pointer handlers, copy dispatcher, click fallback. Returns a
   // bundle of callbacks the JSX wires onto the root <div>.
@@ -479,6 +618,16 @@ const SequenceView = forwardRef(function SequenceView({
     // (caretAnchor / caretPos / selectionStrand) ends up in the
     // exact same shape as a manual select-all drag.
     onSelectRange,
+  });
+
+  // T5 K3 — «P» marks the selection as a piece (consumer-gated;
+  // no-op when onCreatePiece is absent or there is no selection).
+  usePieceHotkey({ onCreatePiece, caretAnchor, caretPos });
+  // 18.05.2026 — Ctrl+R / Ctrl+Alt+R make a fwd/rev primer from the
+  // selection in EVERY viewer (same flow as right-click «primer»),
+  // not just the assembler (Игорь). Consumer-gated on onWritePrimer.
+  usePrimerHotkeys({
+    onWritePrimer, requestWritePrimer, caretAnchor, caretPos,
   });
 
   // K3 — Del / H / E edit handlers + popup state. Mounts above the
@@ -638,6 +787,9 @@ const SequenceView = forwardRef(function SequenceView({
         fullSeq={fullSeq}
         features={features}
         primers={primers}
+        onPrimerClick={onPrimerClick}
+        onPrimerDoubleClick={onPrimerDoubleClick}
+        selectedPrimerKeys={selectedPrimerKeys}
         reSites={reSites}
         charPx={charPx}
         showBottomStrand={settings.showBottomStrand}
@@ -656,6 +808,10 @@ const SequenceView = forwardRef(function SequenceView({
         draggedCurrentCoord={draggedCurrentCoord}
         onAnnotationDoubleClick={onAnnotationDoubleClick}
         onAnnotationFeatureDoubleClick={onAnnotationFeatureDoubleClick}
+        onRestrictionClick={onRestrictionClick}
+        restrictionHighlightKey={restrictionHighlightKey}
+        hoveredRestrictionKey={hoveredRestrictionKey}
+        onRestrictionHover={setHoveredRestrictionKey}
       />
     );
     const out = [];
@@ -686,12 +842,19 @@ const SequenceView = forwardRef(function SequenceView({
     return out;
   }, [
     measured, lines, wrapTailLines, fullSeq, features, primers, reSites, charPx,
+    onPrimerClick, onPrimerDoubleClick, selectedPrimerKeys,
     settings.showBottomStrand, settings.framesMode, settings.primerStyle,
     settings.reOrientation, settings.visibleFrames,
     framesResolution, orfRanges, renderHybrid,
     onAnnotationClick, tracksReady,
     onAnnotationEdgePointerDown, draggedAnnotationId, draggedEdge, draggedCurrentCoord,
     onAnnotationDoubleClick, onAnnotationFeatureDoubleClick,
+    // 12.05.2026 — was missing: click on RE site flips
+    // restrictionHighlightKey in the editor, but the memo didn't
+    // recompute → binding-zone overlay never propagated to
+    // SequenceLine → выделение не показывалось. Add both deps.
+    onRestrictionClick, restrictionHighlightKey,
+    hoveredRestrictionKey,
   ]);
 
   if (!fullSeq) {
@@ -718,7 +881,12 @@ const SequenceView = forwardRef(function SequenceView({
       tabIndex={0}
       onKeyDown={onRootKeyDown}
       onPointerDown={onRootPointerDown}
-      onPointerMove={onRootPointerMove}
+      onPointerMove={(e) => {
+        onRootPointerMove(e);
+        // V76 — track the cursor so the Tm readout sits next to it.
+        if (showSelectionTm) setTmPt({ x: e.clientX, y: e.clientY });
+      }}
+      onPointerLeave={showSelectionTm ? () => setTmPt(null) : undefined}
       onPointerUp={onRootPointerUp}
       onPointerCancel={onRootPointerUp}
       onClick={onRootClickFallback}
@@ -765,6 +933,18 @@ const SequenceView = forwardRef(function SequenceView({
       }}
     >
       {linesJsx}
+      <SegmentZonesOverlay
+        zones={
+          flankZone
+            ? [...(Array.isArray(pieceZones ?? coloredZones) ? (pieceZones ?? coloredZones) : []), flankZone]
+            : (pieceZones ?? coloredZones)
+        }
+        charPx={charPx}
+        charsPerLine={charsPerLine}
+        containerRef={containerRef}
+        onZoneClick={onZoneClick}
+        onZoneHover={onZoneHover}
+      />
       <SelectionOverlay
         caretPos={caretPos}
         caretAnchor={caretAnchor}
@@ -776,6 +956,12 @@ const SequenceView = forwardRef(function SequenceView({
         selectionStrand={selectionStrand}
         selectionFrame={selectionAaFrame}
         seqLength={seqLength}
+      />
+      <SearchHitsOverlay
+        hits={searchHits}
+        charPx={charPx}
+        charsPerLine={charsPerLine}
+        containerRef={containerRef}
       />
       <CaretOverlay
         caretPos={caretPos}
@@ -799,101 +985,36 @@ const SequenceView = forwardRef(function SequenceView({
         selectionMode={selectionMode}
         onCopy={copySelection}
         onClose={() => setContextMenu(null)}
-        extraItems={(() => {
-          // Build extra context-menu items lazily so we don't
-          // re-allocate on every render. K3 wires «Создать
-          // аннотацию» / «Удалить аннотацию» / «Редактировать»
-          // here — biolog can right-click on a selection and reach
-          // the same edit ops as the H / Del / E hotkeys. K9 will
-          // append «Аннотировать выделение...» as a separator-
-          // delimited group.
-          if (!contextMenu) return null;
-          const a = (typeof caretAnchor === "number" && Number.isFinite(caretAnchor)) ? caretAnchor : null;
-          const f = (typeof caretPos === "number" && Number.isFinite(caretPos)) ? caretPos : null;
-          if (a == null || f == null || a === f) return null;
-          const selStart = Math.min(a, f);
-          const selEnd = Math.max(a, f);
-          const matchedRegion = annotations.find(
-            (x) => x && x.level === "region" && x.start === selStart && x.end === selEnd,
-          );
-          const items = [];
-          items.push({
-            key: "create",
-            label: ANN_EDIT_STRINGS.contextMenuCreateRegion,
-            onClick: () => {
-              const menuX = contextMenu.x;
-              const menuY = contextMenu.y;
-              setContextMenu(null);
-              // Open the create popup at the menu's last position
-              // (where the biolog right-clicked) instead of
-              // synthesizing an H-key dispatch — that route would
-              // anchor the popup near the line's right edge,
-              // which is far from where the cursor was. Direct
-              // call into useSelectionEdit's setter would be
-              // cleaner; until that surface is exposed, the H
-              // pathway falls back to the line-edge anchor which
-              // is still better than the corner.
-              onEditKeyDown({
-                key: "h",
-                preventDefault: () => {},
-                _ctxAnchor: { x: menuX, y: menuY },
-              });
-            },
-          });
-          if (matchedRegion) {
-            items.push({
-              key: "edit",
-              label: ANN_EDIT_STRINGS.contextMenuEditRegion,
-              onClick: () => {
-                setContextMenu(null);
-                onEditKeyDown({ key: "e", preventDefault: () => {} });
-              },
-            });
-            items.push({
-              key: "delete",
-              label: ANN_EDIT_STRINGS.contextMenuDeleteRegion,
-              onClick: () => {
-                setContextMenu(null);
-                // Bug-rush #6 — imported annotations may have no id;
-                // resolve to the deterministic backfill so the
-                // dispatch lands on the right entry.
-                const id = matchedRegion.id || generateAnnotationId(matchedRegion);
-                onAnnotationEdit?.({ kind: "delete", id });
-              },
-            });
-          }
-          // K9 — «Аннотировать выделение...» entry. Opens the
-          // fullscreen Annotator with a region-scoped run on the
-          // current selection. Requires onOpenAnnotator to be
-          // wired by the consumer.
-          if (typeof onOpenAnnotator === "function") {
-            items.push({
-              key: "annotate",
-              label: ANN_EDIT_STRINGS.contextMenuAnnotate,
-              onClick: () => {
-                setContextMenu(null);
-                onOpenAnnotator({ kind: "region", region: { start: selStart, end: selEnd } });
-              },
-            });
-          }
-          // Sprint M-X.3 follow-up — biolog: «выдлять последовательность
-          // - а дальше уже эту последоватность дать возможность
-          // бластить». Embedded Annotator wires this to Level-3 BLAST
-          // with a region override; SingleInspector outside the
-          // Annotator leaves it unwired.
-          if (typeof onBlastSelection === "function") {
-            items.push({
-              key: "blast",
-              label: ANN_EDIT_STRINGS.contextMenuBlast,
-              onClick: () => {
-                setContextMenu(null);
-                onBlastSelection({ start: selStart, end: selEnd });
-              },
-            });
-          }
-          return items;
-        })()}
+        extraItems={buildSelectionMenuItems({
+          contextMenu,
+          caretAnchor,
+          caretPos,
+          annotations,
+          setContextMenu,
+          onEditKeyDown,
+          onAnnotationEdit,
+          onOpenAnnotator,
+          onBlastSelection,
+          onWritePrimer: onWritePrimer ? requestWritePrimer : undefined,
+          onCreatePiece,
+        })}
       />
+      {primerDraft && onWritePrimer && (
+        <PrimerFromSelectionModal
+          draft={primerDraft}
+          onClose={() => setPrimerDraft(null)}
+          onCreate={({ name, sequence, direction }) => {
+            onWritePrimer({
+              direction,
+              start: primerDraft.start,
+              end: primerDraft.end,
+              name,
+              sequence,
+            });
+            setPrimerDraft(null);
+          }}
+        />
+      )}
       {createPopupState && (
         <CreateAnnotationPopup
           position={createPopupState.anchor}
@@ -930,26 +1051,11 @@ const SequenceView = forwardRef(function SequenceView({
           onCancel={renameApi.cancelRename}
         />
       )}
-      {dragTooltip ? (
-        <div
-          data-testid="sequence-view-drag-tooltip"
-          style={{
-            position: "fixed",
-            left: dragTooltip.x,
-            top: dragTooltip.y,
-            background: "var(--surface-1, #fff)",
-            border: "0.5px solid var(--accent-500, #f97316)",
-            borderRadius: "var(--radius-sm, 3px)",
-            padding: "2px 6px",
-            fontSize: 10,
-            fontFamily: "var(--font-mono, monospace)",
-            color: "var(--text-primary, #111)",
-            boxShadow: "0 2px 6px rgba(0,0,0,0.18)",
-            pointerEvents: "none",
-            zIndex: 50,
-          }}
-        >{dragTooltip.label}</div>
-      ) : null}
+      <SequenceFloatingTooltips
+        dragTooltip={dragTooltip}
+        selectionTm={selectionTm}
+        tmPt={tmPt}
+      />
     </div>
   );
 });

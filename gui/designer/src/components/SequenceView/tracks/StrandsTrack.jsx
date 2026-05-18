@@ -68,6 +68,19 @@ function isIntron(ann) {
  *   rows between top and bottom). Falls back to legacy showBottomStrand
  *   behaviour when omitted, preserving K2 test contracts.
  * @param {string} [props.dataTestid='sequence-view-strands'] — root testid
+ * @param {number} [props.charPx] — monospace char width (px). Required
+ *   for cut-bar + overhang overlay positioning; defaults to 8 (legacy).
+ * @param {Array<{key:string, pos:number}>} [props.cutPositions] —
+ *   ABSOLUTE positions where to draw a vertical cut bar BETWEEN chars
+ *   on THIS strand (pos = char index in fullSeq just AFTER the cut).
+ * @param {Array<{key:string, startPos:number, endPos:number}>} [props.overhangs] —
+ *   ABSOLUTE ranges to highlight (light yellow band) on this strand —
+ *   the single-strand overhang region between two sticky-end cuts.
+ * @param {Array<{key:string, startPos:number, endPos:number}>} [props.bindingHighlights] —
+ *   ABSOLUTE ranges to highlight (light orange) — the FULL recognition
+ *   site of the currently-selected restriction enzyme (binding zone).
+ *   12.05.2026 — Игорь: «при нажатии на сайт рестрикции, он должен
+ *   подсвечивать область разреза И область связывания ретсриктазы».
  */
 function StrandsTrack({
   lineStart,
@@ -77,6 +90,10 @@ function StrandsTrack({
   showBottomStrand,
   which,
   dataTestid = "sequence-view-strands",
+  charPx = 8,
+  cutPositions,
+  overhangs,
+  bindingHighlights,
 }) {
   if (!seq) return null;
   const annArr = annMap && annMap.length === seq.length ? annMap : new Array(seq.length).fill(null);
@@ -121,6 +138,23 @@ function StrandsTrack({
     const direction = isTop ? "5'→3'" : "3'→5'";
     const runs = buildRuns(chars, isTop);
 
+    // Restriction cut bars + overhang highlights for THIS strand —
+    // 12.05.2026 (Игорь): «места разреза дублировать ВНУТРИ сайта
+    // рестрикции на цепях ДНК». Absolute overlays positioned over the
+    // strand row at exact gap-between-chars x coordinates.
+    const lineEnd = lineStart + seq.length;
+    const overhangsThisLine = Array.isArray(overhangs) ? overhangs.filter(
+      (o) => o.endPos > lineStart && o.startPos < lineEnd,
+    ) : [];
+    const cutsThisLine = Array.isArray(cutPositions) ? cutPositions.filter(
+      (c) => c.pos >= lineStart && c.pos <= lineEnd,
+    ) : [];
+    // Binding-area highlights (the FULL recognition site of the clicked
+    // enzyme). Rendered FIRST so it sits behind overhang + chars.
+    const bindingsThisLine = Array.isArray(bindingHighlights) ? bindingHighlights.filter(
+      (b) => b.endPos > lineStart && b.startPos < lineEnd,
+    ) : [];
+
     return (
       <div
         data-testid={`${dataTestid}-${which}`}
@@ -139,9 +173,74 @@ function StrandsTrack({
           lineHeight: `${ROW_HEIGHT_STRAND}px`,
           whiteSpace: "pre",
           color: isTop ? "var(--text-primary, #111827)" : "var(--text-secondary, #4b5563)",
+          position: 'relative',
         }}
         title={direction}
       >
+        {/* Binding-area highlight — full recognition site (e.g., 6 bp for
+            EcoRI). Bright orange band + visible outline so the «выделение
+            рестриктазы» is unmistakable even with the popover open
+            12.05.2026 — Игорь: «выделение не показывается» (visibility
+            fix: bumped opacity 0.55 → 0.85, added 2px orange outline,
+            taller-than-row box for cross-strand framing). */}
+        {bindingsThisLine.map((b) => {
+          const lo = Math.max(b.startPos, lineStart);
+          const hi = Math.min(b.endPos, lineEnd);
+          const left = (labelChars + (lo - lineStart)) * charPx;
+          const width = (hi - lo) * charPx;
+          // 13.05.2026 — softened to «не вырвиглазное». Light cream fill
+          // + 1px subdued orange frame; top/bottom strands still join
+          // into a single visual box via shared borders.
+          return (
+            <div
+              key={`re-bind-${b.key}`}
+              data-testid="sequence-view-strand-binding"
+              data-strand={which}
+              aria-hidden
+              style={{
+                position: 'absolute',
+                left,
+                top: isTop ? -1 : 0,
+                width,
+                height: ROW_HEIGHT_STRAND + 1,
+                background: '#fff7ed',
+                opacity: 0.55,
+                border: '1px solid #fb923c',
+                borderTop: isTop ? '1px solid #fb923c' : 'none',
+                borderBottom: isTop ? 'none' : '1px solid #fb923c',
+                boxSizing: 'border-box',
+                pointerEvents: 'none',
+                zIndex: 0,
+              }}
+            />
+          );
+        })}
+        {/* Overhang highlight band — yellow region of single-strand DNA. */}
+        {overhangsThisLine.map((o) => {
+          const lo = Math.max(o.startPos, lineStart);
+          const hi = Math.min(o.endPos, lineEnd);
+          const left = (labelChars + (lo - lineStart)) * charPx;
+          const width = (hi - lo) * charPx;
+          return (
+            <div
+              key={`re-oh-${o.key}`}
+              data-testid="sequence-view-strand-overhang"
+              data-strand={which}
+              aria-hidden
+              style={{
+                position: 'absolute',
+                left,
+                top: 0,
+                width,
+                height: ROW_HEIGHT_STRAND,
+                background: '#fef3c7',
+                opacity: 0.7,
+                pointerEvents: 'none',
+                zIndex: 1,
+              }}
+            />
+          );
+        })}
         {/*
           * No literal space between the gutter span and the nt spans —
           * a `{" "}` here would consume 1 char of horizontal space and
@@ -189,6 +288,30 @@ function StrandsTrack({
             >
               {run.text}
             </span>
+          );
+        })}
+        {/* Cut bars — drawn LAST so they sit on top of chars. */}
+        {cutsThisLine.map((c) => {
+          const left = (labelChars + (c.pos - lineStart)) * charPx - 1;
+          return (
+            <div
+              key={`re-cut-${c.key}`}
+              data-testid="sequence-view-strand-cut"
+              data-strand={which}
+              data-cut-pos={c.pos}
+              aria-hidden
+              style={{
+                position: 'absolute',
+                left,
+                top: 0,
+                width: 2,
+                height: ROW_HEIGHT_STRAND,
+                background: '#dc2626',
+                pointerEvents: 'none',
+                zIndex: 2,
+                borderRadius: 1,
+              }}
+            />
           );
         })}
       </div>

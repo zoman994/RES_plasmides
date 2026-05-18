@@ -35,6 +35,7 @@ import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { featureColor, featureColorShaded, FEATURE_STROKE, FEATURE_COLORS_V2 } from '../feature-palette';
 import { getRegions } from '../annotation-model';
+import { pickRegionsForLabels, truncateLabel } from '../lib/plasmid-label-utils';
 
 const LEADER_LEN = 10;                    // px the leader sticks out past outer radius / above bar
 const LABEL_RING = 32;                    // px radial ring reserved for labels (circular ≥180 px)
@@ -46,20 +47,10 @@ const HOVER_BRIDGE_MS = 80;               // K5.1 hover-bridge debounce (mousele
                                           // the small gap between source tile and overlay portal.
 const GROW_DURATION_MS = 140;             // F4 transform/opacity transition for the grow-overlay
                                           // — also tightened (was 200) so dismiss feels snappy.
-const LABEL_LENGTH_THRESHOLD_BP = 300;    // K6 (V46): every region ≥300 bp gets a label
-const LABEL_MAX_CHARS = 14;               // truncate noun-phrase labels so post-getBBox SVG stays
-                                          // close to `size`. SnapGene names like "trpC terminator
-                                          // sequence from A. nidulans" otherwise blow vbox.drawW
-                                          // past 400 px and overflow the 240 px OverviewTab cell.
-const LABEL_TYPE_BLACKLIST = new Set([    // GenBank metadata that always covers full plasmid
-  'source',
-]);
-
-function truncateLabel(s) {
-  if (!s) return '';
-  if (s.length <= LABEL_MAX_CHARS) return s;
-  return s.slice(0, Math.max(1, LABEL_MAX_CHARS - 1)) + '…';
-}
+// V66: label-selection constants + truncateLabel + pickRegionsForLabels
+// extracted to `lib/plasmid-label-utils.js` and shared with the canvas
+// MiniPlasmidMap. Geometry builders below stay here (component-specific
+// polar convention).
 
 // Theme-aware label rendering: halo matches surface so it «punches» the
 // background cleanly on both light (white halo on white card) and dark
@@ -72,20 +63,8 @@ const OVERLAY_TEXT_STYLE = {
   fill: 'var(--text-primary, #1c1917)',
 };
 
-function pickRegionsForLabels(regions) {
-  return regions
-    .filter((r) => {
-      const len = (r.end || 0) - (r.start || 0);
-      if (len < LABEL_LENGTH_THRESHOLD_BP) return false;
-      if (LABEL_TYPE_BLACKLIST.has(r.type)) return false;
-      return true;
-    })
-    .slice()
-    .sort((a, b) => (b.end - b.start) - (a.end - a.start));
-}
-
 function buildCircularLabels(regions, totalLen, cx, cy, r) {
-  const picked = pickRegionsForLabels(regions);
+  const picked = pickRegionsForLabels(regions, totalLen);
   if (!picked.length) return [];
 
   const items = picked.map((region) => {
@@ -122,7 +101,7 @@ function buildCircularLabels(regions, totalLen, cx, cy, r) {
 }
 
 function buildLinearLabels(regions, totalLen, size, cy, strokeWidth) {
-  const picked = pickRegionsForLabels(regions);
+  const picked = pickRegionsForLabels(regions, totalLen);
   if (!picked.length) return [];
 
   const items = picked.map((region) => {

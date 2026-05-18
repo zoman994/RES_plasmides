@@ -15,7 +15,7 @@ export function buildManifest(project) {
   };
 }
 
-export function writeBodge(project) {
+export function writeBodge(project, opts = {}) {
   if (!project || typeof project !== 'object') {
     throw new Error('writeBodge: project is required');
   }
@@ -24,6 +24,14 @@ export function writeBodge(project) {
     'manifest.json': strToU8(JSON.stringify(manifest, null, 2)),
     'project.json': strToU8(JSON.stringify(project, null, 2)),
   };
+  // 09.05.2026 — `library/entries.json` для self-contained .bodge с
+  // плазмидами (Sidebar «Открыть .bodge…» seed'ит библиотеку). Пишется
+  // только если переданы entries; иначе формат остаётся как был
+  // (back-compat со старыми .bodge файлами).
+  const libraryEntries = Array.isArray(opts.libraryEntries) ? opts.libraryEntries : [];
+  if (libraryEntries.length > 0) {
+    files['library/entries.json'] = strToU8(JSON.stringify(libraryEntries, null, 2));
+  }
   const zipped = zipSync(files);
   return new Blob([zipped], { type: 'application/zip' });
 }
@@ -56,8 +64,26 @@ export async function readBodge(blob) {
     throw new Error(`project.json не парсится как JSON: ${e.message}`);
   }
   const warnings = [];
+  let libraryEntries = [];
+  // `library/entries.json` стал first-class разделом (09.05.2026) —
+  // парсится здесь, не уходит в warning. Битый JSON — мягкий fallback
+  // на пустой массив + warning, чтобы биолог не терял весь проект из-за
+  // одной плохой строки в библиотечной секции.
+  if (entries['library/entries.json']) {
+    try {
+      const parsed = JSON.parse(strFromU8(entries['library/entries.json']));
+      if (Array.isArray(parsed)) {
+        libraryEntries = parsed;
+      } else {
+        warnings.push('library/entries.json: ожидался массив, получено не-массив — раздел проигнорирован.');
+      }
+    } catch (e) {
+      warnings.push(`library/entries.json не парсится как JSON: ${e.message}`);
+    }
+  }
   for (const path of Object.keys(entries)) {
     if (path === 'manifest.json' || path === 'project.json') continue;
+    if (path === 'library/entries.json') continue;
     if (path.startsWith('containers/') || path.startsWith('containerCommits/')
         || path.startsWith('projectCommits/') || path.startsWith('primers/')
         || path.startsWith('library/') || path.startsWith('refs/')
@@ -68,5 +94,5 @@ export async function readBodge(blob) {
   if (manifest.fileFormatVersion && manifest.fileFormatVersion > FILE_FORMAT_VERSION) {
     warnings.push(`Файл создан в более новой версии формата (${manifest.fileFormatVersion}) — некоторые поля могут быть пропущены.`);
   }
-  return { manifest, project, warnings };
+  return { manifest, project, libraryEntries, warnings };
 }

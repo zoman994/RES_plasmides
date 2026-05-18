@@ -1,12 +1,18 @@
 /**
- * LooseZone — Library workspace tree zone «⚐ БЕЗ ПРОЕКТА»
+ * LooseZone — Library workspace tree zone «⚐ Коллекция»
  * (the biolog's free workspace).
  *
  * Driven by `entry.projectId === null` per the 09.05.2026
- * minimum-pass refresh: zone derivation moved off the `entry.zone`
- * field (which stays in the data shape but is ignored at the
- * visual layer per CURRENT_TASK.md). Folder forest still derives
- * from slash-path tags + the explicit `looseFolders` list.
+ * minimum-pass refresh. Two structural sub-folders (Контейнеры,
+ * Праймеры) are always visible. User-created folders sit inside
+ * Контейнеры — created via the «📁+» header button, persisted in
+ * `state.looseFolders`, recursive via slash-paths.
+ *
+ * Folder membership = `entry.folderPath` (canonical, single-value).
+ * `entry.tags` is intentionally NOT used for folder placement —
+ * tags are free-form descriptive labels (bacterial, AmpR, …) and
+ * earlier auto-derivation from tags spawned phantom folders for
+ * every starter-set tag.
  */
 import { useMemo, useState, useCallback } from 'react';
 import { STRINGS } from '../../../lib/strings';
@@ -17,15 +23,6 @@ import TreeFolderRow from './TreeFolderRow';
 import TreeItemRow from './TreeItemRow';
 
 function buildClaimedSet(projectsById, entriesById) {
-  // An entry is «claimed» by a project if either:
-  //   (a) entry.projectId matches an existing project id, OR
-  //   (b) the entry id appears in some project's containerIds array
-  //       (legacy import flow linked containers via project.containerIds
-  //       without setting entry.projectId).
-  // Entries NOT claimed by any project surface in the Loose zone —
-  // covers orphan-projectId rows whose project was deleted, plus
-  // legacy-import entries whose own projectId field stayed null
-  // while the project's containerIds array referenced them.
   const claimed = new Set();
   for (const proj of Object.values(projectsById || {})) {
     if (!proj) continue;
@@ -45,45 +42,32 @@ function isLooseEntry(entry, claimed) {
   return !claimed.has(entry.id);
 }
 
-function entriesUnderPath(entries, path) {
-  return entries.filter((e) => Array.isArray(e.tags) && e.tags.includes(path));
-}
-
-function rootEntries(entries) {
-  return entries.filter((e) => {
-    if (!Array.isArray(e.tags)) return true;
-    return !e.tags.some((t) => typeof t === 'string' && !t.includes(':'));
-  });
-}
-
 function matchesQuery(entry, q) {
   if (!q) return true;
-  const name = (entry?.name || '').toLowerCase();
-  return name.includes(q.toLowerCase());
+  return (entry?.name || '').toLowerCase().includes(q.toLowerCase());
 }
 
-function buildLooseTree(entries, looseFolders) {
-  // Union of folder paths derived from loose tags + explicit
-  // looseFolders, with all parent prefixes pre-emitted so
-  // `Backbones/CRISPR` implicitly creates the `Backbones` parent
-  // node even when no entry sits directly on it.
-  const fromTags = new Set();
-  for (const e of entries) {
-    if (!Array.isArray(e.tags)) continue;
-    for (const t of e.tags) {
-      if (typeof t === 'string' && !t.includes(':')) fromTags.add(t);
-    }
-  }
-  for (const p of (looseFolders || [])) fromTags.add(p);
-  const withParents = new Set();
-  for (const p of fromTags) {
-    const parts = p.split('/').filter(Boolean);
-    for (let i = 1; i <= parts.length; i++) {
-      withParents.add(parts.slice(0, i).join('/'));
-    }
-  }
-  return buildFolderTree(Array.from(withParents));
+function normalizeFolderPath(raw) {
+  if (typeof raw !== 'string' || raw.length === 0) return '';
+  // Trim each segment so `'Demo / Bacterial'` collapses to `'Demo/Bacterial'`
+  // — librarySlice writes the human-spaced form for SnapGene `Demo / X`
+  // imports, but the tree keys on the canonical no-space slash form so
+  // sibling lookups and parent-prefix expansion line up.
+  return raw.split('/').map((s) => s.trim()).filter(Boolean).join('/');
 }
+
+function entryFolderPath(entry) {
+  return normalizeFolderPath(entry?.folderPath);
+}
+
+const BTN_STYLE = {
+  fontSize: 11, padding: '1px 5px',
+  background: 'transparent',
+  border: '1px solid var(--border-subtle)',
+  borderRadius: 3, cursor: 'pointer',
+  color: 'var(--text-secondary)',
+  lineHeight: 1.3,
+};
 
 export default function LooseZone({
   query = '',
@@ -91,11 +75,14 @@ export default function LooseZone({
   onSelectEntry,
   expanded = true,
   onToggle,
+  onAddToLoose,
+  onAddStarterSet,
 }) {
   const ws = STRINGS.libraryWorkspace || {};
   const entriesById = useStore((s) => s.libraryEntries);
   const projectsById = useStore((s) => s.projects);
   const looseFolders = useStore((s) => s.looseFolders);
+  const createLooseFolder = useStore((s) => s.createLooseFolder);
 
   const claimed = useMemo(
     () => buildClaimedSet(projectsById, entriesById),
@@ -105,44 +92,129 @@ export default function LooseZone({
     () => Object.values(entriesById || {}).filter((e) => isLooseEntry(e, claimed)),
     [entriesById, claimed],
   );
-  const tree = useMemo(
-    () => buildLooseTree(looseEntries, looseFolders),
-    [looseEntries, looseFolders],
-  );
   const filtered = useMemo(
     () => looseEntries.filter((e) => matchesQuery(e, query)),
     [looseEntries, query],
   );
 
-  const [openFolders, setOpenFolders] = useState(() => new Set());
-  const toggleFolder = useCallback((path) => {
+  const containerEntries = useMemo(
+    () => filtered.filter((e) => e.kind === 'container' || !e.kind),
+    [filtered],
+  );
+  const primerEntries = useMemo(
+    () => filtered.filter((e) => e.kind === 'primer'),
+    [filtered],
+  );
+
+  // Folders come from two sources:
+  //   1. `state.looseFolders` — explicit user creations (📁+ button)
+  //   2. live `entry.folderPath` values — auto-materialised so entries
+  //      imported with a folder hint (SnapGene catalog `Demo / X`,
+  //      .bodge restore, etc.) actually surface in the tree instead
+  //      of vanishing because no matching folder exists. Tags are
+  //      NOT used here (they're descriptive labels — see header doc).
+  // Parent prefixes pre-emitted so `A/B` implicitly materialises `A`.
+  const folderPaths = useMemo(() => {
+    const set = new Set();
+    const addPath = (p) => {
+      const norm = normalizeFolderPath(p);
+      if (!norm) return;
+      const parts = norm.split('/');
+      for (let i = 1; i <= parts.length; i++) {
+        set.add(parts.slice(0, i).join('/'));
+      }
+    };
+    for (const p of (looseFolders || [])) addPath(p);
+    for (const e of containerEntries) addPath(entryFolderPath(e));
+    return Array.from(set);
+  }, [looseFolders, containerEntries]);
+  const folderForest = useMemo(() => buildFolderTree(folderPaths), [folderPaths]);
+
+  // Entry → folder mapping is the canonical `entry.folderPath`.
+  const entriesByPath = useMemo(() => {
+    const map = new Map();
+    for (const e of containerEntries) {
+      const path = entryFolderPath(e);
+      if (!path) continue;
+      if (!map.has(path)) map.set(path, []);
+      map.get(path).push(e);
+    }
+    return map;
+  }, [containerEntries]);
+
+  const rootlessContainers = useMemo(
+    () => containerEntries.filter((e) => !entryFolderPath(e)),
+    [containerEntries],
+  );
+
+  const [openFolders, setOpenFolders] = useState(() => new Set(['containers']));
+  const toggleFolder = useCallback((key) => {
     setOpenFolders((prev) => {
       const next = new Set(prev);
-      if (next.has(path)) next.delete(path); else next.add(path);
+      if (next.has(key)) next.delete(key); else next.add(key);
       return next;
     });
   }, []);
 
+  const handleCreateFolder = useCallback(() => {
+    if (typeof window === 'undefined' || !createLooseFolder) return;
+    const raw = window.prompt('Имя новой папки:');
+    if (!raw) return;
+    const safe = raw.trim().replace(/\//g, '-').replace(/:/g, '-');
+    if (!safe) return;
+    createLooseFolder(safe);
+    setOpenFolders((prev) => {
+      const next = new Set(prev);
+      next.add('containers');
+      next.add(`folder:${safe}`);
+      return next;
+    });
+  }, [createLooseFolder]);
+
+  const headerAction = (onAddToLoose || createLooseFolder) ? (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+      {createLooseFolder && (
+        <button
+          type="button"
+          data-testid="loose-zone-add-folder-btn"
+          title="Создать папку"
+          onClick={handleCreateFolder}
+          style={BTN_STYLE}
+        >📁+</button>
+      )}
+      {onAddToLoose && (
+        <button
+          type="button"
+          data-testid="loose-zone-add-btn"
+          title="Добавить в коллекцию"
+          onClick={onAddToLoose}
+          style={BTN_STYLE}
+        >+</button>
+      )}
+    </span>
+  ) : null;
+
   const renderFolderNode = (node, depth) => {
-    const folderItems = entriesUnderPath(filtered, node.path);
-    const isOpen = openFolders.has(node.path);
-    const folderCount = folderItems.length
-      + (Array.isArray(node.children) ? node.children.length : 0);
+    const items = entriesByPath.get(node.path) || [];
+    const folderKey = `folder:${node.path}`;
+    const isOpen = openFolders.has(folderKey);
+    const childCount = node.children?.length || 0;
+    const totalCount = items.length + childCount;
     return (
       <div key={node.path}>
         <TreeFolderRow
           name={node.name}
           icon="📁"
-          count={folderCount}
+          count={totalCount}
           expanded={isOpen}
           indent={depth}
-          onToggle={() => toggleFolder(node.path)}
-          testId={`tree-folder-loose-${node.path}`}
+          onToggle={() => toggleFolder(folderKey)}
+          testId={`tree-folder-loose-user-${node.path}`}
         />
         {isOpen && (
           <>
             {(node.children || []).map((child) => renderFolderNode(child, depth + 1))}
-            {folderItems.map((entry) => (
+            {items.map((entry) => (
               <TreeItemRow
                 key={entry.id}
                 entry={entry}
@@ -162,22 +234,73 @@ export default function LooseZone({
   return (
     <LibraryZone
       variant="loose"
-      icon="⚐"
-      title={ws.zoneLooseTitle || 'Без проекта'}
-      sub={ws.zoneLooseSub || 'свободная зона'}
+      icon="⎀"
+      title={ws.zoneLooseTitleNoProject || 'БЕЗ ПРОЕКТА'}
+      sub={ws.zoneLooseSubFreeDesk || 'свободный стол биолога'}
       count={filtered.length}
       expanded={expanded}
       onToggle={onToggle}
+      headerAction={headerAction}
       testId="library-zone-loose"
     >
-      {tree.map((node) => renderFolderNode(node, 1))}
-      {rootEntries(filtered).map((entry) => (
+      <TreeFolderRow
+        name="Контейнеры"
+        icon="📋"
+        count={containerEntries.length}
+        expanded={openFolders.has('containers')}
+        indent={1}
+        onToggle={() => toggleFolder('containers')}
+        testId="tree-folder-loose-containers"
+      />
+      {openFolders.has('containers') && (
+        <>
+          {folderForest.map((node) => renderFolderNode(node, 2))}
+          {rootlessContainers.map((entry) => (
+            <TreeItemRow
+              key={entry.id}
+              entry={entry}
+              isSelected={entry.id === selectedId}
+              onSelect={onSelectEntry}
+              indent={2}
+              testId={`tree-item-loose-${entry.id}`}
+              draggable
+            />
+          ))}
+          {containerEntries.length === 0 && folderForest.length === 0 && onAddStarterSet && (
+            <div style={{ padding: '6px 12px 6px 38px' }}>
+              <button
+                type="button"
+                data-testid="loose-zone-starter-btn"
+                onClick={onAddStarterSet}
+                style={{
+                  fontSize: 11, padding: '4px 8px',
+                  background: 'var(--surface-2)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: 3, cursor: 'pointer',
+                  color: 'var(--text-secondary)',
+                }}
+              >+ Базовый набор</button>
+            </div>
+          )}
+        </>
+      )}
+
+      <TreeFolderRow
+        name="Праймеры"
+        icon="🧬"
+        count={primerEntries.length}
+        expanded={openFolders.has('primers')}
+        indent={1}
+        onToggle={() => toggleFolder('primers')}
+        testId="tree-folder-loose-primers"
+      />
+      {openFolders.has('primers') && primerEntries.map((entry) => (
         <TreeItemRow
           key={entry.id}
           entry={entry}
           isSelected={entry.id === selectedId}
           onSelect={onSelectEntry}
-          indent={1}
+          indent={2}
           testId={`tree-item-loose-${entry.id}`}
           draggable
         />

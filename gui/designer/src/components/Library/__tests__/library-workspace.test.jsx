@@ -119,13 +119,14 @@ describe('M-X.7a v2 K4 — LibraryWorkspace', () => {
     expect(screen.getByTestId('library-topbar-no-project')).toBeTruthy();
   });
 
-  it('breadcrumb shows active project name + saved pill when currentProjectId set', () => {
+  it('breadcrumb shows active project name; saved pill rendered separately in the right tray (M-X.8 K5)', () => {
     useStore.setState((s) => {
       s.currentProjectId = 'p1';
       s.projects = { ...(s.projects || {}), p1: { id: 'p1', name: 'ChitinaseExpr' } };
     });
     render(<LibraryWorkspace />);
-    expect(screen.getByTestId('library-topbar-project-name').textContent).toBe('ChitinaseExpr');
+    expect(screen.getByTestId('library-topbar-project-name').textContent).toMatch(/ChitinaseExpr/);
+    // Pill no longer inside the breadcrumb; still rendered as a sibling node.
     expect(screen.getByTestId('library-topbar-saved-pill')).toBeTruthy();
   });
 

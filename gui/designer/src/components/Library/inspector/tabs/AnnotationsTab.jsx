@@ -45,6 +45,11 @@ export default function AnnotationsTab({
   // For other zones, annotation editing surface stays untouched —
   // Annotator embedded continues to behave per M-X.5 baseline.
   isReadOnlyZone = false,
+  // 18.05.2026 — primers are base functionality on every sequence
+  // viewer incl. this embedded Annotator preview (Игорь). Host
+  // (Library/Container) forwards its useEntryPrimers pair; optional.
+  primers,
+  onWritePrimer,
 }) {
   return (
     <div
@@ -81,6 +86,8 @@ export default function AnnotationsTab({
         onOpenFeatureEditor={onOpenFeatureEditor}
         pendingScroll={pendingScroll}
         onPendingScrollHandled={onPendingScrollHandled}
+        primers={primers}
+        onWritePrimer={onWritePrimer}
       />
     </div>
   );

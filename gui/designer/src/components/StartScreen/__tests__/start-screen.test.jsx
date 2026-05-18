@@ -7,7 +7,7 @@
  *   3. Tooltip in collapsed state (data-tip)
  *   4. Active item visual (Главная active by default per
  *      workspace.active='startup')
- *   5. Disabled items (Конструкции / Реакции / Праймеры)
+ *   5. Disabled items (Праймеры — заглушка до M-E)
  *   6. Topbar (Главная h2 + search + ?)
  *   7. Recent header counter + 4 hardcoded rows
  *   8. Empty card with CTA
@@ -19,7 +19,7 @@
 import 'fake-indexeddb/auto';
 import React, { useState } from 'react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, act, waitFor } from '@testing-library/react';
 import { useStore } from '../../../store';
 import { resetDBForTests } from '../../../db/dexie-schema';
 import StartScreen from '../StartScreen';
@@ -27,6 +27,7 @@ import Sidebar from '../Sidebar';
 import HotkeyCheatsheet from '../../HotkeyCheatsheet';
 import { useSidebarCollapsed } from '../hooks/useSidebarCollapsed';
 import { APP_VERSION } from '../../../lib/version';
+import { writeBodge } from '../../../lib/bodge-zip';
 
 // Sprint Single-Sidebar (09.05.2026): Sidebar moved out of
 // StartScreen into App.jsx so it can stay mounted across all
@@ -82,17 +83,18 @@ describe('StartScreen-Pixel — Sidebar shell', () => {
     expect(sidebar.classList.contains('expanded')).toBe(true);
   });
 
-  it('renders all 3 actions, 5 workspace items, 2 help items, 3 footer items', () => {
+  it('renders all 3 actions, 3 workspace items, 2 help items, 3 footer items', () => {
     render(<StartScreenIntegration />);
     // Actions
     expect(screen.getByTestId('ss-action-create-project')).toBeTruthy();
     expect(screen.getByTestId('ss-action-open-bodge')).toBeTruthy();
     expect(screen.getByTestId('ss-action-import-file')).toBeTruthy();
-    // Workspace
+    // Workspace (M-X.7c K2: Конструкции / Реакции удалены, остаётся
+    // только Праймеры заглушка до M-E)
     expect(screen.getByTestId('ss-nav-home')).toBeTruthy();
     expect(screen.getByTestId('ss-nav-library')).toBeTruthy();
-    expect(screen.getByTestId('ss-nav-constructs')).toBeTruthy();
-    expect(screen.getByTestId('ss-nav-reactions')).toBeTruthy();
+    expect(screen.queryByTestId('ss-nav-constructs')).toBeNull();
+    expect(screen.queryByTestId('ss-nav-reactions')).toBeNull();
     expect(screen.getByTestId('ss-nav-primers')).toBeTruthy();
     // Help
     expect(screen.getByTestId('ss-help-guide')).toBeTruthy();
@@ -110,13 +112,94 @@ describe('StartScreen-Pixel — Sidebar shell', () => {
     expect(screen.getByTestId('ss-nav-library').getAttribute('data-active')).toBe('false');
   });
 
-  it('disabled items (Конструкции / Реакции / Праймеры) are not clickable', () => {
+  it('disabled items (Праймеры) are not clickable', () => {
     render(<StartScreenIntegration />);
-    const constructs = screen.getByTestId('ss-nav-constructs');
-    expect(constructs.disabled).toBe(true);
-    expect(constructs.textContent).toMatch(/soon/);
-    expect(screen.getByTestId('ss-nav-reactions').disabled).toBe(true);
-    expect(screen.getByTestId('ss-nav-primers').disabled).toBe(true);
+    const primers = screen.getByTestId('ss-nav-primers');
+    expect(primers.disabled).toBe(true);
+    expect(primers.textContent).toMatch(/soon/);
+  });
+
+  // M-X.8 K3 — PINNED section + open-palette button.
+  it('M-X.8 K3 — sidebar PINNED section renders header, counter, and the «Все проекты…» button', () => {
+    useStore.setState((s) => {
+      s.projects = {
+        ...s.projects,
+        'pin-A': { id: 'pin-A', name: 'PinA', containerIds: [] },
+        'pin-B': { id: 'pin-B', name: 'PinB', containerIds: [] },
+      };
+      s.pinnedProjectIds = ['pin-A', 'pin-B'];
+      s.currentProjectId = 'pin-A';
+    });
+    render(<StartScreenIntegration />);
+    expect(screen.getByTestId('sb-pinned-header').textContent).toMatch(/В работе/);
+    expect(screen.getByTestId('sb-pinned-counter').textContent).toMatch(/2\/15/);
+    expect(screen.getByTestId('sb-pinned-pin-A')).toBeTruthy();
+    expect(screen.getByTestId('sb-pinned-pin-B')).toBeTruthy();
+    // Current pinned project gets the active marker.
+    expect(screen.getByTestId('sb-pinned-pin-A').getAttribute('data-active')).toBe('true');
+    // «Все проекты…» button opens the command palette.
+    fireEvent.click(screen.getByTestId('sb-open-command-palette'));
+    expect(useStore.getState().modals.commandPalette).toBe(true);
+  });
+
+  it('M-X.8 K3 — sidebar pinned row click activates project + jumps to library', () => {
+    useStore.setState((s) => {
+      s.projects = { ...s.projects, 'pin-X': { id: 'pin-X', name: 'X', containerIds: [] } };
+      s.pinnedProjectIds = ['pin-X'];
+      s.currentProjectId = null;
+    });
+    render(<StartScreenIntegration />);
+    fireEvent.click(screen.getByTestId('sb-pinned-pin-X'));
+    expect(useStore.getState().currentProjectId).toBe('pin-X');
+  });
+
+  it('Sidebar «Установить» button calls promptInstall when canInstallPwa=true', async () => {
+    // Arm the deferred prompt via the real browser event.
+    useStore.setState((s) => { s.canInstallPwa = true; });
+    const evt = new Event('beforeinstallprompt');
+    const promptSpy = vi.fn().mockResolvedValue();
+    evt.prompt = promptSpy;
+    evt.userChoice = Promise.resolve({ outcome: 'accepted' });
+    // The App-level setup listener registers a window handler. In
+    // this test wrapper App.jsx isn't mounted, so call the lib
+    // setup directly to capture the event.
+    const { setupBeforeInstallPromptListener } = await import('../../../lib/pwa-install');
+    const detach = setupBeforeInstallPromptListener(() => {});
+    window.dispatchEvent(evt);
+    render(<StartScreenIntegration />);
+    fireEvent.click(screen.getByTestId('ss-foot-install'));
+    // Wait a tick for the promise chain.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(promptSpy).toHaveBeenCalled();
+    detach();
+  });
+
+  it('Sidebar «Установить» button shows manual hint toast when canInstallPwa=false (no API)', () => {
+    useStore.setState((s) => { s.canInstallPwa = false; s.toasts = []; });
+    render(<StartScreenIntegration />);
+    fireEvent.click(screen.getByTestId('ss-foot-install'));
+    const toasts = useStore.getState().toasts || [];
+    expect(toasts.some((t) => /Install via the browser menu|меню браузера/i.test(t.msg))).toBe(true);
+  });
+
+  it('M-X.8 K7 — MainPanel RecentRow pin star toggles pinnedProjectIds without activating', async () => {
+    useStore.setState((s) => {
+      s.projects = { 'pX': {
+        id: 'pX', name: 'Dashboard', containerIds: [],
+        updatedAt: new Date().toISOString(), createdAt: new Date().toISOString(),
+      } };
+      s.pinnedProjectIds = [];
+      s.currentProjectId = null;
+    });
+    render(<StartScreenIntegration />);
+    const star = await screen.findByTestId('ss-recent-pX-pin');
+    expect(star.getAttribute('data-pinned')).toBe('false');
+    fireEvent.click(star);
+    expect(useStore.getState().pinnedProjectIds).toContain('pX');
+    expect(useStore.getState().currentProjectId).toBeNull(); // not activated
+    // Re-click → unpin.
+    fireEvent.click(screen.getByTestId('ss-recent-pX-pin'));
+    expect(useStore.getState().pinnedProjectIds).not.toContain('pX');
   });
 
   it('items carry data-tip for collapsed-state tooltip', () => {
@@ -221,28 +304,58 @@ describe('StartScreen-Pixel — MainPanel', () => {
     expect(screen.getByTestId('ss-topbar-help')).toBeTruthy();
   });
 
-  it('recent header shows hardcoded counter «· 7»', () => {
+  it('shows «нет проектов» empty state when store has no projects', () => {
+    useStore.setState((s) => { s.projects = {}; s.currentProjectId = null; });
     render(<StartScreenIntegration />);
-    expect(screen.getByTestId('ss-recent-header').textContent).toMatch(/Недавние проекты · 7/);
+    expect(screen.getByTestId('ss-no-projects')).toBeTruthy();
+    expect(screen.queryByTestId('ss-recent-header')).toBeNull();
   });
 
-  it('renders 4 hardcoded recent project rows in the right order', () => {
+  it('recent header shows real project count from store', () => {
+    useStore.setState((s) => {
+      s.projects = {
+        'p1': { id: 'p1', name: 'Alpha', tags: [], containerIds: [], updatedAt: '2026-05-09T10:00:00Z' },
+        'p2': { id: 'p2', name: 'Beta',  tags: [], containerIds: [], updatedAt: '2026-05-09T09:00:00Z' },
+      };
+      s.currentProjectId = null;
+    });
     render(<StartScreenIntegration />);
-    expect(screen.getByTestId('ss-recent-P43_Cas_Uni_Tr')).toBeTruthy();
-    expect(screen.getByTestId('ss-recent-pEXP-glaA-XynTL')).toBeTruthy();
-    expect(screen.getByTestId('ss-recent-pHDR-pepA')).toBeTruthy();
-    expect(screen.getByTestId('ss-recent-pET-28b_T5exo')).toBeTruthy();
+    expect(screen.getByTestId('ss-recent-header').textContent).toMatch(/Недавние проекты · 2/);
+    expect(screen.getByTestId('ss-recent-p1')).toBeTruthy();
+    expect(screen.getByTestId('ss-recent-p2')).toBeTruthy();
   });
 
-  it('row 1 carries status-dot ok; row 2 carries status-dot unsaved', () => {
+  it('active project row shows a status indicator', () => {
+    useStore.setState((s) => {
+      s.projects = {
+        'px': { id: 'px', name: 'ActiveProj', tags: [], containerIds: [], updatedAt: '2026-05-09T12:00:00Z' },
+      };
+      s.currentProjectId = 'px';
+    });
     render(<StartScreenIntegration />);
-    const r1 = screen.getByTestId('ss-recent-P43_Cas_Uni_Tr');
-    expect(r1.querySelector('[data-testid="ss-recent-status-ok"]')).toBeTruthy();
-    const r2 = screen.getByTestId('ss-recent-pEXP-glaA-XynTL');
-    expect(r2.querySelector('[data-testid="ss-recent-status-unsaved"]')).toBeTruthy();
+    expect(screen.getByTestId('ss-recent-px-active')).toBeTruthy();
+  });
+
+  it('filter pills include «Все» + «Активные» and derived tag pills', () => {
+    useStore.setState((s) => {
+      s.projects = {
+        'p1': { id: 'p1', name: 'A', tags: ['CRISPR'], containerIds: [], updatedAt: '2026-05-09T10:00:00Z' },
+      };
+      s.currentProjectId = null;
+    });
+    render(<StartScreenIntegration />);
+    expect(screen.getByTestId('ss-filter-all')).toBeTruthy();
+    expect(screen.getByTestId('ss-filter-active')).toBeTruthy();
+    expect(screen.getByTestId('ss-filter-tag-CRISPR')).toBeTruthy();
   });
 
   it('filter pills toggle active state', () => {
+    useStore.setState((s) => {
+      s.projects = {
+        'p1': { id: 'p1', name: 'X', tags: [], containerIds: [], updatedAt: '2026-05-09T10:00:00Z' },
+      };
+      s.currentProjectId = null;
+    });
     render(<StartScreenIntegration />);
     const all = screen.getByTestId('ss-filter-all');
     const active = screen.getByTestId('ss-filter-active');
@@ -253,6 +366,22 @@ describe('StartScreen-Pixel — MainPanel', () => {
     expect(active.getAttribute('data-active')).toBe('true');
   });
 
+  it('clicking a project row activates the project WITHOUT navigating (12.05.2026 Игорь: «убери адресацию на старый canvas»)', () => {
+    useStore.setState((s) => {
+      s.projects = {
+        'pclick': { id: 'pclick', name: 'ClickMe', tags: [], containerIds: [], updatedAt: '2026-05-09T10:00:00Z' },
+      };
+      s.currentProjectId = null;
+      s.canvas.activeFullscreen = 'start';
+    });
+    render(<StartScreenIntegration />);
+    fireEvent.click(screen.getByTestId('ss-recent-pclick'));
+    const s = useStore.getState();
+    expect(s.currentProjectId).toBe('pclick');
+    // No navigation — fullscreen stays where biolog was (StartScreen).
+    expect(s.canvas.activeFullscreen).toBe('start');
+  });
+
   it('empty card mounts with CTA «Выбрать набор»', () => {
     render(<StartScreenIntegration />);
     expect(screen.getByTestId('ss-empty-card')).toBeTruthy();
@@ -260,21 +389,118 @@ describe('StartScreen-Pixel — MainPanel', () => {
   });
 });
 
-describe('StartScreen-Pixel — stub callbacks (console.log TODO)', () => {
-  it('Создать проект click logs TODO: create-project', () => {
-    const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
+describe('StartScreen-Pixel — sidebar callbacks', () => {
+  it('«+ Создать проект» click → создаёт .bodge-проект, уводит в Library + открывает ProjectInfo modal', () => {
+    // Reset projects + currentProjectId + modal flags for isolation
+    // (other tests may have hydrated state via createProject elsewhere).
+    useStore.setState((s) => {
+      s.projects = {};
+      s.currentProjectId = null;
+      s.modals = { ...(s.modals || {}), projectInfo: false };
+    });
     render(<StartScreenIntegration />);
     fireEvent.click(screen.getByTestId('ss-action-create-project'));
-    expect(spy).toHaveBeenCalledWith('TODO: create-project');
-    spy.mockRestore();
+
+    const s = useStore.getState();
+    // 1. Проект создан и помечен текущим (.bodge контейнер живёт в IndexedDB).
+    expect(s.currentProjectId).toBeTruthy();
+    const proj = s.projects[s.currentProjectId];
+    expect(proj).toBeTruthy();
+    expect(proj.name).toBe('Новый проект');
+    // 2. Навигация ушла на Library workspace (биолог видит ProjectZone сразу).
+    expect(s.canvas.activeFullscreen).toBe('library');
+    expect(s.workspace?.active).toBe('library');
+    // 3. ProjectInfo модалка открыта — биолог сразу задаёт имя /
+    //    описание / теги (как было в App.jsx handleNew до рефакторинга).
+    expect(s.modals?.projectInfo).toBe(true);
   });
 
-  it('Empty CTA click logs TODO: pick-set (sample stub coverage)', () => {
-    const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
+  it('Empty CTA «Выбрать набор» click adds starter set entries to the store', async () => {
+    useStore.setState((s) => { s.libraryEntries = {}; });
     render(<StartScreenIntegration />);
     fireEvent.click(screen.getByTestId('ss-empty-cta'));
-    expect(spy).toHaveBeenCalledWith('TODO: pick-set');
-    spy.mockRestore();
+    // addLibraryEntriesBulk is async — wait a tick for state to settle.
+    await new Promise((r) => setTimeout(r, 50));
+    const entries = Object.values(useStore.getState().libraryEntries);
+    expect(entries.length).toBeGreaterThan(0);
+  });
+
+  it('«Открыть .bodge» click → парсит файл, сидит библиотеку, уходит в Library workspace', async () => {
+    // Полностью изолируем state — иначе предыдущие тесты могли
+    // оставить projects/libraryEntries.
+    useStore.setState((s) => {
+      s.projects = {};
+      s.currentProjectId = null;
+      s.libraryEntries = {};
+    });
+
+    // Тестовый проект + 2 entry — собираем реальный .bodge через
+    // writeBodge, чтобы интегрально проверить весь путь
+    // (zip → readBodge → addLibraryEntriesBulk → openProjectFromFileData).
+    const testProject = {
+      id: '01900000-7000-7000-8000-aaaaaaaaaaaa',
+      schemaVer: 1,
+      name: 'Тестовый проект',
+      description: 'demo',
+      tags: [],
+      createdAt: '2026-05-09T00:00:00Z',
+      updatedAt: '2026-05-09T00:00:00Z',
+      agent: { name: '', email: '' },
+      containerIds: [],
+      projectCommitIds: [],
+      primerIds: [],
+      settings: {},
+      ext: {},
+    };
+    const testEntries = [
+      {
+        id: 'lib-test-1', kind: 'container', name: 'pUC19-demo', tags: ['bacterial'],
+        addedAt: '2026-05-09T00:00:00Z', version: 1,
+        payload: { sequence: 'ATGC'.repeat(50), length: 200, topology: 'circular', annotations: [] },
+      },
+      {
+        id: 'lib-test-2', kind: 'container', name: 'GFP-demo', tags: [],
+        addedAt: '2026-05-09T00:01:00Z', version: 1,
+        payload: { sequence: 'ATG' + 'GCT'.repeat(20), length: 63, topology: 'linear', annotations: [] },
+      },
+    ];
+    const blob = writeBodge(testProject, { libraryEntries: testEntries });
+    const fakeFile = new File([blob], 'test.bodge', { type: 'application/zip' });
+    fakeFile.lastModified = 1234567890;
+
+    // Мокаем системный picker. hasFileSystemAccess() проверяет ОБА —
+    // showOpenFilePicker И showSaveFilePicker — иначе сваливается на
+    // _legacyOpenViaInput с DOM input.click(), который в happy-dom
+    // не дёргает change. Стабим оба.
+    const originalOpen = globalThis.showOpenFilePicker;
+    const originalSave = globalThis.showSaveFilePicker;
+    globalThis.showOpenFilePicker = vi.fn().mockResolvedValue([{
+      getFile: async () => fakeFile,
+    }]);
+    globalThis.showSaveFilePicker = vi.fn();
+
+    try {
+      render(<StartScreenIntegration />);
+      fireEvent.click(screen.getByTestId('ss-action-open-bodge'));
+
+      await waitFor(() => {
+        const s = useStore.getState();
+        // 1. Проект загружен и стал текущим.
+        expect(s.currentProjectId).toBe(testProject.id);
+        expect(s.projects[testProject.id]?.name).toBe('Тестовый проект');
+        // 2. Library entries попали в store + привязаны к проекту.
+        expect(s.libraryEntries['lib-test-1']?.projectId).toBe(testProject.id);
+        expect(s.libraryEntries['lib-test-2']?.projectId).toBe(testProject.id);
+        // 3. Навигация ушла в Library workspace.
+        expect(s.canvas.activeFullscreen).toBe('library');
+        expect(s.workspace?.active).toBe('library');
+      });
+    } finally {
+      if (originalOpen) globalThis.showOpenFilePicker = originalOpen;
+      else delete globalThis.showOpenFilePicker;
+      if (originalSave) globalThis.showSaveFilePicker = originalSave;
+      else delete globalThis.showSaveFilePicker;
+    }
   });
 });
 

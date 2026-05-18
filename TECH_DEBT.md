@@ -21,6 +21,199 @@
 
 Лимиты (⚓ ANCHORS.md, 22.04.2026): `.jsx` hard 40 KB / soft 30 KB; `.js` hard 25 KB / soft 20 KB; data-файлы без лимита.
 
+**Калибровка 08.05.2026 (⚓ DEC-SIZE-CALIBRATION-01).** Формальное превышение hard НЕ автоматически требует декомпозицию. Триггеры: (1) rate-of-change >5 KB за спринт два спринта подряд, (2) entanglement (правка одной фичи в файле ломает другую), (3) explicit правка в следующем спринте. Stable файлы (рост ≤1 KB за 2+ спринта) без entanglement — держатся в Watch list, не блокер. Полная таблица Active vs Watch применительно к snapshot 08.05.2026 — в ANCHORS.md DEC-SIZE-CALIBRATION-01.
+
+**Snapshot 18.05.2026 (после v0.8.3-alpha — Four-tier T1-T10 + T4.5 + canvas UX + primer redesign):**
+- **Активный decomp:** TD-CANVAS-LAYOUTVIEW-DECOMP (41.35 KB hard breach после T4.5 pin-badges; первым пунктом любого спринта трогающего этот файл), TD-ANNOTATIONTRACK-DECOMPOSE-V2 (48.54 KB hard, carry-over), TD-SIZE-SEQUENCEVIEW-INDEX (~39 KB, близко к hard 40 — пробит будет на следующем тyaжёлом расширении SequenceView core).
+- **Watch list:** TD-SIZE-LIBRARYSINGLEINSPECTOR (31.28 KB после декомпозиции, soft 30 над на 1.28 KB — не блокер, 2-й extract опционален), TD-SIZE-CONTAINER-EDITOR-SKELETON (34.6 KB, soft over), TD-SIZE-LIBRARYSLICE (43.9 KB carry-over), TD-SIZE-SEQUENCE-SEARCH, TD-SIZE-AATRACK, TD-SIZE-PLASMID-USE-WIZARD, TD-SIZE-DESIGN-CANVAS, TD-SIZE-PLASMID-MAP, TD-SIZE-ADD-FRAGMENT-MODAL, TD-SIZE-PROTOCOL-TRACKER, TD-SIZE-JUNCTION-BLOCK.
+- **Closed:** TD-LIBRARYSINGLEINSPECTOR-DECOMP-V2 (39.34 → 31.28 KB через extract useInspectorSelectionNav hook, эскалация СНЯТА, 8.7 KB запаса до hard 40).
+- **Новые non-size TD:** TD-DOCS-ROTATION (53 файла в docs/ против лимита 8 — отложен в Пачку 3 финализации Chat).
+
+### v0.8.3-alpha entries (16-18.05.2026) — Four-tier T-серия
+
+#### Документация
+
+- **TD-DOCS-ROTATION** (OPEN, low-med priority, отложен в Пачку 3): docs/ корень содержит 53 файла против CHAT_PLAYBOOK §4 лимита 8 активных. Устаревшие спеки F-серии (M-CANVAS-WINDOW/JUNCTION/PRODUCT/F3-DISPOSITION), A-серии (M-CANVAS-ASSEMBLY-MODEL/CONSTRUCT/PRIMER-DESIGN/REALISE), NOTES_FOUR_TIER_MODEL_DRAFT, NOTES_CANVAS_V2_KICKOFF + старые M-CANVAS-SKELETON/M-CANVAS-OPS spec ы — заменены реализацией T-серии или интегрированы в SPEC_M-CANVAS-FOUR-TIER-ARCHITECTURE.
+  - **Эффект:** биолог + Chat теряют время на навигацию. Stale спеки могут быть прочитаны Code как guideline. Контекст-бюджет стартового пакета (CHAT_PLAYBOOK §1 ≤50 KB) пробивается если читать активный docs/.
+  - **Fix:** создать `docs/archive/2026-05-16-pre-four-tier/` + переместить туда устаревшие 8-12 спек + README с пояснением «заменено T-серией». Filesystem MCP не имеет delete → нужен PowerShell move от Игоря либо stub-перезапись.
+  - **Окно:** Пачка 3 финализации v0.8.3-alpha (отложено в отдельную сессию).
+  - **Фикс.:** 18.05.2026 (выявлен на финализации T-серии).
+
+#### Архитектура pieces / zones
+
+- **TD-ASSEMBLYREDUCER-REMOVAL** (OPEN, low priority, T-future): T6 K14 deviation §5.9 — assemblyReducer оставлен живым (no-op в reducer router) вместо литерального removal. ~50 legacy assembly-тестов сохраняют compat. Полная зачистка legacy assembly-draft слоя — отдельный T-future cleanup-спайк.
+  - **Эффект:** не блокер. Dead reducer slot в state.assemblyDrafts остаётся, но не пишется. Память + код cruft.
+  - **Fix:** удалить assemblyReducer + state.assemblyDrafts slice + соответствующие legacy assembly-тесты (~50). Migration v10→v11 strips field.
+  - **Окно:** T-future cleanup-спайк когда biolog подтверждает что legacy assembly-flow не используется.
+  - **Фикс.:** 17.05.2026 (T6 K14 deviation).
+
+- **TD-T8-PIECE-RANGE-RECOMPUTE** (OPEN, low priority, T-future): T8 finalizer пересоздаёт auto-reaction только при kind mismatch (acquisitionMethod changed). Если piece.ranges изменился при том же методе — auto-reaction params.range НЕ пересчитывается (op.params.range остаётся stale).
+  - **Эффект:** биолог изменил range на piece → op-узел показывает старый range. Workaround: смена + обратная смена method = принудительная пересоздача.
+  - **Fix:** в finalizer T8 — детектировать piece.ranges changed (через WeakMap previous-state ref) → принудительная пересоздача reaction params без удаления op-узла.
+  - **Окно:** при жалобе биолога или в T9/T10 post-MVP polish.
+  - **Фикс.:** 17.05.2026 (T8 follow-up).
+
+- **TD-T9-K13-K14-WIRE** (OPEN, med priority): T9 design variants + clone variants UI — substance готова (actions + selectors + BranchingVisual), но trigger-пункты CREATE_DESIGN_VARIANT / MATERIALIZE_REACTION в op context-menu НЕ wired (отложено в визуальную приёмку, риск слепой правки 36 KB CanvasLayoutView в хвосте сессии).
+  - **Эффект:** биолог не может через UI вызвать создание варианта или materialize колоний. Доступно только через dev-console dispatch.
+  - **Fix:** wire context-menu пункты в CanvasLayoutView ContextMenu (4 пункта: «Создать вариант» / «Materialize колонии» / «Удалить из variant group» / «Открыть Sanger notebook»). После приёмки T9.
+  - **Окно:** визуальная приёмка T9 + T10.
+  - **Фикс.:** 18.05.2026 (T9 deferred).
+
+- **TD-T10-SHOW-NOTEBOOK-WIRE** (OPEN, med priority): T10 SHOW_SANGER_LAB_NOTEBOOK click clone indicator → focus в notebook через event-bus/ref — НЕ wired (отложено в визуальную приёмку).
+  - **Эффект:** click на clone indicator в BranchingVisual не открывает Sanger panel. Биолог открывает вручную (B + scroll).
+  - **Fix:** ref-based mechanism или event-bus от BranchingVisual ImplicitJunction → CanvasLayoutView.handleNavigateToNotebook → setSangerNotebookOpen(true) + setSangerFocusCloneId.
+  - **Окно:** визуальная приёмка T10.
+  - **Фикс.:** 18.05.2026 (T10 deferred).
+
+- **TD-T10-NOTES-FLUSH** (OPEN, low priority): T10 R-T10-2 — Sanger notes save-on-blur может потерять данные при panel-close до blur fire. Biolog печатает notes → нажал B closes panel → unmount без blur.
+  - **Эффект:** edge case потери данных. Биолог напечатал notes, закрыл panel hotkey'ем → текст ушёл.
+  - **Fix:** force-flush pending notes при panel close (через ref or onUnmount cleanup). Или debounce save-on-keystroke (500ms).
+  - **Окно:** при жалобе или Sanger UX-итерация post-MVP.
+  - **Фикс.:** 18.05.2026 (T10 follow-up).
+
+- **TD-PRIMER-NAME-OP-PCR-CONSUMERS** (OPEN, low priority): primer redesign — модал-от-выделения PrimerFromSelectionModal сохраняет primer.name через `onWritePrimer` (Library/ContainerEditor/Importer-инспектор), но Op/PCR-консьюмеры primer-name follow-up НЕ доделан — имя из модала не сохраняется по их create-пути.
+  - **Эффект:** биолог в PCR viewer записывает primer через right-click → имя из модала теряется, primer попадает в pool под auto-name.
+  - **Fix:** Op/PCR `onWritePrimer` callback path → принимать `primer.name` из модала, persist в pool.
+  - **Окно:** при жалобе или primer UX-итерация.
+  - **Фикс.:** 18.05.2026 (primer redesign T5 follow-up).
+
+- **TD-CROSS-PORTAL-AUDIT** (OPEN, med priority): primer redesign выявил pattern — любой портал-модал, монтируемый из SequenceView (или иного хоста с root-level keyboard/pointer-хендлерами), ОБЯЗАН гасить keydown + pointer + contextmenu на своём backdrop. React-bubbling идёт по дереву компонентов, портал DOM-изоляции событий НЕ даёт.
+  - **Эффект:** keypress в любом портал-модале over SequenceView могут triggerнуть hotkeys (H/E/Del/Ctrl+C) — деструктивно.
+  - **Fix:** аудит и фикс кандидатов: CreateAnnotationPopup, SelectionContextMenu, EditAnnotationModal, PiecePrimersPickModal, PieceCreateModal, MaterializeCloneModal, FeatureEditorModal. Backdrop onKeyDown / onPointerDown / onContextMenu — preventDefault + stopPropagation.
+  - **Окно:** SequenceView-related UX-итерация или жалоба биолога на «delete по нажатию из модала».
+  - **Фикс.:** 18.05.2026 (primer redesign выявил pattern).
+
+#### Size budget v0.8.3-alpha
+
+- **TD-CANVAS-LAYOUTVIEW-DECOMP** (Active, high priority): `gui/designer/src/components/CanvasSkeleton/CanvasLayoutView.jsx` 41.35 KB пробил `.jsx` hard 40 KB после T4.5 pin-badges + T7 sequence-mode toggle + T8 cross-zone link rendering + T9 variant-group context + T10 SangerLabNotebook mount. Это центральный orchestrator canvas-skeleton'а — расти ему некуда без декомпозиции.
+  - **Эффект:** ⚓ DEC-SIZE-LIMITS-01 (22.04.2026) пробит. Дальнейшее расширение T-серии follow-ups (T9 K13/K14 wire, T10 SHOW_NOTEBOOK wire) формально блокировано.
+  - **Fix:** extract handlers по доменам: zone-handlers.js (drag/resize/merge/navigate) + node-handlers.js (drag/click/double-click/context-menu) + drop-handlers.js (cross-zone drop + library-tree drop) + cross-cutting hooks. Цель: <30 KB main + 3-4 lib файла по 5-8 KB.
+  - **Окно:** первый пункт любого следующего спринта трогающего CanvasLayoutView.jsx.
+  - **Фикс.:** 17.05.2026 (T4.5 pin-badges пробили hard).
+
+- **TD-SIZE-SEQUENCEVIEW-INDEX** (Active, med priority — promotion из Watch): `gui/designer/src/components/SequenceView/index.jsx` ~39 KB, близко к hard 40. v0.8.3 расширения: showSelectionTm prop pass-through, onWritePrimer extension, onCreatePiece T5 hookup. Следующее тяжёлое расширение пробьёт hard.
+  - **Эффект:** R&D работа над SequenceView core (V51 drag selection perf, T-future search-overlay-rects) ограничена бюджетом.
+  - **Fix:** extract sub-systems в hooks: useSelectionState + useDrag + useHotkeys + tracks-orchestration. Цель: <30 KB main.
+  - **Окно:** первый sprint трогающий SequenceView внутренности (V51 perf-spike, search overlay rects).
+  - **Фикс.:** 18.05.2026 (promotion из Watch).
+
+- **TD-SIZE-LIBRARYSINGLEINSPECTOR** (Watch, low priority): после декомпозиции (extract `useInspectorSelectionNav` 39.34 → 31.28 KB) файл над soft 30 на 1.28 KB. Не блокер. Опциональный 2-й extract (annotation-edit pipeline ~5-7 KB) уведёт под soft 30.
+  - **Эффект:** косметический. Hard 40 запас 8.7 KB.
+  - **Fix:** опциональный extract annotation-edit pipeline (`itemRef`/`editsRef` + `onAnnotationEditFromView`/`onSequenceEditFromView`/`applyOpToAnnotations`/`useFeatureEditorFlow` + auto-run + undo-redo). Решение Игоря — Code сознательно НЕ сделал в проход декомпозиции (энтэнглд, риск > ценность).
+  - **Окно:** Игорь решает. Иначе оставить в Watch.
+  - **Фикс.:** 18.05.2026 (Watch promotion из Closed).
+
+- **TD-SIZE-CONTAINER-EDITOR-SKELETON** (Watch, low priority): `gui/designer/src/components/CanvasSkeleton/editor/ContainerEditorSkeleton.jsx` 34.6 KB, soft 30 пробит на 4.6 KB. Hard 40 запас 5.4 KB.
+  - **Эффект:** не блокер. T-серия добавила K-функционал primer-canvas-editor + viewer-sync extension props.
+  - **Fix:** extract primer-editor wiring + viewer-sync prop bundle. ~4-5 KB downsize.
+  - **Окно:** при пересечении с T9/T10 wire-up работой или следующем размер-триггере.
+  - **Фикс.:** 18.05.2026.
+
+---
+
+**Snapshot 11.05.2026 (после v0.8.2 — M-X.8 + M-X.9 + Фикс 7):**
+- **Активный decomp:** TD-LIBRARYSINGLEINSPECTOR-DECOMP-V2 (45.94 KB hard, M-X.6 K0), TD-ANNOTATIONTRACK-DECOMPOSE-V2 (48.54 KB hard, M-X.7+), TD-SIZE-SEQUENCEVIEW-INDEX (38.78 KB soft).
+- **Watch list:** TD-SIZE-LIBRARYSLICE (43.9 KB, не дописывался в v0.8.2 — carryover, без trigger), **TD-SIZE-SEQUENCE-SEARCH (новый: lib/sequence-search.js 21.9 KB — слегка выше soft 20 KB для .js, под hard 25 KB; вырос 13.1 → 21.9 в Фиксе 7 за счёт buildHit refactor + full-window alignment, вряд ли будет вырастать дальше без крупных фич типа worker / Smith-Waterman)**, TD-SIZE-AATRACK, TD-SIZE-PLASMID-USE-WIZARD, TD-SIZE-DESIGN-CANVAS, TD-SIZE-PLASMID-MAP, TD-SIZE-ADD-FRAGMENT-MODAL, TD-SIZE-PROTOCOL-TRACKER, TD-SIZE-JUNCTION-BLOCK.
+- **Closed:** —.
+
+**Snapshot 10.05.2026 (после M-X.7c):**
+- **Активный decomp:** TD-LIBRARYSINGLEINSPECTOR-DECOMP-V2 (45.94 KB hard, M-X.6 K0), TD-ANNOTATIONTRACK-DECOMPOSE-V2 (48.54 KB hard, M-X.7+), TD-SIZE-SEQUENCEVIEW-INDEX (38.78 KB soft).
+- **Watch list:** TD-SIZE-LIBRARYSLICE (новый 10.05 — 43.9 KB, нет trigger), TD-SIZE-AATRACK, TD-SIZE-PLASMID-USE-WIZARD, TD-SIZE-DESIGN-CANVAS, TD-SIZE-PLASMID-MAP, TD-SIZE-ADD-FRAGMENT-MODAL, TD-SIZE-PROTOCOL-TRACKER, TD-SIZE-JUNCTION-BLOCK.
+- **Closed:** —.
+
+**Snapshot 08.05.2026:**
+- **Активный decomp** (реальная работа в M-X.6 / M-X.7): TD-LIBRARYSINGLEINSPECTOR-DECOMP-V2 (45.94 KB hard, M-X.6 K0), TD-ANNOTATIONTRACK-DECOMPOSE-V2 (48.54 KB hard, M-X.7+), TD-SIZE-SEQUENCEVIEW-INDEX (38.78 KB soft, M-X.6 K2/K3 трогают).
+- **Watch list** (мониторинг, не блокер): TD-SIZE-AATRACK, TD-SIZE-PLASMID-USE-WIZARD, TD-SIZE-DESIGN-CANVAS, TD-SIZE-PLASMID-MAP, TD-SIZE-ADD-FRAGMENT-MODAL, TD-SIZE-PROTOCOL-TRACKER, TD-SIZE-JUNCTION-BLOCK — stable в своих зонах, ждут active milestone'а который их трогает.
+- **Closed (удалены 08.05.2026):** TD-SIZE-PLASMID-MINI-MAP — рост стабилизировался на 29.68 KB (под soft 30 KB), формального нарушения больше нет. Если M-C / M-D вернут рост — реоткрыть.
+
+### v0.8.2 entries (10–11.05.2026) — M-X.7c FAIL-fixes + M-X.8 + M-X.9 + Фикс 7
+
+#### Sequence search follow-ups
+
+- **TD-SEARCH-OVERLAY-RECTS** (OPEN, low-med priority): SequenceView overlay rect+ticks поверх sequence для search hits. Сейчас popover показывает позиции текстом (`query[X..Y) · M/N nt`), rects не рисуются. Визуальная приёмка 11.05.2026 показала что overlay рендерится только при 100% match (или при click на hit row — caret jump); для 95% / 90% hits overlay не виден.
+  - **Эффект:** биолог видит где hit только через вручнуюю прокрутку или click на hit row. При multi-hit картине отсутствует обзор «все hits сразу».
+  - **Fix:** в `SequenceView/index.jsx` (39 KB — деликатный файл) добавить overlay-rect track из списка hits, identity-bucket color coding, mismatch ticks. Паттерн — аналог SelectionOverlay (уже живой).
+  - **Окно:** по use-case биолога. Если popover-only flow достаточен в практике («click для jump») — отложить. Если биолог попросит «a-la SnapGene Find» (all hits highlighted) — открывать отдельным bugfix-спринтом.
+  - **Фикс.:** 11.05.2026 (выявлен в visual acceptance).
+
+- **TD-SEARCH-INDEL-UX** (OPEN, NIT priority): UX-сообщение «Ничего не найдено при identity ≥ 80%» misleading при indel-запросах. Биолог видел на visual acceptance (скрин 4): query с deletion 2 nt → «not found». Симптом соответствует DEC-SEARCH-SEED-EXTEND-01 (no-gaps), но формулировка намекает биологу что «hit просто ниже threshold» вместо реального «алгоритм не ловит indels».
+  - **Эффект:** биолог может снизить threshold (50%) в попытке найти indel-hit, ничего не получит и подумает что плазмида пустая. Не блокер — visual cue не баг.
+  - **Fix:** в `SequenceSearchPopover.jsx` + `LibraryTopBar.jsx` (global dropdown) — заменить empty-state text на «Не найдено. Алгоритм не поддерживает вставки/удаления — проверьте query на опечатки или укоротите/удлините до совпадающего фрагмента». Опция: heuristic detection (если в query есть subseed в target но без full alignment — показать hint «похоже на indel») — это возможно в будущем, сейчас достаточно честного текста.
+  - **Окно:** когда биолог следующий раз ловит misleading copy или отдельный STRINGS-pass.
+  - **Фикс.:** 11.05.2026 (visual acceptance).
+
+- **TD-SEARCH-WORKER** (OPEN, perf-driven, отложен): Worker-based search (DEC-SEARCH-WORKER-PATTERN-01 из спеки M-X.9) и lazy singleton client НЕ реализованы. Code подтвердил в отчёте: sync path в `searchLibrary` работает быстро на small libraries (<200 entries × ≤5 KB). DEC-SEARCH-WORKER-DEFERRED-01 в v0.8.2 sprint-block.
+  - **Эффект:** не блокер сейчас. На 200+ entries × 5-10 KB libraries (реальный use case будущего) может проявиться main-thread freeze на каждый символ query.
+  - **Fix:** создать `lib/workers/sequence-search.worker.js` + `lib/sequence-search-client.js` lazy singleton (аналог `annotator-worker-client.js`, DEC-PERF-WORKER-01). Vitest happy-dom early-return через `import.meta.env.VITEST` → fallback на sync path.
+  - **Окно:** при измеримом freeze на production library (200+ entries) или при жалобе биолога на «висит при поиске».
+  - **Фикс.:** 10.05.2026 (Code в отчёте M-X.9).
+
+- **TD-SEARCH-INDEX-EAGER** (OPEN, perf-driven, отложен): Eager seed-index build при mount Library (DEC-SEARCH-INDEX-EAGER-01 из спеки M-X.9) НЕ реализован. `searchLibrary` строит per-entry index on-demand. DEC-SEARCH-WORKER-DEFERRED-01 в v0.8.2 sprint-block.
+  - **Эффект:** для cap 50 hits и < 200 entries разница ≪ 100 ms. При росте library в будущем потребуется eager + cached.
+  - **Fix:** пара к TD-SEARCH-WORKER, реализовывать вместе. Eager build в worker'е при mount Library + cache invalidation при add/delete/updateLibraryEntry.
+  - **Окно:** при росте production library >200 entries.
+  - **Фикс.:** 10.05.2026 (Code в отчёте M-X.9).
+
+#### Rust core + native shell architectural backlog
+
+- **TD-RUST-CORE-PARSER** (OPEN, architectural, без срока): `pvcs/snapgene_parser.py` (Python/BioPython binary parser) → Rust + WASM. Фундирован DEC-ARCH-RUST-WASM-TWIN-TARGET-01.
+  - **Эффект:** сейчас FastAPI backend живёт рядом с frontend (развязывается deployment — сервер нужен). После Rust+WASM port — .dna парсится в browser, FastAPI уходит. Парсинг в 10-50× быстрее (binary native vs Python interp).
+  - **Fix:** Rust crate `bodge-snapgene-parser` + wasm-pack build + JS обёртка. parity тестов выхода (все 112 pytest кейсы на том же input → идентичные features/sequence). FFI binding для Tauri из того же crate.
+  - **Окно:** после Tauri-milestone или раньше если backend deploy станет болью (PWA публикация, hosting cost).
+  - **Фикс.:** 10.05.2026 (architectural discussion).
+
+- **TD-RUST-CORE-PROGRESSIVE** (OPEN, architectural, без срока): Порт остальных compute-heavy модулей в Rust core по perf-триггерам: `tm-calculator.js` (SantaLucia NN — trivial port), `local-primer-design.js` (20 KB — heavy), `restriction-db.js` digest engine (37 KB data + algo), `mutagenesis.js` (18 KB), будущий alignment Smith-Waterman для indel-search. Список-якорь.
+  - **Эффект:** не блокер. JS-имплементации работают. При росте плазмид (50+ kb) или large primer panels отдельные модули могут оказаться bottleneck.
+  - **Fix:** profile-driven — мерить, портировать worst offender, повторять.
+  - **Окно:** по перф триггерам (биолог жалуется / измеряемый freeze).
+  - **Фикс.:** 10.05.2026 (architectural discussion).
+
+- **TD-DESKTOP-NATIVE-SHELL** (OPEN, architectural, milestone-candidate): Tauri shell как milestone (черновое M-X.10 или M-J). 6 K-блоков: scaffold + sidecar Python (временно, до TD-RUST-CORE-PARSER) + native menu (File / Edit / View / Window / Help) + file association `.bodge` / `.dna` / `.gb` + bundler 3 OS (macOS .dmg, Linux .deb/.AppImage, Windows .msi) + twin-target flags (`#[cfg(target_arch=wasm32)]` в shared Rust). 2-3 недели elapsed.
+  - **Эффект:** биологи на ThinkPad 2013 без internet/intranet не могут работать (PWA fallback поломан в лабовых сетях). File associations с OS shell — native install only.
+  - **Fix:** отдельный milestone-spec, type A, ~30-40 KB.
+  - **Окно:** после M-C.2 (Container Window) + M-D (Editable Container) — когда основной workflow стабилизировался. Code-signing ($) — отдельный разговор, не входит в TD.
+  - **Фикс.:** 10.05.2026 (architectural discussion).
+
+- **TD-NATIVE-UI-EVALUATION** (OPEN, architectural, без срока, «после PMF»): Уровень 3 — UI на egui / Slint / Dioxus (native Rust UI) вместо React. DEC-ARCH-RUST-WASM-TWIN-TARGET-01 явно говорит «UI остаётся на React», но ревизия возможна в высокой горизонте.
+  - **Эффект:** нет сейчас.
+  - **Fix:** prototype одного экрана (например SequenceView) на egui/Slint, сравнение DX/UX/perf с React.
+  - **Окно:** после product-market fit. Может никогда не случиться.
+  - **Фикс.:** 10.05.2026 (architectural discussion).
+
+- **TD-MOBILE-VIEWER-PROBE** (OPEN, exploratory, отложен): Mobile read-only viewer как cheap side-effect Tauri Mobile (iOS / Android). Отложен до закрытия desktop M-X.10. Реальность desktop-Tauri покажет насколько mobile тривиален.
+  - **Эффект:** нет сейчас. Противоречит DEC-V2-19 («mobile out of scope» якорь) — при промоуте этого TD в реализацию нужна ревизия DEC-V2-19.
+  - **Fix:** Tauri Mobile build из того же codebase + read-only mode flag (отключаются edit handlers, manual-edit modal, save flow).
+  - **Окно:** после M-X.10 acceptance.
+  - **Фикс.:** 10.05.2026 (architectural discussion).
+
+#### Dev environment & policy
+
+- **TD-DEV-POLICY-LEGACY-HARDWARE** (OPEN, policy-level, принципиальный выбор): Dev workstation Игоря = ThinkPad 2013-го года как принципиальный выбор для видимости перф-лагов. Биолог на лабовом PC 2017-2019 увидит то же провальное поведение что и на ThinkPad. Синхронно с V51 (drag selection микролаги в SequenceView).
+  - **Эффект:** все dev решения проходят «натуральный перф-фильтр». perf-регрессии ловятся раньше чем в production.
+  - **Fix:** не fix-able — это политика. Кандидат на ⚓ promotion как `DEC-DEV-POLICY-LEGACY-HW` — редкое и ценное решение, определяющее dev practice.
+  - **Окно:** ⚓ promotion когда встретится второй кейс где legacy-hardware выявил проблему которую не увидел бы modern hardware.
+  - **Фикс.:** 10.05.2026 (зафиксирован вместе с V51 в BUGS.md).
+
+- **NIT-3** (low priority, single-line fix): `query[X..Y)` prefix в popover/global dropdown отображается при full coverage hits, хотя спека Фикса 7 говорит «скрывать при full coverage, показывать только при partial». В отчёте Code заявлено что реализовано, но на скринах приёмки prefix виден на 100%/95%/90% (все full coverage). Не блокер, visual minor, не TD — NIT в бэклог.
+
+---
+
+### M-X.7c entries (10.05.2026)
+
+- **TD-SIZE-LIBRARYSLICE** (OPEN, Watch list по DEC-SIZE-CALIBRATION-01): `gui/designer/src/store/librarySlice.js` ≈ **43.9 KB** (hard 25 KB для .js, +18.9 KB over). Исторически вырос через M-A.3 → M-B → M-X.5 (Library write API + manual-edit branching + save flow + multi-import bulk + dedup + soft-delete + folder ops). До M-X.7c в TECH_DEBT не было зафиксировано — Code обнаружил drift в R0 size check.
+  - **Эффект:** не блокер сейчас — в M-X.7c K3+K8 правок в этот файл не было (`activateProject` ушёл в projectSlice). По DEC-SIZE-CALIBRATION-01 формальное превышение hard НЕ автоматически требует декомпозицию — триггеры: rate-of-change >5 KB за спринт два подряд, entanglement, explicit правка в следующем спринте. Ни один не вспыхнул. **Watch list, не Active.**
+  - **Fix:** extract `librarySlice/{actions, selectors, hydrate, migrate}.js` или по функциональным доменам (folders / saves / multi-import / dedup). Цель основного ≤ 22 KB. Рисковая зона — slice покрывает всю Library data layer.
+  - **Окно:** промоут в Active если M-X.8 K2 (`pinnedProjectIds` + actions pinProject/unpinProject + migration `recentProjectIds` → `pinnedProjectIds`) раздует файл ещё на +5 KB, или M-C.2 backend writes (`updateContainerSequence` / `recordContainerOp`) добавит actions. Иначе stable monitoring.
+  - **Фикс.:** 10.05.2026 (drift catch в R0 size check Code сессии M-X.7c).
+
+- **TD-PRIMER-WIZARD-FLAKE** (OPEN, low priority): `__tests__/primer-wizard.test.jsx::2) checkDupe-positive primer is flagged + unchecked; re-check applies autoname` flake на full-suite. В isolation (`npm test -- src/components/Library/__tests__/primer-wizard.test.jsx`) passes стабильно. Тест последний раз правился в `24b8919` (M-X.5 K1). Pre-existing, не связан с M-X.7c. Симптом: таймаут `waitFor` на parallel-suite (Vitest pool=forks).
+  - **Эффект:** не блокер. Но создаёт шум в отчётах (1697/1699 + 1 skip + 1 flake вместо чистого PASS), при каждой финализации Chat отмечает. Риск: если флайк разрастётся на 50%+ runs — начнёт блокировать CI/finalize.
+  - **Fix:** видимые пути: (a) найти реальный race condition в тесте и исправить (waitFor с явным желаемым состоянием вместо default 1000ms); (b) поднять timeout до 2000ms; (c) `it.retry(2)` обёртка как quick-fix.
+  - **Окно:** ад-хок fix когда биолог решит отвлечься от fronts UX-волны. Не связан с M-X.8 / M-C.
+  - **Фикс.:** 10.05.2026 (зафиксирован Code в отчёте M-X.7c).
+
+---
+
 ### M-X.5 entries (07.05.2026)
 
 - **TD-LIBRARYSINGLEINSPECTOR-DECOMP-V2** (OPEN, hard violation): `components/Library/inspector/LibrarySingleInspector.jsx` ≈ **45.94 KB** (hard 40 KB +5.94 KB over). M-X.2-fix снизил 44 → 32 KB; K6/K7/K10 wiring в v0.8.0 вернул к 45.94. Был closed как TD-SINGLEINSPECTOR-SELECTIONSTATE-EXTRACT at 32 KB — reopen.
@@ -177,7 +370,7 @@
 Без регламента §4 (CHAT_PLAYBOOK_APPENDIX.md) раздуваются естественно.
 
 - **TD-DOCS-ROTATION** (OPEN, регламент активен): BUGS.md / PROJECT_STATE.md / RELEASES.md / DECISIONS.md / ANCHORS.md растут без ротации.
-  - **Эффект:** стартовый пакет чтения каждой сессии растёт. После реструктуризации 01.05.2026: ~ 60 KB обязательные (CLAUDE 18 + BUGS 1.5 + CURRENT_TASK 6 + PROJECT_STATE 11 + DECISIONS 4 + CHAT_PLAYBOOK_CORE 20). RELEASES и ANCHORS по запросу.
+  - **Эффект:** стартовый пакет чтения каждой сессии растёт. После реструктуризации 01.05.2026: ~ 60 KB обязательные (CLAUDE 18 + BUGS 1.5 + CURRENT_TASK 6 + PROJECT_STATE 11 + DECISIONS 4 + CHAT_PLAYBOOK_CORE 20). RELEASES и ANCHORS по запросу.
   - **Fix:** CHAT_PLAYBOOK_APPENDIX.md §4 регламент (архивация в `docs/archive/*_HISTORY.md` при финализации нового спринта). Якоря ⚓ в ANCHORS.md не переезжают; sprint-level в DECISIONS.md старше 2 спринтов → archive; RELEASES.md при 30 KB / 10 версий → archive.
   - **Окно:** ежеспринтно, автоматически при финализации.
   - **Фикс.:** 21.04.2026, обновлено 22.04.2026, обновлено 01.05.2026 (реструктуризация: PROJECT_STATE→snapshot only + RELEASES.md, DECISIONS→split на ANCHORS+DECISIONS, CHAT_PLAYBOOK→CORE+APPENDIX).
@@ -404,6 +597,24 @@
   - **Остаток:** `index.jsx` = 35.57 KB, под soft 30 KB, т.е. в soft-зоне (выше 30, ниже 40). Кандидат на дальнейший вынос `useFragmentEditorState` hook — **только если появится повод** (новая фича, крупная правка handlers). Без триггера не трогаем.
   - **Урок:** декомпозиция должна закрывать hard-лимит целиком в спеке (⚓ ANCHORS.md, изначально 23.04.2026 — «Архитектурная гигиена» п.2); math «на глаз» в Sprint 2a привела к необходимости хвоста 2a.1. Трейсабильность — `docs/archive/SPRINT_2A_FRAGMENTEDITOR_DECOMP.md` §3 (OUT-прогноз ≤22 KB для index.jsx оказался ошибочным).
 
+- **TD-SKELETON-STATE-SIZE** (OPEN — Sprint v0.8.2-skeleton-v2, 12.05.2026): `gui/designer/src/components/CanvasSkeleton/store/skeleton-state.js` — **22.77 KB**, выше soft 20 KB (.js), под hard 25 KB. Watch zone. Следующее расширение (M-CANVAS-OPERATIONS sprint — PCR/Cut/Mutate kind picker на ромб + popup params) потянет новые actions (OPEN_OPERATION_POPUP / COMMIT_OPERATION_V2 / …). По DECISIONS «Module size limits» (22.04.2026, ⚓): дописывать в раздутый модуль запрещено — первым пунктом спеки декомпозиция.
+  - **Предложение:** split по файлам по domain. `skeleton-state-canvas.js` (placeholder / fill / add / remove / position / junctions / reconcile), `skeleton-state-editor.js` (pending edits / commit / discard / rename), `skeleton-state.js` — только buildInitialState + dispatch router + base actions (view / highlight / activeDraft / toast / reset). Или (альтернатива) reducer-slices по action-prefix.
+  - **Или** GC legacy code: `draftSessions` + `editorContext.draftId` + `OPEN_EDITOR_DRAFT` + `SET_ACTIVE_DRAFT` + `SET_ACTIVE_TAB` — всё dead-but-not-removed (SKELETON_DRAFTS=[]). Удаление сэкономит ориентировочно 4-6 KB без декомпозиции.
+  - **Не блокер сейчас,** но блокер для следующего canvas-skeleton sprint.
+
+- **TD-SKELETON-LEGACY-DRAFTS** (OPEN — Sprint v0.8.2-skeleton-v2, 12.05.2026): в reducer skeleton-state живёт dead code:
+  - `SKELETON_DRAFTS=[]` + `state.draftSessions` + `state.activeDraftId` + `state.editorContext.draftId`
+  - reducer cases: `OPEN_EDITOR_DRAFT`, `SET_ACTIVE_DRAFT`, `SET_ACTIVE_TAB`
+  - `state.popup` (был для OperationsToolbar popup'ов, сам popup-actions уже удалены)
+  - `editor/derive-primers.js` (2.78 KB) выводит primers из commits, но SKELETON_COMMITS=[] — helper всегда возвращает []
+  - `editor/fixture-puc19.js` (4.71 KB) был для operation popup'ов, которые удалены. Кандидат на перенос в `__tests__/fixtures/` если нужен тестам, иначе delete.
+
+  GC этого разделяет TD-SKELETON-STATE-SIZE: 4-6 KB временного облегчения без декомпозиции. Но реально при следующем большом расширении (operations) без split'а снова выйдём выше soft. Двойная работа: сначала GC, потом split.
+
+- **TD-CANVAS-V2-ANNOTATOR-SCOPE-GUARD** (OPEN — Sprint v0.8.2-skeleton-v2, 12.05.2026): Library `AnnotationsTab.jsx` + `LinearFeatureBar.mergeStripWithPredicted` читают global `selectAnnotator` без guard'а на `sequenceId` prefix. При одновременной работе skeleton (DEV `/canvas-skeleton`) и Library (production) Library может попытаться рендерить ghost results с scope `skeleton::*`. Риск низкий сейчас (разные fullscreen, одновременно не запускаются), но в backlog. Исправление: в `selectAnnotator` consumers добавить guard `scope.sequenceId.startsWith('skeleton::') ? null : results`. Реф — DEC-CANVAS-V2-EDITOR-04.
+
+- **TD-CANVAS-V2-TABBAR-LIBRARY-REGRESSION** (OPEN — Sprint v0.8.2-skeleton-v2, 12.05.2026): `components/Library/inspector/tabs/TabBar.jsx` расширен props `showOverview` (default `true`) + `showMutagenesis` (default `false`) ради canvas editor'а. Отклонение от R4 спеки «Library не трогать». Дефолты совместимы, Library production работает как раньше — но требуется run `npm test -- --run Library/inspector` для подтверждения. Если падают — багфикс отдельным sprint. Реф — DEC-CANVAS-V2-EDITOR-OVERVIEW-OFF-01.
+
 ---
 
 ## Регламент обновления
@@ -418,4 +629,4 @@
 
 ---
 
-_Создан 21.04.2026 (выделено из CHAT_PLAYBOOK_APPENDIX.md §10, исторически §10 playbook'а до сплита 01.05.2026). Последнее обновление: 01.05.2026 (реструктуризация документации: ссылки на CHAT_PLAYBOOK_CORE/APPENDIX, ⚓ в ANCHORS.md, post-mortem в RELEASES.md вместо PROJECT_STATE.md журнала; TD-DOCS-ROTATION/SPECS-ARCHIVE/USER-MEMORIES-DRIFT/POSTMORTEM-PRACTICE/PROCESS-OUTPUTS обновлены)._ _Предыдущее: 01.05.2026 (Sprint M-A.3 финализация). Добавлены 3 новых OPEN: TD-LIBRARY-CLEANUP-PENDING-DELETES (GC `_pendingDelete: true` entries при hydrate, M-H), TD-LIBRARY-PERSISTED-TAG-DB (cross-project Tag-DB persistence, M-H), TD-LIBRARY-SEARCH-SORT-BULK (advanced search/sort/bulk-select/library-wide dedup, M-H). Рамка v0.6 M-A.3 baseline: 788 Vitest, 0 новых нарушителей size budget; все Library/* файлы green-zone (.jsx soft 30 KB), librarySlice.js 4.68 KB green._ _Обновление 01.05.2026 (Sprint M-A.1 финализация). Закрыты 6 OPEN entries → DONE: TD-HOTKEY-MODAL-GUARD (K1 `9ffdf2d`), TD-PROJECTINFO-SUGGESTIONS-NOTESTS (K2 `ca20869`), TD-EXPORT-DELETE-NOTESTS (K3+K5 `39af2b4` + `aac0b53`), TD-PWA-SETUP-DEFERRED (K4 `facd425`), TD-TOAST-UI-MINIMAL (K5 `aac0b53`), TD-CMD-W-VIVALDI-LIMITATION (K4 PWA standalone). 1 новый OPEN: TD-CTRL-N-OS-FALLBACK (low priority, known limitation в standalone PWA Chrome OS-fallback). Size budget: все файлы в лимитах, App.jsx даже похудел 9.49 → 8.66 KB._ Обновлен 22.04.2026: TD-SIZE-FRAGMENT-EDITOR → DONE, TD-SIZE-APP повышен до критически-близко-к-hard, добавлены TD-SIZE-PLASMID-USE-WIZARD и TD-SIZE-ADD-FRAGMENT-MODAL, актуализированы размеры всех остальных пунктов. Обновлён 26.04.2026: TD-MUTATION-MODEL → DONE (V22/V24/V27 закрыты Sprint X cycle), размер `store/index.js` 10.70 → 12.06 KB отражён в журнале сессии PROJECT_STATE.md (size budget hard 25 KB — далеко), новые V32/V33 остаются в BUGS.md/OPEN как UX-правки без системного характера — в TECH_DEBT.md не переносятся. Обновлён 27.04.2026: размеры после Sprint Import-Start-Screen (App.jsx стабилен 39.37 KB, DesignCanvas.jsx 38.44 → 36.77 KB после Kfix-7); добавлен **TD-SIZE-PLASMID-MINI-MAP** (warning signal: 3.96 → 10.13 KB, +6.17 KB превышает 5 KB rise-per-sprint бенчмарк CLAUDE.md §7, но в soft-зоне; отслеживать в V38+V39 mini-fix и последующих PlasmidMiniMap-правках). Обновлён 28.04.2026: по итогам Sprint IS-Final — App.jsx 39.37 → 40.39 KB (hard-зона), добавлен **TD-A11Y-CATEGORY-BUTTONS**. Обновлён 28.04.2026 (вторая сессия): по итогам Sprint App-Decomp — **TD-SIZE-APP → DONE** (App.jsx 40.39 → 30.56 KB, ModalStack + useAppEffects extracted). Обновлён 30.04.2026 (M-A wireframe сессия до старта wireframe генерации): **TD-TOOLS-DRAWIO → DONE** через Mermaid-диаграмму в ARCHITECTURE_v2.md §3.7 + ссылка в §12 обновлена._
+_Создан 21.04.2026 (выделено из CHAT_PLAYBOOK_APPENDIX.md §10). Последнее обновление: 15.05.2026 (cleanup hangovers v0.8.2: удалён дубль-блок «v0.8.2 entries RUST/TAURI якори» — содержимое было идентично первой v0.8.2-секции; NIT-3 сохранён inline в Dev environment & policy; удалён дубль Snapshot 11.05.2026)._

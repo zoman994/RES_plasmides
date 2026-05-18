@@ -218,6 +218,40 @@ export function useSelectionState({
   const onRootPointerDown = (e) => {
     if (e.button != null && e.button !== 0) return; // primary button only
 
+    // 13.05.2026 — Restriction-site click? Bail out so we don't
+    // preventDefault (which kills the synthesised click on the
+    // `<g sequence-view-re-site>`). RestrictionTrack handles its own
+    // mousedown/click; root caret-placement не должен встревать.
+    {
+      let reEl = e.target;
+      while (reEl && reEl !== containerRef.current) {
+        if (reEl.getAttribute
+            && reEl.getAttribute('data-testid') === 'sequence-view-re-site') break;
+        reEl = reEl.parentElement;
+      }
+      if (reEl && reEl !== containerRef.current) {
+        return;
+      }
+    }
+
+    // 18.05.2026 — primer click? Bail (same as RE-site above) so root
+    // caret-placement / setPointerCapture / preventDefault don't STEAL
+    // the click+dblclick from the primer's own <g> handlers. Без этого
+    // pointer-capture на root уводит click мимо праймера (Игорь «клик
+    // по праймеру не работает» — проявилось когда стрелки переехали
+    // вплотную к цепи и стали попадать в posFromPointerEvent).
+    {
+      let pEl = e.target;
+      while (pEl && pEl !== containerRef.current) {
+        if (pEl.getAttribute
+            && pEl.getAttribute('data-testid') === 'sequence-view-primer') break;
+        pEl = pEl.parentElement;
+      }
+      if (pEl && pEl !== containerRef.current) {
+        return;
+      }
+    }
+
     // AA cell? Select the underlying triplet, start an AA-drag.
     if (typeof onSelectRange === "function") {
       let aaEl = e.target;

@@ -79,6 +79,11 @@ export default function Annotator({
   // navigates the embedded preview.
   pendingScroll = null,
   onPendingScrollHandled,
+  // 18.05.2026 — primers are base functionality on EVERY sequence
+  // viewer (Игорь). Forwarded host → AnnotationsTab → here →
+  // PreviewTab → SequenceView. Optional (absent ⇒ no primers).
+  primers,
+  onWritePrimer,
 }) {
   const annotator = useStore(selectAnnotator);
   const closeAnnotator = useStore((s) => s.closeAnnotator);
@@ -422,6 +427,8 @@ export default function Annotator({
             onBlastSelection={handleBlastSelection}
             pendingScroll={mergedPendingScroll}
             onPendingScrollHandled={handlePendingScrollHandled}
+            primers={primers}
+            onWritePrimer={onWritePrimer}
           />
         </div>
         <LevelPanel

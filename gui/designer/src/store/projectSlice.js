@@ -37,6 +37,9 @@ export function clearAllLocks() {
 
 const SCHEMA_VER = 1;
 const RECENT_LIMIT = 10;
+// M-X.8 K2 — explicit pin cap per DEC-UIRREV-PINNED-EXPLICIT.
+// Hard block on excess (toast feedback) — open Q3 in spec.
+export const PIN_LIMIT = 15;
 
 function nowIso() {
   return new Date().toISOString();
@@ -162,6 +165,11 @@ export const createProjectSlice = (set, get) => ({
   currentProjectId: null,
   projects: {},
   recentProjectIds: [],
+  // M-X.8 K2 — explicit pin list per DEC-UIRREV-PINNED-EXPLICIT.
+  // User-curated, capped at PIN_LIMIT. NOT mirroring MRU.
+  // Hydration migration in `hydrateProjectsFromDexie` seeds this
+  // from `recentProjectIds` (top-3) when empty.
+  pinnedProjectIds: [],
 
   fileHandle: null,
   fileName: null,
@@ -231,6 +239,13 @@ export const createProjectSlice = (set, get) => ({
         .map(r => r.id)
         .filter(id => state.projects[id]);
       state.recentProjectIds = sorted.slice(0, RECENT_LIMIT);
+      // M-X.8 K2 migration — first run after upgrade: seed
+      // `pinnedProjectIds` from top-3 of MRU so biolog doesn't
+      // see an empty PINNED section. Subsequent sessions: leave
+      // the user-curated list alone.
+      if (!Array.isArray(state.pinnedProjectIds) || state.pinnedProjectIds.length === 0) {
+        state.pinnedProjectIds = sorted.slice(0, 3);
+      }
     });
   },
 
@@ -323,6 +338,100 @@ export const createProjectSlice = (set, get) => ({
         cleanShutdown: false,
       };
     });
+  },
+
+  /**
+   * activateProject — Sprint M-X.7c K3 / K8
+   * (DEC-PROJECT-OPEN-MERGE-01 functional closure).
+   *
+   * Single point of activation. Sets `currentProjectId` to the
+   * given id (must already exist in `state.projects` — caller is
+   * responsible for hydrating the project body, e.g. via
+   * `openProjectFromIndexedDB` or after a `.bodge` import). Updates
+   * `recentProjectIds` (MRU) and routes the canvas to the DAG view
+   * for the new project.
+   *
+   * No-op when:
+   *   • `id` is null/undefined → use `closeProject` instead.
+   *   • Already-active project → idempotent (recent-list bumped).
+   *
+   * Hydration of the project body and lock acquisition are done
+   * by the importer / opener (`openProjectFromFileData`, etc.) —
+   * `activateProject` is the post-hydration switch.
+   */
+  activateProject: (id) => {
+    if (!id) return false;
+    const proj = get().projects?.[id];
+    if (!proj) return false;
+    set((state) => {
+      state.currentProjectId = id;
+      const filtered = state.recentProjectIds.filter((rid) => rid !== id);
+      state.recentProjectIds = [id, ...filtered].slice(0, RECENT_LIMIT);
+      // FAIL-fix-pass 4 — activateProject does NOT touch
+      // `canvas.activeFullscreen`. Tree click on a non-current
+      // project header was switching the right panel into the
+      // DAG workspace as a side-effect, breaking the «mode stays
+      // Library» contract. Mode is the caller's responsibility:
+      // import .bodge / RecentRow click on the Home dashboard
+      // explicitly route to DAG via `canvas.activeFullscreen`
+      // before/after activate. Tree click stays in Library.
+    });
+    return true;
+  },
+
+  /**
+   * pinProject — Sprint M-X.8 K2 (DEC-UIRREV-PINNED-EXPLICIT).
+   *
+   * Adds a project id to the pinned list. Returns:
+   *   • true on success
+   *   • 'cap' when PIN_LIMIT reached (caller surfaces toast)
+   *   • false when id is invalid or project doesn't exist
+   *
+   * Idempotent — pinning an already-pinned project is a no-op
+   * that returns true (so call sites can ignore the diff).
+   */
+  pinProject: (id) => {
+    if (!id) return false;
+    const state = get();
+    if (!state.projects?.[id]) return false;
+    if (state.pinnedProjectIds.includes(id)) return true;
+    if (state.pinnedProjectIds.length >= PIN_LIMIT) return 'cap';
+    set((s) => {
+      s.pinnedProjectIds = [...s.pinnedProjectIds, id];
+    });
+    return true;
+  },
+
+  unpinProject: (id) => {
+    if (!id) return false;
+    const state = get();
+    if (!state.pinnedProjectIds.includes(id)) return true;
+    set((s) => {
+      s.pinnedProjectIds = s.pinnedProjectIds.filter((rid) => rid !== id);
+    });
+    return true;
+  },
+
+  /**
+   * reorderPins(nextOrder) — replace the pinned list with a
+   * caller-provided ordering. Filters out unknown ids defensively
+   * and clamps to PIN_LIMIT. Used by future drag-reorder UI; the
+   * function exists now so K3/K6 don't need a follow-up patch.
+   */
+  reorderPins: (nextOrder) => {
+    if (!Array.isArray(nextOrder)) return false;
+    const state = get();
+    const known = new Set(Object.keys(state.projects || {}));
+    const seen = new Set();
+    const filtered = [];
+    for (const id of nextOrder) {
+      if (typeof id !== 'string' || !known.has(id) || seen.has(id)) continue;
+      seen.add(id);
+      filtered.push(id);
+      if (filtered.length >= PIN_LIMIT) break;
+    }
+    set((s) => { s.pinnedProjectIds = filtered; });
+    return true;
   },
 
   closeProject: () => {
@@ -608,13 +717,39 @@ export const createProjectSlice = (set, get) => ({
     });
   },
 
-  markPendingDelete: (id) => set(state => {
-    if (state.projects[id]) state.projects[id]._pendingDelete = true;
-  }),
+  // Soft-delete the project — flips `_pendingDelete` and persists to
+  // Dexie immediately (parity with `markLibraryEntryPendingDelete`).
+  // Without persistence the flag was lost if the tab closed before
+  // the user purged via the Trash zone — see M-X.10 trash spec.
+  markPendingDelete: async (id) => {
+    set(state => {
+      if (state.projects[id]) state.projects[id]._pendingDelete = true;
+    });
+    const proj = get().projects[id];
+    if (!proj) return;
+    const lc = get()._projectLifecycle?.[id];
+    try {
+      await putProject(projectRecord(proj, lc));
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[bodgegene] persist project soft-delete failed', err);
+    }
+  },
 
-  unmarkPendingDelete: (id) => set(state => {
-    if (state.projects[id]) state.projects[id]._pendingDelete = false;
-  }),
+  unmarkPendingDelete: async (id) => {
+    set(state => {
+      if (state.projects[id]) state.projects[id]._pendingDelete = false;
+    });
+    const proj = get().projects[id];
+    if (!proj) return;
+    const lc = get()._projectLifecycle?.[id];
+    try {
+      await putProject(projectRecord(proj, lc));
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[bodgegene] unmark project soft-delete failed', err);
+    }
+  },
 
   commitPendingDelete: async (id) => {
     const proj = get().projects[id];

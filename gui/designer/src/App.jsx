@@ -8,6 +8,12 @@ import { useSidebarCollapsed } from './components/StartScreen/hooks/useSidebarCo
 import './components/StartScreen/StartScreen.css';
 import DagWorkspace from './components/Dag/DagWorkspace';
 import ContainerWindowPlaceholder from './components/Dag/ContainerWindowPlaceholder';
+// M-CANVAS-SKELETON (DEC-SKELETON-01) — изолированный DEV-only route.
+// Полная Canvas-модель скелета: Tree + Canvas (Layout/Graph) + Editor +
+// 4 operations. Replaces M-CANVAS-PROTOTYPE-PCR (узкий PCR-only).
+// Снос скелета = удаление этого импорта + case в switch ниже + папки
+// `components/CanvasSkeleton/`.
+import CanvasSkeleton from './components/CanvasSkeleton';
 // Sprint Single-Sidebar (09.05.2026): Importer / DagWorkspace
 // stay imported only for the activeFullscreen overlay paths
 // (legacy `pushFullscreen('dag' | 'library')` callsites). The
@@ -18,6 +24,8 @@ import MultiTabBlocked from './components/MultiTabBlocked';
 import ReadOnlyForced from './components/ReadOnlyForced';
 import SettingsModal from './components/SettingsModal';
 import ProjectInfoModal from './components/ProjectInfoModal';
+import CommandPalette from './components/CommandPalette';
+import SequenceSearchPopover from './components/SequenceSearchPopover';
 import { ToastStack } from './components/Toast';
 import { openBodgeFilePicker, pickSaveAs, saveBlobToHandle } from './lib/file-system';
 import { writeBodge, readBodge } from './lib/bodge-zip';
@@ -40,6 +48,7 @@ export default function App() {
   const currentProjectId = useStore(s => s.currentProjectId);
   const project = useStore(s => (currentProjectId ? s.projects[currentProjectId] : null));
   const openProjectFromFileData = useStore(s => s.openProjectFromFileData);
+  const addLibraryEntriesBulk = useStore(s => s.addLibraryEntriesBulk);
   const registerSavedFile = useStore(s => s.registerSavedFile);
   const showToast = useStore(s => s.showToast);
   const flushAutosave = useStore(s => s.flushAutosave);
@@ -98,7 +107,18 @@ export default function App() {
     }
     if (!pick) return;
     try {
-      const { project: parsed, warnings } = await readBodge(pick.file);
+      const { project: parsed, libraryEntries, warnings } = await readBodge(pick.file);
+      // Симметрия с Sidebar onOpenBodge — Ctrl+O тоже сидит библиотеку
+      // встроенными entries. Отсутствующий projectId привязываем к
+      // загружаемому проекту (типично для self-contained .bodge).
+      const linkedEntries = (libraryEntries || []).map((e) => ({
+        ...e,
+        projectId: e.projectId || parsed.id,
+      }));
+      if (linkedEntries.length > 0) {
+        try { await addLibraryEntriesBulk(linkedEntries); }
+        catch (e) { showToast(`Не все плазмиды загружены: ${e?.message || e}`, 'warning'); }
+      }
       await openProjectFromFileData({
         project: parsed,
         fileHandle: pick.handle,
@@ -111,7 +131,7 @@ export default function App() {
     } catch (e) {
       showToast(e.message || String(e), 'error');
     }
-  }, [openProjectFromFileData, showToast]);
+  }, [openProjectFromFileData, addLibraryEntriesBulk, showToast]);
 
   const handleSave = useCallback(async () => {
     const id = useStore.getState().currentProjectId;
@@ -172,14 +192,57 @@ export default function App() {
   useHotkey('open-settings', handleSettings);
   useHotkey('project-info', handleProjectInfo);
   useHotkey('escape', handleEscape);
+  // M-X.8 K6 — ⌘P / Ctrl+P opens the Command Palette.
+  const handleCommandPalette = useCallback(() => {
+    useStore.getState().openCommandPalette?.();
+  }, []);
+  useHotkey('command-palette', handleCommandPalette);
+  // M-X.9 K2 — Ctrl+F / ⌘F opens local sequence search.
+  const handleSequenceSearch = useCallback(() => {
+    useStore.getState().openSequenceSearch?.();
+  }, []);
+  useHotkey('sequence-search', handleSequenceSearch);
+
+  // PWA `manifest.shortcuts` launch handler. The OS opens us with
+  // `?action=…` when the user clicks an app-icon shortcut.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const action = params.get('action');
+    if (!action) return;
+    // Drop the param so a refresh doesn't replay the action.
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('action');
+      window.history.replaceState({}, '', url.toString());
+    } catch { /* */ }
+    // Defer one tick so the rest of App.jsx hooks finish wiring
+    // (handleNew + handleOpen depend on store + filesystem helpers).
+    setTimeout(() => {
+      switch (action) {
+        case 'new-project': handleNew(); break;
+        case 'open-bodge': handleOpen(); break;
+        case 'command-palette': useStore.getState().openCommandPalette?.(); break;
+        default: /* unknown action — ignore */ break;
+      }
+    }, 0);
+  }, [handleNew, handleOpen]);
 
   // ─── Single global keydown listener via runHotkeyResolver ───
+  // Capture phase is critical: in PWA standalone Chrome will let
+  // Ctrl+P / Ctrl+S / Ctrl+F / Ctrl+O / Ctrl+, through to the page
+  // ONLY if we beat the browser default. With a bubble listener,
+  // some browsers (Vivaldi specifically) fire the default action
+  // before the event bubbles to window. Capture also lets us
+  // suppress browser shortcuts when we're focused inside a text
+  // input that wants to keep the key (handled inside the resolver
+  // via `allowInInput`).
   useEffect(() => {
     function onKeyDown(e) {
       runHotkeyResolver(e);
     }
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
   }, []);
 
   useEffect(() => {
@@ -275,6 +338,11 @@ export default function App() {
     case 'readOnlyForced':
       overlayContent = <ReadOnlyForced />;
       break;
+    // M-CANVAS-SKELETON (DEC-SKELETON-01) — DEV-only route. Снос =
+    // удалить эту строку + импорт + папку components/CanvasSkeleton.
+    case 'canvasSkeleton':
+      overlayContent = <CanvasSkeleton />;
+      break;
     default:
       overlayContent = null;
   }
@@ -315,6 +383,10 @@ export default function App() {
       <HotkeyCheatsheet open={hotkeysOpen} onClose={closeHotkeys} />
       {projectInfoOpen && <ProjectInfoModal />}
       {settingsOpen && <SettingsModal />}
+      {/* M-X.8 K6 — Command Palette overlay (always mounted; the
+          component itself returns null when closed so portal mounts
+          only when needed). */}
+      <CommandPalette />
       <ToastStack />
     </div>
   );

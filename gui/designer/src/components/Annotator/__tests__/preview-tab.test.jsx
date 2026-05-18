@@ -28,6 +28,8 @@ vi.mock('../../SequenceView', () => ({
     onOpenFeatureEditor,
     onBlastSelection,
     readOnly,
+    primers,
+    onWritePrimer,
   }) => {
     const ann = (fragments?.[0]?.annotations) || [];
     return (
@@ -59,6 +61,15 @@ vi.mock('../../SequenceView', () => ({
             data-testid="mock-trigger-blast"
             onClick={() => onBlastSelection({ start: 100, end: 200 })}
           >blast</button>
+        )}
+        <div data-testid="mock-primer-count">{(primers || []).length}</div>
+        {onWritePrimer && (
+          <button
+            data-testid="mock-trigger-writeprimer"
+            onClick={() => onWritePrimer({
+              direction: 'forward', start: 1, end: 20, name: 'p', sequence: 'ATGC',
+            })}
+          >wp</button>
         )}
       </div>
     );
@@ -262,6 +273,36 @@ describe('PreviewTab — K4 SequenceView merge + drill-in', () => {
       );
       fireEvent.click(screen.getByTestId('mock-trigger-blast'));
       expect(onBlast).toHaveBeenCalledWith({ start: 100, end: 200 });
+    });
+
+    // 18.05.2026 (Игорь) — primers are base functionality on EVERY
+    // sequence viewer, incl. the embedded Annotator preview ("при
+    // просмотре, во всех сиквенс виверах"). Host (Library/Container)
+    // → AnnotationsTab → Annotator → here → SequenceView.
+    it('forwards primers + onWritePrimer to the embedded SequenceView', () => {
+      const onWP = vi.fn();
+      render(
+        <PreviewTab
+          sequence={SEQUENCE}
+          annotations={CONFIRMED}
+          name="pTest"
+          primers={[{ name: 'p1', bindingSequence: 'ATGCATGCATGC', direction: 'forward' }]}
+          onWritePrimer={onWP}
+        />,
+      );
+      expect(screen.getByTestId('mock-primer-count').textContent).toBe('1');
+      fireEvent.click(screen.getByTestId('mock-trigger-writeprimer'));
+      expect(onWP).toHaveBeenCalledWith({
+        direction: 'forward', start: 1, end: 20, name: 'p', sequence: 'ATGC',
+      });
+    });
+
+    it('no primers prop ⇒ empty list forwarded (back-compat)', () => {
+      render(
+        <PreviewTab sequence={SEQUENCE} annotations={CONFIRMED} name="pTest" />,
+      );
+      expect(screen.getByTestId('mock-primer-count').textContent).toBe('0');
+      expect(screen.queryByTestId('mock-trigger-writeprimer')).toBeNull();
     });
   });
 

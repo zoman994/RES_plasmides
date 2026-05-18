@@ -4,8 +4,10 @@
  *
  * Four cases match Sprint M-B.3 §6 K5:
  *  1) PrimerTrack hides itself when primers=[]
- *  2) PrimerTrack 'filled' renders forward primer with solid blue rect
+ *  2) PrimerTrack 'filled' renders forward primer as a solid blue arrow
  *  3) PrimerTrack 'outline' renders outline-only and includes binding seq
+ *  (Redesign 18.05.2026 — primer body is a directed arrow <path
+ *   data-primer-arrow>, not a <rect> bar; sequence inscribed inside.)
  *  4) RestrictionTrack 'vertical' rotates label 90deg; 'horizontal' does not
  */
 import { describe, it, expect, afterEach } from "vitest";
@@ -41,7 +43,7 @@ describe("PrimerTrack — K5", () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it("2) 'filled' renders forward primer with solid blue rect", () => {
+  it("2) 'filled' renders forward primer as a solid blue arrow", () => {
     render(
       <PrimerTrack
         primers={[fwdPrimer]}
@@ -57,11 +59,13 @@ describe("PrimerTrack — K5", () => {
     expect(root.dataset.primerStyle).toBe("filled");
     const prim = screen.getByTestId("sequence-view-primer");
     expect(prim.dataset.primerDirection).toBe("forward");
-    const rect = prim.querySelector("rect");
-    expect(rect.getAttribute("fill")).toBe("#3b82f6");
+    const arrow = prim.querySelector("[data-primer-arrow]");
+    expect(arrow.tagName.toLowerCase()).toBe("path");
+    expect(arrow.getAttribute("data-primer-arrow")).toBe("forward");
+    expect(arrow.getAttribute("fill")).toBe("#3b82f6");
   });
 
-  it("3) 'outline' renders outline-only rect and label includes binding seq", () => {
+  it("3) 'outline' renders outline-only arrow and includes binding seq", () => {
     render(
       <PrimerTrack
         primers={[fwdPrimer]}
@@ -75,8 +79,9 @@ describe("PrimerTrack — K5", () => {
     );
     const root = screen.getByTestId("sequence-view-primers");
     expect(root.dataset.primerStyle).toBe("outline");
-    const rect = root.querySelector("rect");
-    expect(rect.getAttribute("fill")).toBe("none");
+    const arrow = root.querySelector("[data-primer-arrow]");
+    expect(arrow.getAttribute("fill")).toBe("none");
+    expect(arrow.getAttribute("stroke")).toBe("#3b82f6");
     expect(root.textContent).toContain("ATGCAAAGGGCCC");
   });
 });

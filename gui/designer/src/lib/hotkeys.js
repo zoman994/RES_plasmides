@@ -57,7 +57,107 @@ export const HOTKEYS = Object.freeze({
     label: STRINGS.hotkeys.actionLabels.projectInfo,
     allowInInput: false,
   },
+  // T7 DEC-T7-10 — toggle the focused zone graph/sequence. Bare G / S;
+  // allowInInput:false so renaming a zone never toggles (R-T7-4).
+  'toggle-zone-view-graph': {
+    keys: { mac: { key: 'g' }, other: { key: 'g' } },
+    scope: 'global-with-project',
+    label: STRINGS.hotkeys.actionLabels.toggleZoneGraph,
+    allowInInput: false,
+  },
+  'toggle-zone-view-sequence': {
+    keys: { mac: { key: 's' }, other: { key: 's' } },
+    scope: 'global-with-project',
+    label: STRINGS.hotkeys.actionLabels.toggleZoneSequence,
+    allowInInput: false,
+  },
+  // T10 DEC-T10-06 — toggle the Sanger lab notebook. Bare B;
+  // allowInInput:false so typing in a notes textarea never toggles (R-T10-3).
+  'toggle-sanger-notebook': {
+    keys: { mac: { key: 'b' }, other: { key: 'b' } },
+    scope: 'global-with-project',
+    label: STRINGS.hotkeys.actionLabels.toggleSangerNotebook,
+    allowInInput: false,
+  },
+  // M-X.8 K6 — Command Palette overlay for project switching.
+  // FAIL-fix-pass 5 — alternate Ctrl+Shift+P / ⌘+Shift+P binding
+  // for browsers where the primary Ctrl+P is hijacked by the
+  // print-dialog default. `keys.{mac,other}` accepts either a
+  // single combo or an array of combos (resolver matches any).
+  // 11.05.2026 follow-up — `allowInInput: true`. Biolog reported
+  // intermittent «hotkey doesn't work» — root cause: focus inside
+  // ANY text input (Library tree-search, topbar search, AddModal
+  // paste textarea, even the palette's own filter) was making
+  // `_isInInputElement` skip these app-level commands → browser
+  // default fired (print dialog / find-in-page). Palette + search
+  // are global app navigation; biolog always wants them, regardless
+  // of focus.
+  'command-palette': {
+    keys: {
+      mac: [{ meta: true, key: 'p' }, { meta: true, shift: true, key: 'p' }],
+      other: [{ ctrl: true, key: 'p' }, { ctrl: true, shift: true, key: 'p' }],
+    },
+    scope: 'global',
+    label: STRINGS.hotkeys.actionLabels.commandPalette,
+    allowInInput: true,
+  },
+  // M-X.9 K2 — Local sequence search (Ctrl+F / ⌘F).
+  'sequence-search': {
+    keys: {
+      mac: [{ meta: true, key: 'f' }, { meta: true, shift: true, key: 'f' }],
+      other: [{ ctrl: true, key: 'f' }, { ctrl: true, shift: true, key: 'f' }],
+    },
+    scope: 'global',
+    label: 'Поиск ПСО',
+    allowInInput: true,
+  },
+  // V72 — write a primer from the selected DNA range inside the PCR
+  // viewer. Scoped to the viewer by HANDLER LIFECYCLE, not by `scope`:
+  // PcrModeShell registers the handler via useHotkey only while mounted,
+  // and the resolver skips ids with no registered handler WITHOUT
+  // calling preventDefault — so Ctrl+R reloads the browser normally
+  // everywhere except inside the open PCR viewer. `alt`/`shift` are
+  // pinned so Ctrl+R (fwd) and Ctrl+Alt+R (rev) never cross-match and
+  // Ctrl+Shift+R stays a hard-reload.
+  'pcr-primer-forward': {
+    keys: {
+      mac: { ctrl: true, alt: false, shift: false, key: 'r' },
+      other: { ctrl: true, alt: false, shift: false, key: 'r' },
+    },
+    scope: 'global',
+    label: 'PCR: прямой праймер из выделения',
+    allowInInput: true,
+  },
+  'pcr-primer-reverse': {
+    keys: {
+      mac: { ctrl: true, alt: true, shift: false, key: 'r' },
+      other: { ctrl: true, alt: true, shift: false, key: 'r' },
+    },
+    scope: 'global',
+    label: 'PCR: обратный праймер из выделения',
+    allowInInput: true,
+  },
+  // T5 DEC-T5-02 — bare «P» marks the selection as a piece. Not
+  // allowInInput (R-T5-1: must not fire while the biolog types a name).
+  'piece-create': {
+    keys: {
+      mac: { ctrl: false, alt: false, shift: false, key: 'p' },
+      other: { ctrl: false, alt: false, shift: false, key: 'p' },
+    },
+    scope: 'global',
+    label: 'Отметить выделение как кусок',
+    allowInInput: false,
+  },
 });
+
+// FAIL-fix-pass 5 — internal helper. Returns the platform's combo
+// list, normalising single-object form to a 1-length array so the
+// resolver can iterate uniformly.
+function _combosForPlatform(def, platform) {
+  const raw = platform === 'mac' ? def.keys.mac : def.keys.other;
+  if (!raw) return [];
+  return Array.isArray(raw) ? raw : [raw];
+}
 
 const SCOPE_PRIORITY = Object.freeze([
   // higher index → higher priority
@@ -121,8 +221,10 @@ export function useHotkey(id, handler) {
 export function formatHotkey(id, platform = detectPlatform()) {
   const def = HOTKEYS[id];
   if (!def) return '';
-  const combo = platform === 'mac' ? def.keys.mac : def.keys.other;
-  return _formatCombo(combo, platform);
+  // Primary binding only — alternates are documented in the
+  // HotkeyCheatsheet, not in inline UI hints.
+  const combos = _combosForPlatform(def, platform);
+  return _formatCombo(combos[0], platform);
 }
 
 function _formatCombo(combo, platform) {
@@ -152,8 +254,20 @@ function _eventMatchesCombo(event, combo) {
   const key = (event.key || '').toLowerCase();
   const wantedRaw = combo.key || '';
   const wanted = wantedRaw.toLowerCase();
-  // Cmd/Ctrl modifier without explicit ctrl/meta in combo defaults to false → handled above.
-  return key === wanted;
+  if (key === wanted) return true;
+  // 11.05.2026 — layout-independent fallback. On a Russian/Cyrillic
+  // layout `event.key` is the Cyrillic char on the same physical
+  // key (Ctrl+P → `event.key === 'з'`, Ctrl+F → 'а', Ctrl+S → 'ы',
+  // Ctrl+I → 'ш', etc.) and the strict `key === wanted` test above
+  // fails. `event.code` is the physical-key identifier and is
+  // layout-independent. For single ASCII letters it's `KeyX`; for
+  // ',' it's `Comma`; the rest already match via `event.key`.
+  if (wanted.length === 1 && wanted >= 'a' && wanted <= 'z') {
+    const expectedCode = `Key${wanted.toUpperCase()}`;
+    if (event.code === expectedCode) return true;
+  }
+  if (wanted === ',' && event.code === 'Comma') return true;
+  return false;
 }
 
 function _isInInputElement(target) {
@@ -222,8 +336,12 @@ export function runHotkeyResolver(event, opts = {}) {
   let best = null;
   let bestRank = -1;
   for (const [id, def] of Object.entries(HOTKEYS)) {
-    const combo = platform === 'mac' ? def.keys.mac : def.keys.other;
-    if (!_eventMatchesCombo(event, combo)) continue;
+    const combos = _combosForPlatform(def, platform);
+    let matched = false;
+    for (const combo of combos) {
+      if (_eventMatchesCombo(event, combo)) { matched = true; break; }
+    }
+    if (!matched) continue;
     if (inInput && !def.allowInInput) continue;
     if (!_scopeAllowed(def.scope, ctx)) continue;
     if (modalOpen && MODAL_BLOCKED.has(id)) continue;

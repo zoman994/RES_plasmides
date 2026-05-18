@@ -149,3 +149,157 @@ describe("RulerTrack — smoke", () => {
     expect(labels).toContain("60");
   });
 });
+
+describe("StrandsTrack — restriction cut overlays (12.05.2026)", () => {
+  const SEQ = "ATGC".repeat(50); // 200 bp
+  const CHAR_PX = 10;
+  const LABEL_CHARS = 8;
+
+  it("top-strand cut bar rendered at gap x = (labelChars + pos) * charPx − 1", () => {
+    render(
+      <StrandsTrack
+        lineStart={0}
+        seq={SEQ}
+        annMap={annNull(SEQ.length)}
+        labelChars={LABEL_CHARS}
+        which="top"
+        charPx={CHAR_PX}
+        cutPositions={[{ key: 'EcoRI-50-top', pos: 51 }]}
+      />,
+    );
+    const bars = screen.getAllByTestId('sequence-view-strand-cut');
+    expect(bars.length).toBe(1);
+    expect(bars[0].getAttribute('data-strand')).toBe('top');
+    expect(bars[0].getAttribute('data-cut-pos')).toBe('51');
+    // left = (8 + 51) * 10 - 1 = 589
+    expect(bars[0].style.left).toBe('589px');
+  });
+
+  it("bottom-strand cut at a different position than top — true sticky-end picture", () => {
+    render(
+      <StrandsTrack
+        lineStart={0}
+        seq={SEQ}
+        annMap={annNull(SEQ.length)}
+        labelChars={LABEL_CHARS}
+        which="bottom"
+        charPx={CHAR_PX}
+        cutPositions={[{ key: 'EcoRI-50-bot', pos: 55 }]}
+      />,
+    );
+    const bars = screen.getAllByTestId('sequence-view-strand-cut');
+    expect(bars.length).toBe(1);
+    expect(bars[0].getAttribute('data-strand')).toBe('bottom');
+    // left = (8 + 55) * 10 - 1 = 629
+    expect(bars[0].style.left).toBe('629px');
+  });
+
+  it("overhang highlight band spans from min to max cut on this strand row", () => {
+    render(
+      <StrandsTrack
+        lineStart={0}
+        seq={SEQ}
+        annMap={annNull(SEQ.length)}
+        labelChars={LABEL_CHARS}
+        which="top"
+        charPx={CHAR_PX}
+        overhangs={[{ key: 'EcoRI-50-ov', startPos: 51, endPos: 55 }]}
+      />,
+    );
+    const band = screen.getAllByTestId('sequence-view-strand-overhang');
+    expect(band.length).toBe(1);
+    // left = (8 + 51) * 10 = 590; width = (55 - 51) * 10 = 40
+    expect(band[0].style.left).toBe('590px');
+    expect(band[0].style.width).toBe('40px');
+  });
+
+  it("cuts outside line range are filtered out", () => {
+    render(
+      <StrandsTrack
+        lineStart={100}
+        seq={SEQ.slice(0, 50)}
+        annMap={annNull(50)}
+        labelChars={LABEL_CHARS}
+        which="top"
+        charPx={CHAR_PX}
+        cutPositions={[
+          { key: 'in-range', pos: 120 },   // inside [100, 150]
+          { key: 'before', pos: 50 },      // before lineStart
+          { key: 'after', pos: 200 },      // beyond lineEnd
+        ]}
+      />,
+    );
+    const bars = screen.getAllByTestId('sequence-view-strand-cut');
+    expect(bars.length).toBe(1);
+    expect(bars[0].getAttribute('data-cut-pos')).toBe('120');
+  });
+
+  it("binding-zone highlight spans the FULL recognition site width", () => {
+    render(
+      <StrandsTrack
+        lineStart={0}
+        seq={SEQ}
+        annMap={annNull(SEQ.length)}
+        labelChars={LABEL_CHARS}
+        which="top"
+        charPx={CHAR_PX}
+        bindingHighlights={[
+          { key: 'EcoRI-50-bind', startPos: 50, endPos: 56 }, // GAATTC = 6 bp
+        ]}
+      />,
+    );
+    const bind = screen.getAllByTestId('sequence-view-strand-binding');
+    expect(bind.length).toBe(1);
+    expect(bind[0].getAttribute('data-strand')).toBe('top');
+    // left = (8 + 50) * 10 = 580; width = (56 - 50) * 10 = 60
+    expect(bind[0].style.left).toBe('580px');
+    expect(bind[0].style.width).toBe('60px');
+  });
+
+  it("binding highlight present on BOTH strands when passed to each", () => {
+    // Top strand
+    const { unmount } = render(
+      <StrandsTrack
+        lineStart={0}
+        seq={SEQ}
+        annMap={annNull(SEQ.length)}
+        labelChars={LABEL_CHARS}
+        which="top"
+        charPx={CHAR_PX}
+        bindingHighlights={[{ key: 'b1', startPos: 30, endPos: 36 }]}
+      />,
+    );
+    expect(screen.getAllByTestId('sequence-view-strand-binding')[0].getAttribute('data-strand')).toBe('top');
+    unmount();
+    // Bottom strand
+    render(
+      <StrandsTrack
+        lineStart={0}
+        seq={SEQ}
+        annMap={annNull(SEQ.length)}
+        labelChars={LABEL_CHARS}
+        which="bottom"
+        charPx={CHAR_PX}
+        bindingHighlights={[{ key: 'b1', startPos: 30, endPos: 36 }]}
+      />,
+    );
+    expect(screen.getAllByTestId('sequence-view-strand-binding')[0].getAttribute('data-strand')).toBe('bottom');
+  });
+
+  it("no cuts/overhangs/bindings → renders just plain chars (back-compat)", () => {
+    render(
+      <StrandsTrack
+        lineStart={0}
+        seq={SEQ}
+        annMap={annNull(SEQ.length)}
+        labelChars={LABEL_CHARS}
+        which="top"
+        charPx={CHAR_PX}
+      />,
+    );
+    expect(screen.queryAllByTestId('sequence-view-strand-cut').length).toBe(0);
+    expect(screen.queryAllByTestId('sequence-view-strand-overhang').length).toBe(0);
+    expect(screen.queryAllByTestId('sequence-view-strand-binding').length).toBe(0);
+    expect(joinRunsText('top')).toBe(SEQ);
+  });
+});

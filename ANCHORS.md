@@ -11,7 +11,119 @@
 >
 > **Структура.** Далее идёт §1 с тематическими блоками fundamentals (state mgmt / биология / рендеринг / UX / данные), дальше §2–§15 — sprint-блоки исторических спринтов с их ⚓ решениями (Map-WS-1 · Sprint X cycle · Annotation-Commits planned · Project-Model FINAL = DEC-V2-01..27 · M-A Wireframe = DEC-DS-01 + DEC-V2-28..30 · M-A.2 = DEC-MA2-01 · M-B Kickoff = DEC-LIB-01..09 + DEC-IMP-01..05 + DEC-REUSE-01 + DEC-LIB-10).
 >
-> **Общее количество ⚓ fundamental:** **59** (на v0.8.0: 52 предыдущих + DEC-PARSER-COORD-01 от 03.05.2026 + DEC-IMP-06 + DEC-LIB-12..17 от 07.05.2026 — Library as Primary Workspace).
+> **Общее количество ⚓ fundamental:** **64** (на v0.8.0: 52 предыдущих + DEC-PARSER-COORD-01 от 03.05.2026 + DEC-IMP-06 + DEC-LIB-12..17 от 07.05.2026 — Library as Primary Workspace; +2 после v0.8.0: DEC-SIZE-CALIBRATION-01 от 08.05.2026 — калибровка лимитов размера; DEC-INTEROP-01 от 08.05.2026 — обратная совместимость форматов как first-class concern; **+3 в v0.8.2 (10–11.05.2026): DEC-UIRREV-ACTIVE-SINGLE-01, DEC-UIRREV-ZONES-MERGE-01, DEC-PROJSLICE-ACTIVATE-PURE-01 — promotion из sprint-level после подтверждения реальным workflow M-X.8 / M-X.9**).
+
+---
+
+## Оглавление
+
+> **Навигация по файлу.** Два вида индекса: **эпохи** (по времени) для быстрого «когда было», **домены** (по смыслу) для «правило в этой зоне». Ссылки — на section headings этого файла. По большинству доменов anchor'ы разбросаны по нескольким секциям — даю связку «дата + лейбл + секция» вместо перечисления всех ID.
+
+### По эпохам
+
+| Эпоха | Даты | Основные блоки | ⚓ кол-во |
+|-------|------|-------------------|----------|
+| **0. Pre-v0.5 baseline** | 25–29 марта 2026 | State mgmt + биология + UX-инварианты + Project Flow + Архитектура v2 baseline | ~16 |
+| **1. v0.5 era** | 3 апреля – 28 апреля 2026 | Restriction Cloning, Sanitize contract, Sprint 1 (мутагенез), Sprint 1.7 (topology), Map-WS-1, размеры модулей, Sprint X (Plasmid-Git), Sprint App-Decomp, kickoff-интервью и prototype-first, Annotation-Commits planned | ~25 |
+| **2. v0.6 wipe & ARCHITECTURE_v2** | 29 апреля 2026 | DEC-V2-01..27 — контейнер = молекулярная единица, ProjectCommit hyperedge, Origin vs Provenance, .bodge, persistence, multi-tab, sync, cross-project import | 27 |
+| **3. M-A series** | 30 апреля – 1 мая 2026 | Start screen design (DEC-DS-01 + DEC-V2-28..30), M-A FINAL (sprint-level DEC-MA-01..04), M-A.1 polish (DEC-MA1-01..04), M-A.2 i18n (DEC-MA2-01 ⚓) | 8 |
+| **4. M-B series** | 1 мая – 2 мая 2026 | M-B Kickoff (Library = personal collection, DEC-LIB-01..10 + DEC-IMP-01..05 + DEC-REUSE-01), v0.6.4 → v0.7.0 (DEC-IMP-15 lazy-mount, DEC-DS-02 palette A+v2 + shade, DEC-CAT-04 folder-as-slash) | 18 |
+| **5. M-X.5 Library = primary** | 3 мая – 7 мая 2026 | DEC-PARSER-COORD-01 (0-based exclusive end), DEC-IMP-06 (Importer fullscreen abolished), DEC-LIB-12..17 (manual edit branching, save flow, edit parity, import targets, read-only default, onboarding nudge) | 8 |
+| **6. Process calibration** | 8 мая 2026 | DEC-SIZE-CALIBRATION-01 — cliff → review-point + rate-of-change/entanglement triggers | 1 |
+| **7. Interoperability** | 8 мая 2026 | DEC-INTEROP-01 — `.bodge` / `.bodgebox` как valid GenBank + plain JSON, никаких proprietary fields | 1 |
+
+| **8. v0.8.2 promotion** | 10–11 мая 2026 | UI revision + project hub + sequence search promotion: «один activeProject» + «зон 2» + side-effect-free actions — всё подтверждено реальным workflow | 3 |
+
+**Быстрый переход:**
+- [v0.8.2 UI rev + project hub](#sprint-v082--ui-revision--project-hub--store-actions-purification-1011052026)
+- [Pre-v0.5 baseline](#1-фундаментальные-решения----не-переезжают-в-архив) · [v0.5 era — Map-WS-1](#sprint-map-ws-1-cycle--plasmidworkspace--sync-cursor--feature-palette-21042026) · [v0.5 era — размеры](#архитектурная-гигиена-22042026) · [v0.5 era — процесс](#процесс--chat--code-координация-23042026) · [v0.5 era — Plasmid-Git](#sprint-x-cycle--plasmid-git-data-model--corrected-undo-timing-2426042026)
+- [v0.6 ARCHITECTURE_v2](#sprint-project-model-final--architecture_v2md-29042026) · [M-A](#sprint-m-a-final--стартовый-экран--persistence--hotkey-infra--projectinfomodal-30042026) · [M-A.1](#sprint-m-a1-final--polish-pwa--notion-style-toast--soft-delete-01052026) · [M-A.2](#sprint-m-a2-final--i18n-prep-ui-strings--english-01052026) · [M-B](#sprint-m-b-kickoff-formalization--library-re-definition--importer-scope-01052026-третья-сессия) · [v0.7.0](#sprint-m-b-final--importer-rework--post-acceptance-polish--catalog-tree-rewrite-02052026-v064--v070)
+- [v0.8.0 Library = primary](#library-as-primary-workspace-m-x5-v080) · [Calibration](#архитектурная-гигиена-calibration-08052026)
+
+### По доменам
+
+#### A. Технологии и state management
+- Zustand v5 + Immer + React Compiler + Manual undo (28.03.2026) → [§1 State management / технологии](#state-management--технологии)
+- pushUndo синхронный snapshot capture (26.04.2026) → [Sprint X cycle](#sprint-x-cycle--plasmid-git-data-model--corrected-undo-timing-2426042026)
+- UI/modal читают store через useStore.getState() (28.04.2026) → [Sprint App-Decomp](#sprint-app-decomp--modalstack--useappeffects-extract-28042026)
+
+#### B. Биологические алгоритмы
+- SantaLucia Tm + Golden Gate + KLD + Assembly strategy (25–28.03.2026) → [§1 Биологические алгоритмы](#биологические-алгоритмы)
+- Restriction Cloning: digest() / autoAdjustJunctions guard / N+N+ligation (03.04.2026) → [Restriction Cloning](#restriction-cloning-блок-4b-03042026)
+- Sprint 1 мутагенез: resetJunctionForType / computeMutagenesisStrategy / overlapSequence / no-PCR guard / chooseStrategy fragmentContext (19–20.04.2026) → [Sprint 1](#sprint-1--мутагенез-192004-2026)
+- Sprint 1.7 topology: fragment.topology + expectedJunctionCount + тесты соразмерны коду (22.04.2026) → [Sprint 1.7](#sprint-17--unified-editor--virtual-full-sequence--topology-22042026)
+- Plasmid-Git data model (baseSnapshot + commits[] + replay) (26.04.2026) → [Sprint X cycle](#sprint-x-cycle--plasmid-git-data-model--corrected-undo-timing-2426042026)
+- Annotation-Commits (planned, 27.04.2026): annotations as first-class commits + parentPos baseline-coords + sanity-warning policy → [Sprint Annotation-Commits](#sprint-annotation-commits-planned--plasmid-git-расширение-на-аннотации-27042026)
+
+#### C. Рендеринг и каноны последовательности
+- Character grid + 4 view modes (27–29.03.2026) → [§1 Рендеринг последовательности](#рендеринг-последовательности)
+- Circular Map: mapFragments = [{whole plasmid}] (03.04.2026) → [Circular Map](#circular-map)
+- Map-WS-1 cycle: getRegions id contract + feature-palette + responsive charsPerLine (21.04.2026) → [Sprint Map-WS-1](#sprint-map-ws-1-cycle--plasmidworkspace--sync-cursor--feature-palette-21042026)
+- Feature palette A+v2 + shade-by-canonical-key (DEC-DS-02, 02.05.2026) → [Sprint M-B FINAL](#sprint-m-b-final--importer-rework--post-acceptance-polish--catalog-tree-rewrite-02052026-v064--v070)
+- Lazy-mount heavy tab content (DEC-IMP-15, 02.05.2026) → [Sprint M-B FINAL](#sprint-m-b-final--importer-rework--post-acceptance-polish--catalog-tree-rewrite-02052026-v064--v070)
+
+#### D. UX-инварианты и навигация
+- 2 типа объектов + 3 режима + Okabe-Ito (25–29.03.2026) → [§1 UX-инварианты](#ux-инварианты)
+- Stack-навигация «← Назад» (DEC-V2-09, 29.04.2026) → [Immutable принципы DEC-V2-01..12](#immutable-принципы-dec-v2-0112-architecture_v2-1)
+- Start screen вариант B + amber accent (DEC-DS-01, 30.04.2026) → [Sprint M-A Wireframe](#sprint-m-a-wireframe-selection--start-screen-design-30042026)
+- Theme toggle в header / ProjectInfoModal центральный / auto-open после createProject / tag suggestions (DEC-MA-01..04, 30.04.2026) → [Sprint M-A FINAL](#sprint-m-a-final--стартовый-экран--persistence--hotkey-infra--projectinfomodal-30042026)
+- Notion-style Toast queue + soft-delete (DEC-MA1-01..04, 01.05.2026) → [Sprint M-A.1 FINAL](#sprint-m-a1-final--polish-pwa--notion-style-toast--soft-delete-01052026)
+- Bilingual policy: english code / russian docs (DEC-MA2-01, 01.05.2026) → [Sprint M-A.2 FINAL](#sprint-m-a2-final--i18n-prep-ui-strings--english-01052026)
+- Read-only по умолчанию + Onboarding nudge (DEC-LIB-16, DEC-LIB-17, 07.05.2026) → [Library as Primary Workspace](#library-as-primary-workspace-m-x5-v080)
+
+#### E. Data model — entities и операции
+- 3-level annotations (region > detail > point) + part versioning (29.03.2026) → [§1 Данные и аннотации](#данные-и-аннотации)
+- Plasmid-Git: baseSnapshot + commits[] + HEAD + replay (26.04.2026) → [Sprint X cycle](#sprint-x-cycle--plasmid-git-data-model--corrected-undo-timing-2426042026)
+- Project = root, Container = молекулярная единица (DEC-V2-01..03, 29.04.2026) → [Immutable принципы DEC-V2-01..12](#immutable-принципы-dec-v2-0112-architecture_v2-1)
+- ProjectCommit hyperedge (N→M) + ContainerCommit ≠ ProjectCommit (DEC-V2-13..14, 29.04.2026) → [Data model DEC-V2-13..18](#data-model-dec-v2-1318-architecture_v2-2)
+- Origin (immutable) vs Provenance (mutable) (DEC-V2-16, 29.04.2026) → [Data model DEC-V2-13..18](#data-model-dec-v2-1318-architecture_v2-2)
+- `.bodge` ZIP формат (DEC-V2-07 + DEC-V2-18, 29.04.2026) → [Immutable принципы](#immutable-принципы-dec-v2-0112-architecture_v2-1) + [Data model](#data-model-dec-v2-1318-architecture_v2-2)
+- DAG-as-primary-view (DEC-V2-06, 29.04.2026) → [Immutable принципы](#immutable-принципы-dec-v2-0112-architecture_v2-1)
+- Cross-project import через fullscreen modal + readOnly DagView (DEC-V2-27, 29.04.2026) → [Cross-project import](#cross-project-import-dec-v2-27-architecture_v2-24--library-3)
+- Group projects = мультитим в одном .bodge + Project.tags (DEC-V2-29..30, 30.04.2026) → [Sprint M-A Wireframe](#sprint-m-a-wireframe-selection--start-screen-design-30042026)
+- Либрари dual-context (DEC-V2-28, 30.04.2026) → [Sprint M-A Wireframe](#sprint-m-a-wireframe-selection--start-screen-design-30042026)
+
+#### F. Data model — координаты и парсеры
+- DEC-PARSER-COORD-01: 0-based exclusive end end-to-end (03.05.2026) → [§1 Данные и аннотации](#данные-и-аннотации)
+- Sanitize-at-entry contract + IUPAC канонический порядок (18.04.2026) → [Sanitize contract](#sanitize-contract-этап-11-18042026)
+- normalizeGeneType (gene-семантика из qualifiers) + oriT ≠ rep_origin (18.04.2026) → [Import-annotations](#import-annotations-этап-12-18042026)
+- getRegions id-backfill contract (21.04.2026) → [Sprint Map-WS-1](#sprint-map-ws-1-cycle--plasmidworkspace--sync-cursor--feature-palette-21042026)
+- extractItemName приоритет имен Part'а + addFragmentDirect vs addFragment (27.04.2026) → [Sprint Import-Start-Screen fix](#sprint-import-start-screen--fix-цикл-27042026)
+
+#### G. Persistence + lifecycle + multi-tab
+- Dexie IndexedDB схема v1 (DEC-V2-22, 29.04.2026) → [Persistence + Lifecycle](#persistence--lifecycle--multi-tab-dec-v2-2226-architecture_v2-4--56)
+- Двухуровневый lifecycle: IndexedDB autosave + .bodge explicit save (DEC-V2-23, 29.04.2026) → [Persistence + Lifecycle](#persistence--lifecycle--multi-tab-dec-v2-2226-architecture_v2-4--56)
+- Multi-tab блокируется через navigator.locks (DEC-V2-24, 29.04.2026) → [Persistence + Lifecycle](#persistence--lifecycle--multi-tab-dec-v2-2226-architecture_v2-4--56)
+- Conflict detection через lastModified (DEC-V2-25, 29.04.2026) → [Persistence + Lifecycle](#persistence--lifecycle--multi-tab-dec-v2-2226-architecture_v2-4--56)
+- GenBank export с structured COMMENT-block для provenance (DEC-V2-26, 29.04.2026) → [Persistence + Lifecycle](#persistence--lifecycle--multi-tab-dec-v2-2226-architecture_v2-4--56)
+
+#### H. Distribution + identity + sync
+- Hosted web app + open-source self-host + PWA (DEC-V2-19, 29.04.2026) → [Distribution / Identity / Sync](#distribution--identity--sync-dec-v2-1921-architecture_v2-5)
+- Identity = label, не account (DEC-V2-11, DEC-V2-20, 29.04.2026) → [Immutable принципы](#immutable-принципы-dec-v2-0112-architecture_v2-1)
+- Sync через файл/cloud-folder/Drive API (3 уровня, DEC-V2-12, DEC-V2-21, 29.04.2026) → [Distribution / Identity / Sync](#distribution--identity--sync-dec-v2-1921-architecture_v2-5)
+
+#### I. Library + Importer + Workflow
+- Library = личная коллекция flat tagging (DEC-LIB-01..10, 01.05.2026) → [Sprint M-B Kickoff Formalization](#sprint-m-b-kickoff-formalization--library-re-definition--importer-scope-01052026-третья-сессия)
+- Importer = точка входа внешних данных (DEC-IMP-01..05, 01.05.2026) → [Sprint M-B Kickoff Formalization](#sprint-m-b-kickoff-formalization--library-re-definition--importer-scope-01052026-третья-сессия)
+- v0.5 visualization first-class reuse (DEC-REUSE-01, 01.05.2026) → [Sprint M-B Kickoff Formalization](#sprint-m-b-kickoff-formalization--library-re-definition--importer-scope-01052026-третья-сессия)
+- v0.7.0 catalog tree rewrite — folder-as-slash-path (DEC-CAT-04, 02.05.2026) → [Sprint M-B FINAL](#sprint-m-b-final--importer-rework--post-acceptance-polish--catalog-tree-rewrite-02052026-v064--v070)
+- v0.8.0 Library = primary workspace — Importer fullscreen abolished (DEC-IMP-06, 07.05.2026) → [Library as Primary Workspace](#library-as-primary-workspace-m-x5-v080)
+- Manual edit branching (DEC-LIB-12, 07.05.2026) → [Library as Primary Workspace](#library-as-primary-workspace-m-x5-v080)
+- Annotations save flow: Перезаписать / Сохранить как версию (DEC-LIB-13, 07.05.2026) → [Library as Primary Workspace](#library-as-primary-workspace-m-x5-v080)
+- Edit parity SequenceView ↔ Annotator через single dispatcher (DEC-LIB-14, 07.05.2026) → [Library as Primary Workspace](#library-as-primary-workspace-m-x5-v080)
+- Import targets: Library only / Library + project (DEC-LIB-15, 07.05.2026) → [Library as Primary Workspace](#library-as-primary-workspace-m-x5-v080)
+
+#### J. Процесс и архитектурная гигиена
+- Размер модулей: hard 40/25 KB + soft 30/20 KB (22.04.2026) → [Архитектурная гигиена 22.04](#архитектурная-гигиена-22042026)
+- Декомпозиция закрывает hard в одном спринте (23.04.2026) → [Архитектурная гигиена 22.04](#архитектурная-гигиена-22042026)
+- DEC-SIZE-CALIBRATION-01: cliff → review-point + rate-of-change/entanglement/stable-file exemption (08.05.2026) → [Архитектурная гигиена calibration](#архитектурная-гигиена-calibration-08052026)
+- Kickoff-интервью перед спекой + зона записи .claude/skills/ + Prototype-first (23.04.2026) → [Процесс Chat ↔ Code](#процесс--chat--code-координация-23042026)
+- Тесты side-effect функций проверяют observable state (26.04.2026) → [Sprint X cycle](#sprint-x-cycle--plasmid-git-data-model--corrected-undo-timing-2426042026)
+- Bilingual policy: english code / russian docs (DEC-MA2-01, 01.05.2026) → [Sprint M-A.2 FINAL](#sprint-m-a2-final--i18n-prep-ui-strings--english-01052026)
+
+#### K. Project Flow / DAG
+- @xyflow/react + Construct/Project Flow + projectFlowSlice + Неошизомеры (31.03.2026) → [Project Flow](#project-flow)
+- Архитектура v2: «Составной блок» + Протокол 4 статуса + validateJunctionEnds + Мерж аннотаций (31.03.2026) → [Архитектура v2 — утверждено](#архитектура-v2--утверждено-31032026)
 
 ---
 
@@ -445,7 +557,148 @@ Backend reuse без изменений: `snapgene_parser.py` PRIMARY .dna па�
 
 ---
 
+## Архитектурная гигиена calibration (08.05.2026)
+
+**Контекст.** Правило размеров от 22.04.2026 (⚓ выше, «Архитектурная гигиена») калибровалось эмпирикой одного case (FragmentEditor 62 KB реально болел) с cliff-cutoff 40 KB / 25 KB. После 6 закрытых спринтов (Sprint X cycle, App-Decomp, M-A series, M-B series, M-X.* track, Library refactor) собрана статистика: декомпозиция окупается не от формального размера, а от **rate-of-change × entanglement** конкретного файла. PlasmidUseWizard 38.79 KB сидит в soft-зоне почти 2 года stable — формальное превышение в 39 KB не болит. AnnotationTrack 41.6 → 48.54 KB за 2 спринта — реально болит, потому что paint-only stripe / bridge wrap / sub-features render переплетены. LibrarySingleInspector 32 → 45.94 KB за один спринт (K6/K7/K10/K11 wiring) — реально болит, потому что edit-flow зон конфликтует. Соответственно правило 22.04.2026 нуждается в калибровке: cliff-применение даёт false-positive (TD-galочки на стабильных файлах) и false-negative (rate-of-change ловит позже чем нужно). Не отменяет 22.04.2026 anchor — расширяет его триггерами.
+
+[2026-05-08] **⚓ DEC-SIZE-CALIBRATION-01 — лимит размера модулей: cliff → review-point с rate-of-change и entanglement triggers.** Калибровка ⚓ 22.04.2026 «Лимит размера модулей». Lim­it'ы 30/40 KB (.jsx) и 20/25 KB (.js) **остаются как trigger «пора думать»**, не как hard cliff. Формальное превышение hard НЕ автоматически требует декомпозицию первым пунктом спеки. Вместо этого:
+
+1. **Soft (30 KB .jsx / 20 KB .js)** — watch signal. Chat в drift check фиксирует, Code в отчёте упоминает рост >2 KB. Никакого блокирующего правила.
+2. **Hard (40 KB .jsx / 25 KB .js)** — review point, не cliff. Code в отчёте после спринта **обязан** дать строку: «файл [имя] X KB, growth за спринт Y KB, entanglement: [есть / нет]. Decomp: [нужен сейчас / отложен потому что причина]». Chat читает строку и спорит если нужно. Без этой строки — отчёт неполный.
+3. **Rate-of-change trigger** — если файл вырос >5 KB за спринт **два спринта подряд** — обязательная декомпозиция в следующий спринт. Это ловит AnnotationTrack-паттерн (41.6 → 48.54 за 2 спринта) до того как файл становится untouchable. Stable файлы в soft-зоне (рост ≤1 KB / спринт) не задеваются.
+4. **Entanglement check** — вторая колонка hard-violation review: «правка одной фичи в этом файле может сломать другую: [да / нет]». AnnotationTrack — да (sub-features через regions через wrap-tail). LibrarySingleInspector — да (K6 edit состояние конфликтует с K7 save state). PlasmidUseWizard — нет (10 режимов изолированы). Если entanglement=нет — формальный размер не повод декомпозировать; entry в TECH_DEBT держится в watch list, не блокер.
+5. **Stable-file exemption** — если файл стабилен 2+ спринта подряд (рост ≤1 KB) при формальном превышении hard, **не триггер декомпозиции** до факта роста или explicit правки в этой зоне. TD entry перемещается из «Активный decomp» в «Watch list».
+
+**Не отменяет ⚓ 22.04.2026** (декомпозиция в скоупе спеки на active growth zone остаётся обязательной — сейчас это LibrarySingleInspector / AnnotationTrack / SequenceView/index.jsx). Не отменяет ⚓ 23.04.2026 (декомпозиция должна закрывать hard в одном спринте — остаётся валидной, при условии что декомпозиция вообще начата). Расширяет: добавляет триггеры для решения «начинать декомпозицию сейчас или отложить».
+
+**Применение к открытым TD-SIZE-* пунктам (snapshot 08.05.2026):**
+
+| Пункт | Размер | Активный / Watch | Триггер |
+|---|---|---|---|
+| TD-LIBRARYSINGLEINSPECTOR-DECOMP-V2 | 45.94 KB | **Активный** | Rate-of-change (32→45.94 за 1 спринт) + entanglement=да |
+| TD-ANNOTATIONTRACK-DECOMPOSE-V2 | 48.54 KB | **Активный** | Rate-of-change (41.6→48.54 за 2 спринта) + entanglement=да |
+| TD-SIZE-SEQUENCEVIEW-INDEX | 38.78 KB | **Активный** | Каждый M-X.* round +1-2 KB, M-X.6 K2/K3 трогают |
+| TD-SIZE-AATRACK | 38.91 KB | Watch | Stable после V50 fix, нет active расширения |
+| TD-SIZE-PLASMID-USE-WIZARD | 38.79 KB | Watch | Stable 6+ месяцев, entanglement=нет (10 режимов изолированы) |
+| TD-SIZE-DESIGN-CANVAS | 37.06 KB | Watch | Stable, 4 view modes изолированы |
+| TD-SIZE-PLASMID-MAP | 35.59 KB | Watch | Stable после Map-WS-1 cycle |
+| TD-SIZE-ADD-FRAGMENT-MODAL | 35.51 KB | Watch | Stable, не задевается активными спринтами |
+| TD-SIZE-PROTOCOL-TRACKER | 31.03 KB | Watch | Stable, ждёт M-E (тогда повышается) |
+| TD-SIZE-JUNCTION-BLOCK | 29.23 KB | Watch | Stable, ждёт M-E |
+| TD-SIZE-PLASMID-MINI-MAP | 29.68 KB | **Удалить из TD** | Рост стабилизировался, не превышает soft 30 KB |
+
+Правило для TECH_DEBT.md: «Активный decomp» — реальная работа в ближайших спринтах; «Watch list» — мониторинг, действие триггерится правилом 3 / 5 выше; формальные violations без активного impact — удалять из TECH_DEBT, не нести как мёртвый груз.
+
+**Trade-off / risk.** Calibration делает правило менее автоматическим: Chat должен судить «entanglement да или нет?» и «active growth или нет?». Это субъективнее cliff'а. Митигация: критерии явно (rate >5 KB × 2 спринта; entanglement = «правка одной фичи может сломать другую»), Code отчёт стандартизирован (5 пунктов выше), Chat drift check проверяет применение в каждой milestone-сессии. Если 2-3 спринта подряд решения по hard violations расходятся между Chat и Code — пересматриваем правило, возвращаем cliff.
+
+**Применимость на v0.6+:** все будущие милстоуны M-C / M-D / M-E / M-F / M-G / M-H / M-I + M-X.* track. Не применимо к v0.5 legacy без активной правки (PlasmidUseWizard, DesignCanvas, AddFragmentModal, PlasmidMap, JunctionBlock, ProtocolTracker — Watch до момента, когда соответствующий milestone их трогает).
+
+---
+
+## ⚓ DEC-CSSVAR-NO-FALLBACK-01 (09.05.2026) — hex fallback в inline styles запрещён
+
+**Контекст.** v0.6+ codebase должен корректно рендериться в обеих темах (light + dark). Биолог работает в dark theme; многие design assets нарисованы под light. Распространённый антипаттерн в inline styles: `style={{ background: 'var(--surface-1, #ffffff)' }}` — hex fallback («if var не определён, используй #ffffff») выглядит безобидно на light, но ломается на dark: если token не определён в dark theme overlay, фаллбек `#ffffff` даёт белую поверхность в тёмном UI (инвертированный тон). M-X.7a inventory вывел 35 расхождений, немалая часть из которых (§G2 inventory) именно из-за hex fallbacks.
+
+**Решение.** В inline styles **запрещены** hex fallbacks в форме `var(--token, #hex)`. Два приемлемых подхода:
+
+1. **Без fallback'а:** `style={{ background: 'var(--surface-1)' }}`. Если token не определён — браузер отрендерит transparent, биолог увидит visible degradation и сообщит (явный bug, ловится в первую же приёмку).
+2. **CSS module / global stylesheet:** вынести стили из inline в .css файл, где token используется без fallback'а. Cascade работает корректно через `[data-theme="dark"]` overrides.
+
+**Чего НЕ делать:** `var(--token, #hex)` — hex fallback почти всегда tone-incorrect хотя бы в одной из тем. Исключения нет; tone-correct fallback для обеих тем в одном hex невозможен.
+
+**Применение.**
+- **Новый код (все спринты после 09.05.2026):** запрещено. Code в отчёте `[G2] theme audit` перечисляет все случаи fallback'ов в тронутых файлах и их удаление.
+- **Существующий код:** мигрирует постепенно по мере правок (Code при любой правке файла убирает hex fallbacks в этом файле заодно). Cross-cutting cleanup-спринт не делается специально — вынуждающий trigger будет visual incident в теме.
+
+**Вывод.** Token или ничего. Никаких hex.
+
+**Связь с другими anchor'ами:** DESIGN_SYSTEM.md tokens — single source of truth (все tokens определены там для обеих тем).
+
+---
+
+## Sprint v0.8.2 — UI revision + project hub + store actions purification (10–11.05.2026)
+
+**Общий итог ANCHORS.md после v0.8.2:** **64 ⚓** (было 61). Три sprint-level DEC промоутированы в ⚓ после visual acceptance M-X.8 + M-X.9 + Фикс 7 (11.05.2026).
+
+Три sprint-level DEC промоутированы в ⚓ после visual acceptance M-X.8 + M-X.9 + Фикс 7. Полные формулировки sprint-level — в `DECISIONS.md` sprint block v0.8.2.
+
+**[2026-05-10] ⚓ DEC-UIRREV-ZONES-MERGE-01 — Tree зон 2 (`loose` + `bodge`), не 4.** `library-zones.js::classifyEntryZone` возвращал 4 варианта: `loose | active_bodge | readonly_bodge | lab_pool`. После M-X.7c K3 — две зоны. «Active» / «readonly» — состояние UI, не свойство записи. Различение между проектами — через `entry.projectId`, не через зону. Lab pool = View, не Zone (`inLabStock` — флаг на entry). Lazy migration: legacy зоны мапятся в hydrate. **Подтверждено M-X.8** — паттерн «2 зоны + projectId как discriminator» переехал в реальный workflow Tree current-first / pinned others / collapsible all-others без нареканий. **Применимость:** любые grouping-решения в codebase — zone хранится в энтити только если entity онтологически принадлежит zone; UI-states (active / readonly / view-filtered) никогда не записываются в zone field.
+
+**[2026-05-10] ⚓ DEC-UIRREV-ACTIVE-SINGLE-01 — Один активный проект одновременно.** `projectSlice.currentProjectId` (ожидалось rename из `activeProjectId`, но codebase уже использовал currentProjectId — rename не потребовался) — единственное поле определяющее активный проект. Тег `[active]` / pill / ★ marker рендерятся только когда `entry.projectId === currentProjectId`. Никаких множественных `[active]` (старая интерпретация «открыт хотя бы раз» удалена). **Подтверждено M-X.8** — `pinnedProjectIds[]` (явное «в работе» — не активное), `recentProjectIds[]` (MRU — не активное) — всё это параллельные семантики, не заменяют currentProjectId. **Применимость:** любое «текущее» / «фокусное» / «выбранное» state в store — одно поле, не array; multi-select / multi-pin и прочие являются отдельными semantics, не supersede.
+
+**[2026-05-10] ⚓ DEC-PROJSLICE-ACTIVATE-PURE-01 — Store actions side-effect-free: action = canonical state, mode = callsite.** Корень FAIL #4 (Tree click в non-current проект переключал workspace в DAG): `projectSlice.activateProject(id)` мутировал `state.canvas.activeFullscreen='dag'` + navStack вместе с currentProjectId+MRU. После фикса — action делает только canonical state. Workspace mode — responsibility callsite (Sidebar ставит 'library', DAG хендлеры 'dag'). **Применимость:** инвариант для всех store actions в BodgeGene. Actions мутируют canonical state (то что персистится / выражает домен), не UI-derived state. UI-mode switches, navigation, scroll-position и прочие transient view-states переключают callsites (component handlers, hooks). Нарушение — reopen issue: action с hidden side-effect ломает тесты и интуицию при reuse. Спеки новых actions явно прописывают canonical-only invariant. **Обслуживается спец regression test:** `does NOT mutate canvas.activeFullscreen` (добавлен в `projectSlice-activate-project.test.js`, M-X.7c FAIL-fix #4).
+
+**Связь с другими anchor'ами:**
+- DEC-PROJSLICE-ACTIVATE-PURE-01 **развивает DEC-MA1-XX state-management invariants** (multi-tab guard, recent MRU, soft-delete) — все store actions берутся под то же правило.
+- DEC-UIRREV-ACTIVE-SINGLE-01 **совместим с DEC-V2-13..18** (data-model project hierarchy) — currentProjectId на store-уровне мапится в single Project entity в ProjectsTable.
+- DEC-UIRREV-ZONES-MERGE-01 **в линии DEC-LIB-10** (tags на LibraryEntry, не на container) — «свойства хранятся где онтологически принадлежат» как sweep паттерн.
+
+**Trade-offs.**
+- *Pro:* тестируемость actions радикально растёт — unit-тест проверяет только canonical state выхода.
+- *Pro:* reuse actions безопасен — можно вызвать из разных UI без опасения hidden side-effects.
+- *Con:* callsites становятся «умнее» — каждый обязан выбрать mode явно. Митигация: convenience wrappers в hooks (`useActivateAndOpenLibrary(id)` вызывает activateProject + setWorkspaceActive('library')) — это composition, не action.
+
+**Open questions.** Связка правила с `canvas.activeFullscreen` (legacy navigation state с navStack) vs `workspace.active` (новый) — это два navigation-state field'а сосуществуют (дубль в COMPONENT_MAP). Слияние в одно поле — отдельный sprint, до этого правило касается обоих state симметрично.
+
+---
+
+## Sprint v0.8.3-alpha — Four-tier architecture — sprint-level reversals + promotion candidates (16–18.05.2026)
+
+**Контекст.** Спринт v0.8.3-alpha (T1-T10 + T4.5 + canvas UX + primer redesign) вводит в canvas-skeleton четырёх-уровневую архитектуру (containers / pieces / operations / zones) по якорю `docs/SPEC_M-CANVAS-FOUR-TIER-ARCHITECTURE.md`. 84 sprint-level DEC записаны в DECISIONS.md sprint-block v0.8.3-alpha. Эта секция фиксирует (а) реверс двух sprint-level решений (никогда не бывших ⚓, но важных для истории) и (б) 3 promotion candidate на ⚓ статус — подтверждение после визуальной приёмки T-серии и 1-2 спринтов живучести в production code.
+
+### Sprint-level reversals (17.05.2026)
+
+[17.05.2026] **Реверс DEC-T3-08 (Default zone seeded в buildInitialState).** По AskUserQuestion Игоря «Полностью из state». Изначально DEC-T3-08 (16.05) записывала: «new project получает default zone "Сборка 1" в buildInitialState — biolog видит рамку сразу вместо blank canvas». После визуальной приёмки 17.05 Игорь решил: blank canvas предпочтительнее — сборка создаётся явно через «+ Сборка», не сидится из state. `buildInitialState` больше НЕ сидит zone; `zones:[]` всегда на свежем снапшоте. Сопутствующе реверснута V61 (см. ниже) — «полностью из state» подразумевает и ghost-respawn отключён.
+
+[17.05.2026] **Реверс V61 / DEC-CANVAS-GHOST-RESPAWN (`ensureGhostPlaceholder` финализатор).** V61 спринт (14.05.2026) вводил: «на canvas всегда РОВНО 1 ghost; при fill — новый ghost auto-respawn'ится в углу». После 17.05 (в составе canvas cleanup) — ensureGhostPlaceholder финализатор отключён. Чистый старт без авто-госта. Новые фрагменты — через explicit действия (кнопки «+ Сборка» / «+ Операция» / drag-drop из LibraryTree). `justDraggedRef` guard (V62 часть) сохранён и расширен на op-drag (drop-release ромба не открывает viewer).
+
+**Оба реверса — sprint-level, никогда не являлись ⚓ fundamentals.** Эта запись — append-only history fact, не суперсед ANCHORS записи. Изначальные решения DEC-T3-08 и V61 остаются в DECISIONS.md sprint-block v0.8.3-alpha с пометкой «REVERSED 17.05.2026».
+
+### Promotion candidates на ⚓ (ждут подтверждения production-workflow)
+
+[18.05.2026] **DEC-CANVAS-4T-01 — Piece как первичная сущность.** Piece — concept-ориентированная сущность «кусок ДНК» живёт в `state.pieces[]`, НЕ в op.params или container.fragments[]. Свойства: sourceIds[] (откуда взят) + ranges[] (какие диапазоны) + origin (selection/feature/existing-primers/new-primers/legacy-migration/manual-gap) + acquisitionMethod (pcr/restriction/ov-pcr/synthesis/direct/undefined) + acquisitionParams + derivedReactionId (auto-link op T8) + frozen + kind (sourced/gap) + color (stable HSL hash). Это fundamental рефактор от segments-as-implicit к pieces-as-first-class (ранее было: segment embedded в assemblyDraft, не reusable, не имел acquisitionMethod). **Promotion blocker:** подтвердить в живом визуальном workflow биолога что «piece-first» эргономичнее чем «segment-first» предыдущих версий. Кандидат на ⚓ промоцию после 1-2 спринтов живучести в production code.
+
+[18.05.2026] **DEC-CANVAS-4T-07 — Zone как Miro-frame.** Zone — визуальный контейнер на canvas с bounds {x,y,width,height} + viewMode («graph»/«sequence») + laneLayout («auto»/«manual») + collapsed + notes + autoResize. Узлы (containers/pieces/operations) держат `zoneId`. Рамка рендерится как DOM/CSS frame (не SVG) с drag/resize/merge возможностями. Cross-zone refs auto-detected (T8 link badges). Это supersedes «один плоский canvas со всеми узлами» predecessor design. Zone supersedes `assemblyDraft` concept (T6 migration v8→v9). **Promotion blocker:** подтвердить на практике pks4 knockout (16-node scenario из бумажной диаграммы Игоря) что Miro-frame подход лучше «плоского canvas» или «отдельных tabs per assembly». Кандидат на ⚓ промоцию.
+
+[18.05.2026] **DEC-CANVAS-4T-31 — 3-lane auto-layout structure (T4.5).** Внутри zone узлы разлагаются по 3 рядам слева-направо: sources lane (top, containers без incoming junctions) / intermediate lane (middle, dagre LR auto, всё остальное + intermediate-products) / finals lane (bottom, containers без outgoing junctions и frozen=true). `node.pinned: false` field default; drag узла → auto-pin (финалайзер не пересчитывает pinned). Context-menu «Открепить». `zone.laneLayout: 'auto'|'manual'` per zone (default 'auto'). dagre как npm dependency (~40 KB bundle, Mermaid uses, proven). Это решение «свального греха» видимого на скрине 17.05 (pks4 16-узловый хаос). **Promotion blocker:** подтвердить на реальных сборках (не только pks4) что 3-lane превосходит варианты A (plain dagre flat), B (radial), C (no-auto-layout manual). Кандидат на ⚓ промоцию.
+
+**Наблюдаемые инварианты этого спринта:** schema v=10 (6 миграций все идемпотентны), Vitest 3276 pass / 1 skip / 0 fail (+956 от v0.8.2), `vite build` clean. 84 DEC в sprint-block DECISIONS.md — полный список с обоснованиями. ~32 KB якоря-спека `SPEC_M-CANVAS-FOUR-TIER-ARCHITECTURE.md` + ~360 KB sprint-спек `SPRINT_T*.md` — референсы для всех 84 DEC.
+
+---
+
 **Исторические записи старше Sprint 2a (с полными формулировками):** `docs/archive/DECISIONS_2026_Q2.md`.
+
+---
+
+## Mutability semantics — freeze-on-use in operation (15.05.2026)
+
+**Контекст.** Walkthrough-сессия 15.05.2026 закрыла модель Canvas V2 (16 решений, документ `docs/NOTES_CANVAS_V2_KICKOFF.md` §9). Q4 из §5 этого же документа (mutability pattern) оставался открытым с 11.05 kickoff'а. Развилка: A (free editability — теряет историю) / B (lab journal — freeze on use) / C (Git-style explicit commits). Игорь выбрал B1 + git-составляющая в roadmap как отдельный sprint позже.
+
+[2026-05-15] **⚓ DEC-MUTABILITY-FREEZE-ON-USE-01: filled container становится immutable когда впервые используется как input в operation. До использования — свободно редактируется. Изменение frozen container = создание child-version, исходный остаётся в Tree как frozen entry.**
+
+**B-subvariants проанализированы.** B1 (freeze-on-use-in-operation) выбран. B2 (freeze-on-canvas-drop) отклонён — слишком строго, биолог может опечататься в имени до первого использования. B3 (freeze-on-save-to-Tree) отклонён — размывает Tree, черновики на canvas остаются вне versioning'а.
+
+**Реализация.**
+- Computed property `container.frozen`: true если `container.id ∈ ⋃ operation.inputs` по всем ops проекта. Реализовывается через Zustand selector `isContainerFrozen(state, containerId)` (computed-on-demand) либо denormalized cache `container.frozen: boolean` — выбор в Spec 1.
+- UI: frozen container получает визуальный маркер (lock icon / серая заливка / outline — развилка для Spec 1).
+- Edit-attempt на frozen container → modal «Создать новую версию» с автогенерацией имени (`name + "-v2"`) и pre-applied edit. Cancel → отмена.
+- Child-version имеет `parentContainerId` ref для history tracing (фундамент будущего git-слоя).
+
+**Связь с git-составляющей.** B1 — implicit pseudo-commit на момент использования. Git-слой в roadmap (после F4 Live Product Preview) перекроет это explicit commit/branch/diff моделью; B1 не противоречит, остаётся fallback для quick edits до явного commit. Container с git-историей будет: `frozen=true` после первого commit, child-versions = git branches.
+
+**Влияние на спеки F1-F4.** Перед Spec 1 Window System Foundation. Skeleton-state schema должна поддерживать `frozen` semantics с самого первого спринта, иначе миграция дороже после написания 4-х спек.
+
+**Trade-offs.**
+- *Pro:* история не теряется, биолог через неделю может проследить «откуда взялся pET28a-v2».
+- *Pro:* конкурентное преимущество против SnapGene (где нет history) — главное лицо «AI-ready agent-readiness» из обсуждения 15.05.
+- *Pro:* B1 — мягчайший из freeze-вариантов, не пугает биолога-новичка («положил на canvas — frozen» из B2 страшнее).
+- *Con:* при множественных мелких правках до первого использования биолог не получает versioning. Митигация: git-слой в roadmap.
+- *Con:* конкретный визуальный indicator frozen vs unfrozen — открытая UX-развилка для Spec 1.
+
+**Открытые вопросы.**
+1. Как пересекается с PreImportModal / AddModal флоу? При импорте экспортированного .bodge с frozen-containers — ресторятся ли связи frozen status? Ответ — в Spec 1 после чтения кода.
+2. Как отображается frozen container в SequenceView Editor? Нельзя редактировать, но можно просматривать, выделять, копировать selection? Ответ — в Spec 3 PCR Operation Mode (вьювер в operation-aware режиме на frozen container'е).
+3. Множественные child-versions одного парента (pET28a-v2, pET28a-v3, ...) — как биолог навигирует между ними? Tree показывает все версии флатом или collapsible parent-with-versions? Ответ — в Spec 1 либо отложить до git-слоя.
 
 ---
 
@@ -458,6 +711,85 @@ Backend reuse без изменений: `snapgene_parser.py` PRIMARY .dna па�
 [2026-05-02] **⚓ DEC-DS-02: Feature palette A+v2 + `featureColorShaded(type, name)` HSL shade-by-canonical-key — единый источник цвета для всех plasmid renderer'ов.** Базовые hex-цвета (CDS зелёный / promoter оранжевый / resistance ярко-оранжевый / reporter розовый / origin / terminator / tag / linker / signal_peptide / propeptide / regulatory / polyA_signal / core_promoter / restriction_site / ...) живут в едином `feature-palette.js` (warm-sepia stroke `FEATURE_STROKE` сохранён из v0.5). **Shade-by-name** — `featureColorShaded(type, name)` выдаёт base hex для типа плюс HSL shade ±10% L / ±6° H keyed by `canonicalFeatureKey(name)` — это делает различимыми соседние features одного типа (два CDS не сливаются в одно пятно). **Canonical-key collapse** — словарь из 30+ entries схлопывает synonym'ы в один shade (AmpR ≡ ApR ≡ bla → один оттенок во всех рендерах плазмиды). **Применимость:** PlasmidMap, PlasmidMiniMap, RacetrackView, OverviewTab summary chips, Inspector tag chips — все рендереры ходят через `featureColorShaded(type, name)`. Не hardcode'ить hex в компоненте; не создавать local palette overrides. **Supersedes** Okabe-Ito v0.5 base (⚓ в §1 «UX-инварианты») — Okabe-Ito остаётся как accent для UI chrome (toast / accent buttons / focus rings), feature palette — собственная. DESIGN_SYSTEM.md §2.1 — source of truth для hex и canonical-key map.
 
 [2026-05-02] **⚓ DEC-CAT-04: Folder-as-slash-path — иерархия через string с separator'ом, не вложенная object-tree в data model.** Папки в любых user-organizable коллекциях (Library, Importer Catalog, future Project Files, future Mix Workspace) хранятся как flat list слаш-путей (`Vectors/CRISPR`, `Backbones/Pichia/AOX1`). `buildFolderTree(paths)` парсит flat list в forest для UI render'а, `MAX_INDENT_DEPTH` ограничивает visual depth (5 в v0.7.0). **Persistence:** `userFoldersByGroup: {canvas, demo, mine, snapgene}` в localStorage / IndexedDB как `string[]`. **Преимущества:** (а) move подпапки = string-replace `s/^Old\//New\//` в одном месте; (б) backup/restore — plain text export/import; (в) merge folders = объединить два path'а в один (string concat); (г) нет risk'а orphan'ов (все paths видны в flat list, не потеряются внутри nested object). **Отвергнутые альтернативы:** (a) nested `Folder = {name, children: Folder[], items: ItemId[]}` — сложнее reducer'ы, immer-недружественно на deep moves; (b) tags вместо folders (⚓ DEC-LIB-09 в Library context) — не работает как navigation paradigm в поверхностях где биолог хочет file-manager mental model (Importer catalog browse). **Совместимость с DEC-LIB-09:** ⚓ DEC-LIB-09 фиксировал «Library — flat tagging, без folder hierarchy» как data-model contract LibraryEntry. DEC-CAT-04 НЕ supersede это: на LibraryEntry теги остаются как организация content-level (search/filter «bacterial backbones»). Folders — это UI organization layer НАД entries («я положил pUC19 в папку Backbones/E.coli»), живут в separate userFoldersByGroup state, реализуются через tag prefix с separator'ом в `LibraryEntry.tags` (т. е. tag `Backbones/E.coli` плюс membership-membership через filter, final pattern уточнён в DEC-CAT-03 и DECISIONS.md sprint-block). Оба паттерна сосуществуют: tags = что это (semantic), folders = где это (location). **Применимость:** Library M-H polish (search по tags + folder tree); Importer catalog v0.7.0 (все 4 источника используют схему); future Project Files (импорт / draft / archive); future Mix Workspace component grouping.
+
+---
+
+**Исторические записи старше Sprint 2a (с полными формулировками):** `docs/archive/DECISIONS_2026_Q2.md`.
+
+---
+
+## Sprint Interoperability — форматы файлов как обязательство перед экосистемой (08.05.2026)
+
+**Контекст.** Сессия по сути продукта и первому экрану. При разделении actions на Start screen на блоки PROJECT (`.bodge`) / SEQUENCE (single molecule файлы) / BROWSE (Library / Primer pool / All projects) всплыли два вопроса. Первый — как называть BodgeGene-родный формат одного контейнера (аналог SnapGene `.dna`) — биолог предложил `.bodgebox`, этимологически парный к `.bodge` (project) + семантика «коробка с одной молекулой» ложится на «imorphism data ↔ протокол» (принцип 1.13 ARCHITECTURE_v2). Второй, ключевой — «он должен нормально восприниматься программами кушающими .gb. Надо чтобы обратная совместимость была максимальная. Мы не можем себе позволить проприетарные форматы». Это переопределяет всю стратегию: форматы BodgeGene не «наш ZIP с внутренними файлами», а valid GenBank плюс опциональный провенанс-слой в standard COMMENT block. **Extends DEC-V2-26** (29.04.2026, GenBank export per container с structured COMMENT для provenance) — это внутренний export pattern становится public format spec, primary-путём распространения данных проекта.
+
+[2026-05-08] **⚓ DEC-INTEROP-01: Все BodgeGene-родные форматы — valid GenBank с opt-in provenance в COMMENT block. Никаких proprietary fields, бинарных кодировок вне base64-json, или custom encodings в core data.** Обратная совместимость с экосистемой — first-class обязательство, не nice-to-have. Каждый BodgeGene-файл перед отправкой коллеге без BodgeGene остаётся полезным.
+
+**Два родных расширения.**
+
+- **`.bodgebox`** (один контейнер) — валидный GenBank файл в raw виде (не ZIP). LOCUS / DEFINITION / FEATURES / ORIGIN по стандарту NCBI. BodgeGene-provenance в структурированном COMMENT block. Переименование в `.gb` — bit-perfect эквивалент, открывается в SnapGene/ApE/Geneious/BioPython без потерь sequence + features. Provenance round-trip сохраняется везде где эти tools презервируют COMMENT verbatim (NCBI-blessed).
+- **`.bodge`** (весь проект) — ZIP с N валидных GenBank файлов по контейнеру + plain JSON manifest/dag/primers/library/refs. Переименование в `.zip` + extract = working multi-file «backup» проекта. Внутри любой получатель без BodgeGene видит N отдельных GenBank-плазмид и открывает по одной в своём инструменте; DAG-связи теряются, sequence + features + per-container provenance сохраняются. Graceful degradation, не lock-in.
+
+**Provenance COMMENT block.** Паттерн из DEC-V2-26 в общем виде:
+
+```
+COMMENT       ##BodgeGene-Provenance-START##
+              schema      :: https://bodgegene.dev/schema/v1
+              format      :: base64-json
+              payload     :: <base64-encoded JSON пары ~5–50 KB>
+              ##BodgeGene-Provenance-END##
+```
+
+Payload содержит: `containerId`, `baseSnapshotHash`, `currentHash`, `topology`, `ends`, `origin` (discriminated union), `provenance` (project context, agent, createdAt), `commits[]` (все ContainerCommits применённые к baseSnapshot), `primersEmbedded[]` (при экспорте вместе с праймерами связанными через PrimerUsage). Base64-кодирование обязательно — NCBI ограничивает COMMENT по 80 символов в строке и нейтрализует спецсимволы JSON; raw JSON в COMMENT ломается на reformatting. Опциональный gzip+base64 если payload >50 KB (длинные commits[]).
+
+**Custom GenBank qualifiers** (non-breaking GenBank extensions, ignored by other tools):
+
+- `/bodge_id=01ABC...` — stable feature ID для round-trip identity (без этого qualifier при ре-импорте все features получат новые UUID и история annotation_edit коммитов рвётся).
+- `/parent_feature=01ABC...` — связь sub-feature → parent (родная BodgeGene иерархия `level: 'detail'` + `parentId` из DEC-LIB-04). GenBank не имеет нативной parent-child структуры; SnapGene видит sub-feature как обычный overlapping feature.
+- `/note=sequence:ATCG...` на `primer_bind` — SnapGene-симметричный паттерн прямикрепления primer sequence к feature; round-trip с SnapGene .dna работает без потерь (и питает wizard primer-step из DEC-LIB-08).
+
+**Fallback re-detection** при потерянных custom qualifiers (файл прошёл через tool, который strip'ает unknown qualifiers): sub-features ре-детектятся через coordinate inclusion (sub.start ≥ parent.start, sub.end ≤ parent.end, same strand, parent type в white-list `CDS`/`promoter`/`mRNA`). Heuristic, не идеальный но работает для 99% реальных каскадов.
+
+**External-edit detection.** Главный edge case round-trip: SnapGene-юзер правит sequence в .gb файле экспортированном из BodgeGene, COMMENT остаётся прежним (`payload.baseSnapshotHash` и `payload.currentHash` больше не совпадают с recomputed hash текущей sequence). При ре-импорте в BodgeGene: (1) recompute hash, (2) сравнить с payload, (3) если расходятся — toast warning «External edit detected. Last BodgeGene state: <date>. Current sequence differs from provenance baseline» с выбором [Treat as new] / [Restore baseline & lose external edits]. Никогда не восстанавливаем линию молча. Симметрично с `cleanShutdown`-recovery из §5.6.7 ARCHITECTURE_v2.
+
+**Область совместимости по программам (на 08.05.2026, ожидает round-trip верификацию):**
+
+| Программа | sequence + features | COMMENT preserved | round-trip lineage |
+|---|---|---|---|
+| SnapGene Viewer / Pro | ✓ | ✓ verbatim | ✓ |
+| ApE | ✓ | ✓ verbatim | ✓ |
+| Geneious Prime | ✓ | ✓ verbatim | ✓ |
+| BioPython `SeqIO` | ✓ | ✓ через `record.annotations['comment']` | ✓ |
+| Benchling | ✓ | ◐ может pretty-print'ить — **тестировать** | ◐ |
+| NCBI tools (Entrez/E-utilities) | ✓ | ✓ | N/A |
+| pLannotate / IGV / SeqBuilder | ✓ read-only | N/A | N/A |
+
+Benchling — единственный риск, нужен реальный round-trip тест на экспортированном .gb до claim'а full round-trip support. Если Benchling pretty-print'ит COMMENT (перепаковывает строки) — BodgeGene при ре-импорте видит это как external edit и покажет toast.
+
+**Связь с другими anchor'ами:**
+- **Extends DEC-V2-26** (29.04.2026) — внутренний GenBank export pattern становится public format spec.
+- **Совместим с DEC-V2-07 + DEC-V2-18** (.bodge как ZIP с manifest + .gb по контейнеру) — эта запись раскрывает что .gb внутри .bodge — тот же .bodgebox-подобный формат без ZIP-обёртки. Reuse export pipeline 95%.
+- **Связан с DEC-LIB-04** (sub-features живут в annotations[] с parentId) — round-trip через `/parent_feature` qualifier + coordinate-inclusion fallback.
+- **Связан с DEC-LIB-08** (wizard primer-step при import .dna с primer_bind+sequence) — SnapGene-симметрия через `/note=sequence:...` qualifier.
+- **Supersedes обоснование DEC-IMP-03** в части «без открытого проекта импортировать некуда». После DEC-IMP-06 (Library = primary workspace) импорт в Library без проекта — первоклассный flow. `↑ Import sequence…` возвращается на Start screen в блок SEQUENCE; фиксируется при имплементации как sprint-level DEC-IMP-07 в DECISIONS.md.
+
+**Последствия для Start screen.** SEQUENCE block принимает 4 формата через file picker и drag-drop: `.bodgebox` (recommended, preserves history) / `.gb` / `.dna` / `.fasta`. PROJECT block принимает `.bodge`. Разные иконки / цвета (рекомендация: `.bodge` амбер = primary brand, `.bodgebox` второй цвет — теплый серый либо teal) — дизайн-система, не data model.
+
+**Trade-offs.**
+- *Pro:* honest interop — биолог без BodgeGene открывает наш файл в своём привычном tool, ничего не ломается. FAIR-claims для статьи — формат по умолчанию интероперабельный (NCBI-blessed COMMENT verbatim preservation).
+- *Pro:* lock-in-free, biologist trust. Биолог видит «это .gb с доп метаданными» — не экспериментальный формат, портивший 7 лет SnapGene-накопленных файлов.
+- *Con:* payload в base64-энкодинге при больших commits[] раздувает файл. Для типичной плазмиды 5–10 KB с ~20 commits выходит ~30–60 KB GenBank файл. При 100+ commits — полумегабайтные файлы. Митигация: gzip+base64 при payload >50 KB; в v0.7+ опция «export without history» для лёгких sharing.
+- *Con:* recompute-hash на каждом импорте — 5–10 ms на типичной плазмиде, не блокер но в коде явно присутствует.
+- *Con:* `.bodgebox` extension начинается так же как `.bodge` — риск перепутать в file picker'е при быстром взгляде. Митигация через разные иконки / цвета в OS file manager — деталь реализации, не этого решения.
+
+**Open questions для спеки по формату (M-D или separate sprint).**
+
+1. Порядок полей в base64-payload — alphabetical sort с deterministic JSON serialization (canonical JSON из §2.8) для content-addressable hash stability между сериализациями.
+2. Schema versioning. В v1 схема `https://bodgegene.dev/schema/v1`. Добавлять в v0.7+ schema migration логику или break-on-mismatch?
+3. Round-trip integration tests с BioPython — обязательный suite перед объявлением support'а. ~10–20 plasmids, разные topology / commits depth.
+4. Benchling round-trip — реальный тест нужен (игнорирует ли unknown qualifiers, preserves COMMENT verbatim).
+5. SBOL3 export как secondary в v0.7+ (упомянут в §10 «NOT делаем» как primary — остаётся отвергнутым как primary; secondary export — вопрос v0.9+).
+
+**Применимость.** Любой формат в BodgeGene, выходящий во внешний мир — валидный стандарт (GenBank / FASTA / SBOL2 / RO-Crate / SBOL3) плюс BodgeGene-экстеншены в opt-in полях. Никаких binary blob'ов, никаких close-source encodings, никаких «первооткрывательских» хитростей в core data layer. Ревью при любой новой export поверхности (экспорт библиотеки, экспорт primer pool, экспорт DAG как image) — в первую очередь вопрос должен быть: «в какой стандарт это легает». Наблюдаемый invariant во всём жизненном цикле проекта вплоть до v1.0 публикации.
 
 ---
 

@@ -163,6 +163,32 @@ body {
   --border-radius-lg: 8px;
 }
 
+/* T4 zone-frame tokens (DEC-T4-*). Mapped onto existing themed tokens
+   via var() so they auto-adapt to light/dark — NOT raw hex/rgba.
+   (Spec §5.10 proposed rgba(0,0,0,...) which violates the token system;
+   corrected here to reference --border-subtle / --accent / --warning.) */
+:root {
+  --zone-border: var(--border-subtle);
+  --zone-border-active: var(--accent-500);
+  --zone-bg: transparent;
+  --zone-header-bg: var(--surface-2);
+  --zone-header-fg: var(--text-secondary);
+  --zone-header-counter-fg: var(--text-tertiary);
+  --zone-resize-handle: var(--accent-500);
+  --zone-resize-handle-hover: var(--accent-700);
+  --zone-cross-warning: var(--warning-fg);
+  --zone-context-menu-bg: var(--surface-1);
+  --zone-context-menu-shadow: var(--shadow-md);
+  /* T10 §5.10 — Sanger status (semantic, theme-agnostic per DEC-T10-03/07). */
+  --sanger-verified: #16a34a;
+  --sanger-failed: #dc2626;
+  --sanger-pending: #6b7280;
+  --sanger-unplanned: transparent;
+  --sanger-notebook-bg: var(--surface-1);
+  --sanger-notebook-border: var(--border-subtle);
+  --sanger-row-hover: var(--surface-2);
+}
+
 /* ════════════ StartScreen `--ss-*` aliases (theme-agnostic via var()) ════════════ */
 [data-theme="light"], [data-theme="dark"], :root {
   --ss-bg-primary: var(--surface-1);

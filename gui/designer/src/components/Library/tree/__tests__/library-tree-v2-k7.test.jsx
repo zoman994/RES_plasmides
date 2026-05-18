@@ -19,6 +19,7 @@ import { resetDBForTests } from '../../../../db/dexie-schema';
 import { STRINGS } from '../../../../lib/strings';
 import LooseZone from '../LooseZone';
 import ProjectZone from '../ProjectZone';
+import LibraryTreeRoot from '../LibraryTreeRoot';
 
 async function freshDB() {
   const name = `bodgegene-k7-${Math.random().toString(36).slice(2)}`;
@@ -58,29 +59,27 @@ describe('M-X.7a v2 K7 — STRINGS namespaces', () => {
   it('STRINGS.libraryWorkspace exposes the canonical zone titles + button + banners', () => {
     const ws = STRINGS.libraryWorkspace;
     expect(ws).toBeDefined();
-    // Renamed 09.05.2026: «Без проекта» → «Коллекция».
-    expect(ws.zoneLooseTitle).toBe('Коллекция');
-    expect(ws.zoneLooseSub).toMatch(/коллекция|подборка/i);
-    expect(ws.zoneLabTitle).toBe('Лабораторный пул');
-    expect(ws.zoneLabSub).toMatch(/морозильнике/);
-    expect(ws.dagSubrow).toBe('DAG');
+    // Renamed in M-X.7c K4: «Коллекция» → «⎀ БЕЗ ПРОЕКТА» / «свободный стол биолога».
+    expect(ws.zoneLooseTitleNoProject).toMatch(/БЕЗ ПРОЕКТА/);
+    expect(ws.zoneLooseSubFreeDesk).toMatch(/свободный/i);
     expect(ws.containersFolder).toBe('Контейнеры');
     expect(ws.primersFolder).toBe('Праймеры');
-    expect(ws.inLab).toBe('В лаборатории');
-    expect(ws.crossProject).toBe('Из чужих проектов');
     expect(ws.addBtn).toBe('+ Добавить');
     expect(ws.breadcrumbActive).toMatch(/Активный/);
-    expect(ws.breadcrumbNoProject).toMatch(/Без активного/);
     expect(ws.searchPlaceholder).toMatch(/Поиск/);
     expect(ws.treeFilterPlaceholder).toMatch(/Фильтр/);
     expect(ws.roBannerSequence).toMatch(/read-only/);
     expect(ws.roBannerAnnotations).toMatch(/Container Window/);
   });
 
-  it('STRINGS.libraryWorkspace nests action labels per zone', () => {
+  it('STRINGS.libraryWorkspace nests action labels per zone (M-X.7c K6 keys present)', () => {
     const ws = STRINGS.libraryWorkspace;
     expect(ws.actionsLoose).toBeDefined();
     expect(ws.actionsLoose.delete).toBe('Удалить');
+    // K6 renames.
+    expect(ws.actionsLoose.addToActiveProject).toMatch(/активн.*проект/i);
+    expect(ws.actionsLoose.createCopyForEdit).toMatch(/копию/i);
+    expect(ws.actionsLoose.moveToFolder).toMatch(/папк/i);
     expect(ws.actionsActive).toBeDefined();
     expect(ws.actionsActive.containerWindow).toBe('Container Window');
     expect(ws.actionsReadonly).toBeDefined();
@@ -101,14 +100,14 @@ describe('M-X.7a v2 K7 — STRINGS namespaces', () => {
     expect(a.navTooltipTheme).toMatch(/Тема/);
   });
 
-  it('LooseZone renders with STRINGS-driven title (zoneLooseTitle / zoneLooseSub)', async () => {
+  it('LooseZone renders with STRINGS-driven title (M-X.7c K4: «БЕЗ ПРОЕКТА» / «свободный стол»)', async () => {
     await useStore.getState().addLibraryEntry(makeContainer({
       id: 'l1', name: 'pUC19', zone: 'loose',
     }));
     render(<LooseZone />);
     const head = screen.getByTestId('library-zone-loose-head');
-    expect(head.textContent).toMatch(/Коллекция/);
-    expect(head.textContent).toMatch(/подборка/i);
+    expect(head.textContent).toMatch(/БЕЗ ПРОЕКТА/);
+    expect(head.textContent).toMatch(/свободный/i);
   });
 });
 
@@ -163,4 +162,43 @@ describe('M-X.7a v2 K7 — drag-drop minimum (DEC-MX7A-V2-10)', () => {
     fireEvent.drop(drop, { dataTransfer: new DataTransfer() });
     expect(Object.keys(useStore.getState().libraryEntries).length).toBe(before);
   });
+});
+
+describe('M-C.1 — ProjectZone collapse/expand (📦 сворачивание)', () => {
+  it('ProjectZone header click collapses and re-expands the entry list', async () => {
+    useStore.setState((s) => {
+      s.currentProjectId = 'proj1';
+      s.projects = { proj1: { id: 'proj1', name: 'Alpha', containerIds: ['e1'] } };
+    });
+    await useStore.getState().addLibraryEntry(makeContainer({ id: 'e1', name: 'pUC19', projectId: 'proj1' }));
+    render(
+      <LibraryTreeRoot
+        query=""
+        onQueryChange={() => {}}
+        selectedId={null}
+        onSelectEntry={() => {}}
+        onAddClick={() => {}}
+      />,
+    );
+    // Initially expanded: entry row visible
+    expect(screen.getByTestId('tree-item-project-e1')).toBeTruthy();
+    const zoneHead = screen.getByTestId('library-zone-project-proj1-head');
+    expect(zoneHead.parentElement.getAttribute('data-expanded')).toBe('true');
+
+    // Click to collapse
+    fireEvent.click(zoneHead);
+    expect(screen.queryByTestId('tree-item-project-e1')).toBeNull();
+    expect(zoneHead.parentElement.getAttribute('data-expanded')).toBe('false');
+
+    // Click again to expand
+    fireEvent.click(zoneHead);
+    expect(screen.getByTestId('tree-item-project-e1')).toBeTruthy();
+    expect(zoneHead.parentElement.getAttribute('data-expanded')).toBe('true');
+  });
+
+  // Old «Свернуть всё» button removed in M-X.8 K4 — the new model
+  // expands at most one project (the current one). Per-project
+  // collapse via the project header is covered by the K4 test
+  // suite in library-tree-v2.test.jsx («click on the current
+  // project header just collapses…»).
 });

@@ -59,6 +59,13 @@ export default function PreviewTab({
   // SequenceTab uses.
   pendingScroll = null,
   onPendingScrollHandled,
+  // 18.05.2026 (Игорь «праймеры — базовый функционал ... и при
+  // просмотре, во всех сиквенс виверах»): the embedded Annotator
+  // preview is a sequence viewer too — render/click/double-click
+  // primers here as well. Forwarded by the host (AnnotationsTab →
+  // Annotator). Absent ⇒ no primers (back-compat).
+  primers,
+  onWritePrimer,
 }) {
   const seqRef = useRef(null);
   useEffect(() => {
@@ -232,6 +239,8 @@ export default function PreviewTab({
               onAnnotationEdit={onAnnotationEdit}
               onOpenFeatureEditor={onOpenFeatureEditor}
               onBlastSelection={onBlastSelection}
+              primers={primers}
+              onWritePrimer={onWritePrimer}
             />
           </div>
         )}

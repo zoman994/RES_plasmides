@@ -1,47 +1,50 @@
 /**
- * library-zones — Sprint M-X.7a v2 K1.
+ * library-zones — Sprint M-X.7c K3 (DEC-UIRREV-ZONES-MERGE-01).
  *
- * Canonical zone classification for LibraryEntries. Zones drive:
- *   • Tree placement (LooseZone / ProjectZone / LabPoolZone — K2)
- *   • Action-row variant via `getActionsFor(entry, zone)` (K3 §5.4)
- *   • `useEditableModeToggle(item)` initial state (only readonly_bodge
- *     starts read-only; others editable per FIX-3.4 reformulation
- *     of DEC-MX7A-08)
+ * Canonical zone classification for LibraryEntries. Two zones only:
+ *   • `loose`  — entry not bound to any .bodge project (free desk).
+ *   • `bodge`  — entry belongs to a .bodge project (any).
  *
- * The classifier is **defensive** — it never throws and never returns
- * an invalid zone. Post-K1-wipe entries always carry an explicit
- * `zone` field on creation, so the derivation paths only fire for
- * legacy entries (none today, dev wipe assumed) or for entry-shape
- * sanity checks at runtime.
+ * The active/readonly distinction is **NOT** a zone — it is a UI
+ * comparison done at render time:
+ *   `entry.projectId === currentProjectId  →  active vs read-only`.
+ *
+ * The previous four-value enum (`loose | active_bodge | readonly_bodge
+ * | lab_pool`) is migrated lazily: callers receive the canonical
+ * 2-value zone, the legacy `entry.zone` field on disk stays as-is so
+ * older sessions don't churn IndexedDB on read. Lab pool also stops
+ * being a Zone — it returns later as a global View (architecture
+ * 09.05.2026).
  */
 
-const VALID_ZONES = new Set(['loose', 'active_bodge', 'readonly_bodge', 'lab_pool']);
+const VALID_ZONES = new Set(['loose', 'bodge']);
+// Legacy values still found on entries imported before 10.05.2026.
+const LEGACY_ZONES = new Set(['active_bodge', 'readonly_bodge', 'lab_pool']);
+
+function deriveZone(entry) {
+  if (!entry || typeof entry !== 'object') return 'loose';
+  return entry.projectId ? 'bodge' : 'loose';
+}
 
 /**
  * @param {object|null|undefined} entry — LibraryEntry-shaped object.
- * @param {object} [ctx]
- * @param {string|null} [ctx.activeProjectId] — current project id from
- *   projectSlice. When entry.projectId matches, zone is `active_bodge`;
- *   when entry.projectId is set but doesn't match (or no ctx), zone
- *   is `readonly_bodge` (entry came from a foreign .bodge).
- * @returns {'loose' | 'active_bodge' | 'readonly_bodge' | 'lab_pool'}
+ * @param {object} [_ctx] — accepted for backwards compatibility with
+ *   old callsites that passed `{ activeProjectId }`. Ignored — the
+ *   active distinction lives in UI, not in the classifier.
+ * @returns {'loose' | 'bodge'}
  */
-export function classifyEntryZone(entry, ctx = {}) {
+export function classifyEntryZone(entry, _ctx) {
   if (!entry || typeof entry !== 'object') return 'loose';
+  // Trust an explicit canonical zone if present.
   if (typeof entry.zone === 'string' && VALID_ZONES.has(entry.zone)) {
     return entry.zone;
   }
-  // Derivation path — used for legacy entries / sanity check.
-  if (entry.kind === 'primer' && entry.inLabStock === true) {
-    return 'lab_pool';
+  // Legacy values are normalised to the canonical pair via projectId.
+  if (typeof entry.zone === 'string' && LEGACY_ZONES.has(entry.zone)) {
+    return deriveZone(entry);
   }
-  if (entry.projectId) {
-    if (ctx.activeProjectId && entry.projectId === ctx.activeProjectId) {
-      return 'active_bodge';
-    }
-    return 'readonly_bodge';
-  }
-  return 'loose';
+  // No zone field — derive.
+  return deriveZone(entry);
 }
 
-export const LIBRARY_ZONES = ['loose', 'active_bodge', 'readonly_bodge', 'lab_pool'];
+export const LIBRARY_ZONES = ['loose', 'bodge'];

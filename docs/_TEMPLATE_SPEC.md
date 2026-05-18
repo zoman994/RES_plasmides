@@ -25,6 +25,51 @@
 
 ---
 
+## 0.1. Visual reference / Source of truth
+
+Заполняется когда есть HTML mockup / wireframe / screenshot / design asset. Если нет — пишется в одну строку (см. ниже).
+
+**Mockup file:** `docs/design_assets/&lt;file&gt;.html` (либо ссылка на screenshot / Figma).
+
+**Mockup audit (Chat обязан сделать до написания спеки):**
+- Открыть mockup в Chrome.
+- Пройтись по DOM/CSS на структуру: panels, components, text styles, colors, spacing.
+- Зафиксировать ключевые design tokens которые используются: список `var(--token)` встречающихся в styles.
+
+**Acceptance rule (mandatory phrasing):**
+> «Всё что есть в mockup'е = приёмочный критерий. Что НЕ в mockup'е (hover/focus polish behind state, prefers-reduced-motion, и т.п. тонкости) = polish, можно отложить, но Code в финальном отчёте перечислит unmet items с flag для Chat — приёмочный критерий или реальный polish?»
+
+**Если mockup'а нет** — заменить эту секцию одной строкой:
+> «No visual reference, design — на усмотрение Code в рамках `docs/DESIGN_SYSTEM.md` tokens.»
+
+Пропускать §0.1 нельзя — должна быть либо явная ссылка на mockup, либо явная строка «no visual reference». M-X.7a drift (35 расхождений) — root cause был в отсутствии этой секции.
+
+---
+
+## 0.2. Component reuse audit
+
+Перед написанием задач — Chat grep'ит по `gui/designer/src/components/` на каждый существующий компонент в скоупе. Цель — поймать legacy hangovers до того как Code возьмёт «первый под руку» легаси.
+
+**Audit checklist:**
+- [ ] Для каждого компонента-кандидата проверены имена-собратья: `*View`, `*Editor`, `*Pane`, `*Workspace`, `Mini*`, `*v2`, папки `/index.jsx` vs одиночные `.jsx` в корне `components/`.
+- [ ] Если есть rewrite/современная версия — проверено что она использовалась в недавних спринтах (M-B+, M-C+, M-X.x).
+- [ ] Legacy alternatives явно перечислены как «NOT use».
+
+**Use / NOT use table:**
+
+| Use | NOT use (legacy) | Reason |
+|-----|------------------|--------|
+| `components/SequenceView/index.jsx` (M-B.3 rewrite, track-based) | `components/SequenceMapView.jsx` (superseded by M-B.3 rewrite) | DEC-SQV-07: plain fragments shape, NO container imports — для read-only Inspector |
+| `components/Annotator/PreviewTab.jsx` pattern (M-X.3 canonical) | inline `AnnotationEditor` в новых компонентах (superseded by M-X.3 Annotator) | annotations встроены в SequenceView через AnnotationTrack |
+
+Если все компоненты в скоупе — новые (нет existing equivalents) — заменить таблицу на «Все компоненты в скоупе — новые. No legacy concerns.»
+
+**Терминология.** Не путать **superseded UI** (старые UI-компоненты после rewrite) и **v0.5 legacy codebase** (алгоритмические модули — primer-design, mutagenesis, restriction-db, snapgene_parser — переиспользуются в v0.6+ по ARCHITECTURE_v2 §8 + DEC-V2-08). Audit — только про первое.
+
+**Rationale:** root cause M-X.7a K3 — Code импортировал superseded `SequenceMapView`+`AnnotationEditor` при наличии современных `SequenceView`+`Annotator/PreviewTab`. Спека не указывала «use X NOT Y» → Code пошёл по пути наименьшего сопротивления. Эта секция закрывает класс антипаттерна.
+
+---
+
 ## 0.5. Ответы Игоря на kickoff-интервью &lt;DD.MM.YYYY&gt;
 
 **Источник правды.** Снимок Q/A на момент интервью — **не правится** после написания. Новые ответы Игоря после написания спеки добавляются в новые блоки §0.6 / §0.7 / … с датой. §0.5 остаётся снимком исходного интервью.
@@ -237,4 +282,4 @@ Code дописывает в конец `CURRENT_TASK.md` блок:
 
 ---
 
-_Шаблон v1.2 — 01.05.2026. Синхронизирован с `CHAT_PLAYBOOK_CORE.md` §2 и новой структурой документации (PROJECT_STATE snapshot only + RELEASES.md для журнала версий, ANCHORS.md для ⚓ решений). При изменении §2 в CORE — обновлять и шаблон._
+_Шаблон v1.3 — 09.05.2026. Синхронизирован с `CHAT_PLAYBOOK_CORE.md` §2 («mockup audit + legacy alternatives audit + inventory pass» добавлены 09.05.2026). v1.3 добавил §0.1 Visual reference / Source of truth + §0.2 Component reuse audit — mandatory секции перед kickoff-интервью. При изменении §2 в CORE — обновлять и шаблон._

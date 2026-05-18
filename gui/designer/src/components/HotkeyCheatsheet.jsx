@@ -91,6 +91,19 @@ export default function HotkeyCheatsheet({ open, onClose }) {
             ))}
           </tbody>
         </table>
+        {STRINGS.hotkeyCheatsheet?.browserOverrideNote && (
+          <p
+            data-testid="hotkey-cheatsheet-browser-note"
+            style={{
+              margin: '12px 0 0', fontSize: 11,
+              color: 'var(--text-secondary)',
+              padding: '8px 10px',
+              background: 'var(--surface-2)',
+              borderRadius: 4,
+              borderLeft: '2px solid var(--accent-500)',
+            }}
+          >{STRINGS.hotkeyCheatsheet.browserOverrideNote}</p>
+        )}
         <p style={{
           margin: '12px 0 0', fontSize: 11,
           color: 'var(--text-tertiary)', fontStyle: 'italic',

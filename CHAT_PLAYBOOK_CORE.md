@@ -44,7 +44,7 @@ _§1 обновлено 2026-05-01: реструктуризация докум�
 - **Целевой размер спеки зависит от типа задачи (см. §13):** тип A — 20-30 KB, тип B — 8-15 KB, тип C — 3-8 KB, тип D — без спеки.
 - **Одна задача в спеке = одна цель для пользователя.** Если задача разбивается на 4 подзадачи (K9/K10/K11/K12) — это нормально, они должны логически сцеплены и давать один user-facing результат.
 - **Никакого copy-paste кода больше 10 строк.** Если пишу `export function foo() { ... 40 строк ... }` — я узурпирую работу Code. Вместо этого: «новый helper `foo(args) → returns X`, логика: [нумерованный список из 3–5 шагов]».
-- **Лимит размера модулей.** Перед написанием спеки на компонент/helper делаю `list_directory_with_sizes` на `gui/designer/src/components/` или `gui/designer/src/`. Файлы ≥ **40 KB** (.jsx) или ≥ **25 KB** (.js, кроме data) в зоне правки — декомпозиция входит в скоуп спеки **первым пунктом**, ещё до новой функциональности.
+- **Лимит размера модулей (калибровка 08.05.2026, ⚓ DEC-SIZE-CALIBRATION-01).** Перед написанием спеки на компонент/helper делаю `list_directory_with_sizes` на `gui/designer/src/components/` или `gui/designer/src/`. Файлы ≥ **40 KB** (.jsx) / **25 KB** (.js, кроме data) в зоне правки — проверяю статус в TECH_DEBT.md «Файлы над size budget» / Active vs Watch. Если **Active decomp** — декомпозиция входит в скоуп спеки первым пунктом. Если **Watch list** (формальный hard но stable / без entanglement) — пишу спеку без декомпозиции, отмечаю в risks-блоке «эта правка может вывести [файл] в Active при росте >5 KB второй спринт подряд — Code фиксирует в отчёте».
 
 ### Перед спекой — sanity check (3 обязательных вопроса)
 
@@ -53,6 +53,16 @@ _§1 обновлено 2026-05-01: реструктуризация докум�
 1. **Как это вписывается в работу биолога?** Что биолог делает в этом workflow? Какую задачу решает? Правка ускоряет / замедляет / усложняет / упрощает его работу?
 2. **Насколько решение согласуется с имеющимися продуктами индустрии?** SnapGene / Benchling / Geneious / ApE / pLannotate уже решали похожие UX-задачи. Где в них хорошо — копируем, не придумываем «лучше». Свои изобретения только там где явный gap. `docs/UX_REFERENCE_BASE.md` — стартовая точка.
 3. **Решит ли правка эту проблему? Или сделает хуже / сложнее?** Какие side-effects: что становится менее доступным, какой workflow ломается, какие edge cases появляются.
+
+### Перед спекой — также: проверки источников (mandatory)
+
+**4. Mockup audit.** Если в задаче есть HTML mockup / wireframe / готовый дизайн как визуальный SoT, Chat **обязан открыть его** и пройтись по DOM/CSS прежде чем писать spec. В спеке явно зафиксировать секцию «§0.1 Visual reference / Source of truth» (см. `_TEMPLATE_SPEC.md`): путь к файлу mockup'а + правило «всё что есть в mockup'е = приёмочный критерий, что НЕ в mockup'е = polish можно отложить». Без этого audit'а не писать spec — root cause M-X.7a → M-X.7a-FIX drift (09.05.2026, 35 расхождений) был именно в его отсутствии. Если mockup'а нет — пишется явно «no visual reference, design — на усмотрение Code в рамках DESIGN_SYSTEM.md tokens».
+
+**5. Legacy alternatives audit.** Перед упоминанием любого существующего UI-компонента в spec Chat grep'ит по `gui/designer/src/components/` на наличие **рерайт'а** (паттерны: `*View`, `*Editor`, имя_компонента+цифра, папка `/index.jsx` vs одиночный `.jsx` в корне `components/`). Если есть rewrite — указывает в спеке явно «use `components/SequenceView/`, NOT `components/SequenceMapView.jsx` (superseded by M-B.3 rewrite)». Без этого Code импортирует то что попалось под руку и superseded UI компоненты systematically проникают в свежий redesign (пример: K3 M-X.7a SequenceTab/AnnotationsTab взяли superseded `SequenceMapView` + `AnnotationEditor` хотя `components/SequenceView/` + `Annotator/PreviewTab` уже были canonical pattern).
+
+Терминология. Не путать **superseded UI** (старые версии компонентов после rewrite — SequenceMapView, AnnotationEditor) и **v0.5 legacy codebase** (алгоритмические модули — primer-design, mutagenesis, restriction-db, snapgene_parser — переиспользуются в v0.6+ по ARCHITECTURE_v2 §8 + DEC-V2-08, их не нужно избегать). Audit в спеке — только про первое.
+
+**6. Inventory pass перед FIX-спринтом.** Если первая визуальная приёмка показала >5 расхождений ИЛИ Code в финальном отчёте recommend rewrite — следующий шаг **не точечная FIX-спека**, а K-FIX0 diagnostic pass: Code открывает mockup + текущий workspace side-by-side в Chrome, делает DOM measurements, ландит inventory `.md` файл со списком расхождений по категориям (P1/P2/P3) и likely fix locations. Только после inventory landed Chat пишет расширенный FIX scope. Узкая C-спека на широкий drift — антипаттерн (M-X.7a-FIX baseline F1+F2+F3 vs реальные 35 расхождений).
 
 ### Что должно быть в спеке
 
@@ -153,6 +163,7 @@ _§1 обновлено 2026-05-01: реструктуризация докум�
 - Тип D → C: обнаружилось что правка задевает store/hooks/lib.
 - Тип C → B: обнаружилось что нужны новые компоненты или migration store.
 - Тип B → A: обнаружилось что нужна новая data model или алгоритм.
+- **Систематический drift (любой тип → +1):** визуальная приёмка показала >5 расхождений с SoT, ИЛИ Code в отчёте recommend rewrite, ИЛИ Код признаёт что «писал по текстовым описаниям, не открывая mockup». В этом случае: узкий fix не пишется, задача автоматически повышается до B или A с inventory pass первым шагом (см. §2 «Inventory pass перед FIX-спринтом»). Написать C-спеку на широкий drift — антипаттерн (M-X.7a-FIX 09.05.2026: 12 P1 + 14 P2 + 9 P3 = 35 расхождений, была писана baseline на 3 точечные правки — неверная классификация).
 
 При повышении — стоп, переоценка, новая спека под новый тип.
 
@@ -244,5 +255,5 @@ _§17 создан 07.05.2026 после v0.8.0 finalization. Корень: в �
 ---
 
 **Дата создания:** 21.04.2026 (после Sprint 1.7 post-mortem).  
-**Последнее обновление:** 07.05.2026 (§17 inline-режим работы для bug fixes, drift check в стартовом пакете).  
+**Последнее обновление:** 09.05.2026 (§2 «Проверки источников» — mockup audit + legacy alternatives audit + inventory pass перед FIX-спринтом; §13 триггер «систематический drift → повышение типа». Источник: M-X.7a → M-X.7a-FIX cycle (35 расхождений + v0.5 legacy hangovers).  
 **Полный журнал изменений и справочные правила** (§4 файловая гигиена, §5 userMemories drift, §6 антипаттерны, §7 compact, §8 формат ответов, §9 BodgeGene-развилки, §10 ссылка на TECH_DEBT, §11 контрольный список, §12 мета-правила, §15 outputs не персистентны, §16 recovery после прерванной сессии) — в `CHAT_PLAYBOOK_APPENDIX.md`.

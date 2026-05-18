@@ -136,11 +136,86 @@ describe('K4 — hotkey infrastructure', () => {
     expect(noop).toHaveBeenCalledTimes(1);
   });
 
-  it('HOTKEYS map exposes 7 entries including project-info', () => {
+  it('HOTKEYS map exposes 15 entries (T7 zone G/S; T10 added toggle-sanger-notebook)', () => {
     expect(Object.keys(HOTKEYS).sort()).toEqual([
-      'close-project', 'escape', 'new-project',
-      'open-bodge', 'open-settings', 'project-info', 'save-bodge',
+      'close-project', 'command-palette', 'escape', 'new-project',
+      'open-bodge', 'open-settings', 'pcr-primer-forward', 'pcr-primer-reverse',
+      'piece-create', 'project-info', 'save-bodge', 'sequence-search',
+      'toggle-sanger-notebook', 'toggle-zone-view-graph', 'toggle-zone-view-sequence',
     ]);
+  });
+
+  // FAIL-fix-pass 5 — Ctrl+Shift+P / Ctrl+Shift+F as alternate
+  // bindings for browser-overridden primary combos.
+  it('command-palette accepts BOTH Ctrl+P (primary) and Ctrl+Shift+P (alternate) on win/linux', () => {
+    _setPlatformOverrideForTests('other');
+    const handler = vi.fn();
+    renderHook(() => useHotkey('command-palette', handler));
+    expect(runHotkeyResolver(makeEvent({ key: 'p', ctrl: true }))).toBe(true);
+    expect(runHotkeyResolver(makeEvent({ key: 'p', ctrl: true, shift: true }))).toBe(true);
+    expect(handler).toHaveBeenCalledTimes(2);
+  });
+
+  it('sequence-search accepts BOTH Ctrl+F (primary) and Ctrl+Shift+F (alternate) on win/linux', () => {
+    _setPlatformOverrideForTests('other');
+    const handler = vi.fn();
+    renderHook(() => useHotkey('sequence-search', handler));
+    expect(runHotkeyResolver(makeEvent({ key: 'f', ctrl: true }))).toBe(true);
+    expect(runHotkeyResolver(makeEvent({ key: 'f', ctrl: true, shift: true }))).toBe(true);
+    expect(handler).toHaveBeenCalledTimes(2);
+  });
+
+  it('formatHotkey returns the PRIMARY combo only (alternates documented in cheatsheet, not inline UI)', () => {
+    expect(formatHotkey('command-palette', 'other')).toBe('Ctrl+P');
+    expect(formatHotkey('command-palette', 'mac')).toBe('⌘P');
+    expect(formatHotkey('sequence-search', 'other')).toBe('Ctrl+F');
+  });
+
+  // 11.05.2026 — layout-independent matching via `event.code`.
+  // Cyrillic layout: physical P-key fires `event.key === 'з'`,
+  // physical F → 'а', physical I → 'ш', physical , → 'б'. Resolver
+  // must still fire the right action via `event.code === 'KeyP'/...`.
+  it('Ctrl+з (cyrillic layout, physical P) still triggers command-palette via event.code=KeyP', () => {
+    _setPlatformOverrideForTests('other');
+    const handler = vi.fn();
+    renderHook(() => useHotkey('command-palette', handler));
+    const ev = makeEvent({ key: 'з', ctrl: true });
+    ev.code = 'KeyP';
+    expect(runHotkeyResolver(ev)).toBe(true);
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it('Ctrl+а (cyrillic layout, physical F) still triggers sequence-search via event.code=KeyF', () => {
+    _setPlatformOverrideForTests('other');
+    const handler = vi.fn();
+    renderHook(() => useHotkey('sequence-search', handler));
+    const ev = makeEvent({ key: 'а', ctrl: true });
+    ev.code = 'KeyF';
+    expect(runHotkeyResolver(ev)).toBe(true);
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it('Ctrl+ы (cyrillic layout, physical S) still triggers save-bodge via event.code=KeyS', () => {
+    _setPlatformOverrideForTests('other');
+    _setGetContextForTests(() => ({ currentProjectId: 'p-1', activeFullscreen: 'dag' }));
+    const handler = vi.fn();
+    renderHook(() => useHotkey('save-bodge', handler));
+    const ev = makeEvent({ key: 'ы', ctrl: true });
+    ev.code = 'KeyS';
+    expect(runHotkeyResolver(ev)).toBe(true);
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it('non-letter combos (Esc, comma) still match via event.key without needing code fallback', () => {
+    _setPlatformOverrideForTests('other');
+    const handlerEsc = vi.fn();
+    const handlerSettings = vi.fn();
+    renderHook(() => useHotkey('escape', handlerEsc));
+    renderHook(() => useHotkey('open-settings', handlerSettings));
+    expect(runHotkeyResolver(makeEvent({ key: 'Escape' }))).toBe(true);
+    expect(handlerEsc).toHaveBeenCalled();
+    expect(runHotkeyResolver(makeEvent({ key: ',', ctrl: true }))).toBe(true);
+    expect(handlerSettings).toHaveBeenCalled();
   });
 
   it('formatHotkey("project-info") → ⌘I on mac / Ctrl+I elsewhere', () => {

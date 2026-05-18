@@ -4,7 +4,12 @@
       "Bash(py -m pip install python-multipart)",
       "Bash(py -m uvicorn server:app --port 8000 --log-level info)",
       "Bash(npx vitest:*)",
-      "Bash(npm ls *)"
+      "Bash(npm ls *)",
+      "Bash(npm --prefix gui/designer run dev)",
+      "Bash(npm --prefix gui/designer test)",
+      "Bash(py -m pytest --tb=no -q)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
     ]
   }
 }

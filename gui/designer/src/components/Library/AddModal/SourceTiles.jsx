@@ -23,9 +23,10 @@ const TILES = [
   },
   {
     id: 'catalog',
-    label: 'Каталог',
+    label: 'Каталог SnapGene',
     icon: '📚',
-    sub: 'SnapGene 2800+ плазмид',
+    sub: '2800+ плазмид · в разработке',
+    inDev: true,
   },
   {
     id: 'cross-project',

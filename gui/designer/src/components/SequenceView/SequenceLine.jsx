@@ -28,6 +28,7 @@
 import { memo, useMemo } from "react";
 import { LABEL_WIDTH, __IS_TEST_ENV__ } from "./constants.js";
 import { buildLineAnnMap } from "./lib/feature-map.js";
+import { RE_ENZYMES } from "../../restriction-db.js";
 import RulerTrack from "./tracks/RulerTrack.jsx";
 import StrandsTrack from "./tracks/StrandsTrack.jsx";
 import AnnotationTrack from "./tracks/AnnotationTrack.jsx";
@@ -40,6 +41,11 @@ const SequenceLine = memo(function SequenceLine({
   fullSeq,
   features,
   primers,
+  // 18.05.2026 — primer click/selection (Игорь redesign). Stable refs
+  // from SequenceView so React.memo only re-renders on actual change.
+  onPrimerClick,
+  onPrimerDoubleClick,
+  selectedPrimerKeys,
   reSites,
   charPx,
   // PERF-4 — settings split into scalars so memo bails per-field.
@@ -85,11 +91,80 @@ const SequenceLine = memo(function SequenceLine({
   // chars from the plasmid start. RulerTrack splits its labels at
   // wrapAt; an inline vertical divider goes there too.
   seqLength = 0,
+  // 12.05.2026 — Игорь: «сайты рестрикции должны быть кликабельны».
+  // Optional callbacks forwarded в RestrictionTrack. Library/Importer
+  // don't pass them — track stays display-only as before.
+  onRestrictionClick,
+  restrictionHighlightKey,
+  // 13.05.2026 — hover-only strand cut overlay. Parent владеет
+  // hoveredRestrictionKey + onRestrictionHover; SequenceLine
+  // фильтрует reCutLayout по нему.
+  hoveredRestrictionKey,
+  onRestrictionHover,
 }) {
   const annMap = useMemo(
     () => buildLineAnnMap(features, line.start, line.seq.length),
     [features, line.start, line.seq.length],
   );
+
+  // Per-line cut bar + overhang layout — derived from reSites + RE_ENZYMES.
+  // For each site whose recognition spans into this line, compute the
+  // strand-specific cut positions (top cut = site.position + cut[0],
+  // bottom cut = site.position + cut[1]) and the sticky-end overhang
+  // range between them. Filter & pass to each StrandsTrack so the cut
+  // visualization is duplicated INSIDE the recognition site on the
+  // actual DNA strands (Игорь 12.05.2026).
+  const reCutLayout = useMemo(() => {
+    const empty = { topCuts: [], botCuts: [], overhangs: [], bindingHighlights: [] };
+    if (!Array.isArray(reSites) || reSites.length === 0) return empty;
+
+    // 13.05.2026 — Strand cut bars + overhang shown ТОЛЬКО для
+    // hovered site (hoveredRestrictionKey) и/или clicked site
+    // (restrictionHighlightKey). Все-сайты-всегда было визуальным
+    // шумом — Игорь UX-pass.
+    const activeKeys = new Set();
+    if (hoveredRestrictionKey) activeKeys.add(hoveredRestrictionKey);
+    if (restrictionHighlightKey) activeKeys.add(restrictionHighlightKey);
+    if (activeKeys.size === 0) return empty;
+
+    const topCuts = [];
+    const botCuts = [];
+    const overhangs = [];
+    const bindingHighlights = [];
+
+    const parseKey = (key) => {
+      const lastDash = key.lastIndexOf('-');
+      if (lastDash <= 0) return null;
+      return { enzyme: key.slice(0, lastDash), position: Number(key.slice(lastDash + 1)) };
+    };
+
+    for (const k of activeKeys) {
+      const parsed = parseKey(k);
+      if (!parsed) continue;
+      const s = reSites.find(
+        (x) => x.enzyme === parsed.enzyme && x.position === parsed.position,
+      );
+      if (!s) continue;
+      const enz = RE_ENZYMES[s.enzyme];
+      if (!enz) continue;
+      const tAbs = s.position + enz.cut[0];
+      const bAbs = s.position + enz.cut[1];
+      const baseKey = `${s.enzyme}-${s.position}`;
+      topCuts.push({ key: `${baseKey}-top`, pos: tAbs });
+      botCuts.push({ key: `${baseKey}-bot`, pos: bAbs });
+      if (enz.end !== 'blunt' && tAbs !== bAbs) {
+        const lo = Math.min(tAbs, bAbs);
+        const hi = Math.max(tAbs, bAbs);
+        overhangs.push({ key: `${baseKey}-ov`, startPos: lo, endPos: hi });
+      }
+      bindingHighlights.push({
+        key: `${baseKey}-bind`,
+        startPos: s.position,
+        endPos: s.position + enz.site.length,
+      });
+    }
+    return { topCuts, botCuts, overhangs, bindingHighlights };
+  }, [reSites, restrictionHighlightKey, hoveredRestrictionKey]);
 
   const isWrapTail = kind !== 'main';
 
@@ -158,17 +233,6 @@ const SequenceLine = memo(function SequenceLine({
         * requestIdleCallback at the parent.
         */}
       {tracksReady ? (
-        <PrimerTrack
-          primers={primers}
-          fullSeq={fullSeq}
-          lineStart={line.start}
-          lineLen={line.seq.length}
-          charPx={charPx}
-          labelChars={LABEL_WIDTH}
-          primerStyle={primerStyle}
-        />
-      ) : null}
-      {tracksReady ? (
         <RestrictionTrack
           sites={reSites}
           lineStart={line.start}
@@ -176,6 +240,10 @@ const SequenceLine = memo(function SequenceLine({
           charPx={charPx}
           labelChars={LABEL_WIDTH}
           reOrientation={reOrientation}
+          onSiteClick={onRestrictionClick}
+          highlightedKey={restrictionHighlightKey}
+          hoveredKey={hoveredRestrictionKey}
+          onHoverChange={onRestrictionHover}
         />
       ) : null}
       <RulerTrack
@@ -228,6 +296,23 @@ const SequenceLine = memo(function SequenceLine({
         * IMMEDIATELY after the ruler so the biolog's eye lands on
         * nucleotide letters first. Annotations + AA render BELOW.
         */}
+      {/* Forward primers sit ABOVE the top strand, arrows → (Игорь
+          18.05.2026 — «по обе стороны от цепи»). */}
+      {tracksReady ? (
+        <PrimerTrack
+          primers={primers}
+          fullSeq={fullSeq}
+          lineStart={line.start}
+          lineLen={line.seq.length}
+          charPx={charPx}
+          labelChars={LABEL_WIDTH}
+          primerStyle={primerStyle}
+          directionFilter="forward"
+          onPrimerClick={onPrimerClick}
+          onPrimerDoubleClick={onPrimerDoubleClick}
+          selectedPrimerKeys={selectedPrimerKeys}
+        />
+      ) : null}
       <StrandsTrack
         lineStart={line.start}
         seq={line.seq}
@@ -235,6 +320,10 @@ const SequenceLine = memo(function SequenceLine({
         labelChars={LABEL_WIDTH}
         showBottomStrand={showBottomStrand}
         which="top"
+        charPx={charPx}
+        cutPositions={reCutLayout.topCuts}
+        overhangs={reCutLayout.overhangs}
+        bindingHighlights={reCutLayout.bindingHighlights}
       />
       {showBottomStrand && (
         <StrandsTrack
@@ -244,8 +333,29 @@ const SequenceLine = memo(function SequenceLine({
           labelChars={LABEL_WIDTH}
           showBottomStrand
           which="bottom"
+          charPx={charPx}
+          cutPositions={reCutLayout.botCuts}
+          overhangs={reCutLayout.overhangs}
+          bindingHighlights={reCutLayout.bindingHighlights}
         />
       )}
+      {/* Reverse primers sit BELOW the strand, arrows ← (Игорь
+          18.05.2026 — «обратный внизу»). */}
+      {tracksReady ? (
+        <PrimerTrack
+          primers={primers}
+          fullSeq={fullSeq}
+          lineStart={line.start}
+          lineLen={line.seq.length}
+          charPx={charPx}
+          labelChars={LABEL_WIDTH}
+          primerStyle={primerStyle}
+          directionFilter="reverse"
+          onPrimerClick={onPrimerClick}
+          onPrimerDoubleClick={onPrimerDoubleClick}
+          selectedPrimerKeys={selectedPrimerKeys}
+        />
+      ) : null}
       {tracksReady ? (
         <AnnotationTrack
           regions={features}

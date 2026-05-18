@@ -8,6 +8,12 @@ export const FULLSCREENS = [
   'underConstruction',
   'multiTabBlocked',
   'readOnlyForced',
+  // M-CANVAS-SKELETON (DEC-SKELETON-01) — изолированный DEV-only
+  // route для скелета всей Canvas-модели (Tree + Canvas + Editor +
+  // 4 operations). Replaces M-CANVAS-PROTOTYPE-PCR (узкий PCR).
+  // Снос скелета = удаление этого entry + папки
+  // `components/CanvasSkeleton/`.
+  'canvasSkeleton',
 ];
 
 export function isValidFullscreen(name) {

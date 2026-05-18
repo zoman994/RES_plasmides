@@ -46,7 +46,7 @@ describe('M-X.7a v2 K3 — LibraryActionRow', () => {
     const row = screen.getByTestId('library-action-row');
     expect(row.getAttribute('data-zone')).toBe('loose');
     expect(row.getAttribute('data-kind')).toBe('container');
-    expect(screen.getByTestId('library-action-useInActive')).toBeTruthy();
+    expect(screen.getByTestId('library-action-addToActiveProject')).toBeTruthy();
     expect(screen.getByTestId('library-action-delete')).toBeTruthy();
   });
 
@@ -79,7 +79,7 @@ describe('M-X.7a v2 K3 — LibraryActionRow', () => {
         ctx={{ hasActiveProject: true, cloneEntryToActiveProject: onClone }}
       />,
     );
-    fireEvent.click(screen.getByTestId('library-action-useInActive'));
+    fireEvent.click(screen.getByTestId('library-action-addToActiveProject'));
     expect(onClone).toHaveBeenCalledWith('c1');
   });
 

@@ -6,6 +6,242 @@
 
 ---
 
+## v0.8.3-alpha — Four-tier architecture (T1-T10 + T4.5) + canvas UX + primer redesign (16-18.05.2026)
+
+**Контекст.** Архитектурный поворот canvas-skeleton от draft/segment-based к four-tier модели (containers / pieces / operations / zones). 10 T-спринтов реализованы Code в continuous mode 16-18.05 на базе спек (`docs/SPRINT_T*.md`, ~360 KB) и якоря `docs/SPEC_M-CANVAS-FOUR-TIER-ARCHITECTURE.md`. Параллельно: canvas UX полировка (4-сторонние коннекторы, wheel-zoom-к-курсору, бесконечный канвас, hand-pan, стационарный zoom-индикатор), primer redesign (модал-от-выделения, кликабельность во всех 5 виверах, pentagon-arrow glyph), 3 биологических бага (V82-V84), LibrarySingleInspector декомпозиция, реверс ⚓ DEC-T3-08 + V61.
+
+**Sprint blocks (записаны в DECISIONS.md sprint-block, ~84 DEC):**
+- **T1 Pieces State** — `state.pieces` slice + piece как первичная сущность (DEC-CANVAS-4T-01). Поля: sourceIds[] / ranges[] / origin / acquisitionMethod / acquisitionParams / derivedReactionId / frozen / kind / color (stable HSL hash). Schema v5→v6. piece-model + piece-invariants + 8 actions + 7 selectors. **+52 теста.**
+- **T2 Pieces Migration** — `op.inputPieces[]` (primary) + legacy `op.inputs[]` (compat). Surgical opt-in adapters per kind (DEC-T2-09): byte-identical legacy при пустом inputPieces, NEW path активируется только при наличии. op-piece-bridge.js + 7 adapter modules cleaned. Schema v6→v7 (migration noop — поле добавлено как nullable). **+52 теста.**
+- **T3 Zones Data** — `state.zones[]` Miro-style контейнеры + `zoneId` на узлах. Поля zone: bounds / viewMode / collapsed / notes / autoResize. Default zone «Сборка 1» seeded в buildInitialState (DEC-T3-08 — **позже реверснут** 17.05). Schema v7→v8. **+56 тестов.**
+- **T4 Zones Rendering** — ZoneFrame / ZoneLayer / ZoneContextMenu + drag/resize/merge + hit-detect on pointer-up + cross-zone junctions dashed pattern. DOM/CSS frame, не SVG. Вариант B (informed go): K9 graph-view отложен по design-mismatch (отдельный фикс post-T4). **+43 теста.**
+- **T4.5 Zone 3-lane Auto-Layout** — sources lane (top) / intermediate lane (middle, dagre LR) / finals lane (bottom). `node.pinned` field + auto-pin при drag. Hotkey + context-menu открепить/закрепить. `laneLayout: 'auto'|'manual'` per zone. Schema v9→v10. **+45 тестов.**
+- **T5 Piece Authoring UI** — 4 способа создать piece: А (selection + хоткей P) / Б (feature click) / В (existing primers с binding search) / Г (new primers через V72-V74 mechanism). PieceCreateModal + PiecePrimersPickModal + piece-authoring.js (4 pure builders). Reuse extraItems pattern из V72-V74. **+22 теста.**
+- **T6 Sequence-Mode Migration** — `editor/assembly-mode/*` мигрирован с segments на pieces через dual-source dual-resolution. assembly-realise.js → zone-pieces-to-dag.js (читает pieces из zone). segment-to-piece-adapter.js для back-compat. Gap segments → `piece.kind='gap'` + gapLength + gapHint + опциональный gapSequence (V83 extension). Schema v8→v9 (assemblyDrafts → zones mapping). assemblyReducer оставлен живым (T6 K14 deviation — литеральный no-op заблокирован ~50 legacy assembly-тестами). **+47 тестов.**
+- **T7 Dual-Mode Toggle + Sync** — inline sequence-mode (3 состояния empty/palette/assembled) per zone. Hotkey G/S через focusedZoneId (uiSlice extension). ATTACH_PIECE_TO_ASSEMBLY / DETACH / REORDER actions + piece.order field. Bidirectional sync: drag piece в strip → ATTACH + T8 finalizer создаёт auto-reaction. BranchingVisual stub для N финалов. **+43 теста.**
+- **T8 Auto-Reactions + Cross-Zone Links** — finalizer pattern: piece.acquisitionMethod != 'undefined'/'direct'/'synthesis' → auto-reaction (PCR/Cut). Method change → atomic op delete + create. Cross-zone link badges «← Зона N» в header + click → smooth pan + 1s highlight. zone-link-resolver groups by source zone. **+33 теста.**
+- **T9 Variants** — design variants (piece.variantGroupId, vg-uuid) vs clone variants (op.materializedClones[], hard cap 96 colonies). MaterializeCloneModal с auto-labels. BranchingVisual rewrite 3 kinds: clones (vertical stack) / design-variants (Y-разветвитель) / independent (side-by-side). Migration v8→v9. **+37 тестов.**
+- **T10 Sanger MVP Lab Notebook** — right panel hotkey B, per-zone scope (focusedZoneId T7). 4-status segmented control (pending/verified/failed/null), filter, notes ≤500 (blur-saved). BranchingVisual получает цветные dot indicators. **+26 тестов.**
+
+**Cross-cutting (между T-спринтами и после):**
+- **Реверс ⚓ DEC-T3-08 + V61** (17.05, по AskUserQuestion Игоря «Полностью из state») — buildInitialState больше НЕ сидит default zone; ensureGhostPlaceholder отключён. Чистый старт без авто-госта/зоны. Кнопки +Операция / +Сборка / Сборки / Очистить bottom-right стеком.
+- **Canvas UX батч** (17.05) — 4-сторонние коннекторы (edgeAnchors), wheel-zoom-к-курсору (zoomAtPoint focal-инвариант), бесконечный канвас (canvasContentExtent + edge-pan), hand-pan (panScrollTarget gate by closest-target), стационарный zoom-индикатор (внешний non-scrolling wrapper), drag-release ромба не открывает viewer (justDraggedRef guard), «Очистить канвас» gated RESET.
+- **Primer redesign** (18.05) — PrimerFromSelectionModal (имя/ПСО/RC) во всех 5 виверах. Кликабельность везде (onPrimerClick/selectedPrimerKeys, back-compat без callback — декоративный). Double-click → редактирование. Flank-highlight только fwd+rev (биоинвариант). Pentagon-arrow glyph по обе стороны цепи с вписанными буквами. Cross-portal pattern: backdrop гасит keydown+pointer+contextmenu (React-bubbling, портал DOM-изоляции событий НЕ даёт).
+- **Viewer-sync** — все 5 дизайн-виверов (Library/Importer-инспектор, ContainerEditor×2, Assembly, PCR) несут одинаковую пятёрку: primers + onWritePrimer + showSelectionTm + caret + selection. useEntryPrimers hook (origin.kind='library-selection') — ContainerEditorSkeleton (K10-заглушка закрыта). hydratePrimers() теперь вызывается в проде.
+- **Annotator-toggle** — вкладка «Аннотации» → toggle-кнопка в общем TabBar.showAnnotations/onToggleAnnotator. Scope: Library/Importer + container-editor. Assembly/PCR не тронуты.
+- **LibrarySingleInspector decomp** — extract `useInspectorSelectionNav` hook (~170 строк caret/selection/LinearFeatureBar-навигации). 39.34 → **31.28 KB** (TD-SIZE эскалация СНЯТА, 8.7 KB запаса до hard 40).
+- **3 bug fixes:** V82 (AssemblyDraftsPanel перепи��ана zone-based — счётчик показывает default zone), V83 (gap с известной ПСО хранится в `piece.gapSequence`, не подменяется поли-N), V84 (realise-продукты наследуют аннотации источника через `transferAnnotations` + новый `concatSegmentAnnotations`).
+
+**Schema migrations:** v5→v6 (T1) → v6→v7 (T2 noop) → v7→v8 (T3 zones) → v8→v9 (T6 assemblyDrafts→zones + T9 nullable fields) → v9→v10 (T4.5 pinned). Все идемпотентны.
+
+**Тесты:** Vitest **3276 pass / 1 skip / 0 fail** + 1 pre-existing flake (`primer-wizard.test.jsx`, intermittent под parallel-load, isolated 2/2 — TD-PRIMER-WIZARD-FLAKE, не связан). **+956 тестов** от v0.8.2 baseline 2320. pytest 112/112 (не запускался — фронтовый sprint). `vite build` clean, 0 console errors.
+
+**Tech debt resolved:**
+- TD-LIBRARYSINGLEINSPECTOR-DECOMP-V2 — CLOSED (39.34 → 31.28 KB).
+
+**Новые TD (Active):**
+- TD-CANVAS-LAYOUTVIEW-DECOMP — `.jsx` 41.35 KB пробил hard 40 после T4.5 pin-badges.
+- TD-SIZE-SEQUENCEVIEW-INDEX — ~39 KB, близко к hard 40.
+- TD-DOCS-ROTATION — 53 файла в docs/ против лимита 8 (отложен в Пачку 3 финализации).
+
+**Что осталось / открытые follow-ups:**
+- Annotator-toggle scope: распространять на Assembly/PCR?
+- LibrarySingleInspector опциональный 2-й extract (annotation-edit pipeline ~5-7 KB) уведёт под soft 30.
+- T9 K13/K14 + graph-block badge — wire trigger-пункты в op context-menu.
+- T10 SHOW_SANGER_LAB_NOTEBOOK — click clone indicator → focus в notebook через event-bus.
+- T8 piece.ranges change → auto-reaction params.range recompute.
+- T6 orphan-UX в zone-mode + InsertGapModal rename + editorContext.tabs rewrite — T-future.
+- Архивация устаревших спек F1-F4 + A1-A4 + D1 + NOTES_*_DRAFT (Пачка 3).
+
+---
+
+## v0.8.2-skeleton-arch-ii — M-CANVAS-OPS-ARCH-II sub-sprint (R12) (15.05.2026)
+
+**Контекст.** Финальная архитектурная подчистка canvas-skeleton'а. Закрывает оставшиеся долги после M-CANVAS-OPS-ARCH: op kind dispatch duplication, toast single-slot clobbering, snapshot без migration, skeleton-state-canvas.js over hard.
+
+**4 sprint-level DEC в DECISIONS.md** (M-CANVAS-OPS-ARCH-II block):
+- DEC-OPS-KIND-REGISTRY-01: `op-kinds-registry.js` — single source of truth. {label, desc, adapter, popup, originKind, inputsLabel, min/maxInputs, acceptsMultiSelectInputs}. Consumers: OpKindPicker / OpPopupRouter / lib-adapters / OpSuggestions.
+- DEC-OPS-TOAST-QUEUE-01: `state.toasts` array вместо single slot. Multiple ops back-to-back emit отдельные toasts, ToastBridge flushes все. Base actions reducer refactor: early-return → break (чтобы финалайзеры всегда выполнялись). R3-13 orphan cleanup tightened — work only when containers count DECREASED.
+- DEC-OPS-SNAPSHOT-MIGRATE-01: schemaVersion=2 + migration chain + transient UI stripping. v1→v2 migration. Refuse cases: future version, corrupted, missing schema. REPLACE_STATE merges с initial defaults.
+- DEC-OPS-STATE-CANVAS-SPLIT-01: CUT_CONTAINER_AT_CURSOR 167 lines → `skeleton-state-canvas-cut.js`. File 27.5 KB → 22 KB (under 25 KB hard). TD-SIZE-SKELETON-STATE-CANVAS resolved.
+
+**Новые модули:**
+- `canvas/operations/op-kinds-registry.js` (4.3 KB).
+- `store/skeleton-state-canvas-cut.js` (5.9 KB).
+
+**Изменения:**
+- `OpKindPicker.jsx` — OP_KINDS derived от central list.
+- `OpPopupRouter.jsx` — switch заменён на `getPopupComponent(kind)`.
+- `lib-adapters.js` — REGISTRY заменён `getAdapter(kind)` lookup.
+- `skeleton-state.js` — base actions reducer refactor + REPLACE_STATE merge + toast queue stamper.
+- `skeleton-persistence.js` — migration chain + transient stripping.
+- ToastBridge — iterates state.toasts queue.
+
+**Тесты:** **+14 тестов** от R10-R11 baseline (2306 → **2320 PASS + 1 skipped**). 51 skeleton test files passed. Новые: toast-queue-r12 (7 тестов), snapshot-migrate-r12 (7 тестов). Build clean.
+
+**Tech debt resolved:**
+- TD-SIZE-SKELETON-STATE-CANVAS (Watch since R9 → Active R12) → CLOSED.
+
+**Что осталось:** Op-кинд registry автоматически приходит в OpSuggestions при добавлении нового kind. Toast queue работает с любым количеством параллельных ops. Snapshot migration позволяет refactoring containers shape без потери user data — будущие схемы добавляются как `MIGRATIONS[2]: migrate_v2_to_v3`.
+
+---
+
+## v0.8.2-skeleton-arch — M-CANVAS-OPS-ARCH sub-sprint (R10-R11) (14-15.05.2026)
+
+**Контекст.** Архитектурный under-sprint продолжающий M-CANVAS-OPS-BIO. R10 — visual story upgrade (containers как живые плазмидные карты). R11 — formal types + relocation (closes ad-hoc origin shape pitfall + перемещение bio-helpers в shared lib).
+
+**3 sprint-level DEC в DECISIONS.md** (M-CANVAS-OPS-ARCH block):
+- DEC-OPS-LIVE-PLASMID-VISUAL-01: ContainerBlock через MiniPlasmidMap SVG. State-derived визуал: cut → broken-circle с marker, excise → dim, frozen → ghost. Block height 72→110.
+- DEC-OPS-FORMAL-TYPES-01: `canvas/operations/types.js` с 13 origin variants + JSDoc Container/Annotation typedef + `validateOrigin` / `validateContainer` / `assertContainerOk` (DEV-warn). Wired в `executeOperation` dispatcher.
+- DEC-OPS-BIO-HELPERS-RELOCATE-01: codon-optimize / sanger-primer / gibson-primer / strain-compat / annotation-conflicts переехали из `canvas/operations/` в `src/lib/bio/`. 10 imports обновлены в 9 файлах. Production app получает helpers «бесплатно».
+
+**Новые модули:**
+- `CanvasSkeleton/canvas/MiniPlasmidMap.jsx` (5.7 KB) — SVG circular / linear / broken-circle.
+- `CanvasSkeleton/canvas/operations/types.js` (6.3 KB) — Container + Origin schemas.
+- `src/lib/bio/` директория с 5 helpers (30 KB total).
+
+**Изменения:**
+- `ContainerBlock.jsx` — рефакторинг с MiniPlasmidMap inside, status badge с state.
+- `canvas-layout.js` — BLOCK_LINEAR_H 72→110, JUNCTION_Y_TOLERANCE 40→60.
+- `adapters/cut.js` — origin tag'ит parentWasCircular, isExcised, fragmentIndex.
+- `lib-adapters.js` — assertContainerOk hook на executeOperation outputs.
+
+**Тесты:** **+30 тестов** от R9 baseline (2264 → **2306 PASS + 1 skipped**). Новые: mini-plasmid-map-r10 (12 тестов), types-r11 (18 тестов). Build clean. Все 49 skeleton test files passed.
+
+**Что осталось / следующий sprint M-CANVAS-OPS-POLISH:**
+- TD-SIZE-SKELETON-STATE-CANVAS (27.5 KB, Watch since R9) — decomp на per-domain reducers (positions/junctions/fills/removal).
+- Op kind central registry (single source of truth для name/icon/popup/adapter).
+- Toast queue (overwriting-slot → stacking).
+- Snapshot schemaVersion field + migration path.
+
+---
+
+## v0.8.2-skeleton-bio — M-CANVAS-OPS-BIO sub-sprint (R5-R9) (14.05.2026)
+
+**Контекст.** Five-round audit-loop в `/canvas-skeleton` DEV route. Никакого version bump — это под-спринт sketch'а, продолжение M-CANVAS-OPS (K1-K11 / S1-S3 / A4-A6 / B1-B12 / T13-T14 от 12-13.05.2026). Sub-sprint завершил перевод skeleton ops от stub'ов к real bio-fidelity output. Запрос Игоря: «проверь логику взаимодействия всех элементов, правь криво работающее, не спеши, биологический angle».
+
+**17 sprint-level DEC в DECISIONS.md** (M-CANVAS-OPS-BIO block) — KLD-real-bio, protocol-export, primer-order-panel, multi-template-PCR, mutagenesis-annotation-shift, gibson-primer-design, sanger-primer-design, codon-optimize-ecoli, strain-compat (dam/dcm), codon-stats-in-protocol, annotation-conflicts, bio-validation-on-execute, lib-adapters-split, codon-stats-panel, add-container-action, auto-annotate-assembly, lineage-multi-input-hint, show-toast-action.
+
+**Новые модули (canvas/operations/):**
+- `adapters/{cut,pcr,gibson,golden-gate,ligate,kld,mutagenesis}.js` + `_shared.js` (split lib-adapters 40 KB → 2.7 KB facade).
+- `protocol-export.js` (18.6 KB) — lab-notebook step-by-step text + reagents + warnings.
+- `gibson-primer-design.js` (5.4 KB) — homology-arm primer pair per fragment.
+- `sanger-primer-design.js` (6.3 KB) — fwd/rev upstream/downstream of target + walk.
+- `codon-optimize-ecoli.js` (6.0 KB) — translate / optimize / score / rare-codon finder.
+- `strain-compatibility.js` (6.0 KB) — dam/dcm methylation enzyme detection.
+- `annotation-conflicts.js` (5.4 KB) — CDS structural + duplicate + overlap warnings.
+- `auto-annotate-assembly.js` — post-assembly autoAnnotate integration.
+
+**Новые UI компоненты (CanvasSkeleton/):**
+- `ProtocolPanel.jsx` (R6-2) — bottom-left toggle, side-overlay с copy-to-clipboard.
+- `PrimerOrderPanel.jsx` (R6-3) — TSV/FASTA/plain export, scale/purification dropdowns.
+- `CodonStatsPanel.jsx` (R9-3) — per-CDS card с score / rare codons / optimized variant.
+
+**Тесты:** **+500 тестов** от baseline v0.8.2 (1764 → **2264 PASS + 1 skipped**). 15 новых test files в `__tests__/`. Build clean.
+
+**Тип релиза:** Internal sub-sprint, без bump'а. Hidden от prod users (DEV route only).
+
+**Что осталось / следующий sprint M-CANVAS-OPS-POLISH:**
+- Sanger primer wizard UI button (helper готов).
+- Mutagenesis editor tab наполнение (через codon-optimize backend).
+- Codon-optimize "Apply" action — replace selected CDS region.
+- Plasmid map view для circular containers (DEC-CANVAS-07).
+- Multi-input lineage graph (полный, не только +N more hint).
+
+---
+
+## v0.8.2 — M-X.7c FAIL-fixes + M-X.8 PROJECT-HUB + M-X.9 SEQUENCE-SEARCH + Фикс 7 (10–11.05.2026)
+
+**Коммиты:** ветка `feature/m-x-8-project-hub-and-m-x-9-sequence-search` (предположительно). M-X.8 PROJECT-HUB 8 K-блоков + M-X.9 SEQUENCE-SEARCH 4 K-блока + FAIL-fixes 1–6 (post-acceptance первой приёмки) + Фикс 7 (position-independence). Bump 0.8.0 → **0.8.2** в `gui/designer/package.json` + `gui/designer/src/lib/version.js`. **НАГОН:** Code не бампнул в v0.8.1 короня было в 0.8.0 в файлах кода — перепрыгиваем через 0.8.1 в 0.8.2.
+**Тесты:** Vitest **1764/1765 PASS + 1 skipped** + 1 pre-existing flake (`primer-wizard.test.jsx::2`, isolation passes, в TECH_DEBT как TD-PRIMER-WIZARD-FLAKE) — прошёл в этом запуске. **+67 новых тестов** (1697 → 1764). pytest не запускался (фронтовый спринт, backend не задет).
+**Build:** clean. PWA precache **1216.92 KiB** (baseline 1192.48, +24.44 KiB — два новых компонента CommandPalette + SequenceSearchPopover + lib/sequence-search.js + lib/sequence-search-recent.js + projectSlice pinned actions).
+**Тип релиза:** Patch. Два новых user-facing flow (Project Hub + Sequence Search) + исправление фундаментальнога store-action invariant (FAIL #4 → DEC-PROJSLICE-ACTIVATE-PURE-01 → ⚓ promotion) + 3 спринт-level → ⚓ promotion (в сумме).
+
+**Скопе — M-X.8 PROJECT-HUB (единая точка входа в проект).**
+- **K1 strings** — `STRINGS.projectHub` namespace: `sidebarPinnedHeader` («В работе»), `sidebarPinnedCounter` функция, `sidebarOpenAll`, `pinTooltip` / `unpinTooltip`, `pinCapExceeded` (cap=15), `pinDoneToast` / `unpinDoneToast`, `paletteTitle`, `paletteSearchPlaceholder`, `paletteGroupPinned` / `paletteGroupOthers`, `paletteEmpty`, `paletteCreateNew`, `treeAllProjectsCollapsed`. + `hotkeys.actionLabels.commandPalette`. `lib/strings.js` 18.8 → 21.3 KB.
+- **K2 projectSlice** — `pinnedProjectIds: string[]` cap `PIN_LIMIT = 15`. Actions `pinProject(id)` (idempotent, returns `true | 'cap' | false`), `unpinProject(id)` (idempotent), `reorderPins(nextOrder)` (drops unknown, dedupes, clamps). Migration `hydrateProjectsFromDexie`: пустой `pinnedProjectIds` → сидим top-3 из `recentProjectIds`. **7 unit тестов**.
+- **K3 Sidebar** — секция «В работе», counter `N/15`. Каждый пин — `SidebarItem` `📦` (или `●` current). Click → `activateProject` + переход в Library. Footer «Все проекты» с `⌘P` → `openCommandPalette`. Порядок секций (после FAIL-fix #1): actions → РАБОЧЕЕ МЕСТО → В РАБОТЕ → СПРАВКА → footer. **2 теста**.
+- **K4 Tree** — `LibraryTreeRoot.jsx` 7.1 → 10.8 KB. Структура: LooseZone (top) → current project (top-level если not pinned) → pinned others (★ marker) → collapsible `📚 Все проекты (N)`. Per-project expand override Map; `currentProjectId` change auto-collapses siblings. Click на header non-current → `activateProject` + auto-expand (НЕ меняет mode в DAG — исправлено в FAIL-fix #4). Click на current — toggle expand state. **5 тестов** + добавлены 2 кейса в FAIL-fix (current-first ordering + pinned-as-current).
+- **K5 Topbar** — `RecentProjectsDropdown.jsx` (M-X.7c K7) снесён. `LibraryTopBar` — статичный breadcrumb `BodgeGene › 📦 [имя]`. `✓ сохранён` pill вынесен в правый tray. Удален тест «Свернуть всё» (current единственный auto-expanded).
+- **K6 CommandPalette** — `components/CommandPalette.jsx` 11.1 KB. Open via `modals.commandPalette` (uiSlice). Хоткей `⌘P` / `Ctrl+P` + alternate `Ctrl+Shift+P` через `useHotkey('command-palette')` в App.jsx (FAIL-fix #5). Группы: ЗАКРЕПЛЕНО · N (filled ★, click pin = unpin) + ОСТАЛЬНЫЕ · M (hollow ☆, click pin = pin). Filter input. Click row → activateProject + close. Click ★/☆ → toggle pin без активации. Pin cap → toast warning. Footer «+ Создать проект». Esc / outside-click. **7 тестов**.
+- **K7 MainPanel** — RecentRow props `pinned` + `onTogglePin`. MainPanel читает `pinnedProjectIds` + `pinSet`, передаёт `onTogglePin` callback (cap → showToast). Click на ★ pinит без активации (DEC-UIRREV-ACTIVATE-WITHOUT-PIN-01). **1 тест**.
+- **K8 Cleanup** — регрессия assertion в `hotkeys.test.js` (7 → 8 → 9 entries после K6 + K2 M-X.9). Удалён K7-era `recent-projects-dropdown.test.jsx`.
+
+**Скопе — M-X.9 SEQUENCE-SEARCH (локальный + глобальный поиск ПСО).**
+- **K1 Ядро** — `lib/sequence-search.js` 12.8 KB (после Фикса 6 и 7). Pure seed-and-extend: `adaptiveSeedLen`, `buildSeedIndex`, `extendRight/Left` (score +1/-2, drop ≥5 или run-of-3 mm), `searchSequence` (обе цепи, dedup overlapping). `searchLibrary` (sync on-demand index, worker отложен — TD-SEARCH-WORKER). Helpers: `identityBucket` (4 levels: ≥90/≥80/≥70/<70), `isDnaQuery`, `hasIupacAmbiguity`, `reverseComplement`. 3'-end indicator: query.length ≤50 nt → `threePrimeOk: bool` (info-only). **14 тестов** + 5 новых в FAIL-fix #6 + 2 новых в Фикс 7 (position-independence на 1mm + 2mm).
+- **K2 Local search popover** — `components/SequenceSearchPopover.jsx` 14.1 KB. Modal popover, target sequence из props. Query input + threshold slider 50-100% + recent searches dropdown + hit list (per row: strand, target range, **queryIdentity %**, matches/length, query[X..Y), 3'-end pill, fragment preview). IUPAC + min-length toast. Ctrl+F / `⌘F` через `useHotkey('sequence-search')` + alternate `Ctrl+Shift+F` (FAIL-fix #5). **8 тестов**. **SequenceView overlay-rect rendering частично** — 100% match рисуется, для 95%/90% hits виден только при click на hit row. TD-SEARCH-OVERLAY-RECTS.
+- **K3 Global search** — `LibraryTopBar` auto-detect: query.length ≥8 + только ACGT(IUPAC) → DNA mode → dropdown `[data-testid=library-topbar-dna-results]`. `searchLibrary` (только `kind === 'container' || !kind`, SnapGene catalog исключён — DEC-SEARCH-SNAPGENE-EXCLUDED-01). Sorted by queryIdentity desc, cap 50. Click → `activateProject(entry.projectId)` + `setSelectedId(entryId)`. **5 тестов**.
+- **K4 Polish** — `lib/sequence-search-recent.js` localStorage MRU helper (cap 10). **5 тестов**.
+
+**Скопе — FAIL-fixes 1–6 (post-acceptance первой приёмки 10.05.2026).**
+- **#1 Sidebar swap** [type D] — порядок actions → РАБОЧЕЕ МЕСТО → В РАБОТЕ → СПРАВКА → footer.
+- **#2 Tree current-first** [type C] — текущий проект первой позицией после LooseZone (DEC-UIRREV-TREE-CURRENT-FIRST-01). +1 новый кейс + 1 K2-стейл-тест переписан.
+- **#3 STRINGS формализация** [type D] — `sidebarOpenAll` = «Все проекты» без `+`/`…`, снят `.bodge` суффикс и UPPERCASE в zone-header (DEC-PROJ-STRINGS-FORMALIZATION-01).
+- **#4 Tree DAG-switch** [type C] — root cause в `projectSlice.activateProject` (`canvas.activeFullscreen='dag'` side-effect вместе с currentProjectId+MRU). Фикс: action теперь side-effect-free. **DEC-PROJSLICE-ACTIVATE-PURE-01 → ⚓ promotion**. Regression тест «does NOT mutate canvas.activeFullscreen» добавлен.
+- **#5 Hotkey alternates** [type C] — `HOTKEYS.{command-palette,sequence-search}.keys` принимает array of combos. Primary `Ctrl+P/F` + alternate `Ctrl+Shift+P/F` (DEC-SEARCH-HOTKEY-ALTERNATES-01). +3 теста + HotkeyCheatsheet browser-override-note.
+- **#6 Search semantics** [type C] — поля `queryIdentity` + `queryCoverage` + `queryStart`/`queryEnd`, sort by queryIdentity desc → hitIdentity desc → targetStart asc. Identity bucket 4 levels. Mandatory coverage column `query[X..Y) · M/N nt`, tooltip secondary `по hit: N% (length nt extension)` (DEC-SEARCH-PER-QUERY-IDENTITY-01). Обновлены 2 из 14 тестов + 5 новых.
+
+**Скопе — Фикс 7 Identity position-independence (post-2nd-acceptance, 11.05.2026).**
+- **Корень:** seed-зависимое extension — счётчик `matches` считался над extension window, не над query целиком. При разных позициях mismatch seed был в разных местах, extension отыгрывал разный объём. Итог: биологический invariant `queryIdentity = (N-K)/N` не выполнялся (mm на pos 2 → 97%, mm на pos 15 → <80%).
+- **Алгоритмический фикс:** после seed-and-extend находит hitAnchor в target — full-window alignment query vs target[hitAnchor : hitAnchor + queryLen]. `queryIdentity = matches / queryLen` (BLAST-pattern). Стандартный инвариант восстановлен (DEC-SEARCH-FULL-WINDOW-ALIGNMENT-01).
+- **Side-effects:** `hitIdentity` (matches/extensionLength) убран из hit object + tooltip — потерял смысл. `queryCoverage` = 1.0 при full alignment, остаётся партиал только в edge-case overhang за конец target. `extensionLength` внутреннее поле.
+- **Тесты:** position-independence invariant прямыми тестами в `sequence-search.test.js` — for each position p in 0..queryLen-1, mm на p → queryIdentity == (queryLen-1)/queryLen. Аналогично для 2 mm pairs.
+- **Визуальное подтверждение 11.05.2026:** биолог на тест query 20 nt с mm на разных позициях видит 1 mm → 95.0% ровно, 2 mm → 90.0% ровно — инвариант выполняется.
+
+**Закрытые TD:** — (нет closed TD в этом спринте).
+**Новые TD (10):** TD-SEARCH-OVERLAY-RECTS, TD-SEARCH-INDEL-UX, TD-SEARCH-WORKER (deferred), TD-SEARCH-INDEX-EAGER (deferred), TD-RUST-CORE-PARSER, TD-RUST-CORE-PROGRESSIVE, TD-DESKTOP-NATIVE-SHELL, TD-NATIVE-UI-EVALUATION, TD-MOBILE-VIEWER-PROBE, TD-DEV-POLICY-LEGACY-HARDWARE. Подробно — в `TECH_DEBT.md` блок v0.8.2.
+
+**Новые баги:** **V51** (drag selection микролаги в SequenceView на ThinkPad 2013, OPEN, высокий, синхронно с TD-DEV-POLICY-LEGACY-HARDWARE); **V52** (quick-add дублирует entry в активный проект без предупреждения, OPEN, средний). Оба выявлены 10.05.2026 на первой приёмке, отдельными bugfix-спринтами после v0.8.2.
+
+**DEC-блок:** **Sprint-level в DECISIONS.md (18):** DEC-PROJSLICE-ACTIVATE-PURE-01, DEC-UIRREV-PINNED-EXPLICIT-01, DEC-UIRREV-TREE-CURRENT-EXPANDED-ONLY-01, DEC-UIRREV-TREE-OTHERS-COLLAPSIBLE-GROUP-01, DEC-UIRREV-TREE-CLICK-ACTIVATE-01, DEC-UIRREV-TREE-CURRENT-FIRST-01, DEC-UIRREV-SIDEBAR-PINNED-SECTION-01, DEC-UIRREV-COMMAND-PALETTE-PROJECTS-01, DEC-UIRREV-BREADCRUMB-STATIC-01, DEC-UIRREV-ACTIVATE-WITHOUT-PIN-01, DEC-PROJ-STRINGS-FORMALIZATION-01, DEC-SEARCH-SEED-EXTEND-01, DEC-SEARCH-FULL-WINDOW-ALIGNMENT-01, DEC-SEARCH-PER-QUERY-IDENTITY-01, DEC-SEARCH-SEPARATE-PRIMER-01, DEC-SEARCH-3END-INFO-NOT-FILTER-01, DEC-SEARCH-SNAPGENE-EXCLUDED-01, DEC-SEARCH-HOTKEY-ALTERNATES-01, DEC-SEARCH-WORKER-DEFERRED-01, DEC-ARCH-RUST-WASM-TWIN-TARGET-01. **Promoted в ANCHORS.md ⚓ (+3):** DEC-UIRREV-ACTIVE-SINGLE-01, DEC-UIRREV-ZONES-MERGE-01, DEC-PROJSLICE-ACTIVATE-PURE-01. Общее количество ⚓ fundamental 61 → **64**.
+
+**Post-mortem.** Спринт прошёл через **две FAIL-итерации** перед PASS:
+- **Первая приёмка (10.05.2026)** — 6 FAIL-пунктов (sidebar order / tree current-first / strings / DAG-switch side-effect / hotkey alternates / search semantics). Решены одним FAIL-fix проходом.
+- **Вторая приёмка (10.05.2026 вечер)** — Фикс 7 (position-independence не выполнялся в Fix #6 — тесты проверяли семантику/sort/coverage, но не position-independence как invariant). Диагностирован Code из 3 кандидатов, решён full-window alignment.
+- **Третья приёмка (11.05.2026)** — PASS по math invariant (1 mm = 95.0%, 2 mm = 90.0% ровно). 2 UNSURE по overlay-rects / coverage prefix → в TD-SEARCH-OVERLAY-RECTS + NIT.
+
+**Наблюдения из процесса:** (1) спека M-X.9 K1 не имела position-independence в acceptance criteria — тесты проверяли sort/coverage/semantics, и Code легитимно не поверил math invariant. Урок: в спеках алгоритмов invariant'ы прописывать явно («(N-K)/N не зависит от позиции») + требовать property-based test (не anecdotal); (2) FAIL #4 (activateProject side-effect) — случайный наход при visual acceptance, принёс фундаментальный invariant «actions без side-effects» → ⚓ promotion. Это пример «обычный баг → фундаментальное решение» pattern; (3) Code отложил worker + eager index (DEC-SEARCH-WORKER-DEFERRED-01) без предварительного Chat-обсуждения — легитимно на small libraries но хорошо бы такие отклонения явными были в отчёте с самого начала.
+
+---
+
+## v0.8.1 — M-X.7c UI revision + project activation merge (10.05.2026)
+
+**Коммиты:** ветка `feature/m-x-7c-ui-revision-and-project-activation`, 9 K-блоков последовательно. Bump 0.8.0 → 0.8.1 в `gui/designer/package.json` + `gui/designer/src/lib/version.js`.
+**Тесты:** Vitest 1697/1699 + 1 skipped + 1 flake (pre-existing `primer-wizard.test.jsx::2`, в isolation passes, записан в TECH_DEBT как TD-PRIMER-WIZARD-FLAKE). pytest не запускался (фронтовой спринт, backend не задет).
+**Build:** clean. PWA precache 1192.48 KiB (baseline 1187.34, +5.14 KiB — в зоне допуска ±5 KiB из спеки).
+**Тип релиза:** Patch — UX revision поверх v0.8.0 base (Library = primary workspace), функциональное закрытие DEC-PROJECT-OPEN-MERGE-01 (от 09.05.2026).
+
+**Скопе — K1 strings.** Добавлено 9 новых ключей: `startScreen.loadBodge` (заменяет `openBodge`); `topbar.{noActiveProject, recentProjectsHeader, createNewProjectInDropdown, activeBadge}`; `libraryWorkspace.{zoneLooseTitleNoProject, zoneLooseSubFreeDesk}`; `libraryWorkspace.actionsLoose.{addToActiveProject, addToActiveProjectDisabled, createCopyForEdit, moveToFolder}`; `libraryWorkspace.treeRow.{quickAddTooltip, quickAddDoneToast}`. Старые ключи оставлены до K9.
+
+**Скопе — K2 Sidebar.** `Sidebar.jsx` переключён на STRINGS.startScreen.loadBodge «Загрузить .bodge…». `start-screen-data.js` — убраны пункты «Конструкции» и «Реакции» (остались Главная / Библиотека / Праймеры soon / Хоткеи). 5 пунктов → 3 в disabled-проверке (тест `start-screen.test.jsx` обновлён).
+
+**Скопе — K3 Zones merge + activateProject.** `lib/library-zones.js` — `VALID_ZONES = ['loose', 'bodge']` (было 4: loose / active_bodge / readonly_bodge / lab_pool). Lazy migration: legacy `active_bodge` / `readonly_bodge` / `lab_pool` мапятся через `entry.projectId` → `'bodge'` если set, `'loose'` иначе. Lab pool primer без projectId → loose (Lab pool теперь View, не Zone). `projectSlice.activateProject(id)` — единая точка активации: validate state.projects[id], set currentProjectId, bump MRU, route canvas в 'dag'. Размещён в projectSlice (где canonical activeProjectId), не в librarySlice. 10 тестов `library-zones.test.js` переписаны под 2-зоновую модель.
+
+**Скопе — K4 Tree.** `LooseZone` — title `STRINGS.libraryWorkspace.zoneLooseTitleNoProject` «⏀ БЕЗ ПРОЕКТА», sub `zoneLooseSubFreeDesk` «свободный стол биолога», иконка ⚑ → ⏀. `ProjectZone` — убран рендер `TreeFolderRow name="DAG"` (DEC-UIRREV-DAG-NOT-FOLDER-01). Тег `[active]` рендерится только когда `currentProjectId === project.id` (DEC-UIRREV-ACTIVE-SINGLE-01). Раньше рендерился безусловно — теперь null когда не активен. `LabPoolZone.jsx` удалён целиком (ливых импортов не было, только док-комментарии).
+
+**Скопе — K5 Quick-add hover-revealed.** `TreeItemRow.jsx` — `useState(hovered)` + `+` button с `data-testid` `tree-item-{id}-quickadd`. CSS opacity 0 → 1 на hover row, transition 120ms (DEC-LIB-K8-QUICKADD-01 расширение). Click → `cloneEntryToActiveProject(entry.id)` + toast `quickAddDoneToast`. Visible только при `currentProjectId !== null` И `entry.projectId !== currentProjectId` И `entry.kind !== 'primer'` (праймеры через свой flow позже). Старая стрелка ↑ (origin char) сохранена справа от quick-add — это другой смысл (origin индикатор), не дублирование.
+
+**Скопе — K6 Inspector bottom-bar.** `lib/library-actions.js::looseContainerActions` 6 кнопок → 5. Убрана `id='open'` (DEC-UIRREV-OPEN-DOUBLECLICK-ONLY-01 — двойной клик в Tree работает как single source входа). Переименованы: `useInActive` → `addToActiveProject` («Добавить в активный проект», disabled когда нет активного проекта, tooltip); `manualEditBranch` → `createCopyForEdit`; `moveFolder` → `moveToFolder`. `loosePrimerActions` — аналогичный rename. `library-actions.test.js` counts 6→5, regex `/активн.*проект/i` (Cyrillic `\w` не работает в JS).
+
+**Скопе — K7 Topbar dropdown.** Новый компонент `components/Library/RecentProjectsDropdown.jsx` (~4.7 KB): MRU из `state.recentProjectIds` (cap 8), активный проект с pill `active` и disabled, остальные кликабельны → `activateProject(id)`. Footer «+ Создать проект» → `createProject` + `openProjectInfo`. Outside-click + Esc закрывают. `LibraryTopBar.jsx` — статичная навбар-крошка обёрнута в `<button data-testid="library-topbar-crumb-btn">` с trailing chevron ▾. **UX-замечание (визуальная приёмка):** dropdown функционально работает, но клик-таргет «Активный проект: <имя> <✓ сохранён> ▾» биолог оценил как «надмозговое решение» — префикс «Активный проект:» избыточен, `✓ сохранён` влез внутрь switcher'а. **Полностью переделывается в M-X.8** (DEC-UIRREV-BREADCRUMB-STATIC) — dropdown сносится, breadcrumb становится статикой, переключение переезжает в sidebar «В работе» секцию + Command Palette `⌘P`.
+
+**Скопе — K8 activateProject.** `projectSlice.activateProject(id)` использован в K7 RecentProjectsDropdown. Существующие `openProjectFromFileData` (.bodge file path) / `openProjectFromIndexedDB` (id path) уже устанавливают currentProjectId + canvas + recent — эти пути не сломаны. Отдельной action `openProject(id)` не существовало (есть только эти два specialized path), удалять нечего. **Click по заголовку проекта в Tree всё ещё только toggle раскрытия**, не активация — это осознанный gap, закрывается в M-X.8 K4 (DEC-UIRREV-TREE-CLICK-ACTIVATE).
+
+**Скопе — K9 Cleanup.** Удалены осиротевшие STRINGS: `startScreen.openBodge` (заменён loadBodge), `libraryWorkspace.zoneLooseTitle` / `zoneLooseSub` (заменены *NoProject / *FreeDesk), `libraryWorkspace.zoneLabTitle` / `zoneLabSub` (LabPoolZone удалён), `libraryWorkspace.dagSubrow` (DAG sub-folder удалён), `libraryWorkspace.inLab` / `crossProject` (LabPoolZone удалён), `libraryWorkspace.breadcrumbNoProject` (заменён topbar.noActiveProject), `libraryWorkspace.actionsLoose.{open, useInActiveContainer, useInActivePrimer, manualEditBranch, moveFolder}` (5 ключей). `lib/strings.js` 16.9 KB → 18.8 KB (+1.9 KB нетто: 9 added − 11 removed; рост за счёт длинных RU строк + EN комментариев). Финальный grep по удалённым ключам в `src/` — пусто.
+
+**Закрытые TD:** — (нет closed TD в этом спринте).
+**Новые TD:**
+- **TD-SIZE-LIBRARYSLICE** (Watch list, soft monitoring): `store/librarySlice.js` ≈ **43.9 KB** (hard 25 KB для .js +18.9 KB over). Исторически вырос через M-A.3 → M-B → M-X.5 (Library write API + manual-edit branching + save flow + multi-import bulk + dedup + soft-delete + folder ops). В этом спринте K3+K8 правок не было (`activateProject` ушёл в projectSlice). Решение (DEC-SIZE-CALIBRATION-01): Watch list, не Active decomp — нет rate-of-change >5 KB/sprint два спринта подряд, нет entanglement. Промоут в Active если M-X.8 K2 (`pinnedProjectIds`) или M-C.2 backend writes раздует ещё на +5 KB.
+- **TD-PRIMER-WIZARD-FLAKE** (low priority): `__tests__/primer-wizard.test.jsx::2) checkDupe-positive primer is flagged + unchecked; re-check applies autoname` flake на full-suite (в isolation passes стабильно). Тест последний раз правился в `24b8919` (M-X.5 K1). Pre-existing, не связан с M-X.7c. Таймаут на `waitFor` в parallel-suite. Ад-хок fix когда биолог решит отвлечься от fronts UX-волны.
+
+**Открытые TD:** все из v0.8.0 переезжают без изменений: TD-LIBRARYSINGLEINSPECTOR-DECOMP-V2 (45.94 KB hard, M-X.6 K0), TD-ANNOTATIONTRACK-DECOMPOSE-V2 (48.54 KB hard, M-X.7+), TD-SIZE-SEQUENCEVIEW-INDEX (38.78 KB soft), TD-LIB-K2-DEAD-CODE-PURGE, TD-LIB-K10-CHARACTER-APPLY, TD-LIB-K4-VIEW-PREVIEW, TD-LIB-K4-AUTO-TRIGGER, TD-LIB-PREIMPORT-LOCATION, TD-LIB-CATALOG-RENAME, TD-WRAP-KEYBOARD-NAV, TD-WRAP-BRIDGE-WRAP-AWARE-TRACKS, TD-CIRCULAR-SELECTION. От v0.7.1: TD-SEQUENCEVIEW-SHIFT-SELECTION, TD-SEQUENCEVIEW-FOCUS-RING, TD-LINEAR-BAR-PREDICTIONS. От v0.7.0: TD-DRAG-DROP-LIBRARY-CARDS, TD-PER-CDS-SIGNALIP. **Watch list расширился:** TD-SIZE-LIBRARYSLICE.
+
+**DEC-блок:** **Sprint-level в DECISIONS.md:** DEC-UIRREV-ZONES-MERGE-01 (Tree зон 2, не 4); DEC-UIRREV-ACTIVE-SINGLE-01 (один активный проект); DEC-UIRREV-IMPORT-EQ-ACTIVATE-01 (импорт = активация, функциональное закрытие DEC-PROJECT-OPEN-MERGE-01); DEC-UIRREV-DAG-NOT-FOLDER-01 (DAG не папка в Tree); DEC-UIRREV-QUICKADD-HOVER-01 (DEC-LIB-K8-QUICKADD-01 расширение на все записи bodge-зон); DEC-UIRREV-OPEN-DOUBLECLICK-ONLY-01 (двойной клик — единственная точка входа в Container Window). **Кандидаты на ⚓ promotion** (после M-X.8 acceptance когда паттерны «2 зоны + один currentProjectId» переедут в реальный workflow): DEC-UIRREV-ZONES-MERGE-01, DEC-UIRREV-ACTIVE-SINGLE-01.
+
+**Post-mortem.** Спринт закрыт за один день — 9 K-блоков последовательно без блокеров. Визуальная приёмка выявила два gap'а: (1) topbar dropdown UX работает но «надмозгово» — клик-таргет спрятан за микро-chevron, префикс и `✓ сохранён` влезли внутрь switcher'а; (2) click по заголовку проекта в Tree только toggle, не активация. Оба получили explicit closure в следующем спринте M-X.8 PROJECT-HUB (была согласована архитектура «выводим список в сайдбар + Command Palette ⌘P + breadcrumb статикой + click в Tree активирует»), решения в `CURRENT_TASK.md`. Два K-блока вынесены как TECH_DEBT легковесно: TD-SIZE-LIBRARYSLICE и TD-PRIMER-WIZARD-FLAKE.
+
+---
+
 ## v0.8.0 — M-X.5 Этап 2 Library features (07.05.2026, MAJOR)
 
 **Коммиты:** 7 на ветке `feature/library-as-workspace` от `d0f04a3` (K7+K11) до `36b6163` (K4 MultiImportView). Финал bump 0.7.5 → 0.8.0 (major architectural milestone — Library is now the primary workspace for sequence data, with explicit save flow, manual edit branching, onboarding, multi-import, and project quick-add).

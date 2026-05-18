@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 import SequenceView from '../../../SequenceView';
+import { useStore } from '../../../../store';
 // Settings popover trigger + state moved to SingleInspector (bug-rush #22).
 
 /**
@@ -31,12 +32,18 @@ import SequenceView from '../../../SequenceView';
  *     viewer-only — picking a start point is metadata, sits with the
  *     other meta cards on the right rail.
  */
+const EMPTY_HITS = [];
+
 export default function SequenceTab({
   sequence,
   annotations = [],
   topology,
   name,
   fileKey,
+  // Entry id of the currently rendered library record. Used to scope
+  // the global search-hits store-slot — overlay rects appear only
+  // when the popover ran against THIS entry.
+  entryId,
   pendingScroll,
   onPendingScrollHandled,
   caretPos,
@@ -58,6 +65,31 @@ export default function SequenceTab({
   // Loose / active_bodge / lab_pool render no banner; their edit story
   // lives in the action-row + DAG operations.
   isReadOnlyZone = false,
+  // 12.05.2026 — skeleton container editor adds clickable RE sites
+  // в SequenceView. Library/Importer не передают → display-only path.
+  onRestrictionClick,
+  restrictionHighlightKey,
+  // PCR viewer (V74) — adds «Прямой/Обратный праймер» into the shared
+  // right-click selection menu. Library/Importer leave it undefined →
+  // SequenceView omits the items (same gating as onBlastSelection).
+  onWritePrimer,
+  // T5 — piece authoring (same consumer-gated pass-through as
+  // onWritePrimer; Container Editor passes it, others don't).
+  onCreatePiece,
+  // PCR viewer (V76) — near-cursor annealing-Tm readout on selection.
+  showSelectionTm = false,
+  // Skeleton editor passes derived primers (origin-commits +
+  // indexOf-match). Library/Importer leaves undefined → SequenceView
+  // default empty.
+  primers,
+  // A2 / G2 — assembly editor coloured segment backdrop + zone
+  // click/hover. Library/Importer/PCR leave undefined → no zones.
+  coloredZones,
+  // T6 K13 — 4-tier vocabulary alias; forwarded to SequenceView which
+  // resolves `pieceZones ?? coloredZones` (back-compat, R-T6-6).
+  pieceZones,
+  onZoneClick,
+  onZoneHover,
 }) {
   const sequenceViewRef = useRef(null);
 
@@ -103,6 +135,14 @@ export default function SequenceTab({
   const fragments = useMemo(() => [fragment], [fragment]);
   const length = (sequence || '').length;
 
+  // Search-hits overlay (TD-SEARCH-OVERLAY-RECTS). Read store and
+  // pass to SequenceView only when the hits belong to the current
+  // entry — otherwise we'd smear stale rects after switching entry.
+  const searchHitsState = useStore((s) => s.searchHits);
+  const overlayHits = (searchHitsState?.entryId && searchHitsState.entryId === entryId)
+    ? (searchHitsState.hits || EMPTY_HITS)
+    : EMPTY_HITS;
+
   // Bug-rush #22 (04.05.2026 evening): the sticky «Sequence · 10 444
   // bp · READ-ONLY» strip was visually heavy and redundant — the same
   // numbers + the ⚙ gear now live in SingleInspector's title row, the
@@ -140,6 +180,17 @@ export default function SequenceTab({
           onOpenFeatureEditor={onOpenFeatureEditor}
           editable={editable}
           onSequenceEdit={onSequenceEdit}
+          searchHits={overlayHits}
+          primers={primers}
+          onRestrictionClick={onRestrictionClick}
+          restrictionHighlightKey={restrictionHighlightKey}
+          onWritePrimer={onWritePrimer}
+          onCreatePiece={onCreatePiece}
+          showSelectionTm={showSelectionTm}
+          coloredZones={coloredZones}
+          pieceZones={pieceZones}
+          onZoneClick={onZoneClick}
+          onZoneHover={onZoneHover}
         />
       </div>
     </div>

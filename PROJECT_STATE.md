@@ -1,170 +1,171 @@
 # PROJECT_STATE.md — BodgeGene snapshot
 
-> **Версия:** **v0.8.0** — M-X.5 Этап 2 Library features (07.05.2026, MAJOR). DEC-IMP-06 ⚓ Library is now primary workspace. K11 origin icons + K7 Library Save Flow (Перезаписать/Сохранить как версию) + K6 Read-only/Editable toggle + K10 Manual edit branching + K5 Onboarding nudge с curated 7 категорий + K8 Quick-add icon (active project) + K4 MultiImportView с per-batch + per-file annotation choice.
-> **Тесты:** Vitest 1460/1461 passing (1 known primer-wizard flake on full-suite, isolated PASS). pytest 112/112. Build clean, PWA precache ~892 KiB.
-> **Архитектура:** `docs/ARCHITECTURE_v2.md` v1.2 (~117 KB) · **59 ⚓** fundamental decisions в `ANCHORS.md` (+7 promoted in v0.8.0: DEC-IMP-06, DEC-LIB-12..17). Sprint-level DEC в `DECISIONS.md` — v0.8.0 sprint block: DEC-LIB-K7-OVERWRITE-01, DEC-LIB-K7-VERSION-COW-01, DEC-LIB-K6-EDIT-PILL-01, DEC-LIB-K10-MANUAL-BRANCH-01, DEC-LIB-K10-DETECTION-WINDOW-01, DEC-LIB-K5-CURATED-7-01, DEC-LIB-K8-QUICKADD-01, DEC-LIB-K4-MULTIIMPORT-01, DEC-LIB-WRITE-THROUGH-HYBRID-01, DEC-VITEST-POOL-FORKS-01.
-> **Журнал версий:** `RELEASES.md` (v0.8.0 + v0.7.5 + v0.7.4 + v0.7.3 + v0.7.2 + v0.7.1 + v0.7.0) + `docs/archive/SESSIONS_2026_Q2.md` + `docs/archive/PROJECT_STATE_v0.6.3_pre_split.md`.
-> **Дизайн-система:** `docs/DESIGN_SYSTEM.md` §2.1 — feature palette A+v2 + shade-by-name + canonical-key. v0.7.4 паттерн paint-only decorations через box-shadow inset (DEC-LAYOUT-PAINT-ONLY-01). v0.8.0 добавляет: hover-revealed action icons (DEC-LIB-K8-QUICKADD-01 — opacity 0 default + hover/focus = 1, 120ms transition), pulsing dot for armed states (DEC-LIB-K6-EDIT-PILL-01 — @keyframes editable-pulse, prefers-reduced-motion gated).
-> **Открытые TD:** см. `TECH_DEBT.md`. **v0.8.0 closed: TD-LIBRARY-WRITE-API** (DEC-LIB-13 explicit save flow + DEC-LIB-WRITE-THROUGH-HYBRID-01 safety-net hybrid). Carry-over: TD-WRAP-BRIDGE-WRAP-AWARE-TRACKS, TD-CIRCULAR-SELECTION, TD-ANNOTATIONTRACK-DECOMPOSE-V2 (41.6KB hard, M-X.6), TD-SINGLEINSPECTOR-SELECTIONSTATE-EXTRACT. От v0.7.1: TD-SEQUENCEVIEW-SHIFT-SELECTION, TD-SEQUENCEVIEW-FOCUS-RING, TD-LINEAR-BAR-PREDICTIONS. От v0.7.0: TD-DRAG-DROP-LIBRARY-CARDS, TD-PER-CDS-SIGNALIP. **Новые в v0.8.0:** TD-LIB-K2-DEAD-CODE-PURGE (MultiInspector/EmptyInspector/ActionsBar/SessionSummary удалить + flip 'importer' → 'library' callsites — deferred to M-X.6 cleanup), TD-LIB-K10-CHARACTER-APPLY (ManualEditConfirmModal + branch creation готовы, real character-level apply в SequenceView требует useSequenceKeyboard.js extension), TD-LIB-K4-VIEW-PREVIEW (per-file PlasmidMiniMap preview в multi-import — план spec, skipped в K4 minimal). LibraryTree.jsx 38KB soft warning остаётся.
-> **Открытые баги:** см. `BUGS.md` — OPEN секция пуста.
-> **Текущая задача:** см. `CURRENT_TASK.md` — **v0.8.0 финализирован 07.05.2026, M-X.5 Этап 2 закрыт**. Все 8 acceptance scenarios S1-S8 готовы к визуальной приёмке биологом. Следующий цикл — биолог решает: M-X.6 cleanup (K2 deferred + K10 character apply + K4 view preview) либо M-C Container Window kickoff либо TD-CIRCULAR-SELECTION либо AnnotationTrack decomposition.
+> **Версия:** **v0.8.3-alpha** — Four-tier architecture (T1-T10 + T4.5) + canvas UX батч + primer redesign + V82-V84 fixes + LibrarySingleInspector декомпозиция (16-18.05.2026, patch). 10 T-спринтов реализованы Code в continuous mode: T1 Pieces State → T2 op.inputPieces migration → T3 Zones data → T4 Zones rendering → T4.5 Zone 3-lane auto-layout (dagre) → T5 Piece authoring UI (4 способа) → T6 sequence-mode migration (assembly→pieces) → T7 dual-mode toggle G/S + bidirectional sync → T8 auto-reactions + cross-zone links → T9 design vs clone variants → T10 Sanger MVP lab notebook. Реверс ⚓ DEC-T3-08 + V61 17.05 (по AskUserQuestion «Полностью из state»). Bump v0.8.2 → v0.8.3-alpha (patch, по решению Игоря).
+> **Тесты:** Vitest **3276 pass / 1 skip / 0 fail** + 1 pre-existing flake (`primer-wizard.test.jsx`, intermittent под parallel-load, isolated 2/2 — TD-PRIMER-WIZARD-FLAKE, не связан с T-серией). **+956 новых тестов** от v0.8.2 baseline 2320 (T1 +52 / T2 +52 / T3 +56 / T4 +43 / T4.5 +45 / T5 +22 / T6 +47 / T7 +43 / T8 +33 / T9 +37 / T10 +26 + V82-V84 + canvas UX + primer redesign + декомпозиция). pytest 112/112 (не запускался — фронтовый sprint). `vite build` clean, 0 console errors.
+> **Schema:** v=**10** через 6 миграций (v5→v6 T1 / v6→v7 T2 / v7→v8 T3 / v8→v9 T6 / v9→v10 T9 / +T4.5 schema bump для `pinned` field). Все идемпотентны, без потерь существующего state.
+> **Архитектура:** `docs/ARCHITECTURE_v2.md` v1.2 + `docs/ARCHITECTURE_3LEVELS.md` + `docs/SPEC_M-CANVAS-FOUR-TIER-ARCHITECTURE.md` (новый якорь для T-серии, ~32 KB). Спеки T1-T10 + T4.5 в `docs/SPRINT_T*.md` (~360 KB суммарно). **64 ⚓** в `ANCHORS.md` (без изменений в v0.8.3 — реверс DEC-T3-08 + V61 ждёт sprint-finalization-сессии Chat для записи). Кандидаты на promotion: DEC-CANVAS-4T-01 (piece как первичная сущность), DEC-CANVAS-4T-07 (zone как Miro-frame), DEC-CANVAS-4T-31 (3-lane auto-layout structure). Sprint-level DEC v0.8.3-alpha sprint-block в `DECISIONS.md` (ждёт записи Chat в Пачке 2): DEC-T1-01..15, DEC-T2-01..15, DEC-T3-01..17, DEC-T4-01..17, DEC-T4.5-01..15, DEC-T5-01..15, DEC-T6-01..15, DEC-T7-01..15, DEC-T8-01..14, DEC-T9-01..13, DEC-T10-01..12 + cross-cutting (annotator-toggle, useInspectorSelectionNav, library-selection primer-origin, реверс DEC-T3-08/V61, primer-redesign cross-portal pattern).
+> **Журнал версий:** `RELEASES.md` (v0.8.3-alpha entry ждёт записи Chat в Пачке 2). История v0.8.2 + v0.8.1 + v0.8.0 + v0.7.x + `docs/archive/SESSIONS_2026_Q2.md`.
+> **Дизайн-система:** `docs/DESIGN_SYSTEM.md` §2.1 — feature palette A+v2 + shade-by-name + canonical-key. v0.8.3 добавил: zone-frame DOM-rendering (T4) + lane-divider visual hints (T4.5) + pentagon-arrow primer glyph по обе стороны цепи (primer-redesign) + Sanger 4-status segmented control (T10) + colored-zones SegmentZonesOverlay для assembly UX (V84-period fade `.22→.10` brightness reduction).
+> **Открытые TD:** см. `TECH_DEBT.md`. **v0.8.3 closed:** TD-LIBRARYSINGLEINSPECTOR-DECOMP-V2 (39.34 → 31.28 KB через extract `useInspectorSelectionNav` hook, эскалация СНЯТА). **Новые v0.8.3 (Active candidates):** TD-CANVAS-LAYOUTVIEW-DECOMP (`.jsx` 41.35 KB пробил hard 40 после T4.5 pin-badges), TD-SIZE-SEQUENCEVIEW-INDEX (~39 KB, близко к hard 40 — Active), TD-DOCS-ROTATION (53 файла в docs/ против лимита 8 — отложен в Пачку 3). **Carry-over Watch:** TD-SIZE-LIBRARYSINGLEINSPECTOR (31.28 KB, soft >30 на 1.28 KB), TD-ANNOTATIONTRACK-DECOMPOSE-V2 (48.54 KB hard), TD-SIZE-LIBRARYSLICE (43.9 KB), TD-CONTAINER-EDITOR-SKELETON (34.6 KB, soft over). **Опциональный 2-й extract** LibrarySingleInspector (annotation-edit pipeline, ~5-7 KB) уведёт под soft 30 — решение Игоря.
+> **Открытые баги:** см. `BUGS.md` — **V51** (drag selection микролаги в SequenceView на ThinkPad 2013, OPEN, высокий, синхронно с TD-DEV-POLICY-LEGACY-HARDWARE — carry-over с v0.8.2). V52 (quick-add duplicate) → FIXED 16.05. V58-V81 canvas-skeleton bug-bash FIXED 13-16.05. V82-V84 (assembly drafts panel zone-based / gap known sequence / realise product annotations) FIXED 17.05.
+> **Текущая задача:** см. `CURRENT_TASK.md`. **v0.8.3-alpha Code-часть завершена 18.05.2026, Vitest 3276 pass / 1 skip / 0 fail.** Финализация Chat в процессе: Пачка 1а BUGS.md ✅ / Пачка 1b CURRENT_TASK.md ✅ (архив 202 KB → `docs/archive/`) / Пачка 1c PROJECT_STATE.md ✅ (этот файл). Осталось: Пачка 2 (ANCHORS реверс + DECISIONS sprint-block + TECH_DEBT + RELEASES + version bump package.json/version.js) — следующая сессия после compact. Пачка 3 (архивация устаревших спек F1-F4/A1-A4/D1, NOTES_FOUR_TIER_DRAFT, глубокая docs/ ротация) — отдельный side-quest.
 
 ---
 
 ## Что работает
 
-### Annotator + Annotation Editing (M-X.2 + perf wave, v0.7.2)
-- **Integrated edit-annotations workflow в SequenceView:** Del two-pass (exact → smallest covered), H key → CreateAnnotationPopup рядом с правым краем строки selection, E key → EditAnnotationModal на coords региона, drag edges с live preview rect + tooltip + 8 px hover indicator, double-click label → inline rename, double-click bar → FeatureEditorModal (tabs Feature + Subfeatures), context menu ПКМ. Ctrl+Z/Y на edit
-- **Sub-features (`level: 'detail'` + `parentId`):** inset rendering, shaded color по индексу, child labels внутри child rects. Split button делит последнего ребёнка пополам
-- **SBOL glyphs paired с label:** mirror на reverse strand, default fallback для unknown types
-- **PreImportModal flow:** paste / drop / catalog click → name / topology / folder / tags / annotate-now checkbox; multi-file shared metadata; existing-annotations radio (keep / discard); catalog click pre-fills tags из entry
-- **Embedded Annotator (default, fullscreen modal только для region-scope):** three-level LevelPanel (L1 common-features-homology auto-run на open Annotations tab, L2 structural predictors orf-scan/sigma70/stem-loop/sgrna-scaffold manual «Run», L3 BLAST stub) + PreviewTab с linear/circular sub-tabs + ghost drill-in side panel (Accept / Reject / BLAST / re-run)
-- **Threshold slider live:** over-fetch PLUGIN_MIN_THRESHOLD=0.5 + render-time filter, mirrors SequenceView Settings ⚙ predictions threshold
-- **Accept ghost → solid annotation:** predicted: false на принятых, render solid + non-italic. Hide-duplicates toggle (default ON). Per-level «Accept all» bulk
-- **Library entry annotations frozen** (DEC-LIB-11): правки только через `perFileEdits.editedAnnotations` transient; catalog mini-map обновляется через render-time merge `liveAnnotationsByLibId` без write-through
-- **Predictor Worker (DEC-PERF-WORKER-01):** L1 + L2 structural бегут off-main-thread в `lib/workers/predictor.worker.js`. Pipeline через `lib/annotator-worker-client.js` lazy singleton, vitest happy-dom через `import.meta.env.VITEST` early-return → fallback на синхронный path. BLAST stub (`requiresNetwork:true`) на main thread
+### Four-tier architecture (v0.8.3-alpha T-серия, 16-18.05.2026)
 
-### Canvas & UI
-- Canvas: 4 вида (Blocks, Sequence, Map, Racetrack) + Project Flow DAG
-- CSS zoom (не transform) — скролл работает корректно, auto-fit при изменении фрагментов
-- Quick Start панель при пустом canvas (7 workflow actions + Каталог SnapGene)
-- Smart Import modal (ImportDecisionModal) — выбор действия при file drop
-- ImportPrompt — "Импортируйте вектор" при пустой библиотеке (restriction/mutagenesis)
-- ActionBar: sticky панель после расчёта праймеров (протокол, заказ олигов, GenBank, завершить сборку)
-- Header: polymerase/prefix в ⚙️ Настройки dropdown (position: top-full, не обрезается)
-- Breadcrumb: Проект → Сборка навигация (Construct ↔ Flow)
-- SnapGene Каталог (📚 Каталог в header): 2822 плазмид, 19 категорий, lazy-loaded
-- Drag-and-drop фрагментов из палитры
-- Click = select, двойной клик = edit, R/E/Del/Ctrl+C/Ctrl+D
-- Compact header, type-dependent context menu
-- Undo/Redo (50 levels)
+**Data model — 4 параллельных slice:**
+- **Containers** (DEC-CANVAS-4T-21) — физический контейнер ДНК с sequence + topology + annotations + zoneId + frozen.
+- **Pieces** (DEC-CANVAS-4T-01, T1+T9) — концептуальный «кусок» как первичная сущность. Поля: `sourceIds[]`, `ranges[]`, `origin` (`'selection'|'feature'|'existing-primers'|'new-primers'|'legacy-migration'|'manual-gap'`), `acquisitionMethod` (`'pcr'|'restriction'|'ov-pcr'|'synthesis'|'direct'|'undefined'`), `acquisitionParams`, `derivedReactionId` (auto-link op T8), `kind: 'sourced'|'gap'` (T6), `gapSequence?`+`gapHint` (V83), `variantGroupId?` (T9 design variants), `order?` (T7 attached-to-strip), `pinned` (T4.5), `frozen`. piece.color — stable HSL hash.
+- **Operations** (legacy + T2 extension) — ромб реакции. Поля: `inputs[]` (legacy) + `inputPieces[]` (T2 primary), `outputs[]`, `kind`, `status`, `params`, `materializedClones?` (T9 clone variants, hard cap 96), `zoneId`, `pinned`. Surgical opt-in adapters (DEC-T2-09): byte-identical legacy при пустом `inputPieces`.
+- **Zones** (T3+T4) — Miro-style контейнеры на canvas. Поля: `bounds {x,y,width,height}`, `viewMode: 'graph'|'sequence'`, `laneLayout: 'auto'|'manual'` (T4.5), `collapsed`, `notes`, `autoResize`. Узлы (containers/pieces/operations) держат `zoneId`. Cross-zone refs — auto-detected (T8 link badges).
 
-### Library (data layer survives, fullscreen wiped в v0.6.4)
-- `librarySlice` data API сохранён: `addLibraryEntry` / `checkLibraryDedup` / `getSuggestedLibraryName` / `selectVisibleLibraryEntries` / `selectAllLibraryTags` — нужны Importer Confirm flow + CatalogColumn → «Моя библиотека»
-- Schema v2 table `library` без изменений
-- **Library fullscreen window удалён в v0.6.4.** Browse function переехала в Importer CatalogColumn → группа «Моя библиотека»; tag-editing — только при импорте через TagsEditor; soft-delete отложен в M-D Container Window
-- Тесты M-A.3 групп D/E/F/H удалены вместе с фуллскрином (`Library.test.jsx`); coverage Library data API остаётся в integration-тестах Importer
+**Canvas UX:**
+- **Auto-layout 3-lane** (T4.5, DEC-CANVAS-4T-31) — sources lane (top) / intermediate lane (middle, dagre LR auto) / finals lane (bottom). `pinned:true` через drag — узел остаётся на месте, остальные раскладываются вокруг. Кнопка «Открепить» в context-menu. Default «авто» режим, `laneLayout='manual'` — opt-out per zone (zone-menu пункт).
+- **Inline sequence-mode** (T7) — toggle `G/S` per zone. 3 состояния: empty (hint + sources list) / palette (drag-cards) / assembled (horizontal strip + implicit junctions + branching visual). Visibility hide графовых узлов при sequence-mode active. Кросс-секционная синхронизация: drag piece в strip → ATTACH_PIECE_TO_ASSEMBLY + auto-create reaction (T8 finalizer).
+- **Auto-reactions** (T8 finalizer) — при `piece.acquisitionMethod != 'undefined'/'direct'/'synthesis'` создаётся auto-reaction (PCR/Cut). При смене метода — старый op удаляется + новый создаётся атомарно. Manual OP_REMOVE на auto-created → finalizer пересоздаёт (биолог убирает реакцию через смену метода).
+- **Cross-zone link badges** (T8) — `← Зона N` в header zone B, если piece в B имеет sourceIds из zone A. Click → smooth pan + 1s highlight target zone. Grouped by source zone (не per-piece).
+- **4-сторонние коннекторы** (canvas UX батч) — `edgeAnchors` выбирает сторону блока по доминантной оси (вместо bottom-only).
+- **Wheel-zoom-к-курсору** + **бесконечный канвас** (canvasContentExtent + edge-pan-velocity edge-auto-pan).
+- **Hand-pan** — pointerdown на фоне (gate by closest-target) или middle-button → scroll-pan. `userSelect:none` на канвасе чтобы не стартовало нативное выделение текста.
+- **Стационарный zoom-индикатор** — внешний non-scrolling wrapper, contains scrolling canvas + absolute zoom-controls overlay.
+- **«Очистить канвас»** — gated `window.confirm` RESET (bottom-right стек: +Операция / +Сборка / Сборки / Очистить).
+- **Drag-release ромба** не открывает viewer (justDraggedRef guard на onOperationClick).
 
-### Importer (M-B.2 + post-acceptance polish, v0.6.4)
-- **Single-screen 4-column layout:** CatalogColumn 320 / Inspector flex / MetaColumn 200 / footer (SessionSummary + ActionsBar). Always-advanced (simple/advanced toggle убран в v0.6.4 round 2)
-- **CatalogColumn 4 sources:** «Этот проект» (containerIds resolve) / «Учебные / demo» (basic_cloning_vectors slice 0-12) / «Моя библиотека» (sub-grouped by entry.tags / flat fallback) / «Каталог SnapGene» (lazy fetchCategory). Sticky search с length-pattern (`>5kb` / `<2k` / `2k-3k`). Drop zone footer + paste textarea (Ctrl+Enter). Persistent group-state в localStorage
-- **Inspector tabs lazy-mount:** Обзор (eager: PlasmidMiniMap 180px overlay + categorised summary) / Последовательность (lazy SequenceMapView readOnly) / Аннотации (lazy AnnotationEditor с linear feature-bar) / История (conditional rendered только при commits.length>0). **V49 50-сек hang fix** через React conditional render — heavy components не существуют в DOM пока tab не активен
-- **MetaColumn 200px:** topology toggle / origin offset+apply / intergenic gap hints (label-stacked monospace) / from-file vs enriched counts / IUPAC warning
-- **MultiInspector:** table layout с тристейт master autoAnnotate checkbox + per-row inline rename / annotate-flag / × remove
-- **TagsEditor inline в SingleInspector:** chip list + add-input + suggestions из existing Library tag pool. Запись в `perFileEdits.editedTags` → Confirm flow промотит в `entry.tags`
-- **AutonameModal + PrimerWizardStepModal** (M-B.1 K6 keep): collision detection через resourceHash, primer wizard с unified pool + dupe detection
-- **Feature palette A+v2 + shade-by-name + canonical-key collapse:** PlasmidMap + PlasmidMiniMap arc-fills используют `featureColorShaded(type, name)` — base hex для типа + HSL ±10% L / ±6° H shade keyed by canonical-key (AmpR ≡ ApR ≡ bla → один shade)
+**Variants (T9):**
+- **Design variants** — `piece.variantGroupId` (`vg-<uuid>`). Источник + новая копия с opt overrides попадают в одну группу. `VariantGroupBadge` "N/M" + highlight всех членов на click. Auto-reactions T8 создаются per piece, варианты группируются визуально.
+- **Clone variants** — `op.materializedClones[]` (hard cap 96). `MATERIALIZE_REACTION` создаёт N-1 deep-copy output containers (vertical stack). `BranchingVisual` rewrite 3 kinds: `clones` (vertical stack) / `design-variants` (Y-разветвитель) / `independent` (side-by-side).
 
-### Assembly & Primer Design
-- Авто-расчёт праймеров (клиентский, без API)
-- 6 методов сборки: Overlap PCR, Gibson, Golden Gate, KLD, RE ligation, Restriction Cloning
-- Merged fragments (склейка Ctrl+Click, развёртывание)
-- Merge через ligation junction → заблокирован с warning
-- Adaptive overlap (No-PCR сосед → full overlap)
-- Tag-aware primer design (`findBindingTagAware()` — extend past low-complexity tags)
-- Мутагенез + KLD primer design
-- Фрагменты <18bp → warning "merge с соседним (Ctrl+Click)"
-- **Single-circular self-closure primers** (Sprint X-fix K5, 26.04.2026): `designPrimersLocal` при `fragments.length === 1 && circular` генерирует пару праймеров с overhang-tails для физического самозамыкания (V24 closed)
+**Sanger lab notebook (T10, MVP):**
+- Right panel, hotkey `B`, per-zone scope (focusedZoneId).
+- 4-status segmented control (pending / verified / failed / unplanned), filter, notes ≤500 chars (blur-saved).
+- BranchingVisual clones получают цветной dot indicator (✓ verified / ✗ failed / ○ pending / нет — unplanned).
 
-### Plasmid-Git data model (Sprint X cycle, 26.04.2026)
-- `fragment.baseSnapshot` (immutable sequence + annotations + length) + `fragment.commits[]` (упорядоченный список `op` с абсолютными координатами относительно baseline + `applied: bool`) + replay для sequence/Tm/GC%
-- Mutagenesis-workflow ходит через `applyMutationsBatch` (один pushUndo на batch)
-- Toggle «применить/откатить» на уровне commit (V27 closed)
-- Indel-aware mutation highlights из commit op + start/end (V22 closed)
-- Backward-compat: lazy migration при первом коммите (current sequence → baseSnapshot, commits=[])
-- `pushUndo` захватывает snapshot синхронно при первом вызове в 300мс-окне
+**Реверс ⚓ (17.05, по прямому запросу Игоря):**
+- **DEC-T3-08 РЕВЕРС** — `buildInitialState` больше НЕ сидит default zone «Сборка 1»; `zones:[]` всегда. Чистый канвас.
+- **V61 РЕВЕРС** — `ensureGhostPlaceholder` финализатор отключён в `skeletonReducer`. Чистый старт без авто-госта. Новые фрагменты — через кнопки/drag-drop.
 
-### PlasmidViewer
-- Circular map: track-based arc layout (features по дорожкам, не пересекаются)
-- Single-plasmid rendering (mapFragments = [{whole plasmid}], не массив регионов)
-- Region selection: onSelectRegion callback → подсветка на карте + scroll к последовательности
-- Sequence view: двуцепочечная + AA-трансляция + region labels + цветовой фон
-- Первый нуклеотид: sanitize (strip BOM/null) — без артефакта ∅/N
-- Footer action buttons: 🔪 Клонировать / ⚗️ Как backbone / 🔄 Мутагенез / 🧬 cDNA / GenBank
-- presetMode instant actions: "Как backbone" → сразу на canvas (handleUseWhole), без меню
-- RE sites toggle (1x / ≤2x / All)
-- CDS validation warnings
+**Primer redesign (18.05):**
+- `PrimerFromSelectionModal` (имя/ПСО/RC-toggle) во всех 5 виверах (right-click «праймер» → модал, не сразу запись). Esc/backdrop close. Cross-portal pattern: backdrop гасит keydown+pointer+contextmenu (React-bubbling по дереву компонентов, портал DOM-изоляции событий НЕ даёт).
+- **Pentagon-arrow glyph** по обе стороны цепи (forward сверху над top-strand, reverse снизу под bottom-strand) с вписанными binding-буквами (`<text>` lengthAdjust spacingAndGlyphs grid-aligned). Selected primer: bold ring + colour-halo + full-opacity arrow.
+- **Кликабельность везде** (`onPrimerClick`/`selectedPrimerKeys` props). Back-compat: без callback — декоративный (`pointer-events:none`).
+- **Double-click → редактирование** через ту же модалку (`primerDraft.name` pre-fill, submit = re-write через `onWritePrimer`).
+- **Flank-highlight только fwd+rev** (биоинвариант: fwd-fwd / rev-rev не задают ампликон; `flankedSpan(a,b)` returns null для same-direction).
 
-### Restriction Cloning
-- 3-step wizard: ферменты → insert → preview + создание на canvas
-- Junction Sequence Preview на шаге 3: backbone + RE-site + insert, цветовое кодирование
-- Reading frame check: "в рамке" / "не в рамке" warning
-- digest() + checkDoubleDigest() + checkInsertSites() + checkReadingFrame() + generateRETail()
-- RE-тейлы на праймерах (protective bases + site)
-- Ligation junction display (🔪, red-400)
+**Viewer-sync (cross-cutting):**
+- Все 5 дизайн-виверов (Library/Importer-инспектор, ContainerEditor×2 [sequence + mutagenesis], Assembly, PCR) несут одинаковую пятёрку: `primers` + `onWritePrimer` + `showSelectionTm` + caret + selection.
+- Annotator preview (`PreviewTab`) тоже получил `primers`/`onWritePrimer` (точка 4-точечного primer UX).
+- `useEntryPrimers` hook (origin-scoped через `origin.kind='library-selection'`) — `ContainerEditorSkeleton` (K10-заглушка `primersForActive=[]` закрыта) + `LibrarySingleInspector`. Persistent через unified primer pool.
+- `hydratePrimers()` теперь вызывается в проде (Library/Container inspector path) — раньше dead code.
 
-### SnapGene Каталог
-- plasmids-index.json (~867KB): 2822 плазмид, 19 категорий, без sequences
-- plasmids-data/*.json (19 файлов): lazy-loaded по категориям
-- CatalogPanel: поиск по имени/feature, фильтр по категории
-- Действия: В библиотеку / Просмотреть / Клонировать / Как backbone
-- HTML в описаниях: stripHtml()
-- Attribution: snapgene.com/resources
+**Annotator-toggle:**
+- Вкладка «Аннотации» → toggle-кнопка в общем `TabBar.showAnnotations/onToggleAnnotator/annotatorActive`. `aria-pressed`, accent-wash. Scope: Library/Importer-инспектор + ContainerEditor. Assembly/PCR не тронуты (synthetic/template seq, аннотатор там семантически неопределён — открытое решение).
 
-### Annotations
-- 3-level model: region > detail > point (НЕТ отдельного domains[])
-- Auto-annotate: CDS (signal peptide, tags, domains), promoter (-10/-35/TATA/CAAT), terminator (poly-A)
-- RE sites: 63 фермента с IUPAC regex (restriction-db.js)
-- ORF detection: ATG→stop ≥100aa, обе цепи, 3 рамки
+**Декомпозиция (cross-cutting):**
+- `LibrarySingleInspector.jsx` 39.34 → **31.28 KB** через extract `useInspectorSelectionNav` hook (~170 строк caret/selection/LinearFeatureBar-навигации). TD-SIZE эскалация СНЯТА, 8.7 KB запаса до hard 40. Behavior-preserving refactor — нулевая регрессия на полной test suite.
 
-### Import/Export
-- .dna import: свой binary парсер (snapgene_parser.py) PRIMARY, BioPython FALLBACK
-- .gb/.gbk import: parseGenBank (frontend) + enrichment pipeline
-- .fasta import: sequence only + enrichment
-- Enrichment: common-features.json (415 фичей из 2822 SnapGene плазмид) + ORF detection
-- GenBank export, протокол export, clipboard
+### Annotator + Annotation Editing (M-X.2 + perf wave, v0.7.2 — unchanged)
+- Integrated edit-annotations workflow в SequenceView (Del two-pass, H/E hotkeys, drag edges, dbl-click, context menu).
+- Sub-features (level: 'detail' + parentId), SBOL glyphs, PreImportModal flow.
+- Embedded Annotator с three-level LevelPanel + PreviewTab + ghost drill-in.
+- Predictor Worker (DEC-PERF-WORKER-01) off-main-thread.
 
-### Parts Library (v0.5 legacy, по дорожной карте v0.6 мигрирует в LibraryEntry)
-- 94+ parts, draft/verified/archived lifecycle
-- Duplicate detection при добавлении
-- Part variants (мутагенез → новый part)
-- Split/fuse/insert/delete operations
+### Canvas & UI (unchanged)
+- Canvas 4 вида + Project Flow DAG.
+- CSS zoom, Quick Start панель, Smart Import modal.
+- SnapGene Каталог (2822 плазмид, 19 категорий, lazy-loaded).
+- Header / Breadcrumb / Compact context menu / Undo-Redo 50 levels.
 
-### Project Flow
-- 5 node types (PlasmidNode, PCRNode, AssemblyNode, OligoNode, CheckpointNode)
-- 3 edge types, dagre layout
-- PCR node edit, real assemblies, MIRO+ с RE/KLD/лигирование
+### Library / Importer (M-B.2 + post-acceptance polish, v0.6.4 — unchanged)
+- `librarySlice` data API: addLibraryEntry / checkLibraryDedup / getSuggestedLibraryName / selectVisibleLibraryEntries / selectAllLibraryTags.
+- Single-screen 4-column layout (CatalogColumn 320 / Inspector / MetaColumn 200 / footer).
+- Inspector tabs lazy-mount (Обзор / Последовательность / Аннотации / История).
+- TagsEditor inline в SingleInspector, AutonameModal + PrimerWizardStepModal.
+- Feature palette A+v2 + shade-by-name + canonical-key collapse.
 
-### v0.6 infrastructure (M-A core, M-A.1, M-A.2, M-A.3)
-- IndexedDB schema v2 (Dexie · `projects` + `library` tables)
-- Multi-tab guard (`navigator.locks`) + multi-tab UI overlay (DEC-MA1-XX)
-- `.bodge` round-trip (File System Access API + fflate ZIP, fallback `<a download>`)
-- Hotkey registry 7 entries (`new-project`/`open-bodge`/`save-bodge`/`close-project`/`open-settings`/`escape`/`project-info`) + ⌘I
-- ProjectInfoModal (auto-open after createProject + edit)
-- PWA setup (`vite-plugin-pwa@1.2.0`, `manifest.webmanifest`, 3 иконки Hybrid B)
-- Notion-style Toast queue + soft-delete pattern (`_pendingDelete` flag + race-protected commit)
-- i18n-prep: STRINGS namespace dictionary (`lib/strings.js` 6.6 KB, 11 namespaces, ~15 компонентов переведены)
-- App version footer в StartScreen sidebar (`BodgeGene v{APP_VERSION}` из `lib/version.js`, single source of truth, обновляется при финализации каждого спринта)
+### Assembly & Primer Design (existing + four-tier integration)
+- 6 методов сборки: Overlap PCR, Gibson, Golden Gate, KLD, RE ligation, Restriction Cloning.
+- Авто-расчёт праймеров клиентский, tag-aware primer design.
+- Мутагенез + KLD primer design, adaptive overlap (No-PCR сосед).
+- Single-circular self-closure primers (Sprint X-fix K5).
+- **NEW T6:** assembly-mode UI (`editor/assembly-mode/*`) мигрирован на pieces shape через dual-source dual-resolution. `assembly-realise.js` → `zone-pieces-to-dag.js` (читает pieces из zone, гнерирует ops+junctions+containers). Adapter `segment-to-piece-adapter.js` для back-compat. `assemblyReducer` остаётся живым (T6 K14 deviation — литеральный no-op §5.9 заблокирован ~50 legacy assembly-тестами).
+- **NEW V83:** gap-piece с известной ПСО (T2A linker / своя ПСО) сохраняется в `piece.gapSequence`, не подменяется поли-N.
+- **NEW V84:** realise-продукты наследуют аннотации источника через `transferAnnotations` (DRY с legacy путём) + новый `concatSegmentAnnotations` для `-product` контейнера со сдвигом по offset в конкатенации.
+
+### Plasmid-Git data model (Sprint X cycle, 26.04.2026 — unchanged)
+- fragment.baseSnapshot + fragment.commits[] + replay.
+- Mutagenesis через applyMutationsBatch (один pushUndo на batch).
+- Toggle apply/revert на уровне commit.
+
+### PlasmidViewer (unchanged)
+- Circular map track-based arc layout, single-plasmid rendering, region selection.
+- Sequence view двуцепочечная + AA-translation + region labels.
+- RE sites toggle (1x / ≤2x / All), CDS validation warnings.
+- presetMode instant actions.
+
+### Restriction Cloning (unchanged)
+- 3-step wizard, Junction Sequence Preview, reading frame check.
+
+### SnapGene Каталог / Annotations / Import-Export / Parts Library (unchanged)
+
+### Project Flow (unchanged)
+- 5 node types, 3 edge types, dagre layout.
+
+### v0.6 infrastructure (M-A core, M-A.1, M-A.2, M-A.3 — unchanged)
+- IndexedDB schema v2 (Dexie), multi-tab guard, `.bodge` round-trip.
+- Hotkey registry, ProjectInfoModal, PWA setup.
+- Notion-style Toast queue + soft-delete pattern.
+- STRINGS namespace dictionary, App version footer.
 
 ## Открытые баги
 
-См. `BUGS.md`. На v0.6.3 OPEN секция пуста — v0.6 wipe phase, баги появятся по мере реализации M-A.4..M-I функционала. Исторические v0.5 баги → `docs/archive/BUGS_v05.md` (38 KB, последняя запись 28.04.2026: Sprint Catalog Polish + FIX cycle закрыл 11 import-related багов V35–V48).
+См. `BUGS.md`. **V51** carry-over OPEN (drag selection микролаги, ThinkPad 2013, требует перфо-спринт C-типа). Остальное закрыто в v0.8.3.
 
 ## Что дальше
 
-**v0.8.0 закрыт полностью** (M-X.5 Этап 2 Library features: K11 origin icons + K7 Library Save Flow + K6 Read-only/Editable toggle + K10 Manual edit branching + K5 Onboarding nudge + K8 Quick-add icon + K4 MultiImportView). Major architectural milestone — Library is primary workspace. 7 ⚓ promoted в ANCHORS.md.
+### Sprint v0.8.3-alpha — Four-tier architecture (T1-T10 + T4.5 + canvas UX + primer redesign), 16-18.05.2026
 
-**v0.7.5 закрыт 07.05.2026** (M-X.5 Этап 1 Library namespace refactor: hot-fix annotations write-through, K1 namespace skeleton + migration heuristic, K2 route alias, K3 LibraryTree decomposition, K9 multi-drop gate). Pure refactor.
+10 T-спринтов реализованы Code в continuous mode (T1 → T2 → T3 → T4 → T4.5 → T5 → T6 → T7 → T8 → T9 → T10) + canvas UX батч 17.05 + primer redesign 18.05 + V82-V84 fixes + LibrarySingleInspector декомпозиция. **84 sprint-level DEC** ждут записи в DECISIONS.md (Пачка 2 финализации Chat). 3 ⚓ кандидата на promotion в ANCHORS.md: DEC-CANVAS-4T-01 (piece как первичная сущность), DEC-CANVAS-4T-07 (zone как Miro-frame), DEC-CANVAS-4T-31 (3-lane auto-layout). 2 ⚓ реверса: DEC-T3-08 + V61.
 
-**v0.7.4 был закрыт 06.05.2026** (M-X.3 wrap-tail rounds 12–18: trailing wrap-tail restored, bridge wrap-half extended-domain caret, paint-only inset accent stripe — CSS layout shift fix, common-features dedup 419→408, Annotator click→teleport, empty-plasmid LinearFeatureBar, ghost feature edit/save через CREATE conversion).
+**Финализация Chat:**
+- **Пачка 1а ✅** — BUGS.md OPEN→FIXED ротация, OPEN секция компактная (V51 only).
+- **Пачка 1b ✅** — CURRENT_TASK.md 202 KB scratchpad → 13 KB handoff (архив 202 KB сохранён `docs/archive/CURRENT_TASK_HISTORY_2026_05_16_to_18_T_series.md`).
+- **Пачка 1c ✅** — этот файл (PROJECT_STATE.md).
+- **Пачка 2 (следующая сессия после compact):** ANCHORS.md (реверс DEC-T3-08 + V61, добавить 3 ⚓ кандидата) + DECISIONS.md (sprint-block 84 DEC) + TECH_DEBT.md (статусы LibrarySingleInspector→Closed, CanvasLayoutView→Active, SequenceView→Active) + RELEASES.md (v0.8.3-alpha entry) + package.json/version.js bump.
+- **Пачка 3 (отложено):** архивация устаревших спек F1-F4 + A1-A4 + D1 + NOTES_*_DRAFT в `docs/archive/2026-05-16-pre-four-tier/`. TD-DOCS-ROTATION (53 файла → ≤8 активных) — отдельный side-quest.
 
-**Active sprint: M-X.5 Library as Primary Workspace** (план apply'нут, kickoff approved). Спека `docs/SPRINT_M-X.5_LIBRARY_AS_WORKSPACE.md`. План `~/.claude/plans/delightful-hugging-backus.md`. Архитектурный rewrite Library/Importer — **2 этапа**:
+### Открытые follow-ups (для решения Игорь+Chat в визуальной приёмке)
 
-- **Этап 1 — v0.7.5 Refactor (K1-K3 + K9):** Library namespace skeleton + migration (rename Importer→Library); удалить Importer fullscreen + dead code (MultiInspector, EmptyInspector, ActionsBar, SessionSummary); LibraryTree decomposition (CatalogColumn 64 KB → 6 sub-components ≤30 KB); single-vs-multi drag-drop routing с disable-toast для multi в Этапе 1. Pure refactor, zero new UX. Acceptance — undistinguishable from v0.7.4 functionally.
-- **Этап 2 — v0.8.0 Features (K4-K8 + K10-K11 + K12):** MultiImportView с per-batch + per-file annotation choice, Onboarding nudge + curated 7 категорий, Read-only/Editable toggle для SequenceView (DEC-LIB-16 ⚓), Library Save Flow (Перезаписать / Сохранить как версию, DEC-LIB-13 ⚓), Quick-add icon hover-revealed, Manual edit branching (DEC-LIB-12 ⚓), visual origin icons. Major bump v0.8.0 — **DEC-IMP-06 ⚓ Importer fullscreen abolished, Library = primary workspace**.
+1. **Annotator-toggle scope** — распространять `TabBar.showAnnotations/onToggleAnnotator` на Assembly/PCR (сейчас scope = Library/Importer + container-editor)?
+2. **LibrarySingleInspector опциональный 2-й extract** — annotation-edit pipeline ~5-7 KB уведёт под soft 30 (31.28 → 24-26 KB). Решение Игоря.
+3. **T9 K13/K14 + graph-block badge** — wire trigger-пункты CREATE_DESIGN_VARIANT / MATERIALIZE_REACTION в op context-menu (substance готова, entry-point в 36 KB CanvasLayoutView отложен).
+4. **T10 SHOW_SANGER_LAB_NOTEBOOK** — click clone indicator → focus в notebook через event-bus/ref (отложено в визуальную приёмку).
+5. **T8 piece.ranges change** — auto-reaction `params.range` recompute при том же методе и изменённом range (сейчас НЕ пересчитывается).
+6. **T6 §5.9 vs Открытый-вопрос-#1** — закрепить «assemblyReducer kept живым, no-op в T-future» в DECISIONS.
+7. **Orphan-UX в zone-mode** (T6) — piece удаляется вместо badge/convert.
+8. **Op/PCR-консьюмеры primer-name** (T5/primer-redesign) — имя из модала не сохраняется по их create-пути.
 
-**Open questions Q1-Q5 закрыты** в плане: hybrid catalog (выбранные онбордингом → IndexedDB, остальные virtual в public/plasmids-data); heuristic origin migration (demo-tag → demo_category, иначе file_import); manual-edit confirm scope per-mount; default version name `${parent.name} (v2)` через autoname collision; soft-deleted parent → hard fail с toast.
+### Roadmap до v1.0
 
-**Параллельно / после M-X.5:**
+- `docs/ARCHITECTURE_v2.md` §7 + `docs/SPEC_M-CANVAS-FOUR-TIER-ARCHITECTURE.md` (новый якорь для T-серии).
+- Wave 1 backend annotator track (M-X.1..M-X.5) — параллельно.
+- M-C Container Window kickoff — после T-серии acceptance.
+- M-X.10 Tauri shell — по DEC-ARCH-RUST-WASM-TWIN-TARGET-01 (отложено).
+- Архитектура навигации (DAG / Парт-канвас / Container Window) — `docs/ARCHITECTURE_3LEVELS.md`.
 
-1. **TD-ANNOTATIONTRACK-DECOMPOSE-V2** (41.6 KB hard violation остаётся) — отложено в M-X.6 polish после M-X.5 acceptance.
-2. **M-C Container Window kickoff** — следующий milestone по Roadmap. Использует SequenceView (B.3 foundation) + caret sync (DEC-SV-01) + scrollIntoView pattern (DEC-SV-02) + wrap-tail (DEC-WRAPTAIL-01..05). После M-X.5 acceptance.
-3. **TD-CIRCULAR-SELECTION** — полноценная wrap-aware navigation (round-8 partial, click on wrap-tail остаётся blocked).
-4. **Sprint NCBI GenBank Integration** (TD-OPEN-PLASMID-REPOS roadmap step 1) — public domain, fungal-focused queries.
-5. **Sprint Addgene Integration** (TD-ADDGENE-API-PENDING) — после approval'а от developers.addgene.org.
+### Параллельно / после T-series acceptance
 
-**Roadmap до v1.0** — `docs/ARCHITECTURE_v2.md` §7 (M-A start screen → M-B importer → M-C container window → M-D editable container → M-E mix workspace → M-F primer pool → M-G остальные reactions → M-H library polish → M-I DAG polish). Wave 1 M-X.1..M-X.5 — параллельная backend annotator track (frontend baseline → Analyze Modal → Pfam → SignalP → AUGUSTUS), интегрируется в Container Window M-C/M-D через UI hooks.
+1. **Этап 2/3 kill** (`docs/SPRINT_KILL_DEAD.md`) — harvest FragmentEditor helpers в `lib/`, снос старого верстака ~402 KB.
+2. **R4 + Этап 4 kill** — Library/index.jsx legacy + useLibraryState.js + importer-strings.js.
+3. **TD-CANVAS-LAYOUTVIEW-DECOMP** (41.35 KB hard breach после T4.5) — первым пунктом любого спринта трогающего этот файл.
+4. **TD-SIZE-SEQUENCEVIEW-INDEX** (~39 KB, close to hard 40) — Active candidate.
+5. **TD-ANNOTATIONTRACK-DECOMPOSE-V2** (48.54 KB hard) — первый sprint трогающий AnnotationTrack.
+6. **TD-LIB-K10-CHARACTER-APPLY** — character-level edit в SequenceView через useSequenceKeyboard.js extension.
+7. **TD-DOCS-ROTATION** — docs/ 53 → ≤8 активных, Пачка 3 финализации (отложено).
+8. **DEC-CONTAINER-DIFF-STORAGE-01** (09.05.2026) — diff-режим в `.bodge` для версий плазмиды.
 
 ---
 
-**Snapshot rotation:** при каждой финализации спринта Chat обновляет шапку (версия / тесты / коммиты), «Что работает» (новый функционал в существующие секции), «Что дальше» (актуализация candidate списка). Журнал по версиям ведётся отдельно в `RELEASES.md`. Этот файл не должен расти больше 12 KB — иначе в нём накопилось то что должно быть в RELEASES.md.
+**Snapshot rotation:** при каждой финализации спринта Chat обновляет шапку (версия / тесты / коммиты), «Что работает» (новый функционал в существующие секции), «Что дальше» (актуализация candidate списка). Журнал по версиям ведётся отдельно в `RELEASES.md`. Этот файл вырос до ~17 KB на v0.8.3 за счёт large sprint-block (T-серия) — после Пачки 2 финализации (RELEASES запись + DECISIONS sprint-block) часть истории можно ротировать в `docs/archive/SESSIONS_2026_Q2.md` или `_Q3.md` (квартальная ротация).

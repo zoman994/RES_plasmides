@@ -791,11 +791,34 @@ export const createLibrarySlice = (set, get) => ({
     }
   },
 
-  cloneEntryToActiveProject: async (entryId) => {
+  cloneEntryToActiveProject: async (entryId, opts = {}) => {
     const projectId = get().currentProjectId;
     if (!projectId) return { ok: false, reason: 'no-active-project' };
     const src = get().libraryEntries[entryId];
     if (!src) return { ok: false, reason: 'not-found' };
+    // V52 — dedup guard. Fingerprint = name + content (resourceHash,
+    // fallback sequence). If the active project already holds a copy,
+    // do NOT silently add another — return reason='duplicate' so the
+    // caller can confirm. `opts.force` bypasses (explicit "Да").
+    // Invariant lives here so every entry path (quick-add, AddModal R4)
+    // shares it (BUGS.md V52).
+    if (!opts.force) {
+      const srcHash = src.payload?.resourceHash || null;
+      const srcSeq = src.payload?.sequence || null;
+      const dup = Object.values(get().libraryEntries).find((e) => (
+        e && e.id !== src.id
+        && e.projectId === projectId
+        && e.name === src.name
+        && (srcHash
+          ? e.payload?.resourceHash === srcHash
+          : (srcSeq != null && e.payload?.sequence === srcSeq))
+      ));
+      if (dup) {
+        return {
+          ok: false, reason: 'duplicate', existingId: dup.id, name: src.name,
+        };
+      }
+    }
     const newId = uuidv7();
     const child = {
       ...src,

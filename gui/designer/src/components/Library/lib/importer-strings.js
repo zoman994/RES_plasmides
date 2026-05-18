@@ -33,6 +33,10 @@ export const IMPORTER_STRINGS = {
 
   tabOverview: 'Overview',
   tabSequence: 'Sequence',
+  // 12.05.2026 — Игорь: skeleton container editor получает
+  // дополнительную вкладку «Мутагенез», дублирующую sequence viewer.
+  // Используется только когда TabBar получает showMutagenesis={true}.
+  tabMutagenesis: 'Мутагенез',
   tabAnnotations: 'Annotations',
   tabHistory: 'History',
   tabHistoryPlaceholder: 'History will appear after the first commit in Container Window (M-D).',

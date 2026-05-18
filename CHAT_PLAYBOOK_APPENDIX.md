@@ -119,7 +119,43 @@ Catalog Polish FIX F4 (28.04.2026): я придумал source-fade `opacity: 0.
 
 Правило: **если в спеке появляется элемент, который не отвечает прямо на функциональное требование Игоря — это сигнал что я добавляю эстетику.** Удаляю или явно отмечаю как «своё предложение, нуждается в OK». Третий sanity-вопрос (§2) ловит это.
 
-_§6 обновлено 2026-04-28: антипаттерн 5 переформулирован под классификацию задач (§13). Добавлен антипаттерн 7 (эстетика подменяет функцию) после Catalog Polish FIX → FIX-2 fail._
+### Антипаттерн 8: Архитектурные assumptions без верификации с биологом
+
+M-X.7a K3 (09.05.2026), потом FIX K3 wiring, потом FIX-2 memo. Три раза подряд я зафиксировал «Library Inspector — display-only, mutations через Container Window M-D» как architectural decision. Это не было требованием Игоря. Это было **моё предположение что "так чище"**, которое я закрепил как DEC-MX7A-08 (inline read-only banner) и тащил через все спеки FIX/FIX-2.
+
+Цена: Игорь работал в старой Library с полным функционалом — selection, edit features, drag-edges, dbl-click feature editor, context menu, hotkeys, BLAST, scroll-to-position. Редизайн в его понимании = **обёртка + полировка логики**, не «обрезание функционала по архитектурной чистоте». Все эти возможности существуют в SequenceView (M-B.3) + AnnotationEditor через wired callbacks (как в Annotator/PreviewTab). Я их выкинул `readOnly={true}` глобальным.
+
+Правило: **архитектурные decisions типа "X — display-only", "Y — read-only", "Z — отдельный workflow для другого окна" — НЕ делать без явного OK биолога.** Если в существующей версии X имеет полный функционал — в редизайне он сохраняется по умолчанию. Унесение в другой workflow требует прямого подтверждения.
+
+Sanity check вопрос 3 (§2): «решит ли правка эту проблему ИЛИ обрежет функционал, который у него уже работал?». Если второе — не делать.
+
+readOnly — conditional по контексту (zone, permissions, source), не глобальный default. Inline read-only banner — только для real-readonly случаев (импортированные .bodge zone), не для всего Inspector.
+
+**Defense (обязательно при любом редизайне UI где есть legacy implementation):** до написания спеки Chat **grep'ит legacy implementation** и перечисляет в спеке (§0.2 или отдельный блок) **ВСЕ** affordances: hooks (`use*Flow`, `use*State`, `use*Editor`), slice actions (`apply*`, `update*`, `overwrite*`), modals (`*Modal`, `*Popover`), keyboard shortcuts, context menu items, drag/drop affordances, cursor sync, undo/redo, settings panels. Редизайн сохраняет всё это по default. Если что-то решено отложить в follow-up patch — **явный** TD-энтри в TECH_DEBT.md с референсом на legacy файлы. M-X.7a legacy reference для Library Inspector — `components/Library/inspector/LibrarySingleInspector.jsx` + `components/Library/inspector/hooks/`.
+
+Различие с Антипаттерном 7: «эстетика подменяет функцию» — про визуал/UX-стиль. Антипаттерн 8 — про **архитектурные решения о разделении workflow / read-only природе компонента**. Оба отводятся вопросом 3, но в разных плоскостях.
+
+_§6 обновлено 2026-05-09: добавлен Антипаттерн 8 (архитектурные assumptions без верификации) после M-X.7a K3 → FIX K3 → FIX-2 memo цикла где я трижды обрезал функционал Library Inspector «display-only by architecture» без подтверждения Игоря._
+
+### Антипаттерн 9: Редизайн UI = rebuild компонентов с нуля
+
+M-X.7a Library Structure rebuild (09.05.2026): Игорь сказал «редизайн стартового экрана и библиотеки». Я интерпретировал это как «создать **параллельную ветку** `Library/workspace/` с новыми компонентами Inspector / Tree / tabs / modals». На самом деле ожидалось: новая **обёртка** (Tree zone-aware, новый layout, новый design tokens в CSS) + внутри — **существующий `LibrarySingleInspector`** со всеми hooks/modals/hotkeys.
+
+Цена. Весь функционал legacy был выброшен и возвращался по частям через 4 последовательных FIX-патча (FIX, FIX-2, FIX-3..3.5) + реверс-инжиниринг LibrarySingleInspector hooks в новые useWorkspace*. Спека была 53 KB вместо ~10 KB. Игорь потерял 2-3 рабочих дня на отлавливание функционала.
+
+Правило: **«редизайн» без уточнения = обёртка + стили, НЕ rebuild компонентов.** Когда Игорь говорит «редизайн X» — default понимание: внешняя обёртка (layout, navigation, design tokens, CSS) обновляется, **внутренняя логика компонентов остаётся**. Существующие компоненты с их hooks/modals/hotkeys переиспользуются as-is, получая новые стили через props/CSS.
+
+Ребилд компонентов — это отдельный класс задачи («rewrite» / «rearchitecture»), и он требует **явного подтверждения Игоря**. Если из формулировки неясно — Chat спрашивает явно: «редизайн это Обёртка вокруг существующего LibrarySingleInspector или Rewrite Inspector с нуля? Default предполагаю первое.»
+
+Признаки что вы попали в антипаттерн 9:
+- Спека содержит «новые компоненты» которые дублируют existing по функциям (`workspace/Inspector/` vs `inspector/SingleInspector`).
+- Сравнивающий grep `components/<фича>/` показывает «параллельные ветки» (legacy + workspace).
+- В спеке нет прямого import existing компонента — всё «создаю новый».
+- Code-репорт после спринта включает «parallel directory» caveats (случай M-X.7a `workspace/` vs `tree/`+`inspector/` Windows case-insensitive).
+
+Лекарство: в §0.2 спеки (Component reuse audit) добавить вопрос «реиспользуется ли существующий root-component вместо rebuild?». Если rebuild с нуля — явный OK Игоря в §0.5 (kickoff Q&A) обязателен.
+
+_§6 обновлено 2026-05-09 (второй раз): добавлен Антипаттерн 9 после Игорева «зачем нельзя было просто на старую Library применить новый дизайн» — corner case «редизайн = rebuild» не ловился §8._
 
 ---
 

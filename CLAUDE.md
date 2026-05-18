@@ -15,8 +15,8 @@
 BodgeGene — визуальный конструктор генетических сборок (плазмид). React SPA + Python CLI бэкенд.
 
 **Автор:** Игорь Синельников, ФИЦ Биотехнологии РАН  
-**Путь:** `C:\Users\sinig\Desktop\RESplasmide`  
-**Версия:** v0.7.1 (Sprint M-B.3 Sequence Viewer + V50 parser coord fix + Snapgene Refresh, 03–04.05.2026). Архитектура v0.6+ — в `docs/ARCHITECTURE_v2.md` v1.2 (~117 KB). Фундаментальные решения — в `ANCHORS.md` (52 ⚓, последний DEC-PARSER-COORD-01 от 03.05.2026). Sprint-level — в `DECISIONS.md`. Журнал по версиям — в `RELEASES.md`. Тесты: ~947 Vitest + 112 pytest (последний authoritative счёт от V50 fix 03.05; B.3 cycle 04.05 не оставил test count в координационных файлах — итог уточнится при ближайшей финализации). Предыдущая v0.5.4-alpha (~290 коммитов, 1126 тестов) — feature-complete, **wipe data при переходе на v0.6** (⚓ DEC-V2-08 «quality > speed»).
+**Путь:** `D:\RESplasmide`  
+**Версия:** v0.8.1 (Sprint M-X.7c UI revision + project activation merge, 10.05.2026 — patch поверх v0.8.0 base «Library = primary workspace»). Архитектура v0.6+ — в `docs/ARCHITECTURE_v2.md` v1.2 (~117 KB) + `docs/ARCHITECTURE_3LEVELS.md` (от 09.05.2026, ~12 KB). Фундаментальные решения — в `ANCHORS.md` (61 ⚓, без изменений в v0.8.1; кандидаты на promotion: DEC-UIRREV-ZONES-MERGE-01, DEC-UIRREV-ACTIVE-SINGLE-01 — после M-X.8 acceptance). Sprint-level — в `DECISIONS.md` (v0.8.1 sprint block: 6 DEC-UIRREV-*). Журнал по версиям — в `RELEASES.md`. **Тесты: Vitest 1697/1699 + 1 skipped + 1 flake (pre-existing `primer-wizard.test.jsx::2`, в TECH_DEBT как TD-PRIMER-WIZARD-FLAKE) + pytest 112/112 от v0.8.0** (в v0.8.1 backend не задет). Предыдущая v0.5.4-alpha (~290 коммитов, 1126 тестов) — feature-complete, **wipe data при переходе на v0.6** (⚓ DEC-V2-08 «quality > speed»).
 
 **Стартовая ссылка:** вся архитектура v0.6+ — в `docs/ARCHITECTURE_v2.md`. Читается перед любой M-A...M-I сессией, не в стартовом пакете (CURRENT_TASK.md явно направляет туда).
 
@@ -79,14 +79,16 @@ cd gui/designer && npm test && npx vite build
 - Дублировать информацию между docs/ файлами
 - Держать в docs/ больше 8 активных файлов (остальное → archive/)
 
-### 7. Лимиты размера модулей (⚓ DECISIONS.md 22.04.2026)
+### 7. Лимиты размера модулей (⚓ DECISIONS.md 22.04.2026, калибровка ⚓ DEC-SIZE-CALIBRATION-01 08.05.2026)
 
 Пределы на один файл:
 - `.jsx` компонент — hard **40 KB**, soft warning 30 KB
 - `.js` helper / algorithm — hard **25 KB**, soft warning 20 KB
 - Data-файлы (словари, константы, локали — `restriction-db.js`, `i18n.js`, `tags-db.js`, `part-descriptions.js`) — не лимитируются
 
-**Если модуль в скоупе спеки уже ≥ hard:** Chat должен был поставить декомпозицию первым пунктом. Если не поставил — Code останавливается и просит Chat дополнить спеку, не начинает дописывать в раздутый файл.
+**Формальное превышение hard НЕ автоматически требует декомпозицию** (калибровка 08.05.2026). Триггеры: (1) rate-of-change >5 KB за спринт два спринта подряд, (2) entanglement (правка одной фичи в файле ломает другую), (3) explicit правка в следующем спринте. Stable файлы (рост ≤1 KB за 2+ спринта) без entanglement — Watch list, не блокер. Разбивка Активный/Watch по открытым TD-SIZE-* — в ANCHORS.md DEC-SIZE-CALIBRATION-01 + TECH_DEBT.md «Файлы над size budget».
+
+**Если модуль в скоупе спеки уже ≥ hard И в Active decomp по calibration:** Chat ставит декомпозицию первым пунктом спеки. Если не поставил — Code останавливается и просит Chat дополнить спеку. **Если в Watch list** — правка продолжается без декомпозиции, Code в отчёте фиксирует рост (если вырос >2 KB) — если trigger вспыхивает (rate-of-change второй спринт подряд), TD повышается в Active.
 
 **В отчёте после реализации спринта** Code запускает (Git Bash / PowerShell):
 

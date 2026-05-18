@@ -1,41 +1,49 @@
 /**
- * LibraryTreeRoot — Sprint M-X.7a v2 K2.
+ * LibraryTreeRoot — Sprint M-X.8 K4 (DEC-UIRREV-TREE-*).
  *
- * Top-level container for the Library workspace tree per
- * Library.html `<aside class="lib-tree">`. Mounts:
- *   • `.tree-head` — `+ Добавить` button + collapse-all + sort
- *     icon + filter input (DEC-MX7A-V2-11 mirrors topbar search).
- *   • `.tree-body` — three zones (LooseZone + ProjectZone(s) +
- *     LabPoolZone). Active project pinned first (under Loose) per
- *     mockup; read-only projects after, Lab pool last.
- *   • `.tree-foot` — version + entry count.
+ * Top-level container for the Library workspace tree. After the
+ * Project-Hub refactor:
  *
- * Selection state owned by caller (passed via props). The tree
- * itself does not write to libSelection — `onSelectEntry` is the
- * callback consumed by LibraryWorkspace (K4).
+ *   • LooseZone «⎀ БЕЗ ПРОЕКТА» — always at the top.
+ *   • Pinned projects — top-level, each as a ProjectZone with a
+ *     ★ marker. Order follows `state.pinnedProjectIds`.
+ *   • Current project — top-level if NOT also pinned (avoids
+ *     duplication). Always expanded by default.
+ *   • Everything else — folded under one collapsible group
+ *     `▸ Все проекты (N)` per DEC-UIRREV-TREE-OTHERS-COLLAPSIBLE-GROUP.
+ *
+ * Expand semantics (post 11.05.2026 visual feedback — supersedes
+ * DEC-UIRREV-TREE-CLICK-ACTIVATE):
+ *   • Default: only the current project is expanded.
+ *   • Click on ANY project header → toggles local expand override.
+ *     No activation side-effect — biolog often peeks into a
+ *     non-current project to drag a plasmid out, not to switch
+ *     context. Activation lives in sidebar PINNED rows +
+ *     Command Palette (⌘P).
+ *   • Per-project expand override is a Map<projectId, boolean>
+ *     that shadows the default. `currentProjectId` change clears
+ *     overrides for any non-current project, so other projects
+ *     fold back when the user switches via sidebar/palette.
  */
-import { useMemo, useCallback } from 'react';
+import { useMemo, useCallback, useState, useEffect } from 'react';
 import { useStore } from '../../../store';
 import { STRINGS } from '../../../lib/strings';
 import LooseZone from './LooseZone';
 import ProjectZone from './ProjectZone';
+import TreeFolderRow from './TreeFolderRow';
+import TrashZone from './TrashZone';
 import { APP_VERSION } from '../../../lib/version';
 
-function discoverProjects(projectsById, currentProjectId) {
-  // Project zones come ONLY from the live projectSlice map. Orphan
-  // `entry.projectId` (project deleted, entry not cleaned up) is
-  // intentionally not surfaced as a phantom zone — those entries
-  // fall through to the Loose zone via LooseZone's claimed-set
-  // logic so biolog never «loses» plasmids to a deleted project.
-  const list = Object.values(projectsById || {}).map((p) => ({
-    id: p.id,
-    name: p.name || p.id,
-  }));
-  list.sort((a, b) => {
-    if (a.id === currentProjectId) return -1;
-    if (b.id === currentProjectId) return 1;
-    return (a.name || a.id).localeCompare(b.name || b.id);
-  });
+function discoverProjects(projectsById) {
+  // Exclude soft-deleted projects — they live in the Trash zone and
+  // must not appear in the regular project listings.
+  const list = Object.values(projectsById || {})
+    .filter((p) => p && !p._pendingDelete)
+    .map((p) => ({
+      id: p.id,
+      name: p.name || p.id,
+    }));
+  list.sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id));
   return list;
 }
 
@@ -45,23 +53,94 @@ export default function LibraryTreeRoot({
   selectedId = null,
   onSelectEntry,
   onAddClick,
+  onAddToLoose,
+  onAddStarterSet,
+  onExportProject,
 }) {
   const ws = STRINGS.libraryWorkspace || {};
+  const ph = STRINGS.projectHub || {};
   const currentProjectId = useStore((s) => s.currentProjectId);
   const entriesById = useStore((s) => s.libraryEntries);
   const projectsById = useStore((s) => s.projects);
-  const projects = useMemo(
-    () => discoverProjects(projectsById, currentProjectId),
-    [projectsById, currentProjectId],
-  );
+  const pinnedProjectIds = useStore((s) => s.pinnedProjectIds);
+  const allProjects = useMemo(() => discoverProjects(projectsById), [projectsById]);
   const totalEntries = useMemo(
     () => Object.values(entriesById || {}).filter((e) => e && !e._pendingDelete).length,
     [entriesById],
   );
 
+  // Per-project expand override. Default visibility follows
+  // `currentProjectId` (only current is expanded). User-flipped
+  // state for the current project lives here; non-current projects
+  // are collapsed unless they get activated (which then puts them
+  // in the «current» bucket and they expand by default).
+  const [expandedOverride, setExpandedOverride] = useState({});
+  // Reset overrides for non-current projects whenever current
+  // changes — siblings collapse cleanly.
+  useEffect(() => {
+    setExpandedOverride((prev) => {
+      const keep = {};
+      if (currentProjectId && prev[currentProjectId] !== undefined) {
+        keep[currentProjectId] = prev[currentProjectId];
+      }
+      return keep;
+    });
+  }, [currentProjectId]);
+
+  const isExpanded = useCallback((id) => {
+    if (Object.prototype.hasOwnProperty.call(expandedOverride, id)) {
+      return expandedOverride[id];
+    }
+    return id === currentProjectId;
+  }, [expandedOverride, currentProjectId]);
+
+  const onProjectHeaderClick = useCallback((id) => {
+    // Tree-header click = expand-only. Activation is intentionally
+    // decoupled (post 11.05.2026 visual feedback): biolog often
+    // wants to peek into a non-current project to drag a plasmid
+    // out, not to switch context. Activation lives in sidebar
+    // PINNED rows + Command Palette (⌘P).
+    setExpandedOverride((prev) => ({ ...prev, [id]: !isExpanded(id) }));
+  }, [isExpanded]);
+
+  // Loose zone collapse — local state, separate from project tree.
+  const [looseExpanded, setLooseExpanded] = useState(true);
+  const onLooseToggle = useCallback(() => setLooseExpanded((v) => !v), []);
+
+  // FAIL-fix-pass 2 — current project is ALWAYS the first zone
+  // after LooseZone, regardless of its pinned-status. The pinned
+  // list (excluding current if it was pinned) follows. Everything
+  // else (un-pinned non-current) lands inside the collapsible
+  // «Все проекты (N)» group.
+  const pinSet = useMemo(() => new Set(pinnedProjectIds || []), [pinnedProjectIds]);
+  const groups = useMemo(() => {
+    const current = currentProjectId ? (projectsById?.[currentProjectId] || null) : null;
+    const pinnedRest = [];
+    for (const id of (pinnedProjectIds || [])) {
+      if (id === currentProjectId) continue; // current goes to its own slot
+      const p = projectsById?.[id];
+      if (p) pinnedRest.push(p);
+    }
+    const others = [];
+    for (const p of allProjects) {
+      if (p.id === currentProjectId) continue;
+      if (pinSet.has(p.id)) continue;
+      others.push(p);
+    }
+    return { current, pinnedRest, others };
+  }, [allProjects, pinSet, currentProjectId, projectsById, pinnedProjectIds]);
+
   const onInput = useCallback((e) => {
     onQueryChange?.(e.target.value || '');
   }, [onQueryChange]);
+
+  // «Все проекты (N)» group toggle — local state, default collapsed.
+  const [othersExpanded, setOthersExpanded] = useState(false);
+  const toggleOthers = useCallback(() => setOthersExpanded((v) => !v), []);
+
+  // Trash zone toggle — collapsed by default, expands on user click.
+  const [trashExpanded, setTrashExpanded] = useState(false);
+  const toggleTrash = useCallback(() => setTrashExpanded((v) => !v), []);
 
   return (
     <aside
@@ -102,19 +181,6 @@ export default function LibraryTreeRoot({
             }}
           >{ws.addBtn || '+ Добавить'}</button>
           <div style={{ flex: 1 }} />
-          <button
-            type="button"
-            title="Свернуть всё"
-            data-testid="tree-collapse-all"
-            style={{
-              fontSize: 12, padding: '4px 6px',
-              background: 'transparent',
-              color: 'var(--text-secondary)',
-              border: '1px solid transparent',
-              cursor: 'pointer',
-            }}
-            disabled
-          >⊟</button>
           <button
             type="button"
             title="Сортировка"
@@ -161,20 +227,77 @@ export default function LibraryTreeRoot({
           minHeight: 0,
         }}
       >
+        {/*
+          * Order (post 11.05.2026 visual feedback):
+          *   1. Current project (top — primary attention)
+          *   2. ⎀ БЕЗ ПРОЕКТА «стол биолога»
+          *   3. Pinned (excluding current)
+          *   4. «Все проекты (N)» collapsible group
+          * The free desk sits UNDER the current project so the
+          * primary workspace is the first thing biolog scans —
+          * loose entries are a secondary collection to pull from.
+          */}
+        {groups.current && (
+          <ProjectZone
+            key={groups.current.id}
+            project={groups.current}
+            pinned={pinSet.has(groups.current.id)}
+            query={query}
+            selectedId={selectedId}
+            onSelectEntry={onSelectEntry}
+            expanded={isExpanded(groups.current.id)}
+            onToggle={() => onProjectHeaderClick(groups.current.id)}
+            onExportProject={onExportProject}
+          />
+        )}
         <LooseZone
           query={query}
           selectedId={selectedId}
           onSelectEntry={onSelectEntry}
+          expanded={looseExpanded}
+          onToggle={onLooseToggle}
+          onAddToLoose={onAddToLoose}
+          onAddStarterSet={onAddStarterSet}
         />
-        {projects.map((p) => (
+        {groups.pinnedRest.map((p) => (
           <ProjectZone
             key={p.id}
             project={p}
+            pinned
             query={query}
             selectedId={selectedId}
             onSelectEntry={onSelectEntry}
+            expanded={isExpanded(p.id)}
+            onToggle={() => onProjectHeaderClick(p.id)}
+            onExportProject={onExportProject}
           />
         ))}
+        {groups.others.length > 0 && (
+          <>
+            <TreeFolderRow
+              name={(ph.treeAllProjectsCollapsed || ((n) => `Все проекты (${n})`))(groups.others.length)}
+              icon="📚"
+              count={null}
+              expanded={othersExpanded}
+              indent={0}
+              onToggle={toggleOthers}
+              testId="tree-all-projects-group"
+            />
+            {othersExpanded && groups.others.map((p) => (
+              <ProjectZone
+                key={p.id}
+                project={p}
+                query={query}
+                selectedId={selectedId}
+                onSelectEntry={onSelectEntry}
+                expanded={isExpanded(p.id)}
+                onToggle={() => onProjectHeaderClick(p.id)}
+                onExportProject={onExportProject}
+              />
+            ))}
+          </>
+        )}
+        <TrashZone expanded={trashExpanded} onToggle={toggleTrash} />
       </div>
 
       <div

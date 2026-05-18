@@ -34,7 +34,11 @@ export const STRINGS = {
     guide: 'Guide',
     settings: 'Settings',
     newProject: '+ New project',
-    openBodge: '↑ Open .bodge…',
+    // M-X.7c K1 — «Загрузить .bodge…» replaces «Открыть .bodge…».
+    // The semantics shift: import always activates the loaded
+    // project (DEC-PROJECT-OPEN-MERGE-01), no separate «open» step.
+    // K9 dropped the now-orphan `openBodge` key.
+    loadBodge: '↑ Загрузить .bodge…',
     exportBodge: '⤓ Export .bodge…',
     exportDone: '✓ Done',
     exportEnterTitle: 'Export .bodge files',
@@ -85,6 +89,15 @@ export const STRINGS = {
     backTitle: 'Back',
     backAriaPop: 'Back',
     backAriaClose: 'Close project',
+    // M-X.7c K1/K7 — RecentProjectsDropdown that opens on the
+    // crumb (project name area). `noActiveProject` shows when
+    // `currentProjectId === null`. M-X.8 K5 sunsets the dropdown
+    // (crumb becomes static) but the strings stay for the
+    // breadcrumb fallback text.
+    noActiveProject: 'Без активного проекта',                      // EN: "No active project"
+    recentProjectsHeader: 'Недавние проекты',                       // EN: "Recent projects"
+    createNewProjectInDropdown: '+ Создать проект',                 // EN: "+ Create project"
+    activeBadge: 'active',                                          // EN: "active"
     saveStatus: {
       unsavedDirty: 'Unsaved changes',
       neverSaved: 'Not saved',
@@ -112,6 +125,14 @@ export const STRINGS = {
   hotkeyCheatsheet: {
     title: 'Keyboard shortcuts',
     hint: 'Press Esc to close.',
+    // FAIL-fix-pass 5 — explain to the biolog why we added the
+    // Ctrl+Shift+P / Ctrl+Shift+F alternates. Surfaces inside the
+    // cheatsheet under the table.
+    browserOverrideNote:
+      'В браузере Ctrl+P / Ctrl+F могут быть перехвачены '
+      + '(печать / поиск по странице). Используйте Ctrl+Shift+P / '
+      + 'Ctrl+Shift+F как альтернативу. В Desktop-версии (Tauri, '
+      + 'в работе) основные хоткеи будут работать всегда.',
   },
 
   projectInfo: {
@@ -205,6 +226,13 @@ export const STRINGS = {
       openSettings: 'Settings',
       escape: 'Close',
       projectInfo: 'Project info',
+      // T7 — per-zone graph/sequence view toggle (focused zone).
+      toggleZoneGraph: 'Zone: graph view',
+      toggleZoneSequence: 'Zone: sequence view',
+      // T10 — Sanger lab notebook panel toggle.
+      toggleSangerNotebook: 'Sanger lab notebook',
+      // M-X.8 K6 — Command Palette opens with ⌘P / Ctrl+P.
+      commandPalette: 'Command Palette',
     },
   },
 
@@ -278,22 +306,24 @@ export const STRINGS = {
 
   // M-X.7a v2 K7 — STRINGS namespace per spec §5.6. EN-comment beside
   // every RU value (M-C.1 K5 pattern). Consumed by LibraryWorkspace,
-  // LibraryTopBar, LibraryTreeRoot, LooseZone / ProjectZone /
-  // LabPoolZone, AddModal, and the read-only banners in
-  // SequenceTab + AnnotationsTab.
+  // LibraryTopBar, LibraryTreeRoot, LooseZone / ProjectZone, AddModal,
+  // and the read-only banners in SequenceTab + AnnotationsTab.
+  // (LabPoolZone deleted in M-X.7c K4 — actionsLab namespace below
+  // is kept until the M-E primer-pool View lands.)
   libraryWorkspace: {
-    zoneLooseTitle: 'Коллекция',                                // EN: "Collection" (was «Без проекта» pre 09.05.2026 minimum-pass refresh)
-    zoneLooseSub: 'личная подборка плазмид',                    // EN: "personal plasmid collection"
-    zoneLabTitle: 'Лабораторный пул',                            // EN: "Lab pool"
-    zoneLabSub: 'primer\'ы в морозильнике',                      // EN: "primers in the freezer"
-    dagSubrow: 'DAG',                                            // EN: "DAG" (process graph)
+    // M-X.7c K1/K4 — Loose zone re-renamed «⎀ БЕЗ ПРОЕКТА» per
+    // DEC-UIRREV-ZONES-MERGE-01. K9 swept orphans:
+    //   • zoneLooseTitle / zoneLooseSub  (replaced)
+    //   • zoneLabTitle / zoneLabSub      (LabPoolZone deleted)
+    //   • dagSubrow                      (DAG sub-folder removed)
+    //   • inLab / crossProject           (LabPoolZone deleted)
+    //   • breadcrumbNoProject            (replaced by topbar.noActiveProject)
+    zoneLooseTitleNoProject: '⎀ БЕЗ ПРОЕКТА',                     // EN: "⎀ NO PROJECT"
+    zoneLooseSubFreeDesk: 'свободный стол биолога',                // EN: "biolog's free desk"
     containersFolder: 'Контейнеры',                              // EN: "Containers"
     primersFolder: 'Праймеры',                                   // EN: "Primers"
-    inLab: 'В лаборатории',                                      // EN: "In the lab"
-    crossProject: 'Из чужих проектов',                           // EN: "From foreign projects"
     addBtn: '+ Добавить',                                        // EN: "+ Add"
     breadcrumbActive: 'Активный проект:',                        // EN: "Active project:"
-    breadcrumbNoProject: 'Без активного проекта',                // EN: "No active project"
     searchPlaceholder: 'Поиск по библиотеке…',                   // EN: "Search the library…"
     treeFilterPlaceholder: 'Фильтр в дереве…',                   // EN: "Filter in the tree…"
     roBannerSequence:
@@ -308,11 +338,15 @@ export const STRINGS = {
     // M-X.7c i18n pass swaps in actual STRINGS lookups for full EN/RU
     // toggle.
     actionsLoose: {
-      useInActiveContainer: 'Использовать в активном',           // EN: "Use in active project"
-      useInActivePrimer: 'Использовать в проекте',               // EN: "Use in project"
-      open: 'Открыть',                                            // EN: "Open"
-      manualEditBranch: 'Manual-edit ветка',                     // EN: "Manual-edit branch"
-      moveFolder: 'Переместить',                                 // EN: "Move"
+      // M-X.7c K1/K6 — renamed buttons per UI_REVISION_2026_05.
+      // K9 dropped legacy keys: useInActiveContainer / useInActivePrimer
+      // (replaced by addToActiveProject), open (button removed —
+      // double-click is the single entry), manualEditBranch
+      // (→ createCopyForEdit), moveFolder (→ moveToFolder).
+      addToActiveProject: 'Добавить в активный проект',          // EN: "Add to active project"
+      addToActiveProjectDisabled: 'Нет активного проекта',       // EN: "No active project"
+      createCopyForEdit: 'Создать копию для правки',             // EN: "Create copy for edit"
+      moveToFolder: 'Переместить в папку…',                      // EN: "Move to folder…"
       exportGenBank: 'Экспорт',                                  // EN: "Export"
       delete: 'Удалить',                                         // EN: "Delete"
       editPrimer: 'Редактировать',                               // EN: "Edit"
@@ -340,6 +374,336 @@ export const STRINGS = {
       toggleStockOn: 'Поставить метку',                         // EN: "Add freezer mark"
       delete: 'Удалить',                                         // EN: "Delete"
     },
+    // M-X.7c K1/K5 — hover-revealed «+» icon on TreeItemRow
+    // (DEC-UIRREV-QUICKADD-HOVER-01). Visible only when there is
+    // an active project AND the entry is not already in it.
+    treeRow: {
+      quickAddTooltip: 'Добавить в активный проект',             // EN: "Add to active project"
+      quickAddDoneToast: (entry, project) => `${entry} добавлен в ${project}`, // EN: "{entry} added to {project}"
+      quickDeleteTooltip: 'Удалить в Корзину',                   // EN: "Move to Trash"
+      quickDeleteDoneToast: (name) => `Удалено: ${name} (в Корзине)`, // EN: "Deleted: {name} (in Trash)"
+    },
+    // Trash zone strings (M-X.10 — корзина as a tree zone).
+    // Soft-deleted entries and projects accumulate here until the
+    // user purges or restores. Live behind STRINGS.libraryWorkspace.trash
+    // so EN/RU swap stays single-source.
+    trash: {
+      title: 'КОРЗИНА',                                          // EN: "TRASH"
+      sub: 'удалено, можно восстановить',                        // EN: "deleted, recoverable"
+      emptyHint: 'Корзина пуста.',                               // EN: "Trash is empty."
+      emptyAllLabel: 'Очистить',                                 // EN: "Empty"
+      emptyAllTooltip: 'Удалить всё навсегда',                   // EN: "Permanently delete everything"
+      restoreTooltip: 'Восстановить',                            // EN: "Restore"
+      purgeTooltip: 'Удалить навсегда',                          // EN: "Delete permanently"
+      entriesFolder: 'Контейнеры',                               // EN: "Containers"
+      projectsFolder: 'Проекты',                                 // EN: "Projects"
+      projectSubLabel: '.bodge проект',                          // EN: ".bodge project"
+      emptiedToast: 'Корзина очищена',                           // EN: "Trash emptied"
+      confirmEmptyAll: (n) => `Удалить ${n} элемент(а/ов) навсегда? Действие нельзя отменить.`, // EN: "Permanently delete {n} items? Cannot be undone."
+      projectDeleteTooltip: 'Удалить проект в Корзину',          // EN: "Move project to Trash"
+      projectDeleteToast: (name) => `Удалён проект: ${name} (в Корзине)`, // EN: "Deleted project: {name} (in Trash)"
+    },
+  },
+
+  // M-X.8 K1 — PROJECT-HUB sprint. Sidebar «PINNED» section,
+  // CommandPalette, Tree click-activate, MainPanel pin stars.
+  // Per DEC-UIRREV-PINNED-EXPLICIT — `pinnedProjectIds` is an
+  // explicit user choice (not MRU), capped at 15.
+  projectHub: {
+    sidebarPinnedHeader: 'В работе',                                // EN: "In work"
+    sidebarPinnedCounter: (n, cap) => `${n}/${cap}`,                // EN: "n/cap"
+    // FAIL-fix-pass 3 — без `+` и `…`. Кнопка не создаёт новое (не
+    // нужен «+»), не открывает file picker (не нужен «…»). Хоткей
+    // `⌘P` справа от label служит подсказкой.
+    sidebarOpenAll: 'Все проекты',                                  // EN: "All projects"
+    sidebarOpenAllTooltip: 'Все проекты (⌘P)',                     // EN: "All projects (⌘P)"
+    pinTooltip: 'Закрепить',                                        // EN: "Pin"
+    unpinTooltip: 'Открепить',                                      // EN: "Unpin"
+    pinCapExceeded: (cap) => `Закрепить можно не больше ${cap} проектов`, // EN: "Cap reached"
+    pinDoneToast: (name) => `${name} закреплён`,                    // EN: "{name} pinned"
+    unpinDoneToast: (name) => `${name} откреплён`,                  // EN: "{name} unpinned"
+    paletteTitle: 'Все проекты',                                    // EN: "All projects"
+    paletteSearchPlaceholder: 'Найти проект…',                      // EN: "Find a project…"
+    paletteGroupPinned: (n) => `ЗАКРЕПЛЕНО · ${n}`,                 // EN: "PINNED · n"
+    paletteGroupOthers: (n) => `ОСТАЛЬНЫЕ · ${n}`,                  // EN: "OTHERS · n"
+    paletteEmpty: 'Проектов пока нет',                              // EN: "No projects yet"
+    paletteCreateNew: '+ Создать проект',                           // EN: "+ Create project"
+    treeAllProjectsCollapsed: (n) => `Все проекты (${n})`,          // EN: "All projects (n)"
+  },
+
+  // M-CANVAS-SKELETON — DEV-only скелет всей Canvas-модели
+  // (изолированный route `canvasSkeleton`, DEC-SKELETON-01..10).
+  // Merge'нул prototypeCanvas (M-CANVAS-PROTOTYPE-PCR), который был
+  // узким PCR-only прототипом. Снос скелета = удаление этого
+  // namespace + папки components/CanvasSkeleton/.
+  canvasSkeleton: {
+    // Header
+    backToCanvas: '← Назад',                                           // EN: "← Back"
+    headerTitle: 'Canvas-скелет',                                      // EN: "Canvas skeleton"
+    viewLayout: 'Layout',                                              // EN: "Layout"
+    viewGraph: 'Graph',                                                // EN: "Graph"
+
+    // Tree
+    treeTitle: 'Библиотека (скелет)',                                  // EN: "Library (skeleton)"
+    treeGoals: 'Итоги',                                                // EN: "Goals"
+    treeMaterials: 'Материалы',                                        // EN: "Materials"
+    treePrimers: 'Праймеры',                                           // EN: "Primers"
+    treeGoalsEmpty: 'Пока нет circular продуктов',                     // EN: "No circular products yet"
+    treeMaterialsEmpty: 'Пока нет linear материалов',                  // EN: "No linear materials yet"
+    treePrimersEmpty: 'Пока нет праймеров',                            // EN: "No primers yet"
+
+    // Canvas
+    canvasEmpty: 'На canvas пока пусто',                               // EN: "Canvas is empty"
+
+    // Editor
+    editorTitle: 'Контейнер-редактор',                                 // EN: "Container editor"
+    editorEmpty: 'Выберите контейнер из tabs выше',                    // EN: "Select a container from tabs above"
+    pillViewOnly: 'View: {name}',                                      // EN: "View: {name}"
+    toggleToLinear: '⇄ Линейный',                                      // EN: "⇄ Linear"
+    toggleToPlasmidMap: '⇄ Plasmid map',                               // EN: "⇄ Plasmid map"
+
+    // Editor window system (F1 M-CANVAS-WINDOW — DEC-CANVAS-WIN-*)
+    editorWindow: {
+      tabClose: 'Закрыть вкладку',                                     // EN: "Close tab"
+      tabFrozenBadge: 'Контейнер заморожен (использован в операции)',  // EN: "Container frozen (used in an operation)"
+      tabHotkeyHintNext: 'TAB — следующая вкладка',                    // EN: "TAB — next tab"
+      tabHotkeyHintPrev: 'Shift+TAB — предыдущая вкладка',             // EN: "Shift+TAB — previous tab"
+      miniCanvasTitle: 'Проект',                                       // EN: "Project"
+      noContainersHint: 'Нет контейнеров',                            // EN: "No containers"
+      placeholderTabLabel: '(пустой)',                                 // EN: "(empty)"
+    },
+
+    // Pieces (T1 M-CANVAS-FOUR-TIER — state.pieces slice, DEC-T1-*).
+    // Placeholder namespace: error toasts + autoName/clone are wired
+    // now; the real piece-authoring UI lands in T5.
+    pieces: {
+      errorTooMany: 'Превышен лимит {limit} кусков на проект',         // EN: "Piece limit {limit} per project exceeded"
+      errorInvalidRange: 'Недопустимый диапазон для куска',            // EN: "Invalid range for piece"
+      errorContainerNotFound: 'Источник для куска не найден',          // EN: "Piece source not found"
+      errorTooManyRanges: 'Превышен лимит {limit} диапазонов на один кусок', // EN: "Range limit {limit} per piece exceeded"
+      errorNameTooLong: 'Имя куска слишком длинное (макс {max})',      // EN: "Piece name too long (max {max})"
+      errorInvalidMethod: 'Недопустимый метод получения куска',        // EN: "Invalid piece acquisition method"
+      pieceClonedSuffix: ' (копия)',                                   // EN: " (copy)"
+      autoNameTemplate: '{name}({start}-{end})',                       // EN: "{name}({start}-{end})"
+      // T9 — design variants (§5.10).
+      variantGroup: {
+        badge: 'Вариант {n} из {total}',                               // EN: "Variant {n} of {total}"
+        createVariantAction: 'Создать вариант',                        // EN: "Create variant"
+        removeFromGroupAction: 'Убрать из группы вариантов',            // EN: "Remove from variant group"
+      },
+      // T5 — piece-authoring UI (DEC-T5-*).
+      modal: {
+        create: {
+          title: 'Создать кусок',
+          sourceLabel: 'Источник:',
+          rangeLabel: 'Диапазон:',
+          orientationLabel: 'Ориентация:',
+          methodLabel: 'Способ:',
+          nameLabel: 'Имя',
+          functionalLabelLabel: 'Функциональная метка (опционально)',
+          functionalLabelPlaceholder: 'напр. «промотор», «маркер Hyg»',
+          acquisitionUndefinedHint: 'Метод получения: пока не определён',
+          acquisitionPcrHint: 'Метод получения: ПЦР',
+          cancel: 'Отмена',
+          confirm: 'Создать',
+        },
+        primersPick: {
+          title: 'Кусок из существующих праймеров',
+          forwardLabel: 'Прямой праймер',
+          reverseLabel: 'Обратный праймер',
+          bindingPreview: 'Ампликон: {start}–{end} ({length} п.о.)',
+          bindingHint: 'Выберите оба праймера для предпросмотра',
+          emptyHint: 'Праймеров пока нет. Создайте через «новые праймеры».',
+          nameLabel: 'Имя куска',
+        },
+      },
+      contextMenu: {
+        createFromSelection: 'Отметить как кусок (P)',
+        createFromFeature: 'Кусок по этой фиче',
+        createFromExistingPrimers: 'Кусок из существующих праймеров',
+        createFromNewPrimers: 'Новые праймеры → Кусок',
+      },
+      originLabel: {
+        selection: 'выделение',
+        feature: 'по фиче',
+        'existing-primers': 'существующие праймеры',
+        'new-primers': 'новые праймеры',
+        'legacy-migration': 'миграция',
+      },
+      hint: {
+        primersReady: 'Праймеры готовы. Создать кусок?',
+      },
+    },
+
+    // Zones (T3 M-CANVAS-FOUR-TIER — state.zones slice, DEC-T3-*).
+    // Placeholder namespace: error/info toasts wired now; the real
+    // frame UI (render / drag / resize / merge) lands in T4.
+    zones: {
+      defaultName: 'Сборка {n}',                                       // EN: "Assembly {n}"
+      emptyZoneHint: 'Зона пуста',                                     // EN: "Zone is empty"
+      errorTooMany: 'Превышен лимит {limit} зон на проект',            // EN: "Zone limit {limit} per project exceeded"
+      errorTooSmall: 'Размер зоны меньше минимума',                    // EN: "Zone smaller than the minimum"
+      errorNameTooLong: 'Имя зоны слишком длинное',                    // EN: "Zone name too long"
+      errorNotesTooLong: 'Заметка зоны слишком длинная',               // EN: "Zone notes too long"
+      moveSuccess: '{node} → {zone}',                                  // EN: "{node} → {zone}"
+      moveToLoose: '{node} стал бесхозным',                            // EN: "{node} is now loose"
+      wrapLooseSuccess: 'Бесхозные узлы обёрнуты в зону «{name}»',      // EN: "Loose nodes wrapped into «{name}»"
+      wrapLooseEmpty: 'Нет бесхозных узлов',                           // EN: "No loose nodes"
+      mergeSuccess: 'Зоны объединены в «{name}»',                      // EN: "Zones merged into «{name}»"
+      splitNotImplemented: 'Разделение зон будет реализовано позже',   // EN: "Zone split not implemented yet"
+      removeWarning: 'Удаление зоны не удалит узлы — они станут бесхозными', // EN: "Removing a zone keeps its nodes (they become loose)"
+      crossZoneWarning: 'Связь {junction} стала cross-zone',           // EN: "Junction {junction} is now cross-zone"
+      // T4 — frame UI (context menu, header, cross-zone, collapse).
+      contextMenu: {
+        rename: 'Переименовать',                                       // EN: "Rename"
+        remove: 'Удалить зону',                                        // EN: "Delete zone"
+        mergeWith: 'Объединить с...',                                  // EN: "Merge with..."
+        collapse: 'Свернуть',                                          // EN: "Collapse"
+        expand: 'Развернуть',                                          // EN: "Expand"
+        editNotes: 'Заметки...',                                       // EN: "Notes..."
+        wrapLoose: 'Обернуть бесхозные узлы',                          // EN: "Wrap loose nodes"
+        fitToNodes: 'Подогнать под узлы',                              // EN: "Fit to nodes"
+        // T4.5 — 3-lane auto-layout controls.
+        laneAuto: 'Авто-раскладка',                                    // EN: "Auto-layout"
+        laneManual: 'Ручная раскладка',                                // EN: "Manual layout"
+        recomputeLayout: 'Перестроить раскладку',                      // EN: "Rebuild layout"
+      },
+      headerCounter: '{count} {nodes}',                                // EN: "{count} {nodes}"
+      crossZoneTooltip: 'Связь между зонами «{a}» и «{b}»',            // EN: "Junction between zones «{a}» and «{b}»"
+      collapsedHint: 'Зона свёрнута. Двойной клик для разворота.',     // EN: "Zone collapsed. Double-click to expand."
+      confirmRemove: 'Удалить зону «{name}»? Узлы внутри станут бесхозными.', // EN: "Delete zone «{name}»? Its nodes become loose."
+      moveSuccessToZone: '«{node}» перемещён в «{zone}»',              // EN: "«{node}» moved to «{zone}»"
+      moveSuccessToLoose: '«{node}» стал бесхозным',                   // EN: "«{node}» is now loose"
+      // T7 — inline sequence-mode (§5.12).
+      sequenceMode: {
+        toggleToGraph: 'Режим графа (G)',                              // EN: "Graph mode (G)"
+        toggleToSequence: 'Режим последовательности (S)',              // EN: "Sequence mode (S)"
+        emptyHint: 'Выбери диапазоны на источниках чтобы увидеть сборку', // EN: "Pick ranges on the sources to see the assembly"
+        availableSources: 'Доступные источники',                       // EN: "Available sources"
+        palette: 'Палитра кусков',                                     // EN: "Piece palette"
+        dragHere: 'Перетащи кусок сюда, чтобы добавить в сборку',       // EN: "Drag a piece here to add it to the assembly"
+        detachedHint: 'Свободные куски (не в сборке)',                  // EN: "Free pieces (not in the assembly)"
+        junctionMethod: {
+          'overlap-pcr': 'Overlap-PCR',
+          ligation: 'Лигаза',                                          // EN: "Ligase"
+          gibson: 'Gibson',
+          'golden-gate': 'Golden Gate',
+          kld: 'KLD',
+        },
+        junctionMethodShort: {
+          'overlap-pcr': 'OV',
+          ligation: 'L',
+          gibson: 'G',
+          'golden-gate': 'GG',
+          kld: 'KLD',
+        },
+        finalSelector: 'Финал:',                                       // EN: "Final:"
+        allBranches: 'Все варианты',                                   // EN: "All variants"
+        nt: 'нт',                                                      // EN: "nt"
+      },
+      // T8 — cross-zone source link badge (§5.9).
+      linkBadge: {
+        label: '← {zone}',                                             // EN: "← {zone}"
+        tooltip: 'Из зоны «{zone}»: {count} куск(ов)-источник(ов)',     // EN: "From zone «{zone}»: {count} source piece(s)"
+      },
+      highlighted: 'Выбрана из связи',                                 // EN: "Focused from a link"
+      // T4.5 — 3-lane auto-layout: lane labels + pin affordance.
+      lanes: {
+        sources: 'ИСТОЧНИКИ',                                          // EN: "SOURCES"
+        intermediate: 'ПРОМЕЖУТОЧНОЕ',                                 // EN: "INTERMEDIATE"
+        finals: 'ФИНАЛЫ',                                              // EN: "FINALS"
+      },
+      pin: {
+        pin: 'Закрепить',                                              // EN: "Pin"
+        unpin: 'Открепить',                                            // EN: "Unpin"
+        pinnedTooltip: 'Закреплено. Двойной клик чтобы открепить.',     // EN: "Pinned. Double-click to unpin."
+      },
+      // T9 — finals branching kinds (§5.7/§5.10, DEC-T9-11).
+      branching: {
+        clones: '{count} клонов',                                      // EN: "{count} clones"
+        variants: '{count} вариантов',                                 // EN: "{count} variants"
+        independent: '{count} финалов',                                // EN: "{count} finals"
+      },
+      // T10 — Sanger lab notebook (§5.11).
+      sanger: {
+        title: 'Sanger lab notebook',
+        openButton: 'Открыть Sanger',                                  // EN: "Open Sanger"
+        openIcon: '📋',
+        pendingShort: 'в ожидании',                                    // EN: "pending"
+        verifiedShort: 'подтверждено',                                 // EN: "verified"
+        failedShort: 'не прошло',                                      // EN: "failed"
+        filter: {
+          all: 'Все',                                                  // EN: "All"
+          pending: 'В ожидании',                                       // EN: "Pending"
+          verified: 'Подтверждено',                                    // EN: "Verified"
+          failed: 'Не прошло',                                         // EN: "Failed"
+        },
+        statusLabel: {
+          pending: 'В ожидании Sanger',                                // EN: "Sanger pending"
+          verified: 'Подтверждено Sanger',                             // EN: "Sanger verified"
+          failed: 'Не прошло Sanger',                                  // EN: "Sanger failed"
+          unplanned: 'Sanger не запланирован',                         // EN: "Sanger not planned"
+        },
+        notesPlaceholder: 'Заметки (например: «мутация в позиции 234», «плохой read»)...',
+        empty: 'Нет materialized колоний в этой зоне',                 // EN: "No materialized colonies in this zone"
+        zoneLabel: 'Зона: {name}',                                     // EN: "Zone: {name}"
+        close: 'Закрыть',                                              // EN: "Close"
+      },
+    },
+
+    // T9 — clone materialization modal (§5.10).
+    materialize: {
+      action: 'Materialize (отметить колонии)',                        // EN: "Materialize (mark colonies)"
+      modalTitle: 'Materialize: {kind} → {output}',                    // EN: "Materialize: {kind} → {output}"
+      cloneCountLabel: 'Число колоний (макс 96)',                       // EN: "Colony count (max 96)"
+      cloneLabelTemplate: 'Колония {n}',                               // EN: "Colony {n}"
+      confirmCount: 'Создать {count} клонов',                          // EN: "Create {count} clones"
+      cancel: 'Отмена',                                                // EN: "Cancel"
+    },
+
+    // Operations
+    opPCR: 'ПЦР',                                                       // EN: "PCR"
+    opRestriction: 'Restriction',                                      // EN: "Restriction"
+    opMutagenesis: 'Мутагенез',                                        // EN: "Mutagenesis"
+    opGibson: 'Сборка',                                                // EN: "Gibson Assembly"
+
+    // PCR popup
+    pcrPopupTitle: 'ПЦР региона',                                      // EN: "PCR of region"
+    pcrPopupNoSelection: 'Выделите регион в последовательности',       // EN: "Select a region in the sequence"
+    pcrPopupNoPrimers: 'Не удалось рассчитать праймеры',                // EN: "Could not design primers"
+    pcrPopupConfirm: 'Создать ампликон',                               // EN: "Create amplicon"
+
+    // Restriction popup
+    restrictionPopupTitle: 'Restriction Cut',                          // EN: "Restriction Cut"
+    restrictionPopupHint: 'Выберите фермент. Mock: контейнер делится на 2 фрагмента.', // EN: "Pick enzyme. Mock: splits into 2."
+    restrictionPopupEnzymeLabel: 'Фермент:',                           // EN: "Enzyme:"
+    restrictionPopupPreview: 'Результат: 2 линейных фрагмента с {enzyme} overhang.', // EN: "Result: 2 linear fragments with {enzyme} overhang."
+    restrictionPopupConfirm: 'Разрезать',                              // EN: "Cut"
+
+    // Mutagenesis popup
+    mutagenesisPopupTitle: 'Мутагенез',                                // EN: "Mutagenesis"
+    mutagenesisPopupNoSelection: 'Выделите регион для замены',         // EN: "Select a region to replace"
+    mutagenesisPopupMethodLabel: 'Метод:',                             // EN: "Method:"
+    mutagenesisPopupReplacementLabel: 'Замена (новая последовательность):', // EN: "Replacement (new sequence):"
+    mutagenesisPopupPreview: 'Регион {start}..{end} → «{repl}»',        // EN: "Region {start}..{end} → «{repl}»"
+    mutagenesisPopupConfirm: 'Создать мутант',                         // EN: "Create mutant"
+
+    // Gibson popup
+    gibsonPopupTitle: 'Сборка (Gibson)',                                // EN: "Assembly (Gibson)"
+    gibsonPopupTooFew: 'Требуется минимум 2 фрагмента в session',       // EN: "≥2 fragments required in session"
+    gibsonPopupClassLabel: 'Тип реакции:',                              // EN: "Reaction class:"
+    gibsonPopupOverlapHint: 'Overlap-регионы (последние 20 nt каждого):', // EN: "Overlap regions (last 20 nt of each):"
+    gibsonPopupConfirm: 'Собрать',                                      // EN: "Assemble"
+
+    // Shared popup
+    popupCancel: 'Отмена',                                              // EN: "Cancel"
+
+    // Entry into the project canvas (StartScreen Sidebar + Library top bar)
+    openProjectLabel: 'Открыть проект',                                 // EN: "Open project"
+    openProjectTip: 'Открыть канвас активного проекта',                 // EN: "Open the active project's canvas"
+    // DEV entry (legacy keys — kept for back-compat fallbacks)
+    devEntryLabel: '🧪 Canvas-скелет',                                  // EN: "🧪 Canvas skeleton" (DEV-only entry)
+    devEntryTip: 'M-CANVAS-SKELETON: Tree + Canvas + Editor (DEV only)', // EN: "M-CANVAS-SKELETON: Tree + Canvas + Editor"
   },
 
   // M-X.7a v2 K7 — AppShell + NavRail tooltip strings.

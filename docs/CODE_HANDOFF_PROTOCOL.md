@@ -53,6 +53,13 @@
 - [ ] §5 "Предположения" заполнен с источниками и статусом проверки
 - [ ] Размеры затрагиваемых модулей проверены через `list_directory_with_sizes` перед написанием спеки
 
+**Visual reference & component reuse (§2 CORE.md п.4-5, mandatory с 09.05.2026):**
+- [ ] Если в задаче есть HTML mockup / wireframe / design asset — спека содержит §0.1 Visual reference / Source of truth с явным правилом «всё в mockup'е = приёмочный критерий»
+- [ ] Если mockup'а нет — явно написано «no visual reference, design — на усмотрение Code в рамках DESIGN_SYSTEM.md tokens»
+- [ ] Для каждого упомянутого в спеке existing компонента (с паттернами `*View`, `*Editor`, `*Pane`, `*Workspace`) — grep'ом проверено наличие современной версии
+- [ ] Если есть легаси и рерайт — спека явно пишет «use X, NOT Y (legacy)» для каждой пары
+- [ ] Спека содержит §0.2 Component reuse audit со списком «use X, not Y» для всех компонентов в scope (см. `_TEMPLATE_SPEC.md`)
+
 Если Chat ловит себя в situation "это маленький fix, пропущу один пункт" — это **сигнал переложить fix на Code без спеки**, а не сократить спеку.
 
 ---
@@ -69,6 +76,8 @@
 - docs/SPRINT_<NAME>.md (это спека, ОБЯЗАТЕЛЬНО прочитать целиком до начала работы)
 
 Выполни Sprint <NAME> по чеклисту K1..KN в CURRENT_TASK.md.
+
+**Pre-K1 (mandatory если спека ссылается на mockup):** открыть HTML mockup из §0.1 спеки в Chrome (Tab 1, full window) **до** написания первой строки кода. Dev server в Tab 2 для side-by-side. Пройтись по DOM/CSS mockup'а на всякий случай даже если спека выглядит самодостаточно — правило из root cause M-X.7a → M-X.7a-FIX (35 расхождений из-за работы «по текстовым описаниям спеки»).
 
 Важно: спеку в docs/ не переписывай, не упрощай, не объединяй K-шаги.
 
@@ -137,6 +146,22 @@ Code в отчёте указывает **точные числа** (не "all g
 - §3.2 спеки требовал helper `validateFoo(input, options)`, реализован как `validateFoo(input, opts={})` с дефолтом — функционально эквивалентно
 - §4.1 K3 требовал переименовать `oldName` в `newName`, оставлен оба имени с deprecation comment, потому что 12 call sites — slowmotion миграция
 - §5 §"Предположения" пункт 3 был неверен: `getRegions()` возвращает не `Region[]` а `{ regions: Region[], errors: ... }` после Sprint X-fix-2. Адаптировано в K1.
+
+### Mockup coverage check (если спека ссылалась на §0.1 visual reference)
+**ОБЯЗАТЕЛЬНО** — перечислить что в mockup'е есть, но в коде НЕ реализовано (даже если спека явно не требовала). Это рано ловит polish-мисклассификацию (пример K6 M-X.7a: hover/focus + prefers-reduced-motion были в mockup'е, отложены как polish — и оказались приёмочными критериями, привели к M-X.7a-FIX cascade).
+
+Формат:
+- **Покрыто из mockup'а:** <кратко — zone headers, item rows, inspector header...>
+- **НЕ покрыто из mockup'а:**
+  - `<элемент mockup'а>` — <почему: spec не требовал / out of scope / отложено в polish>. **Flag для Chat:** это приёмочный критерий или реальный polish?
+- **Скриншот side-by-side** mockup vs current state для приёмки.
+
+### Visual reference confirmation
+**ОБЯЗАТЕЛЬНО** — одна из двух строк:
+- «Mockup был открыт side-by-side весь спринт (Tab 1: <path>, Tab 2: dev server)» — если в спеке был mockup
+- «No visual reference в спеке, design выбирался по DESIGN_SYSTEM.md tokens» — если mockup'а не было
+
+Если mockup был но Code его НЕ открывал — честно признаётся, это процессный bug Code-стороны. Chat фиксирует в пост-мортеме и предлагает повторный проход с открытым mockup'ом либо переход на K-FIX0 inventory pass (§2 CORE.md п.6).
 
 ### Открытые вопросы
 - OQ-1: <вопрос если Code наткнулся на неоднозначность>
@@ -318,6 +343,5 @@ Code в отчёте указывает **точные числа** (не "all g
 ---
 
 **Дата создания:** 29 апреля 2026
-**Обновлено:** 01.05.2026 (под новую структуру документации: CHAT_PLAYBOOK_CORE/APPENDIX, RELEASES.md, ANCHORS.md в STOP-фразе и финализации)
-**Источник:** систематизация проблем Sprint X / 1.7 / Map-WS / Import Start Screen (апрель 2026)
-**Версия документа:** 1.1 — обновление под реструктуризацию документации
+**Обновлено:** 09.05.2026 (§1 добавлен блок «Visual reference & component reuse»; §2 handoff технический текст — Pre-K1 mandatory mockup-open; §4 формат отчёта — Mockup coverage check + Visual reference confirmation)
+**Версия документа:** 1.2 — visual reference / component reuse / mockup coverage

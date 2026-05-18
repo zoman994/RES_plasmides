@@ -10,6 +10,7 @@
 
 _(наполняется при первой ротации)_
 
+- Sprint M-B.2 + Parser-Unification — 02–03.05.2026 — «Lazy-mount табов Importer + 0-based exclusive end в pvcs parser» (закрыты V50 / V49)
 - Sprint X cycle — 26.04.2026 — «Plasmid-Git data model + corrected undo timing» (закрыты V22 / V24 / V27)
 - Sprint 1.7 — 22.04.2026 — «Unified Editor + Virtual Full Sequence + Topology»
 - Sprint Map-WS-1 cycle — 21.04.2026 — «PlasmidWorkspace + sync cursor + feature palette»
@@ -227,3 +228,8 @@ Vitest: 604 → **634** (+30), pytest: 112 ✅, build: clean на каждом �
 ### До 28.03.2026 — Сессии 22–28
 
 - [x] **BUG-01..83:** Сессии 22-28.
+
+### 02–03.05.2026 — Sprint M-B.2 K4 + Parser-Unification
+
+- [x] **V50 — Parser double-+1 на start coordinate, AA-translation broken** (FIXED 03.05.2026, ветка `feature/racetrack-canvas`). Каскадный off-by-1 в `src/pvcs/snapgene_parser.py` (XML 1-based inclusive хранился как 0-based) + `src/pvcs/parser.py` добавлял ещё `+1` на start → CDS сдвинут на 2 nt → длина не кратна 3 → reading frame ехал. Фикс: `xml_start - 1` в snapgene_parser. Контракт по всему pipeline: **0-based exclusive end** (⛓ DEC-PARSER-COORD-01). Верификация на pUC19: lacZα / AmpR / AmpR promoter — все CDS ÷3 ✓. pytest 112/112, vitest 947/947.
+- [x] **V49 — 50-секундный hang на default open Step2Combined 5333 bp / 12 регионов** (FIXED 02.05.2026, M-B.2 K4 коммит `4351552`). MoleculeWorkspace + SequenceMapView (5333×2 + ~1700 AA codon rows) + AnnotationEditor → ~12–15K DOM nodes на default render. Фикс: lazy-mount табов, default «overview» — лёгкий PlasmidMiniMap + categorized summary (~50–100 nodes). ⛓ DEC-IMP-15 (инвариант lazy-mount для всех fullscreen tab UIs — M-D / M-E / M-H).

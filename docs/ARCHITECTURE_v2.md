@@ -674,17 +674,20 @@ flowchart TD
 
 ## 4. Persistence
 
-### 4.0 Имя формата файла: .bodge
+### 4.0 Имена форматов: .bodge и .bodgebox
 
-Расширение проекта — `.bodge`.
+BodgeGene использует два родных расширения, симметричных по семантике и этимологии:
 
-**Этимология (для README / статьи / маркетинга):** "to bodge" в британском инженерном жаргоне означает "склеить наспех, наколхозить, слепить из подручного". Это **самоироничное** название, отражающее реальность wet-lab cloning: биолог часто склеивает плазмиды из того, что есть под рукой, через PCR / Gibson / Golden Gate, и каждый успешный конструкт — это маленький bodge, доведённый до работающего состояния.
+- **`.bodge`** — весь проект (DAG + N контейнеров + primers + library + manifest). ZIP-архив.
+- **`.bodgebox`** — один контейнер (sequence + commits + provenance). Raw GenBank, не ZIP. Аналог SnapGene `.dna`, но открытый.
 
-Формат `.bodge` существует именно для того, чтобы **задокументировать этот bodge** — какие фрагменты, какими primers, в каком порядке, по какому методу. Не вылизанная синтетическая биология, а честный слепок реальной работы.
+**Этимология (для README / статьи / маркетинга).** "to bodge" в британском инженерном жаргоне означает "склеить наспех, наколхозить, слепить из подручного". Это самоироничное название, отражающее реальность wet-lab cloning: биолог часто склеивает плазмиды из того, что есть под рукой, через PCR / Gibson / Golden Gate, и каждый успешный конструкт — это маленький bodge, доведённый до работающего состояния.
 
-Технически — это ZIP-архив с manifest, project.json, container'ами в .gb, commits, primers, library. Плюс RO-Crate metadata в v0.9+ для FAIR-claims.
+`.bodgebox` — «коробка с одним bodge». Биологически это «виртуальный операционный стол» (принцип 1.13 «изоморфизм data ↔ протокол»): одна молекула + история операций над ней, вынесенная из проектного контекста.
 
-Альтернативное имя `.bdg` рассматривалось и отклонено: расширение уже занято в системе MIME (BadgeMaker, и др.), да и `.bodge` — звучит лучше и более self-explanatory.
+**Обязательство обратной совместимости** (⚓ DEC-INTEROP-01, 08.05.2026). Оба формата построены на стандартном GenBank с опциональным провенанс-слоем в structured COMMENT block. `.bodge` — ZIP из N валидных GenBank файлов + plain JSON manifest/dag/primers; `.bodgebox` — один валидный GenBank. Биолог без BodgeGene открывает `.bodgebox` переименовав в `.gb`, или распаковывает `.bodge` как `.zip` и извлекает отдельные GenBank плазмиды — с потерей BodgeGene-специфического DAG/commits, но без потери sequence + features + per-container provenance. Graceful degradation, не lock-in. Подробности — в ANCHORS.md «Sprint Interoperability».
+
+**Альтернативные имена рассмотрены и отклонены:** `.bdg` — расширение занято в MIME (BadgeMaker); `.bodgec` — обрезковое чувство, не самостоятельное слово; `.bodgemol` — точнее семантически, но звучит академично-сухо; `.box` — MIME-конфликты (Microsoft Sandbox, Box.com).
 
 ### 4.1 IndexedDB через Dexie.js
 
@@ -714,30 +717,44 @@ db.version(1).stores({
 
 ```
 project.bodge/
-├── manifest.json              ← {fileFormatVersion, schemaVersion, appVersion}
-├── project.json               ← Project entity
+├── manifest.json              ← {fileFormatVersion, schemaVersion, appVersion, kind: 'project'}
+├── project.json               ← Project entity (без sequence-данных — только id/name/tags/agent/refs)
 ├── containers/
-│   ├── <id>.json              ← MoleculeContainer body
-│   └── <id>.gb                ← GenBank export с COMMENT-block для provenance
-├── containerCommits/
-│   └── <hash>.json            ← content-addressable
+│   └── <id>.gb                ← валидный GenBank с BodgeGene-Provenance COMMENT block (§4.3)
 ├── projectCommits/
-│   └── <hash>.json            ← content-addressable
+│   └── <hash>.json            ← plain JSON — DAG рёбра (mix/PCR/digest/clone), параметры реакций
 ├── primers/
-│   └── primers.json
+│   └── primers.json           ← plain JSON — primer pool + back-refs (PrimerUsage)
 ├── library/
-│   └── library.json
+│   └── library.json           ← plain JSON — LibraryEntry refs (sequence живёт в containers/)
 ├── refs/
-│   └── refs.json
+│   └── refs.json              ← plain JSON — «project/<id>/main» → containerId pointers
 └── renders/                   ← optional, PNG/SVG previews
     └── <id>.png
 ```
 
-**RO-Crate metadata** (`ro-crate-metadata.json`) — добавляется в v0.9, не в v0.6. Без неё .bodge остаётся валидным ZIP с manifest + JSON.
+**Никаких proprietary fields в core data layer** (⚓ DEC-INTEROP-01). Sequence + features + ContainerCommits живут в `containers/<id>.gb` (GenBank + COMMENT-payload). DAG рёбра / project metadata / primers / library refs — plain JSON без бинарных полей и каких-либо экзотических энкодингов.
 
-### 4.3 GenBank export per container
+**Graceful degradation для биолога без BodgeGene.** Переименование `project.bodge` → `project.zip` + extract = working multi-file backup. В `containers/` лежат N валидных GenBank-плазмид, их открывают по одной в SnapGene / ApE / Geneious / BioPython. DAG-связи теряются, sequence + features + per-container provenance сохраняются. JSON файлы читаемы text-редактором — backup проектной структуры без специальных инструментов.
 
-Структурированный COMMENT-блок:
+**RO-Crate metadata** (`ro-crate-metadata.json`) — добавляется в v0.9 для FAIR-claims, не в v0.6. Без неё `.bodge` остаётся валидным ZIP с manifest + JSON.
+
+**Историческая заметка.** v1 draft этого документа (29.04.2026) имел пару файлов на контейнер — `<id>.json` (MoleculeContainer body) + `<id>.gb` (GenBank export). Дублировал sequence в двух местах, источник-of-truth раздваивался. Отвергнуто в DEC-INTEROP-01 (08.05.2026) — только `<id>.gb` на контейнер, всё BodgeGene-специфическое (commits/origin/provenance) сидит в COMMENT-payload того же файла.
+
+### 4.2.1 .bodgebox формат (raw GenBank)
+
+`.bodgebox` — это бит-в-бит равен файлу `containers/<id>.gb` внутри `.bodge` ZIP. Различие только в паковке: standalone файл без ZIP-обёртки. Переименование `.bodgebox` → `.gb` — bit-perfect эквивалент, открывается в любом GenBank-tool без потерь.
+
+Reuse export pipeline 95% (тот же GenBank serializer + COMMENT-payload builder, тот же schema). Разница в выходной обёртке: `.bodge` оборачивает результат в ZIP с соседними JSON-файлами; `.bodgebox` пишет сырой выход на диск.
+
+**Когда какой формат:**
+- Биолог экспортирует весь проект (бэкап, передача коллеге с BodgeGene, GitHub репродуцибельность) → `.bodge`.
+- Биолог хочет поделиться одной плазмидой (сохранив историю мутаций) → `.bodgebox`. Коллега откроет в SnapGene как `.gb` (с ограничениями) или в BodgeGene с полным provenance.
+- Биолог хочет поделиться одной плазмидой без истории («вот вектор который работает») → экспорт `.gb` без COMMENT-payload (режим «barebones» в export диалоге; v0.7+).
+
+### 4.3 GenBank экспорт + provenance COMMENT block
+
+Структурированный COMMENT-блок (это и есть provenance-слой из ⚓ DEC-INTEROP-01):
 ```
 COMMENT     ##BodgeGene-Provenance-START##
             schema      :: https://bodgegene.dev/schema/v1
@@ -746,7 +763,24 @@ COMMENT     ##BodgeGene-Provenance-START##
             ##BodgeGene-Provenance-END##
 ```
 
-Это NCBI-blessed pattern, все парсеры (SnapGene, Benchling, Geneious, ApE, BioPython) сохраняют его byte-for-byte. При re-import в BodgeGene — DAG восстанавливается из payload. При import в другие tools — sequence/features читаются нормально, COMMENT игнорируется.
+**Payload — base64-encoded JSON.** Содержит:
+- `containerId`, `baseSnapshotHash`, `currentHash`
+- `topology`, `ends` (null для circular)
+- `origin` (discriminated union: catalog / paste / file / library_clone / cross_project_clone / project_commit / manual_create)
+- `provenance` (project context: projectId / projectName / agent / createdAt)
+- `commits[]` (все ContainerCommits применённые к baseSnapshot — именно это даёт полный round-trip lineage)
+- `primersEmbedded[]` (при экспорте вместе с праймерами связанными через PrimerUsage)
+
+`payload` всегда base64 из-за NCBI-ограничения COMMENT (80 символов в строке, спецсимволы JSON ломаются на reformatting). Опциональный gzip+base64 если payload >50 KB.
+
+**Custom GenBank qualifiers** (non-breaking, ignored by other tools):
+- `/bodge_id=01ABC...` — stable feature ID для round-trip identity
+- `/parent_feature=01ABC...` — sub-feature → parent (DEC-LIB-04 hierarchy)
+- `/note=sequence:ATCG...` на `primer_bind` — SnapGene-симметричный primer attachment (DEC-LIB-08 round-trip)
+
+**Совместимость с другими tools.** NCBI-blessed pattern, все парсеры (SnapGene, Geneious, ApE, BioPython) сохраняют COMMENT byte-for-byte. При re-import в BodgeGene — commits + origin + provenance восстанавливаются из payload. При import в другие tools — sequence/features читаются нормально, COMMENT игнорируется. Benchling — единственный из mainstream tools где round-trip COMMENT под вопросом (возможный pretty-print) — тестируется отдельно перед claim'ом full support'а.
+
+**External-edit detection.** Если SnapGene-юзер правит sequence в экспортированном .gb, COMMENT остаётся прежним — hash в payload больше не совпадает с recomputed hash текущей sequence. BodgeGene при ре-import'е detect'ит это и покажет toast с выбором [Treat as new] / [Restore baseline & lose external edits]. Никогда не восстанавливаем lineage молча. Подробности — ANCHORS.md DEC-INTEROP-01.
 
 ### 4.4 Auto-save / multi-tab
 
@@ -1241,6 +1275,17 @@ UI: если handle stale при load — показываем неинтруз�
 
 ## 7. Roadmap
 
+> **Два сосуществующих workflow'а в canvas (добавлено 2026-05-16, D1):**
+> 1. **Isolated operations** — F3 PCR mode реализован (V71-V76);
+>    Mutagenesis/Restriction/Gibson/Cut — future. Биолог работает с одной
+>    операцией: hover ContainerBlock → kind-иконка → operation tab.
+> 2. **Assembly Drafts** (A1-A4) — высокоуровневая спецификация финальной
+>    конструкции: копипаст source-фрагментов в continuous sequence,
+>    primers на границах, «Realise as DAG» материализует N ops + N-1
+>    junctions + containers. Entry: «📋 Сборки» panel на canvas → «+ Новая
+>    сборка». Realise-ops доступны через тот же F3 PcrModeShell — Workflow 1
+>    = атом, Workflow 2 = composer.
+
 ### v0.6.0 (Q3 2026) — Persistence + DAG core
 
 Цель: **рабочий e2e сценарий** "создать проект → импортировать .gb → сохранить .bodge → открыть заново".
@@ -1540,6 +1585,10 @@ Milestones (по окнам, не по техническим спринтам):
 | **Container picker** | Modal для выбора контейнера в operation. Один из путей fragment-insert (UX смесь A+C). |
 | **Read-only Mix** | Mix Workspace в режиме просмотра committed ProjectCommit (открывается клик на DAG ребро) |
 | **Cross-project import modal** | Fullscreen modal с read-only DAG view проекта-донора. Реюзит DagView с readOnly:true. |
+| **`.bodge`** | Родное расширение проекта. ZIP-архив с N валидных GenBank файлов + plain JSON manifest/dag/primers/library. Открывается как `.zip` без BodgeGene. |
+| **`.bodgebox`** | Родное расширение одного контейнера. Raw GenBank с BodgeGene-Provenance COMMENT block. Переименование в `.gb` — bit-perfect эквивалент. |
+| **BodgeGene-Provenance COMMENT** | Structured COMMENT block в GenBank файле содержащий base64-encoded JSON с commits / origin / provenance / primersEmbedded. NCBI-blessed pattern — SnapGene/ApE/Geneious/BioPython сохраняют byte-for-byte. |
+| **External-edit detection** | Сравнение hash payload-baseline с recomputed hash текущей sequence при ре-импорте .gb. Расхождение → toast с выбором [Treat as new] / [Restore baseline]. |
 
 ---
 
@@ -1549,6 +1598,7 @@ Milestones (по окнам, не по техническим спринтам):
 - `docs/DESIGN_SYSTEM.md` — визуальный язык, цветовая палитра, типографика, компонентная библиотека
 - `docs/CODE_HANDOFF_PROTOCOL.md` — регламент работы Chat ↔ Code
 - `docs/SPEC_CHECKLIST.md` — pre-handoff чеклист для спек
+- `docs/guides/USER_GUIDE_FORMATS.md` — user-facing гайд по форматам .bodge и .bodgebox (объясняет биологу что внутри файлов, когда какой использовать, что произойдёт без BodgeGene)
 - `CHAT_PLAYBOOK.md` — общий регламент работы Chat
 - `DECISIONS.md` — append-only лог архитектурных решений с фундаментальными помеченными ⚓
 - `BUGS.md` — трекер багов (на момент rewrite — wipe, новый старт)
@@ -1565,12 +1615,13 @@ Milestones (по окнам, не по техническим спринтам):
 
 **Дата создания:** 29 апреля 2026
 **Авторы:** Игорь Синельников (концепт, решения) + Claude Chat (формализация, формулирование, документирование)
-**Версия документа:** 1.2 — MoleculeContainer.tagIds removed (Sprint M-A.3 finalization, Q1 collision closed)
+**Версия документа:** 1.3 — .bodgebox формат добавлен, §4 переписан под DEC-INTEROP-01 (обратная совместимость форматов как first-class concern)
 **Статус:** активный, эволюционирует с проектом
 
 **Changelog:**
 - 1.0 (29.04.2026) — initial draft, агрегатор апрельских обсуждений
 - 1.1 (01.05.2026, третья сессия) — обновлены §2.7 Library (полная замена под DEC-LIB-01..09 — flat personal collection вместо 3-tier ownership), §3.1 (убран `↓ Import sequence`), §3.5 Importer (3 источника + 2 контекста, no-project режим удалён), §3.7 Mermaid (Library label + edges), §7 v0.6.0 roadmap (M-A trifecta ✅ + M-A.3 Library + M-B.1/B.2/B.3 sub-sprints, M-H = полировка), §8.1 (Visualization first-class reuse block по DEC-REUSE-01), §10 (Library 3-tier ownership + sharing + features-browser + folder-hierarchy + auto-extract primers + `↓ Import sequence` + URL-import — все отвергнуто), §11 Глоссарий (Library / Clone-on-import / Frozen sequence / Library picker / PrimerUsage / Library entry — переписаны)
 - 1.2 (01.05.2026, четвёртая сессия — Sprint M-A.3 финализация) — §2.1 убрано поле `tagIds: UUID[]` из MoleculeContainer interface (⚓ DEC-LIB-10). Q1 collision из M-B Kickoff закрыт. Теги живут только на LibraryEntry; в проекте организация молекул идёт через DAG-навигацию + future provenance breadcrumb (M-C). Симметрично DEC-V2-30 (Project.tags = flat strings) и DEC-LIB-09 (Library = flat tagging).
+- 1.3 (08.05.2026, сессия по сути продукта и первому экрану) — §4.0 переписан под два родных формата (`.bodge` + `.bodgebox`); §4.2 перепаковка ZIP-структуры (убраны `<id>.json` и `containerCommits/`, всё BodgeGene-специфическое в COMMENT внутри .gb); добавлен §4.2.1 .bodgebox формат; §4.3 расширен с payload structure + custom qualifiers + external-edit detection. Источник: ⚓ DEC-INTEROP-01 (08.05.2026, «Sprint Interoperability» в ANCHORS.md). Парный кусок в docs/guides/USER_GUIDE_FORMATS.md для биолога.
 
 _При любом архитектурном решении после этой даты — обновить соответствующую секцию + зафиксировать в DECISIONS.md._

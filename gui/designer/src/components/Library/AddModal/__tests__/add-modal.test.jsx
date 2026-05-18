@@ -123,16 +123,79 @@ describe('M-X.7a v2 K6 — AddModal', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it('submit dispatches onLaunchPreImport with picked source + target', () => {
+  it('submit dispatches onLaunchPreImport with picked source + project:<id> target (post 11.05.2026: dynamic targets)', () => {
+    useStore.setState((s) => {
+      s.projects = {
+        pa: { id: 'pa', name: 'Active', containerIds: [] },
+        pb: { id: 'pb', name: 'Pinned', containerIds: [] },
+      };
+      s.pinnedProjectIds = ['pb'];
+      s.currentProjectId = 'pa';
+    });
     const onLaunch = vi.fn();
     const onClose = vi.fn();
     render(<AddModal open onClose={onClose} onLaunchPreImport={onLaunch} />);
-    fireEvent.click(screen.getByTestId('add-modal-source-paste'));
-    fireEvent.click(screen.getByTestId('add-modal-target-active').querySelector('input'));
+    // Source = file (no paste textarea path).
+    fireEvent.click(screen.getByTestId('add-modal-source-file'));
+    // Default target = current project (pa).
+    expect(screen.getByTestId('add-modal-target-project:pa')).toBeTruthy();
+    expect(screen.getByTestId('add-modal-target-project:pb')).toBeTruthy();
+    // Switch to pb.
+    fireEvent.click(screen.getByTestId('add-modal-target-project:pb').querySelector('input'));
     fireEvent.click(screen.getByTestId('add-modal-submit'));
-    expect(onLaunch).toHaveBeenCalledWith({ source: 'paste', target: 'active' });
-    // Modal closes after launch handoff.
+    expect(onLaunch).toHaveBeenCalledWith({ source: 'file', target: 'project:pb' });
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it('paste source surfaces a textarea; submit emits {source:paste, target, text}', () => {
+    useStore.setState((s) => {
+      s.projects = {};
+      s.pinnedProjectIds = [];
+      s.currentProjectId = null;
+    });
+    const onLaunch = vi.fn();
+    render(<AddModal open onClose={() => {}} onLaunchPreImport={onLaunch} />);
+    fireEvent.click(screen.getByTestId('add-modal-source-paste'));
+    const ta = screen.getByTestId('add-modal-paste-textarea');
+    expect(ta).toBeTruthy();
+    // Empty textarea → submit is disabled.
+    expect(screen.getByTestId('add-modal-submit').disabled).toBe(true);
+    fireEvent.change(ta, { target: { value: '>my\nATGCATGCATGC' } });
+    fireEvent.click(screen.getByTestId('add-modal-submit'));
+    expect(onLaunch).toHaveBeenCalledWith({
+      source: 'paste',
+      target: 'loose',
+      text: '>my\nATGCATGCATGC',
+    });
+  });
+
+  it('targets list contains «Без проекта» + every pinned + current (deduped)', () => {
+    useStore.setState((s) => {
+      s.projects = {
+        a: { id: 'a', name: 'Alpha', containerIds: [] },
+        b: { id: 'b', name: 'Beta', containerIds: [] },
+        c: { id: 'c', name: 'Gamma', containerIds: [] },
+      };
+      s.pinnedProjectIds = ['a', 'b'];
+      s.currentProjectId = 'c';
+    });
+    render(<AddModal open onClose={() => {}} onLaunchPreImport={() => {}} />);
+    expect(screen.getByTestId('add-modal-target-loose')).toBeTruthy();
+    expect(screen.getByTestId('add-modal-target-project:a')).toBeTruthy();
+    expect(screen.getByTestId('add-modal-target-project:b')).toBeTruthy();
+    // Current (c) not in pinned → appended.
+    expect(screen.getByTestId('add-modal-target-project:c')).toBeTruthy();
+  });
+
+  it('only «Без проекта» when there are no pinned and no current', () => {
+    useStore.setState((s) => {
+      s.projects = {};
+      s.pinnedProjectIds = [];
+      s.currentProjectId = null;
+    });
+    render(<AddModal open onClose={() => {}} onLaunchPreImport={() => {}} />);
+    expect(screen.getByTestId('add-modal-target-loose')).toBeTruthy();
+    expect(screen.queryByTestId('add-modal-target-active')).toBeNull();
   });
 });
 

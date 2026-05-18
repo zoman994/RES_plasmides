@@ -35,6 +35,15 @@
 - [ ] §STOP-условие явно описано
 - [ ] Формат отчёта Code упомянут (со ссылкой на CODE_HANDOFF_PROTOCOL §4)
 
+## Visual reference & component reuse (mandatory с 09.05.2026)
+
+- [ ] **Если в задаче есть mockup** — я открыл его в браузере и прошёлся по DOM/CSS перед написанием спеки
+- [ ] Спека содержит **§0.1 Visual reference / Source of truth** или явно «no visual reference» (не пропускать секцию)
+- [ ] Спека разграничивает «приёмочный критерий» (= в mockup'е) vs «polish» (= НЕ в mockup'е)
+- [ ] **Для каждого existing компонента в спеке** — grep'ом проверил наличие современной версии (`*View`, `*Editor`, `*Pane`, `*Workspace`, папка vs одиночный .jsx)
+- [ ] Спека содержит **§0.2 Component reuse audit** со списком «use X, NOT Y» для всех легаси-пар в скоупе
+- [ ] **Inventory pass как первый шаг** если это FIX-спринт и предыдущая приёмка показала >5 расхождений
+
 ## Handoff message
 
 - [ ] Перечислены **все** файлы которые Code должен прочитать
@@ -58,4 +67,4 @@
 
 ---
 
-**Last updated:** 01.05.2026 (под новую структуру документации: STOP-фраза включает RELEASES.md и ANCHORS.md)
+**Last updated:** 09.05.2026 (добавлен блок «Visual reference & component reuse» — mockup audit, §0.1, §0.2 component reuse audit, inventory pass для FIX-спринтов)

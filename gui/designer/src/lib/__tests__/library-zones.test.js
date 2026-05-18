@@ -1,67 +1,60 @@
 /**
- * library-zones — Sprint M-X.7a v2 K1.
+ * library-zones — Sprint M-X.7c K3 (DEC-UIRREV-ZONES-MERGE-01).
  *
- * `classifyEntryZone(entry, ctx)` derives the canonical zone label
- * from an entry shape. Used to:
- *   • Derive a zone for legacy / pre-v2 entries (post-wipe should
- *     never apply, but the helper is defensive).
- *   • Pick the right action-row variant in K3 (`getActionsFor`).
- *   • Drive zone-aware initial state of `useEditableModeToggle`.
+ * `classifyEntryZone(entry)` returns one of two zones:
+ *   • 'loose' — entry not bound to any project.
+ *   • 'bodge' — entry has a `projectId`.
  *
- * Returns one of: 'loose' | 'active_bodge' | 'readonly_bodge' | 'lab_pool'.
+ * Legacy four-value enum (`active_bodge | readonly_bodge | lab_pool`)
+ * is migrated lazily into the canonical pair via `entry.projectId`.
  */
 import { describe, it, expect } from 'vitest';
-import { classifyEntryZone } from '../library-zones';
+import { classifyEntryZone, LIBRARY_ZONES } from '../library-zones';
 
-describe('M-X.7a v2 K1 — classifyEntryZone', () => {
-  it('returns explicit zone field when present and valid', () => {
+describe('M-X.7c K3 — classifyEntryZone (2-zone canon)', () => {
+  it('returns explicit canonical zone field when present', () => {
     expect(classifyEntryZone({ zone: 'loose' })).toBe('loose');
-    expect(classifyEntryZone({ zone: 'active_bodge' })).toBe('active_bodge');
-    expect(classifyEntryZone({ zone: 'readonly_bodge' })).toBe('readonly_bodge');
-    expect(classifyEntryZone({ zone: 'lab_pool' })).toBe('lab_pool');
+    expect(classifyEntryZone({ zone: 'bodge', projectId: 'p1' })).toBe('bodge');
   });
 
-  it('ignores invalid zone field and re-derives', () => {
-    const e = { zone: 'invalid_zone', kind: 'container' };
-    expect(classifyEntryZone(e)).toBe('loose');
+  it('legacy zones fall back to projectId-derivation', () => {
+    expect(classifyEntryZone({ zone: 'active_bodge', projectId: 'p1' })).toBe('bodge');
+    expect(classifyEntryZone({ zone: 'readonly_bodge', projectId: 'p2' })).toBe('bodge');
+    // Lab pool primer with no projectId → loose (Lab pool is now a View).
+    expect(classifyEntryZone({ zone: 'lab_pool', kind: 'primer', inLabStock: true })).toBe('loose');
+    // Lab pool primer with projectId → bodge (the project owns it).
+    expect(classifyEntryZone({ zone: 'lab_pool', kind: 'primer', projectId: 'p1' })).toBe('bodge');
   });
 
-  it('primer with inLabStock=true → "lab_pool"', () => {
+  it('primer with inLabStock=true and no projectId → loose (Lab pool is no longer a Zone)', () => {
     const e = { kind: 'primer', inLabStock: true };
-    expect(classifyEntryZone(e)).toBe('lab_pool');
-  });
-
-  it('primer with inLabStock=false and no projectId → "loose"', () => {
-    const e = { kind: 'primer', inLabStock: false };
     expect(classifyEntryZone(e)).toBe('loose');
   });
 
-  it('container with projectId matching active project → "active_bodge"', () => {
+  it('container with projectId → "bodge" regardless of active context', () => {
     const e = { kind: 'container', projectId: 'p1' };
-    expect(classifyEntryZone(e, { activeProjectId: 'p1' })).toBe('active_bodge');
-  });
-
-  it('container with projectId NOT matching active project → "readonly_bodge"', () => {
-    const e = { kind: 'container', projectId: 'p2' };
-    expect(classifyEntryZone(e, { activeProjectId: 'p1' })).toBe('readonly_bodge');
-  });
-
-  it('container with projectId but no active project context → "readonly_bodge"', () => {
-    const e = { kind: 'container', projectId: 'p1' };
-    expect(classifyEntryZone(e)).toBe('readonly_bodge');
+    expect(classifyEntryZone(e)).toBe('bodge');
+    // ctx.activeProjectId is now ignored — active/readonly is a UI concept.
+    expect(classifyEntryZone(e, { activeProjectId: 'p1' })).toBe('bodge');
+    expect(classifyEntryZone(e, { activeProjectId: 'pOther' })).toBe('bodge');
   });
 
   it('container with no projectId → "loose"', () => {
-    const e = { kind: 'container' };
-    expect(classifyEntryZone(e)).toBe('loose');
+    expect(classifyEntryZone({ kind: 'container' })).toBe('loose');
   });
 
-  it('null / undefined entry → "loose" (defensive default)', () => {
+  it('null / undefined / empty → "loose" (defensive default)', () => {
     expect(classifyEntryZone(null)).toBe('loose');
     expect(classifyEntryZone(undefined)).toBe('loose');
+    expect(classifyEntryZone({})).toBe('loose');
   });
 
-  it('empty object → "loose"', () => {
-    expect(classifyEntryZone({})).toBe('loose');
+  it('invalid zone field falls through to projectId derivation', () => {
+    expect(classifyEntryZone({ zone: 'made_up' })).toBe('loose');
+    expect(classifyEntryZone({ zone: 'made_up', projectId: 'p1' })).toBe('bodge');
+  });
+
+  it('LIBRARY_ZONES exports canonical 2-value list', () => {
+    expect(LIBRARY_ZONES).toEqual(['loose', 'bodge']);
   });
 });

@@ -31,6 +31,20 @@ export default defineConfig({
           { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
           { src: '/icons/icon-512-maskable.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
+        // OS-level «jump list» shortcuts. In PWA standalone mode
+        // these surface on the app-icon right-click (Win taskbar /
+        // macOS dock). They also provide keyboard hints — Chrome
+        // DevTools «Manifest» tab shows them. URL parameters drive
+        // the launch — App.jsx reads `?action=…` on mount and
+        // dispatches the corresponding action.
+        shortcuts: [
+          { name: 'Создать проект', short_name: 'Создать', url: '/?action=new-project',
+            icons: [{ src: '/icons/icon-192.png', sizes: '192x192' }] },
+          { name: 'Загрузить .bodge', short_name: 'Открыть', url: '/?action=open-bodge',
+            icons: [{ src: '/icons/icon-192.png', sizes: '192x192' }] },
+          { name: 'Все проекты', short_name: 'Поиск', url: '/?action=command-palette',
+            icons: [{ src: '/icons/icon-192.png', sizes: '192x192' }] },
+        ],
       },
       workbox: {
         // Precache only app shell + small assets. Excluding `json` keeps the
@@ -88,6 +102,15 @@ export default defineConfig({
   },
   server: {
     port: 3000,
+    // 15.05.2026 — bind ALL interfaces (incl. raw IPv4 127.0.0.1), not
+    // just `localhost`. Default Vite bound localhost-only → resolved to
+    // IPv6 `::1` on this Win box, so `http://127.0.0.1:3000` had NOTHING
+    // listening and AmneziaVPN (active WireGuard tunnel) hijacked the
+    // `localhost`/`::1` path and served a STALE response while the real
+    // server served fresh code. Binding 0.0.0.0 + using raw 127.0.0.1
+    // gives a deterministic VPN-bypassing path.
+    host: true,
+    strictPort: true,
     // Sprint M-X.3 follow-up (05.05.2026) — explicit HMR endpoint.
     // Without these, Vite auto-detects the WS host/port from
     // `location`, which fell over for biolog: «при открытом окне
@@ -98,15 +121,17 @@ export default defineConfig({
     // forwardConsole handler tried to ws.send() → TypeError →
     // unhandled-rejection → forwarder ran again → infinite recursion
     // inside @vite/client. Pinning the URL deterministically makes
-    // the failure visible early instead of cascading.
+    // the failure visible early instead of cascading. 15.05.2026 —
+    // pinned to raw IPv4 127.0.0.1 so the HMR ws also bypasses the
+    // AmneziaVPN localhost hijack.
     hmr: {
-      host: 'localhost',
+      host: '127.0.0.1',
       protocol: 'ws',
       clientPort: 3000,
       port: 3000,
     },
     proxy: {
-      '/api': 'http://localhost:8000',
+      '/api': 'http://127.0.0.1:8000',
     },
   },
   test: {

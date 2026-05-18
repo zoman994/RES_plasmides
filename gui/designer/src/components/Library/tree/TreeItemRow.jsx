@@ -18,8 +18,10 @@
  * without paying the cost of full track rendering on every tree
  * row. Rich preview lives on hover (M-X.7c polish, deferred).
  */
-import { memo } from 'react';
+import { memo, useState, useCallback } from 'react';
 import PlasmidMiniMap from '../../PlasmidMiniMap';
+import { useStore } from '../../../store';
+import { STRINGS } from '../../../lib/strings';
 
 const INDENT_PX = [12, 22, 38, 54, 70];
 
@@ -125,6 +127,74 @@ export const TreeItemRow = memo(function TreeItemRow({
   // action-row's «Скопировать в активный» button instead.
   draggable = false,
 }) {
+  // M-X.7c K5 — hover-revealed «+» quick-add per
+  // DEC-UIRREV-QUICKADD-HOVER-01. Visible only when an active
+  // project exists AND this entry is not already part of it.
+  const [hovered, setHovered] = useState(false);
+  const currentProjectId = useStore((s) => s.currentProjectId);
+  const cloneEntryToActiveProject = useStore((s) => s.cloneEntryToActiveProject);
+  const showToast = useStore((s) => s.showToast);
+  const projects = useStore((s) => s.projects);
+  // Quick-delete moves the entry into the Trash zone (sets
+  // `_pendingDelete: true`). The undo toast lets the user revert in
+  // one click; otherwise the entry stays in Trash until the user
+  // explicitly purges it via the TrashZone surface. No auto-commit
+  // on toast dismiss — items must survive a tab close so they can be
+  // recovered from the Trash zone.
+  const markPendingDelete = useStore((s) => s.markLibraryEntryPendingDelete);
+  const unmarkPendingDelete = useStore((s) => s.unmarkLibraryEntryPendingDelete);
+  const showQuickAdd = !!currentProjectId
+    && !!entry
+    && entry.kind !== 'primer' /* primers come later via specific flow */
+    && entry.projectId !== currentProjectId;
+  const onQuickAdd = useCallback(async (e) => {
+    e.stopPropagation();
+    if (!entry?.id || !cloneEntryToActiveProject) return;
+    try {
+      let res = await cloneEntryToActiveProject(entry.id);
+      // V52 — entry already in the active project: confirm before
+      // adding a second copy (default = Нет, no silent duplicate).
+      if (res && res.ok === false && res.reason === 'duplicate') {
+        const dupName = res.name || entry.name || entry.id;
+        const ask = (typeof window !== 'undefined' && typeof window.confirm === 'function')
+          ? window.confirm(`«${dupName}» уже есть в этом проекте. Добавить ещё одну копию?`)
+          : false;
+        if (!ask) {
+          showToast?.(`«${dupName}» уже в проекте — не добавлено`, 'info');
+          return;
+        }
+        res = await cloneEntryToActiveProject(entry.id, { force: true });
+        if (!res || res.ok === false) {
+          showToast?.('Не удалось добавить копию', 'error');
+          return;
+        }
+      }
+      const projName = projects?.[currentProjectId]?.name || currentProjectId;
+      const toastFn = STRINGS.libraryWorkspace?.treeRow?.quickAddDoneToast;
+      const msg = typeof toastFn === 'function'
+        ? toastFn(entry.name || entry.id, projName)
+        : `${entry.name || entry.id} добавлен в ${projName}`;
+      showToast?.(msg, 'success');
+    } catch (err) {
+      showToast?.(err?.message || 'Ошибка', 'error');
+    }
+  }, [entry, cloneEntryToActiveProject, currentProjectId, projects, showToast]);
+  const onQuickDelete = useCallback(async (e) => {
+    e.stopPropagation();
+    if (!entry?.id || !markPendingDelete) return;
+    const name = entry.name || entry.id;
+    try {
+      await markPendingDelete(entry.id);
+      const toastFn = STRINGS.libraryWorkspace?.treeRow?.quickDeleteDoneToast;
+      const msg = typeof toastFn === 'function' ? toastFn(name) : `Удалено: ${name} (в Корзине)`;
+      showToast?.(msg, 'info', {
+        onUndo: () => unmarkPendingDelete?.(entry.id),
+      });
+    } catch (err) {
+      showToast?.(err?.message || 'Ошибка', 'error');
+    }
+  }, [entry, markPendingDelete, unmarkPendingDelete, showToast]);
+
   if (!entry) return null;
   const meta = metaLine(entry);
   const oc = originChar(entry);
@@ -148,9 +218,11 @@ export const TreeItemRow = memo(function TreeItemRow({
       onClick={() => onSelect?.(entry)}
       onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onSelect?.(entry); } }}
       onMouseEnter={(e) => {
+        setHovered(true);
         if (!isSelected) e.currentTarget.style.background = 'var(--surface-2)';
       }}
       onMouseLeave={(e) => {
+        setHovered(false);
         if (!isSelected) e.currentTarget.style.background = 'transparent';
       }}
       style={{
@@ -194,6 +266,49 @@ export const TreeItemRow = memo(function TreeItemRow({
           >{meta}</div>
         )}
       </div>
+      {showQuickAdd && (
+        <button
+          type="button"
+          data-testid={`${testId || `tree-item-${entry.id}`}-quickadd`}
+          title={STRINGS.libraryWorkspace?.treeRow?.quickAddTooltip || 'Добавить в активный проект'}
+          onClick={onQuickAdd}
+          style={{
+            opacity: hovered ? 1 : 0,
+            transition: 'opacity 120ms ease-out',
+            background: 'transparent',
+            border: '1px solid var(--border-subtle)',
+            borderRadius: 3,
+            padding: '0 5px',
+            fontSize: 12,
+            lineHeight: '16px',
+            color: 'var(--accent-700)',
+            cursor: 'pointer',
+            flexShrink: 0,
+          }}
+        >+</button>
+      )}
+      {/* Hover-revealed quick-delete. Soft-delete with 5-sec undo
+          window via the toast — biolog can recover with one click
+          if it was a misclick. */}
+      <button
+        type="button"
+        data-testid={`${testId || `tree-item-${entry.id}`}-quickdelete`}
+        title={STRINGS.libraryWorkspace?.treeRow?.quickDeleteTooltip || 'Удалить в Корзину'}
+        onClick={onQuickDelete}
+        style={{
+          opacity: hovered ? 1 : 0,
+          transition: 'opacity 120ms ease-out',
+          background: 'transparent',
+          border: '1px solid var(--border-subtle)',
+          borderRadius: 3,
+          padding: '0 5px',
+          fontSize: 11,
+          lineHeight: '16px',
+          color: 'rgb(220, 38, 38)',
+          cursor: 'pointer',
+          flexShrink: 0,
+        }}
+      >🗑</button>
       <span
         data-testid={`${testId || `tree-item-${entry.id}`}-origin`}
         title={entry?.origin?.kind || ''}

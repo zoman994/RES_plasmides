@@ -153,6 +153,59 @@ describe('M-X.7a v2 K1 — librarySlice v2 extensions', () => {
       expect(result.ok).toBe(false);
       expect(result.reason).toBe('no-active-project');
     });
+
+    // V52 — quick-add must not silently duplicate the same entry into
+    // the active project. Fingerprint = name + resourceHash (fallback
+    // sequence). Detection lives in the store action so every entry
+    // path (quick-add, AddModal R4) shares the invariant.
+    it('V52 — second clone of same entry returns reason=duplicate, no new entry', async () => {
+      await useStore.getState().addLibraryEntry(makeContainer({
+        id: 'src', name: 'pUC19', payload: { sequence: 'AAAA', length: 4, resourceHash: 'h1' },
+      }));
+      const first = await useStore.getState().cloneEntryToActiveProject('src');
+      expect(first.ok).toBe(true);
+      const countAfterFirst = Object.values(useStore.getState().libraryEntries)
+        .filter((e) => e.projectId === 'pa').length;
+      const dup = await useStore.getState().cloneEntryToActiveProject('src');
+      expect(dup.ok).toBe(false);
+      expect(dup.reason).toBe('duplicate');
+      expect(dup.existingId).toBe(first.id);
+      expect(dup.name).toBe('pUC19');
+      const countAfterDup = Object.values(useStore.getState().libraryEntries)
+        .filter((e) => e.projectId === 'pa').length;
+      expect(countAfterDup).toBe(countAfterFirst); // nothing added
+    });
+
+    it('V52 — { force:true } clones anyway (explicit "Да")', async () => {
+      await useStore.getState().addLibraryEntry(makeContainer({
+        id: 'src', name: 'pUC19', payload: { sequence: 'AAAA', length: 4, resourceHash: 'h1' },
+      }));
+      await useStore.getState().cloneEntryToActiveProject('src');
+      const forced = await useStore.getState().cloneEntryToActiveProject('src', { force: true });
+      expect(forced.ok).toBe(true);
+      const inProj = Object.values(useStore.getState().libraryEntries)
+        .filter((e) => e.projectId === 'pa');
+      expect(inProj).toHaveLength(2); // two copies now
+    });
+
+    it('V52 — different name OR different hash is NOT a duplicate', async () => {
+      await useStore.getState().addLibraryEntry(makeContainer({
+        id: 'src', name: 'pUC19', payload: { sequence: 'AAAA', length: 4, resourceHash: 'h1' },
+      }));
+      await useStore.getState().cloneEntryToActiveProject('src');
+      // same hash, different name → not a dup
+      await useStore.getState().addLibraryEntry(makeContainer({
+        id: 'src2', name: 'pET28', payload: { sequence: 'AAAA', length: 4, resourceHash: 'h1' },
+      }));
+      const r2 = await useStore.getState().cloneEntryToActiveProject('src2');
+      expect(r2.ok).toBe(true);
+      // same name, different hash → not a dup
+      await useStore.getState().addLibraryEntry(makeContainer({
+        id: 'src3', name: 'pUC19', payload: { sequence: 'TTTT', length: 4, resourceHash: 'h2' },
+      }));
+      const r3 = await useStore.getState().cloneEntryToActiveProject('src3');
+      expect(r3.ok).toBe(true);
+    });
   });
 
   describe('extractEntryToLoose', () => {

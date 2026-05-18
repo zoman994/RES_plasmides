@@ -36,25 +36,27 @@ describe('M-X.7a v2 K3 — getActionsFor', () => {
     expect(getActionsFor(containerEntry, '', stubCtx())).toEqual([]);
   });
 
-  it('loose × container — 6 actions, primary "useInActive"', () => {
+  it('loose × container — 5 actions (M-X.7c K6: «Открыть» dropped), primary "addToActiveProject"', () => {
     const list = getActionsFor(containerEntry, 'loose', stubCtx({ hasActiveProject: true }));
-    expect(list.length).toBe(6);
-    expect(list[0].id).toBe('useInActive');
+    expect(list.length).toBe(5);
+    expect(list[0].id).toBe('addToActiveProject');
     expect(list[0].variant).toBe('primary');
     expect(list.find((a) => a.id === 'delete').variant).toBe('danger');
+    // «Открыть» (id='open') no longer rendered.
+    expect(list.find((a) => a.id === 'open')).toBeUndefined();
   });
 
-  it('loose × container without active project — useInActive disabled with tooltip', () => {
+  it('loose × container without active project — addToActiveProject disabled with tooltip', () => {
     const list = getActionsFor(containerEntry, 'loose', stubCtx({ hasActiveProject: false }));
-    const useAction = list.find((a) => a.id === 'useInActive');
+    const useAction = list.find((a) => a.id === 'addToActiveProject');
     expect(useAction.disabled).toBe(true);
-    expect(useAction.tooltip).toMatch(/активный проект/i);
+    expect(useAction.tooltip).toMatch(/активн.*проект/i);
   });
 
-  it('loose × primer — 5 actions', () => {
+  it('loose × primer — 5 actions, primary "addToActiveProject"', () => {
     const list = getActionsFor(primerEntry, 'loose', stubCtx({ hasActiveProject: true }));
     expect(list.length).toBe(5);
-    expect(list[0].id).toBe('useInActive');
+    expect(list[0].id).toBe('addToActiveProject');
   });
 
   it('active_bodge × container — 7 actions, saveAsVersion disabled with M-X.7b tooltip', () => {

@@ -2,6 +2,22 @@ import { StrictMode, Component } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
+import { purgeStaleServiceWorkers } from './lib/pwa-install.js'
+
+// V77 — DEV ONLY. A service worker from a past build/preview keeps
+// serving its old precache on the dev origin, so `npm run dev` shows
+// stale code. import.meta.env.DEV is false in the production build, so
+// the real PWA SW (offline) is untouched there. If a SW was still
+// controlling this page, reload ONCE (sessionStorage-guarded — no loop)
+// so the dev server serves fresh files.
+if (import.meta.env.DEV) {
+  purgeStaleServiceWorkers().then((r) => {
+    if (r.hadController && !sessionStorage.getItem('bg-dev-sw-purged')) {
+      sessionStorage.setItem('bg-dev-sw-purged', '1');
+      window.location.reload();
+    }
+  }).catch(() => { /* best-effort */ });
+}
 
 class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { error: null }; }
