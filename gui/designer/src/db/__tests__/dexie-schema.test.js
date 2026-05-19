@@ -20,11 +20,11 @@ describe('K1 — Dexie schema v4 (M-X.7a v2 K1 bump from v3)', () => {
     await freshDB();
   });
 
-  it('opens schema with projects + containers + library + primers tables', async () => {
+  it('opens schema with projects + containers + library + primers + snippets tables', async () => {
     expect(db.tables.map(t => t.name).sort()).toEqual(
-      ['containers', 'library', 'primers', 'projects'],
+      ['containers', 'library', 'primers', 'projects', 'snippets'],
     );
-    expect(db.verno).toBe(4);
+    expect(db.verno).toBe(5);
   });
 
   it('round-trips a project record via put/get', async () => {

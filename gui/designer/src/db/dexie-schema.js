@@ -1,7 +1,7 @@
 import Dexie from 'dexie';
 
 export const DB_NAME = 'bodgegene-db';
-export const DB_VERSION = 4;
+export const DB_VERSION = 5;
 
 /**
  * Schema v3 (M-B.1 K1, DEC-IMP-11 ⚓):
@@ -77,6 +77,16 @@ export class BodgeDB extends Dexie {
       await tx.table('primers').clear();
       await tx.table('containers').clear();
       await tx.table('projects').clear();
+    });
+    // Schema v5 (M-CANVAS-WORKFLOW-UX K2, SPEC §6.5/§8): account-global
+    // custom «обвес» snippets. Purely ADDITIVE — a new table only, no
+    // data migration, existing tables untouched (no wipe).
+    this.version(5).stores({
+      projects: 'id, name, createdAt, updatedAt',
+      containers: 'id, projectId, kind, name, [projectId+kind]',
+      library: 'id, kind, addedAt, [kind+addedAt], *tags, zone, projectId',
+      primers: 'id, name, projectId, status, addedAt, resourceHash, [projectId+status]',
+      snippets: 'id, name, category, createdAt',
     });
   }
 }
@@ -262,4 +272,25 @@ export async function listAllLibraryTags() {
     }
   }
   return Array.from(set);
+}
+
+// ── Custom snippets (M-CANVAS-WORKFLOW-UX K2, SPEC §6.5) ───────────────
+// Account-global (NOT project-scoped) — deliberately excluded from
+// clearAll/deleteProject so a biolog's custom «обвес» catalog survives
+// project churn. Project-local sharing is a T-future .bodge extension.
+//
+// SnippetRow: { id, name, sequence, category, isCustom:true, createdAt }
+
+export async function putSnippet(row) {
+  return getDB().snippets.put(row);
+}
+
+export async function listSnippets() {
+  const rows = await getDB().snippets.toArray();
+  rows.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  return rows;
+}
+
+export async function deleteSnippet(id) {
+  return getDB().snippets.delete(id);
 }

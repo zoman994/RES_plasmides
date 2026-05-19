@@ -144,12 +144,12 @@ describe('M-X.7a v2 K1 — Dexie schema v4 wipes legacy primers (DEC-MX7A-V2-03)
   // v3→v4 wipes everything per DEC-MX7A-V2-03. Tests below reflect
   // post-K1 reality: any pre-v4 entries are gone after the
   // upgrade.
-  it('opens at v4 with the same 4 tables', async () => {
+  it('opens at v5 with the 5 tables (+snippets, M-CANVAS-WORKFLOW-UX K2)', async () => {
     const db = await freshDB();
     expect(db.tables.map(t => t.name).sort()).toEqual(
-      ['containers', 'library', 'primers', 'projects'],
+      ['containers', 'library', 'primers', 'projects', 'snippets'],
     );
-    expect(db.verno).toBe(4);
+    expect(db.verno).toBe(5);
   });
 
   it('upgrade chain v2 → v4 wipes legacy library primers (no migration survives)', async () => {
