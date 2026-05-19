@@ -30,6 +30,7 @@ import { v7 as uuidv7 } from 'uuid';
 import InsertGapModal from './InsertGapModal';
 import SnippetCatalogModal from './SnippetCatalogModal';
 import SynthesisModal from './SynthesisModal';
+import RangePickerModal from './RangePickerModal';
 import AssemblyPrimersPanel from './AssemblyPrimersPanel';
 import RealiseModal from './RealiseModal';
 import { useAssemblyPrimerWriting } from './useAssemblyPrimerWriting';
@@ -100,6 +101,8 @@ export default function AssemblyShellBody({ draft }) {
   const [gapOpen, setGapOpen] = useState(false);
   const [snippetOpen, setSnippetOpen] = useState(false);
   const [synthesisOpen, setSynthesisOpen] = useState(false);
+  // K5 — range-picker context: { kind:'entry'|'container', payload, atIndex? }.
+  const [rangeSource, setRangeSource] = useState(null);
   const [realiseOpen, setRealiseOpen] = useState(false);
   const dropPosRef = useRef(0);
 
@@ -132,9 +135,9 @@ export default function AssemblyShellBody({ draft }) {
     draftId, sequence, boundaries, caretAnchor, caretPos, actions, state,
   });
 
-  // K4 — drag a container from the sidebar; drop anywhere on the viewer
-  // inserts a full-length segment at the caret-nearest boundary, then
-  // auto-opens the detail panel to trim range / RC.
+  // K5 — drag a container from the sidebar; drop anywhere on the viewer
+  // opens the RangePickerModal pre-loaded with that container so the
+  // biolog confirms the slice + RC before insert (SPEC §3.1.A).
   const onDrop = useCallback((e) => {
     e.preventDefault();
     let containerId = '';
@@ -146,44 +149,62 @@ export default function AssemblyShellBody({ draft }) {
     const c = (state.containers || []).find((x) => x.id === containerId);
     if (!c) return;
     const atIndex = findInsertIndexAtPosition(dropPosRef.current, boundaries);
-    const before = (draft.segments || []).map((s) => s.id);
-    actions.insertSegment(draftId, containerId, 0, (c.sequence || '').length, false, atIndex);
-    // Auto-select the freshly-inserted segment for range adjust.
-    setTimeout(() => {
-      const after = (state.assemblyDrafts || []).find((d) => d.id === draftId);
-      const fresh = after && after.segments.find((s) => !before.includes(s.id));
-      if (fresh) openDetail(fresh.id);
-    }, 0);
-  }, [state.containers, state.assemblyDrafts, boundaries, draft.segments, actions, draftId, openDetail]);
+    setRangeSource({ kind: 'container', payload: c, atIndex });
+  }, [state.containers, boundaries]);
 
   const onDragOver = useCallback((e) => {
     e.preventDefault();
     dropPosRef.current = caretPos;
   }, [caretPos]);
 
-  // Pick a Library entry in the SHARED rich PlaceholderTreePicker
-  // (Игорь 19.05.2026 «У НАС вот уже было такое окно поиска» — reuse
-  // the existing search window, no bespoke parallel picker).
-  // Materialise the entry into a canvas container
-  // (ADD_CONTAINER_FROM_ENTRY stamps origin.sourceEntryId), then insert
-  // a full-length segment; range / RC are refined afterwards in the
-  // SegmentDetailPanel (same as the K4 drag-insert flow). The fresh
-  // container id is recovered via snapshot-diff on the *latest* state
-  // (stateRef — the captured closure is stale post-dispatch).
+  // K5 — pick a Library entry → open RangePickerModal step (SPEC §3.1.A
+  // step 2). Reuse of the shared PlaceholderTreePicker remains (Игорь
+  // 19.05.2026: «У НАС вот уже было такое окно поиска»); materialise
+  // happens at range-confirm so the picker is purely pre-flight.
   const onPickEntry = useCallback((entry) => {
     if (!entry || !entry.id) return;
     setPickerOpen(false);
-    const before = new Set((stateRef.current.containers || []).map((c) => c.id));
-    actions.addContainerFromEntry(entry);
-    setTimeout(() => {
-      const containers = stateRef.current.containers || [];
-      const fresh = containers.find(
-        (c) => !before.has(c.id) && c.origin && c.origin.sourceEntryId === entry.id,
-      ) || containers.find((c) => !before.has(c.id));
-      if (!fresh) return;
-      actions.insertSegment(draftId, fresh.id, 0, (fresh.sequence || '').length, false, undefined);
-    }, 0);
-  }, [actions, draftId]);
+    setRangeSource({ kind: 'entry', payload: entry });
+  }, []);
+
+  // RangePicker confirm: materialise (for an entry) OR reuse the
+  // existing canvas container id, then insert a sourced segment with
+  // the chosen [start, end, rc]. For the entry path the fresh container
+  // id is recovered via snapshot-diff on the *latest* state (stateRef).
+  const onRangeConfirm = useCallback(({ start, end, rc }) => {
+    if (!rangeSource) return;
+    if (rangeSource.kind === 'entry') {
+      const entry = rangeSource.payload;
+      const before = new Set((stateRef.current.containers || []).map((c) => c.id));
+      actions.addContainerFromEntry(entry);
+      setRangeSource(null);
+      setTimeout(() => {
+        const containers = stateRef.current.containers || [];
+        const fresh = containers.find(
+          (c) => !before.has(c.id) && c.origin && c.origin.sourceEntryId === entry.id,
+        ) || containers.find((c) => !before.has(c.id));
+        if (!fresh) return;
+        actions.insertSegment(draftId, fresh.id, start, end, rc, undefined);
+      }, 0);
+    } else {
+      actions.insertSegment(draftId, rangeSource.payload.id, start, end, rc, rangeSource.atIndex);
+      setRangeSource(null);
+    }
+  }, [actions, draftId, rangeSource]);
+
+  // Normalise the rangeSource payload into the shape RangePickerModal
+  // expects ({ name, sequence, annotations, circular }).
+  const rangeSourceShape = rangeSource ? (rangeSource.kind === 'entry' ? {
+    name: rangeSource.payload.name,
+    sequence: (rangeSource.payload.payload && rangeSource.payload.payload.sequence) || '',
+    annotations: (rangeSource.payload.payload && rangeSource.payload.payload.annotations) || [],
+    circular: (rangeSource.payload.payload && rangeSource.payload.payload.topology) === 'circular',
+  } : {
+    name: rangeSource.payload.name,
+    sequence: rangeSource.payload.sequence || '',
+    annotations: rangeSource.payload.annotations || [],
+    circular: !!(rangeSource.payload.topology && rangeSource.payload.topology.circular),
+  }) : null;
 
   const onInsertGap = useCallback((params) => {
     actions.insertManualSegment(draftId, params, undefined);
@@ -310,6 +331,13 @@ export default function AssemblyShellBody({ draft }) {
         <PlaceholderTreePicker
           onPick={onPickEntry}
           onCancel={() => setPickerOpen(false)}
+        />
+      )}
+      {rangeSource && rangeSourceShape && (
+        <RangePickerModal
+          source={rangeSourceShape}
+          onConfirm={onRangeConfirm}
+          onCancel={() => setRangeSource(null)}
         />
       )}
       {gapOpen && (

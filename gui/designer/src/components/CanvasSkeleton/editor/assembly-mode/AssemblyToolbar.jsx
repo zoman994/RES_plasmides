@@ -36,7 +36,7 @@ export default function AssemblyToolbar({
       }}
     >
       <button type="button" data-testid="assembly-add-segment" onClick={onAddSegment} style={btn()}>
-        + Сегмент
+        + Плазмида
       </button>
       <button type="button" data-testid="assembly-add-snippet" onClick={onAddSnippet} style={btn()}>
         + Обвес

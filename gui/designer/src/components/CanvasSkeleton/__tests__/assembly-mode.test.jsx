@@ -254,13 +254,15 @@ describe('K4 AssemblySidebar + DnD', () => {
     expect(items[0].getAttribute('data-container-id')).toBe('cB');
   });
 
-  it('drop a container onto the viewer inserts a full-length segment', () => {
+  it('drop a container onto the viewer → RangePicker → confirm → full-length segment', () => {
     openDraftWithContainers();
     const data = dt();
     data.setData('application/x-bodge-container-id', 'cA');
     const wrap = screen.getByTestId('assembly-viewer-wrap');
     act(() => { fireEvent.dragOver(wrap, { dataTransfer: data }); });
     act(() => { fireEvent.drop(wrap, { dataTransfer: data }); });
+    // K5 — drop now opens the RangePicker; confirm with defaults = full.
+    act(() => { fireEvent.click(screen.getByTestId('range-picker-confirm')); });
     const d = S.assemblyDrafts.find((x) => x.id === 'asm-k4');
     expect(d.segments).toHaveLength(1);
     expect(d.segments[0].source.containerId).toBe('cA');
@@ -403,11 +405,14 @@ describe('K6 segment source picker (PlaceholderTreePicker reuse)', () => {
     expect(screen.queryByTestId('skeleton-placeholder-picker-item-lib-pet')).toBeNull();
   });
 
-  it('pick a library entry → materialised + inserted as a segment', async () => {
+  it('pick a library entry → RangePicker → confirm → materialised + inserted', async () => {
     openDraftK6();
+    try { localStorage.clear(); } catch { /* no-op */ }
     act(() => { fireEvent.click(screen.getByTestId('assembly-add-segment')); });
+    act(() => { fireEvent.click(screen.getByTestId('skeleton-placeholder-picker-item-lib-puc')); });
+    const m = await screen.findByTestId('range-picker-modal');
     await act(async () => {
-      fireEvent.click(screen.getByTestId('skeleton-placeholder-picker-item-lib-puc'));
+      fireEvent.click(within(m).getByTestId('range-picker-confirm'));
       await new Promise((r) => { setTimeout(r, 0); });
     });
     const d = S.assemblyDrafts.find((x) => x.id === 'asm-k6');

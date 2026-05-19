@@ -57,7 +57,8 @@ function dt() {
 }
 
 describe('T6 K9 — toolbar / picker / sidebar / undo in zone-mode', () => {
-  it('«+ Сегмент» → PlaceholderTreePicker → pick a library entry creates a sourced piece in the zone', async () => {
+  it('«+ Плазмида» → PlaceholderTreePicker → RangePicker → confirm → sourced piece (K5)', async () => {
+    try { localStorage.clear(); } catch { /* no-op */ }
     const zid = openEmptyZone();
     act(() => {
       useStore.setState((s) => ({
@@ -74,8 +75,10 @@ describe('T6 K9 — toolbar / picker / sidebar / undo in zone-mode', () => {
     });
     act(() => { fireEvent.click(screen.getByTestId('assembly-add-segment')); });
     expect(screen.getByTestId('skeleton-placeholder-picker')).toBeTruthy();
+    act(() => { fireEvent.click(screen.getByTestId('skeleton-placeholder-picker-item-lib-z')); });
+    const m = await screen.findByTestId('range-picker-modal');
     await act(async () => {
-      fireEvent.click(screen.getByTestId('skeleton-placeholder-picker-item-lib-z'));
+      fireEvent.click(within(m).getByTestId('range-picker-confirm'));
       await new Promise((r) => { setTimeout(r, 0); });
     });
     const ps = zonePieces(zid);
@@ -97,13 +100,14 @@ describe('T6 K9 — toolbar / picker / sidebar / undo in zone-mode', () => {
     expect(ps[0].gapLength).toBe(15);
   });
 
-  it('drag a sidebar container onto the viewer inserts a full-length piece', () => {
+  it('drag a sidebar container onto the viewer → RangePicker → confirm → full-length piece (K5)', () => {
     const zid = openEmptyZone();
     const data = dt();
     data.setData('application/x-bodge-container-id', 'cZ');
     const wrap = screen.getByTestId('assembly-viewer-wrap');
     act(() => { fireEvent.dragOver(wrap, { dataTransfer: data }); });
     act(() => { fireEvent.drop(wrap, { dataTransfer: data }); });
+    act(() => { fireEvent.click(screen.getByTestId('range-picker-confirm')); });
     const ps = zonePieces(zid);
     expect(ps).toHaveLength(1);
     expect(ps[0].ranges[0]).toMatchObject({ sourceId: 'cZ', start: 0, end: 16 });
