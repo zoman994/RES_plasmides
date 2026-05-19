@@ -33,6 +33,7 @@ import SynthesisModal from './SynthesisModal';
 import RangePickerModal from './RangePickerModal';
 import SnippetOnboardingTip from './SnippetOnboardingTip';
 import OpGroupPicker from './OpGroupPicker';
+import AssemblyPipelinePanel from './AssemblyPipelinePanel';
 import AssemblyPrimersPanel from './AssemblyPrimersPanel';
 import RealiseModal from './RealiseModal';
 import { useAssemblyPrimerWriting } from './useAssemblyPrimerWriting';
@@ -310,6 +311,13 @@ export default function AssemblyShellBody({ draft }) {
           <AssemblySidebar containers={state.containers || []} />
           <AssemblyPrimersPanel draftId={draftId} />
         </div>
+
+        <AssemblyPipelinePanel
+          draftId={draftId}
+          zoneId={draftId}
+          onRealise={() => setRealiseOpen(true)}
+          onAutomode={() => {/* K10 wires the algorithm */}}
+        />
 
         {detailOpen && selectedSegmentId && (
           <SegmentDetailPanel
