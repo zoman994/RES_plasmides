@@ -53,7 +53,7 @@ const ASM_PRIMER_MIN = 18; // bio-invariants Rule 6 — shorter ⇒ no real prim
 const ASSEMBLY_ACTIONS = new Set([
   'CREATE_ASSEMBLY_DRAFT', 'REMOVE_ASSEMBLY_DRAFT', 'RENAME_ASSEMBLY_DRAFT',
   'SET_ASSEMBLY_DRAFT_TOPOLOGY', 'SET_ASSEMBLY_DRAFT_POSITION',
-  'INSERT_SEGMENT', 'INSERT_MANUAL_SEGMENT', 'REMOVE_SEGMENT',
+  'INSERT_SEGMENT', 'INSERT_MANUAL_SEGMENT', 'INSERT_SNIPPET', 'REMOVE_SEGMENT',
   'REORDER_SEGMENTS', 'UPDATE_SEGMENT', 'UPDATE_SEGMENT_RANGE',
   'TOGGLE_SEGMENT_RC', 'SPLIT_SEGMENT',
   'WRITE_ASSEMBLY_PRIMER', 'REMOVE_ASSEMBLY_PRIMER', 'UPDATE_ASSEMBLY_PRIMER',
@@ -195,6 +195,20 @@ export function assemblyReducer(state, action) {
         label: action.label,
         gapKind: action.gapKind,
         gapLabel: action.gapLabel,
+      });
+      return commitDraft(state, action.draftId,
+        (d) => addSegment(d, seg, action.insertAtIndex));
+    }
+
+    case 'INSERT_SNIPPET': {
+      // Legacy-draft fallback (transition window): a snippet is a
+      // known-sequence manual segment. The zone path (adapter) builds
+      // the richer kind='snippet' piece — this only fires for the
+      // deprecated assemblyDrafts targets.
+      const seg = makeManualSegment({
+        sequence: action.sequence,
+        label: action.name || action.snippetType,
+        gapLabel: action.snippetType,
       });
       return commitDraft(state, action.draftId,
         (d) => addSegment(d, seg, action.insertAtIndex));

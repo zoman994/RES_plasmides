@@ -17,7 +17,7 @@ import { piecesReducer } from '../store/skeleton-state-pieces';
 import { computePieceSize } from './piece-model';
 
 const HANDLED = new Set([
-  'INSERT_SEGMENT', 'INSERT_MANUAL_SEGMENT', 'REMOVE_SEGMENT',
+  'INSERT_SEGMENT', 'INSERT_MANUAL_SEGMENT', 'INSERT_SNIPPET', 'REMOVE_SEGMENT',
   'REORDER_SEGMENTS', 'UPDATE_SEGMENT', 'UPDATE_SEGMENT_RANGE',
   'TOGGLE_SEGMENT_RC', 'RENAME_ASSEMBLY_DRAFT',
   'SET_ASSEMBLY_DRAFT_TOPOLOGY', 'SET_ASSEMBLY_DRAFT_POSITION',
@@ -123,6 +123,28 @@ export function routeAssemblyWriteToZone(state, action) {
         acquisitionMethod: 'synthesis',
         acquisitionParams: { type: 'manual-gap' },
         functionalLabel: 'gap',
+      };
+      return createPieceInZone(state, zoneId, pieceData, action.insertAtIndex);
+    }
+
+    case 'INSERT_SNIPPET': {
+      // SPEC §3.1.B — a snippet is a visual strip block whose sequence
+      // is physically embedded into a neighbour primer's 5'-tail; it is
+      // NOT its own reaction (embedsInPrimer:true). createPiece (K1)
+      // already supports kind='snippet' + sequence/snippetType.
+      const seq = typeof action.sequence === 'string' ? action.sequence : '';
+      const pieceData = {
+        kind: 'snippet',
+        name: action.name || action.snippetType || 'обвес',
+        sourceIds: [],
+        ranges: [],
+        sequence: seq,
+        snippetType: action.snippetType || null,
+        embedsInPrimer: action.embedsInPrimer !== false,
+        origin: 'snippet',
+        acquisitionMethod: 'synthesis',
+        acquisitionParams: { type: 'snippet', snippetType: action.snippetType || null },
+        functionalLabel: 'snippet',
       };
       return createPieceInZone(state, zoneId, pieceData, action.insertAtIndex);
     }

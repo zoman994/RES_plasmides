@@ -27,6 +27,7 @@ import SegmentDetailPanel from './SegmentDetailPanel';
 import AssemblyToolbar from './AssemblyToolbar';
 import PlaceholderTreePicker from '../../canvas/PlaceholderTreePicker';
 import InsertGapModal from './InsertGapModal';
+import SnippetCatalogModal from './SnippetCatalogModal';
 import AssemblyPrimersPanel from './AssemblyPrimersPanel';
 import RealiseModal from './RealiseModal';
 import { useAssemblyPrimerWriting } from './useAssemblyPrimerWriting';
@@ -95,6 +96,7 @@ export default function AssemblyShellBody({ draft }) {
   const [detailOpen, setDetailOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [gapOpen, setGapOpen] = useState(false);
+  const [snippetOpen, setSnippetOpen] = useState(false);
   const [realiseOpen, setRealiseOpen] = useState(false);
   const dropPosRef = useRef(0);
 
@@ -185,6 +187,13 @@ export default function AssemblyShellBody({ draft }) {
     setGapOpen(false);
   }, [actions, draftId]);
 
+  // K3 — «+ Обвес»: a snippet piece (embeds into a neighbour primer
+  // tail; visually a strip block). Closes the catalog on pick.
+  const onInsertSnippet = useCallback((snippet) => {
+    actions.insertSnippet(draftId, snippet, undefined);
+    setSnippetOpen(false);
+  }, [actions, draftId]);
+
   return (
     <div
       data-testid="assembly-mode-shell"
@@ -268,6 +277,7 @@ export default function AssemblyShellBody({ draft }) {
 
       <AssemblyToolbar
         onAddSegment={() => setPickerOpen(true)}
+        onAddSnippet={() => setSnippetOpen(true)}
         onAddGap={() => setGapOpen(true)}
       />
 
@@ -281,6 +291,12 @@ export default function AssemblyShellBody({ draft }) {
         <InsertGapModal
           onInsert={onInsertGap}
           onCancel={() => setGapOpen(false)}
+        />
+      )}
+      {snippetOpen && (
+        <SnippetCatalogModal
+          onPick={onInsertSnippet}
+          onCancel={() => setSnippetOpen(false)}
         />
       )}
       {realiseOpen && (

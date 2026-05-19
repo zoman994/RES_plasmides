@@ -182,6 +182,12 @@ export function SkeletonProvider({ children }) {
     insertManualSegment: (draftId, params = {}, insertAtIndex) => dispatch({
       type: 'INSERT_MANUAL_SEGMENT', draftId, ...params, insertAtIndex,
     }),
+    // M-CANVAS-WORKFLOW-UX K3 — «+ Обвес»: snippet piece (embeds in a
+    // neighbour primer tail, not its own PCR). snippet = { sequence,
+    // snippetType, name, embedsInPrimer? }.
+    insertSnippet: (draftId, snippet = {}, insertAtIndex) => dispatch({
+      type: 'INSERT_SNIPPET', draftId, ...snippet, insertAtIndex,
+    }),
     removeSegment: (draftId, segmentId) => dispatch({ type: 'REMOVE_SEGMENT', draftId, segmentId }),
     reorderSegments: (draftId, fromIndex, toIndex) => dispatch({ type: 'REORDER_SEGMENTS', draftId, fromIndex, toIndex }),
     updateSegment: (draftId, segmentId, patch) => dispatch({ type: 'UPDATE_SEGMENT', draftId, segmentId, patch }),

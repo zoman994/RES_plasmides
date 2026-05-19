@@ -17,8 +17,12 @@ export const PIECE_CAPS = Object.freeze({
 export const ORIGIN_ENUM = Object.freeze([
   'selection', 'feature', 'existing-primers', 'new-primers', 'legacy-migration',
   'manual-gap', // T6 DEC-T6-02 — gap pieces
+  // M-CANVAS-WORKFLOW-UX (SPEC §6.1) — inline-sequence pieces.
+  'snippet', 'synthesis', 'intermediate',
 ]);
 const GAP_MAX_LENGTH = 10000;
+// Inline-sequence kinds (no source container / ranges; carry `sequence`).
+const INLINE_KINDS = new Set(['snippet', 'synthesis', 'intermediate']);
 export const ACQUISITION_METHOD_ENUM = Object.freeze([
   'undefined', 'pcr', 'ov-pcr', 'restriction', 'direct', 'synthesis',
 ]);
@@ -98,6 +102,27 @@ function validateShape(state, piece) {
       if (gs.length !== g) {
         return fail('INVALID_RANGE', 'gapLength must equal gapSequence.length');
       }
+    }
+    return ok;
+  }
+
+  // M-CANVAS-WORKFLOW-UX (SPEC §6.1) — snippet / synthesis /
+  // intermediate: inline `sequence`, no source container or ranges.
+  // (intermediate may be empty pre-finalize; snippet/synthesis carry a
+  // real sequence — capped like a gap.)
+  if (piece && INLINE_KINDS.has(piece.kind)) {
+    if (!ORIGIN_ENUM.includes(piece.origin)) {
+      return fail('INVALID_ORIGIN', `origin "${piece.origin}" not in enum`);
+    }
+    const seq = piece.sequence;
+    if (typeof seq !== 'string') {
+      return fail('INVALID_RANGE', `${piece.kind} piece requires a string sequence`);
+    }
+    if (seq.length > GAP_MAX_LENGTH) {
+      return fail('INVALID_RANGE', `sequence length ${seq.length} > ${GAP_MAX_LENGTH}`);
+    }
+    if (piece.kind !== 'intermediate' && seq.length === 0) {
+      return fail('INVALID_RANGE', `${piece.kind} piece requires a non-empty sequence`);
     }
     return ok;
   }
