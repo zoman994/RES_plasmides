@@ -25,7 +25,7 @@ import AssemblySidebar from './AssemblySidebar';
 import SegmentList from './SegmentList';
 import SegmentDetailPanel from './SegmentDetailPanel';
 import AssemblyToolbar from './AssemblyToolbar';
-import AssemblySourcePicker from './AssemblySourcePicker';
+import PlaceholderTreePicker from '../../canvas/PlaceholderTreePicker';
 import InsertGapModal from './InsertGapModal';
 import AssemblyPrimersPanel from './AssemblyPrimersPanel';
 import RealiseModal from './RealiseModal';
@@ -49,6 +49,11 @@ function segLabel(seg, idx) {
 export default function AssemblyShellBody({ draft }) {
   const state = useSkeletonState();
   const actions = useSkeletonActions();
+  // Always-fresh skeleton state for the post-dispatch macrotask in
+  // onPickEntry — the captured `state` closure is stale right after the
+  // ADD_CONTAINER_FROM_ENTRY dispatch re-render (Игорь 19.05.2026).
+  const stateRef = useRef(state);
+  stateRef.current = state;
   const draftId = draft.id;
 
   const { boundaries, totalLength } = useMemo(
@@ -151,9 +156,28 @@ export default function AssemblyShellBody({ draft }) {
     dropPosRef.current = caretPos;
   }, [caretPos]);
 
-  const onInsertFromPicker = useCallback(({ containerId, start, end, rc }) => {
-    actions.insertSegment(draftId, containerId, start, end, rc, undefined);
+  // Pick a Library entry in the SHARED rich PlaceholderTreePicker
+  // (Игорь 19.05.2026 «У НАС вот уже было такое окно поиска» — reuse
+  // the existing search window, no bespoke parallel picker).
+  // Materialise the entry into a canvas container
+  // (ADD_CONTAINER_FROM_ENTRY stamps origin.sourceEntryId), then insert
+  // a full-length segment; range / RC are refined afterwards in the
+  // SegmentDetailPanel (same as the K4 drag-insert flow). The fresh
+  // container id is recovered via snapshot-diff on the *latest* state
+  // (stateRef — the captured closure is stale post-dispatch).
+  const onPickEntry = useCallback((entry) => {
+    if (!entry || !entry.id) return;
     setPickerOpen(false);
+    const before = new Set((stateRef.current.containers || []).map((c) => c.id));
+    actions.addContainerFromEntry(entry);
+    setTimeout(() => {
+      const containers = stateRef.current.containers || [];
+      const fresh = containers.find(
+        (c) => !before.has(c.id) && c.origin && c.origin.sourceEntryId === entry.id,
+      ) || containers.find((c) => !before.has(c.id));
+      if (!fresh) return;
+      actions.insertSegment(draftId, fresh.id, 0, (fresh.sequence || '').length, false, undefined);
+    }, 0);
   }, [actions, draftId]);
 
   const onInsertGap = useCallback((params) => {
@@ -248,9 +272,8 @@ export default function AssemblyShellBody({ draft }) {
       />
 
       {pickerOpen && (
-        <AssemblySourcePicker
-          containers={state.containers || []}
-          onInsert={onInsertFromPicker}
+        <PlaceholderTreePicker
+          onPick={onPickEntry}
           onCancel={() => setPickerOpen(false)}
         />
       )}

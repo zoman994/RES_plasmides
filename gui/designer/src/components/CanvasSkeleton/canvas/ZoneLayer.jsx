@@ -120,6 +120,7 @@ export default function ZoneLayer({ state, dispatch, onNavigateToZone }) {
           onResize={(edge, e) => startResize(zone, edge, e)}
           onContextMenu={(e) => setMenu({ zoneId: zone.id, x: e.clientX || 0, y: e.clientY || 0 })}
           onClickHeader={() => dispatch({ type: 'SET_ZONE_COLLAPSED', zoneId: zone.id, collapsed: !zone.collapsed })}
+          onOpenAssembly={(zoneId) => dispatch({ type: 'OPEN_EDITOR_ASSEMBLY_TAB', draftId: zoneId })}
           onToggleViewMode={(zoneId, viewMode) => dispatch({ type: 'SET_ZONE_VIEW_MODE', zoneId, viewMode })}
           onFocus={(zoneId) => dispatch({ type: 'SET_FOCUSED_ZONE', zoneId })}
           onNavigateToZone={onNavigateToZone}

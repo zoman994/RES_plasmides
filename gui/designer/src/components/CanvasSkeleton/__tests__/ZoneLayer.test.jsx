@@ -39,6 +39,15 @@ describe('T4 K5 ZoneLayer', () => {
     expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: 'SET_ZONE_COLLAPSED', zoneId: 'zn-1', collapsed: true }));
   });
 
+  it('open-assembly button → dispatch OPEN_EDITOR_ASSEMBLY_TAB(draftId=zone.id)', () => {
+    const dispatch = vi.fn();
+    render(<ZoneLayer state={state()} dispatch={dispatch} />);
+    fireEvent.click(screen.getByTestId('zone-open-assembly-zn-1'));
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'OPEN_EDITOR_ASSEMBLY_TAB', draftId: 'zn-1' }),
+    );
+  });
+
   it('right-click header opens ZoneContextMenu; Esc closes it', () => {
     render(<ZoneLayer state={state()} dispatch={vi.fn()} />);
     expect(screen.queryByTestId('zone-menu')).toBeNull();

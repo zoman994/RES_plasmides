@@ -69,6 +69,11 @@ export function selectEntryPrimers(primersById, entryId) {
   if (rows.length === 0) return EMPTY;
   rows.sort((a, b) => String(a.addedAt || "").localeCompare(String(b.addedAt || "")));
   return rows.map((p) => ({
+    // `id` kept (Игорь 19.05.2026): identity-needing consumers —
+    // PiecePrimersPickModal «Кусок из существующих праймеров» — key
+    // their fwd/rev <select> by it. PrimerTrack ignores extra fields,
+    // so the viewer shape is unaffected (purely additive).
+    id: p.id,
     name: p.name,
     sequence: p.sequence,
     bindingSequence: p.sequence,

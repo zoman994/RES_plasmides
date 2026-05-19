@@ -381,3 +381,39 @@ export function zoomAtPoint({
   };
 }
 
+/**
+ * viewportToWorld — THE single screen→world transform for the canvas
+ * (Игорь 18.05.2026, TD-ZONE-ATTACH-CONTAINMENT). Same model as
+ * zoomAtPoint: a node at world (X,Y) renders at viewport
+ * (X*zoom − scroll), so the world point under a viewport pixel is
+ * `(client − rectOrigin + scroll) / zoom`.
+ *
+ * Both the drag-position math (`applyDragAt`) and the zone drop
+ * hit-test MUST use this so they can never diverge again — the bug
+ * was the hit-test omitting scroll while applyDragAt included it, so
+ * a scrolled canvas mapped a drop to the wrong/no zone («криво
+ * прикрепляются / внутри не держатся»).
+ *
+ * jsdom: rect = {left:0,top:0}, scroll = 0 → returns screen coords
+ * unchanged (tests stay deterministic).
+ *
+ * @param {{clientX,clientY,rect,scrollLeft?,scrollTop?,zoom?}} p
+ * @returns {{x:number,y:number}}
+ */
+export function viewportToWorld({
+  clientX,
+  clientY,
+  rect,
+  scrollLeft = 0,
+  scrollTop = 0,
+  zoom = 1,
+}) {
+  const z = zoom || 1;
+  const left = (rect && rect.left) || 0;
+  const top = (rect && rect.top) || 0;
+  return {
+    x: (clientX - left + (scrollLeft || 0)) / z,
+    y: (clientY - top + (scrollTop || 0)) / z,
+  };
+}
+

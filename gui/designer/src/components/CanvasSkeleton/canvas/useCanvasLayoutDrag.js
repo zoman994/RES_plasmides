@@ -15,7 +15,7 @@ import {
   useCallback, useRef, useState, useEffect,
 } from 'react';
 import { isPlaceholderContainer } from '../fixture-canvas-skeleton';
-import { computeAutoJunctions, edgePanVelocity } from './canvas-layout';
+import { computeAutoJunctions, edgePanVelocity, viewportToWorld } from './canvas-layout';
 import { findZoneAtPoint } from './zone-interaction';
 import { selectZoneByNodeId } from '../store/selectors-zones';
 
@@ -50,10 +50,13 @@ export function useCanvasLayoutDrag({ state, actions, containerRef, zoom }) {
     if (!d || !el) return;
     const rect = el.getBoundingClientRect();
     const z = zoomRef.current || 1;
-    const x = (clientX - rect.left + (el.scrollLeft || 0) - d.offsetX) / z;
-    const y = (clientY - rect.top + (el.scrollTop || 0) - d.offsetY) / z;
-    const nx = Math.max(0, x);
-    const ny = Math.max(0, y);
+    // Single screen→world transform (shared with the zone drop
+    // hit-test) — then subtract the grab offset (in world units).
+    const w = viewportToWorld({
+      clientX, clientY, rect, scrollLeft: el.scrollLeft || 0, scrollTop: el.scrollTop || 0, zoom: z,
+    });
+    const nx = Math.max(0, w.x - d.offsetX / z);
+    const ny = Math.max(0, w.y - d.offsetY / z);
     if (d.kind === 'operation') actions.opSetPosition(d.id, { x: nx, y: ny });
     else if (d.kind === 'assembly') actions.setAssemblyDraftPosition(d.id, { x: nx, y: ny });
     else actions.setPosition(d.id, { x: nx, y: ny });
@@ -200,16 +203,36 @@ export function useCanvasLayoutDrag({ state, actions, containerRef, zoom }) {
         && Array.isArray(state.zones) && containerRef.current
         && e && Number.isFinite(e.clientX)
       ) {
-        const rect = containerRef.current.getBoundingClientRect();
-        const pt = {
-          x: (e.clientX - rect.left) / zoom,
-          y: (e.clientY - rect.top) / zoom,
-        };
+        // TD-ZONE-ATTACH-CONTAINMENT (Игорь 18.05.2026): drop point
+        // MUST be scroll-corrected world coords (same transform as
+        // applyDragAt / zone.bounds) — omitting scroll mapped a drop
+        // on a scrolled canvas to the wrong/no zone.
+        const elc = containerRef.current;
+        const rect = elc.getBoundingClientRect();
+        const pt = viewportToWorld({
+          clientX: e.clientX,
+          clientY: e.clientY,
+          rect,
+          scrollLeft: elc.scrollLeft || 0,
+          scrollTop: elc.scrollTop || 0,
+          zoom,
+        });
         const target = findZoneAtPoint(state.zones, pt);
         const cur = selectZoneByNodeId(state, dragging.id);
         const tId = target ? target.id : null;
         const cId = cur ? cur.id : null;
         if (tId !== cId) actions.moveNodeToZone(dragging.kind, dragging.id, tId);
+        // TD-ZONE-ATTACH-CONTAINMENT H2+H3 (Игорь «делай до конца»): a
+        // deliberate drop INTO a zone is an explicit «I arrange this
+        // by hand» → switch that zone to laneLayout:'manual'. Effects
+        // (confirmed in skeleton-state.js): the 3-lane finalizer SKIPS
+        // manual zones (no more re-laying siblings = «не криво»), and
+        // the grow-only union bounds RUN for manual zones (frame grows
+        // to enclose the dropped node = «держится внутри»). Fires
+        // whenever the drop lands in a zone, even same-zone reposition.
+        if (target && target.laneLayout !== 'manual') {
+          actions.setZoneLaneLayout(target.id, 'manual');
+        }
       }
       // T4.5 DEC-T4.5-04/07 — a deliberate drag IS a manual override:
       // pin the node so the 3-lane finalizer leaves it where dropped

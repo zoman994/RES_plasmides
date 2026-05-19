@@ -40,6 +40,15 @@ describe('T4 K4 ZoneContextMenu', () => {
     expect(screen.getByText('Обернуть бесхозные узлы')).toBeTruthy();
   });
 
+  it('Открыть сборку → OPEN_EDITOR_ASSEMBLY_TAB + onClose', () => {
+    const { dispatch, onClose } = setup();
+    fireEvent.click(screen.getByTestId('zone-menu-open-assembly'));
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'OPEN_EDITOR_ASSEMBLY_TAB', draftId: 'zn-1' }),
+    );
+    expect(onClose).toHaveBeenCalled();
+  });
+
   it('collapse → SET_ZONE_COLLAPSED + onClose', () => {
     const { dispatch, onClose } = setup();
     fireEvent.click(screen.getByText('Свернуть'));

@@ -790,7 +790,10 @@ export default function ContainerEditorSkeleton() {
           containerId={activeContainer.id}
           containerName={activeContainer.name}
           containerSequence={activeContainer.sequence || ''}
-          primers={state.primers || []}
+          /* Игорь 19.05.2026: «праймеры есть а кусок выбрать нельзя».
+             Источник = тот же unified-pool, что рисует праймеры на
+             сиквенсе (useEntryPrimers), а НЕ пустой легаси state.primers. */
+          primers={entryPrimers}
           onConfirm={(pieceData) => {
             setPrimersPickModal(null);
             setPieceCreateModal({

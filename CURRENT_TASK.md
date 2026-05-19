@@ -1,154 +1,212 @@
 # CURRENT_TASK.md
 
-## 🟢 Статус: T-серия завершена Code; финализация Chat в процессе — 18.05.2026
+## 🟡 Статус: M-FORMAT-V2-CORE — implementation (старт 19.05.2026)
 
-T1-T10 four-tier architecture + T4.5 zone auto-layout + V82-V84 баги + canvas UX батч + primer redesign + Library/Importer-inspector декомпозиция — **всё реализовано Code** между 16-18.05. Vitest **3276 pass / 1 skip / 0 fail** (baseline v0.8.2 = 2320, рост +956), `vite build` clean, 0 console errors. Schema v=10 через 6 миграций (v5→v6→v7→v8→v9→v10).
+`.bodge` v2 формат: structure + manifest + migration + atomic write + SnapGene round-trip + library/containers canonical rule + README.md preview. Спека `docs/SPEC_BODGE_FORMAT_V2_CORE.md` (~36 KB). NOTEBOOK слой — отдельный sprint после приёмки CORE.
 
-Архив отчётов Code → `docs/archive/CURRENT_TASK_HISTORY_2026_05_16_to_18_T_series.md` (202 KB, сохранён до перезаписи).
+**TL;DR:** Заменить v1 `.bodge` (state-blob в одном project.json) на v2 структуру (containers/.gb + assemblies/.json + primers + notebook + README.md + manifest с sha256 + recovery index). Выплата ⚓ DEC-INTEROP-01 (внутри .bodge появляются valid GenBank-файлы). Sprint монолитный, не лимитирован по срокам — биолог продолжает работать с v1 параллельно.
 
----
-
-## Что было сделано Code (краткий перечень)
-
-**Sprint T1-T10 (four-tier architecture):**
-- T1 Pieces State — piece как первичная сущность, derivedReactionId, frozen, schema v6.
-- T2 Pieces Migration — op.inputPieces + op-piece-bridge, surgical opt-in adapters (DEC-T2-09 surgical, не литеральная замена), миграция v5→v6.
-- T3 Zones Data — `state.zones` slice + `zoneId` на узлах, миграция v6→v7. Default zone «Сборка 1» (DEC-T3-08, **позже реверснут**).
-- T4 Zones Rendering — ZoneFrame/ZoneLayer/ZoneContextMenu, drag/resize/merge, hit-detect, cross-zone junctions dashed. Интеграция: вариант B (informed go, K9 graph-view отложен по design-mismatch).
-- T4.5 Zone 3-lane Auto-Layout — Source/Intermediate/Final lanes через dagre, pinned-флаг (auto-pin при drag), миграция v9→v10.
-- T5 Piece Authoring UI — 4 способа (selection / feature / existing-primers / new-primers), PieceCreateModal + PiecePrimersPickModal + хоткей P.
-- T6 Sequence-Mode Migration — assembly-mode→pieces через dual-source dual-resolution (НЕ литеральный no-op §5.9). Adapter foundation + 14 UI файлов мигрированы. Миграция v7→v8.
-- T7 Dual-Mode Toggle + Sync — inline sequence-mode (3 состояния), хоткей G/S, ATTACH/DETACH/REORDER, focusedZoneId.
-- T8 Auto-Reactions + Cross-Zone Links — finalizer создаёт/удаляет ромбы по piece.acquisitionMethod; ZoneLinkBadge «← Зона N» с pan + highlight.
-- T9 Variants — design variants (variantGroupId) vs clone variants (op.materializedClones, hard cap 96). BranchingVisual rewrite 3 kinds. Миграция v8→v9.
-- T10 Sanger MVP — right panel hotkey B, 4-status segmented control, notes ≤500. BranchingVisual цветные indicators.
-
-**Bug fixes:**
-- V82 — AssemblyDraftsPanel перепи��ана zone-based (счётчик показывает default zone «Сборка 1»).
-- V83 — gap с известной ПСО (T2A linker / своя ПСО) сохраняется в `gapSequence`, не подменяется поли-N.
-- V84 — realise-продукты наследуют аннотации источника через `transferAnnotations` + новый `concatSegmentAnnotations`.
-
-**Canvas UX батч (17.05):**
-- 4-сторонние коннекторы (edgeAnchors).
-- Wheel-zoom-к-курсору (zoomAtPoint focal-инвариант).
-- Бесконечный канвас (canvasContentExtent + edgePanVelocity edge-auto-pan).
-- Hand-pan «хватать канвас» (panScrollTarget, gate by closest-target).
-- Stationary zoom-индикатор (внешний non-scrolling wrapper).
-- Drag-release ромба не открывает viewer (justDraggedRef guard).
-- «Очистить канвас» gated RESET button.
-
-**Реверс ⚓-уровня (17.05, по AskUserQuestion Игоря «Полностью из state»):**
-- **DEC-T3-08 РЕВЕРС** — `buildInitialState` больше НЕ сидит default zone; `zones:[]` всегда.
-- **V61 РЕВЕРС** — `ensureGhostPlaceholder` финализатор отключён; чистый старт без ghost.
-- Кнопка «Сборки» перенесена bottom-right (стек: +Операция 20 / +Сборка 64 / Сборки 108 / Очистить 152).
-
-**Primer redesign (18.05):**
-- `PrimerFromSelectionModal` (имя/ПСО/RC-toggle) — открывается из right-click «праймер» во всех 5 виверах.
-- Кликабельность праймеров везде (`onPrimerClick`/`selectedPrimerKeys`), back-compat: без callback — декоративный.
-- Double-click по праймеру → редактирование через ту же модалку (`primerDraft.name` pre-fill).
-- Flank-highlight только для fwd+rev пары (биоинвариант: fwd-fwd / rev-rev не задают ампликон).
-- Pentagon-arrow glyph по обе стороны цепи (forward сверху, reverse снизу) с вписанными binding-буквами.
-- Selected primer: bold ring + colour-halo + full-opacity arrow.
-
-**Cross-cutting:**
-- `primer-canvas-editor` — ContainerEditorSkeleton теперь через `useEntryPrimers`, K10-заглушка закрыта.
-- `viewer-sync` — `showSelectionTm` добавлен на все 5 дизайн-виверов (Library/Importer-инспектор, ContainerEditor×2, Assembly, PCR). Все несут одинаковую пятёрку: `primers`+`onWritePrimer`+`showSelectionTm`+caret+selection.
-- `annotator-toggle` — вкладка «Аннотации» → toggle-кнопка в общем `TabBar.showAnnotations/onToggleAnnotator`. Scope: Library/Importer + container-editor.
-- `inspector-decomp` — extract `useInspectorSelectionNav` hook (~170 строк caret/selection/LinearFeatureBar-навигации). `LibrarySingleInspector.jsx` 39.34 → **31.28 KB** (TD-SIZE эскалация СНЯТА, 8.7 KB запаса до hard).
-- Primer pool extension: `origin.kind='library-selection'` (новая конвенция).
-- `hydratePrimers()` теперь вызывается в проде через Library/Container hook (раньше dead code).
+**Версия:** v0.8.3-alpha (текущая) → **v0.9.0-alpha** после K15 size budget verified.
 
 ---
 
-## Что должен сделать Chat (финализация)
+## Pre-sprint pending commit (предыдущий батч Code)
 
-### Пачка 1c (сейчас, продолжение текущей сессии)
-- **PROJECT_STATE.md** — first line bump v0.8.2 → v0.8.3-alpha + Vitest 3276 + Schema v10. Journal entry с массивным sprint-блоком 16-18.05. Снять «M-X.8 PROJECT-HUB кандидат» (он уже в v0.8.2).
+Перед стартом K0 — закоммитить незакоммиченное от 18-19.05 одним самостоятельным pre-sprint commit:
+- assembly-unify («Только зона» — buildAssemblyZoneAction).
+- TD-ZONE-ATTACH-CONTAINMENT H1/H4 (viewportToWorld unified screen→world transform).
+- TD-ZONE-ATTACH-CONTAINMENT H2/H3 (drop→`laneLayout:'manual'`).
+- piece-from-primers-fix (PiecePrimersPickModal source/shape sync).
 
-### Пачка 2 (следующая сессия после compact)
-- **ANCHORS.md** — реверс ⚓ DEC-T3-08 + V61 (по прямому запросу Игоря). Добавить кандидаты-⚓: DEC-CANVAS-4T-01 (piece как первичная сущность), DEC-CANVAS-4T-07 (zone как Miro-frame), DEC-CANVAS-4T-31 (3-lane auto-layout structure).
-- **DECISIONS.md** — sprint-block v0.8.3-alpha с DEC-T1..T10 + T4.5 + V82-V84 + canvas UX + primer redesign + annotator-toggle + useInspectorSelectionNav.
-- **TECH_DEBT.md** — обновить статусы:
-  - TD-LIBRARYSINGLEINSPECTOR-DECOMP-V2 → **CLOSED** (декомпозиция выполнена, 31.28 KB).
-  - TD-SIZE-LIBRARYSINGLEINSPECTOR → Watch (1.28 KB в soft >30, не блокер).
-  - TD-CANVAS-LAYOUTVIEW-DECOMP — новый, Active candidate (41.35 KB после T4.5 pin-бейджи, пробил hard 40 .jsx).
-  - TD-SIZE-SEQUENCEVIEW-INDEX → Active candidate (39+ KB, близко к hard 40).
-- **RELEASES.md** — v0.8.3-alpha entry.
-- **package.json + version.js** — bump до v0.8.3-alpha.
+Контекст этих батчей — `docs/archive/CURRENT_TASK_HISTORY_2026_05_18_to_19_T_series_finalization.md` секция «Post-148936a батчи». Vitest 3296 pass / 1 skip / 0 fail на момент архивации.
 
-### Пачка 3 (cleanup, можно отложить)
-- Архивация устаревших спек F1-F4 + A1-A4 + D1 в `docs/archive/2026-05-16-pre-four-tier/` (+README). Filesystem MCP не имеет delete — нужен PowerShell move или stub-перезапись.
-- Архивация `NOTES_FOUR_TIER_MODEL_DRAFT.md`, `NOTES_CANVAS_V2_KICKOFF.md` (устарели после `SPEC_M-CANVAS-FOUR-TIER-ARCHITECTURE.md`).
-- Глубокая ротация `docs/` (текущее 53 файла против лимита 8) — отдельный side-quest `TD-DOCS-ROTATION`.
+Suggested commit message:
+```
+fix(canvas): assembly-unify + zone-attach H1-H4 + piece-from-primers source-sync
 
----
+Post-148936a UX batch:
+- canvas/assembly-zone-create.js — единственный CREATE_ZONE entry-point (+3 tests)
+- canvas/canvas-layout.js::viewportToWorld — unified screen→world transform для drop-hit-test + drag (+5 tests, TD-ZONE-ATTACH-CONTAINMENT H1/H4)
+- useCanvasLayoutDrag.js drop→laneLayout:'manual' — grow-to-fit zone bounds (+4 tests, H2/H3)
+- ContainerEditorSkeleton.jsx primers={entryPrimers} + selectEntryPrimers preserves id (in-place)
 
-## Открытые вопросы от Code (для решения Chat в визуальной приёмке)
+Vitest 3284 → 3296 (+12, 0 regressions). TD-ZONE-ATTACH-CONTAINMENT CLOSED.
+```
 
-### Annotator-toggle scope
-Распространять ли annotator-toggle + chrome-унификацию `TabBar` на Assembly/PCR? Сейчас scope = Library/Importer + container-editor (Assembly/PCR не тронуты — synthetic/template-последовательности, аннотатор там семантически неопределён).
-
-### LibrarySingleInspector — опциональный 2-й extract
-Annotation-edit pipeline (`itemRef`/`editsRef` + `onAnnotationEditFromView`/`onSequenceEditFromView`/`applyOpToAnnotations`/`useFeatureEditorFlow` + auto-run + undo-redo) → ещё ~5-7 KB, увело бы файл под soft 30 (31.28 → ~24-26). Code сознательно НЕ сделал в проход декомпозиции — энтэнглд, риск > ценность (hard-эскалация уже снята с большим запасом). Опциональный шаг, решение Игоря.
-
-### T9 follow-ups
-- K13/K14 + graph-block badge — wire trigger-пунктов CREATE_DESIGN_VARIANT / MATERIALIZE_REACTION в context-menu (substance готова, отложен только entry-point — слепая правка 36 KB CanvasLayoutView в хвосте сессии = риск).
-- Materialize trigger через op context-menu vs OP_EXECUTE-flow (DEC-T9 open-Q #1).
-- Variant label numeric-by-createdAt vs буквенный (open-Q #3, сейчас numeric).
-- «Merge variants back» explicit action (open-Q #2, сейчас manual delete).
-
-### T10 follow-ups
-- `SHOW_SANGER_LAB_NOTEBOOK` click→focus link (BranchingVisual clone indicator → scroll-в-notebook+highlight) — event-bus/ref решение, отложено в визуальную приёмку.
-- Notes save-on-blur потеря при panel-close до blur (R-T10-2, debounce/flush, post-MVP).
-
-### T8 follow-ups
-- Auto-reaction toast (created/removed/manual-remove-warning) — нужны ли (finalizer сейчас silent).
-- piece.ranges change → auto-reaction `params.range` recompute (open-Q #1; finalizer пересоздаёт op только при kind-mismatch — изменения range при том же методе НЕ пересчитываются).
-
-### T6 follow-ups
-- §5.9 vs Открытый-вопрос-#1 спека-противоречие — закрепить решение «assemblyReducer kept живым, no-op в T-future» в DECISIONS.
-- Orphan-UX в zone-mode (piece удаляется вместо badge/convert).
-- InsertGapModal rename + editorContext.tabs rewrite — T-future cleanup-спайк.
-
-### T5 follow-ups
-- Op/PCR-консьюмеры primer-name follow-up (имя из модала не сохраняется по их create-пути).
-- Способ Г (new-primers toast-orchestration в ContainerEditorSkeleton) — builder готов, отложена только toast-склейка.
-
-### Cross-portal pattern для Chat
-Любой портал-модал, монтируемый из SequenceView (или иного хоста с root-level keyboard/pointer-хендлерами), ОБЯЗАН гасить `keydown` + `pointer` + `contextmenu` на своём backdrop — React-bubbling идёт по дереву компонентов, портал DOM-изоляции событий НЕ даёт. Кандидаты на тот же аудит: `CreateAnnotationPopup`, `SelectionContextMenu`, `EditAnnotationModal`, `PiecePrimersPickModal`, `PieceCreateModal`.
+После commit — TD-ZONE-ATTACH-CONTAINMENT отметить CLOSED в `TECH_DEBT.md` (отдельный Chat-таск, не в этом sprint).
 
 ---
 
-## Sprint metadata
+## Порядок чтения для Code
 
-- **Version bump:** v0.8.2 → **v0.8.3-alpha** (patch, по решению Игоря).
-- **Schema version:** 10 (T1=5 → T2=6 → T3=7 → T6=8 → T9=9 → T4.5=10).
-- **Tests:** Vitest 3276 / 1 skip / 0 fail. pytest 112/112 (не запускался — фронтовый sprint).
-- **Build:** vite build clean, 0 console errors.
-- **Известный flake:** TD-PRIMER-WIZARD-FLAKE (`primer-wizard.test.jsx`, intermittent под parallel-load, isolated 2/2 — pre-existing, не связан с T-серией).
-- **Size watch:** `CanvasLayoutView.jsx` 41.35 KB (`.jsx` hard 40 пробит после T4.5 pin-бейджи — TD-SIZE Active). `SequenceView/index.jsx` ~39 KB (close to hard). `ContainerEditorSkeleton.jsx` 34.37 KB (soft 30 over). `LibrarySingleInspector.jsx` 31.28 KB (после декомпозиции, Watch).
-
----
-
-**Следующий шаг Chat:** обновить `PROJECT_STATE.md` (Пачка 1c), затем compact, затем Пачка 2.
+1. `CHAT_PLAYBOOK.md` / `CHAT_PLAYBOOK_CORE.md` (если есть) — Project Knowledge, общие правила.
+2. `CLAUDE.md` — proj rules, especially §6 (lifecycle спек) + §7 (size limits hard/soft).
+3. `BUGS.md` — open V51 + контекст.
+4. **`docs/SPEC_BODGE_FORMAT_V2_CORE.md`** — основная спека этого sprint (~36 KB).
+5. `docs/COMPONENT_MAP.md` — навигация по существующим модулям.
+6. `docs/archive/CURRENT_TASK_HISTORY_2026_05_18_to_19_T_series_finalization.md` — контекст T-серии (referenced при работе с containers/zones/pieces/primers).
 
 ---
 
-## Code addendum — live UX-фиксы ПОСЛЕ snapshot Chat (18.05, продолжение сессии)
+## Чеклист K0-K16
 
-Snapshot выше зафиксировал Vitest **3276**. Игорь продолжил живую приёмку праймеров/виверов — ещё 3 правки поверх (Chat: учесть в PROJECT_STATE/RELEASES/DECISIONS, метаданные ниже актуализированы):
+- [ ] **K0 — SnapGene fixture probe.** Gate для K3-K7. Создать reference `pET-28b-bodge.gb` с искусственным provenance COMMENT ~3 KB. Прогнать round-trip через SnapGene, ApE, Geneious Prime, NCBI canonical, pLannotate. Заполнить таблицу §6.4 эмпирическими данными. Спроектировать `lib/bodge-snapgene-loss-detect.js`. +5-8 tests. **Отчёт — таблица §6.4 + mitigation описание.**
+- [ ] **K1 — Schema migration registry.** `lib/bodge-migrations/` + skeleton v1-to-v2.js + reference fixture `tests/fixtures/legacy/v1-pks4-knockout.bodge`. Migration chain test. +5 tests.
+- [ ] **K2 — Manifest schema v2 + validators.** `lib/bodge-manifest-v2.js` + `schemas/bodge-manifest-v2.json` (Ajv-compatible). +8 tests.
+- [ ] **K3 — Container `.gb` writer + reader.** `lib/bodge-container-genbank.js`. COMMENT provenance encoder/decoder (multi-line wrap-safe из K0). Custom qualifiers. +15 tests с K0 fixtures.
+- [ ] **K4 — Assembly JSON writer + reader.** `lib/bodge-assembly-json.js`. Cross-refs validation (export error, import warn). +10 tests.
+- [ ] **K5 — Primer pool JSON.** `lib/bodge-primers-json.js`. Sequence-hash dedup при read. +5 tests включая behavior change regression.
+- [ ] **K6 — ZIP v2 writer.** Rewrite `lib/bodge-zip.js::writeBodge(state, options)`. Per-asset compression policy. ASCII-safe filenames + displayName. `_recovery.json` parallel index. +12 tests.
+- [ ] **K7 — ZIP v2 reader.** `lib/bodge-zip.js::readBodge(blob) → state`. Detect signature → dispatch v1 vs v2. Orphan refs warn. +12 tests.
+- [ ] **K8 — Migration v1→v2.** `lib/bodge-migrations/v1-to-v2.js`. Atomic. Tests: v0.7.x (no zones), v0.8.x (post-T3-revert zones:[]), v0.8.x с zones (pre-revert). +10 tests.
+- [ ] **K9 — Atomic write + recovery.** `lib/bodge-atomic-write.js::safeWriteBodge()`. `lib/bodge-recovery.js::recoverCorruptBodge()`. Concurrent-write warning на `.writing-*.tmp`. +8 tests.
+- [ ] **K10 — Export profiles.** `lib/bodge-export-profiles.js` + `canvas/ExportProjectModal.jsx`. `public-supp` strip `metadata.author.deviceId`. +10 tests.
+- [ ] **K11 — `.bodgeassembly` portable subset.** Dependency walker + import flow. Container dedup по sha256 + primer dedup по sequence-hash. +8 tests.
+- [ ] **K12 — Extension points read/write.** `lib/bodge-extensions.js`. Bit-perfect preserve. Mock vendor fixture. +5 tests.
+- [ ] **K13 — SnapGene round-trip test suite.** Fixtures §14.1 + `interop.test.js` §14.2. +15 round-trip tests, каждая строка §6.4 верифицируется.
+- [ ] **K14 — Manual smoke test.** Real biolog workflow §15:
+  1. Open v0.8.2 `pks4.bodge` → migrate to v2.
+  2. Verify container.gb открывается в SnapGene → видит features.
+  3. Edit в SnapGene → re-import → external edit toast.
+  4. Export single-assembly → `.bodgeassembly`.
+  5. Import `.bodgeassembly` в новый project.
+- [ ] **K15 — Size budget check.** Bundle size after K1-K14. Migration code lazy-load. Target +30-50 KB gzipped main bundle.
+- [ ] **K16 — `README.md` writer.** `lib/bodge-readme-writer.js::buildReadme(...)`. Hook в writeBodge. README.md в корне ZIP первым asset, DEFLATE-compressed. Не должен содержать sha256 / deviceId / raw notebook text. +5 tests.
 
-1. **`primer-hotkeys-everywhere`** — новый `SequenceView/hooks/usePrimerHotkeys.js` (зеркало `usePieceHotkey`): `pcr-primer-forward` (Ctrl+R)/`pcr-primer-reverse` (Ctrl+Alt+R) регистрируются в самом SequenceView → праймер-из-выделения хоткеи работают во ВСЕХ виверах (Library/container-editor), не только assembly/PCR. Shared-id конфликт разобран: `_handlers` single-per-id, child-эффект раньше parent, caret-dep handler shell'ов ре-регистрируется последним → assembly/PCR direct-write сохранён. +6 тестов (`use-primer-hotkeys.test.jsx`).
-2. **`assembly-band-anchor`** — `SegmentZonesOverlay` брал `height=line.offsetHeight`; после primer-редизайна (forward над цепью / reverse под) высота строки скачет → полоса окраски сегмента «сдвигалась». Теперь полоса якорится к DNA strand-рядам (`[data-testid="sequence-view-strands"]` span), стабильна независимо от primer/ruler/annotation/AA. Геометрия (jsdom offset=0) — full-suite zone/assembly зелёные, визуал — браузерный приём Игоря.
-3. **`tm-1-150-cap`** — `selectionTm`: счётчик нуклеотидов остаётся ВСЕГДА; убирается только Tm вне 2–150 п.о. (`tm=null` → подсказка `«N bp»` без `Tm ≈ …°C`). Праймер >150 bp невозможен + снимает тяжёлый расчёт. `SequenceFloatingTooltips` рендерит count всегда, Tm-префикс условно. 2 теста `selection-tm.test.jsx` обновлены (>150 → count есть, Tm нет; ровно 150 → Tm+count).
+---
 
-Также в этот пост-snapshot отрезок (часть уже могла быть в 3276, но для полноты): `primer-modal-fix` (portal+fixed+autofocus), `hotkeys-modal-fix` (Esc в React-onKeyDown, не window-listener — иначе stopPropagation глушил bubble-window хоткеи), `primer-click-fix` (transparent hit-rect + снят `pe:none` с baseс-текста), `primer-pointerdown-bail` (`useSelectionState.onRootPointerDown` bail на `sequence-view-primer` — настоящий фикс «клик не работает»; зеркало RE-site/annotation bail), `primers-in-annotator-preview` (`primers`/`onWritePrimer` проброшены host→`AnnotationsTab`→`Annotator`→`PreviewTab`→SequenceView).
+## STOP-условие
 
-**Актуальные метаданные (перекрывают snapshot выше):**
-- **Tests:** Vitest **3284** / 1 skip / 0 fail (snapshot 3276 +8: use-primer-hotkeys +6, selection-tm +2; промежуточные modal/click фиксы — обновления in-place, без приращения числа).
-- **Новые файлы:** `SequenceView/hooks/usePrimerHotkeys.js`, `SequenceView/hooks/useInspectorSelectionNav.js` (decomp), `SequenceView/__tests__/use-primer-hotkeys.test.jsx`, `SequenceView/__tests__/primer-pointer-bail.test.jsx`, `Library/inspector/hooks/useInspectorSelectionNav.js`.
-- **Build:** vite build clean, dev-сервер 0 console-ошибок.
-- **Size watch (актуально):** без изменений к snapshot — добавления проп-проводочные/мелкие хуки; `LibrarySingleInspector.jsx` 31.28 KB (Watch), `CanvasLayoutView.jsx` 41.35 KB (TD-SIZE Active, не трогался), `SequenceView/index.jsx` ~39 KB (+мелочь от usePrimerHotkeys-вызова/Tm-гейта, под hard).
-- **Cross-portal pattern** (см. выше) — подтверждён на практике этими фиксами; кандидаты-аудит без изменений.
+Code останавливается после K16. **НЕ пишет** в координационные файлы (`CURRENT_TASK.md`, `PROJECT_STATE.md`, `DECISIONS.md`, `ANCHORS.md`, `BUGS.md`, `RELEASES.md`, `TECH_DEBT.md`, `COMPONENT_MAP.md`, `package.json`, `version.js`) — финализация Chat в следующей сессии после визуальной приёмки.
 
-**СТОП.** Координационные файлы (PROJECT_STATE/DECISIONS/ANCHORS/RELEASES/TECH_DEBT/package.json/version.js) Code не трогал — финализация Chat.
+**Структурированный отчёт обязателен** в этом CURRENT_TASK.md (по `CHAT_PLAYBOOK` правилам — Code recurring violation pattern):
+- Commit range (от...до).
+- Test counters: было/стало pass/skip/fail для vitest + pytest.
+- vite build status.
+- Spec deviations: что отклонилось от спеки и почему.
+- Size budget violations если есть.
+- K0 deliverable: filled таблица §6.4 + mitigation описание.
+- Manual e2e результаты по K14 (5 шагов: PASS / FAIL).
+- Открытые вопросы которые всплыли в процессе implementation.
+- Файлы которые меняли + новые модули созданные.
+
+---
+
+## Формат отчёта Code (по STOP-условию)
+
+```markdown
+## M-FORMAT-V2-CORE — отчёт Code
+
+**Commits:** <hash-first>..<hash-last>
+**Vitest:** 3296 → <N> pass / <M> skip / <F> fail
+**pytest:** 112/112 (или N если затрагивались backend модули)
+**vite build:** clean / N errors
+
+### K0 SnapGene fixture probe (gate)
+Таблица §6.4 заполнена: [link на committed файл с empirically-collected loss таблицей]
+Multi-line COMMENT reassembly: ✓ / ✗
+5 сторонних tools (SnapGene/ApE/Geneious/NCBI/pLannotate) round-trip: ✓ / ✗
+
+### Migration verification
+- v1 → v2 idempotent: ✓ / ✗
+- v0.8.x post-T3-revert: ✓ / ✗
+- v0.7.x (no zones): ✓ / ✗ (loose containers + toast)
+
+### SnapGene interop (K13)
+- Sequence bit-perfect: ✓ / ✗
+- FEATURES + qualifiers: ✓ / ✗
+- COMMENT verbatim или multi-line reassembly: ✓ / ✗
+- External edit detection: ✓ / ✗
+
+### Atomic write + recovery
+- crash mid-write recoverable: ✓ / ✗
+- ZIP corruption recoverable: ✓ / ✗
+- Concurrent-write warning: ✓ / ✗
+
+### Library vs Containers canonical rule
+- Container edit → entry status reset to draft: ✓ / ✗
+- Container delete → entry status archived: ✓ / ✗
+- External edit → resourceHash updated, name preserved: ✓ / ✗
+
+### README.md generator
+- Generated на каждом write: ✓ / ✗
+- Markdown valid в стандартных viewers: ✓ / ✗
+- Не содержит sensitive data: ✓ / ✗
+- Empty project edge case: ✓ / ✗
+
+### Size budget
+- lib/bodge-*.js total: <X> KB ungzipped, <Y> KB gzipped
+- Bundle impact: <Z> KB gzipped main (excluding lazy-loaded migration)
+
+### Manual smoke test (K14)
+1. v1 → v2 migrate: PASS / FAIL
+2. SnapGene открывает container.gb: PASS / FAIL
+3. External edit detect: PASS / FAIL
+4. `.bodgeassembly` export: PASS / FAIL
+5. `.bodgeassembly` import: PASS / FAIL
+
+### Spec deviations
+- [list или "нет"]
+
+### Открытые вопросы
+- [list]
+
+### Файлы
+**Новые:** lib/bodge-manifest-v2.js, lib/bodge-container-genbank.js, lib/bodge-assembly-json.js, lib/bodge-primers-json.js, lib/bodge-migrations/v1-to-v2.js, lib/bodge-atomic-write.js, lib/bodge-recovery.js, lib/bodge-export-profiles.js, lib/bodge-extensions.js, lib/bodge-snapgene-loss-detect.js, lib/bodge-readme-writer.js, schemas/* (5 файлов), __tests__/interop/fixtures/* (фикстуры по K0)
+
+**Изменены:** lib/bodge-zip.js (rewrite), lib/version.js (НЕ трогать — это Chat finalization), store/skeleton-store.js (optional extensions slice), Library/index.jsx (опционально для options передачи)
+```
+
+---
+
+## Что делать при регрессии
+
+Если test count падает или vite build ломается на любом K-шаге:
+1. **НЕ продолжать** к следующему K. Зафиксировать regression first.
+2. Записать в этот CURRENT_TASK.md одной строкой что упало + commit hash, на котором это всплыло.
+3. Если regression в существующих тестах вне scope sprint (например test для T6 / primer / canvas сломался) — это серьёзный сигнал что K-шаг задел больше чем должен был. Откатить, переоценить scope. Если действительно нужно поменять behavior — write это в spec deviations.
+4. Если flake — TD-PRIMER-WIZARD-FLAKE известный pre-existing, не блокер. Любой новый flake — записать как новый TD.
+
+---
+
+## Контекст к моменту старта
+
+- **Vitest baseline:** 3296 pass / 1 skip / 0 fail (после post-148936a батчей).
+- **Version:** v0.8.3-alpha (version.js, package.json).
+- **Schema:** 10. **НЕ меняется** в M-FORMAT-V2-CORE — единственная ручка `fileFormatVersion: "2.0.0"`.
+- **Size watch (на старте):**
+  - `CanvasLayoutView.jsx` 41.35 KB (hard-breached, TD-CANVAS-LAYOUTVIEW-DECOMP Active) — CORE этот файл не трогает.
+  - `SequenceView/index.jsx` ~39 KB.
+  - `lib/bodge-zip.js` 4.4 KB → rewrite, ожидаемый размер после K6-K7 ~12-15 KB.
+- **Известный flake:** TD-PRIMER-WIZARD-FLAKE (intermittent, isolated 2/2 — pre-existing).
+
+---
+
+**Дата создания:** 19.05.2026.
+**Sprint:** M-FORMAT-V2-CORE.
+**Спека:** `docs/SPEC_BODGE_FORMAT_V2_CORE.md`.
+**Следующий sprint:** M-FORMAT-V2-NOTEBOOK (после приёмки CORE; спека `docs/SPEC_BODGE_NOTEBOOK_MARKDOWN.md` готова).
+
+---
+
+## Code note — добавка к «Pre-sprint pending commit» (не часть M-FORMAT-V2)
+
+Игорь 19.05.2026 сообщил регрессию ОТ assembly-unify: «полностью потерялось окно сборки где можно накидывать фрагменты с цветным выделением». Корень (агент-трейс): `+ Сборка`/`AssemblyDraftsPanel.createZone` после унификации создавали зону, но **не открывали** редактор сборки; единственный прежний discoverable вход (легаси `assembly_N` карточка, dbl-click → `openEditorAssemblyTab`) мёртв (`assemblyDrafts` всегда пуст); зона-id reducer-генерится и недостижим caller'у → окно AssemblyShellBody (цветные сегменты + drag-insert) недостижимо. Сам редактор НЕ сломан — для свежей пустой зоны `openEditorAssemblyTab(zoneId)` корректно монтирует AssemblyShellBody (empty-zone bail отсутствует), просто никто его не открывал.
+
+**Фикс (5-й пункт того же uncommitted post-148936a батча):** caller-side zone id — `buildAssemblyZoneAction` теперь кладёт `zone.id = 'zn-'+uuidv7()`; `lib/zone-model.js::createZone` honors переданный `id` (fallback на генерацию — аддитивно, прочие CREATE_ZONE callers не задеты); `index.jsx «+ Сборка»` и `AssemblyDraftsPanel.createZone` → `zoneDispatch(a); openEditorAssemblyTab(a.zone.id)` (создать зону И сразу открыть её редактор сборки). Файлы: `canvas/assembly-zone-create.js`, `lib/zone-model.js`, `index.jsx`, `canvas/AssemblyDraftsPanel.jsx`. Тесты: `assembly-zone-create.test.js` (контракт-смена — id теперь в action, +caller-side-id/uniqueness тест), `zone-model.test.js` (+createZone honors id). **Vitest 3296 → 3298** (+2, 0 рег), `vite build` clean, dev-сервер 0 console-ошибок.
+
+→ Pre-sprint pending commit включал **5 пунктов** (см. выше; assembly-editor-open regression-fix).
+
+**6-й пункт того же uncommitted post-148936a батча — assembly source-picker → вся Библиотека (Игорь 19.05.2026 «тут должно быть входное окно с выпадающей библиотекой и полноценным поиском по библиотеке»):** пустая зона-сборка не имела canvas-контейнеров → пикер «Откуда взять сегмент?» показывал «Нет контейнеров». Агент-трейс: NO spec-collision (SPEC_BODGE_FORMAT_V2_CORE §16 — про file-serialization canonical rule, ортогонально in-memory `state.containers`); contained wiring через уже существующие API. **Реализация (reuse, без store/reducer/spec изменений):** новый чистый `editor/assembly-mode/assembly-source-search.js::searchAssemblySources(query, containers, libraryEntries)` — поиск ПО ОБОИМ источникам: проектные контейнеры + вся Библиотека (`store.libraryEntries`), name-substring ИЛИ DNA seed-extend (`lib/sequence-search.searchLibrary`, ≥8 IUPAC, identity 0.8 — зеркало LibraryTopBar). `AssemblySourcePicker` рендерит 2 секции (Контейнеры проекта / Библиотека), эмитит `{containerId|libraryEntry,start,end,rc}`; existing testids/flow сохранены (`source-picker-container` + новый `source-picker-library`). `AssemblyShellBody`: `useStore(s=>s.libraryEntries)` (read-only out-of-band, DEC-SKELETON-01-safe, паттерн use-tree-drop-target) → пикеру; `onInsertFromPicker` для libraryEntry: `addContainerFromEntry` → recover new id через тот же in-file snapshot-diff `setTimeout(0)` паттерн (что onDrop) → `insertSegment`. Работает и для legacy-draft и для zone-draft (оба резолвят source по containerId reducer-side). **TDD:** новый `assembly-source-search.test.js` (5: empty→оба пула, library payload-mapping+entry, name-substring, DNA seed-extend, defensive null). Existing picker контракт-тесты (`assembly-mode.test.jsx`, `zone-assembly-toolbar.test.jsx`) зелёные (libraryEntries в тестах пуст → только containerRows, прежнее поведение 1:1). **Full Vitest 327 файлов / 3303 pass / 1 skip / 0 fail** (3298 +5, zero рег). `vite build` clean, dev-сервер 0 console-ошибок. Файлы: `assembly-source-search.js`(new) + `.test.js`(new), `AssemblySourcePicker.jsx`, `AssemblyShellBody.jsx`. Blast S, без store/spec changes. Интерактивный materialize+insert (addContainerFromEntry→setTimeout-diff→insertSegment) jsdom не моделирует — переиспользован уже-shipped in-file паттерн; pure search-хелпер (суть «полноценного поиска») полностью юнит-покрыт; визуальный приём — браузер Игоря.
+
+→ Pre-sprint pending commit включал **6 пунктов** (п.6 ниже **сверстан / superseded п.7** — Игорь увидел скрин и сказал «У НАС вот уже было такое окно поиска», т.е. бесполезно строить параллельный bespoke-пикер).
+
+**7-й пункт того же uncommitted post-148936a батча — две правки по запросу Игоря 19.05.2026 (скрин PlaceholderTreePicker + «после того как вышел из сборки … обратно вернутся нельзя»):**
+
+**Fix A — re-entry в зону-сборку (функциональный блокер).** Зона-сборка на канвасе рисуется `ZoneLayer→ZoneFrame`; dbl-click header = collapse (ui-interactions конвенция), right-click `ZoneContextMenu` не имел «открыть сборку», легаси `AssemblyDraftBlock` dbl-click→`openEditorAssemblyTab` мёртв (зоны не идут этим путём) → единственный вход назад был неочевидный плавающий «📋 Сборки». Фикс: новый `onOpenAssembly` проп в `ZoneFrame` → видимая header-кнопка `🧬 Открыть сборку` (`zone-open-assembly-${id}`, pointerDown stopPropagation — не стартует header-drag), `ZoneLayer` шлёт `OPEN_EDITOR_ASSEMBLY_TAB{draftId:zoneId}` (тот же root dispatch, что и прочие zone-actions), плюс пункт `zone-menu-open-assembly` первым в `ZoneContextMenu`. Strings: `zones.openAssembly` + `zones.contextMenu.openAssembly`. Аддитивно, dbl-click=collapse не тронут. Файлы: `ZoneFrame.jsx`, `ZoneLayer.jsx`, `ZoneContextMenu.jsx`, `lib/strings.js`. Тесты: +1 `ZoneFrame.test.jsx`, +1 `ZoneLayer.test.jsx`, +1 `ZoneContextMenu.test.jsx`.
+
+**Fix B — reuse существующего богатого пикера (supersede п.6).** Bespoke `AssemblySourcePicker` + `assembly-source-search.js` (+ `.test.js`) **удалены**; `AssemblyShellBody` теперь рендерит уже-существующий `canvas/PlaceholderTreePicker` (name+seq поиск, type-pills, Из проекта/Коллекция/Другие/Библиотека-дерево, fav/recent). `onPickEntry(entry)`: materialize через `addContainerFromEntry` → recover fresh-id через snapshot-diff, но на **`stateRef.current`** (захваченный `state`-closure устаревал после dispatch-ререндера — устранён скрытый дефект bespoke-ветки) → `insertSegment` full-length; range/RC уточняются в `SegmentDetailPanel` (как K4 drag-insert). **Trade-off (записан осознанно):** проектные canvas-контейнеры больше не в модалке-пикере — они достижимы drag'ом из `AssemblySidebar` (K4, тест «drag a sidebar container» зелёный); пикер = Библиотека (ровно то, что просил Игорь). **Отклонение от прежних тестов (tdd-enforce):** K6-блок `assembly-mode.test.jsx` (4) и picker-тест `zone-assembly-toolbar.test.jsx` (1) переписаны под контракт PlaceholderTreePicker (library-entry + materialize); `assembly-source-search.test.js` (5) удалён вместе с модулем. Файлы: `AssemblyShellBody.jsx` (−bespoke plumbing, ~ровно), удалены `AssemblySourcePicker.jsx`+`assembly-source-search.js`+`.test.js`.
+
+**Проверка п.7:** Full Vitest **326 файлов / 3300 pass / 1 skip**, единственный fail = pre-existing **TD-PRIMER-WIZARD-FLAKE** (`Library/primer-wizard.test.jsx`, вне скоупа; изолировано run1 fail/run2 2/2 pass — недетерминированный, не регрессия). Δтестов: −5 (удалён search-test) +3 (Fix A) → baseline 3303→3301 (=3300 pass +1 flake). `vite build` clean (chunk>500KB warning pre-existing). Size budget OK: ZoneFrame 8.13 / ZoneLayer 4.70 / ZoneContextMenu 5.20 / AssemblyShellBody 11.11 KB (все ≪ hard 40), нетто-сокращение от удаления 2 bespoke-файлов. Interactive materialize+insert (`addContainerFromEntry→setTimeout-diff→insertSegment`) и зона-frame клики jsdom покрывает контрактно; визуальный приём — браузер Игоря.
+
+→ Pre-sprint pending commit включает теперь **7 пунктов** (п.7 supersede-ит реализацию п.6). Suggested commit message строки взамен п.6-строки: `- assembly: reuse shared PlaceholderTreePicker for segment source, drop bespoke picker (refactor)` + `- canvas/zone: explicit "Открыть сборку" re-entry on zone frame + context menu (fix)`; счётчик `3284 → 3300 (+16; −5 удалён bespoke search-test, +3 zone re-entry)`. Координационные файлы (кроме этой pending-commit заметки) Code не трогал; M-FORMAT-V2-CORE K0-K16 НЕ начат — это была серия live bug-fix/UX по запросам Игоря, не sprint.

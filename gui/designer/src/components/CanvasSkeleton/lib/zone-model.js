@@ -20,10 +20,16 @@ import { BLOCK_LINEAR_W, BLOCK_LINEAR_H } from '../canvas/canvas-layout';
  * @property {number} updatedAt
  */
 
-export function createZone({ name, bounds, notes = null } = {}) {
+export function createZone({
+  id, name, bounds, notes = null,
+} = {}) {
   const now = Date.now();
   return {
-    id: `zn-${uuidv7()}`,
+    // Honor a caller-supplied id (Игорь 19.05.2026): «+ Сборка» must
+    // know the new zone id to open its assembly editor immediately —
+    // otherwise the reducer-generated id is undiscoverable and the
+    // colored-segment build window is unreachable. Absent → generated.
+    id: id || `zn-${uuidv7()}`,
     name: name || 'Без названия',
     bounds: { ...(bounds || {}) },
     collapsed: false,

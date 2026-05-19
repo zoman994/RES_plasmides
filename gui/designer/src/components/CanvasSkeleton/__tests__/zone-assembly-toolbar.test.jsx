@@ -17,7 +17,7 @@ import {
   SkeletonProvider, useSkeletonActions, useSkeletonState,
 } from '../store/skeleton-context';
 import EditorWindowShell from '../editor/EditorWindowShell';
-import { bootstrapStore } from '../../../store';
+import { bootstrapStore, useStore } from '../../../store';
 
 afterEach(cleanup);
 beforeEach(() => { try { bootstrapStore(); } catch { /* idempotent */ } });
@@ -57,18 +57,31 @@ function dt() {
 }
 
 describe('T6 K9 — toolbar / picker / sidebar / undo in zone-mode', () => {
-  it('«+ Сегмент» → picker → Insert creates a sourced piece in the zone', () => {
+  it('«+ Сегмент» → PlaceholderTreePicker → pick a library entry creates a sourced piece in the zone', async () => {
     const zid = openEmptyZone();
+    act(() => {
+      useStore.setState((s) => ({
+        ...s,
+        libraryEntries: {
+          'lib-z': {
+            id: 'lib-z', kind: 'container', name: 'pUC-lib',
+            payload: { sequence: 'AAAACCCCGGGGTTTT', topology: 'linear' },
+          },
+        },
+        projects: {},
+        currentProjectId: null,
+      }));
+    });
     act(() => { fireEvent.click(screen.getByTestId('assembly-add-segment')); });
-    const picker = screen.getByTestId('assembly-source-picker');
-    act(() => { fireEvent.click(within(picker).getAllByTestId('source-picker-container')[0]); });
-    act(() => { fireEvent.change(within(picker).getByTestId('source-picker-start'), { target: { value: '0' } }); });
-    act(() => { fireEvent.change(within(picker).getByTestId('source-picker-end'), { target: { value: '8' } }); });
-    act(() => { fireEvent.click(within(picker).getByTestId('source-picker-insert')); });
+    expect(screen.getByTestId('skeleton-placeholder-picker')).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('skeleton-placeholder-picker-item-lib-z'));
+      await new Promise((r) => { setTimeout(r, 0); });
+    });
     const ps = zonePieces(zid);
     expect(ps).toHaveLength(1);
     expect(ps[0].kind).toBe('sourced');
-    expect(ps[0].ranges[0]).toMatchObject({ sourceId: 'cZ', start: 0, end: 8 });
+    expect(ps[0].ranges[0]).toMatchObject({ start: 0, end: 16 });
   });
 
   it('«+ Gap» unknown length → a gap piece in the zone', () => {

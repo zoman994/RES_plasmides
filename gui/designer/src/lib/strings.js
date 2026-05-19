@@ -540,6 +540,7 @@ export const STRINGS = {
     // frame UI (render / drag / resize / merge) lands in T4.
     zones: {
       defaultName: 'Сборка {n}',                                       // EN: "Assembly {n}"
+      openAssembly: 'Открыть сборку',                                  // EN: "Open assembly"
       emptyZoneHint: 'Зона пуста',                                     // EN: "Zone is empty"
       errorTooMany: 'Превышен лимит {limit} зон на проект',            // EN: "Zone limit {limit} per project exceeded"
       errorTooSmall: 'Размер зоны меньше минимума',                    // EN: "Zone smaller than the minimum"
@@ -556,6 +557,7 @@ export const STRINGS = {
       // T4 — frame UI (context menu, header, cross-zone, collapse).
       contextMenu: {
         rename: 'Переименовать',                                       // EN: "Rename"
+        openAssembly: 'Открыть сборку',                                // EN: "Open assembly"
         remove: 'Удалить зону',                                        // EN: "Delete zone"
         mergeWith: 'Объединить с...',                                  // EN: "Merge with..."
         collapse: 'Свернуть',                                          // EN: "Collapse"

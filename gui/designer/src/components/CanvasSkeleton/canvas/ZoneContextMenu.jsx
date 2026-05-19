@@ -72,6 +72,11 @@ export default function ZoneContextMenu({ zoneId, x, y, state, dispatch, onClose
       }}
     >
       <Item
+        label={CM.openAssembly}
+        testid="zone-menu-open-assembly"
+        onClick={() => fire({ type: 'OPEN_EDITOR_ASSEMBLY_TAB', draftId: zoneId })}
+      />
+      <Item
         label={CM.rename}
         testid="zone-menu-rename"
         onClick={() => {

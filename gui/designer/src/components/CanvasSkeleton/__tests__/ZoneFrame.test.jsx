@@ -72,6 +72,25 @@ describe('T4 K3 ZoneFrame', () => {
     expect(onClickHeader).toHaveBeenCalled();
   });
 
+  it('header open-assembly button → onOpenAssembly(zone.id), no header drag', () => {
+    const onOpenAssembly = vi.fn();
+    const onDragStart = vi.fn();
+    render(
+      <ZoneFrame
+        zone={zone()}
+        nodeCount={0}
+        onOpenAssembly={onOpenAssembly}
+        onDragStart={onDragStart}
+      />,
+    );
+    const btn = screen.getByTestId('zone-open-assembly-zn-1');
+    // pointer-down on the button must NOT bubble into the header drag.
+    fireEvent.pointerDown(btn);
+    expect(onDragStart).not.toHaveBeenCalled();
+    fireEvent.click(btn);
+    expect(onOpenAssembly).toHaveBeenCalledWith('zn-1');
+  });
+
   it('right-click header → onContextMenu with preventDefault', () => {
     const onContextMenu = vi.fn();
     render(<ZoneFrame zone={zone()} nodeCount={0} onContextMenu={onContextMenu} />);

@@ -27,6 +27,10 @@ describe('T3 K1 createZone', () => {
     expect(z.name).toBeTypeOf('string');
     expect(z.bounds).not.toBe(b);
   });
+  it('honours a caller-supplied id (create+open-editor chain); generates when absent', () => {
+    expect(createZone({ id: 'zn-fixed', bounds: {} }).id).toBe('zn-fixed');
+    expect(createZone({ bounds: {} }).id).toMatch(/^zn-/); // fallback intact
+  });
 });
 
 describe('T3 K1 nodeListInZone', () => {

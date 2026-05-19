@@ -95,6 +95,9 @@ describe("selectEntryPrimers", () => {
     expect(out).toHaveLength(2);
     const byName = Object.fromEntries(out.map((p) => [p.name, p]));
     expect(byName.fwd).toEqual({
+      // `id` kept for identity-consumers (PiecePrimersPickModal);
+      // PrimerTrack ignores it — viewer shape otherwise unchanged.
+      id: "p1",
       name: "fwd",
       sequence: "AAACCCGGGTTT",
       bindingSequence: "AAACCCGGGTTT",

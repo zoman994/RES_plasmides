@@ -8,7 +8,7 @@
  *   K3  AssemblyModeShell + AssemblyHeader
  *   K4  AssemblySidebar + DnD insert-at-caret
  *   K5  SegmentList + SegmentDetailPanel
- *   K6  AssemblySourcePicker (2-step)
+ *   K6  segment source picker — reuse of the shared PlaceholderTreePicker
  *   K7  InsertGapModal
  *   K8  assembly primer writing (slice + Ctrl+R + cross-boundary)
  *   K9  AssemblyDraftsPanel + canvas markers + pin
@@ -41,7 +41,7 @@ import {
 } from '../store/skeleton-persistence';
 
 afterEach(cleanup);
-import { bootstrapStore } from '../../../store';
+import { bootstrapStore, useStore } from '../../../store';
 
 beforeEach(() => { try { bootstrapStore(); } catch { /* idempotent */ } });
 
@@ -349,63 +349,80 @@ describe('K5 SegmentList + SegmentDetailPanel', () => {
 });
 
 // ════════════════════════════════════════════════════════════════════
-// K6 — AssemblySourcePicker (2-step) + «+ Сегмент»
+// K6 — segment source picker (Игорь 19.05.2026: reuse the shared rich
+// PlaceholderTreePicker «У НАС вот уже было такое окно поиска» — no
+// bespoke parallel picker; library search + materialise-on-pick)
 // ════════════════════════════════════════════════════════════════════
+
+function seedLibraryK6() {
+  act(() => {
+    useStore.setState((s) => ({
+      ...s,
+      libraryEntries: {
+        'lib-puc': {
+          id: 'lib-puc', kind: 'container', name: 'pUC19',
+          payload: { sequence: 'AAAACCCCGGGGTTTT', topology: 'linear' },
+        },
+        'lib-pet': {
+          id: 'lib-pet', kind: 'container', name: 'pET28',
+          payload: { sequence: 'TTTTGGGGCCCCAAAA', topology: 'linear' },
+        },
+      },
+      projects: {},
+      currentProjectId: null,
+    }));
+  });
+}
 
 function openDraftK6() {
   render(<SkeletonProvider><H /><EditorWindowShell /></SkeletonProvider>);
-  act(() => { A.addContainer({ id: 'cp1', name: 'pUC19', sequence: 'AAAACCCCGGGGTTTT', annotations: [] }); });
-  act(() => { A.addContainer({ id: 'cp2', name: 'pET28', sequence: 'TTTTGGGGCCCCAAAA', annotations: [] }); });
+  seedLibraryK6();
   act(() => { A.createAssemblyDraft({ id: 'asm-k6', name: 'K6' }); });
   act(() => { A.openEditorAssemblyTab('asm-k6'); });
 }
 
-describe('K6 AssemblySourcePicker', () => {
-  it('«+ Сегмент» opens the picker (step 1 = container list)', () => {
+describe('K6 segment source picker (PlaceholderTreePicker reuse)', () => {
+  it('«+ Сегмент» opens the shared PlaceholderTreePicker (library entries)', () => {
     openDraftK6();
     act(() => { fireEvent.click(screen.getByTestId('assembly-add-segment')); });
-    const picker = screen.getByTestId('assembly-source-picker');
-    expect(within(picker).getAllByTestId('source-picker-container').length).toBe(2);
+    expect(screen.getByTestId('skeleton-placeholder-picker')).toBeTruthy();
+    expect(screen.getByTestId('skeleton-placeholder-picker-item-lib-puc')).toBeTruthy();
+    expect(screen.getByTestId('skeleton-placeholder-picker-item-lib-pet')).toBeTruthy();
   });
 
-  it('filter narrows the container list', () => {
+  it('search narrows the library list', () => {
     openDraftK6();
     act(() => { fireEvent.click(screen.getByTestId('assembly-add-segment')); });
-    const picker = screen.getByTestId('assembly-source-picker');
     act(() => {
-      fireEvent.change(within(picker).getByTestId('source-picker-filter'), { target: { value: 'puc' } });
+      fireEvent.change(
+        screen.getByTestId('skeleton-placeholder-picker-search'),
+        { target: { value: 'puc' } },
+      );
     });
-    expect(within(picker).getAllByTestId('source-picker-container')).toHaveLength(1);
+    expect(screen.getByTestId('skeleton-placeholder-picker-item-lib-puc')).toBeTruthy();
+    expect(screen.queryByTestId('skeleton-placeholder-picker-item-lib-pet')).toBeNull();
   });
 
-  it('pick container → step 2 → set range + RC + Insert dispatches insertSegment', () => {
+  it('pick a library entry → materialised + inserted as a segment', async () => {
     openDraftK6();
     act(() => { fireEvent.click(screen.getByTestId('assembly-add-segment')); });
-    const picker = screen.getByTestId('assembly-source-picker');
-    act(() => {
-      fireEvent.click(within(picker).getAllByTestId('source-picker-container')[0]);
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('skeleton-placeholder-picker-item-lib-puc'));
+      await new Promise((r) => { setTimeout(r, 0); });
     });
-    expect(within(picker).getByTestId('source-picker-step2')).toBeTruthy();
-    act(() => { fireEvent.change(within(picker).getByTestId('source-picker-start'), { target: { value: '0' } }); });
-    act(() => { fireEvent.change(within(picker).getByTestId('source-picker-end'), { target: { value: '8' } }); });
-    act(() => { fireEvent.click(within(picker).getByTestId('source-picker-rc')); });
-    act(() => { fireEvent.click(within(picker).getByTestId('source-picker-insert')); });
     const d = S.assemblyDrafts.find((x) => x.id === 'asm-k6');
     expect(d.segments).toHaveLength(1);
-    expect(d.segments[0].source.containerId).toBe('cp1');
-    expect(d.segments[0].reverseComplement).toBe(true);
-    expect(d.segments[0].sequence).toBe('GGGGTTTT'); // RC of pUC19[0:8]=AAAACCCC
+    expect(d.segments[0].sequence).toBe('AAAACCCCGGGGTTTT');
+    expect(screen.queryByTestId('skeleton-placeholder-picker')).toBeNull();
   });
 
-  it('Back returns to step 1; Cancel closes the picker', () => {
+  it('Cancel (×) closes the picker without inserting', () => {
     openDraftK6();
     act(() => { fireEvent.click(screen.getByTestId('assembly-add-segment')); });
-    let picker = screen.getByTestId('assembly-source-picker');
-    act(() => { fireEvent.click(within(picker).getAllByTestId('source-picker-container')[0]); });
-    act(() => { fireEvent.click(within(picker).getByTestId('source-picker-back')); });
-    expect(within(picker).getAllByTestId('source-picker-container').length).toBe(2);
-    act(() => { fireEvent.click(within(picker).getByTestId('source-picker-cancel')); });
-    expect(screen.queryByTestId('assembly-source-picker')).toBeNull();
+    act(() => { fireEvent.click(screen.getByTestId('skeleton-placeholder-picker-close')); });
+    expect(screen.queryByTestId('skeleton-placeholder-picker')).toBeNull();
+    const d = S.assemblyDrafts.find((x) => x.id === 'asm-k6');
+    expect(d.segments).toHaveLength(0);
   });
 });
 

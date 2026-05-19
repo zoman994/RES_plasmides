@@ -49,6 +49,7 @@ import ProtocolPanel from './ProtocolPanel';
 import PrimerOrderPanel from './PrimerOrderPanel';
 import CodonStatsPanel from './CodonStatsPanel';
 import AssemblyDraftsPanel from './canvas/AssemblyDraftsPanel';
+import { buildAssemblyZoneAction } from './canvas/assembly-zone-create';
 
 export default function CanvasSkeleton() {
   return (
@@ -221,15 +222,21 @@ function CanvasArea() {
         <span style={{ fontSize: 16, lineHeight: 1 }}>+</span>
         <span>Операция</span>
       </button>
-      {/* A1 K7 — «+ Сборка»: новый AssemblyDraft на canvas (cascade
-          по левому краю, DEC-ASM-08 / G1 Q3). */}
+      {/* «+ Сборка» (Игорь 18-19.05.2026 — унификация «Только зона» +
+          regression-fix): создаёт ЗОНУ (four-tier, DEC-CANVAS-4T-07)
+          И СРАЗУ открывает её редактор сборки (AssemblyShellBody —
+          цветные сегменты + drag-insert фрагментов). Без open-шага
+          окно сборки было недостижимо. Тот же путь — «+ Новая сборка»
+          в AssemblyDraftsPanel. */}
       <button
         type="button"
         data-testid="skeleton-add-assembly"
-        onClick={() => actions.createAssemblyDraft({
-          position: { x: 40, y: 40 + 200 * ((state.assemblyDrafts || []).length) },
-        })}
-        title="Создать сборку (Assembly Draft)"
+        onClick={() => {
+          const a = buildAssemblyZoneAction(state);
+          actions.zoneDispatch(a);
+          actions.openEditorAssemblyTab(a.zone.id);
+        }}
+        title="Создать сборку и открыть редактор"
         style={{
           position: 'absolute',
           bottom: 64,

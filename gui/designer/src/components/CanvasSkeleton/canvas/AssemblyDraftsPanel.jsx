@@ -16,6 +16,7 @@ import { useState } from 'react';
 import { useSkeletonState, useSkeletonActions } from '../store/skeleton-context';
 import { selectAllZones } from '../store/selectors-zones';
 import { nodeListInZone } from '../lib/zone-model';
+import { buildAssemblyZoneAction } from './assembly-zone-create';
 
 function zoneNodeCount(state, zoneId) {
   const { containers, pieces, operations } = nodeListInZone(state, zoneId);
@@ -28,17 +29,14 @@ export default function AssemblyDraftsPanel() {
   const [open, setOpen] = useState(false);
   const zones = selectAllZones(state);
 
+  // Unified with the bottom-right «+ Сборка» button (Игорь 18-19.05.2026
+  // «Только зона» + regression-fix) — single CREATE_ZONE path, then
+  // open its assembly editor so the colored-segment build window is
+  // actually reachable (caller-side zone id from buildAssemblyZoneAction).
   const createZone = () => {
-    const n = zones.length + 1;
-    actions.zoneDispatch({
-      type: 'CREATE_ZONE',
-      zone: {
-        name: `Сборка ${n}`,
-        bounds: {
-          x: 40 + (n - 1) * 40, y: 40 + (n - 1) * 40, width: 600, height: 400,
-        },
-      },
-    });
+    const a = buildAssemblyZoneAction(state);
+    actions.zoneDispatch(a);
+    actions.openEditorAssemblyTab(a.zone.id);
   };
 
   return (

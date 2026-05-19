@@ -48,6 +48,7 @@ export default function ZoneFrame({
   zone, nodeCount = 0,
   onDragStart, onResize, onContextMenu, onClickHeader,
   state, dispatch, onToggleViewMode, onFocus, onNavigateToZone,
+  onOpenAssembly,
 }) {
   const { x, y, width, height } = zone.bounds;
   const collapsed = !!zone.collapsed;
@@ -160,6 +161,30 @@ export default function ZoneFrame({
           }}
         >
           {isSequence ? 'S' : 'G'}
+        </button>
+        <button
+          type="button"
+          data-testid={`zone-open-assembly-${zone.id}`}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (onOpenAssembly) onOpenAssembly(zone.id);
+          }}
+          title={Z.openAssembly}
+          aria-label={Z.openAssembly}
+          style={{
+            font: '600 11px var(--font-ui)',
+            padding: '1px 8px',
+            borderRadius: 'var(--radius-sm, 4px)',
+            border: '1px solid var(--accent-500, #b85c3e)',
+            background: 'var(--accent-500, #b85c3e)',
+            color: '#fff',
+            cursor: 'pointer',
+            pointerEvents: 'auto',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          🧬 {Z.openAssembly}
         </button>
       </div>
 
