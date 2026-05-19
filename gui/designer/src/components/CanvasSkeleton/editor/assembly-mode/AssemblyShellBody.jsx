@@ -31,6 +31,7 @@ import InsertGapModal from './InsertGapModal';
 import SnippetCatalogModal from './SnippetCatalogModal';
 import SynthesisModal from './SynthesisModal';
 import RangePickerModal from './RangePickerModal';
+import SnippetOnboardingTip from './SnippetOnboardingTip';
 import AssemblyPrimersPanel from './AssemblyPrimersPanel';
 import RealiseModal from './RealiseModal';
 import { useAssemblyPrimerWriting } from './useAssemblyPrimerWriting';
@@ -263,6 +264,10 @@ export default function AssemblyShellBody({ draft }) {
           draftId, !(draft.topology && draft.topology.circular),
         )}
         onRealise={() => setRealiseOpen(true)}
+      />
+
+      <SnippetOnboardingTip
+        hasSnippet={(draft.segments || []).some((s) => s.pieceKind === 'snippet')}
       />
 
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>

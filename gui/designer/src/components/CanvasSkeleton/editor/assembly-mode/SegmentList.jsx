@@ -6,6 +6,21 @@
  */
 import { useSkeletonActions } from '../../store/skeleton-context';
 
+// K6 — strip iconography (SPEC §5.3). pieceKind is set by draftFromZone
+// for zone-projected drafts; legacy drafts fall back to source.type.
+const KIND_ICON = {
+  sourced: '🧬',
+  snippet: '✦',
+  synthesis: '🧪',
+  intermediate: '📦',
+  gap: '◊',
+};
+function effectiveKind(seg) {
+  if (seg && seg.pieceKind && KIND_ICON[seg.pieceKind]) return seg.pieceKind;
+  if (seg && seg.source && seg.source.type === 'manual') return 'gap';
+  return 'sourced';
+}
+
 function rowSource(seg, idx) {
   if (seg.source?.type === 'container') {
     return `${seg.source.sourceContainerName || 'container'} [${seg.start}:${seg.end}]`;
@@ -38,6 +53,7 @@ export default function SegmentList({
       <div style={{ display: 'flex', padding: '4px 10px', color: 'var(--text-tertiary)', fontWeight: 600, position: 'sticky', top: 0, background: 'var(--surface-2)' }}>
         <span style={{ width: 24 }}>#</span>
         <span style={{ width: 18 }} />
+        <span style={{ width: 22 }} />
         <span style={{ flex: 1 }}>Источник</span>
         <span style={{ width: 64 }}>Длина</span>
         <span style={{ width: 36 }}>RC</span>
@@ -73,8 +89,22 @@ export default function SegmentList({
             <span style={{ width: 18 }}>
               <span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 3, background: seg.color }} />
             </span>
+            <span
+              data-testid="segment-kind-icon"
+              style={{ width: 22, fontSize: 13, lineHeight: 1 }}
+              title={effectiveKind(seg)}
+            >
+              {KIND_ICON[effectiveKind(seg)]}
+            </span>
             <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {rowSource(seg, i)}
+              {Array.isArray(seg.mutations) && seg.mutations.length > 0 && (
+                <span
+                  data-testid="segment-mutation-badge"
+                  title={`${seg.mutations.length} mutation${seg.mutations.length > 1 ? 's' : ''}`}
+                  style={{ marginLeft: 6, color: 'var(--accent-500, #b85c3e)' }}
+                >💎</span>
+              )}
               {isOrphan && (
                 <span data-testid="assembly-segment-orphan-badge" style={{ marginLeft: 6, color: 'var(--accent-500, #b85c3e)' }}>⚠ orphan</span>
               )}

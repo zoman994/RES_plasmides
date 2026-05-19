@@ -112,6 +112,23 @@ export function draftFromZone(state, zone) {
         length: gseq ? gseq.length : (p.gapLength || 0),
         gapKind: gseq ? 'known' : (p.gapHint || 'unknown'),
         label: p.name,
+        pieceKind: 'gap',
+        annotations: [],
+      };
+    }
+    // M-CANVAS-WORKFLOW-UX K6 — inline-sequence kinds (snippet /
+    // synthesis / intermediate). Render as manual segments carrying the
+    // inline sequence; SegmentList uses pieceKind for the icon.
+    if (p.kind === 'snippet' || p.kind === 'synthesis' || p.kind === 'intermediate') {
+      const seq = typeof p.sequence === 'string' ? p.sequence : '';
+      return {
+        id: p.id,
+        source: { type: 'manual' },
+        reverseComplement: false,
+        sequence: seq,
+        length: seq.length,
+        label: p.name,
+        pieceKind: p.kind,
         annotations: [],
       };
     }
@@ -134,6 +151,10 @@ export function draftFromZone(state, zone) {
       length: seq.length,
       color: p.color,
       label: p.name,
+      pieceKind: 'sourced',
+      // K6 — pass through per-piece mutations so SegmentList can show
+      // the 💎 badge / K14 mutation entry can edit them.
+      mutations: Array.isArray(p.mutations) ? p.mutations : [],
       // Inherit the source container's features clipped to this slice
       // (same proven helper as legacy makeSourcedSegment) — was [] in
       // the 4-tier path, so realised products lost annotations.
