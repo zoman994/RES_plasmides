@@ -21,7 +21,7 @@ import { BLOCK_LINEAR_W, BLOCK_LINEAR_H } from '../canvas/canvas-layout';
  */
 
 export function createZone({
-  id, name, bounds, notes = null,
+  id, name, bounds, notes = null, finalTopology = 'circular',
 } = {}) {
   const now = Date.now();
   return {
@@ -37,6 +37,9 @@ export function createZone({
     autoResize: true,
     // T4.5 DEC-T4.5-05 — 3-lane auto-layout opt-out ('auto' | 'manual').
     laneLayout: 'auto',
+    // M-CANVAS-WORKFLOW-UX (SPEC §6.4 / §3 Шаг 0) — final product
+    // topology; gates group op.kind picker + final-op auto-suggest.
+    finalTopology: finalTopology === 'linear' ? 'linear' : 'circular',
     notes,
     createdAt: now,
     updatedAt: now,

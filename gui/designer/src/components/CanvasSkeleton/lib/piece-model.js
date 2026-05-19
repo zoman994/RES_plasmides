@@ -99,7 +99,12 @@ export function createPiece(rawData = {}, existingPieces = []) {
   const id = `pc-${uuidv7()}`;
   const now = Date.now();
   const existingColors = (existingPieces || []).map((p) => p.color).filter(Boolean);
-  const isGap = rawData.kind === 'gap';
+  // M-CANVAS-WORKFLOW-UX (SPEC §6.1) — kind expanded beyond gap/sourced
+  // to snippet (embeds in primer tail), synthesis (inline ПСО) and
+  // intermediate (op-group output). Unknown → 'sourced' (back-compat).
+  const KIND_SET = new Set(['sourced', 'gap', 'snippet', 'synthesis', 'intermediate']);
+  const kind = KIND_SET.has(rawData.kind) ? rawData.kind : 'sourced';
+  const isGap = kind === 'gap';
   // V83 — a gap with a KNOWN sequence (linker preset / custom) keeps it
   // verbatim and gapLength derives from it. A sequence-less gap is the
   // genuine unknown-length placeholder (renders poly-N), unchanged.
@@ -107,13 +112,26 @@ export function createPiece(rawData = {}, existingPieces = []) {
     ? rawData.gapSequence : null;
   return {
     id,
-    kind: rawData.kind === 'gap' ? 'gap' : 'sourced', // T6 DEC-T6-02
+    kind, // T6 DEC-T6-02 + M-CANVAS-WORKFLOW-UX snippet/synthesis/intermediate
     ...(isGap ? {
       gapLength: gapSeq
         ? gapSeq.length
         : (Number.isFinite(rawData.gapLength) ? rawData.gapLength : 0),
       gapHint: rawData.gapHint || 'unknown',
       ...(gapSeq ? { gapSequence: gapSeq } : {}),
+    } : {}),
+    // SPEC §6.1 — inline sequence for non-sourced pieces (snippet =
+    // CATCAT… embedded in primer; synthesis = ПСО; intermediate =
+    // op-group output reconstructed by the finalizer).
+    ...((kind === 'snippet' || kind === 'synthesis' || kind === 'intermediate') ? {
+      sequence: typeof rawData.sequence === 'string' ? rawData.sequence : '',
+    } : {}),
+    ...(kind === 'snippet' ? {
+      snippetType: rawData.snippetType != null ? rawData.snippetType : null,
+      embedsInPrimer: rawData.embedsInPrimer !== false, // default true
+    } : {}),
+    ...(kind === 'intermediate' ? {
+      derivedFromOpId: rawData.derivedFromOpId != null ? rawData.derivedFromOpId : null,
     } : {}),
     name: typeof rawData.name === 'string' ? rawData.name : '',
     sourceIds: Array.isArray(rawData.sourceIds) ? rawData.sourceIds.slice() : [],
@@ -136,6 +154,11 @@ export function createPiece(rawData = {}, existingPieces = []) {
     frozen: false,
     // T4.5 DEC-T4.5-04 — drag-override flag for 3-lane auto-layout.
     pinned: false,
+    // M-CANVAS-WORKFLOW-UX (SPEC §6.1) — explicit op-group membership
+    // (Шаг 2 grouping) + per-piece mutation list (Шаг 5.2 mutagenic).
+    groupId: rawData.groupId != null ? rawData.groupId : null,
+    groupLayer: Number.isFinite(rawData.groupLayer) ? rawData.groupLayer : 0,
+    mutations: Array.isArray(rawData.mutations) ? rawData.mutations.map((m) => ({ ...m })) : [],
     createdAt: now,
     updatedAt: now,
   };
@@ -174,6 +197,10 @@ export function clonePiece(piece, overrides = {}) {
     color: generatePieceColor(id),
     zoneId: overrides.zoneId !== undefined ? overrides.zoneId : (piece ? piece.zoneId : null),
     order: null, // T7 — a clone is a fresh free piece, not attached
+    // M-CANVAS-WORKFLOW-UX — a clone is ungrouped (mirrors order:null);
+    // mutations[] carried verbatim via the JSON deep-copy above.
+    groupId: null,
+    groupLayer: 0,
     // T9 — a plain clone is not a variant; CREATE_DESIGN_VARIANT sets
     // variantGroupId explicitly after cloning.
     variantGroupId: overrides.variantGroupId !== undefined

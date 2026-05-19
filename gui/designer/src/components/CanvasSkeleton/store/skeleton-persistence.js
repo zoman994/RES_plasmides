@@ -41,7 +41,10 @@ import { segmentToPieceData } from '../lib/segment-to-piece-adapter';
 const DB_NAME = 'bodge-skeleton';
 const STORE_NAME = 'state';
 const STATE_KEY = 'canvas-state-v1';
-export const SCHEMA_VERSION_CURRENT = 10;
+// v11 (M-CANVAS-WORKFLOW-UX, SPEC_ASSEMBLY_WORKFLOW_UX §9): workflow
+// data-model — zone.finalTopology, piece.groupId/groupLayer/mutations,
+// op.isOpGroup, primer.autoMode/binding/tail. Additive + idempotent.
+export const SCHEMA_VERSION_CURRENT = 11;
 
 /**
  * stateKeyFor — V65 per-project keying. A null/undefined projectId maps
@@ -311,6 +314,52 @@ const MIGRATIONS = {
       containers: (state.containers || []).map(stampPinned),
       pieces: (state.pieces || []).map(stampPinned),
       operations: (state.operations || []).map(stampPinned),
+    };
+  },
+  10: function migrate_v10_to_v11(state) {
+    // v10 → v11 (M-CANVAS-WORKFLOW-UX, SPEC §9). Additive + idempotent —
+    // never overwrites an existing value (re-run on v11 data = no-op):
+    //  - zone.finalTopology default 'circular' (Gibson historically most
+    //    common final op for assemblies; biolog can flip per-zone).
+    //  - piece.groupId:null + groupLayer:0 + mutations:[] where absent.
+    //  - op.isOpGroup:false where absent.
+    //  - assemblyDraftPrimers[*]: existing primers become autoMode:
+    //    'manual' (finalizer never touches them), binding:<full seq>,
+    //    tail:'' — pre-T8.5 primers stay safe.
+    if (!state || typeof state !== 'object') return null;
+    const zones = (state.zones || []).map((z) => (
+      z && z.finalTopology === undefined ? { ...z, finalTopology: 'circular' } : z
+    ));
+    const pieces = (state.pieces || []).map((p) => {
+      if (!p) return p;
+      const patch = {};
+      if (p.groupId === undefined) patch.groupId = null;
+      if (p.groupLayer === undefined) patch.groupLayer = 0;
+      if (p.mutations === undefined) patch.mutations = [];
+      return Object.keys(patch).length ? { ...p, ...patch } : p;
+    });
+    const operations = (state.operations || []).map((op) => (
+      op && op.isOpGroup === undefined ? { ...op, isOpGroup: false } : op
+    ));
+    let assemblyDraftPrimers = state.assemblyDraftPrimers;
+    if (assemblyDraftPrimers && typeof assemblyDraftPrimers === 'object') {
+      const next = {};
+      for (const key of Object.keys(assemblyDraftPrimers)) {
+        const arr = Array.isArray(assemblyDraftPrimers[key]) ? assemblyDraftPrimers[key] : [];
+        next[key] = arr.map((pr) => {
+          if (!pr || pr.autoMode !== undefined) return pr;
+          return {
+            ...pr,
+            autoMode: 'manual',
+            binding: pr.binding !== undefined ? pr.binding : (pr.sequence || ''),
+            tail: pr.tail !== undefined ? pr.tail : '',
+          };
+        });
+      }
+      assemblyDraftPrimers = next;
+    }
+    return {
+      ...state, zones, pieces, operations, assemblyDraftPrimers,
     };
   },
 };

@@ -57,7 +57,7 @@ describe('K3 selectors-assembly', () => {
 
 describe('K4 persistence migration (v3→v4 assemblyDrafts; chain ends v5 post-T1)', () => {
   it('SCHEMA_VERSION_CURRENT is 7 (A1=4 assemblyDrafts, T1=5 pieces, T2=6 op.inputPieces, T3=7 zones)', () => {
-    expect(SCHEMA_VERSION_CURRENT).toBe(10); // T4.5 R-DRIFT: node.pinned bump 9→10
+    expect(SCHEMA_VERSION_CURRENT).toBe(11); // M-CANVAS-WORKFLOW-UX K1: bump 10→11
   });
   it('v3 snapshot (no assemblyDrafts) → assemblyDrafts:[] added, rest intact', () => {
     const v3 = { containers: [{ id: 'x' }], junctions: [], operations: [] };

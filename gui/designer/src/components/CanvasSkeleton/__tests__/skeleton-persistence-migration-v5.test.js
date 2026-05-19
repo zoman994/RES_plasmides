@@ -16,7 +16,7 @@ import { skeletonReducer, buildInitialState } from '../store/skeleton-state';
 
 describe('T1 K6 — migration v4 → v5 (pieces)', () => {
   it('SCHEMA_VERSION_CURRENT is 7 (A1=4, T1=5, T2=6, T3=7 zones); v4→v5 step still adds pieces', () => {
-    expect(SCHEMA_VERSION_CURRENT).toBe(10); // T4.5 R-DRIFT: node.pinned bump 9→10
+    expect(SCHEMA_VERSION_CURRENT).toBe(11); // M-CANVAS-WORKFLOW-UX K1: bump 10→11
   });
 
   it('v4 snapshot (no pieces) → pieces:[] added, rest intact', () => {
@@ -36,9 +36,11 @@ describe('T1 K6 — migration v4 → v5 (pieces)', () => {
     const v5 = { containers: [], assemblyDrafts: [], pieces: [{ id: 'pc-9' }] };
     const migrated = migrateSnapshot(v5, 4);
     // v4→v5 keeps pieces; T3 v6→v7 stamps zoneId:null; T9 v8→v9
-    // stamps variantGroupId:null; T4.5 v9→v10 stamps pinned:false.
+    // stamps variantGroupId:null; T4.5 v9→v10 stamps pinned:false;
+    // M-CANVAS-WORKFLOW-UX v10→v11 stamps groupId/groupLayer/mutations.
     expect(migrated.pieces).toEqual([{
       id: 'pc-9', zoneId: null, variantGroupId: null, pinned: false,
+      groupId: null, groupLayer: 0, mutations: [],
     }]);
   });
 

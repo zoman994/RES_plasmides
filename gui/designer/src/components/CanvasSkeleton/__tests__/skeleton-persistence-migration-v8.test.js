@@ -16,7 +16,7 @@ const gapSeg = { id: 'seg-2', source: { type: 'manual' }, sequence: '', length: 
 
 describe('T6 K4 — migration v7 → v8 (assemblyDrafts → zones + pieces)', () => {
   it('SCHEMA_VERSION_CURRENT bumped to 8', () => {
-    expect(SCHEMA_VERSION_CURRENT).toBe(10); // T4.5 R-DRIFT: node.pinned bump 9→10
+    expect(SCHEMA_VERSION_CURRENT).toBe(11); // M-CANVAS-WORKFLOW-UX K1: bump 10→11
   });
 
   it('one draft → one zone (viewMode sequence) + pieces (legacy-migration / gap)', () => {
@@ -52,10 +52,13 @@ describe('T6 K4 — migration v7 → v8 (assemblyDrafts → zones + pieces)', ()
   it('idempotent — already-v8 (empty assemblyDrafts) → no new zones/pieces', () => {
     const v8 = { containers: [], assemblyDrafts: [], zones: [{ id: 'zn-x' }], pieces: [{ id: 'pc-x' }] };
     const m = migrateSnapshot(v8, 7);
-    expect(m.zones).toEqual([{ id: 'zn-x' }]);
+    expect(m.zones).toEqual([{ id: 'zn-x', finalTopology: 'circular' }]);
     // No NEW pieces; the existing one additively gains variantGroupId
-    // (T9 v8→v9) and pinned (T4.5 v9→v10) — R-DRIFT contract change.
-    expect(m.pieces).toEqual([{ id: 'pc-x', variantGroupId: null, pinned: false }]);
+    // (T9 v8→v9), pinned (T4.5 v9→v10), groupId/groupLayer/mutations
+    // (M-CANVAS-WORKFLOW-UX v10→v11) — additive-migration contract.
+    expect(m.pieces).toEqual([{
+      id: 'pc-x', variantGroupId: null, pinned: false, groupId: null, groupLayer: 0, mutations: [],
+    }]);
   });
 
   it('bad container ref → still creates a piece (adapter tolerates missing container)', () => {

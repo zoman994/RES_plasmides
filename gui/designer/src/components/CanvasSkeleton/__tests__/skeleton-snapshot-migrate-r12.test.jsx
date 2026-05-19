@@ -42,11 +42,11 @@ describe('R12-3 — migrateSnapshot', () => {
       v1State.containers.map((c) => ({ ...c, zoneId: null, pinned: false })),
     );
     // T2 v5→v6 inputPieces:[]; T3 v6→v7 zoneId:null; T9 v8→v9
-    // materializedClones:null; T4.5 v9→v10 pinned:false (R-DRIFT).
-    // id/kind/status are still preserved through the chain.
+    // materializedClones:null; T4.5 v9→v10 pinned:false; M-CANVAS-
+    // WORKFLOW-UX v10→v11 isOpGroup:false. id/kind/status preserved.
     expect(migrated.operations).toEqual(
       v1State.operations.map((o) => ({
-        ...o, inputPieces: [], zoneId: null, materializedClones: null, pinned: false,
+        ...o, inputPieces: [], zoneId: null, materializedClones: null, pinned: false, isOpGroup: false,
       })),
     );
     expect(migrated.positions).toEqual(v1State.positions);

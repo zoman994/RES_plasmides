@@ -659,7 +659,7 @@ describe('K10 orphan UX + history', () => {
 
 describe('K11 persistence', () => {
   it('schema is 7 post-T3 (A2 assemblyDraftPrimers itself was additive — no A2 bump)', () => {
-    expect(SCHEMA_VERSION_CURRENT).toBe(10); // T4.5 R-DRIFT: node.pinned bump 9→10
+    expect(SCHEMA_VERSION_CURRENT).toBe(11); // M-CANVAS-WORKFLOW-UX K1: bump 10→11
   });
 
   it('REPLACE_STATE on a pre-A2 snapshot fills assemblyDraftPrimers default', () => {

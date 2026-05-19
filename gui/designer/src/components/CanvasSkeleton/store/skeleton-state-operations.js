@@ -79,6 +79,9 @@ export function createOperationDraft({
     materializedClones: null,
     // T4.5 DEC-T4.5-04 — drag-override flag for 3-lane auto-layout.
     pinned: false,
+    // M-CANVAS-WORKFLOW-UX (SPEC §6.2) — a plain op is not an op-group;
+    // group ops are minted by the K7 grouping path with isOpGroup:true.
+    isOpGroup: false,
     createdAt: new Date().toISOString(),
     executedAt: null,
     error: null,
