@@ -34,6 +34,7 @@ import RangePickerModal from './RangePickerModal';
 import SnippetOnboardingTip from './SnippetOnboardingTip';
 import OpGroupPicker from './OpGroupPicker';
 import AssemblyPipelinePanel from './AssemblyPipelinePanel';
+import { autoGroupPipeline } from '../../lib/auto-group-pipeline';
 import AssemblyPrimersPanel from './AssemblyPrimersPanel';
 import RealiseModal from './RealiseModal';
 import { useAssemblyPrimerWriting } from './useAssemblyPrimerWriting';
@@ -316,7 +317,21 @@ export default function AssemblyShellBody({ draft }) {
           draftId={draftId}
           zoneId={draftId}
           onRealise={() => setRealiseOpen(true)}
-          onAutomode={() => {/* K10 wires the algorithm */}}
+          onAutomode={() => {
+            // K10 — run the heuristic on the latest state; apply only
+            // layer-0 groups (real piece ids). Layer-1+ uses indices
+            // into layer-0 outputs; the K15 finalizer materialises the
+            // intermediates before those can be applied.
+            const stateNow = stateRef.current;
+            const zone = (stateNow.zones || []).find((z) => z.id === draftId);
+            if (!zone) return;
+            const plan = autoGroupPipeline(zone, stateNow);
+            for (const g of plan.groups || []) {
+              if (g.layer === 0 && Array.isArray(g.pieceIds) && g.pieceIds.length >= 2) {
+                actions.createOpGroup(draftId, g.kind, '', g.pieceIds);
+              }
+            }
+          }}
         />
 
         {detailOpen && selectedSegmentId && (
