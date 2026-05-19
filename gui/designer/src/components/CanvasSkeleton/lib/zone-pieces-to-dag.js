@@ -113,6 +113,8 @@ export function draftFromZone(state, zone) {
         gapKind: gseq ? 'known' : (p.gapHint || 'unknown'),
         label: p.name,
         pieceKind: 'gap',
+        groupId: p.groupId || null,
+        groupLayer: typeof p.groupLayer === 'number' ? p.groupLayer : 0,
         annotations: [],
       };
     }
@@ -129,6 +131,8 @@ export function draftFromZone(state, zone) {
         length: seq.length,
         label: p.name,
         pieceKind: p.kind,
+        groupId: p.groupId || null,
+        groupLayer: typeof p.groupLayer === 'number' ? p.groupLayer : 0,
         annotations: [],
       };
     }
@@ -155,6 +159,10 @@ export function draftFromZone(state, zone) {
       // K6 — pass through per-piece mutations so SegmentList can show
       // the 💎 badge / K14 mutation entry can edit them.
       mutations: Array.isArray(p.mutations) ? p.mutations : [],
+      // K8 — op-group affiliation surfaced to the strip so SegmentList
+      // can wrap consecutive same-groupId rows in a bordered container.
+      groupId: p.groupId || null,
+      groupLayer: typeof p.groupLayer === 'number' ? p.groupLayer : 0,
       // Inherit the source container's features clipped to this slice
       // (same proven helper as legacy makeSourcedSegment) — was [] in
       // the 4-tier path, so realised products lost annotations.

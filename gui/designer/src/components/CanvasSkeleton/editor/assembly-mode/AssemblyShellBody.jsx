@@ -334,6 +334,7 @@ export default function AssemblyShellBody({ draft }) {
           return n;
         })}
         onSew={(ids) => setGroupPickerIds(ids)}
+        operations={state.operations || []}
       />
 
       {groupPickerIds && (
