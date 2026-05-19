@@ -26,8 +26,10 @@ import SegmentList from './SegmentList';
 import SegmentDetailPanel from './SegmentDetailPanel';
 import AssemblyToolbar from './AssemblyToolbar';
 import PlaceholderTreePicker from '../../canvas/PlaceholderTreePicker';
+import { v7 as uuidv7 } from 'uuid';
 import InsertGapModal from './InsertGapModal';
 import SnippetCatalogModal from './SnippetCatalogModal';
+import SynthesisModal from './SynthesisModal';
 import AssemblyPrimersPanel from './AssemblyPrimersPanel';
 import RealiseModal from './RealiseModal';
 import { useAssemblyPrimerWriting } from './useAssemblyPrimerWriting';
@@ -97,6 +99,7 @@ export default function AssemblyShellBody({ draft }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [gapOpen, setGapOpen] = useState(false);
   const [snippetOpen, setSnippetOpen] = useState(false);
+  const [synthesisOpen, setSynthesisOpen] = useState(false);
   const [realiseOpen, setRealiseOpen] = useState(false);
   const dropPosRef = useRef(0);
 
@@ -194,6 +197,27 @@ export default function AssemblyShellBody({ draft }) {
     setSnippetOpen(false);
   }, [actions, draftId]);
 
+  // K4 — «+ Синтез». inline → kind='synthesis' piece. container →
+  // materialise a reusable molecule (caller-side id, no race) then a
+  // sourced segment off it (same shape as the drag-insert path).
+  const onInsertSynthesis = useCallback(({ sequence, name, mode }) => {
+    if (mode === 'container') {
+      const cid = `cnt-${uuidv7()}`;
+      actions.addContainer({
+        id: cid,
+        kind: 'molecule',
+        name: name || 'Синтез',
+        sequence,
+        annotations: [],
+        topology: { circular: false },
+      });
+      actions.insertSegment(draftId, cid, 0, sequence.length, false, undefined);
+    } else {
+      actions.insertSynthesis(draftId, { sequence, name }, undefined);
+    }
+    setSynthesisOpen(false);
+  }, [actions, draftId]);
+
   return (
     <div
       data-testid="assembly-mode-shell"
@@ -278,6 +302,7 @@ export default function AssemblyShellBody({ draft }) {
       <AssemblyToolbar
         onAddSegment={() => setPickerOpen(true)}
         onAddSnippet={() => setSnippetOpen(true)}
+        onAddSynthesis={() => setSynthesisOpen(true)}
         onAddGap={() => setGapOpen(true)}
       />
 
@@ -297,6 +322,12 @@ export default function AssemblyShellBody({ draft }) {
         <SnippetCatalogModal
           onPick={onInsertSnippet}
           onCancel={() => setSnippetOpen(false)}
+        />
+      )}
+      {synthesisOpen && (
+        <SynthesisModal
+          onConfirm={onInsertSynthesis}
+          onCancel={() => setSynthesisOpen(false)}
         />
       )}
       {realiseOpen && (

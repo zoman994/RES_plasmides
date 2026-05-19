@@ -188,6 +188,11 @@ export function SkeletonProvider({ children }) {
     insertSnippet: (draftId, snippet = {}, insertAtIndex) => dispatch({
       type: 'INSERT_SNIPPET', draftId, ...snippet, insertAtIndex,
     }),
+    // M-CANVAS-WORKFLOW-UX K4 — «+ Синтез»: inline ПСО piece.
+    // synth = { sequence, name }.
+    insertSynthesis: (draftId, synth = {}, insertAtIndex) => dispatch({
+      type: 'INSERT_SYNTHESIS', draftId, ...synth, insertAtIndex,
+    }),
     removeSegment: (draftId, segmentId) => dispatch({ type: 'REMOVE_SEGMENT', draftId, segmentId }),
     reorderSegments: (draftId, fromIndex, toIndex) => dispatch({ type: 'REORDER_SEGMENTS', draftId, fromIndex, toIndex }),
     updateSegment: (draftId, segmentId, patch) => dispatch({ type: 'UPDATE_SEGMENT', draftId, segmentId, patch }),

@@ -5,7 +5,9 @@
  */
 import { useSkeletonActions, useSkeletonHistory } from '../../store/skeleton-context';
 
-export default function AssemblyToolbar({ onAddSegment, onAddSnippet, onAddGap }) {
+export default function AssemblyToolbar({
+  onAddSegment, onAddSnippet, onAddSynthesis, onAddGap,
+}) {
   const actions = useSkeletonActions();
   const history = useSkeletonHistory();
 
@@ -38,6 +40,9 @@ export default function AssemblyToolbar({ onAddSegment, onAddSnippet, onAddGap }
       </button>
       <button type="button" data-testid="assembly-add-snippet" onClick={onAddSnippet} style={btn()}>
         + Обвес
+      </button>
+      <button type="button" data-testid="assembly-add-synthesis" onClick={onAddSynthesis} style={btn()}>
+        + Синтез
       </button>
       <button type="button" data-testid="assembly-add-gap" onClick={onAddGap} style={btn()}>
         + Gap

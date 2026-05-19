@@ -17,7 +17,8 @@ import { piecesReducer } from '../store/skeleton-state-pieces';
 import { computePieceSize } from './piece-model';
 
 const HANDLED = new Set([
-  'INSERT_SEGMENT', 'INSERT_MANUAL_SEGMENT', 'INSERT_SNIPPET', 'REMOVE_SEGMENT',
+  'INSERT_SEGMENT', 'INSERT_MANUAL_SEGMENT', 'INSERT_SNIPPET',
+  'INSERT_SYNTHESIS', 'REMOVE_SEGMENT',
   'REORDER_SEGMENTS', 'UPDATE_SEGMENT', 'UPDATE_SEGMENT_RANGE',
   'TOGGLE_SEGMENT_RC', 'RENAME_ASSEMBLY_DRAFT',
   'SET_ASSEMBLY_DRAFT_TOPOLOGY', 'SET_ASSEMBLY_DRAFT_POSITION',
@@ -145,6 +146,26 @@ export function routeAssemblyWriteToZone(state, action) {
         acquisitionMethod: 'synthesis',
         acquisitionParams: { type: 'snippet', snippetType: action.snippetType || null },
         functionalLabel: 'snippet',
+      };
+      return createPieceInZone(state, zoneId, pieceData, action.insertAtIndex);
+    }
+
+    case 'INSERT_SYNTHESIS': {
+      // SPEC §3.1.C — own-synthesis ПСО (gBlock). Inline sequence, no
+      // source. «save as container» mode is handled caller-side
+      // (AssemblyShellBody → ADD_CONTAINER + INSERT_SEGMENT); this is
+      // the in-assembly-only branch → kind='synthesis' piece.
+      const seq = typeof action.sequence === 'string' ? action.sequence : '';
+      const pieceData = {
+        kind: 'synthesis',
+        name: action.name || 'Синтез',
+        sourceIds: [],
+        ranges: [],
+        sequence: seq,
+        origin: 'synthesis',
+        acquisitionMethod: 'synthesis',
+        acquisitionParams: { type: 'synthesis' },
+        functionalLabel: 'synthesis',
       };
       return createPieceInZone(state, zoneId, pieceData, action.insertAtIndex);
     }
