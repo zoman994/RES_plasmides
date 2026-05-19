@@ -364,6 +364,58 @@ export function operationsReducer(state, action) {
       };
     }
 
+    // M-CANVAS-WORKFLOW-UX K7 (SPEC §3 Шаг 2) — explicit grouping. The
+    // biolog highlights ≥2 continuous pieces in a zone and «сшивает» them
+    // into one op-group (one reaction). The intermediate output piece is
+    // derived by the K15 finalizer.
+    case 'CREATE_OP_GROUP': {
+      const { zoneId, kind, name, pieceIds } = action;
+      if (!zoneId || !Array.isArray(pieceIds) || pieceIds.length < 2) return state;
+      const zones = state.zones || [];
+      if (!zones.some((z) => z.id === zoneId)) return state;
+      const pieces = state.pieces || [];
+      const inZoneSorted = pieces
+        .filter((p) => p.zoneId === zoneId)
+        .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+      const order = inZoneSorted.map((p) => p.id);
+      const selected = pieceIds.slice();
+      const indices = selected.map((id) => order.indexOf(id));
+      if (indices.some((i) => i < 0)) return state;
+      indices.sort((a, b) => a - b);
+      for (let k = 1; k < indices.length; k += 1) {
+        if (indices[k] !== indices[k - 1] + 1) return state;
+      }
+      // All selected must currently be un-grouped.
+      const selSet = new Set(selected);
+      if (inZoneSorted.some((p) => selSet.has(p.id) && p.groupId)) return state;
+      const op = createOperationDraft({ kind, position: { x: 0, y: 0 } });
+      op.isOpGroup = true;
+      op.zoneId = zoneId;
+      op.inputPieces = selected.slice();
+      op.groupLayer = 0;
+      if (name) op.params = { ...(op.params || {}), groupName: name };
+      const now = Date.now();
+      const nextPieces = pieces.map((p) => (
+        selSet.has(p.id) ? { ...p, groupId: op.id, updatedAt: now } : p
+      ));
+      return { ...state, operations: [...(state.operations || []), op], pieces: nextPieces };
+    }
+
+    case 'REMOVE_OP_GROUP': {
+      const op = (state.operations || []).find((o) => o.id === action.opId && o.isOpGroup);
+      if (!op) return state;
+      const setIds = new Set(op.inputPieces || []);
+      const now = Date.now();
+      const nextPieces = (state.pieces || []).map((p) => (
+        setIds.has(p.id) ? { ...p, groupId: null, updatedAt: now } : p
+      ));
+      return {
+        ...state,
+        operations: (state.operations || []).filter((o) => o.id !== action.opId),
+        pieces: nextPieces,
+      };
+    }
+
     default:
       return state;
   }

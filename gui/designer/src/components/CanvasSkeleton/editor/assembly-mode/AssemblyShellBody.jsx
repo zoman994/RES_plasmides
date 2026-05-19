@@ -32,6 +32,7 @@ import SnippetCatalogModal from './SnippetCatalogModal';
 import SynthesisModal from './SynthesisModal';
 import RangePickerModal from './RangePickerModal';
 import SnippetOnboardingTip from './SnippetOnboardingTip';
+import OpGroupPicker from './OpGroupPicker';
 import AssemblyPrimersPanel from './AssemblyPrimersPanel';
 import RealiseModal from './RealiseModal';
 import { useAssemblyPrimerWriting } from './useAssemblyPrimerWriting';
@@ -104,6 +105,9 @@ export default function AssemblyShellBody({ draft }) {
   const [synthesisOpen, setSynthesisOpen] = useState(false);
   // K5 — range-picker context: { kind:'entry'|'container', payload, atIndex? }.
   const [rangeSource, setRangeSource] = useState(null);
+  // K7 — grouping: per-zone-piece selection + OpGroupPicker open state.
+  const [selectedSegmentIds, setSelectedSegmentIds] = useState(() => new Set());
+  const [groupPickerIds, setGroupPickerIds] = useState(null);
   const [realiseOpen, setRealiseOpen] = useState(false);
   const dropPosRef = useRef(0);
 
@@ -323,7 +327,27 @@ export default function AssemblyShellBody({ draft }) {
         orphanIds={orphanIds}
         selectedSegmentId={selectedSegmentId}
         onSelectSegment={openDetail}
+        selectedSegmentIds={selectedSegmentIds}
+        onToggleSelect={(id) => setSelectedSegmentIds((prev) => {
+          const n = new Set(prev);
+          if (n.has(id)) n.delete(id); else n.add(id);
+          return n;
+        })}
+        onSew={(ids) => setGroupPickerIds(ids)}
       />
+
+      {groupPickerIds && (
+        <OpGroupPicker
+          pieceIds={groupPickerIds}
+          zoneFinalTopology={(draft.topology && draft.topology.circular) ? 'circular' : (draft.finalTopology || 'circular')}
+          onConfirm={({ kind, name }) => {
+            actions.createOpGroup(draftId, kind, name, groupPickerIds);
+            setGroupPickerIds(null);
+            setSelectedSegmentIds(new Set());
+          }}
+          onCancel={() => setGroupPickerIds(null)}
+        />
+      )}
 
       <AssemblyToolbar
         onAddSegment={() => setPickerOpen(true)}

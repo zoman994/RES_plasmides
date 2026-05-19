@@ -34,9 +34,19 @@ function rowSource(seg, idx) {
 
 export default function SegmentList({
   draft, boundaries, orphanIds, selectedSegmentId, onSelectSegment,
+  // K7 — optional grouping controls. When `onToggleSelect` is provided
+  // SegmentList renders a checkbox per row + a «🔗 Сшить» button once
+  // `selectedSegmentIds` has ≥2 entries; otherwise these are no-ops and
+  // the legacy footer renders unchanged.
+  selectedSegmentIds, onToggleSelect, onSew,
 }) {
   const actions = useSkeletonActions();
   const segs = draft.segments || [];
+  const selectionEnabled = typeof onToggleSelect === 'function';
+  const selSet = selectedSegmentIds instanceof Set
+    ? selectedSegmentIds
+    : new Set(Array.isArray(selectedSegmentIds) ? selectedSegmentIds : []);
+  const sewVisible = selectionEnabled && selSet.size >= 2;
 
   return (
     <div
@@ -50,7 +60,22 @@ export default function SegmentList({
         fontSize: 11,
       }}
     >
+      {sewVisible && (
+        <div style={{ padding: '6px 10px', background: 'var(--accent-wash, rgba(184,92,62,0.10))', borderBottom: '1px solid var(--accent-500, #b85c3e)' }}>
+          <button
+            type="button"
+            data-testid="segment-list-sew"
+            onClick={() => onSew && onSew(Array.from(selSet))}
+            style={{
+              fontSize: 11.5, padding: '4px 12px',
+              background: 'var(--accent-500, #b85c3e)', color: '#fff',
+              border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600,
+            }}
+          >🔗 Сшить ({selSet.size})</button>
+        </div>
+      )}
       <div style={{ display: 'flex', padding: '4px 10px', color: 'var(--text-tertiary)', fontWeight: 600, position: 'sticky', top: 0, background: 'var(--surface-2)' }}>
+        {selectionEnabled && <span style={{ width: 22 }} />}
         <span style={{ width: 24 }}>#</span>
         <span style={{ width: 18 }} />
         <span style={{ width: 22 }} />
@@ -85,6 +110,17 @@ export default function SegmentList({
               cursor: 'pointer',
             }}
           >
+            {selectionEnabled && (
+              <span style={{ width: 22 }}>
+                <input
+                  type="checkbox"
+                  data-testid={`segment-select-${seg.id}`}
+                  checked={selSet.has(seg.id)}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={() => onToggleSelect(seg.id)}
+                />
+              </span>
+            )}
             <span style={{ width: 24, color: 'var(--text-tertiary)' }}>{i + 1}</span>
             <span style={{ width: 18 }}>
               <span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 3, background: seg.color }} />

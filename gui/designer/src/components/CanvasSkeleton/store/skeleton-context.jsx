@@ -193,6 +193,11 @@ export function SkeletonProvider({ children }) {
     insertSynthesis: (draftId, synth = {}, insertAtIndex) => dispatch({
       type: 'INSERT_SYNTHESIS', draftId, ...synth, insertAtIndex,
     }),
+    // M-CANVAS-WORKFLOW-UX K7 — op-group lifecycle (SPEC §3 Шаг 2).
+    createOpGroup: (zoneId, kind, name, pieceIds) => dispatch({
+      type: 'CREATE_OP_GROUP', zoneId, kind, name, pieceIds,
+    }),
+    removeOpGroup: (opId) => dispatch({ type: 'REMOVE_OP_GROUP', opId }),
     removeSegment: (draftId, segmentId) => dispatch({ type: 'REMOVE_SEGMENT', draftId, segmentId }),
     reorderSegments: (draftId, fromIndex, toIndex) => dispatch({ type: 'REORDER_SEGMENTS', draftId, fromIndex, toIndex }),
     updateSegment: (draftId, segmentId, patch) => dispatch({ type: 'UPDATE_SEGMENT', draftId, segmentId, patch }),
