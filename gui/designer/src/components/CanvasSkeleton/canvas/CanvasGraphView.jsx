@@ -254,8 +254,12 @@ export default function CanvasGraphView() {
         {nodes.map((n) => {
           const pos = positions[n.id] || { x: 0, y: 0 };
           if (n.data.kind === 'container') {
+            // AE-K9.6 (spec §7.6): skip rendering for placeholder
+            // containers. The "+ Пусто" block is gone per new mental
+            // model (container ∈ zone).
+            if (isPlaceholderContainer(n.data.container)) return null;
             const highlighted = state.highlightedContainerId === n.id;
-            const isPh = isPlaceholderContainer(n.data.container);
+            const isPh = false;
             const blockOver = blockDragOver?.containerId === n.id;
             return (
               <div

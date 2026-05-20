@@ -158,7 +158,7 @@ describe('FILL_PLACEHOLDER reducer', () => {
   });
 });
 
-describe('Placeholder click → TreePicker', () => {
+describe.skip('Placeholder click → TreePicker (LEGACY — AE-K9.6 ghost block removed, spec §7.6)', () => {
   it('click placeholder block opens PlaceholderTreePicker', () => {
     render(<CanvasSkeleton />);
     const block = screen.getByTestId('skeleton-block-c-placeholder-1');
@@ -258,7 +258,7 @@ describe('Placeholder click → TreePicker', () => {
   });
 });
 
-describe('Drop on placeholder → in-place fill (NOT new container)', () => {
+describe.skip('Drop on placeholder → in-place fill (LEGACY — AE-K9.6 ghost block removed, spec §7.6)', () => {
   function makeDataTransfer(entryId) {
     return {
       types: ['application/x-bodge-entry-id'],

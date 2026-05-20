@@ -11,7 +11,7 @@ import CanvasSkeleton from '../index';
 
 afterEach(cleanup);
 
-describe('Canvas Layout view — V61 ghost fixture', () => {
+describe.skip('Canvas Layout view — V61 ghost fixture (LEGACY — AE-K9.6 removed ghost block, see spec §7.6)', () => {
   it('renders exactly 1 ghost placeholder block on startup', () => {
     render(<CanvasSkeleton />);
     expect(screen.getByTestId('skeleton-block-c-placeholder-1')).toBeTruthy();

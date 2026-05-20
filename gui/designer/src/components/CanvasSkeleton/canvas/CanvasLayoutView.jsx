@@ -777,10 +777,19 @@ export default function CanvasLayoutView() {
       })()}
 
       {state.containers.map((c) => {
+        // AE-K9.6 (spec §7.6): the ghost placeholder block «+ Пусто ·
+        // click / drop запчасть» is a rudiment of the old "container
+        // floats free on canvas" model. New mental model (§2) is
+        // «container — всегда внутри сборки», so a standalone empty
+        // slot has no semantic. Skip rendering for placeholder
+        // containers; empty area itself is the drop target via the
+        // canvas-level handlers (AE-K10 §7.2 — drop on empty creates
+        // a new zone wrapping the container).
+        if (isPlaceholderContainer(c)) return null;
         const pos = state.positions[c.id] || { x: 80, y: 80 };
         const highlighted = state.highlightedContainerId === c.id;
         const isSelected = (state.selectedContainerIds || []).includes(c.id);
-        const isPh = isPlaceholderContainer(c);
+        const isPh = false;
         const blockOver = blockDragOver?.containerId === c.id;
         return (
           <div

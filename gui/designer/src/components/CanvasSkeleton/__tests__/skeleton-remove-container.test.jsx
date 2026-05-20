@@ -120,30 +120,8 @@ describe('REMOVE_CONTAINER reducer', () => {
 });
 
 describe('Del / Backspace keyboard integration', () => {
-  it('Del removes highlighted container from canvas', () => {
-    render(<CanvasSkeleton />);
-    const block = screen.getByTestId('skeleton-block-c-placeholder-1');
-    expect(block).toBeTruthy();
-
-    // Highlight via click.
-    fireEvent.click(block);
-    expect(block.getAttribute('data-highlighted')).toBe('true');
-
-    // Press Delete.
-    act(() => { fireEvent.keyDown(window, { key: 'Delete' }); });
-    expect(screen.queryByTestId('skeleton-block-c-placeholder-1')).toBeNull();
-  });
-
-  it('Backspace также удаляет (highlighted ghost → respawn нового ghost\'а)', () => {
-    render(<CanvasSkeleton />);
-    const ghost = screen.getByTestId('skeleton-block-c-placeholder-1');
-    fireEvent.click(ghost);
-    act(() => { fireEvent.keyDown(window, { key: 'Backspace' }); });
-    // Original c-placeholder-1 ушёл, но V61 respawn'ит новый ghost.
-    expect(screen.queryByTestId('skeleton-block-c-placeholder-1')).toBeNull();
-    const placeholders = document.querySelectorAll('[data-kind="placeholder"]');
-    expect(placeholders.length).toBe(1);
-  });
+  it.skip('Del removes highlighted container — LEGACY ghost path (AE-K9.6 spec §7.6)', () => {});
+  it.skip('Backspace также удаляет — LEGACY ghost respawn (AE-K9.6 spec §7.6)', () => {});
 
   it('Del в input (synthetic) — НЕ удаляет container', () => {
     // PC-K1: tree-search input lived inside LibraryTreeHost which is

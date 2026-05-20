@@ -21,11 +21,7 @@ describe('Canvas Graph view — V2 placeholder fixture', () => {
     expect(ops.length).toBe(0);
   });
 
-  it('graph view renders the ghost placeholder container (V61: 1 ghost)', () => {
-    render(<CanvasSkeleton />);
-    fireEvent.click(screen.getByTestId('skeleton-view-toggle-graph'));
-    expect(screen.getByTestId('skeleton-block-c-placeholder-1')).toBeTruthy();
-  });
+  it.skip('graph view renders the ghost placeholder container — LEGACY (AE-K9.6 ghost block removed, spec §7.6)', () => {});
 
   it('toggle back to Layout removes graph view', () => {
     render(<CanvasSkeleton />);

@@ -192,11 +192,7 @@ describe('REMOVE_CONTAINER cascades to junctions', () => {
 });
 
 describe('ContainerBlock — все блоки rectangular (12.05.2026)', () => {
-  it('placeholder block имеет kind=placeholder + plus icon', () => {
-    render(<CanvasSkeleton />);
-    const b = screen.getByTestId('skeleton-block-c-placeholder-1');
-    expect(b.getAttribute('data-kind')).toBe('placeholder');
-  });
+  it.skip('placeholder block имеет kind=placeholder — LEGACY (AE-K9.6 ghost block removed, spec §7.6)', () => {});
 
   it('Junction layer SVG не рендерится когда junctions пуст (default)', () => {
     render(<CanvasSkeleton />);
