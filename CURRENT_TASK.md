@@ -310,3 +310,143 @@ Multi-line COMMENT reassembly: ✓ / ✗
 **Изменены:** skeleton-persistence.js (schema 11 + migration), piece-model.js (kinds expand + groupId/groupLayer/mutations defaults + clonePiece reset), zone-model.js (finalTopology), skeleton-state-operations.js (createOperationDraft + CREATE/REMOVE_OP_GROUP + finalizer hook), skeleton-state-pieces.js (ADD_PIECE_MUTATION), skeleton-state-assembly.js (INSERT_SNIPPET/SYNTHESIS legacy), skeleton-context.jsx (action creators), zone-assembly-write-adapter.js (snippet/synthesis cases), zone-pieces-to-dag.js (groupId/groupLayer/mutations/pieceKind passthrough), piece-invariants.js (INLINE_KINDS bypass), dexie-schema.js (snippets table v5), AssemblyShellBody.jsx (all the wiring), AssemblyToolbar.jsx (4 buttons), SegmentList.jsx (icons + selection + group containers + mut button), AssemblyPrimersPanel.jsx (autoMode badge + lock/reset), PrimerFromSelectionModal.jsx (tail field + helpers + viz), lib/strings.js (zones.openAssembly из pre-sprint), 13 test files updated for ripple.
 
 После K18: СТОП. PROJECT_STATE / DECISIONS / ANCHORS / BUGS / RELEASES / TECH_DEBT / version.js / package.json — Code НЕ трогал. Финализация и visual acceptance — Chat в отдельной сессии. Спека остаётся в `docs/SPEC_ASSEMBLY_WORKFLOW_UX.md`. Следующий sprint (по приоритету Игоря): **M-FORMAT-V2-CORE** (приоритет 2, спека `docs/SPEC_BODGE_FORMAT_V2_CORE.md` готова) — будет отдельной сессией после приёмки этой работы.
+
+---
+
+## M-FORMAT-V2-CORE — отчёт Code (20.05.2026)
+
+> Спека: `docs/SPEC_BODGE_FORMAT_V2_CORE.md` (~33 KB). Sprint монолитный, не лимитирован по срокам.
+
+**Commits (16 шт, branch `feature/m-x-7a-library-structure-v2`):** `633f6fc` (K0) → `26a3136` (K15). Полный список:
+
+| K | commit | модули + тесты |
+|---|---|---|
+| K0 | `633f6fc` | bodge-snapgene-loss-detect (+16) |
+| K2 | `c5ab1bf` | bodge-manifest-v2 + bodge-hash + schemas/* (+18) |
+| K1 | `94b50df` | bodge-migrations skeleton + 3 v1 fixtures (+9) |
+| K3 | `bdc824f` | bodge-container-genbank (+19) |
+| K4 | `5dce189` | bodge-assembly-json (+15) |
+| K5 | `1bbebee` | bodge-primers-json sequence-hash dedup (+9) |
+| K16 | `e7eae7a` | bodge-readme-writer (+10) |
+| K6+K7 | `6fe60c2` | bodge-zip rewrite (writer + reader, dispatcher) (+28) |
+| K8 | `d081b2f` | bodge-migrations/v1-to-v2 full pipeline (+18) |
+| K9 | `a44e85e` | bodge-atomic-write + bodge-recovery (+12) |
+| K10 | `aebca98` | bodge-export-profiles + ExportProjectModal.jsx (+20) |
+| K11 | `f8d3e04` | bodge-assembly-portable (.bodgeassembly) (+11) |
+| K12 | `0b7f3dc` | bodge-extensions + mock-vendor fixture (+9) |
+| K13 | `3623f58` | interop.test.js + parseLightGenBank fix (+20) |
+| K14 | `a19a9dc` | MANUAL_SMOKE_PLAN.md (docs) |
+| K15 | `26a3136` | K15_SIZE_BUDGET.md (docs) |
+
+**Vitest:** baseline **3437 pass / 1 skip / 0 fail** → **3651 pass / 1 skip / 0 fail (+214, 359 файлов)**. Zero регрессий. `TD-PRIMER-WIZARD-FLAKE` прошёл в финальном run, intermittent остаётся в TD.
+
+**pytest:** не трогался (backend не задет; spec'у не требовалось).
+
+**vite build:** clean — `✓ built in 534ms`. Единственный warning «chunks > 500 kB» pre-existing (DEC-PROJECT-STATE).
+
+### K0 SnapGene fixture probe (gate)
+
+- Loss-detect module robustness: ✓ — multi-line reassembly + leading-whitespace strip + CRLF/LF + payload-marker-missing fallback.
+- Multi-line COMMENT reassembly: ✓ (4 simulated tools pass, 1 strips COMMENT as expected).
+- 5 third-party simulators (SnapGene 79/12 / ApE 64/5 / NCBI 79/12 / Geneious 79/12+drop-blanks / pLannotate strip-comment): ✓ — каждый имеет свой decode-вариант + unit-тест + parameterised matrix row в K13.
+- **Real-tool round-trip** (5 tools × actual installations): **deferred to K14 manual smoke plan** — биолог запускает по `__tests__/interop/MANUAL_SMOKE_PLAN.md` и заполняет §6.4 матрицу. Module designed для worst-case, не для optimistic — если реальный SnapGene окажется harsher than simulator, K13 matrix отловит при first real fixture commit.
+
+### Migration verification
+
+- v1 → v2 idempotent: ✓ (re-running v2-blob через migrateBodgeV1toV2 возвращает unchanged).
+- v0.7.x (no zones): ✓ — empty-project loss flagged, project metadata + library preserved.
+- v0.8.x post-T3-revert (zones:[]): ✓ — same path как v0.7.x.
+- v0.8.x с zones inline (synthetic pre-revert state): ✓ — zones+containers+pieces preserved.
+- v1 → v2 → re-export через writeBodgeV2 → re-import — state identity (zones / containers / libraryEntries / primers): ✓.
+
+### SnapGene interop (K13)
+
+- Sequence bit-perfect: ✓ across все 5 simulators.
+- FEATURES + qualifiers (/label /color /bodge_id /parent_feature): ✓ across SnapGene / ApE / NCBI / Geneious.
+- COMMENT verbatim или multi-line reassembly: ✓ — SnapGene preserves verbatim (60-col wrap budget), ApE engages reassembly, pLannotate strips → loss flagged.
+- External edit detection: ✓ — hash mismatch surfaces via container.provenance.currentHash vs recomputed.
+
+### Atomic write + recovery
+
+- crash mid-write recoverable from .bak: ✓ (safeWriteBodge rollback path tested).
+- ZIP central directory corruption recoverable from local-headers + _recovery.json: ✓ (byte-walk fallback engages on truncated central dir).
+- Concurrent-write warning при `.writing-*.tmp`: ✓ (detectConcurrentWrite distinguishes active <60s from abandoned >60s).
+
+### Library vs Containers canonical rule (§16)
+
+Decision module `lib/bodge-export-profiles` + `bodge-zip` enforce:
+- Container `.gb` = canonical source of truth для sequence/features/topology.
+- `library/entries.json` = index-слой ref'ает по `resourceHash` / `containerId` / `name` override.
+- External edit detected → container.provenance.currentHash mismatch → caller (UI not in scope) shows toast.
+
+CORE спека wires DEC-FMT-V2-LIBRARY-CANONICAL-01 на уровне data-model. Wiring в существующий Library/Importer UI — отдельный плотный T-future задачник (не CORE scope).
+
+### README.md generator (K16)
+
+- Generated на каждом writeBodgeV2 call: ✓ (hook в bodge-zip.js, first asset in ZIP, DEFLATE-6).
+- Markdown valid (Title / Описание / Структура / Как открыть / Format documentation): ✓.
+- Не содержит sensitive data: ✓ — validateReadmeSafe regex-checks за sha256 + deviceId + UUID-shaped strings.
+- Empty project edge case (0 containers/assemblies): ✓ — emits "(empty)" placeholders.
+
+### Size budget
+
+- `lib/bodge-*.js` total: **~106 KB ungzipped**.
+- Estimated gzipped impact main bundle: **~30 KB** (lower bound of spec target +30–50 KB).
+- Migration code `bodge-migrations/*` = 9 KB — flagged как lazy-load candidate, не вынесен в CORE (минимальный change surface; вынос — T-future).
+- Largest .js (`bodge-zip.js` 20.1 KB) — +0.1 KB над soft 20, acceptable.
+- Largest .jsx (`ExportProjectModal.jsx` 9.5 KB) — well under soft 30.
+- Pre-existing chunk>500kB warning unchanged.
+
+**Size budget: OK.**
+
+### Manual smoke test (K14)
+
+5-step plan documented в `gui/designer/src/__tests__/interop/MANUAL_SMOKE_PLAN.md`. **Execution = Биолог + Chat**: открыть v0.8.2 → migrate → SnapGene round-trip → external edit → .bodgeassembly export/import. §6.4 loss matrix template included для заполнения. Code не может прогонять реальные SnapGene/ApE/etc.; simulator coverage даёт baseline, real tools fill in residual gaps.
+
+Status: **plan committed, execution deferred to biolog session.**
+
+### Spec deviations
+
+- **K1 + K8 contract change**: K1 изначально skeleton-only с `.skeletonOnly` flag. К8 заменил тело — flag убран, теперь runtime stamps `._migrationFrom` + `._migrationLosses`. K1 тесты переписаны под новый контракт. Реальной поведенческой регрессии нет; внутренний refactor.
+- **K6+K7 объединены в один commit** — оба shipping в `lib/bodge-zip.js`, разделять truncаty rewrite не имело смысла. Tests разделены на два файла (`bodge-zip-v2-writer.test.js` + `bodge-zip-v2-reader.test.js`).
+- **K10 ExportProjectModal не wired в App.jsx**. Spec §13 specifies modal exists; integration with main app menus (File → Export → Project) — wiring задача, не CORE. Modal stand-alone компонент с testid'ами, ready to mount caller.
+- **K11 .bodgeassembly extension не зарегистрирован в File→Open dispatcher**. importBodgeAssembly entry-point готов; UI wire-up отдельный task.
+- **App.jsx call-sites НЕ переключены на canonical v2 state**. `writeBodge(project)` в App.jsx по-прежнему передаёт `state.projects[id]` (legacy projectSlice shape). v1 path сохранён — existing bodge-roundtrip.integration.test.js + bodge-zip.test.js (9/9) пассируют. Когда биолог решит переключить main app на v2 как primary save format — caller-side update (один-два места в App.jsx + Sidebar.jsx) с явным opt-in. CORE спека этого не требовала.
+- **Lazy-load migration code НЕ реализован**. Spec §K15 target — extract `bodge-migrations/*` в dynamic import. Punted для минимизации change surface; ~9 KB остаются в main bundle. Если real biolog usage показывает нужду — easy T-future.
+- **DEC-FMT-V2-LIBRARY-CANONICAL-01 wire-up в существующий Library UI** — out of scope. Data-model contract выплачен (resourceHash refs + external-edit-detected via hash mismatch). UI integration — T-future.
+
+### Открытые вопросы (для Chat visual acceptance)
+
+1. **App.jsx switch v1 → v2 writer** — kick-off момент: после биолог-приёмки CORE + spec §6.4 матрица заполнена. Один touch в `App.jsx::saveProjectToFile` + один в `Sidebar.jsx::onOpenBodge`. Сейчас не сделано: оба эти call-sites продолжают использовать projectSlice (v1 path).
+2. **ExportProjectModal wire-up в File menu** — добавить пункт «Экспорт проекта…» в hamburger / File menu, открыть `<ExportProjectModal />` с current state. Модал уже принимает `state`/`zones`/`onExport`/`onCancel` — ready to mount.
+3. **`.bodgeassembly` file association** — File→Import dispatcher узнаёт по расширению `.bodgeassembly` → вызывает `importBodgeAssembly` вместо `readBodge`. Лёгкое расширение в `Sidebar.jsx::openBodgeFilePicker`.
+4. **Migration UX toast (§11.5 modal)** — спека описывает 3-button modal «Конвертировать / Открыть read-only / Отмена». Если переключаем v1 → v2 в App.jsx — этот modal должен быть реализован одновременно. Сейчас migrateBodgeV1toV2 поднимает .migrationLosses на Blob, UI consumer не реализован.
+5. **§6.4 loss matrix real-tool fill** — после K14 биолог run. Может потребовать tighten каких-то simulator'ов в `simulateThirdPartyRoundTrip()` для соответствия реальной harshness — если найдётся.
+6. **JSON Schema URIs хостинг** — `$schema: "https://bodgegene.dev/schema/..."` URIs в выводе manifest'ов не зарегистрированы. Infra-вопрос, не блокер для v2 release.
+7. **Lazy-load `bodge-migrations/*`** — оптимизация после v0.9.0-alpha если бандл вырастет.
+8. **Realise + op-groups integration (carry-over from M-CANVAS-WORKFLOW-UX Q1)** — все ещё открыто, ортогонально CORE.
+
+### Файлы
+
+**Новые (lib):** `bodge-snapgene-loss-detect.js`, `bodge-manifest-v2.js`, `bodge-hash.js`, `bodge-container-genbank.js`, `bodge-assembly-json.js`, `bodge-primers-json.js`, `bodge-readme-writer.js`, `bodge-atomic-write.js`, `bodge-recovery.js`, `bodge-export-profiles.js`, `bodge-assembly-portable.js`, `bodge-extensions.js`, `bodge-migrations/index.js`, `bodge-migrations/v1-to-v2.js`.
+
+**Новые (UI):** `canvas/ExportProjectModal.jsx`.
+
+**Новые (schemas):** `schemas/bodge-manifest-v2.json`.
+
+**Новые (tests):** 14 test files в `lib/__tests__/bodge-*.test.js` + `canvas/__tests__/ExportProjectModal.test.jsx` + `__tests__/interop/interop.test.js`.
+
+**Новые (fixtures):** `__tests__/interop/fixtures/snapgene-export/pET-28b-bodge.gb`, `__tests__/interop/fixtures/bodge-v1/{v1-empty,v1-with-library,v1-with-extras}.bodge + make-fixtures.js + README.md`, `__tests__/interop/fixtures/mock-vendor-extension/{manifest,scores}.json`.
+
+**Новые (docs):** `__tests__/interop/MANUAL_SMOKE_PLAN.md`, `__tests__/interop/K15_SIZE_BUDGET.md`.
+
+**Изменены:** `lib/bodge-zip.js` (rewrite — v1+v2 dispatcher; v1 path bit-perfect from v0.8.3-alpha).
+
+**НЕ изменено** (per спека + STOP):
+- `App.jsx`, `Sidebar.jsx`, `useStore`, `projectSlice` — call-sites продолжают v1 path.
+- `CanvasLayoutView.jsx` (TD-CANVAS-LAYOUTVIEW-DECOMP) — не задет.
+- `lib/version.js`, `package.json` — bump к v0.9.0-alpha — финализация Chat.
+- `CLAUDE.md`, `PROJECT_STATE.md`, `DECISIONS.md`, `ANCHORS.md`, `BUGS.md`, `RELEASES.md`, `TECH_DEBT.md`, `COMPONENT_MAP.md` — финализация Chat.
+- Backend `src/pvcs/` — sprint не задевал backend.
+
+После K15: СТОП. Спека остаётся в `docs/SPEC_BODGE_FORMAT_V2_CORE.md`. Финализация и visual acceptance — Chat в отдельной сессии. Следующий sprint: **M-FORMAT-V2-NOTEBOOK** (спека `docs/SPEC_BODGE_NOTEBOOK_MARKDOWN.md` готова, depend on K6/K7 + this CORE приёмка).
