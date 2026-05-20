@@ -1,0 +1,4 @@
+{
+  "guide-001": { "spCas9_efficiency": 0.87, "offTarget": 0.02 },
+  "guide-002": { "spCas9_efficiency": 0.71, "offTarget": 0.15 }
+}
