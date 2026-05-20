@@ -37,7 +37,6 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useStore } from '../../store';
 import { SkeletonProvider, useSkeletonState, useSkeletonActions } from './store/skeleton-context';
 import SkeletonHeader from './SkeletonHeader';
-import LibraryTreeHost from './LibraryTreeHost';
 import CanvasLayoutView from './canvas/CanvasLayoutView';
 import CanvasGraphView from './canvas/CanvasGraphView';
 import EditorWindowShell from './editor/EditorWindowShell';
@@ -45,11 +44,13 @@ import OpKindPicker from './canvas/operations/OpKindPicker';
 import OpSuggestions from './OpSuggestions';
 import OnboardingTooltip from './OnboardingTooltip';
 import LineagePanel from './LineagePanel';
-import ProtocolPanel from './ProtocolPanel';
-import PrimerOrderPanel from './PrimerOrderPanel';
 import CodonStatsPanel from './CodonStatsPanel';
 import AssemblyDraftsPanel from './canvas/AssemblyDraftsPanel';
 import { buildAssemblyZoneAction } from './canvas/assembly-zone-create';
+// PC-K1: LibraryTreeHost mount removed (top search bar will replace
+// it — PC-K2). PC-K5: ProtocolPanel + PrimerOrderPanel mounts removed
+// (non-functional UI noise per spec §4.4). The source files remain in
+// the repo as orphans for possible future re-use.
 
 export default function CanvasSkeleton() {
   return (
@@ -82,7 +83,6 @@ function SkeletonInner() {
           overflow: 'hidden',
         }}
       >
-        <LibraryTreeHost />
         <CanvasArea />
       </div>
 
@@ -291,8 +291,6 @@ function CanvasArea() {
       <AssemblyDraftsPanel />
       <OpSuggestions />
       <LineagePanel />
-      <ProtocolPanel />
-      <PrimerOrderPanel />
       <CodonStatsPanel />
       <OnboardingTooltip />
     </div>

@@ -89,18 +89,24 @@ describe('StartScreen-Pixel — Sidebar shell', () => {
     expect(screen.getByTestId('ss-action-create-project')).toBeTruthy();
     expect(screen.getByTestId('ss-action-open-bodge')).toBeTruthy();
     expect(screen.getByTestId('ss-action-import-file')).toBeTruthy();
-    // Workspace (M-X.7c K2: Конструкции / Реакции удалены, остаётся
-    // только Праймеры заглушка до M-E)
+    // MS-K1 (SPEC_MAIN_SCREEN_CLEANUP §3.1):
+    //   - РАБОЧЕЕ МЕСТО / СПРАВКА section labels removed.
+    //   - «Праймеры soon» disabled stub removed (visual noise).
+    //   - «📂 Открыть проект» dev-only sidebar item removed.
+    //   - «📂 Все проекты» added to main nav block.
+    //   - «📖 Руководство» / «⌨ Хоткеи» moved to MainPanel «?» popover.
+    //   - «↓ Установить» PWA moved to SettingsModal.
     expect(screen.getByTestId('ss-nav-home')).toBeTruthy();
     expect(screen.getByTestId('ss-nav-library')).toBeTruthy();
+    expect(screen.getByTestId('ss-nav-all-projects')).toBeTruthy();
     expect(screen.queryByTestId('ss-nav-constructs')).toBeNull();
     expect(screen.queryByTestId('ss-nav-reactions')).toBeNull();
-    expect(screen.getByTestId('ss-nav-primers')).toBeTruthy();
-    // Help
-    expect(screen.getByTestId('ss-help-guide')).toBeTruthy();
-    expect(screen.getByTestId('ss-help-hotkeys')).toBeTruthy();
-    // Footer
-    expect(screen.getByTestId('ss-foot-install')).toBeTruthy();
+    expect(screen.queryByTestId('ss-nav-primers')).toBeNull();   // MS-K1 removed
+    expect(screen.queryByTestId('ss-dev-canvas-skeleton')).toBeNull(); // MS-K1 removed
+    expect(screen.queryByTestId('ss-help-guide')).toBeNull();    // MS-K1 moved
+    expect(screen.queryByTestId('ss-help-hotkeys')).toBeNull();  // MS-K1 moved
+    // Footer (PWA install moved to SettingsModal — MS-K6).
+    expect(screen.queryByTestId('ss-foot-install')).toBeNull();
     expect(screen.getByTestId('ss-foot-theme')).toBeTruthy();
     expect(screen.getByTestId('ss-foot-settings')).toBeTruthy();
     expect(screen.getByTestId('ss-foot-version').textContent).toMatch(APP_VERSION);
@@ -112,12 +118,8 @@ describe('StartScreen-Pixel — Sidebar shell', () => {
     expect(screen.getByTestId('ss-nav-library').getAttribute('data-active')).toBe('false');
   });
 
-  it('disabled items (Праймеры) are not clickable', () => {
-    render(<StartScreenIntegration />);
-    const primers = screen.getByTestId('ss-nav-primers');
-    expect(primers.disabled).toBe(true);
-    expect(primers.textContent).toMatch(/soon/);
-  });
+  // MS-K1: «Праймеры» disabled stub removed; no «disabled items»
+  // assertion needed (everything in the sidebar is now actionable).
 
   // M-X.8 K3 — PINNED section + open-palette button.
   it('M-X.8 K3 — sidebar PINNED section renders header, counter, and the «Все проекты…» button', () => {
@@ -137,8 +139,9 @@ describe('StartScreen-Pixel — Sidebar shell', () => {
     expect(screen.getByTestId('sb-pinned-pin-B')).toBeTruthy();
     // Current pinned project gets the active marker.
     expect(screen.getByTestId('sb-pinned-pin-A').getAttribute('data-active')).toBe('true');
-    // «Все проекты…» button opens the command palette.
-    fireEvent.click(screen.getByTestId('sb-open-command-palette'));
+    // MS-K1: «Все проекты» moved into the main nav block; clicking
+    // still opens the command palette.
+    fireEvent.click(screen.getByTestId('ss-nav-all-projects'));
     expect(useStore.getState().modals.commandPalette).toBe(true);
   });
 
@@ -153,34 +156,8 @@ describe('StartScreen-Pixel — Sidebar shell', () => {
     expect(useStore.getState().currentProjectId).toBe('pin-X');
   });
 
-  it('Sidebar «Установить» button calls promptInstall when canInstallPwa=true', async () => {
-    // Arm the deferred prompt via the real browser event.
-    useStore.setState((s) => { s.canInstallPwa = true; });
-    const evt = new Event('beforeinstallprompt');
-    const promptSpy = vi.fn().mockResolvedValue();
-    evt.prompt = promptSpy;
-    evt.userChoice = Promise.resolve({ outcome: 'accepted' });
-    // The App-level setup listener registers a window handler. In
-    // this test wrapper App.jsx isn't mounted, so call the lib
-    // setup directly to capture the event.
-    const { setupBeforeInstallPromptListener } = await import('../../../lib/pwa-install');
-    const detach = setupBeforeInstallPromptListener(() => {});
-    window.dispatchEvent(evt);
-    render(<StartScreenIntegration />);
-    fireEvent.click(screen.getByTestId('ss-foot-install'));
-    // Wait a tick for the promise chain.
-    await new Promise((r) => setTimeout(r, 0));
-    expect(promptSpy).toHaveBeenCalled();
-    detach();
-  });
-
-  it('Sidebar «Установить» button shows manual hint toast when canInstallPwa=false (no API)', () => {
-    useStore.setState((s) => { s.canInstallPwa = false; s.toasts = []; });
-    render(<StartScreenIntegration />);
-    fireEvent.click(screen.getByTestId('ss-foot-install'));
-    const toasts = useStore.getState().toasts || [];
-    expect(toasts.some((t) => /Install via the browser menu|меню браузера/i.test(t.msg))).toBe(true);
-  });
+  // MS-K6: PWA «Установить» moved into SettingsModal — these flows
+  // are now covered by SettingsModal-level tests, not sidebar ones.
 
   it('M-X.8 K7 — MainPanel RecentRow pin star toggles pinnedProjectIds without activating', async () => {
     useStore.setState((s) => {
@@ -257,22 +234,8 @@ describe('StartScreen-Pixel — Sidebar collapse', () => {
   });
 });
 
-describe('StartScreen-Pixel — Hotkey cheatsheet wiring', () => {
-  it('Хоткеи sidebar item click opens HotkeyCheatsheet modal', () => {
-    render(<StartScreenIntegration />);
-    expect(screen.queryByText(/Hotkey/i)).toBeNull();
-    fireEvent.click(screen.getByTestId('ss-help-hotkeys'));
-    // HotkeyCheatsheet renders its own backdrop + a close button.
-    // Try to find one of its known testids; fall back to title text.
-    const found =
-      document.querySelector('[data-testid*="hotkey"]') ||
-      document.querySelector('[role="dialog"]') ||
-      Array.from(document.querySelectorAll('h2, h3')).find((h) =>
-        /хотке|hotkey/i.test(h.textContent || ''),
-      );
-    expect(found).toBeTruthy();
-  });
-});
+// MS-K1: Hotkey cheatsheet now lives in MainPanel «? Помощь» popover
+// (MS-K3 builds the popover). Sidebar entry-point removed.
 
 describe('StartScreen-Pixel — Library button wiring', () => {
   it('clicking Библиотека dispatches setActiveWorkspace + setActiveFullscreen', () => {

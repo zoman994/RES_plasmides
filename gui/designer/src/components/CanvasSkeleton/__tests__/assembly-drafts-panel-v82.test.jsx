@@ -34,31 +34,48 @@ function mount() {
 // DEC-T3-08 REVERSED (Игорь 17.05.2026): a new project starts with a
 // CLEAN canvas — NO seeded «Сборка 1». The panel still reflects
 // state.zones; assemblies are created explicitly via «+ Новая сборка».
+//
+// PC-K6 update (20.05.2026): the «📋 Сборки (N)» toggle is HIDDEN
+// when zones.length === 0 (spec §4.4 — zero-count is UI noise).
+// First zone seed is created via direct CREATE_ZONE dispatch.
+function seedFirstZone() {
+  act(() => {
+    A.zoneDispatch({
+      type: 'CREATE_ZONE',
+      zone: { bounds: { x: 0, y: 0, width: 600, height: 400 } },
+    });
+  });
+}
 function newZone() {
   act(() => { fireEvent.click(screen.getByTestId('assembly-drafts-toggle')); });
   act(() => { fireEvent.click(screen.getByTestId('assembly-drafts-new')); });
 }
 
 describe('V82 — AssemblyDraftsPanel is zone-based (post DEC-T3-08 reversal)', () => {
-  it('default project: clean — counter (0), «Сборок пока нет.»', () => {
+  it('PC-K6: default project: zero zones → toggle hidden', () => {
     mount();
-    expect(screen.getByTestId('assembly-drafts-toggle').textContent).toMatch(/\(0\)/);
-    act(() => { fireEvent.click(screen.getByTestId('assembly-drafts-toggle')); });
-    expect(screen.queryAllByTestId('assembly-draft-card')).toHaveLength(0);
-    expect(screen.getByTestId('assembly-drafts-panel').textContent).toMatch(/Сборок пока нет/);
+    expect(screen.queryByTestId('assembly-drafts-toggle')).toBeNull();
+    expect(screen.queryByTestId('assembly-drafts-panel')).toBeNull();
   });
 
-  it('«+ Новая сборка» dispatches CREATE_ZONE (counter 0→1)', () => {
+  it('after seeding a zone, toggle appears and shows count', () => {
     mount();
-    newZone();
-    expect(S.zones).toHaveLength(1);
+    seedFirstZone();
     expect(screen.getByTestId('assembly-drafts-toggle').textContent).toMatch(/\(1\)/);
-    expect(screen.getAllByTestId('assembly-draft-card')).toHaveLength(1);
+  });
+
+  it('«+ Новая сборка» dispatches CREATE_ZONE (1→2)', () => {
+    mount();
+    seedFirstZone();
+    newZone();
+    expect(S.zones).toHaveLength(2);
+    expect(screen.getByTestId('assembly-drafts-toggle').textContent).toMatch(/\(2\)/);
   });
 
   it('card Open opens an assembly editor tab targeting the zone id', () => {
     mount();
-    newZone();
+    seedFirstZone();
+    act(() => { fireEvent.click(screen.getByTestId('assembly-drafts-toggle')); });
     const zid = S.zones[0].id;
     act(() => {
       fireEvent.click(within(screen.getByTestId('assembly-draft-card'))
@@ -69,21 +86,22 @@ describe('V82 — AssemblyDraftsPanel is zone-based (post DEC-T3-08 reversal)', 
     )).toBe(true);
   });
 
-  it('card Delete dispatches REMOVE_ZONE; emptying → «Сборок пока нет.»', () => {
+  it('card Delete dispatches REMOVE_ZONE; emptying → toggle disappears', () => {
     mount();
-    newZone();
+    seedFirstZone();
+    act(() => { fireEvent.click(screen.getByTestId('assembly-drafts-toggle')); });
     act(() => {
       fireEvent.click(within(screen.getByTestId('assembly-draft-card'))
         .getByTestId('assembly-draft-card-delete'));
     });
     expect(S.zones).toHaveLength(0);
-    expect(screen.getByTestId('assembly-drafts-toggle').textContent).toMatch(/\(0\)/);
-    expect(screen.getByTestId('assembly-drafts-panel').textContent).toMatch(/Сборок пока нет/);
+    expect(screen.queryByTestId('assembly-drafts-toggle')).toBeNull();
   });
 
   it('card node count reflects containers/pieces/ops in the zone', () => {
     mount();
-    newZone();
+    seedFirstZone();
+    act(() => { fireEvent.click(screen.getByTestId('assembly-drafts-toggle')); });
     const zid = S.zones[0].id;
     act(() => { A.addContainer({ id: 'cV82', name: 'pUC', sequence: 'ACGTACGT', annotations: [] }); });
     act(() => { A.moveNodeToZone('container', 'cV82', zid); });

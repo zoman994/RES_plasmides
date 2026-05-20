@@ -15,6 +15,14 @@ export default function SkeletonHeader() {
   const state = useSkeletonState();
   const actions = useSkeletonActions();
   const popFullscreen = useStore((st) => st.popFullscreen);
+  // PC-K4: header shows the active project's name (biolog-readable),
+  // not the developer placeholder «Canvas-скелет». Fallback chain:
+  // project.name → spec default → «Без названия».
+  const projectName = useStore((st) => {
+    const id = st.currentProjectId;
+    return id ? st.projects?.[id]?.name : null;
+  });
+  const headerTitle = projectName || s.headerTitle || 'Без названия';
 
   const onBack = useCallback(() => {
     if (state.editorOpen) {
@@ -52,8 +60,11 @@ export default function SkeletonHeader() {
         }}
       >{s.backToCanvas || '← Назад'}</button>
 
-      <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)', letterSpacing: 0.2 }}>
-        {s.headerTitle || 'Canvas-скелет'}
+      <span
+        data-testid="skeleton-header-title"
+        style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)', letterSpacing: 0.2 }}
+      >
+        {headerTitle}
       </span>
 
       <div

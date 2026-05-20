@@ -246,14 +246,14 @@ export default function Sidebar({ collapsed, onToggle, onOpenHotkeys }) {
           testId="ss-action-import-file"
         />
 
-        {/*
-          * Section order (FAIL-fix-pass 1): actions → РАБОЧЕЕ МЕСТО →
-          * В РАБОТЕ → СПРАВКА. Workspace nav comes before the pinned
-          * project list because nav is the always-relevant primary
-          * surface; pinned section lives below as a per-context
-          * shortcut row.
+        {/* MS-K1 (SPEC_MAIN_SCREEN_CLEANUP §3.1):
+          * - Removed РАБОЧЕЕ МЕСТО section label (artificial grouping).
+          * - Removed «📦 Праймеры soon» disabled stub.
+          * - Removed «📂 Открыть проект» (was a misplaced action under
+          *   the "workspace" label).
+          * - Added «📂 Все проекты» as the projects entry-point in the
+          *   main nav block (Ctrl+P still active via CommandPalette).
           */}
-        <div className="sb-section">Рабочее место</div>
         <SidebarItem
           icon="⌂"
           label="Главная"
@@ -271,26 +271,12 @@ export default function Sidebar({ collapsed, onToggle, onOpenHotkeys }) {
           onClick={onLibraryClick}
           testId="ss-nav-library"
         />
-        {/*
-          * M-X.7c K2 — «Конструкции» / «Реакции» удалены из РАБОЧЕЕ
-          * МЕСТО (не входят в архитектуру 3-уровней, DEC-NAV-3LEVEL-01).
-          * «Праймеры» оставлен заглушкой — станет глобальным View в M-E.
-          */}
-        <SidebarItem
-          icon="⊟"
-          label="Праймеры"
-          tip="Праймеры (скоро)"
-          disabled
-          badgeSoon
-          testId="ss-nav-primers"
-        />
         <SidebarItem
           icon="📂"
-          label={STRINGS.canvasSkeleton?.openProjectLabel || 'Открыть проект'}
-          tip={STRINGS.canvasSkeleton?.openProjectTip || 'Открыть канвас активного проекта'}
-          active={activeFullscreen === 'canvasSkeleton'}
-          onClick={onSkeletonClick}
-          testId="ss-dev-canvas-skeleton"
+          label={ph.sidebarOpenAll || 'Все проекты'}
+          tip={ph.sidebarOpenAllTooltip || 'Все проекты (⌘P)'}
+          onClick={() => openCommandPalette?.()}
+          testId="ss-nav-all-projects"
         />
 
         {/*
@@ -332,46 +318,16 @@ export default function Sidebar({ collapsed, onToggle, onOpenHotkeys }) {
             />
           );
         })}
-        <SidebarItem
-          icon="⌘"
-          label={ph.sidebarOpenAll || 'Все проекты'}
-          tip={ph.sidebarOpenAllTooltip || 'Все проекты (⌘P)'}
-          right="⌘P"
-          onClick={() => openCommandPalette?.()}
-          testId="sb-open-command-palette"
-        />
-
-        <div className="sb-section">Справка</div>
-        <SidebarItem
-          icon="📖"
-          label="Руководство"
-          tip="Руководство"
-          onClick={todo('open-guide')}
-          testId="ss-help-guide"
-        />
-        <SidebarItem
-          icon="⌨"
-          label="Хоткеи"
-          right="?"
-          tip="Хоткеи"
-          onClick={onOpenHotkeys || todo('open-hotkeys')}
-          testId="ss-help-hotkeys"
-        />
+        {/* MS-K1: «Все проекты» moved up into the main nav block above;
+          * standalone Ctrl+P row + СПРАВКА section + Руководство + Хоткеи
+          * items removed (Help moved to the main header «? Помощь» popover
+          * — MS-K3). */}
       </div>
 
       <div className="sb-foot">
-        <SidebarItem
-          icon={installed ? '✓' : '⤓'}
-          label={installed ? 'Установлено' : 'Установить'}
-          tip={installed
-            ? 'Приложение уже установлено'
-            : canInstallPwa
-              ? 'Установить BodgeGene как приложение'
-              : 'Установить через меню браузера (⋮)'}
-          onClick={onInstallClick}
-          testId="ss-foot-install"
-          style={{ color: installed ? 'var(--success-fg, var(--text-secondary))' : 'var(--accent-700)' }}
-        />
+        {/* MS-K6: PWA «Установить» moved into SettingsModal. The
+          * existing onInstallClick handler stays callable so the new
+          * Settings section can wire to the same callback. */}
         <SidebarItem
           icon="◐"
           label={themeLabel}

@@ -26,15 +26,10 @@ describe('K1 — CanvasSkeleton mount', () => {
     expect(screen.getByTestId('skeleton-view-toggle-graph')).toBeTruthy();
   });
 
-  it('renders LibraryTreeRoot via LibraryTreeHost (12.05.2026 — bespoke SkeletonTree выпилен)', () => {
+  it('PC-K1: LibraryTreeHost no longer mounted (replaced by top search bar — PC-K2)', () => {
     render(<CanvasSkeleton />);
-    expect(screen.getByTestId('skeleton-library-tree-host')).toBeTruthy();
-    // LibraryTreeRoot ставит свой testId.
-    expect(screen.getByTestId('library-tree-root')).toBeTruthy();
-    // Tree-head (search + Add button) — full Library functionality.
-    expect(screen.getByTestId('tree-head')).toBeTruthy();
-    expect(screen.getByTestId('tree-add-btn')).toBeTruthy();
-    expect(screen.getByTestId('tree-search')).toBeTruthy();
+    expect(screen.queryByTestId('skeleton-library-tree-host')).toBeNull();
+    expect(screen.queryByTestId('library-tree-root')).toBeNull();
   });
 
   it('renders Canvas area (Layout view default)', () => {

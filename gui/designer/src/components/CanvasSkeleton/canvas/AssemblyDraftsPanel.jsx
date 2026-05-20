@@ -29,6 +29,12 @@ export default function AssemblyDraftsPanel() {
   const [open, setOpen] = useState(false);
   const zones = selectAllZones(state);
 
+  // PC-K6 (SPEC_PROJECT_CANVAS_CLEANUP §4.4): hide the «📋 Сборки (N)»
+  // toggle when there are no zones — zero-count counter is UI noise on
+  // an empty project. The «+ Новая сборка» entry-point still exists via
+  // the dedicated «+ Сборка» button (CanvasSkeleton/index.jsx).
+  if (zones.length === 0) return null;
+
   // Unified with the bottom-right «+ Сборка» button (Игорь 18-19.05.2026
   // «Только зона» + regression-fix) — single CREATE_ZONE path, then
   // open its assembly editor so the colored-segment build window is
