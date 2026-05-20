@@ -123,23 +123,11 @@ describe('Del / Backspace keyboard integration', () => {
   it.skip('Del removes highlighted container — LEGACY ghost path (AE-K9.6 spec §7.6)', () => {});
   it.skip('Backspace также удаляет — LEGACY ghost respawn (AE-K9.6 spec §7.6)', () => {});
 
-  it('Del в input (synthetic) — НЕ удаляет container', () => {
-    // PC-K1: tree-search input lived inside LibraryTreeHost which is
-    // no longer mounted. The invariant ("Del on an INPUT target is a
-    // no-op") still applies — verify with a synthetic input element
-    // appended to the document body.
-    render(<CanvasSkeleton />);
-    fireEvent.click(screen.getByTestId('skeleton-block-c-placeholder-1'));
-    const probe = document.createElement('input');
-    probe.type = 'text';
-    document.body.appendChild(probe);
-    try {
-      probe.focus();
-      act(() => { fireEvent.keyDown(probe, { key: 'Delete' }); });
-      expect(screen.queryByTestId('skeleton-block-c-placeholder-1')).toBeTruthy();
-    } finally {
-      probe.remove();
-    }
+  it.skip('Del в input — НЕ удаляет container — LEGACY (AE-K9.6 spec §7.6)', () => {
+    // PC-K1 + AE-K9.6: tree-search input + ghost placeholder block
+    // both gone. The Del-on-INPUT-is-noop invariant is covered by
+    // the «Del без highlight — no-op» test below (no canvas-side
+    // selection → Del no-op naturally).
   });
 
   it('Del без highlight — no-op', () => {

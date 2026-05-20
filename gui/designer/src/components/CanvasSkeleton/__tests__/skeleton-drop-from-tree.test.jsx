@@ -166,9 +166,11 @@ describe('CanvasLayoutView — drop handler integration', () => {
     render(<CanvasSkeleton />);
     const canvas = screen.getByTestId('skeleton-canvas-layout');
 
+    // AE-K9.6: ghost placeholder block no longer rendered (spec §7.6).
+    // Pre-drop canvas has 0 visible blocks; post-drop should have 1
+    // (the newly-created container from the dropped library entry).
     const blocksBefore = Array.from(document.querySelectorAll('[data-kind="placeholder"], [data-kind="linear"], [data-kind="circular"]')).length;
-    // V61 fixture: 1 ghost placeholder на старте.
-    expect(blocksBefore).toBe(1);
+    expect(blocksBefore).toBe(0);
 
     fireEvent.dragEnter(canvas, { dataTransfer: makeDataTransfer({ entryId: entry.id }) });
     expect(canvas.getAttribute('data-drag-over')).toBe('true');
@@ -182,8 +184,9 @@ describe('CanvasLayoutView — drop handler integration', () => {
     expect(canvas.getAttribute('data-drag-over')).toBe('false');
 
     const blocksAfter = Array.from(document.querySelectorAll('[data-kind="placeholder"], [data-kind="linear"], [data-kind="circular"]'));
-    // Drop on empty canvas → new filled container (1 ghost остаётся, +1 filled = 2).
-    expect(blocksAfter.length).toBe(2);
+    // AE-K9.6: ghost placeholder no longer rendered → 0 before drop,
+    // 1 after drop (just the newly created filled container).
+    expect(blocksAfter.length).toBe(1);
     // Find the new block by name, scoped to canvas (Library tree
     // sidebar also shows the entry name, so global getByText matches
     // twice).
