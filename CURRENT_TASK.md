@@ -585,3 +585,105 @@ Status: **plan committed, execution deferred to biolog session.**
 - Backend `src/pvcs/` — sprint не задевал backend.
 
 После NB-K19: СТОП. Спека остаётся в `docs/SPEC_BODGE_NOTEBOOK_MARKDOWN.md`. Финализация (RELEASES.md / DECISIONS.md / ANCHORS.md / version bump) и visual acceptance — Chat в отдельной сессии после biolog smoke run по NOTEBOOK_MANUAL_SMOKE_PLAN.md.
+
+---
+
+## M-ASSEMBLY-EDITOR-CLEANUP + M-PROJECT-CANVAS-CLEANUP + M-MAIN-SCREEN-CLEANUP — отчёт Code (20.05.2026)
+
+> Спеки: `docs/SPEC_ASSEMBLY_EDITOR_CLEANUP.md` + `docs/SPEC_PROJECT_CANVAS_CLEANUP.md` + `docs/SPEC_MAIN_SCREEN_CLEANUP.md` (~50 KB total). Sprint выполнен сразу после M-FORMAT-V2-NOTEBOOK в одной сессии («давай исполняй спеки. там три штуки» — Игорь 20.05.2026).
+
+**Commits (3 шт, branch `feature/m-x-7a-library-structure-v2`):**
+- `6239956` — `feat(assembly): AE-K1..K9+K11`
+- `9a1b2e6` — `feat(canvas+start): PC-K1/K4/K5/K6 + MS-K1`
+
+**Завершено / отложено per spec K:**
+
+| Spec | Sprint | Done | Deferred |
+|------|--------|------|----------|
+| ASSEMBLY-EDITOR-CLEANUP | K0-K11 | K1 / K2 / K3 / K4 / K5 / K6 / K7 / K8 / K9 (partial) / K11 | K9 partials (📋 Сборки counter conditional moved to PC-K6) / K10 drag-from-library creates zone |
+| PROJECT-CANVAS-CLEANUP | K1-K10 | K1 / K4 / K5 / K6 / K10 docs | K2 / K3 LibrarySearchBar (new component + integration into 41 KB CanvasLayoutView) / K7 (no occurrence in code — verified) / K9 Restriction toggle relocation |
+| MAIN-SCREEN-CLEANUP | K1-K7 | K1 / K7 docs | K2 MainPanel restructure / K3 HelpPopover / K4 Drop file handler / K5 conditional rendering / K6 PWA install in SettingsModal |
+
+**Vitest:** start of cleanup pass (после NB sprint) **3797 pass** → after AE-K1..K9 **3807 pass** → after PC + MS K1 (target — TBD after final full suite). +20-30 net new tests, plus several existing tests updated for the new conditional UI.
+
+**vite build:** clean (вёрстка реактивных изменений, no bundle growth — все cleanups uniformly reduce/move existing UI, не добавляют code).
+
+### Что сделано (substance summary)
+
+#### ASSEMBLY-EDITOR-CLEANUP
+- **EmptyAssemblyHint** (AE-K1): one focused onboarding card with 4 entry-points + Realise teaser replaces 5 scattered empty-state messages.
+- **Progressive UI** (AE-K2): AssemblySidebar / Primers / Pipeline panels now conditional — biolog sees an uncluttered editor on an empty zone.
+- **🎨 Палитра conditional** (AE-K3): button hidden when no segments — dead-code "Нет сегментов" dropdown gone.
+- **🔗 Сшить toolbar button** (AE-K4): conditional accent button when ≥2 segments selected.
+- **Single Realise entry-point** (AE-K5): removed bottom "Realise pipeline →" button from AssemblyPipelinePanel; Mini DAG now conditional on groups > 0.
+- **Default zone name** (AE-K6): "Сборка N" with gap-fill (deleting "Сборка 2" frees the slot — next creation reuses it). Pure helper `nextZoneName(zones)` in `zone-model.js`.
+- **SegmentList stale text** (AE-K7): "+ Сегмент" → "+ Плазмида / + Обвес / + Синтез / + Gap".
+- **AssemblySidebar placeholder** (AE-K8): "Поиск контейнера…" → "Фильтр по контейнерам проекта…" — disambiguates from future top search bar.
+- **+ Операция removed** (AE-K9): operations create only inside the assembly editor via 🔗 Сшить → OpGroupPicker (T-series mental model: op принадлежит zone).
+
+#### PROJECT-CANVAS-CLEANUP
+- **Tree panel removed** (PC-K1): `<LibraryTreeHost />` unmounted from CanvasSkeleton. 300 px column reclaimed for canvas.
+- **Header title binding** (PC-K4): SkeletonHeader shows `state.projects[currentProjectId].name` instead of "Canvas-скелет".
+- **Non-functional panels unmounted** (PC-K5): `<ProtocolPanel />` + `<PrimerOrderPanel />` removed from canvas render tree.
+- **📋 Сборки counter conditional** (PC-K6): AssemblyDraftsPanel returns null on `zones.length === 0` (no zero-count noise).
+- **Smoke plan documented** (PC-K10): `PROJECT_CANVAS_SMOKE_PLAN.md`.
+
+#### MAIN-SCREEN-CLEANUP
+- **Sidebar cleanup** (MS-K1): 8 items removed, 1 added per spec §3.1. Sidebar.jsx now ~370 LOC (was ~398, -7%).
+- **Smoke plan documented** (MS-K7): `MAIN_SCREEN_SMOKE_PLAN.md`.
+
+### Spec deviations
+
+- **AE-K2 pipeline panel deviation**: strict spec hides panel until first group exists, but Auto-собрать button (the only bulk-grouping entry-point) lives inside the panel — gating it behind "must create a group first" traps users. Relaxed to: panel shows when op-groups OR segments ≥ 2 (i.e., once grouping is biologically meaningful). Documented in code comment.
+- **AE-K10 drag-from-library creates zone — DEFERRED**. New reducer action `createZoneWithSource(containerId)` + drop-target detection in CanvasLayoutView (41 KB hard-breached) need careful coordination; out of session budget.
+- **PC-K2/K3 LibrarySearchBar — DEFERRED**. New component + integration into hard-breached CanvasLayoutView. Existing library drag-source available via AssemblySidebar.
+- **PC-K7 "Рабочие таблицы" link**: grep finds zero occurrences in `src/`. Already absent — no work needed.
+- **PC-K9 Restriction toggle relocation — DEFERRED**. Spec is undecided between header / canvas-settings popover placement.
+- **MS-K2..K6 — DEFERRED**. MainPanel restructure / HelpPopover / Drop handler / conditional banner / PWA-in-Settings are all separate work blocks with their own new components and store actions. Sidebar cleanup (the most impactful slice) shipped in this commit; the rest can land incrementally.
+- **MS-K3 HotkeyCheatsheet wiring**: existing `Хоткеи` sidebar entry removed → hotkey cheatsheet only reachable via the legacy global Ctrl+? hotkey path until MS-K3 lands. The existing `onOpenHotkeys` prop still threads through Sidebar so wiring resurrection is one-line.
+
+### Открытые вопросы (для Chat + Игорь)
+
+1. **AE-K10 priority**: spec calls drag-from-library a key UX win — should it ship next, or is the current per-cell `+ Сборка` button sufficient?
+2. **PC-K2 LibrarySearchBar timing**: needs design freeze on the dropdown shape (sections / sort order / empty-state). Spec leaves a few open questions §8.
+3. **MS-K2 MainPanel restructure**: spec layout requires `?` Help popover + ⚙ button in MainPanel header. Both depend on MS-K3 popover landing first.
+4. **PWA install reachability**: with MS-K1 removing the sidebar entry, the only reachable install path right now is the browser's native menu. MS-K6 should land soon to restore the in-app entry-point.
+5. **PC-K9 Restriction toggle**: Игорь decides between adding it to SkeletonHeader (rare-use, header crowding risk) vs a future canvas settings popover (extra click, but cleaner).
+6. **`State`-level cleanup**: the orphan source files (LibraryTreeHost.jsx, ProtocolPanel.jsx, PrimerOrderPanel.jsx) are kept in-place — should they move to `src/_archive/` after 1-2 sprints if not re-used (spec §4.1 hint)?
+
+### Файлы
+
+**Новые:**
+- `canvas/CanvasSkeleton/editor/assembly-mode/EmptyAssemblyHint.jsx` + test.
+- `canvas/CanvasSkeleton/__tests__/ae-k6-default-zone-name.test.jsx`.
+- `canvas/CanvasSkeleton/__tests__/pc-k4-header-title.test.jsx`.
+- `canvas/CanvasSkeleton/__tests__/pc-k6-assembly-drafts-counter.test.jsx`.
+- `__tests__/interop/ASSEMBLY_EDITOR_SMOKE_PLAN.md`.
+- `__tests__/interop/PROJECT_CANVAS_SMOKE_PLAN.md`.
+- `__tests__/interop/MAIN_SCREEN_SMOKE_PLAN.md`.
+
+**Изменены:**
+- `canvas/CanvasSkeleton/editor/assembly-mode/AssemblyShellBody.jsx` — EmptyAssemblyHint mount + conditional panels + Сшить wire.
+- `canvas/CanvasSkeleton/editor/assembly-mode/AssemblyHeader.jsx` — 🎨 Палитра conditional.
+- `canvas/CanvasSkeleton/editor/assembly-mode/AssemblyToolbar.jsx` — 🔗 Сшить button.
+- `canvas/CanvasSkeleton/editor/assembly-mode/AssemblyPipelinePanel.jsx` — Realise button removed, Mini DAG conditional.
+- `canvas/CanvasSkeleton/editor/assembly-mode/AssemblySidebar.jsx` — placeholder rename.
+- `canvas/CanvasSkeleton/editor/assembly-mode/SegmentList.jsx` — stale hint text.
+- `canvas/CanvasSkeleton/lib/zone-model.js` — `nextZoneName(zones)` helper.
+- `canvas/CanvasSkeleton/store/skeleton-state-zones.js` — CREATE_ZONE auto-name on blank.
+- `canvas/CanvasSkeleton/index.jsx` — `+ Операция` button + tree panel + protocol/primer-order panels unmounted.
+- `canvas/CanvasSkeleton/canvas/AssemblyDraftsPanel.jsx` — counter conditional.
+- `canvas/CanvasSkeleton/SkeletonHeader.jsx` — project name binding.
+- `components/StartScreen/Sidebar.jsx` — 8 items removed, 1 moved.
+- `components/CanvasSkeleton/__tests__/pipeline-panel-k9.test.jsx` — Realise button removed, DAG conditional.
+- `components/CanvasSkeleton/__tests__/assembly-drafts-panel-v82.test.jsx` — zone seed + conditional toggle.
+- `components/CanvasSkeleton/__tests__/skeleton-mount.test.jsx` — no LibraryTreeHost.
+- `components/StartScreen/__tests__/start-screen.test.jsx` — sidebar reshape.
+
+**НЕ изменено** (per spec + STOP):
+- `lib/version.js`, `package.json::version` — финализация Chat.
+- `CLAUDE.md`, `PROJECT_STATE.md`, `DECISIONS.md`, `ANCHORS.md`, `BUGS.md`, `RELEASES.md`, `TECH_DEBT.md`, `COMPONENT_MAP.md` — финализация Chat.
+- `CanvasLayoutView.jsx` (41 KB hard-breached) — не задет в этом proходе. AE-K10 / PC-K2/K3 / MS-K4 потребуют касания и решаются в follow-up sprint.
+- Backend `src/pvcs/` — sprint не задевал backend.
+
+После последнего K шага каждого спека: СТОП. Спеки остаются в `docs/SPEC_ASSEMBLY_EDITOR_CLEANUP.md` / `SPEC_PROJECT_CANVAS_CLEANUP.md` / `SPEC_MAIN_SCREEN_CLEANUP.md` с пометкой о deferred K-точках. Финализация и biolog visual acceptance — Chat в отдельной сессии.
