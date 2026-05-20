@@ -31,6 +31,14 @@ function PrimerRow({ p, actions, draftId, onEdit }) {
     >
       <span title={p.direction}>{p.direction === 'reverse' ? '◀' : '▶'}</span>
       {cross && <span data-testid="assembly-primer-cross" title="Покрывает границу — junction primer (A4)">⚡</span>}
+      {/* K12 — autoMode badge: 🔧 auto (will be recomputed by the K15
+          finalizer on skeleton change) / 🔒 manual (frozen). */}
+      <span
+        data-testid={`assembly-primer-automode-${p.id}`}
+        title={p.autoMode === 'auto' ? 'Auto (пересчитывается)' : 'Manual (не трогается)'}
+      >
+        {p.autoMode === 'auto' ? '🔧' : '🔒'}
+      </span>
       {renaming ? (
         <input
           data-testid="assembly-primer-rename-input"
@@ -58,6 +66,24 @@ function PrimerRow({ p, actions, draftId, onEdit }) {
       <span style={{ flex: 1, minWidth: 0, fontFamily: 'var(--font-mono,monospace)', color: 'var(--text-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {p.sequence}
       </span>
+      {/* K12 — lock/reset toggles (mutually exclusive). */}
+      {p.autoMode === 'auto' ? (
+        <button
+          type="button"
+          data-testid={`assembly-primer-lock-${p.id}`}
+          onClick={() => actions.updateAssemblyPrimer(draftId, p.id, { autoMode: 'manual' })}
+          title="Заблокировать (manual) — finalizer не будет трогать"
+          style={iconBtn}
+        >🔒</button>
+      ) : (
+        <button
+          type="button"
+          data-testid={`assembly-primer-reset-${p.id}`}
+          onClick={() => actions.updateAssemblyPrimer(draftId, p.id, { autoMode: 'auto' })}
+          title="Сбросить в auto — finalizer пересчитает"
+          style={iconBtn}
+        >🔄</button>
+      )}
       <button
         type="button"
         data-testid="assembly-primer-edit"
@@ -114,7 +140,9 @@ function EditModal({ primer, draftId, actions, onClose }) {
             data-testid="assembly-primer-edit-save"
             onClick={() => {
               const clean = seq.replace(/[^a-zA-Z]/g, '').toUpperCase();
-              actions.updateAssemblyPrimer(draftId, primer.id, { sequence: clean });
+              // K12 — a manual sequence edit auto-locks the primer so
+              // the K15 finalizer won't overwrite the biolog's change.
+              actions.updateAssemblyPrimer(draftId, primer.id, { sequence: clean, autoMode: 'manual' });
               onClose();
             }}
             style={primaryBtn}
