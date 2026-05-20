@@ -1,0 +1,79 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://bodgegene.dev/schema/bodge-manifest-v2.json",
+  "title": "BodgeGene .bodge v2 manifest",
+  "type": "object",
+  "required": [
+    "signature",
+    "fileFormatVersion",
+    "appVersion",
+    "exportType",
+    "exportProfile",
+    "metadata",
+    "assets",
+    "refs",
+    "extensions"
+  ],
+  "properties": {
+    "$schema": { "type": "string" },
+    "signature": { "const": "BODGE-V2" },
+    "fileFormatVersion": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "appVersion": { "type": "string", "minLength": 1 },
+    "exportType": { "enum": ["project", "assembly", "container"] },
+    "exportProfile": {
+      "enum": ["full", "public-supp", "containers-bundle", "single-assembly", "custom"]
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["createdAt", "updatedAt", "tags", "author"],
+      "properties": {
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "author": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" },
+            "deviceId": { "type": "string" }
+          }
+        }
+      }
+    },
+    "assets": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["sha256", "size", "compression", "kind"],
+        "properties": {
+          "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "size": { "type": "integer", "minimum": 0 },
+          "compression": { "enum": ["deflate", "store"] },
+          "displayName": { "type": "string" },
+          "mimeType": { "type": "string" },
+          "kind": {
+            "enum": [
+              "container", "assembly", "primer-pool", "notebook-entries",
+              "attachment-image", "attachment-sanger", "attachment-pdf",
+              "attachment-other", "library", "ref", "extension",
+              "readme", "recovery-index", "project-meta"
+            ]
+          }
+        }
+      }
+    },
+    "refs": {
+      "type": "object",
+      "properties": {
+        "containers": { "type": "array", "items": { "type": "string" } },
+        "assemblies": { "type": "array", "items": { "type": "string" } },
+        "primerPool": { "type": ["string", "null"] },
+        "notebook": { "type": ["string", "null"] },
+        "library": { "type": ["string", "null"] },
+        "projectDag": { "type": ["string", "null"] }
+      }
+    },
+    "extensions": { "type": "object" }
+  }
+}
