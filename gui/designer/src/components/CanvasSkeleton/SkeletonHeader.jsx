@@ -5,10 +5,11 @@
  * prototype). Layout/Graph toggle — переключает state.view, sub-views
  * pure derived от state.
  */
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useStore } from '../../store';
 import { STRINGS } from '../../lib/strings';
 import { useSkeletonState, useSkeletonActions } from './store/skeleton-context';
+import RestrictionPanel from './RestrictionPanel';
 
 export default function SkeletonHeader() {
   const s = STRINGS.canvasSkeleton || {};
@@ -67,11 +68,13 @@ export default function SkeletonHeader() {
         {headerTitle}
       </span>
 
+      <RestrictionHeaderToggle />
+
       <div
         data-testid="skeleton-view-toggle"
         role="tablist"
         style={{
-          marginLeft: 'auto',
+          marginLeft: 8,
           display: 'flex',
           gap: 0,
           border: '1px solid var(--border-subtle)',
@@ -91,6 +94,58 @@ export default function SkeletonHeader() {
         >{s.viewGraph || 'Graph'}</ToggleBtn>
       </div>
     </header>
+  );
+}
+
+/**
+ * PC-K9 (SPEC §4.7): Restriction sites toggle relocated from the
+ * removed LibraryTreeHost footer to the canvas header. Click opens a
+ * small popover hosting the existing RestrictionPanel; pill colour
+ * tracks the showReSites boolean so biologists see at a glance whether
+ * sites are visible in the SequenceView.
+ */
+function RestrictionHeaderToggle() {
+  const showReSites = useStore((st) => st.showReSites);
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ position: 'relative', marginLeft: 'auto' }}>
+      <button
+        type="button"
+        data-testid="skeleton-restriction-header-toggle"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        title="Рестриктазы — фильтр и видимость сайтов"
+        style={{
+          padding: '4px 10px',
+          background: showReSites ? 'var(--accent-500, #b85c3e)' : 'var(--surface-1)',
+          color: showReSites ? '#fff' : 'var(--text-secondary)',
+          border: '1px solid '
+            + (showReSites ? 'var(--accent-500, #b85c3e)' : 'var(--border-subtle)'),
+          borderRadius: 6, fontSize: 11.5, fontWeight: 500, cursor: 'pointer',
+          display: 'inline-flex', alignItems: 'center', gap: 4,
+        }}
+      >
+        🔪 {showReSites ? 'Видны' : 'Скрыты'}
+      </button>
+      {open && (
+        <div
+          data-testid="skeleton-restriction-header-popover"
+          onMouseLeave={() => setOpen(false)}
+          style={{
+            position: 'absolute', top: '100%', right: 0,
+            marginTop: 4, zIndex: 50,
+            minWidth: 240,
+            background: 'var(--surface-1)',
+            border: '1px solid var(--border-subtle)',
+            borderRadius: 6,
+            boxShadow: '0 4px 12px rgba(28,25,23,0.14)',
+            padding: 0, overflow: 'hidden',
+          }}
+        >
+          <RestrictionPanel />
+        </div>
+      )}
+    </div>
   );
 }
 

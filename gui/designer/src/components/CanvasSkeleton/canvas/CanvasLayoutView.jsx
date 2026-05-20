@@ -38,6 +38,8 @@ import { selectVirtualOutputs } from '../store/selectors-product';
 import { selectPcrSpans } from '../store/selectors-pcr';
 import OpKindPicker from './operations/OpKindPicker';
 import OpPopupRouter from './operations/OpPopupRouter';
+import LibrarySearchBar from './LibrarySearchBar';
+import { buildAssemblyZoneAction } from './assembly-zone-create';
 import {
   BLOCK_LINEAR_W,
   BLOCK_LINEAR_H,
@@ -58,6 +60,67 @@ export default function CanvasLayoutView() {
   const s = STRINGS.canvasSkeleton || {};
   const state = useSkeletonState();
   const actions = useSkeletonActions();
+  // Always-fresh skeleton state for post-dispatch macrotasks (same
+  // pattern as AssemblyShellBody): the captured `state` closure is
+  // stale right after a dispatch re-render, so we route the AE-K10
+  // zone-create-after-add diff through stateRef.current.
+  const searchStateRef = useRef(state);
+  searchStateRef.current = state;
+  // PC-K2/K3 — top search bar inputs (replaces LibraryTreeHost).
+  const libraryEntriesById = useStore((st) => st.libraryEntries);
+  const currentProjectId = useStore((st) => st.currentProjectId);
+  const poolPrimers = state.primers || [];
+  const onSearchPick = useCallback(({ kind, id, entry }) => {
+    if (kind === 'library' && entry) {
+      // AE-K10 / spec §2 mental model: container always belongs to a
+      // zone. Picking a library plasmid from the search bar materialises
+      // a container, then immediately wraps it in a new zone with one
+      // sourced piece pointing to the full sequence, and opens the
+      // assembly editor on that zone. Single «pUC19 view» case lands here.
+      const beforeIds = new Set((searchStateRef.current?.containers || []).map((c) => c.id));
+      actions.addContainerFromEntry?.(entry);
+      setTimeout(() => {
+        const containers = searchStateRef.current?.containers || [];
+        const fresh = containers.find(
+          (c) => !beforeIds.has(c.id)
+            && c.origin && c.origin.sourceEntryId === entry.id,
+        ) || containers.find((c) => !beforeIds.has(c.id));
+        if (!fresh) return;
+        try {
+          const a = buildAssemblyZoneAction(searchStateRef.current);
+          actions.zoneDispatch?.(a);
+          if (typeof actions.moveNodeToZone === 'function') {
+            actions.moveNodeToZone('container', fresh.id, a.zone.id);
+          }
+          const seq = fresh.sequence || '';
+          if (typeof actions.insertSegment === 'function' && seq.length > 0) {
+            actions.insertSegment(a.zone.id, fresh.id, 0, seq.length, false);
+          }
+          actions.openEditorAssemblyTab?.(a.zone.id);
+        } catch (e) {
+          // eslint-disable-next-line no-console
+          console.warn('[LibrarySearchBar] AE-K10 zone-wrap failed', e);
+        }
+      }, 0);
+      return;
+    }
+    if (kind === 'container') {
+      // Highlight the existing container by triggering the same click
+      // path the canvas block uses (id → highlight).
+      actions.highlightContainer?.(id);
+      return;
+    }
+    if (kind === 'zone') {
+      actions.openEditorAssemblyTab?.(id);
+      return;
+    }
+    if (kind === 'primer') {
+      // No standalone primer canvas surface — caller (future) will wire
+      // a primer-pool focus. For now: no-op + console hint.
+      // eslint-disable-next-line no-console
+      console.info('[LibrarySearchBar] primer pick — no canvas action yet', id);
+    }
+  }, [actions]);
 
   // T7 K11 (DEC-T7-10) — G / S toggle the focused zone's viewMode.
   // No focused zone → no-op (hotkeys are global; focus is hover-set).
@@ -446,9 +509,22 @@ export default function CanvasLayoutView() {
     <div
       data-testid="skeleton-canvas-layout-wrap"
       style={{
-        flex: 1, minHeight: 0, minWidth: 0, position: 'relative', display: 'flex',
+        flex: 1, minHeight: 0, minWidth: 0, position: 'relative',
+        display: 'flex', flexDirection: 'column',
       }}
     >
+      {/* PC-K2/K3 — top-of-canvas Library search bar. Replaces the
+          removed LibraryTreeHost (PC-K1) drag-source. AE-K10: clicking
+          a library row also wraps the new container in a zone +
+          opens the assembly editor (mental model: container ∈ zone). */}
+      <LibrarySearchBar
+        libraryEntries={libraryEntriesById}
+        containers={state.containers || []}
+        zones={state.zones || []}
+        primers={poolPrimers}
+        currentProjectId={currentProjectId}
+        onSelectEntry={onSearchPick}
+      />
     <div
       ref={containerRef}
       data-testid="skeleton-canvas-layout"
