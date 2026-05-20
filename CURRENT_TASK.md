@@ -450,3 +450,138 @@ Status: **plan committed, execution deferred to biolog session.**
 - Backend `src/pvcs/` — sprint не задевал backend.
 
 После K15: СТОП. Спека остаётся в `docs/SPEC_BODGE_FORMAT_V2_CORE.md`. Финализация и visual acceptance — Chat в отдельной сессии. Следующий sprint: **M-FORMAT-V2-NOTEBOOK** (спека `docs/SPEC_BODGE_NOTEBOOK_MARKDOWN.md` готова, depend on K6/K7 + this CORE приёмка).
+
+---
+
+## M-FORMAT-V2-NOTEBOOK — отчёт Code (20.05.2026)
+
+> Спека: `docs/SPEC_BODGE_NOTEBOOK_MARKDOWN.md` (~30 KB). Sprint выполнен сразу после M-FORMAT-V2-CORE в одной сессии по запросу Игоря «третью спеку делай».
+
+**Commits (14 шт, branch `feature/m-x-7a-library-structure-v2`):** `fce4d8d` (NB-K1) → `8a50647` (NB-K19). Полный список:
+
+| K | commit | модули + тесты |
+|---|---|---|
+| NB-K1  | `fce4d8d` | npm install markdown-it+plugins+isomorphic-dompurify (+6) |
+| NB-K2  | `e5e27aa` | bodge-markdown-renderer + 3-layer XSS (+15) + plugins shipped |
+| NB-K3+4+5 | `f9916e4` | dedicated tests for ref / dna / mermaid plugins (+34) |
+| NB-K6  | `382ddd0` | canvas/MarkdownView (+5) |
+| NB-K7  | `0cd4c31` | bodge-attachments + image-compress (+13) |
+| NB-K8+9+10+11 | `8bf461f` | NotebookEntryEditor + NotebookToolbar + scroll sync + drag-drop+paste (+16) |
+| NB-K12 | `e745201` | KaTeX lazy-load + katex/markdown-it-katex deps (+5) |
+| NB-K13 | `0e2841b` | NotebookSearch + NotebookList (+12) |
+| NB-K14 | `e937db5` | NotebookRefPickerModal (+11) |
+| NB-K15 | `7cee561` | notebook-migrations/t10-to-notebook (+14) |
+| NB-K16 | `17732ce` | NotebookTab + useMarkdownRefResolver (+6) |
+| NB-K17 | `5dad555` | bodge-zip notebook/attachments/* binary IO (+9) |
+| NB-K18 | `ee4c66d` | NOTEBOOK_MANUAL_SMOKE_PLAN.md (docs) |
+| NB-K19 | `8a50647` | NB_K19_SIZE_BUDGET.md (docs) |
+
+**Vitest:** baseline (после M-FORMAT-V2-CORE) **3651 pass / 1 skip / 0 fail** → **3797 pass / 1 skip / 0 fail (+146, 374 файла)**. Zero регрессий. Spec target: ~+100 тестов — превышено.
+
+**pytest:** не трогался (backend не задет).
+
+**vite build:** clean — `✓ built in 764ms`. Pre-existing chunks>500kB warning unchanged.
+
+### Markdown features verified
+
+- CommonMark + GFM (tables, strikethrough, task lists): ✓
+- Footnotes + highlight (==): ✓
+- Custom @@ref@@ cross-refs (7 kinds + default + escape): ✓
+- DNA/AA syntax highlight (dna/rna/cdna/aa/protein, lowercase auto-upper): ✓
+- Mermaid-link external editor stub (📊 + line count + ↗ Open in editor): ✓
+- KaTeX lazy-loaded on first $ detect (graceful fallback in happy-dom): ✓
+
+### Editor UX verified
+
+- Split-view textarea + preview: ✓
+- Live scroll position sync (percent-based): ✓
+- Drag-drop image из ОС → blob attach + insert markdown snippet: ✓
+- Paste image from clipboard → same flow with `pasted-<ts>.png` fallback name: ✓
+- 16 base toolbar buttons + 3 special (📎/@@/👁): ✓
+- Hotkeys Ctrl+B / Ctrl+I / Ctrl+S (immediate save flush): ✓
+- Ref picker modal (7 tabbed entity kinds, live filter, Promise round-trip): ✓
+- Title input + entry switching with state reset: ✓
+- onBlur immediate flush + 500ms debounce on edits: ✓
+
+### Migration
+
+- T10 Sanger notes → notebook entries: ✓ (kind:'sanger', refs:[op,clone], data.sangerVerified preserved).
+- Idempotent re-run: ✓ (clones already with sangerNotebookEntryId skipped).
+- Back-compat: existing `clone.notes` preserved alongside new `sangerNotebookEntryId` ref (removed in v0.9.x+1).
+- hasUnmigratedT10Notes probe: ✓.
+
+### Bundle
+
+- Notebook stack (markdown-it + 3 plugins + isomorphic-dompurify + custom plugins): ~60 KB gzipped, **expected lazy chunk after wiring**.
+- KaTeX + markdown-it-katex: ~250 KB gzipped, lazy on first `$` detect.
+- Currently main bundle delta = **+2.08 KB ungzipped / +0.58 KB gzipped** — notebook code tree-shaken because NotebookTab not yet imported by reachable code (see Open Question #1).
+- CanvasLayoutView.jsx: **НЕ затронут**. Spec §K16 предполагал рост ~1-2 KB; вместо этого NotebookTab ships как ready-to-mount (consistent с тем как CORE поставлял ExportProjectModal).
+
+### Security
+
+- DOMPurify XSS sanitization: ✓ — 5 attack vectors tested (script injection / javascript: URL / onerror img / data:text/html / CSS expression).
+- markdown-it html:false enforced (parser-level гейт): ✓
+- Custom plugins escape user input через md.utils.escapeHtml: ✓
+- Resolver throws — fallback к short-id, не throws вверх: ✓.
+
+### Spec deviations
+
+- **K1 + K2 объединены в один effort.** Spec §K1 = "deps + smoke". §K2 = "renderer". Поскольку K2 не работает без K1, я установил deps в K1-commit, а в K2-commit добавил renderer + plugins (K3/K4/K5 plugin тесты пришли отдельным commit'ом).
+- **K8/K9/K10/K11 объединены в один commit.** Все четыре K-шага трогают NotebookEntryEditor.jsx или NotebookToolbar.jsx; разбиение на отдельные commits = artificial noise. Тесты разделены по K-номерам внутри одного файла.
+- **K16 wire-up в CanvasLayoutView НЕ сделан.** Spec §K16 описывает «Lazy-load NotebookEntryEditor в CanvasLayoutView / EditorWindowShell. Под ответственность Игоря.» Я реализовал стандалон NotebookTab (тот же ready-to-mount паттерн, что и K10 ExportProjectModal в CORE). Wire-up — один-два touches в EditorWindowShell.jsx + CanvasLayoutView.jsx (см. Open Question #1).
+- **`state.notebook` slice в `store/skeleton-store.js` НЕ создан.** Spec §0.1 предполагал расширение store. Поскольку NotebookTab не подключён в основной flow, поле в store не нужно. Когда Игорь решит wire-up — добавляется slice `state.notebook = {entries:[], attachmentsRuntime:Map}`. NotebookTab уже принимает все нужные поля как props.
+- **No K9 keyboard shortcut «:notebook-editor»` scope:** spec §5.3 предлагал использовать `useHotkey` со scope. Я реализовал хоткеи Ctrl+B/I/S напрямую через onKeyDown в textarea. Соответствует поведению spec'а (focus textarea = scope active), не требует регистрации scope в registry. Если позже понадобится глобальный scope с активацией/деактивацией lifecycle — easy refactor.
+- **mermaid.live URL** использует `?code=` query вместо base64-pako fragment. `code=` тоже работает (mermaid.live принимает оба формата). pako (gzip+base64) уменьшил бы URL, но добавил +18 KB зависимость pako — не оправдано для stub-фичи.
+
+### Открытые вопросы (для Chat visual acceptance)
+
+1. **App.jsx + EditorWindowShell wire-up для NotebookTab.** Один lazy import + tab entry. Сейчас не сделано: tab не виден в production UI. После wiring появятся настоящие lazy chunks в bundle (+60 KB + +250 KB по требованию). См. NB-K18 «Pre-step».
+2. **`state.notebook` slice в Zustand.** Сейчас NotebookTab принимает `notebookEntries`/`attachments`/`entityState` через props; host-component нужно построить из существующих state slices. Если biolog usage показывает нужду в персистенции editor state (cursor position, scroll, etc) — добавить slice. На v0.9.0-alpha не нужно.
+3. **§17 spec Open Q #4 — global или per-zone notebook?** UI default — global flat array. Можно opt-in per-zone filter в NotebookSearch (T-future polish).
+4. **§17 spec Open Q #6 — Notebook tab persistent или conditional?** Я ship'аю component готовый к обоим. EditorWindowShell принимает решение во время wire-up (Open Q #1).
+5. **MS Word / Google Docs paste fidelity.** Default paste = plain text (lossy formatting). Если biolog часто копирует formatted text — `turndown` lib +30 KB конвертирует HTML→markdown. T-future, opt-in.
+6. **Print/PDF export of notebook.** Browser native Print → PDF works из коробки. Dedicated html2pdf — T-future.
+7. **CanvasLayoutView size после wiring.** Spec §K16 ожидает рост до ~42-43 KB. Реальный рост зависит от того, как Игорь сделает wire — может быть и +5 строк, +1-2 KB.
+8. **Linked notebook entries.** `@@ref:entry:nb01...@@` — не в core ref kinds в v2.0.0. Если нужно — добавить kind `entry` в v2.x (forward-compat).
+
+### Файлы
+
+**Новые (lib):**
+- `lib/markdown-renderer.js` — async singleton + 3-layer sanitization pipeline.
+- `lib/markdown-ref-plugin.js` — @@ref tokenizer + resolver injection.
+- `lib/markdown-dna-highlight-plugin.js` — canonical DNA/AA palette.
+- `lib/markdown-mermaid-link-plugin.js` — external editor stub.
+- `lib/bodge-attachments.js` — load/revoke/attach lifecycle.
+- `lib/image-compress.js` — Canvas-based recompression (PNG/JPEG → JPEG q=0.85) + whitelist gate.
+- `lib/notebook-migrations/t10-to-notebook.js` — T10 Sanger notes → notebook entries (idempotent).
+
+**Новые (UI):**
+- `canvas/MarkdownView.jsx` — async render + ref click dispatch.
+- `canvas/NotebookEntryEditor.jsx` — split-view editor (textarea + preview).
+- `canvas/NotebookToolbar.jsx` — 16 base + 3 special buttons.
+- `canvas/NotebookList.jsx` — compact list view.
+- `canvas/NotebookSearch.jsx` — substring filter input.
+- `canvas/NotebookRefPickerModal.jsx` — 7-tab entity picker.
+- `canvas/NotebookTab.jsx` — host composer (lazy NotebookEntryEditor).
+
+**Новые (hooks):**
+- `hooks/useMarkdownRefResolver.js` — entity-aware @@ref label resolver.
+
+**Новые (tests):** 14 test files covering K1-K17.
+
+**Новые (docs):**
+- `__tests__/interop/NOTEBOOK_MANUAL_SMOKE_PLAN.md` — 7-step biolog flow.
+- `__tests__/interop/NB_K19_SIZE_BUDGET.md` — bundle delta report.
+
+**Изменены:**
+- `lib/bodge-zip.js` — writer/reader extended для notebook/attachments/* binary IO (preserves CORE behavior).
+- `package.json` + `package-lock.json` — +7 deps (markdown-it + 4 plugins + isomorphic-dompurify + katex + markdown-it-katex), installed via `--legacy-peer-deps` (existing repo workaround for vite-plugin-pwa peer conflict with vite@8).
+
+**НЕ изменено** (per spec + STOP):
+- `App.jsx`, `EditorWindowShell.jsx`, `CanvasLayoutView.jsx` — wire-up deferred к Open Question #1.
+- `store/skeleton-store.js` — slice `state.notebook` deferred к Open Question #2.
+- `lib/version.js`, `package.json::version` — bump к v0.9.0-alpha — финализация Chat.
+- `CLAUDE.md`, `PROJECT_STATE.md`, `DECISIONS.md`, `ANCHORS.md`, `BUGS.md`, `RELEASES.md`, `TECH_DEBT.md`, `COMPONENT_MAP.md` — финализация Chat.
+- Backend `src/pvcs/` — sprint не задевал backend.
+
+После NB-K19: СТОП. Спека остаётся в `docs/SPEC_BODGE_NOTEBOOK_MARKDOWN.md`. Финализация (RELEASES.md / DECISIONS.md / ANCHORS.md / version bump) и visual acceptance — Chat в отдельной сессии после biolog smoke run по NOTEBOOK_MANUAL_SMOKE_PLAN.md.
