@@ -338,7 +338,7 @@ describe('StartScreen-Pixel — MainPanel', () => {
     expect(active.getAttribute('data-active')).toBe('true');
   });
 
-  it('clicking a project row activates the project WITHOUT navigating (12.05.2026 Игорь: «убери адресацию на старый canvas»)', () => {
+  it('clicking a project row activates the project AND navigates to canvasSkeleton (20.05.2026 Игорь: «нажатие должно открывать проект»)', () => {
     useStore.setState((s) => {
       s.projects = {
         'pclick': { id: 'pclick', name: 'ClickMe', tags: [], containerIds: [], updatedAt: '2026-05-09T10:00:00Z' },
@@ -350,8 +350,8 @@ describe('StartScreen-Pixel — MainPanel', () => {
     fireEvent.click(screen.getByTestId('ss-recent-pclick'));
     const s = useStore.getState();
     expect(s.currentProjectId).toBe('pclick');
-    // No navigation — fullscreen stays where biolog was (StartScreen).
-    expect(s.canvas.activeFullscreen).toBe('start');
+    // Project click now navigates to the new four-tier canvas.
+    expect(s.canvas.activeFullscreen).toBe('canvasSkeleton');
   });
 
   it('empty card mounts with CTA «Выбрать набор»', () => {

@@ -121,19 +121,24 @@ export default function MainPanel({ onOpenHotkeys }) {
   }, [sortedProjects, activeFilter, currentProjectId, query]);
 
   const handleProjectClick = useCallback((projectId) => {
-    // 12.05.2026 — Igor: «недавние проекты адресуют на старые
-    // канвасы. убери вообще эту адресацию. мы должны забыть о
-    // старом канвасе». Старая логика навигировала на
-    // fullscreen='dag' (Project Flow / DagWorkspace). Это «старый
-    // canvas» в новой Canvas-model paradigma (v0.6+
-    // canvas-skeleton). Recent-row click теперь только активирует
-    // проект; навигация — отдельные surfaces (sidebar Library
-    // button, canvas-skeleton dev entry, command palette).
+    // 20.05.2026 — Igor: «нажатие на проект должно открывать проект.
+    // пока ничего не происходит». Прежняя политика «только активирует,
+    // не навигирует» (12.05.2026 — отказ от старых canvas-сурфейсов)
+    // оставляла биолога без обратной связи: клик визуально ничего не
+    // делает. После M-CANVAS-SKELETON у нас есть единственный новый
+    // canvas-surface — canvasSkeleton (four-tier). Активируем проект
+    // + pushFullscreen на canvasSkeleton.
     useStore.setState((s) => {
       s.currentProjectId = projectId;
       const prev = s.recentProjectIds.filter((id) => id !== projectId);
       s.recentProjectIds = [projectId, ...prev].slice(0, RECENT_LIMIT);
     });
+    // Navigate to the project canvas. Falls through gracefully on
+    // missing helper (test envs without canvas slice).
+    const push = useStore.getState().pushFullscreen;
+    if (typeof push === 'function') {
+      push({ fullscreen: 'canvasSkeleton', payload: { projectId } });
+    }
   }, []);
 
   return (
