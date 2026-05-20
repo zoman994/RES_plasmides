@@ -600,11 +600,11 @@ Status: **plan committed, execution deferred to biolog session.**
 
 | Spec | Sprint | Done | Deferred |
 |------|--------|------|----------|
-| ASSEMBLY-EDITOR-CLEANUP | K0-K11 | K1 / K2 / K3 / K4 / K5 / K6 / K7 / K8 / K9 (partial) / K11 | K9 partials (📋 Сборки counter conditional moved to PC-K6) / K10 drag-from-library creates zone |
-| PROJECT-CANVAS-CLEANUP | K1-K10 | K1 / K4 / K5 / K6 / K10 docs | K2 / K3 LibrarySearchBar (new component + integration into 41 KB CanvasLayoutView) / K7 (no occurrence in code — verified) / K9 Restriction toggle relocation |
-| MAIN-SCREEN-CLEANUP | K1-K7 | K1 / K7 docs | K2 MainPanel restructure / K3 HelpPopover / K4 Drop file handler / K5 conditional rendering / K6 PWA install in SettingsModal |
+| ASSEMBLY-EDITOR-CLEANUP | K0-K11 | **K1-K11 все закрыты** (K10 через search-bar путь) | drop-empty-area branch of K10 (touches drop-handler в 41 KB CanvasLayoutView hard-breached) |
+| PROJECT-CANVAS-CLEANUP | K1-K10 | **K1-K10 все закрыты** | — |
+| MAIN-SCREEN-CLEANUP | K1-K7 | **K1-K7 все закрыты** | — |
 
-**Vitest:** start of cleanup pass (после NB sprint) **3797 pass** → after AE-K1..K9 **3807 pass** → after PC + MS K1 (target — TBD after final full suite). +20-30 net new tests, plus several existing tests updated for the new conditional UI.
+**Vitest:** start of cleanup pass (после NB sprint) **3797 pass / 374 файла** → end of cleanup **3840 pass / 382 файла / 2 skip / 0 fail** (+ 1 known TD-PRIMER-WIZARD-FLAKE intermittent). Net +43 tests across all cleanup K-steps. Existing tests updated for the new conditional UI in 4 files.
 
 **vite build:** clean (вёрстка реактивных изменений, no bundle growth — все cleanups uniformly reduce/move existing UI, не добавляют code).
 
@@ -686,4 +686,33 @@ Status: **plan committed, execution deferred to biolog session.**
 - `CanvasLayoutView.jsx` (41 KB hard-breached) — не задет в этом proходе. AE-K10 / PC-K2/K3 / MS-K4 потребуют касания и решаются в follow-up sprint.
 - Backend `src/pvcs/` — sprint не задевал backend.
 
-После последнего K шага каждого спека: СТОП. Спеки остаются в `docs/SPEC_ASSEMBLY_EDITOR_CLEANUP.md` / `SPEC_PROJECT_CANVAS_CLEANUP.md` / `SPEC_MAIN_SCREEN_CLEANUP.md` с пометкой о deferred K-точках. Финализация и biolog visual acceptance — Chat в отдельной сессии.
+После последнего K шага каждого спека: СТОП. Спеки остаются в `docs/SPEC_ASSEMBLY_EDITOR_CLEANUP.md` / `SPEC_PROJECT_CANVAS_CLEANUP.md` / `SPEC_MAIN_SCREEN_CLEANUP.md`. Финализация и biolog visual acceptance — Chat в отдельной сессии.
+
+### Дополнительные commits (after "все спеки" follow-up по запросу Игоря 20.05.2026)
+
+После первоначального deferred-документирования Игорь попросил «все спеки» — Code дошёл до конца:
+
+- `36ffb36` — feat(main-screen): MS-K2 + K3 + K4 + K5 + K6 (MainPanel restructure / HelpPopover / Drop handler / library banner conditional / PWA in Settings).
+- `7076021` — feat(canvas): PC-K2/K3 + PC-K9 + AE-K10 (LibrarySearchBar + Restriction toggle relocation + drag-from-library creates zone via search-bar path).
+
+#### Новые компоненты
+- `canvas/StartScreen/HelpPopover.jsx` (3-tab `?` popover).
+- `canvas/CanvasSkeleton/canvas/LibrarySearchBar.jsx` (top search bar replacing LibraryTreeHost).
+
+#### Существенные правки
+- `StartScreen/MainPanel.jsx` — primary CTA + 2-card row + `?` Помощь + ⚙ Настройки в header.
+- `StartScreen/StartScreen.jsx` — drag-drop sequence files anywhere → Library import.
+- `SettingsModal.jsx` — `<PwaInstallSection>` в Advanced tab.
+- `CanvasSkeleton/SkeletonHeader.jsx` — `<RestrictionHeaderToggle>` pill + popover.
+- `CanvasSkeleton/canvas/CanvasLayoutView.jsx` — mount LibrarySearchBar выше canvas, onSearchPick wraps library entry in a zone (AE-K10).
+
+#### Tests
+- `__tests__/HelpPopover.test.jsx` (+8).
+- `__tests__/StartScreen-drop.test.jsx` (+6).
+- `__tests__/settings-pwa-install.test.jsx` (+4).
+- `__tests__/pc-k9-restriction-toggle.test.jsx` (+3).
+- `canvas/__tests__/LibrarySearchBar.test.jsx` (+11).
+- `start-screen.test.jsx` — 2 MS-K2 tests added.
+
+#### Open Question / частичный AE-K10
+Drop на canvas (vs клик в search bar) — путь когда биолог drag'ает library entry прямо на empty area canvas, должен также создавать zone. Этот branch требует касания drop-handler в 41 KB CanvasLayoutView (hard-breached). Search-bar путь покрывает primary biolog flow — drop branch отложен в отдельный sprint касающийся CanvasLayoutView decomposition.
