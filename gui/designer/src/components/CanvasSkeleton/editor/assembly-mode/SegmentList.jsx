@@ -211,7 +211,9 @@ export default function SegmentList({
       </div>
       {segs.length === 0 && (
         <div style={{ padding: 10, color: 'var(--text-tertiary)' }}>
-          Сегментов нет. Перетащите контейнер или «+ Сегмент».
+          Сегментов нет. Перетащите плазмиду из правого сайдбара,
+          либо используйте кнопки внизу: + Плазмида / + Обвес /
+          + Синтез / + Gap.
         </div>
       )}
       {chunks.map((c) => {

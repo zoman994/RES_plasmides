@@ -38,6 +38,7 @@ import MutationModal from './MutationModal';
 import { autoGroupPipeline } from '../../lib/auto-group-pipeline';
 import AssemblyPrimersPanel from './AssemblyPrimersPanel';
 import RealiseModal from './RealiseModal';
+import EmptyAssemblyHint from './EmptyAssemblyHint';
 import { useAssemblyPrimerWriting } from './useAssemblyPrimerWriting';
 import { findInsertIndexAtPosition } from '../../lib/assembly-primer-utils';
 
@@ -289,37 +290,61 @@ export default function AssemblyShellBody({ draft }) {
             display: 'flex', flexDirection: 'column',
           }}
         >
-          <SequenceTab
-            sequence={sequence}
-            annotations={assemblyAnnotations}
-            topology={draft.topology?.circular ? 'circular' : 'linear'}
-            name={draft.name}
-            editable={false}
-            isReadOnlyZone={false}
-            caretPos={caretPos}
-            caretAnchor={caretAnchor}
-            selectionMode={selectionMode}
-            selectionStrand={selectionStrand}
-            onCaretChange={onCaretChange}
-            onSelectRange={onSelectRange}
-            onWritePrimer={onWritePrimer}
-            showSelectionTm
-            primers={viewerPrimers}
-            coloredZones={coloredZones}
-            onZoneClick={openDetail}
-            onZoneHover={() => {}}
-          />
+          {draft.segments.length === 0 ? (
+            <EmptyAssemblyHint />
+          ) : (
+            <SequenceTab
+              sequence={sequence}
+              annotations={assemblyAnnotations}
+              topology={draft.topology?.circular ? 'circular' : 'linear'}
+              name={draft.name}
+              editable={false}
+              isReadOnlyZone={false}
+              caretPos={caretPos}
+              caretAnchor={caretAnchor}
+              selectionMode={selectionMode}
+              selectionStrand={selectionStrand}
+              onCaretChange={onCaretChange}
+              onSelectRange={onSelectRange}
+              onWritePrimer={onWritePrimer}
+              showSelectionTm
+              primers={viewerPrimers}
+              coloredZones={coloredZones}
+              onZoneClick={openDetail}
+              onZoneHover={() => {}}
+            />
+          )}
         </div>
 
-        <div style={{ width: 248, flexShrink: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-          <AssemblySidebar containers={state.containers || []} />
-          <AssemblyPrimersPanel draftId={draftId} />
-        </div>
+        {/* Right rail — conditional panels per spec §4.
+            AssemblySidebar: shown when project has containers (drag-source pool).
+            AssemblyPrimersPanel: shown when there are primers OR segments to design from.
+            AssemblyPipelinePanel: shown only when groups exist. */}
+        {((state.containers || []).length > 0
+          || (viewerPrimers || []).length > 0
+          || draft.segments.length > 0) && (
+          <div style={{ width: 248, flexShrink: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+            {(state.containers || []).length > 0 && (
+              <AssemblySidebar containers={state.containers || []} />
+            )}
+            {(((viewerPrimers || []).length > 0) || draft.segments.length > 0) && (
+              <AssemblyPrimersPanel draftId={draftId} />
+            )}
+          </div>
+        )}
 
+        {/* AE-K2 spec §4 deviation: panel shows on op-groups OR ≥2 segments.
+            Strict spec hides until first group exists, but Auto-собрать
+            button (the only way to bulk-group remaining pieces) lives
+            inside the panel — gating it behind "must create a group first"
+            traps users. Keeping it reachable as soon as grouping is
+            biologically meaningful (≥2 segments). */}
+        {((state.operations || []).some(
+          (op) => op && op.isOpGroup && op.zoneId === draftId,
+        ) || draft.segments.length >= 2) && (
         <AssemblyPipelinePanel
           draftId={draftId}
           zoneId={draftId}
-          onRealise={() => setRealiseOpen(true)}
           onAutomode={() => {
             // K10 — run the heuristic on the latest state; apply only
             // layer-0 groups (real piece ids). Layer-1+ uses indices
@@ -336,6 +361,7 @@ export default function AssemblyShellBody({ draft }) {
             }
           }}
         />
+        )}
 
         {detailOpen && selectedSegmentId && (
           <SegmentDetailPanel
@@ -407,6 +433,8 @@ export default function AssemblyShellBody({ draft }) {
         onAddSnippet={() => setSnippetOpen(true)}
         onAddSynthesis={() => setSynthesisOpen(true)}
         onAddGap={() => setGapOpen(true)}
+        selectedSegmentIds={selectedSegmentIds}
+        onSewSelected={() => setGroupPickerIds(Array.from(selectedSegmentIds))}
       />
 
       {pickerOpen && (

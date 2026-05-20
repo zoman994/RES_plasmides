@@ -7,6 +7,7 @@ import { useSkeletonActions, useSkeletonHistory } from '../../store/skeleton-con
 
 export default function AssemblyToolbar({
   onAddSegment, onAddSnippet, onAddSynthesis, onAddGap,
+  selectedSegmentIds, onSewSelected,
 }) {
   const actions = useSkeletonActions();
   const history = useSkeletonHistory();
@@ -47,6 +48,21 @@ export default function AssemblyToolbar({
       <button type="button" data-testid="assembly-add-gap" onClick={onAddGap} style={btn()}>
         + Gap
       </button>
+      {selectedSegmentIds && selectedSegmentIds.size >= 2 && (
+        <button
+          type="button"
+          data-testid="assembly-sew-selected"
+          onClick={onSewSelected}
+          style={btn({
+            background: 'var(--accent-500, #b85c3e)',
+            color: '#fff',
+            fontWeight: 600,
+            border: '1px solid var(--accent-500, #b85c3e)',
+          })}
+        >
+          🔗 Сшить ({selectedSegmentIds.size})
+        </button>
+      )}
       <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
         <button
           type="button"

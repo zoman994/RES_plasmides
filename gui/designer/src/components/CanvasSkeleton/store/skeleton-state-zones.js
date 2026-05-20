@@ -9,7 +9,9 @@
  * node.zoneId on containers / pieces / operations (zonesReducer runs
  * last in the chain, parallels piecesReducer's REMOVE_PIECE→ops).
  */
-import { createZone, nodeListInZone, computeZoneBoundingBox } from '../lib/zone-model';
+import {
+  createZone, nodeListInZone, computeZoneBoundingBox, nextZoneName,
+} from '../lib/zone-model';
 import { applyZoneLayout } from '../lib/zone-layout';
 import { validateZoneCreate, validateZoneUpdate } from '../lib/zone-invariants';
 import { mergeBoundingBoxes, computeBoundingBox } from '../lib/zone-bounds';
@@ -81,7 +83,14 @@ export function zonesReducer(state, action) {
     case 'CREATE_ZONE': {
       const v = validateZoneCreate(state, action.zone);
       if (!v.ok) return errToast(state, v.code);
-      return { ...state, zones: [...zones, createZone(action.zone)] };
+      // AE-K6 — default name "Сборка N" with gap-fill when biolog
+      // doesn't supply one. Prevents EditorTabStrip / MiniProjectCanvas
+      // showing «(пустой)» on a freshly-created zone.
+      const requested = action.zone || {};
+      const namedZone = !requested.name || !String(requested.name).trim()
+        ? { ...requested, name: nextZoneName(zones) }
+        : requested;
+      return { ...state, zones: [...zones, createZone(namedZone)] };
     }
 
     case 'SET_FOCUSED_ZONE':

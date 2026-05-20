@@ -20,6 +20,18 @@ import { BLOCK_LINEAR_W, BLOCK_LINEAR_H } from '../canvas/canvas-layout';
  * @property {number} updatedAt
  */
 
+/**
+ * Pick the next available "Сборка N" name given the existing zones.
+ * Gap-fill: if names are ["Сборка 1", "Сборка 3"], returns "Сборка 2".
+ * AE-K6.
+ */
+export function nextZoneName(zones) {
+  const existing = new Set((zones || []).map((z) => z && z.name).filter(Boolean));
+  let n = 1;
+  while (existing.has(`Сборка ${n}`)) n += 1;
+  return `Сборка ${n}`;
+}
+
 export function createZone({
   id, name, bounds, notes = null, finalTopology = 'circular',
 } = {}) {

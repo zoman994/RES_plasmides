@@ -36,7 +36,7 @@ export default function AssemblySidebar({ containers }) {
           data-testid="assembly-sidebar-filter"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          placeholder="Поиск контейнера…"
+          placeholder="Фильтр по контейнерам проекта…"
           style={{
             width: '100%',
             fontSize: 11.5,

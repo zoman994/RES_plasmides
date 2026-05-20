@@ -18,7 +18,7 @@ const KIND_LABEL = {
 };
 
 export default function AssemblyPipelinePanel({
-  draftId, zoneId, onRealise, onAutomode,
+  draftId, zoneId, onAutomode,
 }) {
   const state = useSkeletonState();
   const actions = useSkeletonActions();
@@ -124,25 +124,17 @@ export default function AssemblyPipelinePanel({
         )}
       </div>
 
-      <div data-testid="assembly-pipeline-dag" style={{
-        padding: '8px 12px', borderTop: '1px solid var(--border-subtle)',
-        background: 'var(--surface-1)', fontSize: 10.5, color: 'var(--text-tertiary)',
-      }}>
-        <div style={{ marginBottom: 4 }}>Mini DAG</div>
-        <div style={{ minHeight: 40, border: '1px dashed var(--border-subtle)', borderRadius: 4, padding: 4, fontSize: 10, color: 'var(--text-tertiary)' }}>
-          {/* K10+ wires the full preview */}
-          {groups.length === 0 ? '—' : `${groups.length} групп · ${layers.length} слой(ёв)`}
+      {groups.length > 0 && (
+        <div data-testid="assembly-pipeline-dag" style={{
+          padding: '8px 12px', borderTop: '1px solid var(--border-subtle)',
+          background: 'var(--surface-1)', fontSize: 10.5, color: 'var(--text-tertiary)',
+        }}>
+          <div style={{ marginBottom: 4 }}>Mini DAG</div>
+          <div style={{ minHeight: 40, border: '1px solid var(--border-subtle)', borderRadius: 4, padding: 4, fontSize: 10, color: 'var(--text-tertiary)' }}>
+            {`${groups.length} групп · ${layers.length} слой(ёв)`}
+          </div>
         </div>
-      </div>
-
-      <div style={{ padding: '8px 12px', borderTop: '1px solid var(--border-subtle)', background: 'var(--surface-2)' }}>
-        <button
-          type="button"
-          data-testid="assembly-pipeline-realise"
-          onClick={onRealise}
-          style={{ ...primaryBtn, width: '100%' }}
-        >Realise pipeline →</button>
-      </div>
+      )}
     </div>
   );
 }

@@ -55,14 +55,15 @@ describe('K9 — AssemblyPipelinePanel', () => {
     expect(screen.getByTestId('assembly-pipeline-empty')).toBeTruthy();
   });
 
-  it('shows «⚡ Auto-собрать» and «Realise pipeline →» buttons', () => {
+  it('shows «⚡ Auto-собрать» button (Realise pipeline button removed — AE-K5)', () => {
     render(
       <SkeletonProvider>
         <AssemblyPipelinePanel draftId="x" zoneId="z" />
       </SkeletonProvider>,
     );
     expect(screen.getByTestId('assembly-pipeline-automode')).toBeTruthy();
-    expect(screen.getByTestId('assembly-pipeline-realise')).toBeTruthy();
+    // After AE-K5: realise lives only in AssemblyHeader (single primary entry-point).
+    expect(screen.queryByTestId('assembly-pipeline-realise')).toBeNull();
   });
 
   it('lists op-groups by layer with kind + name + piece count', () => {
@@ -100,15 +101,14 @@ describe('K9 — AssemblyPipelinePanel', () => {
     expect(screen.getByTestId('assembly-pipeline-layer-0')).toBeTruthy();
   });
 
-  it('«Realise pipeline →» click opens RealiseModal (panel onRealise callback fires)', () => {
-    let opened = false;
+  it('AE-K5: Realise pipeline button removed (single primary in AssemblyHeader)', () => {
     render(
       <SkeletonProvider>
-        <AssemblyPipelinePanel draftId="x" zoneId="z" onRealise={() => { opened = true; }} />
+        <AssemblyPipelinePanel draftId="x" zoneId="z" onRealise={() => {}} />
       </SkeletonProvider>,
     );
-    act(() => { fireEvent.click(screen.getByTestId('assembly-pipeline-realise')); });
-    expect(opened).toBe(true);
+    // Button is gone — Realise is invoked from AssemblyHeader only.
+    expect(screen.queryByTestId('assembly-pipeline-realise')).toBeNull();
   });
 
   it('«⚡ Auto-собрать» click fires onAutomode callback (K10 wires the algorithm)', () => {
@@ -122,12 +122,19 @@ describe('K9 — AssemblyPipelinePanel', () => {
     expect(triggered).toBe(true);
   });
 
-  it('mini-DAG region testid present (placeholder svg for K9; full graph K10+)', () => {
+  it('AE-K5: mini-DAG hidden when groups empty; visible when ≥1 group exists', () => {
+    // Empty state — no DAG box (avoids dashed placeholder noise).
     render(
       <SkeletonProvider>
         <AssemblyPipelinePanel draftId="x" zoneId="z" />
       </SkeletonProvider>,
     );
+    expect(screen.queryByTestId('assembly-pipeline-dag')).toBeNull();
+    cleanup();
+    // Once a group exists, DAG box reappears.
+    const zid = openZoneWith3();
+    const ids = S.pieces.filter((p) => p.zoneId === zid).map((p) => p.id);
+    act(() => { A.createOpGroup(zid, 'overlap_pcr', '', [ids[0], ids[1]]); });
     expect(screen.getByTestId('assembly-pipeline-dag')).toBeTruthy();
   });
 });

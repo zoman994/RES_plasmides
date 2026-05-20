@@ -59,54 +59,52 @@ export default function AssemblyHeader({
         {circular ? '⭕ circular' : '— linear'}
       </button>
 
-      <div style={{ position: 'relative' }}>
-        <button
-          type="button"
-          data-testid="assembly-palette-legend-toggle"
-          onClick={() => setLegendOpen((v) => !v)}
-          title="Палитра сегментов"
-          style={{
-            fontSize: 11,
-            padding: '4px 10px',
-            background: 'var(--surface-1)',
-            color: 'var(--text-secondary)',
-            border: '1px solid var(--border-subtle)',
-            borderRadius: 4,
-            cursor: 'pointer',
-          }}
-        >🎨 Палитра</button>
-        {legendOpen && (
-          <div
-            data-testid="assembly-palette-legend"
+      {(paletteLegend || []).length > 0 && (
+        <div style={{ position: 'relative' }}>
+          <button
+            type="button"
+            data-testid="assembly-palette-legend-toggle"
+            onClick={() => setLegendOpen((v) => !v)}
+            title="Палитра сегментов"
             style={{
-              position: 'absolute',
-              top: '100%',
-              left: 0,
-              marginTop: 4,
-              zIndex: 40,
-              minWidth: 160,
-              maxHeight: 220,
-              overflowY: 'auto',
+              fontSize: 11,
+              padding: '4px 10px',
               background: 'var(--surface-1)',
+              color: 'var(--text-secondary)',
               border: '1px solid var(--border-subtle)',
-              borderRadius: 6,
-              boxShadow: '0 4px 12px rgba(28,25,23,0.14)',
-              padding: 8,
+              borderRadius: 4,
+              cursor: 'pointer',
             }}
-          >
-            {(paletteLegend || []).length === 0 ? (
-              <div style={{ fontSize: 10.5, color: 'var(--text-tertiary)' }}>Нет сегментов</div>
-            ) : (
-              paletteLegend.map((p) => (
+          >🎨 Палитра</button>
+          {legendOpen && (
+            <div
+              data-testid="assembly-palette-legend"
+              style={{
+                position: 'absolute',
+                top: '100%',
+                left: 0,
+                marginTop: 4,
+                zIndex: 40,
+                minWidth: 160,
+                maxHeight: 220,
+                overflowY: 'auto',
+                background: 'var(--surface-1)',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: 6,
+                boxShadow: '0 4px 12px rgba(28,25,23,0.14)',
+                padding: 8,
+              }}
+            >
+              {paletteLegend.map((p) => (
                 <div key={p.zoneId} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10.5, padding: '2px 0' }}>
                   <span style={{ width: 12, height: 12, borderRadius: 3, background: p.color, flexShrink: 0 }} />
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.label}</span>
                 </div>
-              ))
-            )}
-          </div>
-        )}
-      </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <button
         type="button"

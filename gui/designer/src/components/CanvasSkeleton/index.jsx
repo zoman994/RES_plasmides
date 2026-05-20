@@ -193,35 +193,13 @@ function CanvasArea() {
       }}
     >
       {state.view === 'layout' ? <CanvasLayoutView /> : <CanvasGraphView />}
-      {/* «+ Операция» — sticky к viewport bottom-right, видна в обоих
-          режимах. */}
-      <button
-        type="button"
-        data-testid="skeleton-add-operation"
-        onClick={onAddButtonClick}
-        title="Добавить операцию"
-        style={{
-          position: 'absolute',
-          bottom: 20,
-          right: 24,
-          zIndex: 30,
-          padding: '10px 16px',
-          background: 'var(--accent-500, #d97706)',
-          color: '#fff',
-          border: 'none',
-          borderRadius: 999,
-          fontSize: 13,
-          fontWeight: 600,
-          cursor: 'pointer',
-          boxShadow: '0 4px 12px rgba(217,119,6,0.35)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-        }}
-      >
-        <span style={{ fontSize: 16, lineHeight: 1 }}>+</span>
-        <span>Операция</span>
-      </button>
+      {/* AE-K9 (SPEC_ASSEMBLY_EDITOR_CLEANUP §7.1): standalone «+
+          Операция» button удалён. Operations create only inside the
+          assembly editor via 🔗 Сшить → OpGroupPicker. Mental model:
+          op принадлежит zone (T-series four-tier), не существует
+          stand-alone на canvas. The OpKindPicker code path remains for
+          legacy ops migration paths but is no longer reachable from
+          the floating toolbar. */}
       {/* «+ Сборка» (Игорь 18-19.05.2026 — унификация «Только зона» +
           regression-fix): создаёт ЗОНУ (four-tier, DEC-CANVAS-4T-07)
           И СРАЗУ открывает её редактор сборки (AssemblyShellBody —
