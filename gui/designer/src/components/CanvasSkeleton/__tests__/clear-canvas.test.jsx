@@ -21,9 +21,11 @@ afterEach(() => { cleanup(); window.confirm = origConfirm; });
 const zoneFrames = () => document.querySelectorAll('[data-testid^="zone-frame-"]');
 
 function seedZone() {
-  // «Сборки» panel → «+ Новая сборка» = CREATE_ZONE → a zone-frame.
-  act(() => { fireEvent.click(screen.getByTestId('assembly-drafts-toggle')); });
-  act(() => { fireEvent.click(screen.getByTestId('assembly-drafts-new')); });
+  // PC-K6: «📋 Сборки (N)» toggle is now hidden when zones=0, so we
+  // create the first zone via the «+ Сборка» floating button instead
+  // of the panel-internal «+ Новая сборка». Both dispatch CREATE_ZONE +
+  // openEditorAssemblyTab through buildAssemblyZoneAction.
+  act(() => { fireEvent.click(screen.getByTestId('skeleton-add-assembly')); });
 }
 
 describe('Clear canvas — gated RESET', () => {

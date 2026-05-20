@@ -225,33 +225,14 @@ describe('CanvasLayoutView — drop handler integration', () => {
   });
 });
 
-describe('Library tree drag → Canvas (project entries draggable, 12.05.2026)', () => {
-  it('project entry row has draggable=true (ProjectZone passes the prop)', () => {
-    // Seed libraryEntries + project owning that entry.
-    const entry = sampleEntry('lib-proj-entry', 'in-project', 'ATGCATGCATGC');
-    act(() => {
-      useStore.setState((s) => ({
-        ...s,
-        libraryEntries: {
-          ...(s.libraryEntries || {}),
-          [entry.id]: { ...entry, projectId: 'proj-A' },
-        },
-        projects: {
-          ...(s.projects || {}),
-          'proj-A': {
-            id: 'proj-A',
-            name: 'Project A',
-            containerIds: [entry.id],
-            updatedAt: '2026-05-12T00:00:00Z',
-          },
-        },
-        currentProjectId: 'proj-A',
-      }));
-    });
-
-    render(<CanvasSkeleton />);
-    const row = screen.getByTestId(`tree-item-project-${entry.id}`);
-    expect(row.getAttribute('draggable')).toBe('true');
+describe.skip('Library tree drag → Canvas (project entries draggable, 12.05.2026)', () => {
+  // PC-K1: LibraryTreeHost is no longer mounted inside CanvasSkeleton.
+  // The library-tree drag-source path is replaced by the (deferred)
+  // LibrarySearchBar — PC-K2/K3. The drag-target side (Canvas drop
+  // handler) is still covered by the «CanvasGraphView — drop handler
+  // integration» block below.
+  it('project entry row has draggable=true (DEFERRED — see PC-K2/K3)', () => {
+    expect(true).toBe(true);
   });
 });
 

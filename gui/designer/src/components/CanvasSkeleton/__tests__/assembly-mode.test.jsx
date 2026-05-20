@@ -559,26 +559,36 @@ describe('K8 WRITE_ASSEMBLY_PRIMER reducer', () => {
 // ════════════════════════════════════════════════════════════════════
 
 describe('K9 AssemblyDraftsPanel + canvas', () => {
-  // V82 panel is ZONE-based. DEC-T3-08 REVERSED (Игорь 17.05.2026): new
-  // projects start CLEAN (no seeded «Сборка 1») → counter (0); a zone
-  // is created via «+ Новая сборка». The on-canvas AssemblyDraftBlock /
-  // MiniProjectCanvas cases below stay legacy-draft.
+  // V82 panel is ZONE-based. DEC-T3-08 REVERSED (17.05.2026): new
+  // projects start CLEAN (no seeded «Сборка 1»). PC-K6 (20.05.2026):
+  // toggle is HIDDEN on zones=0 — first zone is seeded via direct
+  // CREATE_ZONE dispatch, then «+ Новая сборка» creates subsequent
+  // ones. The on-canvas AssemblyDraftBlock / MiniProjectCanvas cases
+  // below stay legacy-draft.
+  const seedFirstZone = () => {
+    act(() => {
+      A.zoneDispatch({
+        type: 'CREATE_ZONE',
+        zone: { bounds: { x: 0, y: 0, width: 600, height: 400 } },
+      });
+    });
+  };
   const openAndCreateZone = () => {
     act(() => { fireEvent.click(screen.getByTestId('assembly-drafts-toggle')); });
     act(() => { fireEvent.click(screen.getByTestId('assembly-drafts-new')); });
   };
 
-  it('clean start (counter 0); «+ Новая сборка» → CREATE_ZONE (0→1)', () => {
+  it('PC-K6: clean start — toggle hidden; seed → toggle visible', () => {
     render(<SkeletonProvider><H /><AssemblyDraftsPanel /></SkeletonProvider>);
-    expect(screen.getByTestId('assembly-drafts-toggle').textContent).toMatch(/\(0\)/);
-    openAndCreateZone();
-    expect(S.zones).toHaveLength(1);
-    expect(screen.getAllByTestId('assembly-draft-card')).toHaveLength(1);
+    expect(screen.queryByTestId('assembly-drafts-toggle')).toBeNull();
+    seedFirstZone();
+    expect(screen.getByTestId('assembly-drafts-toggle').textContent).toMatch(/\(1\)/);
   });
 
   it('card Open opens an assembly editor tab targeting the zone id', () => {
     render(<SkeletonProvider><H /><AssemblyDraftsPanel /></SkeletonProvider>);
-    openAndCreateZone();
+    seedFirstZone();
+    act(() => { fireEvent.click(screen.getByTestId('assembly-drafts-toggle')); });
     const zid = S.zones[0].id;
     const card = screen.getByTestId('assembly-draft-card');
     act(() => { fireEvent.click(within(card).getByTestId('assembly-draft-card-open')); });
@@ -587,7 +597,8 @@ describe('K9 AssemblyDraftsPanel + canvas', () => {
 
   it('card Delete dispatches REMOVE_ZONE', () => {
     render(<SkeletonProvider><H /><AssemblyDraftsPanel /></SkeletonProvider>);
-    openAndCreateZone();
+    seedFirstZone();
+    act(() => { fireEvent.click(screen.getByTestId('assembly-drafts-toggle')); });
     act(() => { fireEvent.click(within(screen.getByTestId('assembly-draft-card')).getByTestId('assembly-draft-card-delete')); });
     expect(S.zones).toHaveLength(0);
   });

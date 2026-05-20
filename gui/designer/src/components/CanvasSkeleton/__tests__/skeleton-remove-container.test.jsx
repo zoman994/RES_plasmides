@@ -145,15 +145,23 @@ describe('Del / Backspace keyboard integration', () => {
     expect(placeholders.length).toBe(1);
   });
 
-  it('Del в input (search дерева) — НЕ удаляет container', () => {
+  it('Del в input (synthetic) — НЕ удаляет container', () => {
+    // PC-K1: tree-search input lived inside LibraryTreeHost which is
+    // no longer mounted. The invariant ("Del on an INPUT target is a
+    // no-op") still applies — verify with a synthetic input element
+    // appended to the document body.
     render(<CanvasSkeleton />);
     fireEvent.click(screen.getByTestId('skeleton-block-c-placeholder-1'));
-    const search = screen.getByTestId('tree-search');
-    search.focus();
-    // Fire on the input element specifically — keydown bubbles to window
-    // with target === input. Handler skips when target.tagName === INPUT.
-    act(() => { fireEvent.keyDown(search, { key: 'Delete' }); });
-    expect(screen.queryByTestId('skeleton-block-c-placeholder-1')).toBeTruthy();
+    const probe = document.createElement('input');
+    probe.type = 'text';
+    document.body.appendChild(probe);
+    try {
+      probe.focus();
+      act(() => { fireEvent.keyDown(probe, { key: 'Delete' }); });
+      expect(screen.queryByTestId('skeleton-block-c-placeholder-1')).toBeTruthy();
+    } finally {
+      probe.remove();
+    }
   });
 
   it('Del без highlight — no-op', () => {
