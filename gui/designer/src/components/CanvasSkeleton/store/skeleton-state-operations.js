@@ -37,6 +37,7 @@
  * state reference is returned (so the main router can `===`-compare).
  */
 import { v7 as uuidv7 } from 'uuid';
+import { deriveAutoPrimers } from '../lib/primer-derive';
 
 /**
  * createOperationDraft — build a fresh draft operation.
@@ -398,7 +399,22 @@ export function operationsReducer(state, action) {
       const nextPieces = pieces.map((p) => (
         selSet.has(p.id) ? { ...p, groupId: op.id, updatedAt: now } : p
       ));
-      return { ...state, operations: [...(state.operations || []), op], pieces: nextPieces };
+      const withOpGroup = {
+        ...state,
+        operations: [...(state.operations || []), op],
+        pieces: nextPieces,
+      };
+      // K15 (T8.5) — derive auto primers for the new op-group from the
+      // FRESH state (pieces now carry groupId), then append to the
+      // zone's primer pool. Manual primers (if any) are untouched.
+      const derived = deriveAutoPrimers(op, withOpGroup);
+      if (derived.length === 0) return withOpGroup;
+      const map = withOpGroup.assemblyDraftPrimers || {};
+      const cur = map[zoneId] || [];
+      return {
+        ...withOpGroup,
+        assemblyDraftPrimers: { ...map, [zoneId]: [...cur, ...derived] },
+      };
     }
 
     case 'REMOVE_OP_GROUP': {
@@ -409,10 +425,20 @@ export function operationsReducer(state, action) {
       const nextPieces = (state.pieces || []).map((p) => (
         setIds.has(p.id) ? { ...p, groupId: null, updatedAt: now } : p
       ));
+      // K15 (T8.5) — drop auto primers tied to this op-group; keep
+      // any manual-locked ones (the biolog explicitly edited them).
+      const map = state.assemblyDraftPrimers || {};
+      const zoneId = op.zoneId;
+      const arr = (map[zoneId] || []).filter((p) => !(
+        p && p.origin && p.origin.kind === 'auto-from-group'
+        && p.origin.opGroupId === action.opId
+        && p.autoMode !== 'manual'
+      ));
       return {
         ...state,
         operations: (state.operations || []).filter((o) => o.id !== action.opId),
         pieces: nextPieces,
+        assemblyDraftPrimers: zoneId ? { ...map, [zoneId]: arr } : map,
       };
     }
 
