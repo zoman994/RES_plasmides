@@ -34,6 +34,7 @@ import { writeContainerToGenBank, readContainerFromGenBank } from './bodge-conta
 import { writeAssemblyJson, readAssemblyJson, checkAssemblyOrphans } from './bodge-assembly-json';
 import { writePrimerPool, readPrimerPool } from './bodge-primers-json';
 import { buildReadme } from './bodge-readme-writer';
+import { attachmentFilename } from './bodge-attachments';
 import { APP_VERSION as CURRENT_APP_VERSION } from './version';
 
 // ---- v1 constants (unchanged signatures for back-compat) -------------------
@@ -200,14 +201,53 @@ export async function writeBodgeV2(state, options = {}) {
     await addAssetV2(manifest, { path, content: libJson, kind: 'library' });
   }
 
-  // 5. Notebook (NOTEBOOK spec fills this; CORE writes empty shell).
+  // 5. Notebook entries + attachments (M-FORMAT-V2-NOTEBOOK K17 fills
+  // the attachments side; CORE already wrote the entries.json shell).
   const notebookEntries = Array.isArray(state.notebookEntries) ? state.notebookEntries : [];
   const attachmentsManifest = state.attachmentsManifest || {};
-  if (notebookEntries.length || Object.keys(attachmentsManifest).length) {
-    const nbJson = JSON.stringify({ entries: notebookEntries, attachmentsManifest }, null, 2);
+  const runtimeAttachments = state.attachments; // Map<attId, {blob, manifest}>
+  if (notebookEntries.length || Object.keys(attachmentsManifest).length || (runtimeAttachments?.size > 0)) {
+    // Merge runtime attachment manifests into attachmentsManifest (some
+    // attachments may only exist runtime-only when biolog has uploaded
+    // them mid-session without yet saving). Shallow-merge so persistent
+    // manifest fields aren't clobbered by minimal runtime stubs.
+    const mergedManifest = { ...attachmentsManifest };
+    if (runtimeAttachments?.forEach) {
+      runtimeAttachments.forEach((att, attId) => {
+        if (att?.manifest) {
+          mergedManifest[attId] = { ...(mergedManifest[attId] || {}), ...att.manifest };
+        } else if (!mergedManifest[attId]) {
+          mergedManifest[attId] = {};
+        }
+      });
+    }
+    const nbJson = JSON.stringify({
+      entries: notebookEntries,
+      attachmentsManifest: mergedManifest,
+    }, null, 2);
     const path = 'notebook/entries.json';
     files[path] = [strToU8(nbJson), { level: 6 }];
     await addAssetV2(manifest, { path, content: nbJson, kind: 'notebook-entries' });
+
+    // Write each attachment's bytes to notebook/attachments/<attId>.<ext>.
+    // STORE compression for already-compressed binaries (PNG/JPEG/AB1/PDF),
+    // DEFLATE for raw bytes (rare).
+    for (const [attId, meta] of Object.entries(mergedManifest)) {
+      const ext = filenameFromMime(meta.mimeType);
+      const attPath = `notebook/attachments/${attId}.${ext}`;
+      const bytes = await resolveAttachmentBytes(attId, state);
+      if (!bytes) continue; // missing — manifest has metadata only
+      const compression = isAlreadyCompressedMime(meta.mimeType) ? 'store' : 'deflate';
+      files[attPath] = [bytes, { level: compression === 'store' ? 0 : 6 }];
+      await addAssetV2(manifest, {
+        path: attPath,
+        content: bytes,
+        kind: kindFromMime(meta.mimeType),
+        displayName: meta.displayName || attId,
+        mimeType: meta.mimeType,
+        compression,
+      });
+    }
   }
 
   // 6. External refs (refs/external.json).
@@ -304,6 +344,57 @@ export function writeBodge(input, opts = {}) {
     return writeBodgeV2(input, opts);
   }
   return writeBodgeV1(input, opts);
+}
+
+// ---- writeBodgeV2 helpers --------------------------------------------------
+
+function filenameFromMime(mimeType) {
+  // Delegates to bodge-attachments.attachmentFilename for canonical mapping
+  // (PNG → .png, JPEG → .jpg, AB1 → .ab1, etc.).
+  const fn = attachmentFilename('att', mimeType || '');
+  const m = /\.([a-z0-9]+)$/i.exec(fn);
+  return m ? m[1] : 'bin';
+}
+
+function isAlreadyCompressedMime(mimeType) {
+  if (!mimeType) return false;
+  const m = mimeType.toLowerCase();
+  return (
+    m.startsWith('image/')
+    || m === 'application/pdf'
+    || m === 'chemical/x-ab1'
+    || m.startsWith('audio/')
+    || m.startsWith('video/')
+    || m === 'application/zip'
+  );
+}
+
+function kindFromMime(mimeType) {
+  if (!mimeType) return 'attachment-other';
+  const m = mimeType.toLowerCase();
+  if (m.startsWith('image/')) return 'attachment-image';
+  if (m === 'chemical/x-ab1') return 'attachment-sanger';
+  if (m === 'application/pdf') return 'attachment-pdf';
+  return 'attachment-other';
+}
+
+async function resolveAttachmentBytes(attId, state) {
+  // Prefer runtime blob from state.attachments map (Map<attId, {blob, manifest}>).
+  if (state?.attachments?.get) {
+    const att = state.attachments.get(attId);
+    if (att?.blob) {
+      const buf = await att.blob.arrayBuffer();
+      return new Uint8Array(buf);
+    }
+    if (att?.bytes instanceof Uint8Array) return att.bytes;
+  }
+  // Fallback to attachmentsBlobs Map provided directly by caller (e.g.
+  // when round-tripping without runtime blob URLs in test env).
+  if (state?.attachmentsBlobs?.get) {
+    const bytes = state.attachmentsBlobs.get(attId);
+    if (bytes instanceof Uint8Array) return bytes;
+  }
+  return null;
 }
 
 // ---- v1 reader (unchanged behavior) ----------------------------------------
@@ -427,9 +518,10 @@ export async function readBodgeV2(entries) {
     }
   }
 
-  // 5. Notebook.
+  // 5. Notebook entries + attachment raw bytes.
   let notebookEntries = [];
   let attachmentsManifest = {};
+  let attachmentsBlobs = new Map(); // Map<attId, Uint8Array>
   if (entries['notebook/entries.json']) {
     try {
       const parsed = JSON.parse(strFromU8(entries['notebook/entries.json']));
@@ -437,6 +529,24 @@ export async function readBodgeV2(entries) {
       attachmentsManifest = parsed.attachmentsManifest || {};
     } catch (e) {
       warnings.push(`notebook/entries.json: ${e.message}`);
+    }
+  }
+  // Collect raw bytes for every notebook/attachments/* entry. Runtime
+  // layer (bodge-attachments.loadAttachments) turns these into blob URLs.
+  for (const path of Object.keys(entries)) {
+    if (!path.startsWith('notebook/attachments/')) continue;
+    const filename = path.slice('notebook/attachments/'.length);
+    const attId = filename.replace(/\.[a-zA-Z0-9]+$/, '');
+    attachmentsBlobs.set(attId, entries[path]);
+    // Detect orphan attachment: bytes present but manifest entry missing.
+    if (!attachmentsManifest[attId]) {
+      warnings.push(`notebook attachment "${path}" present but missing from attachmentsManifest`);
+    }
+  }
+  // Detect orphan manifest: manifest entry present but bytes missing.
+  for (const attId of Object.keys(attachmentsManifest)) {
+    if (!attachmentsBlobs.has(attId)) {
+      warnings.push(`notebook attachment "${attId}" listed in manifest but bytes missing from ZIP`);
     }
   }
 
@@ -500,6 +610,7 @@ export async function readBodgeV2(entries) {
     libraryEntries,
     notebookEntries,
     attachmentsManifest,
+    attachmentsBlobs, // raw bytes; runtime layer wraps into blob URLs
     externalRefs,
     extensions,
   };
