@@ -84,24 +84,21 @@ describe('K1 — reference v1 fixtures', () => {
   });
 });
 
-describe('K1 — v1→v2 skeleton (full pipeline in K8)', () => {
-  it('migrateBodgeV1toV2 skeleton flag set', () => {
-    expect(migrateBodgeV1toV2.skeletonOnly).toBe(true);
+describe('K1 — registry hook for v1→v2 (full pipeline in K8 / bodge-migration-v1-to-v2.test)', () => {
+  it('migrateBodgeV1toV2.targetVersion === 2.0.0', () => {
     expect(migrateBodgeV1toV2.targetVersion).toBe(BODGE_V2_FILE_FORMAT_VERSION);
   });
 
-  it('migrateBodgeV1toV2 stamps parsed sections on output (probe contract)', async () => {
+  it('migrateBodgeV1toV2 stamps migrationFrom + losses on output (K8 contract)', async () => {
     const buf = loadFixture('v1-with-library.bodge');
     const out = await migrateBodgeV1toV2(bufferToBlob(buf));
-    expect(out._v1Sections).toBeTruthy();
-    expect(out._v1Sections.project.name).toBe('v1 with library');
+    expect(out._migrationFrom).toBe('1.0.0');
+    expect(Array.isArray(out._migrationLosses)).toBe(true);
   });
 
-  it('runMigrationChain accepts a v1 blob without throwing', async () => {
+  it('runMigrationChain v1 → v2 returns a blob', async () => {
     const buf = loadFixture('v1-empty.bodge');
     const out = await runMigrationChain(bufferToBlob(buf), '1.0.0');
-    // K1 skeleton currently echoes the input — verified by K8 it produces
-    // a real v2 blob.
     expect(out).toBeTruthy();
   });
 });

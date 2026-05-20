@@ -1,28 +1,33 @@
 /**
  * bodge-migrations/v1-to-v2 — convert a v1 .bodge blob to v2.
  *
- * K1 ships the skeleton: detect v1, pass through with a marker. K8 fills
- * in the real pipeline (§11.2):
- *   1. Read v1 manifest + project.json + library/entries.json.
- *   2. Split state into v2 sections (containers/.gb, assemblies/<id>.json,
- *      primers/pool.json, notebook/, library/, refs/).
- *   3. Build v2 manifest with per-asset sha256 + displayName + kind.
- *   4. Write v2 ZIP.
- *   5. Optional: caller does atomic rename + .v1-backup.
+ * Spec §11 — atomic, idempotent, lossless-where-possible, lossy points
+ * documented inline.
  *
- * The skeleton's contract is preserved across K1 → K8: same entry-point
- * signature, same idempotency rule (running on a v2 blob returns it
- * unchanged), same error shape on hard failure.
+ * v1 .bodge format (as shipped through v0.8.3-alpha) contained ONLY:
+ *   - manifest.json (legacy shape)
+ *   - project.json (full state-blob)
+ *   - library/entries.json (optional)
+ * The promised v1 sections (containers/, primers/, refs/) were never
+ * implemented — readBodgeV1 emits warnings on them but the writer never
+ * produced them. Migration therefore:
+ *   - Marshals projectSlice metadata → v2 projectMeta.
+ *   - Preserves libraryEntries verbatim.
+ *   - Emits empty containers/pieces/operations/zones unless the v1 file
+ *     happened to carry them (lossy: §11.4 "loose containers" toast).
+ *   - Calls writeBodgeV2 to produce the new blob.
  */
 import { unzipSync, strFromU8 } from 'fflate';
 import { BODGE_V2_FILE_FORMAT_VERSION, isBodgeV2Manifest } from '../bodge-manifest-v2';
+import { writeBodgeV2 } from '../bodge-zip';
+import { APP_VERSION as CURRENT_APP_VERSION } from '../version';
 
-const V1_SIGNATURE = null; // v1 had no signature field — detected by `fileFormatVersion: 1`.
+const V1_SIGNATURE = null;
 
 /**
  * Read a v1 .bodge blob and return the raw v1 state object
  * `{manifest, project, libraryEntries}`. Used by both K8 migrator and
- * K7 reader fallback. NOT a full v1 reader — only the legacy shape.
+ * K7 reader fallback.
  */
 export async function readV1Sections(blob) {
   if (!blob) throw new Error('readV1Sections: blob required');
@@ -50,8 +55,6 @@ export async function readV1Sections(blob) {
 
 /**
  * Detect file format version from a parsed manifest.
- * - v2: `signature: "BODGE-V2"`.
- * - v1: no signature, fileFormatVersion: 1 (legacy ManifestV1).
  */
 export function detectFormatVersion(manifest) {
   if (!manifest || typeof manifest !== 'object') return 'unknown';
@@ -62,40 +65,113 @@ export function detectFormatVersion(manifest) {
 }
 
 /**
+ * Marshal a v1 projectSlice into the canonical v2 state shape.
+ * Containers/pieces/operations/zones may be present if the v1 file
+ * carried them inline (post-T3-revert v0.8.x); otherwise empty arrays
+ * (§11.4 loose-containers toast).
+ */
+export function marshalV1ProjectToCanonicalState(v1Project, libraryEntries) {
+  const projectMeta = {
+    id: v1Project.id || '',
+    name: v1Project.name || 'Migrated project',
+    description: v1Project.description || '',
+    createdAt: v1Project.createdAt || new Date().toISOString(),
+    updatedAt: v1Project.updatedAt || new Date().toISOString(),
+    focusedZoneId: v1Project.focusedZoneId || null,
+    tags: Array.isArray(v1Project.tags) ? [...v1Project.tags] : [],
+    author: {
+      name: v1Project.agent?.name || '',
+      deviceId: v1Project.agent?.deviceId || '',
+    },
+    labels: v1Project.labels || {},
+    ui: v1Project.ui || {},
+  };
+
+  // Pull containers / pieces / operations / zones / junctions / primers
+  // if the v1 file happened to carry them inline (some v0.8.x exports
+  // embedded skeleton-state into project.json under the same keys).
+  const containers = Array.isArray(v1Project.containers) ? v1Project.containers : [];
+  const pieces = Array.isArray(v1Project.pieces) ? v1Project.pieces : [];
+  const operations = Array.isArray(v1Project.operations) ? v1Project.operations : [];
+  const zones = Array.isArray(v1Project.zones) ? v1Project.zones : [];
+  const junctions = Array.isArray(v1Project.junctions) ? v1Project.junctions : [];
+  const primers = Array.isArray(v1Project.primers) ? v1Project.primers : [];
+
+  return {
+    projectMeta,
+    containers,
+    pieces,
+    operations,
+    zones,
+    junctions,
+    primers,
+    libraryEntries: Array.isArray(libraryEntries) ? libraryEntries : [],
+    notebookEntries: [],
+    attachmentsManifest: {},
+    externalRefs: [],
+    extensions: {},
+    positions: v1Project.positions || {},
+  };
+}
+
+/**
+ * Inspect a v1 state and report whether migration is lossy and why.
+ * Used by UI toast in §11.5 ("Файл создан без сборок..." etc.).
+ */
+export function analyzeMigrationLoss(v1Project) {
+  const losses = [];
+  const hasZones = Array.isArray(v1Project.zones) && v1Project.zones.length > 0;
+  const hasContainers = Array.isArray(v1Project.containers) && v1Project.containers.length > 0;
+  if (!hasZones && hasContainers) {
+    losses.push({
+      kind: 'loose-containers',
+      message: 'Файл создан без сборок. Добавьте «+ Сборка» для группировки.',
+    });
+  }
+  if (!hasZones && !hasContainers) {
+    losses.push({
+      kind: 'empty-project',
+      message: 'Проект v1 пустой — только метаданные перенесены в v2.',
+    });
+  }
+  if (Array.isArray(v1Project.projectCommitIds) && v1Project.projectCommitIds.length > 0) {
+    losses.push({
+      kind: 'plasmid-git-history-missing',
+      message: 'История plasmid-git в v1 не хранилась на диске — commits[] будет содержать только import_baseline.',
+    });
+  }
+  return losses;
+}
+
+/**
  * v1 → v2 migration entry-point.
  *
- * K1 placeholder: returns the input blob unchanged with a flag noting
- * that K8 will fill in the real splitter. The flag is stored on the
- * function object so the registry can advertise readiness:
- *   migrateBodgeV1toV2.skeletonOnly === true
+ * @param {Blob} blob — v1 .bodge bytes.
+ * @param {object} [opts]
+ * @param {string} [opts.appVersion] — stamp on the v2 manifest.
+ * @returns {Blob} v2 .bodge bytes.
  *
- * K8 will replace the body to:
- *   1. readV1Sections(blob).
- *   2. Build v2 sections via lib/bodge-container-genbank,
- *      lib/bodge-assembly-json, lib/bodge-primers-json.
- *   3. Build v2 manifest via lib/bodge-manifest-v2.
- *   4. Pack via lib/bodge-zip.writeBodgeV2(...).
- *   5. Return the new Blob.
+ * Idempotent: re-running on a v2 blob returns it unchanged.
  */
-export async function migrateBodgeV1toV2(blob) {
+export async function migrateBodgeV1toV2(blob, opts = {}) {
   if (!blob) throw new Error('migrateBodgeV1toV2: blob required');
-  // K1 skeleton: stash the parsed v1 sections so a caller can probe the
-  // migration is at least wired. Real splitter follows in K8.
   const sections = await readV1Sections(blob);
-  // Idempotency probe: if input is already v2, no-op.
+  // Idempotency probe — already v2.
   if (detectFormatVersion(sections.manifest) === BODGE_V2_FILE_FORMAT_VERSION) {
     return blob;
   }
-  // K8 will produce a real v2 blob here; for now expose the parsed
-  // sections so tests / callers can verify the migration is reached.
-  const result = blob;
-  // eslint-disable-next-line no-underscore-dangle
-  result._v1Sections = sections;
-  return result;
+  const state = marshalV1ProjectToCanonicalState(sections.project, sections.libraryEntries);
+  const v2Blob = await writeBodgeV2(state, {
+    appVersion: opts.appVersion || CURRENT_APP_VERSION,
+    exportType: 'project',
+    exportProfile: 'full',
+  });
+  // Stamp migration trace + loss report on the output for UI consumption.
+  v2Blob._migrationFrom = '1.0.0';
+  v2Blob._migrationLosses = analyzeMigrationLoss(sections.project);
+  return v2Blob;
 }
 
-// eslint-disable-next-line no-underscore-dangle
-migrateBodgeV1toV2.skeletonOnly = true;
 migrateBodgeV1toV2.targetVersion = BODGE_V2_FILE_FORMAT_VERSION;
 
 export { V1_SIGNATURE };
