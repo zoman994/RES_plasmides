@@ -12,6 +12,7 @@ import { useState, useMemo, useCallback } from 'react';
 import { useStore } from '../../store';
 import RecentRow from './RecentRow';
 import EmptyCard from './EmptyCard';
+import HelpPopover from './HelpPopover';
 
 const RECENT_LIMIT = 20;
 
@@ -46,11 +47,37 @@ function deriveFilterPills(projects) {
   ];
 }
 
-export default function MainPanel() {
+export default function MainPanel({ onOpenHotkeys }) {
   const [activeFilter, setActiveFilter] = useState('all');
   const [query, setQuery] = useState('');
+  // MS-K3 — `?` Help popover open state.
+  const [helpOpen, setHelpOpen] = useState(false);
 
   const projectsById = useStore((s) => s.projects);
+  // MS-K5 — library banner conditional: hide once library has entries.
+  const libraryEntries = useStore((s) => s.libraryEntries);
+  const libraryEmpty = !libraryEntries || Object.keys(libraryEntries).length === 0;
+  const openSettings = useStore((s) => s.openSettings);
+  const createProject = useStore((s) => s.createProject);
+  const openProjectInfo = useStore((s) => s.openProjectInfo);
+  const setActiveWorkspace = useStore((s) => s.setActiveWorkspace);
+  const setActiveFullscreen = useStore((s) => s.setActiveFullscreen);
+  const openCommandPalette = useStore((s) => s.openCommandPalette);
+
+  const onCreate = useCallback(() => {
+    createProject?.('Новый проект');
+    setActiveWorkspace?.('library');
+    setActiveFullscreen?.('library');
+    openProjectInfo?.();
+  }, [createProject, setActiveWorkspace, setActiveFullscreen, openProjectInfo]);
+  const onOpenAllProjects = useCallback(() => openCommandPalette?.(), [openCommandPalette]);
+  const onLoadBodge = useCallback(() => {
+    // Re-uses the same flow as the sidebar handler. The dedicated
+    // OS file picker stays in the sidebar; this card opens the
+    // command palette which surfaces the same "open existing" path.
+    setActiveFullscreen?.('start');
+    openCommandPalette?.();
+  }, [setActiveFullscreen, openCommandPalette]);
   const currentProjectId = useStore((s) => s.currentProjectId);
   // M-X.8 K7 — pin stars on dashboard cards. Pin set lives in
   // projectSlice; toggling is decoupled from activation per
@@ -113,27 +140,90 @@ export default function MainPanel() {
     <main className="main" data-testid="ss-main">
       <div className="topbar">
         <h2 data-testid="ss-topbar-title">Главная</h2>
-        <div className="top-search">
-          <input
-            type="text"
-            data-testid="ss-topbar-search"
-            placeholder="Поиск проекта, плазмиды или фичи…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-          <span className="ico">⌕</span>
-          <span className="kbd kbd-r">Ctrl K</span>
-        </div>
+        {/* MS-K2: top search input removed (Ctrl+K palette covers the
+            same surface). Header keeps title + ? Помощь + ⚙ Настройки. */}
+        <div style={{ flex: 1 }} />
         <button
           type="button"
           className="top-act"
           data-testid="ss-topbar-help"
-          title="Руководство"
-          onClick={() => { /* TODO: open-guide */ }}
-        >?</button>
+          title="Помощь (Руководство / Хоткеи / Глоссарий)"
+          onClick={() => setHelpOpen(true)}
+        >? Помощь</button>
+        <button
+          type="button"
+          className="top-act"
+          data-testid="ss-topbar-settings"
+          title="Настройки (Ctrl ,)"
+          onClick={() => openSettings?.()}
+          style={{ marginLeft: 8 }}
+        >⚙</button>
       </div>
 
+      {/* MS-K2 action area: primary CTA + 2-card row. */}
+      <div data-testid="ss-action-area" style={actionAreaStyles.wrap}>
+        <button
+          type="button"
+          data-testid="ss-action-create-primary"
+          onClick={onCreate}
+          style={actionAreaStyles.primaryCta}
+        >
+          + Создать проект
+          <span style={actionAreaStyles.hint}>⌃N</span>
+        </button>
+        <div style={actionAreaStyles.separator}>Открыть существующее</div>
+        <div style={actionAreaStyles.cardRow}>
+          <button
+            type="button"
+            data-testid="ss-action-load-bodge-card"
+            onClick={onLoadBodge}
+            style={actionAreaStyles.card}
+          >
+            <div style={actionAreaStyles.cardIcon}>↑</div>
+            <div style={actionAreaStyles.cardTitle}>Загрузить .bodge</div>
+            <div style={actionAreaStyles.cardSub}>С диска (file)</div>
+          </button>
+          <button
+            type="button"
+            data-testid="ss-action-all-projects-card"
+            onClick={onOpenAllProjects}
+            style={actionAreaStyles.card}
+          >
+            <div style={actionAreaStyles.cardIcon}>📂</div>
+            <div style={actionAreaStyles.cardTitle}>Все проекты</div>
+            <div style={actionAreaStyles.cardSub}>Внутренний список ⌘P</div>
+          </button>
+        </div>
+      </div>
+
+      {/* MS-K3 popover. */}
+      <HelpPopover
+        open={helpOpen}
+        onClose={() => setHelpOpen(false)}
+        onOpenHotkeys={onOpenHotkeys}
+      />
+
       <div className="content">
+        {/* MS-K5: библиотечный onboarding banner — only when library is empty. */}
+        {libraryEmpty && (
+          <div data-testid="ss-library-onboarding" style={libraryBannerStyles.wrap}>
+            <div style={libraryBannerStyles.text}>
+              Сначала наполните библиотеку — добавьте плазмиды через импорт
+              или из готового набора.
+            </div>
+            <button
+              type="button"
+              data-testid="ss-library-onboarding-cta"
+              onClick={() => {
+                setActiveWorkspace?.('library');
+                setActiveFullscreen?.('library');
+              }}
+              style={libraryBannerStyles.cta}
+            >
+              Выбрать набор
+            </button>
+          </div>
+        )}
         {sortedProjects.length > 0 ? (
           <>
             <div className="recent-head">
@@ -201,3 +291,52 @@ export default function MainPanel() {
     </main>
   );
 }
+
+const actionAreaStyles = {
+  wrap: {
+    padding: '14px 20px 0 20px',
+    display: 'flex', flexDirection: 'column', gap: 10,
+  },
+  primaryCta: {
+    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+    width: '100%', padding: '12px 18px',
+    background: 'var(--accent-500, #d97706)', color: '#fff',
+    border: 'none', borderRadius: 8,
+    fontSize: 14, fontWeight: 600, cursor: 'pointer',
+    boxShadow: '0 4px 12px rgba(217,119,6,0.20)',
+  },
+  hint: { fontSize: 11, opacity: 0.85, fontWeight: 500 },
+  separator: {
+    fontSize: 11, color: 'var(--text-tertiary)',
+    textTransform: 'uppercase', letterSpacing: 0.4,
+    margin: '6px 0 2px 0',
+  },
+  cardRow: { display: 'flex', gap: 10 },
+  card: {
+    flex: 1,
+    padding: '12px 14px',
+    background: 'var(--surface-2)', color: 'var(--text-primary)',
+    border: '1px solid var(--border-subtle)', borderRadius: 8,
+    cursor: 'pointer', textAlign: 'left',
+    display: 'flex', flexDirection: 'column', gap: 4,
+  },
+  cardIcon: { fontSize: 18, lineHeight: 1 },
+  cardTitle: { fontSize: 13, fontWeight: 600 },
+  cardSub: { fontSize: 11, color: 'var(--text-tertiary)' },
+};
+
+const libraryBannerStyles = {
+  wrap: {
+    margin: '12px 20px 0 20px',
+    padding: '12px 14px',
+    background: 'var(--surface-2)',
+    border: '1px solid var(--border-subtle)', borderRadius: 8,
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+  },
+  text: { fontSize: 12.5, color: 'var(--text-secondary)' },
+  cta: {
+    padding: '6px 12px', fontSize: 12, fontWeight: 600,
+    background: 'var(--accent-500, #b85c3e)', color: '#fff',
+    border: 'none', borderRadius: 4, cursor: 'pointer',
+  },
+};

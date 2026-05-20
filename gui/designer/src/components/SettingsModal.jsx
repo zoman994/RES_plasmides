@@ -3,6 +3,7 @@ import { useStore } from '../store';
 import { clearAll } from '../db/dexie-schema';
 import { formatHotkey } from '../lib/hotkeys';
 import { STRINGS } from '../lib/strings';
+import { promptInstall, isPwaInstalled } from '../lib/pwa-install';
 
 const TABS = [
   { id: 'identity', labelKey: 'identity' },
@@ -242,6 +243,8 @@ export default function SettingsModal() {
 
           {tab === 'advanced' && (
             <div data-testid="settings-tab-content-advanced">
+              {/* MS-K6 — PWA install section (moved from sidebar). */}
+              <PwaInstallSection />
               <p style={{ fontSize: 13, color: 'var(--danger-fg, #b91c1c)', margin: '0 0 8px' }}>
                 {STRINGS.settings.advanced.resetWarning}
               </p>
@@ -307,6 +310,63 @@ function SettingRow({ label, hint, children }) {
       {hint && (
         <span style={{ fontSize: 11, color: 'var(--text-tertiary)', lineHeight: 1.4 }}>{hint}</span>
       )}
+    </div>
+  );
+}
+
+/**
+ * MS-K6 — PWA install section. Conditional rendering (spec §5):
+ *   - Hidden when `isPwaInstalled()` is true (browser reports
+ *     standalone display mode).
+ *   - Hidden when `canInstallPwa` flag is false (browser never
+ *     fired `beforeinstallprompt` — Safari/Firefox path).
+ *   - Otherwise shows the install button which calls promptInstall().
+ */
+function PwaInstallSection() {
+  const canInstall = useStore((s) => s.canInstallPwa);
+  const showToast = useStore((s) => s.showToast);
+  const installed = isPwaInstalled();
+
+  if (installed) return null;
+  if (!canInstall) return null;
+
+  const onClick = async () => {
+    const outcome = await promptInstall();
+    if (outcome === 'accepted') {
+      showToast?.(STRINGS.startScreen?.appInstalled || 'Приложение установлено', 'success');
+    } else if (outcome === 'dismissed') {
+      showToast?.('Установка отменена', 'info');
+    }
+  };
+
+  return (
+    <div
+      data-testid="settings-pwa-install-section"
+      style={{
+        marginBottom: 16, padding: '12px',
+        background: 'var(--surface-2)',
+        border: '1px solid var(--border-default)', borderRadius: 6,
+      }}
+    >
+      <div style={{ fontSize: 12.5, fontWeight: 500, marginBottom: 4 }}>
+        Установка как приложение
+      </div>
+      <div style={{ fontSize: 11.5, color: 'var(--text-tertiary)', marginBottom: 8 }}>
+        Установите BodgeGene как отдельное окно с иконкой в системе.
+        Работает без браузерной обвязки.
+      </div>
+      <button
+        type="button"
+        data-testid="settings-pwa-install"
+        onClick={onClick}
+        style={{
+          padding: '6px 14px', fontSize: 12.5, fontWeight: 600,
+          background: 'var(--accent-500, #b85c3e)', color: '#fff',
+          border: 'none', borderRadius: 4, cursor: 'pointer',
+        }}
+      >
+        ↓ Установить BodgeGene
+      </button>
     </div>
   );
 }

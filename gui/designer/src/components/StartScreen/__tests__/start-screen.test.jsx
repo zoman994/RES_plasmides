@@ -260,11 +260,20 @@ describe('StartScreen-Pixel — Library button wiring', () => {
 });
 
 describe('StartScreen-Pixel — MainPanel', () => {
-  it('topbar shows «Главная» h2 + search + ? button', () => {
+  it('MS-K2: topbar shows «Главная» h2 + ? Помощь + ⚙ Настройки (search removed)', () => {
     render(<StartScreenIntegration />);
     expect(screen.getByTestId('ss-topbar-title').textContent).toBe('Главная');
-    expect(screen.getByTestId('ss-topbar-search')).toBeTruthy();
+    expect(screen.queryByTestId('ss-topbar-search')).toBeNull(); // MS-K2 removed
     expect(screen.getByTestId('ss-topbar-help')).toBeTruthy();
+    expect(screen.getByTestId('ss-topbar-settings')).toBeTruthy();
+  });
+
+  it('MS-K2: action area renders primary CTA + 2-card row', () => {
+    render(<StartScreenIntegration />);
+    expect(screen.getByTestId('ss-action-area')).toBeTruthy();
+    expect(screen.getByTestId('ss-action-create-primary')).toBeTruthy();
+    expect(screen.getByTestId('ss-action-load-bodge-card')).toBeTruthy();
+    expect(screen.getByTestId('ss-action-all-projects-card')).toBeTruthy();
   });
 
   it('shows «нет проектов» empty state when store has no projects', () => {
