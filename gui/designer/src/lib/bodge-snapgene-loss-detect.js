@@ -303,6 +303,10 @@ export function parseLightGenBank(gbText) {
     if (/^FEATURES\s/.test(line)) { inFeatures = true; inOrigin = false; i++; continue; }
     if (/^ORIGIN(\s|$)/.test(line)) { inFeatures = false; inOrigin = true; i++; continue; }
     if (/^\/\/(\s|$)/.test(line)) { break; }
+    // Any other top-level (column-0) keyword ends the FEATURES section so
+    // COMMENT body lines (esp. ApE's 5-space-indented reflows) don't get
+    // mis-parsed as fake features.
+    if (inFeatures && /^[A-Z]/.test(line)) { inFeatures = false; }
     if (inFeatures) {
       // Feature line shape: "     gene            17..51"
       // Qualifier line shape: "                     /label=\"foo\""
