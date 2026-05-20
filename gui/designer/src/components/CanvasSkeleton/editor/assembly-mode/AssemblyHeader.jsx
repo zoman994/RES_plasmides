@@ -11,6 +11,7 @@ import InlineEditableTitle from '../../../Library/inspector/InlineEditableTitle'
 export default function AssemblyHeader({
   draft, length, segmentCount, paletteLegend,
   onRename, onToggleTopology, onRealise, canRealise,
+  onToggleSequenceView,
 }) {
   const [legendOpen, setLegendOpen] = useState(false);
   const circular = !!(draft.topology && draft.topology.circular);
@@ -106,6 +107,31 @@ export default function AssemblyHeader({
         </div>
       )}
 
+      {/* AV-K10 — «S» toggle returns biolog to canvas with this zone
+          flipped to viewMode='sequence' (inline preview without
+          editor's full chrome). Re-entry: «🧬 Открыть сборку» on the
+          zone frame opens the editor again. Hidden when no
+          onToggleSequenceView prop is wired (back-compat for unit
+          tests rendering AssemblyHeader stand-alone). */}
+      {typeof onToggleSequenceView === 'function' && (
+        <button
+          type="button"
+          data-testid="assembly-toggle-sequence-view"
+          onClick={onToggleSequenceView}
+          title="Свернуть в Sequence-вид на канвасе (S)"
+          style={{
+            fontSize: 11,
+            padding: '4px 10px',
+            background: 'var(--surface-1)',
+            color: 'var(--text-secondary)',
+            border: '1px solid var(--border-subtle)',
+            borderRadius: 4,
+            cursor: 'pointer',
+          }}
+        >
+          ↩ S
+        </button>
+      )}
       <button
         type="button"
         data-testid="assembly-realise-btn"

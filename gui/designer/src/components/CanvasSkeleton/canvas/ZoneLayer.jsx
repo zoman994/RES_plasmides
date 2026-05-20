@@ -124,6 +124,17 @@ export default function ZoneLayer({ state, dispatch, onNavigateToZone }) {
           onToggleViewMode={(zoneId, viewMode) => dispatch({ type: 'SET_ZONE_VIEW_MODE', zoneId, viewMode })}
           onFocus={(zoneId) => dispatch({ type: 'SET_FOCUSED_ZONE', zoneId })}
           onNavigateToZone={onNavigateToZone}
+          /* AV-K3 — quick-add piece from the zone header. Routes the
+             4-kind picker through the editor assembly flow: open the
+             editor on this zone, then surface the right modal. */
+          onAddPiece={(zoneId, kind) => {
+            // Open assembly editor for this zone so the existing
+            // toolbar modals (picker / snippet / synthesis / gap)
+            // become accessible. Then dispatch a transient flag so
+            // AssemblyShellBody auto-opens the matching modal.
+            dispatch({ type: 'OPEN_EDITOR_ASSEMBLY_TAB', draftId: zoneId });
+            dispatch({ type: 'REQUEST_ASSEMBLY_ADD_KIND', zoneId, kind });
+          }}
         />
       ))}
       {menu && (

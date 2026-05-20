@@ -274,6 +274,18 @@ export default function AssemblyShellBody({ draft }) {
           draftId, !(draft.topology && draft.topology.circular),
         )}
         onRealise={() => setRealiseOpen(true)}
+        /* AV-K10 — collapse editor → canvas sequence view of this zone.
+           Сохраняет state, just closes the editor and flips the zone
+           viewMode to 'sequence'. Re-entry through «🧬 Открыть сборку»
+           on the zone frame opens the editor again. */
+        onToggleSequenceView={() => {
+          if (typeof actions.zoneDispatch === 'function') {
+            actions.zoneDispatch({
+              type: 'SET_ZONE_VIEW_MODE', zoneId: draftId, viewMode: 'sequence',
+            });
+          }
+          if (typeof actions.closeEditor === 'function') actions.closeEditor();
+        }}
       />
 
       <SnippetOnboardingTip

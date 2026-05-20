@@ -4,12 +4,13 @@
  * through to canvas/containers (DEC-T4-04); header + resize handles
  * are interactive. Colours via --zone-* tokens (never raw hex).
  */
-import React from 'react';
+import React, { useState } from 'react';
 import { STRINGS } from '../../../lib/strings';
 import ZoneSequenceMode from './zone-sequence-mode';
 import ZoneLaneDivider from './zone-lane-divider';
 import ZoneLinkBadge from './ZoneLinkBadge';
 import { selectCrossZoneSourcesForZone } from '../lib/zone-link-resolver';
+import AddPiecePopover from './AddPiecePopover';
 
 const Z = STRINGS.canvasSkeleton.zones;
 const SM = Z.sequenceMode;
@@ -48,8 +49,10 @@ export default function ZoneFrame({
   zone, nodeCount = 0,
   onDragStart, onResize, onContextMenu, onClickHeader,
   state, dispatch, onToggleViewMode, onFocus, onNavigateToZone,
-  onOpenAssembly,
+  onOpenAssembly, onAddPiece,
 }) {
+  // AV-K3 — header «+» button opens the shared AddPiecePopover.
+  const [addPopoverOpen, setAddPopoverOpen] = useState(false);
   const { x, y, width, height } = zone.bounds;
   const collapsed = !!zone.collapsed;
   const isSequence = zone.viewMode === 'sequence';
@@ -141,6 +144,32 @@ export default function ZoneFrame({
         )}
         <button
           type="button"
+          data-testid={`zone-add-piece-${zone.id}`}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            setAddPopoverOpen((v) => !v);
+          }}
+          title="Добавить кусок (Плазмида / Обвес / Синтез / Заглушка)"
+          aria-label="Добавить кусок"
+          style={{
+            marginLeft: 'auto',
+            font: '600 14px var(--font-ui)',
+            lineHeight: '14px',
+            padding: '0 7px',
+            height: 18,
+            borderRadius: 'var(--radius-sm, 4px)',
+            border: '1px solid var(--zone-border)',
+            background: 'var(--surface-2)',
+            color: 'var(--zone-header-fg)',
+            cursor: 'pointer',
+            pointerEvents: 'auto',
+          }}
+        >
+          +
+        </button>
+        <button
+          type="button"
           data-testid={`zone-view-toggle-${zone.id}`}
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => {
@@ -149,7 +178,6 @@ export default function ZoneFrame({
           }}
           title={isSequence ? SM.toggleToGraph : SM.toggleToSequence}
           style={{
-            marginLeft: 'auto',
             font: '600 11px var(--font-ui)',
             padding: '1px 7px',
             borderRadius: 'var(--radius-sm, 4px)',
@@ -187,6 +215,18 @@ export default function ZoneFrame({
           🧬 {Z.openAssembly}
         </button>
       </div>
+
+      {addPopoverOpen && (
+        <AddPiecePopover
+          anchorPos={{ x: width - 250, y: HEADER_H + 4 }}
+          onPick={(kind) => {
+            setAddPopoverOpen(false);
+            if (onAddPiece) onAddPiece(zone.id, kind);
+          }}
+          onClose={() => setAddPopoverOpen(false)}
+          testId={`zone-add-piece-popover-${zone.id}`}
+        />
+      )}
 
       {!collapsed && (
         <div
