@@ -1,0 +1,37 @@
+LOCUS       pET-28b              5369 bp DNA     circular SYN 19-MAY-2026
+DEFINITION  Expression vector with His-tag, KanR selection. BodgeGene fixture.
+ACCESSION   c01FIXTURE01
+VERSION     c01FIXTURE01.1
+KEYWORDS    plasmid; expression; kanamycin; bodge-fixture.
+SOURCE      synthetic DNA construct
+  ORGANISM  synthetic DNA construct
+FEATURES             Location/Qualifiers
+     source          1..5369
+                     /organism="synthetic DNA construct"
+                     /mol_type="other DNA"
+     promoter        17..51
+                     /label="T7 promoter"
+                     /bodge_id="01ABCDEF"
+                     /color="#E8A85F"
+                     /note="Phi 10 promoter, recognized by T7 RNA polymerase"
+     CDS             80..262
+                     /label="6xHis-tag"
+                     /bodge_id="01DEFGHI"
+                     /parent_feature="01ABCDEF"
+                     /color="#D4C8A0"
+     primer_bind     complement(120..145)
+                     /label="T7-rev"
+                     /note="sequence:ATACAAAATCTGTATTTCAGGGCATGGGCAGCAGC"
+                     /bodge_id="01PRMR01"
+ORIGIN
+        1 atgcatatga agctttaata cgactcacta taggggaatt gtgagcggat aacaattccc
+       61 ctctagaaat aattttgttt aactttaaga aggagatata ccatgggcag cagccatcat
+      121 catcatcatc acagcagcgg cctggtgccg cgcggcagcc atatgactgg tggacagcaa
+      181 atgggtcggg atctgtacga cgatgacgat aaggatcgat gggcgcgcca taaggcagcg
+      241 cgcgcacatt cacttatcga aacctcgttc atcctcctcg actactctaa acatgaagac
+      301 acgcgttatt tgcaccgaca tttacccgct tcggcgctcg cgcgacgctt acacgccgcc
+      361 cgccgaccct tcgttctctc cgtgcctcct ccaaccttgc tcgtgcaccg ttccaacccc
+      421 atccatcgct tcaagacatc cagcccggaa ggggagcggc tgcccgaccg actcgcggca
+      481 acaagcttta cccagccgag cacccgacgg cccgccgacc cgcgcaagcc tcccacccgg
+      541 cgcacaacgg cgaaaagccc ggcaagacgc agcagccatc agctgccatg ctgctcaacc
+//
