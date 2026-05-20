@@ -48,9 +48,11 @@ describe("PrimerFromSelectionModal", () => {
     fireEvent.change(screen.getByTestId("primer-modal-name"), { target: { value: "  myP  " } });
     fireEvent.change(screen.getByTestId("primer-modal-seq"), { target: { value: "atgc aaa\nggg" } });
     fireEvent.click(screen.getByTestId("primer-modal-create"));
-    expect(onCreate).toHaveBeenCalledWith({
+    // K13 added tail/binding to the payload; use objectContaining to
+    // pin only the contract this test cares about.
+    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({
       name: "myP", sequence: "ATGCAAAGGG", direction: "forward",
-    });
+    }));
   });
 
   it("closes on Esc and on backdrop click", () => {
@@ -149,8 +151,8 @@ describe("PrimerFromSelectionModal", () => {
     fireEvent.click(createBtn);
     expect(hostPointerDown).not.toHaveBeenCalled();
     expect(hostPointerUp).not.toHaveBeenCalled();
-    expect(onCreate).toHaveBeenCalledWith({
+    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({
       name: "", sequence: "ATGCAAAGGGCC", direction: "forward",
-    });
+    }));
   });
 });

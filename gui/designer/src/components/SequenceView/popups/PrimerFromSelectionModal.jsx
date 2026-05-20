@@ -13,11 +13,32 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 import { reverseComplement } from "../../../sequence-utils.js";
 
+// K13 — quick-add helper sets (SPEC §3 шаг 3 PrimerFromSelectionModal
+// extension). Sequences from K2 snippet-catalog + restriction-db.
+const HELPER_SNIPPETS = [
+  ['6xHis', 'CATCATCATCATCATCAT'],
+  ['FLAG', 'GATTACAAGGATGACGATGACAAG'],
+  ['Kozak-ATG', 'GCCACCATG'],
+];
+const HELPER_RE = [
+  ['EcoRI', 'GAATTC'],
+  ['NotI', 'GCGGCCGC'],
+  ['BamHI', 'GGATCC'],
+];
+
+function cleanDna(s) {
+  return String(s || '').replace(/[^a-zA-Z]/g, '').toUpperCase();
+}
+
 export default function PrimerFromSelectionModal({ draft, onCreate, onClose }) {
   // `draft.name` seeds the field when opened from an EXISTING primer
   // (double-click); empty for the create-from-selection path.
   const [name, setName] = useState(draft.name || "");
-  const [seq, setSeq] = useState(draft.sequence || "");
+  // K13 — split into tail (5' overhang) + binding (anneals to template).
+  // Back-compat: if draft.tail exists use it; otherwise the legacy
+  // `draft.sequence` is treated as the binding region.
+  const [tail, setTail] = useState(draft.tail || "");
+  const [binding, setBinding] = useState(draft.binding || draft.sequence || "");
   const [direction, setDirection] = useState(draft.direction || "forward");
 
   // Esc is handled HERE (React keydown on the backdrop), NOT via a
@@ -35,14 +56,28 @@ export default function PrimerFromSelectionModal({ draft, onCreate, onClose }) {
   const toggleRc = () => {
     const next = direction === "reverse" ? "forward" : "reverse";
     setDirection(next);
-    // Re-orient the field so it always reads 5'→3' for the chosen strand.
-    setSeq((s) => reverseComplement(String(s || "").replace(/[^a-zA-Z]/g, "").toUpperCase()));
+    // K13 — RC affects the BINDING (anneals to template) only. The tail
+    // is a 5' overhang regardless of which strand we prime from, so it
+    // stays. Re-orient the binding so it always reads 5'→3' on the
+    // chosen strand.
+    setBinding((b) => reverseComplement(cleanDna(b)));
   };
 
+  const cleanTail = cleanDna(tail);
+  const cleanBinding = cleanDna(binding);
+  const fullSeq = cleanTail + cleanBinding;
+
   const submit = () => {
-    const clean = seq.replace(/[^a-zA-Z]/g, "").toUpperCase();
-    onCreate({ name: name.trim(), sequence: clean, direction });
+    onCreate({
+      name: name.trim(),
+      sequence: fullSeq,
+      direction,
+      tail: cleanTail,
+      binding: cleanBinding,
+    });
   };
+
+  const appendTail = (snippet) => setTail((t) => cleanDna(t) + snippet);
 
   // Игорь 18.05.2026: «модалка "прозрачная" для клика, кнопки не
   // жмутся». Тот же корень, что и у keydown: React распускает события
@@ -132,13 +167,58 @@ export default function PrimerFromSelectionModal({ draft, onCreate, onClose }) {
             </button>
           </div>
 
+          {/* K13 — separate 5'-tail field (overhang, not bound on template)
+              + binding region (5'→3' on chosen strand). The full primer
+              sequence is tail + binding, shown in the split viz. */}
           <label style={lbl}>
-            ПСО праймера (5′→3′)
+            5'-tail (overhang)
+            <textarea
+              data-testid="primer-modal-tail"
+              value={tail}
+              onChange={(e) => setTail(e.target.value)}
+              rows={2}
+              placeholder="опц — обвес / RE-сайт / Gibson-overlap"
+              style={{
+                width: "100%", marginTop: 4, fontFamily: "var(--font-mono, monospace)",
+                fontSize: 12, padding: 8,
+                border: "1px solid var(--accent-500, #b85c3e)",
+                borderRadius: 4, background: "var(--accent-wash, rgba(184,92,62,0.06))",
+                color: "var(--text-primary)", resize: "vertical", outline: "none",
+              }}
+            />
+          </label>
+
+          <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 10, color: "var(--text-tertiary)", marginRight: 4 }}>Обвес:</span>
+            {HELPER_SNIPPETS.map(([n, s]) => (
+              <button
+                key={n}
+                type="button"
+                data-testid={`primer-modal-helper-snippet-${n}`}
+                onClick={() => appendTail(s)}
+                style={helperBtn}
+              >+ {n}</button>
+            ))}
+            <span style={{ fontSize: 10, color: "var(--text-tertiary)", margin: "0 4px" }}>·</span>
+            <span style={{ fontSize: 10, color: "var(--text-tertiary)", marginRight: 4 }}>RE:</span>
+            {HELPER_RE.map(([n, s]) => (
+              <button
+                key={n}
+                type="button"
+                data-testid={`primer-modal-helper-re-${n}`}
+                onClick={() => appendTail(s)}
+                style={helperBtn}
+              >+ {n}</button>
+            ))}
+          </div>
+
+          <label style={lbl}>
+            Binding region (anneals to template, 5'→3')
             <textarea
               data-testid="primer-modal-seq"
-              value={seq}
-              onChange={(e) => setSeq(e.target.value)}
-              rows={4}
+              value={binding}
+              onChange={(e) => setBinding(e.target.value)}
+              rows={3}
               style={{
                 width: "100%", marginTop: 4, fontFamily: "var(--font-mono, monospace)",
                 fontSize: 12, padding: 8, border: "1px solid var(--border-subtle)",
@@ -147,6 +227,27 @@ export default function PrimerFromSelectionModal({ draft, onCreate, onClose }) {
               }}
             />
           </label>
+
+          <div
+            data-testid="primer-modal-tail-binding-viz"
+            style={{
+              display: "flex", alignItems: "stretch", height: 24,
+              border: "1px solid var(--border-subtle)", borderRadius: 4, overflow: "hidden",
+            }}
+          >
+            <div style={{
+              flexBasis: `${Math.max(8, cleanTail.length * 4)}px`,
+              background: "var(--accent-wash, rgba(184,92,62,0.30))",
+              color: "var(--accent-700, #8a3a22)",
+              fontSize: 10, padding: "4px 6px", whiteSpace: "nowrap",
+            }}>tail {cleanTail.length}</div>
+            <div style={{
+              flex: 1,
+              background: "var(--surface-2)",
+              color: "var(--text-secondary)",
+              fontSize: 10, padding: "4px 6px", whiteSpace: "nowrap",
+            }}>binding {cleanBinding.length} · Σ {fullSeq.length} нт</div>
+          </div>
         </div>
 
         <div style={{ display: "flex", gap: 8, padding: "8px 12px", borderTop: "1px solid var(--border-subtle)", background: "var(--surface-2)" }}>
@@ -168,6 +269,11 @@ const inp = {
 const ghostBtn = {
   fontSize: 11, padding: "4px 10px", background: "transparent",
   border: "1px solid var(--border-subtle)", borderRadius: 4, cursor: "pointer", color: "var(--text-secondary)",
+};
+const helperBtn = {
+  fontSize: 10, padding: "2px 8px", background: "var(--surface-2)",
+  border: "1px solid var(--border-subtle)", borderRadius: 999,
+  cursor: "pointer", color: "var(--text-secondary)",
 };
 const primaryBtn = {
   fontSize: 11.5, padding: "5px 16px", background: "var(--accent-500, #b85c3e)",
