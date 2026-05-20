@@ -210,3 +210,103 @@ Multi-line COMMENT reassembly: ✓ / ✗
 **Проверка п.7:** Full Vitest **326 файлов / 3300 pass / 1 skip**, единственный fail = pre-existing **TD-PRIMER-WIZARD-FLAKE** (`Library/primer-wizard.test.jsx`, вне скоупа; изолировано run1 fail/run2 2/2 pass — недетерминированный, не регрессия). Δтестов: −5 (удалён search-test) +3 (Fix A) → baseline 3303→3301 (=3300 pass +1 flake). `vite build` clean (chunk>500KB warning pre-existing). Size budget OK: ZoneFrame 8.13 / ZoneLayer 4.70 / ZoneContextMenu 5.20 / AssemblyShellBody 11.11 KB (все ≪ hard 40), нетто-сокращение от удаления 2 bespoke-файлов. Interactive materialize+insert (`addContainerFromEntry→setTimeout-diff→insertSegment`) и зона-frame клики jsdom покрывает контрактно; визуальный приём — браузер Игоря.
 
 → Pre-sprint pending commit включает теперь **7 пунктов** (п.7 supersede-ит реализацию п.6). Suggested commit message строки взамен п.6-строки: `- assembly: reuse shared PlaceholderTreePicker for segment source, drop bespoke picker (refactor)` + `- canvas/zone: explicit "Открыть сборку" re-entry on zone frame + context menu (fix)`; счётчик `3284 → 3300 (+16; −5 удалён bespoke search-test, +3 zone re-entry)`. Координационные файлы (кроме этой pending-commit заметки) Code не трогал; M-FORMAT-V2-CORE K0-K16 НЕ начат — это была серия live bug-fix/UX по запросам Игоря, не sprint.
+
+---
+
+## M-CANVAS-WORKFLOW-UX — отчёт Code (20.05.2026)
+
+> Спека: `docs/SPEC_ASSEMBLY_WORKFLOW_UX.md` (приоритет 1, перевыставлен Игорем 19.05). M-FORMAT-V2-CORE (был статус) отложен до приёмки этой работы.
+
+**Commits (18 шт, в branch `feature/m-x-7a-library-structure-v2`):** `ee97960` → `fb9a920` (full range below per K).
+
+| K | commit | Δtests |
+|---|---|---|
+| pre-sprint batch | `ee97960` | (7-пункт post-148936a, leak-clean) |
+| K1 data model v11 + migration | `fe4e92b` | +14 (+8 schema-pin ripple + 4 chain-shape ripple) |
+| K2 snippet-catalog + Dexie v5 | `e88c268` | +8 (+4 DB-version ripple) |
+| K3 «+ Обвес» entry | `e71daf1` | +6 |
+| K4 «+ Синтез» entry | `04e3a95` | +6 |
+| K5 «+ Плазмида» + range picker | `3a53f30` | +7 (+4 picker-step-2 ripple) |
+| K6 strip icons + onboarding | `96db340` | +6 |
+| K7 grouping reducer + OpGroupPicker | `20431d6` | +10 |
+| K8 group bordered container | `59d8ad3` | +6 |
+| K9 pipeline side-panel | `a815170` | +8 |
+| K10 automode | `533f21d` | +7 |
+| K11 primer-derive helper | `3d9268d` | +15 |
+| K12 primer auto/manual flag UI | `81fac7e` | +8 |
+| K13 PrimerFromSelectionModal extension | `a6cf9a1` | +6 (+2 objectContaining ripple) |
+| K14 mutation entry | `9781cbf` | +7 |
+| K15 finalizer hook | `7680f81` | +12 |
+| K16 migration reference fixture | `4d9ef13` | +9 |
+| K17 e2e biolog workflow smoke | `fb9a920` | +1 |
+
+**Vitest:** baseline **3300 pass / 1 skip / 0 fail (326 файлов)** → **3437 pass / 1 skip / 0 fail (343 файла, +137 / +17)**. Все 18 коммитов прошли full-suite gate с zero regressions. **TD-PRIMER-WIZARD-FLAKE** — известный pre-existing intermittent flake (`Library/primer-wizard.test.jsx`, вне скоупа, изолировано 2/2 каждый раз) — спотыкался ~3 раза за прогоны, не блокер.
+
+**pytest:** не трогался (backend не задет).
+
+**vite build:** clean — `✓ built in 526ms`. Единственный warning «chunks > 500 kB» pre-existing.
+
+**SCHEMA_VERSION_CURRENT 10 → 11** + **DB_VERSION 4 → 5** (additive `snippets` table, no wipe). Migration v10→v11 idempotent: zone.finalTopology / piece.groupId+groupLayer+mutations / op.isOpGroup / primer.autoMode+binding+tail; никогда не перезаписывает существующее значение.
+
+### Workflow verified (end-to-end через K17 smoke)
+- 4 entry-points (+Плазмида / +Обвес / +Синтез / +Gap): ✓
+- Snippet catalog 48 built-in (§8) + custom add via Dexie: ✓
+- Strip iconography (🧬/✦/🧪/◊/📦/💎): ✓
+- Snippet onboarding tip (first-time, persists dismiss): ✓
+- Explicit grouping (per-row select + 🔗 Сшить + OpGroupPicker): ✓
+- Group bordered container in strip + multi-layer slot prepared: ✓
+- Side panel «Схема сборки» (layered cards + automode + realise + mini-DAG placeholder): ✓
+- Automode auto-grouping (linear→1 ovPCR / circular >6→⌈√N⌉ ovPCR + final Gibson): ✓
+- Primer auto-derivation per kind (ovPCR/Gibson overlap, Type-IIS GGTCTC, RE site, snippet embed, mutagenic): ✓
+- Manual primer override + auto/manual flag UI (🔧/🔒 + lock/reset + edit-auto-locks): ✓
+- Mutation entry → mutagenic primer in K15 derive: ✓
+
+### Migration & data integrity
+- v10 → v11 idempotent: ✓ (assembly-workflow-model-v11.test.js + migration-fixture-k16.test.js, 14+9 tests)
+- Existing v0.8.3 state safe (additive migration, never overwrites): ✓
+- Manual primer survives REMOVE_OP_GROUP: ✓ (finalizer-k15.test.jsx)
+
+### Spec deviations
+- **§3 buildLeftTail RC bug**: spec wrote `reverseComplement(prevSeq.slice(-25))` for ovPCR/Gibson fwd tail. Это spec-bug — fwd primer 5'-tail на TOP strand = prev.last25 VERBATIM (без RC). K11 реализован bio-correct (no RC for fwd, RC for rev). Bio-invariants: hard correct.
+- **K7 intermediate piece creation**: spec §3 Шаг 2 step 4 «Создаётся intermediate piece» отложен в K15 finalizer — K7 создаёт op-group структуру (id, inputPieces, groupId на pieces), реальный intermediate-piece для multi-layer pipeline — T-future enhancement. End-to-end single-layer works (K17).
+- **K15 trigger handlers**: spec §7.1 перечислил 8 триггеров (PIECE_ADDED/REMOVED/REORDERED, OP_GROUP_CREATED/KIND_CHANGED/REMOVED, PIECE_RANGES_CHANGED, PRIMER_MANUAL_EDIT). K15 реализовал ДВА — CREATE_OP_GROUP (derive) и REMOVE_OP_GROUP (prune auto, keep manual). Остальные триггеры (re-derive на edit пиков) — T-future. Текущий smoke flow не требует re-derive (биолог делает grouping последним перед Realise).
+- **K13 PrimerFromSelectionModal payload**: добавлены поля `{tail, binding}` рядом с `sequence`. 2 существующих контракт-теста переписаны на `objectContaining` чтобы не ломаться на расширение payload (deliberate).
+- **K17 step 8 (Realise pipeline)**: explicitly out of K17 — realiseAssembly не менялся в этом sprint, существующий realise-suite его покрывает; K17 покрывает шаги 1–7 нового workflow.
+
+### Open vопросы (для следующих sessions)
+1. **Realise + op-groups интеграция**: realiseAssembly сейчас читает legacy assembly-draft или zone-projection через draftFromZone, но НЕ знает про op-groups (он строит линейный assembly из всех пиков). Чтобы Realise учитывал op-group структуру (создал intermediate-контейнеры для каждой group вместо одного финала из всех пиков) — требуется отдельная work (T-future).
+2. **K15 re-derive triggers**: PIECE_ADDED/REORDERED/RANGES_CHANGED → re-derive auto primers (preserving manual). Текущая модель устаревает primers при изменении skeleton — биолог должен вручную нажать REMOVE_OP_GROUP + create заново. UX-усилитель.
+3. **Multi-layer intermediate piece creation**: для assemblies >6 пиков automode предлагает layer-2 Gibson, но layer-2 не применяется (требует intermediate-piece-ids которых ещё нет). T-future.
+4. **PUNK / accent palette in OpGroupPicker recommendation banner**: использует accent-wash — design-system OK, но визуальная приёмка покажет.
+5. **Bio-invariants golden_gate**: текущий buildLeftTail для GG использует placeholder `'AAAA'` overhang когда ggOverhang отсутствует. Для production биолог должен задать overhang явно. Не блокер для smoke.
+
+### Size budget — OK
+Все touched .js/.jsx файлы под soft (.jsx 30 / .js 20):
+
+| Файл | KB | Limit | Status |
+|---|---|---|---|
+| AssemblyShellBody.jsx | 17.46 | hard 40 | OK |
+| AssemblyPrimersPanel.jsx | 11.91 | hard 40 | OK |
+| PrimerFromSelectionModal.jsx | 12.74 | hard 40 | OK |
+| SegmentList.jsx | 10.26 | hard 40 | OK |
+| SnippetCatalogModal.jsx | 9.65 | hard 40 | OK |
+| skeleton-state-operations.js | 18.70 | soft 20 / hard 25 | **WARN soft** (рост ~+2.5 KB от K7+K15 — мониторим) |
+| skeleton-state-pieces.js | 15.63 | hard 25 | OK |
+| primer-derive.js | 6.40 | hard 25 | OK (целевой <15 — с большим запасом) |
+| AssemblyPipelinePanel.jsx | 6.14 | hard 40 | OK (целевой <30 — с большим запасом) |
+| прочие новые modal/lib | ≤6.40 KB | — | OK |
+
+**Новые нарушители hard:** нет.
+**Warning signal (рост >5 KB за спринт):** `skeleton-state-operations.js` +~3 KB (K7 CREATE_OP_GROUP / REMOVE_OP_GROUP + K15 finalizer hook); в soft но запас 6.3 KB до hard. Если K15 re-derive триггеры доедут (см. Open Q2) — потенциальный hard-breach, тогда extract `lib/op-group-reducer.js`. Сейчас не блокер.
+
+**Size budget: OK (1 soft WARN, документировано).**
+
+### Manual e2e (K17 smoke)
+Покрыт integration-тестом, который проходит full suite. Биолог-визуальный приём в браузере — отдельной сессией Игоря.
+
+### Файлы
+**Новые:** snippet-catalog.js, auto-group-pipeline.js, primer-derive.js, SnippetCatalogModal.jsx, SynthesisModal.jsx, RangePickerModal.jsx, SnippetOnboardingTip.jsx, OpGroupPicker.jsx, AssemblyPipelinePanel.jsx, MutationModal.jsx + 11 test files (-ов).
+
+**Изменены:** skeleton-persistence.js (schema 11 + migration), piece-model.js (kinds expand + groupId/groupLayer/mutations defaults + clonePiece reset), zone-model.js (finalTopology), skeleton-state-operations.js (createOperationDraft + CREATE/REMOVE_OP_GROUP + finalizer hook), skeleton-state-pieces.js (ADD_PIECE_MUTATION), skeleton-state-assembly.js (INSERT_SNIPPET/SYNTHESIS legacy), skeleton-context.jsx (action creators), zone-assembly-write-adapter.js (snippet/synthesis cases), zone-pieces-to-dag.js (groupId/groupLayer/mutations/pieceKind passthrough), piece-invariants.js (INLINE_KINDS bypass), dexie-schema.js (snippets table v5), AssemblyShellBody.jsx (all the wiring), AssemblyToolbar.jsx (4 buttons), SegmentList.jsx (icons + selection + group containers + mut button), AssemblyPrimersPanel.jsx (autoMode badge + lock/reset), PrimerFromSelectionModal.jsx (tail field + helpers + viz), lib/strings.js (zones.openAssembly из pre-sprint), 13 test files updated for ripple.
+
+После K18: СТОП. PROJECT_STATE / DECISIONS / ANCHORS / BUGS / RELEASES / TECH_DEBT / version.js / package.json — Code НЕ трогал. Финализация и visual acceptance — Chat в отдельной сессии. Спека остаётся в `docs/SPEC_ASSEMBLY_WORKFLOW_UX.md`. Следующий sprint (по приоритету Игоря): **M-FORMAT-V2-CORE** (приоритет 2, спека `docs/SPEC_BODGE_FORMAT_V2_CORE.md` готова) — будет отдельной сессией после приёмки этой работы.
