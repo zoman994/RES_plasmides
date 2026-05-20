@@ -34,6 +34,7 @@ import RangePickerModal from './RangePickerModal';
 import SnippetOnboardingTip from './SnippetOnboardingTip';
 import OpGroupPicker from './OpGroupPicker';
 import AssemblyPipelinePanel from './AssemblyPipelinePanel';
+import MutationModal from './MutationModal';
 import { autoGroupPipeline } from '../../lib/auto-group-pipeline';
 import AssemblyPrimersPanel from './AssemblyPrimersPanel';
 import RealiseModal from './RealiseModal';
@@ -110,6 +111,8 @@ export default function AssemblyShellBody({ draft }) {
   // K7 — grouping: per-zone-piece selection + OpGroupPicker open state.
   const [selectedSegmentIds, setSelectedSegmentIds] = useState(() => new Set());
   const [groupPickerIds, setGroupPickerIds] = useState(null);
+  // K14 — mutation modal context: { pieceId, fromBase, position } | null.
+  const [mutationFor, setMutationFor] = useState(null);
   const [realiseOpen, setRealiseOpen] = useState(false);
   const dropPosRef = useRef(0);
 
@@ -358,7 +361,33 @@ export default function AssemblyShellBody({ draft }) {
         })}
         onSew={(ids) => setGroupPickerIds(ids)}
         operations={state.operations || []}
+        onAddMutation={(pid) => {
+          // The default position seeds at the centre of the piece's
+          // assembled span; fromBase is taken from the piece sequence
+          // (best-effort, '?' fallback). Biolog edits in the modal.
+          const seg = (draft.segments || []).find((s) => s.id === pid);
+          const pos = 0;
+          const fromBase = seg && typeof seg.sequence === 'string' && seg.sequence.length > 0
+            ? seg.sequence[pos] : '?';
+          setMutationFor({ pieceId: pid, position: pos, fromBase });
+        }}
       />
+
+      {mutationFor && (
+        <MutationModal
+          sourceName={((state.containers || []).find(
+            (c) => c.id === ((state.pieces || []).find((p) => p.id === mutationFor.pieceId)
+              || {}).sourceIds?.[0],
+          ) || {}).name || 'piece'}
+          defaultPosition={mutationFor.position}
+          fromBase={mutationFor.fromBase}
+          onConfirm={(m) => {
+            actions.addPieceMutation(mutationFor.pieceId, m);
+            setMutationFor(null);
+          }}
+          onCancel={() => setMutationFor(null)}
+        />
+      )}
 
       {groupPickerIds && (
         <OpGroupPicker

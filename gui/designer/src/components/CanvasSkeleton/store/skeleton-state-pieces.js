@@ -32,6 +32,8 @@ const PIECE_ACTIONS = new Set([
   'REORDER_PIECES_IN_ZONE',
   // T9 — design variants (DEC-T9-03/12, §5.3).
   'CREATE_DESIGN_VARIANT', 'REMOVE_FROM_VARIANT_GROUP', 'HIGHLIGHT_VARIANT_GROUP',
+  // M-CANVAS-WORKFLOW-UX K14 (SPEC §5.2) — per-piece mutation list.
+  'ADD_PIECE_MUTATION',
 ]);
 
 export function isPieceAction(type) {
@@ -352,6 +354,32 @@ export function piecesReducer(state, action) {
         return state;
       }
       return packOrders(state, ids);
+    }
+
+    // M-CANVAS-WORKFLOW-UX K14 (SPEC §5.2) — append/replace a mutation
+    // on a sourced piece. Idempotent on position: a second entry at the
+    // same position OVERWRITES the previous (biolog re-thinks the
+    // mutation; we never accumulate dupes at one site).
+    case 'ADD_PIECE_MUTATION': {
+      const pieces = state.pieces || [];
+      const idx = pieces.findIndex((p) => p.id === action.pieceId);
+      if (idx < 0) return state;
+      const m = action.mutation || {};
+      if (!Number.isFinite(m.position) || m.position < 0) return state;
+      const cur = Array.isArray(pieces[idx].mutations) ? pieces[idx].mutations : [];
+      const without = cur.filter((x) => x.position !== m.position);
+      const next = [...without, {
+        position: Number(m.position),
+        fromBase: typeof m.fromBase === 'string' ? m.fromBase.toUpperCase() : '',
+        toBase: typeof m.toBase === 'string' ? m.toBase.toUpperCase() : '',
+        kind: m.kind || 'silent',
+        notes: typeof m.notes === 'string' ? m.notes : '',
+      }];
+      next.sort((a, b) => a.position - b.position);
+      const pieceNext = { ...pieces[idx], mutations: next, updatedAt: Date.now() };
+      const arr = pieces.slice();
+      arr[idx] = pieceNext;
+      return { ...state, pieces: arr };
     }
 
     default:

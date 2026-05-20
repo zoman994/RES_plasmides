@@ -198,6 +198,12 @@ export function SkeletonProvider({ children }) {
       type: 'CREATE_OP_GROUP', zoneId, kind, name, pieceIds,
     }),
     removeOpGroup: (opId) => dispatch({ type: 'REMOVE_OP_GROUP', opId }),
+    // M-CANVAS-WORKFLOW-UX K14 (SPEC §5.2) — append/replace a per-piece
+    // mutation. K11 primer-derive applies these to the binding region
+    // when computing the mutagenic primer.
+    addPieceMutation: (pieceId, mutation) => dispatch({
+      type: 'ADD_PIECE_MUTATION', pieceId, mutation,
+    }),
     removeSegment: (draftId, segmentId) => dispatch({ type: 'REMOVE_SEGMENT', draftId, segmentId }),
     reorderSegments: (draftId, fromIndex, toIndex) => dispatch({ type: 'REORDER_SEGMENTS', draftId, fromIndex, toIndex }),
     updateSegment: (draftId, segmentId, patch) => dispatch({ type: 'UPDATE_SEGMENT', draftId, segmentId, patch }),

@@ -51,6 +51,9 @@ export default function SegmentList({
   selectedSegmentIds, onToggleSelect, onSew,
   // K8 — op-group lookup for the bordered group container header.
   operations,
+  // K14 — per-row «+ mut» entry. Optional; when omitted the button
+  // doesn't render (back-compat for the K6 / K8 isolated tests).
+  onAddMutation,
 }) {
   const actions = useSkeletonActions();
   const segs = draft.segments || [];
@@ -132,7 +135,16 @@ export default function SegmentList({
         </span>
         <span style={{ width: 64, color: 'var(--text-secondary)' }}>{len} bp</span>
         <span style={{ width: 36 }}>{seg.reverseComplement ? 'RC' : '—'}</span>
-        <span style={{ width: 96, textAlign: 'right', display: 'flex', justifyContent: 'flex-end', gap: 4 }}>
+        <span style={{ width: 118, textAlign: 'right', display: 'flex', justifyContent: 'flex-end', gap: 4 }}>
+          {typeof onAddMutation === 'function' && effectiveKind(seg) === 'sourced' && (
+            <button
+              type="button"
+              data-testid={`assembly-segment-add-mut-${seg.id}`}
+              onClick={(e) => { e.stopPropagation(); onAddMutation(seg.id); }}
+              title="Добавить mutation"
+              style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--accent-500, #b85c3e)' }}
+            >💎+</button>
+          )}
           <button
             type="button"
             data-testid="assembly-segment-up"
@@ -195,7 +207,7 @@ export default function SegmentList({
         <span style={{ flex: 1 }}>Источник</span>
         <span style={{ width: 64 }}>Длина</span>
         <span style={{ width: 36 }}>RC</span>
-        <span style={{ width: 96, textAlign: 'right' }}>Действия</span>
+        <span style={{ width: 118, textAlign: 'right' }}>Действия</span>
       </div>
       {segs.length === 0 && (
         <div style={{ padding: 10, color: 'var(--text-tertiary)' }}>
