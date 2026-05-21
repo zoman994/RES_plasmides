@@ -22,7 +22,7 @@
  *
  * Closes on Esc / click-outside (ui-interactions modal contract).
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import SequenceTab from '../../../Library/inspector/tabs/SequenceTab';
 import { useStore } from '../../../../store';
 import { RE_ENZYMES } from '../../../../restriction-db';
@@ -53,7 +53,18 @@ export default function RangePickerModal({ source, onConfirm, onCancel }) {
   // V88 — two-click RE-site pair: первый клик копит site, второй
   // замыкает выделение на [cutA, cutB]. Курсор/numeric/feature
   // сбрасывают.
+  //
+  // V88 r2 — храним в useRef, не только в state, потому что
+  // SequenceLine.React.memo + глубокий pipeline могут передавать
+  // stale closure'ы onRestrictionClick на real-DOM пути (test path
+  // через window event работает, real RestrictionTrack click — нет).
+  // Ref всегда читается свежим, state нужен только для UI hint.
+  const firstRESiteRef = useRef(null);
   const [firstRESite, setFirstRESite] = useState(null);
+  const updateFirstRESite = (next) => {
+    firstRESiteRef.current = next;
+    setFirstRESite(next);
+  };
   // V89 — track как был выбран фрагмент. 'restriction' → caller
   // выставит piece.acquisitionMethod='restriction' и автогруппа
   // даст ligation-junction по умолчанию.
@@ -84,7 +95,7 @@ export default function RangePickerModal({ source, onConfirm, onCancel }) {
     const en = Number(a.end) || 0;
     setStart(s); setEnd(en);
     setCaretAnchor(s); setCaretPos(en);
-    setFirstRESite(null);
+    updateFirstRESite(null);
     setAcquisitionMethod('feature');
   };
 
@@ -98,7 +109,7 @@ export default function RangePickerModal({ source, onConfirm, onCancel }) {
     setCaretAnchor(s); setCaretPos(e);
     setSelectionMode(mode === 'aa' ? 'aa' : 'dna');
     setSelectionStrand(strand === -1 ? -1 : 1);
-    setFirstRESite(null);
+    updateFirstRESite(null);
     setAcquisitionMethod('cursor');
   };
 
@@ -114,7 +125,7 @@ export default function RangePickerModal({ source, onConfirm, onCancel }) {
       const en = Math.max(caretAnchor, pos);
       setStart(s); setEnd(en);
     }
-    setFirstRESite(null);
+    updateFirstRESite(null);
     setAcquisitionMethod('cursor');
   };
 
@@ -128,17 +139,20 @@ export default function RangePickerModal({ source, onConfirm, onCancel }) {
     const enz = RE_ENZYMES[site.enzyme];
     const recogLen = enz && enz.site ? enz.site.length : 6;
     const cutOffset = enz && Array.isArray(enz.cut) ? enz.cut[0] : 1;
-    if (firstRESite && firstRESite.position !== site.position) {
-      const firstEnz = RE_ENZYMES[firstRESite.enzyme];
+    // V88 r2 — читаем из ref, чтобы не зависеть от потенциально-stale
+    // closure (SequenceLine.React.memo glue).
+    const stored = firstRESiteRef.current;
+    if (stored && stored.position !== site.position) {
+      const firstEnz = RE_ENZYMES[stored.enzyme];
       const firstCutOffset = firstEnz && Array.isArray(firstEnz.cut) ? firstEnz.cut[0] : 1;
-      const cutA = firstRESite.position + firstCutOffset;
+      const cutA = stored.position + firstCutOffset;
       const cutB = site.position + cutOffset;
       const lo = Math.min(cutA, cutB);
       const hi = Math.max(cutA, cutB);
       setStart(lo); setEnd(hi);
       setCaretAnchor(lo); setCaretPos(hi);
-      setReHighlightKey(`${firstRESite.enzyme}-${firstRESite.position}|${site.enzyme}-${site.position}`);
-      setFirstRESite(null);
+      setReHighlightKey(`${stored.enzyme}-${stored.position}|${site.enzyme}-${site.position}`);
+      updateFirstRESite(null);
       setAcquisitionMethod('restriction');
       return;
     }
@@ -148,7 +162,7 @@ export default function RangePickerModal({ source, onConfirm, onCancel }) {
     setStart(s); setEnd(en);
     setCaretAnchor(s); setCaretPos(en);
     setReHighlightKey(`${site.enzyme}-${site.position}`);
-    setFirstRESite(site);
+    updateFirstRESite(site);
     setAcquisitionMethod('restriction');
   };
 
@@ -246,7 +260,7 @@ export default function RangePickerModal({ source, onConfirm, onCancel }) {
                 const v = Number(e.target.value);
                 setStart(v);
                 setCaretAnchor(v);
-                setFirstRESite(null);
+                updateFirstRESite(null);
                 setAcquisitionMethod('numeric');
               }}
               style={numInput}
@@ -262,7 +276,7 @@ export default function RangePickerModal({ source, onConfirm, onCancel }) {
                 const v = Number(e.target.value);
                 setEnd(v);
                 setCaretPos(v);
-                setFirstRESite(null);
+                updateFirstRESite(null);
                 setAcquisitionMethod('numeric');
               }}
               style={numInput}
