@@ -92,7 +92,7 @@
 ### 11. SegmentList empty hint
 
 - Reset to empty zone (or remove all segments).
-- SegmentList footer hint reads «Сегментов нет. Перетащите плазмиду из правого сайдбара, либо используйте кнопки внизу: + Плазмида / + Обвес / + Синтез / + Gap.» (AE-K7).
+- SegmentList footer hint reads «Сегментов нет. + Плазмида — выбор из списка выше; кнопки: + Обвес / + Синтез / + Gap.» (AE-K7 + V86 copy-fix 21.05.2026).
 
 ✅ PASS if no stale `+ Сегмент` reference.
 
