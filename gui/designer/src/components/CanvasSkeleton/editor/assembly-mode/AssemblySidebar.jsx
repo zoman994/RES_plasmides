@@ -3,11 +3,18 @@
  * (G2 DEC-CANVAS-ASM-21). Drag an item onto the viewer to insert a
  * full-length segment (K4). Filter input matches by name. Not the
  * LibraryTree (Q3 default — simple flat list).
+ *
+ * V95 (21.05.2026) — назначение панели сделано явным (explicit header
+ * «Контейнеры проекта · drag → strip»), filter input + список сжаты
+ * в compact-режим (по-умолчанию body свернут до счётчика, разворот
+ * по chevron'у). Close × из V92 сохранён.
  */
 import { useMemo, useState } from 'react';
 
 export default function AssemblySidebar({ containers, onClose }) {
   const [filter, setFilter] = useState('');
+  // V95 — body сворачивается; default open false (compact).
+  const [bodyOpen, setBodyOpen] = useState(false);
 
   const list = useMemo(() => {
     const real = (containers || []).filter(
@@ -21,9 +28,10 @@ export default function AssemblySidebar({ containers, onClose }) {
   return (
     <aside
       data-testid="assembly-sidebar"
+      data-collapsed={bodyOpen ? 'false' : 'true'}
       style={{
         width: '100%',
-        flex: 1,
+        flex: bodyOpen ? 1 : '0 0 auto',
         minHeight: 0,
         borderLeft: '1px solid var(--border-subtle)',
         background: 'var(--surface-2)',
@@ -31,24 +39,38 @@ export default function AssemblySidebar({ containers, onClose }) {
         flexDirection: 'column',
       }}
     >
-      <div style={{ padding: 8, borderBottom: '1px solid var(--border-subtle)', display: 'flex', gap: 6, alignItems: 'center' }}>
-        <input
-          data-testid="assembly-sidebar-filter"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          placeholder="Фильтр по контейнерам проекта…"
+      {/* V95 — explicit header explains purpose; chevron toggles body. */}
+      <div
+        style={{
+          padding: '6px 8px',
+          borderBottom: bodyOpen ? '1px solid var(--border-subtle)' : 'none',
+          display: 'flex', gap: 6, alignItems: 'center',
+          background: 'var(--surface-1)',
+        }}
+      >
+        <button
+          type="button"
+          data-testid="assembly-sidebar-toggle"
+          onClick={() => setBodyOpen((v) => !v)}
+          title={bodyOpen ? 'Свернуть' : 'Раскрыть список'}
           style={{
-            flex: 1,
-            minWidth: 0,
-            fontSize: 11.5,
-            padding: '5px 8px',
-            border: '1px solid var(--border-subtle)',
-            borderRadius: 4,
-            background: 'var(--surface-1)',
-            color: 'var(--text-primary)',
-            outline: 'none',
+            fontSize: 10, padding: '0 4px',
+            background: 'transparent', color: 'var(--text-tertiary)',
+            border: 'none', cursor: 'pointer', borderRadius: 3,
           }}
-        />
+        >{bodyOpen ? '▾' : '▸'}</button>
+        <strong
+          style={{
+            fontSize: 10.5, fontWeight: 600,
+            color: 'var(--text-secondary)',
+            letterSpacing: 0.3, textTransform: 'uppercase',
+            flex: 1, minWidth: 0,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}
+          title="Контейнеры проекта — источник плазмид для drag в strip сборки"
+        >
+          Контейнеры · {list.length}
+        </strong>
         {typeof onClose === 'function' && (
           <button
             type="button"
@@ -64,6 +86,28 @@ export default function AssemblySidebar({ containers, onClose }) {
           >×</button>
         )}
       </div>
+      {bodyOpen && (
+        <div style={{ padding: '6px 8px', display: 'flex', gap: 6, alignItems: 'center' }}>
+          <input
+            data-testid="assembly-sidebar-filter"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="Поиск…"
+            style={{
+              flex: 1,
+              minWidth: 0,
+              fontSize: 11,
+              padding: '4px 6px',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 4,
+              background: 'var(--surface-1)',
+              color: 'var(--text-primary)',
+              outline: 'none',
+            }}
+          />
+        </div>
+      )}
+      {bodyOpen && (
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 6 }}>
         {list.length === 0 ? (
           <div style={{ fontSize: 10.5, color: 'var(--text-tertiary)', padding: 8 }}>
@@ -106,6 +150,7 @@ export default function AssemblySidebar({ containers, onClose }) {
           ))
         )}
       </div>
+      )}
     </aside>
   );
 }

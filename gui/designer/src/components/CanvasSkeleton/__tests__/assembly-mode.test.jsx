@@ -242,12 +242,14 @@ function openDraftWithContainers() {
 }
 
 describe('K4 AssemblySidebar + DnD', () => {
-  it('sidebar lists project containers and filters by name (after first segment)', () => {
+  it('sidebar lists project containers and filters by name (after first segment + expand body — V95)', () => {
     openDraftWithContainers();
     // Игорь 20.05.2026 — empty assembly hides the right rail. Sidebar
-    // becomes accessible only after at least one segment is inserted.
+    // becomes accessible только после первого сегмента.
     act(() => { A.insertManualSegment('asm-k4', { gapKind: 'unknown', length: 5 }, undefined); });
     const sb = screen.getByTestId('assembly-sidebar');
+    // V95 — body collapsed by default; expand через chevron.
+    act(() => { fireEvent.click(within(sb).getByTestId('assembly-sidebar-toggle')); });
     expect(within(sb).getAllByTestId('assembly-sidebar-item').length).toBeGreaterThanOrEqual(2);
     act(() => {
       fireEvent.change(within(sb).getByTestId('assembly-sidebar-filter'), { target: { value: 'pet' } });
