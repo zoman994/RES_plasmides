@@ -12,9 +12,21 @@ export default function AssemblyHeader({
   draft, length, segmentCount, paletteLegend,
   onRename, onToggleTopology, onRealise, canRealise,
   onToggleSequenceView,
+  /* V92 — caller (AssemblyShellBody) tells header that some side-panel
+     is currently hidden via its × button. In that mode, «Палитра»
+     click takes over to restore them (not open the legend). */
+  anyPanelHidden = false,
+  onPaletteClick,
 }) {
   const [legendOpen, setLegendOpen] = useState(false);
   const circular = !!(draft.topology && draft.topology.circular);
+  const onPaletteBtn = () => {
+    if (typeof onPaletteClick === 'function') {
+      onPaletteClick();
+      return;
+    }
+    setLegendOpen((v) => !v);
+  };
 
   return (
     <header
@@ -65,19 +77,23 @@ export default function AssemblyHeader({
           <button
             type="button"
             data-testid="assembly-palette-legend-toggle"
-            onClick={() => setLegendOpen((v) => !v)}
-            title="Палитра сегментов"
+            onClick={onPaletteBtn}
+            title={anyPanelHidden
+              ? 'Вернуть скрытые панели редактора'
+              : 'Палитра сегментов'}
             style={{
               fontSize: 11,
               padding: '4px 10px',
-              background: 'var(--surface-1)',
+              background: anyPanelHidden
+                ? 'var(--accent-100, #eed2c1)'
+                : 'var(--surface-1)',
               color: 'var(--text-secondary)',
               border: '1px solid var(--border-subtle)',
               borderRadius: 4,
               cursor: 'pointer',
             }}
-          >🎨 Палитра</button>
-          {legendOpen && (
+          >🎨 Палитра{anyPanelHidden ? ' ↩' : ''}</button>
+          {legendOpen && !anyPanelHidden && (
             <div
               data-testid="assembly-palette-legend"
               style={{

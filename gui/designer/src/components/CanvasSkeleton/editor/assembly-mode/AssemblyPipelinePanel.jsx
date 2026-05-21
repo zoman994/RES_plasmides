@@ -18,7 +18,7 @@ const KIND_LABEL = {
 };
 
 export default function AssemblyPipelinePanel({
-  draftId, zoneId, onAutomode,
+  draftId, zoneId, onAutomode, onClose,
 }) {
   const state = useSkeletonState();
   const actions = useSkeletonActions();
@@ -57,8 +57,18 @@ export default function AssemblyPipelinePanel({
       <div style={{
         padding: '8px 12px', borderBottom: '1px solid var(--border-subtle)',
         fontWeight: 600, fontSize: 12, background: 'var(--surface-1)',
+        display: 'flex', alignItems: 'center', gap: 6,
       }}>
-        Схема сборки
+        <span style={{ flex: 1 }}>Схема сборки</span>
+        {typeof onClose === 'function' && (
+          <button
+            type="button"
+            data-testid="assembly-pipeline-panel-close"
+            onClick={onClose}
+            title="Скрыть панель (вернуть — кнопка «Палитра»)"
+            style={panelCloseBtn}
+          >×</button>
+        )}
       </div>
 
       <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', gap: 6 }}>
@@ -147,4 +157,9 @@ const ghostBtn = {
   fontSize: 10.5, padding: '3px 8px', background: 'transparent',
   border: '1px solid var(--border-subtle)', borderRadius: 3, cursor: 'pointer',
   color: 'var(--accent-500, #b85c3e)',
+};
+const panelCloseBtn = {
+  fontSize: 13, lineHeight: 1, padding: '0 6px',
+  background: 'transparent', color: 'var(--text-tertiary)',
+  border: 'none', cursor: 'pointer', borderRadius: 3,
 };

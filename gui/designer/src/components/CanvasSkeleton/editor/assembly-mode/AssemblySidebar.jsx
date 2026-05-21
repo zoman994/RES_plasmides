@@ -6,7 +6,7 @@
  */
 import { useMemo, useState } from 'react';
 
-export default function AssemblySidebar({ containers }) {
+export default function AssemblySidebar({ containers, onClose }) {
   const [filter, setFilter] = useState('');
 
   const list = useMemo(() => {
@@ -31,14 +31,15 @@ export default function AssemblySidebar({ containers }) {
         flexDirection: 'column',
       }}
     >
-      <div style={{ padding: 8, borderBottom: '1px solid var(--border-subtle)' }}>
+      <div style={{ padding: 8, borderBottom: '1px solid var(--border-subtle)', display: 'flex', gap: 6, alignItems: 'center' }}>
         <input
           data-testid="assembly-sidebar-filter"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           placeholder="Фильтр по контейнерам проекта…"
           style={{
-            width: '100%',
+            flex: 1,
+            minWidth: 0,
             fontSize: 11.5,
             padding: '5px 8px',
             border: '1px solid var(--border-subtle)',
@@ -48,6 +49,20 @@ export default function AssemblySidebar({ containers }) {
             outline: 'none',
           }}
         />
+        {typeof onClose === 'function' && (
+          <button
+            type="button"
+            data-testid="assembly-sidebar-close"
+            onClick={onClose}
+            title="Скрыть панель (вернуть — кнопка «Палитра»)"
+            style={{
+              fontSize: 13, lineHeight: 1, padding: '0 6px',
+              background: 'transparent', color: 'var(--text-tertiary)',
+              border: 'none', cursor: 'pointer', borderRadius: 3,
+              flexShrink: 0,
+            }}
+          >×</button>
+        )}
       </div>
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 6 }}>
         {list.length === 0 ? (

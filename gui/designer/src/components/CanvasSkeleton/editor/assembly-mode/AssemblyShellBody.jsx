@@ -38,7 +38,7 @@ import MutationModal from './MutationModal';
 import { autoGroupPipeline } from '../../lib/auto-group-pipeline';
 import AssemblyPrimersPanel from './AssemblyPrimersPanel';
 import RealiseModal from './RealiseModal';
-import EmptyAssemblyHint from './EmptyAssemblyHint';
+import EmptyAssemblyLibrary from './EmptyAssemblyLibrary';
 import { useAssemblyPrimerWriting } from './useAssemblyPrimerWriting';
 import { findInsertIndexAtPosition } from '../../lib/assembly-primer-utils';
 
@@ -115,6 +115,18 @@ export default function AssemblyShellBody({ draft }) {
   // K14 — mutation modal context: { pieceId, fromBase, position } | null.
   const [mutationFor, setMutationFor] = useState(null);
   const [realiseOpen, setRealiseOpen] = useState(false);
+  // V92 — каждая правая/нижняя панель получает свой close (×); скрытие
+  // живёт в `hiddenPanels` set. «Палитра» button (AssemblyHeader) ребёт
+  // restoring: click clears the set → все скрытые панели возвращаются.
+  const [hiddenPanels, setHiddenPanels] = useState(() => new Set());
+  const hidePanel = useCallback((id) => {
+    setHiddenPanels((prev) => {
+      const n = new Set(prev);
+      n.add(id);
+      return n;
+    });
+  }, []);
+  const showAllPanels = useCallback(() => setHiddenPanels(new Set()), []);
   const dropPosRef = useRef(0);
 
   const onSelectRange = useCallback((start, end, mode, strand) => {
@@ -274,6 +286,11 @@ export default function AssemblyShellBody({ draft }) {
           draftId, !(draft.topology && draft.topology.circular),
         )}
         onRealise={() => setRealiseOpen(true)}
+        /* V92 — «Палитра» button restores hidden side-panels back when
+           at least one is hidden. Otherwise behaves as before (opens
+           color legend). */
+        anyPanelHidden={hiddenPanels.size > 0}
+        onPaletteClick={hiddenPanels.size > 0 ? showAllPanels : undefined}
         /* AV-K10 — collapse editor → canvas sequence view of this zone.
            Сохраняет state, just closes the editor and flips the zone
            viewMode to 'sequence'. Re-entry through «🧬 Открыть сборку»
@@ -303,7 +320,12 @@ export default function AssemblyShellBody({ draft }) {
           }}
         >
           {draft.segments.length === 0 ? (
-            <EmptyAssemblyHint />
+            <EmptyAssemblyLibrary
+              onPickEntry={onPickEntry}
+              onAddSnippet={() => setSnippetOpen(true)}
+              onAddSynthesis={() => setSynthesisOpen(true)}
+              onAddGap={() => setGapOpen(true)}
+            />
           ) : (
             <SequenceTab
               sequence={sequence}
@@ -328,21 +350,33 @@ export default function AssemblyShellBody({ draft }) {
           )}
         </div>
 
-        {/* Right rail — conditional panels per spec §4.
-            AssemblySidebar: shown when project has containers (drag-source pool).
-            AssemblyPrimersPanel: shown when there are primers OR segments to design from.
-            AssemblyPipelinePanel: shown only when groups exist. */}
-        {((state.containers || []).length > 0
-          || (viewerPrimers || []).length > 0
-          || draft.segments.length > 0) && (
-          <div style={{ width: 248, flexShrink: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-            {(state.containers || []).length > 0 && (
-              <AssemblySidebar containers={state.containers || []} />
-            )}
-            {(((viewerPrimers || []).length > 0) || draft.segments.length > 0) && (
-              <AssemblyPrimersPanel draftId={draftId} />
-            )}
-          </div>
+        {/* Right rail — conditional panels per spec §4 + Игорь 20.05.2026:
+            «спрятать мини канвас в правом верхнем углу». Now strictly
+            gated on `segments.length > 0` — when the assembly is empty
+            the centre library picker is the only UI. */}
+        {draft.segments.length > 0 && (
+          (() => {
+            const showSidebar = (state.containers || []).length > 0 && !hiddenPanels.has('sidebar');
+            const showPrimers = (((viewerPrimers || []).length > 0) || draft.segments.length > 0)
+              && !hiddenPanels.has('primers');
+            if (!showSidebar && !showPrimers) return null;
+            return (
+              <div style={{ width: 248, flexShrink: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                {showSidebar && (
+                  <AssemblySidebar
+                    containers={state.containers || []}
+                    onClose={() => hidePanel('sidebar')}
+                  />
+                )}
+                {showPrimers && (
+                  <AssemblyPrimersPanel
+                    draftId={draftId}
+                    onClose={() => hidePanel('primers')}
+                  />
+                )}
+              </div>
+            );
+          })()
         )}
 
         {/* AE-K2 spec §4 deviation: panel shows on op-groups OR ≥2 segments.
@@ -350,13 +384,16 @@ export default function AssemblyShellBody({ draft }) {
             button (the only way to bulk-group remaining pieces) lives
             inside the panel — gating it behind "must create a group first"
             traps users. Keeping it reachable as soon as grouping is
-            biologically meaningful (≥2 segments). */}
-        {((state.operations || []).some(
+            biologically meaningful (≥2 segments).
+            Игорь 20.05.2026: also hide when segments.length === 0 to
+            keep the empty-state editor library-picker-only. */}
+        {draft.segments.length > 0 && !hiddenPanels.has('pipeline') && ((state.operations || []).some(
           (op) => op && op.isOpGroup && op.zoneId === draftId,
         ) || draft.segments.length >= 2) && (
         <AssemblyPipelinePanel
           draftId={draftId}
           zoneId={draftId}
+          onClose={() => hidePanel('pipeline')}
           onAutomode={() => {
             // K10 — run the heuristic on the latest state; apply only
             // layer-0 groups (real piece ids). Layer-1+ uses indices
@@ -447,6 +484,11 @@ export default function AssemblyShellBody({ draft }) {
         onAddGap={() => setGapOpen(true)}
         selectedSegmentIds={selectedSegmentIds}
         onSewSelected={() => setGroupPickerIds(Array.from(selectedSegmentIds))}
+        /* Игорь 20.05.2026: «снизу кнопки обвес и тд убрать». When the
+           assembly is empty, the toolbar hides the + buttons and shows
+           only Undo/Redo. The + entry-points are taken over by the
+           inline EmptyAssemblyLibrary in the centre. */
+        compact={draft.segments.length === 0}
       />
 
       {pickerOpen && (

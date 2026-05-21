@@ -153,7 +153,7 @@ function EditModal({ primer, draftId, actions, onClose }) {
   );
 }
 
-export default function AssemblyPrimersPanel({ draftId }) {
+export default function AssemblyPrimersPanel({ draftId, onClose }) {
   const state = useSkeletonState();
   const actions = useSkeletonActions();
   const draft = useAssemblyDraftById(draftId);
@@ -200,9 +200,22 @@ export default function AssemblyPrimersPanel({ draftId }) {
         position: 'relative',
       }}
     >
-      <div style={{ display: 'flex', borderBottom: '1px solid var(--border-subtle)' }}>
+      <div style={{ display: 'flex', borderBottom: '1px solid var(--border-subtle)', alignItems: 'stretch' }}>
         <button type="button" data-testid="assembly-primers-tab-primers" onClick={() => setTab('primers')} style={tabBtn(tab === 'primers')}>Праймеры</button>
         <button type="button" data-testid="assembly-primers-tab-boundaries" onClick={() => setTab('boundaries')} style={tabBtn(tab === 'boundaries')}>Границы</button>
+        {typeof onClose === 'function' && (
+          <button
+            type="button"
+            data-testid="assembly-primers-panel-close"
+            onClick={onClose}
+            title="Скрыть панель (вернуть — кнопка «Палитра»)"
+            style={{
+              flexShrink: 0, padding: '0 10px',
+              background: 'transparent', color: 'var(--text-tertiary)',
+              border: 'none', cursor: 'pointer', fontSize: 13, lineHeight: 1,
+            }}
+          >×</button>
+        )}
       </div>
 
       <div data-testid="assembly-primers-header" style={{ padding: '5px 10px', fontSize: 10.5, color: 'var(--text-secondary)' }}>
