@@ -524,12 +524,19 @@ describe('K3 — EditorWindowShell lifecycle', () => {
 // ════════════════════════════════════════════════════════════════════
 // K4 — MiniProjectCanvas
 // ════════════════════════════════════════════════════════════════════
+// V91 — MiniProjectCanvas стартует свёрнутым; для K4 тестов (маркеры)
+// разворачиваем явно.
+function expandMini() {
+  const icon = screen.queryByTestId('mini-canvas-collapsed');
+  if (icon) act(() => { fireEvent.click(icon); });
+}
 describe('K4 — MiniProjectCanvas markers + click-to-switch', () => {
   it('renders a marker per container; active container highlighted', () => {
     renderShell();
     seed('c-a', 'A');
     seed('c-b', 'B');
     act(() => { shellActions.openEditorTab('c-a'); });
+    expandMini();
     expect(screen.getByTestId('mini-canvas')).toBeTruthy();
     const mA = screen.getByTestId('mini-canvas-container-c-a');
     const mB = screen.getByTestId('mini-canvas-container-c-b');
@@ -542,6 +549,7 @@ describe('K4 — MiniProjectCanvas markers + click-to-switch', () => {
     seed('c-a', 'A');
     seed('c-b', 'B');
     act(() => { shellActions.openEditorTab('c-a'); });
+    expandMini();
     expect(shellState.editorContext.tabs).toHaveLength(1);
     fireEvent.click(screen.getByTestId('mini-canvas-container-c-b'));
     expect(shellState.editorContext.tabs).toHaveLength(2);
@@ -554,26 +562,29 @@ describe('K4 — MiniProjectCanvas markers + click-to-switch', () => {
     seed('c-b', 'B');
     act(() => { shellActions.openEditorTab('c-a'); });
     act(() => { shellActions.openEditorTab('c-b'); });
+    expandMini();
     expect(deriveActiveContainerId(shellState.editorContext)).toBe('c-b');
     fireEvent.click(screen.getByTestId('mini-canvas-container-c-a'));
     expect(shellState.editorContext.tabs).toHaveLength(2); // no dup
     expect(deriveActiveContainerId(shellState.editorContext)).toBe('c-a');
   });
 
-  it('V81 — mini-canvas collapses to an icon and re-expands', () => {
+  it('V81 + V91 — mini-canvas default collapsed; expand / collapse cycle works', () => {
     renderShell();
     seed('c-a', 'A');
     act(() => { shellActions.openEditorTab('c-a'); });
-    // Default expanded (V68 always-visible preserved).
-    expect(screen.getByTestId('mini-canvas')).toBeTruthy();
-    // Collapse → frame gone, restore icon shown.
-    act(() => { fireEvent.click(screen.getByTestId('mini-canvas-collapse')); });
-    expect(screen.queryByTestId('mini-canvas')).toBeNull();
+    // V91 — default `collapsed: true` чтобы не перекрывать правую
+    // панель «Праймеры/Границы».
     expect(screen.getByTestId('mini-canvas-collapsed')).toBeTruthy();
-    // Click icon → expands back.
+    expect(screen.queryByTestId('mini-canvas')).toBeNull();
+    // Click icon → expands.
     act(() => { fireEvent.click(screen.getByTestId('mini-canvas-collapsed')); });
     expect(screen.getByTestId('mini-canvas')).toBeTruthy();
     expect(screen.queryByTestId('mini-canvas-collapsed')).toBeNull();
+    // Click collapse → back to icon.
+    act(() => { fireEvent.click(screen.getByTestId('mini-canvas-collapse')); });
+    expect(screen.queryByTestId('mini-canvas')).toBeNull();
+    expect(screen.getByTestId('mini-canvas-collapsed')).toBeTruthy();
   });
 
   it('operation markers render', () => {
@@ -583,6 +594,7 @@ describe('K4 — MiniProjectCanvas markers + click-to-switch', () => {
     act(() => {
       shellActions.opAdd({ position: { x: 400, y: 200 }, kind: 'pcr', inputs: [], commit: true });
     });
+    expandMini();
     const opMarkers = screen.queryAllByTestId(/^mini-canvas-op-/);
     expect(opMarkers.length).toBeGreaterThanOrEqual(1);
   });
@@ -716,10 +728,9 @@ describe('V68 — MiniProjectCanvas always visible above editor content', () => 
     renderShell();
     seed('c-a', 'A');
     act(() => { shellActions.openEditorTab('c-a'); });
+    expandMini();
     const mini = screen.getByTestId('mini-canvas');
     const z = Number(mini.style.zIndex);
-    // Editor content panels sit at 25–35; the mini-canvas must paint
-    // above them so it is never hidden by the editor body.
     expect(z).toBeGreaterThanOrEqual(40);
   });
 
@@ -728,6 +739,7 @@ describe('V68 — MiniProjectCanvas always visible above editor content', () => 
     seed('c-a', 'Alpha');
     seed('c-b', 'Beta');
     act(() => { shellActions.openEditorTab('c-a'); });
+    expandMini();
     const labels = screen.getAllByTestId('mini-canvas-label');
     expect(labels.length).toBeGreaterThanOrEqual(2);
     const txt = labels.map((l) => l.textContent).join(' ');
@@ -739,6 +751,7 @@ describe('V68 — MiniProjectCanvas always visible above editor content', () => 
     renderShell();
     seed('c-long', 'this-is-an-extremely-long-container-name-xyz');
     act(() => { shellActions.openEditorTab('c-long'); });
+    expandMini();
     const labels = screen.getAllByTestId('mini-canvas-label');
     const long = labels.find((l) => l.textContent.startsWith('this-is'));
     expect(long).toBeTruthy();

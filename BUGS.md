@@ -57,9 +57,9 @@
 - **Корень:** EditorTabStrip для assembly-таба искал draft только в `state.assemblyDrafts`. Когда таб открыт на zone id (T6 архитектура), legacy slice пуст → fallback на «(пустой)», даже если у зоны есть имя.
 - **Фикс:** `StoreTab` + `PropTab` используют `selectAssemblyTarget(state, tab.assemblyDraftId)` — тот же dual-resolve, что у `AssemblyModeShell` + `SegmentDetailPanel`. `EditorWindowShell` теперь прокидывает `zones`+`pieces` в `EditorTabStrip` для prop-mode path. Legacy assemblyDrafts путь сохранён, «(пустой)» остаётся только для unresolved-id.
 
-**V91 — MiniProjectCanvas в развёрнутом виде перекрывает правую панель редактора** (OPEN, зафиксирован 21.05.2026, найден на визуальной приёмке M-CANVAS-WORKFLOW-UX).
-- **Симптом:** развёрнутый мини-канвас (MiniProjectCanvas, floating top-right, zIndex 40) накладывается на правую панель «Праймеры/Границы» и поле поиска — перекрывает функциональный интерфейс.
-- **Подход для Code:** убрать overlap. Варианты: репозиционировать так, чтобы не накрывал правую панель / встроить в layout (не floating) / дефолт = свёрнутый. V81 дал collapse-toggle, но развёрнутое состояние всё равно коллизирует. Направление фикса выбрать с Игорем при сборке задания Code.
+**[x] V91 — MiniProjectCanvas в развёрнутом виде перекрывает правую панель редактора** (FIXED 21.05.2026; default `collapsed: true`).
+- **Симптом:** развёрнутый мини-канвас перекрывал «Праймеры/Границы» и поле поиска.
+- **Фикс (вариант «дефолт свёрнутый» по spec):** `MiniProjectCanvas.useState(collapsed)` initial = `true`. Биолог разворачивает кликом по иконке 🗺. V81 collapse/expand cycle сохранён. Существующие К4 / V68 тесты получили `expandMini()` helper перед marker-checks.
 
 **V93 — «Палитра» и список «Источник» дублируют управление цветом** (OPEN, зафиксирован 21.05.2026, найден на визуальной приёмке M-CANVAS-WORKFLOW-UX).
 - **Симптом:** кнопка «Палитра» открывает дропдаун с цветовой легендой источников (pGEX-4T-1 / pBluescript SK(+)); тот же цвет дублируется цветными квадратиками в списке «Источник» внизу (плюс инспектор «Сегмент» → «Цвет» — третья точка). Управление цветом размазано.

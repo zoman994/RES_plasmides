@@ -117,9 +117,11 @@ export default function MiniProjectCanvas() {
   const ew = (STRINGS.canvasSkeleton && STRINGS.canvasSkeleton.editorWindow) || {};
   const state = useSkeletonState();
   const actions = useSkeletonActions();
-  // V81 — collapsible to an icon when not needed (default expanded —
-  // keeps V68 always-visible behaviour until the biolog folds it).
-  const [collapsed, setCollapsed] = useState(false);
+  // V81 — collapsible to an icon when not needed.
+  // V91 (21.05.2026) — default `collapsed: true` чтобы развёрнутая
+  // мини-канвас не перекрывала правую панель «Праймеры/Границы» +
+  // поиск. Биолог разворачивает кликом по иконке 🗺.
+  const [collapsed, setCollapsed] = useState(true);
   const activeContainerId = deriveActiveContainerId(state.editorContext);
 
   const containers = state.containers || [];
