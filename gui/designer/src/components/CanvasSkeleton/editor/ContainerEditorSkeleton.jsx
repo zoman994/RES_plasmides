@@ -158,20 +158,41 @@ export default function ContainerEditorSkeleton() {
 
   const onPieceCreateConfirm = useCallback((fields) => {
     setPieceCreateModal((cur) => {
-      if (cur && activeContainer) {
+      if (!cur || !activeContainer) return null;
+      // V-followup 22.05.2026 — biolog «отметил как кусок» в Container
+      // Window НЕ должен исчезать в ничто. Target-zone resolve:
+      //   1) activeContainer.zoneId (если контейнер сам из зоны)
+      //   2) state.focusedZoneId (последняя focused зона канваса)
+      //   3) первая существующая зона
+      //   4) если зон вообще нет → создаём «Сборка N» и кладём piece туда
+      let targetZoneId = activeContainer.zoneId
+        || (state && state.focusedZoneId)
+        || (state && Array.isArray(state.zones) && state.zones[0] && state.zones[0].id)
+        || null;
+      if (!targetZoneId) {
+        // No zone — create one. Default bounds; reducer auto-naming
+        // («Сборка N») берёт на себя `zone-model.nextZoneName`.
+        targetZoneId = `zn-${Math.random().toString(36).slice(2, 10)}`;
         actions.zoneDispatch({
-          type: 'CREATE_PIECE',
-          piece: {
-            ...cur.data,
-            name: fields.name,
-            functionalLabel: fields.functionalLabel,
-            zoneId: activeContainer.zoneId || null,
+          type: 'CREATE_ZONE',
+          zone: {
+            id: targetZoneId,
+            bounds: { x: 80, y: 80, width: 600, height: 320 },
           },
         });
       }
+      actions.zoneDispatch({
+        type: 'CREATE_PIECE',
+        piece: {
+          ...cur.data,
+          name: fields.name,
+          functionalLabel: fields.functionalLabel,
+          zoneId: targetZoneId,
+        },
+      });
       return null;
     });
-  }, [actions, activeContainer]);
+  }, [actions, activeContainer, state]);
 
   // Reset cursor when biolog switches container.
   useEffect(() => {
