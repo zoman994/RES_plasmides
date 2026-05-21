@@ -134,6 +134,42 @@ export default function ContainerEditorSkeleton() {
   const [cursorSelectionStrand, setCursorSelectionStrand] = useState(1);
   const [pendingScroll, setPendingScroll] = useState(null);
 
+  // V-followup 22.05.2026 — биолог: «выделение в Container Window,
+  // открытом двойным кликом на бокс в сборке, не работает». Та же
+  // race condition, что в RangePicker: после короткого быстрого drag
+  // pointerMovedRef в useSelectionState не успевает встать true, и
+  // синтетический click фолбэк зовёт onCaretChange(pos,
+  // {extendSelection:false}) → anchor collapse'ится на pos.
+  // Защита: трекаем lastExtendAt, игнорим non-extend caretChange в
+  // течение 250 ms после extend.
+  const lastExtendAtRef = useRef(0);
+  const DRAG_GRACE_MS = 250;
+
+  // V-followup 22.05.2026 — «затемнение сиквенса после разделителя
+  // не работает». Container editor, открытый из assembly, должен
+  // показать дим для участков контейнера ВНЕ диапазона того piece'а,
+  // через который он был открыт. Резолвим piece-range из state.pieces
+  // (первый piece в текущей focused-зоне, sourceIds которого содержит
+  // активный контейнер).
+  const containerRangeMask = useMemo(() => {
+    if (!activeContainer) return null;
+    const pieces = state.pieces || [];
+    const zoneId = activeContainer.zoneId || state.focusedZoneId || null;
+    const candidate = pieces.find((p) => {
+      if (!p || !Array.isArray(p.sourceIds) || !p.sourceIds.includes(activeContainer.id)) return false;
+      if (zoneId && p.zoneId !== zoneId) return false;
+      return true;
+    });
+    if (!candidate || !Array.isArray(candidate.ranges) || candidate.ranges.length === 0) {
+      return null;
+    }
+    const r = candidate.ranges.find((rg) => rg && rg.sourceId === activeContainer.id);
+    if (!r || !Number.isFinite(r.start) || !Number.isFinite(r.end) || r.end <= r.start) {
+      return null;
+    }
+    return { start: r.start, end: r.end };
+  }, [activeContainer, state.pieces, state.focusedZoneId]);
+
   // T5 — piece authoring (DEC-T5-07/08/11). onCreatePiece comes from
   // SequenceView (selection via P / context-menu = Способ А; feature =
   // Способ Б). Способ В = PiecePrimersPickModal via the toolbar button.
@@ -316,8 +352,17 @@ export default function ContainerEditorSkeleton() {
 
   const onCaretChangeFromView = useCallback((pos, opts) => {
     if (typeof pos !== 'number' || !Number.isFinite(pos)) return;
+    const isExtending = !!(opts && opts.extendSelection);
+    // V-followup — drag-grace: игнорим non-extend click в течение
+    // 250 ms после последнего extend (синтетический click после drag).
+    if (!isExtending) {
+      const sinceExtend = Date.now() - lastExtendAtRef.current;
+      if (sinceExtend < DRAG_GRACE_MS) return;
+    }
     setCursorPos(pos);
-    if (!opts || !opts.extendSelection) {
+    if (isExtending) {
+      lastExtendAtRef.current = Date.now();
+    } else {
       setCursorAnchor(pos);
       setCursorSelectionMode('dna');
     }
@@ -684,6 +729,7 @@ export default function ContainerEditorSkeleton() {
                     onRestrictionClick={onRestrictionClick}
                     restrictionHighlightKey={restrictionHighlightKey}
                     onCreatePiece={handleCreatePiece}
+                    outOfRangeMask={containerRangeMask}
                   />
                 </div>
                 <SequenceToolbar
@@ -758,6 +804,7 @@ export default function ContainerEditorSkeleton() {
                     onRestrictionClick={onRestrictionClick}
                     restrictionHighlightKey={restrictionHighlightKey}
                     onCreatePiece={handleCreatePiece}
+                    outOfRangeMask={containerRangeMask}
                   />
                 </div>
                 <SequenceToolbar
