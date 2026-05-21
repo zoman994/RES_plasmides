@@ -120,7 +120,15 @@ function EntryRow({
       >
         <span
           data-testid={`skeleton-placeholder-picker-thumb-${entry.id}`}
-          style={{ flexShrink: 0, width: 20, height: 20, display: 'flex' }}
+          style={{
+            flexShrink: 0, width: 20, height: 20,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            // V85 follow-up — PlasmidMiniMap рисует feature labels с
+            // leader-line'ом наружу (overflow:visible SVG). На 20×20
+            // thumb'е labels вылазят на текст строки. Клипаем здесь —
+            // labels не читаются на таком размере всё равно.
+            overflow: 'hidden',
+          }}
         >
           <PickerMiniThumb entry={entry} />
         </span>
