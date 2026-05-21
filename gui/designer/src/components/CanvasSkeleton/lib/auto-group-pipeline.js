@@ -26,9 +26,23 @@ export function autoGroupPipeline(zone, state) {
   if (sources.length === 0) return { groups: [] };
   const ids = sources.map((p) => p.id);
 
+  // V89 — если все un-grouped sources получены через RE-сайт пикер
+  // (acquisitionMethod='restriction'), то предполагаемый метод =
+  // RE-клонирование с ligation-junction'ами. Default 'restriction'
+  // kind вместо overlap_pcr/gibson. Heuristic применяется только при
+  // ВСЕХ pieces == restriction чтобы не сломать смешанные сборки.
+  const allRestriction = sources.length > 0
+    && sources.every((p) => p && p.acquisitionMethod === 'restriction');
+
   // Single layer for linear final OR small circular assemblies.
   if (finalTopology === 'linear' || sources.length <= 6) {
-    return { groups: [{ kind: 'overlap_pcr', pieceIds: ids, layer: 0 }] };
+    return {
+      groups: [{
+        kind: allRestriction ? 'restriction' : 'overlap_pcr',
+        pieceIds: ids,
+        layer: 0,
+      }],
+    };
   }
 
   // Multi-step: ⌈√N⌉ layer-0 ovPCR buckets + 1 layer-1 final op.
@@ -36,13 +50,15 @@ export function autoGroupPipeline(zone, state) {
   const layer0 = [];
   for (let i = 0; i < ids.length; i += groupSize) {
     layer0.push({
-      kind: 'overlap_pcr',
+      kind: allRestriction ? 'restriction' : 'overlap_pcr',
       pieceIds: ids.slice(i, i + groupSize),
       layer: 0,
     });
   }
   const layer1 = [{
-    kind: finalTopology === 'circular' ? 'gibson' : 'overlap_pcr',
+    kind: allRestriction
+      ? 'restriction'
+      : (finalTopology === 'circular' ? 'gibson' : 'overlap_pcr'),
     intermediateFromGroups: layer0.map((_, i) => i),
     layer: 1,
   }];

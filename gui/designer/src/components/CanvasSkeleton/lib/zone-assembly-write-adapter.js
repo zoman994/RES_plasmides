@@ -88,6 +88,12 @@ export function routeAssemblyWriteToZone(state, action) {
     case 'INSERT_SEGMENT': {
       const c = (state.containers || []).find((x) => x.id === action.sourceContainerId);
       if (!c) return state;
+      // V89 — RangePicker сообщает как выбран фрагмент. Mapping в
+      // valid ACQUISITION_METHOD_ENUM: 'restriction' (RE-сайт) →
+      // 'restriction'; остальное ('cursor' / 'feature' / 'numeric') →
+      // 'undefined' (default), чтобы piece-invariants не отвергал.
+      const am = action.acquisitionMethod;
+      const acquisitionMethod = am === 'restriction' ? 'restriction' : 'undefined';
       const pieceData = {
         kind: 'sourced',
         name: c.name || 'piece',
@@ -99,7 +105,7 @@ export function routeAssemblyWriteToZone(state, action) {
           orientation: action.rc ? 'reverse' : 'forward',
         }],
         origin: 'selection',
-        acquisitionMethod: 'undefined',
+        acquisitionMethod,
         acquisitionParams: {},
       };
       return createPieceInZone(state, zoneId, pieceData, action.insertAtIndex);

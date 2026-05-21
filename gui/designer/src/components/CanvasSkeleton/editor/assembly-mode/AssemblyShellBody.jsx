@@ -194,8 +194,13 @@ export default function AssemblyShellBody({ draft }) {
   // existing canvas container id, then insert a sourced segment with
   // the chosen [start, end, rc]. For the entry path the fresh container
   // id is recovered via snapshot-diff on the *latest* state (stateRef).
-  const onRangeConfirm = useCallback(({ start, end, rc }) => {
+  const onRangeConfirm = useCallback(({ start, end, rc, acquisitionMethod }) => {
     if (!rangeSource) return;
+    // V89 — picker says как фрагмент был выбран; пробрасываем в action
+    // как opts, чтобы piece получил `acquisitionMethod='restriction'`
+    // (или другую отметку) и auto-grouping/junction-derivation потом
+    // дефолтили на ligation-junction для RE-pieces.
+    const opts = { acquisitionMethod };
     if (rangeSource.kind === 'entry') {
       const entry = rangeSource.payload;
       const before = new Set((stateRef.current.containers || []).map((c) => c.id));
@@ -207,10 +212,10 @@ export default function AssemblyShellBody({ draft }) {
           (c) => !before.has(c.id) && c.origin && c.origin.sourceEntryId === entry.id,
         ) || containers.find((c) => !before.has(c.id));
         if (!fresh) return;
-        actions.insertSegment(draftId, fresh.id, start, end, rc, undefined);
+        actions.insertSegment(draftId, fresh.id, start, end, rc, undefined, opts);
       }, 0);
     } else {
-      actions.insertSegment(draftId, rangeSource.payload.id, start, end, rc, rangeSource.atIndex);
+      actions.insertSegment(draftId, rangeSource.payload.id, start, end, rc, rangeSource.atIndex, opts);
       setRangeSource(null);
     }
   }, [actions, draftId, rangeSource]);

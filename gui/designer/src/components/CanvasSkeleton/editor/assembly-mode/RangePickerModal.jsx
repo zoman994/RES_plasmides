@@ -50,6 +50,14 @@ export default function RangePickerModal({ source, onConfirm, onCancel }) {
   const [selectionMode, setSelectionMode] = useState('dna');
   const [selectionStrand, setSelectionStrand] = useState(1);
   const [reHighlightKey, setReHighlightKey] = useState(null);
+  // V88 — two-click RE-site pair: первый клик копит site, второй
+  // замыкает выделение на [cutA, cutB]. Курсор/numeric/feature
+  // сбрасывают.
+  const [firstRESite, setFirstRESite] = useState(null);
+  // V89 — track как был выбран фрагмент. 'restriction' → caller
+  // выставит piece.acquisitionMethod='restriction' и автогруппа
+  // даст ligation-junction по умолчанию.
+  const [acquisitionMethod, setAcquisitionMethod] = useState('cursor');
 
   // Ensure RE sites are visible inside the modal (the Container editor
   // does the same on mount). Don't restore on unmount — biolog toggle
@@ -76,6 +84,8 @@ export default function RangePickerModal({ source, onConfirm, onCancel }) {
     const en = Number(a.end) || 0;
     setStart(s); setEnd(en);
     setCaretAnchor(s); setCaretPos(en);
+    setFirstRESite(null);
+    setAcquisitionMethod('feature');
   };
 
   // Mirror AssemblyShellBody — every selection updates BOTH the
@@ -88,6 +98,8 @@ export default function RangePickerModal({ source, onConfirm, onCancel }) {
     setCaretAnchor(s); setCaretPos(e);
     setSelectionMode(mode === 'aa' ? 'aa' : 'dna');
     setSelectionStrand(strand === -1 ? -1 : 1);
+    setFirstRESite(null);
+    setAcquisitionMethod('cursor');
   };
 
   const onCaretChange = (pos, opts) => {
@@ -102,24 +114,63 @@ export default function RangePickerModal({ source, onConfirm, onCancel }) {
       const en = Math.max(caretAnchor, pos);
       setStart(s); setEnd(en);
     }
+    setFirstRESite(null);
+    setAcquisitionMethod('cursor');
   };
 
-  // Click on an RE site → SNAP the selection onto the recognition
-  // coordinates. Не открываем cut popover (резать источник внутри
-  // RangePicker'а биологически бессмысленно — он не редактируется).
+  // V88 — RE-site click. Первый клик: store + snap to recognition.
+  // Второй клик (по любому другому RE-сайту): замыкаем фрагмент на
+  // [cutA, cutB] (top-strand cut позиции из RE_ENZYMES[enzyme].cut[0]),
+  // сбрасываем firstRESite. Resulting acquisitionMethod='restriction'
+  // (V89). Резать источник не пробуем — это range picker, не редактор.
   const onRestrictionClick = (site /* , e */) => {
     if (!site || typeof site.position !== 'number') return;
     const enz = RE_ENZYMES[site.enzyme];
     const recogLen = enz && enz.site ? enz.site.length : 6;
+    const cutOffset = enz && Array.isArray(enz.cut) ? enz.cut[0] : 1;
+    if (firstRESite && firstRESite.position !== site.position) {
+      const firstEnz = RE_ENZYMES[firstRESite.enzyme];
+      const firstCutOffset = firstEnz && Array.isArray(firstEnz.cut) ? firstEnz.cut[0] : 1;
+      const cutA = firstRESite.position + firstCutOffset;
+      const cutB = site.position + cutOffset;
+      const lo = Math.min(cutA, cutB);
+      const hi = Math.max(cutA, cutB);
+      setStart(lo); setEnd(hi);
+      setCaretAnchor(lo); setCaretPos(hi);
+      setReHighlightKey(`${firstRESite.enzyme}-${firstRESite.position}|${site.enzyme}-${site.position}`);
+      setFirstRESite(null);
+      setAcquisitionMethod('restriction');
+      return;
+    }
+    // First click — snap to recognition site of A.
     const s = site.position;
     const en = site.position + recogLen;
     setStart(s); setEnd(en);
     setCaretAnchor(s); setCaretPos(en);
     setReHighlightKey(`${site.enzyme}-${site.position}`);
+    setFirstRESite(site);
+    setAcquisitionMethod('restriction');
   };
 
+  // V88 — test escape hatch. SequenceView's RE-click goes through
+  // deep SVG markers that are hard to simulate in unit tests; this
+  // window event lets tests drive the pair-math directly without
+  // mounting the heavy viewer.
+  useEffect(() => {
+    const onEv = (e) => {
+      if (e && e.detail) onRestrictionClick(e.detail);
+    };
+    window.addEventListener('__v88_re_click__', onEv);
+    return () => window.removeEventListener('__v88_re_click__', onEv);
+  });
+
   const confirm = () => {
-    onConfirm({ start: Number(start), end: Number(end), rc: !!rc });
+    onConfirm({
+      start: Number(start),
+      end: Number(end),
+      rc: !!rc,
+      acquisitionMethod,
+    });
   };
 
   const hasSelection = end > start;
@@ -195,6 +246,8 @@ export default function RangePickerModal({ source, onConfirm, onCancel }) {
                 const v = Number(e.target.value);
                 setStart(v);
                 setCaretAnchor(v);
+                setFirstRESite(null);
+                setAcquisitionMethod('numeric');
               }}
               style={numInput}
             />
@@ -209,6 +262,8 @@ export default function RangePickerModal({ source, onConfirm, onCancel }) {
                 const v = Number(e.target.value);
                 setEnd(v);
                 setCaretPos(v);
+                setFirstRESite(null);
+                setAcquisitionMethod('numeric');
               }}
               style={numInput}
             />
@@ -237,7 +292,11 @@ export default function RangePickerModal({ source, onConfirm, onCancel }) {
             </select>
           </label>
           <span style={{ flex: 1, fontSize: 10.5, color: 'var(--text-tertiary)' }}>
-            {hasSelection ? `${end - start} bp выбрано` : 'ничего не выделено'}
+            {firstRESite
+              ? `RE-сайт «${firstRESite.enzyme}» зафиксирован — кликни второй RE, чтобы взять фрагмент между ними`
+              : hasSelection
+                ? `${end - start} bp выбрано · метод: ${acquisitionMethod}`
+                : 'ничего не выделено'}
           </span>
           <button type="button" data-testid="range-picker-cancel-2" onClick={onCancel} style={ghostBtn}>Отмена</button>
           <button type="button" data-testid="range-picker-confirm" onClick={confirm} style={primaryBtn}>

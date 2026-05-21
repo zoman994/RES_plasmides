@@ -176,8 +176,15 @@ export function SkeletonProvider({ children }) {
     renameAssemblyDraft: (draftId, name) => dispatch({ type: 'RENAME_ASSEMBLY_DRAFT', draftId, name }),
     setAssemblyDraftTopology: (draftId, circular) => dispatch({ type: 'SET_ASSEMBLY_DRAFT_TOPOLOGY', draftId, circular }),
     setAssemblyDraftPosition: (draftId, position) => dispatch({ type: 'SET_ASSEMBLY_DRAFT_POSITION', draftId, position }),
-    insertSegment: (draftId, sourceContainerId, start, end, rc, insertAtIndex) => dispatch({
-      type: 'INSERT_SEGMENT', draftId, sourceContainerId, start, end, rc, insertAtIndex,
+    insertSegment: (draftId, sourceContainerId, start, end, rc, insertAtIndex, opts = {}) => dispatch({
+      type: 'INSERT_SEGMENT',
+      draftId,
+      sourceContainerId,
+      start, end, rc,
+      insertAtIndex,
+      // V89 — RE-сайт выбор → acquisitionMethod='restriction'.
+      // Курсор/feature/numeric → 'cursor' | 'feature' | 'numeric'.
+      acquisitionMethod: opts.acquisitionMethod || null,
     }),
     insertManualSegment: (draftId, params = {}, insertAtIndex) => dispatch({
       type: 'INSERT_MANUAL_SEGMENT', draftId, ...params, insertAtIndex,

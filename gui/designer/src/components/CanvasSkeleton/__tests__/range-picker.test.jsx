@@ -90,7 +90,9 @@ describe('K5 — RangePickerModal', () => {
       fireEvent.click(screen.getByTestId('range-picker-rc'));
     });
     act(() => { fireEvent.click(screen.getByTestId('range-picker-confirm')); });
-    expect(got).toEqual({ start: 2, end: 10, rc: true });
+    // V88/V89 — confirm payload теперь несёт acquisitionMethod.
+    expect(got).toMatchObject({ start: 2, end: 10, rc: true });
+    expect(got.acquisitionMethod).toBe('numeric');
   });
 
   it('feature dropdown select → start/end snap to that feature', () => {
@@ -102,7 +104,8 @@ describe('K5 — RangePickerModal', () => {
     expect(screen.getByTestId('range-picker-start').value).toBe('4');
     expect(screen.getByTestId('range-picker-end').value).toBe('12');
     act(() => { fireEvent.click(screen.getByTestId('range-picker-confirm')); });
-    expect(got).toEqual({ start: 4, end: 12, rc: false });
+    expect(got).toMatchObject({ start: 4, end: 12, rc: false });
+    expect(got.acquisitionMethod).toBe('feature');
   });
 
   it('Esc → onCancel', () => {
@@ -117,7 +120,8 @@ describe('K5 — «+ Плазмида» integration', () => {
   it('pick library entry → RangePicker → confirm default → full-length sourced piece', async () => {
     const zid = openEmptyZone();
     seedLib();
-    act(() => { fireEvent.click(screen.getByTestId('assembly-add-segment')); });
+    // Игорь 20.05.2026 — empty assembly now shows the inline library
+    // picker directly (EmptyAssemblyLibrary). No more «+ Плазмида» step.
     act(() => { fireEvent.click(screen.getByTestId('skeleton-placeholder-picker-item-lib-puc')); });
     const m = await screen.findByTestId('range-picker-modal');
     await act(async () => {
@@ -133,7 +137,6 @@ describe('K5 — «+ Плазмида» integration', () => {
   it('chosen sub-range is respected', async () => {
     const zid = openEmptyZone();
     seedLib();
-    act(() => { fireEvent.click(screen.getByTestId('assembly-add-segment')); });
     act(() => { fireEvent.click(screen.getByTestId('skeleton-placeholder-picker-item-lib-puc')); });
     const m = await screen.findByTestId('range-picker-modal');
     act(() => {

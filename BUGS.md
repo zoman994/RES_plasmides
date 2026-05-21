@@ -27,10 +27,9 @@
 - **Связь с Rust/Tauri:** НЕ связан. Bottleneck — React state propagation pipeline, не compute.
 - **STOP-условие фикса:** на ThinkPad 2013 или эквиваленте — selection drag smooth, нет visible frame drops на плазмиде до 15 kb.
 
-**V88 — В пикере «Выбор фрагмента» не работает выбор фрагмента двумя кликами по RE-сайтам** (OPEN, зафиксирован 21.05.2026, найден на визуальной приёмке M-CANVAS-WORKFLOW-UX). Функциональный дефект, не косметика.
-- **Симптом:** sub-header пикера advertises режим «RE-сайт», но выбор фрагмента между двумя рестриктазами не работает: клик по RE-сайту выделяет только recognition-span самого сайта (напр. EcoNI → start=11/end=22), повторный клик по второму сайту НЕ расширяет выделение до фрагмента между сайтами.
-- **Ожидаемое:** клик RE-сайт A → клик RE-сайт B → выделен фрагмент A..B между ними.
-- **Подход для Code:** проверить, реализован ли RE-site-pair режим вообще (vs broken). Two-click: первый клик ставит границу на сайте A, второй клик по сайту B замыкает выделение [A,B]. Курсорный и numeric режимы не ломать.
+**[x] V88 — В пикере «Выбор фрагмента» не работает выбор фрагмента двумя кликами по RE-сайтам** (FIXED 21.05.2026; pair-state в RangePickerModal + 3 теста range-picker-re-pair-v88).
+- **Симптом:** sub-header пикера advertises режим «RE-сайт», но выбор фрагмента между двумя рестриктазами не работал.
+- **Фикс:** RangePickerModal получил state `firstRESite`. Первый клик RE-site A → snap на recognition span + store A. Второй клик RE-site B → выделение [cutA, cutB] = [siteA.position+cut[0], siteB.position+cut[0]] (top-strand cut), reset. Курсор/numeric/feature сбрасывают накопленный RE. Footer hint показывает «RE-сайт A зафиксирован — кликни второй RE...». Test escape hatch — window event `__v88_re_click__` для unit-testing pair-math (реальный SVG-click тяжело симулировать в happy-dom).
 
 **[x] V92 — Панели, открываемые кнопкой «Палитра», невозможно закрыть** (FIXED 21.05.2026; per-panel × close + Палитра restore + 4 теста panel-close-v92).
 - **Симптом:** при нажатии «Палитра» в редакторе сборки появляются панель «Схема сборки» и соседние колонки (фильтр контейнеров, инспектор сегмента). Закрыть/свернуть их нельзя — нет close-контрола, повторное нажатие «Палитра» не убирает.
@@ -52,9 +51,9 @@
 - **Симптом:** в range picker сиквенс после end-divider рендерился тем же контрастом, что и выбранная часть.
 - **Фикс:** новый overlay `OutOfRangeMaskOverlay` рисует translucent rgba(245,245,244,0.65) маску на main-band rows ВНЕ `[start,end]` — на character-granularity (partial rows работают). SequenceView получил opt-in prop `outOfRangeMask={{start,end}}`, SequenceTab — pass-through. RangePickerModal передаёт `{start,end}` когда `hasSelection`. Library/Importer/PCR не передают prop → overlay не рендерится (back-compat).
 
-**V89 — Выбор фрагмента через RE-сайт не задаёт лигирование как предполагаемый метод клонирования** (OPEN, зафиксирован 21.05.2026, найден на визуальной приёмке M-CANVAS-WORKFLOW-UX; связано с V88).
-- **Ожидаемое:** фрагмент, выбранный в режиме «RE-сайт», очевидно получают рестрикцией → `piece.acquisitionMethod = 'restriction'`, предполагаемый трек сборки (junction / op-group kind) — лигирование (RE-клонирование), а не PCR/Gibson по умолчанию.
-- **Подход для Code:** связать selection mode пикера с `acquisitionMethod`: RE-сайт → 'restriction'. Automode/grouping и primer-derivation для restriction-piece дефолтят ligation-junction. Курсор/feature/numeric — поведение прежнее.
+**[x] V89 — Выбор фрагмента через RE-сайт не задаёт лигирование как предполагаемый метод клонирования** (FIXED 21.05.2026; acquisitionMethod через insertSegment → piece → auto-group + 6 тестов auto-group-pipeline-restriction-v89).
+- **Ожидаемое:** RE-сайт выбор → `piece.acquisitionMethod='restriction'`, auto-grouping → `kind='restriction'` (RE-клонирование/ligation), а не PCR/Gibson.
+- **Фикс:** RangePickerModal в onConfirm payload теперь передаёт `acquisitionMethod`. `actions.insertSegment(..., opts)` принимает `{acquisitionMethod}` → action.acquisitionMethod → reducer mapping в `ACQUISITION_METHOD_ENUM`: 'restriction' → 'restriction'; cursor/feature/numeric → 'undefined' (валидный enum). `autoGroupPipeline` если ВСЕ un-grouped sources имеют `acquisitionMethod='restriction'` → `kind='restriction'` для всех layers (включая layer-1 финал). Смешанные сборки → previous overlap_pcr/gibson default (back-compat).
 
 **[x] V90 — Вкладка редактора показывает «(пустой)» и не обновляется под содержимое** (FIXED 21.05.2026; EditorTabStrip dual-resolve через `selectAssemblyTarget` + 3 теста editor-tab-strip-v90).
 - **Корень:** EditorTabStrip для assembly-таба искал draft только в `state.assemblyDrafts`. Когда таб открыт на zone id (T6 архитектура), legacy slice пуст → fallback на «(пустой)», даже если у зоны есть имя.
