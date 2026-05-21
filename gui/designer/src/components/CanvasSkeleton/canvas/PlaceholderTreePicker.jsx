@@ -17,6 +17,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../../../store';
+import PlasmidMiniMap from '../../PlasmidMiniMap';
 import {
   getRecent,
   getFavorites,
@@ -63,7 +64,34 @@ function HighlightedText({ text, query }) {
   );
 }
 
-function EntryRow({ entry, onPick, onToggleFav, fav, query = '' }) {
+function PickerMiniThumb({ entry }) {
+  // V85 — единый визуал с Library/TreeItemRow.MiniIcon: PlasmidMiniMap
+  // 20×20 для circular/linear-with-features, тонкая линия для primers
+  // и пустых linear (без аннотаций) — иначе ring SVG бесполезен.
+  const top = entry?.payload?.topology;
+  const annotations = entry?.payload?.annotations;
+  if (entry?.kind === 'primer'
+      || (top === 'linear' && (!annotations || annotations.length === 0))) {
+    return (
+      <svg width={20} height={20} viewBox="0 0 20 20" aria-hidden focusable="false">
+        <line x1="2" y1="10" x2="18" y2="10" stroke="var(--text-secondary)" strokeWidth="1.6" />
+      </svg>
+    );
+  }
+  return (
+    <PlasmidMiniMap
+      length={entry?.payload?.length || (entry?.payload?.sequence?.length || 0)}
+      topology={top || 'circular'}
+      annotations={annotations || []}
+      size={20}
+      disableHoverOverlay
+    />
+  );
+}
+
+function EntryRow({
+  entry, onPick, onToggleFav, fav, query = '', extraBadge,
+}) {
   const payload = entry.payload || {};
   const length = payload.length || (payload.sequence || '').length;
   const topology = payload.topology || 'linear';
@@ -78,7 +106,7 @@ function EntryRow({ entry, onPick, onToggleFav, fav, query = '' }) {
           display: 'flex',
           alignItems: 'center',
           gap: 8,
-          padding: '7px 14px 7px 28px',
+          padding: '7px 14px 7px 32px',
           background: 'transparent',
           border: 'none',
           borderBottom: '1px solid var(--border-subtle)',
@@ -90,11 +118,31 @@ function EntryRow({ entry, onPick, onToggleFav, fav, query = '' }) {
         onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; }}
         onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
       >
-        <span style={{ fontSize: 13 }}>{topology === 'circular' ? '◯' : '▭'}</span>
-        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <span
+          data-testid={`skeleton-placeholder-picker-thumb-${entry.id}`}
+          style={{ flexShrink: 0, width: 20, height: 20, display: 'flex' }}
+        >
+          <PickerMiniThumb entry={entry} />
+        </span>
+        <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           <HighlightedText text={entry.name || entry.id} query={query} />
         </span>
-        <span style={{ fontSize: 10.5, color: 'var(--text-tertiary)' }}>
+        {/* V85 fix — projectBadge встаёт inline ПЕРЕД bp-счётчиком,
+            больше не перекрывает «N bp · circular». */}
+        {extraBadge && (
+          <span
+            data-testid={`skeleton-placeholder-picker-extra-badge-${entry.id}`}
+            style={{
+              fontSize: 9.5,
+              color: 'var(--text-tertiary)',
+              background: 'var(--surface-2)',
+              padding: '1px 4px',
+              borderRadius: 2,
+              flexShrink: 0,
+            }}
+          >{extraBadge}</span>
+        )}
+        <span style={{ fontSize: 10.5, color: 'var(--text-tertiary)', flexShrink: 0 }}>
           {length.toLocaleString('ru-RU')} bp · {topology}
         </span>
       </button>
@@ -442,22 +490,15 @@ export default function PlaceholderTreePicker({ onPick, onCancel }) {
               sections.otherProjectEntries.map((e) => {
                 const projName = projectsById?.[e.projectId]?.name || e.projectId;
                 return (
-                  <div key={e.id} style={{ position: 'relative' }}>
-                    <EntryRow entry={e} onPick={handlePick} onToggleFav={onToggleFav} fav={favIds.includes(e.id)} query={query} />
-                    <span
-                      style={{
-                        position: 'absolute',
-                        right: 80,
-                        top: 8,
-                        fontSize: 9.5,
-                        color: 'var(--text-tertiary)',
-                        pointerEvents: 'none',
-                        background: 'var(--surface-2)',
-                        padding: '1px 4px',
-                        borderRadius: 2,
-                      }}
-                    >{projName}</span>
-                  </div>
+                  <EntryRow
+                    key={e.id}
+                    entry={e}
+                    onPick={handlePick}
+                    onToggleFav={onToggleFav}
+                    fav={favIds.includes(e.id)}
+                    query={query}
+                    extraBadge={projName}
+                  />
                 );
               })
             )}

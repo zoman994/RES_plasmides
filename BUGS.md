@@ -37,11 +37,9 @@
 
 ### Средние
 
-**V85 — Пикер контейнера в «+ Плазмида» (новая сборка) не переиспользует библиотечный рендер entry** (OPEN, зафиксирован 21.05.2026, найден на визуальной приёмке M-CANVAS-WORKFLOW-UX).
-- **Симптом:** при создании новой сборки центральный пикер «+ Плазмида» (`PlaceholderTreePicker`) рисует плоский текстовый список — нет цветных круглых минимап (`MiniPlasmidMap`), визуал строки не как в Библиотеке. Поиск и свёрнутые категории есть. Доп. симптом: в секции «Другие проекты» бейдж проекта налезает на «N bp · circular», bp-счётчик нечитаем.
-- **Контекст:** тот же parity-gap, что отложен как «LibrarySearchBar visual parity» (amendment `SPEC_PROJECT_CANVAS_CLEANUP` §3.2.1/§3.2.2). Проявляется в двух местах: `LibrarySearchBar` (канвас проекта) + assembly picker.
-- **Подход для Code:** не перерисовывать `PlaceholderTreePicker` вручную — переиспользовать существующий библиотечный entry-row компонент (минимапа + цветовой круг + bp-бейдж без overlap) в обоих пикерах. Сверить `COMPONENT_MAP.md` — найти canonical library entry-row. Один источник визуала.
-- **STOP-условие:** пикер «+ Плазмида» в новой сборке визуально = Библиотеке; бейдж проекта не перекрывает bp; `LibrarySearchBar` — тот же рендер.
+**[x] V85 — Пикер контейнера в «+ Плазмида» (новая сборка) не переиспользует библиотечный рендер entry** (FIXED 21.05.2026; `PlasmidMiniMap` 20×20 thumb в EntryRow + `extraBadge` inline вместо absolute overlap + 4 теста PlaceholderTreePicker-v85).
+- **Симптом:** PlaceholderTreePicker рисовал плоский текст без минимап; бейдж проекта в «Другие проекты» налезал на «N bp · circular».
+- **Фикс:** EntryRow получил `<PickerMiniThumb entry/>` (20×20 PlasmidMiniMap для circular/linear-with-features; fallback одно-`<line>` SVG для primer / empty linear — тот же patrz как Library/tree/TreeItemRow.MiniIcon). «Другие проекты» теперь передаёт `extraBadge={projName}` — рендерится inline ПЕРЕД bp-счётчиком, не overlap. `LibrarySearchBar` уже использовал MiniPlasmidMap (K2.1), визуал теперь parity между двумя пикерами.
 
 **[x] V86 — Пустое состояние сборки обещает кнопку «+ Плазмида», которой нет** (FIXED 21.05.2026; SegmentList footer copy-fix + 3 теста SegmentList-empty-text).
 - **Симптом:** текст пустого состояния — «используйте кнопки внизу: + Плазмида / + Обвес / + Синтез / + Gap», но кнопками отрисованы только Обвес/Синтез/Gap; +Плазмида = библиотечный список выше, не кнопка.
