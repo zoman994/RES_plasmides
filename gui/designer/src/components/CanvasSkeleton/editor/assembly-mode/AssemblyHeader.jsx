@@ -5,7 +5,6 @@
  * Right: palette legend (collapsible) + topology toggle + Realise as
  * DAG (A2 stub: disabled, tooltip → A4).
  */
-import { useState } from 'react';
 import InlineEditableTitle from '../../../Library/inspector/InlineEditableTitle';
 
 export default function AssemblyHeader({
@@ -18,14 +17,13 @@ export default function AssemblyHeader({
   anyPanelHidden = false,
   onPaletteClick,
 }) {
-  const [legendOpen, setLegendOpen] = useState(false);
   const circular = !!(draft.topology && draft.topology.circular);
+  // V92 + V93 — clicking «Палитра»:
+  // - если есть скрытые панели → восстанавливаем их (onPaletteClick)
+  // - иначе — no-op (legend removed; color picking перенесён в строку
+  //   «Источник» SegmentList). Tooltip объясняет где цвет.
   const onPaletteBtn = () => {
-    if (typeof onPaletteClick === 'function') {
-      onPaletteClick();
-      return;
-    }
-    setLegendOpen((v) => !v);
+    if (typeof onPaletteClick === 'function') onPaletteClick();
   };
 
   return (
@@ -72,55 +70,32 @@ export default function AssemblyHeader({
         {circular ? '⭕ circular' : '— linear'}
       </button>
 
+      {/* V92 + V93 — «Палитра» button.
+          V93 (Игорь): color legend dropdown снят — цвет меняется кликом
+          по color-swatch в строке «Источник» (SegmentList inline editor).
+          V92: кнопка остаётся как «↩ восстановить скрытые панели» когда
+          ≥1 right-rail / pipeline panel скрыт. В обычном состоянии —
+          inert button с подсказкой что цвет теперь в нижней строке. */}
       {(paletteLegend || []).length > 0 && (
-        <div style={{ position: 'relative' }}>
-          <button
-            type="button"
-            data-testid="assembly-palette-legend-toggle"
-            onClick={onPaletteBtn}
-            title={anyPanelHidden
-              ? 'Вернуть скрытые панели редактора'
-              : 'Палитра сегментов'}
-            style={{
-              fontSize: 11,
-              padding: '4px 10px',
-              background: anyPanelHidden
-                ? 'var(--accent-100, #eed2c1)'
-                : 'var(--surface-1)',
-              color: 'var(--text-secondary)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: 4,
-              cursor: 'pointer',
-            }}
-          >🎨 Палитра{anyPanelHidden ? ' ↩' : ''}</button>
-          {legendOpen && !anyPanelHidden && (
-            <div
-              data-testid="assembly-palette-legend"
-              style={{
-                position: 'absolute',
-                top: '100%',
-                left: 0,
-                marginTop: 4,
-                zIndex: 40,
-                minWidth: 160,
-                maxHeight: 220,
-                overflowY: 'auto',
-                background: 'var(--surface-1)',
-                border: '1px solid var(--border-subtle)',
-                borderRadius: 6,
-                boxShadow: '0 4px 12px rgba(28,25,23,0.14)',
-                padding: 8,
-              }}
-            >
-              {paletteLegend.map((p) => (
-                <div key={p.zoneId} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10.5, padding: '2px 0' }}>
-                  <span style={{ width: 12, height: 12, borderRadius: 3, background: p.color, flexShrink: 0 }} />
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.label}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        <button
+          type="button"
+          data-testid="assembly-palette-legend-toggle"
+          onClick={onPaletteBtn}
+          title={anyPanelHidden
+            ? 'Вернуть скрытые панели редактора'
+            : 'Цвет сегмента теперь в строке «Источник» (клик по color-swatch)'}
+          style={{
+            fontSize: 11,
+            padding: '4px 10px',
+            background: anyPanelHidden
+              ? 'var(--accent-100, #eed2c1)'
+              : 'var(--surface-1)',
+            color: 'var(--text-secondary)',
+            border: '1px solid var(--border-subtle)',
+            borderRadius: 4,
+            cursor: 'pointer',
+          }}
+        >🎨 Палитра{anyPanelHidden ? ' ↩' : ''}</button>
       )}
 
       {/* AV-K10 — «S» toggle returns biolog to canvas with this zone

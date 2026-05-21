@@ -23,7 +23,9 @@ import { collectAssemblyAnnotations } from '../../lib/assembly-annotations';
 import AssemblyHeader from './AssemblyHeader';
 import AssemblySidebar from './AssemblySidebar';
 import SegmentList from './SegmentList';
-import SegmentDetailPanel from './SegmentDetailPanel';
+/* V94 — SegmentDetailPanel orphan'нут (inline-editor в SegmentList).
+   Импорт сохранён закомментированным как pointer для cleanup-PR. */
+// import SegmentDetailPanel from './SegmentDetailPanel';
 import AssemblyToolbar from './AssemblyToolbar';
 import PlaceholderTreePicker from '../../canvas/PlaceholderTreePicker';
 import { v7 as uuidv7 } from 'uuid';
@@ -417,14 +419,10 @@ export default function AssemblyShellBody({ draft }) {
         />
         )}
 
-        {detailOpen && selectedSegmentId && (
-          <SegmentDetailPanel
-            key={selectedSegmentId}
-            draftId={draftId}
-            segmentId={selectedSegmentId}
-            onClose={() => setDetailOpen(false)}
-          />
-        )}
+        {/* V94 — SegmentDetailPanel снят: его функции (диапазон / RC /
+            цвет / метка / Удалить) встроены inline в SegmentList rows
+            через chevron-expand. Selected-segment state остаётся для
+            highlight-эффекта в strip, но drawer больше не открывается. */}
       </div>
 
       <SegmentList

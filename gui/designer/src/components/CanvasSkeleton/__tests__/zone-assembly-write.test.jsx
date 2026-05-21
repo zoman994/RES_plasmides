@@ -89,38 +89,42 @@ describe('T6 K8 — SegmentList + SegmentDetailPanel zone-mode writes', () => {
     expect(orderedIds[1]).toBe(a);
   });
 
-  it('click row → SegmentDetailPanel resolves the zone; RC flips orientation', () => {
+  it('inline RC flips orientation (V94 — SegmentDetailPanel снят)', () => {
     const { a } = openZone();
-    act(() => { screen.getAllByTestId('assembly-segment-row')[0].click(); });
-    const panel = screen.getByTestId('segment-detail-panel');
-    act(() => { within(panel).getByTestId('segment-detail-rc').click(); });
+    const row = screen.getAllByTestId('assembly-segment-row')[0];
+    const segId = row.getAttribute('data-segment-id');
+    act(() => { screen.getByTestId(`segment-row-expand-${segId}`).click(); });
+    act(() => { screen.getByTestId(`segment-inline-rc-${segId}`).click(); });
+    act(() => { fireEvent.click(screen.getByTestId(`segment-inline-apply-${segId}`)); });
     const pcA = S.pieces.find((p) => p.id === a);
     expect(pcA.ranges[0].orientation).toBe('reverse');
   });
 
-  it('range edit re-slices the piece', () => {
+  it('inline range edit re-slices the piece (V94)', () => {
     const { a } = openZone();
-    act(() => { screen.getAllByTestId('assembly-segment-row')[0].click(); });
-    const panel = screen.getByTestId('segment-detail-panel');
+    const row = screen.getAllByTestId('assembly-segment-row')[0];
+    const segId = row.getAttribute('data-segment-id');
+    act(() => { screen.getByTestId(`segment-row-expand-${segId}`).click(); });
     act(() => {
-      fireEvent.change(within(panel).getByTestId('segment-detail-start'), { target: { value: '4' } });
+      fireEvent.change(screen.getByTestId(`segment-inline-start-${segId}`), { target: { value: '4' } });
     });
     act(() => {
-      fireEvent.change(within(panel).getByTestId('segment-detail-end'), { target: { value: '12' } });
+      fireEvent.change(screen.getByTestId(`segment-inline-end-${segId}`), { target: { value: '12' } });
     });
-    act(() => { fireEvent.click(within(panel).getByTestId('segment-detail-apply')); });
+    act(() => { fireEvent.click(screen.getByTestId(`segment-inline-apply-${segId}`)); });
     const pcA = S.pieces.find((p) => p.id === a);
     expect(pcA.ranges[0]).toMatchObject({ start: 4, end: 12 });
   });
 
-  it('label edit → piece.name', () => {
+  it('inline label edit → piece.name (V94)', () => {
     const { a } = openZone();
-    act(() => { screen.getAllByTestId('assembly-segment-row')[0].click(); });
-    const panel = screen.getByTestId('segment-detail-panel');
+    const row = screen.getAllByTestId('assembly-segment-row')[0];
+    const segId = row.getAttribute('data-segment-id');
+    act(() => { screen.getByTestId(`segment-row-expand-${segId}`).click(); });
     act(() => {
-      fireEvent.change(within(panel).getByTestId('segment-detail-label'), { target: { value: 'promoter' } });
+      fireEvent.change(screen.getByTestId(`segment-inline-label-${segId}`), { target: { value: 'promoter' } });
     });
-    act(() => { fireEvent.click(within(panel).getByTestId('segment-detail-apply')); });
+    act(() => { fireEvent.click(screen.getByTestId(`segment-inline-apply-${segId}`)); });
     expect(S.pieces.find((p) => p.id === a).name).toBe('promoter');
   });
 

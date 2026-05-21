@@ -242,8 +242,11 @@ function openDraftWithContainers() {
 }
 
 describe('K4 AssemblySidebar + DnD', () => {
-  it('sidebar lists project containers and filters by name', () => {
+  it('sidebar lists project containers and filters by name (after first segment)', () => {
     openDraftWithContainers();
+    // Игорь 20.05.2026 — empty assembly hides the right rail. Sidebar
+    // becomes accessible only after at least one segment is inserted.
+    act(() => { A.insertManualSegment('asm-k4', { gapKind: 'unknown', length: 5 }, undefined); });
     const sb = screen.getByTestId('assembly-sidebar');
     expect(within(sb).getAllByTestId('assembly-sidebar-item').length).toBeGreaterThanOrEqual(2);
     act(() => {
@@ -316,36 +319,37 @@ describe('K5 SegmentList + SegmentDetailPanel', () => {
     expect(S.assemblyDrafts.find((x) => x.id === 'asm-k5').segments).toHaveLength(1);
   });
 
-  it('click row opens SegmentDetailPanel; RC toggle flips orientation', () => {
+  it('inline RC toggle flips orientation (V94 — was SegmentDetailPanel)', () => {
     openDraftK5();
     const rows = screen.getAllByTestId('assembly-segment-row');
-    act(() => { fireEvent.click(rows[0]); });
-    const panel = screen.getByTestId('segment-detail-panel');
-    act(() => { fireEvent.click(within(panel).getByTestId('segment-detail-rc')); });
+    const segId = rows[0].getAttribute('data-segment-id');
+    act(() => { fireEvent.click(screen.getByTestId(`segment-row-expand-${segId}`)); });
+    act(() => { fireEvent.click(screen.getByTestId(`segment-inline-rc-${segId}`)); });
+    act(() => { fireEvent.click(screen.getByTestId(`segment-inline-apply-${segId}`)); });
     const seg0 = S.assemblyDrafts.find((x) => x.id === 'asm-k5').segments[0];
     expect(seg0.reverseComplement).toBe(true);
     expect(seg0.sequence).toBe('GGGGTTTT'); // RC of AAAACCCC
   });
 
-  it('range edit re-slices the sourced segment from its container', () => {
+  it('inline range edit re-slices the sourced segment (V94)', () => {
     openDraftK5();
-    act(() => { fireEvent.click(screen.getAllByTestId('assembly-segment-row')[0]); });
-    const panel = screen.getByTestId('segment-detail-panel');
-    act(() => { fireEvent.change(within(panel).getByTestId('segment-detail-start'), { target: { value: '4' } }); });
-    act(() => { fireEvent.change(within(panel).getByTestId('segment-detail-end'), { target: { value: '12' } }); });
-    act(() => { fireEvent.click(within(panel).getByTestId('segment-detail-apply')); });
+    const segId = screen.getAllByTestId('assembly-segment-row')[0].getAttribute('data-segment-id');
+    act(() => { fireEvent.click(screen.getByTestId(`segment-row-expand-${segId}`)); });
+    act(() => { fireEvent.change(screen.getByTestId(`segment-inline-start-${segId}`), { target: { value: '4' } }); });
+    act(() => { fireEvent.change(screen.getByTestId(`segment-inline-end-${segId}`), { target: { value: '12' } }); });
+    act(() => { fireEvent.click(screen.getByTestId(`segment-inline-apply-${segId}`)); });
     const seg0 = S.assemblyDrafts.find((x) => x.id === 'asm-k5').segments[0];
     expect(seg0.start).toBe(4);
     expect(seg0.end).toBe(12);
     expect(seg0.sequence).toBe('CCCCGGGG'); // src[4:12]
   });
 
-  it('label edit dispatches updateSegment', () => {
+  it('inline label edit dispatches updateSegment (V94)', () => {
     openDraftK5();
-    act(() => { fireEvent.click(screen.getAllByTestId('assembly-segment-row')[1]); });
-    const panel = screen.getByTestId('segment-detail-panel');
-    act(() => { fireEvent.change(within(panel).getByTestId('segment-detail-label'), { target: { value: 'spacer' } }); });
-    act(() => { fireEvent.click(within(panel).getByTestId('segment-detail-apply')); });
+    const segId = screen.getAllByTestId('assembly-segment-row')[1].getAttribute('data-segment-id');
+    act(() => { fireEvent.click(screen.getByTestId(`segment-row-expand-${segId}`)); });
+    act(() => { fireEvent.change(screen.getByTestId(`segment-inline-label-${segId}`), { target: { value: 'spacer' } }); });
+    act(() => { fireEvent.click(screen.getByTestId(`segment-inline-apply-${segId}`)); });
     expect(S.assemblyDrafts.find((x) => x.id === 'asm-k5').segments[1].label).toBe('spacer');
   });
 });
@@ -383,10 +387,13 @@ function openDraftK6() {
   act(() => { A.openEditorAssemblyTab('asm-k6'); });
 }
 
-describe('K6 segment source picker (PlaceholderTreePicker reuse)', () => {
-  it('«+ Сегмент» opens the shared PlaceholderTreePicker (library entries)', () => {
+describe('K6 segment source picker (inline EmptyAssemblyLibrary)', () => {
+  // Игорь 20.05.2026 — empty assembly mounts EmptyAssemblyLibrary in
+  // the centre. Library entries are visible directly, no «+ Плазмида»
+  // step. Testid `skeleton-placeholder-picker` is reused on the inline
+  // panel so existing entry-click flows keep working.
+  it('inline picker is mounted with library entries (no «+ Сегмент» step)', () => {
     openDraftK6();
-    act(() => { fireEvent.click(screen.getByTestId('assembly-add-segment')); });
     expect(screen.getByTestId('skeleton-placeholder-picker')).toBeTruthy();
     expect(screen.getByTestId('skeleton-placeholder-picker-item-lib-puc')).toBeTruthy();
     expect(screen.getByTestId('skeleton-placeholder-picker-item-lib-pet')).toBeTruthy();
@@ -394,7 +401,6 @@ describe('K6 segment source picker (PlaceholderTreePicker reuse)', () => {
 
   it('search narrows the library list', () => {
     openDraftK6();
-    act(() => { fireEvent.click(screen.getByTestId('assembly-add-segment')); });
     act(() => {
       fireEvent.change(
         screen.getByTestId('skeleton-placeholder-picker-search'),
@@ -408,7 +414,6 @@ describe('K6 segment source picker (PlaceholderTreePicker reuse)', () => {
   it('pick a library entry → RangePicker → confirm → materialised + inserted', async () => {
     openDraftK6();
     try { localStorage.clear(); } catch { /* no-op */ }
-    act(() => { fireEvent.click(screen.getByTestId('assembly-add-segment')); });
     act(() => { fireEvent.click(screen.getByTestId('skeleton-placeholder-picker-item-lib-puc')); });
     const m = await screen.findByTestId('range-picker-modal');
     await act(async () => {
@@ -418,16 +423,8 @@ describe('K6 segment source picker (PlaceholderTreePicker reuse)', () => {
     const d = S.assemblyDrafts.find((x) => x.id === 'asm-k6');
     expect(d.segments).toHaveLength(1);
     expect(d.segments[0].sequence).toBe('AAAACCCCGGGGTTTT');
+    // After the first segment lands, EmptyAssemblyLibrary unmounts.
     expect(screen.queryByTestId('skeleton-placeholder-picker')).toBeNull();
-  });
-
-  it('Cancel (×) closes the picker without inserting', () => {
-    openDraftK6();
-    act(() => { fireEvent.click(screen.getByTestId('assembly-add-segment')); });
-    act(() => { fireEvent.click(screen.getByTestId('skeleton-placeholder-picker-close')); });
-    expect(screen.queryByTestId('skeleton-placeholder-picker')).toBeNull();
-    const d = S.assemblyDrafts.find((x) => x.id === 'asm-k6');
-    expect(d.segments).toHaveLength(0);
   });
 });
 
@@ -611,9 +608,11 @@ describe('K9 AssemblyDraftsPanel + canvas', () => {
     expect(S.editorContext.tabs.some((t) => t.kind === 'assembly' && t.assemblyDraftId === 'asm-d4')).toBe(true);
   });
 
-  it('MiniProjectCanvas renders a marker for a pinned draft', () => {
+  it('MiniProjectCanvas renders a marker for a pinned draft (after expand — V91)', () => {
     render(<SkeletonProvider><H /><MiniProjectCanvas /></SkeletonProvider>);
     act(() => { A.createAssemblyDraft({ id: 'asm-d5', name: 'D5', position: { x: 120, y: 80 } }); });
+    // V91 — MiniProjectCanvas стартует свёрнутым. Сначала expand.
+    act(() => { fireEvent.click(screen.getByTestId('mini-canvas-collapsed')); });
     expect(screen.getByTestId('mini-canvas-assembly-asm-d5')).toBeTruthy();
   });
 });
@@ -638,13 +637,13 @@ describe('K10 orphan UX + history', () => {
     expect(screen.getByTestId('assembly-segment-orphan-badge')).toBeTruthy();
   });
 
-  it('SegmentDetailPanel orphan → «Convert to gap» makes it a manual segment', () => {
+  it('inline orphan → «Convert to gap» makes it a manual segment (V94)', () => {
     openWithSourced();
     act(() => { A.removeContainer('cO'); });
-    act(() => { fireEvent.click(screen.getAllByTestId('assembly-segment-row')[0]); });
-    const panel = screen.getByTestId('segment-detail-panel');
-    expect(within(panel).getByTestId('segment-detail-orphan')).toBeTruthy();
-    act(() => { fireEvent.click(within(panel).getByTestId('segment-detail-convert-gap')); });
+    const segId = screen.getAllByTestId('assembly-segment-row')[0].getAttribute('data-segment-id');
+    act(() => { fireEvent.click(screen.getByTestId(`segment-row-expand-${segId}`)); });
+    expect(screen.getByTestId('segment-detail-orphan')).toBeTruthy();
+    act(() => { fireEvent.click(screen.getByTestId('segment-detail-convert-gap')); });
     expect(S.assemblyDrafts.find((d) => d.id === 'asm-o').segments[0].source.type).toBe('manual');
   });
 

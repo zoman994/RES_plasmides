@@ -1,10 +1,17 @@
 /**
  * SegmentList — footer table of the assembly's segments (G2
- * DEC-CANVAS-ASM-13 footer). Click a row → open SegmentDetailPanel.
- * Reorder via ▲ / ▼ buttons (G2 R5 fallback — predictable, no fragile
- * HTML5 row DnD). Orphan rows get a ⚠ badge (K10).
+ * DEC-CANVAS-ASM-13 footer). Reorder via ▲ / ▼ buttons (G2 R5 fallback
+ * — predictable, no fragile HTML5 row DnD). Orphan rows get a ⚠ badge
+ * (K10).
+ *
+ * V93+V94 — каждая строка несёт chevron ▸/▾; expand раскрывает
+ * inline-editor (range/RC/color-swatch/label/Apply/Delete) на месте
+ * прежней правой колонки SegmentDetailPanel. Цвет меняется кликом
+ * по color-swatch в open-state.
  */
+import { useState } from 'react';
 import { useSkeletonActions } from '../../store/skeleton-context';
+import { SEGMENT_COLORS } from '../../lib/segment-color-palette';
 
 // K6 — strip iconography (SPEC §5.3). pieceKind is set by draftFromZone
 // for zone-projected drafts; legacy drafts fall back to source.type.
@@ -58,6 +65,15 @@ export default function SegmentList({
   const actions = useSkeletonActions();
   const segs = draft.segments || [];
   const selectionEnabled = typeof onToggleSelect === 'function';
+  // V93+V94 — какие segment-rows раскрыты в inline-editor mode.
+  const [expandedIds, setExpandedIds] = useState(() => new Set());
+  const toggleExpanded = (id) => {
+    setExpandedIds((prev) => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
+    });
+  };
   const selSet = selectedSegmentIds instanceof Set
     ? selectedSegmentIds
     : new Set(Array.isArray(selectedSegmentIds) ? selectedSegmentIds : []);
@@ -82,94 +98,26 @@ export default function SegmentList({
     const len = b ? b.endOnAssembly - b.startOnAssembly : (seg.length || 0);
     const isOrphan = orphanIds && orphanIds.has(seg.id);
     const selected = seg.id === selectedSegmentId;
+    const expanded = expandedIds.has(seg.id);
     return (
-      <div
+      <SegmentRow
         key={seg.id}
-        data-testid="assembly-segment-row"
-        data-segment-id={seg.id}
-        data-orphan={isOrphan ? 'true' : 'false'}
-        onClick={() => onSelectSegment(seg.id)}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          padding: '5px 10px',
-          borderTop: '1px solid var(--border-subtle)',
-          background: selected ? 'var(--surface-3, rgba(184,92,62,0.10))' : 'transparent',
-          cursor: 'pointer',
-        }}
-      >
-        {selectionEnabled && (
-          <span style={{ width: 22 }}>
-            <input
-              type="checkbox"
-              data-testid={`segment-select-${seg.id}`}
-              checked={selSet.has(seg.id)}
-              onClick={(e) => e.stopPropagation()}
-              onChange={() => onToggleSelect(seg.id)}
-            />
-          </span>
-        )}
-        <span style={{ width: 24, color: 'var(--text-tertiary)' }}>{i + 1}</span>
-        <span style={{ width: 18 }}>
-          <span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 3, background: seg.color }} />
-        </span>
-        <span
-          data-testid="segment-kind-icon"
-          style={{ width: 22, fontSize: 13, lineHeight: 1 }}
-          title={effectiveKind(seg)}
-        >
-          {KIND_ICON[effectiveKind(seg)]}
-        </span>
-        <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {rowSource(seg, i)}
-          {Array.isArray(seg.mutations) && seg.mutations.length > 0 && (
-            <span
-              data-testid="segment-mutation-badge"
-              title={`${seg.mutations.length} mutation${seg.mutations.length > 1 ? 's' : ''}`}
-              style={{ marginLeft: 6, color: 'var(--accent-500, #b85c3e)' }}
-            >💎</span>
-          )}
-          {isOrphan && (
-            <span data-testid="assembly-segment-orphan-badge" style={{ marginLeft: 6, color: 'var(--accent-500, #b85c3e)' }}>⚠ orphan</span>
-          )}
-        </span>
-        <span style={{ width: 64, color: 'var(--text-secondary)' }}>{len} bp</span>
-        <span style={{ width: 36 }}>{seg.reverseComplement ? 'RC' : '—'}</span>
-        <span style={{ width: 118, textAlign: 'right', display: 'flex', justifyContent: 'flex-end', gap: 4 }}>
-          {typeof onAddMutation === 'function' && effectiveKind(seg) === 'sourced' && (
-            <button
-              type="button"
-              data-testid={`assembly-segment-add-mut-${seg.id}`}
-              onClick={(e) => { e.stopPropagation(); onAddMutation(seg.id); }}
-              title="Добавить mutation"
-              style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--accent-500, #b85c3e)' }}
-            >💎+</button>
-          )}
-          <button
-            type="button"
-            data-testid="assembly-segment-up"
-            disabled={i === 0}
-            onClick={(e) => { e.stopPropagation(); actions.reorderSegments(draft.id, i, i - 1); }}
-            title="Вверх"
-            style={{ border: 'none', background: 'transparent', cursor: i === 0 ? 'default' : 'pointer', color: 'var(--text-secondary)' }}
-          >▲</button>
-          <button
-            type="button"
-            data-testid="assembly-segment-down"
-            disabled={i === segs.length - 1}
-            onClick={(e) => { e.stopPropagation(); actions.reorderSegments(draft.id, i, i + 1); }}
-            title="Вниз"
-            style={{ border: 'none', background: 'transparent', cursor: i === segs.length - 1 ? 'default' : 'pointer', color: 'var(--text-secondary)' }}
-          >▼</button>
-          <button
-            type="button"
-            data-testid="assembly-segment-delete"
-            onClick={(e) => { e.stopPropagation(); actions.removeSegment(draft.id, seg.id); }}
-            title="Удалить сегмент"
-            style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--accent-500, #b85c3e)' }}
-          >✕</button>
-        </span>
-      </div>
+        seg={seg}
+        i={i}
+        len={len}
+        isOrphan={isOrphan}
+        selected={selected}
+        expanded={expanded}
+        onToggleExpand={() => toggleExpanded(seg.id)}
+        selectionEnabled={selectionEnabled}
+        selSet={selSet}
+        onToggleSelect={onToggleSelect}
+        onSelectSegment={onSelectSegment}
+        onAddMutation={onAddMutation}
+        actions={actions}
+        draftId={draft.id}
+        segsLen={segs.length}
+      />
     );
   }
 
@@ -255,3 +203,313 @@ export default function SegmentList({
     </div>
   );
 }
+
+/**
+ * SegmentRow — single row + inline-editor под ним когда `expanded`.
+ * V93+V94 — заменяет правую колонку SegmentDetailPanel (теперь не
+ * монтируется). Inline-editor содержит range / RC / color-swatch /
+ * label / Apply / Delete — все функции прежнего drawer'а.
+ */
+function SegmentRow({
+  seg, i, len, isOrphan, selected, expanded,
+  onToggleExpand,
+  selectionEnabled, selSet, onToggleSelect, onSelectSegment, onAddMutation,
+  actions, draftId, segsLen,
+}) {
+  const kind = effectiveKind(seg);
+  const isContainer = seg.source?.type === 'container';
+  // Local edit buffer — initial state from props.
+  const [label, setLabel] = useState(seg.label ?? '');
+  const [start, setStart] = useState(seg.start ?? 0);
+  const [end, setEnd] = useState(seg.end ?? 0);
+  const [rc, setRc] = useState(!!seg.reverseComplement);
+  const [colorPickerOpen, setColorPickerOpen] = useState(false);
+
+  const applyChanges = () => {
+    if (label !== (seg.label ?? '')) {
+      actions.updateSegment(draftId, seg.id, { label });
+    }
+    if (rc !== !!seg.reverseComplement) {
+      // V94 — `toggleSegmentRc` (а не UPDATE_SEGMENT) — он recompose'ит
+      // sequence через reverseComplement(); generic patch только меняет
+      // флаг и оставляет stale последовательность.
+      if (typeof actions.toggleSegmentRc === 'function') {
+        actions.toggleSegmentRc(draftId, seg.id);
+      } else {
+        actions.updateSegment(draftId, seg.id, { reverseComplement: rc });
+      }
+    }
+    if (isContainer
+      && (Number(start) !== seg.start || Number(end) !== seg.end)
+      && typeof actions.updateSegmentRange === 'function') {
+      actions.updateSegmentRange(draftId, seg.id, Number(start), Number(end));
+    }
+  };
+
+  const pickColor = (color) => {
+    actions.updateSegment(draftId, seg.id, { color });
+    setColorPickerOpen(false);
+  };
+
+  return (
+    <>
+      <div
+        data-testid="assembly-segment-row"
+        data-segment-id={seg.id}
+        data-orphan={isOrphan ? 'true' : 'false'}
+        onClick={() => onSelectSegment(seg.id)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          padding: '5px 10px',
+          borderTop: '1px solid var(--border-subtle)',
+          background: selected ? 'var(--surface-3, rgba(184,92,62,0.10))' : 'transparent',
+          cursor: 'pointer',
+        }}
+      >
+        {selectionEnabled && (
+          <span style={{ width: 22 }}>
+            <input
+              type="checkbox"
+              data-testid={`segment-select-${seg.id}`}
+              checked={selSet.has(seg.id)}
+              onClick={(e) => e.stopPropagation()}
+              onChange={() => onToggleSelect(seg.id)}
+            />
+          </span>
+        )}
+        <button
+          type="button"
+          data-testid={`segment-row-expand-${seg.id}`}
+          onClick={(e) => { e.stopPropagation(); onToggleExpand(); }}
+          title={expanded ? 'Свернуть' : 'Развернуть (диапазон / RC / цвет / метка)'}
+          style={{
+            width: 18, border: 'none', background: 'transparent',
+            cursor: 'pointer', color: 'var(--text-tertiary)', fontSize: 11,
+          }}
+        >{expanded ? '▾' : '▸'}</button>
+        <span style={{ width: 24, color: 'var(--text-tertiary)' }}>{i + 1}</span>
+        <span style={{ width: 18 }}>
+          {/* V93 — color-swatch теперь интерактивный: клик → color picker
+              ниже (inline-editor open if needed). */}
+          <button
+            type="button"
+            data-testid={`segment-row-swatch-${seg.id}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (!expanded) onToggleExpand();
+              setColorPickerOpen((v) => !v);
+            }}
+            title="Изменить цвет"
+            style={{
+              display: 'inline-block', width: 12, height: 12, borderRadius: 3,
+              background: seg.color, border: 'none', cursor: 'pointer', padding: 0,
+            }}
+          />
+        </span>
+        <span
+          data-testid="segment-kind-icon"
+          style={{ width: 22, fontSize: 13, lineHeight: 1 }}
+          title={kind}
+        >
+          {KIND_ICON[kind]}
+        </span>
+        <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {rowSource(seg, i)}
+          {Array.isArray(seg.mutations) && seg.mutations.length > 0 && (
+            <span
+              data-testid="segment-mutation-badge"
+              title={`${seg.mutations.length} mutation${seg.mutations.length > 1 ? 's' : ''}`}
+              style={{ marginLeft: 6, color: 'var(--accent-500, #b85c3e)' }}
+            >💎</span>
+          )}
+          {isOrphan && (
+            <span data-testid="assembly-segment-orphan-badge" style={{ marginLeft: 6, color: 'var(--accent-500, #b85c3e)' }}>⚠ orphan</span>
+          )}
+        </span>
+        <span style={{ width: 64, color: 'var(--text-secondary)' }}>{len} bp</span>
+        <span style={{ width: 36 }}>{seg.reverseComplement ? 'RC' : '—'}</span>
+        <span style={{ width: 118, textAlign: 'right', display: 'flex', justifyContent: 'flex-end', gap: 4 }}>
+          {typeof onAddMutation === 'function' && kind === 'sourced' && (
+            <button
+              type="button"
+              data-testid={`assembly-segment-add-mut-${seg.id}`}
+              onClick={(e) => { e.stopPropagation(); onAddMutation(seg.id); }}
+              title="Добавить mutation"
+              style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--accent-500, #b85c3e)' }}
+            >💎+</button>
+          )}
+          <button
+            type="button"
+            data-testid="assembly-segment-up"
+            disabled={i === 0}
+            onClick={(e) => { e.stopPropagation(); actions.reorderSegments(draftId, i, i - 1); }}
+            title="Вверх"
+            style={{ border: 'none', background: 'transparent', cursor: i === 0 ? 'default' : 'pointer', color: 'var(--text-secondary)' }}
+          >▲</button>
+          <button
+            type="button"
+            data-testid="assembly-segment-down"
+            disabled={i === segsLen - 1}
+            onClick={(e) => { e.stopPropagation(); actions.reorderSegments(draftId, i, i + 1); }}
+            title="Вниз"
+            style={{ border: 'none', background: 'transparent', cursor: i === segsLen - 1 ? 'default' : 'pointer', color: 'var(--text-secondary)' }}
+          >▼</button>
+          <button
+            type="button"
+            data-testid="assembly-segment-delete"
+            onClick={(e) => { e.stopPropagation(); actions.removeSegment(draftId, seg.id); }}
+            title="Удалить сегмент"
+            style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--accent-500, #b85c3e)' }}
+          >✕</button>
+        </span>
+      </div>
+      {expanded && (
+        <div
+          data-testid={`segment-row-inline-editor-${seg.id}`}
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            padding: '8px 12px 10px 28px',
+            background: 'var(--surface-3, rgba(184,92,62,0.04))',
+            borderTop: '1px dashed var(--border-subtle)',
+            borderBottom: '1px solid var(--border-subtle)',
+            display: 'flex', flexDirection: 'column', gap: 8, fontSize: 11,
+          }}
+        >
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+            {isContainer && (
+              <label style={inlineLabel}>
+                start
+                <input
+                  data-testid={`segment-inline-start-${seg.id}`}
+                  type="number"
+                  value={start}
+                  onChange={(e) => setStart(e.target.value)}
+                  style={inlineNum}
+                />
+              </label>
+            )}
+            {isContainer && (
+              <label style={inlineLabel}>
+                end
+                <input
+                  data-testid={`segment-inline-end-${seg.id}`}
+                  type="number"
+                  value={end}
+                  onChange={(e) => setEnd(e.target.value)}
+                  style={inlineNum}
+                />
+              </label>
+            )}
+            <label style={{ ...inlineLabel, flexDirection: 'row', gap: 4, alignItems: 'center' }}>
+              <input
+                data-testid={`segment-inline-rc-${seg.id}`}
+                type="checkbox"
+                checked={rc}
+                onChange={() => setRc((v) => !v)}
+              />
+              RC
+            </label>
+            <label style={inlineLabel}>
+              Цвет
+              <button
+                type="button"
+                data-testid={`segment-inline-color-${seg.id}`}
+                onClick={() => setColorPickerOpen((v) => !v)}
+                title="Открыть палитру цветов"
+                style={{
+                  width: 24, height: 16, borderRadius: 3,
+                  background: seg.color,
+                  border: '1px solid var(--border-subtle)', cursor: 'pointer', padding: 0,
+                  marginTop: 2,
+                }}
+              />
+            </label>
+            <label style={{ ...inlineLabel, flex: 1, minWidth: 120 }}>
+              Метка
+              <input
+                data-testid={`segment-inline-label-${seg.id}`}
+                type="text"
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+                style={{ ...inlineNum, width: '100%' }}
+              />
+            </label>
+            <button
+              type="button"
+              data-testid={`segment-inline-apply-${seg.id}`}
+              onClick={applyChanges}
+              style={{
+                fontSize: 11, padding: '4px 12px',
+                background: 'var(--accent-500, #b85c3e)', color: '#fff',
+                border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600,
+              }}
+            >Применить</button>
+          </div>
+          {colorPickerOpen && (
+            <div
+              data-testid={`segment-inline-color-picker-${seg.id}`}
+              style={{
+                display: 'flex', gap: 4, flexWrap: 'wrap',
+                padding: '4px 0', borderTop: '1px dashed var(--border-subtle)',
+              }}
+            >
+              {(SEGMENT_COLORS || []).map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  data-testid={`segment-inline-color-pick-${seg.id}-${c}`}
+                  onClick={() => pickColor(c)}
+                  title={c}
+                  style={{
+                    width: 16, height: 16, borderRadius: 3, background: c,
+                    border: c === seg.color ? '2px solid var(--text-primary)' : '1px solid var(--border-subtle)',
+                    cursor: 'pointer', padding: 0,
+                  }}
+                />
+              ))}
+            </div>
+          )}
+          {/* Orphan recovery — V94 преемник SegmentDetailPanel.convert-gap. */}
+          {isContainer && seg.source?.unavailable && (
+            <div
+              data-testid={`segment-detail-orphan`}
+              style={{
+                padding: '6px 0', borderTop: '1px dashed var(--accent-500, #b85c3e)',
+                fontSize: 11, color: 'var(--accent-500, #b85c3e)',
+                display: 'flex', alignItems: 'center', gap: 8,
+              }}
+            >
+              ⚠ Source container удалён.
+              <button
+                type="button"
+                data-testid={`segment-detail-convert-gap`}
+                onClick={() => {
+                  actions.updateSegment(draftId, seg.id, { source: { type: 'manual' } });
+                }}
+                style={{
+                  fontSize: 11, padding: '3px 10px',
+                  background: 'transparent',
+                  color: 'var(--accent-500, #b85c3e)',
+                  border: '1px solid var(--accent-500, #b85c3e)',
+                  borderRadius: 4, cursor: 'pointer',
+                }}
+              >Convert to gap</button>
+            </div>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
+const inlineLabel = {
+  display: 'flex', flexDirection: 'column', fontSize: 10.5,
+  color: 'var(--text-secondary)',
+};
+const inlineNum = {
+  fontSize: 11, padding: '3px 6px',
+  border: '1px solid var(--border-subtle)', borderRadius: 3,
+  background: 'var(--surface-1)', color: 'var(--text-primary)',
+  width: 70, marginTop: 2,
+};
