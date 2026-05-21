@@ -12,6 +12,7 @@
  *     Back-compat for F1 standalone strip tests.
  */
 import { useContainerById, useSkeletonState } from '../store/skeleton-context';
+import { selectAssemblyTarget } from '../store/selectors-pieces';
 import { STRINGS } from '../../../lib/strings';
 
 const OP_ICONS = {
@@ -112,13 +113,26 @@ function asmLabel(draft) {
   return `🧬 ${(draft && draft.name) || ph()}`;
 }
 
+/**
+ * V90 — resolve an assembly tab's draft via the SAME dual-resolve path
+ * AssemblyModeShell + SegmentDetailPanel use (zone id OR legacy
+ * assemblyDrafts). Before this, EditorTabStrip looked only in
+ * `assemblyDrafts` and zone-based tabs fell back to «(пустой)» even
+ * when the zone existed with a proper name.
+ */
+function resolveAssemblyDraft(state, targetId) {
+  if (!state || !targetId) return null;
+  const { draft } = selectAssemblyTarget(state, targetId);
+  return draft;
+}
+
 function StoreTab({ tab, active, onSwitch, onClose }) {
   const state = useSkeletonState();
   const container = useContainerById(
     (tab.kind === 'operation' || tab.kind === 'assembly') ? null : tab.containerId,
   );
   if (tab.kind === 'assembly') {
-    const d = (state.assemblyDrafts || []).find((x) => x.id === tab.assemblyDraftId);
+    const d = resolveAssemblyDraft(state, tab.assemblyDraftId);
     return (
       <TabButtonView
         tab={tab} active={active} label={asmLabel(d)}
@@ -145,9 +159,21 @@ function StoreTab({ tab, active, onSwitch, onClose }) {
   );
 }
 
-function PropTab({ tab, active, containers, operations, assemblyDrafts, onSwitch, onClose }) {
+function PropTab({
+  tab, active, containers, operations, assemblyDrafts, zones, pieces, onSwitch, onClose,
+}) {
   if (tab.kind === 'assembly') {
-    const d = (assemblyDrafts || []).find((x) => x.id === tab.assemblyDraftId);
+    // V90 — dual-resolve assembly tab: zone id → projected name, fallback
+    // to legacy assemblyDrafts. Same path as AssemblyModeShell so tab
+    // never lags behind editor content.
+    const synthState = {
+      assemblyDrafts: assemblyDrafts || [],
+      zones: zones || [],
+      pieces: pieces || [],
+      containers: containers || [],
+      operations: operations || [],
+    };
+    const d = resolveAssemblyDraft(synthState, tab.assemblyDraftId);
     return (
       <TabButtonView
         tab={tab} active={active} label={asmLabel(d)}
@@ -176,7 +202,8 @@ function PropTab({ tab, active, containers, operations, assemblyDrafts, onSwitch
 }
 
 export default function EditorTabStrip({
-  tabs, activeTabId, containers, operations, assemblyDrafts, onSwitch, onClose,
+  tabs, activeTabId, containers, operations, assemblyDrafts, zones, pieces,
+  onSwitch, onClose,
 }) {
   if (!Array.isArray(tabs) || tabs.length === 0) return null;
   const propMode = Array.isArray(containers);
@@ -201,6 +228,8 @@ export default function EditorTabStrip({
           containers={containers}
           operations={operations}
           assemblyDrafts={assemblyDrafts}
+          zones={zones}
+          pieces={pieces}
           onSwitch={onSwitch}
           onClose={onClose}
         />

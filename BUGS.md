@@ -56,9 +56,9 @@
 - **Ожидаемое:** фрагмент, выбранный в режиме «RE-сайт», очевидно получают рестрикцией → `piece.acquisitionMethod = 'restriction'`, предполагаемый трек сборки (junction / op-group kind) — лигирование (RE-клонирование), а не PCR/Gibson по умолчанию.
 - **Подход для Code:** связать selection mode пикера с `acquisitionMethod`: RE-сайт → 'restriction'. Automode/grouping и primer-derivation для restriction-piece дефолтят ligation-junction. Курсор/feature/numeric — поведение прежнее.
 
-**V90 — Вкладка редактора показывает «(пустой)» и не обновляется под содержимое** (OPEN, зафиксирован 21.05.2026, найден на визуальной приёмке M-CANVAS-WORKFLOW-UX).
-- **Симптом:** верхняя вкладка редактора названа «(пустой)» даже когда открыта сборка с содержимым («Сборка 1», 11 bp · 1 сегм.). Непонятно, к чему привязано имя вкладки и когда оно должно меняться.
-- **Подход для Code:** label вкладки привязать к открытому документу (имя проекта / активной сборки), обновлять при наличии содержимого; «(пустой)» — только для реально пустого/безымянного состояния. Логику именования согласовать с cleanup-задачей «Header title = имя проекта».
+**[x] V90 — Вкладка редактора показывает «(пустой)» и не обновляется под содержимое** (FIXED 21.05.2026; EditorTabStrip dual-resolve через `selectAssemblyTarget` + 3 теста editor-tab-strip-v90).
+- **Корень:** EditorTabStrip для assembly-таба искал draft только в `state.assemblyDrafts`. Когда таб открыт на zone id (T6 архитектура), legacy slice пуст → fallback на «(пустой)», даже если у зоны есть имя.
+- **Фикс:** `StoreTab` + `PropTab` используют `selectAssemblyTarget(state, tab.assemblyDraftId)` — тот же dual-resolve, что у `AssemblyModeShell` + `SegmentDetailPanel`. `EditorWindowShell` теперь прокидывает `zones`+`pieces` в `EditorTabStrip` для prop-mode path. Legacy assemblyDrafts путь сохранён, «(пустой)» остаётся только для unresolved-id.
 
 **V91 — MiniProjectCanvas в развёрнутом виде перекрывает правую панель редактора** (OPEN, зафиксирован 21.05.2026, найден на визуальной приёмке M-CANVAS-WORKFLOW-UX).
 - **Симптом:** развёрнутый мини-канвас (MiniProjectCanvas, floating top-right, zIndex 40) накладывается на правую панель «Праймеры/Границы» и поле поиска — перекрывает функциональный интерфейс.

@@ -154,6 +154,10 @@ export default function EditorWindowShell() {
           containers={state.containers}
           operations={state.operations}
           assemblyDrafts={state.assemblyDrafts}
+          /* V90 — pass zones+pieces so an assembly tab opened on a
+             zone id resolves to the zone's name (was «(пустой)»). */
+          zones={state.zones}
+          pieces={state.pieces}
           onSwitch={onSwitch}
           onClose={onCloseTab}
         />
