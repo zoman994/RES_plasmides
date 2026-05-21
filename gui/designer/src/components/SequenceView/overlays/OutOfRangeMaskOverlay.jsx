@@ -52,25 +52,87 @@ export default function OutOfRangeMaskOverlay({
       return undefined;
     }
     const out = [];
+    // Helper — превращает [colFrom, colTo) внутри строки в absolute rect.
+    const pushRect = (el, colFrom, colTo, key) => {
+      if (colTo <= colFrom) return;
+      const left = (el.offsetLeft || 0) + (LABEL_WIDTH + colFrom) * charPx;
+      const width = (colTo - colFrom) * charPx;
+      const top = el.offsetTop || 0;
+      const height = Math.max(10, el.offsetHeight || 18);
+      out.push({ key, left, top, width, height });
+    };
+
     for (const el of Array.from(lines)) {
       const elKind = el.getAttribute('data-wraptail-kind') || 'main';
-      if (elKind !== 'main') continue;
+      const wrapsOrigin = el.getAttribute('data-wraps-origin') === 'true';
+      const bridgeWrapAt = wrapsOrigin
+        ? parseInt(el.dataset.wrapAt || '0', 10)
+        : 0;
       const lineStart = parseInt(el.dataset.lineStart || '', 10);
       if (Number.isNaN(lineStart)) continue;
-      const lineEnd = lineStart + cpl;
-      for (const seg of oorSegments) {
-        if (lineEnd <= seg.start || lineStart >= seg.end) continue;
-        const fromCh = Math.max(0, seg.start - lineStart);
-        const toCh = Math.min(cpl, seg.end - lineStart);
-        if (toCh <= fromCh) continue;
-        const left = (el.offsetLeft || 0) + (LABEL_WIDTH + fromCh) * charPx;
-        const width = (toCh - fromCh) * charPx;
-        const top = el.offsetTop || 0;
-        const height = Math.max(10, el.offsetHeight || 18);
-        out.push({
-          key: `oor:${lineStart}:${seg.start}-${seg.end}`,
-          left, top, width, height,
-        });
+
+      if (elKind === 'main' && !wrapsOrigin) {
+        // Plain main row — half-open [lineStart, lineStart+cpl).
+        const lineEnd = lineStart + cpl;
+        for (const seg of oorSegments) {
+          if (lineEnd <= seg.start || lineStart >= seg.end) continue;
+          const fromCh = Math.max(0, seg.start - lineStart);
+          const toCh = Math.min(cpl, seg.end - lineStart);
+          pushRect(el, fromCh, toCh, `oor:m:${lineStart}:${seg.start}-${seg.end}`);
+        }
+      } else if (wrapsOrigin && Number.isFinite(bridgeWrapAt)) {
+        // V87 r2 — bridge row: левая половина [0..wrapAt) показывает
+        // positions [lineStart..lineStart+wrapAt), правая [wrapAt..cpl)
+        // показывает positions [0..cpl-wrapAt) (wrap через origin).
+        // Маскируем обе половины по соответствующим segments.
+        const mainEnd = lineStart + bridgeWrapAt;
+        for (const seg of oorSegments) {
+          // Left half (main band).
+          if (mainEnd > seg.start && lineStart < seg.end) {
+            const fromCh = Math.max(0, seg.start - lineStart);
+            const toCh = Math.min(bridgeWrapAt, seg.end - lineStart);
+            pushRect(el, fromCh, toCh, `oor:bL:${lineStart}:${seg.start}-${seg.end}`);
+          }
+          // Right (wrap) half — отображает [0..wrapLen) в колонках [wrapAt..cpl).
+          const wrapLen = Math.max(0, cpl - bridgeWrapAt);
+          const wrapPosEnd = wrapLen;
+          // OOR intersection with [0, wrapLen) — direct interval intersect.
+          const intStart = Math.max(0, seg.start);
+          const intEnd = Math.min(wrapPosEnd, seg.end);
+          if (intEnd > intStart) {
+            const fromCh = bridgeWrapAt + intStart;
+            const toCh = bridgeWrapAt + intEnd;
+            pushRect(el, fromCh, toCh, `oor:bR:${lineStart}:${seg.start}-${seg.end}`);
+          }
+        }
+      } else if (elKind === 'trailing-wrap') {
+        // Trailing-wrap row — показывает [0..cpl) the same way as a
+        // duplicate main strip. dataset.lineStart обычно отражает
+        // wrap-extended coord (≥ seqLength), но визуально это просто
+        // [0..lineLen). Применим маску по реальным positions.
+        // SequenceLine.jsx уже даёт opacity:0.6 для wrap-tail, но это
+        // распространяется на всю line — для частично-OOR строк
+        // (часть в range) нужен наш explicit clip.
+        const lineLen = Math.min(cpl, L);
+        for (const seg of oorSegments) {
+          const intStart = Math.max(0, seg.start);
+          const intEnd = Math.min(lineLen, seg.end);
+          if (intEnd > intStart) {
+            pushRect(el, intStart, intEnd, `oor:tw:${lineStart}:${seg.start}-${seg.end}`);
+          }
+        }
+      } else if (elKind === 'leading-wrap') {
+        // Leading-wrap row — показывает positions [L-cpl..L) (хвост
+        // последовательности перед origin).
+        const lineLen = Math.min(cpl, L);
+        const wrapLineStart = Math.max(0, L - lineLen);
+        const wrapLineEnd = L;
+        for (const seg of oorSegments) {
+          if (wrapLineEnd <= seg.start || wrapLineStart >= seg.end) continue;
+          const fromCh = Math.max(0, seg.start - wrapLineStart);
+          const toCh = Math.min(lineLen, seg.end - wrapLineStart);
+          pushRect(el, fromCh, toCh, `oor:lw:${lineStart}:${seg.start}-${seg.end}`);
+        }
       }
     }
     setRects(out);
