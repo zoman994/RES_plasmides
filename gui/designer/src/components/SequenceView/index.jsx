@@ -79,6 +79,7 @@ import SelectionOverlay from "./overlays/SelectionOverlay.jsx";
 import OriginMarkerOverlay from "./overlays/OriginMarkerOverlay.jsx";
 import SearchHitsOverlay from "./overlays/SearchHitsOverlay.jsx";
 import SegmentZonesOverlay from "./overlays/SegmentZonesOverlay.jsx";
+import OutOfRangeMaskOverlay from "./overlays/OutOfRangeMaskOverlay.jsx";
 import { flankedSpan } from "./lib/primer-flank.js";
 import PrimerFromSelectionModal from "./popups/PrimerFromSelectionModal.jsx";
 import { reverseComplement } from "../../sequence-utils.js";
@@ -191,6 +192,11 @@ const SequenceView = forwardRef(function SequenceView({
   pieceZones,
   onZoneClick,
   onZoneHover,
+  // V87 — out-of-range mask for the RangePickerModal viewer:
+  // {start, end} dims everything in main band OUTSIDE [start, end] so
+  // the selected slice reads as foreground. Library / Importer / PCR
+  // leave it undefined → overlay renders nothing (back-compat).
+  outOfRangeMask = null,
 }, ref) {
   const containerRef = useRef(null);
   const [charPx, setCharPx] = useState(7.2);
@@ -945,6 +951,18 @@ const SequenceView = forwardRef(function SequenceView({
         onZoneClick={onZoneClick}
         onZoneHover={onZoneHover}
       />
+      {outOfRangeMask && Number.isFinite(outOfRangeMask.start)
+        && Number.isFinite(outOfRangeMask.end)
+        && outOfRangeMask.end > outOfRangeMask.start && (
+        <OutOfRangeMaskOverlay
+          rangeStart={outOfRangeMask.start}
+          rangeEnd={outOfRangeMask.end}
+          charPx={charPx}
+          charsPerLine={charsPerLine}
+          containerRef={containerRef}
+          seqLength={seqLength}
+        />
+      )}
       <SelectionOverlay
         caretPos={caretPos}
         caretAnchor={caretAnchor}

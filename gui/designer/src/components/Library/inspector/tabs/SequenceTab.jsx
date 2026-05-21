@@ -90,6 +90,9 @@ export default function SequenceTab({
   pieceZones,
   onZoneClick,
   onZoneHover,
+  // V87 — opt-in out-of-range mask for the RangePickerModal viewer
+  // ({start,end}). Library/Importer leave it undefined → no overlay.
+  outOfRangeMask,
 }) {
   const sequenceViewRef = useRef(null);
 
@@ -191,6 +194,7 @@ export default function SequenceTab({
           pieceZones={pieceZones}
           onZoneClick={onZoneClick}
           onZoneHover={onZoneHover}
+          outOfRangeMask={outOfRangeMask}
         />
       </div>
     </div>
