@@ -65,6 +65,18 @@ export default function RangePickerModal({ source, onConfirm, onCancel }) {
     firstRESiteRef.current = next;
     setFirstRESite(next);
   };
+
+  // V-followup 22.05.2026 — биолог: «вижу попытку выделения, но
+  // сбрасывается». Гипотеза: после drag-select браузер фaire'ит
+  // synthetic click; в useSelectionState pointerMovedRef иногда не
+  // успевает встать true (короткий быстрый drag) → click фолбэк
+  // зовёт onCaretChange(pos, {extendSelection: false}) → anchor
+  // collapse'ится на pos → selection теряется. Защита: отмечаем
+  // timestamp последнего extend; в течение DRAG_GRACE_MS после него
+  // игнорируем non-extend caretChange (это «фейковый» click после
+  // drag, а не «новый клик» биолога).
+  const lastExtendAtRef = useRef(0);
+  const DRAG_GRACE_MS = 250;
   // V89 — track как был выбран фрагмент. 'restriction' → caller
   // выставит piece.acquisitionMethod='restriction' и автогруппа
   // даст ligation-junction по умолчанию.
@@ -115,15 +127,23 @@ export default function RangePickerModal({ source, onConfirm, onCancel }) {
 
   const onCaretChange = (pos, opts) => {
     if (!Number.isFinite(pos)) return;
+    const isExtending = !!(opts && opts.extendSelection);
+    // Drag-grace: если только что был extend и сейчас прилетел
+    // single-click (без shift) — игнорируем (это синтетический click
+    // от браузера после drag, не намерение биолога деселектить).
+    if (!isExtending) {
+      const sinceExtend = Date.now() - lastExtendAtRef.current;
+      if (sinceExtend < DRAG_GRACE_MS) return;
+    }
     setCaretPos(pos);
-    if (!opts || !opts.extendSelection) {
-      setCaretAnchor(pos);
-      setSelectionMode('dna');
-    } else {
-      // extending — sync start/end to the new caret span.
+    if (isExtending) {
+      lastExtendAtRef.current = Date.now();
       const s = Math.min(caretAnchor, pos);
       const en = Math.max(caretAnchor, pos);
       setStart(s); setEnd(en);
+    } else {
+      setCaretAnchor(pos);
+      setSelectionMode('dna');
     }
     updateFirstRESite(null);
     setAcquisitionMethod('cursor');
