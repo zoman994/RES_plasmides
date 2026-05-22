@@ -293,7 +293,9 @@ function EntryThumbnail({ display, kind }) {
       >🧱</div>
     );
   }
-  // library + container — MiniPlasmidMap at 32 px.
+  // library + container — MiniPlasmidMap at 32 px. showLabels=false:
+  // на таком размере leader-line подписи фич нечитаемы и обрезаются;
+  // имя + счётчик фич живут в тексте строки рядом.
   return (
     <MiniPlasmidMap
       testId="library-search-thumb-map"
@@ -302,6 +304,7 @@ function EntryThumbnail({ display, kind }) {
       circular={display.topology === 'circular'}
       width={32}
       height={32}
+      showLabels={false}
     />
   );
 }
@@ -436,11 +439,9 @@ const styles = {
   rowThumb: {
     flexShrink: 0, width: 32, height: 32,
     display: 'flex', alignItems: 'center', justifyContent: 'center',
-    // V85 follow-up — MiniPlasmidMap labels (leader-line с текстом
-    // имени фичи) выходят за SVG (overflow:visible) и накладываются
-    // на текст строки. Клипаем — labels на 32×32 неразборчивы, важна
-    // только цветная ring/strip.
-    overflow: 'hidden',
+    // V85 r2 — MiniPlasmidMap теперь рендерится с showLabels=false,
+    // так что leader-line подписи не выходят за SVG. overflow:hidden
+    // больше не нужен (нечему обрезаться) — оставляем чистое кольцо.
   },
   rowMain: {
     flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1,

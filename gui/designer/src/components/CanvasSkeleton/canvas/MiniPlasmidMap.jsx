@@ -87,6 +87,11 @@ export default function MiniPlasmidMap({
   width = 90,
   height = 70,
   testId,
+  // V85 r2 (Игорь 22.05.2026) — на 32px thumbnail'ах leader-line
+  // labels фич нечитаемы и обрезаются. showLabels=false → рендерим
+  // только цветное кольцо/strip, имя+счётчик фич живут в тексте
+  // строки рядом (как в SnapGene/Benchling списках).
+  showLabels = true,
 }) {
   const features = useMemo(
     () => (Array.isArray(annotations) ? annotations : []).filter(
@@ -115,6 +120,7 @@ export default function MiniPlasmidMap({
         width={width}
         height={height}
         testId={testId}
+        showLabels={showLabels}
       />
     );
   }
@@ -129,11 +135,12 @@ export default function MiniPlasmidMap({
       width={width}
       height={height}
       testId={testId}
+      showLabels={showLabels}
     />
   );
 }
 
-function CircularMap({ L, features, linearizedFromCircular, cutPosition, excised, frozen, primers = [], flank = null, width, height, testId }) {
+function CircularMap({ L, features, linearizedFromCircular, cutPosition, excised, frozen, primers = [], flank = null, width, height, testId, showLabels = true }) {
   const cx = width / 2;
   const cy = height / 2;
   const r = Math.min(width, height) / 2 - 6;
@@ -170,7 +177,8 @@ function CircularMap({ L, features, linearizedFromCircular, cutPosition, excised
 
   // V66 — feature labels (shared selection logic, MiniPlasmidMap's own
   // polar convention). Leader line out of the ring + text.
-  const labels = pickRegionsForLabels(features, L)
+  // V85 r2 — skip entirely when showLabels=false (tiny thumbnails).
+  const labels = (showLabels ? pickRegionsForLabels(features, L) : [])
     .map((rg) => {
       const theta = (((rg.start + rg.end) / 2) / L) * TWO_PI;
       const inner = polarToCart(cx, cy, r + 1, theta);
@@ -316,7 +324,7 @@ function CutMarker({ cx, cy, r, theta }) {
   );
 }
 
-function LinearMap({ L, features, excised, frozen, primers = [], flank = null, width, height, testId }) {
+function LinearMap({ L, features, excised, frozen, primers = [], flank = null, width, height, testId, showLabels = true }) {
   // Horizontal strip in middle of viewport.
   const padX = 4;
   const stripH = Math.max(10, Math.min(20, height * 0.35));
@@ -325,7 +333,8 @@ function LinearMap({ L, features, excised, frozen, primers = [], flank = null, w
   const xOf = (pos) => padX + (Math.max(0, Math.min(L, pos)) / L) * stripW;
 
   // V66 — feature labels (shared selection; placed above the strip).
-  const labels = pickRegionsForLabels(features, L)
+  // V85 r2 — skip entirely when showLabels=false (tiny thumbnails).
+  const labels = (showLabels ? pickRegionsForLabels(features, L) : [])
     .map((rg) => {
       const x = padX + (((rg.start + rg.end) / 2) / L) * stripW;
       return {
