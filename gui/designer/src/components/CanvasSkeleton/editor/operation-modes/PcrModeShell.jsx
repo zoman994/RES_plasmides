@@ -23,6 +23,7 @@ import { useSkeletonState, useSkeletonActions } from '../../store/skeleton-conte
 import { selectPcrPrimers } from '../../store/selectors-pcr';
 import { recomputeFromSelection } from '../../lib/operation-pcr-bridge';
 import { useHotkey } from '../../../../lib/hotkeys';
+import { useSequenceSelection } from '../../../../hooks/useSequenceSelection';
 import SequenceTab from '../../../Library/inspector/tabs/SequenceTab';
 import PrimerSuggestionsPanel from './PrimerSuggestionsPanel';
 import OrderOligosConfirmGate from './OrderOligosConfirmGate';
@@ -45,12 +46,12 @@ export default function PcrModeShell({ op }) {
   const seqLen = template?.sequence?.length || 0;
   const [gateOpen, setGateOpen] = useState(false);
 
-  // Controlled selection for the shared SequenceView (mirrors the
-  // pattern in ContainerEditorSkeleton — no bespoke handles).
-  const [caretPos, setCaretPos] = useState(0);
-  const [caretAnchor, setCaretAnchor] = useState(0);
-  const [selectionMode, setSelectionMode] = useState('dna');
-  const [selectionStrand, setSelectionStrand] = useState(1);
+  // Controlled selection via the shared hook (SPEC_VIEWER_UNIFICATION).
+  // reBehavior:'off' — PCR template has no RE-pair / cut interaction.
+  // Base mechanics (caret, drag-select, drag-grace, AA) come from the
+  // hook; primer-writing is layered on top via the tracked selection.
+  const sel = useSequenceSelection({ initialCaret: 0, reBehavior: 'off' });
+  const { caretPos, caretAnchor } = sel;
 
   const result = useMemo(() => selectPcrPrimers(state, op?.id), [state, op]);
   const pairs = result.pairs || [];
@@ -82,19 +83,6 @@ export default function PcrModeShell({ op }) {
     }
     return out;
   }, [pairs]);
-
-  // V72 — selection is DECOUPLED from writing. Selecting a region in
-  // the shared viewer only tracks the selection; the primer is written
-  // explicitly per strand via Ctrl+R (forward) / Ctrl+Alt+R (reverse).
-  const onSelectRangeFromView = useCallback((start, end, mode, strand) => {
-    if (typeof start !== 'number' || typeof end !== 'number') return;
-    if (!Number.isFinite(start) || !Number.isFinite(end)) return;
-    if (end <= start) return;
-    setCaretAnchor(start);
-    setCaretPos(end);
-    setSelectionMode(mode === 'aa' ? 'aa' : 'dna');
-    setSelectionStrand(strand === -1 ? -1 : 1);
-  }, []);
 
   // V72 — write ONE strand of the pair from the current selection.
   // Reuses the bio-validated recomputeFromSelection (v0.5
@@ -136,20 +124,6 @@ export default function PcrModeShell({ op }) {
   const writeReverse = useCallback(() => writePrimerStrand('reverse'), [writePrimerStrand]);
   useHotkey('pcr-primer-forward', writeForward);
   useHotkey('pcr-primer-reverse', writeReverse);
-
-  const onCaretChange = useCallback((pos, opts) => {
-    if (typeof pos !== 'number' || !Number.isFinite(pos)) return;
-    setCaretPos(pos);
-    // V80 — collapse the selection anchor onto a plain caret click
-    // (mirrors ContainerEditorSkeleton.onCaretChangeFromView). Without
-    // this, caretAnchor stayed at its initial 0, so every drag-select
-    // ran from the first nucleotide («выделяется всё с первого
-    // нуклеотида»). `extendSelection` (shift-drag) keeps the anchor.
-    if (!opts || !opts.extendSelection) {
-      setCaretAnchor(pos);
-      setSelectionMode('dna');
-    }
-  }, []);
 
   const onReuse = useCallback((primer) => {
     if (!op) return;
@@ -218,12 +192,12 @@ export default function PcrModeShell({ op }) {
             name={template?.name}
             editable={false}
             isReadOnlyZone={false}
-            caretPos={caretPos}
-            caretAnchor={caretAnchor}
-            selectionMode={selectionMode}
-            selectionStrand={selectionStrand}
-            onCaretChange={onCaretChange}
-            onSelectRange={onSelectRangeFromView}
+            caretPos={sel.caretPos}
+            caretAnchor={sel.caretAnchor}
+            selectionMode={sel.selectionMode}
+            selectionStrand={sel.selectionStrand}
+            onCaretChange={sel.onCaretChange}
+            onSelectRange={sel.onSelectRange}
             onWritePrimer={onWritePrimer}
             showSelectionTm
             primers={viewerPrimers}

@@ -22,10 +22,11 @@
  *
  * Closes on Esc / click-outside (ui-interactions modal contract).
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import SequenceTab from '../../../Library/inspector/tabs/SequenceTab';
 import { useStore } from '../../../../store';
 import { RE_ENZYMES } from '../../../../restriction-db';
+import { useSequenceSelection } from '../../../../hooks/useSequenceSelection';
 
 function featureLabel(a, idx) {
   const base = a && (a.label || a.name || a.type) ? (a.label || a.name || a.type) : `feature ${idx + 1}`;
@@ -37,50 +38,45 @@ function featureLabel(a, idx) {
 export default function RangePickerModal({ source, onConfirm, onCancel }) {
   const seq = (source && source.sequence) || '';
   const annotations = (source && source.annotations) || [];
-  const [start, setStart] = useState(0);
-  const [end, setEnd] = useState(seq.length);
   const [rc, setRc] = useState(false);
-
-  // SequenceView is fully controlled — without caretPos / caretAnchor
-  // SelectionOverlay can't render the highlight rect (see
-  // hooks/useSelectionState.js). Same shape as AssemblyShellBody +
-  // PcrModeShell — single source of truth across sequence viewers.
-  const [caretPos, setCaretPos] = useState(0);
-  const [caretAnchor, setCaretAnchor] = useState(0);
-  const [selectionMode, setSelectionMode] = useState('dna');
-  const [selectionStrand, setSelectionStrand] = useState(1);
   const [reHighlightKey, setReHighlightKey] = useState(null);
-  // V88 — two-click RE-site pair: первый клик копит site, второй
-  // замыкает выделение на [cutA, cutB]. Курсор/numeric/feature
-  // сбрасывают.
-  //
-  // V88 r2 — храним в useRef, не только в state, потому что
-  // SequenceLine.React.memo + глубокий pipeline могут передавать
-  // stale closure'ы onRestrictionClick на real-DOM пути (test path
-  // через window event работает, real RestrictionTrack click — нет).
-  // Ref всегда читается свежим, state нужен только для UI hint.
-  const firstRESiteRef = useRef(null);
-  const [firstRESite, setFirstRESite] = useState(null);
-  const updateFirstRESite = (next) => {
-    firstRESiteRef.current = next;
-    setFirstRESite(next);
-  };
+  // V89-extra — feature/numeric override the hook's cursor/restriction
+  // acquisitionMethod label (cosmetic in the hint; downstream branches
+  // only on 'restriction'). null → use hook's value.
+  const [methodOverride, setMethodOverride] = useState(null);
 
-  // V-followup 22.05.2026 — биолог: «вижу попытку выделения, но
-  // сбрасывается». Гипотеза: после drag-select браузер фaire'ит
-  // synthetic click; в useSelectionState pointerMovedRef иногда не
-  // успевает встать true (короткий быстрый drag) → click фолбэк
-  // зовёт onCaretChange(pos, {extendSelection: false}) → anchor
-  // collapse'ится на pos → selection теряется. Защита: отмечаем
-  // timestamp последнего extend; в течение DRAG_GRACE_MS после него
-  // игнорируем non-extend caretChange (это «фейковый» click после
-  // drag, а не «новый клик» биолога).
-  const lastExtendAtRef = useRef(0);
-  const DRAG_GRACE_MS = 250;
-  // V89 — track как был выбран фрагмент. 'restriction' → caller
-  // выставит piece.acquisitionMethod='restriction' и автогруппа
-  // даст ligation-junction по умолчанию.
-  const [acquisitionMethod, setAcquisitionMethod] = useState('cursor');
+  // SPEC_VIEWER_UNIFICATION — controlled selection + V88 RE pair-select
+  // + drag-grace all come from the shared hook now. start/end derive
+  // from the hook's selStart/selEnd.
+  const sel = useSequenceSelection({
+    initialCaret: 0,
+    reBehavior: 'pair-select',
+    reEnzymes: RE_ENZYMES,
+    onPairCommit: ({
+      firstEnzyme, firstPosition, secondEnzyme, secondPosition,
+    }) => {
+      setReHighlightKey(`${firstEnzyme}-${firstPosition}|${secondEnzyme}-${secondPosition}`);
+      setMethodOverride(null); // hook sets acquisitionMethod='restriction'
+    },
+    onAfterSelect: () => { setReHighlightKey(null); setMethodOverride(null); },
+    onAfterCaret: () => { setReHighlightKey(null); setMethodOverride(null); },
+  });
+  const { firstRESite } = sel;
+  // Picker semantics: anchor = start, pos = end (every selection path
+  // sets anchor ≤ pos; numeric inputs may set anchor > pos transiently,
+  // so read RAW, not min/max — preserves the biolog's typed intent).
+  const start = Number.isFinite(sel.caretAnchor) ? sel.caretAnchor : 0;
+  const end = Number.isFinite(sel.caretPos) ? sel.caretPos : seq.length;
+  const acquisitionMethod = methodOverride || sel.acquisitionMethod;
+
+  // Default selection = whole source [0, seq.length] so a confirm with
+  // no manual selection inserts the full-length fragment (hook inits
+  // caret to 0; we extend pos to the end on mount / source change).
+  useEffect(() => {
+    sel.setCaretAnchor(0);
+    sel.setCaretPos(seq.length);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seq.length]);
 
   // Ensure RE sites are visible inside the modal (the Container editor
   // does the same on mount). Don't restore on unmount — biolog toggle
@@ -105,94 +101,25 @@ export default function RangePickerModal({ source, onConfirm, onCancel }) {
     if (!a) return;
     const s = Number(a.start) || 0;
     const en = Number(a.end) || 0;
-    setStart(s); setEnd(en);
-    setCaretAnchor(s); setCaretPos(en);
-    updateFirstRESite(null);
-    setAcquisitionMethod('feature');
+    sel.setCaretAnchor(s);
+    sel.setCaretPos(en);
+    sel.setSelectionMode('dna');
+    setReHighlightKey(null);
+    setMethodOverride('feature');
   };
 
-  // Mirror AssemblyShellBody — every selection updates BOTH the
-  // start/end inputs (for confirm) and the SequenceView caret state
-  // (for the visual highlight).
-  const onSelectRange = (s, e, mode, strand) => {
-    if (!Number.isFinite(s) || !Number.isFinite(e)) return;
-    if (e <= s) return;
-    setStart(s); setEnd(e);
-    setCaretAnchor(s); setCaretPos(e);
-    setSelectionMode(mode === 'aa' ? 'aa' : 'dna');
-    setSelectionStrand(strand === -1 ? -1 : 1);
-    updateFirstRESite(null);
-    setAcquisitionMethod('cursor');
-  };
+  // First-click RE snap highlights the single site; the pair commit
+  // (onPairCommit) sets the dual key. firstRESite drives the single.
+  const reHighlight = firstRESite
+    ? `${firstRESite.enzyme}-${firstRESite.position}`
+    : reHighlightKey;
 
-  const onCaretChange = (pos, opts) => {
-    if (!Number.isFinite(pos)) return;
-    const isExtending = !!(opts && opts.extendSelection);
-    // Drag-grace: если только что был extend и сейчас прилетел
-    // single-click (без shift) — игнорируем (это синтетический click
-    // от браузера после drag, не намерение биолога деселектить).
-    if (!isExtending) {
-      const sinceExtend = Date.now() - lastExtendAtRef.current;
-      if (sinceExtend < DRAG_GRACE_MS) return;
-    }
-    setCaretPos(pos);
-    if (isExtending) {
-      lastExtendAtRef.current = Date.now();
-      const s = Math.min(caretAnchor, pos);
-      const en = Math.max(caretAnchor, pos);
-      setStart(s); setEnd(en);
-    } else {
-      setCaretAnchor(pos);
-      setSelectionMode('dna');
-    }
-    updateFirstRESite(null);
-    setAcquisitionMethod('cursor');
-  };
-
-  // V88 — RE-site click. Первый клик: store + snap to recognition.
-  // Второй клик (по любому другому RE-сайту): замыкаем фрагмент на
-  // [cutA, cutB] (top-strand cut позиции из RE_ENZYMES[enzyme].cut[0]),
-  // сбрасываем firstRESite. Resulting acquisitionMethod='restriction'
-  // (V89). Резать источник не пробуем — это range picker, не редактор.
-  const onRestrictionClick = (site /* , e */) => {
-    if (!site || typeof site.position !== 'number') return;
-    const enz = RE_ENZYMES[site.enzyme];
-    const recogLen = enz && enz.site ? enz.site.length : 6;
-    const cutOffset = enz && Array.isArray(enz.cut) ? enz.cut[0] : 1;
-    // V88 r2 — читаем из ref, чтобы не зависеть от потенциально-stale
-    // closure (SequenceLine.React.memo glue).
-    const stored = firstRESiteRef.current;
-    if (stored && stored.position !== site.position) {
-      const firstEnz = RE_ENZYMES[stored.enzyme];
-      const firstCutOffset = firstEnz && Array.isArray(firstEnz.cut) ? firstEnz.cut[0] : 1;
-      const cutA = stored.position + firstCutOffset;
-      const cutB = site.position + cutOffset;
-      const lo = Math.min(cutA, cutB);
-      const hi = Math.max(cutA, cutB);
-      setStart(lo); setEnd(hi);
-      setCaretAnchor(lo); setCaretPos(hi);
-      setReHighlightKey(`${stored.enzyme}-${stored.position}|${site.enzyme}-${site.position}`);
-      updateFirstRESite(null);
-      setAcquisitionMethod('restriction');
-      return;
-    }
-    // First click — snap to recognition site of A.
-    const s = site.position;
-    const en = site.position + recogLen;
-    setStart(s); setEnd(en);
-    setCaretAnchor(s); setCaretPos(en);
-    setReHighlightKey(`${site.enzyme}-${site.position}`);
-    updateFirstRESite(site);
-    setAcquisitionMethod('restriction');
-  };
-
-  // V88 — test escape hatch. SequenceView's RE-click goes through
-  // deep SVG markers that are hard to simulate in unit tests; this
-  // window event lets tests drive the pair-math directly without
-  // mounting the heavy viewer.
+  // V88 — test escape hatch. SequenceView's RE-click goes through deep
+  // SVG markers that are hard to simulate in unit tests; this window
+  // event drives the hook's onRestrictionClick directly.
   useEffect(() => {
     const onEv = (e) => {
-      if (e && e.detail) onRestrictionClick(e.detail);
+      if (e && e.detail) sel.onRestrictionClick(e.detail);
     };
     window.addEventListener('__v88_re_click__', onEv);
     return () => window.removeEventListener('__v88_re_click__', onEv);
@@ -253,14 +180,14 @@ export default function RangePickerModal({ source, onConfirm, onCancel }) {
             name={(source && source.name) || ''}
             editable={false}
             isReadOnlyZone={false}
-            caretPos={caretPos}
-            caretAnchor={caretAnchor}
-            selectionMode={selectionMode}
-            selectionStrand={selectionStrand}
-            onCaretChange={onCaretChange}
-            onSelectRange={onSelectRange}
-            onRestrictionClick={onRestrictionClick}
-            restrictionHighlightKey={reHighlightKey}
+            caretPos={sel.caretPos}
+            caretAnchor={sel.caretAnchor}
+            selectionMode={sel.selectionMode}
+            selectionStrand={sel.selectionStrand}
+            onCaretChange={sel.onCaretChange}
+            onSelectRange={sel.onSelectRange}
+            onRestrictionClick={sel.onRestrictionClick}
+            restrictionHighlightKey={reHighlight}
             showSelectionTm
             /* V87 — dim everything outside [start, end] so the picked
                fragment reads as the foreground (matches wrap-block
@@ -278,10 +205,9 @@ export default function RangePickerModal({ source, onConfirm, onCancel }) {
               value={start}
               onChange={(e) => {
                 const v = Number(e.target.value);
-                setStart(v);
-                setCaretAnchor(v);
-                updateFirstRESite(null);
-                setAcquisitionMethod('numeric');
+                sel.setCaretAnchor(v);
+                setReHighlightKey(null);
+                setMethodOverride('numeric');
               }}
               style={numInput}
             />
@@ -294,10 +220,9 @@ export default function RangePickerModal({ source, onConfirm, onCancel }) {
               value={end}
               onChange={(e) => {
                 const v = Number(e.target.value);
-                setEnd(v);
-                setCaretPos(v);
-                updateFirstRESite(null);
-                setAcquisitionMethod('numeric');
+                sel.setCaretPos(v);
+                setReHighlightKey(null);
+                setMethodOverride('numeric');
               }}
               style={numInput}
             />

@@ -37,6 +37,7 @@ import {
   useState,
 } from 'react';
 import { useStore } from '../../../store';
+import { useSequenceSelection } from '../../../hooks/useSequenceSelection';
 import { getRegions } from '../../../annotation-model';
 import { applyAnnotationEdit } from '../../../lib/annotation-edit.js';
 import TabBar from '../../Library/inspector/tabs/TabBar';
@@ -126,24 +127,29 @@ export default function ContainerEditorSkeleton() {
   // Reset на sequence при переключении container'а.
   useEffect(() => { setActiveTab('sequence'); }, [itemKey]);
 
-  // Cursor / selection state — same shape as LibrarySingleInspector
-  // (cursorPos / cursorAnchor / mode / strand / pendingScroll).
-  const [cursorPos, setCursorPos] = useState(null);
-  const [cursorAnchor, setCursorAnchor] = useState(null);
-  const [cursorSelectionMode, setCursorSelectionMode] = useState(null);
-  const [cursorSelectionStrand, setCursorSelectionStrand] = useState(1);
+  // Cursor / selection via shared hook (SPEC_VIEWER_UNIFICATION).
+  // reBehavior:'cut' — RE-site click opens the "cut here" popover
+  // (RestrictionSitePopover → cutContainerAtCursor). The cut handler
+  // is defined further down (forward ref), so the hook calls it via a
+  // ref to avoid a use-before-declare. pendingScroll stays local
+  // (Container-specific scroll-to-caret); the hook feeds it through
+  // onAfterCaret. Built-in drag-grace replaces the hand-rolled copy.
   const [pendingScroll, setPendingScroll] = useState(null);
-
-  // V-followup 22.05.2026 — биолог: «выделение в Container Window,
-  // открытом двойным кликом на бокс в сборке, не работает». Та же
-  // race condition, что в RangePicker: после короткого быстрого drag
-  // pointerMovedRef в useSelectionState не успевает встать true, и
-  // синтетический click фолбэк зовёт onCaretChange(pos,
-  // {extendSelection:false}) → anchor collapse'ится на pos.
-  // Защита: трекаем lastExtendAt, игнорим non-extend caretChange в
-  // течение 250 ms после extend.
-  const lastExtendAtRef = useRef(0);
-  const DRAG_GRACE_MS = 250;
+  const cutHandlerRef = useRef(null);
+  const sel = useSequenceSelection({
+    initialCaret: null,
+    resetKey: itemKey,
+    reBehavior: 'cut',
+    onCutHere: (site, e) => cutHandlerRef.current?.(site, e),
+    onAfterCaret: (pos, opts) => {
+      if (opts && opts.needsScroll === false) return;
+      setPendingScroll({ pos, tick: Date.now(), instant: true });
+    },
+  });
+  const cursorPos = sel.caretPos;
+  const cursorAnchor = sel.caretAnchor;
+  const cursorSelectionMode = sel.selectionMode;
+  const cursorSelectionStrand = sel.selectionStrand;
 
   // V-followup 22.05.2026 — «затемнение сиквенса после разделителя
   // не работает». Container editor, открытый из assembly, должен
@@ -230,11 +236,9 @@ export default function ContainerEditorSkeleton() {
     });
   }, [actions, activeContainer, state]);
 
-  // Reset cursor when biolog switches container.
+  // Reset pendingScroll when biolog switches container (caret reset is
+  // handled by the hook via resetKey={itemKey}).
   useEffect(() => {
-    setCursorPos(null);
-    setCursorAnchor(null);
-    setCursorSelectionMode(null);
     setPendingScroll(null);
   }, [itemKey]);
 
@@ -350,35 +354,10 @@ export default function ContainerEditorSkeleton() {
     });
   }, [activeTab]);
 
-  const onCaretChangeFromView = useCallback((pos, opts) => {
-    if (typeof pos !== 'number' || !Number.isFinite(pos)) return;
-    const isExtending = !!(opts && opts.extendSelection);
-    // V-followup — drag-grace: игнорим non-extend click в течение
-    // 250 ms после последнего extend (синтетический click после drag).
-    if (!isExtending) {
-      const sinceExtend = Date.now() - lastExtendAtRef.current;
-      if (sinceExtend < DRAG_GRACE_MS) return;
-    }
-    setCursorPos(pos);
-    if (isExtending) {
-      lastExtendAtRef.current = Date.now();
-    } else {
-      setCursorAnchor(pos);
-      setCursorSelectionMode('dna');
-    }
-    if (opts && opts.needsScroll === false) return;
-    setPendingScroll({ pos, tick: Date.now(), instant: true });
-  }, []);
-
-  const onSelectRangeFromView = useCallback((start, end, mode, strand) => {
-    if (typeof start !== 'number' || typeof end !== 'number') return;
-    if (!Number.isFinite(start) || !Number.isFinite(end)) return;
-    if (end <= start) return;
-    setCursorAnchor(start);
-    setCursorPos(end);
-    setCursorSelectionMode(mode === 'aa' ? 'aa' : 'dna');
-    setCursorSelectionStrand(strand === -1 ? -1 : 1);
-  }, []);
+  // Selection handlers come from the shared hook (drag-grace built-in,
+  // onAfterCaret feeds pendingScroll).
+  const onCaretChangeFromView = sel.onCaretChange;
+  const onSelectRangeFromView = sel.onSelectRange;
 
   // ─── Annotator wire (DEC-CANVAS-V2-EDITOR-04) ────────────────────
   const openAnnotator = useStore((st) => st.openAnnotator);
@@ -485,6 +464,9 @@ export default function ContainerEditorSkeleton() {
     }
     setRePopover({ site, x, y });
   }, []);
+  // SPEC_VIEWER_UNIFICATION — the hook's reBehavior:'cut' strategy
+  // calls onCutHere via cutHandlerRef; wire the popover-opener here.
+  cutHandlerRef.current = onRestrictionClick;
   const onRestrictionCutHere = useCallback((cutPos) => {
     if (!tabContainerId || !Number.isFinite(cutPos)) {
       setRePopover(null);
@@ -726,7 +708,7 @@ export default function ContainerEditorSkeleton() {
                     primers={entryPrimers}
                     onWritePrimer={onWriteEntryPrimer}
                     showSelectionTm
-                    onRestrictionClick={onRestrictionClick}
+                    onRestrictionClick={sel.onRestrictionClick}
                     restrictionHighlightKey={restrictionHighlightKey}
                     onCreatePiece={handleCreatePiece}
                     outOfRangeMask={containerRangeMask}
@@ -801,7 +783,7 @@ export default function ContainerEditorSkeleton() {
                     primers={entryPrimers}
                     onWritePrimer={onWriteEntryPrimer}
                     showSelectionTm
-                    onRestrictionClick={onRestrictionClick}
+                    onRestrictionClick={sel.onRestrictionClick}
                     restrictionHighlightKey={restrictionHighlightKey}
                     onCreatePiece={handleCreatePiece}
                     outOfRangeMask={containerRangeMask}

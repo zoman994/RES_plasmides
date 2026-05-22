@@ -43,6 +43,7 @@ import RealiseModal from './RealiseModal';
 import EmptyAssemblyLibrary from './EmptyAssemblyLibrary';
 import { useAssemblyPrimerWriting } from './useAssemblyPrimerWriting';
 import { findInsertIndexAtPosition } from '../../lib/assembly-primer-utils';
+import { useSequenceSelection } from '../../../../hooks/useSequenceSelection';
 
 function segLabel(seg, idx) {
   if (seg.label) return seg.label;
@@ -98,11 +99,10 @@ export default function AssemblyShellBody({ draft }) {
     isOrphan: orphanIds.has(b.segmentId),
   })), [boundaries, draft.segments, orphanIds]);
 
-  // Selection state for the shared viewer (mirrors PcrModeShell).
-  const [caretPos, setCaretPos] = useState(0);
-  const [caretAnchor, setCaretAnchor] = useState(0);
-  const [selectionMode, setSelectionMode] = useState('dna');
-  const [selectionStrand, setSelectionStrand] = useState(1);
+  // Selection via shared hook (SPEC_VIEWER_UNIFICATION). reBehavior:
+  // 'off' — assembled view has coloured zones, no RE pair/cut here.
+  const sel = useSequenceSelection({ initialCaret: 0, reBehavior: 'off' });
+  const { caretPos, caretAnchor } = sel;
   const [selectedSegmentId, setSelectedSegmentId] = useState(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -130,24 +130,6 @@ export default function AssemblyShellBody({ draft }) {
   }, []);
   const showAllPanels = useCallback(() => setHiddenPanels(new Set()), []);
   const dropPosRef = useRef(0);
-
-  const onSelectRange = useCallback((start, end, mode, strand) => {
-    if (typeof start !== 'number' || typeof end !== 'number') return;
-    if (!Number.isFinite(start) || !Number.isFinite(end)) return;
-    setCaretAnchor(start);
-    setCaretPos(end);
-    setSelectionMode(mode === 'aa' ? 'aa' : 'dna');
-    setSelectionStrand(strand === -1 ? -1 : 1);
-  }, []);
-
-  const onCaretChange = useCallback((pos, opts) => {
-    if (typeof pos !== 'number' || !Number.isFinite(pos)) return;
-    setCaretPos(pos);
-    if (!opts || !opts.extendSelection) {
-      setCaretAnchor(pos);
-      setSelectionMode('dna');
-    }
-  }, []);
 
   const openDetail = useCallback((segId) => {
     setSelectedSegmentId(segId);
@@ -341,12 +323,12 @@ export default function AssemblyShellBody({ draft }) {
               name={draft.name}
               editable={false}
               isReadOnlyZone={false}
-              caretPos={caretPos}
-              caretAnchor={caretAnchor}
-              selectionMode={selectionMode}
-              selectionStrand={selectionStrand}
-              onCaretChange={onCaretChange}
-              onSelectRange={onSelectRange}
+              caretPos={sel.caretPos}
+              caretAnchor={sel.caretAnchor}
+              selectionMode={sel.selectionMode}
+              selectionStrand={sel.selectionStrand}
+              onCaretChange={sel.onCaretChange}
+              onSelectRange={sel.onSelectRange}
               onWritePrimer={onWritePrimer}
               showSelectionTm
               primers={viewerPrimers}

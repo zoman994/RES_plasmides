@@ -15,38 +15,42 @@ import {
   useCallback, useEffect, useRef, useState,
 } from 'react';
 import { useStore } from '../../../../store';
+import { useSequenceSelection } from '../../../../hooks/useSequenceSelection';
 
 export function useInspectorSelectionNav({ activeTab, onActiveTabChange, itemKey }) {
+  // SPEC_VIEWER_UNIFICATION — core controlled selection (caret/anchor/
+  // mode/strand + onCaretChange w/ drag-grace + onSelectRange) now
+  // delegates to the shared hook. Library-specific bits stay here:
+  // LinearFeatureBar scrub (onBarSettle/onBarScrub), pendingScroll,
+  // and the scrollOnFeatureClick gate (fed via onAfterCaret/Select).
+  const sel = useSequenceSelection({
+    initialCaret: null,
+    resetKey: itemKey,
+    reBehavior: 'off',
+    onAfterCaret: (pos, opts) => {
+      if (opts && opts.needsScroll === false) return;
+      setPendingScroll({ pos, tick: Date.now(), instant: true });
+    },
+    onAfterSelect: ({ start }) => {
+      const scrollOn = useStore.getState().sequenceView?.scrollOnFeatureClick;
+      if (scrollOn !== false) {
+        setPendingScroll({ pos: start, tick: Date.now(), instant: false });
+      }
+    },
+  });
+  const setCursorPos = sel.setCaretPos;
+  const setCursorAnchor = sel.setCaretAnchor;
   // Pending scroll request from LinearFeatureBar — bar click/drag
   // queues absolute pos, SequenceTab consumes + clears. `tick` bumps
   // even on repeat positions. instant:true → behavior:'auto'.
   const [pendingScroll, setPendingScroll] = useState(null);
 
-  // Cursor marker on the strip — persistent (last set position) even
-  // after the scroll is applied + pendingScroll cleared. Lets the
-  // biolog visually see where the last navigation landed AND drives
-  // the scrubber thumb on the bar (drag updates this state, the bar
-  // re-renders the cursor at the new x).
-  const [cursorPos, setCursorPos] = useState(null);
-  // Selection anchor — the OTHER end of the selection range. When
-  // anchor === cursorPos, no selection. When they differ, the range
-  // [min(anchor,cursor)..max(anchor,cursor)] is highlighted on the
-  // SequenceView and copyable via Ctrl+C (forward strand) /
-  // Ctrl+Alt+C (reverse complement). Set/extended by SequenceView's
-  // shift-arrow keys; collapsed on plain caret moves.
-  const [cursorAnchor, setCursorAnchor] = useState(null);
-  // Selection mode — 'aa' when biolog clicked an AA cell to select
-  // its underlying triplet, 'dna' otherwise. Drives whether Copy AA
-  // (Ctrl+Shift+C / context menu) is reachable: biolog 04.05.2026
-  // evening: «"копировать АА" можно только если ты выделяешь
-  // непосредственно АА сиквенс».
-  const [cursorSelectionMode, setCursorSelectionMode] = useState(null);
-  // Strand of the selected CDS feature (1 forward / -1 reverse) —
-  // needed by Copy AA to know whether to reverse-complement the
-  // slice before translating. lacZα and friends sit on the reverse
-  // strand and translating the top-strand slice directly gives
-  // gibberish (biolog 04.05.2026 evening lab session).
-  const [cursorSelectionStrand, setCursorSelectionStrand] = useState(1);
+  // Caret / selection state now lives in the shared hook (`sel`):
+  //   cursorPos        = sel.caretPos
+  //   cursorAnchor     = sel.caretAnchor
+  //   cursorSelectionMode   = sel.selectionMode
+  //   cursorSelectionStrand = sel.selectionStrand
+  const setCursorSelectionMode = sel.setSelectionMode;
 
   // Click / pointer-up settle from the bar — final position. Switch
   // to Sequence tab if biolog initiated from Overview, then queue
@@ -110,7 +114,7 @@ export function useInspectorSelectionNav({ activeTab, onActiveTabChange, itemKey
       if (next == null) return;
       setCursorPos(next);
       setCursorAnchor(next);
-      setCursorSelectionMode('dna');
+      sel.setSelectionMode('dna');
       if (activeTab === 'sequence' || activeTab === 'annotations') {
         setPendingScroll({ pos: next, tick: Date.now(), instant: true });
       }
@@ -126,76 +130,28 @@ export function useInspectorSelectionNav({ activeTab, onActiveTabChange, itemKey
     });
   }, [activeTab]);
 
-  // Keyboard caret nav inside SequenceView (arrow keys etc.). Same
-  // shape as `onBarSettle` but always uses the instant scroll
-  // behavior — smooth animation can't keep up with held arrow keys.
-  //
-  // `opts.extendSelection` — set by SequenceView when biolog held
-  // Shift while pressing an arrow / Home / End / PageUp / PageDown.
-  // True ⇒ anchor stays where it was, focus moves (extends the
-  // selection range). False ⇒ collapse, anchor = focus.
-  // `opts.needsScroll === false` — caret stayed on the same line so
-  // skip the scrollIntoView call.
-  const onCaretChangeFromView = useCallback((pos, opts) => {
-    if (typeof pos !== 'number' || !Number.isFinite(pos)) return;
-    setCursorPos(pos);
-    if (!opts || !opts.extendSelection) {
-      setCursorAnchor(pos);
-      // Plain caret moves (no shift) collapse selection AND drop
-      // back to DNA mode — biolog explicitly leaves AA territory by
-      // pressing arrow without shift.
-      setCursorSelectionMode('dna');
-    }
-    // Shift+arrow extends selection AND PRESERVES the current mode:
-    // an AA selection stays 'aa' so the blue overlay + Copy AA
-    // hotkey remain valid as the user walks codon-by-codon (biolog
-    // 04.05.2026 evening: «с зажатым шифтом идёшь по АК … выделяются
-    // триплетами»). DNA-mode shift+arrow keeps DNA mode by default
-    // (no mode change in this branch).
-    if (opts && opts.needsScroll === false) return;
-    setPendingScroll({ pos, tick: Date.now(), instant: true });
-  }, []);
-
-  // Feature click in the SequenceView (biolog 04.05.2026 evening:
-  // «при нажатии на фичу в ВИВЕРЕ должна выделятся вся область
-  // фичи»). Set anchor at start, focus (caret) at end so the
-  // SelectionOverlay highlights the whole feature region. Queues a
-  // smooth scroll to the start so the biolog sees the beginning of
-  // the feature even if the click happened on its tail end.
-  // Bug-rush #19 (04.05.2026 evening): the «scroll-to-start when
-  // biolog clicks a feature» behavior is now opt-out via the
-  // sequenceView.scrollOnFeatureClick setting. Read once from the
-  // store via getState() inside the callback so the callback
-  // doesn't re-create on every store change.
-  const onSelectRangeFromView = useCallback((start, end, mode, strand) => {
-    if (typeof start !== 'number' || typeof end !== 'number') return;
-    if (!Number.isFinite(start) || !Number.isFinite(end)) return;
-    if (end <= start) return;
-    setCursorAnchor(start);
-    setCursorPos(end);
-    setCursorSelectionMode(mode === 'aa' ? 'aa' : 'dna');
-    setCursorSelectionStrand(strand === -1 ? -1 : 1);
-    const scrollOn = useStore.getState().sequenceView?.scrollOnFeatureClick;
-    if (scrollOn !== false) {
-      setPendingScroll({ pos: start, tick: Date.now(), instant: false });
-    }
-  }, []);
+  // Keyboard caret nav + feature-click select now come from the shared
+  // hook (`sel.onCaretChange` / `sel.onSelectRange`). The hook builds
+  // in drag-grace + AA-mode handling; the pendingScroll / scroll-on-
+  // feature-click side-effects are fed via the onAfterCaret /
+  // onAfterSelect callbacks passed at the top of this hook.
+  const onCaretChangeFromView = sel.onCaretChange;
+  const onSelectRangeFromView = sel.onSelectRange;
 
   const onPendingScrollHandled = useCallback(() => setPendingScroll(null), []);
 
-  // Reset cursor / selection when biolog switches plasmids.
+  // Caret reset on plasmid switch is handled by the shared hook
+  // (resetKey={itemKey}); pendingScroll reset stays local.
   useEffect(() => {
-    setCursorPos(null);
-    setCursorAnchor(null);
-    setCursorSelectionMode(null);
+    setPendingScroll(null);
   }, [itemKey]);
 
   return {
     pendingScroll,
-    cursorPos,
-    cursorAnchor,
-    cursorSelectionMode,
-    cursorSelectionStrand,
+    cursorPos: sel.caretPos,
+    cursorAnchor: sel.caretAnchor,
+    cursorSelectionMode: sel.selectionMode,
+    cursorSelectionStrand: sel.selectionStrand,
     setCursorPos,
     setCursorAnchor,
     onBarSettle,
