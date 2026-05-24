@@ -7,9 +7,10 @@
 import React, { useState } from 'react';
 import { STRINGS } from '../../../lib/strings';
 import ZoneSequenceMode from './zone-sequence-mode';
-import ZoneLaneDivider from './zone-lane-divider';
+import ZoneGraphContent from './ZoneGraphContent';
 import ZoneLinkBadge from './ZoneLinkBadge';
 import { selectCrossZoneSourcesForZone } from '../lib/zone-link-resolver';
+import { nodeListInZone } from '../lib/zone-model';
 import AddPiecePopover from './AddPiecePopover';
 
 const Z = STRINGS.canvasSkeleton.zones;
@@ -56,6 +57,9 @@ export default function ZoneFrame({
   const { x, y, width, height } = zone.bounds;
   const collapsed = !!zone.collapsed;
   const isSequence = zone.viewMode === 'sequence';
+  // V114 — graph-mode renders the zone's realise graph (containers + operations
+  // filtered by zoneId via nodeListInZone). pieces are OUT (spec §10 Q1).
+  const zoneNodes = nodeListInZone(state, zone.id);
   // T8 K8 — cross-zone source badges (grouped by source zone).
   const crossZoneSources = state ? selectCrossZoneSourcesForZone(state, zone.id) : [];
   // T8 K10 — transient post-navigation highlight (DEC-T8-09).
@@ -234,17 +238,26 @@ export default function ZoneFrame({
           style={{
             position: 'absolute',
             inset: `${HEADER_H}px 0 0 0`,
-            // Graph-mode: transparent, clicks fall through to nodes
-            // (DEC-T4-04). Sequence-mode: ZoneSequenceMode owns it.
+            // Graph-mode body stays pointer-events:none so background clicks
+            // fall through to the canvas (DEC-T4-04); node wrappers inside
+            // ZoneGraphContent are pointer-events:auto, so nodes stay clickable.
+            // Sequence-mode: ZoneSequenceMode owns it.
             pointerEvents: isSequence ? 'auto' : 'none',
-            overflow: 'hidden',
+            // V114 — the graph can exceed the frame; scroll it. Auto-resize of
+            // the frame bounds to the graph is OUT (spec §10 Q2).
+            overflow: isSequence ? 'hidden' : 'auto',
           }}
         >
           {isSequence && (
             <ZoneSequenceMode zone={zone} state={state} dispatch={dispatch} />
           )}
-          {!isSequence && zone.laneLayout !== 'manual' && (
-            <ZoneLaneDivider />
+          {!isSequence && (
+            <ZoneGraphContent
+              containers={zoneNodes.containers}
+              operations={zoneNodes.operations}
+              highlightedId={state && state.highlightedContainerId}
+              onContainerDoubleClick={(id) => dispatch && dispatch({ type: 'OPEN_EDITOR_VIEW_ONLY', containerId: id })}
+            />
           )}
         </div>
       )}
