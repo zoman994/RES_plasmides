@@ -114,12 +114,17 @@ export default function LibraryTreeRoot({
   // «Все проекты (N)» group.
   const pinSet = useMemo(() => new Set(pinnedProjectIds || []), [pinnedProjectIds]);
   const groups = useMemo(() => {
-    const current = currentProjectId ? (projectsById?.[currentProjectId] || null) : null;
+    // V115 — soft-deleted projects (_pendingDelete) live in the Trash zone,
+    // never the tree. `discoverProjects` (→ `others`) already filters them;
+    // the `current` and `pinnedRest` branches must do the same, else a
+    // pinned/current project stays visible after the 🗑 button.
+    const currentRaw = currentProjectId ? (projectsById?.[currentProjectId] || null) : null;
+    const current = currentRaw && currentRaw._pendingDelete ? null : currentRaw;
     const pinnedRest = [];
     for (const id of (pinnedProjectIds || [])) {
       if (id === currentProjectId) continue; // current goes to its own slot
       const p = projectsById?.[id];
-      if (p) pinnedRest.push(p);
+      if (p && !p._pendingDelete) pinnedRest.push(p);
     }
     const others = [];
     for (const p of allProjects) {

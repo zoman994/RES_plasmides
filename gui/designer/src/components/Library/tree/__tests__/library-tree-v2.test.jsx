@@ -597,3 +597,48 @@ describe('K2 — LibraryTreeRoot', () => {
     expect(screen.getByTestId('tree-foot').textContent).toMatch(/2 entries/);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────
+// V115 — soft-deleted (pending-delete) pinned/current projects must drop out
+// of the tree, same as un-pinned ones (which `discoverProjects` already
+// filters). The 🗑 button flips `_pendingDelete`; before the fix the `current`
+// and `pinnedRest` branches of the `groups` memo read straight from
+// `projectsById` without the filter, so the project stayed visible.
+describe('V115 — soft-deleted pinned/current projects excluded from tree', () => {
+  it('pinned project with _pendingDelete is NOT rendered; a live pinned one still is', () => {
+    useStore.setState((s) => {
+      s.projects = {
+        pa: { id: 'pa', name: 'Active', containerIds: [] },
+        pb: { id: 'pb', name: 'PinnedLive', containerIds: [] },
+        pdel: { id: 'pdel', name: 'PinnedDeleted', containerIds: [], _pendingDelete: true },
+      };
+      s.pinnedProjectIds = ['pb', 'pdel'];
+      s.currentProjectId = 'pa';
+    });
+    render(<LibraryTreeRoot />);
+    expect(screen.getByTestId('library-zone-project-pb')).toBeTruthy();
+    expect(screen.queryByTestId('library-zone-project-pdel')).toBeNull();
+  });
+
+  it('current project with _pendingDelete is NOT rendered', () => {
+    useStore.setState((s) => {
+      s.projects = {
+        pcur: { id: 'pcur', name: 'CurrentDeleted', containerIds: [], _pendingDelete: true },
+      };
+      s.pinnedProjectIds = [];
+      s.currentProjectId = 'pcur';
+    });
+    render(<LibraryTreeRoot />);
+    expect(screen.queryByTestId('library-zone-project-pcur')).toBeNull();
+  });
+
+  it('regression: a live current project still renders', () => {
+    useStore.setState((s) => {
+      s.projects = { plive: { id: 'plive', name: 'CurrentLive', containerIds: [] } };
+      s.pinnedProjectIds = [];
+      s.currentProjectId = 'plive';
+    });
+    render(<LibraryTreeRoot />);
+    expect(screen.getByTestId('library-zone-project-plive')).toBeTruthy();
+  });
+});
