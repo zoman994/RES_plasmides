@@ -205,9 +205,17 @@ export const createProjectSlice = (set, get) => ({
       };
       const filtered = state.recentProjectIds.filter(id => id !== project.id);
       state.recentProjectIds = [project.id, ...filtered].slice(0, RECENT_LIMIT);
-      state.canvas.activeFullscreen = 'dag';
-      state.canvas.navStack = [{ fullscreen: 'dag', payload: { projectId: project.id } }];
+      // V116 — a new project opens in the Library, NOT the legacy DAG overlay.
+      // 'library' is not in App.jsx's overlay switch → overlayContent===null →
+      // WorkspaceRouter (LibraryWorkspace) renders. Mirrors activateProject's
+      // «mode stays Library» contract (FAIL-fix-pass 4) — createProject was
+      // the one create-path left still forcing 'dag'.
+      state.canvas.activeFullscreen = 'library';
+      state.canvas.navStack = [{ fullscreen: 'library', payload: { projectId: project.id } }];
     });
+    // Route the workspace router to the Library (canonical action — keeps
+    // workspace history correct). V116.
+    get().setActiveWorkspace('library');
     // Sprint M-X.3 follow-up: each new project gets a matching
     // folder in the «canvas» group so CatalogColumn's «This project»
     // tree surfaces a per-project bucket without requiring the user

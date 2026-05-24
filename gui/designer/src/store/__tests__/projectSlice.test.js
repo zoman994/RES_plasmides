@@ -38,14 +38,39 @@ describe('K2 — store rewrite + project slice', () => {
     setAutosaveDelay(DEFAULT_AUTOSAVE_DELAY_MS);
   });
 
-  it('createProject populates state and pushes DAG', () => {
+  // V116 (24.05.2026) — a new project opens in the Library, not the legacy
+  // DAG overlay. createProject no longer hard-sets activeFullscreen='dag'
+  // (mirrors activateProject's «mode stays Library» contract, FAIL-fix-pass 4).
+  it('createProject populates state and routes to the Library (V116)', () => {
     const id = useStore.getState().createProject('My plasmid');
     const s = useStore.getState();
     expect(id).toBeDefined();
     expect(s.currentProjectId).toBe(id);
     expect(s.projects[id]).toMatchObject({ name: 'My plasmid', tags: [], containerIds: [] });
-    expect(s.canvas.activeFullscreen).toBe('dag');
-    expect(s.canvas.navStack[s.canvas.navStack.length - 1].fullscreen).toBe('dag');
+    // not the DAG overlay anymore — neutral non-overlay fullscreen + Library.
+    expect(s.canvas.activeFullscreen).not.toBe('dag');
+    expect(s.canvas.activeFullscreen).toBe('library');
+    expect(s.canvas.navStack[s.canvas.navStack.length - 1].fullscreen).toBe('library');
+    expect(s.workspace.active).toBe('library');
+  });
+
+  // V116 contract guard — from a non-Library overlay state, createProject
+  // must land in the Library (workspace.active='library', not the DAG
+  // overlay), while keeping the identity bookkeeping (currentProjectId + MRU).
+  it('V116 — createProject opens in Library, never the DAG overlay', () => {
+    useStore.setState((st) => {
+      st.workspace = { ...(st.workspace || {}), active: 'startup' };
+      st.canvas.activeFullscreen = 'start';
+      st.canvas.navStack = [{ fullscreen: 'start', payload: null }];
+    });
+    const id = useStore.getState().createProject('Lib-bound');
+    const s = useStore.getState();
+    // routing: Library, not DAG
+    expect(s.workspace.active).toBe('library');
+    expect(s.canvas.activeFullscreen).not.toBe('dag');
+    // identity regression — unchanged from before the fix
+    expect(s.currentProjectId).toBe(id);
+    expect(s.recentProjectIds[0]).toBe(id);
   });
 
   // ─── Sprint M-X.3 follow-up — auto-folder per project ─────────────

@@ -62,14 +62,15 @@ describe('K4-fixup — hotkey scenario F (round-trip via registry)', () => {
     _setPlatformOverrideForTests(null);
   });
 
-  it('Cmd/Ctrl+N from start → DAG (creates Untitled project)', async () => {
+  it('Cmd/Ctrl+N from start → Library (creates Untitled project, V116)', async () => {
     render(<App />);
     await act(async () => {
       pressHotkey({ key: 'n', ctrl: true });
       await flushAsync();
     });
     expect(useStore.getState().currentProjectId).not.toBeNull();
-    expect(useStore.getState().canvas.activeFullscreen).toBe('dag');
+    // V116 — a new project now opens in the Library, not the legacy DAG overlay.
+    expect(useStore.getState().canvas.activeFullscreen).toBe('library');
   });
 
   it('Cmd/Ctrl+N also auto-opens ProjectInfoModal for naming', async () => {
@@ -110,7 +111,7 @@ describe('K4-fixup — hotkey scenario F (round-trip via registry)', () => {
       pressHotkey({ key: 'n', ctrl: true });
       await flushAsync();
     });
-    expect(useStore.getState().canvas.activeFullscreen).toBe('dag');
+    expect(useStore.getState().canvas.activeFullscreen).toBe('library'); // V116 — Library, not DAG
     // M-A.1 K1 modal-guard: handleNew opens ProjectInfoModal; close-project is
     // in the deny-list while the modal is open. Dismiss the modal before ⌘W.
     await act(async () => {
@@ -163,13 +164,13 @@ describe('K4-fixup — hotkey scenario F (round-trip via registry)', () => {
     expect(useStore.getState().modals.settings).toBe(false);
   });
 
-  it('Cmd/Ctrl+I from DAG opens ProjectInfoModal; Esc closes it', async () => {
+  it('Cmd/Ctrl+I from a new project opens ProjectInfoModal; Esc closes it (V116)', async () => {
     render(<App />);
     await act(async () => {
       pressHotkey({ key: 'n', ctrl: true });
       await flushAsync();
     });
-    expect(useStore.getState().canvas.activeFullscreen).toBe('dag');
+    expect(useStore.getState().canvas.activeFullscreen).toBe('library'); // V116 — Library, not DAG
 
     await act(async () => {
       pressHotkey({ key: 'i', ctrl: true });
