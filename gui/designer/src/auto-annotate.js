@@ -362,6 +362,9 @@ export function generateAutoAnnotations(part) {
  * @returns {Promise<Array>} enriched annotations
  */
 export async function enrichWithCommonFeatures(sequence, annotations) {
+  // Coverage at/above which a common-feature hit promotes the merged region
+  // stub to the named feature (vs only tagging knownFeature). Звено 25.05.2026.
+  const REGION_PROMOTE_COVERAGE = 0.80;
   try {
     const { detectCommonFeaturesAsync } = await import('./feature-detection');
     const detected = await detectCommonFeaturesAsync(sequence);
@@ -387,6 +390,19 @@ export async function enrichWithCommonFeatures(sequence, annotations) {
         existing.knownFeature = hit.feature.name;
         existing.source = 'common_db';
         existing.identity = hit.identity;
+        // «Bare gene» promote: when the hit covers ≥80% of the matched region,
+        // the region IS the gene — autoAnnotate seeds an 'imported'/misc_feature
+        // stub over a headerless paste. Promote the stub to the named feature so
+        // it renders as a visible feature instead of a hidden knownFeature tag.
+        // <80% = the gene is only part of a larger annotated region → leave it
+        // (the else-branch names it on its own coords).
+        const regionLen = existing.end - existing.start;
+        const coverage = regionLen > 0 ? (hit.end - hit.start) / regionLen : 0;
+        if (coverage >= REGION_PROMOTE_COVERAGE) {
+          existing.originalName = existing.name; // keep prior name (consistency w/ file-import enrichAnnotations)
+          existing.name = hit.feature.name;
+          existing.type = hit.feature.type;
+        }
       } else {
         // Add as new region annotation
         enriched.push({

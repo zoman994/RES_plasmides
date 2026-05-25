@@ -108,4 +108,64 @@ describe('enrichWithCommonFeatures', () => {
     const enriched = await enrichWithCommonFeatures(sequence, annotations);
     expect(enriched.filter(a => a.name === 'cloning scar')).toHaveLength(1);
   });
+
+  // Звено 25.05.2026 — «bare gene»: common-feature опознаётся, но раньше
+  // оседал в служебном `knownFeature` без видимой фичи. Теперь хит,
+  // покрывающий ≥80% совпавшего region-заглушки, ПРОМОУТИТ её в именованную
+  // фичу (name/type), сохранив прежнее имя в `originalName`.
+  it('bare gene (hit ≥80% of the matched region) promotes the misc_feature stub to the named feature', async () => {
+    const sequence = 'A'.repeat(816);
+    // autoAnnotate seeds an 'imported' misc_feature over the whole headerless paste.
+    const annotations = [{
+      name: 'imported', type: 'misc_feature', start: 0, end: 816, level: 'region', auto: true,
+    }];
+    detectCommonFeaturesAsync.mockResolvedValueOnce([
+      { feature: { name: 'KanR', type: 'marker', description: 'aminoglycoside O-phosphotransferase' }, start: 0, end: 816, strand: 1, identity: 1.0, method: 'protein_exact' },
+    ]);
+
+    const enriched = await enrichWithCommonFeatures(sequence, annotations);
+    const kanr = enriched.find(a => a.name === 'KanR');
+    expect(kanr).toBeDefined();
+    expect(kanr.type).toBe('marker');           // promoted from misc_feature
+    expect(kanr.originalName).toBe('imported');  // prior name preserved
+    expect(kanr.knownFeature).toBe('KanR');
+    // no leftover generic misc_feature stub (promoted region is now 'marker',
+    // so hasRealRegions runs and the filter has nothing generic to drop)
+    expect(enriched.filter(a => a.type === 'misc_feature')).toHaveLength(0);
+  });
+
+  it('hit covering <80% of the matched region does NOT rename it (only tags knownFeature)', async () => {
+    const sequence = 'A'.repeat(200);
+    // region 0..80; hit 9..71 → coord-diffs 9/9 (<10 → matches `existing`) but
+    // coverage 62/80 = 0.775 < 0.80 → promote must NOT happen.
+    const annotations = [{
+      name: 'stub', type: 'misc_feature', start: 0, end: 80, level: 'region', auto: true,
+    }];
+    detectCommonFeaturesAsync.mockResolvedValueOnce([
+      { feature: { name: 'KanR', type: 'marker', description: 'x' }, start: 9, end: 71, strand: 1, identity: 0.9, method: 'protein_fuzzy' },
+    ]);
+
+    const enriched = await enrichWithCommonFeatures(sequence, annotations);
+    const region = enriched.find(a => a.start === 0 && a.end === 80);
+    expect(region).toBeDefined();
+    expect(region.name).toBe('stub');           // NOT promoted
+    expect(region.type).toBe('misc_feature');   // unchanged
+    expect(region.originalName).toBeUndefined();
+    expect(region.knownFeature).toBe('KanR');   // but still tagged
+  });
+
+  it('regression: a hit with no coordinate-matching region is added as its own feature (else branch)', async () => {
+    const sequence = 'A'.repeat(4000);
+    const annotations = []; // nothing near the hit's coords
+    detectCommonFeaturesAsync.mockResolvedValueOnce([
+      { feature: { name: 'KanR', type: 'marker', description: 'x' }, start: 1000, end: 1816, strand: 1, identity: 1.0, method: 'protein_exact' },
+    ]);
+
+    const enriched = await enrichWithCommonFeatures(sequence, annotations);
+    const kanr = enriched.find(a => a.name === 'KanR');
+    expect(kanr).toBeDefined();
+    expect(kanr.type).toBe('marker');
+    expect(kanr.start).toBe(1000);
+    expect(kanr.end).toBe(1816);
+  });
 });
