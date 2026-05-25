@@ -35,7 +35,7 @@ import LibraryActionRow from './inspector/LibraryActionRow';
 import OnboardingNudge from './onboarding/OnboardingNudge';
 import AddModal from './AddModal/AddModal';
 import SequenceSearchPopover from '../SequenceSearchPopover';
-import { parseFile, extractItemName, ACCEPT_STRING } from '../../file-import';
+import { parseFile, extractItemName, ACCEPT_STRING, enrichAnnotations } from '../../file-import';
 import { buildLibraryEntry } from './lib/build-library-entry';
 import { buildStarterSet } from './lib/starter-set';
 import { downloadEntryAsGenbank, downloadProjectAsZip } from '../../lib/export-genbank';
@@ -85,15 +85,29 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
   const closeAddModal = useCallback(() => setAddModalOpen(false), []);
 
   // Import files and add to store. `projectId` = null → LooseZone, id → project zone.
-  const importFiles = useCallback(async (files, projectId) => {
+  const importFiles = useCallback(async (files, projectId, opts = {}) => {
     if (!files.length) return;
     let added = 0;
     const errors = [];
     for (const file of files) {
       try {
         const parsed = await parseFile(file);
-        const name = extractItemName(parsed, file);
-        const entry = buildLibraryEntry(parsed, name, null);
+        // «Авто-аннотация» (DEC-IMP-09): enrich with homology / common
+        // features unless explicitly turned off. enrichAnnotations returns a
+        // copy with an extended `annotations`; at autoAnnotate===false it is
+        // skipped so a headerless paste stays feature-less. The flag rides in
+        // via `opts` (AddModal checkbox → preset → onLaunchPreImport).
+        const item = opts.autoAnnotate === false
+          ? parsed
+          : await enrichAnnotations(parsed, { autoAnnotate: true });
+        // Name: an explicit paste-name override wins; else derive as before
+        // (`>name` headers are already honoured by extractItemName).
+        const overrideName = opts.nameOverride && opts.nameOverride.trim();
+        const name = overrideName ? opts.nameOverride.trim() : extractItemName(item, file);
+        const entry = buildLibraryEntry(item, name, null);
+        // Topology: explicit override (paste linear/circular toggle) beats the
+        // parsed topology (plain-ACGT parseFasta hardcodes 'linear').
+        if (opts.topologyOverride && entry.payload) entry.payload.topology = opts.topologyOverride;
         entry.projectId = projectId || null;
         if (projectId) entry.origin = { kind: 'file_import', sourceFileName: file.name, importedAt: new Date().toISOString() };
         await addLibraryEntry(entry);
@@ -124,7 +138,7 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
     if (preset?.source === 'file') {
       const files = await openFilePicker();
       const projId = resolveTargetProjectId(preset?.target);
-      await importFiles(files, projId);
+      await importFiles(files, projId, { autoAnnotate: preset?.autoAnnotate !== false });
     } else if (preset?.source === 'paste') {
       // Paste sequence flow: wrap the textarea contents in a synthetic
       // File so the existing parseFile pipeline (GenBank / FASTA /
@@ -140,7 +154,11 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
       const filename = looksLikeGenBank ? 'pasted.gb' : 'pasted.fasta';
       const file = new File([text], filename, { type: 'text/plain' });
       const projId = resolveTargetProjectId(preset?.target);
-      await importFiles([file], projId);
+      await importFiles([file], projId, {
+        autoAnnotate: preset?.autoAnnotate !== false,
+        nameOverride: (preset?.name || '').trim() || undefined,
+        topologyOverride: preset?.topology,
+      });
     } else {
       showToast?.(`${preset?.source} — в разработке`, 'info');
     }
