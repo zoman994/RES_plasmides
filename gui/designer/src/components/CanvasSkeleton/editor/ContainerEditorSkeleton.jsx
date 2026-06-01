@@ -56,6 +56,7 @@ import InlineEditableTitle from '../../Library/inspector/InlineEditableTitle';
 import { useAnnotationUndoRedo } from '../../Library/inspector/hooks/useAnnotationUndoRedo';
 import { useFeatureEditorFlow } from '../../Library/inspector/hooks/useFeatureEditorFlow';
 import { useEntryPrimers } from '../../Library/inspector/hooks/useEntryPrimers';
+import { usePromoteToCommon } from '../../SequenceView/hooks/usePromoteToCommon';
 import {
   useSkeletonState,
   useSkeletonActions,
@@ -498,6 +499,9 @@ export default function ContainerEditorSkeleton() {
   // scoped by container id — the same hook the Library inspector uses
   // (supersedes the K10-stub `[]`: render + selection-add now live).
   const { primers: entryPrimers, onWritePrimer: onWriteEntryPrimer } = useEntryPrimers(item);
+  // SPEC_COMMON_FEATURES DEC-CF-05 — «Add to common features» in the Container
+  // Editor (an IN viewer); consumer-gated via SequenceTab props.
+  const { onPromoteToCommon, checkCommonDuplicate } = usePromoteToCommon();
 
   // Q4 — hide History tab; container.commits in skeleton are
   // ProjectCommits (canvas DAG), not per-container changelog.
@@ -712,6 +716,8 @@ export default function ContainerEditorSkeleton() {
                     restrictionHighlightKey={restrictionHighlightKey}
                     onCreatePiece={handleCreatePiece}
                     outOfRangeMask={containerRangeMask}
+                    onPromoteToCommon={onPromoteToCommon}
+                    checkCommonDuplicate={checkCommonDuplicate}
                   />
                 </div>
                 <SequenceToolbar
@@ -787,6 +793,8 @@ export default function ContainerEditorSkeleton() {
                     restrictionHighlightKey={restrictionHighlightKey}
                     onCreatePiece={handleCreatePiece}
                     outOfRangeMask={containerRangeMask}
+                    onPromoteToCommon={onPromoteToCommon}
+                    checkCommonDuplicate={checkCommonDuplicate}
                   />
                 </div>
                 <SequenceToolbar

@@ -43,6 +43,7 @@ import { useManualEditBranching } from './hooks/useManualEditBranching';
 import { useLibrarySaveFlow } from './hooks/useLibrarySaveFlow';
 import { useEntryPrimers } from './hooks/useEntryPrimers';
 import { useInspectorSelectionNav } from './hooks/useInspectorSelectionNav';
+import { usePromoteToCommon } from '../../SequenceView/hooks/usePromoteToCommon';
 
 const S = STRINGS.importer;
 
@@ -137,6 +138,10 @@ export default function SingleInspector({
   // 18.05.2026 — primer redesign on every SequenceView, Library
   // included. Primers persist to the unified pool, entry-scoped.
   const { primers: entryPrimers, onWritePrimer: onWriteEntryPrimer } = useEntryPrimers(item);
+  // SPEC_COMMON_FEATURES DEC-CF-05 — «Add to common features» in the Library
+  // inspector (an IN viewer). The hook reads the overlay slice; the consumer
+  // gate (passing these to SequenceTab) keeps it out of the OUT viewers.
+  const { onPromoteToCommon, checkCommonDuplicate } = usePromoteToCommon();
 
   // K10 manual-edit branching (DEC-LIB-12 ⚓) — extracted in M-X.6 K0.
   // K2 ships character-level apply via `onSequenceEdit` below.
@@ -586,6 +591,8 @@ export default function SingleInspector({
               onSequenceEdit={onSequenceEditFromView}
               primers={entryPrimers}
               onWritePrimer={onWriteEntryPrimer}
+              onPromoteToCommon={onPromoteToCommon}
+              checkCommonDuplicate={checkCommonDuplicate}
               showSelectionTm
             />
           </div>

@@ -185,6 +185,8 @@ export const STRINGS = {
       annotateOnImportLabel: 'Annotate on import',
       annotateOnImportHint: 'Default state of «Annotate now» in the import modal.',
       annotateOnImportToggle: 'Run predictors automatically',
+      synthesisThresholdLabel: 'Synthesis block threshold (nt)',
+      synthesisThresholdHint: 'Typing in an assembly: ≤ this many nt is a primer-tail snippet, more becomes a synthesis block. Oligos ~60–100, ultramers ~200.',
     },
     advanced: {
       resetWarning: 'Reset will clear IndexedDB and localStorage. All local projects will be deleted.',
@@ -323,6 +325,16 @@ export const STRINGS = {
     containersFolder: 'Контейнеры',                              // EN: "Containers"
     primersFolder: 'Праймеры',                                   // EN: "Primers"
     addBtn: '+ Добавить',                                        // EN: "+ Add"
+    autoAnnotateLabel: 'Авто-аннотация',                         // EN: "Auto-annotation"
+    autoAnnotateHint: 'Найти известные элементы по гомологии',   // EN: "Detect known features by homology"
+    addTitleProject: 'Добавить в проект',                        // EN: "Add to project"
+    addTitleLoose: 'Добавить на свободный стол',                 // EN: "Add to the free desk"
+    pasteNameLabel: 'Имя (необязательно)',                       // EN: "Name (optional)"
+    pasteNameHint: 'если в тексте есть >name — имя возьмётся из заголовка', // EN: "if the text has >name, the name comes from the header"
+    pasteNamePlaceholder: 'напр. pLAB-1',                        // EN: "e.g. pLAB-1"
+    topologyLabel: 'Топология',                                  // EN: "Topology"
+    topologyLinear: 'Линейная',                                  // EN: "Linear"
+    topologyCircular: 'Кольцевая',                               // EN: "Circular"
     breadcrumbActive: 'Активный проект:',                        // EN: "Active project:"
     searchPlaceholder: 'Поиск по библиотеке…',                   // EN: "Search the library…"
     treeFilterPlaceholder: 'Фильтр в дереве…',                   // EN: "Filter in the tree…"
@@ -535,6 +547,16 @@ export const STRINGS = {
       },
     },
 
+    // SPEC_EDITABLE_ASSEMBLY_S1 — editable assembled view (typing in the
+    // собранный вид → new/extended pieces).
+    editableAssembly: {
+      groupDisbanded: 'Фрагмент был в группе реакций — группа расформирована, пере-соберите', // EN: "This fragment was in a reaction group — the group was disbanded, re-assemble"
+      editDeferred: 'Правка внутри готового фрагмента пока недоступна (будет в спринте 2)', // EN: "Editing inside a sourced fragment is not available yet (sprint 2)"
+      frozenBanner: '🔒 Сборка заморожена исполненной реакцией — правка последовательности недоступна', // EN: "Assembly frozen by an executed reaction — sequence editing disabled"
+      orphanBanner: '⚠ У сборки есть фрагмент без источника — почините перед правкой', // EN: "Assembly has a source-less fragment — fix it before editing"
+      newBlockName: 'Вставка', // EN: "Insert"
+    },
+
     // Zones (T3 M-CANVAS-FOUR-TIER — state.zones slice, DEC-T3-*).
     // Placeholder namespace: error/info toasts wired now; the real
     // frame UI (render / drag / resize / merge) lands in T4.
@@ -717,5 +739,44 @@ export const STRINGS = {
     navTooltipMix: 'Mix Workspace — в разработке',               // EN: "Mix Workspace — in development"
     navTooltipSettings: 'Настройки — в разработке',              // EN: "Settings — in development"
     navTooltipTheme: 'Тема — в разработке',                      // EN: "Theme — in development"
+  },
+
+  // SPEC_COMMON_FEATURES — promote-from-annotation + Library section. Values
+  // are Russian (Игорь's documented preference + the dominant recent
+  // convention) with EN comments; the spec's «English UI-строки» note is a
+  // default we override here — see sprint report.
+  commonFeatures: {
+    // Selection context-menu item (gated on a matched region feature).
+    promoteMenuItem: 'Добавить в common-фичи',                   // EN: "Add to common features"
+    // PromoteToCommonModal.
+    modalTitle: 'Добавить в common-фичи',                        // EN: "Add to common features"
+    fieldName: 'Имя',                                            // EN: "Name"
+    fieldType: 'Тип',                                            // EN: "Type"
+    fieldSequence: 'Последовательность (ПСО)',                   // EN: "Sequence"
+    proteinNote: 'CDS-тип: белок будет рассчитан из ПСО в рамке региона', // EN: "CDS type: protein is translated from the region sequence"
+    cancel: 'Отмена',                                            // EN: "Cancel"
+    confirm: 'Добавить',                                         // EN: "Add"
+    // Dedup verdicts.
+    dupBlocked: (by) =>                                          // EN: "Already in the common DB (matched by …)"
+      `Такая фича уже есть в common-БД (совпадение по ${by === 'protein' ? 'белку' : 'ДНК'}).`,
+    nameWarning: (name) =>                                       // EN: "«name» exists with a different sequence — add as a variant?"
+      `Фича «${name}» уже есть с другой ПСО — добавить как вариант?`,
+    added: (name) => `«${name}» добавлена в common-фичи`,        // EN: "«name» added to common features"
+    // Library section (DEC-CF-06).
+    sectionTitle: 'Common-фичи',                                 // EN: "Common features"
+    treeNodeLabel: 'Common-фичи',                                // EN: "Common features"
+    searchPlaceholder: 'Поиск по имени или типу…',              // EN: "Search by name or type…"
+    empty: 'Common-фич пока нет',                                // EN: "No common features yet"
+    countLabel: (n) => `${n} фич`,                               // EN: "n features"
+    badgeFactory: 'заводская',                                   // EN: "factory"
+    badgeUser: 'пользовательская',                               // EN: "user"
+    badgeOverridden: 'изменена',                                 // EN: "overridden"
+    edit: 'Изменить',                                            // EN: "Edit"
+    save: 'Сохранить',                                           // EN: "Save"
+    reset: 'Сбросить к заводской',                               // EN: "Reset to factory"
+    deleteUser: 'Удалить',                                       // EN: "Delete"
+    resetConfirm: 'Сбросить изменения к заводской версии?',      // EN: "Reset edits to the factory version?"
+    deleteConfirm: 'Удалить пользовательскую фичу?',             // EN: "Delete this user feature?"
+    lengthLabel: (n) => `${n} нт`,                               // EN: "n bp"
   },
 };

@@ -22,6 +22,10 @@ export function buildSelectionMenuItems({
   onBlastSelection,
   onWritePrimer,
   onCreatePiece,
+  // SPEC_COMMON_FEATURES DEC-CF-05 — consumer-gated «Add to common features».
+  // Rides the same matchedRegion rail as edit/del; absent prop ⇒ no item, so
+  // Annotator-preview / Assembly / PCR viewers are unaffected by construction.
+  onPromoteToCommon,
 }) {
   // Build extra context-menu items lazily so we don't
   // re-allocate on every render. K3 wires «Создать
@@ -84,6 +88,19 @@ export function buildSelectionMenuItems({
         onAnnotationEdit?.({ kind: "delete", id });
       },
     });
+    // SPEC_COMMON_FEATURES DEC-CF-05 — «Add to common features». Gated on the
+    // matched region (so we have a name/type/range to promote) AND the
+    // consumer prop, like edit/del above.
+    if (typeof onPromoteToCommon === "function") {
+      items.push({
+        key: "promote-common",
+        label: STRINGS.commonFeatures.promoteMenuItem,
+        onClick: () => {
+          setContextMenu(null);
+          onPromoteToCommon({ region: matchedRegion, start: selStart, end: selEnd });
+        },
+      });
+    }
   }
   // K9 — «Аннотировать выделение...» entry. Opens the
   // fullscreen Annotator with a region-scoped run on the

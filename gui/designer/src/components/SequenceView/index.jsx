@@ -82,6 +82,7 @@ import SegmentZonesOverlay from "./overlays/SegmentZonesOverlay.jsx";
 import OutOfRangeMaskOverlay from "./overlays/OutOfRangeMaskOverlay.jsx";
 import { flankedSpan } from "./lib/primer-flank.js";
 import PrimerFromSelectionModal from "./popups/PrimerFromSelectionModal.jsx";
+import PromoteToCommonModal from "./popups/PromoteToCommonModal.jsx";
 import { reverseComplement } from "../../sequence-utils.js";
 import SelectionContextMenu from "./popups/SelectionContextMenu.jsx";
 import { buildSelectionMenuItems } from "./popups/build-selection-menu-items.js";
@@ -170,9 +171,19 @@ const SequenceView = forwardRef(function SequenceView({
   // { direction:'forward'|'reverse', start, end }. Consumer-gated, same
   // as onBlastSelection — Library/Importer leave it undefined.
   onWritePrimer,
+  // Assembly editor — Del on a SELECTED primer deletes it (consumer-gated,
+  // same pattern as onWritePrimer). Called with the primer hit; the assembler
+  // resolves hit.id → removeAssemblyPrimer. Library/Importer leave it
+  // undefined → Del on a selected primer is swallowed (read-only), never
+  // touching the nucleotide.
+  onDeletePrimer,
   // T5 DEC-T5-01 — consumer-gated piece authoring (same pattern as
   // onWritePrimer). Container Editor passes it; other consumers don't.
   onCreatePiece,
+  // SPEC_COMMON_FEATURES DEC-CF-05 — consumer-gated «Add to common features»
+  // (same pattern as onWritePrimer). Undefined ⇒ no menu item / no modal.
+  onPromoteToCommon,
+  checkCommonDuplicate,
   // M-X.9 K2 follow-up (TD-SEARCH-OVERLAY-RECTS) — Ctrl+F search
   // hits to render as overlay rects + mismatch ticks. Each hit:
   //   { targetStart, targetEnd, queryIdentity, mismatchPositions[], strand }
@@ -216,6 +227,15 @@ const SequenceView = forwardRef(function SequenceView({
   // for idle pre-warm) returns clientWidth=0 → wait for the
   // ResizeObserver → no narrow-then-wide flash on tab activation.
   const [measured, setMeasured] = useState(false);
+
+  // V96 — layout epoch. Bumped whenever the rendered lines reflow:
+  // the two-phase `tracksReady` flip grows line height (annotation +
+  // AA tracks mount), and charsPerLine / wrap-tail changes shift rows.
+  // Threaded into every geometry-measuring overlay (Selection, OOR,
+  // Caret, SearchHits, SegmentZones) so each re-measures against the
+  // FINAL layout without needing a click to move the caret. Effect
+  // that increments it sits just past the `linesJsx` memo below.
+  const [layoutEpoch, setLayoutEpoch] = useState(0);
 
   // Per-row selection scoping — drag-to-select stays inside ONE row
   // at a time, so the user can copy e.g. just the reverse strand or
@@ -304,6 +324,7 @@ const SequenceView = forwardRef(function SequenceView({
   // selection (RC-oriented), editable name/seq/RC, then creates. The
   // right-click "primer" item routes here instead of creating directly.
   const [primerDraft, setPrimerDraft] = useState(null);
+  const [promoteDraft, setPromoteDraft] = useState(null);
   // requestWritePrimer is defined AFTER `fullSeq` (declared below) to
   // avoid a TDZ — see just past the fullSeq/orfRanges memos.
 
@@ -378,6 +399,19 @@ const SequenceView = forwardRef(function SequenceView({
       name: hit.name || "",
     });
   }, [onWritePrimer]);
+
+  // DEC-CF-05 — menu → draft. Bake region strand into the draft sequence
+  // (coding 5'→3') so the hook translates protein in frame 0.
+  const requestPromoteToCommon = useCallback(({ region, start, end }) => {
+    if (!onPromoteToCommon || start == null || end == null) return;
+    const slice = fullSeq.slice(start, end);
+    const coding = region?.strand === -1 ? reverseComplement(slice) : slice;
+    setPromoteDraft({
+      name: region?.name || "",
+      type: region?.type || "misc_feature",
+      sequence: coding.toUpperCase(),
+    });
+  }, [onPromoteToCommon, fullSeq]);
 
   const framesResolution = useMemo(
     () =>
@@ -496,6 +530,11 @@ const SequenceView = forwardRef(function SequenceView({
   // topology (handled by OriginMarkerOverlay independently).
   const wrapTailLines = useMemo(() => {
     if (!circular || !fullSeq) return { leading: [], trailing: [] };
+    // V102 (23.05) — wrap-tail is always on for circular plasmids (the
+    // origin-crossing gate was reverted: it killed the feature for
+    // ordinary plasmids and, being tied to the live selection, made
+    // wrap-tail flicker during drag). Preview volume is a fixed ≈200 bp
+    // (whole lines) per side, independent of plasmid length.
     if (!shouldEnableWrapTail({
       circular,
       seqLength: fullSeq.length,
@@ -505,7 +544,7 @@ const SequenceView = forwardRef(function SequenceView({
     })) {
       return { leading: [], trailing: [] };
     }
-    const count = pickWrapTailLines({ totalMainLines: lines.length });
+    const count = pickWrapTailLines({ cpl: charsPerLine });
     if (count === 0) return { leading: [], trailing: [] };
     // Round-13: trailing rows start where the bridge wrap-half ends,
     // not at 0. Bridge already shows the first (cpl - wrapAt) chars
@@ -522,6 +561,10 @@ const SequenceView = forwardRef(function SequenceView({
       trailingCount: count,
       trailingStart: bridgeWrapped,
     });
+    // V102 (23.05) — wrap-tail no longer depends on features/primers/
+    // selection: it's always on for circular plasmids, fixed volume. Deps
+    // are only what the line math actually reads (topology, sequence,
+    // wrap width, the bridge line).
   }, [circular, fullSeq, charsPerLine, lines, viewportHeight, mainLineHeight]);
   // Hoist filterAnnotationsForLine reference (reserved for a future
   // pre-filter optimisation in AnnotationTrack — for now per-line
@@ -663,7 +706,31 @@ const SequenceView = forwardRef(function SequenceView({
     containerRef,
   });
 
+  // Invariant (Игорь 24.05.2026): a SELECTED primer claims Del/Backspace —
+  // they delete the primer, NEVER the nucleotide under the caret. Runs FIRST
+  // in onRootKeyDown so the annotation/sequence edit path never sees the key.
+  // When onDeletePrimer is absent (read-only Library viewers) the event is
+  // still swallowed → no deletion, the sequence stays untouched.
+  const onPrimerDeleteKeyDown = (e) => {
+    if (selectedPrimers.length === 0) return false;
+    if (e.key !== 'Delete' && e.key !== 'Backspace') return false;
+    if (e.ctrlKey || e.metaKey || e.altKey) return false;
+    // don't hijack typing in fields (rename inputs, modal forms)
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA'
+      || t.tagName === 'SELECT' || t.isContentEditable)) return false;
+    e.preventDefault();
+    e.stopPropagation();
+    if (typeof onDeletePrimer === 'function') {
+      // «удаляется то, что выделено» — every selected primer goes.
+      selectedPrimers.forEach(({ hit }) => onDeletePrimer(hit));
+      setSelectedPrimers([]);
+    }
+    return true;
+  };
+
   const onRootKeyDown = (e) => {
+    if (onPrimerDeleteKeyDown(e)) return;
     if (onEditKeyDown(e)) return;
     keyboardHandler(e);
   };
@@ -863,6 +930,18 @@ const SequenceView = forwardRef(function SequenceView({
     hoveredRestrictionKey,
   ]);
 
+  // V96 — bump the layout epoch after every `linesJsx` rebuild. The
+  // memo's reference changes on EXACTLY the inputs that reflow the
+  // strand rows (measured, tracksReady, charPx, charsPerLine,
+  // wrapTailLines, features, …) — all already in its deps — so this
+  // fires precisely when the overlays must re-measure. `linesJsx` is
+  // NOT a function of `layoutEpoch`, so bumping it can't re-run this
+  // effect → no loop. useLayoutEffect (not useEffect) re-measures
+  // before paint, so there's no frame on the stale phase-1 geometry.
+  useLayoutEffect(() => {
+    setLayoutEpoch((e) => e + 1);
+  }, [linesJsx]);
+
   if (!fullSeq) {
     return (
       <div
@@ -950,6 +1029,7 @@ const SequenceView = forwardRef(function SequenceView({
         containerRef={containerRef}
         onZoneClick={onZoneClick}
         onZoneHover={onZoneHover}
+        layoutEpoch={layoutEpoch}
       />
       {outOfRangeMask && Number.isFinite(outOfRangeMask.start)
         && Number.isFinite(outOfRangeMask.end)
@@ -961,6 +1041,7 @@ const SequenceView = forwardRef(function SequenceView({
           charsPerLine={charsPerLine}
           containerRef={containerRef}
           seqLength={seqLength}
+          layoutEpoch={layoutEpoch}
         />
       )}
       <SelectionOverlay
@@ -974,12 +1055,14 @@ const SequenceView = forwardRef(function SequenceView({
         selectionStrand={selectionStrand}
         selectionFrame={selectionAaFrame}
         seqLength={seqLength}
+        layoutEpoch={layoutEpoch}
       />
       <SearchHitsOverlay
         hits={searchHits}
         charPx={charPx}
         charsPerLine={charsPerLine}
         containerRef={containerRef}
+        layoutEpoch={layoutEpoch}
       />
       <CaretOverlay
         caretPos={caretPos}
@@ -988,6 +1071,10 @@ const SequenceView = forwardRef(function SequenceView({
         showBottomStrand={settings.showBottomStrand}
         seqLength={seqLength}
         charsPerLine={charsPerLine}
+        layoutEpoch={layoutEpoch}
+        // Caret gives way while a primer is selected — Del then targets the
+        // primer, and a blinking caret over a selected primer reads wrong.
+        hidden={selectedPrimers.length > 0}
       />
       <OriginMarkerOverlay
         circular={circular}
@@ -1015,6 +1102,7 @@ const SequenceView = forwardRef(function SequenceView({
           onBlastSelection,
           onWritePrimer: onWritePrimer ? requestWritePrimer : undefined,
           onCreatePiece,
+          onPromoteToCommon: onPromoteToCommon ? requestPromoteToCommon : undefined,
         })}
       />
       {primerDraft && onWritePrimer && (
@@ -1030,6 +1118,19 @@ const SequenceView = forwardRef(function SequenceView({
               sequence,
             });
             setPrimerDraft(null);
+          }}
+        />
+      )}
+      {promoteDraft && onPromoteToCommon && (
+        <PromoteToCommonModal
+          draft={promoteDraft}
+          checkCommonDuplicate={checkCommonDuplicate}
+          onClose={() => setPromoteDraft(null)}
+          onCreate={async (payload) => {
+            const res = await onPromoteToCommon(payload);
+            // Close on success; keep open on a blocked dup (banner shows).
+            if (res?.ok !== false) setPromoteDraft(null);
+            return res;
           }}
         />
       )}

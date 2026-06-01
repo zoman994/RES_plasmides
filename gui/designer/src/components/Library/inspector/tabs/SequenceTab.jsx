@@ -73,6 +73,10 @@ export default function SequenceTab({
   // right-click selection menu. Library/Importer leave it undefined →
   // SequenceView omits the items (same gating as onBlastSelection).
   onWritePrimer,
+  // Assembly editor — Del on a selected primer deletes it (consumer-gated
+  // pass-through, same shape as onWritePrimer). Library/Importer leave it
+  // undefined → SequenceView swallows Del on a selected primer (read-only).
+  onDeletePrimer,
   // T5 — piece authoring (same consumer-gated pass-through as
   // onWritePrimer; Container Editor passes it, others don't).
   onCreatePiece,
@@ -93,6 +97,11 @@ export default function SequenceTab({
   // V87 — opt-in out-of-range mask for the RangePickerModal viewer
   // ({start,end}). Library/Importer leave it undefined → no overlay.
   outOfRangeMask,
+  // SPEC_COMMON_FEATURES DEC-CF-05 — «Add to common features» (consumer-gated
+  // pass-through). Library inspector / ContainerEditor / Importer pass these;
+  // Assembly / PCR / Annotator-preview leave them undefined → no menu item.
+  onPromoteToCommon,
+  checkCommonDuplicate,
 }) {
   const sequenceViewRef = useRef(null);
 
@@ -188,6 +197,7 @@ export default function SequenceTab({
           onRestrictionClick={onRestrictionClick}
           restrictionHighlightKey={restrictionHighlightKey}
           onWritePrimer={onWritePrimer}
+          onDeletePrimer={onDeletePrimer}
           onCreatePiece={onCreatePiece}
           showSelectionTm={showSelectionTm}
           coloredZones={coloredZones}
@@ -195,6 +205,8 @@ export default function SequenceTab({
           onZoneClick={onZoneClick}
           onZoneHover={onZoneHover}
           outOfRangeMask={outOfRangeMask}
+          onPromoteToCommon={onPromoteToCommon}
+          checkCommonDuplicate={checkCommonDuplicate}
         />
       </div>
     </div>
