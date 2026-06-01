@@ -165,3 +165,36 @@
 **D. Откуда протеин у промоутнутого CDS?** Чтобы net-new CDS детектился protein-путём, overlay-записи нужен `protein`. Промоут CDS-фичи: транслировать ДНК-slice в рамке region → записать `protein` + `sequence`. Non-CDS: только `sequence`. (Импл-деталь, фиксирую чтоб не потерять.)
 
 **B. Редактор common-фичи — lean или reuse `FeatureEditorModal`?** `FeatureEditorModal` (26 КБ) — редактор АННОТАЦИИ (coords/strand/split/merge/introns), заточен под region на молекуле. Запись common-БД проще: name/type/ПСО (+reset). Coords/strand/split к референс-записи неприменимы. Рекомендация: lean inline-редактор в panel, НЕ `FeatureEditorModal`. Финал — оценить при импле (§17 R1 «смотри нет ли удачной реализации»), но почти наверняка lean.
+
+---
+
+## §10. Приёмочная правка (01.06.2026) — детальный вид панели + EN-строки
+
+**Статус:** ✅ РЕАЛИЗОВАНО 02.06.2026 (Пачка 2; жду визуальной приёмки деталь-вида + EN). Правки по визуальной приёмке. Шаги 1–8 PASS; панель — **FAIL** (lean-список не даёт верифицировать запись: нет ДНК-просмотра, АА, аннотации-трека, превью). Уровень детали и язык подтверждены Игорем 01.06: богатый вьювер (без табов История/Теги), UI — English.
+
+### DEC-CF-10 — Панель = master-detail; деталь переиспользует `SequenceView` (§17 R1).
+Смысл раздела — проверять/чинить заводские записи; lean-список (§5) для этого недостаточен (нельзя проверить запись, которую не видишь).
+- **Мастер** — текущий список (имя · тип · длина · бейдж + поиск). Строка кликабельна → выбирает фичу.
+- **Деталь** (по выбранной) — `LinearFeatureBar` (колбаса-превью) + `SequenceView` (read-only), композиция как в `LibrarySingleInspector`. Кормятся **синтезированным single-region фрагментом** из записи фичи (паттерн `inspector/tabs/SequenceTab.jsx` → его `fragment` useMemo):
+  `{ id: feature.id, name, sequence: feature.sequence, annotations: [{ start: 0, end: length, name, type: feature.type, level: 'region' }], topology: 'linear' }`
+- Даёт ДНК-дорожку + аннотацию-трек + **АА-дорожку** (`AATrack` транслирует внутри CDS-бокса для protein-путь типов CDS/marker/reporter — V133/V138) + колбасу. = «как в библиотеке с обычными фрагментами».
+- **НЕ** брать `LibrarySingleInspector` целиком — теги/история/save-flow/праймеры/project-scope к референс-записи неприменимы (форс-фит). Берём `SequenceView` + `LinearFeatureBar` напрямую.
+- Шапка детали: имя · тип · длина · бейдж + Edit / Reset(overridden) / Delete(user). Lean inline-редактор (§9-B) — открывается из детали, сохраняется как есть.
+- Перф: монтируется вьювер только выбранной фичи (одна за раз, 40–400 нт); `SequenceView` и так lazy-mount.
+- Layout: список колонкой ~300–320px + деталь flex; пустой выбор → hint.
+
+### DEC-CF-11 — UI-строки `commonFeatures` → English (⚓ DEC-MA2-01).
+Отклонение Code #5 (RU-строки) отклонено: ⚓ DEC-MA2-01 (English UI) в силе. Весь namespace `commonFeatures` в `lib/strings.js` + label пункта меню промоута + строки `PromoteToCommonModal` → English. (Заметка: appShell/startScreen сейчас RU — pre-existing дрифт от DEC-MA2-01, который Code принял за «доминирующую конвенцию»; полная реконсиляция UI — i18n-спринт, НЕ здесь.)
+
+### Файлы
+- `components/Library/CommonFeaturesPanel/index.jsx` — +`selectedKey` state, +деталь-пейн (`LinearFeatureBar` + `SequenceView` на синтезированном фрагменте), сборка фрагмента по паттерну `SequenceTab.fragment`. Edit/reset/delete → шапка детали.
+- `lib/strings.js` — namespace `commonFeatures` → English (+ menu label + modal-строки).
+- size budget: `CommonFeaturesPanel/index.jsx` 10.23 КБ + деталь — следить за soft 30 (не близко).
+
+### Тесты (red→green)
+- Клик по фиче → деталь монтирует `SequenceView` с single-region фрагментом записи; смена выбора → фрагмент меняется; CDS-фича → АА-дорожка присутствует; non-CDS → АА нет; пустой выбор → hint.
+- EN: namespace `commonFeatures` — латиница (нет кириллицы), снапшот/`strings-coverage`.
+- Регрессия: lean-редактор / reset / delete / поиск / возврат common↔entry — без изменений.
+
+### STOP
+После правки + прогон. Визуальная приёмка (деталь-вид + EN-строки) — отдельная сессия.

@@ -741,42 +741,41 @@ export const STRINGS = {
     navTooltipTheme: 'Тема — в разработке',                      // EN: "Theme — in development"
   },
 
-  // SPEC_COMMON_FEATURES — promote-from-annotation + Library section. Values
-  // are Russian (Игорь's documented preference + the dominant recent
-  // convention) with EN comments; the spec's «English UI-строки» note is a
-  // default we override here — see sprint report.
+  // SPEC_COMMON_FEATURES — promote-from-annotation + Library section.
+  // English UI (⚓ DEC-MA2-01 / DEC-CF-11) — приёмка 01.06 отклонила RU-вариант.
   commonFeatures: {
     // Selection context-menu item (gated on a matched region feature).
-    promoteMenuItem: 'Добавить в common-фичи',                   // EN: "Add to common features"
+    promoteMenuItem: 'Add to common features',
     // PromoteToCommonModal.
-    modalTitle: 'Добавить в common-фичи',                        // EN: "Add to common features"
-    fieldName: 'Имя',                                            // EN: "Name"
-    fieldType: 'Тип',                                            // EN: "Type"
-    fieldSequence: 'Последовательность (ПСО)',                   // EN: "Sequence"
-    proteinNote: 'CDS-тип: белок будет рассчитан из ПСО в рамке региона', // EN: "CDS type: protein is translated from the region sequence"
-    cancel: 'Отмена',                                            // EN: "Cancel"
-    confirm: 'Добавить',                                         // EN: "Add"
+    modalTitle: 'Add to common features',
+    fieldName: 'Name',
+    fieldType: 'Type',
+    fieldSequence: 'Sequence',
+    proteinNote: 'CDS type: protein is translated from the region sequence',
+    cancel: 'Cancel',
+    confirm: 'Add',
     // Dedup verdicts.
-    dupBlocked: (by) =>                                          // EN: "Already in the common DB (matched by …)"
-      `Такая фича уже есть в common-БД (совпадение по ${by === 'protein' ? 'белку' : 'ДНК'}).`,
-    nameWarning: (name) =>                                       // EN: "«name» exists with a different sequence — add as a variant?"
-      `Фича «${name}» уже есть с другой ПСО — добавить как вариант?`,
-    added: (name) => `«${name}» добавлена в common-фичи`,        // EN: "«name» added to common features"
+    dupBlocked: (by) =>
+      `Already in the common database (matched by ${by === 'protein' ? 'protein' : 'DNA'}).`,
+    nameWarning: (name) =>
+      `A feature named "${name}" already exists with a different sequence — add as a variant?`,
+    added: (name) => `"${name}" added to common features`,
     // Library section (DEC-CF-06).
-    sectionTitle: 'Common-фичи',                                 // EN: "Common features"
-    treeNodeLabel: 'Common-фичи',                                // EN: "Common features"
-    searchPlaceholder: 'Поиск по имени или типу…',              // EN: "Search by name or type…"
-    empty: 'Common-фич пока нет',                                // EN: "No common features yet"
-    countLabel: (n) => `${n} фич`,                               // EN: "n features"
-    badgeFactory: 'заводская',                                   // EN: "factory"
-    badgeUser: 'пользовательская',                               // EN: "user"
-    badgeOverridden: 'изменена',                                 // EN: "overridden"
-    edit: 'Изменить',                                            // EN: "Edit"
-    save: 'Сохранить',                                           // EN: "Save"
-    reset: 'Сбросить к заводской',                               // EN: "Reset to factory"
-    deleteUser: 'Удалить',                                       // EN: "Delete"
-    resetConfirm: 'Сбросить изменения к заводской версии?',      // EN: "Reset edits to the factory version?"
-    deleteConfirm: 'Удалить пользовательскую фичу?',             // EN: "Delete this user feature?"
-    lengthLabel: (n) => `${n} нт`,                               // EN: "n bp"
+    sectionTitle: 'Common features',
+    treeNodeLabel: 'Common features',
+    searchPlaceholder: 'Search by name or type…',
+    empty: 'No common features yet',
+    selectHint: 'Select a feature to view its sequence',
+    countLabel: (n) => `${n} features`,
+    badgeFactory: 'factory',
+    badgeUser: 'user',
+    badgeOverridden: 'overridden',
+    edit: 'Edit',
+    save: 'Save',
+    reset: 'Reset to factory',
+    deleteUser: 'Delete',
+    resetConfirm: 'Reset edits to the factory version?',
+    deleteConfirm: 'Delete this user feature?',
+    lengthLabel: (n) => `${n} bp`,
   },
 };

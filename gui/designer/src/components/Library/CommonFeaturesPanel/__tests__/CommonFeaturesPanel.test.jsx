@@ -1,8 +1,9 @@
 /**
- * CommonFeaturesPanel (SPEC_COMMON_FEATURES DEC-CF-06). Lists merged features
- * with origin badges; lean inline edit (override factory / update user),
- * reset-to-factory on overridden rows, delete on user rows, search filter.
- * Built-in DB is mocked via fetch; the overlay comes from the live store.
+ * CommonFeaturesPanel — master-detail (SPEC_COMMON_FEATURES DEC-CF-10).
+ * Master list selects a feature; detail mounts a read-only SequenceView over a
+ * synthesized single-region fragment (DNA + annotation + AA track for
+ * CDS/marker/reporter). Edit/reset/delete live in the detail header. Built-in
+ * DB mocked via fetch; overlay from the live store.
  */
 import 'fake-indexeddb/auto';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -12,17 +13,21 @@ import { useStore } from '../../../../store';
 import { invalidateMergedCache } from '../../../../store/commonFeaturesSlice';
 import { resetDBForTests } from '../../../../db/dexie-schema';
 
-const DNA = 'ATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGC';
+// 20-codon clean ORF (M + 19×A, no stop) → AA row for a CDS/reporter.
+const CDS_DNA = 'ATG' + 'GCT'.repeat(19);
+const PROM_DNA = 'TTGACAATTAATCATCGGCTCGTATAATGTGTGGAATTGTGAGCGGATAACAATTTCACA';
+const USER_DNA = 'CCCCGGGGAAAATTTTCCCCGGGGAAAATTTTCCCCGGGGAAAATTTTCCCCGGGGAAAA';
+
 const BUILTIN = {
   features: [
-    { id: 'cf_a', name: 'AmpR', type: 'marker', sequence: DNA, length: DNA.length },
-    { id: 'cf_b', name: 'KanR', type: 'marker', sequence: DNA, length: DNA.length },
+    { id: 'cf_cds', name: 'GFP', type: 'CDS', sequence: CDS_DNA, length: CDS_DNA.length },
+    { id: 'cf_prom', name: 'lacP', type: 'promoter', sequence: PROM_DNA, length: PROM_DNA.length },
   ],
 };
 
 afterEach(cleanup);
 beforeEach(async () => {
-  const name = `bodgegene-panel-${Math.random().toString(36).slice(2)}`;
+  const name = `bodgegene-panel2-${Math.random().toString(36).slice(2)}`;
   const db = resetDBForTests(name);
   await db.delete();
   await db.open();
@@ -35,55 +40,79 @@ beforeEach(async () => {
   });
 });
 
-describe('CommonFeaturesPanel', () => {
+describe('CommonFeaturesPanel — master', () => {
   it('lists factory features with the factory badge', async () => {
     render(<CommonFeaturesPanel />);
-    await waitFor(() => expect(screen.getByTestId('common-feature-badge-cf_a')).toBeTruthy());
-    expect(screen.getByTestId('common-feature-badge-cf_a').dataset.origin).toBe('factory');
-    expect(screen.getByTestId('common-feature-badge-cf_b').dataset.origin).toBe('factory');
+    await waitFor(() => expect(screen.getByTestId('common-feature-badge-cf_cds')).toBeTruthy());
+    expect(screen.getByTestId('common-feature-badge-cf_cds').dataset.origin).toBe('factory');
   });
 
-  it('shows a user feature with the user badge + delete control', async () => {
-    const r = await useStore.getState().promoteFeature({ name: 'MyFeat', type: 'misc', sequence: DNA.replace(/A/g, 'T') });
+  it('empty selection shows the detail hint', async () => {
     render(<CommonFeaturesPanel />);
-    await waitFor(() => expect(screen.getByTestId(`common-feature-badge-${r.id}`)).toBeTruthy());
-    expect(screen.getByTestId(`common-feature-badge-${r.id}`).dataset.origin).toBe('user');
-    expect(screen.getByTestId(`common-feature-delete-${r.id}`)).toBeTruthy();
+    await waitFor(() => expect(screen.getByTestId('common-feature-row-cf_cds')).toBeTruthy());
+    expect(screen.getByTestId('common-features-detail-hint')).toBeTruthy();
   });
 
+  it('search filters the master by name', async () => {
+    render(<CommonFeaturesPanel />);
+    await waitFor(() => expect(screen.getByTestId('common-feature-row-cf_cds')).toBeTruthy());
+    fireEvent.change(screen.getByTestId('common-features-search'), { target: { value: 'lac' } });
+    await waitFor(() => expect(screen.queryByTestId('common-feature-row-cf_cds')).toBeNull());
+    expect(screen.getByTestId('common-feature-row-cf_prom')).toBeTruthy();
+  });
+});
+
+describe('CommonFeaturesPanel — detail (master-detail DEC-CF-10)', () => {
+  it('clicking a feature mounts a read-only SequenceView with the record fragment', async () => {
+    render(<CommonFeaturesPanel />);
+    await waitFor(() => expect(screen.getByTestId('common-feature-row-cf_cds')).toBeTruthy());
+    fireEvent.click(screen.getByTestId('common-feature-row-cf_cds'));
+    expect(screen.getByTestId('common-features-detail-name').textContent).toBe('GFP');
+    await waitFor(() => expect(screen.getByTestId('sequence-view-root')).toBeTruthy());
+  });
+
+  it('CDS feature → AA track present; switching to non-CDS → AA absent', async () => {
+    render(<CommonFeaturesPanel />);
+    await waitFor(() => expect(screen.getByTestId('common-feature-row-cf_cds')).toBeTruthy());
+    fireEvent.click(screen.getByTestId('common-feature-row-cf_cds'));
+    await waitFor(() => expect(screen.getAllByTestId('sequence-view-aa-row').length).toBeGreaterThanOrEqual(1));
+    // Switch selection → fragment changes (name) + no AA for the promoter.
+    fireEvent.click(screen.getByTestId('common-feature-row-cf_prom'));
+    await waitFor(() => expect(screen.getByTestId('common-features-detail-name').textContent).toBe('lacP'));
+    expect(screen.queryAllByTestId('sequence-view-aa-row').length).toBe(0);
+  });
+});
+
+describe('CommonFeaturesPanel — edit / reset / delete (detail header)', () => {
   it('editing a factory feature writes an override (badge → overridden)', async () => {
     render(<CommonFeaturesPanel />);
-    await waitFor(() => expect(screen.getByTestId('common-feature-edit-cf_a')).toBeTruthy());
-    fireEvent.click(screen.getByTestId('common-feature-edit-cf_a'));
-    fireEvent.change(screen.getByTestId('common-feature-edit-name-cf_a'), { target: { value: 'AmpR*' } });
-    fireEvent.click(screen.getByTestId('common-feature-edit-save-cf_a'));
-    await waitFor(() => expect(screen.getByTestId('common-feature-badge-cf_a').dataset.origin).toBe('overridden'));
-    expect(useStore.getState().commonFeatures.overrides.cf_a.name).toBe('AmpR*');
+    await waitFor(() => expect(screen.getByTestId('common-feature-row-cf_cds')).toBeTruthy());
+    fireEvent.click(screen.getByTestId('common-feature-row-cf_cds'));
+    fireEvent.click(screen.getByTestId('common-feature-edit'));
+    fireEvent.change(screen.getByTestId('common-feature-edit-name'), { target: { value: 'GFP*' } });
+    fireEvent.click(screen.getByTestId('common-feature-edit-save'));
+    await waitFor(() => expect(screen.getByTestId('common-features-detail-badge').dataset.origin).toBe('overridden'));
+    expect(useStore.getState().commonFeatures.overrides.cf_cds.name).toBe('GFP*');
   });
 
   it('reset-to-factory removes the override', async () => {
-    await useStore.getState().overrideCommonFeature('cf_a', { name: 'AmpR*' });
+    await useStore.getState().overrideCommonFeature('cf_cds', { name: 'GFP*' });
     render(<CommonFeaturesPanel />);
-    await waitFor(() => expect(screen.getByTestId('common-feature-reset-cf_a')).toBeTruthy());
-    fireEvent.click(screen.getByTestId('common-feature-reset-cf_a'));
-    fireEvent.click(screen.getByTestId('common-feature-confirm-yes-cf_a'));
-    await waitFor(() => expect(useStore.getState().commonFeatures.overrides.cf_a).toBeUndefined());
+    await waitFor(() => expect(screen.getByTestId('common-feature-row-cf_cds')).toBeTruthy());
+    fireEvent.click(screen.getByTestId('common-feature-row-cf_cds'));
+    fireEvent.click(screen.getByTestId('common-feature-reset'));
+    fireEvent.click(screen.getByTestId('common-feature-confirm-yes'));
+    await waitFor(() => expect(useStore.getState().commonFeatures.overrides.cf_cds).toBeUndefined());
   });
 
-  it('deleting a user feature removes it from the store', async () => {
-    const r = await useStore.getState().promoteFeature({ name: 'MyFeat', type: 'misc', sequence: DNA.replace(/A/g, 'T') });
+  it('deleting a user feature removes it and clears the detail to hint', async () => {
+    const r = await useStore.getState().promoteFeature({ name: 'MyFeat', type: 'misc', sequence: USER_DNA });
     render(<CommonFeaturesPanel />);
-    await waitFor(() => expect(screen.getByTestId(`common-feature-delete-${r.id}`)).toBeTruthy());
-    fireEvent.click(screen.getByTestId(`common-feature-delete-${r.id}`));
-    fireEvent.click(screen.getByTestId(`common-feature-confirm-yes-${r.id}`));
+    await waitFor(() => expect(screen.getByTestId(`common-feature-row-${r.id}`)).toBeTruthy());
+    fireEvent.click(screen.getByTestId(`common-feature-row-${r.id}`));
+    fireEvent.click(screen.getByTestId('common-feature-delete'));
+    fireEvent.click(screen.getByTestId('common-feature-confirm-yes'));
     await waitFor(() => expect(useStore.getState().commonFeatures.userFeatures[r.id]).toBeUndefined());
-  });
-
-  it('search filters by name', async () => {
-    render(<CommonFeaturesPanel />);
-    await waitFor(() => expect(screen.getByTestId('common-feature-row-cf_a')).toBeTruthy());
-    fireEvent.change(screen.getByTestId('common-features-search'), { target: { value: 'kan' } });
-    await waitFor(() => expect(screen.queryByTestId('common-feature-row-cf_a')).toBeNull());
-    expect(screen.getByTestId('common-feature-row-cf_b')).toBeTruthy();
+    expect(screen.getByTestId('common-features-detail-hint')).toBeTruthy();
   });
 });

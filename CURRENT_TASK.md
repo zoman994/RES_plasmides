@@ -1,8 +1,27 @@
 # CURRENT_TASK.md
 
 > **Активная задача: common-features — раздел + промоут.** Тип **A**.
-> Статус: **🟢 СПЕКА НАПИСАНА → готова к Code.** Спека: `docs/SPEC_COMMON_FEATURES.md` (код прочитан, развилки решены).
-> Реализация — отдельной Code-сессией. Приёмка — ещё одной сессией после.
+> Статус: **🔴 ПРИЁМКА 01.06 — FAIL → правки (Пачка 2).** Шаги 1–8 PASS; панель — FAIL (lean-список) + EN-строки. Спека правок: `docs/SPEC_COMMON_FEATURES.md` §10.
+> ✅ 1–14 проверены: 1–8 + 9–14 (промоут/модалка/дубль-warning/палитра) PASS; FAIL только панель + EN. Инвентарь закрыт. Реализация правок — отдельной Code-сессией, приёмка после.
+
+## ПРИЁМКА 01.06 — FAIL → правки (Пачка 2)
+
+1–8 PASS (Игорь). Панель FAIL: lean-список не даёт верифицировать запись (нет ДНК/АА/аннотации/превью). Спека правок — `SPEC_COMMON_FEATURES.md` §10 (DEC-CF-10 деталь-вид, DEC-CF-11 EN).
+
+- [x] **Панель master-detail** — список (мастер) + деталь по выбранной фиче: `LinearFeatureBar` + `SequenceView` (read-only) на single-region фрагменте записи (паттерн `SequenceTab.fragment`). ДНК + аннотация-трек + АА (CDS/marker/reporter) + колбаса. **НЕ** `LibrarySingleInspector` целиком. Edit/reset/delete → шапка детали; lean-редактор §9-B сохраняется.
+- [x] **EN-строки** — namespace `commonFeatures` в `lib/strings.js` + menu label + `PromoteToCommonModal` → English (⚓ DEC-MA2-01; отклонение Code #5 отклонено).
+- [x] 9–14 (промоут/модалка/дубль-warning/палитра) — PASS, доп. фейлов нет.
+- [x] Тесты по §10 (деталь-вид + EN + регрессия lean/reset/delete/поиск/возврат common↔entry).
+
+**Было / стало:**
+- Панель: БЫЛО плоский список (сиквенс только в textarea при правке), нет АА/аннотации/превью → СТАЛО master-detail с инспекторным `SequenceView`.
+- Строки: БЫЛО RU (отклонение #5) → СТАЛО English.
+
+**STOP:** после правок + прогон. НЕ финализировать. Визуальная приёмка — отдельная сессия.
+
+**Финализация (после приёмки правок, НЕ сейчас):** закрыть `TD-SIZE-FEATURE-DETECTION` (DONE, `feature-detection.js` 2.8 КБ); обновить размер `TD-SIZE-SEQUENCEVIEW-INDEX` (index.jsx 49.71); R5 COMPONENT_MAP для `feature-detection.js` (было 10 КБ, реально 26 до decomp); **PROJECT_STATE шапка «Schema v=10» → v6** (устаревшая строка, реальный `DB_VERSION=6` по `db/dexie-schema.js`); DEC-CF-01..11 в DECISIONS; ротация BUGS/PROJECT_STATE/RELEASES.
+
+**Handoff Code (инвентарь закрыт):** «Прочитай CLAUDE/BUGS/CURRENT_TASK + SPEC_COMMON_FEATURES §10. Сделай Пачку 2, после последнего коммита стоп — жду визуальной приёмки, не финализируй PROJECT_STATE/DECISIONS/BUGS/RELEASES/ANCHORS/TECH_DEBT/CLAUDE/COMPONENT_MAP.»
 
 ## TL;DR
 
@@ -83,3 +102,25 @@ Overlay-стор для common-фич (built-in `common-features.json` read-only
 
 ### STOP
 Шаги 1–6 + прогон сделаны. **НЕ финализировал** PROJECT_STATE / DECISIONS / BUGS / RELEASES / ANCHORS / TECH_DEBT / CLAUDE.md / COMPONENT_MAP — жду визуальной приёмки (отдельная сессия). Хвосты для финализации: закрыть `TD-SIZE-FEATURE-DETECTION` (DONE), завести TD на decomp `SequenceView/index.jsx` (над hard), R5-дрифт COMPONENT_MAP для `feature-detection.js`.
+
+---
+
+## Отчёт Code (02.06.2026) — Пачка 2 (приёмочная правка §10)
+
+**Коммит:** деталь-вид панели + EN-строки — `<этот коммит>`.
+
+**DEC-CF-10 — master-detail.** `CommonFeaturesPanel/index.jsx` переписан: мастер-список (имя · тип · длина · бейдж + поиск, строки кликабельны → `selectedKey`) + деталь-пейн по выбранной фиче. Деталь = шапка (имя · тип · длина · бейдж + Edit / Reset(overridden) / Delete(user) + inline-confirm) + `LinearFeatureBar` (колбаса) + read-only `SequenceView` на **синтезированном single-region фрагменте** (`{id,name,sequence,annotations:[{0..len, type, level:'region'}],type:'misc_feature',strand:1}` — паттерн `SequenceTab.fragment`). Даёт ДНК + аннотацию-трек + **АА-трек** (`AATrack` для CDS/marker/reporter — `TRANSLATABLE_TYPES`). НЕ `LibrarySingleInspector` целиком — только `SequenceView` + `LinearFeatureBar`. Lean-редактор §9-B сохранён (открывается из шапки детали). Пустой выбор → hint.
+
+**DEC-CF-11 — EN-строки.** Namespace `commonFeatures` в `lib/strings.js` целиком → English (+ menu label промоута + `PromoteToCommonModal`). Отклонение Code #5 (RU) снято — ⚓ DEC-MA2-01 в силе.
+
+**Прогон.** Vitest **4214 pass / 0 fail / 17 skipped** (444 файла). pytest (бэкенд не тронут) **115 pass**. Build clean.
+
+**Тесты.** `CommonFeaturesPanel.test.jsx` переписан под master-detail: клик→деталь монтирует `SequenceView` (single-region фрагмент); CDS→`sequence-view-aa-row` present, promoter→absent; смена выбора→фрагмент меняется; пустой→hint; edit→override(badge overridden)/reset/delete(+clear→hint)/поиск — регрессия. Новый `strings-commonfeatures-en.test.js` (нет кириллицы в namespace + точные EN-лейблы). `PromoteToCommonModal`/`build-selection-menu-items`/`library-workspace` тесты зелёные (строки читаются из STRINGS, не хардкод).
+
+**Size-budget.** `CommonFeaturesPanel/index.jsx` 10.23 → **15.48 КБ** (Δ+5.25; soft 30 — OK, не близко). `lib/strings.js` ~без изменения размера (RU↔EN). Новых hard-нарушителей нет. Size budget: OK.
+
+**Отклонения от §10:** нет (контракт DEC-CF-10/11 выполнен как написан).
+
+**Статус-шапка §10: ✅ РЕАЛИЗОВАНО 02.06.2026** проставлена.
+
+**STOP:** жду визуальной приёмки (деталь-вид + EN) — отдельная сессия. Доки (PROJECT_STATE/DECISIONS/BUGS/RELEASES/ANCHORS/TECH_DEBT/CLAUDE/COMPONENT_MAP) НЕ финализированы.
