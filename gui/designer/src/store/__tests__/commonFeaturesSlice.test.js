@@ -85,6 +85,22 @@ describe('commonFeaturesSlice', () => {
     expect(rows.find((x) => x.id === 'cf_x')).toBeFalsy();
   });
 
+  it('updateUserFeature edits a net-new feature in place + persists', async () => {
+    const r = await useStore.getState().promoteFeature({ name: 'u1', type: 'misc', sequence: DNA });
+    await useStore.getState().updateUserFeature(r.id, { name: 'u1-renamed', type: 'CDS' });
+    const uf = useStore.getState().commonFeatures.userFeatures[r.id];
+    expect(uf.name).toBe('u1-renamed');
+    expect(uf.type).toBe('CDS');
+    expect(uf.kind).toBe('user');
+    const rows = await listCommonFeatures();
+    expect(rows.find((x) => x.id === r.id).name).toBe('u1-renamed');
+  });
+
+  it('updateUserFeature is a no-op for an unknown id', async () => {
+    await useStore.getState().updateUserFeature('nope', { name: 'x' });
+    expect(useStore.getState().commonFeatures.userFeatures.nope).toBeUndefined();
+  });
+
   it('deleteUserFeature removes a net-new feature', async () => {
     const r = await useStore.getState().promoteFeature({ name: 'u1', type: 'misc', sequence: DNA });
     await useStore.getState().deleteUserFeature(r.id);

@@ -169,6 +169,21 @@ export const createCommonFeaturesSlice = (set, get) => ({
     invalidateMergedCache();
   },
 
+  /**
+   * Update a net-new user feature in place (panel inline edit). Counterpart
+   * to deleteUserFeature; factory features are edited via overrideCommonFeature
+   * instead. (Minor addition beyond SPEC §5's action list — the panel needs to
+   * let a biolog fix a typo in their own feature; see sprint report.)
+   */
+  updateUserFeature: async (id, patch) => {
+    const existing = get().commonFeatures.userFeatures[id];
+    if (!existing) return;
+    const record = { ...existing, ...patch, id, kind: 'user' };
+    set((state) => { state.commonFeatures.userFeatures[id] = record; });
+    await putCommonFeature(record);
+    invalidateMergedCache();
+  },
+
   /** Delete a net-new user feature. */
   deleteUserFeature: async (id) => {
     if (!id || !get().commonFeatures.userFeatures[id]) return;

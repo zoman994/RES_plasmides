@@ -56,6 +56,10 @@ export default function LibraryTreeRoot({
   onAddToLoose,
   onAddStarterSet,
   onExportProject,
+  // SPEC_COMMON_FEATURES DEC-CF-06 — «Common-фичи» section node (not an
+  // entries zone). Selecting it swaps the right panel to CommonFeaturesPanel.
+  onSelectCommonSection,
+  commonSectionActive = false,
 }) {
   const ws = STRINGS.libraryWorkspace || {};
   const ph = STRINGS.projectHub || {};
@@ -302,6 +306,26 @@ export default function LibraryTreeRoot({
             ))}
           </>
         )}
+        {/* SPEC_COMMON_FEATURES DEC-CF-06 — section node (not a zone). Click
+            swaps the right panel to the common-features browser/editor. */}
+        <button
+          type="button"
+          data-testid="tree-common-features"
+          aria-pressed={commonSectionActive}
+          onClick={() => onSelectCommonSection?.()}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+            padding: '8px 12px', border: 'none', cursor: 'pointer', textAlign: 'left',
+            fontSize: 12.5,
+            background: commonSectionActive ? 'var(--accent-wash, rgba(184,92,62,0.12))' : 'transparent',
+            color: commonSectionActive ? 'var(--accent-700, #8a3a22)' : 'var(--text-primary)',
+            fontWeight: commonSectionActive ? 600 : 400,
+            borderTop: '1px solid var(--border-subtle)',
+          }}
+        >
+          <span aria-hidden>🧬</span>
+          <span>{STRINGS.commonFeatures.treeNodeLabel}</span>
+        </button>
         <TrashZone expanded={trashExpanded} onToggle={toggleTrash} />
       </div>
 

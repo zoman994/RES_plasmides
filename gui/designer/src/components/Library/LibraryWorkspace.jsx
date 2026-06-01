@@ -32,6 +32,7 @@ import LibraryTopBar from './LibraryTopBar';
 import LibraryTreeRoot from './tree/LibraryTreeRoot';
 import LibrarySingleInspector from './inspector/LibrarySingleInspector';
 import LibraryActionRow from './inspector/LibraryActionRow';
+import CommonFeaturesPanel from './CommonFeaturesPanel';
 import OnboardingNudge from './onboarding/OnboardingNudge';
 import AddModal from './AddModal/AddModal';
 import SequenceSearchPopover from '../SequenceSearchPopover';
@@ -62,11 +63,25 @@ function emptyEntryState() {
   return { flags: {}, edits: {}, activeTab: 'overview' };
 }
 
+// Russian plural picker (1 ген / 2 гена / 5 генов). Local to this file —
+// lib/strings.js has no shared plural helper (Звено 25.05.2026).
+function pluralRu(n, one, few, many) {
+  const m10 = n % 10;
+  const m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return one;
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+  return many;
+}
+
 export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
   const ws = STRINGS.libraryWorkspace || {};
   const [selectedId, setSelectedId] = useState(null);
   const [query, setQuery] = useState('');
   const [perEntryState, setPerEntryState] = useState({});
+  // SPEC_COMMON_FEATURES DEC-CF-06 — right-panel view: 'entry' inspector vs
+  // the 'common' features section. Orthogonal to selectedId/perEntryState
+  // (Risk #5) so toggling back lands on the same entry + tab.
+  const [view, setView] = useState('entry');
   const [addModalOpen, setAddModalOpen] = useState(false);
   const showToast = useStore((s) => s.showToast);
 
@@ -87,19 +102,25 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
   // Import files and add to store. `projectId` = null → LooseZone, id → project zone.
   const importFiles = useCallback(async (files, projectId, opts = {}) => {
     if (!files.length) return;
+    // «Авто-аннотация» (DEC-IMP-09): enrich with homology / common features
+    // unless explicitly turned off. The flag rides in via `opts` (AddModal
+    // checkbox → preset → onLaunchPreImport). The same flag gates the
+    // post-import «что нашлось» toast counter (Звено 25.05.2026).
+    const autoAnnotated = opts.autoAnnotate !== false;
     let added = 0;
+    let genesFound = 0;
+    let reSitesFound = 0;
+    let lastEntryId = null;
     const errors = [];
     for (const file of files) {
       try {
         const parsed = await parseFile(file);
-        // «Авто-аннотация» (DEC-IMP-09): enrich with homology / common
-        // features unless explicitly turned off. enrichAnnotations returns a
-        // copy with an extended `annotations`; at autoAnnotate===false it is
-        // skipped so a headerless paste stays feature-less. The flag rides in
-        // via `opts` (AddModal checkbox → preset → onLaunchPreImport).
-        const item = opts.autoAnnotate === false
-          ? parsed
-          : await enrichAnnotations(parsed, { autoAnnotate: true });
+        // enrichAnnotations returns a copy with an extended `annotations`; at
+        // autoAnnotate===false it is skipped so a headerless paste stays
+        // feature-less.
+        const item = autoAnnotated
+          ? await enrichAnnotations(parsed, { autoAnnotate: true })
+          : parsed;
         // Name: an explicit paste-name override wins; else derive as before
         // (`>name` headers are already honoured by extractItemName).
         const overrideName = opts.nameOverride && opts.nameOverride.trim();
@@ -111,14 +132,52 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
         entry.projectId = projectId || null;
         if (projectId) entry.origin = { kind: 'file_import', sourceFileName: file.name, importedAt: new Date().toISOString() };
         await addLibraryEntry(entry);
+        lastEntryId = entry.id;
+        // Count what auto-annotation attached, by the same array handed to the
+        // entry: gene-by-homology = source 'common_db'; RE-site = detector
+        // 're_scan'. Only when it actually ran (else counters stay 0).
+        if (autoAnnotated && Array.isArray(item.annotations)) {
+          genesFound += item.annotations.filter((a) => a.source === 'common_db').length;
+          reSitesFound += item.annotations.filter((a) => a.detector === 're_scan').length;
+        }
         added++;
       } catch (e) {
         errors.push(`${file.name}: ${e?.message || e}`);
       }
     }
-    if (added > 0) showToast(`Добавлено: ${added} файл(ов)`, 'success');
+    if (added > 0) {
+      const base = `Добавлено: ${added} файл(ов)`;
+      if (autoAnnotated && genesFound > 0) {
+        const genes = `${genesFound} ${pluralRu(genesFound, 'ген', 'гена', 'генов')}`;
+        const sites = `${reSitesFound} ${pluralRu(reSitesFound, 'сайт рестрикции', 'сайта рестрикции', 'сайтов рестрикции')}`;
+        // Clickable «Продолжить аннотацию» → open the last imported entry's
+        // embedded Annotator (inspector Annotations tab). Reuses the toast
+        // action-button mechanism (onUndo) with a custom label (Звено 2).
+        const toastOpts = { autoDismissMs: 9000 };
+        if (lastEntryId) {
+          const entryId = lastEntryId;
+          toastOpts.actionLabel = 'Продолжить аннотацию';
+          toastOpts.onUndo = () => {
+            setSelectedId(entryId);
+            setPerEntryState((prev) => ({
+              ...prev,
+              [entryId]: { ...(prev[entryId] || emptyEntryState()), activeTab: 'annotations' },
+            }));
+          };
+        }
+        showToast(`${base}. Авто-аннотация: ${genes}, ${sites}`, 'success', toastOpts);
+      } else if (autoAnnotated) {
+        // Auto-annotation ran but found no homologous genes — surface that
+        // explicitly (RE-sites may still exist; Игорь wants the zero-gene
+        // message). Keep the base import toast too so the import isn't lost.
+        showToast(base, 'success');
+        showToast('Гомологичных элементов не найдено', 'info', { autoDismissMs: 9000 });
+      } else {
+        showToast(base, 'success');
+      }
+    }
     if (errors.length > 0) showToast(errors[0], 'error');
-  }, [addLibraryEntry, showToast]);
+  }, [addLibraryEntry, showToast, setSelectedId, setPerEntryState]);
 
   // Resolve the modal's `target` string to a projectId or null.
   // Accepts: 'loose' → null; 'project:<id>' → that id; legacy
@@ -278,9 +337,11 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
 
   const onSelectEntry = useCallback((entry) => {
     if (!entry?.id) return;
+    setView('entry');
     setSelectedId(entry.id);
     setPerEntryState((prev) => prev[entry.id] ? prev : { ...prev, [entry.id]: emptyEntryState() });
   }, []);
+  const onSelectCommonSection = useCallback(() => setView('common'), []);
   const onActiveTabChange = useCallback((tab) => {
     if (!selectedId) return;
     setPerEntryState((prev) => ({
@@ -379,6 +440,8 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
           onAddToLoose={onAddToLoose}
           onAddStarterSet={onAddStarterSet}
           onExportProject={onExportProject}
+          onSelectCommonSection={onSelectCommonSection}
+          commonSectionActive={view === 'common'}
         />
         <main
           data-testid="library-workspace-inspector"
@@ -390,7 +453,9 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
             background: 'var(--surface-1)',
           }}
         >
-          {item ? (
+          {view === 'common' ? (
+            <CommonFeaturesPanel />
+          ) : item ? (
             <>
               <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
                 <LibrarySingleInspector

@@ -39,6 +39,11 @@ vi.mock('../inspector/LibrarySingleInspector', () => ({
 vi.mock('../onboarding/OnboardingNudge', () => ({
   default: () => <div data-testid="onboarding-nudge">onboarding</div>,
 }));
+// CommonFeaturesPanel loads the factory DB via fetch + has its own test;
+// stub it so the view-swap test stays focused on LibraryWorkspace wiring.
+vi.mock('../CommonFeaturesPanel', () => ({
+  default: () => <div data-testid="common-features-panel-stub">common</div>,
+}));
 
 async function freshDB() {
   const name = `bodgegene-ws-${Math.random().toString(36).slice(2)}`;
@@ -128,6 +133,26 @@ describe('M-X.7a v2 K4 — LibraryWorkspace', () => {
     expect(screen.getByTestId('library-topbar-project-name').textContent).toMatch(/ChitinaseExpr/);
     // Pill no longer inside the breadcrumb; still rendered as a sibling node.
     expect(screen.getByTestId('library-topbar-saved-pill')).toBeTruthy();
+  });
+
+  it('clicking the Common-фичи tree node swaps the right panel to CommonFeaturesPanel', async () => {
+    await useStore.getState().addLibraryEntry(makeContainer({ id: 'e1', name: 'pUC19', zone: 'loose' }));
+    render(<LibraryWorkspace />);
+    fireEvent.click(screen.getByTestId('tree-common-features'));
+    expect(screen.getByTestId('common-features-panel-stub')).toBeTruthy();
+    expect(screen.queryByTestId('single-inspector-stub')).toBeNull();
+    expect(screen.getByTestId('tree-common-features').getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('entry → common → entry preserves the selected entry (Risk #5)', async () => {
+    await useStore.getState().addLibraryEntry(makeContainer({ id: 'e1', name: 'pUC19', zone: 'loose' }));
+    render(<LibraryWorkspace />);
+    fireEvent.click(screen.getByTestId('tree-item-loose-e1'));
+    expect(screen.getByTestId('single-inspector-stub').getAttribute('data-item-id')).toBe('e1');
+    fireEvent.click(screen.getByTestId('tree-common-features'));
+    expect(screen.getByTestId('common-features-panel-stub')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('tree-item-loose-e1'));
+    expect(screen.getByTestId('single-inspector-stub').getAttribute('data-item-id')).toBe('e1');
   });
 
   it('selecting an active_bodge entry surfaces the active-zone action-row', async () => {
