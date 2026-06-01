@@ -54,6 +54,7 @@ export default function App() {
   const flushAutosave = useStore(s => s.flushAutosave);
   const hydrateProjectsFromDexie = useStore(s => s.hydrateProjectsFromDexie);
   const hydrateLibrary = useStore(s => s.hydrateLibrary);
+  const hydrateCommonFeatures = useStore(s => s.hydrateCommonFeatures);
 
   useEffect(() => {
     bootstrapStore();
@@ -62,6 +63,10 @@ export default function App() {
     // loaded; without this call, reload of the page wiped «Моя библиотека»
     // visually (the rows were still in IndexedDB but never read into store).
     hydrateLibrary().catch(() => { /* ignore */ });
+    // Common-features overlay (SPEC_COMMON_FEATURES) — load user features +
+    // factory overrides so detection merges them and the Library panel
+    // shows them on cold start.
+    hydrateCommonFeatures().catch(() => { /* ignore */ });
     // Splash fade-in. body[data-app-ready] CSS rule animates opacity
     // 0→1 over 220 ms once initial bootstrap finishes, masking FOUC
     // and any slow Dexie hydration on cold start.
@@ -70,7 +75,7 @@ export default function App() {
         if (document.body) document.body.dataset.appReady = 'true';
       });
     }
-  }, [hydrateProjectsFromDexie, hydrateLibrary]);
+  }, [hydrateProjectsFromDexie, hydrateLibrary, hydrateCommonFeatures]);
 
   useEffect(() => {
     const setCanInstallPwa = useStore.getState().setCanInstallPwa;

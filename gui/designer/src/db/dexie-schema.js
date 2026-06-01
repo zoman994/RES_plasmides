@@ -1,7 +1,7 @@
 import Dexie from 'dexie';
 
 export const DB_NAME = 'bodgegene-db';
-export const DB_VERSION = 5;
+export const DB_VERSION = 6;
 
 /**
  * Schema v3 (M-B.1 K1, DEC-IMP-11 ⚓):
@@ -87,6 +87,22 @@ export class BodgeDB extends Dexie {
       library: 'id, kind, addedAt, [kind+addedAt], *tags, zone, projectId',
       primers: 'id, name, projectId, status, addedAt, resourceHash, [projectId+status]',
       snippets: 'id, name, category, createdAt',
+    });
+    // Schema v6 (SPEC_COMMON_FEATURES, DEC-CF-02): account-global overlay
+    // for the common-features DB — net-new user features (kind='user') +
+    // overrides of factory features (kind='override', keyed by baseId =
+    // the shipped feature's id). Purely ADDITIVE — a new table only, no
+    // data migration, existing tables untouched (no wipe). Like `snippets`,
+    // deliberately excluded from clearAll/deleteProject so the biolog's
+    // edits survive project churn. (NOTE: real schema version derived from
+    // code is 5→6; SPEC §0 said «v10→v11» — that was a miscount, see report.)
+    this.version(6).stores({
+      projects: 'id, name, createdAt, updatedAt',
+      containers: 'id, projectId, kind, name, [projectId+kind]',
+      library: 'id, kind, addedAt, [kind+addedAt], *tags, zone, projectId',
+      primers: 'id, name, projectId, status, addedAt, resourceHash, [projectId+status]',
+      snippets: 'id, name, category, createdAt',
+      commonFeatures: 'id, kind, baseId',
     });
   }
 }
@@ -293,4 +309,25 @@ export async function listSnippets() {
 
 export async function deleteSnippet(id) {
   return getDB().snippets.delete(id);
+}
+
+// ── Common-features overlay (SPEC_COMMON_FEATURES, DEC-CF-02) ──────────
+// Account-global, NOT project-scoped — excluded from clearAll/deleteProject
+// (mirror of `snippets`) so factory-feature overrides + net-new user
+// features survive project churn.
+//
+// Row shapes:
+//   user:     { id, kind:'user', name, type, sequence?, protein?, length, createdAt }
+//   override: { id:<baseId>, kind:'override', baseId, ...patch, createdAt }
+
+export async function putCommonFeature(row) {
+  return getDB().commonFeatures.put(row);
+}
+
+export async function listCommonFeatures() {
+  return getDB().commonFeatures.toArray();
+}
+
+export async function deleteCommonFeature(id) {
+  return getDB().commonFeatures.delete(id);
 }

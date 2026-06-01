@@ -66,14 +66,21 @@ export async function loadFeatureDB() {
 }
 
 /**
- * Async wrapper: load DB + detect. Non-blocking.
- * Returns empty array if DB unavailable.
+ * Async wrapper: load the MERGED DB (built-in + account overlay, DEC-CF-03)
+ * + detect. Non-blocking. Returns empty array if nothing to match against.
+ *
+ * `getMergedFeatureDB` is pulled in with a dynamic import on purpose: a
+ * static import would form a load-time cycle (store → commonFeaturesSlice →
+ * feature-detection → store) that can leave a slice creator undefined when
+ * feature-detection is the entry module. The dynamic import fires only when
+ * a detection actually runs, by which time the store is initialised.
  *
  * @param {string} sequence
  * @returns {Promise<Array>}
  */
 export async function detectCommonFeaturesAsync(sequence) {
-  const db = await loadFeatureDB();
-  if (!db) return [];
+  const { getMergedFeatureDB } = await import('./store/commonFeaturesSlice');
+  const db = await getMergedFeatureDB();
+  if (!db || !db.features?.length) return [];
   return detectCommonFeatures(sequence, db);
 }

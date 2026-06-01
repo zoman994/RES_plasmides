@@ -19,8 +19,8 @@ import {
 } from '../dexie-schema';
 
 describe('M-X.7a v2 K1 — dexie-schema v4', () => {
-  it('DB_VERSION is 5 (M-CANVAS-WORKFLOW-UX K2: +snippets table)', () => {
-    expect(DB_VERSION).toBe(5);
+  it('DB_VERSION is 6 (SPEC_COMMON_FEATURES: +commonFeatures table)', () => {
+    expect(DB_VERSION).toBe(6);
   });
 
   it('fresh v4 DB starts with empty library + primers tables', async () => {

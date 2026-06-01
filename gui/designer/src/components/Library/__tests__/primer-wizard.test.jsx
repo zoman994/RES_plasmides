@@ -35,15 +35,20 @@ describe('M-B.1 K6 — PrimerWizardStepModal', () => {
         onCancel={() => {}}
       />,
     );
-    // Wait for async hash + dupe check to settle (selected default = !dupe).
+    // The default selection (= !dupe) is `true` immediately, but resourceHash
+    // is computed asynchronously (crypto.subtle, microtask) and the no-dupe
+    // case surfaces no DOM signal for readiness. Poll a trial Add until the
+    // hash has settled so the assertions don't race the effect (flaky only
+    // under heavy parallel-suite load; passes solo).
+    let prepared;
     await waitFor(() => {
       expect(screen.getByTestId('importer-primer-check-M13 Forward').checked).toBe(true);
       expect(screen.getByTestId('importer-primer-check-M13 Reverse').checked).toBe(true);
+      onAdd.mockClear();
+      fireEvent.click(screen.getByTestId('importer-primer-wizard-add'));
+      prepared = onAdd.mock.calls[0]?.[0];
+      expect(prepared?.[0]?.resourceHash).toMatch(/^sha256:/);
     });
-
-    fireEvent.click(screen.getByTestId('importer-primer-wizard-add'));
-    expect(onAdd).toHaveBeenCalledOnce();
-    const prepared = onAdd.mock.calls[0][0];
     expect(prepared.length).toBe(2);
     expect(prepared[0].name).toBe('M13 Forward');
     expect(prepared[0].sequence).toBe('GTAAAACGACGGCCAGT');

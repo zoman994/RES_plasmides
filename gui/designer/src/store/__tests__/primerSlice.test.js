@@ -147,9 +147,9 @@ describe('M-X.7a v2 K1 — Dexie schema v4 wipes legacy primers (DEC-MX7A-V2-03)
   it('opens at v5 with the 5 tables (+snippets, M-CANVAS-WORKFLOW-UX K2)', async () => {
     const db = await freshDB();
     expect(db.tables.map(t => t.name).sort()).toEqual(
-      ['containers', 'library', 'primers', 'projects', 'snippets'],
+      ['commonFeatures', 'containers', 'library', 'primers', 'projects', 'snippets'],
     );
-    expect(db.verno).toBe(5);
+    expect(db.verno).toBe(6);
   });
 
   it('upgrade chain v2 → v4 wipes legacy library primers (no migration survives)', async () => {
