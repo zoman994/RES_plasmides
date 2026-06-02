@@ -33,6 +33,41 @@ export function invalidateMergedCache() {
   _mergedDirty = true;
 }
 
+// ── Debounced Dexie persistence for live in-viewer editing (DEC-CF-12) ──
+// Per-keystroke edits (sequence/name/type) update the store IMMEDIATELY but
+// coalesce the Dexie write — a put on every character is heavy. Keyed by
+// record id (user id or override baseId). reset/delete cancel any pending
+// write so a late timer can't resurrect a removed record.
+const EDIT_DEBOUNCE_MS = 400;
+const _pendingWrites = new Map(); // id -> { timer, record }
+
+function scheduleWrite(id, record) {
+  const prev = _pendingWrites.get(id);
+  if (prev?.timer) clearTimeout(prev.timer);
+  const timer = setTimeout(() => {
+    _pendingWrites.delete(id);
+    putCommonFeature(record).catch(() => {});
+  }, EDIT_DEBOUNCE_MS);
+  _pendingWrites.set(id, { timer, record });
+}
+
+function cancelWrite(id) {
+  const prev = _pendingWrites.get(id);
+  if (prev?.timer) clearTimeout(prev.timer);
+  _pendingWrites.delete(id);
+}
+
+/** Flush all pending debounced writes immediately (panel unmount + tests). */
+export function flushCommonFeatureWrites() {
+  const writes = [];
+  for (const { timer, record } of _pendingWrites.values()) {
+    if (timer) clearTimeout(timer);
+    writes.push(putCommonFeature(record).catch(() => {}));
+  }
+  _pendingWrites.clear();
+  return Promise.all(writes);
+}
+
 /**
  * Built-in common-features DB merged with the account overlay (DEC-CF-03):
  * a factory feature whose id has an override is replaced field-wise; net-new
@@ -164,6 +199,7 @@ export const createCommonFeaturesSlice = (set, get) => ({
   /** Drop an override → the factory feature is restored on next merge. */
   resetCommonFeature: async (baseId) => {
     if (!baseId || !get().commonFeatures.overrides[baseId]) return;
+    cancelWrite(baseId); // drop any pending debounced edit-write
     set((state) => { delete state.commonFeatures.overrides[baseId]; });
     await deleteCommonFeature(baseId);
     invalidateMergedCache();
@@ -184,9 +220,40 @@ export const createCommonFeaturesSlice = (set, get) => ({
     invalidateMergedCache();
   },
 
+  /**
+   * Live in-viewer edit (DEC-CF-12) — store update IMMEDIATE, Dexie write
+   * debounced. `target` is the selected merged feature (carries origin/id/
+   * baseId): a factory/overridden target writes an override (factory→override
+   * on first edit, DEC-CF-03 path), a user target updates the net-new record.
+   */
+  editCommonFeature: (target, patch) => {
+    if (!target || !patch) return;
+    if (target.origin === 'user') {
+      const id = target.id;
+      const existing = get().commonFeatures.userFeatures[id];
+      if (!existing) return;
+      const record = { ...existing, ...patch, id, kind: 'user' };
+      set((state) => { state.commonFeatures.userFeatures[id] = record; });
+      invalidateMergedCache();
+      scheduleWrite(id, record);
+    } else {
+      const baseId = target.baseId;
+      if (!baseId) return;
+      const existing = get().commonFeatures.overrides[baseId] || {};
+      const record = {
+        ...existing, ...patch, id: baseId, kind: 'override', baseId,
+        createdAt: existing.createdAt || new Date().toISOString(),
+      };
+      set((state) => { state.commonFeatures.overrides[baseId] = record; });
+      invalidateMergedCache();
+      scheduleWrite(baseId, record);
+    }
+  },
+
   /** Delete a net-new user feature. */
   deleteUserFeature: async (id) => {
     if (!id || !get().commonFeatures.userFeatures[id]) return;
+    cancelWrite(id); // drop any pending debounced edit-write
     set((state) => { delete state.commonFeatures.userFeatures[id]; });
     await deleteCommonFeature(id);
     invalidateMergedCache();

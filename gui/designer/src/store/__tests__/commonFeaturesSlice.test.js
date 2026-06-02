@@ -8,7 +8,7 @@ import 'fake-indexeddb/auto';
 import Dexie from 'dexie';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useStore, selectMergedCommonFeatures } from '../index';
-import { invalidateMergedCache } from '../commonFeaturesSlice';
+import { invalidateMergedCache, flushCommonFeatureWrites } from '../commonFeaturesSlice';
 import {
   resetDBForTests,
   listCommonFeatures,
@@ -24,6 +24,9 @@ async function freshDB() {
 }
 
 async function reset() {
+  // Drain any debounced edit-write left pending by a prior test BEFORE
+  // swapping the DB, so a late 400ms timer can't write into the next test's DB.
+  await flushCommonFeatureWrites();
   await freshDB();
   // No built-in DB in tests — fail fast (404) so loadFeatureDB returns null
   // without a real socket attempt (avoids ECONNREFUSED latency that adds
@@ -99,6 +102,50 @@ describe('commonFeaturesSlice', () => {
   it('updateUserFeature is a no-op for an unknown id', async () => {
     await useStore.getState().updateUserFeature('nope', { name: 'x' });
     expect(useStore.getState().commonFeatures.userFeatures.nope).toBeUndefined();
+  });
+
+  // ── editCommonFeature (DEC-CF-12, Пачка 3) — live edit: store immediate, Dexie debounced ──
+  it('editCommonFeature on a factory target creates an override in the store immediately', async () => {
+    useStore.getState().editCommonFeature(
+      { origin: 'factory', baseId: 'cf_f' },
+      { name: 'Edited', type: 'CDS', sequence: DNA, length: DNA.length, protein: null },
+    );
+    const ov = useStore.getState().commonFeatures.overrides.cf_f;
+    expect(ov).toBeDefined();
+    expect(ov.name).toBe('Edited');
+    expect(ov.kind).toBe('override');
+    expect(ov.baseId).toBe('cf_f');
+  });
+
+  it('editCommonFeature debounces the Dexie write (store now, Dexie after flush)', async () => {
+    useStore.getState().editCommonFeature(
+      { origin: 'factory', baseId: 'cf_f' },
+      { name: 'Edited', type: 'misc', sequence: DNA, length: DNA.length, protein: null },
+    );
+    // Not yet persisted (debounced).
+    expect((await listCommonFeatures()).find((x) => x.id === 'cf_f')).toBeFalsy();
+    await flushCommonFeatureWrites();
+    expect((await listCommonFeatures()).find((x) => x.id === 'cf_f')).toBeTruthy();
+  });
+
+  it('editCommonFeature on a user target updates the net-new record', async () => {
+    const r = await useStore.getState().promoteFeature({ name: 'u1', type: 'misc', sequence: DNA });
+    useStore.getState().editCommonFeature(
+      { origin: 'user', id: r.id },
+      { name: 'u1-edited', type: 'misc', sequence: DNA, length: DNA.length, protein: null },
+    );
+    expect(useStore.getState().commonFeatures.userFeatures[r.id].name).toBe('u1-edited');
+  });
+
+  it('resetCommonFeature cancels a pending debounced edit-write (no resurrection)', async () => {
+    useStore.getState().editCommonFeature(
+      { origin: 'factory', baseId: 'cf_f' },
+      { name: 'Edited', type: 'misc', sequence: DNA, length: DNA.length, protein: null },
+    );
+    await useStore.getState().resetCommonFeature('cf_f');
+    await flushCommonFeatureWrites(); // pending write was cancelled → nothing flushes
+    expect(useStore.getState().commonFeatures.overrides.cf_f).toBeUndefined();
+    expect((await listCommonFeatures()).find((x) => x.id === 'cf_f')).toBeFalsy();
   });
 
   it('deleteUserFeature removes a net-new feature', async () => {

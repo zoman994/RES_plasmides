@@ -1,10 +1,22 @@
 # CURRENT_TASK.md
 
 > **Активная задача: common-features — раздел + промоут.** Тип **A**.
-> Статус: **🔴 ПРИЁМКА 01.06 — FAIL → правки (Пачка 2).** Шаги 1–8 PASS; панель — FAIL (lean-список) + EN-строки. Спека правок: `docs/SPEC_COMMON_FEATURES.md` §10.
-> ✅ 1–14 проверены: 1–8 + 9–14 (промоут/модалка/дубль-warning/палитра) PASS; FAIL только панель + EN. Инвентарь закрыт. Реализация правок — отдельной Code-сессией, приёмка после.
+> Статус: **🟢 Пачка 3 РЕАЛИЗОВАНА (in-viewer editing) — жду визуальной приёмки.** Пачки 1–3 реализованы; viewer+EN (Пачка 2) приняты; правка-в-вивере (Пачка 3) ждёт приёмки. Спека: `docs/SPEC_COMMON_FEATURES.md` §11.
+> Финализация (Пачки 1+2+3) — после приёмки Пачки 3.
 
-## ПРИЁМКА 01.06 — FAIL → правки (Пачка 2)
+## ПРИЁМКА — editor FAIL → Пачка 3 (in-viewer editing) ← АКТИВНОЕ
+
+Пачка 2 (master-detail viewer + EN) реализована и принята визуально (Игорь). НО Edit открывает lean-textarea §9-B (правка сиквенса голой строкой) — Игорь отверг: правка в самом `SequenceView`. §9-B развёрнуто. Спека — `SPEC_COMMON_FEATURES.md` §11 (DEC-CF-12). Handoff — внизу.
+
+- [x] **In-viewer editing** — деталь-`SequenceView` → `editable={true}` + контролируемый caret (`useSequenceSelection` в `CommonFeaturesPanel`, resetKey=selectedKey) + `onSequenceEdit` → правка записи (`editCommonFeature`). Op→сиквенс через тот же pure-applier `applySequenceEditToEntry`, что Library-редактор (ContainerEditor char-edit не делает — реальный editable-консьюмер Library).
+- [x] **Factory → override при первой правке** (путь DEC-CF-03); reset без изменений.
+- [x] **Name/type — инлайн-поля шапки** (input + select) → `editCommonFeature`. **Lean sequence-textarea §9-B удалён.** Always-editable (нет «режима Edit»), Edit-кнопка убрана. Reset/Delete остаются.
+- [x] **Перф** — `editCommonFeature`: стор немедленно + Dexie debounced (400 мс, per-id; flush на unmount; cancel на reset/delete).
+- [x] Тесты §11: onSequenceEdit insert/delete правит сиквенс (factory→override + protein-consistency); reset (cancel pending); name/type персист; debounce flush; caret через `useSequenceSelection` resetKey; регрессия list/search/delete/promote/AA/lean-removed.
+
+---
+
+## Пачка 2 (master-detail viewer + EN) — РЕАЛИЗОВАНО ✅ (запись)
 
 1–8 PASS (Игорь). Панель FAIL: lean-список не даёт верифицировать запись (нет ДНК/АА/аннотации/превью). Спека правок — `SPEC_COMMON_FEATURES.md` §10 (DEC-CF-10 деталь-вид, DEC-CF-11 EN).
 
@@ -21,7 +33,7 @@
 
 **Финализация (после приёмки правок, НЕ сейчас):** закрыть `TD-SIZE-FEATURE-DETECTION` (DONE, `feature-detection.js` 2.8 КБ); обновить размер `TD-SIZE-SEQUENCEVIEW-INDEX` (index.jsx 49.71); R5 COMPONENT_MAP для `feature-detection.js` (было 10 КБ, реально 26 до decomp); **PROJECT_STATE шапка «Schema v=10» → v6** (устаревшая строка, реальный `DB_VERSION=6` по `db/dexie-schema.js`); DEC-CF-01..11 в DECISIONS; ротация BUGS/PROJECT_STATE/RELEASES.
 
-**Handoff Code (инвентарь закрыт):** «Прочитай CLAUDE/BUGS/CURRENT_TASK + SPEC_COMMON_FEATURES §10. Сделай Пачку 2, после последнего коммита стоп — жду визуальной приёмки, не финализируй PROJECT_STATE/DECISIONS/BUGS/RELEASES/ANCHORS/TECH_DEBT/CLAUDE/COMPONENT_MAP.»
+**Handoff Code (Пачка 3, АКТИВНЫЙ):** «Прочитай CLAUDE/BUGS/CURRENT_TASK + SPEC_COMMON_FEATURES §11. Сделай Пачку 3 (in-viewer editing common-фич + удали lean sequence-textarea §9-B). После реализации проставь §11 шапку ✅ РЕАЛИЗОВАНО [дата]. После последнего коммита стоп — жду визуальной приёмки, не финализируй PROJECT_STATE/DECISIONS/BUGS/RELEASES/ANCHORS/TECH_DEBT/CLAUDE/COMPONENT_MAP.»
 
 ## TL;DR
 
@@ -124,3 +136,33 @@ Overlay-стор для common-фич (built-in `common-features.json` read-only
 **Статус-шапка §10: ✅ РЕАЛИЗОВАНО 02.06.2026** проставлена.
 
 **STOP:** жду визуальной приёмки (деталь-вид + EN) — отдельная сессия. Доки (PROJECT_STATE/DECISIONS/BUGS/RELEASES/ANCHORS/TECH_DEBT/CLAUDE/COMPONENT_MAP) НЕ финализированы.
+
+---
+
+## Отчёт Code (02.06.2026) — Пачка 3 (in-viewer editing, §11/DEC-CF-12)
+
+**Коммит:** правка common-фичи в `SequenceView` + инлайн name/type + debounce — `<этот коммит>`.
+
+**DEC-CF-12 — правка в детальном вивере; lean-textarea §9-B убран.**
+- `CommonFeaturesPanel`: деталь-`SequenceView` теперь `editable` + `onSequenceEdit` + контролируемый caret через **`useSequenceSelection`** (resetKey=selectedKey → caret сбрасывается при смене фичи). Op (insert/delete/replace) → следующий сиквенс + caretAfter через тот же pure-applier **`applySequenceEditToEntry`** (`lib/library-sequence-edit.js`), что и Library-редактор.
+- **Always-editable:** «режим Edit» + Edit-кнопка + lean sequence-textarea §9-B **удалены**. Навигация не мутирует; правят буквы/Delete. Reset(overridden)/Delete(user) — в шапке.
+- **Name/type — инлайн-поля шапки** (text input + type select) → `editCommonFeature`.
+- **Factory→override при первой правке** (DEC-CF-03): `editCommonFeature` для factory/overridden пишет override, для user — обновляет net-new; OVERRIDDEN-бейдж на первой правке.
+- **Перф:** новый slice-экшн `editCommonFeature(target, patch)` — стор немедленно + Dexie **debounced** (400 мс, per-id); `flushCommonFeatureWrites()` на unmount + в тестах; reset/delete делают `cancelWrite`.
+- **Protein-consistency:** на правке сиквенса/типа протеин пересчитывается (`proteinFor`) → stored protein не расходится с ДНК.
+- `onAnnotationEdit` НЕ проброшен (FeatureEditorModal не задействуется).
+
+**Прогон.** Vitest **4223 pass / 0 fail / 17 skipped** (445 файлов). pytest **115 pass**. Build clean.
+
+**Тесты.** Slice: `editCommonFeature` (factory→override store-immediate; debounce — Dexie только после flush; user-update; reset cancels pending). Панель (real `SequenceView`): editable-вивер; CDS→AA / promoter→нет AA; инлайн name→override; type-select→override; lean-editor отсутствует; reset/delete/поиск/hint. Панель (stub): onSequenceEdit insert→override('A'+orig); delete→укорачивает; editable=true; CDS-edit держит protein.
+
+**Size-budget.** `CommonFeaturesPanel/index.jsx` **15.48 КБ** (без роста vs Пачка 2; soft 30 — OK). `store/commonFeaturesSlice.js` 7.30 → **9.87 КБ** (Δ+2.57; soft 20 — OK). Новых hard-нарушителей нет. Size budget: OK.
+
+**Отклонения от §11:**
+1. **onSequenceEdit/name/type пишут через новый `editCommonFeature`, не `updateUserFeature`** (как буквально в §11). §11 требует И «factory→override» И «Dexie debounced»; immediate-экшны (updateUserFeature/override) их тесты проверяют как immediate. `editCommonFeature` инкапсулирует user/override-выбор + debounce, не ломая существующие. Контракт (factory→override + debounce) соблюдён.
+2. **«Зеркалить ContainerEditor»** — ContainerEditor char-level sequence-edit НЕ делает (`onSequenceEdit` не проброшен). Реальный образец — Library inspector (`applySequenceEditToEntry`); зеркалю его pure-applier.
+3. **Protein пересчитывается на правке** (сверх буквального `{sequence}`) — consistency stored-protein↔ДНК.
+
+**Статус-шапка §11: ✅ РЕАЛИЗОВАНО 02.06.2026** проставлена.
+
+**STOP:** жду визуальной приёмки (правка в вивере: ввод/удаление/override/reset + name/type). Доки НЕ финализированы.

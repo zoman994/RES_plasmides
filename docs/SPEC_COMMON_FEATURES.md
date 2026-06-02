@@ -198,3 +198,32 @@
 
 ### STOP
 После правки + прогон. Визуальная приёмка (деталь-вид + EN-строки) — отдельная сессия.
+
+---
+
+## §11. Приёмочная правка (Пачка 3) — правка common-фичи в SequenceView
+
+**Статус:** ✅ РЕАЛИЗОВАНО 02.06.2026 (Пачка 3; жду визуальной приёмки правки-в-вивере). Приёмка Пачки 2 — viewer PASS, **редактор FAIL**. Кнопка Edit открывает lean-textarea §9-B (правка сиквенса голой строкой) — Игорь отверг, правка должна быть в самом вивере («у нас же всё есть»). Решение §9-B (lean-редактор) развёрнуто.
+
+### DEC-CF-12 — Правка в детальном `SequenceView` (editable); lean-textarea §9-B убирается.
+`SequenceView` полностью контролируемый + consumer-gated (DEC-SQV-07): правка включается пропами `editable` + `onSequenceEdit`, аннотации — `onAnnotationEdit`, caret/selection — родитель. Существующий editable-консьюмер (ContainerEditor) уже это делает → зеркалим, пишем в `commonFeaturesSlice` вместо librarySlice.
+- Деталь-`SequenceView`: `editable={true}` + контролируемый caret (локальный state `CommonFeaturesPanel`: caretPos/caretAnchor/selectionMode/selectionStrand + onCaretChange/onSelectRange) + `onSequenceEdit` → `updateUserFeature(id, { sequence: next })`. Payload `onSequenceEdit` и продвижение caret на правке — Code читает `hooks/useSequenceKeyboard.js` / зеркалит ContainerEditor.
+- **Factory-фича:** первая правка создаёт override (существующий путь DEC-CF-03, тот же что бывший lean-save). Reset-к-заводской без изменений; OVERRIDDEN-бейдж появляется при первой правке.
+- Single full-span region-аннотация автоматически тянется за длиной (фрагмент пересобирается из записи каждый рендер → end=length).
+- **Name/type — инлайн-поля шапки детали** (text input + type select) → `updateUserFeature({name}/{type})`. НЕ модалка, НЕ textarea сиквенса.
+- **Always-editable** — отдельного «режима Edit» нет; Edit-кнопка §9-B убирается. Навигация (клик/стрелки) не мутирует; правят только буквы/Delete. Reset(overridden)/Delete(user) остаются.
+- **Перф:** `onSequenceEdit` → стор немедленно + Dexie-запись debounced (по-кнопочная запись в Dexie тяжела на каждый символ).
+- coords/strand/split/merge/introns к референс-записи неприменимы → `onAnnotationEdit` НЕ прокидываем (FeatureEditorModal не задействуется).
+
+### Файлы
+- `components/Library/CommonFeaturesPanel/index.jsx` — editable-проброс + локальный caret-state + инлайн name/type поля; **удалить lean sequence-textarea §9-B**.
+- `store/commonFeaturesSlice.js` — `updateUserFeature` factory→override на правку (если ещё нет) + debounce Dexie.
+
+### Тесты (red→green)
+- Ввод ACGT/Delete в деталь-вивере → сиквенс записи меняется; для factory-фичи создаётся override; reset восстанавливает заводскую.
+- Инлайн name/type → персист.
+- Смена выбранной фичи → caret сбрасывается; АА перерисовывается на правку.
+- Регрессия: list/search/delete(user)/promote/палитра — без изменений; lean-textarea отсутствует.
+
+### STOP
+После правки + прогон. Визуальная приёмка (правка в вивере: ввод/удаление/override/reset + name/type) — отдельная сессия.
