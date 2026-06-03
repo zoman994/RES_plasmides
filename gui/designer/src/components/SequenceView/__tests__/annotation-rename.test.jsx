@@ -59,11 +59,9 @@ describe('Bug-rush #3 — bar dblclick opens Annotator, label dblclick renames',
         onOpenAnnotator={onOpenAnnotator}
       />
     );
-    // P4: the interactive surface is the transparent hit-rect overlaying
-    // the colour bar / SBOL glyph (the visible bar/glyph is pointer-inert).
+    // The rect lives inside the annotation <g> as a direct child.
     const region = screen.getAllByTestId('sequence-view-annotation')[0];
-    const rect = region.querySelector('rect[data-region-hit="true"]')
-      || region.querySelector('rect');
+    const rect = region.querySelector('rect');
     fireEvent.doubleClick(rect);
     expect(onOpenAnnotator).toHaveBeenCalledWith({
       kind: 'region',
