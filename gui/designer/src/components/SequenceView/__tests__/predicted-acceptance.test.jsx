@@ -140,14 +140,16 @@ describe("Sprint M-X.1 K6 — synthetic plasmid acceptance", () => {
     );
     expect(predicted.length).toBeGreaterThan(0);
     expect(confident.length).toBeGreaterThan(0);
-    // Each predicted rect carries strokeDasharray; each confident does not.
+    // P4: the predicted (dashed) treatment lives on the drawn glyph body —
+    // the CDS arrow path for CDS-family, the colour bar for non-CDS — not
+    // necessarily the first <rect> (which may be the transparent hit-rect).
+    // Assert each predicted group carries a dashed stroke somewhere; each
+    // confident group carries none.
     for (const g of predicted) {
-      const rect = g.querySelector("rect");
-      expect(rect.getAttribute("stroke-dasharray")).toBeTruthy();
+      expect(g.querySelector("[stroke-dasharray]")).toBeTruthy();
     }
     for (const g of confident) {
-      const rect = g.querySelector("rect");
-      expect(rect.getAttribute("stroke-dasharray")).toBeNull();
+      expect(g.querySelector("[stroke-dasharray]")).toBeNull();
     }
   });
 

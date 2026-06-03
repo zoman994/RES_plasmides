@@ -27,17 +27,23 @@
 
 import { Fragment, memo, useState } from "react";
 import { stackAnnotations, MAX_VISIBLE_ROWS } from "../lib/annotation-stacking.js";
-import { SBOLIcon } from "../../../sbol-glyphs";
 import {
   ROW_HEIGHT, ROW_GAP, LABEL_FONT_SIZE, CHEVRON_PAD, SHORT_VISIBLE_THRESHOLD,
-  GLYPH_SIZE, GLYPH_MIN_PX, LEADER_LINE_LENGTH_PX,
+  GLYPH_MIN_PX, LEADER_LINE_LENGTH_PX,
 } from "./annotation-track-constants.js";
 import { ensureColor } from "./annotation-colors.js";
-import { chevronPath } from "./annotation-geometry.js";
 import { regionKey, labelLengthChars } from "./annotation-layout.js";
+import { shapeForType } from "./feature-glyph-shapes.js";
+import { FeatureGlyph } from "./FeatureGlyph.jsx";
 import { LabelText } from "./AnnotationLabel.jsx";
 import { SubFeatureOverlay } from "./SubFeatureOverlay.jsx";
 import { AnnotationWrapRows } from "./AnnotationWrapRows.jsx";
+
+// Ink colour for the SBOL motif overlay drawn over a feature's colour
+// bar (non-CDS typed features). Dark in light theme; the motif reads as
+// line-art regardless of the bar's palette colour, so the feature TYPE
+// is legible by shape — not by colour alone (colour-blind-safe, ⚓ 9.8).
+const MOTIF_INK = "var(--text-primary, #1c1917)";
 
 /**
  * @param {object} props
@@ -302,6 +308,20 @@ function AnnotationTrack({
           const drawChevron =
             (strand === 1 && endsHere) || (strand === -1 && startsHere);
 
+          // P4 — SBOL glyph render. The CDS-family far-end line renders the
+          // directional arrow (its point IS the strand cue); CDS continuation
+          // segments + every other type keep the colour bar, and non-CDS
+          // typed features get an ink SBOL motif overlaid on the bar (the type
+          // cue, replacing the old chevron + left badge). `glyphW` mirrors the
+          // legacy rect width (−2 px so adjacent same-row features keep a
+          // visible 2 px gap).
+          const glyphShape = shapeForType(region.type);
+          const isCdsArrow = glyphShape === "cds";
+          const glyphW = Math.max(1, widthRect - 2);
+          const useArrow = isCdsArrow && drawChevron;
+          const showMotif =
+            !isCdsArrow && glyphShape !== "unspecified" && glyphW >= GLYPH_MIN_PX;
+
           // Drag-handle overlay state — when this region is being
           // dragged, render a translucent live-preview rect at the
           // NEW coords (bottom orange outline). Original rect stays
@@ -386,30 +406,73 @@ function AnnotationTrack({
               transform={`translate(${xLeft}, ${yTop})`}
               style={{ cursor: "pointer", opacity: isBeingDragged ? 0.4 : 1 }}
             >
+              {/* Colour span — CDS-family far-end line renders the directional
+                  SBOL arrow (its point is the strand cue). Everything else
+                  (incl. CDS continuation segments, where the far end is on
+                  another line) keeps the colour bar. Round-9/11 −2 px gap
+                  preserved via glyphW so adjacent same-row features don't read
+                  as one frame. pointerEvents:none → the transparent hit-rect
+                  below owns interaction. */}
+              {useArrow ? (
+                <FeatureGlyph
+                  type={region.type}
+                  width={glyphW}
+                  height={ROW_HEIGHT}
+                  strand={strand}
+                  color={baseColor}
+                  predicted={isPredicted}
+                  fillOpacity={0.55}
+                  style={{ pointerEvents: 'none' }}
+                />
+              ) : (
+                <rect
+                  data-region-id={region.id || ''}
+                  data-region-predicted={isPredicted ? 'true' : undefined}
+                  x={0}
+                  y={0}
+                  width={glyphW}
+                  height={ROW_HEIGHT}
+                  rx={2}
+                  fill={fill}
+                  fillOpacity={rectFillOpacity}
+                  // Confident: theme-aware stroke (var(--text-secondary)),
+                  // 0.6 px. Predicted: feature-coloured dashed (DEC-PRED-05).
+                  stroke={rectStroke}
+                  strokeWidth={rectStrokeWidth}
+                  strokeDasharray={rectStrokeDash}
+                  style={{ pointerEvents: 'none' }}
+                />
+              )}
+              {/* SBOL motif overlay — ink line-art on the colour bar for
+                  non-CDS typed features (promoter bent-arrow, terminator T,
+                  origin circle, RBS dome, …). Conveys TYPE by shape and the
+                  direction; replaces the legacy chevron + left badge. Hidden
+                  on too-narrow bars and on generic misc_feature. */}
+              {showMotif ? (
+                <FeatureGlyph
+                  type={region.type}
+                  width={glyphW}
+                  height={ROW_HEIGHT}
+                  strand={strand}
+                  color={MOTIF_INK}
+                  predicted={isPredicted}
+                  outline
+                  style={{ pointerEvents: 'none' }}
+                />
+              ) : null}
+              {/* Transparent hit-target — keeps single/double-click on the
+                  whole row bbox regardless of the glyph shape, and carries the
+                  region id for selectors. Rendered BELOW sub-features / edge
+                  handles / label so those stay individually clickable. */}
               <rect
                 data-region-id={region.id || ''}
-                data-region-predicted={isPredicted ? 'true' : undefined}
+                data-region-hit="true"
                 x={0}
                 y={0}
-                // Round-9/11 (06.05.2026 biolog: «рядом стоящие фичи
-                // не имеющие перекрытия объединяются одной рамкой»):
-                // adjacent features packed on the same stacking row
-                // used to render with strokes touching, reading as a
-                // single bounded frame. Subtract 2 px from the right
-                // edge so the gap is visible at 1× scale on a
-                // typical monitor.
-                width={Math.max(1, widthRect - 2)}
+                width={glyphW}
                 height={ROW_HEIGHT}
-                rx={2}
-                fill={fill}
-                fillOpacity={rectFillOpacity}
-                // Confident: theme-aware stroke (var(--text-secondary)),
-                // 0.6 px (biolog visual review M-B.3 polish). Predicted:
-                // feature-coloured stroke, 1 px, dashed pattern (3,2)
-                // per DEC-PRED-05 / pLannotate convention.
-                stroke={rectStroke}
-                strokeWidth={rectStrokeWidth}
-                strokeDasharray={rectStrokeDash}
+                fill="transparent"
+                style={{ cursor: 'pointer' }}
                 onClick={(e) => {
                   if (typeof onAnnotationClick !== 'function') return;
                   e.stopPropagation();
@@ -422,27 +485,6 @@ function AnnotationTrack({
                   onAnnotationFeatureDoubleClick(region);
                 }}
               />
-              {drawChevron ? (
-                <path
-                  d={chevronPath(strand, strand === -1 ? 0 : widthRect, 0, ROW_HEIGHT)}
-                  fill={fill}
-                  fillOpacity={rectFillOpacity}
-                  stroke={rectStroke}
-                  strokeWidth={rectStrokeWidth}
-                  strokeDasharray={rectStrokeDash}
-                  onClick={(e) => {
-                    if (typeof onAnnotationClick !== 'function') return;
-                    e.stopPropagation();
-                    onAnnotationClick(region);
-                  }}
-                  onDoubleClick={(e) => {
-                    if (typeof onAnnotationFeatureDoubleClick !== 'function') return;
-                    e.stopPropagation();
-                    e.preventDefault();
-                    onAnnotationFeatureDoubleClick(region);
-                  }}
-                />
-              ) : null}
               {/* Sprint M-X.3 follow-up — Variant A sub-feature
                   overlays. Biolog «нужно так чтобы однозначно было
                   видно что это сплит фича... давай А реализуем».
@@ -466,76 +508,28 @@ function AnnotationTrack({
                 onAnnotationClick={onAnnotationClick}
                 onAnnotationFeatureDoubleClick={onAnnotationFeatureDoubleClick}
               />
-              {/* Sprint M-X.3 follow-up — SBOL glyph + label as one
-                  centred unit. Biolog «глифы давай у названия, как
-                  будто бы так будет лучше» — pre-fix the glyph was
-                  pinned at fixed x=2 and the label was centred
-                  separately, so on a wide rect the two ended up
-                  visually disconnected. Now we estimate the label
-                  text width, pack glyph + gap + text into one
-                  «content» strip, centre that strip in the rect
-                  (with a 2 px floor so a narrow rect still leaves
-                  the glyph a slot), and anchor the text at the
-                  glyph's right edge.
-
-                  Reverse-strand features (`strand === -1`) get a
-                  scale(-1, 1) flip so the SBOL directional glyphs
-                  (CDS arrow, promoter L-arrow, terminator T) point
-                  AWAY from the start codon side. Translate-then-
-                  scale puts the post-flip rect at the same x as
-                  the unflipped one. */}
-              {(() => {
-                const showGlyph = widthRect >= GLYPH_MIN_PX;
-                if (!showGlyph && !showLabelInside) return null;
+              {/* Centred inside-label. The body shape now conveys the
+                  feature type (P4 SBOL glyph render), so the old small
+                  left badge is gone — the name sits centred on the colour
+                  span, white with a halo so it reads over any palette
+                  colour. text-anchor="start" + a centred x keeps the
+                  paint identical to the prior centred render. */}
+              {showLabelInside ? (() => {
                 const APPROX_CHAR_PX = 5.5; // sans-serif at fontSize 9
-                const GLYPH_GAP = 3;
-                const labelTextWidth = showLabelInside
-                  ? displayLabel.length * APPROX_CHAR_PX
-                  : 0;
-                const contentWidth = (showGlyph ? GLYPH_SIZE : 0)
-                  + (showGlyph && showLabelInside ? GLYPH_GAP : 0)
-                  + labelTextWidth;
-                const contentLeft = Math.max(2, (widthRect - contentWidth) / 2);
-                const glyphY = (ROW_HEIGHT - GLYPH_SIZE) / 2;
-                const isReverse = region.strand === -1;
-                const glyphX = contentLeft;
-                const labelStartX = showGlyph
-                  ? glyphX + GLYPH_SIZE + GLYPH_GAP
-                  : contentLeft;
-                const glyphTransform = isReverse
-                  ? `translate(${glyphX + GLYPH_SIZE}, ${glyphY}) scale(-1, 1)`
-                  : `translate(${glyphX}, ${glyphY})`;
+                const labelTextWidth = displayLabel.length * APPROX_CHAR_PX;
+                const labelStartX = Math.max(2, (widthRect - labelTextWidth) / 2);
                 return (
-                  <>
-                    {showGlyph ? (
-                      <g
-                        data-testid="annotation-feature-glyph"
-                        data-glyph-type={region.type || ''}
-                        data-glyph-strand={isReverse ? '-1' : '1'}
-                        transform={glyphTransform}
-                        style={{ pointerEvents: 'none' }}
-                      >
-                        <SBOLIcon
-                          type={region.type}
-                          size={GLYPH_SIZE}
-                          color={isPredicted ? baseColor : 'var(--text-primary, #1c1917)'}
-                        />
-                      </g>
-                    ) : null}
-                    {showLabelInside ? (
-                      <LabelText
-                        x={labelStartX}
-                        region={region}
-                        displayLabel={displayLabel}
-                        isPredicted={isPredicted}
-                        labelFontStyle={labelFontStyle}
-                        lineStart={lineStart}
-                        onAnnotationDoubleClick={onAnnotationDoubleClick}
-                      />
-                    ) : null}
-                  </>
+                  <LabelText
+                    x={labelStartX}
+                    region={region}
+                    displayLabel={displayLabel}
+                    isPredicted={isPredicted}
+                    labelFontStyle={labelFontStyle}
+                    lineStart={lineStart}
+                    onAnnotationDoubleClick={onAnnotationDoubleClick}
+                  />
                 );
-              })()}
+              })() : null}
               {previewRect ? (
                 <>
                   {/* Bug-rush #11 (04.05.2026 evening): bump the

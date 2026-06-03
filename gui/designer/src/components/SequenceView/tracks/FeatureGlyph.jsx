@@ -16,9 +16,9 @@
  *       predicted → fill = transparent, dashed feature-coloured outline
  *   - STROKE-ONLY shapes (promoter, terminator, primer): the feature colour
  *       lives on the STROKE (no fill to carry it); dashed when predicted.
- *
- * NOTE (P3): not yet wired into AnnotationTrack — the rect→glyph swap is P4
- * (visual-acceptance gated). Built + tested standalone behind the seam.
+ *   - `outline` mode (P4 «motif on a coloured bar»): force EVERY primitive to
+ *       stroke-only ink line-art in `color`, so the glyph reads as a motif
+ *       overlaid on the feature's own colour bar (rendered separately).
  */
 import { ROW_HEIGHT } from "./annotation-track-constants.js";
 import { ensureColor } from "./annotation-colors.js";
@@ -35,6 +35,7 @@ export function FeatureGlyph({
   color = "#9ca3af",
   predicted = false,
   fillOpacity = 0.55,
+  outline = false,
   ...rest
 }) {
   const shape = shapeForType(type);
@@ -53,11 +54,17 @@ export function FeatureGlyph({
       {...rest}
     >
       {primitives.map((p, i) => {
-        const filled = p.fill === true;
+        // In outline mode every primitive is stroke-only ink line-art in
+        // `color` (a motif laid over the feature's own colour bar).
+        const filled = !outline && p.fill === true;
         // Filled glyphs carry the feature colour in the fill; stroke-only
-        // glyphs carry it in the stroke (there is no fill to colour).
+        // glyphs (and outline mode) carry it in the stroke.
         const fill = filled ? (predicted ? "transparent" : baseColor) : "none";
-        const stroke = filled ? (predicted ? baseColor : THEME_LINE) : baseColor;
+        const stroke = outline
+          ? baseColor
+          : filled
+            ? (predicted ? baseColor : THEME_LINE)
+            : baseColor;
         const strokeWidth = filled ? (predicted ? 1 : 0.6) : predicted ? 1.2 : 1.4;
         const common = {
           fill,

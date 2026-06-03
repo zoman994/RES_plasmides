@@ -129,6 +129,38 @@ describe("FeatureGlyph — predicted treatment (DEC-PRED-05)", () => {
   });
 });
 
+describe("FeatureGlyph — outline mode (motif overlay on a coloured bar)", () => {
+  it("outline forces every primitive to stroke-only (fill=none) in the given colour", () => {
+    // rbs/operator are normally FILLED; outline must strip the fill so the
+    // motif reads as ink line-art on top of the feature's colour bar.
+    for (const type of ["RBS", "operator", "rep_origin", "terminator"]) {
+      const { container } = renderGlyph({ type, color: "#1c1917", outline: true });
+      const els = container.querySelectorAll('[data-testid="feature-glyph"] path, [data-testid="feature-glyph"] circle, [data-testid="feature-glyph"] rect');
+      expect(els.length).toBeGreaterThanOrEqual(1);
+      els.forEach((el) => {
+        expect(el.getAttribute("fill")).toBe("none");
+        expect(el.getAttribute("stroke")).toBe("#1c1917");
+      });
+      cleanup();
+    }
+  });
+
+  it("outline still mirrors direction on reverse strand (geometry baked, no transform flip)", () => {
+    const fwd = renderGlyph({ type: "promoter", outline: true, strand: 1 }).container
+      .querySelector('[data-testid="feature-glyph"] path').getAttribute("d");
+    cleanup();
+    const rev = renderGlyph({ type: "promoter", outline: true, strand: -1 }).container
+      .querySelector('[data-testid="feature-glyph"] path').getAttribute("d");
+    expect(fwd).not.toBe(rev);
+  });
+
+  it("non-outline filled shape keeps its fill (regression)", () => {
+    const { container } = renderGlyph({ type: "RBS", color: "#1c1917" });
+    const path = container.querySelector('[data-testid="feature-glyph"] path');
+    expect(path.getAttribute("fill")).not.toBe("none");
+  });
+});
+
 describe("FeatureGlyph — smoke render for every mapped type", () => {
   const TYPES = [
     "CDS", "gene", "marker", "reporter", "promoter", "core_promoter",
