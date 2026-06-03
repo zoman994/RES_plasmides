@@ -28,75 +28,16 @@
 import { Fragment, memo, useState } from "react";
 import { stackAnnotations, MAX_VISIBLE_ROWS } from "../lib/annotation-stacking.js";
 import { SBOLIcon } from "../../../sbol-glyphs";
-
-const ROW_HEIGHT = 14;
-const ROW_GAP = 2;
-const LABEL_FONT_SIZE = 9;
-const CHEVRON_PAD = 2;
-const SHORT_VISIBLE_THRESHOLD = 4; // chars
-// Sprint M-X.3 follow-up — small SBOL glyph badge sits at the left
-// of every wide-enough region so biolog can scan feature TYPES at
-// a glance without reading every label. Glyph is 11×11; rect needs
-// at least 14 px of width to fit it without crowding the label.
-const GLYPH_SIZE = 11;
-const GLYPH_MIN_PX = 14;
-// Shortened from 14 → 8 px (biolog visual review 03.05.2026 evening,
-// pBR322 lac operator/promoter pair: «ещё есть куда приближать»). The
-// leader still reads clearly as a tick connecting the rect to its
-// label, but the constant LEADER_RESERVED below the rect — required for
-// inter-line consistency so longest-feature row stays at a stable
-// distance from DNA — drops from 25 to 19 px. Combined with
-// STRAND_GAP 5 → 1, the annotation→DNA gap shrinks ~8 px without
-// sacrificing the constant-height invariant (LEADER_RESERVED is still
-// reserved on every line regardless of whether THIS line uses a leader,
-// so AmpR / lacZα don't jump line-to-line).
-const LEADER_LINE_LENGTH_PX = 8;
-
-/** Approximate the on-screen width of a label string in characters. */
-function labelLengthChars(name, region) {
-  if (!name) return 0;
-  const span = region.end - region.start;
-  // Append "(span)" for features wider than 12 nt — matches SnapGene.
-  return span > 12 ? `${name} (${span})`.length : name.length;
-}
-
-function chevronPath(strand, x, y, height) {
-  const tip = strand === -1 ? x : x; // overridden by caller's translate
-  const half = height / 2;
-  if (strand === -1) {
-    return `M${tip + 6},${y} L${tip},${y + half} L${tip + 6},${y + height}`;
-  }
-  return `M${tip - 6},${y} L${tip},${y + half} L${tip - 6},${y + height}`;
-}
-
-function ensureColor(color) {
-  if (typeof color === "string" && color.startsWith("#")) return color;
-  return "#9ca3af"; // misc_feature fallback
-}
-
-/**
- * Darken a `#rrggbb` colour by mixing it toward black at `ratio`
- * (0 = unchanged, 1 = black). Used on the annotation rect so feature
- * colours read as muted "tonal cards" against the dark-theme
- * background instead of glaring saturated bars. Biolog visual review
- * 03.05.2026 evening: исходные цвета палитры (выбраны под светлую
- * тему) на тёмной теме выглядели слишком светлыми; первая попытка
- * lighten(+30 %) сделала их ещё светлее — биолог: «давай мы сделаем
- * так чтобы сами фичи были на пол тона тон темнее, они слишком
- * светлые для темной темы». Текущее значение 0.25 = ~четверть тона
- * к чёрному.
- */
-function darkenColor(hex, ratio) {
-  if (typeof hex !== "string" || hex.length !== 7 || hex[0] !== "#") return hex;
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return hex;
-  const dr = Math.round(r * (1 - ratio));
-  const dg = Math.round(g * (1 - ratio));
-  const db = Math.round(b * (1 - ratio));
-  return `#${dr.toString(16).padStart(2, "0")}${dg.toString(16).padStart(2, "0")}${db.toString(16).padStart(2, "0")}`;
-}
+import {
+  ROW_HEIGHT, ROW_GAP, LABEL_FONT_SIZE, CHEVRON_PAD, SHORT_VISIBLE_THRESHOLD,
+  GLYPH_SIZE, GLYPH_MIN_PX, LEADER_LINE_LENGTH_PX,
+} from "./annotation-track-constants.js";
+import { ensureColor } from "./annotation-colors.js";
+import { chevronPath } from "./annotation-geometry.js";
+import { regionKey, labelLengthChars } from "./annotation-layout.js";
+import { LabelText } from "./AnnotationLabel.jsx";
+import { SubFeatureOverlay } from "./SubFeatureOverlay.jsx";
+import { AnnotationWrapRows } from "./AnnotationWrapRows.jsx";
 
 /**
  * @param {object} props
@@ -191,8 +132,39 @@ function AnnotationTrack({
       parentRegions.push(r);
     }
   }
-  const stack = stackAnnotations(parentRegions, lineStart, lineEnd);
-  if (stack.rows.length === 0 && stack.overflowCount === 0) return null;
+  // V102 §5.1 — on a wrap-bridge row, annotations come from two plasmid
+  // ranges shown in ONE row: the real end [lineStart, seqLength) in
+  // columns [0, wrapAt), and the plasmid start [0, wrapWidthChars) in
+  // columns [wrapAt, lineLen). Each range gets an INDEPENDENT stack so a
+  // feature that lives only at the plasmid start (e.g. MCS) — which never
+  // overlaps the real range — still renders on the wrap-half. Replaces
+  // the old per-real-region `wrapSegmentInfo` hack that missed those.
+  const hasWrap = wrapsOrigin === true
+    && Number.isFinite(wrapAt) && wrapAt > 0
+    && Number.isFinite(seqLength) && seqLength > 0
+    && wrapAt < lineLen;
+  const wrapWidthChars = hasWrap ? lineLen - wrapAt : 0;
+  const realLineEnd = hasWrap ? Math.min(lineEnd, seqLength) : lineEnd;
+  const stack = stackAnnotations(parentRegions, lineStart, realLineEnd);
+  const wrapStack = hasWrap ? stackAnnotations(parentRegions, 0, wrapWidthChars) : null;
+  // V132 — an origin-crossing feature renders in BOTH the real stack
+  // (cols [0, wrapAt)) and the wrap stack (cols [wrapAt, lineLen)); near
+  // the ▶1 divider both halves clamp their full label to the seam and
+  // overlap («скомкано»). Pick ONE half (the wider visible one) to carry
+  // the label; the other keeps rect/glyph/chevron but drops text + leader.
+  // Features visible in only one half aren't in the map → labelled as usual.
+  const labelOnHalf = new Map();
+  if (hasWrap) {
+    for (const region of parentRegions) {
+      const realVis = Math.max(0, Math.min(region.end, realLineEnd) - Math.max(region.start, lineStart));
+      const wrapVis = Math.max(0, Math.min(region.end, wrapWidthChars) - Math.max(region.start, 0));
+      if (realVis > 0 && wrapVis > 0) {
+        labelOnHalf.set(regionKey(region), realVis >= wrapVis ? "real" : "wrap");
+      }
+    }
+  }
+  if (stack.rows.length === 0 && stack.overflowCount === 0
+    && (!wrapStack || wrapStack.rows.length === 0)) return null;
 
   // Reserve constant vertical space at the bottom of every annotation
   // SVG for two things, regardless of whether the current line uses
@@ -238,7 +210,7 @@ function AnnotationTrack({
   // LEADER_RESERVED, the leader-label now sits ~3 px above the DNA
   // strand instead of ~12.
   const STRAND_GAP = 1;
-  const rowsCount = stack.rows.length;
+  const rowsCount = Math.max(stack.rows.length, wrapStack ? wrapStack.rows.length : 0);
   const totalHeight =
     rowsCount * (ROW_HEIGHT + ROW_GAP)
     + (stack.overflowCount > 0 ? ROW_HEIGHT : 0)
@@ -302,7 +274,7 @@ function AnnotationTrack({
           const rectStrokeDash = isPredicted ? '3,2' : undefined;
           const baseName = region.name || "feature";
           const labelText =
-            (region.end - region.start) > 12
+            ((region.end - region.start) > 12 && !baseName.includes("_part_"))
               ? `${baseName} (${region.end - region.start})`
               : baseName;
           // Tilde-prefixed italic label for predicted regions
@@ -315,8 +287,11 @@ function AnnotationTrack({
           const labelPx = labelChWidth * charPx;
           const fitsInside = labelPx <= widthRect - 4;
           const tooNarrow = visLen < SHORT_VISIBLE_THRESHOLD;
-          const showLabelInside = fitsInside && !tooNarrow;
-          const showLeader = !fitsInside && !tooNarrow;
+          // V132 — origin-crossing feature: drop this (narrower) half's label
+          // when it was assigned to the other half. Rect/glyph/chevron stay.
+          const labelSuppressed = hasWrap && labelOnHalf.get(regionKey(region)) === "wrap";
+          const showLabelInside = fitsInside && !tooNarrow && !labelSuppressed;
+          const showLeader = !fitsInside && !tooNarrow && !labelSuppressed;
           const strand = region.strand === -1 ? -1 : 1;
           const startsHere = region.start >= lineStart;
           const endsHere = region.end <= lineEnd;
@@ -384,42 +359,9 @@ function AnnotationTrack({
             previewRect.x = previewRect.x - (visStart - lineStart) * charPx;
           }
 
-          // M-X.5 hotfix — bridge-line wrap-segment (07.05.2026). When
-          // the inspector is rendering the inline wrap-bridge row
-          // (`wrapsOrigin === true`, columns wrapAt..lineLen show
-          // chars 0..(lineLen - wrapAt) from plasmid start), an
-          // annotation that overlaps the wrap-half gets a SECOND rect
-          // at columns wrapAt..wrapAt+wrapVisLen. Without it, an
-          // annotation covering the origin (e.g. whole-plasmid
-          // 0..seqLength) only paints the real-half and biolog reports
-          // a gap right after the orange divider.
-          let wrapSegmentInfo = null;
-          if (wrapsOrigin && Number.isFinite(wrapAt) && wrapAt < lineLen) {
-            const wrapWidthChars = lineLen - wrapAt;
-            const wAnnStart = Math.max(region.start, 0);
-            const wAnnEnd = Math.min(region.end, wrapWidthChars);
-            const wVisLen = Math.max(0, wAnnEnd - wAnnStart);
-            if (wVisLen > 0) {
-              wrapSegmentInfo = {
-                xLeft: (labelChars + wrapAt + wAnnStart) * charPx,
-                widthRect: wVisLen * charPx,
-                visLen: wVisLen,
-                wAnnStart,
-                wAnnEnd,
-                wrapWidthChars,
-                // Chevron rule for wrap-segment: same as real-segment
-                // but evaluated against wrap-part bounds.
-                drawChevron:
-                  (strand === 1 && region.end <= wrapWidthChars) ||
-                  (strand === -1 && region.start >= 0 && wAnnStart === region.start),
-              };
-            }
-          }
-          // Label appears once on the wider segment (plan §K-fix).
-          // When wrap-segment is wider than real, the real-side label
-          // is suppressed and re-rendered on the wrap-segment instead.
-          const labelGoesOnWrap = !!wrapSegmentInfo
-            && wrapSegmentInfo.widthRect > widthRect;
+          // V102 §5.1 — the wrap-half is now rendered by a SEPARATE
+          // wrap-stack map below (not a per-real-region segment), so this
+          // real-segment render only paints the real half + its own label.
 
           return (
             <Fragment key={`${region.id || region.start + ":" + region.end}-r${rowIdx}`}>
@@ -515,97 +457,15 @@ function AnnotationTrack({
                   distinct from the parent CDS). Inset 3 px top +
                   bottom keeps a 1.5 px frame of parent colour at
                   every edge. */}
-              {(() => {
-                const kids = detailsByParent.get(region.id) || [];
-                if (kids.length === 0) return null;
-                const SUB_INSET = 3;
-                const subY = SUB_INSET;
-                const subH = ROW_HEIGHT - 2 * SUB_INSET;
-                // Tiny font for kid labels — they sit inside an 8 px
-                // tall rect, so the label has to be smaller than the
-                // parent's 9 px LABEL_FONT_SIZE.
-                const KID_FONT = 7;
-                const KID_CHAR_W = 4; // approx 7 px sans-serif glyph width
-                // Parent <g> is translated so local x=0 maps to the
-                // parent's visible-on-line LEFT edge, i.e. coord
-                // `max(region.start, lineStart)`. Kid local coords
-                // must use the same origin or the inset rect lands
-                // off-by-the-clipped-prefix on wrapped lines.
-                const parentVisStart = Math.max(region.start, lineStart);
-                return kids.map((kid) => {
-                  const kidVisStart = Math.max(kid.start, lineStart);
-                  const kidVisEnd = Math.min(kid.end, lineEnd);
-                  const kidVisLen = Math.max(0, kidVisEnd - kidVisStart);
-                  if (kidVisLen === 0) return null;
-                  const kidX = (kidVisStart - parentVisStart) * charPx;
-                  const kidW = kidVisLen * charPx;
-                  const kidColor = ensureColor(kid.color);
-                  const kidName = kid.name || kid.type || '';
-                  // Show kid label when there's enough room for at
-                  // least a couple of glyphs; truncate to fit.
-                  const maxKidChars = Math.max(0, Math.floor((kidW - 4) / KID_CHAR_W));
-                  const kidLabel = (kidName.length > maxKidChars && maxKidChars > 1)
-                    ? kidName.slice(0, Math.max(1, maxKidChars - 1)) + '…'
-                    : kidName;
-                  // Hide the label on very narrow rects — even a
-                  // single-char name reads like noise below ~18 px
-                  // of visible width.
-                  const KID_LABEL_MIN_PX = 18;
-                  const showKidLabel = kidName.length > 0
-                    && kidW >= KID_LABEL_MIN_PX
-                    && maxKidChars >= 2;
-                  return (
-                    <g key={`sub-${kid.id}`}>
-                      <rect
-                        data-testid="annotation-subfeature-rect"
-                        data-region-id={kid.id || ''}
-                        data-region-level="detail"
-                        data-parent-id={kid.parentId || ''}
-                        data-region-name={kid.name || ''}
-                        x={kidX}
-                        y={subY}
-                        width={kidW}
-                        height={subH}
-                        rx={1.5}
-                        fill={kidColor}
-                        fillOpacity={0.85}
-                        stroke="var(--text-secondary, #3A2F1F)"
-                        strokeWidth={0.5}
-                        onClick={(e) => {
-                          if (typeof onAnnotationClick !== 'function') return;
-                          e.stopPropagation();
-                          onAnnotationClick(kid);
-                        }}
-                        onDoubleClick={(e) => {
-                          if (typeof onAnnotationFeatureDoubleClick !== 'function') return;
-                          e.stopPropagation();
-                          e.preventDefault();
-                          onAnnotationFeatureDoubleClick(kid);
-                        }}
-                      />
-                      {showKidLabel ? (
-                        <text
-                          data-testid="annotation-subfeature-label"
-                          data-region-name={kid.name || ''}
-                          x={kidX + kidW / 2}
-                          y={subY + subH / 2 + KID_FONT / 2 - 1.5}
-                          textAnchor="middle"
-                          fontSize={KID_FONT}
-                          fill="#ffffff"
-                          stroke="#000000"
-                          strokeWidth={1.0}
-                          style={{
-                            pointerEvents: 'none',
-                            userSelect: 'none',
-                            fontFamily: 'inherit',
-                            paintOrder: 'stroke fill',
-                          }}
-                        >{kidLabel}</text>
-                      ) : null}
-                    </g>
-                  );
-                });
-              })()}
+              <SubFeatureOverlay
+                region={region}
+                detailsByParent={detailsByParent}
+                charPx={charPx}
+                lineStart={lineStart}
+                lineEnd={lineEnd}
+                onAnnotationClick={onAnnotationClick}
+                onAnnotationFeatureDoubleClick={onAnnotationFeatureDoubleClick}
+              />
               {/* Sprint M-X.3 follow-up — SBOL glyph + label as one
                   centred unit. Biolog «глифы давай у названия, как
                   будто бы так будет лучше» — pre-fix the glyph was
@@ -662,7 +522,7 @@ function AnnotationTrack({
                         />
                       </g>
                     ) : null}
-                    {showLabelInside && !labelGoesOnWrap ? (
+                    {showLabelInside ? (
                       <LabelText
                         x={labelStartX}
                         region={region}
@@ -676,56 +536,6 @@ function AnnotationTrack({
                   </>
                 );
               })()}
-              {/* Below: legacy centred-label render (kept inside an
-                  always-false guard for git-diff readability — the
-                  paired glyph+label block above is the active path).
-                  TODO: drop in a follow-up once visual review signs
-                  off on the new placement. */}
-              {false ? (
-                <text
-                  data-testid="sequence-view-annotation-label-legacy"
-                  data-label-mode="inside"
-                  data-label-feature={region.name || ""}
-                  data-label-predicted={isPredicted ? "true" : undefined}
-                  x={widthRect / 2}
-                  y={ROW_HEIGHT / 2 + LABEL_FONT_SIZE / 2 - 1}
-                  textAnchor="middle"
-                  fontSize={LABEL_FONT_SIZE}
-                  fontStyle={labelFontStyle}
-                  // Halo tuned across iterations:
-                  //   2.5 px solid + bold → биолог: «слишком пухлый»
-                  //   0.7 px translucent → «всё равно плохо читаются»
-                  //   1.5 px solid black + default weight (current) —
-                  //   плотный читаемый контур без эффекта «жирного
-                  //   шрифта». ≈0.75 px видимый outline после того
-                  //   как белый fill закрывает центр.
-                  fill="#ffffff"
-                  stroke="#000000"
-                  strokeWidth={1.5}
-                  // pointerEvents: 'auto' — bug-rush #3: dblclick on
-                  // the label triggers rename (different from dblclick
-                  // on the rect, which opens the Annotator).
-                  style={{
-                    pointerEvents: "auto",
-                    cursor: "text",
-                    fontFamily: "inherit",
-                    fontStyle: labelFontStyle,
-                    paintOrder: "stroke fill",
-                  }}
-                  onDoubleClick={(e) => {
-                    if (typeof onAnnotationDoubleClick !== 'function') return;
-                    e.stopPropagation();
-                    e.preventDefault();
-                    // Bug-rush #7: pass the line's lineStart so the
-                    // orchestrator can position the rename input on
-                    // the same row where biolog actually clicked,
-                    // not just the first line of a multi-line feature.
-                    onAnnotationDoubleClick(region, lineStart);
-                  }}
-                >
-                  {displayLabel}
-                </text>
-              ) : null}
               {previewRect ? (
                 <>
                   {/* Bug-rush #11 (04.05.2026 evening): bump the
@@ -823,7 +633,7 @@ function AnnotationTrack({
                   ) : null}
                 </>
               ) : null}
-              {showLeader && !labelGoesOnWrap ? (
+              {showLeader ? (
                 <g data-testid="sequence-view-annotation-leader" data-label-mode="leader">
                   <line
                     x1={widthRect / 2}
@@ -858,97 +668,25 @@ function AnnotationTrack({
                 </g>
               ) : null}
             </g>
-            {/* M-X.5 hotfix — wrap-segment rect for bridge line.
-                Renders only when `wrapsOrigin === true` and the
-                annotation overlaps `[0, lineLen - wrapAt)` plasmid
-                coords. Same id + same row index, so hover / click /
-                stacking semantics line up across the orange origin
-                divider. Sub-features (kids), drag-handle previews and
-                edge-resize handles intentionally render only on the
-                real-segment for the K-fix landing — splitting them
-                across the divider needs careful hit-test math (drag
-                across origin, kid clipping into wrap-half). Deferred
-                to M-X.6 polish. */}
-            {wrapSegmentInfo ? (
-              <g
-                data-testid="sequence-view-annotation"
-                data-region-id={region.id || ""}
-                data-region-name={region.name || ""}
-                data-region-row={rowIdx}
-                data-region-line-start={lineStart}
-                data-region-segment="wrap"
-                data-region-start={region.start}
-                data-region-end={region.end}
-                data-region-type={region.type || ""}
-                data-region-strand={region.strand === -1 ? -1 : 1}
-                data-predicted={isPredicted ? "true" : undefined}
-                transform={`translate(${wrapSegmentInfo.xLeft}, ${yTop})`}
-                style={{ cursor: "pointer", opacity: isBeingDragged ? 0.4 : 1 }}
-              >
-                <rect
-                  data-region-id={region.id || ''}
-                  data-region-segment="wrap"
-                  data-region-predicted={isPredicted ? 'true' : undefined}
-                  x={0}
-                  y={0}
-                  width={Math.max(1, wrapSegmentInfo.widthRect - 2)}
-                  height={ROW_HEIGHT}
-                  rx={2}
-                  fill={fill}
-                  fillOpacity={rectFillOpacity}
-                  stroke={rectStroke}
-                  strokeWidth={rectStrokeWidth}
-                  strokeDasharray={rectStrokeDash}
-                  onClick={(e) => {
-                    if (typeof onAnnotationClick !== 'function') return;
-                    e.stopPropagation();
-                    onAnnotationClick(region);
-                  }}
-                  onDoubleClick={(e) => {
-                    if (typeof onAnnotationFeatureDoubleClick !== 'function') return;
-                    e.stopPropagation();
-                    e.preventDefault();
-                    onAnnotationFeatureDoubleClick(region);
-                  }}
-                />
-                {wrapSegmentInfo.drawChevron ? (
-                  <path
-                    d={chevronPath(strand, strand === -1 ? 0 : wrapSegmentInfo.widthRect, 0, ROW_HEIGHT)}
-                    fill={fill}
-                    fillOpacity={rectFillOpacity}
-                    stroke={rectStroke}
-                    strokeWidth={rectStrokeWidth}
-                    strokeDasharray={rectStrokeDash}
-                    onClick={(e) => {
-                      if (typeof onAnnotationClick !== 'function') return;
-                      e.stopPropagation();
-                      onAnnotationClick(region);
-                    }}
-                    onDoubleClick={(e) => {
-                      if (typeof onAnnotationFeatureDoubleClick !== 'function') return;
-                      e.stopPropagation();
-                      e.preventDefault();
-                      onAnnotationFeatureDoubleClick(region);
-                    }}
-                  />
-                ) : null}
-                {labelGoesOnWrap && wrapSegmentInfo.widthRect >= 12 ? (
-                  <LabelText
-                    x={wrapSegmentInfo.widthRect / 2 - (labelLengthChars(region.name, region) * charPx) / 2}
-                    region={region}
-                    displayLabel={displayLabel}
-                    isPredicted={isPredicted}
-                    labelFontStyle={labelFontStyle}
-                    lineStart={lineStart}
-                    onAnnotationDoubleClick={onAnnotationDoubleClick}
-                  />
-                ) : null}
-              </g>
-            ) : null}
+            {/* V102 §5.1 — the wrap-half is rendered by the dedicated
+                wrap-stack map below (was a per-real-region segment). */}
             </Fragment>
           );
         }),
       )}
+
+      {/* V102 §5.1 — wrap-half stack (extracted → AnnotationWrapRows). */}
+      <AnnotationWrapRows
+        wrapStack={wrapStack}
+        wrapAt={wrapAt}
+        wrapWidthChars={wrapWidthChars}
+        labelChars={labelChars}
+        charPx={charPx}
+        lineStart={lineStart}
+        labelOnHalf={labelOnHalf}
+        onAnnotationClick={onAnnotationClick}
+        onAnnotationFeatureDoubleClick={onAnnotationFeatureDoubleClick}
+      />
 
       {stack.overflowCount > 0 ? (
         <g
@@ -991,50 +729,3 @@ const MemoAnnotationTrack = memo(AnnotationTrack);
 export default MemoAnnotationTrack;
 export { MAX_VISIBLE_ROWS };
 
-/**
- * Sprint M-X.3 follow-up — small inline label with the same halo
- * + dblclick-rename hookup the legacy centred render had, but
- * `text-anchor="start"` so the caller can pin the label x to the
- * glyph's right edge (paired centring of glyph + name as one unit).
- */
-function LabelText({
-  x,
-  region,
-  displayLabel,
-  isPredicted, // eslint-disable-line no-unused-vars -- reserved for future fill tweaks
-  labelFontStyle,
-  lineStart,
-  onAnnotationDoubleClick,
-}) {
-  return (
-    <text
-      data-testid="sequence-view-annotation-label"
-      data-label-mode="inside"
-      data-label-feature={region.name || ''}
-      data-label-predicted={isPredicted ? 'true' : undefined}
-      x={x}
-      y={ROW_HEIGHT / 2 + LABEL_FONT_SIZE / 2 - 1}
-      textAnchor="start"
-      fontSize={LABEL_FONT_SIZE}
-      fontStyle={labelFontStyle}
-      fill="#ffffff"
-      stroke="#000000"
-      strokeWidth={1.5}
-      style={{
-        pointerEvents: 'auto',
-        cursor: 'text',
-        fontFamily: 'inherit',
-        fontStyle: labelFontStyle,
-        paintOrder: 'stroke fill',
-      }}
-      onDoubleClick={(e) => {
-        if (typeof onAnnotationDoubleClick !== 'function') return;
-        e.stopPropagation();
-        e.preventDefault();
-        onAnnotationDoubleClick(region, lineStart);
-      }}
-    >
-      {displayLabel}
-    </text>
-  );
-}
