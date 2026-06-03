@@ -1,0 +1,237 @@
+<!doctype html><html lang="ru" data-theme="dark"><head><meta charset="utf-8">
+<title>BodgeGene — provenance-канвас v2 (мокап)</title>
+<style>
+  :root{
+    --surface-0:#faf8f5;--surface-1:#fff;--surface-2:#f1ede7;--surface-3:#e7e1d8;
+    --border-subtle:#e3ddd3;--border-default:#cfc7ba;--text-primary:#2a2622;--text-secondary:#6b635a;--text-tertiary:#9c948a;--text-mono:#3a342e;
+    --accent:#b85c3e;--accent-wash:rgba(184,92,62,.10);
+    --tier-source:#3182bd;--tier-piece:#31a354;--tier-product:#9467bd;
+    --rx-gibson:#10a37f;--rx-gg:#8b5cf6;--rx-re:#e6850e;--rx-kld:#0ea5e9;--rx-pcr:#3b82f6;--rx-blunt:#9c948a;
+    --g-prom:#FFC400;--g-cds:#B0C84A;--g-marker:#D9836B;--g-reporter:#5DA5C4;--g-term:#D97B3B;--g-ori:#E8B333;--g-rbs:#B8AA8A;--g-primer:#9EBAD9;--g-op:#6DA4C4;
+    --ok:#16a34a;--bad:#dc2626;
+  }
+  [data-theme="dark"]{
+    --surface-0:#1c1917;--surface-1:#26211e;--surface-2:#2f2925;--surface-3:#3a332e;
+    --border-subtle:#3a332e;--border-default:#4a423b;--text-primary:#ece7e1;--text-secondary:#b3a99e;--text-tertiary:#8a8076;--text-mono:#d6cfc6;
+    --accent:#e6855e;--accent-wash:rgba(230,133,94,.14);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:13px/1.45 Inter,system-ui,sans-serif;background:var(--surface-0);color:var(--text-primary)}
+  .mono{font-family:"JetBrains Mono",ui-monospace,monospace;letter-spacing:.025em;color:var(--text-mono)}
+  .topbar{height:48px;display:flex;align-items:center;gap:14px;padding:0 16px;background:var(--surface-1);border-bottom:1px solid var(--border-subtle)}
+  .topbar .crumb{color:var(--text-secondary)}.topbar .crumb b{color:var(--text-primary)}
+  .btn{font:12px Inter;border:1px solid var(--border-default);background:var(--surface-2);color:var(--text-secondary);border-radius:6px;padding:4px 10px;cursor:pointer}
+  .btn.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  .grow{flex:1}
+  .toolbar{height:40px;display:flex;align-items:center;gap:12px;padding:0 16px;background:var(--surface-0);border-bottom:1px solid var(--border-subtle)}
+  .seg{display:inline-flex;border:1px solid var(--border-default);border-radius:7px;overflow:hidden}
+  .seg button{border:0;border-radius:0;padding:4px 12px}
+  /* timeline */
+  .timeline{height:30px;display:flex;align-items:center;gap:0;padding:0 18px;background:var(--surface-1);border-bottom:1px solid var(--border-subtle);font-size:11px;color:var(--text-secondary)}
+  .tl-node{display:flex;align-items:center;gap:6px}
+  .tl-dot{width:11px;height:11px;border-radius:50%}
+  .tl-dia{width:11px;height:11px;transform:rotate(45deg)}
+  .tl-edge{width:34px;height:1.5px;background:var(--border-default);margin:0 2px}
+  .tl-now{width:11px;height:11px;transform:rotate(45deg);border:1.5px dashed var(--text-tertiary)}
+  /* body grid */
+  .body{display:grid;grid-template-columns:300px 1fr 240px;height:calc(100vh - 148px)}
+  .col{min-height:0;overflow:auto}
+  .side{background:var(--surface-1);border-right:1px solid var(--border-subtle);padding:10px}
+  .side h4{margin:6px 4px;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-tertiary)}
+  .li{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer}
+  .li:hover{background:var(--surface-2)} .li.sel{background:var(--accent-wash)}
+  .li .sw{width:9px;height:9px;border-radius:2px}
+  .main{padding:16px;position:relative;background:
+    radial-gradient(circle, var(--border-subtle) 1px, transparent 1px);background-size:22px 22px}
+  .legend{background:var(--surface-1);border-left:1px solid var(--border-subtle);padding:12px}
+  .legend h4{margin:2px 0 8px;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-tertiary)}
+  .lrow{display:flex;align-items:center;gap:8px;padding:3px 0;font-size:11px;color:var(--text-secondary)}
+  .focus{margin-top:14px;border-top:1px solid var(--border-subtle);padding-top:10px}
+  .focus .kv{display:flex;justify-content:space-between;font-size:11px;padding:2px 0}
+  .focus .kv span:first-child{color:var(--text-tertiary)}
+  /* zone canvas (Panel A) */
+  .zone{border:1px solid var(--border-default);border-radius:10px;background:var(--surface-1);padding:8px 10px 14px;max-width:760px}
+  .zone-h{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--text-primary);margin-bottom:6px}
+  .zone-h .chev{color:var(--text-tertiary);cursor:pointer}
+  .zone-h .tag{font-size:9px;background:var(--rx-gibson);color:#fff;border-radius:999px;padding:1px 7px;text-transform:uppercase;letter-spacing:.3px}
+  .lanes{display:grid;grid-template-columns:auto auto 1fr;gap:8px 14px;align-items:center}
+  .node{border:1px solid var(--border-default);border-radius:8px;background:var(--surface-2);padding:6px 9px;position:relative;min-width:92px}
+  .node .t{font-size:8.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-tertiary)}
+  .node .n{font-size:12px;font-weight:600}
+  .node.src{border-left:3px solid var(--tier-source)}.node.piece{border-left:3px solid var(--tier-piece)}.node.prod{border-left:3px solid var(--tier-product)}
+  .node.virtual{border-style:dashed;opacity:.8;background:transparent}
+  .rx{width:62px;height:42px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;font-weight:700;text-align:center;
+    clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%)}
+  .plus{position:absolute;right:-9px;bottom:-9px;width:18px;height:18px;border-radius:50%;background:var(--accent);color:#fff;
+    display:flex;align-items:center;justify-content:center;font-size:13px;border:2px solid var(--surface-1);cursor:pointer}
+  .edge{display:flex;align-items:center;gap:4px;color:var(--text-tertiary)}
+  .cdot{width:8px;height:8px;border-radius:50%}
+  /* sequence-first (Panel B) */
+  .pill{font-size:9px;border:1px solid var(--border-default);border-radius:999px;padding:1px 8px;color:var(--text-secondary)}
+  .rail{display:flex;align-items:flex-end;gap:0;background:var(--surface-1);border:1px solid var(--border-subtle);border-radius:8px;padding:10px 14px;position:relative;overflow-x:auto}
+  .part{display:flex;flex-direction:column;align-items:center;min-width:0}
+  .plabel{font-size:9px;color:var(--text-tertiary);margin-top:2px;white-space:nowrap}
+  .seqstrip{margin-top:6px;font-size:10px}
+  .lane{display:flex;align-items:center;gap:0;background:var(--surface-1);border:1px solid var(--border-subtle);border-radius:6px;padding:6px 14px;margin-top:6px;font-size:10px;color:var(--text-tertiary);min-height:30px}
+  .lane .lname{width:120px;flex-shrink:0;color:var(--text-tertiary)}
+  .junction{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
+  .minimap{position:absolute;right:14px;bottom:14px;width:150px;height:90px;background:var(--surface-1);border:1px solid var(--border-default);border-radius:6px;opacity:.95}
+  .hint{font-size:11px;color:var(--text-tertiary);margin-top:10px}
+  .hidden{display:none}
+</style></head>
+<body>
+  <div class="topbar">
+    <span class="crumb">‹ Назад</span>
+    <span class="crumb">Project ▸ <b>pUC19-sfGFP</b></span>
+    <span class="grow"></span>
+    <button class="btn" id="theme">Тема: тёмная</button>
+    <span class="btn" title="Настройки">Settings</span>
+  </div>
+
+  <div class="toolbar">
+    <span style="font-size:12px;color:var(--text-secondary)">Зона: <b style="color:var(--text-primary)">myAssembly ▾</b></span>
+    <span class="seg">
+      <button class="btn on" id="bG">◉ Граф</button>
+      <button class="btn" id="bS">○ Последовательность</button>
+    </span>
+    <span class="grow"></span>
+    <span class="btn">Tidy Up</span>
+    <span class="btn">⌕ Поиск</span>
+  </div>
+
+  <!-- VERSION TIMELINE (две оси: ◆ = reaction в provenance-DAG) -->
+  <div class="timeline">
+    <span style="margin-right:10px;color:var(--text-tertiary)">Сборка-лог (provenance):</span>
+    <span class="tl-node"><span class="tl-dot" style="background:var(--tier-source)"></span>import pUC19</span>
+    <span class="tl-edge"></span>
+    <span class="tl-node"><span class="tl-dia" style="background:var(--rx-re)"></span>Digest</span>
+    <span class="tl-edge"></span>
+    <span class="tl-node"><span class="tl-dia" style="background:var(--rx-pcr)"></span>PCR sfGFP</span>
+    <span class="tl-edge"></span>
+    <span class="tl-node"><span class="tl-dia" style="background:var(--rx-gibson)"></span>Gibson</span>
+    <span class="tl-edge"></span>
+    <span class="tl-node"><span class="tl-now"></span>now (virtual)</span>
+    <span class="grow"></span>
+    <span style="color:var(--text-tertiary)">ось B (правки молекулы) → в инспекторе записи</span>
+  </div>
+
+  <div class="body">
+    <!-- SIDE LIST -->
+    <div class="col side">
+      <h4>Контейнеры (проекция, DEC-V2-06)</h4>
+      <div class="li"><span class="sw" style="background:var(--tier-source)"></span>pUC19 <span style="color:var(--text-tertiary);font-size:10px">· source</span></div>
+      <div class="li"><span class="sw" style="background:var(--tier-piece)"></span>sfGFP CDS <span style="color:var(--text-tertiary);font-size:10px">· piece</span></div>
+      <div class="li sel"><span class="sw" style="background:var(--tier-piece)"></span>backbone <span style="color:var(--text-tertiary);font-size:10px">· piece</span></div>
+      <div class="li"><span class="sw" style="background:var(--tier-product)"></span>pUC19-sfGFP <span style="color:var(--text-tertiary);font-size:10px">· product ◇</span></div>
+      <h4 style="margin-top:14px">Праймеры (пул)</h4>
+      <div class="li mono" style="font-size:11px"><span class="sw" style="background:var(--g-primer)"></span>GFP_F · Tm 62°</div>
+      <div class="li mono" style="font-size:11px"><span class="sw" style="background:var(--g-primer)"></span>GFP_R · Tm 61°</div>
+    </div>
+
+    <!-- MAIN: Panel A (graph) / Panel B (sequence) -->
+    <div class="col main">
+      <!-- PANEL A -->
+      <div id="panelA">
+        <div class="zone">
+          <div class="zone-h"><span class="chev">▾</span> myAssembly <span class="tag" style="background:var(--rx-gibson)">Gibson · 2 frag</span></div>
+          <div class="lanes">
+            <!-- row 1 -->
+            <div class="node src"><div class="t">Source</div><div class="n">pUC19</div><div style="font-size:9px;color:var(--text-tertiary)">AddGene</div></div>
+            <div class="edge">→ <span class="rx" style="background:var(--rx-re)">Digest<br>EcoRI</span> →</div>
+            <div class="node piece"><div class="t">Piece</div><div class="n">backbone</div>
+              <span class="cdot" style="background:var(--ok);position:absolute;right:6px;top:6px" title="junction OK"></span></div>
+            <!-- row 2 -->
+            <div class="node piece"><div class="t">Piece</div><div class="n">sfGFP</div>
+              <span class="plus" title="«+» под нодой → форма операции">+</span></div>
+            <div class="edge">→ <span class="rx" style="background:var(--rx-pcr)">PCR</span> →</div>
+            <div class="node piece"><div class="t">Piece</div><div class="n">sfGFP-ampl</div>
+              <span class="cdot" style="background:var(--bad);position:absolute;right:6px;top:6px" title="junction mismatch"></span></div>
+            <!-- row 3: convergence -->
+            <div style="grid-column:1/2"></div>
+            <div class="edge" style="grid-column:2/3">↘ <span class="rx" style="background:var(--rx-gibson)">Gibson</span> →</div>
+            <div class="node prod virtual" style="grid-column:3/4"><div class="t">Product ◇ (virtual)</div><div class="n">pUC19-sfGFP</div><div style="font-size:9px;color:var(--text-tertiary)">circular · 3.4 kb</div>
+              <span class="plus">+</span></div>
+          </div>
+          <div class="hint">Ребро = реакция (DEC-V2-02). Зелёная/красная точка = junction-совместимость. ◇ = виртуальный продукт (превью до коммита). «+» под узлом → форма операции (OpenCloning).</div>
+        </div>
+        <div class="minimap" title="MiniMap (цвет узла по tier)"></div>
+      </div>
+
+      <!-- PANEL B (hidden by default) -->
+      <div id="panelB" class="hidden">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <b style="font-size:13px">pUC19-sfGFP</b><span class="pill">READ-ONLY</span><button class="btn">→ Сделать editable</button>
+        </div>
+        <!-- rail of parts with SBOL glyphs -->
+        <div class="rail" id="rail"></div>
+        <!-- lanes -->
+        <div class="lane"><span class="lname">аннотации (glyphs §2)</span><span id="annlane" style="display:flex"></span></div>
+        <div class="lane"><span class="lname">праймеры</span>
+          <span style="display:flex;align-items:center;gap:6px">
+            <svg width="120" height="18"><rect x="0" y="5" width="34" height="9" fill="var(--g-primer)" opacity="0.4"/><polygon points="34,3 58,9 34,15" fill="var(--g-primer)"/><text x="62" y="13" font-size="9" fill="var(--text-tertiary)">GFP_F (tail+binding)</text></svg>
+            <svg width="120" height="18"><polygon points="24,3 0,9 24,15" fill="var(--g-primer)"/><rect x="24" y="5" width="30" height="9" fill="var(--g-primer)" opacity="0.4"/><text x="60" y="13" font-size="9" fill="var(--text-tertiary)">GFP_R</text></svg>
+          </span>
+        </div>
+        <div class="lane"><span class="lname">AA-дорожка</span><span class="mono" style="font-size:10px;letter-spacing:.3em">M·V·S·K·G·E·E·L·F·T·G···</span></div>
+        <div class="lane"><span class="lname">рестрикция</span><span style="color:var(--text-tertiary)">EcoRI ▾ · BamHI ▾ · HindIII ▾</span></div>
+        <div class="hint">Части — глифами SBOL Visual 3 (§2), не прямоугольниками. Курсор-правка инлайн (наше отличие; OpenCloning read-only). Шов подсвечен — coordinated-selection с Граф-видом. Один датасет, переключение G/S.</div>
+      </div>
+    </div>
+
+    <!-- LEGEND + FOCUS -->
+    <div class="col legend">
+      <h4>Глифы (SBOL Visual 3)</h4>
+      <div id="glyphlegend"></div>
+      <h4 style="margin-top:12px">Класс реакции</h4>
+      <div class="lrow"><span class="sw" style="width:11px;height:11px;border-radius:2px;background:var(--rx-gibson)"></span>Gibson</div>
+      <div class="lrow"><span class="sw" style="width:11px;height:11px;border-radius:2px;background:var(--rx-gg)"></span>Golden Gate</div>
+      <div class="lrow"><span class="sw" style="width:11px;height:11px;border-radius:2px;background:var(--rx-re)"></span>RE / Digest</div>
+      <div class="lrow"><span class="sw" style="width:11px;height:11px;border-radius:2px;background:var(--rx-pcr)"></span>PCR</div>
+      <div class="lrow"><span class="sw" style="width:11px;height:11px;border-radius:2px;background:var(--rx-kld)"></span>KLD</div>
+      <div class="focus">
+        <h4>Фокус: sfGFP (CDS)</h4>
+        <div class="kv"><span>тип</span><span>reporter / CDS</span></div>
+        <div class="kv"><span>длина</span><span>720 bp / 239 aa</span></div>
+        <div class="kv"><span>strand</span><span>+ (forward)</span></div>
+        <div class="kv"><span>origin</span><span>library_clone</span></div>
+        <div class="kv"><span>SO term</span><span class="mono">SO:0000316</span></div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  // theme toggle
+  const tb=document.getElementById('theme');
+  tb.onclick=()=>{const d=document.documentElement;const dark=d.getAttribute('data-theme')==='dark';d.setAttribute('data-theme',dark?'light':'dark');tb.textContent='Тема: '+(dark?'светлая':'тёмная');};
+  // G/S toggle
+  const bG=document.getElementById('bG'),bS=document.getElementById('bS'),pA=document.getElementById('panelA'),pB=document.getElementById('panelB');
+  bG.onclick=()=>{bG.classList.add('on');bS.classList.remove('on');pA.classList.remove('hidden');pB.classList.add('hidden');};
+  bS.onclick=()=>{bS.classList.add('on');bG.classList.remove('on');pB.classList.remove('hidden');pA.classList.add('hidden');};
+
+  // SBOL Visual glyphs (forward, on backbone baseline y=30)
+  const G={
+    promoter:(c)=>`<path d="M4 30 V12 H30" fill="none" stroke="${c}" stroke-width="2.5"/><polygon points="30,6 40,12 30,18" fill="${c}"/>`,
+    cds:(c)=>`<polygon points="2,20 32,20 44,30 32,40 2,40" fill="${c}"/>`,
+    terminator:(c)=>`<line x1="20" y1="30" x2="20" y2="10" stroke="${c}" stroke-width="2.5"/><line x1="6" y1="10" x2="34" y2="10" stroke="${c}" stroke-width="2.5"/>`,
+    ori:(c)=>`<circle cx="20" cy="26" r="11" fill="none" stroke="${c}" stroke-width="2.5"/>`,
+    rbs:(c)=>`<path d="M6 30 a14 9 0 0 1 28 0" fill="none" stroke="${c}" stroke-width="2.5"/>`,
+    primer:(c)=>`<polygon points="4,24 30,24 38,30 4,30" fill="${c}"/>`,
+    operator:(c)=>`<path d="M6 24 q14 16 28 0" fill="none" stroke="${c}" stroke-width="2.5"/>`,
+  };
+  function glyph(type,c,w=46){return `<svg width="${w}" height="44"><line x1="0" y1="30" x2="${w}" y2="30" stroke="var(--text-tertiary)" stroke-width="1.5"/>${G[type](c)}</svg>`;}
+  // rail parts
+  const parts=[
+    ['promoter','var(--g-prom)','PgpdA','ATGCTAGC…'],
+    ['rbs','var(--g-rbs)','RBS',''],
+    ['cds','var(--g-reporter)','sfGFP · CDS','atgGTGAGC…'],
+    ['terminator','var(--g-term)','TtrpC',''],
+    ['ori','var(--g-ori)','ori','']
+  ];
+  document.getElementById('rail').innerHTML=parts.map((p,i)=>
+    `<div class="part ${i===2?'junction':''}">${glyph(p[0],p[1],p[0]==='cds'?120:54)}<div class="plabel">${p[2]}</div><div class="seqstrip mono">${p[3]}</div></div>`).join('');
+  document.getElementById('annlane').innerHTML=parts.map(p=>glyph(p[0],p[1],p[0]==='cds'?110:48)).join('');
+  // glyph legend
+  const leg=[['promoter','var(--g-prom)','promoter'],['cds','var(--g-cds)','CDS'],['rbs','var(--g-rbs)','RBS'],['terminator','var(--g-term)','terminator'],['ori','var(--g-ori)','ori'],['primer','var(--g-primer)','primer-bind'],['operator','var(--g-op)','operator']];
+  document.getElementById('glyphlegend').innerHTML=leg.map(l=>`<div class="lrow"><span style="display:inline-block;width:46px">${glyph(l[0],l[1],40)}</span>${l[2]}</div>`).join('');
+</script>
+</body></html>
