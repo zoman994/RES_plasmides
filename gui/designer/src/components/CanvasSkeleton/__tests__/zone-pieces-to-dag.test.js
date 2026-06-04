@@ -9,6 +9,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { realiseAssembly, nameWithRevision } from '../lib/zone-pieces-to-dag';
+import { skeletonReducer, buildInitialState } from '../store/skeleton-state';
 
 const C1 = {
   id: 'src1', kind: 'molecule', name: 'pUC',
@@ -180,5 +181,83 @@ describe('T6 K5 — zone-pieces-to-dag realiseAssembly (zone + pieces shape)', (
     expect(r.ok).toBe(true);
     expect(r.diff.operations).toHaveLength(2);
     expect(r.diff.junctions).toHaveLength(1);
+  });
+});
+
+// ─── V130 — realise materialises the auto-group primer (with tail), not the
+// tailless autoPrimerPair fallback (SPEC §9b / acceptance «Приёмка слоя 2»). ──
+//
+// The layer-2 fix (mapPrimersForSegment matches the auto-group record by
+// source.pieceId) only matters when assemblyDraftPrimers actually holds
+// auto-group primers. The other realise tests pass an empty pool → the
+// fallback branch, never exercising the fix locus. This builds the realistic
+// state via CREATE_OP_GROUP (same path as node-a-primer-record's
+// zoneStateWithGroup) so deriveAutoPrimers fills the pool with tailed primers,
+// then asserts realise consumes THEM (source:'assembly', tm≠0, tail kept) —
+// not the fallback (which would be source:'auto', tm:0, tailless slice(0,20)).
+const SRC_OG = {
+  id: 'src-og', kind: 'molecule', name: 'srcOG',
+  sequence: 'AAAACCCCGGGGTTTTAAAACCCCGGGGTTTTAAAACCCCGGGGTTTTAAAACCCCGGGGTTTT',
+  annotations: [], topology: { circular: false },
+};
+
+function ogPiece(id, start, end, createdAt) {
+  return {
+    id, kind: 'sourced', name: id, sourceIds: ['src-og'],
+    ranges: [{ sourceId: 'src-og', start, end, orientation: 'forward' }],
+    origin: 'selection', acquisitionMethod: 'undefined', acquisitionParams: {},
+    functionalLabel: null, color: '#abc', zoneId: 'zn-1',
+    derivedReactionId: null, frozen: false, createdAt, updatedAt: createdAt,
+  };
+}
+
+function zoneStateWithGroup() {
+  let s = buildInitialState();
+  s = {
+    ...s,
+    containers: [...s.containers, SRC_OG],
+    zones: [{ id: 'zn-1', name: 'Z', viewMode: 'sequence', bounds: { x: 0, y: 0, width: 600, height: 400 } }],
+    pieces: [ogPiece('pc1', 0, 32, 1), ogPiece('pc2', 32, 64, 2)],
+  };
+  return skeletonReducer(s, {
+    type: 'CREATE_OP_GROUP', zoneId: 'zn-1', kind: 'overlap_pcr', name: 'G', pieceIds: ['pc1', 'pc2'],
+  });
+}
+
+describe('V130 — realise keeps the auto-group overlap tail (not the fallback)', () => {
+  it('every PCR op consumes the assembly primer (source:assembly, tm≠0), not autoPrimerPair', () => {
+    const s = zoneStateWithGroup();
+    const primers = s.assemblyDraftPrimers['zn-1'];
+    expect(primers).toHaveLength(4); // fwd+rev per piece, all auto-group with tails
+
+    const r = realiseAssembly(s, 'zn-1', { 0: 'gibson' }, {});
+    expect(r.ok).toBe(true);
+    expect(r.diff.operations).toHaveLength(2);
+
+    for (const op of r.diff.operations) {
+      const up = op.params.userPrimers[0];
+      // The V130 discriminator: mapPrimersForSegment matched → source:'assembly'.
+      // Pre-fix the auto-group kind missed the whitelist → autoPrimerPair
+      // fallback (source:'auto', fwdTm:0, tailless 20-nt slices).
+      expect(up.source).toBe('assembly');
+      expect(up.fwdTm).not.toBe(0);
+      // forward is the exact auto-group fwd primer for this segment (tail kept).
+      const draftFwd = primers.find(
+        (p) => p.source.pieceId === op.origin.segmentId && p.source.side === 'fwd',
+      );
+      expect(up.forward).toBe(draftFwd.sequence);
+    }
+  });
+
+  it('one-sided overlap: downstream fwd carries the tail, upstream rev is binding-only', () => {
+    const s = zoneStateWithGroup();
+    const r = realiseAssembly(s, 'zn-1', { 0: 'gibson' }, {});
+    // pc1 (createdAt 1) = upstream, pc2 (createdAt 2) = downstream.
+    const down = r.diff.operations.find((o) => o.origin.segmentId === 'pc2').params.userPrimers[0];
+    const up = r.diff.operations.find((o) => o.origin.segmentId === 'pc1').params.userPrimers[0];
+    // Downstream fwd has the 30-nt homology arm → longer than its binding.
+    expect(down.forward.length).toBeGreaterThan(down.fwdBinding.length);
+    // Upstream rev carries no overlap tail (overlapTarget='right') → binding-only.
+    expect(up.reverse.length).toBe(up.revBinding.length);
   });
 });
