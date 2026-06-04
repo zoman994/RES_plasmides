@@ -1,0 +1,56 @@
+{
+  "methods": {
+    "overlap": {
+      "engine_convention_correct": true,
+      "golden_product": "ATGCGTACGGATCCTTAGCACTGACATGGTCAGTACCGATTACGGCATTGCAACGTTGACATCCGTAAGCTTGGCCAATTGCCATGAGTCTAGACCGGTATCAAGCTTGACCATGGTACCGAGCTCGAATTCACTGGCCGTCGTTTTACAACGTCGTGACTGGGA",
+      "golden_len": 165
+    },
+    "golden_gate": {
+      "current": {
+        "rev_tail": "AAGCTGAGACC",
+        "central_len": 65,
+        "five_prime": [
+          "5'",
+          "aatg"
+        ],
+        "three_prime": [
+          "blunt",
+          ""
+        ],
+        "assembles_correctly": false
+      },
+      "v124": {
+        "rev_tail": "GGTCTCAAAGC",
+        "central_len": 58,
+        "five_prime": [
+          "5'",
+          "aatg"
+        ],
+        "three_prime": [
+          "5'",
+          "aagc"
+        ],
+        "assembles_correctly": true
+      },
+      "designed_ohL": "AATG",
+      "designed_ohR": "GCTT"
+    },
+    "restriction": {
+      "pydna_cuts_current_flush": true,
+      "pydna_cuts_v125_flank": true,
+      "pydna_can_decide_v125": false,
+      "basis": "NEB empirical cleavage-close-to-end; protective bases OUTSIDE the site"
+    },
+    "kld": {
+      "tail": "",
+      "engine_convention_correct": true
+    },
+    "ligation": {
+      "tail": "",
+      "engine_convention_correct": true
+    }
+  },
+  "notes": [
+    "RE/V125 is empirical (NEB terminal-cleavage), not pydna-decidable; pydna's idealised digest cuts a flush terminal site. V125 fix = protective bases OUTSIDE."
+  ]
+}
