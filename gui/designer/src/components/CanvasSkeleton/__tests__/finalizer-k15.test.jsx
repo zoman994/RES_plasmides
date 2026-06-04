@@ -70,8 +70,8 @@ describe('K15 — CREATE_OP_GROUP derives auto primers (T8.5)', () => {
     const pool = S.assemblyDraftPrimers[zid] || [];
     for (const p of pool) {
       expect(p.autoMode).toBe('auto');
-      expect(p.origin.kind).toBe('auto-from-group');
-      expect(p.origin.opGroupId).toBe(opId);
+      expect(p.source.kind).toBe('auto-group');
+      expect(p.source.opGroupId).toBe(opId);
     }
   });
 
@@ -83,16 +83,16 @@ describe('K15 — CREATE_OP_GROUP derives auto primers (T8.5)', () => {
     expect(names).toEqual(['asm-fwd-1', 'asm-fwd-2', 'asm-rev-1', 'asm-rev-2']);
   });
 
-  it('middle piece fwd tail = prev piece last 25 nt (bio-correct, no RC)', () => {
+  it('downstream piece fwd tail = prev piece last 30 nt (one-sided right, §9b)', () => {
     const zid = openZone();
     const ids = add3Pieces(zid);
     act(() => { A.createOpGroup(zid, 'overlap_pcr', '', ids); });
     const pool = S.assemblyDraftPrimers[zid];
     const bFwd = pool.find((p) => p.name === 'asm-fwd-2');
-    expect(bFwd.tail.length).toBe(25);
+    expect(bFwd.tail.length).toBe(30);
     // Prev piece sequence = container.slice(0,32) =
-    // 'AAAACCCCGGGGTTTTAAAACCCCGGGGTTTT'; last 25 = …
-    expect(bFwd.tail).toBe('CGGGGTTTTAAAACCCCGGGGTTTT');
+    // 'AAAACCCCGGGGTTTTAAAACCCCGGGGTTTT'; last 30 = drop the first 2 nt.
+    expect(bFwd.tail).toBe('AACCCCGGGGTTTTAAAACCCCGGGGTTTT');
   });
 
   it('single piece ovPCR → 2 primers with empty tails', () => {
@@ -111,7 +111,7 @@ describe('K15 — CREATE_OP_GROUP derives auto primers (T8.5)', () => {
     act(() => { A.createOpGroup(zid, 'gibson', '', ids); });
     const pool = S.assemblyDraftPrimers[zid];
     const bFwd = pool.find((p) => p.name === 'asm-fwd-2');
-    expect(bFwd.tail.length).toBe(25);
+    expect(bFwd.tail.length).toBe(30); // §9b one-sided right @ 30 nt
   });
 
   it('golden_gate kind → fwd tail starts with GGTCTC', () => {
@@ -153,7 +153,7 @@ describe('K15 — CREATE_OP_GROUP derives auto primers (T8.5)', () => {
       .map((p) => p.id);
     act(() => { A.createOpGroup(zid, 'overlap_pcr', '', ids); });
     const pool = S.assemblyDraftPrimers[zid];
-    const mutated = pool.filter((p) => p.origin.pieceId === pid);
+    const mutated = pool.filter((p) => p.source.pieceId === pid);
     expect(mutated.every((p) => p.mutated === true)).toBe(true);
   });
 });
@@ -203,6 +203,6 @@ describe('K15 — REMOVE_OP_GROUP drops auto primers, preserves manual', () => {
     act(() => { A.removeOpGroup(ops[0].id); });
     const left = S.assemblyDraftPrimers[zid];
     expect(left).toHaveLength(4);
-    expect(left.every((p) => p.origin.opGroupId === ops[1].id)).toBe(true);
+    expect(left.every((p) => p.source.opGroupId === ops[1].id)).toBe(true);
   });
 });

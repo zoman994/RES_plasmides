@@ -17,6 +17,7 @@ import { v7 as uuidv7 } from 'uuid';
 import { reverseComplement } from '../../../sequence-utils';
 import { computeAssemblySequence, concatSegmentAnnotations } from './assembly-model';
 import { transferAnnotations } from './segment-annotation-transfer';
+import { applyPieceMutations } from './piece-mutations';
 import { defaultJunctionParams, inferEndRequirements } from '../canvas/junction-styles';
 
 const METHOD_TO_JUNCTION = {
@@ -54,11 +55,19 @@ function junctionForMethod(method, fromId, toId) {
 }
 
 function mapPrimersForSegment(primers, seg) {
+  // V130 (A6) — match the canonical auto-group record by `source.pieceId`
+  // regardless of kind (in draftFromZone the segment id === piece id, and the
+  // auto-group primer carries `source.pieceId`). Without this, auto-group
+  // primers (which carry the overlap/GG/RE tails) miss the whitelist and
+  // realise falls back to the tailless autoPrimerPair → blunt ends. The
+  // legacy segment/boundary match stays as fallback for manual primers.
   const fwd = primers.find((p) => p.direction === 'forward' && p.source && (
-    (p.source.kind === 'segment' && p.source.segmentId === seg.id)
+    p.source.pieceId === seg.id
+    || (p.source.kind === 'segment' && p.source.segmentId === seg.id)
     || (p.source.kind === 'boundary' && p.source.leftSegmentId === seg.id)));
   const rev = primers.find((p) => p.direction === 'reverse' && p.source && (
-    (p.source.kind === 'segment' && p.source.segmentId === seg.id)
+    p.source.pieceId === seg.id
+    || (p.source.kind === 'segment' && p.source.segmentId === seg.id)
     || (p.source.kind === 'boundary' && p.source.rightSegmentId === seg.id)));
   if (!fwd && !rev) return null;
   return {
@@ -139,7 +148,10 @@ export function draftFromZone(state, zone) {
     const r = (p.ranges && p.ranges[0]) || {};
     const c = containers.find((x) => x.id === r.sourceId);
     const raw = c ? String(c.sequence || '').slice(r.start, r.end) : '';
-    const seq = r.orientation === 'reverse' ? reverseComplement(raw) : raw;
+    const rcSeq = r.orientation === 'reverse' ? reverseComplement(raw) : raw;
+    // S2 §5.4 — apply mutations to the (post-rc) top-strand so the
+    // assembled view shows the edited base, not the wild-type one.
+    const seq = applyPieceMutations(rcSeq, p.mutations);
     return {
       id: p.id,
       source: {

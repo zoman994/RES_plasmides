@@ -24,6 +24,33 @@ function resolveDraft(state, draftId) {
   return ((state && state.assemblyDrafts) || []).find((x) => x.id === draftId) || null;
 }
 
+/**
+ * V109 (WT-B-7) — find the op-group covering a boundary. A zone op-group
+ * (a `state.operations` entry with `isOpGroup`) records the assembly method
+ * chosen at «Auto-собрать» time as `kind` — a design FACT, not a guess.
+ * Returns the single op-group of this zone whose `inputPieces` contain BOTH
+ * pieces flanking `boundaryIdx`, else `null` (boundary spans two groups, the
+ * zone has no groups, or it's a legacy assemblyDraft). Zone-draft segments
+ * carry the piece id as `segment.id` (draftFromZone), so the boundary→piece
+ * map is direct; legacy drafts have no zone op-groups → `null` → fallback.
+ */
+function boundaryOpGroup(state, draftId, boundaryIdx) {
+  const d = resolveDraft(state, draftId);
+  if (!d || !Array.isArray(d.segments)) return null;
+  const left = d.segments[boundaryIdx];
+  const right = d.segments[boundaryIdx + 1];
+  const leftPid = left && left.id;
+  const rightPid = right && right.id;
+  if (!leftPid || !rightPid) return null;
+  const groups = ((state && state.operations) || []).filter(
+    (o) => o && o.isOpGroup && o.zoneId === draftId && Array.isArray(o.inputPieces),
+  );
+  const covering = groups.filter(
+    (g) => g.inputPieces.includes(leftPid) && g.inputPieces.includes(rightPid),
+  );
+  return covering.length === 1 ? covering[0] : null;
+}
+
 export function getBoundaryPrimerInfo(state, draftId, boundaryIdx) {
   const d = resolveDraft(state, draftId);
   if (!d) return { hasPrimer: false, tailLength: 0 };
@@ -31,13 +58,23 @@ export function getBoundaryPrimerInfo(state, draftId, boundaryIdx) {
   const off = boundaries[boundaryIdx] ? boundaries[boundaryIdx].endOnAssembly : null;
   if (off == null) return { hasPrimer: false, tailLength: 0 };
   const primers = (state.assemblyDraftPrimers && state.assemblyDraftPrimers[draftId]) || [];
-  const hit = primers.find(
-    (p) => p.source && p.source.kind === 'boundary' && p.source.boundaryAtOffset === off,
+  // Node A §5.5 — key on `source.boundaryAtOffset` (manual-boundary AND
+  // auto-group both), and read the now-stored `tail` directly. §9b: under
+  // one-sided overlap (overlapTarget='right') BOTH the downstream fwd and the
+  // upstream rev record the same boundary, but only the fwd carries the
+  // homology-arm tail — pick the primer with the LONGEST tail so the boundary's
+  // tailLength reflects the actual overlap (not the empty rev primer).
+  const hits = primers.filter(
+    (p) => p.source && Number.isFinite(p.source.boundaryAtOffset) && p.source.boundaryAtOffset === off,
   );
-  if (!hit) return { hasPrimer: false, tailLength: 0 };
+  if (hits.length === 0) return { hasPrimer: false, tailLength: 0 };
+  const hit = hits.reduce(
+    (best, p) => ((p.tail || '').length > (best.tail || '').length ? p : best),
+    hits[0],
+  );
   return {
     hasPrimer: true,
-    tailLength: Math.max(0, (hit.sequence || '').length - (hit.bindingSequence || '').length),
+    tailLength: (hit.tail || '').length,
   };
 }
 
@@ -61,6 +98,18 @@ function segContainerSeq(state, seg) {
 export function suggestMethodForBoundary(state, draftId, boundaryIdx) {
   const d = resolveDraft(state, draftId);
   if (!d) return { method: 'gibson', confidence: 'low', rationale: 'нет данных' };
+
+  // V109 — the op-group kind is the recorded design decision; prefer it
+  // over the tail-length heuristic (which only guesses, and which misses
+  // «Auto-собрать» primers entirely — see §1). A boundary inside one
+  // op-group → that group's method. Boundaries without a single covering
+  // group fall through to the heuristic below (legacy assemblyDraft path,
+  // multi-layer joins between distinct groups).
+  const og = boundaryOpGroup(state, draftId, boundaryIdx);
+  if (og && og.kind) {
+    return { method: og.kind, confidence: 'high', rationale: 'из группы операций' };
+  }
+
   const left = d.segments[boundaryIdx];
   const right = d.segments[boundaryIdx + 1];
 

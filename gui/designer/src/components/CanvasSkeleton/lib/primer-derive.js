@@ -20,10 +20,30 @@
  */
 import { v7 as uuidv7 } from 'uuid';
 import { reverseComplement } from '../../../sequence-utils';
+import { calcTm } from '../../../tm-calculator';
+import { applyPieceMutations } from './piece-mutations';
+import { gcPercent } from './assembly-primer-utils';
+import { draftFromZone } from './zone-pieces-to-dag';
+import { segmentBoundaries } from './assembly-model';
 
-const BINDING_LEN = 20;
-const OVERLAP_LEN = 25;
+const DEFAULT_BINDING_LEN = 20;
+const DEFAULT_OVERLAP_LEN = 30;   // §9b temp config default (was 25, two-sided)
+const GG_RECOGNITION = 'GGTCTC';  // BsaI; per-enzyme override = follow-up
+const GG_SPACER = 'A';            // concrete spacer (was literal 'N' in the oligo)
+const RE_PROTECTIVE = 'GCGC';     // protective bases OUTSIDE the RE site (V125, NEB ~4 nt)
+const TAIL_MIN = 18; const TAIL_MAX = 40; // overlap-tail length bounds (Tm mode, A1)
+const BIND_MIN = 16; const BIND_MAX = 36; // binding length bounds (Tm mode, A1b)
 const SKIPPED_KINDS = new Set(['snippet', 'gap']);
+
+// §9b — temporary per-junction config default until JUNCTION_MODULE seeds
+// zone.junctions (A3, layer 3): one-sided overlap on the downstream fwd.
+const TEMP_JUNCTION_CFG = {
+  overlapTarget: 'right',
+  overlapLength: DEFAULT_OVERLAP_LEN,
+  overlapTm: null,
+  bindingLength: DEFAULT_BINDING_LEN,
+  bindingTm: null,
+};
 
 /** Get the top-strand sequence of a piece, applying any mutations. */
 function pieceSequence(piece, state) {
@@ -34,91 +54,171 @@ function pieceSequence(piece, state) {
     const c = ((state && state.containers) || []).find((x) => x && x.id === r.sourceId);
     if (!c) return '';
     const raw = String(c.sequence || '').slice(r.start, r.end);
-    let seq = r.orientation === 'reverse' ? reverseComplement(raw) : raw;
-    // K14 mutagenic primer support — overwrite position-by-position.
-    if (Array.isArray(piece.mutations) && piece.mutations.length > 0) {
-      const arr = seq.split('');
-      for (const m of piece.mutations) {
-        if (Number.isFinite(m.position) && m.position >= 0 && m.position < arr.length
-            && typeof m.toBase === 'string' && m.toBase.length === 1) {
-          arr[m.position] = m.toBase.toUpperCase();
-        }
-      }
-      seq = arr.join('');
-    }
-    return seq;
+    const seq = r.orientation === 'reverse' ? reverseComplement(raw) : raw;
+    // K14 mutagenic primer support — overwrite position-by-position
+    // (shared helper, S2 §5.3 DRY).
+    return applyPieceMutations(seq, piece.mutations);
   }
   return String(piece.sequence || '');
 }
 
-/** Wallace approximation — enough for an auto-derived placeholder; the
- *  biolog can edit the primer in K13 which uses the full NN model. */
-function tmEstimate(binding) {
-  const s = String(binding || '').toUpperCase();
-  let gc = 0;
-  let at = 0;
-  for (const ch of s) {
-    if (ch === 'G' || ch === 'C') gc += 1;
-    else if (ch === 'A' || ch === 'T') at += 1;
+/** Length of an overlap tail: explicit `overlapLength`, or extended from the
+ *  junction until calcTm(tail) ≥ overlapTm within [TAIL_MIN, TAIL_MAX] (A1). */
+function overlapTailLen(neighbourSeq, side, overlapLength, overlapTm) {
+  if (overlapTm) {
+    for (let n = TAIL_MIN; n <= TAIL_MAX; n += 1) {
+      if (n > neighbourSeq.length) return neighbourSeq.length;
+      const seg = side === 'fwd' ? neighbourSeq.slice(-n) : neighbourSeq.slice(0, n);
+      if (calcTm(seg) >= overlapTm) return n;
+    }
+    return Math.min(TAIL_MAX, neighbourSeq.length);
   }
-  return 4 * gc + 2 * at;
+  return Math.min(overlapLength || DEFAULT_OVERLAP_LEN, neighbourSeq.length);
 }
 
-function buildFwdTail(opGroup, logicalPrev, leftSnippetSeq, state) {
-  const kind = opGroup && opGroup.kind;
-  // No logical-prev: only the accumulated snippet content (group starts
-  // with a snippet ⇒ first amplifiable piece carries it on its tail).
+/** Length of a binding region: explicit `bindingLength`, or extended from the
+ *  piece end until calcTm(binding) ≥ bindingTm within [BIND_MIN, BIND_MAX] (A1b).
+ *  Tm-binding and Tm-tail are independent (annealing vs homology-arm melting). */
+export function bindingLen(fullSeq, side, bindingLength, bindingTm) {
+  if (bindingTm) {
+    for (let n = BIND_MIN; n <= BIND_MAX; n += 1) {
+      if (n > fullSeq.length) return fullSeq.length;
+      const seg = side === 'fwd' ? fullSeq.slice(0, n) : fullSeq.slice(-n);
+      if (calcTm(seg) >= bindingTm) return n;
+    }
+    return Math.min(BIND_MAX, fullSeq.length);
+  }
+  return Math.min(bindingLength || DEFAULT_BINDING_LEN, fullSeq.length);
+}
+
+/**
+ * buildOverlapTail — canonical primer-tail generator (A1/A1b/A2; spec §9b),
+ * surface-agnostic, one path for auto + manual. Returns the 5'→3' tail for
+ * `side ∈ {fwd, rev}` by `opts.method` (engine dict):
+ *   overlap_pcr / gibson : fwd = neighbour.slice(-len) verbatim; rev =
+ *     rc(neighbour.slice(0,len)). Gated by overlapTarget (right→fwd only,
+ *     left→rev only, both→both — §1 defect #6, double-sided is redundant).
+ *   golden_gate : recognition+spacer+overhang; rev rc's ONLY the overhang,
+ *     NOT the recognition (V124 — pydna-proven; the old rc-of-whole left the
+ *     downstream end blunt).
+ *   restriction : fwd = protective+site+'GG' (protective bases OUTSIDE the
+ *     site, V125 — site was flush at the 5' terminus); rev = rc(site+'GG')
+ *     (the rc already places the 'GG' spacer outside the 3' site).
+ *   kld / direct_ligation / blunt : empty.
+ */
+export function buildOverlapTail(side, neighbourSeq, opts = {}) {
+  const {
+    method, overlapTarget = 'both', overlapLength, overlapTm,
+    overhang = 'AAAA', reSite = '', protective = RE_PROTECTIVE,
+    recognition = GG_RECOGNITION, spacer = GG_SPACER,
+  } = opts;
+  switch (method) {
+    case 'overlap_pcr':
+    case 'gibson': {
+      const n = String(neighbourSeq || '');
+      if (!n) return '';
+      if (overlapTarget === 'right' && side === 'rev') return '';
+      if (overlapTarget === 'left' && side === 'fwd') return '';
+      const len = overlapTailLen(n, side, overlapLength, overlapTm);
+      return side === 'fwd' ? n.slice(-len) : reverseComplement(n.slice(0, len));
+    }
+    case 'golden_gate':
+      return side === 'fwd'
+        ? `${recognition}${spacer}${overhang}`
+        : `${recognition}${spacer}${reverseComplement(overhang)}`;
+    case 'restriction':
+      return side === 'fwd'
+        ? `${protective}${reSite}GG`
+        : reverseComplement(`${reSite}GG`);
+    default:
+      return ''; // kld / direct_ligation / unknown → no tail
+  }
+}
+
+function buildFwdTail(opGroup, logicalPrev, leftSnippetSeq, state, cfg) {
+  // No logical-prev: only the accumulated snippet content (group starts with a
+  // snippet ⇒ first amplifiable piece carries it on its tail).
   if (!logicalPrev) return leftSnippetSeq;
-
-  if (kind === 'overlap_pcr' || kind === 'gibson') {
-    const prevSeq = pieceSequence(logicalPrev, state);
-    return prevSeq.slice(-OVERLAP_LEN) + leftSnippetSeq;
-  }
-  if (kind === 'golden_gate') {
-    return `GGTCTCN${logicalPrev.ggOverhang || 'AAAA'}${leftSnippetSeq}`;
-  }
-  if (kind === 'restriction') {
-    return `${logicalPrev.reSite || ''}GG${leftSnippetSeq}`;
-  }
-  // kld / direct_ligation / unknown → no overlap tail.
-  return leftSnippetSeq;
+  const tail = buildOverlapTail('fwd', pieceSequence(logicalPrev, state), {
+    method: opGroup && opGroup.kind,
+    overlapTarget: cfg.overlapTarget,
+    overlapLength: cfg.overlapLength,
+    overlapTm: cfg.overlapTm,
+    overhang: logicalPrev.ggOverhang || 'AAAA',
+    reSite: logicalPrev.reSite || '',
+  });
+  return tail + leftSnippetSeq;
 }
 
-function buildRevTail(opGroup, piece, logicalNext, state) {
-  const kind = opGroup && opGroup.kind;
+function buildRevTail(opGroup, piece, logicalNext, state, cfg) {
   if (!logicalNext) return '';
-  if (kind === 'overlap_pcr' || kind === 'gibson') {
-    const nextSeq = pieceSequence(logicalNext, state);
-    return reverseComplement(nextSeq.slice(0, OVERLAP_LEN));
-  }
-  if (kind === 'golden_gate') {
-    return reverseComplement(`GGTCTCN${piece.ggOverhang || 'AAAA'}`);
-  }
-  if (kind === 'restriction') {
-    return reverseComplement(`${piece.reSite || ''}GG`);
-  }
-  return '';
+  return buildOverlapTail('rev', pieceSequence(logicalNext, state), {
+    method: opGroup && opGroup.kind,
+    overlapTarget: cfg.overlapTarget,
+    overlapLength: cfg.overlapLength,
+    overlapTm: cfg.overlapTm,
+    overhang: piece.ggOverhang || 'AAAA',
+    reSite: piece.reSite || '',
+  });
 }
 
+// Node A §4/§5.1 — emit the canonical assembly-primer record. Provenance
+// lives in `source` (kind 'auto-group'); the old `origin` object + `binding`
+// field are gone. `boundaryInfo` (computed in deriveAutoPrimers, §6) carries
+// the assembly-coordinate junction this primer realises — the SINGLE key
+// boundary-coverage consumers read (`source.boundaryAtOffset`).
 function makePrimer({
-  opGroupId, piece, side, tail, binding, mutated, pieceIndex1,
+  opGroupId, draftId, piece, side, tail, binding, mutated, pieceIndex1, pairId, boundaryInfo,
 }) {
-  return {
-    id: `pr-${uuidv7()}`,
-    name: `asm-${side}-${pieceIndex1}`,
-    sequence: `${tail}${binding}`,
-    binding,
-    tail,
-    tm: tmEstimate(binding),
-    autoMode: 'auto',
-    mutated: !!mutated,
-    origin: {
-      kind: 'auto-from-group',
-      opGroupId,
-      pieceId: piece.id,
-      side,
-    },
+  const direction = side === 'rev' ? 'reverse' : 'forward';
+  const name = `asm-${side}-${pieceIndex1}`;
+  const source = {
+    kind: 'auto-group', opGroupId, pieceId: piece.id, side,
   };
+  if (boundaryInfo) {
+    source.boundaryAtOffset = boundaryInfo.boundaryAtOffset;
+    source.leftSegmentId = boundaryInfo.leftSegmentId;
+    source.rightSegmentId = boundaryInfo.rightSegmentId;
+  }
+  return {
+    id: `asmprm-${uuidv7()}`,
+    draftId,
+    pairId,
+    name,
+    label: name,
+    direction,
+    sequence: `${tail}${binding}`,
+    bindingSequence: binding,
+    tail,
+    // V105 — canonical SantaLucia NN (same model as the K13 editor).
+    tm: calcTm(binding),
+    gc: gcPercent(binding),
+    mutated: !!mutated,
+    status: 'auto',
+    autoMode: 'auto',
+    crossesBoundaries: boundaryInfo
+      ? [boundaryInfo.leftSegmentId, boundaryInfo.rightSegmentId]
+      : [],
+    range: null,
+    notes: '',
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    source,
+  };
+}
+
+// Node A §6 — resolve the zone draft's assembly-segment boundaries so each
+// auto-primer can record the junction offset it realises. Legacy draft (no
+// zone) or any shape mismatch → [] → boundaryAtOffset simply isn't set
+// (fallback, never throws).
+function resolveOpGroupBoundaries(opGroup, state) {
+  const zone = ((state && state.zones) || []).find((z) => z && z.id === opGroup.zoneId);
+  if (!zone) return [];
+  try {
+    return segmentBoundaries(draftFromZone(state, zone)).boundaries || [];
+  } catch {
+    return [];
+  }
 }
 
 export function deriveAutoPrimers(opGroup, state) {
@@ -127,6 +227,10 @@ export function deriveAutoPrimers(opGroup, state) {
   }
   const all = (state && state.pieces) || [];
   const pieces = opGroup.inputPieces.map((id) => all.find((p) => p && p.id === id));
+  // Node A §6 — assembly-segment boundaries of the zone draft; lets each
+  // primer record the junction offset it realises (segment index resolved
+  // via segmentId === piece.id, NOT the inputPieces position — R1).
+  const boundaries = resolveOpGroupBoundaries(opGroup, state);
   const primers = [];
 
   for (let i = 0; i < pieces.length; i += 1) {
@@ -162,22 +266,47 @@ export function deriveAutoPrimers(opGroup, state) {
       break;
     }
 
+    const cfg = TEMP_JUNCTION_CFG;
     const fullSeq = pieceSequence(piece, state);
     const mutated = Array.isArray(piece.mutations) && piece.mutations.length > 0;
-    const fwdBinding = fullSeq.slice(0, BINDING_LEN);
-    const revBinding = reverseComplement(fullSeq.slice(-BINDING_LEN));
+    const fwdBinding = fullSeq.slice(0, bindingLen(fullSeq, 'fwd', cfg.bindingLength, cfg.bindingTm));
+    const revBinding = reverseComplement(
+      fullSeq.slice(-bindingLen(fullSeq, 'rev', cfg.bindingLength, cfg.bindingTm)),
+    );
 
-    const fwdTail = buildFwdTail(opGroup, logicalPrev, leftSnippets.join(''), state);
-    const revTail = buildRevTail(opGroup, piece, logicalNext, state);
+    const fwdTail = buildFwdTail(opGroup, logicalPrev, leftSnippets.join(''), state, cfg);
+    const revTail = buildRevTail(opGroup, piece, logicalNext, state, cfg);
+
+    // §6 — junction offsets. fwd realises the join BEFORE this segment
+    // (k-1 → k) when a logical-prev exists; rev realises the join AFTER it
+    // (k → k+1) when a logical-next exists. k resolved via segmentId. No
+    // zone / shape mismatch (k<0 or out-of-range) → boundaryInfo stays null
+    // (fallback, R1/R2): the primer is still emitted, just without a
+    // recorded junction offset.
+    const k = boundaries.findIndex((b) => b && b.segmentId === piece.id);
+    let fwdBoundary = null;
+    if (logicalPrev && k >= 1) {
+      const L = boundaries[k - 1];
+      const R = boundaries[k];
+      fwdBoundary = { boundaryAtOffset: L.endOnAssembly, leftSegmentId: L.segmentId, rightSegmentId: R.segmentId };
+    }
+    let revBoundary = null;
+    if (logicalNext && k >= 0 && k < boundaries.length - 1) {
+      const L = boundaries[k];
+      const R = boundaries[k + 1];
+      revBoundary = { boundaryAtOffset: L.endOnAssembly, leftSegmentId: L.segmentId, rightSegmentId: R.segmentId };
+    }
+    // fwd + rev of one piece share a pairId (canon §4).
+    const pairId = `pair-${uuidv7()}`;
 
     const pieceIndex1 = i + 1;
     primers.push(makePrimer({
-      opGroupId: opGroup.id, piece, side: 'fwd',
-      tail: fwdTail, binding: fwdBinding, mutated, pieceIndex1,
+      opGroupId: opGroup.id, draftId: opGroup.zoneId, piece, side: 'fwd',
+      tail: fwdTail, binding: fwdBinding, mutated, pieceIndex1, pairId, boundaryInfo: fwdBoundary,
     }));
     primers.push(makePrimer({
-      opGroupId: opGroup.id, piece, side: 'rev',
-      tail: revTail, binding: revBinding, mutated, pieceIndex1,
+      opGroupId: opGroup.id, draftId: opGroup.zoneId, piece, side: 'rev',
+      tail: revTail, binding: revBinding, mutated, pieceIndex1, pairId, boundaryInfo: revBoundary,
     }));
   }
   return primers;
