@@ -24,8 +24,8 @@ const mk = (s, a) => zonesReducer(s, a);
 const addZone = (s, name = 'Z') => mk(s, { type: 'CREATE_ZONE', zone: { name, bounds: BOUNDS } });
 
 describe('T3 K4 buildInitialZonesState / isZoneAction', () => {
-  it('initial slice is { zones: [], focusedZoneId: null } (T7 DEC-T7-10 added focus; default zone seeded in buildInitialState, U4)', () => {
-    expect(buildInitialZonesState()).toEqual({ zones: [], focusedZoneId: null });
+  it('initial slice is { zones: [], focusedZoneId: null, junctionPicker: null } (T7 focus; JUNCTION J6b picker)', () => {
+    expect(buildInitialZonesState()).toEqual({ zones: [], focusedZoneId: null, junctionPicker: null });
   });
   it('isZoneAction guards zone actions', () => {
     ['CREATE_ZONE', 'REMOVE_ZONE', 'UPDATE_ZONE_NAME', 'UPDATE_ZONE_BOUNDS',

@@ -8,9 +8,11 @@ import { STRINGS } from '../../../../lib/strings';
 import PieceCard from './PieceCard';
 import ImplicitJunction from './ImplicitJunction';
 import BranchingVisual from './BranchingVisual';
+import JunctionControl from '../JunctionControl';
 import { onPieceDragStart, onStripDrop } from './piece-drag';
 import { selectPieceSequence } from '../../store/selectors-pieces';
 import { selectAttachedPieces, selectDetachedPieces } from './zone-mode-state';
+import { pairKeyFor } from '../../lib/junction-derive';
 
 const S = STRINGS.canvasSkeleton.zones.sequenceMode;
 
@@ -20,6 +22,11 @@ export default function ZoneAssembledView({
   const attached = selectAttachedPieces(state, zoneId);
   const detached = selectDetachedPieces(state, zoneId);
   const multi = (finals || []).length > 1;
+  // J6b — stored per-junction config + the open JunctionControl target.
+  const zone = (state.zones || []).find((z) => z.id === zoneId);
+  const junctions = (zone && zone.junctions) || {};
+  const picker = state.junctionPicker && state.junctionPicker.zoneId === zoneId
+    ? state.junctionPicker : null;
 
   return (
     <div
@@ -58,6 +65,7 @@ export default function ZoneAssembledView({
               <ImplicitJunction
                 fromPiece={p}
                 toPiece={attached[idx + 1]}
+                method={(junctions[pairKeyFor(p.id, attached[idx + 1].id)] || {}).method}
                 onClick={() => dispatch
                   && dispatch({
                     type: 'OPEN_JUNCTION_METHOD_PICKER',
@@ -91,6 +99,20 @@ export default function ZoneAssembledView({
       )}
 
       {multi && <BranchingVisual finals={finals} state={state} zoneId={zoneId} />}
+
+      {/* J6b — clicking a strip junction opens JunctionControl for that
+          pairKey; it edits the live zone.junctions config via
+          SET_BOUNDARY_OVERLAP and closes via CLOSE_JUNCTION_PICKER. */}
+      {picker && (
+        <JunctionControl
+          pairKey={picker.pairKey}
+          config={junctions[picker.pairKey]}
+          onChange={(patch) => dispatch && dispatch({
+            type: 'SET_BOUNDARY_OVERLAP', zoneId, pairKey: picker.pairKey, ...patch,
+          })}
+          onClose={() => dispatch && dispatch({ type: 'CLOSE_JUNCTION_PICKER' })}
+        />
+      )}
     </div>
   );
 }

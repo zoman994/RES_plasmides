@@ -38,6 +38,21 @@ export function junctionKindForMethod(method) {
   return METHOD_TO_JUNCTION[method] || 'overlap';
 }
 
+// Reverse map junction.kind → canonical engine method (for the UI: JunctionControl
+// edits in junction.kind via JunctionPopover, writes the engine method to
+// zone.junctions). `preformed`/`ligation` (no overlap reaction) → direct_ligation.
+const JUNCTION_KIND_TO_METHOD = {
+  overlap: 'overlap_pcr',
+  golden_gate: 'golden_gate',
+  re_ligation: 'restriction',
+  ligation: 'direct_ligation',
+  kld: 'kld',
+  preformed: 'direct_ligation',
+};
+export function methodForJunctionKind(kind) {
+  return JUNCTION_KIND_TO_METHOD[kind] || DEFAULT_JUNCTION_METHOD;
+}
+
 /**
  * Seed a default config record for a junction (J3). `method` is an engine-dict
  * value (default `overlap_pcr`); overlap params come from junction-styles, and

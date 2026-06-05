@@ -1,18 +1,18 @@
 /**
- * ImplicitJunction — T7 K8 (DEC-T7-08). Derived (not stored) junction
- * between two adjacent attached pieces. Method inferred from the pair's
- * acquisitionMethod; click → JunctionMethodPicker (wired by parent).
+ * ImplicitJunction — T7 K8 (DEC-T7-08); JUNCTION layer 3 J6b. The junction
+ * element between two adjacent attached pieces on the zone strip. Now PREFERS
+ * the STORED per-junction method (zone.junctions[pairKey].method, passed by the
+ * parent), falling back to the acquisitionMethod-derived one when no config is
+ * seeded yet. Colour/label come from the shared junction-styles palette (one
+ * source for strip / popover / glyph). Click → OPEN_JUNCTION_METHOD_PICKER
+ * (wired by ZoneAssembledView → JunctionControl).
  */
 import React from 'react';
 import { STRINGS } from '../../../../lib/strings';
+import { junctionStroke, junctionLabel } from '../junction-styles';
+import { junctionKindForMethod } from '../../lib/junction-derive';
 
 const S = STRINGS.canvasSkeleton.zones.sequenceMode;
-
-const METHOD_COLOR = {
-  'overlap-pcr': 'var(--emerald, var(--accent-500))',
-  ligation: 'var(--warning-fg, var(--accent-700))',
-  gibson: 'var(--accent-500)',
-};
 
 export function derivedJunctionMethod(fromPiece, toPiece) {
   const a = fromPiece && fromPiece.acquisitionMethod;
@@ -22,15 +22,24 @@ export function derivedJunctionMethod(fromPiece, toPiece) {
   return 'gibson';
 }
 
-export default function ImplicitJunction({ fromPiece, toPiece, onClick }) {
-  const method = derivedJunctionMethod(fromPiece, toPiece);
+// Effective method (stored engine dict, else derived-display) → junction.kind.
+// The derived display strings aren't in the engine dict, so map them here.
+const DERIVED_KIND = { 'overlap-pcr': 'overlap', gibson: 'overlap', ligation: 're_ligation' };
+function kindOf(method) {
+  return DERIVED_KIND[method] || junctionKindForMethod(method);
+}
+
+export default function ImplicitJunction({ fromPiece, toPiece, method, onClick }) {
+  const effective = method || derivedJunctionMethod(fromPiece, toPiece);
+  const kind = kindOf(effective);
   return (
     <button
       type="button"
       data-testid="zone-seq-junction"
-      data-method={method}
+      data-method={effective}
+      data-junction-kind={kind}
       onClick={onClick}
-      title={S.junctionMethod[method] || method}
+      title={S.junctionMethod[effective] || effective}
       style={{
         display: 'flex',
         flexDirection: 'column',
@@ -47,10 +56,10 @@ export default function ImplicitJunction({ fromPiece, toPiece, onClick }) {
       <span
         aria-hidden
         style={{
-          width: 18, height: 3, borderRadius: 2, background: METHOD_COLOR[method] || 'var(--accent-500)',
+          width: 18, height: 3, borderRadius: 2, background: junctionStroke(kind),
         }}
       />
-      <span>{S.junctionMethodShort[method] || ''}</span>
+      <span>{junctionLabel(kind)}</span>
     </button>
   );
 }

@@ -15,6 +15,7 @@ import {
 import { applyZoneLayout } from '../lib/zone-layout';
 import { validateZoneCreate, validateZoneUpdate } from '../lib/zone-invariants';
 import { mergeBoundingBoxes, computeBoundingBox } from '../lib/zone-bounds';
+import { pairKeyFor } from '../lib/junction-derive';
 import { STRINGS } from '../../../lib/strings';
 
 const Z = STRINGS.canvasSkeleton.zones;
@@ -23,7 +24,9 @@ const DEFAULT_WRAP_BOUNDS = { x: 40, y: 40, width: 600, height: 400 };
 export function buildInitialZonesState() {
   // T7 DEC-T7-10 — focusedZoneId scopes the G/S hotkeys. Lives here
   // (no dedicated ui slice in CanvasSkeleton); null = no focus.
-  return { zones: [], focusedZoneId: null };
+  // JUNCTION layer 3 J6b — junctionPicker holds the open JunctionControl
+  // target { zoneId, pairKey, fromPieceId, toPieceId } | null.
+  return { zones: [], focusedZoneId: null, junctionPicker: null };
 }
 
 const ZONE_ACTIONS = new Set([
@@ -35,6 +38,7 @@ const ZONE_ACTIONS = new Set([
   'SET_ZONE_LANE_LAYOUT', 'RECOMPUTE_ZONE_LAYOUT', // T4.5 DEC-T4.5-05
   'SET_NODE_PINNED', // T4.5 DEC-T4.5-04
   'SET_BOUNDARY_OVERLAP', // JUNCTION layer 3 J1 — per-junction config edit
+  'OPEN_JUNCTION_METHOD_PICKER', 'CLOSE_JUNCTION_PICKER', // J6b — JunctionControl
 ]);
 
 // JUNCTION layer 3 (J1) — fields a junction config record carries.
@@ -294,12 +298,30 @@ export function zonesReducer(state, action) {
       for (const k of JUNCTION_CONFIG_FIELDS) {
         if (action[k] !== undefined) patch[k] = action[k];
       }
-      // A manual edit pins the junction so the finalizer's auto re-seed
-      // doesn't clobber it (mirrors primer autoMode:'manual', J1/risk 6).
-      const merged = { ...cur, ...patch, autoMode: 'manual' };
+      // A manual edit pins the junction (autoMode:'manual') so the finalizer's
+      // auto re-seed doesn't clobber it; an explicit autoMode in the action
+      // (e.g. reset-to-auto from JunctionControl) is honoured (J1/risk 6).
+      const merged = { ...cur, ...patch };
+      merged.autoMode = action.autoMode !== undefined ? action.autoMode : 'manual';
       const nextJ = { ...(zone.junctions || {}), [action.pairKey]: merged };
       return patchZone(state, action.zoneId, { junctions: nextJ });
     }
+
+    // J6b — open/close the JunctionControl popover for a strip junction. The
+    // dispatch from ZoneAssembledView carries {fromPieceId,toPieceId}; we store
+    // the pairKey so the control reads zone.junctions[pairKey].
+    case 'OPEN_JUNCTION_METHOD_PICKER': {
+      const { zoneId, fromPieceId, toPieceId } = action;
+      if (!zoneId || !fromPieceId || !toPieceId) return state;
+      if (!zones.some((z) => z.id === zoneId)) return state;
+      return {
+        ...state,
+        junctionPicker: { zoneId, pairKey: pairKeyFor(fromPieceId, toPieceId), fromPieceId, toPieceId },
+      };
+    }
+
+    case 'CLOSE_JUNCTION_PICKER':
+      return state.junctionPicker ? { ...state, junctionPicker: null } : state;
 
     case 'SPLIT_ZONE':
       return warnToast(state, Z.splitNotImplemented);
