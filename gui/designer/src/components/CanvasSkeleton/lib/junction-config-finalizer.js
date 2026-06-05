@@ -16,26 +16,63 @@
  * Primer-source model (Igor 05.06), three levels (lower wins):
  *   1. Fully manual — the biolog rewrote the primer SEQUENCE / locked it.
  *      Carried by a PRIMER-level flag (autoMode:'manual' — set by WRITE /
- *      K12 lock / edit-save). The finalizer NEVER regenerates these.
+ *      K12 lock / edit-save). The finalizer NEVER regenerates these, and the
+ *      auto duplicate for that (piece, side) is dropped (dedup).
  *   2. Semi-manual — a NUMBER set on the junction (overlapLength/Tm,
  *      bindingLength/Tm). The primer regenerates but the engine (A3/A1b) reads
- *      the number from zone.junctions. (junction.autoMode:'manual', not the
- *      primer — so it's still re-derived here, just with the chosen number.)
+ *      the number from zone.junctions.
  *   3. Fully auto — default config; re-derived freely.
  *
  * Groups are advisory for protocol order — they do NOT own primers
  * (CREATE/REMOVE/DISBAND no longer touch assemblyDraftPrimers).
  *
- * Idempotent boundary: returns the input untouched when neither pieces nor
- * zones changed. Defensive: a malformed zone draft is skipped (keeps primers).
+ * Derive-gate: runs only when pieces or a zone's junction-config / topology
+ * changed — a purely positional zone change (DRAG_ZONE) must NOT re-derive.
  */
 import { draftFromZone } from './zone-pieces-to-dag';
 import { deriveAutoPrimers } from './primer-derive';
 import { allBoundaries, seedJunction, DEFAULT_JUNCTION_METHOD } from './junction-derive';
 
+/**
+ * TD-JUNC-FINALIZER-DERIVE-GATE — true when a zone was added/removed, or any
+ * zone's junction config (`.junctions` ref) or circular topology changed. A
+ * positional change (bounds/position via DRAG_ZONE) spreads the zone and keeps
+ * the `.junctions` ref → false, so primers are NOT churned with fresh uuids.
+ */
+function zonesConfigChanged(prev, next) {
+  const pz = prev.zones || [];
+  const nz = next.zones || [];
+  if (pz.length !== nz.length) return true;
+  const byId = new Map(pz.map((z) => [z.id, z]));
+  for (const z of nz) {
+    const p = byId.get(z.id);
+    if (!p) return true;
+    if (p.junctions !== z.junctions) return true;
+    if (!!(p.topology && p.topology.circular) !== !!(z.topology && z.topology.circular)) return true;
+  }
+  return false;
+}
+
+/**
+ * TD-JUNC-MANUAL-AUTO-DEDUP — the (pieceId, side) a level-1 manual primer owns,
+ * so the finalizer can drop the auto duplicate. A WRITE primer's source is
+ * boundary/segment-kind (segmentId / leftSegmentId / rightSegmentId), matching
+ * mapPrimersForSegment — so it is realise-pickable; dedup keeps exactly one
+ * primer per side (the manual one).
+ */
+function manualCoverageKey(p) {
+  const s = p.source || {};
+  const side = p.direction === 'reverse' ? 'rev' : 'fwd';
+  let seg = null;
+  if (s.kind === 'segment') seg = s.segmentId;
+  else if (s.kind === 'boundary') seg = side === 'fwd' ? s.leftSegmentId : s.rightSegmentId;
+  else seg = s.pieceId; // defensive (a manual auto-group primer)
+  return seg ? `${seg}:${side}` : null;
+}
+
 export function applyJunctionConfig(next, prev) {
   if (!next || !Array.isArray(next.zones) || next.zones.length === 0) return next;
-  if (next.pieces === prev.pieces && next.zones === prev.zones) return next;
+  if (next.pieces === prev.pieces && !zonesConfigChanged(prev, next)) return next;
 
   const pieces = next.pieces || [];
   let zonesChanged = false;
@@ -83,8 +120,7 @@ export function applyJunctionConfig(next, prev) {
       .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
     const existing = map[zone.id] || [];
     // Level 1 — primer-level manual flag (WRITE / lock / edit) is preserved
-    // verbatim; the finalizer never regenerates these. Listed FIRST so
-    // realise's mapPrimersForSegment prefers them over the auto re-derive.
+    // verbatim; listed FIRST so realise's mapPrimersForSegment prefers them.
     const manual = existing.filter((p) => p && p.autoMode === 'manual');
     if (zonePieces.length < 2) {
       if (manual.length !== existing.length) { newMap[zone.id] = manual; primersChanged = true; }
@@ -100,6 +136,12 @@ export function applyJunctionConfig(next, prev) {
       }, stateForDerive);
     } catch {
       derived = [];
+    }
+    // Dedup — a manual primer owns its (piece, side); drop the auto duplicate
+    // so exactly one primer per side reaches realise + the panel.
+    const covered = new Set(manual.map(manualCoverageKey).filter(Boolean));
+    if (covered.size > 0) {
+      derived = derived.filter((d) => !covered.has(`${d.source.pieceId}:${d.source.side}`));
     }
     newMap[zone.id] = [...manual, ...derived];
     primersChanged = true;

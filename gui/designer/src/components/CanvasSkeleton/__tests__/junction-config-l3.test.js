@@ -119,6 +119,46 @@ describe('JUNCTION L3 — setBoundaryOverlap (J1)', () => {
   });
 });
 
+describe('JUNCTION L3 — derive-gate + dedup (step-2 preconditions)', () => {
+  it('DRAG_ZONE does NOT re-derive primers (positional change — gate)', () => {
+    const s0 = twoPieceZone(false);
+    const beforeIds = (s0.assemblyDraftPrimers['zn-1'] || []).map((p) => p.id);
+    expect(beforeIds.length).toBe(4);
+    const s1 = skeletonReducer(s0, { type: 'DRAG_ZONE', zoneId: 'zn-1', delta: { dx: 25, dy: 0 } });
+    const afterIds = (s1.assemblyDraftPrimers['zn-1'] || []).map((p) => p.id);
+    // The .junctions ref is preserved on a drag → no churn (stable ids).
+    expect(afterIds).toEqual(beforeIds);
+  });
+
+  it('SET_BOUNDARY_OVERLAP DOES re-derive (junction-config change passes the gate)', () => {
+    const s0 = twoPieceZone(false);
+    const beforeIds = (s0.assemblyDraftPrimers['zn-1'] || []).map((p) => p.id);
+    const s1 = skeletonReducer(s0, {
+      type: 'SET_BOUNDARY_OVERLAP', zoneId: 'zn-1', pairKey: PK, method: 'golden_gate',
+    });
+    const afterIds = (s1.assemblyDraftPrimers['zn-1'] || []).map((p) => p.id);
+    expect(afterIds).not.toEqual(beforeIds); // config changed → fresh auto re-derive
+  });
+
+  it('dedup: a manual primer drops the auto duplicate for its (piece, side)', () => {
+    let s = twoPieceZone(false);
+    // WRITE a manual fwd primer inside pc2 (assembly coords [32,52)).
+    s = skeletonReducer(s, {
+      type: 'WRITE_ASSEMBLY_PRIMER', draftId: 'zn-1', range: { start: 32, end: 52 }, direction: 'forward',
+    });
+    // a later piece edit re-runs the finalizer → dedup applies.
+    s = skeletonReducer(s, { type: 'SET_PIECE_COLOR', pieceId: 'pc1', color: '#aaaaaa' });
+    const pool = s.assemblyDraftPrimers['zn-1'] || [];
+    expect(pool.filter((p) => p.autoMode === 'manual')).toHaveLength(1);
+    // No AUTO duplicate for pc2/fwd — the manual primer owns that side.
+    expect(pool.filter((p) => p.autoMode === 'auto' && p.source.pieceId === 'pc2' && p.source.side === 'fwd'))
+      .toHaveLength(0);
+    // Other auto sides survive (pc1 fwd/rev, pc2 rev).
+    expect(pool.some((p) => p.autoMode === 'auto' && p.source.pieceId === 'pc1' && p.source.side === 'fwd')).toBe(true);
+    expect(pool.some((p) => p.autoMode === 'auto' && p.source.pieceId === 'pc2' && p.source.side === 'rev')).toBe(true);
+  });
+});
+
 describe('JUNCTION L3 — engine reads zone.junctions (A3)', () => {
   function stateWithJunction(method, extra = {}) {
     return {
