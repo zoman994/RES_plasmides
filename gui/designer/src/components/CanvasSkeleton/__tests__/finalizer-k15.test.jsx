@@ -62,16 +62,17 @@ describe('K15 — CREATE_OP_GROUP derives auto primers (T8.5)', () => {
     expect(pool).toHaveLength(4);
   });
 
-  it('each derived primer carries autoMode=auto + origin.opGroupId', () => {
+  it('each derived primer carries autoMode=auto + zone-implicit opGroupId (junction-owned)', () => {
     const zid = openZone();
     const ids = add3Pieces(zid);
     act(() => { A.createOpGroup(zid, 'overlap_pcr', '', ids); });
-    const opId = S.operations.find((o) => o.isOpGroup).id;
     const pool = S.assemblyDraftPrimers[zid] || [];
     for (const p of pool) {
       expect(p.autoMode).toBe('auto');
       expect(p.source.kind).toBe('auto-group');
-      expect(p.source.opGroupId).toBe(opId);
+      // JUNCTION 1b — primers belong to the zone's implicit group (finalizer),
+      // not the formal op-group; groups are advisory for protocol order.
+      expect(p.source.opGroupId).toBe(`zgrp-${zid}`);
     }
   });
 
@@ -158,35 +159,37 @@ describe('K15 — CREATE_OP_GROUP derives auto primers (T8.5)', () => {
   });
 });
 
-describe('K15 — REMOVE_OP_GROUP drops auto primers, preserves manual', () => {
-  it('after REMOVE_OP_GROUP all auto primers of that op are gone', () => {
+// JUNCTION 1b — primers are junction-owned (the zone's implicit group via the
+// finalizer), NOT op-group-owned. Removing/disbanding a group no longer drops
+// primers (Igor decision (a)); manually-locked primers are preserved verbatim.
+describe('K15 — REMOVE_OP_GROUP keeps junction-owned primers (J11)', () => {
+  it('REMOVE_OP_GROUP keeps the zone primers (re-derived, not dropped)', () => {
     const zid = openZone();
     const ids = add3Pieces(zid);
     act(() => { A.createOpGroup(zid, 'overlap_pcr', '', ids); });
     const opId = S.operations.find((o) => o.isOpGroup).id;
     expect(S.assemblyDraftPrimers[zid]).toHaveLength(4);
     act(() => { A.removeOpGroup(opId); });
-    expect((S.assemblyDraftPrimers[zid] || []).length).toBe(0);
+    // Pieces stay in the zone → finalizer keeps their primers (junction-owned).
+    expect(S.assemblyDraftPrimers[zid]).toHaveLength(4);
+    expect(S.operations.filter((o) => o.isOpGroup)).toHaveLength(0);
   });
 
-  it('manual primers tied to the op are preserved on remove', () => {
+  it('a manually-locked primer survives REMOVE_OP_GROUP (preserved by id)', () => {
     const zid = openZone();
     const ids = add3Pieces(zid);
     act(() => { A.createOpGroup(zid, 'overlap_pcr', '', ids); });
     const opId = S.operations.find((o) => o.isOpGroup).id;
     const autoPrimer = S.assemblyDraftPrimers[zid][0];
-    // Promote the first auto primer to manual (biolog edited it).
     act(() => { A.updateAssemblyPrimer(zid, autoPrimer.id, { autoMode: 'manual' }); });
-    expect(S.assemblyDraftPrimers[zid].find((p) => p.id === autoPrimer.id).autoMode).toBe('manual');
     act(() => { A.removeOpGroup(opId); });
-    // The 3 remaining auto primers gone; the manual-locked one stays.
     const left = S.assemblyDraftPrimers[zid];
-    expect(left).toHaveLength(1);
-    expect(left[0].id).toBe(autoPrimer.id);
-    expect(left[0].autoMode).toBe('manual');
+    const kept = left.find((p) => p.id === autoPrimer.id);
+    expect(kept).toBeTruthy();
+    expect(kept.autoMode).toBe('manual'); // level-1 primer untouched by the finalizer
   });
 
-  it('two separate op-groups → primers tagged with their respective opGroupId; remove one keeps the other', () => {
+  it('two op-groups in a zone share ONE junction-owned pool (zgrp); remove one keeps it', () => {
     const zid = openZone();
     act(() => { A.insertSegment(zid, 'cZ', 0, 16, false); });
     act(() => { A.insertSegment(zid, 'cZ', 16, 32, false); });
@@ -197,12 +200,12 @@ describe('K15 — REMOVE_OP_GROUP drops auto primers, preserves manual', () => {
       .map((p) => p.id);
     act(() => { A.createOpGroup(zid, 'overlap_pcr', '', [ids[0], ids[1]]); });
     act(() => { A.createOpGroup(zid, 'overlap_pcr', '', [ids[2], ids[3]]); });
+    expect(S.operations.filter((o) => o.isOpGroup)).toHaveLength(2);
+    const pool = S.assemblyDraftPrimers[zid];
+    expect(pool).toHaveLength(8); // 4 pieces × 2 — one zone pool, not per-group
+    expect(pool.every((p) => p.source.opGroupId === `zgrp-${zid}`)).toBe(true);
     const ops = S.operations.filter((o) => o.isOpGroup);
-    expect(ops).toHaveLength(2);
-    expect(S.assemblyDraftPrimers[zid]).toHaveLength(8);
     act(() => { A.removeOpGroup(ops[0].id); });
-    const left = S.assemblyDraftPrimers[zid];
-    expect(left).toHaveLength(4);
-    expect(left.every((p) => p.source.opGroupId === ops[1].id)).toBe(true);
+    expect(S.assemblyDraftPrimers[zid]).toHaveLength(8); // junction-owned → kept
   });
 });

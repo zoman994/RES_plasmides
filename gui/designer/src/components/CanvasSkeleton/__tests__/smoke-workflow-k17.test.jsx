@@ -104,11 +104,11 @@ describe('K17 — end-to-end biolog workflow smoke', () => {
     // 6b: middle sourced piece (the one AFTER the snippet) — its fwd
     //     tail must contain the His sequence.
     const middleSourced = finalOrder[2]; // index 2 in the re-ordered list
-    const middleFwd = pool.find((p) => p.origin.pieceId === middleSourced.id && p.origin.side === 'fwd');
+    const middleFwd = pool.find((p) => p.source.pieceId === middleSourced.id && p.source.side === 'fwd');
     expect(middleFwd.tail.includes('CATCATCATCATCATCAT')).toBe(true);
 
     // 6c: mutagenic flag travels to the first piece's primers.
-    const firstPrimers = pool.filter((p) => p.origin.pieceId === firstSourced.id);
+    const firstPrimers = pool.filter((p) => p.source.pieceId === firstSourced.id);
     expect(firstPrimers.every((p) => p.mutated === true)).toBe(true);
 
     // ─ Step 7: lock one primer (auto → manual) then remove the op-group.
@@ -117,9 +117,12 @@ describe('K17 — end-to-end biolog workflow smoke', () => {
     expect(S.assemblyDraftPrimers[zid].find((p) => p.id === toLock.id).autoMode).toBe('manual');
 
     act(() => { A.removeOpGroup(groups[0].id); });
-    const left = S.assemblyDraftPrimers[zid];
-    expect(left).toHaveLength(1);
-    expect(left[0].id).toBe(toLock.id);
-    expect(left[0].autoMode).toBe('manual');
+    // JUNCTION 1b — primers are junction-owned: removing the group keeps the
+    // locked primer (by id, level-1 preserved) AND the auto pool (re-derived
+    // for the pieces still in the zone). The group is gone.
+    expect(S.operations.filter((o) => o.isOpGroup)).toHaveLength(0);
+    const kept = S.assemblyDraftPrimers[zid].find((p) => p.id === toLock.id);
+    expect(kept).toBeTruthy();
+    expect(kept.autoMode).toBe('manual');
   });
 });

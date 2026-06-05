@@ -100,12 +100,14 @@ describe('Node A — canonical auto-primer record', () => {
     expect(info.tailLength).toBe((hit.tail || '').length);
   });
 
-  it('REMOVE_OP_GROUP drops auto-primers by source.opGroupId', () => {
+  it('REMOVE_OP_GROUP keeps junction-owned primers (J11 — group is not the owner)', () => {
     let s = zoneStateWithGroup();
     expect(s.assemblyDraftPrimers['zn-1'].length).toBe(4);
     const og = s.operations.find((o) => o.isOpGroup);
     s = skeletonReducer(s, { type: 'REMOVE_OP_GROUP', opId: og.id });
-    expect((s.assemblyDraftPrimers['zn-1'] || []).length).toBe(0);
+    // Primers come from the zone's junctions (finalizer), not the op-group →
+    // teardown of the group does not drop them (pieces remain in the zone).
+    expect((s.assemblyDraftPrimers['zn-1'] || []).length).toBe(4);
   });
 });
 

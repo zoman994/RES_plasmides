@@ -73,6 +73,32 @@ describe('JUNCTION L3 — seed on add (J1/J2/J3)', () => {
   });
 });
 
+describe('JUNCTION L3 — derive on add, no manual Sew (J11)', () => {
+  it('primers with tails appear after add without CREATE_OP_GROUP', () => {
+    const primers = twoPieceZone(false).assemblyDraftPrimers['zn-1'] || [];
+    expect(primers.length).toBe(4); // fwd+rev per piece, from the finalizer
+    expect(primers.every((p) => p.source.kind === 'auto-group')).toBe(true);
+    // junction-owned via the zone's implicit group (not a formal op-group).
+    expect(primers.every((p) => p.source.opGroupId === 'zgrp-zn-1')).toBe(true);
+    const pc2fwd = primers.find((p) => p.source.pieceId === 'pc2' && p.source.side === 'fwd');
+    expect(pc2fwd.tail.length).toBeGreaterThan(0); // overlap homology arm
+  });
+
+  it('a level-1 manual primer survives the finalizer re-derive (autoMode:manual skipped)', () => {
+    let s = twoPieceZone(false);
+    s = skeletonReducer(s, {
+      type: 'WRITE_ASSEMBLY_PRIMER', draftId: 'zn-1', range: { start: 0, end: 20 }, direction: 'forward',
+    });
+    const manual = (s.assemblyDraftPrimers['zn-1'] || []).find((p) => p.autoMode === 'manual');
+    expect(manual).toBeTruthy();
+    // a later piece edit re-runs the finalizer — the manual primer must persist.
+    s = skeletonReducer(s, { type: 'SET_PIECE_COLOR', pieceId: 'pc1', color: '#777777' });
+    const still = (s.assemblyDraftPrimers['zn-1'] || []).find((p) => p.id === manual.id);
+    expect(still).toBeTruthy();
+    expect(still.autoMode).toBe('manual');
+  });
+});
+
 describe('JUNCTION L3 — setBoundaryOverlap (J1)', () => {
   it('SET_BOUNDARY_OVERLAP writes the junction config (autoMode manual)', () => {
     const s1 = skeletonReducer(twoPieceZone(false), {

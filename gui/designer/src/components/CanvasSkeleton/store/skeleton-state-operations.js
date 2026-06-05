@@ -37,7 +37,6 @@
  * state reference is returned (so the main router can `===`-compare).
  */
 import { v7 as uuidv7 } from 'uuid';
-import { deriveAutoPrimers } from '../lib/primer-derive';
 import { pairKeyFor, seedJunction } from '../lib/junction-derive';
 
 /**
@@ -419,19 +418,13 @@ export function operationsReducer(state, action) {
         pieces: nextPieces,
         zones: nextZones,
       };
-      // K15 (T8.5) — derive auto primers for the op-group from the FRESH state.
-      // JUNCTION layer 3: the per-junction method was just written into
-      // zone.junctions, so the config-aware engine (A3) yields the chosen
-      // method's tails (e.g. GG → GGTCTC). Op-group-owned (source.opGroupId) →
-      // REMOVE/DISBAND clean them up. Manual primers untouched.
-      const derived = deriveAutoPrimers(op, withOpGroup);
-      if (derived.length === 0) return withOpGroup;
-      const map = withOpGroup.assemblyDraftPrimers || {};
-      const cur = map[zoneId] || [];
-      return {
-        ...withOpGroup,
-        assemblyDraftPrimers: { ...map, [zoneId]: [...cur, ...derived] },
-      };
+      // JUNCTION layer 3 (1b / J10/J11): the op-group sets its junctions'
+      // method (above) + carries the reaction-node + group structure
+      // (isOpGroup / inputPieces / groupLayer). It DOES NOT derive primers —
+      // primers are junction-owned and produced by the applyJunctionConfig
+      // finalizer (3 levels). Groups are advisory for protocol order, not
+      // primer owners, so REMOVE/DISBAND no longer touch primers either.
+      return withOpGroup;
     }
 
     case 'REMOVE_OP_GROUP': {
@@ -442,20 +435,14 @@ export function operationsReducer(state, action) {
       const nextPieces = (state.pieces || []).map((p) => (
         setIds.has(p.id) ? { ...p, groupId: null, updatedAt: now } : p
       ));
-      // K15 (T8.5) — drop auto primers tied to this op-group; keep
-      // any manual-locked ones (the biolog explicitly edited them).
-      const map = state.assemblyDraftPrimers || {};
-      const zoneId = op.zoneId;
-      const arr = (map[zoneId] || []).filter((p) => !(
-        p && p.source && p.source.kind === 'auto-group'
-        && p.source.opGroupId === action.opId
-        && p.autoMode !== 'manual'
-      ));
+      // JUNCTION layer 3 (1b): primers are junction-owned, not group-owned —
+      // removing a group does NOT drop primers (Igor decision (a)). The
+      // ungrouped pieces stay in the zone, so the finalizer keeps their
+      // primers. Only the group + its piece-grouping are torn down here.
       return {
         ...state,
         operations: (state.operations || []).filter((o) => o.id !== action.opId),
         pieces: nextPieces,
-        assemblyDraftPrimers: zoneId ? { ...map, [zoneId]: arr } : map,
       };
     }
 
@@ -484,23 +471,11 @@ export function operationsReducer(state, action) {
         }
       }
       const operations = (state.operations || []).filter((o) => !removeSet.has(o.id));
-      // Drop auto-primers tied to ANY removed op-group; keep manual-locked.
-      const map = state.assemblyDraftPrimers || {};
-      const zonesToClean = new Set(
-        (state.operations || [])
-          .filter((o) => removeSet.has(o.id) && o.zoneId)
-          .map((o) => o.zoneId),
-      );
-      let nextMap = map;
-      for (const zid of zonesToClean) {
-        const cur = map[zid] || [];
-        const arr = cur.filter((p) => !(
-          p && p.source && p.source.kind === 'auto-group'
-          && removeSet.has(p.source.opGroupId) && p.autoMode !== 'manual'
-        ));
-        if (arr.length !== cur.length) nextMap = { ...nextMap, [zid]: arr };
-      }
-      return { ...state, operations, assemblyDraftPrimers: nextMap };
+      // JUNCTION layer 3 (1b): primers are junction-owned — disbanding a group
+      // (and its orphaned downstream groups) does NOT drop primers. The
+      // piecesReducer mirror resets groupId on the members; the finalizer keeps
+      // their primers (pieces remain in the zone).
+      return { ...state, operations };
     }
 
     default:
