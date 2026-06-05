@@ -34,7 +34,14 @@ const ZONE_ACTIONS = new Set([
   'HIGHLIGHT_ZONE', // T8 DEC-T8-09
   'SET_ZONE_LANE_LAYOUT', 'RECOMPUTE_ZONE_LAYOUT', // T4.5 DEC-T4.5-05
   'SET_NODE_PINNED', // T4.5 DEC-T4.5-04
+  'SET_BOUNDARY_OVERLAP', // JUNCTION layer 3 J1 — per-junction config edit
 ]);
+
+// JUNCTION layer 3 (J1) — fields a junction config record carries.
+const JUNCTION_CONFIG_FIELDS = [
+  'method', 'overlapTarget', 'overlapLength', 'overlapTm',
+  'bindingLength', 'bindingTm', 'locked', 'lockReason', 'autoMode',
+];
 
 export function isZoneAction(type) {
   return ZONE_ACTIONS.has(type);
@@ -273,6 +280,25 @@ export function zonesReducer(state, action) {
         ? { ...arr[idx], pinned: want, updatedAt: Date.now() }
         : { ...arr[idx], pinned: want };
       return { ...state, [sliceKey]: next };
+    }
+
+    // JUNCTION layer 3 (J1) — edit one junction's config in zone.junctions.
+    // The seed/prune of junction entries + the primer re-derive are done by
+    // the applyJunctionConfig finalizer (it runs after zones change); this
+    // action only writes the user's per-junction choice.
+    case 'SET_BOUNDARY_OVERLAP': {
+      const zone = zones.find((z) => z.id === action.zoneId);
+      if (!zone || !action.pairKey) return state;
+      const cur = (zone.junctions && zone.junctions[action.pairKey]) || {};
+      const patch = {};
+      for (const k of JUNCTION_CONFIG_FIELDS) {
+        if (action[k] !== undefined) patch[k] = action[k];
+      }
+      // A manual edit pins the junction so the finalizer's auto re-seed
+      // doesn't clobber it (mirrors primer autoMode:'manual', J1/risk 6).
+      const merged = { ...cur, ...patch, autoMode: 'manual' };
+      const nextJ = { ...(zone.junctions || {}), [action.pairKey]: merged };
+      return patchZone(state, action.zoneId, { junctions: nextJ });
     }
 
     case 'SPLIT_ZONE':

@@ -25,6 +25,7 @@ import { applyPieceMutations } from './piece-mutations';
 import { gcPercent } from './assembly-primer-utils';
 import { draftFromZone } from './zone-pieces-to-dag';
 import { segmentBoundaries } from './assembly-model';
+import { pairKeyFor } from './junction-derive';
 
 const DEFAULT_BINDING_LEN = 20;
 const DEFAULT_OVERLAP_LEN = 30;   // §9b temp config default (was 25, two-sided)
@@ -35,8 +36,8 @@ const TAIL_MIN = 18; const TAIL_MAX = 40; // overlap-tail length bounds (Tm mode
 const BIND_MIN = 16; const BIND_MAX = 36; // binding length bounds (Tm mode, A1b)
 const SKIPPED_KINDS = new Set(['snippet', 'gap']);
 
-// §9b — temporary per-junction config default until JUNCTION_MODULE seeds
-// zone.junctions (A3, layer 3): one-sided overlap on the downstream fwd.
+// §9b — fallback config when a junction has no zone.junctions entry yet
+// (legacy / first-or-last piece). One-sided overlap on the downstream fwd.
 const TEMP_JUNCTION_CFG = {
   overlapTarget: 'right',
   overlapLength: DEFAULT_OVERLAP_LEN,
@@ -44,6 +45,31 @@ const TEMP_JUNCTION_CFG = {
   bindingLength: DEFAULT_BINDING_LEN,
   bindingTm: null,
 };
+
+/**
+ * A3 (JUNCTION layer 3) — resolve the per-junction config for the join
+ * between `leftId` and `rightId` from `zone.junctions[pairKey]`. Falls back to
+ * the temp default + `opGroup.kind` as the method when no stored config (so
+ * pre-JUNCTION callers behave exactly as layer 2 did). The method now lives in
+ * the junction config, not on the op-group.
+ */
+function junctionConfig(state, opGroup, leftId, rightId) {
+  if (leftId != null && rightId != null) {
+    const zone = ((state && state.zones) || []).find((z) => z && z.id === (opGroup && opGroup.zoneId));
+    const j = zone && zone.junctions && zone.junctions[pairKeyFor(leftId, rightId)];
+    if (j) {
+      return {
+        method: j.method || (opGroup && opGroup.kind),
+        overlapTarget: j.overlapTarget != null ? j.overlapTarget : TEMP_JUNCTION_CFG.overlapTarget,
+        overlapLength: j.overlapLength != null ? j.overlapLength : TEMP_JUNCTION_CFG.overlapLength,
+        overlapTm: j.overlapTm != null ? j.overlapTm : null,
+        bindingLength: j.bindingLength != null ? j.bindingLength : TEMP_JUNCTION_CFG.bindingLength,
+        bindingTm: j.bindingTm != null ? j.bindingTm : null,
+      };
+    }
+  }
+  return { method: opGroup && opGroup.kind, ...TEMP_JUNCTION_CFG };
+}
 
 /** Get the top-strand sequence of a piece, applying any mutations. */
 function pieceSequence(piece, state) {
@@ -135,12 +161,12 @@ export function buildOverlapTail(side, neighbourSeq, opts = {}) {
   }
 }
 
-function buildFwdTail(opGroup, logicalPrev, leftSnippetSeq, state, cfg) {
+function buildFwdTail(logicalPrev, leftSnippetSeq, state, cfg) {
   // No logical-prev: only the accumulated snippet content (group starts with a
   // snippet ⇒ first amplifiable piece carries it on its tail).
   if (!logicalPrev) return leftSnippetSeq;
   const tail = buildOverlapTail('fwd', pieceSequence(logicalPrev, state), {
-    method: opGroup && opGroup.kind,
+    method: cfg.method, // A3: per-junction method (zone.junctions), not opGroup.kind
     overlapTarget: cfg.overlapTarget,
     overlapLength: cfg.overlapLength,
     overlapTm: cfg.overlapTm,
@@ -150,10 +176,10 @@ function buildFwdTail(opGroup, logicalPrev, leftSnippetSeq, state, cfg) {
   return tail + leftSnippetSeq;
 }
 
-function buildRevTail(opGroup, piece, logicalNext, state, cfg) {
+function buildRevTail(piece, logicalNext, state, cfg) {
   if (!logicalNext) return '';
   return buildOverlapTail('rev', pieceSequence(logicalNext, state), {
-    method: opGroup && opGroup.kind,
+    method: cfg.method, // A3: per-junction method (zone.junctions), not opGroup.kind
     overlapTarget: cfg.overlapTarget,
     overlapLength: cfg.overlapLength,
     overlapTm: cfg.overlapTm,
@@ -266,16 +292,19 @@ export function deriveAutoPrimers(opGroup, state) {
       break;
     }
 
-    const cfg = TEMP_JUNCTION_CFG;
+    // A3 — per-junction config: fwd reads the UPSTREAM junction (prev→piece),
+    // rev reads the DOWNSTREAM junction (piece→next), from zone.junctions.
+    const fwdCfg = junctionConfig(state, opGroup, logicalPrev ? logicalPrev.id : null, piece.id);
+    const revCfg = junctionConfig(state, opGroup, piece.id, logicalNext ? logicalNext.id : null);
     const fullSeq = pieceSequence(piece, state);
     const mutated = Array.isArray(piece.mutations) && piece.mutations.length > 0;
-    const fwdBinding = fullSeq.slice(0, bindingLen(fullSeq, 'fwd', cfg.bindingLength, cfg.bindingTm));
+    const fwdBinding = fullSeq.slice(0, bindingLen(fullSeq, 'fwd', fwdCfg.bindingLength, fwdCfg.bindingTm));
     const revBinding = reverseComplement(
-      fullSeq.slice(-bindingLen(fullSeq, 'rev', cfg.bindingLength, cfg.bindingTm)),
+      fullSeq.slice(-bindingLen(fullSeq, 'rev', revCfg.bindingLength, revCfg.bindingTm)),
     );
 
-    const fwdTail = buildFwdTail(opGroup, logicalPrev, leftSnippets.join(''), state, cfg);
-    const revTail = buildRevTail(opGroup, piece, logicalNext, state, cfg);
+    const fwdTail = buildFwdTail(logicalPrev, leftSnippets.join(''), state, fwdCfg);
+    const revTail = buildRevTail(piece, logicalNext, state, revCfg);
 
     // §6 — junction offsets. fwd realises the join BEFORE this segment
     // (k-1 → k) when a logical-prev exists; rev realises the join AFTER it

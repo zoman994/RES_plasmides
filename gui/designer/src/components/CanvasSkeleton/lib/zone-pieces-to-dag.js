@@ -20,12 +20,16 @@ import { transferAnnotations } from './segment-annotation-transfer';
 import { applyPieceMutations } from './piece-mutations';
 import { defaultJunctionParams, inferEndRequirements } from '../canvas/junction-styles';
 
-const METHOD_TO_JUNCTION = {
+// Engine method dict → junction.kind (palette / glyph / inferEndRequirements).
+// Exported so junction-derive (the JUNCTION pairKey/seed home) reuses one map
+// (carry-note §9a — no second copy).
+export const METHOD_TO_JUNCTION = {
   overlap_pcr: 'overlap',
   gibson: 'overlap',
   golden_gate: 'golden_gate',
   restriction: 're_ligation',
   direct_ligation: 'ligation',
+  kld: 'kld',
 };
 
 const LAYOUT_Y = 480;

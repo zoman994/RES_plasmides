@@ -38,6 +38,7 @@
  */
 import { v7 as uuidv7 } from 'uuid';
 import { deriveAutoPrimers } from '../lib/primer-derive';
+import { pairKeyFor, seedJunction } from '../lib/junction-derive';
 
 /**
  * createOperationDraft — build a fresh draft operation.
@@ -399,14 +400,30 @@ export function operationsReducer(state, action) {
       const nextPieces = pieces.map((p) => (
         selSet.has(p.id) ? { ...p, groupId: op.id, updatedAt: now } : p
       ));
+      // JUNCTION layer 3 (J10/J11) — the op-group sets the METHOD of its
+      // internal junctions in zone.junctions (engine dict `kind`). Op-groups
+      // are advisory and no longer derive primers themselves — the
+      // applyJunctionConfig finalizer derives from this config (A3), so
+      // primers exist on add and stay consistent with the chosen method.
+      // selectedSorted follows zone order → consecutive pairs are real joins.
+      const selectedSorted = selected.slice().sort((a, b) => order.indexOf(a) - order.indexOf(b));
+      const zone = zones.find((z) => z.id === zoneId);
+      const nextJ = { ...((zone && zone.junctions) || {}) };
+      for (let k = 0; k < selectedSorted.length - 1; k += 1) {
+        nextJ[pairKeyFor(selectedSorted[k], selectedSorted[k + 1])] = seedJunction(kind);
+      }
+      const nextZones = zones.map((z) => (z.id === zoneId ? { ...z, junctions: nextJ } : z));
       const withOpGroup = {
         ...state,
         operations: [...(state.operations || []), op],
         pieces: nextPieces,
+        zones: nextZones,
       };
-      // K15 (T8.5) — derive auto primers for the new op-group from the
-      // FRESH state (pieces now carry groupId), then append to the
-      // zone's primer pool. Manual primers (if any) are untouched.
+      // K15 (T8.5) — derive auto primers for the op-group from the FRESH state.
+      // JUNCTION layer 3: the per-junction method was just written into
+      // zone.junctions, so the config-aware engine (A3) yields the chosen
+      // method's tails (e.g. GG → GGTCTC). Op-group-owned (source.opGroupId) →
+      // REMOVE/DISBAND clean them up. Manual primers untouched.
       const derived = deriveAutoPrimers(op, withOpGroup);
       if (derived.length === 0) return withOpGroup;
       const map = withOpGroup.assemblyDraftPrimers || {};
@@ -430,8 +447,8 @@ export function operationsReducer(state, action) {
       const map = state.assemblyDraftPrimers || {};
       const zoneId = op.zoneId;
       const arr = (map[zoneId] || []).filter((p) => !(
-        p && p.origin && p.origin.kind === 'auto-from-group'
-        && p.origin.opGroupId === action.opId
+        p && p.source && p.source.kind === 'auto-group'
+        && p.source.opGroupId === action.opId
         && p.autoMode !== 'manual'
       ));
       return {
@@ -440,6 +457,50 @@ export function operationsReducer(state, action) {
         pieces: nextPieces,
         assemblyDraftPrimers: zoneId ? { ...map, [zoneId]: arr } : map,
       };
+    }
+
+    // SPEC_EDITABLE_ASSEMBLY_S1 §5.6 — DISBAND_OP_GROUP. Used by the
+    // editable-assembly handler before applying an edit to a grouped
+    // piece. Unlike REMOVE_OP_GROUP this also (c) removes any layer-1+
+    // op-group orphaned by the removal (one whose inputPieces consumed an
+    // intermediate piece derived from G) WITHOUT cascading piece teardown,
+    // and leaves the groupId/groupLayer reset on member pieces to the
+    // piecesReducer mirror (cross-domain pattern, like REMOVE_CONTAINER).
+    case 'DISBAND_OP_GROUP': {
+      const G = (state.operations || []).find((o) => o.id === action.opId && o.isOpGroup);
+      if (!G) return state;
+      // (c) intermediate pieces produced by G → the downstream op-groups
+      // that consume them are now orphaned (single level, no cascade).
+      const interFromG = new Set(
+        (state.pieces || [])
+          .filter((p) => p.kind === 'intermediate' && p.derivedFromOpId === action.opId)
+          .map((p) => p.id),
+      );
+      const removeSet = new Set([action.opId]);
+      for (const o of (state.operations || [])) {
+        if (o.isOpGroup && o.id !== action.opId
+          && Array.isArray(o.inputPieces) && o.inputPieces.some((pid) => interFromG.has(pid))) {
+          removeSet.add(o.id);
+        }
+      }
+      const operations = (state.operations || []).filter((o) => !removeSet.has(o.id));
+      // Drop auto-primers tied to ANY removed op-group; keep manual-locked.
+      const map = state.assemblyDraftPrimers || {};
+      const zonesToClean = new Set(
+        (state.operations || [])
+          .filter((o) => removeSet.has(o.id) && o.zoneId)
+          .map((o) => o.zoneId),
+      );
+      let nextMap = map;
+      for (const zid of zonesToClean) {
+        const cur = map[zid] || [];
+        const arr = cur.filter((p) => !(
+          p && p.source && p.source.kind === 'auto-group'
+          && removeSet.has(p.source.opGroupId) && p.autoMode !== 'manual'
+        ));
+        if (arr.length !== cur.length) nextMap = { ...nextMap, [zid]: arr };
+      }
+      return { ...state, operations, assemblyDraftPrimers: nextMap };
     }
 
     default:

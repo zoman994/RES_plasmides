@@ -58,6 +58,7 @@ import { realiseAssembly } from '../lib/assembly-realise';
 import { selectPieceSequence } from './selectors-pieces';
 import { applyAutoReactions } from '../lib/auto-reaction-builder';
 import { applyZoneLayouts } from '../lib/zone-layout';
+import { applyJunctionConfig } from '../lib/junction-config-finalizer';
 
 const REALISE_HARD_CAP = 5;
 
@@ -252,6 +253,15 @@ export function skeletonReducer(state, action) {
   // Idempotent (returns same ref when in sync → no loop, R-T8-2).
   if (next && Array.isArray(next.pieces)) {
     next = applyAutoReactions(next);
+  }
+  // JUNCTION layer 3 (J1/J2/J3/J11) — seed/prune zone.junctions for the
+  // current boundaries (default overlap; closure only when circular) and
+  // derive each zone's primers via the implicit zone-group (config-driven,
+  // engine A3) so primers with tails appear on ADD without a manual Sew.
+  // Manual primers (autoMode:'manual') are preserved. Runs only when pieces
+  // or zones changed (add / reorder / split / remove / topology / config).
+  if (next && Array.isArray(next.zones) && next.zones.length > 0) {
+    next = applyJunctionConfig(next, state);
   }
   // T4 DEC-T4-12 — auto-recompute zone bounds for autoResize zones.
   // GROW-ONLY union (correctness fix vs spec §5.7 shrink-to-fit): per
