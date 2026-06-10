@@ -39,84 +39,159 @@ export default function SegmentZonesOverlay({
   containerRef,
   onZoneClick,
   onZoneHover,
+  // V96 — bumped by SequenceView on every line reflow so the colour
+  // bands re-measure against the final strand-row layout (the rAF-
+  // retry below only covers ~2 frames; the tracksReady flip is later).
+  layoutEpoch = 0,
 }) {
   const anchorRef = useRef(null);
   const [rects, setRects] = useState([]);
+  // JUNCTION step-2 FIX — clickable junction glyphs at each `zone.junctionRight`
+  // boundary (the assembly editor enriches coloredZones with it; Library /
+  // Importer / PCR leave zones plain → none rendered).
+  const [junctionRects, setJunctionRects] = useState([]);
 
   useLayoutEffect(() => {
     if (!Array.isArray(zones) || zones.length === 0) {
       setRects((prev) => (prev.length === 0 ? prev : []));
+      setJunctionRects((prev) => (prev.length === 0 ? prev : []));
       return undefined;
     }
-    const root = (containerRef && containerRef.current)
-      || (anchorRef.current && anchorRef.current.parentElement)
-      || null;
-    if (!root) {
-      setRects((prev) => (prev.length === 0 ? prev : []));
-      return undefined;
-    }
-    const cpl = charsPerLine || 80;
-    const lines = root.querySelectorAll('[data-testid="sequence-view-line"]');
-    if (lines.length === 0) {
-      setRects((prev) => (prev.length === 0 ? prev : []));
-      return undefined;
-    }
-    const out = [];
-    for (let i = 0; i < zones.length; i += 1) {
-      const z = zones[i];
-      const start = Math.max(0, z.start);
-      const end = Math.max(start, z.end);
-      if (end <= start) continue;
-      for (const el of Array.from(lines)) {
-        const elKind = el.getAttribute('data-wraptail-kind') || 'main';
-        if (elKind !== 'main') continue;
-        const lineStart = parseInt(el.dataset.lineStart || '', 10);
-        if (Number.isNaN(lineStart)) continue;
-        const lineEnd = lineStart + cpl;
-        if (lineEnd <= start || lineStart >= end) continue;
-        const fromCh = Math.max(0, start - lineStart);
-        const toCh = Math.min(cpl, end - lineStart);
-        const left = (el.offsetLeft || 0) + (LABEL_WIDTH + fromCh) * charPx;
-        const width = Math.max(1, (toCh - fromCh) * charPx);
-        // Anchor the band to the DNA STRAND rows, not the whole line.
-        // Игорь 18.05.2026: после редизайна праймеров (forward над
-        // цепью, reverse под) line.offsetHeight скачет от наличия
-        // праймеров → полоса окраски «сдвигалась». Strand-row span
-        // стабилен независимо от primer/ruler/annotation/AA треков.
-        const lineTop = el.offsetTop || 0;
-        let top = lineTop;
-        let height = Math.max(10, el.offsetHeight || 18);
-        const strandEls = el.querySelectorAll('[data-testid="sequence-view-strands"]');
-        if (strandEls.length > 0) {
-          const first = strandEls[0];
-          const last = strandEls[strandEls.length - 1];
-          const sTop = first.offsetTop || 0;
-          const sBottom = (last.offsetTop || 0) + (last.offsetHeight || 0);
-          top = lineTop + sTop;
-          height = Math.max(10, sBottom - sTop);
-        }
-        out.push({
-          key: `${z.zoneId}:${lineStart}`,
-          zoneId: z.zoneId,
-          left,
-          top,
-          width,
-          height,
-          // Softer backdrop (Игорь 17.05.2026 «слишком яркое
-          // выделение фрагментов») — fill stays readable behind the
-          // DNA + primer track; the accent is a thin BOTTOM underline,
-          // not a bright top strip in the primer lane.
-          fill: z.isOrphan
-            ? 'repeating-linear-gradient(45deg,rgba(220,38,38,0.10),rgba(220,38,38,0.10) 6px,rgba(220,38,38,0.20) 6px,rgba(220,38,38,0.20) 12px)'
-            : toRgba(z.color, 0.10),
-          stroke: z.isOrphan ? 'rgba(220,38,38,0.55)' : toRgba(z.color, 0.5),
-          label: z.label || '',
-        });
+    // Игорь 20.05.2026 — после exit/re-enter ассемблера на mount
+    // useLayoutEffect стрелял ДО того как inner SequenceLine успевал
+    // отрендерить `[data-testid="sequence-view-strands"]` → fallback
+    // на `line.offsetHeight` (= вся high-line высота, включая AA
+    // tracks) → backdrop вырастал и накладывался поверх AA рамок.
+    // На инкрементальном add фрагментов гонка не воспроизводилась
+    // потому что между add'ами успевал зайти второй render cycle.
+    // Чиним через rAF-retry: если strand-rows ещё не в DOM, перенесём
+    // расчёт на следующий frame, и так до двух попыток.
+    let raf1 = 0;
+    let raf2 = 0;
+    let cancelled = false;
+
+    const compute = (attempt) => {
+      if (cancelled) return;
+      const root = (containerRef && containerRef.current)
+        || (anchorRef.current && anchorRef.current.parentElement)
+        || null;
+      if (!root) {
+        setRects((prev) => (prev.length === 0 ? prev : []));
+        setJunctionRects((prev) => (prev.length === 0 ? prev : []));
+        return;
       }
-    }
-    setRects(out);
-    return undefined;
-  }, [zones, charPx, charsPerLine, containerRef]);
+      const cpl = charsPerLine || 80;
+      const lines = root.querySelectorAll('[data-testid="sequence-view-line"]');
+      if (lines.length === 0) {
+        if (attempt < 2 && typeof requestAnimationFrame === 'function') {
+          raf1 = requestAnimationFrame(() => compute(attempt + 1));
+          return;
+        }
+        setRects((prev) => (prev.length === 0 ? prev : []));
+        setJunctionRects((prev) => (prev.length === 0 ? prev : []));
+        return;
+      }
+      // If no line has strand rows yet, defer one frame — backdrop
+      // height MUST anchor to strands, not the whole line.
+      let anyStrand = false;
+      for (const el of lines) {
+        if (el.querySelector('[data-testid="sequence-view-strands"]')) {
+          anyStrand = true; break;
+        }
+      }
+      if (!anyStrand && attempt < 2 && typeof requestAnimationFrame === 'function') {
+        raf2 = requestAnimationFrame(() => compute(attempt + 1));
+        return;
+      }
+      const out = [];
+      for (let i = 0; i < zones.length; i += 1) {
+        const z = zones[i];
+        const start = Math.max(0, z.start);
+        const end = Math.max(start, z.end);
+        if (end <= start) continue;
+        for (const el of Array.from(lines)) {
+          const elKind = el.getAttribute('data-wraptail-kind') || 'main';
+          if (elKind !== 'main') continue;
+          const lineStart = parseInt(el.dataset.lineStart || '', 10);
+          if (Number.isNaN(lineStart)) continue;
+          const lineEnd = lineStart + cpl;
+          if (lineEnd <= start || lineStart >= end) continue;
+          const fromCh = Math.max(0, start - lineStart);
+          const toCh = Math.min(cpl, end - lineStart);
+          const left = (el.offsetLeft || 0) + (LABEL_WIDTH + fromCh) * charPx;
+          const width = Math.max(1, (toCh - fromCh) * charPx);
+          const lineTop = el.offsetTop || 0;
+          let top = lineTop;
+          let height = Math.max(10, el.offsetHeight || 18);
+          const strandEls = el.querySelectorAll('[data-testid="sequence-view-strands"]');
+          if (strandEls.length > 0) {
+            const first = strandEls[0];
+            const last = strandEls[strandEls.length - 1];
+            const sTop = first.offsetTop || 0;
+            const sBottom = (last.offsetTop || 0) + (last.offsetHeight || 0);
+            top = lineTop + sTop;
+            height = Math.max(10, sBottom - sTop);
+          }
+          out.push({
+            key: `${z.zoneId}:${lineStart}`,
+            zoneId: z.zoneId,
+            left,
+            top,
+            width,
+            height,
+            fill: z.isOrphan
+              ? 'repeating-linear-gradient(45deg,rgba(220,38,38,0.10),rgba(220,38,38,0.10) 6px,rgba(220,38,38,0.20) 6px,rgba(220,38,38,0.20) 12px)'
+              : toRgba(z.color, 0.10),
+            stroke: z.isOrphan ? 'rgba(220,38,38,0.55)' : toRgba(z.color, 0.5),
+            label: z.label || '',
+          });
+        }
+      }
+      setRects(out);
+
+      // JUNCTION step-2 FIX — one clickable glyph per internal boundary
+      // (zone.junctionRight), placed at the seam (= this zone's end offset)
+      // on the line that contains it. Reuses the same line/strand probe.
+      const jout = [];
+      for (let i = 0; i < zones.length; i += 1) {
+        const jr = zones[i] && zones[i].junctionRight;
+        if (!jr) continue;
+        const p = Math.max(0, zones[i].end);
+        for (const el of Array.from(lines)) {
+          const elKind = el.getAttribute('data-wraptail-kind') || 'main';
+          if (elKind !== 'main') continue;
+          const lineStart = parseInt(el.dataset.lineStart || '', 10);
+          if (Number.isNaN(lineStart)) continue;
+          if (p < lineStart || p >= lineStart + cpl) continue;
+          const left = (el.offsetLeft || 0) + (LABEL_WIDTH + (p - lineStart)) * charPx;
+          const lineTop = el.offsetTop || 0;
+          let top = lineTop;
+          let height = Math.max(10, el.offsetHeight || 18);
+          const strandEls = el.querySelectorAll('[data-testid="sequence-view-strands"]');
+          if (strandEls.length > 0) {
+            const first = strandEls[0];
+            const last = strandEls[strandEls.length - 1];
+            const sTop = first.offsetTop || 0;
+            const sBottom = (last.offsetTop || 0) + (last.offsetHeight || 0);
+            top = lineTop + sTop;
+            height = Math.max(10, sBottom - sTop);
+          }
+          jout.push({
+            key: `${jr.pairKey}:${lineStart}`, junction: jr, left, top, height,
+          });
+          break; // a junction is a point → one line only
+        }
+      }
+      setJunctionRects(jout);
+    };
+
+    compute(0);
+    return () => {
+      cancelled = true;
+      if (raf1 && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(raf1);
+      if (raf2 && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(raf2);
+    };
+  }, [zones, charPx, charsPerLine, containerRef, layoutEpoch]);
 
   return (
     <>
@@ -169,6 +244,84 @@ export default function SegmentZonesOverlay({
           />
         </div>
       ))}
+      {junctionRects.map((j) => {
+        // UX slice 1 — a DECIDED junction (a human picked/tuned it) reads as a
+        // solid filled diamond; a TENTATIVE one (untouched auto-guess) reads as
+        // a hollow dashed diamond in the same method colour — "draft", not
+        // "error". So the strip answers "what's confirmed vs still a guess"
+        // before the biologist opens any popup.
+        const decided = j.junction.state === 'decided';
+        const differs = !!j.junction.differsFromAssembly;
+        return (
+          <button
+            key={`junc:${j.key}`}
+            type="button"
+            data-testid="sequence-view-junction"
+            data-pair-key={j.junction.pairKey}
+            data-junction-kind={j.junction.kind}
+            data-method={j.junction.method}
+            data-junction-state={j.junction.state}
+            data-junction-differs={differs ? 'true' : 'false'}
+            title={`Стык: ${j.junction.method} · ${decided ? 'выбран' : 'по умолчанию'}${differs ? ' · отличается от сборки' : ''}`}
+            onClick={(e) => onZoneClick && onZoneClick({
+              ...j.junction, clientX: e.clientX, clientY: e.clientY,
+            })}
+            style={{
+              position: 'absolute',
+              left: j.left - 6,
+              top: Math.max(0, j.top - 9),
+              width: 12,
+              height: j.height + 9,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              background: 'transparent',
+              border: 'none',
+              padding: 0,
+              cursor: 'pointer',
+              pointerEvents: 'auto',
+              zIndex: 4,
+            }}
+          >
+            <span
+              aria-hidden
+              style={{
+                width: 9,
+                height: 9,
+                flexShrink: 0,
+                transform: 'rotate(45deg)',
+                borderRadius: 1,
+                background: decided ? j.junction.fill : 'transparent',
+                border: `1.5px ${decided ? 'solid' : 'dashed'} ${j.junction.stroke}`,
+              }}
+            />
+            {differs && (
+              <span
+                aria-hidden
+                style={{
+                  position: 'absolute',
+                  top: -2,
+                  right: -1,
+                  width: 5,
+                  height: 5,
+                  borderRadius: '50%',
+                  background: 'var(--accent-500, #b85c3e)',
+                  border: '1px solid var(--surface-1, #fff)',
+                }}
+              />
+            )}
+            <span
+              aria-hidden
+              style={{
+                flex: 1,
+                width: 2,
+                background: j.junction.stroke,
+                opacity: decided ? 0.85 : 0.4,
+              }}
+            />
+          </button>
+        );
+      })}
     </>
   );
 }

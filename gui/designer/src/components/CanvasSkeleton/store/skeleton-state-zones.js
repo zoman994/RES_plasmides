@@ -39,6 +39,7 @@ const ZONE_ACTIONS = new Set([
   'SET_NODE_PINNED', // T4.5 DEC-T4.5-04
   'SET_BOUNDARY_OVERLAP', // JUNCTION layer 3 J1 — per-junction config edit
   'OPEN_JUNCTION_METHOD_PICKER', 'CLOSE_JUNCTION_PICKER', // J6b — JunctionControl
+  'SET_ASSEMBLY_METHOD', // UX slice 3 — construct-level method that flows down
 ]);
 
 // JUNCTION layer 3 (J1) — fields a junction config record carries.
@@ -322,6 +323,21 @@ export function zonesReducer(state, action) {
 
     case 'CLOSE_JUNCTION_PICKER':
       return state.junctionPicker ? { ...state, junctionPicker: null } : state;
+
+    // UX slice 3 — the construct-level method. Stores zone.assemblyMethod and
+    // flows it down to every TENTATIVE junction (re-seeds method); DECIDED ones
+    // (autoMode:'manual') keep their per-junction override. The finalizer seeds
+    // newly-added junctions with zone.assemblyMethod too.
+    case 'SET_ASSEMBLY_METHOD': {
+      const zone = zones.find((z) => z.id === action.zoneId);
+      if (!zone || !action.method) return state;
+      const cur = zone.junctions || {};
+      const nextJ = {};
+      for (const [k, j] of Object.entries(cur)) {
+        nextJ[k] = (j && j.autoMode === 'manual') ? j : { ...j, method: action.method };
+      }
+      return patchZone(state, action.zoneId, { assemblyMethod: action.method, junctions: nextJ });
+    }
 
     case 'SPLIT_ZONE':
       return warnToast(state, Z.splitNotImplemented);

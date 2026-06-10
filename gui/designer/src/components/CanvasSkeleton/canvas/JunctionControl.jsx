@@ -20,7 +20,7 @@ import JunctionPopover from './JunctionPopover';
 import { junctionKindForMethod, methodForJunctionKind, seedJunction } from '../lib/junction-derive';
 
 export default function JunctionControl({
-  pairKey, config, position, warnings, onChange, onClose,
+  pairKey, config, position, warnings, onChange, onClose, onMakeAssemblyMethod,
 }) {
   if (!pairKey) return null;
   const cfg = config || seedJunction();
@@ -41,6 +41,7 @@ export default function JunctionControl({
       onSetParams={(patch) => onChange && onChange(patch)}
       onResetAuto={() => onChange && onChange({ ...seedJunction(), autoMode: 'auto' })}
       onCancel={onClose}
+      onMakeAssemblyMethod={onMakeAssemblyMethod}
     />
   );
 }

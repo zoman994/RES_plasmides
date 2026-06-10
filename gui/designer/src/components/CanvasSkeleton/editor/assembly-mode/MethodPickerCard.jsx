@@ -1,23 +1,28 @@
 /**
  * MethodPickerCard — one assembly boundary in the RealiseModal
- * (DEC-CANVAS-ASM-REAL-10). Radio group of the 5 A4 methods + the
- * auto-suggested hint.
+ * (DEC-CANVAS-ASM-REAL-10). JUNCTION step-2 FIX (J9): READ-ONLY now — the
+ * assembly method is owned by the junction on the strip (click → JunctionControl),
+ * so this card no longer offers radio choices; it reflects the method that will
+ * go into the reaction, plus the auto-suggest hint.
  */
-const METHODS = [
-  ['overlap_pcr', 'Overlap-PCR'],
-  ['gibson', 'Gibson'],
-  ['golden_gate', 'Golden Gate'],
-  ['restriction', 'Restriction'],
-  ['direct_ligation', 'Direct ligation'],
-];
+const METHOD_LABELS = {
+  overlap_pcr: 'Overlap-PCR',
+  gibson: 'Gibson',
+  golden_gate: 'Golden Gate',
+  restriction: 'Restriction',
+  direct_ligation: 'Direct ligation',
+  kld: 'KLD',
+};
 
 export default function MethodPickerCard({
-  index, leftName, rightName, suggested, value, onChange,
+  index, leftName, rightName, suggested, method,
 }) {
+  const label = METHOD_LABELS[method] || method || '—';
   return (
     <div
       data-testid="method-picker-card"
       data-boundary={index}
+      data-method={method || ''}
       style={{
         border: '1px solid var(--border-subtle)',
         borderRadius: 6,
@@ -34,27 +39,22 @@ export default function MethodPickerCard({
           Рекомендуется: {suggested.method} ({suggested.confidence}) — {suggested.rationale}
         </div>
       )}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-        {METHODS.map(([id, label]) => (
-          <label
-            key={id}
-            data-testid={`method-opt-${id}`}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 4, fontSize: 11,
-              padding: '4px 8px', borderRadius: 4, cursor: 'pointer',
-              border: '1px solid ' + (value === id ? 'var(--accent-500,#b85c3e)' : 'var(--border-subtle)'),
-              background: value === id ? 'var(--surface-3,rgba(184,92,62,0.10))' : 'var(--surface-1)',
-            }}
-          >
-            <input
-              type="radio"
-              name={`boundary-${index}`}
-              checked={value === id}
-              onChange={() => onChange(id)}
-            />
-            {label}
-          </label>
-        ))}
+      <div
+        data-testid="method-picker-method"
+        style={{
+          display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5,
+          padding: '4px 8px', borderRadius: 4,
+          border: '1px solid var(--accent-500,#b85c3e)',
+          background: 'var(--surface-3,rgba(184,92,62,0.10))',
+        }}
+      >
+        Метод: <strong>{label}</strong>
+        {METHOD_LABELS[method] ? (
+          <span style={{ color: 'var(--text-tertiary)' }}>({method})</span>
+        ) : null}
+      </div>
+      <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 4 }}>
+        Метод задаётся кликом по стыку в сборке.
       </div>
     </div>
   );

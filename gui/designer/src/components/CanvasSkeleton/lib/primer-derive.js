@@ -27,23 +27,29 @@ import { draftFromZone } from './zone-pieces-to-dag';
 import { segmentBoundaries } from './assembly-model';
 import { pairKeyFor } from './junction-derive';
 
-const DEFAULT_BINDING_LEN = 20;
+const DEFAULT_BINDING_LEN = 20;   // no-Tm fallback length (when bindingTm unset)
+const DEFAULT_BINDING_TM = 60;    // annealing Tm target — same goal as findBinding
 const DEFAULT_OVERLAP_LEN = 30;   // §9b temp config default (was 25, two-sided)
 const GG_RECOGNITION = 'GGTCTC';  // BsaI; per-enzyme override = follow-up
 const GG_SPACER = 'A';            // concrete spacer (was literal 'N' in the oligo)
 const RE_PROTECTIVE = 'GCGC';     // protective bases OUTSIDE the RE site (V125, NEB ~4 nt)
 const TAIL_MIN = 18; const TAIL_MAX = 40; // overlap-tail length bounds (Tm mode, A1)
-const BIND_MIN = 16; const BIND_MAX = 36; // binding length bounds (Tm mode, A1b)
+// Binding length bounds (Tm mode, A1b). Floor aligned to the proven
+// local-primer-design findBinding (minLen 18); BIND_MAX 36 keeps more room for
+// AT-rich ends than the old path's 30.
+const BIND_MIN = 18; const BIND_MAX = 36;
 const SKIPPED_KINDS = new Set(['snippet', 'gap']);
 
 // §9b — fallback config when a junction has no zone.junctions entry yet
 // (legacy / first-or-last piece). One-sided overlap on the downstream fwd.
+// Binding is Tm-targeted by default (≥60 °C) so auto primers don't ship flat
+// 20-nt low-Tm bindings; an explicit bindingLength (level 1/2) still wins.
 const TEMP_JUNCTION_CFG = {
   overlapTarget: 'right',
   overlapLength: DEFAULT_OVERLAP_LEN,
   overlapTm: null,
-  bindingLength: DEFAULT_BINDING_LEN,
-  bindingTm: null,
+  bindingLength: null,
+  bindingTm: DEFAULT_BINDING_TM,
 };
 
 /**

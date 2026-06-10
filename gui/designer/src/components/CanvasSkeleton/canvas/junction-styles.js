@@ -150,12 +150,16 @@ export function inferEndRequirements(kind, overlapTarget = 'right', length = nul
   let base;
   switch (kind) {
     case 'overlap':
-    case 're_ligation':
+      // Overlap PCR / Gibson — the homology arm length flows into the overhang.
       base = { fromEnd: overhang(length ?? 30), toEnd: overhang(length ?? 30) };
       break;
     case 'golden_gate':
     case 'sticky_end':
-      base = { fromEnd: overhang(length ?? 4), toEnd: overhang(length ?? 4) };
+    case 're_ligation':
+      // Enzyme-defined sticky ends — a FIXED placeholder overhang (≈4 nt), NOT
+      // the overlap `length` (a stale overlapLength must not leak into preview;
+      // exact per-enzyme overhang comes with the enzyme picker, step 3).
+      base = { fromEnd: overhang(4), toEnd: overhang(4) };
       break;
     case 'ligation':
     case 'blunt':
@@ -168,11 +172,11 @@ export function inferEndRequirements(kind, overlapTarget = 'right', length = nul
       base = { fromEnd: any(), toEnd: any() };
       break;
   }
-  // overlapTarget narrows which side actually carries the requirement:
-  // a single-sided overlap leaves the opposite end unconstrained.
-  // 'right' (default) / 'both' keep the symmetric requirement.
-  if (overlapTarget === 'left') return { fromEnd: base.fromEnd, toEnd: any() };
-  if (overlapTarget === 'right' && kind !== 'auto' && kind !== 'preformed') return base;
+  // overlapTarget narrows which side carries the requirement ONLY for overlap:
+  // a single-sided overlap leaves the opposite end unconstrained. Enzyme kinds
+  // carry their overhang on BOTH ends symmetrically — a stale 'left' must not
+  // drop the to-end to `any` for RE/GG.
+  if (kind === 'overlap' && overlapTarget === 'left') return { fromEnd: base.fromEnd, toEnd: any() };
   return base;
 }
 

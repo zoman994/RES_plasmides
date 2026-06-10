@@ -54,7 +54,9 @@ describe('JUNCTION L3 — seed on add (J1/J2/J3)', () => {
     expect(z.junctions[PK].method).toBe('overlap_pcr');
     expect(z.junctions[PK].overlapTarget).toBe('right');
     expect(z.junctions[PK].overlapLength).toBe(30);
-    expect(z.junctions[PK].bindingLength).toBe(20);
+    // Звено — binding is Tm-targeted by default (not a flat 20 nt).
+    expect(z.junctions[PK].bindingLength).toBeNull();
+    expect(z.junctions[PK].bindingTm).toBe(60);
   });
 
   it('linear zone has NO closure junction; circular zone DOES (J2/J4)', () => {

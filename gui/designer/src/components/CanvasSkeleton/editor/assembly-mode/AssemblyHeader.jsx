@@ -7,10 +7,24 @@
  */
 import InlineEditableTitle from '../../../Library/inspector/InlineEditableTitle';
 
+// UX slice 3 — construct-level assembly method (engine dict → biolog label).
+const ASSEMBLY_METHODS = [
+  ['overlap_pcr', 'Overlap PCR'],
+  ['gibson', 'Gibson'],
+  ['golden_gate', 'Golden Gate'],
+  ['restriction', 'Restriction'],
+  ['direct_ligation', 'Ligation'],
+  ['kld', 'KLD'],
+];
+
 export default function AssemblyHeader({
   draft, length, segmentCount, paletteLegend,
   onRename, onToggleTopology, onRealise, canRealise,
   onToggleSequenceView,
+  // UX slice 3 — the whole-assembly method + its setter (flows down to
+  // tentative junctions). Omitted by stand-alone unit tests → dropdown hidden.
+  assemblyMethod,
+  onAssemblyMethodChange,
   /* V92 — caller (AssemblyShellBody) tells header that some side-panel
      is currently hidden via its × button. In that mode, «Палитра»
      click takes over to restore them (not open the legend). */
@@ -69,6 +83,36 @@ export default function AssemblyHeader({
       >
         {circular ? '⭕ circular' : '— linear'}
       </button>
+
+      {/* UX slice 3 — one method for the whole assembly; flows down to every
+          junction the biolog hasn't overridden. Per-junction override stays
+          on the strip glyph + popover. */}
+      {typeof onAssemblyMethodChange === 'function' && (
+        <label
+          style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--text-secondary)' }}
+          title="Метод сборки — применяется ко всем стыкам, которые вы не переопределили вручную"
+        >
+          Сборка:
+          <select
+            data-testid="assembly-method-select"
+            value={assemblyMethod || 'overlap_pcr'}
+            onChange={(e) => onAssemblyMethodChange(e.target.value)}
+            style={{
+              fontSize: 11,
+              padding: '3px 6px',
+              background: 'var(--surface-1)',
+              color: 'var(--text-primary)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 4,
+              cursor: 'pointer',
+            }}
+          >
+            {ASSEMBLY_METHODS.map(([id, label]) => (
+              <option key={id} value={id}>{label}</option>
+            ))}
+          </select>
+        </label>
+      )}
 
       {/* V92 + V93 — «Палитра» button.
           V93 (Игорь): color legend dropdown снят — цвет меняется кликом

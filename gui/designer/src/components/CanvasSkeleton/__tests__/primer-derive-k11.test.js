@@ -61,12 +61,17 @@ describe('K11 — deriveAutoPrimers basic shape', () => {
     expect(r).toHaveLength(4);
   });
 
-  it('fwd binding = first 20nt of piece sequence; rev binding = RC of last 20nt', () => {
+  it('fwd binding = Tm-targeted prefix of piece; rev = RC of the Tm-targeted suffix', () => {
     const p = sourced('p1', 0, 40);
     const r = deriveAutoPrimers(group('overlap_pcr', ['p1']), makeState([p]));
     const expected = CONTAINER.sequence.slice(0, 40);
-    expect(r[0].bindingSequence).toBe(expected.slice(0, 20));
-    expect(r[1].bindingSequence).toBe(reverseComplement(expected.slice(-20)));
+    // Звено — binding is Tm-targeted (≥ BIND_MIN 18, extends past the old flat
+    // 20); geometry intact: fwd = piece prefix, rev = RC of piece suffix.
+    const fwdLen = r[0].bindingSequence.length;
+    const revLen = r[1].bindingSequence.length;
+    expect(fwdLen).toBeGreaterThanOrEqual(18);
+    expect(r[0].bindingSequence).toBe(expected.slice(0, fwdLen));
+    expect(r[1].bindingSequence).toBe(reverseComplement(expected.slice(-revLen)));
   });
 });
 
@@ -184,7 +189,10 @@ describe('K11 — metadata + mutagenic primer', () => {
     };
     const r = deriveAutoPrimers(group('overlap_pcr', ['i1']), makeState([inter]));
     expect(r).toHaveLength(2);
-    expect(r[0].bindingSequence).toBe('ATGAAACCCGGGTTTAAACC');
+    // Звено — Tm-targeted prefix of the inline sequence (≥18 nt), not flat 20.
+    const fwdLen = r[0].bindingSequence.length;
+    expect(fwdLen).toBeGreaterThanOrEqual(18);
+    expect(r[0].bindingSequence).toBe(inter.sequence.slice(0, fwdLen));
   });
 
   it('mutation on a sourced piece → fwd binding is mutated at that position', () => {

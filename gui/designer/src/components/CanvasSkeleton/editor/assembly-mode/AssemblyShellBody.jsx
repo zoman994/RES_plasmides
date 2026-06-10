@@ -27,23 +27,31 @@ import SegmentList from './SegmentList';
    Импорт сохранён закомментированным как pointer для cleanup-PR. */
 // import SegmentDetailPanel from './SegmentDetailPanel';
 import AssemblyToolbar from './AssemblyToolbar';
-import PlaceholderTreePicker from '../../canvas/PlaceholderTreePicker';
-import { v7 as uuidv7 } from 'uuid';
-import InsertGapModal from './InsertGapModal';
-import SnippetCatalogModal from './SnippetCatalogModal';
-import SynthesisModal from './SynthesisModal';
+// SPEC_ASSEMBLY_PICKER_UNIFICATION — единый library-picker для обеих
+// поверхностей; bespoke EmptyAssemblyLibrary + assembly-usage
+// PlaceholderTreePicker удалены.
+import LibrarySearchBar from '../../canvas/LibrarySearchBar';
+import { useStore } from '../../../../store';
 import RangePickerModal from './RangePickerModal';
-import SnippetOnboardingTip from './SnippetOnboardingTip';
 import OpGroupPicker from './OpGroupPicker';
 import AssemblyPipelinePanel from './AssemblyPipelinePanel';
 import MutationModal from './MutationModal';
 import { autoGroupPipeline } from '../../lib/auto-group-pipeline';
 import AssemblyPrimersPanel from './AssemblyPrimersPanel';
 import RealiseModal from './RealiseModal';
-import EmptyAssemblyLibrary from './EmptyAssemblyLibrary';
 import { useAssemblyPrimerWriting } from './useAssemblyPrimerWriting';
 import { findInsertIndexAtPosition } from '../../lib/assembly-primer-utils';
+import { enrichZonesWithJunctions, assemblyReadiness } from '../../lib/junction-derive';
+import JunctionControl from '../../canvas/JunctionControl';
 import { useSequenceSelection } from '../../../../hooks/useSequenceSelection';
+import { routeAssemblyEdit, computeSeqDelta, SYNTHESIS_THRESHOLD_DEFAULT } from '../../lib/assembly-edit-router';
+import { STRINGS } from '../../../../lib/strings';
+
+const EA = STRINGS.canvasSkeleton.editableAssembly;
+// noop reasons that mean "deferred to S2" → surface an info toast; the
+// rest (malformed ops) are silent.
+const DEFERRED_NOOP = new Set(['sourced-interior', 'intermediate-interior', 'cross-boundary']);
+const EMPTY_JUNCTIONS = {};
 
 function segLabel(seg, idx) {
   if (seg.label) return seg.label;
@@ -62,12 +70,29 @@ function segLabel(seg, idx) {
 export default function AssemblyShellBody({ draft }) {
   const state = useSkeletonState();
   const actions = useSkeletonActions();
+  // Global library (unified picker source) — same shape EmptyAssemblyLibrary
+  // read before it was removed (SPEC_ASSEMBLY_PICKER_UNIFICATION).
+  const libraryEntriesById = useStore((s) => s.libraryEntries);
+  const projectsById = useStore((s) => s.projects);
+  const currentProjectId = useStore((s) => s.currentProjectId);
   // Always-fresh skeleton state for the post-dispatch macrotask in
   // onPickEntry — the captured `state` closure is stale right after the
   // ADD_CONTAINER_FROM_ENTRY dispatch re-render (Игорь 19.05.2026).
   const stateRef = useRef(state);
   stateRef.current = state;
   const draftId = draft.id;
+  // JUNCTION step-2 FIX — the live zone (this editor's draftId IS the zone id
+  // for a zone target) + its per-junction config. The clickable strip junction
+  // + JunctionControl read this; legacy assemblyDrafts have no zone → no glyph.
+  const zone = useMemo(
+    () => (state.zones || []).find((z) => z.id === draftId) || null,
+    [state.zones, draftId],
+  );
+  const isZoneTarget = !!zone;
+  const zoneJunctions = (zone && zone.junctions) || EMPTY_JUNCTIONS;
+  // UX slice 3 — the construct-level method (default overlap PCR); junctions
+  // the biolog hasn't overridden inherit it, divergent ones are flagged.
+  const assemblyMethod = (zone && zone.assemblyMethod) || 'overlap_pcr';
 
   const { boundaries, totalLength } = useMemo(
     () => segmentBoundaries(draft),
@@ -90,14 +115,23 @@ export default function AssemblyShellBody({ draft }) {
     [draft, boundaries, state.containers],
   );
 
-  const coloredZones = useMemo(() => boundaries.map((b, i) => ({
-    zoneId: b.segmentId,
-    start: b.startOnAssembly,
-    end: b.endOnAssembly,
-    color: b.color,
-    label: segLabel(draft.segments[i], i),
-    isOrphan: orphanIds.has(b.segmentId),
-  })), [boundaries, draft.segments, orphanIds]);
+  const coloredZones = useMemo(() => {
+    const base = boundaries.map((b, i) => ({
+      zoneId: b.segmentId,
+      start: b.startOnAssembly,
+      end: b.endOnAssembly,
+      color: b.color,
+      label: segLabel(draft.segments[i], i),
+      isOrphan: orphanIds.has(b.segmentId),
+    }));
+    // JUNCTION step-2 FIX — enrich each internal boundary with a junctionRight
+    // (method/kind from zone.junctions) so SegmentZonesOverlay draws the
+    // clickable junction glyph on the editor strip. Legacy drafts (no zone)
+    // stay plain → no glyph.
+    return isZoneTarget ? enrichZonesWithJunctions(base, zoneJunctions, assemblyMethod) : base;
+  }, [boundaries, draft.segments, orphanIds, isZoneTarget, zoneJunctions, assemblyMethod]);
+  // UX slice 4 — one readiness summary for the whole assembly.
+  const readiness = useMemo(() => assemblyReadiness(coloredZones), [coloredZones]);
 
   // Selection via shared hook (SPEC_VIEWER_UNIFICATION). reBehavior:
   // 'off' — assembled view has coloured zones, no RE pair/cut here.
@@ -106,9 +140,6 @@ export default function AssemblyShellBody({ draft }) {
   const [selectedSegmentId, setSelectedSegmentId] = useState(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [gapOpen, setGapOpen] = useState(false);
-  const [snippetOpen, setSnippetOpen] = useState(false);
-  const [synthesisOpen, setSynthesisOpen] = useState(false);
   // K5 — range-picker context: { kind:'entry'|'container', payload, atIndex? }.
   const [rangeSource, setRangeSource] = useState(null);
   // K7 — grouping: per-zone-piece selection + OpGroupPicker open state.
@@ -117,6 +148,9 @@ export default function AssemblyShellBody({ draft }) {
   // K14 — mutation modal context: { pieceId, fromBase, position } | null.
   const [mutationFor, setMutationFor] = useState(null);
   const [realiseOpen, setRealiseOpen] = useState(false);
+  // JUNCTION step-2 FIX — viewport coords of the clicked junction glyph so the
+  // JunctionControl popover anchors to it (else it lands top-left, looked broken).
+  const [junctionPos, setJunctionPos] = useState(null);
   // V92 — каждая правая/нижняя панель получает свой close (×); скрытие
   // живёт в `hiddenPanels` set. «Палитра» button (AssemblyHeader) ребёт
   // restoring: click clears the set → все скрытые панели возвращаются.
@@ -136,11 +170,151 @@ export default function AssemblyShellBody({ draft }) {
     setDetailOpen(true);
   }, []);
 
+  // JUNCTION step-2 FIX — the strip's onZoneClick channel now carries EITHER a
+  // segment-zone id (string → open segment detail) OR a junction descriptor
+  // (object with pairKey → open JunctionControl for that boundary). The strip
+  // junction glyph is the only emitter of the object form; segment handles stay
+  // string, so all other consumers are unaffected.
+  const onZoneClick = useCallback((arg) => {
+    if (arg && typeof arg === 'object' && arg.pairKey) {
+      setJunctionPos(Number.isFinite(arg.clientX)
+        ? { x: arg.clientX, y: arg.clientY } : null);
+      if (typeof actions.zoneDispatch === 'function') {
+        actions.zoneDispatch({
+          type: 'OPEN_JUNCTION_METHOD_PICKER',
+          zoneId: draftId,
+          fromPieceId: arg.fromPieceId,
+          toPieceId: arg.toPieceId,
+        });
+      }
+      return;
+    }
+    openDetail(arg);
+  }, [actions, draftId, openDetail]);
+
   // K8 — primer writing (Ctrl+R / Ctrl+Alt+R + right-click), reuses the
   // F3 V72/V74 mechanism but attaches the primer to the assembly draft.
   const { onWritePrimer, primers: viewerPrimers } = useAssemblyPrimerWriting({
     draftId, sequence, boundaries, caretAnchor, caretPos, actions, state,
   });
+  // Del on a selected primer in the assembly sequence-view removes it from
+  // the draft (the viewer hit carries `id` via viewerPrimers).
+  const onDeletePrimer = useCallback((hit) => {
+    if (hit && hit.id) actions.removeAssemblyPrimer(draftId, hit.id);
+  }, [actions, draftId]);
+
+  // ── SPEC_EDITABLE_ASSEMBLY_S1 — editable assembled view ────────────
+  // §5.9 — settings-tunable synthesis threshold (default 80).
+  const synthesisLengthThreshold = useStore((s) => s.displaySettings?.synthesisLengthThreshold);
+  const threshold = Number.isFinite(synthesisLengthThreshold)
+    ? synthesisLengthThreshold : SYNTHESIS_THRESHOLD_DEFAULT;
+
+  // §5.1 — the assembled view is editable when the zone is not read-only
+  // (always false in this skeleton) AND no piece is frozen by an executed
+  // reaction AND there is no source-less orphan. Otherwise editing the
+  // derived sequence is unsafe → read-only + an explanatory banner.
+  const zonePieces = useMemo(
+    () => (state.pieces || []).filter((p) => p.zoneId === draftId),
+    [state.pieces, draftId],
+  );
+  const hasFrozenPiece = useMemo(() => zonePieces.some((p) => p.frozen), [zonePieces]);
+  const hasOrphan = orphans.length > 0;
+  // The piece-based edit path (INSERT_SNIPPET / UPDATE_PIECE) only exists
+  // for zone-backed assemblies; a legacy assemblyDrafts target has no
+  // pieces, so it stays read-only. (isZoneTarget derived up top.)
+  const editable = isZoneTarget && !hasFrozenPiece && !hasOrphan;
+  const disabledBannerMsg = hasFrozenPiece ? EA.frozenBanner : (hasOrphan ? EA.orphanBanner : null);
+
+  // §5.2/§5.8 (+ S2 §5) — translate an onSequenceEdit-op (assembly
+  // coords) into piece operation(s) via the pure router, disband the
+  // op-group(s) of every affected piece first (§5.6/S2 §5.8), apply, then
+  // move the caret.
+  const insertSnippetAt = useCallback((sequence, insertAtIndex) => {
+    actions.insertSnippet(draftId, {
+      sequence, embedsInPrimer: true, name: EA.newBlockName,
+    }, insertAtIndex);
+  }, [actions, draftId]);
+
+  const onSequenceEdit = useCallback((op) => {
+    const result = routeAssemblyEdit(op, draft, boundaries, { threshold });
+    if (!result || result.kind === 'noop') {
+      if (result && DEFERRED_NOOP.has(result.reason)) {
+        actions.showToast({ kind: 'info', message: EA.editDeferred });
+      }
+      return;
+    }
+    // §5.6 / S2 §5.8 — disband the op-group of every affected piece first.
+    const affected = result.kind === 'plan'
+      ? (result.steps || []).map((s) => s.pieceId).filter(Boolean)
+      : (result.pieceId ? [result.pieceId] : []);
+    let disbanded = false;
+    for (const pid of affected) {
+      const piece = (state.pieces || []).find((p) => p.id === pid);
+      if (piece && piece.groupId) { actions.disbandOpGroup(piece.groupId); disbanded = true; }
+    }
+    if (disbanded) actions.showToast({ kind: 'warning', message: EA.groupDisbanded });
+
+    switch (result.kind) {
+      case 'update-inline': {
+        const changes = result.targetKind === 'gap'
+          ? { gapSequence: result.sequence, gapLength: result.sequence.length, gapHint: 'known' }
+          : { sequence: result.sequence, ...(result.kindFlip ? { kind: result.kindFlip } : {}) };
+        actions.updatePiece(result.pieceId, changes);
+        break;
+      }
+      case 'remove-block':
+        actions.removeSegment(draftId, result.pieceId);
+        break;
+      case 'new-block':
+        insertSnippetAt(result.char, result.insertAtIndex);
+        break;
+      case 'split-insert': // S2 — insert inside a sourced piece
+        actions.splitPiece(result.pieceId, result.atOffset);
+        insertSnippetAt(result.char, result.insertAtIndex);
+        break;
+      case 'mutate': // S2 — equal-length substitution
+        for (const m of result.mutations || []) actions.addPieceMutation(result.pieceId, m);
+        break;
+      case 'trim': // S2 — edge delete in a sourced piece
+        actions.updatePiece(result.pieceId, { ranges: [result.range] });
+        break;
+      case 'split-delete': // S2 — mid delete in a sourced piece
+        actions.splitPiece(result.pieceId, result.atOffset, result.deleteLen);
+        if (result.insertSeq) insertSnippetAt(result.insertSeq, result.insertAtIndex);
+        break;
+      case 'plan': // S2 — spanning delete / replace
+        for (const step of result.steps || []) {
+          if (step.op === 'remove') actions.removeSegment(draftId, step.pieceId);
+          else if (step.op === 'trim') actions.updatePiece(step.pieceId, { ranges: [step.range] });
+          else if (step.op === 'splice-inline') {
+            const ch = step.targetKind === 'gap'
+              ? { gapSequence: step.sequence, gapLength: step.sequence.length, gapHint: 'known' }
+              : { sequence: step.sequence };
+            actions.updatePiece(step.pieceId, ch);
+          } else if (step.op === 'insert-snippet') {
+            insertSnippetAt(step.sequence, step.insertAtIndex);
+          }
+        }
+        break;
+      default: break;
+    }
+    // S3 §5.4 — maintain SAVED primer coordinates after the edit shifted
+    // the assembled sequence (shift right-of / stale-mark in-region).
+    const sd = computeSeqDelta(op);
+    if (sd) actions.shiftAssemblyPrimers(draftId, sd.atPos, sd.delta);
+    // §5.8 — caret follows the edit (insert → +1; delete → in place;
+    // replace → after the replacement).
+    let nextCaret = null;
+    if (op.kind === 'insert') nextCaret = op.pos + 1;
+    else if (op.kind === 'delete') nextCaret = op.pos;
+    else if (op.kind === 'replace') {
+      nextCaret = op.start + (typeof op.replacement === 'string' ? op.replacement.length : 0);
+    }
+    if (nextCaret != null) {
+      sel.setCaretPos(nextCaret);
+      sel.setCaretAnchor(nextCaret);
+    }
+  }, [draft, boundaries, threshold, actions, state.pieces, draftId, sel, insertSnippetAt]);
 
   // K5 — drag a container from the sidebar; drop anywhere on the viewer
   // opens the RangePickerModal pre-loaded with that container so the
@@ -218,38 +392,21 @@ export default function AssemblyShellBody({ draft }) {
     circular: !!(rangeSource.payload.topology && rangeSource.payload.topology.circular),
   }) : null;
 
-  const onInsertGap = useCallback((params) => {
-    actions.insertManualSegment(draftId, params, undefined);
-    setGapOpen(false);
-  }, [actions, draftId]);
-
-  // K3 — «+ Обвес»: a snippet piece (embeds into a neighbour primer
-  // tail; visually a strip block). Closes the catalog on pick.
-  const onInsertSnippet = useCallback((snippet) => {
-    actions.insertSnippet(draftId, snippet, undefined);
-    setSnippetOpen(false);
-  }, [actions, draftId]);
-
-  // K4 — «+ Синтез». inline → kind='synthesis' piece. container →
-  // materialise a reusable molecule (caller-side id, no race) then a
-  // sourced segment off it (same shape as the drag-insert path).
-  const onInsertSynthesis = useCallback(({ sequence, name, mode }) => {
-    if (mode === 'container') {
-      const cid = `cnt-${uuidv7()}`;
-      actions.addContainer({
-        id: cid,
-        kind: 'molecule',
-        name: name || 'Синтез',
-        sequence,
-        annotations: [],
-        topology: { circular: false },
-      });
-      actions.insertSegment(draftId, cid, 0, sequence.length, false, undefined);
-    } else {
-      actions.insertSynthesis(draftId, { sequence, name }, undefined);
+  // SPEC_ASSEMBLY_CUSTOM_SEGMENT §3 (SAFE) — «вставить свой сиквенс» из
+  // единого пикера. Reuses the existing INSERT_MANUAL_SEGMENT path (V83
+  // known-gap: stored verbatim as `gapSequence`). Position: after the
+  // selected segment, else appended at the end. No SPLIT_PIECE (that's
+  // §6, deferred). Закрывает popover после вставки.
+  const onPasteSequence = useCallback((seq) => {
+    if (!seq) return;
+    let atIndex; // undefined → append at end
+    if (selectedSegmentId) {
+      const idx = (draft.segments || []).findIndex((s) => s.id === selectedSegmentId);
+      if (idx >= 0) atIndex = idx + 1;
     }
-    setSynthesisOpen(false);
-  }, [actions, draftId]);
+    actions.insertManualSegment(draftId, { sequence: seq }, atIndex);
+    setPickerOpen(false);
+  }, [actions, draftId, selectedSegmentId, draft.segments]);
 
   return (
     <div
@@ -275,6 +432,13 @@ export default function AssemblyShellBody({ draft }) {
           draftId, !(draft.topology && draft.topology.circular),
         )}
         onRealise={() => setRealiseOpen(true)}
+        /* UX slice 3 — whole-assembly method; flows down to un-overridden
+           junctions. Only for a zone assembly with ≥2 segments (a junction
+           exists); legacy drafts leave it undefined → dropdown hidden. */
+        assemblyMethod={assemblyMethod}
+        onAssemblyMethodChange={(isZoneTarget && draft.segments.length >= 2)
+          ? (m) => actions.zoneDispatch({ type: 'SET_ASSEMBLY_METHOD', zoneId: draftId, method: m })
+          : undefined}
         /* V92 — «Палитра» button restores hidden side-panels back when
            at least one is hidden. Otherwise behaves as before (opens
            color legend). */
@@ -294,10 +458,6 @@ export default function AssemblyShellBody({ draft }) {
         }}
       />
 
-      <SnippetOnboardingTip
-        hasSnippet={(draft.segments || []).some((s) => s.pieceKind === 'snippet')}
-      />
-
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
         <div
           data-testid="assembly-viewer-wrap"
@@ -309,33 +469,97 @@ export default function AssemblyShellBody({ draft }) {
           }}
         >
           {draft.segments.length === 0 ? (
-            <EmptyAssemblyLibrary
-              onPickEntry={onPickEntry}
-              onAddSnippet={() => setSnippetOpen(true)}
-              onAddSynthesis={() => setSynthesisOpen(true)}
-              onAddGap={() => setGapOpen(true)}
-            />
+            <div
+              data-testid="assembly-empty-library"
+              style={{
+                flex: 1,
+                minHeight: 0,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                padding: '24px 16px',
+                gap: 12,
+                overflow: 'hidden',
+              }}
+            >
+              <div
+                data-testid="assembly-empty-hint"
+                style={{
+                  fontSize: 12.5, color: 'var(--text-secondary)', textAlign: 'center', maxWidth: 560,
+                }}
+              >
+                <div style={{ fontSize: 20, marginBottom: 4 }} aria-hidden>📚</div>
+                Выберите контейнер из библиотеки — откроется sequence-viewer
+                для выбора фрагмента (праймеры / сайты рестрикции / диапазон / фича).
+              </div>
+              <LibrarySearchBar
+                inline
+                autoFocus
+                testId="assembly-source-picker"
+                libraryEntries={libraryEntriesById}
+                projectsById={projectsById}
+                currentProjectId={currentProjectId}
+                onSelectEntry={({ entry }) => { if (entry) onPickEntry(entry); }}
+                onPasteSequence={onPasteSequence}
+              />
+            </div>
           ) : (
-            <SequenceTab
-              sequence={sequence}
-              annotations={assemblyAnnotations}
-              topology={draft.topology?.circular ? 'circular' : 'linear'}
-              name={draft.name}
-              editable={false}
-              isReadOnlyZone={false}
-              caretPos={sel.caretPos}
-              caretAnchor={sel.caretAnchor}
-              selectionMode={sel.selectionMode}
-              selectionStrand={sel.selectionStrand}
-              onCaretChange={sel.onCaretChange}
-              onSelectRange={sel.onSelectRange}
-              onWritePrimer={onWritePrimer}
-              showSelectionTm
-              primers={viewerPrimers}
-              coloredZones={coloredZones}
-              onZoneClick={openDetail}
-              onZoneHover={() => {}}
-            />
+            <>
+              {/* UX slice 4 — one readiness line: settled vs N defaults to check. */}
+              {isZoneTarget && readiness.total > 0 && (
+                <div
+                  data-testid="assembly-readiness"
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    padding: '5px 12px', marginBottom: 8, fontSize: 11.5,
+                    borderRadius: 'var(--radius-md)',
+                    color: readiness.ready ? 'var(--emerald, #4A7C59)' : 'var(--text-secondary)',
+                    background: 'var(--surface-2)', border: '0.5px solid var(--border-subtle)',
+                  }}
+                >
+                  {readiness.ready
+                    ? '✓ Все стыки заданы — готово к сборке'
+                    : `${readiness.tentative} стык(ов) по умолчанию — проверьте`}
+                  {readiness.differs > 0 ? ` · ${readiness.differs} отличается от сборки` : ''}
+                </div>
+              )}
+              {!editable && disabledBannerMsg && (
+                <div
+                  data-testid="assembly-edit-disabled-banner"
+                  style={{
+                    padding: '6px 12px',
+                    marginBottom: 8,
+                    fontSize: 11.5,
+                    color: 'var(--text-secondary)',
+                    background: 'var(--surface-2)',
+                    border: '0.5px solid var(--border-subtle)',
+                    borderRadius: 'var(--radius-md)',
+                  }}
+                >{disabledBannerMsg}</div>
+              )}
+              <SequenceTab
+                sequence={sequence}
+                annotations={assemblyAnnotations}
+                topology={draft.topology?.circular ? 'circular' : 'linear'}
+                name={draft.name}
+                editable={editable}
+                onSequenceEdit={editable ? onSequenceEdit : undefined}
+                isReadOnlyZone={false}
+                caretPos={sel.caretPos}
+                caretAnchor={sel.caretAnchor}
+                selectionMode={sel.selectionMode}
+                selectionStrand={sel.selectionStrand}
+                onCaretChange={sel.onCaretChange}
+                onSelectRange={sel.onSelectRange}
+                onWritePrimer={onWritePrimer}
+                onDeletePrimer={onDeletePrimer}
+                showSelectionTm
+                primers={viewerPrimers}
+                coloredZones={coloredZones}
+                onZoneClick={onZoneClick}
+                onZoneHover={() => {}}
+              />
+            </>
           )}
         </div>
 
@@ -464,23 +688,33 @@ export default function AssemblyShellBody({ draft }) {
 
       <AssemblyToolbar
         onAddSegment={() => setPickerOpen(true)}
-        onAddSnippet={() => setSnippetOpen(true)}
-        onAddSynthesis={() => setSynthesisOpen(true)}
-        onAddGap={() => setGapOpen(true)}
         selectedSegmentIds={selectedSegmentIds}
         onSewSelected={() => setGroupPickerIds(Array.from(selectedSegmentIds))}
-        /* Игорь 20.05.2026: «снизу кнопки обвес и тд убрать». When the
-           assembly is empty, the toolbar hides the + buttons and shows
-           only Undo/Redo. The + entry-points are taken over by the
-           inline EmptyAssemblyLibrary in the centre. */
+        /* SPEC_ASSEMBLY_CUSTOM_SEGMENT — single «+ Сегмент» button (Обвес/
+           Синтез/Gap упразднены). Empty assembly: toolbar compact (only
+           Undo/Redo); add-surface is the centre unified picker. */
         compact={draft.segments.length === 0}
       />
 
       {pickerOpen && (
-        <PlaceholderTreePicker
-          onPick={onPickEntry}
-          onCancel={() => setPickerOpen(false)}
-        />
+        <div
+          data-testid="assembly-source-picker-popover"
+          style={pickerPopoverBackdrop}
+          onClick={() => setPickerOpen(false)}
+        >
+          <div style={pickerPopoverPanel} onClick={(e) => e.stopPropagation()}>
+            <LibrarySearchBar
+              inline
+              autoFocus
+              testId="assembly-source-picker"
+              libraryEntries={libraryEntriesById}
+              projectsById={projectsById}
+              currentProjectId={currentProjectId}
+              onSelectEntry={({ entry }) => { if (entry) onPickEntry(entry); }}
+              onPasteSequence={onPasteSequence}
+            />
+          </div>
+        </div>
       )}
       {rangeSource && rangeSourceShape && (
         <RangePickerModal
@@ -489,30 +723,68 @@ export default function AssemblyShellBody({ draft }) {
           onCancel={() => setRangeSource(null)}
         />
       )}
-      {gapOpen && (
-        <InsertGapModal
-          onInsert={onInsertGap}
-          onCancel={() => setGapOpen(false)}
-        />
-      )}
-      {snippetOpen && (
-        <SnippetCatalogModal
-          onPick={onInsertSnippet}
-          onCancel={() => setSnippetOpen(false)}
-        />
-      )}
-      {synthesisOpen && (
-        <SynthesisModal
-          onConfirm={onInsertSynthesis}
-          onCancel={() => setSynthesisOpen(false)}
-        />
-      )}
       {realiseOpen && (
         <RealiseModal
           draftId={draftId}
           onClose={() => setRealiseOpen(false)}
         />
       )}
+      {/* JUNCTION step-2 FIX — clicking a strip junction glyph opens this
+          control (evolution of JunctionPopover) for the live zone.junctions
+          config. onChange → SET_BOUNDARY_OVERLAP; onClose → CLOSE_JUNCTION_PICKER. */}
+      {state.junctionPicker && state.junctionPicker.zoneId === draftId && (
+        <JunctionControl
+          pairKey={state.junctionPicker.pairKey}
+          config={zoneJunctions[state.junctionPicker.pairKey]}
+          position={junctionPos}
+          onChange={(patch) => {
+            if (typeof actions.zoneDispatch === 'function') {
+              actions.zoneDispatch({
+                type: 'SET_BOUNDARY_OVERLAP',
+                zoneId: draftId,
+                pairKey: state.junctionPicker.pairKey,
+                ...patch,
+              });
+            }
+          }}
+          onClose={() => {
+            if (typeof actions.zoneDispatch === 'function') {
+              actions.zoneDispatch({ type: 'CLOSE_JUNCTION_PICKER' });
+            }
+          }}
+          /* UX slice 3 — promote this junction's method to the whole assembly. */
+          onMakeAssemblyMethod={() => {
+            if (typeof actions.zoneDispatch !== 'function') return;
+            const cfg = zoneJunctions[state.junctionPicker.pairKey];
+            actions.zoneDispatch({
+              type: 'SET_ASSEMBLY_METHOD',
+              zoneId: draftId,
+              method: (cfg && cfg.method) || 'overlap_pcr',
+            });
+          }}
+        />
+      )}
     </div>
   );
 }
+
+// «+ Сегмент» popover host for the non-empty assembler —
+// reuses the same inline unified picker as the empty state.
+const pickerPopoverBackdrop = {
+  position: 'fixed',
+  inset: 0,
+  zIndex: 80,
+  background: 'rgba(28,25,23,0.32)',
+  display: 'flex',
+  alignItems: 'flex-start',
+  justifyContent: 'center',
+  padding: '64px 16px',
+};
+const pickerPopoverPanel = {
+  width: '100%',
+  maxWidth: 560,
+  maxHeight: '70vh',
+  display: 'flex',
+  flexDirection: 'column',
+  minHeight: 0,
+};

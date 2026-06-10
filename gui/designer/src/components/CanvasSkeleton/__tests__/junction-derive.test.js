@@ -39,10 +39,12 @@ describe('junction-derive — pairKey + seed (J1/J3)', () => {
     expect(DEFAULT_JUNCTION_METHOD).toBe('overlap_pcr');
   });
 
-  it('seedJunction() defaults to overlap config (right / 30 / binding 20)', () => {
+  it('seedJunction() defaults to overlap config (right / 30 / Tm-targeted binding)', () => {
+    // Звено — binding is Tm-targeted by default (null length + 60 °C target), not
+    // a flat 20 nt, so seeded junctions extend AT-rich ends.
     expect(seedJunction()).toEqual({
       method: 'overlap_pcr', overlapTarget: 'right', overlapLength: 30,
-      overlapTm: null, bindingLength: 20, bindingTm: null,
+      overlapTm: null, bindingLength: null, bindingTm: 60,
     });
   });
 

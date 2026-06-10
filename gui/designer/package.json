@@ -1,10 +1,11 @@
 {
   "name": "designer",
   "private": true,
-  "version": "0.8.3-alpha",
+  "version": "0.8.7-alpha",
   "type": "module",
   "scripts": {
     "dev": "concurrently -n front,back -c blue,green \"vite\" \"py -m uvicorn server:app --port 8000 --app-dir ../api --log-level info\"",
+    "dev:3002": "concurrently -n front,back -c blue,green \"vite --port 3002\" \"py -m uvicorn server:app --port 8000 --app-dir ../api --log-level info\"",
     "dev:front": "vite",
     "dev:back": "py -m uvicorn server:app --port 8000 --app-dir ../api --log-level info",
     "build": "vite build",

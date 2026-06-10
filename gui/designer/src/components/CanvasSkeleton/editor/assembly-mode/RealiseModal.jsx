@@ -4,13 +4,16 @@
  * a live RealiseDagPreview; confirm dispatches ASSEMBLY_REALISE.
  * Closes on Esc / click-outside (ui-interactions modal contract).
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import {
   useSkeletonState, useSkeletonActions, useAssemblyDraftById,
 } from '../../store/skeleton-context';
 import { suggestMethodForBoundary } from '../../lib/assembly-realise-suggest';
+import { methodsFromJunctions } from '../../lib/junction-derive';
 import MethodPickerCard from './MethodPickerCard';
 import RealiseDagPreview from './RealiseDagPreview';
+
+const EMPTY_JUNCTIONS = {};
 
 export default function RealiseModal({ draftId, onClose }) {
   const state = useSkeletonState();
@@ -33,11 +36,15 @@ export default function RealiseModal({ draftId, onClose }) {
     return out;
   }, [state, draftId, boundaryCount]);
 
-  const [methods, setMethods] = useState(() => {
-    const m = {};
-    for (let i = 0; i < boundaryCount; i += 1) m[i] = suggestions[i]?.method || 'gibson';
-    return m;
-  });
+  // J9 — the per-boundary methods come from the junctions on the strip (the
+  // source of truth set by JunctionControl), NOT a radio picker. Falls back to
+  // the A4 suggestion, then gibson. realiseAssembly's signature is unchanged.
+  const zone = (state.zones || []).find((z) => z.id === draftId) || null;
+  const zoneJunctions = (zone && zone.junctions) || EMPTY_JUNCTIONS;
+  const methods = useMemo(
+    () => methodsFromJunctions(draft, zoneJunctions, suggestions),
+    [draft, zoneJunctions, suggestions],
+  );
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
@@ -96,8 +103,7 @@ export default function RealiseModal({ draftId, onClose }) {
               leftName={segName(i)}
               rightName={segName(i + 1)}
               suggested={suggestions[i]}
-              value={methods[i]}
-              onChange={(m) => setMethods((prev) => ({ ...prev, [i]: m }))}
+              method={methods[i]}
             />
           ))}
           <div style={{ marginTop: 10 }}>

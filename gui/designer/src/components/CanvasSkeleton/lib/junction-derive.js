@@ -18,11 +18,11 @@
  */
 import { segmentBoundaries } from './assembly-model';
 import { METHOD_TO_JUNCTION } from './zone-pieces-to-dag';
-import { defaultJunctionParams } from '../canvas/junction-styles';
+import { defaultJunctionParams, junctionStroke, junctionFill } from '../canvas/junction-styles';
 
 /** Default junction method (engine dict). J3 — default fuse is overlap PCR. */
 export const DEFAULT_JUNCTION_METHOD = 'overlap_pcr';
-const DEFAULT_BINDING_LENGTH = 20;
+const DEFAULT_BINDING_TM = 60; // annealing Tm target for seeded junctions (A1b)
 
 // Two-level method whitelists (J2, real engine-dict values; §9a).
 export const INTERNAL_METHODS = ['overlap_pcr', 'restriction'];
@@ -56,7 +56,8 @@ export function methodForJunctionKind(kind) {
 /**
  * Seed a default config record for a junction (J3). `method` is an engine-dict
  * value (default `overlap_pcr`); overlap params come from junction-styles, and
- * the binding pair defaults to 20 / no-Tm (A1b back-compat).
+ * the binding pair is Tm-targeted by default (bindingLength null + bindingTm 60,
+ * A1b) so seeded junctions extend AT-rich ends instead of shipping flat 20 nt.
  */
 export function seedJunction(method = DEFAULT_JUNCTION_METHOD) {
   const params = defaultJunctionParams(junctionKindForMethod(method));
@@ -65,8 +66,8 @@ export function seedJunction(method = DEFAULT_JUNCTION_METHOD) {
     overlapTarget: params.overlapTarget,
     overlapLength: params.overlapLength,
     overlapTm: params.overlapTm,
-    bindingLength: DEFAULT_BINDING_LENGTH,
-    bindingTm: null,
+    bindingLength: null,
+    bindingTm: DEFAULT_BINDING_TM,
   };
 }
 
@@ -128,4 +129,86 @@ export function allBoundaries(draft) {
   const closure = closureBoundary(draft);
   const internal = internalBoundaries(draft);
   return closure ? [...internal, closure] : internal;
+}
+
+/**
+ * JUNCTION step-2 FIX — enrich a coloredZones array (one entry per ordered
+ * segment, in assembly order) with a `junctionRight` descriptor on each
+ * NON-last zone: the internal boundary to the next segment. The descriptor
+ * carries the engine method (from zone.junctions[pairKey], default
+ * overlap_pcr) plus its junction.kind for the strip-glyph palette. This is
+ * what SegmentZonesOverlay reads to draw the clickable junction glyph on the
+ * LIVE assembly editor strip. Pure: returns a new array, inputs untouched.
+ */
+export function enrichZonesWithJunctions(coloredZones, zoneJunctions = {}, assemblyMethod = null) {
+  const zones = Array.isArray(coloredZones) ? coloredZones : [];
+  return zones.map((z, i) => {
+    const next = zones[i + 1];
+    if (!next) return { ...z };
+    const pairKey = pairKeyFor(z.zoneId, next.zoneId);
+    const cfg = zoneJunctions[pairKey];
+    const method = (cfg && cfg.method) || DEFAULT_JUNCTION_METHOD;
+    const kind = junctionKindForMethod(method);
+    // UX slice 3 — this junction overrides the construct-level method.
+    const differsFromAssembly = !!assemblyMethod && method !== assemblyMethod;
+    // UX trust state (no biology): 'decided' = a human touched this junction
+    // (any edit via SET_BOUNDARY_OVERLAP stamps autoMode:'manual'); everything
+    // else — a seeded/reset auto-guess — is 'tentative'. The strip glyph draws
+    // decided solid and tentative hollow so a biologist sees, at a glance,
+    // which joins are confirmed vs still a default guess (before opening any popup).
+    const state = (cfg && cfg.autoMode === 'manual') ? 'decided' : 'tentative';
+    return {
+      ...z,
+      junctionRight: {
+        pairKey,
+        method,
+        kind,
+        state,
+        differsFromAssembly,
+        // Palette pre-resolved here (CanvasSkeleton owns junction-styles) so
+        // the shared SegmentZonesOverlay needn't import across layers.
+        stroke: junctionStroke(kind),
+        fill: junctionFill(kind),
+        fromPieceId: z.zoneId,
+        toPieceId: next.zoneId,
+      },
+    };
+  });
+}
+
+/**
+ * UX slice 4 — one readiness summary for the whole assembly, derived from the
+ * enriched coloredZones' junctionRight trust states (a biologist gets ONE answer
+ * to "is this settled?" instead of integrating N junctions). ready = there ARE
+ * junctions and none is still a tentative default. Pure.
+ */
+export function assemblyReadiness(coloredZones) {
+  const js = (Array.isArray(coloredZones) ? coloredZones : [])
+    .map((z) => z && z.junctionRight)
+    .filter(Boolean);
+  const tentative = js.filter((j) => j.state === 'tentative').length;
+  const differs = js.filter((j) => j.differsFromAssembly).length;
+  return {
+    total: js.length, tentative, differs, ready: js.length > 0 && tentative === 0,
+  };
+}
+
+/**
+ * JUNCTION step-2 FIX (J9) — per-boundary methods map for realiseAssembly,
+ * keyed by boundary INDEX (0..N−2, segment order — the shape realiseAssembly
+ * already consumes). The junction config (zone.junctions[pairKey].method) is
+ * the source of truth; falls back to the A4 suggestion, then gibson. The
+ * RealiseModal builds its `methods` from this instead of the (removed) radio
+ * picker — the strip junction owns the method, the modal only reflects it. Pure.
+ */
+export function methodsFromJunctions(draft, zoneJunctions = {}, suggestions = []) {
+  const internal = internalBoundaries(draft);
+  const out = {};
+  internal.forEach((b, i) => {
+    const cfg = zoneJunctions[b.pairKey];
+    out[i] = (cfg && cfg.method)
+      || (suggestions[i] && suggestions[i].method)
+      || 'gibson';
+  });
+  return out;
 }

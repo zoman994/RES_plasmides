@@ -52,14 +52,17 @@ describe('V105 — deriveAutoPrimers Tm uses SantaLucia NN (calcTm), not Wallace
     expect(fwd.tm).not.toBe(wallace);
   });
 
-  it('geometry unchanged — only `tm` is touched by the switch', () => {
+  it('geometry — fwd binding is a Tm-targeted prefix; tail = prev 30 nt; sequence = tail+binding', () => {
     const a = sourced('a', 0, 32);
     const b = sourced('b', 32, 64);
     const r = deriveAutoPrimers(group('overlap_pcr', ['a', 'b']), makeState([a, b]));
     const bFwd = r.find((x) => x.source.pieceId === 'b' && x.source.side === 'fwd');
     const aSeq = CONTAINER.sequence.slice(0, 32);
     const bSeq = CONTAINER.sequence.slice(32, 64);
-    expect(bFwd.bindingSequence).toBe(bSeq.slice(0, 20)); // first 20 nt of piece
+    // Звено — binding is Tm-targeted (prefix of the piece, ≥18 nt), not flat 20;
+    // the tail + composition geometry is unchanged.
+    expect(bFwd.bindingSequence.length).toBeGreaterThanOrEqual(18);
+    expect(bFwd.bindingSequence).toBe(bSeq.slice(0, bFwd.bindingSequence.length));
     expect(bFwd.tail).toBe(aSeq.slice(-30)); // §9b: prev piece last 30 nt (one-sided right)
     expect(bFwd.sequence).toBe(bFwd.tail + bFwd.bindingSequence);
   });

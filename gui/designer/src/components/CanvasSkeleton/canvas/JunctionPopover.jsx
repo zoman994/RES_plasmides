@@ -10,7 +10,7 @@
  * Footer: Reset to auto + Close. Presentational — the reducer enforces
  * the length/Tm mutex + status flips.
  */
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import {
   junctionStroke,
   junctionFill,
@@ -28,7 +28,10 @@ const METHODS = [
   { id: 'preformed', title: 'Preformed', hint: 'Уже готовы — ничего не делаем' },
 ];
 
-const OVERLAP_KINDS = new Set(['overlap', 're_ligation', 'golden_gate', 'sticky_end', 'kld']);
+// Overhang target L/R/both + length/Tm is an OVERLAP-PCR/Gibson concept only.
+// RE/GG/KLD/sticky/blunt have enzyme- or chemistry-defined ends — no overlap
+// length slider (Звено: stale overlapLength was leaking into non-overlap kinds).
+const OVERLAP_KINDS = new Set(['overlap']);
 const TARGETS = [
   { id: 'left', label: 'L' },
   { id: 'right', label: 'R' },
@@ -51,6 +54,9 @@ export default function JunctionPopover({
   onSetParams,
   onResetAuto,
   onCancel,
+  // UX slice 3 — reverse gesture: promote this junction's method to the whole
+  // assembly. Omitted by callers that don't support it → button hidden.
+  onMakeAssemblyMethod,
 }) {
   useEffect(() => {
     function onKey(e) {
@@ -60,6 +66,11 @@ export default function JunctionPopover({
     return () => window.removeEventListener('keydown', onKey);
   }, [onCancel]);
 
+  // Read-first (UX slice 2): a DECIDED junction (manually set) opens as a
+  // compact summary; a TENTATIVE one (the auto-guess the strip flags) opens
+  // ready-to-edit. The grid stays mounted — only CSS-collapsed.
+  const [editing, setEditing] = useState(() => junction?.status !== 'manual');
+
   if (!junction) return null;
   const left = position?.x ?? 0;
   const top = position?.y ?? 0;
@@ -67,6 +78,8 @@ export default function JunctionPopover({
   const showOverlap = OVERLAP_KINDS.has(kind);
   const mode = junction.overlapTm != null ? 'tm' : 'length';
   const ends = inferEndRequirements(kind, junction.overlapTarget, junction.overlapLength);
+  const activeMethod = METHODS.find((m) => m.id === kind);
+  const decided = junction.status === 'manual';
 
   return (
     <div
@@ -124,6 +137,48 @@ export default function JunctionPopover({
           >×</button>
         </header>
 
+        {/* Read-first summary — leads; the full grid collapses behind «изменить». */}
+        <div
+          data-testid="junction-popover-summary"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '8px 12px', borderBottom: '1px solid var(--border-subtle)', fontSize: 12,
+          }}
+        >
+          <span style={{ color: 'var(--text-secondary)' }}>Метод:</span>
+          <strong style={{ color: 'var(--text-primary)' }}>{activeMethod ? activeMethod.title : kind}</strong>
+          <span style={{ fontSize: 10.5, color: 'var(--text-tertiary)' }}>· {decided ? 'выбран' : 'по умолчанию'}</span>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+            {onMakeAssemblyMethod && (
+              <button
+                type="button"
+                data-testid="junction-popover-make-assembly"
+                onClick={onMakeAssemblyMethod}
+                title="Сделать этот метод методом всей сборки"
+                style={{
+                  fontSize: 11, padding: '2px 8px', borderRadius: 4, cursor: 'pointer',
+                  border: '1px solid var(--border-subtle)', background: 'transparent', color: 'var(--text-secondary)',
+                }}
+              >↑ методом сборки</button>
+            )}
+            <button
+              type="button"
+              data-testid="junction-popover-edit-toggle"
+              onClick={() => setEditing((e) => !e)}
+              style={{
+                fontSize: 11, padding: '2px 9px', borderRadius: 4, cursor: 'pointer',
+                border: '1px solid var(--border-subtle)', background: 'transparent', color: 'var(--accent-500, #b85c3e)',
+              }}
+            >{editing ? 'свернуть' : 'изменить'}</button>
+          </div>
+        </div>
+
+        {/* Sections 1+2 — the full editor, CSS-collapsed for a decided junction. */}
+        <div
+          data-testid="junction-popover-edit"
+          data-editing={editing ? 'true' : 'false'}
+          style={{ display: editing ? 'block' : 'none' }}
+        >
         {/* Section 1 — kind picker */}
         <div data-testid="junction-popover-kinds" style={{ padding: 4, display: 'flex', flexDirection: 'column', gap: 2 }}>
           {METHODS.map((m) => {
@@ -223,6 +278,7 @@ export default function JunctionPopover({
             </div>
           </div>
         )}
+        </div>
 
         {/* Section 3 — ends preview */}
         <div
