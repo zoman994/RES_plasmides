@@ -252,6 +252,24 @@ export function useSelectionState({
       }
     }
 
+    // 05.06.2026 — strip-junction glyph click? Bail (same class as RE-site /
+    // primer above). The glyph is a <button data-testid="sequence-view-junction">
+    // in SegmentZonesOverlay with its own onClick (→ OPEN_JUNCTION_METHOD_PICKER);
+    // it stops onClick but NOT onPointerDown, so without this bail root
+    // setPointerCapture steals pointerup → the button's click never fires (Игорь
+    // «стык появился, но не кликабелен», JUNCTION step-2 visual acceptance #2).
+    {
+      let jEl = e.target;
+      while (jEl && jEl !== containerRef.current) {
+        if (jEl.getAttribute
+            && jEl.getAttribute('data-testid') === 'sequence-view-junction') break;
+        jEl = jEl.parentElement;
+      }
+      if (jEl && jEl !== containerRef.current) {
+        return;
+      }
+    }
+
     // AA cell? Select the underlying triplet, start an AA-drag.
     if (typeof onSelectRange === "function") {
       let aaEl = e.target;

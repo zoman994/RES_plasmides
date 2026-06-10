@@ -44,7 +44,9 @@ const STATE_KEY = 'canvas-state-v1';
 // v11 (M-CANVAS-WORKFLOW-UX, SPEC_ASSEMBLY_WORKFLOW_UX §9): workflow
 // data-model — zone.finalTopology, piece.groupId/groupLayer/mutations,
 // op.isOpGroup, primer.autoMode/binding/tail. Additive + idempotent.
-export const SCHEMA_VERSION_CURRENT = 11;
+// v12 (Node A / DEC-PRIMER-RECORD-WIPE-01): assembly-primer record unified
+// to one canonical shape; pre-canon persisted `assemblyDraftPrimers` wiped.
+export const SCHEMA_VERSION_CURRENT = 12;
 
 /**
  * stateKeyFor — V65 per-project keying. A null/undefined projectId maps
@@ -361,6 +363,16 @@ const MIGRATIONS = {
     return {
       ...state, zones, pieces, operations, assemblyDraftPrimers,
     };
+  },
+  11: function migrate_v11_to_v12(state) {
+    // v11 → v12 (Node A / DEC-PRIMER-RECORD-WIPE-01). The assembly-primer
+    // record was unified to one canonical shape (single `source` provenance,
+    // `bindingSequence`/`tail`, no `origin`/`binding`). Pre-canon persisted
+    // primers are incompatible → WIPED, not migrated (skeleton is DEV-only,
+    // Игорь: «убиваем»). Manual primers from old snapshots are lost;
+    // auto-primers regenerate when op-groups recompute.
+    if (!state || typeof state !== 'object') return null;
+    return { ...state, assemblyDraftPrimers: {} };
   },
 };
 

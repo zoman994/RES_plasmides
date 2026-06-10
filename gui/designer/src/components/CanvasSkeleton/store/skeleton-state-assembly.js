@@ -58,6 +58,8 @@ const ASSEMBLY_ACTIONS = new Set([
   'TOGGLE_SEGMENT_RC', 'SPLIT_SEGMENT',
   'WRITE_ASSEMBLY_PRIMER', 'REMOVE_ASSEMBLY_PRIMER', 'UPDATE_ASSEMBLY_PRIMER',
   'UPDATE_ASSEMBLY_PRIMER_NAME', 'UPDATE_ASSEMBLY_PRIMER_NOTES',
+  // SPEC_EDITABLE_ASSEMBLY_S3 §5.1 — maintain saved-primer coordinates.
+  'SHIFT_ASSEMBLY_PRIMERS',
 ]);
 
 export function isAssemblyAction(type) {
@@ -334,7 +336,12 @@ export function assemblyReducer(state, action) {
         name,
         label: name,
         source: built.source,
-        origin: action.source || 'manual',
+        // Node A canon (§4/§5.3) — provenance lives only in `source`; the
+        // old `origin` field is removed (it was a string here but an object
+        // in deriveAutoPrimers — one name, two types).
+        tail: built.tail,
+        autoMode: 'manual',
+        mutated: false,
         status: editedSeq ? 'edited' : 'auto',
         notes: '',
         createdAt: Date.now(),
@@ -369,6 +376,45 @@ export function assemblyReducer(state, action) {
         return next;
       });
       return { ...state, assemblyDraftPrimers: map };
+    }
+
+    // SPEC_EDITABLE_ASSEMBLY_S3 §5.1 — after an editable-view edit shifts
+    // the assembled sequence, fix the coordinates of SAVED primers.
+    // Auto-from-group primers carry no source coords → skipped (a
+    // disbanded group's auto-primers are removed by DISBAND_OP_GROUP).
+    case 'SHIFT_ASSEMBLY_PRIMERS': {
+      const map = state.assemblyDraftPrimers || {};
+      const cur = map[action.draftId];
+      if (!cur || cur.length === 0) return state;
+      const atPos = Number(action.atPos);
+      if (!Number.isFinite(atPos)) return state;
+      const delta = Number(action.delta) || 0;
+      let changed = false;
+      const next = cur.map((p) => {
+        const src = p.source;
+        if (!src || !Number.isFinite(src.selectionStart) || !Number.isFinite(src.selectionEnd)) {
+          return p; // auto-from-group / coordless primer
+        }
+        const s = src.selectionStart;
+        const e = src.selectionEnd;
+        if (e <= atPos) return p; // (a) entirely left
+        if (s >= atPos) {
+          // (b) entirely right → shift coordinates by delta
+          if (delta === 0) return p;
+          changed = true;
+          const nextSrc = { ...src, selectionStart: s + delta, selectionEnd: e + delta };
+          if (Number.isFinite(src.boundaryAtOffset)) nextSrc.boundaryAtOffset = src.boundaryAtOffset + delta;
+          const nextRange = (p.range && Number.isFinite(p.range.start))
+            ? { start: p.range.start + delta, end: p.range.end + delta }
+            : p.range;
+          return { ...p, source: nextSrc, range: nextRange, updatedAt: Date.now() };
+        }
+        // (c) atPos strictly inside [s, e) → stale (coords / sequence kept)
+        if (p.status === 'stale') return p;
+        changed = true;
+        return { ...p, status: 'stale', updatedAt: Date.now() };
+      });
+      return changed ? { ...state, assemblyDraftPrimers: { ...map, [action.draftId]: next } } : state;
     }
 
     case 'UPDATE_ASSEMBLY_PRIMER_NAME':

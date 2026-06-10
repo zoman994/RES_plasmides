@@ -228,7 +228,25 @@ export function mergeStripWithPredicted(
   showDuplicates,
 ) {
   if (!results || typeof results !== 'object') return confirmed;
-  const out = (confirmed || []).slice();
+  // V134 — collect raw predictions (threshold + reject), then reconcile
+  // partial names: a confirmed `X` whose predicted `X_part_…` sits on the
+  // same locus DISPLAYS the part name (fragment → с part) and absorbs that
+  // prediction, so the strip shows one name instead of «AmpR» + «AmpR_part_…».
+  const predictedRaw = [];
+  for (const res of Object.values(results)) {
+    for (const r of (res?.regions || [])) {
+      if (Number.isFinite(r.confidence) && r.confidence < (threshold ?? 0)) continue;
+      const id = r.id || `${r.start}:${r.end}:${r.type || ''}:${r.name || ''}`;
+      if (rejectedIds && rejectedIds[id]) continue;
+      predictedRaw.push({ ...r, id });
+    }
+  }
+  // V136 — reconcile (one feature, part name) only when NOT showing duplicates;
+  // with «Show duplicates» ON keep confirmed + the Level-1 partial both visible.
+  const { confirmed: rc, predicted: predRemaining } = showDuplicates
+    ? { confirmed: confirmed || [], predicted: predictedRaw }
+    : reconcileConfirmedWithPartials(confirmed || [], predictedRaw);
+  const out = rc.slice();
   const seenIds = new Set();
   const confirmedNames = new Set();
   for (const ann of out) {
@@ -236,29 +254,25 @@ export function mergeStripWithPredicted(
     const nm = (ann?.name || '').toLowerCase().trim();
     if (nm) confirmedNames.add(nm);
   }
-  for (const res of Object.values(results)) {
-    for (const r of (res?.regions || [])) {
-      if (Number.isFinite(r.confidence) && r.confidence < (threshold ?? 0)) continue;
-      const id = r.id || `${r.start}:${r.end}:${r.type || ''}:${r.name || ''}`;
-      if (rejectedIds && rejectedIds[id]) continue;
-      if (seenIds.has(id)) continue;
-      const accepted = !!(acceptedIds && acceptedIds[id]);
-      // Mirror the PreviewTab fix (2026-05-06): always skip predicted
-      // duplicates of an existing confirmed region — even if the user
-      // accepted them — because after Save the accepted region lives
-      // in `confirmed` and the strip would otherwise stack two copies
-      // (the confirmed one + the same prediction rendered solid).
-      if (!showDuplicates && isDuplicatePrediction(r, confirmed)) continue;
-      const predName = (r.name || '').toLowerCase().trim();
-      const suppressLabel = !!(predName && confirmedNames.has(predName));
-      out.push({
-        ...r,
-        id,
-        predicted: accepted ? false : true,
-        _suppressLabel: suppressLabel,
-      });
-      seenIds.add(id);
-    }
+  for (const r of predRemaining) {
+    const id = r.id;
+    if (seenIds.has(id)) continue;
+    const accepted = !!(acceptedIds && acceptedIds[id]);
+    // Mirror the PreviewTab fix (2026-05-06): always skip predicted
+    // duplicates of an existing confirmed region — even if the user
+    // accepted them — because after Save the accepted region lives
+    // in `confirmed` and the strip would otherwise stack two copies
+    // (the confirmed one + the same prediction rendered solid).
+    if (!showDuplicates && isDuplicatePrediction(r, rc)) continue;
+    const predName = (r.name || '').toLowerCase().trim();
+    const suppressLabel = !!(predName && confirmedNames.has(predName));
+    out.push({
+      ...r,
+      id,
+      predicted: accepted ? false : true,
+      _suppressLabel: suppressLabel,
+    });
+    seenIds.add(id);
   }
   return out;
 }
@@ -278,6 +292,52 @@ export function isDuplicatePrediction(predicted, confirmedRegions) {
     if (pType && cType && pType === cType && overlap > 0.5) return true;
   }
   return false;
+}
+
+/**
+ * Strip a trailing `_part_A-B` suffix → the base feature name. Used to match
+ * a predicted partial (`AmpR_part_10-856`) against a confirmed full feature
+ * (`AmpR`). Non-strings / plain names pass through unchanged.
+ */
+export function basePartName(name) {
+  return typeof name === 'string' ? name.replace(/_part_\d+-\d+$/, '') : name;
+}
+
+/**
+ * Fragment naming reconciliation (биолог: «кусок с парт, не кусок без парт;
+ * одно имя»). When a predicted partial `X_part_A-B` overlaps a confirmed `X`
+ * at the same locus, the locus IS that fragment — so the confirmed region
+ * DISPLAYS the part name, and the now-redundant predicted partial is absorbed
+ * (one feature, one name, independent of the «Show duplicates» toggle). A full
+ * match (`X` == `X`, no `_part_`) is left plain (полная фича → без part).
+ * Pure / display-only — inputs are not mutated, nothing is persisted; the
+ * prior name is preserved on `displayBaseName`.
+ *
+ * @returns {{ confirmed: Array, predicted: Array }} confirmed with upgraded
+ *   display names + predicted minus the absorbed partials.
+ */
+export function reconcileConfirmedWithPartials(confirmed, predicted) {
+  const conf = Array.isArray(confirmed) ? confirmed : [];
+  const pred = Array.isArray(predicted) ? predicted : [];
+  if (conf.length === 0 || pred.length === 0) {
+    return { confirmed: conf, predicted: pred };
+  }
+  const absorbed = new Set();
+  const outConfirmed = conf.map((c) => {
+    if (!c || typeof c.name !== 'string') return c;
+    const cName = c.name.toLowerCase().trim();
+    const match = pred.find((p) => {
+      if (absorbed.has(p) || !p || typeof p.name !== 'string') return false;
+      if (!p.name.includes('_part_')) return false;            // only partials upgrade
+      if (basePartName(p.name).toLowerCase().trim() !== cName) return false;
+      return overlapFraction(c, p) > 0.5;                       // same locus
+    });
+    if (!match) return c;
+    absorbed.add(match);
+    return { ...c, name: match.name, displayBaseName: c.name };
+  });
+  const outPredicted = pred.filter((p) => !absorbed.has(p));
+  return { confirmed: outConfirmed, predicted: outPredicted };
 }
 
 /**

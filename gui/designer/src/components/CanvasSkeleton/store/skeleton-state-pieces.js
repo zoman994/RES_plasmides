@@ -34,6 +34,8 @@ const PIECE_ACTIONS = new Set([
   'CREATE_DESIGN_VARIANT', 'REMOVE_FROM_VARIANT_GROUP', 'HIGHLIGHT_VARIANT_GROUP',
   // M-CANVAS-WORKFLOW-UX K14 (SPEC §5.2) — per-piece mutation list.
   'ADD_PIECE_MUTATION',
+  // SPEC_EDITABLE_ASSEMBLY_S2 §5.1 — split a sourced piece in two.
+  'SPLIT_PIECE',
 ]);
 
 export function isPieceAction(type) {
@@ -171,6 +173,26 @@ export function piecesReducer(state, action) {
       return { ...rest, frozen: false };
     });
     return changed ? { ...state, pieces: nextPieces } : state;
+  }
+
+  // SPEC_EDITABLE_ASSEMBLY_S1 §5.6 (a)+(c) — mirror cleanup for
+  // DISBAND_OP_GROUP. operationsReducer ran earlier in the chain and has
+  // already removed the disbanded group G (and any orphaned downstream
+  // op-group), so any piece whose groupId no longer maps to a live
+  // op-group is re-marked ungrouped — covers G's members AND the
+  // orphaned downstream members, with no piece deletion (no cascade).
+  if (action.type === 'DISBAND_OP_GROUP') {
+    const validGroupIds = new Set(
+      (state.operations || []).filter((o) => o.isOpGroup).map((o) => o.id),
+    );
+    const cur = state.pieces || [];
+    let changed = false;
+    const next = cur.map((p) => {
+      if (p.groupId == null || validGroupIds.has(p.groupId)) return p;
+      changed = true;
+      return { ...p, groupId: null, groupLayer: 0, updatedAt: Date.now() };
+    });
+    return changed ? { ...state, pieces: next } : state;
   }
 
   if (!isPieceAction(action.type)) return state;
@@ -379,6 +401,85 @@ export function piecesReducer(state, action) {
       const pieceNext = { ...pieces[idx], mutations: next, updatedAt: Date.now() };
       const arr = pieces.slice();
       arr[idx] = pieceNext;
+      return { ...state, pieces: arr };
+    }
+
+    // SPEC_EDITABLE_ASSEMBLY_S2 §5.1 — SPLIT_PIECE. Divides a single-range
+    // `sourced` piece by a top-strand local offset (1..len-1) into two
+    // `sourced` halves. rc-aware sub-ranges (copy of
+    // assembly-model.splitSegment math), parents (sourceIds/origin/method)
+    // preserved, colour inherited, mutations distributed by local offset
+    // (right half shifts −atOffset). Non-sourced / multi-range / bad
+    // offset → state unchanged (router surfaces a toast before this).
+    case 'SPLIT_PIECE': {
+      const idx = pieces.findIndex((p) => p.id === action.pieceId);
+      if (idx < 0) return state;
+      const parent = pieces[idx];
+      if (parent.kind !== 'sourced' || !Array.isArray(parent.ranges) || parent.ranges.length !== 1) {
+        return state;
+      }
+      const r = parent.ranges[0];
+      const len = (Number(r.end) || 0) - (Number(r.start) || 0);
+      const at = Number(action.atOffset);
+      if (!Number.isInteger(at) || at < 1 || at > len - 1) return state;
+      const rev = r.orientation === 'reverse';
+      const leftRange = rev
+        ? { ...r, start: r.end - at, end: r.end }
+        : { ...r, start: r.start, end: r.start + at };
+      let rightRange = rev
+        ? { ...r, start: r.start, end: r.end - at }
+        : { ...r, start: r.start + at, end: r.end };
+      const muts = Array.isArray(parent.mutations) ? parent.mutations : [];
+      const leftMuts = muts
+        .filter((m) => m && Number.isFinite(m.position) && m.position < at)
+        .map((m) => ({ ...m }));
+      let rightMuts = muts
+        .filter((m) => m && Number.isFinite(m.position) && m.position >= at)
+        .map((m) => ({ ...m, position: m.position - at }));
+      // S2 §5.6 — mid-delete = split + drop the right half's leading
+      // `trimRightLeading` nt in ONE reducer pass (no stale-state read in
+      // the handler). Valid only when the right half keeps ≥1 nt.
+      const trimLead = Number(action.trimRightLeading) || 0;
+      if (trimLead > 0 && (len - at - trimLead) >= 1) {
+        rightRange = rev
+          ? { ...rightRange, end: rightRange.end - trimLead }
+          : { ...rightRange, start: rightRange.start + trimLead };
+        rightMuts = rightMuts
+          .filter((m) => m.position >= trimLead)
+          .map((m) => ({ ...m, position: m.position - trimLead }));
+      } else if (trimLead > 0) {
+        return state; // would empty the right half — reject (router guards)
+      }
+      const common = {
+        kind: 'sourced',
+        name: parent.name,
+        sourceIds: parent.sourceIds.slice(),
+        origin: parent.origin,
+        acquisitionMethod: parent.acquisitionMethod,
+        acquisitionParams: { ...(parent.acquisitionParams || {}) },
+        functionalLabel: parent.functionalLabel,
+        color: parent.color, // Q1 — inherit the parent colour
+      };
+      const left = createPiece({ ...common, ranges: [leftRange], mutations: leftMuts }, pieces);
+      const right = createPiece({ ...common, ranges: [rightRange], mutations: rightMuts }, [...pieces, left]);
+      left.zoneId = parent.zoneId;
+      right.zoneId = parent.zoneId;
+      const arr = pieces.slice();
+      arr.splice(idx, 1, left, right);
+      // Re-stamp createdAt across the parent's zone in array order so the
+      // halves take the parent's slot (left then right). Matches the
+      // zone-order convention (orderedZonePieceIds / draftFromZone sort by
+      // createdAt); other zones untouched.
+      if (parent.zoneId != null) {
+        const base = Date.now();
+        let k = 0;
+        for (let i = 0; i < arr.length; i += 1) {
+          if (arr[i].zoneId === parent.zoneId) {
+            arr[i] = { ...arr[i], createdAt: base + k };
+            k += 1;
+          }
+        }
+      }
       return { ...state, pieces: arr };
     }
 

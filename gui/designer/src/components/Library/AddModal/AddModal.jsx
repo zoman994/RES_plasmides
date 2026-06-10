@@ -29,6 +29,25 @@ import CrossProjectStub from './CrossProjectStub';
 
 const LOOSE_TARGET = { id: 'loose', label: 'Без проекта', sub: '⎀ свободный стол' };
 
+/**
+ * WT-UX-4 — a short, per-project distinguishing detail for the target list.
+ * Creation date+time is preferred (human-meaningful, and distinct even for
+ * projects made in the same session); container count is the fallback when
+ * `createdAt` is absent. Manual formatting — no locale dependency.
+ */
+function projectDetail(p) {
+  if (p && p.createdAt != null) {
+    const d = new Date(p.createdAt);
+    if (!Number.isNaN(d.getTime())) {
+      const pad = (n) => String(n).padStart(2, '0');
+      const yy = String(d.getFullYear()).slice(-2);
+      return `📦 ${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${yy} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+  }
+  const n = Array.isArray(p?.containerIds) ? p.containerIds.length : 0;
+  return `📦 ${n} конт.`;
+}
+
 export default function AddModal({ open, onClose, onLaunchPreImport }) {
   const ws = STRINGS.libraryWorkspace || {};
   const pinnedProjectIds = useStore((s) => s.pinnedProjectIds);
@@ -38,6 +57,13 @@ export default function AddModal({ open, onClose, onLaunchPreImport }) {
   const [target, setTarget] = useState('loose');
   const [stubOpen, setStubOpen] = useState(false);
   const [pasteText, setPasteText] = useState('');
+  // WT-D-2 — homology auto-annotation toggle (default on). Rides the preset
+  // → LibraryTreeHost.importFiles opts → enrichAnnotations.
+  const [autoAnnotate, setAutoAnnotate] = useState(true);
+  // WT-UX-8/7 — optional name + topology for paste imports (headerless ACGT
+  // would otherwise land as «imported» / always-linear). Ride the preset.
+  const [pasteName, setPasteName] = useState('');
+  const [pasteTopology, setPasteTopology] = useState('linear');
 
   // Build the target list: «Без проекта» + every pinned project +
   // (current project if it's not already in pinned). The current
@@ -52,7 +78,10 @@ export default function AddModal({ open, onClose, onLaunchPreImport }) {
       list.push({
         id: `project:${p.id}`,
         label: p.name || p.id,
-        sub: '📦 .bodge',
+        // WT-UX-4 — distinguishing detail so identically-named projects
+        // («Новый проект» ×3) are tellable apart (creation date+time, else
+        // container count). Replaces the indistinct shared «📦 .bodge».
+        sub: projectDetail(p),
         isCurrent: p.id === currentProjectId,
       });
     };
@@ -69,6 +98,9 @@ export default function AddModal({ open, onClose, onLaunchPreImport }) {
     setPickedSource(null);
     setStubOpen(false);
     setPasteText('');
+    setAutoAnnotate(true);
+    setPasteName('');
+    setPasteTopology('linear');
     const currentT = currentProjectId
       ? targets.find((t) => t.id === `project:${currentProjectId}`)
       : null;
@@ -111,12 +143,53 @@ export default function AddModal({ open, onClose, onLaunchPreImport }) {
   const onSubmit = () => {
     if (submitDisabled) return;
     if (pickedSource === 'paste') {
-      onLaunchPreImport?.({ source: 'paste', target, text: pasteText });
+      onLaunchPreImport?.({
+        source: 'paste', target, text: pasteText, autoAnnotate, name: pasteName, topology: pasteTopology,
+      });
     } else {
-      onLaunchPreImport?.({ source: pickedSource, target });
+      onLaunchPreImport?.({ source: pickedSource, target, autoAnnotate });
     }
     onClose?.();
   };
+
+  // WT-UX-9 — header tracks the chosen destination instead of the static
+  // «в библиотеку» (which contradicted the default target = active project).
+  const targetObj = targets.find((t) => t.id === target);
+  const headerTitle = target === 'loose'
+    ? (ws.addTitleLoose || 'Добавить на свободный стол')
+    : `${ws.addTitleProject || 'Добавить в проект'} «${targetObj?.label || ''}»`;
+
+  // WT-D-2 — auto-annotation toggle (default on). Applies to both file and
+  // paste imports; value rides the preset to importFiles. Rendered once: in
+  // paste mode directly under the textarea (Игорь 26.05.2026), otherwise at
+  // the bottom of the body — exactly one instance per state.
+  const autoAnnotateRow = (
+    <label
+      data-testid="add-modal-auto-annotate-row"
+      style={{
+        display: 'flex', alignItems: 'flex-start', gap: 8,
+        padding: '8px 10px', cursor: 'pointer',
+        border: '1px solid var(--border-subtle)',
+        borderRadius: 'var(--radius-sm, 4px)',
+      }}
+    >
+      <input
+        type="checkbox"
+        data-testid="add-modal-auto-annotate"
+        checked={autoAnnotate}
+        onChange={(e) => setAutoAnnotate(e.target.checked)}
+        style={{ margin: '2px 0 0 0' }}
+      />
+      <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <span style={{ fontSize: 12, color: 'var(--text-primary)' }}>
+          {ws.autoAnnotateLabel || 'Авто-аннотация'}
+        </span>
+        <span style={{ fontSize: 10.5, color: 'var(--text-tertiary)' }}>
+          {ws.autoAnnotateHint || 'Найти известные элементы по гомологии'}
+        </span>
+      </span>
+    </label>
+  );
 
   return (
     <div
@@ -134,6 +207,9 @@ export default function AddModal({ open, onClose, onLaunchPreImport }) {
         onPointerDown={(e) => e.stopPropagation()}
         style={{
           width: '100%', maxWidth: 480,
+          // V117 — cap height to the centered backdrop's content box (it has
+          // 6vh/4vw padding) so tall content can't push the footer off-screen.
+          maxHeight: '100%',
           background: 'var(--surface-1)',
           color: 'var(--text-primary)',
           border: '0.5px solid var(--border-default)',
@@ -146,9 +222,10 @@ export default function AddModal({ open, onClose, onLaunchPreImport }) {
           display: 'flex', alignItems: 'baseline', gap: 12,
           padding: '14px 20px',
           borderBottom: '0.5px solid var(--border-subtle)',
+          flexShrink: 0,
         }}>
-          <h2 style={{ margin: 0, fontSize: 15, fontWeight: 500 }}>
-            {ws.addBtn || '+ Добавить'} в библиотеку
+          <h2 data-testid="add-modal-title" style={{ margin: 0, fontSize: 15, fontWeight: 500 }}>
+            {headerTitle}
           </h2>
           <span style={{ flex: 1 }} />
           <button
@@ -165,7 +242,15 @@ export default function AddModal({ open, onClose, onLaunchPreImport }) {
           >✕</button>
         </header>
 
-        <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div
+          data-testid="add-modal-body"
+          style={{
+            padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16,
+            // V117 — the middle content is the scroll region; header/footer stay
+            // pinned so the footer buttons are always reachable.
+            flexGrow: 1, minHeight: 0, overflowY: 'auto',
+          }}
+        >
           <FieldLabel label="ИСТОЧНИК">
             <SourceTiles onPick={onPickSource} picked={pickedSource} />
           </FieldLabel>
@@ -203,6 +288,7 @@ export default function AddModal({ open, onClose, onLaunchPreImport }) {
               Uses parseFile via a synthetic File on submit (handled
               by LibraryWorkspace.onLaunchPreImport). */}
           {pickedSource === 'paste' && (
+            <>
             <FieldLabel label="ВСТАВЬТЕ ПОСЛЕДОВАТЕЛЬНОСТЬ">
               <textarea
                 data-testid="add-modal-paste-textarea"
@@ -234,6 +320,73 @@ export default function AddModal({ open, onClose, onLaunchPreImport }) {
                 Авто-определение формата: GenBank · FASTA · plain ACGT.
               </div>
             </FieldLabel>
+
+            {/* Игорь 26.05.2026 — авто-аннотация прямо под полем ввода текста. */}
+            {autoAnnotateRow}
+
+            {/* WT-UX-8 — optional explicit name (headerless ACGT would
+                otherwise become «imported»). A `>name` in the text wins
+                only when this is left blank (handled in importFiles). */}
+            <FieldLabel label="ИМЯ">
+              <input
+                data-testid="add-modal-paste-name"
+                type="text"
+                value={pasteName}
+                onChange={(e) => setPasteName(e.target.value)}
+                placeholder={ws.pasteNamePlaceholder || 'напр. pLAB-1'}
+                style={{
+                  width: '100%',
+                  padding: '6px 10px',
+                  fontSize: 12,
+                  background: 'var(--surface-2)',
+                  color: 'var(--text-primary)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: 'var(--radius-sm, 4px)',
+                  outline: 'none',
+                }}
+              />
+              <div style={{ fontSize: 10.5, color: 'var(--text-tertiary)' }}>
+                {ws.pasteNameHint || 'если в тексте есть >name — имя возьмётся из заголовка'}
+              </div>
+            </FieldLabel>
+
+            {/* WT-UX-7 — topology for pasted raw sequence (parseFasta hardcodes
+                linear). Segmented toggle, selection visible. Paste-path only. */}
+            <FieldLabel label={ws.topologyLabel || 'Топология'}>
+              <div data-testid="add-modal-topology" style={{ display: 'flex', gap: 4 }}>
+                {[
+                  ['linear', ws.topologyLinear || 'Линейная'],
+                  ['circular', ws.topologyCircular || 'Кольцевая'],
+                ].map(([val, lbl]) => {
+                  const active = pasteTopology === val;
+                  return (
+                    <button
+                      key={val}
+                      type="button"
+                      data-testid={`add-modal-topology-${val}`}
+                      aria-pressed={active}
+                      onClick={() => setPasteTopology(val)}
+                      style={{
+                        flex: 1,
+                        padding: '6px 10px',
+                        fontSize: 12,
+                        cursor: 'pointer',
+                        background: active ? 'var(--accent-50)' : 'var(--surface-2)',
+                        color: 'var(--text-primary)',
+                        border: active
+                          ? '1px solid var(--accent-500)'
+                          : '1px solid var(--border-subtle)',
+                        borderRadius: 'var(--radius-sm, 4px)',
+                        fontWeight: active ? 600 : 400,
+                      }}
+                    >
+                      {lbl}
+                    </button>
+                  );
+                })}
+              </div>
+            </FieldLabel>
+            </>
           )}
 
           <FieldLabel label="КУДА ДОБАВИТЬ">
@@ -279,6 +432,10 @@ export default function AddModal({ open, onClose, onLaunchPreImport }) {
               ))}
             </div>
           </FieldLabel>
+
+          {/* File / catalog modes — no textarea above, so the toggle stays at
+              the bottom of the body (paste mode renders it under the textarea). */}
+          {pickedSource !== 'paste' && autoAnnotateRow}
         </div>
 
         <footer
@@ -287,6 +444,7 @@ export default function AddModal({ open, onClose, onLaunchPreImport }) {
             padding: '12px 20px',
             borderTop: '0.5px solid var(--border-subtle)',
             background: 'var(--surface-2)',
+            flexShrink: 0,
           }}
         >
           <button

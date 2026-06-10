@@ -19,26 +19,20 @@
 import { describe, it, expect } from 'vitest';
 import { shouldEnableWrapTail, pickWrapTailLines } from '../lib/wrap-tail.js';
 
-describe('M-X.3 K5 — wrap-tail enable boundary (round-4 simplification)', () => {
-  it('any circular plasmid with ≥3 main lines → enabled', () => {
-    // Round 4 (06.05.2026): viewport check dropped because nested
-    // scroll parents (importer-single-tab-content) made
-    // SequenceView's clientHeight equal full content height, not
-    // the visible viewport. Now wrap-tail enables purely on
-    // line-count.
+describe('M-X.3 K5 — wrap-tail enable boundary (V102 23.05 — always on for circular)', () => {
+  it('any valid circular plasmid → enabled, regardless of length / viewport', () => {
+    // V102 (23.05.2026): wrap-tail is a wanted feature, always on for
+    // circular plasmids. The origin-crossing gate + length limit were
+    // reverted (gate killed the feature + flickered during drag).
     expect(shouldEnableWrapTail({
-      circular: true,
-      seqLength: 1500,
-      cpl: 80,
-      viewportHeight: 1200,
-      lineHeight: 18,
+      circular: true, seqLength: 1500, cpl: 80, viewportHeight: 1200, lineHeight: 18,
     })).toBe(true);
     expect(shouldEnableWrapTail({
-      circular: true,
-      seqLength: 5000,
-      cpl: 80,
-      viewportHeight: 800,
-      lineHeight: 18,
+      circular: true, seqLength: 5000, cpl: 80, viewportHeight: 800, lineHeight: 18,
+    })).toBe(true);
+    // Short circular plasmid — still on (length gate removed).
+    expect(shouldEnableWrapTail({
+      circular: true, seqLength: 300, cpl: 80, viewportHeight: 1200, lineHeight: 18,
     })).toBe(true);
   });
 
@@ -52,13 +46,11 @@ describe('M-X.3 K5 — wrap-tail enable boundary (round-4 simplification)', () =
     })).toBe(false);
   });
 
-  it('matrix combination — pickWrapTailLines stays consistent', () => {
-    // Sanity: helper composition matches the runtime decision in
-    // SequenceView (totalMainLines pins the count regardless of
-    // viewport size).
-    expect(pickWrapTailLines({ totalMainLines: 63 })).toBe(2);
-    expect(pickWrapTailLines({ totalMainLines: 19 })).toBe(2);
-    expect(pickWrapTailLines({ totalMainLines: 4 })).toBe(1);
-    expect(pickWrapTailLines({ totalMainLines: 2 })).toBe(0);
+  it('matrix combination — pickWrapTailLines is a fixed ceil(200/cpl)', () => {
+    // Independent of total main lines now — driven only by cpl.
+    expect(pickWrapTailLines({ cpl: 80 })).toBe(3);
+    expect(pickWrapTailLines({ cpl: 140 })).toBe(2);
+    expect(pickWrapTailLines({ cpl: 200 })).toBe(1);
+    expect(pickWrapTailLines({ cpl: 0 })).toBe(0);
   });
 });

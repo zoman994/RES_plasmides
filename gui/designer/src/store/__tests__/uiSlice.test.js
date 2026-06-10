@@ -48,4 +48,14 @@ describe('K2 — uiSlice', () => {
     useStore.getState().closeSettings();
     expect(useStore.getState().modals.settings).toBe(false);
   });
+
+  // Звено 2 (25.05.2026): showToast forwards options.actionLabel onto the
+  // toast entry (button text), null when absent.
+  it('showToast stores options.actionLabel on the toast entry (null when absent)', () => {
+    useStore.getState().showToast('with label', 'success', { actionLabel: 'Продолжить аннотацию' });
+    useStore.getState().showToast('no label', 'info');
+    const { toasts } = useStore.getState();
+    expect(toasts[0].actionLabel).toBe('Продолжить аннотацию');
+    expect(toasts[1].actionLabel).toBe(null);
+  });
 });

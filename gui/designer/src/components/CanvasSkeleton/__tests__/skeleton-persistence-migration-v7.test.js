@@ -11,7 +11,7 @@ import { migrateSnapshot, SCHEMA_VERSION_CURRENT } from '../store/skeleton-persi
 
 describe('T3 K11 — migration v6 → v7 (zones + zoneId)', () => {
   it('SCHEMA_VERSION_CURRENT bumped to 7 (A1=4, T1=5, T2=6, T3=7)', () => {
-    expect(SCHEMA_VERSION_CURRENT).toBe(11); // M-CANVAS-WORKFLOW-UX K1: bump 10→11
+    expect(SCHEMA_VERSION_CURRENT).toBe(12); // M-CANVAS-WORKFLOW-UX K1: bump 10→11
   });
 
   it('v6 snapshot → zones:[] + zoneId:null on every node', () => {

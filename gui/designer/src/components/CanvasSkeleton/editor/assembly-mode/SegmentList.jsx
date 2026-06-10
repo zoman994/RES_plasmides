@@ -12,6 +12,7 @@
 import { useState } from 'react';
 import { useSkeletonActions } from '../../store/skeleton-context';
 import { SEGMENT_COLORS } from '../../lib/segment-color-palette';
+import { toUiCoords } from '../../../../lib/annotation-edit';
 
 // K6 — strip iconography (SPEC §5.3). pieceKind is set by draftFromZone
 // for zone-projected drafts; legacy drafts fall back to source.type.
@@ -30,7 +31,13 @@ function effectiveKind(seg) {
 
 function rowSource(seg, idx) {
   if (seg.source?.type === 'container') {
-    return `${seg.source.sourceContainerName || 'container'} [${seg.start}:${seg.end}]`;
+    // V127 — 1-based display (⚓ DEC-ANN-10): coords stored 0-based half-open.
+    const { uiStart, uiEnd } = toUiCoords(seg.start ?? 0, seg.end ?? 0);
+    // V129 — make RC explicit next to the coords (the RC column reads poorly).
+    // Numbers stay ascending = source span (GenBank `complement(...)`
+    // convention, NOT 69:1); ←RC marks the reverse orientation.
+    const rc = seg.reverseComplement ? ' ←RC' : '';
+    return `${seg.source.sourceContainerName || 'container'} [${uiStart}:${uiEnd}]${rc}`;
   }
   if (seg.source?.type === 'manual') {
     return seg.gapKind ? `gap · ${seg.gapKind}` : 'manual';
@@ -220,7 +227,9 @@ function SegmentRow({
   const isContainer = seg.source?.type === 'container';
   // Local edit buffer — initial state from props.
   const [label, setLabel] = useState(seg.label ?? '');
-  const [start, setStart] = useState(seg.start ?? 0);
+  // V127 — inline range editor is 1-based (⚓ DEC-ANN-10): show start+1,
+  // convert back to 0-based on Apply. end passes through.
+  const [start, setStart] = useState((seg.start ?? 0) + 1);
   const [end, setEnd] = useState(seg.end ?? 0);
   const [rc, setRc] = useState(!!seg.reverseComplement);
   const [colorPickerOpen, setColorPickerOpen] = useState(false);
@@ -239,10 +248,13 @@ function SegmentRow({
         actions.updateSegment(draftId, seg.id, { reverseComplement: rc });
       }
     }
-    if (isContainer
-      && (Number(start) !== seg.start || Number(end) !== seg.end)
-      && typeof actions.updateSegmentRange === 'function') {
-      actions.updateSegmentRange(draftId, seg.id, Number(start), Number(end));
+    if (isContainer && typeof actions.updateSegmentRange === 'function') {
+      // V127 — inputs are 1-based; convert start back to 0-based store.
+      const storeStart = Math.max(0, Number(start) - 1);
+      const storeEnd = Number(end);
+      if (storeStart !== seg.start || storeEnd !== seg.end) {
+        actions.updateSegmentRange(draftId, seg.id, storeStart, storeEnd);
+      }
     }
   };
 

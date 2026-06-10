@@ -46,7 +46,8 @@ export function deriveAssemblyPrimer(assemblySequence, range, direction) {
   return { sequence: binding, bindingSequence: binding, tm: calcTm(binding) };
 }
 
-function gcPercent(seq) {
+// Exported (Node A) so deriveAutoPrimers shares one GC implementation.
+export function gcPercent(seq) {
   const s = String(seq || '').toUpperCase();
   if (!s.length) return 0;
   let gc = 0;
@@ -80,20 +81,22 @@ export function buildAssemblyPrimer({
     const right = boundaries[li + 1];
     const bOff = left.endOnAssembly;
     let bindingSequence;
-    let sequence;
+    let tail;
     if (!rev) {
       bindingSequence = seq.slice(lo, bOff);
-      const tail = seq.slice(bOff, Math.min(bOff + tailLen, right.endOnAssembly));
-      sequence = tail + bindingSequence;
+      tail = seq.slice(bOff, Math.min(bOff + tailLen, right.endOnAssembly));
     } else {
       const rightPart = seq.slice(bOff, hi);
       bindingSequence = reverseComplement(rightPart);
       const tailSrc = seq.slice(Math.max(left.startOnAssembly, bOff - tailLen), bOff);
-      sequence = reverseComplement(tailSrc) + bindingSequence;
+      tail = reverseComplement(tailSrc);
     }
+    // Node A §A4 — `tail` is stored explicitly (5'→3'); sequence = tail+binding.
+    const sequence = tail + bindingSequence;
     return {
       sequence,
       bindingSequence,
+      tail,
       tm: calcTm(bindingSequence),
       gc: gcPercent(bindingSequence),
       source: {
@@ -117,6 +120,7 @@ export function buildAssemblyPrimer({
   return {
     sequence: bindingSequence,
     bindingSequence,
+    tail: '', // Node A §A4 — single-segment primer has no overlap tail.
     tm: calcTm(bindingSequence),
     gc: gcPercent(bindingSequence),
     source: {

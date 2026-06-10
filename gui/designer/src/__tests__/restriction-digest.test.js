@@ -119,6 +119,20 @@ describe('digest()', () => {
       expect(ann.end).toBeLessThanOrEqual(500);
     }
   });
+
+  it('V122: a feature straddling the linearization cut is split into valid arcs', () => {
+    // Cut at 101 (EcoRI). [50,200] straddles it. Old code rotated it into a
+    // single start>end annotation (invalid on a linear molecule).
+    const annotations = [{ name: 'WrapGene', start: 50, end: 200, type: 'CDS', level: 'region' }];
+    const result = digest(SEQ_ECORI, annotations, 'EcoRI');
+    const pieces = result.backbone.annotations.filter((a) => a.name === 'WrapGene');
+    expect(pieces.length).toBe(2);              // split into two arcs
+    for (const p of pieces) {
+      expect(p.start).toBeLessThan(p.end);      // VALID (was start>end before fix)
+      expect(p.start).toBeGreaterThanOrEqual(0);
+      expect(p.end).toBeLessThanOrEqual(500);
+    }
+  });
 });
 
 // ═══════════════════════════════════════════════════════

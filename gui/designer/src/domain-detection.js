@@ -1,14 +1,17 @@
 /** Auto-detection of protein domains within CDS sequences. */
 
 import { translateDNA } from './codons';
+import { makeId } from './lib/ids';
 
-// ═══ Region ID generator ═══
-let _regionCounter = 0;
+// ═══ Annotation ID generator ═══
+// Delegates to the shared crypto.randomUUID helper (⚓ DEC-ANN-10 write-path
+// standard) — no Math.random, no reset-on-reload counter. Used for region AND
+// detail/point ids across importers / auto-annotate / migration.
 export function generateRegionId() {
-  return `r_${++_regionCounter}_${Math.random().toString(36).slice(2, 8)}`;
+  return makeId();
 }
-/** Reset counter (for tests). */
-export function resetRegionCounter() { _regionCounter = 0; }
+/** No-op kept for back-compat: ids are random UUIDs now, nothing to reset. */
+export function resetRegionCounter() { /* ids are UUIDs — no counter */ }
 
 const HYDRO = new Set('AVLIFWM'.split(''));
 const SMALL = new Set('AGST'.split(''));

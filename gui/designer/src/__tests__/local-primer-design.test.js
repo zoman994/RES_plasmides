@@ -222,8 +222,9 @@ describe('designPrimersLocal — V24 single-circular self-closure (Sprint X K6)'
     expect(rev.direction).toBe('reverse');
     expect(fwd.purpose).toBe('self-closure');
     expect(rev.purpose).toBe('self-closure');
-    expect(fwd.tailSequence).toBe(rc(seq60.slice(0, 15)));
-    expect(rev.tailSequence).toBe(seq60.slice(-15));
+    // V123 fix: direct terminal repeat → fwd tail = 3' end as-is, rev tail = rc(5' start)
+    expect(fwd.tailSequence).toBe(seq60.slice(-15));
+    expect(rev.tailSequence).toBe(rc(seq60.slice(0, 15)));
     // 15 bp tail + ≥18 bp binding
     expect(fwd.length).toBeGreaterThanOrEqual(33);
     expect(rev.length).toBeGreaterThanOrEqual(33);

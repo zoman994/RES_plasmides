@@ -39,10 +39,10 @@ import { SkeletonProvider, useSkeletonState, useSkeletonActions } from './store/
 import SkeletonHeader from './SkeletonHeader';
 import CanvasLayoutView from './canvas/CanvasLayoutView';
 import CanvasGraphView from './canvas/CanvasGraphView';
+import { nodeRect, gatherObstacleRects, resolveNodeOverlap } from './canvas/canvas-layout';
 import EditorWindowShell from './editor/EditorWindowShell';
 import OpKindPicker from './canvas/operations/OpKindPicker';
 import OpSuggestions from './OpSuggestions';
-import OnboardingTooltip from './OnboardingTooltip';
 import LineagePanel from './LineagePanel';
 import CodonStatsPanel from './CodonStatsPanel';
 import AssemblyDraftsPanel from './canvas/AssemblyDraftsPanel';
@@ -145,6 +145,9 @@ function CanvasArea() {
   const state = useSkeletonState();
   const actions = useSkeletonActions();
   const areaRef = useRef(null);
+  // SPEC_CANVAS_NODE_COLLISION — fresh state for opAdd collision-resolve.
+  const collisionStateRef = useRef(state);
+  collisionStateRef.current = state;
   // V60 (14.05.2026) — picker открывается сразу из «+ Операция»
   // (не лежит draft на canvas). При выборе kind ромб появляется на
   // canvas сразу как committed.
@@ -169,9 +172,14 @@ function CanvasArea() {
     const baseY = 200 + Math.floor(count / 6) * 60 + (count % 6) * 14;
     // A6 — prefill op.inputs из multi-selection.
     const selected = state.selectedContainerIds || [];
+    // COLLISION — resolve the cascade anchor off any node it would overlap.
+    const { w, h } = nodeRect('operation', { x: baseX, y: baseY });
+    const position = resolveNodeOverlap(
+      { x: baseX, y: baseY }, { w, h }, gatherObstacleRects(collisionStateRef.current, null),
+    );
     // Audit FIX-2: atomic create + commit (no pendingCommitRef hack).
     actions.opAdd({
-      position: { x: baseX, y: baseY },
+      position,
       kind,
       inputs: selected.slice(),
       commit: true,
@@ -292,7 +300,6 @@ function CanvasArea() {
       <OpSuggestions />
       <LineagePanel />
       <CodonStatsPanel />
-      <OnboardingTooltip />
     </div>
   );
 }

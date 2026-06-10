@@ -144,6 +144,23 @@ describe('Annotator — Stage A: auto-run Level-1 (common features) on open', ()
     expect(cfRun).not.toHaveBeenCalled();
   });
 
+  // V133 — stale Level-1 result must not survive a sequence-CONTENT change.
+  // In embedded mode the scope.sequenceId is sticky, so loading a NEW plasmid
+  // used to leave the previous L1 hit mapped onto it until a manual «Run
+  // again». Auto-run must re-fire (and drop the stale result) on content change.
+  it('re-runs L1 when the sequence CONTENT changes (same sticky sequenceId)', async () => {
+    openAnnotatorWith();
+    const { rerender } = render(
+      <Annotator sequence={'A'.repeat(2000)} annotations={[]} onApplyAnnotatorResults={() => {}} />,
+    );
+    await waitFor(() => expect(cfRun).toHaveBeenCalledTimes(1));
+    // A different plasmid is loaded into the same annotator — same scope, new content.
+    rerender(
+      <Annotator sequence={'C'.repeat(1800)} annotations={[]} onApplyAnnotatorResults={() => {}} />,
+    );
+    await waitFor(() => expect(cfRun).toHaveBeenCalledTimes(2));
+  });
+
   // Sprint M-X.3 follow-up — biolog: «при нажатии на плазмиду в
   // билиотеке снапгена опять бросает на аннотатор модалку, а должно
   // просто овервью показывать». SingleInspector pre-warms the

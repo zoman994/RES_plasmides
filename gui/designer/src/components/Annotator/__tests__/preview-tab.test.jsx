@@ -139,6 +139,49 @@ describe('PreviewTab — K4 SequenceView merge + drill-in', () => {
     expect(screen.getByTestId('mock-ann-g1').getAttribute('data-region-predicted')).toBe('true');
   });
 
+  // V134 — биолог: «кусок с парт, не кусок без парт; одно имя». A confirmed
+  // feature whose predicted partial sits on the same locus DISPLAYS the part
+  // name; the redundant prediction is absorbed → one feature, not two.
+  it('confirmed feature + overlapping predicted partial → one feature with the part name', () => {
+    setResults({
+      'common-features-homology': {
+        pluginId: 'common-features-homology', pluginName: 'Common features',
+        regions: [{
+          id: 'pp', name: 'AmpR_part_10-100', type: 'CDS',
+          start: 10, end: 100, strand: 1, level: 'region', predicted: true, confidence: 0.95,
+        }],
+      },
+    });
+    render(
+      <PreviewTab sequence={SEQUENCE} annotations={CONFIRMED} name="pTest" />
+    );
+    // one feature (the partial absorbed into the confirmed), shown with part name
+    expect(screen.getByTestId('mock-ann-count').textContent).toBe('1');
+    expect(screen.getByTestId('mock-ann-c1').textContent).toBe('AmpR_part_10-100');
+  });
+
+  // V136 — «Show duplicates» ON must reveal the Level-1 hit on the track: the
+  // reconcile (which collapses confirmed + partial into one) is gated to OFF.
+  it('Show duplicates ON: confirmed + overlapping predicted partial both render (no reconcile)', () => {
+    setResults({
+      'common-features-homology': {
+        pluginId: 'common-features-homology', pluginName: 'Common features',
+        regions: [{
+          id: 'pp', name: 'AmpR_part_10-100', type: 'CDS',
+          start: 10, end: 100, strand: 1, level: 'region', predicted: true, confidence: 0.95,
+        }],
+      },
+    });
+    useStore.setState((s) => { s.annotator.showDuplicates = true; });
+    render(
+      <PreviewTab sequence={SEQUENCE} annotations={CONFIRMED} name="pTest" />
+    );
+    // both on the track: confirmed (name NOT upgraded) + the Level-1 ghost.
+    expect(screen.getByTestId('mock-ann-count').textContent).toBe('2');
+    expect(screen.getByTestId('mock-ann-c1').textContent).toBe('AmpR');
+    expect(screen.getByTestId('mock-ann-pp')).toBeTruthy();
+  });
+
   it('respects threshold — ghosts below threshold are filtered out', () => {
     setResults({
       'sigma70-promoter': {

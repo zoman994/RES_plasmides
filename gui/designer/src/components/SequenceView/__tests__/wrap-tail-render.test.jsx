@@ -61,6 +61,7 @@ afterEach(() => { cleanup(); });
 
 describe('M-X.3 K2 — wrap-tail rendering', () => {
   it('circular long plasmid renders leading-wrap + main + trailing-wrap (round-12)', () => {
+    // V102 (23.05) — wrap-tail is always on for circular plasmids.
     render(<SequenceView fragments={[longFragment]} circular />);
     const lines = screen.getAllByTestId('sequence-view-line');
     const kinds = lines.map((el) => el.getAttribute('data-wraptail-kind'));
@@ -82,14 +83,18 @@ describe('M-X.3 K2 — wrap-tail rendering', () => {
     expect(kinds.filter((k) => k === 'trailing-wrap')).toHaveLength(0);
   });
 
-  it('circular degenerate plasmid (< 3 main lines) renders only main', () => {
+  it('circular SHORT plasmid still renders wrap-tail (length gate removed, V102 23.05)', () => {
+    // Previously a <3-line plasmid was suppressed by MIN_TOTAL_LINES; the
+    // gate is gone — pseudo-ring context shows for any circular length.
     render(<SequenceView fragments={[shortFragment]} circular />);
     const lines = screen.getAllByTestId('sequence-view-line');
     const kinds = lines.map((el) => el.getAttribute('data-wraptail-kind'));
-    expect(kinds.every((k) => k === 'main')).toBe(true);
+    expect(kinds).toContain('main');
+    expect(kinds.some((k) => k === 'leading-wrap' || k === 'trailing-wrap')).toBe(true);
   });
 
   it('wrap-tail wrappers carry dimmed opacity (live for drag-extend)', () => {
+    // V102 (23.05) — wrap-tail is always on for circular plasmids.
     render(<SequenceView fragments={[longFragment]} circular />);
     const lines = screen.getAllByTestId('sequence-view-line');
     const wrapTailLines = lines.filter(
@@ -108,5 +113,23 @@ describe('M-X.3 K2 — wrap-tail rendering', () => {
       // posFromPointerEvent (bails on wrap-tail unless extending).
       expect(style).not.toContain('pointer-events: none');
     }
+  });
+
+  it('V102 anti-flicker — wrap-tail is stable across selection changes (caret-independent)', () => {
+    const countWrap = () => screen.getAllByTestId('sequence-view-line')
+      .filter((el) => el.getAttribute('data-wraptail-kind') !== 'main').length;
+    // Always on for circular; dragging the selection (incl. into the
+    // extended domain, through the origin) must NOT toggle the strips —
+    // that toggling was the flicker. Wrap-tail no longer depends on the
+    // caret/selection at all.
+    const { rerender } = render(
+      <SequenceView fragments={[longFragment]} circular caretPos={10} caretAnchor={10} />,
+    );
+    const baseline = countWrap();
+    expect(baseline).toBeGreaterThan(0); // on, no trigger needed
+    rerender(
+      <SequenceView fragments={[longFragment]} circular caretPos={longSeq.length + 7} caretAnchor={longSeq.length - 20} />,
+    );
+    expect(countWrap()).toBe(baseline); // stable — no toggling
   });
 });

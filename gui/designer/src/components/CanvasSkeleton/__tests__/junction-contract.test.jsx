@@ -239,7 +239,7 @@ describe('K1 — normalizeJunction + schema v2→v3 migration (DEC-JUNC-08)', ()
   });
 
   it('SCHEMA_VERSION_CURRENT is 7 (A1=4, T1=5, T2=6, T3=7); v2→v3 still normalizes junctions through the chain', () => {
-    expect(SCHEMA_VERSION_CURRENT).toBe(11); // M-CANVAS-WORKFLOW-UX K1: bump 10→11
+    expect(SCHEMA_VERSION_CURRENT).toBe(12); // M-CANVAS-WORKFLOW-UX K1: bump 10→11
     const v2 = {
       containers: [], operations: [], positions: {}, cascadeIndex: 0, toasts: [],
       junctions: [{ id: 'j1', fromContainerId: 'a', toContainerId: 'b', kind: 'overlap' }],
@@ -549,22 +549,3 @@ describe('K5 — RECONCILE auto kind-change pushes info toast', () => {
   });
 });
 
-describe('K4 — junction badge red-dot from selectJunctionValidation', () => {
-  it('conflicting pair → red dot on the flagged junction; clean junction has none', () => {
-    render(
-      <SkeletonProvider>
-        <K4Harness />
-        <CanvasLayoutView />
-      </SkeletonProvider>,
-    );
-    // L = j-auto-A-C: its toEnd (blunt) vs neighbour R fromEnd (overhang)
-    // → warning → red dot.
-    expect(screen.getByTestId('skeleton-junction-warning-j-auto-A-C')).toBeTruthy();
-    const gL = screen.getByTestId('skeleton-junction-j-auto-A-C');
-    expect(gL.getAttribute('data-warn')).toBe('true');
-    // R = j-auto-C-B has no downstream neighbour sharing B → no warning.
-    expect(screen.queryByTestId('skeleton-junction-warning-j-auto-C-B')).toBeNull();
-    const gR = screen.getByTestId('skeleton-junction-j-auto-C-B');
-    expect(gR.getAttribute('data-warn')).toBe('false');
-  });
-});

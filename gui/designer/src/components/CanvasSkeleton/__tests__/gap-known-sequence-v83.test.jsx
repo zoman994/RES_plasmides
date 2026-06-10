@@ -190,7 +190,11 @@ describe('V83 — realise / sequence path uses the real sequence, not N×len', (
   });
 });
 
-describe('V83 — InsertGapModal integration (zone-mode, the reported flow)', () => {
+describe('V83 — paste custom sequence (zone-mode, SAFE custom-segment path)', () => {
+  // SPEC_ASSEMBLY_CUSTOM_SEGMENT §3 — the InsertGapModal is removed;
+  // «вставить свой сиквенс» в едином пикере идёт через тот же
+  // INSERT_MANUAL_SEGMENT → known-gap path. This re-covers the V83
+  // reported flow end-to-end via the new UI.
   let A = null;
   let S = null;
   function H() { A = useSkeletonActions(); S = useSkeletonState(); return null; }
@@ -206,29 +210,25 @@ describe('V83 — InsertGapModal integration (zone-mode, the reported flow)', ()
     act(() => { A.openEditorAssemblyTab(zid); });
     return zid;
   }
+  const pasteSeq = (value) => {
+    act(() => {
+      fireEvent.change(screen.getByTestId('assembly-source-picker-paste-input'), { target: { value } });
+    });
+    act(() => { fireEvent.click(screen.getByTestId('assembly-source-picker-paste-confirm')); });
+  };
 
-  it('T2A linker preset → gap piece keeps the T2A sequence (not poly-N)', () => {
+  it('T2A pasted → gap piece keeps the full T2A sequence (not poly-N)', () => {
     const zid = openEmptyZone();
-    act(() => { fireEvent.click(screen.getByTestId('assembly-add-gap')); });
-    const m = screen.getByTestId('insert-gap-modal');
-    act(() => { fireEvent.click(within(m).getByTestId('gap-tab-linker')); });
-    // LINKERS[2] = T2A (54 nt).
-    act(() => { fireEvent.click(within(m).getAllByTestId('gap-preset')[2]); });
-    act(() => { fireEvent.click(within(m).getByTestId('gap-insert')); });
+    pasteSeq(T2A);
     const g = S.pieces.filter((p) => p.zoneId === zid && p.kind === 'gap')[0];
     expect(g.gapSequence).toBe(T2A);
     expect(g.gapLength).toBe(T2A.length);
+    expect(g.gapHint).toBe('known');
   });
 
-  it('custom sequence → preserved verbatim (uppercased), NOT length-only', () => {
+  it('mixed-case input → preserved verbatim, uppercased', () => {
     const zid = openEmptyZone();
-    act(() => { fireEvent.click(screen.getByTestId('assembly-add-gap')); });
-    const m = screen.getByTestId('insert-gap-modal');
-    act(() => { fireEvent.click(within(m).getByTestId('gap-tab-custom')); });
-    act(() => {
-      fireEvent.change(within(m).getByTestId('gap-custom-seq'), { target: { value: 'atcgATCG' } });
-    });
-    act(() => { fireEvent.click(within(m).getByTestId('gap-insert')); });
+    pasteSeq('atcgATCG');
     const g = S.pieces.filter((p) => p.zoneId === zid && p.kind === 'gap')[0];
     expect(g.gapSequence).toBe('ATCGATCG');
     expect(g.gapLength).toBe(8);

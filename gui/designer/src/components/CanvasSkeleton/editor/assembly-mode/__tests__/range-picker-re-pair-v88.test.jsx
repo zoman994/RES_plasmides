@@ -57,7 +57,8 @@ describe('V88 — RE-site pair two-click selection', () => {
       fireEvent.change(screen.getByTestId('range-picker-end'), { target: { value: '10' } });
     });
     act(() => { fireEvent.click(screen.getByTestId('range-picker-confirm')); });
-    expect(got).toEqual({ start: 4, end: 10, rc: false, acquisitionMethod: 'numeric' });
+    // V127 — inputs 1-based: typed start 4 → store 3; end 10 passes through.
+    expect(got).toEqual({ start: 3, end: 10, rc: false, acquisitionMethod: 'numeric' });
     // Sanity: ecoSite is referenced so lint doesn't complain.
     expect(ecoSite.enzyme).toBe('EcoRI');
   });

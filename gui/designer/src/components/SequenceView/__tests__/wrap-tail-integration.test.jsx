@@ -57,8 +57,9 @@ describe('M-X.3 K6 — pUC19 fixture integration', () => {
     render(<SequenceView fragments={[pucShaped]} circular />);
     const lines = screen.getAllByTestId('sequence-view-line');
     const kinds = lines.map((el) => el.getAttribute('data-wraptail-kind'));
-    expect(kinds.filter((k) => k === 'leading-wrap').length).toBe(2);
-    expect(kinds.filter((k) => k === 'trailing-wrap').length).toBe(2);
+    // V102 23.05 — fixed preview ceil(200/80) = 3 lines each side.
+    expect(kinds.filter((k) => k === 'leading-wrap').length).toBe(3);
+    expect(kinds.filter((k) => k === 'trailing-wrap').length).toBe(3);
     expect(kinds.filter((k) => k === 'main').length).toBe(Math.ceil(2686 / 80));
   });
 

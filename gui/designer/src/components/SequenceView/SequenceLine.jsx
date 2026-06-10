@@ -244,6 +244,9 @@ const SequenceLine = memo(function SequenceLine({
           highlightedKey={restrictionHighlightKey}
           hoveredKey={hoveredRestrictionKey}
           onHoverChange={onRestrictionHover}
+          wrapsOrigin={line.wrapsOrigin === true}
+          wrapAt={line.wrapsOrigin ? line.wrapAt : undefined}
+          seqLength={line.wrapsOrigin ? seqLength : undefined}
         />
       ) : null}
       <RulerTrack
@@ -291,6 +294,33 @@ const SequenceLine = memo(function SequenceLine({
           >▶ 1</span>
         </div>
       )}
+      {/* V102 (23.05.2026) — затенить wrap-половину bridge-строки
+          (псевдоначало после разделителя ▶1). Bridge-строка имеет
+          kind:'main', поэтому row-level opacity её не затеняет; overlay-
+          вуаль перекрывает [wrapAt, конец) разом — без per-char правок в
+          треках. Тот же приём, что у inline origin-divider выше, но
+          zIndex:2 (под чертой ▶1, над треками). pointerEvents:none —
+          чтобы drag-выделение по псевдоначалу не блокировалось. */}
+      {line.wrapsOrigin && line.wrapAt < line.seq.length && (
+        <div
+          aria-hidden
+          data-testid="wrap-bridge-veil"
+          style={{
+            position: 'absolute',
+            left: (LABEL_WIDTH + line.wrapAt) * charPx,
+            width: (line.seq.length - line.wrapAt) * charPx,
+            top: 0,
+            bottom: 0,
+            // Theme-aware translucent surface — washes the wrap-half to
+            // the same muted read as the `opacity:0.6` trailing-wrap rows
+            // below it (не хардкодим белый). Точный тон — на приёмке.
+            background: 'var(--surface-1, #ffffff)',
+            opacity: 0.5,
+            pointerEvents: 'none',
+            zIndex: 2,
+          }}
+        />
+      )}
       {/*
         * DNA-first layout (03.05.2026): both DNA strands render
         * IMMEDIATELY after the ruler so the biolog's eye lands on
@@ -311,6 +341,9 @@ const SequenceLine = memo(function SequenceLine({
           onPrimerClick={onPrimerClick}
           onPrimerDoubleClick={onPrimerDoubleClick}
           selectedPrimerKeys={selectedPrimerKeys}
+          wrapsOrigin={line.wrapsOrigin === true}
+          wrapAt={line.wrapsOrigin ? line.wrapAt : undefined}
+          seqLength={line.wrapsOrigin ? seqLength : undefined}
         />
       ) : null}
       <StrandsTrack
@@ -354,6 +387,9 @@ const SequenceLine = memo(function SequenceLine({
           onPrimerClick={onPrimerClick}
           onPrimerDoubleClick={onPrimerDoubleClick}
           selectedPrimerKeys={selectedPrimerKeys}
+          wrapsOrigin={line.wrapsOrigin === true}
+          wrapAt={line.wrapsOrigin ? line.wrapAt : undefined}
+          seqLength={line.wrapsOrigin ? seqLength : undefined}
         />
       ) : null}
       {tracksReady ? (

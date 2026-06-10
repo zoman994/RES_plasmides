@@ -36,6 +36,10 @@ export default function SelectionOverlay({
   selectionStrand,
   selectionFrame,
   seqLength = 0,
+  // V96 — bumped by SequenceView whenever the lines reflow (two-phase
+  // tracksReady flip, wrap-tail, charsPerLine). Re-measures the rects
+  // against the final layout without waiting for a caret-moving click.
+  layoutEpoch = 0,
 }) {
   const [rects, setRects] = useState([]);
   useLayoutEffect(() => {
@@ -192,7 +196,7 @@ export default function SelectionOverlay({
     }
     setRects(out);
     return undefined;
-  }, [caretPos, caretAnchor, charPx, charsPerLine, containerRef, showBottomStrand, selectionMode, selectionStrand, selectionFrame, seqLength]);
+  }, [caretPos, caretAnchor, charPx, charsPerLine, containerRef, showBottomStrand, selectionMode, selectionStrand, selectionFrame, seqLength, layoutEpoch]);
 
   if (rects.length === 0) return null;
   return (

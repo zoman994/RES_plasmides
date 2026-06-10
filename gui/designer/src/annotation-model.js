@@ -11,8 +11,8 @@
  *     id: string,                  // backfilled via getRegions if missing
  *     name: string,
  *     type: string,                // 'CDS' | 'promoter' | 'terminator' | ...
- *     start: number,               // 0-based inclusive
- *     end: number,                 // 0-based exclusive
+ *     start: number,               // 0-based inclusive (⚓ DEC-ANN-10; UI shows 1-based via toUiCoords)
+ *     end: number,                 // 0-based exclusive (numerically == 1-based inclusive end)
  *     strand: 1 | -1,
  *     level: 'region',
  *

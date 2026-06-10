@@ -11,11 +11,30 @@ describe('MS-K3 — HelpPopover', () => {
     expect(screen.queryByTestId('ss-help-popover')).toBeNull();
   });
 
-  it('renders 3 tabs (Руководство / Хоткеи / Глоссарий)', () => {
+  it('renders 4 tabs (Руководство / Хоткеи / Глоссарий / Скрытое)', () => {
     render(<HelpPopover open onClose={vi.fn()} />);
     expect(screen.getByTestId('ss-help-tab-guide')).toBeTruthy();
     expect(screen.getByTestId('ss-help-tab-hotkeys')).toBeTruthy();
     expect(screen.getByTestId('ss-help-tab-glossary')).toBeTruthy();
+    expect(screen.getByTestId('ss-help-tab-hidden')).toBeTruthy();
+  });
+
+  it('hidden tab lists deferred features (Notebook, Protocol, Mutation auto-detect)', () => {
+    render(<HelpPopover open onClose={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('ss-help-tab-hidden'));
+    const content = screen.getByTestId('ss-help-tab-content-hidden');
+    expect(content.textContent).toMatch(/Notebook/);
+    expect(content.textContent).toMatch(/ProtocolPanel|Протокол/);
+    expect(content.textContent).toMatch(/Mutation auto-detect|мутагенез/);
+  });
+
+  it('hidden tab lists power-user paths (ПКМ, drag-drop, hotkeys)', () => {
+    render(<HelpPopover open onClose={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('ss-help-tab-hidden'));
+    const content = screen.getByTestId('ss-help-tab-content-hidden');
+    expect(content.textContent).toMatch(/Ctrl\+R/);
+    expect(content.textContent).toMatch(/ПКМ|правый клик/i);
+    expect(content.textContent).toMatch(/Drag-and-drop/i);
   });
 
   it('default tab is "guide" with online-guide link', () => {

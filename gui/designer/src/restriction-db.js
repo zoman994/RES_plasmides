@@ -482,14 +482,24 @@ function _cutPosition(sitePos, enzymeInfo) {
 }
 
 function _shiftAnnotations(annotations, cutPos, seqLen) {
-  return annotations.map(ann => {
-    let newStart = ann.start - cutPos;
-    let newEnd = ann.end - cutPos;
-    if (newStart < 0) newStart += seqLen;
-    if (newEnd < 0) newEnd += seqLen;
-    if (newEnd <= 0) newEnd += seqLen;
-    return { ...ann, start: newStart, end: newEnd };
-  });
+  const rot = (p) => (((p - cutPos) % seqLen) + seqLen) % seqLen;
+  const out = [];
+  for (const ann of annotations) {
+    // V122 fix: a feature spanning the linearization point becomes two arcs on
+    // the linear molecule — split into [tail..end] + [0..head] instead of
+    // producing a single start>end (invalid) annotation.
+    if (ann.start < cutPos && ann.end > cutPos) {
+      out.push({ ...ann, start: rot(ann.start), end: seqLen });
+      out.push({ ...ann, start: 0, end: ann.end - cutPos });
+      continue;
+    }
+    // Non-straddling: rotate both ends. A feature ending exactly at the cut
+    // maps end→0, which means "the very end of the linear molecule" → seqLen.
+    const s = rot(ann.start);
+    const e = rot(ann.end) || seqLen;
+    out.push({ ...ann, start: s, end: e });
+  }
+  return out;
 }
 
 function _linearize(sequence, annotations, enzymeName, enzymeInfo, site) {

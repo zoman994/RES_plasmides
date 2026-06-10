@@ -27,12 +27,31 @@ import SequenceTab from '../../../Library/inspector/tabs/SequenceTab';
 import { useStore } from '../../../../store';
 import { RE_ENZYMES } from '../../../../restriction-db';
 import { useSequenceSelection } from '../../../../hooks/useSequenceSelection';
+import { toUiCoords, fromUiCoords } from '../../../../lib/annotation-edit';
+
+// WT-UX-14 — Tm readout is meaningful only for primer-sized oligos. Above
+// this length the selection is a fragment, and a «Tm 77°» on it misleads
+// (biolog may read it as «anneals fine»). Gate the Tm prop by selection len.
+const PRIMER_MAX_LEN = 60;
+
+// WT-UX-15 — name the way the range was SELECTED, not «метод» (which reads as
+// the acquisition method: PCR / restriction). The acquisition method itself
+// stays deferred (correct model); only the label was confusing.
+const SELECTION_METHOD_LABELS = {
+  cursor: 'курсором',
+  feature: 'по фиче',
+  numeric: 'по координатам',
+  restriction: 'по RE-сайтам',
+};
 
 function featureLabel(a, idx) {
   const base = a && (a.label || a.name || a.type) ? (a.label || a.name || a.type) : `feature ${idx + 1}`;
   const s = Number.isFinite(a && a.start) ? a.start : 0;
   const e = Number.isFinite(a && a.end) ? a.end : 0;
-  return `${base} (${s}-${e})`;
+  // V127 — 1-based inclusive display (⚓ DEC-ANN-10): coords are stored
+  // 0-based half-open; biolog reads start+1..end.
+  const { uiStart, uiEnd } = toUiCoords(s, e);
+  return `${base} (${uiStart}-${uiEnd})`;
 }
 
 export default function RangePickerModal({ source, onConfirm, onCancel }) {
@@ -188,7 +207,7 @@ export default function RangePickerModal({ source, onConfirm, onCancel }) {
             onSelectRange={sel.onSelectRange}
             onRestrictionClick={sel.onRestrictionClick}
             restrictionHighlightKey={reHighlight}
-            showSelectionTm
+            showSelectionTm={(end - start) <= PRIMER_MAX_LEN}
             /* V87 — dim everything outside [start, end] so the picked
                fragment reads as the foreground (matches wrap-block
                dimming style applied at character granularity). */
@@ -202,10 +221,12 @@ export default function RangePickerModal({ source, onConfirm, onCancel }) {
             <input
               data-testid="range-picker-start"
               type="number"
-              value={start}
+              /* V127 — 1-based display (⚓ DEC-ANN-10): show start+1, store v-1.
+                 end passes through (0-based exclusive == 1-based inclusive). */
+              value={toUiCoords(start, end).uiStart}
               onChange={(e) => {
-                const v = Number(e.target.value);
-                sel.setCaretAnchor(v);
+                const v = fromUiCoords(Number(e.target.value), end).start;
+                sel.setCaretAnchor(Math.max(0, v));
                 setReHighlightKey(null);
                 setMethodOverride('numeric');
               }}
@@ -254,7 +275,7 @@ export default function RangePickerModal({ source, onConfirm, onCancel }) {
             {firstRESite
               ? `RE-сайт «${firstRESite.enzyme}» зафиксирован — кликни второй RE, чтобы взять фрагмент между ними`
               : hasSelection
-                ? `${end - start} bp выбрано · метод: ${acquisitionMethod}`
+                ? `${end - start} bp · выделено: ${SELECTION_METHOD_LABELS[acquisitionMethod] || SELECTION_METHOD_LABELS.cursor}`
                 : 'ничего не выделено'}
           </span>
           <button type="button" data-testid="range-picker-cancel-2" onClick={onCancel} style={ghostBtn}>Отмена</button>

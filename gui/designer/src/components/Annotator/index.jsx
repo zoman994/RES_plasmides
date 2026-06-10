@@ -96,6 +96,7 @@ export default function Annotator({
   const acceptManyRegions = useStore((s) => s.acceptManyRegions);
   const editPendingRegion = useStore((s) => s.editPendingRegion);
   const setShowDuplicates = useStore((s) => s.setAnnotatorShowDuplicates);
+  const resetAnnotatorScope = useStore((s) => s.resetAnnotatorScope);
 
   // Esc closes the modal (third escape route alongside Back button
   // + backdrop click). Capture-phase + stopPropagation so the App's
@@ -142,15 +143,26 @@ export default function Annotator({
   const autoRunFiredFor = useRef(null);
   useEffect(() => {
     if (!annotator.open) return;
-    const sid = scope?.sequenceId || 'default';
-    if (autoRunFiredFor.current === sid) return;
+    if (!sequence) return;
+    // V133 — key the auto-run on the sequence CONTENT, not scope.sequenceId.
+    // Embedded mode reuses a sticky sequenceId, so a NEW plasmid with the
+    // same id used to leave the previous L1 result mapped onto it until a
+    // manual «Run again». Track content; a change (we already fired for a
+    // DIFFERENT one) clears the stale L1/L2/L3 results + verdicts and re-runs.
+    const contentKey = sequence;
+    if (autoRunFiredFor.current === contentKey) return;
     const results = annotator.results || {};
     const running = annotator.running || {};
-    if (results[LEVEL_1_PLUGIN_ID]) return;       // already have output
     if (running[LEVEL_1_PLUGIN_ID]) return;        // race-guard
     const plugin = getPluginById(LEVEL_1_PLUGIN_ID);
     if (!plugin) return;                           // registry not populated yet
-    autoRunFiredFor.current = sid;
+    const contentChanged = autoRunFiredFor.current !== null;
+    // First fire for THIS content with results already present (restored /
+    // pre-seeded) → keep them, don't re-run. A content CHANGE makes the
+    // existing results stale → fall through to clear + re-run.
+    if (!contentChanged && results[LEVEL_1_PLUGIN_ID]) return;
+    autoRunFiredFor.current = contentKey;
+    if (contentChanged) resetAnnotatorScope();     // drop stale L1/L2/L3 + verdicts
     setRunning(LEVEL_1_PLUGIN_ID, true);
     // Cancellation flag so a settled L1 promise doesn't write into a
     // stale store after the Annotator unmounts (or the user opens a
@@ -189,9 +201,9 @@ export default function Annotator({
       cancelled = true;
       if (rafId) cancelAnimationFrame(rafId);
     };
-    // Deps intentionally narrow — see autoRunFiredFor guard above.
+    // Deps: open + sequence CONTENT. autoRunFiredFor guards re-render churn.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [annotator.open, scope?.sequenceId]);
+  }, [annotator.open, sequence]);
 
   // Stage B-2 — per-level Run dispatcher. LevelPanel emits
   // `onRunLevel('L2' | 'L3' | …)` from its level-section Run

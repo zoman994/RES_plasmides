@@ -61,9 +61,17 @@ export function useAssemblyPrimerWriting({
   useHotkey('pcr-primer-reverse', writeReverse);
 
   const viewerPrimers = useMemo(() => primers.map((p) => ({
+    // id forwarded so a viewer hit identifies the primer (Del-to-delete,
+    // selection). Without it `hit.id` is undefined and removeAssemblyPrimer
+    // can't target the right record.
+    id: p.id,
     name: p.name,
     sequence: p.sequence,
     bindingSequence: p.bindingSequence,
+    // Overlap 5'-overhang — forwarded so PrimerTrack draws the tail segment
+    // (without it the two internal overlap-PCR primers render butted at the
+    // boundary). Empty/absent for terminal primers → no tail drawn.
+    tail: p.tail,
     direction: p.direction,
     tmBinding: p.tm,
     crossesBoundaries: p.crossesBoundaries,

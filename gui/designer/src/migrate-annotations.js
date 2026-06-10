@@ -90,5 +90,11 @@ export function migratePartAnnotations(part) {
     }
   }
 
+  // Write-path id (⚓ DEC-ANN-10 / TD-IMPORTER-NO-ID): every migrated
+  // annotation — region, detail, point — gets a stable id.
+  for (const a of annotations) {
+    if (!a.id) a.id = generateRegionId();
+  }
+
   return annotations;
 }

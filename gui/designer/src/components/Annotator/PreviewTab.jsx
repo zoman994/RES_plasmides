@@ -25,7 +25,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useStore } from '../../store';
 import { selectAnnotator } from '../../store/uiSlice.js';
-import { isDuplicatePrediction } from '../../lib/annotation-edit.js';
+import { isDuplicatePrediction, reconcileConfirmedWithPartials } from '../../lib/annotation-edit.js';
 import SequenceView from '../SequenceView';
 import PlasmidMiniMap from '../PlasmidMiniMap.jsx';
 import GhostDrillInPanel from './GhostDrillInPanel.jsx';
@@ -106,7 +106,11 @@ export default function PreviewTab({
   const threshold = annotator.threshold ?? 0;
   const acceptedIds = annotator.acceptedRegionIds || {};
   const rejectedIds = annotator.rejectedRegionIds || {};
-  const predicted = useMemo(() => {
+  // V134 — raw predictions (threshold + reject only), then reconcile partial
+  // names: a confirmed `X` whose predicted `X_part_…` sits on the same locus
+  // DISPLAYS the part name (fragment → с part) and absorbs that prediction →
+  // one feature, one name, independent of «Show duplicates».
+  const predictedAll = useMemo(() => {
     const out = [];
     const results = annotator.results || {};
     for (const res of Object.values(results)) {
@@ -114,35 +118,42 @@ export default function PreviewTab({
         if (Number.isFinite(r.confidence) && r.confidence < threshold) continue;
         const id = r.id || `${r.start}:${r.end}:${r.type || ''}:${r.name || ''}`;
         if (rejectedIds[id]) continue; // dropped — vanish from preview
-        // Suppress hits that duplicate an already-confirmed region of
-        // the same type (>50% overlap). Accepted-this-session ghosts
-        // stay visible (the user actively chose them).
-        // Honour the «show duplicates» opt-in toggle in the header.
-        // Suppress hits that duplicate an already-confirmed region of
-        // the same type. 2026-05-06 biolog report: «после Accept all
-        // выдаёт две аннотации». Cause: after Save, the accepted
-        // region landed in `annotations`, but `acceptedRegionIds`
-        // persists across close/open within the session — the previous
-        // `&& !acceptedIds[id]` override let the now-redundant ghost
-        // through, so the strip showed both the confirmed region AND
-        // the accepted-rendered-solid duplicate. Honour the «show
-        // duplicates» opt-in either way.
-        if (!annotator.showDuplicates
-            && isDuplicateOfConfirmed(r, annotations)) continue;
-        const accepted = !!acceptedIds[id];
-        // Accepted regions render solid (predicted: false); the rest
-        // stay ghosts. Defensive `predicted: true` for un-flagged
-        // detector output unless explicitly accepted.
-        out.push({ ...r, id, predicted: accepted ? false : true });
+        out.push({ ...r, id });
       }
     }
     return out;
-  }, [annotator.results, threshold, acceptedIds, rejectedIds, annotations, annotator.showDuplicates]);
+  }, [annotator.results, threshold, rejectedIds]);
+
+  const { confirmed: reconciledConfirmed, predicted: predictedAfterReconcile } = useMemo(
+    // V136 — reconcile (collapse confirmed + its Level-1 partial into one,
+    // part name) only when NOT showing duplicates. With «Show duplicates» ON
+    // the user wants to SEE the Level-1 hit on the track → keep both as-is.
+    () => (annotator.showDuplicates
+      ? { confirmed: annotations || [], predicted: predictedAll }
+      : reconcileConfirmedWithPartials(annotations || [], predictedAll)),
+    [annotations, predictedAll, annotator.showDuplicates],
+  );
+
+  const predicted = useMemo(() => {
+    const out = [];
+    for (const r of predictedAfterReconcile) {
+      // Suppress hits that duplicate an already-confirmed region of the same
+      // type (>50% overlap), honouring «show duplicates». 2026-05-06: skip
+      // even accepted dups — after Save they live in `annotations`, else the
+      // strip stacks the confirmed + the accepted-rendered-solid duplicate.
+      if (!annotator.showDuplicates
+          && isDuplicateOfConfirmed(r, reconciledConfirmed)) continue;
+      const accepted = !!acceptedIds[r.id];
+      // Accepted regions render solid (predicted: false); the rest stay ghosts.
+      out.push({ ...r, predicted: accepted ? false : true });
+    }
+    return out;
+  }, [predictedAfterReconcile, reconciledConfirmed, acceptedIds, annotator.showDuplicates]);
 
   const merged = useMemo(() => [
-    ...((annotations || []).map((a) => ({ ...a, predicted: a.predicted === true ? true : false }))),
+    ...(reconciledConfirmed.map((a) => ({ ...a, predicted: a.predicted === true ? true : false }))),
     ...predicted,
-  ], [annotations, predicted]);
+  ], [reconciledConfirmed, predicted]);
 
   const fragments = useMemo(() => [{
     id: 'annotator-preview',

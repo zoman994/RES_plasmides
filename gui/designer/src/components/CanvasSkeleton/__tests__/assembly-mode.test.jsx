@@ -341,9 +341,10 @@ describe('K5 SegmentList + SegmentDetailPanel', () => {
     act(() => { fireEvent.change(screen.getByTestId(`segment-inline-end-${segId}`), { target: { value: '12' } }); });
     act(() => { fireEvent.click(screen.getByTestId(`segment-inline-apply-${segId}`)); });
     const seg0 = S.assemblyDrafts.find((x) => x.id === 'asm-k5').segments[0];
-    expect(seg0.start).toBe(4);
+    // V127 — inline inputs 1-based: typed start 4 → store 3; end 12 passes through.
+    expect(seg0.start).toBe(3);
     expect(seg0.end).toBe(12);
-    expect(seg0.sequence).toBe('CCCCGGGG'); // src[4:12]
+    expect(seg0.sequence).toBe('ACCCCGGGG'); // src[3:12]
   });
 
   it('inline label edit dispatches updateSegment (V94)', () => {
@@ -396,27 +397,27 @@ describe('K6 segment source picker (inline EmptyAssemblyLibrary)', () => {
   // panel so existing entry-click flows keep working.
   it('inline picker is mounted with library entries (no «+ Сегмент» step)', () => {
     openDraftK6();
-    expect(screen.getByTestId('skeleton-placeholder-picker')).toBeTruthy();
-    expect(screen.getByTestId('skeleton-placeholder-picker-item-lib-puc')).toBeTruthy();
-    expect(screen.getByTestId('skeleton-placeholder-picker-item-lib-pet')).toBeTruthy();
+    expect(screen.getByTestId('assembly-source-picker')).toBeTruthy();
+    expect(screen.getByTestId('assembly-source-picker-section-loose-item-lib-puc')).toBeTruthy();
+    expect(screen.getByTestId('assembly-source-picker-section-loose-item-lib-pet')).toBeTruthy();
   });
 
   it('search narrows the library list', () => {
     openDraftK6();
     act(() => {
       fireEvent.change(
-        screen.getByTestId('skeleton-placeholder-picker-search'),
+        screen.getByTestId('assembly-source-picker-input'),
         { target: { value: 'puc' } },
       );
     });
-    expect(screen.getByTestId('skeleton-placeholder-picker-item-lib-puc')).toBeTruthy();
-    expect(screen.queryByTestId('skeleton-placeholder-picker-item-lib-pet')).toBeNull();
+    expect(screen.getByTestId('assembly-source-picker-section-loose-item-lib-puc')).toBeTruthy();
+    expect(screen.queryByTestId('assembly-source-picker-section-loose-item-lib-pet')).toBeNull();
   });
 
   it('pick a library entry → RangePicker → confirm → materialised + inserted', async () => {
     openDraftK6();
     try { localStorage.clear(); } catch { /* no-op */ }
-    act(() => { fireEvent.click(screen.getByTestId('skeleton-placeholder-picker-item-lib-puc')); });
+    act(() => { fireEvent.click(screen.getByTestId('assembly-source-picker-section-loose-item-lib-puc')); });
     const m = await screen.findByTestId('range-picker-modal');
     await act(async () => {
       fireEvent.click(within(m).getByTestId('range-picker-confirm'));
@@ -426,7 +427,7 @@ describe('K6 segment source picker (inline EmptyAssemblyLibrary)', () => {
     expect(d.segments).toHaveLength(1);
     expect(d.segments[0].sequence).toBe('AAAACCCCGGGGTTTT');
     // After the first segment lands, EmptyAssemblyLibrary unmounts.
-    expect(screen.queryByTestId('skeleton-placeholder-picker')).toBeNull();
+    expect(screen.queryByTestId('assembly-source-picker')).toBeNull();
   });
 });
 
@@ -441,60 +442,26 @@ function openDraftK7() {
 }
 const draftK7 = () => S.assemblyDrafts.find((x) => x.id === 'asm-k7');
 
-describe('K7 InsertGapModal', () => {
-  it('«+ Gap» opens the modal with three tabs', () => {
+describe('K7 — paste custom sequence (custom-segment SAFE)', () => {
+  // SPEC_ASSEMBLY_CUSTOM_SEGMENT §3 — Обвес/Синтез/Gap модалки удалены;
+  // «вставить свой сиквенс» живёт секцией в едином пикере и идёт через
+  // тот же INSERT_MANUAL_SEGMENT path (V83 known-gap).
+  it('paste ATGC in the empty-state picker → manual segment with that sequence', () => {
     openDraftK7();
-    act(() => { fireEvent.click(screen.getByTestId('assembly-add-gap')); });
-    const m = screen.getByTestId('insert-gap-modal');
-    expect(within(m).getByTestId('gap-tab-linker')).toBeTruthy();
-    expect(within(m).getByTestId('gap-tab-custom')).toBeTruthy();
-    expect(within(m).getByTestId('gap-tab-unknown')).toBeTruthy();
-  });
-
-  it('preset linker → Insert adds a manual segment with its sequence', () => {
-    openDraftK7();
-    act(() => { fireEvent.click(screen.getByTestId('assembly-add-gap')); });
-    const m = screen.getByTestId('insert-gap-modal');
-    act(() => { fireEvent.click(within(m).getByTestId('gap-tab-linker')); });
-    act(() => { fireEvent.click(within(m).getAllByTestId('gap-preset')[0]); });
-    act(() => { fireEvent.click(within(m).getByTestId('gap-insert')); });
+    act(() => {
+      fireEvent.change(screen.getByTestId('assembly-source-picker-paste-input'), { target: { value: 'atcgATCG' } });
+    });
+    act(() => { fireEvent.click(screen.getByTestId('assembly-source-picker-paste-confirm')); });
     const seg = draftK7().segments[0];
-    expect(seg.source.type).toBe('manual');
-    expect(seg.sequence.length).toBeGreaterThan(0);
-  });
-
-  it('custom sequence → Insert adds a manual segment with that sequence', () => {
-    openDraftK7();
-    act(() => { fireEvent.click(screen.getByTestId('assembly-add-gap')); });
-    const m = screen.getByTestId('insert-gap-modal');
-    act(() => { fireEvent.click(within(m).getByTestId('gap-tab-custom')); });
-    act(() => { fireEvent.change(within(m).getByTestId('gap-custom-seq'), { target: { value: 'atcgATCG' } }); });
-    act(() => { fireEvent.click(within(m).getByTestId('gap-insert')); });
-    const seg = draftK7().segments[0];
+    expect(seg).toBeTruthy();
     expect(seg.sequence).toBe('ATCGATCG');
   });
 
-  it('unknown length → placeholder segment of N bp (N×N in sequence)', () => {
+  it('Обвес / Синтез / Gap buttons no longer exist', () => {
     openDraftK7();
-    act(() => { fireEvent.click(screen.getByTestId('assembly-add-gap')); });
-    const m = screen.getByTestId('insert-gap-modal');
-    act(() => { fireEvent.click(within(m).getByTestId('gap-tab-unknown')); });
-    act(() => { fireEvent.change(within(m).getByTestId('gap-unknown-len'), { target: { value: '12' } }); });
-    act(() => { fireEvent.click(within(m).getByTestId('gap-insert')); });
-    const seg = draftK7().segments[0];
-    expect(seg.source.type).toBe('manual');
-    expect(seg.gapKind).toBe('unknown');
-    expect(seg.length).toBe(12);
-    expect(seg.sequence === '' || /^N+$/.test(seg.sequence)).toBe(true);
-  });
-
-  it('Cancel closes without inserting', () => {
-    openDraftK7();
-    act(() => { fireEvent.click(screen.getByTestId('assembly-add-gap')); });
-    const m = screen.getByTestId('insert-gap-modal');
-    act(() => { fireEvent.click(within(m).getByTestId('gap-cancel')); });
-    expect(screen.queryByTestId('insert-gap-modal')).toBeNull();
-    expect(draftK7().segments).toHaveLength(0);
+    expect(screen.queryByTestId('assembly-add-snippet')).toBeNull();
+    expect(screen.queryByTestId('assembly-add-synthesis')).toBeNull();
+    expect(screen.queryByTestId('assembly-add-gap')).toBeNull();
   });
 });
 
@@ -602,14 +569,6 @@ describe('K9 AssemblyDraftsPanel + canvas', () => {
     expect(S.zones).toHaveLength(0);
   });
 
-  it('double-click an on-canvas AssemblyDraftBlock opens its editor tab', () => {
-    render(<SkeletonProvider><H /><CanvasLayoutView /></SkeletonProvider>);
-    act(() => { A.createAssemblyDraft({ id: 'asm-d4', name: 'D4', position: { x: 50, y: 50 } }); });
-    const block = screen.getByTestId('assembly-draft-block-asm-d4');
-    act(() => { fireEvent.doubleClick(block); });
-    expect(S.editorContext.tabs.some((t) => t.kind === 'assembly' && t.assemblyDraftId === 'asm-d4')).toBe(true);
-  });
-
   it('MiniProjectCanvas renders a marker for a pinned draft (after expand — V91)', () => {
     render(<SkeletonProvider><H /><MiniProjectCanvas /></SkeletonProvider>);
     act(() => { A.createAssemblyDraft({ id: 'asm-d5', name: 'D5', position: { x: 120, y: 80 } }); });
@@ -676,7 +635,7 @@ describe('K10 orphan UX + history', () => {
 
 describe('K11 persistence', () => {
   it('schema is 7 post-T3 (A2 assemblyDraftPrimers itself was additive — no A2 bump)', () => {
-    expect(SCHEMA_VERSION_CURRENT).toBe(11); // M-CANVAS-WORKFLOW-UX K1: bump 10→11
+    expect(SCHEMA_VERSION_CURRENT).toBe(12); // M-CANVAS-WORKFLOW-UX K1: bump 10→11
   });
 
   it('REPLACE_STATE on a pre-A2 snapshot fills assemblyDraftPrimers default', () => {

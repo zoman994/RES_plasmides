@@ -313,5 +313,11 @@ export function importFeatures(features, seqLength, format) {
       source: 'import',
     }));
 
+  // Write-path id (⚓ DEC-ANN-10 / TD-IMPORTER-NO-ID): every annotation —
+  // region, detail, point — gets a stable id here, not deferred to read-path.
+  for (const a of annotations) {
+    if (!a.id) a.id = generateRegionId();
+  }
+
   return { annotations, primers };
 }

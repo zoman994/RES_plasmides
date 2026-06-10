@@ -48,10 +48,10 @@ describe('designPrimersLocal — junction.overlapSequence', () => {
     expect(revOfLeft).toBeDefined();
     expect(fwdOfRight).toBeDefined();
 
-    // rev primer of left frag: tail = second half of overlap (no RC) → should contain 'CCCCC'
-    expect(revOfLeft.tailSequence).toContain('CCCCC');
-    // fwd primer of right frag: tail = RC of first half of overlap → should contain rc('GGGGG')='CCCCC'
-    expect(fwdOfRight.tailSequence).toContain(rc('GGGGG'));
+    // V123 fix orientation: fwd-of-right tail = first half of overlap as-is → contains 'GGGGG';
+    // rev-of-left tail = rc(second half) → rc('…CCCCC…') contains 'GGGGG'.
+    expect(fwdOfRight.tailSequence).toContain('GGGGG');
+    expect(revOfLeft.tailSequence).toContain('GGGGG');
   });
 
   it('falls back to WT flanks when junction.overlapSequence is absent (regression)', () => {
@@ -78,9 +78,34 @@ describe('designPrimersLocal — junction.overlapSequence', () => {
     const revOfLeft = primers.find(p => p.direction === 'reverse' && p.fragmentName === 'left');
     const fwdOfRight = primers.find(p => p.direction === 'forward' && p.fragmentName === 'right');
 
-    // rev-of-left: tail = first 15 of right frag = 'CCCCC...'
-    expect(revOfLeft.tailSequence).toContain('CCCCC');
-    // fwd-of-right: tail = rc of last 15 of left frag = rc('TTTTT...') = 'AAAAA...'
-    expect(fwdOfRight.tailSequence).toContain('AAAAA');
+    // V123 fix: rev-of-left tail = rc(first 15 of right) = rc('CCC…') = 'GGGGG…'
+    expect(revOfLeft.tailSequence).toContain('GGGGG');
+    // fwd-of-right tail = last 15 of left as-is = 'TTTTT…'
+    expect(fwdOfRight.tailSequence).toContain('TTTTT');
+  });
+
+  // V123 — biology invariant: the two amplicons must SHARE the junction overlap
+  // (top strand), else Gibson/OE-PCR cannot join them. This guards the actual
+  // assembly chemistry, not just the tail strings.
+  it('V123: the two amplicons share the correct junction overlap', () => {
+    const left  = 'CAGTCAGTCAGTCAGTCAGTCAGTCAGT' + 'TTGGCCAATTGGCCAA';
+    const right = 'GAATTCGGATCCAAGC' + 'TGCATGCATGCATGCATGCATGCATGCA';
+    const fragments = [
+      { name: 'left',  sequence: left,  length: left.length,  needsAmplification: true },
+      { name: 'right', sequence: right, length: right.length, needsAmplification: true },
+    ];
+    const junctions = [{ type: 'overlap', overlapMode: 'split', overlapLength: 30 }];
+    const { primers } = designPrimersLocal(fragments, junctions, false, { tmTarget: 50, primerPrefix: 'T' });
+    const get = (dir, f) => primers.find(p => p.direction === dir && p.fragmentName === f);
+
+    // amplicon top strand = fwd.tail + fragment + rc(rev.tail)
+    const ampL = get('forward', 'left').tailSequence  + left  + rc(get('reverse', 'left').tailSequence);
+    const ampR = get('forward', 'right').tailSequence + right + rc(get('reverse', 'right').tailSequence);
+
+    const overlap = left.slice(-15) + right.slice(0, 15); // the seamless junction overlap
+    expect(ampL.endsWith(overlap)).toBe(true);    // left amplicon ends with the overlap
+    expect(ampR.startsWith(overlap)).toBe(true);  // right amplicon starts with the same overlap
+    // stitching on the shared overlap reproduces left+right seamlessly
+    expect(ampL + ampR.slice(overlap.length)).toBe(left + right);
   });
 });

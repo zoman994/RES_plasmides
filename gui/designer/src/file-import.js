@@ -13,6 +13,7 @@
 import { parseGenBank, isGenBankFormat } from './genbank-parser';
 import { importFeatures } from './import-annotations';
 import { sanitizeSequence } from './sequence-utils';
+import { featureRegionName } from './feature-detection';
 
 export const ACCEPT_STRING = '.gb,.gbk,.genbank,.dna,.fasta,.fa,.fna';
 
@@ -31,12 +32,32 @@ export function extractItemName(parsed, file, fallbackIndex = 1) {
 export function parseFasta(text) {
   const lines = text.split(/\r?\n/);
   let name = '';
+  // V103 — remainder of the FIRST header line after the name token. A
+  // biolog pasting `>F1 ACGTACGT…` on one line otherwise loses the whole
+  // sequence (it all gets eaten by the header). Captured here, rescued
+  // after the loop ONLY when no sequence lines exist (so normal multi-line
+  // FASTA and `>name prose description` are never affected).
+  let headerRest = '';
   const seqParts = [];
   for (const line of lines) {
     if (line.startsWith('>')) {
-      if (!name) name = line.slice(1).trim().split(/\s+/)[0];
+      if (!name) {
+        const body = line.slice(1).trim();
+        const sp = body.search(/\s/);
+        name = sp === -1 ? body : body.slice(0, sp);
+        headerRest = sp === -1 ? '' : body.slice(sp + 1);
+      }
     } else {
       seqParts.push(line.replace(/\s/g, ''));
+    }
+  }
+  // Rescue only when there is no sequence at all AND the header remainder is
+  // pure nucleotides (incl. IUPAC / U). Prose descriptions (spaces, letters
+  // outside the alphabet) don't match → ignored, as before.
+  if (seqParts.length === 0 && headerRest) {
+    const stripped = headerRest.replace(/\s/g, '');
+    if (stripped && /^[ACGTURYSWKMBDHVN]+$/i.test(stripped)) {
+      seqParts.push(stripped);
     }
   }
   const sequence = sanitizeSequence(seqParts.join(''));
@@ -200,7 +221,15 @@ export async function enrichAnnotations(parsedItem, opts = {}) {
     for (const ann of annotations) {
       if (ann.knownFeature && ann.level === 'region') {
         ann.originalName = ann.name;
-        ann.name = ann.knownFeature;
+        // V136 — rebuild via the shared helper so a partial hit keeps its
+        // «KanR_part_X-Y» name instead of being flattened back to the bare
+        // knownFeature. knownFeature stays flat (canonical identity).
+        ann.name = featureRegionName({
+          name: ann.knownFeature,
+          method: ann.detector,
+          featureStart: ann.featureRange?.[0],
+          featureEnd: ann.featureRange?.[1],
+        });
       }
     }
     const withDetails = autoAnnotate({ name, type: 'misc_feature', sequence, annotations });

@@ -11,15 +11,27 @@ import {
 } from '../../store/skeleton-context';
 import { selectBoundaryCoverage } from '../../store/selectors-assembly';
 
+// WT-UX-18 — below this the binding Tm is outside the working PCR window
+// (~55–65°); deriveAutoPrimers uses a fixed 20-nt binding, so an AT-rich end
+// can land here. Flag it so the biolog reworks the primer by hand.
+const TM_WORKING_MIN = 52;
+
 function srcLabel(p, segName) {
   if (!p.source) return '';
+  // Node A §5.7 — auto-group primers carry an honest 'auto-group' kind.
+  // With a recorded junction → name it; otherwise it's a per-piece primer.
+  if (p.source.kind === 'auto-group') {
+    return Number.isFinite(p.source.boundaryAtOffset)
+      ? `авто: ${segName(p.source.leftSegmentId)} → ${segName(p.source.rightSegmentId)}`
+      : 'авто · кусок';
+  }
   if (p.source.kind === 'boundary') {
     return `граница ${segName(p.source.leftSegmentId)} → ${segName(p.source.rightSegmentId)}`;
   }
   return `сегмент ${segName(p.source.segmentId)}`;
 }
 
-function PrimerRow({ p, actions, draftId, onEdit }) {
+export function PrimerRow({ p, actions, draftId, onEdit }) {
   const [renaming, setRenaming] = useState(false);
   const [val, setVal] = useState(p.label || p.name);
   const cross = (p.crossesBoundaries || []).length >= 2;
@@ -35,9 +47,15 @@ function PrimerRow({ p, actions, draftId, onEdit }) {
           finalizer on skeleton change) / 🔒 manual (frozen). */}
       <span
         data-testid={`assembly-primer-automode-${p.id}`}
-        title={p.autoMode === 'auto' ? 'Auto (пересчитывается)' : 'Manual (не трогается)'}
+        data-draft={p.autoMode === 'auto' ? 'true' : undefined}
+        title={p.autoMode === 'auto'
+          ? 'Черновик — авто-праймер. Доведите в редакторе праймера: binding 20 нт фиксирован, Tm/длину подберите вручную.'
+          : 'Manual — зафиксирован, finalizer не трогает.'}
+        style={p.autoMode === 'auto'
+          ? { color: 'var(--warning-fg,#b45309)', whiteSpace: 'nowrap' }
+          : undefined}
       >
-        {p.autoMode === 'auto' ? '🔧' : '🔒'}
+        {p.autoMode === 'auto' ? '🔧 черновик' : '🔒'}
       </span>
       {renaming ? (
         <input
@@ -62,7 +80,25 @@ function PrimerRow({ p, actions, draftId, onEdit }) {
         >{p.label || p.name}</button>
       )}
       {p.status === 'edited' && <span title="Изменён вручную" style={{ color: 'var(--accent-500,#b85c3e)' }}>✎</span>}
-      <span style={{ color: 'var(--text-tertiary)' }}>Tm {p.tm}° · GC {p.gc}%</span>
+      {/* S3 §5.6 — координаты праймера устарели после правки в редакторе. */}
+      {p.status === 'stale' && (
+        <span
+          data-testid="assembly-primer-stale"
+          title="Координаты устарели после правки последовательности — проверьте/перепишите праймер"
+          style={{ color: 'var(--warning-fg,#b45309)' }}
+        >⚠</span>
+      )}
+      <span style={{ color: 'var(--text-tertiary)' }}>
+        {`Tm ${p.tm}°`}
+        {Number.isFinite(p.tm) && p.tm < TM_WORKING_MIN && (
+          <span
+            data-testid={`assembly-primer-tm-warn-${p.id}`}
+            title={`Tm ${p.tm}° вне рабочего диапазона ПЦР (~55–65°) — перепишите праймер вручную`}
+            style={{ color: 'var(--warning-fg,#b45309)', marginLeft: 3 }}
+          >⚠</span>
+        )}
+        {` · GC ${p.gc}%`}
+      </span>
       <span style={{ flex: 1, minWidth: 0, fontFamily: 'var(--font-mono,monospace)', color: 'var(--text-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {p.sequence}
       </span>

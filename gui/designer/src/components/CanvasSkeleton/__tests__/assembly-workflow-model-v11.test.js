@@ -82,7 +82,7 @@ describe('K1 — factory defaults (piece / zone / op)', () => {
 
 describe('K1 — migration v10 → v11', () => {
   it('SCHEMA_VERSION_CURRENT bumped to 11 (M-CANVAS-WORKFLOW-UX workflow fields)', () => {
-    expect(SCHEMA_VERSION_CURRENT).toBe(11);
+    expect(SCHEMA_VERSION_CURRENT).toBe(12);
   });
 
   it('v10 snapshot → new fields stamped on zones / pieces / ops / primers', () => {
@@ -100,9 +100,9 @@ describe('K1 — migration v10 → v11', () => {
     expect(m.pieces[0].groupLayer).toBe(0);
     expect(m.pieces[0].mutations).toEqual([]);
     expect(m.operations[0].isOpGroup).toBe(false);
-    expect(m.assemblyDraftPrimers.d1[0].autoMode).toBe('manual');
-    expect(m.assemblyDraftPrimers.d1[0].binding).toBe('ATGCATGCAT');
-    expect(m.assemblyDraftPrimers.d1[0].tail).toBe('');
+    // Node A v11→v12 — pre-canon primers are wiped (the v10→v11 binding/tail
+    // stamping is superseded; chain ends at CURRENT which drops them).
+    expect(m.assemblyDraftPrimers).toEqual({});
   });
 
   it('idempotent — pre-existing values preserved, re-run is a no-op', () => {
@@ -117,9 +117,8 @@ describe('K1 — migration v10 → v11', () => {
     expect(m.pieces[0].groupLayer).toBe(2);
     expect(m.operations[0].isOpGroup).toBe(true);
     expect(m.zones[0].finalTopology).toBe('linear');
-    expect(m.assemblyDraftPrimers.d1[0].autoMode).toBe('auto');
-    expect(m.assemblyDraftPrimers.d1[0].binding).toBe('AA');
-    expect(m.assemblyDraftPrimers.d1[0].tail).toBe('T');
+    // Node A v11→v12 — primers wiped regardless of their v10 form.
+    expect(m.assemblyDraftPrimers).toEqual({});
     const again = migrateSnapshot(m, 10);
     expect(again).toEqual(m);
   });

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';
 import { useStore } from '../../store';
 import { ToastStack } from '../Toast';
+import { STRINGS } from '../../lib/strings';
 
 function reset() {
   useStore.setState((state) => {
@@ -145,5 +146,25 @@ describe('M-A.1 K5 — Toast Notion-style queue', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  // Звено 2 (25.05.2026): optional actionLabel sets the action-button text;
+  // onUndo stays the callback mechanism. No actionLabel → «Отменить» (no regression).
+  it('actionLabel sets the action button text, keeping onUndo as the callback', () => {
+    act(() => {
+      useStore.getState().showToast('imported', 'success', {
+        onUndo: () => {}, actionLabel: 'Продолжить аннотацию', autoDismissMs: 9000,
+      });
+    });
+    render(<ToastStack />);
+    expect(screen.getByTestId('toast-undo').textContent).toBe('Продолжить аннотацию');
+  });
+
+  it('regression: onUndo without actionLabel keeps the «Отменить» label (delete-toast shape)', () => {
+    act(() => {
+      useStore.getState().showToast('Удалено', 'info', { onUndo: () => {} });
+    });
+    render(<ToastStack />);
+    expect(screen.getByTestId('toast-undo').textContent).toBe(STRINGS.toast.undoButton);
   });
 });

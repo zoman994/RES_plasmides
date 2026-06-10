@@ -42,6 +42,10 @@ beforeEach(async () => {
     s.looseFolders = [];
     s.workspace = { active: 'library', history: [], context: {} };
     s.currentProjectId = null;
+    // Isolation — reset project maps so a test that seeds projects (e.g. the
+    // WT-UX-4 distinguishing-detail case) can't leak into the next test.
+    s.projects = {};
+    s.pinnedProjectIds = [];
   });
 });
 afterEach(cleanup);
@@ -143,7 +147,8 @@ describe('M-X.7a v2 K6 — AddModal', () => {
     // Switch to pb.
     fireEvent.click(screen.getByTestId('add-modal-target-project:pb').querySelector('input'));
     fireEvent.click(screen.getByTestId('add-modal-submit'));
-    expect(onLaunch).toHaveBeenCalledWith({ source: 'file', target: 'project:pb' });
+    // WT-D-2 — preset now carries the autoAnnotate flag (default on).
+    expect(onLaunch).toHaveBeenCalledWith({ source: 'file', target: 'project:pb', autoAnnotate: true });
     expect(onClose).toHaveBeenCalled();
   });
 
@@ -166,7 +171,26 @@ describe('M-X.7a v2 K6 — AddModal', () => {
       source: 'paste',
       target: 'loose',
       text: '>my\nATGCATGCATGC',
+      autoAnnotate: true,
+      name: '',
+      topology: 'linear',
     });
+  });
+
+  it('WT-D-2 — auto-annotate toggle defaults on; unchecking flows into the preset', () => {
+    useStore.setState((s) => {
+      s.projects = {};
+      s.pinnedProjectIds = [];
+      s.currentProjectId = null;
+    });
+    const onLaunch = vi.fn();
+    render(<AddModal open onClose={() => {}} onLaunchPreImport={onLaunch} />);
+    const toggle = screen.getByTestId('add-modal-auto-annotate');
+    expect(toggle.checked).toBe(true); // default on
+    fireEvent.click(screen.getByTestId('add-modal-source-file'));
+    fireEvent.click(toggle); // turn off
+    fireEvent.click(screen.getByTestId('add-modal-submit'));
+    expect(onLaunch).toHaveBeenCalledWith({ source: 'file', target: 'loose', autoAnnotate: false });
   });
 
   it('targets list contains «Без проекта» + every pinned + current (deduped)', () => {
@@ -199,6 +223,58 @@ describe('M-X.7a v2 K6 — AddModal', () => {
   });
 });
 
+describe('AddModal UX batch — WT-UX-9 / 8 / 7 / 4', () => {
+  it('WT-UX-9 — header reflects the selected target (project name vs loose)', () => {
+    useStore.setState((s) => {
+      s.projects = { pa: { id: 'pa', name: 'MyProj', containerIds: [], createdAt: 1000 } };
+      s.pinnedProjectIds = ['pa'];
+      s.currentProjectId = 'pa';
+    });
+    render(<AddModal open onClose={() => {}} onLaunchPreImport={() => {}} />);
+    // Default target is the current project → header names it.
+    expect(screen.getByTestId('add-modal-title').textContent).toContain('MyProj');
+    // Switch to «Без проекта» → header says free desk.
+    fireEvent.click(screen.getByTestId('add-modal-target-loose').querySelector('input'));
+    expect(screen.getByTestId('add-modal-title').textContent.toLowerCase()).toContain('стол');
+  });
+
+  it('WT-UX-8/7 — paste section has a name input + topology toggle; preset carries them', () => {
+    useStore.setState((s) => {
+      s.projects = {}; s.pinnedProjectIds = []; s.currentProjectId = null;
+    });
+    const onLaunch = vi.fn();
+    render(<AddModal open onClose={() => {}} onLaunchPreImport={onLaunch} />);
+    fireEvent.click(screen.getByTestId('add-modal-source-paste'));
+    expect(screen.getByTestId('add-modal-paste-name')).toBeTruthy();
+    expect(screen.getByTestId('add-modal-topology-linear')).toBeTruthy();
+    expect(screen.getByTestId('add-modal-topology-circular')).toBeTruthy();
+    fireEvent.change(screen.getByTestId('add-modal-paste-textarea'), { target: { value: 'ACGTACGT' } });
+    fireEvent.change(screen.getByTestId('add-modal-paste-name'), { target: { value: 'pLAB1' } });
+    fireEvent.click(screen.getByTestId('add-modal-topology-circular'));
+    fireEvent.click(screen.getByTestId('add-modal-submit'));
+    expect(onLaunch).toHaveBeenCalledWith({
+      source: 'paste', target: 'loose', text: 'ACGTACGT',
+      name: 'pLAB1', topology: 'circular', autoAnnotate: true,
+    });
+  });
+
+  it('WT-UX-4 — two same-named projects render a distinguishing detail', () => {
+    useStore.setState((s) => {
+      s.projects = {
+        p1: { id: 'p1', name: 'Новый проект', containerIds: [], createdAt: 1000 },
+        p2: { id: 'p2', name: 'Новый проект', containerIds: [], createdAt: 99999999 },
+      };
+      s.pinnedProjectIds = ['p1', 'p2'];
+      s.currentProjectId = null;
+    });
+    render(<AddModal open onClose={() => {}} onLaunchPreImport={() => {}} />);
+    const rowA = screen.getByTestId('add-modal-target-project:p1');
+    const rowB = screen.getByTestId('add-modal-target-project:p2');
+    // Same name, but the rows are not textually identical (distinguishing detail).
+    expect(rowA.textContent).not.toBe(rowB.textContent);
+  });
+});
+
 describe('M-X.7a v2 K6 — LibraryWorkspace +Add wiring', () => {
   it('+Add in tree-head opens AddModal', () => {
     render(<LibraryWorkspace />);
@@ -211,5 +287,51 @@ describe('M-X.7a v2 K6 — LibraryWorkspace +Add wiring', () => {
     render(<LibraryWorkspace />);
     fireEvent.click(screen.getByTestId('library-workspace-empty-add'));
     expect(screen.getByTestId('add-modal')).toBeTruthy();
+  });
+});
+
+// V117 (26.05.2026): tall content (paste fields + many target projects) must
+// not push the footer off-screen. The modal is height-capped, the middle
+// content scrolls, and header/footer stay pinned so the buttons are always
+// reachable. happy-dom has no layout engine — assert the structural intent.
+describe('V117 — AddModal stays within the viewport (footer reachable)', () => {
+  it('modal is height-capped, body scrolls, footer is pinned', () => {
+    render(<AddModal open onClose={() => {}} onLaunchPreImport={() => {}} />);
+    const modal = screen.getByTestId('add-modal');
+    expect(modal.style.maxHeight).toBeTruthy();
+
+    const body = screen.getByTestId('add-modal-body');
+    expect(body.style.overflowY).toBe('auto');
+    expect(body.style.minHeight).toMatch(/^0(px)?$/); // happy-dom serializes 0 as '0'
+    expect(body.style.flexGrow).toBe('1');
+
+    const footer = screen.getByTestId('add-modal-submit').closest('footer');
+    expect(footer).toBeTruthy();
+    expect(footer.style.flexShrink).toBe('0');
+  });
+});
+
+// 26.05.2026 (Игорь): в режиме «Вставить» галка авто-аннотации должна стоять
+// прямо под полем ввода текста, а не внизу окна. В остальных режимах (файл и
+// т.п.) строка остаётся на прежнем месте — ровно один инстанс в любом случае.
+describe('AddModal — auto-annotate placement under the paste textarea', () => {
+  const FOLLOWING = 4; // Node.DOCUMENT_POSITION_FOLLOWING
+
+  it('paste mode: auto-annotate row sits directly under the textarea (above ИМЯ), single instance', () => {
+    render(<AddModal open onClose={() => {}} onLaunchPreImport={() => {}} />);
+    fireEvent.click(screen.getByTestId('add-modal-source-paste'));
+    expect(screen.getAllByTestId('add-modal-auto-annotate')).toHaveLength(1);
+    const textarea = screen.getByTestId('add-modal-paste-textarea');
+    const autoRow = screen.getByTestId('add-modal-auto-annotate-row');
+    const nameInput = screen.getByTestId('add-modal-paste-name');
+    // order in the DOM: textarea → auto-annotate → ИМЯ
+    expect(textarea.compareDocumentPosition(autoRow) & FOLLOWING).toBeTruthy();
+    expect(autoRow.compareDocumentPosition(nameInput) & FOLLOWING).toBeTruthy();
+  });
+
+  it('file mode: auto-annotate row still present (single instance, no duplicate)', () => {
+    render(<AddModal open onClose={() => {}} onLaunchPreImport={() => {}} />);
+    fireEvent.click(screen.getByTestId('add-modal-source-file'));
+    expect(screen.getAllByTestId('add-modal-auto-annotate')).toHaveLength(1);
   });
 });

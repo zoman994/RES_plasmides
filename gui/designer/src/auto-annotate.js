@@ -66,8 +66,10 @@ function annotateCDS(seq) {
 
   // Stop codon — check last in-frame codon
   if (upper.length >= 3) {
-    // Find last complete in-frame codon position
-    const lastCodonPos = Math.floor((upper.length - 1) / 3) * 3;
+    // Find last complete in-frame codon position. V126 fix: use the codon
+    // COUNT, not (length-1) — the old `floor((L-1)/3)*3` pointed at the
+    // incomplete trailing codon (and missed the real stop) when L%3 ∈ {1,2}.
+    const lastCodonPos = (Math.floor(upper.length / 3) - 1) * 3;
     const lastCodon = upper.slice(lastCodonPos, lastCodonPos + 3);
     if (lastCodon.length === 3 && STOP_CODONS[lastCodon]) {
       annotations.push({
@@ -338,6 +340,12 @@ export function autoAnnotate(part) {
   // 4. Merge manual annotations (keep user-created ones)
   annotations.push(...manual);
 
+  // Write-path id (⚓ DEC-ANN-10 / TD-IMPORTER-NO-ID): stamp every annotation
+  // lacking one (CDS details, RE points) — the primary region already carries it.
+  for (const a of annotations) {
+    if (!a.id) a.id = generateRegionId();
+  }
+
   return annotations;
 }
 
@@ -366,10 +374,12 @@ export async function enrichWithCommonFeatures(sequence, annotations) {
   // stub to the named feature (vs only tagging knownFeature). Звено 25.05.2026.
   const REGION_PROMOTE_COVERAGE = 0.80;
   try {
-    const { detectCommonFeaturesAsync } = await import('./feature-detection');
+    const { detectCommonFeaturesAsync, featureRegionName } = await import('./feature-detection');
     const detected = await detectCommonFeaturesAsync(sequence);
 
-    const enriched = [...annotations];
+    // Clone each annotation — enrich must NOT mutate the caller's objects
+    // in place (they may be store/Immer-held); patch the copies (audit 29.05).
+    const enriched = annotations.map((a) => ({ ...a }));
 
     for (const hit of (detected || [])) {
       // Check if there's already an annotation covering this region
@@ -390,6 +400,10 @@ export async function enrichWithCommonFeatures(sequence, annotations) {
         existing.knownFeature = hit.feature.name;
         existing.source = 'common_db';
         existing.identity = hit.identity;
+        // Carry the detected strand onto the region (Звено 25.05.2026): a gene
+        // on the −strand must drive a −strand AA frame in AATrack. Guard on
+        // 1|-1 so a strand-less hit can't wipe the region's existing strand.
+        if (hit.strand === 1 || hit.strand === -1) existing.strand = hit.strand;
         // «Bare gene» promote: when the hit covers ≥80% of the matched region,
         // the region IS the gene — autoAnnotate seeds an 'imported'/misc_feature
         // stub over a headerless paste. Promote the stub to the named feature so
@@ -400,16 +414,37 @@ export async function enrichWithCommonFeatures(sequence, annotations) {
         const coverage = regionLen > 0 ? (hit.end - hit.start) / regionLen : 0;
         if (coverage >= REGION_PROMOTE_COVERAGE) {
           existing.originalName = existing.name; // keep prior name (consistency w/ file-import enrichAnnotations)
-          existing.name = hit.feature.name;
+          // V136 — partial hit names the promoted region «KanR_part_X-Y»;
+          // knownFeature (set above) stays flat as the canonical identity.
+          existing.name = featureRegionName({
+            name: hit.feature.name,
+            method: hit.method,
+            featureStart: hit.featureStart,
+            featureEnd: hit.featureEnd,
+          });
           existing.type = hit.feature.type;
+          if (hit.method === 'protein_partial' || hit.method === 'dna_partial') {
+            existing.featureRange = [hit.featureStart, hit.featureEnd];
+            existing.coverage = hit.coverage;
+            existing.detector = hit.method;
+          }
         }
       } else {
         // Add as new region annotation
-        enriched.push({
-          name: hit.feature.name,
+        const isPartial = hit.method === 'protein_partial' || hit.method === 'dna_partial';
+        const newRegion = {
+          id: generateRegionId(),
+          // V136 — partial hit → «KanR_part_X-Y»; knownFeature stays flat below.
+          name: featureRegionName({
+            name: hit.feature.name,
+            method: hit.method,
+            featureStart: hit.featureStart,
+            featureEnd: hit.featureEnd,
+          }),
           type: hit.feature.type,
           start: hit.start,
           end: hit.end,
+          strand: hit.strand, // carry strand so AATrack frames a −strand gene correctly (Звено 25.05.2026)
           level: 'region',
           auto: true,
           source: 'common_db',
@@ -417,7 +452,12 @@ export async function enrichWithCommonFeatures(sequence, annotations) {
           description: hit.feature.description,
           detector: hit.method,
           knownFeature: hit.feature.name,
-        });
+        };
+        if (isPartial) {
+          newRegion.featureRange = [hit.featureStart, hit.featureEnd];
+          newRegion.coverage = hit.coverage;
+        }
+        enriched.push(newRegion);
       }
     }
 

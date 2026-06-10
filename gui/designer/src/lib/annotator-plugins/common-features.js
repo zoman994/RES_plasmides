@@ -20,7 +20,7 @@
  */
 
 import { registerPlugin } from './registry.js';
-import { detectCommonFeaturesAsync } from '../../feature-detection.js';
+import { detectCommonFeaturesAsync, featureRegionName } from '../../feature-detection.js';
 
 function shiftCoord(value, offset) {
   return Math.max(0, (value | 0) + offset);
@@ -59,6 +59,22 @@ function rowToRegion(row, offset) {
     confidence: typeof row.identity === 'number' ? row.identity : null,
     method: typeof row.method === 'string' ? row.method : undefined,
   };
+  // Partial feature hit (truncated / split): name carries the matched
+  // feature sub-range via the shared helper (V136) so it reads «KanR_part_40-289»
+  // instead of a bare «KanR». featureRange / coverage stay as before.
+  if (
+    (row.method === 'protein_partial' || row.method === 'dna_partial') &&
+    typeof feat.name === 'string' && feat.name
+  ) {
+    region.name = featureRegionName({
+      name: feat.name,
+      method: row.method,
+      featureStart: row.featureStart,
+      featureEnd: row.featureEnd,
+    });
+    region.featureRange = [row.featureStart, row.featureEnd];
+    if (typeof row.coverage === 'number') region.coverage = row.coverage;
+  }
   if (feat.id) region.featureId = feat.id;
   const desc = stripHtml(feat.description);
   if (desc) region.description = desc;

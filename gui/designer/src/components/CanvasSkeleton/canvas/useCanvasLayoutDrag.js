@@ -15,7 +15,10 @@ import {
   useCallback, useRef, useState, useEffect,
 } from 'react';
 import { isPlaceholderContainer } from '../fixture-canvas-skeleton';
-import { computeAutoJunctions, edgePanVelocity, viewportToWorld } from './canvas-layout';
+import {
+  edgePanVelocity, viewportToWorld,
+  nodeRect, gatherObstacleRects, resolveNodeOverlap,
+} from './canvas-layout';
 import { findZoneAtPoint } from './zone-interaction';
 import { selectZoneByNodeId } from '../store/selectors-zones';
 
@@ -185,19 +188,16 @@ export function useCanvasLayoutDrag({ state, actions, containerRef, zoom }) {
       setConnecting(null);
       return;
     }
-    // На pointer-up — recompute auto-junctions, если drag перемещал
-    // блок. Skip для operation-drag (operations не участвуют в
-    // proximity auto-junctions).
+    // На pointer-up — обработать drop, если drag перемещал блок.
+    // V100 — proximity-junction авто-коннект удалён (мёртвый функционал;
+    // связывание контейнеров идёт через zones / редактор сборки).
     if (dragging?.hasMoved) {
       // V61 — mark so synthetic click does not re-trigger picker.
       justDraggedRef.current = true;
-      if (dragging.kind === 'container') {
-        const pairs = computeAutoJunctions(state.containers, state.positions);
-        actions.reconcileAutoJunctions(pairs);
-      }
       // T4 K8 (DEC-T4-06/13/14) — drop hit-detection into a zone.
       // Additive: containers/operations only (assembly drafts aren't
       // zone nodes). Outer-most zone at the cursor; null = loose.
+      let droppedZoneTarget = null;
       if (
         (dragging.kind === 'container' || dragging.kind === 'operation')
         && Array.isArray(state.zones) && containerRef.current
@@ -218,6 +218,7 @@ export function useCanvasLayoutDrag({ state, actions, containerRef, zoom }) {
           zoom,
         });
         const target = findZoneAtPoint(state.zones, pt);
+        droppedZoneTarget = target;
         const cur = selectZoneByNodeId(state, dragging.id);
         const tId = target ? target.id : null;
         const cId = cur ? cur.id : null;
@@ -234,6 +235,32 @@ export function useCanvasLayoutDrag({ state, actions, containerRef, zoom }) {
           actions.setZoneLaneLayout(target.id, 'manual');
         }
       }
+      // SPEC_CANVAS_NODE_COLLISION — loose-only anti-overlap. In-zone
+      // drops are arranged by the zone lane finalizer (and resolve must
+      // not push a node back out of the frame it was just dropped in);
+      // a loose drop nudges off any overlap. Assembly drafts are never
+      // zone nodes → always loose.
+      const isLooseDrop = dragging.kind === 'assembly' || droppedZoneTarget == null;
+      if (isLooseDrop) {
+        let desired = null;
+        if (dragging.kind === 'operation') {
+          desired = (state.operations || []).find((o) => o.id === dragging.id)?.position;
+        } else if (dragging.kind === 'assembly') {
+          desired = (state.assemblyDrafts || []).find((d) => d.id === dragging.id)?.position;
+        } else {
+          desired = state.positions[dragging.id];
+        }
+        if (desired) {
+          const { w, h } = nodeRect(dragging.kind, desired);
+          const obstacles = gatherObstacleRects(state, dragging.id);
+          const resolved = resolveNodeOverlap(desired, { w, h }, obstacles);
+          if (resolved.x !== desired.x || resolved.y !== desired.y) {
+            if (dragging.kind === 'operation') actions.opSetPosition(dragging.id, resolved);
+            else if (dragging.kind === 'assembly') actions.setAssemblyDraftPosition(dragging.id, resolved);
+            else actions.setPosition(dragging.id, resolved);
+          }
+        }
+      }
       // T4.5 DEC-T4.5-04/07 — a deliberate drag IS a manual override:
       // pin the node so the 3-lane finalizer leaves it where dropped
       // (position already applied by applyDragAt). Assembly drafts
@@ -243,7 +270,7 @@ export function useCanvasLayoutDrag({ state, actions, containerRef, zoom }) {
       }
     }
     setDragging(null);
-  }, [dragging, state.containers, state.positions, state.zones, zoom, containerRef, actions, connecting]);
+  }, [dragging, state.containers, state.positions, state.zones, state.operations, state.assemblyDrafts, zoom, containerRef, actions, connecting]);
 
   // V58 (13.05.2026) — drag для operation-ромбов.
   const onOperationPointerDown = useCallback((e, operationId) => {

@@ -20,12 +20,18 @@
  */
 import { useCallback, useRef, useState } from 'react';
 import { useStore } from '../../../store';
-import { useSkeletonActions } from '../store/skeleton-context';
+import { useSkeletonActions, useSkeletonState } from '../store/skeleton-context';
+import { nodeRect, gatherObstacleRects, resolveNodeOverlap } from './canvas-layout';
 
 export const TREE_DRAG_MIME = 'application/x-bodge-entry-id';
 
 export function useTreeDropTarget(externalRef) {
   const actions = useSkeletonActions();
+  // SPEC_CANVAS_NODE_COLLISION — fresh skeleton state for the drop
+  // callback (collision-resolve reads current obstacle bboxes).
+  const skeletonState = useSkeletonState();
+  const stateRef = useRef(skeletonState);
+  stateRef.current = skeletonState;
   const internalRef = useRef(null);
   const containerRef = externalRef || internalRef;
   const [dragOver, setDragOver] = useState(false);
@@ -85,6 +91,14 @@ export function useTreeDropTarget(externalRef) {
         x: Number.isFinite(x) ? x : 80,
         y: Number.isFinite(y) ? y : 80,
       };
+    }
+
+    // SPEC_CANVAS_NODE_COLLISION — nudge the drop off any loose node it
+    // would land on (clamped ≥ 0, deterministic ring search).
+    if (position) {
+      const { w, h } = nodeRect('container', position);
+      const obstacles = gatherObstacleRects(stateRef.current, null);
+      position = resolveNodeOverlap(position, { w, h }, obstacles);
     }
 
     actions.addContainerFromEntry(entry, position);

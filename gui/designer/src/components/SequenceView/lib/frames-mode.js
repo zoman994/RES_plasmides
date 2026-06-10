@@ -21,13 +21,14 @@
  * fall back to detected ORFs only when no CDS is annotated.
  */
 
+import { TRANSLATABLE_TYPES } from "../constants.js";
+
 const VALID_MODES = new Set(["auto", "single", "all"]);
 
-/** Find the broadest annotated CDS region, or null. */
+/** Find the broadest annotated coding region (CDS/gene/marker/reporter), or null. */
 function findDominantAnnotatedCDS(regions) {
   if (!Array.isArray(regions) || regions.length === 0) return null;
-  const cdsTypes = new Set(["CDS", "gene", "marker"]);
-  const cdses = regions.filter((r) => cdsTypes.has(r.type));
+  const cdses = regions.filter((r) => TRANSLATABLE_TYPES.has(r.type));
   if (cdses.length === 0) return null;
   let best = cdses[0];
   for (const r of cdses) {

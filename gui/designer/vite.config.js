@@ -3,6 +3,16 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
+// Dev server port — parsed from the CLI (`vite --port N`) so the HMR
+// endpoint (clientPort/port below) stays in sync; falls back to the
+// VITE_DEV_PORT env, then 3000. Running on a fresh port (e.g. 3002)
+// is the deterministic way to dodge a stale PWA service worker /
+// AmneziaVPN localhost hijack — SW cache is scoped per origin+port.
+const _portArgIdx = process.argv.indexOf('--port')
+const DEV_PORT = _portArgIdx !== -1 && process.argv[_portArgIdx + 1]
+  ? Number(process.argv[_portArgIdx + 1])
+  : (Number(process.env.VITE_DEV_PORT) || 3000)
+
 export default defineConfig({
   plugins: [
     react({
@@ -101,7 +111,7 @@ export default defineConfig({
     },
   },
   server: {
-    port: 3000,
+    port: DEV_PORT,
     // 15.05.2026 — bind ALL interfaces (incl. raw IPv4 127.0.0.1), not
     // just `localhost`. Default Vite bound localhost-only → resolved to
     // IPv6 `::1` on this Win box, so `http://127.0.0.1:3000` had NOTHING
@@ -127,8 +137,8 @@ export default defineConfig({
     hmr: {
       host: '127.0.0.1',
       protocol: 'ws',
-      clientPort: 3000,
-      port: 3000,
+      clientPort: DEV_PORT,
+      port: DEV_PORT,
     },
     proxy: {
       '/api': 'http://127.0.0.1:8000',

@@ -205,6 +205,19 @@ export function SkeletonProvider({ children }) {
       type: 'CREATE_OP_GROUP', zoneId, kind, name, pieceIds,
     }),
     removeOpGroup: (opId) => dispatch({ type: 'REMOVE_OP_GROUP', opId }),
+    // SPEC_EDITABLE_ASSEMBLY_S1 §5.6 — disband an op-group (used before
+    // an edit lands on a grouped piece). Resets groupId/groupLayer on
+    // members + drops the group's auto-primers + orphans layer-1 deps.
+    disbandOpGroup: (opId) => dispatch({ type: 'DISBAND_OP_GROUP', opId }),
+    // SPEC_EDITABLE_ASSEMBLY_S1 — direct piece edit (sequence / kind /
+    // gap fields) dispatched by the editable-assembly handler.
+    updatePiece: (pieceId, changes) => dispatch({ type: 'UPDATE_PIECE', pieceId, changes }),
+    // SPEC_EDITABLE_ASSEMBLY_S2 §5.1/§5.6 — split a sourced piece at a
+    // local offset; optional trimRightLeading drops the right half's
+    // leading nt (mid-delete in one pass).
+    splitPiece: (pieceId, atOffset, trimRightLeading = 0) => dispatch({
+      type: 'SPLIT_PIECE', pieceId, atOffset, trimRightLeading,
+    }),
     // M-CANVAS-WORKFLOW-UX K14 (SPEC §5.2) — append/replace a per-piece
     // mutation. K11 primer-derive applies these to the binding region
     // when computing the mutagenic primer.
@@ -228,6 +241,11 @@ export function SkeletonProvider({ children }) {
       type: 'WRITE_ASSEMBLY_PRIMER', draftId, range, direction, source, name, sequence,
     }),
     removeAssemblyPrimer: (draftId, primerId) => dispatch({ type: 'REMOVE_ASSEMBLY_PRIMER', draftId, primerId }),
+    // SPEC_EDITABLE_ASSEMBLY_S3 §5.1 — shift saved-primer coordinates
+    // after an editable-view edit (stale-marks in-region primers).
+    shiftAssemblyPrimers: (draftId, atPos, delta) => dispatch({
+      type: 'SHIFT_ASSEMBLY_PRIMERS', draftId, atPos, delta,
+    }),
     updateAssemblyPrimer: (draftId, primerId, patch) => dispatch({
       type: 'UPDATE_ASSEMBLY_PRIMER', draftId, primerId, patch,
     }),

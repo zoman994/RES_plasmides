@@ -12,7 +12,7 @@ import { migrateSnapshot, SCHEMA_VERSION_CURRENT } from '../store/skeleton-persi
 
 describe('T9 K1 — migration v8 → v9 (variants fields)', () => {
   it('SCHEMA_VERSION_CURRENT bumped to 9 (T6=8 zones, T9=9 variants)', () => {
-    expect(SCHEMA_VERSION_CURRENT).toBe(11); // M-CANVAS-WORKFLOW-UX K1: bump 10→11
+    expect(SCHEMA_VERSION_CURRENT).toBe(12); // M-CANVAS-WORKFLOW-UX K1: bump 10→11
   });
 
   it('v8 snapshot → variantGroupId:null on pieces, materializedClones:null on ops', () => {

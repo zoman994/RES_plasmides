@@ -68,65 +68,6 @@ function renderCanvasWithFilled(entry) {
   );
 }
 
-describe('Filled block — plasmid map visual (R10)', () => {
-  // R10 (14.05.2026): колбаса заменена MiniPlasmidMap SVG (rect for
-  // linear, arcs for circular). Tests verify SVG presence + feature
-  // count (linear strip case — entry is `topology: linear`).
-  it('renders MiniPlasmidMap SVG для filled container', () => {
-    renderCanvasWithFilled(seedEntry([
-      { name: 'AmpR', type: 'CDS', start: 0, end: 800, strand: 1, level: 'region' },
-    ]));
-    expect(screen.getByTestId('skeleton-block-c-placeholder-1-map')).toBeTruthy();
-    expect(screen.getByTestId('skeleton-block-c-placeholder-1-svg')).toBeTruthy();
-  });
-
-  it('renders rect-per-region annotation в linear SVG', () => {
-    renderCanvasWithFilled(seedEntry([
-      { name: 'promoter', type: 'promoter', start: 0, end: 100, strand: 1, level: 'region' },
-      { name: 'CDS-1', type: 'CDS', start: 150, end: 600, strand: 1, level: 'region' },
-      { name: 'terminator', type: 'terminator', start: 650, end: 700, strand: 1, level: 'region' },
-    ]));
-    const svg = screen.getByTestId('skeleton-block-c-placeholder-1-svg');
-    // Linear strip: 1 backbone rect + 3 feature rects + 2 end-cap polygons.
-    // Verify ≥4 rects (backbone + 3 features).
-    const rects = svg.querySelectorAll('rect');
-    expect(rects.length).toBeGreaterThanOrEqual(4);
-  });
-
-  it('annotations с level=detail исключены из map', () => {
-    renderCanvasWithFilled(seedEntry([
-      { name: 'region', type: 'CDS', start: 0, end: 500, strand: 1, level: 'region' },
-      { name: 'subfeature', type: 'misc_feature', start: 100, end: 200, strand: 1, level: 'detail' },
-    ]));
-    const svg = screen.getByTestId('skeleton-block-c-placeholder-1-svg');
-    // 1 backbone rect + 1 feature rect (detail filtered out).
-    const rects = svg.querySelectorAll('rect');
-    expect(rects.length).toBe(2);
-  });
-
-  it('placeholder block НЕ имеет MiniPlasmidMap', () => {
-    render(<CanvasSkeleton />);
-    expect(screen.queryByTestId('skeleton-block-c-placeholder-1-map')).toBeNull();
-    expect(screen.queryByTestId('skeleton-block-c-placeholder-1-svg')).toBeNull();
-  });
-
-  it('feature rects имеют разные fill colors для разных types', () => {
-    renderCanvasWithFilled(seedEntry([
-      { name: 'promoter', type: 'promoter', start: 0, end: 100, strand: 1, level: 'region' },
-      { name: 'AmpR', type: 'CDS', start: 150, end: 800, strand: 1, level: 'region' },
-      { name: 'terminator', type: 'terminator', start: 850, end: 950, strand: 1, level: 'region' },
-    ]));
-    const svg = screen.getByTestId('skeleton-block-c-placeholder-1-svg');
-    const rects = Array.from(svg.querySelectorAll('rect'));
-    // Skip backbone rect (1st) and ghost-overlay rect (if frozen — not here).
-    // Feature rects = rects with stricter width selection — filter by Y position.
-    const fills = rects.map((r) => r.getAttribute('fill')).filter((f) => f && f !== 'none');
-    // At least 3 unique colors (backbone + 3 features = 4 distinct fills expected).
-    const unique = new Set(fills);
-    expect(unique.size).toBeGreaterThanOrEqual(3);
-  });
-});
-
 describe('AddModal — SnapGene catalog tile', () => {
   it('catalog tile shows «в разработке» в подзаголовке', () => {
     render(<AddModal open onClose={() => {}} onLaunchPreImport={() => {}} />);

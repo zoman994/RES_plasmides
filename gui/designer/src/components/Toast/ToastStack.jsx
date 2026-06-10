@@ -28,6 +28,7 @@ export default function ToastStack() {
             msg={t.msg}
             kind={t.kind}
             onUndo={t.onUndo || undefined}
+            actionLabel={t.actionLabel || undefined}
             onAutoDismiss={t.onAutoDismiss || undefined}
             autoDismissMs={t.autoDismissMs}
             onDismiss={clearToast}

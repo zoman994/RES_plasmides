@@ -163,10 +163,15 @@ describe('existing functions unchanged', () => {
     expect(reverseComplement('ATGC')).toBe('GCAT');
   });
 
-  it('complement falls back to N for IUPAC (documented v1.1 limitation)', () => {
-    // COMPLEMENT_MAP does not yet support R/Y/S/W/K/M/B/D/H/V — returns N.
-    // This is a known limitation tracked in BUGS.md for v1.1.
-    expect(complement('R')).toBe('N');
-    expect(complement('Y')).toBe('N');
+  it('complement supports the full IUPAC table (V118 fix)', () => {
+    // COMPLEMENT_MAP now complements R/Y/S/W/K/M/B/D/H/V per IUPAC
+    // (was → N; sanitizeSequence preserves these codes on entry).
+    expect(complement('R')).toBe('Y');
+    expect(complement('Y')).toBe('R');
+    expect(complement('S')).toBe('S');
+    expect(complement('W')).toBe('W');
+    expect(complement('K')).toBe('M');
+    expect(complement('B')).toBe('V');
+    expect(complement('N')).toBe('N');
   });
 });

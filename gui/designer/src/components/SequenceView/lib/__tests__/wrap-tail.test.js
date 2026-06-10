@@ -19,7 +19,7 @@ import {
   filterAnnotationsForLine,
 } from '../wrap-tail.js';
 
-describe('shouldEnableWrapTail', () => {
+describe('shouldEnableWrapTail (V102 23.05 — always on for circular)', () => {
   it('returns false for linear topology', () => {
     expect(shouldEnableWrapTail({
       circular: false, seqLength: 5000, cpl: 80, viewportHeight: 400, lineHeight: 18,
@@ -35,49 +35,36 @@ describe('shouldEnableWrapTail', () => {
     })).toBe(false);
   });
 
-  it('returns true on a long circular plasmid (viewport size irrelevant)', () => {
-    // 5000 bp / cpl=80 = 63 main lines → enabled regardless of
-    // viewport height since round 4 (06.05.2026 — see helper notes
-    // for the rationale: nested scroll parents made the viewport
-    // probe unreliable).
+  it('returns true for any valid circular plasmid (no origin-crossing gate, no length limit)', () => {
     expect(shouldEnableWrapTail({
       circular: true, seqLength: 5000, cpl: 80, viewportHeight: 400, lineHeight: 18,
     })).toBe(true);
   });
 
-  it('returns true even when plasmid would visually fit in viewport (round-4 simplification)', () => {
-    // 1000 bp / cpl=80 = 13 main lines → enabled. The previous
-    // viewport-fit short-circuit was dropped because nested scroll
-    // parents broke the probe (biolog 06.05.2026 feedback).
-    expect(shouldEnableWrapTail({
-      circular: true, seqLength: 1000, cpl: 80, viewportHeight: 400, lineHeight: 18,
-    })).toBe(true);
-  });
-
-  it('returns false when totalMainLines < 3 (degenerate)', () => {
-    // 100 bp / cpl=80 = 2 lines. Wrap-tail lines would equal the
-    // entire plasmid → no useful context.
+  it('returns true even for a SHORT circular plasmid (< 3 lines) — length gate removed (V102 23.05)', () => {
     expect(shouldEnableWrapTail({
       circular: true, seqLength: 100, cpl: 80, viewportHeight: 50, lineHeight: 18,
-    })).toBe(false);
+    })).toBe(true);
+    expect(shouldEnableWrapTail({
+      circular: true, seqLength: 60, cpl: 80, viewportHeight: 50, lineHeight: 18,
+    })).toBe(true);
   });
 });
 
-describe('pickWrapTailLines', () => {
-  it('returns 2 when there are at least 5 main lines', () => {
-    expect(pickWrapTailLines({ totalMainLines: 5 })).toBe(2);
-    expect(pickWrapTailLines({ totalMainLines: 60 })).toBe(2);
+describe('pickWrapTailLines (V102 23.05 — fixed ≈200 bp / cpl, both sides)', () => {
+  it('returns ceil(200 / cpl) whole lines', () => {
+    expect(pickWrapTailLines({ cpl: 80 })).toBe(3); // ceil(200/80)=3
+    expect(pickWrapTailLines({ cpl: 100 })).toBe(2);
+    expect(pickWrapTailLines({ cpl: 200 })).toBe(1);
+    expect(pickWrapTailLines({ cpl: 250 })).toBe(1); // ceil(0.8)=1
+    expect(pickWrapTailLines({ cpl: 60 })).toBe(4); // ceil(200/60)=4
   });
 
-  it('returns 1 when totalMainLines is 3 or 4', () => {
-    expect(pickWrapTailLines({ totalMainLines: 3 })).toBe(1);
-    expect(pickWrapTailLines({ totalMainLines: 4 })).toBe(1);
-  });
-
-  it('returns 0 when totalMainLines is below 3 (no useful context)', () => {
-    expect(pickWrapTailLines({ totalMainLines: 2 })).toBe(0);
-    expect(pickWrapTailLines({ totalMainLines: 1 })).toBe(0);
-    expect(pickWrapTailLines({ totalMainLines: 0 })).toBe(0);
+  it('returns 0 for invalid cpl', () => {
+    expect(pickWrapTailLines({ cpl: 0 })).toBe(0);
+    expect(pickWrapTailLines({ cpl: -5 })).toBe(0);
+    expect(pickWrapTailLines({ cpl: NaN })).toBe(0);
+    expect(pickWrapTailLines({})).toBe(0);
   });
 });
 

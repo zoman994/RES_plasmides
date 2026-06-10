@@ -45,6 +45,9 @@ export default function SearchHitsOverlay({
   charPx,
   charsPerLine,
   containerRef,
+  // V96 — bumped by SequenceView on every line reflow so hit rects
+  // re-measure against the final layout without a caret-moving click.
+  layoutEpoch = 0,
 }) {
   const [paint, setPaint] = useState({ rects: [], ticks: [] });
 
@@ -133,7 +136,7 @@ export default function SearchHitsOverlay({
     }
     setPaint({ rects, ticks });
     return undefined;
-  }, [hits, charPx, charsPerLine, containerRef]);
+  }, [hits, charPx, charsPerLine, containerRef, layoutEpoch]);
 
   if (paint.rects.length === 0) return null;
   return (

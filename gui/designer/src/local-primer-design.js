@@ -142,53 +142,75 @@ function overlapTail(junction, leftSeq, rightSeq, side) {
 
   if (jType === 'ligation' || jType === 're_ligation') {
     if (!j.enzyme) return '';
+    // V125 fix: both primers get the RE tail (protective bases + site) AS-IS.
+    // Forward (side='right'): tail prepends to the top strand → product 5' =
+    //   [protective][site][body], protective OUTSIDE the site (5' flanking) so
+    //   the enzyme can cut. Reverse (side='left'): tail is the bottom strand 5';
+    //   product top 3' = [body] + rc(tail) = [body][site][protective], protective
+    //   outside at the 3' terminus. Previously the forward got rc(tail) → site
+    //   flush at the 5' terminus with no flanking → poor/no digestion.
     const tail = generateRETail(j.enzyme);
-    // Forward primer (side='right'): RE tail is prepended directly
-    // Reverse primer (side='left'): RE tail needs reverse complement
-    return side === 'left' ? tail : rc(tail);
+    return tail;
   }
 
   if (jType === 'golden_gate') {
     const enz = GG_ENZYMES[j.enzyme || 'BsaI'];
     if (!enz) return '';
     const oh = (j.overhang || '').toUpperCase();
+    // V124 fix: BOTH primers carry the recognition site AS-IS so it sits at the
+    // 5' end of the primer (top strand for fwd, bottom strand for rev) pointing
+    // INTO the fragment — BsaI then cuts inward, leaving the overhang on the
+    // fragment and discarding recognition+spacer. Forward (side='right') tail =
+    // recognition+spacer+overhang; reverse (side='left') = recognition+spacer+
+    // rc(overhang) (complementary 5' overhang for the upstream fragment).
+    // Previously rev used rc(recognition) → the site landed at the 3' terminus
+    // pointing OUTWARD → no in-bounds cut → that arm never digested.
     if (side === 'right') {
       return enz.recognition + (enz.spacer || 'A') + oh;
     } else {
-      return rc(enz.recognition) + (enz.spacer || 'A') + rc(oh);
+      return enz.recognition + (enz.spacer || 'A') + rc(oh);
     }
   }
 
-  // Overlap junction
+  // Overlap junction. Tail orientation follows the standard Gibson/OE-PCR
+  // convention (verified against pydna assembly_fragments), V123 fix:
+  //   side==='right' (forward primer of the DOWNSTREAM fragment) → tail =
+  //     upstream fragment's 3' end, top strand AS-IS (no reverse complement).
+  //   side==='left'  (reverse primer of the UPSTREAM fragment)   → tail =
+  //     reverse complement of the downstream fragment's 5' start.
+  // Result: both amplicons carry the SAME junction overlap on the top strand,
+  // so they anneal/recombine. (Previously both tails were rc-inverted → the
+  // two amplicons shared zero overlap and the assembly could not form.)
   const overlapLen = j.overlapLength || 30;
   const mode = j.overlapMode || 'split';
 
   // V4-E: If junction explicitly carries an overlapSequence (e.g. a mutant-containing
   // overlap bridge emitted by computeMutagenesisStrategy), source the tail from it
   // instead of the WT flanks. This lets the mutation reach the primer even though
-  // the amplified fragments are WT.
+  // the amplified fragments are WT. (olSeq[0:half] = upstream half, olSeq[half:] =
+  // downstream half — same orientation rule as the WT-flank path below.)
   if (mode === 'split' && typeof j.overlapSequence === 'string' && j.overlapSequence.length > 0) {
     const olSeq = j.overlapSequence.toUpperCase();
     const half = Math.ceil(overlapLen / 2);
     if (side === 'left') {
-      return olSeq.slice(half);
+      return rc(olSeq.slice(half));
     } else {
-      return rc(olSeq.slice(0, half));
+      return olSeq.slice(0, half);
     }
   }
 
   if (mode === 'split') {
     const half = Math.ceil(overlapLen / 2);
     if (side === 'left') {
-      return rightSeq.slice(0, half).toUpperCase();
+      return rc(rightSeq.slice(0, half)).toUpperCase();
     } else {
-      return rc(leftSeq.slice(-half)).toUpperCase();
+      return leftSeq.slice(-half).toUpperCase();
     }
   } else if (mode === 'left_only') {
-    if (side === 'left') return rightSeq.slice(0, overlapLen).toUpperCase();
+    if (side === 'left') return rc(rightSeq.slice(0, overlapLen)).toUpperCase();
     return '';
   } else {
-    if (side === 'right') return rc(leftSeq.slice(-overlapLen)).toUpperCase();
+    if (side === 'right') return leftSeq.slice(-overlapLen).toUpperCase();
     return '';
   }
 }
@@ -212,8 +234,13 @@ export function designPrimersLocal(fragments, junctions, circular, opts = {}) {
       const tmAdj = { phusion: 3, kod: 2, taq: -5 }[polymerase] || 0;
       if (isCircular && seq.length >= 40) {
         const halfOverlap = 15;
-        const fwdTail = rc(seq.slice(0, halfOverlap));
-        const revTail = seq.slice(-halfOverlap);
+        // V123 fix: terminal DIRECT repeat so the amplicon re-circularizes
+        // seamlessly. fwd tail = 3' end as-is, rev tail = rc(5' start) →
+        // amplicon top = seq[-15:] + seq + seq[0:15] (repeat collapses to the
+        // original circular junction). Previously rc-inverted → inverted-repeat
+        // (hairpin) ends that do not circularize.
+        const fwdTail = seq.slice(-halfOverlap);
+        const revTail = rc(seq.slice(0, halfOverlap));
         const fwdBinding = findBindingTagAware(seq, 'forward', tmTarget, frag.annotations);
         const revBinding = findBindingTagAware(seq, 'reverse', tmTarget, frag.annotations);
         const revBindRC = rc(revBinding.sequence);

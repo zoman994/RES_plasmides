@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import ToastIcon from './toast-icons';
 import { STRINGS } from '../../lib/strings';
 
-export default function Toast({ id, msg, kind = 'info', onUndo, onAutoDismiss, onDismiss, autoDismissMs = 3500 }) {
+export default function Toast({ id, msg, kind = 'info', onUndo, actionLabel, onAutoDismiss, onDismiss, autoDismissMs = 3500 }) {
   const dismissedRef = useRef(false);
 
   useEffect(() => {
@@ -71,7 +71,7 @@ export default function Toast({ id, msg, kind = 'info', onUndo, onAutoDismiss, o
           }}
           onMouseEnter={(e) => { e.currentTarget.style.textDecoration = 'underline'; }}
           onMouseLeave={(e) => { e.currentTarget.style.textDecoration = 'none'; }}
-        >{STRINGS.toast.undoButton}</button>
+        >{actionLabel || STRINGS.toast.undoButton}</button>
       )}
       <button
         type="button"

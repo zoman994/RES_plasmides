@@ -71,6 +71,64 @@ export function walkCodonsCached(sequence, frame, strand) {
   return entry;
 }
 
+// V133 — frame-pick cache. Per-sequence Map (content-safe, like _stringCache),
+// sub-keyed by `${start}:${end}:${strand}`. pickReadingFrame is called per AA
+// cell in hybrid auto, so without this it would re-count stops on every cell.
+const _framePickCache = new Map();
+function _trimFramePickCache() {
+  while (_framePickCache.size > STRING_CACHE_MAX) {
+    const oldest = _framePickCache.keys().next().value;
+    _framePickCache.delete(oldest);
+  }
+}
+
+/**
+ * Pick the reading frame (0|1|2) for a CDS region [start, end) on the given
+ * strand by translating the DNA in all three frames and counting the in-window
+ * stop codons — choose the frame with the fewest. A partial CDS whose boundary
+ * isn't on a codon (start%3 ≠ its real phase) then still reads as protein
+ * instead of stops.
+ *
+ * Robust tie-break: prefer the naive coord-derived frame
+ * (`isReverse ? (seqLen-end)%3 : start%3`) UNLESS another frame has more than 1
+ * fewer stops. The +1 absorbs a CDS's expected terminal stop, so a clean naive
+ * frame is never displaced by a coincidentally stop-free off-frame; a real
+ * frameshift (many scattered stops) is still overridden. Memoized per
+ * (sequence, start, end, strand).
+ *
+ * @param {string} fullSeq — top-strand uppercase DNA
+ * @returns {0|1|2}
+ */
+export function pickReadingFrame(fullSeq, start, end, isReverse) {
+  const seqLen = typeof fullSeq === "string" ? fullSeq.length : 0;
+  const naive = isReverse
+    ? (((seqLen - end) % 3) + 3) % 3
+    : (((start % 3) + 3) % 3);
+  if (!fullSeq || end - start < 3) return naive;
+  const strand = isReverse ? -1 : 1;
+  const subKey = `${start}:${end}:${strand}`;
+  let perSeq = _framePickCache.get(fullSeq);
+  if (perSeq) {
+    const hit = perSeq.get(subKey);
+    if (hit !== undefined) return hit;
+  }
+  const stops = [0, 0, 0];
+  for (let f = 0; f < 3; f++) {
+    const { codons } = walkCodonsCached(fullSeq, f, strand);
+    let n = 0;
+    for (const c of codons) {
+      const codonStart = c.position - 1; // same window as walkRangeIntoRows
+      if (codonStart >= start && codonStart + 3 <= end && c.aa === "*") n += 1;
+    }
+    stops[f] = n;
+  }
+  const minStops = Math.min(stops[0], stops[1], stops[2]);
+  const picked = stops[naive] <= minStops + 1 ? naive : stops.indexOf(minStops);
+  if (!perSeq) { perSeq = new Map(); _framePickCache.set(fullSeq, perSeq); _trimFramePickCache(); }
+  perSeq.set(subKey, picked);
+  return picked;
+}
+
 /**
  * Walk codons for a given frame and strand.
  *

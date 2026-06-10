@@ -10,6 +10,14 @@
 // left edge for the position number / strand label gutter.
 export const LABEL_WIDTH = 8;
 
+// V134 — single source of truth for the annotation types that carry an
+// amino-acid translation. Includes `reporter`: the common-features
+// detector matches reporters (GFP, mCherry, …) on the protein pathway,
+// so the AA display set must too — otherwise reporters detected as
+// protein get no AA track. AATrack, aa-opacity and frames-mode all
+// import this one set instead of keeping three drifting local copies.
+export const TRANSLATABLE_TYPES = new Set(["CDS", "gene", "marker", "reporter"]);
+
 // Stable empty-array reference used when consumer omits `primers`.
 // JS default-parameter syntax `primers = []` evaluates the array
 // LITERAL on every call, producing a new reference. Each new

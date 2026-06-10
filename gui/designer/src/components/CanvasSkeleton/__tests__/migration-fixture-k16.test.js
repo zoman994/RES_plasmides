@@ -37,7 +37,7 @@ function v10Fixture() {
 
 describe('K16 — reference fixture migration v10 → v11', () => {
   it('SCHEMA_VERSION_CURRENT === 11', () => {
-    expect(SCHEMA_VERSION_CURRENT).toBe(11);
+    expect(SCHEMA_VERSION_CURRENT).toBe(12);
   });
 
   it('migrates the full fixture; every slice gains the v11 fields', () => {
@@ -53,17 +53,9 @@ describe('K16 — reference fixture migration v10 → v11', () => {
     }
     // Operations get isOpGroup:false.
     expect(m.operations[0].isOpGroup).toBe(false);
-    // Primer without autoMode → 'manual' + binding=sequence + tail=''.
-    const pr1 = m.assemblyDraftPrimers.z1.find((x) => x.id === 'pr1');
-    expect(pr1.autoMode).toBe('manual');
-    expect(pr1.binding).toBe('ATGCAAAGGGCC');
-    expect(pr1.tail).toBe('');
-    // Primer with autoMode already set is untouched (binding/tail
-    // remain undefined — we never overwrite explicit autoMode).
-    const pr2 = m.assemblyDraftPrimers.z1.find((x) => x.id === 'pr2');
-    expect(pr2.autoMode).toBe('manual');
-    expect(pr2.binding).toBeUndefined();
-    expect(pr2.tail).toBeUndefined();
+    // Node A v11→v12 — pre-canon `assemblyDraftPrimers` are wiped (incompatible
+    // record shape), not migrated; the chain ends at CURRENT which drops them.
+    expect(m.assemblyDraftPrimers).toEqual({});
   });
 
   it('is idempotent — migrate∘migrate equals migrate (deep)', () => {

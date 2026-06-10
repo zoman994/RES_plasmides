@@ -6,8 +6,14 @@
 import { useSkeletonActions, useSkeletonHistory } from '../../store/skeleton-context';
 
 export default function AssemblyToolbar({
-  onAddSegment, onAddSnippet, onAddSynthesis, onAddGap,
+  onAddSegment,
   selectedSegmentIds, onSewSelected,
+  /* SPEC_ASSEMBLY_CUSTOM_SEGMENT — Обвес/Синтез/Gap упразднены; одна
+     кнопка «+ Сегмент» открывает единый пикер (выбор из библиотеки +
+     «вставить свой сиквенс»). В compact mode (segments.length === 0)
+     «+ Сегмент» скрыта — add-surface = центральный inline-пикер; остаются
+     Undo/Redo для `skeleton-history`-flows. */
+  compact = false,
 }) {
   const actions = useSkeletonActions();
   const history = useSkeletonHistory();
@@ -36,19 +42,12 @@ export default function AssemblyToolbar({
         flexShrink: 0,
       }}
     >
-      <button type="button" data-testid="assembly-add-segment" onClick={onAddSegment} style={btn()}>
-        + Плазмида
-      </button>
-      <button type="button" data-testid="assembly-add-snippet" onClick={onAddSnippet} style={btn()}>
-        + Обвес
-      </button>
-      <button type="button" data-testid="assembly-add-synthesis" onClick={onAddSynthesis} style={btn()}>
-        + Синтез
-      </button>
-      <button type="button" data-testid="assembly-add-gap" onClick={onAddGap} style={btn()}>
-        + Gap
-      </button>
-      {selectedSegmentIds && selectedSegmentIds.size >= 2 && (
+      {!compact && (
+        <button type="button" data-testid="assembly-add-segment" onClick={onAddSegment} style={btn()}>
+          + Сегмент
+        </button>
+      )}
+      {!compact && selectedSegmentIds && selectedSegmentIds.size >= 2 && (
         <button
           type="button"
           data-testid="assembly-sew-selected"

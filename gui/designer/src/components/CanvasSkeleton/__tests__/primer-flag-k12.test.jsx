@@ -68,10 +68,15 @@ function renderPanel(draftId) {
 }
 
 describe('K12 — autoMode badge', () => {
-  it('🔧 badge when autoMode = auto', () => {
+  it('🔧 черновик badge when autoMode = auto (WT-UX-18 — auto reads as draft)', () => {
     renderPanel('d1');
     const id = seedPrimer('d1', 'auto');
-    expect(screen.getByTestId(`assembly-primer-automode-${id}`).textContent).toBe('🔧');
+    // WT-UX-18 — auto primers now read as «черновик» (доведите в редакторе),
+    // not a neutral 🔧. data-draft + visible text + explicit tooltip.
+    const badge = screen.getByTestId(`assembly-primer-automode-${id}`);
+    expect(badge.textContent).toMatch(/🔧/);
+    expect(badge.textContent).toMatch(/черновик/);
+    expect(badge.getAttribute('data-draft')).toBe('true');
   });
 
   it('🔒 badge when autoMode = manual', () => {

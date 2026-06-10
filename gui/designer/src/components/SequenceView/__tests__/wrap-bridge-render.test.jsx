@@ -1,18 +1,25 @@
 /**
- * wrap-bridge-render.test.jsx — M-X.5 hotfix coverage (07.05.2026).
+ * wrap-bridge-render.test.jsx — wrap-bridge AnnotationTrack coverage.
  *
  * Round-10 (06.05.2026) introduced the inline wrap-bridge — the last
  * main row of a circular plasmid is physically extended past the
- * origin with wrap chars from plasmid start. The K-fix in
- * AnnotationTrack adds paired-rect rendering: for `wrapsOrigin === true`
- * lines, an annotation overlapping `[0, lineLen - wrapAt)` plasmid
- * coords gets a SECOND rect at columns wrapAt..wrapAt+overlapLen so
- * the bar reads continuously across the orange origin divider.
+ * origin with wrap chars from plasmid start.
  *
- * Plan §K-fix scenarios (3 + regression guard):
- *   1) renders annotation across origin on bridge line as two rects
- *   2) wrap-segment appears only when annotation overlaps origin region
- *   3) label rendered once on the wider segment
+ * V102 §5.1 (23.05.2026) replaced the original M-X.5 `wrapSegmentInfo`
+ * hack (a per-real-region wrap-piece painter that only fired for features
+ * ALREADY stacked in the real range) with two INDEPENDENT stacks:
+ *   - real stack  → `stackAnnotations(parentRegions, lineStart, min(lineEnd, seqLength))`
+ *     rendered in columns [0, wrapAt);
+ *   - wrap stack  → `stackAnnotations(parentRegions, 0, wrapWidthChars)`
+ *     rendered in columns [wrapAt, lineLen).
+ * The wrap stack now catches features living purely at the plasmid start
+ * (which the old hack missed) AND the wrap-pieces of origin-crossing
+ * features, each stacked + labelled within its own segment.
+ *
+ * Scenarios (3 + regression guard):
+ *   1) crossing-origin feature renders both halves as two rects
+ *   2) wrap-segment absent when feature stays in the real-half
+ *   3) start-only feature (never in real range) still renders on wrap-half
  *   4) regression — non-bridge main row renders unchanged (single rect)
  */
 import { describe, it, expect, afterEach } from "vitest";
@@ -84,13 +91,19 @@ describe("AnnotationTrack — M-X.5 hotfix wrap-bridge render", () => {
     expect(allRectGroups[0].dataset.regionSegment).toBeFalsy();
   });
 
-  it("3) label rendered once on the wider segment", () => {
-    // 100 bp circular, bridge lineStart=80, wrapAt=10 (small real-part!),
-    // lineLen=40, wrapWidth=30 (large wrap-part). Annotation [0..100] —
-    // real-segment width = (90 - 80) = 10 chars × 7.2 = 72 px;
-    // wrap-segment width = 30 chars × 7.2 = 216 px > 72 → label on wrap.
+  it("3) start-only feature (never in real range) still renders on wrap-half", () => {
+    // V102 §5.1 — the M-X.5 `wrapSegmentInfo` hack painted wrap-pieces
+    // ONLY for features already stacked in the real range, so a feature
+    // living purely at the plasmid start (e.g. an MCS) — which never
+    // intersects the real range [lineStart, seqLength) — dropped out of the
+    // stacker and never rendered on the bridge line. The independent
+    // wrap-stack (`stackAnnotations(_, 0, wrapWidthChars)`) fixes this.
+    //
+    // 100 bp circular, bridge lineStart=80, wrapAt=20, lineLen=40,
+    // wrapWidth=20. Feature [2..18] sits entirely inside [0..20) (wrap-half)
+    // and never reaches the real range [80..100).
     const regions = [
-      { id: "wider-wrap", start: 0, end: 100, name: "WiderWrap", type: "misc_feature", color: "#a3a3a3" },
+      { id: "mcs", start: 2, end: 18, name: "MCS", type: "misc_feature", color: "#a3a3a3" },
     ];
     render(
       <AnnotationTrack
@@ -100,17 +113,19 @@ describe("AnnotationTrack — M-X.5 hotfix wrap-bridge render", () => {
         charPx={7.2}
         labelChars={8}
         wrapsOrigin
-        wrapAt={10}
+        wrapAt={20}
         seqLength={100}
       />,
     );
-    // There should be exactly one annotation label, attached to the
-    // wrap-segment <g>. The real-segment <g> exists but its inline
-    // label is suppressed via `labelGoesOnWrap`.
-    const labels = screen.queryAllByTestId("sequence-view-annotation-label");
-    expect(labels.length).toBe(1);
-    const labelParent = labels[0].closest('[data-testid="sequence-view-annotation"]');
-    expect(labelParent?.dataset.regionSegment).toBe("wrap");
+    const groups = screen.getAllByTestId("sequence-view-annotation");
+    // Exactly one rect-group, on the WRAP segment (no real-half rect since
+    // the feature never touches [80..100)).
+    expect(groups.length).toBe(1);
+    expect(groups[0].dataset.regionSegment).toBe("wrap");
+    // xLeft = (labelChars + wrapAt + wVisStart) * charPx
+    //       = (8 + 20 + 2) * 7.2 = 216.
+    const transform = groups[0].getAttribute("transform") || "";
+    expect(transform).toContain("translate(216");
   });
 
   it("4) non-bridge main row renders unchanged (regression guard)", () => {

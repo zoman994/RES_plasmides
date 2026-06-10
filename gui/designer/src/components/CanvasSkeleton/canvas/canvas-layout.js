@@ -16,6 +16,7 @@
  * KLD purple / ligation red / blunt grey).
  */
 import { computeAutoLayout } from '../../../lib/dag-layout';
+import { isPlaceholderContainer } from '../fixture-canvas-skeleton';
 
 // R10 (14.05.2026): bumped height 72→110 to fit MiniPlasmidMap visual
 // внутри block. Width unchanged для backward-compat drag math.
@@ -28,6 +29,117 @@ export const BLOCK_LINEAR_H = 150;
 export const BLOCK_CIRCULAR_SIZE = BLOCK_LINEAR_W;
 export const OPERATION_NODE_W = 120;
 export const OPERATION_NODE_H = 60;
+// AssemblyDraftBlock renders 240-wide; its height is content-driven, so
+// collision uses a representative bbox height (SPEC_CANVAS_NODE_COLLISION).
+export const ASSEMBLY_DRAFT_W = 240;
+export const ASSEMBLY_DRAFT_H = 120;
+
+// ── Collision-resolve (SPEC_CANVAS_NODE_COLLISION) ──────────────────
+//
+// Loose canvas nodes shouldn't pile on each other. View-side: each
+// placement point computes a desired position, then runs it through
+// `resolveNodeOverlap` against the bboxes of the other loose nodes
+// (`gatherObstacleRects`). In-zone nodes are laid out by the zone
+// (lane finalizer), so they're neither resolved nor counted as
+// obstacles. Pure + React-free → unit-tested in isolation.
+
+/**
+ * nodeRect(kind, position) → {x, y, w, h} — bbox by node kind.
+ */
+export function nodeRect(kind, position) {
+  const x = (position && position.x) || 0;
+  const y = (position && position.y) || 0;
+  if (kind === 'operation') return { x, y, w: OPERATION_NODE_W, h: OPERATION_NODE_H };
+  if (kind === 'assembly') return { x, y, w: ASSEMBLY_DRAFT_W, h: ASSEMBLY_DRAFT_H };
+  return { x, y, w: BLOCK_LINEAR_W, h: BLOCK_LINEAR_H };
+}
+
+// AABB overlap with a `gap` of breathing room inflated around `a`.
+function rectsOverlap(a, b, gap = 0) {
+  return !(
+    a.x + a.w + gap <= b.x
+    || b.x + b.w <= a.x - gap
+    || a.y + a.h + gap <= b.y
+    || b.y + b.h <= a.y - gap
+  );
+}
+
+/**
+ * gatherObstacleRects(state, excludeId) → [{x,y,w,h}] — bboxes of the
+ * loose obstacle nodes: filled containers (placeholders excluded),
+ * operations, assembly-draft blocks with a position. Excludes the
+ * moving node (`excludeId`) and any in-zone node (`zoneId` set) — zones
+ * arrange their own members, and zone FRAMES are not obstacles.
+ */
+export function gatherObstacleRects(state, excludeId) {
+  const s = state || {};
+  const positions = s.positions || {};
+  const out = [];
+  for (const c of (s.containers || [])) {
+    if (!c || c.id === excludeId) continue;
+    if (isPlaceholderContainer(c)) continue;
+    if (c.zoneId) continue;
+    const p = positions[c.id];
+    if (!p) continue;
+    out.push(nodeRect('container', p));
+  }
+  for (const op of (s.operations || [])) {
+    if (!op || op.id === excludeId) continue;
+    if (op.zoneId) continue;
+    const p = op.position;
+    if (!p) continue;
+    out.push(nodeRect('operation', p));
+  }
+  for (const d of (s.assemblyDrafts || [])) {
+    if (!d || d.id === excludeId) continue;
+    const p = d.position;
+    if (!p) continue;
+    out.push(nodeRect('assembly', p));
+  }
+  return out;
+}
+
+// Fixed direction order → deterministic resolution for tests.
+const RING_DIRS = [
+  [1, 0], [0, 1], [-1, 0], [0, -1],
+  [1, 1], [-1, 1], [1, -1], [-1, -1],
+];
+
+/**
+ * resolveNodeOverlap(desired, size, obstacles, opts) → {x, y}.
+ *
+ * If `desired` (inflated by `gap`) clears every obstacle, return it
+ * unchanged. Otherwise expand a ring outward in `step` increments up to
+ * `maxRadius`, testing the 8 directions in a fixed order; first clear
+ * candidate (clamped ≥ 0) wins. Nothing clear within `maxRadius` →
+ * return `desired` unchanged (graceful, never hangs).
+ *
+ * opts: { gap=16, step=24, maxRadius=1200 }.
+ */
+export function resolveNodeOverlap(desired, size, obstacles, opts = {}) {
+  const gap = opts.gap != null ? opts.gap : 16;
+  const step = opts.step != null ? opts.step : 24;
+  const maxRadius = opts.maxRadius != null ? opts.maxRadius : 1200;
+  const list = Array.isArray(obstacles) ? obstacles : [];
+  const dx0 = (desired && desired.x) || 0;
+  const dy0 = (desired && desired.y) || 0;
+  const w = (size && size.w) || 0;
+  const h = (size && size.h) || 0;
+  const free = (x, y) => {
+    const cand = { x, y, w, h };
+    for (const o of list) if (rectsOverlap(cand, o, gap)) return false;
+    return true;
+  };
+  if (free(dx0, dy0)) return { x: dx0, y: dy0 };
+  for (let r = step; r <= maxRadius; r += step) {
+    for (const [ux, uy] of RING_DIRS) {
+      const x = Math.max(0, dx0 + ux * r);
+      const y = Math.max(0, dy0 + uy * r);
+      if (free(x, y)) return { x, y };
+    }
+  }
+  return { x: dx0, y: dy0 };
+}
 
 export function getBlockSize(_container) {
   return { width: BLOCK_LINEAR_W, height: BLOCK_LINEAR_H };

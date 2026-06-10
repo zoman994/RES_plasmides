@@ -23,11 +23,11 @@
  */
 
 import { memo } from "react";
-import { walkCodons, walkCodonsCached } from "../lib/codon-walker.js";
+import { walkCodons, walkCodonsCached, pickReadingFrame } from "../lib/codon-walker.js";
 import { computeAAOpacity, frameHasSignal, regionFrame } from "../lib/aa-opacity.js";
+import { TRANSLATABLE_TYPES } from "../constants.js";
 
 const ROW_HEIGHT = 12;
-const CDS_TYPES = new Set(["CDS", "gene", "marker"]);
 
 /**
  * Build a `pos → {aa, codon, isStart, isStop, regionId, strand}` map for
@@ -90,10 +90,9 @@ function getOrCreateRow(rows, isReverse, frame) {
 
 function walkRangeIntoRows(rows, fullSeq, start, end, isReverse, regionId) {
   if (end - start < 3) return;
-  const seqLen = fullSeq.length;
-  const frame = isReverse
-    ? (((seqLen - end) % 3) + 3) % 3
-    : ((start % 3) + 3) % 3;
+  // V133 — frame chosen from the DNA (fewest stops), not start%3, so a partial
+  // CDS whose boundary isn't on a codon reads as protein, not stops.
+  const frame = pickReadingFrame(fullSeq, start, end, isReverse);
   const rowMap = getOrCreateRow(rows, isReverse, frame);
   const codons = walkCodons(fullSeq, frame, isReverse ? -1 : 1);
   let firstHit = true;
@@ -132,7 +131,7 @@ function buildCdsAARows(fullSeq, regions, orfRanges) {
   // ── Pass 1: annotated CDS-like regions ────────────────────────────
   if (Array.isArray(regions)) {
     for (const region of regions) {
-      if (!region || !CDS_TYPES.has(region.type)) continue;
+      if (!region || !TRANSLATABLE_TYPES.has(region.type)) continue;
       walkRangeIntoRows(
         rows,
         fullSeq,
@@ -622,7 +621,7 @@ function AATrack({
         strand: row.strand,
         orfRanges,
         regions,
-        seqLen: fullSeq.length,
+        seq: fullSeq,
       }),
     );
   }
@@ -669,10 +668,10 @@ function AATrack({
         // `rowCdsRegions`, identical). Used by both the visibility
         // probe and the per-cell opacity / colour tint below.
         const rowCdsRegions = (regions || []).filter((r) => {
-          if (!r || !CDS_TYPES.has(r.type)) return false;
+          if (!r || !TRANSLATABLE_TYPES.has(r.type)) return false;
           const rs = r.strand === -1 ? -1 : 1;
           if (rs !== row.strand) return false;
-          return regionFrame(r, fullSeq.length) === row.frame;
+          return regionFrame(r, fullSeq) === row.frame;
         });
         const anyVisible = onLine.some((c) => {
           const op = computeAAOpacity({
@@ -786,7 +785,7 @@ function AATrack({
                 // «совпадает с размеченным CDS — должна тоже
                 // подсвечиваться»).
                 regions,
-                seqLen: fullSeq.length,
+                seq: fullSeq,
               });
               if (opacity === 0) {
                 // Faded-out cell — never copyable (same reason).

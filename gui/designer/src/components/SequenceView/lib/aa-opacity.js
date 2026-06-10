@@ -29,8 +29,10 @@
  *          we hit this branch, default to single-row gating.)
  */
 
+import { pickReadingFrame } from "./codon-walker.js";
+import { TRANSLATABLE_TYPES } from "../constants.js";
+
 const FADED_OPACITY = 0.35;
-const CDS_FRAME_TYPES = new Set(["CDS", "gene", "marker"]);
 
 /**
  * Frame index for a region given the sequence length.
@@ -39,13 +41,11 @@ const CDS_FRAME_TYPES = new Set(["CDS", "gene", "marker"]);
  * Mirrors `walkRangeIntoRows` in AATrack.jsx so per-region frame matching
  * uses the same convention as the codon walker.
  */
-export function regionFrame(region, seqLen) {
-  if (!region || !Number.isFinite(seqLen)) return null;
-  const isReverse = region.strand === -1;
-  const raw = isReverse
-    ? (seqLen - (region.end | 0))
-    : (region.start | 0);
-  return ((raw % 3) + 3) % 3;
+export function regionFrame(region, fullSeq) {
+  if (!region || typeof fullSeq !== "string") return null;
+  // V133 — frame from the DNA (fewest stops), not start%3, so a partial CDS
+  // whose boundary isn't on a codon matches the right (frame, strand) row.
+  return pickReadingFrame(fullSeq, region.start | 0, region.end | 0, region.strand === -1);
 }
 
 /**
@@ -71,7 +71,7 @@ export function computeAAOpacity(ctx) {
     orfRanges = [],
     dominantCDS,
     regions = [],
-    seqLen = 0,
+    seq = "",
   } = ctx;
 
   if (strategy === "single") {
@@ -101,10 +101,10 @@ export function computeAAOpacity(ctx) {
   if (inOrf) return 1;
 
   const inCds = regions.some((r) => {
-    if (!r || !CDS_FRAME_TYPES.has(r.type)) return false;
+    if (!r || !TRANSLATABLE_TYPES.has(r.type)) return false;
     const rs = r.strand === -1 ? -1 : 1;
     if (rs !== strand) return false;
-    if (regionFrame(r, seqLen) !== frame) return false;
+    if (regionFrame(r, seq) !== frame) return false;
     return position >= r.start && position < r.end;
   });
   // 03.05.2026 evening: «Авто по покрытию должно расставлять
@@ -127,14 +127,14 @@ export function computeAAOpacity(ctx) {
  * включена автодетекция КДС надо убирать рамки автоматически в
  * которых ничего нет»).
  */
-export function frameHasSignal({ frame, strand, orfRanges = [], regions = [], seqLen = 0 }) {
+export function frameHasSignal({ frame, strand, orfRanges = [], regions = [], seq = "" }) {
   const orfHit = orfRanges.some((o) => o.strand === strand && o.frame === frame);
   if (orfHit) return true;
   return regions.some((r) => {
-    if (!r || !CDS_FRAME_TYPES.has(r.type)) return false;
+    if (!r || !TRANSLATABLE_TYPES.has(r.type)) return false;
     const rs = r.strand === -1 ? -1 : 1;
     if (rs !== strand) return false;
-    return regionFrame(r, seqLen) === frame;
+    return regionFrame(r, seq) === frame;
   });
 }
 

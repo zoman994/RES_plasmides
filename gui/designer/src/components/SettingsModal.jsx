@@ -226,6 +226,26 @@ export default function SettingsModal() {
                 />
               </SettingRow>
 
+              {/* Synthesis-block threshold (editable assembly, S1 §5.9) */}
+              <SettingRow label={STRINGS.settings.display.synthesisThresholdLabel} hint={STRINGS.settings.display.synthesisThresholdHint}>
+                <input
+                  type="number"
+                  min={40}
+                  max={200}
+                  step={1}
+                  data-testid="settings-display-synthesis-threshold"
+                  value={displaySettings.synthesisLengthThreshold}
+                  onChange={(e) => setDisplaySetting({ synthesisLengthThreshold: Number(e.target.value) })}
+                  style={{
+                    width: 100, padding: '4px 8px', fontSize: 13,
+                    fontFamily: 'var(--font-mono)',
+                    border: '0.5px solid var(--border-default)',
+                    borderRadius: 'var(--radius-md)',
+                    background: 'var(--surface-2)', color: 'var(--text-primary)',
+                  }}
+                />
+              </SettingRow>
+
               {/* Annotate-on-import default */}
               <SettingRow label={STRINGS.settings.display.annotateOnImportLabel} hint={STRINGS.settings.display.annotateOnImportHint}>
                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13 }}>

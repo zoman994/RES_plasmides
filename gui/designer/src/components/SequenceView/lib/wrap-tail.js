@@ -38,8 +38,17 @@
  *     line которую перекрывают.
  */
 
-const RESERVE_LINES_FOR_FIT_CHECK = 3;
-const MIN_TOTAL_LINES_FOR_WRAP_TAIL = 3;
+// V102 (23.05.2026, подтверждено Игорём) — wrap-tail / «псевдокольцо» —
+// нужная фича: показывается ВСЕГДА для кольцевых плазмид (и коротких).
+// Прежний origin-crossing гейт + MIN_TOTAL_LINES-лимит откатаны: гейт
+// убивал фичу для обычных плазмид (ничего не пересекало ориджин → полос
+// нет) И завязывал включение на ЖИВОЕ выделение, отчего wrap-tail мигал
+// при drag'е (toggle → leading-строки reflow'ят раскладку → re-measure →
+// toggle обратно → осцилляция). Снятие гейта делает включение стабильным
+// (нет зависимости от выделения) И сохраняет фичу для любой кольцевой
+// плазмиды. Объём псевдоначала/псевдоконца — фиксированный ≈200 п.о.
+// целыми строками с каждой стороны (биолог: «строки аккуратнее»).
+const WRAP_TAIL_PREVIEW_BP = 200;
 
 export function shouldEnableWrapTail({
   circular,
@@ -48,38 +57,25 @@ export function shouldEnableWrapTail({
   viewportHeight,
   lineHeight,
 }) {
-  if (!circular) return false;
-  if (!Number.isFinite(seqLength) || seqLength <= 0) return false;
-  if (!Number.isFinite(cpl) || cpl <= 0) return false;
-
-  const totalMainLines = Math.ceil(seqLength / cpl);
-  if (totalMainLines < MIN_TOTAL_LINES_FOR_WRAP_TAIL) return false;
-
-  // Auto-disable «plasmid fits in viewport» check (06.05.2026 round 4):
-  // SequenceView is mounted INSIDE a scroll-parent that owns the
-  // overflow (importer-single-tab-content has overflow:scroll), so
-  // SequenceView's own clientHeight equals the full content height —
-  // not the visible viewport. The fit-check therefore always
-  // succeeded, disabling wrap-tail for any plasmid that fully
-  // mounted in the DOM. Biolog 06.05: «origin прячется под колбасой
-  // и в нижней части сиквенса нет ничего» — exactly the symptom of
-  // wrap-tail disabled. Until we have a reliable parent-viewport
-  // probe, just enable wrap-tail whenever there are ≥3 main lines
-  // — the duplicate strips cost ~2 lines of vertical space, which
-  // is acceptable on every plasmid biolog has shipped through.
-  // viewportHeight + lineHeight kept on the signature for a future
-  // scroll-parent-aware variant.
+  // Always on for any valid circular plasmid (no origin-crossing gate, no
+  // length limit). cpl / viewportHeight / lineHeight stay on the
+  // signature (callsite passes them) but are unused — minimal diff.
+  void cpl;
   void viewportHeight;
   void lineHeight;
-
-  return true;
+  return circular && Number.isFinite(seqLength) && seqLength > 0;
 }
 
-export function pickWrapTailLines({ totalMainLines }) {
-  if (!Number.isFinite(totalMainLines)) return 0;
-  if (totalMainLines >= 5) return 2;
-  if (totalMainLines >= 3) return 1;
-  return 0;
+/**
+ * Fixed preview volume: ≈WRAP_TAIL_PREVIEW_BP whole lines on EACH side,
+ * applied to both leading («псевдоконец») and trailing («псевдоначало»).
+ * Independent of total plasmid length — short circular plasmids get
+ * wrap-tail too (V102 23.05). `buildWrapTailLines` clamps to the real
+ * line count, so a plasmid shorter than the preview just shows fewer.
+ */
+export function pickWrapTailLines({ cpl }) {
+  if (!Number.isFinite(cpl) || cpl <= 0) return 0;
+  return Math.ceil(WRAP_TAIL_PREVIEW_BP / cpl);
 }
 
 /**

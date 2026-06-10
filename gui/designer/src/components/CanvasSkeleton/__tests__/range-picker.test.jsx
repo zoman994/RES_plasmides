@@ -74,24 +74,26 @@ describe('K5 — RangePickerModal', () => {
     render(<RangePickerModal source={SRC} onConfirm={() => {}} onCancel={() => {}} />);
     expect(screen.getByTestId('range-picker-modal')).toBeTruthy();
     expect(screen.getByTestId('range-picker-viewer')).toBeTruthy();
-    expect(screen.getByTestId('range-picker-start').value).toBe('0');
+    // V127 — start input 1-based: default position 1 (store 0).
+    expect(screen.getByTestId('range-picker-start').value).toBe('1');
     expect(screen.getByTestId('range-picker-end').value).toBe('16');
     expect(screen.getByTestId('range-picker-rc')).toBeTruthy();
     // features dropdown built from annotations
-    expect(within(screen.getByTestId('range-picker-feature')).getByText(/ori/)).toBeTruthy();
+    expect(within(screen.getByTestId('range-picker-feature')).getByText(/ori \(5-12\)/)).toBeTruthy(); // V127 — 1-based label
   });
 
   it('numeric range + RC → onConfirm({start,end,rc})', () => {
     let got = null;
     render(<RangePickerModal source={SRC} onConfirm={(p) => { got = p; }} onCancel={() => {}} />);
     act(() => {
+      // V127 — inputs 1-based: typed start 2 → store 1; end 10 passes through.
       fireEvent.change(screen.getByTestId('range-picker-start'), { target: { value: '2' } });
       fireEvent.change(screen.getByTestId('range-picker-end'), { target: { value: '10' } });
       fireEvent.click(screen.getByTestId('range-picker-rc'));
     });
     act(() => { fireEvent.click(screen.getByTestId('range-picker-confirm')); });
     // V88/V89 — confirm payload теперь несёт acquisitionMethod.
-    expect(got).toMatchObject({ start: 2, end: 10, rc: true });
+    expect(got).toMatchObject({ start: 1, end: 10, rc: true });
     expect(got.acquisitionMethod).toBe('numeric');
   });
 
@@ -101,7 +103,8 @@ describe('K5 — RangePickerModal', () => {
     act(() => {
       fireEvent.change(screen.getByTestId('range-picker-feature'), { target: { value: '0' } });
     });
-    expect(screen.getByTestId('range-picker-start').value).toBe('4');
+    // V127 — feature {4,12} displays 1-based 5..12; store stays 4..12.
+    expect(screen.getByTestId('range-picker-start').value).toBe('5');
     expect(screen.getByTestId('range-picker-end').value).toBe('12');
     act(() => { fireEvent.click(screen.getByTestId('range-picker-confirm')); });
     expect(got).toMatchObject({ start: 4, end: 12, rc: false });
@@ -122,7 +125,7 @@ describe('K5 — «+ Плазмида» integration', () => {
     seedLib();
     // Игорь 20.05.2026 — empty assembly now shows the inline library
     // picker directly (EmptyAssemblyLibrary). No more «+ Плазмида» step.
-    act(() => { fireEvent.click(screen.getByTestId('skeleton-placeholder-picker-item-lib-puc')); });
+    act(() => { fireEvent.click(screen.getByTestId('assembly-source-picker-section-loose-item-lib-puc')); });
     const m = await screen.findByTestId('range-picker-modal');
     await act(async () => {
       fireEvent.click(within(m).getByTestId('range-picker-confirm'));
@@ -137,7 +140,7 @@ describe('K5 — «+ Плазмида» integration', () => {
   it('chosen sub-range is respected', async () => {
     const zid = openEmptyZone();
     seedLib();
-    act(() => { fireEvent.click(screen.getByTestId('skeleton-placeholder-picker-item-lib-puc')); });
+    act(() => { fireEvent.click(screen.getByTestId('assembly-source-picker-section-loose-item-lib-puc')); });
     const m = await screen.findByTestId('range-picker-modal');
     act(() => {
       fireEvent.change(within(m).getByTestId('range-picker-start'), { target: { value: '4' } });
@@ -148,7 +151,7 @@ describe('K5 — «+ Плазмида» integration', () => {
       await new Promise((r) => { setTimeout(r, 0); });
     });
     const ps = zonePieces(zid);
-    expect(ps[0].ranges[0]).toMatchObject({ start: 4, end: 12 });
+    expect(ps[0].ranges[0]).toMatchObject({ start: 3, end: 12 }); // V127 — typed start 4 (1-based) → store 3
   });
 
   it('drop a canvas container onto the viewer → RangePicker → confirm → sourced piece', () => {

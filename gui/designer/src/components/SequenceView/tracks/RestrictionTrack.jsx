@@ -19,7 +19,7 @@
  * для hover-сайта + click-сайта.
  */
 
-import { memo, useState } from "react";
+import { memo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { RE_ENZYMES } from "../../../restriction-db";
 
@@ -220,11 +220,17 @@ function HoverTooltip({ site, count, anchorX, anchorY }) {
  * slot, so a dense cluster of N sites can push the Nth label far
  * right of its actual cut position (leader-line shows the link).
  */
-function computeLabelSlots(lineSites, lineStart, charPx, labelChars, minGap) {
+function computeLabelSlots(lineSites, charPx, labelChars, minGap) {
   const out = [];
   let prevSlot = -Infinity;
-  for (const s of lineSites) {
-    const ci = s.position - lineStart;
+  for (const item of lineSites) {
+    // V102 §5.3 — render column is precomputed as slot metadata
+    // (`renderCi`): real sites → position − lineStart, wrap sites →
+    // wrapAt + position. The ORIGINAL site object is carried untouched
+    // in `item.site`, so siteKey + the render path + onSiteClick all see
+    // the caller's site shape — the internal render-column never leaks.
+    const s = item.site;
+    const ci = item.renderCi;
     const naturalX = (labelChars + ci + 0.5) * charPx;
     let slotX = naturalX;
     if (naturalX < prevSlot + minGap) {
@@ -266,17 +272,54 @@ function RestrictionTrack({
   highlightedKey,
   hoveredKey,
   onHoverChange,
+  // V102 §5.3 — wrap-bridge awareness. Defaults keep non-bridge rows
+  // exactly as before; on a bridge row sites at the start of the plasmid
+  // (wrap-half) render in columns [wrapAt, lineLen).
+  wrapsOrigin,
+  wrapAt,
+  seqLength,
 }) {
   const [hoverAnchor, setHoverAnchor] = useState(null); // { key, x, y } viewport
+  // V97 — one ref per track instance dedupes the mousedown→click pair.
+  // A single gesture's mousedown + click always land on the SAME <g>,
+  // so a shared flag across all sites in this instance is sufficient.
+  const mouseHandledRef = useRef(false);
 
   if (!Array.isArray(sites) || sites.length === 0 || !lineLen || charPx <= 0) {
     return null;
   }
 
   const lineEnd = lineStart + lineLen;
-  const lineSites = sites
-    .filter((s) => s.position >= lineStart && s.position < lineEnd)
-    .sort((a, b) => a.position - b.position);
+  // V102 §5.3 — on a wrap-bridge row, sites come from two plasmid ranges
+  // rendered in one row: real end [lineStart, seqLength) in columns
+  // [0, wrapAt); plasmid start [0, wrapWidthChars) in columns
+  // [wrapAt, lineLen). Each {site, renderCi} pair carries the render
+  // column; the original site object is never mutated (onSiteClick clean).
+  const hasWrap = wrapsOrigin === true
+    && Number.isFinite(wrapAt) && wrapAt > 0
+    && Number.isFinite(seqLength) && seqLength > 0
+    && wrapAt < lineLen;
+  const wrapWidthChars = hasWrap ? lineLen - wrapAt : 0;
+  const realEnd = hasWrap ? Math.min(lineEnd, seqLength) : lineEnd;
+  // Each entry is a {site, renderCi} pair — `site` is the caller's
+  // ORIGINAL object (never spread/mutated, so onSiteClick stays clean),
+  // `renderCi` is the slot's render column. Sorted by renderCi so the
+  // label-slot cascade flows left→right across both segments.
+  let lineSites;
+  if (hasWrap) {
+    const real = sites
+      .filter((s) => s.position >= lineStart && s.position < realEnd)
+      .map((s) => ({ site: s, renderCi: s.position - lineStart }));
+    const wrap = sites
+      .filter((s) => s.position >= 0 && s.position < wrapWidthChars)
+      .map((s) => ({ site: s, renderCi: wrapAt + s.position }));
+    lineSites = real.concat(wrap).sort((a, b) => a.renderCi - b.renderCi);
+  } else {
+    lineSites = sites
+      .filter((s) => s.position >= lineStart && s.position < lineEnd)
+      .map((s) => ({ site: s, renderCi: s.position - lineStart }))
+      .sort((a, b) => a.renderCi - b.renderCi);
+  }
   if (lineSites.length === 0) return null;
 
   const isVertical = reOrientation !== "horizontal";
@@ -285,7 +328,7 @@ function RestrictionTrack({
   const clickable = typeof onSiteClick === 'function';
 
   const minGap = isVertical ? VERTICAL_LABEL_MIN_GAP : HORIZONTAL_LABEL_MIN_GAP;
-  const slots = computeLabelSlots(lineSites, lineStart, charPx, labelChars, minGap);
+  const slots = computeLabelSlots(lineSites, charPx, labelChars, minGap);
 
   // Tooltip anchored to the hovered site's cut tick.
   const tooltipSlot = hoverAnchor
@@ -335,6 +378,11 @@ function RestrictionTrack({
                 // pointerdown не сработал.
               onMouseDown={clickable ? (e) => {
                 if (e.button !== 0) return; // primary button only
+                // V97 — mark this gesture handled. The trailing `click`
+                // DOES fire in real browsers (preventDefault on mousedown
+                // suppresses focus/native selection, NOT the click event),
+                // so without this flag onSiteClick fired twice per click.
+                mouseHandledRef.current = true;
                 e.stopPropagation();
                 e.preventDefault();
                 onSiteClick(s, e);
@@ -342,13 +390,16 @@ function RestrictionTrack({
               onPointerDown={clickable ? (e) => {
                 e.stopPropagation();
               } : undefined}
-              // Тест-окружение использует fireEvent.click, который не
-              // эмитит mousedown — оставляем onClick fallback. В реальном
-              // браузере click не выстрелит (preventDefault на mousedown
-              // отменяет его), так что onSiteClick вызовется только
-              // из mousedown.
+              // V97 dedup. Real browser: mousedown already handled this
+              // gesture (flag set) → swallow the trailing click. Test env
+              // (`fireEvent.click` without mousedown) leaves the flag false
+              // → handle here as before (keeps V88 single-click coverage).
               onClick={clickable ? (e) => {
                 e.stopPropagation();
+                if (mouseHandledRef.current) {
+                  mouseHandledRef.current = false;
+                  return;
+                }
                 onSiteClick(s, e);
               } : undefined}
               onMouseEnter={(e) => {

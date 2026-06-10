@@ -4,9 +4,12 @@ import { describe, it, expect, vi } from 'vitest';
 // orf-detection is no longer imported here after Sprint M-X.1 K3 — ORFs
 // are produced transiently by `runPredictors()` in the SequenceView
 // consumer (DEC-PRED-06), not by `enrichWithCommonFeatures`.
-vi.mock('../feature-detection', () => ({
-  detectCommonFeaturesAsync: vi.fn().mockResolvedValue([]),
-}));
+// Keep the real module (featureRegionName is a pure helper enrich now calls)
+// but stub the async DB lookup so tests inject their own hits (V136).
+vi.mock('../feature-detection', async (importActual) => {
+  const actual = await importActual();
+  return { ...actual, detectCommonFeaturesAsync: vi.fn().mockResolvedValue([]) };
+});
 
 import { enrichWithCommonFeatures } from '../auto-annotate';
 import { detectCommonFeaturesAsync } from '../feature-detection';
@@ -167,5 +170,98 @@ describe('enrichWithCommonFeatures', () => {
     expect(kanr.type).toBe('marker');
     expect(kanr.start).toBe(1000);
     expect(kanr.end).toBe(1816);
+  });
+
+  // Звено 25.05.2026 — strand перенос. detectCommonFeatures отдаёт числовой
+  // strand (1|-1); раньше enrichWithCommonFeatures его терял → ген на −цепи
+  // получал region.strand === undefined → AATrack строил AA-рамку по +цепи
+  // (мусорные стоп-коды). Теперь strand переносится в обеих ветках.
+  it('strand carried onto a new feature (else branch): hit strand:-1 → annotation.strand === -1', async () => {
+    const sequence = 'A'.repeat(4000);
+    const annotations = [];
+    detectCommonFeaturesAsync.mockResolvedValueOnce([
+      { feature: { name: 'KanR', type: 'marker', description: 'x' }, start: 1000, end: 1816, strand: -1, identity: 1.0, method: 'protein_exact' },
+    ]);
+
+    const enriched = await enrichWithCommonFeatures(sequence, annotations);
+    const kanr = enriched.find(a => a.name === 'KanR');
+    expect(kanr).toBeDefined();
+    expect(kanr.strand).toBe(-1);
+  });
+
+  it('strand carried onto a promoted region (existing branch ≥80%): KanR on −strand → strand === -1', async () => {
+    const sequence = 'A'.repeat(816);
+    const annotations = [{
+      name: 'imported', type: 'misc_feature', start: 0, end: 816, level: 'region', auto: true,
+    }];
+    detectCommonFeaturesAsync.mockResolvedValueOnce([
+      { feature: { name: 'KanR', type: 'marker', description: 'aph' }, start: 0, end: 816, strand: -1, identity: 1.0, method: 'protein_exact' },
+    ]);
+
+    const enriched = await enrichWithCommonFeatures(sequence, annotations);
+    const kanr = enriched.find(a => a.name === 'KanR');
+    expect(kanr).toBeDefined();
+    expect(kanr.strand).toBe(-1);          // ← the bug: was undefined → AA frame went +strand
+    expect(kanr.type).toBe('marker');      // still promoted (Z8)
+    expect(kanr.originalName).toBe('imported');
+  });
+
+  it('forward strand carried too: hit strand:1 → annotation.strand === 1', async () => {
+    const sequence = 'A'.repeat(4000);
+    const annotations = [];
+    detectCommonFeaturesAsync.mockResolvedValueOnce([
+      { feature: { name: 'AmpR', type: 'marker', description: 'x' }, start: 100, end: 900, strand: 1, identity: 1.0, method: 'protein_exact' },
+    ]);
+
+    const enriched = await enrichWithCommonFeatures(sequence, annotations);
+    const ampr = enriched.find(a => a.name === 'AmpR');
+    expect(ampr).toBeDefined();
+    expect(ampr.strand).toBe(1);
+  });
+
+  it('regression: an existing region strand is NOT overwritten when the hit carries no strand', async () => {
+    const sequence = 'A'.repeat(4000);
+    const annotations = [{
+      name: 'AmpR', type: 'marker', start: 105, end: 905, level: 'region', auto: false, strand: -1,
+    }];
+    detectCommonFeaturesAsync.mockResolvedValueOnce([
+      { feature: { name: 'AmpR', type: 'marker', description: 'TEM-1' }, start: 100, end: 900, identity: 1.0, method: 'protein_exact' }, // no strand on the hit
+    ]);
+
+    const enriched = await enrichWithCommonFeatures(sequence, annotations);
+    const ampr = enriched.find(a => a.name === 'AmpR');
+    expect(ampr).toBeDefined();
+    expect(ampr.strand).toBe(-1); // preserved — guard skips assignment when hit.strand is undefined
+  });
+
+  // Audit 29.05.2026 — enrich must NOT mutate the caller's objects in place
+  // (they may be store/Immer-held) + newly added regions carry an id.
+  it('does not mutate the caller input annotation objects (clones before edit)', async () => {
+    const sequence = 'A'.repeat(816);
+    const input = {
+      name: 'imported', type: 'misc_feature', start: 0, end: 816, level: 'region', auto: true,
+    };
+    detectCommonFeaturesAsync.mockResolvedValueOnce([
+      { feature: { name: 'KanR', type: 'marker', description: 'aph' }, start: 0, end: 816, strand: 1, identity: 1.0, method: 'protein_exact' },
+    ]);
+    const enriched = await enrichWithCommonFeatures(sequence, [input]);
+    // promotion happened on a clone — the caller's object is untouched
+    expect(input.name).toBe('imported');
+    expect(input.type).toBe('misc_feature');
+    expect(input.knownFeature).toBeUndefined();
+    // ...while the returned region IS promoted
+    expect(enriched.find((a) => a.name === 'KanR')).toBeDefined();
+  });
+
+  it('a newly added region (else branch) carries a string id', async () => {
+    const sequence = 'A'.repeat(4000);
+    detectCommonFeaturesAsync.mockResolvedValueOnce([
+      { feature: { name: 'KanR', type: 'marker', description: 'x' }, start: 1000, end: 1816, strand: 1, identity: 1.0, method: 'protein_exact' },
+    ]);
+    const enriched = await enrichWithCommonFeatures(sequence, []);
+    const kanr = enriched.find((a) => a.name === 'KanR');
+    expect(kanr).toBeDefined();
+    expect(typeof kanr.id).toBe('string');
+    expect(kanr.id.length).toBeGreaterThan(0);
   });
 });

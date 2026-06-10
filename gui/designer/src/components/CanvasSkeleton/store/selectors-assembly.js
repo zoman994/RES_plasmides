@@ -53,8 +53,12 @@ export function selectBoundaryCoverage(state, draftId) {
   const out = [];
   for (let i = 0; i < boundaries.length - 1; i += 1) {
     const off = boundaries[i].endOnAssembly;
+    // Node A §A3/§5.4 — key on `source.boundaryAtOffset`, not `source.kind`.
+    // Now a manual-boundary primer AND an auto-group primer with an overlap
+    // tail both count toward coverage; `kind` stays honest ('auto-group' ≠
+    // 'boundary') for labelling.
     const at = primers.filter(
-      (p) => p.source && p.source.kind === 'boundary' && p.source.boundaryAtOffset === off,
+      (p) => p.source && Number.isFinite(p.source.boundaryAtOffset) && p.source.boundaryAtOffset === off,
     );
     const fwd = at.find((p) => p.direction === 'forward');
     const rev = at.find((p) => p.direction === 'reverse');

@@ -35,7 +35,7 @@ import { useStore } from '../../store';
 import LibraryTreeRoot from '../Library/tree/LibraryTreeRoot';
 import AddModal from '../Library/AddModal/AddModal';
 import RestrictionPanel from './RestrictionPanel';
-import { parseFile, ACCEPT_STRING } from '../../file-import';
+import { parseFile, enrichAnnotations, ACCEPT_STRING } from '../../file-import';
 import { buildLibraryEntry } from '../Library/lib/build-library-entry';
 import { buildStarterSet } from '../Library/lib/starter-set';
 import { downloadProjectAsZip } from '../../lib/export-genbank';
@@ -70,13 +70,24 @@ export default function LibraryTreeHost() {
 
   // Common import path — used by both AddModal pre-import preset and
   // direct "add to Коллекция" file picker.
-  const importFiles = useCallback(async (files, projectId) => {
+  const importFiles = useCallback(async (files, projectId, opts = {}) => {
     if (!Array.isArray(files) || files.length === 0) return;
+    // V104 — homology common-feature enrichment was skipped on this path
+    // (bare parseFile), so canvas imports — file AND paste — landed without
+    // features. Route through enrichAnnotations, unifying with the file
+    // importer. WT-D-2: `opts.autoAnnotate` (default true) gates enrichment.
+    const autoAnnotate = opts.autoAnnotate !== false;
     const added = [];
     for (const f of files) {
       try {
         const parsed = await parseFile(f);
-        const entry = buildLibraryEntry({ parsed, fileName: f.name, projectId });
+        const enriched = await enrichAnnotations(parsed, { autoAnnotate });
+        // WT-UX-8/7 — explicit name + topology from the paste dialog override
+        // the parsed values (headerless ACGT → «imported»/linear otherwise).
+        // Only present on the paste path; file imports keep their own values.
+        if (opts.name && opts.name.trim()) enriched.name = opts.name.trim();
+        if (opts.topology) enriched.topology = opts.topology;
+        const entry = buildLibraryEntry({ parsed: enriched, fileName: f.name, projectId });
         await addLibraryEntry(entry);
         added.push(entry.name || f.name);
       } catch (e) {
@@ -95,7 +106,7 @@ export default function LibraryTreeHost() {
     if (preset?.source === 'file') {
       const files = await openFilePicker();
       const projId = preset?.target === 'current-project' ? currentProjectId : null;
-      await importFiles(files, projId);
+      await importFiles(files, projId, { autoAnnotate: preset?.autoAnnotate !== false });
     } else if (preset?.source === 'paste') {
       const text = (preset?.text || '').trim();
       if (!text) {
@@ -106,7 +117,11 @@ export default function LibraryTreeHost() {
       const filename = looksLikeGenBank ? 'pasted.gb' : 'pasted.fasta';
       const file = new File([text], filename, { type: 'text/plain' });
       const projId = preset?.target === 'current-project' ? currentProjectId : null;
-      await importFiles([file], projId);
+      await importFiles([file], projId, {
+        autoAnnotate: preset?.autoAnnotate !== false,
+        name: preset?.name,
+        topology: preset?.topology,
+      });
     } else if (preset?.source === 'catalog') {
       // 12.05.2026 — Игорь: «модалка дает выбрать но говорит что в
       // разработке». Tile + inline-banner + здесь toast.

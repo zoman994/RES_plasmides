@@ -24,7 +24,7 @@
 import { useLayoutEffect, useState } from "react";
 import { LABEL_WIDTH } from "../constants.js";
 
-export default function CaretOverlay({ caretPos, charPx, containerRef, showBottomStrand, seqLength = 0, charsPerLine = 0 }) {
+export default function CaretOverlay({ caretPos, charPx, containerRef, showBottomStrand, seqLength = 0, charsPerLine = 0, layoutEpoch = 0, hidden = false }) {
   const [box, setBox] = useState(null);
   useLayoutEffect(() => {
     if (caretPos == null || !Number.isFinite(caretPos)) {
@@ -133,8 +133,12 @@ export default function CaretOverlay({ caretPos, charPx, containerRef, showBotto
     const { top, height } = measureStrandBand(target);
     setBox({ left, top, height });
     return undefined;
-  }, [caretPos, charPx, containerRef, showBottomStrand, seqLength, charsPerLine]);
+  }, [caretPos, charPx, containerRef, showBottomStrand, seqLength, charsPerLine, layoutEpoch]);
 
+  // Hide while a primer is selected (Del targets the primer, not the caret).
+  // Placed AFTER the hooks (the effect keeps `box` measured) so un-hiding
+  // restores the caret without a re-measure pass.
+  if (hidden) return null;
   if (!box) return null;
   // 2026-05-06 — biolog: «хочу чтобы каретка курсора двигалась не
   // рывками а как бы быстро проходила визуально через каждый

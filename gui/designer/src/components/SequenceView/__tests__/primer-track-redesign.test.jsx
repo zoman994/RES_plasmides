@@ -188,3 +188,113 @@ describe("PrimerTrack redesign — letters / clickable / selected", () => {
     ).toBe("reverse");
   });
 });
+
+// ───────────────────────────────────────────────────────────────────────────
+// Wrapped binding draws ONE 3′-head, not two arrows (Игорь 24.05.2026). When a
+// binding is split across a line-wrap, clipHit yields two lineHits fragments;
+// the arrowhead marks the 3′-END (forward: hit.end; reverse: hit.start) and
+// must appear on exactly that fragment — the fragment at the wrap edge gets a
+// blunt край so the wrapped primer reads as one continuous figure.
+describe("PrimerTrack — wrapped binding: single 3′-head, blunt wrap edge", () => {
+  // fwd binding "ATGCAAAGGGCCC" / its RC sits at [0,13). lineLen 8 → the
+  // binding crosses the wrap at column 8: line 0 = [0,8), line 1 = [8,16).
+  const REV = {
+    name: "p_rev", bindingSequence: "GGGCCCTTTGCAT", direction: "reverse", tmBinding: 58,
+  };
+  const wrapLine = (lineStart, primer) => ({
+    fullSeq: SEQ, lineStart, lineLen: 8, labelChars: 8, primerStyle: "filled", charPx: 7.2,
+    primers: [primer],
+  });
+  const arrowD = () =>
+    screen.getByTestId("sequence-view-primer").querySelector("[data-primer-arrow]").getAttribute("d");
+  // pentagon (pointed) has 4 `L` commands; blunt rect has 3.
+  const lSegs = (d) => (d.match(/L/g) || []).length;
+  // the apex vertex is the only point at y = ARROW_H/2 = 7.
+  const pointed = (d) => d.includes(",7 ");
+  const HEAD = 6; // PrimerTrack arrowhead extent (px)
+
+  it("forward: head only on the 3′ fragment (hit.end), blunt at the wrap edge", () => {
+    // line 0 [0,8) — does NOT hold the 3′-end (13) → blunt край, no point
+    const { unmount } = render(<PrimerTrack {...wrapLine(0, fwd)} />);
+    let d = arrowD();
+    expect(lSegs(d)).toBe(3);
+    expect(pointed(d)).toBe(false);
+    unmount();
+    // line 1 [8,16) — holds the 3′-end → pointed head (right)
+    render(<PrimerTrack {...wrapLine(8, fwd)} />);
+    d = arrowD();
+    expect(lSegs(d)).toBe(4);
+    expect(pointed(d)).toBe(true);
+  });
+
+  it("reverse: head only on the 3′ fragment (hit.start), blunt at the wrap edge", () => {
+    // line 0 [0,8) — holds the 3′-end (start=0) → pointed head (left)
+    const { unmount } = render(<PrimerTrack {...wrapLine(0, REV)} />);
+    let d = arrowD();
+    expect(lSegs(d)).toBe(4);
+    expect(pointed(d)).toBe(true);
+    unmount();
+    // line 1 [8,16) — does NOT hold the 3′-end → blunt край
+    render(<PrimerTrack {...wrapLine(8, REV)} />);
+    d = arrowD();
+    expect(lSegs(d)).toBe(3);
+    expect(pointed(d)).toBe(false);
+  });
+
+  it("unbroken binding (one fragment) → pentagon with head, unchanged", () => {
+    render(<PrimerTrack {...base} primers={[fwd]} charPx={7.2} />);
+    const d = arrowD();
+    expect(lSegs(d)).toBe(4);
+    expect(pointed(d)).toBe(true);
+  });
+
+  // hit-target + selection-halo must NOT extend by HEAD past a blunt wrap
+  // edge (Игорь 24.05.2026) — the HEAD overhang belongs only to the side that
+  // actually has the point.
+  it("forward wrap-edge fragment: hit-target/halo clipped at the blunt right край (no HEAD overhang)", () => {
+    render(
+      <PrimerTrack {...wrapLine(0, fwd)} onPrimerClick={() => {}} selectedPrimerKeys={["p_fwd|forward|0"]} />,
+    );
+    const g = screen.getByTestId("sequence-view-primer");
+    const W = 8 * 7.2; // visible binding cols [0,8)
+    const hit = g.querySelector("[data-primer-hit]");
+    const hitRight = Number(hit.getAttribute("x")) + Number(hit.getAttribute("width"));
+    expect(hitRight).toBeCloseTo(W + 2, 3); // +2 pad only, NOT +HEAD
+    const halo = g.querySelector("[data-primer-selection-halo]");
+    const haloRight = Number(halo.getAttribute("x")) + Number(halo.getAttribute("width"));
+    expect(haloRight).toBeCloseTo(W + 4, 3);
+  });
+
+  it("forward 3′ fragment: hit-target keeps the HEAD overhang on the right (unchanged)", () => {
+    render(
+      <PrimerTrack {...wrapLine(8, fwd)} onPrimerClick={() => {}} selectedPrimerKeys={["p_fwd|forward|0"]} />,
+    );
+    const g = screen.getByTestId("sequence-view-primer");
+    const W = 5 * 7.2; // visible binding cols [8,13)
+    const hit = g.querySelector("[data-primer-hit]");
+    const hitRight = Number(hit.getAttribute("x")) + Number(hit.getAttribute("width"));
+    expect(hitRight).toBeCloseTo(W + HEAD + 2, 3);
+  });
+
+  it("reverse wrap-edge fragment: hit-target/halo clipped at the blunt left край (no HEAD overhang)", () => {
+    // line 1 [8,16) — does NOT hold the reverse 3′-end (start 0) → blunt left
+    render(
+      <PrimerTrack {...wrapLine(8, REV)} onPrimerClick={() => {}} selectedPrimerKeys={["p_rev|reverse|0"]} />,
+    );
+    const g = screen.getByTestId("sequence-view-primer");
+    const hit = g.querySelector("[data-primer-hit]");
+    expect(Number(hit.getAttribute("x"))).toBeCloseTo(-2, 3); // -headExt-2, headExt=0
+    const halo = g.querySelector("[data-primer-selection-halo]");
+    expect(Number(halo.getAttribute("x"))).toBeCloseTo(-4, 3);
+  });
+
+  it("reverse 3′ fragment: hit-target keeps the HEAD overhang on the left (unchanged)", () => {
+    // line 0 [0,8) — holds the reverse 3′-end → head left
+    render(
+      <PrimerTrack {...wrapLine(0, REV)} onPrimerClick={() => {}} selectedPrimerKeys={["p_rev|reverse|0"]} />,
+    );
+    const g = screen.getByTestId("sequence-view-primer");
+    const hit = g.querySelector("[data-primer-hit]");
+    expect(Number(hit.getAttribute("x"))).toBeCloseTo(-HEAD - 2, 3);
+  });
+});

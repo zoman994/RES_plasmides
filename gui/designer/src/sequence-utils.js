@@ -5,12 +5,18 @@
  * Canonical IUPAC order: ATGCNRYSWKMBDHV (alphabet → common IUPAC → rare IUPAC).
  */
 
-// TODO (v1.1): COMPLEMENT_MAP does not yet support IUPAC R/Y/S/W/K/M/B/D/H/V.
-//   → reverseComplement() converts them to N. If real plasmid data with ambiguity
-//   codes breaks primer design, extend to the full IUPAC table.
+// Full IUPAC complement table (V118 fix). sanitizeSequence preserves ambiguity
+// codes on entry, so reverseComplement must complement them too — otherwise the
+// reverse strand of any sequence carrying R/Y/S/W/K/M/B/D/H/V is silently
+// corrupted (was → N). Pairs: A↔T, G↔C, R↔Y, M↔K, S↔S (self), W↔W (self),
+// B↔V, D↔H, N↔N.
 export const COMPLEMENT_MAP = {
   A: 'T', T: 'A', G: 'C', C: 'G', N: 'N',
+  R: 'Y', Y: 'R', S: 'S', W: 'W', K: 'M', M: 'K',
+  B: 'V', V: 'B', D: 'H', H: 'D',
   a: 't', t: 'a', g: 'c', c: 'g', n: 'n',
+  r: 'y', y: 'r', s: 's', w: 'w', k: 'm', m: 'k',
+  b: 'v', v: 'b', d: 'h', h: 'd',
 };
 
 /**

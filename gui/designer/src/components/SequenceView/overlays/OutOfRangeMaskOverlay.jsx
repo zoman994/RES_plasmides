@@ -20,6 +20,10 @@ export default function OutOfRangeMaskOverlay({
   charsPerLine,
   containerRef,
   seqLength,
+  // V96 — bumped by SequenceView on every line reflow so the mask
+  // re-measures against the final layout (this overlay is otherwise
+  // immune to caret-driven recompute — it never reads caretPos).
+  layoutEpoch = 0,
 }) {
   const [rects, setRects] = useState([]);
 
@@ -71,14 +75,25 @@ export default function OutOfRangeMaskOverlay({
       const lineStart = parseInt(el.dataset.lineStart || '', 10);
       if (Number.isNaN(lineStart)) continue;
 
-      if (elKind === 'main' && !wrapsOrigin) {
-        // Plain main row — half-open [lineStart, lineStart+cpl).
-        const lineEnd = lineStart + cpl;
-        for (const seg of oorSegments) {
-          if (lineEnd <= seg.start || lineStart >= seg.end) continue;
-          const fromCh = Math.max(0, seg.start - lineStart);
-          const toCh = Math.min(cpl, seg.end - lineStart);
-          pushRect(el, fromCh, toCh, `oor:m:${lineStart}:${seg.start}-${seg.end}`);
+      if (!wrapsOrigin) {
+        // V98 — main + trailing-wrap + leading-wrap all carry REAL
+        // absolute coords in `data-line-start` (buildWrapTailLines), so
+        // they mask identically: intersect OOR segments with
+        // [lineStart, lineStart+lineLen), column = pos − lineStart.
+        // (Pre-V98 the wrap-tail branches ignored data-line-start and
+        // hardcoded [0,lineLen)/[L−lineLen,L) → mask landed on the wrong
+        // columns and missed the text on rows after the origin. The
+        // bridge `wrapsOrigin` row stays a SEPARATE branch below — it
+        // has two coordinate halves, not one [lineStart, …) span.)
+        const lineLen = Math.min(cpl, L - lineStart);
+        if (lineLen > 0) {
+          const lineEnd = lineStart + lineLen;
+          for (const seg of oorSegments) {
+            if (lineEnd <= seg.start || lineStart >= seg.end) continue;
+            const fromCh = Math.max(0, seg.start - lineStart);
+            const toCh = Math.min(lineLen, seg.end - lineStart);
+            pushRect(el, fromCh, toCh, `oor:${elKind}:${lineStart}:${seg.start}-${seg.end}`);
+          }
         }
       } else if (wrapsOrigin && Number.isFinite(bridgeWrapAt)) {
         // V87 r2 — bridge row: левая половина [0..wrapAt) показывает
@@ -105,39 +120,11 @@ export default function OutOfRangeMaskOverlay({
             pushRect(el, fromCh, toCh, `oor:bR:${lineStart}:${seg.start}-${seg.end}`);
           }
         }
-      } else if (elKind === 'trailing-wrap') {
-        // Trailing-wrap row — показывает [0..cpl) the same way as a
-        // duplicate main strip. dataset.lineStart обычно отражает
-        // wrap-extended coord (≥ seqLength), но визуально это просто
-        // [0..lineLen). Применим маску по реальным positions.
-        // SequenceLine.jsx уже даёт opacity:0.6 для wrap-tail, но это
-        // распространяется на всю line — для частично-OOR строк
-        // (часть в range) нужен наш explicit clip.
-        const lineLen = Math.min(cpl, L);
-        for (const seg of oorSegments) {
-          const intStart = Math.max(0, seg.start);
-          const intEnd = Math.min(lineLen, seg.end);
-          if (intEnd > intStart) {
-            pushRect(el, intStart, intEnd, `oor:tw:${lineStart}:${seg.start}-${seg.end}`);
-          }
-        }
-      } else if (elKind === 'leading-wrap') {
-        // Leading-wrap row — показывает positions [L-cpl..L) (хвост
-        // последовательности перед origin).
-        const lineLen = Math.min(cpl, L);
-        const wrapLineStart = Math.max(0, L - lineLen);
-        const wrapLineEnd = L;
-        for (const seg of oorSegments) {
-          if (wrapLineEnd <= seg.start || wrapLineStart >= seg.end) continue;
-          const fromCh = Math.max(0, seg.start - wrapLineStart);
-          const toCh = Math.min(lineLen, seg.end - wrapLineStart);
-          pushRect(el, fromCh, toCh, `oor:lw:${lineStart}:${seg.start}-${seg.end}`);
-        }
       }
     }
     setRects(out);
     return undefined;
-  }, [rangeStart, rangeEnd, charPx, charsPerLine, containerRef, seqLength]);
+  }, [rangeStart, rangeEnd, charPx, charsPerLine, containerRef, seqLength, layoutEpoch]);
 
   return (
     <>

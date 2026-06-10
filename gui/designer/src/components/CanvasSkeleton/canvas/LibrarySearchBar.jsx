@@ -1,249 +1,98 @@
 /**
- * LibrarySearchBar — top-of-canvas search input + dropdown replacing
- * the removed LibraryTreeHost (PC-K1).
+ * LibrarySearchBar — единый library-picker для двух поверхностей
+ * (SPEC_ASSEMBLY_PICKER_UNIFICATION, Игорь 22.05.2026): canvas
+ * (CanvasLayoutView) и редактор сборки (AssemblyShellBody). Раньше у
+ * ассемблера был свой bespoke-пикер (EmptyAssemblyLibrary) — он удалён,
+ * обе поверхности используют ЭТОТ компонент.
  *
- * Spec §3 (PROJECT_CANVAS_CLEANUP K2/K3). Full-width input above the
- * canvas; on focus opens a dropdown with four sections:
- *   - Из библиотеки (не привязано) — LibraryEntries without projectId
- *     OR belonging to other projects.
- *   - В этом проекте — containers / pieces / etc. for the current project.
- *   - Сборки — zones in this project.
- *   - Праймеры — primer pool entries.
+ * Богатая модель (объединение фич обоих пикеров):
+ *   - MiniPlasmidMap-минимапа в строке + dropdown/inline shell;
+ *   - фильтр-пилюли Все / Circular / Linear / Primer;
+ *   - поиск по имени И по последовательности (ATGC);
+ *   - <mark>-подсветка совпадения;
+ *   - Избранное / Недавно (persist через picker-prefs.js);
+ *   - entry-centric секции: Из проекта · {name} / Коллекция / Другие проекты;
+ *   - drag-out с TREE_DRAG_MIME (canvas drop handler принимает unchanged);
+ *   - prop `extraSections` — canvas прокидывает свои группы (контейнеры
+ *     на канвасе / сборки-zones / праймеры-пул); ассемблер не передаёт.
  *
- * Click on an entry triggers onSelectEntry({kind, id}) — caller wires
- * to add-to-canvas / focus / etc. Esc / outside-click closes the
- * dropdown but keeps the input visible.
+ * Режимы:
+ *   - dropdown (по умолчанию): input, на focus раскрывается dropdown,
+ *     Esc / outside-click закрывают. Canvas + «+ Сегмент» popover.
+ *   - inline (`inline`): список всегда виден (без dropdown). Empty-state
+ *     ассемблера.
  *
- * Search is substring-match (case-insensitive) over `name`. Drag-out
- * preserves the existing tree-drag MIME so the canvas drop handler in
- * CanvasLayoutView accepts it unchanged.
- *
- * K2.1 amendment (Игорь 20.05.2026):
- *   §3.2.1 visual parity — entries rendered с `MiniPlasmidMap`
- *   thumbnail (32 px) слева, не plain text. Primers → fallback icon.
- *   §3.2.2 collapsed by default — категории показываются как headers
- *   с count'ом, content скрыт. Click на header → expand. Typing с
- *   matches → auto-expand категорий c матчами. Empty category (count
- *   0) → disabled gray header, не expandable.
+ * onSelectEntry({kind, id, entry}) — единый колбэк. Библиотечный entry →
+ * kind:'library'; extraSection-строки несут свой kind (container/zone/
+ * primer).
  */
 import {
   useState, useMemo, useEffect, useRef, useCallback,
 } from 'react';
 import { TREE_DRAG_MIME } from './use-tree-drop-target';
 import MiniPlasmidMap from './MiniPlasmidMap';
+import {
+  getRecent, getFavorites, recordRecent, toggleFavorite,
+} from './picker-prefs';
+import { useStore } from '../../../store';
 
-const ALL_SECTION_IDS = ['library', 'in-project', 'zones', 'primers'];
+const TYPE_FILTERS = [
+  { id: 'all', label: 'Все' },
+  { id: 'circular', label: '◯ Circular' },
+  { id: 'linear', label: '▭ Linear' },
+  { id: 'primer', label: '🧬 Primer' },
+];
 
-export default function LibrarySearchBar({
-  libraryEntries,
-  containers,
-  zones,
-  primers,
-  currentProjectId,
-  onSelectEntry,
-  testId = 'canvas-library-search-bar',
-}) {
-  const [query, setQuery] = useState('');
-  const [isOpen, setIsOpen] = useState(false);
-  // K2.1 §3.2.2 — collapsed by default. Биолог open'ит интересную
-  // категорию click'ом на header; typing auto-expand'ит matched.
-  const [expanded, setExpanded] = useState(() => new Set());
-  const wrapRef = useRef(null);
+// Sections expanded by default (library core); other-projects + canvas
+// extraSections collapse by default to keep the dropdown scannable.
+const DEFAULT_EXPANDED = ['favorites', 'recent', 'project', 'loose'];
 
-  const grouped = useMemo(
-    () => groupResults({ libraryEntries, containers, zones, primers, currentProjectId, query }),
-    [libraryEntries, containers, zones, primers, currentProjectId, query],
-  );
+// ── pure helpers (ported from EmptyAssemblyLibrary, single source) ──
 
-  const sectionCounts = useMemo(() => ({
-    library: grouped.fromLibrary.length,
-    'in-project': grouped.inProject.length,
-    zones: grouped.assemblies.length,
-    primers: grouped.primers.length,
-  }), [grouped]);
+export function matchesQuery(entry, q) {
+  if (!q) return true;
+  const qLower = q.toLowerCase();
+  if (String(entry.name || '').toLowerCase().includes(qLower)) return true;
+  const seq = String(entry.payload?.sequence || entry.sequence || '').toUpperCase();
+  if (seq && seq.includes(q.toUpperCase())) return true;
+  return false;
+}
 
-  // Auto-expand: typing query and matches появились → раскрыть категории
-  // с матчами. Empty query → reset обратно в collapsed (default state).
-  const trimmedQuery = (query || '').trim();
-  useEffect(() => {
-    if (!trimmedQuery) {
-      // Default state — all sections collapsed.
-      setExpanded(new Set());
-      return;
-    }
-    const next = new Set();
-    for (const id of ALL_SECTION_IDS) {
-      if (sectionCounts[id] > 0) next.add(id);
-    }
-    setExpanded(next);
-  }, [trimmedQuery, sectionCounts.library, sectionCounts['in-project'], sectionCounts.zones, sectionCounts.primers]);
-
-  // Click-outside / Esc close.
-  useEffect(() => {
-    if (!isOpen) return undefined;
-    const onDown = (e) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target)) {
-        setIsOpen(false);
-        // K2.1 §3.2.2 — close reset collapsed state так что repeat
-        // open даёт default (collapsed) view.
-        setExpanded(new Set());
-      }
-    };
-    const onKey = (e) => {
-      if (e.key === 'Escape') {
-        setIsOpen(false);
-        setExpanded(new Set());
-      }
-    };
-    document.addEventListener('mousedown', onDown);
-    window.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onDown);
-      window.removeEventListener('keydown', onKey);
-    };
-  }, [isOpen]);
-
-  const handlePick = useCallback((entryDescriptor) => {
-    setIsOpen(false);
-    setExpanded(new Set());
-    onSelectEntry?.(entryDescriptor);
-  }, [onSelectEntry]);
-
-  const toggleSection = useCallback((sectionId) => {
-    setExpanded((prev) => {
-      const n = new Set(prev);
-      if (n.has(sectionId)) n.delete(sectionId);
-      else n.add(sectionId);
-      return n;
-    });
-  }, []);
-
-  const totalCount = sectionCounts.library + sectionCounts['in-project']
-    + sectionCounts.zones + sectionCounts.primers;
-
-  return (
-    <div ref={wrapRef} data-testid={testId} style={styles.wrap}>
-      <input
-        type="search"
-        data-testid={`${testId}-input`}
-        value={query}
-        onChange={(e) => { setQuery(e.target.value); setIsOpen(true); }}
-        onFocus={() => setIsOpen(true)}
-        placeholder="🔍 Поиск в библиотеке (плазмиды, праймеры, сборки)"
-        style={styles.input}
-      />
-      {isOpen && (
-        <div
-          data-testid={`${testId}-dropdown`}
-          style={styles.dropdown}
-        >
-          {totalCount === 0 && (
-            <div data-testid={`${testId}-empty`} style={styles.empty}>
-              {trimmedQuery
-                ? 'Ничего не найдено.'
-                : 'Начните вводить — найду плазмиду в библиотеке или в проекте.'}
-            </div>
-          )}
-          <Section
-            id="library"
-            title="Из библиотеки (не привязано)"
-            entries={grouped.fromLibrary}
-            kind="library"
-            onPick={handlePick}
-            expanded={expanded.has('library')}
-            onToggle={() => toggleSection('library')}
-            testId={`${testId}-section-library`}
-          />
-          <Section
-            id="in-project"
-            title="В этом проекте"
-            entries={grouped.inProject}
-            kind="container"
-            onPick={handlePick}
-            expanded={expanded.has('in-project')}
-            onToggle={() => toggleSection('in-project')}
-            testId={`${testId}-section-in-project`}
-          />
-          <Section
-            id="zones"
-            title="Сборки"
-            entries={grouped.assemblies}
-            kind="zone"
-            onPick={handlePick}
-            expanded={expanded.has('zones')}
-            onToggle={() => toggleSection('zones')}
-            testId={`${testId}-section-zones`}
-          />
-          <Section
-            id="primers"
-            title="Праймеры"
-            entries={grouped.primers}
-            kind="primer"
-            onPick={handlePick}
-            expanded={expanded.has('primers')}
-            onToggle={() => toggleSection('primers')}
-            testId={`${testId}-section-primers`}
-          />
-        </div>
-      )}
-    </div>
-  );
+export function matchesType(entry, type) {
+  if (!type || type === 'all') return true;
+  const t = entry.payload?.topology
+    || (entry.topology?.circular ? 'circular' : entry.topology);
+  if (type === 'circular') return t === 'circular';
+  if (type === 'linear') return t !== 'circular' && entry.kind !== 'oligonucleotide';
+  if (type === 'primer') return entry.kind === 'oligonucleotide' || /primer/i.test(entry.name || '');
+  return true;
 }
 
 /**
- * Pure: split inputs into four buckets and apply substring filter.
- * Exported for unit tests.
+ * Entry-centric library grouping (SPEC §4 p2/p6): split LibraryEntries
+ * into project / collection / other-projects buckets. Exported for unit
+ * tests. Current-project entries are now INCLUDED (the «Из проекта»
+ * section) — fixes the hole where the assembler couldn't see its own
+ * project's plasmids.
  */
-export function groupResults({
-  libraryEntries, containers, zones, primers, currentProjectId, query,
+export function groupLibraryEntries({
+  libraryEntries, currentProjectId, query, typeFilter,
 }) {
-  const q = (query || '').trim().toLowerCase();
-  const match = (name) => !q || String(name || '').toLowerCase().includes(q);
-
-  const libraryArr = libraryEntries && typeof libraryEntries === 'object'
-    ? Object.values(libraryEntries)
-    : [];
-  const containerArr = Array.isArray(containers) ? containers : [];
-  const zoneArr = Array.isArray(zones) ? zones : [];
-  const primerArr = Array.isArray(primers) ? primers : [];
-
-  const fromLibrary = libraryArr
-    .filter(Boolean)
-    .filter((e) => (!e.projectId || e.projectId !== currentProjectId))
-    .filter((e) => match(e.name))
-    .slice(0, 50);
-
-  const inProject = containerArr
-    .filter(Boolean)
-    .filter((c) => match(c.name))
-    .slice(0, 50);
-
-  const assemblies = zoneArr
-    .filter(Boolean)
-    .filter((z) => match(z.name))
-    .slice(0, 30);
-
-  const primersOut = primerArr
-    .filter(Boolean)
-    .filter((p) => p?.kind !== 'pair')
-    .filter((p) => match(p.name || p.sequence))
-    .slice(0, 30);
-
+  const all = (libraryEntries && typeof libraryEntries === 'object'
+    ? Object.values(libraryEntries) : [])
+    .filter((e) => e && !e._pendingDelete)
+    .filter((e) => matchesQuery(e, query) && matchesType(e, typeFilter));
+  const byName = (a, b) => String(a.name || a.id).localeCompare(String(b.name || b.id));
   return {
-    fromLibrary, inProject, assemblies, primers: primersOut,
+    project: all.filter((e) => currentProjectId && e.projectId === currentProjectId).sort(byName),
+    loose: all.filter((e) => !e.projectId).sort(byName),
+    other: all.filter((e) => e.projectId && e.projectId !== currentProjectId).sort(byName),
   };
 }
 
-/**
- * Resolve display metadata for an entry across all four shapes
- * (library entry / container / zone / primer).
- *
- * Returns { length, topology, annotations, name } — used by both the
- * MiniPlasmidMap thumbnail and the metadata text.
- */
 function entryDisplay(entry, kind) {
   if (!entry) return { length: 0, topology: 'linear', annotations: [], name: '?' };
-  const name = entry.name || '(без имени)';
+  const name = entry.name || entry.id || '(без имени)';
   if (kind === 'library') {
     const p = entry.payload || {};
     return {
@@ -261,41 +110,33 @@ function entryDisplay(entry, kind) {
       annotations: Array.isArray(entry.annotations) ? entry.annotations : [],
     };
   }
-  if (kind === 'zone') {
-    return { name, length: 0, topology: 'linear', annotations: [] };
-  }
-  // primer
-  return {
-    name,
-    length: (entry.sequence || '').length,
-    topology: 'linear',
-    annotations: [],
-  };
+  if (kind === 'zone') return { name, length: 0, topology: 'linear', annotations: [] };
+  return { name, length: (entry.sequence || '').length, topology: 'linear', annotations: [] };
+}
+
+function HighlightedText({ text, query }) {
+  const t = String(text || '');
+  if (!query || !t) return <span>{t}</span>;
+  const idx = t.toLowerCase().indexOf(query.toLowerCase());
+  if (idx < 0) return <span>{t}</span>;
+  return (
+    <span>
+      {t.slice(0, idx)}
+      <mark style={{ background: '#fef08a', color: 'inherit', padding: '0 1px', borderRadius: 2 }}>
+        {t.slice(idx, idx + query.length)}
+      </mark>
+      {t.slice(idx + query.length)}
+    </span>
+  );
 }
 
 function EntryThumbnail({ display, kind }) {
-  // Primers → small icon (no map). Zones → 🧬 in circle placeholder.
   if (kind === 'primer') {
-    return (
-      <div
-        data-testid="library-search-thumb-primer"
-        style={styles.thumbPlaceholder}
-        aria-hidden
-      >🧬</div>
-    );
+    return <div data-testid="library-search-thumb-primer" style={styles.thumbPlaceholder} aria-hidden>🧬</div>;
   }
   if (kind === 'zone') {
-    return (
-      <div
-        data-testid="library-search-thumb-zone"
-        style={styles.thumbPlaceholder}
-        aria-hidden
-      >🧱</div>
-    );
+    return <div data-testid="library-search-thumb-zone" style={styles.thumbPlaceholder} aria-hidden>🧱</div>;
   }
-  // library + container — MiniPlasmidMap at 32 px. showLabels=false:
-  // на таком размере leader-line подписи фич нечитаемы и обрезаются;
-  // имя + счётчик фич живут в тексте строки рядом.
   return (
     <MiniPlasmidMap
       testId="library-search-thumb-map"
@@ -309,16 +150,58 @@ function EntryThumbnail({ display, kind }) {
   );
 }
 
-function Section({
-  id, title, entries, kind, onPick, testId, expanded, onToggle,
+function PickerRow({
+  entry, kind, query, onPick, fav, onToggleFav, sectionTestId,
+}) {
+  const display = entryDisplay(entry, kind);
+  const isLibrary = kind === 'library';
+  return (
+    <div style={{ position: 'relative' }}>
+      <button
+        type="button"
+        data-testid={`${sectionTestId}-item-${entry.id}`}
+        onClick={() => onPick({ kind, id: entry.id, entry })}
+        draggable={isLibrary}
+        onDragStart={(ev) => {
+          if (!isLibrary) return;
+          try {
+            ev.dataTransfer.setData(TREE_DRAG_MIME, entry.id);
+            ev.dataTransfer.setData('text/plain', entry.id);
+            ev.dataTransfer.effectAllowed = 'copy';
+          } catch { /* jsdom dataTransfer */ }
+        }}
+        style={{ ...styles.row, paddingLeft: isLibrary ? 28 : 8 }}
+      >
+        <span style={styles.rowThumb}><EntryThumbnail display={display} kind={kind} /></span>
+        <span style={styles.rowMain}>
+          <span style={styles.rowName}><HighlightedText text={display.name} query={query} /></span>
+          <span style={styles.rowMeta}>
+            {display.length > 0 ? `${display.length} bp` : '—'}
+            {display.topology !== 'linear' && ` · ${display.topology}`}
+            {display.annotations.length > 0 && ` · ${display.annotations.length} features`}
+          </span>
+        </span>
+      </button>
+      {isLibrary && onToggleFav && (
+        <button
+          type="button"
+          data-testid={`${sectionTestId}-fav-${entry.id}`}
+          onClick={(e) => { e.stopPropagation(); onToggleFav(entry.id); }}
+          title={fav ? 'Убрать из избранного' : 'Добавить в избранное'}
+          style={{ ...styles.favBtn, color: fav ? '#d97706' : 'var(--text-tertiary)' }}
+        >{fav ? '★' : '☆'}</button>
+      )}
+    </div>
+  );
+}
+
+function PickerSection({
+  id, title, entries, kind, query, onPick, favSet, onToggleFav,
+  expanded, onToggle, testId, badgeFor,
 }) {
   const count = entries ? entries.length : 0;
   const disabled = count === 0;
-  // K2.1 §3.2.2 — empty category — header показан, но disabled (gray)
-  // и не expandable. Не возвращаем null чтобы testId оставался для
-  // existing tests; контент просто не рендерится.
   const isOpen = expanded && !disabled;
-
   return (
     <div data-testid={testId} data-expanded={isOpen ? 'true' : 'false'} style={styles.section}>
       <button
@@ -333,133 +216,389 @@ function Section({
           opacity: disabled ? 0.55 : 1,
         }}
       >
-        <span style={styles.sectionChevron} aria-hidden>
-          {disabled ? '·' : (isOpen ? '▼' : '▶')}
-        </span>
+        <span style={styles.sectionChevron} aria-hidden>{disabled ? '·' : (isOpen ? '▼' : '▶')}</span>
         <span style={{ flex: 1 }}>{title}</span>
         <span style={styles.sectionCount}>· {count}</span>
       </button>
-      {isOpen && entries.map((e) => {
-        const display = entryDisplay(e, kind);
-        return (
-          <button
-            key={e.id}
-            type="button"
-            data-testid={`${testId}-item-${e.id}`}
-            onClick={() => onPick({ kind, id: e.id, entry: e })}
-            draggable={kind === 'library'}
-            onDragStart={(ev) => {
-              if (kind !== 'library') return;
-              try {
-                ev.dataTransfer.setData(TREE_DRAG_MIME, e.id);
-                ev.dataTransfer.setData('text/plain', e.id);
-                ev.dataTransfer.effectAllowed = 'copy';
-              } catch { /* jsdom dataTransfer */ }
+      {isOpen && entries.map((e) => (
+        <div key={e.id} style={{ position: 'relative' }}>
+          <PickerRow
+            entry={e}
+            kind={kind}
+            query={query}
+            onPick={onPick}
+            fav={favSet ? favSet.has(e.id) : false}
+            onToggleFav={onToggleFav}
+            sectionTestId={testId}
+          />
+          {badgeFor && badgeFor(e) && (
+            <span style={styles.projBadge}>{badgeFor(e)}</span>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export default function LibrarySearchBar({
+  libraryEntries,
+  projectsById,
+  currentProjectId,
+  onSelectEntry,
+  extraSections = [],
+  // SPEC_ASSEMBLY_CUSTOM_SEGMENT §3 (SAFE) — opt-in «вставить свой
+  // сиквенс» секция. Только assembly-контекст её передаёт; canvas нет.
+  onPasteSequence,
+  inline = false,
+  autoFocus = false,
+  testId = 'canvas-library-search-bar',
+  // V106 (variant D) — opt-in for the CANVAS surface only. When set, this
+  // search claims the app-global Ctrl+F (`modals.sequenceSearch`, set by
+  // App.jsx) instead of letting it open the viewer-only sequence-search
+  // modal that the canvas never renders. The assembly inline picker leaves
+  // it false so it doesn't fight LibraryWorkspace for the same flag.
+  bindFindHotkey = false,
+}) {
+  const [query, setQuery] = useState('');
+  const [typeFilter, setTypeFilter] = useState('all');
+  const [pasteValue, setPasteValue] = useState('');
+  const [isOpen, setIsOpen] = useState(inline);
+  const [expanded, setExpanded] = useState(() => new Set(DEFAULT_EXPANDED));
+  const [favIds, setFavIds] = useState(() => getFavorites());
+  const [recentIds, setRecentIds] = useState(() => getRecent());
+  const wrapRef = useRef(null);
+  const inputRef = useRef(null);
+
+  useEffect(() => { if (autoFocus) inputRef.current?.focus(); }, [autoFocus]);
+
+  // V106 (variant D) — claim the global Ctrl+F flag on the canvas. App.jsx's
+  // handler sets `modals.sequenceSearch`; on the canvas there's no viewer to
+  // consume it, so we focus + open this search and reset the flag. No
+  // hotkey-id is registered here (App keeps ownership), so LibraryWorkspace's
+  // Ctrl+F is never clobbered.
+  const findRequested = useStore((s) => s.modals?.sequenceSearch);
+  const closeSequenceSearch = useStore((s) => s.closeSequenceSearch);
+  useEffect(() => {
+    if (!bindFindHotkey || !findRequested) return;
+    setIsOpen(true);
+    inputRef.current?.focus();
+    closeSequenceSearch?.();
+  }, [bindFindHotkey, findRequested, closeSequenceSearch]);
+
+  const grouped = useMemo(
+    () => groupLibraryEntries({ libraryEntries, currentProjectId, query, typeFilter }),
+    [libraryEntries, currentProjectId, query, typeFilter],
+  );
+
+  const favEntries = useMemo(() => favIds
+    .map((id) => libraryEntries?.[id])
+    .filter((e) => e && !e._pendingDelete && matchesQuery(e, query) && matchesType(e, typeFilter)),
+  [favIds, libraryEntries, query, typeFilter]);
+  const recentEntries = useMemo(() => recentIds
+    .map((id) => libraryEntries?.[id])
+    .filter((e) => e && !e._pendingDelete && matchesQuery(e, query) && matchesType(e, typeFilter)),
+  [recentIds, libraryEntries, query, typeFilter]);
+
+  // Canvas extraSections are name-filtered only (not library-shaped).
+  const filteredExtra = useMemo(() => (Array.isArray(extraSections) ? extraSections : []).map((s) => ({
+    ...s,
+    entries: (Array.isArray(s.entries) ? s.entries : [])
+      .filter(Boolean)
+      .filter((e) => matchesQuery(e, query))
+      .slice(0, 50),
+  })), [extraSections, query]);
+
+  const favSet = useMemo(() => new Set(favIds), [favIds]);
+  const trimmedQuery = (query || '').trim();
+
+  const allSectionIds = useMemo(() => ([
+    'favorites', 'recent', 'project', 'loose', 'other-projects',
+    ...filteredExtra.map((s) => s.id),
+  ]), [filteredExtra]);
+
+  const counts = useMemo(() => ({
+    favorites: favEntries.length,
+    recent: recentEntries.length,
+    project: grouped.project.length,
+    loose: grouped.loose.length,
+    'other-projects': grouped.other.length,
+    ...Object.fromEntries(filteredExtra.map((s) => [s.id, s.entries.length])),
+  }), [favEntries, recentEntries, grouped, filteredExtra]);
+
+  const countsKey = allSectionIds.map((id) => `${id}:${counts[id] || 0}`).join('|');
+  // Auto-expand sections with matches while typing; reset to defaults
+  // when the query is cleared.
+  useEffect(() => {
+    if (!trimmedQuery) { setExpanded(new Set(DEFAULT_EXPANDED)); return; }
+    const next = new Set(DEFAULT_EXPANDED);
+    for (const id of allSectionIds) if ((counts[id] || 0) > 0) next.add(id);
+    setExpanded(next);
+  }, [trimmedQuery, countsKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Dropdown mode: close on Esc / outside-click.
+  useEffect(() => {
+    if (inline || !isOpen) return undefined;
+    const onDown = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setIsOpen(false);
+    };
+    const onKey = (e) => { if (e.key === 'Escape') setIsOpen(false); };
+    document.addEventListener('mousedown', onDown);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [inline, isOpen]);
+
+  const onToggleFav = useCallback((entryId) => {
+    toggleFavorite(entryId);
+    setFavIds(getFavorites());
+  }, []);
+
+  const handlePick = useCallback((descriptor) => {
+    if (descriptor.kind === 'library') {
+      recordRecent(descriptor.id);
+      setRecentIds(getRecent());
+    }
+    if (!inline) setIsOpen(false);
+    onSelectEntry?.(descriptor);
+  }, [inline, onSelectEntry]);
+
+  const toggleSection = useCallback((sectionId) => {
+    setExpanded((prev) => {
+      const n = new Set(prev);
+      if (n.has(sectionId)) n.delete(sectionId); else n.add(sectionId);
+      return n;
+    });
+  }, []);
+
+  const totalCount = allSectionIds.reduce((sum, id) => sum + (counts[id] || 0), 0);
+  const projectName = currentProjectId
+    ? (projectsById?.[currentProjectId]?.name || currentProjectId)
+    : null;
+  const badgeForOther = useCallback(
+    (e) => (projectsById?.[e.projectId]?.name || e.projectId || ''),
+    [projectsById],
+  );
+
+  const pasteClean = pasteValue.replace(/\s+/g, '').toUpperCase();
+  const pasteValid = pasteClean.length > 0 && /^[ACGT]+$/.test(pasteClean);
+  const pasteInvalid = pasteClean.length > 0 && !pasteValid;
+  const submitPaste = useCallback(() => {
+    const clean = pasteValue.replace(/\s+/g, '').toUpperCase();
+    if (!clean || !/^[ACGT]+$/.test(clean)) return;
+    onPasteSequence?.(clean);
+    setPasteValue('');
+  }, [pasteValue, onPasteSequence]);
+
+  const sections = (
+    <>
+      {totalCount === 0 && (
+        <div data-testid={`${testId}-empty`} style={styles.empty}>
+          {trimmedQuery ? 'Ничего не найдено.' : 'Начните вводить — найду плазмиду в библиотеке или в проекте.'}
+        </div>
+      )}
+      <PickerSection
+        id="favorites" title="Избранное ★" entries={favEntries} kind="library"
+        query={query} onPick={handlePick} favSet={favSet} onToggleFav={onToggleFav}
+        expanded={expanded.has('favorites')} onToggle={() => toggleSection('favorites')}
+        testId={`${testId}-section-favorites`}
+      />
+      <PickerSection
+        id="recent" title="Недавно" entries={recentEntries} kind="library"
+        query={query} onPick={handlePick} favSet={favSet} onToggleFav={onToggleFav}
+        expanded={expanded.has('recent')} onToggle={() => toggleSection('recent')}
+        testId={`${testId}-section-recent`}
+      />
+      <PickerSection
+        id="project" title={projectName ? `Из проекта · ${projectName}` : 'Из проекта'}
+        entries={grouped.project} kind="library"
+        query={query} onPick={handlePick} favSet={favSet} onToggleFav={onToggleFav}
+        expanded={expanded.has('project')} onToggle={() => toggleSection('project')}
+        testId={`${testId}-section-project`}
+      />
+      <PickerSection
+        id="loose" title="Коллекция" entries={grouped.loose} kind="library"
+        query={query} onPick={handlePick} favSet={favSet} onToggleFav={onToggleFav}
+        expanded={expanded.has('loose')} onToggle={() => toggleSection('loose')}
+        testId={`${testId}-section-loose`}
+      />
+      <PickerSection
+        id="other-projects" title="Другие проекты" entries={grouped.other} kind="library"
+        query={query} onPick={handlePick} favSet={favSet} onToggleFav={onToggleFav}
+        expanded={expanded.has('other-projects')} onToggle={() => toggleSection('other-projects')}
+        testId={`${testId}-section-other-projects`} badgeFor={badgeForOther}
+      />
+      {filteredExtra.map((s) => (
+        <PickerSection
+          key={s.id} id={s.id} title={s.title} entries={s.entries} kind={s.kind || 'container'}
+          query={query} onPick={handlePick} favSet={null} onToggleFav={null}
+          expanded={expanded.has(s.id)} onToggle={() => toggleSection(s.id)}
+          testId={`${testId}-section-${s.id}`}
+        />
+      ))}
+      {typeof onPasteSequence === 'function' && (
+        <div data-testid={`${testId}-paste-section`} style={styles.pasteSection}>
+          <div style={styles.pasteHeader}>Вставить свой сиквенс</div>
+          <textarea
+            data-testid={`${testId}-paste-input`}
+            value={pasteValue}
+            onChange={(e) => setPasteValue(e.target.value)}
+            placeholder="ATGC… (только A/C/G/T)"
+            rows={3}
+            style={{
+              ...styles.pasteInput,
+              borderColor: pasteInvalid ? '#dc2626' : 'var(--border-default, #d6d3d1)',
             }}
-            style={styles.row}
-          >
-            <span style={styles.rowThumb}>
-              <EntryThumbnail display={display} kind={kind} />
+          />
+          <div style={styles.pasteFooter}>
+            <span data-testid={`${testId}-paste-counter`} style={styles.pasteCounter}>
+              {pasteClean.length} bp
             </span>
-            <span style={styles.rowMain}>
-              <span style={styles.rowName}>{display.name}</span>
-              <span style={styles.rowMeta}>
-                {display.length > 0 ? `${display.length} bp` : '—'}
-                {display.topology !== 'linear' && ` · ${display.topology}`}
-                {display.annotations.length > 0 && ` · ${display.annotations.length} features`}
+            {pasteInvalid && (
+              <span data-testid={`${testId}-paste-invalid`} style={styles.pasteInvalidMsg}>
+                Только A / C / G / T
               </span>
-            </span>
-          </button>
-        );
-      })}
+            )}
+            <button
+              type="button"
+              data-testid={`${testId}-paste-confirm`}
+              onClick={submitPaste}
+              disabled={!pasteValid}
+              style={{
+                ...styles.pasteConfirm,
+                opacity: pasteValid ? 1 : 0.5,
+                cursor: pasteValid ? 'pointer' : 'not-allowed',
+              }}
+            >Вставить сегмент</button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+
+  return (
+    <div ref={wrapRef} data-testid={testId} style={inline ? styles.wrapInline : styles.wrap}>
+      <input
+        ref={inputRef}
+        type="search"
+        data-testid={`${testId}-input`}
+        value={query}
+        onChange={(e) => { setQuery(e.target.value); if (!inline) setIsOpen(true); }}
+        onFocus={() => { if (!inline) setIsOpen(true); }}
+        placeholder="🔍 Поиск по имени или последовательности (ATGC…)"
+        style={styles.input}
+      />
+      <div style={styles.filters}>
+        {TYPE_FILTERS.map((f) => {
+          const active = typeFilter === f.id;
+          return (
+            <button
+              key={f.id}
+              type="button"
+              data-testid={`${testId}-filter-${f.id}`}
+              onClick={() => setTypeFilter(f.id)}
+              style={{
+                ...styles.filterPill,
+                border: `1px solid ${active ? 'var(--accent-500, #d97706)' : 'var(--border-default, #d6d3d1)'}`,
+                background: active ? 'var(--accent-50, #fef3c7)' : 'var(--surface-1)',
+                color: active ? 'var(--accent-700, #b45309)' : 'var(--text-secondary)',
+                fontWeight: active ? 600 : 400,
+              }}
+            >{f.label}</button>
+          );
+        })}
+      </div>
+      {inline ? (
+        <div data-testid={`${testId}-list`} style={styles.inlineList}>{sections}</div>
+      ) : (
+        isOpen && (
+          <div data-testid={`${testId}-dropdown`} style={styles.dropdown}>{sections}</div>
+        )
+      )}
     </div>
   );
 }
 
 const styles = {
   wrap: {
-    position: 'relative',
-    padding: '8px 12px',
-    background: 'var(--surface-2)',
-    borderBottom: '1px solid var(--border-subtle)',
-    flexShrink: 0,
+    position: 'relative', padding: '8px 12px', background: 'var(--surface-2)',
+    borderBottom: '1px solid var(--border-subtle)', flexShrink: 0,
+  },
+  wrapInline: {
+    position: 'relative', display: 'flex', flexDirection: 'column', minHeight: 0,
+    flex: 1, width: '100%', maxWidth: 560, margin: '0 auto',
+    background: 'var(--surface-1)', border: '1px solid var(--border-default, #d6d3d1)',
+    borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.08)', overflow: 'hidden',
   },
   input: {
-    width: '100%',
-    padding: '8px 12px',
-    fontSize: 12.5,
-    border: '1px solid var(--border-subtle)',
-    borderRadius: 6,
-    background: 'var(--surface-1)',
-    color: 'var(--text-primary)',
-    outline: 'none',
+    width: '100%', padding: '8px 12px', fontSize: 12.5,
+    border: '1px solid var(--border-subtle)', borderRadius: 6,
+    background: 'var(--surface-1)', color: 'var(--text-primary)', outline: 'none',
     boxSizing: 'border-box',
   },
+  filters: { display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' },
+  filterPill: { padding: '3px 8px', borderRadius: 999, fontSize: 10.5, cursor: 'pointer' },
   dropdown: {
-    position: 'absolute',
-    top: 'calc(100% - 1px)',
-    left: 12,
-    right: 12,
-    zIndex: 60,
-    maxHeight: 460,
-    overflowY: 'auto',
-    background: 'var(--surface-1)',
-    border: '1px solid var(--border-subtle)',
-    borderRadius: 6,
-    boxShadow: '0 6px 18px rgba(28,25,23,0.18)',
-    padding: 6,
+    position: 'absolute', top: 'calc(100% - 1px)', left: 12, right: 12, zIndex: 60,
+    maxHeight: 460, overflowY: 'auto', background: 'var(--surface-1)',
+    border: '1px solid var(--border-subtle)', borderRadius: 6,
+    boxShadow: '0 6px 18px rgba(28,25,23,0.18)', padding: 6,
   },
+  inlineList: { flex: 1, minHeight: 0, overflowY: 'auto', marginTop: 8 },
   empty: { padding: 12, fontSize: 11.5, color: 'var(--text-tertiary)' },
   section: { marginBottom: 4 },
   sectionHeader: {
-    display: 'flex', alignItems: 'center', gap: 6,
-    width: '100%', padding: '6px 8px',
-    background: 'var(--surface-2)',
-    border: '1px solid var(--border-subtle)',
-    borderRadius: 4,
-    fontSize: 10.5, fontWeight: 600,
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
-    textAlign: 'left',
+    display: 'flex', alignItems: 'center', gap: 6, width: '100%', padding: '6px 8px',
+    background: 'var(--surface-2)', border: '1px solid var(--border-subtle)', borderRadius: 4,
+    fontSize: 10.5, fontWeight: 600, letterSpacing: 0.4, textTransform: 'uppercase', textAlign: 'left',
   },
-  sectionChevron: {
-    fontSize: 9, color: 'var(--text-tertiary)', minWidth: 10,
-  },
-  sectionCount: {
-    fontSize: 10, color: 'var(--text-tertiary)', fontWeight: 500,
-    marginLeft: 4,
-  },
+  sectionChevron: { fontSize: 9, color: 'var(--text-tertiary)', minWidth: 10 },
+  sectionCount: { fontSize: 10, color: 'var(--text-tertiary)', fontWeight: 500, marginLeft: 4 },
   row: {
-    display: 'flex', alignItems: 'center', gap: 8,
-    width: '100%', padding: '6px 8px',
+    display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '6px 8px',
     background: 'var(--surface-1)', color: 'var(--text-primary)',
     border: '1px solid var(--border-subtle)', borderRadius: 4,
     cursor: 'pointer', marginTop: 3, textAlign: 'left', fontSize: 12,
   },
   rowThumb: {
-    flexShrink: 0, width: 32, height: 32,
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    // V85 r2 — MiniPlasmidMap теперь рендерится с showLabels=false,
-    // так что leader-line подписи не выходят за SVG. overflow:hidden
-    // больше не нужен (нечему обрезаться) — оставляем чистое кольцо.
+    flexShrink: 0, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center',
   },
-  rowMain: {
-    flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1,
+  rowMain: { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 },
+  rowName: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 600, fontSize: 12 },
+  rowMeta: { color: 'var(--text-tertiary)', fontSize: 10.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  favBtn: {
+    position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)',
+    background: 'transparent', border: 'none', fontSize: 14, cursor: 'pointer', padding: 2, lineHeight: 1,
   },
-  rowName: {
-    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-    fontWeight: 600, fontSize: 12,
-  },
-  rowMeta: {
-    color: 'var(--text-tertiary)', fontSize: 10.5,
-    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+  projBadge: {
+    position: 'absolute', right: 10, top: 8, fontSize: 9.5, color: 'var(--text-tertiary)',
+    pointerEvents: 'none', background: 'var(--surface-2)', padding: '1px 4px', borderRadius: 2,
   },
   thumbPlaceholder: {
-    width: 32, height: 32,
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    background: 'var(--surface-2)',
-    border: '1px solid var(--border-subtle)',
-    borderRadius: '50%',
-    fontSize: 14,
+    width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center',
+    background: 'var(--surface-2)', border: '1px solid var(--border-subtle)', borderRadius: '50%', fontSize: 14,
+  },
+  pasteSection: {
+    marginTop: 6, padding: '8px', background: 'var(--surface-2)',
+    border: '1px solid var(--border-subtle)', borderRadius: 4,
+  },
+  pasteHeader: {
+    fontSize: 10.5, fontWeight: 600, letterSpacing: 0.4, textTransform: 'uppercase',
+    color: 'var(--text-secondary)', marginBottom: 6,
+  },
+  pasteInput: {
+    width: '100%', padding: '6px 8px', fontSize: 12,
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+    border: '1px solid var(--border-default, #d6d3d1)', borderRadius: 4,
+    background: 'var(--surface-1)', color: 'var(--text-primary)', boxSizing: 'border-box', resize: 'vertical',
+  },
+  pasteFooter: { display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 },
+  pasteCounter: { fontSize: 10.5, color: 'var(--text-tertiary)' },
+  pasteInvalidMsg: { fontSize: 10.5, color: '#dc2626', flex: 1 },
+  pasteConfirm: {
+    marginLeft: 'auto', padding: '5px 12px', fontSize: 11.5,
+    background: 'var(--accent-500, #b85c3e)', color: '#fff', fontWeight: 600,
+    border: '1px solid var(--accent-500, #b85c3e)', borderRadius: 4,
   },
 };

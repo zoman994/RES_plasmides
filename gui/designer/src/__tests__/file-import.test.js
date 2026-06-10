@@ -12,7 +12,7 @@ vi.mock('../auto-annotate', () => ({
   enrichWithCommonFeatures: vi.fn(async (_seq, anns) => anns),
 }));
 
-import { parseFile, enrichAnnotations, handleFileImport } from '../file-import';
+import { parseFile, enrichAnnotations, handleFileImport, parseFasta } from '../file-import';
 import { autoAnnotate, enrichWithCommonFeatures } from '../auto-annotate';
 
 function fileFromText(name, text) {
@@ -101,6 +101,45 @@ describe('enrichAnnotations', () => {
     const item = { name: 'x', sequence: 'ATGCATGC', annotations: [] };
     await enrichAnnotations(item);
     expect(enrichWithCommonFeatures).toHaveBeenCalled();
+  });
+});
+
+describe('parseFasta — V103 header+sequence on one line', () => {
+  it('rescues `>F1 ACGTACGTACGT` (one-line) → name F1, sequence ACGTACGTACGT', () => {
+    const r = parseFasta('>F1 ACGTACGTACGT');
+    expect(r.name).toBe('F1');
+    expect(r.sequence).toBe('ACGTACGTACGT');
+  });
+
+  it('does NOT mis-rescue `>pUC19 cloning vector\\nGGGG` — prose header ignored, seq from line below', () => {
+    const r = parseFasta('>pUC19 cloning vector\nGGGG');
+    expect(r.name).toBe('pUC19');
+    expect(r.sequence).toBe('GGGG');
+  });
+
+  it('header-only `>ACGT` (no remainder) → sequence stays empty (behaviour unchanged)', () => {
+    const r = parseFasta('>ACGT');
+    expect(r.name).toBe('ACGT');
+    expect(r.sequence).toBe('');
+  });
+
+  it('IUPAC-only remainder is rescued too (sanitizeSequence keeps RYKM)', () => {
+    const r = parseFasta('>amb RYKM');
+    expect(r.name).toBe('amb');
+    expect(r.sequence).toBe('RYKM');
+  });
+
+  it('regression — multi-line FASTA with prose description: rescue never triggers', () => {
+    const r = parseFasta('>multi some description\nACGT\nTTTT');
+    expect(r.name).toBe('multi');
+    expect(r.sequence).toBe('ACGTTTTT');
+  });
+
+  it('parseFile of a synthetic one-line FASTA File does not throw and yields a sequence', async () => {
+    const file = fileFromText('pasted.fasta', '>F1 ACGTACGT');
+    const item = await parseFile(file);
+    expect(item.sequence).toBe('ACGTACGT');
+    expect(item.name).toBe('F1');
   });
 });
 

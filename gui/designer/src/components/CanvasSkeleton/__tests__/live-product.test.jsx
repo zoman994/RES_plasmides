@@ -183,26 +183,6 @@ let lpA = null;
 let lpS = null;
 function LPH() { lpA = useSkeletonActions(); lpS = useSkeletonState(); return null; }
 
-describe('K4 — virtual outputs on canvas', () => {
-  it('committed pcr op (no inputs) → incomplete virtual block on canvas', () => {
-    render(<SkeletonProvider><LPH /><CanvasLayoutView /></SkeletonProvider>);
-    act(() => { lpA.opAdd({ position: { x: 200, y: 120 }, kind: 'pcr', inputs: [], commit: true }); });
-    const opId = lpS.operations[0].id;
-    expect(screen.getByTestId(`skeleton-virtual-wrap-${opId}`)).toBeTruthy();
-    expect(screen.getByTestId(`skeleton-block-v-${opId}`).getAttribute('data-virtual-state')).toBe('incomplete');
-  });
-
-  it('adding a sequenced input → virtual becomes valid', () => {
-    render(<SkeletonProvider><LPH /><CanvasLayoutView /></SkeletonProvider>);
-    act(() => {
-      lpA.addContainer({ id: 'c-tpl', kind: 'molecule', name: 'pUC', sequence: SEQ, topology: { circular: true }, annotations: [] });
-    });
-    act(() => { lpA.opAdd({ position: { x: 200, y: 120 }, kind: 'pcr', inputs: ['c-tpl'], commit: true }); });
-    const opId = lpS.operations[0].id;
-    expect(screen.getByTestId(`skeleton-block-v-${opId}`).getAttribute('data-virtual-state')).toBe('valid');
-  });
-});
-
 // ════════════════════════════════════════════════════════════════════
 // K5 — virtual tab read-only preview + OP_EXECUTE substitution
 // ════════════════════════════════════════════════════════════════════

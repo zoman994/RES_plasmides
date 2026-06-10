@@ -1,13 +1,17 @@
 /**
  * HelpPopover — single ? entry-point in the main header.
  *
- * SPEC_MAIN_SCREEN_CLEANUP §3.4. 3 tabs:
+ * SPEC_MAIN_SCREEN_CLEANUP §3.4. 4 tabs:
  *   - Руководство — link to the online guide (placeholder until
  *     proper content lands).
  *   - Хоткеи — re-uses existing HotkeyCheatsheet content via
  *     onOpenHotkeys callback (which already lives in App-level state).
  *   - Глоссарий — placeholder for the upcoming biology-glossary
  *     content round.
+ *   - Скрытое — registry of implemented-but-not-yet-mounted features
+ *     and power-user paths (right-click menus, drag-drop, hotkeys,
+ *     file formats). Игорь 20.05.2026 — «скинь всё что есть, чтобы я
+ *     мог ознакомиться».
  *
  * Stateless. Caller manages open/closed via `open` + `onClose`.
  * Esc / outside-click → onClose.
@@ -30,6 +34,7 @@ export default function HelpPopover({ open, onClose, onOpenHotkeys }) {
     { id: 'guide', label: 'Руководство' },
     { id: 'hotkeys', label: 'Хоткеи' },
     { id: 'glossary', label: 'Глоссарий' },
+    { id: 'hidden', label: 'Скрытое' },
   ];
 
   return (
@@ -100,8 +105,6 @@ export default function HelpPopover({ open, onClose, onOpenHotkeys }) {
                 data-testid="ss-help-open-hotkeys"
                 onClick={() => {
                   onClose?.();
-                  // Defer to next tick so the popover closes before the
-                  // hotkey modal mounts (avoids two backdrops stacked).
                   setTimeout(() => onOpenHotkeys?.(), 0);
                 }}
                 style={styles.primaryBtn}
@@ -119,8 +122,124 @@ export default function HelpPopover({ open, onClose, onOpenHotkeys }) {
               </p>
             </div>
           )}
+          {activeTab === 'hidden' && (
+            <HiddenFeatures />
+          )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * HiddenFeatures — registry of features that are implemented in code
+ * but not exposed via a visible button. Each row: что → как добраться.
+ * Группы:
+ *   1. Контекстные меню (ПКМ)
+ *   2. Drag-and-drop
+ *   3. Хоткеи (selection + canvas + editor)
+ *   4. Форматы файлов
+ *   5. Готово, ждёт mount (Notebook, Protocol, Primer Order)
+ *   6. Восстановление + автосейв
+ */
+function HiddenFeatures() {
+  return (
+    <div data-testid="ss-help-tab-content-hidden">
+      <p style={{ ...styles.bodyText, marginBottom: 16 }}>
+        Реестр функций, которые уже работают, но без явной кнопки —
+        либо доступны через ПКМ / drag-drop / хоткей, либо
+        реализованы и ждут UI-mount следующих спринтов.
+      </p>
+
+      <Group title="1. ПКМ (правый клик) в редакторе">
+        <Row a="Piece (кусок) в SegmentList сборки" b="Переименовать · RC · Изменить диапазон · Добавить mutation · Сшить (если ≥2 выделено) · Удалить" />
+        <Row a="Op-узел (ромбик) в Frame view" b="Параметры стыка · Изменить тип op · Удалить группу" />
+        <Row a="Restriction site в SequenceView" b="Cut at this position (открывает RE-popover c параметрами)" />
+        <Row a="Selection в SequenceView" b="Forward / Reverse copy · Прямой/Обратный праймер (Ctrl+R)" />
+      </Group>
+
+      <Group title="2. Drag-and-drop">
+        <Row a="Файл .gb / .fasta / .dna → на канвас" b="Открывает ImportDecisionModal (restriction / backbone / view / library / disassemble)" />
+        <Row a="Запись из библиотеки → на канвас" b="Создаёт зону с этим контейнером" />
+        <Row a="Контейнер из боковой панели → в редактор сборки" b="Открывает RangePicker для выбора фрагмента" />
+        <Row a="Сегмент в SegmentList" b="Drag для перестановки порядка" />
+        <Row a="Картинка / файл в Notebook entry" b="Auto-attach + image compress на лету" />
+      </Group>
+
+      <Group title="3. Хоткеи (не очевидные)">
+        <Row a="Ctrl+R / Ctrl+Alt+R" b="Создать праймер из выделения (Fwd / Rev)" />
+        <Row a="Shift + клик" b="Расширить выделение от существующего" />
+        <Row a="Ctrl+K" b="Глобальный поиск (плазмиды / праймеры / сборки)" />
+        <Row a="TAB / Shift+TAB" b="Переключение вкладок в окне редактора" />
+        <Row a="Ctrl+S в редакторе контейнера" b="Применить незаписанные правки" />
+        <Row a="Ctrl+Z / Ctrl+Y" b="Undo / Redo (живёт в общем skeleton-history)" />
+        <Row a="P / S / . / G в AddPiecePopover" b="Быстрый выбор: Плазмида / Обвес / Синтез / Gap" />
+        <Row a="«↩ S» в шапке редактора сборки" b="Свернуть редактор → sequence view на канвасе" />
+      </Group>
+
+      <Group title="4. Форматы файлов">
+        <Row a=".bodge v2" b="Split sections: containers/.gb + assemblies/.json + manifest + sha256 + recovery. Атомарная запись, защита от corruption." />
+        <Row a=".bodgeassembly" b="Портативная sub-сборка (только одна assembly + её containers). Export через Settings → Export profile." />
+        <Row a="SnapGene .dna" b="Round-trip: импорт через свой binary parser + fallback BioPython; экспорт пишет provenance COMMENT в .gb." />
+        <Row a="GenBank .gb с provenance" b="Multi-line COMMENT с base64-JSON payload (##BodgeGene-Provenance-START / END##)." />
+        <Row a="Markdown в Notebook" b="KaTeX ($...$ / $$...$$), Mermaid links, @@ref:kind:id@@ (auto-link на entry), DNA/AA syntax highlight в fenced blocks." />
+      </Group>
+
+      <Group title="5. Готово, ждёт UI-mount (следующие спринты)">
+        <Row a="Notebook (лабжурнал в .bodge)" b="NotebookEntryEditor + список + поиск + ref-picker — собрано, не примонтировано в App.jsx. Bundle delta после мaunt ~60 KB gzipped." />
+        <Row a="📁 Протокол" b="ProtocolPanel — компонент сохранён, mount убран из canvas (PC-K5). Включить через future Settings → опыты." />
+        <Row a="🧪 Заказ олигов" b="PrimerOrderPanel — same, файл сохранён, mount убран." />
+        <Row a="Корзина (восстановление удалённого)" b="Soft-delete работает, UI восстановления переехал в Settings → раздел в разработке. Пока — Ctrl+Z сразу после delete." />
+        <Row a="Mutation auto-detect" b="MutationModal готов, но трэкер «плазмида целиком + ручная правка нуклеотидов → авто-мутагенез» ещё не подключён." />
+        <Row a="Frame view multi-select (Сшить)" b="AV-K5 deferred — нужен canvas-level selection slice." />
+        <Row a="Frame view mutation context menu" b="AV-K4 deferred — нужен piece↔container resolver." />
+      </Group>
+
+      <Group title="6. Восстановление + автосейв">
+        <Row a="Atomic write .bodge" b="Все записи через temp-file + rename — сбой не повреждает существующий файл." />
+        <Row a="_recovery.json в .bodge" b="При обнаружении incomplete write — предложит восстановить последний snapshot." />
+        <Row a="PWA install" b="Через Settings → раздел «Установить как приложение». Service worker → offline-ready." />
+        <Row a="Lazy bundle splitting" b="KaTeX / Notebook / xyflow подгружаются по требованию — не входят в initial bundle." />
+      </Group>
+    </div>
+  );
+}
+
+function Group({ title, children }) {
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{
+        fontSize: 11,
+        fontWeight: 700,
+        textTransform: 'uppercase',
+        letterSpacing: 0.4,
+        color: 'var(--accent-500, #b85c3e)',
+        marginBottom: 6,
+        paddingBottom: 3,
+        borderBottom: '1px solid var(--border-subtle)',
+      }}>{title}</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function Row({ a, b }) {
+  return (
+    <div style={{
+      display: 'flex', gap: 10, alignItems: 'flex-start',
+      fontSize: 11.5, lineHeight: 1.4,
+    }}>
+      <span style={{
+        flex: '0 0 38%',
+        color: 'var(--text-primary)',
+        fontWeight: 500,
+      }}>{a}</span>
+      <span style={{
+        flex: 1,
+        color: 'var(--text-secondary)',
+      }}>{b}</span>
     </div>
   );
 }
@@ -133,7 +252,7 @@ const styles = {
     paddingTop: 60, paddingRight: 24,
   },
   shell: {
-    width: 440, maxHeight: '70vh',
+    width: 560, maxHeight: '78vh',
     display: 'flex', flexDirection: 'column',
     background: 'var(--surface-1)', color: 'var(--text-primary)',
     border: '1px solid var(--border-subtle)', borderRadius: 8,

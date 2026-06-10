@@ -57,7 +57,7 @@ function dt() {
 }
 
 describe('T6 K9 — toolbar / picker / sidebar / undo in zone-mode', () => {
-  it('«+ Плазмида» → PlaceholderTreePicker → RangePicker → confirm → sourced piece (K5)', async () => {
+  it('inline library entry → RangePicker → confirm → sourced piece (K5)', async () => {
     try { localStorage.clear(); } catch { /* no-op */ }
     const zid = openEmptyZone();
     act(() => {
@@ -73,9 +73,10 @@ describe('T6 K9 — toolbar / picker / sidebar / undo in zone-mode', () => {
         currentProjectId: null,
       }));
     });
-    act(() => { fireEvent.click(screen.getByTestId('assembly-add-segment')); });
-    expect(screen.getByTestId('skeleton-placeholder-picker')).toBeTruthy();
-    act(() => { fireEvent.click(screen.getByTestId('skeleton-placeholder-picker-item-lib-z')); });
+    // Игорь 20.05.2026 — empty assembly mounts EmptyAssemblyLibrary in
+    // the centre; entry click is direct, no «+ Плазмида» step.
+    expect(screen.getByTestId('assembly-source-picker')).toBeTruthy();
+    act(() => { fireEvent.click(screen.getByTestId('assembly-source-picker-section-loose-item-lib-z')); });
     const m = await screen.findByTestId('range-picker-modal');
     await act(async () => {
       fireEvent.click(within(m).getByTestId('range-picker-confirm'));
@@ -87,17 +88,16 @@ describe('T6 K9 — toolbar / picker / sidebar / undo in zone-mode', () => {
     expect(ps[0].ranges[0]).toMatchObject({ start: 0, end: 16 });
   });
 
-  it('«+ Gap» unknown length → a gap piece in the zone', () => {
+  it('paste custom sequence in the empty-state picker → known-gap piece (custom-segment SAFE)', () => {
     const zid = openEmptyZone();
-    act(() => { fireEvent.click(screen.getByTestId('assembly-add-gap')); });
-    const m = screen.getByTestId('insert-gap-modal');
-    act(() => { fireEvent.click(within(m).getByTestId('gap-tab-unknown')); });
-    act(() => { fireEvent.change(within(m).getByTestId('gap-unknown-len'), { target: { value: '15' } }); });
-    act(() => { fireEvent.click(within(m).getByTestId('gap-insert')); });
+    act(() => {
+      fireEvent.change(screen.getByTestId('assembly-source-picker-paste-input'), { target: { value: 'ATGCATGC' } });
+    });
+    act(() => { fireEvent.click(screen.getByTestId('assembly-source-picker-paste-confirm')); });
     const ps = zonePieces(zid);
     expect(ps).toHaveLength(1);
     expect(ps[0].kind).toBe('gap');
-    expect(ps[0].gapLength).toBe(15);
+    expect(ps[0].gapSequence).toBe('ATGCATGC');
   });
 
   it('drag a sidebar container onto the viewer → RangePicker → confirm → full-length piece (K5)', () => {
@@ -115,11 +115,10 @@ describe('T6 K9 — toolbar / picker / sidebar / undo in zone-mode', () => {
 
   it('undo removes a zone-mode inserted piece', () => {
     const zid = openEmptyZone();
-    act(() => { fireEvent.click(screen.getByTestId('assembly-add-gap')); });
-    const m = screen.getByTestId('insert-gap-modal');
-    act(() => { fireEvent.click(within(m).getByTestId('gap-tab-unknown')); });
-    act(() => { fireEvent.change(within(m).getByTestId('gap-unknown-len'), { target: { value: '12' } }); });
-    act(() => { fireEvent.click(within(m).getByTestId('gap-insert')); });
+    act(() => {
+      fireEvent.change(screen.getByTestId('assembly-source-picker-paste-input'), { target: { value: 'ACGTACGT' } });
+    });
+    act(() => { fireEvent.click(screen.getByTestId('assembly-source-picker-paste-confirm')); });
     expect(zonePieces(zid)).toHaveLength(1);
     act(() => { fireEvent.click(screen.getByTestId('assembly-undo')); });
     expect(zonePieces(zid)).toHaveLength(0);

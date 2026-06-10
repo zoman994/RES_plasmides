@@ -113,7 +113,8 @@ describe('T6 K8 — SegmentList + SegmentDetailPanel zone-mode writes', () => {
     });
     act(() => { fireEvent.click(screen.getByTestId(`segment-inline-apply-${segId}`)); });
     const pcA = S.pieces.find((p) => p.id === a);
-    expect(pcA.ranges[0]).toMatchObject({ start: 4, end: 12 });
+    // V127 — inline inputs 1-based: typed start 4 → store 3; end 12 passes through.
+    expect(pcA.ranges[0]).toMatchObject({ start: 3, end: 12 });
   });
 
   it('inline label edit → piece.name (V94)', () => {

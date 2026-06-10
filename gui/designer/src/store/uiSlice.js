@@ -24,11 +24,20 @@ const IMPORTER_MODES = ['advanced', 'simple'];
 export const DISPLAY_SETTINGS_STORAGE_KEY = 'bodgegene-display-settings';
 const SEQUENCE_WRAPS = [60, 80, 100, 150];
 const POLYMERASES = ['phusion', 'q5', 'taq', 'kod'];
+// SPEC_EDITABLE_ASSEMBLY_S1 §5.9 — synthesisLengthThreshold: typed
+// inline ДНК ≤ this is a primer-tail snippet, > this is a synthesis
+// piece. Biology: standard oligos ~60–100 nt, ultramers ~200 → default
+// 80, sane range 40–200. Mirrors assembly-edit-router
+// SYNTHESIS_THRESHOLD_DEFAULT (literal kept here to avoid the global
+// store importing a CanvasSkeleton lib).
+const SYNTHESIS_THRESHOLD_MIN = 40;
+const SYNTHESIS_THRESHOLD_MAX = 200;
 export const DISPLAY_SETTINGS_DEFAULTS = Object.freeze({
   sequenceWrap: 150,
   polymerase: 'q5',
   primerPrefix: 'p_',
   annotateOnImport: true,
+  synthesisLengthThreshold: 80,
 });
 
 function sanitizeDisplaySettings(raw) {
@@ -40,6 +49,12 @@ function sanitizeDisplaySettings(raw) {
     out.primerPrefix = raw.primerPrefix;
   }
   if (typeof raw.annotateOnImport === 'boolean') out.annotateOnImport = raw.annotateOnImport;
+  const t = Number(raw.synthesisLengthThreshold);
+  if (Number.isFinite(t)) {
+    out.synthesisLengthThreshold = Math.round(
+      Math.max(SYNTHESIS_THRESHOLD_MIN, Math.min(SYNTHESIS_THRESHOLD_MAX, t)),
+    );
+  }
   return out;
 }
 
@@ -317,6 +332,7 @@ export const createUiSlice = (set) => ({
       kind,
       createdAt: Date.now(),
       onUndo: typeof options?.onUndo === 'function' ? options.onUndo : null,
+      actionLabel: typeof options?.actionLabel === 'string' ? options.actionLabel : null,
       onAutoDismiss: typeof options?.onAutoDismiss === 'function' ? options.onAutoDismiss : null,
       autoDismissMs: typeof options?.autoDismissMs === 'number' ? options.autoDismissMs : TOAST_DEFAULT_DISMISS_MS,
     };

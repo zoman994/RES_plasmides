@@ -69,7 +69,10 @@ export default function AssemblySidebar({ containers, onClose }) {
           }}
           title="Контейнеры проекта — источник плазмид для drag в strip сборки"
         >
-          Контейнеры · {list.length}
+          {/* V108 — dropped the «· N» count: it reflected the global skeleton
+              container pool, not this assembly, so it never «added up». The
+              body lists the items; the tooltip explains the panel's purpose. */}
+          Контейнеры
         </strong>
         {typeof onClose === 'function' && (
           <button

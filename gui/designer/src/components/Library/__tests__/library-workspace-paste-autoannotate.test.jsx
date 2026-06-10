@@ -22,7 +22,7 @@ import {
   describe, it, expect, beforeEach, afterEach, vi,
 } from 'vitest';
 import {
-  render, screen, fireEvent, cleanup, waitFor,
+  render, screen, fireEvent, cleanup, waitFor, act,
 } from '@testing-library/react';
 import { useStore } from '../../../store';
 
@@ -33,7 +33,11 @@ vi.mock('../tree/LibraryTreeRoot', () => ({
     <button type="button" data-testid="stub-add-click" onClick={onAddClick}>add</button>
   ),
 }));
-vi.mock('../inspector/LibrarySingleInspector', () => ({ default: () => null }));
+// Stub exposes activeTab so the Звено-2 «Продолжить аннотацию» toast action
+// (onUndo → select entry + open Annotations tab) is observable.
+vi.mock('../inspector/LibrarySingleInspector', () => ({
+  default: ({ activeTab }) => <div data-testid="ls-inspector" data-active-tab={activeTab || ''} />,
+}));
 vi.mock('../inspector/LibraryActionRow', () => ({ default: () => null }));
 vi.mock('../onboarding/OnboardingNudge', () => ({ default: () => null }));
 vi.mock('../../SequenceSearchPopover', () => ({ default: () => null }));
@@ -133,5 +137,129 @@ describe('LibraryWorkspace paste import — «Авто-аннотация» actu
     await waitFor(() => expect(useStore.getState().addLibraryEntry).toHaveBeenCalledTimes(1));
     expect(added[0].name).toBe('F');
     expect(buildLibraryEntry).toHaveBeenCalledTimes(1);
+  });
+});
+
+// Звено 1/2 (25.05.2026): тост сообщает, сколько нашла авто-аннотация —
+// раздельно гены по гомологии (source==='common_db') и RE-сайты
+// (detector==='re_scan'). Звено 2 (ссылка «Продолжить аннотацию») — отдельно.
+describe('LibraryWorkspace paste import — авто-аннотация: счётчик найденного в тосте', () => {
+  function pasteImportWithAnnotations(annotations) {
+    enrichAnnotations.mockResolvedValueOnce({
+      name: 'F', sequence: 'ACGTACGTACGT', length: 12, topology: 'linear', annotations,
+    });
+    render(<LibraryWorkspace />);
+    openPasteAndType('ACGTACGTACGT');
+    fireEvent.click(screen.getByTestId('add-modal-submit'));
+  }
+
+  it('autoAnnotate ON, 2 гена (common_db) + 5 RE-сайтов (re_scan) → тост со счётчиком «2 … 5», autoDismissMs 9000', async () => {
+    pasteImportWithAnnotations([
+      { source: 'common_db' }, { source: 'common_db' },
+      { detector: 're_scan' }, { detector: 're_scan' }, { detector: 're_scan' },
+      { detector: 're_scan' }, { detector: 're_scan' },
+    ]);
+    await waitFor(() => expect(useStore.getState().addLibraryEntry).toHaveBeenCalledTimes(1));
+    const { showToast } = useStore.getState();
+    expect(showToast).toHaveBeenCalledWith(
+      expect.stringMatching(/Авто-аннотация:\s*2\s+ген\S*.*5\s+сайт\S* рестрикции/),
+      'success',
+      expect.objectContaining({ autoDismissMs: 9000 }),
+    );
+  });
+
+  it('autoAnnotate ON, 0 генов → info-тост «Гомологичных элементов не найдено» (9000) + базовый тост', async () => {
+    pasteImportWithAnnotations([{ detector: 're_scan' }, { detector: 're_scan' }]);
+    await waitFor(() => expect(useStore.getState().addLibraryEntry).toHaveBeenCalledTimes(1));
+    const { showToast } = useStore.getState();
+    expect(showToast).toHaveBeenCalledWith(
+      'Гомологичных элементов не найдено', 'info',
+      expect.objectContaining({ autoDismissMs: 9000 }),
+    );
+    expect(showToast).toHaveBeenCalledWith(expect.stringMatching(/^Добавлено: 1 файл/), 'success');
+  });
+
+  it('autoAnnotate OFF → тост только «Добавлено: N файл(ов)», без счётчика фич', async () => {
+    render(<LibraryWorkspace />);
+    openPasteAndType('ACGTACGTACGT');
+    fireEvent.click(screen.getByTestId('add-modal-auto-annotate')); // toggle off
+    fireEvent.click(screen.getByTestId('add-modal-submit'));
+    await waitFor(() => expect(useStore.getState().addLibraryEntry).toHaveBeenCalledTimes(1));
+    const { showToast } = useStore.getState();
+    expect(enrichAnnotations).not.toHaveBeenCalled();
+    expect(showToast).toHaveBeenCalledWith(expect.stringMatching(/^Добавлено: 1 файл/), 'success');
+    const msgs = showToast.mock.calls.map((c) => String(c[0]));
+    expect(msgs.some((m) => /Авто-аннотация|Гомологичных/.test(m))).toBe(false);
+  });
+
+  it('плюрализация генов в тосте: 1 → «ген», 2 → «гена», 5 → «генов»', async () => {
+    const cases = [
+      { n: 1, form: /1 ген(?![аеиов])/ },
+      { n: 2, form: /2 гена/ },
+      { n: 5, form: /5 генов/ },
+    ];
+    for (const { n, form } of cases) {
+      cleanup();
+      useStore.setState((s) => {
+        s.showToast = vi.fn();
+        s.addLibraryEntry = vi.fn(async (entry) => { added.push(entry); });
+      });
+      enrichAnnotations.mockClear();
+      pasteImportWithAnnotations(Array.from({ length: n }, () => ({ source: 'common_db' })));
+      // eslint-disable-next-line no-await-in-loop
+      await waitFor(() => expect(useStore.getState().addLibraryEntry).toHaveBeenCalledTimes(1));
+      const { showToast } = useStore.getState();
+      const hit = showToast.mock.calls.some((c) => form.test(String(c[0])));
+      expect(hit, `genes=${n}`).toBe(true);
+    }
+  });
+});
+
+// Звено 2 (25.05.2026): the gene-count success toast carries a clickable
+// «Продолжить аннотацию» action (actionLabel + onUndo). onUndo selects the
+// last imported entry and opens its Annotations tab in the inspector.
+describe('LibraryWorkspace paste import — тост со ссылкой «Продолжить аннотацию»', () => {
+  it('autoAnnotate ON + ≥1 ген → success-тост несёт actionLabel + onUndo; onUndo выбирает запись и вкладку «Аннотации»', async () => {
+    // addLibraryEntry must land the entry in the store so onUndo's
+    // setSelectedId resolves a real item → the inspector renders.
+    useStore.setState((s) => {
+      s.addLibraryEntry = vi.fn(async (entry) => {
+        added.push(entry);
+        useStore.setState((st) => { st.libraryEntries[entry.id] = entry; });
+      });
+    });
+    enrichAnnotations.mockResolvedValueOnce({
+      name: 'F', sequence: 'ACGTACGTACGT', length: 12, topology: 'linear',
+      annotations: [{ source: 'common_db' }],
+    });
+    render(<LibraryWorkspace />);
+    openPasteAndType('ACGTACGTACGT');
+    fireEvent.click(screen.getByTestId('add-modal-submit'));
+    await waitFor(() => expect(useStore.getState().addLibraryEntry).toHaveBeenCalledTimes(1));
+
+    const { showToast } = useStore.getState();
+    const successCall = showToast.mock.calls.find((c) => c[1] === 'success' && c[2] && c[2].actionLabel);
+    expect(successCall).toBeTruthy();
+    expect(successCall[2].actionLabel).toBe('Продолжить аннотацию');
+    expect(typeof successCall[2].onUndo).toBe('function');
+
+    act(() => { successCall[2].onUndo(); });
+    await waitFor(() => {
+      expect(screen.getByTestId('ls-inspector').getAttribute('data-active-tab')).toBe('annotations');
+    });
+  });
+
+  it('autoAnnotate ON, 0 генов → тост без actionLabel (ссылки нет)', async () => {
+    enrichAnnotations.mockResolvedValueOnce({
+      name: 'F', sequence: 'ACGTACGTACGT', length: 12, topology: 'linear',
+      annotations: [{ detector: 're_scan' }],
+    });
+    render(<LibraryWorkspace />);
+    openPasteAndType('ACGTACGTACGT');
+    fireEvent.click(screen.getByTestId('add-modal-submit'));
+    await waitFor(() => expect(useStore.getState().addLibraryEntry).toHaveBeenCalledTimes(1));
+    const { showToast } = useStore.getState();
+    const withLabel = showToast.mock.calls.find((c) => c[2] && c[2].actionLabel);
+    expect(withLabel).toBeUndefined();
   });
 });

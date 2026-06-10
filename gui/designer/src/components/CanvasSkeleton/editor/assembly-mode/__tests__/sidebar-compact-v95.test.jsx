@@ -1,6 +1,7 @@
 /**
  * V95 — AssemblySidebar compact + collapsible. Default body collapsed
- * — видна только полоса заголовка «Контейнеры · N» с chevron и × close.
+ * — видна только полоса заголовка «Контейнеры» с chevron и × close
+ * (V108 убрал счётчик «· N» — он считал глобальный пул, не сборку).
  * Chevron expand → видны filter input + список contenders.
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
@@ -21,11 +22,13 @@ describe('V95 — AssemblySidebar compact + collapsible', () => {
     expect(screen.queryAllByTestId('assembly-sidebar-item')).toHaveLength(0);
   });
 
-  it('header показывает «Контейнеры · N» counter', () => {
+  it('header показывает «Контейнеры» без счётчика (V108 — counter убран)', () => {
     render(<AssemblySidebar containers={[C('cA', 'pUC'), C('cB', 'pET')]} />);
     const sidebar = screen.getByTestId('assembly-sidebar');
     expect(sidebar.textContent).toMatch(/Контейнеры/);
-    expect(sidebar.textContent).toMatch(/· 2/);
+    // V108 (WT-B-6) — «· N» убран: N считал глобальный пул контейнеров
+    // скелета (растёт на каждой вставке/realise), не эту сборку → не сходился.
+    expect(sidebar.textContent).not.toMatch(/Контейнеры\s*·\s*\d/);
   });
 
   it('chevron toggle раскрывает body — появляется filter + items', () => {
