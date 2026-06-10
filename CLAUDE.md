@@ -6,7 +6,7 @@
 Прочитай CLAUDE.md → BUGS.md → CURRENT_TASK.md → PROJECT_STATE.md → DECISIONS.md
 ```
 
-Пяти файлов хватит (~30 KB). RELEASES.md / ANCHORS.md / docs/ — только по явной инструкции в CURRENT_TASK.md или по триггерам из CHAT_PLAYBOOK_CORE.md §1.
+Пяти файлов хватит (~30 KB). RELEASES.md / ANCHORS.md / docs/ — только по явной инструкции в CURRENT_TASK.md или по триггерам из CHAT_PLAYBOOK.md §1.
 
 ---
 
@@ -16,9 +16,9 @@ BodgeGene — визуальный конструктор генетически
 
 **Автор:** Игорь Синельников, ФИЦ Биотехнологии РАН  
 **Путь:** `D:\RESplasmide`  
-**Версия:** v0.8.1 (Sprint M-X.7c UI revision + project activation merge, 10.05.2026 — patch поверх v0.8.0 base «Library = primary workspace»). Архитектура v0.6+ — в `docs/ARCHITECTURE_v2.md` v1.2 (~117 KB) + `docs/ARCHITECTURE_3LEVELS.md` (от 09.05.2026, ~12 KB). Фундаментальные решения — в `ANCHORS.md` (61 ⚓, без изменений в v0.8.1; кандидаты на promotion: DEC-UIRREV-ZONES-MERGE-01, DEC-UIRREV-ACTIVE-SINGLE-01 — после M-X.8 acceptance). Sprint-level — в `DECISIONS.md` (v0.8.1 sprint block: 6 DEC-UIRREV-*). Журнал по версиям — в `RELEASES.md`. **Тесты: Vitest 1697/1699 + 1 skipped + 1 flake (pre-existing `primer-wizard.test.jsx::2`, в TECH_DEBT как TD-PRIMER-WIZARD-FLAKE) + pytest 112/112 от v0.8.0** (в v0.8.1 backend не задет). Предыдущая v0.5.4-alpha (~290 коммитов, 1126 тестов) — feature-complete, **wipe data при переходе на v0.6** (⚓ DEC-V2-08 «quality > speed»).
+**Версия:** v0.8.4-alpha (feature-detection partial pipeline V134/V138 + math/bio orientation audit V118–V126 + v0.5-верстак cleanup −404КБ, 31.05.2026; база — four-tier T1–T10 + canvas UX + primer redesign из v0.8.3). Архитектура v0.6+ — в `docs/ARCHITECTURE.md` (единый агрегатор: принципы, data model, окна, persistence, roadmap). Фундаментальные решения — в `ANCHORS.md`; sprint-level — в `DECISIONS.md`; журнал по версиям — в `RELEASES.md`. **Точные счётчики (версия / число ⚓ / тесты / promotion-кандидаты) НЕ дублируются здесь** — берутся из `PROJECT_STATE.md` (первая строка + snapshot) + `RELEASES.md` + `ANCHORS.md`; в CLAUDE.md они устаревают. Предыдущая v0.5.4-alpha (~290 коммитов, 1126 тестов) — feature-complete, **wipe data при переходе на v0.6** (⚓ DEC-V2-08 «quality > speed»).
 
-**Стартовая ссылка:** вся архитектура v0.6+ — в `docs/ARCHITECTURE_v2.md`. Читается перед любой M-A...M-I сессией, не в стартовом пакете (CURRENT_TASK.md явно направляет туда).
+**Стартовая ссылка:** вся архитектура v0.6+ — в `docs/ARCHITECTURE.md`. Читается перед любой M-A...M-I сессией, не в стартовом пакете (CURRENT_TASK.md явно направляет туда).
 
 ---
 
@@ -65,7 +65,7 @@ cd gui/designer && npm test && npx vite build
 | `DECISIONS.md` | Chat добавляет sprint-level | Chat |
 | `ANCHORS.md` | Chat добавляет фундаментальные ⚓ | Chat |
 | `BUGS.md` | Оба добавляют баги | Code отмечает [x] |
-| `docs/*.md` (спеки) | Chat создаёт | Code НЕ редактирует спеки |
+| `docs/*.md` (спеки) | Chat создаёт | Code НЕ редактирует тело спеки; ставит только статус-шапку `✅ РЕАЛИЗОВАНО` после реализации |
 
 **Жизненный цикл спеки:**
 1. Chat пишет спеку в docs/ (напр. docs/RESTRICTION_CLONING.md)
@@ -115,7 +115,7 @@ src/
 ├── App.jsx              — root layout, wiring, 14 modals
 ├── store/               — Zustand 6 slices (project, fragment, junction, primer, ui, flow)
 ├── hooks/               — useGeneratePrimers, useFragmentHandlers
-├── components/          — 48 React компонентов
+├── components/          — 206 React компонентов (.jsx non-test; эскиз ниже частью описывает v0.5-верстак, снесён в v0.8.4 — актуальное в docs/ARCHITECTURE.md)
 │   ├── QuickStart       — welcome screen при пустом canvas (6 actions)
 │   ├── ImportDecisionModal — smart import при file drop
 │   ├── ActionBar        — sticky actions после расчёта праймеров
@@ -269,27 +269,29 @@ Polymerase + primer prefix вынесены из header в collapsible dropdown.
 
 | Файл | Назначение |
 |------|-----------|
-| `CHAT_PLAYBOOK_CORE.md` | Операционные правила Chat (§1-3 + §13-14) — обязательное чтение в начале сессии |
-| `CHAT_PLAYBOOK_APPENDIX.md` | Справочные правила (§4-12 + §15-16) — по триггерам (файловая гигиена, антипаттерны, recovery) |
+| `CHAT_PLAYBOOK.md` | Операционные правила Chat — единый файл, Chat читает первым каждую сессию (до CLAUDE.md). 24.05.2026 CORE/APPENDIX слиты сюда обратно |
 | `RELEASES.md` | Журнал по версиям (блок 1.5–3 KB на версию) — при финализации спринта и по запросу |
 | `ANCHORS.md` | Фундаментальные решения (⚓, 48 записей) — в milestone-сессиях (M-A..M-I) и при вводе новых ⚓ |
 | `TECH_DEBT.md` | Реестр технодолга — при финализации спринта и планировании спеки |
 
 ### Справочные (docs/) — читать по необходимости
 
-| Файл | Статус | Назначение |
-|------|--------|-----------|
-| `SYSTEM_AUDIT.md` | Активный | Трекинг проблем (5 CRIT fixed, HIGH/MED в работе) |
-| `PARTS_LIFECYCLE.md` | Реализовано | Статусы draft/verified/archived |
-| `FLOW_V2_DESIGN.md` | План | Universal ReactionNode (не реализован) |
-| `TASK_FLOW_PHASE2_3.md` | Частично | Flow Phase 2+3 |
-| `_TEMPLATE_SPEC.md` | Шаблон | Пустой скелет спеки (синхронизирован с CHAT_PLAYBOOK_CORE.md §2) |
-| `UX_REFERENCE_BASE.md` | Активный | UX-референс по 5 ПО (SnapGene, Benchling, Geneious, ApE, pLannotate) — читать при планировании UX-спеки |
-| `UX_VISION.md` | Активный | UX-видение BodgeGene — 7 ставок + 5 отказов + 10 принципов + per-workflow процесс. Якорь для всех UX-сессий после 26.04.2026 |
-| `ARCHITECTURE_v2.md` | Активный (v0.6+ central) | ~117 KB агрегатор архитектуры: principles + data model + окна + persistence + distribution + roadmap. Читается перед любой M-A…M-I сессией |
-| `DESIGN_SYSTEM.md` | Активный | Design tokens (цвета, типографика, spacing, компонентарий, язык, motion). Single source of truth для визуала v0.6+. v1.0 от 29.04.2026, ~47 KB — принципы, tokens, компоненты, открытые вопросы. Эволюционирует через дизайн-сессии M-A → M-I, новые DEC-DS-NN |
-| `CODE_HANDOFF_PROTOCOL.md` | Активный | Регламент Chat → Code (что в спеке, как Code выдаёт отчёт) |
-| `SPEC_CHECKLIST.md` | Активный | Pre-handoff чеклист (Chat перед «спека готова» проходит этот лист) |
+После консолидации docs/ (27.05.2026) — рабочее ядро: 8 файлов в корне `docs/` + `process/` + `guides/` + `archive/`.
+
+| Файл | Назначение |
+|------|-----------|
+| `VISION.md` | Продуктовое направление BodgeGene |
+| `ARCHITECTURE.md` | Архитектура v0.6+ — единый агрегатор: принципы, data model, окна, persistence, distribution, roadmap. Слияние ARCHITECTURE_v2 + ARCHITECTURE_CANVAS_MODEL + SPEC_M-CANVAS-FOUR-TIER (консолидация S2). Читается перед M-A..M-I сессией |
+| `BACKLOG.md` | Единый тактический бэклог — незавершённые планы кластерами. Заменяет россыпь SPEC_* / SPRINT_* / DESIGN_* |
+| `COMPONENT_MAP.md` | Компас по codebase (CHAT_PLAYBOOK §17 R1) — читается каждую сессию, задевающую существующие компоненты |
+| `DESIGN_SYSTEM.md` | Design tokens (цвета, типографика, spacing, компонентарий) — single source of truth для визуала v0.6+ |
+| `UX_REFERENCE_BASE.md` | UX-референс по 5 ПО (SnapGene, Benchling, Geneious, ApE, pLannotate) — при планировании UX-спеки |
+| `SPEC_BODGE_FORMAT_V2_CORE.md` | Живая спека M-FORMAT-V2 — формат `.bodge` v2 |
+| `SPEC_BODGE_NOTEBOOK_MARKDOWN.md` | Живая спека M-FORMAT-V2 — notebook markdown |
+
+### Процессная инфра (docs/process/) — ситуативный lookup
+
+`ACCEPTANCE_ALGORITHM.md` (протокол визуальной приёмки), `BUG_BASH_PROTOCOL.md`, `CODE_HANDOFF_PROTOCOL.md` (регламент Chat-Code), `SPEC_CHECKLIST.md` (pre-handoff чеклист), `_TEMPLATE_SPEC.md` (скелет спеки).
 
 ### Пользовательские гайды (docs/guides/) — НЕ читаются при старте сессии
 
@@ -298,6 +300,15 @@ Polymerase + primer prefix вынесены из header в collapsible dropdown.
 | `guides/USER_GUIDE_ANNOTATIONS.md` | Руководство по аннотациям |
 | `guides/USER_GUIDE_PARTS.md` | Руководство по запчастям |
 | `guides/USER_GUIDE_RESTRICTION.md` | Руководство по RE-клонированию |
+
+### Визуальные ассеты и прототипы (docs/) — НЕ читаются при старте сессии
+
+| Папка | Назначение |
+|------|-----------|
+| `docs/branding/` | Логотипы BodgeGene — `logo.svg`, `logo-mark.svg`, README |
+| `docs/prototype/` | HTML-прототипы UI (importer M-B.1, start screen, glyph redesign) — визуальные референсы для спек, mockup audit (CHAT_PLAYBOOK §2) |
+| `docs/design_assets/` | Некурируемая свалка: реальные mockup'ы (`bodgegene_workspace.html`, `start_screen.html`, `Library.html`, `feature_palette.html`) вперемешку с инсталляторами, договорами, личными файлами. Как источник истины не использовать без проверки |
+| `docs/ux-baseline/` | Пусто — кандидат на удаление |
 
 ### Архив (docs/archive/) — НЕ ЧИТАТЬ без запроса
 

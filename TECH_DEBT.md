@@ -17,11 +17,62 @@
 
 ---
 
+## Live-junction ENGINE (слои 1–2, 05.06.2026)
+
+Часть набора live-junction (4 спеки в `docs/`); слои 1–2 из 6 приняты 05.06 (BUGS V130/V131 → FIXED). Два correctness-долга вынесены из V130/V131 как НЕ часть этих багов — закрываются в слоях далее (`buildOverlapTail`-унификация + проброс фермента из JUNCTION). Канон ориентации — DEC-PRIMER-TAIL-01.
+
+- **TD-PRIMER-MANUAL-A1-PARITY** (OPEN, **correctness-gap**, med-high): слой 2 унифицировал ТОЛЬКО авто-путь (`deriveAutoPrimers` → `buildOverlapTail`); ручной `buildAssemblyPrimer` остался на старой логике (tailLen=20, двусторонний overlap, GG/RE-хвосты до-V124/V125). До A1-паритета ручной GG/RE-праймер несёт СТАРЫЙ (неверно ориентированный) хвост.
+  - **Эффект:** ручной GG/RE-праймер «в бою» даёт тот же дефект, что чинил V131 (GG — blunt низовой конец, не лигируется; RE — сайт без 5′-фланка, плохой/нулевой рез). Авто-путь — основной и верный; ручной — обходной. До фикса **ручной GG/RE не использовать для реального заказа олигов**.
+  - **Fix:** унифицировать `buildAssemblyPrimer` на единый `buildOverlapTail(side, neighbourSeq, opts)` (тот же путь, что авто). Снять двусторонний дефолт, подхватить `overlapTarget`-гейт + Tm-ручки.
+  - **Окно:** слой-2-follow-up / при первом ручном GG/RE use-case. Не гейтил слой 2 (контракт §9b — про авто + V130).
+  - **Фикс.:** 05.06.2026 (отклонение слоя 2, отчёт Code).
+
+- **TD-PRIMER-PER-ENZYME-IDENTITY** (OPEN, correctness, med): GG/RE-хвосты в `buildOverlapTail` используют ДЕФОЛТЫ фермента, не реальную идентичность. Кусок несёт `reSite`-строку + `ggOverhang`, но не имя фермента → recognition хардкожен `GGTCTC` (BsaI), protective `GCGC` (~4 нт, GC-идиома как `generateRETail`). RE rev кладёт только 2 нт фланка vs fwd 4 нт.
+  - **Эффект:** для не-BsaI Type IIS (BpiI/BsmBI/BtgZI/SapI) recognition в хвосте неверен → GG-хвост не режется тем ферментом, что выбрал биолог. Для RE — protective-длина не per-enzyme (NEB «cleavage close to the end» варьирует по ферменту), асимметрия fwd/rev фланка.
+  - **Fix:** пробросить идентичность фермента (имя → recognition + spacer из `golden-gate.js` GG_ENZYMES; minFlanking из `restriction-db.js`) из JUNCTION в piece → `buildOverlapTail`. Снять BsaI/`GCGC`-хардкоды. Симметризовать RE-фланк fwd/rev.
+  - **Окно:** слой 3 (JUNCTION_MODULE пробрасывает фермент) — естественный потребитель.
+  - **Фикс.:** 05.06.2026 (отклонение слоя 2, отчёт Code).
+
+---
+
+## Live-junction JUNCTION (слой 3, шаг 1b — 05.06.2026)
+
+JUNCTION_MODULE шаг 1 (per-junction primer-derive on-add) принят 05.06 (DEC-JUNC-PRIMER-01, ANCHORS). Два отклонения отчёта Code вынесены сюда — оба data-корректны, всплывут на шаге 2 (UI стыка + панель праймеров).
+
+- **TD-JUNC-FINALIZER-DERIVE-GATE** (OPEN, perf/UX-refinement, med): финализатор `applyJunctionConfig` регенерит авто-праймеры (новые uuid) на ЛЮБОЕ изменение `pieces`/`zones`, включая `DRAG_ZONE` (позиционное — на координаты зоны праймеры не влияют). Гейт сейчас = identity `next.zones !== prev.zones`.
+  - **Эффект:** пустой пересчёт на каждый drag-тик; когда шаг 2 покажет панель праймеров — мигание / сброс выделения (React-list по `primer.id`, id меняется). На data-корректность не влияет (lookup в realise/picker по `source.pieceId`/boundary, не по id).
+  - **Fix:** ужать гейт до pieces + junction-config + membership (не zones-array-ref). Позиционные (drag/bounds/layout) не должны тригерить дерайв.
+  - **Окно:** перед шагом 2 (prerequisite UI стыка) — иначе панель мигает.
+  - **Фикс.:** 05.06.2026 (отклонение b, отчёт 1b).
+
+- **TD-JUNC-MANUAL-AUTO-DEDUP** (OPEN, UX-refinement + must-verify, med): если биолог WRITE'нул ручной праймер на тот же piece-side, где финализатор даёт авто — в пуле ОБА (`[...manual, ...auto]`, manual первым). realise берёт первый (= manual, корректно), но панель покажет дубль.
+  - **Эффект:** data-корректно (manual бьёт авто через `.find`-first). Дубль виден только когда шаг 2 отрисует пул. **Must-verify (до шага 2):** source WRITE-ручного праймера должен matchиться предикатом `mapPrimersForSegment` (`pieceId`/`segmentId`/`leftSegmentId`), не только `selectionStart` — иначе нарисованный рукой праймер показан, но realise возьмёт авто (предсуществующее; прочитать `buildAssemblyPrimer` source-shape).
+  - **Fix:** дедуп manual↔auto по junction/piece-side при сборке пула в финализаторе (авто не генерить для side, где есть manual).
+  - **Окно:** шаг 2/3 (когда UI покажет стык-праймеры).
+  - **Фикс.:** 05.06.2026 (отклонение a, отчёт 1b).
+
+---
+
 ## Файлы над size budget
 
 Лимиты (⚓ ANCHORS.md, 22.04.2026): `.jsx` hard 40 KB / soft 30 KB; `.js` hard 25 KB / soft 20 KB; data-файлы без лимита.
 
 **Калибровка 08.05.2026 (⚓ DEC-SIZE-CALIBRATION-01).** Формальное превышение hard НЕ автоматически требует декомпозицию. Триггеры: (1) rate-of-change >5 KB за спринт два спринта подряд, (2) entanglement (правка одной фичи в файле ломает другую), (3) explicit правка в следующем спринте. Stable файлы (рост ≤1 KB за 2+ спринта) без entanglement — держатся в Watch list, не блокер. Полная таблица Active vs Watch применительно к snapshot 08.05.2026 — в ANCHORS.md DEC-SIZE-CALIBRATION-01.
+
+**Snapshot 02.06.2026 (common-features финализация — supersedes 28.05):**
+- **Закрыто decomp'ом (DEC-CF-08):** неформальный дрифт-finding **TD-SIZE-FEATURE-DETECTION** (`feature-detection.js` вырос до **26.26 KB** на V134/V136/V138 partial-работе, над hard 25) → **DONE**: engine перенесён байт-в-байт в `lib/feature-match-core.js`, `feature-detection.js` → **2.79 KB** (re-export). Формального TD-энтри не было (жил в спеке/CURRENT_TASK) — закрыт здесь.
+- **Новый Watch:** `lib/feature-match-core.js` **24.93 KB** — впритык под hard 25 (.js). Именно из-за этого запаса `featureMatchesExisting` вынесен в отдельный `lib/feature-dedup.js` (DEC-CF-08, решение Игоря). Следующее расширение движка пробьёт hard — декомпозиция или GC первым пунктом.
+- **Active (hard breach, +common-features promote-проводка):** TD-SIZE-SEQUENCEVIEW-INDEX (`SequenceView/index.jsx` 48.24 → **49.71 KB**, Δ+1.47 от пропов `onPromoteToCommon`/`checkCommonDuplicate` + модалки; **был над hard 40 ДО правки** — pre-existing, decomp mandatory-first остаётся); TD-ANNOTATIONTRACK-DECOMPOSE-V2 (49.46 KB, не тронут, carry-over).
+- **Новые модули common-features под лимитами:** `lib/feature-dedup.js` 4.56 · `store/commonFeaturesSlice.js` 9.87 (soft 20 — OK) · `Library/CommonFeaturesPanel/index.jsx` 15.48 (soft 30 — OK) · `SequenceView/popups/PromoteToCommonModal.jsx` 7.36 · `SequenceView/hooks/usePromoteToCommon.js` 2.33 · `build-selection-menu-items.js` 6.32.
+- **Watch (pre-existing, коснулись):** `ContainerEditorSkeleton.jsx` ~38.5 KB (Δ+0.3 от promote-проводки, soft over, под hard).
+- **Новых hard-нарушителей: НЕТ** (единственный над-hard — `index.jsx`, pre-existing). **Файлы +>5 KB: НЕТ** (feature-match-core +24.93 = перенос из feature-detection −23.5, нетто по репо ~0; CommonFeaturesPanel +5.25 в Пачке 2 — master-detail деталь-вид, soft 30 не близко).
+
+**Snapshot 28.05.2026 (Пачка 2 v0.8.3 финализация — пересверка размеров с диском; supersedes 18.05):**
+- **Активный decomp (hard breach, переизмерено):** TD-ANNOTATIONTRACK-DECOMPOSE-V2 (`SequenceView/tracks/AnnotationTrack.jsx` **49.46 KB**, был 48.54 — чуть вырос, остаётся active); TD-SIZE-SEQUENCEVIEW-INDEX (`SequenceView/index.jsx` **48.24 KB — ~8 KB ВНУТРИ hard 40**, числился «~39 near-hard / watch» — занижено; decomp теперь mandatory-first-item, не watch).
+- **Закрыто с 18.05 (декомпозиция выполнена):** TD-CANVAS-LAYOUTVIEW-DECOMP (`CanvasSkeleton/canvas/CanvasLayoutView.jsx` 41.35 → **14.01 KB**; папка `canvas/` разнесена на ~40 файлов) → DONE.
+- **Не пересверялись в этом проходе:** Watch list (CONTAINER-EDITOR-SKELETON, LIBRARYSLICE, LIBRARYSINGLEINSPECTOR, AATRACK и пр.), `Library/inspector/` subdir.
+- **Координация:** TD-DOCS-ROTATION (docs-folder bloat) → **DONE** — docs/ корень 53 → **9 файлов**; устаревшие F/A-серии спеки + NOTES_* вынесены. У лимита 8 (9, off-by-1).
+- **Гигиена самого TECH_DEBT:** накопил per-epoch снимки с противоречивыми размерами (этот энтри расходился с диском по CanvasLayoutView в обе стороны) + ID-коллизия TD-DOCS-ROTATION (docs-folder @ «Файлы над size budget» vs coord-files @ «Координационные файлы»). Полная консолидация дубль-снимков + развод ID — отдельный проход, вне Пачки 2.
 
 **Snapshot 18.05.2026 (после v0.8.3-alpha — Four-tier T1-T10 + T4.5 + canvas UX + primer redesign):**
 - **Активный decomp:** TD-CANVAS-LAYOUTVIEW-DECOMP (41.35 KB hard breach после T4.5 pin-badges; первым пунктом любого спринта трогающего этот файл), TD-ANNOTATIONTRACK-DECOMPOSE-V2 (48.54 KB hard, carry-over), TD-SIZE-SEQUENCEVIEW-INDEX (~39 KB, близко к hard 40 — пробит будет на следующем тyaжёлом расширении SequenceView core).
@@ -33,7 +84,7 @@
 
 #### Документация
 
-- **TD-DOCS-ROTATION** (OPEN, low-med priority, отложен в Пачку 3): docs/ корень содержит 53 файла против CHAT_PLAYBOOK §4 лимита 8 активных. Устаревшие спеки F-серии (M-CANVAS-WINDOW/JUNCTION/PRODUCT/F3-DISPOSITION), A-серии (M-CANVAS-ASSEMBLY-MODEL/CONSTRUCT/PRIMER-DESIGN/REALISE), NOTES_FOUR_TIER_MODEL_DRAFT, NOTES_CANVAS_V2_KICKOFF + старые M-CANVAS-SKELETON/M-CANVAS-OPS spec ы — заменены реализацией T-серии или интегрированы в SPEC_M-CANVAS-FOUR-TIER-ARCHITECTURE.
+- **TD-DOCS-ROTATION** (✅ DONE 28.05.2026 — ротация выполнена): docs/ корень **53 → 9 файлов** (ARCHITECTURE / BACKLOG / COMPONENT_MAP / DESIGN_SYSTEM / SPEC_BODGE_FORMAT_V2_CORE / SPEC_BODGE_NOTEBOOK_MARKDOWN / SPEC_FEATURE_DETECTION_PARTIAL / UX_REFERENCE_BASE / VISION). Устаревшие F/A-серии спеки + NOTES_* вынесены в archive/подпапки. У лимита 8 (9 — off-by-1, приемлемо). _Исторически:_ содержал 53 файла против CHAT_PLAYBOOK §4 лимита 8 активных. Устаревшие спеки F-серии (M-CANVAS-WINDOW/JUNCTION/PRODUCT/F3-DISPOSITION), A-серии (M-CANVAS-ASSEMBLY-MODEL/CONSTRUCT/PRIMER-DESIGN/REALISE), NOTES_FOUR_TIER_MODEL_DRAFT, NOTES_CANVAS_V2_KICKOFF + старые M-CANVAS-SKELETON/M-CANVAS-OPS spec ы — заменены реализацией T-серии или интегрированы в SPEC_M-CANVAS-FOUR-TIER-ARCHITECTURE.
   - **Эффект:** биолог + Chat теряют время на навигацию. Stale спеки могут быть прочитаны Code как guideline. Контекст-бюджет стартового пакета (CHAT_PLAYBOOK §1 ≤50 KB) пробивается если читать активный docs/.
   - **Fix:** создать `docs/archive/2026-05-16-pre-four-tier/` + переместить туда устаревшие 8-12 спек + README с пояснением «заменено T-серией». Filesystem MCP не имеет delete → нужен PowerShell move от Игоря либо stub-перезапись.
   - **Окно:** Пачка 3 финализации v0.8.3-alpha (отложено в отдельную сессию).
@@ -85,13 +136,13 @@
 
 #### Size budget v0.8.3-alpha
 
-- **TD-CANVAS-LAYOUTVIEW-DECOMP** (Active, high priority): `gui/designer/src/components/CanvasSkeleton/CanvasLayoutView.jsx` 41.35 KB пробил `.jsx` hard 40 KB после T4.5 pin-badges + T7 sequence-mode toggle + T8 cross-zone link rendering + T9 variant-group context + T10 SangerLabNotebook mount. Это центральный orchestrator canvas-skeleton'а — расти ему некуда без декомпозиции.
+- **TD-CANVAS-LAYOUTVIEW-DECOMP** (✅ DONE 28.05.2026 — декомпозиция выполнена, переизмерено): `CanvasSkeleton/canvas/CanvasLayoutView.jsx` **41.35 → 14.01 KB**, папка `canvas/` разнесена на ~40 файлов (CanvasGraphView / ZoneFrame / ZoneLayer / ContainerBlock / OperationNode / canvas-layout.js / useCanvasLayoutDrag.js …), hard-бреши нет. _Исторический контекст (был Active high до декомпозиции):_ 41.35 KB пробил `.jsx` hard 40 KB после T4.5 pin-badges + T7 sequence-mode toggle + T8 cross-zone link rendering + T9 variant-group context + T10 SangerLabNotebook mount. Это центральный orchestrator canvas-skeleton'а — расти ему некуда без декомпозиции.
   - **Эффект:** ⚓ DEC-SIZE-LIMITS-01 (22.04.2026) пробит. Дальнейшее расширение T-серии follow-ups (T9 K13/K14 wire, T10 SHOW_NOTEBOOK wire) формально блокировано.
   - **Fix:** extract handlers по доменам: zone-handlers.js (drag/resize/merge/navigate) + node-handlers.js (drag/click/double-click/context-menu) + drop-handlers.js (cross-zone drop + library-tree drop) + cross-cutting hooks. Цель: <30 KB main + 3-4 lib файла по 5-8 KB.
   - **Окно:** первый пункт любого следующего спринта трогающего CanvasLayoutView.jsx.
   - **Фикс.:** 17.05.2026 (T4.5 pin-badges пробили hard).
 
-- **TD-SIZE-SEQUENCEVIEW-INDEX** (Active, med priority — promotion из Watch): `gui/designer/src/components/SequenceView/index.jsx` ~39 KB, близко к hard 40. v0.8.3 расширения: showSelectionTm prop pass-through, onWritePrimer extension, onCreatePiece T5 hookup. Следующее тяжёлое расширение пробьёт hard.
+- **TD-SIZE-SEQUENCEVIEW-INDEX** (Active, **HIGH** priority — hard breached, переизмерено 28.05.2026): `gui/designer/src/components/SequenceView/index.jsx` **49.71 KB — ~10 KB ВНУТРИ hard 40 KB** (Д+1.47 от common-features promote-проводки 02.06; числился «~39 KB near-hard / watch» — занижено). Decomp теперь mandatory-first-item следующего спринта, трогающего SequenceView core (не watch). v0.8.3 расширения: showSelectionTm prop pass-through, onWritePrimer extension, onCreatePiece T5 hookup. Следующее тяжёлое расширение пробьёт hard.
   - **Эффект:** R&D работа над SequenceView core (V51 drag selection perf, T-future search-overlay-rects) ограничена бюджетом.
   - **Fix:** extract sub-systems в hooks: useSelectionState + useDrag + useHotkeys + tracks-orchestration. Цель: <30 KB main.
   - **Окно:** первый sprint трогающий SequenceView внутренности (V51 perf-spike, search overlay rects).
@@ -614,6 +665,18 @@
 - **TD-CANVAS-V2-ANNOTATOR-SCOPE-GUARD** (OPEN — Sprint v0.8.2-skeleton-v2, 12.05.2026): Library `AnnotationsTab.jsx` + `LinearFeatureBar.mergeStripWithPredicted` читают global `selectAnnotator` без guard'а на `sequenceId` prefix. При одновременной работе skeleton (DEV `/canvas-skeleton`) и Library (production) Library может попытаться рендерить ghost results с scope `skeleton::*`. Риск низкий сейчас (разные fullscreen, одновременно не запускаются), но в backlog. Исправление: в `selectAnnotator` consumers добавить guard `scope.sequenceId.startsWith('skeleton::') ? null : results`. Реф — DEC-CANVAS-V2-EDITOR-04.
 
 - **TD-CANVAS-V2-TABBAR-LIBRARY-REGRESSION** (OPEN — Sprint v0.8.2-skeleton-v2, 12.05.2026): `components/Library/inspector/tabs/TabBar.jsx` расширен props `showOverview` (default `true`) + `showMutagenesis` (default `false`) ради canvas editor'а. Отклонение от R4 спеки «Library не трогать». Дефолты совместимы, Library production работает как раньше — но требуется run `npm test -- --run Library/inspector` для подтверждения. Если падают — багфикс отдельным sprint. Реф — DEC-CANVAS-V2-EDITOR-OVERVIEW-OFF-01.
+
+---
+
+## v0.8.4-alpha — dead-code остаток + отвалившаяся фича + doc-drift (31.05.2026)
+
+> Источник: `CODE_REPORT_2026-05-28_dead-code.md` (разнесён → `docs/archive/`). После сноса v0.5-верстака (−404 КБ, 44 файла) граф достижимости от `main.jsx` дал ~630 КБ / 97 недостижимых prod-файлов.
+
+- **TD-PLASMID-GIT-LOSS** (OPEN — v0.8.4, 31.05.2026): **отвалившаяся фича, не мусор.** `lib/plasmid-git` + `plasmid-git-reducers` (~14 КБ) — модель версионирования плазмиды (baseSnapshot + commits[] + replay). `PROJECT_STATE` числил рабочей, но подключена была ТОЛЬКО через мёртвый `FragmentEditor`/mutagenesis-путь; four-tier-миграция её НЕ перенесла → сейчас недостижима. **Решение Игорь+Chat: возродить в four-tier-модели (commits на container) или официально похоронить.** Гейт — M-C Container Window / M-D (versions-режим). До решения — не сносить. Реф — DEC-CONTAINER-DIFF-STORAGE-01 (09.05) + DEC-IMP-16.
+
+- **TD-DEAD-REMNANT-630KB** (OPEN — v0.8.4, 31.05.2026): ~630 КБ / 97 недостижимых prod-файлов после сноса верстака. Три категории (детали — `docs/BACKLOG.md`): **(A) forward-работа** (построено+тесты, не примонтировано — notebook A1 / `.bodge`-export A2 / canvas-аффордансы A3 / sanger A4) → wiring-спринт, НЕ сносить; **(B) зарезервированные wizards** (~190 КБ — PlasmidUseWizard/JunctionBlock/JunctionDNA/MutagenesisWizard/OligoManager/PrimerPanel/PlasmidViewer/PlasmidMap/PlasmidVersionTree/PlasmidWorkspace/ProtocolTracker) → ждут M-C.2 (harvest vs kill решается там); **(C) огрызки + осиротевшие алгоритмы** (`AppShell/{Topbar,NavRail}`, QuickStart, ActionBar, ContextMenu, ConnectorDropdown, ReplacePicker, DataManager, ConcentrationInput, CopySeqButton, ThemeToggle, SubFragmentBar, DagPlaceholder, `Annotator/{ResultsPane,EmptyAnnotator}` + осиротевшие `validate.js`/`mutagenesis.js`/`racetrack-layout`/`part-*`/`sequence-diff`/`assembly-utils`/`duplicate-checker`/`primer-reuse`/др.). **Category C — следующий безопасный kill-этап,** запускать ПОСЛЕ wiring-спринта. `AnnotationEditor.jsx` НЕ сносить — держит живой `Library/inspector/FeatureEditorModal.jsx` через `PART_TYPE_GROUPS` (кандидат на микро-harvest).
+
+- **TD-DOC-DRIFT-META-SIZE** (OPEN — v0.8.4, 31.05.2026): мета-доки разрослись, описания врут. `ANCHORS.md` описан как «маленький ~61 ⚓» — по факту **~191 КБ**. `SequenceView/index.jsx` — уже отслеживается в TD-SIZE-SEQUENCEVIEW-INDEX (48.24 КБ hard breached; отчёт намерил 49.4). Структурная инверсия процесс/продукт: код ~17K LOC, мета-доки ~730 КБ — кандидат на отдельный разговор о ротации. **Отложено на этой финализации:** archive-ротация блоков >2 спринтов в RELEASES/DECISIONS (тяжёло на 130–190 КБ файлах через Filesystem; инфо не утеряна).
 
 ---
 

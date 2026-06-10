@@ -1,3 +1,5 @@
+> **Архивировано 27.05.2026 — консолидация docs/ (S4). СУПЕРСЕЖЕНО.** OpPopup-архитектура переработана four-tier. Идея preview-before-execute сохранена в `BACKLOG.md` §Канвас-и-окна (follow-up).
+
 # SPRINT_M_CANVAS_OPS_PREVIEWS.md — Inline preview-sections в OpPopups
 
 > **Тип:** B (фича среднего объёма, переиспользование existing visualisation pieces).

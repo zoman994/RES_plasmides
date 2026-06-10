@@ -662,7 +662,26 @@ Backend reuse без изменений: `snapgene_parser.py` PRIMARY .dna па�
 
 [18.05.2026] **DEC-CANVAS-4T-31 — 3-lane auto-layout structure (T4.5).** Внутри zone узлы разлагаются по 3 рядам слева-направо: sources lane (top, containers без incoming junctions) / intermediate lane (middle, dagre LR auto, всё остальное + intermediate-products) / finals lane (bottom, containers без outgoing junctions и frozen=true). `node.pinned: false` field default; drag узла → auto-pin (финалайзер не пересчитывает pinned). Context-menu «Открепить». `zone.laneLayout: 'auto'|'manual'` per zone (default 'auto'). dagre как npm dependency (~40 KB bundle, Mermaid uses, proven). Это решение «свального греха» видимого на скрине 17.05 (pks4 16-узловый хаос). **Promotion blocker:** подтвердить на реальных сборках (не только pks4) что 3-lane превосходит варианты A (plain dagre flat), B (radial), C (no-auto-layout manual). Кандидат на ⚓ промоцию.
 
+**[2026-05-28] Промоция трёх кандидатов отложена.** Статус визуальной приёмки T-серии (four-tier canvas) не подтверждён (Игорь не помнит) — требуется отдельный acceptance-проход либо повторный прогон. До приёмки DEC-CANVAS-4T-01 / -07 / -31 остаются promotion candidates, в счётчик ⚓ (64) НЕ входят. После приёмки: промоция в ⚓ + bump 64→67 + строка в «По эпохам» + ссылка в «Быстрый переход».
+
 **Наблюдаемые инварианты этого спринта:** schema v=10 (6 миграций все идемпотентны), Vitest 3276 pass / 1 skip / 0 fail (+956 от v0.8.2), `vite build` clean. 84 DEC в sprint-block DECISIONS.md — полный список с обоснованиями. ~32 KB якоря-спека `SPEC_M-CANVAS-FOUR-TIER-ARCHITECTURE.md` + ~360 KB sprint-спек `SPRINT_T*.md` — референсы для всех 84 DEC.
+
+---
+
+## Sprint JUNCTION layer 3 (step 1) — per-junction primer model (promotion candidate, 05.06.2026)
+
+**Контекст.** JUNCTION_MODULE (live-junction набор, слой 3) шаг 1 (1a data-model + 1b derive-on-add) реализован + code-verified Chat'ом (data-level PASS 05.06). Модель источников праймеров явно подтверждена Игорем 05.06. Записано как promotion candidate (НЕ ⚓ в счётчик) — симметрично DEC-CANVAS-4T-01/-07/-31: фундаментальное решение mid-milestone, ждёт визуальной приёмки JUNCTION (шаги 2–7 + acceptance) перед ⚓-промоцией.
+
+[2026-06-05] **DEC-JUNC-PRIMER-01 (promotion candidate) — праймеры от СТЫКОВ (per-junction), три уровня приоритета; группа = структура шагов протокола, не владелец праймеров.** Два независимых разделения:
+- **Праймеры ← стыки.** Источник — `zone.junctions[pairKey]` (дом — JUNCTION_MODULE, ключ `pairKeyFor(l,r)`); финализатор `applyJunctionConfig` деривит неявной zone-группой на любое изменение pieces/zones (праймеры с хвостами на ADD без ручного Sew). Три уровня (нижний держит): (1) **полностью ручной** — переписана последовательность / лок; primer-level `autoMode:'manual'` (WRITE_ASSEMBLY_PRIMER / UPDATE / lock); финализатор НЕ регенерит, кладёт первым в пул (realise `mapPrimersForSegment`=`.find` берёт первым → ручное бьёт авто); (2) **полуручной** — число на стыке (`overlapLength`/`overlapTm`/`bindingLength`/`bindingTm`; junction-level `autoMode:'manual'`); праймер регенерится, но движок (A3/A1b) держит число; (3) **полностью авто** — дефолтный конфиг, регенерится свободно.
+- **Протокол ← группы** (авто-протокол — будущая работа). Группа (`isOpGroup`/`inputPieces`/`groupLayer`) = скобки порядка операций сборки. Праймерами НЕ владеет: `CREATE_OP_GROUP` не деривит (только method в стыки + reaction-node + структура); `REMOVE`/`DISBAND_OP_GROUP` праймеры НЕ трогают → разгруппировка праймеры не теряет.
+- **Метод стыка** пишется и ручным кликом (шаг 2 UI), и сшиванием группой. Словарь method — канон движка (`overlap_pcr|gibson|golden_gate|restriction|direct_ligation|kld`), `METHOD_TO_JUNCTION` → `junction.kind`. НЕ путать с `acquisitionMethod` (другой словарь, дом PIECE_MODEL P3).
+
+**Promotion blocker:** визуальная приёмка JUNCTION (минимум шаг 2 — клик-стык UI + панель праймеров) подтверждает эргономику 3-уровневой модели. До приёмки — candidate, в счётчик ⚓ (64) НЕ входит. После: промоция в ⚓ + bump 64→65.
+
+**Реализация:** `lib/junction-derive.js` (pairKey/seed/two-level sets), `lib/junction-config-finalizer.js` (seed/prune + derive), `lib/primer-derive.js` A3, `store/skeleton-state-zones.js` `SET_BOUNDARY_OVERLAP`, `store/skeleton-state-operations.js` (CREATE/REMOVE/DISBAND primer-decoupled), `store/skeleton-state.js` (финализатор в цепочке). commit `42804af` + `20d2978`/`4b9e5d5`/`ba423c1` (ENGINE слои 1–2).
+
+**Связь:** опирается на DEC-PRIMER-TAIL-01 (ориентация хвостов V123/V124/V125); словарь method не путать с DEC-CANVAS-4T-01 `acquisitionMethod`; финализатор-в-цепочке симметричен T8 `applyAutoReactions` / T4.5 `applyZoneLayouts` (idempotent boundary).
 
 ---
 

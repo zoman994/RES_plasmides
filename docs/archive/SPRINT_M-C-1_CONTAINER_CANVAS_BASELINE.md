@@ -1,3 +1,5 @@
+> **Архивировано 27.05.2026 — консолидация docs/ (S4). СУПЕРСЕЖЕНО.** DAG-as-primary заменён Canvas-as-primary (four-tier T-серия, `ARCHITECTURE.md §1.6`). Учтено в `BACKLOG.md` §Канвас-и-окна.
+
 # SPRINT_M-C-1_CONTAINER_CANVAS_BASELINE.md
 
 > **Статус:** 🟡 Спека готова к визуальной приёмке.

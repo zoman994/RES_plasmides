@@ -4,7 +4,7 @@
 **База:** v0.X.Y-alpha, коммит `&lt;hash&gt;` (финал предыдущего спринта)
 **Предпосылка:** 1 предложение — что запустило этот спринт (приёмка дала FAIL на …, пользовательский запрос, deep code analysis нашёл …).
 
-> Шаблон из `docs/_TEMPLATE_SPEC.md`. При использовании: скопировать в `docs/SPRINT_&lt;ID&gt;.md`, заполнить все секции, удалить комментарии-плейсхолдеры. Правила формата — `CHAT_PLAYBOOK_CORE.md` §2.
+> Шаблон из `docs/_TEMPLATE_SPEC.md`. При использовании: скопировать в `docs/SPRINT_&lt;ID&gt;.md`, заполнить все секции, удалить комментарии-плейсхолдеры. Правила формата — `CHAT_PLAYBOOK.md` §2.
 
 ---
 
@@ -282,4 +282,4 @@ Code дописывает в конец `CURRENT_TASK.md` блок:
 
 ---
 
-_Шаблон v1.3 — 09.05.2026. Синхронизирован с `CHAT_PLAYBOOK_CORE.md` §2 («mockup audit + legacy alternatives audit + inventory pass» добавлены 09.05.2026). v1.3 добавил §0.1 Visual reference / Source of truth + §0.2 Component reuse audit — mandatory секции перед kickoff-интервью. При изменении §2 в CORE — обновлять и шаблон._
+_Шаблон v1.3 — 09.05.2026. Синхронизирован с `CHAT_PLAYBOOK.md` §2 («mockup audit + legacy alternatives audit + inventory pass» добавлены 09.05.2026). v1.3 добавил §0.1 Visual reference / Source of truth + §0.2 Component reuse audit — mandatory секции перед kickoff-интервью. При изменении §2 в `CHAT_PLAYBOOK.md` — обновлять и шаблон._

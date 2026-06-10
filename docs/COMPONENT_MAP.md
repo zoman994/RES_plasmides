@@ -6,7 +6,7 @@
 >
 > **Когда обновлять:** после каждой acceptance-сессии — что добавилось, что умерло, что переехало (R5 §17).
 
-**Версия:** 11.05.2026 (обновлено после v0.8.2 = M-X.7c FAIL-fixes + M-X.8 PROJECT-HUB + M-X.9 SEQUENCE-SEARCH + Фикс 7 приёмки; создан 09.05.2026).
+**Версия:** 02.06.2026 (common-features: overlay slice + раздел + промоут, R5; v0.8.4 cleanup — v0.5-верстак снесён; обновлено после v0.8.2-skeleton 12.05; создан 09.05.2026).
 **Размер цели:** ≤7 KB. Если разрастётся — декомпозировать.
 
 ---
@@ -97,11 +97,23 @@ DagPalette 280px | PreviewDrawer 340px (slide-in) | DagCanvas 1fr (ReactFlow)
 
 ---
 
+## Common-фичи (overlay-стор + раздел + промоут) — v0.8.4
+
+Overlay над заводской `common-features.json` (read-only статик). **Не плодить заново: это НЕ `LibraryEntry`, НЕ окно.**
+
+- **`store/commonFeaturesSlice.js`** 9.87 KB — Zustand-slice: `userFeatures` (net-new) + `overrides` (по baseId заводской) + Dexie-персист (таблица `commonFeatures`, DB v6). Actions: `promoteFeature` / `editCommonFeature` (factory→override + debounce 400мс) / `resetCommonFeature` / `deleteUserFeature` + селектор `selectMergedCommonFeatures`. `getMergedFeatureDB()` мёржит built-in+overlay; `detectCommonFeaturesAsync` зовёт его (не `loadFeatureDB`); merged-кэш инвалидируется на мутации slice.
+- **`Library/CommonFeaturesPanel/`** 15.48 KB — раздел: master-detail (список + деталь `LinearFeatureBar` + editable `SequenceView` на синтез-фрагменте). Узел «Common-фичи» в `LibraryTreeRoot` + view-swap `selectedView:'entry'|'common'` в `LibraryWorkspace` (НЕ новое окно, §17 R2).
+- **`SequenceView/popups/PromoteToCommonModal.jsx`** 7.36 KB + **`SequenceView/hooks/usePromoteToCommon.js`** 2.33 KB — промоут «Добавить в common-фичи» (пункт в `build-selection-menu-items.js` под `matchedRegion` + проп `onPromoteToCommon`). Проводка в **2 виверах**: Library-инспектор + ContainerEditor (Importer N/A — нет inline-вивера).
+
+**Связи:** detect-пайплайн (`feature-match-core`) ← общий с дедупом (`feature-dedup`) → «дедуп=детекция». **Common-фичи НЕ в палитру** (отдельный стор, не `libraryEntries`, panel не drag-source — DEC-CF-07).
+
+---
+
 ## Algorithm core (живой, не трогать)
 
 В `gui/designer/src/` корне:
 
-`mutagenesis.js` 18 KB · `golden-gate.js` 11 KB · `restriction-db.js` 37 KB · `tm-calculator.js` 7 KB · `local-primer-design.js` 20 KB · `orf-detection.js` · `auto-annotate.js` 15 KB · `domain-detection.js` · `feature-detection.js` 10 KB · `predicted-detection.js` 18 KB · `genbank-parser.js` · `validate.js` 19 KB · `cds-validation.js` · `sequence-utils.js` · `sequence-diff.js` · `annotation-model.js` ⚓ · `feature-palette.js` ⚓ 12 KB · `primer-reuse.js` · `intron-utils.js` · `codons.js`
+`mutagenesis.js` 18 KB · `golden-gate.js` 11 KB · `restriction-db.js` 37 KB · `tm-calculator.js` 7 KB · `local-primer-design.js` 20 KB · `orf-detection.js` · `auto-annotate.js` 15 KB · `domain-detection.js` · `feature-detection.js` 2.79 KB (re-export shell после decomp) · `feature-match-core.js` 24.93 KB (engine: detect + dedup-примитивы, DEC-CF-08) · `feature-dedup.js` 4.56 KB (`featureMatchesExisting`) · `predicted-detection.js` 18 KB · `genbank-parser.js` · `validate.js` 19 KB · `cds-validation.js` · `sequence-utils.js` · `sequence-diff.js` · `annotation-model.js` ⚓ · `feature-palette.js` ⚓ 12 KB · `primer-reuse.js` · `intron-utils.js` · `codons.js`
 
 **Backend связь:** `api.js` 767 B — клиент для `fetchConstructs` / `fetchFeatures`. Используется в `AddFragmentModal` + `MutagenesisWizard`.
 
@@ -128,6 +140,8 @@ DagPalette 280px | PreviewDrawer 340px (slide-in) | DagCanvas 1fr (ReactFlow)
 ---
 
 ## DEAD / kill (поэтапно)
+
+> **⚠ ОБНОВЛЕНО v0.8.4 (31.05.2026): v0.5-верстак СНЕСЁН (−404 КБ, 44 файла).** Удалены целиком: `FragmentEditor/`, `flow/`, `ImportStartScreen/`, `MoleculeWorkspace/`, `Prototype/` + файлы `DesignCanvas.jsx` / `PartsPalette.jsx` / `PartsLibrary.jsx` / `PartBlock.jsx` / `AddFragmentModal.jsx` / `ModalStack.jsx` (граф достижимости от `main.jsx`, build clean, 4082 теста зелёные). **Список «Остаётся в очереди» ниже и упоминание `ModalStack.jsx` в «Modals / utility» — СНЯТЫ** (описывают уже удалённое). Исключение: `AnnotationEditor.jsx` НЕ снесён (держит живой `Library/inspector/FeatureEditorModal.jsx` через `PART_TYPE_GROUPS` → микро-harvest). Остаток ~630 КБ недостижимого (97 ф) — три категории (A forward-работа / B reserved wizards до M-C.2 / C огрызки-после-wiring) разнесены в **TD-DEAD-REMNANT-630KB** (TECH_DEBT) + **BACKLOG** wiring-кластер. plasmid-git — отвалившаяся фича (TD-PLASMID-GIT-LOSS). Category-C kill — ПОСЛЕ wiring-спринта.
 
 **Этап 1 закрыт 09.05.2026** — снесены 9 изолированных файлов (~108.9 KB), коммит `docs/SPRINT_KILL_DEAD.md`:
 - ~~`SequenceMapView.jsx`~~ · ~~`RacetrackView.jsx`~~ · ~~`FragmentSplitter.jsx`~~ · ~~`SequencePane.jsx`~~ · ~~`SequencePreview.jsx`~~ · ~~`SequenceEditor.jsx`~~ · ~~`CDSEditor.jsx`~~ · ~~`AssemblyTabs.jsx`~~ · ~~`TagFusionPicker.jsx`~~ — удалены.
@@ -293,7 +307,8 @@ DagPalette 280px | PreviewDrawer 340px (slide-in) | DagCanvas 1fr (ReactFlow)
 ---
 
 **Дата создания:** 09.05.2026.
-**Последнее обновление:** 12.05.2026 — canvas-skeleton V2 paradigma + полнофункциональный editor (Sprint v0.8.2-skeleton-v2). Артефакты: `LibraryTreeHost`, `PlaceholderTreePicker`, `JunctionMethodPicker`, `use-tree-drop-target`, `junction-styles`, `adapt-container-to-item`, `DeleteKeyHandler`. Снесено: bespoke `tree/`, `PlasmidMapInteractive`, `OperationsToolbar`+`operations/`, `PillsBar`, `TabsBar`. 16 DEC в DECISIONS.md.
+**Последнее обновление:** 31.05.2026 — v0.8.4 cleanup: v0.5-верстак снесён (−404 КБ, 44 файла); DEAD-секция обновлена, остаток ~630 КБ разнесён в TECH_DEBT (TD-DEAD-REMNANT-630KB) + BACKLOG. Компоненты .jsx 242→206.
+**Предыдущее обновление:** 12.05.2026 — canvas-skeleton V2 paradigma + полнофункциональный editor (Sprint v0.8.2-skeleton-v2). Артефакты: `LibraryTreeHost`, `PlaceholderTreePicker`, `JunctionMethodPicker`, `use-tree-drop-target`, `junction-styles`, `adapt-container-to-item`, `DeleteKeyHandler`. Снесено: bespoke `tree/`, `PlasmidMapInteractive`, `OperationsToolbar`+`operations/`, `PillsBar`, `TabsBar`. 16 DEC в DECISIONS.md.
 **Предыдущее:** 11.05.2026 — v0.8.2 финализация (M-X.7c FAIL-fixes + M-X.8 + M-X.9 + Фикс 7).
 **Предыдущее обновление:** 10.05.2026 — M-X.7c приёмка.
 **До этого:** 09.05.2026 — Этап 1 kill (9 файлов, ~108.9 KB) + Sidebar Single-Shell refactor + чистка 4 осиротевших тестов.

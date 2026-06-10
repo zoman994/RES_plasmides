@@ -1,236 +1,108 @@
-# BUGS.md — BodgeGene v0.8.3-alpha
+# BUGS.md — BodgeGene v0.8.4-alpha
 
-Баги → сюда. Починены → `[x]`. Claude Code читает при старте сессии.
+Баги → сюда. Починены → `[x]`. Claude Code читает при старте сессии. Единственный трекер багов (CLAUDE.md §4).
 
-**Trekking новой архитектуры (v0.6+).** v0.5 баги архивированы в `docs/archive/BUGS_v05.md`. v0.6/0.7/early-0.8 закрытые баги (V49–V57, M-B.2 + Parser-Unification 02–03.05.2026) — в `docs/archive/BUGS_HISTORY.md`. Открытые v0.5 баги, которые могут проявиться в v0.6 (биологические alg-баги P6 mutagenesis triplet, V20 split-PCR micro-fragments, V23 GG orthogonal palindromes), переоткрываются здесь по факту воспроизведения.
+---
+
+## Сброс 27.05.2026 — трекер начат с чистого листа
+
+Трекер вычищен полностью. Причина: после переработки структуры assembly/skeleton
+(Звено-сессии, 23.05+) диагнозы накопленных OPEN-багов ссылались на файлы,
+которых в дереве больше нет (`assembly-realise-suggest.js`, `skeleton-state.js`,
+`selectors-assembly.js` и др.) — следовать им вслепую нельзя. Решение Игоря:
+не пере-диагностировать стек устаревших записей, а прогнать реальные пайплайны
+заново и репортить свежие баги от живого симптома.
+
+**Где старое:**
+- `docs/archive/BUGS_PRE_RESET_2026_05_27.md` — полный до-сбросовый снимок
+  (13 OPEN со стале-диагнозами V51/V98–V110 + весь FIXED-блок v0.8.3 V52–V117).
+- `docs/archive/BUGS_HISTORY.md` — закрытые баги v0.6–0.8 (V49–V57 и др.).
+- `docs/archive/BUGS_v05.md` — v0.5 legacy (V1–V48).
+
+**Нумерация:** новые баги — с **V118**. Номера V1–V117 не переиспользовать —
+они живут в `DECISIONS.md` / `ZVENO_LOG.md` / commit-сообщениях, коллизия
+сломает обратные ссылки.
+
+**Carry-over (известны, не репортить как новые).**
+- Drag-selection микролаги в SequenceView на legacy-железе (бывш. V51) — ждёт перфо-спринта; живёт в `PROJECT_STATE.md`.
+- ~~Рассинхрон Dexie: браузер `bodgegene-db` v50 vs код `DB_VERSION = 5`~~ — **ФАНТОМ, снято 31.05.2026.** Dexie кодирует IDB-версию ×10: `IDB v50 = Dexie v5` — норма. Реального downgrade нет (иначе приложение не открылось бы с VersionError, а оно работает). Не репортить.
 
 ---
 
 ## OPEN
 
+### Средние
+
+> **V139–V141 — canvas-UX кластер**, surfaced на приёмке слоя 2 набора live-junction (05.06.2026). **НЕ движковые баги:** слой 2 трогал `primer-derive.js` + `zone-pieces-to-dag.js`, не canvas-компоненты → это не регрессия слоя 2. Фикс — в отдельной canvas-сессии (§7: приёмка движка ≠ canvas-UX звено), пересекается со слоями 3 (JUNCTION) и 5 (CANVAS_LIVE_PROJECTION). Перед фиксом — читать код от симптома (§0), не от догадки.
+
+**V139 — клик по ромбу PCR (realised op) на канвасе ничего не делает.** Найдено Игорем на приёмке слоя 2 (05.06). Симптом: realised-операция (ромб) на графе не реагирует на клик → инспекция realised-праймеров заблокирована. **Перед фиксом (§0):** читать `onOperationClick` / `justDraggedRef` guard в canvas-компоненте от симптома — возможен залипший drag-guard (ср. V61-период `justDraggedRef` на `onOperationClick`). Радиус неизвестен до чтения.
+
+**V140 — зона-контейнер: сборку нельзя двигать внутри зоны, контейнер не масштабируется.** Найдено там же (приёмка слоя 2, 05.06). Симптом: внутри зоны узлы/сборка не перетаскиваются, габариты зоны-контейнера не меняются. Радиус — zone bounds / drag-within-zone / resize handles; читать от симптома до фикса. Тот же кластер, пересечение слои 3/5.
+
+**V141 — панель «Контейнеры → Праймеры» обрезана/тесная.** Найдено там же. Праймеры в панели присутствуют, но читаемость низкая (layout/overflow панели). Тот же кластер. Косметика/layout, не корректность данных.
+
+### Низкие
+
+**V120 — ORF detection не видит circular wrap.** Найдено Code-аудитом 28.05. `orf-detection.js:39-67` сканирует линейные `seq` + `rcSeq`; ORF, пересекающий начало координат (origin кольцевой плазмиды), пропускается или обрезается. Плазмиды кольцевые. **Фикс:** для circular сканировать `seq + seq.slice(0, maxORFnt)`, фильтровать по старту в `[0, len)`. **⏸ ОТЛОЖЕНО 28.05.2026** — не быстрый фикс: требует проброса topology через `detectORFs`/`runPredictors` + wrap-scan + поддержку wrap-координат аннотаций (feature-sized, риск регрессии в predictor-пайплайне). Низшая severity (origin-spanning ORF — меньшинство, ORF — подсказка). Оставлен в OPEN для отдельной задачи.
+
+**V121 — SapI `cutOffset: 4` неверен (мёртвые метаданные).** Найдено Code-аудитом 28.05. `golden-gate.js:31` — по конвенции остальных 4 GG-ферментов (`recognition_len + top_spacer`) для SapI `GCTCTTC(1/4)` должно быть 8, не 4. НО `cutOffset` нигде не читается (`designOverhangs` использует `overhangLength` + границы фрагментов) → функционального эффекта НЕТ. Чинить для корректности данных / будущих консьюмеров. (Не блокер, фикс не срочен.)
+
+**V137 — смена типа фичи в Annotator плодит новый трек вместо смены типа текущей фичи.** Найдено Игорем на partial-приёмке 30.05.2026 (репортёр GFP). При смене `type` существующей фичи в Annotator создаётся НОВАЯ запись фичи (новый трек), а тип текущей не меняется → дублирующиеся фичи. Не диагностировано — вне скоупа partial-приёмки, отдельное звено. Радиус неизвестен (Annotator type-редактор / update-path аннотации) — читать код от симптома перед фиксом.
+
+---
+
+## FIXED — live-junction ENGINE слои 1–2 (приёмка 05.06.2026)
+
+> Часть набора live-junction сборки (4 спеки в `docs/`); это слои 1–2 из 6. **Версия НЕ бампается** (mid-spec). Канон ориентации хвостов — DEC-PRIMER-TAIL-01 (DECISIONS). Коммиты: `20d2978` (слой 1, pydna-диагностика), `4b9e5d5` (слой 2, `buildOverlapTail` + V130 + Tm), `ba423c1` (V130-тест). Git-коммит — за Игорем в терминале.
+
+**V130 — ✅ ИСПРАВЛЕНО + принято (слой 2 PASS) 05.06.2026. realise роняла overlap-хвосты авто-праймеров сборки (tailless-материализация).** `deriveAutoPrimers` (`components/CanvasSkeleton/lib/primer-derive.js`) эмитит праймеры `source.kind='auto-group'` (с хвостами overlap/GG/RE) в `state.assemblyDraftPrimers[zoneId]`. `mapPrimersForSegment`/`realiseAssembly` (`components/CanvasSkeleton/lib/zone-pieces-to-dag.js`) матчил ТОЛЬКО `source.kind ∈ {segment, boundary}` → auto-group мимо → fallback `autoPrimerPair(seg.sequence)` = `slice(0,20)`/`rc(slice(-20))`, tm:0, БЕЗ хвостов (тихий неверный продукт — сборка физически не соберётся). **Фикс (слой 2, `4b9e5d5`):** `mapPrimersForSegment` матчит auto-group по `source.pieceId === seg.id` независимо от kind; `getBoundaryPrimerInfo` берёт праймер с самым длинным хвостом на стыке (односторонний overlap делает upstream-rev пустым). **Тест (`ba423c1`):** новый `describe` в `zone-pieces-to-dag.test.js` — `zoneStateWithGroup()` (CREATE_OP_GROUP `overlap_pcr` → 4 хвостатых auto-group драфта) → `realiseAssembly(s,'zn-1',{0:'gibson'},{})` → per-op ассерты `userPrimers[0].source==='assembly'` (НЕ `'auto'`-fallback), `fwdTm!==0`, `forward===` draft-fwd с хвостом + односторонний overlap (downstream fwd > binding, upstream rev = binding-only). До фикса вернулось бы `source:'auto'`/tm0/20нт. Code-verify §9b PASS (assertion на данные сильнее визуала, не зависит от сломанного canvas-UI — V139). Full Vitest 4328 pass / 17 skip / 0 fail, build clean.
+
+**V131 — ✅ ИСПРАВЛЕНО + принято (слой 2 PASS) 05.06.2026. GG- и RE-хвосты `deriveAutoPrimers` расходились с принятыми V124/V125 (тот же класс ориентации сайта).** `primer-derive.js`: GG rev был `rc('GGTCTCN'+oh)` (rc ВСЕГО recognition+spacer+overhang → digest BsaI оставляет низовой конец BLUNT, не лигируется); RE fwd был `reSite+'GG'` (защитные основания ВНУТРИ, нет 5′-фланкинга → плохой/нулевой рез forward-плеча). Фиксы V123/V124/V125 легли только в `local-primer-design.js` (канвасом НЕ используется) → primer-derive их не получил. **Фикс (слой 2, `4b9e5d5`, через единый `buildOverlapTail`):** GG rev → `recognition + spacer + rc(oh)` (recognition НЕ rc, V124; pydna-proven — оба designed 5′-overhang'а AATG+AAGC лигируются); RE fwd → protective СНАРУЖИ сайта (V125; NEB-данные о терминальном резе); литерал спейсер `'N'`→`'A'`. Overlap-ветка primer-derive уже была верна (fwd дословно / rev rc). pydna-эталоны `tools/pydna/primer_tail_golden.json` (слой 1, `20d2978`): GG-инвариант перевёрнут `it.fails`→`it`. Full Vitest 4328 pass / 17 skip / 0 fail, build clean. **Не входит в V131 (→ TECH_DEBT):** per-enzyme recognition (BsaI-хардкод `GGTCTC` / protective `GCGC`, RE rev только 2 нт фланка vs fwd 4 нт) — пробрасывается из JUNCTION; ручной `buildAssemblyPrimer` A1-паритет (несёт старый хвост до унификации на `buildOverlapTail`).
+
+---
+
+## FIXED (v0.8.4-alpha — приёмка 31.05.2026)
+
+> Трекер сброшен 27.05 (нумерация с V118), ничего старше 2 спринтов → архивация не требуется.
+> **Все записи ниже приняты Игорем 31.05.2026 («всё принято»)** — пометки «Ждёт приёмки» / «Ждёт визуальной приёмки» в телах записей считать снятыми.
+> Git-коммит фиксов (math/bio + partial) — за Игорем в терминале.
+
+**V119 — ❌ ОТОЗВАНО 28.05.2026 — НЕ БАГ. Вырожденно-палиндромные сайты якобы считаются дважды.** **Снято при попытке фикса:** эмпирическая проверка (probe + полный прогон) показала, что `findSitesInSequence` возвращает РОВНО 1 хит для HincII/StyI/PpuMI — двойного счёта НЕТ. Ошибка исходного диагноза: `restriction-db.js` использует СОБСТВЕННЫЙ локальный `reverseComplement` (стр.108-113) с полной IUPAC-таблицей, а НЕ sequence-utils-версию (которая теряет коды → V118). Поэтому `rcSite('GTYRAC')==='GTYRAC'` → палиндром-skip срабатывает корректно → обратная цепь не сканируется второй раз. Правок в restriction-db не требуется. (V118 — реальный и НЕЗАВИСИМЫЙ: это ДРУГОЙ revComp в sequence-utils.)
+
 ### Критичные
 
-(пусто)
+**V123 — КРИТ: overlap/Gibson/OE-PCR праймеры не имеют общего перекрытия → сборка физически не соберётся.** Найдено Code math/bio-аудитом 28.05 (доказано симуляцией). **✅ ИСПРАВЛЕНО 28.05.2026** — все ветки `overlapTail` (split WT / split overlapSequence / left_only / right_only) + single-circular self-closure приведены к стандартной Gibson/OE-PCR конвенции (подтверждена исходниками pydna `assembly_fragments`: fwd-хвост = 3′-конец соседа как есть, rev-хвост = `rc(5′-начала соседа)`). Добавлен biology-invariant тест в `local-primer-design-overlap.test.js` (реконструкция амликонов → проверка общего overlap + бесшовной сшивки), переписаны 3 теста, фиксировавших инвертированные хвосты. Full Vitest 4083 pass / 0 fail, build clean. `local-primer-design.js:180-194` (`overlapTail`). Затронуты ВСЕ overlap/Gibson/OE-PCR сборки ≥2 фрагментов + single-circular self-closure. KLD/RE-ligation/Golden Gate идут другими ветками — не задеты. Канон — DEC-PRIMER-TAIL-01.
 
 ### Высокие
 
-**V51 — Drag selection микролаги в SequenceView на legacy железе** (OPEN, зафиксирован 10.05.2026, обнаружен на приёмке M-X.8/M-X.9).
-- **Симптом:** drag selection по плазмиде происходит с видимыми микролагами (frame drops). User-perceived choppy.
-- **Среда воспроизведения:** ThinkPad 2013-го года (dev workstation Игоря). На современном железе может быть невидимо — биолог на лабовом PC 2017-2019 увидит тоже.
-- **Предполагаемые корни** (не расследованы):
-  - Selection state идёт через Zustand → SequenceView/index.jsx (~39 KB) rerender'ится целиком, включая несвязанные tracks (Ruler / Restriction).
-  - Transient drag state не отвязан от canonical Zustand store — каждый mousemove (~120/sec) идёт через фулл store update + React rerender pipeline.
-  - Нет RAF-throttling на mousemove handler.
-  - SVG `<rect>` в SelectionOverlay перевычисляется на каждый frame вместо CSS transform на absolutely-positioned div.
-  - Плохо настроенные `useMemo` deps в tracks — мемо не работает при фреквентных изменениях selection.
-- **Чинится:** отдельным перфо-спринтом. Диагностика через React DevTools Profiler + Chrome Performance первым шагом, точечные фиксы вторым. Предполагаемый объём: 2-5 дней Code-работы. Тип спеки C, мини-спека ~5 KB.
-- **Связь с Rust/Tauri:** НЕ связан. Bottleneck — React state propagation pipeline, не compute.
-- **STOP-условие фикса:** на ThinkPad 2013 или эквиваленте — selection drag smooth, нет visible frame drops на плазмиде до 15 kb.
+**V124 — Golden Gate: reverse-primer Type IIS хвост инвертирует recognition → BsaI-сайт у 3′-терминуса смотрит НАРУЖУ → это плечо не режется → GG не собирается.** Найдено Code math/bio-аудитом 28.05 (тот же класс, что V123). **✅ ИСПРАВЛЕНО 28.05.2026** — rev-хвост GG теперь `recognition + spacer + rc(oh)` (recognition БЕЗ rc, как в верном forward-плече). Добавлен Type IIS-симулятор дайджеста в `__tests__/primer-tail-orientation.test.js`: оба плеча режутся внутрь → комплементарные overhang'и (`rc(ohR)===ohL`, `===` designed oh). Full Vitest 4086 pass / 0 fail, build clean. `local-primer-design.js` (`overlapTail`, ветка `golden_gate`): rev = `enz.recognition + spacer + rc(oh)`. Канон — DEC-PRIMER-TAIL-01.
 
-**[x] V88 — В пикере «Выбор фрагмента» не работает выбор фрагмента двумя кликами по RE-сайтам** (FIXED 21.05.2026; pair-state в RangePickerModal + 3 теста range-picker-re-pair-v88).
-- **Симптом:** sub-header пикера advertises режим «RE-сайт», но выбор фрагмента между двумя рестриктазами не работал.
-- **Фикс:** RangePickerModal получил state `firstRESite`. Первый клик RE-site A → snap на recognition span + store A. Второй клик RE-site B → выделение [cutA, cutB] = [siteA.position+cut[0], siteB.position+cut[0]] (top-strand cut), reset. Курсор/numeric/feature сбрасывают накопленный RE. Footer hint показывает «RE-сайт A зафиксирован — кликни второй RE...». Test escape hatch — window event `__v88_re_click__` для unit-testing pair-math (реальный SVG-click тяжело симулировать в happy-dom).
-
-**[x] V92 — Панели, открываемые кнопкой «Палитра», невозможно закрыть** (FIXED 21.05.2026; per-panel × close + Палитра restore + 4 теста panel-close-v92).
-- **Симптом:** при нажатии «Палитра» в редакторе сборки появляются панель «Схема сборки» и соседние колонки (фильтр контейнеров, инспектор сегмента). Закрыть/свернуть их нельзя — нет close-контрола, повторное нажатие «Палитра» не убирает.
-- **Фикс (вариант «каждая панель получает close» из Подхода):** `AssemblyPipelinePanel` / `AssemblySidebar` / `AssemblyPrimersPanel` получили × кнопку (`*-close` testid). Hidden-state живёт в `AssemblyShellBody` как `hiddenPanels: Set<string>`. «Палитра» в `AssemblyHeader`: если ≥1 панель скрыта → клик восстанавливает все (label «🎨 Палитра ↩», accent background); иначе — открывает color legend как раньше.
+**V125 — RE-ligation: forward-primer RE-хвост реверс-комплементирован → сайт впритык к 5′-концу без защитных оснований снаружи → плохой/нулевой рез forward-плеча.** Найдено Code math/bio-аудитом 28.05 (тот же класс, что V123/V124). **✅ ИСПРАВЛЕНО 28.05.2026** — RE-ветка теперь `return tail` (literal) для обеих сторон; forward-продукт получает защитные основания СНАРУЖИ сайта (5′-фланкинг). Тест в `__tests__/primer-tail-orientation.test.js` (forward RE-сайт имеет ≥1 нт 5′-фланкинга). Full Vitest 4086 pass / 0 fail, build clean. `local-primer-design.js` (`overlapTail`, ветка `ligation`/`re_ligation`): `return tail;` для обеих сторон. Канон — DEC-PRIMER-TAIL-01.
 
 ### Средние
 
-**[x] V85 — Пикер контейнера в «+ Плазмида» (новая сборка) не переиспользует библиотечный рендер entry** (FIXED 21.05.2026; `PlasmidMiniMap` 20×20 thumb в EntryRow + `extraBadge` inline вместо absolute overlap + 4 теста PlaceholderTreePicker-v85).
-- **Симптом:** PlaceholderTreePicker рисовал плоский текст без минимап; бейдж проекта в «Другие проекты» налезал на «N bp · circular».
-- **Фикс:** EntryRow получил `<PickerMiniThumb entry/>` (20×20 PlasmidMiniMap для circular/linear-with-features; fallback одно-`<line>` SVG для primer / empty linear — тот же patrz как Library/tree/TreeItemRow.MiniIcon). «Другие проекты» теперь передаёт `extraBadge={projName}` — рендерится inline ПЕРЕД bp-счётчиком, не overlap. `LibrarySearchBar` уже использовал MiniPlasmidMap (K2.1), визуал теперь parity между двумя пикерами.
+**V138 — ✅ ИСПРАВЛЕНО + принято визуально 31.05.2026 (DEC-FDP-01). Бокс CDS-фичи не покрывал всю ДНК гена: белковый детектор подрезал прямоугольник к кодонной сетке (≤2 nt), импорт голого сиквенса держал полный.** Найдено Игорем 31.05 (после приёмки V134), сравнение «Annotator vs импорт голого сиквенса». Воспроизведено Chat на реальном sfGFP. **АА верны — дело только в боксе** (Игорь подтвердил дважды). AA-дорожка `AATrack` (single) уже выбирает кадр через `pickReadingFrame` (минимум стопов, не start%3 — V133) и транслирует только полные кодоны внутри бокса → АА корректны независимо от ширины бокса, AATrack НЕ трогать. Расходилась только ширина БОКСА: `feature-detection.js` блок `protein_partial` маппил protein-матч на кодонную сетку (`frame.offset+k*3`) → бокс на ≤2 nt короче ДНК гена во фрагменте с разрезом посреди кодона. **Фикс (провалидирован Chat-харнессом, fwd+rev):** в блоке `protein_partial`, после кодонно-сеточных `ntStart/ntEnd`, nt-refine каждого края — тянуть наружу ≤2 nt, пока ДНК-таргет совпадает с собственной ДНК фичи `feat.sequence` (strand-aware), стоп на мисматче/краю; cap=2 ограничивает совпадение со фланком. Только `protein_partial`; `protein_exact`/`protein_fuzzy` и `dna_partial` — НЕ тронуты. Валидация: bare GFP-фрагмент fwd/rev → бокс `0..len` полный = как импорт; embedded → клип во фланк ≤2 nt (cap); exact/fuzzy не задеты.
 
-**[x] V86 — Пустое состояние сборки обещает кнопку «+ Плазмида», которой нет** (FIXED 21.05.2026; SegmentList footer copy-fix + 3 теста SegmentList-empty-text).
-- **Симптом:** текст пустого состояния — «используйте кнопки внизу: + Плазмида / + Обвес / + Синтез / + Gap», но кнопками отрисованы только Обвес/Синтез/Gap; +Плазмида = библиотечный список выше, не кнопка.
-- **Фикс:** SegmentList footer hint → «Сегментов нет. + Плазмида — выбор из списка выше; кнопки: + Обвес / + Синтез / + Gap.». ASSEMBLY_EDITOR_SMOKE_PLAN.md обновлён.
+**V134 — ✅ ИСПРАВЛЕНО + принято визуально 31.05.2026 (DEC-FDP-01). Partial mis-fragmentation: неполный фрагмент фичи с правкой на стыке либо дробился на два `_part_` (A), либо терял клочок < floor (B, ~45 nt чистого GFP пропадали).** Найдено Игорем на приёмке partial 31.05 — два кадра: A `_part_7-213`+`_part_217-684`; B `_part_217-585` с потерянной головой 172-216. Воспроизведено Chat (20+ сценариев, реальный sfGFP из `common-features.json`). Один корень: `extendSeedPartial` вставал на ≥2-кодонном мисматч-ране, а отколотый кусок < `minLen` (17 aa/50 nt) не выпускался → merge склеивать нечего. **Фикс (2 слоя, провалидирован Chat-харнессом):** Слой 1, главный — заменить оконный разрыв в `extendSeedPartial` на BLAST-style X-drop (score +1/−1, граница = пик/snap-back, protein `xdrop=8` / DNA `xdrop=20`; финальный identity-гейт + coverage-floor — бэкстоп): мостит замену-ран → ОДИН кусок с точными границами (чинит A и B сразу). Слой 2, вторичный — `mergeCollinearPartials` выпущенных кусков для indel'ов, которые X-drop не мостит (И featureGap И targetGap ≤ `PARTIAL_MERGE_MAX_GAP`=18 → слить; вставка ≥30 nt → split). Провалидировано: чистый фрагмент 217-630 → ровно `_part_217-630`; стык-ран → один кусок; вставка 3/6/15 nt → слить, 30/90 → split; варианты GFP (fuzzy/exact) без изменений.
 
-**[x] V87 — В пикере «Выбор фрагмента» сиквенс за границей выбранного диапазона не затеняется** (FIXED 21.05.2026; новый `OutOfRangeMaskOverlay` + opt-in prop `outOfRangeMask` в SequenceView + 4 теста out-of-range-mask-v87).
-- **Симптом:** в range picker сиквенс после end-divider рендерился тем же контрастом, что и выбранная часть.
-- **Фикс:** новый overlay `OutOfRangeMaskOverlay` рисует translucent rgba(245,245,244,0.65) маску на main-band rows ВНЕ `[start,end]` — на character-granularity (partial rows работают). SequenceView получил opt-in prop `outOfRangeMask={{start,end}}`, SequenceTab — pass-through. RangePickerModal передаёт `{start,end}` когда `hasSelection`. Library/Importer/PCR не передают prop → overlay не рендерится (back-compat).
+**V133 — Annotator Level 1: устаревший результат «прилипает» к новой плазмиде (чужой хит мапится, пока не нажмёшь «Run again»).** Найдено Игорем на partial-приёмке 29.05. `Annotator/index.jsx` авто-ран L1 ключевался по `scope.sequenceId` + гейт `if (results[L1]) return`. В embedded-режиме `sequenceId` залипает → старый L1-хит остаётся в `annotator.results` и рисуется на новой последовательности (тихий неверный результат). **✅ ИСПРАВЛЕНО 29.05.2026** — авто-ран ключуется по СОДЕРЖИМОМУ `sequence` (deps `[annotator.open, sequence]`, `autoRunFiredFor` по контенту); при смене контента → `resetAnnotatorScope()` + ре-ран. Идемпотентность сохранена. Тест в `annotator-autorun.test.jsx`. Full Vitest 4110 pass / 0 fail, build clean.
 
-**[x] V89 — Выбор фрагмента через RE-сайт не задаёт лигирование как предполагаемый метод клонирования** (FIXED 21.05.2026; acquisitionMethod через insertSegment → piece → auto-group + 6 тестов auto-group-pipeline-restriction-v89).
-- **Ожидаемое:** RE-сайт выбор → `piece.acquisitionMethod='restriction'`, auto-grouping → `kind='restriction'` (RE-клонирование/ligation), а не PCR/Gibson.
-- **Фикс:** RangePickerModal в onConfirm payload теперь передаёт `acquisitionMethod`. `actions.insertSegment(..., opts)` принимает `{acquisitionMethod}` → action.acquisitionMethod → reducer mapping в `ACQUISITION_METHOD_ENUM`: 'restriction' → 'restriction'; cursor/feature/numeric → 'undefined' (валидный enum). `autoGroupPipeline` если ВСЕ un-grouped sources имеют `acquisitionMethod='restriction'` → `kind='restriction'` для всех layers (включая layer-1 финал). Смешанные сборки → previous overlap_pcr/gibson default (back-compat).
+**V127 — сборщик последовательностей показывает координаты фич/сегментов с 0 (должно быть 1-based).** Найдено в диалоге с Игорем 29.05. Хранение 0-based, end-exclusive (⚓ DEC-ANN-10), UI везде 1-based — НО в сборщике (`assembly-mode`) четыре места печатали сырой 0-based `start`. **✅ ИСПРАВЛЕНО 29.05.2026** — `RangePickerModal` (`featureLabel` + start-инпут) и `SegmentList` (`rowSource` + inline-редактор) переведены на 1-based дисплей через `toUiCoords`/`fromUiCoords`; хранение/slice/onConfirm/updateSegmentRange/caretAnchor не тронуты. Новый `assembly-coords-1based-v127.test.jsx` + обновлены 5 ассертов в 4 файлах. Full Vitest 4097 pass / 0 fail, build clean. ✔ Визуальная приёмка пройдена 29.05.2026 (Игорь: «стало с 1»).
 
-**[x] V90 — Вкладка редактора показывает «(пустой)» и не обновляется под содержимое** (FIXED 21.05.2026; EditorTabStrip dual-resolve через `selectAssemblyTarget` + 3 теста editor-tab-strip-v90).
-- **Корень:** EditorTabStrip для assembly-таба искал draft только в `state.assemblyDrafts`. Когда таб открыт на zone id (T6 архитектура), legacy slice пуст → fallback на «(пустой)», даже если у зоны есть имя.
-- **Фикс:** `StoreTab` + `PropTab` используют `selectAssemblyTarget(state, tab.assemblyDraftId)` — тот же dual-resolve, что у `AssemblyModeShell` + `SegmentDetailPanel`. `EditorWindowShell` теперь прокидывает `zones`+`pieces` в `EditorTabStrip` для prop-mode path. Legacy assemblyDrafts путь сохранён, «(пустой)» остаётся только для unresolved-id.
+**V118 — `reverseComplement` молча теряет IUPAC-коды → N.** Найдено Code-аудитом 28.05. `sequence-utils.js`. `sanitizeSequence` при вводе ambiguity-коды СОХРАНЯЕТ, а `reverseComplement` маппил R/Y/S/W/K/M/B/D/H/V → 'N'. Радиус: feature-detection (−цепь), orf-detection (rcSeq), golden-gate `checkInternalSites`, primer design на −цепи. **НЕ затрагивает рестрикцию** (свой локальный IUPAC-корректный revComp, см. отзыв V119). **✅ ИСПРАВЛЕНО 28.05.2026** — `COMPLEMENT_MAP` расширен до полной IUPAC-таблицы (R↔Y, M↔K, S↔S, W↔W, B↔V, D↔H, N↔N + lowercase). Тест `__tests__/iupac-revcomp.test.js` + переписан `sequence-utils.test.js`. Full Vitest 4091 pass / 0 fail, build clean.
 
-**[x] V91 — MiniProjectCanvas в развёрнутом виде перекрывает правую панель редактора** (FIXED 21.05.2026; default `collapsed: true`).
-- **Симптом:** развёрнутый мини-канвас перекрывал «Праймеры/Границы» и поле поиска.
-- **Фикс (вариант «дефолт свёрнутый» по spec):** `MiniProjectCanvas.useState(collapsed)` initial = `true`. Биолог разворачивает кликом по иконке 🗺. V81 collapse/expand cycle сохранён. Существующие К4 / V68 тесты получили `expandMini()` helper перед marker-checks.
+**V122 — digest: аннотации, пересекающие линию реза, ломаются или теряются.** Найдено Code-аудитом 28.05. `restriction-db.js`: `_shiftAnnotations` при linearize — аннотация через `cutPos` получала `start > end`. **✅ ИСПРАВЛЕНО 28.05.2026 (linearize)** — `_shiftAnnotations` теперь split'ит straddling-фичу на ДВЕ валидные дуги (`[tail..seqLen]` + `[0..head]`); тест в `restriction-digest.test.js`. Full Vitest 4094 pass / 0 fail. **Остаётся отдельно (НЕ блокер, follow-up):** excise-ветки (`_exciseTwoEnzymes`/`_exciseSameEnzyme`) всё ещё ДРОПают straddling-аннотации — lossy, но НЕ corrupting (вывод валиден); split там — отдельная правка по запросу.
 
-**[x] V93 + V94 — «Палитра» / «Источник» / инспектор «Сегмент» дублируют управление; сводим в строку «Источник»** (FIXED 21.05.2026; SegmentDetailPanel orphan + inline editor в SegmentList rows + AssemblyHeader без color legend + 6 тестов segment-inline-editor-v94 + регрессионные тесты обновлены).
-- **V93 симптом:** «Палитра» открывала дропдаун с цветовой легендой; цвет также в swatch'ах нижней строки + в инспекторе → три точки управления.
-- **V94 симптом:** правый инспектор «Сегмент» (Source / Range / RC / Color / Label / Apply / Delete) дублировал нижнюю строку.
-- **Фикс (поглощение V93 в V94):** `SegmentDetailPanel` больше не монтируется в `AssemblyShellBody` (import закомментирован). Новый `SegmentRow` в `SegmentList` несёт chevron ▸/▾ — expand раскрывает inline-editor с теми же контролами (range / RC / color-swatch с inline color picker / label / Apply / Convert-to-gap для orphan). Color-swatch в строке «Источник» теперь интерактивный → открывает color picker. `AssemblyHeader.Палитра` потерял color legend (V93) — кнопка остаётся как V92 restore-panels-when-hidden affordance, tooltip направляет на цвет в строке. RC apply вызывает `toggleSegmentRc` (recompose'ит sequence) вместо generic UPDATE_SEGMENT.
+### Низкие
 
-**[x] V95 — Панель «Фильтр по контейнерам проекта» — неясное назначение, громоздкая** (FIXED 21.05.2026; explicit header + collapsible body + 5 тестов sidebar-compact-v95).
-- **Симптом:** filter input без header'а, контейнерский список занимал крупную колонку без явного объяснения назначения.
-- **Фикс (вариант «компактный + сворачиваемый», без слияния с верхним поиском):** AssemblySidebar получил explicit header «Контейнеры · N» (uppercase letter-spacing, title-tooltip объясняет «источник для drag в strip»). Body (filter + items list) collapsed by default; chevron ▸/▾ раскрывает. Header остаётся видимым в compact mode — биолог видит counter и может развернуть когда нужно. × close (V92) сохранён.
+**V129 — RC-ориентация сегмента не видна у координат (флаг «скрыт» в дальней RC-колонке).** Найдено Игорем на приёмке V127 (29.05). **Решение (конвенция):** числа НЕ переворачиваем (координаты = диапазон в источнике, по возрастанию — GenBank `complement(1..69)`), добавляем явный маркер: `pUC19 [1:69] ←RC`. **✅ ИСПРАВЛЕНО 29.05.2026** — `SegmentList.rowSource` (`reverseComplement` → ` ←RC`); тесты в `assembly-coords-1based-v127.test.jsx`. Full Vitest 4105 pass / 0 fail, build clean. ✔ Визуальная приёмка пройдена 29.05.2026 («работает»).
+
+**V128 — audit close-out: enrich мутировал чужие объекты + detail/point без write-path id + генератор id на Math.random.** Найдено Code-аудитом модуля аннотаций 29.05 (продолжение V127, три не-блокера). **✅ ИСПРАВЛЕНО 29.05.2026** — (1) enrich клонирует каждую аннотацию на входе (`annotations.map(a => ({...a}))`) + новый common_db-region получает `id`; (2) `importFeatures` / `autoAnnotate` / `migratePartAnnotations` стампят `id` на каждую аннотацию всех уровней перед возвратом (write-path TD-IMPORTER-NO-ID закрыт); (3) новый `lib/ids.js::makeId` (crypto.randomUUID feature-detect), `generateRegionId` делегирует. Тесты: новый `annotation-write-path-ids.test.js` + 2 в `enrichment.test.js`. Full Vitest 4103 pass / 0 fail, build clean. Остаток: read-path net для legacy detail/point оставлен открытым (TD).
+
+**V126 — auto-annotate: детекция стоп-кодона «в конце» использует неверную формулу позиции последнего кодона для регионов с длиной не кратной 3.** Найдено Code math/bio-аудитом 28.05. `auto-annotate.js:70` — `lastCodonPos = Math.floor((upper.length - 1) / 3) * 3`. Для длины `L%3 ∈ {1,2}` указывала на НЕПОЛНЫЙ хвостовой кодон и пропускала реальный последний полный in-frame кодон. **✅ ИСПРАВЛЕНО 28.05.2026** — формула заменена на `(Math.floor(upper.length / 3) - 1) * 3`. Тест `__tests__/auto-annotate-stop.test.js` (стоп находится при L%3≠0 + регрессия L%3==0). Full Vitest 4094 pass / 0 fail.
 
 ---
 
 ## FEATURE REQUESTS
 
-(пусто на старте v0.6 — фичи живут в `docs/ARCHITECTURE_v2.md` §7 Roadmap до момента, когда становятся конкретным дизайн-вопросом)
-
----
-
-## FIXED (текущий спринт v0.8.3-alpha — four-tier T1-T10 + T4.5 + canvas UX + primer redesign)
-
-**[x] V84 — Realise-продукты (frag/product) не наследовали аннотации исходника** (FIXED 17.05.2026; full Vitest 3168 pass / 1 skip / 0 fail + 1 pre-existing flake TD-PRIMER-WIZARD не связан, 2/2 изолированно; zero регрессий).
-- **Симптом (репорт Игоря + скриншот pks4):** `Сборка 1-frag-1..4` после Realise — пустые серые бары, без фич, хотя источники (`pBluescript SK(+)` и т.д.) имеют аннотации (MCS / T7 / T3 promoter). «продукты не наследуют аннотации исходника».
-- **Корень (класс V83, рассинхрон zone vs legacy):** legacy `assembly-model.makeSourcedSegment` переносит фичи через `transferAnnotations(parentAnns, lo, hi, rc, srcId)` (`segment-annotation-transfer.js`), а 4-tier `zone-pieces-to-dag.draftFromZone` хардкодил sourced-сегменту `annotations: []`. `realiseAssembly` берёт `seg.annotations` → frag-контейнеры пустые; финальный `-product` тоже `annotations: []`. Путь op-execute (`operation-product-assembly.js`, DEC-PROD-07) аннотации переносил — баг только в realise/zone-пути.
-- **Фикс (DRY, переиспользование проверенных хелперов):** (1) `draftFromZone` sourced-сегмент → `transferAnnotations(c.annotations, r.start, r.end, rc, r.sourceId)` (тот же helper, что у legacy); gap/orphan/no-ann → `[]`. Frag-контейнеры наследуют каскадом. (2) Новый чистый `concatSegmentAnnotations(segments)` в `assembly-model.js` — аннотации каждого сегмента смещаются на его char-offset в конкатенации (gap двигает offset, фич не даёт), порядок как у `computeAssemblySequence`; финальный `-product` контейнер → `annotations: concatSegmentAnnotations(segs)`.
-- **Acceptance:** sourced full-range → фича в локальных координатах; clipped range → клип+сдвиг; reverse → зеркало+strand −1; нет источника/аннотаций → `[]`; gap → `[]`; realise frag-контейнер несёт фичу; `-product` агрегирует со сдвигом. +12 тестов `assembly-product-annotations.test.js`. Full Vitest **3168 pass / 1 skip / 0 fail**, zero регрессий.
-
-**[x] V83 — При вставке gap с известной ПСО (линкер/своя) в сборку добавлялся поли-N вместо реальной ДНК** (FIXED 17.05.2026; full Vitest 3119 pass / 1 skip / 0 fail + 1 pre-existing flake TD-PRIMER-WIZARD не связан; zero регрессий).
-- **Симптом (репорт Игоря + скриншот):** в зоне-сборке сегмент №5 «gap · unknown · 54 bp» отрисован как 54×N в последовательности. 54 нт = пресет-линкер **T2A** (`GAGGGCAGAGG…CCT`, самовырезающийся пептид — функциональный элемент, НЕ unknown-плейсхолдер). «при добавлении gap добавляется поли N, а не то что написано в карточке».
-- **Корень (подтверждён по коду):** 4-tier gap-piece (`piece-model.createPiece`, T6 DEC-T6-02) хранил **только** `gapLength`+`gapHint` — реальная ПСО (InsertGapModal таб «Линкер»/«Своя ПСО» → `onInsert({sequence})`) молча отбрасывалась в `zone-assembly-write-adapter.INSERT_MANUAL_SEGMENT` (брал лишь `.length`). На realise/display `draftFromZone`/`computeAssemblySequenceFromPieces` → `sequence:''` → `'N'.repeat(gapLength)`. Было задокументировано как T6-deviation DEC-T6-02/09 «sequence-lossy»; репорт Игоря промотировал в реальный баг.
-- **Фикс (аддитивный, без миграции):** gap-piece получил опциональный `gapSequence`. Когда задан (линкер/своя) — хранится дословно, `gapLength === gapSequence.length`, `gapHint='known'`, end-to-end сохраняется (`createPiece` / `piece-invariants` consistency-инвариант / `zone-assembly-write-adapter` / `draftFromZone` / `segment-to-piece-adapter`). Когда НЕ задан (таб «Неизв. длина») — поведение **без изменений**: поли-N от `gapLength`. Старые persisted gap-pieces без `gapSequence` → поли-N (доп. поле опционально, `SCHEMA_VERSION` не бампился).
-- **Acceptance:** линкер T2A → gap-piece c `gapSequence`=T2A, realise → frag/product содержат реальную ДНК, нет N-ранов; своя ПСО `atcgATCG` → `ATCGATCG` (uppercase) сохранена; «Неизв. длина» 20 → по-прежнему 20×N (корректный плейсхолдер). +15 тестов `gap-known-sequence-v83.test.jsx`. Full Vitest **3119 pass / 1 skip / 0 fail**, zero регрессий.
-
-**[x] V82 — Дефолтная «стартовая сборка» не отражалась в счётчике «Сборки (N)»** (FIXED 17.05.2026; full Vitest 3105 pass / 1 skip / 0 fail, zero регрессий; вариант 1 «панель → zone-based» по выбору Игоря).
-- **Симптом:** в стартовый проект добавлено 3 элемента в авто-сборку на canvas («Сборка 1 · 3 узла»). Панель «📋 Сборки (0)» / «Сборок пока нет.» её не показывала. «+ Новая сборка» создаёт нормально, но первая (дефолтная) не отражалась.
-- **Корень (подтверждён по коду):** `buildInitialState` (skeleton-state.js:69–75, T3 DEC-T3-08) сидил новый проект **дефолтной ZONE** «Сборка 1» (`createZone`), НЕ assemblyDraft. `AssemblyDraftsPanel.jsx` считала `state.assemblyDrafts.length` (пуст — T6 мигрировал черновики→зоны). Пост-T6 рассинхрон: концептуальная «сборка» = zone, но legacy-панель считала drafts.
-- **Фикс (вариант 1, архитектурно-верный — единый источник истины, без техдолга):** `AssemblyDraftsPanel.jsx` переписана **zone-based** — счётчик/карточки от `selectAllZones(state)`; узлы в карточке = `nodeListInZone` (containers+pieces+operations); «+ Новая сборка» → `CREATE_ZONE` («Сборка {N}», offset bounds); card Open → `openEditorAssemblyTab(zone.id)` (T6 dual-resolve в AssemblyModeShell); Delete → `REMOVE_ZONE`. Pin/Unpin убран (zone всегда on-canvas frame). Testid'ы сохранены.
-- **Acceptance:** новый проект → «Сборки (1)», карточка «🧬 Сборка 1»; добавление узлов в зону → счётчик узлов в карточке растёт; «+ Новая сборка» → 2-я zone; Open → assembly-таб на zone id; Delete → zone удалена. +5 новых тестов `assembly-drafts-panel-v82.test.jsx`. Full Vitest **3105 pass / 1 skip / 0 fail**, zero регрессий.
-- **Известное следствие:** `assemblyReducer`/`state.assemblyDrafts` остаётся живым (T6 K14) для on-canvas `AssemblyDraftBlock`/`MiniProjectCanvas` (legacy, не в скоупе V82). Полная зачистка legacy assembly-draft слоя — отдельный T-future cleanup.
-- **Дополнительный реверс (17.05.2026, по AskUserQuestion):** позже DEC-T3-08 + V61 РЕВЕРСНУТЫ — `buildInitialState` больше НЕ сидит default zone, ghost auto-respawn отключён. Чистый старт (`zones:[]`); сборка создаётся явно через «+ Новая сборка». См. журнал PROJECT_STATE «реверс DEC-T3-08/V61» 17.05.
-
-**[x] V81 — Мини-канвас нельзя свернуть (всегда занимает угол editor-окна)** (FIXED 16.05.2026, bug-session; full Vitest 2641 pass / 1 skip / 0 fail, build clean).
-- **Запрос (Игорь):** мини-канвас (MiniProjectCanvas, V68 — всегда виден, zIndex 40) сделать сворачиваемым.
-- **Решение (local-state toggle, минимальный scope; V68 always-visible сохранён как default):**
-  1. `MiniProjectCanvas.jsx` — `useState collapsed` (default `false`).
-  2. Свёрнуто → одиночная иконка-пилюля 🗺 (30×30, top:60/right:16, zIndex 40), `data-testid=mini-canvas-collapsed`, клик → развернуть.
-  3. Развёрнуто → кнопка `–` `data-testid=mini-canvas-collapse` (top-right), клик → свернуть. Токены `--surface-*/--text-*/--border-subtle`.
-- **Acceptance:** по умолчанию развёрнут (V68 не задет); клик `–` → frame исчезает, остаётся иконка 🗺; клик иконки → разворачивается; маркеры/клик-навигация/assembly-маркеры работают как раньше. +1 V81 `editor-window-shell.test.jsx` K4. Full Vitest **2641 pass / 1 skip / 0 fail**, build clean.
-
-**[x] V80 — Выделение праймера в PCR-вьювере тянулось от 1-го нуклеотида** (FIXED 15.05.2026, root-caused; live-gesture за биологом).
-- **Симптом:** в PcrModeShell выделение под праймер «автоматом тянется со всего с первого нуклеотида» (anchor = 0).
-- **Корень:** `PcrModeShell.onCaretChange(pos)` ставил ТОЛЬКО `setCaretPos(pos)`, никогда не сбрасывал `caretAnchor`. SequenceView controlled по `caretAnchor`/`caretPos`; `caretAnchor` оставался на initial `useState(0)` навсегда. Эталон `ContainerEditorSkeleton.onCaretChangeFromView` при не-extend делает `setCursorAnchor(pos)` (collapse) — этого в PcrModeShell не было (недосмотр при V71-рефакторинге).
-- **Фикс:** `onCaretChange(pos, opts)` зеркалит эталон: `setCaretPos(pos)`; если `!opts?.extendSelection` → `setCaretAnchor(pos)` + `setSelectionMode('dna')`.
-- **Acceptance:** простой клик → anchor схлопывается на клик; extendSelection → anchor сохраняется. +2 V80 `pcr-mode-selection.test.jsx`. Full Vitest 2501 pass / 1 skip / 0 fail.
-
-**[x] V79 — `127.0.0.1:3000` не грузился; AmneziaVPN перехватывал `localhost`** (FIXED 15.05.2026, измерено на машине).
-- **Симптом:** биолог переустановил браузер — всё равно «не подхватывает» новый код. `localhost:3000` грузит старое, `127.0.0.1:3000` не грузится вообще.
-- **Корень:** (1) Vite по умолчанию биндится только на `localhost` → резолвилось в IPv6 `::1`; на IPv4 `127.0.0.1:3000` не слушал НИКТО. (2) AmneziaVPN UP — перехватывал `localhost`/`::1`-путь и отдавал stale-ответ.
-- **Фикс:** `vite.config.js` `server` — `host: true` (dual-stack), `strictPort: true`, `hmr.host: '127.0.0.1'`, proxy `/api` → `http://127.0.0.1:8000`.
-- **Verification:** `:3000` биндит `::` (dual-stack), `127.0.0.1:3000` → 200; свежий бандл с V78/V76/V74.
-- **Что делать биологу:** открывать **`http://127.0.0.1:3000`** (не `localhost`) — в обход AmneziaVPN.
-
-**[x] V78 — Клик по committed PCR-опу открывал тесный params-popup, viewer недостижим** (FIXED 15.05.2026, live-verified в браузере).
-- **Симптом:** биолог: «праймеры не отражаются, нет Tm, хоткеи/ПКМ не работают». PCR-viewer + праймеры через hover-иконку (V70) работали, но клик по ромбу committed PCR — открывал PCROpPopup, не viewer.
-- **Корень:** `CanvasLayoutView.onOperationClick` для committed-op с inputs всегда делал PCROpPopup независимо от kind.
-- **Фикс:** `onOperationClick` ветка для `op.kind === 'pcr'` с template → `actions.openEditorOpTab(op.id)` (как V70 hover-icon). Не-PCR kinds (cut/gibson/…) сохраняют popup.
-- **Live verification:** committed PCR → single-click → pcr-mode-shell + editor-window-shell + 3 sequence-view-primer + PrimerSuggestionsPanel «Tm 61°C». +2 V78 `pcr-mode.test.jsx`. Full Vitest 2499 pass / 1 skip / 1 known flake / 0 real fail.
-
-**[x] V77 — Stale PWA service worker отдаёт старый бандл в dev** (FIXED 15.05.2026).
-- **Симптом:** в `npm run dev` браузер исполняет старый бандл — V72–V76 «не работают», хотя тесты зелёные. Все 4 фичи отсутствуют ОДНОВРЕМЕННО = stale JS из precache.
-- **Корень:** SW от прошлого `vite build`/preview зарегистрирован на `localhost:3000` и контролирует origin; dev-сервер SW не отдаёт, поэтому старый SW бесконечно отдаёт свой precache. Ctrl+F5 не помогает (SW перехватывает fetch).
-- **Фикс (dev-only, prod PWA не тронут):** `lib/pwa-install.js` — `purgeStaleServiceWorkers({nav,cacheStore})`: снимает все SW-регистрации + чистит все Cache Storage. `main.jsx` — вызов ТОЛЬКО под `if (import.meta.env.DEV)`; если SW контролировал страницу → один `location.reload()` под sessionStorage-guard. +4 V77 `pwa-install.test.js`. Full Vitest 2497 pass / 1 skip / 0 fail.
-- **⚠ Bootstrap:** фикс в НОВОМ бандле, а браузер пока крутит СТАРЫЙ → нужно ОДИН раз выбить SW вручную, дальше V77 сам.
-
-**[x] V76 — Нет температуры отжига рядом с курсором при выделении фрагмента** (FIXED 15.05.2026).
-- **Запрос:** при выделении фрагмента в вьювере показывать рядом с курсором температуру отжига (Tm). Формула в v0.5.
-- **Решение (переиспользование v0.5-формулы + prop-driven SequenceView):** `calcTm` из `src/tm-calculator.js` (SantaLucia 1998 NN). `SequenceView/index.jsx` — opt-in prop `showSelectionTm` (default false). При активном DNA-выделении считает `calcTm(fullSeq.slice(lo,hi))` и рисует near-cursor тултип `Tm ≈ X°C · N bp`. `SequenceTab` pass-through; `PcrModeShell` включает `showSelectionTm`.
-- **Acceptance:** в PCR-вьювере выделил участок → рядом с курсором Tm + длина; нет выделения / aa-режим / off → тултипа нет. +4 V76 `selection-tm.test.jsx`. Full Vitest 2493 pass / 1 skip / 0 fail.
-
-**[x] V75 — Праймеры + фланкируемая область не видны на canvas-минимапе при выбранной PCR** (FIXED 15.05.2026).
-- **Запрос:** праймеры должны отражаться на минимапе; когда выбран PCR-оп — явно подсвечивать выбранные праймеры и какую область они фланкируют.
-- **Решение (prop-driven расширение, переиспользование binding-математики):** `selectors-pcr.js::selectPcrSpans(state, opId)` — та же math что в `adapters/pcr.js`. Возвращает `{flank:{start,end}, primers:[{start,end,direction,name}]}`. `MiniPlasmidMap.jsx` — opt props `primers=[]`, `flank=null`. `ContainerBlock.jsx` pass-through. `CanvasLayoutView.jsx` — props только на блок темплейта highlighted PCR-оп.
-- **Acceptance:** выбрал PCR → на блоке темплейта мини-карта показывает fwd/rev маркеры + flank-арку; не-PCR / не темплейт — без оверлея. +2/+4 V75 тестов. Full Vitest 2488 pass / 1 skip / 0 fail.
-
-**[x] V74 — Нет записи праймера через right-click меню SequenceView** (FIXED 15.05.2026).
-- **Запрос:** в существующее right-click меню добавить пункты выбора праймера.
-- **Решение (чистое расширение через `extraItems`):** `SequenceView/index.jsx` — consumer-gated prop `onWritePrimer`; в extraItems добавляются «Прямой праймер» / «Обратный праймер» при `typeof onWritePrimer === 'function'`. Library/Importer prop не передают. `SequenceTab.jsx` pass-through. `PcrModeShell.jsx` — `writePrimerForRange(direction,lo,hi)` core; hotkey-путь и `onWritePrimer` идут в один core.
-- **Acceptance:** right-click по выделению в PCR → «Прямой/Обратный праймер»; клик пишет нужную цепь. +2 V74 `pcr-mode-selection.test.jsx`. Full Vitest 2482 pass / 1 skip / 0 fail.
-
-**[x] V73 — executePCR игнорировал выбранные/написанные праймеры (op.params.userPrimers)** (FIXED 15.05.2026 — keystone).
-- **Симптом:** праймеры из вьювера (Ctrl+R → `op.params.userPrimers`) показывались, но при execute игнорировались.
-- **Корень:** `adapters/pcr.js` `executeSingleTemplatePCR` не читал `operation.params.userPrimers`.
-- **Фикс:** ветка перед auto-design — если `!primerPairId && userPrimers[0].forward && .reverse` → ампликон считается тем же bio-bridge (indexOf binding на темплейте, RC downstream от forward; tails не темплируются). `origin.userPrimers:true`. Приоритет: explicit primerPairId → userPrimers → autoDesign.
-- **Acceptance:** PCR с `userPrimers` даёт ампликон по выбранным праймерам. +2 V73 `skeleton-adapters-s2.test.jsx`. Full Vitest 2480 pass / 1 skip / 0 fail.
-
-**[x] V72 — Праймеры писались авто-по-выделению (без явной кнопки)** (FIXED 15.05.2026).
-- **Запрос:** Ctrl+R прямой / Ctrl+Alt+R обратный — только в открытом PCR viewer.
-- **Решение (decouple + per-strand hotkey, scoped via lifecycle):** `lib/hotkeys.js` — +2 entries `pcr-primer-forward` (Ctrl+R), `pcr-primer-reverse` (Ctrl+Alt+R). Scope `'global'`, viewer-scope через `useHotkey` lifecycle. RU-раскладка через `event.code` fallback. HotkeyCheatsheet auto-derives. `PcrModeShell.jsx` — `onSelectRangeFromView` теперь ТОЛЬКО трекает выделение; `writePrimerStrand(direction)` пишет ОДНУ цепь.
-- **Acceptance:** выделение само не пишет; Ctrl+R в viewer пишет forward, Ctrl+Alt+R reverse, повтор аккумулирует; вне viewer Ctrl+R = reload браузера. Full Vitest 2478 pass / 1 skip / 0 fail.
-
-**[x] V71 — PCR viewer = bespoke сущность вместо переиспользования Library sequence viewer** (FIXED 15.05.2026, spec-level — reverses DEC-CANVAS-PCR-05/06, добро Игоря явно).
-- **Запрос:** переиспользовать Library sequence viewer (SequenceView/SequenceTab) внутри PcrModeShell.
-- **Фикс:** `PcrModeShell.jsx` переписан: центр = `<SequenceTab>` (Library viewer). Bespoke `<pre>` template + `PrimerDragHandles` удалены. Header (level switcher), `PrimerSuggestionsPanel`, footer/OrderOligosConfirmGate сохранены. `operation-pcr-bridge.js` — `fwdBinding`/`revBinding` additive.
-- **Acceptance:** PCR-режим показывает Library SequenceView с шаблоном; выделение пишет user primers (source 'edited'); auto-designed pair виден; bespoke компоненты отсутствуют. Full Vitest 2474 pass / 1 skip / 0 fail.
-- **Открытый вопрос для Chat:** формализовать reversal DEC-CANVAS-PCR-05/06 + обновить F3 спеку — Code спеку не трогает.
-
-**[x] V70 — Клик по hover-иконке PCR не открывает viewer** (FIXED 15.05.2026).
-- **Симптом:** ожидаемый flow — клик по 🔬: (1) создаётся блок op, (2) вбивается темплейт, (3) сразу заходим в viewer. Фактически — только (1)+(2), биолог должен был руками double-click ромб.
-- **Фикс:** `createOperationDraft` принимает опциональный `id`. `CanvasLayoutView.onPickHoverOp` — pre-gen `opId = uuidv7()`, передаётся в `opAdd`, затем `actions.openEditorOpTab(opId)`.
-- **Acceptance:** hover filled-контейнер → клик 🔬 → активный operation-tab с PcrModeShell + темплейт. +1 V70 `pcr-mode.test.jsx` K7. Full Vitest 2472 pass / 1 skip / 1 pre-existing flake.
-
-**[x] V69 — PCR-операция из hover-иконки не подхватывает темплейт (PCROpPopup игнорирует op.inputs[0])** (FIXED 15.05.2026).
-- **Симптом:** клик 🔬 PCR создаёт op с `op.inputs=[fragmentId]`. Popup открывается с пустым template-`<select>`.
-- **Корень:** `PCROpPopup.jsx:22` инициализировал `templateId` ТОЛЬКО из `params.templateId`, игнорируя `operation.inputs[0]`.
-- **Фикс:** `inputTemplateId = operation.inputs?.[0]`; `templateId` init = `params.templateId || inputTemplateId || ''`. Тот же порядок резолва что в `adapters/pcr.js:25-27`.
-- **Acceptance:** PCR из hover-иконки открывается с уже выбранным темплейтом; explicit `params.templateId` по-прежнему приоритетнее. +2 V69 `skeleton-op-popup-k6.test.jsx`. Full Vitest 2471 pass / 1 skip / 0 fail.
-
-**[x] V68 — ContainerBlock: пропорции + MiniProjectCanvas visibility/labels** (FIXED 15.05.2026 приёмка F1-F4).
-- **Запрос (4 пункта):** (1) блок «более квадратным»; (2) название контейнера не должно перекрываться подписями feature-арок; (3) MiniProjectCanvas виден всегда; (4) подписи у маркеров MiniProjectCanvas.
-- **Фикс:** (1) `BLOCK_LINEAR_H` 110→150 (240×150). (2) Row1 (имя) — divider-band + Row2 overflow:hidden. MiniPlasmidMap height 62→90. (3) MiniProjectCanvas zIndex 2→40. (4) `<text>` подписи у маркеров (truncate 14 симв, halo).
-- **Acceptance:** блок ближе к квадрату; имя в своей полосе, никогда не перекрывается; mini-canvas всегда видна; у маркеров truncate-имена. +8 V68 тестов. Full Vitest 2469 pass / 1 skip / 0 fail.
-
-**[x] V67 — Соединительные линии op↔контейнер привязаны к центру, не к границе** (FIXED 15.05.2026 приёмка F1-F4).
-- **Симптом:** линии op→input / op→output / preview drag-to-connect входили в горизонтальный ЦЕНТР контейнера, а не в боковую ГРАНИЦУ.
-- **Фикс:** container endpoint X = `opCx >= (cPos.x+120) ? cPos.x + BLOCK_LINEAR_W : cPos.x` (facing edge). Применено в 3 местах. +1 V67 `skeleton-op-wires-a4.test.jsx`.
-
-**[x] V66 — На canvas-прямоугольнике контейнера нет подписей feature-арок** (FIXED 15.05.2026 приёмка F1-F4).
-- **Симптом:** в прямоугольнике контейнера на canvas (MiniPlasmidMap) feature-арки только с `<title>`, без видимых текстовых подписей.
-- **Фикс:** новый shared `src/lib/plasmid-label-utils.js` (`pickRegionsForLabels` + `truncateLabel`). `MiniPlasmidMap.jsx` — рендер `<text>` подписей (`mini-plasmid-label`), малый шрифт 6.5 + halo.
-- **Acceptance:** на canvas видны подписи; PlasmidMiniMap/Dag/overview без регрессий. +3 V66 тестов.
-
-**[x] V65 — Нет user-facing входа в канвас проекта + canvas не per-project** (FIXED 15.05.2026 приёмка F1-F4).
-- **Симптом:** (1) Из Library входа в canvas нет (только dev-кнопка sidebar StartScreen). (2) Состояние канваса персистилось в один глобальный blob, не привязано к проекту.
-- **Фикс:** (1) `skeleton-persistence.js` `stateKeyFor(projectId)`: `null` → legacy global key, projectId → `canvas-state-v1::<projectId>`. (2) `skeleton-context.jsx` читает `currentProjectId` из global store; rehydrate keyed by него; project-switch без snapshot → `RESET`. (3) Nav: sidebar StartScreen + LibraryTopBar — кнопка `📂 Открыть проект` → `pushFullscreen({fullscreen:'canvasSkeleton'})`.
-- **Acceptance:** из StartScreen sidebar И Library есть «Открыть проект»; проект A сохраняется отдельно от B. +3 V65 `skeleton-persistence-s3.test.jsx`. Full Vitest 2457 pass / 1 skip / 0 fail.
-
-**[x] V64 — На 2-м контейнере ghost id коллидировал (slice 8 chars uuid)** (FIXED 14.05.2026 bug-session).
-- **Корень:** `makeGhostPlaceholder` использовал `c-ghost-${uuidv7().slice(0, 8)}` — uuid'ы в одной мс начинаются с одних hex.
-- **Фикс:** полный `uuidv7()` без slice.
-
-**[x] V63 — Ghost respawn'ится рядом с filled (привязан); надо в углу** (FIXED 14.05.2026 bug-session).
-- **Фикс:** `GHOST_HOME_POSITION = {x:40, y:40}`. `ensureGhostPlaceholder` default'ит на home; filled уезжает на cascade-slot grid 5×N (260×100 шаг).
-- **Реверс (17.05):** см. ниже «реверс DEC-T3-08 + V61» — ghost auto-respawn отключён вообще.
-
-**[x] V62 — Ghost auto-respawn не работал runtime + drag по ghost открывал picker** (FIXED 14.05.2026 bug-session).
-- **Фикс:** (1) `skeleton-state.js` — FINALIZER на уровне main router'а: после любого action `ensureGhostPlaceholder`. (2) `CanvasLayoutView.jsx` — `justDraggedRef` флаг: `onPointerUp` ставит true когда `dragging.hasMoved`; `onPlaceholderClick` skip'ает picker если флаг true.
-- **Реверс (17.05):** ensureGhostPlaceholder отключён, но `justDraggedRef`-guard сохранён и расширен на op-drag (см. ниже «drag ромба → отпускание бросает в сиквенс-вивер»).
-
-**[x] V61 — Призрачный (ghost) контейнер + переделка picker** (FIXED 14.05.2026 → РЕВЕРС 17.05.2026).
-- **Изначальный запрос:** на canvas всегда РОВНО 1 ghost. При его клике — picker с 4 секциями. После выбора → fill → новый ghost появляется автоматически.
-- **Фикс 14.05:** `ensureGhostPlaceholder` финализатор + `makeGhostPlaceholder`. Стартовых placeholder'ов 1. `PlaceholderTreePicker.jsx` 4 секции (search + Из проекта + Коллекция + Другие проекты + Библиотека-link).
-- **Реверс 17.05 (по AskUserQuestion Игоря «Полностью из state»):** в составе canvas cleanup — `ensureGhostPlaceholder` финализатор **отключён** в `skeletonReducer`. Чистый старт без авто-госта. Picker работает по запросу через explicit «+ Сборка»/«+ Операция»/drag-drop. **DEC-T3-08 одновременно реверснут** (default zone «Сборка 1» не сидится). См. PROJECT_STATE «реверс DEC-T3-08/V61» 17.05.
-
-**[x] V59 — Пропала кнопка «+ Операция»** (FIXED 13.05.2026 bug-session).
-- **Симптом:** floating button «+ Операция» отсутствует на Graph view.
-- **Корень:** кнопка жила в `CanvasLayoutView.jsx`, а не в общем `CanvasArea`. При переключении на Graph view терялась.
-- **Фикс:** перенёс в `CanvasSkeleton/index.jsx::CanvasArea`. `position: absolute; bottom: 20; right: 24; zIndex: 30`. Cascade-offset по `state.operations.length`.
-
-**[x] V58 — Ромбы operation не двигаются по canvas** (FIXED 13.05.2026 bug-session).
-- **Корень:** `onPointerMove` обрабатывал только `dragging` для контейнеров.
-- **Фикс:** `dragging` state получил поле `kind: 'container' | 'operation'`, `onOperationPointerDown(e, opId)`, в `onPointerMove` switch → `actions.opSetPosition` для op-kind.
-- **Regression test:** 2 теста `skeleton-operation-node-k5.test.jsx` (`describe('V58 ...')`).
-
-**[x] V52 — Quick-add дублировал entry в активный проект без предупреждения** (FIXED 16.05.2026, bug-session; full Vitest 2640 pass / 1 skip / 0 fail).
-- **Симптом:** клик hover-revealed `+` на entry в чужом проекте добавлял копию в активный проект без проверки на дубликат.
-- **Фикс (инвариант в store):** `cloneEntryToActiveProject(entryId, opts={})` — fingerprint-скан перед клонированием (name + resourceHash/sequence). Дубликат → return `{ok:false, reason:'duplicate', existingId, name}` без клонирования. `opts.force` обходит. `TreeItemRow.onQuickAdd` → `window.confirm` («уже есть, добавить ещё одну копию?») → forced 2-я копия по Да.
-- **Acceptance:** первый quick-add — как раньше; повторный → confirm Да/Нет, по умолчанию (Нет/dismiss) не создаётся. +4/+1 V52 тестов. Full Vitest **2640 pass / 1 skip / 0 fail**.
-
----
-
-## Архивные FIXED записи
-
-Старшие FIXED (v0.5 legacy + v0.6/0.7/0.8.0-0.8.2 — Sprint M-B.2 + Parser-Unification 02–03.05.2026, V49 / V50, и т.д.) — в `docs/archive/BUGS_HISTORY.md`.
-
-v0.5 legacy баги — в `docs/archive/BUGS_v05.md` (последняя запись 28.04.2026: Sprint Catalog Polish + FIX cycle закрыл 11 import-related багов V35–V48).
+(пусто — фичи живут в `docs/ARCHITECTURE_v2.md` §7 Roadmap до момента, когда становятся конкретным дизайн-вопросом)

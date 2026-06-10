@@ -1,3 +1,5 @@
+> **Архивировано 27.05.2026 — консолидация docs/ (S4). РЕАЛИЗОВАНО / поглощено four-tier T-серией.** Operations slice, op-группы, реакции внутри зон. Учтено в `BACKLOG.md` §Канвас-и-окна.
+
 # SPRINT_M_CANVAS_OPS.md — Operations as ops on canvas
 
 > **Тип:** A (архитектура / wave-первый sprint).

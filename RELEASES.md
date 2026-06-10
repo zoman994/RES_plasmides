@@ -6,6 +6,46 @@
 
 ---
 
+## v0.8.4-alpha — partial-detection fixes + math/bio audit + v0.5-верстак cleanup (28–31.05.2026)
+
+**Контекст.** Пачка из трёх линий, без новой архитектуры. (1) Визуальная приёмка партиал-детекции выявила два класса дефектов (V134, V138) — починены. (2) Math/bio аудит живых алгомодулей (Code) — 6 фиксов корректности (V118–V126), 1 отзыв (V119), 1 отложен (V120). (3) Снос v0.5-верстака −404 КБ. Vitest 4094 pass / 17 skip / 0 fail; build clean.
+
+**Партиал-детекция (`feature-detection.js`, DEC-FDP-01):**
+- **V134** — неполный фрагмент фичи с правкой на стыке больше не дробится на два `_part_` и не теряет подпороговый клочок. X-drop seed-extend мостит замену-раны в один кусок; mergeCollinearPartials склеивает куски, разорванные мелким indel'ом (вставка ≥30 nt остаётся split).
+- **V138** — бокс CDS-фичи покрывает всю ДНК гена (краевые частичные кодоны), а не подрезается к кодонной сетке. nt-refine бокса `protein_partial` через `feat.sequence` (cap=2, strand-aware). AA-дорожка не тронута — уже транслирует только полные кодоны в верном кадре (V133).
+- Приняты визуально Игорем 31.05. Спека — `docs/SPEC_FEATURE_DETECTION_PARTIAL.md`.
+
+**Math/bio аудит (DEC-PRIMER-TAIL-01 + точечные):**
+- **V123/V124/V125** — системный дефект ориентации цепи в хвостах праймеров сборки (overlap / Gibson / OE-PCR / Golden Gate / RE-ligation) во всех ветках `overlapTail`: общий перекрывающийся дуплекс отсутствовал / Type IIS-сайт смотрел наружу / защитные основания внутри → сборка не собиралась / фермент не резал (тихий неверный результат в ядре дизайна сборок). Приведено к pydna-конвенции, тесты на биологию.
+- **V118** — `reverseComplement` терял IUPAC-коды → N; расширен до полной IUPAC-таблицы. **V122** — digest (linearize) больше не ломает straddling-аннотации (split на две дуги). **V126** — auto-annotate формула последнего кодона при длине не кратной 3.
+- **V119** отозван (не баг). **V120** (circular ORF wrap) отложен. **V121** (SapI cutOffset) — мёртвые метаданные. Канвасовый `primer-derive.js` те же фиксы НЕ получил → V130/V131 (open), ждут `SPEC_PRIMER_TAIL_UNIFICATION`.
+
+**Cleanup v0.5-верстака (−404 КБ):**
+- Снесены 44 недостижимых файла: `FragmentEditor/`, `ImportStartScreen/`, `flow/`, `MoleculeWorkspace/`, `Prototype/` + `{DesignCanvas, PartsPalette, PartsLibrary, PartBlock, AddFragmentModal, ModalStack}.jsx`. Граф достижимости от `main.jsx` + build clean + 4082 теста зелёные.
+- Компоненты `.jsx` (non-test) 242 → 206; prod-файлы 497 → 454; bundle precache 1769→1753 КиБ.
+- Остаток ~630 КБ недостижимого (97 ф) — разнесён в `BACKLOG.md` (forward-работа A; reserved wizards B до M-C.2) + `TECH_DEBT.md` (plasmid-git loss, category-C kill этап).
+- **Git-коммит (эти 44 удаления + math/bio + partial) — за Игорем в терминале** (на момент финализации рабочее дерево на диске, git из Filesystem не верифицируется).
+
+---
+
+### Common-фичи: раздел + промоут + master-detail + in-viewer editing (01–02.06.2026, Тип A)
+
+Раздел common-фич в библиотеке + промоут размеченной фичи из вивера в общую БД (детектится впредь, с дедуп-чеком) + master-detail просмотр/правка. Overlay над заводской `common-features.json` (read-only). 3 приёмочные пачки, все приняты визуально Игорем. Vitest 4094 → **4223 pass** / 17 skip / 0 fail; pytest 115; build clean. Спека → `docs/archive/SPEC_COMMON_FEATURES.md` (§1–§11).
+
+- **Overlay-стор** (DEC-CF-01/02/03) — Zustand-slice `commonFeatures` (`userFeatures` net-new + `overrides` по baseId) + Dexie-таблица. Миграция **v5→v6** аддитивная (реальный `DB_VERSION` — текст спеки «v10→v11» был ошибкой), исключена из `clearAll`. `getMergedFeatureDB` мёржит built-in+overlay; `detectCommonFeaturesAsync` зовёт его; merged-кэш инвалидируется на мутации.
+- **Decomp** (DEC-CF-08) — `feature-detection.js` 26.26 → **2.79 КБ**: engine → `lib/feature-match-core.js` (24.93). Дедуп `featureMatchesExisting` → отдельный `lib/feature-dedup.js` (впритык под hard 25). «Дедуп=детекция» сохранён (общие примитивы). 0 тестов детекции переписано (re-export).
+- **Промоут** (DEC-CF-04/05) — пункт «Добавить в common-фичи» под `matchedRegion` в **2 виверах** (Library-инспектор + ContainerEditor; Importer N/A — нет inline-вивера). Дедуп: protein-путь по протеину, non-CDS по ДНК ≥0.96 RC; коллизия имени → warning.
+- **Раздел** (DEC-CF-06/10) — узел «Common-фичи» в дереве + view-swap в `LibraryWorkspace` (НЕ окно, §17 R2). Master-detail: список + деталь (`LinearFeatureBar` + `SequenceView` + АА-дорожка) на синтез-фрагменте.
+- **Правка в вивере** (DEC-CF-12, Пачка 3) — деталь-`SequenceView` editable + caret через `useSequenceSelection`; правка через тот же applier `applySequenceEditToEntry`, что Library-редактор. Always-editable (lean-textarea §9-B убран). Name/type инлайн. Factory→override на первой правке (через `editCommonFeature`, стор немедленно + Dexie debounced 400мс). UI-строки English (DEC-CF-11, ⚓ DEC-MA2-01).
+
+**Коммиты:** decomp `0d916c6` · dedup `482a18e` · slice+Dexie v6 `505c353` · промоут `3c9f488` · раздел `7f39339` · отчёт `a6ca366` · Пачка 2 (master-detail+EN) `1df8d5f` · Пачка 3 (in-viewer) `d2297e2`.
+
+**Tech debt:** TD-SIZE-FEATURE-DETECTION закрыт decomp'ом. TD-SIZE-SEQUENCEVIEW-INDEX 48.24 → 49.71 (Active, pre-existing над hard 40, +promote-проводка). Новый Watch: `feature-match-core.js` 24.93 впритык под hard.
+
+**Post-mortem (3 итерации панели).** Спека дала разделу common-фич lean-список (§5/§9-B) — провалился дважды: Пачка 1 (нет верификации записи → master-detail, DEC-CF-10), Пачка 2 (lean-textarea для правки → editable-вивер, DEC-CF-12). Урок: для **разделов-курации** (биолог проверяет/чинит заводские записи) дефолт спеки — полный просмотр + правка как у обычных фрагментов, НЕ lean. Тот же класс, что CHAT_PLAYBOOK антипаттерн 9 (assumptions «X = display-only/lean» без проверки с биологом).
+
+---
+
 ## v0.8.3-alpha — Four-tier architecture (T1-T10 + T4.5) + canvas UX + primer redesign (16-18.05.2026)
 
 **Контекст.** Архитектурный поворот canvas-skeleton от draft/segment-based к four-tier модели (containers / pieces / operations / zones). 10 T-спринтов реализованы Code в continuous mode 16-18.05 на базе спек (`docs/SPRINT_T*.md`, ~360 KB) и якоря `docs/SPEC_M-CANVAS-FOUR-TIER-ARCHITECTURE.md`. Параллельно: canvas UX полировка (4-сторонние коннекторы, wheel-zoom-к-курсору, бесконечный канвас, hand-pan, стационарный zoom-индикатор), primer redesign (модал-от-выделения, кликабельность во всех 5 виверах, pentagon-arrow glyph), 3 биологических бага (V82-V84), LibrarySingleInspector декомпозиция, реверс ⚓ DEC-T3-08 + V61.
