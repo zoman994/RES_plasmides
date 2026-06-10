@@ -31,6 +31,13 @@ Thumbs.db
 
 *.dna
 
+# Uncurated personal dump — installers, scanned IDs, contracts, papers, data
+# blobs. Explicitly NOT a source of truth (CLAUDE.md); never commit to git.
+docs/design_assets/
+
+# Stray save-format export artifact at repo root
+/test.bodge
+
 # Local tooling (Claude Code worktrees, IDE settings)
 .claude/
 .vscode/
