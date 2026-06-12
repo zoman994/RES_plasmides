@@ -28,7 +28,7 @@ export const GG_ENZYMES = {
     spacer: 'A', notes: 'Для фрагментов содержащих BsaI и BpiI сайты.',
   },
   SapI: {
-    name: 'SapI', recognition: 'GCTCTTC', cutOffset: 4, overhangLength: 3,
+    name: 'SapI', recognition: 'GCTCTTC', cutOffset: 8, overhangLength: 3,
     temperature: 37, heatKill: 65, buffer: 'CutSmart', alias: null,
     spacer: '', notes: '3-нт овехенги. Меньше комбинаций, но проще.',
   },

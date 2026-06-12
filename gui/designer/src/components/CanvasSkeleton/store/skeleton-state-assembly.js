@@ -20,7 +20,8 @@ import {
 } from '../lib/assembly-model';
 import { reverseComplement } from '../../../sequence-utils';
 import { validateDraft, ASM_CAPS } from '../lib/assembly-invariants';
-import { buildAssemblyPrimer } from '../lib/assembly-primer-utils';
+import { buildAssemblyPrimer, detectCrossBoundary } from '../lib/assembly-primer-utils';
+import { resolveManualJunctionTail } from '../lib/primer-derive';
 import { routeAssemblyWriteToZone } from '../lib/zone-assembly-write-adapter';
 import { draftFromZone } from '../lib/zone-pieces-to-dag';
 
@@ -308,8 +309,24 @@ export function assemblyReducer(state, action) {
       const seq = computeAssemblySequence(d).sequence;
       const { boundaries } = segmentBoundaries(d);
       const direction = action.direction === 'reverse' ? 'reverse' : 'forward';
+      // TD-PRIMER-MANUAL-A1-PARITY: a manual primer across a GG/RE junction
+      // gets the method-specific tail (parity with the auto path), not a plain
+      // sequence-overlap. zone target only — the method lives in zone.junctions.
+      let tailOverride = null;
+      if (zone) {
+        const crosses = detectCrossBoundary({ start: lo, end: hi }, boundaries);
+        if (crosses.length === 2) {
+          tailOverride = resolveManualJunctionTail({
+            side: direction === 'reverse' ? 'rev' : 'fwd',
+            leftSegId: crosses[0],
+            rightSegId: crosses[1],
+            zoneJunctions: zone.junctions || {},
+            pieces: state.pieces || [],
+          });
+        }
+      }
       const built = buildAssemblyPrimer({
-        assemblySequence: seq, boundaries, range: { start: lo, end: hi }, direction,
+        assemblySequence: seq, boundaries, range: { start: lo, end: hi }, direction, tailOverride,
       });
       const map = { ...(state.assemblyDraftPrimers || {}) };
       const cur = map[action.draftId] || [];

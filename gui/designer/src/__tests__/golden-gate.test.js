@@ -4,6 +4,21 @@
 import { describe, it, expect } from 'vitest';
 import { reverseComplement, checkInternalSites, designOverhangs, resolveConflicts, suggestBestEnzyme, GG_ENZYMES } from '../golden-gate';
 
+describe('GG_ENZYMES cutOffset convention (V121)', () => {
+  it('every Type IIS enzyme cuts DOWNSTREAM of its recognition site (cutOffset > recognition.length)', () => {
+    for (const [key, enz] of Object.entries(GG_ENZYMES)) {
+      // Type IIS enzymes cut OUTSIDE their recognition site, so the top-strand
+      // cut offset (from the recognition start) must exceed the site length.
+      expect(enz.cutOffset, `${key} cutOffset must be > recognition length`)
+        .toBeGreaterThan(enz.recognition.length);
+    }
+  });
+
+  it('SapI GCTCTTC(1/4) → cutOffset 8 (7 nt recognition + 1 nt top spacer)', () => {
+    expect(GG_ENZYMES.SapI.cutOffset).toBe(8);
+  });
+});
+
 describe('reverseComplement', () => {
   it('computes correct RC', () => {
     expect(reverseComplement('ATGC')).toBe('GCAT');

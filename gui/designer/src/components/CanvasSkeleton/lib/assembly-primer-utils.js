@@ -66,7 +66,7 @@ export function gcPercent(seq) {
  * Returns the primer fields A3 adds (source/gc) on top of the A2 shape.
  */
 export function buildAssemblyPrimer({
-  assemblySequence, boundaries, range, direction, tailLen = 20,
+  assemblySequence, boundaries, range, direction, tailLen = 20, tailOverride = null,
 }) {
   const seq = String(assemblySequence || '');
   const lo = Math.max(0, Math.min(range.start, range.end));
@@ -92,11 +92,15 @@ export function buildAssemblyPrimer({
       tail = reverseComplement(tailSrc);
     }
     // Node A §A4 — `tail` is stored explicitly (5'→3'); sequence = tail+binding.
-    const sequence = tail + bindingSequence;
+    // TD-PRIMER-MANUAL-A1-PARITY: a GG/RE junction supplies a method-specific
+    // tail (buildOverlapTail, via resolveManualJunctionTail) that REPLACES the
+    // neighbour-overlap tail; overlap_pcr/gibson pass no override → unchanged.
+    const effTail = tailOverride != null ? tailOverride : tail;
+    const sequence = effTail + bindingSequence;
     return {
       sequence,
       bindingSequence,
-      tail,
+      tail: effTail,
       tm: calcTm(bindingSequence),
       gc: gcPercent(bindingSequence),
       source: {

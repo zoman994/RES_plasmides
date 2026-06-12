@@ -167,6 +167,31 @@ export function buildOverlapTail(side, neighbourSeq, opts = {}) {
   }
 }
 
+/**
+ * resolveManualJunctionTail — TD-PRIMER-MANUAL-A1-PARITY. For a MANUALLY-written
+ * junction primer spanning boundary leftSegId→rightSegId, returns the
+ * method-specific 5' tail (via the bio-verified `buildOverlapTail`) so a manual
+ * GG/RE primer matches the auto path instead of carrying a plain sequence-
+ * overlap (which won't ligate). Returns null for overlap_pcr / gibson / no
+ * junction — those keep `buildAssemblyPrimer`'s neighbour-overlap model (a
+ * different, already-correct model whose tail depends on the neighbour sequence).
+ * Overhang/reSite are sourced from the piece on the primer's side (fwd→left,
+ * rev→right), mirroring the auto path's logicalPrev/piece convention. Pure.
+ */
+export function resolveManualJunctionTail({
+  side, leftSegId, rightSegId, zoneJunctions = {}, pieces = [],
+}) {
+  const cfg = zoneJunctions[pairKeyFor(leftSegId, rightSegId)];
+  const method = cfg && cfg.method;
+  if (method !== 'golden_gate' && method !== 'restriction') return null;
+  const ohPiece = pieces.find((p) => p && p.id === (side === 'fwd' ? leftSegId : rightSegId)) || null;
+  return buildOverlapTail(side, '', {
+    method,
+    overhang: (ohPiece && ohPiece.ggOverhang) || 'AAAA',
+    reSite: (ohPiece && ohPiece.reSite) || '',
+  });
+}
+
 function buildFwdTail(logicalPrev, leftSnippetSeq, state, cfg) {
   // No logical-prev: only the accumulated snippet content (group starts with a
   // snippet ⇒ first amplifiable piece carries it on its tail).
