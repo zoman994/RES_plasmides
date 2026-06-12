@@ -22,6 +22,7 @@ import { segmentBoundaries, computeAssemblySequence } from '../../lib/assembly-m
 import { collectAssemblyAnnotations } from '../../lib/assembly-annotations';
 import AssemblyHeader from './AssemblyHeader';
 import AssemblySidebar from './AssemblySidebar';
+import AssemblySegmentBar from './AssemblySegmentBar';
 import SegmentList from './SegmentList';
 /* V94 — SegmentDetailPanel orphan'нут (inline-editor в SegmentList).
    Импорт сохранён закомментированным как pointer для cleanup-PR. */
@@ -547,6 +548,12 @@ export default function AssemblyShellBody({ draft, embedded = false }) {
                   {readiness.differs > 0 ? ` · ${readiness.differs} отличается от сборки` : ''}
                 </div>
               )}
+              {/* R1 «блок сборки сверху» — the assembled fragments as a
+                  prominent top plashka (coloured segments + clickable junction
+                  ромб), above the sequence string. Same coloredZones + the same
+                  onZoneClick contract SegmentZonesOverlay uses on the strip, so
+                  a segment click opens its detail and a ромб opens JunctionControl. */}
+              <AssemblySegmentBar coloredZones={coloredZones} onZoneClick={onZoneClick} />
               {!editable && disabledBannerMsg && (
                 <div
                   data-testid="assembly-edit-disabled-banner"

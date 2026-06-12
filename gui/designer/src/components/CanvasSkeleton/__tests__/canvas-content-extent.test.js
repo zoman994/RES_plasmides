@@ -11,8 +11,8 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
-  canvasContentExtent, contentBBox, fitZoomToContent,
-  BLOCK_LINEAR_W, BLOCK_LINEAR_H, OPERATION_NODE_H, EXTENT_MIN, ZOOM_MAX,
+  canvasContentExtent, contentBBox, fitZoomToContent, graphContentBBox,
+  BLOCK_LINEAR_W, BLOCK_LINEAR_H, OPERATION_NODE_W, OPERATION_NODE_H, EXTENT_MIN, ZOOM_MAX,
 } from '../canvas/canvas-layout';
 
 describe('canvasContentExtent', () => {
@@ -130,5 +130,37 @@ describe('fitZoomToContent — zoom + scroll to fit the bbox («под разм�
   it('returns null on no content or zero viewport', () => {
     expect(fitZoomToContent({ viewportW: 600, viewportH: 400, bbox: null })).toBeNull();
     expect(fitZoomToContent({ viewportW: 0, viewportH: 0, bbox })).toBeNull();
+  });
+});
+
+describe('graphContentBBox — footprint of the per-zone DAG (AssemblyDagView zoom)', () => {
+  // The DAG view lays its nodes out LOCALLY (computeGraphPositions, LR from 0,0),
+  // so canvasContentExtent (which reads state.positions) doesn't describe it.
+  // graphContentBBox returns the tight {width,height} of that local layout for
+  // the scroll spacer + fit-to-content.
+  const containers = [
+    { id: 'src', name: 'src', sequence: 'ATGC' },
+    { id: 'frag', name: 'frag', sequence: 'AAAA' },
+  ];
+  const operations = [{ id: 'op1', kind: 'pcr', inputs: ['src'], outputs: ['frag'] }];
+
+  it('returns a positive width/height covering the laid-out nodes', () => {
+    const b = graphContentBBox(containers, operations);
+    expect(b.width).toBeGreaterThan(0);
+    expect(b.height).toBeGreaterThan(0);
+    // a container (240 wide) + an op (120) on an LR rank must exceed a single block.
+    expect(b.width).toBeGreaterThanOrEqual(BLOCK_LINEAR_W);
+  });
+
+  it('reflects the real node footprints (≥ a block tall, ≥ an op wide)', () => {
+    const b = graphContentBBox(containers, operations);
+    expect(b.height).toBeGreaterThanOrEqual(Math.min(BLOCK_LINEAR_H, OPERATION_NODE_H));
+    expect(b.width).toBeGreaterThanOrEqual(OPERATION_NODE_W);
+  });
+
+  it('empty graph → {0,0}; defensive against missing args', () => {
+    expect(graphContentBBox([], [])).toEqual({ width: 0, height: 0 });
+    expect(() => graphContentBBox()).not.toThrow();
+    expect(graphContentBBox()).toEqual({ width: 0, height: 0 });
   });
 });

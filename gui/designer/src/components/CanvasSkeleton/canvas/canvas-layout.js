@@ -530,6 +530,28 @@ export function contentBBox(state) {
 }
 
 /**
+ * graphContentBBox — tight {width,height} of a per-zone DAG laid out by
+ * `computeGraphPositions` (LR from 0,0), i.e. the footprint of the rendered
+ * `ZoneGraphContent` BEFORE its 800×600 floor. The DAG view (AssemblyDagView)
+ * has its OWN local layout, so `canvasContentExtent`/`contentBBox` — which read
+ * `state.positions` — don't describe it; this drives that view's scroll spacer
+ * and fit-to-content («под размер сборки» in the DAG tab). Pure; {0,0} on empty.
+ */
+export function graphContentBBox(containers = [], operations = []) {
+  const { nodes } = buildGraphNodesEdges(containers, [], operations);
+  if (nodes.length === 0) return { width: 0, height: 0 };
+  const positions = computeGraphPositions(containers, [], operations);
+  let maxX = 0;
+  let maxY = 0;
+  for (const n of nodes) {
+    const p = positions[n.id] || { x: 0, y: 0 };
+    maxX = Math.max(maxX, (p.x || 0) + (n.width || 0));
+    maxY = Math.max(maxY, (p.y || 0) + (n.height || 0));
+  }
+  return { width: maxX, height: maxY };
+}
+
+/**
  * fitZoomToContent — zoom + scroll so the content bbox fills the viewport with
  * a margin, centred, clamped to the zoom rails («масштабировать окно под размер
  * сборки», Игорь 11.06). Returns null when there is no content or no viewport.
