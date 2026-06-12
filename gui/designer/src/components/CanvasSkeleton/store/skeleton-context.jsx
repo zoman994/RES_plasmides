@@ -102,6 +102,9 @@ export function SkeletonProvider({ children }) {
     openEditorViewOnly: (containerId) => dispatch({ type: 'OPEN_EDITOR_VIEW_ONLY', containerId }),
     closeEditor: () => dispatch({ type: 'CLOSE_EDITOR' }),
     setHighlight: (containerId) => dispatch({ type: 'SET_HIGHLIGHT', containerId }),
+    // M-WORKSPACE — two-level assembly-tab workspace.
+    setActiveAssembly: (zoneId) => dispatch({ type: 'SET_ACTIVE_ASSEMBLY', zoneId }),
+    setAssemblyView: (zoneId, view) => dispatch({ type: 'SET_ASSEMBLY_VIEW', zoneId, view }),
     setSelection: (tabKey, selection) => dispatch({ type: 'SET_SELECTION', tabKey, selection }),
     // Legacy V1 commit pathway — kept until K9 retires it via OP_EXECUTE.
     commitOperation: (payload) => dispatch({ type: 'COMMIT_OPERATION', payload }),

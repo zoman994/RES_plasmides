@@ -18,14 +18,14 @@ import CanvasSkeleton from '../index';
 const origConfirm = window.confirm;
 afterEach(() => { cleanup(); window.confirm = origConfirm; });
 
-const zoneFrames = () => document.querySelectorAll('[data-testid^="zone-frame-"]');
+// M-WORKSPACE — assemblies are top tabs (data-testid assembly-tab-zn-…), not
+// floating zone frames. Count the tabs to detect zones.
+const assemblyTabs = () => document.querySelectorAll('[data-testid^="assembly-tab-zn"]');
 
 function seedZone() {
-  // PC-K6: «📋 Сборки (N)» toggle is now hidden when zones=0, so we
-  // create the first zone via the «+ Сборка» floating button instead
-  // of the panel-internal «+ Новая сборка». Both dispatch CREATE_ZONE +
-  // openEditorAssemblyTab through buildAssemblyZoneAction.
-  act(() => { fireEvent.click(screen.getByTestId('skeleton-add-assembly')); });
+  // First zone via the workspace empty-state «+ Сборка» (CREATE_ZONE +
+  // setActiveAssembly through buildAssemblyZoneAction).
+  act(() => { fireEvent.click(screen.getByTestId('assembly-workspace-create')); });
 }
 
 describe('Clear canvas — gated RESET', () => {
@@ -37,21 +37,21 @@ describe('Clear canvas — gated RESET', () => {
   it('confirm → true wipes canvas content (created zone removed)', () => {
     render(<CanvasSkeleton />);
     seedZone();
-    expect(zoneFrames().length).toBeGreaterThan(0);
+    expect(assemblyTabs().length).toBeGreaterThan(0);
 
     window.confirm = () => true;
     act(() => { fireEvent.click(screen.getByTestId('skeleton-clear-canvas')); });
-    expect(zoneFrames().length).toBe(0); // cleared (RESET → zones [])
+    expect(assemblyTabs().length).toBe(0); // cleared (RESET → zones [])
   });
 
   it('confirm → false keeps everything (destructive gate respected)', () => {
     render(<CanvasSkeleton />);
     seedZone();
-    const before = zoneFrames().length;
+    const before = assemblyTabs().length;
     expect(before).toBeGreaterThan(0);
 
     window.confirm = () => false;
     act(() => { fireEvent.click(screen.getByTestId('skeleton-clear-canvas')); });
-    expect(zoneFrames().length).toBe(before); // untouched
+    expect(assemblyTabs().length).toBe(before); // untouched
   });
 });

@@ -39,6 +39,7 @@ import { SkeletonProvider, useSkeletonState, useSkeletonActions } from './store/
 import SkeletonHeader from './SkeletonHeader';
 import CanvasLayoutView from './canvas/CanvasLayoutView';
 import CanvasGraphView from './canvas/CanvasGraphView';
+import ProjectAssemblyWorkspace from './workspace/ProjectAssemblyWorkspace';
 import { nodeRect, gatherObstacleRects, resolveNodeOverlap } from './canvas/canvas-layout';
 import EditorWindowShell from './editor/EditorWindowShell';
 import OpKindPicker from './canvas/operations/OpKindPicker';
@@ -200,7 +201,10 @@ function CanvasArea() {
         position: 'relative',
       }}
     >
-      {state.view === 'layout' ? <CanvasLayoutView /> : <CanvasGraphView />}
+      {/* M-WORKSPACE — two-level assembly-tab workspace replaces the floating
+          ZoneFrame canvas (CanvasLayoutView/CanvasGraphView retired from the
+          project view; container/op editing stays as the EditorOverlay below). */}
+      <ProjectAssemblyWorkspace />
       {/* AE-K9 (SPEC_ASSEMBLY_EDITOR_CLEANUP §7.1): standalone «+
           Операция» button удалён. Operations create only inside the
           assembly editor via 🔗 Сшить → OpGroupPicker. Mental model:
@@ -214,37 +218,6 @@ function CanvasArea() {
           цветные сегменты + drag-insert фрагментов). Без open-шага
           окно сборки было недостижимо. Тот же путь — «+ Новая сборка»
           в AssemblyDraftsPanel. */}
-      <button
-        type="button"
-        data-testid="skeleton-add-assembly"
-        onClick={() => {
-          const a = buildAssemblyZoneAction(state);
-          actions.zoneDispatch(a);
-          actions.openEditorAssemblyTab(a.zone.id);
-        }}
-        title="Создать сборку и открыть редактор"
-        style={{
-          position: 'absolute',
-          bottom: 64,
-          right: 24,
-          zIndex: 30,
-          padding: '10px 16px',
-          background: 'var(--surface-1)',
-          color: 'var(--accent-500, #b85c3e)',
-          border: '1px solid var(--accent-500, #b85c3e)',
-          borderRadius: 999,
-          fontSize: 13,
-          fontWeight: 600,
-          cursor: 'pointer',
-          boxShadow: '0 4px 12px rgba(28,25,23,0.12)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-        }}
-      >
-        <span style={{ fontSize: 16, lineHeight: 1 }}>+</span>
-        <span>Сборка</span>
-      </button>
       {/* Очистить канвас — destructive, gated confirm (Игорь
           17.05.2026). RESET → пустой buildInitialState. Ghost-стиль,
           ниже по визуальному весу чем +действия; bottom:152 — следующий
@@ -296,7 +269,6 @@ function CanvasArea() {
           onCancel={() => setOpenPicker(null)}
         />
       )}
-      <AssemblyDraftsPanel />
       <OpSuggestions />
       <LineagePanel />
       <CodonStatsPanel />

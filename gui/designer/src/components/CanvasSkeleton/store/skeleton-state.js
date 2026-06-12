@@ -81,6 +81,11 @@ export function buildInitialState(opts = {}) {
     // `toasts` — accumulating queue, flushed by ToastBridge.
     toasts: [],
     primers: SKELETON_PRIMERS.slice(),
+    // M-WORKSPACE — two-level assembly-tab workspace (replaces floating zone
+    // frames). activeAssemblyId = focused top tab (a zone id); assemblyViewByZone
+    // = per-assembly active view tab. Additive → old snapshots rehydrate fine.
+    activeAssemblyId: null,
+    assemblyViewByZone: {},
     // Composed sub-slices
     ...buildInitialCanvasState(),
     ...buildInitialOperationsState(),
@@ -107,6 +112,9 @@ function stampToast(toast) {
   };
 }
 
+// M-WORKSPACE — the per-assembly view tabs (second level).
+const ASSEMBLY_VIEW_KINDS = new Set(['sequence', 'dag', 'primers', 'pipeline']);
+
 export function skeletonReducer(state, action) {
   let next;
   // Base actions resolved first; они set `next` и break чтобы дойти
@@ -114,6 +122,19 @@ export function skeletonReducer(state, action) {
   switch (action.type) {
     case 'SET_VIEW':
       next = { ...state, view: action.view };
+      break;
+    // M-WORKSPACE — two-level tabs. SET_ACTIVE_ASSEMBLY = focus a top (assembly)
+    // tab; SET_ASSEMBLY_VIEW = pick the per-assembly view tab (validated set).
+    case 'SET_ACTIVE_ASSEMBLY':
+      next = state.activeAssemblyId === (action.zoneId || null)
+        ? state : { ...state, activeAssemblyId: action.zoneId || null };
+      break;
+    case 'SET_ASSEMBLY_VIEW':
+      if (!action.zoneId || !ASSEMBLY_VIEW_KINDS.has(action.view)) { next = state; break; }
+      next = {
+        ...state,
+        assemblyViewByZone: { ...(state.assemblyViewByZone || {}), [action.zoneId]: action.view },
+      };
       break;
     case 'SET_HIGHLIGHT':
       next = { ...state, highlightedContainerId: action.containerId };

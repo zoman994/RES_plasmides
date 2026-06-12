@@ -37,21 +37,10 @@ beforeEach(() => {
 });
 
 describe('Node B §6 — library-entry click routes into an assembly zone', () => {
-  it('no focused zone → creates a zone + opens the editor; NO loose container node', async () => {
-    const e = mkEntry('lib-nb', 'nbplasmid', 'ATGCATGCATGCATGC');
-    act(() => {
-      useStore.setState((s) => ({
-        ...s, libraryEntries: { ...(s.libraryEntries || {}), [e.id]: e },
-      }));
-    });
-    render(<CanvasSkeleton />);
-    fireEvent.focus(screen.getByTestId('canvas-library-search-bar-input'));
-    fireEvent.click(screen.getByTestId('canvas-library-search-bar-section-loose-item-lib-nb'));
-    await act(async () => { await new Promise((r) => { setTimeout(r, 0); }); });
-
-    // §5 — the loose-container node paradigm is gone: no block-wrap on canvas.
-    expect(screen.queryByTestId(/^skeleton-block-wrap-/)).toBeNull();
-    // §6 — clicking a molecule opened the assembly editor (zone created).
-    expect(screen.queryByTestId('editor-window-shell')).toBeTruthy();
-  });
+  // RETIRED by M-WORKSPACE — the canvas-top LibrarySearchBar lived in
+  // CanvasLayoutView, which is no longer mounted in the project view. Adding a
+  // library molecule to an assembly now goes through the Sequence view tab's
+  // inline picker (AssemblyShellBody empty-state / «+ Сегмент»). A workspace-
+  // level quick-add search is a possible later re-add.
+  it.skip('no focused zone → creates a zone + opens the editor — retired', () => {});
 });

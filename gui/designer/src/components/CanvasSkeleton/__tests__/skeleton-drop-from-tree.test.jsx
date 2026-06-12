@@ -144,29 +144,8 @@ describe('ADD_CONTAINER_FROM_ENTRY reducer', () => {
 });
 
 describe('CanvasGraphView — drop handler integration', () => {
-  it('drop on Graph canvas creates new container', () => {
-    const entry = sampleEntry('lib-graph-drop', 'graph-import', 'ATGC');
-    act(() => {
-      useStore.setState((s) => ({
-        ...s,
-        libraryEntries: { ...(s.libraryEntries || {}), [entry.id]: entry },
-      }));
-    });
-
-    render(<CanvasSkeleton />);
-    fireEvent.click(screen.getByTestId('skeleton-view-toggle-graph'));
-    const canvas = screen.getByTestId('skeleton-canvas-graph');
-
-    fireEvent.drop(canvas, {
-      dataTransfer: {
-        types: ['application/x-bodge-entry-id'],
-        getData: (t) => (t === 'application/x-bodge-entry-id' ? entry.id : ''),
-      },
-      clientX: 300,
-      clientY: 250,
-    });
-
-    // Scope to canvas — Library tree shows the entry name too.
-    expect(within(canvas).getByText('graph-import')).toBeTruthy();
-  });
+  // RETIRED by M-WORKSPACE — CanvasGraphView is no longer mounted in the project
+  // view (replaced by the per-assembly DAG tab). The ADD_CONTAINER_FROM_ENTRY
+  // reducer + containerFromLibraryEntry helper paths are covered above.
+  it.skip('drop on Graph canvas creates new container — retired', () => {});
 });

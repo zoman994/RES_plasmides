@@ -69,30 +69,8 @@ export default function SkeletonHeader() {
       </span>
 
       <RestrictionHeaderToggle />
-
-      <div
-        data-testid="skeleton-view-toggle"
-        role="tablist"
-        style={{
-          marginLeft: 8,
-          display: 'flex',
-          gap: 0,
-          border: '1px solid var(--border-subtle)',
-          borderRadius: 6,
-          overflow: 'hidden',
-        }}
-      >
-        <ToggleBtn
-          testId="skeleton-view-toggle-layout"
-          active={state.view === 'layout'}
-          onClick={() => actions.setView('layout')}
-        >{s.viewLayout || 'Layout'}</ToggleBtn>
-        <ToggleBtn
-          testId="skeleton-view-toggle-graph"
-          active={state.view === 'graph'}
-          onClick={() => actions.setView('graph')}
-        >{s.viewGraph || 'Graph'}</ToggleBtn>
-      </div>
+      {/* M-WORKSPACE — the Layout/Graph view toggle is retired: each assembly
+          now owns its own DAG view tab in the two-level workspace. */}
     </header>
   );
 }

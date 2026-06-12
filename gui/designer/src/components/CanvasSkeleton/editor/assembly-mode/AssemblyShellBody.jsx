@@ -69,7 +69,7 @@ function segLabel(seg, idx) {
   return `Сегмент ${idx + 1}`;
 }
 
-export default function AssemblyShellBody({ draft }) {
+export default function AssemblyShellBody({ draft, embedded = false }) {
   const state = useSkeletonState();
   const actions = useSkeletonActions();
   // Global library (unified picker source) — same shape EmptyAssemblyLibrary
@@ -469,7 +469,10 @@ export default function AssemblyShellBody({ draft }) {
            Сохраняет state, just closes the editor and flips the zone
            viewMode to 'sequence'. Re-entry through «🧬 Открыть сборку»
            on the zone frame opens the editor again. */
-        onToggleSequenceView={() => {
+        /* M-WORKSPACE — when embedded as the Sequence view tab there is no
+           overlay to collapse and viewMode no longer drives the body, so the
+           collapse button is suppressed (undefined → AssemblyHeader hides it). */
+        onToggleSequenceView={embedded ? undefined : () => {
           if (typeof actions.zoneDispatch === 'function') {
             actions.zoneDispatch({
               type: 'SET_ZONE_VIEW_MODE', zoneId: draftId, viewMode: 'sequence',

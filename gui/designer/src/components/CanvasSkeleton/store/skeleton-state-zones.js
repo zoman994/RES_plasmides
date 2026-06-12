@@ -124,12 +124,17 @@ export function zonesReducer(state, action) {
     case 'REMOVE_ZONE': {
       if (!zones.some((z) => z.id === action.zoneId)) return state;
       const cleared = reassignNodes(state, (n) => n.zoneId === action.zoneId, null);
+      const remaining = zones.filter((z) => z.id !== action.zoneId);
       return {
         ...state,
         ...cleared,
-        zones: zones.filter((z) => z.id !== action.zoneId),
+        zones: remaining,
         // R-T7-7 — drop stale focus on the removed zone.
         focusedZoneId: state.focusedZoneId === action.zoneId ? null : state.focusedZoneId,
+        // M-WORKSPACE — the removed zone was the active top tab → fall back to
+        // the first remaining assembly (or null).
+        activeAssemblyId: state.activeAssemblyId === action.zoneId
+          ? (remaining[0] ? remaining[0].id : null) : state.activeAssemblyId,
         toast: { kind: 'info', message: Z.removeWarning },
       };
     }

@@ -17,13 +17,11 @@ describe('K1 — CanvasSkeleton mount', () => {
     expect(screen.getByTestId('canvas-skeleton')).toBeTruthy();
   });
 
-  it('renders header with «← Назад» + Layout/Graph toggle', () => {
+  it('renders header with «← Назад»; the Layout/Graph toggle is retired (M-WORKSPACE)', () => {
     render(<CanvasSkeleton />);
     expect(screen.getByTestId('skeleton-header')).toBeTruthy();
     expect(screen.getByTestId('skeleton-back-btn')).toBeTruthy();
-    expect(screen.getByTestId('skeleton-view-toggle')).toBeTruthy();
-    expect(screen.getByTestId('skeleton-view-toggle-layout')).toBeTruthy();
-    expect(screen.getByTestId('skeleton-view-toggle-graph')).toBeTruthy();
+    expect(screen.queryByTestId('skeleton-view-toggle')).toBeNull();
   });
 
   it('PC-K1: LibraryTreeHost no longer mounted (replaced by top search bar — PC-K2)', () => {
@@ -32,10 +30,11 @@ describe('K1 — CanvasSkeleton mount', () => {
     expect(screen.queryByTestId('library-tree-root')).toBeNull();
   });
 
-  it('renders Canvas area (Layout view default)', () => {
+  it('renders the two-level assembly-tab workspace in the canvas area (M-WORKSPACE)', () => {
     render(<CanvasSkeleton />);
     expect(screen.getByTestId('skeleton-canvas-area')).toBeTruthy();
-    expect(screen.getByTestId('skeleton-canvas-layout')).toBeTruthy();
+    expect(screen.getByTestId('project-assembly-workspace')).toBeTruthy();
+    expect(screen.queryByTestId('skeleton-canvas-layout')).toBeNull();
   });
 
   it('editor closed by default', () => {

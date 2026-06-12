@@ -12,23 +12,14 @@ import CanvasSkeleton from '../index';
 
 afterEach(cleanup);
 
-describe('Canvas Graph view — V2 placeholder fixture', () => {
-  it('toggle to Graph view shows 0 operation nodes (no commits в fixture)', () => {
+// M-WORKSPACE retired the global Layout/Graph toggle + CanvasGraphView/
+// CanvasLayoutView from the project view: each assembly now owns its own DAG
+// view tab inside the two-level workspace.
+describe('Canvas Graph view — retired by M-WORKSPACE', () => {
+  it('no global Layout/Graph toggle; the project mounts the assembly-tab workspace', () => {
     render(<CanvasSkeleton />);
-    fireEvent.click(screen.getByTestId('skeleton-view-toggle-graph'));
-    expect(screen.getByTestId('skeleton-canvas-graph')).toBeTruthy();
-    const ops = screen.queryAllByTestId(/^skeleton-op-node-/);
-    expect(ops.length).toBe(0);
-  });
-
-  it.skip('graph view renders the ghost placeholder container — LEGACY (AE-K9.6 ghost block removed, spec §7.6)', () => {});
-
-  it('toggle back to Layout removes graph view', () => {
-    render(<CanvasSkeleton />);
-    fireEvent.click(screen.getByTestId('skeleton-view-toggle-graph'));
-    expect(screen.queryByTestId('skeleton-canvas-layout')).toBeNull();
-    fireEvent.click(screen.getByTestId('skeleton-view-toggle-layout'));
-    expect(screen.getByTestId('skeleton-canvas-layout')).toBeTruthy();
+    expect(screen.queryByTestId('skeleton-view-toggle-graph')).toBeNull();
     expect(screen.queryByTestId('skeleton-canvas-graph')).toBeNull();
+    expect(screen.getByTestId('project-assembly-workspace')).toBeTruthy();
   });
 });

@@ -11,7 +11,7 @@
 import AssemblyShellBody from './AssemblyShellBody';
 import { useAssemblyTarget } from '../../store/skeleton-context';
 
-export default function AssemblyModeShell({ draftId }) {
+export default function AssemblyModeShell({ draftId, embedded = false }) {
   // T6 K7 — `draftId` is now a target id: a zone id resolves to a
   // pieces-shaped draft-like (zoneMode); a legacy assemblyDrafts id
   // still resolves during the transition window (R-T6-4).
@@ -38,5 +38,5 @@ export default function AssemblyModeShell({ draftId }) {
     );
   }
 
-  return <AssemblyShellBody draft={draft} zoneMode={zoneMode} />;
+  return <AssemblyShellBody draft={draft} zoneMode={zoneMode} embedded={embedded} />;
 }
