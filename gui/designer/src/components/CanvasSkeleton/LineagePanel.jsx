@@ -68,15 +68,22 @@ export default function LineagePanel() {
       data-testid="skeleton-lineage-panel"
       style={{
         position: 'absolute',
-        bottom: 20,
-        left: 24,
+        // V144 (Игорь 12.06): in the two-level workspace the CanvasArea is fully
+        // filled by the active assembly view, so the old bottom-left pin covered
+        // the SegmentList «Источник» footer + the «+ Сегмент» / «Codon stats»
+        // toolbar. Move to the top-right (over the empty tab-strip / header
+        // gutter) and make it pointer-events:none — a purely informational
+        // provenance chip that never obscures or blocks the editing surface.
+        top: 12,
+        right: 12,
         zIndex: 25,
+        pointerEvents: 'none',
         background: 'var(--surface-1, #fff)',
         border: '1px solid var(--border-default, #d6d3d1)',
         borderRadius: 8,
         boxShadow: '0 4px 12px rgba(0,0,0,0.12)',
         padding: '8px 12px',
-        maxWidth: 280,
+        maxWidth: 260,
         fontSize: 11.5,
         color: 'var(--text-primary)',
       }}

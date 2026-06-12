@@ -161,7 +161,7 @@ describe('SequenceView — Del on a selected primer deletes the primer, not the 
     expect(ids).toEqual(['asmprm-1', 'asmprm-2']);
   });
 
-  it('selecting a primer hides the caret; deselecting restores it', () => {
+  it('selecting a primer hides the caret; deselecting restores it (read-only viewer)', () => {
     render(
       <SequenceView
         fragments={[FRAGMENT]}
@@ -176,5 +176,26 @@ describe('SequenceView — Del on a selected primer deletes the primer, not the 
     expect(screen.queryByTestId('sequence-view-caret')).toBeNull(); // hidden while selected
     fireEvent.click(screen.getByTestId('sequence-view-primer')); // toggle off
     expect(screen.queryByTestId('sequence-view-caret')).toBeTruthy(); // restored
+  });
+
+  // V143 (Игорь 12.06, screenshot) — in an EDITABLE view (the assembly editor),
+  // the caret must stay visible even with a primer selected: you're typing into
+  // the sequence, so «курсор исчезает» reads as broken. Del still targets the
+  // primer (the keydown guard keys off selectedPrimers, not the caret), so the
+  // read-only hide-on-select behaviour above is unchanged — only editable flips.
+  it('editable view: the caret stays visible even with a primer selected (V143)', () => {
+    render(
+      <SequenceView
+        fragments={[FRAGMENT]}
+        caretPos={50}
+        caretAnchor={50}
+        primers={[PRIMER1]}
+        onDeletePrimer={vi.fn()}
+        editable
+      />,
+    );
+    expect(screen.queryByTestId('sequence-view-caret')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('sequence-view-primer'));
+    expect(screen.queryByTestId('sequence-view-caret')).toBeTruthy(); // still visible — editing
   });
 });

@@ -1074,7 +1074,12 @@ const SequenceView = forwardRef(function SequenceView({
         layoutEpoch={layoutEpoch}
         // Caret gives way while a primer is selected — Del then targets the
         // primer, and a blinking caret over a selected primer reads wrong.
-        hidden={selectedPrimers.length > 0}
+        // V143 (Игорь 12.06): ONLY in a read-only viewer. In an EDITABLE view
+        // (the assembly editor) the user is typing into the sequence, so the
+        // caret must stay visible even with a primer selected («курсор исчезает»
+        // otherwise). Del still targets the primer — its keydown guard keys off
+        // selectedPrimers, not the caret — so deletion is unaffected.
+        hidden={!editable && selectedPrimers.length > 0}
       />
       <OriginMarkerOverlay
         circular={circular}
