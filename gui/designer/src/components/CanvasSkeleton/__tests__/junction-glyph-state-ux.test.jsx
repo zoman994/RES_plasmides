@@ -56,7 +56,7 @@ describe('UX slice 1 — strip glyph reflects the trust state', () => {
   it('decided junction → state, a filled diamond, and a "выбран" hover title', () => {
     const g = renderStrip({ method: 'overlap_pcr', autoMode: 'manual' });
     expect(g.getAttribute('data-junction-state')).toBe('decided');
-    const diamond = g.querySelector('span');
+    const diamond = g.querySelector('[data-testid="junction-diamond"]');
     expect(diamond.style.background).toBeTruthy();
     expect(diamond.style.background).not.toBe('transparent');
     expect(g.getAttribute('title')).toMatch(/выбран/i);
@@ -65,7 +65,18 @@ describe('UX slice 1 — strip glyph reflects the trust state', () => {
   it('tentative junction → state, a hollow (transparent) diamond, and a "по умолчанию" title', () => {
     const g = renderStrip({ method: 'overlap_pcr' });
     expect(g.getAttribute('data-junction-state')).toBe('tentative');
-    expect(g.querySelector('span').style.background).toBe('transparent');
+    expect(g.querySelector('[data-testid="junction-diamond"]').style.background).toBe('transparent');
     expect(g.getAttribute('title')).toMatch(/умолчан/i);
+  });
+
+  // V145 (Игорь 12.06) — the seam glyph must READ as clickable: a round
+  // button «plate» (.bg-junction-chip) inside a .bg-junction-btn so it lifts
+  // on hover and a biologist sees it's tappable, not decoration.
+  it('the glyph is a clickable button with a round affordance plate', () => {
+    const g = renderStrip({ method: 'overlap_pcr' });
+    expect(g.classList.contains('bg-junction-btn')).toBe(true);
+    const chip = g.querySelector('.bg-junction-chip');
+    expect(chip).toBeTruthy();
+    expect(chip.querySelector('[data-testid="junction-diamond"]')).toBeTruthy();
   });
 });

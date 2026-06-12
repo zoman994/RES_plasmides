@@ -81,9 +81,21 @@ describe('AssemblySegmentBar — segments + clickable junction diamonds', () => 
     expect(d2.getAttribute('data-junction-state')).toBe('tentative');
     expect(d1.getAttribute('data-junction-kind')).toBe('overlap');
     // decided → filled glyph; tentative → transparent (hollow) glyph.
-    const glyph = (btn) => btn.querySelector('span[aria-hidden]');
+    const glyph = (btn) => btn.querySelector('[data-testid="junction-diamond"]');
     expect(glyph(d1).style.background).not.toBe('transparent');
     expect(glyph(d2).style.background).toBe('transparent');
+  });
+
+  // V145 — each junction reads as a clickable button (round affordance plate
+  // that lifts on hover), not a decorative marker.
+  it('each junction is a clickable button with a round affordance plate', () => {
+    render(<AssemblySegmentBar coloredZones={ENRICHED} onZoneClick={() => {}} />);
+    for (const d of screen.getAllByTestId('assembly-junction')) {
+      expect(d.classList.contains('bg-junction-btn')).toBe(true);
+      const chip = d.querySelector('.bg-junction-chip');
+      expect(chip).toBeTruthy();
+      expect(chip.querySelector('[data-testid="junction-diamond"]')).toBeTruthy();
+    }
   });
 
   it('clicking a junction calls onZoneClick with the descriptor + click coords', () => {

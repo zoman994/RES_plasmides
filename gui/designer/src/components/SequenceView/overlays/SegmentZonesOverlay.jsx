@@ -256,22 +256,23 @@ export default function SegmentZonesOverlay({
           <button
             key={`junc:${j.key}`}
             type="button"
+            className="bg-junction-btn"
             data-testid="sequence-view-junction"
             data-pair-key={j.junction.pairKey}
             data-junction-kind={j.junction.kind}
             data-method={j.junction.method}
             data-junction-state={j.junction.state}
             data-junction-differs={differs ? 'true' : 'false'}
-            title={`Стык: ${j.junction.method} · ${decided ? 'выбран' : 'по умолчанию'}${differs ? ' · отличается от сборки' : ''}`}
+            title={`Стык: ${j.junction.method} · ${decided ? 'выбран' : 'по умолчанию'}${differs ? ' · отличается от сборки' : ''} — нажмите, чтобы настроить`}
             onClick={(e) => onZoneClick && onZoneClick({
               ...j.junction, clientX: e.clientX, clientY: e.clientY,
             })}
             style={{
               position: 'absolute',
-              left: j.left - 6,
-              top: Math.max(0, j.top - 9),
-              width: 12,
-              height: j.height + 9,
+              left: j.left - 9,
+              top: Math.max(0, j.top - 13),
+              width: 18,
+              height: j.height + 13,
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
@@ -283,38 +284,60 @@ export default function SegmentZonesOverlay({
               zIndex: 4,
             }}
           >
+            {/* V145 — round button «plate» so the seam glyph reads as a tappable
+                junction-settings control (lifts on hover via .bg-junction-chip). */}
             <span
+              className="bg-junction-chip"
               aria-hidden
               style={{
-                width: 9,
-                height: 9,
+                position: 'relative',
+                width: 16,
+                height: 16,
                 flexShrink: 0,
-                transform: 'rotate(45deg)',
-                borderRadius: 1,
-                background: decided ? j.junction.fill : 'transparent',
-                border: `1.5px ${decided ? 'solid' : 'dashed'} ${j.junction.stroke}`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: '50%',
+                background: 'var(--surface-1, #fff)',
+                border: `1px solid ${decided ? j.junction.stroke : 'var(--border-subtle, rgba(28,25,23,0.22))'}`,
+                boxShadow: '0 1px 2px rgba(28,25,23,0.16)',
               }}
-            />
-            {differs && (
+            >
               <span
+                data-testid="junction-diamond"
                 aria-hidden
                 style={{
-                  position: 'absolute',
-                  top: -2,
-                  right: -1,
-                  width: 5,
-                  height: 5,
-                  borderRadius: '50%',
-                  background: 'var(--accent-500, #b85c3e)',
-                  border: '1px solid var(--surface-1, #fff)',
+                  width: 7,
+                  height: 7,
+                  transform: 'rotate(45deg)',
+                  borderRadius: 1,
+                  boxSizing: 'border-box',
+                  background: decided ? j.junction.fill : 'transparent',
+                  border: `1.5px ${decided ? 'solid' : 'dashed'} ${j.junction.stroke}`,
                 }}
               />
-            )}
+              {differs && (
+                <span
+                  aria-hidden
+                  style={{
+                    position: 'absolute',
+                    top: -2,
+                    right: -2,
+                    width: 6,
+                    height: 6,
+                    borderRadius: '50%',
+                    background: 'var(--accent-500, #b85c3e)',
+                    border: '1px solid var(--surface-1, #fff)',
+                  }}
+                />
+              )}
+            </span>
             <span
               aria-hidden
               style={{
                 flex: 1,
                 width: 2,
+                minHeight: 4,
                 background: j.junction.stroke,
                 opacity: decided ? 0.85 : 0.4,
               }}

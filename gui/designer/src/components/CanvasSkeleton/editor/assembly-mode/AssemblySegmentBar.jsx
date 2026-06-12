@@ -86,21 +86,22 @@ export default function AssemblySegmentBar({ coloredZones, onZoneClick }) {
             {jr && (
               <button
                 type="button"
+                className="bg-junction-btn"
                 data-testid="assembly-junction"
                 data-pair-key={jr.pairKey}
                 data-junction-kind={jr.kind}
                 data-method={jr.method}
                 data-junction-state={jr.state}
                 data-junction-differs={jr.differsFromAssembly ? 'true' : 'false'}
-                title={`Стык: ${jr.method} · ${decided ? 'выбран' : 'по умолчанию'}${jr.differsFromAssembly ? ' · отличается от сборки' : ''}`}
+                title={`Стык: ${jr.method} · ${decided ? 'выбран' : 'по умолчанию'}${jr.differsFromAssembly ? ' · отличается от сборки' : ''} — нажмите, чтобы настроить`}
                 onClick={(e) => onZoneClick && onZoneClick({
                   ...jr, clientX: e.clientX, clientY: e.clientY,
                 })}
                 style={{
                   flexShrink: 0,
-                  width: 18,
+                  width: 24,
                   height: 44,
-                  margin: '0 -8px',
+                  margin: '0 -10px',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -111,18 +112,38 @@ export default function AssemblySegmentBar({ coloredZones, onZoneClick }) {
                   zIndex: 3,
                 }}
               >
+                {/* V145 — round button «plate» so the ромб reads as a tappable
+                    junction-settings control (lifts on hover via .bg-junction-chip). */}
                 <span
+                  className="bg-junction-chip"
                   aria-hidden
                   style={{
-                    width: 11,
-                    height: 11,
-                    transform: 'rotate(45deg)',
-                    borderRadius: 2,
-                    background: decided ? jr.fill : 'transparent',
-                    border: `1.6px solid ${jr.stroke}`,
-                    boxSizing: 'border-box',
+                    width: 20,
+                    height: 20,
+                    flexShrink: 0,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderRadius: '50%',
+                    background: 'var(--surface-1, #fff)',
+                    border: `1px solid ${decided ? jr.stroke : 'var(--border-subtle, rgba(28,25,23,0.22))'}`,
+                    boxShadow: '0 1px 3px rgba(28,25,23,0.16)',
                   }}
-                />
+                >
+                  <span
+                    data-testid="junction-diamond"
+                    aria-hidden
+                    style={{
+                      width: 9,
+                      height: 9,
+                      transform: 'rotate(45deg)',
+                      borderRadius: 2,
+                      boxSizing: 'border-box',
+                      background: decided ? jr.fill : 'transparent',
+                      border: `1.6px ${decided ? 'solid' : 'dashed'} ${jr.stroke}`,
+                    }}
+                  />
+                </span>
               </button>
             )}
           </div>

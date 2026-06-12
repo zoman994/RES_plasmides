@@ -427,6 +427,30 @@ body.caret-gliding .sequence-view-caret-anim {
   }
 }
 
+/* ─── Junction settings affordance (V145, Игорь 12.06) ──────────────
+   The seam glyph (sequence strip + «блок сборки» bar) is a CLICKABLE
+   junction-settings control, but a bare diamond read as decoration
+   («непонятно можно на неё нажать»). Wrap it in a round button «plate»
+   (.bg-junction-chip) that lifts on hover so it reads as a tappable
+   control. Colour tokens via design-system (--accent-500 terra cotta). */
+.bg-junction-chip {
+  transition: background-color 90ms ease, border-color 90ms ease,
+    transform 90ms ease, box-shadow 90ms ease;
+}
+.bg-junction-btn:hover .bg-junction-chip,
+.bg-junction-btn:focus-visible .bg-junction-chip {
+  background: var(--surface-2, #efe9e3);
+  border-color: var(--accent-500, #b85c3e);
+  transform: scale(1.22);
+  box-shadow: 0 2px 6px rgba(28, 25, 23, 0.18);
+}
+.bg-junction-btn { outline: none; }
+@media (prefers-reduced-motion: reduce) {
+  .bg-junction-chip { transition: none; }
+  .bg-junction-btn:hover .bg-junction-chip,
+  .bg-junction-btn:focus-visible .bg-junction-chip { transform: none; }
+}
+
 /* ─── Splash fade-in (root) ─────────────────────────────────────── */
 @keyframes app-fade-in {
   from { opacity: 0; }
