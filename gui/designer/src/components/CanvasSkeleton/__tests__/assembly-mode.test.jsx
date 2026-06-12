@@ -187,9 +187,11 @@ describe('K3 AssemblyShell + Header', () => {
     expect(info).toMatch(/linear/i);
   });
 
-  it('topology toggle dispatches setAssemblyDraftTopology', () => {
+  it('circularize modal sets topology (setAssemblyDraftTopology) — M-CIRCULARIZE', () => {
     openDraftWith2();
-    act(() => { fireEvent.click(screen.getByTestId('assembly-topology-toggle')); });
+    act(() => { fireEvent.click(screen.getByTestId('assembly-circularize-btn')); });
+    act(() => { fireEvent.click(screen.getByTestId('circularize-topology-circular')); });
+    act(() => { fireEvent.click(screen.getByTestId('circularize-confirm')); });
     expect(S.assemblyDrafts[0].topology.circular).toBe(true);
   });
 

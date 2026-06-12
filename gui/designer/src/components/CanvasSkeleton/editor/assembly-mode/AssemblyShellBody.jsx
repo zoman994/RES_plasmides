@@ -44,6 +44,8 @@ import { findInsertIndexAtPosition } from '../../lib/assembly-primer-utils';
 import {
   enrichZonesWithJunctions, assemblyReadiness, methodsFromJunctions,
 } from '../../lib/junction-derive';
+import { applyCircularize } from '../../lib/circularize-apply';
+import CircularizeModal from './CircularizeModal';
 import { suggestMethodForBoundary } from '../../lib/assembly-realise-suggest';
 import JunctionControl from '../../canvas/JunctionControl';
 import { useSequenceSelection } from '../../../../hooks/useSequenceSelection';
@@ -150,6 +152,19 @@ export default function AssemblyShellBody({ draft, embedded = false }) {
   const [groupPickerIds, setGroupPickerIds] = useState(null);
   // K14 — mutation modal context: { pieceId, fromBase, position } | null.
   const [mutationFor, setMutationFor] = useState(null);
+  // M-CIRCULARIZE — «замкнуть в плазмиду» modal open state.
+  const [circularizeOpen, setCircularizeOpen] = useState(false);
+
+  // M-CIRCULARIZE C1 — apply the modal's decision: topology + assembly/closure
+  // method. One method for the whole assembly (Игорь) when «применить ко всем»,
+  // else only the closure junction (last→first). The closure actually realises
+  // into the DAG in C2 (zone-pieces-to-dag); here we set topology + config.
+  const onCircularizeConfirm = useCallback(({ circular, method, applyToAll }) => {
+    setCircularizeOpen(false);
+    applyCircularize(actions, {
+      draftId, circular, method, applyToAll, isZoneTarget, segments: draft.segments,
+    });
+  }, [actions, draftId, isZoneTarget, draft.segments]);
 
   // «Реализовать как DAG» — the confirm modal was removed (Игорь 11.06): the
   // strip junctions already own the per-boundary method (J9) and the real DAG
@@ -447,25 +462,16 @@ export default function AssemblyShellBody({ draft, embedded = false }) {
         draft={draft}
         length={totalLength}
         segmentCount={draft.segments.length}
-        paletteLegend={coloredZones}
         canRealise={draft.segments.length >= 2}
         onRename={(name) => actions.renameAssemblyDraft(draftId, name)}
-        onToggleTopology={() => actions.setAssemblyDraftTopology(
-          draftId, !(draft.topology && draft.topology.circular),
-        )}
         onRealise={onRealise}
-        /* UX slice 3 — whole-assembly method; flows down to un-overridden
-           junctions. Only for a zone assembly with ≥2 segments (a junction
-           exists); legacy drafts leave it undefined → dropdown hidden. */
+        /* M-CIRCULARIZE — the «замкнуть в плазмиду» modal owns topology + method
+           (chip shows the current value). */
         assemblyMethod={assemblyMethod}
-        onAssemblyMethodChange={(isZoneTarget && draft.segments.length >= 2)
-          ? (m) => actions.zoneDispatch({ type: 'SET_ASSEMBLY_METHOD', zoneId: draftId, method: m })
-          : undefined}
-        /* V92 — «Палитра» button restores hidden side-panels back when
-           at least one is hidden. Otherwise behaves as before (opens
-           color legend). */
+        onOpenCircularize={() => setCircularizeOpen(true)}
+        /* V92 — restore editor side-panels hidden via their × (was «Палитра»). */
         anyPanelHidden={hiddenPanels.size > 0}
-        onPaletteClick={hiddenPanels.size > 0 ? showAllPanels : undefined}
+        onRestorePanels={hiddenPanels.size > 0 ? showAllPanels : undefined}
         /* AV-K10 — collapse editor → canvas sequence view of this zone.
            Сохраняет state, just closes the editor and flips the zone
            viewMode to 'sequence'. Re-entry through «🧬 Открыть сборку»
@@ -701,6 +707,17 @@ export default function AssemblyShellBody({ draft, embedded = false }) {
             setMutationFor(null);
           }}
           onCancel={() => setMutationFor(null)}
+        />
+      )}
+
+      {/* M-CIRCULARIZE — «замкнуть в плазмиду» modal (topology + assembly/closure
+          method). Opened from the AssemblyHeader chip. */}
+      {circularizeOpen && (
+        <CircularizeModal
+          draft={draft}
+          assemblyMethod={assemblyMethod}
+          onConfirm={onCircularizeConfirm}
+          onCancel={() => setCircularizeOpen(false)}
         />
       )}
 

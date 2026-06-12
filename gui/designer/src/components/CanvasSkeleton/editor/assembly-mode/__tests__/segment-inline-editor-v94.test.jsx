@@ -92,12 +92,11 @@ describe('V93+V94 — segment inline editor + Палитра без color legend
     expect(screen.queryByTestId('segment-detail-panel')).toBeNull();
   });
 
-  it('AssemblyHeader «Палитра» больше не показывает color legend', () => {
+  it('AssemblyHeader «Палитра» убрана (M-CIRCULARIZE) — цвет в строке «Источник»', () => {
     openAssemblyWithSegment();
-    const paletteBtn = screen.getByTestId('assembly-palette-legend-toggle');
-    act(() => { fireEvent.click(paletteBtn); });
-    // V93 — color legend dropdown снят. Управление цветом — через
-    // swatch в строке «Источник».
+    // V93: color legend dropdown was already gone; M-CIRCULARIZE removed the
+    // button itself. Colour is managed via the swatch in the «Источник» row.
+    expect(screen.queryByTestId('assembly-palette-legend-toggle')).toBeNull();
     expect(screen.queryByTestId('assembly-palette-legend')).toBeNull();
   });
 });

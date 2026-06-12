@@ -122,32 +122,46 @@ describe('UX slice 3 — strip glyph shows a "differs from assembly" marker', ()
   });
 });
 
-// ─── AssemblyHeader: assembly-method dropdown ──────────────────────────────
+// ─── AssemblyHeader: topology/method chip → circularize modal ──────────────
+// M-CIRCULARIZE (Игорь 12.06) — the bare method dropdown was replaced by a chip
+// that opens the «замкнуть в плазмиду» modal (where the method now lives; the
+// modal itself is covered in circularize-modal.test.jsx).
 
-describe('UX slice 3 — AssemblyHeader assembly-method dropdown', () => {
+describe('M-CIRCULARIZE — AssemblyHeader circularize chip', () => {
   const draft = { name: 'x', topology: { circular: false }, segments: [{}, {}] };
-  it('renders the dropdown + fires onAssemblyMethodChange', () => {
-    const onAssemblyMethodChange = vi.fn();
+  it('shows topology + method and opens the circularize modal', () => {
+    const onOpenCircularize = vi.fn();
     render(
       <AssemblyHeader
-        draft={draft} length={48} segmentCount={2} paletteLegend={[]}
-        canRealise onRename={() => {}} onToggleTopology={() => {}} onRealise={() => {}}
-        assemblyMethod="overlap_pcr" onAssemblyMethodChange={onAssemblyMethodChange}
+        draft={draft} length={48} segmentCount={2}
+        canRealise onRename={() => {}} onRealise={() => {}}
+        assemblyMethod="overlap_pcr" onOpenCircularize={onOpenCircularize}
       />,
     );
-    const sel = screen.getByTestId('assembly-method-select');
-    expect(sel).toBeTruthy();
-    fireEvent.change(sel, { target: { value: 'golden_gate' } });
-    expect(onAssemblyMethodChange).toHaveBeenCalledWith('golden_gate');
+    const chip = screen.getByTestId('assembly-circularize-btn');
+    expect(chip.textContent).toMatch(/Линейная/);
+    expect(chip.textContent).toMatch(/Overlap PCR/);
+    fireEvent.click(chip);
+    expect(onOpenCircularize).toHaveBeenCalled();
   });
-  it('omits the dropdown when no handler is wired (back-compat)', () => {
+  it('reflects circular topology', () => {
     render(
       <AssemblyHeader
-        draft={draft} length={48} segmentCount={2} paletteLegend={[]}
-        canRealise onRename={() => {}} onToggleTopology={() => {}} onRealise={() => {}}
+        draft={{ ...draft, topology: { circular: true } }} length={48} segmentCount={2}
+        canRealise onRename={() => {}} onRealise={() => {}}
+        assemblyMethod="gibson" onOpenCircularize={() => {}}
       />,
     );
-    expect(screen.queryByTestId('assembly-method-select')).toBeNull();
+    expect(screen.getByTestId('assembly-circularize-btn').textContent).toMatch(/Кольцевая/);
+  });
+  it('omits the chip when no opener is wired (back-compat)', () => {
+    render(
+      <AssemblyHeader
+        draft={draft} length={48} segmentCount={2}
+        canRealise onRename={() => {}} onRealise={() => {}}
+      />,
+    );
+    expect(screen.queryByTestId('assembly-circularize-btn')).toBeNull();
   });
 });
 

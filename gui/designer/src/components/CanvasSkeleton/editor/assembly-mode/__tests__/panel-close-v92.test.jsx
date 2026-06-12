@@ -69,7 +69,7 @@ describe('V92 — close controls for assembly editor side panels', () => {
     expect(screen.queryByTestId('assembly-primers-panel')).toBeNull();
   });
 
-  it('Палитра button restores the hidden panels', () => {
+  it('«⊞ панели» restores the hidden panels (M-CIRCULARIZE — was «Палитра»)', () => {
     openAssemblyWithTwoSegments();
     // hide all three
     act(() => { fireEvent.click(screen.getByTestId('assembly-pipeline-panel-close')); });
@@ -79,8 +79,8 @@ describe('V92 — close controls for assembly editor side panels', () => {
     expect(screen.queryByTestId('assembly-sidebar')).toBeNull();
     expect(screen.queryByTestId('assembly-primers-panel')).toBeNull();
 
-    // click Палитра — restores all
-    act(() => { fireEvent.click(screen.getByTestId('assembly-palette-legend-toggle')); });
+    // the restore-panels control (shown only while something is hidden) brings all back
+    act(() => { fireEvent.click(screen.getByTestId('assembly-restore-panels')); });
     expect(screen.getByTestId('assembly-pipeline-panel')).toBeTruthy();
     expect(screen.getByTestId('assembly-sidebar')).toBeTruthy();
     expect(screen.getByTestId('assembly-primers-panel')).toBeTruthy();

@@ -7,38 +7,31 @@
  */
 import InlineEditableTitle from '../../../Library/inspector/InlineEditableTitle';
 
-// UX slice 3 — construct-level assembly method (engine dict → biolog label).
-const ASSEMBLY_METHODS = [
-  ['overlap_pcr', 'Overlap PCR'],
-  ['gibson', 'Gibson'],
-  ['golden_gate', 'Golden Gate'],
-  ['restriction', 'Restriction'],
-  ['direct_ligation', 'Ligation'],
-  ['kld', 'KLD'],
-];
+// M-CIRCULARIZE — engine method → short biolog label for the topology/method chip.
+const METHOD_LABEL = {
+  overlap_pcr: 'Overlap PCR',
+  gibson: 'Gibson',
+  golden_gate: 'Golden Gate',
+  restriction: 'RE-лигирование',
+  direct_ligation: 'Лигирование',
+  kld: 'KLD',
+};
 
 export default function AssemblyHeader({
-  draft, length, segmentCount, paletteLegend,
-  onRename, onToggleTopology, onRealise, canRealise,
+  draft, length, segmentCount,
+  onRename, onRealise, canRealise,
   onToggleSequenceView,
-  // UX slice 3 — the whole-assembly method + its setter (flows down to
-  // tentative junctions). Omitted by stand-alone unit tests → dropdown hidden.
+  // M-CIRCULARIZE — the whole-assembly method (for the chip label) + the opener
+  // for the «замкнуть в плазмиду» modal that now owns topology + method.
   assemblyMethod,
-  onAssemblyMethodChange,
-  /* V92 — caller (AssemblyShellBody) tells header that some side-panel
-     is currently hidden via its × button. In that mode, «Палитра»
-     click takes over to restore them (not open the legend). */
+  onOpenCircularize,
+  /* V92 — caller (AssemblyShellBody) tells header that some side-panel is
+     currently hidden via its × button → show a small restore-panels control. */
   anyPanelHidden = false,
-  onPaletteClick,
+  onRestorePanels,
 }) {
   const circular = !!(draft.topology && draft.topology.circular);
-  // V92 + V93 — clicking «Палитра»:
-  // - если есть скрытые панели → восстанавливаем их (onPaletteClick)
-  // - иначе — no-op (legend removed; color picking перенесён в строку
-  //   «Источник» SegmentList). Tooltip объясняет где цвет.
-  const onPaletteBtn = () => {
-    if (typeof onPaletteClick === 'function') onPaletteClick();
-  };
+  const methodLabel = assemblyMethod ? METHOD_LABEL[assemblyMethod] || assemblyMethod : null;
 
   return (
     <header
@@ -66,80 +59,46 @@ export default function AssemblyHeader({
         {length} bp · {segmentCount} сегм. · {circular ? 'circular' : 'linear'}
       </span>
 
-      <button
-        type="button"
-        data-testid="assembly-topology-toggle"
-        onClick={onToggleTopology}
-        title="Переключить топологию (linear ↔ circular)"
-        style={{
-          fontSize: 11,
-          padding: '4px 10px',
-          background: 'var(--surface-1)',
-          color: 'var(--text-secondary)',
-          border: '1px solid var(--border-subtle)',
-          borderRadius: 4,
-          cursor: 'pointer',
-        }}
-      >
-        {circular ? '⭕ circular' : '— linear'}
-      </button>
-
-      {/* UX slice 3 — one method for the whole assembly; flows down to every
-          junction the biolog hasn't overridden. Per-junction override stays
-          on the strip glyph + popover. */}
-      {typeof onAssemblyMethodChange === 'function' && (
-        <label
-          style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--text-secondary)' }}
-          title="Метод сборки — применяется ко всем стыкам, которые вы не переопределили вручную"
-        >
-          Сборка:
-          <select
-            data-testid="assembly-method-select"
-            value={assemblyMethod || 'overlap_pcr'}
-            onChange={(e) => onAssemblyMethodChange(e.target.value)}
-            style={{
-              fontSize: 11,
-              padding: '3px 6px',
-              background: 'var(--surface-1)',
-              color: 'var(--text-primary)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: 4,
-              cursor: 'pointer',
-            }}
-          >
-            {ASSEMBLY_METHODS.map(([id, label]) => (
-              <option key={id} value={id}>{label}</option>
-            ))}
-          </select>
-        </label>
-      )}
-
-      {/* V92 + V93 — «Палитра» button.
-          V93 (Игорь): color legend dropdown снят — цвет меняется кликом
-          по color-swatch в строке «Источник» (SegmentList inline editor).
-          V92: кнопка остаётся как «↩ восстановить скрытые панели» когда
-          ≥1 right-rail / pipeline panel скрыт. В обычном состоянии —
-          inert button с подсказкой что цвет теперь в нижней строке. */}
-      {(paletteLegend || []).length > 0 && (
+      {/* M-CIRCULARIZE (Игорь 12.06) — one control replaces the bare topology
+          toggle + method dropdown. Shows the current topology + assembly method
+          and opens the «замкнуть в плазмиду» modal (which owns both). */}
+      {typeof onOpenCircularize === 'function' && (
         <button
           type="button"
-          data-testid="assembly-palette-legend-toggle"
-          onClick={onPaletteBtn}
-          title={anyPanelHidden
-            ? 'Вернуть скрытые панели редактора'
-            : 'Цвет сегмента теперь в строке «Источник» (клик по color-swatch)'}
+          data-testid="assembly-circularize-btn"
+          onClick={onOpenCircularize}
+          title="Замыкание в плазмиду и метод сборки"
           style={{
-            fontSize: 11,
-            padding: '4px 10px',
-            background: anyPanelHidden
-              ? 'var(--accent-100, #eed2c1)'
-              : 'var(--surface-1)',
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            fontSize: 11, padding: '4px 10px',
+            background: circular ? 'var(--accent-wash, rgba(184,92,62,0.10))' : 'var(--surface-1)',
             color: 'var(--text-secondary)',
-            border: '1px solid var(--border-subtle)',
-            borderRadius: 4,
-            cursor: 'pointer',
+            border: `1px solid ${circular ? 'var(--accent-500, #b85c3e)' : 'var(--border-subtle)'}`,
+            borderRadius: 4, cursor: 'pointer',
           }}
-        >🎨 Палитра{anyPanelHidden ? ' ↩' : ''}</button>
+        >
+          <span aria-hidden>{circular ? '◉' : '○'}</span>
+          {circular ? 'Кольцевая' : 'Линейная'}
+          {methodLabel ? <span style={{ color: 'var(--text-tertiary)' }}>· {methodLabel}</span> : null}
+          <span aria-hidden style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>✎</span>
+        </button>
+      )}
+
+      {/* V92 — restore editor side-panels hidden via their × (was the «Палитра»
+          button before M-CIRCULARIZE removed it). Shown only when something is
+          hidden. */}
+      {anyPanelHidden && typeof onRestorePanels === 'function' && (
+        <button
+          type="button"
+          data-testid="assembly-restore-panels"
+          onClick={onRestorePanels}
+          title="Вернуть скрытые панели редактора"
+          style={{
+            fontSize: 11, padding: '4px 9px',
+            background: 'var(--accent-100, #eed2c1)', color: 'var(--text-secondary)',
+            border: '1px solid var(--border-subtle)', borderRadius: 4, cursor: 'pointer',
+          }}
+        >⊞ панели</button>
       )}
 
       {/* AV-K10 — «S» toggle returns biolog to canvas with this zone
