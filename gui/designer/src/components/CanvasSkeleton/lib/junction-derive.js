@@ -194,17 +194,18 @@ export function assemblyReadiness(coloredZones) {
 }
 
 /**
- * JUNCTION step-2 FIX (J9) — per-boundary methods map for realiseAssembly,
- * keyed by boundary INDEX (0..N−2, segment order — the shape realiseAssembly
- * already consumes). The junction config (zone.junctions[pairKey].method) is
- * the source of truth; falls back to the A4 suggestion, then gibson. The
- * AssemblyShellBody `onRealise` handler builds its `methods` from this — the
- * strip junction owns the method (the old confirm modal was removed). Pure.
+ * JUNCTION step-2 FIX (J9) + M-CIRCULARIZE C2 — per-boundary methods map for
+ * realiseAssembly, keyed by boundary INDEX. Uses `allBoundaries` so a CIRCULAR
+ * assembly also gets the closure junction (last→first) at index N−1 (the N−1
+ * internal joins are 0..N−2); a linear assembly stays 0..N−2 (closure absent).
+ * The junction config (zone.junctions[pairKey].method) wins; falls back to the
+ * A4 suggestion, then gibson. AssemblyShellBody `onRealise` builds `methods`
+ * from this. Pure.
  */
 export function methodsFromJunctions(draft, zoneJunctions = {}, suggestions = []) {
-  const internal = internalBoundaries(draft);
+  const bounds = allBoundaries(draft);
   const out = {};
-  internal.forEach((b, i) => {
+  bounds.forEach((b, i) => {
     const cfg = zoneJunctions[b.pairKey];
     out[i] = (cfg && cfg.method)
       || (suggestions[i] && suggestions[i].method)

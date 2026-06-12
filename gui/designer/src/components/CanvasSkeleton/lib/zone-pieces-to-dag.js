@@ -414,6 +414,23 @@ export function realiseAssembly(state, targetId, perBoundaryMethods, options = {
     junctions.push(j);
   }
 
+  // M-CIRCULARIZE C2 — closure junction (last fragment → first) when the product
+  // is circular. Without it realise only emitted the N−1 internal joins, so the
+  // ring never visibly closed («кольцевание» was cosmetic — the product carried
+  // the circular flag but no DAG edge modelled the close-out reaction). Method =
+  // the closure boundary config (perBoundaryMethods[N−1], allBoundaries order),
+  // else the construct method, else gibson.
+  if (draft.topology && draft.topology.circular && fragContainerIds.length >= 2) {
+    const ci = fragContainerIds.length - 1;
+    const method = (perBoundaryMethods && perBoundaryMethods[ci])
+      || draft.assemblyMethod || 'gibson';
+    const cj = junctionForMethod(method, fragContainerIds[ci], fragContainerIds[0]);
+    cj.realisedFrom = {
+      assemblyId: targetId, boundaryIdx: ci, revision, method, role: 'closure',
+    };
+    junctions.push(cj);
+  }
+
   return {
     ok: true,
     diff: {
