@@ -175,8 +175,11 @@ export function buildOverlapTail(side, neighbourSeq, opts = {}) {
  * overlap (which won't ligate). Returns null for overlap_pcr / gibson / no
  * junction — those keep `buildAssemblyPrimer`'s neighbour-overlap model (a
  * different, already-correct model whose tail depends on the neighbour sequence).
- * Overhang/reSite are sourced from the piece on the primer's side (fwd→left,
- * rev→right), mirroring the auto path's logicalPrev/piece convention. Pure.
+ * A junction L|R has exactly ONE shared overhang/site, stored on the LEFT piece —
+ * the auto path encodes the LEFT piece's value on BOTH the fwd and rev primers
+ * (buildFwdTail uses logicalPrev = L; buildRevTail uses `piece` = L of the
+ * downstream junction). So overhang/reSite always come from leftSegId; `side`
+ * only flips the tail's strand orientation in buildOverlapTail. Pure.
  */
 export function resolveManualJunctionTail({
   side, leftSegId, rightSegId, zoneJunctions = {}, pieces = [],
@@ -184,7 +187,9 @@ export function resolveManualJunctionTail({
   const cfg = zoneJunctions[pairKeyFor(leftSegId, rightSegId)];
   const method = cfg && cfg.method;
   if (method !== 'golden_gate' && method !== 'restriction') return null;
-  const ohPiece = pieces.find((p) => p && p.id === (side === 'fwd' ? leftSegId : rightSegId)) || null;
+  // ONE overhang per junction, owned by the LEFT piece — both fwd and rev encode
+  // it (review 12.06: sourcing R's value on rev gave a non-complementary end).
+  const ohPiece = pieces.find((p) => p && p.id === leftSegId) || null;
   return buildOverlapTail(side, '', {
     method,
     overhang: (ohPiece && ohPiece.ggOverhang) || 'AAAA',

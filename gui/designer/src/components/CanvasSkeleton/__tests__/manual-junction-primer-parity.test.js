@@ -38,6 +38,28 @@ describe('resolveManualJunctionTail — method-specific override (parity with au
     expect(tail).toBe(buildOverlapTail('fwd', '', { method: 'golden_gate', overhang: 'AATG' }));
   });
 
+  it('rev side ALSO uses the LEFT piece overhang (a junction has ONE overhang, on L)', () => {
+    // The junction's overhang lives on the LEFT piece; the auto path encodes it
+    // on BOTH the fwd and rev primers. Sourcing R's overhang on the rev side
+    // yields a non-complementary sticky end → won't ligate (review 12.06).
+    const zj = { [pairKeyFor('L', 'R')]: { method: 'golden_gate' } };
+    const pieces = [{ id: 'L', ggOverhang: 'AATG' }, { id: 'R', ggOverhang: 'GCTT' }];
+    const tail = resolveManualJunctionTail({
+      side: 'rev', leftSegId: 'L', rightSegId: 'R', zoneJunctions: zj, pieces,
+    });
+    expect(tail).toBe(buildOverlapTail('rev', '', { method: 'golden_gate', overhang: 'AATG' }));
+    expect(tail).not.toBe(buildOverlapTail('rev', '', { method: 'golden_gate', overhang: 'GCTT' }));
+  });
+
+  it('rev side restriction ALSO uses the LEFT piece reSite', () => {
+    const zj = { [pairKeyFor('L', 'R')]: { method: 'restriction' } };
+    const pieces = [{ id: 'L', reSite: 'GAATTC' }, { id: 'R', reSite: 'GGATCC' }];
+    const tail = resolveManualJunctionTail({
+      side: 'rev', leftSegId: 'L', rightSegId: 'R', zoneJunctions: zj, pieces,
+    });
+    expect(tail).toBe(buildOverlapTail('rev', '', { method: 'restriction', reSite: 'GAATTC' }));
+  });
+
   it('restriction junction → protective + site tail from piece.reSite', () => {
     const zj = { [pairKeyFor('L', 'R')]: { method: 'restriction' } };
     const pieces = [{ id: 'L', reSite: 'GAATTC' }];
