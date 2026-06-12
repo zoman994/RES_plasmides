@@ -176,7 +176,10 @@ export default function AssemblyShellBody({ draft, embedded = false }) {
   // zone regenerates (it does not duplicate).
   const onRealise = useCallback(() => {
     const segs = (draft && draft.segments) || [];
-    if (segs.length < 2) return;
+    // M-CIRCULARIZE C3 — a single-fragment CIRCULAR assembly self-closes, so it
+    // is realisable too (the lone fragment closes its own ends into a plasmid).
+    const isCircular = !!(draft && draft.topology && draft.topology.circular);
+    if (segs.length < 2 && !(segs.length === 1 && isCircular)) return;
     const boundaryCount = segs.length - 1;
     const suggestions = [];
     for (let i = 0; i < boundaryCount; i += 1) {
@@ -462,7 +465,8 @@ export default function AssemblyShellBody({ draft, embedded = false }) {
         draft={draft}
         length={totalLength}
         segmentCount={draft.segments.length}
-        canRealise={draft.segments.length >= 2}
+        canRealise={draft.segments.length >= 2
+          || (draft.segments.length === 1 && !!(draft.topology && draft.topology.circular))}
         onRename={(name) => actions.renameAssemblyDraft(draftId, name)}
         onRealise={onRealise}
         /* M-CIRCULARIZE — the «замкнуть в плазмиду» modal owns topology + method

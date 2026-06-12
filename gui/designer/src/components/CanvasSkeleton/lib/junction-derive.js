@@ -103,6 +103,11 @@ export function internalBoundaries(draft) {
  * The synthetic closure junction (last↔first) — present ONLY when the zone is
  * circular (J2/J4). `segmentBoundaries` never returns it (it's not an internal
  * cut), so JUNCTION_MODULE synthesises it; null on linear topology.
+ *
+ * M-CIRCULARIZE C3 — a SINGLE-fragment circular assembly closes its own two
+ * ends (self-closure: last === first === the only segment). `selfClosure: true`
+ * marks it so realise emits a self-closure op (KLD / blunt) instead of a join
+ * between distinct fragments.
  */
 export function closureBoundary(draft) {
   if (!draft || !draft.topology || draft.topology.circular !== true) return null;
@@ -112,7 +117,7 @@ export function closureBoundary(draft) {
   } catch {
     return null;
   }
-  if (boundaries.length < 2) return null;
+  if (boundaries.length < 1) return null;
   const last = boundaries[boundaries.length - 1];
   const first = boundaries[0];
   return {
@@ -121,6 +126,7 @@ export function closureBoundary(draft) {
     rightId: first.segmentId,
     role: 'closure',
     offset: last.endOnAssembly,
+    selfClosure: boundaries.length === 1,
   };
 }
 

@@ -401,6 +401,27 @@ export function realiseAssembly(state, targetId, perBoundaryMethods, options = {
     });
     positionsLayout.operations[asmOpId] = { x: asmX, y: baseY };
     col += 1;
+  } else if (draft.topology && draft.topology.circular && fragContainerIds.length === 1) {
+    // M-CIRCULARIZE C3 — single-fragment self-closure: the lone fragment's two
+    // ends close into a plasmid (KLD whole-plasmid PCR + ligation, or blunt
+    // self-ligation). Emit a self-closure op (frag → circular product) so the
+    // product is reachable instead of floating.
+    const closeMethod = (perBoundaryMethods && perBoundaryMethods[0]) || draft.assemblyMethod || 'kld';
+    const closeOpId = `op-${uuidv7()}`;
+    const closeX = 80 + col * STEP_X;
+    operations.push({
+      id: closeOpId,
+      kind: METHOD_TO_OP_KIND[closeMethod] || 'ligate',
+      status: 'committed',
+      position: { x: closeX, y: baseY },
+      inputs: [fragContainerIds[0]],
+      outputs: [finalId],
+      params: { method: closeMethod, selfClosure: true },
+      origin: { kind: 'realised-assembly', assemblyId: targetId, revision },
+      pinned: false,
+    });
+    positionsLayout.operations[closeOpId] = { x: closeX, y: baseY };
+    col += 1;
   }
   positionsLayout.containers[finalId] = { x: 80 + col * STEP_X, y: baseY };
 
