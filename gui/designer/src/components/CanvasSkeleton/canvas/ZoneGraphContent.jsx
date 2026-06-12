@@ -32,6 +32,7 @@ import {
   edgeAnchors,
 } from './canvas-layout';
 import { isPlaceholderContainer } from '../fixture-canvas-skeleton';
+import { edgeColorFor, OP_NEUTRAL } from './op-colors';
 
 const EMPTY = [];
 
@@ -95,21 +96,24 @@ export default function ZoneGraphContent({
           const fromNode = nodes.find((n) => n.id === e.from);
           const toNode = nodes.find((n) => n.id === e.to);
           if (!fromNode || !toNode) return null;
-          const fromSize = fromNode.kind === 'container'
-            ? getBlockSize(fromNode.data.container)
-            : { width: OPERATION_NODE_W, height: OPERATION_NODE_H };
-          const toSize = toNode.kind === 'container'
-            ? getBlockSize(toNode.data.container)
-            : { width: OPERATION_NODE_W, height: OPERATION_NODE_H };
+          // Use the node's OWN footprint (buildGraphNodesEdges sets node.width/
+          // height — block 240×150 vs op 120×60). The old `fromNode.kind` check
+          // was always undefined (kind lives at node.data.kind) → every edge
+          // anchored with op-size, so lines left a container at its middle/top,
+          // not its right-edge centre — «стрелки налезают на центр» (Игорь 11.06).
           const ea = edgeAnchors(
-            { x: a.x, y: a.y, w: fromSize.width, h: fromSize.height },
-            { x: b.x, y: b.y, w: toSize.width, h: toSize.height },
+            { x: a.x, y: a.y, w: fromNode.width, h: fromNode.height },
+            { x: b.x, y: b.y, w: toNode.width, h: toNode.height },
+            { flow: 'LR' }, // LR DAG → clean right→left connectors (Игорь 11.06)
           );
+          // K6 — the wire inherits the colour of the reaction it connects to,
+          // so a Gibson edge / digest edge / ligation edge read without a click.
+          const edgeStroke = edgeColorFor(fromNode, toNode);
           return (
             <path
               key={e.id}
               d={ea.d}
-              stroke="var(--text-tertiary, #a8a29e)"
+              stroke={edgeStroke}
               strokeWidth={1.5}
               fill="none"
               markerEnd={`url(#${arrowId})`}
@@ -126,7 +130,7 @@ export default function ZoneGraphContent({
             orient="auto"
             markerUnits="strokeWidth"
           >
-            <path d="M0,0 L0,6 L9,3 z" fill="var(--text-tertiary, #a8a29e)" />
+            <path d="M0,0 L0,6 L9,3 z" fill={OP_NEUTRAL.stroke} />
           </marker>
         </defs>
       </svg>

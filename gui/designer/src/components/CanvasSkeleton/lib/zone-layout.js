@@ -29,27 +29,34 @@ const ZONE_FRAME_PAD = 48;
 const ZONE_MIN_W = 360;
 const ZONE_MIN_H = 260;
 
-const LANE_SRC_DY = 50;
-const LANE_MID_DY = 150;
-// DEVIATION from DEC-T4.5-08 (finals = bottom-80): finals are pinned
-// to a FIXED offset from the zone TOP, not from its (auto-growing)
-// height. With bottom-anchoring the grow-only T4 bounds finalizer
-// would push finalsY down every pass (laid finals grow the box → box
-// grows → finalsY drops → re-laid lower …), so positions never settle
-// and the K7 idempotency check (R2) could never hold → finalizer loop.
-// Top-anchored lanes depend only on bounds.y (stable: sources sit at
-// y+50, nothing goes above, so the grow-only union never moves y) →
-// computeZoneLayout is a fixed point. Same 3-lane intent, loop-safe.
-const LANE_FIN_DY = 380;
+// M-CANVAS-FIX.1 K2 — ONE node footprint is the single source of truth for
+// every pitch / lane gap / dagre size. The block is 240×150; the old pitch
+// (200) and lane offsets (50/150) were SMALLER than the block, so overlap was
+// mathematically guaranteed. Derive everything from the footprint instead.
+export const NODE_FOOTPRINT = {
+  w: BLOCK_LINEAR_W, h: BLOCK_LINEAR_H, gutterX: 48, gutterY: 40,
+};
+const LANE_PITCH = NODE_FOOTPRINT.w + NODE_FOOTPRINT.gutterX; // ≥ width → no horiz overlap
+
+// Lane Y offsets from zone TOP — HEIGHT-AWARE so a row's bottom never reaches
+// the next lane's top. Still FIXED top-anchored (not bottom): each offset is a
+// pure function of the footprint + lane index, never of bounds.height — so
+// computeZoneLayout stays a fixed point (the DEC-T4.5-08 loop-safety: bottom-
+// anchoring would make finalsY chase the grow-only bounds forever). The mid
+// lane gets one footprint of room; finals under the LIVE dagre extent is a
+// deferred refinement (spec §10.2 bottom-anchor → .2).
+const LANE_SRC_DY = 40;
+const LANE_MID_DY = LANE_SRC_DY + NODE_FOOTPRINT.h + NODE_FOOTPRINT.gutterY; // 230
+const LANE_FIN_DY = LANE_MID_DY + NODE_FOOTPRINT.h + NODE_FOOTPRINT.gutterY; // 420
 
 // Lane Y offsets from zone TOP (bounds.y), single source of truth —
 // the divider UI reads these so labels/lines align with laid nodes.
 export const ZONE_LANE_DY = {
   source: LANE_SRC_DY, intermediate: LANE_MID_DY, finals: LANE_FIN_DY,
 };
-const NODE_SPACING = 200;
-const MID_NODE_W = 160;
-const MID_NODE_H = 60;
+const NODE_SPACING = LANE_PITCH;
+const MID_NODE_W = NODE_FOOTPRINT.w;
+const MID_NODE_H = NODE_FOOTPRINT.h;
 // R1 — dagre is O(V+E); cap the middle lane, fall back to a simple
 // row if a zone is pathologically dense (≥ this many mid nodes).
 const MID_NODE_CAP = 200;

@@ -29,6 +29,22 @@ export const BLOCK_LINEAR_H = 150;
 export const BLOCK_CIRCULAR_SIZE = BLOCK_LINEAR_W;
 export const OPERATION_NODE_W = 120;
 export const OPERATION_NODE_H = 60;
+
+/**
+ * M-CANVAS-FIX.1 K1 — pure drop decision. Canvas is an AUTHORITATIVE
+ * auto-layout (Игорь §0.5): in-zone nodes are not hand-arranged, so a drop
+ * into / within a zone must NOT flip the zone to laneLayout:'manual' and must
+ * NOT pin the node — auto-layout re-snaps it (containment held by auto-size).
+ * Only a LOOSE drop (node left outside every zone) pins, preserving the
+ * free-positioning model for zone-less nodes. Assembly drafts aren't zone
+ * nodes and aren't pinnable.
+ *   dropLayoutEffects({ kind, droppedZoneTarget }) → { pin, flipZoneManual }
+ */
+export function dropLayoutEffects({ kind, droppedZoneTarget } = {}) {
+  const pinnable = kind === 'container' || kind === 'operation';
+  const isLoose = droppedZoneTarget == null;
+  return { pin: pinnable && isLoose, flipZoneManual: false };
+}
 // AssemblyDraftBlock renders 240-wide; its height is content-driven, so
 // collision uses a representative bbox height (SPEC_CANVAS_NODE_COLLISION).
 export const ASSEMBLY_DRAFT_W = 240;
@@ -223,17 +239,25 @@ export function buildGraphNodesEdges(containers, commits, operations = []) {
 export function computeGraphPositions(containers, commits, operations = []) {
   const { nodes, edges } = buildGraphNodesEdges(containers, commits, operations);
   if (nodes.length === 0) return {};
-  // Use the wider/taller dimension as the dagre node size so layout
-  // accounts for circular blocks.
   const dagreNodes = nodes.map((n) => ({ id: n.id }));
   const dagreEdges = edges.map((e) => ({ from: e.from, to: e.to }));
-  // Average size — dagre takes a single nodeWidth/Height; pass max so
-  // labels don't overlap. The actual node rendering uses its own size.
+  // Per-node REAL sizes (block 240×150 vs op diamond 120×60) so dagre reserves
+  // each node's true footprint — op nodes no longer padded to block size, which
+  // (a) tightens the columns (канвас покомпактнее) and (b) converts each node's
+  // top-left by its own half-size so edges anchor on the true rectangle edge,
+  // not a phantom offset (Игорь 11.06). ranksep/nodesep trimmed to match.
+  const sizeById = {};
+  for (const n of nodes) {
+    sizeById[n.id] = n.data && n.data.kind === 'container'
+      ? getBlockSize(n.data.container)
+      : { width: OPERATION_NODE_W, height: OPERATION_NODE_H };
+  }
   return computeAutoLayout(dagreNodes, dagreEdges, 'LR', {
-    nodeWidth: BLOCK_LINEAR_W + 30,
-    nodeHeight: BLOCK_LINEAR_H + 30,
-    ranksep: 80,
-    nodesep: 50,
+    nodeWidth: BLOCK_LINEAR_W,
+    nodeHeight: BLOCK_LINEAR_H,
+    ranksep: 56,
+    nodesep: 36,
+    sizeOf: (id) => sizeById[id],
   });
 }
 
@@ -315,7 +339,7 @@ const SIDE = {
  * @param {{x:number,y:number,w:number,h:number}} to
  * @returns {{x1,y1,x2,y2,c1x,c1y,c2x,c2y,midX,midY,fromSide,toSide,d}}
  */
-export function edgeAnchors(from, to) {
+export function edgeAnchors(from, to, opts = {}) {
   const aCx = from.x + from.w / 2;
   const aCy = from.y + from.h / 2;
   const bCx = to.x + to.w / 2;
@@ -325,7 +349,14 @@ export function edgeAnchors(from, to) {
 
   let fromSide;
   let toSide;
-  if (Math.abs(dx) >= Math.abs(dy)) {
+  if (opts.flow === 'LR') {
+    // Forced horizontal flow (an LR DAG): always exit the right / enter the
+    // left edge (reversed only for a rare backward edge) — never top/bottom, so
+    // arrows read cleanly edge-to-edge instead of weaving through the box
+    // corners on a 2→1 merge (Игорь 11.06).
+    fromSide = dx >= 0 ? 'right' : 'left';
+    toSide = dx >= 0 ? 'left' : 'right';
+  } else if (Math.abs(dx) >= Math.abs(dy)) {
     fromSide = dx >= 0 ? 'right' : 'left';
     toSide = dx >= 0 ? 'left' : 'right';
   } else {
@@ -337,7 +368,11 @@ export function edgeAnchors(from, to) {
   const b = SIDE[toSide](to, bCx, bCy);
   const horiz = fromSide === 'left' || fromSide === 'right';
   const sep = horiz ? Math.abs(b.x - a.x) : Math.abs(b.y - a.y);
-  const k = Math.max(EDGE_CURVE_MIN, Math.min(sep / 2, EDGE_CURVE_MAX));
+  // Blend in the perpendicular offset so a steep connector (a small horizontal
+  // gap but a big vertical drop, e.g. a merge edge) curves smoothly instead of
+  // kinking. Aligned edges (perp 0) keep the exact previous curvature.
+  const perp = horiz ? Math.abs(b.y - a.y) : Math.abs(b.x - a.x);
+  const k = Math.max(EDGE_CURVE_MIN, Math.min((sep + perp) / 2, EDGE_CURVE_MAX));
 
   const x1 = a.x;
   const y1 = a.y;
@@ -456,6 +491,66 @@ export function canvasContentExtent(state, pad = 400) {
 export const ZOOM_MIN = 0.4;
 export const ZOOM_MAX = 2;
 export const ZOOM_STEP = 1.1;
+
+/**
+ * contentBBox — tight world-space bounding box of all canvas content (zone
+ * frames + laid nodes + operation nodes), WITHOUT the EXTENT_MIN floor or pad
+ * that `canvasContentExtent` adds for the scroll spacer. Used by
+ * fit-to-content. Returns null when the canvas is empty. Pure.
+ */
+export function contentBBox(state) {
+  const s = state || {};
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  const add = (x, y, w, h) => {
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (x + w > maxX) maxX = x + w;
+    if (y + h > maxY) maxY = y + h;
+  };
+  for (const z of (s.zones || [])) {
+    const b = z && z.bounds;
+    if (b) add(b.x || 0, b.y || 0, b.width || 0, b.height || 0);
+  }
+  const positions = s.positions || {};
+  for (const id of Object.keys(positions)) {
+    const p = positions[id];
+    if (p) add(p.x || 0, p.y || 0, BLOCK_LINEAR_W, BLOCK_LINEAR_H);
+  }
+  for (const op of (s.operations || [])) {
+    const p = op && op.position;
+    if (p) add(p.x || 0, p.y || 0, OPERATION_NODE_W, OPERATION_NODE_H);
+  }
+  if (!Number.isFinite(minX)) return null;
+  return {
+    minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY,
+  };
+}
+
+/**
+ * fitZoomToContent — zoom + scroll so the content bbox fills the viewport with
+ * a margin, centred, clamped to the zoom rails («масштабировать окно под размер
+ * сборки», Игорь 11.06). Returns null when there is no content or no viewport.
+ * Pure — the view applies {zoom, scrollLeft, scrollTop}.
+ */
+export function fitZoomToContent({
+  viewportW, viewportH, bbox, margin = 48, min = ZOOM_MIN, max = ZOOM_MAX,
+}) {
+  if (!bbox || !(bbox.width > 0) || !(bbox.height > 0)) return null;
+  if (!(viewportW > 0) || !(viewportH > 0)) return null;
+  const zx = (viewportW - margin * 2) / bbox.width;
+  const zy = (viewportH - margin * 2) / bbox.height;
+  const zoom = Math.max(min, Math.min(max, Math.min(zx, zy)));
+  const cx = (bbox.minX + bbox.maxX) / 2;
+  const cy = (bbox.minY + bbox.maxY) / 2;
+  return {
+    zoom: +zoom.toFixed(3),
+    scrollLeft: Math.max(0, cx * zoom - viewportW / 2),
+    scrollTop: Math.max(0, cy * zoom - viewportH / 2),
+  };
+}
 
 /**
  * zoomAtPoint — focal-point ("zoom to cursor") math (Игорь 17.05.2026:

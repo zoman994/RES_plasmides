@@ -12,7 +12,7 @@ import {
   describe, it, expect, afterEach, beforeEach,
 } from 'vitest';
 import {
-  render, screen, cleanup, act, within, fireEvent,
+  render, screen, cleanup, act, fireEvent,
 } from '@testing-library/react';
 import { skeletonReducer, buildInitialState } from '../store/skeleton-state';
 import {
@@ -57,17 +57,17 @@ function zoneState() {
 }
 
 describe('T6 K11 — ASSEMBLY_REALISE on a zone target (reducer)', () => {
-  it('applies the diff atomically (2 PCR ops + 1 junction + 3 containers)', () => {
+  it('applies the diff atomically (2 PCR + 1 assembly op + 1 junction + 3 containers)', () => {
     let s = zoneState();
     const ops0 = s.operations.length;
     const cnt0 = s.containers.length;
     s = skeletonReducer(s, {
       type: 'ASSEMBLY_REALISE', draftId: 'zn-1', perBoundaryMethods: { 0: 'gibson' },
     });
-    expect(s.operations.length).toBe(ops0 + 2);
+    expect(s.operations.length).toBe(ops0 + 3); // 2 PCR + 1 assembly op (10.06)
     expect(s.junctions.length).toBe(1);
     expect(s.containers.length).toBe(cnt0 + 3);
-    expect(s.operations.every((o) => o.kind === 'pcr' || ops0 === 0)).toBe(true);
+    expect(s.operations.every((o) => o.kind === 'pcr' || o.origin?.kind === 'realised-assembly' || ops0 === 0)).toBe(true);
   });
 
   it('unknown id (neither zone nor draft) → state unchanged', () => {
@@ -86,7 +86,7 @@ describe('T6 K11 — ASSEMBLY_REALISE on a zone target (reducer)', () => {
     s = skeletonReducer(s, { type: 'INSERT_SEGMENT', draftId: 'asm', sourceContainerId: 'src2', start: 0, end: 24, rc: false });
     const before = s.operations.length;
     s = skeletonReducer(s, { type: 'ASSEMBLY_REALISE', draftId: 'asm', perBoundaryMethods: { 0: 'gibson' } });
-    expect(s.operations.length).toBe(before + 2);
+    expect(s.operations.length).toBe(before + 3); // 2 PCR + 1 assembly op (10.06)
     expect(s.assemblyDrafts.find((d) => d.id === 'asm').realiseRevision).toBe(1);
   });
 });
@@ -95,7 +95,7 @@ let A = null;
 let S = null;
 function H() { A = useSkeletonActions(); S = useSkeletonState(); return null; }
 
-describe('T6 K11 — RealiseModal mounted in zone-mode', () => {
+describe('T6 K11 — realise (direct, no modal) in zone-mode', () => {
   function mount() {
     render(<SkeletonProvider><H /><EditorWindowShell /></SkeletonProvider>);
     act(() => { A.addContainer(C1); });
@@ -127,16 +127,29 @@ describe('T6 K11 — RealiseModal mounted in zone-mode', () => {
     return zid;
   }
 
-  it('Realise button opens the modal with a per-boundary card; confirm adds ops', () => {
+  it('Realise button realises directly (no modal) → adds ops + junction', () => {
     mount();
     const btn = screen.getByTestId('assembly-realise-btn');
     expect(btn.disabled).toBe(false);
+    // Modal removed (Игорь 11.06) — one click realises straight to the canvas.
     act(() => { fireEvent.click(btn); });
-    const modal = screen.getByTestId('realise-modal');
-    expect(within(modal).getAllByTestId('method-picker-card')).toHaveLength(1);
-    act(() => { fireEvent.click(within(modal).getByTestId('realise-confirm')); });
     expect(screen.queryByTestId('realise-modal')).toBeNull();
     expect(S.operations.filter((o) => o.kind === 'pcr').length).toBeGreaterThanOrEqual(2);
     expect(S.junctions.length).toBe(1);
+  });
+
+  it('re-realising the zone REGENERATES, it does not duplicate (Игорь 11.06)', () => {
+    mount();
+    act(() => { fireEvent.click(screen.getByTestId('assembly-realise-btn')); });
+    const ops1 = S.operations.length;
+    const cont1 = S.containers.length;
+    const jun1 = S.junctions.length;
+    expect(S.containers.filter((c) => c.origin && c.origin.kind === 'realised-product')).toHaveLength(1);
+    // Second click must replace the prior DAG, not stack a second copy.
+    act(() => { fireEvent.click(screen.getByTestId('assembly-realise-btn')); });
+    expect(S.operations.length).toBe(ops1);
+    expect(S.containers.length).toBe(cont1);
+    expect(S.junctions.length).toBe(jun1);
+    expect(S.containers.filter((c) => c.origin && c.origin.kind === 'realised-product')).toHaveLength(1);
   });
 });

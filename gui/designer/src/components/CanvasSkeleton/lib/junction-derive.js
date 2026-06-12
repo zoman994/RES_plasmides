@@ -198,8 +198,8 @@ export function assemblyReadiness(coloredZones) {
  * keyed by boundary INDEX (0..N−2, segment order — the shape realiseAssembly
  * already consumes). The junction config (zone.junctions[pairKey].method) is
  * the source of truth; falls back to the A4 suggestion, then gibson. The
- * RealiseModal builds its `methods` from this instead of the (removed) radio
- * picker — the strip junction owns the method, the modal only reflects it. Pure.
+ * AssemblyShellBody `onRealise` handler builds its `methods` from this — the
+ * strip junction owns the method (the old confirm modal was removed). Pure.
  */
 export function methodsFromJunctions(draft, zoneJunctions = {}, suggestions = []) {
   const internal = internalBoundaries(draft);

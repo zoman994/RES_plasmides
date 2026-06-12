@@ -17,7 +17,7 @@ import {
 import { isPlaceholderContainer } from '../fixture-canvas-skeleton';
 import {
   edgePanVelocity, viewportToWorld,
-  nodeRect, gatherObstacleRects, resolveNodeOverlap,
+  nodeRect, gatherObstacleRects, resolveNodeOverlap, dropLayoutEffects,
 } from './canvas-layout';
 import { findZoneAtPoint } from './zone-interaction';
 import { selectZoneByNodeId } from '../store/selectors-zones';
@@ -223,17 +223,12 @@ export function useCanvasLayoutDrag({ state, actions, containerRef, zoom }) {
         const tId = target ? target.id : null;
         const cId = cur ? cur.id : null;
         if (tId !== cId) actions.moveNodeToZone(dragging.kind, dragging.id, tId);
-        // TD-ZONE-ATTACH-CONTAINMENT H2+H3 (Игорь «делай до конца»): a
-        // deliberate drop INTO a zone is an explicit «I arrange this
-        // by hand» → switch that zone to laneLayout:'manual'. Effects
-        // (confirmed in skeleton-state.js): the 3-lane finalizer SKIPS
-        // manual zones (no more re-laying siblings = «не криво»), and
-        // the grow-only union bounds RUN for manual zones (frame grows
-        // to enclose the dropped node = «держится внутри»). Fires
-        // whenever the drop lands in a zone, even same-zone reposition.
-        if (target && target.laneLayout !== 'manual') {
-          actions.setZoneLaneLayout(target.id, 'manual');
-        }
+        // M-CANVAS-FIX.1 K1 (Игорь §0.5): a drop into / within a zone NO
+        // LONGER flips it to laneLayout:'manual'. Canvas is authoritative
+        // auto-layout — in-zone nodes aren't hand-arranged; the dropped node
+        // is re-laid by the 3-lane finalizer and the frame auto-sizes to
+        // contain it (containment via auto-size, not the old manual-grow).
+        // `target` kept above only for moveNodeToZone hit-detection.
       }
       // SPEC_CANVAS_NODE_COLLISION — loose-only anti-overlap. In-zone
       // drops are arranged by the zone lane finalizer (and resolve must
@@ -261,11 +256,12 @@ export function useCanvasLayoutDrag({ state, actions, containerRef, zoom }) {
           }
         }
       }
-      // T4.5 DEC-T4.5-04/07 — a deliberate drag IS a manual override:
-      // pin the node so the 3-lane finalizer leaves it where dropped
-      // (position already applied by applyDragAt). Assembly drafts
-      // aren't zone nodes → not pinnable.
-      if (dragging.kind === 'container' || dragging.kind === 'operation') {
+      // M-CANVAS-FIX.1 K1 — pin only a LOOSE drop. A zoned node stays under
+      // auto-layout (pinning it would re-introduce the manual-vs-auto fight
+      // that made the canvas «fall apart after first touch»); a loose drop
+      // keeps the free-positioning model. Decision centralised + tested in
+      // dropLayoutEffects.
+      if (dropLayoutEffects({ kind: dragging.kind, droppedZoneTarget }).pin) {
         actions.setNodePinned(dragging.kind, dragging.id, true);
       }
     }

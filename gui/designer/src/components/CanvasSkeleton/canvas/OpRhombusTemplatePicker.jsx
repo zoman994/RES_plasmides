@@ -3,11 +3,18 @@
  * whose kind is set but inputs are still empty (F3 DEC-CANVAS-PCR-03
  * path 1). Anchored dropdown; lists non-placeholder containers.
  */
+import { useEffect } from 'react';
 import { isPlaceholderContainer } from '../fixture-canvas-skeleton';
 
 export default function OpRhombusTemplatePicker({
   op, position, containers = [], onPick, onCancel,
 }) {
+  // ui-interactions A — close on Escape (backdrop-click already wired).
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onCancel?.(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onCancel]);
   if (!op) return null;
   const left = position?.x ?? 0;
   const top = position?.y ?? 0;

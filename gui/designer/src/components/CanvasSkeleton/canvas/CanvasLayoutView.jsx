@@ -23,8 +23,12 @@ import { useStore } from '../../../store';
 import ZoneLayer from './ZoneLayer';
 import SangerLabNotebook from './SangerLabNotebook';
 import LibrarySearchBar from './LibrarySearchBar';
+import OpKindPicker from './operations/OpKindPicker';
+import OpPopupRouter from './operations/OpPopupRouter';
 import { buildAssemblyZoneAction } from './assembly-zone-create';
-import { zoomAtPoint, canvasContentExtent, panScrollTarget } from './canvas-layout';
+import {
+  zoomAtPoint, canvasContentExtent, panScrollTarget, contentBBox, fitZoomToContent,
+} from './canvas-layout';
 
 export default function CanvasLayoutView() {
   const s = STRINGS.canvasSkeleton || {};
@@ -133,6 +137,56 @@ export default function CanvasLayoutView() {
     el.scrollLeft = p.left;
     el.scrollTop = p.top;
   }, [zoom]);
+
+  // «Под размер сборки» — zoom + centre so the whole assembly fits the window
+  // (Игорь 11.06). Reuses the pendingScroll → useLayoutEffect path so the
+  // scroll lands after the scaled spacer re-sizes.
+  const onZoomFit = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const fit = fitZoomToContent({
+      viewportW: el.clientWidth, viewportH: el.clientHeight, bbox: contentBBox(state),
+    });
+    if (!fit) return;
+    pendingScrollRef.current = { left: fit.scrollLeft, top: fit.scrollTop };
+    setZoom(fit.zoom);
+  }, [state]);
+
+  // `.2` (Игорь 11.06) — IN-ZONE op popup, parity with CanvasGraphView. A click
+  // on a reaction diamond inside a zone opens the lightweight reaction config at
+  // the cursor (OpKindPicker for a kind-less draft, OpPopupRouter for a
+  // committed op) instead of jumping to the editor tab (the K4 stopgap). Both
+  // popups are position:fixed, so the canvas scale/scroll doesn't affect them.
+  const [openOpPicker, setOpenOpPicker] = useState(null); // {operationId,x,y}
+  const [openOpPopup, setOpenOpPopup] = useState(null);
+  const onOperationClick = useCallback((op, e) => {
+    if (!op) return;
+    const x = e?.clientX ?? 100;
+    const y = e?.clientY ?? 100;
+    if (op.kind === null || op.kind === undefined) {
+      setOpenOpPicker({ operationId: op.id, x, y });
+      setOpenOpPopup(null);
+    } else {
+      setOpenOpPopup({ operationId: op.id, x, y });
+      setOpenOpPicker(null);
+    }
+  }, []);
+  const opsList = state.operations || [];
+  const pickerOp = openOpPicker ? opsList.find((o) => o.id === openOpPicker.operationId) || null : null;
+  const popupOp = openOpPopup ? opsList.find((o) => o.id === openOpPopup.operationId) || null : null;
+  const onPickerPickKind = useCallback((kind) => {
+    if (!openOpPicker?.operationId) return;
+    actions.opSetKind(openOpPicker.operationId, kind);
+    setOpenOpPopup({ operationId: openOpPicker.operationId, x: openOpPicker.x, y: openOpPicker.y });
+    setOpenOpPicker(null);
+  }, [actions, openOpPicker]);
+  const onPickerCancel = useCallback(() => setOpenOpPicker(null), []);
+  const onPopupCancel = useCallback(() => setOpenOpPopup(null), []);
+  const onPopupExecute = useCallback((operationId, paramsPatch) => {
+    if (paramsPatch && Object.keys(paramsPatch).length > 0) actions.opSetParams(operationId, paramsPatch);
+    actions.opExecute(operationId);
+    setOpenOpPopup(null);
+  }, [actions]);
 
   // Sizing shim: CSS scale() doesn't grow scrollWidth/Height — force the
   // scrollable area to contentExtent*zoom so focal-zoom can pan far enough.
@@ -274,6 +328,7 @@ export default function CanvasLayoutView() {
             state={state}
             dispatch={actions.zoneDispatch}
             onNavigateToZone={handleNavigateToZone}
+            onOperationClick={onOperationClick}
           />
           {/* T10 K9 — Sanger lab notebook (per focused zone). */}
           {sangerOpen && state.focusedZoneId && (
@@ -339,7 +394,44 @@ export default function CanvasLayoutView() {
         <button type="button" data-testid="skeleton-zoom-out" onClick={onZoomOut} style={zoomBtnStyle} title="Уменьшить">−</button>
         <button type="button" data-testid="skeleton-zoom-reset" onClick={onZoomReset} style={{ ...zoomBtnStyle, minWidth: 44, fontSize: 11 }} title="Сбросить">{Math.round(zoom * 100)}%</button>
         <button type="button" data-testid="skeleton-zoom-in" onClick={onZoomIn} style={zoomBtnStyle} title="Увеличить">+</button>
+        <button
+          type="button"
+          data-testid="skeleton-zoom-fit"
+          onClick={onZoomFit}
+          style={{ ...zoomBtnStyle, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+          title="Под размер сборки"
+          aria-label="Под размер сборки"
+        >
+          {/* Inline SVG (the ⛶ glyph renders blank in many Windows UI fonts) —
+              4 corner brackets = «fit to content». */}
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M2 6V2h4" />
+            <path d="M10 2h4v4" />
+            <path d="M14 10v4h-4" />
+            <path d="M6 14H2v-4" />
+          </svg>
+        </button>
       </div>
+
+      {/* `.2` — in-zone reaction popup (mounted OUTSIDE the scaled scroll
+          container; position:fixed at the click). */}
+      {openOpPicker && pickerOp && (
+        <OpKindPicker
+          operation={pickerOp}
+          position={{ x: openOpPicker.x, y: openOpPicker.y }}
+          onPick={onPickerPickKind}
+          onCancel={onPickerCancel}
+        />
+      )}
+      {openOpPopup && popupOp && (
+        <OpPopupRouter
+          operation={popupOp}
+          position={{ x: openOpPopup.x, y: openOpPopup.y }}
+          containers={state.containers || []}
+          onCancel={onPopupCancel}
+          onExecute={onPopupExecute}
+        />
+      )}
     </div>
   );
 }

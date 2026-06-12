@@ -6,4 +6,6 @@
  * stays as a thin re-export so existing import sites keep working;
  * scheduled for removal in a future cleanup sprint.
  */
-export { realiseAssembly, nameWithRevision } from './zone-pieces-to-dag';
+export {
+  realiseAssembly, nameWithRevision, tagZoneSources, pruneZoneRealiseOutput,
+} from './zone-pieces-to-dag';

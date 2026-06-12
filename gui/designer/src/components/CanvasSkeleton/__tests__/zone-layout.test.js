@@ -7,7 +7,7 @@
  * nodes keep their position (excluded from the result).
  */
 import { describe, it, expect } from 'vitest';
-import { computeZoneLayout } from '../lib/zone-layout';
+import { computeZoneLayout, ZONE_LANE_DY, NODE_FOOTPRINT } from '../lib/zone-layout';
 
 const cnt = (id, over = {}) => ({
   id, kind: 'molecule', name: id, sequence: 'ACGT', zoneId: 'z1', pinned: false, ...over,
@@ -49,12 +49,13 @@ describe('T4.5 K3 — computeZoneLayout', () => {
     const s = st({ containers: [cnt('beta'), cnt('alpha')] });
     const pos = computeZoneLayout(s, 'z1');
     const zb = s.zones[0].bounds;
-    // top lane y = zoneTop + 50
-    expect(pos.alpha.y).toBe(zb.y + 50);
-    expect(pos.beta.y).toBe(zb.y + 50);
+    // top (source) lane y = zoneTop + source offset (K2: derived, was 50)
+    expect(pos.alpha.y).toBe(zb.y + ZONE_LANE_DY.source);
+    expect(pos.beta.y).toBe(zb.y + ZONE_LANE_DY.source);
     // alpha (sorted first) is left of beta
     expect(pos.alpha.x).toBeLessThan(pos.beta.x);
-    expect(pos.beta.x - pos.alpha.x).toBe(200); // 200px spacing
+    // K2 — pitch ≥ footprint width so adjacent blocks never overlap (was 200<240)
+    expect(pos.beta.x - pos.alpha.x).toBeGreaterThanOrEqual(NODE_FOOTPRINT.w);
   });
 
   it('finals land in the bottom lane', () => {
@@ -65,10 +66,11 @@ describe('T4.5 K3 — computeZoneLayout', () => {
     });
     const pos = computeZoneLayout(s, 'z1');
     const zb = s.zones[0].bounds;
-    expect(pos.a.y).toBe(zb.y + 50); // source top
+    expect(pos.a.y).toBe(zb.y + ZONE_LANE_DY.source); // source top (K2 derived)
     // DEVIATION DEC-T4.5-08: finals at a FIXED top offset (loop-safe),
     // not bottom-anchored — see zone-layout.js LANE_FIN_DY rationale.
-    expect(pos.fin.y).toBe(zb.y + 380);
+    // K2 — offset is now height-aware (derived from footprint), was 380.
+    expect(pos.fin.y).toBe(zb.y + ZONE_LANE_DY.finals);
     expect(pos.o1.y).toBeGreaterThan(pos.a.y); // op in the middle lane
     expect(pos.o1.y).toBeLessThan(pos.fin.y);
   });

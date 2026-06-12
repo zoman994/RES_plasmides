@@ -10,7 +10,7 @@ import {
   describe, it, expect, afterEach, beforeEach,
 } from 'vitest';
 import {
-  render, screen, cleanup, fireEvent, act, within,
+  render, screen, cleanup, fireEvent, act,
 } from '@testing-library/react';
 import { skeletonReducer, buildInitialState } from '../store/skeleton-state';
 import {
@@ -66,11 +66,13 @@ describe('A4.K1 suggestMethodForBoundary', () => {
 });
 
 describe('A4.K2-K5 realiseAssembly (pure)', () => {
-  it('2 sourced segments + 1 boundary (gibson) → 2 ops, 1 junction, 3 containers', () => {
+  it('2 sourced segments → 2 PCR + 1 assembly op, 1 junction, 3 containers', () => {
     const s = base();
     const r = realiseAssembly(s, 'asm', { 0: 'gibson' }, {});
     expect(r.ok).toBe(true);
-    expect(r.diff.operations).toHaveLength(2);
+    // 2 PCR ops + the one-pot assembly op joining frags → product (10.06).
+    expect(r.diff.operations.filter((o) => o.kind === 'pcr')).toHaveLength(2);
+    expect(r.diff.operations.filter((o) => o.origin?.kind === 'realised-assembly')).toHaveLength(1);
     expect(r.diff.junctions).toHaveLength(1);
     expect(r.diff.junctions[0].kind).toBe('overlap'); // gibson → overlap kind
     // 2 amplicon outputs + 1 final product
@@ -132,7 +134,7 @@ describe('A4.K6 ASSEMBLY_REALISE reducer', () => {
     let s = base();
     const before = s.operations.length;
     s = skeletonReducer(s, { type: 'ASSEMBLY_REALISE', draftId: 'asm', perBoundaryMethods: { 0: 'gibson' } });
-    expect(s.operations.length).toBe(before + 2);
+    expect(s.operations.length).toBe(before + 3); // 2 PCR + 1 assembly op (10.06)
     expect(s.junctions.length).toBe(1);
     expect(s.assemblyDrafts.find((d) => d.id === 'asm').realiseRevision).toBe(1);
   });
@@ -151,11 +153,11 @@ describe('A4.K6 ASSEMBLY_REALISE reducer', () => {
     s = skeletonReducer(s, { type: 'ASSEMBLY_REALISE', draftId: 'asm', perBoundaryMethods: { 0: 'gibson' } });
     s = skeletonReducer(s, { type: 'ASSEMBLY_REALISE', draftId: 'asm', perBoundaryMethods: { 0: 'gibson' } });
     expect(s.assemblyDrafts.find((d) => d.id === 'asm').realiseRevision).toBe(2);
-    expect(s.operations.length).toBe(4); // 2 + 2, old not deleted
+    expect(s.operations.length).toBe(6); // 3 + 3 (2 PCR + 1 assembly each), old not deleted
   });
 });
 
-describe('A4.K7-K9 RealiseModal + e2e', () => {
+describe('A4.K7-K9 realise (direct, no modal) + e2e', () => {
   function mount() {
     render(<SkeletonProvider><H /><EditorWindowShell /></SkeletonProvider>);
     act(() => { A.addContainer(C1); });
@@ -166,22 +168,25 @@ describe('A4.K7-K9 RealiseModal + e2e', () => {
     act(() => { A.openEditorAssemblyTab('asm'); });
   }
 
-  it('Realise button enabled (segments present) → opens modal with per-boundary cards', () => {
+  // Modal removed (Игорь 11.06): the per-boundary method is owned by the strip
+  // junctions (J9) and the real DAG renders on the canvas, so the button
+  // realises directly — no confirm step, no preview.
+  it('Realise button enabled (segments present) → realises directly, no modal', () => {
     mount();
     const btn = screen.getByTestId('assembly-realise-btn');
     expect(btn.disabled).toBe(false);
     act(() => { fireEvent.click(btn); });
-    const modal = screen.getByTestId('realise-modal');
-    expect(within(modal).getAllByTestId('method-picker-card')).toHaveLength(1);
+    expect(screen.queryByTestId('realise-modal')).toBeNull();
+    expect(S.operations.filter((o) => o.kind === 'pcr').length).toBeGreaterThanOrEqual(2);
   });
 
-  it('confirm dispatches ASSEMBLY_REALISE → ops on canvas, modal closes', () => {
+  it('click dispatches ASSEMBLY_REALISE → ops + junction on canvas', () => {
     mount();
     act(() => { fireEvent.click(screen.getByTestId('assembly-realise-btn')); });
-    const modal = screen.getByTestId('realise-modal');
-    act(() => { fireEvent.click(within(modal).getByTestId('realise-confirm')); });
     expect(screen.queryByTestId('realise-modal')).toBeNull();
     expect(S.operations.filter((o) => o.kind === 'pcr').length).toBeGreaterThanOrEqual(2);
     expect(S.junctions.length).toBe(1);
+    // The editor itself shows no change → a success toast acknowledges it.
+    expect(S.toast && /реализован/i.test(S.toast.message || '')).toBe(true);
   });
 });

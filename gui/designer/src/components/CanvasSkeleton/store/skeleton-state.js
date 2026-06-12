@@ -54,7 +54,7 @@ import { mergeBoundingBoxes } from '../lib/zone-bounds';
 import { executeOperation } from '../canvas/operations/lib-adapters';
 import { detectAnnotationConflicts, summarizeConflicts } from '../../../lib/bio/annotation-conflicts';
 import { enrichAssemblyAnnotations } from '../canvas/operations/auto-annotate-assembly';
-import { realiseAssembly } from '../lib/assembly-realise';
+import { realiseAssembly, tagZoneSources, pruneZoneRealiseOutput } from '../lib/assembly-realise';
 import { selectPieceSequence } from './selectors-pieces';
 import { applyAutoReactions } from '../lib/auto-reaction-builder';
 import { applyZoneLayouts } from '../lib/zone-layout';
@@ -531,15 +531,8 @@ function handleAssemblyRealise(state, action) {
     return { ...state, toast: { kind: 'error', message: `Realise: ${r.error}` } };
   }
   const { diff } = r;
-  // T4.5 fix (Игорь «не работает сортировка по зонам»): when the
-  // target is a ZONE, tag every NEW container/op with the zoneId so
-  // the 3-lane finalizer has members to sort. NOTE: we deliberately do
-  // NOT pull the pre-existing source containers into the zone — they
-  // sit at arbitrary user/QuickStart positions, and the grow-only T4
-  // bounds finalizer would balloon the zone to encompass them (giant
-  // frame + unreachable nodes + resize fought, Игорь 17.05.2026). The
-  // realised graph (frags/product/ops) is laid by T4.5 into bounded
-  // lanes; sources stay loose where the user placed them.
+  // ZONE target: tag every new container/op with the zoneId so the 3-lane
+  // finalizer has members to sort; sources are pulled in by tagZoneSources.
   const zoneTag = isZone ? draftId : null;
   const diffContainers = zoneTag
     ? diff.containers.map((c) => ({ ...c, zoneId: zoneTag }))
@@ -547,9 +540,13 @@ function handleAssemblyRealise(state, action) {
   const diffOperations = zoneTag
     ? diff.operations.map((o) => ({ ...o, zoneId: zoneTag }))
     : diff.operations;
-  const baseContainers = state.containers;
+  // Idempotent re-realise (Игорь 11.06): drop this zone's PRIOR realise output
+  // before appending, so re-clicking «Реализовать» regenerates, not duplicates.
+  const prev = isZone ? pruneZoneRealiseOutput(state, draftId) : state;
+  // Fix B (10.06) — pull PCR sources into the zone (source→PCR→frag).
+  const baseContainers = tagZoneSources(prev.containers, diffOperations, zoneTag);
   const positions = {
-    ...state.positions,
+    ...prev.positions,
     ...diff.positionsLayout.operations,
     ...diff.positionsLayout.containers,
   };
@@ -565,15 +562,15 @@ function handleAssemblyRealise(state, action) {
   return {
     ...state,
     containers: [...baseContainers, ...diffContainers],
-    operations: [...state.operations, ...diffOperations],
-    junctions: [...state.junctions, ...diff.junctions],
+    operations: [...prev.operations, ...diffOperations],
+    junctions: [...prev.junctions, ...diff.junctions],
     positions,
     assemblyDrafts,
     toast: {
       kind: diff.layoutShifted ? 'warning' : 'success',
       message: diff.layoutShifted
-        ? `Realised: ${opN} ops + ${junN} junctions (область занята — сдвинуто ниже)`
-        : `Realised: ${opN} ops + ${junN} junctions (revision ${nextRev})`,
+        ? `Реализовано: ${opN} операций, ${junN} стыков (сдвинуто ниже)`
+        : `Реализовано: ${opN} операций, ${junN} стыков`,
     },
   };
 }

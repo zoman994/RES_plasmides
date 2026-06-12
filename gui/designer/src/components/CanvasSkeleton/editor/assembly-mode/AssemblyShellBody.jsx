@@ -38,10 +38,12 @@ import AssemblyPipelinePanel from './AssemblyPipelinePanel';
 import MutationModal from './MutationModal';
 import { autoGroupPipeline } from '../../lib/auto-group-pipeline';
 import AssemblyPrimersPanel from './AssemblyPrimersPanel';
-import RealiseModal from './RealiseModal';
 import { useAssemblyPrimerWriting } from './useAssemblyPrimerWriting';
 import { findInsertIndexAtPosition } from '../../lib/assembly-primer-utils';
-import { enrichZonesWithJunctions, assemblyReadiness } from '../../lib/junction-derive';
+import {
+  enrichZonesWithJunctions, assemblyReadiness, methodsFromJunctions,
+} from '../../lib/junction-derive';
+import { suggestMethodForBoundary } from '../../lib/assembly-realise-suggest';
 import JunctionControl from '../../canvas/JunctionControl';
 import { useSequenceSelection } from '../../../../hooks/useSequenceSelection';
 import { routeAssemblyEdit, computeSeqDelta, SYNTHESIS_THRESHOLD_DEFAULT } from '../../lib/assembly-edit-router';
@@ -147,7 +149,26 @@ export default function AssemblyShellBody({ draft }) {
   const [groupPickerIds, setGroupPickerIds] = useState(null);
   // K14 — mutation modal context: { pieceId, fromBase, position } | null.
   const [mutationFor, setMutationFor] = useState(null);
-  const [realiseOpen, setRealiseOpen] = useState(false);
+
+  // «Реализовать как DAG» — the confirm modal was removed (Игорь 11.06): the
+  // strip junctions already own the per-boundary method (J9) and the real DAG
+  // renders on the canvas (now topology-correct), so the button realises
+  // directly. methods come from the junctions, with the A4 suggestion as
+  // fallback (the same source the old modal used). The reducer raises the
+  // outcome toast (success / «лимит ревизий» / error) — the single source of
+  // truth — so the editor stays quiet here. Ctrl+Z reverts; re-realising a
+  // zone regenerates (it does not duplicate).
+  const onRealise = useCallback(() => {
+    const segs = (draft && draft.segments) || [];
+    if (segs.length < 2) return;
+    const boundaryCount = segs.length - 1;
+    const suggestions = [];
+    for (let i = 0; i < boundaryCount; i += 1) {
+      suggestions.push(suggestMethodForBoundary(state, draftId, i));
+    }
+    const methods = methodsFromJunctions(draft, zoneJunctions, suggestions);
+    actions.realiseAssembly(draftId, methods);
+  }, [draft, state, draftId, zoneJunctions, actions]);
   // JUNCTION step-2 FIX — viewport coords of the clicked junction glyph so the
   // JunctionControl popover anchors to it (else it lands top-left, looked broken).
   const [junctionPos, setJunctionPos] = useState(null);
@@ -431,7 +452,7 @@ export default function AssemblyShellBody({ draft }) {
         onToggleTopology={() => actions.setAssemblyDraftTopology(
           draftId, !(draft.topology && draft.topology.circular),
         )}
-        onRealise={() => setRealiseOpen(true)}
+        onRealise={onRealise}
         /* UX slice 3 — whole-assembly method; flows down to un-overridden
            junctions. Only for a zone assembly with ≥2 segments (a junction
            exists); legacy drafts leave it undefined → dropdown hidden. */
@@ -721,12 +742,6 @@ export default function AssemblyShellBody({ draft }) {
           source={rangeSourceShape}
           onConfirm={onRangeConfirm}
           onCancel={() => setRangeSource(null)}
-        />
-      )}
-      {realiseOpen && (
-        <RealiseModal
-          draftId={draftId}
-          onClose={() => setRealiseOpen(false)}
         />
       )}
       {/* JUNCTION step-2 FIX — clicking a strip junction glyph opens this

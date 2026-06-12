@@ -39,6 +39,13 @@ export default function PlasmidUseWizard({ plasmid, presetMode, onClose }) {
   const [message, setMessage] = useState(null);
   const [creating, setCreating] = useState(false);
 
+  // ui-interactions A — wizard closes on Escape (backdrop-click already wired).
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   const addFragment = useStore(s => s.addFragment);
   const addPart = useStore(s => s.addPart);
   const setViewerPart = useStore(s => s.setViewerPart);
@@ -179,11 +186,11 @@ export default function PlasmidUseWizard({ plasmid, presetMode, onClose }) {
             if (m.id === 'versions') { useStore.getState().setVersionTreePartId(plasmid.id); onClose(); return; }
             setStep(m.id);
           }}
-          className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-gray-100 hover:border-blue-300 hover:bg-blue-50 transition text-left">
+          className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-[var(--border-subtle)] hover:border-blue-300 hover:bg-blue-50 transition text-left">
           <span className="text-lg w-7 text-center">{m.icon}</span>
           <div>
-            <div className="text-xs font-semibold text-gray-800">{m.label}</div>
-            <div className="text-[10px] text-gray-400">{m.desc}</div>
+            <div className="text-xs font-semibold text-[var(--text-primary)]">{m.label}</div>
+            <div className="text-[10px] text-[var(--text-tertiary)]">{m.desc}</div>
           </div>
         </button>
       ))}
@@ -192,14 +199,14 @@ export default function PlasmidUseWizard({ plasmid, presetMode, onClose }) {
 
   const renderExtract = () => (
     <div>
-      <div className="text-xs font-semibold text-gray-600 mb-2">Выберите регион для извлечения:</div>
+      <div className="text-xs font-semibold text-[var(--text-secondary)] mb-2">Выберите регион для извлечения:</div>
       <div className="space-y-1">
         {regions.map(r => (
           <button key={r.id} onClick={() => handleExtract(r.id)}
             className="flex items-center gap-2 w-full px-3 py-2 rounded border hover:bg-blue-50 transition text-left">
             <span className="w-3 h-3 rounded-full" style={{ backgroundColor: ANNOTATION_COLORS[r.type] || FEATURE_COLORS[r.type] || '#999' }} />
             <span className="text-xs font-medium flex-1">{r.name}</span>
-            <span className="text-[10px] text-gray-400">{r.type} · {r.end - r.start} п.н.</span>
+            <span className="text-[10px] text-[var(--text-tertiary)]">{r.type} · {r.end - r.start} п.н.</span>
           </button>
         ))}
       </div>
@@ -293,18 +300,18 @@ export default function PlasmidUseWizard({ plasmid, presetMode, onClose }) {
 
   const renderReplace = () => (
     <div>
-      <div className="text-xs font-semibold text-gray-600 mb-1">Что заменить? (Ctrl+клик для нескольких)</div>
+      <div className="text-xs font-semibold text-[var(--text-secondary)] mb-1">Что заменить? (Ctrl+клик для нескольких)</div>
       <div className="space-y-1 mb-3">
         {regions.map(r => {
           const isSel = selectedRegionIds.includes(r.id);
           return (
             <button key={r.id} onClick={e => toggleRegion(r.id, e.ctrlKey || e.metaKey)}
               className={`flex items-center gap-2 w-full px-3 py-2 rounded border transition text-left
-                ${isSel ? 'bg-blue-50 border-blue-400 ring-1 ring-blue-300' : 'hover:bg-gray-50'}`}>
+                ${isSel ? 'bg-blue-50 border-blue-400 ring-1 ring-blue-300' : 'hover:bg-[var(--surface-2)]'}`}>
               <span className="w-3 h-3 rounded-full" style={{ backgroundColor: ANNOTATION_COLORS[r.type] || '#999' }} />
               <span className="text-xs font-medium flex-1">{r.name}</span>
               {isSel && <span className="text-blue-600 text-xs">{'✓'}</span>}
-              <span className="text-[10px] text-gray-400">{r.end - r.start} п.н.</span>
+              <span className="text-[10px] text-[var(--text-tertiary)]">{r.end - r.start} п.н.</span>
             </button>
           );
         })}
@@ -335,14 +342,14 @@ export default function PlasmidUseWizard({ plasmid, presetMode, onClose }) {
       )}
 
       {selectedRegionIds.length === 0 && (
-        <div className="text-[10px] text-gray-400">{'💡'} Кликните на регион для выбора. Ctrl+клик для множественного.</div>
+        <div className="text-[10px] text-[var(--text-tertiary)]">{'💡'} Кликните на регион для выбора. Ctrl+клик для множественного.</div>
       )}
     </div>
   );
 
   const renderDelete = () => (
     <div>
-      <div className="text-xs font-semibold text-gray-600 mb-2">Какой регион удалить?</div>
+      <div className="text-xs font-semibold text-[var(--text-secondary)] mb-2">Какой регион удалить?</div>
       <div className="space-y-1">
         {regions.map(r => (
           <button key={r.id} onClick={() => {
@@ -356,7 +363,7 @@ export default function PlasmidUseWizard({ plasmid, presetMode, onClose }) {
             className="flex items-center gap-2 w-full px-3 py-2 rounded border hover:bg-red-50 transition text-left">
             <span className="w-3 h-3 rounded-full" style={{ backgroundColor: ANNOTATION_COLORS[r.type] || '#999' }} />
             <span className="text-xs font-medium flex-1">{r.name}</span>
-            <span className="text-[10px] text-gray-400">{r.end - r.start} п.н.</span>
+            <span className="text-[10px] text-[var(--text-tertiary)]">{r.end - r.start} п.н.</span>
             <span className="text-red-400 text-xs">{'🗑'}</span>
           </button>
         ))}
@@ -477,7 +484,7 @@ export default function PlasmidUseWizard({ plasmid, presetMode, onClose }) {
 
   const renderInsert = () => (
     <div>
-      <div className="text-xs font-semibold text-gray-600 mb-2">Вставить между:</div>
+      <div className="text-xs font-semibold text-[var(--text-secondary)] mb-2">Вставить между:</div>
       <div className="space-y-1 mb-3">
         {regions.map((r, i) => {
           const next = regions[(i + 1) % regions.length];
@@ -487,9 +494,9 @@ export default function PlasmidUseWizard({ plasmid, presetMode, onClose }) {
               className={`flex items-center gap-2 w-full px-3 py-2 rounded border transition text-left text-xs
                 ${insertPos === pos ? 'bg-green-50 border-green-400 ring-1 ring-green-300' : 'hover:bg-green-50'}`}>
               <span>{r.name}</span>
-              <span className="text-gray-300">{'↔'}</span>
+              <span className="text-[var(--text-tertiary)]">{'↔'}</span>
               <span>{next.name}</span>
-              <span className="text-[10px] text-gray-400 ml-auto">поз. {pos}</span>
+              <span className="text-[10px] text-[var(--text-tertiary)] ml-auto">поз. {pos}</span>
               {insertPos === pos && <span className="text-green-600">{'✓'}</span>}
             </button>
           );
@@ -521,9 +528,9 @@ export default function PlasmidUseWizard({ plasmid, presetMode, onClose }) {
       {/* Step indicators */}
       <div className="flex items-center gap-2 mb-3">
         {[1, 2, 3].map(s => (
-          <div key={s} className={`flex items-center gap-1 text-[10px] ${rcStep === s ? 'text-red-600 font-bold' : rcStep > s ? 'text-green-600' : 'text-gray-400'}`}>
+          <div key={s} className={`flex items-center gap-1 text-[10px] ${rcStep === s ? 'text-red-600 font-bold' : rcStep > s ? 'text-green-600' : 'text-[var(--text-tertiary)]'}`}>
             <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] border ${
-              rcStep === s ? 'bg-red-50 border-red-300' : rcStep > s ? 'bg-green-50 border-green-300' : 'border-gray-200'}`}>
+              rcStep === s ? 'bg-red-50 border-red-300' : rcStep > s ? 'bg-green-50 border-green-300' : 'border-[var(--border-subtle)]'}`}>
               {rcStep > s ? '✓' : s}
             </span>
             <span>{s === 1 ? 'Ферменты' : s === 2 ? 'Insert' : 'Создать'}</span>
@@ -534,8 +541,8 @@ export default function PlasmidUseWizard({ plasmid, presetMode, onClose }) {
       {/* Step 1: enzyme selection */}
       {rcStep === 1 && (
         <div>
-          <div className="text-xs font-semibold text-gray-600 mb-1">Выберите 1 или 2 уникальных рестриктазы:</div>
-          <div className="text-[9px] text-gray-400 mb-2">1 фермент = linearize, 2 фермента = excise (directional cloning)</div>
+          <div className="text-xs font-semibold text-[var(--text-secondary)] mb-1">Выберите 1 или 2 уникальных рестриктазы:</div>
+          <div className="text-[9px] text-[var(--text-tertiary)] mb-2">1 фермент = linearize, 2 фермента = excise (directional cloning)</div>
 
           <div className="max-h-48 overflow-y-auto border rounded mb-2">
             {uniqueSites.map(s => {
@@ -552,28 +559,28 @@ export default function PlasmidUseWizard({ plasmid, presetMode, onClose }) {
                     });
                   }}>
                   <span className={`w-4 h-4 rounded border flex items-center justify-center text-[8px] ${
-                    isSelected ? 'bg-red-500 text-white border-red-500' : 'border-gray-300'}`}>
+                    isSelected ? 'bg-red-500 text-white border-red-500' : 'border-[var(--border-default)]'}`}>
                     {isSelected ? '✓' : ''}
                   </span>
                   <span className="font-medium w-14">{s.enzyme}</span>
-                  <span className="font-mono text-[9px] text-gray-500 w-20">{s.site}</span>
-                  <span className={`text-[8px] w-10 ${s.end === '5prime' ? 'text-blue-600' : s.end === '3prime' ? 'text-orange-600' : 'text-gray-400'}`}>
+                  <span className="font-mono text-[9px] text-[var(--text-tertiary)] w-20">{s.site}</span>
+                  <span className={`text-[8px] w-10 ${s.end === '5prime' ? 'text-blue-600' : s.end === '3prime' ? 'text-orange-600' : 'text-[var(--text-tertiary)]'}`}>
                     {s.end === '5prime' ? "5' oh" : s.end === '3prime' ? "3' oh" : 'blunt'}
                   </span>
-                  <span className="text-[8px] text-gray-400">{s.buffer}</span>
-                  <span className="text-[8px] text-gray-400 ml-auto">поз. {s.positions[0]?.position}</span>
+                  <span className="text-[8px] text-[var(--text-tertiary)]">{s.buffer}</span>
+                  <span className="text-[8px] text-[var(--text-tertiary)] ml-auto">поз. {s.positions[0]?.position}</span>
                 </div>
               );
             })}
             {uniqueSites.length === 0 && (
-              <div className="p-3 text-center text-[10px] text-gray-400">Нет уникальных сайтов рестрикции</div>
+              <div className="p-3 text-center text-[10px] text-[var(--text-tertiary)]">Нет уникальных сайтов рестрикции</div>
             )}
           </div>
 
           {/* Digest preview */}
           {rcDigestResult && !rcDigestResult.error && (
-            <div className="bg-gray-50 rounded p-2 mb-2 text-[10px]">
-              <div className="font-medium text-gray-700">
+            <div className="bg-[var(--surface-2)] rounded p-2 mb-2 text-[10px]">
+              <div className="font-medium text-[var(--text-secondary)]">
                 {rcDigestResult.type === 'linearize' ? 'Линеаризация' : 'Excision'}: backbone {rcDigestResult.backbone.length} п.н.
                 {rcDigestResult.excised && `, excised ${rcDigestResult.excised.length} п.н.`}
               </div>
@@ -594,7 +601,7 @@ export default function PlasmidUseWizard({ plasmid, presetMode, onClose }) {
 
           <button onClick={() => setRcStep(2)}
             disabled={rcEnzymes.length === 0 || rcDigestResult?.error}
-            className="text-[10px] px-3 py-1.5 bg-red-600 text-white rounded hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed">
+            className="text-[10px] px-3 py-1.5 bg-red-600 text-white rounded hover:bg-red-700 disabled:bg-[var(--surface-3)] disabled:cursor-not-allowed">
             Далее →
           </button>
         </div>
@@ -603,7 +610,7 @@ export default function PlasmidUseWizard({ plasmid, presetMode, onClose }) {
       {/* Step 2: insert selection */}
       {rcStep === 2 && (
         <div>
-          <div className="text-xs font-semibold text-gray-600 mb-2">Откуда insert?</div>
+          <div className="text-xs font-semibold text-[var(--text-secondary)] mb-2">Откуда insert?</div>
           <div className="flex gap-1 mb-3">
             {[
               { val: 'library', label: 'Из библиотеки' },
@@ -612,7 +619,7 @@ export default function PlasmidUseWizard({ plasmid, presetMode, onClose }) {
             ].map(m => (
               <button key={m.val} onClick={() => setRcInsertMode(m.val)}
                 className={`flex-1 text-[10px] py-1.5 rounded border transition ${
-                  rcInsertMode === m.val ? 'bg-red-50 border-red-300 text-red-700 font-bold' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
+                  rcInsertMode === m.val ? 'bg-red-50 border-red-300 text-red-700 font-bold' : 'border-[var(--border-subtle)] text-[var(--text-tertiary)] hover:bg-[var(--surface-2)]'}`}>
                 {m.label}
               </button>
             ))}
@@ -638,7 +645,7 @@ export default function PlasmidUseWizard({ plasmid, presetMode, onClose }) {
           )}
 
           {rcInsertMode === 'later' && (
-            <div className="text-[10px] text-gray-400 mb-2">Placeholder-фрагмент будет создан. Замените позже.</div>
+            <div className="text-[10px] text-[var(--text-tertiary)] mb-2">Placeholder-фрагмент будет создан. Замените позже.</div>
           )}
 
           {/* Insert site warnings */}
@@ -647,17 +654,17 @@ export default function PlasmidUseWizard({ plasmid, presetMode, onClose }) {
               {rcInsertWarnings.map((w, i) => (
                 <div key={i} className="text-[10px] text-red-700">
                   ⚠ {w.message}
-                  {w.alternatives.length > 0 && <span className="text-gray-500"> Альтернативы: {w.alternatives.join(', ')}</span>}
+                  {w.alternatives.length > 0 && <span className="text-[var(--text-tertiary)]"> Альтернативы: {w.alternatives.join(', ')}</span>}
                 </div>
               ))}
             </div>
           )}
 
           <div className="flex gap-2">
-            <button onClick={() => setRcStep(1)} className="text-[10px] px-3 py-1.5 border rounded hover:bg-gray-50">← Назад</button>
+            <button onClick={() => setRcStep(1)} className="text-[10px] px-3 py-1.5 border rounded hover:bg-[var(--surface-2)]">← Назад</button>
             <button onClick={() => setRcStep(3)}
               disabled={rcInsertMode === 'library' && !rcInsertPartId}
-              className="text-[10px] px-3 py-1.5 bg-red-600 text-white rounded hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed">
+              className="text-[10px] px-3 py-1.5 bg-red-600 text-white rounded hover:bg-red-700 disabled:bg-[var(--surface-3)] disabled:cursor-not-allowed">
               Далее →
             </button>
           </div>
@@ -678,23 +685,23 @@ export default function PlasmidUseWizard({ plasmid, presetMode, onClose }) {
 
         return (
           <div>
-            <div className="text-xs font-semibold text-gray-600 mb-2">Preview</div>
-            <div className="bg-gray-50 rounded-lg p-3 space-y-2 mb-3 text-[10px]">
+            <div className="text-xs font-semibold text-[var(--text-secondary)] mb-2">Preview</div>
+            <div className="bg-[var(--surface-2)] rounded-lg p-3 space-y-2 mb-3 text-[10px]">
               <div className="flex items-center gap-2">
-                <span className="font-semibold text-gray-700">Backbone:</span>
+                <span className="font-semibold text-[var(--text-secondary)]">Backbone:</span>
                 <span>{plasmid.name} — {bb.length} п.н.</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="font-semibold text-gray-700">Insert:</span>
+                <span className="font-semibold text-[var(--text-secondary)]">Insert:</span>
                 <span>{insertName} — {insertSeq.length || '?'} п.н.</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="font-semibold text-gray-700">Ферменты:</span>
+                <span className="font-semibold text-[var(--text-secondary)]">Ферменты:</span>
                 <span>{rcEnzymes.join(' + ')}</span>
                 {rcDigestResult.isDirectional && <span className="text-green-600 font-medium">✓ направленное</span>}
               </div>
               <div className="flex items-center gap-2">
-                <span className="font-semibold text-gray-700">Junctions:</span>
+                <span className="font-semibold text-[var(--text-secondary)]">Junctions:</span>
                 <span>
                   {rcEnzymes[0]} ({bb.leftEnd.overhangType}, {bb.leftEnd.overhang || 'blunt'})
                   {rcEnzymes[1] && ` + ${rcEnzymes[1]} (${bb.rightEnd.overhangType}, ${bb.rightEnd.overhang || 'blunt'})`}
@@ -733,22 +740,22 @@ export default function PlasmidUseWizard({ plasmid, presetMode, onClose }) {
               const inFrame5 = totalAdded5 % 3 === 0;
               const inFrame3 = totalAdded3 % 3 === 0;
               return (
-                <div className="bg-gray-50 rounded-lg p-3 mb-3 font-mono text-[10px] leading-5 space-y-2">
-                  <div className="text-[9px] text-gray-500 font-sans font-semibold mb-1">Junction preview</div>
+                <div className="bg-[var(--surface-2)] rounded-lg p-3 mb-3 font-mono text-[10px] leading-5 space-y-2">
+                  <div className="text-[9px] text-[var(--text-tertiary)] font-sans font-semibold mb-1">Junction preview</div>
                   <div>
-                    <span className="text-[9px] text-gray-400 font-sans">5' ({leftRE}):</span>
+                    <span className="text-[9px] text-[var(--text-tertiary)] font-sans">5' ({leftRE}):</span>
                     <div>
-                      <span className="text-gray-400">...{bbSeqRight}</span>
+                      <span className="text-[var(--text-tertiary)]">...{bbSeqRight}</span>
                       <span className="bg-red-100 text-red-700 px-0.5 rounded">{leftOH || 'blunt'}</span>
                       <span className="text-blue-600">{insLeft}...</span>
                     </div>
                   </div>
                   <div>
-                    <span className="text-[9px] text-gray-400 font-sans">3' ({rightRE}):</span>
+                    <span className="text-[9px] text-[var(--text-tertiary)] font-sans">3' ({rightRE}):</span>
                     <div>
                       <span className="text-blue-600">...{insRight}</span>
                       <span className="bg-red-100 text-red-700 px-0.5 rounded">{rightOH || 'blunt'}</span>
-                      <span className="text-gray-400">{bbSeqLeft}...</span>
+                      <span className="text-[var(--text-tertiary)]">{bbSeqLeft}...</span>
                     </div>
                   </div>
                   <div className="text-[9px] font-sans">
@@ -760,13 +767,13 @@ export default function PlasmidUseWizard({ plasmid, presetMode, onClose }) {
               );
             })()}
 
-            <div className="text-[9px] text-gray-400 mb-3">
+            <div className="text-[9px] text-[var(--text-tertiary)] mb-3">
               На canvas будут созданы 2 фрагмента (backbone + insert) и 2 ligation junction.
               Primer design автоматически добавит RE-тейлы к праймерам insert.
             </div>
 
             <div className="flex gap-2">
-              <button onClick={() => setRcStep(2)} className="text-[10px] px-3 py-1.5 border rounded hover:bg-gray-50">← Назад</button>
+              <button onClick={() => setRcStep(2)} className="text-[10px] px-3 py-1.5 border rounded hover:bg-[var(--surface-2)]">← Назад</button>
               <button onClick={() => { setCreating(true); handleRcCreate(); }} disabled={creating}
                 className="text-[10px] px-4 py-1.5 bg-red-600 text-white rounded hover:bg-red-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed">
                 🔪 {creating ? 'Создано ✓' : 'Создать на canvas'}
@@ -780,7 +787,7 @@ export default function PlasmidUseWizard({ plasmid, presetMode, onClose }) {
 
   const renderVersions = () => (
     <div className="text-center py-6">
-      <div className="text-gray-400 text-sm mb-2">{'🌳'} Дерево версий загружается...</div>
+      <div className="text-[var(--text-tertiary)] text-sm mb-2">{'🌳'} Дерево версий загружается...</div>
     </div>
   );
 
@@ -795,8 +802,8 @@ export default function PlasmidUseWizard({ plasmid, presetMode, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-6 bg-black/40" onClick={onClose}>
-      <div className="w-[800px] max-h-[85vh] bg-white rounded-xl shadow-2xl border overflow-hidden flex flex-col"
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-6 bg-[color-mix(in_srgb,var(--text-primary)_40%,transparent)]" onClick={onClose}>
+      <div className="w-[800px] max-h-[85vh] bg-[var(--surface-1)] rounded-xl shadow-2xl border overflow-hidden flex flex-col"
         onClick={e => e.stopPropagation()}>
 
         {/* Header */}
@@ -804,22 +811,22 @@ export default function PlasmidUseWizard({ plasmid, presetMode, onClose }) {
           <div className="flex items-center gap-2">
             {step !== 'menu' && (
               <button onClick={() => { setStep('menu'); setMessage(null); setSelectedRegionIds([]); }}
-                className="text-gray-400 hover:text-gray-600 text-sm mr-1">{'←'}</button>
+                className="text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] text-sm mr-1">{'←'}</button>
             )}
-            <h3 className="text-sm font-bold text-gray-700">
+            <h3 className="text-sm font-bold text-[var(--text-secondary)]">
               {step === 'menu' ? `Что сделать с «${plasmid.name}»?` : MODES.find(m => m.id === step)?.label || step}
             </h3>
-            <span className="text-[10px] text-gray-400">
+            <span className="text-[10px] text-[var(--text-tertiary)]">
               {totalBp.toLocaleString()} п.н., circular, {regions.length} регионов
             </span>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-lg">{'✕'}</button>
+          <button onClick={onClose} className="text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] text-lg">{'✕'}</button>
         </div>
 
         {/* Main */}
         <div className="flex flex-1 overflow-hidden min-h-0">
           {/* Left: circular map */}
-          <div className="w-[320px] shrink-0 p-3 flex items-center justify-center border-r bg-gray-50">
+          <div className="w-[320px] shrink-0 p-3 flex items-center justify-center border-r bg-[var(--surface-2)]">
             <PlasmidMap
               fragments={mapFragments}
               constructName={plasmid.name}
@@ -841,9 +848,9 @@ export default function PlasmidUseWizard({ plasmid, presetMode, onClose }) {
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end px-5 py-3 border-t shrink-0 bg-gray-50">
+        <div className="flex items-center justify-end px-5 py-3 border-t shrink-0 bg-[var(--surface-2)]">
           <button onClick={onClose}
-            className="text-xs px-4 py-1.5 border rounded hover:bg-gray-100">
+            className="text-xs px-4 py-1.5 border rounded hover:bg-[var(--surface-3)]">
             Закрыть
           </button>
         </div>

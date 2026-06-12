@@ -20,7 +20,7 @@ function countNodes(state, zoneId) {
   return containers.length + pieces.length + operations.length;
 }
 
-export default function ZoneLayer({ state, dispatch, onNavigateToZone }) {
+export default function ZoneLayer({ state, dispatch, onNavigateToZone, onOperationClick }) {
   const zones = selectAllZones(state);
   const [menu, setMenu] = useState(null); // {zoneId,x,y} | null
   const gesture = useRef(null);
@@ -85,6 +85,7 @@ export default function ZoneLayer({ state, dispatch, onNavigateToZone }) {
       startBounds: { ...zone.bounds },
       rafId: null,
       lastBounds: null,
+      optedOut: false,
     };
     g.compute = (ev) => resizeZoneBounds(
       { bounds: g.startBounds },
@@ -97,6 +98,14 @@ export default function ZoneLayer({ state, dispatch, onNavigateToZone }) {
       g.rafId = null;
     };
     g.onMove = (ev) => {
+      // Opt out of the deterministic auto-size on the FIRST real drag (not a
+      // bare click on the handle) so the manual bounds stick instead of being
+      // snapped back by applyZoneLayout (Игорь 11.06). Nodes keep
+      // auto-arranging; the header «подогнать» button re-enables the fit.
+      if (!g.optedOut) {
+        g.optedOut = true;
+        dispatch({ type: 'SET_ZONE_AUTO_RESIZE', zoneId: g.zoneId, autoResize: false });
+      }
       g.lastBounds = g.compute(ev);
       if (g.rafId) return;
       g.rafId = requestAnimationFrame(() => { g.flush(); });
@@ -118,6 +127,11 @@ export default function ZoneLayer({ state, dispatch, onNavigateToZone }) {
           dispatch={dispatch}
           onDragStart={(e) => startDrag(zone, e)}
           onResize={(edge, e) => startResize(zone, edge, e)}
+          /* «подогнать» — re-enable auto-size; the post-action finalizer
+             re-fits the frame to the graph (Игорь 11.06). */
+          onFitToGraph={(zoneId) => dispatch({ type: 'SET_ZONE_AUTO_RESIZE', zoneId, autoResize: true })}
+          /* `.2` — click a reaction diamond → host opens the in-zone op popup. */
+          onOperationClick={onOperationClick}
           onContextMenu={(e) => setMenu({ zoneId: zone.id, x: e.clientX || 0, y: e.clientY || 0 })}
           onClickHeader={() => dispatch({ type: 'SET_ZONE_COLLAPSED', zoneId: zone.id, collapsed: !zone.collapsed })}
           onOpenAssembly={(zoneId) => dispatch({ type: 'OPEN_EDITOR_ASSEMBLY_TAB', draftId: zoneId })}

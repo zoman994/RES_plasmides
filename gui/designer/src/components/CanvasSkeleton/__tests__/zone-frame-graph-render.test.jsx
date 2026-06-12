@@ -79,4 +79,25 @@ describe('ZoneFrame — V114 K2 graph-mode renders the zone graph', () => {
     expect(screen.getByTestId('zone-header-z1')).toBeTruthy();
     expect(screen.getByTestId('zone-counter-z1')).toBeTruthy();
   });
+
+  it('an edge from a CONTAINER anchors on its TRUE right edge (240×150), not op-size (Игорь 11.06)', () => {
+    // Was: the edge code keyed off `fromNode.kind` (undefined — kind lives at
+    // node.data.kind) → every edge used op-size 120×60, so the line left the
+    // container at its horizontal middle / near the top instead of the right
+    // edge centre → «стрелки налезают на центр / криво».
+    render(<ZoneFrame zone={zoneZ1} state={baseState()} dispatch={vi.fn()} nodeCount={3} />);
+    const wrap = screen.getByTestId('skeleton-block-c1').parentElement;
+    const left = parseFloat(wrap.style.left);
+    const top = parseFloat(wrap.style.top);
+    const content = screen.getByTestId('zone-graph-content');
+    const starts = Array.from(content.querySelectorAll('path'))
+      .map((p) => p.getAttribute('d') || '')
+      .filter((d) => d.includes(' C ')) // edge cubics, not the arrowhead marker
+      .map((d) => /M\s+([\d.-]+)\s+([\d.-]+)/.exec(d))
+      .filter(Boolean)
+      .map((m) => ({ x: parseFloat(m[1]), y: parseFloat(m[2]) }));
+    // The c1→op1 edge must start at c1's right-edge centre: (left+240, top+75).
+    const hit = starts.some((s) => Math.abs(s.x - (left + 240)) < 1 && Math.abs(s.y - (top + 75)) < 1);
+    expect(hit).toBe(true);
+  });
 });

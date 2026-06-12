@@ -210,12 +210,15 @@ describe('K3 AssemblyShell + Header', () => {
     expect(ids.size).toBe(2);
   });
 
-  it('Realise as DAG button is enabled with ≥2 segments and opens the modal (A4)', () => {
+  it('Realise as DAG button is enabled with ≥2 segments and realises directly (no modal)', () => {
     openDraftWith2();
     const btn = screen.getByTestId('assembly-realise-btn');
     expect(btn.disabled).toBe(false);
+    // Modal removed (Игорь 11.06) — the click realises straight to the canvas
+    // (toast acknowledges; the editor view itself does not change).
     act(() => { fireEvent.click(btn); });
-    expect(screen.getByTestId('realise-modal')).toBeTruthy();
+    expect(screen.queryByTestId('realise-modal')).toBeNull();
+    expect(S.toast).toBeTruthy();
   });
 });
 

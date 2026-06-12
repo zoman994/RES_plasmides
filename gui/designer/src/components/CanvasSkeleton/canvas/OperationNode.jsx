@@ -22,6 +22,7 @@
 import { memo } from 'react';
 import { OPERATION_NODE_W, OPERATION_NODE_H } from './canvas-layout';
 import OpIcon from './op-icons';
+import { operationColor, OP_NEUTRAL } from './op-colors';
 
 // T15 (14.05.2026) — emoji icons заменены на SVG (OpIcon component).
 // Map оставлен для legacy commit shim'а (V1 commits, mix→gibson).
@@ -40,40 +41,27 @@ const KIND_LABELS = {
   cut:         'Cut',
   gibson:      'Gibson',
   golden_gate: 'Golden Gate',
+  restriction: 'RE-клон',
   ligate:      'Ligate',
   kld:         'KLD',
   mutagenesis: 'Mutate',
 };
 
-// Kind palette — выровнено с junction-styles: overlap=Gibson-blue,
-// golden_gate=green (match Type IIS canonical color). Cut=red,
-// Ligate/KLD=violet/purple, Mutagenesis=orange.
-const KIND_COLORS = {
-  pcr:         { stroke: '#0ea5e9', fill: '#e0f2fe' }, // sky-blue
-  cut:         { stroke: '#dc2626', fill: '#fee2e2' }, // red
-  gibson:      { stroke: '#0284c7', fill: '#dbeafe' }, // blue (overlap)
-  golden_gate: { stroke: '#16a34a', fill: '#dcfce7' }, // green (Type IIS)
-  ligate:      { stroke: '#7c3aed', fill: '#ede9fe' }, // violet
-  kld:         { stroke: '#a855f7', fill: '#f3e8ff' }, // purple
-  mutagenesis: { stroke: '#ea580c', fill: '#ffedd5' }, // orange
-};
-
-const NEUTRAL = {
-  stroke: 'var(--border-default, #d6d3d1)',
-  fill: 'var(--surface-2, #f5f5f4)',
-};
+// K5 — colours come from the single canon in op-colors.js (junction-styles
+// for junction ops, own distinct colours for pcr/cut/mutagenesis, warm
+// neutral — never grey — for unknown). No local palette here anymore.
 
 /**
  * statusVisual — возвращает stroke / fill / strokeDasharray / badge
  * для текущего status + kind.
  */
 function statusVisual(status, kind) {
-  const palette = (kind && KIND_COLORS[kind]) || NEUTRAL;
+  const palette = operationColor(kind);
   switch (status) {
     case 'draft':
       return {
-        fill: NEUTRAL.fill,
-        stroke: 'var(--text-tertiary, #a8a29e)',
+        fill: OP_NEUTRAL.fill,
+        stroke: OP_NEUTRAL.stroke,
         strokeWidth: 1.5,
         strokeDasharray: '4 3',
         textColor: 'var(--text-secondary, #57534e)',
@@ -112,8 +100,8 @@ function statusVisual(status, kind) {
       };
     default:
       return {
-        fill: NEUTRAL.fill,
-        stroke: NEUTRAL.stroke,
+        fill: OP_NEUTRAL.fill,
+        stroke: OP_NEUTRAL.stroke,
         strokeWidth: 1.5,
         strokeDasharray: 'none',
         textColor: 'var(--text-primary)',

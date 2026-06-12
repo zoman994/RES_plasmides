@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useStore } from '../../../store';
 import { CURATED_CATEGORIES } from './curated-categories';
 
@@ -51,6 +51,14 @@ export default function CategoryPickerModal({ open, onClose, onComplete }) {
       setBusy(false);
     }
   }, [selectedCount, selected, loadOnboardingPlasmids, showToast, onComplete, onClose]);
+
+  // ui-interactions A — close on Escape while open (not during a load).
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape' && !busy) onClose?.(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, busy, onClose]);
 
   if (!open) return null;
 

@@ -168,7 +168,7 @@ function EntryRow({
           border: 'none',
           fontSize: 14,
           cursor: 'pointer',
-          color: fav ? '#d97706' : 'var(--text-tertiary)',
+          color: fav ? 'var(--accent-500, #d97706)' : 'var(--text-tertiary)',
           padding: 2,
           lineHeight: 1,
         }}

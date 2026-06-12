@@ -32,6 +32,69 @@ export const METHOD_TO_JUNCTION = {
   kld: 'kld',
 };
 
+// The assembly method → the kind of the single assembly OPERATION (the one-pot
+// reaction joining the fragments). One colour per op type (op-colors канон).
+const METHOD_TO_OP_KIND = {
+  overlap_pcr: 'gibson',
+  gibson: 'gibson',
+  golden_gate: 'golden_gate',
+  restriction: 'restriction',
+  direct_ligation: 'ligate',
+  kld: 'kld',
+};
+
+/**
+ * Fix B — pull the realised ops' pre-existing source containers into the zone
+ * (zoneId + unpinned) so they render as the op inputs (source→PCR→frag). Frag /
+ * product diff containers aren't in `containers` yet → untouched. Pure; returns
+ * the same array ref when nothing changes / no zone. (Extracted so the
+ * skeleton-state router stays under the .js hard budget.)
+ */
+export function tagZoneSources(containers, diffOperations, zoneTag) {
+  if (!zoneTag) return containers;
+  const sourceIds = new Set((diffOperations || []).flatMap((o) => o.inputs || []));
+  let changed = false;
+  const out = (containers || []).map((c) => {
+    if (c && sourceIds.has(c.id)) { changed = true; return { ...c, zoneId: zoneTag, pinned: false }; }
+    return c;
+  });
+  return changed ? out : containers;
+}
+
+/**
+ * pruneZoneRealiseOutput — drop a zone's PRIOR realise output so re-realising
+ * REGENERATES the DAG instead of stacking a duplicate (Игорь 11.06: «сборка
+ * дублируется»). Every realise-created op/container tags `origin.assemblyId`;
+ * junctions tag `realisedFrom.assemblyId`. Source containers carry no such tag,
+ * so they survive. Zone-only — legacy assemblyDrafts keep their multi-revision
+ * accumulation (a design-variant feature, DEC-REAL-08). Returns the SAME slice
+ * refs when there is nothing to prune (first realise).
+ */
+export function pruneZoneRealiseOutput(state, zoneId) {
+  const mine = (e) => e && e.origin && e.origin.assemblyId === zoneId;
+  const goneC = new Set((state.containers || []).filter(mine).map((c) => c.id));
+  const goneO = new Set((state.operations || []).filter(mine).map((o) => o.id));
+  if (goneC.size === 0 && goneO.size === 0) {
+    return {
+      containers: state.containers,
+      operations: state.operations,
+      junctions: state.junctions,
+      positions: state.positions,
+    };
+  }
+  const positions = { ...(state.positions || {}) };
+  for (const id of goneC) delete positions[id];
+  for (const id of goneO) delete positions[id];
+  return {
+    containers: (state.containers || []).filter((c) => !goneC.has(c.id)),
+    operations: (state.operations || []).filter((o) => !goneO.has(o.id)),
+    junctions: (state.junctions || []).filter(
+      (j) => !(j.realisedFrom && j.realisedFrom.assemblyId === zoneId),
+    ),
+    positions,
+  };
+}
+
 const LAYOUT_Y = 480;
 const STEP_X = 280;
 
@@ -315,6 +378,30 @@ export function realiseAssembly(state, targetId, perBoundaryMethods, options = {
     origin: { kind: 'realised-product', assemblyId: targetId, revision },
     pinned: false,
   });
+
+  // Assembly operation — the one-pot reaction that joins the fragments into the
+  // product (Игорь 10.06): source→PCR→frag→[assembly]→product. Without it the
+  // product floats (the renderer reads only op in/out, not junctions). Kind =
+  // the assembly method → one colour per op type (op-colors). Per-boundary
+  // methods stay as params here + as junction metadata below.
+  if (fragContainerIds.length >= 2) {
+    const repMethod = (perBoundaryMethods && perBoundaryMethods[0]) || draft.assemblyMethod || 'gibson';
+    const asmOpId = `op-${uuidv7()}`;
+    const asmX = 80 + col * STEP_X;
+    operations.push({
+      id: asmOpId,
+      kind: METHOD_TO_OP_KIND[repMethod] || 'ligate',
+      status: 'committed',
+      position: { x: asmX, y: baseY },
+      inputs: [...fragContainerIds],
+      outputs: [finalId],
+      params: { perBoundaryMethods: perBoundaryMethods || {}, method: repMethod },
+      origin: { kind: 'realised-assembly', assemblyId: targetId, revision },
+      pinned: false,
+    });
+    positionsLayout.operations[asmOpId] = { x: asmX, y: baseY };
+    col += 1;
+  }
   positionsLayout.containers[finalId] = { x: 80 + col * STEP_X, y: baseY };
 
   // Boundary junctions between consecutive fragment/oligo containers.

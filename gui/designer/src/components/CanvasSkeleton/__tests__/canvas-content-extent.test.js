@@ -11,7 +11,8 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
-  canvasContentExtent, BLOCK_LINEAR_W, BLOCK_LINEAR_H, EXTENT_MIN,
+  canvasContentExtent, contentBBox, fitZoomToContent,
+  BLOCK_LINEAR_W, BLOCK_LINEAR_H, OPERATION_NODE_H, EXTENT_MIN, ZOOM_MAX,
 } from '../canvas/canvas-layout';
 
 describe('canvasContentExtent', () => {
@@ -72,5 +73,62 @@ describe('canvasContentExtent', () => {
     expect(() => canvasContentExtent(undefined, 0)).not.toThrow();
     const e = canvasContentExtent(undefined, 0);
     expect(e.width).toBe(EXTENT_MIN);
+  });
+});
+
+describe('contentBBox — tight world bbox (no floor / no pad)', () => {
+  it('returns the tight bbox of a single zone', () => {
+    const st = { zones: [{ id: 'z', bounds: { x: 300, y: 200, width: 600, height: 400 } }], positions: {}, operations: [] };
+    expect(contentBBox(st)).toEqual({
+      minX: 300, minY: 200, maxX: 900, maxY: 600, width: 600, height: 400,
+    });
+  });
+
+  it('unions zones + positions + operations', () => {
+    const st = {
+      zones: [{ id: 'z', bounds: { x: 0, y: 0, width: 100, height: 100 } }],
+      positions: { c: { x: 500, y: 50 } },
+      operations: [{ id: 'o', position: { x: 50, y: 800 } }],
+    };
+    const b = contentBBox(st);
+    expect(b.minX).toBe(0);
+    expect(b.minY).toBe(0);
+    expect(b.maxX).toBe(500 + BLOCK_LINEAR_W);
+    expect(b.maxY).toBe(800 + OPERATION_NODE_H);
+  });
+
+  it('returns null on an empty / missing canvas', () => {
+    expect(contentBBox({ zones: [], positions: {}, operations: [] })).toBeNull();
+    expect(contentBBox(undefined)).toBeNull();
+  });
+});
+
+describe('fitZoomToContent — zoom + scroll to fit the bbox («под размер сборки»)', () => {
+  const bbox = {
+    minX: 100, minY: 100, maxX: 1100, maxY: 600, width: 1000, height: 500,
+  };
+  it('zooms to the limiting axis', () => {
+    // width 1000 → 600/1000=0.6 ; height 500 → 400/500=0.8 → min = 0.6.
+    const fit = fitZoomToContent({ viewportW: 600, viewportH: 400, bbox, margin: 0 });
+    expect(fit.zoom).toBeCloseTo(0.6, 3);
+  });
+
+  it('centres the content (scroll = centre*zoom − viewport/2)', () => {
+    const fit = fitZoomToContent({ viewportW: 600, viewportH: 400, bbox, margin: 0 });
+    expect(fit.scrollLeft).toBeCloseTo(600 * fit.zoom - 300, 1);
+    expect(fit.scrollTop).toBeCloseTo(350 * fit.zoom - 200, 1);
+  });
+
+  it('clamps tiny content to ZOOM_MAX (no infinite zoom-in)', () => {
+    const tiny = {
+      minX: 0, minY: 0, maxX: 50, maxY: 50, width: 50, height: 50,
+    };
+    const fit = fitZoomToContent({ viewportW: 1000, viewportH: 1000, bbox: tiny, margin: 0 });
+    expect(fit.zoom).toBeLessThanOrEqual(ZOOM_MAX);
+  });
+
+  it('returns null on no content or zero viewport', () => {
+    expect(fitZoomToContent({ viewportW: 600, viewportH: 400, bbox: null })).toBeNull();
+    expect(fitZoomToContent({ viewportW: 0, viewportH: 0, bbox })).toBeNull();
   });
 });

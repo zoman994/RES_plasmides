@@ -28,6 +28,12 @@ export function computeAutoLayout(nodes = [], edges = [], direction = 'LR', opts
   const nodeHeight = opts.nodeHeight || DEFAULT_NODE_HEIGHT;
   const ranksep = opts.ranksep != null ? opts.ranksep : DEFAULT_RANKSEP;
   const nodesep = opts.nodesep != null ? opts.nodesep : DEFAULT_NODESEP;
+  // Optional per-node sizing: dagre then reserves each node's REAL footprint
+  // (a 120×60 op diamond no longer padded to block size → tighter columns)
+  // and the center→top-left conversion below uses each node's own half-size,
+  // so a node renders exactly where dagre centred it (edges anchor on the
+  // true box edge). Omitted → uniform nodeWidth/Height (back-compat).
+  const sizeOf = typeof opts.sizeOf === 'function' ? opts.sizeOf : null;
 
   const g = new dagre.graphlib.Graph();
   g.setGraph({ rankdir: direction, ranksep, nodesep, marginx: 0, marginy: 0 });
@@ -37,7 +43,11 @@ export function computeAutoLayout(nodes = [], edges = [], direction = 'LR', opts
   for (const n of nodes) {
     if (!n || !n.id) continue;
     nodeIds.add(n.id);
-    g.setNode(n.id, { width: nodeWidth, height: nodeHeight });
+    const sz = sizeOf ? sizeOf(n.id) : null;
+    g.setNode(n.id, {
+      width: (sz && sz.width) || nodeWidth,
+      height: (sz && sz.height) || nodeHeight,
+    });
   }
 
   for (const e of edges || []) {
@@ -55,10 +65,12 @@ export function computeAutoLayout(nodes = [], edges = [], direction = 'LR', opts
   for (const id of nodeIds) {
     const node = g.node(id);
     if (!node) continue;
-    // dagre returns centres; ReactFlow expects top-left.
+    // dagre returns centres; convert to top-left using THIS node's own size
+    // (node.width/height are what we set — per-node when sizeOf is given,
+    // uniform otherwise), so mixed-size graphs convert correctly.
     out[id] = {
-      x: node.x - nodeWidth / 2,
-      y: node.y - nodeHeight / 2,
+      x: node.x - node.width / 2,
+      y: node.y - node.height / 2,
     };
   }
   return out;

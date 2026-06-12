@@ -18,6 +18,8 @@
  *
  * Pure UI component — all side effects live in the caller.
  */
+import { useEffect } from 'react';
+
 export default function ManualEditConfirmModal({
   open,
   parentName,
@@ -25,6 +27,13 @@ export default function ManualEditConfirmModal({
   onConfirm,
   busy = false,
 }) {
+  // ui-interactions A — close on Escape while open (backdrop-click already wired).
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape' && !busy) onCancel?.(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, busy, onCancel]);
   if (!open) return null;
   return (
     <div

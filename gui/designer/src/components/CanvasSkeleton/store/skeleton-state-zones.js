@@ -36,6 +36,7 @@ const ZONE_ACTIONS = new Set([
   'DRAG_ZONE', 'RECOMPUTE_ZONE_BOUNDS', 'SET_FOCUSED_ZONE',
   'HIGHLIGHT_ZONE', // T8 DEC-T8-09
   'SET_ZONE_LANE_LAYOUT', 'RECOMPUTE_ZONE_LAYOUT', // T4.5 DEC-T4.5-05
+  'SET_ZONE_AUTO_RESIZE', // manual zone size opt-out (Игорь 11.06)
   'SET_NODE_PINNED', // T4.5 DEC-T4.5-04
   'SET_BOUNDARY_OVERLAP', // JUNCTION layer 3 J1 — per-junction config edit
   'OPEN_JUNCTION_METHOD_PICKER', 'CLOSE_JUNCTION_PICKER', // J6b — JunctionControl
@@ -268,6 +269,20 @@ export function zonesReducer(state, action) {
     // even on a manual zone via the force flag.
     case 'RECOMPUTE_ZONE_LAYOUT':
       return applyZoneLayout(state, action.zoneId, { force: true });
+
+    // Manual zone size opt-out (Игорь 11.06). autoResize:false → the
+    // deterministic auto-size in applyZoneLayout AND the grow-only union
+    // both skip this zone, so a handle drag (UPDATE_ZONE_BOUNDS) sticks
+    // while computeZoneLayout still arranges the nodes. true → the next
+    // finalizer pass re-fits the frame to the graph («подогнать»).
+    case 'SET_ZONE_AUTO_RESIZE': {
+      const zone = zones.find((z) => z.id === action.zoneId);
+      if (!zone) return state;
+      const want = action.autoResize !== false; // default true
+      const cur = zone.autoResize !== false;
+      if (cur === want) return state;
+      return patchZone(state, action.zoneId, { autoResize: want });
+    }
 
     // T4.5 DEC-T4.5-04 — pin/unpin a node (drag-override). pinned=true
     // keeps the node's current position; the K7 finalizer simply skips

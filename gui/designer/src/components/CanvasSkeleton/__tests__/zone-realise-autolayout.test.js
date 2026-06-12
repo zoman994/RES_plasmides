@@ -73,15 +73,18 @@ describe('T4.5 fix — realise into a zone tags nodes + lanes them', () => {
     expect(realisedOps.every((o) => o.zoneId === 'zR')).toBe(true);
   });
 
-  it('the pre-existing source container STAYS loose (NOT pulled in)', () => {
-    // Contract change 17.05.2026: pulling external sources (arbitrary
-    // positions) into the grow-only zone bbox ballooned the frame and
-    // made nodes unreachable. Sources stay where the user placed them.
+  it('the pre-existing source container IS pulled into the zone (Fix B 10.06)', () => {
+    // 10.06 reversal of the 17.05 "keep sources loose" contract: K1/K2 made
+    // auto-layout authoritative (no frame ballooning — sources are re-laid in
+    // the source lane, not kept at arbitrary positions), so the PCR source is
+    // pulled in + unpinned → it renders as the op input (source→PCR→frag).
     let s = seedZoneWithPiece();
     s = skeletonReducer(s, { type: 'ASSEMBLY_REALISE', draftId: 'zR', perBoundaryMethods: {} });
-    expect(s.containers.find((c) => c.id === 'srcC').zoneId).toBeNull();
+    const src = s.containers.find((c) => c.id === 'srcC');
+    expect(src.zoneId).toBe('zR');
+    expect(src.pinned).toBe(false);
     const { sources } = classifyZoneNodes(s, 'zR');
-    expect(sources.map((n) => n.id)).not.toContain('srcC');
+    expect(sources.map((n) => n.id)).toContain('srcC');
   });
 
   it('the 3-lane finalizer arranges the realised graph (positions written)', () => {

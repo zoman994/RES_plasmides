@@ -90,4 +90,37 @@ describe('T4 K5 ZoneLayer', () => {
     expect(last.bounds.width).toBe(660);
     expect(last.bounds.height).toBe(440);
   });
+
+  it('the first resize MOVE opts the zone out of auto-size (so the manual size sticks)', () => {
+    // Else the deterministic auto-size would snap the manual bounds straight
+    // back — «размер области сборки не регулируется» (Игорь 11.06).
+    const dispatch = vi.fn();
+    render(<ZoneLayer state={state()} dispatch={dispatch} />);
+    fireEvent.pointerDown(screen.getByTestId('zone-resize-se-zn-1'), { clientX: 700, clientY: 500 });
+    fireEvent.pointerMove(document, { clientX: 760, clientY: 540 });
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'SET_ZONE_AUTO_RESIZE', zoneId: 'zn-1', autoResize: false }),
+    );
+  });
+
+  it('a bare pointer-down on a resize handle (no drag) does NOT opt out of auto-size', () => {
+    // A click on a now-visible corner grip must not silently freeze the frame
+    // size (review 11.06) — only a real drag should.
+    const dispatch = vi.fn();
+    render(<ZoneLayer state={state()} dispatch={dispatch} />);
+    fireEvent.pointerDown(screen.getByTestId('zone-resize-se-zn-1'), { clientX: 700, clientY: 500 });
+    fireEvent.pointerUp(document, { clientX: 700, clientY: 500 });
+    expect(dispatch).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'SET_ZONE_AUTO_RESIZE' }),
+    );
+  });
+
+  it('«подогнать» button → SET_ZONE_AUTO_RESIZE true (re-fit to graph)', () => {
+    const dispatch = vi.fn();
+    render(<ZoneLayer state={state()} dispatch={dispatch} />);
+    fireEvent.click(screen.getByTestId('zone-fit-zn-1'));
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'SET_ZONE_AUTO_RESIZE', zoneId: 'zn-1', autoResize: true }),
+    );
+  });
 });

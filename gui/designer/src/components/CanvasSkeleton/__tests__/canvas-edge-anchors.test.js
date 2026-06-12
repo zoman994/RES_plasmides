@@ -89,3 +89,24 @@ describe('edgeAnchors — 4-side directional connectors', () => {
     expect(r.d).toBe(`M ${r.x1} ${r.y1} C ${r.c1x} ${r.c1y}, ${r.c2x} ${r.c2y}, ${r.x2} ${r.y2}`);
   });
 });
+
+describe('edgeAnchors — flow:"LR" forces clean horizontal connectors (Игорь 11.06)', () => {
+  it('vertical-dominant target still exits RIGHT / enters LEFT (never top/bottom)', () => {
+    const r = edgeAnchors(A, { x: 100, y: 300, w: 100, h: 40 }, { flow: 'LR' });
+    expect(r.fromSide).toBe('right');
+    expect(r.toSide).toBe('left');
+    expect(r.y1).toBe(20); // right edge at the source's vertical centre
+  });
+
+  it('backward target (to the left) exits LEFT / enters RIGHT', () => {
+    const r = edgeAnchors(A, { x: -300, y: 100, w: 100, h: 40 }, { flow: 'LR' });
+    expect(r.fromSide).toBe('left');
+    expect(r.toSide).toBe('right');
+  });
+
+  it('an offset connector curves more than an aligned one (smoother S, no kink)', () => {
+    const aligned = edgeAnchors(A, { x: 300, y: 0, w: 100, h: 40 }, { flow: 'LR' });
+    const offset = edgeAnchors(A, { x: 300, y: 100, w: 100, h: 40 }, { flow: 'LR' });
+    expect(offset.c1x - offset.x1).toBeGreaterThan(aligned.c1x - aligned.x1);
+  });
+});

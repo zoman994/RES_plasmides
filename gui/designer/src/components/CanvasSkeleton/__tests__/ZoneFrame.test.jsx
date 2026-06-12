@@ -104,4 +104,32 @@ describe('T4 K3 ZoneFrame', () => {
     fireEvent.pointerDown(screen.getByTestId('zone-resize-se-zn-1'));
     expect(onResize).toHaveBeenCalledWith('se', expect.anything());
   });
+
+  // ── размер области сборки регулируется (Игорь 11.06) ──────────────────────
+  it('corner resize handles are discoverable — non-zero resting opacity', () => {
+    render(<ZoneFrame zone={zone()} nodeCount={0} />);
+    // Corners visibly hint "resizable" without hovering the exact 12px hotspot.
+    ['nw', 'ne', 'sw', 'se'].forEach((edge) => {
+      const h = screen.getByTestId(`zone-resize-${edge}-zn-1`);
+      expect(Number(h.style.opacity)).toBeGreaterThan(0);
+    });
+  });
+
+  it('header «подогнать» button → onFitToGraph(zone.id), no header drag', () => {
+    const onFitToGraph = vi.fn();
+    const onDragStart = vi.fn();
+    render(
+      <ZoneFrame
+        zone={zone()}
+        nodeCount={0}
+        onFitToGraph={onFitToGraph}
+        onDragStart={onDragStart}
+      />,
+    );
+    const btn = screen.getByTestId('zone-fit-zn-1');
+    fireEvent.pointerDown(btn);
+    expect(onDragStart).not.toHaveBeenCalled();
+    fireEvent.click(btn);
+    expect(onFitToGraph).toHaveBeenCalledWith('zn-1');
+  });
 });

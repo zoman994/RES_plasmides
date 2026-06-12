@@ -7,6 +7,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { skeletonReducer, buildInitialState } from '../store/skeleton-state';
+import { ZONE_LANE_DY } from '../lib/zone-layout';
 
 const cnt = (id, over = {}) => ({
   id, kind: 'molecule', name: id, sequence: 'ACGT', annotations: [],
@@ -45,8 +46,9 @@ describe('T4.5 K13 — finalizer arranges the zone into 3 lanes', () => {
     // Lanes are top-anchored at FIXED deltas from the (possibly
     // auto-grown) zone top — assert the contract via the deltas, not a
     // brittle absolute pixel (bounds auto-resize legitimately shifts y).
-    expect(op.position.y - s.positions.src.y).toBe(150 - 50); // mid − src
-    expect(s.positions.fin.y - s.positions.src.y).toBe(380 - 50); // fin − src
+    // K2 — lane deltas derived from the footprint (was 150−50 / 380−50).
+    expect(op.position.y - s.positions.src.y).toBe(ZONE_LANE_DY.intermediate - ZONE_LANE_DY.source);
+    expect(s.positions.fin.y - s.positions.src.y).toBe(ZONE_LANE_DY.finals - ZONE_LANE_DY.source);
     expect(s.positions.src.y).toBeLessThan(op.position.y);
     expect(op.position.y).toBeLessThan(s.positions.fin.y);
   });

@@ -50,7 +50,7 @@ export default function ZoneFrame({
   zone, nodeCount = 0,
   onDragStart, onResize, onContextMenu, onClickHeader,
   state, dispatch, onToggleViewMode, onFocus, onNavigateToZone,
-  onOpenAssembly, onAddPiece,
+  onOpenAssembly, onAddPiece, onFitToGraph, onOperationClick,
 }) {
   // AV-K3 — header «+» button opens the shared AddPiecePopover.
   const [addPopoverOpen, setAddPopoverOpen] = useState(false);
@@ -194,6 +194,31 @@ export default function ZoneFrame({
         >
           {isSequence ? 'S' : 'G'}
         </button>
+        {onFitToGraph && (
+          <button
+            type="button"
+            data-testid={`zone-fit-${zone.id}`}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onFitToGraph(zone.id);
+            }}
+            title="Подогнать рамку под граф"
+            aria-label="Подогнать рамку под граф"
+            style={{
+              font: '600 11px var(--font-ui)',
+              padding: '1px 7px',
+              borderRadius: 'var(--radius-sm, 4px)',
+              border: '1px solid var(--zone-border)',
+              background: 'var(--surface-2)',
+              color: 'var(--zone-header-fg)',
+              cursor: 'pointer',
+              pointerEvents: 'auto',
+            }}
+          >
+            ⤢
+          </button>
+        )}
         <button
           type="button"
           data-testid={`zone-open-assembly-${zone.id}`}
@@ -257,6 +282,14 @@ export default function ZoneFrame({
               operations={zoneNodes.operations}
               highlightedId={state && state.highlightedContainerId}
               onContainerDoubleClick={(id) => dispatch && dispatch({ type: 'OPEN_EDITOR_VIEW_ONLY', containerId: id })}
+              // M-CANVAS-FIX.1 K4 (V139) — the reaction diamond is live inside a
+              // zone. `.2` (Игорь 11.06): the host (CanvasLayoutView) now passes
+              // onOperationClick that opens the lightweight in-zone op popup
+              // (OpKindPicker/OpPopupRouter, parity with CanvasGraphView). Fall
+              // back to the editor route only when no host handler is supplied.
+              onOperationClick={onOperationClick || ((op) => {
+                if (op && op.id && dispatch) dispatch({ type: 'OPEN_EDITOR_OP_TAB', operationId: op.id });
+              })}
             />
           )}
         </div>
@@ -264,6 +297,12 @@ export default function ZoneFrame({
 
       {!collapsed && EDGES.map((edge) => {
         const p = handlePos(edge, width, height);
+        // Discoverability (Игорь 11.06): corner grips rest at a faint but
+        // visible opacity so the biolog SEES the zone is resizable without
+        // having to find the exact 12px hotspot; edges stay hover-only to
+        // keep the frame quiet. Any handle brightens on hover.
+        const isCorner = edge.length === 2;
+        const restOpacity = isCorner ? 0.4 : 0;
         return (
           <div
             key={edge}
@@ -278,12 +317,12 @@ export default function ZoneFrame({
               cursor: CURSOR[edge],
               pointerEvents: 'auto',
               background: 'var(--zone-resize-handle)',
-              opacity: 0,
+              opacity: restOpacity,
               transition: 'opacity 120ms',
               borderRadius: 2,
             }}
             onPointerEnter={(e) => { e.currentTarget.style.opacity = '0.9'; }}
-            onPointerLeave={(e) => { e.currentTarget.style.opacity = '0'; }}
+            onPointerLeave={(e) => { e.currentTarget.style.opacity = String(restOpacity); }}
           />
         );
       })}

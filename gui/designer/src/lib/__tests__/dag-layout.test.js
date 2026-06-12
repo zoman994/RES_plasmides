@@ -74,6 +74,26 @@ describe('M-C.1 K1 — dag-layout.computeAutoLayout', () => {
     expect(positions.a.y).toBe(0);
   });
 
+  it('sizeOf gives per-node sizes; top-left conversion uses each node\'s OWN size', () => {
+    // Mixed-size chain (a 240×150 block → a 120×60 op diamond). The center→
+    // top-left conversion must use each node's own half-size, else the op
+    // node lands 60px too high and edges anchor off its true box (Игорь 11.06).
+    const positions = computeAutoLayout(
+      [{ id: 'block' }, { id: 'op' }],
+      [{ from: 'block', to: 'op' }],
+      'LR',
+      {
+        nodeWidth: 240,
+        nodeHeight: 150,
+        sizeOf: (id) => (id === 'op' ? { width: 120, height: 60 } : { width: 240, height: 150 }),
+      },
+    );
+    expect(positions.op.x).toBeGreaterThan(positions.block.x);
+    // dagre aligns a 2-node LR chain on one centre line; per-node conversion
+    // ⇒ block.y + 150/2 === op.y + 60/2 (both reduce to the shared centreY).
+    expect(positions.block.y + 75).toBeCloseTo(positions.op.y + 30, 0);
+  });
+
   it('skips edges that point to nodes outside the supplied node list (defensive)', () => {
     const positions = computeAutoLayout(
       [{ id: 'a' }, { id: 'b' }],

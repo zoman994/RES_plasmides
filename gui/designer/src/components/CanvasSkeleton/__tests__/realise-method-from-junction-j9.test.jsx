@@ -16,11 +16,10 @@ import {
   describe, it, expect, afterEach, beforeEach,
 } from 'vitest';
 import {
-  render, screen, cleanup, fireEvent, act, within,
+  render, screen, cleanup, fireEvent, act,
 } from '@testing-library/react';
 import { skeletonReducer, buildInitialState } from '../store/skeleton-state';
 import { methodsFromJunctions, pairKeyFor } from '../lib/junction-derive';
-import MethodPickerCard from '../editor/assembly-mode/MethodPickerCard';
 import {
   SkeletonProvider, useSkeletonActions, useSkeletonState,
 } from '../store/skeleton-context';
@@ -78,32 +77,13 @@ describe('JUNCTION FIX J9 — methodsFromJunctions (pure)', () => {
   });
 });
 
-// ─── MethodPickerCard read-only ────────────────────────────────────────────
-
-describe('JUNCTION FIX J9 — MethodPickerCard is read-only', () => {
-  it('renders no method radios and shows the chosen method', () => {
-    render(
-      <MethodPickerCard
-        index={0}
-        leftName="A"
-        rightName="B"
-        suggested={{ method: 'gibson', confidence: 'low', rationale: 'default' }}
-        method="golden_gate"
-      />,
-    );
-    const card = screen.getByTestId('method-picker-card');
-    expect(within(card).queryAllByRole('radio')).toHaveLength(0);
-    expect(card.textContent.toLowerCase()).toContain('golden_gate');
-  });
-});
-
-// ─── RealiseModal reads the method from the junction (live editor) ─────────
+// ─── Realise reads the method from the junction (live editor) ──────────────
 
 let A = null;
 let S = null;
 function H() { A = useSkeletonActions(); S = useSkeletonState(); return null; }
 
-describe('JUNCTION FIX J9 — RealiseModal method from zone.junctions', () => {
+describe('JUNCTION FIX J9 — realise reads the method from zone.junctions', () => {
   function mount() {
     render(<SkeletonProvider><H /><EditorWindowShell /></SkeletonProvider>);
     act(() => { A.addContainer(C1); });
@@ -144,12 +124,9 @@ describe('JUNCTION FIX J9 — RealiseModal method from zone.junctions', () => {
         type: 'SET_BOUNDARY_OVERLAP', zoneId: zid, pairKey: pairKeyFor(p1, p2), method: 'restriction',
       });
     });
+    // Modal removed (Игорь 11.06): the button realises directly from the strip
+    // junctions — no confirm step, no preview.
     act(() => { fireEvent.click(screen.getByTestId('assembly-realise-btn')); });
-    const modal = screen.getByTestId('realise-modal');
-    // The card still lists the boundary, read-only (no radios).
-    expect(within(modal).getAllByTestId('method-picker-card')).toHaveLength(1);
-    expect(within(modal).queryAllByRole('radio')).toHaveLength(0);
-    act(() => { fireEvent.click(within(modal).getByTestId('realise-confirm')); });
     expect(screen.queryByTestId('realise-modal')).toBeNull();
     expect(S.junctions.length).toBe(1);
     // restriction (engine) → re_ligation (junction.kind) — proves the method

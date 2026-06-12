@@ -31,6 +31,13 @@ export default function MutagenesisWizard({
   const [method, setMethod] = useState('auto');
   const [strategy, setStrategy] = useState(null);
 
+  // ui-interactions A — wizard closes on Escape (backdrop-click already wired).
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   // Construct loading
   const [constructs, setConstructs] = useState([]);
   const [features, setFeatures] = useState([]);
@@ -103,15 +110,15 @@ export default function MutagenesisWizard({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-2xl w-[700px] max-h-[85vh] overflow-y-auto p-6"
+    <div className="fixed inset-0 bg-[color-mix(in_srgb,var(--text-primary)_40%,transparent)] flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-[var(--surface-1)] rounded-xl shadow-2xl w-[700px] max-h-[85vh] overflow-y-auto p-6"
         onClick={e => e.stopPropagation()}>
 
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-lg font-bold">{'🔬'} Mutagenesis Wizard</h2>
           <div className="flex gap-1">
             {[1, 2, 3].map(s => (
-              <div key={s} className={`w-8 h-1.5 rounded ${s <= step ? 'bg-purple-500' : 'bg-gray-200'}`} />
+              <div key={s} className={`w-8 h-1.5 rounded ${s <= step ? 'bg-purple-500' : 'bg-[var(--surface-3)]'}`} />
             ))}
           </div>
         </div>
@@ -133,7 +140,7 @@ export default function MutagenesisWizard({
 
           {features.length > 0 && (
             <div className="mb-3">
-              <div className="text-xs text-gray-500 mb-1">Select CDS to mutate:</div>
+              <div className="text-xs text-[var(--text-tertiary)] mb-1">Select CDS to mutate:</div>
               <div className="flex flex-wrap gap-1">
                 {features.filter(f => f.type === 'CDS').map(f => (
                   <button key={f.name} onClick={() => {
@@ -142,7 +149,7 @@ export default function MutagenesisWizard({
                     setCdsStart(0); setCdsEnd((f.sequence || '').length);
                   }}
                     className={`text-xs px-2 py-1 rounded border ${
-                      templateName === f.name ? 'bg-purple-100 border-purple-400' : 'border-gray-200'}`}>
+                      templateName === f.name ? 'bg-purple-100 border-purple-400' : 'border-[var(--border-subtle)]'}`}>
                     {f.name} ({f.length}bp)
                   </button>
                 ))}
@@ -158,7 +165,7 @@ export default function MutagenesisWizard({
             className="w-full border rounded p-2 text-sm font-mono h-20 mb-3" />
 
           {templateSeq && (
-            <div className="text-xs text-gray-500 mb-3">
+            <div className="text-xs text-[var(--text-tertiary)] mb-3">
               {templateSeq.length} bp | {protein.length} aa | Organism: {organism}
             </div>
           )}
@@ -174,9 +181,9 @@ export default function MutagenesisWizard({
           <h3 className="text-sm font-semibold mb-3">Step 2: Define Mutations in {templateName || 'template'}</h3>
 
           {/* Gene map */}
-          <div className="bg-gray-50 rounded p-2 mb-3 font-mono text-[10px]">
+          <div className="bg-[var(--surface-2)] rounded p-2 mb-3 font-mono text-[10px]">
             <div className="flex items-center">
-              <span className="text-gray-400 mr-1">1</span>
+              <span className="text-[var(--text-tertiary)] mr-1">1</span>
               <div className="flex-1 h-3 bg-orange-200 rounded relative">
                 {mutations.map((m, i) => {
                   const pct = ((m.aaPosition - 1) / Math.max(protein.length, 1)) * 100;
@@ -184,16 +191,16 @@ export default function MutagenesisWizard({
                     style={{ left: `${pct}%` }} title={m.label} />;
                 })}
               </div>
-              <span className="text-gray-400 ml-1">{protein.length}</span>
+              <span className="text-[var(--text-tertiary)] ml-1">{protein.length}</span>
             </div>
-            <div className="flex justify-between text-gray-400 mt-0.5">
+            <div className="flex justify-between text-[var(--text-tertiary)] mt-0.5">
               <span>N-term</span><span>{templateName}</span><span>C-term</span>
             </div>
           </div>
 
           {/* Mutation table */}
           {mutations.map((m, i) => (
-            <div key={m.id} className="border rounded p-3 mb-2 bg-white">
+            <div key={m.id} className="border rounded p-3 mb-2 bg-[var(--surface-1)]">
               <div className="flex gap-2 items-start">
                 <select value={m.type} onChange={e => updateMut(i, 'type', e.target.value)}
                   className="border rounded p-1 text-xs w-28">
@@ -204,19 +211,19 @@ export default function MutagenesisWizard({
 
                 {m.type === 'substitution' && (<>
                   <div className="text-xs">
-                    <label className="text-gray-500 block">Position</label>
+                    <label className="text-[var(--text-tertiary)] block">Position</label>
                     <input type="number" value={m.aaPosition} min={1} max={protein.length}
                       onChange={e => updateMut(i, 'aaPosition', +e.target.value)}
                       className="w-16 border rounded p-1" />
                   </div>
                   <div className="text-xs text-center">
-                    <label className="text-gray-500 block">Current</label>
+                    <label className="text-[var(--text-tertiary)] block">Current</label>
                     <span className="font-bold text-lg">{m.currentAA}</span>
-                    <span className="text-gray-400 ml-1">{AA_NAMES[m.currentAA]}</span>
+                    <span className="text-[var(--text-tertiary)] ml-1">{AA_NAMES[m.currentAA]}</span>
                   </div>
                   <span className="text-lg mt-3">{'→'}</span>
                   <div className="text-xs">
-                    <label className="text-gray-500 block">New AA</label>
+                    <label className="text-[var(--text-tertiary)] block">New AA</label>
                     <select value={m.newAA} onChange={e => updateMut(i, 'newAA', e.target.value)}
                       className="border rounded p-1">
                       {Object.entries(AA_NAMES).filter(([k]) => k !== '*').map(([k, v]) => (
@@ -225,7 +232,7 @@ export default function MutagenesisWizard({
                     </select>
                   </div>
                   <div className="text-xs">
-                    <label className="text-gray-500 block">Codon</label>
+                    <label className="text-[var(--text-tertiary)] block">Codon</label>
                     <select value={m.newCodon} onChange={e => updateMut(i, 'newCodon', e.target.value)}
                       className="border rounded p-1 font-mono">
                       {getCodonsForAA(m.newAA, organism).map(c => (
@@ -237,13 +244,13 @@ export default function MutagenesisWizard({
 
                 {m.type === 'deletion' && (<>
                   <div className="text-xs">
-                    <label className="text-gray-500 block">From aa</label>
+                    <label className="text-[var(--text-tertiary)] block">From aa</label>
                     <input type="number" value={m.aaPosition} min={1} max={protein.length}
                       onChange={e => updateMut(i, 'aaPosition', +e.target.value)}
                       className="w-16 border rounded p-1" />
                   </div>
                   <div className="text-xs">
-                    <label className="text-gray-500 block">Delete bp</label>
+                    <label className="text-[var(--text-tertiary)] block">Delete bp</label>
                     <input type="number" value={m.deleteLength} min={1}
                       onChange={e => updateMut(i, 'deleteLength', +e.target.value)}
                       className="w-16 border rounded p-1" />
@@ -252,13 +259,13 @@ export default function MutagenesisWizard({
 
                 {m.type === 'insertion' && (<>
                   <div className="text-xs">
-                    <label className="text-gray-500 block">After aa</label>
+                    <label className="text-[var(--text-tertiary)] block">After aa</label>
                     <input type="number" value={m.aaPosition} min={1} max={protein.length}
                       onChange={e => updateMut(i, 'aaPosition', +e.target.value)}
                       className="w-16 border rounded p-1" />
                   </div>
                   <div className="text-xs flex-1">
-                    <label className="text-gray-500 block">Insert DNA</label>
+                    <label className="text-[var(--text-tertiary)] block">Insert DNA</label>
                     <input value={m.insertSequence} placeholder="CACCATCACCATCACCAT (6xHis) или CACCATNNKCATCAC (saturation)"
                       onChange={e => updateMut(i, 'insertSequence', sanitizeSequence(e.target.value))}
                       className="w-full border rounded p-1 font-mono" />
@@ -293,17 +300,17 @@ export default function MutagenesisWizard({
 
         {/* ── Method selection (shown on step 2, before compute) ── */}
         {step === 2 && mutations.length > 0 && (
-          <div className="mt-3 p-3 bg-gray-50 rounded border">
-            <div className="text-xs font-semibold text-gray-600 mb-2">Метод мутагенеза:</div>
+          <div className="mt-3 p-3 bg-[var(--surface-2)] rounded border">
+            <div className="text-xs font-semibold text-[var(--text-secondary)] mb-2">Метод мутагенеза:</div>
             <div className="space-y-1">
               {METHOD_OPTIONS.map(m => (
                 <label key={m.id} className={`flex items-start gap-2 p-2 rounded border cursor-pointer transition
-                  ${method === m.id ? 'bg-blue-50 border-blue-300' : 'hover:bg-gray-50 border-gray-100'}`}>
+                  ${method === m.id ? 'bg-blue-50 border-blue-300' : 'hover:bg-[var(--surface-2)] border-[var(--border-subtle)]'}`}>
                   <input type="radio" name="method" value={m.id} checked={method === m.id}
                     onChange={() => setMethod(m.id)} className="mt-0.5" />
                   <div>
                     <div className="text-xs font-medium">{m.label}</div>
-                    <div className="text-[10px] text-gray-400">{m.desc}</div>
+                    <div className="text-[10px] text-[var(--text-tertiary)]">{m.desc}</div>
                   </div>
                 </label>
               ))}
@@ -320,14 +327,14 @@ export default function MutagenesisWizard({
             <div className="text-xs text-purple-700">
               {strategy.fragments.length} fragment(s) | {strategy.mutations.length} mutation(s)
             </div>
-            <div className="text-xs text-gray-600 mt-1">{strategy.protocol}</div>
+            <div className="text-xs text-[var(--text-secondary)] mt-1">{strategy.protocol}</div>
           </div>
 
           {/* Fragments */}
           <div className="mb-3">
-            <div className="text-xs font-semibold text-gray-600 mb-1">Fragments:</div>
+            <div className="text-xs font-semibold text-[var(--text-secondary)] mb-1">Fragments:</div>
             {strategy.fragments.map((f, i) => (
-              <div key={i} className="text-xs bg-white border rounded p-2 mb-1">
+              <div key={i} className="text-xs bg-[var(--surface-1)] border rounded p-2 mb-1">
                 <strong>{f.name}</strong> — {f.length} bp
                 {f.needsAmplification ? ' (PCR from template)' : ''}
               </div>

@@ -2,8 +2,8 @@
  * AssemblyPipelinePanel — M-CANVAS-WORKFLOW-UX K9 (SPEC §4).
  * Right-side embedded panel «Схема сборки» (NOT a modal). Shows
  * op-groups stacked by groupLayer, an Automode button (K10 wires the
- * algorithm), a Realise button (opens the existing RealiseModal), and
- * a mini-DAG placeholder. Per-card Удалить fires REMOVE_OP_GROUP.
+ * algorithm), and a mini-DAG placeholder. Per-card Удалить fires
+ * REMOVE_OP_GROUP. (Realise itself lives on the AssemblyHeader button.)
  */
 import { useMemo } from 'react';
 import { useSkeletonState, useSkeletonActions } from '../../store/skeleton-context';

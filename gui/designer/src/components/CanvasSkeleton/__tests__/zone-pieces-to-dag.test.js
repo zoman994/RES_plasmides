@@ -8,8 +8,45 @@
  * during the transition window (R-T6-4 back-compat).
  */
 import { describe, it, expect } from 'vitest';
-import { realiseAssembly, nameWithRevision } from '../lib/zone-pieces-to-dag';
+import { realiseAssembly, nameWithRevision, pruneZoneRealiseOutput } from '../lib/zone-pieces-to-dag';
 import { skeletonReducer, buildInitialState } from '../store/skeleton-state';
+
+describe('pruneZoneRealiseOutput — idempotent re-realise helper (Игорь 11.06)', () => {
+  const stateWith = () => ({
+    containers: [
+      { id: 'srcA', name: 'pUC' }, // a source — no realise origin → survives
+      { id: 'fragA', name: 'asm-frag-1', origin: { kind: 'realised', assemblyId: 'zn-1' } },
+      { id: 'prodA', name: 'asm-product', origin: { kind: 'realised-product', assemblyId: 'zn-1' } },
+      { id: 'fragOther', name: 'other', origin: { kind: 'realised', assemblyId: 'zn-2' } },
+    ],
+    operations: [
+      { id: 'opA', kind: 'pcr', origin: { kind: 'realised', assemblyId: 'zn-1' } },
+      { id: 'opOther', kind: 'pcr', origin: { kind: 'realised', assemblyId: 'zn-2' } },
+    ],
+    junctions: [
+      { id: 'jA', realisedFrom: { assemblyId: 'zn-1' } },
+      { id: 'jOther', realisedFrom: { assemblyId: 'zn-2' } },
+    ],
+    positions: { fragA: { x: 1, y: 1 }, opA: { x: 2, y: 2 }, srcA: { x: 0, y: 0 } },
+  });
+
+  it('drops only THIS zone\'s realise output, keeping sources + other zones', () => {
+    const out = pruneZoneRealiseOutput(stateWith(), 'zn-1');
+    expect(out.containers.map((c) => c.id)).toEqual(['srcA', 'fragOther']);
+    expect(out.operations.map((o) => o.id)).toEqual(['opOther']);
+    expect(out.junctions.map((j) => j.id)).toEqual(['jOther']);
+    expect(out.positions).toEqual({ srcA: { x: 0, y: 0 } }); // stale node positions gone
+  });
+
+  it('returns the SAME slice refs when there is nothing to prune (first realise)', () => {
+    const s = stateWith();
+    const out = pruneZoneRealiseOutput(s, 'zn-never');
+    expect(out.containers).toBe(s.containers);
+    expect(out.operations).toBe(s.operations);
+    expect(out.junctions).toBe(s.junctions);
+    expect(out.positions).toBe(s.positions);
+  });
+});
 
 const C1 = {
   id: 'src1', kind: 'molecule', name: 'pUC',
@@ -64,7 +101,7 @@ describe('T6 K5 — zone-pieces-to-dag realiseAssembly (zone + pieces shape)', (
     ]);
     const r = realiseAssembly(s, 'zn-1', { 0: 'gibson' }, {});
     expect(r.ok).toBe(true);
-    expect(r.diff.operations).toHaveLength(2);
+    expect(r.diff.operations.filter((o) => o.kind === 'pcr')).toHaveLength(2); // + 1 assembly op
     expect(r.diff.junctions).toHaveLength(1);
     expect(r.diff.junctions[0].kind).toBe('overlap'); // gibson → overlap
     expect(r.diff.containers).toHaveLength(3); // 2 amplicons + 1 product
@@ -179,7 +216,7 @@ describe('T6 K5 — zone-pieces-to-dag realiseAssembly (zone + pieces shape)', (
     };
     const r = realiseAssembly(s, 'asm', { 0: 'gibson' }, {});
     expect(r.ok).toBe(true);
-    expect(r.diff.operations).toHaveLength(2);
+    expect(r.diff.operations.filter((o) => o.kind === 'pcr')).toHaveLength(2); // + 1 assembly op
     expect(r.diff.junctions).toHaveLength(1);
   });
 });
@@ -232,9 +269,10 @@ describe('V130 — realise keeps the auto-group overlap tail (not the fallback)'
 
     const r = realiseAssembly(s, 'zn-1', { 0: 'gibson' }, {});
     expect(r.ok).toBe(true);
-    expect(r.diff.operations).toHaveLength(2);
+    const pcrOps = r.diff.operations.filter((o) => o.kind === 'pcr');
+    expect(pcrOps).toHaveLength(2); // + 1 assembly op (no userPrimers — skip it here)
 
-    for (const op of r.diff.operations) {
+    for (const op of pcrOps) {
       const up = op.params.userPrimers[0];
       // The V130 discriminator: mapPrimersForSegment matched → source:'assembly'.
       // Pre-fix the auto-group kind missed the whitelist → autoPrimerPair

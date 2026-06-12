@@ -112,10 +112,10 @@ describe('T6 K15 — pre-T6 snapshot → migrate → zone-mode shell → realise
     const opsBefore = S.operations.length;
     const cntBefore = S.containers.length;
     expect(screen.getByTestId('assembly-realise-btn').disabled).toBe(false);
+    // Modal removed (Игорь 11.06) — one click realises straight to the canvas.
     act(() => { fireEvent.click(screen.getByTestId('assembly-realise-btn')); });
-    const modal = screen.getByTestId('realise-modal');
-    act(() => { fireEvent.click(within(modal).getByTestId('realise-confirm')); });
-    expect(S.operations.length).toBe(opsBefore + 2);
+    expect(screen.queryByTestId('realise-modal')).toBeNull();
+    expect(S.operations.length).toBe(opsBefore + 3); // 2 PCR + 1 assembly op (10.06)
     expect(S.junctions.length).toBe(1);
     expect(S.containers.length).toBe(cntBefore + 3);
   });
