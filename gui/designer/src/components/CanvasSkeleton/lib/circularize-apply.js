@@ -13,7 +13,10 @@ import { pairKeyFor } from './junction-derive';
 export function circularizeActions({
   draftId, circular, method, applyToAll, isZoneTarget, segments,
 }) {
-  const out = [{ kind: 'topology', draftId, circular }];
+  // M-CIRCULARIZE — a ZONE assembly sets topology via SET_ZONE_TOPOLOGY (the
+  // legacy SET_ASSEMBLY_DRAFT_TOPOLOGY only touches assemblyDrafts → no-op on a
+  // zone). isZoneTarget routes it in applyCircularize.
+  const out = [{ kind: 'topology', draftId, circular, isZoneTarget: !!isZoneTarget }];
   if (isZoneTarget && method) {
     if (applyToAll) {
       out.push({ kind: 'assemblyMethod', zoneId: draftId, method });
@@ -38,8 +41,10 @@ export function circularizeActions({
  */
 export function applyCircularize(actions, params) {
   for (const a of circularizeActions(params)) {
-    if (a.kind === 'topology') actions.setAssemblyDraftTopology(a.draftId, a.circular);
-    else if (a.kind === 'assemblyMethod') actions.zoneDispatch({ type: 'SET_ASSEMBLY_METHOD', zoneId: a.zoneId, method: a.method });
+    if (a.kind === 'topology') {
+      if (a.isZoneTarget) actions.zoneDispatch({ type: 'SET_ZONE_TOPOLOGY', zoneId: a.draftId, circular: a.circular });
+      else actions.setAssemblyDraftTopology(a.draftId, a.circular);
+    } else if (a.kind === 'assemblyMethod') actions.zoneDispatch({ type: 'SET_ASSEMBLY_METHOD', zoneId: a.zoneId, method: a.method });
     else if (a.kind === 'closureMethod') actions.zoneDispatch({ type: 'SET_BOUNDARY_OVERLAP', zoneId: a.zoneId, pairKey: a.pairKey, method: a.method, autoMode: 'manual' });
   }
 }

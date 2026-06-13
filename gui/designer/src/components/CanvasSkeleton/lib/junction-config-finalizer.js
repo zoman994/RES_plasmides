@@ -30,7 +30,7 @@
  * changed — a purely positional zone change (DRAG_ZONE) must NOT re-derive.
  */
 import { draftFromZone } from './zone-pieces-to-dag';
-import { deriveAutoPrimers } from './primer-derive';
+import { deriveAutoPrimers, deriveSelfClosurePrimers } from './primer-derive';
 import { allBoundaries, seedJunction, DEFAULT_JUNCTION_METHOD } from './junction-derive';
 
 /**
@@ -124,7 +124,20 @@ export function applyJunctionConfig(next, prev) {
     // verbatim; listed FIRST so realise's mapPrimersForSegment prefers them.
     const manual = existing.filter((p) => p && p.autoMode === 'manual');
     if (zonePieces.length < 2) {
-      if (manual.length !== existing.length) { newMap[zone.id] = manual; primersChanged = true; }
+      // M-CIRCULARIZE — a single-fragment CIRCULAR zone self-closes → derive its
+      // 2 self-closure primers (whole-fragment amp + re-circularization tails).
+      // Linear single fragment → none (just keep manual). Without this, picking
+      // a plasmid fragment and circularizing it produced no primers.
+      let derivedSelf = [];
+      if (zonePieces.length === 1 && zone.topology && zone.topology.circular) {
+        try { derivedSelf = deriveSelfClosurePrimers(zonePieces[0], stateForDerive); } catch { derivedSelf = []; }
+        const cov = new Set(manual.map(manualCoverageKey).filter(Boolean));
+        if (cov.size > 0) derivedSelf = derivedSelf.filter((d) => !cov.has(`${d.source.pieceId}:${d.source.side}`));
+      }
+      const nextArr = [...manual, ...derivedSelf];
+      if (nextArr.length !== existing.length || derivedSelf.length > 0) {
+        newMap[zone.id] = nextArr; primersChanged = true;
+      }
       continue;
     }
     let derived = [];

@@ -269,6 +269,35 @@ function makePrimer({
   };
 }
 
+// M-CIRCULARIZE — a single CIRCULAR fragment self-closes: the whole fragment is
+// amplified and its 3' end / 5' start form a direct terminal repeat so the
+// amplicon re-circularizes (KLD whole-plasmid PCR + ligation, or Gibson-style).
+// Mirrors local-primer-design's V24 self-closure tails (fwd tail = 3' end,
+// rev tail = rc(5' start)). Pure; [] when the fragment is too short (<40 nt).
+// The finalizer calls this for a 1-piece circular zone → assemblyDraftPrimers,
+// so the Праймеры panel + sequence strip + realise all see the pair.
+const SELF_CLOSURE_OVERLAP = 15;
+export function deriveSelfClosurePrimers(piece, state) {
+  if (!piece) return [];
+  const fullSeq = pieceSequence(piece, state);
+  if (!fullSeq || fullSeq.length < 40) return [];
+  const pairId = `pair-${uuidv7()}`;
+  const fwdBinding = fullSeq.slice(0, bindingLen(fullSeq, 'fwd', null, null));
+  const revBinding = reverseComplement(fullSeq.slice(-bindingLen(fullSeq, 'rev', null, null)));
+  const fwdTail = fullSeq.slice(-SELF_CLOSURE_OVERLAP); // 3' end as-is (direct repeat)
+  const revTail = reverseComplement(fullSeq.slice(0, SELF_CLOSURE_OVERLAP)); // rc(5' start)
+  const mk = (side, tail, binding) => {
+    const p = makePrimer({
+      opGroupId: `selfclose-${piece.id}`, draftId: piece.zoneId, piece, side,
+      tail, binding, pieceIndex1: 1, pairId, boundaryInfo: null,
+    });
+    p.source.kind = 'self-closure';
+    p.purpose = 'self-closure';
+    return p;
+  };
+  return [mk('fwd', fwdTail, fwdBinding), mk('rev', revTail, revBinding)];
+}
+
 // Node A §6 — resolve the zone draft's assembly-segment boundaries so each
 // auto-primer can record the junction offset it realises. Legacy draft (no
 // zone) or any shape mismatch → [] → boundaryAtOffset simply isn't set

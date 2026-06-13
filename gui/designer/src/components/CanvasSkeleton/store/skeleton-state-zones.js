@@ -37,6 +37,7 @@ const ZONE_ACTIONS = new Set([
   'HIGHLIGHT_ZONE', // T8 DEC-T8-09
   'SET_ZONE_LANE_LAYOUT', 'RECOMPUTE_ZONE_LAYOUT', // T4.5 DEC-T4.5-05
   'SET_ZONE_AUTO_RESIZE', // manual zone size opt-out (Игорь 11.06)
+  'SET_ZONE_TOPOLOGY', // M-CIRCULARIZE — circular/linear on the zone (was unsettable)
   'SET_NODE_PINNED', // T4.5 DEC-T4.5-04
   'SET_BOUNDARY_OVERLAP', // JUNCTION layer 3 J1 — per-junction config edit
   'OPEN_JUNCTION_METHOD_PICKER', 'CLOSE_JUNCTION_PICKER', // J6b — JunctionControl
@@ -287,6 +288,20 @@ export function zonesReducer(state, action) {
       const cur = zone.autoResize !== false;
       if (cur === want) return state;
       return patchZone(state, action.zoneId, { autoResize: want });
+    }
+
+    // M-CIRCULARIZE — set the zone's topology (circular ↔ linear). Was
+    // impossible before: draftFromZone reads zone.topology but no action ever
+    // wrote it (SET_ASSEMBLY_DRAFT_TOPOLOGY only touches legacy assemblyDrafts),
+    // so a zone-backed assembly could never become a plasmid. The finalizer
+    // (applyJunctionConfig) reacts to the topology flip → seeds the closure
+    // junction + derives self-closure primers for a single fragment.
+    case 'SET_ZONE_TOPOLOGY': {
+      const zone = zones.find((z) => z.id === action.zoneId);
+      if (!zone) return state;
+      const want = !!action.circular;
+      if (!!(zone.topology && zone.topology.circular) === want) return state;
+      return patchZone(state, action.zoneId, { topology: { circular: want } });
     }
 
     // T4.5 DEC-T4.5-04 — pin/unpin a node (drag-override). pinned=true

@@ -18,6 +18,8 @@ const TM_WORKING_MIN = 52;
 
 function srcLabel(p, segName) {
   if (!p.source) return '';
+  // M-CIRCULARIZE — single-fragment self-closure pair.
+  if (p.source.kind === 'self-closure') return 'само-замыкание (кольцевание)';
   // Node A §5.7 — auto-group primers carry an honest 'auto-group' kind.
   // With a recorded junction → name it; otherwise it's a per-piece primer.
   if (p.source.kind === 'auto-group') {

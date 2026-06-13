@@ -3,17 +3,19 @@
  * CircularizeModal decision → the store actions AssemblyShellBody dispatches.
  */
 import { describe, it, expect } from 'vitest';
-import { circularizeActions } from '../circularize-apply';
+import { circularizeActions, applyCircularize } from '../circularize-apply';
 import { pairKeyFor } from '../junction-derive';
 
 const segs = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
 
 describe('circularizeActions', () => {
-  it('always sets topology', () => {
+  it('always sets topology (carries isZoneTarget for routing)', () => {
     const out = circularizeActions({
       draftId: 'z1', circular: true, method: 'gibson', applyToAll: true, isZoneTarget: false, segments: segs,
     });
-    expect(out[0]).toEqual({ kind: 'topology', draftId: 'z1', circular: true });
+    expect(out[0]).toEqual({
+      kind: 'topology', draftId: 'z1', circular: true, isZoneTarget: false,
+    });
   });
 
   it('legacy draft (not a zone) → only topology, no method', () => {
@@ -29,9 +31,34 @@ describe('circularizeActions', () => {
       draftId: 'z1', circular: true, method: 'golden_gate', applyToAll: true, isZoneTarget: true, segments: segs,
     });
     expect(out).toEqual([
-      { kind: 'topology', draftId: 'z1', circular: true },
+      { kind: 'topology', draftId: 'z1', circular: true, isZoneTarget: true },
       { kind: 'assemblyMethod', zoneId: 'z1', method: 'golden_gate' },
     ]);
+  });
+
+  it('applyCircularize routes a ZONE topology to SET_ZONE_TOPOLOGY (not the draft no-op)', () => {
+    const calls = [];
+    const actions = {
+      setAssemblyDraftTopology: (id, c) => calls.push(['draft', id, c]),
+      zoneDispatch: (a) => calls.push([a.type, a.zoneId, a.circular ?? a.method]),
+    };
+    applyCircularize(actions, {
+      draftId: 'zn-1', circular: true, method: 'gibson', applyToAll: true, isZoneTarget: true, segments: segs,
+    });
+    expect(calls).toContainEqual(['SET_ZONE_TOPOLOGY', 'zn-1', true]);
+    expect(calls.find((c) => c[0] === 'draft')).toBeUndefined();
+  });
+
+  it('applyCircularize routes a LEGACY draft topology to setAssemblyDraftTopology', () => {
+    const calls = [];
+    const actions = {
+      setAssemblyDraftTopology: (id, c) => calls.push(['draft', id, c]),
+      zoneDispatch: (a) => calls.push([a.type, a.zoneId]),
+    };
+    applyCircularize(actions, {
+      draftId: 'd1', circular: true, method: 'gibson', applyToAll: true, isZoneTarget: false, segments: segs,
+    });
+    expect(calls).toContainEqual(['draft', 'd1', true]);
   });
 
   it('zone + closure-only (not applyToAll) → SET_BOUNDARY_OVERLAP on the closure pairKey (last→first)', () => {
