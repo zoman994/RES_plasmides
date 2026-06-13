@@ -76,4 +76,23 @@ describe('CircularizeModal', () => {
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(onCancel).toHaveBeenCalledTimes(2);
   });
+
+  // C4 — live biovalidation badge reflects the method × real fragment sequences.
+  it('Golden Gate with an internal BsaI site → validation badge warns', () => {
+    const draft = {
+      name: 'x', topology: { circular: true },
+      segments: [{ id: 'a', label: 'a', sequence: 'AAAGGTCTCAAAATTTT' }, { id: 'b', label: 'b', sequence: 'TTTTAAAACCCC' }],
+    };
+    render(<CircularizeModal draft={draft} assemblyMethod="golden_gate" onConfirm={vi.fn()} onCancel={vi.fn()} />);
+    expect(screen.getByTestId('circularize-validation').getAttribute('data-level')).toBe('warn');
+  });
+
+  it('Gibson with distinct, long-enough fragments → validation badge ok', () => {
+    const draft = {
+      name: 'x', topology: { circular: true },
+      segments: [{ id: 'a', label: 'a', sequence: 'AAAACCCCGGGGTTTTAAAA' }, { id: 'b', label: 'b', sequence: 'TTTTGGGGCCCCAAAATTTT' }],
+    };
+    render(<CircularizeModal draft={draft} assemblyMethod="gibson" onConfirm={vi.fn()} onCancel={vi.fn()} />);
+    expect(screen.getByTestId('circularize-validation').getAttribute('data-level')).toBe('ok');
+  });
 });

@@ -14,6 +14,15 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import { CLOSURE_METHODS, INTERNAL_METHODS } from '../../lib/junction-derive';
+import { validateClosure } from '../../lib/circularize-validate';
+
+// C4 — validation badge palette by level (design-system emerald/amber).
+const VBADGE = {
+  ok: { background: 'var(--emerald-wash, rgba(74,124,89,0.12))', color: 'var(--emerald, #4A7C59)' },
+  warn: { background: 'var(--amber-wash, rgba(184,122,14,0.12))', color: 'var(--amber, #B87A0E)' },
+  info: { background: 'var(--surface-1)', color: 'var(--text-tertiary)' },
+};
+const VLABEL = { ok: '✓ годится', warn: '⚠ проверьте', info: 'ⓘ инфо' };
 
 // engine method → biolog label + colour + one-line biology + requirement.
 const META = {
@@ -135,6 +144,11 @@ export default function CircularizeModal({
   }, [method, methods, circular, segments]);
 
   const meta = META[effectiveMethod] || META.gibson;
+  // C4 — live biovalidation of the chosen method against the real fragments.
+  const verdict = useMemo(
+    () => validateClosure({ method: effectiveMethod, segments: draft && draft.segments, circular }),
+    [effectiveMethod, draft, circular],
+  );
 
   return (
     <div
@@ -215,6 +229,19 @@ export default function CircularizeModal({
         </div>
 
         <div style={{ margin: '0 14px 6px', padding: '9px 11px', background: 'var(--surface-2)', borderRadius: 6, fontSize: 11.5, color: 'var(--text-secondary)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <span
+              data-testid="circularize-validation"
+              data-level={verdict.level}
+              style={{
+                fontSize: 10.5, padding: '2px 9px', borderRadius: 999, whiteSpace: 'nowrap',
+                fontWeight: 600, ...VBADGE[verdict.level],
+              }}
+            >
+              {VLABEL[verdict.level]}
+            </span>
+            <span>{verdict.message}</span>
+          </div>
           <span style={{ color: 'var(--text-primary)' }}>{meta.bio}</span>
         </div>
 
