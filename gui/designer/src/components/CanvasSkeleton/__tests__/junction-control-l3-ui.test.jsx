@@ -64,17 +64,18 @@ describe('JUNCTION L3 — OPEN/CLOSE_JUNCTION_PICKER handler', () => {
 
 describe('JUNCTION L3 — JunctionControl (J6)', () => {
   it('renders JunctionPopover; the config method maps to the active junction.kind', () => {
-    render(<JunctionControl pairKey={PK} config={{ method: 'golden_gate', overlapTarget: 'right', overlapLength: 4 }} onChange={vi.fn()} onClose={vi.fn()} />);
+    // JC-1 — the ромб is an INTERNAL boundary → only overlap / re_ligation are
+    // offered. restriction (engine) → re_ligation (junction.kind) active.
+    render(<JunctionControl pairKey={PK} config={{ method: 'restriction', overlapTarget: 'right', overlapLength: 4 }} onChange={vi.fn()} onClose={vi.fn()} />);
     expect(screen.getByTestId('junction-popover')).toBeTruthy();
-    // golden_gate (engine) → golden_gate (junction.kind) active.
-    expect(screen.getByTestId('junction-popover-kind-golden_gate').getAttribute('data-active')).toBe('true');
+    expect(screen.getByTestId('junction-popover-kind-re_ligation').getAttribute('data-active')).toBe('true');
   });
 
-  it('picking a method maps junction.kind → engine method on onChange', () => {
+  it('picking a method maps junction.kind → engine method on onChange (snaps params, JC-4)', () => {
     const onChange = vi.fn();
     render(<JunctionControl pairKey={PK} config={{ method: 'overlap_pcr', overlapTarget: 'right', overlapLength: 30 }} onChange={onChange} onClose={vi.fn()} />);
-    fireEvent.click(screen.getByTestId('junction-popover-kind-golden_gate'));
-    expect(onChange).toHaveBeenCalledWith({ method: 'golden_gate' });
+    fireEvent.click(screen.getByTestId('junction-popover-kind-re_ligation'));
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ method: 'restriction' }));
   });
 
   it('manual config shows the ВРУЧНУЮ status; reset sends autoMode:auto', () => {
@@ -128,9 +129,9 @@ describe('JUNCTION L3 — zone-strip surface (J6b)', () => {
     const dispatch = vi.fn();
     render(<ZoneAssembledView state={s} dispatch={dispatch} zoneId="zn-1" finals={[]} />);
     expect(screen.getByTestId('junction-popover')).toBeTruthy();
-    fireEvent.click(screen.getByTestId('junction-popover-kind-golden_gate'));
+    fireEvent.click(screen.getByTestId('junction-popover-kind-re_ligation'));
     expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({
-      type: 'SET_BOUNDARY_OVERLAP', zoneId: 'zn-1', pairKey: PK, method: 'golden_gate',
+      type: 'SET_BOUNDARY_OVERLAP', zoneId: 'zn-1', pairKey: PK, method: 'restriction',
     }));
   });
 });

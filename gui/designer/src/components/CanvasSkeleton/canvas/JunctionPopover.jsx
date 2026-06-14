@@ -19,13 +19,15 @@ import {
   inferEndRequirements,
 } from './junction-styles';
 
+// JC-2 — 'preformed' removed from the picker: the «ничего не делаем» tile mapped
+// to a real blunt ligation (direct_ligation) — the label lied. (An already-
+// 'preformed' container junction still DISPLAYS elsewhere; it just isn't a pick.)
 const METHODS = [
   { id: 'overlap', title: 'Overlap (Gibson)', hint: 'Sequence-overlap PCR сборка' },
   { id: 'golden_gate', title: 'Golden Gate', hint: 'Type IIS — BsaI / BpiI / BsmBI' },
   { id: 're_ligation', title: 'RE лигирование', hint: 'Digest + sticky-end ligation' },
   { id: 'kld', title: 'KLD', hint: 'Back-to-back kinase/ligase/DpnI' },
   { id: 'ligation', title: 'Blunt ligation', hint: 'Тупые концы' },
-  { id: 'preformed', title: 'Preformed', hint: 'Уже готовы — ничего не делаем' },
 ];
 
 // Overhang target L/R/both + length/Tm is an OVERLAP-PCR/Gibson concept only.
@@ -57,7 +59,13 @@ export default function JunctionPopover({
   // UX slice 3 — reverse gesture: promote this junction's method to the whole
   // assembly. Omitted by callers that don't support it → button hidden.
   onMakeAssemblyMethod,
+  // JC-1 — restrict the offered kinds (e.g. an INTERNAL fuse boundary only
+  // allows overlap / re_ligation). Omitted → all methods (container-junction caller).
+  allowedKinds,
 }) {
+  const shownMethods = Array.isArray(allowedKinds) && allowedKinds.length > 0
+    ? METHODS.filter((m) => allowedKinds.includes(m.id))
+    : METHODS;
   useEffect(() => {
     function onKey(e) {
       if (e.key === 'Escape') { e.preventDefault(); onCancel?.(); }
@@ -181,7 +189,7 @@ export default function JunctionPopover({
         >
         {/* Section 1 — kind picker */}
         <div data-testid="junction-popover-kinds" style={{ padding: 4, display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {METHODS.map((m) => {
+          {shownMethods.map((m) => {
             const active = kind === m.id;
             const stroke = junctionStroke(m.id);
             const fill = junctionFill(m.id);

@@ -17,7 +17,16 @@
  * badge are step 3 (J6 §5); step 2 lands the surface + method/overlap edit.
  */
 import JunctionPopover from './JunctionPopover';
-import { junctionKindForMethod, methodForJunctionKind, seedJunction } from '../lib/junction-derive';
+import {
+  junctionKindForMethod, methodForJunctionKind, seedJunction, INTERNAL_METHODS,
+} from '../lib/junction-derive';
+import { defaultJunctionParams } from './junction-styles';
+
+// JC-1 — this glyph is ALWAYS an internal-fuse boundary (the closure is set only
+// in CircularizeModal). Internal fuses are biologically limited to overlap-PCR /
+// restriction → kinds overlap / re_ligation. (KLD/Gibson/blunt are circular
+// one-pot / single-fragment reactions, not internal fuses.)
+const INTERNAL_KINDS = INTERNAL_METHODS.map(junctionKindForMethod);
 
 export default function JunctionControl({
   pairKey, config, position, warnings, onChange, onClose, onMakeAssemblyMethod,
@@ -37,7 +46,16 @@ export default function JunctionControl({
       junction={junction}
       position={position}
       warnings={warnings || []}
-      onPick={(kindId) => onChange && onChange({ method: methodForJunctionKind(kindId) })}
+      allowedKinds={INTERNAL_KINDS}
+      onPick={(kindId) => {
+        if (!onChange) return;
+        // JC-3 — re-picking the displayed kind is a no-op (the gibson→overlap
+        // round-trip would silently downgrade the method otherwise).
+        if (junction.kind === kindId) return;
+        // JC-4 — snap overlap params to the new kind's defaults so a stale
+        // overlapLength (e.g. 30 bp) can't linger on a non-overlap chemistry.
+        onChange({ method: methodForJunctionKind(kindId), ...defaultJunctionParams(kindId) });
+      }}
       onSetParams={(patch) => onChange && onChange(patch)}
       onResetAuto={() => onChange && onChange({ ...seedJunction(), autoMode: 'auto' })}
       onCancel={onClose}

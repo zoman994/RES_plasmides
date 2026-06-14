@@ -230,8 +230,10 @@ describe('JUNCTION FIX — live AssemblyShellBody strip (via EditorWindowShell)'
     const glyph = await screen.findByTestId('sequence-view-junction');
     act(() => { fireEvent.click(glyph); });
     const popover = await screen.findByTestId('junction-popover');
-    act(() => { fireEvent.click(within(popover).getByTestId('junction-popover-kind-golden_gate')); });
+    // JC-1 — the internal ромб offers overlap / re_ligation (not closure-only
+    // golden_gate); re_ligation → engine method 'restriction'.
+    act(() => { fireEvent.click(within(popover).getByTestId('junction-popover-kind-re_ligation')); });
     const zone = S.zones.find((z) => z.id === zid);
-    expect(zone.junctions[pairKeyFor(p1, p2)].method).toBe('golden_gate');
+    expect(zone.junctions[pairKeyFor(p1, p2)].method).toBe('restriction');
   });
 });
