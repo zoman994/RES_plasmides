@@ -14,7 +14,7 @@
  */
 import { useMemo, useState } from 'react';
 import OpPopup from './OpPopup';
-import { GG_ENZYMES } from '../../../../golden-gate';
+import { GG_ENZYMES, checkInternalSites } from '../../../../golden-gate';
 
 const GG_ENZYME_NAMES = Object.keys(GG_ENZYMES || {});
 
@@ -61,7 +61,17 @@ export default function GoldenGateOpPopup({
     });
   };
 
-  const executeDisabled = fragmentIds.length < 2 || !enzyme;
+  // GG-2 — live internal-site check for the chosen enzyme over the selected
+  // fragments; a fragment with an internal recognition site self-cleaves → block
+  // assembly and surface the offending fragments + a suggested alternative.
+  const internal = useMemo(() => {
+    const frags = fragmentIds.map((id) => containers.find((c) => c.id === id)).filter(Boolean);
+    if (frags.length < 2) return { ok: true };
+    return checkInternalSites(frags, enzyme);
+  }, [fragmentIds, enzyme, containers]);
+  const hasInternal = internal && internal.ok === false;
+
+  const executeDisabled = fragmentIds.length < 2 || !enzyme || hasInternal;
 
   return (
     <OpPopup
@@ -192,6 +202,32 @@ export default function GoldenGateOpPopup({
             <span>Замкнуть в плазмиду (circular)</span>
           </label>
         </Field>
+
+        {hasInternal && (
+          <div
+            data-testid="gg-op-warn-internal-site"
+            style={{
+              padding: '6px 8px', background: '#fef3c7', border: '1px solid #d97706',
+              borderRadius: 4, fontSize: 11, color: '#7c2d12', lineHeight: 1.4,
+            }}
+          >
+            ⚠ {internal.message}
+            {internal.alternatives && internal.alternatives.length > 0 && (
+              <div style={{ marginTop: 2 }}>
+                Без внутренних сайтов:{' '}
+                <button
+                  type="button"
+                  data-testid="gg-op-switch-enzyme"
+                  onClick={() => setEnzyme(internal.alternatives[0])}
+                  style={{
+                    background: 'transparent', border: 'none', padding: 0,
+                    color: '#7c2d12', textDecoration: 'underline', cursor: 'pointer', fontSize: 11,
+                  }}
+                >{internal.alternatives[0]}</button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </OpPopup>
   );

@@ -5,12 +5,33 @@
  *
  * S2 (14.05.2026): trim recognition site + 4-nt sticky overhangs.
  */
-import { GG_ENZYMES } from '../../../../../golden-gate';
+import { GG_ENZYMES, checkInternalSites, reverseComplement } from '../../../../../golden-gate';
 import {
   newContainer,
   concatWithOverlapTrim,
   mergeAnnotationsForConcat,
 } from './_shared';
+
+// GG-1 — an INTERIOR Type IIS recognition site (not at a fragment end) makes the
+// enzyme cut the fragment internally → no clean overhang. Sites AT the ends are
+// the intended cloning sites (added as primer tails, trimmed during assembly), so
+// they are fine. Returns the first fragment with an interior site, else null.
+function fragmentWithInteriorSite(fragments, recognition) {
+  const rec = (recognition || '').toUpperCase();
+  if (!rec) return null;
+  const recRC = reverseComplement(rec);
+  for (const f of fragments) {
+    const s = (f.sequence || '').toUpperCase();
+    for (const pat of [rec, recRC]) {
+      let i = s.indexOf(pat);
+      while (i !== -1) {
+        if (i !== 0 && i !== s.length - pat.length) return f; // strictly interior
+        i = s.indexOf(pat, i + 1);
+      }
+    }
+  }
+  return null;
+}
 
 export function executeGoldenGate(operation, ctx) {
   const fragmentIds = operation.params?.fragmentIds || operation.inputs || [];
@@ -24,6 +45,14 @@ export function executeGoldenGate(operation, ctx) {
   }
 
   const enzInfo = GG_ENZYMES[enzyme];
+  // GG-1 — block a fragment with an INTERIOR recognition site (edge sites are the
+  // intended, trimmed cloning sites). Suggest a clean alternative enzyme.
+  const badFrag = fragmentWithInteriorSite(fragments, enzInfo?.recognition);
+  if (badFrag) {
+    const altList = checkInternalSites(fragments, enzyme).alternatives || [];
+    const alt = altList.length ? ` — попробуйте ${altList[0]}` : '';
+    return { error: `${enzyme} сайт внутри фрагмента ${badFrag.name || ''}${alt}`.trim() };
+  }
   const recog = (enzInfo?.recognition || '').toUpperCase();
   let recogTrimmed = 0;
   const trim = (s, isFirst, isLast) => {
