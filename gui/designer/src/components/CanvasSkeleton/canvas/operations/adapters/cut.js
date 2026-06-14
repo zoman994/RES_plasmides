@@ -11,6 +11,19 @@ import { findSitesInSequence, RE_ENZYMES, digest } from '../../../../../restrict
 import { newContainer } from './_shared';
 import { resolveOpTemplate } from '../../../lib/op-piece-bridge';
 
+/**
+ * L11 (audit) — the cut END an enzyme leaves, in the shape detectJunctionKind
+ * reads (overhang + type + enzymeUsed). The legacy linear path produced fragments
+ * with NO ends, so a downstream junction mis-classified as 'overlap' instead of
+ * the enzyme-correct re_ligation / golden_gate.
+ */
+function endFromEnzyme(enzymeName) {
+  const re = RE_ENZYMES[enzymeName];
+  if (!re) return null;
+  const type = re.end === 'blunt' ? 'blunt' : (re.end === '3prime' ? '3overhang' : '5overhang');
+  return { overhang: re.overhang || '', type, enzymeUsed: enzymeName };
+}
+
 export function executeCut(operation, ctx) {
   const templateId = operation.params?.templateId || operation.inputs?.[0];
   const enzymes = operation.params?.enzymes || [];
@@ -152,6 +165,10 @@ export function executeCut(operation, ctx) {
         sequence: seq.slice(last, cuts[i].position),
         annotations: clipAnnotationsToRange(last, cuts[i].position),
         name: `${template.name || 'fragment'}_part${i + 1}`,
+        // L11 — left end = the previous cut's enzyme (none for the first piece,
+        // it's the original linear 5′ end); right end = this cut's enzyme.
+        leftEnd: i === 0 ? null : endFromEnzyme(cuts[i - 1].enzyme),
+        rightEnd: endFromEnzyme(cuts[i].enzyme),
       });
       last = cuts[i].position;
     }
@@ -159,6 +176,8 @@ export function executeCut(operation, ctx) {
       sequence: seq.slice(last),
       annotations: clipAnnotationsToRange(last, seq.length),
       name: `${template.name || 'fragment'}_part${cuts.length + 1}`,
+      leftEnd: endFromEnzyme(cuts[cuts.length - 1].enzyme),
+      rightEnd: null, // original linear 3′ end
     });
   }
   const nonEmpty = fragments.filter((f) => f.sequence.length > 0);
@@ -173,6 +192,10 @@ export function executeCut(operation, ctx) {
     sequence: f.sequence,
     circular: false,
     annotations: f.annotations,
+    // L11 — carry the cut ends so a downstream junction classifies by the enzyme.
+    ends: (f.leftEnd || f.rightEnd)
+      ? { fivePrime: f.leftEnd || null, threePrime: f.rightEnd || null }
+      : null,
     origin: {
       kind: 'op_cut',
       operationId: operation.id,
