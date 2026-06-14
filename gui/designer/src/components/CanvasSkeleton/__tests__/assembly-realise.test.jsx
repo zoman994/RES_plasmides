@@ -49,9 +49,10 @@ describe('A4.K1 suggestMethodForBoundary', () => {
     expect(typeof r.rationale).toBe('string');
   });
 
-  it('no primer, no RE sites → gibson (low, default)', () => {
+  it('no primer, no RE sites, LINEAR → overlap_pcr (low, default — AM-5)', () => {
     // AT-only sources: every RE_ENZYMES site contains G or C, so
-    // detectCompatibleREsites finds nothing → default Gibson.
+    // detectCompatibleREsites finds nothing → topology-aware default. The draft
+    // is LINEAR, so the default is overlap PCR (not gibson, a ring-forming method).
     let s = buildInitialState();
     const at1 = { id: 'at1', kind: 'molecule', name: 'at1', sequence: 'AAAAAAAAAATTTTTTTTTT', annotations: [], topology: { circular: false } };
     const at2 = { id: 'at2', kind: 'molecule', name: 'at2', sequence: 'TTTTTTTTTTAAAAAAAAAA', annotations: [], topology: { circular: false } };
@@ -60,7 +61,7 @@ describe('A4.K1 suggestMethodForBoundary', () => {
     s = skeletonReducer(s, { type: 'INSERT_SEGMENT', draftId: 'aAT', sourceContainerId: 'at1', start: 0, end: 20, rc: false });
     s = skeletonReducer(s, { type: 'INSERT_SEGMENT', draftId: 'aAT', sourceContainerId: 'at2', start: 0, end: 20, rc: false });
     const r = suggestMethodForBoundary(s, 'aAT', 0);
-    expect(r.method).toBe('gibson');
+    expect(r.method).toBe('overlap_pcr');
     expect(r.confidence).toBe('low');
   });
 });

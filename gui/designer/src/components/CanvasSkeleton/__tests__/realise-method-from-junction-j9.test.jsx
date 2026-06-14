@@ -64,10 +64,26 @@ describe('JUNCTION FIX J9 — methodsFromJunctions (pure)', () => {
     expect(m[0]).toBe('overlap_pcr');
   });
 
-  it('falls back to gibson when neither config nor suggestion', () => {
+  it('falls back to overlap_pcr for a LINEAR internal join — never gibson (AM-5)', () => {
+    // gibson is a ring-forming method; a linear internal fuse must default to
+    // overlap PCR. (This case previously asserted gibson — that encoded the bug.)
     const draft = legacyDraft();
     const m = methodsFromJunctions(draft, {}, []);
-    expect(m[0]).toBe('gibson');
+    expect(m[0]).toBe('overlap_pcr');
+  });
+
+  it('circular: the closure boundary defaults to gibson (AM-5)', () => {
+    const draft = { ...legacyDraft(), topology: { circular: true } };
+    const m = methodsFromJunctions(draft, {}, []);
+    // 2 segments circular → keys 0 (internal) + 1 (closure)
+    expect(m[0]).toBe('overlap_pcr'); // internal fuse
+    expect(m[1]).toBe('gibson'); // last→first closure
+  });
+
+  it('prefers the construct assemblyMethod over the bare default (AM-2)', () => {
+    const draft = { ...legacyDraft(), assemblyMethod: 'restriction' };
+    const m = methodsFromJunctions(draft, {}, []);
+    expect(m[0]).toBe('restriction');
   });
 
   it('keys boundaries by index 0..N−2', () => {

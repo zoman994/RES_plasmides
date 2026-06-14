@@ -75,13 +75,14 @@ describe('V109 — suggestMethodForBoundary reads opGroup.kind', () => {
     expect(r.confidence).toBe('high');
   });
 
-  it('zone with pieces but NO op-group → fallback heuristic (gibson low for AT-only)', () => {
+  it('zone with pieces but NO op-group → fallback heuristic (overlap_pcr low for AT-only linear — AM-5)', () => {
     const s = zoneState([piece('pc1', 'src1', 1), piece('pc2', 'src2', 2)], [AT1, AT2]);
     const r = suggestMethodForBoundary(s, 'zn-1', 0);
     // No covering op-group → fallback runs. AT-only → no shared RE site, no
-    // boundary primer → default gibson(low). Crucially NOT the op-group path.
+    // boundary primer → topology-aware default. The zone is LINEAR → overlap_pcr
+    // (not gibson). Crucially NOT the op-group path.
     expect(r.rationale).not.toBe('из группы операций');
-    expect(r.method).toBe('gibson');
+    expect(r.method).toBe('overlap_pcr');
     expect(r.confidence).toBe('low');
   });
 

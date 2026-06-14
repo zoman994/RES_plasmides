@@ -97,7 +97,11 @@ function segContainerSeq(state, seg) {
 
 export function suggestMethodForBoundary(state, draftId, boundaryIdx) {
   const d = resolveDraft(state, draftId);
-  if (!d) return { method: 'gibson', confidence: 'low', rationale: 'нет данных' };
+  // AM-5 — the low-confidence default is topology-aware: a LINEAR join defaults
+  // to overlap PCR (never gibson, a ring-forming method); a CIRCULAR construct
+  // to gibson. (suggestMethodForBoundary is only called for INTERNAL boundaries.)
+  if (!d) return { method: 'overlap_pcr', confidence: 'low', rationale: 'нет данных' };
+  const topoDefault = (d.topology && d.topology.circular) ? 'gibson' : 'overlap_pcr';
 
   // V109 — the op-group kind is the recorded design decision; prefer it
   // over the tail-length heuristic (which only guesses, and which misses
@@ -136,5 +140,5 @@ export function suggestMethodForBoundary(state, draftId, boundaryIdx) {
     return { method: 'direct_ligation', confidence: 'medium', rationale: 'оба сегмента manual (blunt)' };
   }
 
-  return { method: 'gibson', confidence: 'low', rationale: 'по умолчанию (Gibson — самый общий)' };
+  return { method: topoDefault, confidence: 'low', rationale: topoDefault === 'gibson' ? 'по умолчанию (Gibson — кольцо)' : 'по умолчанию (Overlap PCR — линейно)' };
 }

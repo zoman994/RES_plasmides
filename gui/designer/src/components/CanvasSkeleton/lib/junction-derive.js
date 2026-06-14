@@ -210,12 +210,22 @@ export function assemblyReadiness(coloredZones) {
  */
 export function methodsFromJunctions(draft, zoneJunctions = {}, suggestions = []) {
   const bounds = allBoundaries(draft);
+  // AM-5/AM-2 — the default is topology- AND role-aware, and prefers the construct
+  // method: a single-fragment SELF-closure defaults to KLD; a multi-fragment
+  // CIRCULAR closure to gibson; an internal fuse / any LINEAR join to overlap PCR
+  // (never gibson, a ring-forming method). The chosen construct method wins over
+  // the bare biological default. Requires draftFromZone to carry assemblyMethod.
+  const circular = !!(draft && draft.topology && draft.topology.circular);
   const out = {};
   bounds.forEach((b, i) => {
     const cfg = zoneJunctions[b.pairKey];
+    const bioDefault = b.selfClosure
+      ? 'kld'
+      : ((circular && b.role === 'closure') ? 'gibson' : DEFAULT_JUNCTION_METHOD);
     out[i] = (cfg && cfg.method)
       || (suggestions[i] && suggestions[i].method)
-      || 'gibson';
+      || (draft && draft.assemblyMethod)
+      || bioDefault;
   });
   return out;
 }

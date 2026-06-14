@@ -14,6 +14,9 @@ import { describe, it, expect } from 'vitest';
 import { skeletonReducer, buildInitialState } from '../store/skeleton-state';
 import { zonesReducer } from '../store/skeleton-state-zones';
 import { deriveSelfClosurePrimers } from '../lib/primer-derive';
+import { draftFromZone } from '../lib/zone-pieces-to-dag';
+import { realiseAssembly } from '../lib/assembly-realise';
+import { methodsFromJunctions } from '../lib/junction-derive';
 import { reverseComplement } from '../../../sequence-utils';
 
 const SEQ = 'AAAACCCCGGGGTTTT'.repeat(3); // 48 nt ≥ 40 self-closure floor
@@ -80,5 +83,33 @@ describe('M-CIRCULARIZE C5 — circularizing a 1-piece zone yields self-closure 
     const s0 = oneFragZone(false);
     const primers = (s0.assemblyDraftPrimers || {})['zn-1'] || [];
     expect(primers).toHaveLength(0);
+  });
+});
+
+describe('M-CIRCULARIZE AM-1/AM-2 — chosen self-closure method survives the real glue', () => {
+  it('1-fragment circular zone with assemblyMethod=kld realises a KLD op (not gibson)', () => {
+    // Drive the REAL path: SET_ZONE_TOPOLOGY + SET_ASSEMBLY_METHOD, then compute
+    // perBoundaryMethods via methodsFromJunctions (as onRealise does) and realise.
+    // (The C3 unit test passes {0:'kld'} directly, which hides this glue.)
+    let s = oneFragZone(false);
+    s = skeletonReducer(s, { type: 'SET_ZONE_TOPOLOGY', zoneId: 'zn-1', circular: true });
+    s = skeletonReducer(s, { type: 'SET_ASSEMBLY_METHOD', zoneId: 'zn-1', method: 'kld' });
+    const zone = s.zones.find((z) => z.id === 'zn-1');
+    const draft = draftFromZone(s, zone);
+    const methods = methodsFromJunctions(draft, zone.junctions || {}, []);
+    const r = realiseAssembly(s, 'zn-1', methods, {});
+    const closeOp = r.diff.operations.find((o) => o.params && o.params.selfClosure);
+    expect(closeOp).toBeTruthy();
+    expect(closeOp.params.method).toBe('kld');
+    expect(closeOp.kind).toBe('kld'); // METHOD_TO_OP_KIND.kld → registered 'kld'
+  });
+
+  it('1-fragment circular with NO chosen method defaults to KLD (self-closure biology), not gibson', () => {
+    let s = oneFragZone(false);
+    s = skeletonReducer(s, { type: 'SET_ZONE_TOPOLOGY', zoneId: 'zn-1', circular: true });
+    const zone = s.zones.find((z) => z.id === 'zn-1');
+    const draft = draftFromZone(s, zone);
+    const methods = methodsFromJunctions(draft, zone.junctions || {}, []);
+    expect(methods[0]).toBe('kld'); // selfClosure bioDefault
   });
 });

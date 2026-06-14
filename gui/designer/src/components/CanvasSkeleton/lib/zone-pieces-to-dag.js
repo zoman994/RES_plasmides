@@ -34,11 +34,16 @@ export const METHOD_TO_JUNCTION = {
 
 // The assembly method → the kind of the single assembly OPERATION (the one-pot
 // reaction joining the fragments). One colour per op type (op-colors канон).
-const METHOD_TO_OP_KIND = {
+// EVERY value MUST be a registered op kind (op-kinds-registry KNOWN_OP_KINDS) —
+// otherwise the realised node has no adapter and is un-executable. 'restriction'
+// maps to 'ligate' (the join step of RE cloning; the per-fragment digest is a
+// separate 'cut' op) — there is no registered 'restriction' kind. Guarded by
+// consistency-op-kind-map.test.js.
+export const METHOD_TO_OP_KIND = {
   overlap_pcr: 'gibson',
   gibson: 'gibson',
   golden_gate: 'golden_gate',
-  restriction: 'restriction',
+  restriction: 'ligate',
   direct_ligation: 'ligate',
   kld: 'kld',
 };
@@ -256,6 +261,11 @@ export function draftFromZone(state, zone) {
     id: zone.id,
     name: zone.name,
     topology: zone.topology || { circular: false },
+    // M-CIRCULARIZE / AM-2 — carry the construct method so realise's
+    // assemblyMethod fallback (and methodsFromJunctions' default) can recover the
+    // chosen method for boundaries with no seeded junction config (notably the
+    // single-fragment self-closure, where the finalizer clears zone.junctions).
+    assemblyMethod: zone.assemblyMethod || null,
     segments,
     realiseRevision: zone.realiseRevision || 0,
     position: zone.bounds ? { x: zone.bounds.x, y: zone.bounds.y } : null,
@@ -385,7 +395,8 @@ export function realiseAssembly(state, targetId, perBoundaryMethods, options = {
   // the assembly method → one colour per op type (op-colors). Per-boundary
   // methods stay as params here + as junction metadata below.
   if (fragContainerIds.length >= 2) {
-    const repMethod = (perBoundaryMethods && perBoundaryMethods[0]) || draft.assemblyMethod || 'gibson';
+    const repMethod = (perBoundaryMethods && perBoundaryMethods[0]) || draft.assemblyMethod
+      || ((draft.topology && draft.topology.circular) ? 'gibson' : 'overlap_pcr');
     const asmOpId = `op-${uuidv7()}`;
     const asmX = 80 + col * STEP_X;
     operations.push({
@@ -425,9 +436,11 @@ export function realiseAssembly(state, targetId, perBoundaryMethods, options = {
   }
   positionsLayout.containers[finalId] = { x: 80 + col * STEP_X, y: baseY };
 
-  // Boundary junctions between consecutive fragment/oligo containers.
+  // Boundary junctions between consecutive fragment/oligo containers. The
+  // INTERNAL fuse default is overlap_pcr (never gibson — internal joins are not
+  // the ring-closing reaction; AM-5). The closure block below owns the ring join.
   for (let i = 0; i < fragContainerIds.length - 1; i += 1) {
-    const method = (perBoundaryMethods && perBoundaryMethods[i]) || 'gibson';
+    const method = (perBoundaryMethods && perBoundaryMethods[i]) || 'overlap_pcr';
     const j = junctionForMethod(method, fragContainerIds[i], fragContainerIds[i + 1]);
     j.realisedFrom = {
       assemblyId: targetId, boundaryIdx: i, revision, method,
