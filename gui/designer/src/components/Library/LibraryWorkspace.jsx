@@ -346,6 +346,8 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
   // created in the embedded Annotator lived only in transient perEntryState
   // and vanished on entry switch / reload.
   const writeLibraryEntryAnnotations = useStore((s) => s.writeLibraryEntryAnnotations);
+  // Workspace-only Overview meta editors persist directly to the entry.
+  const updateLibraryEntryTags = useStore((s) => s.updateLibraryEntryTags);
 
   const rawEntry = selectedId ? entriesById[selectedId] : null;
   // LibrarySingleInspector + Overview/Sequence/Annotations tabs +
@@ -411,6 +413,12 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
       } catch { /* best-effort safety-net */ }
     }
   }, [selectedId, writeLibraryEntryAnnotations]);
+  // Direct-persist entry tags from the Overview editor (entry.tags is the
+  // source of truth; updateLibraryEntryTags writes store + IndexedDB).
+  const onUpdateTags = useCallback((nextTags) => {
+    if (!selectedId || typeof updateLibraryEntryTags !== 'function') return;
+    updateLibraryEntryTags(selectedId, Array.isArray(nextTags) ? nextTags : []);
+  }, [selectedId, updateLibraryEntryTags]);
   const onUpdateFlags = useCallback((patch) => {
     if (!selectedId || !patch) return;
     setPerEntryState((prev) => ({
@@ -531,6 +539,7 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
                   // light up «несохранено» right after a silent save —
                   // misleading. Keep them out (DEC-LIB-13).
                   showSaveActions={false}
+                  onUpdateTags={onUpdateTags}
                 />
               </div>
               <LibraryActionRow entry={item} zone={zone} ctx={actionCtx} />

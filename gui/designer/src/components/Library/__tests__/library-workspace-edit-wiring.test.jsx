@@ -19,7 +19,7 @@
 import 'fake-indexeddb/auto';
 import React from 'react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import { useStore } from '../../../store';
 import { resetDBForTests } from '../../../db/dexie-schema';
 import LibraryWorkspace from '../LibraryWorkspace';
@@ -27,13 +27,20 @@ import LibraryWorkspace from '../LibraryWorkspace';
 // Surface the two props the fix is about so we can assert wiring without
 // paying the real inspector / SequenceView render cost.
 vi.mock('../inspector/LibrarySingleInspector', () => ({
-  default: ({ item, showSaveActions }) => (
+  default: ({ item, showSaveActions, onUpdateTags }) => (
     <div
       data-testid="single-inspector-stub"
       data-item-id={item?.id || ''}
       data-library-entry-id={item?._libraryEntryId || ''}
       data-show-save={showSaveActions === false ? 'false' : 'true'}
-    >inspector</div>
+    >
+      inspector
+      <button
+        type="button"
+        data-testid="fake-add-tag"
+        onClick={() => onUpdateTags?.([...(item?.tags || []), 'expression'])}
+      >tag</button>
+    </div>
   ),
 }));
 vi.mock('../onboarding/OnboardingNudge', () => ({
@@ -94,5 +101,15 @@ describe('LibraryWorkspace — edit-path wiring', () => {
     render(<LibraryWorkspace />);
     fireEvent.click(screen.getByTestId('tree-item-loose-e1'));
     expect(screen.getByTestId('single-inspector-stub').getAttribute('data-show-save')).toBe('false');
+  });
+
+  it('onUpdateTags persists to the library entry (entry.tags, store + IndexedDB)', async () => {
+    await useStore.getState().addLibraryEntry(makeContainer({ id: 'e1' }));
+    render(<LibraryWorkspace />);
+    fireEvent.click(screen.getByTestId('tree-item-loose-e1'));
+    fireEvent.click(screen.getByTestId('fake-add-tag'));
+    await waitFor(() => {
+      expect(useStore.getState().libraryEntries.e1.tags).toContain('expression');
+    });
   });
 });

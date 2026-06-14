@@ -87,6 +87,10 @@ export default function SingleInspector({
   // silently and passes false to keep them out (they'd misleadingly flag
   // «несохранено» right after a silent save).
   showSaveActions = true,
+  // Workspace-only direct-persist editors in the Overview tab (the Importer
+  // edits these via its MetaColumn). Absent ⇒ Overview stays read-only.
+  onUpdateTags,
+  onUpdateTopology,
 }) {
   // Annotator state for the navigation-strip ghost overlay. Single
   // shallow-equality subscription instead of five separate ones — five
@@ -564,7 +568,11 @@ export default function SingleInspector({
             data-tab-active={activeTab === 'overview' ? 'true' : 'false'}
             style={visibilityStyle('overview')}
           >
-            <OverviewTab item={displayItem} />
+            <OverviewTab
+              item={displayItem}
+              onUpdateTags={onUpdateTags}
+              onUpdateTopology={onUpdateTopology}
+            />
           </div>
         )}
         {isMounted('sequence') && (

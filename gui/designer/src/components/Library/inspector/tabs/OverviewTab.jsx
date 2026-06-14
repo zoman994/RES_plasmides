@@ -3,6 +3,7 @@ import PlasmidMiniMap from '../../../PlasmidMiniMap';
 import { featureColor } from '../../../../feature-palette';
 import { STRINGS } from '../../../../lib/strings';
 import { buildFileSummary, summarizeRESitesCached } from '../lib/file-summary';
+import TagsEditor from '../TagsEditor';
 
 const S = STRINGS.importer;
 
@@ -30,7 +31,7 @@ const __PREWARM_DISABLED__ =
   && typeof import.meta.env !== 'undefined'
   && import.meta.env.MODE === 'test';
 
-export default function OverviewTab({ item }) {
+export default function OverviewTab({ item, onUpdateTags }) {
   const summary = useMemo(() => buildFileSummary(item), [item]);
   // Lazy reSites: in production we paint the rest of the overview first
   // (mini-map, type counts, categories, CDS list — fast), then schedule
@@ -88,24 +89,48 @@ export default function OverviewTab({ item }) {
         alignItems: 'start',
       }}
     >
-      <div
-        data-testid="importer-overview-mini-map"
-        style={{
-          background: 'var(--surface-2)',
-          border: '0.5px solid var(--border-subtle)',
-          borderRadius: 'var(--radius-md)',
-          padding: 12,
-          display: 'flex', justifyContent: 'center',
-        }}
-      >
-        <PlasmidMiniMap
-          length={length}
-          topology={topology}
-          annotations={item.annotations || []}
-          size={180}
-          mode="overlay"
-          disableHoverOverlay
-        />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
+        <div
+          data-testid="importer-overview-mini-map"
+          style={{
+            background: 'var(--surface-2)',
+            border: '0.5px solid var(--border-subtle)',
+            borderRadius: 'var(--radius-md)',
+            padding: 12,
+            display: 'flex', justifyContent: 'center',
+          }}
+        >
+          <PlasmidMiniMap
+            length={length}
+            topology={topology}
+            annotations={item.annotations || []}
+            size={180}
+            mode="overlay"
+            disableHoverOverlay
+          />
+        </div>
+
+        {/* Editable entry meta — only in the workspace host (callbacks
+            present); the Importer keeps its own MetaColumn editors. */}
+        {typeof onUpdateTags === 'function' && (
+          <div
+            data-testid="overview-tags-editor"
+            style={{
+              background: 'var(--surface-1)',
+              border: '0.5px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-md)',
+              padding: 12,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.6,
+                color: 'var(--text-secondary)', fontWeight: 600,
+              }}
+            >{S.summaryTags || 'Метки'}</div>
+            <TagsEditor tags={item.tags || []} onChange={onUpdateTags} />
+          </div>
+        )}
       </div>
 
       <div
