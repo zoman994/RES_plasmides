@@ -327,6 +327,18 @@ export function deriveAutoPrimers(opGroup, state) {
   const boundaries = resolveOpGroupBoundaries(opGroup, state);
   const primers = [];
 
+  // G/TOP-3 — closure-aware walk for a CIRCULAR assembly: the FIRST amplifiable
+  // piece's fwd tail wraps to the LAST piece and the LAST piece's rev tail wraps
+  // to the FIRST, so the ring's last→first junction gets the homology/overhang
+  // its closure method needs (otherwise the ends are blunt and the ring can't
+  // close). Linear assemblies (opGroup.circular falsy) are unchanged.
+  const ampIdx = pieces
+    .map((p, idx) => ((p && !SKIPPED_KINDS.has(p.kind)) ? idx : -1))
+    .filter((x) => x >= 0);
+  const circular = !!opGroup.circular && ampIdx.length >= 2;
+  const firstAmp = ampIdx[0];
+  const lastAmp = ampIdx[ampIdx.length - 1];
+
   for (let i = 0; i < pieces.length; i += 1) {
     const piece = pieces[i];
     if (!piece || SKIPPED_KINDS.has(piece.kind)) continue;
@@ -358,6 +370,14 @@ export function deriveAutoPrimers(opGroup, state) {
       if (p.kind === 'gap') break;
       logicalNext = p;
       break;
+    }
+
+    // G — wrap the terminal pieces for a circular assembly so the closure
+    // junction (last→first) drives the first piece's fwd tail and the last
+    // piece's rev tail (junctionConfig then resolves the closure pairKey).
+    if (circular) {
+      if (!logicalPrev && i === firstAmp) logicalPrev = pieces[lastAmp];
+      if (!logicalNext && i === lastAmp) logicalNext = pieces[firstAmp];
     }
 
     // A3 — per-junction config: fwd reads the UPSTREAM junction (prev→piece),
@@ -392,6 +412,18 @@ export function deriveAutoPrimers(opGroup, state) {
       const L = boundaries[k];
       const R = boundaries[k + 1];
       revBoundary = { boundaryAtOffset: L.endOnAssembly, leftSegmentId: L.segmentId, rightSegmentId: R.segmentId };
+    }
+    // G — the wrapped terminal tails realise the CLOSURE boundary (last→first);
+    // record it so coverage counts the closure and realise can map these primers.
+    if (circular && boundaries.length >= 2) {
+      const last = boundaries[boundaries.length - 1];
+      const closureInfo = {
+        boundaryAtOffset: last.endOnAssembly,
+        leftSegmentId: last.segmentId,
+        rightSegmentId: boundaries[0].segmentId,
+      };
+      if (i === firstAmp && !fwdBoundary) fwdBoundary = closureInfo;
+      if (i === lastAmp && !revBoundary) revBoundary = closureInfo;
     }
     // fwd + rev of one piece share a pairId (canon §4).
     const pairId = `pair-${uuidv7()}`;

@@ -147,6 +147,9 @@ export function applyJunctionConfig(next, prev) {
         kind: DEFAULT_JUNCTION_METHOD,
         inputPieces: zonePieces.map((p) => p.id),
         zoneId: zone.id,
+        // G/TOP-3 — tell the engine to wrap the terminal pieces' tails so the
+        // closure junction gets its homology/overhang (the ring can close).
+        circular: !!(zone.topology && zone.topology.circular),
       }, stateForDerive);
     } catch {
       derived = [];
