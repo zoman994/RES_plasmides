@@ -42,3 +42,6 @@ docs/design_assets/
 .claude/
 .vscode/
 node_modules/
+
+# graphify knowledge-graph data (generated: graph.json, report, html, wiki, cache)
+.graphify/
