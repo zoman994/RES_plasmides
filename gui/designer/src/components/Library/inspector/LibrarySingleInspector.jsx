@@ -136,6 +136,12 @@ export default function SingleInspector({
     onSelectRangeFromView,
     onPendingScrollHandled,
   } = useInspectorSelectionNav({ activeTab, onActiveTabChange, itemKey });
+
+  // Overview feature click → jump to the Sequence tab + scroll to the
+  // feature start (reuses the strip-nav primitive). Works in both hosts.
+  const onNavigateToFeature = useCallback((region) => {
+    if (region && Number.isFinite(region.start)) onBarSettle(region.start);
+  }, [onBarSettle]);
   // K6 read-only/editable pill (DEC-LIB-16 ⚓) — extracted in M-X.6 K0
   // (DEC-MX6-01). Auto-resets on plasmid switch.
   // M-X.7a v2 K3 R1: hook also returns `isReadOnlyZone` derived from
@@ -572,6 +578,7 @@ export default function SingleInspector({
               item={displayItem}
               onUpdateTags={onUpdateTags}
               onUpdateTopology={onUpdateTopology}
+              onNavigateToFeature={onNavigateToFeature}
             />
           </div>
         )}

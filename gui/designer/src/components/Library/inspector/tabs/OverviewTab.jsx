@@ -31,7 +31,7 @@ const __PREWARM_DISABLED__ =
   && typeof import.meta.env !== 'undefined'
   && import.meta.env.MODE === 'test';
 
-export default function OverviewTab({ item, onUpdateTags, onUpdateTopology }) {
+export default function OverviewTab({ item, onUpdateTags, onUpdateTopology, onNavigateToFeature }) {
   const summary = useMemo(() => buildFileSummary(item), [item]);
   // Lazy reSites: in production we paint the rest of the overview first
   // (mini-map, type counts, categories, CDS list — fast), then schedule
@@ -107,6 +107,7 @@ export default function OverviewTab({ item, onUpdateTags, onUpdateTopology }) {
             size={180}
             mode="overlay"
             disableHoverOverlay
+            onFeatureClick={onNavigateToFeature}
           />
         </div>
 
@@ -212,10 +213,10 @@ export default function OverviewTab({ item, onUpdateTags, onUpdateTopology }) {
 
         {hasCategoryLine ? (
           <div data-testid="importer-overview-categories" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <CategorySection icon={S.summarySelectionIcon} label={S.summarySelection} regions={cats.selection} testId="importer-cat-selection" />
-            <CategorySection icon={S.summaryPromotersIcon} label={S.summaryPromoters} regions={cats.promoters} testId="importer-cat-promoters" />
-            <CategorySection icon={S.summaryOriginsIcon} label={S.summaryOrigins} regions={cats.origins} testId="importer-cat-origins" />
-            <CategorySection icon={S.summaryTagsIcon} label={S.summaryTags} regions={cats.tags} testId="importer-cat-tags" />
+            <CategorySection icon={S.summarySelectionIcon} label={S.summarySelection} regions={cats.selection} testId="importer-cat-selection" onNavigate={onNavigateToFeature} />
+            <CategorySection icon={S.summaryPromotersIcon} label={S.summaryPromoters} regions={cats.promoters} testId="importer-cat-promoters" onNavigate={onNavigateToFeature} />
+            <CategorySection icon={S.summaryOriginsIcon} label={S.summaryOrigins} regions={cats.origins} testId="importer-cat-origins" onNavigate={onNavigateToFeature} />
+            <CategorySection icon={S.summaryTagsIcon} label={S.summaryTags} regions={cats.tags} testId="importer-cat-tags" onNavigate={onNavigateToFeature} />
           </div>
         ) : null}
 
@@ -227,7 +228,7 @@ export default function OverviewTab({ item, onUpdateTags, onUpdateTopology }) {
                 color: 'var(--text-secondary)', fontWeight: 600,
               }}
             >{S.summaryCdsList(remainingCDS.length)}</div>
-            {cdsTop.map((r) => <ItemRow key={r.id || `${r.start}-${r.end}-${r.name}`} region={r} />)}
+            {cdsTop.map((r) => <ItemRow key={r.id || `${r.start}-${r.end}-${r.name}`} region={r} onNavigate={onNavigateToFeature} />)}
             {cdsOverflow > 0 && (
               <div
                 style={{ fontSize: 10, color: 'var(--text-tertiary)', paddingLeft: 14 }}
@@ -286,7 +287,7 @@ export default function OverviewTab({ item, onUpdateTags, onUpdateTopology }) {
   );
 }
 
-function CategorySection({ icon, label, regions, testId }) {
+function CategorySection({ icon, label, regions, testId, onNavigate }) {
   if (!regions.length) return null;
   return (
     <div data-testid={testId} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -296,15 +297,30 @@ function CategorySection({ icon, label, regions, testId }) {
           color: 'var(--text-tertiary)', fontWeight: 500,
         }}
       >{icon} {label} ({regions.length})</div>
-      {regions.map((r) => <ItemRow key={r.id || `${r.start}-${r.end}-${r.name}`} region={r} />)}
+      {regions.map((r) => <ItemRow key={r.id || `${r.start}-${r.end}-${r.name}`} region={r} onNavigate={onNavigate} />)}
     </div>
   );
 }
 
-function ItemRow({ region }) {
+function ItemRow({ region, onNavigate }) {
   const len = Math.max(0, (region.end || 0) - (region.start || 0));
+  // Clickable when a navigation callback is wired (workspace) → jump to the
+  // feature in the Sequence tab. Read-only (plain row) otherwise.
+  const clickable = typeof onNavigate === 'function' && Number.isFinite(region.start);
+  const go = () => { if (clickable) onNavigate(region); };
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--text-primary)' }}>
+    <div
+      data-testid={clickable ? `overview-feature-${region.id || `${region.start}-${region.end}`}` : undefined}
+      role={clickable ? 'button' : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      onClick={clickable ? go : undefined}
+      onKeyDown={clickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } } : undefined}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--text-primary)',
+        cursor: clickable ? 'pointer' : undefined,
+        borderRadius: clickable ? 'var(--radius-sm)' : undefined,
+      }}
+    >
       <span
         style={{
           width: 8, height: 8, borderRadius: 2, flexShrink: 0,

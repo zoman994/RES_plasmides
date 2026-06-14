@@ -139,6 +139,10 @@ function PlasmidMiniMap({
   length, topology, annotations, size = 64,
   mode = 'inline',
   disableHoverOverlay = false,
+  // Optional: click a feature sector/bar → onFeatureClick(region). When
+  // provided the cursor becomes a pointer (clickable affordance) instead of
+  // 'help'. Consumers that don't pass it stay hover-only (back-compat).
+  onFeatureClick,
 }) {
   const isOverlay = mode === 'overlay';
   const isCircular = topology === 'circular';
@@ -238,6 +242,14 @@ function PlasmidMiniMap({
   };
   const clearHover = () => setHovered(null);
 
+  // Feature click affordance (opt-in). Returns a handler or undefined so the
+  // <g> stays inert (hover-only) when no consumer wired onFeatureClick.
+  const featureInteractive = typeof onFeatureClick === 'function';
+  const featCursor = featureInteractive ? 'pointer' : 'help';
+  const onFeatClick = (region) => (featureInteractive
+    ? (e) => { e.stopPropagation(); onFeatureClick(region); }
+    : undefined);
+
   const paths = [];
   for (const region of regions) {
     const start = Math.max(0, Math.min(totalLen, region.start || 0));
@@ -265,7 +277,9 @@ function PlasmidMiniMap({
             key={region.id}
             role="img"
             aria-label={titleText}
-            style={{ cursor: 'help' }}
+            data-region-start={region.start}
+            style={{ cursor: featCursor }}
+            onClick={onFeatClick(region)}
             onMouseMove={(e) => showHover(titleText, e)}
             onMouseLeave={clearHover}
           >
@@ -307,7 +321,9 @@ function PlasmidMiniMap({
           key={region.id}
           role="img"
           aria-label={titleText}
-          style={{ cursor: 'help' }}
+          data-region-start={region.start}
+          style={{ cursor: featCursor }}
+          onClick={onFeatClick(region)}
           onMouseMove={(e) => showHover(titleText, e)}
           onMouseLeave={clearHover}
         >
@@ -340,7 +356,9 @@ function PlasmidMiniMap({
           key={region.id}
           role="img"
           aria-label={titleText}
-          style={{ cursor: 'help' }}
+          data-region-start={region.start}
+          style={{ cursor: featCursor }}
+          onClick={onFeatClick(region)}
           onMouseMove={(e) => showHover(titleText, e)}
           onMouseLeave={clearHover}
         >
