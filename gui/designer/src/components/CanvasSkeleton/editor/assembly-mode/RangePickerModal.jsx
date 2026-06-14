@@ -124,6 +124,7 @@ export default function RangePickerModal({ source, onConfirm, onCancel }) {
     sel.setCaretPos(en);
     sel.setSelectionMode('dna');
     setReHighlightKey(null);
+    sel.clearFirstRESite?.(); // A30 — a feature pick cancels a pending first-RE click
     setMethodOverride('feature');
   };
 
@@ -228,6 +229,7 @@ export default function RangePickerModal({ source, onConfirm, onCancel }) {
                 const v = fromUiCoords(Number(e.target.value), end).start;
                 sel.setCaretAnchor(Math.max(0, v));
                 setReHighlightKey(null);
+                sel.clearFirstRESite?.(); // A30
                 setMethodOverride('numeric');
               }}
               style={numInput}
@@ -243,6 +245,7 @@ export default function RangePickerModal({ source, onConfirm, onCancel }) {
                 const v = Number(e.target.value);
                 sel.setCaretPos(v);
                 setReHighlightKey(null);
+                sel.clearFirstRESite?.(); // A30
                 setMethodOverride('numeric');
               }}
               style={numInput}
@@ -253,7 +256,7 @@ export default function RangePickerModal({ source, onConfirm, onCancel }) {
               data-testid="range-picker-rc"
               type="checkbox"
               checked={rc}
-              onChange={() => setRc((v) => !v)}
+              onChange={() => { setRc((v) => !v); sel.clearFirstRESite?.(); }}
             />
             RC
           </label>

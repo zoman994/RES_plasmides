@@ -74,6 +74,9 @@ export function useSequenceSelection({
     firstRESiteRef.current = next;
     setFirstRESiteState(next);
   }, []);
+  // A30 (audit) — clear a pending first-RE-click so a non-RE override (feature
+  // pick / numeric edit / RC toggle) doesn't leave the «кликни второй RE» hint stuck.
+  const clearFirstRESite = useCallback(() => setFirstRESite(null), [setFirstRESite]);
 
   // Reset caret on item switch. initialCaret intentionally excluded
   // from deps — only resetKey drives the reset (matches the existing
@@ -190,6 +193,7 @@ export function useSequenceSelection({
     selectionStrand,
     acquisitionMethod,
     firstRESite,
+    clearFirstRESite,
     selStart,
     selEnd,
     hasSelection,

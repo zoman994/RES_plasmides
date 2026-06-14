@@ -125,6 +125,16 @@ describe('useSequenceSelection — RE strategy: pair-select', () => {
     expect(onPairCommit).toHaveBeenCalledWith(expect.objectContaining({ start: 101, end: 201 }));
   });
 
+  it('clearFirstRESite cancels a pending first-RE click (A30)', () => {
+    const { result } = renderHook(() => useSequenceSelection({
+      initialCaret: 0, reBehavior: 'pair-select', reEnzymes: RE,
+    }));
+    act(() => { result.current.onRestrictionClick({ enzyme: 'EcoRI', position: 100 }); });
+    expect(result.current.firstRESite).toMatchObject({ enzyme: 'EcoRI', position: 100 });
+    act(() => { result.current.clearFirstRESite(); });
+    expect(result.current.firstRESite).toBeNull();
+  });
+
   it('clicking the same site twice does not pair (re-stores as first)', () => {
     const { result } = renderHook(() => useSequenceSelection({
       initialCaret: 0, reBehavior: 'pair-select', reEnzymes: RE,
