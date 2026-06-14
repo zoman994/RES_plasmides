@@ -178,8 +178,6 @@ export const STRINGS = {
       themeLabel: 'Theme',
       seqWrapLabel: 'Sequence wrap',
       seqWrapHint: 'Characters per line in the Sequence tab. 60 is the GenBank default.',
-      polymeraseLabel: 'Default polymerase',
-      polymeraseHint: 'Used by primer-design Tm + extension-time calculators. Phusion/Q5 += 3 °C, Taq −5 °C.',
       primerPrefixLabel: 'Primer name prefix',
       primerPrefixHint: 'Prepended to auto-generated oligo names (e.g. p_ → p_amp_F).',
       annotateOnImportLabel: 'Annotate on import',

@@ -23,7 +23,6 @@ const IMPORTER_MODES = ['advanced', 'simple'];
 // checkbox without a project-wide default). All consolidated here.
 export const DISPLAY_SETTINGS_STORAGE_KEY = 'bodgegene-display-settings';
 const SEQUENCE_WRAPS = [60, 80, 100, 150];
-const POLYMERASES = ['phusion', 'q5', 'taq', 'kod'];
 // SPEC_EDITABLE_ASSEMBLY_S1 §5.9 — synthesisLengthThreshold: typed
 // inline ДНК ≤ this is a primer-tail snippet, > this is a synthesis
 // piece. Biology: standard oligos ~60–100 nt, ultramers ~200 → default
@@ -34,7 +33,6 @@ const SYNTHESIS_THRESHOLD_MIN = 40;
 const SYNTHESIS_THRESHOLD_MAX = 200;
 export const DISPLAY_SETTINGS_DEFAULTS = Object.freeze({
   sequenceWrap: 150,
-  polymerase: 'q5',
   primerPrefix: 'p_',
   annotateOnImport: true,
   synthesisLengthThreshold: 80,
@@ -44,7 +42,6 @@ function sanitizeDisplaySettings(raw) {
   const out = { ...DISPLAY_SETTINGS_DEFAULTS };
   if (!raw || typeof raw !== 'object') return out;
   if (SEQUENCE_WRAPS.includes(raw.sequenceWrap)) out.sequenceWrap = raw.sequenceWrap;
-  if (POLYMERASES.includes(raw.polymerase)) out.polymerase = raw.polymerase;
   if (typeof raw.primerPrefix === 'string' && raw.primerPrefix.length <= 12) {
     out.primerPrefix = raw.primerPrefix;
   }

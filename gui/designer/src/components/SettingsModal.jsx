@@ -8,19 +8,15 @@ import { promptInstall, isPwaInstalled } from '../lib/pwa-install';
 const TABS = [
   { id: 'identity', labelKey: 'identity' },
   // UX-006 — Display & Defaults aggregates the user-tunable knobs
-  // that used to be invisible (sequence wrap, polymerase, primer
-  // prefix, annotate-on-import) or scattered (theme in topbar only).
+  // that used to be invisible (sequence wrap, primer prefix,
+  // annotate-on-import) or scattered (theme in topbar only).
   { id: 'display', labelKey: 'display' },
   { id: 'advanced', labelKey: 'advanced' },
 ];
 
 const SEQ_WRAP_OPTIONS = [60, 80, 100, 150];
-const POLYMERASE_OPTIONS = [
-  { id: 'phusion', label: 'Phusion' },
-  { id: 'q5',      label: 'Q5' },
-  { id: 'taq',     label: 'Taq' },
-  { id: 'kod',     label: 'KOD' },
-];
+// «Default polymerase» removed (Игорь) — it only affected the legacy designPrimersLocal
+// PCR path (Tm offset), never the four-tier assembly primers, so the setting lied.
 const THEME_OPTIONS = [
   { id: 'light', label: 'Light' },
   { id: 'dark',  label: 'Dark' },
@@ -196,16 +192,6 @@ export default function SettingsModal() {
                   options={SEQ_WRAP_OPTIONS.map((n) => ({ id: n, label: String(n) }))}
                   value={displaySettings.sequenceWrap}
                   onChange={(v) => setDisplaySetting({ sequenceWrap: Number(v) })}
-                />
-              </SettingRow>
-
-              {/* Polymerase */}
-              <SettingRow label={STRINGS.settings.display.polymeraseLabel} hint={STRINGS.settings.display.polymeraseHint}>
-                <RadioPills
-                  testId="settings-display-polymerase"
-                  options={POLYMERASE_OPTIONS}
-                  value={displaySettings.polymerase}
-                  onChange={(v) => setDisplaySetting({ polymerase: v })}
                 />
               </SettingRow>
 
