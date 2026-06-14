@@ -171,7 +171,10 @@ export default function GoldenGateOpPopup({
               const e = GG_ENZYMES[name];
               return (
                 <option key={name} value={name}>
-                  {name} · {e?.site || ''}
+                  {/* GG-3 — GG_ENZYMES uses `.recognition` (e.g. BsaI → GGTCTC),
+                      not `.site` (that's the RE_ENZYMES field); the old read was
+                      always blank. */}
+                  {name} · {e?.recognition || ''}
                 </option>
               );
             })}

@@ -55,8 +55,13 @@ export default function CutOpPopup({
     const allCuts = [];
     for (const e of enzymes) {
       const sites = findSitesInSequence(e, seq);
+      // RC-5 — the cut is at the enzyme's offset INSIDE the site, not the site
+      // start (EcoRI G^AATTC → +1; NotI GC^GGCCGC → +2). Using the site start
+      // mis-sizes every fragment. Mirror the engine (cut.js _cutPosition).
+      const re = RE_ENZYMES[e];
+      const off = (re && Array.isArray(re.cut)) ? re.cut[0] : 0;
       for (const s of sites) {
-        allCuts.push({ enzyme: e, position: s.position });
+        allCuts.push({ enzyme: e, position: (s.position + off) % seq.length });
       }
     }
     allCuts.sort((a, b) => a.position - b.position);
@@ -213,10 +218,14 @@ export default function CutOpPopup({
           </div>
         )}
 
-        {/* R4-BIO-3: double-digest buffer/temp compatibility warning. */}
+        {/* R4-BIO-3: double-digest compatibility warning. RC-2/RC-6 — read the
+            ACTUAL checkDoubleDigest contract { simultaneous, buffer, temp,
+            warnings[] }. The old code checked compat.compatible/reason/
+            recommendation, fields the function never returns → the warning was
+            permanently dead (buffer/temp + Dam/Dcm cautions never surfaced). */}
         {enzymes.length === 2 && (() => {
           const compat = checkDoubleDigest(enzymes[0], enzymes[1]);
-          if (compat && compat.compatible === false) {
+          if (compat && Array.isArray(compat.warnings) && compat.warnings.length > 0) {
             return (
               <div
                 data-testid="cut-op-warn-double-digest"
@@ -230,10 +239,10 @@ export default function CutOpPopup({
                   lineHeight: 1.4,
                 }}
               >
-                ⚠ Double-digest: {compat.reason || 'ферменты несовместимы (буфер/температура)'}
-                {compat.recommendation && (
-                  <div style={{ marginTop: 2, fontStyle: 'italic' }}>{compat.recommendation}</div>
-                )}
+                <strong>⚠ Double-digest{compat.simultaneous ? ' (одновременно возможно, но):' : ':'}</strong>
+                {compat.warnings.map((w, i) => (
+                  <div key={i} style={{ marginTop: 2 }}>{w}</div>
+                ))}
               </div>
             );
           }
