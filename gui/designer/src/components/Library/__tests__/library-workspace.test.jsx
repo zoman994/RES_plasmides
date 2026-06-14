@@ -93,6 +93,12 @@ describe('M-X.7a v2 K4 — LibraryWorkspace', () => {
     expect(onAdd).toHaveBeenCalled();
   });
 
+  it('opens the AddModal when navigated with context.openAdd (A23 — Sidebar «Импорт»)', () => {
+    useStore.setState((s) => { s.workspace = { active: 'library', history: [], context: { openAdd: true } }; });
+    render(<LibraryWorkspace />);
+    expect(screen.getByTestId('add-modal')).toBeTruthy();
+  });
+
   it('renders NoSelection placeholder when entries exist but none picked', async () => {
     await useStore.getState().addLibraryEntry(makeContainer({ id: 'e1', zone: 'loose' }));
     render(<LibraryWorkspace />);

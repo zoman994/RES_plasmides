@@ -327,13 +327,16 @@ export const LibraryTopBar = memo(function LibraryTopBar({
         type="button"
         data-testid="library-topbar-bell"
         title="Уведомления — в разработке"
+        aria-disabled="true"
+        disabled
         style={{
           fontSize: 14, padding: '0 8px',
           background: 'transparent',
           color: 'var(--text-tertiary)',
           border: '1px solid transparent',
           borderRadius: 4,
-          cursor: 'pointer',
+          cursor: 'default',
+          opacity: 0.6,
         }}
       >🔔</button>
 

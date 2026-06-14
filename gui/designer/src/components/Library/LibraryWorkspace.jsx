@@ -24,7 +24,7 @@
  * + the existing OnboardingNudge (M-X.5 K5; rendered conditionally
  * on its own dismissed flag).
  */
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore } from '../../store';
 import { STRINGS } from '../../lib/strings';
@@ -98,6 +98,19 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
     else setAddModalOpen(true);
   }, [onAddClickExternal]);
   const closeAddModal = useCallback(() => setAddModalOpen(false), []);
+
+  // A23 (audit) — the StartScreen «Импорт .gb/.dna» action routes here via
+  // setActiveWorkspace('library', { openAdd: true }); pop the AddModal once when
+  // that flag arrives (a ref guard prevents re-opening on every render).
+  const wsContext = useStore((s) => s.workspace?.context);
+  const consumedAddRef = useRef(false);
+  useEffect(() => {
+    if (wsContext && wsContext.openAdd) {
+      if (!consumedAddRef.current) { consumedAddRef.current = true; setAddModalOpen(true); }
+    } else {
+      consumedAddRef.current = false;
+    }
+  }, [wsContext]);
 
   // Import files and add to store. `projectId` = null → LooseZone, id → project zone.
   const importFiles = useCallback(async (files, projectId, opts = {}) => {

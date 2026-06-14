@@ -19,13 +19,6 @@ import { STRINGS } from '../../lib/strings';
 import { promptInstall, isPwaInstalled } from '../../lib/pwa-install';
 import SidebarItem from './SidebarItem';
 
-function todo(label) {
-  return () => {
-    // eslint-disable-next-line no-console
-    console.log(`TODO: ${label}`);
-  };
-}
-
 function Logo() {
   return (
     <div className="sb-logo" aria-hidden>
@@ -242,7 +235,10 @@ export default function Sidebar({ collapsed, onToggle, onOpenHotkeys }) {
           icon="⤓"
           label="Импорт .gb / .dna…"
           tip="Импорт .gb / .dna"
-          onClick={todo('import-file')}
+          // A23 (audit) — was a console.log stub. Route to the live import flow:
+          // leave the start fullscreen → Library (same pattern as the other nav),
+          // signalling it to pop the AddModal via workspace.context.openAdd.
+          onClick={() => { setActiveWorkspace('library', { openAdd: true }); setActiveFullscreen('library'); }}
           testId="ss-action-import-file"
         />
 

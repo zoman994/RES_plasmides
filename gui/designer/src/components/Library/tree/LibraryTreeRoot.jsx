@@ -192,14 +192,16 @@ export default function LibraryTreeRoot({
           <div style={{ flex: 1 }} />
           <button
             type="button"
-            title="Сортировка"
+            title="Сортировка — в разработке"
             data-testid="tree-sort"
+            aria-disabled="true"
             style={{
               fontSize: 12, padding: '4px 6px',
               background: 'transparent',
-              color: 'var(--text-secondary)',
+              color: 'var(--text-tertiary)',
               border: '1px solid transparent',
-              cursor: 'pointer',
+              cursor: 'default',
+              opacity: 0.5,
             }}
             disabled
           >⇅</button>
