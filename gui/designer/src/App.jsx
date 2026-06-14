@@ -28,7 +28,11 @@ import CommandPalette from './components/CommandPalette';
 import SequenceSearchPopover from './components/SequenceSearchPopover';
 import { ToastStack } from './components/Toast';
 import { openBodgeFilePicker, pickSaveAs, saveBlobToHandle } from './lib/file-system';
-import { writeBodge, readBodge } from './lib/bodge-zip';
+import { writeBodge, writeBodgeV2, readBodge } from './lib/bodge-zip';
+// A1/A2 — bridge the CanvasSkeleton assembly snapshot ↔ the .bodge v2 state so
+// save/open actually round-trip the assembly (not just projectSlice meta).
+import { loadSnapshot, saveSnapshot } from './components/CanvasSkeleton/store/skeleton-persistence';
+import { skeletonToCanonical, canonicalToSkeleton } from './components/CanvasSkeleton/lib/skeleton-bodge-bridge';
 import { listenForceRelease } from './lib/multi-tab-lock';
 import { runHotkeyResolver, useHotkey } from './lib/hotkeys';
 import { installGlobalCtrlAGuard } from './lib/global-ctrl-a-guard';
@@ -112,7 +116,7 @@ export default function App() {
     }
     if (!pick) return;
     try {
-      const { project: parsed, libraryEntries, warnings } = await readBodge(pick.file);
+      const { project: parsed, state: canonicalState, libraryEntries, warnings } = await readBodge(pick.file);
       // Симметрия с Sidebar onOpenBodge — Ctrl+O тоже сидит библиотеку
       // встроенными entries. Отсутствующий projectId привязываем к
       // загружаемому проекту (типично для self-contained .bodge).
@@ -123,6 +127,15 @@ export default function App() {
       if (linkedEntries.length > 0) {
         try { await addLibraryEntriesBulk(linkedEntries); }
         catch (e) { showToast(`Не все плазмиды загружены: ${e?.message || e}`, 'warning'); }
+      }
+      // A2 — seed the CanvasSkeleton snapshot for this project BEFORE switching to
+      // it, so the assembly editor rehydrates the saved assembly on mount (was:
+      // only project meta restored → empty assembly editor on every open).
+      if (canonicalState) {
+        try {
+          const skel = canonicalToSkeleton(canonicalState);
+          if (skel) await saveSnapshot(skel, parsed.id);
+        } catch { /* non-fatal — degrade to an empty assembly */ }
       }
       await openProjectFromFileData({
         project: parsed,
@@ -143,7 +156,31 @@ export default function App() {
     if (!id) return;
     const proj = useStore.getState().projects[id];
     if (!proj) return;
-    const blob = writeBodge(proj);
+    // A1 — the assembly lives in the per-project CanvasSkeleton snapshot, not in
+    // projectSlice. Bridge it into a canonical v2 state so writeBodgeV2 persists
+    // topology/method/junctions/pieces/primers. writeBodge(proj) alone fell to the
+    // v1 writer (no .containers) and silently dropped the whole assembly.
+    let blob;
+    try {
+      const snap = await loadSnapshot(id);
+      if (snap) {
+        const canonical = skeletonToCanonical(snap, {
+          id: proj.id,
+          name: proj.name,
+          description: proj.description,
+          tags: proj.tags,
+          author: proj.agent,
+          createdAt: proj.createdAt,
+          updatedAt: proj.updatedAt,
+        });
+        blob = await writeBodgeV2(canonical);
+      } else {
+        blob = writeBodge(proj); // no assembly yet → v1 meta-only is correct
+      }
+    } catch (e) {
+      showToast(STRINGS.toast.saveFailed(e.message || e), 'error');
+      return;
+    }
     let handle = useStore.getState().fileHandle;
     let name = useStore.getState().fileName;
     if (!handle) {

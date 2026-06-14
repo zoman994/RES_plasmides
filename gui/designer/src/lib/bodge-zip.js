@@ -606,6 +606,10 @@ export async function readBodgeV2(entries) {
     operations: operationsAcc,
     zones: zonesAcc,
     junctions: junctionsAcc,
+    // A2 — positions were accumulated but never returned (layout lost on read of
+    // externally-authored files; our own files restore the flat map losslessly
+    // from the embedded skeleton snapshot).
+    positions: positionsAcc,
     primers,
     libraryEntries,
     notebookEntries,
