@@ -39,7 +39,19 @@ export default function MutationModal({
     return () => window.removeEventListener('keydown', onKey);
   }, [onCancel]);
 
+  // H2/M2 (audit) — an auto mutagenic primer only carries the edit if it falls in
+  // a TERMINAL binding window (~36 nt from either end of the piece). An interior
+  // substitution is sliced away from both primers → the ordered oligos amplify
+  // wild-type while the in-silico product shows the edit (biologically impossible).
+  // Block out-of-range; warn (don't silently accept) an interior position.
+  const BINDING_WINDOW = 36;
+  const seqLen = typeof sequence === 'string' && sequence.length > 0 ? sequence.length : null;
+  const outOfRange = seqLen != null && (position < 0 || position >= seqLen);
+  const interior = seqLen != null && !outOfRange
+    && position >= BINDING_WINDOW && position < seqLen - BINDING_WINDOW;
+
   const apply = () => {
+    if (outOfRange) return; // guarded — button is disabled too
     onConfirm({
       position: Number(position),
       fromBase: effectiveFromBase, // A15 — derived at the current position
@@ -83,6 +95,7 @@ export default function MutationModal({
                 data-testid="mutation-position"
                 type="number"
                 min={0}
+                max={seqLen != null ? seqLen - 1 : undefined}
                 value={position}
                 onChange={(e) => setPosition(Number(e.target.value))}
                 style={numInp}
@@ -133,6 +146,32 @@ export default function MutationModal({
             />
           </label>
 
+          {outOfRange && (
+            <div
+              data-testid="mutation-error"
+              style={{
+                padding: '6px 10px', fontSize: 11, fontWeight: 600,
+                color: '#7c2d12', background: '#fef3c7', border: '1px solid #d97706', borderRadius: 4,
+              }}
+            >
+              ⛔ Позиция {position} вне куска (длина {seqLen}). Допустимо 0…{seqLen - 1}.
+            </div>
+          )}
+          {interior && (
+            <div
+              data-testid="mutation-interior-warn"
+              style={{
+                padding: '6px 10px', fontSize: 11,
+                color: '#7c2d12', background: '#fef3c7', border: '1px solid #d97706', borderRadius: 4,
+              }}
+            >
+              ⚠ Позиция в середине куска (вне зоны отжига праймера ~{BINDING_WINDOW} нт от концов).
+              Автоматический праймер НЕ установит эту замену — нужен mutagenic primer внутри
+              (разрежьте кусок по позиции) или QuikChange-протокол. Продукт покажет правку, но
+              заказанные олиги амплифицируют дикий тип.
+            </div>
+          )}
+
           <div style={{
             padding: '6px 10px', fontSize: 10.5, color: 'var(--text-secondary)',
             background: 'var(--accent-wash, rgba(184,92,62,0.08))', borderRadius: 4,
@@ -146,7 +185,13 @@ export default function MutationModal({
         <div style={{ display: 'flex', gap: 8, padding: '8px 12px', borderTop: '1px solid var(--border-subtle)', background: 'var(--surface-2)' }}>
           <span style={{ flex: 1 }} />
           <button type="button" data-testid="mutation-cancel-2" onClick={onCancel} style={ghostBtn}>Отмена</button>
-          <button type="button" data-testid="mutation-apply" onClick={apply} style={primaryBtn}>Применить</button>
+          <button
+            type="button"
+            data-testid="mutation-apply"
+            onClick={apply}
+            disabled={outOfRange}
+            style={{ ...primaryBtn, opacity: outOfRange ? 0.5 : 1, cursor: outOfRange ? 'not-allowed' : 'pointer' }}
+          >Применить</button>
         </div>
       </div>
     </div>
