@@ -72,6 +72,22 @@ export function selectBoundaryCoverage(state, draftId) {
       revPrimerId: rev ? rev.id : undefined,
     });
   }
+  // L5 (audit) — a single-fragment CIRCULAR draft has one self-closure boundary
+  // (last↔first of the same fragment); the N-1 loop above yields nothing, so the
+  // panel read «границы 0 / 0». Emit a closure row covered by the self-closure pair.
+  if (d.topology && d.topology.circular && boundaries.length === 1) {
+    const sc = primers.filter((p) => p.source && p.source.kind === 'self-closure');
+    out.push({
+      boundaryAtOffset: boundaries[0].endOnAssembly,
+      leftSegmentId: boundaries[0].segmentId,
+      rightSegmentId: boundaries[0].segmentId,
+      selfClosure: true,
+      fwd: sc.some((p) => p.direction === 'forward'),
+      rev: sc.some((p) => p.direction === 'reverse'),
+      fwdPrimerId: (sc.find((p) => p.direction === 'forward') || {}).id,
+      revPrimerId: (sc.find((p) => p.direction === 'reverse') || {}).id,
+    });
+  }
   return out;
 }
 

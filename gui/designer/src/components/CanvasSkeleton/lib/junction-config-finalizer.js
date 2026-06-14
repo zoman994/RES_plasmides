@@ -131,7 +131,7 @@ export function applyJunctionConfig(next, prev) {
       // a plasmid fragment and circularizing it produced no primers.
       let derivedSelf = [];
       if (zonePieces.length === 1 && zone.topology && zone.topology.circular) {
-        try { derivedSelf = deriveSelfClosurePrimers(zonePieces[0], stateForDerive); } catch { derivedSelf = []; }
+        try { derivedSelf = deriveSelfClosurePrimers(zonePieces[0], stateForDerive, zone.assemblyMethod); } catch { derivedSelf = []; }
         const cov = new Set(manual.map(manualCoverageKey).filter(Boolean));
         if (cov.size > 0) derivedSelf = derivedSelf.filter((d) => !cov.has(`${d.source.pieceId}:${d.source.side}`));
       }

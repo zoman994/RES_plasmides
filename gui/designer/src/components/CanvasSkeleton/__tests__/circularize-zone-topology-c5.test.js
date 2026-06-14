@@ -16,6 +16,7 @@ import { zonesReducer } from '../store/skeleton-state-zones';
 import { deriveSelfClosurePrimers } from '../lib/primer-derive';
 import { draftFromZone } from '../lib/zone-pieces-to-dag';
 import { realiseAssembly } from '../lib/assembly-realise';
+import { selectBoundaryCoverage } from '../store/selectors-assembly';
 import { methodsFromJunctions } from '../lib/junction-derive';
 import { reverseComplement } from '../../../sequence-utils';
 
@@ -53,8 +54,8 @@ describe('M-CIRCULARIZE C5 — SET_ZONE_TOPOLOGY', () => {
 });
 
 describe('M-CIRCULARIZE C5 — deriveSelfClosurePrimers (pure)', () => {
-  it('returns a fwd+rev pair with terminal-repeat tails', () => {
-    const ps = deriveSelfClosurePrimers(PIECE, { containers: [SRC], pieces: [PIECE] });
+  it('gibson self-closure → terminal-repeat homology tails', () => {
+    const ps = deriveSelfClosurePrimers(PIECE, { containers: [SRC], pieces: [PIECE] }, 'gibson');
     expect(ps).toHaveLength(2);
     const fwd = ps.find((p) => p.direction === 'forward');
     const rev = ps.find((p) => p.direction === 'reverse');
@@ -62,6 +63,12 @@ describe('M-CIRCULARIZE C5 — deriveSelfClosurePrimers (pure)', () => {
     expect(rev.tail).toBe(reverseComplement(SEQ.slice(0, 15))); // rc(5' start)
     expect(fwd.source.kind).toBe('self-closure');
     expect(fwd.purpose).toBe('self-closure');
+  });
+  it('L4 — KLD self-closure (default) is tail-less (blunt back-to-back)', () => {
+    const ps = deriveSelfClosurePrimers(PIECE, { containers: [SRC], pieces: [PIECE] }); // default kld
+    expect(ps).toHaveLength(2);
+    expect(ps.every((p) => p.tail === '')).toBe(true);
+    expect(ps.every((p) => p.purpose === 'self-closure')).toBe(true);
   });
   it('too-short fragment (<40 nt) → no primers', () => {
     const shortPiece = { ...PIECE, ranges: [{ sourceId: 'src1', start: 0, end: 20, orientation: 'forward' }] };
@@ -83,6 +90,15 @@ describe('M-CIRCULARIZE C5 — circularizing a 1-piece zone yields self-closure 
     const s0 = oneFragZone(false);
     const primers = (s0.assemblyDraftPrimers || {})['zn-1'] || [];
     expect(primers).toHaveLength(0);
+  });
+
+  it('L5 — boundary coverage counts the self-closure boundary (was 0/0)', () => {
+    const s1 = skeletonReducer(oneFragZone(false), { type: 'SET_ZONE_TOPOLOGY', zoneId: 'zn-1', circular: true });
+    const cov = selectBoundaryCoverage(s1, 'zn-1');
+    expect(cov).toHaveLength(1);
+    expect(cov[0].selfClosure).toBe(true);
+    expect(cov[0].fwd).toBe(true);
+    expect(cov[0].rev).toBe(true);
   });
 });
 

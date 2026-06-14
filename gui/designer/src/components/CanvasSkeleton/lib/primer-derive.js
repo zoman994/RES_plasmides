@@ -336,7 +336,7 @@ function makePrimer({
 // The finalizer calls this for a 1-piece circular zone → assemblyDraftPrimers,
 // so the Праймеры panel + sequence strip + realise all see the pair.
 const SELF_CLOSURE_OVERLAP = 15;
-export function deriveSelfClosurePrimers(piece, state) {
+export function deriveSelfClosurePrimers(piece, state, method = 'kld') {
   if (!piece) return [];
   const fullSeq = pieceSequence(piece, state);
   if (!fullSeq || fullSeq.length < 40) return [];
@@ -346,8 +346,12 @@ export function deriveSelfClosurePrimers(piece, state) {
   // window rather than shipping a sub-Tm binding.
   const fwdBinding = fullSeq.slice(0, bindingLen(fullSeq, 'fwd', null, DEFAULT_BINDING_TM));
   const revBinding = reverseComplement(fullSeq.slice(-bindingLen(fullSeq, 'rev', null, DEFAULT_BINDING_TM)));
-  const fwdTail = fullSeq.slice(-SELF_CLOSURE_OVERLAP); // 3' end as-is (direct repeat)
-  const revTail = reverseComplement(fullSeq.slice(0, SELF_CLOSURE_OVERLAP)); // rc(5' start)
+  // L4 (audit) — only Gibson/overlap self-closure re-circularizes via a terminal-
+  // repeat homology arm. KLD (the default) / blunt close back-to-back blunt +
+  // phosphorylated, with NO overlap tail; a tail there is misleading chemistry.
+  const homology = method === 'gibson' || method === 'overlap_pcr';
+  const fwdTail = homology ? fullSeq.slice(-SELF_CLOSURE_OVERLAP) : ''; // 3' end as-is (direct repeat)
+  const revTail = homology ? reverseComplement(fullSeq.slice(0, SELF_CLOSURE_OVERLAP)) : ''; // rc(5' start)
   const mk = (side, tail, binding) => {
     const p = makePrimer({
       opGroupId: `selfclose-${piece.id}`, draftId: piece.zoneId, piece, side,
