@@ -24,9 +24,8 @@ import AssemblyHeader from './AssemblyHeader';
 import AssemblySidebar from './AssemblySidebar';
 import AssemblySegmentBar from './AssemblySegmentBar';
 import SegmentList from './SegmentList';
-/* V94 — SegmentDetailPanel orphan'нут (inline-editor в SegmentList).
-   Импорт сохранён закомментированным как pointer для cleanup-PR. */
-// import SegmentDetailPanel from './SegmentDetailPanel';
+// V94 / C3 (audit) — SegmentDetailPanel deleted (its range/RC/colour/label/delete
+// функции inline в SegmentList rows via chevron-expand).
 import AssemblyToolbar from './AssemblyToolbar';
 // SPEC_ASSEMBLY_PICKER_UNIFICATION — единый library-picker для обеих
 // поверхностей; bespoke EmptyAssemblyLibrary + assembly-usage
@@ -143,7 +142,6 @@ export default function AssemblyShellBody({ draft, embedded = false }) {
   const sel = useSequenceSelection({ initialCaret: 0, reBehavior: 'off' });
   const { caretPos, caretAnchor } = sel;
   const [selectedSegmentId, setSelectedSegmentId] = useState(null);
-  const [detailOpen, setDetailOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   // K5 — range-picker context: { kind:'entry'|'container', payload, atIndex? }.
   const [rangeSource, setRangeSource] = useState(null);
@@ -209,7 +207,6 @@ export default function AssemblyShellBody({ draft, embedded = false }) {
 
   const openDetail = useCallback((segId) => {
     setSelectedSegmentId(segId);
-    setDetailOpen(true);
   }, []);
 
   // JUNCTION step-2 FIX — the strip's onZoneClick channel now carries EITHER a

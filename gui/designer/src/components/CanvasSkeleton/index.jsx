@@ -33,25 +33,22 @@
  * 'canvasSkeleton' + entry в FULLSCREENS + кнопка в Sidebar +
  * namespace canvasSkeleton в strings.js.
  */
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef } from 'react';
 import { useStore } from '../../store';
 import { SkeletonProvider, useSkeletonState, useSkeletonActions } from './store/skeleton-context';
 import SkeletonHeader from './SkeletonHeader';
-import CanvasLayoutView from './canvas/CanvasLayoutView';
-import CanvasGraphView from './canvas/CanvasGraphView';
 import ProjectAssemblyWorkspace from './workspace/ProjectAssemblyWorkspace';
-import { nodeRect, gatherObstacleRects, resolveNodeOverlap } from './canvas/canvas-layout';
 import EditorWindowShell from './editor/EditorWindowShell';
-import OpKindPicker from './canvas/operations/OpKindPicker';
-import OpSuggestions from './OpSuggestions';
 import LineagePanel from './LineagePanel';
 import CodonStatsPanel from './CodonStatsPanel';
-import AssemblyDraftsPanel from './canvas/AssemblyDraftsPanel';
-import { buildAssemblyZoneAction } from './canvas/assembly-zone-create';
 // B2 (audit) — re-mounted: the documented «Протокол» + «Заказ олигов» exports
 // were built + tested but had no entry point (PC-K5 removed the mounts).
 import ProtocolPanel from './ProtocolPanel';
 import PrimerOrderPanel from './PrimerOrderPanel';
+// Wave-4 orphan cleanup (audit C4/C6/C7): the dead OpKindPicker + OpSuggestions
+// mounts and the never-rendered CanvasGraphView import were removed. CanvasLayoutView
+// + AssemblyDraftsPanel + OpKindPicker files stay (still test-only harnesses) but
+// no longer leak into the production index.
 // PC-K1: LibraryTreeHost mount removed (top search bar will replace
 // it — PC-K2). PC-K5: ProtocolPanel + PrimerOrderPanel mounts removed
 // (non-functional UI noise per spec §4.4). The source files remain in
@@ -147,51 +144,8 @@ function DeleteKeyHandler() {
 }
 
 function CanvasArea() {
-  const state = useSkeletonState();
   const actions = useSkeletonActions();
   const areaRef = useRef(null);
-  // SPEC_CANVAS_NODE_COLLISION — fresh state for opAdd collision-resolve.
-  const collisionStateRef = useRef(state);
-  collisionStateRef.current = state;
-  // V60 (14.05.2026) — picker открывается сразу из «+ Операция»
-  // (не лежит draft на canvas). При выборе kind ромб появляется на
-  // canvas сразу как committed.
-  const [openPicker, setOpenPicker] = useState(null); // { x, y } viewport coords
-
-  const onAddButtonClick = useCallback((e) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    // Anchor picker слева от кнопки (picker ~540px wide) и над ней.
-    let x = rect.left - 540;
-    let y = rect.top - 200;
-    if (typeof window !== 'undefined') {
-      x = Math.max(12, x);
-      y = Math.max(12, y);
-    }
-    setOpenPicker({ x, y });
-  }, []);
-
-  const onPickKind = useCallback((kind) => {
-    // Cascade-offset base position (canvas-relative).
-    const count = state.operations?.length || 0;
-    const baseX = 320 + (count % 6) * 28;
-    const baseY = 200 + Math.floor(count / 6) * 60 + (count % 6) * 14;
-    // A6 — prefill op.inputs из multi-selection.
-    const selected = state.selectedContainerIds || [];
-    // COLLISION — resolve the cascade anchor off any node it would overlap.
-    const { w, h } = nodeRect('operation', { x: baseX, y: baseY });
-    const position = resolveNodeOverlap(
-      { x: baseX, y: baseY }, { w, h }, gatherObstacleRects(collisionStateRef.current, null),
-    );
-    // Audit FIX-2: atomic create + commit (no pendingCommitRef hack).
-    actions.opAdd({
-      position,
-      kind,
-      inputs: selected.slice(),
-      commit: true,
-    });
-    setOpenPicker(null);
-    if (selected.length > 0) actions.clearSelection();
-  }, [actions, state.operations, state.selectedContainerIds]);
 
   return (
     <div
@@ -265,15 +219,6 @@ function CanvasArea() {
         <span style={{ fontSize: 14, lineHeight: 1 }}>🗑</span>
         <span>Очистить</span>
       </button>
-      {openPicker && (
-        <OpKindPicker
-          operation={{ id: '__new__' }}
-          position={{ x: openPicker.x, y: openPicker.y }}
-          onPick={onPickKind}
-          onCancel={() => setOpenPicker(null)}
-        />
-      )}
-      <OpSuggestions />
       <LineagePanel />
       <CodonStatsPanel />
       {/* B2 — protocol + oligo-order exports (bottom-right action stack). */}

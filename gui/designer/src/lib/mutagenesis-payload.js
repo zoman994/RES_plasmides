@@ -82,7 +82,7 @@ export function buildMutagenesisPayload(result, ctx) {
         ],
       },
       {
-        // ProtocolTracker has no 'digestion' branch — fallback to 'assembly' keeps the card rendered.
+        // No 'digestion' card type — fallback to 'assembly' keeps the step rendered.
         id: 'dpni',
         type: 'assembly',
         title: 'DpnI: уничтожить матрицу',

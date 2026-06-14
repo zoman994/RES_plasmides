@@ -127,24 +127,3 @@ function RestrictionHeaderToggle() {
   );
 }
 
-function ToggleBtn({ testId, active, onClick, children }) {
-  return (
-    <button
-      type="button"
-      data-testid={testId}
-      role="tab"
-      aria-selected={active ? 'true' : 'false'}
-      data-active={active ? 'true' : 'false'}
-      onClick={onClick}
-      style={{
-        fontSize: 12,
-        padding: '5px 14px',
-        background: active ? 'var(--accent-500)' : 'var(--surface-1)',
-        color: active ? '#fff' : 'var(--text-secondary)',
-        border: 'none',
-        cursor: 'pointer',
-        fontWeight: active ? 500 : 400,
-      }}
-    >{children}</button>
-  );
-}
