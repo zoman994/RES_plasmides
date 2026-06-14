@@ -254,6 +254,32 @@ export default function CutOpPopup({
           </div>
         )}
 
+        {/* B4 (audit) — methylation caution for ANY selected Dam/Dcm-sensitive
+            enzyme (was gated to exactly 2 enzymes via checkDoubleDigest, so a
+            single XbaI/ClaI/BclI or SmaI surfaced no warning even though
+            methylation blocks the cut regardless of single vs double digest). */}
+        {(() => {
+          const methyl = enzymes
+            .map((n) => ({ n, e: RE_ENZYMES[n] }))
+            .filter(({ e }) => e && (e.damSensitive || e.dcmSensitive));
+          if (methyl.length === 0) return null;
+          const label = ({ n, e }) => {
+            const tags = [e.damSensitive && 'Dam', e.dcmSensitive && 'Dcm'].filter(Boolean).join('/');
+            return `${n} (${tags})`;
+          };
+          return (
+            <div
+              data-testid="cut-op-warn-methylation"
+              style={{
+                padding: '6px 8px', background: '#fef3c7', border: '1px solid #d97706',
+                borderRadius: 4, fontSize: 11, color: '#7c2d12', lineHeight: 1.4,
+              }}
+            >
+              <strong>⚠ Метилирование:</strong> {methyl.map(label).join(', ')} — сайт блокируется метилированием; нарезайте ДНК из dam⁻/dcm⁻ штамма (напр. JM110 / GM2163).
+            </div>
+          );
+        })()}
+
         {/* R4-BIO-3: double-digest compatibility warning. RC-2/RC-6 — read the
             ACTUAL checkDoubleDigest contract { simultaneous, buffer, temp,
             warnings[] }. The old code checked compat.compatible/reason/

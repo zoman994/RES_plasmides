@@ -15,13 +15,20 @@ const KINDS = [
 ];
 
 export default function MutationModal({
-  sourceName, defaultPosition, fromBase, onConfirm, onCancel,
+  sourceName, defaultPosition, fromBase, sequence, onConfirm, onCancel,
 }) {
   const [position, setPosition] = useState(
     Number.isFinite(defaultPosition) ? defaultPosition : 0,
   );
+  // A15 (audit) — the original base is derived from the piece sequence at the
+  // CURRENT position (reactive), so editing Position updates «Original base» + the
+  // stored fromBase instead of leaving the seeded base stale. Falls back to the
+  // seeded fromBase prop when no sequence was passed.
+  const effectiveFromBase = String(
+    (typeof sequence === 'string' && sequence[position]) || fromBase || '',
+  ).toUpperCase();
   const [toBase, setToBase] = useState(
-    BASES.find((b) => b !== (fromBase || '').toUpperCase()) || 'T',
+    BASES.find((b) => b !== effectiveFromBase) || 'T',
   );
   const [kind, setKind] = useState('silent');
   const [notes, setNotes] = useState('');
@@ -35,7 +42,7 @@ export default function MutationModal({
   const apply = () => {
     onConfirm({
       position: Number(position),
-      fromBase: (fromBase || '').toUpperCase(),
+      fromBase: effectiveFromBase, // A15 — derived at the current position
       toBase: toBase.toUpperCase(),
       kind,
       notes: notes.trim(),
@@ -82,7 +89,7 @@ export default function MutationModal({
               />
             </label>
             <div data-testid="mutation-frombase" style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>
-              Original base: <strong style={{ color: 'var(--text-primary)' }}>{(fromBase || '?').toUpperCase()}</strong>
+              Original base: <strong style={{ color: 'var(--text-primary)' }}>{effectiveFromBase || '?'}</strong>
             </div>
             <label style={lbl}>
               New base

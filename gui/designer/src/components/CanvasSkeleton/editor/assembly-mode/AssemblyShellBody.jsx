@@ -708,6 +708,8 @@ export default function AssemblyShellBody({ draft, embedded = false }) {
           ) || {}).name || 'piece'}
           defaultPosition={mutationFor.position}
           fromBase={mutationFor.fromBase}
+          // A15 — pass the piece sequence so «Original base» tracks the position.
+          sequence={((draft.segments || []).find((s) => s.id === mutationFor.pieceId) || {}).sequence || ''}
           onConfirm={(m) => {
             actions.addPieceMutation(mutationFor.pieceId, m);
             setMutationFor(null);
