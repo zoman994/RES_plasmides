@@ -172,6 +172,68 @@ describe('S2 — executePCR with explicit primers', () => {
     expect(result.outputs[0].sequence).toBe(fwd + 'GCGCGCGC' + 'CCCCTTTT');
   });
 
+  // AM-PCR-OLIGO — the userPrimers branch must ALSO emit an oligonucleotide
+  // output container (like the auto-design branch), otherwise the user's
+  // designed primers are invisible to PrimerOrderPanel (oligo TSV/FASTA
+  // export) and protocol-export (PCR primer lines / reagents block).
+  it('AM-PCR-OLIGO — userPrimers branch emits amplicon + oligonucleotide outputs', () => {
+    const fwd = 'ATGCATGC';
+    const rev = 'AAAAGGGG'; // RC = CCCCTTTT
+    const tpl = { id: 't', name: 'tpl', kind: 'molecule', sequence: 'AAAA' + fwd + 'GCGCGCGC' + 'CCCCTTTT' + 'TTTT' };
+    const op = {
+      id: 'op-p', kind: 'pcr',
+      params: {
+        templateId: 't',
+        userPrimers: [{
+          forward: fwd, fwdBinding: fwd,
+          reverse: rev, revBinding: rev,
+          source: 'edited',
+        }],
+      },
+      inputs: ['t'],
+    };
+    const result = executePCR(op, { containers: { t: tpl } });
+    expect(result.error).toBeUndefined();
+    expect(result.outputs).toHaveLength(2);
+    const amplicon = result.outputs[0];
+    const oligo = result.outputs[1];
+    expect(amplicon.kind).toBe('molecule');
+    expect(oligo.kind).toBe('oligonucleotide');
+    const seqs = oligo.payload.sequences;
+    expect(seqs).toHaveLength(2);
+    expect(seqs[0].sequence).toBe(fwd);
+    expect(seqs[1].sequence).toBe(rev);
+  });
+
+  it('AM-PCR-OLIGO — emitted oligo carries the full ORDERED seq (with 5′ tail), Tm + name', () => {
+    const fwd = 'ATGCATGC';
+    const rev = 'AAAAGGGG';
+    const tpl = { id: 't', name: 'tpl', kind: 'molecule', sequence: 'AAAA' + fwd + 'GCGCGCGC' + 'CCCCTTTT' + 'TTTT' };
+    const op = {
+      id: 'op-p', kind: 'pcr',
+      params: {
+        templateId: 't',
+        userPrimers: [{
+          forward: 'GGGGG' + fwd, fwdBinding: fwd, fwdTm: 61.2, fwdName: 'myF',
+          reverse: 'CACCA' + rev, revBinding: rev, revTm: 59.4, revName: 'myR',
+          source: 'edited',
+        }],
+      },
+      inputs: ['t'],
+    };
+    const result = executePCR(op, { containers: { t: tpl } });
+    expect(result.error).toBeUndefined();
+    const oligo = result.outputs[1];
+    const seqs = oligo.payload.sequences;
+    // The vendor synthesises the FULL primer (tail included), not the binding region.
+    expect(seqs[0].sequence).toBe('GGGGG' + fwd);
+    expect(seqs[1].sequence).toBe('CACCA' + rev);
+    expect(seqs[0].name).toBe('myF');
+    expect(seqs[1].name).toBe('myR');
+    expect(seqs[0].Tm).toBe(61.2);
+    expect(seqs[1].Tm).toBe(59.4);
+  });
+
   it('Forward primer не найден → error', () => {
     const tpl = { id: 't', kind: 'molecule', sequence: 'AAAA' };
     const oligo = {

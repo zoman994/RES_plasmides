@@ -134,6 +134,44 @@ export function autoDesignPrimerPair(seq, opts = {}) {
 }
 
 /**
+ * makeUserOligoContainer — factory for oligonucleotide container built from
+ * user-authored primers (op.params.userPrimers). Mirrors
+ * makeDesignedOligoContainer, but sources fwd/rev from the user's pair so
+ * primers designed in PcrModeShell flow into the order (PrimerOrderPanel)
+ * and protocol (protocol-export) exports instead of vanishing.
+ *
+ * The ORDERED sequence is the full primer (5′ tails included) — that's what
+ * the vendor synthesises; Tm is the user's binding Tm (Tm-on-binding
+ * convention). GC is computed from the full ordered sequence.
+ */
+export function makeUserOligoContainer(operation, templateId, template, userPair) {
+  const fwdSeq = String(userPair?.forward || '');
+  const revSeq = String(userPair?.reverse || '');
+  const gcOf = (s) => (s.length
+    ? Math.round(((s.toUpperCase().match(/[GC]/g) || []).length / s.length) * 1000) / 10
+    : 0);
+  return {
+    id: uuidv7(),
+    kind: 'oligonucleotide',
+    name: `${template.name || 'template'}_primers`,
+    topology: { circular: false },
+    length: 0,
+    sequence: '',
+    annotations: [],
+    ends: null,
+    payload: {
+      sequences: [
+        { name: userPair?.fwdName || 'fwd', sequence: fwdSeq, Tm: userPair?.fwdTm, GC: gcOf(fwdSeq) },
+        { name: userPair?.revName || 'rev', sequence: revSeq, Tm: userPair?.revTm, GC: gcOf(revSeq) },
+      ],
+      purpose: 'pcr_primer',
+    },
+    origin: { kind: 'op_pcr_user', operationId: operation.id, parentContainerId: templateId },
+    parentCommitId: null,
+  };
+}
+
+/**
  * makeDesignedOligoContainer — factory for oligonucleotide container
  * с designed primer pair attached.
  */

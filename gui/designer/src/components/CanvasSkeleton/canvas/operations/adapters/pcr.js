@@ -11,6 +11,7 @@ import {
   reverseComplement,
   autoDesignPrimerPair,
   makeDesignedOligoContainer,
+  makeUserOligoContainer,
 } from './_shared';
 import { resolveOpTemplate } from '../../../lib/op-piece-bridge';
 
@@ -102,7 +103,12 @@ function executeSingleTemplatePCR(operation, ctx, templateId, primerPairId, auto
         revEnd: revRcIdx + revBind.length,
       },
     });
-    return { outputs: [amplicon] };
+    // Emit the user's primers as an oligonucleotide container too — mirrors
+    // the auto-design branch below — so they surface in PrimerOrderPanel
+    // (oligo TSV/FASTA) and protocol-export. Without this they were ordered
+    // in the viewer yet invisible to every export. (AM-PCR-OLIGO)
+    const userOligoOut = makeUserOligoContainer(operation, templateId, template, userPair);
+    return { outputs: [amplicon, userOligoOut] };
   }
   const designedPrimers = autoDesignPrimerPair(template.sequence);
   const ampliconSeq = template.sequence;

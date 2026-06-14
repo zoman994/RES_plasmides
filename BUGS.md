@@ -51,6 +51,14 @@
 
 ---
 
+## FIXED — assembly audit (14.06.2026, interface-audit; ждёт визуальной приёмки)
+
+> Не sprint-задача — находка interface-аудита по ветке `feature/assembly-tab-workspace`. Версия НЕ бампается. Git/трекеры — за Игорем.
+
+**V146 — ✅ ИСПРАВЛЕНО 14.06.2026. Праймеры, нарисованные в PcrModeShell, не попадают в экспорт заказа/протокола.** Найдено interface-аудитом. **Корень:** `executeSingleTemplatePCR` (`canvas/operations/adapters/pcr.js`) в ветке `userPrimers` эмитил ТОЛЬКО amplicon-контейнер, в отличие от ветки auto-design (которая вдобавок зовёт `makeDesignedOligoContainer` → output `oligonucleotide`). Праймеры, которые пользователь спроектировал в вьювере (`op.params.userPrimers`) и «заказал» через `OrderOligosConfirmGate`, никогда не становились `oligonucleotide`-контейнером → невидимы для (1) `PrimerOrderPanel.collectOligoPrimers` (TSV/FASTA-экспорт олигов сканирует только `kind==='oligonucleotide'`) и (2) `protocol-export.js` `stepPCR` + `buildReagentsBlock` (строки праймеров берутся из output oligonucleotide-контейнеров или `params.primerPairId`, никогда из `params.userPrimers`). **Фикс:** новая фабрика `makeUserOligoContainer` (`adapters/_shared.js`) — зеркалит `makeDesignedOligoContainer`, но источник fwd/rev — пара пользователя; в контейнер кладётся ПОЛНАЯ заказываемая последовательность (`forward`/`reverse` с 5′-хвостами — синтезирует вендор), Tm = пользовательский Tm-на-связывании (конвенция Tm-on-binding), GC считается из полной последовательности; имена берутся из `fwdName`/`revName`. Ветка `userPrimers` теперь возвращает `[amplicon, oligo]` (паритет с auto-design). **Тест (red→green):** `skeleton-adapters-s2.test.jsx` — ветка `userPrimers` возвращает 2 output'а (amplicon + oligonucleotide) с fwd/rev пользователя; отдельный кейс — олиго несёт ПОЛНУЮ seq с 5′-хвостом + Tm + имя. Full Vitest 4624 pass / 18 skip / 0 fail, `vite build` clean.
+
+---
+
 ## FIXED — workspace UX (12.06.2026, скриншот Игоря; ждёт визуальной приёмки)
 
 > Не sprint-задача — прямой запрос Игоря по скриншоту Sequence-вида двухуровневого верстака (M-WORKSPACE R1/R2). Версия НЕ бампается. Git/трекеры — за Игорем.
