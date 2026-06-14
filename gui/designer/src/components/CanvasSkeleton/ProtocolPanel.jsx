@@ -52,12 +52,11 @@ export default function ProtocolPanel() {
         onClick={() => setOpen((v) => !v)}
         title="Показать lab-notebook protocol"
         style={{
-          // R6-2: position справа от LineagePanel (которая может быть
-          // condicionally at left:24, max-width 280) чтобы не
-          // overlapping.
+          // B2 — bottom-right action stack (above «Очистить», below «Заказ олигов»);
+          // the old bottom-left position overlaid the assembly workspace content.
           position: 'absolute',
-          bottom: 20,
-          left: 320,
+          bottom: 196,
+          right: 24,
           zIndex: 30,
           padding: '8px 14px',
           background: 'var(--surface-2, #f5f5f4)',

@@ -82,8 +82,17 @@ function stepPCR(op, containersById) {
     .map((id) => containersById[id])
     .find((c) => c?.kind === 'oligonucleotide');
 
+  // B1 (audit) — a realised PCR op carries its primer pair in
+  // params.userPrimers (mapPrimersForSegment); read it so the step lists the
+  // actual ordered primers instead of «не заданы».
+  const userPrimers = Array.isArray(op.params?.userPrimers) ? op.params.userPrimers : [];
   let primerLines = [];
-  if (autoDesign && designedOligo?.payload?.sequences) {
+  if (userPrimers.length && (userPrimers[0]?.forward || userPrimers[0]?.reverse)) {
+    for (const up of userPrimers) {
+      if (up?.forward) primerLines.push(`  - fwd: 5'-${up.forward}-3' (${up.forward.length} nt${up.fwdTm ? `, Tm ${up.fwdTm}°C` : ''})`);
+      if (up?.reverse) primerLines.push(`  - rev: 5'-${up.reverse}-3' (${up.reverse.length} nt${up.revTm ? `, Tm ${up.revTm}°C` : ''})`);
+    }
+  } else if (autoDesign && designedOligo?.payload?.sequences) {
     const ss = designedOligo.payload.sequences;
     for (const s of ss) {
       const tm = s.Tm ? `Tm ${s.Tm}°C` : '';
@@ -299,9 +308,21 @@ export function buildProtocol(operations, containers) {
   const containersArr = Array.isArray(containers) ? containers : [];
   const containersById = Object.fromEntries(containersArr.map((c) => [c.id, c]));
 
-  const executed = (operations || [])
+  // B1 (audit) — include REALISED committed ops, not just lab-executed ones. After
+  // «Realise as DAG» the assembly ops are status:'committed' (a plan); the protocol
+  // was empty until they were run. Executed ops sort by time; realised ops by
+  // pipeline x (fragment PCRs at low x → the one-pot assembly op at high x), and
+  // come after any executed ops.
+  const all = operations || [];
+  const isRealised = (o) => o && o.origin && typeof o.origin.kind === 'string'
+    && o.origin.kind.startsWith('realised') && !(o.status === 'executed' && o.executedAt);
+  const executedOps = all
     .filter((o) => o && o.status === 'executed' && o.executedAt)
     .sort((a, b) => String(a.executedAt).localeCompare(String(b.executedAt)));
+  const realisedOps = all
+    .filter(isRealised)
+    .sort((a, b) => ((a.position && a.position.x) || 0) - ((b.position && b.position.x) || 0));
+  const executed = [...executedOps, ...realisedOps];
 
   const lines = [];
   lines.push('# Протокол сборки');

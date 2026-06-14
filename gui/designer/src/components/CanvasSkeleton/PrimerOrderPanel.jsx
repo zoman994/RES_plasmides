@@ -36,6 +36,28 @@ function collectOligoPrimers(containers) {
   return out;
 }
 
+/**
+ * B1 (audit) — realised PCR ops carry their pair in params.userPrimers but produce
+ * NO oligonucleotide container, so the order list was empty after «Realise». Scan
+ * ops too; skip any op whose output IS an oligo container (executed path) to avoid
+ * double-counting.
+ */
+function collectFromOps(operations, containers) {
+  const oligoIds = new Set((containers || []).filter((c) => c?.kind === 'oligonucleotide').map((c) => c.id));
+  const out = [];
+  for (const op of operations || []) {
+    const ups = Array.isArray(op?.params?.userPrimers) ? op.params.userPrimers : [];
+    if (!ups.length) continue;
+    if (Array.isArray(op.outputs) && op.outputs.some((id) => oligoIds.has(id))) continue;
+    const base = (op.origin && op.origin.segmentId) || (op.id ? op.id.slice(0, 8) : 'op');
+    for (const up of ups) {
+      if (up?.forward) out.push({ containerId: op.id, name: `${base}_fwd`, sequence: String(up.forward).toUpperCase(), length: up.forward.length, Tm: up.fwdTm });
+      if (up?.reverse) out.push({ containerId: op.id, name: `${base}_rev`, sequence: String(up.reverse).toUpperCase(), length: up.reverse.length, Tm: up.revTm });
+    }
+  }
+  return out;
+}
+
 function asTSV(primers, scale, purification) {
   const lines = ['Name\tSequence\tScale\tPurification\tModifications'];
   for (const p of primers) {
@@ -79,8 +101,11 @@ export default function PrimerOrderPanel() {
   const [copied, setCopied] = useState(false);
 
   const primers = useMemo(
-    () => collectOligoPrimers(state.containers || []),
-    [state.containers],
+    () => [
+      ...collectOligoPrimers(state.containers || []),
+      ...collectFromOps(state.operations || [], state.containers || []),
+    ],
+    [state.containers, state.operations],
   );
 
   const exportText = useMemo(() => {
@@ -114,10 +139,11 @@ export default function PrimerOrderPanel() {
         onClick={() => setOpen((v) => !v)}
         title="Заказ олигонуклеотидов"
         style={{
-          // R6-3: справа от ProtocolPanel button.
+          // B2 — bottom-right action stack (above «Протокол» + «Очистить»); the
+          // old bottom-left position overlaid the assembly workspace content.
           position: 'absolute',
-          bottom: 20,
-          left: 470,
+          bottom: 240,
+          right: 24,
           zIndex: 30,
           padding: '8px 14px',
           background: 'var(--surface-2, #f5f5f4)',

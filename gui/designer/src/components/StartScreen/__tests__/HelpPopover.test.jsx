@@ -19,12 +19,13 @@ describe('MS-K3 — HelpPopover', () => {
     expect(screen.getByTestId('ss-help-tab-hidden')).toBeTruthy();
   });
 
-  it('hidden tab lists deferred features (Notebook, Protocol, Mutation auto-detect)', () => {
+  it('hidden tab lists still-deferred features (Notebook, Frame view, Mutation auto-detect)', () => {
+    // B2 — Протокол + Заказ олигов moved OUT of «hidden» (now mounted buttons).
     render(<HelpPopover open onClose={vi.fn()} />);
     fireEvent.click(screen.getByTestId('ss-help-tab-hidden'));
     const content = screen.getByTestId('ss-help-tab-content-hidden');
     expect(content.textContent).toMatch(/Notebook/);
-    expect(content.textContent).toMatch(/ProtocolPanel|Протокол/);
+    expect(content.textContent).toMatch(/Frame view/);
     expect(content.textContent).toMatch(/Mutation auto-detect|мутагенез/);
   });
 

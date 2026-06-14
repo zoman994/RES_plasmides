@@ -48,6 +48,10 @@ import LineagePanel from './LineagePanel';
 import CodonStatsPanel from './CodonStatsPanel';
 import AssemblyDraftsPanel from './canvas/AssemblyDraftsPanel';
 import { buildAssemblyZoneAction } from './canvas/assembly-zone-create';
+// B2 (audit) — re-mounted: the documented «Протокол» + «Заказ олигов» exports
+// were built + tested but had no entry point (PC-K5 removed the mounts).
+import ProtocolPanel from './ProtocolPanel';
+import PrimerOrderPanel from './PrimerOrderPanel';
 // PC-K1: LibraryTreeHost mount removed (top search bar will replace
 // it — PC-K2). PC-K5: ProtocolPanel + PrimerOrderPanel mounts removed
 // (non-functional UI noise per spec §4.4). The source files remain in
@@ -272,6 +276,9 @@ function CanvasArea() {
       <OpSuggestions />
       <LineagePanel />
       <CodonStatsPanel />
+      {/* B2 — protocol + oligo-order exports (bottom-right action stack). */}
+      <ProtocolPanel />
+      <PrimerOrderPanel />
     </div>
   );
 }

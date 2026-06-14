@@ -179,7 +179,7 @@ function HiddenFeatures() {
 
       <Group title="4. Форматы файлов">
         <Row a=".bodge v2" b="Split sections: containers/.gb + assemblies/.json + manifest + sha256 + recovery. Атомарная запись, защита от corruption." />
-        <Row a=".bodgeassembly" b="Портативная sub-сборка (только одна assembly + её containers). Export через Settings → Export profile." />
+        <Row a=".bodgeassembly" b="Портативная sub-сборка (только одна assembly + её containers). Формат готов; UI экспорта профиля ещё не примонтирован." />
         <Row a="SnapGene .dna" b="Round-trip: импорт через свой binary parser + fallback BioPython; экспорт пишет provenance COMMENT в .gb." />
         <Row a="GenBank .gb с provenance" b="Multi-line COMMENT с base64-JSON payload (##BodgeGene-Provenance-START / END##)." />
         <Row a="Markdown в Notebook" b="KaTeX ($...$ / $$...$$), Mermaid links, @@ref:kind:id@@ (auto-link на entry), DNA/AA syntax highlight в fenced blocks." />
@@ -187,8 +187,6 @@ function HiddenFeatures() {
 
       <Group title="5. Готово, ждёт UI-mount (следующие спринты)">
         <Row a="Notebook (лабжурнал в .bodge)" b="NotebookEntryEditor + список + поиск + ref-picker — собрано, не примонтировано в App.jsx. Bundle delta после мaunt ~60 KB gzipped." />
-        <Row a="📁 Протокол" b="ProtocolPanel — компонент сохранён, mount убран из canvas (PC-K5). Включить через future Settings → опыты." />
-        <Row a="🧪 Заказ олигов" b="PrimerOrderPanel — same, файл сохранён, mount убран." />
         <Row a="Корзина (восстановление удалённого)" b="Soft-delete работает, UI восстановления переехал в Settings → раздел в разработке. Пока — Ctrl+Z сразу после delete." />
         <Row a="Mutation auto-detect" b="MutationModal готов, но трэкер «плазмида целиком + ручная правка нуклеотидов → авто-мутагенез» ещё не подключён." />
         <Row a="Frame view multi-select (Сшить)" b="AV-K5 deferred — нужен canvas-level selection slice." />
