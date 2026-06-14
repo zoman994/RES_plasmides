@@ -812,6 +812,9 @@ export default function AssemblyShellBody({ draft, embedded = false }) {
               type: 'SET_ASSEMBLY_METHOD',
               zoneId: draftId,
               method: (cfg && cfg.method) || 'overlap_pcr',
+              // L6 (audit) — carry the junction's enzyme too, else promoting a
+              // BamHI/BsmBI junction reset the construct enzyme to the default.
+              enzyme: cfg && cfg.enzyme,
             });
           }}
         />

@@ -50,6 +50,10 @@ export function writeAssemblyJson({
       // so a saved plasmid survives the round-trip (these were silently dropped).
       topology: zone.topology ? { circular: !!zone.topology.circular } : null,
       assemblyMethod: zone.assemblyMethod || null,
+      // M3 (audit) — the construct-level GG/RE enzyme is load-bearing (realise op
+      // + primer tails); it was dropped on the structured/interop path, so an
+      // externally-authored file re-derived the default BsaI/EcoRI.
+      assemblyEnzyme: zone.assemblyEnzyme || null,
       junctions: zone.junctions || {},
     },
     pieces: pieces.map(p => serializePiece(p)),

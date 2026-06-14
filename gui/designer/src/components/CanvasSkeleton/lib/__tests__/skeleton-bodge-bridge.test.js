@@ -76,6 +76,8 @@ describe('skeleton-bodge-bridge — full .bodge round-trip (A1/A2)', () => {
     const read = await readBodge(await writeBodgeV2(canonical));
     const restored = canonicalToSkeleton(read.state);
     expect(restored.zones.find((x) => x.id === 'z1').assemblyMethod).toBe('golden_gate');
+    // M3 (audit) — the construct enzyme must survive the structured/interop path too.
+    expect(restored.zones.find((x) => x.id === 'z1').assemblyEnzyme).toBe('BsmBI');
     expect(restored.pieces.length).toBe(2);
     // Primers re-derive on first edit for external files → empty here, not crash.
     expect(restored.assemblyDraftPrimers).toEqual({});

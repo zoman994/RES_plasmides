@@ -33,6 +33,7 @@ import { writeBodge, writeBodgeV2, readBodge } from './lib/bodge-zip';
 // save/open actually round-trip the assembly (not just projectSlice meta).
 import { loadSnapshot, saveSnapshot } from './components/CanvasSkeleton/store/skeleton-persistence';
 import { skeletonToCanonical, canonicalToSkeleton } from './components/CanvasSkeleton/lib/skeleton-bodge-bridge';
+import { flushSkeletonSnapshot } from './components/CanvasSkeleton/store/skeleton-context';
 import { listenForceRelease } from './lib/multi-tab-lock';
 import { runHotkeyResolver, useHotkey } from './lib/hotkeys';
 import { installGlobalCtrlAGuard } from './lib/global-ctrl-a-guard';
@@ -162,6 +163,9 @@ export default function App() {
     // v1 writer (no .containers) and silently dropped the whole assembly.
     let blob;
     try {
+      // H1 (audit) — flush the debounced skeleton write so we serialize the LATEST
+      // edit, not a ≤500ms-stale snapshot (Ctrl+S right after an edit lost it).
+      try { await flushSkeletonSnapshot(); } catch { /* best-effort */ }
       const snap = await loadSnapshot(id);
       if (snap) {
         const canonical = skeletonToCanonical(snap, {

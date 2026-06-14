@@ -39,6 +39,13 @@ const historyReducer = buildHistoryReducer(skeletonReducer);
 // S3 — debounced saver (one per provider instance).
 const debouncedSaver = createDebouncedSaver(500);
 
+// H1 (audit) — flush the pending debounced skeleton-snapshot write. App.jsx
+// handleSave calls this before loadSnapshot so Ctrl+S persists the LATEST edit,
+// not the ≤500ms-stale debounced one. Returns the saveSnapshot promise.
+export function flushSkeletonSnapshot() {
+  return debouncedSaver.flush();
+}
+
 export function SkeletonProvider({ children }) {
   const [historyState, dispatch] = useReducer(
     historyReducer,

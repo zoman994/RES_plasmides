@@ -471,7 +471,7 @@ export function createDebouncedSaver(delayMs = 500) {
   let timer = null;
   let lastState = null;
   let lastProjectId;
-  return function save(state, projectId) {
+  function save(state, projectId) {
     lastState = state;
     lastProjectId = projectId;
     if (timer) clearTimeout(timer);
@@ -479,5 +479,14 @@ export function createDebouncedSaver(delayMs = 500) {
       saveSnapshot(lastState, lastProjectId);
       timer = null;
     }, delayMs);
+  }
+  // H1 (audit) — flush the pending debounced write synchronously (returns the
+  // saveSnapshot promise) so Ctrl+S persists the LATEST edit instead of a
+  // ≤delayMs-stale snapshot. No-op (resolves false) when nothing is pending.
+  save.flush = () => {
+    if (timer) { clearTimeout(timer); timer = null; }
+    if (lastState == null) return Promise.resolve(false);
+    return saveSnapshot(lastState, lastProjectId);
   };
+  return save;
 }

@@ -20,9 +20,10 @@ export default function ProtocolPanel() {
     [state.operations, state.containers],
   );
 
-  const executedCount = (state.operations || []).filter(
-    (o) => o.status === 'executed',
-  ).length;
+  // L3 (audit) — count the steps actually in the protocol (executed + realised
+  // committed ops), not only status==='executed'. After «Realise» the assembly
+  // ops are committed, so the old count read 0 while the body listed real steps.
+  const executedCount = protocol.steps.length;
 
   const onCopy = async () => {
     try {

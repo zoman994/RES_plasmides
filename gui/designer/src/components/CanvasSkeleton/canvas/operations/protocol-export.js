@@ -131,6 +131,21 @@ function stepGibson(op, containersById) {
   const warning = ori.missingOverlap > 0
     ? `\n⚠ WARNING: ${ori.missingOverlap} junction'ов без homology overlap (≥15 bp). Реальная сборка не пройдёт без добавления homology arms на праймеры или synthesis insert'ов с overlap.`
     : '';
+  // L2 (audit) — overlap_pcr maps to the 'gibson' op kind, but a LINEAR
+  // overlap-extension construct is NOT Gibson (no exonuclease mix). Relabel +
+  // swap the reagents when the method is overlap_pcr.
+  if (op.params?.method === 'overlap_pcr') {
+    return {
+      title: `Overlap-extension PCR (${fragmentIds.length} фрагментов)`,
+      body: [
+        `- Фрагменты: ${fragmentNames}`,
+        `- Праймеры несут гомологичные хвосты (соседний фрагмент) — перекрытие сшивает ампликоны.`,
+        `- Шаг 1: смешать эквимолярно очищенные ампликоны (по 10-50 нг).`,
+        `- Шаг 2: overlap-extension PCR — Q5/Phusion, 5-10 циклов без праймеров (сборка по перекрытию), затем добавить фланговые праймеры и ещё 25 циклов.`,
+        `- Очистить → клонирование/трансформация.${warning}`,
+      ].join('\n'),
+    };
+  }
   return {
     title: `Gibson Assembly (${fragmentIds.length} фрагментов)`,
     body: [
