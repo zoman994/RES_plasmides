@@ -25,6 +25,12 @@ function originLabel(origin) {
     case 'op_ligate': return `Ligate (${origin.ends || 'blunt'})`;
     case 'op_kld': return 'KLD mutagenesis';
     case 'op_mutagenesis': return 'mutagenesis';
+    // A14 (audit) — realise-path containers used to fall through to the raw
+    // token ('realised'/'realised-product'). Give them human labels.
+    case 'realised': return 'фрагмент (ПЦР)';
+    case 'realised-oligo': return 'олиго (синтез)';
+    case 'realised-product': return 'продукт сборки';
+    case 'realised-assembly': return 'реакция сборки';
     default: return origin.kind || 'unknown';
   }
 }
@@ -40,10 +46,20 @@ export default function LineagePanel() {
     const seen = new Set();
     while (cursor && !seen.has(cursor.id) && chain.length < 12) {
       seen.add(cursor.id);
+      // A13 (audit) — realise-path containers (origin.kind 'realised*') carry no
+      // parentContainerId/inputIds, so the walk used to stop at node 0. Resolve
+      // the producing op (its outputs include this container) and walk back
+      // through its inputs — covering the realise DAG users actually click.
+      const cursorId = cursor.id;
+      const producingOp = (state.operations || []).find(
+        (o) => Array.isArray(o.outputs) && o.outputs.includes(cursorId),
+      );
       // R6-7 (14.05.2026): для multi-input ops (Gibson/Ligate/GG с >1
       // фрагментом) показываем "+N more" чтобы биолог видел что эта
       // ветвь — не единственная.
-      const inputIds = Array.isArray(cursor.origin?.inputIds) ? cursor.origin.inputIds : null;
+      const inputIds = Array.isArray(cursor.origin?.inputIds)
+        ? cursor.origin.inputIds
+        : (producingOp && Array.isArray(producingOp.inputs) ? producingOp.inputs : null);
       const extraInputs = inputIds && inputIds.length > 1 ? inputIds.length - 1 : 0;
       chain.push({
         id: cursor.id,
@@ -59,7 +75,7 @@ export default function LineagePanel() {
       cursor = state.containers.find((c) => c.id === parentId);
     }
     return chain;
-  }, [id, state.containers]);
+  }, [id, state.containers, state.operations]);
 
   if (!id || lineage.length === 0) return null;
 

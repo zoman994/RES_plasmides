@@ -64,8 +64,12 @@ export default function ProjectAssemblyWorkspace() {
   const view = (state.assemblyViewByZone && state.assemblyViewByZone[activeId]) || 'sequence';
 
   const onClose = (zoneId) => {
+    // A20 (audit) — REMOVE_ZONE is undoable (not in SKIPPED_ACTIONS → Ctrl+Z
+    // restores it) and only ORPHANS the inner nodes (they survive as loose
+    // containers). The old «Действие необратимо» + implied total destruction
+    // were both false and contradicted the reducer's own toast/canonical copy.
     const ok = typeof window !== 'undefined' && window.confirm
-      ? window.confirm('Удалить эту сборку? Действие необратимо.') : true;
+      ? window.confirm('Удалить эту сборку? Узлы внутри станут бесхозными (отменяемо: Ctrl+Z).') : true;
     if (ok) actions.zoneDispatch({ type: 'REMOVE_ZONE', zoneId });
   };
 

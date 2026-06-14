@@ -295,10 +295,16 @@ export default function CircularizeModal({
           </label>
         )}
 
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 14px 8px', fontSize: 11.5, color: 'var(--text-secondary)', cursor: 'pointer' }}>
-          <input type="checkbox" data-testid="circularize-apply-all" checked={applyToAll} onChange={(e) => setApplyToAll(e.target.checked)} />
-          применить метод ко всем стыкам (иначе — только к замыканию; внутренние настраиваются по ромбу)
-        </label>
+        {/* A29 (audit) — the «иначе только к замыканию» fallback only exists for a
+            real ring with ≥2 fragments (a closure junction). On linear / single-
+            fragment topology there is no closure, so unchecking silently discarded
+            the method — only offer the checkbox where it actually branches. */}
+        {circular && segments >= 2 && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 14px 8px', fontSize: 11.5, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+            <input type="checkbox" data-testid="circularize-apply-all" checked={applyToAll} onChange={(e) => setApplyToAll(e.target.checked)} />
+            применить метод ко всем стыкам (иначе — только к замыканию; внутренние настраиваются по ромбу)
+          </label>
+        )}
 
         <div style={{ display: 'flex', gap: 8, padding: '8px 14px', borderTop: '1px solid var(--border-subtle)', background: 'var(--surface-2)' }}>
           <span style={{ flex: 1 }} />

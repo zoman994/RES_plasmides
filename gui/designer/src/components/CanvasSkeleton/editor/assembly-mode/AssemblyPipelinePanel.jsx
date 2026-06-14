@@ -76,7 +76,7 @@ export default function AssemblyPipelinePanel({
           type="button"
           data-testid="assembly-pipeline-automode"
           onClick={onAutomode}
-          title="Auto-сгруппировать оставшиеся куски (K10)"
+          title="Auto-сгруппировать оставшиеся (несгруппированные) куски"
           style={primaryBtn}
         >⚡ Auto-собрать</button>
       </div>
@@ -139,10 +139,9 @@ export default function AssemblyPipelinePanel({
           padding: '8px 12px', borderTop: '1px solid var(--border-subtle)',
           background: 'var(--surface-1)', fontSize: 10.5, color: 'var(--text-tertiary)',
         }}>
-          <div style={{ marginBottom: 4 }}>Mini DAG</div>
-          <div style={{ minHeight: 40, border: '1px solid var(--border-subtle)', borderRadius: 4, padding: 4, fontSize: 10, color: 'var(--text-tertiary)' }}>
-            {`${groups.length} групп · ${layers.length} слой(ёв)`}
-          </div>
+          {/* A19 — was a framed box labelled «Mini DAG» that drew no graph (just a
+              count). Honest summary caption; the real graph lives in the DAG tab. */}
+          {`Сводка: ${groups.length} групп(ы) в ${layers.length} слой(ёв) · граф — во вкладке DAG`}
         </div>
       )}
     </div>

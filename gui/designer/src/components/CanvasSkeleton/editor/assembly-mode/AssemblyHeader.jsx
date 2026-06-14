@@ -3,7 +3,8 @@
  * / G2 DEC-CANVAS-ASM-13). Reuses the Library InlineEditableTitle (no
  * bespoke title widget). Left: name. Center: length/segments/topology.
  * Right: palette legend (collapsible) + topology toggle + Realise as
- * DAG (A2 stub: disabled, tooltip → A4).
+ * DAG (live — A4: reverse-engineers the ops; disabled only until the
+ * assembly has ≥2 segments or a single fragment closed into a ring).
  */
 import InlineEditableTitle from '../../../Library/inspector/InlineEditableTitle';
 
@@ -132,8 +133,8 @@ export default function AssemblyHeader({
         disabled={!canRealise}
         onClick={canRealise ? onRealise : undefined}
         title={canRealise
-          ? 'Reverse-engineer операции из сборки'
-          : 'Realise as DAG — reverse-engineer операции из сборки (следующий sprint, A4)'}
+          ? 'Reverse-engineer операции из сборки в DAG'
+          : 'Добавьте ещё сегмент (нужно ≥2) или замкните одиночный фрагмент в кольцо'}
         style={{
           marginLeft: 'auto',
           fontSize: 11.5,

@@ -169,7 +169,7 @@ function HiddenFeatures() {
       <Group title="3. Хоткеи (не очевидные)">
         <Row a="Ctrl+R / Ctrl+Alt+R" b="Создать праймер из выделения (Fwd / Rev)" />
         <Row a="Shift + клик" b="Расширить выделение от существующего" />
-        <Row a="Ctrl+K" b="Глобальный поиск (плазмиды / праймеры / сборки)" />
+        <Row a="Ctrl+P / Ctrl+Shift+P" b="Командная палитра — переключение проектов" />
         <Row a="TAB / Shift+TAB" b="Переключение вкладок в окне редактора" />
         <Row a="Ctrl+S в редакторе контейнера" b="Применить незаписанные правки" />
         <Row a="Ctrl+Z / Ctrl+Y" b="Undo / Redo (живёт в общем skeleton-history)" />

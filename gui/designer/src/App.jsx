@@ -371,7 +371,9 @@ export default function App() {
 
   let mainContent;
   if (activeFullscreen === 'start') {
-    mainContent = <StartScreen />;
+    // C13 (audit) — StartScreen was mounted with no props, so HelpPopover's
+    // «Показать хоткеи» button reached an undefined onOpenHotkeys (silent no-op).
+    mainContent = <StartScreen onOpenHotkeys={openHotkeys} />;
   } else if (overlayContent) {
     mainContent = <AppShell>{overlayContent}</AppShell>;
   } else {

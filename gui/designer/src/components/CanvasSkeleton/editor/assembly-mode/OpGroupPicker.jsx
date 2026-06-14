@@ -1,10 +1,10 @@
 /**
  * OpGroupPicker — M-CANVAS-WORKFLOW-UX K7 (SPEC §3 Шаг 2). After the
  * biolog selects ≥2 continuous pieces and clicks «🔗 Сшить» the picker
- * lets them pick the reaction method (overlap-PCR / Gibson / GG / KLD
- * / restriction / direct-ligation) and a name. A default is
- * auto-suggested based on the zone's final topology and piece count
- * (SPEC §3 Шаг 2 recommendation block).
+ * lets them pick the reaction method (overlap-PCR / Gibson / GG /
+ * restriction / direct-ligation) and a name. The default is always
+ * Overlap PCR (the safe internal-fuse default); ring closure + the
+ * construct-level method are chosen in CircularizeModal, not here.
  *
  * Closes on Esc / click-outside (ui-interactions modal contract).
  */
@@ -15,24 +15,27 @@ import { useEffect, useMemo, useState } from 'react';
 // offered only in CircularizeModal, gated to a single fragment (audit kld AM-1/AM-3).
 const KINDS = [
   { id: 'overlap_pcr', label: 'Overlap PCR', note: 'даст линейный intermediate' },
-  { id: 'gibson', label: 'Gibson', note: 'даст кольцо — финал' },
+  // A8 (audit) — the «даст кольцо — финал» note was false: Gibson is seamless
+  // homology assembly; whether the product is a ring is set in CircularizeModal,
+  // not by the reaction choice here.
+  { id: 'gibson', label: 'Gibson', note: 'бесшовно по гомологии концов' },
   { id: 'golden_gate', label: 'Golden Gate', note: 'требует фермент Type IIS + нет внутренних сайтов' },
   { id: 'restriction', label: 'RE-клонирование', note: 'совместимые концы (фермент)' },
   { id: 'direct_ligation', label: 'Direct ligation', note: 'бленд / sticky' },
 ];
 
-function autoSuggest(pieceCount, finalTopology) {
-  if (finalTopology === 'linear') return 'overlap_pcr';
-  return 'overlap_pcr'; // first/only layer (finalizer may wrap with Gibson)
+// A28 (audit) — the default is unconditionally Overlap PCR (the internal-fuse
+// default; the finalizer / CircularizeModal own topology + the construct method).
+// Was dressed up as «computed from topology/pieceCount» but both branches returned
+// the same value and pieceCount was unread.
+function autoSuggest() {
+  return 'overlap_pcr';
 }
 
 export default function OpGroupPicker({
   pieceIds, zoneFinalTopology, onConfirm, onCancel,
 }) {
-  const initial = useMemo(
-    () => autoSuggest((pieceIds || []).length, zoneFinalTopology),
-    [pieceIds, zoneFinalTopology],
-  );
+  const initial = useMemo(() => autoSuggest(), []);
   const [kind, setKind] = useState(initial);
   const [name, setName] = useState('');
 
