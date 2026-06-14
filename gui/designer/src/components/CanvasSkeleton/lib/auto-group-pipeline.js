@@ -18,7 +18,13 @@
 
 export function autoGroupPipeline(zone, state) {
   const zoneId = zone && zone.id;
-  const finalTopology = (zone && zone.finalTopology) || 'circular';
+  // TOP-1 — derive from the authoritative zone.topology (set by SET_ZONE_TOPOLOGY /
+  // CircularizeModal). The legacy zone.finalTopology was never updated, so the
+  // pipeline kept treating a user-set-linear assembly as circular. Fall back to
+  // finalTopology only for legacy zones with no topology field.
+  const finalTopology = (zone && zone.topology)
+    ? (zone.topology.circular ? 'circular' : 'linear')
+    : ((zone && zone.finalTopology) || 'circular');
   const all = (state && state.pieces) || [];
   const sources = all
     .filter((p) => p && p.zoneId === zoneId && !p.groupId)

@@ -728,7 +728,9 @@ export default function AssemblyShellBody({ draft, embedded = false }) {
       {groupPickerIds && (
         <OpGroupPicker
           pieceIds={groupPickerIds}
-          zoneFinalTopology={(draft.topology && draft.topology.circular) ? 'circular' : (draft.finalTopology || 'circular')}
+          /* TOP-2 — derive from draft.topology (draftFromZone always sets it);
+             never hard-code 'circular' for a linear assembly. */
+          zoneFinalTopology={draft.topology && draft.topology.circular ? 'circular' : 'linear'}
           onConfirm={({ kind, name }) => {
             actions.createOpGroup(draftId, kind, name, groupPickerIds);
             setGroupPickerIds(null);

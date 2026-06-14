@@ -46,6 +46,11 @@ export function writeAssemblyJson({
       notes: zone.notes || '',
       autoResize: zone.autoResize !== false,
       finalTopology: zone.finalTopology || null,
+      // TOP-5 — persist the authoritative circularization + method/junction config
+      // so a saved plasmid survives the round-trip (these were silently dropped).
+      topology: zone.topology ? { circular: !!zone.topology.circular } : null,
+      assemblyMethod: zone.assemblyMethod || null,
+      junctions: zone.junctions || {},
     },
     pieces: pieces.map(p => serializePiece(p)),
     operations: operations.map(o => serializeOperation(o)),
