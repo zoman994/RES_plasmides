@@ -19,9 +19,9 @@ const SPACER = 'AAAAAAAAAACCCCCCCCCC';
 const threeSiteSeq = `GAATTC${SPACER}GAATTC${SPACER}GAATTC${SPACER}`; // 3× EcoRI
 const oneSiteSeq = `GAATTC${SPACER}${SPACER}${SPACER}`; // 1× EcoRI
 
-function renderCut(seq, enzymes) {
+function renderCut(seq, enzymes, circular = true) {
   const containers = [{
-    id: 'c1', name: 'tpl', kind: 'molecule', sequence: seq, topology: { circular: true },
+    id: 'c1', name: 'tpl', kind: 'molecule', sequence: seq, topology: { circular },
   }];
   return render(
     <CutOpPopup
@@ -43,6 +43,12 @@ describe('CutOpPopup — digest viability gate (A12)', () => {
 
   it('single enzyme cutting 1× → viable, no ⛔, Execute enabled', () => {
     renderCut(oneSiteSeq, ['EcoRI']);
+    expect(screen.queryByTestId('cut-op-warn-unviable')).toBeNull();
+    expect(screen.getByTestId('op-popup-execute').disabled).toBe(false);
+  });
+
+  it('L12 — a LINEAR template with 3 cuts is viable (N cuts → N+1 fragments)', () => {
+    renderCut(threeSiteSeq, ['EcoRI'], false); // linear
     expect(screen.queryByTestId('cut-op-warn-unviable')).toBeNull();
     expect(screen.getByTestId('op-popup-execute').disabled).toBe(false);
   });

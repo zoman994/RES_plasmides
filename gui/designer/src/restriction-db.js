@@ -179,18 +179,24 @@ export function getIsoschizomers(enzymeName) {
  * Find all occurrences of an enzyme's recognition site in a sequence (both strands).
  * Returns: [{ position, strand: '+' | '-' }]
  */
-export function findSitesInSequence(enzymeName, sequence) {
+export function findSitesInSequence(enzymeName, sequence, circular = false) {
   const enzyme = RE_ENZYMES[enzymeName];
   if (!enzyme || !sequence) return [];
 
   const seq = sequence.toUpperCase();
+  const seqLen = seq.length;
+  // L13 (audit) — a circular template can carry a site STRADDLING the origin
+  // (last bases + first bases). Search a wrapped copy (mirrors scanAllSites) and
+  // drop wrap-duplicates whose start is in the appended tail (position >= seqLen).
+  const MAX_SITE = 13; // longest recognition site (SfiI)
+  const searchSeq = circular ? seq + seq.slice(0, MAX_SITE) : seq;
   const sites = [];
 
   // Forward strand
   const fwdRe = siteToRegex(enzyme.site);
   let match;
-  while ((match = fwdRe.exec(seq)) !== null) {
-    sites.push({ position: match.index, strand: '+' });
+  while ((match = fwdRe.exec(searchSeq)) !== null) {
+    if (match.index < seqLen) sites.push({ position: match.index, strand: '+' });
     // Prevent infinite loop on zero-length matches
     if (match.index === fwdRe.lastIndex) fwdRe.lastIndex++;
   }
@@ -199,8 +205,8 @@ export function findSitesInSequence(enzymeName, sequence) {
   const rcSite = reverseComplement(enzyme.site);
   if (rcSite !== enzyme.site) {
     const revRe = siteToRegex(rcSite);
-    while ((match = revRe.exec(seq)) !== null) {
-      sites.push({ position: match.index, strand: '-' });
+    while ((match = revRe.exec(searchSeq)) !== null) {
+      if (match.index < seqLen) sites.push({ position: match.index, strand: '-' });
       if (match.index === revRe.lastIndex) revRe.lastIndex++;
     }
   }
@@ -446,14 +452,16 @@ export function digest(sequence, annotations, enzyme1, enzyme2 = null) {
   const e1Info = RE_ENZYMES[enzyme1];
   if (!e1Info) return { error: `Unknown enzyme: ${enzyme1}` };
 
-  const sites1 = findSitesInSequence(enzyme1, sequence);
+  // digest() operates on CIRCULAR templates (the cut adapter routes linear ones
+  // to the legacy slice path) → search wrapped so origin-straddling sites count (L13).
+  const sites1 = findSitesInSequence(enzyme1, sequence, true);
 
   // Two different enzymes → each must cut exactly once
   if (enzyme2 && enzyme2 !== enzyme1) {
     const e2Info = RE_ENZYMES[enzyme2];
     if (!e2Info) return { error: `Unknown enzyme: ${enzyme2}` };
 
-    const sites2 = findSitesInSequence(enzyme2, sequence);
+    const sites2 = findSitesInSequence(enzyme2, sequence, true);
     if (sites1.length !== 1) return { error: `${enzyme1} cuts ${sites1.length} times (need exactly 1)` };
     if (sites2.length !== 1) return { error: `${enzyme2} cuts ${sites2.length} times (need exactly 1)` };
 

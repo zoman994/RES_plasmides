@@ -54,7 +54,7 @@ export default function CutOpPopup({
     const circular = !!template.topology?.circular;
     const allCuts = [];
     for (const e of enzymes) {
-      const sites = findSitesInSequence(e, seq);
+      const sites = findSitesInSequence(e, seq, circular); // L13 — wrap circular origin
       // RC-5 — the cut is at the enzyme's offset INSIDE the site, not the site
       // start (EcoRI G^AATTC → +1; NotI GC^GGCCGC → +2). Using the site start
       // mis-sizes every fragment. Mirror the engine (cut.js _cutPosition).
@@ -100,6 +100,10 @@ export default function CutOpPopup({
     if (enzymes.length > 2) {
       viable = false;
       unviableReason = 'движок поддерживает 1–2 фермента за реакцию';
+    } else if (!circular) {
+      // L12 (audit) — the single/exactly-1 constraint is digest()'s CIRCULAR
+      // contract; a LINEAR template handles any ≥1 cut (N cuts → N+1 fragments).
+      if (cutCount < 1) { viable = false; unviableReason = `${enzymes.join('+')} не режет этот линейный темплейт`; }
     } else if (enzymes.length === 2 && enzymes[0] !== enzymes[1]) {
       const bad = enzymes.find((e) => (perEnz[e] || 0) !== 1);
       if (bad) { viable = false; unviableReason = `${bad} режет ${perEnz[bad] || 0}× — для двойного digest нужно ровно 1 у каждого`; }
