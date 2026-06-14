@@ -326,8 +326,11 @@ export function operationsReducer(state, action) {
       const pieces = state.pieces || [];
       const allExist = pieceIds.every((pid) => pieces.some((p) => p.id === pid));
       if (!allExist) return state;
-      const SINGLE = new Set(['pcr', 'ov-pcr', 'cut', 'mutagenesis']);
-      const MULTI = new Set(['gibson', 'ligate', 'kld']);
+      // KLD is a SINGLE-template reaction (whole-plasmid PCR off one circular
+      // template + back-to-back primers → self-ligation). It is NOT multi-input
+      // (audit kld AM-2 — the arity was inverted). Only Gibson/Ligate join ≥2.
+      const SINGLE = new Set(['pcr', 'ov-pcr', 'cut', 'mutagenesis', 'kld']);
+      const MULTI = new Set(['gibson', 'ligate']);
       if (SINGLE.has(op.kind) && pieceIds.length !== 1) return state;
       if (MULTI.has(op.kind) && pieceIds.length < 2) return state;
       const next = state.operations.slice();
@@ -372,6 +375,9 @@ export function operationsReducer(state, action) {
     case 'CREATE_OP_GROUP': {
       const { zoneId, kind, name, pieceIds } = action;
       if (!zoneId || !Array.isArray(pieceIds) || pieceIds.length < 2) return state;
+      // KLD joins exactly ONE template — it can never be a ≥2-piece op-group
+      // (audit kld AM-1/AM-3). Defense-in-depth behind the UI gates.
+      if (kind === 'kld') return state;
       const zones = state.zones || [];
       if (!zones.some((z) => z.id === zoneId)) return state;
       const pieces = state.pieces || [];

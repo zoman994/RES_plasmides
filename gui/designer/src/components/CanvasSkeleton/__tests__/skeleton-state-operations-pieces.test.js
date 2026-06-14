@@ -69,6 +69,30 @@ describe('T2 K5 OP_SET_INPUT_PIECES / OP_REMOVE_INPUT_PIECE', () => {
     expect(s.operations).toBe(before);
   });
 
+  it('KLD is single-template: accepts 1 piece, rejects 2 (audit kld AM-2)', () => {
+    let s = withOp('kld');
+    s = skeletonReducer(s, { type: 'OP_SET_INPUT_PIECES', operationId: 'op-1', pieceIds: [s.pieces[0].id] });
+    expect(s.operations[0].inputPieces).toEqual([s.pieces[0].id]);
+    const before = s.operations;
+    s = skeletonReducer(s, {
+      type: 'OP_SET_INPUT_PIECES', operationId: 'op-1',
+      pieceIds: [s.pieces[0].id, s.pieces[1].id],
+    });
+    expect(s.operations).toBe(before); // 2-template KLD rejected
+  });
+
+  it('CREATE_OP_GROUP rejects a multi-fragment KLD group (audit kld AM-1/AM-3)', () => {
+    let s = stateWithTwoPieces();
+    s = skeletonReducer(s, { type: 'CREATE_ZONE', zone: { id: 'zk', name: 'Z', bounds: { x: 0, y: 0, width: 600, height: 400 } } });
+    // put both pieces in the zone
+    const ids = s.pieces.map((p) => p.id);
+    s = skeletonReducer(s, { type: 'MOVE_NODE_TO_ZONE', nodeType: 'piece', nodeId: ids[0], targetZoneId: 'zk' });
+    s = skeletonReducer(s, { type: 'MOVE_NODE_TO_ZONE', nodeType: 'piece', nodeId: ids[1], targetZoneId: 'zk' });
+    const before = s.operations;
+    s = skeletonReducer(s, { type: 'CREATE_OP_GROUP', zoneId: 'zk', kind: 'kld', name: '', pieceIds: ids });
+    expect(s.operations).toBe(before); // no kld op-group created
+  });
+
   it('rejects an unknown pieceId (state identity)', () => {
     let s = withOp('pcr');
     const before = s.operations;

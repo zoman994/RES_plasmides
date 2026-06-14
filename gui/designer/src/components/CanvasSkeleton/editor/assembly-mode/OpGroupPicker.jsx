@@ -10,20 +10,20 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 
+// KLD is intentionally absent — it is a single-template self-closure reaction,
+// not a way to join ≥2 selected pieces (the picker only opens on ≥2). KLD is
+// offered only in CircularizeModal, gated to a single fragment (audit kld AM-1/AM-3).
 const KINDS = [
   { id: 'overlap_pcr', label: 'Overlap PCR', note: 'даст линейный intermediate' },
   { id: 'gibson', label: 'Gibson', note: 'даст кольцо — финал' },
-  { id: 'golden_gate', label: 'Golden Gate', note: 'даст кольцо — финал (нужны BsaI/BsmBI)' },
-  { id: 'restriction', label: 'Restriction', note: 'даст кольцо — финал' },
-  { id: 'kld', label: 'KLD', note: 'mutagenesis, обычно 1 input' },
+  { id: 'golden_gate', label: 'Golden Gate', note: 'требует фермент Type IIS + нет внутренних сайтов' },
+  { id: 'restriction', label: 'RE-клонирование', note: 'совместимые концы (фермент)' },
   { id: 'direct_ligation', label: 'Direct ligation', note: 'бленд / sticky' },
 ];
 
 function autoSuggest(pieceCount, finalTopology) {
   if (finalTopology === 'linear') return 'overlap_pcr';
-  if (pieceCount === 1) return 'kld';
-  if (pieceCount <= 6) return 'overlap_pcr'; // first/only layer (finalizer may wrap with Gibson)
-  return 'overlap_pcr'; // intermediate layer for large assemblies
+  return 'overlap_pcr'; // first/only layer (finalizer may wrap with Gibson)
 }
 
 export default function OpGroupPicker({
