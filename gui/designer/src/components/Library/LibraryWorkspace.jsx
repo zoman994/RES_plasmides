@@ -357,7 +357,14 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
   // every existing reader keeps working without per-component
   // refactor. New code can still read entry.payload via item.payload
   // (the spread preserves the original key).
-  const item = rawEntry ? { ...rawEntry, ...(rawEntry.payload || {}) } : null;
+  // `_libraryEntryId: selectedId` (entry id === selectedId) mirrors the
+  // Importer host (useLibraryState). Without it every inspector feature
+  // gated on item._libraryEntryId silently no-op'd here — most importantly
+  // character-level SEQUENCE edits (onSequenceEditFromView early-returns)
+  // and manual-edit branching, so a sequence edit vanished with no error
+  // (audit 14.06.2026). Setting it routes edits to
+  // applySequenceEditOnLibraryEntry / createManualEditBranch (both durable).
+  const item = rawEntry ? { ...rawEntry, ...(rawEntry.payload || {}), _libraryEntryId: selectedId } : null;
   // Action-row variant derives from `entry.projectId` per the
   // 09.05.2026 minimum-pass refresh — `entry.zone` is intentionally
   // ignored (zone field stays in shape, see CURRENT_TASK.md). All
@@ -518,6 +525,12 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
                   onAppendAdded={noop}
                   onRenameItem={(name) => { if (selectedId) renameLibraryEntry(selectedId, name); }}
                   onRunAutoAnnotate={noop}
+                  // The workspace persists edits silently (annotation
+                  // write-through + applySequenceEditOnLibraryEntry); the
+                  // Importer-only explicit Save buttons would otherwise
+                  // light up «несохранено» right after a silent save —
+                  // misleading. Keep them out (DEC-LIB-13).
+                  showSaveActions={false}
                 />
               </div>
               <LibraryActionRow entry={item} zone={zone} ctx={actionCtx} />

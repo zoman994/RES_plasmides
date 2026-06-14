@@ -82,6 +82,11 @@ export default function SingleInspector({
   onRenameItem,
   // eslint-disable-next-line no-unused-vars -- ditto
   onRunAutoAnnotate,
+  // The Importer host shows the explicit «Перезаписать» / «Сохранить как
+  // версию» buttons (DEC-LIB-13). The LibraryWorkspace host persists
+  // silently and passes false to keep them out (they'd misleadingly flag
+  // «несохранено» right after a silent save).
+  showSaveActions = true,
 }) {
   // Annotator state for the navigation-strip ghost overlay. Single
   // shallow-equality subscription instead of five separate ones — five
@@ -467,7 +472,7 @@ export default function SingleInspector({
         onToggleSeqSettings={() => setSeqSettingsOpen((v) => !v)}
         editable={editable}
         toggleEditable={toggleEditable}
-        saveFlow={saveFlow}
+        saveFlow={showSaveActions ? saveFlow : undefined}
         cursorPos={cursorPos}
         cursorAnchor={cursorAnchor}
         cursorSelectionMode={cursorSelectionMode}
