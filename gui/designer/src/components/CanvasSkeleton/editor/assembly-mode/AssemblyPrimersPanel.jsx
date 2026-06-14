@@ -11,10 +11,12 @@ import {
 } from '../../store/skeleton-context';
 import { selectBoundaryCoverage } from '../../store/selectors-assembly';
 
-// WT-UX-18 — below this the binding Tm is outside the working PCR window
-// (~55–65°); deriveAutoPrimers uses a fixed 20-nt binding, so an AT-rich end
-// can land here. Flag it so the biolog reworks the primer by hand.
-const TM_WORKING_MIN = 52;
+// WT-UX-18 / AM-7 — the binding Tm (SantaLucia NN) working floor. deriveAutoPrimers
+// targets ≥60° (extending up to ~36 nt), but an AT-rich end can fall short; below
+// this floor the anneal is unreliable. Aligned to the window cited in the warning
+// (~55–65°) so the flag threshold and the copy agree (was 52° — silently let
+// 52–55° through while telling the biolog the floor was 55°).
+const TM_WORKING_MIN = 55;
 
 function srcLabel(p, segName) {
   if (!p.source) return '';
@@ -95,7 +97,7 @@ export function PrimerRow({ p, actions, draftId, onEdit }) {
         {Number.isFinite(p.tm) && p.tm < TM_WORKING_MIN && (
           <span
             data-testid={`assembly-primer-tm-warn-${p.id}`}
-            title={`Tm ${p.tm}° вне рабочего диапазона ПЦР (~55–65°) — перепишите праймер вручную`}
+            title={`Tm связывания ${p.tm}° ниже рабочего ~55–65° (отжиг ненадёжен) — перепишите праймер вручную`}
             style={{ color: 'var(--warning-fg,#b45309)', marginLeft: 3 }}
           >⚠</span>
         )}

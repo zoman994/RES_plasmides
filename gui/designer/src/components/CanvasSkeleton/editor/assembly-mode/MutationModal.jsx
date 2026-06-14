@@ -98,7 +98,9 @@ export default function MutationModal({
           </div>
 
           <div>
-            <div style={{ fontSize: 10.5, color: 'var(--text-tertiary)', marginBottom: 4 }}>Kind</div>
+            <div style={{ fontSize: 10.5, color: 'var(--text-tertiary)', marginBottom: 4 }}>
+              Эффект — метка (не проверяется по рамке считывания)
+            </div>
             {KINDS.map((k) => (
               <label key={k.id} style={radioRow}>
                 <input
