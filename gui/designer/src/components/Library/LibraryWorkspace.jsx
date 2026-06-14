@@ -341,6 +341,11 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
   const moveEntryToFolder = useStore((s) => s.moveEntryToFolder);
   const setActiveWorkspace = useStore((s) => s.setActiveWorkspace);
   const renameLibraryEntry = useStore((s) => s.renameLibraryEntry); // A4 (audit)
+  // Silent write-through for annotation edits (mirror the Importer host's
+  // useLibraryState.updateEdits hot-fix, 07.05.2026). Without it, an ORF
+  // created in the embedded Annotator lived only in transient perEntryState
+  // and vanished on entry switch / reload.
+  const writeLibraryEntryAnnotations = useStore((s) => s.writeLibraryEntryAnnotations);
 
   const rawEntry = selectedId ? entriesById[selectedId] : null;
   // LibrarySingleInspector + Overview/Sequence/Annotations tabs +
@@ -384,7 +389,21 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
         edits: { ...(prev[selectedId]?.edits || {}), ...patch },
       },
     }));
-  }, [selectedId]);
+    // Persist annotation edits straight to the library entry payload.
+    // The workspace's per-entry React state is transient (lost on
+    // unmount / reload); the entry IS the source of truth here, so an
+    // annotation created in the Annotator must write through immediately
+    // (biolog 14.06.2026: «создал в аннотаторе ORF … после выхода —
+    // пропадает»). Silent overwrite, no version bump — same hybrid model
+    // as the Importer host (DEC-LIB-11). selectedId === the entry id.
+    if (Object.prototype.hasOwnProperty.call(patch, 'editedAnnotations')
+        && Array.isArray(patch.editedAnnotations)
+        && typeof writeLibraryEntryAnnotations === 'function') {
+      try {
+        writeLibraryEntryAnnotations(selectedId, patch.editedAnnotations);
+      } catch { /* best-effort safety-net */ }
+    }
+  }, [selectedId, writeLibraryEntryAnnotations]);
   const onUpdateFlags = useCallback((patch) => {
     if (!selectedId || !patch) return;
     setPerEntryState((prev) => ({
