@@ -1,7 +1,8 @@
 /**
  * MutationModal — M-CANVAS-WORKFLOW-UX K14 (SPEC §5.2). Add a per-base
- * mutation to a sourced piece. K11 primer-derive applies it to the
- * binding region; K15 finalizer flags PCR/KLD-incompatible methods.
+ * SUBSTITUTION to a sourced piece (single-base only — indels go through the
+ * node-level «Mutate» operation). K11 primer-derive applies it to the binding
+ * region of the piece's amplification primer.
  * Closes on Esc / click-outside (ui-interactions modal contract).
  */
 import { useEffect, useState } from 'react';
@@ -127,9 +128,9 @@ export default function MutationModal({
             padding: '6px 10px', fontSize: 10.5, color: 'var(--text-secondary)',
             background: 'var(--accent-wash, rgba(184,92,62,0.08))', borderRadius: 4,
           }}>
-            Mutation реализуется через mutagenic primer (Overlap PCR / KLD).
-            Если кусок попадёт в Gibson/GG-группу — она не сработает; K15 finalizer
-            предупредит.
+            Замена реализуется через mutagenic primer на куске, который
+            амплифицируется (Overlap PCR / KLD). Только замена одного основания;
+            вставки/делеции — через операцию «Mutate» на узле.
           </div>
         </div>
 

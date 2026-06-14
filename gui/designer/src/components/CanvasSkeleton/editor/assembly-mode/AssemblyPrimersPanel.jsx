@@ -51,7 +51,7 @@ export function PrimerRow({ p, actions, draftId, onEdit }) {
         data-testid={`assembly-primer-automode-${p.id}`}
         data-draft={p.autoMode === 'auto' ? 'true' : undefined}
         title={p.autoMode === 'auto'
-          ? 'Черновик — авто-праймер. Доведите в редакторе праймера: binding 20 нт фиксирован, Tm/длину подберите вручную.'
+          ? 'Черновик — авто-праймер: связывание подобрано по Tm (≥60°, до ~36 нт), 20 нт лишь как fallback без Tm. Доведите вручную при необходимости.'
           : 'Manual — зафиксирован, finalizer не трогает.'}
         style={p.autoMode === 'auto'
           ? { color: 'var(--warning-fg,#b45309)', whiteSpace: 'nowrap' }

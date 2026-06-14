@@ -147,11 +147,15 @@ export function recomputeFromSelection(template, start, end, tails) {
  */
 export function validatePrimer(primer) {
   const seq = (primer?.sequence || primer?.forward || '').toUpperCase();
+  // AM-5 — the annealing Tm is computed on the BINDING region only (the 5' tail
+  // is non-complementary in the first PCR cycles); using the full oligo inflates
+  // Tm and misjudges the window. Length/GC stay on the whole oligo (synthesis).
+  const binding = (primer?.bindingSequence || primer?.fwdBinding || seq).toUpperCase();
   const L = seq.length;
   const warnings = [];
   if (L < 15) warnings.push(`Праймер короткий (${L} nt < 15) — неспецифичен`);
   if (L > 35) warnings.push(`Праймер длинный (${L} nt > 35) — дорого синтезировать`);
-  const tm = L >= 4 ? calcTm(seq) : 0;
+  const tm = binding.length >= 4 ? calcTm(binding) : 0;
   if (L >= 15 && (tm < 52 || tm > 70)) warnings.push(`Tm ${tm}°C вне комфортного диапазона 52–70`);
   const gc = calcGC(seq);
   if (L >= 15 && (gc < 35 || gc > 65)) warnings.push(`GC ${gc}% вне 35–65`);

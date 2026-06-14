@@ -282,8 +282,11 @@ export function deriveSelfClosurePrimers(piece, state) {
   const fullSeq = pieceSequence(piece, state);
   if (!fullSeq || fullSeq.length < 40) return [];
   const pairId = `pair-${uuidv7()}`;
-  const fwdBinding = fullSeq.slice(0, bindingLen(fullSeq, 'fwd', null, null));
-  const revBinding = reverseComplement(fullSeq.slice(-bindingLen(fullSeq, 'rev', null, null)));
+  // AM-4 — Tm-target the binding (same DEFAULT_BINDING_TM as every other auto
+  // primer) instead of a flat 20 nt, so an AT-rich end extends to the working
+  // window rather than shipping a sub-Tm binding.
+  const fwdBinding = fullSeq.slice(0, bindingLen(fullSeq, 'fwd', null, DEFAULT_BINDING_TM));
+  const revBinding = reverseComplement(fullSeq.slice(-bindingLen(fullSeq, 'rev', null, DEFAULT_BINDING_TM)));
   const fwdTail = fullSeq.slice(-SELF_CLOSURE_OVERLAP); // 3' end as-is (direct repeat)
   const revTail = reverseComplement(fullSeq.slice(0, SELF_CLOSURE_OVERLAP)); // rc(5' start)
   const mk = (side, tail, binding) => {
