@@ -141,7 +141,7 @@ export default function SingleInspector({
 
   // 18.05.2026 — primer redesign on every SequenceView, Library
   // included. Primers persist to the unified pool, entry-scoped.
-  const { primers: entryPrimers, onWritePrimer: onWriteEntryPrimer } = useEntryPrimers(item);
+  const { primers: entryPrimers, onWritePrimer: onWriteEntryPrimer, onDeletePrimer: onDeleteEntryPrimer } = useEntryPrimers(item);
   // SPEC_COMMON_FEATURES DEC-CF-05 — «Add to common features» in the Library
   // inspector (an IN viewer). The hook reads the overlay slice; the consumer
   // gate (passing these to SequenceTab) keeps it out of the OUT viewers.
@@ -597,6 +597,7 @@ export default function SingleInspector({
               onSequenceEdit={onSequenceEditFromView}
               primers={entryPrimers}
               onWritePrimer={onWriteEntryPrimer}
+              onDeletePrimer={onDeleteEntryPrimer}
               onPromoteToCommon={onPromoteToCommon}
               checkCommonDuplicate={checkCommonDuplicate}
               showSelectionTm
@@ -636,6 +637,7 @@ export default function SingleInspector({
               onPendingScrollHandled={onPendingScrollHandled}
               primers={entryPrimers}
               onWritePrimer={onWriteEntryPrimer}
+              onDeletePrimer={onDeleteEntryPrimer}
             />
           </div>
         )}

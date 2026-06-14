@@ -50,6 +50,7 @@ export default function AnnotationsTab({
   // (Library/Container) forwards its useEntryPrimers pair; optional.
   primers,
   onWritePrimer,
+  onDeletePrimer,
 }) {
   return (
     <div
@@ -88,6 +89,7 @@ export default function AnnotationsTab({
         onPendingScrollHandled={onPendingScrollHandled}
         primers={primers}
         onWritePrimer={onWritePrimer}
+        onDeletePrimer={onDeletePrimer}
       />
     </div>
   );

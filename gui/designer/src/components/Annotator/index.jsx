@@ -84,6 +84,7 @@ export default function Annotator({
   // PreviewTab → SequenceView. Optional (absent ⇒ no primers).
   primers,
   onWritePrimer,
+  onDeletePrimer,
 }) {
   const annotator = useStore(selectAnnotator);
   const closeAnnotator = useStore((s) => s.closeAnnotator);
@@ -441,6 +442,7 @@ export default function Annotator({
             onPendingScrollHandled={handlePendingScrollHandled}
             primers={primers}
             onWritePrimer={onWritePrimer}
+            onDeletePrimer={onDeletePrimer}
           />
         </div>
         <LevelPanel

@@ -72,6 +72,7 @@ export default function PreviewTab({
   // Annotator). Absent ⇒ no primers (back-compat).
   primers,
   onWritePrimer,
+  onDeletePrimer,
 }) {
   const seqRef = useRef(null);
   useEffect(() => {
@@ -276,6 +277,7 @@ export default function PreviewTab({
               onBlastSelection={onBlastSelection}
               primers={primers}
               onWritePrimer={onWritePrimer}
+              onDeletePrimer={onDeletePrimer}
             />
           </div>
         )}

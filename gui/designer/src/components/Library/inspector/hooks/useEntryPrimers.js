@@ -24,6 +24,7 @@ export function useEntryPrimers(item) {
 
   const primersById = useStore((s) => s.primersById);
   const addPrimerToPool = useStore((s) => s.addPrimerToPool);
+  const removePrimerFromPool = useStore((s) => s.removePrimerFromPool);
   const hydratePrimers = useStore((s) => s.hydratePrimers);
 
   useEffect(() => {
@@ -51,5 +52,14 @@ export function useEntryPrimers(item) {
     if (payload) addPrimerToPool(payload);
   }, [entryId, item, addPrimerToPool]);
 
-  return { primers, onWritePrimer };
+  // Delete a selected primer (SequenceView's Del/Backspace on a selected
+  // primer calls onDeletePrimer(hit)). Without this the key was swallowed
+  // read-only — create worked, delete was dead in the Library viewers.
+  // Mirrors the assembly editor's onDeletePrimer (hit → remove by id).
+  const onDeletePrimer = useCallback((hit) => {
+    const id = hit && (hit.id || hit.primerId);
+    if (id && typeof removePrimerFromPool === "function") removePrimerFromPool(id);
+  }, [removePrimerFromPool]);
+
+  return { primers, onWritePrimer, onDeletePrimer };
 }
