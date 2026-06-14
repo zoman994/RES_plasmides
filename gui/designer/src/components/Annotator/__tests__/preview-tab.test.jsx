@@ -262,6 +262,25 @@ describe('PreviewTab — K4 SequenceView merge + drill-in', () => {
     expect(a.selectedGhostId).toBeNull();
   });
 
+  it('drill-in BLAST / Re-run-predictors run the real annotator levels (A35)', () => {
+    setResults({
+      'sigma70-promoter': {
+        pluginId: 'sigma70-promoter', pluginName: 'σ70', regions: [ghost('g1', 'σ70 hit')],
+      },
+    });
+    const onRunLevel = vi.fn();
+    render(
+      <PreviewTab sequence={SEQUENCE} annotations={CONFIRMED} name="pTest" onRunLevel={onRunLevel} />,
+    );
+    fireEvent.click(screen.getByTestId('mock-ann-g1')); // select the ghost
+    fireEvent.click(screen.getByTestId('annotator-ghost-blast'));
+    expect(onRunLevel).toHaveBeenCalledWith('L3', expect.objectContaining({
+      region: expect.objectContaining({ id: 'g1' }),
+    }));
+    fireEvent.click(screen.getByTestId('annotator-ghost-predictors'));
+    expect(onRunLevel).toHaveBeenCalledWith('L2');
+  });
+
   // Sprint M-X.3 follow-up — biolog: «надо дать возможность
   // растягивать сжимать фичи, редачить двойным кликом и выдлять
   // последовательность - а дальше уже эту последоватность дать

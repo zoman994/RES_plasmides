@@ -53,6 +53,11 @@ export default function PreviewTab({
   onAnnotationEdit,
   onOpenFeatureEditor,
   onBlastSelection,
+  // A35 (audit) — the ghost drill-in BLAST / re-run-predictors buttons run the
+  // real annotator levels (L3 = homology/BLAST on the region, L2 = predictors).
+  // index.jsx passes handleRunLevel here; it was previously undestructured so the
+  // buttons fell to empty stubs.
+  onRunLevel,
   // 2026-05-06 — strip-driven nav. SingleInspector forwards
   // pendingScroll only when activeTab='annotations'; we apply it to
   // the embedded SequenceView and acknowledge via the same handler
@@ -260,8 +265,8 @@ export default function PreviewTab({
         region={selectedRegion}
         onAccept={() => selectedRegion && acceptRegion(selectedRegion.id)}
         onReject={() => selectedRegion && rejectRegion(selectedRegion.id)}
-        onRunBlast={() => { /* K4 stub — wires to live BLAST in M-X.4 */ }}
-        onRunPredictors={() => { /* K4 stub — same M-X.4 plumbing */ }}
+        onRunBlast={() => { if (selectedRegion) onRunLevel?.('L3', { region: selectedRegion }); }}
+        onRunPredictors={() => onRunLevel?.('L2')}
         onClose={() => setSelectedGhost(null)}
       />
     </div>

@@ -15,7 +15,6 @@ import LinearFeatureBar from './tabs/LinearFeatureBar';
 // regardless of active tab; clicking a feature auto-switches to
 // Sequence and scrolls.
 import AnnotationsTab from './tabs/AnnotationsTab';
-import HistoryTab from './tabs/HistoryTab';
 import { getRegions } from '../../../annotation-model';
 import {
   applyAnnotationEdit,
@@ -391,7 +390,9 @@ export default function SingleInspector({
   const length = item.length || item.sequence?.length || 0;
   const topology = item.topology || 'linear';
   const regionCount = getRegions(item.annotations || []).length;
-  const showHistory = Array.isArray(item.commits) && item.commits.length > 0;
+  // C14 (audit) — Library entries never carry commits[], so the History tab was
+  // always hidden + its branch unreachable (commit history lives in the container
+  // editor). Removed here; the tab stays in ContainerEditorSkeleton where it works.
   // Use edited annotations if present (live edit), otherwise fall back to file's.
   const displayAnnotations = Array.isArray(edits?.editedAnnotations)
     ? edits.editedAnnotations
@@ -478,7 +479,7 @@ export default function SingleInspector({
       <TabBar
         activeTab={activeTab}
         onChange={onActiveTabChange}
-        showHistory={showHistory}
+        showHistory={false}
         showAnnotations={false}
         annotatorActive={activeTab === 'annotations'}
         onToggleAnnotator={() => onActiveTabChange?.(
@@ -632,9 +633,6 @@ export default function SingleInspector({
               onWritePrimer={onWriteEntryPrimer}
             />
           </div>
-        )}
-        {activeTab === 'history' && showHistory && (
-          <HistoryTab commits={item.commits || []} />
         )}
       </div>
       {/*

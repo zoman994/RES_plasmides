@@ -174,7 +174,7 @@ export const IMPORTER_STRINGS = {
     ghostDrillInBlast: 'Run BLAST on this region',
     ghostDrillInPredictors: 'Re-run predictors',
     ghostDrillInClose: 'Close',
-    ghostDrillInBlastHint: '(K-BLAST stub — wires to live BLAST in M-X.4)',
+    ghostDrillInBlastHint: 'Гомология / BLAST по выбранному региону',
     // Sprint M-X.3 follow-up — progress bar for L1 auto-run + manual
     // pipeline runs. Biolog: «прогресс бар прикрутим чтобы человек
     // видел что оно грузится а не прсто зависло. аннотация требует
