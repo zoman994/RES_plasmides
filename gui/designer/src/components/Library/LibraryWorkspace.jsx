@@ -37,6 +37,7 @@ import OnboardingNudge from './onboarding/OnboardingNudge';
 import AddModal from './AddModal/AddModal';
 import SequenceSearchPopover from '../SequenceSearchPopover';
 import { parseFile, extractItemName, ACCEPT_STRING, enrichAnnotations } from '../../file-import';
+import { drainImporterFiles } from './lib/pending-files'; // A24 — drain DAG-dropped files
 import { buildLibraryEntry } from './lib/build-library-entry';
 import { buildStarterSet } from './lib/starter-set';
 import { downloadEntryAsGenbank, downloadProjectAsZip } from '../../lib/export-genbank';
@@ -241,6 +242,17 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
     const files = await openFilePicker();
     await importFiles(files, null);
   }, [importFiles]);
+
+  // A24 (audit) — files dropped on the DAG screen are queued to pending-files, then
+  // the app pushes Library; nothing drained them (the legacy Importer never mounts),
+  // so the drop was silently lost. Drain + import on mount (target = active project).
+  const drainedRef = useRef(false);
+  useEffect(() => {
+    if (drainedRef.current) return;
+    drainedRef.current = true;
+    const pending = drainImporterFiles();
+    if (pending && pending.length) importFiles(pending, currentProjectId || null);
+  }, [importFiles, currentProjectId]);
 
   // Starter set — adds 4 synthetic reference vectors to Коллекция.
   const onAddStarterSet = useCallback(async () => {
