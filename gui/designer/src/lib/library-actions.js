@@ -27,6 +27,10 @@ const noop = () => {};
 
 const TOOLTIP_M_X_7B = 'M-X.7b: версионирование';
 const TOOLTIP_M_X_9 = 'M-X.9: импорт из чужих .bodge';
+// A5 (audit) — handler not wired yet: disable the affordance with a tooltip
+// instead of rendering an enabled button whose click does nothing.
+const TOOLTIP_WIP = 'В разработке';
+const wip = (handler) => ({ disabled: !handler, tooltip: !handler ? TOOLTIP_WIP : null });
 
 // M-X.7c K6 — STRINGS lookup with safe fallbacks for the new
 // loose-container/primer button labels and the «no active project»
@@ -72,6 +76,7 @@ function looseContainerActions(entry, ctx) {
       label: LBL.createCopyForEdit,
       icon: '✎',
       onClick: () => ctx.createManualEditBranch?.(entry.id),
+      ...wip(ctx.createManualEditBranch),
     }),
     action('moveToFolder', {
       label: LBL.moveToFolder,
@@ -110,6 +115,7 @@ function loosePrimerActions(entry, ctx) {
       label: 'Редактировать',
       icon: '✎',
       onClick: () => ctx.editPrimer?.(entry.id),
+      ...wip(ctx.editPrimer),
     }),
     action('moveToFolder', {
       label: LBL.moveToFolder,
@@ -137,6 +143,7 @@ function activeContainerActions(entry, ctx) {
       icon: '↗',
       variant: 'primary',
       onClick: () => ctx.openContainerWindow?.(entry.id),
+      ...wip(ctx.openContainerWindow),
     }),
     action('showInDag', {
       label: 'Показать в DAG',
@@ -158,6 +165,7 @@ function activeContainerActions(entry, ctx) {
       label: 'Клонировать',
       icon: '📋',
       onClick: () => ctx.cloneEntry?.(entry.id),
+      ...wip(ctx.cloneEntry),
     }),
     action('exportGenBank', {
       label: 'Экспорт GenBank',
@@ -180,6 +188,7 @@ function activePrimerActions(entry, ctx) {
       icon: '🧪',
       variant: 'primary',
       onClick: () => ctx.usePrimerInDag?.(entry.id),
+      ...wip(ctx.usePrimerInDag),
     }),
     action('extractToLoose', {
       label: 'Извлечь в Loose',
@@ -215,6 +224,7 @@ function readonlyContainerActions(entry, ctx) {
       label: 'Скопировать в Loose',
       icon: '📋',
       onClick: () => ctx.copyToLoose?.(entry.id),
+      ...wip(ctx.copyToLoose),
     }),
     action('openAsActive', {
       label: 'Открыть как активный',
@@ -226,6 +236,7 @@ function readonlyContainerActions(entry, ctx) {
       label: 'Просмотр',
       icon: '↗',
       onClick: () => ctx.openContainerWindow?.(entry.id),
+      ...wip(ctx.openContainerWindow),
     }),
   ];
 }
@@ -244,6 +255,7 @@ function readonlyPrimerActions(entry, ctx) {
       label: 'Скопировать в Loose',
       icon: '📋',
       onClick: () => ctx.copyToLoose?.(entry.id),
+      ...wip(ctx.copyToLoose),
     }),
     action('openAsActive', {
       label: 'Открыть как активный',
@@ -268,6 +280,7 @@ function labPrimerActions(entry, ctx) {
       label: 'Редактировать заметки',
       icon: '✎',
       onClick: () => ctx.editPrimerNotes?.(entry.id),
+      ...wip(ctx.editPrimerNotes),
     }),
     action('toggleLabStock', {
       label: entry.inLabStock ? 'Снять метку' : 'Поставить метку',

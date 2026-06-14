@@ -665,6 +665,24 @@ export const createLibrarySlice = (set, get) => ({
   },
 
   /**
+   * A4 (audit) — rename a library entry. Mirrors updateLibraryEntryTags: patch
+   * the in-memory name + persist to Dexie. The inspector's inline title commits
+   * here (was a no-op → the typed name reverted). No-op on empty / unchanged.
+   */
+  renameLibraryEntry: async (id, name) => {
+    const existing = get().libraryEntries[id];
+    if (!existing) return;
+    const safe = typeof name === 'string' ? name.trim().slice(0, 200) : '';
+    if (!safe || safe === existing.name) return;
+    set(state => {
+      const e = state.libraryEntries[id];
+      if (!e) return;
+      e.name = safe;
+    });
+    await putLibraryEntry({ ...existing, name: safe });
+  },
+
+  /**
    * Move a library entry to a folder path (slash-separated). '' means
    * the top of «Mine». Tags stay untouched — folder placement is a
    * separate dimension (biolog: «такги просто атрибут который мы

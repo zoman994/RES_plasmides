@@ -315,6 +315,7 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
   const toggleLabStock = useStore((s) => s.toggleLabStock);
   const moveEntryToFolder = useStore((s) => s.moveEntryToFolder);
   const setActiveWorkspace = useStore((s) => s.setActiveWorkspace);
+  const renameLibraryEntry = useStore((s) => s.renameLibraryEntry); // A4 (audit)
 
   const rawEntry = selectedId ? entriesById[selectedId] : null;
   // LibrarySingleInspector + Overview/Sequence/Annotations tabs +
@@ -376,20 +377,24 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
     cloneEntryToActiveProject,
     extractEntryToLoose,
     toggleLabStock,
-    openContainerWindow: noop,
-    createManualEditBranch: noop,
     openFolderPicker: (id) => moveEntryToFolder(id, ''),
     exportEntry,
     deleteEntry,
-    editPrimer: noop,
-    editPrimerNotes: noop,
-    showInDag: () => setActiveWorkspace('flow', { projectId: currentProjectId }),
-    cloneEntry: noop,
-    copyToLoose: noop,
-    usePrimerInDag: noop,
+    // A25 (audit) — open the DAG of the ENTRY's project, not whatever's active
+    // (the old version ignored the entry id + closed over currentProjectId).
+    showInDag: (id) => {
+      const e = useStore.getState().libraryEntries?.[id];
+      const pid = (e && e.projectId) || currentProjectId;
+      if (pid) useStore.getState().activateProject?.(pid);
+      setActiveWorkspace('flow');
+    },
+    // A5 (audit) — openContainerWindow / createManualEditBranch / editPrimer /
+    // editPrimerNotes / cloneEntry / copyToLoose / usePrimerInDag are NOT
+    // implemented yet. Omitted (not noop) so getActionsFor disables them with a
+    // tooltip instead of masquerading as working buttons.
   }), [
     currentProjectId, cloneEntryToActiveProject, extractEntryToLoose,
-    toggleLabStock, moveEntryToFolder, setActiveWorkspace, noop,
+    toggleLabStock, moveEntryToFolder, setActiveWorkspace,
     exportEntry, deleteEntry,
   ]);
 
@@ -467,7 +472,7 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
                   onUpdateFlags={onUpdateFlags}
                   onUpdateEdits={onUpdateEdits}
                   onAppendAdded={noop}
-                  onRenameItem={noop}
+                  onRenameItem={(name) => { if (selectedId) renameLibraryEntry(selectedId, name); }}
                   onRunAutoAnnotate={noop}
                 />
               </div>

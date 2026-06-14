@@ -88,6 +88,20 @@ describe('K2 — librarySlice', () => {
     expect(inDB.tags).toEqual(['bacterial', 'gfp']);
   });
 
+  it('renameLibraryEntry updates the name in state + IndexedDB, trimmed (A4)', async () => {
+    await useStore.getState().addLibraryEntry(makeEntry({ id: 'e1', name: 'old' }));
+    await useStore.getState().renameLibraryEntry('e1', '  pUC19-renamed  ');
+    expect(useStore.getState().libraryEntries.e1.name).toBe('pUC19-renamed');
+    const inDB = await getLibraryEntry('e1');
+    expect(inDB.name).toBe('pUC19-renamed');
+  });
+
+  it('renameLibraryEntry ignores empty / whitespace names (A4)', async () => {
+    await useStore.getState().addLibraryEntry(makeEntry({ id: 'e1', name: 'keep' }));
+    await useStore.getState().renameLibraryEntry('e1', '   ');
+    expect(useStore.getState().libraryEntries.e1.name).toBe('keep');
+  });
+
   it('selectVisibleLibraryEntries filters by kind and topology', async () => {
     await useStore.getState().addLibraryEntry(makeEntry({
       id: 'c1', kind: 'container',
