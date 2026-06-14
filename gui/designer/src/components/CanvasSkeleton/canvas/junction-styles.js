@@ -13,6 +13,7 @@
  *
  * Источник: `components/JunctionBlock.jsx` строки 9-24 (v0.5).
  */
+import { GG_ENZYMES } from '../../../golden-gate';
 
 export const JUNCTION_STROKE = {
   auto:        '#94a3b8', // grey-400 — ещё не определён kind (placeholder pair)
@@ -112,8 +113,13 @@ export function detectJunctionKind(from, to, opts = {}) {
   }
   const fromOver = fromEnd?.overhang || '';
   const toOver = toEnd?.overhang || '';
-  const isGGish = (s) => s && s.length === 4;
-  if (isGGish(fromOver) && isGGish(toOver)) return 'golden_gate';
+  // JC-5 — Golden Gate is defined by Type IIS ENZYME provenance, NOT overhang
+  // length (a classic RE also leaves 4-nt cohesive ends: EcoRI→AATT, BamHI→GATC).
+  // Classify by the cutting enzyme; a bare cohesive pair with no enzyme info is
+  // re_ligation, never golden_gate (enzyme-separation hard rule). A biologist can
+  // still override to golden_gate manually via SET_JUNCTION_KIND.
+  const enzUsed = fromEnd?.enzymeUsed || toEnd?.enzymeUsed || null;
+  if (enzUsed && GG_ENZYMES[enzUsed]) return 'golden_gate';
   if (fromOver || toOver) return 're_ligation';
   // Both ends explicitly blunt.
   if (fromEnd?.type === 'blunt' && toEnd?.type === 'blunt') return 'ligation';

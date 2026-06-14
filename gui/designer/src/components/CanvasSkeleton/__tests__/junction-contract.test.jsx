@@ -94,11 +94,18 @@ describe('K1 — inferEndRequirements', () => {
 });
 
 describe('K1 — detectJunctionKind regression (existing 4 rules)', () => {
-  it('both circular → auto; both linear no ends → overlap; GG-ish 4nt → golden_gate', () => {
+  it('both circular → auto; both linear no ends → overlap; cohesive ends classify by enzyme (JC-5)', () => {
     expect(detectJunctionKind({ topology: { circular: true } }, { topology: { circular: true } })).toBe('auto');
     expect(detectJunctionKind({ topology: { circular: false } }, { topology: { circular: false } })).toBe('overlap');
+    // JC-5 — a 4-nt cohesive pair with NO enzyme info is re_ligation, NOT golden_gate
+    // (a classic RE leaves 4-nt overhangs too; GG ⇔ Type IIS enzyme provenance).
     expect(detectJunctionKind(
       { topology: { circular: false }, ends: { threePrime: { overhang: 'GATC' } } },
+      { topology: { circular: false }, ends: { fivePrime: { overhang: 'CTAG' } } },
+    )).toBe('re_ligation');
+    // With a Type IIS enzyme recorded on the end → golden_gate.
+    expect(detectJunctionKind(
+      { topology: { circular: false }, ends: { threePrime: { overhang: 'GATC', enzymeUsed: 'BsaI' } } },
       { topology: { circular: false }, ends: { fivePrime: { overhang: 'CTAG' } } },
     )).toBe('golden_gate');
   });
@@ -512,8 +519,9 @@ describe('K5 — RECONCILE auto kind-change pushes info toast', () => {
     expect(j0.kind).toBe('overlap');
     expect(j0.status).toBe('auto');
 
-    // Give the containers GG-like 4-nt overhangs so detectJunctionKind
-    // now returns golden_gate, then reconcile the same pair again.
+    // Give the containers 4-nt cohesive overhangs so detectJunctionKind flips
+    // overlap → re_ligation (JC-5: no enzyme info → re_ligation, not golden_gate),
+    // then reconcile the same pair again.
     s = {
       ...s,
       containers: s.containers.map((c) => {
@@ -524,7 +532,7 @@ describe('K5 — RECONCILE auto kind-change pushes info toast', () => {
     };
     s = skeletonReducer(s, { type: 'RECONCILE_AUTO_JUNCTIONS', pairs: [{ fromContainerId: 'A', toContainerId: 'C' }] });
     const j1 = s.junctions.find((x) => x.fromContainerId === 'A');
-    expect(j1.kind).toBe('golden_gate'); // recomputed
+    expect(j1.kind).toBe('re_ligation'); // recomputed (cohesive, no enzyme → RE)
     expect((s.toasts || []).some((t) => t.kind === 'info')).toBe(true);
   });
 

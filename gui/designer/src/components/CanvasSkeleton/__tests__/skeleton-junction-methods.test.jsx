@@ -48,10 +48,13 @@ describe('detectJunctionKind heuristic', () => {
     expect(detectJunctionKind(C('a'), C('b'))).toBe('overlap');
   });
 
-  it('both ends = 4-nt overhang → golden_gate', () => {
+  it('both ends 4-nt cohesive, NO enzyme → re_ligation; a Type IIS enzyme → golden_gate (JC-5)', () => {
     const a = C('a', { ends: { threePrime: { overhang: 'GATC', type: '5overhang' } } });
     const b = C('b', { ends: { fivePrime: { overhang: 'CTAG', type: '5overhang' } } });
-    expect(detectJunctionKind(a, b)).toBe('golden_gate');
+    // No enzyme provenance → classic RE cohesive ends, not Golden Gate.
+    expect(detectJunctionKind(a, b)).toBe('re_ligation');
+    const ggA = C('a', { ends: { threePrime: { overhang: 'GATC', type: '5overhang', enzymeUsed: 'BsaI' } } });
+    expect(detectJunctionKind(ggA, b)).toBe('golden_gate');
   });
 
   it('one side has long overhang (RE digest sticky) → re_ligation', () => {
@@ -68,15 +71,15 @@ describe('detectJunctionKind heuristic', () => {
 });
 
 describe('RECONCILE_AUTO_JUNCTIONS uses detector', () => {
-  it('auto-junction created with kind from detector + autoDetectedKind preserved', () => {
+  it('auto-junction created with kind from detector + autoDetectedKind preserved (JC-5: BsaI → golden_gate)', () => {
     let s = buildInitialState();
-    // Inject 2 filled containers with GG-like ends.
+    // Inject 2 filled containers with Type IIS (BsaI) cohesive ends → golden_gate.
     s = {
       ...s,
       containers: [
         ...s.containers,
-        C('test-a', { ends: { threePrime: { overhang: 'GATC', type: '5overhang' } } }),
-        C('test-b', { ends: { fivePrime: { overhang: 'CTAG', type: '5overhang' } } }),
+        C('test-a', { ends: { threePrime: { overhang: 'GATC', type: '5overhang', enzymeUsed: 'BsaI' } } }),
+        C('test-b', { ends: { fivePrime: { overhang: 'CTAG', type: '5overhang', enzymeUsed: 'BsaI' } } }),
       ],
     };
     s = skeletonReducer(s, {
