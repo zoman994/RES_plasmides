@@ -26,6 +26,8 @@ import { gcPercent } from './assembly-primer-utils';
 import { draftFromZone } from './zone-pieces-to-dag';
 import { segmentBoundaries } from './assembly-model';
 import { pairKeyFor } from './junction-derive';
+import { GG_ENZYMES } from '../../../golden-gate';
+import { RE_ENZYMES } from '../../../restriction-db';
 
 const DEFAULT_BINDING_LEN = 20;   // no-Tm fallback length (when bindingTm unset)
 const DEFAULT_BINDING_TM = 60;    // annealing Tm target — same goal as findBinding
@@ -53,6 +55,30 @@ const TEMP_JUNCTION_CFG = {
 };
 
 /**
+ * F — resolve an enzyme name → the buildOverlapTail chemistry params for its
+ * method. Golden Gate: the Type IIS recognition + spacer (+ overhang length, for
+ * deriving the seamless overhang from the real junction bases). RE: the
+ * recognition site. An unknown/missing enzyme falls back to the method default
+ * (BsaI / EcoRI) so a tail is never silently broken — the UI gates the explicit
+ * choice. Non-enzyme methods → {} (buildOverlapTail uses its own defaults).
+ */
+export function enzymeTailParams(method, enzyme) {
+  if (method === 'golden_gate') {
+    const enz = GG_ENZYMES[enzyme] || GG_ENZYMES.BsaI;
+    return {
+      recognition: enz.recognition,
+      spacer: enz.spacer != null ? enz.spacer : 'A',
+      overhangLength: enz.overhangLength || 4,
+    };
+  }
+  if (method === 'restriction') {
+    const enz = RE_ENZYMES[enzyme] || RE_ENZYMES.EcoRI;
+    return { reSite: enz.site };
+  }
+  return {};
+}
+
+/**
  * A3 (JUNCTION layer 3) — resolve the per-junction config for the join
  * between `leftId` and `rightId` from `zone.junctions[pairKey]`. Falls back to
  * the temp default + `opGroup.kind` as the method when no stored config (so
@@ -66,6 +92,9 @@ function junctionConfig(state, opGroup, leftId, rightId) {
     if (j) {
       return {
         method: j.method || (opGroup && opGroup.kind),
+        // F — the chosen enzyme (GG/RE) rides the junction config; falls back to
+        // the zone's construct-level enzyme, then the engine default by method.
+        enzyme: j.enzyme || (zone && zone.assemblyEnzyme) || undefined,
         overlapTarget: j.overlapTarget != null ? j.overlapTarget : TEMP_JUNCTION_CFG.overlapTarget,
         overlapLength: j.overlapLength != null ? j.overlapLength : TEMP_JUNCTION_CFG.overlapLength,
         overlapTm: j.overlapTm != null ? j.overlapTm : null,
@@ -190,37 +219,67 @@ export function resolveManualJunctionTail({
   // ONE overhang per junction, owned by the LEFT piece — both fwd and rev encode
   // it (review 12.06: sourcing R's value on rev gave a non-complementary end).
   const ohPiece = pieces.find((p) => p && p.id === leftSegId) || null;
+  // F — the junction's enzyme drives the recognition (GG) / site (RE); an
+  // explicit piece overhang/site still wins. No left-piece SEQUENCE is available
+  // here (manual junctions have no neighbour seq), so the GG overhang keeps the
+  // 'AAAA' fallback when the piece carries none — the auto path derives it.
+  const ep = enzymeTailParams(method, cfg && cfg.enzyme);
   return buildOverlapTail(side, '', {
     method,
+    recognition: ep.recognition,
+    spacer: ep.spacer,
     overhang: (ohPiece && ohPiece.ggOverhang) || 'AAAA',
-    reSite: (ohPiece && ohPiece.reSite) || '',
+    reSite: (ohPiece && ohPiece.reSite) || ep.reSite || '',
   });
+}
+
+/**
+ * F — the GG fusion overhang for a junction, owned by its LEFT piece. An
+ * explicit `piece.ggOverhang` wins; otherwise the SEAMLESS overhang is the left
+ * piece's last `overhangLength` real bases (so a designed GG scar matches the
+ * sequence) instead of the old flat 'AAAA' placeholder. Non-GG → undefined.
+ */
+function ggOverhangFor(leftPiece, leftSeq, method, ep) {
+  if (method !== 'golden_gate') return undefined;
+  if (leftPiece && leftPiece.ggOverhang) return leftPiece.ggOverhang;
+  const n = ep.overhangLength || 4;
+  return String(leftSeq || '').slice(-n) || undefined;
 }
 
 function buildFwdTail(logicalPrev, leftSnippetSeq, state, cfg) {
   // No logical-prev: only the accumulated snippet content (group starts with a
   // snippet ⇒ first amplifiable piece carries it on its tail).
   if (!logicalPrev) return leftSnippetSeq;
-  const tail = buildOverlapTail('fwd', pieceSequence(logicalPrev, state), {
+  // F — the L|R junction's chemistry is owned by the LEFT piece (= logicalPrev).
+  const ep = enzymeTailParams(cfg.method, cfg.enzyme);
+  const prevSeq = pieceSequence(logicalPrev, state);
+  const tail = buildOverlapTail('fwd', prevSeq, {
     method: cfg.method, // A3: per-junction method (zone.junctions), not opGroup.kind
     overlapTarget: cfg.overlapTarget,
     overlapLength: cfg.overlapLength,
     overlapTm: cfg.overlapTm,
-    overhang: logicalPrev.ggOverhang || 'AAAA',
-    reSite: logicalPrev.reSite || '',
+    recognition: ep.recognition,
+    spacer: ep.spacer,
+    overhang: ggOverhangFor(logicalPrev, prevSeq, cfg.method, ep) || 'AAAA',
+    reSite: logicalPrev.reSite || ep.reSite || '',
   });
   return tail + leftSnippetSeq;
 }
 
 function buildRevTail(piece, logicalNext, state, cfg) {
   if (!logicalNext) return '';
+  // F — for the piece|next junction the LEFT piece is `piece` itself.
+  const ep = enzymeTailParams(cfg.method, cfg.enzyme);
+  const pSeq = pieceSequence(piece, state);
   return buildOverlapTail('rev', pieceSequence(logicalNext, state), {
     method: cfg.method, // A3: per-junction method (zone.junctions), not opGroup.kind
     overlapTarget: cfg.overlapTarget,
     overlapLength: cfg.overlapLength,
     overlapTm: cfg.overlapTm,
-    overhang: piece.ggOverhang || 'AAAA',
-    reSite: piece.reSite || '',
+    recognition: ep.recognition,
+    spacer: ep.spacer,
+    overhang: ggOverhangFor(piece, pSeq, cfg.method, ep) || 'AAAA',
+    reSite: piece.reSite || ep.reSite || '',
   });
 }
 

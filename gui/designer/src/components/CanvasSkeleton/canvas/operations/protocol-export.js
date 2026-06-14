@@ -158,15 +158,19 @@ function stepLigate(op, containersById) {
   const fragmentIds = op.params?.fragmentIds || op.inputs || [];
   const fragmentNames = fragmentIds.map((id) => resolveName(containersById, id)).join(', ');
   const ends = op.params?.ends || 'blunt';
+  // F — an RE-лигирование op carries the chosen restriction enzyme: name it (the
+  // digest + ligation) so the protocol matches the biolog's choice, not a blank.
+  const enz = op.params?.enzyme;
   const ori = op.origin || {};
   const zeroOverhang = Array.isArray(ori.overlaps) ? ori.overlaps.filter((k) => k === 0).length : 0;
   const stickyWarning = (ends === 'sticky' && zeroOverhang > 0)
     ? `\n⚠ WARNING: ${zeroOverhang} junction'ов без совпадающего overhang'а — концы не лигируются.`
     : '';
   return {
-    title: `Лигирование (${ends})`,
+    title: `Лигирование (${enz ? `${enz}, ` : ''}${ends})`,
     body: [
       `- Фрагменты: ${fragmentNames}`,
+      ...(enz ? [`- Рестрикция концов: ${enz} (буфер ${ENZYME_BUFFERS[enz] || 'CutSmart'}), затем очистка перед лигированием.`] : []),
       `- T4 DNA Ligase 400 U/мкл (NEB M0202) — 1 мкл`,
       `- T4 Ligase Buffer 10× — 2 мкл`,
       ends === 'blunt'
@@ -247,7 +251,7 @@ function buildReagentsBlock(operations, containersById) {
     if (op.kind === 'cut' && Array.isArray(op.params?.enzymes)) {
       for (const e of op.params.enzymes) enzymes.add(e);
     }
-    if (op.kind === 'golden_gate' && op.params?.enzyme) enzymes.add(op.params.enzyme);
+    if ((op.kind === 'golden_gate' || op.kind === 'ligate') && op.params?.enzyme) enzymes.add(op.params.enzyme);
     if (op.params?.primerPairId) {
       const oligo = containersById[op.params.primerPairId];
       if (oligo?.kind === 'oligonucleotide') primerOligos.add(oligo.id);

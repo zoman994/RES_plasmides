@@ -49,6 +49,16 @@ export const METHOD_TO_OP_KIND = {
 };
 
 /**
+ * F — the enzyme the realised assembly OP carries (→ protocol). An enzyme-driven
+ * method (GG/RE) takes the construct enzyme, else the method default; non-enzyme
+ * methods carry none. Keeps the op + protocol naming the biolog's actual choice.
+ */
+function realiseEnzyme(method, draftEnzyme) {
+  if (method !== 'golden_gate' && method !== 'restriction') return null;
+  return draftEnzyme || (method === 'golden_gate' ? 'BsaI' : 'EcoRI');
+}
+
+/**
  * Fix B — pull the realised ops' pre-existing source containers into the zone
  * (zoneId + unpinned) so they render as the op inputs (source→PCR→frag). Frag /
  * product diff containers aren't in `containers` yet → untouched. Pure; returns
@@ -266,6 +276,9 @@ export function draftFromZone(state, zone) {
     // chosen method for boundaries with no seeded junction config (notably the
     // single-fragment self-closure, where the finalizer clears zone.junctions).
     assemblyMethod: zone.assemblyMethod || null,
+    // F — the construct-level enzyme (GG Type IIS / RE), so realise's assembly op
+    // params + the protocol can name the chosen enzyme instead of defaulting BsaI.
+    assemblyEnzyme: zone.assemblyEnzyme || null,
     segments,
     realiseRevision: zone.realiseRevision || 0,
     position: zone.bounds ? { x: zone.bounds.x, y: zone.bounds.y } : null,
@@ -397,6 +410,7 @@ export function realiseAssembly(state, targetId, perBoundaryMethods, options = {
   if (fragContainerIds.length >= 2) {
     const repMethod = (perBoundaryMethods && perBoundaryMethods[0]) || draft.assemblyMethod
       || ((draft.topology && draft.topology.circular) ? 'gibson' : 'overlap_pcr');
+    const asmEnzyme = realiseEnzyme(repMethod, draft.assemblyEnzyme);
     const asmOpId = `op-${uuidv7()}`;
     const asmX = 80 + col * STEP_X;
     operations.push({
@@ -406,7 +420,10 @@ export function realiseAssembly(state, targetId, perBoundaryMethods, options = {
       position: { x: asmX, y: baseY },
       inputs: [...fragContainerIds],
       outputs: [finalId],
-      params: { perBoundaryMethods: perBoundaryMethods || {}, method: repMethod },
+      params: {
+        perBoundaryMethods: perBoundaryMethods || {}, method: repMethod,
+        ...(asmEnzyme ? { enzyme: asmEnzyme } : {}),
+      },
       origin: { kind: 'realised-assembly', assemblyId: targetId, revision },
       pinned: false,
     });
@@ -418,6 +435,7 @@ export function realiseAssembly(state, targetId, perBoundaryMethods, options = {
     // self-ligation). Emit a self-closure op (frag → circular product) so the
     // product is reachable instead of floating.
     const closeMethod = (perBoundaryMethods && perBoundaryMethods[0]) || draft.assemblyMethod || 'kld';
+    const closeEnzyme = realiseEnzyme(closeMethod, draft.assemblyEnzyme);
     const closeOpId = `op-${uuidv7()}`;
     const closeX = 80 + col * STEP_X;
     operations.push({
@@ -427,7 +445,7 @@ export function realiseAssembly(state, targetId, perBoundaryMethods, options = {
       position: { x: closeX, y: baseY },
       inputs: [fragContainerIds[0]],
       outputs: [finalId],
-      params: { method: closeMethod, selfClosure: true },
+      params: { method: closeMethod, selfClosure: true, ...(closeEnzyme ? { enzyme: closeEnzyme } : {}) },
       origin: { kind: 'realised-assembly', assemblyId: targetId, revision },
       pinned: false,
     });

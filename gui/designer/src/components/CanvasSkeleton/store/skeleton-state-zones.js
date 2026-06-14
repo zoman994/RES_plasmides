@@ -15,7 +15,7 @@ import {
 import { applyZoneLayout } from '../lib/zone-layout';
 import { validateZoneCreate, validateZoneUpdate } from '../lib/zone-invariants';
 import { mergeBoundingBoxes, computeBoundingBox } from '../lib/zone-bounds';
-import { pairKeyFor } from '../lib/junction-derive';
+import { pairKeyFor, defaultEnzymeForMethod } from '../lib/junction-derive';
 import { STRINGS } from '../../../lib/strings';
 
 const Z = STRINGS.canvasSkeleton.zones;
@@ -45,8 +45,10 @@ const ZONE_ACTIONS = new Set([
 ]);
 
 // JUNCTION layer 3 (J1) — fields a junction config record carries.
+// F — `enzyme` joins the set: the Type IIS (GG) / classical (RE) enzyme chosen
+// for this junction's chemistry, threaded into primer tails + realise + protocol.
 const JUNCTION_CONFIG_FIELDS = [
-  'method', 'overlapTarget', 'overlapLength', 'overlapTm',
+  'method', 'enzyme', 'overlapTarget', 'overlapLength', 'overlapTm',
   'bindingLength', 'bindingTm', 'locked', 'lockReason', 'autoMode',
 ];
 
@@ -366,12 +368,26 @@ export function zonesReducer(state, action) {
     case 'SET_ASSEMBLY_METHOD': {
       const zone = zones.find((z) => z.id === action.zoneId);
       if (!zone || !action.method) return state;
+      // F — the construct-level enzyme. An enzyme-driven method (GG/RE) resolves
+      // the enzyme (explicit action.enzyme wins, else the zone's prior choice,
+      // else the method default); a non-enzyme method (overlap/kld/blunt) clears
+      // it so a stale BsaI can't linger on an overlap construct.
+      const needsEnz = action.method === 'golden_gate' || action.method === 'restriction';
+      const enzyme = !needsEnz
+        ? null
+        : (action.enzyme !== undefined ? action.enzyme
+          : (zone.assemblyEnzyme || defaultEnzymeForMethod(action.method)));
       const cur = zone.junctions || {};
       const nextJ = {};
       for (const [k, j] of Object.entries(cur)) {
-        nextJ[k] = (j && j.autoMode === 'manual') ? j : { ...j, method: action.method };
+        if (j && j.autoMode === 'manual') { nextJ[k] = j; continue; }
+        const nj = { ...j, method: action.method };
+        if (enzyme) nj.enzyme = enzyme; else delete nj.enzyme;
+        nextJ[k] = nj;
       }
-      return patchZone(state, action.zoneId, { assemblyMethod: action.method, junctions: nextJ });
+      return patchZone(state, action.zoneId, {
+        assemblyMethod: action.method, assemblyEnzyme: enzyme, junctions: nextJ,
+      });
     }
 
     case 'SPLIT_ZONE':

@@ -99,8 +99,9 @@ export function applyJunctionConfig(next, prev) {
     let jChanged = false;
     for (const b of bounds) {
       if (curJ[b.pairKey]) newJ[b.pairKey] = curJ[b.pairKey]; // keep (incl. manual)
-      // UX slice 3 — a new junction inherits the construct-level method.
-      else { newJ[b.pairKey] = seedJunction(zone.assemblyMethod || DEFAULT_JUNCTION_METHOD); jChanged = true; }
+      // UX slice 3 / F — a new junction inherits the construct-level method AND
+      // its enzyme (GG/RE), so a freshly-added fragment is realisable at once.
+      else { newJ[b.pairKey] = seedJunction(zone.assemblyMethod || DEFAULT_JUNCTION_METHOD, zone.assemblyEnzyme); jChanged = true; }
     }
     for (const k of Object.keys(curJ)) {
       if (!validKeys.has(k)) jChanged = true; // orphan dropped (not copied)

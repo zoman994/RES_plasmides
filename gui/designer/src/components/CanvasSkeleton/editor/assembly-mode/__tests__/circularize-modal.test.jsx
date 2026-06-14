@@ -52,13 +52,15 @@ describe('CircularizeModal', () => {
     expect(screen.getByTestId('circularize-method-kld').disabled).toBe(false);
   });
 
-  it('confirm reports {circular, method, applyToAll}', () => {
+  it('confirm reports {circular, method, applyToAll, enzyme} (enzyme null for a non-enzyme method)', () => {
     const onConfirm = vi.fn();
     render(<CircularizeModal draft={draftN(3)} assemblyMethod="overlap_pcr" onConfirm={onConfirm} onCancel={vi.fn()} />);
     fireEvent.click(screen.getByTestId('circularize-topology-circular'));
     fireEvent.click(screen.getByTestId('circularize-method-gibson'));
     fireEvent.click(screen.getByTestId('circularize-confirm'));
-    expect(onConfirm).toHaveBeenCalledWith({ circular: true, method: 'gibson', applyToAll: true });
+    expect(onConfirm).toHaveBeenCalledWith({
+      circular: true, method: 'gibson', applyToAll: true, enzyme: null,
+    });
   });
 
   it('unchecking «применить ко всем» reports applyToAll:false', () => {
@@ -66,7 +68,35 @@ describe('CircularizeModal', () => {
     render(<CircularizeModal draft={draftN(2, true)} assemblyMethod="gibson" onConfirm={onConfirm} onCancel={vi.fn()} />);
     fireEvent.click(screen.getByTestId('circularize-apply-all')); // uncheck
     fireEvent.click(screen.getByTestId('circularize-confirm'));
-    expect(onConfirm).toHaveBeenCalledWith({ circular: true, method: 'gibson', applyToAll: false });
+    expect(onConfirm).toHaveBeenCalledWith({
+      circular: true, method: 'gibson', applyToAll: false, enzyme: null,
+    });
+  });
+
+  // F — Golden Gate / RE-лигирование now expose an enzyme picker (no enzyme
+  // picker before = the chosen chemistry could never be realised). overlap/Gibson
+  // show none. The chosen enzyme rides onConfirm.
+  it('Golden Gate shows a Type IIS enzyme picker; the choice rides onConfirm', () => {
+    const onConfirm = vi.fn();
+    render(<CircularizeModal draft={draftN(3, true)} assemblyMethod="golden_gate" onConfirm={onConfirm} onCancel={vi.fn()} />);
+    const sel = screen.getByTestId('circularize-enzyme');
+    expect(sel).toBeTruthy();
+    expect(sel.value).toBe('BsaI'); // default
+    fireEvent.change(sel, { target: { value: 'BsmBI' } });
+    fireEvent.click(screen.getByTestId('circularize-confirm'));
+    expect(onConfirm).toHaveBeenCalledWith({
+      circular: true, method: 'golden_gate', applyToAll: true, enzyme: 'BsmBI',
+    });
+  });
+
+  it('RE-лигирование shows a restriction-enzyme picker (default EcoRI)', () => {
+    render(<CircularizeModal draft={draftN(3, true)} assemblyMethod="restriction" onConfirm={vi.fn()} onCancel={vi.fn()} />);
+    expect(screen.getByTestId('circularize-enzyme').value).toBe('EcoRI');
+  });
+
+  it('Gibson / overlap show NO enzyme picker', () => {
+    render(<CircularizeModal draft={draftN(3, true)} assemblyMethod="gibson" onConfirm={vi.fn()} onCancel={vi.fn()} />);
+    expect(screen.queryByTestId('circularize-enzyme')).toBeNull();
   });
 
   it('cancel + Escape both call onCancel', () => {

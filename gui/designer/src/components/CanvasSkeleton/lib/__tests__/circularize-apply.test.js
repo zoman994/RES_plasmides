@@ -32,7 +32,7 @@ describe('circularizeActions', () => {
     });
     expect(out).toEqual([
       { kind: 'topology', draftId: 'z1', circular: true, isZoneTarget: true },
-      { kind: 'assemblyMethod', zoneId: 'z1', method: 'golden_gate' },
+      { kind: 'assemblyMethod', zoneId: 'z1', method: 'golden_gate', enzyme: null },
     ]);
   });
 
@@ -66,7 +66,7 @@ describe('circularizeActions', () => {
       draftId: 'z1', circular: true, method: 'restriction', applyToAll: false, isZoneTarget: true, segments: segs,
     });
     expect(out[1]).toEqual({
-      kind: 'closureMethod', zoneId: 'z1', pairKey: pairKeyFor('c', 'a'), method: 'restriction',
+      kind: 'closureMethod', zoneId: 'z1', pairKey: pairKeyFor('c', 'a'), method: 'restriction', enzyme: null,
     });
   });
 

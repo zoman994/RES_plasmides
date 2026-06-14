@@ -38,6 +38,20 @@ export function junctionKindForMethod(method) {
   return METHOD_TO_JUNCTION[method] || 'overlap';
 }
 
+/**
+ * F — the default enzyme for an enzyme-driven method. Golden Gate needs ONE
+ * Type IIS enzyme (BsaI = the MoClo/iGEM standard); RE-лигирование needs a
+ * classical restriction enzyme (EcoRI = the canonical default). Non-enzyme
+ * methods (overlap/gibson/kld/blunt) → null (no enzyme field on the junction).
+ * The UI picker lets the biolog change it; this only keeps a junction
+ * realisable out of the box instead of shipping a placeholder recognition.
+ */
+export function defaultEnzymeForMethod(method) {
+  if (method === 'golden_gate') return 'BsaI';
+  if (method === 'restriction') return 'EcoRI';
+  return null;
+}
+
 // Reverse map junction.kind → canonical engine method (for the UI: JunctionControl
 // edits in junction.kind via JunctionPopover, writes the engine method to
 // zone.junctions). `preformed`/`ligation` (no overlap reaction) → direct_ligation.
@@ -59,9 +73,9 @@ export function methodForJunctionKind(kind) {
  * the binding pair is Tm-targeted by default (bindingLength null + bindingTm 60,
  * A1b) so seeded junctions extend AT-rich ends instead of shipping flat 20 nt.
  */
-export function seedJunction(method = DEFAULT_JUNCTION_METHOD) {
+export function seedJunction(method = DEFAULT_JUNCTION_METHOD, enzyme) {
   const params = defaultJunctionParams(junctionKindForMethod(method));
-  return {
+  const seed = {
     method,
     overlapTarget: params.overlapTarget,
     overlapLength: params.overlapLength,
@@ -69,6 +83,12 @@ export function seedJunction(method = DEFAULT_JUNCTION_METHOD) {
     bindingLength: null,
     bindingTm: DEFAULT_BINDING_TM,
   };
+  // F — an enzyme-driven method (GG / RE) seeds with a default enzyme (explicit
+  // arg wins) so the junction is realisable out of the box; overlap/kld/blunt
+  // carry NO enzyme field (shape unchanged for the overlap default).
+  const enz = enzyme !== undefined ? enzyme : defaultEnzymeForMethod(method);
+  if (enz) seed.enzyme = enz;
+  return seed;
 }
 
 /**

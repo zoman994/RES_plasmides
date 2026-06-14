@@ -19,6 +19,7 @@
 import JunctionPopover from './JunctionPopover';
 import {
   junctionKindForMethod, methodForJunctionKind, seedJunction, INTERNAL_METHODS,
+  defaultEnzymeForMethod,
 } from '../lib/junction-derive';
 import { defaultJunctionParams } from './junction-styles';
 
@@ -39,6 +40,8 @@ export default function JunctionControl({
     overlapTarget: cfg.overlapTarget != null ? cfg.overlapTarget : 'right',
     overlapLength: cfg.overlapLength,
     overlapTm: cfg.overlapTm,
+    // F — surface the chosen enzyme (GG/RE) so the popover's picker reflects it.
+    enzyme: cfg.enzyme,
     status: cfg.autoMode === 'manual' ? 'manual' : 'auto',
   };
   return (
@@ -54,7 +57,9 @@ export default function JunctionControl({
         if (junction.kind === kindId) return;
         // JC-4 — snap overlap params to the new kind's defaults so a stale
         // overlapLength (e.g. 30 bp) can't linger on a non-overlap chemistry.
-        onChange({ method: methodForJunctionKind(kindId), ...defaultJunctionParams(kindId) });
+        // F — seed the new kind's default enzyme (RE→EcoRI; overlap→null clears).
+        const method = methodForJunctionKind(kindId);
+        onChange({ method, enzyme: defaultEnzymeForMethod(method), ...defaultJunctionParams(kindId) });
       }}
       onSetParams={(patch) => onChange && onChange(patch)}
       onResetAuto={() => onChange && onChange({ ...seedJunction(), autoMode: 'auto' })}

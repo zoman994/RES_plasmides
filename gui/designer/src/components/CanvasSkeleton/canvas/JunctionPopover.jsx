@@ -18,6 +18,23 @@ import {
   defaultJunctionParams,
   inferEndRequirements,
 } from './junction-styles';
+import { GG_ENZYMES } from '../../../golden-gate';
+import { RE_ENZYMES } from '../../../restriction-db';
+
+// F — enzyme choices per junction kind. GG = the 5 Type IIS; RE = common cloning
+// workhorses (the full 63-enzyme DB is too long for this popover).
+const GG_ENZYME_KEYS = Object.keys(GG_ENZYMES);
+const RE_ENZYME_KEYS = ['EcoRI', 'BamHI', 'HindIII', 'XhoI', 'SalI', 'NdeI', 'NcoI', 'XbaI', 'PstI', 'KpnI', 'SacI', 'SpeI', 'NheI', 'BglII']
+  .filter((k) => RE_ENZYMES[k]);
+function enzymeKeysForKind(kind) {
+  if (kind === 'golden_gate') return GG_ENZYME_KEYS;
+  if (kind === 're_ligation') return RE_ENZYME_KEYS;
+  return [];
+}
+function enzymeRecognition(kind, key) {
+  if (kind === 'golden_gate') return GG_ENZYMES[key] && GG_ENZYMES[key].recognition;
+  return RE_ENZYMES[key] && RE_ENZYMES[key].site;
+}
 
 // JC-2 — 'preformed' removed from the picker: the «ничего не делаем» tile mapped
 // to a real blunt ligation (direct_ligation) — the label lied. (An already-
@@ -88,6 +105,8 @@ export default function JunctionPopover({
   const ends = inferEndRequirements(kind, junction.overlapTarget, junction.overlapLength);
   const activeMethod = METHODS.find((m) => m.id === kind);
   const decided = junction.status === 'manual';
+  // F — enzyme-driven kinds (GG / RE) expose an enzyme picker.
+  const enzymeKeys = enzymeKeysForKind(kind);
 
   return (
     <div
@@ -180,6 +199,35 @@ export default function JunctionPopover({
             >{editing ? 'свернуть' : 'изменить'}</button>
           </div>
         </div>
+
+        {/* F — enzyme picker (GG / RE). Always visible for enzyme kinds: the
+            chosen enzyme defines the chemistry, so it leads, not collapsed. */}
+        {enzymeKeys.length > 0 && (
+          <div
+            data-testid="junction-popover-enzyme-row"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '8px 12px', borderBottom: '1px solid var(--border-subtle)', fontSize: 11.5,
+            }}
+          >
+            <span style={{ color: 'var(--text-secondary)' }}>
+              {kind === 'golden_gate' ? 'Фермент Type IIS:' : 'Рестриктаза:'}
+            </span>
+            <select
+              data-testid="junction-popover-enzyme"
+              value={junction.enzyme || enzymeKeys[0]}
+              onChange={(e) => onSetParams?.({ enzyme: e.target.value })}
+              style={{
+                fontSize: 11.5, padding: '2px 6px', borderRadius: 4,
+                border: '1px solid var(--border-subtle)', background: 'var(--surface-1)', color: 'var(--text-primary)',
+              }}
+            >
+              {enzymeKeys.map((k) => (
+                <option key={k} value={k}>{`${k} (${enzymeRecognition(kind, k)})`}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {/* Sections 1+2 — the full editor, CSS-collapsed for a decided junction. */}
         <div

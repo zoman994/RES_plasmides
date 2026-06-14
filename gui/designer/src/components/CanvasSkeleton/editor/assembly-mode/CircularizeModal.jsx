@@ -13,8 +13,22 @@
  * Mirrors the OpGroupPicker dialog contract (backdrop, Esc, confirm/cancel).
  */
 import { useEffect, useMemo, useState } from 'react';
-import { CLOSURE_METHODS, INTERNAL_METHODS } from '../../lib/junction-derive';
+import { CLOSURE_METHODS, INTERNAL_METHODS, defaultEnzymeForMethod } from '../../lib/junction-derive';
 import { validateClosure } from '../../lib/circularize-validate';
+import { GG_ENZYMES } from '../../../../golden-gate';
+import { RE_ENZYMES } from '../../../../restriction-db';
+
+// F — enzyme choices offered per method. GG = the 5 Type IIS enzymes; RE = a
+// curated set of common cloning workhorses (the full 63-enzyme DB is overkill for
+// a closure dropdown — the per-junction ромб can reach the rest later).
+const GG_ENZYME_KEYS = Object.keys(GG_ENZYMES);
+const COMMON_RE_KEYS = ['EcoRI', 'BamHI', 'HindIII', 'XhoI', 'SalI', 'NdeI', 'NcoI', 'XbaI', 'PstI', 'KpnI', 'SacI', 'SpeI', 'NheI', 'BglII']
+  .filter((k) => RE_ENZYMES[k]);
+function enzymeKeysFor(method) {
+  if (method === 'golden_gate') return GG_ENZYME_KEYS;
+  if (method === 'restriction') return COMMON_RE_KEYS;
+  return [];
+}
 
 // C4 — validation badge palette by level (design-system emerald/amber).
 const VBADGE = {
@@ -125,6 +139,8 @@ export default function CircularizeModal({
     return m;
   });
   const [applyToAll, setApplyToAll] = useState(true);
+  // F — the chosen enzyme (GG Type IIS / RE). Defaults per the initial method.
+  const [enzyme, setEnzyme] = useState(() => defaultEnzymeForMethod(assemblyMethod || (circular ? 'gibson' : 'overlap_pcr')));
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onCancel(); };
@@ -144,10 +160,21 @@ export default function CircularizeModal({
   }, [method, methods, circular, segments]);
 
   const meta = META[effectiveMethod] || META.gibson;
+  // F — the enzyme offered for the effective method (GG/RE only). A stale enzyme
+  // from a previous method category (e.g. BsmBI after switching GG→RE) falls back
+  // to the new method's default, so the picker + onConfirm stay coherent.
+  const enzymeKeys = enzymeKeysFor(effectiveMethod);
+  const needsEnzyme = enzymeKeys.length > 0;
+  const effectiveEnzyme = useMemo(() => {
+    if (!needsEnzyme) return null;
+    return enzymeKeys.includes(enzyme) ? enzyme : defaultEnzymeForMethod(effectiveMethod);
+  }, [needsEnzyme, enzymeKeys, enzyme, effectiveMethod]);
   // C4 — live biovalidation of the chosen method against the real fragments.
   const verdict = useMemo(
-    () => validateClosure({ method: effectiveMethod, segments: draft && draft.segments, circular }),
-    [effectiveMethod, draft, circular],
+    () => validateClosure({
+      method: effectiveMethod, segments: draft && draft.segments, circular, enzyme: effectiveEnzyme || 'BsaI',
+    }),
+    [effectiveMethod, draft, circular, effectiveEnzyme],
   );
 
   return (
@@ -245,6 +272,29 @@ export default function CircularizeModal({
           <span style={{ color: 'var(--text-primary)' }}>{meta.bio}</span>
         </div>
 
+        {/* F — enzyme picker for the enzyme-driven methods (GG Type IIS / RE). */}
+        {needsEnzyme && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 14px 6px', fontSize: 11.5, color: 'var(--text-secondary)' }}>
+            <span>{effectiveMethod === 'golden_gate' ? 'Фермент Type IIS:' : 'Рестриктаза:'}</span>
+            <select
+              data-testid="circularize-enzyme"
+              value={effectiveEnzyme || ''}
+              onChange={(e) => setEnzyme(e.target.value)}
+              style={{
+                fontSize: 11.5, padding: '3px 6px', borderRadius: 4,
+                border: '1px solid var(--border-subtle)', background: 'var(--surface-1)', color: 'var(--text-primary)',
+              }}
+            >
+              {enzymeKeys.map((k) => {
+                const rec = effectiveMethod === 'golden_gate'
+                  ? (GG_ENZYMES[k] && GG_ENZYMES[k].recognition)
+                  : (RE_ENZYMES[k] && RE_ENZYMES[k].site);
+                return <option key={k} value={k}>{`${k} (${rec})`}</option>;
+              })}
+            </select>
+          </label>
+        )}
+
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 14px 8px', fontSize: 11.5, color: 'var(--text-secondary)', cursor: 'pointer' }}>
           <input type="checkbox" data-testid="circularize-apply-all" checked={applyToAll} onChange={(e) => setApplyToAll(e.target.checked)} />
           применить метод ко всем стыкам (иначе — только к замыканию; внутренние настраиваются по ромбу)
@@ -256,7 +306,9 @@ export default function CircularizeModal({
           <button
             type="button"
             data-testid="circularize-confirm"
-            onClick={() => onConfirm({ circular, method: effectiveMethod, applyToAll })}
+            onClick={() => onConfirm({
+              circular, method: effectiveMethod, applyToAll, enzyme: effectiveEnzyme,
+            })}
             style={primaryBtn}
           >
             {circular ? '◉ Замкнуть в плазмиду' : '— Оставить линейной'}

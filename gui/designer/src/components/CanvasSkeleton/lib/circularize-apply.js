@@ -11,7 +11,7 @@
 import { pairKeyFor } from './junction-derive';
 
 export function circularizeActions({
-  draftId, circular, method, applyToAll, isZoneTarget, segments,
+  draftId, circular, method, applyToAll, isZoneTarget, segments, enzyme = null,
 }) {
   // M-CIRCULARIZE — a ZONE assembly sets topology via SET_ZONE_TOPOLOGY (the
   // legacy SET_ASSEMBLY_DRAFT_TOPOLOGY only touches assemblyDrafts → no-op on a
@@ -19,7 +19,8 @@ export function circularizeActions({
   const out = [{ kind: 'topology', draftId, circular, isZoneTarget: !!isZoneTarget }];
   if (isZoneTarget && method) {
     if (applyToAll) {
-      out.push({ kind: 'assemblyMethod', zoneId: draftId, method });
+      // F — the chosen enzyme (GG/RE) rides the assembly-method action.
+      out.push({ kind: 'assemblyMethod', zoneId: draftId, method, enzyme });
     } else if (circular) {
       const segs = segments || [];
       if (segs.length >= 2) {
@@ -28,6 +29,7 @@ export function circularizeActions({
           zoneId: draftId,
           pairKey: pairKeyFor(segs[segs.length - 1].id, segs[0].id),
           method,
+          enzyme,
         });
       }
     }
@@ -44,7 +46,7 @@ export function applyCircularize(actions, params) {
     if (a.kind === 'topology') {
       if (a.isZoneTarget) actions.zoneDispatch({ type: 'SET_ZONE_TOPOLOGY', zoneId: a.draftId, circular: a.circular });
       else actions.setAssemblyDraftTopology(a.draftId, a.circular);
-    } else if (a.kind === 'assemblyMethod') actions.zoneDispatch({ type: 'SET_ASSEMBLY_METHOD', zoneId: a.zoneId, method: a.method });
-    else if (a.kind === 'closureMethod') actions.zoneDispatch({ type: 'SET_BOUNDARY_OVERLAP', zoneId: a.zoneId, pairKey: a.pairKey, method: a.method, autoMode: 'manual' });
+    } else if (a.kind === 'assemblyMethod') actions.zoneDispatch({ type: 'SET_ASSEMBLY_METHOD', zoneId: a.zoneId, method: a.method, enzyme: a.enzyme });
+    else if (a.kind === 'closureMethod') actions.zoneDispatch({ type: 'SET_BOUNDARY_OVERLAP', zoneId: a.zoneId, pairKey: a.pairKey, method: a.method, enzyme: a.enzyme, autoMode: 'manual' });
   }
 }

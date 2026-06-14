@@ -159,10 +159,12 @@ export default function AssemblyShellBody({ draft, embedded = false }) {
   // method. One method for the whole assembly (Игорь) when «применить ко всем»,
   // else only the closure junction (last→first). The closure actually realises
   // into the DAG in C2 (zone-pieces-to-dag); here we set topology + config.
-  const onCircularizeConfirm = useCallback(({ circular, method, applyToAll }) => {
+  const onCircularizeConfirm = useCallback(({
+    circular, method, applyToAll, enzyme,
+  }) => {
     setCircularizeOpen(false);
     applyCircularize(actions, {
-      draftId, circular, method, applyToAll, isZoneTarget, segments: draft.segments,
+      draftId, circular, method, applyToAll, enzyme, isZoneTarget, segments: draft.segments,
     });
   }, [actions, draftId, isZoneTarget, draft.segments]);
 
