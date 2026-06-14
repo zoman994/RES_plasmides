@@ -178,8 +178,6 @@ export const STRINGS = {
       themeLabel: 'Theme',
       seqWrapLabel: 'Sequence wrap',
       seqWrapHint: 'Characters per line in the Sequence tab. 60 is the GenBank default.',
-      primerPrefixLabel: 'Primer name prefix',
-      primerPrefixHint: 'Prepended to auto-generated oligo names (e.g. p_ → p_amp_F).',
       annotateOnImportLabel: 'Annotate on import',
       annotateOnImportHint: 'Default state of «Annotate now» in the import modal.',
       annotateOnImportToggle: 'Run predictors automatically',

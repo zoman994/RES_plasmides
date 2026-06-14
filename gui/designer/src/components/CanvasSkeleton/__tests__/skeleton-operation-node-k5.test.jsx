@@ -62,6 +62,18 @@ describe('K5 — OperationNode v2 status visual', () => {
     expect(screen.getByTestId('skeleton-op-label').textContent).toBe('PCR');
   });
 
+  it('L1 — a gibson-kind op with method overlap_pcr labels «Overlap PCR» (linear), not Gibson', () => {
+    const op = makeOp({ kind: 'gibson', status: 'committed', params: { method: 'overlap_pcr' } });
+    render(<OperationNode operation={op} />);
+    expect(screen.getByTestId('skeleton-op-label').textContent).toBe('Overlap PCR');
+  });
+
+  it('a gibson-kind op with method gibson still labels «Gibson»', () => {
+    const op = makeOp({ kind: 'gibson', status: 'committed', params: { method: 'gibson' } });
+    render(<OperationNode operation={op} />);
+    expect(screen.getByTestId('skeleton-op-label').textContent).toBe('Gibson');
+  });
+
   it('executed renders green tint + ✓ badge', () => {
     const op = makeOp({ kind: 'cut', status: 'executed' });
     render(<OperationNode operation={op} />);

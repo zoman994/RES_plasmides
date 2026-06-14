@@ -33,7 +33,6 @@ const SYNTHESIS_THRESHOLD_MIN = 40;
 const SYNTHESIS_THRESHOLD_MAX = 200;
 export const DISPLAY_SETTINGS_DEFAULTS = Object.freeze({
   sequenceWrap: 150,
-  primerPrefix: 'p_',
   annotateOnImport: true,
   synthesisLengthThreshold: 80,
 });
@@ -42,9 +41,6 @@ function sanitizeDisplaySettings(raw) {
   const out = { ...DISPLAY_SETTINGS_DEFAULTS };
   if (!raw || typeof raw !== 'object') return out;
   if (SEQUENCE_WRAPS.includes(raw.sequenceWrap)) out.sequenceWrap = raw.sequenceWrap;
-  if (typeof raw.primerPrefix === 'string' && raw.primerPrefix.length <= 12) {
-    out.primerPrefix = raw.primerPrefix;
-  }
   if (typeof raw.annotateOnImport === 'boolean') out.annotateOnImport = raw.annotateOnImport;
   const t = Number(raw.synthesisLengthThreshold);
   if (Number.isFinite(t)) {

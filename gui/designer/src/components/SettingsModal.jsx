@@ -195,22 +195,8 @@ export default function SettingsModal() {
                 />
               </SettingRow>
 
-              {/* Primer prefix */}
-              <SettingRow label={STRINGS.settings.display.primerPrefixLabel} hint={STRINGS.settings.display.primerPrefixHint}>
-                <input
-                  data-testid="settings-display-primer-prefix"
-                  value={displaySettings.primerPrefix}
-                  maxLength={12}
-                  onChange={(e) => setDisplaySetting({ primerPrefix: e.target.value })}
-                  style={{
-                    width: 140, padding: '4px 8px', fontSize: 13,
-                    fontFamily: 'var(--font-mono)',
-                    border: '0.5px solid var(--border-default)',
-                    borderRadius: 'var(--radius-md)',
-                    background: 'var(--surface-2)', color: 'var(--text-primary)',
-                  }}
-                />
-              </SettingRow>
+              {/* «Primer name prefix» removed (audit A17) — same no-op as polymerase:
+                  never threaded into the design path; oligo names use their own scheme. */}
 
               {/* Synthesis-block threshold (editable assembly, S1 §5.9) */}
               <SettingRow label={STRINGS.settings.display.synthesisThresholdLabel} hint={STRINGS.settings.display.synthesisThresholdHint}>

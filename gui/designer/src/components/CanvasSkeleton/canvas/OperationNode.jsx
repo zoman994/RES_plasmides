@@ -147,8 +147,12 @@ function OperationNode({ operation, commit, highlighted, onClick, onContextMenu 
   const visual = statusVisual(op.status, op.kind);
   const useSvgIcon = !!op.kind;
   const fallbackIcon = op.kind ? (KIND_ICONS[op.kind] || '⚙') : '+';
+  // L1 (audit) — overlap_pcr maps to the 'gibson' op kind (shared overlap-blue
+  // colour), but a LINEAR overlap-extension join is not Gibson. Relabel by the
+  // recorded method so the DAG node reads honestly.
   const label = op._legacyLabel
-    || (op.kind ? KIND_LABELS[op.kind] : 'Выбрать…');
+    || (op.kind === 'gibson' && op.params?.method === 'overlap_pcr' ? 'Overlap PCR'
+      : (op.kind ? KIND_LABELS[op.kind] : 'Выбрать…'));
 
   const handleClick = (e) => {
     if (typeof onClick === 'function') onClick(op, e);
