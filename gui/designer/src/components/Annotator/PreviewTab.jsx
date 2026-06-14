@@ -25,6 +25,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useStore } from '../../store';
 import { selectAnnotator } from '../../store/uiSlice.js';
+import { useSequenceSelection } from '../../hooks/useSequenceSelection';
 import { isDuplicatePrediction, reconcileConfirmedWithPartials } from '../../lib/annotation-edit.js';
 import SequenceView from '../SequenceView';
 import PlasmidMiniMap from '../PlasmidMiniMap.jsx';
@@ -169,12 +170,29 @@ export default function PreviewTab({
     annotations: merged,
   }], [name, sequence, topology, merged]);
 
-  // Drill-in only opens for predicted regions; clicks on confirmed
-  // annotations stay reserved for SequenceView's own selection.
+  // Controlled selection — Игорь 14.06.2026: «выбор и удаление фичи
+  // должно быть доступно. как и выбор последовательности». SequenceView's
+  // selection is fully controlled (caretPos/anchor + onCaretChange/
+  // onSelectRange); without this wiring drag-select did nothing and Del
+  // (useSelectionEdit) had no selection to delete. Reset on plasmid
+  // switch — keyed on content since `name` is a constant here.
+  const selResetKey = `${(sequence || '').length}:${(sequence || '').slice(0, 16)}`;
+  const sel = useSequenceSelection({ resetKey: selResetKey });
+
+  // Click on a CONFIRMED feature selects its whole range so Del / E act on
+  // it (useSelectionEdit matches selStart..selEnd to a region). Predicted
+  // (ghost) clicks open the drill-in instead (Accept / Reject / BLAST).
   const onAnnotationClick = (region) => {
-    if (!region || region.predicted !== true) return;
-    const id = region.id || `${region.start}:${region.end}:${region.type || ''}:${region.name || ''}`;
-    setSelectedGhost(id);
+    if (region && region.predicted === true) {
+      const id = region.id || `${region.start}:${region.end}:${region.type || ''}:${region.name || ''}`;
+      setSelectedGhost(id);
+      return;
+    }
+    if (region
+        && Number.isFinite(region.start) && Number.isFinite(region.end)
+        && region.end > region.start) {
+      sel.onSelectRange(region.start, region.end, 'dna', region.strand === -1 ? -1 : 1);
+    }
   };
 
   // Re-find the selected region by id so the panel always shows the
@@ -251,6 +269,7 @@ export default function PreviewTab({
               fragments={fragments}
               circular={topology === 'circular'}
               readOnly={!onAnnotationEdit}
+              {...sel.viewerProps}
               onAnnotationClick={onAnnotationClick}
               onAnnotationEdit={onAnnotationEdit}
               onOpenFeatureEditor={onOpenFeatureEditor}
