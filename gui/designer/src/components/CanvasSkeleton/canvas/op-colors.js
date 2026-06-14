@@ -46,9 +46,14 @@ export function operationColor(kind) {
  * endpoint) gets the warm neutral.
  */
 export function edgeColorFor(fromNode, toNode) {
-  const opNode = [fromNode, toNode].find(
-    (n) => n && n.kind === 'operation' && n.data && n.data.operation,
-  );
+  // A26 (audit) — real graph nodes carry the discriminator at `node.data.kind`
+  // (+ `node.type`), NOT a top-level `node.kind`. The old `n.kind === 'operation'`
+  // never matched, so EVERY edge fell through to the neutral taupe and the
+  // documented per-reaction edge colours (Gibson-blue / digest-amber / …) were dead.
+  const isOp = (n) => n
+    && (n.type === 'operation' || (n.data && n.data.kind === 'operation'))
+    && n.data && n.data.operation;
+  const opNode = [fromNode, toNode].find(isOp);
   if (opNode) return operationColor(opNode.data.operation.kind).stroke;
   return OP_NEUTRAL.stroke;
 }

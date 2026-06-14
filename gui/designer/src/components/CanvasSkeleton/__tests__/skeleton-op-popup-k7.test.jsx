@@ -26,8 +26,10 @@ function makeOp(kind, params = {}) {
 }
 
 // pUC19 has EcoRI site at GAATTC ~ position 396 (we just need any sequence
-// with predictable cut sites for the preview test).
-const SEQ_WITH_ECORI = 'ATGCGAATTCATGCATGCGGGCCCAAA';
+// with predictable cut sites for the preview test). A12 — also carries ONE BamHI
+// site (GGATCC) so the EcoRI+BamHI double-digest test is viable (each enzyme cuts
+// exactly once); EcoRI alone still cuts once (the 1-fragment preview test).
+const SEQ_WITH_ECORI = 'ATGCGAATTCATGCGGATCCATGCGGGCCCAAA';
 const SEQ_NO_CUT = 'TTTTTTTTTTTTTTTTTT';
 
 const makeContainers = () => ([

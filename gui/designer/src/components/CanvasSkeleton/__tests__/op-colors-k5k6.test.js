@@ -46,7 +46,10 @@ describe('K5 — operationColor: junction ops read the chemistry canon', () => {
 });
 
 describe('K6 — edgeColorFor: edge inherits the connected operation colour', () => {
-  const opNode = (kind) => ({ kind: 'operation', data: { operation: { id: 'o', kind } } });
+  // A26 — use the REAL node contract (canvas-layout.js): discriminator at
+  // data.kind + node.type, op payload at data.operation (was a fake top-level
+  // `kind:'operation'` that masked the dead edgeColorFor discriminator).
+  const opNode = (kind) => ({ type: 'operation', data: { operation: { id: 'o', kind }, kind: 'operation' } });
   const cnt = (id) => ({ kind: 'container', id, data: { container: { id } } });
 
   it('container → gibson-op edge is overlap-coloured', () => {

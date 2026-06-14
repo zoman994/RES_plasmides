@@ -151,6 +151,10 @@ export default function ContainerEditorSkeleton() {
   const cursorAnchor = sel.caretAnchor;
   const cursorSelectionMode = sel.selectionMode;
   const cursorSelectionStrand = sel.selectionStrand;
+  // A3 (audit) — the bar settle/scrub handlers called setCursorPos/Anchor/
+  // SelectionMode, which never existed → ReferenceError on any strip click.
+  // The selection hook's real setters:
+  const { setCaretPos, setCaretAnchor, setSelectionMode } = sel;
 
   // V-followup 22.05.2026 — «затемнение сиквенса после разделителя
   // не работает». Container editor, открытый из assembly, должен
@@ -323,9 +327,9 @@ export default function ContainerEditorSkeleton() {
     if (activeTab !== 'sequence' && activeTab !== 'annotations') {
       setActiveTab('sequence');
     }
-    setCursorPos(pos);
-    setCursorAnchor(pos);
-    setCursorSelectionMode('dna');
+    setCaretPos(pos);
+    setCaretAnchor(pos);
+    setSelectionMode('dna');
     setPendingScroll({ pos, tick: Date.now(), instant: false });
   }, [activeTab]);
 
@@ -346,9 +350,9 @@ export default function ContainerEditorSkeleton() {
       scrubFrameRef.current = null;
       const next = scrubLatestRef.current;
       if (next == null) return;
-      setCursorPos(next);
-      setCursorAnchor(next);
-      setCursorSelectionMode('dna');
+      setCaretPos(next);
+      setCaretAnchor(next);
+      setSelectionMode('dna');
       if (activeTab === 'sequence' || activeTab === 'annotations') {
         setPendingScroll({ pos: next, tick: Date.now(), instant: true });
       }

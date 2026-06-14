@@ -27,6 +27,14 @@ export default function ZoneAssembledView({
   const junctions = (zone && zone.junctions) || {};
   const picker = state.junctionPicker && state.junctionPicker.zoneId === zoneId
     ? state.junctionPicker : null;
+  // A11 (audit) — JunctionControl was rendered with no `position`, so the popover
+  // fell back to viewport (0,0), half-clipped and detached from the clicked glyph.
+  // Capture the glyph's client coords on open (mirrors AssemblyShellBody).
+  const [junctionPos, setJunctionPos] = React.useState(null);
+  const openJunction = (e, fromPieceId, toPieceId) => {
+    if (e && Number.isFinite(e.clientX)) setJunctionPos({ x: e.clientX, y: e.clientY });
+    if (dispatch) dispatch({ type: 'OPEN_JUNCTION_METHOD_PICKER', zoneId, fromPieceId, toPieceId });
+  };
 
   return (
     <div
@@ -66,13 +74,7 @@ export default function ZoneAssembledView({
                 fromPiece={p}
                 toPiece={attached[idx + 1]}
                 method={(junctions[pairKeyFor(p.id, attached[idx + 1].id)] || {}).method}
-                onClick={() => dispatch
-                  && dispatch({
-                    type: 'OPEN_JUNCTION_METHOD_PICKER',
-                    zoneId,
-                    fromPieceId: p.id,
-                    toPieceId: attached[idx + 1].id,
-                  })}
+                onClick={(e) => openJunction(e, p.id, attached[idx + 1].id)}
               />
             )}
           </Fragment>
@@ -107,6 +109,7 @@ export default function ZoneAssembledView({
         <JunctionControl
           pairKey={picker.pairKey}
           config={junctions[picker.pairKey]}
+          position={junctionPos || { x: 220, y: 180 }}
           onChange={(patch) => dispatch && dispatch({
             type: 'SET_BOUNDARY_OVERLAP', zoneId, pairKey: picker.pairKey, ...patch,
           })}

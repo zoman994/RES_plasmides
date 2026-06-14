@@ -300,7 +300,10 @@ export default function JunctionPopover({
                   type="radio"
                   data-testid="junction-popover-mode-length"
                   checked={mode === 'length'}
-                  onChange={() => onSetParams?.({ overlapLength: junction.overlapLength ?? defaultJunctionParams(kind).overlapLength ?? 30 })}
+                  // A10 (audit) — mode is derived from overlapTm != null, so the
+                  // Length radio MUST null overlapTm or Tm→Length snaps back (the
+                  // live SET_BOUNDARY_OVERLAP only merges, never nulls the opposite).
+                  onChange={() => onSetParams?.({ overlapLength: junction.overlapLength ?? defaultJunctionParams(kind).overlapLength ?? 30, overlapTm: null })}
                 />
                 Length
               </label>
@@ -318,7 +321,9 @@ export default function JunctionPopover({
                   type="radio"
                   data-testid="junction-popover-mode-tm"
                   checked={mode === 'tm'}
-                  onChange={() => onSetParams?.({ overlapTm: junction.overlapTm ?? 60 })}
+                  // A10 — symmetric: Tm radio nulls overlapLength so length-mode
+                  // doesn't linger and the XOR mode toggle actually flips.
+                  onChange={() => onSetParams?.({ overlapTm: junction.overlapTm ?? 60, overlapLength: null })}
                 />
                 Tm
               </label>

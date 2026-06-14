@@ -90,14 +90,35 @@ export default function CutOpPopup({
     } else {
       fragments.push(seq.length);
     }
-    return { cutCount, fragmentCount, fragments, allCuts };
+    // A12 (audit) — mirror digest()'s contract so the preview can't promise
+    // fragments a rejected digest will never make: single enzyme needs 1–2
+    // sites; two different enzymes need EXACTLY 1 each; >2 enzymes unsupported.
+    const perEnz = {};
+    for (const c of allCuts) perEnz[c.enzyme] = (perEnz[c.enzyme] || 0) + 1;
+    let viable = true;
+    let unviableReason = '';
+    if (enzymes.length > 2) {
+      viable = false;
+      unviableReason = 'движок поддерживает 1–2 фермента за реакцию';
+    } else if (enzymes.length === 2 && enzymes[0] !== enzymes[1]) {
+      const bad = enzymes.find((e) => (perEnz[e] || 0) !== 1);
+      if (bad) { viable = false; unviableReason = `${bad} режет ${perEnz[bad] || 0}× — для двойного digest нужно ровно 1 у каждого`; }
+    } else {
+      const n = perEnz[enzymes[0]] || 0;
+      if (n < 1 || n > 2) { viable = false; unviableReason = `${enzymes[0]} режет ${n}× — нужно 1–2 разреза`; }
+    }
+    return {
+      cutCount, fragmentCount, fragments, allCuts, viable, unviableReason,
+    };
   }, [template, enzymes]);
 
   const toggleEnzyme = (name) => {
     setEnzymes((prev) => (prev.includes(name) ? prev.filter((x) => x !== name) : [...prev, name]));
   };
 
-  const executeDisabled = !templateId || enzymes.length === 0;
+  // A12 — block Execute when the digest would be rejected (the op would fail
+  // with zero output despite the preview's fragment promise).
+  const executeDisabled = !templateId || enzymes.length === 0 || (preview && !preview.viable);
 
   return (
     <OpPopup
@@ -205,9 +226,24 @@ export default function CutOpPopup({
                 ))}
               </div>
             )}
+            {/* A12 — hard block: the digest engine will reject this combo, so the
+                fragment promise above is unachievable. Tell the biolog + Execute
+                is disabled (was: preview showed N fragments, Execute stayed on,
+                op failed with zero output). */}
+            {!preview.viable && (
+              <div
+                data-testid="cut-op-warn-unviable"
+                style={{
+                  marginTop: 6, color: '#7c2d12', fontSize: 11, fontWeight: 600,
+                  background: '#fef3c7', border: '1px solid #d97706', borderRadius: 4, padding: '4px 6px',
+                }}
+              >
+                ⛔ Не выполнится: {preview.unviableReason}.
+              </div>
+            )}
             {/* R4-BIO-6: warn если 3+ cuts — обычно биолог хочет
                 уникальный фермент (1 cut) для backbone linearize. */}
-            {preview.cutCount >= 3 && (
+            {preview.viable && preview.cutCount >= 3 && (
               <div
                 data-testid="cut-op-warn-multi-cut"
                 style={{ marginTop: 6, color: '#b45309', fontSize: 11 }}
