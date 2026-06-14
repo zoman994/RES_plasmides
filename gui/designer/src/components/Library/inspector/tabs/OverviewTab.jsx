@@ -31,7 +31,7 @@ const __PREWARM_DISABLED__ =
   && typeof import.meta.env !== 'undefined'
   && import.meta.env.MODE === 'test';
 
-export default function OverviewTab({ item, onUpdateTags }) {
+export default function OverviewTab({ item, onUpdateTags, onUpdateTopology }) {
   const summary = useMemo(() => buildFileSummary(item), [item]);
   // Lazy reSites: in production we paint the rest of the overview first
   // (mini-map, type counts, categories, CDS list — fast), then schedule
@@ -129,6 +129,47 @@ export default function OverviewTab({ item, onUpdateTags }) {
               }}
             >{S.summaryTags || 'Метки'}</div>
             <TagsEditor tags={item.tags || []} onChange={onUpdateTags} />
+          </div>
+        )}
+
+        {typeof onUpdateTopology === 'function' && (
+          <div
+            data-testid="overview-topology-toggle"
+            style={{
+              background: 'var(--surface-1)',
+              border: '0.5px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-md)',
+              padding: 12,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.6,
+                color: 'var(--text-secondary)', fontWeight: 600,
+              }}
+            >Топология</div>
+            <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+              {[['circular', 'Кольцевая'], ['linear', 'Линейная']].map(([t, label]) => {
+                const active = topology === t;
+                return (
+                  <button
+                    key={t}
+                    type="button"
+                    data-testid={`overview-topology-${t}`}
+                    data-active={active ? 'true' : 'false'}
+                    onClick={() => { if (!active) onUpdateTopology(t); }}
+                    style={{
+                      flex: 1, padding: '4px 8px', fontSize: 11, cursor: 'pointer',
+                      borderRadius: 'var(--radius-md)',
+                      border: active ? '0.5px solid var(--accent-500)' : '0.5px solid var(--border-default)',
+                      background: active ? 'var(--accent-50)' : 'var(--surface-1)',
+                      color: active ? 'var(--accent-text)' : 'var(--text-secondary)',
+                      fontWeight: active ? 600 : 400,
+                    }}
+                  >{label}</button>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>

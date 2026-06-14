@@ -348,6 +348,7 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
   const writeLibraryEntryAnnotations = useStore((s) => s.writeLibraryEntryAnnotations);
   // Workspace-only Overview meta editors persist directly to the entry.
   const updateLibraryEntryTags = useStore((s) => s.updateLibraryEntryTags);
+  const updateLibraryEntryTopology = useStore((s) => s.updateLibraryEntryTopology);
 
   const rawEntry = selectedId ? entriesById[selectedId] : null;
   // LibrarySingleInspector + Overview/Sequence/Annotations tabs +
@@ -419,6 +420,10 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
     if (!selectedId || typeof updateLibraryEntryTags !== 'function') return;
     updateLibraryEntryTags(selectedId, Array.isArray(nextTags) ? nextTags : []);
   }, [selectedId, updateLibraryEntryTags]);
+  const onUpdateTopology = useCallback((topology) => {
+    if (!selectedId || typeof updateLibraryEntryTopology !== 'function') return;
+    updateLibraryEntryTopology(selectedId, topology);
+  }, [selectedId, updateLibraryEntryTopology]);
   const onUpdateFlags = useCallback((patch) => {
     if (!selectedId || !patch) return;
     setPerEntryState((prev) => ({
@@ -540,6 +545,7 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
                   // misleading. Keep them out (DEC-LIB-13).
                   showSaveActions={false}
                   onUpdateTags={onUpdateTags}
+                  onUpdateTopology={onUpdateTopology}
                 />
               </div>
               <LibraryActionRow entry={item} zone={zone} ctx={actionCtx} />

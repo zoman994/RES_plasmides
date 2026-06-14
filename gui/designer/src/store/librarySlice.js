@@ -665,6 +665,26 @@ export const createLibrarySlice = (set, get) => ({
   },
 
   /**
+   * Set a library entry's topology (linear ↔ circular). Direct persist to
+   * entry.payload.topology + IndexedDB — no version bump (DEC-LIB-11 hybrid),
+   * mirrors updateLibraryEntryTags. Needed for the workspace Overview toggle
+   * (fixing an import that guessed topology wrong). Safe in the library
+   * domain: junctions live on canvas zones, never on the entry, so changing
+   * an entry's topology cannot corrupt any assembly's junction config.
+   */
+  updateLibraryEntryTopology: async (id, topology) => {
+    if (topology !== 'circular' && topology !== 'linear') return;
+    const existing = get().libraryEntries[id];
+    if (!existing || existing._pendingDelete) return;
+    const nextPayload = { ...(existing.payload || {}), topology };
+    set(state => {
+      const e = state.libraryEntries[id];
+      if (e) e.payload = nextPayload;
+    });
+    await putLibraryEntry({ ...existing, payload: nextPayload });
+  },
+
+  /**
    * A4 (audit) — rename a library entry. Mirrors updateLibraryEntryTags: patch
    * the in-memory name + persist to Dexie. The inspector's inline title commits
    * here (was a no-op → the typed name reverted). No-op on empty / unchanged.

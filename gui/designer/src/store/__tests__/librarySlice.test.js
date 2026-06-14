@@ -88,6 +88,17 @@ describe('K2 — librarySlice', () => {
     expect(inDB.tags).toEqual(['bacterial', 'gfp']);
   });
 
+  it('updateLibraryEntryTopology updates payload.topology in state and IndexedDB', async () => {
+    await useStore.getState().addLibraryEntry(makeEntry({ id: 'e1', payload: { topology: 'circular', length: 100 } }));
+    await useStore.getState().updateLibraryEntryTopology('e1', 'linear');
+    expect(useStore.getState().libraryEntries.e1.payload.topology).toBe('linear');
+    const inDB = await getLibraryEntry('e1');
+    expect(inDB.payload.topology).toBe('linear');
+    // ignores invalid values
+    await useStore.getState().updateLibraryEntryTopology('e1', 'banana');
+    expect(useStore.getState().libraryEntries.e1.payload.topology).toBe('linear');
+  });
+
   it('renameLibraryEntry updates the name in state + IndexedDB, trimmed (A4)', async () => {
     await useStore.getState().addLibraryEntry(makeEntry({ id: 'e1', name: 'old' }));
     await useStore.getState().renameLibraryEntry('e1', '  pUC19-renamed  ');
