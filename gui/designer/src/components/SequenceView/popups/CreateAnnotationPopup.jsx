@@ -21,14 +21,18 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { STRINGS } from '../../../lib/strings';
-import { toUiCoords, fromUiCoords, validateAnnotationCoords } from '../../../lib/annotation-edit.js';
+import {
+  toUiCoords, fromUiCoords, validateAnnotationCoords, levelForType,
+} from '../../../lib/annotation-edit.js';
 
 const S = STRINGS.importer.annotationEdit;
 
-const TYPE_OPTIONS = [
-  'CDS', 'gene', 'promoter', 'terminator', 'misc_feature',
-  'rep_origin', 'RBS', 'enhancer', 'sgRNA', 'primer_bind',
-  'protein_bind', 'mobile_element', 'tag',
+// B3 (audit) — grouped by level so the biolog can author POINT features
+// (start/stop codon, restriction site, mutation, variation) — not just regions.
+const TYPE_GROUPS = [
+  { label: 'Регион', types: ['CDS', 'gene', 'promoter', 'terminator', 'rep_origin', 'enhancer', 'misc_feature', 'MCS'] },
+  { label: 'Деталь', types: ['RBS', 'tag', 'domain', 'signal_peptide', 'linker', 'intron'] },
+  { label: 'Точка', types: ['start_codon', 'stop_codon', 'restriction_site', 'mutation', 'variation', 'primer_bind'] },
 ];
 
 export default function CreateAnnotationPopup({
@@ -90,6 +94,9 @@ export default function CreateAnnotationPopup({
       start,
       end,
       strand: strand === -1 ? -1 : 1,
+      // B3 — derive the level from the type so point/detail features persist as
+      // such (was hardcoded 'region' downstream → points were uncreatable).
+      level: levelForType(type),
     });
   };
 
@@ -168,7 +175,11 @@ export default function CreateAnnotationPopup({
             fontSize: 12,
           }}
         >
-          {TYPE_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+          {TYPE_GROUPS.map((g) => (
+            <optgroup key={g.label} label={g.label}>
+              {g.types.map((t) => <option key={t} value={t}>{t}</option>)}
+            </optgroup>
+          ))}
         </select>
       </div>
       <div style={{ display: 'flex', gap: 8 }}>

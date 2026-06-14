@@ -22,6 +22,29 @@
  */
 
 /**
+ * B3 (audit) — feature type → annotation level. Mirrors AnnotationEditor's
+ * TYPE_TO_LEVEL so the SequenceView create/edit popups can author all THREE
+ * documented levels (region / detail / POINT), not just region. Point types
+ * (start/stop codon, restriction site, mutation, variation, primer_bind) used to
+ * be importable + renderable but NOT creatable — every create path hardcoded
+ * 'region'. Unknown types default to 'region' (the safe legacy default).
+ */
+const TYPE_LEVEL = {
+  // detail
+  RBS: 'detail', Kozak: 'detail', polyA_signal: 'detail', signal_peptide: 'detail',
+  propeptide: 'detail', tag: 'detail', linker: 'detail', T2A: 'detail', NLS: 'detail',
+  intron: 'detail', catalytic: 'detail', binding: 'detail', domain: 'detail',
+  cleavage_site: 'detail', active_site: 'detail', core_promoter: 'detail',
+  poly_a: 'detail', stem_loop: 'detail',
+  // point
+  restriction_site: 'point', start_codon: 'point', stop_codon: 'point',
+  variation: 'point', primer_bind: 'point', mutation: 'point',
+};
+export function levelForType(type) {
+  return TYPE_LEVEL[type] || 'region';
+}
+
+/**
  * Produce a deterministic id for a region annotation. Compatible with
  * the backfill pattern in `annotation-model.getRegions`
  * (`region:<start>:<end>:<type>:<name>`).
