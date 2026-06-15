@@ -143,6 +143,31 @@ export default function ProjectZone({
     }
   }, [projectId, project, markProjectPendingDelete, unmarkProjectPendingDelete, showToast, trashStrings]);
 
+  // Manage the project from the tree (project hub): pin, activate, open in Flow.
+  // Header CLICK stays expand-only (deliberate, guarded by tests) — these are
+  // explicit buttons, each stopPropagation so they don't toggle expand.
+  const pinProject = useStore((s) => s.pinProject);
+  const unpinProject = useStore((s) => s.unpinProject);
+  const activateProject = useStore((s) => s.activateProject);
+  const setActiveWorkspace = useStore((s) => s.setActiveWorkspace);
+  const onTogglePin = useCallback((e) => {
+    e.stopPropagation();
+    if (!projectId) return;
+    if (pinned) { unpinProject?.(projectId); return; }
+    const r = pinProject?.(projectId);
+    if (r === 'cap') showToast?.('Закрепить можно не больше 15 проектов', 'warning');
+  }, [projectId, pinned, pinProject, unpinProject, showToast]);
+  const onActivate = useCallback((e) => {
+    e.stopPropagation();
+    if (projectId) activateProject?.(projectId);
+  }, [projectId, activateProject]);
+  const onOpenInFlow = useCallback((e) => {
+    e.stopPropagation();
+    if (!projectId) return;
+    activateProject?.(projectId);
+    setActiveWorkspace?.('flow');
+  }, [projectId, activateProject, setActiveWorkspace]);
+
   const btnStyle = {
     fontSize: 11, padding: '1px 5px',
     background: 'transparent',
@@ -154,6 +179,29 @@ export default function ProjectZone({
 
   const headerAction = (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+      <button
+        type="button"
+        data-testid={`project-zone-pin-${projectId}`}
+        title={pinned ? 'Открепить' : 'Закрепить проект'}
+        onClick={onTogglePin}
+        style={{ ...btnStyle, color: pinned ? 'var(--accent-700, #c2410c)' : 'var(--text-secondary)' }}
+      >{pinned ? '★' : '☆'}</button>
+      {!isActiveProject && (
+        <button
+          type="button"
+          data-testid={`project-zone-activate-${projectId}`}
+          title="Сделать текущим проектом"
+          onClick={onActivate}
+          style={btnStyle}
+        >📂</button>
+      )}
+      <button
+        type="button"
+        data-testid={`project-zone-open-flow-${projectId}`}
+        title="Открыть в потоке (DAG)"
+        onClick={onOpenInFlow}
+        style={btnStyle}
+      >→</button>
       {onExportProject && (
         <button
           type="button"

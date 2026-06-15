@@ -430,6 +430,31 @@ describe('M-X.8 K4 — LibraryTreeRoot project grouping', () => {
     expect(screen.queryByTestId('library-zone-project-pc')).toBeNull(); // no match
   });
 
+  it('project pin toggle button pins / unpins (project hub)', () => {
+    render(<LibraryTreeRoot />);
+    // pa is current + not pinned (☆) → click pins it.
+    fireEvent.click(screen.getByTestId('project-zone-pin-pa'));
+    expect(useStore.getState().pinnedProjectIds).toContain('pa');
+    // pb is pinned (★) → click unpins it.
+    fireEvent.click(screen.getByTestId('project-zone-pin-pb'));
+    expect(useStore.getState().pinnedProjectIds).not.toContain('pb');
+  });
+
+  it('project activate button makes a non-current project current (header click stays expand-only)', () => {
+    render(<LibraryTreeRoot />);
+    // current project (pa) has no activate button; a non-current pinned one (pb) does.
+    expect(screen.queryByTestId('project-zone-activate-pa')).toBeNull();
+    fireEvent.click(screen.getByTestId('project-zone-activate-pb'));
+    expect(useStore.getState().currentProjectId).toBe('pb');
+  });
+
+  it('project open-in-Flow button activates + switches to the flow workspace', () => {
+    render(<LibraryTreeRoot />);
+    fireEvent.click(screen.getByTestId('project-zone-open-flow-pb'));
+    expect(useStore.getState().currentProjectId).toBe('pb');
+    expect(useStore.getState().workspace.active).toBe('flow');
+  });
+
   it('only the current project is expanded by default; siblings start collapsed', () => {
     render(<LibraryTreeRoot />);
     // Current (pa) → expanded → its container sub-folder row is in DOM.
