@@ -10,6 +10,7 @@
  */
 import { useState, useMemo, useCallback } from 'react';
 import { useStore } from '../../store';
+import { openBodgeIntoLibrary } from './lib/open-bodge';
 import RecentRow from './RecentRow';
 import EmptyCard from './EmptyCard';
 import HelpPopover from './HelpPopover';
@@ -62,7 +63,6 @@ export default function MainPanel({ onOpenHotkeys }) {
   const openProjectInfo = useStore((s) => s.openProjectInfo);
   const setActiveWorkspace = useStore((s) => s.setActiveWorkspace);
   const setActiveFullscreen = useStore((s) => s.setActiveFullscreen);
-  const openCommandPalette = useStore((s) => s.openCommandPalette);
 
   const onCreate = useCallback(() => {
     createProject?.('Новый проект');
@@ -74,13 +74,9 @@ export default function MainPanel({ onOpenHotkeys }) {
     setActiveWorkspace?.('library', { focusSearch: true });
     setActiveFullscreen?.('library');
   }, [setActiveWorkspace, setActiveFullscreen]);
-  const onLoadBodge = useCallback(() => {
-    // Re-uses the same flow as the sidebar handler. The dedicated
-    // OS file picker stays in the sidebar; this card opens the
-    // command palette which surfaces the same "open existing" path.
-    setActiveFullscreen?.('start');
-    openCommandPalette?.();
-  }, [setActiveFullscreen, openCommandPalette]);
+  // Real .bodge open (shared with the sidebar action) — previously this card
+  // opened a disconnected CommandPalette overlay.
+  const onLoadBodge = useCallback(() => { openBodgeIntoLibrary(); }, []);
   const currentProjectId = useStore((s) => s.currentProjectId);
   // M-X.8 K7 — pin stars on dashboard cards. Pin set lives in
   // projectSlice; toggling is decoupled from activation per

@@ -24,7 +24,6 @@ import MultiTabBlocked from './components/MultiTabBlocked';
 import ReadOnlyForced from './components/ReadOnlyForced';
 import SettingsModal from './components/SettingsModal';
 import ProjectInfoModal from './components/ProjectInfoModal';
-import CommandPalette from './components/CommandPalette';
 import SequenceSearchPopover from './components/SequenceSearchPopover';
 import { ToastStack } from './components/Toast';
 import { openBodgeFilePicker, pickSaveAs, saveBlobToHandle } from './lib/file-system';
@@ -435,10 +434,6 @@ export default function App() {
       <HotkeyCheatsheet open={hotkeysOpen} onClose={closeHotkeys} />
       {projectInfoOpen && <ProjectInfoModal />}
       {settingsOpen && <SettingsModal />}
-      {/* M-X.8 K6 — Command Palette overlay (always mounted; the
-          component itself returns null when closed so portal mounts
-          only when needed). */}
-      <CommandPalette />
       <ToastStack />
     </div>
   );

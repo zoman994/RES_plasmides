@@ -251,7 +251,7 @@ export const createUiSlice = (set) => ({
   // the Topbar quick-toggle can keep flipping it without going through
   // the modal). Persisted under DISPLAY_SETTINGS_STORAGE_KEY.
   displaySettings: loadInitialDisplaySettings(),
-  modals: { settings: false, projectInfo: false, commandPalette: false, sequenceSearch: false },
+  modals: { settings: false, projectInfo: false, sequenceSearch: false },
   // M-X.9 K2 follow-up — current Ctrl+F search hits, scoped to one
   // entry. SequenceSearchPopover writes here on each query update;
   // SequenceTab reads + paints overlay rects when entryId matches.
@@ -295,10 +295,6 @@ export const createUiSlice = (set) => ({
 
   openProjectInfo: () => set(state => { state.modals.projectInfo = true; }),
   closeProjectInfo: () => set(state => { state.modals.projectInfo = false; }),
-
-  // M-X.8 K6 — CommandPalette overlay (⌘P + sidebar button).
-  openCommandPalette: () => set(state => { state.modals.commandPalette = true; }),
-  closeCommandPalette: () => set(state => { state.modals.commandPalette = false; }),
 
   // M-X.9 K2 — SequenceSearchPopover (Ctrl+F).
   openSequenceSearch: () => set(state => { state.modals.sequenceSearch = true; }),

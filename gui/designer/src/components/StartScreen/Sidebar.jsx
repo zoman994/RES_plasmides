@@ -13,9 +13,8 @@
 import { useCallback } from 'react';
 import { useStore } from '../../store';
 import { APP_VERSION } from '../../lib/version';
-import { openBodgeFilePicker } from '../../lib/file-system';
-import { readBodge } from '../../lib/bodge-zip';
 import { STRINGS } from '../../lib/strings';
+import { openBodgeIntoLibrary } from './lib/open-bodge';
 import { promptInstall, isPwaInstalled } from '../../lib/pwa-install';
 import SidebarItem from './SidebarItem';
 
@@ -40,8 +39,6 @@ export default function Sidebar({ collapsed, onToggle, onOpenHotkeys }) {
   const setActiveFullscreen = useStore((s) => s.setActiveFullscreen);
   const createProject = useStore((s) => s.createProject);
   const openProjectInfo = useStore((s) => s.openProjectInfo);
-  const openProjectFromFileData = useStore((s) => s.openProjectFromFileData);
-  const addLibraryEntriesBulk = useStore((s) => s.addLibraryEntriesBulk);
   const showToast = useStore((s) => s.showToast);
   const openSettings = useStore((s) => s.openSettings);
   const theme = useStore((s) => s.theme);
@@ -121,62 +118,9 @@ export default function Sidebar({ collapsed, onToggle, onOpenHotkeys }) {
     openProjectInfo?.();
   };
 
-  const onOpenBodge = async () => {
-    // Симметрия с onCreateProject: file picker открывает системную
-    // модалку → readBodge парсит project.json + library/entries.json
-    // → entries линкуются на загруженный project.id и попадают в
-    // librarySlice через addLibraryEntriesBulk → openProjectFromFileData
-    // регистрирует проект как текущий → переходим в Library workspace,
-    // где ProjectZone «📦 <name>.bodge» появляется уже с плазмидами.
-    let pick;
-    try {
-      pick = await openBodgeFilePicker();
-    } catch (e) {
-      showToast?.(`Не удалось открыть .bodge: ${e?.message || e}`, 'error');
-      return;
-    }
-    if (!pick) return;
-    let parsed;
-    try {
-      parsed = await readBodge(pick.file);
-    } catch (e) {
-      showToast?.(e?.message || String(e), 'error');
-      return;
-    }
-    const { project, libraryEntries, warnings } = parsed;
-    // Линкуем entries на загруженный проект, если в .bodge не были
-    // явно прописаны projectId (типичный случай — самодостаточный
-    // .bodge с пачкой плазмид). Уже привязанные — не трогаем.
-    const linkedEntries = (libraryEntries || []).map((e) => ({
-      ...e,
-      projectId: e.projectId || project.id,
-    }));
-    if (linkedEntries.length > 0) {
-      try {
-        await addLibraryEntriesBulk?.(linkedEntries);
-      } catch (e) {
-        showToast?.(`Не все плазмиды загружены: ${e?.message || e}`, 'warning');
-      }
-    }
-    try {
-      await openProjectFromFileData?.({
-        project,
-        fileHandle: pick.handle,
-        fileName: pick.fileName,
-        lastModified: pick.lastModified,
-      });
-    } catch (e) {
-      showToast?.(`Не удалось открыть проект: ${e?.message || e}`, 'error');
-      return;
-    }
-    setActiveWorkspace?.('library');
-    setActiveFullscreen?.('library');
-    if (warnings && warnings.length) {
-      showToast?.(warnings[0], 'warning');
-    } else {
-      showToast?.(`Загружено: ${project.name || 'проект'} (плазмид: ${linkedEntries.length})`, 'success');
-    }
-  };
+  // Shared with the start-screen «Загрузить .bodge» card (lib/open-bodge.js):
+  // OS picker → readBodge → link entries → register project → Library.
+  const onOpenBodge = () => openBodgeIntoLibrary();
   const onHomeClick = () => {
     setActiveWorkspace?.('startup');
     setActiveFullscreen?.('start');
@@ -247,7 +191,7 @@ export default function Sidebar({ collapsed, onToggle, onOpenHotkeys }) {
           * - Removed «📂 Открыть проект» (was a misplaced action under
           *   the "workspace" label).
           * - Added «📂 Все проекты» as the projects entry-point in the
-          *   main nav block (Ctrl+P still active via CommandPalette).
+          *   main nav block → routes into the Library (Ctrl+P too).
           */}
         <SidebarItem
           icon="⌂"
