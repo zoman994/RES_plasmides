@@ -52,6 +52,8 @@ export default function LibraryTreeRoot({
   onQueryChange,
   // Bumped by «Все проекты» / ⌘P (focusSearch context) → focus the search input.
   autoFocusSearchTick = 0,
+  // Create a new project from the left panel (projects live in the Library).
+  onCreateProject,
   selectedId = null,
   onSelectEntry,
   onAddClick,
@@ -230,6 +232,23 @@ export default function LibraryTreeRoot({
               cursor: 'pointer',
             }}
           >{ws.addBtn || '+ Добавить'}</button>
+          {typeof onCreateProject === 'function' && (
+            <button
+              type="button"
+              data-testid="tree-add-project-btn"
+              title="Создать новый проект"
+              onClick={() => onCreateProject()}
+              style={{
+                fontSize: 12, fontWeight: 500,
+                padding: '5px 10px',
+                background: 'transparent',
+                color: 'var(--accent-700, #c2410c)',
+                border: '1px solid var(--accent-500)',
+                borderRadius: 4,
+                cursor: 'pointer',
+              }}
+            >{ph.treeCreateProject || '+ Проект'}</button>
+          )}
           <div style={{ flex: 1 }} />
           <button
             type="button"

@@ -355,6 +355,9 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
   const moveEntryToFolder = useStore((s) => s.moveEntryToFolder);
   const setActiveWorkspace = useStore((s) => s.setActiveWorkspace);
   const renameLibraryEntry = useStore((s) => s.renameLibraryEntry); // A4 (audit)
+  // Projects are created from the Library left panel now (project hub).
+  const createProject = useStore((s) => s.createProject);
+  const openProjectInfo = useStore((s) => s.openProjectInfo);
   // Silent write-through for annotation edits (mirror the Importer host's
   // useLibraryState.updateEdits hot-fix, 07.05.2026). Without it, an ORF
   // created in the embedded Annotator lived only in transient perEntryState
@@ -396,6 +399,15 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
     setSelectedId(entry.id);
     setPerEntryState((prev) => prev[entry.id] ? prev : { ...prev, [entry.id]: emptyEntryState() });
   }, []);
+
+  // «+ Проект» in the tree → create + open the metadata modal. createProject
+  // already sets currentProjectId + stays in the Library, so the new
+  // ProjectZone appears in the tree automatically.
+  const onCreateProject = useCallback(() => {
+    if (typeof createProject !== 'function') return;
+    createProject('Новый проект');
+    openProjectInfo?.();
+  }, [createProject, openProjectInfo]);
   const onSelectCommonSection = useCallback(() => setView('common'), []);
   const onActiveTabChange = useCallback((tab) => {
     if (!selectedId) return;
@@ -518,6 +530,7 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
           query={query}
           onQueryChange={setQuery}
           autoFocusSearchTick={focusSearchTick}
+          onCreateProject={onCreateProject}
           selectedId={selectedId}
           onSelectEntry={onSelectEntry}
           onAddClick={onAddClick}

@@ -135,6 +135,17 @@ describe('M-X.7a v2 K4 — LibraryWorkspace', () => {
     await waitFor(() => expect(document.activeElement).toBe(screen.getByTestId('tree-search')));
   });
 
+  it('«+ Проект» in the tree creates a project + opens the info modal (project hub)', async () => {
+    await useStore.getState().addLibraryEntry(makeContainer({ id: 'e1', zone: 'loose' }));
+    useStore.setState((s) => { s.projects = {}; s.currentProjectId = null; });
+    render(<LibraryWorkspace />);
+    fireEvent.click(screen.getByTestId('tree-add-project-btn'));
+    await waitFor(() => {
+      expect(Object.keys(useStore.getState().projects || {}).length).toBe(1);
+      expect(useStore.getState().modals.projectInfo).toBe(true);
+    });
+  });
+
   it('topbar search input updates the shared query (reaches tree-search input)', () => {
     render(<LibraryWorkspace />);
     fireEvent.change(screen.getByTestId('library-topbar-search'), { target: { value: 'puc' } });

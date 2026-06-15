@@ -543,6 +543,16 @@ describe('K2 — LibraryTreeRoot', () => {
     expect(onAdd).toHaveBeenCalled();
   });
 
+  it('+ Проект button shows only when onCreateProject is wired + invokes it', () => {
+    const { unmount } = render(<LibraryTreeRoot />);
+    expect(screen.queryByTestId('tree-add-project-btn')).toBeNull();
+    unmount();
+    const onCreateProject = vi.fn();
+    render(<LibraryTreeRoot onCreateProject={onCreateProject} />);
+    fireEvent.click(screen.getByTestId('tree-add-project-btn'));
+    expect(onCreateProject).toHaveBeenCalled();
+  });
+
   it('search input forwards value to onQueryChange', () => {
     const onQ = vi.fn();
     render(<LibraryTreeRoot query="" onQueryChange={onQ} />);

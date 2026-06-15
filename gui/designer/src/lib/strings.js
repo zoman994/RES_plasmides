@@ -437,6 +437,7 @@ export const STRINGS = {
     paletteEmpty: 'Проектов пока нет',                              // EN: "No projects yet"
     paletteCreateNew: '+ Создать проект',                           // EN: "+ Create project"
     treeAllProjectsCollapsed: (n) => `Все проекты (${n})`,          // EN: "All projects (n)"
+    treeCreateProject: '+ Проект',                                  // EN: "+ Project"
   },
 
   // M-CANVAS-SKELETON — DEV-only скелет всей Canvas-модели
