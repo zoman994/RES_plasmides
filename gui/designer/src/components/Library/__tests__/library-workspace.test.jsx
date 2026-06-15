@@ -146,6 +146,29 @@ describe('M-X.7a v2 K4 — LibraryWorkspace', () => {
     });
   });
 
+  it('«+ Проект» does NOT spawn a duplicate blank when the current project is pristine (no overwrite)', async () => {
+    await useStore.getState().addLibraryEntry(makeContainer({ id: 'e1', zone: 'loose' }));
+    useStore.setState((s) => {
+      s.projects = { p1: { id: 'p1', name: 'Новый проект', containerIds: [], projectCommitIds: [], primerIds: [], tags: [], description: '' } };
+      s.currentProjectId = 'p1';
+    });
+    render(<LibraryWorkspace />);
+    fireEvent.click(screen.getByTestId('tree-add-project-btn'));
+    await waitFor(() => expect(useStore.getState().modals.projectInfo).toBe(true));
+    expect(Object.keys(useStore.getState().projects).length).toBe(1); // reused, not duplicated
+  });
+
+  it('«+ Проект» DOES create a new project when the current one is not a pristine blank', async () => {
+    await useStore.getState().addLibraryEntry(makeContainer({ id: 'e1', zone: 'loose' }));
+    useStore.setState((s) => {
+      s.projects = { p1: { id: 'p1', name: 'MyVector', containerIds: [], projectCommitIds: [], primerIds: [], tags: [], description: '' } };
+      s.currentProjectId = 'p1';
+    });
+    render(<LibraryWorkspace />);
+    fireEvent.click(screen.getByTestId('tree-add-project-btn'));
+    await waitFor(() => expect(Object.keys(useStore.getState().projects).length).toBe(2));
+  });
+
   it('topbar search input updates the shared query (reaches tree-search input)', () => {
     render(<LibraryWorkspace />);
     fireEvent.change(screen.getByTestId('library-topbar-search'), { target: { value: 'puc' } });

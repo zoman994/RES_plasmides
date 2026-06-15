@@ -403,8 +403,29 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
   // «+ Проект» in the tree → create + open the metadata modal. createProject
   // already sets currentProjectId + stays in the Library, so the new
   // ProjectZone appears in the tree automatically.
+  //
+  // Guard against duplicate blanks: if the CURRENT project is a pristine,
+  // never-touched «Новый проект» (default name, no containers / commits /
+  // primers / linked entries / description / tags), don't spawn a second
+  // identical empty that buries the first (which reads as «overwrote the
+  // project» — biolog 15.06.2026). Just open its info so the user names it.
   const onCreateProject = useCallback(() => {
     if (typeof createProject !== 'function') return;
+    const s = useStore.getState();
+    const cur = s.currentProjectId ? s.projects?.[s.currentProjectId] : null;
+    if (cur && !cur._pendingDelete) {
+      const defaultName = /^(новый проект|untitled)$/i.test((cur.name || '').trim());
+      const hasLinkedEntry = Object.values(s.libraryEntries || {})
+        .some((e) => e && !e._pendingDelete && e.projectId === cur.id);
+      const pristine = defaultName
+        && (cur.containerIds?.length || 0) === 0
+        && (cur.projectCommitIds?.length || 0) === 0
+        && (cur.primerIds?.length || 0) === 0
+        && !(cur.description || '').trim()
+        && (cur.tags?.length || 0) === 0
+        && !hasLinkedEntry;
+      if (pristine) { openProjectInfo?.(); return; }
+    }
     createProject('Новый проект');
     openProjectInfo?.();
   }, [createProject, openProjectInfo]);
