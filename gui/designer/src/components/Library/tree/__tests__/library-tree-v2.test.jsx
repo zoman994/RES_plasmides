@@ -400,17 +400,13 @@ describe('M-X.8 K4 — LibraryTreeRoot project grouping', () => {
     });
   });
 
-  it('pinned projects + current (not pinned) shown top-level; others under «Все проекты (N)»', () => {
+  it('all projects render in one flat list (no top-slot, no «Все проекты» group)', () => {
     render(<LibraryTreeRoot />);
-    expect(screen.getByTestId('library-zone-project-pb')).toBeTruthy();      // pinned
-    expect(screen.getByTestId('library-zone-project-pa')).toBeTruthy();      // current (not pinned)
-    expect(screen.getByTestId('tree-all-projects-group')).toBeTruthy();      // collapsible group
-    // Others (pc, pd) are NOT mounted until the group expands.
-    expect(screen.queryByTestId('library-zone-project-pc')).toBeNull();
-    expect(screen.queryByTestId('library-zone-project-pd')).toBeNull();
-    fireEvent.click(screen.getByTestId('tree-all-projects-group'));
-    expect(screen.getByTestId('library-zone-project-pc')).toBeTruthy();
-    expect(screen.getByTestId('library-zone-project-pd')).toBeTruthy();
+    // Every project is directly visible — no collapsed group, no top-slot pullout.
+    ['pa', 'pb', 'pc', 'pd'].forEach((id) => {
+      expect(screen.getByTestId(`library-zone-project-${id}`)).toBeTruthy();
+    });
+    expect(screen.queryByTestId('tree-all-projects-group')).toBeNull();
   });
 
   it('search filters project nodes by name + auto-expands «Все проекты» (focusSearch quick-find)', () => {
@@ -440,7 +436,7 @@ describe('M-X.8 K4 — LibraryTreeRoot project grouping', () => {
     expect(useStore.getState().pinnedProjectIds).not.toContain('pb');
   });
 
-  it('project activate button makes a non-current project current (header click stays expand-only)', () => {
+  it('project activate button makes a non-current project current', () => {
     render(<LibraryTreeRoot />);
     // current project (pa) has no activate button; a non-current pinned one (pb) does.
     expect(screen.queryByTestId('project-zone-activate-pa')).toBeNull();
@@ -463,31 +459,25 @@ describe('M-X.8 K4 — LibraryTreeRoot project grouping', () => {
     expect(screen.getByTestId('library-zone-project-pb').getAttribute('data-expanded')).toBe('false');
   });
 
-  it('click on a non-current project header EXPANDS only — does NOT activate (post 11.05.2026 UX iteration)', () => {
+  it('click on a non-current project header ACTIVATES it (нормальная логика, 15.06.2026)', () => {
     render(<LibraryTreeRoot />);
-    // pb starts collapsed (it is pinned but not current).
-    expect(screen.getByTestId('library-zone-project-pb').getAttribute('data-expanded')).toBe('false');
     fireEvent.click(screen.getByTestId('library-zone-project-pb-head'));
-    // currentProjectId stays pa — click is expand-only.
-    expect(useStore.getState().currentProjectId).toBe('pa');
-    expect(screen.getByTestId('library-zone-project-pb').getAttribute('data-expanded')).toBe('true');
-    // pa stays expanded (it's still current).
-    expect(screen.getByTestId('library-zone-project-pa').getAttribute('data-expanded')).toBe('true');
+    // currentProjectId switches to pb — click = activate.
+    expect(useStore.getState().currentProjectId).toBe('pb');
   });
 
-  it('click on the current project header just collapses (does not deactivate)', () => {
+  it('click on the current project header just toggles expand (does not deactivate)', () => {
     render(<LibraryTreeRoot />);
+    // pa is current → expanded; clicking it collapses, stays current.
     fireEvent.click(screen.getByTestId('library-zone-project-pa-head'));
     expect(useStore.getState().currentProjectId).toBe('pa');
     expect(screen.getByTestId('library-zone-project-pa').getAttribute('data-expanded')).toBe('false');
   });
 
-  it('click on a project under the «Все проекты» group EXPANDS without activating', () => {
+  it('clicking any project in the flat list activates it', () => {
     render(<LibraryTreeRoot />);
-    fireEvent.click(screen.getByTestId('tree-all-projects-group'));
     fireEvent.click(screen.getByTestId('library-zone-project-pc-head'));
-    expect(useStore.getState().currentProjectId).toBe('pa'); // unchanged
-    expect(screen.getByTestId('library-zone-project-pc').getAttribute('data-expanded')).toBe('true');
+    expect(useStore.getState().currentProjectId).toBe('pc');
   });
 
   it('pinned project shows ★ marker; non-pinned does not', () => {
@@ -496,8 +486,9 @@ describe('M-X.8 K4 — LibraryTreeRoot project grouping', () => {
     expect(screen.queryByTestId('project-zone-pin-star-pa')).toBeNull();
   });
 
-  // FAIL-fix-pass 2 — current project always first, regardless of pin status.
-  it('current project (NOT pinned) renders BEFORE the pinned list', () => {
+  // Нормальная логика — pinned float to the top of the flat list; the active
+  // project is highlighted IN PLACE (not pulled to the top).
+  it('pinned projects render before unpinned (active highlighted in place, not pulled to top)', () => {
     useStore.setState((s) => {
       s.projects = {
         X: { id: 'X', name: 'CurrentNotPinned', containerIds: [] },
@@ -508,27 +499,26 @@ describe('M-X.8 K4 — LibraryTreeRoot project grouping', () => {
       s.currentProjectId = 'X';
     });
     const { container } = render(<LibraryTreeRoot />);
-    // Restrict to root zone elements (exclude `-head` / `-pill` etc.).
     const zones = Array.from(container.querySelectorAll('[data-testid^="library-zone-project-"]'))
       .filter((el) => /^library-zone-project-[^-]+$/.test(el.getAttribute('data-testid')));
     const ids = zones.map((el) => el.getAttribute('data-testid').replace('library-zone-project-', ''));
-    expect(ids).toEqual(['X', 'Y', 'Z']);
+    // Pinned first (in pin order), then the current-but-unpinned X — NOT pulled up.
+    expect(ids).toEqual(['Y', 'Z', 'X']);
   });
 
-  it('Loose zone «⎀ БЕЗ ПРОЕКТА» sits BELOW the current project (post 11.05.2026 reorder)', () => {
+  it('Loose zone «⎀ БЕЗ ПРОЕКТА» sits ABOVE the project list (нормальная логика)', () => {
     useStore.setState((s) => {
       s.projects = { X: { id: 'X', name: 'Current', containerIds: [] } };
       s.pinnedProjectIds = [];
       s.currentProjectId = 'X';
     });
     const { container } = render(<LibraryTreeRoot />);
-    // Walk all top-level zone roots in document order.
     const tops = Array.from(container.querySelectorAll(
       '[data-testid="library-zone-loose"], [data-testid^="library-zone-project-"]',
     )).filter((el) => /^library-zone-(loose|project-[^-]+)$/.test(el.getAttribute('data-testid')));
     const order = tops.map((el) => el.getAttribute('data-testid'));
-    // Current project FIRST, loose desk SECOND.
-    expect(order).toEqual(['library-zone-project-X', 'library-zone-loose']);
+    // Free desk FIRST, then projects below (new ones append at the bottom).
+    expect(order).toEqual(['library-zone-loose', 'library-zone-project-X']);
   });
 
   it('current project (PINNED) still renders first, but only once (no duplicate)', () => {
@@ -585,7 +575,7 @@ describe('K2 — LibraryTreeRoot', () => {
     expect(onQ).toHaveBeenCalledWith('puc');
   });
 
-  it('discovers project zones from state.projects (post M-X.8 K4 — non-current non-pinned project lives under «Все проекты» group)', async () => {
+  it('discovers all project zones from state.projects (flat list — both current and non-current visible)', async () => {
     useStore.setState((s) => {
       s.currentProjectId = 'pa';
       s.projects = {
@@ -600,11 +590,8 @@ describe('K2 — LibraryTreeRoot', () => {
       id: 'b1', projectId: 'pb',
     }));
     render(<LibraryTreeRoot />);
-    // Current project is at top level.
+    // Both render directly in the flat list — no collapsed group to expand.
     expect(screen.getByTestId('library-zone-project-pa')).toBeTruthy();
-    // Foreign project lives under the collapsed «Все проекты» group.
-    expect(screen.queryByTestId('library-zone-project-pb')).toBeNull();
-    fireEvent.click(screen.getByTestId('tree-all-projects-group'));
     expect(screen.getByTestId('library-zone-project-pb')).toBeTruthy();
   });
 

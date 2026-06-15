@@ -118,9 +118,6 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
   // is the first thing the cursor is on. Ref-guard mirrors openAdd; tick lets
   // LibraryTreeRoot re-focus on each fresh arrival.
   const [focusSearchTick, setFocusSearchTick] = useState(0);
-  // Bumped after «+ Проект» creates a new project → reveal «Все проекты» so the
-  // prior current project (now moved out of the top slot) stays visible.
-  const [projectsRevealTick, setProjectsRevealTick] = useState(0);
   const consumedFocusRef = useRef(false);
   useEffect(() => {
     if (wsContext && wsContext.focusSearch) {
@@ -403,38 +400,22 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
     setPerEntryState((prev) => prev[entry.id] ? prev : { ...prev, [entry.id]: emptyEntryState() });
   }, []);
 
-  // «+ Проект» in the tree → create + open the metadata modal. createProject
-  // already sets currentProjectId + stays in the Library, so the new
-  // ProjectZone appears in the tree automatically.
-  //
-  // Guard against duplicate blanks: if the CURRENT project is a pristine,
-  // never-touched «Новый проект» (default name, no containers / commits /
-  // primers / linked entries / description / tags), don't spawn a second
-  // identical empty that buries the first (which reads as «overwrote the
-  // project» — biolog 15.06.2026). Just open its info so the user names it.
+  // «+ Проект» → create a NEW project with a UNIQUE default name and open its
+  // info to name it. «Нормальная логика» (Igor 15.06.2026): each click makes a
+  // distinct project (no same-name collisions — «Новый проект», «Новый проект
+  // 2», …); createProject sets it current → the flat tree list highlights it
+  // in place and it lands at the bottom (newest createdAt).
   const onCreateProject = useCallback(() => {
     if (typeof createProject !== 'function') return;
     const s = useStore.getState();
-    const cur = s.currentProjectId ? s.projects?.[s.currentProjectId] : null;
-    if (cur && !cur._pendingDelete) {
-      const defaultName = /^(новый проект|untitled)$/i.test((cur.name || '').trim());
-      const hasLinkedEntry = Object.values(s.libraryEntries || {})
-        .some((e) => e && !e._pendingDelete && e.projectId === cur.id);
-      const pristine = defaultName
-        && (cur.containerIds?.length || 0) === 0
-        && (cur.projectCommitIds?.length || 0) === 0
-        && (cur.primerIds?.length || 0) === 0
-        && !(cur.description || '').trim()
-        && (cur.tags?.length || 0) === 0
-        && !hasLinkedEntry;
-      if (pristine) { openProjectInfo?.(); return; }
-    }
-    createProject('Новый проект');
+    const taken = new Set(Object.values(s.projects || {})
+      .filter((p) => p && !p._pendingDelete)
+      .map((p) => (p.name || '').trim().toLowerCase()));
+    const base = 'Новый проект';
+    let name = base; let n = 2;
+    while (taken.has(name.toLowerCase())) { name = `${base} ${n}`; n += 1; }
+    createProject(name);
     openProjectInfo?.();
-    // Reveal «Все проекты» so the project that just stopped being current
-    // (it moves out of the top slot) stays visible — not seemingly lost in
-    // the collapsed group.
-    setProjectsRevealTick((t) => t + 1);
   }, [createProject, openProjectInfo]);
   const onSelectCommonSection = useCallback(() => setView('common'), []);
   const onActiveTabChange = useCallback((tab) => {
@@ -558,7 +539,6 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
           query={query}
           onQueryChange={setQuery}
           autoFocusSearchTick={focusSearchTick}
-          revealOthersTick={projectsRevealTick}
           onCreateProject={onCreateProject}
           selectedId={selectedId}
           onSelectEntry={onSelectEntry}

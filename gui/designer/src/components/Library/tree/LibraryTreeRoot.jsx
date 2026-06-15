@@ -30,7 +30,6 @@ import { useStore } from '../../../store';
 import { STRINGS } from '../../../lib/strings';
 import LooseZone from './LooseZone';
 import ProjectZone from './ProjectZone';
-import TreeFolderRow from './TreeFolderRow';
 import TrashZone from './TrashZone';
 import { APP_VERSION } from '../../../lib/version';
 
@@ -52,9 +51,6 @@ export default function LibraryTreeRoot({
   onQueryChange,
   // Bumped by «Все проекты» / ⌘P (focusSearch context) → focus the search input.
   autoFocusSearchTick = 0,
-  // Bumped after «+ Проект» → expand «Все проекты» so the prior current project
-  // (moved out of the top slot) stays visible (not seemingly overwritten).
-  revealOthersTick = 0,
   // Create a new project from the left panel (projects live in the Library).
   onCreateProject,
   selectedId = null,
@@ -114,14 +110,18 @@ export default function LibraryTreeRoot({
     return id === currentProjectId;
   }, [expandedOverride, currentProjectId]);
 
+  // Igor 15.06.2026 «нормальная логика»: click a project → it becomes ACTIVE
+  // (the active one is just highlighted in place — no more pulling it to a
+  // special top slot, which made projects seem to jump / disappear). Clicking
+  // the already-active project toggles its expand so you can collapse it.
+  const activateProjectAction = useStore((s) => s.activateProject);
   const onProjectHeaderClick = useCallback((id) => {
-    // Tree-header click = expand-only. Activation is intentionally
-    // decoupled (post 11.05.2026 visual feedback): biolog often
-    // wants to peek into a non-current project to drag a plasmid
-    // out, not to switch context. Activation lives in sidebar
-    // PINNED rows + Command Palette (⌘P).
-    setExpandedOverride((prev) => ({ ...prev, [id]: !isExpanded(id) }));
-  }, [isExpanded]);
+    if (id !== currentProjectId) {
+      activateProjectAction?.(id); // becomes current → auto-expands via isExpanded
+    } else {
+      setExpandedOverride((prev) => ({ ...prev, [id]: !isExpanded(id) }));
+    }
+  }, [currentProjectId, activateProjectAction, isExpanded]);
 
   // Loose zone collapse — local state, separate from project tree.
   const [looseExpanded, setLooseExpanded] = useState(true);
@@ -160,42 +160,29 @@ export default function LibraryTreeRoot({
     return out;
   }, [queryNorm, entriesById, allProjects]);
 
-  const groups = useMemo(() => {
-    // V115 — soft-deleted projects (_pendingDelete) live in the Trash zone,
-    // never the tree. `discoverProjects` (→ `others`) already filters them;
-    // the `current` and `pinnedRest` branches must do the same, else a
-    // pinned/current project stays visible after the 🗑 button.
-    const visible = (p) => !visibleProjectIds || visibleProjectIds.has(p.id);
-    const currentRaw = currentProjectId ? (projectsById?.[currentProjectId] || null) : null;
-    let current = currentRaw && currentRaw._pendingDelete ? null : currentRaw;
-    if (current && !visible(current)) current = null; // hidden by an active query
-    const pinnedRest = [];
-    for (const id of (pinnedProjectIds || [])) {
-      if (id === currentProjectId) continue; // current goes to its own slot
-      const p = projectsById?.[id];
-      if (p && !p._pendingDelete && visible(p)) pinnedRest.push(p);
-    }
-    const others = [];
-    for (const p of allProjects) {
-      if (p.id === currentProjectId) continue;
-      if (pinSet.has(p.id)) continue;
-      if (!visible(p)) continue;
-      others.push(p);
-    }
-    return { current, pinnedRest, others };
-  }, [allProjects, pinSet, currentProjectId, projectsById, pinnedProjectIds, visibleProjectIds]);
+  // One stable, flat project list (Igor «нормальная логика», 15.06.2026):
+  // pinned first, then the rest by creation time so a NEW project lands at the
+  // bottom. The active project is highlighted IN PLACE — no separate top slot,
+  // no collapsed «Все проекты» group hiding the rest (that pull-to-top + hide
+  // is what made projects seem to jump / disappear / reappear after reload).
+  // Soft-deleted live in Trash; a query filters by project name or a matching
+  // entry (visibleProjectIds).
+  const projectList = useMemo(() => {
+    const all = allProjects
+      .map((p) => projectsById?.[p.id])
+      .filter((p) => p && !p._pendingDelete && (!visibleProjectIds || visibleProjectIds.has(p.id)));
+    const pinRank = new Map((pinnedProjectIds || []).map((id, i) => [id, i]));
+    return all.slice().sort((a, b) => {
+      const ap = pinRank.has(a.id); const bp = pinRank.has(b.id);
+      if (ap && bp) return pinRank.get(a.id) - pinRank.get(b.id);
+      if (ap !== bp) return ap ? -1 : 1;
+      return (a.createdAt || '').localeCompare(b.createdAt || ''); // new at bottom
+    });
+  }, [allProjects, projectsById, visibleProjectIds, pinnedProjectIds]);
 
   const onInput = useCallback((e) => {
     onQueryChange?.(e.target.value || '');
   }, [onQueryChange]);
-
-  // «Все проекты (N)» group toggle — local state, default collapsed.
-  const [othersExpanded, setOthersExpanded] = useState(false);
-  // After «+ Проект», reveal the group so the prior current project is visible.
-  useEffect(() => {
-    if (revealOthersTick > 0) setOthersExpanded(true);
-  }, [revealOthersTick]);
-  const toggleOthers = useCallback(() => setOthersExpanded((v) => !v), []);
 
   // Trash zone toggle — collapsed by default, expands on user click.
   const [trashExpanded, setTrashExpanded] = useState(false);
@@ -306,29 +293,10 @@ export default function LibraryTreeRoot({
           minHeight: 0,
         }}
       >
-        {/*
-          * Order (post 11.05.2026 visual feedback):
-          *   1. Current project (top — primary attention)
-          *   2. ⎀ БЕЗ ПРОЕКТА «стол биолога»
-          *   3. Pinned (excluding current)
-          *   4. «Все проекты (N)» collapsible group
-          * The free desk sits UNDER the current project so the
-          * primary workspace is the first thing biolog scans —
-          * loose entries are a secondary collection to pull from.
-          */}
-        {groups.current && (
-          <ProjectZone
-            key={groups.current.id}
-            project={groups.current}
-            pinned={pinSet.has(groups.current.id)}
-            query={query}
-            selectedId={selectedId}
-            onSelectEntry={onSelectEntry}
-            expanded={isExpanded(groups.current.id)}
-            onToggle={() => onProjectHeaderClick(groups.current.id)}
-            onExportProject={onExportProject}
-          />
-        )}
+        {/* Igor «нормальная логика» (15.06.2026): ⎀ free desk on top, then ONE
+            flat project list below — pinned first, newest at the bottom. The
+            active project is highlighted IN PLACE (no top-slot pull-out, no
+            collapsed «Все проекты» group). Clicking a project activates it. */}
         <LooseZone
           query={query}
           selectedId={selectedId}
@@ -338,11 +306,11 @@ export default function LibraryTreeRoot({
           onAddToLoose={onAddToLoose}
           onAddStarterSet={onAddStarterSet}
         />
-        {groups.pinnedRest.map((p) => (
+        {projectList.map((p) => (
           <ProjectZone
             key={p.id}
             project={p}
-            pinned
+            pinned={pinSet.has(p.id)}
             query={query}
             selectedId={selectedId}
             onSelectEntry={onSelectEntry}
@@ -351,31 +319,6 @@ export default function LibraryTreeRoot({
             onExportProject={onExportProject}
           />
         ))}
-        {groups.others.length > 0 && (
-          <>
-            <TreeFolderRow
-              name={(ph.treeAllProjectsCollapsed || ((n) => `Все проекты (${n})`))(groups.others.length)}
-              icon="📚"
-              count={null}
-              expanded={othersExpanded || !!queryNorm}
-              indent={0}
-              onToggle={toggleOthers}
-              testId="tree-all-projects-group"
-            />
-            {(othersExpanded || !!queryNorm) && groups.others.map((p) => (
-              <ProjectZone
-                key={p.id}
-                project={p}
-                query={query}
-                selectedId={selectedId}
-                onSelectEntry={onSelectEntry}
-                expanded={isExpanded(p.id)}
-                onToggle={() => onProjectHeaderClick(p.id)}
-                onExportProject={onExportProject}
-              />
-            ))}
-          </>
-        )}
         {/* SPEC_COMMON_FEATURES DEC-CF-06 — section node (not a zone). Click
             swaps the right panel to the common-features browser/editor. */}
         <button

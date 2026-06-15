@@ -146,7 +146,7 @@ describe('M-X.7a v2 K4 — LibraryWorkspace', () => {
     });
   });
 
-  it('«+ Проект» does NOT spawn a duplicate blank when the current project is pristine (no overwrite)', async () => {
+  it('«+ Проект» creates a NEW project with a unique name (no same-name collision)', async () => {
     await useStore.getState().addLibraryEntry(makeContainer({ id: 'e1', zone: 'loose' }));
     useStore.setState((s) => {
       s.projects = { p1: { id: 'p1', name: 'Новый проект', containerIds: [], projectCommitIds: [], primerIds: [], tags: [], description: '' } };
@@ -154,11 +154,13 @@ describe('M-X.7a v2 K4 — LibraryWorkspace', () => {
     });
     render(<LibraryWorkspace />);
     fireEvent.click(screen.getByTestId('tree-add-project-btn'));
-    await waitFor(() => expect(useStore.getState().modals.projectInfo).toBe(true));
-    expect(Object.keys(useStore.getState().projects).length).toBe(1); // reused, not duplicated
+    await waitFor(() => expect(Object.keys(useStore.getState().projects).length).toBe(2));
+    const names = Object.values(useStore.getState().projects).map((p) => p.name);
+    expect(new Set(names).size).toBe(names.length); // all distinct — no «нельзя с тем же именем»
+    expect(names).toContain('Новый проект 2'); // auto-suffixed
   });
 
-  it('«+ Проект» DOES create a new project when the current one is not a pristine blank', async () => {
+  it('«+ Проект» — the prior project stays visible in the flat list (not overwritten)', async () => {
     await useStore.getState().addLibraryEntry(makeContainer({ id: 'e1', zone: 'loose' }));
     useStore.setState((s) => {
       s.projects = { p1: { id: 'p1', name: 'MyVector', containerIds: [], projectCommitIds: [], primerIds: [], tags: [], description: '' } };
@@ -167,9 +169,8 @@ describe('M-X.7a v2 K4 — LibraryWorkspace', () => {
     render(<LibraryWorkspace />);
     fireEvent.click(screen.getByTestId('tree-add-project-btn'));
     await waitFor(() => expect(Object.keys(useStore.getState().projects).length).toBe(2));
-    // The prior project stays visible — «Все проекты» auto-expands so it isn't
-    // seemingly overwritten (it moved out of the current top slot).
-    await waitFor(() => expect(screen.getByTestId('library-zone-project-p1')).toBeTruthy());
+    // Prior project still in the flat list — nothing buried or overwritten.
+    expect(screen.getByTestId('library-zone-project-p1')).toBeTruthy();
   });
 
   it('topbar search input updates the shared query (reaches tree-search input)', () => {
