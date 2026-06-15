@@ -229,8 +229,9 @@ export const STRINGS = {
       toggleZoneSequence: 'Zone: sequence view',
       // T10 — Sanger lab notebook panel toggle.
       toggleSangerNotebook: 'Sanger lab notebook',
-      // M-X.8 K6 — Command Palette opens with ⌘P / Ctrl+P.
-      commandPalette: 'Command Palette',
+      // ⌘P / Ctrl+P → jump to the Library + focus its search (the palette
+      // was removed; the Library is the project hub).
+      commandPalette: 'Библиотека: поиск',
     },
   },
 
@@ -420,11 +421,8 @@ export const STRINGS = {
   projectHub: {
     sidebarPinnedHeader: 'В работе',                                // EN: "In work"
     sidebarPinnedCounter: (n, cap) => `${n}/${cap}`,                // EN: "n/cap"
-    // FAIL-fix-pass 3 — без `+` и `…`. Кнопка не создаёт новое (не
-    // нужен «+»), не открывает file picker (не нужен «…»). Хоткей
-    // `⌘P` справа от label служит подсказкой.
-    sidebarOpenAll: 'Все проекты',                                  // EN: "All projects"
-    sidebarOpenAllTooltip: 'Все проекты (⌘P)',                     // EN: "All projects (⌘P)"
+    // sidebarOpenAll / sidebarOpenAllTooltip removed 15.06.2026 with the
+    // «📂 Все проекты» sidebar item (redundant with ▦ Библиотека).
     pinTooltip: 'Закрепить',                                        // EN: "Pin"
     unpinTooltip: 'Открепить',                                      // EN: "Unpin"
     pinCapExceeded: (cap) => `Закрепить можно не больше ${cap} проектов`, // EN: "Cap reached"

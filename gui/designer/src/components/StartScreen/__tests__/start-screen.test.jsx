@@ -93,12 +93,12 @@ describe('StartScreen-Pixel — Sidebar shell', () => {
     //   - РАБОЧЕЕ МЕСТО / СПРАВКА section labels removed.
     //   - «Праймеры soon» disabled stub removed (visual noise).
     //   - «📂 Открыть проект» dev-only sidebar item removed.
-    //   - «📂 Все проекты» added to main nav block.
+    //   - «📂 Все проекты» removed (redundant with ▦ Библиотека).
     //   - «📖 Руководство» / «⌨ Хоткеи» moved to MainPanel «?» popover.
     //   - «↓ Установить» PWA moved to SettingsModal.
     expect(screen.getByTestId('ss-nav-home')).toBeTruthy();
     expect(screen.getByTestId('ss-nav-library')).toBeTruthy();
-    expect(screen.getByTestId('ss-nav-all-projects')).toBeTruthy();
+    expect(screen.queryByTestId('ss-nav-all-projects')).toBeNull();
     expect(screen.queryByTestId('ss-nav-constructs')).toBeNull();
     expect(screen.queryByTestId('ss-nav-reactions')).toBeNull();
     expect(screen.queryByTestId('ss-nav-primers')).toBeNull();   // MS-K1 removed
@@ -139,11 +139,6 @@ describe('StartScreen-Pixel — Sidebar shell', () => {
     expect(screen.getByTestId('sb-pinned-pin-B')).toBeTruthy();
     // Current pinned project gets the active marker.
     expect(screen.getByTestId('sb-pinned-pin-A').getAttribute('data-active')).toBe('true');
-    // «Все проекты» now routes into the Library (project hub) with the
-    // search focused — no floating palette.
-    fireEvent.click(screen.getByTestId('ss-nav-all-projects'));
-    expect(useStore.getState().workspace.active).toBe('library');
-    expect(useStore.getState().workspace.context.focusSearch).toBe(true);
   });
 
   it('M-X.8 K3 — sidebar pinned row click activates project + jumps to library', () => {

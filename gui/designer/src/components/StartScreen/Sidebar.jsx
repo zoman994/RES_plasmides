@@ -190,8 +190,9 @@ export default function Sidebar({ collapsed, onToggle, onOpenHotkeys }) {
           * - Removed «📦 Праймеры soon» disabled stub.
           * - Removed «📂 Открыть проект» (was a misplaced action under
           *   the "workspace" label).
-          * - Added «📂 Все проекты» as the projects entry-point in the
-          *   main nav block → routes into the Library (Ctrl+P too).
+          * - Removed «📂 Все проекты» (15.06.2026) — redundant with
+          *   ▦ Библиотека (both open the Library, the project hub). ⌘P
+          *   still jumps to the Library + focuses its search.
           */}
         <SidebarItem
           icon="⌂"
@@ -210,13 +211,9 @@ export default function Sidebar({ collapsed, onToggle, onOpenHotkeys }) {
           onClick={onLibraryClick}
           testId="ss-nav-library"
         />
-        <SidebarItem
-          icon="📂"
-          label={ph.sidebarOpenAll || 'Все проекты'}
-          tip={ph.sidebarOpenAllTooltip || 'Все проекты (⌘P)'}
-          onClick={() => { setActiveWorkspace('library', { focusSearch: true }); setActiveFullscreen('library'); }}
-          testId="ss-nav-all-projects"
-        />
+        {/* «📂 Все проекты» removed — it just opened the Library (same as the
+            ▦ Библиотека item above). Projects live in the Library; quick-find
+            is its search (⌘P still jumps there). */}
 
         {/*
           * M-X.8 K3 — «PINNED» section. Pinned projects from
