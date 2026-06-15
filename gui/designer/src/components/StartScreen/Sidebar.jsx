@@ -51,7 +51,6 @@ export default function Sidebar({ collapsed, onToggle, onOpenHotkeys }) {
   const projectsById = useStore((s) => s.projects);
   const currentProjectId = useStore((s) => s.currentProjectId);
   const activateProject = useStore((s) => s.activateProject);
-  const openCommandPalette = useStore((s) => s.openCommandPalette);
   // PWA install — `canInstallPwa` flips to `true` when the browser
   // fires `beforeinstallprompt` (caught in App.jsx). Already-
   // installed mode (standalone display) reports through
@@ -271,7 +270,7 @@ export default function Sidebar({ collapsed, onToggle, onOpenHotkeys }) {
           icon="📂"
           label={ph.sidebarOpenAll || 'Все проекты'}
           tip={ph.sidebarOpenAllTooltip || 'Все проекты (⌘P)'}
-          onClick={() => openCommandPalette?.()}
+          onClick={() => { setActiveWorkspace('library', { focusSearch: true }); setActiveFullscreen('library'); }}
           testId="ss-nav-all-projects"
         />
 

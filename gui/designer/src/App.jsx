@@ -239,8 +239,12 @@ export default function App() {
   useHotkey('project-info', handleProjectInfo);
   useHotkey('escape', handleEscape);
   // M-X.8 K6 — ⌘P / Ctrl+P opens the Command Palette.
+  // ⌘P / Ctrl+P — quick-find projects now lives in the Library (its search),
+  // not a floating palette. Route into the Library with search focused.
   const handleCommandPalette = useCallback(() => {
-    useStore.getState().openCommandPalette?.();
+    const s = useStore.getState();
+    s.setActiveWorkspace?.('library', { focusSearch: true });
+    s.setActiveFullscreen?.('library');
   }, []);
   useHotkey('command-palette', handleCommandPalette);
   // M-X.9 K2 — Ctrl+F / ⌘F opens local sequence search.
@@ -268,11 +272,11 @@ export default function App() {
       switch (action) {
         case 'new-project': handleNew(); break;
         case 'open-bodge': handleOpen(); break;
-        case 'command-palette': useStore.getState().openCommandPalette?.(); break;
+        case 'command-palette': handleCommandPalette(); break;
         default: /* unknown action — ignore */ break;
       }
     }, 0);
-  }, [handleNew, handleOpen]);
+  }, [handleNew, handleOpen, handleCommandPalette]);
 
   // ─── Single global keydown listener via runHotkeyResolver ───
   // Capture phase is critical: in PWA standalone Chrome will let

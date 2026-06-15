@@ -139,10 +139,11 @@ describe('StartScreen-Pixel — Sidebar shell', () => {
     expect(screen.getByTestId('sb-pinned-pin-B')).toBeTruthy();
     // Current pinned project gets the active marker.
     expect(screen.getByTestId('sb-pinned-pin-A').getAttribute('data-active')).toBe('true');
-    // MS-K1: «Все проекты» moved into the main nav block; clicking
-    // still opens the command palette.
+    // «Все проекты» now routes into the Library (project hub) with the
+    // search focused — no floating palette.
     fireEvent.click(screen.getByTestId('ss-nav-all-projects'));
-    expect(useStore.getState().modals.commandPalette).toBe(true);
+    expect(useStore.getState().workspace.active).toBe('library');
+    expect(useStore.getState().workspace.context.focusSearch).toBe(true);
   });
 
   it('M-X.8 K3 — sidebar pinned row click activates project + jumps to library', () => {
@@ -274,6 +275,14 @@ describe('StartScreen-Pixel — MainPanel', () => {
     expect(screen.getByTestId('ss-action-create-primary')).toBeTruthy();
     expect(screen.getByTestId('ss-action-load-bodge-card')).toBeTruthy();
     expect(screen.getByTestId('ss-action-all-projects-card')).toBeTruthy();
+  });
+
+  it('«Все проекты» card routes into the Library with search focused (not a palette)', () => {
+    render(<StartScreenIntegration />);
+    fireEvent.click(screen.getByTestId('ss-action-all-projects-card'));
+    expect(useStore.getState().workspace.active).toBe('library');
+    expect(useStore.getState().workspace.context.focusSearch).toBe(true);
+    expect(useStore.getState().modals.commandPalette).not.toBe(true);
   });
 
   it('shows «нет проектов» empty state when store has no projects', () => {

@@ -25,7 +25,7 @@
  *     overrides for any non-current project, so other projects
  *     fold back when the user switches via sidebar/palette.
  */
-import { useMemo, useCallback, useState, useEffect } from 'react';
+import { useMemo, useCallback, useState, useEffect, useRef } from 'react';
 import { useStore } from '../../../store';
 import { STRINGS } from '../../../lib/strings';
 import LooseZone from './LooseZone';
@@ -50,6 +50,8 @@ function discoverProjects(projectsById) {
 export default function LibraryTreeRoot({
   query = '',
   onQueryChange,
+  // Bumped by «Все проекты» / ⌘P (focusSearch context) → focus the search input.
+  autoFocusSearchTick = 0,
   selectedId = null,
   onSelectEntry,
   onAddClick,
@@ -79,6 +81,15 @@ export default function LibraryTreeRoot({
   // are collapsed unless they get activated (which then puts them
   // in the «current» bucket and they expand by default).
   const [expandedOverride, setExpandedOverride] = useState({});
+
+  // Focus the search input when «Все проекты» / ⌘P routes here (tick bumps).
+  const searchInputRef = useRef(null);
+  useEffect(() => {
+    if (autoFocusSearchTick > 0) {
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select?.();
+    }
+  }, [autoFocusSearchTick]);
   // Reset overrides for non-current projects whenever current
   // changes — siblings collapse cleanly.
   useEffect(() => {
@@ -212,6 +223,7 @@ export default function LibraryTreeRoot({
             color: 'var(--text-tertiary)', fontSize: 12,
           }}>⌕</span>
           <input
+            ref={searchInputRef}
             type="text"
             data-testid="tree-search"
             placeholder={ws.treeFilterPlaceholder || 'Фильтр в дереве…'}

@@ -70,7 +70,10 @@ export default function MainPanel({ onOpenHotkeys }) {
     setActiveFullscreen?.('library');
     openProjectInfo?.();
   }, [createProject, setActiveWorkspace, setActiveFullscreen, openProjectInfo]);
-  const onOpenAllProjects = useCallback(() => openCommandPalette?.(), [openCommandPalette]);
+  const onOpenAllProjects = useCallback(() => {
+    setActiveWorkspace?.('library', { focusSearch: true });
+    setActiveFullscreen?.('library');
+  }, [setActiveWorkspace, setActiveFullscreen]);
   const onLoadBodge = useCallback(() => {
     // Re-uses the same flow as the sidebar handler. The dedicated
     // OS file picker stays in the sidebar; this card opens the

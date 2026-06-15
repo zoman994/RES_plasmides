@@ -14,7 +14,7 @@
 import 'fake-indexeddb/auto';
 import React from 'react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import { useStore } from '../../../store';
 import { resetDBForTests } from '../../../db/dexie-schema';
 import LibraryWorkspace from '../LibraryWorkspace';
@@ -126,6 +126,13 @@ describe('M-X.7a v2 K4 — LibraryWorkspace', () => {
     const row = screen.getByTestId('library-action-row');
     expect(row.getAttribute('data-zone')).toBe('loose');
     expect(row.getAttribute('data-kind')).toBe('container');
+  });
+
+  it('focusSearch context (Все проекты / ⌘P redirect) focuses the tree search input', async () => {
+    await useStore.getState().addLibraryEntry(makeContainer({ id: 'e1', zone: 'loose' }));
+    useStore.setState((s) => { s.workspace = { active: 'library', history: [], context: { focusSearch: true } }; });
+    render(<LibraryWorkspace />);
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByTestId('tree-search')));
   });
 
   it('topbar search input updates the shared query (reaches tree-search input)', () => {

@@ -113,6 +113,20 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
     }
   }, [wsContext]);
 
+  // «Все проекты» / ⌘P now route here with { focusSearch: true } instead of a
+  // floating palette — focus the tree search so quick-find a project/container
+  // is the first thing the cursor is on. Ref-guard mirrors openAdd; tick lets
+  // LibraryTreeRoot re-focus on each fresh arrival.
+  const [focusSearchTick, setFocusSearchTick] = useState(0);
+  const consumedFocusRef = useRef(false);
+  useEffect(() => {
+    if (wsContext && wsContext.focusSearch) {
+      if (!consumedFocusRef.current) { consumedFocusRef.current = true; setFocusSearchTick((t) => t + 1); }
+    } else {
+      consumedFocusRef.current = false;
+    }
+  }, [wsContext]);
+
   // Import files and add to store. `projectId` = null → LooseZone, id → project zone.
   const importFiles = useCallback(async (files, projectId, opts = {}) => {
     if (!files.length) return;
@@ -503,6 +517,7 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
         <LibraryTreeRoot
           query={query}
           onQueryChange={setQuery}
+          autoFocusSearchTick={focusSearchTick}
           selectedId={selectedId}
           onSelectEntry={onSelectEntry}
           onAddClick={onAddClick}
