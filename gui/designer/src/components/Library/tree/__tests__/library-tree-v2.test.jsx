@@ -413,6 +413,23 @@ describe('M-X.8 K4 — LibraryTreeRoot project grouping', () => {
     expect(screen.getByTestId('library-zone-project-pd')).toBeTruthy();
   });
 
+  it('search filters project nodes by name + auto-expands «Все проекты» (focusSearch quick-find)', () => {
+    render(<LibraryTreeRoot query="Other-1" />);
+    // «Все проекты» auto-expands under a query → only the name match (pc) shows.
+    expect(screen.getByTestId('library-zone-project-pc')).toBeTruthy();
+    expect(screen.queryByTestId('library-zone-project-pd')).toBeNull();
+    // Non-matching current (pa «Active») + pinned (pb «Pinned») are hidden.
+    expect(screen.queryByTestId('library-zone-project-pa')).toBeNull();
+    expect(screen.queryByTestId('library-zone-project-pb')).toBeNull();
+  });
+
+  it('search keeps a project visible when it contains a matching ENTRY (entry-search preserved)', async () => {
+    await useStore.getState().addLibraryEntry(makeContainer({ id: 'e-find', name: 'GFP-findme', projectId: 'pd' }));
+    render(<LibraryTreeRoot query="findme" />);
+    expect(screen.getByTestId('library-zone-project-pd')).toBeTruthy(); // matched by entry name
+    expect(screen.queryByTestId('library-zone-project-pc')).toBeNull(); // no match
+  });
+
   it('only the current project is expanded by default; siblings start collapsed', () => {
     render(<LibraryTreeRoot />);
     // Current (pa) → expanded → its container sub-folder row is in DOM.

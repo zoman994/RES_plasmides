@@ -128,27 +128,57 @@ export default function LibraryTreeRoot({
   // else (un-pinned non-current) lands inside the collapsible
   // «Все проекты (N)» group.
   const pinSet = useMemo(() => new Set(pinnedProjectIds || []), [pinnedProjectIds]);
+
+  // Project-name search (so «Все проекты»/⌘P → focus search can quick-find a
+  // project, not just entries). When a query is set, a project is visible if
+  // its NAME matches OR it contains a matching entry (preserves entry-search).
+  // null = no query → show all projects.
+  const queryNorm = (query || '').trim().toLowerCase();
+  const visibleProjectIds = useMemo(() => {
+    if (!queryNorm) return null;
+    const entries = Object.values(entriesById || {}).filter((e) => e && !e._pendingDelete);
+    const withMatchingEntry = new Set();
+    for (const e of entries) {
+      if (!(e.name || '').toLowerCase().includes(queryNorm)) continue;
+      if (e.projectId) withMatchingEntry.add(e.projectId);
+    }
+    const out = new Set();
+    for (const p of allProjects) {
+      if ((p.name || '').toLowerCase().includes(queryNorm) || withMatchingEntry.has(p.id)) { out.add(p.id); continue; }
+      // containerIds membership (entry linked to project without projectId field)
+      const cids = p.containerIds || [];
+      for (const cid of cids) {
+        const e = entriesById?.[cid];
+        if (e && !e._pendingDelete && (e.name || '').toLowerCase().includes(queryNorm)) { out.add(p.id); break; }
+      }
+    }
+    return out;
+  }, [queryNorm, entriesById, allProjects]);
+
   const groups = useMemo(() => {
     // V115 — soft-deleted projects (_pendingDelete) live in the Trash zone,
     // never the tree. `discoverProjects` (→ `others`) already filters them;
     // the `current` and `pinnedRest` branches must do the same, else a
     // pinned/current project stays visible after the 🗑 button.
+    const visible = (p) => !visibleProjectIds || visibleProjectIds.has(p.id);
     const currentRaw = currentProjectId ? (projectsById?.[currentProjectId] || null) : null;
-    const current = currentRaw && currentRaw._pendingDelete ? null : currentRaw;
+    let current = currentRaw && currentRaw._pendingDelete ? null : currentRaw;
+    if (current && !visible(current)) current = null; // hidden by an active query
     const pinnedRest = [];
     for (const id of (pinnedProjectIds || [])) {
       if (id === currentProjectId) continue; // current goes to its own slot
       const p = projectsById?.[id];
-      if (p && !p._pendingDelete) pinnedRest.push(p);
+      if (p && !p._pendingDelete && visible(p)) pinnedRest.push(p);
     }
     const others = [];
     for (const p of allProjects) {
       if (p.id === currentProjectId) continue;
       if (pinSet.has(p.id)) continue;
+      if (!visible(p)) continue;
       others.push(p);
     }
     return { current, pinnedRest, others };
-  }, [allProjects, pinSet, currentProjectId, projectsById, pinnedProjectIds]);
+  }, [allProjects, pinSet, currentProjectId, projectsById, pinnedProjectIds, visibleProjectIds]);
 
   const onInput = useCallback((e) => {
     onQueryChange?.(e.target.value || '');
@@ -301,12 +331,12 @@ export default function LibraryTreeRoot({
               name={(ph.treeAllProjectsCollapsed || ((n) => `Все проекты (${n})`))(groups.others.length)}
               icon="📚"
               count={null}
-              expanded={othersExpanded}
+              expanded={othersExpanded || !!queryNorm}
               indent={0}
               onToggle={toggleOthers}
               testId="tree-all-projects-group"
             />
-            {othersExpanded && groups.others.map((p) => (
+            {(othersExpanded || !!queryNorm) && groups.others.map((p) => (
               <ProjectZone
                 key={p.id}
                 project={p}
