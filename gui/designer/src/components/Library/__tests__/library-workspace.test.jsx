@@ -167,6 +167,9 @@ describe('M-X.7a v2 K4 — LibraryWorkspace', () => {
     render(<LibraryWorkspace />);
     fireEvent.click(screen.getByTestId('tree-add-project-btn'));
     await waitFor(() => expect(Object.keys(useStore.getState().projects).length).toBe(2));
+    // The prior project stays visible — «Все проекты» auto-expands so it isn't
+    // seemingly overwritten (it moved out of the current top slot).
+    await waitFor(() => expect(screen.getByTestId('library-zone-project-p1')).toBeTruthy());
   });
 
   it('topbar search input updates the shared query (reaches tree-search input)', () => {

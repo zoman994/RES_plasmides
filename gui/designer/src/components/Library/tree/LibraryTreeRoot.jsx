@@ -52,6 +52,9 @@ export default function LibraryTreeRoot({
   onQueryChange,
   // Bumped by «Все проекты» / ⌘P (focusSearch context) → focus the search input.
   autoFocusSearchTick = 0,
+  // Bumped after «+ Проект» → expand «Все проекты» so the prior current project
+  // (moved out of the top slot) stays visible (not seemingly overwritten).
+  revealOthersTick = 0,
   // Create a new project from the left panel (projects live in the Library).
   onCreateProject,
   selectedId = null,
@@ -188,6 +191,10 @@ export default function LibraryTreeRoot({
 
   // «Все проекты (N)» group toggle — local state, default collapsed.
   const [othersExpanded, setOthersExpanded] = useState(false);
+  // After «+ Проект», reveal the group so the prior current project is visible.
+  useEffect(() => {
+    if (revealOthersTick > 0) setOthersExpanded(true);
+  }, [revealOthersTick]);
   const toggleOthers = useCallback(() => setOthersExpanded((v) => !v), []);
 
   // Trash zone toggle — collapsed by default, expands on user click.

@@ -118,6 +118,9 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
   // is the first thing the cursor is on. Ref-guard mirrors openAdd; tick lets
   // LibraryTreeRoot re-focus on each fresh arrival.
   const [focusSearchTick, setFocusSearchTick] = useState(0);
+  // Bumped after «+ Проект» creates a new project → reveal «Все проекты» so the
+  // prior current project (now moved out of the top slot) stays visible.
+  const [projectsRevealTick, setProjectsRevealTick] = useState(0);
   const consumedFocusRef = useRef(false);
   useEffect(() => {
     if (wsContext && wsContext.focusSearch) {
@@ -428,6 +431,10 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
     }
     createProject('Новый проект');
     openProjectInfo?.();
+    // Reveal «Все проекты» so the project that just stopped being current
+    // (it moves out of the top slot) stays visible — not seemingly lost in
+    // the collapsed group.
+    setProjectsRevealTick((t) => t + 1);
   }, [createProject, openProjectInfo]);
   const onSelectCommonSection = useCallback(() => setView('common'), []);
   const onActiveTabChange = useCallback((tab) => {
@@ -551,6 +558,7 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
           query={query}
           onQueryChange={setQuery}
           autoFocusSearchTick={focusSearchTick}
+          revealOthersTick={projectsRevealTick}
           onCreateProject={onCreateProject}
           selectedId={selectedId}
           onSelectEntry={onSelectEntry}
