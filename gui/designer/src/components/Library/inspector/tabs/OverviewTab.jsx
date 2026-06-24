@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import PlasmidMiniMap from '../../../PlasmidMiniMap';
+import PlasmidMapV2 from '../../../PlasmidMapV2';
+import { FEATURE_FLAGS } from '../../../../lib/feature-flags';
 import { featureColor } from '../../../../feature-palette';
 import { STRINGS } from '../../../../lib/strings';
 import { buildFileSummary, summarizeRESitesCached } from '../lib/file-summary';
@@ -31,7 +33,9 @@ const __PREWARM_DISABLED__ =
   && typeof import.meta.env !== 'undefined'
   && import.meta.env.MODE === 'test';
 
-export default function OverviewTab({ item, onUpdateTags, onUpdateTopology, onNavigateToFeature }) {
+export default function OverviewTab({
+  item, onUpdateTags, onUpdateTopology, onNavigateToFeature, onApplyOrigin,
+}) {
   const summary = useMemo(() => buildFileSummary(item), [item]);
   // Lazy reSites: in production we paint the rest of the overview first
   // (mini-map, type counts, categories, CDS list — fast), then schedule
@@ -40,6 +44,11 @@ export default function OverviewTab({ item, onUpdateTags, onUpdateTopology, onNa
   // the same session is instant. In test mode we run synchronously.
   const sequence = item?.sequence;
   const topology = item?.topology || 'linear';
+  // Origin («ноль-точка») picker state — restored 17.06.2026 (Игорь: было,
+  // пропало при чистке). Resets to 1 on plasmid switch.
+  const [originPos, setOriginPos] = useState(1);
+  const originKey = item ? (item.id || item._libraryEntryId || item._fileName || item.name || '') : '';
+  useEffect(() => { setOriginPos(1); }, [originKey]);
   const [reSites, setReSites] = useState(() =>
     __PREWARM_DISABLED__ ? summarizeRESitesCached(sequence, topology) : []
   );
@@ -69,6 +78,14 @@ export default function OverviewTab({ item, onUpdateTags, onUpdateTopology, onNa
 
   if (!summary || !item) return null;
   const length = item.length || item.sequence?.length || 0;
+  // Rotate the map so the candidate base (originPos, 1-based) sits under the
+  // fixed top zero-notch. Negative = rotate content back so that base comes to
+  // 12 o'clock. originPos === 1 → 0° (current orientation).
+  const originRotationDeg = (topology === 'circular' && length > 0)
+    ? -(((originPos - 1) % length) / length) * 360
+    : 0;
+  // ◀ / ▶ nudge the origin one base, wrapping around the ring.
+  const nudgeOrigin = (delta) => setOriginPos((p) => (((p - 1 + delta) % length) + length) % length + 1);
   const { typeCounts, cats, remainingCDS, warnings } = summary;
   const cdsTop = remainingCDS.slice(0, 5);
   const cdsOverflow = Math.max(0, remainingCDS.length - cdsTop.length);
@@ -97,18 +114,148 @@ export default function OverviewTab({ item, onUpdateTags, onUpdateTopology, onNa
             border: '0.5px solid var(--border-subtle)',
             borderRadius: 'var(--radius-md)',
             padding: 12,
-            display: 'flex', justifyContent: 'center',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
           }}
         >
-          <PlasmidMiniMap
-            length={length}
-            topology={topology}
-            annotations={item.annotations || []}
-            size={180}
-            mode="overlay"
-            disableHoverOverlay
-            onFeatureClick={onNavigateToFeature}
-          />
+          {FEATURE_FLAGS.plasmidMapV2 && topology === 'circular' ? (
+            /* Редизайн карты (DEC-DS-PLASMIDMAP-V2): feature-centric, внешние
+               лидер-подписи в две колонки. Шире ячейки (520px) и overflow —
+               подписи свисают за тёмную рамку влево/вправо, как и у legacy. */
+            <div style={{ width: 520, maxWidth: '100%', flexShrink: 0, aspectRatio: '1 / 1', overflow: 'visible' }}>
+              <PlasmidMapV2
+                annotations={item.annotations || []}
+                length={length}
+                topology={topology}
+                centerLabel={{ name: item.name || item._fileName || '', bp: length }}
+                onFeatureClick={onNavigateToFeature}
+                rotationDeg={typeof onApplyOrigin === 'function' ? originRotationDeg : 0}
+              />
+            </div>
+          ) : (
+            <PlasmidMiniMap
+              length={length}
+              topology={topology}
+              annotations={item.annotations || []}
+              size={200}
+              mode="overlay"
+              disableHoverOverlay
+              onFeatureClick={onNavigateToFeature}
+              /* SnapGene-style overview (Игорь): bp ruler + strand-direction
+                 arrows + centre name/size. */
+              showRuler
+              showDirections
+              centerLabel={{ name: item.name || item._fileName || '', bp: length }}
+              /* «Ноль всегда сверху, вращается сама плазмида» (Игорь 17.06): the
+                 origin is set by ROTATING the plasmid with the control below, not
+                 by clicking the map (avoids misclicks). The fixed top notch marks
+                 where the new zero lands. */
+              rotationDeg={
+                topology === 'circular' && typeof onApplyOrigin === 'function'
+                  ? originRotationDeg
+                  : 0
+              }
+            />
+          )}
+
+          {/* «Начало отсчёта» — directly UNDER the plasmid (Игорь — «перенести
+              непосредственно под плазмиду»), compact. Circular + workspace host
+              (onApplyOrigin). Rotate via ◀ / slider / ▶ → the base under the
+              fixed top notch becomes position 1; «Применить» commits
+              (rotateOriginToPosition → transient buffer → «Сохранить версию»). */}
+          {topology === 'circular' && typeof onApplyOrigin === 'function' && (
+            <div
+              data-testid="overview-origin"
+              style={{
+                width: '100%',
+                borderTop: '0.5px solid var(--border-subtle)',
+                paddingTop: 8,
+                display: 'flex', flexDirection: 'column', gap: 5,
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                <span style={{
+                  fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5,
+                  color: 'var(--text-tertiary)', fontWeight: 500,
+                }}>Начало отсчёта</span>
+                <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>ноль сверху ▲</span>
+              </div>
+              <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+                <button
+                  type="button"
+                  data-testid="overview-origin-prev"
+                  onClick={() => nudgeOrigin(-1)}
+                  title="Повернуть на 1 п.н. назад"
+                  style={{
+                    flex: '0 0 auto', width: 20, height: 20, padding: 0, fontSize: 10, lineHeight: 1,
+                    border: '0.5px solid var(--border-default)', borderRadius: 'var(--radius-sm)',
+                    background: 'var(--surface-1)', color: 'var(--text-secondary)', cursor: 'pointer',
+                  }}
+                >◀</button>
+                <input
+                  type="range"
+                  className="origin-rotate-slider"
+                  min={1}
+                  max={Math.max(1, length)}
+                  value={originPos}
+                  data-testid="overview-origin-rotate"
+                  title="Поверните плазмиду — база сверху станет позицией 1"
+                  onChange={(e) => setOriginPos(Math.min(Math.max(1, Number(e.target.value) || 1), Math.max(1, length)))}
+                  style={{ flex: 1, minWidth: 0 }}
+                />
+                <button
+                  type="button"
+                  data-testid="overview-origin-next"
+                  onClick={() => nudgeOrigin(1)}
+                  title="Повернуть на 1 п.н. вперёд"
+                  style={{
+                    flex: '0 0 auto', width: 20, height: 20, padding: 0, fontSize: 10, lineHeight: 1,
+                    border: '0.5px solid var(--border-default)', borderRadius: 'var(--radius-sm)',
+                    background: 'var(--surface-1)', color: 'var(--text-secondary)', cursor: 'pointer',
+                  }}
+                >▶</button>
+              </div>
+              <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+                <input
+                  type="number"
+                  min={1}
+                  max={Math.max(1, length)}
+                  value={originPos}
+                  data-testid="overview-origin-input"
+                  title="Координата нового начала кольцевой плазмиды (1 = первая база)"
+                  onChange={(e) => setOriginPos(Math.max(1, Number(e.target.value) || 1))}
+                  style={{
+                    flex: '1 1 56px', minWidth: 0, padding: '3px 6px', fontSize: 11,
+                    border: '0.5px solid var(--border-default)', borderRadius: 'var(--radius-sm)',
+                    background: 'var(--surface-1)', color: 'var(--text-primary)',
+                    fontFamily: 'var(--font-mono)',
+                  }}
+                />
+                <button
+                  type="button"
+                  data-testid="overview-origin-apply"
+                  onClick={() => {
+                    if (originPos > 1 && originPos <= length) {
+                      onApplyOrigin(originPos);
+                      // New origin committed → it becomes position 1 at the top.
+                      // Reset rotation so the map shows the committed coordinate
+                      // system (ruler renumbered), not an extra preview rotation.
+                      setOriginPos(1);
+                    }
+                  }}
+                  disabled={!(originPos > 1 && originPos <= length)}
+                  title="Повернуть кольцо: выбранная база станет позицией 1. Аннотации пересчитаются."
+                  style={{
+                    flex: '0 0 auto', padding: '3px 9px', fontSize: 11,
+                    background: 'var(--accent-500)', color: 'var(--surface-1)',
+                    border: 'none', borderRadius: 'var(--radius-sm)',
+                    cursor: (originPos > 1 && originPos <= length) ? 'pointer' : 'not-allowed',
+                    opacity: (originPos > 1 && originPos <= length) ? 1 : 0.4,
+                    whiteSpace: 'nowrap',
+                  }}
+                >↻ Применить</button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Editable entry meta — only in the workspace host (callbacks
@@ -171,6 +318,7 @@ export default function OverviewTab({ item, onUpdateTags, onUpdateTopology, onNa
                 );
               })}
             </div>
+
           </div>
         )}
       </div>

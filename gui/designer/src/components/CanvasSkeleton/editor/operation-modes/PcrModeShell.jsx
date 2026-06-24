@@ -18,12 +18,15 @@
  * rendered back ON the sequence via SequenceView's `primers` prop.
  * Template = op.inputs[0] (V69 — canonical across selectors/adapters).
  */
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef } from 'react';
+import { useResizableSplit } from '../../../../hooks/useResizableSplit';
+import ResizeHandle from '../../../common/ResizeHandle';
 import { useSkeletonState, useSkeletonActions } from '../../store/skeleton-context';
 import { selectPcrPrimers } from '../../store/selectors-pcr';
 import { recomputeFromSelection } from '../../lib/operation-pcr-bridge';
 import { useHotkey } from '../../../../lib/hotkeys';
 import { useSequenceSelection } from '../../../../hooks/useSequenceSelection';
+import { Icon } from '../../../icons/Icon';
 import SequenceTab from '../../../Library/inspector/tabs/SequenceTab';
 import PrimerSuggestionsPanel from './PrimerSuggestionsPanel';
 import OrderOligosConfirmGate from './OrderOligosConfirmGate';
@@ -38,6 +41,12 @@ export default function PcrModeShell({ op }) {
   const state = useSkeletonState();
   const actions = useSkeletonActions();
   const level = state.pcrModeUserLevel || 'default';
+  // Drag-to-resize the template | suggestions split (Игорь — разделители двигаются).
+  const splitRef = useRef(null);
+  const { size: panelW, separatorProps: splitProps, dragging: splitDragging } = useResizableSplit({
+    axis: 'x', side: 'end', initial: 320, min: 240, keepOther: 360,
+    storageKey: 'pcr-suggestions-w', containerRef: splitRef,
+  });
 
   const template = useMemo(
     () => (op?.inputs?.[0] ? state.containers.find((c) => c.id === op.inputs[0]) || null : null),
@@ -157,7 +166,7 @@ export default function PcrModeShell({ op }) {
         data-testid="pcr-mode-header"
         style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', borderBottom: '1px solid var(--border-subtle)', background: 'var(--surface-2)', flexShrink: 0 }}
       >
-        <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>🔬 PCR · {template?.name || '—'} · {seqLen} bp · {template?.topology?.circular ? 'circular' : 'linear'}</span>
+        <span style={{ fontSize: 12, color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="pcr" size={12} /> PCR · {template?.name || '—'} · {seqLen} bp · {template?.topology?.circular ? 'circular' : 'linear'}</span>
         <div style={{ marginLeft: 'auto', display: 'flex', border: '1px solid var(--border-subtle)', borderRadius: 6, overflow: 'hidden' }}>
           {LEVELS.map((lv) => (
             <button
@@ -178,7 +187,7 @@ export default function PcrModeShell({ op }) {
       </div>
 
       {/* Body */}
-      <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+      <div ref={splitRef} style={{ flex: 1, minHeight: 0, display: 'flex' }}>
         <div
           data-testid="pcr-template-view"
           style={{ flex: 1, minWidth: 0, overflow: 'auto', padding: 12, display: 'flex', flexDirection: 'column' }}
@@ -203,7 +212,9 @@ export default function PcrModeShell({ op }) {
             primers={viewerPrimers}
           />
         </div>
+        <ResizeHandle axis="x" dragging={splitDragging} testid="pcr-split-handle" {...splitProps} />
         <PrimerSuggestionsPanel
+          width={panelW}
           pairs={pairs}
           level={level}
           onReuse={onReuse}

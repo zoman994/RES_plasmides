@@ -117,6 +117,18 @@ export function suggestMethodForBoundary(state, draftId, boundaryIdx) {
   const left = d.segments[boundaryIdx];
   const right = d.segments[boundaryIdx + 1];
 
+  // V166 — the fragments' ACQUISITION is the strongest signal of the join
+  // chemistry: two RE-digested fragments ligate (restriction), they are not
+  // overlap-PCR'd. This fires even when no op-group was formed and the source
+  // has no auto-detected compatible site (which used to fall through to the
+  // overlap_pcr default → overlap chemistry on a digested fragment). Keeps
+  // «оверлап оверлапом, рестриктазы рестриктазами».
+  if (left && right
+    && left.acquisitionMethod === 'restriction'
+    && right.acquisitionMethod === 'restriction') {
+    return { method: 'restriction', confidence: 'high', rationale: 'оба фрагмента — рестрикция' };
+  }
+
   const pi = getBoundaryPrimerInfo(state, draftId, boundaryIdx);
   if (pi.hasPrimer) {
     if (pi.tailLength < 10) {

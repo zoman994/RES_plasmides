@@ -29,6 +29,15 @@ import { IMPORTER_STRINGS } from '../components/Library/lib/importer-strings';
 export const STRINGS = {
   importer: IMPORTER_STRINGS,
 
+  align: {
+    workspaceTitle: 'Выравнивание',
+    subtitle: 'попарное · Sanger',
+    run: 'Выровнять',
+    action: 'Выровнять', // library action label
+    needMore: 'Нужно минимум две последовательности.',
+    chromatogram: 'Хроматограмма (Sanger)',
+  },
+
   startScreen: {
     appName: 'BodgeGene',
     guide: 'Guide',

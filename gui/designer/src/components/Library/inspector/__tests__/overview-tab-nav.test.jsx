@@ -10,9 +10,12 @@ import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import OverviewTab from '../tabs/OverviewTab';
 import { useStore } from '../../../../store';
 
-vi.mock('../../../PlasmidMiniMap', () => ({
+// Circular items render PlasmidMapV2 (DEC-DS-PLASMIDMAP-V2). We probe the
+// onFeatureClick wiring through it; the map's own click geometry is covered
+// in plasmid-map-v2.test.jsx.
+vi.mock('../../../PlasmidMapV2', () => ({
   default: ({ onFeatureClick }) => (
-    <div data-testid="mock-mini-map" data-has-featclick={onFeatureClick ? 'yes' : 'no'} />
+    <div data-testid="mock-pmv2" data-has-featclick={onFeatureClick ? 'yes' : 'no'} />
   ),
 }));
 
@@ -32,7 +35,7 @@ describe('OverviewTab — feature click navigation', () => {
   it('passes onFeatureClick to the mini-map + makes list rows clickable when wired', () => {
     const onNavigateToFeature = vi.fn();
     render(<OverviewTab item={ITEM} onNavigateToFeature={onNavigateToFeature} />);
-    expect(screen.getByTestId('mock-mini-map').getAttribute('data-has-featclick')).toBe('yes');
+    expect(screen.getByTestId('mock-pmv2').getAttribute('data-has-featclick')).toBe('yes');
     // click the ORF1 CDS row → navigates to that region
     fireEvent.click(screen.getByTestId('overview-feature-r5'));
     expect(onNavigateToFeature).toHaveBeenCalledWith(expect.objectContaining({ id: 'r5', start: 2300 }));
@@ -43,7 +46,7 @@ describe('OverviewTab — feature click navigation', () => {
 
   it('rows stay read-only (not clickable) when onNavigateToFeature is absent', () => {
     render(<OverviewTab item={ITEM} />);
-    expect(screen.getByTestId('mock-mini-map').getAttribute('data-has-featclick')).toBe('no');
+    expect(screen.getByTestId('mock-pmv2').getAttribute('data-has-featclick')).toBe('no');
     expect(screen.queryByTestId('overview-feature-r5')).toBeNull();
   });
 });

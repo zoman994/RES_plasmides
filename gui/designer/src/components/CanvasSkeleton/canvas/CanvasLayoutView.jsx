@@ -23,6 +23,7 @@ import { useStore } from '../../../store';
 import ZoneLayer from './ZoneLayer';
 import SangerLabNotebook from './SangerLabNotebook';
 import LibrarySearchBar from './LibrarySearchBar';
+import { Icon } from '../../icons/Icon';
 import OpKindPicker from './operations/OpKindPicker';
 import OpPopupRouter from './operations/OpPopupRouter';
 import { buildAssemblyZoneAction } from './assembly-zone-create';
@@ -352,9 +353,10 @@ export default function CanvasLayoutView() {
                 border: '1px solid var(--border-subtle)',
                 background: 'var(--surface-1)', color: 'var(--text-secondary)',
                 cursor: 'pointer',
+                display: 'inline-flex', alignItems: 'center',
               }}
             >
-              {(s.zones && s.zones.sanger && s.zones.sanger.openIcon) || '📋'}
+              <Icon name="list" size={14} />
             </button>
           )}
           {/* Node B §5.4 — empty canvas = no zones (the canvas is a board of

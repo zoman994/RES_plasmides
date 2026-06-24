@@ -19,8 +19,8 @@ import {
 } from '../dexie-schema';
 
 describe('M-X.7a v2 K1 — dexie-schema v4', () => {
-  it('DB_VERSION is 6 (SPEC_COMMON_FEATURES: +commonFeatures table)', () => {
-    expect(DB_VERSION).toBe(6);
+  it('DB_VERSION is 7 (RS-C1: +customEnzymes +enzymeSets tables)', () => {
+    expect(DB_VERSION).toBe(7);
   });
 
   it('fresh v4 DB starts with empty library + primers tables', async () => {

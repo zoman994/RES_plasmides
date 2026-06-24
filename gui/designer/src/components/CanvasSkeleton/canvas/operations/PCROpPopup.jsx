@@ -65,7 +65,7 @@ export default function PCROpPopup({
       operation={operation}
       position={position}
       title="PCR — Амплификация"
-      icon="🧬"
+      icon="pcr"
       onCancel={onCancel}
       onExecute={() => {
         onExecute?.({

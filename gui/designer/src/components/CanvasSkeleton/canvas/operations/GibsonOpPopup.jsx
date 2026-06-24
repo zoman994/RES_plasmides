@@ -14,6 +14,7 @@
 import { useMemo, useState } from 'react';
 import { v7 as uuidv7 } from 'uuid';
 import OpPopup from './OpPopup';
+import { Icon } from '../../../icons/Icon';
 import { designGibsonPrimers } from '../../../../lib/bio/gibson-primer-design';
 import { useSkeletonActionsSafe } from '../../store/skeleton-context';
 
@@ -106,7 +107,7 @@ export default function GibsonOpPopup({
       operation={operation}
       position={position}
       title="Gibson — Overlap-сборка"
-      icon="🧪"
+      icon={<Icon name="mix" size={16} />}
       onCancel={onCancel}
       onExecute={() => onExecute?.({ fragmentIds, method: 'overlap', circular })}
       executeDisabled={executeDisabled}
@@ -178,14 +179,16 @@ export default function GibsonOpPopup({
                       onClick={() => moveUp(idx)}
                       disabled={idx === 0}
                       style={miniBtn}
-                    >↑</button>
+                      aria-label="Вверх"
+                    ><Icon name="sort" size={13} /></button>
                     <button
                       type="button"
                       data-testid={`gibson-op-order-down-${id}`}
                       onClick={() => moveDown(idx)}
                       disabled={idx === fragmentIds.length - 1}
                       style={miniBtn}
-                    >↓</button>
+                      aria-label="Вниз"
+                    ><Icon name="sort" size={13} /></button>
                   </div>
                 );
               })}
@@ -248,9 +251,13 @@ export default function GibsonOpPopup({
                 fontWeight: 600,
                 cursor: 'pointer',
                 alignSelf: 'flex-start',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
               }}
             >
-              + Добавить праймеры на canvas
+              <Icon name="plus" size={13} />
+              Добавить праймеры на canvas
             </button>
           </Field>
         )}
@@ -275,4 +282,6 @@ const miniBtn = {
   background: 'var(--surface-1, #fff)',
   cursor: 'pointer',
   fontSize: 11,
+  display: 'inline-flex',
+  alignItems: 'center',
 };

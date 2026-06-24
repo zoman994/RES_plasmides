@@ -21,6 +21,7 @@
  * filled → editor.
  */
 import { memo } from 'react';
+import { Icon } from '../../icons/Icon';
 import { getFragColor, isMarker, FEATURE_COLORS } from '../../../theme';
 import { SBOLIcon } from '../../../sbol-glyphs';
 import {
@@ -64,8 +65,11 @@ function VirtualBlock({ container, virtualState, virtualWarnings, onClick, onDou
       }}
     >
       <VirtualOutputBadge virtualState={virtualState} warnings={virtualWarnings} />
-      <span style={{ fontSize: 14 }}>
-        {virtualState === 'disconnected' ? '⚠' : virtualState === 'incomplete' ? '⏳' : '🔬'}
+      <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+        <Icon
+          name={virtualState === 'disconnected' ? 'warning' : virtualState === 'incomplete' ? 'hourglass' : 'check'}
+          size={15}
+        />
       </span>
       <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12 }}>
         <div style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{container.name}</div>
@@ -172,8 +176,8 @@ function PlaceholderBlock({ container, highlighted, dragOver, onClick }) {
     >
       <span
         data-testid={`skeleton-placeholder-plus-${container.id}`}
-        style={{ fontSize: 24, lineHeight: 1, fontWeight: 300 }}
-      >+</span>
+        style={{ display: 'inline-flex', alignItems: 'center', lineHeight: 1 }}
+      ><Icon name="plus" size={22} /></span>
       <span style={{ fontSize: 11 }}>
         Пусто · click / drop запчасть
       </span>
@@ -269,7 +273,7 @@ function FilledBlock({ container, highlighted, onClick, onDoubleClick, pcrPrimer
             boxShadow: '0 1px 2px rgba(0,0,0,0.25)',
             zIndex: 2,
           }}
-        >🔒</span>
+        ><Icon name="lock" size={11} /></span>
       )}
       {/* Row 1 — SBOL glyph + name + bp. V68: own divider-fenced band —
           the MiniPlasmidMap V66 leader-labels (Row 2, overflow:hidden)
@@ -354,9 +358,12 @@ function FilledBlock({ container, highlighted, onClick, onDoubleClick, pcrPrimer
           justifyContent: 'space-between',
         }}
       >
-        <span data-testid={`skeleton-block-${container.id}-status`}>
-          {isCircular && '◯ plasmid'}
-          {!isCircular && linearizedFromCircular && '✂ linearized'}
+        <span
+          data-testid={`skeleton-block-${container.id}-status`}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}
+        >
+          {isCircular && <><Icon name="circular" size={11} /> plasmid</>}
+          {!isCircular && linearizedFromCircular && <><Icon name="digest" size={11} /> linearized</>}
           {!isCircular && !linearizedFromCircular && excised && '⊟ excised fragment'}
           {!isCircular && !linearizedFromCircular && !excised && '— linear'}
         </span>

@@ -94,6 +94,18 @@ describe('K2 — store rewrite + project slice', () => {
     expect(stored.canvas.filter((n) => n === 'Lab')).toHaveLength(1);
   });
 
+  it('createProject auto-suffixes a colliding name — единый знаменатель for all create buttons (Игорь 23.06)', () => {
+    const id1 = useStore.getState().createProject('Новый проект');
+    const id2 = useStore.getState().createProject('Новый проект');
+    const id3 = useStore.getState().createProject('Новый проект');
+    expect(useStore.getState().projects[id1].name).toBe('Новый проект');
+    expect(useStore.getState().projects[id2].name).toBe('Новый проект 2');
+    expect(useStore.getState().projects[id3].name).toBe('Новый проект 3');
+    // all distinct → no infinite same-name projects
+    const names = [id1, id2, id3].map((id) => useStore.getState().projects[id].name);
+    expect(new Set(names).size).toBe(3);
+  });
+
   it('createProject with no name (default «Untitled») still registers the folder', () => {
     if (typeof localStorage === 'undefined') return;
     localStorage.removeItem('pvcs-catalog-user-folders-by-group');

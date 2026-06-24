@@ -405,6 +405,13 @@ export function deriveAutoPrimers(opGroup, state) {
   for (let i = 0; i < pieces.length; i += 1) {
     const piece = pieces[i];
     if (!piece || SKIPPED_KINDS.has(piece.kind)) continue;
+    // V166 — a RESTRICTION-acquired fragment is DIGESTED (cut from its source),
+    // not amplified: it gets a `cut` reaction (auto-reaction-builder), NOT PCR
+    // primers. Emitting overlap/RE-tail primers for it mixed overlap-PCR chemistry
+    // into a restriction junction. Skip it here so «оверлап оверлапом, рестриктазы
+    // рестриктазами». (It still counts as a valid overlap NEIGHBOUR above, so a
+    // PCR fragment beside it keeps the right tail.) pcr/ov-pcr/cursor still amplify.
+    if (piece.acquisitionMethod === 'restriction') continue;
 
     // Walk LEFT through snippets to the first non-snippet (logical-prev),
     // collecting snippet sequences in 5'→3' top-strand order.

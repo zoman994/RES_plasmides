@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { buildOrderSheet } from '../primer-reuse';
+import { Icon } from './icons/Icon';
 
 const CAT_STYLES = {
   assembly: { dot: 'bg-blue-500', label: 'сборка', text: 'text-blue-600' },
@@ -70,7 +71,7 @@ export default function PrimerPanel({
                   <td className="p-2 font-semibold whitespace-nowrap">
                     <div className="flex items-center gap-1">
                       {p.category && <span className={`w-1.5 h-1.5 rounded-full ${CAT_STYLES[p.category]?.dot || 'bg-blue-500'}`} title={CAT_STYLES[p.category]?.label} />}
-                      {p.reused && <span className="text-green-600 text-[10px]">{'✓'}</span>}
+                      {p.reused && <span className="text-green-600"><Icon name="check" size={11} style={{ display: 'inline-block', verticalAlign: '-2px' }} /></span>}
                       <span className={p.reused ? 'text-green-700' : ''}>{p.name}</span>
                       {p.isInternal && (
                         <span className="text-[8px] bg-gray-100 text-gray-500 px-1 rounded ml-1">
@@ -83,7 +84,7 @@ export default function PrimerPanel({
                         </span>
                       )}
                       {p.category === 'custom' && onDeletePrimer && (
-                        <button onClick={() => onDeletePrimer(p.id)} className="text-[9px] text-gray-300 hover:text-red-500 ml-1" title="Удалить">{'×'}</button>
+                        <button onClick={() => onDeletePrimer(p.id)} className="text-gray-300 hover:text-red-500 ml-1" title="Удалить"><Icon name="close" size={11} style={{ display: 'inline-block', verticalAlign: '-1px' }} /></button>
                       )}
                       {p.phosphorylated && (
                         <span className="text-[8px] bg-purple-100 text-purple-700 rounded px-1 py-px font-semibold ml-1"
@@ -92,15 +93,15 @@ export default function PrimerPanel({
                     </div>
                     {p.reused && (
                       <div className="text-[9px] text-green-600 mt-0.5">
-                        {'♻'} {p.reusedFrom}
+                        <Icon name="swap" size={10} style={{ display: 'inline-block', verticalAlign: '-1px' }} /> {p.reusedFrom}
                       </div>
                     )}
                     {/* Reuse suggestion */}
                     {hasMatches && (
                       <button onClick={() => toggleMatch(p.name)}
                         className="text-[9px] text-blue-600 hover:text-blue-800 mt-0.5 block">
-                        {'💡'} {matches.length} совместим{matches.length > 1 ? 'ых' : 'ый'} в наличии
-                        {expanded ? ' ▲' : ' ▼'}
+                        <Icon name="info" size={11} style={{ display: 'inline-block', verticalAlign: '-2px' }} /> {matches.length} совместим{matches.length > 1 ? 'ых' : 'ый'} в наличии
+                        {' '}<Icon name="chevron-down" size={10} style={{ display: 'inline-block', verticalAlign: '-1px', transform: expanded ? 'rotate(180deg)' : 'none' }} />
                       </button>
                     )}
                   </td>

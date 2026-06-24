@@ -65,8 +65,10 @@ describe('V88 — RE-site pair two-click selection', () => {
 
   it('confirms acquisitionMethod=restriction after RE click(s)', () => {
     let got = null;
-    const SiteA = { enzyme: 'EcoRI', position: 4 };
-    const SiteB = { enzyme: 'HindIII', position: 14 };
+    // `position` = TOP-STRAND CUT (flattenSites adds cut[0]): EcoRI recog@4 → cut 5,
+    // HindIII recog@14 → cut 15. The fragment between the two cuts is [5,15].
+    const SiteA = { enzyme: 'EcoRI', position: 5 };
+    const SiteB = { enzyme: 'HindIII', position: 15 };
     // We use a test-only escape hatch via window: RangePickerModal
     // does not pre-test through internal RE click handler. So we
     // verify acquisitionMethod через прямой публичный API: после двух
@@ -86,11 +88,15 @@ describe('V88 — RE-site pair two-click selection', () => {
     act(() => { window.dispatchEvent(restrictionEvent); });
     act(() => { window.dispatchEvent(new CustomEvent('__v88_re_click__', { detail: SiteB })); });
     act(() => { fireEvent.click(screen.getByTestId('range-picker-confirm')); });
-    // EcoRI cut at top strand = position + cut[0] = 4 + 1 = 5
-    // HindIII cut at top strand = 14 + 1 = 15
+    // Fragment between the two top-strand cuts = [5, 15] (V155 — cuts ARE the
+    // boundaries; no double +cut[0]).
     expect(got).toEqual(expect.objectContaining({
       start: 5, end: 15, acquisitionMethod: 'restriction',
     }));
+    // V157 — the RE-pair enzymes/cut sites are threaded into acquisitionParams
+    // so the 'restriction' piece passes the non-empty-params invariant.
+    expect(got.acquisitionParams.enzymes).toEqual(['EcoRI', 'HindIII']);
+    expect(got.acquisitionParams.cutSites).toEqual([{ position: 5 }, { position: 15 }]);
     // Make sure RE_ENZYMES still exposes expected cut shape (regression).
     expect(RE_ENZYMES.EcoRI.cut[0]).toBe(1);
     expect(RE_ENZYMES.HindIII.cut[0]).toBe(1);

@@ -27,25 +27,42 @@ const UNDO_LIMIT = 50;
  *
  * Returns: { pushSnapshot, undo, redo, hasUndo, hasRedo }.
  */
-export function useAnnotationUndoRedo({ itemKey, currentAnnotations, onUpdateEdits }) {
+export function useAnnotationUndoRedo({
+  itemKey, currentAnnotations, currentSequence, onUpdateEdits,
+}) {
   const undoStackRef = useRef([]);
   const redoStackRef = useRef([]);
-  const currentRef = useRef(currentAnnotations);
-  currentRef.current = currentAnnotations;
+  // Track the live edit-state ({annotations, sequence}) so redo can push
+  // the «current» before re-applying. 17.06.2026 — sequence editing now
+  // flows through the SAME transient buffer + undo stack, so a snapshot
+  // optionally carries the pre-edit sequence too.
+  const currentRef = useRef({ annotations: currentAnnotations, sequence: currentSequence });
+  currentRef.current = { annotations: currentAnnotations, sequence: currentSequence };
 
   useEffect(() => {
     undoStackRef.current = [];
     redoStackRef.current = [];
   }, [itemKey]);
 
-  const pushSnapshot = useCallback((before) => {
+  // `before` = pre-edit annotations (array). `beforeSequence` (optional)
+  // = pre-edit sequence — pass it for nucleotide edits so Ctrl+Z restores
+  // the sequence too. Annotation-only callers omit it (sequence untouched).
+  const pushSnapshot = useCallback((before, beforeSequence) => {
     if (!Array.isArray(before)) return;
     undoStackRef.current = [
       ...undoStackRef.current.slice(-UNDO_LIMIT + 1),
-      before,
+      { annotations: before, sequence: beforeSequence },
     ];
     redoStackRef.current = [];
   }, []);
+
+  const restore = useCallback((snap) => {
+    if (!onUpdateEdits || !snap) return;
+    onUpdateEdits({
+      editedAnnotations: snap.annotations,
+      ...(snap.sequence !== undefined ? { editedSequence: snap.sequence } : {}),
+    });
+  }, [onUpdateEdits]);
 
   const undo = useCallback(() => {
     if (!onUpdateEdits) return;
@@ -53,9 +70,9 @@ export function useAnnotationUndoRedo({ itemKey, currentAnnotations, onUpdateEdi
     if (stack.length === 0) return;
     const prev = stack[stack.length - 1];
     undoStackRef.current = stack.slice(0, -1);
-    redoStackRef.current = [...redoStackRef.current, currentRef.current];
-    onUpdateEdits({ editedAnnotations: prev });
-  }, [onUpdateEdits]);
+    redoStackRef.current = [...redoStackRef.current, { ...currentRef.current }];
+    restore(prev);
+  }, [onUpdateEdits, restore]);
 
   const redo = useCallback(() => {
     if (!onUpdateEdits) return;
@@ -63,9 +80,9 @@ export function useAnnotationUndoRedo({ itemKey, currentAnnotations, onUpdateEdi
     if (stack.length === 0) return;
     const next = stack[stack.length - 1];
     redoStackRef.current = stack.slice(0, -1);
-    undoStackRef.current = [...undoStackRef.current, currentRef.current];
-    onUpdateEdits({ editedAnnotations: next });
-  }, [onUpdateEdits]);
+    undoStackRef.current = [...undoStackRef.current, { ...currentRef.current }];
+    restore(next);
+  }, [onUpdateEdits, restore]);
 
   useEffect(() => {
     const onKey = (e) => {

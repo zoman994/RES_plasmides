@@ -136,6 +136,37 @@ describe("StrandsTrack — K2", () => {
   });
 });
 
+describe("StrandsTrack — align per-line gutter label (opt-in)", () => {
+  it("renders the reference name in the top gutter when gutterLabel is set", () => {
+    render(
+      <StrandsTrack
+        lineStart={120}
+        seq="ATGC"
+        annMap={annNull(4)}
+        labelChars={8}
+        which="top"
+        charPx={8}
+        gutterLabel="pUC19"
+      />,
+    );
+    expect(screen.getByTestId("strand-gutter-label").textContent).toBe("pUC19");
+  });
+
+  it("renders no gutter label without the prop (back-compat)", () => {
+    render(
+      <StrandsTrack lineStart={0} seq="ATGC" annMap={annNull(4)} labelChars={8} which="top" charPx={8} />,
+    );
+    expect(screen.queryByTestId("strand-gutter-label")).toBeNull();
+  });
+
+  it("never labels the bottom strand", () => {
+    render(
+      <StrandsTrack lineStart={0} seq="ATGC" annMap={annNull(4)} labelChars={8} which="bottom" charPx={8} gutterLabel="pUC19" />,
+    );
+    expect(screen.queryByTestId("strand-gutter-label")).toBeNull();
+  });
+});
+
 describe("RulerTrack — smoke", () => {
   it("renders SVG with major+minor ticks for a 60 bp line", () => {
     render(<RulerTrack lineStart={0} lineLen={60} charPx={7.2} labelChars={8} />);
@@ -155,7 +186,9 @@ describe("StrandsTrack — restriction cut overlays (12.05.2026)", () => {
   const CHAR_PX = 10;
   const LABEL_CHARS = 8;
 
-  it("top-strand cut bar rendered at gap x = (labelChars + pos) * charPx − 1", () => {
+  // SnapGene-style (Игорь 22.06): the cut is a caret glyph (svg) CENTERED on the
+  // gap — container left = (labelChars + pos)*charPx − charPx, width = 2*charPx.
+  it("top-strand cut caret centered on gap x = (labelChars + pos) * charPx", () => {
     render(
       <StrandsTrack
         lineStart={0}
@@ -171,8 +204,11 @@ describe("StrandsTrack — restriction cut overlays (12.05.2026)", () => {
     expect(bars.length).toBe(1);
     expect(bars[0].getAttribute('data-strand')).toBe('top');
     expect(bars[0].getAttribute('data-cut-pos')).toBe('51');
-    // left = (8 + 51) * 10 - 1 = 589
-    expect(bars[0].style.left).toBe('589px');
+    expect(bars[0].tagName.toLowerCase()).toBe('svg');
+    // A caret triangle is part of the glyph.
+    expect(bars[0].querySelector('polygon')).toBeTruthy();
+    // container left = (8 + 51)*10 − 10 = 580; cut line centered at +charPx.
+    expect(bars[0].style.left).toBe('580px');
   });
 
   it("bottom-strand cut at a different position than top — true sticky-end picture", () => {
@@ -190,8 +226,42 @@ describe("StrandsTrack — restriction cut overlays (12.05.2026)", () => {
     const bars = screen.getAllByTestId('sequence-view-strand-cut');
     expect(bars.length).toBe(1);
     expect(bars[0].getAttribute('data-strand')).toBe('bottom');
-    // left = (8 + 55) * 10 - 1 = 629
-    expect(bars[0].style.left).toBe('629px');
+    // container left = (8 + 55)*10 − 10 = 620
+    expect(bars[0].style.left).toBe('620px');
+  });
+
+  it("sticky-end connector line joins the strand cuts (top strand only)", () => {
+    // Top strand renders the inter-strand connector spanning the overhang.
+    const { unmount } = render(
+      <StrandsTrack
+        lineStart={0}
+        seq={SEQ}
+        annMap={annNull(SEQ.length)}
+        labelChars={LABEL_CHARS}
+        which="top"
+        charPx={CHAR_PX}
+        overhangs={[{ key: 'EcoRI-50-ov', startPos: 51, endPos: 55 }]}
+      />,
+    );
+    const conn = screen.getAllByTestId('sequence-view-strand-cut-connector');
+    expect(conn.length).toBe(1);
+    // left = (8 + 51)*10 = 590; width = (55 - 51)*10 = 40
+    expect(conn[0].style.left).toBe('590px');
+    expect(conn[0].style.width).toBe('40px');
+    unmount();
+    // Bottom strand does NOT duplicate the connector (it lives at the boundary).
+    render(
+      <StrandsTrack
+        lineStart={0}
+        seq={SEQ}
+        annMap={annNull(SEQ.length)}
+        labelChars={LABEL_CHARS}
+        which="bottom"
+        charPx={CHAR_PX}
+        overhangs={[{ key: 'EcoRI-50-ov', startPos: 51, endPos: 55 }]}
+      />,
+    );
+    expect(screen.queryAllByTestId('sequence-view-strand-cut-connector').length).toBe(0);
   });
 
   it("overhang highlight band spans from min to max cut on this strand row", () => {

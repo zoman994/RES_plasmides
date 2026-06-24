@@ -17,10 +17,13 @@
  */
 import { lazy, Suspense } from 'react';
 import { useStore } from '../../store';
+import Breadcrumb from './Breadcrumb';
+import { FEATURE_FLAGS } from '../../lib/feature-flags';
 
 const LibraryWorkspace = lazy(() => import('../Library/LibraryWorkspace'));
-const DagWorkspace = lazy(() => import('../Dag/DagWorkspace'));
 const Importer = lazy(() => import('../Library'));
+const AlignWorkspace = lazy(() => import('../Align/AlignWorkspace'));
+const RestrictionSitesWorkspace = lazy(() => import('../RestrictionSites/RestrictionSitesWorkspace'));
 
 function WorkspacePlaceholder({ name, message }) {
   return (
@@ -45,8 +48,13 @@ export function WorkspaceRouter() {
   return (
     <Suspense fallback={<WorkspacePlaceholder name="loading" message="Загрузка…" />}>
       {active === 'library' && <LibraryWorkspace />}
-      {active === 'flow' && <DagWorkspace />}
+      {/* 'flow' (DagWorkspace) route removed 17.06.2026 — legacy DAG
+          picker superseded by the assembly editor (CanvasSkeleton).
+          DagWorkspace + Dag palette files are now orphaned dead code
+          (see TECH_DEBT). */}
       {active === 'importer' && <Importer />}
+      {active === 'align' && <AlignWorkspace />}
+      {active === 'restriction-sites' && <RestrictionSitesWorkspace />}
       {active === 'startup' && (
         <WorkspacePlaceholder
           name="startup"
@@ -96,7 +104,18 @@ export default function AppShell({ children }) {
         color: 'var(--text-primary, #1c1917)',
       }}
     >
-      {children ? children : <WorkspaceRouter />}
+      {FEATURE_FLAGS.breadcrumb ? (
+        <>
+          {/* UX_DIRECTION фаза 2 — хлебные крошки «где я сейчас» поверх контента.
+              Gated → flag off рендерит ровно как раньше (один потомок). */}
+          <Breadcrumb />
+          <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+            {children ? children : <WorkspaceRouter />}
+          </div>
+        </>
+      ) : (
+        children ? children : <WorkspaceRouter />
+      )}
     </main>
   );
 }

@@ -12,6 +12,7 @@ import React from 'react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { useStore } from '../../../../store';
+import { FEATURE_FLAGS } from '../../../../lib/feature-flags';
 import { resetDBForTests } from '../../../../db/dexie-schema';
 
 import TreeFolderRow from '../TreeFolderRow';
@@ -374,11 +375,25 @@ describe('K2 — ProjectZone (post M-X.7c K4 — DAG removed, [active] gated on 
     expect(screen.queryByTestId('tree-item-project-c')).toBeNull();
   });
 
-  it('header «⤓» button invokes onExportProject(projectId)', () => {
+  it('right-click → «Выгрузить проект» invokes onExportProject(projectId)', () => {
     const onExport = vi.fn();
-    render(<ProjectZone project={{ id: 'pa', name: 'X' }} onExportProject={onExport} />);
-    fireEvent.click(screen.getByTestId('project-zone-export-pa'));
+    render(<ProjectZone project={{ id: 'pa', name: 'X' }} onExportProject={onExport} expanded onToggle={() => {}} />);
+    fireEvent.contextMenu(screen.getByTestId('library-zone-project-pa-head'));
+    fireEvent.click(screen.getByText('Выгрузить проект'));
     expect(onExport).toHaveBeenCalledWith('pa');
+  });
+
+  it('right-click menu lists activate / export / delete; no inline buttons or ★', () => {
+    render(<ProjectZone project={{ id: 'pa', name: 'X' }} onExportProject={() => {}} expanded onToggle={() => {}} />);
+    // No inline header buttons + no star (context-menu mode is default).
+    expect(screen.queryByTestId('project-zone-pin-pa')).toBeNull();
+    expect(screen.queryByTestId('project-zone-activate-pa')).toBeNull();
+    expect(screen.queryByTestId('project-zone-export-pa')).toBeNull();
+    expect(screen.queryByTestId('project-zone-delete-pa')).toBeNull();
+    fireEvent.contextMenu(screen.getByTestId('library-zone-project-pa-head'));
+    expect(screen.getByText('Сделать текущим проектом')).toBeTruthy();
+    expect(screen.getByText('Выгрузить проект')).toBeTruthy();
+    expect(screen.getByText('Удалить проект')).toBeTruthy();
   });
 });
 
@@ -426,29 +441,26 @@ describe('M-X.8 K4 — LibraryTreeRoot project grouping', () => {
     expect(screen.queryByTestId('library-zone-project-pc')).toBeNull(); // no match
   });
 
-  it('project pin toggle button pins / unpins (project hub)', () => {
+  it('project rows have no pin / star button (removed — Игорь 20.06)', () => {
     render(<LibraryTreeRoot />);
-    // pa is current + not pinned (☆) → click pins it.
-    fireEvent.click(screen.getByTestId('project-zone-pin-pa'));
-    expect(useStore.getState().pinnedProjectIds).toContain('pa');
-    // pb is pinned (★) → click unpins it.
-    fireEvent.click(screen.getByTestId('project-zone-pin-pb'));
-    expect(useStore.getState().pinnedProjectIds).not.toContain('pb');
+    ['pa', 'pb', 'pc', 'pd'].forEach((id) => {
+      expect(screen.queryByTestId(`project-zone-pin-${id}`)).toBeNull();
+      expect(screen.queryByTestId(`project-zone-pin-star-${id}`)).toBeNull();
+    });
   });
 
-  it('project activate button makes a non-current project current', () => {
+  it('right-click → «Сделать текущим проектом» makes a non-current project current', () => {
     render(<LibraryTreeRoot />);
-    // current project (pa) has no activate button; a non-current pinned one (pb) does.
-    expect(screen.queryByTestId('project-zone-activate-pa')).toBeNull();
-    fireEvent.click(screen.getByTestId('project-zone-activate-pb'));
+    // pb is non-current → its context menu offers «Сделать текущим проектом».
+    fireEvent.contextMenu(screen.getByTestId('library-zone-project-pb-head'));
+    fireEvent.click(screen.getByText('Сделать текущим проектом'));
     expect(useStore.getState().currentProjectId).toBe('pb');
   });
 
-  it('project open-in-Flow button activates + switches to the flow workspace', () => {
+  it('project row has no «→ open in DAG» button (dead route removed 17.06.2026)', () => {
     render(<LibraryTreeRoot />);
-    fireEvent.click(screen.getByTestId('project-zone-open-flow-pb'));
-    expect(useStore.getState().currentProjectId).toBe('pb');
-    expect(useStore.getState().workspace.active).toBe('flow');
+    expect(screen.queryByTestId('project-zone-open-flow-pb')).toBeNull();
+    expect(screen.queryByTestId('project-zone-open-flow-pa')).toBeNull();
   });
 
   it('only the current project is expanded by default; siblings start collapsed', () => {
@@ -478,12 +490,6 @@ describe('M-X.8 K4 — LibraryTreeRoot project grouping', () => {
     render(<LibraryTreeRoot />);
     fireEvent.click(screen.getByTestId('library-zone-project-pc-head'));
     expect(useStore.getState().currentProjectId).toBe('pc');
-  });
-
-  it('pinned project shows ★ marker; non-pinned does not', () => {
-    render(<LibraryTreeRoot />);
-    expect(screen.getByTestId('project-zone-pin-star-pb')).toBeTruthy();
-    expect(screen.queryByTestId('project-zone-pin-star-pa')).toBeNull();
   });
 
   // Нормальная логика — pinned float to the top of the flat list; the active
@@ -558,14 +564,22 @@ describe('K2 — LibraryTreeRoot', () => {
     expect(onAdd).toHaveBeenCalled();
   });
 
-  it('+ Проект button shows only when onCreateProject is wired + invokes it', () => {
-    const { unmount } = render(<LibraryTreeRoot />);
+  it('+ Проект: скрыт при dedupeCreateProject (дубль убран); при flag off — есть и зовёт', () => {
+    // dedupeCreateProject ON (дефолт): кнопка скрыта даже с onCreateProject —
+    // единственная точка создания проекта теперь сайдбар «+ Создать проект».
+    const { unmount } = render(<LibraryTreeRoot onCreateProject={() => {}} />);
     expect(screen.queryByTestId('tree-add-project-btn')).toBeNull();
     unmount();
-    const onCreateProject = vi.fn();
-    render(<LibraryTreeRoot onCreateProject={onCreateProject} />);
-    fireEvent.click(screen.getByTestId('tree-add-project-btn'));
-    expect(onCreateProject).toHaveBeenCalled();
+    // flag off → legacy дубль возвращается, зовёт onCreateProject.
+    FEATURE_FLAGS.dedupeCreateProject = false;
+    try {
+      const onCreateProject = vi.fn();
+      render(<LibraryTreeRoot onCreateProject={onCreateProject} />);
+      fireEvent.click(screen.getByTestId('tree-add-project-btn'));
+      expect(onCreateProject).toHaveBeenCalled();
+    } finally {
+      FEATURE_FLAGS.dedupeCreateProject = true;
+    }
   });
 
   it('search input forwards value to onQueryChange', () => {

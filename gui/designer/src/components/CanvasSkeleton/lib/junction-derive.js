@@ -208,15 +208,86 @@ export function enrichZonesWithJunctions(coloredZones, zoneJunctions = {}, assem
  * to "is this settled?" instead of integrating N junctions). ready = there ARE
  * junctions and none is still a tentative default. Pure.
  */
-export function assemblyReadiness(coloredZones) {
-  const js = (Array.isArray(coloredZones) ? coloredZones : [])
-    .map((z) => z && z.junctionRight)
-    .filter(Boolean);
+// S1 (V161) — junction kinds that join the two ends AS-IS, so a physical
+// sticky/blunt end mismatch (V160 junctionInterlock 'incompatible') makes them
+// un-ligatable. overlap/Gibson/Golden-Gate are NOT here: they rework the ends
+// (homology arms / Type IIS fusion sites), so an RE-overhang mismatch is
+// irrelevant there and must not block the build.
+const STICKY_JOIN_KINDS = ['re_ligation', 'ligation', 'kld'];
+
+// RC-BIO-3 — the CIRCULAR closure seam (last fragment's right end meeting the
+// first fragment's left end) is a real ligation junction that must also mate. It
+// is not an adjacent-zone boundary, so it is passed in explicitly as
+// { interlock, kind, pairKey, leftLabel, rightLabel }. Counts only when the closure
+// method joins ends directly (STICKY_JOIN_KINDS) and its ends don't anneal.
+function closureBlocks(closure) {
+  return !!(closure && closure.interlock && closure.interlock.verdict === 'incompatible'
+    && STICKY_JOIN_KINDS.includes(closure.kind));
+}
+
+export function assemblyReadiness(coloredZones, closure = null) {
+  const zones = Array.isArray(coloredZones) ? coloredZones : [];
+  const js = zones.map((z) => z && z.junctionRight).filter(Boolean);
   const tentative = js.filter((j) => j.state === 'tentative').length;
   const differs = js.filter((j) => j.differsFromAssembly).length;
+  // CHEMISTRY gate: readiness must reflect whether the construct can actually
+  // ligate, not just whether each junction glyph was clicked (clicked ≠ valid).
+  // Count an 'incompatible' interlock ONLY at a junction whose method joins the
+  // ends directly (STICKY_JOIN_KINDS) — see above.
+  const incompatibleInternal = zones.filter((z) => {
+    if (!(z && z.interlock && z.interlock.verdict === 'incompatible')) return false;
+    const jr = z.junctionRight;
+    return jr ? STICKY_JOIN_KINDS.includes(jr.kind) : false;
+  }).length;
+  const incompatible = incompatibleInternal + (closureBlocks(closure) ? 1 : 0);
+  // A circular assembly is buildable only if its closure also mates; a 1-fragment
+  // self-closure has no internal junction (js.length 0) yet can still be ready.
+  const hasJoin = js.length > 0 || !!(closure && closure.kind);
   return {
-    total: js.length, tentative, differs, ready: js.length > 0 && tentative === 0,
+    total: js.length,
+    tentative,
+    differs,
+    incompatible,
+    ready: hasJoin && tentative === 0 && incompatible === 0,
   };
+}
+
+/**
+ * RC-D1 (Игорь 24.06) — name WHICH adjacent junctions have non-mating sticky ends,
+ * so a 3-/4-fragment build tells the biolog exactly which seam to fix instead of a
+ * bare count. Same gate as `assemblyReadiness`.incompatible (STICKY_JOIN_KINDS only),
+ * so `assemblyJunctionConflicts(z).length === assemblyReadiness(z).incompatible`. Pure.
+ * @returns {Array<{ pairKey:string|null, index:number, leftLabel:string, rightLabel:string, message:string }>}
+ */
+export function assemblyJunctionConflicts(coloredZones, closure = null) {
+  const zones = Array.isArray(coloredZones) ? coloredZones : [];
+  const out = [];
+  for (let i = 0; i < zones.length; i += 1) {
+    const z = zones[i];
+    if (!(z && z.interlock && z.interlock.verdict === 'incompatible')) continue;
+    const jr = z.junctionRight;
+    if (!jr || !STICKY_JOIN_KINDS.includes(jr.kind)) continue;
+    const next = zones[i + 1];
+    out.push({
+      pairKey: jr.pairKey || null,
+      index: i,
+      leftLabel: z.label || `Фрагмент ${i + 1}`,
+      rightLabel: (next && next.label) || `Фрагмент ${i + 2}`,
+      message: z.interlock.message || 'Несовместимые липкие концы',
+    });
+  }
+  // RC-BIO-3 — the circular closure seam, named «… (замыкание кольца)».
+  if (closureBlocks(closure)) {
+    out.push({
+      pairKey: closure.pairKey || null,
+      index: -1,
+      isClosure: true,
+      leftLabel: closure.leftLabel || 'последний',
+      rightLabel: closure.rightLabel || 'первый',
+      message: `${closure.interlock.message || 'Несовместимые липкие концы'} (замыкание кольца)`,
+    });
+  }
+  return out;
 }
 
 /**

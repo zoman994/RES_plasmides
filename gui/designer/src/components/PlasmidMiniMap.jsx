@@ -33,24 +33,29 @@
 
 import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { featureColor, featureColorShaded, FEATURE_STROKE, FEATURE_COLORS_V2 } from '../feature-palette';
+import { featureColorShaded, FEATURE_STROKE, FEATURE_COLORS_V2 } from '../feature-palette';
 import { getRegions } from '../annotation-model';
-import { pickRegionsForLabels, truncateLabel } from '../lib/plasmid-label-utils';
+import { truncateLabel } from '../lib/plasmid-label-utils';
+import {
+  niceTickStep, rulerTicks, bpFromVector,
+} from '../lib/plasmid-ruler';
+import {
+  LEADER_LEN, bpToLinearX, circularFeatureArc, circularTick, originMarkerGeom,
+  circularArrowShape, linearArrowShape, featureGetsArrow,
+  buildCircularLabels, buildLinearLabels, dedupeDominatedRegions,
+} from '../lib/plasmid-mini-map-geometry';
 
-const LEADER_LEN = 10;                    // px the leader sticks out past outer radius / above bar
 const LABEL_RING = 32;                    // px radial ring reserved for labels (circular ≥180 px)
-const COLLISION_RAD = 0.26;               // ≈ 15° — circular labels closer than this get staggered
-const COLLISION_PX = 40;                  // px — linear labels with anchors closer get staggered
 const HOVER_BRIDGE_MS = 80;               // K5.1 hover-bridge debounce (mouseleave → close).
                                           // Was 250 ms — biolog asked for «быстрее исчезали при
                                           // убирании курсора»; 80 ms still allows mouse to cross
                                           // the small gap between source tile and overlay portal.
 const GROW_DURATION_MS = 140;             // F4 transform/opacity transition for the grow-overlay
                                           // — also tightened (was 200) so dismiss feels snappy.
-// V66: label-selection constants + truncateLabel + pickRegionsForLabels
-// extracted to `lib/plasmid-label-utils.js` and shared with the canvas
-// MiniPlasmidMap. Geometry builders below stay here (component-specific
-// polar convention).
+// V66 + 17.06.2026 size-budget decomp: label-selection rules live in
+// `lib/plasmid-label-utils.js`; all pure mini-map geometry (arrow shapes, arc /
+// sector math, ruler ticks, label placement) lives in
+// `lib/plasmid-mini-map-geometry.js`. Only JSX + wiring remain here.
 
 // Theme-aware label rendering: halo matches surface so it «punches» the
 // background cleanly on both light (white halo on white card) and dark
@@ -63,78 +68,6 @@ const OVERLAY_TEXT_STYLE = {
   fill: 'var(--text-primary, #1c1917)',
 };
 
-function buildCircularLabels(regions, totalLen, cx, cy, r) {
-  const picked = pickRegionsForLabels(regions, totalLen);
-  if (!picked.length) return [];
-
-  const items = picked.map((region) => {
-    const start = Math.max(0, region.start);
-    const end = Math.max(start, region.end);
-    const midFrac = ((start + end) / 2) / Math.max(1, totalLen);
-    const ang = midFrac * 2 * Math.PI - Math.PI / 2;
-    const innerX = cx + r * Math.cos(ang);
-    const innerY = cy + r * Math.sin(ang);
-    const outerR = r + LEADER_LEN;
-    const outerX = cx + outerR * Math.cos(ang);
-    const outerY = cy + outerR * Math.sin(ang);
-    const anchor = Math.cos(ang) >= 0 ? 'start' : 'end';
-    const textX = outerX + (anchor === 'start' ? 2 : -2);
-    return {
-      key: region.id,
-      ang,
-      label: truncateLabel(region.name || region.type || 'region'),
-      color: featureColorShaded(region.type, region.name),
-      innerX, innerY, outerX, outerY, anchor,
-      textX, textY: outerY + 3,
-    };
-  });
-
-  items.sort((a, b) => a.ang - b.ang);
-  for (let i = 1; i < items.length; i++) {
-    const prev = items[i - 1];
-    const cur = items[i];
-    if (Math.abs(cur.ang - prev.ang) < COLLISION_RAD) {
-      cur.textY = prev.textY + 11;
-    }
-  }
-  return items;
-}
-
-function buildLinearLabels(regions, totalLen, size, cy, strokeWidth) {
-  const picked = pickRegionsForLabels(regions, totalLen);
-  if (!picked.length) return [];
-
-  const items = picked.map((region) => {
-    const start = Math.max(0, region.start);
-    const end = Math.max(start, region.end);
-    const midFrac = ((start + end) / 2) / Math.max(1, totalLen);
-    const innerX = midFrac * (size - 8) + 4;
-    const innerY = cy - strokeWidth / 2;
-    const outerX = innerX;
-    const outerY = innerY - LEADER_LEN;
-    return {
-      key: region.id,
-      anchor: 'middle',
-      label: truncateLabel(region.name || region.type || 'region'),
-      color: featureColorShaded(region.type, region.name),
-      innerX, innerY, outerX, outerY,
-      textX: outerX, textY: outerY - 2,
-    };
-  });
-
-  // Sort left-to-right; if anchors are within COLLISION_PX, stagger upward.
-  items.sort((a, b) => a.innerX - b.innerX);
-  for (let i = 1; i < items.length; i++) {
-    const prev = items[i - 1];
-    const cur = items[i];
-    if (Math.abs(cur.innerX - prev.innerX) < COLLISION_PX) {
-      cur.outerY = prev.outerY - 11;
-      cur.textY = cur.outerY - 2;
-    }
-  }
-  return items;
-}
-
 function PlasmidMiniMap({
   length, topology, annotations, size = 64,
   mode = 'inline',
@@ -143,11 +76,33 @@ function PlasmidMiniMap({
   // provided the cursor becomes a pointer (clickable affordance) instead of
   // 'help'. Consumers that don't pass it stay hover-only (back-compat).
   onFeatureClick,
+  // 17.06.2026 (Игорь — SnapGene-style overview) — all opt-in, circular only,
+  // off by default so the 400× catalog tiles stay cheap + unchanged:
+  //   • showRuler       — bp ruler ticks + labels around the outside;
+  //   • showDirections  — strand arrowheads on directional feature arcs;
+  //   • onPositionClick(bp1) — click empty ring → 1-based bp (set origin);
+  //   • originMarkerBp  — draw a candidate-origin marker at this 1-based bp;
+  //   • centerLabel     — { name, bp } drawn in the centre (SnapGene look).
+  showRuler = false,
+  showDirections = false,
+  onPositionClick,
+  originMarkerBp = null,
+  centerLabel = null,
+  // 17.06.2026 (Игорь — «ноль всегда сверху, вращается сама плазмида»). When
+  // set, the plasmid CONTENT (features + ruler + feature labels) is rotated by
+  // this many degrees while the top zero-notch + centre label stay fixed. The
+  // OverviewTab rotation control feeds this so the base under the fixed top
+  // notch is the candidate origin — no click-on-map (avoids misclicks).
+  rotationDeg = 0,
 }) {
   const isOverlay = mode === 'overlay';
   const isCircular = topology === 'circular';
   const totalLen = Math.max(1, length || 0);
-  const regions = getRegions(annotations);
+  // De-duplicate overlapping near-identical annotations (e.g. AmpR `CDS` +
+  // bla(M) `marker` on the same locus) so the map draws one shape per locus —
+  // the redundant generic band/label is dropped (Игорь 17.06). Conservative:
+  // only a strictly higher-priority feature of ~the same span dominates.
+  const regions = dedupeDominatedRegions(getRegions(annotations));
 
   const [hovered, setHovered] = useState(null);
   // F4 grow-overlay state machine:
@@ -173,7 +128,13 @@ function PlasmidMiniMap({
   const cx = size / 2;
   const cy = size / 2;
   // Kfix-4 viewBox padding: r leaves enough room for stroke + 1 px AA halo.
-  const strokeWidth = Math.max(4, Math.round(size / 13));
+  // Overview mode (ruler / direction arrows) uses a thinner band so
+  // multi-feature constructs don't look crowded (Игорь 17.06 — «дуги и стрелки
+  // поменьше и потоньше»). Catalog tiles (no ruler/arrows) keep size/13.
+  const overviewMode = showRuler || showDirections;
+  const strokeWidth = overviewMode
+    ? Math.max(3, Math.round(size / 18))
+    : Math.max(4, Math.round(size / 13));
   // F1 (Sprint Catalog Polish FIX): inline mode never renders leader-labels —
   // they belong in the overlay (F4) so the inline tile stays inside its 200 px
   // grid cell on SARS-Genome / pCAMBIA1381Xb without overflow into Topology.
@@ -186,9 +147,23 @@ function PlasmidMiniMap({
     ? Math.max(20, baseR - LABEL_RING)
     : baseR;
 
+  // Push feature leader-labels OUT past the bp ruler so the two don't overlap
+  // (Игорь — «подписи вынести подальше»). When the ruler is drawn it occupies
+  // ~stroke/2 + tick(5) + bp-text(~9) outside the band; the feature leaders
+  // start beyond that.
+  const labelLeader = (showRuler && isCircular)
+    ? Math.round(strokeWidth / 2) + 5 + 18
+    : LEADER_LEN;
+  // Rotate the plasmid content (circular only) by baking the angle into the
+  // geometry — NOT a CSS transform. Features/ruler/labels spin to follow the
+  // rotation, but the label + bp-number TEXT stays horizontal (a CSS rotate
+  // would flip them upside-down) and the zero-notch + centre label stay fixed
+  // at the top (Игорь — «ноль сверху, вращается плазмида»; fix for «надписи не
+  // двигались / окно дёргалось»). 0 → all other consumers unchanged.
+  const rotationRad = (isCircular && rotationDeg) ? (rotationDeg * Math.PI) / 180 : 0;
   const labels = showLabels
     ? (isCircular
-        ? buildCircularLabels(regions, totalLen, cx, cy, r)
+        ? buildCircularLabels(regions, totalLen, cx, cy, r, labelLeader, rotationRad)
         : buildLinearLabels(regions, totalLen, size, cy, strokeWidth))
     : [];
 
@@ -232,7 +207,17 @@ function PlasmidMiniMap({
       return;
     }
     setOverlayVbox({ x: minX, y: minY, w, h, drawW: w, drawH: h });
-  }, [size, totalLen, isCircular, regions.length, labels.length, isOverlay]);
+    // NB: rotationDeg is deliberately NOT a dep — re-measuring the bbox while
+    // the user spins the plasmid made the SVG (and the whole panel) resize on
+    // every tick (Игорь — «постоянно меняется размер окна»). The bbox is fixed
+    // at the un-rotated extent; overlay mode's overflow:visible shows any
+    // rotated labels that poke past it without changing the box size.
+    // NB: depend on centerLabel's PRIMITIVE fields, not the object — consumers
+    // (OverviewTab) pass a fresh {name,bp} literal every render, so depending on
+    // the object identity re-ran getBBox on every rotation tick → the panel
+    // resized constantly (Игорь «окно всё ещё изменяется»).
+  }, [size, totalLen, isCircular, regions.length, labels.length, isOverlay,
+      showRuler, showDirections, originMarkerBp, centerLabel?.name, centerLabel?.bp]);
 
   const showHover = (titleText, evt) => {
     const host = evt.currentTarget.ownerSVGElement?.parentElement;
@@ -249,6 +234,66 @@ function PlasmidMiniMap({
   const onFeatClick = (region) => (featureInteractive
     ? (e) => { e.stopPropagation(); onFeatureClick(region); }
     : undefined);
+
+  // ── SnapGene-style extras (opt-in; ruler + arrows now BOTH topologies) ──
+  const rulerEnabled = showRuler && totalLen > 0;
+  const rOuterBand = r + strokeWidth / 2; // outer pixel edge of the circular band
+  const tickStep = rulerEnabled ? niceTickStep(totalLen) : 0;
+  const majorTicks = rulerEnabled ? rulerTicks(totalLen, tickStep) : [];
+  const minorStep = tickStep ? Math.round(tickStep / 5) : 0;
+  const minorTicks = (rulerEnabled && minorStep >= 1)
+    ? rulerTicks(totalLen, minorStep).filter((p) => p % tickStep !== 0)
+    : [];
+  // Push the ruler out past the block-arrow shoulders so ticks don't collide
+  // with arrowheads (shoulders reach rOut + strokeWidth × ARROW_SHOULDER_K).
+  const tickInner = rOuterBand + 2 + (showDirections ? strokeWidth * 0.45 : 0);
+  const majorLen = 5;
+  const minorLen = 2.5;
+  // Linear ruler lives below the bar.
+  const linTickTop = cy + strokeWidth / 2 + 2;
+  const linX = (p) => bpToLinearX(p, totalLen, size);
+  // Thin the linear bp-LABELS so the digits don't collide (Игорь — «в линейной
+  // форме цифры линейки налезают»). On the narrow bar ~10 ticks pack 4-digit
+  // numbers tighter than they are wide; the circle has room, the bar doesn't.
+  // Keep every tick MARK, but label only every Nth — N chosen so the gap ≥ the
+  // widest label. Labels land on round multiples of the tick step (not the raw
+  // greedy left scan) so the numbers stay tidy (…,1000,2000,…).
+  const linLabelStep = (() => {
+    if (isCircular || !rulerEnabled || !tickStep) return tickStep;
+    const pxPerTick = Math.abs(linX(tickStep) - linX(0));
+    const minGapPx = String(totalLen).length * 5 + 8; // ~5 px/digit @ fontSize 8 + pad
+    const every = pxPerTick > 0 ? Math.max(1, Math.ceil(minGapPx / pxPerTick)) : 1;
+    return tickStep * every;
+  })();
+
+
+  // Click empty ring → 1-based bp (set origin). The capture ring sits BELOW
+  // the feature arcs (which stopPropagation), so a feature click navigates and
+  // an empty-ring click marks the origin.
+  const onRingClick = (e) => {
+    if (typeof onPositionClick !== 'function') return;
+    const svg = e.currentTarget.ownerSVGElement || e.currentTarget;
+    let ux = null;
+    let uy = null;
+    try {
+      const ctm = svg.getScreenCTM && svg.getScreenCTM();
+      if (ctm) {
+        const pt = svg.createSVGPoint();
+        pt.x = e.clientX;
+        pt.y = e.clientY;
+        const u = pt.matrixTransform(ctm.inverse());
+        ux = u.x;
+        uy = u.y;
+      }
+    } catch { /* jsdom — no CTM */ }
+    if (ux == null) {
+      const rect = svg.getBoundingClientRect ? svg.getBoundingClientRect() : null;
+      if (!rect || !rect.width) return;
+      ux = ((e.clientX - rect.left) / rect.width) * vbox.w + vbox.x;
+      uy = ((e.clientY - rect.top) / rect.height) * vbox.h + vbox.y;
+    }
+    onPositionClick(bpFromVector(ux - cx, uy - cy, totalLen));
+  };
 
   const paths = [];
   for (const region of regions) {
@@ -270,8 +315,8 @@ function PlasmidMiniMap({
       // <circle> stroke. Approximate match (`>= totalLen - 1`) covers
       // off-by-1 imports where end is `totalLen-1` after coordinate
       // normalisation in pvcs.snapgene_parser.
-      const span = end - start;
-      if (span >= totalLen - 1) {
+      const arc = circularFeatureArc(start, end, totalLen, cx, cy, r, rotationRad);
+      if (arc.fullCircle) {
         paths.push(
           <g
             key={region.id}
@@ -308,14 +353,45 @@ function PlasmidMiniMap({
         );
         continue;
       }
-      const a1 = (start / totalLen) * 2 * Math.PI - Math.PI / 2;
-      const a2 = (end / totalLen) * 2 * Math.PI - Math.PI / 2;
-      const x1 = cx + r * Math.cos(a1);
-      const y1 = cy + r * Math.sin(a1);
-      const x2 = cx + r * Math.cos(a2);
-      const y2 = cy + r * Math.sin(a2);
-      const large = (a2 - a1) > Math.PI ? 1 : 0;
-      const arcPath = `M ${x1.toFixed(2)} ${y1.toFixed(2)} A ${r} ${r} 0 ${large} 1 ${x2.toFixed(2)} ${y2.toFixed(2)}`;
+      const { a1, a2, arcPath } = arc;
+      // Two-layer band (black rim + colour) — the body for every
+      // non-directional feature AND the short-feature arrow fallback.
+      const band = (
+        <>
+          <path d={arcPath} stroke={FEATURE_STROKE} strokeWidth={strokeWidth + 0.8} fill="none" strokeLinecap="butt" />
+          <path d={arcPath} stroke={color} strokeWidth={strokeWidth} fill="none" strokeLinecap="butt" />
+        </>
+      );
+      let inner = band;
+      if (showDirections && featureGetsArrow(region)) {
+        const shape = circularArrowShape(cx, cy, r, strokeWidth, a1, a2, region.strand === -1 ? -1 : 1);
+        inner = shape.kind === 'block'
+          // Block arrow = one integrated filled shape (body + shouldered head).
+          ? (
+            <path
+              data-testid="plasmid-dir-arrow"
+              d={shape.d}
+              fill={color}
+              stroke={FEATURE_STROKE}
+              strokeWidth={0.6}
+              strokeLinejoin="round"
+            />
+          )
+          // Too short for a head → plain band + narrow flush triangle.
+          : (
+            <>
+              {band}
+              <polygon
+                data-testid="plasmid-dir-arrow"
+                points={shape.points}
+                fill={color}
+                stroke={FEATURE_STROKE}
+                strokeWidth={0.5}
+                strokeLinejoin="round"
+              />
+            </>
+          );
+      }
       paths.push(
         <g
           key={region.id}
@@ -327,30 +403,51 @@ function PlasmidMiniMap({
           onMouseMove={(e) => showHover(titleText, e)}
           onMouseLeave={clearHover}
         >
-          {/*
-            * Two-layer stroke (see same pattern in the full-length
-            * branch above): wider FEATURE_STROKE arc underneath gives
-            * each sector a thin black rim.
-            */}
-          <path
-            d={arcPath}
-            stroke={FEATURE_STROKE}
-            strokeWidth={strokeWidth + 0.8}
-            fill="none"
-            strokeLinecap="butt"
-          />
-          <path
-            d={arcPath}
-            stroke={color}
-            strokeWidth={strokeWidth}
-            fill="none"
-            strokeLinecap="butt"
-          />
+          {inner}
         </g>
       );
     } else {
-      const x1 = (start / totalLen) * (size - 8) + 4;
-      const x2 = (end / totalLen) * (size - 8) + 4;
+      const x1 = bpToLinearX(start, totalLen, size);
+      const x2 = bpToLinearX(end, totalLen, size);
+      const bar = (
+        <rect
+          x={x1}
+          y={cy - strokeWidth / 2}
+          width={Math.max(1, x2 - x1)}
+          height={strokeWidth}
+          fill={color}
+          stroke={FEATURE_STROKE}
+          strokeWidth={0.25}
+        />
+      );
+      let inner = bar;
+      if (showDirections && featureGetsArrow(region)) {
+        const shape = linearArrowShape(x1, x2, cy, strokeWidth, region.strand === -1 ? -1 : 1);
+        inner = shape.kind === 'block'
+          ? (
+            <polygon
+              data-testid="plasmid-dir-arrow"
+              points={shape.points}
+              fill={color}
+              stroke={FEATURE_STROKE}
+              strokeWidth={0.4}
+              strokeLinejoin="round"
+            />
+          )
+          : (
+            <>
+              {bar}
+              <polygon
+                data-testid="plasmid-dir-arrow"
+                points={shape.points}
+                fill={color}
+                stroke={FEATURE_STROKE}
+                strokeWidth={0.4}
+                strokeLinejoin="round"
+              />
+            </>
+          );
+      }
       paths.push(
         <g
           key={region.id}
@@ -362,15 +459,7 @@ function PlasmidMiniMap({
           onMouseMove={(e) => showHover(titleText, e)}
           onMouseLeave={clearHover}
         >
-          <rect
-            x={x1}
-            y={cy - strokeWidth / 2}
-            width={Math.max(1, x2 - x1)}
-            height={strokeWidth}
-            fill={color}
-            stroke={FEATURE_STROKE}
-            strokeWidth={0.25}
-          />
+          {inner}
         </g>
       );
     }
@@ -611,6 +700,137 @@ function PlasmidMiniMap({
           </>
         )}
         {paths}
+        {/* Click-capture ring (set origin). Sits ON TOP of the feature arcs so
+            a click ANYWHERE on the ring (feature or gap) marks the origin
+            (Игорь — «отметить кликом»). Transparent wide stroke, pointer-events
+            on the stroke band only; the visual decorations below it are
+            pointer-events:none so they render on top yet never block the click. */}
+        {isCircular && typeof onPositionClick === 'function' && (
+          <circle
+            data-testid="plasmid-origin-capture"
+            cx={cx} cy={cy} r={r}
+            fill="none"
+            stroke="transparent"
+            strokeWidth={strokeWidth + 16}
+            style={{ cursor: 'crosshair', pointerEvents: 'stroke' }}
+            onClick={onRingClick}
+          >
+            <title>Кликните, чтобы отметить начало отсчёта</title>
+          </circle>
+        )}
+        {/* Direction arrows are now integrated INTO each directional feature
+            shape (вариант A «блок-стрелка», Игорь 17.06) — drawn in the `paths`
+            loop above as one filled body+head, with a narrow-triangle fallback
+            for short features. No separate overlay layer. */}
+        {/* bp ruler — circular (angular ticks + labels just outside the ring).
+            rotationRad rotates the tick ANGLES so they follow the spinning
+            plasmid while the bp-number text stays horizontal. */}
+        {isCircular && minorTicks.map((p) => {
+          const t = circularTick(p, totalLen, cx, cy, tickInner, minorLen, null, rotationRad);
+          return (
+            <line
+              key={`mt-${p}`}
+              x1={t.x1.toFixed(2)} y1={t.y1.toFixed(2)}
+              x2={t.x2.toFixed(2)} y2={t.y2.toFixed(2)}
+              stroke="var(--text-tertiary, #78716c)" strokeWidth={0.6} style={{ pointerEvents: 'none' }}
+            />
+          );
+        })}
+        {isCircular && majorTicks.map((p) => {
+          // Label radius pushed further out (Игорь — «подписи вынести подальше»).
+          const t = circularTick(p, totalLen, cx, cy, tickInner, majorLen, tickInner + majorLen + 6, rotationRad);
+          return (
+            <g key={`Mt-${p}`} style={{ pointerEvents: 'none' }}>
+              <line x1={t.x1.toFixed(2)} y1={t.y1.toFixed(2)} x2={t.x2.toFixed(2)} y2={t.y2.toFixed(2)} stroke="var(--text-secondary, #57534e)" strokeWidth={0.9} />
+              {p > 0 && (
+                <text
+                  x={t.lx.toFixed(2)} y={(t.ly + 3).toFixed(2)} fontSize="8"
+                  fontFamily="var(--font-mono, ui-monospace, monospace)" textAnchor={t.anchor}
+                  style={isOverlay ? OVERLAY_TEXT_STYLE : { fill: 'var(--text-tertiary, #78716c)' }}
+                >{p}</text>
+              )}
+            </g>
+          );
+        })}
+        {/* bp ruler — linear (ticks + labels below the bar). Игорь — «линейку
+            размеров и на линейную топологию». */}
+        {!isCircular && rulerEnabled && (
+          <g style={{ pointerEvents: 'none' }} data-testid="plasmid-ruler-linear">
+            {minorTicks.map((p) => (
+              <line
+                key={`lmt-${p}`}
+                x1={linX(p).toFixed(2)} y1={linTickTop.toFixed(2)}
+                x2={linX(p).toFixed(2)} y2={(linTickTop + minorLen).toFixed(2)}
+                stroke="var(--text-tertiary, #78716c)" strokeWidth={0.6}
+              />
+            ))}
+            {majorTicks.map((p) => (
+              <g key={`lMt-${p}`}>
+                <line
+                  x1={linX(p).toFixed(2)} y1={linTickTop.toFixed(2)}
+                  x2={linX(p).toFixed(2)} y2={(linTickTop + majorLen).toFixed(2)}
+                  stroke="var(--text-secondary, #57534e)" strokeWidth={0.9}
+                />
+                {p > 0 && p % linLabelStep === 0 && (
+                  <text
+                    x={linX(p).toFixed(2)} y={(linTickTop + majorLen + 9).toFixed(2)} fontSize="8"
+                    fontFamily="var(--font-mono, ui-monospace, monospace)" textAnchor="middle"
+                    style={isOverlay ? OVERLAY_TEXT_STYLE : { fill: 'var(--text-tertiary, #78716c)' }}
+                  >{p}</text>
+                )}
+              </g>
+            ))}
+          </g>
+        )}
+        {/* Fixed ZERO marker — always at the top (12 o'clock), OUTSIDE the
+            rotation group. The plasmid spins under it; the base landing here is
+            position 1 (Игорь — «ноль всегда сверху»). Accent triangle + notch
+            so it reads as the origin pointer, not just a tick. */}
+        {isCircular && showRuler && (
+          <g style={{ pointerEvents: 'none' }} data-testid="plasmid-origin-top">
+            <line
+              x1={cx} y1={(cy - (r - strokeWidth / 2)).toFixed(2)}
+              x2={cx} y2={(cy - (rOuterBand + majorLen + 1)).toFixed(2)}
+              stroke="var(--accent-600, #c2410c)" strokeWidth={1.4}
+            />
+            <polygon
+              points={`${cx - 3.4},${(cy - (rOuterBand + majorLen + 1)).toFixed(2)} ${cx + 3.4},${(cy - (rOuterBand + majorLen + 1)).toFixed(2)} ${cx},${(cy - (rOuterBand + majorLen - 4)).toFixed(2)}`}
+              fill="var(--accent-600, #c2410c)"
+            />
+          </g>
+        )}
+        {isCircular && Number.isFinite(originMarkerBp) && originMarkerBp > 1 && (() => {
+          const m = originMarkerGeom(originMarkerBp, totalLen, cx, cy, r, strokeWidth, rOuterBand, majorLen);
+          return (
+            <g style={{ pointerEvents: 'none' }} data-testid="plasmid-origin-marker">
+              <line
+                x1={m.ix.toFixed(2)} y1={m.iy.toFixed(2)}
+                x2={m.ox.toFixed(2)} y2={m.oy.toFixed(2)}
+                stroke="var(--accent-700, #b45309)" strokeWidth={1.6}
+              />
+              <text
+                x={m.lx.toFixed(2)} y={(m.ly + 3).toFixed(2)} fontSize="8.5" textAnchor={m.anchor}
+                fontFamily="system-ui, sans-serif"
+                style={{ ...(isOverlay ? OVERLAY_TEXT_STYLE : {}), fill: 'var(--accent-700, #b45309)', fontWeight: 600 }}
+              >▸ начало {originMarkerBp}</text>
+            </g>
+          );
+        })()}
+        {/* Centre label (name + bp) — SnapGene look. */}
+        {isCircular && centerLabel && (
+          <g style={{ pointerEvents: 'none' }} data-testid="plasmid-center-label">
+            <text x={cx} y={cy - 2} fontSize="11" fontWeight="600" textAnchor="middle"
+              fontFamily="system-ui, sans-serif" fill="var(--text-secondary, #57534e)">
+              {truncateLabel(centerLabel.name || '')}
+            </text>
+            {centerLabel.bp != null && (
+              <text x={cx} y={cy + 11} fontSize="9" textAnchor="middle"
+                fontFamily="var(--font-mono, monospace)" fill="var(--text-tertiary, #78716c)">
+                {centerLabel.bp} bp
+              </text>
+            )}
+          </g>
+        )}
         {labels.map((l) => (
           <g key={`label-${l.key}`} style={{ pointerEvents: 'none' }}>
             <line
@@ -713,4 +933,12 @@ export default memo(PlasmidMiniMap, (prev, next) => (
   && prev.mode === next.mode
   && prev.disableHoverOverlay === next.disableHoverOverlay
   && prev.annotations === next.annotations
+  // SnapGene-overview opt-ins (functions intentionally not compared — same as
+  // onFeatureClick; the primitive originMarkerBp drives the click re-render).
+  && prev.showRuler === next.showRuler
+  && prev.showDirections === next.showDirections
+  && prev.rotationDeg === next.rotationDeg
+  && prev.originMarkerBp === next.originMarkerBp
+  && (prev.centerLabel?.name === next.centerLabel?.name)
+  && (prev.centerLabel?.bp === next.centerLabel?.bp)
 ));

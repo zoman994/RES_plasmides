@@ -12,6 +12,688 @@
 
 ---
 
+## Sprint — restriction-cloning сборка из нескольких фрагментов (RC-A/B/C/D, 24.06.2026)
+
+> **Контекст.** Игорь (живая приёмка): «когда выбрали 1 фрагмент с сайтами рестрикции, добавление
+> следующего должно предлагать те же рестриктазы (или совместимые, или праймеры с RE-сайтом); динамично
+> указать рамку считывания и визуализировать на стыке нуклеотиды; кольцевой вид продукта; сборка из 3-4
+> фрагментов». 6-агентная разведка движка → 4 фазы, всё TDD. **5727 pass / 0 fail**, build clean. 6-агентный
+> адверсариальный ревью (0 багов; RC-A1 уникальность-гейт + blunt + RC-D1 layout фиксы внесены). Коммит — за Игорем.
+
+**[2026-06-24] DEC-RC-A1 — `suggestEnzymesForNextFragment` (restriction-cloning.js), движок подбора.**
+Чистый. Вход `{prevEnzymes, nextSeq, circular}` → `sameUsable` (тот же фермент — УНИКАЛЬНЫЙ каттер next),
+`compatibleUsable` (совместимый по COMPATIBLE_OVERHANGS уникальный; blunt prev → любой тупой уникальный),
+`sameMultiCut` (тот же режет >1× → нужен гель, не зелёный), `absent` (→ `generateRETail`). **Уникальность-гейт
+(ревью):** мульти-каттер с внутренними сайтами биологически непригоден для направленного лигирования — не
+green-lit'ится. Сканирование через `scanAllSites` (≥6bp) = «уникальные» пикера. RE_ENZYMES only (bio-инвариант).
+
+**[2026-06-24] DEC-RC-A2 — баннер «продолжить теми же рестриктазами» в `RangePickerModal`.** Проп `priorEnzymes`
+(ферменты последнего restriction-сегмента draft, из `AssemblyShellBody`). «Использовать те же» → `addEnzymesToPick`
+(только уникальные same+compatible). Отсутствующие → инфо-чип «добавить праймером на стыке» (авто-junction из
+пикера НЕ делаем — хрупкий piece-id-diff; junction ставится кликом по глифу, движок генерит RE-тейл через
+`overlapTail`). N-aware.
+
+**[2026-06-24] DEC-RC-B1 — динамическая рамка считывания.** `uiSlice.sequenceView.overrideFrame` (null|0|1|2,
+персист+sanitize+guard), контрол в `SettingsPopover` («Рамка: авто/+1/+2/+3»). Механизм — БЕЗ правки AATtrack:
+в `SequenceView/index.jsx` override форсит eff* (strategy hybrid + framesMode='all'→opacity 1 + visibleFrames=
+одна forward-рамка) → одна forward-рамка на весь сиквенс, без CDS. eff*-resolution = frozen module const (стабильная ссылка).
+
+**[2026-06-24] DEC-RC-B2 — нуклеотиды на стыке + рамка/AA.** `junctionSeamView({seq,boundaryPos,window,frame})`
+(новый `lib/junction-seam.js`): буквы слева│справа + кодон через шов + `stopAtSeam`. `AssemblyShellBody` считает
+seam на каждый внутренний boundary (`b.endOnAssembly` в продукте, frame=overrideFrame) → `coloredZones[i].seam`
+→ `SegmentZonesOverlay` рисует `sequence-view-seam-seq` под вердикт-бейджем V160 (+ ⚠ STOP через шов).
+
+**[2026-06-24] DEC-RC-C1 — кольцевой вид продукта.** `TabBar` opt-in `showMap` → вкладка «Карта»;
+`ContainerEditorSkeleton` для circular-продукта монтирует существующий `PlasmidMapV2` (переиспользование, не bespoke).
+
+**[2026-06-24] DEC-RC-D1 — конкретные несовместимые стыки (3-4 фрагмента).** Движок уже N-фрагментный
+(`realiseAssembly` + замыкание кольца) и `assemblyReadiness.incompatible` уже блокирует Realise. Добавлен
+`assemblyJunctionConflicts(coloredZones)` (junction-derive.js, тот же STICKY_JOIN_KINDS гейт → count==incompatible)
+→ `AssemblyShellBody` рендерит `assembly-conflict-list`: «insert → linker: 5′ AATT ≠ 5′ TCGA».
+
+**[2026-06-25] DEC-RC-BIO — биологический аудит (6-агентный) + фиксы.** Игорь «вычисли биологические нестыковки».
+2 critical + 5 risk; codon-math шва и overhang-представление продукта — clean. Поправлено:
+- **BIO-1 (critical) направленность**: `suggestEnzymesForNextFragment` плющил пару `[E1,E2]` → частичная пара
+  green-лайтилась → одним ферментом одинаковые концы → ненаправленно + самолигирование. Добавлен `directionalRisk`
+  + `uncovered[]` + красное предупреждение в баннере.
+- **BIO-2 (risk) рамка шва**: брал глобальную `overrideFrame` от 0, не рамку CDS → ложный/пропущенный STOP.
+  Чистый `seamFrameForBoundary` (рамка перекрывающего forward-CDS, иначе fallback).
+- **BIO-3 (risk) замыкание кольца**: interlock считался только для внутренних стыков → ненакрываемое кольцо =
+  ready. `assemblyReadiness/assemblyJunctionConflicts` получили опц. параметр `closure` (back-compat).
+- **BIO-4 (risk, pre-existing) `junctionInterlock`**: вырожденные overhang (StyI CWWG, SfiI NNN) → ложное
+  «compatible»; теперь /[^ACGT]/ → `unknown`.
+- **BIO-5 (critical, pre-existing) `checkReadingFrame`**: `addedBases = overhang.length` → длина сайта
+  (восстанавливается после лигирования; EcoRI 6bp=в рамке). Тест `restriction-digest` пинил неверное → исправлен.
+- Отложено (design-tradeoff): method-gate баннера, priorEnzymes per-insertion adjacency, absent→праймер per-end
+  frame/insert-site wiring, closure-глиф на линейной полоске. Full 5742, build clean.
+
+---
+
+## Sprint — UX чистка: слим-шапка канваса + кликабельная проектная крошка (19.06.2026)
+
+> **Контекст.** Игорь (скриншот): «кнопку назад и дубликат названия проекта можно убрать». В шапке сборок
+> над двухуровневым воркспейсом дублировались: верхняя крошка «📁 {проект} › Сборки» (новая) И второй ряд
+> `SkeletonHeader` с «← Назад» + имя проекта. **4-агентный воркфлоу-аудит** навигации (breadcrumb / onBack /
+> nav-paths / tests) подтвердил безопасность. **5280 pass / 0 fail**, build, браузер. Коммиты — за Игорем.
+
+**[2026-06-20] DEC-UX-PROJECTROW-CTXMENU-01 — действия проекта в дереве → правый клик; ★-pin убран.**
+Игорь (скриншот рядов проектов): «звёздочки убрать (нафиг не нужны теперь); выгрузить/удалить + сделать
+текущим — по правой кнопке мыши, т.к. текущим он становится по клику». Раньше у каждого ряда-проекта
+(`ProjectZone` header) было 4 инлайн-кнопки: ★pin / 📂activate / ↑export / 🗑delete. **Стало:** все инлайн-
+кнопки убраны; правый клик по шапке проекта (`onContextMenu` проброшен в `LibraryZone` header) открывает
+переиспользуемый `ContextMenu` с «Сделать текущим проектом» (только для неактивного — клик по ряду уже
+активирует, `LibraryTreeRoot.onProjectHeaderClick`), «Выгрузить проект», «Удалить проект» (danger). **★ pin
+удалён полностью** (кнопка + glyph в заголовке + `pinned` проп; `pinSet` в `LibraryTreeRoot` мёртв → снят).
+Стор `pinProject/unpinProject` и сорт «закреплённые сверху» (`pinnedProjectIds`) НЕ тронуты (existing pins
+ещё сортируют). Гейт `FEATURE_FLAGS.libraryTreeContextMenu` (как у `TreeItemRow`): flag-off возвращает инлайн-
+кнопки (минус звезда) как rollback. Хендлеры `onActivate/onDeleteProject` сделаны `e?.stopPropagation()` —
+работают и из кнопки, и из пункта меню. Тесты `library-tree-v2`/`trash-zone` переведены на правый клик +
+«нет звезды/кнопок»; **5337 pass / 0**, build clean, браузер (10 рядов: 0 звёзд, 0 инлайн-кнопок; меню
+неактивного = 3 пункта, активного = 2 без «Сделать текущим»). Известный trade-off: delete/export теперь
+только мышью (клавиатурного триггера контекст-меню нет) — приемлемо по явному запросу. Коммит — за Игорем.
+
+**[2026-06-20] DEC-DS-PLASMIDMAP-V2 — редизайн кольцевой карты плазмиды внедрён (feature-centric, прототип принят Игорем).**
+Из второго пакета `BodgeGene Design System (1).zip` пришёл новый `ui_kits/designer/PlasmidMap.jsx` — тёмная on-brand
+переработка нашей карты. После 4 итераций интерактивного прототипа (показан в чате, обе темы) Игорь принял. Ключевое:
+**внешние подписи фич с лидер-линиями в две колонки** (мелкие фичи читаемы) + **стрелки по цепи** + **радиальные RE-подписи**
+(не лезут на дуги/лидеры — финальная правка после live-фидбека «налезают на лидер-линию»: горизонтальный текст цеплял
+лидеры в плотных местах → радиальный остаётся в своём секторе) + линейка + GC-кольцо + hover-тултип. **Реализация:**
+чистая геометрия → `lib/plasmid-map-v2.js` (polar/featureArrow/smallMarker/layoutLabels/rulerStep/reLabelRotation/
+featuresFromFragments, 16 юнит-тестов); компонент `components/PlasmidMapV2.jsx` (наши цвета `featureColorShaded`+
+`FEATURE_STROKE`, выделение через onSelectRegion/onSelectFragment, RE из `scanAllSites`+showReSites, тулбар RE-фильтр).
+`PlasmidMap.jsx` стал тонкой обёрткой: `useV2 = FEATURE_FLAGS.plasmidMapV2 && !junctions.length && !primers.length`
+→ ПРОСМОТР плазмиды (PlasmidViewer) = новый дизайн; СБОРОЧНАЯ карта (junctions/primers/edit-попап в PlasmidUseWizard/
+Workspace) = legacy-рендер (переименован в `PlasmidMapLegacy`, нетронут). Добавлены токены `--viz-backbone/junction/
+re-unique` + `--feature-misc` в `index.css` (light+dark из дизайн-пакета) — карта адаптируется к теме; заливки фич
+одинаковы в обеих темах (warm-sepia из feature-palette). Браузер (реальный компонент, 7904 bp, 8 регионов): 8 стрелок +
+8 внешних подписей, цвета из feature-palette (#d69d00/#dc8375, не fallback), `--viz-backbone`→#e5e7eb резолвится, RE НЕ
+пересекают лидеры (замер getBoundingClientRect). Тесты: lib 16 + компонент 7 (рендер/выделение/тултип/обёртка-делегация),
+полный прогон **5320/0**, build clean. Откат — `plasmidMapV2=false` (legacy везде). Исходник дизайна — `.design-import2/`.
+**[доп. 2026-06-20] Распространение на остальные кольцевые миникарты (Игорь: «минимапы старые» — скрин Library Overview).**
+Кроме PlasmidViewer, V2 теперь рендерится и в богатых кольцевых превью: **Library Inspector → Overview**
+(`OverviewTab.jsx`, флаг + `topology==='circular'`; карта в ячейке 320px, V2 шириной 520/`maxWidth:100%`→клампится ~295px,
+`overflow:visible`; rotationDeg от контрола «начало отсчёта»; RE-тулбар скрыт — sequence карте не передаётся, минимап-режим)
+и **Annotator → Preview → круговая под-вкладка** (`PreviewTab.jsx`, ширина 460). Тесты обновлены на V2-мок
+(`overview-tab`/`overview-tab-nav`/`preview-map-tabs`), прогон **5324/0**, build clean. Браузер — Library Overview
+(pPICZα A, 5486 bp): 12 фич + 12 внешних подписей, центр «pPICZα A · 5486 bp · circular», линейка, warm-sepia, тёмная
+тема, без console-ошибок. Annotator-превью покрыт тестом+билдом (browser-проверку отложил — путь к нему тяжёлый).
+**Оставлены legacy намеренно:** крошечные тайлы дерева/пикера (`TreeItemRow`, `PlaceholderTreePicker` — иконочный размер,
+лидер-подписи там не имеют смысла) и `MultiImportView` (180px, смешанная топология — V2 только circular; кандидат на потом).
+**[доп. 2026-06-20] Полировка по live-фидбеку Игоря (3 пункта).** (1) **Динамический ре-layout подписей при вращении:**
+раскладка (`layoutLabels`) теперь считается от ПОВЁРНУТЫХ углов (`rotatedArcs = arcs.map(midAngle+rotRad)`), а подписи
+рендерятся в ЭКРАННЫХ координатах — вынесены ИЗ вращающейся `<g>`, контр-вращение каждой подписи удалено. Колонки
+лево/право и анти-overlap стек пересобираются на лету (браузер: при −90° сторона-сплит 2/4→3/3, лидеры идут к
+повёрнутой фиче, колонки x=110/490 стабильны). Раньше: внешний `rotate(+deg)` × внутренний `rotate(−deg)` = чистый
+сдвиг → подпись «уезжала» с фичей. (2) **Нулевая отметка не прячется за фичами:** маркер «ноль» рисуется ПОСЛЕ фич
+(поверх) и вынесен за кольцо фич (клин tip на радиусе fOut+2=168 > верх фич 166) + белый ореол. (3) **Шрифты + перенос:**
+новый чистый `wrapLabel` (до 2 строк `<tspan>`, greedy-pack + hard-split + ellipsis), шрифт подписей 11→13, центр 14→15,
+RE 9→10; `layoutLabels` стал высотно-зависимым (опц. `lineH`, h-aware стек + edge-clamp + gap-компрессия при переполнении
+колонки) — обратная совместимость с 16 старыми тестами через `prevBottom=-Infinity` / `h=0` (compat-lock тест). `COL_X`
+222→190 (viewBox клипает на 600, шрифт-13 не влезал). Pre-implementation adversarial-ревью (матан вращения подтверждён до
+машинной точности) + post-implementation ревью. Геометрия +10 тестов, компонент +3, прогон **5337/0**, build clean.
+
+**[2026-06-19] DEC-DS-ICONS-01 — внедрена иконотека из дизайн-пакета Claude Designer (chrome+domain, замена эмодзи).**
+Из `BodgeGene Design System.zip` (экспорт Claude Designer, реверс из нашего же DESIGN_SYSTEM.md) взят самодостаточный
+`Icon`-компонент → `components/icons/Icon.jsx` (+ `ICON_GROUPS`). 49 глифов на сетке 24px, stroke 1.5px, `currentColor`,
+round caps: **chrome** (30, в визуальном языке lucide: home/library/settings/plus/import/search/…) + **domain** (19
+геномных, которых нет в lucide: plasmid/dna/sequence/restriction/digest/ligate/branch/commit/strand-fwd…), +7 filled-
+силуэтов для active. Unknown name → `null` (без битого глифа). Инвариант-тест: каждое имя в ICON_GROUPS резолвится.
+Реализует принцип DESIGN_SYSTEM «no emoji in chrome — use lucide icons». Добавлены 2 глифа вне пакета (lucide-гэпы):
+`folder` (= .bodge ПРОЕКТ, в отличие от `library` = Библиотека) и `bell` (уведомления). Свип по chrome-сёрфейсам:
+`Sidebar` (рельс Главная→home/Библиотека→library/Выравнивание→sequence, действия Создать→plus/Загрузить+Импорт→import,
+футер Тема→sun/moon/Настройки→settings, сборки 🧬→dna); `ProjectContextBar` (📁/📦/●→folder, «Все проекты»→library);
+`Breadcrumb` (проектная крошка 📁→folder); `SkeletonHeader` (🔪→restriction); `AssemblyTabStrip` (🧬→dna, ✕→close,
++→plus); `MainPanel` (⚙→settings, карты ↑→import/📂→folder); `Topbar` (‹→chevron-left, ✏️→edit, ✓→check);
+`LibraryTopBar` (📦/📂→folder, ⌕→search, ⚠→warning, ✓-пилюля→check, 🔔→bell). Намеренно НЕ тронуто: типографские `‹›`
+сепараторы, `↶↷` undo/redo (нет глифа undo/redo), `⌘`/`⌃` kbd-хинты, эмодзи в user-content (placeholder 🧬 в empty-state,
+координаты в DNA-поиске); скрытая `!twoLevelRail` pinned-секция (●/📦) — legacy. `SidebarItem` рендерит `icon` как ноду —
+менять не пришлось. Браузер: каждый сёрфейс рендерит SVG нужного размера (16/22/15px, viewBox 24), 0 эмодзи в сайдбаре.
+Тест `Icon` (8 + инвариант на ICON_GROUPS), полный прогон 5290/0, build clean. Стейджинг — `.design-import/` (не для коммита). Откат — git-revert (флага нет: косметика).
+**Продолжение (20.06):** `Icon` расширен до **61 глифа** (+10 под lucide-гэпы: `container`/`list`/`swap`/`lock`/`note`/`link`/`hourglass`/`circular`/`linear`/`sort`).
+Конвертированы: **9 canvas-файлов** (AlignResultView/AssemblyDraftBlock/AssemblyDraftsPanel/CanvasLayoutView/HoverOpIconRow/OligonucleotideBlock/OpContextMenu/OperationNode — fan-out, фикс теста OperationNode `+`/`✓`→SVG);
+**дерево библиотеки** (TrashZone/TreeFolderRow/ProjectZone/LooseZone/LibraryTreeRoot/TreeItemRow/LibraryInspectorTitleRow — `LibraryZone`/`TreeFolderRow` icon-проп = нода, каждой кнопке inline-flex);
+**визарды/панели** (PrimerPanel/PlasmidVersionTree/OligoManager/PlasmidUseWizard-контролы). Прогон **5297/0**, build clean.
+**ОСТАВЛЕНО НАМЕРЕННО (Игорь 20.06 «глифы плазмид неплохие»):** `PlasmidMap` — маркеры ◀▶▼↻/✂/✏️ внутри `<svg><text>`, доменно-уместны, через `<Icon>` нельзя (свой `<svg>`). НЕ хвост.
+**Хвост ДОБИТ (20.06, fan-out батчами + ручные стрэгглеры):** op-popup'ы, `EditorTabStrip` (📦→container, 🔒→lock, OP_ICONS→pcr/digest/mix/ligate/mutagenesis, ассембли→dna), ContainerBlock/ZoneFrame/CodonStatsPanel/AssemblyHeader/ContainerEditorSkeleton/RestrictionPanel/SequenceToolbar/RestrictionSitePopover/PrimerOrderPanel/SegmentList-кнопки/AssemblyPrimersPanel, JunctionBlock/JunctionDNA, AddModal, QuickStart, PlasmidViewer, RecentRow, LevelPanel-кнопка. `ContextMenu` апгрейжен: `item.icon`=имя→`<Icon>`, эмодзи/нода→как есть (back-compat). **4 бага агентов починены:** `iconBtnFlex` не определён (краш AssemblyPrimersPanel→каскад 64 теста), `opLabel`→`opText`+icon (краш EditorTabStrip→8), QuickStart `{a.icon}`='folder' рендерился ТЕКСТОМ, OpContextMenu items='settings/swap/trash' текстом (фикс через ContextMenu). Тесты обновлены (editor-window-shell 📦/🔒, pcr-mode 🔬, OperationNode +/✓ → querySelector svg). Прогон **5297/0**, build clean.
+**Осталось (config-maps — рендерятся КОРРЕКТНО как эмодзи, не баг, низкий приоритет):** AddPiecePopover/SourceTiles/LibraryActionRow/PlasmidUseWizard-MODES/SegmentList-KIND_ICON/OligoManager-STATUS/OperationNode-KIND_ICONS(legacy)/derivation; inline ✓/⚠/💡-предложения (PlasmidUseWizard/LevelPanel/CodonStatsPanel); одиночки 💎🔶🪄🗺⊟. Затем tokens + Button/Card/Badge/Input.
+
+**[2026-06-19] DEC-UX-OPENPROJ-01 — «Открыть проект» в топбаре библиотеки убрана (дубль с рельсом, gated twoLevelRail).**
+Игорь «нафига она, если можно тыкнуть по проекту в левой панели». `LibraryTopBar` кнопка `library-topbar-open-project`
+(→ `pushFullscreen({fullscreen:'canvasSkeleton', payload:null})`) дублирует сайдбар: при `FEATURE_FLAGS.twoLevelRail`
+секция «ПРОЕКТ · {имя}» всегда показывает активный проект + сборки, и клик по сборке (`openProjectCanvas(a.id)`) или
+«Создать сборку» (`openProjectCanvas(null)`) открывает ТОТ ЖЕ канвас. Сайдбар всегда виден (вне content в App.jsx), в т.ч.
+в библиотеке. Доп.: кнопка рендерилась даже без активного проекта (открывала бы пустой канвас) — мелкий баг, тоже уходит.
+Гейт на `!FEATURE_FLAGS.twoLevelRail` (тот же флаг, что родит проектную секцию) — связка намеренна: off → секции рельса
+нет И кнопка возвращается (нет состояния «негде открыть канвас из библиотеки»). Тест `library-topbar-open-project` (gated
++ rollback flag-toggle). Браузер: в библиотеке с активным проектом кнопки нет; клик «Сборка 2» в сайдбаре → canvasSkeleton.
+
+**[2026-06-19] DEC-UX-SLIMHEADER-01 — слим-шапка канваса + кликабельная проектная крошка (gated breadcrumb).**
+Аудит выявил: «← Назад» в `SkeletonHeader` нёс **двойную** работу — `editorOpen` → `closeEditor()` (закрыть
+оверлей редактора), иначе → `popFullscreen()` (выйти из канваса). **Ключевое:** `EditorWindowShell` уже несёт
+**собственный** «← Назад» (`skeleton-editor-back` → `closeEditor`), поэтому closeEditor-ветка шапки избыточна;
+а popFullscreen-работу забирает крошка. Решение: (1) `SkeletonHeader` СЛИМИТСЯ при `FEATURE_FLAGS.breadcrumb`
+— убраны `skeleton-back-btn` + `skeleton-header-title` (дубль имени), 🔪 `RestrictionHeaderToggle` остаётся
+(отдельная функция). (2) Проектная крошка `Breadcrumb.jsx` (`data-kind=project`) теперь **кликабельна** →
+`popFullscreen` (`role=button` + tabIndex + Enter/Space + cursor pointer + hover-underline + title); прочие
+крошки инертны. **Связка с флагом breadcrumb намеренна:** off → крошек нет И шапка снова полная (нет
+«безвыходного» состояния без exit). Не дедик-флаг — иначе можно выключить крошки, оставив слим-шапку без
+выхода. Тесты: `skeleton-mount` (slim + rollback-кейс с flag-toggle), `pc-k4-header-title` переведён на
+breadcrumb=false (привязка имени — rollback-путь), `Breadcrumb` +2 (крошка кликабельна→popFullscreen; не-проектные
+инертны), `pc-k9-restriction-toggle` без изменений (тоггл цел). Браузер: в канвасе шапка без «Назад»/имени,
+🔪 на месте; клик «📁 {проект}» → `activeFullscreen` canvasSkeleton→library (вышли), 0 console errors.
+
+## Sprint — UX фиксы: переименование сборок + первый выбор проекта = список (19.06.2026)
+
+> **Контекст.** Игорь: «переименование сборок прикрути; и первый выбор проекта кидает просто в библиотеку,
+> не даёт списка». Полный прогон **5277 pass / 0 fail**, build чист, браузер (рейн-эймовый rename +
+> shared-дропдаун). Коммиты — за Игорем.
+
+**[2026-06-19] DEC-UX-RENAME-01 — переименование сборки = переименование ЗОНЫ (T6).** После T6 сборка = `zone`,
+и `draftId` редактора === `zone.id`. Header «✎» (`AssemblyHeader` → `onRename` → `actions.renameAssemblyDraft`)
+раньше диспатчил только legacy `RENAME_ASSEMBLY_DRAFT` — **no-op** (массив `assemblyDrafts` пуст после T6) →
+имя сборки не менялось. Фикс — в одном месте (`skeleton-context.renameAssemblyDraft`): теперь диспатчит **И**
+legacy (для legacy draft-теста), **И** `UPDATE_ZONE_NAME` (`{zoneId: draftId, name}`) — реальное переименование
+зоны. Оба безопасны (каждый no-op, если цели нет). Реюз готового, well-tested `UPDATE_ZONE_NAME`-редьюсера.
+Имя пробрасывается на ВСЕ три поверхности: header, вкладка (`AssemblyTabStrip`), **рельс** (через live-mirror
+DEC-UX-PHASE2-05, `zoneSig` несёт `z.name`). 3 теста (`zone-assembly-rename`) + legacy `assembly-mode` (42) цел.
+Браузер: «Сборка 1» → «Промотор-CBHI» в header+вкладке+рельсе мгновенно. Не-gated (это фикс мёртвой кнопки,
+не новое поведение).
+
+**[2026-06-19] DEC-UX-PICK-01 — первый выбор проекта = список В карточке, а не уход в библиотеку.** Пустое
+состояние `ProjectContextBar` (нет активного проекта): кнопка «Выбрать» раньше звала `goLibrary` (просто
+навигация). Теперь открывает ТОТ ЖЕ дропдаун, что «Сменить», со списком проектов. Новый чистый селектор
+`selectProjectsForPick` (недавние сверху в их порядке, затем остальные по алфавиту `localeCompare ru`, без
+дублей) — в отличие от `selectRecentProjectsForSwitch` НЕ ограничен `recentProjectIds` (на свежем старте он
+пуст, а проекты уже есть). Общий `menuBody` теперь питается `pickList` = `hasProject ? recent : pickList`;
+дропдаун вынесен из ветки `hasProject` (рендерится в обоих состояниях). «Все проекты…» → библиотека остаётся
+fallback'ом. 5 тестов (selector 5 + bar 2 переписаны). Браузер: shared-дропдаун (8 строк + текущий ● +
+«Все проекты…») — пустое состояние коротко (есть гард «активный проект всегда виден» → авто-реактивация),
+покрыто юнитами. Не-gated (фикс поведения существующей кнопки).
+
+## Sprint — UX Фазы 3+4: настройки-gear + правый клик в дереве (19.06.2026)
+
+> **Контекст.** Игорь «настройки и правый клик». 2-агентный аудит (воркфлоу) показал: **«рассыпанность»
+> настроек в коде уже почти устранена/намеренна** — мёртвые (polymerase/primer-prefix) удалены (A17), дубль
+> порога — намеренная синхронизация (DEC-PRED-03), тема отдельно от displaySettings — намеренно (быстрый
+> toggle, UX-006). Единственный реальный пробел — ⚙ «Вид» tab-gated. Правый клик в дереве библиотеки —
+> подтверждённый пробел (отсутствовал). Полный прогон **5256 pass / 0 fail**, build чист, браузер. Коммиты — за Игорем.
+
+**[2026-06-19] DEC-UX-PHASE3-01 — ⚙ «Вид» всегда в шапке инспектора библиотеки (gated).** Раньше gear
+рендерился только на вкладке Sequence → прыгал/не находился. Теперь всегда в `LibraryInspectorTitleRow`,
+**disabled** (opacity 0.4 + `aria-disabled` + tooltip «Настройки вида — на вкладке Последовательность») вне
+Sequence — стабильная раскладка + находимость. `SettingsPopover` уже был поднят на уровень SingleInspector
+(менять не пришлось). Gated `FEATURE_FLAGS.viewGearAlwaysVisible` → off = gear только на Sequence. 3 теста.
+**Остальное по «двум домам» уже сделано/намеренно** (см. контекст) — не трогал.
+
+**[2026-06-19] DEC-UX-PHASE4-01 — правый клик в дереве библиотеки → контекстное меню (gated).** Реюз готового
+`components/ContextMenu.jsx` (portal + auto-flip). Меню самодостаточно ВНУТРИ `TreeItemRow` (там уже есть
+store-хуки) — без прокидывания через зоны. Пункты на РЕАЛЬНЫХ экшенах: Переименовать (`renameLibraryEntry` через
+`prompt`), Скопировать в активный проект (`cloneEntryToActiveProject`, гард: `currentProjectId` + не primer + не
+уже-в-проекте, диалог дубля как у hover-«+»), Извлечь в «Без проекта» (`extractEntryToLoose`, гард: `entry.projectId`),
+Экспортировать .gb (`downloadEntryAsGenbank`, не для primer), Удалить в Корзину (`markLibraryEntryPendingDelete`,
+soft-delete с undo-тостом, danger). `onContextMenu` на root: `preventDefault`+`stopPropagation` (иначе родитель
+закроет меню). Рефактор: `onQuickAdd`/`onQuickDelete` → выделены `doClone`/`doDelete` (общие с меню), hover-кнопки
+не тронуты. Gated `FEATURE_FLAGS.libraryTreeContextMenu` → off = браузерное меню. 5 тестов. Браузер: меню portaled
+у курсора, гарды верны, «Извлечь» disabled для loose-записи. **Гоча:** `export const = memo()` + default в
+TreeItemRow → Fast Refresh не hot-update'ит (фолбэк на full reload, «Failed to reload» в console — benign,
+пред-существующее; build/тесты/браузер зелёные). **Гоча верификации:** React-state после `dispatchEvent`/`.click()`
+не виден в ТОМ ЖЕ preview_eval (батчинг) — проверяй отдельным замером; и кнопки `ContextMenu` несут иконку в
+textContent (`✎Переименовать`) — матчить `includes`, не `===`.
+
+## Sprint — UX фикс: live-обновление списка сборок в рельсе (19.06.2026)
+
+> **Контекст.** Игорь: «создал сборку, но «Создать сборку» на левой панели так и осталось». Список сборок
+> рефрешился только при смене проекта / выходе из канваса → пока ты В канвасе создаёшь сборки, рельс не
+> обновлялся (+ снапшот в IndexedDB дебаунсится). Полный прогон **5268 pass / 0 fail**, build, браузер. Коммиты — за Игорем.
+
+**[2026-06-19] DEC-UX-PHASE2-05 — LIVE-зеркало сборок из SkeletonProvider в главный стор (был отложенный follow-up).**
+`SkeletonProvider` (у него ЖИВЫЕ zones) теперь эффектом зеркалит список `{id,name}` в
+`store.setActiveProjectAssemblies` на КАЖДУЮ смену зон (dep = `zoneSig` — примитив `id:name|…`, не array-ref →
+без churn на ре-рендер). Рельс обновляется МГНОВЕННО при создании/переименовании/удалении сборки в канвасе.
+Триггер refresh в Sidebar сужен с `[currentProjectId, activeFullscreen]` до `[currentProjectId]` — иначе выход
+из канваса мог `loadSnapshot`-нуть ДЕБАУНС-устаревший снапшот и затереть свежий live-список. Теперь: смена
+проекта → loadSnapshot (стартовый список до канваса); канвас открыт → mirror (live). Браузер: создал «Сборка 3»
+в канвасе → рельс мгновенно показал «Сборка 1/2/3 + Новая сборка» без перезагрузки. **Заметка:** при создании
+сборки всплывает пред-существующий React-warning «mixing border+borderBottom» из таб-стрипа редактора сборок
+(не из правок — косметический антипаттерн в канвасе, кандидат на отдельную чистку).
+
+## Sprint — UX чистка: одна кнопка создания проекта (19.06.2026)
+
+> **Контекст.** Игорь (скрин Библиотеки): «дохера кнопок создать проект». Было ТРИ точки: сайдбар
+> «+ Создать проект» (всегда видна, ⌃N), Главная-dashboard «+ Создать проект», Library-тулбар «+ Проект».
+> Полный прогон **5267 pass** (1 флак — не из правок, isolated зелёный), build чист, браузер. Коммиты — за Игорем.
+
+**[2026-06-19] DEC-UX-CLEANUP-CREATEPROJ-01 — единственная кнопка создания проекта = сайдбар (gated).**
+Убран дубль **Library «+ Проект»** (`tree-add-project-btn` в `LibraryTreeRoot`) — он стоял вплотную к
+сайдбарной кнопке. **Важный нюанс:** Library «+ Проект» делал УНИКАЛЬНОЕ имя («Новый проект 2»…), а сайдбар —
+просто 'Новый проект' (коллизия). Чтобы удаление не было регрессом, логика уникального имени вынесена в чистый
+`lib/project-naming.js::pickUniqueProjectName(projects, base)` (5 юнитов) и теперь зовётся И сайдбаром
+(`Sidebar.onCreateProject`), И `LibraryWorkspace.onCreateProject` (рефактор, без смены поведения). Gated
+`FEATURE_FLAGS.dedupeCreateProject` → off вернёт дубль. Главную-dashboard кнопку НЕ трогал (welcome-контекст,
+не на скрине). `+ Добавить` (записи) — другая операция, осталась. Тесты на `tree-add-project-btn` (library-workspace
+×3 + library-tree-v2) переведены на flag-toggle (тестируют flow на rollback-пути); проверено отсутствие
+cross-file утечки флага (4 flag-мутирующих файла зелены вместе). Браузер: в Библиотеке ровно ОДНА create-project
+кнопка (сайдбар).
+
+## Sprint — UX Фаза 2: сборки раскрываются из проекта + убрать «В работе» (19.06.2026)
+
+> **Контекст.** Игорь: «при выборе проекта сборки должны раскрываться из проекта; убрать «В работе»; сборок
+> может быть много». Полный прогон **5263 pass / 0 fail**, build чист, браузер. Коммиты — за Игорем.
+
+**[2026-06-19] DEC-UX-PHASE2-03 — список сборок проекта в рельсе + мост открытия конкретной сборки.**
+Сборки = zones, живут в **skeleton-state канваса** (отдельный React-context) и персистятся ПО ПРОЕКТУ в
+IndexedDB (`stateKeyFor(projectId)`), главный стор их не держит. Новый слайс `store/projectAssembliesSlice.js`:
+`activeProjectAssemblies [{id,name}]` (асинхронно читается из per-project снапшота через
+`loadSnapshot(projectId)` → `zones`) + `refreshActiveProjectAssemblies()`. Sidebar под «ПРОЕКТ · {имя}»
+рендерит **список сборок** (`ss-nav-assembly-{id}`) + «+ Новая сборка»; пустой проект → «Создать сборку».
+Рефреш на смене `currentProjectId` И при выходе из канваса (там их создают/переименовывают). **Мост открытия
+конкретной сборки** (рельс в главном сторе не может писать в skeleton-стор): рельс ставит `pendingAssemblyId`,
+`SkeletonProvider` его потребляет эффектом (когда зона уже в состоянии → `SET_ACTIVE_ASSEMBLY`, покрывает и
+mount-load, и уже-открытый канвас) + чистит. Браузер: проект «сячсчсчясвцс» раскрыл «Сборка 1»; клик → канвас
+открылся НА «Сборка 1» (вкладка активна), крошка «проект › Сборки».
+
+**[2026-06-19] DEC-UX-PHASE2-04 — секция «В работе» (закреплённые) убрана при twoLevelRail.** Быстрый
+переключатель проектов теперь в дропдауне карточки активного проекта (DEC-UX-PHASE1-03), а под проектом
+раскрываются его сборки — отдельная «В работе» избыточна. Gated `!FEATURE_FLAGS.twoLevelRail` → flag off
+возвращает legacy-секцию (откат). Pinned-тесты (M-X.8 K3) обновлены: assert отсутствия при flag on +
+возврат при flag off.
+
+## Sprint — UX Фаза 2 (логика окон): хлебные крошки (19.06.2026)
+
+> **Контекст.** Фаза 2 многосоставная; её рискованное ядро — унификация роутера (depreate `activeFullscreen`),
+> которое аудит помечал «не разруливать без явной задачи». Разбита на безопасные обратимые куски; начат
+> самый безопасный с высокой отдачей. Полный прогон **5239 pass** (+12; 2 «фейла» — pre-existing флаки
+> `annotator-introns`/`primer-wizard`, isolated 5/5 OK, не из моих файлов), build чист, браузер. Коммиты — за Игорем.
+
+**[2026-06-19] DEC-UX-PHASE2-01 — хлебные крошки «где я сейчас» (read-only, gated).** Пока роутер двойной
+(`activeFullscreen` overlay + `workspace.active`), крошки делают положение ЛЕГИБЕЛЬНЫМ без унификации:
+`Инструменты → {окно}` для кросс-проектных инструментов, `{Проект} → {окно}` для окон активного проекта.
+Чистый билдер `lib/breadcrumb.js::buildBreadcrumb` (читает оба роутера + имя проекта → трейл; 8 юнитов; вокабуляр
+из App.jsx switch + workspaceSlice). Компонент `components/AppShell/Breadcrumb.jsx` (примитивы из стора, 4 теста),
+монтаж в `AppShell` за `FEATURE_FLAGS.breadcrumb`. **Обёртка контента gated:** flag off → AppShell рендерит ровно
+как раньше (один потомок); flag on → `<Breadcrumb/>` + `flex:1`-обёртка контента (крошки 34px сверху, контент
+заполняет остаток — проверено в браузере). Пара к ProjectContextBar: полоса = КАКОЙ проект, крошки = КАКОЕ окно.
+
+**[2026-06-19] DEC-UX-PHASE2-02 — двухуровневый рельс в Sidebar (Игорь выбрал следующим, gated).** Группировка
+существующей навигации в две секции: **«Инструменты»** (заголовок над Главная/Библиотека/Выравнивание —
+кросс-проектные) и **«Проект · {имя}»** (окна активного `.bodge`, показывается только при `currentProjectId`).
+Сейчас одно реальное окно проекта — **«🧬 Сборки»** → канвас (`pushFullscreen({fullscreen:'canvasSkeleton',
+payload:{projectId}})` — ТОТ ЖЕ путь, что проверенный `MainPanel.handleProjectClick`; `activateProject` тело не
+грузит, но active-проект уже current → push достаточно). Active-состояние «Сборки» = `activeFullscreen==='canvasSkeleton'`.
+Без «скоро»-заглушек (их в проекте убирали как шум — MS-K1); Обзор/Flow · Контейнеры · Версии добавятся по мере
+сборки их окон. Gated `FEATURE_FLAGS.twoLevelRail` → flag off убирает заголовки + проектный блок (рельс как раньше).
+5 тестов (рендер Sidebar напрямую). Браузер: «Инструменты»/«Проект · Новый проект»/«🧬 Сборки» (active), крошка
+канваса «Новый проект › Сборки» (Phase-2-крошки корректно для окна проекта).
+
+**Остаток фазы 2 (по убыванию безопасности):** вернуть Flow-вью (данные `project.dag` + экшены живы, снесён лишь
+вью 17.06; крупный ReactFlow-билд) · **унификация роутера** (`workspace.active` канон, depreate
+`activeFullscreen`+navStack — РИСК, аккуратно/последним).
+
+## Sprint — UX Фаза 1: полоса активного проекта (19.06.2026)
+
+> **Контекст.** /design-sync вылился в UX-сессию (`docs/UX_DIRECTION.md`). Корень жалобы Игоря: «интерфейс
+> хаотичный… не понимаю, какой проект выбран». Модель привязали к `.bodge` (проект → сборки-рецепты →
+> контейнеры-продукты; инструменты Библиотека/Праймеры/Выравнивание наравне, не атрибуты проекта). Фаза 1 —
+> сделать активный проект видимым всегда. Игорь: «погнали фазу 1, но оставь возможность откатить». Полный
+> прогон **5228 pass / 0 fail**, build чист, браузер. Коммиты — за Игорем.
+
+**[2026-06-19] DEC-UX-PHASE1-01 — `ProjectContextBar` (видимость активного проекта, gated, обратимо).**
+Активный проект уже жил в сторе (`currentProjectId`, единая точка `activateProject`), но UI его нигде не
+показывал. Новая карточка `components/StartScreen/ProjectContextBar.jsx` в Sidebar (между инструментами
+Главная/Библиотека/Выравнивание и блоком «В работе») показывает: имя активного проекта + файл (`.bodge`) или
+«только в браузере» (честно — `saveStatus` в коде всегда `'idle'`, save-флоу его не двигает; не выдумываем
+«сохранено») + число контейнеров + дропдаун «Сменить» (недавние проекты → `activateProject`, «Все проекты…» →
+Библиотека). Свёрнутый Sidebar → компактная иконка с именем в `title`. Пустое состояние — «Проект не выбран ·
+Выбрать». Чистые селекторы — `lib/project-context.js` (`selectActiveProjectContext`/`selectRecentProjectsForSwitch`,
+8 юнитов); компонент читает примитивы из стора (имя/файл — строки → без object-identity-churn), 8 компонент-тестов.
+
+**[2026-06-19] DEC-UX-PHASE1-03 — флай-аут списка проектов в СВЁРНУТОМ Sidebar (Игорь).** В свёрнутом
+рельсе карточка проекта = кликабельная иконка 📁; клик открывает список проектов ВПРАВО **без разворота
+панели**. Флай-аут — `createPortal` в `document.body` + `position:fixed` по `getBoundingClientRect` иконки:
+иначе его клипнул бы `.sb-body` (`overflow-x:auto`) и `.sb` (`contain:layout` → containing-block для fixed).
+Outside-click учитывает оба ref (карточка + портал-меню). Контент меню (недавние + «Все проекты…») общий с
+развёрнутым дропдауном. +3 теста (портал находится через screen, т.к. рендерится в body). Браузер: флай-аут
+слева=icon.right+6, не клипнут, 8 недавних.
+
+**[2026-06-19] DEC-UX-PHASE1-02 — фиче-флаг для мгновенного отката.** `lib/feature-flags.js`
+(`FEATURE_FLAGS.projectContextBar`, default `true`). Монтаж в Sidebar gated: `{FEATURE_FLAGS.projectContextBar &&
+<ProjectContextBar/>}`. Откат = флаг в `false` (без правки компонентов, без git). Весь новый код изолирован в
+новых файлах + 1 gated mount → `git revert` тоже тривиален. Паттерн обратимых UX-правок для последующих фаз.
+
+## Sprint — Виртуализация строк SequenceView (PERF-9) (19.06.2026)
+
+> **Контекст.** Игорь: «выравниватель всё ещё медленный как ускорить ещё?» — после PERF-1..8 (движок + debounce +
+> per-line memo + overlays). Уточнение: тормозят **появление выравнивания** + **печать/правка референса** на
+> **референсе >5 кб**. Замер развёл корень: O(seqLen)-производные дёшевы (`detectORFRanges` 0.77мс, `scanAllSites`
+> 0.41мс на 8 кб) — узкое место был **рендер ВСЕХ N тяжёлых строк** (нет виртуализации). Полный прогон
+> **5212 pass / 0 fail**, build чист, браузер (7904 bp). Коммиты — за Игорем.
+
+**[2026-06-19] DEC-SQV-VIRTUAL-01 — виртуализация строк `SequenceView` (placeholder-слоты, gated, browser-only).**
+`SequenceView` монтировал КАЖДУЮ строку плазмиды разом (`{linesJsx}`, без виртуализации; `content-visibility: auto`
+снят 06.05 — ломал бюджет кадра на 90-120 Гц). На >5 кб = ~100+ тяжёлых строк (ruler/strands/annotations/AA/RE/read/
+chromatogram = тысячи SVG). Два симптома, оба render-bound: «появление» = синхронный монтаж всех строк; «печать» =
+прямой ввод (вставка) сдвигает все нижележащие позиции → каждая строка ниже каретки **легитимно** перерендеривается
+(PERF-6 их не bail'ит — контент действительно сдвинулся). **Решение — оконный рендер с placeholder-слотами:** видимое
+окно (`firstVisible±overscan`) рендерится полностью; остальные индексы — `SequenceLine active={false}` = div фикс.
+высоты с теми же `data-testid`/`data-line-start`/`data-wraptail-kind`/wrap-origin-атрибутами, **без тяжёлого
+поддерева**. Ключ безопасности: оверлеи (`SelectionOverlay`/`CaretOverlay`) + `scrollToPosition` + `computeVisible`
+измеряют **реальные per-line DOM-rect** — placeholder-слоты сохраняют все атрибуты, поэтому машинерия продолжает
+находить слоты, а видимые строки (всегда real) остаются пиксель-точными. Чистая математика окна — `lib/line-window.js`
+(`computeDesiredWindow`/`shouldVirtualize`/`isActiveIdx`, 19 юнитов); импура (драйвер по rect видимых строк + скролл/
+resize, rAF-throttled, поддержка root- и ancestor-scroller через `findScrollingAncestor`) — в `index.jsx`.
+
+**[2026-06-19] DEC-SQV-VIRTUAL-02 — gated по размеру (>30 строк) + выключено в тест-env.** `virtualize =
+!__IS_TEST_ENV__ && shouldVirtualize(lines.length)`. Порог 30 строк покрывает «>5 кб» при любом wrap (5 кб ≈ 34
+строки@150cpl, ~63@80cpl), малые фикстуры остаются eager. **Выключение в тест-env** держит 487+ тестов вьюера на
+eager-DOM (happy-dom не меряет layout → rect-драйвер там не воспроизводится — та же причина, что у PERF-4/8: верификация
+браузером). Виртуализация прозрачна, когда всё помещается во вьюпорт (окно охватывает все строки → all-active = eager).
+Корректность placeholder-ветки — изоляционный тест `sequence-line-placeholder.test.jsx` (5: drops tracks, keeps
+data-attrs, height); драйвер — браузер: 7904 bp → 53 строки = 21 real + 36 placeholder, DOM 4.9k vs ~13k, скролл
+[0,16]→[9,38] без пустот, scrollHeight сохранён, выделение выровнено, 0 ошибок. **Первичное окно** — head-band размером
+во вьюпорт, считается синхронно в `useMemo` (не через rAF) → первый кадр уже узкий («появление» не ждёт драйвер.)
+
+## Sprint — Перетаскиваемые разделители панелей (RSZ) (18.06.2026)
+
+> **Контекст.** Тип A, фронт. Игорь (скрин на разделитель): «везде где есть разделения окон они должны иметь
+> возможность двигать [разделитель], чтобы изменять рабочие области». Разведка нашла 5 фиксированных split-pane
+> layout'ов + 1 уже-перетаскиваемый (PlasmidWorkspace, bespoke вертикальный) + НИ одного переиспользуемого сплиттера.
+> Полный прогон **5168 pass / 0 fail**, build чист, браузер (Align flex + Library grid). Коммиты — за Игорем.
+
+**[2026-06-18] DEC-RESIZE-01 — переиспользуемый примитив `useResizableSplit` + `ResizeHandle`.** Хук
+(`hooks/useResizableSplit.js`) ведёт ОДНУ контролируемую панель (px), сосед флексится. Параметры: `axis` x/y, `side`
+start/end (контролируемая панель слева/сверху или справа/снизу), `min`, `keepOther` (мин ширина соседа → `max =
+container − keepOther` через `containerRef`), `storageKey` (localStorage-персист), `initial`. Pointer-based
+(`setPointerCapture`, touch-friendly), клавиатура (стрелки ±24px с учётом side, Home/Enter — сброс), double-click —
+сброс, aria `separator`. Чистая `computeResizedSize({startSize,startCoord,coord,side,min,max})` — TDD. `ResizeHandle`
+(`components/common/ResizeHandle.jsx`) — 7px hit-strip с центральной линией (border-цвет в покое, accent на hover/драге),
+cursor col/row-resize, спред `separatorProps`.
+
+**[2026-06-18] DEC-RESIZE-02 — применено к 4 чистым двух-панельным сплитам.** AlignWorkspace (input | result, side=start
+340, тот что показал Игорь), LibraryWorkspace (tree | inspector, grid `${w}px 7px minmax(0,1fr)`, side=start 312),
+Annotator (preview | LevelPanel, side=end 360 — `LevelPanel` получил проп `width`), PcrModeShell (template | suggestions,
+side=end 320 — `PrimerSuggestionsPanel` получил проп `width`). Каждый — свой `storageKey` (персист размеров). Где
+вставлен handle — убран дублирующий `borderRight`/`borderLeft` (handle сам разделитель). PlasmidWorkspace оставлен на
+своём bespoke вертикальном сплиттере (работает; миграция на примитив — опц. follow-up).
+
+**[2026-06-18] DEC-RESIZE-03 (ОТЛОЖЕНО) — AssemblyShellBody.** Правый «столбец» там — не одна панель, а несколько
+УСЛОВНЫХ collapsible-сиблингов (sidebar-wrapper 248 + `AssemblyPipelinePanel`, каждый со своим × и шириной). Простой
+двух-панельный сплиттер не ложится без рефактора «сгруппировать правые панели в одну ресайз-колонку»; assembly-редактор
+сложный/центральный → отложено (его панели и так сворачиваются ×). Follow-up при необходимости.
+
+---
+
+## Sprint — Производительность выравнивания PERF-1..4 (18.06.2026)
+
+> **Контекст.** Тип A, фронт. Игорь: «выравнивание очень долгое и выделение глючит — производительность очень
+> низкая». Перф-аудит (workflow, 5 агентов) выявил: движок гоняет full O(n·m) Gotoh на read-vs-ref; каждая правка
+> (включая разметку интрона) пере-выравнивает; auto-align `useEffect` срабатывает на несвязанной болтанке стора;
+> драг-выделение делает O(N) `getBoundingClientRect` на каждый pointermove. Реализовано PERF-1..4, TDD-first.
+> Полный прогон **5153 pass / 0 fail**, build чист. Браузер-замер 8к×1к: 670→128 мс (5.2×). Коммиты — за Игорем.
+
+**[2026-06-18] DEC-ALIGN-PERF-01 — sequence-dirty гард: правки аннотаций не пере-выравнивают.** Выравнивание
+зависит ТОЛЬКО от последовательности референса. `commitWorkingEdit`/`undoAlignEdit`/`redoAlignEdit` теперь зовут
+`runAlignment()` лишь когда строка реально изменилась (сравнение pre/post). Разметка интрона (descriptor=null,
+сиквенс байт-в-байт) = 0 ре-алайнов вместо N. Гарда чистая, вывод идентичен при реальной правке.
+
+**[2026-06-18] DEC-ALIGN-PERF-02 — auto-align `useEffect` по контент-сигнатуре, не по объектам.** `AlignWorkspace`
+зависел от целых `inputs`/`settings`-ссылок → любая болтанка стора (добавление невыбранного входа и т.п.) запускала
+full O(n·m). Сужено до примитивной сигнатуры: `refId` + id+длина выбранных чтений + `settings` через `useShallow`.
+Источники входов в align-флоу неизменяемы (правки → рабочая копия, пере-выравнивается в сторе), поэтому id+длина
+однозначно пинят работу. Легитимные ре-алайны (смена референса/чтения/режима) сохранены (компонентные тесты).
+
+**[2026-06-18] DEC-ALIGN-PERF-03 — якорная оконная DP вместо ретюна WFA/band (целим реальную нагрузку).** Дефолт
+align — `local`, трейсы — `semiglobal`; WFA-fast-path движка только для `global` → в реальном флоу почти не
+срабатывает. Доминанта — read-vs-ref (n≫m): full Gotoh 8М ячеек, а banded бесполезен (band расширяется на |n−m|≈n,
+покрывает всю ссылку). Решение: `lib/alignment/anchor.js` — minimizer-сиды (reuse `computeMinimizers`) → доминирующая
+коллинеарная диагональ → окно референса → тот же точный Gotoh в окне; fallback на full DP при неоднозначности/повторах.
+Точно (окно лишь срезает референс, который local/semiglobal-чтение и так не могло задействовать); оракул-тесты
+anchored==full (reverse/индель/край). **`maxFullCells`(36e6)/`autoBand`(0.05) НЕ трогали** — они намеренно держат
+n≈m-плазмиды с внутренними вставками точными (full DP / band+|m−n|); их сужение клипнуло бы клонированную вставку.
++ `basesCompatible` через предвычисленный Uint8-lookup (те же результаты, меньше per-cell overhead).
+
+**[2026-06-18] DEC-ALIGN-PERF-04 — драг-выделение: `elementFromPoint` вместо O(N) rect-скана (бывш. V51).** Под
+pointer-capture `e.target` = root → walk проваливался на каждом pointermove → fallback делал `querySelectorAll` +
+`getBoundingClientRect` по всем ~60 строкам (layout-thrash = «выделение глючит»). Добавлен единичный
+`document.elementFromPoint` hit-test (та же техника, что уже в AA-драге и auto-scroll) перед существующим
+O(N)-fallback. Поведение идентично (jsdom-тесты идут target-walk путём, fallback не тронут); выигрыш — только в
+реальном браузере с capture. Worker-оффлоад движка (убрать остаточный фриз главного потока) — осознанно отложен:
+async-ит широко вызываемый стор-экшен (правка многих callers/тестов), а гарды PERF-1/2 уже срезали частоту запусков,
+а PERF-3 — их стоимость; рекомендован следующим шагом, если фриз ещё ощутим.
+
+### Доп. проход PERF-5..7 (18.06.2026) — «при редактировании в выравнивателе идёт зависание» (Игорь)
+
+> Диагностика воркфлоу (5 агентов): правка референса гоняет полный синхронный ре-алайн на КАЖДОЕ нажатие (burst из
+> k нажатий = k ре-алайнов), плюс co-dominant render-кост (каждое нажатие минтит fresh referenceFragment → ломает
+> SequenceLine memo → ре-рендер всего вьюера). Полный прогон **5156 pass / 0 fail**, build чист, браузер-верификация.
+
+**[2026-06-18] DEC-ALIGN-PERF-05 — дебаунс typing-ре-алайна + flush-точки.** `commitWorkingEdit` (seqChanged) теперь
+зовёт `scheduleRealign()` (trailing setTimeout 280мс) вместо синхронного `runAlignment()`; рабочая копия + каретка
+обновляются синхронно в том же `set()`, поэтому набранный символ виден мгновенно, а тяжёлый ре-алайн откладывается и
+**burst схлопывается в ОДИН** прогон. `runAlignment` сам остаётся синхронным (≈30 тестов читают result на следующей
+строке — не сломаны). Новый экшен `flushAlignment()` (запустить отложенное немедленно). **Flush-точки** (инвариант
+«result всегда от текущего workingReference.sequence в момент чтения»): `undoAlignEdit`/`redoAlignEdit` flush +
+синхронный ре-алайн; `revertWorkingReference` cancel + синхронный; `onIntronsFromGaps` flush до чтения `result.columns`
+(иначе интроны из зазоров встанут по старым координатам при инделе); `saveCorrectedReference` flush; `clearAlignment`
+**cancel** таймера (нет позднего срабатывания после teardown). Annotation-only skip (PERF-1) сохранён — не шедулит.
+TDD fake-timers: deferred-on-edit, burst→1, flush-sync, clear-cancels, undo-flush-then-run.
+
+**[2026-06-18] DEC-ALIGN-PERF-06 — срезать лишнюю per-keystroke работу в align-вью (не общий SequenceView).**
+`detectDoublePeaks` (дорогой O(peaks) скан трасс) вынесен в memo по неизменным `inputs` (`doublePeaksByReadId`), а не
+пересчитывается в `multiData` на каждое нажатие (рабочая копия меняется — memo раньше перестраивался). `computeVisible`
+effect в `AlignReferenceView`: deps сужены до `[computeVisible]` (убраны `singleRead`/`alignmentReads`) — слушатели
+скролла/resize не пере-регистрируются и 2×RAF `getBoundingClientRect` reflow не стреляет на каждое нажатие/ре-алайн.
+
+**[2026-06-18] DEC-ALIGN-PERF-07 (ОТЛОЖЕНО, gated) — render-half фриза.** `SequenceLine` получает `fullSeq`+`features`
+целиком (fullSeq нужен трекам для координат за пределами строки), поэтому правка ломает его `React.memo` у ВСЕХ строк
+→ ре-рендер всего вьюера на нажатие. Лечится per-line memo (custom `areEqual` по `line.seq`-слайсу + стабильный
+`features`), но это **общий SequenceView** (Library/Annotator/canvas/importer, 40+ пропов) — высокий риск стейл-рендера.
+Compute-фриз (доминанта) уже снят PERF-5; рендер-half вторичен. Решение: НЕ трогать общий вьюер в этом проходе; вынести
+в отдельный acceptance-gated спринт с регрессом 487 SequenceView-тестов. Worker-оффлоад (DEC-ALIGN-PERF-04) — тоже после.
+
+**[2026-06-18] DEC-ALIGN-PERF-08 — дёрганное ВЫДЕЛЕНИЕ в align (Игорь: «выделение дерганное»).** Корень: при драге
+выделения каждый pointermove → `onCaretChange` → локальный стейт каретки в `AlignReferenceView` → ре-рендер, а строка
+`fragments={[referenceFragment]}` создавала **новый массив на каждое движение** → `SequenceView.buildFeatureMap` (dep
+`[fragments]`) пересчитывал `fullSeq`+`features` → `linesJsx` ребилд → ре-рендер ВСЕГО вьюера (~50 строк × треки) на
+каждое движение мыши. Каретка/выделение вынесены в оверлеи именно чтобы НЕ трогать строки — но свежий `fragments` ломал
+это. Фикс: `const fragments = useMemo(() => [referenceFragment], [referenceFragment])` — align-специфично, **общий
+`SequenceView` не тронут**. Каретка живёт в локальном стейте → memo держится через все шаги драга (referenceFragment
+меняется только при реальной правке). Браузер: 6-строчное выделение, **~60fps (один кадр на движение)**, было — ребилд
+всего вьюера на движение. TDD: mock `SequenceView`, прогон шага выделения, ассерт стабильности `fragments`-ссылки.
+Остаточный вторичный кост (re-measure оверлеев `SelectionOverlay`/`CaretOverlay` per move — `querySelectorAll`+offset)
+укладывается в кадр на 3к/50-строк; геометрия-кэш по `layoutEpoch` — потенциальный follow-up для очень больших
+референсов (общий вьюер, gated). **Тест-стабильность:** `align-routing.test.jsx` — `findByTestId` таймаут 1000→5000мс
+(lazy-импорт `AlignWorkspace` не успевал резолвиться под нагрузкой = V146-флак; тест на пустом воркспейсе, не на пути
+PERF-8 — `AlignReferenceView` там не монтируется; доказано stash-логикой + кодом).
+
+**[2026-06-18] DEC-SQV-MEMO-01 — per-line `SequenceLine` memo (закрывает отложенный DEC-ALIGN-PERF-07 render-half).**
+Лаг ПЕЧАТИ нуклеотидов в editable `SequenceView` (Игорь — в режиме сборки + правке референса align). Корень: каждое
+нажатие даёт новую identity `fullSeq` и всем производным (`features`/`orfRanges`/`reSites`/`framesResolution`/`line`/
+`seqLength`) → `React.memo` ломался у ВСЕХ строк → ре-рендер всего вьюера на нажатие (общий код, бьёт сборку/align/
+Library). Фикс: custom `areEqual` (`components/SequenceView/lib/sequence-line-equal.js`) — `Object.is` по ВСЕМ пропам,
+КРОМЕ relaxed-набора, сравниваемого по line-relevant контенту: `fullSeq` — окно `[start-3, end+3]` (кодоны на стыке
+строк ≤2 базы); `features`/`orfRanges` — overlap-подмножество по значению; `reSites` — overlap+24 (дистальный Type IIS
+рез); `framesResolution` — только `{strategy, dominant}` (дрейфующий `coverage` игнор — он лишь решает strategy);
+`line` — shallow; `seqLength` — только для wrap-bridge строки. Default-strict гарантирует: реальное изменение любого
+из ~34 прочих пропов НЕ пропускается. **Решение по безопасности (рискованный общий вьюер):** эмпирический
+**equivalence-тест** (`sequence-line-memo-equivalence.test.jsx`) — для каждого вида правки (замена/вставка/удаление в
+начале/середине/конце/на границе строки, с CDS→AA) memo-ре-рендер ДОЛЖЕН дать идентичный DOM свежему рендеру; ловит
+ЛЮБОЙ стейл-рендер эмпирически, без опоры на ручной разбор каждого трека. + 11 юнитов компаратора. Полный прогон
+**5188 pass / 0 fail**, build чист. `framesResolution = {strategy, dominant, coverage}` подтверждённо компактен
+(`resolve-frames-mode.js`). Остаточный геометрия-кэш оверлеев (DEC-ALIGN-PERF-08) — отдельный мелкий follow-up.
+
+---
+
+## Sprint — Сплайс-трансляция интронов (intron → рамка → AA) (18.06.2026)
+
+> **Контекст.** Тип A, фронт. Связка «интрон → рамка считывания → аминокислотная последовательность» была
+> разорвана: детекция интронов (`lib/splice/`) и отрисовка AA (`AATrack`/`codon-walker`) жили раздельно и не
+> были связаны — AA-трек транслировал сырую геномную ДНК в фиксированной рамке, интроны не вырезались. Цель
+> (Игорь): интроны должны корректно делить рамку и давать правильный белок — и в ручном режиме, и в авто, и в
+> alignment. Реализовано A–F. Vitest полный прогон **5107 pass / 0 fail** (+ известный флак `align-routing`
+> V146, изолированно/в билде чисто). Коммиты — за Игорем в терминале.
+
+**[2026-06-18] DEC-SPLICE-AA-01 — Модель данных: экзоны выводятся из интронов на лету, без поля в схеме.** CDS
+остаётся одним `[start,end)`-регионом; интроны — отдельные аннотации (detail+`regionId`/`parentId` из ручного
+пути/импорта, либо region-level от парсера). `getIntronsForRegion(annotations, region)` (intron-utils.js)
+нормализует обе формы (link по regionId/parentId ∥ геометрия+strand). Сплайс = `spliceRegion` (CDS − интроны)
+→ зрелая мРНК + двунаправленная карта `spliced↔genomic` (reverse-aware). Без миграции схемы; интроны —
+единственный источник правды (нет рассинхрона с `segments[]`); GenBank `join()` восстановим тем же
+`getExonRanges` на экспорте, когда дойдём. Reuse существующих `getCDNA`/`getExonRanges`.
+
+**[2026-06-18] DEC-SPLICE-AA-02 — Один движок сплайс-трансляции на все поверхности.** `spliceRegion` +
+`walkSplicedRegion` + `pickSplicedFrame` (codon-walker.js) питают: (1) AA-трек SequenceView через
+`lib/aa-rows.js`; (2) alignment-референс (тот же SequenceView → бесплатно); (3) `aa-effect.js`
+(silent/missense/nonsense на зрелой мРНК; интронный мисматч → нет бейджа). Нумерация AA — по сплайс-индексу.
+**Zero-intron путь байт-в-байт прежний** (fast-path).
+
+**[2026-06-18] DEC-SPLICE-AA-03 — Авто-путь доразмечает translatable `gene`.** `parseGeneBothStrands`
+пробрасывает `cdsStart/cdsEnd` (reverse-маппинг как у интронов); `buildGeneAnnotations` эмитит `{type:'gene',
+level:'region'}` над `[cdsStart,cdsEnd)` — иначе AA-треку нечего транслировать. После 🧠 Нейросеть на выделенном
+гене виден сплайс-белок.
+
+**[2026-06-18] DEC-SPLICE-AA-04 — Ручной жест «Отметить как интрон» по существующему рельсу.** Пункт в
+контекстном меню выделения (`build-selection-menu-items.js`), показывается только под-диапазоном внутри
+translatable-региона; диспатчит `onAnnotationEdit({kind:'create', payload: detail-интрон с regionId})` —
+**без новых пропов**. Работает и в Library, и в alignment (там `onAnnotationEdit` зеркалит `onSequenceEdit` →
+рабочий референс, транзиентно до «Сохранить версию»). `createAnnotation` дополнен пробросом `regionId`.
+
+**[2026-06-18] DEC-SPLICE-AA-05 — Декомпозиция AATrack (TD-SIZE-AATRACK).** Построение AA-строк вынесено
+`AATrack.jsx` → `lib/aa-rows.js` (40.8 → 35.1 KB, hard-40 снят); вся новая splice-логика в хелперах, не инлайн.
+
+**[2026-06-18] DEC-SPLICE-AA-06 — «Интроны из зазоров выравнивания».** При наложении cDNA/мРНК на геном
+прогоны референс-позиций, которые чтение пропускает (`gapB`), = вырезанные интроны. `lib/alignment/
+introns-from-alignment.js` (чистый) → `[{start,end,donor,acceptor,canonical}]`; кнопка «🧬 Разметить интроны
+из зазоров (N)» в pairwise align-вью создаёт их через `onAnnotationEdit` (link к содержащему CDS, иначе
+region-level). minGap=20.
+
+**[2026-06-18] DEC-SPLICE-AA-07 — GenBank `join()` round-trip на экспорте.** `export-genbank.js`: spliceable
+region (CDS/gene/marker/reporter) с интронами пишется как `join(экзоны)` (reverse → `complement(join(...))`)
+через `getExonRanges`; парсер уже читает `join()` обратно в экзоны → интроны переживают экспорт/импорт.
+
+**[2026-06-18] DEC-SPLICE-AA-08 — «+ intron» в FeatureEditorModal + фикс pairwise align.** Заглушка «+ intron»
+включена: интрон = sub-feature `type:'intron'` (сохраняется как detail с `regionId` через `meta.subFeatures`).
+Попутный фикс: pairwise-инстанс `AlignReferenceView` не получал `onAnnotationEdit` (прежний `replace_all` совпал
+только с multi из-за отступа) — жест «Отметить как интрон» не работал в самом частом align-сценарии; проброшен.
+
+**[2026-06-18] DEC-SPLICE-AA-13 — «Вариант A» и в навигационной колбасе (LinearFeatureBar).** Игорь: «интроны
+пусть чётко делят в навигационной колбасе ген». Ген/CDS с интронами в верхней feature-полосе теперь рисуется
+**экзон-блоками + плоскими пунктирными интрон-коннекторами** (как на дорожке аннотаций), а не одним баром с мелкими
+inset-боксами интронов. `LinearFeatureBar`: интрон-дети translatable-региона «потребляются» (убраны из visible,
+не кластеризуются), ген получает `exonRects`/`intronRects` (пиксели) через reuse `getIntronsForRegion` +
+`getExonRanges` (intron-utils). Прочие detail (домены/теги) — как раньше, боксами. Ген без интронов — один rect.
+
+**[2026-06-18] DEC-SPLICE-AA-12 — Контролы интрон-анализа перенесены из тулбара в правую панель.** Игорь: «выбор
+организма [и кнопку 🧬] тоже перенеси в правую панель». Организм-селектор + кнопка «🧬 Интроны» + баннер результата
+(найдено/выдели ген/короче/cryptic) убраны из верхнего тулбара аннатора и живут в секции «Структура гена» панели
+(всё про интроны — в одном месте). Проброс через проп `geneAnalysis = {organism, onOrganismChange, onDetect, busy,
+hasSelection, result}` → `LevelPanel` → `GeneStructureSection`; секция GENE раскрыта по умолчанию при наличии
+`geneAnalysis` (чтобы кнопка была видна). Тулбар оставляет scope-info / Show duplicates / threshold. Тест-ид
+(`annotator-detect-introns`/`annotator-organism`/`annotator-splice-result`) сохранены → тесты находят их в новом месте.
+
+**[2026-06-18] DEC-SPLICE-AA-11 — Детекция интронов ТОЛЬКО по выделению + удалён PWM-метод.** Игорь: «заблочим
+детекцию без выделения — иначе на всю плазмиду кучу всего размечает, обычно одна ОРФ»; «раз нейросетка работает —
+первый метод убрать». (1) `handleDetectIntrons` требует выделение: без него — баннер «Выдели ген (ORF)…», `setResult
+('gene-parser', null)`, парсер на всю плазмиду НЕ запускается (он не отсеивает некодирующую ДНК). Кнопка кликабельна
+(не disabled) — клик без выделения даёт понятный баннер; при выделении <220 п.н. — «короче 220 п.н., мало контекста».
+(2) PWM-режим убран из аннатора: снят селектор `annotator-splice-mode`, импорт `buildIntronAnnotations`, fallback-путь;
+остался только нейро-парсер гена (организм-селектор всегда виден). Модуль `annotate-introns.js` (PWM) оставлен со своим
+тестом, просто не используется аннатором. Тесты `annotator-introns`/`annotator-intron-scope` переписаны под CNN-only.
+
+**[2026-06-18] DEC-SPLICE-AA-10 — Интрон-анализ как уровень панели «Annotation levels» (Review → Принять).** Игорь:
+«аннотэйшн лейвл — туда впихнуть аннотацию интронов». Детекция 🧬 больше НЕ авто-применяет, а пишет результат в
+`annotator.results['gene-parser']` (`applySplice` → `setAnnotatorResult`). В `LevelPanel` — новая секция
+«Структура гена (интроны)» (`GeneStructureSection`, отдельный компонент, `LevelSection` не тронут), последней в
+`LEVEL_ORDER`, auto-expand при появлении результата. Ген и его интроны **связаны** → принимаются как ЕДИНОЕ ЦЕЛОЕ
+одной кнопкой «Принять структуру» (`acceptMany` всего набора), без per-row accept (частичный = вернул бы V150-монолит)
+→ счётчик Accepted → Save (id-safe). Браузер-верификация: GENE-уровень есть, ген+2 интрона detail-связаны, 3 id юнитом.
+
+**[2026-06-18] DEC-SPLICE-AA-09 — Интрон в 3-уровневой модели: detail под геном + «вариант A» глиф.** Игорь по
+макету выбрал «пунктир». Модель: интрон — `detail` с `regionId` гена (как домен в CDS; парсер давал region-level
++ отдельные exon-регионы — убрано, экзоны теперь неявные = ген − интроны). Визуал: ген/CDS с интронами рисуется
+**экзон-блоками + плоскими пунктирными интрон-коннекторами** (`GeneExonRects` + чистый `exonSegments`), а не одним
+баром; `SubFeatureOverlay` пропускает intron-детей (их рисует GeneExonRects), прочие detail — как раньше. И
+блоки, и коннекторы кликабельны. AA-сплайс цел (getIntronsForRegion по `parentId` из feature-map).
+
+---
+
+## Sprint — Воркспейс «Выравнивание» (sequence/FASTA/Sanger align-to-reference) (16.06.2026, в работе)
+
+> **Контекст.** Тип A, фронт. Новый воркспейс `align`: попарное выравнивание последовательностей,
+> FASTA (в т.ч. мульти-record) и Sanger `.ab1` на референс. Движок/парсеры — клиентские. Реализовано
+> K1–K11 (движок, Sanger, slice+роутинг, панель входов, метрики, цвета) + L1–L3 (переход на
+> переиспользование `SequenceView` для референса с аннотациями + read/chromatogram-треки). **В работе
+> по плану P0–P6** (полировка, миникарта, поиск, слои фич/праймеров/AA, мульти-чтения, правка→версия).
+> Vitest на момент L3: полный прогон 4761 pass / 0 fail (align-набор 51, +487 SequenceView регресс).
+> Коммиты — за Игорем в терминале.
+
+**[2026-06-16] DEC-ALIGN-01 — Движок выравнивания клиентский (JS), не бэкенд.** `lib/alignment/
+align-pairwise.js`: Нидлман–Вунш с аффинными гэпами (Гото, 3 матрицы M/Ix/Iy), режимы `global/
+semiglobal/local`, IUPAC-aware скоринг (N матчит всё), авто reverse-complement (лучший скор → `strand`),
+banded для длинных (rolling-rows + Int8-traceback, порог `maxFullCells`). В Python-бэкенде есть готовый
+`diff.py` (BioPython PairwiseAligner), но принцип «работает без бэкенда» (как primer/Tm) → движок на
+фронте. Чистый, тестируемый.
+
+**[2026-06-16] DEC-ALIGN-02 — Дефолт local + метрика «покрытие»; честная идентичность.** Дефолтный режим
+для seq-vs-seq — **local** (Смит–Уотерман): не «натягивает» непохожее по всей длине. Идентичность =
+`matches / полная длина выравнивания` (НЕ по обрезанному ядру — старый баг давал 99.5% на неродственной
+паре из-за trimming концевых гэпов). Добавлена **coverageA/coverageB** (доля каждой посл. в
+выравнивании) — короткий локальный хит отличим от полной гомологии. Селектор режимов в тулбаре; для
+Sanger-чтения авто-semiglobal. **Фикс local-границ:** для SW границы M=0, X/Y=−∞ + стоп трейсбэка на
+крае (иначе уходил в ведущие гэпы = «натягивал»).
+
+**[2026-06-16] DEC-ALIGN-03 — Переиспользовать `SequenceView` для референса, не bespoke вьюер
+(reversal).** Первая версия рисовала собственный `AlignBrowser`/`DetailTracks`/`OverviewTrack` (zoom/
+overview) — **без аннотаций**, дублируя рендер. Нарушение принципа «reuse SequenceView». **Снесено.**
+Теперь референс рисует штатный `SequenceView` (аннотации/фичи/линейка/выделение/перенос по строкам —
+нативно), а выровненное чтение и Sanger-трасса — **opt-in треки** `tracks/AlignmentReadTrack.jsx` +
+`tracks/AlignmentChromatogramTrack.jsx` под ним; полоса покрытия + тики несовпадений — через
+существующий `searchHits`-проп (`SearchHitsOverlay`). Адаптер `lib/alignment/align-to-reference.js`
+раскладывает `result.columns` (ai/bi/status) по ref-координатам (делеция «–», вставка — маркер, mismatch).
+Пропсы `SequenceView`/`SequenceLine` (`alignmentRead`, `chromatogram`, `chromatogramMaxVal`) — строго
+opt-in (default undefined → существующие вызовы и 487 тестов не меняются).
+
+**[2026-06-16] DEC-ALIGN-04 — Свой клиентский парсер ABIF (.ab1), без зависимости.** `lib/alignment/
+abif-parse.js`: big-endian tag-directory → `PBAS`(базы)/`PCON`(Q)/`PLOC`(пики)/`DATA9..12`(каналы)+`FWO_`
+(маппинг каналов→ACGT). Мульти-FASTA — `parse-multi-fasta.js` (штатный `parseFasta` односекционный).
+Хроматограмма column-locked под чтением; revcomp трассы для обратной цепи (`chromatogram-model.js`).
+
+**[2026-06-16] DEC-ALIGN-05 — Правка референса транзиентная → явная версия (git-логика, решение Игоря).**
+Правка референса/фич при выравнивании живёт **только в моменте** (рабочая копия в `alignmentSlice`),
+исходник **не перезаписывается**. Сохранение — **явное действие** «Сохранить исправленную версию» →
+`createManualEditBranch(parentId, sequence, annotations, meta)` создаёт НОВУЮ запись
+(`origin.kind:'manual_edit'`, `parentEntryId`/`parentEntryHash`) с провенансом `origin.{reason, changes,
+editedAt}` (что/когда/почему; changelog через `sequenceDiff`). Видна позже в `PlasmidVersionTree`.
+Транзиентные правки — через чистый `applySequenceEditToEntry`. Расширение `origin` — без миграции схемы.
+(Запланировано P3; ложится на существующее copy-on-write версионирование, не `applySequenceEditOnLibraryEntry`,
+который мутирует исходник.)
+
+**[2026-06-16] DEC-ALIGN-06 — Цвета read-трека: дефолт чёрный, нуклеотидная раскраска — тоггл.** По
+правке Игоря: read-базы по умолчанию чёрные, несовпадение — красная буква (без рамок-обводок —
+визуальный шум), нуклеотидная раскраска A/C/G/T — переключатель. Нижняя (комплементарная) цепь в
+align-вью скрыта (скученность). (Запланировано P1; ранее K11 сделал нуклеотидную раскраску дефолтом —
+отменяется.)
+
+**[2026-06-16] DEC-ALIGN-07 — Жёсткий штраф несовпадения + вердикт по покрытию (анти-«сова на глобус»).**
+По правке Игоря: дефолт local с `match +2 / mismatch −1` тянул выравнивание сквозь участки >33% сходства
+(порог локального расширения = `m/(match+m)`), форсируя 369 bp / 49.6% кашу на двух РАЗНЫХ плазмидах.
+Решение: дефолт `mismatch −3, gapOpen −6` (порог гомологии → 60%) — локальное обрезает несходные хвосты к
+реальному ядру; настоящий Sanger-рид (95–99%) выравнивается целиком (`DEFAULT_SETTINGS` в `alignmentSlice`,
+движок-дефолт −1 не тронут). Плюс вердикт учитывает **покрытие чтения**: `coverageRead < 35%` →
+«локальное совпадение (малое перекрытие)», а не «высокое сходство» по высокой идентичности на крошечном
+куске. Развивает DEC-ALIGN-02 (local+покрытие) — добавляет недостающий рычаг (штраф) и честный вердикт.
+
+**[2026-06-17] DEC-ALIGN-08 — Апгрейды движка по литобзору (A1–A6), все клиентские JS.** По запросу Игоря («сделай литобзор валидных алгоритмов и перенеси к нам» → «просто сделай это всё») реализованы 6 рекомендаций; верификация — fuzz против НЕЗАВИСИМЫХ оракулов (не ручные кейсы) + adversarial-воркфлоу из 6 ревьюеров. **(A1)** Аудит Gotoh против Flouri et al. 2015 — независимый оракул (явная энумерация длин гэпов) фаззит движок по всем режимам: **баг не найден, движок корректен**, поставлен регресс-гард. **(A2)** WFA (`lib/alignment/wfa.js`, Marco-Sola 2021) — точное gap-affine O(n·s); auto-диспетч в `align-pairwise.runAlign` для GLOBAL, где раньше шёл приблизительный banded (forced `wfa:true` ∨ n·m>maxFullCells), с cap→fallback. NB: WFA и наш 3-state Gotoh — РАЗНЫЕ модели (WFA допускает I↔D-смежность), совпадают при `2e≥x` (дефолт x=3,e=2 ✓); `wfaAlignByScore` сам отказывается вне режима. **(A3)** `align-circular.js` — rotation-invariant (удвоение референса), флаг `wrapped`+`refStart`. **(A4)** Phred-взвешенный консенсус в `multi-align` (вес=P(correct), реверс качества для reverse-strand; без quality → точно count-voting). **(A5)** `poa.js` — Partial Order Alignment + heaviest-bundle консенсус (de-novo контиг, корректные инделы). **(A6)** `lib/minimizer-index.js` — minimap2-стиль сито, пре-фильтр в `rankHomologs` при >40 кандидатов; ранжирование по **containment** (не голый Jaccard) — иначе короткий гомолог отсеивался (recall-фикс из ревью). **Tests:** полный прогон 5020 pass / 0 fail (+~45 новых, fuzz-oracle), build clean, новые модули ≪ size-budget. Adversarial-ревью: POA-double-count/cycle и Gotoh-A[-1] **опровергнуты** структурными инвариантами (count-sum, ацикличность, no-undefined) над фаззом; реальным был только minimizer-recall (починен). Литература/портируемость — память `project_alignment_upgrades`.
+
+**[2026-06-17] DEC-SPLICE-01 — Ab-initio детекция интронов (Фаза 1): сменный scorer + общий decoder, чистый JS, НЕ Rust.** По запросу Игоря (детекция интронов в ОДНОМ гене, ab-initio как AUGUSTUS, в аннотаторе «выделил → анализ»). **Rust отклонён** — не compute-bound (PWM + DP над kb = микросекунды; Rust/WASM = тулчейн+FFI ради нуля, против client-first; bioseq-js доказал JS≈C). Архитектура: `scoreSpliceSites(seq)→{donor[],acceptor[]}` за стабильным интерфейсом + общий decoder, чтобы CNN (Фаза 2/3) встал без переписывания. **Фаза 1 (`lib/splice/`):** `splice-sites.js` PWM-скорер (vertebrate consensus, GT-AG, log2-odds); `gene-model.js` decoder — weighted-interval-scheduling DP выбора непересекающихся интронов (GT-AG+длина+scoreGate) + **ORF-guided** прунинг (настоящий интрон при удалении РВЁТ рамку → остаётся; это «качество» для одного гена); `intron-detect.js` — обе цепи + intron/exon-аннотации + **криптические splice-сайты** (предупреждение о непредусмотренном сплайсинге — killer для экспрессионных конструктов); кнопка `🧬 Интроны` в Annotator → `onApplyAnnotatorResults` + баннер. **Фаза 2/3 (план, тот же интерфейс):** minisplice-CNN (7026 параметров, веса на Zenodo, чистый JS forward) → OpenSpliceAI-ONNX через onnxruntime-web («точный режим»); лицензии подтвердить до редистриба весов. **Tests:** lib/splice + annotator-introns; полный прогон 5043 pass / 0 fail, build чист. Память — `project_intron_detection`.
+
+**[2026-06-17] DEC-SPLICE-02 — Фаза 2: порт minisplice vi2-7k 1D-CNN, чистый JS, clean-room, веса CC0.** По запросу Игоря («фаза два на старт»). **Лицензии (важно):** веса `vi2-7k.kan`/`.cali` на Zenodo (record 15931054) — **CC0 / public domain** → встраиваемы в репо; у *кода* minisplice НЕТ файла LICENSE (GitHub `license: null` = all-rights-reserved) → C-исходник НЕ копируется; вендоренные kann/kautodiff несут MIT-заголовок. Реализация = **clean-room**: архитектуру (1D-CNN — математика, не охраняемое выражение) прочитал из исходника, JS-forward написал сам. **Архитектура (из самого `.kan`: 21 узел, вход [1,4,202]):** one-hot[4×202] → conv1d(16,k5,valid,**ядро rot180 = истинная свёртка**, без bias)→ReLU → maxpool(k3,s3) → conv1d(16,k5)→ReLU → maxpool(k3,s3) → flatten channel-major(336) → dense(16)+ReLU → dense(2) → **sigmoid** (cost-тип CEB, НЕ softmax); P=out[1]. Кодировка A0C1G2T3, динуклеотид GT/AG на смещении [100,101], 100 bp контекста с каждой стороны; калибровка P→бин floor(P/0.02)→`.cali` `2·log2(odds)` (текстовый файл). **Извлечение:** Python-экстрактор парсит `.kan` (формат kad_save1) → 7026 параметров ровно → base64-float32 в `lib/splice/cnn-weights.js` (data-файл, не лимитируется) + numpy-референс генерит golden-векторы. **Движок:** `lib/splice/cnn-scorer.js` (7.4 КБ) — `scoreSpliceSitesCNN(seq)` с тем же контрактом, что PWM; в `gene-model.detectGeneStructure` инъекция `opts.scorer`. UI: тумблер «PWM / 🧠 Нейросеть» в Annotator, CNN грузится **ленивым чанком** (динамический import, ~40 КБ, вне основного бандла), PWM остаётся синхронным дефолтом. **Валидация (компилятора C нет → апстрим-бинарь не запускался; зафиксировано честно):** (1) JS≡numpy-референс на golden-векторах; (2) структурно — 7026 параметров + согласованность размерностей; (3) **поведенчески/биологически** — консенсусный донор `CAG|GTAAGT` P=0.992 (score 15.5) против сломанного GT→CC P=0.004 и фона P≈0.001–0.012; акцептор-консенсус P=0.85. Проверено и в реальном браузере (lazy import → forward → score 15.53). **Tests:** cnn-scorer (10) + cnn-intron-detect (3) + annotator CNN-mode (1); полный прогон **5057 pass / 0 fail**, build чист. Память — `project_intron_detection`.
+
+**[2026-06-18] DEC-SPLICE-03 — Точность детекции интронов: ORF-ведомый выбор + site-gate + относительный null-гейт; CNN — дефолт.** По фидбеку Игоря на живой приёмке («PWM куча ложноположительных», «CNN на реальном CBHI находит три вместо двух»). Метод: ultracode-воркфлоу (4 стратегии по линзам → судья-синтез → 3 adversarial-recall-ревью), которое **поймало плохой первый синтез** (абсолютный `minOrfGain=15` ломал Phase-1 юнит-ген с gain=+4; жёсткие `minPyr≥7`/floors/`maxIntron=10000` рубили AT-богатые акцепторы/крупные интроны), затем **эмпирический подбор на реальном ground-truth** (CBHI + random + демо через живой движок). **Корень (измерен):** (1) `scoreGate=4` ниже медианы случайных пар; (2) objective награждал АБСОЛЮТНУЮ `longestOrf(spliced)` — у случайной ДНК ORF длинные и БЕЗ сплайсинга, поэтому каждая пара получала «бесплатный» ORF-бонус (бамп `orfBonus` не помогал); (3) выбор акцептора по splice-скору → на CBHI брался преждевременный внутренний AG (границы неверны). **Решение (`gene-model.js`, scorer-агностично — чинит PWM и CNN через общий декодер):** (а) **ORF-ведомый выбор** — `chooseIntrons` принимает `orfScore(start,end)`, DP максимизирует `splice + ORF-gain` (а не голый splice) → правильные границы акцептора; (б) **combined-site gate=14** (было 4) — настоящие интроны = сильные канонические сайты, чего у случайной ДНК нет; (в) `detectGeneStructure` использует **ORF-GAIN** (`spliced − unspliced`), не абсолют; (г) **относительный null-гейт** — `gain < minOrfGain(=1) → introns=[]` («это не сплайсируемый ген»); относительный (gain>0), НЕ абсолютный аа-порог → не штрафует мелкие гены. `maxIntron` оставлен 50000 (gate убивает FP, обрезка не нужна — претензия adversary про потерю интронов >10 кб снята). Все пороги — opts, `orfGuided:false` отключает ORF-машинерию. **Annotator:** CNN — **дефолт** (флип `setSpliceMode('cnn')`) с авто-фолбэком на PWM при длине <220 п.н. (у CNN нет контекста); анализ ВСЕГДА по полной последовательности (полный ORF/CNN-контекст), выделение лишь **скоупит** применяемые регионы (`scopeOut`) — заодно правит V147-кейс для ORF-сцепки. **Результат (боевой код, dev-сервер):** CBHI CNN 3→**ровно 2** `[461,529]/[1226,1289]` верных границ; random PWM 31/80→**0**, CNN 6/18→**0**; демо-ген 2/2 цел. **Tests:** `splice-precision.test.js` (CBHI-эталон + random→0 + демо), обновлены annotator-intron-scope/cnn-mode; полный прогон **5063 pass / 0 fail**, build чист. Память — `project_intron_detection`.
+
+**[2026-06-18] DEC-SPLICE-04 — Frame-aware gene-parser (gene finder) для мульти-интронных генов + выбор организма.** По кейсу Игоря: на *A. niger* glaA (4 коротких интрона) CNN-эвристика находила 3 и сливала границы. Диагноз (через живой движок, ground-truth glaA из exon-FASTA): жадный per-intron декодер **в принципе не собирает плотные короткие интроны** (правильный набор даёт связную рамку только ЦЕЛИКОМ, а скорятся интроны поодиночке) — и `orfW` тянут CBHI и glaA в противоположные стороны. Вдобавок **vertebrate-insect CNN не видит грибные акцепторы** (скор −1.4). **Решение (`lib/splice/gene-parser.js`): DP по рамке считывания** (state = позиция × частичный кодон, 21 значение; ATG→экзоны/GT-AG-интроны→стоп, интрон проносит частичный кодон через границу). Цель **content-first** — максимум длины ЧИСТОЙ кодирующей CDS (награда за экзон-базу), splice-скор и приор длины — тай-брейкеры, штраф за интрон против пере-сплайсинга. Это (как AUGUSTUS) обязательно, когда splice-СИГНАЛ слаб: парсер вырезает ровно стоп-содержащие интроны, сохраняя кодирующие экзоны (их нельзя слить — потеряешь кодирующую длину), и **сам собирает 4 коротких интрона**. **Организм = пресет длины интрона + gate** (`ORGANISM_PRESETS`: грибы/растения/позвоночные/беспозвоночные/общий — простые группы, НЕ виды; грибы: низкий gate под слабые акцепторы, короткие интроны). **Результат (боевой код):** glaA **4/4 интрона, доноры все точны, 3/4 границ точны** (I2-акцептор ±12 п.н. — предел CNN на грибном акцепторе); CBHI 2/2 точно. **Честное ограничение:** идеальная специфичность (отсев некодирующей ДНК) требует обученной hexamer-content-модели, которой нет → парсер запускается на **ВЫДЕЛЕННОМ гене** (ATG…стоп), не свипом по плазмиде (обходит и V147). **Интеграция:** Annotator «🧠 Нейросеть»-режим = парсер на выделении + дропдаун организма; PWM — фолбэк для коротких. `gene-parser.js` (DP+`parseGeneBothStrands`+`ORGANISM_PRESETS`) + `annotate-genes.js` glue; ленивый чанк. **Tests:** `gene-parser.test.js` (CBHI/glaA эталоны + random smoke), обновлён annotator cnn-mode (CBHI). Полный прогон **5066 pass / 0 fail**, build чист, size OK (gene-parser 10 КБ). **Следующий большой этап (опц.):** hexamer-content-модель для идеальной специфичности «как AUGUSTUS». Память — `project_intron_detection`.
+
+---
+
 ## Sprint v0.8.4-alpha — common-features: раздел + промоут + master-detail + in-viewer editing (01–02.06.2026)
 
 > **Контекст.** Тип A. Раздел common-фич в библиотеке (просмотр + правка заводских записей `common-features.json`) + промоут размеченной фичи из вивера в общую БД (детектится впредь, с дедупом) + ограничение «common-фичи НЕ источник палитры». Реализовано в 3 приёмочные пачки: Пачка 1 (шаги 1–6, slice/Dexie/decomp/промоут/раздел), Пачка 2 (master-detail деталь-вид + EN-строки — lean-список не давал верифицировать запись), Пачка 3 (правка в самом вивере — lean-textarea отвергнута). Все приняты визуально Игорем. Спека — `docs/archive/SPEC_COMMON_FEATURES.md` §1–§11. **Tests:** Vitest 4223 pass / 17 skip / 0 fail; build clean. Коммиты: decomp `0d916c6` · dedup `482a18e` · slice+Dexie v6 `505c353` · промоут `3c9f488` · раздел `7f39339` · отчёт `a6ca366` · Пачка 2 `1df8d5f` · Пачка 3 `d2297e2`.

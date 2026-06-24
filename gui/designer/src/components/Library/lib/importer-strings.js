@@ -41,7 +41,6 @@ export const IMPORTER_STRINGS = {
   tabHistory: 'History',
   tabHistoryPlaceholder: 'History will appear after the first commit in Container Window (M-D).',
   tabHistoryEmptyM_D: 'No commits — they will appear after M-D Container Window.',
-  sequenceReadOnly: 'read-only',
 
   // Bug-rush #23 (04.05.2026): selection counter in the title row.
   selectionCountBp: (n) => `${n.toLocaleString()} bp`,
@@ -398,7 +397,6 @@ export const IMPORTER_STRINGS = {
   featureEditorMergeNext: (name) => `${name || 'next'} →`,
   featureEditorMergeApply: 'Apply merge',
   featureEditorIntronsLabel: 'Introns',
-  featureEditorIntronsStub: '(intron markup — coming soon)',
   featureEditorSave: 'Save',
   featureEditorCancel: 'Cancel',
   featureEditorDelete: 'Delete feature',

@@ -5,6 +5,7 @@ import { GG_ENZYMES, reverseComplement } from '../golden-gate';
 import { RE_ENZYMES, searchRE, getCompatible, getIsoschizomers, checkAssemblyForSites, siteToRegex } from '../restriction-db';
 import { useStore } from '../store';
 import { resetJunctionForType } from '../lib/junction-utils';
+import { Icon } from './icons/Icon';
 
 const TYPE_STYLES = {
   overlap:      { bg: 'bg-blue-50',   border: 'border-blue-200',   text: 'text-blue-700',   active: 'bg-blue-500 text-white border-blue-500' },
@@ -90,8 +91,8 @@ export default function JunctionBlock({ junction, index, leftName, rightName, le
       case 'ligation':
         return (
           <div className="flex flex-col items-center leading-tight">
-            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${st.bg} ${st.border} ${st.text}`}>
-              {'\uD83D\uDD2A'} {j.enzyme || 'RE'}
+            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border inline-flex items-center gap-0.5 ${st.bg} ${st.border} ${st.text}`}>
+              <Icon name="restriction" size={10} style={{ display: 'inline-block', verticalAlign: '-2px' }} /> {j.enzyme || 'RE'}
             </span>
             {j.overhangType && (
               <span className="text-[7px] text-gray-400">{j.overhangType === 'blunt' ? 'blunt' : j.overhang || ''}</span>
@@ -102,8 +103,8 @@ export default function JunctionBlock({ junction, index, leftName, rightName, le
       case 'sticky_end':
         return (
           <div className="flex flex-col items-center leading-tight">
-            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${st.bg} ${st.border} ${st.text}`}>
-              {'✂'} {j.reEnzyme || j.enzyme || 'RE'}
+            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border inline-flex items-center gap-0.5 ${st.bg} ${st.border} ${st.text}`}>
+              <Icon name="digest" size={10} style={{ display: 'inline-block', verticalAlign: '-2px' }} /> {j.reEnzyme || j.enzyme || 'RE'}
             </span>
           </div>
         );
@@ -137,8 +138,8 @@ export default function JunctionBlock({ junction, index, leftName, rightName, le
   const typeButtons = [
     { val: 'overlap', icon: '◀▶', label: 'Overlap' },
     { val: 'golden_gate', icon: '🔶', label: 'Golden Gate' },
-    { val: 'ligation', icon: '\uD83D\uDD2A', label: 'RE лигир.' },
-    { val: 'kld', icon: '🔄', label: 'KLD' },
+    { val: 'ligation', iconName: 'restriction', label: 'RE лигир.' },
+    { val: 'kld', iconName: 'swap', label: 'KLD' },
   ];
 
   return (
@@ -153,10 +154,10 @@ export default function JunctionBlock({ junction, index, leftName, rightName, le
         <ContextMenu position={ctxMenu} onClose={() => setCtxMenu(null)} items={[
           { icon: '\u25C0\u25B6', label: 'Overlap', onClick: () => { onChange(resetJunctionForType(j, 'overlap')); setCtxMenu(null); } },
           { icon: '\uD83D\uDD36', label: 'Golden Gate', onClick: () => { onChange(resetJunctionForType(j, 'golden_gate')); setCtxMenu(null); } },
-          { icon: '\uD83D\uDD2A', label: 'RE лигирование', onClick: () => { onChange(resetJunctionForType(j, 'ligation')); setCtxMenu(null); } },
-          { icon: '\uD83D\uDD04', label: 'KLD', onClick: () => { onChange(resetJunctionForType(j, 'kld')); setCtxMenu(null); } },
+          { icon: <Icon name="restriction" size={14} />, label: 'RE лигирование', onClick: () => { onChange(resetJunctionForType(j, 'ligation')); setCtxMenu(null); } },
+          { icon: <Icon name="swap" size={14} />, label: 'KLD', onClick: () => { onChange(resetJunctionForType(j, 'kld')); setCtxMenu(null); } },
           { divider: true },
-          { icon: '\u2699\uFE0F', label: 'Настройки...', onClick: () => { setCtxMenu(null); setOpen(true); } },
+          { icon: <Icon name="settings" size={14} />, label: 'Настройки...', onClick: () => { setCtxMenu(null); setOpen(true); } },
         ]} />
       )}
       <div className="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap pointer-events-none" style={{ zIndex: 2 }}>
@@ -171,7 +172,7 @@ export default function JunctionBlock({ junction, index, leftName, rightName, le
           <h4 className="text-sm font-semibold mb-3">{leftName} &rarr; {rightName}</h4>
           {overlapImpossible && (
             <div className="bg-red-50 border border-red-200 rounded-lg p-2 mb-3 text-[10px] text-red-800">
-              <div className="font-semibold">{'⛔'} Идентичные фрагменты!</div>
+              <div className="font-semibold inline-flex items-center gap-1"><Icon name="warning" size={12} /> Идентичные фрагменты!</div>
               <div className="text-red-600 mt-0.5">Overlap-регионы будут одинаковыми — сборка даст неправильный продукт.</div>
               <button onClick={() => onChange(resetJunctionForType(j, 'golden_gate'))}
                 className="mt-1.5 text-[10px] bg-green-600 text-white px-2 py-0.5 rounded hover:bg-green-700 inline-flex items-center gap-1">
@@ -189,7 +190,7 @@ export default function JunctionBlock({ junction, index, leftName, rightName, le
                   onClick={() => onChange(resetJunctionForType(j, tb.val))}
                   className={`flex-1 px-1.5 py-1.5 rounded-lg text-[9px] font-medium border transition text-center ${
                     jType === tb.val ? tst.active : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'}`}>
-                  <div className="text-sm">{tb.icon}</div>
+                  <div className="text-sm flex items-center justify-center">{tb.iconName ? <Icon name={tb.iconName} size={14} /> : tb.icon}</div>
                   <div>{tb.label}</div>
                 </button>
               );
@@ -304,11 +305,11 @@ export default function JunctionBlock({ junction, index, leftName, rightName, le
                 </span>
                 {ohValid && (
                   <div className="flex flex-col gap-0.5 text-[9px]">
-                    <span className={isPalindrome ? 'text-red-600' : 'text-green-600'}>
-                      {isPalindrome ? '✗ Палиндром' : '✓ Не палиндром'}
+                    <span className={`inline-flex items-center gap-0.5 ${isPalindrome ? 'text-red-600' : 'text-green-600'}`}>
+                      {isPalindrome ? <><Icon name="close" size={9} /> Палиндром</> : <><Icon name="check" size={9} /> Не палиндром</>}
                     </span>
-                    <span className={gc === 0 || gc === ovLen ? 'text-amber-600' : 'text-green-600'}>
-                      GC: {gc}/{ovLen} {'·'} {ohValid ? '✓ уникальный' : ''}
+                    <span className={`inline-flex items-center gap-0.5 ${gc === 0 || gc === ovLen ? 'text-amber-600' : 'text-green-600'}`}>
+                      GC: {gc}/{ovLen} {'·'} {ohValid ? <><Icon name="check" size={9} /> уникальный</> : ''}
                     </span>
                   </div>
                 )}
@@ -373,8 +374,8 @@ export default function JunctionBlock({ junction, index, leftName, rightName, le
                             {ao.overhang || '????'}
                           </span>
                           <span className="text-gray-400 truncate flex-1">({ao.leftName}↔{ao.rightName})</span>
-                          {hasIssue ? <span className="text-red-500 text-[9px]">{'⚠'}</span> : <span className="text-green-500 text-[9px]">{'✓'}</span>}
-                          {isCurrent && <span className="text-[8px] text-blue-500">{'←'}</span>}
+                          {hasIssue ? <span className="text-red-500 inline-flex items-center"><Icon name="warning" size={9} /></span> : <span className="text-green-500 inline-flex items-center"><Icon name="check" size={9} /></span>}
+                          {isCurrent && <span className="text-blue-500 inline-flex items-center"><Icon name="chevron-left" size={8} /></span>}
                         </div>
                       );
                     })}
@@ -386,10 +387,10 @@ export default function JunctionBlock({ junction, index, leftName, rightName, le
                       !ggOH.some(o => o !== ao && (o.overhang === ao.overhang || o.overhang === reverseComplement(ao.overhang)))
                     ) && !ggOH.some(ao => ao.overhang === reverseComplement(ao.overhang));
                     return (
-                      <div className={`mt-1 pt-1 border-t text-[9px] ${allUnique ? 'text-green-600' : 'text-amber-600'}`}>
+                      <div className={`mt-1 pt-1 border-t text-[9px] inline-flex items-center gap-1 ${allUnique ? 'text-green-600' : 'text-amber-600'}`}>
                         {allUnique
-                          ? `✅ ${ggOH.length} GG овехенг(ов) — все уникальны`
-                          : `⚠ Есть конфликты — проверьте овехенги`}
+                          ? <><Icon name="check" size={9} /> {`${ggOH.length} GG овехенг(ов) — все уникальны`}</>
+                          : <><Icon name="warning" size={9} /> Есть конфликты — проверьте овехенги</>}
                       </div>
                     );
                   })()}
@@ -435,7 +436,7 @@ export default function JunctionBlock({ junction, index, leftName, rightName, le
                         {info.end === '5prime' ? "5'" : info.end === '3prime' ? "3'" : 'blunt'}
                       </span>
                       <span className="font-mono text-[8px] text-gray-400 flex-1 truncate">{info.overhang || '—'}</span>
-                      {hasInternal && <span className="text-[8px] text-red-500 shrink-0">{'⚠'} в сборке</span>}
+                      {hasInternal && <span className="text-[8px] text-red-500 shrink-0 inline-flex items-center gap-0.5"><Icon name="warning" size={8} /> в сборке</span>}
                     </div>
                   );
                 })}
@@ -470,8 +471,8 @@ export default function JunctionBlock({ junction, index, leftName, rightName, le
               {/* Internal site warning */}
               {internalSites.length > 0 && (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-2 mb-2 text-[10px]">
-                  <div className="font-semibold text-red-700 mb-1">
-                    {'⚠️'} {selectedRE} сайт найден внутри сборки!
+                  <div className="font-semibold text-red-700 mb-1 inline-flex items-center gap-1">
+                    <Icon name="warning" size={11} /> {selectedRE} сайт найден внутри сборки!
                   </div>
                   {internalSites.map((hit, hi) => (
                     <div key={hi} className="text-red-600">

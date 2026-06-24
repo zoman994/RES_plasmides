@@ -16,6 +16,7 @@
  */
 
 import { CODON_TABLE } from "../../../codons.js";
+import { splicedToGenomic } from "../../../intron-utils.js";
 
 const RC_MAP = { A: "T", T: "A", G: "C", C: "G", N: "N" };
 
@@ -139,6 +140,9 @@ export function pickReadingFrame(fullSeq, start, end, isReverse) {
  */
 export function walkCodons(sequence, frame, strand) {
   if (!sequence || typeof sequence !== "string") return [];
+  // Normalize case so lowercase DNA (e.g. a manually-typed base) still translates
+  // — the codon table is uppercase-keyed, like translateDNA (V151).
+  sequence = sequence.toUpperCase();
   const seqLen = sequence.length;
   const out = [];
 
@@ -178,6 +182,78 @@ export function walkCodons(sequence, frame, strand) {
       isStop: aa === "*",
       frame,
       strand,
+    });
+  }
+  return out;
+}
+
+/**
+ * Walk codons over a SPLICED (exon-joined) sequence, anchoring each codon back
+ * onto genomic coordinates through the exonMap from `spliceRegion`. This is the
+ * intron-aware counterpart of walkCodons: stops that fell inside introns vanish
+ * (they're spliced out) and amino acids are numbered by mature-mRNA index, not
+ * raw genomic arithmetic.
+ *
+ * Each record carries:
+ *   - position: genomic position of the codon's MIDDLE base (display anchor)
+ *   - splicedIndex: 1-based amino-acid number along the mature protein
+ *   - g: [g0, g1, g2] genomic positions of all three bases (a codon straddling
+ *        an intron jumps between exons — used for splice-aware rendering)
+ *
+ * @param {string} spliced — mature coding sequence (already 5′→3′ on its strand)
+ * @param {Array} exonMap — spliced↔genomic segments from spliceRegion
+ * @param {0|1|2} frame — reading frame within the spliced sequence (default 0)
+ * @param {1|-1} strand — CDS strand (stamped onto each record)
+ * @returns {Array<{aa, codon, position, splicedIndex, isStart, isStop, frame, strand, g}>}
+ */
+/**
+ * Pick the reading frame (0|1|2) for an already-spliced mature sequence by
+ * counting in-frame stops — prefer frame 0 (the CDS conventionally starts at
+ * its ATG) unless another frame has more than one fewer stop (the +1 absorbs
+ * the expected terminal stop). Mirrors pickReadingFrame's tie-break but on the
+ * spliced mRNA, so the spliced CDS reads as protein even when the annotated
+ * boundary isn't exactly on the start codon.
+ * @param {string} spliced
+ * @returns {0|1|2}
+ */
+export function pickSplicedFrame(spliced) {
+  if (!spliced || spliced.length < 3) return 0;
+  spliced = spliced.toUpperCase(); // case-insensitive stop counting (V151)
+  const stops = [0, 0, 0];
+  for (let f = 0; f < 3; f++) {
+    let n = 0;
+    for (let i = f; i + 3 <= spliced.length; i += 3) {
+      if (CODON_TABLE[spliced.slice(i, i + 3)] === "*") n += 1;
+    }
+    stops[f] = n;
+  }
+  const minStops = Math.min(stops[0], stops[1], stops[2]);
+  return stops[0] <= minStops + 1 ? 0 : stops.indexOf(minStops);
+}
+
+export function walkSplicedRegion(spliced, exonMap, frame = 0, strand = 1) {
+  const out = [];
+  if (!spliced || typeof spliced !== "string") return out;
+  spliced = spliced.toUpperCase(); // lowercase mature mRNA still translates (V151)
+  let aaIdx = 0;
+  for (let i = frame; i + 3 <= spliced.length; i += 3) {
+    const codon = spliced.slice(i, i + 3);
+    const aa = CODON_TABLE[codon] || "X";
+    aaIdx += 1;
+    out.push({
+      aa,
+      codon,
+      position: splicedToGenomic(exonMap, i + 1), // middle base, genomic
+      splicedIndex: aaIdx,
+      isStart: aa === "M" && (out.length === 0 || out[out.length - 1].isStop),
+      isStop: aa === "*",
+      frame,
+      strand,
+      g: [
+        splicedToGenomic(exonMap, i),
+        splicedToGenomic(exonMap, i + 1),
+        splicedToGenomic(exonMap, i + 2),
+      ],
     });
   }
   return out;

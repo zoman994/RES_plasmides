@@ -1,4 +1,7 @@
 import { useCallback, useMemo } from 'react';
+import { formatCorrection } from '../../../../lib/alignment/describe-edit';
+
+const EMPTY = [];
 
 /**
  * useLibrarySaveFlow — M-X.6 K0 extract from LibrarySingleInspector
@@ -6,41 +9,52 @@ import { useCallback, useMemo } from 'react';
  * pair of buttons and supplies the after-save callbacks that clear
  * the inspector's pending edits.
  *
- * Returns an object that can be spread directly into
- * `<LibrarySaveActions {...saveFlow} />`, plus the active boolean
- * `visible` so the caller can conditionally render the actions
- * (only when item is a Mine library entry; otherwise undefined
- * stays consistent with existing behaviour).
- *
- * Note: this hook does NOT decide whether to mount the buttons —
- * caller should still gate on `item._libraryEntryId` so the markup
- * stays unchanged from before the K0 extract.
+ * Игорь (17.06): «убрать рид-онли/эдитэйбл, по умолчанию редактируемой, форма
+ * сохранения как в выравнивании — версия / что изменено / имя». So saving is
+ * now VERSION-ONLY (no «Перезаписать»): the transient edits (edited SEQUENCE
+ * + annotations) commit to a NEW branch, the source is untouched. «Что
+ * изменено» comes from the per-edit `edits.editLog` (the SAME describe-edit
+ * provenance engine the aligner uses), threaded as `changes` into the save.
  */
 export function useLibrarySaveFlow({ item, edits, onUpdateEdits }) {
   const libraryEntryId = item?._libraryEntryId || null;
+  // «Что изменено» = the transient per-edit log accumulated in the working
+  // buffer (sequence runs + annotation edits), built by describe-edit.
+  const editLog = useMemo(() => (Array.isArray(edits?.editLog) ? edits.editLog : EMPTY), [edits?.editLog]);
+  // The working SEQUENCE / annotations to commit (fall back to the source so a
+  // sequence-only or annotation-only edit doesn't wipe the untouched half).
+  const editedSequence = (edits?.editedSequence != null) ? edits.editedSequence : (item?.sequence || '');
   const editedAnnotations = useMemo(
-    () => (Array.isArray(edits?.editedAnnotations) ? edits.editedAnnotations : []),
-    [edits?.editedAnnotations],
+    () => (Array.isArray(edits?.editedAnnotations) ? edits.editedAnnotations : (item?.annotations || [])),
+    [edits?.editedAnnotations, item?.annotations],
   );
-  const hasChanges = Array.isArray(edits?.editedAnnotations);
+  const sequenceChanged = edits?.editedSequence != null && edits.editedSequence !== (item?.sequence || '');
+  const changesSummary = useMemo(() => editLog.map(formatCorrection), [editLog]);
+  const changeText = useMemo(() => changesSummary.join('; '), [changesSummary]);
+  // Versioning is for the MOLECULE only (Игорь): annotation-only edits are
+  // metadata — they autosave in place (LibraryWorkspace write-through) and do
+  // NOT light up «Сохранить версию». So `hasChanges` tracks sequence edits
+  // only (editLog is populated solely by nucleotide edits).
+  const hasChanges = sequenceChanged || editLog.length > 0;
   const parentName = item?.name || '';
 
   const clearPending = useCallback(() => {
     if (typeof onUpdateEdits === 'function') {
-      onUpdateEdits({ editedAnnotations: undefined });
+      onUpdateEdits({ editedAnnotations: undefined, editedSequence: undefined, editLog: undefined });
     }
   }, [onUpdateEdits]);
 
-  const onAfterOverwrite = useCallback(() => clearPending(), [clearPending]);
   const onAfterSaveAsVersion = useCallback(() => clearPending(), [clearPending]);
 
   return {
     visible: !!libraryEntryId,
     libraryEntryId,
     hasChanges,
+    editedSequence,
     editedAnnotations,
+    changesSummary,
+    changeText,
     parentName,
-    onAfterOverwrite,
     onAfterSaveAsVersion,
   };
 }

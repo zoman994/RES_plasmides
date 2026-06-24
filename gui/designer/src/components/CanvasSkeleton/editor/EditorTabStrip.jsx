@@ -14,24 +14,27 @@
 import { useContainerById, useSkeletonState } from '../store/skeleton-context';
 import { selectAssemblyTarget } from '../store/selectors-pieces';
 import { STRINGS } from '../../../lib/strings';
+import { Icon } from '../../icons/Icon';
 
 const OP_ICONS = {
-  pcr: '🔬', cut: '✂️', gibson: '⚗️', ligate: '🧪', kld: '🧪', mutagenesis: '🧬',
+  pcr: 'pcr', cut: 'digest', gibson: 'mix', ligate: 'ligate', kld: 'ligate', mutagenesis: 'mutagenesis',
 };
 
-function opLabel(op, containers) {
-  if (!op) return '🔬 op';
-  const icon = OP_ICONS[op.kind] || '🔬';
-  const names = (op.inputs || [])
+function opIconName(op) {
+  return (op && OP_ICONS[op.kind]) || 'pcr';
+}
+
+function opText(op, containers) {
+  const names = (op?.inputs || [])
     .map((id) => {
       const c = (containers || []).find((x) => x.id === id);
       return c ? c.name : id;
     })
     .join(' + ');
-  return `${icon} ${String(op.kind || 'op').toUpperCase()}${names ? ` · ${names}` : ''}`;
+  return `${String((op && op.kind) || 'op').toUpperCase()}${names ? ` · ${names}` : ''}`;
 }
 
-function TabButtonView({ tab, active, label, frozen, onSwitch, onClose }) {
+function TabButtonView({ tab, active, label, icon, frozen, onSwitch, onClose }) {
   const ew = (STRINGS.canvasSkeleton && STRINGS.canvasSkeleton.editorWindow) || {};
   return (
     <button
@@ -62,16 +65,17 @@ function TabButtonView({ tab, active, label, frozen, onSwitch, onClose }) {
         fontWeight: active ? 600 : 400,
       }}
     >
-      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {icon && <Icon name={icon} size={13} style={{ display: 'inline-block', verticalAlign: '-2px', flexShrink: 0 }} />}
         {label}
       </span>
       {frozen && (
         <span
           data-testid="editor-tab-frozen"
           title={ew.tabFrozenBadge || 'Frozen'}
-          style={{ fontSize: 11, lineHeight: 1 }}
+          style={{ display: 'inline-flex', alignItems: 'center', lineHeight: 1 }}
         >
-          🔒
+          <Icon name="lock" size={11} />
         </span>
       )}
       <span
@@ -89,16 +93,18 @@ function TabButtonView({ tab, active, label, frozen, onSwitch, onClose }) {
           }
         }}
         style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
           marginLeft: 2,
           padding: '0 4px',
           borderRadius: 4,
-          fontSize: 13,
           lineHeight: 1.4,
           color: 'var(--text-tertiary, var(--text-secondary))',
           cursor: 'pointer',
         }}
       >
-        ×
+        <Icon name="close" size={13} />
       </span>
     </button>
   );
@@ -135,7 +141,7 @@ function StoreTab({ tab, active, onSwitch, onClose }) {
     const d = resolveAssemblyDraft(state, tab.assemblyDraftId);
     return (
       <TabButtonView
-        tab={tab} active={active} label={asmLabel(d)}
+        tab={tab} active={active} label={asmLabel(d)} icon="dna"
         frozen={false} onSwitch={onSwitch} onClose={onClose}
       />
     );
@@ -144,7 +150,7 @@ function StoreTab({ tab, active, onSwitch, onClose }) {
     const op = state.operations.find((o) => o.id === tab.operationId);
     return (
       <TabButtonView
-        tab={tab} active={active} label={opLabel(op, state.containers)}
+        tab={tab} active={active} label={opText(op, state.containers)} icon={opIconName(op)}
         frozen={false} onSwitch={onSwitch} onClose={onClose}
       />
     );
@@ -152,7 +158,7 @@ function StoreTab({ tab, active, onSwitch, onClose }) {
   return (
     <TabButtonView
       tab={tab} active={active}
-      label={`📦 ${(container && container.name) || ph()}`}
+      label={(container && container.name) || ph()} icon="container"
       frozen={!!(container && container.frozen)}
       onSwitch={onSwitch} onClose={onClose}
     />
@@ -176,7 +182,7 @@ function PropTab({
     const d = resolveAssemblyDraft(synthState, tab.assemblyDraftId);
     return (
       <TabButtonView
-        tab={tab} active={active} label={asmLabel(d)}
+        tab={tab} active={active} label={asmLabel(d)} icon="dna"
         frozen={false} onSwitch={onSwitch} onClose={onClose}
       />
     );
@@ -185,7 +191,7 @@ function PropTab({
     const op = (operations || []).find((o) => o.id === tab.operationId);
     return (
       <TabButtonView
-        tab={tab} active={active} label={opLabel(op, containers)}
+        tab={tab} active={active} label={opText(op, containers)} icon={opIconName(op)}
         frozen={false} onSwitch={onSwitch} onClose={onClose}
       />
     );
@@ -194,7 +200,7 @@ function PropTab({
   return (
     <TabButtonView
       tab={tab} active={active}
-      label={`📦 ${(c && c.name) || ph()}`}
+      label={(c && c.name) || ph()} icon="container"
       frozen={!!(c && c.frozen)}
       onSwitch={onSwitch} onClose={onClose}
     />

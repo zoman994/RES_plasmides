@@ -230,6 +230,25 @@ export default function FeatureEditorModal({
     setSubFeatures((prev) => prev.filter((_, i) => i !== idx));
   };
 
+  // «+ intron» — an intron is just a detail sub-feature of type 'intron' linked
+  // to this feature (saved via meta.subFeatures with regionId = feature.id), so
+  // the AA track splices it. Seeds a mid-third default; the biolog adjusts the
+  // exact coordinates in the sub-feature row that appears above.
+  const handleAddIntron = () => {
+    const s = Math.max(0, Number(feature?.start) || 0);
+    const e = Math.max(s + 1, Number(feature?.end) || s + 1);
+    const len = e - s;
+    const iStart = s + Math.floor(len / 3);
+    const iEnd = Math.min(e, Math.max(iStart + 1, s + Math.floor((2 * len) / 3)));
+    setSubFeatures((prev) => [...prev, {
+      name: `интрон ${prev.filter((x) => x.type === 'intron').length + 1}`,
+      type: 'intron',
+      start: iStart,
+      end: iEnd,
+      strand: feature?.strand === -1 ? -1 : 1,
+    }]);
+  };
+
   const handleMerge = () => {
     if (!mergePick) return;
     onMerge?.(mergePick);
@@ -436,10 +455,17 @@ export default function FeatureEditorModal({
 
               <Field label={S.featureEditorIntronsLabel}>
                 <div data-testid="feature-editor-introns" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <button type="button" disabled style={{ ...secondaryBtnStyle(), opacity: 0.55, cursor: 'not-allowed', alignSelf: 'flex-start' }}>
+                  <button
+                    type="button"
+                    data-testid="feature-editor-add-intron"
+                    onClick={handleAddIntron}
+                    style={{ ...secondaryBtnStyle(), alignSelf: 'flex-start' }}
+                  >
                     + intron
                   </button>
-                  <span style={{ fontSize: 9, color: 'var(--text-tertiary)' }}>{S.featureEditorIntronsStub}</span>
+                  <span style={{ fontSize: 9, color: 'var(--text-tertiary)' }}>
+                    интрон вырезается из рамки CDS — координаты правятся в строке субфичи выше
+                  </span>
                 </div>
               </Field>
             </>

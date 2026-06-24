@@ -23,139 +23,18 @@
  */
 
 import { memo } from "react";
-import { walkCodons, walkCodonsCached, pickReadingFrame } from "../lib/codon-walker.js";
+import { walkCodonsCached } from "../lib/codon-walker.js";
+import { buildCdsAARows } from "../lib/aa-rows.js";
 import { computeAAOpacity, frameHasSignal, regionFrame } from "../lib/aa-opacity.js";
 import { TRANSLATABLE_TYPES } from "../constants.js";
 
 const ROW_HEIGHT = 12;
 
-/**
- * Build a `pos → {aa, codon, isStart, isStop, regionId, strand}` map for
- * the SINGLE-mode AA row. Walks every annotated CDS (CDS / gene /
- * marker / reporter) IN ITS OWN FRAME, on FORWARD or REVERSE strand:
- *
- *   - forward CDS (strand = +1, default): frame = region.start % 3,
- *     codons read 5'→3' on the top strand, M sits at codon[0] which is
- *     anchored on top-strand position region.start + 1 (middle base).
- *   - reverse CDS (strand = -1, e.g. AmpR, lacZα in pUC19): frame =
- *     (seqLen - region.end) % 3 so walkCodons' antisense iterator starts
- *     exactly at top-strand position region.end-1. M of the reverse CDS
- *     therefore lands on the high (3'-end-of-top-strand) end of the
- *     visible bar — biolog feedback 02.05.2026 («АТГ явно в обратную
- *     сторону на АмпР не аннотирован как надо»).
- *
- * Coordinates returned are absolute top-strand positions of each codon
- * MIDDLE BASE so the AATrack render loop can query by line-position
- * uniformly across forward and reverse rows. Memoize per
- * (fullSeq, regions) at the AATrack level.
- */
-/**
- * Per-(strand, frame) row map for the SINGLE-mode AA rendering.
- *
- * Why one map PER (strand, frame): a forward CDS in frame 0 emits codon
- * middles at positions 1, 4, 7, …; a forward ORF in frame 1 emits at
- * 2, 5, 8, … Both end up at CONSECUTIVE columns when rendered into a
- * single row, which the biolog reads as "duplicated overlapping AAs"
- * (visual review 03.05.2026: «вижу дублирование букв АА с разных рамок,
- * надо разносить по строкам»). Splitting by (strand, frame) gives up
- * to six clean rows where every column is at most one AA tall.
- *
- * Returned shape: ordered Array of
- *   { rowKey, strand, frame, label, map: Map<position, codonRecord> }
- * Order: +1, +2, +3, -1, -2, -3 (top-down). Empty rows are dropped at
- * the render layer so simple plasmids still show a single tidy row.
- *
- * Annotated CDSes are walked first; auto-detected ORFs fill remaining
- * positions in their respective rows. Annotated regions therefore stay
- * authoritative inside their own (strand, frame) row.
- */
-const ROW_ORDER = [
-  { rowKey: "1:0", strand: 1, frame: 0, label: "+1" },
-  { rowKey: "1:1", strand: 1, frame: 1, label: "+2" },
-  { rowKey: "1:2", strand: 1, frame: 2, label: "+3" },
-  { rowKey: "-1:0", strand: -1, frame: 0, label: "-1" },
-  { rowKey: "-1:1", strand: -1, frame: 1, label: "-2" },
-  { rowKey: "-1:2", strand: -1, frame: 2, label: "-3" },
-];
-
-function getOrCreateRow(rows, isReverse, frame) {
-  const rowKey = `${isReverse ? -1 : 1}:${frame}`;
-  let rowMap = rows.get(rowKey);
-  if (!rowMap) {
-    rowMap = new Map();
-    rows.set(rowKey, rowMap);
-  }
-  return rowMap;
-}
-
-function walkRangeIntoRows(rows, fullSeq, start, end, isReverse, regionId) {
-  if (end - start < 3) return;
-  // V133 — frame chosen from the DNA (fewest stops), not start%3, so a partial
-  // CDS whose boundary isn't on a codon reads as protein, not stops.
-  const frame = pickReadingFrame(fullSeq, start, end, isReverse);
-  const rowMap = getOrCreateRow(rows, isReverse, frame);
-  const codons = walkCodons(fullSeq, frame, isReverse ? -1 : 1);
-  let firstHit = true;
-  for (const c of codons) {
-    const codonStart = c.position - 1;
-    const codonEnd = codonStart + 3;
-    if (isReverse) {
-      if (codonEnd > end) continue;
-      if (codonStart < start) break;
-    } else {
-      if (codonStart < start) continue;
-      if (codonEnd > end) break;
-    }
-    if (!rowMap.has(c.position)) {
-      rowMap.set(c.position, {
-        aa: c.aa,
-        codon: c.codon,
-        isStart: firstHit && c.aa === "M",
-        isStop: c.aa === "*",
-        regionId,
-        strand: isReverse ? -1 : 1,
-      });
-    }
-    firstHit = false;
-  }
-}
-
-/**
- * @returns {Array<{ rowKey: string, strand: 1|-1, frame: 0|1|2,
- *   label: string, map: Map<number, object> }>}
- */
-function buildCdsAARows(fullSeq, regions, orfRanges) {
-  const rows = new Map();
-  if (!fullSeq) return [];
-
-  // ── Pass 1: annotated CDS-like regions ────────────────────────────
-  if (Array.isArray(regions)) {
-    for (const region of regions) {
-      if (!region || !TRANSLATABLE_TYPES.has(region.type)) continue;
-      walkRangeIntoRows(
-        rows,
-        fullSeq,
-        Math.max(0, Math.min(fullSeq.length, region.start | 0)),
-        Math.max(0, Math.min(fullSeq.length, region.end | 0)),
-        region.strand === -1,
-        region.id || `cds:${region.start}:${region.end}`,
-      );
-    }
-  }
-
-  // ── Pass 2: auto-detected ORFs (REMOVED 03.05.2026) ──────────────
-  // Initially added on 02.05.2026 to surface ATGs outside annotated
-  // regions, but on dense plasmids (Lafmid BA, etc.) ORFs in 3 forward
-  // frames cluttered the AA row. Annotation-only translation reads
-  // cleaner; users who want exhaustive frame coverage switch
-  // framesMode → 'all' and toggle the per-frame checkboxes.
-  void orfRanges;
-
-  // Materialize in canonical row order, drop empty rows.
-  return ROW_ORDER
-    .map((r) => ({ ...r, map: rows.get(r.rowKey) || new Map() }))
-    .filter((r) => r.map.size > 0);
-}
+// The 'single'-strategy AA row builder (buildCdsAARows + walkRangeIntoRows +
+// ROW_ORDER) was extracted to ../lib/aa-rows.js in the splice sprint
+// (TD-SIZE-AATRACK) and made splice-aware there. AATrack now only renders the
+// rows it returns. The 'hybrid' (6-frame exploration) path below still walks
+// codons directly via walkCodonsCached.
 
 function aaColor(aa, isStart) {
   if (aa === "*") return "#dc2626";
@@ -245,6 +124,9 @@ function AATrack({
   strandFilter,
   visibleFrames,
   regions,
+  // «Ген разрезан — тянуть AA до реза»: { left, right } booleans for terminal
+  // sticky-end cuts → the terminal gene's translation extends to the cut.
+  terminalCut,
 }) {
   if (!fullSeq || !lineLen) return null;
 
@@ -259,7 +141,7 @@ function AATrack({
     // reverse mount entirely — this keeps the row order canonical
     // (+1, +2, +3, -1, -2, -3) and avoids duplicate -1 rendering.
     if (strandFilter === "reverse") return null;
-    const cdsRows = buildCdsAARows(fullSeq, regions, orfRanges);
+    const cdsRows = buildCdsAARows(fullSeq, regions, orfRanges, { terminalCut });
     if (cdsRows.length === 0) return null;
 
     // Per-line row filtering (biolog visual review 03.05.2026 evening on
@@ -305,6 +187,9 @@ function AATrack({
     // codon's region isn't in the regions map (auto-detected ORFs
     // without a registered region — leave them unnumbered).
     const aaNumberFor = (codon, absMid) => {
+      // Spliced rows carry their mature-mRNA index directly — linear genomic
+      // arithmetic doesn't hold once introns are removed, so it wins.
+      if (codon.aaIndex != null) return codon.aaIndex;
       const region = regionById.get(codon.regionId);
       if (!region) return null;
       const isReverse = (codon.strand === -1) || (region.strand === -1);

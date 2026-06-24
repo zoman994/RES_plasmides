@@ -55,3 +55,43 @@ describe('buildSelectionMenuItems — promote to common', () => {
     expect(onPromoteToCommon).toHaveBeenCalledWith({ region: REGION, start: 10, end: 40 });
   });
 });
+
+describe('buildSelectionMenuItems — «Отметить как интрон»', () => {
+  // a sub-range strictly inside the CDS [10,40)
+  const inside = { caretAnchor: 15, caretPos: 25 };
+
+  it('offers the item for a sub-selection inside a translatable region', () => {
+    const items = buildSelectionMenuItems(base({ ...inside }));
+    expect(keys(items)).toContain('mark-intron');
+  });
+
+  it('dispatches a detail intron linked to the parent CDS and closes the menu', () => {
+    const onAnnotationEdit = vi.fn();
+    const setContextMenu = vi.fn();
+    const items = buildSelectionMenuItems(base({ ...inside, onAnnotationEdit, setContextMenu }));
+    items.find((i) => i.key === 'mark-intron').onClick();
+    expect(setContextMenu).toHaveBeenCalledWith(null);
+    expect(onAnnotationEdit).toHaveBeenCalledWith({
+      kind: 'create',
+      payload: {
+        type: 'intron', level: 'detail', regionId: 'r1',
+        start: 15, end: 25, strand: 1, name: 'интрон',
+      },
+    });
+  });
+
+  it('omits the item when the selection is not inside any CDS', () => {
+    const items = buildSelectionMenuItems(base({ caretAnchor: 50, caretPos: 60 }));
+    expect(keys(items)).not.toContain('mark-intron');
+  });
+
+  it('omits the item when the selection equals the whole region (that is the CDS, not an intron)', () => {
+    const items = buildSelectionMenuItems(base({ caretAnchor: 10, caretPos: 40 }));
+    expect(keys(items)).not.toContain('mark-intron');
+  });
+
+  it('omits the item in read-only viewers (no onAnnotationEdit)', () => {
+    const items = buildSelectionMenuItems(base({ ...inside, onAnnotationEdit: undefined }));
+    expect(keys(items)).not.toContain('mark-intron');
+  });
+});

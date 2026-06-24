@@ -7,6 +7,7 @@
 import { useCallback } from 'react';
 import OpPopup from './OpPopup';
 import { getPopupComponent } from './op-kinds-registry';
+import { Icon } from '../../../icons/Icon';
 
 export default function OpPopupRouter({
   operation,
@@ -38,7 +39,7 @@ export default function OpPopupRouter({
       operation={operation}
       position={position}
       title={operation?.kind || 'Операция'}
-      icon="⚙"
+      icon={<Icon name="settings" size={16} />}
       onCancel={onCancel}
       onExecute={() => handleExecute({})}
       executeDisabled

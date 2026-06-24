@@ -14,6 +14,7 @@
  */
 import { memo } from 'react';
 import { BLOCK_LINEAR_W, BLOCK_LINEAR_H } from './canvas-layout';
+import { Icon } from '../../icons/Icon';
 
 function OligonucleotideBlock({ container, highlighted, onClick, onDoubleClick }) {
   const seqs = container?.payload?.sequences
@@ -50,7 +51,7 @@ function OligonucleotideBlock({ container, highlighted, onClick, onDoubleClick }
       title={`${container.name || 'oligo'} · ${lanes.length} sequence(s)`}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <span style={{ fontSize: 14 }}>🧬</span>
+        <Icon name="primer" size={14} aria-hidden="true" />
         <span
           data-testid={`skeleton-block-${container.id}-name`}
           style={{

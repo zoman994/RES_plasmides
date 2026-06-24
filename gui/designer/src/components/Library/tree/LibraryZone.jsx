@@ -33,6 +33,8 @@ export const LibraryZone = memo(function LibraryZone({
   expanded = true,
   onToggle,
   headerAction,
+  // Right-click on the zone header (project rows attach a context menu here).
+  onHeaderContextMenu,
   children,
   testId,
 }) {
@@ -52,6 +54,7 @@ export const LibraryZone = memo(function LibraryZone({
         role="button"
         tabIndex={0}
         onClick={() => onToggle?.()}
+        onContextMenu={onHeaderContextMenu}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle?.(); } }}
         style={{
           display: 'flex',

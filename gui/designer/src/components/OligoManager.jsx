@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { calcTm as calcTmNN } from '../tm-calculator';
+import { Icon } from './icons/Icon';
 
 const OLIGO_KEY = 'pvcs-oligo-registry';
 const STATUSES = [
@@ -143,14 +144,14 @@ export default function OligoManager({ assemblies, onClose }) {
   return (
     <div className="border rounded-lg bg-white p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-bold text-gray-700">{'🧬'} Реестр олигонуклеотидов ({oligos.length})</h3>
+        <h3 className="text-sm font-bold text-gray-700"><Icon name="dna" size={14} style={{ display: 'inline-block', verticalAlign: '-2px' }} /> Реестр олигонуклеотидов ({oligos.length})</h3>
         <div className="flex gap-2">
           <button onClick={() => setShowAdd(!showAdd)}
             className="text-xs px-3 py-1 bg-blue-50 text-blue-700 rounded hover:bg-blue-100">
             + Добавить
           </button>
           {onClose && (
-            <button onClick={onClose} className="text-xs px-2 py-1 text-gray-400 hover:text-gray-600">{'✕'}</button>
+            <button onClick={onClose} className="text-xs px-2 py-1 text-gray-400 hover:text-gray-600 inline-flex items-center"><Icon name="close" size={14} /></button>
           )}
         </div>
       </div>
@@ -176,11 +177,11 @@ export default function OligoManager({ assemblies, onClose }) {
         <div className="flex gap-2 items-center bg-blue-50 rounded p-2">
           <span className="text-xs text-blue-700 font-semibold">Выбрано: {selected.size}</span>
           <button onClick={() => bulkSetStatus('ordered')}
-            className="text-[10px] px-2 py-0.5 bg-blue-600 text-white rounded">📦 Отметить заказанными</button>
+            className="text-[10px] px-2 py-0.5 bg-blue-600 text-white rounded"><Icon name="container" size={11} style={{ display: 'inline-block', verticalAlign: '-2px' }} /> Отметить заказанными</button>
           <button onClick={() => bulkSetStatus('received')}
-            className="text-[10px] px-2 py-0.5 bg-green-600 text-white rounded">✅ Получены</button>
+            className="text-[10px] px-2 py-0.5 bg-green-600 text-white rounded"><Icon name="check" size={11} style={{ display: 'inline-block', verticalAlign: '-2px' }} /> Получены</button>
           <button onClick={copyForOrder}
-            className="text-[10px] px-2 py-0.5 bg-gray-100 text-gray-700 rounded">📋 Скопировать TSV</button>
+            className="text-[10px] px-2 py-0.5 bg-gray-100 text-gray-700 rounded"><Icon name="copy" size={11} style={{ display: 'inline-block', verticalAlign: '-2px' }} /> Скопировать TSV</button>
         </div>
       )}
 
@@ -274,7 +275,7 @@ export default function OligoManager({ assemblies, onClose }) {
                 </td>
                 <td className="p-1">
                   <button onClick={() => deleteOligo(o.id)}
-                    className="text-gray-300 hover:text-red-500 text-xs">{'✕'}</button>
+                    className="text-gray-300 hover:text-red-500 inline-flex items-center"><Icon name="close" size={13} /></button>
                 </td>
               </tr>
             ))}
@@ -289,7 +290,7 @@ export default function OligoManager({ assemblies, onClose }) {
       <div className="flex gap-2">
         <button onClick={copyForOrder}
           className="text-xs px-3 py-1.5 bg-blue-50 text-blue-700 rounded hover:bg-blue-100">
-          📋 Скопировать для заказа (TSV)
+          <Icon name="copy" size={12} style={{ display: 'inline-block', verticalAlign: '-2px' }} /> Скопировать для заказа (TSV)
         </button>
         <button onClick={() => {
           const csv = ['Имя,Последовательность,Длина,Tm,GC%,Статус,Заказ,Поставщик,Примечание',
@@ -300,7 +301,7 @@ export default function OligoManager({ assemblies, onClose }) {
           a.download = 'oligo_registry.csv'; a.click();
         }}
           className="text-xs px-3 py-1.5 bg-gray-50 text-gray-600 rounded hover:bg-gray-100">
-          📊 Экспорт CSV
+          <Icon name="export" size={12} style={{ display: 'inline-block', verticalAlign: '-2px' }} /> Экспорт CSV
         </button>
       </div>
     </div>

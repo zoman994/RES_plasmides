@@ -28,9 +28,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore } from '../../store';
 import { STRINGS } from '../../lib/strings';
+import { useResizableSplit } from '../../hooks/useResizableSplit';
+import ResizeHandle from '../common/ResizeHandle';
 import LibraryTopBar from './LibraryTopBar';
 import LibraryTreeRoot from './tree/LibraryTreeRoot';
 import LibrarySingleInspector from './inspector/LibrarySingleInspector';
+import VersionTimelineModal from './inspector/VersionTimelineModal';
+import { buildVersionTimeline } from './lib/version-lineage';
 import LibraryActionRow from './inspector/LibraryActionRow';
 import CommonFeaturesPanel from './CommonFeaturesPanel';
 import OnboardingNudge from './onboarding/OnboardingNudge';
@@ -76,7 +80,15 @@ function pluralRu(n, one, few, many) {
 
 export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
   const ws = STRINGS.libraryWorkspace || {};
+  // Drag-to-resize the tree | inspector split (Игорь — разделители панелей двигаются).
+  const splitRef = useRef(null);
+  const { size: treeW, separatorProps: splitProps, dragging: splitDragging } = useResizableSplit({
+    axis: 'x', side: 'start', initial: 312, min: 220, keepOther: 420,
+    storageKey: 'library-tree-w', containerRef: splitRef,
+  });
   const [selectedId, setSelectedId] = useState(null);
+  // «История версий» modal (entry point from the Library).
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [perEntryState, setPerEntryState] = useState({});
   // SPEC_COMMON_FEATURES DEC-CF-06 — right-panel view: 'entry' inspector vs
@@ -352,8 +364,8 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
   const cloneEntryToActiveProject = useStore((s) => s.cloneEntryToActiveProject);
   const extractEntryToLoose = useStore((s) => s.extractEntryToLoose);
   const toggleLabStock = useStore((s) => s.toggleLabStock);
+  const openAlignmentWith = useStore((s) => s.openAlignmentWith);
   const moveEntryToFolder = useStore((s) => s.moveEntryToFolder);
-  const setActiveWorkspace = useStore((s) => s.setActiveWorkspace);
   const renameLibraryEntry = useStore((s) => s.renameLibraryEntry); // A4 (audit)
   // Projects are created from the Library left panel now (project hub).
   const createProject = useStore((s) => s.createProject);
@@ -385,6 +397,14 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
   // (audit 14.06.2026). Setting it routes edits to
   // applySequenceEditOnLibraryEntry / createManualEditBranch (both durable).
   const item = rawEntry ? { ...rawEntry, ...(rawEntry.payload || {}), _libraryEntryId: selectedId } : null;
+  // Version-history lineage for the «История версий» entry point. Built from the
+  // parentEntryId chain + origin provenance; the button shows once there is more
+  // than one node (a real history exists).
+  const historyModel = useMemo(
+    () => (selectedId ? buildVersionTimeline(entriesById, selectedId) : { root: null, nodes: [], edges: [] }),
+    [entriesById, selectedId],
+  );
+  const hasHistory = historyModel.nodes.length > 1;
   // Action-row variant derives from `entry.projectId` per the
   // 09.05.2026 minimum-pass refresh — `entry.zone` is intentionally
   // ignored (zone field stays in shape, see CURRENT_TASK.md). All
@@ -393,12 +413,43 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
   const zone = item ? (item.projectId ? 'active_bodge' : 'loose') : null;
   const entryState = perEntryState[selectedId] || emptyEntryState();
 
+  // Unsaved (transient) SEQUENCE edits for an entry — used to warn before
+  // switching away (Игорь 17.06.2026: «предупреждать перед потерей»).
+  // Annotation-only edits autosave to the entry, so they're not «lost».
+  const hasUnsavedSeqEdits = useCallback((id) => {
+    const e = id ? perEntryState[id]?.edits : null;
+    if (!e) return false;
+    return e.editedSequence != null || (Array.isArray(e.editLog) && e.editLog.length > 0);
+  }, [perEntryState]);
+
+  // Guarded entry switch: if the entry we're leaving has unsaved sequence
+  // edits, warn; on confirm, discard them (transient model) and proceed.
+  const guardedSelect = useCallback((nextId) => {
+    if (nextId === selectedId) return true;
+    if (hasUnsavedSeqEdits(selectedId)) {
+      const ok = (typeof window !== 'undefined' && typeof window.confirm === 'function')
+        ? window.confirm('Есть несохранённые правки последовательности. Перейти и отбросить их? Чтобы не потерять — сначала «Сохранить версию».')
+        : true;
+      if (!ok) return false;
+      const leaving = selectedId;
+      setPerEntryState((prev) => (prev[leaving] ? {
+        ...prev,
+        [leaving]: {
+          ...prev[leaving],
+          edits: { ...prev[leaving].edits, editedSequence: undefined, editLog: undefined, editedAnnotations: undefined },
+        },
+      } : prev));
+    }
+    return true;
+  }, [selectedId, hasUnsavedSeqEdits]);
+
   const onSelectEntry = useCallback((entry) => {
     if (!entry?.id) return;
+    if (!guardedSelect(entry.id)) return;
     setView('entry');
     setSelectedId(entry.id);
     setPerEntryState((prev) => prev[entry.id] ? prev : { ...prev, [entry.id]: emptyEntryState() });
-  }, []);
+  }, [guardedSelect]);
 
   // «+ Проект» → create a NEW project with a UNIQUE default name and open its
   // info to name it. «Нормальная логика» (Igor 15.06.2026): each click makes a
@@ -407,14 +458,9 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
   // in place and it lands at the bottom (newest createdAt).
   const onCreateProject = useCallback(() => {
     if (typeof createProject !== 'function') return;
-    const s = useStore.getState();
-    const taken = new Set(Object.values(s.projects || {})
-      .filter((p) => p && !p._pendingDelete)
-      .map((p) => (p.name || '').trim().toLowerCase()));
-    const base = 'Новый проект';
-    let name = base; let n = 2;
-    while (taken.has(name.toLowerCase())) { name = `${base} ${n}`; n += 1; }
-    createProject(name);
+    // Единый знаменатель: uniqueness lives in store.createProject now; every
+    // create button just passes the base «Новый проект».
+    createProject('Новый проект');
     openProjectInfo?.();
   }, [createProject, openProjectInfo]);
   const onSelectCommonSection = useCallback(() => setView('common'), []);
@@ -434,14 +480,15 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
         edits: { ...(prev[selectedId]?.edits || {}), ...patch },
       },
     }));
-    // Persist annotation edits straight to the library entry payload.
-    // The workspace's per-entry React state is transient (lost on
-    // unmount / reload); the entry IS the source of truth here, so an
-    // annotation created in the Annotator must write through immediately
-    // (biolog 14.06.2026: «создал в аннотаторе ORF … после выхода —
-    // пропадает»). Silent overwrite, no version bump — same hybrid model
-    // as the Importer host (DEC-LIB-11). selectedId === the entry id.
-    if (Object.prototype.hasOwnProperty.call(patch, 'editedAnnotations')
+    // Persist annotation-ONLY edits straight to the library entry payload
+    // (Annotator ORF etc. — biolog 14.06.2026 «создал ORF … после выхода
+    // пропадает», DEC-LIB-11). SEQUENCE edits (patch carries editedSequence)
+    // are TRANSIENT now (Игорь 17.06.2026) — they must NOT write through,
+    // else a nucleotide edit's indel-shifted annotations would silently
+    // mutate the SOURCE. Those commit only via «Сохранить версию».
+    const isSequenceEdit = Object.prototype.hasOwnProperty.call(patch, 'editedSequence');
+    if (!isSequenceEdit
+        && Object.prototype.hasOwnProperty.call(patch, 'editedAnnotations')
         && Array.isArray(patch.editedAnnotations)
         && typeof writeLibraryEntryAnnotations === 'function') {
       try {
@@ -479,22 +526,20 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
     openFolderPicker: (id) => moveEntryToFolder(id, ''),
     exportEntry,
     deleteEntry,
-    // A25 (audit) — open the DAG of the ENTRY's project, not whatever's active
-    // (the old version ignored the entry id + closed over currentProjectId).
-    showInDag: (id) => {
+    // «Выровнять» — preload the entry as input A in the align workspace; the
+    // user adds the second sequence / .ab1 there.
+    alignEntry: (id) => {
       const e = useStore.getState().libraryEntries?.[id];
-      const pid = (e && e.projectId) || currentProjectId;
-      if (pid) useStore.getState().activateProject?.(pid);
-      setActiveWorkspace('flow');
+      if (e) openAlignmentWith([e]);
     },
-    // A5 (audit) — openContainerWindow / createManualEditBranch / editPrimer /
-    // editPrimerNotes / cloneEntry / copyToLoose / usePrimerInDag are NOT
-    // implemented yet. Omitted (not noop) so getActionsFor disables them with a
-    // tooltip instead of masquerading as working buttons.
+    // 17.06.2026 cleanup: the dead DAG action (showInDag → orphaned
+    // DagWorkspace) and the unwired placeholder handlers (Container
+    // Window / clone / primer-edit / copyToLoose) were removed from
+    // getActionsFor, so they're no longer threaded here either.
   }), [
     currentProjectId, cloneEntryToActiveProject, extractEntryToLoose,
-    toggleLabStock, moveEntryToFolder, setActiveWorkspace,
-    exportEntry, deleteEntry,
+    toggleLabStock, moveEntryToFolder,
+    exportEntry, deleteEntry, openAlignmentWith,
   ]);
 
   return (
@@ -527,10 +572,11 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
       />
 
       <div
+        ref={splitRef}
         data-testid="library-workspace-body"
         style={{
           display: 'grid',
-          gridTemplateColumns: '312px 1fr',
+          gridTemplateColumns: `${treeW}px 7px minmax(0, 1fr)`,
           minHeight: 0,
           height: '100%',
         }}
@@ -549,6 +595,7 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
           onSelectCommonSection={onSelectCommonSection}
           commonSectionActive={view === 'common'}
         />
+        <ResizeHandle axis="x" dragging={splitDragging} testid="library-split-handle" {...splitProps} />
         <main
           data-testid="library-workspace-inspector"
           style={{
@@ -563,6 +610,17 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
             <CommonFeaturesPanel />
           ) : item ? (
             <>
+              {hasHistory && (
+                <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '6px 10px 0' }}>
+                  <button
+                    type="button"
+                    data-testid="library-open-history"
+                    onClick={() => setHistoryOpen(true)}
+                    title="История версий этой записи"
+                    style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6, cursor: 'pointer', border: '1px solid var(--border-default, #d6d3d1)', background: 'var(--surface-1, #fff)', color: 'var(--text-secondary, #57534e)' }}
+                  >⑂ История версий · {historyModel.nodes.length}</button>
+                </div>
+              )}
               <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
                 <LibrarySingleInspector
                   item={item}
@@ -575,12 +633,12 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
                   onAppendAdded={noop}
                   onRenameItem={(name) => { if (selectedId) renameLibraryEntry(selectedId, name); }}
                   onRunAutoAnnotate={noop}
-                  // The workspace persists edits silently (annotation
-                  // write-through + applySequenceEditOnLibraryEntry); the
-                  // Importer-only explicit Save buttons would otherwise
-                  // light up «несохранено» right after a silent save —
-                  // misleading. Keep them out (DEC-LIB-13).
-                  showSaveActions={false}
+                  // Edits still autosave (Q1, durability), but the explicit
+                  // «Перезаписать» / «Сохранить как версию» panel + «что
+                  // изменено» summary are now surfaced here too (Игорь 16.06 —
+                  // «любые правки как в выравнивателе»). `hasChanges`/the log
+                  // clear on save so the buttons don't falsely flag «несохранено».
+                  showSaveActions={true}
                   onUpdateTags={onUpdateTags}
                   onUpdateTopology={onUpdateTopology}
                 />
@@ -603,6 +661,13 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
           currently selected library entry. SequenceView overlay-rect
           rendering is deferred to a follow-up iteration. */}
       <SearchHost item={item} />
+      {historyOpen && (
+        <VersionTimelineModal
+          model={historyModel}
+          onSelect={(id) => { setSelectedId(id); setHistoryOpen(false); }}
+          onClose={() => setHistoryOpen(false)}
+        />
+      )}
     </div>
   );
 }

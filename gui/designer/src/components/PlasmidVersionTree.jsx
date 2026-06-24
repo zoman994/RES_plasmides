@@ -9,6 +9,7 @@ import { useStore } from '../store';
 import { ANNOTATION_COLORS } from '../auto-annotate';
 import { FEATURE_COLORS } from '../theme';
 import { sequenceDiff } from '../sequence-diff';
+import { Icon } from './icons/Icon';
 
 const DERIV_ICONS = {
   mutation: '\uD83E\uDDEC', split: '\u2702\uFE0F', fusion: '\uD83D\uDD17',
@@ -98,8 +99,8 @@ export default function PlasmidVersionTree({ partId, onClose, onViewPart }) {
           {/* Expand toggle */}
           {hasChildren ? (
             <button onClick={() => toggleExpand(part.id)}
-              className="text-[9px] text-gray-400 w-3 shrink-0">
-              {isExp ? '▼' : '▶'}
+              className="text-gray-400 w-3 shrink-0 inline-flex items-center justify-center">
+              <Icon name={isExp ? 'chevron-down' : 'chevron-right'} size={10} />
             </button>
           ) : <span className="w-3 shrink-0" />}
 
@@ -161,9 +162,9 @@ export default function PlasmidVersionTree({ partId, onClose, onViewPart }) {
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b shrink-0">
           <h3 className="text-sm font-bold text-gray-700">
-            {'🌳'} История версий — {root.name}
+            <Icon name="branch" size={14} style={{ display: 'inline-block', verticalAlign: '-2px' }} /> История версий — {root.name}
           </h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-lg">{'✕'}</button>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 inline-flex"><Icon name="close" size={16} /></button>
         </div>
 
         {/* Tree */}
@@ -178,7 +179,7 @@ export default function PlasmidVersionTree({ partId, onClose, onViewPart }) {
               <span className="text-xs font-semibold text-gray-600">
                 Diff: {diffPair.parent.name} → {diffPair.child.name}
               </span>
-              <button onClick={() => setDiffPair(null)} className="text-[10px] text-gray-400 hover:text-gray-600">{'✕'}</button>
+              <button onClick={() => setDiffPair(null)} className="text-gray-400 hover:text-gray-600 inline-flex"><Icon name="close" size={13} /></button>
             </div>
 
             <div className="grid grid-cols-2 gap-3 text-[11px]">
@@ -213,7 +214,7 @@ export default function PlasmidVersionTree({ partId, onClose, onViewPart }) {
 
             {diff.lengthDelta !== 0 && (
               <div className="mt-2 text-[10px] text-gray-500">
-                {'💡'} Последовательности разной длины — показаны только позиционные замены в общем префиксе
+                <Icon name="info" size={11} style={{ display: 'inline-block', verticalAlign: '-2px' }} /> Последовательности разной длины — показаны только позиционные замены в общем префиксе
               </div>
             )}
           </div>

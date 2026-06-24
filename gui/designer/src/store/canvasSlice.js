@@ -1,6 +1,7 @@
 export const FULLSCREENS = [
   'start',
-  'dag',
+  // 'dag' fullscreen removed 17.06.2026 — DagWorkspace deleted (dead
+  // legacy route, superseded by CanvasSkeleton). See TECH_DEBT.
   'library',
   // M-C.1 K4 (DEC-MC1-05) — drill-in placeholder route. Real
   // Container Window fullscreen lands in M-C.2.
@@ -69,7 +70,6 @@ export const createCanvasSlice = (set) => ({
   canvas: {
     activeFullscreen: initialActiveFullscreen,
     navStack: initialNavStack,
-    dagViewport: { x: 0, y: 0, zoom: 1 },
   },
 
   setActiveFullscreen: (fullscreen, payload = null) => {

@@ -28,6 +28,7 @@
 import { memo, useMemo } from "react";
 import { LABEL_WIDTH, __IS_TEST_ENV__ } from "./constants.js";
 import { buildLineAnnMap } from "./lib/feature-map.js";
+import { sequenceLineEqual } from "./lib/sequence-line-equal.js";
 import { RE_ENZYMES } from "../../restriction-db.js";
 import RulerTrack from "./tracks/RulerTrack.jsx";
 import StrandsTrack from "./tracks/StrandsTrack.jsx";
@@ -35,6 +36,8 @@ import AnnotationTrack from "./tracks/AnnotationTrack.jsx";
 import AATrack from "./tracks/AATrack.jsx";
 import PrimerTrack from "./tracks/PrimerTrack.jsx";
 import RestrictionTrack from "./tracks/RestrictionTrack.jsx";
+import AlignmentReadTrack from "./tracks/AlignmentReadTrack.jsx";
+import AlignmentChromatogramTrack from "./tracks/AlignmentChromatogramTrack.jsx";
 
 const SequenceLine = memo(function SequenceLine({
   line,
@@ -91,6 +94,10 @@ const SequenceLine = memo(function SequenceLine({
   // chars from the plasmid start. RulerTrack splits its labels at
   // wrapAt; an inline vertical divider goes there too.
   seqLength = 0,
+  // Terminal sticky-end staircase (Игорь 22.06): { left, right } from
+  // terminalStagger(segment). Gated to the FIRST line (left end) / LAST line
+  // (right end) below. Null → no staircase (every existing consumer).
+  terminalStagger = null,
   // 12.05.2026 — Игорь: «сайты рестрикции должны быть кликабельны».
   // Optional callbacks forwarded в RestrictionTrack. Library/Importer
   // don't pass them — track stays display-only as before.
@@ -101,6 +108,40 @@ const SequenceLine = memo(function SequenceLine({
   // фильтрует reCutLayout по нему.
   hoveredRestrictionKey,
   onRestrictionHover,
+  // «Align to reference» (opt-in). When `alignmentRead` is present, the read is
+  // drawn as a track beneath the reference; with `chromatogram` too, the Sanger
+  // trace sits below the read. Both default undefined → existing consumers and
+  // their tests render exactly as before.
+  alignmentRead,
+  // Multi-read stack (P6): array of {readByRefPos, insertions, name, aaEffects?,
+  // doublePeaks?, isConsensus?}. When present it supersedes the single read.
+  alignmentReads,
+  chromatogram,
+  chromatogramMaxVal,
+  // 'plain' (black, default) | 'nucleotide' — colours the aligned read bases.
+  alignmentColorMode = 'plain',
+  // Per-line align labels: reference name (top-strand gutter) + read name
+  // (read-track gutter). Undefined for non-align consumers.
+  referenceGutterLabel,
+  alignmentReadName,
+  // AA-effect badges per ref position {pos -> {effect}} (align CDS mismatches).
+  aaEffects,
+  // P3 — «accept read base» on the single (pairwise) read track.
+  onAcceptBase,
+  // Layer toggles (opt-in; default visible → no change for other consumers).
+  showAnnotations = true,
+  showAATrack = true,
+  // Virtualization (perf, 19.06.2026). `active` defaults true → eager render
+  // (unchanged for every existing consumer). When the orchestrator windows a
+  // large sequence it passes active={false} for off-screen line indices: the
+  // line renders as a fixed-height placeholder that keeps the same wrapper +
+  // data-attributes (so overlays / scrollToPosition / computeVisible still
+  // find the slot) but drops the heavy track subtrees. `lineIndex` lets the
+  // scroll driver read which index a rendered line is; `placeholderHeight`
+  // (≈ measured main-line height) keeps the scroll height ~stable.
+  active = true,
+  lineIndex,
+  placeholderHeight,
 }) {
   const annMap = useMemo(
     () => buildLineAnnMap(features, line.start, line.seq.length),
@@ -147,8 +188,12 @@ const SequenceLine = memo(function SequenceLine({
       if (!s) continue;
       const enz = RE_ENZYMES[s.enzyme];
       if (!enz) continue;
-      const tAbs = s.position + enz.cut[0];
-      const bAbs = s.position + enz.cut[1];
+      // V155 — `s.position` is ALREADY the top-strand cut (flattenSites adds
+      // cut[0]). The bottom cut sits `cut[1]-cut[0]` away; the recognition site
+      // starts `cut[0]` BEFORE the top cut. (Was double-offset before.)
+      const tAbs = s.position;
+      const bAbs = s.position + (enz.cut[1] - enz.cut[0]);
+      const recogStart = s.position - enz.cut[0];
       const baseKey = `${s.enzyme}-${s.position}`;
       topCuts.push({ key: `${baseKey}-top`, pos: tAbs });
       botCuts.push({ key: `${baseKey}-bot`, pos: bAbs });
@@ -157,14 +202,51 @@ const SequenceLine = memo(function SequenceLine({
         const hi = Math.max(tAbs, bAbs);
         overhangs.push({ key: `${baseKey}-ov`, startPos: lo, endPos: hi });
       }
-      bindingHighlights.push({
-        key: `${baseKey}-bind`,
-        startPos: s.position,
-        endPos: s.position + enz.site.length,
-      });
+      // Recognition-site (binding) box — ТОЛЬКО при наведении на НАЗВАНИЕ
+      // рестриктазы (Игорь 22.06: «выделение сайта связывания только при
+      // наведении на название рестриктазы»). A click selects the cut (cuts +
+      // overhang stay) but must NOT paint the whole binding zone — that was the
+      // visual noise. So binding is gated to the hovered key alone.
+      if (k === hoveredRestrictionKey) {
+        bindingHighlights.push({
+          key: `${baseKey}-bind`,
+          startPos: recogStart,
+          endPos: recogStart + enz.site.length,
+        });
+      }
     }
     return { topCuts, botCuts, overhangs, bindingHighlights };
   }, [reSites, restrictionHighlightKey, hoveredRestrictionKey]);
+
+  // Virtualization placeholder: off-screen line index. Keep the SAME outer
+  // <div> with every data-attribute the DOM-measuring machinery relies on
+  // (data-testid / data-line-start / data-wraptail-kind / wrap-origin) so
+  // SelectionOverlay, CaretOverlay, scrollToPosition and computeVisible keep
+  // finding the slot — only the heavy track subtree is dropped. The
+  // hooks above run unconditionally (they're cheap and React's rules of
+  // hooks require it); the early return is below them. `contain: strict`
+  // lets the browser skip layout/paint of the empty box entirely.
+  if (active === false) {
+    return (
+      <div
+        data-testid="sequence-view-line"
+        data-line-start={line.start}
+        data-line-idx={Number.isFinite(lineIndex) ? lineIndex : undefined}
+        data-wraptail-kind={kind}
+        data-wraps-origin={line.wrapsOrigin ? "true" : undefined}
+        data-wrap-at={line.wrapsOrigin ? String(line.wrapAt) : undefined}
+        data-tracks-ready={tracksReady ? "true" : "false"}
+        data-placeholder="true"
+        aria-hidden="true"
+        style={{
+          position: "relative",
+          height: Number.isFinite(placeholderHeight) && placeholderHeight > 0 ? placeholderHeight : 120,
+          marginBottom: kind !== nextKind ? 6 : 14,
+          contain: "strict",
+        }}
+      />
+    );
+  }
 
   const isWrapTail = kind !== 'main';
 
@@ -172,6 +254,7 @@ const SequenceLine = memo(function SequenceLine({
     <div
       data-testid="sequence-view-line"
       data-line-start={line.start}
+      data-line-idx={Number.isFinite(lineIndex) ? lineIndex : undefined}
       data-wraptail-kind={kind}
       data-wraps-origin={line.wrapsOrigin ? "true" : undefined}
       data-wrap-at={line.wrapsOrigin ? String(line.wrapAt) : undefined}
@@ -357,6 +440,7 @@ const SequenceLine = memo(function SequenceLine({
         cutPositions={reCutLayout.topCuts}
         overhangs={reCutLayout.overhangs}
         bindingHighlights={reCutLayout.bindingHighlights}
+        gutterLabel={referenceGutterLabel}
       />
       {showBottomStrand && (
         <StrandsTrack
@@ -370,6 +454,8 @@ const SequenceLine = memo(function SequenceLine({
           cutPositions={reCutLayout.botCuts}
           overhangs={reCutLayout.overhangs}
           bindingHighlights={reCutLayout.bindingHighlights}
+          terminalLeft={terminalStagger && line.start === 0 ? terminalStagger.left : null}
+          terminalRight={terminalStagger && (line.start + line.seq.length === seqLength) ? terminalStagger.right : null}
         />
       )}
       {/* Reverse primers sit BELOW the strand, arrows ← (Игорь
@@ -392,7 +478,7 @@ const SequenceLine = memo(function SequenceLine({
           seqLength={line.wrapsOrigin ? seqLength : undefined}
         />
       ) : null}
-      {tracksReady ? (
+      {tracksReady && showAnnotations ? (
         <AnnotationTrack
           regions={features}
           lineStart={line.start}
@@ -418,7 +504,37 @@ const SequenceLine = memo(function SequenceLine({
           seqLength={line.wrapsOrigin ? seqLength : undefined}
         />
       ) : null}
-      {tracksReady ? (
+      {tracksReady && (alignmentReads && alignmentReads.length
+        ? alignmentReads
+        : (alignmentRead ? [{ readByRefPos: alignmentRead.readByRefPos, insertions: alignmentRead.insertions, name: alignmentReadName, aaEffects, onAcceptBase }] : [])
+      ).map((rd, i) => (
+        <AlignmentReadTrack
+          key={`read-${i}`}
+          lineStart={line.start}
+          lineLen={line.seq.length}
+          charPx={charPx}
+          labelChars={LABEL_WIDTH}
+          alignmentRead={rd}
+          colorMode={alignmentColorMode}
+          readName={rd.name}
+          aaEffects={rd.aaEffects}
+          doublePeaks={rd.doublePeaks}
+          isConsensus={rd.isConsensus}
+          onAcceptBase={rd.onAcceptBase}
+        />
+      ))}
+      {tracksReady && !(alignmentReads && alignmentReads.length) && alignmentRead && chromatogram ? (
+        <AlignmentChromatogramTrack
+          lineStart={line.start}
+          lineLen={line.seq.length}
+          charPx={charPx}
+          labelChars={LABEL_WIDTH}
+          alignmentRead={alignmentRead}
+          chromatogram={chromatogram}
+          maxVal={chromatogramMaxVal}
+        />
+      ) : null}
+      {tracksReady && showAATrack ? (
         <AATrack
           fullSeq={fullSeq}
           lineStart={line.start}
@@ -431,9 +547,10 @@ const SequenceLine = memo(function SequenceLine({
           regions={features}
           strandFilter="forward"
           visibleFrames={visibleFrames}
+          terminalCut={terminalStagger ? { left: !!terminalStagger.left, right: !!terminalStagger.right } : null}
         />
       ) : null}
-      {tracksReady && renderHybrid ? (
+      {tracksReady && showAATrack && renderHybrid ? (
         <AATrack
           fullSeq={fullSeq}
           lineStart={line.start}
@@ -450,6 +567,6 @@ const SequenceLine = memo(function SequenceLine({
       ) : null}
     </div>
   );
-});
+}, sequenceLineEqual);
 
 export default SequenceLine;

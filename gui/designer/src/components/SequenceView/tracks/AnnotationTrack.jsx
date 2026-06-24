@@ -37,6 +37,7 @@ import { chevronPath } from "./annotation-geometry.js";
 import { regionKey, labelLengthChars } from "./annotation-layout.js";
 import { LabelText } from "./AnnotationLabel.jsx";
 import { SubFeatureOverlay } from "./SubFeatureOverlay.jsx";
+import { GeneExonRects } from "./GeneExonRects.jsx";
 import { AnnotationWrapRows } from "./AnnotationWrapRows.jsx";
 
 /**
@@ -363,6 +364,13 @@ function AnnotationTrack({
           // wrap-stack map below (not a per-real-region segment), so this
           // real-segment render only paints the real half + its own label.
 
+          // «Вариант A» — a gene/CDS that has intron children renders as exon
+          // blocks + dashed intron connectors (GeneExonRects) instead of one
+          // solid rect; the intron is a `detail` under the gene (3-level model).
+          const geneIntronKids = (detailsByParent.get(region.id) || []).filter(
+            (k) => k && k.type === 'intron',
+          );
+
           return (
             <Fragment key={`${region.id || region.start + ":" + region.end}-r${rowIdx}`}>
             <g
@@ -386,6 +394,22 @@ function AnnotationTrack({
               transform={`translate(${xLeft}, ${yTop})`}
               style={{ cursor: "pointer", opacity: isBeingDragged ? 0.4 : 1 }}
             >
+              {geneIntronKids.length > 0 ? (
+                <GeneExonRects
+                  region={region}
+                  intronKids={geneIntronKids}
+                  charPx={charPx}
+                  lineStart={lineStart}
+                  lineEnd={lineEnd}
+                  fill={fill}
+                  fillOpacity={rectFillOpacity}
+                  stroke={rectStroke}
+                  strokeWidth={rectStrokeWidth}
+                  strokeDash={rectStrokeDash}
+                  onAnnotationClick={onAnnotationClick}
+                  onAnnotationFeatureDoubleClick={onAnnotationFeatureDoubleClick}
+                />
+              ) : (
               <rect
                 data-region-id={region.id || ''}
                 data-region-predicted={isPredicted ? 'true' : undefined}
@@ -422,6 +446,7 @@ function AnnotationTrack({
                   onAnnotationFeatureDoubleClick(region);
                 }}
               />
+              )}
               {drawChevron ? (
                 <path
                   d={chevronPath(strand, strand === -1 ? 0 : widthRect, 0, ROW_HEIGHT)}

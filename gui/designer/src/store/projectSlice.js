@@ -2,6 +2,7 @@ import { v7 as uuidv7 } from 'uuid';
 import { putProject, getProject, deleteProject as dexieDeleteProject, listAllProjects } from '../db/dexie-schema';
 import { acquireProjectLock } from '../lib/multi-tab-lock';
 import { addFolder } from '../components/Library/lib/folder-tree';
+import { pickUniqueProjectName } from '../lib/project-naming';
 
 const _lockReleaseFns = new Map();
 const _isTestEnv = typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'test';
@@ -187,7 +188,12 @@ export const createProjectSlice = (set, get) => ({
   _projectLifecycle: {},
 
   createProject: (name = 'Untitled') => {
-    const project = makeBlankProject(name);
+    // Единый знаменатель (Игорь 23.06): uniqueness lives HERE so NO create entry
+    // point (main «+ Создать проект», sidebar, Library «+ Проект», Ctrl+N) can
+    // spawn infinite same-named «Новый проект» — they all funnel through this and
+    // get «Новый проект», «Новый проект 2», … A non-colliding name is unchanged.
+    const uniqueName = pickUniqueProjectName(get().projects, name);
+    const project = makeBlankProject(uniqueName);
     set(state => {
       state.projects[project.id] = project;
       state.currentProjectId = project.id;

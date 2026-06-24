@@ -16,6 +16,7 @@ import React from 'react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import { useStore } from '../../../store';
+import { FEATURE_FLAGS } from '../../../lib/feature-flags';
 import { resetDBForTests } from '../../../db/dexie-schema';
 import LibraryWorkspace from '../LibraryWorkspace';
 import { queueImporterFiles, peekImporterFiles } from '../lib/pending-files';
@@ -82,6 +83,9 @@ beforeEach(async () => {
   });
 });
 afterEach(cleanup);
+// Дубль «+ Проект» скрыт по умолчанию (dedupeCreateProject); тесты ниже
+// тестируют его flow на rollback-пути — восстанавливаем флаг после каждого.
+afterEach(() => { FEATURE_FLAGS.dedupeCreateProject = true; });
 
 describe('M-X.7a v2 K4 — LibraryWorkspace', () => {
   it('renders the empty-state CTA when no entries exist', () => {
@@ -138,6 +142,7 @@ describe('M-X.7a v2 K4 — LibraryWorkspace', () => {
   it('«+ Проект» in the tree creates a project + opens the info modal (project hub)', async () => {
     await useStore.getState().addLibraryEntry(makeContainer({ id: 'e1', zone: 'loose' }));
     useStore.setState((s) => { s.projects = {}; s.currentProjectId = null; });
+    FEATURE_FLAGS.dedupeCreateProject = false; // показать дубль «+ Проект» для теста его flow
     render(<LibraryWorkspace />);
     fireEvent.click(screen.getByTestId('tree-add-project-btn'));
     await waitFor(() => {
@@ -152,6 +157,7 @@ describe('M-X.7a v2 K4 — LibraryWorkspace', () => {
       s.projects = { p1: { id: 'p1', name: 'Новый проект', containerIds: [], projectCommitIds: [], primerIds: [], tags: [], description: '' } };
       s.currentProjectId = 'p1';
     });
+    FEATURE_FLAGS.dedupeCreateProject = false; // показать дубль «+ Проект» для теста его flow
     render(<LibraryWorkspace />);
     fireEvent.click(screen.getByTestId('tree-add-project-btn'));
     await waitFor(() => expect(Object.keys(useStore.getState().projects).length).toBe(2));
@@ -166,6 +172,7 @@ describe('M-X.7a v2 K4 — LibraryWorkspace', () => {
       s.projects = { p1: { id: 'p1', name: 'MyVector', containerIds: [], projectCommitIds: [], primerIds: [], tags: [], description: '' } };
       s.currentProjectId = 'p1';
     });
+    FEATURE_FLAGS.dedupeCreateProject = false; // показать дубль «+ Проект» для теста его flow
     render(<LibraryWorkspace />);
     fireEvent.click(screen.getByTestId('tree-add-project-btn'));
     await waitFor(() => expect(Object.keys(useStore.getState().projects).length).toBe(2));
@@ -227,7 +234,8 @@ describe('M-X.7a v2 K4 — LibraryWorkspace', () => {
     fireEvent.click(screen.getByTestId('tree-item-project-a1'));
     const row = screen.getByTestId('library-action-row');
     expect(row.getAttribute('data-zone')).toBe('active_bodge');
-    // Active-zone primary action is «Container Window».
-    expect(screen.getByTestId('library-action-containerWindow')).toBeTruthy();
+    // Active-zone working actions (Container Window / DAG stubs removed 17.06.2026).
+    expect(screen.getByTestId('library-action-extractToLoose')).toBeTruthy();
+    expect(screen.getByTestId('library-action-delete')).toBeTruthy();
   });
 });

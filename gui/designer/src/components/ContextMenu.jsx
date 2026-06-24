@@ -8,6 +8,15 @@
  */
 import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { Icon } from './icons/Icon';
+
+// `item.icon` accepts an Icon NAME (lowercase ascii like "trash" → rendered via
+// <Icon>), an emoji/string (rendered as text, back-compat), or a React node.
+const ICON_NAME_RE = /^[a-z][a-z0-9-]*$/;
+function renderMenuIcon(icon) {
+  if (typeof icon === 'string' && ICON_NAME_RE.test(icon)) return <Icon name={icon} size={14} />;
+  return icon;
+}
 
 export default function ContextMenu({ items, position, onClose }) {
   const ref = useRef(null);
@@ -46,7 +55,7 @@ export default function ContextMenu({ items, position, onClose }) {
                 ? 'text-gray-300 cursor-default'
                 : 'text-gray-700 hover:bg-blue-50 hover:text-blue-700'
               }`}>
-            {item.icon && <span className="text-sm w-5 text-center">{item.icon}</span>}
+            {item.icon && <span className="text-sm w-5 text-center inline-flex items-center justify-center">{renderMenuIcon(item.icon)}</span>}
             <div className="flex-1 min-w-0">
               <span className={`truncate block ${item.danger ? 'text-red-600' : ''}`}>{item.label}</span>
               {item.description && (

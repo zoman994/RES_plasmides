@@ -2,7 +2,9 @@
  * VirtualOutputBadge — small status badge + tooltip for a virtual
  * product container. F4 M-CANVAS-PRODUCT (DEC-CANVAS-PROD-04).
  */
-const ICON = { incomplete: '⏳', disconnected: '⚠', valid: '🔬' };
+import { Icon } from '../../icons/Icon';
+
+const ICON = { incomplete: 'hourglass', disconnected: 'warning', valid: 'check' };
 
 export default function VirtualOutputBadge({ virtualState, warnings = [] }) {
   if (!virtualState) return null;
@@ -33,9 +35,14 @@ export default function VirtualOutputBadge({ virtualState, warnings = [] }) {
         boxShadow: '0 1px 3px rgba(28,25,23,0.18)',
         zIndex: 6,
         pointerEvents: 'auto',
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
       }}
     >
-      {ICON[virtualState] || '•'}
+      {ICON[virtualState]
+        ? <Icon name={ICON[virtualState]} size={13} aria-hidden="true" />
+        : '•'}
     </div>
   );
 }

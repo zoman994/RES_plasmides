@@ -16,6 +16,7 @@ import {
 } from 'react';
 import { useSkeletonState, useSkeletonActions } from '../store/skeleton-context';
 import { nodeListInZone } from '../lib/zone-model';
+import { derivePiecesToGraph } from '../lib/pieces-to-dag-preview';
 import ZoneGraphContent from '../canvas/ZoneGraphContent';
 import {
   graphContentBBox, zoomAtPoint, fitZoomToContent, ZOOM_MIN, ZOOM_MAX,
@@ -38,7 +39,17 @@ const zoomBtnStyle = {
 export default function AssemblyDagView({ zoneId }) {
   const state = useSkeletonState();
   const actions = useSkeletonActions();
-  const { containers, operations } = nodeListInZone(state, zoneId);
+  // «Живой вывод из кусков» (Игорь 22.06): the DAG is a derived projection of the
+  // recipe — picking a piece shows source→Cut→fragment immediately, no «Реализовать».
+  // Fall back to the stored realised nodes when the zone has no pieces (back-compat
+  // for already-materialised graphs).
+  const { containers, operations } = useMemo(() => {
+    const zone = (state.zones || []).find((z) => z.id === zoneId);
+    const hasPieces = (state.pieces || []).some((p) => p.zoneId === zoneId);
+    if (zone && hasPieces) return derivePiecesToGraph(state, zone);
+    const nl = nodeListInZone(state, zoneId);
+    return { containers: nl.containers, operations: nl.operations };
+  }, [state, zoneId]);
   const empty = containers.length === 0 && operations.length === 0;
   const { width: contentW, height: contentH } = useMemo(
     () => graphContentBBox(containers, operations),

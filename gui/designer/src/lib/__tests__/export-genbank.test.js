@@ -4,6 +4,7 @@
 import { describe, it, expect } from 'vitest';
 import { unzipSync, strFromU8 } from 'fflate';
 import { entryToGenbank, buildProjectZipBytes } from '../export-genbank';
+import { parseGenBank } from '../../genbank-parser';
 
 function makeEntry(over = {}) {
   return {
@@ -54,6 +55,34 @@ describe('entryToGenbank', () => {
     // First positional line begins at column 1; second at 61.
     expect(gb).toMatch(/^\s+1 a{10} a{10} a{10} a{10} a{10} a{10}$/m);
     expect(gb).toMatch(/^\s+61 a{10}$/m);
+  });
+});
+
+describe('entryToGenbank — spliced CDS join()', () => {
+  const spliced = (strand) => [
+    { id: 'cds1', start: 0, end: 30, type: 'CDS', name: 'glaA', strand, level: 'region' },
+    { id: 'i1', start: 10, end: 20, type: 'intron', name: 'интрон 1', strand, level: 'detail', regionId: 'cds1' },
+  ];
+
+  it('writes a spliced CDS as join(exons) and round-trips the exons through the parser', () => {
+    const gb = entryToGenbank(makeEntry({ sequence: 'a'.repeat(30), annotations: spliced(1) }));
+    expect(gb).toMatch(/CDS\s+join\(1\.\.10,21\.\.30\)/);
+    const parsed = parseGenBank(gb);
+    const cds = parsed.features.find((f) => f.type === 'CDS');
+    expect(cds.qualifiers.exons).toEqual([{ start: 0, end: 10 }, { start: 20, end: 30 }]);
+  });
+
+  it('reverse-strand spliced CDS → complement(join(...))', () => {
+    const gb = entryToGenbank(makeEntry({ sequence: 'a'.repeat(30), annotations: spliced(-1) }));
+    expect(gb).toMatch(/CDS\s+complement\(join\(1\.\.10,21\.\.30\)\)/);
+  });
+
+  it('a single-exon CDS (no introns) keeps a plain span', () => {
+    const gb = entryToGenbank(makeEntry({
+      annotations: [{ id: 'c', start: 0, end: 12, type: 'CDS', name: 'x', strand: 1, level: 'region' }],
+    }));
+    expect(gb).toMatch(/CDS\s+1\.\.12/);
+    expect(gb).not.toMatch(/join\(/);
   });
 });
 

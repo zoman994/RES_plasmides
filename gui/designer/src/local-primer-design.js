@@ -223,6 +223,15 @@ export function designPrimersLocal(fragments, junctions, circular, opts = {}) {
   const primers = [];
   const warnings = [];
 
+  // Surface method-bearing junctions that lack their enzyme: the tail comes out
+  // empty (no RE site), so the primers LOOK valid but won't ligate — don't fail
+  // silently (overlapTail can't reach `warnings` from inside).
+  (junctions || []).forEach((j, i) => {
+    if (j && (j.type === 'ligation' || j.type === 're_ligation') && !j.enzyme) {
+      warnings.push(`Стык ${i + 1}: RE-лигирование без выбранного фермента — хвост праймера пуст, RE-сайт не добавлен.`);
+    }
+  });
+
   if (fragments.length < 2) {
     if (fragments.length === 1) {
       // V24 (Sprint X K6): single-circular self-closure via overhang tails.

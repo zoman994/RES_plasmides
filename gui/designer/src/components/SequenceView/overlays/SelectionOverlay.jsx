@@ -24,6 +24,7 @@
 
 import { useLayoutEffect, useState } from "react";
 import { LABEL_WIDTH } from "../constants.js";
+import { complementSegments } from "../lib/selection-ops.js";
 
 export default function SelectionOverlay({
   caretPos,
@@ -36,6 +37,18 @@ export default function SelectionOverlay({
   selectionStrand,
   selectionFrame,
   seqLength = 0,
+  // «Инвертировать выделение» — paint the COMPLEMENT of [anchor,focus]
+  // (everything except the selection) as two main segments.
+  inverted = false,
+  // «Липкие концы» — { leftDelta, rightDelta, … } when the selection ends sit
+  // on restriction cuts; the bottom strand highlight is offset by the overhang
+  // so the staggered cut is visible.
+  stickyEnds = null,
+  // «Тянуть до конца» (Игорь 22.06): { rightLen, leftLen, … } for a LINEAR
+  // fragment whose terminal overhang protrudes past the duplex. When the
+  // selection reaches into it, an extra rect covers the overhang columns so the
+  // band continues to the visual end. Null otherwise.
+  terminalSelect = null,
   // V96 — bumped by SequenceView whenever the lines reflow (two-phase
   // tracksReady flip, wrap-tail, charsPerLine). Re-measures the rects
   // against the final layout without waiting for a caret-moving click.
@@ -56,6 +69,42 @@ export default function SelectionOverlay({
     const cpl = charsPerLine || 80;
     const lines = root.querySelectorAll('[data-testid="sequence-view-line"]');
 
+    // STICKY ENDS — selection ends on restriction cuts → the two strands are
+    // cut staggered by the overhang. Paint the top + bottom strand highlights
+    // SEPARATELY, the bottom offset by the per-end delta, so the «ступенька»
+    // (sticky end) shows. Translucency makes the double-stranded core read
+    // darker than the single-stranded overhang slivers. Non-wrapped DNA with a
+    // bottom strand only; blunt (0/0) falls through to the combined rect.
+    const sLo = Math.min(caretAnchor, caretPos);
+    const sHi = Math.max(caretAnchor, caretPos);
+    const stickyActive = stickyEnds && !inverted && selectionMode === 'dna'
+      && showBottomStrand && (stickyEnds.leftDelta || stickyEnds.rightDelta)
+      && sLo >= 0 && sHi <= seqLength;
+    if (stickyActive) {
+      const ranges = { top: [sLo, sHi], bottom: [sLo + stickyEnds.leftDelta, sHi + stickyEnds.rightDelta] };
+      const out = [];
+      const pushStrand = (el, strandEl, range, tag) => {
+        if (!strandEl) return;
+        const lineStart = parseInt(el.dataset.lineStart || '', 10);
+        if (Number.isNaN(lineStart)) return;
+        const lineEnd = lineStart + cpl;
+        const segStart = Math.max(range[0], lineStart);
+        const segEnd = Math.min(range[1], lineEnd);
+        if (segEnd <= segStart) return;
+        const left = (el.offsetLeft || 0) + (LABEL_WIDTH + (segStart - lineStart)) * charPx;
+        const width = (segEnd - segStart) * charPx;
+        const top = el.offsetTop + strandEl.offsetTop;
+        out.push({ left, top, width, height: strandEl.offsetHeight, key: `${lineStart}:${tag}`, kind: 'dna', strand: tag });
+      };
+      for (const el of lines) {
+        if ((el.getAttribute('data-wraptail-kind') || 'main') !== 'main') continue;
+        pushStrand(el, el.querySelector('[data-testid="sequence-view-strands-top"]'), ranges.top, 'top');
+        pushStrand(el, el.querySelector('[data-testid="sequence-view-strands-bottom"]'), ranges.bottom, 'bottom');
+      }
+      setRects(out);
+      return undefined;
+    }
+
     // Round-8 wrap-aware selection: each end of [anchor, caret] may
     // live in extended domain (negative = leading-wrap, > seqLength
     // = trailing-wrap). The selection is one-or-two rect segments
@@ -69,7 +118,16 @@ export default function SelectionOverlay({
     //         segment 2 in trailing-wrap [0 .. end-seqLen)
     // Anchor stays in main band by construction (the resolver gates
     // the initial click). caret may have wrapped in either direction.
-    const segments = computeSegments(caretAnchor, caretPos, seqLength);
+    // Inverted = «выделить ВСЁ, кроме выделенного руками куска» (Игорь 22.06): the
+    // COMPLEMENT becomes the orange selection, and the hand-picked piece [lo,hi] is
+    // de-selected and rendered as a dim SHADE so it reads as the excluded part.
+    // Normal = just the [lo,hi] selection, orange.
+    const segments = inverted
+      ? [
+        ...complementSegments(sLo, sHi, seqLength).map((s) => ({ ...s, dim: false })),
+        ...computeSegments(caretAnchor, caretPos, seqLength).map((s) => ({ ...s, dim: true })),
+      ]
+      : computeSegments(caretAnchor, caretPos, seqLength);
     const out = [];
     // Round-13: locate the wrap-bridge row (line carrying
     // `data-wraps-origin="true"`) so trailing-wrap segments can
@@ -124,7 +182,7 @@ export default function SelectionOverlay({
         dnaTop = el.offsetTop;
         dnaHeight = Math.max(8, el.offsetHeight - 14);
       }
-      out.push({ left, top: dnaTop, width, height: dnaHeight, key: `${lineStart}:dna`, kind: "dna" });
+      out.push({ left, top: dnaTop, width, height: dnaHeight, key: `${lineStart}:dna${seg.dim ? ':dim' : ''}`, kind: "dna", dim: !!seg.dim });
 
       // AA letter blocks (blue) — only when biolog explicitly selected
       // a CDS feature / dragged AA cells. Bug-rush #8 (04.05.2026):
@@ -132,7 +190,7 @@ export default function SelectionOverlay({
       // all rendered, the strand filter let through every forward row
       // even though the CDS only occupies ONE reading frame. Now we
       // also match by `data-aa-frame` so exactly one row glows blue.
-      if (selectionMode === "aa") {
+      if (selectionMode === "aa" && !inverted) {
         const targetStrand = selectionStrand === -1 ? -1 : 1;
         const aaRows = el.querySelectorAll('[data-testid="sequence-view-aa-row"]');
         for (const aaRow of aaRows) {
@@ -194,9 +252,61 @@ export default function SelectionOverlay({
         }
       }
     }
+
+    // «Тянуть до конца» (Игорь 22.06): an additive rect over the protruding
+    // terminal overhang when the selection reaches past the duplex. DNA mode only
+    // (the overhang is single-stranded, no AA). Column math mirrors StrandsTrack:
+    // the right overhang sits at [LABEL_WIDTH + lineLen ..], the left in the gutter.
+    if (terminalSelect && selectionMode !== 'aa' && !inverted) {
+      const spans = terminalOverhangSpans(caretAnchor, caretPos, seqLength, terminalSelect);
+      for (const sp of spans) {
+        let target = null;
+        for (const el of lines) {
+          if ((el.getAttribute('data-wraptail-kind') || 'main') !== 'main') continue;
+          const ls = parseInt(el.dataset.lineStart || '', 10);
+          if (Number.isNaN(ls)) continue;
+          const ll = Math.min(cpl, seqLength - ls);
+          if (sp.end === 'right' && ls + ll >= seqLength) target = { el, ll };
+          if (sp.end === 'left' && ls === 0) { target = { el, ll }; break; }
+        }
+        if (!target) continue;
+        const { el, ll } = target;
+        const topStrand = el.querySelector('[data-testid="sequence-view-strands-top"]');
+        let dnaTop;
+        let dnaHeight;
+        if (topStrand) {
+          const bottomStrand = el.querySelector('[data-testid="sequence-view-strands-bottom"]');
+          dnaTop = el.offsetTop + topStrand.offsetTop;
+          dnaHeight = bottomStrand
+            ? (el.offsetTop + bottomStrand.offsetTop + bottomStrand.offsetHeight) - dnaTop
+            : topStrand.offsetHeight;
+        } else {
+          dnaTop = el.offsetTop;
+          dnaHeight = Math.max(8, el.offsetHeight - 14);
+        }
+        let leftCol;
+        let widthCols;
+        if (sp.end === 'right') {
+          leftCol = LABEL_WIDTH + ll;
+          widthCols = sp.len;
+        } else {
+          leftCol = Math.max(0, LABEL_WIDTH - sp.len);
+          widthCols = Math.min(sp.len, LABEL_WIDTH);
+        }
+        out.push({
+          left: (el.offsetLeft || 0) + leftCol * charPx,
+          top: dnaTop,
+          width: widthCols * charPx,
+          height: dnaHeight,
+          key: `term-${sp.end}`,
+          kind: 'dna',
+          terminalEnd: sp.end,
+        });
+      }
+    }
     setRects(out);
     return undefined;
-  }, [caretPos, caretAnchor, charPx, charsPerLine, containerRef, showBottomStrand, selectionMode, selectionStrand, selectionFrame, seqLength, layoutEpoch]);
+  }, [caretPos, caretAnchor, charPx, charsPerLine, containerRef, showBottomStrand, selectionMode, selectionStrand, selectionFrame, seqLength, layoutEpoch, inverted, stickyEnds, terminalSelect]);
 
   if (rects.length === 0) return null;
   return (
@@ -208,24 +318,52 @@ export default function SelectionOverlay({
             key={r.key}
             data-testid={isAa ? "sequence-view-selection-aa" : "sequence-view-selection"}
             data-selection-kind={r.kind}
+            data-strand={r.strand || undefined}
+            data-terminal-end={r.terminalEnd || undefined}
+            data-inverted={r.dim ? "true" : undefined}
             style={{
               position: "absolute",
               left: r.left,
               top: r.top,
               width: r.width,
               height: r.height,
-              background: isAa
-                ? "rgba(59, 130, 246, 0.22)"   // blue-500 @ 22%
-                : "rgba(249, 115, 22, 0.22)",  // orange-500 @ 22%
-              outline: "0.5px solid rgba(0, 0, 0, 0.35)",
+              // `dim` rects = the hand-picked piece EXCLUDED by an inverted
+              // selection — the SAME light veil the out-of-range mask uses for the
+              // un-selected area in a normal selection (Игорь 23.06: «думал, оно
+              // будет белым затеняться, как невыбранная область»). Everything else
+              // is the normal selection band: orange (DNA) / blue (AA).
+              background: r.dim
+                ? "rgba(245, 245, 244, 0.65)"  // matches OutOfRangeMaskOverlay
+                : isAa
+                  ? "rgba(59, 130, 246, 0.22)" // blue-500 @ 22%
+                  : "rgba(249, 115, 22, 0.22)", // orange-500 @ 22%
+              outline: r.dim ? "none" : "0.5px solid rgba(0, 0, 0, 0.35)",
               pointerEvents: "none",
-              zIndex: 4,
+              zIndex: r.dim ? 5 : 4,
             }}
           />
         );
       })}
     </>
   );
+}
+
+/**
+ * terminalOverhangSpans — which protruding terminal overhangs the selection
+ * [anchor,caret] reaches into, and how many columns of each. Right when the
+ * selection's max > seqLength, left when its min < 0. Pure; returns [] when
+ * terminalSelect is null or the selection stays within the duplex.
+ */
+export function terminalOverhangSpans(anchor, caret, seqLength, terminalSelect) {
+  if (!terminalSelect || !Number.isFinite(anchor) || !Number.isFinite(caret)) return [];
+  const lo = Math.min(anchor, caret);
+  const hi = Math.max(anchor, caret);
+  const rLen = terminalSelect.rightLen || 0;
+  const lLen = terminalSelect.leftLen || 0;
+  const spans = [];
+  if (rLen && hi > seqLength) spans.push({ end: 'right', len: Math.min(rLen, hi - seqLength) });
+  if (lLen && lo < 0) spans.push({ end: 'left', len: Math.min(lLen, -lo) });
+  return spans;
 }
 
 /**

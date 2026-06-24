@@ -3,12 +3,14 @@
  * (F3 DEC-CANVAS-PCR-03 #2). Only PCR is live in F3; the rest are
  * visible-but-disabled with a "следующий sprint" tooltip.
  */
+import { Icon } from '../../icons/Icon';
+
 const ICONS = [
-  { kind: 'pcr', icon: '🔬', label: 'PCR', enabled: true },
-  { kind: 'cut', icon: '✂️', label: 'Cut', enabled: false },
-  { kind: 'gibson', icon: '⚗️', label: 'Gibson', enabled: false },
-  { kind: 'mutagenesis', icon: '🧬', label: 'Mutate', enabled: false },
-  { kind: 'ligate', icon: '🧪', label: 'Ligate', enabled: false },
+  { kind: 'pcr', icon: 'pcr', label: 'PCR', enabled: true },
+  { kind: 'cut', icon: 'digest', label: 'Cut', enabled: false },
+  { kind: 'gibson', icon: 'mix', label: 'Gibson', enabled: false },
+  { kind: 'mutagenesis', icon: 'mutagenesis', label: 'Mutate', enabled: false },
+  { kind: 'ligate', icon: 'ligate', label: 'Ligate', enabled: false },
 ];
 
 export default function HoverOpIconRow({ container, onPickKind }) {
@@ -42,7 +44,8 @@ export default function HoverOpIconRow({ container, onPickKind }) {
             if (it.enabled) onPickKind?.(it.kind);
           }}
           style={{
-            fontSize: 13,
+            display: 'inline-flex',
+            alignItems: 'center',
             padding: '2px 6px',
             borderRadius: 4,
             border: '1px solid var(--border-subtle)',
@@ -50,7 +53,7 @@ export default function HoverOpIconRow({ container, onPickKind }) {
             cursor: it.enabled ? 'pointer' : 'not-allowed',
             opacity: it.enabled ? 1 : 0.4,
           }}
-        >{it.icon}</button>
+        ><Icon name={it.icon} size={14} /></button>
       ))}
     </div>
   );

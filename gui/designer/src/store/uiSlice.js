@@ -95,6 +95,9 @@ export const SEQUENCE_VIEW_DEFAULTS = Object.freeze({
   // the popover. 'single' renders only the dominant CDS forward frame
   // (or nothing when no annotated CDS / dominant ORF is found).
   framesMode: 'single',
+  // RC-B1 (Игорь 24.06) — manual reading-frame override. null = авто (CDS-driven);
+  // 0|1|2 = pin AA translation to forward frame +1/+2/+3 across the whole sequence.
+  overrideFrame: null,
   autoThreshold: 0.8,
   // Per-frame visibility. Consulted when framesMode resolves to hybrid
   // (i.e. mode='all' OR mode='auto' with coverage <= threshold). Lets
@@ -159,6 +162,7 @@ function loadInitialSequenceView() {
     framesMode: FRAMES_MODES.includes(raw.framesMode)
       ? raw.framesMode
       : SEQUENCE_VIEW_DEFAULTS.framesMode,
+    overrideFrame: [0, 1, 2].includes(raw.overrideFrame) ? raw.overrideFrame : null,
     autoThreshold:
       typeof raw.autoThreshold === 'number' && raw.autoThreshold >= 0.5 && raw.autoThreshold <= 0.95
         ? raw.autoThreshold
@@ -396,6 +400,7 @@ export const createUiSlice = (set) => ({
     if (key === 'reOrientation' && !RE_ORIENTATIONS.includes(value)) return;
     if (key === 'showBottomStrand' && typeof value !== 'boolean') return;
     if (key === 'scrollOnFeatureClick' && typeof value !== 'boolean') return;
+    if (key === 'overrideFrame' && !(value === null || value === 0 || value === 1 || value === 2)) return;
     if (key === 'autoThreshold') {
       const v = Number(value);
       if (!Number.isFinite(v) || v < 0.5 || v > 0.95) return;

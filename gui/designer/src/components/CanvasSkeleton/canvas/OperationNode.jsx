@@ -23,6 +23,7 @@ import { memo } from 'react';
 import { OPERATION_NODE_W, OPERATION_NODE_H } from './canvas-layout';
 import OpIcon from './op-icons';
 import { operationColor, OP_NEUTRAL } from './op-colors';
+import { Icon } from '../../icons/Icon';
 
 // T15 (14.05.2026) — emoji icons заменены на SVG (OpIcon component).
 // Map оставлен для legacy commit shim'а (V1 commits, mix→gibson).
@@ -85,7 +86,7 @@ function statusVisual(status, kind) {
         strokeWidth: 2,
         strokeDasharray: 'none',
         textColor: '#14532d',
-        badge: '✓',
+        badge: 'check',
         badgeColor: '#16a34a',
       };
     case 'failed':
@@ -146,7 +147,7 @@ function OperationNode({ operation, commit, highlighted, onClick, onContextMenu 
 
   const visual = statusVisual(op.status, op.kind);
   const useSvgIcon = !!op.kind;
-  const fallbackIcon = op.kind ? (KIND_ICONS[op.kind] || '⚙') : '+';
+  const fallbackIcon = op.kind ? (KIND_ICONS[op.kind] || 'settings') : '+';
   // L1 (audit) — overlap_pcr maps to the 'gibson' op kind (shared overlap-blue
   // colour), but a LINEAR overlap-extension join is not Gibson. Relabel by the
   // recorded method so the DAG node reads honestly.
@@ -208,7 +209,7 @@ function OperationNode({ operation, commit, highlighted, onClick, onContextMenu 
         }}
       >
         <span data-testid="skeleton-op-icon" style={{ fontSize: 14, display: 'inline-flex', alignItems: 'center' }}>
-          {useSvgIcon ? <OpIcon kind={op.kind} size={14} /> : fallbackIcon}
+          {useSvgIcon ? <OpIcon kind={op.kind} size={14} /> : (fallbackIcon === '+' ? <Icon name="plus" size={14} /> : (fallbackIcon === 'settings' ? <Icon name="settings" size={14} /> : fallbackIcon))}
         </span>
         <span data-testid="skeleton-op-label" style={{ fontWeight: 500 }}>{label}</span>
       </div>
@@ -233,7 +234,7 @@ function OperationNode({ operation, commit, highlighted, onClick, onContextMenu 
             pointerEvents: 'none',
             boxShadow: '0 1px 2px rgba(0,0,0,0.18)',
           }}
-        >{visual.badge}</div>
+        >{visual.badge === 'check' ? <Icon name="check" size={12} /> : visual.badge}</div>
       )}
     </div>
   );

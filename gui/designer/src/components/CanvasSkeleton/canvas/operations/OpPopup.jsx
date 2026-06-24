@@ -13,6 +13,7 @@
  * Hard cap по DEC-OPS-06: 8 KB на kind-specific popup; base ≤4 KB.
  */
 import { useEffect, useRef } from 'react';
+import { Icon } from '../../../icons/Icon';
 
 const STATUS_BADGES = {
   draft: { label: 'draft', color: '#a8a29e', bg: '#f5f5f4' },
@@ -25,7 +26,7 @@ export default function OpPopup({
   operation,
   position = { x: 100, y: 100 },
   title = '',
-  icon = '⚙',
+  icon = 'settings',
   children,
   onCancel,
   onExecute,
@@ -92,7 +93,7 @@ export default function OpPopup({
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 16 }}>{icon}</span>
+          <Icon name={icon} size={16} aria-hidden="true" />
           <strong data-testid="op-popup-title" style={{ fontSize: 14 }}>{title}</strong>
           {badge && (
             <span
@@ -120,8 +121,10 @@ export default function OpPopup({
             fontSize: 16,
             color: 'var(--text-tertiary, #a8a29e)',
             padding: 2,
+            display: 'inline-flex',
+            alignItems: 'center',
           }}
-        >✕</button>
+        ><Icon name="close" size={16} /></button>
       </div>
       <div data-testid="op-popup-body" style={{ padding: 12 }}>{children}</div>
       <div

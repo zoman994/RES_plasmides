@@ -103,6 +103,23 @@ export function operationsReducer(state, action) {
       return { ...state, operations: [...state.operations, op] };
     }
 
+    // Кирпич 3c — derive an op_mutagenesis node from an in-editor edit, with
+    // kind + inputs + params (+ zoneId) set in ONE pass (createOperationDraft
+    // ignores params, so the popup-driven OP_ADD→OP_SET_KIND→OP_SET_PARAMS
+    // dance is short-circuited for the derived path).
+    case 'DERIVE_MUTAGENESIS_OP': {
+      const p = action.payload || {};
+      if (!p.params || !Array.isArray(p.params.mutations) || p.params.mutations.length === 0) return state;
+      const op = {
+        ...createOperationDraft({
+          kind: 'mutagenesis', inputs: p.inputs || [], position: p.position, commit: true,
+        }),
+        params: p.params,
+        zoneId: p.zoneId || null,
+      };
+      return { ...state, operations: [...state.operations, op] };
+    }
+
     case 'OP_REMOVE': {
       const idx = state.operations.findIndex((o) => o.id === action.operationId);
       if (idx < 0) return state;

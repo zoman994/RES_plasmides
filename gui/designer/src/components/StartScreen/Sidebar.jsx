@@ -10,13 +10,16 @@
  * click переключает workspace.active + canvas.activeFullscreen
  * to enter LibraryWorkspace per spec acceptance #10.
  */
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useStore } from '../../store';
 import { APP_VERSION } from '../../lib/version';
 import { STRINGS } from '../../lib/strings';
 import { openBodgeIntoLibrary } from './lib/open-bodge';
 import { promptInstall, isPwaInstalled } from '../../lib/pwa-install';
 import SidebarItem from './SidebarItem';
+import { Icon } from '../icons/Icon';
+import ProjectContextBar from './ProjectContextBar';
+import { FEATURE_FLAGS } from '../../lib/feature-flags';
 
 function Logo() {
   return (
@@ -48,6 +51,11 @@ export default function Sidebar({ collapsed, onToggle, onOpenHotkeys }) {
   const projectsById = useStore((s) => s.projects);
   const currentProjectId = useStore((s) => s.currentProjectId);
   const activateProject = useStore((s) => s.activateProject);
+  // UX_DIRECTION фаза 2 — список сборок активного проекта (раскрываются под
+  // проектом в рельсе). + мост открытия конкретной сборки.
+  const activeProjectAssemblies = useStore((s) => s.activeProjectAssemblies);
+  const refreshActiveProjectAssemblies = useStore((s) => s.refreshActiveProjectAssemblies);
+  const setPendingAssemblyId = useStore((s) => s.setPendingAssemblyId);
   // PWA install — `canInstallPwa` flips to `true` when the browser
   // fires `beforeinstallprompt` (caught in App.jsx). Already-
   // installed mode (standalone display) reports through
@@ -98,11 +106,35 @@ export default function Sidebar({ collapsed, onToggle, onOpenHotkeys }) {
   // (which the Sidebar handlers also drive). ⌂ Главная active when
   // viewing the StartScreen content; ▦ Библиотека active when on the
   // library workspace surface.
-  const isHomeActive = activeFullscreen === 'start';
-  const isLibraryActive = activeFullscreen === 'library' || activeWorkspace === 'library';
+  // 16.06.2026 — «Выравнивание» as a standalone tool. The fullscreen axis
+  // (start/library) is stale while a true workspace like align is active, so
+  // guard the Home/Library highlights off so only one nav item lights up.
+  const onAlign = activeWorkspace === 'align';
+  // RS-C3 — «Сайты рестрикции» standalone tool (same axis-staleness guard as align).
+  const onRestrictionSites = activeWorkspace === 'restriction-sites';
+  const isHomeActive = activeFullscreen === 'start' && !onAlign && !onRestrictionSites;
+  const isLibraryActive = (activeFullscreen === 'library' || activeWorkspace === 'library') && !onAlign && !onRestrictionSites;
+  const isAlignActive = onAlign;
+  const isRestrictionSitesActive = onRestrictionSites;
 
   const onLibraryClick = () => {
     setActiveWorkspace?.('library');
+    setActiveFullscreen?.('library');
+  };
+  const onAlignClick = () => {
+    // Opens the align workspace as a tool — pick a reference, then a read /
+    // second fragment (or use «Найти похожие»). Existing inputs are preserved.
+    // App.jsx shows the StartScreen whenever activeFullscreen === 'start', so we
+    // must also leave that surface (→ 'library', the AppShell/WorkspaceRouter
+    // surface) for the align workspace to actually render. The isLibraryActive
+    // guard (&& !onAlign) keeps only «Выравнивание» highlighted.
+    setActiveWorkspace?.('align');
+    setActiveFullscreen?.('library');
+  };
+  const onRestrictionSitesClick = () => {
+    // Same pattern as align: leave the start fullscreen → 'library' (the
+    // WorkspaceRouter surface) so the «Сайты рестрикции» workspace renders.
+    setActiveWorkspace?.('restriction-sites');
     setActiveFullscreen?.('library');
   };
   const onCreateProject = () => {
@@ -112,6 +144,8 @@ export default function Sidebar({ collapsed, onToggle, onOpenHotkeys }) {
     // автоматически — LibraryTreeRoot перебирает projectsById.
     // Модалка ProjectInfo открывается сразу — биолог задаёт имя /
     // описание / теги (точно так же, как делал handleNew по Ctrl N).
+    // Единый знаменатель: store.createProject auto-suffixes the name, so every
+    // create button just passes the base «Новый проект» (no per-caller dedup).
     createProject?.('Новый проект');
     setActiveWorkspace?.('library');
     setActiveFullscreen?.('library');
@@ -137,6 +171,27 @@ export default function Sidebar({ collapsed, onToggle, onOpenHotkeys }) {
   };
   const themeLabel = theme === 'dark' ? 'Тема: тёмная' : 'Тема: светлая';
 
+  // UX_DIRECTION фаза 2 — двухуровневый рельс: окна активного проекта.
+  const currentProjectName = projectsById?.[currentProjectId]?.name || 'проект';
+  const isAssemblyActive = activeFullscreen === 'canvasSkeleton';
+  const assemblies = Array.isArray(activeProjectAssemblies) ? activeProjectAssemblies : [];
+
+  // Грузим список сборок проекта из снапшота при СМЕНЕ проекта (стартовое
+  // состояние до открытия канваса). Пока канвас открыт, его SkeletonProvider
+  // LIVE-зеркалит зоны в `activeProjectAssemblies` — поэтому НЕ рефрешим на
+  // выходе из канваса (иначе дебаунс-снапшот мог бы затереть свежий список).
+  useEffect(() => {
+    refreshActiveProjectAssemblies?.();
+  }, [currentProjectId, refreshActiveProjectAssemblies]);
+
+  const openProjectCanvas = (assemblyId) => {
+    // Тот же проверенный путь, что MainPanel.handleProjectClick. Если задан
+    // assemblyId — ставим мост, SkeletonProvider сфокусирует эту сборку.
+    if (assemblyId) setPendingAssemblyId?.(assemblyId);
+    pushFullscreen?.({ fullscreen: 'canvasSkeleton', payload: { projectId: currentProjectId } });
+  };
+  const onOpenAssemblies = () => openProjectCanvas(null);
+
   return (
     <aside
       className={`sb ${collapsed ? 'collapsed' : 'expanded'}`}
@@ -158,7 +213,7 @@ export default function Sidebar({ collapsed, onToggle, onOpenHotkeys }) {
 
       <div className="sb-body">
         <SidebarItem
-          icon="+"
+          icon={<Icon name="plus" size={16} />}
           label="Создать проект"
           right="⌃N"
           tip="Создать проект (Ctrl N)"
@@ -167,7 +222,7 @@ export default function Sidebar({ collapsed, onToggle, onOpenHotkeys }) {
           testId="ss-action-create-project"
         />
         <SidebarItem
-          icon="↑"
+          icon={<Icon name="import" size={16} />}
           label={STRINGS.startScreen.loadBodge.replace(/^↑\s*/, '')}
           right="⌃O"
           tip="Загрузить .bodge (Ctrl O)"
@@ -175,7 +230,7 @@ export default function Sidebar({ collapsed, onToggle, onOpenHotkeys }) {
           testId="ss-action-open-bodge"
         />
         <SidebarItem
-          icon="⤓"
+          icon={<Icon name="import" size={16} />}
           label="Импорт .gb / .dna…"
           tip="Импорт .gb / .dna"
           // A23 (audit) — was a console.log stub. Route to the live import flow:
@@ -194,8 +249,13 @@ export default function Sidebar({ collapsed, onToggle, onOpenHotkeys }) {
           *   ▦ Библиотека (both open the Library, the project hub). ⌘P
           *   still jumps to the Library + focuses its search.
           */}
+        {/* UX_DIRECTION фаза 2 — заголовок группы кросс-проектных инструментов.
+            Gated → flag off убирает заголовок (рельс как раньше). */}
+        {FEATURE_FLAGS.twoLevelRail && (
+          <div className="sb-section" data-testid="sb-tools-header">Инструменты</div>
+        )}
         <SidebarItem
-          icon="⌂"
+          icon={<Icon name="home" size={16} />}
           label="Главная"
           tip="Главная"
           active={isHomeActive}
@@ -203,7 +263,7 @@ export default function Sidebar({ collapsed, onToggle, onOpenHotkeys }) {
           testId="ss-nav-home"
         />
         <SidebarItem
-          icon="▦"
+          icon={<Icon name="library" size={16} />}
           label="Библиотека"
           right="142"
           tip="Библиотека плазмид"
@@ -211,16 +271,89 @@ export default function Sidebar({ collapsed, onToggle, onOpenHotkeys }) {
           onClick={onLibraryClick}
           testId="ss-nav-library"
         />
+        <SidebarItem
+          icon={<Icon name="sequence" size={16} />}
+          label="Выравнивание"
+          tip="Выравнивание (референс ↔ чтение)"
+          active={isAlignActive}
+          onClick={onAlignClick}
+          testId="ss-nav-align"
+        />
+        <SidebarItem
+          icon={<Icon name="restriction" size={16} />}
+          label="Сайты рестрикции"
+          tip="Сайты рестрикции — свои ферменты + наборы"
+          active={isRestrictionSitesActive}
+          onClick={onRestrictionSitesClick}
+          testId="ss-nav-restriction-sites"
+        />
+
+        {/* UX_DIRECTION фаза 1 — активный проект виден ВСЕГДА (корень
+            «не понимаю, какой проект выбран»). Стоит между инструментами
+            (Главная/Библиотека/Выравнивание) и проектным блоком (В работе).
+            Gated флагом → откат мгновенный (FEATURE_FLAGS.projectContextBar=false). */}
+        {FEATURE_FLAGS.projectContextBar && (
+          <ProjectContextBar collapsed={collapsed} />
+        )}
+
+        {/* UX_DIRECTION фаза 2 — группа «ПРОЕКТ · {имя}»: окна активного `.bodge`.
+            Сборки РАСКРЫВАЮТСЯ из проекта (их может быть много, Игорь 19.06):
+            список сборок проекта + «+ Новая сборка». Клик по сборке открывает
+            канвас на ней (мост pendingAssemblyId). Показывается только когда
+            проект активен. Gated → flag off убирает блок. */}
+        {FEATURE_FLAGS.twoLevelRail && currentProjectId && (
+          <>
+            <div
+              className="sb-section"
+              data-testid="sb-project-header"
+              title={`Проект: ${currentProjectName}`}
+              style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+            >Проект · {currentProjectName}</div>
+            {assemblies.length === 0 ? (
+              <SidebarItem
+                icon={<Icon name="dna" size={16} />}
+                label="Создать сборку"
+                tip={`Сборки проекта «${currentProjectName}»`}
+                active={isAssemblyActive}
+                onClick={onOpenAssemblies}
+                testId="ss-nav-project-assemblies"
+              />
+            ) : (
+              <>
+                {assemblies.map((a) => (
+                  <SidebarItem
+                    key={a.id}
+                    icon={<Icon name="dna" size={16} />}
+                    label={a.name || 'Сборка'}
+                    tip={`Сборка «${a.name || 'Сборка'}»`}
+                    active={false}
+                    onClick={() => openProjectCanvas(a.id)}
+                    testId={`ss-nav-assembly-${a.id}`}
+                  />
+                ))}
+                <SidebarItem
+                  icon={<Icon name="plus" size={16} />}
+                  label="Новая сборка"
+                  tip="Создать новую сборку в проекте"
+                  active={false}
+                  onClick={onOpenAssemblies}
+                  testId="ss-nav-assembly-new"
+                />
+              </>
+            )}
+          </>
+        )}
+
         {/* «📂 Все проекты» removed — it just opened the Library (same as the
             ▦ Библиотека item above). Projects live in the Library; quick-find
             is its search (⌘P still jumps there). */}
 
-        {/*
-          * M-X.8 K3 — «PINNED» section. Pinned projects from
-          * `state.pinnedProjectIds`; current project marked with
-          * a green dot ●. Click activates + jumps to library.
-          * Footer button opens the Command Palette (⌘P).
-          */}
+        {/* «В работе» (закреплённые проекты) убраны при twoLevelRail (Игорь
+            19.06): быстрый переключатель проектов теперь в дропдауне карточки
+            активного проекта, а под проектом раскрываются его сборки. Gated →
+            flag off возвращает секцию (откат). */}
+        {!FEATURE_FLAGS.twoLevelRail && (
+        <>
         <div
           className="sb-section"
           data-testid="sb-pinned-header"
@@ -254,6 +387,8 @@ export default function Sidebar({ collapsed, onToggle, onOpenHotkeys }) {
             />
           );
         })}
+        </>
+        )}
         {/* MS-K1: «Все проекты» moved up into the main nav block above;
           * standalone Ctrl+P row + СПРАВКА section + Руководство + Хоткеи
           * items removed (Help moved to the main header «? Помощь» popover
@@ -265,14 +400,14 @@ export default function Sidebar({ collapsed, onToggle, onOpenHotkeys }) {
           * existing onInstallClick handler stays callable so the new
           * Settings section can wire to the same callback. */}
         <SidebarItem
-          icon="◐"
+          icon={<Icon name={theme === 'dark' ? 'moon' : 'sun'} size={16} />}
           label={themeLabel}
           tip={`Тема: ${theme} (клик переключит)`}
           onClick={onThemeToggle}
           testId="ss-foot-theme"
         />
         <SidebarItem
-          icon="⚙"
+          icon={<Icon name="settings" size={16} />}
           label="Настройки"
           tip="Настройки (Ctrl ,)"
           onClick={onSettingsClick}

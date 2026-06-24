@@ -10,11 +10,15 @@
  * setState — методы `setShowReSites/setReFilter` в v0.6 store
  * отсутствуют, но запись через `useStore.setState` работает.
  */
+import { useMemo } from 'react';
 import { useStore } from '../../store';
+import { selectAllEnzymeSets } from '../../store/customEnzymesSlice';
+import { Icon } from '../icons/Icon';
 
 const FILTERS = [
   { id: 'all',    label: 'Все',         desc: 'Все сайты' },
   { id: 'unique', label: 'Уникальные',  desc: 'Сайты с 1 разрезом' },
+  { id: 'cut2',   label: '2 разреза',   desc: 'Сайты ровно с 2 разрезами' },
   { id: 'double', label: '≤ 2 разрезов', desc: 'Сайты с 1-2 разрезами' },
 ];
 
@@ -24,12 +28,25 @@ export default function RestrictionPanel() {
   const showReSites = useStore((s) => s.showReSites);
   const reFilter = useStore((s) => s.reFilter) || 'all';
   const reMinSiteLen = useStore((s) => s.reMinSiteLen) || 6;
+  // RS-B3 — named setters from restrictionViewSlice (replace ad-hoc setState).
+  const toggleReSites = useStore((s) => s.toggleReSites);
+  const setReFilter = useStore((s) => s.setReFilter);
+  const setReMinSiteLen = useStore((s) => s.setReMinSiteLen);
+  // RS-C4 — «active set»: restrict visible sites to one enzyme set (presets +
+  // user sets from «Сайты рестрикции»). Subscribe to the raw sets slice + derive
+  // (the array-returning selector would loop through useStore).
+  const reActiveSet = useStore((s) => s.reActiveSet);
+  const setReActiveSet = useStore((s) => s.setReActiveSet);
+  const customSets = useStore((s) => s.customEnzymes && s.customEnzymes.sets);
+  const enzymeSets = useMemo(() => selectAllEnzymeSets({ customEnzymes: { sets: customSets || {} } }), [customSets]);
 
-  const onToggleVisible = () => {
-    useStore.setState({ showReSites: !showReSites });
+  const onToggleVisible = () => toggleReSites();
+  const onSetFilter = (id) => setReFilter(id);
+  const onSetMinLen = (n) => setReMinSiteLen(n);
+  const onSetActiveSet = (e) => {
+    const id = e.target.value;
+    setReActiveSet(id ? enzymeSets.find((s) => s.id === id) || null : null);
   };
-  const onSetFilter = (id) => useStore.setState({ reFilter: id });
-  const onSetMinLen = (n) => useStore.setState({ reMinSiteLen: n });
 
   return (
     <div
@@ -46,8 +63,8 @@ export default function RestrictionPanel() {
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-          🔪 Рестриктазы
+        <span style={{ fontWeight: 600, color: 'var(--text-primary)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <Icon name="restriction" size={14} style={{ display: 'inline-block', verticalAlign: '-2px' }} /> Рестриктазы
         </span>
         <button
           type="button"
@@ -104,6 +121,25 @@ export default function RestrictionPanel() {
                 );
               })}
             </div>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>Активный набор</span>
+            <select
+              data-testid="skeleton-restriction-active-set"
+              value={(reActiveSet && reActiveSet.id) || ''}
+              onChange={onSetActiveSet}
+              style={{
+                fontSize: 11, padding: '4px 6px', borderRadius: 4,
+                border: '1px solid var(--border-default, #d6d3d1)',
+                background: 'var(--surface-1, #fff)', color: 'var(--text-secondary)',
+              }}
+            >
+              <option value="">— все ферменты —</option>
+              {enzymeSets.map((s) => (
+                <option key={s.id} value={s.id}>{s.name}{s.isPreset ? '' : ' (свой)'}</option>
+              ))}
+            </select>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>

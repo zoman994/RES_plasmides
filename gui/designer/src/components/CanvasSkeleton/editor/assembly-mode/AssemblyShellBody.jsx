@@ -20,6 +20,13 @@ import SequenceTab from '../../../Library/inspector/tabs/SequenceTab';
 import { useSkeletonState, useSkeletonActions } from '../../store/skeleton-context';
 import { segmentBoundaries, computeAssemblySequence } from '../../lib/assembly-model';
 import { collectAssemblyAnnotations } from '../../lib/assembly-annotations';
+import { segmentOverhangs, junctionInterlock, terminalStagger } from '../../lib/segment-overhangs';
+import { assemblyEndChemistry } from '../../lib/end-chemistry';
+import { assemblyRestrictionCloning } from '../../lib/restriction-cloning';
+import { junctionSeamView, seamFrameForBoundary } from '../../lib/junction-seam';
+import { TRANSLATABLE_TYPES } from '../../../SequenceView/constants';
+import { verifyAssembly } from '../../lib/assembly-verify';
+import { RE_ENZYMES } from '../../../../restriction-db';
 import AssemblyHeader from './AssemblyHeader';
 import AssemblySidebar from './AssemblySidebar';
 import AssemblySegmentBar from './AssemblySegmentBar';
@@ -41,20 +48,27 @@ import AssemblyPrimersPanel from './AssemblyPrimersPanel';
 import { useAssemblyPrimerWriting } from './useAssemblyPrimerWriting';
 import { findInsertIndexAtPosition } from '../../lib/assembly-primer-utils';
 import {
-  enrichZonesWithJunctions, assemblyReadiness, methodsFromJunctions,
+  enrichZonesWithJunctions, assemblyReadiness, assemblyJunctionConflicts, methodsFromJunctions,
+  pairKeyFor, junctionKindForMethod, DEFAULT_JUNCTION_METHOD,
 } from '../../lib/junction-derive';
 import { applyCircularize } from '../../lib/circularize-apply';
 import CircularizeModal from './CircularizeModal';
 import { suggestMethodForBoundary } from '../../lib/assembly-realise-suggest';
 import JunctionControl from '../../canvas/JunctionControl';
 import { useSequenceSelection } from '../../../../hooks/useSequenceSelection';
-import { routeAssemblyEdit, computeSeqDelta, SYNTHESIS_THRESHOLD_DEFAULT } from '../../lib/assembly-edit-router';
+import { SYNTHESIS_THRESHOLD_DEFAULT } from '../../lib/assembly-edit-router';
+import { useAssemblyEdit } from './useAssemblyEdit';
+import { assemblyMutationPlan } from '../../lib/assembly-mutation-plan';
+import { deriveAssemblyPrimerRecords } from '../../lib/derived-primer-records';
+import { buildMutagenesisOpPayload } from '../../lib/derived-mutagenesis-op';
 import { STRINGS } from '../../../../lib/strings';
+// Inline file-import for the picker (Игорь 17.06.2026): parse a dropped
+// .gb/.fasta/.dna here (the picker stays presentational) → add to the
+// library → immediately usable as a segment source.
+import { handleFilesImport } from '../../../../file-import';
+import { buildEntriesFromImportResults } from '../../../Library/lib/build-library-entry';
 
 const EA = STRINGS.canvasSkeleton.editableAssembly;
-// noop reasons that mean "deferred to S2" → surface an info toast; the
-// rest (malformed ops) are silent.
-const DEFERRED_NOOP = new Set(['sourced-interior', 'intermediate-interior', 'cross-boundary']);
 const EMPTY_JUNCTIONS = {};
 
 function segLabel(seg, idx) {
@@ -79,6 +93,7 @@ export default function AssemblyShellBody({ draft, embedded = false }) {
   const libraryEntriesById = useStore((s) => s.libraryEntries);
   const projectsById = useStore((s) => s.projects);
   const currentProjectId = useStore((s) => s.currentProjectId);
+  const addLibraryEntry = useStore((s) => s.addLibraryEntry);
   // Always-fresh skeleton state for the post-dispatch macrotask in
   // onPickEntry — the captured `state` closure is stale right after the
   // ADD_CONTAINER_FROM_ENTRY dispatch re-render (Игорь 19.05.2026).
@@ -119,7 +134,14 @@ export default function AssemblyShellBody({ draft, embedded = false }) {
     [draft, boundaries, state.containers],
   );
 
+  // RC-B2 — pinned reading frame (RC-B1) so the junction-seam readout can show
+  // the AA that straddles each join + flag a premature stop. null → bases only.
+  const overrideFrame = useStore((s) => (s.sequenceView ? s.sequenceView.overrideFrame : null));
+
   const coloredZones = useMemo(() => {
+    // Per-segment overhangs computed once so a boundary can compare its LEFT
+    // segment's RIGHT end against its RIGHT segment's LEFT end (V160 стык).
+    const ovr = draft.segments.map((s) => segmentOverhangs(s, RE_ENZYMES));
     const base = boundaries.map((b, i) => ({
       zoneId: b.segmentId,
       start: b.startOnAssembly,
@@ -127,15 +149,102 @@ export default function AssemblyShellBody({ draft, embedded = false }) {
       color: b.color,
       label: segLabel(draft.segments[i], i),
       isOrphan: orphanIds.has(b.segmentId),
+      // S5 (V165) — visual tracking: how each fragment is obtained + where from,
+      // so the bar reads as a multi-source build at a glance.
+      acquisitionMethod: (draft.segments[i] && draft.segments[i].acquisitionMethod) || 'undefined',
+      sourceName: (draft.segments[i] && draft.segments[i].source && draft.segments[i].source.sourceContainerName) || '',
+      // «Липкие концы» в сборке (Игорь): RE-cut сегмент несёт оверхенги на
+      // концах — SegmentZonesOverlay рисует ступеньку + чип «5′ AATT».
+      reOverhangs: ovr[i],
+      // V160 «визуализировать стык» — interlock of THIS segment's right end with
+      // the NEXT segment's left end: do the two sticky ends mate (совместимы)?
+      // SegmentZonesOverlay draws the seam (ступеньки сцепляются) + verdict.
+      interlock: i < boundaries.length - 1
+        ? junctionInterlock(ovr[i] && ovr[i].right, ovr[i + 1] && ovr[i + 1].left)
+        : null,
+      // RC-B2 (Игорь 24.06) «визуализировать на стыке нуклеотидный сиквенс» —
+      // the actual bases of the join + the codon/AA that straddles it. RC-BIO-2:
+      // the seam reading frame is the frame of the CDS/gene that SPANS the seam
+      // (codons anchored at the CDS start), not the global product-0 override — a
+      // «STOP across the join» is only meaningful in the real CDS frame. Falls back
+      // to the manual override (or null) when no CDS spans the boundary.
+      seam: i < boundaries.length - 1
+        ? junctionSeamView({
+          seq: sequence,
+          boundaryPos: b.endOnAssembly,
+          window: 6,
+          frame: seamFrameForBoundary(assemblyAnnotations, b.endOnAssembly, TRANSLATABLE_TYPES, overrideFrame),
+        })
+        : null,
     }));
     // JUNCTION step-2 FIX — enrich each internal boundary with a junctionRight
     // (method/kind from zone.junctions) so SegmentZonesOverlay draws the
     // clickable junction glyph on the editor strip. Legacy drafts (no zone)
     // stay plain → no glyph.
     return isZoneTarget ? enrichZonesWithJunctions(base, zoneJunctions, assemblyMethod) : base;
-  }, [boundaries, draft.segments, orphanIds, isZoneTarget, zoneJunctions, assemblyMethod]);
-  // UX slice 4 — one readiness summary for the whole assembly.
-  const readiness = useMemo(() => assemblyReadiness(coloredZones), [coloredZones]);
+  }, [boundaries, draft.segments, orphanIds, isZoneTarget, zoneJunctions, assemblyMethod, sequence, overrideFrame, assemblyAnnotations]);
+
+  // «Физическая ступенька» (Игорь 22.06): the LINEAR construct's free ENDS carry
+  // the first segment's LEFT overhang + the last segment's RIGHT overhang → the
+  // viewer staggers the bottom strand at those termini (reuses the same
+  // segmentOverhangs model the seam + gate use). Circular = no free ends → null.
+  const constructTerminalStagger = useMemo(() => {
+    if (draft.topology?.circular) return null;
+    const segs = draft.segments || [];
+    if (!segs.length) return null;
+    const first = terminalStagger(segs[0], RE_ENZYMES);
+    const last = terminalStagger(segs[segs.length - 1], RE_ENZYMES);
+    const left = first ? first.left : null;
+    const right = last ? last.right : null;
+    return (left || right) ? { left, right } : null;
+  }, [draft.segments, draft.topology]);
+  // RC-BIO-3 — the CIRCULAR closure seam (last fragment's right end ↔ first
+  // fragment's left end) is a real ligation junction that must mate too, but it is
+  // not an adjacent-zone boundary so it's evaluated separately and fed to readiness.
+  // Without this, a circular RE build whose ring can't close would report «ready».
+  const closureSeam = useMemo(() => {
+    const segs = (draft && draft.segments) || [];
+    if (!(draft.topology && draft.topology.circular) || segs.length < 2) return null;
+    const ovr = segs.map((s) => segmentOverhangs(s, RE_ENZYMES));
+    const last = segs.length - 1;
+    const pairKey = pairKeyFor(segs[last].id, segs[0].id);
+    const cfg = zoneJunctions[pairKey];
+    const method = (cfg && cfg.method) || assemblyMethod || DEFAULT_JUNCTION_METHOD;
+    return {
+      interlock: junctionInterlock(ovr[last] && ovr[last].right, ovr[0] && ovr[0].left),
+      kind: junctionKindForMethod(method),
+      pairKey,
+      leftLabel: segLabel(segs[last], last),
+      rightLabel: segLabel(segs[0], 0),
+    };
+  }, [draft.segments, draft.topology, zoneJunctions, assemblyMethod]);
+
+  // UX slice 4 — one readiness summary for the whole assembly (+ RC-BIO-3 closure).
+  const readiness = useMemo(() => assemblyReadiness(coloredZones, closureSeam), [coloredZones, closureSeam]);
+  // RC-D1 (Игорь 24.06) — name WHICH seams don't mate, so a 3-/4-fragment build
+  // tells the biolog exactly which junction to fix, not just a count (+ closure).
+  const junctionConflicts = useMemo(() => assemblyJunctionConflicts(coloredZones, closureSeam), [coloredZones, closureSeam]);
+  // S2 (V162) — derived end-chemistry: which fragment ends ship 5′-OH into a
+  // ligation (need T4 PNK) and which junctions lack a chosen enzyme. Pure,
+  // read-only; never touches stored ranges / tails / product (bio-safe).
+  const endChem = useMemo(
+    () => assemblyEndChemistry(draft.segments, zoneJunctions, assemblyMethod, RE_ENZYMES),
+    [draft.segments, zoneJunctions, assemblyMethod],
+  );
+  // S3 (V163) — RE-cloning chemistry: per-fragment double-digest staging
+  // (sequential when buffers/temps differ) + directional vs self-ligation
+  // (→ dephosphorylate the vector). Pure, read-only (bio-safe).
+  const reCloning = useMemo(
+    () => assemblyRestrictionCloning(draft.segments, RE_ENZYMES),
+    [draft.segments],
+  );
+  // S4 (V164) — ONE transparent verdict: «buildable + why-not», aggregating
+  // S1/S2/S3 into blockers (un-buildable) + warnings (protocol guidance). The
+  // single source of truth for the readiness line, protocol, and build-plan.
+  const verify = useMemo(
+    () => verifyAssembly({ readiness, endChem, reCloning }),
+    [readiness, endChem, reCloning],
+  );
 
   // Selection via shared hook (SPEC_VIEWER_UNIFICATION). reBehavior:
   // 'off' — assembled view has coloured zones, no RE pair/cut here.
@@ -180,6 +289,10 @@ export default function AssemblyShellBody({ draft, embedded = false }) {
     // is realisable too (the lone fragment closes its own ends into a plasmid).
     const isCircular = !!(draft && draft.topology && draft.topology.circular);
     if (segs.length < 2 && !(segs.length === 1 && isCircular)) return;
+    // S1 (V161) — defensive: never realise a chemically-impossible construct
+    // (an incompatible sticky-end junction). The button is already disabled, but
+    // a programmatic call must bail too.
+    if (readiness.incompatible > 0) return;
     const boundaryCount = segs.length - 1;
     const suggestions = [];
     for (let i = 0; i < boundaryCount; i += 1) {
@@ -187,7 +300,7 @@ export default function AssemblyShellBody({ draft, embedded = false }) {
     }
     const methods = methodsFromJunctions(draft, zoneJunctions, suggestions);
     actions.realiseAssembly(draftId, methods);
-  }, [draft, state, draftId, zoneJunctions, actions]);
+  }, [draft, state, draftId, zoneJunctions, actions, readiness]);
   // JUNCTION step-2 FIX — viewport coords of the clicked junction glyph so the
   // JunctionControl popover anchors to it (else it lands top-left, looked broken).
   const [junctionPos, setJunctionPos] = useState(null);
@@ -264,96 +377,51 @@ export default function AssemblyShellBody({ draft, embedded = false }) {
   const editable = isZoneTarget && !hasFrozenPiece && !hasOrphan;
   const disabledBannerMsg = hasFrozenPiece ? EA.frozenBanner : (hasOrphan ? EA.orphanBanner : null);
 
-  // §5.2/§5.8 (+ S2 §5) — translate an onSequenceEdit-op (assembly
-  // coords) into piece operation(s) via the pure router, disband the
-  // op-group(s) of every affected piece first (§5.6/S2 §5.8), apply, then
-  // move the caret.
-  const insertSnippetAt = useCallback((sequence, insertAtIndex) => {
-    actions.insertSnippet(draftId, {
-      sequence, embedsInPrimer: true, name: EA.newBlockName,
-    }, insertAtIndex);
-  }, [actions, draftId]);
-
-  const onSequenceEdit = useCallback((op) => {
-    const result = routeAssemblyEdit(op, draft, boundaries, { threshold });
-    if (!result || result.kind === 'noop') {
-      if (result && DEFERRED_NOOP.has(result.reason)) {
-        actions.showToast({ kind: 'info', message: EA.editDeferred });
-      }
-      return;
+  // §5.2/§5.8 — the edit→piece-op router + primer/caret maintenance lives in
+  // useAssemblyEdit now (size-budget §7); behaviour identical.
+  const { onSequenceEdit } = useAssemblyEdit({
+    draft, boundaries, threshold, actions, statePieces: state.pieces, draftId, sel,
+  });
+  // Edit-driven mutagenesis (Кирпич 2) — for every segment carrying in-editor
+  // substitutions, derive the molecular MECHANISM (KLD vs overlap-extension)
+  // + ⚓ No-PCR viability. Pure read; Кирпич 3 realises it onto the canvas.
+  // Кирпич 4 — expert mechanism override (KLD ↔ overlap-extension); null = auto.
+  const [mechOverride, setMechOverride] = useState(null);
+  const mutationPlan = useMemo(
+    () => assemblyMutationPlan(draft, { forceStrategy: mechOverride }),
+    [draft, mechOverride],
+  );
+  // 3b — derive the designed primers into the assembly primer-pool, tagged with
+  // project + assembly provenance (Игорь: «отметка отношения к проекту и
+  // сборке»). Reuses the existing pool — не плодит сущности.
+  const onDeriveReaction = useCallback((seg) => {
+    if (!seg) return;
+    // (a) designed primers → assembly pool, tagged with project + assembly.
+    if (Array.isArray(seg.primers) && seg.primers.length > 0) {
+      const b = boundaries.find((x) => x.segmentId === seg.segmentId);
+      const anchorPos = (b ? b.startOnAssembly : 0) + (seg.anchorLocalPos || 0);
+      const records = deriveAssemblyPrimerRecords(seg.primers, {
+        draftId,
+        anchorPos,
+        provenance: {
+          kind: 'derived-mutagenesis',
+          projectId: currentProjectId || null,
+          assemblyId: draftId,
+          mechanism: seg.mechanism,
+        },
+      });
+      if (records.length > 0) actions.addDerivedAssemblyPrimers(draftId, records);
     }
-    // §5.6 / S2 §5.8 — disband the op-group of every affected piece first.
-    const affected = result.kind === 'plan'
-      ? (result.steps || []).map((s) => s.pieceId).filter(Boolean)
-      : (result.pieceId ? [result.pieceId] : []);
-    let disbanded = false;
-    for (const pid of affected) {
-      const piece = (state.pieces || []).find((p) => p.id === pid);
-      if (piece && piece.groupId) { actions.disbandOpGroup(piece.groupId); disbanded = true; }
+    // (b) the op_mutagenesis NODE on the canvas, derived from the edit.
+    const ds = (draft.segments || []).find((s) => s.id === seg.segmentId);
+    const opPayload = buildMutagenesisOpPayload({
+      templateId: ds && ds.source && ds.source.containerId,
+      mutations: (ds && ds.mutations) || [],
+    });
+    if (opPayload && typeof actions.deriveMutagenesisOp === 'function') {
+      actions.deriveMutagenesisOp(opPayload);
     }
-    if (disbanded) actions.showToast({ kind: 'warning', message: EA.groupDisbanded });
-
-    switch (result.kind) {
-      case 'update-inline': {
-        const changes = result.targetKind === 'gap'
-          ? { gapSequence: result.sequence, gapLength: result.sequence.length, gapHint: 'known' }
-          : { sequence: result.sequence, ...(result.kindFlip ? { kind: result.kindFlip } : {}) };
-        actions.updatePiece(result.pieceId, changes);
-        break;
-      }
-      case 'remove-block':
-        actions.removeSegment(draftId, result.pieceId);
-        break;
-      case 'new-block':
-        insertSnippetAt(result.char, result.insertAtIndex);
-        break;
-      case 'split-insert': // S2 — insert inside a sourced piece
-        actions.splitPiece(result.pieceId, result.atOffset);
-        insertSnippetAt(result.char, result.insertAtIndex);
-        break;
-      case 'mutate': // S2 — equal-length substitution
-        for (const m of result.mutations || []) actions.addPieceMutation(result.pieceId, m);
-        break;
-      case 'trim': // S2 — edge delete in a sourced piece
-        actions.updatePiece(result.pieceId, { ranges: [result.range] });
-        break;
-      case 'split-delete': // S2 — mid delete in a sourced piece
-        actions.splitPiece(result.pieceId, result.atOffset, result.deleteLen);
-        if (result.insertSeq) insertSnippetAt(result.insertSeq, result.insertAtIndex);
-        break;
-      case 'plan': // S2 — spanning delete / replace
-        for (const step of result.steps || []) {
-          if (step.op === 'remove') actions.removeSegment(draftId, step.pieceId);
-          else if (step.op === 'trim') actions.updatePiece(step.pieceId, { ranges: [step.range] });
-          else if (step.op === 'splice-inline') {
-            const ch = step.targetKind === 'gap'
-              ? { gapSequence: step.sequence, gapLength: step.sequence.length, gapHint: 'known' }
-              : { sequence: step.sequence };
-            actions.updatePiece(step.pieceId, ch);
-          } else if (step.op === 'insert-snippet') {
-            insertSnippetAt(step.sequence, step.insertAtIndex);
-          }
-        }
-        break;
-      default: break;
-    }
-    // S3 §5.4 — maintain SAVED primer coordinates after the edit shifted
-    // the assembled sequence (shift right-of / stale-mark in-region).
-    const sd = computeSeqDelta(op);
-    if (sd) actions.shiftAssemblyPrimers(draftId, sd.atPos, sd.delta);
-    // §5.8 — caret follows the edit (insert → +1; delete → in place;
-    // replace → after the replacement).
-    let nextCaret = null;
-    if (op.kind === 'insert') nextCaret = op.pos + 1;
-    else if (op.kind === 'delete') nextCaret = op.pos;
-    else if (op.kind === 'replace') {
-      nextCaret = op.start + (typeof op.replacement === 'string' ? op.replacement.length : 0);
-    }
-    if (nextCaret != null) {
-      sel.setCaretPos(nextCaret);
-      sel.setCaretAnchor(nextCaret);
-    }
-  }, [draft, boundaries, threshold, actions, state.pieces, draftId, sel, insertSnippetAt]);
+  }, [boundaries, draftId, currentProjectId, actions, draft.segments]);
 
   // K5 — drag a container from the sidebar; drop anywhere on the viewer
   // opens the RangePickerModal pre-loaded with that container so the
@@ -391,13 +459,17 @@ export default function AssemblyShellBody({ draft, embedded = false }) {
   // existing canvas container id, then insert a sourced segment with
   // the chosen [start, end, rc]. For the entry path the fresh container
   // id is recovered via snapshot-diff on the *latest* state (stateRef).
-  const onRangeConfirm = useCallback(({ start, end, rc, acquisitionMethod }) => {
+  const onRangeConfirm = useCallback(({
+    start, end, rc, acquisitionMethod, acquisitionParams, ranges,
+  }) => {
     if (!rangeSource) return;
     // V89 — picker says как фрагмент был выбран; пробрасываем в action
     // как opts, чтобы piece получил `acquisitionMethod='restriction'`
     // (или другую отметку) и auto-grouping/junction-derivation потом
     // дефолтили на ligation-junction для RE-pieces.
-    const opts = { acquisitionMethod };
+    // V157 — + RE enzymes/cut sites so the piece's acquisitionParams are
+    // non-empty (piece-invariants requires it for 'restriction').
+    const opts = { acquisitionMethod, acquisitionParams, ranges };
     if (rangeSource.kind === 'entry') {
       const entry = rangeSource.payload;
       const before = new Set((stateRef.current.containers || []).map((c) => c.id));
@@ -431,6 +503,22 @@ export default function AssemblyShellBody({ draft, embedded = false }) {
     circular: !!(rangeSource.payload.topology && rangeSource.payload.topology.circular),
   }) : null;
 
+  // RC-A2 (Игорь 24.06) — the enzymes that cut the PREVIOUS RE fragment of this
+  // assembly, handed to the picker so it can suggest «продолжить теми же
+  // рестриктазами» (or a compatible overhang, or adding the site via a primer
+  // tail) on the fragment being added. Take the most recent restriction segment.
+  const priorEnzymes = useMemo(() => {
+    const segs = (draft && draft.segments) || [];
+    for (let i = segs.length - 1; i >= 0; i--) {
+      const s = segs[i];
+      const ap = s && s.acquisitionParams;
+      if (s && s.acquisitionMethod === 'restriction' && ap && Array.isArray(ap.enzymes) && ap.enzymes.length) {
+        return Array.from(new Set(ap.enzymes.filter(Boolean)));
+      }
+    }
+    return [];
+  }, [draft]);
+
   // SPEC_ASSEMBLY_CUSTOM_SEGMENT §3 (SAFE) — «вставить свой сиквенс» из
   // единого пикера. Reuses the existing INSERT_MANUAL_SEGMENT path (V83
   // known-gap: stored verbatim as `gapSequence`). Position: after the
@@ -446,6 +534,40 @@ export default function AssemblyShellBody({ draft, embedded = false }) {
     actions.insertManualSegment(draftId, { sequence: seq }, atIndex);
     setPickerOpen(false);
   }, [actions, draftId, selectedSegmentId, draft.segments]);
+
+  // Inline file-import (Игорь «нужна возможность импортировать файл прямо
+  // тут, иначе человек обязан идти в библиотеку»). Parse the dropped/
+  // picked files → add each as a library entry (so it persists + shows in
+  // the picker) → for a single import, jump straight into the range-picker
+  // (immediate use, «не два клика»); for several, leave them in the
+  // collection for the biolog to pick. .dna needs the Python backend —
+  // handleFilesImport surfaces a per-file error which we toast.
+  const handleImportFiles = useCallback(async (files) => {
+    if (!files || files.length === 0) return;
+    actions.showToast({ kind: 'info', message: 'Импортирую…' });
+    let items;
+    try {
+      items = await handleFilesImport(files, { autoAnnotate: true });
+    } catch (e) {
+      actions.showToast({ kind: 'error', message: e?.message || 'Ошибка импорта' });
+      return;
+    }
+    const { entries, errors } = buildEntriesFromImportResults(items);
+    for (const er of errors) {
+      actions.showToast({ kind: 'error', message: `${er.name}: ${er.error}` });
+    }
+    if (entries.length === 0) return;
+    for (const entry of entries) {
+      try { await addLibraryEntry(entry); } catch { /* dexie write — non-fatal */ }
+    }
+    setPickerOpen(false);
+    if (entries.length === 1) {
+      // Straight into the range-picker — same path a library click takes.
+      onPickEntry(entries[0]);
+    } else {
+      actions.showToast({ kind: 'success', message: `Импортировано: ${entries.length} (в коллекции)` });
+    }
+  }, [actions, addLibraryEntry, onPickEntry]);
 
   return (
     <div
@@ -464,8 +586,10 @@ export default function AssemblyShellBody({ draft, embedded = false }) {
         draft={draft}
         length={totalLength}
         segmentCount={draft.segments.length}
-        canRealise={draft.segments.length >= 2
-          || (draft.segments.length === 1 && !!(draft.topology && draft.topology.circular))}
+        canRealise={(draft.segments.length >= 2
+          || (draft.segments.length === 1 && !!(draft.topology && draft.topology.circular)))
+          /* S1 (V161) — block Realise while any junction's sticky ends don't mate. */
+          && readiness.incompatible === 0}
         onRename={(name) => actions.renameAssemblyDraft(draftId, name)}
         onRealise={onRealise}
         /* M-CIRCULARIZE — the «замкнуть в плазмиду» modal owns topology + method
@@ -535,6 +659,7 @@ export default function AssemblyShellBody({ draft, embedded = false }) {
                 currentProjectId={currentProjectId}
                 onSelectEntry={({ entry }) => { if (entry) onPickEntry(entry); }}
                 onPasteSequence={onPasteSequence}
+                onImportFiles={handleImportFiles}
               />
             </div>
           ) : (
@@ -543,18 +668,132 @@ export default function AssemblyShellBody({ draft, embedded = false }) {
               {isZoneTarget && readiness.total > 0 && (
                 <div
                   data-testid="assembly-readiness"
+                  data-incompatible={readiness.incompatible || 0}
+                  data-needs-phos={endChem.needsPhosphorylationCount || 0}
+                  data-sequential={reCloning.sequentialDigestCount || 0}
+                  data-dephos={reCloning.dephosphorylationCount || 0}
+                  data-buildable={verify.buildable ? 'true' : 'false'}
+                  data-warnings={verify.warnings.length}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 6,
                     padding: '5px 12px', marginBottom: 8, fontSize: 11.5,
                     borderRadius: 'var(--radius-md)',
-                    color: readiness.ready ? 'var(--emerald, #4A7C59)' : 'var(--text-secondary)',
+                    // S1 (V161) — incompatible sticky ends (red) outrank the
+                    // trust-state line: the construct can't ligate, so «готово»
+                    // must not show.
+                    color: readiness.incompatible > 0
+                      ? 'var(--danger, #dc2626)'
+                      : readiness.ready ? 'var(--emerald, #4A7C59)' : 'var(--text-secondary)',
                     background: 'var(--surface-2)', border: '0.5px solid var(--border-subtle)',
                   }}
                 >
-                  {readiness.ready
-                    ? '✓ Все стыки заданы — готово к сборке'
-                    : `${readiness.tentative} стык(ов) по умолчанию — проверьте`}
-                  {readiness.differs > 0 ? ` · ${readiness.differs} отличается от сборки` : ''}
+                  {readiness.incompatible > 0
+                    ? `⚠ Несовместимые липкие концы на ${readiness.incompatible} стык(е/ах) — сборка невозможна`
+                    : readiness.ready
+                      ? '✓ Все стыки заданы — готово к сборке'
+                      : `${readiness.tentative} стык(ов) по умолчанию — проверьте`}
+                  {readiness.incompatible === 0 && readiness.differs > 0 ? ` · ${readiness.differs} отличается от сборки` : ''}
+                  {/* S4 — ONE consolidated protocol-guidance line (amber, non-
+                      blocking): phosphorylation / sequential digest / dephospho /
+                      unresolved enzyme. «tentative» stays in the headline above. */}
+                  {verify.warnings.filter((w) => w.kind !== 'tentative').length > 0 && (
+                    <span
+                      data-testid="assembly-verify-warnings"
+                      style={{ color: 'var(--amber, #b8860b)', marginLeft: 2 }}
+                    >· {verify.warnings.filter((w) => w.kind !== 'tentative').map((w) => w.message).join(' · ')}</span>
+                  )}
+                  {/* RC-D1 — name the exact incompatible seams (which junction to fix)
+                      so a 3-/4-fragment build is actionable, not just «N стыков». */}
+                  {junctionConflicts.length > 0 && (
+                    <ul
+                      data-testid="assembly-conflict-list"
+                      /* flexBasis:100% — the readiness row is display:flex/align-center,
+                         so the list must break onto its OWN line below the headline
+                         (else the bullets squash inline). RC-D1 review. */
+                      style={{ flexBasis: '100%', width: '100%', margin: '4px 0 0', padding: '0 0 0 16px', listStyle: 'disc', color: 'var(--danger, #dc2626)' }}
+                    >
+                      {junctionConflicts.map((c) => (
+                        <li key={c.pairKey || c.index} data-pair-key={c.pairKey || ''} style={{ fontSize: 10.5 }}>
+                          {c.leftLabel} → {c.rightLabel}: {c.message}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+              {/* Кирпич 2 — edit-driven mutagenesis: the derived molecular
+                  mechanism (KLD vs overlap-extension) for in-editor edits.
+                  Renders independent of readiness.total (a single edited
+                  plasmid has no junctions but still has a mechanism). */}
+              {mutationPlan.count > 0 && (
+                <div
+                  data-testid="assembly-mutation-mechanism"
+                  data-mechanism={mutationPlan.perSegment[0].mechanism}
+                  data-mech-blocked={mutationPlan.anyBlocker ? 'true' : 'false'}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    padding: '5px 12px', marginBottom: 8, fontSize: 11.5,
+                    borderRadius: 'var(--radius-md)',
+                    color: mutationPlan.anyBlocker ? 'var(--danger, #dc2626)' : 'var(--text-secondary)',
+                    background: 'var(--surface-2)', border: '0.5px solid var(--border-subtle)',
+                  }}
+                >
+                  <span>
+                    {'Правка → механика: '}
+                    {mutationPlan.perSegment[0].label.full}
+                    {mutationPlan.count > 1 ? ` (+${mutationPlan.count - 1})` : ''}
+                  </span>
+                  {mutationPlan.perSegment[0].primerCount > 0 && (
+                    <span style={{ color: 'var(--text-tertiary)' }}>
+                      {`· праймеры: ${mutationPlan.perSegment[0].primerCount}`}
+                    </span>
+                  )}
+                  {mutationPlan.perSegment[0].protocol && (
+                    <span
+                      title={mutationPlan.perSegment[0].protocol}
+                      style={{
+                        color: 'var(--text-tertiary)', maxWidth: 360,
+                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                      }}
+                    >
+                      {`· протокол: ${mutationPlan.perSegment[0].protocol}`}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    data-testid="assembly-derive-primers-btn"
+                    onClick={() => onDeriveReaction(mutationPlan.perSegment[0])}
+                    style={{
+                      marginLeft: 'auto', fontSize: 11, padding: '3px 8px',
+                      borderRadius: 'var(--radius-sm, 4px)', cursor: 'pointer',
+                      background: 'var(--surface-1)', color: 'var(--text-primary)',
+                      border: '0.5px solid var(--border-subtle)', whiteSpace: 'nowrap',
+                    }}
+                  >Вывести реакцию</button>
+                  {/* Кирпич 4 — swap mechanism (KLD valid only on a circular
+                      standalone template; overlap is always available). */}
+                  {(mutationPlan.perSegment[0].mechanism === 'kld' || mutationPlan.perSegment[0].canKld) && (
+                    <button
+                      type="button"
+                      data-testid="assembly-mech-swap-btn"
+                      onClick={() => setMechOverride(
+                        mutationPlan.perSegment[0].mechanism === 'kld' ? 'two_fragment' : 'kld',
+                      )}
+                      title="Сменить механику сборки (KLD ↔ overlap-extension)"
+                      style={{
+                        marginLeft: 6, fontSize: 11, padding: '3px 8px',
+                        borderRadius: 'var(--radius-sm, 4px)', cursor: 'pointer',
+                        background: 'transparent', color: 'var(--text-secondary)',
+                        border: '0.5px solid var(--border-subtle)', whiteSpace: 'nowrap',
+                      }}
+                    >{mutationPlan.perSegment[0].mechanism === 'kld' ? '⇄ overlap' : '⇄ KLD'}</button>
+                  )}
+                  {mutationPlan.anyBlocker && (
+                    <span style={{ color: 'var(--danger, #dc2626)' }}>
+                      {'· '}
+                      {mutationPlan.perSegment.find((p) => p.blockers.length > 0).blockers[0].message}
+                    </span>
+                  )}
                 </div>
               )}
               {/* R1 «блок сборки сверху» — the assembled fragments as a
@@ -581,6 +820,7 @@ export default function AssemblyShellBody({ draft, embedded = false }) {
                 sequence={sequence}
                 annotations={assemblyAnnotations}
                 topology={draft.topology?.circular ? 'circular' : 'linear'}
+                terminalStagger={constructTerminalStagger}
                 name={draft.name}
                 editable={editable}
                 onSequenceEdit={editable ? onSequenceEdit : undefined}
@@ -675,6 +915,8 @@ export default function AssemblyShellBody({ draft, embedded = false }) {
         draft={draft}
         boundaries={boundaries}
         orphanIds={orphanIds}
+        endChemBySegment={endChem.perSegment}
+        reCloningBySegment={reCloning.perSegment}
         selectedSegmentId={selectedSegmentId}
         onSelectSegment={openDetail}
         selectedSegmentIds={selectedSegmentIds}
@@ -767,6 +1009,7 @@ export default function AssemblyShellBody({ draft, embedded = false }) {
               currentProjectId={currentProjectId}
               onSelectEntry={({ entry }) => { if (entry) onPickEntry(entry); }}
               onPasteSequence={onPasteSequence}
+              onImportFiles={handleImportFiles}
             />
           </div>
         </div>
@@ -774,6 +1017,7 @@ export default function AssemblyShellBody({ draft, embedded = false }) {
       {rangeSource && rangeSourceShape && (
         <RangePickerModal
           source={rangeSourceShape}
+          priorEnzymes={priorEnzymes}
           onConfirm={onRangeConfirm}
           onCancel={() => setRangeSource(null)}
         />

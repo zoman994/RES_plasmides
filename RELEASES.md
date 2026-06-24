@@ -28,6 +28,501 @@
 
 ---
 
+### Библиотека: последовательность редактируема по умолчанию + сохранение версией (17.06.2026, Игорь)
+
+«Рид-онли/эдитэйбл убрать, сделать по умолчанию редактируемой, просто вписать можно; форма сохранения —
+как в выравнивании: версия / что изменено / имя.» Библиотечный инспектор перешёл на модель выравнивателя.
+- **Убран гейт редактирования:** пилюля READ-ONLY/EDITABLE (⚓ DEC-LIB-16) и read-only-баннер
+  (DEC-MX7A-V2-05) удалены; `editable=true` всегда. Снят и фрикшн «первая правка → подтверждение ветки»
+  (`ManualEditConfirmModal` + `useEditableModeToggle` + `useManualEditBranching` + `useSequenceUndoRedo` +
+  `useManualEditDetection` — удалены).
+- **Правка → транзиентный буфер** (как `workingReference` в align): нуклеотидная правка применяется
+  общим чистым `applySequenceEditToEntry` к `edits.editedSequence/editedAnnotations`, «что изменено»
+  копится в `edits.editLog` тем же `describe-edit` (enrich+merge). **Исходник НЕ трогается** до явного
+  сохранения; silent-autosave аннотаций в воркспейсе теперь обходит sequence-правки (не мутирует source).
+- **Сохранение = только версия** (решения Игоря): кнопка «Перезаписать» убрана; «Сохранить версию» →
+  форма (имя + «что изменено» + причина) → `createManualEditBranch(parent, editedSequence,
+  editedAnnotations, {name, changes, reason})` → НОВАЯ ветка, оригинал цел. (`useLibrarySaveFlow` отдаёт
+  `editedSequence`+`editLog`; `saveLibraryEntryAsVersion`/overwrite больше не используются инспектором.)
+- **Ctrl+Z** — sequence + аннотации в одном стеке: `useAnnotationUndoRedo` снапшотит и
+  последовательность (опц.), undo/redo возвращает обе.
+- **Предупреждение перед потерей:** уход с записи с несохранёнными sequence-правками → `confirm` (решение
+  Игоря «предупреждать»); при подтверждении транзиентный буфер сбрасывается.
+- Браузер-верифицировано: pUC19 → Sequence-таб без пилюли/баннера, ввод «g» → чип «изменено: вставка ·
+  поз 1: «g»» + активная «Сохранить версию» (без «Перезаписать») → модал с именем «pUC19 … · исправлено»,
+  списком «Что изменено» и полем причины. Тесты: save-flow/save-actions переписаны на version-only +
+  edited-sequence (createManualEditBranch, source untouched), undo-with-sequence, banner-removed; 8
+  мёртвых файлов+тестов удалены. Полный прогон 4887 pass / 0 нов. fail (flake V146); build clean.
+- **Follow-up (live-фидбек Игоря): аннотации НЕ версионируются + вставка последовательности.**
+  (1) Аннотации — метаданные молекулы: версионируется только сама последовательность. `hasChanges` в
+  `useLibrarySaveFlow` теперь = только sequence-правки → правка аннотаций НЕ зажигает «Сохранить версию»
+  (она автосейвится на месте, как и была). (2) **Вставка последовательности (Ctrl+V) в вьюере** — раньше
+  не работало (в `SequenceView` не было paste-хендлера вообще). Добавлен `onPaste` на корень: чистый
+  `buildSequencePasteOp` (`SequenceView/lib/paste-op.js`) санитайзит вставленное в IUPAC и строит
+  multi-char `replace`-op (вставка в каретку / замена выделения) — ту же форму, что уже понимает
+  `applySequenceEditToEntry`, так что вставка идёт по тому же транзиентному пути, что и набор с клавиатуры
+  (работает в Library / align / сборке, где вьюер editable). Тесты: `paste-op` (pure) + `sequence-paste`
+  (реальный mount: каретка→insert, выделение→replace, не-editable/мусор→no-op) — 10 кейсов. Полный прогон
+  4902 pass / 0 нов. fail; build clean. (Живую проверку вставки в браузере не доделал — сессия превью была
+  занята; покрыто юнит+integration на смонтированном SequenceView.)
+- **Возвращена «ноль-точка» (origin) при топологии** (Игорь «было, пропало при чистке»). Движок
+  `rotate-origin.js::rotateOriginToPosition` (физический поворот кольца + remap аннотаций) уцелел, но UI
+  жил только в `LibraryMetaColumn` (рейл Импортёра) — в воркспейсе библиотеки топология рисуется
+  `OverviewTab`, где origin-контрола не было. Добавил **под карточку «Топология»** (только circular +
+  workspace-хост): поле «Начало отсчёта (поз. 1)» + «↻ Применить». Поворот идёт в тот же транзиентный
+  буфер (`onApplyOrigin` в `LibrarySingleInspector` → `rotateOriginToPosition` → `onUpdateEdits`
+  {editedSequence, editedAnnotations, editLog}) → зажигает «Сохранить версию», исходник цел. «Что изменено»:
+  новый kind `origin` в `describe-edit.formatCorrection` → «смена начала отсчёта → поз N». Браузер: pUC19
+  (circular, 432 bp) → Overview → поз 50 → Применить → чип «смена начала отсчёта → поз 50» + активная
+  «Сохранить версию». Тесты: `overview-tab-topology` (+origin: рендер/Apply/disabled/linear/no-prop),
+  `describe-edit` (origin format+merge), движок `rotate-origin` уже покрыт. Полный прогон 4909 pass / 0 нов.
+  fail; build clean.
+
+### SnapGene-style overview-карта + «ноль-точка» кликом (17.06.2026, Игорь по скрину)
+
+«Начало отсчёта отметить кликом» + «на оверью такой визуал плазмиды: разметка размеров и актуальные рамки
+считывания». Прокачал карту на вкладке Обзор (через opt-in пропсы `PlasmidMiniMap` — каталожные тайлы 400×
+не тронуты, всё circular-only).
+- **Чистый модуль `lib/plasmid-ruler.js`**: `niceTickStep` (1/2/5×10ⁿ), `rulerTicks`, `angleForBp`,
+  `bpFromVector` (клик-вектор → 1-based bp, конвенция top=поз 1, по часовой). 11 unit-тестов.
+- **`PlasmidMiniMap` opt-in пропсы** (circular): `showRuler` (засечки + bp-подписи снаружи + насечка
+  начала сверху), `showDirections` (стрелки-«рамки считывания» на ведущем крае каждой направленной фичи по
+  strand), `centerLabel` (имя + bp в центре, как SnapGene), `onPositionClick(bp)` + `originMarkerBp`
+  (прозрачное click-capture-кольцо ПОВЕРХ дуг → клик в любом месте кольца отмечает начало + акцентная
+  метка «▸ начало N»). Memo-компаратор и getBBox-расширение viewBox обновлены под новые пропсы.
+- **`OverviewTab`**: карта 180→200, `showRuler`/`showDirections`/`centerLabel` включены; `onPositionClick`
+  → `setOriginPos` (кликнул кольцо → позиция упала в поле «Начало отсчёта», «↻ Применить» поворачивает) +
+  подсказка «…или кликните по кольцу». Origin-click активен только circular + workspace (есть
+  `onApplyOrigin`).
+- Браузер-верифицировано (pUC19, circular): на карте ruler 50–400, 3 стрелки-направления, центр-лейбл,
+  насечка начала, click-capture-кольцо. Тесты: `plasmid-ruler` (11) + `plasmid-mini-map-overview` (8:
+  ruler-подписи, стрелки, центр, capture/marker, клик→onPositionClick(bp), linear-off, default-off) +
+  правка `overview-tab` (180→200). Полный прогон 4928 pass / 0 нов. fail (flake V146); build clean.
+  (Финальный клик-по-кольцу в браузере не доснял — сессия превью сбросилась; покрыто unit+integration.)
+- **Полировка карты (live-фидбек):** (1) **дизайн стрелок** — вместо плоского треугольника острый
+  ▶-наконечник с вогнутой «спинкой» (4-точечный полигон tip/barb/notch/barb), и для circular, и для
+  linear; (2) **подписи фич вынесены дальше** — leader-длина увеличивается, когда включена линейка
+  (`labelLeader`), чтобы имена не налезали на bp-засечки + bp-подписи отодвинуты (+6); (3) **линейка на
+  ЛИНЕЙНОЙ топологии** — засечки + bp-подписи под полосой (`plasmid-ruler-linear`); `showRuler`/
+  `showDirections` больше не circular-gated (origin-capture/маркер/центр остаются circular-only). Тест
+  `plasmid-mini-map-overview` обновлён (linear теперь: ruler + 2 стрелки, но без origin-capture).
+  Браузер (pUC19): новые наконечники, подписи MCS/AmpR/ori/lac снаружи линейки. Прогон 4928 pass; build
+  clean.
+
+### Импорт файла прямо в пикере сборки (17.06.2026, Игорь «не два клика»)
+
+Пикер источника в сборке (`AssemblyShellBody` — пустой стейт + «+ Сегмент» popover) умел только
+выбрать из библиотеки / вставить сиквенс. Теперь оттуда же можно **импортировать файл** (.gb / .fasta /
+.dna) — без захода в Библиотеку, добавления там и возврата.
+- **`LibrarySearchBar` — opt-in проп `onImportFiles`** (презентационно): кнопка «📁 Импортировать файл
+  (.gb · .fasta · .dna)» + скрытый `<input type=file multiple accept=…>` + drop-зона на списке. Отдаёт
+  `File[]` потребителю; **file-import.js сюда НЕ импортируется** (пикер сидит в lazy-чанке align — тянуть
+  парсер = риск Suspense-дедлока; ACCEPT продублирован строкой локально). Drop без файлов (entry-drag) —
+  игнор.
+- **Парсинг в потребителе** (`AssemblyShellBody.handleImportFiles`): `handleFilesImport` (file-import.js)
+  → `buildEntriesFromImportResults` (новый чистый хелпер в `build-library-entry.js`: parsed → container-
+  entry `origin:file_import`, ошибки/без-сиквенса → errors) → каждый `addLibraryEntry` (попадает в
+  Коллекцию, виден в пикере). Один файл → сразу `onPickEntry` → RangePicker (выбор фрагмента, «не два
+  клика»); несколько → тост «импортировано N». `.dna` требует Python-бэкенд — ошибка пробрасывается тостом.
+- **Браузер-верифицировано:** в «+ Сегмент» popover дашед-строка импорта над секциями библиотеки;
+  `accept=".gb,.gbk,.genbank,.dna,.fasta,.fa,.fna"`, multiple, рядом с «Вставить сиквенс».
+- Тесты: `LibrarySearchBar-import` (кнопка/инпут/drop/без-проп) + `build-library-entry-import` (mapping +
+  ошибки) — 12 кейсов; регресс LibrarySearchBar + assembly-mode чист. Полный прогон 4907 pass / 0 нов.
+  fail (только flake `align-routing` V146); build clean. Доступно и для align-пикера/канваса тем же
+  пропом, если понадобится.
+
+---
+
+### Воркспейс «Выравнивание» (align-to-reference, sequence/FASTA/Sanger) (16.06.2026, Тип A, в работе)
+
+Новый воркспейс `align`: попарное выравнивание последовательностей, FASTA (мульти-record) и Sanger
+`.ab1` на референс. Реализовано K1–K11 + L1–L3 + **P1 (читаемость)**; остальная полировка/фичи по плану
+(P2–P6). Vitest (P1): полный прогон **4769 pass / 0 fail / 18 skip** (align-набор + регресс SequenceView).
+Коммиты — за Игорем.
+
+- **Движок** (`lib/alignment/`): Нидлман–Вунш/Гото (global/semiglobal/local), IUPAC, авто-revcomp,
+  banded; метрики идентичность/покрытие/вердикт. Дефолт **local + coverage** (не «натягивает», честная
+  идентичность). DEC-ALIGN-01/02.
+- **Sanger**: свой ABIF-парсер `.ab1` (без зависимостей) + хроматограмма-трек column-locked под чтением.
+  DEC-ALIGN-04.
+- **Reference-view через `SequenceView`** (reuse, не bespoke): референс с аннотациями/фичами нативно +
+  read/chromatogram как opt-in треки + `searchHits`-оверлей несовпадений. Bespoke `AlignBrowser`/
+  `DetailTracks`/`OverviewTrack` снесены. DEC-ALIGN-03.
+- **Панель входов** (дизайн A): list-item + роли А/Б в строке + сегмент-источники (вставить/файл/
+  библиотека) на токенах дизайн-системы (sentence-case, янтарь, custom SVG-иконки).
+- **P1 читаемость read-трека** (16.06.2026): несовпадение = красная буква без рамки (мягкий фон без
+  обводки) · read-базы **чёрные по умолчанию** + тоггл «Цветные нуклеотиды» (`align.view.colorNucleotides`
+  → проп `alignmentColorMode`) · нижняя (комплементарная) цепь скрыта в align-инстансе (opt-in override
+  `showBottomStrand` на `SequenceView`) · подписи треков · чище иконка DNA-входа. AA-эффект-бейдж перенесён
+  в P2 (общая инфра трансляции). DEC-ALIGN-06.
+- **P1 полировка по live-фидбеку** (16.06.2026, браузер-верифицировано): per-line подписи **своими именами**
+  (референс в гаттере top-strand через opt-in `gutterLabel` у `StrandsTrack`; чтение — в read-треке) ·
+  **убраны красные рамки несовпадений на референсе** (`AlignReferenceView` больше не кормит
+  `mismatchPositions` в `SearchHitsOverlay`; несовпадения — только красные буквы в чтении) · единый
+  блок «Добавить источник» (вставка + Файл + библиотека, **без вкладок**) · поиск библиотеки — канонический
+  matcher (имя + фрагмент ДНК), вынесен в `lib/library-match.js` (`LibrarySearchBar` ре-экспортит) ·
+  метрики на чётких био-терминах: **Совпадение / Покрытие референса / Покрытие чтения** · небольшой
+  межбуквенный интервал (opt-in `letterSpacing` на `SequenceView`, measure-driven → сетка пиксель-в-пиксель).
+  Тесты: **4772 pass / 0 fail / 18 skip**.
+- **P5 линейная миникарта + навигация** (16.06.2026, браузер-верифицировано): новый `AlignMiniMap` (линейная
+  SVG-полоса референса с засечками фич `getRegions`+`featureColor` + полосой выровненного участка), pinned
+  (sticky) над вью. Навигация (Игорь): **клик → прыжок** + **перетаскиваемая «каретка»-вьюпорт** (бегунок
+  текущего окна, scrub-скролл). Видимый диапазон — из rect'ов строк (scroller через `findScrollingAncestor`,
+  ядро `SequenceView` не тронуто); прокрутка через `ref.scrollToPosition`. Это и закрыло «зум пропал»
+  (overview-навигация). Геометрия — `align-minimap-geometry.js`. Тесты: **4781 pass / 0 fail / 18 skip**.
+- **P8 гомолог-подсказка + standalone-вход** (16.06.2026, браузер-верифицировано): align стал **отдельным
+  инструментом** — пункт «≣ Выравнивание» в боковой панели (`StartScreen/Sidebar`, рядом с ⌂/▦; per-entry
+  «Выровнять» остаётся) + пустой старт-флоу (референс → чтение). **«Найти похожие»** (Игорь — по кнопке, не
+  авто): `rankHomologs(refSeq, entries)` (`lib/alignment/homologs.js` → `searchLibrary` с мягким порогом,
+  дедуп по entryId, топ-N) ранжирует библиотеку по гомологии с референсом, %-бейджи, клик добавляет как Б.
+  Закрывает и ядро P4 (нуклеотидный поиск). Тесты: **4788 pass / 0 fail / 18 skip**.
+- **P2 слои + AA-трек + AA-эффект-бейдж** (16.06.2026, браузер-верифицировано): тогглы **Фичи**/**AA-трек**/
+  **Цвет нт** (opt-in `showAnnotations`/`showAATrack` на `SequenceView` + `align.view`); **AA-эффект-бейдж** у
+  несовпадений в CDS (silent/missense/nonsense — точка над буквой; `components/Align/aa-effect.js` reuse
+  `codon-walker`+`CODON_TABLE`, обе цепи, биология-инвариант: при нерешаемой рамке бейдж не рисуется) ·
+  primer-слой — disabled-стаб «Праймеры» (Primer Pool в разработке). В браузере: 54 бейджа (37 missense /
+  17 silent) на реальной плазмиде, тогглы прячут дорожки. Правка фич → рабочая копия перенесена в P3
+  (живёт с working-copy инфрой).
+- **Лимит входов** (16.06.2026): дедуп по записи библиотеки / имя+последовательность + кап `MAX_ALIGN_INPUTS`=12
+  + «✓ добавлено» на добавленных строках (Игорь: «можно бесконечно добавлять — ограничим»).
+- **P6 множественные чтения → консенсус + двойные пики** (16.06.2026, браузер-верифицировано): движок
+  `lib/alignment/multi-align.js` (каждое чтение → референс через `align-pairwise`+`align-to-reference`,
+  голосование по ref-колонкам → консенсус с глубиной; ничью = N) → стопка read-треков под референсом +
+  **строка консенсуса** (акцент-лейбл) + метрики (чтений / покрытие консенсуса / несовпадений / макс. глубина).
+  `runAlignment` ветвится: ≥2 чтений → `align.multi`, иначе попарно. **Двойные пики/гетерозиготы**
+  (`lib/alignment/double-peaks.js`): вторичный пик трассы ≥ порога → IUPAC-код, фиолетовое подчёркивание в
+  read-треке. `SequenceView`/`SequenceLine` рендерят массив `alignmentReads` (back-compat single `alignmentRead`).
+  Браузер: 2 чтения, консенсус 82%, глубина 2.
+- **Полировка по live-фидбеку** (16.06.2026): (1) шрифт read-трека = шрифт референса (`SEQUENCE_FONT_FAMILY`,
+  был `var(--font-mono)` → другой глиф; Игорь «шрифты отличаются — отвратно»); (2) AA-эффект-бейджи —
+  редизайн: тонкая grid-полоса вместо «аляповатых точек», ТОЛЬКО missense/nonsense (silent выброшен как
+  шум), под тогглом «AA-трек»; (3) фикс входа «Выравнивание» из бок-панели со стартового экрана
+  (`activeFullscreen='start'` оставлял StartScreen — теперь `setActiveFullscreen('library')`).
+- **P3 правка референса → версия (git-логика)** (16.06.2026, браузер-верифицировано): транзиентная
+  **рабочая копия** референса (`align.workingReference`, исходник НЕ трогается); read выравнивается против
+  рабочей копии вживую (`runAlignment` берёт `workingReference.sequence`). **«Принять базу чтения»** — клик
+  по несовпадению в read-треке (`onAcceptBase` opt-in на `SequenceView`) подменяет базу референса (1-к-1
+  замена, координаты аннотаций не сдвигаются). **«Сохранить исправленную версию»** → модал (причина +
+  сводка правок) → `createManualEditBranch(parentId, seq, anns, meta)` (расширен опц. `meta` →
+  `origin.{reason, changes}`, 3-арг вызовы целы) → НОВАЯ запись `origin.kind:'manual_edit'` с
+  `parentEntryId`, исходник цел. Браузер: клик→правка→сохранение→в библиотеке «pUC19 (manual edit)»,
+  исходник нетронут. ОСТАТОК: правка ФИЧ в рабочую копию (working-copy инфра готова — допилить редактор).
+- **P9 live-фидбек 2** (16.06.2026, браузер-верифицировано): (1) **референс/чтения селекторы** вместо А/Б —
+  стор `pair{aId,bId}` → `refId` + `readIds[]`, в панели радио «реф» + чекбокс «выровнять» на строку; новые
+  входы **НЕ подсасываются** авто (`reconcileSelection` сидит 1 чтение, дальше — явный выбор). (2) **консенсус —
+  нижняя строка** пайл-апа. (3) **правка-фикс**: клик ловится и на самой букве (раньше глиф перехватывал) +
+  включена в мульти (каждая строка-клик правит рабочую копию). (4) **мульти-файл импорт** — каждый файл →
+  свой вход (тест). Браузер: радио/чекбоксы, 3-й вход не авто-выбран, правка по букве, консенсус снизу.
+- **P9.1 IUPAC-консенсус + референс наверх** (16.06.2026, браузер-верифицировано): консенсус при ничьей
+  даёт **IUPAC-код вырожденности** (G/C→S, A/G→R, …; 3-кратная→B/D/H/V; N только для 4-кратной/неизвестных)
+  вместо плоского N (`multi-align.js::iupacCode`); выбранный референс **уезжает наверх** списка входов и
+  там остаётся (`AlignInputPanel` display-ordering). Браузер: консенсус R/Y/S/W/K/M (N=0), референс → строка 0.
+- **P9.2 полноценная правка референса** (16.06.2026, браузер-верифицировано, Игорь «как у нас реализовано»):
+  align-вью теперь штатный **редактор** (`SequenceView editable`) — выдели и впечатай (replace), вставка,
+  удаление/Backspace — всё в транзиентную **рабочую копию** через общий `applySequenceEditToEntry`
+  (`commitWorkingEdit` в сторе, исходник цел); каретка/выделение управляются в `AlignReferenceView`. Клик по
+  несовпадению (accept-base) остаётся. Сводка правок в модале «Сохранить версию» — для замен И insert/delete/
+  replace (`describeCorrection`). Браузер: клик→каретка, «G»→вставка, Backspace→удаление, «правок: 2».
+- **P9.3 фикс — убран межбуквенный интервал** (16.06.2026, браузер-верифицировано): opt-in `letterSpacing`
+  на `SequenceView` наследовался SVG-текстом AA-дорожки и копил сдвиг на многобуквенной AA-строке
+  («трансляция съезжала», Игорь). Прибрал полностью (необязательный «чуть-чуть»); шрифт read=референс остался.
+  Браузер: AA-буквы строго над кодонами (drift 0), read↔референс misalign −0.05px, charPx 6.048.
+- **P9.4 фикс «сова на глобус» — честное выравнивание** (16.06.2026, браузер-верифицировано): локальное
+  выравнивание тянулось сквозь участки выше ~33% сходства (при `match+2/mismatch−1` порог = `m/(match+m)`),
+  давая 369 bp / 49.6% форсированную кашу на двух РАЗНЫХ плазмидах. **Ужесточил дефолт `mismatch −3`,
+  `gapOpen −6`** (порог гомологии → 60%): локальное обрезает несходные хвосты к реальному ядру, настоящий
+  Sanger-рид (95–99%) выравнивается целиком. + **вердикт учитывает покрытие чтения** (`coverageRead<35%` →
+  «локальное совпадение (малое перекрытие)», а не «высокое сходство» по 100% идентичности на 11 bp).
+  Браузер: pET-28b↔pGEX → 11 bp / 3% / «локальное совпадение»; pUC19↔pUC19-правка → 432 bp / 100% /
+  «высокое сходство». DEC-ALIGN-07.
+- **P9.5 «сохранить версию» — «было → стало» + имя версии** (16.06.2026, Игорь по скрину): (1) сводка
+  правок показывала только цель («замена поз 66–66 → «а»») — непонятно, ЧТО на что. Теперь захватываю
+  оригинальные базы из ДО-правочной последовательности (`enrichEditDescriptor`) → «замена · поз 66: G → A»;
+  одиночная замена больше не «66–66». (2) Добавил поле **«Имя новой версии»** (`align-save-name`,
+  предзаполнено `{реф} · исправлено`, редактируемо) — раньше имя задать было нельзя. Новый чистый модуль
+  `lib/alignment/describe-edit.js` (`enrichEditDescriptor` + `formatCorrection`) — единый формат и для
+  сводки в модале, и для provenance `origin.changes` (без дрейфа). `saveCorrectedReference(reason, name)`
+  → `createManualEditBranch(...{name})`. Регистр буквы НЕ трогал — нижний регистр единообразен с штатным
+  редактором Library («как у нас реализовано»). Тесты: новый `describe-edit.test` + правки slice/result-view.
+- **P9.6 схлопывание прогонов правок** (16.06.2026, Игорь — «много вставок: одной записью»): печать строки
+  («выделил TG, набрал aaaaa») разваливалась на 6 строк (replace + 4 insert). Теперь смежный непрерывный
+  прогон ввода/удаления = ОДНА запись: `mergeCorrection(corrections, descriptor)` (чистая, в
+  `describe-edit.js`) сливает с последней записью при пространственной смежности, иначе пушит. Прыжок
+  каретки = граница (новая запись). Ловит: прогон вставок (`вставка · поз 5–8: «AAAA»`), replace+прогон
+  (`замена · поз 222–223: TG → aaaaa`), backspace/forward-delete прогоны, backspace ужимает только что
+  набранный прогон. «Принять базу» (клик) остаётся по-позиционно. Счётчик «правок: N» теперь осмыслен
+  (2 вместо 6). Зовётся в `commitWorkingEdit` + `acceptReadBaseAt`. Сохранённая seq не меняется — только
+  лог + счётчик. `formatCorrection` теперь диапазон-aware для insert/delete. Тесты: +9 кейсов merge/format.
+- **ВЕСЬ план align-полировки P1–P9 закрыт** (тесты **4842 pass / 0 fail / 18 skip**; один flaky
+  `primer-wizard` под нагрузкой полного прогона, в изоляции зелёный; билд чист). Версия НЕ бампалась.
+  DEC-ALIGN-05/07.
+
+### Производительность выравнивания — PERF-1..4 (18.06.2026, Тип A, DEC-ALIGN-PERF-01..04)
+
+Игорь: «выравнивание очень долгое и выделение глючит — производительность очень низкая». Перф-аудит (workflow,
+5 агентов) → 4 фикса, TDD-first:
+- **PERF-1 — sequence-dirty гард** (`alignmentSlice`): `commitWorkingEdit`/`undoAlignEdit`/`redoAlignEdit` зовут
+  `runAlignment()` только при реальном изменении последовательности. Разметка интрона (annotation-only) = 0
+  ре-алайнов вместо N. Вывод идентичен при настоящей правке.
+- **PERF-2 — auto-align `useEffect` по сигнатуре** (`AlignWorkspace`): зависел от целых `inputs`/`settings` →
+  болтанка стора запускала O(n·m). Сужено до `refId` + id+длина выбранных чтений + `settings` через `useShallow`.
+- **PERF-3 — якорная оконная DP** (`lib/alignment/anchor.js`): minimizer-сиды → доминирующая диагональ → окно
+  референса → точный Gotoh в окне (read-vs-ref n≫m, local/semiglobal), fallback на full DP. **Браузер-замер
+  8к×1к: 670→128 мс (5.2×)**, вывод байт-в-байт = full (оракул-тесты anchored==full: reverse/индель/край).
+  + `basesCompatible` через Uint8-lookup. `maxFullCells`/`autoBand` НЕ трогали (держат n≈m-вставки точными).
+- **PERF-4 — драг-выделение** (`useSelectionState`, бывш. V51): `posFromPointerEvent` под pointer-capture делал
+  O(N) `getBoundingClientRect` на каждый pointermove → `elementFromPoint` hit-test (fallback сохранён, поведение
+  идентично; jsdom-тесты на target-walk пути не тронуты).
+- Тесты: PERF-гарды (slice + workspace) + оракул `anchor.test.js`. Полный прогон **5153 pass / 0 fail**, билд чист.
+  Worker-оффлоад движка отложен (рекомендован следующим). Версия НЕ бампалась.
+
+#### Доп. проход PERF-5..7 (18.06.2026) — «при редактировании в выравнивателе идёт зависание»
+
+Диагностика воркфлоу (5 агентов): правка референса = полный синхронный ре-алайн на КАЖДОЕ нажатие (burst k = k
+прогонов) + ре-рендер всего вьюера. Фиксы (DEC-ALIGN-PERF-05..07):
+- **PERF-5 — дебаунс typing-ре-алайна + flush** (`alignmentSlice`): `commitWorkingEdit` шедулит `scheduleRealign()`
+  (trailing 280мс) вместо sync `runAlignment`; набранный символ + каретка — мгновенно, ре-алайн — один раз после
+  паузы (burst→1). `flushAlignment()` экшен; flush в undo/redo/revert/«интроны из зазоров»/save; `clearAlignment`
+  отменяет таймер. `runAlignment` остаётся синхронным (≈30 тестов не сломаны). Annotation-only skip сохранён.
+- **PERF-6 — срез per-keystroke работы** (align-вью, не общий SequenceView): `detectDoublePeaks` → memo по неизменным
+  `inputs` (не пересчёт на нажатие); `computeVisible` effect deps → `[computeVisible]` (нет re-register слушателей +
+  2×RAF reflow на нажатие).
+- **PERF-7 (ОТЛОЖЕНО, gated):** render-half — `SequenceLine` получает `fullSeq`+`features` целиком → правка ломает
+  memo всех строк. Per-line memo рискован для общего SequenceView (Library/Annotator); вынесено в отдельный
+  acceptance-gated спринт. Compute-фриз (доминанта) снят PERF-5.
+- Тесты: дебаунс fake-timers (deferred/burst→1/flush/clear-cancel/undo-flush). Полный прогон **5156 pass / 0 fail**,
+  билд чист, браузер-верификация (burst не фризит, эхо мгновенно, оседает за 280мс, flush sync, 0 console errors).
+
+#### PERF-8 (18.06.2026) — «выделение дерганное» в align (DEC-ALIGN-PERF-08)
+
+Драг выделения дёргался: каждый pointermove → ре-рендер `AlignReferenceView` → `fragments={[referenceFragment]}`
+новый массив → `buildFeatureMap` пересчёт → `linesJsx` ребилд → **ре-рендер всего вьюера (~50 строк × треки) на
+каждое движение мыши**. Фикс: `useMemo(() => [referenceFragment], [referenceFragment])` (align-специфично, общий
+`SequenceView` не тронут; каретка/выделение в локальном стейте → memo держится через драг). Браузер: 6-строчное
+выделение **~60fps (один кадр на движение)**, выделение рисуется, 0 ошибок. TDD: mock `SequenceView` + ассерт
+стабильности `fragments`-ссылки через шаг выделения. Тест-стабильность: `align-routing` `findByTestId` 1000→5000мс
+(lazy-импорт `AlignWorkspace` под нагрузкой = V146-флак, не на пути PERF-8). Полный прогон **5157 pass / 0 fail**, билд чист.
+
+### Перетаскиваемые разделители панелей — RSZ (18.06.2026, Тип A, DEC-RESIZE-01..03)
+
+Игорь (скрин): «везде где есть разделения окон они должны иметь возможность двигать [разделитель], чтобы изменять
+рабочие области». Переиспользуемый примитив + применение:
+- **`useResizableSplit`** (`hooks/useResizableSplit.js`) + **`ResizeHandle`** (`components/common/ResizeHandle.jsx`):
+  axis x/y, side start/end, min + `keepOther` (мин соседа через `containerRef`), localStorage-персист, pointer-драг
+  (touch-friendly) + клавиатура (стрелки/Home, double-click — сброс), aria `separator`. Чистая `computeResizedSize` — TDD.
+- **Применено** к Align (input|result 340), Library (tree|inspector grid 312), Annotator (preview|LevelPanel 360),
+  PCR (template|suggestions 320). Каждый — свой `storageKey`; `LevelPanel`/`PrimerSuggestionsPanel` получили проп `width`.
+  Где вставлен handle — убран дублирующий border. **PlasmidWorkspace** оставлен на своём bespoke вертикальном сплиттере.
+- **Отложено:** AssemblyShellBody (правый столбец — несколько условных collapsible-панелей, нужен предв. рефактор).
+- Тесты: `useResizableSplit.test.js` (чистая математика + хук: keyboard/persist/clamp). Полный прогон **5168 pass /
+  0 fail**, билд чист. Браузер: Align (flex) 340→445 + персист, Library (grid) 312→402 + персист, 0 console errors.
+
+### PERF-6 / DEC-SQV-MEMO-01 (18.06.2026) — лаг ПЕЧАТИ нуклеотидов (сборка / align / Library) + V152 paste
+
+Игорь: «в режиме сборки [печать] нуклеотидов с большим лагом… точно не должно быть». Корень: каждое нажатие даёт новую
+identity `fullSeq` + всем производным (`features`/`orfRanges`/`reSites`/`framesResolution`/`line`/`seqLength`) →
+`SequenceLine.React.memo` ломался у ВСЕХ строк → ре-рендер всего вьюера на нажатие (общий код — бьёт сборку, правку
+референса align, Library).
+- **Фикс:** custom `areEqual` (`components/SequenceView/lib/sequence-line-equal.js`) — `Object.is` по всем пропам, кроме
+  relaxed-набора по line-relevant контенту: `fullSeq` окно `[start-3,end+3]` (кодоны на стыке строк); features/orfRanges
+  overlap; reSites overlap+24; framesResolution `{strategy,dominant}` (coverage-дрейф игнор); line shallow; seqLength
+  только wrap-bridge. Неизменные строки bail'ят → ре-рендерится лишь правленая область.
+- **Безопасность общего вьюера:** equivalence-тест `sequence-line-memo-equivalence.test.jsx` (7 видов правок:
+  замена/вставка/удаление start|mid|end|граница, с CDS→AA) — memo-рендер ДОЛЖЕН дать идентичный DOM свежему рендеру;
+  ловит любой стейл-рендер эмпирически. + 11 юнитов компаратора.
+- **V152 (paste):** Ctrl+V keydown (`e.code KeyV`) → `navigator.clipboard.readText` → `buildSequencePasteOp` →
+  `onSequenceEdit` (нативный `onPaste` не стреляет на non-contentEditable div — paste был мёртв везде).
+- Полный прогон **5188 pass / 0 fail**, билд чист, вьюер не сломан ни на одной поверхности; браузер чист (rAF в фоновой
+  превью-вкладке не срабатывает — точный замер недоступен, но корректность доказана equivalence-тестом).
+
+### Ctrl+Z «везде» — этап 1 (16.06.2026, Игорь — «контрол Z глобально должен работать везде»)
+
+Аудит undo по всему приложению: канвас-сборка имела движок истории (`skeleton-history`, past/future,
+лимит 50), но хоткей висел только на кнопках тулбара ↶/↷; Library-аннотации имели Ctrl+Z
+(`useAnnotationUndoRedo`); **align — ноль** (только «Сбросить» = откат всего); Library-нуклеотиды — ноль;
+annotator-batch — дырка (нет snapshot).
+- **Align — per-edit undo/redo:** `alignmentSlice` обзавёлся `editPast/editFuture` (снимки
+  `workingReference`, `null` = чисто-до-правок, лимит 50). Снимок пушится ПЕРЕД каждой мутацией в
+  `commitWorkingEdit`/`acceptReadBaseAt`; `undoAlignEdit`/`redoAlignEdit` ходят по стеку и ре-выравнивают.
+  «Сбросить»/save/clear чистят историю. Гранулярность — по операции (одно нажатие), независимо от
+  схлопывания лога P9.6. Хоткей — `components/Align/hooks/useAlignUndoRedo.js` (window Ctrl+Z/Y/Shift+Z,
+  `e.code`, бэйл в INPUT/TEXTAREA/SELECT/contentEditable), смонтирован в `AlignResultView`; подсказка в
+  edit-bar. Грид SequenceView — focusable `<div>` (не contentEditable), хоткей долетает.
+- **Канвас — хоткей на существующий движок:** `useUndoHotkey.js` (как `useTabHotkey`, гейт на editable +
+  `[data-modal-open]`) смонтирован в `EditorWindowShell` → `actions.undo/redo` + `history.canUndo/canRedo`.
+  Теперь Ctrl+Z/Y работают с клавиатуры (раньше только кнопки).
+- Тесты: align undo (slice + Ctrl+Z RTL), `use-undo-hotkey.test` (4 кейса). Билд чист.
+
+**Этап 2 (16.06.2026, «андо добей»):** закрыты обе дырки.
+- **Undo правки нуклеотидов в Library:** `librarySlice.libraryUndo` (id→{past,future}; снимок
+  {sequence, annotations, log}). `applySequenceEditOnLibraryEntry` пушит ПРЕД-правочный снимок;
+  `undoLibrarySequenceEdit`/`redoLibrarySequenceEdit` (общий `_restoreLibrarySnapshot`) ре-персистят
+  предыдущее состояние + восстанавливают «что изменено» лог (сводка остаётся точной). Хоткей —
+  `hooks/useSequenceUndoRedo.js` в `LibrarySingleInspector`, armed только на editable manual-edit ветке в
+  Sequence-табе. **Слушает в CAPTURE-фазе + `stopImmediatePropagation`** → пред-восхищает аннотационный
+  undo (он на bubble), без конфликта; когда отменять нечего — пропускает (аннотационный undo работает).
+- **annotator-batch:** `onApplyAnnotatorResults` теперь зовёт `pushSnapshot(baseAnnotations)` перед apply —
+  батч аннотатора стал отменяемым.
+- Тесты: `library-edit-log` +5 (seq undo/redo), `use-sequence-undo-redo` (4, вкл. capture-приоритет). Билд чист.
+
+### Правки в Library «как в выравнивателе» — версия / перезапись + «что изменено» (16.06.2026)
+
+Игорь: «любые правки в библиотеке сделаем как в выравнивателе — сохранить / перезаписать + что изменено».
+Решения (AskUserQuestion): **Q1 — автосохранение сохраняем** (правки не теряются), сверху явная панель =
+точка коммита; **Q2 — беречь оригиналы** (overwrite только для веток/копий; импорт-оригиналы — version-only,
+copy-on-write ⚓ DEC-LIB-12). Инфра уже была (`LibrarySaveActions`, DEC-LIB-13), но annotation-only и
+показана лишь в Импортёре.
+- **Change-log «что изменено»:** новый `libraryEditLog` в `librarySlice` (id→corrections[], не персист),
+  наполняется в `applySequenceEditOnLibraryEntry` тем же движком, что выравниватель
+  (`enrichEditDescriptor`+`mergeCorrection` из `lib/alignment/describe-edit` — со схлопыванием прогонов,
+  ловит `from`). `clearLibraryEditLog`.
+- **Провенанс в сохранениях:** `overwriteLibraryEntryAnnotations(id, anns, {changes, reason})` штампует
+  `origin.{changes, reason, editedAt}` + version↑ + чистит лог (back-compat с 2-арг); `saveLibraryEntryAsVersion(
+  id, anns, name, {changes, reason})` → `origin.{changes, reason}` + чистит лог (back-compat с 3-арг).
+- **Панель в LibraryWorkspace** (`showSaveActions` был `false` → `true`): `useLibrarySaveFlow` отдаёт
+  `changesSummary`/`changeText`/`canOverwrite`; `LibrarySaveActions` показывает чип «изменено: …»,
+  гейтит «Перезаписать» по `canOverwrite` (Q2), а в модале версии — список «Что изменено» + поле причины.
+  `hasChanges` = editedAnnotations ∨ лог; лог/правки чистятся на сохранении → нет ложного «несохранено».
+- **Связь с историей:** каждый коммит/версия = узел будущего таймлайна (одобрен Игорем, вход из Library);
+  `origin.changes` питает подписи узлов.
+- **Остаётся:** аннотации на оригинале всё ещё autosave-сквозняком (pre-existing Q2-зазор для аннотаций —
+  не ухудшено); правка нуклеотидов оригинала по-прежнему форкает модалкой. Тесты: `library-edit-log`
+  (6), `library-save-actions` (4), правка edit-wiring. Билд чист.
+
+### Таймлайн истории версий — блок-схема, вход из Library (16.06.2026, дизайн одобрен Игорем)
+
+Визуализация истории изменений записи: горизонталь = время, узлы = версии (имя + «что изменено» одной
+строкой + время), ветки уходят в параллельную дорожку (git-граф). Цвет = тип: серый импорт/оригинал,
+янтарь правка/версия; текущая — обводкой.
+- **Данные (чисто):** `components/Library/lib/version-lineage.js::buildVersionTimeline(entriesById, focusId)`
+  — обход вверх до корня по `parentEntryId`/`origin.parentEntryId`, сбор поддерева, хронопорядок, назначение
+  дорожек (ранний ребёнок держит дорожку, поздние ветвятся). Узлы несут `origin.{kind→метка+тон, changes,
+  reason, editedAt}`. `version-lineage-layout.js::layoutVersionTimeline` — координаты + рёбра (elbow при
+  смене дорожки).
+- **Рендер:** `inspector/VersionTimeline.jsx` (SVG-рёбра + кликабельные карточки) + `VersionTimelineModal.jsx`.
+- **Вход из Library:** кнопка «⑂ История версий · N» в `LibraryWorkspace` (когда у записи есть родословная
+  >1 узла) → модал; клик по узлу → `setSelectedId` (навигация на ту версию).
+- Питается провенансом из модели сохранения (`origin.changes` пишется при «Сохранить как версию / Перезаписать»).
+- Тесты: `version-lineage` (6), `version-lineage-layout` (3), `version-timeline` (2), entry-point в edit-wiring (1).
+  Билд чист. **Остаётся (по желанию):** диф/откат из узла, миграция на `@xyflow/react` для зум/пан при больших деревьях.
+
+### Чистка библиотеки: мёртвые иконки и DAG-маршрут убраны (17.06.2026, Игорь «прибраться»)
+
+Аудит всех значков библиотечного дерева + инспектора: проверено, что каждый делает то, что обещает.
+Решения (AskUserQuestion): убрать «→ в DAG» из строки проекта; вычистить DAG-маршрут целиком; убрать все
+нерабочие (disabled) заглушки. **Принцип:** каждая видимая кнопка теперь ДЕЛАЕТ что-то — никаких
+притворяющихся-фичами серых заглушек.
+- **Мёртвый DAG-поток снят целиком.** Кнопка «→ Открыть в потоке (DAG)» в `ProjectZone`, действие
+  «Показать в DAG» в инспекторе (`library-actions`), маршрут `'flow'`→`DagWorkspace` в
+  `AppShell.WorkspaceRouter` И legacy overlay `case 'dag'` в `App.jsx` — удалены. `DagWorkspace`
+  недостижим (заменён сборщиком CanvasSkeleton). Bundle: precache 36→32 entries. Орфан-файлы
+  `components/Dag/` (DagWorkspace/DagCanvas/Palette/PreviewDrawer) — в `TECH_DEBT` (TD-DEAD-DAGWORKSPACE)
+  для отдельного sweep; `ContainerWindowPlaceholder` сохранён (ещё используется).
+- **Инспектор записи — только рабочие действия** (`getActionsFor`). Убраны все disabled-заглушки, у
+  которых не был подключён обработчик или они ждали будущего спринта: `containerWindow`, `clone`,
+  `createCopyForEdit`, `editPrimer`, `copyToLoose`, `view`, `editNotes` (handler не подключён) +
+  `saveAsVersion`, `openAsActive` (hard-disabled). Save-as-version остаётся как РАБОЧАЯ панель
+  (`LibrarySaveActions`), а не мёртвая строка. Новые наборы: loose-контейнер 6→5, loose-праймер 5→4,
+  active-контейнер 8→4, active-праймер 4→3 (+`exportGenBank` для паритета), readonly-контейнер 5→2,
+  readonly-праймер 3→1, lab-праймер 4→3. Браузер-верифицировано: loose-контейнер →
+  `addToActiveProject · align · moveToFolder · exportGenBank · delete`.
+- **Строка проекта** теперь `★ 📂 ⤓ 🗑` (закрепить · сделать текущим · экспорт · удалить); ★ pin и ⤓
+  export Игорь оставил. Браузер: `→` ушла из всех строк.
+- Тесты: `library-actions.test` переписан на working-only наборы (+ guard «нет мёртвых id»),
+  `library-actions-wip-a5.test` удалён (тестировал только снятые заглушки), правки в
+  `library-action-row` / `library-workspace` / `library-tree-v2`. Полный прогон зелёный (кроме
+  pre-existing flake `align-routing` V146); билд чист.
+- **DAG-sweep (добивка, 17.06.2026):** после снятия входов снесены и сами орфан-файлы — 7 DAG-only
+  компонентов (`DagWorkspace`, `DagCanvas`, `NeutralEdge`, `PlasmidNode`, `PreviewDrawer`,
+  `Palette/DagPalette`, `Palette/DagPaletteItemRow`) + 6 тестов; `'flow'` убран из `VALID_WORKSPACES`,
+  `'dag'` + мёртвое `canvas.dagViewport` — из `canvasSlice`; `DEC-MX7A-V2-09` отозван. **Сохранены:**
+  `ContainerWindowPlaceholder` (ещё в `App.jsx`) и `lib/dag-layout.js` (**shared** с CanvasSkeleton).
+  Тесты `workspaceSlice`/`containerWindow-route` перешиты с `'flow'`/`'dag'` на живые воркспейсы.
+  Остаток (store-модель `project.dag` + неиспользуемые ключи `STRINGS.dag`) — TECH_DEBT
+  TD-DEAD-DAG-STORE-MODEL (трогает persistence, отдельно). Прогон 4895 pass / 0 нов. fail; build clean
+  (precache 36→32 entries). `TD-DEAD-DAGWORKSPACE` → DONE.
+
+### Выравниватель: реальный компонент-пикер + авто-выравнивание (17.06.2026, live-фидбек Игоря)
+
+- **Реюз компонента-пикера (не matcher).** Блок «Из библиотеки» в `AlignInputPanel` теперь рендерит САМ
+  `CanvasSkeleton/canvas/LibrarySearchBar` (тот же, что в сборке/канвасе): поиск имя+ДНК, чипы
+  Все/Circular/Linear/Primer, секции Избранное/Недавно/Из проекта/Коллекция, карточки с мини-картой;
+  `onSelectEntry`→`addAlignInput`, гомолог-вью остаётся альтернативой. **2 готча (иначе align-routing виснет
+  на Suspense):** (1) `TREE_DRAG_MIME` вынесен в `canvas/tree-drag-mime.js` — пикер больше не тащит
+  `use-tree-drop-target`→`skeleton-context` (весь CanvasSkeleton-стор) в align-чанк; (2) импорт СТАТИЧЕСКИЙ,
+  НЕ `React.lazy` (вложенный lazy в lazy-чанке дедлочит внешний lazy под vite-node — выяснено бисекцией).
+  Цена: пропал per-row «✓ добавлено» (дедуп держит слайс). Тесты обновлены на секц-скоупные testid'ы.
+- **Авто-выравнивание, кнопка «Выровнять» убрана.** `AlignWorkspace` — `useEffect` на
+  `[refId, readIds, inputs, settings]` → `runAlignment()` при валидной паре (реф + ≥1 чтение), иначе
+  `clearAlignmentResult()`. Покрывает смену референса/галки/add-remove/режим; правки референса уже
+  пере-выравниваются в сторе (не дублируется). `align-run-btn` удалён, `onModeChange` упрощён, placeholder
+  обновлён. Тесты: auto-on-mount, toggle→multi, no-button.
+- Полный прогон зелёный, билд чист.
+
+### Ctrl+C «глобально везде где можно выделить» (17.06.2026, Игорь)
+
+Копирование выделения в `SequenceView` висело на `onKeyDown` корневого `<div>` → работало ТОЛЬКО пока
+этот `<div>` держал фокус (выделил участок, кликнул в боковую панель → Ctrl+C мимо). Поднял копирование
+на ОДИН window-capture-хендлер (паттерн `installGlobalCtrlAGuard`) c реестром источников.
+- **`lib/global-copy.js`** (новый, лист-модуль, без тяжёлых импортов): реестр `registerCopySource({getText})`
+  + `setActiveCopySource` + `getActiveCopyText(mode)`; `installGlobalCopyHandler()` — window keydown в
+  capture-фазе, `e.code==='KeyC'` (layout-independent, ловит кириллическую «с»), модификаторы Alt→reverse /
+  Shift→aa. Смонтирован в `App.jsx` рядом с Ctrl+A-гардом.
+- **Никогда не перебивает нативное копирование** — хендлер уступает (без preventDefault), когда: фокус в
+  INPUT/TEXTAREA/SELECT/contentEditable (нативная копия инпута — селекшн инпута НЕ виден в
+  `window.getSelection()`); есть непустой DOM-селекшн (обычный HTML-текст); фокус уже внутри
+  `sequence-view-root` (его собственный `onRootKeyDown` копирует — без дабл-хендла). Иначе копирует
+  активный сиквенс-селекшн; нет селекшна → no-op без preventDefault.
+- **Регистрация в `useSelectionState`** (одна точка → покрывает ВСЕ инстансы `SequenceView`: Library,
+  контейнер-редактор, сборка, range-picker, **align reference-view**): стабильный source-объект, `getText`
+  читает свежие координаты через ref (без ре-регистрации на рендер); wrap-aware срез вынесен в чистую
+  `selectionSlice` (общая с `copySelection`); AA-режим гейтится `selectionMode==='aa'` (контракт
+  Ctrl+Shift+C). `setActiveCopySource` на pointer-down → копируется тот вью, который трогали последним.
+  Источник снимается на unmount.
+- Тесты: `lib/__tests__/global-copy.test.js` (реестр + хендлер: forward/reverse/aa, defer на
+  input/native-selection/seqview, layout-independence, teardown) + `SequenceView/__tests__/
+  global-copy-integration.test.jsx` (реальный `useSelectionState` → Ctrl+C с фокусом на body копирует;
+  unmount снимает источник). 22 новых кейса зелёные; SequenceView+Align регресс (558) чист; билд чист.
+  Известный flaky `align-routing` (Suspense-дедлок lazy-чанка, **BUGS V146**) — на pristine HEAD фейлит
+  идентично, к Ctrl+C отношения не имеет.
+
+### QA Fix-pack #1 — многоагентный прогон пайплайнов (16.06.2026)
+
+Игорь: «отсмотри программу всеми силами, пусть агенты погоняют реальные пайплайны с разными данными».
+Воркфлоу `.audit/qa-sweep.workflow.js` (25 агентов): 9 пайплайнов × ≥3 сгенерированных датасета → каждый
+агент пишет временный тест, гоняет РЕАЛЬНЫЕ функции, проверяет био/мат-инварианты → независимая
+адверсариальная верификация каждой находки → 6 UX-аудитов → продуктовый синтез. **30 подтверждённых
+находок** (8 high / 12 med / 10 low) + 66 UX-трений. Системный лейтмотив — «молчаливые сбои».
+Fix-pack #1 закрыл живые high + silent-failure ядро (детали + V-номера в `BUGS.md`):
+- **Tm** (V139–V141): корректный режим Owczarzy 2008 (Mg²⁺-коррекция была мертва в ПЦР-диапазоне из-за
+  ошибки единиц M/mM) — **дефолт `mgConc` оставлен 0**, чтобы не сдвинуть калибровку праймеров/golden-pydna
+  (Mg применяется при явной передаче; «Mg в дефолте» — отдельное решение); naConc=0 guard (был −273 °C);
+  IUPAC-базы больше не вырезаются молча.
+- **Library undo×commit barrier** (V142): commit («Перезаписать»/«Сохранить версию») чистит `libraryUndo`
+  → Ctrl+Z не откатывает ниже сохранённой версии (был state drift + висячий `parentEntryHash`).
+- **Golden Gate** (V143): `checkInternalSites` находит ВСЕ Type IIS сайты (был `indexOf` — только первый).
+- **ORF** (V144): strand-aware дедуп (forward-аннотация маскировала reverse-ORF).
+- **Праймеры** (V145): warning на RE-стык без фермента (был молчаливый пустой хвост).
+- Тесты: `src/__tests__/qa-fixpack.test.js` (8) + правки `library-edit-log`. Полный набор зелёный, билд чист.
+- **Остаток (follow-up):** medium/low находки (detectDoublePeaks floor, consensus minority, sticky-overhang
+  data-fix, generateRETail `minFlanking:0`, и т.д.) + 66 UX-трений — в дайджесте воркфлоу; не блокеры.
+
+### Quality-gate выравнивания + N-aware вердикт (16.06.2026, фича из синтеза — «доверие к цифрам»)
+
+Закрывает системный лейтмотив «молчаливые сбои» в выравнивателе: сырые метрики вводили в заблуждение
+(пустой локальный хит → identity 0 без сигнала; all-N чтение → identity 100% и ЗЕЛЁНЫЙ вердикт «высокое
+сходство», т.к. IUPAC N матчит всё).
+- **Чистый слой** `lib/alignment/alignment-quality.js`: `assessAlignmentQuality(result)` → `{ ambiguousFraction,
+  significant, flags, warnings }` (флаги `no-match` / `high-ambiguity` >50% N / `low-coverage` <35%);
+  `alignmentVerdict(identity, coverage, quality)` — флаги качества перекрывают сырые цифры: all-N →
+  «ненадёжно — много N», пустой хит → «нет совпадения», иначе coverage<35 → «локальное совпадение».
+- **Вью** `AlignResultView`: локальный `verdict()` заменён на `alignmentVerdict`; quality.warnings выводятся
+  ⚠-чипами (`align-quality-warnings`). low-coverage — только флаг (вердикт уже говорит, чтобы не дублировать).
+- Движок НЕ трогали (всё деривируется из result). Пока попарный путь; мульти-консенсус — follow-up.
+- Тесты: `alignment-quality` (9) + N-aware кейс в `align-result-view`. Полный набор зелёный, билд чист.
+
+---
+
 ### Common-фичи: раздел + промоут + master-detail + in-viewer editing (01–02.06.2026, Тип A)
 
 Раздел common-фич в библиотеке + промоут размеченной фичи из вивера в общую БД (детектится впредь, с дедуп-чеком) + master-detail просмотр/правка. Overlay над заводской `common-features.json` (read-only). 3 приёмочные пачки, все приняты визуально Игорем. Vitest 4094 → **4223 pass** / 17 skip / 0 fail; pytest 115; build clean. Спека → `docs/archive/SPEC_COMMON_FEATURES.md` (§1–§11).

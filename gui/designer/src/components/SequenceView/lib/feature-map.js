@@ -27,7 +27,8 @@
 
 import { getRegions, getAllDetails } from "../../../annotation-model.js";
 import { featureColorShaded } from "../../../feature-palette.js";
-import { RE_ENZYMES } from "../../../restriction-db.js";
+import { effectiveEnzymes } from "../../../restriction-db.js";
+import { filterReSites } from "../../../lib/re-site-filter.js";
 
 export function buildFeatureMap(fragments) {
   let seq = "";
@@ -144,17 +145,23 @@ export function buildLineAnnMap(features, lineStart, lineLen) {
   return map;
 }
 
-export function flattenSites(scanResult, filterMode) {
+/**
+ * Filter scanAllSites' grouped result and flatten to [{ enzyme, position }] with
+ * the top-strand cut offset applied. RS-B1 — filtering is delegated to the shared
+ * `filterReSites` so the linear view and the circular map never diverge. `filter`
+ * may be a legacy mode string ('all'|'unique'|'double') or a full options object
+ * ({ mode, cutCount, enzymes }). RS-C2 — the cut offset resolves through
+ * `effectiveEnzymes()` so CUSTOM enzymes are positioned correctly (identical to
+ * RE_ENZYMES when no custom enzymes are registered).
+ */
+export function flattenSites(scanResult, filter) {
   if (!Array.isArray(scanResult)) return [];
-  const rows =
-    filterMode === "unique"
-      ? scanResult.filter((re) => re.isUnique)
-      : filterMode === "double"
-        ? scanResult.filter((re) => re.cutCount <= 2)
-        : scanResult;
+  const opts = typeof filter === "string" ? { mode: filter } : (filter || {});
+  const rows = filterReSites(scanResult, opts);
+  const eff = effectiveEnzymes();
   const out = [];
   for (const re of rows) {
-    const cutOffset = (RE_ENZYMES[re.enzyme] && RE_ENZYMES[re.enzyme].cut[0]) || 0;
+    const cutOffset = (eff[re.enzyme] && eff[re.enzyme].cut[0]) || 0;
     for (const pos of re.positions) {
       out.push({
         enzyme: re.enzyme,

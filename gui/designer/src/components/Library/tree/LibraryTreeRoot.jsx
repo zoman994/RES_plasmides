@@ -28,10 +28,12 @@
 import { useMemo, useCallback, useState, useEffect, useRef } from 'react';
 import { useStore } from '../../../store';
 import { STRINGS } from '../../../lib/strings';
+import { FEATURE_FLAGS } from '../../../lib/feature-flags';
 import LooseZone from './LooseZone';
 import ProjectZone from './ProjectZone';
 import TrashZone from './TrashZone';
 import { APP_VERSION } from '../../../lib/version';
+import { Icon } from '../../icons/Icon';
 
 function discoverProjects(projectsById) {
   // Exclude soft-deleted projects — they live in the Trash zone and
@@ -127,13 +129,6 @@ export default function LibraryTreeRoot({
   const [looseExpanded, setLooseExpanded] = useState(true);
   const onLooseToggle = useCallback(() => setLooseExpanded((v) => !v), []);
 
-  // FAIL-fix-pass 2 — current project is ALWAYS the first zone
-  // after LooseZone, regardless of its pinned-status. The pinned
-  // list (excluding current if it was pinned) follows. Everything
-  // else (un-pinned non-current) lands inside the collapsible
-  // «Все проекты (N)» group.
-  const pinSet = useMemo(() => new Set(pinnedProjectIds || []), [pinnedProjectIds]);
-
   // Project-name search (so «Все проекты»/⌘P → focus search can quick-find a
   // project, not just entries). When a query is set, a project is visible if
   // its NAME matches OR it contains a matching entry (preserves entry-search).
@@ -226,7 +221,10 @@ export default function LibraryTreeRoot({
               cursor: 'pointer',
             }}
           >{ws.addBtn || '+ Добавить'}</button>
-          {typeof onCreateProject === 'function' && (
+          {/* Чистка (Игорь «дохера кнопок создать проект»): дубль «+ Проект»
+              скрыт — единственная точка создания проекта теперь сайдбар
+              «+ Создать проект» (всегда виден, ⌃N). Gated → flag off вернёт. */}
+          {!FEATURE_FLAGS.dedupeCreateProject && typeof onCreateProject === 'function' && (
             <button
               type="button"
               data-testid="tree-add-project-btn"
@@ -256,15 +254,16 @@ export default function LibraryTreeRoot({
               border: '1px solid transparent',
               cursor: 'default',
               opacity: 0.5,
+              display: 'inline-flex', alignItems: 'center',
             }}
             disabled
-          >⇅</button>
+          ><Icon name="sort" size={13} /></button>
         </div>
         <div style={{ position: 'relative' }}>
           <span style={{
             position: 'absolute', left: 8, top: 7,
-            color: 'var(--text-tertiary)', fontSize: 12,
-          }}>⌕</span>
+            color: 'var(--text-tertiary)', display: 'inline-flex',
+          }}><Icon name="search" size={14} /></span>
           <input
             ref={searchInputRef}
             type="text"
@@ -310,7 +309,6 @@ export default function LibraryTreeRoot({
           <ProjectZone
             key={p.id}
             project={p}
-            pinned={pinSet.has(p.id)}
             query={query}
             selectedId={selectedId}
             onSelectEntry={onSelectEntry}
@@ -336,7 +334,7 @@ export default function LibraryTreeRoot({
             borderTop: '1px solid var(--border-subtle)',
           }}
         >
-          <span aria-hidden>🧬</span>
+          <Icon name="dna" size={14} />
           <span>{STRINGS.commonFeatures.treeNodeLabel}</span>
         </button>
         <TrashZone expanded={trashExpanded} onToggle={toggleTrash} />

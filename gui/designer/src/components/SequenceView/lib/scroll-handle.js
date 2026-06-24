@@ -3,13 +3,19 @@
  * from `index.jsx` in Sprint M-X.2 K1 decomposition.
  *
  *   findScrollingAncestor(el)
- *     Walks up the DOM from `el` looking for the nearest ancestor
- *     whose computed overflow-y is `auto` or `scroll` AND that
+ *     Walks the DOM from `el` ITSELF upward looking for the nearest
+ *     element whose computed overflow-y is `auto` or `scroll` AND that
  *     actually scrolls (scrollHeight > clientHeight). Falls back to
  *     `document.scrollingElement` / `document.documentElement` when
  *     nothing closer scrolls. Used by the auto-scroll edge logic to
- *     locate the real scroller (Importer wraps SequenceView in a
- *     parent that owns the scrollbar).
+ *     locate the real scroller. The SequenceView ROOT itself owns the
+ *     scrollbar (`overflowY:auto`), so the self-check is load-bearing
+ *     — skipping it (old `el.parentElement` start) made edge
+ *     auto-scroll target the wrong element and the drag-selection
+ *     "упиралось в низ" (V153). The Importer wraps SequenceView in a
+ *     parent that owns the scrollbar; there the root's content fits
+ *     (scrollHeight ≤ clientHeight) so the walk falls through to that
+ *     parent — both hosts resolve correctly.
  *
  *   attachScrollHandle(_ref, containerRef) → factory
  *     Returns the imperative `scrollToPosition(absolutePos, opts)`
@@ -27,7 +33,8 @@
 
 export function findScrollingAncestor(el) {
   if (!el || typeof getComputedStyle !== "function") return null;
-  let cur = el.parentElement;
+  // Start at `el` itself — the SequenceView root owns the scrollbar.
+  let cur = el;
   while (cur && cur !== document.body && cur !== document.documentElement) {
     const style = getComputedStyle(cur);
     const oy = style.overflowY;

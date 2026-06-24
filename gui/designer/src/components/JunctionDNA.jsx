@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { Icon } from './icons/Icon';
 import { RE_ENZYMES } from '../restriction-db';
 import { GG_ENZYMES } from '../golden-gate';
 import { calcTmNN } from '../tm-calculator';
@@ -98,7 +99,7 @@ export default function JunctionDNA({ junction, calculated, primers = [],
           {(jType === 're_ligation' || jType === 'sticky_end') && <> — RE ({j.reEnzyme || j.enzyme || '?'})</>}
           {jType === 'kld' && <> — KLD</>}
         </span>
-        <button onClick={() => setExpanded(false)} className="text-gray-400 hover:text-gray-600 text-xs">{'✕'}</button>
+        <button onClick={() => setExpanded(false)} className="text-gray-400 hover:text-gray-600 text-xs" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="close" size={12} /></button>
       </div>
 
       {/* ═══ Overlap / Gibson ═══ */}
@@ -174,7 +175,7 @@ export default function JunctionDNA({ junction, calculated, primers = [],
               <span className="text-[8px] text-gray-400">Seq:</span>
               <code className="text-[9px] font-mono bg-gray-50 px-1 rounded text-gray-600 select-all cursor-text overflow-x-auto max-w-[280px]">{overlapSeq}</code>
               <button onClick={() => navigator.clipboard.writeText(overlapSeq)}
-                className="text-[8px] text-gray-400 hover:text-blue-600 shrink-0">{'📋'}</button>
+                className="text-[8px] text-gray-400 hover:text-blue-600 shrink-0" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="copy" size={11} /></button>
             </div>
           </div>
         </>);

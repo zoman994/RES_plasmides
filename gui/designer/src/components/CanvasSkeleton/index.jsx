@@ -35,6 +35,7 @@
  */
 import { useEffect, useRef } from 'react';
 import { useStore } from '../../store';
+import { Icon } from '../icons/Icon';
 import { SkeletonProvider, useSkeletonState, useSkeletonActions } from './store/skeleton-context';
 import SkeletonHeader from './SkeletonHeader';
 import ProjectAssemblyWorkspace from './workspace/ProjectAssemblyWorkspace';
@@ -216,7 +217,7 @@ function CanvasArea() {
           e.currentTarget.style.borderColor = 'var(--border-default, #d6d3d1)';
         }}
       >
-        <span style={{ fontSize: 14, lineHeight: 1 }}>🗑</span>
+        <Icon name="trash" size={14} style={{ display: 'inline-block', verticalAlign: '-2px' }} />
         <span>Очистить</span>
       </button>
       <LineagePanel />

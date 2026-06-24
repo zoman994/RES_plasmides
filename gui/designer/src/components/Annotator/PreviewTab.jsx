@@ -29,6 +29,8 @@ import { useSequenceSelection } from '../../hooks/useSequenceSelection';
 import { isDuplicatePrediction, reconcileConfirmedWithPartials } from '../../lib/annotation-edit.js';
 import SequenceView from '../SequenceView';
 import PlasmidMiniMap from '../PlasmidMiniMap.jsx';
+import PlasmidMapV2 from '../PlasmidMapV2.jsx';
+import { FEATURE_FLAGS } from '../../lib/feature-flags';
 import GhostDrillInPanel from './GhostDrillInPanel.jsx';
 import AnnotatorProgressBar from './AnnotatorProgressBar.jsx';
 import AnnotatorTabBar from './TabBar.jsx';
@@ -73,6 +75,10 @@ export default function PreviewTab({
   primers,
   onWritePrimer,
   onDeletePrimer,
+  // 2026-06-17 — the host (Annotator/index.jsx) lifts the selection hook so the
+  // intron analysis can read the live selection. When provided, use it instead
+  // of the local fallback so both share ONE selection state.
+  selection = null,
 }) {
   const seqRef = useRef(null);
   useEffect(() => {
@@ -178,7 +184,8 @@ export default function PreviewTab({
   // (useSelectionEdit) had no selection to delete. Reset on plasmid
   // switch — keyed on content since `name` is a constant here.
   const selResetKey = `${(sequence || '').length}:${(sequence || '').slice(0, 16)}`;
-  const sel = useSequenceSelection({ resetKey: selResetKey });
+  const fallbackSel = useSequenceSelection({ resetKey: selResetKey });
+  const sel = selection || fallbackSel; // host-lifted selection wins (shared state)
 
   // Click on a CONFIRMED feature selects its whole range so Del / E act on
   // it (useSelectionEdit matches selStart..selEnd to a region). Predicted
@@ -248,13 +255,27 @@ export default function PreviewTab({
               overflow: 'auto',
             }}
           >
-            <PlasmidMiniMap
-              length={(sequence || '').length}
-              topology="circular"
-              annotations={merged}
-              size={420}
-              disableHoverOverlay
-            />
+            {FEATURE_FLAGS.plasmidMapV2 ? (
+              /* Редизайн карты (DEC-DS-PLASMIDMAP-V2): feature-centric, внешние
+                 лидер-подписи в две колонки. overflow:visible — подписи могут
+                 свисать за квадрат карты, центрируется родительским flex. */
+              <div style={{ width: 460, maxWidth: '100%', aspectRatio: '1 / 1', overflow: 'visible' }}>
+                <PlasmidMapV2
+                  annotations={merged}
+                  length={(sequence || '').length}
+                  topology="circular"
+                  centerLabel={{ name, bp: (sequence || '').length }}
+                />
+              </div>
+            ) : (
+              <PlasmidMiniMap
+                length={(sequence || '').length}
+                topology="circular"
+                annotations={merged}
+                size={420}
+                disableHoverOverlay
+              />
+            )}
           </div>
         ) : (
           // Wrap SequenceView so the tab-pane crossfade picks it up

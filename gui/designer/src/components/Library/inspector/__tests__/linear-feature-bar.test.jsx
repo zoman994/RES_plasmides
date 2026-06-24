@@ -107,6 +107,33 @@ describe('LinearFeatureBar — K5 predicted styling', () => {
   });
 });
 
+// ─── Gene with introns — clearly divided into exon blocks ──
+// Игорь: «интроны пусть чётко делят в навигационной колбасе ген».
+describe('LinearFeatureBar — gene split by introns', () => {
+  const SEQ = 2000;
+  const GENE_WITH_INTRONS = [
+    { id: 'g1', name: 'ген', type: 'gene', level: 'region', start: 100, end: 900, strand: 1 },
+    { id: 'i1', name: 'интрон 1', type: 'intron', level: 'detail', regionId: 'g1', start: 300, end: 380, strand: 1 },
+    { id: 'i2', name: 'интрон 2', type: 'intron', level: 'detail', regionId: 'g1', start: 600, end: 680, strand: 1 },
+  ];
+
+  it('renders the gene as exon blocks + dashed intron connectors, introns not separate boxes', () => {
+    const { container } = render(<LinearFeatureBar annotations={GENE_WITH_INTRONS} seqLength={SEQ} />);
+    // 2 introns → 3 exon blocks + 2 connectors
+    expect(container.querySelectorAll('[data-testid="linear-exon-rect"]').length).toBe(3);
+    expect(container.querySelectorAll('[data-testid="linear-intron-connector"]').length).toBe(2);
+    // only ONE feature group (the gene) — the introns are consumed as connectors
+    expect(container.querySelectorAll('g[data-feature-start]').length).toBe(1);
+  });
+
+  it('a gene without introns keeps a single solid rect', () => {
+    const plain = [{ id: 'g2', name: 'ген', type: 'gene', level: 'region', start: 100, end: 900 }];
+    const { container } = render(<LinearFeatureBar annotations={plain} seqLength={SEQ} />);
+    expect(container.querySelectorAll('[data-testid="linear-exon-rect"]').length).toBe(0);
+    expect(container.querySelectorAll('g[data-feature-start] rect').length).toBe(1);
+  });
+});
+
 // ─── Sprint M-X.3 follow-up — only «main» feature label per overlap ──
 // Biolog: «когда много фичей накладываются друг на друга получается
 // в колбасе каша. Можно выводить только название основной фичи

@@ -4,6 +4,7 @@ import { formatHotkey, HOTKEYS } from '../../lib/hotkeys';
 import { STRINGS } from '../../lib/strings';
 import ThemeToggle from '../ThemeToggle';
 import HotkeyCheatsheet from '../HotkeyCheatsheet';
+import { Icon } from '../icons/Icon';
 
 export default function Topbar() {
   // UX-037 — local state for the keyboard-shortcut cheatsheet overlay.
@@ -117,9 +118,10 @@ export default function Topbar() {
             lineHeight: 1,
             color: 'var(--text-primary, #1c1917)',
             borderRadius: 'var(--radius-md, 6px)',
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
           }}
         >
-          ‹
+          <Icon name="chevron-left" size={18} />
         </button>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
           <span style={{ fontWeight: 500, fontSize: 14, color: 'var(--text-primary, #1c1917)' }}>
@@ -149,8 +151,9 @@ export default function Topbar() {
                 padding: '2px 6px', fontSize: 13, lineHeight: 1,
                 color: 'var(--text-secondary, #57534e)',
                 borderRadius: 'var(--radius-md, 6px)',
+                display: 'inline-flex', alignItems: 'center',
               }}
-            >✏️</button>
+            ><Icon name="edit" size={14} /></button>
           )}
           {fileName && (
             <span style={{ fontSize: 11, color: 'var(--text-tertiary, #78716c)', fontFamily: 'var(--font-mono)' }}>
@@ -212,8 +215,8 @@ export default function Topbar() {
               data-testid="topbar-save-flash"
               aria-hidden="true"
               className="save-flash-bounce"
-              style={{ color: '#16a34a', fontWeight: 600 }}
-            >✓</span>
+              style={{ color: '#16a34a', fontWeight: 600, display: 'inline-flex', alignItems: 'center' }}
+            ><Icon name="check" size={13} /></span>
           )}
           {saveStatus}
         </span>

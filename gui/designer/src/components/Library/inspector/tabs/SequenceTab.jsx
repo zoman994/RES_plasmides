@@ -40,6 +40,9 @@ export default function SequenceTab({
   topology,
   name,
   fileKey,
+  // Terminal sticky-end staircase (Игорь 22.06): { left, right } from
+  // terminalStagger(segment). Pass-through to SequenceView. Null → no staircase.
+  terminalStagger = null,
   // Entry id of the currently rendered library record. Used to scope
   // the global search-hits store-slot — overlay rects appear only
   // when the popover ran against THIS entry.
@@ -69,6 +72,10 @@ export default function SequenceTab({
   // в SequenceView. Library/Importer не передают → display-only path.
   onRestrictionClick,
   restrictionHighlightKey,
+  // RS-PICK4 — opt-in enzyme allow-list (assembly picker). Pass-through to
+  // SequenceView so the набор/picked/unique selection filters the sequence's RE
+  // sites. undefined → store-driven (Library/Importer unchanged).
+  reEnzymesFilter,
   // PCR viewer (V74) — adds «Прямой/Обратный праймер» into the shared
   // right-click selection menu. Library/Importer leave it undefined →
   // SequenceView omits the items (same gating as onBlastSelection).
@@ -97,6 +104,10 @@ export default function SequenceTab({
   // V87 — opt-in out-of-range mask for the RangePickerModal viewer
   // ({start,end}). Library/Importer leave it undefined → no overlay.
   outOfRangeMask,
+  // Backbone invert (assembly picker): highlight the COMPLEMENT of the current
+  // selection (the wrap-around backbone) instead of the selection itself.
+  // Pass-through to SequenceView → SelectionOverlay. undefined → normal selection.
+  inverted,
   // SPEC_COMMON_FEATURES DEC-CF-05 — «Add to common features» (consumer-gated
   // pass-through). Library inspector / ContainerEditor / Importer pass these;
   // Assembly / PCR / Annotator-preview leave them undefined → no menu item.
@@ -155,31 +166,17 @@ export default function SequenceTab({
     ? (searchHitsState.hits || EMPTY_HITS)
     : EMPTY_HITS;
 
-  // Bug-rush #22 (04.05.2026 evening): the sticky «Sequence · 10 444
-  // bp · READ-ONLY» strip was visually heavy and redundant — the same
-  // numbers + the ⚙ gear now live in SingleInspector's title row, the
-  // tab panel renders only the SequenceView itself. State + settings
-  // popover hoisted out of this file.
-  const showReadOnlyBanner = !editable && isReadOnlyZone;
+  // 17.06.2026 (Игорь) — read-only banner removed; the Library sequence
+  // is editable by default. The ⚙ gear + length/topology live in the
+  // title row; this panel renders the SequenceView itself.
   return (
     <div data-testid="importer-tab-panel-sequence" style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%', minWidth: 0, position: 'relative' }}>
-      {showReadOnlyBanner && (
-        <div
-          data-testid="sequence-readonly-banner"
-          style={{
-            padding: '6px 16px',
-            background: 'var(--surface-2)',
-            color: 'var(--text-secondary)',
-            fontSize: 11,
-            borderBottom: '1px solid var(--border-subtle)',
-          }}
-        >🔒 Просмотр read-only. Для редактирования откройте в Container Window или создайте manual-edit ветку.</div>
-      )}
       <div style={{ width: '100%', minWidth: 0, display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
         <SequenceView
           ref={sequenceViewRef}
           fragments={fragments}
           circular={topology === 'circular'}
+          terminalStagger={terminalStagger}
           readOnly
           caretPos={caretPos}
           caretAnchor={caretAnchor}
@@ -196,6 +193,7 @@ export default function SequenceTab({
           primers={primers}
           onRestrictionClick={onRestrictionClick}
           restrictionHighlightKey={restrictionHighlightKey}
+          reEnzymesFilter={reEnzymesFilter}
           onWritePrimer={onWritePrimer}
           onDeletePrimer={onDeletePrimer}
           onCreatePiece={onCreatePiece}
@@ -205,6 +203,7 @@ export default function SequenceTab({
           onZoneClick={onZoneClick}
           onZoneHover={onZoneHover}
           outOfRangeMask={outOfRangeMask}
+          inverted={inverted}
           onPromoteToCommon={onPromoteToCommon}
           checkCommonDuplicate={checkCommonDuplicate}
         />

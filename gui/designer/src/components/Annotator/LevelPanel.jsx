@@ -33,10 +33,11 @@
  * as the legacy table, just without the plugin-grouping header.
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { STRINGS } from '../../lib/strings';
 import { isDuplicatePrediction } from '../../lib/annotation-edit.js';
 import ResultRow from './ResultRow.jsx';
+import { Icon } from '../icons/Icon';
 
 // Shared duplicate-detection heuristic — see lib/annotation-edit.js.
 const isDuplicateOfConfirmed = isDuplicatePrediction;
@@ -47,9 +48,12 @@ export const LEVELS = Object.freeze({
   L1: Object.freeze(['common-features-homology']),
   L2: Object.freeze(['orf-scan', 'sigma70-promoter', 'stem-loop-terminator', 'sgrna-scaffold']),
   L3: Object.freeze(['blast-ncbi']),
+  // «Структура гена» — fed by the 🧬 intron analysis (annotate-genes), stored
+  // under the pseudo-plugin id 'gene-parser'. Not a pipeline plugin.
+  GENE: Object.freeze(['gene-parser']),
 });
 
-const LEVEL_ORDER = ['L1', 'L2', 'L3'];
+const LEVEL_ORDER = ['L1', 'L2', 'L3', 'GENE'];
 
 const LEVEL_COPY = {
   L1: { title: 'level1Title', hint: 'level1Hint' },
@@ -59,6 +63,15 @@ const LEVEL_COPY = {
   // yet; flag it so LevelSection renders a «Coming soon» card
   // instead of the Run button.
   L3: { title: 'level3Title', hint: 'level3Hint', comingSoon: true },
+  // The gene + its introns are cross-linked (intron.regionId = gene.id), so the
+  // section accepts the WHOLE structure as one unit («Принять структуру»),
+  // never per-region — a partial accept would re-create the monolithic-gene
+  // bug. Literal copy: no i18n key needed.
+  GENE: {
+    titleLiteral: 'Структура гена (интроны)',
+    hintLiteral: 'Парсер гена: ATG…стоп + GT-AG интроны. Принимается целиком — ген со своими интронами.',
+    geneStructure: true,
+  },
 };
 
 function regionsForLevel(levelId, results, threshold, existingAnnotations, showDuplicates) {
@@ -113,22 +126,34 @@ export default function LevelPanel({
   // feature name in the panel teleports the embedded SequenceView
   // to that region's start.
   onLocateRegion,
+  // Intron-analysis controls live in the «Структура гена» section (Игорь:
+  // перенести организм + кнопку 🧬 в правую панель). { organism, onOrganismChange,
+  // onDetect, busy, hasSelection, result }. Absent in bare-panel tests.
+  geneAnalysis,
+  // Resizable panel width (px). Driven by the Annotator's split handle; defaults
+  // to the historical 360 for standalone/bare-panel usage + tests.
+  width = 360,
 }) {
   // Each level has independent expand/collapse state. L1 starts open
   // (auto-run produces results on open, so the user wants to see
   // them immediately); L2 and L3 are opt-in, start collapsed.
-  const [expanded, setExpanded] = useState({ L1: true, L2: false, L3: false });
+  const [expanded, setExpanded] = useState({ L1: true, L2: false, L3: false, GENE: !!geneAnalysis });
   const toggle = (id) => setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
+  // Auto-open «Структура гена» when the 🧬 analysis produces a result, so the
+  // pending structure is visible to accept without a manual expand.
+  const hasGeneResult = !!(results && results['gene-parser']);
+  useEffect(() => {
+    if (hasGeneResult) setExpanded((prev) => ({ ...prev, GENE: true }));
+  }, [hasGeneResult]);
 
   return (
     <div
       data-testid="annotator-level-panel"
       style={{
-        width: 360,
+        width,
         flexShrink: 0,
         display: 'flex',
         flexDirection: 'column',
-        borderLeft: '0.5px solid var(--border-default, #d4d4d4)',
         background: 'var(--surface-1, #fff)',
         overflowY: 'auto',
       }}
@@ -197,26 +222,43 @@ export default function LevelPanel({
         </div>
       </div>
       {LEVEL_ORDER.map((levelId) => (
-        <LevelSection
-          key={levelId}
-          levelId={levelId}
-          expanded={!!expanded[levelId]}
-          onToggle={() => toggle(levelId)}
-          results={results}
-          running={running}
-          acceptedRegionIds={acceptedRegionIds}
-          rejectedRegionIds={rejectedRegionIds}
-          pendingEdits={pendingEdits}
-          threshold={threshold}
-          existingAnnotations={existingAnnotations}
-          showDuplicates={showDuplicates}
-          onAccept={onAccept}
-          onReject={onReject}
-          onEditPatch={onEditPatch}
-          onRunLevel={onRunLevel}
-          onAcceptMany={onAcceptMany}
-          onLocateRegion={onLocateRegion}
-        />
+        levelId === 'GENE' ? (
+          <GeneStructureSection
+            key="GENE"
+            expanded={!!expanded.GENE}
+            onToggle={() => toggle('GENE')}
+            results={results}
+            threshold={threshold}
+            existingAnnotations={existingAnnotations}
+            showDuplicates={showDuplicates}
+            acceptedRegionIds={acceptedRegionIds}
+            onAcceptMany={onAcceptMany}
+            onReject={onReject}
+            onLocateRegion={onLocateRegion}
+            geneAnalysis={geneAnalysis}
+          />
+        ) : (
+          <LevelSection
+            key={levelId}
+            levelId={levelId}
+            expanded={!!expanded[levelId]}
+            onToggle={() => toggle(levelId)}
+            results={results}
+            running={running}
+            acceptedRegionIds={acceptedRegionIds}
+            rejectedRegionIds={rejectedRegionIds}
+            pendingEdits={pendingEdits}
+            threshold={threshold}
+            existingAnnotations={existingAnnotations}
+            showDuplicates={showDuplicates}
+            onAccept={onAccept}
+            onReject={onReject}
+            onEditPatch={onEditPatch}
+            onRunLevel={onRunLevel}
+            onAcceptMany={onAcceptMany}
+            onLocateRegion={onLocateRegion}
+          />
+        )
       ))}
     </div>
   );
@@ -298,8 +340,8 @@ function LevelSection({
           color: 'var(--text-primary, #111)',
         }}
       >
-        <span style={{ fontSize: 9, color: 'var(--text-tertiary)' }}>
-          {expanded ? '▼' : '▶'}
+        <span style={{ fontSize: 9, color: 'var(--text-tertiary)', display: 'inline-flex', alignItems: 'center' }}>
+          <Icon name={expanded ? 'chevron-down' : 'chevron-right'} size={12} />
         </span>
         <span style={{ flex: 1, fontSize: 12, fontWeight: 500 }}>
           {S[copy.title]}
@@ -441,6 +483,185 @@ function LevelSection({
               onLocate={onLocateRegion}
             />
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * «Структура гена» — the intron-analysis result rendered as a panel level.
+ * Unlike the other levels (independent regions, per-row accept), the gene and
+ * its introns are cross-linked, so the whole structure is accepted as ONE unit
+ * («Принять структуру» → acceptMany of every region). A partial accept would
+ * re-create the monolithic-gene bug, so there is no per-row accept here.
+ */
+function GeneStructureSection({
+  expanded,
+  onToggle,
+  results,
+  threshold,
+  existingAnnotations,
+  showDuplicates,
+  acceptedRegionIds,
+  onAcceptMany,
+  onReject,
+  onLocateRegion,
+  // { organism, onOrganismChange, onDetect, busy, hasSelection, result } — the
+  // intron-analysis controls, moved here from the toolbar (Игорь).
+  geneAnalysis,
+}) {
+  const copy = LEVEL_COPY.GENE;
+  const regions = useMemo(
+    () => regionsForLevel('GENE', results, threshold, existingAnnotations, showDuplicates),
+    [results, threshold, existingAnnotations, showDuplicates],
+  );
+  const gene = regions.find((r) => r.type === 'gene');
+  const introns = regions.filter((r) => r.type === 'intron');
+  const allIds = regions.map((r) => r.id);
+  const allAccepted = allIds.length > 0 && allIds.every((id) => acceptedRegionIds?.[id]);
+  const status = regions.length ? `Найдено интронов: ${introns.length}` : 'Не запускалось';
+
+  const primaryBtn = {
+    padding: '4px 10px', fontSize: 11, borderRadius: 'var(--radius-sm, 3px)',
+    border: 'none', background: 'var(--accent-500, #f97316)', color: '#fff',
+    cursor: 'pointer', fontWeight: 500,
+  };
+  const secondaryBtn = {
+    padding: '4px 10px', fontSize: 11, borderRadius: 'var(--radius-sm, 3px)',
+    border: '0.5px solid var(--border-default, #d4d4d4)', background: 'transparent',
+    color: 'var(--text-secondary)', cursor: 'pointer',
+  };
+  const selectStyle = {
+    padding: '3px 6px', fontSize: 11, cursor: 'pointer',
+    border: '0.5px solid var(--border-default, #d4d4d4)', borderRadius: 'var(--radius-sm, 3px)',
+    background: 'var(--surface-1, #fff)', color: 'var(--text-primary, #111)',
+  };
+  // Result status message (was the floating toolbar banner). null when no run.
+  const r = geneAnalysis?.result;
+  const statusMsg = !r ? null
+    : r.needsSelection ? '🧬 Выдели ген (ORF), чтобы найти интроны — на всю плазмиду анализ не запускается.'
+      : r.tooShort ? '🧬 Выделение короче 220 п.н. — мало контекста для нейросети. Выдели ген целиком.'
+        : r.intronCount > 0 ? `🧬 Найдено интронов: ${r.intronCount} (цепь ${r.strand === -1 ? '−' : '+'}${Number.isFinite(r.orf) ? `, ORF ${r.orf} aa` : ''}) · парсер гена`
+          : '🧬 Интроны не найдены · парсер гена';
+  const warn = !!(r && (r.needsSelection || r.tooShort || r.cryptic?.length));
+
+  return (
+    <div
+      data-testid="annotator-level-section"
+      data-level-id="GENE"
+      data-expanded={expanded ? 'true' : 'false'}
+      style={{ borderBottom: '0.5px solid var(--border-default, #d4d4d4)', flexShrink: 0 }}
+    >
+      <button
+        type="button"
+        onClick={onToggle}
+        data-testid="annotator-level-header"
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+          padding: '8px 12px', background: 'transparent', border: 'none',
+          cursor: 'pointer', textAlign: 'left', color: 'var(--text-primary, #111)',
+        }}
+      >
+        <span style={{ fontSize: 9, color: 'var(--text-tertiary)', display: 'inline-flex', alignItems: 'center' }}><Icon name={expanded ? 'chevron-down' : 'chevron-right'} size={12} /></span>
+        <span style={{ flex: 1, fontSize: 12, fontWeight: 500 }}>{copy.titleLiteral}</span>
+        <span data-testid="annotator-level-status" style={{ fontSize: 10, color: 'var(--text-secondary)' }}>{status}</span>
+      </button>
+      {expanded && (
+        <div
+          data-testid="annotator-level-body"
+          style={{ padding: '0 12px 10px', display: 'flex', flexDirection: 'column', gap: 6 }}
+        >
+          <div style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>{copy.hintLiteral}</div>
+          {geneAnalysis && (
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+              <select
+                data-testid="annotator-organism"
+                value={geneAnalysis.organism}
+                onChange={(e) => geneAnalysis.onOrganismChange?.(e.target.value)}
+                title="Организм — задаёт типичную длину интрона для парсера гена."
+                style={selectStyle}
+              >
+                <option value="fungi">Грибы</option>
+                <option value="vertebrate">Человек/животные</option>
+                <option value="plant">Растения</option>
+                <option value="invertebrate">Насекомые</option>
+                <option value="generic">Другой</option>
+              </select>
+              <button
+                type="button"
+                data-testid="annotator-detect-introns"
+                onClick={geneAnalysis.onDetect}
+                disabled={geneAnalysis.busy}
+                title={geneAnalysis.hasSelection
+                  ? 'Найти интроны в выделенном гене: парсер гена (ATG…стоп) + GT-AG сайты.'
+                  : 'Выдели ген (ORF), чтобы найти интроны — на всю плазмиду анализ не запускается.'}
+                style={{
+                  padding: '4px 10px', fontSize: 12, cursor: geneAnalysis.busy ? 'wait' : 'pointer',
+                  border: '0.5px solid var(--border-default, #d4d4d4)', borderRadius: 'var(--radius-sm, 3px)',
+                  background: 'var(--surface-1, #fff)', color: 'var(--text-primary, #111)',
+                  opacity: geneAnalysis.busy ? 0.6 : (geneAnalysis.hasSelection ? 1 : 0.7),
+                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                }}
+              ><Icon name="dna" size={13} />{geneAnalysis.busy ? ' …' : ' Интроны'}</button>
+            </div>
+          )}
+          {statusMsg && (
+            <div
+              data-testid="annotator-splice-result"
+              style={{
+                fontSize: 11, padding: '5px 8px', borderRadius: 'var(--radius-sm, 3px)',
+                background: warn ? 'var(--warning-chip, #fef3c7)' : 'var(--surface-2)',
+                color: warn ? 'var(--warning-text, #92400e)' : 'var(--text-secondary)',
+              }}
+            >
+              {statusMsg}
+              {r?.cryptic?.length > 0 && (
+                <span data-testid="annotator-cryptic-warning">
+                  {' · ⚠ криптические splice-сайты: '}
+                  {r.cryptic.slice(0, 5).map((c) => `${c.kind === 'donor' ? 'донор' : 'акцептор'}@${c.pos + 1}`).join(', ')}
+                  {r.cryptic.length > 5 ? ` +${r.cryptic.length - 5}` : ''}
+                </span>
+              )}
+            </div>
+          )}
+          {regions.length === 0 ? (geneAnalysis ? null : (
+            <div data-testid="annotator-gene-empty" style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
+              Запусти «🧬 Интроны» — найденная структура появится здесь для подтверждения.
+            </div>
+          )) : (
+            <div data-testid="annotator-gene-structure" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <button
+                type="button"
+                data-testid="annotator-gene-summary"
+                onClick={() => gene && onLocateRegion?.(gene)}
+                style={{
+                  textAlign: 'left', background: 'var(--surface-2, #f5f5f4)',
+                  border: '0.5px solid var(--border-default, #d4d4d4)',
+                  borderRadius: 'var(--radius-sm, 3px)', padding: '6px 8px',
+                  cursor: 'pointer', fontSize: 11, color: 'var(--text-primary, #111)',
+                }}
+              >
+                🧬 {gene?.name || 'ген'} · интронов: {introns.length} · цепь {gene?.strand === -1 ? '−' : '+'}
+                {introns.length > 0 && (
+                  <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 2 }}>
+                    {introns.map((it, i) => `${i + 1}: ${it.start + 1}–${it.end}`).join(' · ')}
+                  </div>
+                )}
+              </button>
+              {allAccepted ? (
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <span style={{ fontSize: 11, fontWeight: 500, color: '#16a34a' }}>✓ структура принята</span>
+                  <button type="button" data-testid="annotator-gene-reject" onClick={() => allIds.forEach((id) => onReject?.(id))} style={secondaryBtn}>Отклонить</button>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button type="button" data-testid="annotator-gene-accept" onClick={() => onAcceptMany?.(allIds)} style={primaryBtn}>Принять структуру</button>
+                  <button type="button" data-testid="annotator-gene-reject" onClick={() => allIds.forEach((id) => onReject?.(id))} style={secondaryBtn}>Отклонить</button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -8,6 +8,7 @@
 
 import { translateDNA } from './codons';
 import { generateRegionId } from './domain-detection';
+import { reverseComplement } from './sequence-utils';
 
 /**
  * Detect candidate introns in a genomic CDS sequence.
@@ -159,4 +160,106 @@ export function getExonRanges(regionStart, regionEnd, introns) {
   }
 
   return exons;
+}
+
+/**
+ * Collect the introns that belong to a translatable region, normalising the
+ * two intron shapes the codebase produces:
+ *   - detail introns linked by `regionId` (manual / intronsToAnnotations)
+ *   - region-level introns with no parent (the frame-aware gene parser)
+ *
+ * A detail intron is authoritative iff its regionId matches the region; a
+ * region-level intron is adopted by geometric containment on the SAME strand
+ * (so an intron sitting inside an overlapping opposite-strand CDS is not
+ * wrongly captured).
+ *
+ * @param {Array} annotations — the full annotation list
+ * @param {object} region — a translatable region {id, start, end, strand}
+ * @returns {Array} intron annotations that splice this region
+ */
+export function getIntronsForRegion(annotations, region) {
+  if (!Array.isArray(annotations) || !region) return [];
+  const rStrand = region.strand === -1 ? -1 : 1;
+  return annotations.filter((a) => {
+    if (!a || a.type !== 'intron') return false;
+    // The annotation links to its parent CDS via `regionId` (raw annotation
+    // shape) or `parentId` (feature-map shape passed to the SequenceView).
+    const link = a.regionId != null ? a.regionId : a.parentId;
+    if (link != null) return region.id != null && link === region.id;
+    // region-level intron with no parent: adopt by containment + matching strand
+    const inside = a.start >= region.start && a.end <= region.end && a.end > a.start;
+    if (!inside) return false;
+    const aStrand = a.strand === -1 ? -1 : (a.strand === 1 ? 1 : rStrand);
+    return aStrand === rStrand;
+  });
+}
+
+/**
+ * Splice a translatable region: remove its introns and return the mature
+ * coding sequence (5′→3′ on the strand the CDS is read) plus a bidirectional
+ * spliced↔genomic coordinate map.
+ *
+ * exonMap is an ordered array of segments in SPLICED order, each
+ *   { sStart, sEnd, gStart, step }
+ * where genomic position of spliced index s ∈ [sStart, sEnd) is
+ *   gStart + (s − sStart) * step      (step = +1 forward, −1 reverse).
+ *
+ * @param {string} fullSeq — top-strand genomic DNA
+ * @param {object} region — {start, end, strand}
+ * @param {Array} introns — intron annotations (genomic coords); only those
+ *   overlapping the region are used (clamped to it)
+ * @returns {{ spliced:string, exonMap:Array, exons:Array, strand:1|-1 }}
+ */
+export function spliceRegion(fullSeq, region, introns) {
+  const seq = fullSeq || '';
+  const start = Math.max(0, region.start | 0);
+  const end = Math.min(seq.length, region.end | 0);
+  const within = (introns || [])
+    .filter((it) => it && it.start < end && it.end > start)
+    .map((it) => ({ start: Math.max(start, it.start | 0), end: Math.min(end, it.end | 0) }))
+    .filter((it) => it.end > it.start)
+    .sort((a, b) => a.start - b.start);
+
+  const exons = getExonRanges(start, end, within);
+  const topSpliced = exons.map((e) => seq.slice(e.start, e.end)).join('');
+  const reverse = region.strand === -1;
+  const spliced = reverse ? reverseComplement(topSpliced) : topSpliced;
+
+  const exonMap = [];
+  let s = 0;
+  if (!reverse) {
+    for (const e of exons) {
+      const len = e.end - e.start;
+      exonMap.push({ sStart: s, sEnd: s + len, gStart: e.start, step: 1 });
+      s += len;
+    }
+  } else {
+    // mature mRNA reads from the highest genomic exon base downward
+    for (let i = exons.length - 1; i >= 0; i--) {
+      const e = exons[i];
+      const len = e.end - e.start;
+      exonMap.push({ sStart: s, sEnd: s + len, gStart: e.end - 1, step: -1 });
+      s += len;
+    }
+  }
+  return { spliced, exonMap, exons, strand: reverse ? -1 : 1 };
+}
+
+/** Map a spliced (mature) position to its genomic position, or −1. */
+export function splicedToGenomic(exonMap, sPos) {
+  for (const seg of exonMap) {
+    if (sPos >= seg.sStart && sPos < seg.sEnd) {
+      return seg.gStart + (sPos - seg.sStart) * seg.step;
+    }
+  }
+  return -1;
+}
+
+/** Map a genomic position to its spliced position, or −1 if it lands in an intron. */
+export function genomicToSpliced(exonMap, gPos) {
+  for (const seg of exonMap) {
+    const off = (gPos - seg.gStart) * seg.step; // step is ±1 → inverts cleanly
+    if (off >= 0 && off < seg.sEnd - seg.sStart) return seg.sStart + off;
+  }
+  return -1;
 }

@@ -7,6 +7,7 @@
  * project.containerIds.length.
  */
 import { memo } from 'react';
+import { Icon } from '../icons/Icon';
 
 const PALETTE = ['#D9836B', '#B0C84A', '#FFC400', '#5DA5C4', '#B884B8', '#E8B333', '#4DB89E'];
 
@@ -129,10 +130,11 @@ export const RecentRow = memo(function RecentRow({
             fontSize: 16,
             color: pinned ? 'var(--accent-700)' : 'var(--text-tertiary)',
             lineHeight: 1,
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
           }}
-        >{pinned ? '★' : '☆'}</button>
+        ><Icon name="star" size={15} filled={pinned} /></button>
       )}
-      <div className="more">⋯</div>
+      <div className="more" style={{ display: 'inline-flex', alignItems: 'center' }}><Icon name="kebab" size={14} /></div>
     </div>
   );
 });

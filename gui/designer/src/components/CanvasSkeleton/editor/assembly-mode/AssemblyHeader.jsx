@@ -7,6 +7,7 @@
  * assembly has ≥2 segments or a single fragment closed into a ring).
  */
 import InlineEditableTitle from '../../../Library/inspector/InlineEditableTitle';
+import { Icon } from '../../../icons/Icon';
 
 // M-CIRCULARIZE — engine method → short biolog label for the topology/method chip.
 const METHOD_LABEL = {
@@ -48,7 +49,8 @@ export default function AssemblyHeader({
         minHeight: 40,
       }}
     >
-      <span aria-hidden style={{ fontSize: 15 }}>🧬</span>
+      <Icon name="dna" size={15} style={{ display: 'inline-block', verticalAlign: '-2px' }} />
+
       <div style={{ minWidth: 0, maxWidth: 280 }}>
         <InlineEditableTitle value={draft.name} onCommit={onRename} placeholder="Сборка" />
       </div>
@@ -78,10 +80,10 @@ export default function AssemblyHeader({
             borderRadius: 4, cursor: 'pointer',
           }}
         >
-          <span aria-hidden>{circular ? '◉' : '○'}</span>
+          <Icon name="circular" size={12} style={{ display: 'inline-block', verticalAlign: '-2px' }} />
           {circular ? 'Кольцевая' : 'Линейная'}
           {methodLabel ? <span style={{ color: 'var(--text-tertiary)' }}>· {methodLabel}</span> : null}
-          <span aria-hidden style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>✎</span>
+          <Icon name="edit" size={10} style={{ display: 'inline-block', verticalAlign: '-2px', color: 'var(--text-tertiary)' }} />
         </button>
       )}
 
@@ -99,7 +101,7 @@ export default function AssemblyHeader({
             background: 'var(--accent-100, #eed2c1)', color: 'var(--text-secondary)',
             border: '1px solid var(--border-subtle)', borderRadius: 4, cursor: 'pointer',
           }}
-        >⊞ панели</button>
+        ><Icon name="panel-right" size={12} style={{ display: 'inline-block', verticalAlign: '-2px' }} /> панели</button>
       )}
 
       {/* AV-K10 — «S» toggle returns biolog to canvas with this zone

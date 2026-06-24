@@ -16,6 +16,7 @@ import LinearFeatureBar from './tabs/LinearFeatureBar';
 // Sequence and scrolls.
 import AnnotationsTab from './tabs/AnnotationsTab';
 import { getRegions } from '../../../annotation-model';
+import { findDominatedRegions } from '../../../lib/plasmid-mini-map-geometry';
 import {
   applyAnnotationEdit,
   mergeAnnotations,
@@ -31,15 +32,20 @@ import { selectAnnotator } from '../../../store/uiSlice.js';
 // tab embeds the same component via AnnotationsTab.
 import SettingsPopover from '../../SequenceView/SettingsPopover';
 import FeatureEditorModal from './FeatureEditorModal';
-import LibrarySaveActions from './LibrarySaveActions';
 import LibraryInspectorTitleRow from './LibraryInspectorTitleRow';
-import ManualEditConfirmModal from './ManualEditConfirmModal';
 import { useIdlePrewarm } from './hooks/useIdlePrewarm';
 import { useAnnotationUndoRedo } from './hooks/useAnnotationUndoRedo';
 import { useFeatureEditorFlow } from './hooks/useFeatureEditorFlow';
-import { useEditableModeToggle } from './hooks/useEditableModeToggle';
-import { useManualEditBranching } from './hooks/useManualEditBranching';
 import { useLibrarySaveFlow } from './hooks/useLibrarySaveFlow';
+// 17.06.2026 (Игорь «убрать рид-онли/эдитэйбл, по умолчанию редактируемой,
+// форма сохранения как в выравнивании»): the Library sequence is now
+// editable by default and edits go to a TRANSIENT working buffer
+// (edits.editedSequence/editedAnnotations/editLog) via the SAME pure
+// indel-aware helper + provenance engine the aligner uses; an explicit
+// «Сохранить версию» commits a new branch (createManualEditBranch).
+import { applySequenceEditToEntry } from '../lib/library-sequence-edit';
+import { enrichEditDescriptor, mergeCorrection } from '../../../lib/alignment/describe-edit';
+import { rotateOriginToPosition } from '../../../rotate-origin';
 import { useEntryPrimers } from './hooks/useEntryPrimers';
 import { useInspectorSelectionNav } from './hooks/useInspectorSelectionNav';
 import { usePromoteToCommon } from '../../SequenceView/hooks/usePromoteToCommon';
@@ -142,12 +148,11 @@ export default function SingleInspector({
   const onNavigateToFeature = useCallback((region) => {
     if (region && Number.isFinite(region.start)) onBarSettle(region.start);
   }, [onBarSettle]);
-  // K6 read-only/editable pill (DEC-LIB-16 ⚓) — extracted in M-X.6 K0
-  // (DEC-MX6-01). Auto-resets on plasmid switch.
-  // M-X.7a v2 K3 R1: hook also returns `isReadOnlyZone` derived from
-  // `item.zone === 'readonly_bodge'`; tabs render the read-only
-  // banner when both `editable === false` AND `isReadOnlyZone`.
-  const { editable, toggle: toggleEditable, disable: disableEditable, isReadOnlyZone } = useEditableModeToggle(item);
+  // Editable by default (Игорь 17.06.2026 — «рид-онли/эдитэйбл убрать,
+  // сделать редактируемой»). The read-only/editable pill (DEC-LIB-16 ⚓)
+  // and the read-only banner (DEC-MX7A-V2-05) are gone; every plasmid is
+  // editable, edits stay TRANSIENT until «Сохранить версию» (see below).
+  const editable = true;
 
   // 18.05.2026 — primer redesign on every SequenceView, Library
   // included. Primers persist to the unified pool, entry-scoped.
@@ -157,30 +162,10 @@ export default function SingleInspector({
   // gate (passing these to SequenceTab) keeps it out of the OUT viewers.
   const { onPromoteToCommon, checkCommonDuplicate } = usePromoteToCommon();
 
-  // K10 manual-edit branching (DEC-LIB-12 ⚓) — extracted in M-X.6 K0.
-  // K2 ships character-level apply via `onSequenceEdit` below.
-  const clearPendingEdits = useCallback(() => {
-    if (typeof onUpdateEdits === 'function') {
-      onUpdateEdits({ editedAnnotations: undefined });
-    }
-  }, [onUpdateEdits]);
-
-  // K7 save buttons (DEC-LIB-13 ⚓) — extracted in M-X.6 K0.
-  // Both onAfter* clear pending edits so buttons disable post-save.
+  // Save flow (now version-only, with the edited SEQUENCE). Surfaces the
+  // «что изменено» summary (from edits.editLog) + the «Сохранить версию»
+  // form (name + changes + reason) — same shape as the aligner.
   const saveFlow = useLibrarySaveFlow({ item, edits, onUpdateEdits });
-  const {
-    pending: manualEditPending,
-    busy: manualEditBusy,
-    cancel: cancelManualEdit,
-    confirm: confirmManualEdit,
-  } = useManualEditBranching({
-    item,
-    edits,
-    activeTab,
-    editable,
-    onClearEdits: clearPendingEdits,
-    onDisableEditable: disableEditable,
-  });
   // Sprint M-X.2 K3 — edit operations from inside SequenceView. The
   // viewer dispatches `onAnnotationEdit({kind, id?, patch?, payload?})`
   // for Del / H / E + drag-handles + inline rename; we pipe that
@@ -248,6 +233,7 @@ export default function SingleInspector({
   const { pushSnapshot, undo: undoAnnotation, redo: redoAnnotation } = useAnnotationUndoRedo({
     itemKey,
     currentAnnotations: currentAnnotationsForUndo,
+    currentSequence: edits?.editedSequence ?? item?.sequence,
     onUpdateEdits,
   });
 
@@ -292,39 +278,65 @@ export default function SingleInspector({
     }
   }, [onUpdateEdits, pushSnapshot]);
 
-  // M-X.6 K2 — composite sequence-edit handler (DEC-MX6-02). When
-  // SequenceView's keyboard hook emits an `op` (insert/delete/replace)
-  // we route it to the right place:
-  //   • manual_edit branch → direct apply via librarySlice action.
-  //   • parent (anything else) → buffer the op into manualEditPending
-  //     so ManualEditConfirmModal opens. K10's `confirm` callback
-  //     replays the op against the new branch after createManualEditBranch
-  //     succeeds; the replay path lives in useManualEditBranching's
-  //     confirm flow (extension follows in this commit).
-  // The underlying useManualEditDetection hook fires the modal on the
-  // first keystroke; useSequenceKeyboard's char-apply gate fires
-  // `onSequenceEdit` for EVERY keystroke. Both should converge —
-  // detection opens the modal once per mount, and char-apply ops
-  // pile up until confirm OR get tossed on cancel.
-  const applySequenceEditOnLibraryEntry = useStore((s) => s.applySequenceEditOnLibraryEntry);
-  const onSequenceEditFromView = useCallback(async (op) => {
-    if (!op || !item?._libraryEntryId) return;
-    const isManualBranch = item?.origin?.kind === 'manual_edit';
-    if (isManualBranch && typeof applySequenceEditOnLibraryEntry === 'function') {
-      const result = await applySequenceEditOnLibraryEntry(item._libraryEntryId, op);
-      if (result?.ok && Number.isFinite(result.caretAfter)) {
-        setCursorPos(result.caretAfter);
-        setCursorAnchor(result.caretAfter);
-      }
-      return;
+  // 17.06.2026 — nucleotide edit → TRANSIENT working buffer (NOT autosaved,
+  // NO branch-confirm). Mirrors the aligner: apply the op to {editedSequence
+  // ?? source, editedAnnotations ?? source} via the shared pure helper,
+  // accumulate a «что изменено» log (same describe-edit engine), and buffer
+  // it via onUpdateEdits. The source library entry is untouched until the
+  // biolog clicks «Сохранить версию». Caret follows the edit.
+  const onSequenceEditFromView = useCallback((op) => {
+    if (!op || typeof onUpdateEdits !== 'function') return;
+    const curItem = itemRef.current;
+    const curEdits = editsRef.current;
+    const baseSeq = (curEdits?.editedSequence != null) ? curEdits.editedSequence : (curItem?.sequence || '');
+    const baseAnns = Array.isArray(curEdits?.editedAnnotations)
+      ? curEdits.editedAnnotations
+      : (curItem?.annotations || []);
+    const res = applySequenceEditToEntry({ payload: { sequence: baseSeq, annotations: baseAnns } }, op);
+    if (!res.ok) return;
+    // Undo snapshot BEFORE the edit (annotations + sequence), so Ctrl+Z
+    // restores both through the unified stack.
+    pushSnapshot(baseAnns, baseSeq);
+    const nextLog = mergeCorrection(
+      Array.isArray(curEdits?.editLog) ? curEdits.editLog : [],
+      enrichEditDescriptor(op, baseSeq),
+    );
+    onUpdateEdits({
+      editedSequence: res.sequence,
+      editedAnnotations: res.annotations,
+      editLog: nextLog,
+    });
+    if (Number.isFinite(res.caretAfter)) {
+      setCursorPos(res.caretAfter);
+      setCursorAnchor(res.caretAfter);
     }
-    // Parent entry — let useManualEditBranching's modal handle the
-    // first keystroke; the keystroke itself is the trigger so we
-    // intentionally do NOT mutate the parent here. The modal confirm
-    // flow inside useManualEditBranching will fork the entry on
-    // confirm; subsequent keystrokes (after the inspector switches
-    // to the new branch) will hit the `isManualBranch` path above.
-  }, [item, applySequenceEditOnLibraryEntry]);
+  }, [onUpdateEdits, pushSnapshot, setCursorPos, setCursorAnchor]);
+
+  // «Ноль-точка» (origin) — rotate the circular plasmid so the chosen 1-based
+  // base becomes position 1 (Игорь: «выбор топологии должен давать выбрать
+  // ноль-точку» — было, пропало при чистке). Physically rotates the sequence +
+  // remaps annotations (shared rotate-origin engine), lands in the SAME
+  // transient buffer + version-save path as a nucleotide edit. Source untouched.
+  const onApplyOrigin = useCallback((pos1) => {
+    if (typeof onUpdateEdits !== 'function') return;
+    const curItem = itemRef.current;
+    const curEdits = editsRef.current;
+    const baseSeq = (curEdits?.editedSequence != null) ? curEdits.editedSequence : (curItem?.sequence || '');
+    const baseAnns = Array.isArray(curEdits?.editedAnnotations)
+      ? curEdits.editedAnnotations
+      : (curItem?.annotations || []);
+    const len = baseSeq.length;
+    if (!len || !(pos1 > 1 && pos1 <= len)) return;
+    const out = rotateOriginToPosition(baseSeq, baseAnns, pos1, { topology: 'circular' });
+    pushSnapshot(baseAnns, baseSeq);
+    const nextLog = mergeCorrection(
+      Array.isArray(curEdits?.editLog) ? curEdits.editLog : [],
+      { kind: 'origin', position: pos1 },
+    );
+    onUpdateEdits({ editedSequence: out.sequence, editedAnnotations: out.annotations, editLog: nextLog });
+    setCursorPos(0);
+    setCursorAnchor(0);
+  }, [onUpdateEdits, pushSnapshot, setCursorPos, setCursorAnchor]);
 
   // Apply a non-edit operation (split / merge / delete) directly
   // against `editedAnnotations` and push the BEFORE state onto the
@@ -392,6 +404,9 @@ export default function SingleInspector({
       );
       const next = result?.next;
       if (Array.isArray(next)) {
+        // Snapshot the pre-batch state so Ctrl+Z can undo an annotator batch
+        // (was the остаток of «Ctrl+Z этап 2» — annotator-batch had no snapshot).
+        pushSnapshot(baseAnnotations);
         onUpdateEdits({ editedAnnotations: next });
       }
     } catch (err) {
@@ -399,7 +414,30 @@ export default function SingleInspector({
       console.warn('[SingleInspector] annotator apply failed:', err.message);
     }
     closeAnnotator?.();
-  }, [onUpdateEdits, item, edits, closeAnnotator]);
+  }, [onUpdateEdits, item, edits, closeAnnotator, pushSnapshot]);
+
+  // «Убрать дубли» (Игорь 17.06) — remove redundant overlapping annotations
+  // from the DATA (same rule the map uses to hide them): a generic feature
+  // covered ~identically by a higher-priority one (e.g. bla(M) marker under the
+  // AmpR CDS). Annotation-only edit → autosaved in place (not versioned),
+  // Ctrl+Z-undoable via the snapshot. No-op when nothing is dominated.
+  const dominatedAnnotationIds = useMemo(() => {
+    const base = Array.isArray(edits?.editedAnnotations)
+      ? edits.editedAnnotations
+      : (item?.annotations || []);
+    return new Set(findDominatedRegions(getRegions(base)).map((r) => r.id));
+  }, [edits?.editedAnnotations, item?.annotations]);
+  const onRemoveDuplicates = useCallback(() => {
+    if (!onUpdateEdits || dominatedAnnotationIds.size === 0) return;
+    const base = Array.isArray(edits?.editedAnnotations)
+      ? edits.editedAnnotations
+      : (item?.annotations || []);
+    const next = base.filter((a) => !dominatedAnnotationIds.has(a.id));
+    if (next.length !== base.length) {
+      pushSnapshot(base);
+      onUpdateEdits({ editedAnnotations: next });
+    }
+  }, [onUpdateEdits, item, edits, dominatedAnnotationIds, pushSnapshot]);
 
   if (!item) return null;
   const length = item.length || item.sequence?.length || 0;
@@ -480,8 +518,6 @@ export default function SingleInspector({
         seqSettingsTriggerRef={seqSettingsTriggerRef}
         seqSettingsOpen={seqSettingsOpen}
         onToggleSeqSettings={() => setSeqSettingsOpen((v) => !v)}
-        editable={editable}
-        toggleEditable={toggleEditable}
         saveFlow={showSaveActions ? saveFlow : undefined}
         cursorPos={cursorPos}
         cursorAnchor={cursorAnchor}
@@ -579,6 +615,7 @@ export default function SingleInspector({
               onUpdateTags={onUpdateTags}
               onUpdateTopology={onUpdateTopology}
               onNavigateToFeature={onNavigateToFeature}
+              onApplyOrigin={onApplyOrigin}
             />
           </div>
         )}
@@ -608,7 +645,6 @@ export default function SingleInspector({
               onOpenAnnotator={onOpenAnnotator}
               onOpenFeatureEditor={openFeatureEditor}
               editable={editable}
-              isReadOnlyZone={isReadOnlyZone}
               onSequenceEdit={onSequenceEditFromView}
               primers={entryPrimers}
               onWritePrimer={onWriteEntryPrimer}
@@ -639,10 +675,11 @@ export default function SingleInspector({
               annotations={displayAnnotations}
               fileName={item._fileName}
               active={activeTab === 'annotations'}
-              isReadOnlyZone={isReadOnlyZone}
               onApplyAnnotatorResults={onApplyAnnotatorResults}
               onAnnotationEdit={onAnnotationEditFromView}
               onOpenFeatureEditor={openFeatureEditor}
+              duplicateCount={dominatedAnnotationIds.size}
+              onRemoveDuplicates={onRemoveDuplicates}
               // 2026-05-06 — biolog: «навигация по колбасе аннотатора
               // не даёт навигацию в аннотаторе». Wire the same
               // pendingScroll signal that SequenceTab consumes so the
@@ -696,18 +733,6 @@ export default function SingleInspector({
         onMerge={onFeatureMerge}
         onDelete={onFeatureDelete}
         onClose={closeFeatureEditor}
-      />
-
-      {/* M-X.5 K10 — Manual edit confirm. Surfaced once per mount when
-          biolog fires the first sequence-mutating keystroke in
-          EDITABLE mode. Confirm → createManualEditBranch; Cancel →
-          stay on parent. Q3 plan: per-mount scope. */}
-      <ManualEditConfirmModal
-        open={!!manualEditPending}
-        parentName={item?.name || ''}
-        onCancel={cancelManualEdit}
-        onConfirm={confirmManualEdit}
-        busy={manualEditBusy}
       />
     </div>
   );

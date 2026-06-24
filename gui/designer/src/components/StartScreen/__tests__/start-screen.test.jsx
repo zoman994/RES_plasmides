@@ -21,6 +21,7 @@ import React, { useState } from 'react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, cleanup, act, waitFor } from '@testing-library/react';
 import { useStore } from '../../../store';
+import { FEATURE_FLAGS } from '../../../lib/feature-flags';
 import { resetDBForTests } from '../../../db/dexie-schema';
 import StartScreen from '../StartScreen';
 import Sidebar from '../Sidebar';
@@ -121,8 +122,9 @@ describe('StartScreen-Pixel — Sidebar shell', () => {
   // MS-K1: «Праймеры» disabled stub removed; no «disabled items»
   // assertion needed (everything in the sidebar is now actionable).
 
-  // M-X.8 K3 — PINNED section + open-palette button.
-  it('M-X.8 K3 — sidebar PINNED section renders header, counter, and the «Все проекты…» button', () => {
+  // UX_DIRECTION фаза 2 — «В работе» убрана при twoLevelRail (Игорь 19.06);
+  // legacy-секция возвращается при flag off (откат). M-X.8 K3 закреплён там.
+  it('PINNED «В работе»: убрана при twoLevelRail, возвращается при flag off', () => {
     useStore.setState((s) => {
       s.projects = {
         ...s.projects,
@@ -132,24 +134,37 @@ describe('StartScreen-Pixel — Sidebar shell', () => {
       s.pinnedProjectIds = ['pin-A', 'pin-B'];
       s.currentProjectId = 'pin-A';
     });
+    // twoLevelRail ON (дефолт): «В работе» убрана, вместо неё — секция проекта.
     render(<StartScreenIntegration />);
-    expect(screen.getByTestId('sb-pinned-header').textContent).toMatch(/В работе/);
-    expect(screen.getByTestId('sb-pinned-counter').textContent).toMatch(/2\/15/);
-    expect(screen.getByTestId('sb-pinned-pin-A')).toBeTruthy();
-    expect(screen.getByTestId('sb-pinned-pin-B')).toBeTruthy();
-    // Current pinned project gets the active marker.
-    expect(screen.getByTestId('sb-pinned-pin-A').getAttribute('data-active')).toBe('true');
+    expect(screen.queryByTestId('sb-pinned-header')).toBeNull();
+    expect(screen.getByTestId('sb-project-header')).toBeTruthy();
+    cleanup();
+    // flag off → legacy PINNED секция (M-X.8 K3) возвращается.
+    FEATURE_FLAGS.twoLevelRail = false;
+    try {
+      render(<StartScreenIntegration />);
+      expect(screen.getByTestId('sb-pinned-header').textContent).toMatch(/В работе/);
+      expect(screen.getByTestId('sb-pinned-counter').textContent).toMatch(/2\/15/);
+      expect(screen.getByTestId('sb-pinned-pin-A').getAttribute('data-active')).toBe('true');
+    } finally {
+      FEATURE_FLAGS.twoLevelRail = true;
+    }
   });
 
-  it('M-X.8 K3 — sidebar pinned row click activates project + jumps to library', () => {
+  it('M-X.8 K3 — sidebar pinned row click activates project (legacy, flag off)', () => {
     useStore.setState((s) => {
       s.projects = { ...s.projects, 'pin-X': { id: 'pin-X', name: 'X', containerIds: [] } };
       s.pinnedProjectIds = ['pin-X'];
       s.currentProjectId = null;
     });
-    render(<StartScreenIntegration />);
-    fireEvent.click(screen.getByTestId('sb-pinned-pin-X'));
-    expect(useStore.getState().currentProjectId).toBe('pin-X');
+    FEATURE_FLAGS.twoLevelRail = false; // секция «В работе» только при flag off
+    try {
+      render(<StartScreenIntegration />);
+      fireEvent.click(screen.getByTestId('sb-pinned-pin-X'));
+      expect(useStore.getState().currentProjectId).toBe('pin-X');
+    } finally {
+      FEATURE_FLAGS.twoLevelRail = true;
+    }
   });
 
   // MS-K6: PWA «Установить» moved into SettingsModal — these flows
@@ -252,6 +267,23 @@ describe('StartScreen-Pixel — Library button wiring', () => {
     const s = useStore.getState();
     expect(s.workspace.active).toBe('startup');
     expect(s.canvas.activeFullscreen).toBe('start');
+  });
+
+  it('«Выравнивание» opens the align workspace from the start surface (leaves fullscreen=start)', () => {
+    useStore.setState((s) => {
+      s.workspace.active = 'startup';
+      s.canvas.activeFullscreen = 'start';
+    });
+    render(<StartScreenIntegration />);
+    fireEvent.click(screen.getByTestId('ss-nav-align'));
+    expect(useStore.getState().workspace.active).toBe('align');
+    // must leave the 'start' surface (App.jsx shows StartScreen while it's 'start')
+    // → 'library' is the AppShell/WorkspaceRouter surface that renders align.
+    expect(useStore.getState().canvas.activeFullscreen).toBe('library');
+    // only align lights up — Library must not double-mark despite fullscreen='library'
+    expect(screen.getByTestId('ss-nav-align').getAttribute('data-active')).toBe('true');
+    expect(screen.getByTestId('ss-nav-library').getAttribute('data-active')).toBe('false');
+    expect(screen.getByTestId('ss-nav-home').getAttribute('data-active')).toBe('false');
   });
 });
 

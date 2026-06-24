@@ -20,8 +20,12 @@
  */
 import { memo, useState, useCallback } from 'react';
 import PlasmidMiniMap from '../../PlasmidMiniMap';
+import ContextMenu from '../../ContextMenu';
 import { useStore } from '../../../store';
 import { STRINGS } from '../../../lib/strings';
+import { FEATURE_FLAGS } from '../../../lib/feature-flags';
+import { downloadEntryAsGenbank } from '../../../lib/export-genbank';
+import { Icon } from '../../icons/Icon';
 
 const INDENT_PX = [12, 22, 38, 54, 70];
 
@@ -143,12 +147,17 @@ export const TreeItemRow = memo(function TreeItemRow({
   // recovered from the Trash zone.
   const markPendingDelete = useStore((s) => s.markLibraryEntryPendingDelete);
   const unmarkPendingDelete = useStore((s) => s.unmarkLibraryEntryPendingDelete);
+  // Phase 4 (правый клик): дополнительные действия записи для контекстного меню.
+  const extractEntryToLoose = useStore((s) => s.extractEntryToLoose);
+  const renameLibraryEntry = useStore((s) => s.renameLibraryEntry);
+  const [ctxMenu, setCtxMenu] = useState(null); // { x, y } | null
   const showQuickAdd = !!currentProjectId
     && !!entry
     && entry.kind !== 'primer' /* primers come later via specific flow */
     && entry.projectId !== currentProjectId;
-  const onQuickAdd = useCallback(async (e) => {
-    e.stopPropagation();
+  // Clone to active project — core (no event), shared by the hover «+»
+  // button and the right-click menu (фаза 4).
+  const doClone = useCallback(async () => {
     if (!entry?.id || !cloneEntryToActiveProject) return;
     try {
       let res = await cloneEntryToActiveProject(entry.id);
@@ -179,28 +188,84 @@ export const TreeItemRow = memo(function TreeItemRow({
       showToast?.(err?.message || 'Ошибка', 'error');
     }
   }, [entry, cloneEntryToActiveProject, currentProjectId, projects, showToast]);
-  const onQuickDelete = useCallback(async (e) => {
-    e.stopPropagation();
+  const onQuickAdd = useCallback((e) => { e.stopPropagation(); doClone(); }, [doClone]);
+
+  const doDelete = useCallback(async () => {
     if (!entry?.id || !markPendingDelete) return;
     const name = entry.name || entry.id;
     try {
       await markPendingDelete(entry.id);
       const toastFn = STRINGS.libraryWorkspace?.treeRow?.quickDeleteDoneToast;
       const msg = typeof toastFn === 'function' ? toastFn(name) : `Удалено: ${name} (в Корзине)`;
-      showToast?.(msg, 'info', {
-        onUndo: () => unmarkPendingDelete?.(entry.id),
-      });
+      showToast?.(msg, 'info', { onUndo: () => unmarkPendingDelete?.(entry.id) });
     } catch (err) {
       showToast?.(err?.message || 'Ошибка', 'error');
     }
   }, [entry, markPendingDelete, unmarkPendingDelete, showToast]);
+  const onQuickDelete = useCallback((e) => { e.stopPropagation(); doDelete(); }, [doDelete]);
+
+  // Right-click menu actions (фаза 4).
+  const doRename = useCallback(async () => {
+    if (!entry?.id || !renameLibraryEntry) return;
+    const next = (typeof window !== 'undefined' && typeof window.prompt === 'function')
+      ? window.prompt('Новое имя записи:', entry.name || '')
+      : null;
+    if (next == null) return;
+    const trimmed = String(next).trim();
+    if (!trimmed || trimmed === entry.name) return;
+    try {
+      await renameLibraryEntry(entry.id, trimmed);
+      showToast?.(`Переименовано: ${trimmed}`, 'success');
+    } catch (err) {
+      showToast?.(err?.message || 'Ошибка', 'error');
+    }
+  }, [entry, renameLibraryEntry, showToast]);
+
+  const doExtract = useCallback(async () => {
+    if (!entry?.id || !extractEntryToLoose) return;
+    try {
+      const res = await extractEntryToLoose(entry.id);
+      if (res && res.ok === false) { showToast?.('Не удалось извлечь', 'info'); return; }
+      showToast?.(`Извлечено в «Без проекта»: ${entry.name || entry.id}`, 'success');
+    } catch (err) {
+      showToast?.(err?.message || 'Ошибка', 'error');
+    }
+  }, [entry, extractEntryToLoose, showToast]);
+
+  const doExport = useCallback(() => {
+    try {
+      const ok = downloadEntryAsGenbank(entry);
+      showToast?.(ok ? `Экспортировано: ${entry.name || entry.id}.gb` : 'Не удалось экспортировать', ok ? 'success' : 'error');
+    } catch (err) {
+      showToast?.(err?.message || 'Ошибка', 'error');
+    }
+  }, [entry, showToast]);
+
+  const onContextMenu = useCallback((e) => {
+    if (!FEATURE_FLAGS.libraryTreeContextMenu) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setCtxMenu({ x: e.clientX, y: e.clientY });
+  }, []);
 
   if (!entry) return null;
   const meta = metaLine(entry);
   const oc = originChar(entry);
   const ocColor = originColor(entry);
   const ringColor = isSelected ? 'var(--accent-700)' : 'var(--text-secondary)';
+  const inProject = !!entry.projectId;
+  const isPrimer = entry.kind === 'primer';
+  const canCopy = !!currentProjectId && !isPrimer && entry.projectId !== currentProjectId;
+  const ctxItems = [
+    { label: 'Переименовать', icon: '✎', onClick: doRename },
+    { label: 'Скопировать в активный проект', icon: '＋', onClick: doClone, disabled: !canCopy },
+    { label: 'Извлечь в «Без проекта»', icon: '↗', onClick: doExtract, disabled: !inProject },
+    { label: 'Экспортировать .gb', icon: '⤓', onClick: doExport, disabled: isPrimer },
+    { divider: true },
+    { label: 'Удалить в Корзину', icon: '🗑', onClick: doDelete, danger: true },
+  ];
   return (
+    <>
     <div
       data-testid={testId || `tree-item-${entry.id}`}
       data-selected={isSelected ? 'true' : 'false'}
@@ -216,6 +281,7 @@ export const TreeItemRow = memo(function TreeItemRow({
         } catch { /* jsdom / happy-dom may throw */ }
       }}
       onClick={() => onSelect?.(entry)}
+      onContextMenu={onContextMenu}
       onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onSelect?.(entry); } }}
       onMouseEnter={(e) => {
         setHovered(true);
@@ -284,8 +350,9 @@ export const TreeItemRow = memo(function TreeItemRow({
             color: 'var(--accent-700)',
             cursor: 'pointer',
             flexShrink: 0,
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
           }}
-        >+</button>
+        ><Icon name="plus" size={13} /></button>
       )}
       {/* Hover-revealed quick-delete. Soft-delete with 5-sec undo
           window via the toast — biolog can recover with one click
@@ -307,14 +374,19 @@ export const TreeItemRow = memo(function TreeItemRow({
           color: 'rgb(220, 38, 38)',
           cursor: 'pointer',
           flexShrink: 0,
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
         }}
-      >🗑</button>
+      ><Icon name="trash" size={13} /></button>
       <span
         data-testid={`${testId || `tree-item-${entry.id}`}-origin`}
         title={entry?.origin?.kind || ''}
         style={{ fontSize: 12, flexShrink: 0, color: ocColor }}
       >{oc}</span>
     </div>
+    {FEATURE_FLAGS.libraryTreeContextMenu && ctxMenu && (
+      <ContextMenu items={ctxItems} position={ctxMenu} onClose={() => setCtxMenu(null)} />
+    )}
+    </>
   );
 });
 

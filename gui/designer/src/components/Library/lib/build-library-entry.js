@@ -44,3 +44,32 @@ export function buildLibraryEntry(parsedItem, finalName, resourceHash, opts = {}
     ext: {},
   };
 }
+
+/**
+ * Map the output of `handleFilesImport` (file-import.js) into library
+ * entries, separating parse failures. Lets a surface OUTSIDE the Library
+ * workspace (the assembly picker's inline file-import) turn dropped
+ * files into entries without re-implementing the shaping. Items carrying
+ * `_error` (parse failed) or no sequence become `errors`; the rest
+ * become full `file_import` container entries via `buildLibraryEntry`.
+ *
+ * @param {Array<object>} items  ParsedItem[] (may carry `_error`/`_fileName`)
+ * @returns {{ entries: object[], errors: Array<{name:string, error:string}> }}
+ */
+export function buildEntriesFromImportResults(items) {
+  const entries = [];
+  const errors = [];
+  for (const it of Array.isArray(items) ? items : []) {
+    if (!it || it._error) {
+      errors.push({ name: it?._fileName || it?.name || '?', error: it?._error || 'не удалось разобрать' });
+      continue;
+    }
+    if (!it.sequence) {
+      errors.push({ name: it._fileName || it.name || '?', error: 'последовательность не найдена' });
+      continue;
+    }
+    const name = it.name || it._fileName || 'imported';
+    entries.push(buildLibraryEntry(it, name, null, {}));
+  }
+  return { entries, errors };
+}

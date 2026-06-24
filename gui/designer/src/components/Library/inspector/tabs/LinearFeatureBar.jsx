@@ -2,6 +2,10 @@ import { useMemo, useRef, useState, useLayoutEffect, useCallback } from 'react';
 import { featureColorShaded, FEATURE_STROKE } from '../../../../feature-palette';
 import { getTextColor } from '../../../../lib/color-utils';
 import { isPredicted } from '../../../../annotation-model';
+import { getIntronsForRegion, getExonRanges } from '../../../../intron-utils';
+
+// Region types whose introns split the bar into exon blocks (gene/CDS/…).
+const TRANSLATABLE = new Set(['CDS', 'gene', 'marker', 'reporter']);
 
 /**
  * LinearFeatureBar — SVG-based compact linear feature strip.
@@ -271,7 +275,17 @@ export default function LinearFeatureBar({
 
   const items = useMemo(() => {
     if (!annotations.length || !seqLength) return [];
-    const visible = annotations.filter((a) => a.level !== 'point');
+    // Genes/CDS that carry introns render as exon BLOCKS + dashed intron
+    // connectors (clearly divided, «вариант A»); their intron children are
+    // consumed here (drawn as connectors inside the gene, not separate boxes).
+    const geneIntrons = new Map();
+    const consumed = new Set();
+    for (const a of annotations) {
+      if (!a || a.level !== 'region' || !TRANSLATABLE.has(a.type)) continue;
+      const ints = getIntronsForRegion(annotations, a).filter((it) => it.type === 'intron');
+      if (ints.length) { geneIntrons.set(a, ints); ints.forEach((it) => consumed.add(it)); }
+    }
+    const visible = annotations.filter((a) => a.level !== 'point' && !consumed.has(a));
     const base = visible.map((a, i) => {
       const startFrac = (a.start || 0) / seqLength;
       const widthFrac = Math.max(0, ((a.end || 0) - (a.start || 0))) / seqLength;
@@ -286,10 +300,20 @@ export default function LinearFeatureBar({
       // type-coloured stroke so the bar remains the colour-keyed
       // overview biolog already trusts.
       const predicted = isPredicted(a);
+      // Exon blocks + intron connectors (pixel coords) for a gene with introns.
+      const introns = geneIntrons.get(a);
+      let exonRects;
+      let intronRects;
+      if (introns) {
+        const toPx = (s, e) => ({ left: (s / seqLength) * width, width: Math.max(1, ((e - s) / seqLength) * width) });
+        exonRects = getExonRanges(a.start, a.end, introns).map((seg) => toPx(seg.start, seg.end));
+        intronRects = introns.map((it) => toPx(Math.max(a.start, it.start), Math.min(a.end, it.end)));
+      }
       return {
         idx: i, ann: a,
         left, width: w, widthPct,
         color, predicted,
+        exonRects, intronRects,
         opacity: predicted
           ? (a.level === 'region' ? 0.78 : 0.62) // softer for ghosts
           : (a.level === 'region' ? 0.92 : 0.7),
@@ -396,21 +420,57 @@ export default function LinearFeatureBar({
       style={{ cursor: 'pointer' }}
     >
       <title>{`${it.predicted ? '~' : ''}${it.ann.name || it.ann.type}: ${(it.ann.start || 0) + 1}..${it.ann.end || 0}`}</title>
-      <rect
-        x={it.left}
-        y={it.yTop}
-        width={it.width}
-        height={it.rectH}
-        // Predicted: transparent fill, type-colour dashed stroke,
-        // matches AnnotationTrack ghost styling (DEC-PRED-05).
-        fill={it.predicted ? 'transparent' : it.color}
-        opacity={it.opacity}
-        stroke={it.predicted ? it.color : FEATURE_STROKE}
-        strokeWidth={it.predicted ? 1 : 0.5}
-        strokeDasharray={it.predicted ? '3,2' : undefined}
-        rx={2}
-        ry={2}
-      />
+      {it.exonRects ? (
+        // Gene with introns → exon BLOCKS + flat dashed intron connectors
+        // (Игорь: «интроны пусть чётко делят ген в навигационной колбасе»).
+        <>
+          {it.exonRects.map((r, i) => (
+            <rect
+              key={`ex-${i}`}
+              data-testid="linear-exon-rect"
+              x={r.left}
+              y={it.yTop}
+              width={r.width}
+              height={it.rectH}
+              fill={it.color}
+              opacity={it.opacity}
+              stroke={FEATURE_STROKE}
+              strokeWidth={0.5}
+              rx={2}
+              ry={2}
+            />
+          ))}
+          {it.intronRects.map((r, i) => (
+            <line
+              key={`in-${i}`}
+              data-testid="linear-intron-connector"
+              x1={r.left}
+              x2={r.left + r.width}
+              y1={it.yTop + it.rectH / 2}
+              y2={it.yTop + it.rectH / 2}
+              stroke="var(--text-tertiary, #9ca3af)"
+              strokeWidth={1.5}
+              strokeDasharray="3,2"
+            />
+          ))}
+        </>
+      ) : (
+        <rect
+          x={it.left}
+          y={it.yTop}
+          width={it.width}
+          height={it.rectH}
+          // Predicted: transparent fill, type-colour dashed stroke,
+          // matches AnnotationTrack ghost styling (DEC-PRED-05).
+          fill={it.predicted ? 'transparent' : it.color}
+          opacity={it.opacity}
+          stroke={it.predicted ? it.color : FEATURE_STROKE}
+          strokeWidth={it.predicted ? 1 : 0.5}
+          strokeDasharray={it.predicted ? '3,2' : undefined}
+          rx={2}
+          ry={2}
+        />
+      )}
       {it.labelInside && !it.ann._suppressLabel && (
         <text
           // Centre on the EXPOSED strip, not the rect centre — when

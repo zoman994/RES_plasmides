@@ -9,6 +9,7 @@
 import { useMemo, useState } from 'react';
 import { useSkeletonState } from './store/skeleton-context';
 import { codonScore, findRareCodons, optimizeCdsForEcoli } from '../../lib/bio/codon-optimize-ecoli';
+import { Icon } from '../icons/Icon';
 
 function isCDSAnnotation(ann) {
   const candidates = [ann?.type, ann?.kind, ann?.feature, ann?.featureType];
@@ -75,7 +76,7 @@ export default function CodonStatsPanel() {
           opacity: hasCds ? 1 : 0.5,
         }}
       >
-        <span>🧬</span>
+        <Icon name="dna" size={14} style={{ display: 'inline-block', verticalAlign: '-2px' }} />
         <span>Codon stats {hasCds ? `(${cdsList.length})` : ''}</span>
       </button>
 
@@ -111,8 +112,9 @@ export default function CodonStatsPanel() {
                 color: 'var(--text-tertiary, #a8a29e)',
                 border: '1px solid var(--border-default, #d6d3d1)',
                 borderRadius: 4, fontSize: 13, cursor: 'pointer',
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
               }}
-            >✕</button>
+            ><Icon name="close" size={13} /></button>
           </div>
           <div style={{ flex: 1, overflow: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
             {!hasCds && (

@@ -71,19 +71,23 @@ export function detectORFs(sequence, existingAnnotations, minAA = 100) {
   rawORFs.sort((a, b) => b.aaLen - a.aaLen);
 
   const results = [];
-  const usedRanges = existingCDS.map(a => [a.start, a.end]);
+  const usedRanges = existingCDS.map(a => [a.start, a.end, a.strand]);
 
   for (const orf of rawORFs) {
-    // Check overlap with existing CDS or already-added ORFs
-    const overlapsExisting = usedRanges.some(([s, e]) => {
+    // Check overlap with existing CDS or already-added ORFs — but strand-aware:
+    // an ORF on the OPPOSITE strand at the same locus is a different gene
+    // (sense + antisense), so it must NOT be collapsed away. Only dedup when
+    // the strands match (or the existing range carries no strand).
+    const overlapsExisting = usedRanges.some(([s, e, st]) => {
+      if (st != null && orf.strand != null && st !== orf.strand) return false;
       const overlap = Math.min(orf.end, e) - Math.max(orf.start, s);
       const orfLen = orf.end - orf.start;
-      return overlap > orfLen * 0.5; // >50% overlap = same gene
+      return overlap > orfLen * 0.5; // >50% overlap on the same strand = same gene
     });
 
     if (overlapsExisting) continue;
 
-    usedRanges.push([orf.start, orf.end]);
+    usedRanges.push([orf.start, orf.end, orf.strand]);
     // Sprint M-X.1 K1 retrofit: ORFs now flagged `predicted: true` and
     // carry internal evidence in `signals[]` per DEC-PRED-01. `source`
     // aligns with PREDICTOR_SOURCES.ORF_SCAN so consumers can match by

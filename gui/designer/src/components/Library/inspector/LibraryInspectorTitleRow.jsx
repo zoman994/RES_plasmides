@@ -1,6 +1,8 @@
 import { STRINGS } from '../../../lib/strings';
+import { FEATURE_FLAGS } from '../../../lib/feature-flags';
 import InlineEditableTitle from './InlineEditableTitle';
 import LibrarySaveActions from './LibrarySaveActions';
+import { Icon } from '../../icons/Icon';
 
 const S = STRINGS.importer;
 
@@ -32,10 +34,7 @@ export default function LibraryInspectorTitleRow({
   seqSettingsTriggerRef,
   seqSettingsOpen,
   onToggleSeqSettings,
-  // Editable pill (Sequence tab)
-  editable,
-  toggleEditable,
-  // Save flow (K7)
+  // Save flow (version-only «Сохранить версию» + «что изменено»)
   saveFlow,
   // Selection counter
   cursorPos,
@@ -63,82 +62,52 @@ export default function LibraryInspectorTitleRow({
             onCommit={(name) => onRenameItem?.(name)}
           />
         </div>
-        {/* ⚙ + READ-ONLY/EDITABLE pill — only visible while Sequence
-            tab is active (Bug-rush #22; M-X.6 K6 toggle DEC-LIB-16 ⚓). */}
-        {activeTab === 'sequence' && (
-          <>
-            <button
-              ref={seqSettingsTriggerRef}
-              type="button"
-              aria-haspopup="dialog"
-              aria-expanded={seqSettingsOpen ? 'true' : 'false'}
-              aria-label={S.sequenceView?.settingsButton || 'Display settings'}
-              title={S.sequenceView?.settingsButton || 'Display settings'}
-              data-testid="importer-sequence-view-settings-trigger"
-              onClick={onToggleSeqSettings}
-              style={{
-                border: '0.5px solid var(--border-default)',
-                background: 'var(--surface-1)',
-                color: 'var(--text-secondary)',
-                cursor: 'pointer',
-                fontSize: 12,
-                padding: '2px 6px',
-                borderRadius: 'var(--radius-md)',
-                lineHeight: 1,
-                flexShrink: 0,
-              }}
-            >⚙</button>
-            <button
-              type="button"
-              data-testid="importer-sequence-readonly-pill"
-              data-mode={editable ? 'editable' : 'readonly'}
-              onClick={toggleEditable}
-              title={editable
-                ? 'Кликните чтобы заблокировать (Read-only). Несохранённые правки останутся.'
-                : 'Кликните чтобы разрешить ручное редактирование последовательности. Первая правка создаст новую ветку плазмиды (manual edit).'}
-              aria-label={editable ? 'Switch to read-only' : 'Switch to editable'}
-              style={{
-                padding: '2px 8px', borderRadius: 'var(--radius-sm)',
-                background: editable
-                  ? 'var(--accent-50, color-mix(in srgb, var(--accent-500) 18%, transparent))'
-                  : 'var(--surface-2)',
-                color: editable
-                  ? 'var(--accent-700, #c2410c)'
-                  : 'var(--text-secondary)',
-                border: editable
-                  ? '0.5px solid var(--accent-500)'
-                  : '0.5px solid transparent',
-                fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.4,
-                fontWeight: editable ? 600 : 400,
-                flexShrink: 0, cursor: 'pointer',
-                display: 'inline-flex', alignItems: 'center', gap: 4,
-              }}
-            >
-              {editable && (
-                <span
-                  aria-hidden="true"
-                  style={{
-                    width: 6, height: 6, borderRadius: '50%',
-                    background: 'var(--accent-700, #c2410c)',
-                    animation: 'editable-pulse 1.4s ease-in-out infinite',
-                  }}
-                />
-              )}
-              {editable ? (S.sequenceEditable || 'EDITABLE') : S.sequenceReadOnly}
-            </button>
-          </>
+        {/* ⚙ «Вид» — UX_DIRECTION фаза 3 (настройки): всегда в шапке инспектора
+            ради стабильной раскладки + находимости (раньше прыгал — был только
+            на вкладке Sequence). Вне «Последовательности» — disabled (настройки
+            вида осмысленны только над сиквенсом). Gated → flag off возвращает
+            старое поведение (gear только на Sequence). */}
+        {(FEATURE_FLAGS.viewGearAlwaysVisible || activeTab === 'sequence') && (
+          <button
+            ref={seqSettingsTriggerRef}
+            type="button"
+            aria-haspopup="dialog"
+            aria-expanded={seqSettingsOpen ? 'true' : 'false'}
+            aria-disabled={activeTab === 'sequence' ? undefined : 'true'}
+            aria-label="Настройки вида"
+            title={activeTab === 'sequence'
+              ? 'Настройки вида'
+              : 'Настройки вида — на вкладке «Последовательность»'}
+            data-testid="importer-sequence-view-settings-trigger"
+            data-gear-active={activeTab === 'sequence' ? 'true' : 'false'}
+            onClick={activeTab === 'sequence' ? onToggleSeqSettings : undefined}
+            style={{
+              border: '0.5px solid var(--border-default)',
+              background: 'var(--surface-1)',
+              color: 'var(--text-secondary)',
+              cursor: activeTab === 'sequence' ? 'pointer' : 'default',
+              opacity: activeTab === 'sequence' ? 1 : 0.4,
+              fontSize: 12,
+              padding: '2px 6px',
+              borderRadius: 'var(--radius-md)',
+              lineHeight: 1,
+              flexShrink: 0,
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          ><Icon name="settings" size={14} /></button>
         )}
-        {/* M-X.5 K7 Library Save Flow (DEC-LIB-13 ⚓). Mine entries
-            with pending edits surface the two explicit Save buttons
-            in the title row. Catalog / paste / file imports stay
-            transient until biolog explicitly «В библиотеку». */}
+        {/* Library Save Flow — version-only «Сохранить версию» + «что
+            изменено» (Игорь 17.06.2026, как в выравнивании). Visible on
+            library entries once there are unsaved edits. */}
         {saveFlow?.visible && (
           <LibrarySaveActions
             libraryEntryId={saveFlow.libraryEntryId}
             hasChanges={saveFlow.hasChanges}
+            editedSequence={saveFlow.editedSequence}
             editedAnnotations={saveFlow.editedAnnotations}
+            changesSummary={saveFlow.changesSummary}
+            changeText={saveFlow.changeText}
             parentName={saveFlow.parentName}
-            onAfterOverwrite={saveFlow.onAfterOverwrite}
             onAfterSaveAsVersion={saveFlow.onAfterSaveAsVersion}
           />
         )}

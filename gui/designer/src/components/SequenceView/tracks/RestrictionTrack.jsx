@@ -22,6 +22,7 @@
 import { memo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { RE_ENZYMES } from "../../../restriction-db";
+import { lanePack, laneCount } from "../../../lib/linear-map";
 
 const ROW_HEIGHT_RE = 18;
 const CUT_BAR_HEIGHT = 6;
@@ -32,6 +33,10 @@ const VERTICAL_LABEL_HEIGHT = 36;
 // шириной ~25 px → нужен min-gap ≥28 чтобы не сливались.
 const VERTICAL_LABEL_MIN_GAP = 14;
 const HORIZONTAL_LABEL_MIN_GAP = 28;
+// Horizontal-label vertical staggering (Игорь 22.06 «разнести по высоте»):
+// approximate per-char width of the 9px label font + the lane row pitch.
+const LABEL_CHAR_W = 5.6;
+const LANE_STEP = 12;
 // Approximate cap-height for the 9px font used by the labels — used to
 // re-centre the rotated text horizontally so visual middle of the
 // label sits on the cut tick (instead of drifting left).
@@ -249,6 +254,23 @@ function computeLabelSlots(lineSites, charPx, labelChars, minGap) {
 }
 
 /**
+ * computeLabelLanes — horizontal-orientation stagger. Each label stays CENTERED
+ * on its cut tick (no sideways push); overlapping labels are distributed into
+ * vertical lanes (lane 0 = nearest the cut ticks, higher lanes stack upward) so
+ * names never collide. A vertical leader links each label to its tick.
+ * Returns {site, naturalX, lane, key} per site (input order preserved).
+ */
+function computeLabelLanes(lineSites, charPx, labelChars) {
+  const items = lineSites.map((item) => {
+    const naturalX = (labelChars + item.renderCi + 0.5) * charPx;
+    const w = Math.max(charPx, item.site.enzyme.length * LABEL_CHAR_W);
+    return { site: item.site, naturalX, w, key: siteKey(item.site) };
+  });
+  const lanes = lanePack(items.map((it) => ({ start: it.naturalX - it.w / 2, end: it.naturalX + it.w / 2 })));
+  return items.map((it, i) => ({ site: it.site, naturalX: it.naturalX, lane: lanes[i], key: it.key }));
+}
+
+/**
  * @param {object} props
  * @param {Array<{ enzyme: string, position: number }>} props.sites
  * @param {number} props.lineStart
@@ -324,11 +346,30 @@ function RestrictionTrack({
 
   const isVertical = reOrientation !== "horizontal";
   const widthPx = (labelChars + lineLen) * charPx + 60; // +60 для leader bend
-  const totalHeight = isVertical ? VERTICAL_LABEL_HEIGHT + ROW_HEIGHT_RE : ROW_HEIGHT_RE * 2;
   const clickable = typeof onSiteClick === 'function';
 
-  const minGap = isVertical ? VERTICAL_LABEL_MIN_GAP : HORIZONTAL_LABEL_MIN_GAP;
-  const slots = computeLabelSlots(lineSites, charPx, labelChars, minGap);
+  // Layout. Vertical (rotated) labels keep the horizontal cascade (push right +
+  // leader). Horizontal labels stay centered on their cut and STACK into vertical
+  // lanes instead — «разнести по высоте» (Игорь 22.06).
+  let slots;
+  let nLanes = 1;
+  if (isVertical) {
+    slots = computeLabelSlots(lineSites, charPx, labelChars, VERTICAL_LABEL_MIN_GAP)
+      .map((sl) => ({ ...sl, lane: 0 }));
+  } else {
+    const laneSlots = computeLabelLanes(lineSites, charPx, labelChars);
+    nLanes = laneCount(laneSlots.map((s) => s.lane));
+    slots = laneSlots.map((s) => ({
+      site: s.site, naturalX: s.naturalX, slotX: s.naturalX, offset: 0, lane: s.lane, key: s.key,
+    }));
+  }
+  // Lane block sits ABOVE the cut ticks; the SVG grows with the lane count so a
+  // dense cluster never clips (no fixed 2-row height).
+  const labelsBlockH = isVertical ? VERTICAL_LABEL_HEIGHT : nLanes * LANE_STEP;
+  const cutBaseY = isVertical ? VERTICAL_LABEL_HEIGHT : labelsBlockH + 2;
+  const totalHeight = isVertical
+    ? VERTICAL_LABEL_HEIGHT + ROW_HEIGHT_RE
+    : labelsBlockH + CUT_BAR_HEIGHT + 6;
 
   // Tooltip anchored to the hovered site's cut tick.
   const tooltipSlot = hoverAnchor
@@ -351,11 +392,16 @@ function RestrictionTrack({
         style={{ display: "block", overflow: "visible", userSelect: "none", WebkitUserSelect: "none" }}
       >
         {slots.map((sl) => {
-          const { site: s, naturalX, slotX, offset, key } = sl;
-          const labelY = isVertical ? VERTICAL_LABEL_HEIGHT - 2 : ROW_HEIGHT_RE - 4;
-          const cutY = isVertical ? VERTICAL_LABEL_HEIGHT : ROW_HEIGHT_RE;
+          const { site: s, naturalX, slotX, offset, lane, key } = sl;
+          const labelY = isVertical
+            ? VERTICAL_LABEL_HEIGHT - 2
+            : (nLanes - 1 - lane) * LANE_STEP + (LANE_STEP - 3);
+          const cutY = cutBaseY;
           const isHi = highlightedKey === key;
           const isHover = hoveredKey === key;
+          // Selected (click) OR hovered → the label gets a subtle accent. No box /
+          // wedges anymore (Игорь 22.06: «жёлтый овал и стрелки странные»).
+          const emph = isHover || isHi;
           const pivotX = isVertical ? slotX + LABEL_CENTER_OFFSET : slotX;
 
           return (
@@ -364,6 +410,7 @@ function RestrictionTrack({
               data-testid="sequence-view-re-site"
               data-enzyme={s.enzyme}
               data-position={s.position}
+              data-lane={lane}
               data-highlighted={isHi ? 'true' : 'false'}
               data-hovered={isHover ? 'true' : 'false'}
               data-cluster-offset={offset > 0 ? 'true' : 'false'}
@@ -413,49 +460,27 @@ function RestrictionTrack({
               }}
               style={{ cursor: clickable ? 'pointer' : 'default' }}
             >
-              {/* Click highlight — subtle, не «вырвиглазное» (13.05.2026
-                  итерация UX): тонкая обводка вокруг столбца cut tick,
-                  лёгкая yellow заливка, маленькие маркеры без outline. */}
-              {clickable && isHi && (
-                <g data-testid="sequence-view-re-highlight">
-                  <rect
-                    x={naturalX - (charPx * 0.9 + 0.5)}
-                    y={labelY - 12}
-                    width={charPx * 1.8 + 1}
-                    height={totalHeight - (labelY - 12) + 3}
-                    fill="#fef3c7"
-                    fillOpacity={0.35}
-                    stroke="#d97706"
-                    strokeWidth={1.2}
-                    strokeOpacity={0.8}
-                    rx={2}
-                    ry={2}
-                  />
-                  <polygon
-                    points={`${naturalX - 4},${labelY - 12} ${naturalX + 4},${labelY - 12} ${naturalX},${labelY - 5}`}
-                    fill="#d97706"
-                    fillOpacity={0.85}
-                  />
-                  <polygon
-                    points={`${naturalX - 4},${totalHeight + 3} ${naturalX + 4},${totalHeight + 3} ${naturalX},${totalHeight - 4}`}
-                    fill="#d97706"
-                    fillOpacity={0.85}
-                  />
-                </g>
+              {/* Leader — links a label to its cut tick. Horizontal: a straight
+                  vertical line (labels are centered on the cut, stacked by lane);
+                  drawn only when staggering exists. Vertical: an L-shape when the
+                  label was pushed sideways. */}
+              {!isVertical && nLanes > 1 && (
+                <line
+                  data-testid="sequence-view-re-leader"
+                  x1={naturalX} y1={labelY + 2} x2={naturalX} y2={cutY}
+                  stroke={emph ? '#d97706' : '#cbd5e1'}
+                  strokeWidth={emph ? 1.3 : 0.8}
+                  strokeDasharray={emph ? 'none' : '2 2'}
+                />
               )}
-
-              {/* Leader line when label slot has been pushed off cut
-                  position. L-shape: cut tick → up to label-base level →
-                  over to slot. Same path формула для vertical и
-                  horizontal — отличается только labelY и pivotX. */}
-              {offset > 0 && (
+              {isVertical && offset > 0 && (
                 <path
                   data-testid="sequence-view-re-leader"
                   d={`M ${naturalX} ${cutY} L ${naturalX} ${labelY + 1} L ${pivotX} ${labelY + 1}`}
                   fill="none"
-                  stroke={isHover ? '#d97706' : '#9ca3af'}
-                  strokeWidth={isHover ? 1.4 : 0.9}
-                  strokeDasharray={isHover ? 'none' : '2 2'}
+                  stroke={emph ? '#d97706' : '#9ca3af'}
+                  strokeWidth={emph ? 1.4 : 0.9}
+                  strokeDasharray={emph ? 'none' : '2 2'}
                 />
               )}
 
@@ -466,8 +491,8 @@ function RestrictionTrack({
                 x={pivotX}
                 y={labelY}
                 fontSize={LABEL_FONT}
-                fill={isHover ? '#d97706' : colorForEnzyme(s.enzyme)}
-                fontWeight={isHover ? 600 : 500}
+                fill={emph ? '#d97706' : colorForEnzyme(s.enzyme)}
+                fontWeight={emph ? 600 : 500}
                 textAnchor={isVertical ? "start" : "middle"}
                 transform={isVertical ? `rotate(-90 ${pivotX} ${labelY})` : undefined}
                 style={{ fontFamily: "inherit", userSelect: "none", pointerEvents: 'all' }}

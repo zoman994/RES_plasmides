@@ -43,12 +43,16 @@ export default function TabBar({
   showOverview = true,
   showMutagenesis = false,
   showAnnotations = true,
+  // RC-C1 (Игорь 24.06) — opt-in «Карта» tab: the assembly product editor uses it
+  // to show the circular plasmid map (PlasmidMapV2) of the assembled product.
+  showMap = false,
   annotatorActive = false,
   onToggleAnnotator,
 }) {
   const tabs = [];
   if (showOverview) tabs.push({ id: 'overview', label: S.tabOverview });
   tabs.push({ id: 'sequence', label: S.tabSequence });
+  if (showMap) tabs.push({ id: 'map', label: S.tabMap || 'Карта' });
   if (showAnnotations) tabs.push({ id: 'annotations', label: S.tabAnnotations });
   if (showMutagenesis) tabs.push({ id: 'mutagenesis', label: S.tabMutagenesis || 'Мутагенез' });
   if (showHistory) tabs.push({ id: 'history', label: S.tabHistory });

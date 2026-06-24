@@ -164,7 +164,8 @@ describe('K2 — EditorTabStrip operation breadcrumb (DEC-PCR-10)', () => {
     const tab = screen.getByTestId('editor-tab');
     expect(tab.textContent).toContain('PCR');
     expect(tab.textContent).toContain('pET28a');
-    expect(tab.textContent).toContain('🔬');
+    expect(tab.querySelector('svg')).toBeTruthy(); // 🔬 → <Icon name="pcr">
+
   });
 });
 

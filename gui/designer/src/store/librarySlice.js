@@ -9,6 +9,7 @@ import { computeSuggestedName } from '../components/Library/lib/compute-suggeste
 import { computeResourceHash } from '../components/Library/lib/resource-hash';
 import { applySequenceEditToEntry } from '../components/Library/lib/library-sequence-edit';
 import { buildFolderTree } from '../components/Library/tree/library-folder-tree';
+import { enrichEditDescriptor, mergeCorrection } from '../lib/alignment/describe-edit';
 
 export const LIBRARY_TAGS_SOFT_LIMIT = 10;
 
@@ -95,6 +96,15 @@ function deriveOriginForExisting(entry) {
  */
 export const createLibrarySlice = (set, get) => ({
   libraryEntries: {},
+  // Transient «что изменено» log per entry (id → corrections[]), built by the
+  // shared aligner provenance engine (describe-edit). Records edits since the
+  // last explicit commit («Перезаписать» / «Сохранить как версию») so the save
+  // panel + version timeline can show «было → стало». Not persisted.
+  libraryEditLog: {},
+  // Per-entry sequence undo/redo (Ctrl+Z этап 2). id → { past:[], future:[] };
+  // each snapshot = { sequence, annotations, log }. Pushed before every
+  // character-level sequence edit. Not persisted.
+  libraryUndo: {},
   filterKind: DEFAULT_FILTER_KIND,
   filterTopology: DEFAULT_FILTER_TOPOLOGY,
   editingTagsEntryId: null,
@@ -182,7 +192,67 @@ export const createLibrarySlice = (set, get) => ({
    * surface specific toast messages (success vs. soft-deleted parent
    * vs. unknown id).
    */
-  overwriteLibraryEntryAnnotations: async (id, annotations) => {
+  // Clear the transient «что изменено» log for an entry (after an explicit
+  // save / version, or when the biolog discards pending edits).
+  clearLibraryEditLog: (id) => set(state => {
+    if (state.libraryEditLog && state.libraryEditLog[id]) delete state.libraryEditLog[id];
+  }),
+
+  // Ctrl+Z этап 2 — undo/redo a character-level sequence edit on a library
+  // entry. Re-persists the snapshotted {sequence, annotations} and restores the
+  // matching «что изменено» log so the save summary stays accurate. Shared
+  // helper persists; the two actions just move the snapshot between past/future.
+  _restoreLibrarySnapshot: async (id, from, to) => {
+    const lib = get().libraryUndo?.[id];
+    const stack = lib && Array.isArray(lib[from]) ? lib[from] : [];
+    if (!stack.length) return { ok: false, reason: 'empty' };
+    const entry = get().libraryEntries[id];
+    if (!entry) return { ok: false, reason: 'not-found' };
+    const target = stack[stack.length - 1];
+    const counterSnap = {
+      sequence: entry.payload?.sequence || '',
+      annotations: Array.isArray(entry.payload?.annotations) ? entry.payload.annotations : [],
+      log: [...(get().libraryEditLog?.[id] || [])],
+    };
+    let resourceHash = entry.payload?.resourceHash || null;
+    try {
+      resourceHash = await computeResourceHash({
+        sequence: target.sequence, topology: entry.payload?.topology, ends: entry.payload?.ends,
+      });
+    } catch { /* keep previous hash */ }
+    const nextPayload = {
+      ...(entry.payload || {}),
+      sequence: target.sequence,
+      length: (target.sequence || '').length,
+      annotations: target.annotations,
+      resourceHash,
+    };
+    const updated = { ...entry, payload: nextPayload };
+    set((state) => {
+      const e = state.libraryEntries[id];
+      if (e) e.payload = nextPayload;
+      const u = state.libraryUndo[id];
+      u[from] = u[from].slice(0, -1);
+      u[to] = [...u[to], counterSnap];
+      if (!state.libraryEditLog) state.libraryEditLog = {};
+      state.libraryEditLog[id] = Array.isArray(target.log) ? target.log : [];
+    });
+    try {
+      await putLibraryEntry(updated);
+      return { ok: true, sequence: target.sequence };
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[bodgegene] _restoreLibrarySnapshot persist failed', err);
+      return { ok: false, reason: 'persist-error' };
+    }
+  },
+  undoLibrarySequenceEdit: (id) => get()._restoreLibrarySnapshot(id, 'past', 'future'),
+  redoLibrarySequenceEdit: (id) => get()._restoreLibrarySnapshot(id, 'future', 'past'),
+
+  // `meta` (optional, back-compat with 2-arg callers): provenance stamped on the
+  // entry's origin — `changes` («что изменено», built from the edit log) +
+  // `reason`. The commit also clears the edit log + bumps `version`.
+  overwriteLibraryEntryAnnotations: async (id, annotations, meta = {}) => {
     if (!id || !Array.isArray(annotations)) return { ok: false, reason: 'invalid-args' };
     const existing = get().libraryEntries[id];
     if (!existing) return { ok: false, reason: 'not-found' };
@@ -191,13 +261,28 @@ export const createLibrarySlice = (set, get) => ({
     }
     const nextVersion = (existing.version || 1) + 1;
     const nextPayload = { ...(existing.payload || {}), annotations };
-    const updated = { ...existing, version: nextVersion, payload: nextPayload };
+    const hasProvenance = !!(meta && (meta.changes || meta.reason));
+    const nextOrigin = hasProvenance
+      ? {
+        ...(existing.origin || {}),
+        editedAt: meta.editedAt || new Date().toISOString(),
+        ...(meta.changes ? { changes: meta.changes } : {}),
+        ...(meta.reason ? { reason: meta.reason } : {}),
+      }
+      : existing.origin;
+    const updated = { ...existing, version: nextVersion, origin: nextOrigin, payload: nextPayload };
     set(state => {
       const e = state.libraryEntries[id];
       if (e) {
         e.payload = nextPayload;
         e.version = nextVersion;
+        if (hasProvenance) e.origin = nextOrigin;
       }
+      if (state.libraryEditLog && state.libraryEditLog[id]) delete state.libraryEditLog[id];
+      // A version-bumping commit is a save-point: undo must NOT cross it, else
+      // Ctrl+Z reverts content below the saved version while `version` stays
+      // bumped (state drift) and can dangle a child version's parentEntryHash.
+      if (state.libraryUndo && state.libraryUndo[id]) delete state.libraryUndo[id];
     });
     try {
       await putLibraryEntry(updated);
@@ -456,6 +541,15 @@ export const createLibrarySlice = (set, get) => ({
     const entry = get().libraryEntries[id];
     if (!entry) return { ok: false, reason: 'not-found' };
     if (entry._pendingDelete) return { ok: false, reason: 'pending-delete', name: entry.name };
+    // «Что изменено» — capture the original bases from the PRE-edit sequence
+    // (reuses the aligner provenance engine, with run coalescing).
+    const fromSeq = entry.payload?.sequence || '';
+    // Undo snapshot of the PRE-edit state (sequence + annotations + log).
+    const undoSnap = {
+      sequence: fromSeq,
+      annotations: Array.isArray(entry.payload?.annotations) ? entry.payload.annotations : [],
+      log: [...(get().libraryEditLog?.[id] || [])],
+    };
     const result = applySequenceEditToEntry(entry, op);
     if (!result?.ok) return result || { ok: false, reason: 'invalid-args' };
     let resourceHash = entry.payload?.resourceHash || null;
@@ -477,6 +571,11 @@ export const createLibrarySlice = (set, get) => ({
     set((state) => {
       const e = state.libraryEntries[id];
       if (e) e.payload = nextPayload;
+      if (!state.libraryEditLog) state.libraryEditLog = {};
+      state.libraryEditLog[id] = mergeCorrection(state.libraryEditLog[id] || [], enrichEditDescriptor(op, fromSeq));
+      if (!state.libraryUndo) state.libraryUndo = {};
+      const u = state.libraryUndo[id] || { past: [], future: [] };
+      state.libraryUndo[id] = { past: [...u.past.slice(-49), undoSnap], future: [] };
     });
     try {
       await putLibraryEntry(updated);
@@ -502,7 +601,10 @@ export const createLibrarySlice = (set, get) => ({
    * inspector to the new branch on success so subsequent character
    * keystrokes write into the copy, not back into the parent.
    */
-  createManualEditBranch: async (parentId, sequence, annotations) => {
+  // `meta` (optional, back-compat with 3-arg callers) records provenance for a
+  // git-like manual edit (Игорь, align view): origin.reason (why) + origin.changes
+  // (what) + origin.editedAt (when). A `name` override is honoured too.
+  createManualEditBranch: async (parentId, sequence, annotations, meta = {}) => {
     if (!parentId || typeof sequence !== 'string') return { ok: false, reason: 'invalid-args' };
     const parent = get().libraryEntries[parentId];
     if (!parent) return { ok: false, reason: 'not-found' };
@@ -510,7 +612,7 @@ export const createLibrarySlice = (set, get) => ({
       return { ok: false, reason: 'pending-delete', name: parent.name };
     }
     const newId = uuidv7();
-    const baseName = `${parent.name || 'plasmid'} (manual edit)`;
+    const baseName = (meta && meta.name) || `${parent.name || 'plasmid'} (manual edit)`;
     const safeName = get().getSuggestedLibraryName(baseName);
     const parentPayload = parent.payload || {};
     let resourceHash = parentPayload.resourceHash;
@@ -521,7 +623,7 @@ export const createLibrarySlice = (set, get) => ({
         ends: parentPayload.ends,
       });
     } catch { /* fallback */ }
-    const editedAt = new Date().toISOString();
+    const editedAt = (meta && meta.editedAt) || new Date().toISOString();
     const newEntry = {
       id: newId,
       kind: parent.kind,
@@ -534,6 +636,8 @@ export const createLibrarySlice = (set, get) => ({
         parentEntryId: parentId,
         parentEntryHash: parentPayload.resourceHash || resourceHash,
         editedAt,
+        ...(meta && meta.reason ? { reason: meta.reason } : {}),
+        ...(meta && meta.changes ? { changes: meta.changes } : {}),
       },
       version: 1,
       parentEntryId: parentId,
@@ -560,7 +664,7 @@ export const createLibrarySlice = (set, get) => ({
     }
   },
 
-  saveLibraryEntryAsVersion: async (parentId, annotations, requestedName) => {
+  saveLibraryEntryAsVersion: async (parentId, annotations, requestedName, meta = {}) => {
     if (!parentId || !Array.isArray(annotations)) return { ok: false, reason: 'invalid-args' };
     const parent = get().libraryEntries[parentId];
     if (!parent) return { ok: false, reason: 'not-found' };
@@ -591,6 +695,8 @@ export const createLibrarySlice = (set, get) => ({
         parentEntryId: parentId,
         parentEntryHash: parentPayload.resourceHash || resourceHash,
         createdAt: new Date().toISOString(),
+        ...(meta && meta.changes ? { changes: meta.changes } : {}),
+        ...(meta && meta.reason ? { reason: meta.reason } : {}),
       },
       version: 1,
       parentEntryId: parentId,
@@ -602,7 +708,14 @@ export const createLibrarySlice = (set, get) => ({
       },
       ext: parent.ext || {},
     };
-    set(state => { state.libraryEntries[newId] = newEntry; });
+    set(state => {
+      state.libraryEntries[newId] = newEntry;
+      if (state.libraryEditLog && state.libraryEditLog[parentId]) delete state.libraryEditLog[parentId];
+      // Save-point — drop the parent undo stack so Ctrl+Z can't revert the
+      // parent below the state this version was forked from (would dangle the
+      // new child's parentEntryHash).
+      if (state.libraryUndo && state.libraryUndo[parentId]) delete state.libraryUndo[parentId];
+    });
     try {
       await putLibraryEntry(newEntry);
       return { ok: true, id: newId, name: safeName };

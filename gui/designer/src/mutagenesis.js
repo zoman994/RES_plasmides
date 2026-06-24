@@ -36,12 +36,33 @@ export function chooseStrategy(mutations, fragmentContext = {}) {
 }
 
 /**
+ * resolveStrategy — strategy with an optional EXPERT override (Кирпич 4 swap).
+ * An invalid override (forcing KLD on a non-circular / non-standalone template,
+ * where reverse PCR of the whole plasmid is impossible) silently falls back to
+ * the auto choice — the swap never produces biologically-impossible chemistry.
+ */
+export function resolveStrategy(forceStrategy, mutations, fragmentContext = {}) {
+  const auto = chooseStrategy(mutations, fragmentContext);
+  if (!forceStrategy || forceStrategy === auto) return auto;
+  if (forceStrategy === 'kld') {
+    const { topology = 'circular', isStandalone = true } = fragmentContext;
+    return (topology === 'circular' && isStandalone) ? 'kld' : auto;
+  }
+  if (forceStrategy === 'two_fragment' || forceStrategy === 'multi_fragment') {
+    return mutations.length > 2 ? 'multi_fragment' : 'two_fragment';
+  }
+  return auto;
+}
+
+/**
  * Apply a mutation to a sequence, return mutant sequence.
  */
 export function applyMutation(seq, mut) {
   const pos = mut.dnaPosition; // 0-based
   if (mut.type === 'substitution') {
-    return seq.slice(0, pos) + mut.newCodon + seq.slice(pos + 3);
+    // Generalized: a substitution replaces exactly newCodon.length nt — 3 for a
+    // codon swap, 1 for a single-base edit («одна буква»). Не хардкодим +3.
+    return seq.slice(0, pos) + mut.newCodon + seq.slice(pos + mut.newCodon.length);
   } else if (mut.type === 'deletion') {
     return seq.slice(0, pos) + seq.slice(pos + mut.deleteLength);
   } else if (mut.type === 'insertion') {
@@ -61,10 +82,11 @@ export function computeMutagenesisStrategy(templateSeq, mutations, options = {})
     featureStart = 0,
     featureEnd = templateSeq.length,
     fragmentContext = { topology: 'circular', isStandalone: true, length: templateSeq.length },
+    forceStrategy = null,
   } = options;
 
   const sorted = [...mutations].sort((a, b) => a.dnaPosition - b.dnaPosition);
-  const strategy = chooseStrategy(sorted, fragmentContext);
+  const strategy = resolveStrategy(forceStrategy, sorted, fragmentContext);
 
   if (strategy === 'kld') {
     return makeKLDStrategy(templateSeq, sorted, bindingLength);
@@ -87,8 +109,9 @@ function makeKLDStrategy(templateSeq, mutations, bindingLength) {
   let fwdSeq, revSeq, fwdName, revName;
 
   if (mut.type === 'substitution') {
-    // fwd starts at mutation: mutant codon + downstream binding
-    fwdSeq = mut.newCodon + templateSeq.slice(pos + 3, pos + 3 + bindingLength);
+    // fwd starts at mutation: mutant bases (1 nt or full codon) + downstream binding.
+    const subLen = mut.newCodon.length;
+    fwdSeq = mut.newCodon + templateSeq.slice(pos + subLen, pos + subLen + bindingLength);
     // rev ends just before mutation: upstream binding RC
     const revRegion = templateSeq.slice(Math.max(0, pos - bindingLength), pos);
     revSeq = revComp(revRegion);
@@ -117,7 +140,7 @@ function makeKLDStrategy(templateSeq, mutations, bindingLength) {
       // mut2 falls within fwd primer region — encode it
       const relPos = mut2.dnaPosition - pos;
       if (relPos < fwdSeq.length) {
-        fwdSeq = fwdSeq.slice(0, relPos) + mut2.newCodon + fwdSeq.slice(relPos + 3);
+        fwdSeq = fwdSeq.slice(0, relPos) + mut2.newCodon + fwdSeq.slice(relPos + mut2.newCodon.length);
       }
       warnings.push(`Обе мутации закодированы в fwd праймере (${gap} п.н. друг от друга)`);
     } else if (gap < 0 && Math.abs(gap) < bindingLength + 10 && mut2.type === 'substitution' && revSeq) {

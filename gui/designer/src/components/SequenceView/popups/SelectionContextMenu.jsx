@@ -30,6 +30,9 @@ export default function SelectionContextMenu({
   onCopy,
   onClose,
   extraItems,
+  // «Инвертировать выделение» — toggle painting/copying the complement.
+  onInvert,
+  inverted = false,
 }) {
   if (!contextMenu) return null;
   return (
@@ -70,6 +73,12 @@ export default function SelectionContextMenu({
         disabled={selectionMode !== "aa"}
         onClick={() => { onCopy("aa"); onClose(); }}
       />
+      {typeof onInvert === "function" ? (
+        <MenuItem
+          label={`${inverted ? "✓ " : ""}Инвертировать выделение`}
+          onClick={() => { onInvert(); onClose(); }}
+        />
+      ) : null}
       {Array.isArray(extraItems) && extraItems.length > 0 ? (
         <>
           <div

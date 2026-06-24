@@ -94,19 +94,42 @@ export function routeAssemblyWriteToZone(state, action) {
       // 'undefined' (default), чтобы piece-invariants не отвергал.
       const am = action.acquisitionMethod;
       const acquisitionMethod = am === 'restriction' ? 'restriction' : 'undefined';
-      const pieceData = {
-        kind: 'sourced',
-        name: c.name || 'piece',
-        sourceIds: [action.sourceContainerId],
-        ranges: [{
+      // V157 — 'restriction' is a param-bearing method: piece-invariants
+      // (§5.7) REQUIRES non-empty acquisitionParams. Use the enzyme params
+      // threaded from the RE-pair pick ({ enzymes, cutSites }); fall back to a
+      // non-empty marker so the invariant passes even when they're absent.
+      const reParams = action.acquisitionParams;
+      const acquisitionParams = acquisitionMethod === 'restriction'
+        ? (reParams && typeof reParams === 'object' && Object.keys(reParams).length ? reParams : { enzymes: [] })
+        : {};
+      // #2 (invert/backbone) — an explicit multi-range slice (the circular
+      // complement) overrides the single [start,end]; each range is a valid
+      // start<end span (the wrap is modelled as TWO ranges, not start>=end).
+      const ranges = (Array.isArray(action.ranges) && action.ranges.length > 0)
+        ? action.ranges.map((rr) => ({
+          sourceId: rr.sourceId || action.sourceContainerId,
+          start: rr.start,
+          end: rr.end,
+          orientation: rr.orientation || (action.rc ? 'reverse' : 'forward'),
+        }))
+        : [{
           sourceId: action.sourceContainerId,
           start: action.start,
           end: action.end,
           orientation: action.rc ? 'reverse' : 'forward',
-        }],
+        }];
+      const pieceData = {
+        kind: 'sourced',
+        name: c.name || 'piece',
+        // sourceIds is PARALLEL to ranges (piece-invariants validates one source
+        // per range). A wrap fragment = TWO ranges from the same source, so its
+        // sourceIds must also have two entries — hardcoding [one] rejected every
+        // origin-crossing fragment («недопустимый диапазон», Игорь 22.06).
+        sourceIds: ranges.map((r) => r.sourceId),
+        ranges,
         origin: 'selection',
         acquisitionMethod,
-        acquisitionParams: {},
+        acquisitionParams,
       };
       return createPieceInZone(state, zoneId, pieceData, action.insertAtIndex);
     }

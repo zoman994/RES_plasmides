@@ -12,6 +12,11 @@
  */
 import { zipSync, strToU8 } from 'fflate';
 import { ANNOTATION_COLORS } from '../auto-annotate';
+import { getIntronsForRegion, getExonRanges } from '../intron-utils';
+
+// Region types whose location is written as join(exons) when they carry introns
+// — so a spliced CDS/gene round-trips through GenBank instead of flattening.
+const SPLICEABLE_TYPES = new Set(['CDS', 'gene', 'marker', 'reporter']);
 
 const GENBANK_TYPE_MAP = {
   CDS: 'CDS', gene: 'gene', promoter: 'promoter', terminator: 'terminator',
@@ -61,7 +66,18 @@ export function entryToGenbank(entry) {
     if (!ann) continue;
     const start = Math.max(1, (Number(ann.start) || 0) + 1);
     const end = Math.max(start, Number(ann.end) || start);
-    const loc = ann.strand === -1 ? `complement(${start}..${end})` : `${start}..${end}`;
+    // A spliceable region carrying introns is written as join(exons) so the
+    // exon structure survives the round-trip (the parser reads join() back into
+    // exons → intron details). Other features keep a single span.
+    let span = `${start}..${end}`;
+    if (ann.level === 'region' && SPLICEABLE_TYPES.has(ann.type)) {
+      const introns = getIntronsForRegion(annotations, ann);
+      if (introns.length) {
+        const exons = getExonRanges(ann.start, ann.end, introns);
+        span = `join(${exons.map((e) => `${e.start + 1}..${e.end}`).join(',')})`;
+      }
+    }
+    const loc = ann.strand === -1 ? `complement(${span})` : span;
     const gbType = GENBANK_TYPE_MAP[ann.type] || 'misc_feature';
     gb += `     ${gbType.padEnd(16)}${loc}\n`;
     gb += `                     /label="${ann.name || ann.type || 'feature'}"\n`;

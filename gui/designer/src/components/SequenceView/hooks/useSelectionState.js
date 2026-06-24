@@ -35,7 +35,77 @@ import { useEffect, useRef, useState } from "react";
 import { reverseComplement } from "../../../sequence-utils";
 import { translateDNA } from "../../../codons";
 import { findScrollingAncestor } from "../lib/scroll-handle.js";
+import { invertedSlice } from "../lib/selection-ops.js";
 import { LABEL_WIDTH } from "../constants.js";
+import { registerCopySource, setActiveCopySource } from "../../../lib/global-copy.js";
+
+/**
+ * selectionSlice — pure wrap-aware extraction of the selected
+ * substring. Mirrors the inline logic copySelection has always used:
+ * a selection that crosses the origin (one end in the extended domain,
+ * < 0 or > seqLength) is stitched from the two halves around 0.
+ * Returns '' when there is no selection (anchor == focus or either is
+ * null). Exported for unit reuse + the global copy-source getText.
+ */
+/**
+ * terminalCaretBounds — the caret's allowed [min,max] for a LINEAR fragment whose
+ * terminal sticky-end overhang protrudes past the duplex on the bottom strand
+ * («Тянуть до конца», Игорь 22.06). `terminalSelect` carries the protruding
+ * lengths; null (circular / blunt) collapses the bounds to [0, seqLength].
+ */
+export function terminalCaretBounds(seqLength, terminalSelect) {
+  const r = terminalSelect && terminalSelect.rightLen ? terminalSelect.rightLen : 0;
+  const l = terminalSelect && terminalSelect.leftLen ? terminalSelect.leftLen : 0;
+  return { min: l ? -l : 0, max: seqLength + r };
+}
+
+export function selectionSlice({ fullSeq, anchor, focus, seqLength, terminalSelect = null }) {
+  const a = (typeof anchor === "number" && Number.isFinite(anchor)) ? anchor : null;
+  const f = (typeof focus === "number" && Number.isFinite(focus)) ? focus : null;
+  if (a == null || f == null || a === f) return "";
+  const seq = fullSeq || "";
+  if (seqLength > 0 && (Math.min(a, f) < 0 || Math.max(a, f) > seqLength)) {
+    // «Тянуть + копировать выступ» (Игорь): on a LINEAR fragment the terminal
+    // overhang lives OUTSIDE fullSeq (bottom strand past the cut). Clip the top
+    // strand to [0,seqLength] and append/prepend the single-stranded overhang
+    // bases as displayed. terminalSelect is null for circular, so the wrap-stitch
+    // below stays the circular-only path.
+    if (terminalSelect) {
+      const lo = Math.min(a, f);
+      const hi = Math.max(a, f);
+      const topLo = Math.max(0, lo);
+      const topHi = Math.min(seqLength, hi);
+      let s = topHi > topLo ? seq.slice(topLo, topHi) : "";
+      const rLen = terminalSelect.rightLen || 0;
+      const lLen = terminalSelect.leftLen || 0;
+      if (hi > seqLength && terminalSelect.rightBases) {
+        s += terminalSelect.rightBases.slice(0, Math.min(rLen, hi - seqLength));
+      }
+      if (lo < 0 && terminalSelect.leftBases) {
+        const take = Math.min(lLen, -lo);
+        s = terminalSelect.leftBases.slice(lLen - take) + s;
+      }
+      return s;
+    }
+    let head;
+    let tail;
+    if (Math.min(a, f) < 0) {
+      const negEnd = Math.min(a, f); // < 0
+      const posEnd = Math.max(a, f); // ≥ 0
+      head = seq.slice(negEnd + seqLength, seqLength);
+      tail = seq.slice(0, posEnd);
+    } else {
+      const lo = Math.min(a, f); // ≤ seqLength
+      const hi = Math.max(a, f); // > seqLength
+      head = seq.slice(lo, seqLength);
+      tail = seq.slice(0, hi - seqLength);
+    }
+    return head + tail;
+  }
+  const start = Math.min(a, f);
+  const end = Math.max(a, f);
+  return seq.slice(start, end);
+}
 
 export function useSelectionState({
   fullSeq,
@@ -46,6 +116,11 @@ export function useSelectionState({
   caretAnchor,
   selectionMode,
   selectionStrand,
+  circular = false,
+  // «Тянуть до конца» (Игорь 22.06): { rightLen, leftLen, rightBases, leftBases }
+  // for a LINEAR fragment whose terminal overhang protrudes on the bottom strand
+  // past the duplex. Lets the caret reach the overhang + copy it. Null otherwise.
+  terminalSelect = null,
   onCaretChange,
   onSelectRange,
   containerRef,
@@ -55,6 +130,14 @@ export function useSelectionState({
   const pointerMovedRef = useRef(false);
   const lastPointerCoordsRef = useRef(null);
   const autoScrollRafRef = useRef(null);
+
+  // «Инвертировать выделение» — flips what is painted/copied to the COMPLEMENT
+  // of [anchor,focus]. Reset on every selection change so a new pick starts
+  // un-inverted; toggling is a no-op without a selection.
+  const [inverted, setInverted] = useState(false);
+  const hasSel = Number.isFinite(caretAnchor) && Number.isFinite(caretPos) && caretAnchor !== caretPos;
+  const toggleInverted = () => setInverted((v) => (hasSel ? !v : false));
+  useEffect(() => { setInverted(false); }, [caretAnchor, caretPos]);
 
   // Close the context menu on any pointer-down outside it.
   useEffect(() => {
@@ -115,6 +198,21 @@ export function useSelectionState({
     while (el && el !== containerRef.current) {
       if (el.dataset && el.dataset.lineStart != null) break;
       el = el.parentElement;
+    }
+    // Drag fast path: setPointerCapture rebinds `e.target` to the root, so the
+    // walk above fails on EVERY pointermove → without this we'd scan every
+    // line's getBoundingClientRect below (O(lines) forced layout per move at
+    // ~60 Hz = «выделение глючит»). A single hit-test at the pointer finds the
+    // line directly; the wrap-tail/main gating downstream is unchanged. Same
+    // technique already used by the AA-drag + auto-scroll branches.
+    if ((!el || el === containerRef.current)
+        && typeof document !== 'undefined' && typeof document.elementFromPoint === 'function'
+        && Number.isFinite(e.clientX) && Number.isFinite(e.clientY)) {
+      let hit = document.elementFromPoint(e.clientX, e.clientY);
+      while (hit && hit !== containerRef.current) {
+        if (hit.dataset && hit.dataset.lineStart != null) { el = hit; break; }
+        hit = hit.parentElement;
+      }
     }
     // Fallback: y-bounded line search. During a drag, INCLUDE
     // wrap-tail rows so the extended-domain caret can engage.
@@ -199,17 +297,25 @@ export function useSelectionState({
       return wrapPos + seqLength;
     }
     const lineLen = Math.min(charsPerLine || 80, seqLength - lineStart);
-    const clamped = Math.max(0, Math.min(lineLen, offsetCh));
+    // «Тянуть до конца» (Игорь): on a LINEAR fragment let the caret cross the
+    // duplex edge into the protruding terminal overhang — right end up to
+    // seqLength+rightLen on the LAST line, left end down to -leftLen on the FIRST.
+    // terminalSelect is null for circular / blunt → rExtra/lExtra collapse to 0
+    // and the clamp is byte-identical to the old [0, lineLen] / [0, seqLength].
+    const rExtra = (terminalSelect && (lineStart + lineLen >= seqLength)) ? (terminalSelect.rightLen || 0) : 0;
+    const lExtra = (terminalSelect && lineStart === 0) ? (terminalSelect.leftLen || 0) : 0;
+    const clamped = Math.max(-lExtra, Math.min(lineLen + rExtra, offsetCh));
     const realPos = lineStart + clamped;
     // Wrap-aware emission: leading-wrap → negative coord, trailing-
-    // wrap → > seqLength. Main → in [0, seqLength].
+    // wrap → > seqLength. Main → in [-leftLen, seqLength+rightLen].
     if (kind === 'leading-wrap') {
       return realPos - seqLength; // e.g. 4900 → -48 on 4948 bp
     }
     if (kind === 'trailing-wrap') {
       return realPos + seqLength; // e.g. 100 → 5048 on 4948 bp
     }
-    return Math.max(0, Math.min(seqLength, realPos));
+    const { min: tMin, max: tMax } = terminalCaretBounds(seqLength, terminalSelect);
+    return Math.max(tMin, Math.min(tMax, realPos));
   };
 
   // ---------------------------------------------------------------
@@ -217,6 +323,11 @@ export function useSelectionState({
   // ---------------------------------------------------------------
   const onRootPointerDown = (e) => {
     if (e.button != null && e.button !== 0) return; // primary button only
+
+    // Mark THIS view as the active copy source — a global Ctrl+C now
+    // copies the selection the biolog last touched, even after focus
+    // moves to a side-panel.
+    setActiveCopySource(copySourceRef.current);
 
     // 13.05.2026 — Restriction-site click? Bail out so we don't
     // preventDefault (which kills the synthesised click on the
@@ -436,38 +547,13 @@ export function useSelectionState({
     setContextMenu({ x: e.clientX, y: e.clientY });
   };
 
-  // mode: 'forward' | 'reverse' | 'aa'
+  // mode: 'forward' | 'reverse' | 'aa'. Context-menu copy: the AA item
+  // is UI-gated (disabled unless selectionMode === 'aa'), so this path
+  // translates whatever is selected without a mode guard.
   const copySelection = (mode) => {
-    const a = (typeof caretAnchor === "number" && Number.isFinite(caretAnchor)) ? caretAnchor : null;
-    const f = (typeof caretPos === "number" && Number.isFinite(caretPos)) ? caretPos : null;
-    if (a == null || f == null || a === f) return;
-    // Round-8 wrap-aware copy: if either end is in extended domain
-    // (negative or > seqLength) the slice walks across origin.
-    let slice;
-    if (seqLength > 0 && (Math.min(a, f) < 0 || Math.max(a, f) > seqLength)) {
-      // Identify the wrap direction. Leading-wrap (negative) puts
-      // the «end of plasmid» first; trailing-wrap (>seqLength) puts
-      // the start-of-plasmid last. Both produce a single linear
-      // string by concatenating the two halves around origin.
-      let head;
-      let tail;
-      if (Math.min(a, f) < 0) {
-        const negEnd = Math.min(a, f); // < 0
-        const posEnd = Math.max(a, f); // ≥ 0
-        head = (fullSeq || "").slice(negEnd + seqLength, seqLength);
-        tail = (fullSeq || "").slice(0, posEnd);
-      } else {
-        const lo = Math.min(a, f); // ≤ seqLength
-        const hi = Math.max(a, f); // > seqLength
-        head = (fullSeq || "").slice(lo, seqLength);
-        tail = (fullSeq || "").slice(0, hi - seqLength);
-      }
-      slice = head + tail;
-    } else {
-      const start = Math.min(a, f);
-      const end = Math.max(a, f);
-      slice = (fullSeq || "").slice(start, end);
-    }
+    const slice = inverted
+      ? invertedSlice(fullSeq, Math.min(caretAnchor, caretPos), Math.max(caretAnchor, caretPos), seqLength, circular)
+      : selectionSlice({ fullSeq, anchor: caretAnchor, focus: caretPos, seqLength, terminalSelect });
     if (!slice) return;
     let text = slice;
     if (mode === "reverse") text = reverseComplement(slice);
@@ -479,6 +565,45 @@ export function useSelectionState({
       navigator.clipboard?.writeText?.(text);
     } catch { /* clipboard unavailable — silently no-op */ }
   };
+
+  // ---------------------------------------------------------------
+  // Global Ctrl+C copy-source registration (Игорь «контрол С должно
+  // глобально работать везде где можно выделить»).
+  // ---------------------------------------------------------------
+  // The window-level handler in lib/global-copy.js copies the ACTIVE
+  // source's selection regardless of focus. We register ONE stable
+  // source object whose getText reads the latest selection through a
+  // ref (so the registry always sees fresh caret coords without
+  // re-registering every render). Unlike the context-menu copy, the
+  // AA mode here is guarded to selectionMode === 'aa' — matching the
+  // Ctrl+Shift+C contract in useSequenceKeyboard (no-op on non-CDS).
+  const latestRef = useRef(null);
+  latestRef.current = {
+    fullSeq, caretAnchor, caretPos, seqLength, selectionMode, selectionStrand, inverted, circular, terminalSelect,
+  };
+  const copySourceRef = useRef(null);
+  if (copySourceRef.current == null) {
+    copySourceRef.current = {
+      getText(mode) {
+        const s = latestRef.current || {};
+        const slice = s.inverted
+          ? invertedSlice(s.fullSeq, Math.min(s.caretAnchor, s.caretPos), Math.max(s.caretAnchor, s.caretPos), s.seqLength, s.circular)
+          : selectionSlice({
+            fullSeq: s.fullSeq, anchor: s.caretAnchor, focus: s.caretPos, seqLength: s.seqLength,
+            terminalSelect: s.terminalSelect,
+          });
+        if (!slice) return null;
+        if (mode === "reverse") return reverseComplement(slice);
+        if (mode === "aa") {
+          if (s.selectionMode !== "aa") return null; // non-CDS selection — no AA copy
+          const dna = s.selectionStrand === -1 ? reverseComplement(slice) : slice;
+          return translateDNA(dna);
+        }
+        return slice;
+      },
+    };
+  }
+  useEffect(() => registerCopySource(copySourceRef.current), []);
 
   // Click fallback for synthetic-event environments + assistive tech
   const onRootClickFallback = (e) => {
@@ -503,5 +628,7 @@ export function useSelectionState({
     onRootContextMenu,
     onRootClickFallback,
     copySelection,
+    inverted,
+    toggleInverted,
   };
 }

@@ -8,6 +8,7 @@ import 'fake-indexeddb/auto';
 import { describe, it, expect, afterEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
 import CanvasSkeleton from '../index';
+import { FEATURE_FLAGS } from '../../../lib/feature-flags';
 
 afterEach(cleanup);
 
@@ -17,11 +18,28 @@ describe('K1 — CanvasSkeleton mount', () => {
     expect(screen.getByTestId('canvas-skeleton')).toBeTruthy();
   });
 
-  it('renders header with «← Назад»; the Layout/Graph toggle is retired (M-WORKSPACE)', () => {
+  it('breadcrumb ON (дефолт): шапка без дубль-«← Назад» и без имени проекта; 🔪-тоггл остаётся', () => {
     render(<CanvasSkeleton />);
     expect(screen.getByTestId('skeleton-header')).toBeTruthy();
-    expect(screen.getByTestId('skeleton-back-btn')).toBeTruthy();
+    // Крошки «📁 {проект} › Сборки» покрывают навигацию + имя → дубль убран.
+    expect(screen.queryByTestId('skeleton-back-btn')).toBeNull();
+    expect(screen.queryByTestId('skeleton-header-title')).toBeNull();
+    // Рестрикционный тоггл — отдельная функция, остаётся.
+    expect(screen.getByTestId('skeleton-restriction-header-toggle')).toBeTruthy();
+    // Layout/Graph toggle retired (M-WORKSPACE).
     expect(screen.queryByTestId('skeleton-view-toggle')).toBeNull();
+  });
+
+  it('rollback: FEATURE_FLAGS.breadcrumb=false возвращает «← Назад» + имя проекта в шапке', () => {
+    const prev = FEATURE_FLAGS.breadcrumb;
+    FEATURE_FLAGS.breadcrumb = false;
+    try {
+      render(<CanvasSkeleton />);
+      expect(screen.getByTestId('skeleton-back-btn')).toBeTruthy();
+      expect(screen.getByTestId('skeleton-header-title')).toBeTruthy();
+    } finally {
+      FEATURE_FLAGS.breadcrumb = prev;
+    }
   });
 
   it('PC-K1: LibraryTreeHost no longer mounted (replaced by top search bar — PC-K2)', () => {

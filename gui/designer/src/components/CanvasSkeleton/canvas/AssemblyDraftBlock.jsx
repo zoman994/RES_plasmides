@@ -10,6 +10,7 @@
  */
 import { memo } from 'react';
 import { segmentBoundaries, computeAssemblySequence } from '../lib/assembly-model';
+import { Icon } from '../../icons/Icon';
 
 function AssemblyDraftBlock({
   draft, isHighlighted, isDragging, onPointerDown, onClick, onDoubleClick,
@@ -47,7 +48,7 @@ function AssemblyDraftBlock({
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600 }}>
-        <span aria-hidden>🧬</span>
+        <Icon name="dna" size={14} aria-hidden style={{ display: 'block', flexShrink: 0 }} />
         <span style={{
           flex: 1, minWidth: 0, overflow: 'hidden',
           textOverflow: 'ellipsis', whiteSpace: 'nowrap',
@@ -89,8 +90,8 @@ function AssemblyDraftBlock({
       <div style={{ fontSize: 10, color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between' }}>
         <span>{draft.segments.length} сегм.</span>
         {orphans.length > 0 && (
-          <span data-testid={`assembly-orphan-warn-${draft.id}`} style={{ color: 'var(--accent-500, #b85c3e)' }}>
-            ⚠ {orphans.length} orphan
+          <span data-testid={`assembly-orphan-warn-${draft.id}`} style={{ color: 'var(--accent-500, #b85c3e)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+            <Icon name="warning" size={11} aria-hidden /> {orphans.length} orphan
           </span>
         )}
       </div>

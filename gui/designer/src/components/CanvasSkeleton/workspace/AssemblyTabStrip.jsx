@@ -4,6 +4,8 @@
  * «+» creates a new assembly, per-tab «×» deletes the zone (confirm). Pure:
  * zones + activeId + callbacks.
  */
+import { Icon } from '../../icons/Icon';
+
 export default function AssemblyTabStrip({
   zones = [], activeId, onSelect, onCreate, onClose,
 }) {
@@ -35,7 +37,12 @@ export default function AssemblyTabStrip({
               color: on ? 'var(--text-primary)' : 'var(--text-secondary)',
               cursor: 'pointer',
               borderRadius: '8px 8px 0 0',
-              border: on ? '0.5px solid var(--border-subtle)' : '0.5px solid transparent',
+              // Explicit longhand sides (not shorthand `border`) so they don't
+              // conflict with `borderBottom` — avoids React's "mixing shorthand
+              // and non-shorthand" rerender warning when `on` toggles on select.
+              borderTop: on ? '0.5px solid var(--border-subtle)' : '0.5px solid transparent',
+              borderLeft: on ? '0.5px solid var(--border-subtle)' : '0.5px solid transparent',
+              borderRight: on ? '0.5px solid var(--border-subtle)' : '0.5px solid transparent',
               borderBottom: 'none',
               background: on ? 'var(--surface-1)' : 'transparent',
               position: 'relative',
@@ -43,7 +50,7 @@ export default function AssemblyTabStrip({
               maxWidth: 200,
             }}
           >
-            <span aria-hidden style={{ fontSize: 14, lineHeight: 1, color: 'var(--bio-primer, #378ADD)' }}>🧬</span>
+            <Icon name="dna" size={14} style={{ color: 'var(--bio-primer, #378ADD)' }} />
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {z.name || 'Сборка'}
             </span>
@@ -56,8 +63,9 @@ export default function AssemblyTabStrip({
                 marginLeft: 2, padding: 0, width: 16, height: 16, lineHeight: '14px',
                 border: 'none', background: 'transparent', cursor: 'pointer',
                 color: 'var(--text-tertiary)', fontSize: 12, borderRadius: 3,
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
               }}
-            >✕</button>
+            ><Icon name="close" size={12} /></button>
           </div>
         );
       })}
@@ -72,7 +80,7 @@ export default function AssemblyTabStrip({
           padding: '0 11px', border: 'none', background: 'transparent',
           color: 'var(--text-tertiary)', fontSize: 16, cursor: 'pointer',
         }}
-      >+</button>
+      ><Icon name="plus" size={16} /></button>
     </div>
   );
 }

@@ -22,8 +22,12 @@ import { useCallback, useRef, useState } from 'react';
 import { useStore } from '../../../store';
 import { useSkeletonActions, useSkeletonState } from '../store/skeleton-context';
 import { nodeRect, gatherObstacleRects, resolveNodeOverlap } from './canvas-layout';
+// Constant lives in its own dependency-free module now (so lighter consumers
+// can read it without pulling this hook's CanvasSkeleton graph); re-export for
+// back-compat with existing importers.
+import { TREE_DRAG_MIME } from './tree-drag-mime';
 
-export const TREE_DRAG_MIME = 'application/x-bodge-entry-id';
+export { TREE_DRAG_MIME };
 
 export function useTreeDropTarget(externalRef) {
   const actions = useSkeletonActions();

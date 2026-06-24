@@ -24,6 +24,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { STRINGS } from '../../../lib/strings';
 import { useStore } from '../../../store';
+import { Icon } from '../../icons/Icon';
 import SourceTiles from './SourceTiles';
 import CrossProjectStub from './CrossProjectStub';
 
@@ -238,8 +239,9 @@ export default function AddModal({ open, onClose, onLaunchPreImport }) {
               background: 'transparent',
               color: 'var(--text-secondary)',
               border: 'none', cursor: 'pointer',
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
             }}
-          >✕</button>
+          ><Icon name="close" size={14} /></button>
         </header>
 
         <div
@@ -419,8 +421,8 @@ export default function AddModal({ open, onClose, onLaunchPreImport }) {
                   {t.isCurrent && (
                     <span
                       title="текущий"
-                      style={{ color: 'var(--accent-700)', fontSize: 10 }}
-                    >●</span>
+                      style={{ color: 'var(--accent-700)', fontSize: 10, display: 'inline-flex', alignItems: 'center' }}
+                    ><Icon name="circular" size={10} /></span>
                   )}
                   <span style={{ fontSize: 12, color: 'var(--text-primary)' }}>
                     {t.label}

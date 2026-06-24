@@ -21,6 +21,9 @@ import { STRINGS } from '../../../lib/strings';
 import LibraryZone from './LibraryZone';
 import TreeFolderRow from './TreeFolderRow';
 import TreeItemRow from './TreeItemRow';
+import ContextMenu from '../../ContextMenu';
+import { FEATURE_FLAGS } from '../../../lib/feature-flags';
+import { Icon } from '../../icons/Icon';
 
 function matchesQuery(entry, q) {
   if (!q) return true;
@@ -35,10 +38,6 @@ export default function ProjectZone({
   expanded = true,
   onToggle,
   onExportProject,
-  // M-X.8 K4 — pin marker (DEC-UIRREV-TREE-PIN-MARKER). When
-  // truthy, a ★ glyph renders next to the project title to give
-  // a visual link with the sidebar PINNED section.
-  pinned = false,
 }) {
   const ws = STRINGS.libraryWorkspace || {};
   const projectId = project?.id;
@@ -126,7 +125,7 @@ export default function ProjectZone({
   const showToast = useStore((s) => s.showToast);
   const trashStrings = STRINGS.libraryWorkspace?.trash || {};
   const onDeleteProject = useCallback(async (e) => {
-    e.stopPropagation();
+    e?.stopPropagation();
     if (!projectId || !markProjectPendingDelete) return;
     const name = project?.name || projectId;
     try {
@@ -143,30 +142,34 @@ export default function ProjectZone({
     }
   }, [projectId, project, markProjectPendingDelete, unmarkProjectPendingDelete, showToast, trashStrings]);
 
-  // Manage the project from the tree (project hub): pin, activate, open in Flow.
-  // Header CLICK stays expand-only (deliberate, guarded by tests) — these are
-  // explicit buttons, each stopPropagation so they don't toggle expand.
-  const pinProject = useStore((s) => s.pinProject);
-  const unpinProject = useStore((s) => s.unpinProject);
+  // Manage the project from the tree (project hub): activate = make current.
+  // Header CLICK already activates a non-current project (LibraryTreeRoot), so
+  // the menu item is a discoverable, explicit duplicate. ★ pin removed (Игорь
+  // 20.06: «звёздочки нафиг не нужны»).
   const activateProject = useStore((s) => s.activateProject);
-  const setActiveWorkspace = useStore((s) => s.setActiveWorkspace);
-  const onTogglePin = useCallback((e) => {
-    e.stopPropagation();
-    if (!projectId) return;
-    if (pinned) { unpinProject?.(projectId); return; }
-    const r = pinProject?.(projectId);
-    if (r === 'cap') showToast?.('Закрепить можно не больше 15 проектов', 'warning');
-  }, [projectId, pinned, pinProject, unpinProject, showToast]);
   const onActivate = useCallback((e) => {
-    e.stopPropagation();
+    e?.stopPropagation();
     if (projectId) activateProject?.(projectId);
   }, [projectId, activateProject]);
-  const onOpenInFlow = useCallback((e) => {
+
+  // Right-click context menu (Игорь 20.06: «выгрузить / удалить / сделать
+  // текущим — по правой кнопке мыши»). Gated by libraryTreeContextMenu like
+  // TreeItemRow; the flag-off path keeps inline header buttons (rollback).
+  const [ctxMenu, setCtxMenu] = useState(null);
+  const onHeaderContextMenu = useCallback((e) => {
+    if (!FEATURE_FLAGS.libraryTreeContextMenu) return;
+    e.preventDefault();
     e.stopPropagation();
-    if (!projectId) return;
-    activateProject?.(projectId);
-    setActiveWorkspace?.('flow');
-  }, [projectId, activateProject, setActiveWorkspace]);
+    setCtxMenu({ x: e.clientX, y: e.clientY });
+  }, []);
+  const ctxItems = useMemo(() => {
+    const items = [];
+    if (!isActiveProject) items.push({ label: 'Сделать текущим проектом', icon: 'folder', onClick: () => onActivate() });
+    if (onExportProject) items.push({ label: 'Выгрузить проект', icon: 'export', onClick: () => onExportProject(projectId) });
+    if (items.length) items.push({ divider: true });
+    items.push({ label: 'Удалить проект', icon: 'trash', onClick: () => onDeleteProject(), danger: true });
+    return items;
+  }, [isActiveProject, onExportProject, projectId, onActivate, onDeleteProject]);
 
   const btnStyle = {
     fontSize: 11, padding: '1px 5px',
@@ -177,47 +180,36 @@ export default function ProjectZone({
     lineHeight: 1.3,
   };
 
-  const headerAction = (
+  // With the context menu ON (default) the header carries NO inline buttons —
+  // activate / export / delete live in the right-click menu, ★ pin is gone.
+  // Flag-OFF restores inline buttons (minus the star) as a rollback path.
+  const headerAction = FEATURE_FLAGS.libraryTreeContextMenu ? null : (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-      <button
-        type="button"
-        data-testid={`project-zone-pin-${projectId}`}
-        title={pinned ? 'Открепить' : 'Закрепить проект'}
-        onClick={onTogglePin}
-        style={{ ...btnStyle, color: pinned ? 'var(--accent-700, #c2410c)' : 'var(--text-secondary)' }}
-      >{pinned ? '★' : '☆'}</button>
       {!isActiveProject && (
         <button
           type="button"
           data-testid={`project-zone-activate-${projectId}`}
           title="Сделать текущим проектом"
           onClick={onActivate}
-          style={btnStyle}
-        >📂</button>
+          style={{ ...btnStyle, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+        ><Icon name="folder" size={13} /></button>
       )}
-      <button
-        type="button"
-        data-testid={`project-zone-open-flow-${projectId}`}
-        title="Открыть в потоке (DAG)"
-        onClick={onOpenInFlow}
-        style={btnStyle}
-      >→</button>
       {onExportProject && (
         <button
           type="button"
           data-testid={`project-zone-export-${projectId}`}
-          title="Экспорт проекта (.zip из .gb файлов)"
+          title="Выгрузить проект"
           onClick={(e) => { e.stopPropagation(); onExportProject(projectId); }}
-          style={btnStyle}
-        >⤓</button>
+          style={{ ...btnStyle, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+        ><Icon name="export" size={13} /></button>
       )}
       <button
         type="button"
         data-testid={`project-zone-delete-${projectId}`}
         title={trashStrings.projectDeleteTooltip || 'Удалить проект в Корзину'}
         onClick={onDeleteProject}
-        style={{ ...btnStyle, color: 'rgb(220, 38, 38)' }}
-      >🗑</button>
+        style={{ ...btnStyle, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'rgb(220, 38, 38)' }}
+      ><Icon name="trash" size={13} /></button>
     </span>
   );
 
@@ -235,29 +227,25 @@ export default function ProjectZone({
     >
       <LibraryZone
         variant="active"
-        icon="📦"
+        icon={<Icon name="folder" size={13} />}
         title={(() => {
-          // FAIL-fix-pass 3 — drop both `.bodge` filename suffix and
-          // the implicit UPPERCASE styling (handled in LibraryZone
-          // by `variant === 'active'`). Star rendered as a separate
-          // span so test selectors keep working.
+          // Drop the `.bodge` filename suffix (UPPERCASE styling handled in
+          // LibraryZone by `variant === 'active'`). ★ pin glyph removed 20.06.
           const raw = project?.name || project?.id || '—';
-          const clean = raw.replace(/\.bodge$/i, '');
-          return pinned
-            ? <><span data-testid={`project-zone-pin-star-${projectId}`}>★ </span>{clean}</>
-            : clean;
+          return raw.replace(/\.bodge$/i, '');
         })()}
         pill={pill}
         count={totalFiltered}
         expanded={expanded}
         onToggle={onToggle}
+        onHeaderContextMenu={onHeaderContextMenu}
         headerAction={headerAction}
         testId={`library-zone-project-${projectId}`}
       >
         {/* ── Контейнеры ───────────────────────────────────── */}
         <TreeFolderRow
           name={ws.containersFolder || 'Контейнеры'}
-          icon="📋"
+          icon={<Icon name="list" size={13} />}
           count={filteredContainers.length}
           expanded={openFolders.has('containers')}
           indent={1}
@@ -288,7 +276,7 @@ export default function ProjectZone({
         {/* ── Праймеры ─────────────────────────────────────── */}
         <TreeFolderRow
           name={ws.primersFolder || 'Праймеры'}
-          icon="🧬"
+          icon={<Icon name="primer" size={13} />}
           count={filteredPrimers.length}
           expanded={openFolders.has('primers')}
           indent={1}
@@ -307,6 +295,9 @@ export default function ProjectZone({
           />
         ))}
       </LibraryZone>
+      {ctxMenu && (
+        <ContextMenu items={ctxItems} position={ctxMenu} onClose={() => setCtxMenu(null)} />
+      )}
     </div>
   );
 }

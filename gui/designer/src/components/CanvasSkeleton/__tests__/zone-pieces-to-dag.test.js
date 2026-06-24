@@ -8,7 +8,9 @@
  * during the transition window (R-T6-4 back-compat).
  */
 import { describe, it, expect } from 'vitest';
-import { realiseAssembly, nameWithRevision, pruneZoneRealiseOutput } from '../lib/zone-pieces-to-dag';
+import {
+  realiseAssembly, nameWithRevision, pruneZoneRealiseOutput, draftFromZone,
+} from '../lib/zone-pieces-to-dag';
 import { skeletonReducer, buildInitialState } from '../store/skeleton-state';
 
 describe('pruneZoneRealiseOutput — idempotent re-realise helper (Игорь 11.06)', () => {
@@ -45,6 +47,63 @@ describe('pruneZoneRealiseOutput — idempotent re-realise helper (Игорь 11
     expect(out.operations).toBe(s.operations);
     expect(out.junctions).toBe(s.junctions);
     expect(out.positions).toBe(s.positions);
+  });
+});
+
+describe('draftFromZone — multi-range piece (#2 invert/backbone)', () => {
+  it('concatenates all ranges (wrapped backbone = [hi..end] + [0..lo])', () => {
+    const state = {
+      containers: [{ id: 'c', name: 'pl', sequence: 'AAAACCCCGGGGTTTT' }], // 16 bp
+      pieces: [{
+        id: 'p1', zoneId: 'z1', kind: 'sourced', createdAt: 1, sourceIds: ['c'],
+        ranges: [
+          { sourceId: 'c', start: 12, end: 16, orientation: 'forward' }, // TTTT
+          { sourceId: 'c', start: 0, end: 4, orientation: 'forward' }, // AAAA
+        ],
+      }],
+      zones: [],
+    };
+    const draft = draftFromZone(state, { id: 'z1', topology: { circular: false } });
+    expect(draft.segments[0].sequence).toBe('TTTTAAAA');
+    expect(draft.segments[0].length).toBe(8);
+  });
+
+  it('single-range piece is unchanged (back-compat)', () => {
+    const state = {
+      containers: [{ id: 'c', sequence: 'AAAACCCCGGGGTTTT' }],
+      pieces: [{
+        id: 'p1', zoneId: 'z1', kind: 'sourced', createdAt: 1, sourceIds: ['c'],
+        ranges: [{ sourceId: 'c', start: 4, end: 8, orientation: 'forward' }],
+      }],
+      zones: [],
+    };
+    const draft = draftFromZone(state, { id: 'z1', topology: { circular: false } });
+    expect(draft.segments[0].sequence).toBe('CCCC');
+  });
+
+  it('wrap piece keeps annotations from BOTH ranges, shifted by the cumulative offset (Игорь 22.06)', () => {
+    const state = {
+      containers: [{
+        id: 'c', name: 'pl', sequence: 'AAAACCCCGGGGTTTT', // 16 bp
+        annotations: [
+          // 1-based incl on parent. [14,15] sits in range0 (12..16) → local [2,3].
+          { id: 'aT', type: 'CDS', level: 'region', start: 14, end: 15 },
+          // [2,3] sits in range1 (0..4) → local [2,3] + offset 4 → [6,7].
+          { id: 'aA', type: 'CDS', level: 'region', start: 2, end: 3 },
+        ],
+      }],
+      pieces: [{
+        id: 'p1', zoneId: 'z1', kind: 'sourced', createdAt: 1, sourceIds: ['c'],
+        ranges: [
+          { sourceId: 'c', start: 12, end: 16, orientation: 'forward' }, // TTTT
+          { sourceId: 'c', start: 0, end: 4, orientation: 'forward' }, // AAAA
+        ],
+      }],
+      zones: [],
+    };
+    const anns = draftFromZone(state, { id: 'z1', topology: { circular: false } }).segments[0].annotations;
+    expect(anns).toHaveLength(2); // both ranges contributed (was [] before the coord-stitch)
+    expect(anns.map((a) => a.start).sort((x, y) => x - y)).toEqual([2, 6]); // range1's ann shifted by len(range0)=4
   });
 });
 

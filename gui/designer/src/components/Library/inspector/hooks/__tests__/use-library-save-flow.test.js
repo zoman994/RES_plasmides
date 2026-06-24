@@ -1,6 +1,7 @@
 /**
- * use-library-save-flow.test.js — M-X.6 K0 unit coverage for the
- * K7 save buttons props bundle (DEC-MX6-01 / DEC-LIB-13 ⚓).
+ * use-library-save-flow.test.js — version-only save (Игорь 17.06.2026).
+ * Surfaces the working SEQUENCE + annotations + «что изменено» (editLog)
+ * for the «Сохранить версию» form; clears the transient buffer after save.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { renderHook, act, cleanup } from '@testing-library/react';
@@ -8,10 +9,10 @@ import { useLibrarySaveFlow } from '../useLibrarySaveFlow';
 
 afterEach(cleanup);
 
-const mineItem = { _libraryEntryId: 'lib-id', name: 'pUC19' };
+const mineItem = { _libraryEntryId: 'lib-id', name: 'pUC19', sequence: 'ATGC' };
 const catalogItem = { name: 'Demo' }; // no _libraryEntryId
 
-describe('useLibrarySaveFlow', () => {
+describe('useLibrarySaveFlow (version-only)', () => {
   it('visible=true for Mine entries (with _libraryEntryId)', () => {
     const { result } = renderHook(() => useLibrarySaveFlow({ item: mineItem, edits: {}, onUpdateEdits: () => {} }));
     expect(result.current.visible).toBe(true);
@@ -25,29 +26,39 @@ describe('useLibrarySaveFlow', () => {
     expect(result.current.libraryEntryId).toBeNull();
   });
 
-  it('hasChanges=true only when editedAnnotations is an array', () => {
-    const { result: r1 } = renderHook(() => useLibrarySaveFlow({ item: mineItem, edits: { editedAnnotations: [] }, onUpdateEdits: () => {} }));
-    expect(r1.current.hasChanges).toBe(true);
-    const { result: r2 } = renderHook(() => useLibrarySaveFlow({ item: mineItem, edits: {}, onUpdateEdits: () => {} }));
-    expect(r2.current.hasChanges).toBe(false);
+  it('no overwrite path (version-only)', () => {
+    const { result } = renderHook(() => useLibrarySaveFlow({ item: mineItem, edits: {}, onUpdateEdits: () => {} }));
+    expect(result.current.onAfterOverwrite).toBeUndefined();
+    expect(result.current.canOverwrite).toBeUndefined();
   });
 
-  it('editedAnnotations defaults to empty array when edits is undefined', () => {
-    const { result } = renderHook(() => useLibrarySaveFlow({ item: mineItem, edits: undefined, onUpdateEdits: () => {} }));
-    expect(result.current.editedAnnotations).toEqual([]);
+  it('hasChanges=true on a sequence edit (editedSequence differs)', () => {
+    const { result } = renderHook(() => useLibrarySaveFlow({
+      item: mineItem, edits: { editedSequence: 'ATGCT', editLog: [{ kind: 'insert' }] }, onUpdateEdits: () => {},
+    }));
+    expect(result.current.hasChanges).toBe(true);
+    expect(result.current.editedSequence).toBe('ATGCT');
   });
 
-  it('onAfterOverwrite clears editedAnnotations via onUpdateEdits', () => {
+  it('annotation-ONLY edit does NOT trigger the version button (autosave in place, not versioned)', () => {
+    const { result } = renderHook(() => useLibrarySaveFlow({ item: mineItem, edits: { editedAnnotations: [] }, onUpdateEdits: () => {} }));
+    expect(result.current.hasChanges).toBe(false);
+  });
+
+  it('hasChanges=false with no edits; editedSequence falls back to source', () => {
+    const { result } = renderHook(() => useLibrarySaveFlow({ item: mineItem, edits: {}, onUpdateEdits: () => {} }));
+    expect(result.current.hasChanges).toBe(false);
+    expect(result.current.editedSequence).toBe('ATGC');
+  });
+
+  it('onAfterSaveAsVersion clears the whole transient buffer (seq + anns + log)', () => {
     const onUpdateEdits = vi.fn();
-    const { result } = renderHook(() => useLibrarySaveFlow({ item: mineItem, edits: { editedAnnotations: [{}] }, onUpdateEdits }));
-    act(() => result.current.onAfterOverwrite());
-    expect(onUpdateEdits).toHaveBeenCalledWith({ editedAnnotations: undefined });
-  });
-
-  it('onAfterSaveAsVersion clears editedAnnotations via onUpdateEdits', () => {
-    const onUpdateEdits = vi.fn();
-    const { result } = renderHook(() => useLibrarySaveFlow({ item: mineItem, edits: { editedAnnotations: [{}] }, onUpdateEdits }));
+    const { result } = renderHook(() => useLibrarySaveFlow({
+      item: mineItem, edits: { editedSequence: 'ATGCT', editedAnnotations: [{}], editLog: [{}] }, onUpdateEdits,
+    }));
     act(() => result.current.onAfterSaveAsVersion());
-    expect(onUpdateEdits).toHaveBeenCalledWith({ editedAnnotations: undefined });
+    expect(onUpdateEdits).toHaveBeenCalledWith({
+      editedAnnotations: undefined, editedSequence: undefined, editLog: undefined,
+    });
   });
 });

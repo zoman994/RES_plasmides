@@ -36,6 +36,7 @@
 
 import { reverseComplement } from "../../../sequence-utils";
 import { translateDNA } from "../../../codons";
+import { buildSequencePasteOp } from "../lib/paste-op.js";
 
 // IUPAC accept set follows annotation-model defaults; same charset
 // useManualEditDetection relies on. Single regex to share across
@@ -106,6 +107,25 @@ export function useSequenceKeyboard({
       return;
     }
 
+    // Paste hotkey (Ctrl/Cmd+V). V152 — the onPaste DOM event never fires on the
+    // non-contentEditable root, so paste is wired here as a keydown: read the
+    // clipboard (async) and emit a paste op. Layout-independent (`e.code` so the
+    // Russian «м» on the physical V key works). Gated like the char-edit path.
+    if ((e.ctrlKey || e.metaKey) && e.code === "KeyV" && !e.altKey) {
+      if (!editable || typeof onSequenceEdit !== "function") return;
+      e.preventDefault();
+      try {
+        const read = navigator.clipboard?.readText?.();
+        if (read && typeof read.then === "function") {
+          read.then((raw) => {
+            const op = buildSequencePasteOp(raw, caretAnchor, caretPos);
+            if (op) onSequenceEdit(op);
+          }).catch(() => { /* clipboard read denied — no-op */ });
+        }
+      } catch { /* clipboard unavailable — silently no-op */ }
+      return;
+    }
+
     // M-X.6 K2 — character apply (DEC-MX6-02). Editable-mode gate:
     // when biolog has flipped the EDITABLE pill AND fires an IUPAC
     // character / Backspace / Delete, emit a sequence-edit op and
@@ -130,13 +150,18 @@ export function useSequenceKeyboard({
       const isChar = typeof key === 'string' && key.length === 1 && IUPAC_RE.test(key);
 
       if (isChar) {
+        // V151 — typing a base without Shift gives a LOWERCASE e.key; normalize to
+        // canonical uppercase DNA so the AA track translates (lowercase codons miss
+        // the uppercase-keyed table → «XXXXX») and alignment mismatch detection
+        // doesn't treat the base as N.
+        const ch = key.toUpperCase();
         if (hasSelection) {
           e.preventDefault();
-          onSequenceEdit({ kind: 'replace', start: selStart, end: selEnd, replacement: key });
+          onSequenceEdit({ kind: 'replace', start: selStart, end: selEnd, replacement: ch });
           return;
         }
         e.preventDefault();
-        onSequenceEdit({ kind: 'insert', pos: cur, char: key });
+        onSequenceEdit({ kind: 'insert', pos: cur, char: ch });
         return;
       }
       if (key === 'Backspace') {

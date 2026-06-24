@@ -47,8 +47,8 @@ describe('K5 — OperationNode v2 status visual', () => {
     expect(node.getAttribute('data-kind')).toBe('none');
     // No status badge for draft.
     expect(screen.queryByTestId('skeleton-op-status-badge')).toBeNull();
-    // Icon is the "+" prompt (kind not yet picked).
-    expect(screen.getByTestId('skeleton-op-icon').textContent).toBe('+');
+    // Icon is the "plus" prompt (kind not yet picked) — now an <Icon> SVG.
+    expect(screen.getByTestId('skeleton-op-icon').querySelector('svg')).toBeTruthy();
     expect(screen.getByTestId('skeleton-op-label').textContent).toMatch(/Выбрать/);
   });
 
@@ -78,7 +78,7 @@ describe('K5 — OperationNode v2 status visual', () => {
     const op = makeOp({ kind: 'cut', status: 'executed' });
     render(<OperationNode operation={op} />);
     const badge = screen.getByTestId('skeleton-op-status-badge');
-    expect(badge.textContent).toBe('✓');
+    expect(badge.querySelector('svg')).toBeTruthy(); // ✓ → <Icon name="check">
     expect(badge.getAttribute('data-status')).toBe('executed');
   });
 

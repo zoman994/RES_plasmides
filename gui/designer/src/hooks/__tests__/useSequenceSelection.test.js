@@ -110,14 +110,17 @@ describe('useSequenceSelection — RE strategy: pair-select', () => {
     const { result } = renderHook(() => useSequenceSelection({
       initialCaret: 0, reBehavior: 'pair-select', reEnzymes: RE, onPairCommit,
     }));
-    // First click EcoRI at position 100 → snap to recognition [100,106].
-    act(() => { result.current.onRestrictionClick({ enzyme: 'EcoRI', position: 100 }); });
-    expect(result.current.caretAnchor).toBe(100);
-    expect(result.current.caretPos).toBe(106);
-    expect(result.current.firstRESite).toMatchObject({ enzyme: 'EcoRI', position: 100 });
-    // Second click BamHI at position 200 → cut pair [101, 201].
-    act(() => { result.current.onRestrictionClick({ enzyme: 'BamHI', position: 200 }); });
-    // cutA = 100 + cut[0]=1 = 101; cutB = 200 + 1 = 201.
+    // First click marks the CUT (firstRESite) WITHOUT selecting the recognition
+    // range (Игорь 21.06 — clicking an RE shows the cut, it is NOT a sequence
+    // selection). caret stays where it was; the fragment comes from the 2nd click.
+    act(() => { result.current.onRestrictionClick({ enzyme: 'EcoRI', position: 101 }); });
+    expect(result.current.caretAnchor).toBe(0); // unchanged (initialCaret)
+    expect(result.current.caretPos).toBe(0);
+    expect(result.current.firstRESite).toMatchObject({ enzyme: 'EcoRI', position: 101 });
+    expect(result.current.acquisitionMethod).toBe('restriction');
+    // Second click BamHI cut at 201 → fragment between the two cuts [101, 201]
+    // (V155 — no double `+cut[0]`; the cuts ARE the boundaries).
+    act(() => { result.current.onRestrictionClick({ enzyme: 'BamHI', position: 201 }); });
     expect(result.current.caretAnchor).toBe(101);
     expect(result.current.caretPos).toBe(201);
     expect(result.current.acquisitionMethod).toBe('restriction');

@@ -51,6 +51,11 @@ export default function AnnotationsTab({
   primers,
   onWritePrimer,
   onDeletePrimer,
+  // «Убрать дубли» (Игорь 17.06) — count of redundant overlapping annotations
+  // (a generic feature covered ~identically by a higher-priority one, e.g.
+  // bla(M) marker under the AmpR CDS) + handler to drop them from the data.
+  duplicateCount = 0,
+  onRemoveDuplicates,
 }) {
   return (
     <div
@@ -75,6 +80,44 @@ export default function AnnotationsTab({
             borderBottom: '1px solid var(--border-subtle)',
           }}
         >🔒 Просмотр read-only. Edit аннотаций — в Container Window.</div>
+      )}
+      {!isReadOnlyZone && duplicateCount > 0 && typeof onRemoveDuplicates === 'function' && (
+        <div
+          data-testid="annotations-dedupe-bar"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 8,
+            padding: '6px 16px',
+            background: 'var(--surface-2)',
+            color: 'var(--text-secondary)',
+            fontSize: 12,
+            borderBottom: '1px solid var(--border-subtle)',
+          }}
+        >
+          <span>
+            Наложенные дубли аннотаций: <b>{duplicateCount}</b> (один и тот же
+            участок размечен дважды)
+          </span>
+          <button
+            type="button"
+            data-testid="annotations-dedupe-btn"
+            onClick={onRemoveDuplicates}
+            style={{
+              flexShrink: 0,
+              padding: '3px 10px',
+              fontSize: 12,
+              borderRadius: 'var(--radius-sm, 4px)',
+              border: '1px solid var(--border-default, #d6d3d1)',
+              background: 'var(--surface-1, #fff)',
+              color: 'var(--text-primary, #1c1917)',
+              cursor: 'pointer',
+            }}
+          >
+            Убрать дубли
+          </button>
+        </div>
       )}
       <Annotator
         embedded

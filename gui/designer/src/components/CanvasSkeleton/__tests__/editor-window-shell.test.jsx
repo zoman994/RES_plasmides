@@ -337,7 +337,8 @@ describe('K2 — EditorTabStrip render', () => {
     const tabsEls = screen.getAllByTestId('editor-tab');
     expect(tabsEls).toHaveLength(2);
     expect(tabsEls[0].textContent).toContain('pUC19');
-    expect(tabsEls[0].textContent).toContain('📦');
+    expect(tabsEls[0].querySelector('svg')).toBeTruthy(); // 📦 → <Icon name="container">
+
     expect(tabsEls[0].getAttribute('data-active')).toBe('false');
     expect(tabsEls[1].textContent).toContain('pET28a');
     expect(tabsEls[1].getAttribute('data-active')).toBe('true');
@@ -381,7 +382,8 @@ describe('K2 — EditorTabStrip render', () => {
     });
     const badge = screen.getByTestId('editor-tab-frozen');
     expect(badge).toBeTruthy();
-    expect(badge.textContent).toContain('🔒');
+    expect(badge.querySelector('svg')).toBeTruthy(); // 🔒 → <Icon name="lock">
+
   });
 
   it('missing / placeholder container → falls back to placeholder label', () => {

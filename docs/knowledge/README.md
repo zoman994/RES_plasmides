@@ -10,6 +10,7 @@ conversations. Unlike the auto-derived graph, these are canonical and travel wit
 | `working-agreements.md` | Process/communication rules (Russian responses, TDD-first, self-verify, reuse, real-case iteration, ultracode orchestration). |
 | `intended-behavior-library-annotator.md` | How the Library/Annotator/inspector must behave: dual-host persistence model, annotation + sequence-edit persistence, annotator selection/delete; deferred items with rationale. |
 | `decision-history.md` | Distilled major decision threads (architecture epoch, canvas/assembly model, bio-invariants, T-series, tooling audits). |
+| `IDEA-features-as-objects-and-autolab.md` | Idea/design-exploration (verbatim Igor quotes): фичи как объекты (ООП-слой над нуклеотидами), система классов деталей с жёсткими правилами, замена детали в 2 клика, режим «Автолаборатория» (комбинаторная генерация → протокол → робот). Не реализовано — захват контекста. |
 
 **Rebuilding the graph:** these are the semantic seed for `/graphify`. When rebuilding,
 include `docs/knowledge/*.md` in the curated document scope so the decisions stay wired to

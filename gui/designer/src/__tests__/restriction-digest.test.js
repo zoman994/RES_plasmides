@@ -203,11 +203,19 @@ describe('checkReadingFrame()', () => {
     // site is CCATGG → contains ATG
   });
 
-  it('EcoRI → addedBases = 4, not in frame', () => {
-    // EcoRI: GAATTC, cut [1,5] → overhang AATT = 4bp → 4%3=1 → not in frame
+  it('RC-BIO-5 — EcoRI → addedBases = 6 (reconstituted GAATTC), IN frame', () => {
+    // After ligation the full ds recognition site sits in the product: GAATTC = 6 bp →
+    // 6%3=0 → in frame. (The old code used the 4-bp ss overhang and wrongly said «not in
+    // frame».) The frame quantity is the SITE length, not the overhang.
     const result = checkReadingFrame('EcoRI');
-    expect(result.addedBases).toBe(4);
-    expect(result.inFrame).toBe(false);
+    expect(result.addedBases).toBe(6);
+    expect(result.inFrame).toBe(true);
+  });
+
+  it('RC-BIO-5 — NcoI CCATGG → addedBases = 6, in frame', () => {
+    const result = checkReadingFrame('NcoI');
+    expect(result.addedBases).toBe(6);
+    expect(result.inFrame).toBe(true);
   });
 
   it('NdeI → containsATG true', () => {

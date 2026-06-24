@@ -1,7 +1,7 @@
 import Dexie from 'dexie';
 
 export const DB_NAME = 'bodgegene-db';
-export const DB_VERSION = 6;
+export const DB_VERSION = 7;
 
 /**
  * Schema v3 (M-B.1 K1, DEC-IMP-11 ⚓):
@@ -103,6 +103,22 @@ export class BodgeDB extends Dexie {
       primers: 'id, name, projectId, status, addedAt, resourceHash, [projectId+status]',
       snippets: 'id, name, category, createdAt',
       commonFeatures: 'id, kind, baseId',
+    });
+    // Schema v7 (RS-C1, «Сайты рестрикции»): account-global user-defined
+    // restriction enzymes (Type II only) + named enzyme sets. Purely ADDITIVE
+    // — two new tables, no data migration, existing tables untouched (no wipe).
+    // Like `snippets`/`commonFeatures`, deliberately excluded from
+    // clearAll/deleteProject so the biolog's enzyme catalog survives project
+    // churn.
+    this.version(7).stores({
+      projects: 'id, name, createdAt, updatedAt',
+      containers: 'id, projectId, kind, name, [projectId+kind]',
+      library: 'id, kind, addedAt, [kind+addedAt], *tags, zone, projectId',
+      primers: 'id, name, projectId, status, addedAt, resourceHash, [projectId+status]',
+      snippets: 'id, name, category, createdAt',
+      commonFeatures: 'id, kind, baseId',
+      customEnzymes: 'id, name, createdAt',
+      enzymeSets: 'id, name, createdAt',
     });
   }
 }
@@ -330,4 +346,42 @@ export async function listCommonFeatures() {
 
 export async function deleteCommonFeature(id) {
   return getDB().commonFeatures.delete(id);
+}
+
+// ── Custom restriction enzymes + sets (RS-C1, «Сайты рестрикции») ──────
+// Account-global, NOT project-scoped — excluded from clearAll/deleteProject
+// (mirror of `snippets`/`commonFeatures`) so a biolog's custom enzymes +
+// named sets survive project churn. Type II only (bio-invariant Rule 1).
+//
+// Row shapes:
+//   customEnzymes: { id, name, site, cut:[fwd,rev], end, overhang, temp,
+//                    buffer, supplier, isCustom:true, createdAt, ... }
+//   enzymeSets:    { id, name, enzymes:[name,...], createdAt }
+
+export async function putCustomEnzyme(row) {
+  return getDB().customEnzymes.put(row);
+}
+
+export async function listCustomEnzymes() {
+  const rows = await getDB().customEnzymes.toArray();
+  rows.sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
+  return rows;
+}
+
+export async function deleteCustomEnzyme(id) {
+  return getDB().customEnzymes.delete(id);
+}
+
+export async function putEnzymeSet(row) {
+  return getDB().enzymeSets.put(row);
+}
+
+export async function listEnzymeSets() {
+  const rows = await getDB().enzymeSets.toArray();
+  rows.sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
+  return rows;
+}
+
+export async function deleteEnzymeSet(id) {
+  return getDB().enzymeSets.delete(id);
 }

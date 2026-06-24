@@ -4,6 +4,7 @@
  */
 import { useMemo, useState } from 'react';
 import OpPopup from './OpPopup';
+import { Icon } from '../../../icons/Icon';
 import { RE_ENZYMES, findSitesInSequence, checkDoubleDigest } from '../../../../restriction-db';
 
 const PINNED_ENZYMES = [
@@ -129,7 +130,7 @@ export default function CutOpPopup({
       operation={operation}
       position={position}
       title="Cut — Рестрикция"
-      icon="🔪"
+      icon={<Icon name="restriction" size={16} />}
       onCancel={onCancel}
       onExecute={() => onExecute?.({ templateId, enzymes })}
       executeDisabled={executeDisabled}
@@ -240,9 +241,10 @@ export default function CutOpPopup({
                 style={{
                   marginTop: 6, color: '#7c2d12', fontSize: 11, fontWeight: 600,
                   background: '#fef3c7', border: '1px solid #d97706', borderRadius: 4, padding: '4px 6px',
+                  display: 'inline-flex', alignItems: 'center', gap: 4,
                 }}
               >
-                ⛔ Не выполнится: {preview.unviableReason}.
+                <Icon name="warning" size={13} /> Не выполнится: {preview.unviableReason}.
               </div>
             )}
             {/* R4-BIO-6: warn если 3+ cuts — обычно биолог хочет
@@ -250,9 +252,9 @@ export default function CutOpPopup({
             {preview.viable && preview.cutCount >= 3 && (
               <div
                 data-testid="cut-op-warn-multi-cut"
-                style={{ marginTop: 6, color: '#b45309', fontSize: 11 }}
+                style={{ marginTop: 6, color: '#b45309', fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }}
               >
-                ⚠ {preview.cutCount} разрезов — фермент не уникален. Для backbone обычно нужен 1 разрез.
+                <Icon name="warning" size={13} /> {preview.cutCount} разрезов — фермент не уникален. Для backbone обычно нужен 1 разрез.
               </div>
             )}
           </div>
@@ -279,7 +281,7 @@ export default function CutOpPopup({
                 borderRadius: 4, fontSize: 11, color: '#7c2d12', lineHeight: 1.4,
               }}
             >
-              <strong>⚠ Метилирование:</strong> {methyl.map(label).join(', ')} — сайт блокируется метилированием; нарезайте ДНК из dam⁻/dcm⁻ штамма (напр. JM110 / GM2163).
+              <strong style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="warning" size={13} /> Метилирование:</strong> {methyl.map(label).join(', ')} — сайт блокируется метилированием; нарезайте ДНК из dam⁻/dcm⁻ штамма (напр. JM110 / GM2163).
             </div>
           );
         })()}
@@ -305,7 +307,7 @@ export default function CutOpPopup({
                   lineHeight: 1.4,
                 }}
               >
-                <strong>⚠ Double-digest{compat.simultaneous ? ' (одновременно возможно, но):' : ':'}</strong>
+                <strong style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="warning" size={13} /> Double-digest{compat.simultaneous ? ' (одновременно возможно, но):' : ':'}</strong>
                 {compat.warnings.map((w, i) => (
                   <div key={i} style={{ marginTop: 2 }}>{w}</div>
                 ))}

@@ -12,7 +12,9 @@
 import { useState } from 'react';
 import { useSkeletonActions } from '../../store/skeleton-context';
 import { SEGMENT_COLORS } from '../../lib/segment-color-palette';
+import { acquisitionLabel } from '../../lib/acquisition-label';
 import { toUiCoords } from '../../../../lib/annotation-edit';
+import { Icon } from '../../../icons/Icon';
 
 // K6 — strip iconography (SPEC §5.3). pieceKind is set by draftFromZone
 // for zone-projected drafts; legacy drafts fall back to source.type.
@@ -58,6 +60,12 @@ const KIND_LABEL = {
 
 export default function SegmentList({
   draft, boundaries, orphanIds, selectedSegmentId, onSelectSegment,
+  // S2 (V162) — per-segment end-chemistry { [id]: {left, right} } so a row can
+  // badge a 5′-OH end bound for ligation (needs T4 PNK). Optional/back-compat.
+  endChemBySegment,
+  // S3 (V163) — per-segment RE-cloning plan: double-digest staging + self-
+  // ligation/dephosphorylation. Optional/back-compat.
+  reCloningBySegment,
   // K7 — optional grouping controls. When `onToggleSelect` is provided
   // SegmentList renders a checkbox per row + a «🔗 Сшить» button once
   // `selectedSegmentIds` has ≥2 entries; otherwise these are no-ops and
@@ -121,6 +129,8 @@ export default function SegmentList({
         onToggleSelect={onToggleSelect}
         onSelectSegment={onSelectSegment}
         onAddMutation={onAddMutation}
+        endChem={endChemBySegment ? endChemBySegment[seg.id] : null}
+        reCloning={reCloningBySegment ? reCloningBySegment[seg.id] : null}
         actions={actions}
         draftId={draft.id}
         segsLen={segs.length}
@@ -151,7 +161,7 @@ export default function SegmentList({
               background: 'var(--accent-500, #b85c3e)', color: '#fff',
               border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600,
             }}
-          >🔗 Сшить ({selSet.size})</button>
+          ><Icon name="link" size={12} style={{ display: 'inline-block', verticalAlign: '-2px' }} /> Сшить ({selSet.size})</button>
         </div>
       )}
       <div style={{ display: 'flex', padding: '4px 10px', color: 'var(--text-tertiary)', fontWeight: 600, position: 'sticky', top: 0, background: 'var(--surface-2)' }}>
@@ -221,9 +231,19 @@ function SegmentRow({
   seg, i, len, isOrphan, selected, expanded,
   onToggleExpand,
   selectionEnabled, selSet, onToggleSelect, onSelectSegment, onAddMutation,
+  endChem, reCloning,
   actions, draftId, segsLen,
 }) {
   const kind = effectiveKind(seg);
+  // S2 — an end of this fragment is 5′-OH and bound for a blunt/KLD ligation →
+  // it can't seal without T4 PNK (PCR/cursor fragments ship 5′-OH). Amber chip.
+  const needsPhos = !!endChem && (
+    (endChem.left && endChem.left.needsPhosphorylation)
+    || (endChem.right && endChem.right.needsPhosphorylation)
+  );
+  // S3 — RE-cloning row chips: sequential double-digest + self-ligation/CIP.
+  const reSequential = !!(reCloning && reCloning.doubleDigest && reCloning.doubleDigest.sequential);
+  const reDephos = !!(reCloning && reCloning.recommendDephosphorylation);
   const isContainer = seg.source?.type === 'container';
   // Local edit buffer — initial state from props.
   const [label, setLabel] = useState(seg.label ?? '');
@@ -298,8 +318,9 @@ function SegmentRow({
           style={{
             width: 18, border: 'none', background: 'transparent',
             cursor: 'pointer', color: 'var(--text-tertiary)', fontSize: 11,
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
           }}
-        >{expanded ? '▾' : '▸'}</button>
+        ><Icon name={expanded ? 'chevron-down' : 'chevron-right'} size={11} /></button>
         <span style={{ width: 24, color: 'var(--text-tertiary)' }}>{i + 1}</span>
         <span style={{ width: 18 }}>
           {/* V93 — color-swatch теперь интерактивный: клик → color picker
@@ -326,6 +347,20 @@ function SegmentRow({
         >
           {KIND_ICON[kind]}
         </span>
+        {/* S5 — acquisition badge: how this fragment is obtained (RE / PCR /
+            синтез / cursor). Lets a multi-source build read at a glance. */}
+        <span
+          data-testid="segment-acq-badge"
+          data-acquisition={seg.acquisitionMethod || 'undefined'}
+          title={acquisitionLabel(seg.acquisitionMethod).full}
+          style={{
+            flexShrink: 0, marginRight: 6, padding: '0 4px',
+            fontSize: 9, fontWeight: 600, lineHeight: '14px',
+            borderRadius: 3, color: 'var(--text-secondary)',
+            background: 'var(--surface-3, rgba(120,113,108,0.10))',
+            border: '0.5px solid var(--border-subtle)',
+          }}
+        >{acquisitionLabel(seg.acquisitionMethod).short}</span>
         <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {rowSource(seg, i)}
           {Array.isArray(seg.mutations) && seg.mutations.length > 0 && (
@@ -336,7 +371,28 @@ function SegmentRow({
             >💎</span>
           )}
           {isOrphan && (
-            <span data-testid="assembly-segment-orphan-badge" style={{ marginLeft: 6, color: 'var(--accent-500, #b85c3e)' }}>⚠ orphan</span>
+            <span data-testid="assembly-segment-orphan-badge" style={{ marginLeft: 6, color: 'var(--accent-500, #b85c3e)' }}><Icon name="warning" size={11} style={{ display: 'inline-block', verticalAlign: '-2px' }} /> orphan</span>
+          )}
+          {needsPhos && (
+            <span
+              data-testid="segment-endchem-phos"
+              title="Конец 5′-OH — добавьте фосфорилирование (T4 PNK) перед лигированием"
+              style={{ marginLeft: 6, color: 'var(--amber, #b8860b)', fontSize: 10, fontWeight: 600 }}
+            >⚡5′-OH</span>
+          )}
+          {reSequential && (
+            <span
+              data-testid="segment-recloning-sequential"
+              title="Разные буфер/температура ферментов — режьте последовательно, не одновременно"
+              style={{ marginLeft: 6, color: 'var(--amber, #b8860b)', fontSize: 10 }}
+            >⇄ посл.</span>
+          )}
+          {reDephos && (
+            <span
+              data-testid="segment-recloning-dephos"
+              title="Одинаковые концы (не направлено) — дефосфорилируйте вектор (Quick CIP / rSAP)"
+              style={{ marginLeft: 6, color: 'var(--amber, #b8860b)', fontSize: 10 }}
+            >○ CIP</span>
           )}
         </span>
         <span style={{ width: 64, color: 'var(--text-secondary)' }}>{len} bp</span>
@@ -357,23 +413,23 @@ function SegmentRow({
             disabled={i === 0}
             onClick={(e) => { e.stopPropagation(); actions.reorderSegments(draftId, i, i - 1); }}
             title="Вверх"
-            style={{ border: 'none', background: 'transparent', cursor: i === 0 ? 'default' : 'pointer', color: 'var(--text-secondary)' }}
-          >▲</button>
+            style={{ border: 'none', background: 'transparent', cursor: i === 0 ? 'default' : 'pointer', color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+          ><Icon name="sort" size={12} /></button>
           <button
             type="button"
             data-testid="assembly-segment-down"
             disabled={i === segsLen - 1}
             onClick={(e) => { e.stopPropagation(); actions.reorderSegments(draftId, i, i + 1); }}
             title="Вниз"
-            style={{ border: 'none', background: 'transparent', cursor: i === segsLen - 1 ? 'default' : 'pointer', color: 'var(--text-secondary)' }}
-          >▼</button>
+            style={{ border: 'none', background: 'transparent', cursor: i === segsLen - 1 ? 'default' : 'pointer', color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+          ><Icon name="sort" size={12} /></button>
           <button
             type="button"
             data-testid="assembly-segment-delete"
             onClick={(e) => { e.stopPropagation(); actions.removeSegment(draftId, seg.id); }}
             title="Удалить сегмент"
-            style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--accent-500, #b85c3e)' }}
-          >✕</button>
+            style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--accent-500, #b85c3e)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+          ><Icon name="close" size={12} /></button>
         </span>
       </div>
       {expanded && (
@@ -421,6 +477,33 @@ function SegmentRow({
                 onChange={() => setRc((v) => !v)}
               />
               RC
+            </label>
+            {/* V167 — explicit per-fragment acquisition method (transparency +
+                «оверлап оверлапом»): promote a cursor fragment to PCR/Overlap-PCR
+                so it amplifies (gets primers + a PCR reaction), or mark synth /
+                no-PCR. Restriction is set via the RE-site picker (needs enzymes),
+                so it's shown but not selectable here. Applies immediately. */}
+            <label style={inlineLabel}>
+              Метод
+              <select
+                data-testid={`segment-method-${seg.id}`}
+                value={seg.acquisitionMethod || 'undefined'}
+                onChange={(e) => {
+                  if (actions.zoneDispatch) {
+                    actions.zoneDispatch({
+                      type: 'SET_PIECE_ACQUISITION_METHOD', pieceId: seg.id, method: e.target.value, params: {},
+                    });
+                  }
+                }}
+                style={{ ...inlineNum, width: 132 }}
+              >
+                <option value="undefined">Курсор (как есть)</option>
+                <option value="pcr">ПЦР</option>
+                <option value="ov-pcr">Overlap-ПЦР</option>
+                <option value="synthesis">Синтез</option>
+                <option value="direct">Без ПЦР</option>
+                <option value="restriction" disabled>Рестрикция (по сайтам)</option>
+              </select>
             </label>
             <label style={inlineLabel}>
               Цвет
@@ -492,7 +575,7 @@ function SegmentRow({
                 display: 'flex', alignItems: 'center', gap: 8,
               }}
             >
-              ⚠ Source container удалён.
+              <Icon name="warning" size={12} style={{ display: 'inline-block', verticalAlign: '-2px' }} /> Source container удалён.
               <button
                 type="button"
                 data-testid={`segment-detail-convert-gap`}

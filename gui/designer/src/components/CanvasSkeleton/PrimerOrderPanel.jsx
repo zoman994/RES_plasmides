@@ -12,6 +12,7 @@
  */
 import { useMemo, useState } from 'react';
 import { useSkeletonState } from './store/skeleton-context';
+import { Icon } from '../icons/Icon';
 
 function collectOligoPrimers(containers) {
   const out = [];
@@ -159,7 +160,7 @@ export default function PrimerOrderPanel() {
           opacity: primers.length > 0 ? 1 : 0.6,
         }}
       >
-        <span>🧪</span>
+        <Icon name="mix" size={14} style={{ display: 'inline-block', verticalAlign: '-2px' }} />
         <span>Заказ олигов {primers.length > 0 ? `(${primers.length})` : ''}</span>
       </button>
 
@@ -209,9 +210,17 @@ export default function PrimerOrderPanel() {
                 fontWeight: 600,
                 cursor: primers.length === 0 ? 'not-allowed' : 'pointer',
                 opacity: primers.length === 0 ? 0.5 : 1,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
               }}
             >
-              {copied ? '✓ Скопировано' : 'Копировать'}
+              {copied ? (
+                <>
+                  <Icon name="check" size={12} />
+                  Скопировано
+                </>
+              ) : 'Копировать'}
             </button>
             <button
               type="button"
@@ -225,9 +234,12 @@ export default function PrimerOrderPanel() {
                 borderRadius: 4,
                 fontSize: 13,
                 cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
               }}
             >
-              ✕
+              <Icon name="close" size={14} />
             </button>
           </div>
 

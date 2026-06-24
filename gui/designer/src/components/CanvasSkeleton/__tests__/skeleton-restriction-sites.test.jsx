@@ -71,7 +71,7 @@ describe('RestrictionTrack — clickable mode (12.05.2026)', () => {
     expect(calls).toEqual([{ enzyme: 'EcoRI', position: 50 }]);
   });
 
-  it('highlightedKey=enzyme-position → renders highlight rect', () => {
+  it('highlightedKey=enzyme-position → marks that site selected (no box/wedges)', () => {
     const calls = [];
     render(
       <RestrictionTrack
@@ -85,7 +85,9 @@ describe('RestrictionTrack — clickable mode (12.05.2026)', () => {
         highlightedKey="EcoRI-50"
       />,
     );
-    expect(screen.getByTestId('sequence-view-re-highlight')).toBeTruthy();
+    // The «жёлтый овал + стрелки» box was removed (Игорь 22.06); selection is now
+    // shown by the label accent + data-highlighted, not a separate overlay group.
+    expect(screen.queryByTestId('sequence-view-re-highlight')).toBeNull();
     // Only EcoRI gets data-highlighted="true".
     const sg = screen.getAllByTestId('sequence-view-re-site');
     const ecoRI = sg.find((g) => g.getAttribute('data-enzyme') === 'EcoRI');

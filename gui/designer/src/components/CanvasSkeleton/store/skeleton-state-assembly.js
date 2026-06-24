@@ -57,7 +57,7 @@ const ASSEMBLY_ACTIONS = new Set([
   'INSERT_SEGMENT', 'INSERT_MANUAL_SEGMENT', 'INSERT_SNIPPET', 'INSERT_SYNTHESIS', 'REMOVE_SEGMENT',
   'REORDER_SEGMENTS', 'UPDATE_SEGMENT', 'UPDATE_SEGMENT_RANGE',
   'TOGGLE_SEGMENT_RC', 'SPLIT_SEGMENT',
-  'WRITE_ASSEMBLY_PRIMER', 'REMOVE_ASSEMBLY_PRIMER', 'UPDATE_ASSEMBLY_PRIMER',
+  'WRITE_ASSEMBLY_PRIMER', 'ADD_DERIVED_ASSEMBLY_PRIMERS', 'REMOVE_ASSEMBLY_PRIMER', 'UPDATE_ASSEMBLY_PRIMER',
   'UPDATE_ASSEMBLY_PRIMER_NAME', 'UPDATE_ASSEMBLY_PRIMER_NOTES',
   // SPEC_EDITABLE_ASSEMBLY_S3 §5.1 — maintain saved-primer coordinates.
   'SHIFT_ASSEMBLY_PRIMERS',
@@ -366,6 +366,19 @@ export function assemblyReducer(state, action) {
         crossesBoundaries: built.crossesBoundaries,
       };
       map[action.draftId] = [...cur, primer];
+      return { ...state, assemblyDraftPrimers: map };
+    }
+
+    case 'ADD_DERIVED_ASSEMBLY_PRIMERS': {
+      // Кирпич 3b — insert pre-designed (mutagenesis) primers into the pool.
+      // Unlike WRITE_ASSEMBLY_PRIMER (range-derived from the assembly), these
+      // carry the mutant base inside them, so they are stored verbatim with
+      // project + assembly provenance already in each record's `source`.
+      const primers = Array.isArray(action.primers) ? action.primers : [];
+      if (primers.length === 0) return state;
+      const map = { ...(state.assemblyDraftPrimers || {}) };
+      const cur = map[action.draftId] || [];
+      map[action.draftId] = [...cur, ...primers];
       return { ...state, assemblyDraftPrimers: map };
     }
 

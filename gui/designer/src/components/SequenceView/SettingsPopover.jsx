@@ -280,6 +280,41 @@ export default function SettingsPopover({ open, onClose, anchor, triggerRef }) {
         ))}
       </fieldset>
 
+      {/* 2.b — RC-B1 (Игорь 24.06): manual reading-frame override. Pins AA
+          translation to a forward frame (+1/+2/+3) across the whole sequence,
+          ignoring CDS auto-pick — «динамично указать рамку считывания». */}
+      <fieldset
+        data-testid="sequence-view-setting-override-frame"
+        style={{ border: "none", padding: 0, margin: "0 0 10px 0" }}
+      >
+        <legend style={{ fontWeight: 500, marginBottom: 4 }}>Рамка считывания</legend>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          {[
+            { value: null, label: "авто", key: "auto" },
+            { value: 0, label: "+1", key: "0" },
+            { value: 1, label: "+2", key: "1" },
+            { value: 2, label: "+3", key: "2" },
+          ].map((opt) => (
+            <label
+              key={opt.key}
+              style={{ display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontFamily: "var(--font-mono, monospace)" }}
+            >
+              <input
+                type="radio"
+                name="sv-override-frame"
+                data-testid={`sequence-view-setting-override-frame-${opt.key}`}
+                checked={(settings.overrideFrame ?? null) === opt.value}
+                onChange={() => setSetting("overrideFrame", opt.value)}
+              />
+              {opt.label}
+            </label>
+          ))}
+        </div>
+        <p style={{ fontSize: 11, color: "var(--text-tertiary, #9ca3af)", margin: "4px 0 0" }}>
+          Зафиксировать рамку трансляции (минуя авто-выбор по CDS).
+        </p>
+      </fieldset>
+
       {/* 3. Auto threshold slider — only visible in 'auto' mode */}
       {isAuto && (
         <div

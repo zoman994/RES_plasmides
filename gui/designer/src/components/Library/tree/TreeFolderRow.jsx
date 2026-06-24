@@ -11,6 +11,7 @@
  * user-created Loose folders).
  */
 import { memo } from 'react';
+import { Icon } from '../../icons/Icon';
 
 const INDENT_PX = [12, 22, 38, 54, 70];
 
@@ -20,7 +21,7 @@ function indentFor(depth) {
 
 export const TreeFolderRow = memo(function TreeFolderRow({
   name,
-  icon = '📁',
+  icon = <Icon name="folder" size={13} />,
   count = null,
   expanded = false,
   indent = 1,
@@ -49,10 +50,10 @@ export const TreeFolderRow = memo(function TreeFolderRow({
       }}
     >
       <span style={{
-        width: 10, fontSize: 9, color: 'var(--text-tertiary)',
-        transition: 'transform 120ms',
-      }}>{expanded ? '▾' : '▸'}</span>
-      <span style={{ fontSize: 13 }}>{icon}</span>
+        width: 10, color: 'var(--text-tertiary)',
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      }}><Icon name={expanded ? 'chevron-down' : 'chevron-right'} size={10} /></span>
+      <span style={{ display: 'inline-flex', alignItems: 'center' }}>{icon}</span>
       <span
         style={{
           flex: 1, minWidth: 0,

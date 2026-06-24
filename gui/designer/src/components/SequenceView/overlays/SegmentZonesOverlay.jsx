@@ -39,6 +39,13 @@ export default function SegmentZonesOverlay({
   containerRef,
   onZoneClick,
   onZoneHover,
+  // «Конца должны быть покрыты выделением» (Игорь 22.06): the LINEAR construct's
+  // terminal staircase ({left,right} from terminalStagger). An overhang that
+  // PROTRUDES OUTWARD (protruding==='bottom' → StrandsTrack draws bases past the
+  // duplex edge) used to escape the band; the terminal-most zone now extends by
+  // the overhang length so the highlight covers the whole step. protruding==='top'
+  // draws no outward bases (recess only) → already covered, left untouched.
+  terminalStagger = null,
   // V96 — bumped by SequenceView on every line reflow so the colour
   // bands re-measure against the final strand-row layout (the rAF-
   // retry below only covers ~2 frames; the tracksReady flip is later).
@@ -50,11 +57,20 @@ export default function SegmentZonesOverlay({
   // boundary (the assembly editor enriches coloredZones with it; Library /
   // Importer / PCR leave zones plain → none rendered).
   const [junctionRects, setJunctionRects] = useState([]);
+  // «Липкие концы» — chip labels at RE-segment ends. The physical step is drawn
+  // by StrandsTrack (terminalStagger); the hatched tail was removed (Игорь 22.06
+  // «убрать штриховку — висит и висит»).
+  const [chips, setChips] = useState([]);
+  // V160 «визуализировать стык» — junction seam where two RE fragments' sticky
+  // ends interlock (zones[i].interlock, precomputed upstream).
+  const [seamRects, setSeamRects] = useState([]);
 
   useLayoutEffect(() => {
     if (!Array.isArray(zones) || zones.length === 0) {
       setRects((prev) => (prev.length === 0 ? prev : []));
       setJunctionRects((prev) => (prev.length === 0 ? prev : []));
+      setChips((prev) => (prev.length === 0 ? prev : []));
+      setSeamRects((prev) => (prev.length === 0 ? prev : []));
       return undefined;
     }
     // Игорь 20.05.2026 — после exit/re-enter ассемблера на mount
@@ -103,6 +119,27 @@ export default function SegmentZonesOverlay({
         raf2 = requestAnimationFrame(() => compute(attempt + 1));
         return;
       }
+      // Terminal-staircase coverage: only an outward-protruding overhang
+      // (protruding==='bottom') draws bases past the duplex edge, so only it needs
+      // the band extended. Mirrors StrandsTrack: right overhang sits at the line's
+      // end column (+len); left overhang at max(0, gutter-len). The extension binds
+      // to the construct's free ends — the min-start zone (left) / max-end zone
+      // (right) — so a one-segment fragment gets both, a multi-segment construct
+      // gets only its two outer ends.
+      const protrudes = (e) => !!(e && e.protruding === 'bottom' && e.len > 0);
+      const leftLen = protrudes(terminalStagger && terminalStagger.left) ? terminalStagger.left.len : 0;
+      const rightLen = protrudes(terminalStagger && terminalStagger.right) ? terminalStagger.right.len : 0;
+      let globalMinStart = Infinity;
+      let globalMaxEnd = -Infinity;
+      if (leftLen || rightLen) {
+        for (const z of zones) {
+          const s = Math.max(0, z.start);
+          const e = Math.max(s, z.end);
+          if (e <= s) continue;
+          if (s < globalMinStart) globalMinStart = s;
+          if (e > globalMaxEnd) globalMaxEnd = e;
+        }
+      }
       const out = [];
       for (let i = 0; i < zones.length; i += 1) {
         const z = zones[i];
@@ -118,8 +155,16 @@ export default function SegmentZonesOverlay({
           if (lineEnd <= start || lineStart >= end) continue;
           const fromCh = Math.max(0, start - lineStart);
           const toCh = Math.min(cpl, end - lineStart);
-          const left = (el.offsetLeft || 0) + (LABEL_WIDTH + fromCh) * charPx;
-          const width = Math.max(1, (toCh - fromCh) * charPx);
+          // Char-column edges (gutter-relative); extend the terminal-most zone's
+          // edge on the line that actually carries the construct terminus.
+          let leftCol = LABEL_WIDTH + fromCh;
+          let rightCol = LABEL_WIDTH + toCh;
+          if (rightLen && end === globalMaxEnd && end <= lineStart + cpl) rightCol += rightLen;
+          if (leftLen && start === globalMinStart && start >= lineStart) {
+            leftCol = Math.max(0, leftCol - leftLen);
+          }
+          const left = (el.offsetLeft || 0) + leftCol * charPx;
+          const width = Math.max(1, (rightCol - leftCol) * charPx);
           const lineTop = el.offsetTop || 0;
           let top = lineTop;
           let height = Math.max(10, el.offsetHeight || 18);
@@ -183,6 +228,107 @@ export default function SegmentZonesOverlay({
         }
       }
       setJunctionRects(jout);
+
+      // «Липкие концы» — for RE-cut zones (z.reOverhangs), draw a staggered tail
+      // on the protruding strand at each end + a chip label («5′ AATT»). The
+      // overhang is a few bases; render on the line holding the boundary. Where
+      // the tail falls outside the segment span (5′ at the right / 3′ at the
+      // left) it shows as a short stub past the boundary — the chip carries the
+      // exact sequence regardless.
+      const cout = [];
+      const lineFor = (pos) => {
+        for (const el of Array.from(lines)) {
+          if ((el.getAttribute('data-wraptail-kind') || 'main') !== 'main') continue;
+          const ls = parseInt(el.dataset.lineStart || '', 10);
+          if (Number.isNaN(ls)) continue;
+          if (pos >= ls && pos <= ls + cpl) return { el, ls };
+        }
+        return null;
+      };
+      const strandBox = (el, tag) => {
+        const sr = el.querySelector(`[data-testid="sequence-view-strands-${tag}"]`);
+        if (!sr) return null;
+        return { top: (el.offsetTop || 0) + (sr.offsetTop || 0), height: Math.max(6, sr.offsetHeight || 8) };
+      };
+      for (let i = 0; i < zones.length; i += 1) {
+        const z = zones[i];
+        const ovr = z && z.reOverhangs;
+        if (!ovr) continue;
+        const zStart = Math.max(0, z.start);
+        const zEnd = Math.max(zStart, z.end);
+        const pushEnd = (boundary, info, side) => {
+          if (!info) return;
+          const ln = lineFor(boundary);
+          if (!ln) return;
+          const { el, ls } = ln;
+          const bx = (el.offsetLeft || 0) + (LABEL_WIDTH + (boundary - ls)) * charPx;
+          const topBox = strandBox(el, 'top');
+          cout.push({
+            // «название рестриктазы вместо 5′ AGCT» (Игорь 22.06): the chip shows
+            // the ENZYME that made this end; the overhang sequence goes to the tooltip.
+            key: `${z.zoneId}:chip:${side}`, side,
+            label: info.enzyme || info.label || '', overhang: info.label || '',
+            x: bx, top: (topBox ? topBox.top : (el.offsetTop || 0)),
+          });
+        };
+        // V160 — at an internal junction the seam fully represents a COMPATIBLE
+        // or BLUNT boundary (interlocking bars / clean line), so suppress the
+        // per-end chip/tail there. For an INCOMPATIBLE seam keep the V158 chips
+        // so both mismatched overhangs stay visible next to the red ✕.
+        const covered = (v) => v === 'compatible' || v === 'blunt';
+        const rightCovered = z.interlock && covered(z.interlock.verdict);
+        const prev = zones[i - 1];
+        const leftCovered = prev && prev.interlock && covered(prev.interlock.verdict);
+        pushEnd(zStart, leftCovered ? null : ovr.left, 'left');
+        pushEnd(zEnd, rightCovered ? null : ovr.right, 'right');
+      }
+      setChips(cout);
+
+      // V160 — junction SEAM: where THIS zone's right end meets the NEXT zone's
+      // left end, draw the two sticky-end steps interlocking on OPPOSITE strands
+      // (5′: B-top + A-bottom over the same cols; 3′: A-top + B-bottom) plus a
+      // verdict. Compatible → rungs lock the strands; incompatible → red divider;
+      // blunt → clean seam. interlock is precomputed upstream (the zones prop
+      // carries it) so SequenceView never imports CanvasSkeleton.
+      const seout = [];
+      for (let i = 0; i < zones.length; i += 1) {
+        const il = zones[i] && zones[i].interlock;
+        if (!il || il.verdict === 'unknown') continue;
+        const p = Math.max(0, zones[i].end);
+        const ln = lineFor(p);
+        if (!ln) continue;
+        const { el, ls } = ln;
+        const topBox = strandBox(el, 'top');
+        const botBox = strandBox(el, 'bottom');
+        const colAt = (c) => (el.offsetLeft || 0) + (LABEL_WIDTH + (c - ls)) * charPx;
+        const thisColor = zones[i].color;
+        const nextColor = (zones[i + 1] && zones[i + 1].color) || thisColor;
+        const fullTop = topBox ? topBox.top : (el.offsetTop || 0);
+        const fullBottom = botBox ? botBox.top + botBox.height : fullTop + 12;
+        const entry = {
+          key: `${zones[i].zoneId}:seam:${ls}`,
+          verdict: il.verdict,
+          message: il.message || '',
+          label: il.overhang || (il.verdict === 'blunt' ? 'тупой' : ''),
+          seamX: colAt(p),
+          top: fullTop,
+          height: Math.max(8, fullBottom - fullTop),
+          // RC-B2 — nucleotide readout of the join (+ codon/AA that straddles it).
+          seam: zones[i].seam || null,
+        };
+        // Only a COMPATIBLE sticky junction has a two-strand interlock zone.
+        if (il.side && il.length > 0 && topBox && botBox) {
+          const L = il.length;
+          const z0 = il.side === 'afterP' ? p : p - L;
+          const z1 = il.side === 'afterP' ? p + L : p;
+          entry.zoneLeft = colAt(z0);
+          entry.zoneWidth = Math.max(2, (z1 - z0) * charPx);
+          entry.topBar = { top: topBox.top, height: topBox.height, color: il.topOwner === 'this' ? thisColor : nextColor };
+          entry.botBar = { top: botBox.top, height: botBox.height, color: il.botOwner === 'this' ? thisColor : nextColor };
+        }
+        seout.push(entry);
+      }
+      setSeamRects(seout);
     };
 
     compute(0);
@@ -191,7 +337,7 @@ export default function SegmentZonesOverlay({
       if (raf1 && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(raf1);
       if (raf2 && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(raf2);
     };
-  }, [zones, charPx, charsPerLine, containerRef, layoutEpoch]);
+  }, [zones, charPx, charsPerLine, containerRef, terminalStagger, layoutEpoch]);
 
   return (
     <>
@@ -343,6 +489,163 @@ export default function SegmentZonesOverlay({
               }}
             />
           </button>
+        );
+      })}
+      {chips.map((c) => (
+        <div
+          key={`chip:${c.key}`}
+          data-testid="sequence-view-overhang-chip"
+          data-side={c.side}
+          title={`${c.label}${c.overhang ? ` · липкий конец ${c.overhang}` : ''}`}
+          style={{
+            position: 'absolute',
+            left: c.x,
+            top: Math.max(0, c.top - 15),
+            transform: c.side === 'right' ? 'translateX(-100%)' : 'none',
+            fontSize: 9,
+            lineHeight: '12px',
+            fontFamily: 'var(--font-mono, monospace)',
+            padding: '0 4px',
+            borderRadius: 3,
+            whiteSpace: 'nowrap',
+            background: 'var(--surface-1, #fff)',
+            border: '0.5px solid var(--border-default, #d6d3d1)',
+            color: 'var(--text-secondary)',
+            pointerEvents: 'none',
+            zIndex: 4,
+          }}
+        >{c.label}</div>
+      ))}
+      {seamRects.map((s) => {
+        const ok = s.verdict === 'compatible';
+        const bad = s.verdict === 'incompatible';
+        const accent = ok ? '#16a34a' : bad ? '#dc2626' : 'var(--border-strong, #a8a29e)';
+        const icon = ok ? '✓' : bad ? '✕' : '';
+        return (
+          <div key={`seam:${s.key}`}>
+            {/* COMPATIBLE — two protruding strands (opposite cols) + rungs that
+                "lock" them: the steps of both fragments interlock at the seam. */}
+            {s.topBar && (
+              <div
+                data-testid="sequence-view-seam-strand"
+                data-strand="top"
+                aria-hidden
+                style={{
+                  position: 'absolute', left: s.zoneLeft, top: s.topBar.top,
+                  width: s.zoneWidth, height: s.topBar.height,
+                  background: toRgba(s.topBar.color, 0.6),
+                  outline: `1px solid ${toRgba(s.topBar.color, 0.85)}`,
+                  pointerEvents: 'none', zIndex: 3,
+                }}
+              />
+            )}
+            {s.botBar && (
+              <div
+                data-testid="sequence-view-seam-strand"
+                data-strand="bottom"
+                aria-hidden
+                style={{
+                  position: 'absolute', left: s.zoneLeft, top: s.botBar.top,
+                  width: s.zoneWidth, height: s.botBar.height,
+                  background: toRgba(s.botBar.color, 0.6),
+                  outline: `1px solid ${toRgba(s.botBar.color, 0.85)}`,
+                  pointerEvents: 'none', zIndex: 3,
+                }}
+              />
+            )}
+            {/* COMPATIBLE — a solid green connector at the seam: the two steps
+                are joined (ligated). Mirrors the red divider of the mismatch. */}
+            {ok && (
+              <div
+                data-testid="sequence-view-seam-join"
+                aria-hidden
+                style={{
+                  position: 'absolute', left: s.seamX - 1, top: s.top,
+                  width: 2, height: s.height,
+                  background: toRgba('#16a34a', 0.9),
+                  pointerEvents: 'none', zIndex: 4,
+                }}
+              />
+            )}
+            {/* INCOMPATIBLE — the ends don't anneal: a red dashed divider at the
+                seam instead of a join. */}
+            {bad && (
+              <div
+                data-testid="sequence-view-seam-divider"
+                aria-hidden
+                style={{
+                  position: 'absolute', left: s.seamX - 1, top: s.top,
+                  width: 2, height: s.height,
+                  background: 'repeating-linear-gradient(0deg, #dc2626 0 3px, transparent 3px 6px)',
+                  pointerEvents: 'none', zIndex: 4,
+                }}
+              />
+            )}
+            {/* BLUNT — flush butt-join: one clean seam line. */}
+            {s.verdict === 'blunt' && (
+              <div
+                data-testid="sequence-view-seam-divider"
+                aria-hidden
+                style={{
+                  position: 'absolute', left: s.seamX, top: s.top,
+                  width: 1, height: s.height,
+                  background: 'var(--border-strong, #a8a29e)',
+                  pointerEvents: 'none', zIndex: 3,
+                }}
+              />
+            )}
+            {/* Verdict badge below the strands (the diamond/method glyph sits
+                above) — ✓/✕/«тупой» + the shared overhang, tooltip = message. */}
+            <div
+              data-testid="sequence-view-junction-seam"
+              data-verdict={s.verdict}
+              title={s.message}
+              style={{
+                position: 'absolute', left: s.seamX, top: s.top + s.height + 2,
+                transform: 'translateX(-50%)',
+                display: 'flex', alignItems: 'center', gap: 2,
+                fontSize: 9, lineHeight: '12px', fontFamily: 'var(--font-mono, monospace)',
+                padding: '0 4px', borderRadius: 3, whiteSpace: 'nowrap',
+                background: 'var(--surface-1, #fff)',
+                border: `0.5px solid ${accent}`,
+                color: accent,
+                pointerEvents: 'none', zIndex: 4,
+              }}
+            >
+              {icon && <span aria-hidden style={{ fontWeight: 700 }}>{icon}</span>}
+              {s.label && <span>{s.label}</span>}
+            </div>
+            {/* RC-B2 — the nucleotide sequence AT the seam: last bases of the left
+                fragment │ first bases of the right, + (when a frame is pinned via
+                ⚙ «Рамка считывания») the codon/AA that straddles the join, with a
+                red ⚠ STOP if translation hits a premature stop across it. */}
+            {s.seam && (s.seam.left || s.seam.right) && (
+              <div
+                data-testid="sequence-view-seam-seq"
+                title={`Стык: …${s.seam.left} │ ${s.seam.right}…${s.seam.codonAtSeam ? ` · рамка: ${s.seam.codonAtSeam.dna} → ${s.seam.codonAtSeam.aa}${s.seam.stopAtSeam ? ' (STOP!)' : ''}` : ''}`}
+                style={{
+                  position: 'absolute', left: s.seamX, top: s.top + s.height + 16,
+                  transform: 'translateX(-50%)',
+                  display: 'flex', alignItems: 'center',
+                  fontSize: 9, lineHeight: '12px', fontFamily: 'var(--font-mono, monospace)',
+                  padding: '0 3px', borderRadius: 3, whiteSpace: 'nowrap',
+                  background: 'var(--surface-1, #fff)', border: '0.5px solid var(--border-default, #d6d3d1)',
+                  color: 'var(--text-tertiary)', pointerEvents: 'none', zIndex: 4,
+                }}
+              >
+                <span>{s.seam.left}</span>
+                <span aria-hidden style={{ color: 'var(--accent-600, #b85c3e)', fontWeight: 700, padding: '0 1px' }}>│</span>
+                <span>{s.seam.right}</span>
+                {s.seam.codonAtSeam && (
+                  s.seam.stopAtSeam ? (
+                    <span data-testid="sequence-view-seam-stop" style={{ marginLeft: 4, color: '#dc2626', fontWeight: 700 }}>⚠ STOP</span>
+                  ) : (
+                    <span data-testid="sequence-view-seam-aa" style={{ marginLeft: 4, color: 'var(--text-secondary)' }}>{s.seam.codonAtSeam.aa}</span>
+                  )
+                )}
+              </div>
+            )}
+          </div>
         );
       })}
     </>

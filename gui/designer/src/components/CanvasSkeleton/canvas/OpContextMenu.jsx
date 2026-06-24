@@ -5,6 +5,7 @@
  * SPEC_ASSEMBLY_VIEWS_UNIFICATION §4.4 (op variant).
  */
 import { useEffect, useRef } from 'react';
+import { Icon } from '../../icons/Icon';
 
 export default function OpContextMenu({
   anchor,
@@ -29,9 +30,9 @@ export default function OpContextMenu({
   }, [onClose]);
 
   const items = [
-    onEditParams && { id: 'params', icon: '⚙️', label: 'Параметры стыка…', onClick: onEditParams },
-    onChangeKind && { id: 'kind', icon: '🔄', label: 'Изменить тип op…', onClick: onChangeKind },
-    onRemove && { id: 'del', icon: '🗑', label: 'Удалить группу', onClick: onRemove, danger: true },
+    onEditParams && { id: 'params', icon: 'settings', label: 'Параметры стыка…', onClick: onEditParams },
+    onChangeKind && { id: 'kind', icon: 'swap', label: 'Изменить тип op…', onClick: onChangeKind },
+    onRemove && { id: 'del', icon: 'trash', label: 'Удалить группу', onClick: onRemove, danger: true },
   ].filter(Boolean);
 
   return (
@@ -69,7 +70,9 @@ export default function OpContextMenu({
             fontSize: 12.5, textAlign: 'left',
           }}
         >
-          <span style={{ width: 18, textAlign: 'center' }} aria-hidden>{it.icon}</span>
+          <span style={{ width: 18, display: 'inline-flex', justifyContent: 'center', alignItems: 'center' }} aria-hidden>
+            <Icon name={it.icon} size={14} />
+          </span>
           <span style={{ flex: 1 }}>{it.label}</span>
         </button>
       ))}

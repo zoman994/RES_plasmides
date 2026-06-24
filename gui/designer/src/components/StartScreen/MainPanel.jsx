@@ -12,6 +12,7 @@ import { useState, useMemo, useCallback } from 'react';
 import { useStore } from '../../store';
 import { openBodgeIntoLibrary } from './lib/open-bodge';
 import RecentRow from './RecentRow';
+import { Icon } from '../icons/Icon';
 import EmptyCard from './EmptyCard';
 import HelpPopover from './HelpPopover';
 
@@ -160,8 +161,8 @@ export default function MainPanel({ onOpenHotkeys }) {
           data-testid="ss-topbar-settings"
           title="Настройки (Ctrl ,)"
           onClick={() => openSettings?.()}
-          style={{ marginLeft: 8 }}
-        >⚙</button>
+          style={{ marginLeft: 8, display: 'inline-flex', alignItems: 'center' }}
+        ><Icon name="settings" size={16} /></button>
       </div>
 
       {/* MS-K2 action area: primary CTA + 2-card row. */}
@@ -183,7 +184,7 @@ export default function MainPanel({ onOpenHotkeys }) {
             onClick={onLoadBodge}
             style={actionAreaStyles.card}
           >
-            <div style={actionAreaStyles.cardIcon}>↑</div>
+            <div style={actionAreaStyles.cardIcon}><Icon name="import" size={22} style={{ margin: '0 auto' }} /></div>
             <div style={actionAreaStyles.cardTitle}>Загрузить .bodge</div>
             <div style={actionAreaStyles.cardSub}>С диска (file)</div>
           </button>
@@ -193,7 +194,7 @@ export default function MainPanel({ onOpenHotkeys }) {
             onClick={onOpenAllProjects}
             style={actionAreaStyles.card}
           >
-            <div style={actionAreaStyles.cardIcon}>📂</div>
+            <div style={actionAreaStyles.cardIcon}><Icon name="folder" size={22} style={{ margin: '0 auto' }} /></div>
             <div style={actionAreaStyles.cardTitle}>Все проекты</div>
             <div style={actionAreaStyles.cardSub}>Внутренний список ⌘P</div>
           </button>

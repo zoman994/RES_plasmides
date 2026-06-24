@@ -13,6 +13,8 @@
 import { memo, useMemo, useState, useEffect, useRef } from 'react';
 import { useStore } from '../../store';
 import { STRINGS } from '../../lib/strings';
+import { FEATURE_FLAGS } from '../../lib/feature-flags';
+import { Icon } from '../icons/Icon';
 import {
   isDnaQuery, hasIupacAmbiguity, searchLibrary, identityBucket,
 } from '../../lib/sequence-search';
@@ -123,7 +125,7 @@ export const LibraryTopBar = memo(function LibraryTopBar({
               minWidth: 0,
             }}
           >
-            <span aria-hidden>📦</span>
+            <Icon name="folder" size={13} style={{ alignSelf: 'center' }} />
             <span>{projectLabel}</span>
           </span>
         ) : (
@@ -134,29 +136,35 @@ export const LibraryTopBar = memo(function LibraryTopBar({
         )}
       </nav>
 
-      <button
-        type="button"
-        data-testid="library-topbar-open-project"
-        onClick={() => pushFullscreen?.({ fullscreen: 'canvasSkeleton', payload: null })}
-        title={cs.openProjectTip || 'Открыть канвас активного проекта'}
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 6,
-          flexShrink: 0,
-          fontSize: 12,
-          padding: '5px 12px',
-          borderRadius: 6,
-          border: '1px solid var(--border-subtle)',
-          background: 'var(--accent-500, #b85c3e)',
-          color: '#fff',
-          cursor: 'pointer',
-          fontWeight: 500,
-        }}
-      >
-        <span aria-hidden>📂</span>
-        <span>{cs.openProjectLabel || 'Открыть проект'}</span>
-      </button>
+      {/* «Открыть проект» — дубль: при двухуровневом рельсе (FEATURE_FLAGS.twoLevelRail)
+          активный проект + его сборки всегда в сайдбаре, клик по сборке/«Создать
+          сборку» открывает тот же канвас. Показываем только при выключенном рельсе
+          (нет проектной секции в сайдбаре). Откат: twoLevelRail=false. */}
+      {!FEATURE_FLAGS.twoLevelRail && (
+        <button
+          type="button"
+          data-testid="library-topbar-open-project"
+          onClick={() => pushFullscreen?.({ fullscreen: 'canvasSkeleton', payload: null })}
+          title={cs.openProjectTip || 'Открыть канвас активного проекта'}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            flexShrink: 0,
+            fontSize: 12,
+            padding: '5px 12px',
+            borderRadius: 6,
+            border: '1px solid var(--border-subtle)',
+            background: 'var(--accent-500, #b85c3e)',
+            color: '#fff',
+            cursor: 'pointer',
+            fontWeight: 500,
+          }}
+        >
+          <Icon name="folder" size={14} />
+          <span>{cs.openProjectLabel || 'Открыть проект'}</span>
+        </button>
+      )}
 
       {/*
         * Undo / Redo — synthetic keyboard events that mimic a real
@@ -179,8 +187,8 @@ export const LibraryTopBar = memo(function LibraryTopBar({
       >
         <span style={{
           position: 'absolute', left: 8, top: 7,
-          color: 'var(--text-tertiary)', fontSize: 12,
-        }}>⌕</span>
+          color: 'var(--text-tertiary)', display: 'inline-flex',
+        }}><Icon name="search" size={14} /></span>
         <input
           type="text"
           data-testid="library-topbar-search"
@@ -296,7 +304,8 @@ export const LibraryTopBar = memo(function LibraryTopBar({
                       fontSize: 10, padding: '0 5px', borderRadius: 9,
                       background: '#fef3c7', color: '#92400e',
                       border: '1px solid var(--border-subtle)',
-                    }}>⚠ 3′</span>
+                      display: 'inline-flex', alignItems: 'center', gap: 3,
+                    }}><Icon name="warning" size={11} />3′</span>
                   )}
                 </button>
               );
@@ -318,9 +327,10 @@ export const LibraryTopBar = memo(function LibraryTopBar({
             color: 'var(--success-fg, var(--text-secondary))',
             border: '1px solid var(--border-subtle)',
             flexShrink: 0,
+            display: 'inline-flex', alignItems: 'center', gap: 3,
           }}
           title="Last save state"
-        >✓ сохранён</span>
+        ><Icon name="check" size={11} />сохранён</span>
       )}
 
       <button
@@ -337,8 +347,9 @@ export const LibraryTopBar = memo(function LibraryTopBar({
           borderRadius: 4,
           cursor: 'default',
           opacity: 0.6,
+          display: 'inline-flex', alignItems: 'center',
         }}
-      >🔔</button>
+      ><Icon name="bell" size={14} /></button>
 
       <span
         data-testid="library-topbar-user"

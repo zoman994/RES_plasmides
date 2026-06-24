@@ -21,6 +21,7 @@
  */
 import { useEffect } from 'react';
 import { RE_ENZYMES } from '../../../restriction-db';
+import { Icon } from '../../icons/Icon';
 
 function reverseComplement(seq) {
   const comp = { A: 'T', T: 'A', G: 'C', C: 'G', N: 'N' };
@@ -236,8 +237,11 @@ export default function RestrictionSitePopover({
               cursor: 'pointer',
               color: 'var(--text-secondary, #57534e)',
               padding: '0 4px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
             }}
-          >×</button>
+          ><Icon name="close" size={14} /></button>
         </header>
 
         <div style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -322,7 +326,7 @@ export default function RestrictionSitePopover({
               cursor: 'pointer',
               fontWeight: 500,
             }}
-          >✂ Разрезать здесь</button>
+          ><Icon name="digest" size={13} style={{ display: 'inline-block', verticalAlign: '-2px' }} /> Разрезать здесь</button>
         </footer>
       </div>
     </div>

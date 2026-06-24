@@ -230,18 +230,17 @@ describe('TreeItemRow quick-delete — no auto-commit semantics', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────
-describe('ProjectZone — hover delete', () => {
-  it('renders 🗑 button in header; click marks the project pending', async () => {
+describe('ProjectZone — right-click delete', () => {
+  it('right-click → «Удалить проект» marks the project pending', async () => {
     useStore.setState((s) => {
       s.projects = { pA: { id: 'pA', name: 'MyProj', containerIds: [] } };
       s.currentProjectId = 'pA';
     });
     render(<ProjectZone project={useStore.getState().projects.pA} expanded onToggle={() => {}} />);
-    const btn = screen.getByTestId('project-zone-delete-pA');
-    expect(btn).toBeTruthy();
-    await act(async () => { fireEvent.click(btn); });
-    // onDeleteProject is async (awaits putProject before showing
-    // the toast) — flush before asserting on the toast.
+    fireEvent.contextMenu(screen.getByTestId('library-zone-project-pA-head'));
+    // onDeleteProject is async (awaits putProject before showing the
+    // toast) — flush before asserting on the toast.
+    await act(async () => { fireEvent.click(screen.getByText('Удалить проект')); });
     await new Promise((r) => setTimeout(r, 30));
     expect(useStore.getState().projects.pA?._pendingDelete).toBe(true);
     const toasts = useStore.getState().toasts || [];

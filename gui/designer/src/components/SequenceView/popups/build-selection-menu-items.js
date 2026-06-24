@@ -7,6 +7,7 @@
  */
 import { STRINGS } from "../../../lib/strings";
 import { generateAnnotationId } from "../../../lib/annotation-edit.js";
+import { TRANSLATABLE_TYPES } from "../constants.js";
 
 const ANN_EDIT_STRINGS = STRINGS.importer.annotationEdit;
 
@@ -98,6 +99,40 @@ export function buildSelectionMenuItems({
         onClick: () => {
           setContextMenu(null);
           onPromoteToCommon({ region: matchedRegion, start: selStart, end: selEnd });
+        },
+      });
+    }
+  }
+  // «Отметить как интрон» — manual splice marking (Игорь: «выделил → отметить
+  // как интрон»). Only meaningful inside a translatable region (CDS/gene),
+  // since an intron splices its parent; rides the existing onAnnotationEdit
+  // create rail (absent in read-only viewers ⇒ no item). The detail intron is
+  // linked to the parent CDS, so the AA track re-renders the spliced protein.
+  if (typeof onAnnotationEdit === "function") {
+    const parentCds = annotations.find(
+      (x) =>
+        x && x.level === "region" && TRANSLATABLE_TYPES.has(x.type) &&
+        x.start <= selStart && x.end >= selEnd &&
+        !(x.start === selStart && x.end === selEnd),
+    );
+    if (parentCds) {
+      items.push({
+        key: "mark-intron",
+        label: "Отметить как интрон",
+        onClick: () => {
+          setContextMenu(null);
+          onAnnotationEdit({
+            kind: "create",
+            payload: {
+              type: "intron",
+              level: "detail",
+              regionId: parentCds.id || generateAnnotationId(parentCds),
+              start: selStart,
+              end: selEnd,
+              strand: parentCds.strand === -1 ? -1 : 1,
+              name: "интрон",
+            },
+          });
         },
       });
     }

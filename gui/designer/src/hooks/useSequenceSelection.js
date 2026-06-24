@@ -132,17 +132,14 @@ export function useSequenceSelection({
     }
     if (reBehavior !== 'pair-select') return; // 'off' — display-only
     if (!site || typeof site.position !== 'number') return;
-    const enz = reEnzymes && reEnzymes[site.enzyme];
-    const recogLen = enz && enz.site ? enz.site.length : 6;
-    const cutOffset = enz && Array.isArray(enz.cut) ? enz.cut[0] : 1;
     const stored = firstRESiteRef.current;
     if (stored && stored.position !== site.position) {
-      const firstEnz = reEnzymes && reEnzymes[stored.enzyme];
-      const firstCutOffset = firstEnz && Array.isArray(firstEnz.cut) ? firstEnz.cut[0] : 1;
-      const cutA = stored.position + firstCutOffset;
-      const cutB = site.position + cutOffset;
-      const lo = Math.min(cutA, cutB);
-      const hi = Math.max(cutA, cutB);
+      // V155 — `site.position` is ALREADY the top-strand cut (flattenSites adds
+      // cut[0]), so the fragment between the two cuts is just [posA, posB]. The
+      // old `+ cut[0]` double-offset placed the selection (and the inserted
+      // fragment) one base PAST the cut.
+      const lo = Math.min(stored.position, site.position);
+      const hi = Math.max(stored.position, site.position);
       setCaretAnchor(lo);
       setCaretPos(hi);
       firstRESiteRef.current = null;
@@ -158,15 +155,15 @@ export function useSequenceSelection({
       });
       return;
     }
-    // First click — snap to recognition site of A.
-    const s = site.position;
-    const en = site.position + recogLen;
-    setCaretAnchor(s);
-    setCaretPos(en);
+    // First click — mark the CUT + highlight the recognition site, WITHOUT
+    // making a sequence selection (Игорь 21.06: clicking an RE shows the cut /
+    // recognition site, it is NOT a range select). The cut bar is drawn by the
+    // reSites overlay + the highlight; the fragment comes from the 2nd click or
+    // the digest gel.
     firstRESiteRef.current = site;
     setFirstRESiteState(site);
     setAcquisitionMethod('restriction');
-  }, [reBehavior, reEnzymes, onCutHere, onPairCommit]);
+  }, [reBehavior, onCutHere, onPairCommit]);
 
   // Derived half-open selection [min, max]. null when no selection.
   const selStart = (Number.isFinite(caretAnchor) && Number.isFinite(caretPos))

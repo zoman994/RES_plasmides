@@ -1,13 +1,19 @@
 /**
- * Sprint M-B.2 K3 — OverviewTab integration: PlasmidMiniMap + categorised
+ * Sprint M-B.2 K3 — OverviewTab integration: plasmid map (V2) + categorised
  * sections + region counts surface in DOM.
+ *
+ * Circular items now render the redesigned PlasmidMapV2 (DEC-DS-PLASMIDMAP-V2,
+ * feature-flag plasmidMapV2). We mock it to a thin probe — the map's own
+ * geometry/render is covered by plasmid-map-v2.test.jsx.
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
 import OverviewTab from '../tabs/OverviewTab';
 
-vi.mock('../../../PlasmidMiniMap', () => ({
-  default: ({ size }) => <div data-testid="mock-mini-map" data-size={size} />,
+vi.mock('../../../PlasmidMapV2', () => ({
+  default: ({ length, centerLabel }) => (
+    <div data-testid="mock-pmv2" data-length={length} data-name={centerLabel?.name || ''} />
+  ),
 }));
 
 afterEach(cleanup);
@@ -27,10 +33,10 @@ const ITEM = {
 };
 
 describe('M-B.2 K3 — OverviewTab', () => {
-  it('1) renders PlasmidMiniMap (180 px) + types strip', () => {
+  it('1) renders the V2 plasmid map (circular overview) + types strip', () => {
     render(<OverviewTab item={ITEM} />);
-    const mini = screen.getByTestId('mock-mini-map');
-    expect(mini.dataset.size).toBe('180');
+    const map = screen.getByTestId('mock-pmv2');
+    expect(map.dataset.length).toBe('2700');
     expect(screen.getByTestId('importer-overview-types')).toBeTruthy();
   });
 

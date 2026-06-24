@@ -25,6 +25,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../../store';
+import { useSequenceSelection } from '../../hooks/useSequenceSelection';
 import { selectAnnotator } from '../../store/uiSlice.js';
 import { STRINGS } from '../../lib/strings';
 import { getPluginById } from '../../lib/annotator-plugins';
@@ -41,6 +42,8 @@ const LEVEL_1_PLUGIN_ID = 'common-features-homology';
 import TargetPreview from './TargetPreview.jsx';
 import PreviewTab from './PreviewTab.jsx';
 import LevelPanel, { LEVELS } from './LevelPanel.jsx';
+import { useResizableSplit } from '../../hooks/useResizableSplit';
+import ResizeHandle from '../common/ResizeHandle';
 
 const S = STRINGS.importer.annotator;
 
@@ -87,6 +90,12 @@ export default function Annotator({
   onDeletePrimer,
 }) {
   const annotator = useStore(selectAnnotator);
+  // Drag-to-resize the preview | levels-panel split (Игорь — разделители двигаются).
+  const splitRef = useRef(null);
+  const { size: panelW, separatorProps: splitProps, dragging: splitDragging } = useResizableSplit({
+    axis: 'x', side: 'end', initial: 360, min: 280, keepOther: 420,
+    storageKey: 'annotator-panel-w', containerRef: splitRef,
+  });
   const closeAnnotator = useStore((s) => s.closeAnnotator);
   const openAnnotatorAction = useStore((s) => s.openAnnotator);
   const setThreshold = useStore((s) => s.setAnnotatorThreshold);
@@ -138,6 +147,18 @@ export default function Annotator({
   const seqLength = (sequence || '').length;
   const scope = annotator.scope;
   const region = scope?.kind === 'region' ? scope.region : null;
+
+  // Live selection — lifted here (was local to PreviewTab) so the intron
+  // analysis can scope to the user's CURRENT selection in the embedded viewer,
+  // not just annotator.scope (which is only set when the annotator is opened
+  // from a selection). Игорь 17.06.2026: «он должен анализировать выделенный
+  // фрагмент, сейчас фигачит всю плазмиду». PreviewTab consumes this same hook.
+  const selResetKey = `${seqLength}:${(sequence || '').slice(0, 16)}`;
+  const sel = useSequenceSelection({ resetKey: selResetKey });
+  // Effective analysis range: live selection wins, then a region scope, else full.
+  const activeSelection = sel.hasSelection ? { start: sel.selStart, end: sel.selEnd } : null;
+  const analysisRegion = activeSelection
+    || (scope?.kind === 'region' && scope.region ? scope.region : null);
 
   // Stage A — fire-once-per-sequenceId ref so re-renders (threshold
   // tweaks, tab toggles, etc.) don't re-trigger the L1 plugin.
@@ -266,6 +287,15 @@ export default function Annotator({
   // the parent's pendingScroll (LinearFeatureBar drag) — most recent
   // tick wins. Cleared via the same onPendingScrollHandled callback.
   const [innerScroll, setInnerScroll] = useState(null);
+  // Ab-initio intron detection (Phase 1): «выбрал фрагмент → нажал анализ».
+  // Scans the selected region (annotator scope) or the whole gene for canonical
+  // GT-AG splice sites, stitches the ORF-best intron/exon structure, applies it
+  // as annotations, and surfaces any CRYPTIC splice sites (unexpected splicing).
+  const [spliceResult, setSpliceResult] = useState(null);
+  const [spliceBusy, setSpliceBusy] = useState(false);
+  // Organism preset for the gene parser (intron length distribution differs by
+  // kingdom). Simple groups, not species. Игорь: «грибы / человек и тд».
+  const [spliceOrganism, setSpliceOrganism] = useState('fungi');
   const handleLocateRegion = (region) => {
     if (!region || !Number.isFinite(region.start)) return;
     setInnerScroll({ pos: region.start, tick: Date.now(), instant: false });
@@ -300,6 +330,51 @@ export default function Annotator({
     }
     onApplyAnnotatorResults?.(out);
     setJustSavedAt(Date.now());
+  };
+
+  // «Анализ интронов» — the ab-initio gene parser (neural splice scorer) runs on
+  // the SELECTED gene (ATG…stop). A selection is REQUIRED: a plasmid usually
+  // carries one ORF and the parser can't reject non-coding DNA, so a whole-
+  // plasmid run marks far too much. The CNN needs ≥100 bp of flanking context
+  // per site, hence a minimum selection length.
+  const MIN_CNN_LEN = 220;
+  const applySplice = (out, mode, fellBack = false) => {
+    out.mode = mode;
+    out.fellBack = fellBack;
+    setSpliceResult(out);
+    // Review → «Принять структуру»: surface the gene + its introns in the
+    // «Структура гена» level of the Annotation levels panel instead of
+    // auto-applying. The user accepts the whole structure there → Save applies
+    // it (gene + introns together, ids preserved by the V150 fix).
+    if (out.regions && out.regions.length) {
+      setResult('gene-parser', { pluginId: 'gene-parser', pluginName: 'Структура гена', regions: out.regions });
+    } else {
+      setResult('gene-parser', null);
+    }
+  };
+  const handleDetectIntrons = () => {
+    const region = analysisRegion;
+    // Require a selection — see MIN_CNN_LEN comment. No whole-plasmid runs.
+    if (!region) {
+      setSpliceResult({ regions: [], cryptic: [], intronCount: 0, mode: 'gene', needsSelection: true });
+      setResult('gene-parser', null);
+      return;
+    }
+    const sub = (sequence || '').slice(region.start, region.end);
+    if (sub.length < MIN_CNN_LEN) {
+      setSpliceResult({ regions: [], cryptic: [], intronCount: 0, mode: 'gene', tooShort: true });
+      setResult('gene-parser', null);
+      return;
+    }
+    // Frame-aware gene parser (neural splice scorer) on the selected gene.
+    setSpliceBusy(true);
+    Promise.all([
+      import('../../lib/splice/cnn-scorer'),
+      import('../../lib/splice/annotate-genes'),
+    ])
+      .then(([{ scoreSpliceSitesCNN }, { buildGeneAnnotations }]) =>
+        applySplice(buildGeneAnnotations(sub, { offset: region.start, organism: spliceOrganism, scorer: scoreSpliceSitesCNN }), 'gene'))
+      .finally(() => setSpliceBusy(false));
   };
 
   const acceptedCount = Object.keys(annotator.acceptedRegionIds || {}).length;
@@ -346,10 +421,13 @@ export default function Annotator({
         )}
         <div style={{ fontWeight: 500, fontSize: 14 }}>{S.title}</div>
         <div style={{ flex: 1, fontSize: 11, color: 'var(--text-secondary)' }} data-testid="annotator-scope-info">
-          {scope?.kind === 'region' && scope.region
-            ? S.scopeRegion(scope.region.start + 1, scope.region.end)
+          {analysisRegion
+            ? S.scopeRegion(analysisRegion.start + 1, analysisRegion.end)
             : S.scopeFull}
         </div>
+        {/* Intron-analysis controls (organism + «Интроны» + result message)
+            live in the «Структура гена» level of the right panel — passed down
+            via geneAnalysis. */}
         <label
           data-testid="annotator-show-duplicates"
           title={S.showDuplicatesHint}
@@ -428,13 +506,14 @@ export default function Annotator({
                       per-row Accept/Reject reusing ResultRow.
           The legacy `state.annotator.activeTab` is now reused by
           Stage C for the linear/circular toggle inside PreviewTab. */}
-      <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
+      <div ref={splitRef} style={{ flex: 1, display: 'flex', minHeight: 0 }}>
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
           <PreviewTab
             sequence={sequence || ''}
             annotations={annotations || []}
             topology={scope?.topology || 'linear'}
             name="annotator-preview"
+            selection={sel}
             onAnnotationEdit={onAnnotationEdit}
             onOpenFeatureEditor={onOpenFeatureEditor}
             onBlastSelection={handleBlastSelection}
@@ -445,7 +524,9 @@ export default function Annotator({
             onDeletePrimer={onDeletePrimer}
           />
         </div>
+        <ResizeHandle axis="x" dragging={splitDragging} testid="annotator-split-handle" {...splitProps} />
         <LevelPanel
+          width={panelW}
           results={annotator.results}
           running={annotator.running}
           acceptedRegionIds={annotator.acceptedRegionIds}
@@ -465,6 +546,14 @@ export default function Annotator({
           onRunLevel={handleRunLevel}
           onLocateRegion={handleLocateRegion}
           onSave={handleSave}
+          geneAnalysis={{
+            organism: spliceOrganism,
+            onOrganismChange: setSpliceOrganism,
+            onDetect: handleDetectIntrons,
+            busy: spliceBusy,
+            hasSelection: !!analysisRegion,
+            result: spliceResult,
+          }}
         />
       </div>
     </>

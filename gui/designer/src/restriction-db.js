@@ -15,7 +15,13 @@
  * overhang: the single-strand overhang sequence (null for blunt)
  */
 
-export const RE_ENZYMES = {
+import { RE_ENZYMES_REBASE } from './restriction-db-rebase.js';
+
+// Curated, richly-annotated common enzymes (temp / buffer / isoschizomers / dam·dcm
+// — hand-maintained NEB values). Merged UNDER the full REBASE commercial catalog
+// (see below): REBASE gives breadth (~459) + supplier codes, these 62 override
+// with lab metadata. The export `RE_ENZYMES` is the merged result.
+const RE_ENZYMES_CURATED = {
   // ═══════════════════════════════════════════════════════
   // 6-cutters
   // ═══════════════════════════════════════════════════════
@@ -91,6 +97,78 @@ export const RE_ENZYMES = {
   MboI:    { site: 'GATC', cut: [0, 4], end: '5prime', overhang: 'GATC', temp: 37, buffer: 'CutSmart', isoschizomers: ['DpnII'], neoschizomers: ['DpnI'], supplier: 'NEB', note: 'Cuts UNmethylated DNA. Isoschizomer of DpnII.', minFlanking: 0, damSensitive: true, dcmSensitive: false, heatInactivation: '65°C/20min' },
 };
 
+// Full enzyme catalog = the REBASE commercial set with the curated 62 merged on
+// top, per-field (curated lab metadata wins; REBASE site/cut/supplier-codes fill
+// the rest). «Все рестриктазы как в SnapGene» (Игорь 22.06) — ~459 commercial
+// Type IIP. Existing code that reads RE_ENZYMES now sees the full set unchanged.
+function mergeEnzymes(base, override) {
+  const out = {};
+  for (const n of new Set([...Object.keys(base), ...Object.keys(override)])) {
+    out[n] = { ...base[n], ...override[n] };
+  }
+  return out;
+}
+export const RE_ENZYMES = mergeEnzymes(RE_ENZYMES_REBASE, RE_ENZYMES_CURATED);
+
+// REBASE supplier code → name legend (rebase.neb.com link_emboss_s). The `suppliers`
+// field on each enzyme carries these single-letter codes; UI resolves them here.
+export const RE_SUPPLIERS = {
+  B: 'Thermo Fisher Scientific',
+  C: 'Minotech Biotechnology',
+  E: 'Agilent Technologies',
+  I: 'SibEnzyme',
+  J: 'Nippon Gene',
+  K: 'Takara Bio',
+  M: 'Roche',
+  N: 'New England Biolabs',
+  O: 'Toyobo',
+  Q: 'CHIMERx',
+  R: 'Promega',
+  S: 'Sigma-Aldrich',
+  V: 'Vivantis',
+  X: 'EURx',
+};
+
+/** Resolve REBASE supplier codes to readable names (unknown codes pass through). */
+export function supplierNames(codes) {
+  return (Array.isArray(codes) ? codes : []).map((c) => RE_SUPPLIERS[c] || c);
+}
+
+// ═══════════════════════════════════════════════════════
+// Custom enzyme registry (RS-C2)
+// ═══════════════════════════════════════════════════════
+// User-defined Type II enzymes (RS-C1 customEnzymesSlice) are PUSHED here so the
+// scan/digest/search engine sees them ON TOP of the 63 built-ins — WITHOUT this
+// module importing the Zustand store (which imports restriction-db → would be a
+// circular dep). Keyed by enzyme NAME; a custom name matching a built-in
+// overrides it. Bio-invariant: the slice only ever pushes Type II enzymes here —
+// never Golden Gate (Type IIS lives in golden-gate.js and is never merged in).
+let _customRegistry = {};
+let _effectiveCache = null;
+
+/** Replace the custom-enzyme overlay (called by customEnzymesSlice on every change). */
+export function setCustomEnzymeRegistry(byName) {
+  _customRegistry = (byName && typeof byName === 'object') ? byName : {};
+  _effectiveCache = null;
+}
+
+/**
+ * Built-in RE_ENZYMES merged with the custom overlay. Returns the SAME RE_ENZYMES
+ * reference when the registry is empty, so the no-custom path is byte-identical.
+ */
+export function effectiveEnzymes() {
+  if (_effectiveCache) return _effectiveCache;
+  _effectiveCache = Object.keys(_customRegistry).length > 0
+    ? { ...RE_ENZYMES, ..._customRegistry }
+    : RE_ENZYMES;
+  return _effectiveCache;
+}
+
+/** Look up one enzyme by name across custom overlay + built-ins. */
+function lookupEnzyme(name) {
+  return _customRegistry[name] || RE_ENZYMES[name];
+}
+
 // ═══════════════════════════════════════════════════════
 // IUPAC ambiguity codes for site matching
 // ═══════════════════════════════════════════════════════
@@ -117,11 +195,11 @@ function reverseComplement(seq) {
  * Returns array of [name, info] pairs sorted by relevance.
  */
 export function searchRE(query) {
-  if (!query) return Object.entries(RE_ENZYMES);
+  if (!query) return Object.entries(effectiveEnzymes());
   const q = query.toUpperCase().trim();
   const results = [];
 
-  for (const [name, info] of Object.entries(RE_ENZYMES)) {
+  for (const [name, info] of Object.entries(effectiveEnzymes())) {
     const nameUp = name.toUpperCase();
     const siteUp = info.site.toUpperCase();
     const ohUp = (info.overhang || '').toUpperCase();
@@ -150,11 +228,11 @@ export function searchRE(query) {
  * Compatible ends can be ligated together.
  */
 export function getCompatible(enzymeName) {
-  const enzyme = RE_ENZYMES[enzymeName];
+  const enzyme = lookupEnzyme(enzymeName);
   if (!enzyme || !enzyme.overhang || enzyme.end === 'blunt') return [];
 
   const compat = [];
-  for (const [name, info] of Object.entries(RE_ENZYMES)) {
+  for (const [name, info] of Object.entries(effectiveEnzymes())) {
     if (name === enzymeName) continue;
     if (info.overhang === enzyme.overhang && info.end === enzyme.end) {
       compat.push(name);
@@ -167,7 +245,7 @@ export function getCompatible(enzymeName) {
  * Get isoschizomers (same site, same cut) and neoschizomers (same site, different cut).
  */
 export function getIsoschizomers(enzymeName) {
-  const enzyme = RE_ENZYMES[enzymeName];
+  const enzyme = lookupEnzyme(enzymeName);
   if (!enzyme) return { isoschizomers: [], neoschizomers: [] };
   return {
     isoschizomers: enzyme.isoschizomers || [],
@@ -180,7 +258,7 @@ export function getIsoschizomers(enzymeName) {
  * Returns: [{ position, strand: '+' | '-' }]
  */
 export function findSitesInSequence(enzymeName, sequence, circular = false) {
-  const enzyme = RE_ENZYMES[enzymeName];
+  const enzyme = lookupEnzyme(enzymeName);
   if (!enzyme || !sequence) return [];
 
   const seq = sequence.toUpperCase();
@@ -268,7 +346,7 @@ export function scanAllSites(sequence, options = {}) {
   const searchSeq = circular ? seq + seq.slice(0, MAX_SITE) : seq;
 
   const results = [];
-  for (const [name, info] of Object.entries(RE_ENZYMES)) {
+  for (const [name, info] of Object.entries(effectiveEnzymes())) {
     // Skip methylation-only enzymes (DpnI, DpnII, MboI) — they're special
     if (name === 'DpnI' || name === 'DpnII' || name === 'MboI') continue;
     // Filter by site length (using only ATGC chars, ignoring IUPAC ambiguity)
@@ -340,7 +418,7 @@ export function detectMCS(sites, seqLen, windowSize = 200) {
  * @returns {string} e.g. EcoRI → "GGAATTC" (1bp + GAATTC)
  */
 export function generateRETail(enzymeName) {
-  const enzyme = RE_ENZYMES[enzymeName];
+  const enzyme = lookupEnzyme(enzymeName);
   if (!enzyme) return '';
   const flank = enzyme.minFlanking || 2;
   // Protective bases: alternate GC for stability
@@ -353,11 +431,15 @@ export function generateRETail(enzymeName) {
  * Important for maintaining reading frame in fusion constructs.
  */
 export function checkReadingFrame(enzymeName) {
-  const enzyme = RE_ENZYMES[enzymeName];
+  const enzyme = lookupEnzyme(enzymeName);
   if (!enzyme) return { addedBases: 0, inFrame: false, containsATG: false };
 
-  // addedBases = overhang length (the ss part that stays between vector and insert)
-  const addedBases = enzyme.overhang ? enzyme.overhang.length : 0;
+  // RC-BIO-5 — addedBases = the reconstituted recognition SITE that survives ligation
+  // (after two cohesive ends anneal both strands re-pair → the full ds site sits in the
+  // product), NOT the single-stranded overhang. EcoRI GAATTC = 6 bp (in frame), not the
+  // 4-bp AATT overhang; NdeI CATATG = 6 bp. Degenerate positions count as literal length.
+  // Primer-tail protective bases (generateRETail) add MORE and are counted by the caller.
+  const addedBases = enzyme.site ? enzyme.site.length : 0;
   const inFrame = addedBases % 3 === 0;
   const containsATG = enzyme.site.toUpperCase().includes('ATG');
 
@@ -385,7 +467,7 @@ export function checkInsertSites(insertSeq, enzyme1, enzyme2) {
     const sites = findSitesInSequence(eName, insertSeq);
     if (sites.length > 0) {
       // Find compatible alternatives from COMPATIBLE_OVERHANGS
-      const info = RE_ENZYMES[eName];
+      const info = lookupEnzyme(eName);
       const key = info.end === 'blunt' ? 'blunt' : `${info.overhang}_${info.end}`;
       const compatGroup = COMPATIBLE_OVERHANGS[key] || [];
       const alternatives = compatGroup.filter(n => n !== eName);
@@ -407,8 +489,8 @@ export function checkInsertSites(insertSeq, enzyme1, enzyme2) {
  * Check compatibility of two enzymes for simultaneous double digest.
  */
 export function checkDoubleDigest(enzyme1, enzyme2) {
-  const e1 = RE_ENZYMES[enzyme1];
-  const e2 = RE_ENZYMES[enzyme2];
+  const e1 = lookupEnzyme(enzyme1);
+  const e2 = lookupEnzyme(enzyme2);
   if (!e1 || !e2) return { simultaneous: false, buffer: null, temp: null, warnings: ['Unknown enzyme'] };
 
   const warnings = [];
@@ -449,7 +531,7 @@ export function checkDoubleDigest(enzyme1, enzyme2) {
  * @returns {Object} Digest result
  */
 export function digest(sequence, annotations, enzyme1, enzyme2 = null) {
-  const e1Info = RE_ENZYMES[enzyme1];
+  const e1Info = lookupEnzyme(enzyme1);
   if (!e1Info) return { error: `Unknown enzyme: ${enzyme1}` };
 
   // digest() operates on CIRCULAR templates (the cut adapter routes linear ones
@@ -458,7 +540,7 @@ export function digest(sequence, annotations, enzyme1, enzyme2 = null) {
 
   // Two different enzymes → each must cut exactly once
   if (enzyme2 && enzyme2 !== enzyme1) {
-    const e2Info = RE_ENZYMES[enzyme2];
+    const e2Info = lookupEnzyme(enzyme2);
     if (!e2Info) return { error: `Unknown enzyme: ${enzyme2}` };
 
     const sites2 = findSitesInSequence(enzyme2, sequence, true);

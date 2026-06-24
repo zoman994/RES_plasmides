@@ -237,10 +237,19 @@ export function draftFromZone(state, zone) {
         annotations: [],
       };
     }
-    const r = (p.ranges && p.ranges[0]) || {};
+    // Multi-range sourced piece (e.g. an inverted/backbone fragment that wraps
+    // the circular origin = [hi..end] + [0..lo]): concat every range's
+    // (rc-aware) slice. A single-range piece behaves EXACTLY as before — the
+    // invariant forbids start>=end, so a wrap is modelled as two valid ranges.
+    const ranges = (Array.isArray(p.ranges) && p.ranges.length > 0) ? p.ranges : [{}];
+    const r = ranges[0] || {};
     const c = containers.find((x) => x.id === r.sourceId);
-    const raw = c ? String(c.sequence || '').slice(r.start, r.end) : '';
-    const rcSeq = r.orientation === 'reverse' ? reverseComplement(raw) : raw;
+    const sliceOf = (rr) => {
+      const cc = containers.find((x) => x.id === rr.sourceId);
+      const raw = cc ? String(cc.sequence || '').slice(rr.start, rr.end) : '';
+      return rr.orientation === 'reverse' ? reverseComplement(raw) : raw;
+    };
+    const rcSeq = ranges.map(sliceOf).join('');
     // S2 §5.4 — apply mutations to the (post-rc) top-strand so the
     // assembled view shows the edited base, not the wild-type one.
     const seq = applyPieceMutations(rcSeq, p.mutations);
@@ -267,14 +276,33 @@ export function draftFromZone(state, zone) {
       // can wrap consecutive same-groupId rows in a bordered container.
       groupId: p.groupId || null,
       groupLayer: typeof p.groupLayer === 'number' ? p.groupLayer : 0,
-      // Inherit the source container's features clipped to this slice
-      // (same proven helper as legacy makeSourcedSegment) — was [] in
-      // the 4-tier path, so realised products lost annotations.
-      annotations: c
-        ? transferAnnotations(
-          c.annotations || [], r.start, r.end, r.orientation === 'reverse', r.sourceId,
-        )
-        : [],
+      // V161 — carry the piece's acquisition method + params onto the segment so
+      // segmentOverhangs / junctionInterlock can derive RE sticky ends, junction
+      // compatibility, and the readiness chemistry gate in the assembly editor.
+      // Without this the segment lost them, so the whole RE-overhang chain (V158
+      // chips, V160 seam, S1 readiness) was dead on the real store-driven draft —
+      // only crafted coloredZones ever showed it.
+      acquisitionMethod: p.acquisitionMethod || 'undefined',
+      acquisitionParams: p.acquisitionParams || {},
+      // Inherit the source container's features clipped to this slice. Transfer
+      // PER RANGE and shift by the cumulative offset, so a WRAP fragment (two
+      // ranges through the origin) keeps its features instead of dropping them
+      // (Игорь 22.06 — coord-stitch pass). Single-range = one pass, offset 0 →
+      // byte-identical to the prior behaviour.
+      annotations: (() => {
+        if (!c) return [];
+        const out = [];
+        let offset = 0;
+        for (const rr of ranges) {
+          const cc = containers.find((x) => x.id === rr.sourceId) || c;
+          const transferred = transferAnnotations(
+            cc.annotations || [], rr.start, rr.end, rr.orientation === 'reverse', rr.sourceId,
+          );
+          for (const an of transferred) out.push({ ...an, start: an.start + offset, end: an.end + offset });
+          offset += Math.max(0, (Number(rr.end) || 0) - (Number(rr.start) || 0));
+        }
+        return out;
+      })(),
     };
   });
   return {

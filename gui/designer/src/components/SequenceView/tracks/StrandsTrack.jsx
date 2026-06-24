@@ -94,6 +94,18 @@ function StrandsTrack({
   cutPositions,
   overhangs,
   bindingHighlights,
+  // «Align to reference» (opt-in): a per-line NAME shown in the top-strand
+  // gutter instead of the line-start number, so each row says which sequence
+  // the reference is (Игорь: «подписаны на каждой строке своими названиями»).
+  // The ruler still carries absolute positions. Undefined for every other
+  // consumer → the line-start number renders exactly as before.
+  gutterLabel,
+  // Terminal sticky-end staircase (Игорь 22.06 «физическая ступенька»): the
+  // fragment's overhang at this line's LEFT / RIGHT end (terminalStagger output:
+  // { protruding, recessed, len, seq, type } | null). SequenceLine gates these to
+  // the FIRST line (left) and LAST line (right). Bottom-strand only. Null elsewhere.
+  terminalLeft = null,
+  terminalRight = null,
 }) {
   if (!seq) return null;
   const annArr = annMap && annMap.length === seq.length ? annMap : new Array(seq.length).fill(null);
@@ -146,8 +158,11 @@ function StrandsTrack({
     const overhangsThisLine = Array.isArray(overhangs) ? overhangs.filter(
       (o) => o.endPos > lineStart && o.startPos < lineEnd,
     ) : [];
+    // Strict `< lineEnd` (matches the overhang/binding filters): a cut landing
+    // exactly on a line boundary belongs to the NEXT row (column 0), so it must
+    // not double-draw at the right edge of this row (review wq20q3xjv).
     const cutsThisLine = Array.isArray(cutPositions) ? cutPositions.filter(
-      (c) => c.pos >= lineStart && c.pos <= lineEnd,
+      (c) => c.pos >= lineStart && c.pos < lineEnd,
     ) : [];
     // Binding-area highlights (the FULL recognition site of the clicked
     // enzyme). Rendered FIRST so it sits behind overhang + chars.
@@ -241,6 +256,62 @@ function StrandsTrack({
             />
           );
         })}
+        {/* Terminal sticky-end staircase (bottom strand only). protruding=top →
+            blank the recessed bottom's `len` edge cells so the top bases stand
+            alone (the visible step); protruding=bottom → the overhang bases stick
+            out single-stranded past the duplex edge. */}
+        {!isTop && [['left', terminalLeft], ['right', terminalRight]].map(([endName, st]) => {
+          if (!st || !st.len) return null;
+          const atRight = endName === 'right';
+          if (st.protruding === 'top') {
+            const startCol = atRight ? (seq.length - st.len) : 0;
+            if (startCol < 0) return null;
+            // Recess the bottom strand: blank the `len` edge cells so the top
+            // bases stand alone. A neutral hairline marks the step edge (where the
+            // bottom strand resumes) — no red (Игорь 22.06 «убрать красное»).
+            const stepSide = atRight ? 'borderLeft' : 'borderRight';
+            return (
+              <div
+                key={`term-rec-${endName}`}
+                data-testid="sequence-view-terminal-recess"
+                data-end={endName}
+                aria-hidden
+                style={{
+                  position: 'absolute', left: (labelChars + startCol) * charPx, top: 0,
+                  width: st.len * charPx, height: ROW_HEIGHT_STRAND,
+                  background: 'var(--surface-1, #ffffff)',
+                  [stepSide]: '1px solid var(--border-default, #d6d3d1)',
+                  zIndex: 3, pointerEvents: 'none',
+                }}
+              />
+            );
+          }
+          // protruding === 'bottom' → overhang bases stick out past the duplex
+          // edge as plain single-stranded bases (neutral colour, не красные).
+          const left = atRight
+            ? (labelChars + seq.length) * charPx
+            : Math.max(0, (labelChars - st.len) * charPx);
+          return (
+            <div
+              key={`term-oh-${endName}`}
+              data-testid="sequence-view-terminal-overhang"
+              data-end={endName}
+              title={`${st.type === '3prime' ? '3′' : '5′'} ${st.seq}`}
+              style={{
+                position: 'absolute', left, top: 0,
+                width: st.len * charPx, height: ROW_HEIGHT_STRAND, lineHeight: `${ROW_HEIGHT_STRAND}px`,
+                whiteSpace: 'pre', color: 'var(--text-secondary, #4b5563)', fontWeight: 500,
+                zIndex: 3, pointerEvents: 'none',
+              }}
+            >
+              {/* The overhang sticks out on the BOTTOM strand, which the viewer
+                  draws as the per-nucleotide COMPLEMENT — show the overhang bases
+                  complemented so they read consistently (Игорь 22.06), the actual
+                  5′/3′ overhang sequence stays in the tooltip. */}
+              {st.seq.split('').map((ch) => complement(ch)).join('')}
+            </div>
+          );
+        })}
         {/*
           * No literal space between the gutter span and the nt spans —
           * a `{" "}` here would consume 1 char of horizontal space and
@@ -264,9 +335,29 @@ function StrandsTrack({
             * `labelChars * charPx`.
             */}
           {isTop
-            ? `${String(lineStart + 1).padStart(labelChars - 1)} `
+            ? (gutterLabel ? "".padStart(labelChars) : `${String(lineStart + 1).padStart(labelChars - 1)} `)
             : "".padStart(labelChars)}
         </span>
+        {/* Per-line reference NAME label (align-to-reference). Absolutely
+            positioned over the blanked gutter so it can't shift the DNA
+            char-grid; truncates with a full-name tooltip. */}
+        {isTop && gutterLabel && (
+          <span
+            data-testid="strand-gutter-label"
+            title={gutterLabel}
+            style={{
+              position: 'absolute', left: 2, top: 0,
+              height: ROW_HEIGHT_STRAND, lineHeight: `${ROW_HEIGHT_STRAND}px`,
+              maxWidth: Math.max(0, labelChars * charPx - 4),
+              fontFamily: 'var(--font-sans, sans-serif)', fontSize: 9,
+              color: 'var(--text-tertiary, #78716c)',
+              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              pointerEvents: 'none',
+            }}
+          >
+            {gutterLabel}
+          </span>
+        )}
         {runs.map((run, ri) => {
           const baseStyle = {
             background: run.tint,
@@ -290,28 +381,68 @@ function StrandsTrack({
             </span>
           );
         })}
-        {/* Cut bars — drawn LAST so they sit on top of chars. */}
-        {cutsThisLine.map((c) => {
-          const left = (labelChars + (c.pos - lineStart)) * charPx - 1;
+        {/* Sticky-end CONNECTOR (top strand only) — a thin line at the boundary
+            between the two strand rows, spanning the overhang from the top cut to
+            the bottom cut. Together with the per-strand carets it draws the
+            staggered cut as a Z-shape (Игорь 22.06: «стрелки соединены линией
+            которая между цепей их соединяет»). Lives at the top strand's bottom
+            edge so it sits exactly on the inter-strand seam. */}
+        {/* Sticky-end CONNECTOR — only when the bottom strand is actually shown
+            (else it dangles with no bottom caret to meet; review wq20q3xjv). */}
+        {isTop && showBottomStrand !== false && overhangsThisLine.map((o) => {
+          const lo = Math.max(o.startPos, lineStart);
+          const hi = Math.min(o.endPos, lineEnd);
+          const left = (labelChars + (lo - lineStart)) * charPx;
+          const width = (hi - lo) * charPx;
           return (
             <div
+              key={`re-conn-${o.key}`}
+              data-testid="sequence-view-strand-cut-connector"
+              aria-hidden
+              style={{
+                position: 'absolute',
+                left,
+                top: ROW_HEIGHT_STRAND - 1,
+                width,
+                height: 2,
+                background: '#dc2626',
+                pointerEvents: 'none',
+                zIndex: 2,
+              }}
+            />
+          );
+        })}
+        {/* Cut glyphs — SnapGene-style (Игорь 22.06). A thin cut line + a caret
+            that POINTS AT its own strand from the OUTER edge: the top strand caret
+            ▼ sits at the top pointing down into the top strand, the bottom strand
+            caret ▲ sits at the bottom pointing up into the bottom strand (Игорь:
+            «стрелки должны указывать на верхнюю и нижнюю цепь, а не между ними»).
+            The cut line runs from the caret to the inter-strand seam, where the
+            connector joins the staggered top/bottom cuts. Drawn above the chars. */}
+        {cutsThisLine.map((c) => {
+          const cx = (labelChars + (c.pos - lineStart)) * charPx;
+          const local = charPx; // cut line x inside the 2*charPx-wide glyph
+          const half = 4;
+          const tip = 5;
+          const caret = isTop
+            ? `${local - half},0 ${local + half},0 ${local},${tip}`
+            : `${local - half},${ROW_HEIGHT_STRAND} ${local + half},${ROW_HEIGHT_STRAND} ${local},${ROW_HEIGHT_STRAND - tip}`;
+          const lineY1 = isTop ? tip : 0;
+          const lineY2 = isTop ? ROW_HEIGHT_STRAND : ROW_HEIGHT_STRAND - tip;
+          return (
+            <svg
               key={`re-cut-${c.key}`}
               data-testid="sequence-view-strand-cut"
               data-strand={which}
               data-cut-pos={c.pos}
               aria-hidden
-              style={{
-                position: 'absolute',
-                left,
-                top: 0,
-                width: 2,
-                height: ROW_HEIGHT_STRAND,
-                background: '#dc2626',
-                pointerEvents: 'none',
-                zIndex: 2,
-                borderRadius: 1,
-              }}
-            />
+              width={charPx * 2}
+              height={ROW_HEIGHT_STRAND}
+              style={{ position: 'absolute', left: cx - charPx, top: 0, overflow: 'visible', pointerEvents: 'none', zIndex: 2 }}
+            >
+              <line x1={local} y1={lineY1} x2={local} y2={lineY2} stroke="#dc2626" strokeWidth={1.4} />
+              <polygon points={caret} fill="#dc2626" />
+            </svg>
           );
         })}
       </div>

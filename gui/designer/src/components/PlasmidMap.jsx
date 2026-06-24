@@ -11,6 +11,8 @@ import { getRegions, getDetails } from '../annotation-model';
 import { scanAllSites, detectMCS, getCompatible, RE_ENZYMES } from '../restriction-db';
 import { featureColorShaded, FEATURE_STROKE } from '../feature-palette';
 import { useStore } from '../store';
+import { FEATURE_FLAGS } from '../lib/feature-flags';
+import PlasmidMapV2 from './PlasmidMapV2';
 
 const TAU = 2 * Math.PI;
 function polar(cx, cy, r, a) { return { x: cx + r * Math.cos(a - Math.PI / 2), y: cy + r * Math.sin(a - Math.PI / 2) }; }
@@ -63,7 +65,18 @@ function sectorPath(cx, cy, oR, iR, s, e) {
   return `M ${os.x} ${os.y} A ${oR} ${oR} 0 ${lg} 1 ${oe.x} ${oe.y} L ${ie.x} ${ie.y} A ${iR} ${iR} 0 ${lg} 0 ${is_.x} ${is_.y} Z`;
 }
 
-export default function PlasmidMap({ fragments, constructName, totalBp, junctions = [], primers = [],
+// Wrapper: the redesigned feature-centric map (PlasmidMapV2) applies to the
+// PLASMID-VIEW case (no junctions / no primers); the assembly map keeps the
+// legacy rendering (junction markers + primer arcs + per-fragment edit popup).
+// Gated by FEATURE_FLAGS.plasmidMapV2 → off restores legacy everywhere.
+export default function PlasmidMap(props) {
+  const useV2 = FEATURE_FLAGS.plasmidMapV2
+    && !(props.junctions && props.junctions.length)
+    && !(props.primers && props.primers.length);
+  return useV2 ? <PlasmidMapV2 {...props} /> : <PlasmidMapLegacy {...props} />;
+}
+
+function PlasmidMapLegacy({ fragments, constructName, totalBp, junctions = [], primers = [],
   onSelectFragment, onRemove, onFlip, onSplitSignal, onEditFragment,
   selectedRegionId = null, onSelectRegion }) {
   const [hovered, setHovered] = useState(null);

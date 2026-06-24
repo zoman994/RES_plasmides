@@ -9,8 +9,10 @@
  * Catalog button merged into Старт сборки — ImportStartScreen left column
  * shows the SnapGene catalog tree by default (after IS-Final K4).
  */
+import { Icon } from './icons/Icon';
+
 const PRIMARY = [
-  { id: 'import',  icon: '📂', tone: 'blue',
+  { id: 'import',  icon: 'folder', tone: 'blue',
     label: 'Старт сборки', desc: 'файл · каталог 2800+ · Ctrl+V' },
 ];
 
@@ -23,7 +25,7 @@ export default function QuickStart({ onAction }) {
     <div className="flex-1 flex items-center justify-center p-8">
       <div className="max-w-md w-full">
         <div className="text-center mb-6">
-          <div className="text-3xl mb-1">🧬</div>
+          <div className="mb-1 flex justify-center text-blue-600"><Icon name="dna" size={30} /></div>
           <h2 className="text-lg font-bold text-gray-700">BodgeGene</h2>
           <p className="text-xs text-gray-400">Конструктор генетических сборок</p>
         </div>
@@ -32,7 +34,7 @@ export default function QuickStart({ onAction }) {
           {PRIMARY.map(a => (
             <button key={a.id} onClick={() => onAction(a.id)}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg border transition text-left ${TONE[a.tone]}`}>
-              <span className="text-xl shrink-0">{a.icon}</span>
+              <span className="shrink-0 inline-flex items-center"><Icon name={a.icon} size={20} /></span>
               <div>
                 <div className="text-sm font-semibold">{a.label}</div>
                 <div className="text-[10px] opacity-70">{a.desc}</div>
@@ -45,7 +47,7 @@ export default function QuickStart({ onAction }) {
           <button onClick={() => onAction('free')}
             className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-lg
                        hover:border-gray-300 hover:bg-gray-50 transition text-gray-500 text-xs">
-            <span>📦</span><span>Начать с нуля — сборка из палитры</span>
+            <span className="inline-flex items-center"><Icon name="container" size={14} /></span><span>Начать с нуля — сборка из палитры</span>
           </button>
         </div>
 

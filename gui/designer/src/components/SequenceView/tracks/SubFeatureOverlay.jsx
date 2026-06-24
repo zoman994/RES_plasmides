@@ -19,7 +19,10 @@ export function SubFeatureOverlay({
   onAnnotationClick,
   onAnnotationFeatureDoubleClick,
 }) {
-  const kids = detailsByParent.get(region.id) || [];
+  // Introns are drawn by GeneExonRects as exon blocks + dashed connectors
+  // («вариант A»), so skip them here — other detail children (domains, tags,
+  // signal peptides) still render as inset blocks.
+  const kids = (detailsByParent.get(region.id) || []).filter((k) => k && k.type !== 'intron');
   if (kids.length === 0) return null;
   const SUB_INSET = 3;
   const subY = SUB_INSET;

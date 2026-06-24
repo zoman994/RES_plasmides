@@ -38,9 +38,11 @@ describe('M-C.1 K4 — containerWindow fullscreen route', () => {
   });
 
   it('popFullscreen returns to the previous screen', () => {
+    // 'library' as a generic «previous screen» (was 'dag' — removed
+    // 17.06.2026 with the DagWorkspace sweep).
     useStore.getState().pushFullscreen({
-      fullscreen: 'dag',
-      payload: { projectId: 'p1' },
+      fullscreen: 'library',
+      payload: { target: 'library' },
     });
     useStore.getState().pushFullscreen({
       fullscreen: 'containerWindow',
@@ -48,6 +50,6 @@ describe('M-C.1 K4 — containerWindow fullscreen route', () => {
     });
     expect(useStore.getState().canvas.activeFullscreen).toBe('containerWindow');
     useStore.getState().popFullscreen();
-    expect(useStore.getState().canvas.activeFullscreen).toBe('dag');
+    expect(useStore.getState().canvas.activeFullscreen).toBe('library');
   });
 });

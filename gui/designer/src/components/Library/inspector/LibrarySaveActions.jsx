@@ -29,51 +29,33 @@ import { useStore } from '../../../store';
 export default function LibrarySaveActions({
   libraryEntryId,
   hasChanges,
+  editedSequence,        // working sequence to commit (transient buffer)
   editedAnnotations,
+  changesSummary = [],   // string[] — «что изменено», one line per coalesced edit
+  changeText = '',       // joined summary → stamped as origin.changes provenance
   parentName,
-  onAfterOverwrite,    // (id) => void — caller clears local edit flags
   onAfterSaveAsVersion, // (newId, newName) => void
 }) {
   const showToast = useStore(s => s.showToast);
-  const overwrite = useStore(s => s.overwriteLibraryEntryAnnotations);
-  const saveAsVersion = useStore(s => s.saveLibraryEntryAsVersion);
+  // Version-only save (Игорь 17.06.2026): the edited SEQUENCE + annotations
+  // commit to a NEW branch via createManualEditBranch — the SAME action the
+  // aligner's «Сохранить исправленную версию» uses. Source is untouched.
+  const createManualEditBranch = useStore(s => s.createManualEditBranch);
   const getSuggestedName = useStore(s => s.getSuggestedLibraryName);
   const [busy, setBusy] = useState(false);
-  const [versionPrompt, setVersionPrompt] = useState(null); // { defaultName }
+  const [versionPrompt, setVersionPrompt] = useState(null); // { name, reason }
 
   const enabled = !!libraryEntryId && !!hasChanges && !busy;
 
-  const handleOverwrite = useCallback(async () => {
-    if (!enabled) return;
-    if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
-      const ok = window.confirm(`Перезаписать аннотации в записи «${parentName || 'без имени'}»? Текущая версия будет заменена.`);
-      if (!ok) return;
-    }
-    setBusy(true);
-    try {
-      const result = await overwrite(libraryEntryId, editedAnnotations);
-      if (result?.ok) {
-        showToast?.(`Сохранено · v${result.version}`, { kind: 'success', duration: 2000 });
-        onAfterOverwrite?.(libraryEntryId);
-      } else if (result?.reason === 'pending-delete') {
-        showToast?.(`Запись «${result.name || parentName}» помечена на удаление. Восстановите её перед сохранением.`, { kind: 'error', duration: 4000 });
-      } else {
-        showToast?.('Не удалось сохранить — попробуйте ещё раз.', { kind: 'error', duration: 4000 });
-      }
-    } finally {
-      setBusy(false);
-    }
-  }, [enabled, libraryEntryId, editedAnnotations, parentName, overwrite, showToast, onAfterOverwrite]);
-
   const defaultVersionName = useMemo(() => {
     if (!parentName || !getSuggestedName) return parentName || '';
-    const base = `${parentName} (v2)`;
+    const base = `${parentName} · исправлено`;
     try { return getSuggestedName(base); } catch { return base; }
   }, [parentName, getSuggestedName]);
 
   const openVersionPrompt = useCallback(() => {
     if (!enabled) return;
-    setVersionPrompt({ name: defaultVersionName });
+    setVersionPrompt({ name: defaultVersionName, reason: '' });
   }, [enabled, defaultVersionName]);
 
   const closeVersionPrompt = useCallback(() => setVersionPrompt(null), []);
@@ -87,20 +69,25 @@ export default function LibrarySaveActions({
     }
     setBusy(true);
     try {
-      const result = await saveAsVersion(libraryEntryId, editedAnnotations, trimmed);
+      const result = await createManualEditBranch(
+        libraryEntryId,
+        typeof editedSequence === 'string' ? editedSequence : '',
+        Array.isArray(editedAnnotations) ? editedAnnotations : [],
+        { name: trimmed, changes: changeText, reason: (versionPrompt.reason || '').trim() },
+      );
       if (result?.ok) {
         showToast?.(`Сохранено как «${result.name}»`, { kind: 'success', duration: 3000 });
         onAfterSaveAsVersion?.(result.id, result.name);
         setVersionPrompt(null);
       } else if (result?.reason === 'pending-delete') {
-        showToast?.(`Родительская запись «${result.name || parentName}» помечена на удаление. Восстановите её перед save-as-version.`, { kind: 'error', duration: 4000 });
+        showToast?.(`Родительская запись «${result.name || parentName}» помечена на удаление. Восстановите её перед сохранением версии.`, { kind: 'error', duration: 4000 });
       } else {
         showToast?.('Не удалось создать версию — попробуйте ещё раз.', { kind: 'error', duration: 4000 });
       }
     } finally {
       setBusy(false);
     }
-  }, [versionPrompt, saveAsVersion, libraryEntryId, editedAnnotations, parentName, showToast, onAfterSaveAsVersion]);
+  }, [versionPrompt, createManualEditBranch, libraryEntryId, editedSequence, editedAnnotations, changeText, parentName, showToast, onAfterSaveAsVersion]);
 
   if (!libraryEntryId) return null;
 
@@ -111,15 +98,24 @@ export default function LibrarySaveActions({
         data-testid="library-save-actions"
         data-has-changes={hasChanges ? 'true' : 'false'}
         style={{
-          display: 'flex', alignItems: 'center', gap: 6,
+          display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
         }}
       >
+        {changesSummary.length > 0 && (
+          <span
+            data-testid="library-changes-summary"
+            title={changeText}
+            style={{ fontSize: 11, color: 'var(--text-tertiary)', maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+          >
+            изменено: {changesSummary.length === 1 ? changesSummary[0] : `${changesSummary[0]} +${changesSummary.length - 1}`}
+          </span>
+        )}
         <button
           type="button"
-          data-testid="library-save-overwrite"
-          onClick={handleOverwrite}
+          data-testid="library-save-as-version"
+          onClick={openVersionPrompt}
           disabled={!enabled}
-          title="Перезаписать аннотации в текущей записи (увеличит счётчик версии)."
+          title="Сохранить правки как новую версию (ветку) — исходник не меняется."
           style={{
             padding: '4px 10px',
             fontSize: 12,
@@ -130,24 +126,7 @@ export default function LibrarySaveActions({
             cursor: enabled ? 'pointer' : 'not-allowed',
             opacity: enabled ? 1 : 0.6,
           }}
-        >Перезаписать</button>
-        <button
-          type="button"
-          data-testid="library-save-as-version"
-          onClick={openVersionPrompt}
-          disabled={!enabled}
-          title="Сохранить как новую запись с ссылкой на текущую (parent reference)."
-          style={{
-            padding: '4px 10px',
-            fontSize: 12,
-            background: enabled ? 'var(--surface-2)' : 'var(--surface-2)',
-            color: enabled ? 'var(--text-primary)' : 'var(--text-tertiary)',
-            border: '0.5px solid var(--border-default)',
-            borderRadius: 'var(--radius-md)',
-            cursor: enabled ? 'pointer' : 'not-allowed',
-            opacity: enabled ? 1 : 0.6,
-          }}
-        >Сохранить как версию</button>
+        >Сохранить версию</button>
       </div>
 
       {versionPrompt && (
@@ -180,6 +159,14 @@ export default function LibrarySaveActions({
             <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>
               Текущая запись «{parentName}» останется неизменной. Будет создана новая запись со ссылкой на неё.
             </div>
+            {changesSummary.length > 0 && (
+              <div data-testid="library-version-changes" style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-tertiary)', marginBottom: 4 }}>Что изменено · {changesSummary.length}</div>
+                <div style={{ maxHeight: 120, overflow: 'auto', border: '0.5px solid var(--border-default)', borderRadius: 'var(--radius-md)', padding: '6px 8px', fontSize: 12, fontFamily: 'var(--font-mono, monospace)', color: 'var(--text-primary)' }}>
+                  {changesSummary.map((line, i) => <div key={i}>{line}</div>)}
+                </div>
+              </div>
+            )}
             <input
               type="text"
               data-testid="library-save-version-name"
@@ -196,6 +183,22 @@ export default function LibrarySaveActions({
                 fontSize: 13,
                 background: 'var(--surface-1)',
                 border: '0.5px solid var(--accent-500)',
+                borderRadius: 'var(--radius-md)',
+                outline: 'none',
+                marginBottom: 10,
+              }}
+            />
+            <textarea
+              data-testid="library-save-version-reason"
+              value={versionPrompt.reason}
+              onChange={(e) => setVersionPrompt(p => ({ ...p, reason: e.target.value }))}
+              placeholder="Причина / комментарий (необязательно)"
+              rows={2}
+              style={{
+                width: '100%', boxSizing: 'border-box',
+                padding: '6px 10px', fontSize: 12, resize: 'vertical',
+                background: 'var(--surface-1)',
+                border: '0.5px solid var(--border-default)',
                 borderRadius: 'var(--radius-md)',
                 outline: 'none',
                 marginBottom: 12,

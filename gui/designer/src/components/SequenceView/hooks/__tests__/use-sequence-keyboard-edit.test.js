@@ -56,6 +56,46 @@ describe('useSequenceKeyboard — K2 char-apply gate', () => {
     expect(onSequenceEdit).toHaveBeenCalledWith({ kind: 'replace', start: 2, end: 5, replacement: 'N' });
   });
 
+  // V151 — typing a base without Shift yields a LOWERCASE e.key; it must be
+  // normalized to uppercase so the working sequence stays canonical ACGT (else
+  // the AA track shows «XXXXX» and alignment mismatch detection treats it as N).
+  it('lowercase IUPAC char is normalized to UPPERCASE on insert (V151)', () => {
+    const { handler, onSequenceEdit } = mkHandler({ editable: true, caretPos: 3 });
+    handler(mkEvent('a'));
+    expect(onSequenceEdit).toHaveBeenCalledWith({ kind: 'insert', pos: 3, char: 'A' });
+  });
+
+  it('lowercase IUPAC char is normalized to UPPERCASE on replace (V151)', () => {
+    const { handler, onSequenceEdit } = mkHandler({ editable: true, caretPos: 5, caretAnchor: 2 });
+    handler(mkEvent('g'));
+    expect(onSequenceEdit).toHaveBeenCalledWith({ kind: 'replace', start: 2, end: 5, replacement: 'G' });
+  });
+
+  // V152 — paste. The onPaste DOM event never fires on the non-contentEditable
+  // root, so Ctrl+V must be wired as a keydown that reads the clipboard.
+  it('Ctrl+V reads the clipboard and emits a paste op when editable (V152)', async () => {
+    const readText = vi.fn().mockResolvedValue('atgc');
+    vi.stubGlobal('navigator', { clipboard: { readText } });
+    const { handler, onSequenceEdit } = mkHandler({ editable: true, caretPos: 3, caretAnchor: 3 });
+    const ev = mkEvent('v', { ctrlKey: true });
+    handler(ev);
+    expect(ev.preventDefault).toHaveBeenCalled();
+    expect(readText).toHaveBeenCalled();
+    await new Promise((r) => setTimeout(r)); // flush the async clipboard read
+    expect(onSequenceEdit).toHaveBeenCalledWith(expect.objectContaining({ kind: 'replace', replacement: 'ATGC' }));
+    vi.unstubAllGlobals();
+  });
+
+  it('Ctrl+V is a no-op when not editable (V152)', () => {
+    const readText = vi.fn().mockResolvedValue('atgc');
+    vi.stubGlobal('navigator', { clipboard: { readText } });
+    const { handler, onSequenceEdit } = mkHandler({ editable: false, caretPos: 3 });
+    handler(mkEvent('v', { ctrlKey: true }));
+    expect(readText).not.toHaveBeenCalled();
+    expect(onSequenceEdit).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
   it('Backspace at caret>0 fires delete op', () => {
     const { handler, onSequenceEdit } = mkHandler({ editable: true, caretPos: 4 });
     handler(mkEvent('Backspace'));

@@ -6,7 +6,6 @@ import Sidebar from './components/StartScreen/Sidebar';
 import HotkeyCheatsheet from './components/HotkeyCheatsheet';
 import { useSidebarCollapsed } from './components/StartScreen/hooks/useSidebarCollapsed';
 import './components/StartScreen/StartScreen.css';
-import DagWorkspace from './components/Dag/DagWorkspace';
 import ContainerWindowPlaceholder from './components/Dag/ContainerWindowPlaceholder';
 // M-CANVAS-SKELETON (DEC-SKELETON-01) — изолированный DEV-only route.
 // Полная Canvas-модель скелета: Tree + Canvas (Layout/Graph) + Editor +
@@ -36,12 +35,11 @@ import { flushSkeletonSnapshot } from './components/CanvasSkeleton/store/skeleto
 import { listenForceRelease } from './lib/multi-tab-lock';
 import { runHotkeyResolver, useHotkey } from './lib/hotkeys';
 import { installGlobalCtrlAGuard } from './lib/global-ctrl-a-guard';
+import { installGlobalCopyHandler } from './lib/global-copy';
 import { setupBeforeInstallPromptListener } from './lib/pwa-install';
 import { STRINGS } from './lib/strings';
-import { queueImporterFiles } from './components/Library/lib/pending-files';
 
 const DROPZONE_TYPES = ['.bodge', '.fasta', '.fa', '.gb', '.gbk', '.genbank', '.dna', '.fna'];
-const IMPORTABLE_TYPES = ['.fasta', '.fa', '.fna', '.gb', '.gbk', '.genbank', '.dna'];
 
 export default function App() {
   const theme = useStore(s => s.theme);
@@ -59,6 +57,7 @@ export default function App() {
   const hydrateProjectsFromDexie = useStore(s => s.hydrateProjectsFromDexie);
   const hydrateLibrary = useStore(s => s.hydrateLibrary);
   const hydrateCommonFeatures = useStore(s => s.hydrateCommonFeatures);
+  const hydrateCustomEnzymes = useStore(s => s.hydrateCustomEnzymes);
 
   useEffect(() => {
     bootstrapStore();
@@ -71,6 +70,9 @@ export default function App() {
     // factory overrides so detection merges them and the Library panel
     // shows them on cold start.
     hydrateCommonFeatures().catch(() => { /* ignore */ });
+    // RS-C1 — account-global custom restriction enzymes + named sets, loaded
+    // so «Сайты рестрикции» + the picker dropdowns see them on cold start.
+    hydrateCustomEnzymes().catch(() => { /* ignore */ });
     // Splash fade-in. body[data-app-ready] CSS rule animates opacity
     // 0→1 over 220 ms once initial bootstrap finishes, masking FOUC
     // and any slow Dexie hydration on cold start.
@@ -79,7 +81,7 @@ export default function App() {
         if (document.body) document.body.dataset.appReady = 'true';
       });
     }
-  }, [hydrateProjectsFromDexie, hydrateLibrary, hydrateCommonFeatures]);
+  }, [hydrateProjectsFromDexie, hydrateLibrary, hydrateCommonFeatures, hydrateCustomEnzymes]);
 
   useEffect(() => {
     const setCanInstallPwa = useStore.getState().setCanInstallPwa;
@@ -98,11 +100,20 @@ export default function App() {
   // EXCEPT inside the SequenceView root and inside text inputs.
   useEffect(() => installGlobalCtrlAGuard(), []);
 
+  // Игорь «контрол С должно глобально работать везде где можно
+  // выделить». The SequenceView copy used to require the view to hold
+  // focus; this window capture-phase handler copies the active
+  // selection from any pane, while deferring to native copy for text
+  // inputs / plain HTML selections / focus already inside a viewer.
+  useEffect(() => installGlobalCopyHandler(), []);
+
   // ─── Hotkey handlers (registered through registry, never via ad-hoc keydown) ───
 
   const handleNew = useCallback(() => {
     const s = useStore.getState();
-    s.createProject('Untitled');
+    // Единый знаменатель: same base as every other create button; the store
+    // auto-suffixes («Новый проект 2», …) so Ctrl+N can't spawn dup names.
+    s.createProject('Новый проект');
     s.openProjectInfo();
   }, []);
 
@@ -335,17 +346,8 @@ export default function App() {
       // only fires when no inner consumer caught the drop.
       e.preventDefault();
       const files = Array.from(e.dataTransfer?.files || []);
-      const importable = files.filter(f => IMPORTABLE_TYPES.some(ext => f.name.toLowerCase().endsWith(ext)));
       const s = useStore.getState();
       const fs = s.canvas.activeFullscreen;
-      if (importable.length > 0 && fs === 'dag') {
-        queueImporterFiles(importable);
-        s.pushFullscreen({
-          fullscreen: 'library',
-          payload: { target: 'project' },
-        });
-        return;
-      }
       const detected = files.find(f => DROPZONE_TYPES.some(ext => f.name.toLowerCase().endsWith(ext)));
       if (detected && fs !== 'library') {
         showToast(STRINGS.toast.dropFileComingSoon(detected.name), 'info');
@@ -361,16 +363,13 @@ export default function App() {
 
   // Sprint Single-Sidebar — overlay routes (containerWindow,
   // multiTabBlocked, readOnlyForced, underConstruction) take over
-  // the content area but the Sidebar stays. `dag` ALSO renders
-  // through this path for legacy `pushFullscreen('dag')` callers
-  // (NavRail's 🔀 icon is gone; biolog will land via AppShell's
-  // WorkspaceRouter once workspace.active flow becomes the
-  // canonical entry).
+  // the content area but the Sidebar stays. The legacy `dag` overlay
+  // (DagWorkspace) was removed 17.06.2026 — the only entries (Library
+  // tree «→ в DAG» + inspector «Показать в DAG») are gone, so the
+  // route was dead. DagWorkspace + Dag palette files are orphaned
+  // dead code (see TECH_DEBT).
   let overlayContent = null;
   switch (activeFullscreen) {
-    case 'dag':
-      overlayContent = <DagWorkspace />;
-      break;
     case 'containerWindow': {
       const top = navStack[navStack.length - 1];
       overlayContent = <ContainerWindowPlaceholder containerId={top?.payload?.containerId} />;

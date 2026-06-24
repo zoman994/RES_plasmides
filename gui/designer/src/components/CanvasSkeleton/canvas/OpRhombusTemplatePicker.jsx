@@ -5,6 +5,7 @@
  */
 import { useEffect } from 'react';
 import { isPlaceholderContainer } from '../fixture-canvas-skeleton';
+import { Icon } from '../../icons/Icon';
 
 export default function OpRhombusTemplatePicker({
   op, position, containers = [], onPick, onCancel,
@@ -70,9 +71,13 @@ export default function OpRhombusTemplatePicker({
               background: 'transparent',
               cursor: 'pointer',
               color: 'var(--text-primary)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
             }}
           >
-            📦 {c.name} <span style={{ color: 'var(--text-tertiary)', fontSize: 10.5 }}>· {(c.sequence || '').length} bp</span>
+            <Icon name="container" size={14} />
+            <span>{c.name} <span style={{ color: 'var(--text-tertiary)', fontSize: 10.5 }}>· {(c.sequence || '').length} bp</span></span>
           </button>
         ))}
       </div>

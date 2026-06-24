@@ -18,6 +18,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../../../store';
 import PlasmidMiniMap from '../../PlasmidMiniMap';
+import { Icon } from '../../icons/Icon';
 import {
   getRecent,
   getFavorites,
@@ -171,8 +172,11 @@ function EntryRow({
           color: fav ? 'var(--accent-500, #d97706)' : 'var(--text-tertiary)',
           padding: 2,
           lineHeight: 1,
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
         }}
-      >{fav ? '★' : '☆'}</button>
+      ><Icon name="star" size={14} /></button>
     </div>
   );
 }
@@ -206,8 +210,8 @@ function Section({ id, title, count, collapsible = false, defaultExpanded = true
         }}
       >
         {collapsible && (
-          <span style={{ fontSize: 9, color: 'var(--text-tertiary)', minWidth: 10 }}>
-            {open ? '▼' : '▶'}
+          <span style={{ fontSize: 9, color: 'var(--text-tertiary)', minWidth: 10, display: 'inline-flex', alignItems: 'center' }}>
+            <Icon name={open ? 'chevron-down' : 'chevron-right'} size={9} />
           </span>
         )}
         <span style={{ flex: 1 }}>{title}</span>
@@ -355,8 +359,11 @@ export default function PlaceholderTreePicker({ onPick, onCancel }) {
               cursor: 'pointer',
               color: 'var(--text-secondary)',
               padding: '0 4px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
             }}
-          >×</button>
+          ><Icon name="close" size={16} /></button>
         </header>
 
         <div
@@ -389,9 +396,9 @@ export default function PlaceholderTreePicker({ onPick, onCancel }) {
           <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
             {[
               { id: 'all', label: 'Все' },
-              { id: 'circular', label: '◯ Circular' },
-              { id: 'linear', label: '▭ Linear' },
-              { id: 'primer', label: '🧬 Primer' },
+              { id: 'circular', label: 'Circular', icon: 'circular' },
+              { id: 'linear', label: 'Linear', icon: 'linear' },
+              { id: 'primer', label: 'Primer', icon: 'dna' },
             ].map((f) => {
               const active = typeFilter === f.id;
               return (
@@ -409,8 +416,11 @@ export default function PlaceholderTreePicker({ onPick, onCancel }) {
                     fontSize: 10.5,
                     cursor: 'pointer',
                     fontWeight: active ? 600 : 400,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
                   }}
-                >{f.label}</button>
+                >{f.icon && <Icon name={f.icon} size={10.5} style={{ display: 'inline-block', verticalAlign: '-2px' }} />}{f.label}</button>
               );
             })}
           </div>
@@ -517,7 +527,7 @@ export default function PlaceholderTreePicker({ onPick, onCancel }) {
             title="Библиотека (полное дерево)"
             collapsible
             defaultExpanded={libraryOpen}
-            badge="📁"
+            badge={<Icon name="folder" size={11} style={{ display: 'inline-block', verticalAlign: '-2px' }} />}
           >
             <div
               data-testid="skeleton-placeholder-picker-library-hint"

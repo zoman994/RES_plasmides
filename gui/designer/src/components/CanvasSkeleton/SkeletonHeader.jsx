@@ -8,6 +8,8 @@
 import { useCallback, useState } from 'react';
 import { useStore } from '../../store';
 import { STRINGS } from '../../lib/strings';
+import { FEATURE_FLAGS } from '../../lib/feature-flags';
+import { Icon } from '../icons/Icon';
 import { useSkeletonState, useSkeletonActions } from './store/skeleton-context';
 import RestrictionPanel from './RestrictionPanel';
 
@@ -16,6 +18,11 @@ export default function SkeletonHeader() {
   const state = useSkeletonState();
   const actions = useSkeletonActions();
   const popFullscreen = useStore((st) => st.popFullscreen);
+  // Слим-шапка: когда есть хлебные крошки «📁 {проект} › Сборки», дубль «← Назад»
+  // + имя проекта здесь избыточны (крошки показывают имя + проектная крошка
+  // кликом делает popFullscreen; закрытие открытого редактора — собственный
+  // «← Назад» в EditorWindowShell). Откат — флаг breadcrumb=false.
+  const slim = FEATURE_FLAGS.breadcrumb;
   // PC-K4: header shows the active project's name (biolog-readable),
   // not the developer placeholder «Canvas-скелет». Fallback chain:
   // project.name → spec default → «Без названия».
@@ -46,27 +53,31 @@ export default function SkeletonHeader() {
         flexShrink: 0,
       }}
     >
-      <button
-        type="button"
-        data-testid="skeleton-back-btn"
-        onClick={onBack}
-        style={{
-          fontSize: 12,
-          padding: '4px 10px',
-          background: 'transparent',
-          border: '1px solid var(--border-subtle)',
-          borderRadius: 4,
-          cursor: 'pointer',
-          color: 'var(--text-secondary)',
-        }}
-      >{s.backToCanvas || '← Назад'}</button>
+      {!slim && (
+        <button
+          type="button"
+          data-testid="skeleton-back-btn"
+          onClick={onBack}
+          style={{
+            fontSize: 12,
+            padding: '4px 10px',
+            background: 'transparent',
+            border: '1px solid var(--border-subtle)',
+            borderRadius: 4,
+            cursor: 'pointer',
+            color: 'var(--text-secondary)',
+          }}
+        >{s.backToCanvas || '← Назад'}</button>
+      )}
 
-      <span
-        data-testid="skeleton-header-title"
-        style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)', letterSpacing: 0.2 }}
-      >
-        {headerTitle}
-      </span>
+      {!slim && (
+        <span
+          data-testid="skeleton-header-title"
+          style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)', letterSpacing: 0.2 }}
+        >
+          {headerTitle}
+        </span>
+      )}
 
       <RestrictionHeaderToggle />
       {/* M-WORKSPACE — the Layout/Graph view toggle is retired: each assembly
@@ -103,7 +114,7 @@ function RestrictionHeaderToggle() {
           display: 'inline-flex', alignItems: 'center', gap: 4,
         }}
       >
-        🔪 {showReSites ? 'Видны' : 'Скрыты'}
+        <Icon name="restriction" size={14} /> {showReSites ? 'Видны' : 'Скрыты'}
       </button>
       {open && (
         <div

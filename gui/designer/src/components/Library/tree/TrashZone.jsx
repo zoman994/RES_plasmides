@@ -24,6 +24,7 @@ import { useStore } from '../../../store';
 import { STRINGS } from '../../../lib/strings';
 import LibraryZone from './LibraryZone';
 import TreeFolderRow from './TreeFolderRow';
+import { Icon } from '../../icons/Icon';
 
 const BTN_STYLE = {
   fontSize: 11, padding: '1px 6px',
@@ -33,6 +34,7 @@ const BTN_STYLE = {
   color: 'var(--text-secondary)',
   lineHeight: 1.3,
   marginLeft: 4,
+  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
 };
 
 const PURGE_BTN_STYLE = {
@@ -84,14 +86,14 @@ function TrashRow({ name, sub, kind, id, onRestore, onPurge, indent = 2 }) {
         title={trash.restoreTooltip || 'Восстановить'}
         onClick={(e) => { e.stopPropagation(); onRestore?.(); }}
         style={BTN_STYLE}
-      >↺</button>
+      ><Icon name="history" size={13} /></button>
       <button
         type="button"
         data-testid={`trash-purge-${kind}-${id}`}
         title={trash.purgeTooltip || 'Удалить навсегда'}
         onClick={(e) => { e.stopPropagation(); onPurge?.(); }}
         style={PURGE_BTN_STYLE}
-      >✕</button>
+      ><Icon name="close" size={13} /></button>
     </div>
   );
 }
@@ -151,7 +153,7 @@ export default function TrashZone({ expanded = false, onToggle }) {
   return (
     <LibraryZone
       variant="readonly"
-      icon="🗑"
+      icon={<Icon name="trash" size={13} />}
       title={trash.title || 'КОРЗИНА'}
       sub={trash.sub || 'удалено, можно восстановить'}
       count={total}
@@ -176,7 +178,7 @@ export default function TrashZone({ expanded = false, onToggle }) {
         <>
           <TreeFolderRow
             name={trash.entriesFolder || 'Контейнеры'}
-            icon="📋"
+            icon={<Icon name="list" size={13} />}
             count={trashedEntries.length}
             expanded
             indent={1}
@@ -204,7 +206,7 @@ export default function TrashZone({ expanded = false, onToggle }) {
         <>
           <TreeFolderRow
             name={trash.projectsFolder || 'Проекты'}
-            icon="📦"
+            icon={<Icon name="container" size={13} />}
             count={trashedProjects.length}
             expanded
             indent={1}

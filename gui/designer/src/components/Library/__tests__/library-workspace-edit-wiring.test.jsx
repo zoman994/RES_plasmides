@@ -96,11 +96,32 @@ describe('LibraryWorkspace — edit-path wiring', () => {
     expect(ins.getAttribute('data-library-entry-id')).toBe('e1');
   });
 
-  it('suppresses the Importer-only explicit Save buttons (workspace uses silent persist)', async () => {
+  it('surfaces the explicit «Перезаписать» / «Сохранить как версию» panel (Игорь — правки как в выравнивателе)', async () => {
     await useStore.getState().addLibraryEntry(makeContainer({ id: 'e1' }));
     render(<LibraryWorkspace />);
     fireEvent.click(screen.getByTestId('tree-item-loose-e1'));
-    expect(screen.getByTestId('single-inspector-stub').getAttribute('data-show-save')).toBe('false');
+    expect(screen.getByTestId('single-inspector-stub').getAttribute('data-show-save')).toBe('true');
+  });
+
+  it('surfaces «История версий» for an entry with lineage; a node click navigates', async () => {
+    await useStore.getState().addLibraryEntry(makeContainer({ id: 'imp', name: 'pUC19', origin: { kind: 'file_import' } }));
+    await useStore.getState().addLibraryEntry(makeContainer({
+      id: 'br', name: 'pUC19 · испр.', parentEntryId: 'imp',
+      origin: { kind: 'manual_edit', parentEntryId: 'imp', changes: 'замена 66: G→A' },
+    }));
+    render(<LibraryWorkspace />);
+    fireEvent.click(screen.getByTestId('tree-item-loose-br'));
+    const btn = screen.getByTestId('library-open-history');
+    expect(btn.textContent).toContain('2'); // 2-node lineage
+    fireEvent.click(btn);
+    expect(screen.getByTestId('version-timeline-modal')).toBeTruthy();
+    expect(screen.getByTestId('version-node-imp')).toBeTruthy();
+    expect(screen.getByTestId('version-node-br')).toBeTruthy();
+    // click the import node → workspace navigates the inspector to it
+    fireEvent.click(screen.getByTestId('version-node-imp'));
+    await waitFor(() => {
+      expect(screen.getByTestId('single-inspector-stub').getAttribute('data-item-id')).toBe('imp');
+    });
   });
 
   it('onUpdateTags persists to the library entry (entry.tags, store + IndexedDB)', async () => {

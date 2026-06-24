@@ -19,17 +19,18 @@
  *  - cursorPos null / undefined / 0 / length (на границах нет смысла).
  */
 import { useStore } from '../../../store';
+import { Icon } from '../../icons/Icon';
 
 const TOOLS = [
-  { id: 'cut',     icon: '✂',  label: 'Разрезать' },
-  { id: 'replace', icon: '↻',  label: 'Заменить' },
-  { id: 'delete',  icon: '🗑',  label: 'Удалить' },
+  { id: 'cut',     icon: 'digest', label: 'Разрезать' },
+  { id: 'replace', icon: 'swap',   label: 'Заменить' },
+  { id: 'delete',  icon: 'trash',  label: 'Удалить' },
 ];
 
 // 13.05.2026 — toggle для видимости сайтов рестрикции прямо в вивере.
 // Дублирует pill в RestrictionPanel (левый sidebar) — биолог хочет
 // быстрый доступ из обоих контекстов.
-const TOGGLE_TOOL = { id: 're-toggle', icon: '🔪', label: 'Сайты рестрикции' };
+const TOGGLE_TOOL = { id: 're-toggle', icon: 'restriction', label: 'Сайты рестрикции' };
 
 export default function SequenceToolbar({
   tab = 'sequence',
@@ -153,7 +154,7 @@ export default function SequenceToolbar({
                 e.currentTarget.style.borderColor = 'var(--border-subtle, #e7e5e4)';
               }}
             >
-              <span aria-hidden style={{ lineHeight: 1 }}>{tool.icon}</span>
+              <Icon name={tool.icon} size={18} />
             </button>
           );
         })}

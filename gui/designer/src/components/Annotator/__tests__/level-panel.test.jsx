@@ -28,13 +28,14 @@ const COMMON_RESULT = {
 };
 
 describe('LevelPanel — three-level progression', () => {
-  it('renders three level sections in order L1, L2, L3', () => {
+  it('renders level sections in order L1, L2, L3, GENE', () => {
     render(<LevelPanel />);
     const sections = screen.getAllByTestId('annotator-level-section');
-    expect(sections).toHaveLength(3);
+    expect(sections).toHaveLength(4);
     expect(sections[0].dataset.levelId).toBe('L1');
     expect(sections[1].dataset.levelId).toBe('L2');
     expect(sections[2].dataset.levelId).toBe('L3');
+    expect(sections[3].dataset.levelId).toBe('GENE'); // «Структура гена»
   });
 
   it('L1 is expanded by default; L2 and L3 are collapsed', () => {
@@ -405,6 +406,78 @@ describe('LevelPanel — three-level progression', () => {
       );
       // Only the 0.95-confidence hit survives the threshold → count of 1.
       expect(screen.getAllByTestId('annotator-level-accept-all')[0].textContent).toMatch(/1/);
+    });
+  });
+
+  // «Структура гена» — the 🧬 intron analysis surfaced as a panel level, with a
+  // single «Принять структуру» (gene + introns are cross-linked → one unit).
+  describe('Структура гена (intron analysis)', () => {
+    const GENE_RESULT = {
+      pluginId: 'gene-parser',
+      pluginName: 'Структура гена',
+      regions: [
+        { id: 'g1', name: 'ген', type: 'gene', level: 'region', start: 0, end: 1500, strand: 1 },
+        { id: 'i1', name: 'интрон 1', type: 'intron', level: 'detail', regionId: 'g1', start: 461, end: 529, strand: 1 },
+        { id: 'i2', name: 'интрон 2', type: 'intron', level: 'detail', regionId: 'g1', start: 1226, end: 1289, strand: 1 },
+      ],
+    };
+
+    it('renders the GENE section last and auto-expands it on a result', () => {
+      render(<LevelPanel results={{ 'gene-parser': GENE_RESULT }} threshold={0} />);
+      const sections = screen.getAllByTestId('annotator-level-section');
+      const gene = sections.find((s) => s.dataset.levelId === 'GENE');
+      expect(gene.dataset.expanded).toBe('true');
+      expect(screen.getByTestId('annotator-gene-structure')).toBeTruthy();
+    });
+
+    it('accepts the WHOLE structure as one unit (gene + introns)', () => {
+      const onAcceptMany = vi.fn();
+      render(<LevelPanel results={{ 'gene-parser': GENE_RESULT }} threshold={0} onAcceptMany={onAcceptMany} />);
+      fireEvent.click(screen.getByTestId('annotator-gene-accept'));
+      expect(onAcceptMany).toHaveBeenCalledWith(['g1', 'i1', 'i2']);
+      // there is NO per-row accept in the gene section (no partial accept)
+      expect(screen.queryByTestId('annotator-result-accept')).toBeNull();
+    });
+
+    it('rejects every region of the structure', () => {
+      const onReject = vi.fn();
+      render(<LevelPanel results={{ 'gene-parser': GENE_RESULT }} threshold={0} onReject={onReject} />);
+      fireEvent.click(screen.getByTestId('annotator-gene-reject'));
+      expect(onReject).toHaveBeenCalledTimes(3);
+    });
+
+    it('shows the accepted state once every region is accepted', () => {
+      render(
+        <LevelPanel
+          results={{ 'gene-parser': GENE_RESULT }}
+          threshold={0}
+          acceptedRegionIds={{ g1: true, i1: true, i2: true }}
+        />,
+      );
+      expect(screen.getByText(/структура принята/)).toBeTruthy();
+    });
+
+    it('hosts the analysis controls (organism + 🧬) in the section, auto-expanded', () => {
+      const onDetect = vi.fn();
+      render(
+        <LevelPanel
+          geneAnalysis={{ organism: 'fungi', onOrganismChange: vi.fn(), onDetect, busy: false, hasSelection: true, result: null }}
+        />,
+      );
+      const gene = screen.getAllByTestId('annotator-level-section').find((s) => s.dataset.levelId === 'GENE');
+      expect(gene.dataset.expanded).toBe('true');         // controls visible without manual expand
+      expect(screen.getByTestId('annotator-organism')).toBeTruthy();
+      fireEvent.click(screen.getByTestId('annotator-detect-introns'));
+      expect(onDetect).toHaveBeenCalled();
+    });
+
+    it('shows the result status message inside the section', () => {
+      render(
+        <LevelPanel
+          geneAnalysis={{ organism: 'fungi', onOrganismChange: vi.fn(), onDetect: vi.fn(), busy: false, hasSelection: false, result: { needsSelection: true, cryptic: [] } }}
+        />,
+      );
+      expect(screen.getByTestId('annotator-splice-result').textContent).toMatch(/Выдели ген/i);
     });
   });
 });

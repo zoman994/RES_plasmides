@@ -10,6 +10,7 @@
  * (`anchor.x`, `anchor.y`).
  */
 import { useEffect, useRef } from 'react';
+import { Icon } from '../../icons/Icon';
 
 export default function PieceContextMenu({
   anchor,
@@ -38,14 +39,14 @@ export default function PieceContextMenu({
   }, [onClose]);
 
   const items = [
-    onRename && { id: 'rename', icon: '✏️', label: 'Переименовать', onClick: onRename },
-    onToggleRC && { id: 'rc', icon: '🔄', label: 'Обратное дополнение (RC)', onClick: onToggleRC },
-    onChangeRange && { id: 'range', icon: '📝', label: 'Изменить диапазон…', onClick: onChangeRange },
+    onRename && { id: 'rename', icon: 'edit', label: 'Переименовать', onClick: onRename },
+    onToggleRC && { id: 'rc', icon: 'swap', label: 'Обратное дополнение (RC)', onClick: onToggleRC },
+    onChangeRange && { id: 'range', icon: 'note', label: 'Изменить диапазон…', onClick: onChangeRange },
     onAddMutation && { id: 'mut', icon: '💎', label: 'Добавить mutation…', onClick: onAddMutation },
     selectionSize >= 2 && onSew && {
-      id: 'sew', icon: '🔗', label: `Сшить (${selectionSize})…`, onClick: onSew, accent: true,
+      id: 'sew', icon: 'link', label: `Сшить (${selectionSize})…`, onClick: onSew, accent: true,
     },
-    onDelete && { id: 'del', icon: '🗑', label: 'Удалить', onClick: onDelete, danger: true },
+    onDelete && { id: 'del', icon: 'trash', label: 'Удалить', onClick: onDelete, danger: true },
   ].filter(Boolean);
 
   return (
@@ -89,7 +90,9 @@ export default function PieceContextMenu({
             textAlign: 'left',
           }}
         >
-          <span style={{ width: 18, textAlign: 'center' }} aria-hidden>{it.icon}</span>
+          <span style={{ width: 18, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} aria-hidden>
+            {it.icon === '💎' ? '💎' : <Icon name={it.icon} size={14} />}
+          </span>
           <span style={{ flex: 1 }}>{it.label}</span>
         </button>
       ))}

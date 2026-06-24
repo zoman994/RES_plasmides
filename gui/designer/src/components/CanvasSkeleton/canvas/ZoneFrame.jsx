@@ -12,6 +12,7 @@ import ZoneLinkBadge from './ZoneLinkBadge';
 import { selectCrossZoneSourcesForZone } from '../lib/zone-link-resolver';
 import { nodeListInZone } from '../lib/zone-model';
 import AddPiecePopover from './AddPiecePopover';
+import { Icon } from '../../icons/Icon';
 
 const Z = STRINGS.canvasSkeleton.zones;
 const SM = Z.sequenceMode;
@@ -124,9 +125,9 @@ export default function ZoneFrame({
             data-testid={`zone-notes-badge-${zone.id}`}
             title={zone.notes}
             aria-label="notes"
-            style={{ fontSize: 12, cursor: 'help' }}
+            style={{ display: 'inline-flex', alignItems: 'center', cursor: 'help' }}
           >
-            📝
+            <Icon name="note" size={13} />
           </span>
         )}
         {crossZoneSources.length > 0 && (
@@ -168,9 +169,12 @@ export default function ZoneFrame({
             color: 'var(--zone-header-fg)',
             cursor: 'pointer',
             pointerEvents: 'auto',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
           }}
         >
-          +
+          <Icon name="plus" size={14} />
         </button>
         <button
           type="button"
@@ -241,7 +245,7 @@ export default function ZoneFrame({
             whiteSpace: 'nowrap',
           }}
         >
-          🧬 {Z.openAssembly}
+          <Icon name="dna" size={12} style={{ display: 'inline-block', verticalAlign: '-2px' }} /> {Z.openAssembly}
         </button>
       </div>
 

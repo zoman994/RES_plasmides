@@ -50,18 +50,23 @@ describe('M-X.7a v2 K3 — LibraryActionRow', () => {
     expect(screen.getByTestId('library-action-delete')).toBeTruthy();
   });
 
-  it('active_bodge × container shows saveAsVersion disabled with M-X.7b tooltip', () => {
+  it('active_bodge × container shows only WORKING actions (no DAG / saveAsVersion stubs)', () => {
     render(<LibraryActionRow entry={container} zone="active_bodge" ctx={{}} />);
-    const save = screen.getByTestId('library-action-saveAsVersion');
-    expect(save.disabled).toBe(true);
-    expect(save.getAttribute('title')).toMatch(/M-X\.7b/);
+    // The dead/disabled rows were removed in the 17.06.2026 cleanup.
+    expect(screen.queryByTestId('library-action-saveAsVersion')).toBeNull();
+    expect(screen.queryByTestId('library-action-showInDag')).toBeNull();
+    expect(screen.queryByTestId('library-action-containerWindow')).toBeNull();
+    // What remains is enabled.
+    expect(screen.getByTestId('library-action-extractToLoose')).toBeTruthy();
+    expect(screen.getByTestId('library-action-delete')).toBeTruthy();
   });
 
-  it('readonly_bodge × container shows openAsActive disabled with M-X.9 tooltip', () => {
+  it('readonly_bodge × container shows only copy + align (no openAsActive/view stubs)', () => {
     render(<LibraryActionRow entry={container} zone="readonly_bodge" ctx={{ hasActiveProject: true }} />);
-    const openAs = screen.getByTestId('library-action-openAsActive');
-    expect(openAs.disabled).toBe(true);
-    expect(openAs.getAttribute('title')).toMatch(/M-X\.9/);
+    expect(screen.queryByTestId('library-action-openAsActive')).toBeNull();
+    expect(screen.queryByTestId('library-action-view')).toBeNull();
+    expect(screen.getByTestId('library-action-copyToActive')).toBeTruthy();
+    expect(screen.getByTestId('library-action-align')).toBeTruthy();
   });
 
   it('lab_pool × primer shows toggleLabStock with «Снять метку» when inLabStock=true', () => {
@@ -83,59 +88,28 @@ describe('M-X.7a v2 K3 — LibraryActionRow', () => {
     expect(onClone).toHaveBeenCalledWith('c1');
   });
 
-  it('disabled action click does NOT invoke handler (button disabled prevents propagation)', () => {
-    const onSave = vi.fn();
+  it('disabled action click does NOT invoke handler (addToActiveProject w/o active project)', () => {
+    const onClone = vi.fn();
     render(
       <LibraryActionRow
         entry={container}
-        zone="active_bodge"
-        ctx={{ saveLibraryEntryAsVersion: onSave }}
+        zone="loose"
+        ctx={{ hasActiveProject: false, cloneEntryToActiveProject: onClone }}
       />,
     );
-    fireEvent.click(screen.getByTestId('library-action-saveAsVersion'));
-    expect(onSave).not.toHaveBeenCalled();
+    const btn = screen.getByTestId('library-action-addToActiveProject');
+    expect(btn.disabled).toBe(true);
+    fireEvent.click(btn);
+    expect(onClone).not.toHaveBeenCalled();
   });
 });
 
-describe('M-X.7a v2 K3 — read-only banner conditional', () => {
-  it('SequenceTab + isReadOnlyZone=true + editable=false → banner visible', () => {
+describe('read-only banner conditional', () => {
+  // 17.06.2026 — the Sequence tab is editable by default; its read-only
+  // banner was removed (Игорь). It NEVER renders now, regardless of props.
+  it('SequenceTab renders NO read-only banner (editable by default)', () => {
     render(
-      <SequenceTab
-        sequence="ATGC"
-        annotations={[]}
-        topology="circular"
-        name="X"
-        editable={false}
-        isReadOnlyZone
-      />,
-    );
-    expect(screen.getByTestId('sequence-readonly-banner')).toBeTruthy();
-  });
-
-  it('SequenceTab + isReadOnlyZone=false → no banner (loose/active/lab)', () => {
-    render(
-      <SequenceTab
-        sequence="ATGC"
-        annotations={[]}
-        topology="circular"
-        name="X"
-        editable={false}
-        isReadOnlyZone={false}
-      />,
-    );
-    expect(screen.queryByTestId('sequence-readonly-banner')).toBeNull();
-  });
-
-  it('SequenceTab + editable=true (manual-edit branch active) → no banner even in readonly zone', () => {
-    render(
-      <SequenceTab
-        sequence="ATGC"
-        annotations={[]}
-        topology="circular"
-        name="X"
-        editable
-        isReadOnlyZone
-      />,
+      <SequenceTab sequence="ATGC" annotations={[]} topology="circular" name="X" editable />,
     );
     expect(screen.queryByTestId('sequence-readonly-banner')).toBeNull();
   });

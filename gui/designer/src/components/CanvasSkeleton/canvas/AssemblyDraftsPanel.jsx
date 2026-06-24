@@ -17,6 +17,7 @@ import { useSkeletonState, useSkeletonActions } from '../store/skeleton-context'
 import { selectAllZones } from '../store/selectors-zones';
 import { nodeListInZone } from '../lib/zone-model';
 import { buildAssemblyZoneAction } from './assembly-zone-create';
+import { Icon } from '../../icons/Icon';
 
 function zoneNodeCount(state, zoneId) {
   const { containers, pieces, operations } = nodeListInZone(state, zoneId);
@@ -76,9 +77,12 @@ export default function AssemblyDraftsPanel() {
           fontWeight: 600,
           cursor: 'pointer',
           boxShadow: '0 2px 8px rgba(28,25,23,0.12)',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 6,
         }}
       >
-        📋 Сборки ({zones.length})
+        <Icon name="list" size={14} /> Сборки ({zones.length})
       </button>
 
       {open && (
@@ -151,8 +155,11 @@ export default function AssemblyDraftsPanel() {
                     color: 'var(--text-primary)',
                     padding: 0,
                     marginBottom: 2,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
                   }}
-                >🧬 {z.name}</button>
+                ><Icon name="dna" size={13} /> {z.name}</button>
                 <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginBottom: 4 }}>
                   {count} узл.
                 </div>

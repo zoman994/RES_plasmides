@@ -91,6 +91,36 @@ export function SkeletonProvider({ children }) {
     if (!rehydratedRef.current) return;
     debouncedSaver(state, currentProjectId);
   }, [state, currentProjectId]);
+
+  // UX_DIRECTION фаза 2 — мост «открыть конкретную сборку из рельса». Рельс
+  // (главный стор) не может писать в этот skeleton-стор напрямую, поэтому он
+  // ставит `pendingAssemblyId`, а мы его потребляем, когда нужная зона уже в
+  // состоянии (покрывает и свежий mount-load, и уже-открытый канвас). Benign,
+  // когда pending пуст (выходит сразу).
+  const pendingAssemblyId = useStore((s) => s.pendingAssemblyId);
+  useEffect(() => {
+    if (!pendingAssemblyId || !rehydratedRef.current) return;
+    const zones = Array.isArray(state.zones) ? state.zones : [];
+    if (zones.some((z) => z.id === pendingAssemblyId)) {
+      dispatch({ type: 'SET_ACTIVE_ASSEMBLY', zoneId: pendingAssemblyId });
+      const consume = useStore.getState().consumePendingAssemblyId;
+      if (typeof consume === 'function') consume();
+    }
+  }, [pendingAssemblyId, state, dispatch]);
+
+  // UX_DIRECTION фаза 2 — LIVE-зеркало списка сборок в главный стор, чтобы рельс
+  // (Sidebar) обновлялся МГНОВЕННО при создании/переименовании/удалении сборки в
+  // канвасе (а не ждал дебаунс-снапшот + выход из канваса). zoneSig — примитив,
+  // эффект срабатывает только на реальную смену зон (не на каждый ре-рендер).
+  const setActiveProjectAssemblies = useStore((s) => s.setActiveProjectAssemblies);
+  const zoneSig = (Array.isArray(state.zones) ? state.zones : [])
+    .map((z) => `${z.id}:${z.name || ''}`).join('|');
+  useEffect(() => {
+    if (typeof setActiveProjectAssemblies !== 'function') return;
+    const zones = Array.isArray(state.zones) ? state.zones : [];
+    setActiveProjectAssemblies(zones.map((z) => ({ id: z.id, name: z.name || 'Сборка' })));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zoneSig, setActiveProjectAssemblies]);
   const actions = useMemo(() => ({
     setView: (view) => dispatch({ type: 'SET_VIEW', view }),
     // F1 M-CANVAS-WINDOW — multi-tab editor (DEC-CANVAS-WIN-01..04).
@@ -147,6 +177,8 @@ export function SkeletonProvider({ children }) {
     opSetPosition: (operationId, position) => dispatch({ type: 'OP_SET_POSITION', operationId, position }),
     opSetKind: (operationId, kind) => dispatch({ type: 'OP_SET_KIND', operationId, kind }),
     opSetParams: (operationId, params) => dispatch({ type: 'OP_SET_PARAMS', operationId, params }),
+    // Кирпич 3c — derive an op_mutagenesis node on the canvas from an edit.
+    deriveMutagenesisOp: (payload) => dispatch({ type: 'DERIVE_MUTAGENESIS_OP', payload }),
     opReset: (operationId) => dispatch({ type: 'OP_RESET', operationId }),
     // A5 — drag-to-connect.
     opAddInput: (operationId, containerId) => dispatch({ type: 'OP_ADD_INPUT', operationId, containerId }),
@@ -183,7 +215,14 @@ export function SkeletonProvider({ children }) {
     }),
     createAssemblyDraft: (opts = {}) => dispatch({ type: 'CREATE_ASSEMBLY_DRAFT', ...opts }),
     removeAssemblyDraft: (draftId) => dispatch({ type: 'REMOVE_ASSEMBLY_DRAFT', draftId }),
-    renameAssemblyDraft: (draftId, name) => dispatch({ type: 'RENAME_ASSEMBLY_DRAFT', draftId, name }),
+    // После T6 сборки = ZONES (draftId === zone.id); legacy RENAME_ASSEMBLY_DRAFT
+    // — no-op (assemblyDrafts пуст). Диспатчим И его (для legacy draft-теста), И
+    // UPDATE_ZONE_NAME (реальное переименование зоны → header/вкладка/рельс через
+    // live-mirror обновляются). Оба безопасны: каждый no-op, если цели нет.
+    renameAssemblyDraft: (draftId, name) => {
+      dispatch({ type: 'RENAME_ASSEMBLY_DRAFT', draftId, name });
+      dispatch({ type: 'UPDATE_ZONE_NAME', zoneId: draftId, name });
+    },
     setAssemblyDraftTopology: (draftId, circular) => dispatch({ type: 'SET_ASSEMBLY_DRAFT_TOPOLOGY', draftId, circular }),
     setAssemblyDraftPosition: (draftId, position) => dispatch({ type: 'SET_ASSEMBLY_DRAFT_POSITION', draftId, position }),
     insertSegment: (draftId, sourceContainerId, start, end, rc, insertAtIndex, opts = {}) => dispatch({
@@ -195,6 +234,12 @@ export function SkeletonProvider({ children }) {
       // V89 — RE-сайт выбор → acquisitionMethod='restriction'.
       // Курсор/feature/numeric → 'cursor' | 'feature' | 'numeric'.
       acquisitionMethod: opts.acquisitionMethod || null,
+      // V157 — RE-pair carries its enzymes/cut sites so the 'restriction'
+      // piece gets non-empty acquisitionParams (required by piece-invariants).
+      acquisitionParams: opts.acquisitionParams || undefined,
+      // #2 (invert/backbone) — an explicit multi-range slice (the circular
+      // complement [hi..end]+[0..lo]); overrides single [start,end] when set.
+      ranges: Array.isArray(opts.ranges) && opts.ranges.length > 0 ? opts.ranges : undefined,
     }),
     insertManualSegment: (draftId, params = {}, insertAtIndex) => dispatch({
       type: 'INSERT_MANUAL_SEGMENT', draftId, ...params, insertAtIndex,
@@ -249,6 +294,11 @@ export function SkeletonProvider({ children }) {
       draftId, range, direction, source, name, sequence,
     }) => dispatch({
       type: 'WRITE_ASSEMBLY_PRIMER', draftId, range, direction, source, name, sequence,
+    }),
+    // Кирпич 3b — insert pre-designed (mutagenesis) primers into the pool,
+    // tagged with project + assembly provenance in each record's `source`.
+    addDerivedAssemblyPrimers: (draftId, primers) => dispatch({
+      type: 'ADD_DERIVED_ASSEMBLY_PRIMERS', draftId, primers,
     }),
     removeAssemblyPrimer: (draftId, primerId) => dispatch({ type: 'REMOVE_ASSEMBLY_PRIMER', draftId, primerId }),
     // SPEC_EDITABLE_ASSEMBLY_S3 §5.1 — shift saved-primer coordinates

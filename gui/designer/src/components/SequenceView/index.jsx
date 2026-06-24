@@ -44,7 +44,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { useStore } from "../../store";
+import { useStore, selectActiveSetEnzymes } from "../../store";
 import { SEQUENCE_VIEW_DEFAULTS } from "../../store/uiSlice.js";
 import {
   SEQUENCE_FONT_FAMILY,
@@ -63,7 +63,8 @@ import { detectORFRanges } from "./lib/orf-ranges.js";
 import { resolveFramesMode } from "./lib/frames-mode.js";
 import { useRowSelectionIsolation } from "./lib/row-selection-isolation.js";
 import { runPredictors } from "../../predicted-detection.js";
-import { scanAllSites } from "../../restriction-db.js";
+import { scanAllSites, RE_ENZYMES } from "../../restriction-db.js";
+import { stickyEnds as computeStickyEnds } from "./lib/selection-ops.js";
 import { FEATURE_STROKE } from "../../feature-palette.js";
 
 import {
@@ -73,7 +74,11 @@ import {
   __IS_TEST_ENV__,
 } from "./constants.js";
 import { buildFeatureMap, mergeWithPredicted, flattenSites } from "./lib/feature-map.js";
-import { attachScrollHandle } from "./lib/scroll-handle.js";
+import { attachScrollHandle, findScrollingAncestor } from "./lib/scroll-handle.js";
+import {
+  shouldVirtualize, computeDesiredWindow, windowsEqual, isActiveIdx, DEFAULT_OVERSCAN,
+  directionalOverscan,
+} from "./lib/line-window.js";
 import CaretOverlay from "./overlays/CaretOverlay.jsx";
 import SelectionOverlay from "./overlays/SelectionOverlay.jsx";
 import OriginMarkerOverlay from "./overlays/OriginMarkerOverlay.jsx";
@@ -83,7 +88,7 @@ import OutOfRangeMaskOverlay from "./overlays/OutOfRangeMaskOverlay.jsx";
 import { flankedSpan } from "./lib/primer-flank.js";
 import PrimerFromSelectionModal from "./popups/PrimerFromSelectionModal.jsx";
 import PromoteToCommonModal from "./popups/PromoteToCommonModal.jsx";
-import { reverseComplement } from "../../sequence-utils.js";
+import { reverseComplement, complement } from "../../sequence-utils.js";
 import SelectionContextMenu from "./popups/SelectionContextMenu.jsx";
 import { buildSelectionMenuItems } from "./popups/build-selection-menu-items.js";
 import SequenceFloatingTooltips from "./overlays/SequenceFloatingTooltips.jsx";
@@ -96,6 +101,7 @@ import { useSequenceKeyboard } from "./hooks/useSequenceKeyboard.js";
 import { usePieceHotkey } from "./hooks/usePieceHotkey";
 import { usePrimerHotkeys } from "./hooks/usePrimerHotkeys";
 import { useSelectionState } from "./hooks/useSelectionState.js";
+import { buildSequencePasteOp } from "./lib/paste-op.js";
 import { useSelectionEdit } from "./hooks/useSelectionEdit.js";
 import { useAnnotationDrag } from "./hooks/useAnnotationDrag.js";
 import { useAnnotationRename } from "./hooks/useAnnotationRename.js";
@@ -119,9 +125,17 @@ export { FEATURE_STROKE, LABEL_WIDTH };
 const sliceSelector = (state) =>
   state && state.sequenceView ? state.sequenceView : SEQUENCE_VIEW_DEFAULTS;
 
+// RC-B1 — stable resolution object for an active reading-frame override (frozen so
+// its identity never churns; avoids re-rendering every line/overlay each frame the
+// upstream framesResolution recomputes while a frame is pinned). Review nit.
+const FRAME_OVERRIDE_RESOLUTION = Object.freeze({ strategy: 'hybrid', dominant: null, coverage: 0 });
+
 const SequenceView = forwardRef(function SequenceView({
   fragments,
   circular = false,
+  // Terminal sticky-end staircase (Игорь 22.06 «физическая ступенька»):
+  // { left, right } from terminalStagger(segment, RE_ENZYMES). Null → no staircase.
+  terminalStagger = null,
   primers = EMPTY_PRIMERS,
   // eslint-disable-next-line no-unused-vars
   readOnly = true,
@@ -137,6 +151,18 @@ const SequenceView = forwardRef(function SequenceView({
   // display-only.
   onRestrictionClick,
   restrictionHighlightKey,
+  // RS-PICK4 (Игорь 22.06: «выбор набора должен менять кол-во сайтов на
+  // последовательности»). Opt-in enzyme ALLOW-LIST: when an array, it OVERRIDES
+  // the store cut-count/active-set filter and shows exactly these enzymes' sites
+  // (always on, like the map's digest mode). The assembly picker passes its
+  // mapEnzymeFilter so the набор/picked/unique selection drives the sequence too.
+  // undefined → store-driven behaviour (every other consumer unchanged).
+  reEnzymesFilter = undefined,
+  // Backbone-invert OVERRIDE (assembly picker): when a boolean, it CONTROLS the
+  // selection-complement highlight, superseding the hook's internal `inverted`
+  // (the right-click «Инвертировать выделение»). Aliased to avoid colliding with
+  // that hook value. undefined → hook-driven (every other consumer unchanged).
+  inverted: invertedProp = undefined,
   caretPos = null,
   caretAnchor = null,
   selectionMode = null,
@@ -208,6 +234,34 @@ const SequenceView = forwardRef(function SequenceView({
   // the selected slice reads as foreground. Library / Importer / PCR
   // leave it undefined → overlay renders nothing (back-compat).
   outOfRangeMask = null,
+  // «Align to reference» (opt-in). `alignmentRead` = adapter output from
+  // lib/alignment/align-to-reference.js → read drawn as a track beneath the
+  // reference; `chromatogram` → Sanger trace below the read. Both undefined for
+  // every existing consumer → no behaviour change.
+  alignmentRead = null,
+  // Multi-read stack (P6): array of read rows incl. an optional consensus row.
+  alignmentReads = null,
+  chromatogram = null,
+  chromatogramMaxVal = 1,
+  // «Align to reference» display knobs (opt-in). `showBottomStrand` OVERRIDES
+  // the user setting when defined — the align view passes `false` to drop the
+  // complementary strand (the read, not the reverse strand, is what matters).
+  // Left undefined by every other consumer → the store setting wins, no change.
+  // `alignmentColorMode` ('plain'|'nucleotide') colours the aligned read bases.
+  showBottomStrand: showBottomStrandProp = undefined,
+  alignmentColorMode = 'plain',
+  // Per-line align labels (opt-in): reference name in the top-strand gutter,
+  // read name in the read-track gutter.
+  alignmentReferenceName = undefined,
+  alignmentReadName = undefined,
+  // AA-effect badges per ref position (align CDS mismatches): {pos -> {effect}}.
+  aaEffects = undefined,
+  // P3 — «accept read base» (pairwise): onAcceptBase(refPos, readBase).
+  onAcceptBase = null,
+  // Layer toggles (opt-in, default visible). Align view drives these from its
+  // toolbar; every other consumer keeps the current behaviour.
+  showAnnotations = true,
+  showAATrack = true,
 }, ref) {
   const containerRef = useRef(null);
   const [charPx, setCharPx] = useState(7.2);
@@ -342,9 +396,17 @@ const SequenceView = forwardRef(function SequenceView({
   }, [tracksReady]);
 
   const settings = useStore(sliceSelector);
+  // Effective bottom-strand visibility: the opt-in prop override wins when
+  // defined (align view → false), otherwise the user setting drives it.
+  const effShowBottomStrand = showBottomStrandProp == null
+    ? settings.showBottomStrand
+    : showBottomStrandProp;
   const showReSites = useStore((s) => s.showReSites);
   const reFilter = useStore((s) => s.reFilter);
   const reMinSiteLen = useStore((s) => s.reMinSiteLen);
+  // RS-C4 — the «active set» enzyme allow-list (null = no active set). Restricts
+  // which enzymes' sites are visible, applied on TOP of the cut-count filter.
+  const activeSetEnzymes = useStore(selectActiveSetEnzymes);
 
   const { fullSeq, features: confidentFeatures } = useMemo(
     () => buildFeatureMap(fragments),
@@ -425,11 +487,32 @@ const SequenceView = forwardRef(function SequenceView({
     [settings.framesMode, settings.autoThreshold, features, fullSeq.length, orfRanges],
   );
 
+  // RS-PICK4 — a stable key so the memo doesn't churn on the prop array identity.
+  // Empty array → null (no override → store-driven), mirroring PlasmidMapV2 so the
+  // map and the sequence stay consistent.
+  const reEnzKey = Array.isArray(reEnzymesFilter) && reEnzymesFilter.length
+    ? reEnzymesFilter.slice().sort().join('|') : null;
   const reSites = useMemo(() => {
-    if (!showReSites || !fullSeq) return [];
+    const override = reEnzKey != null;
+    // Override (allow-list) shows its enzymes' sites regardless of the global
+    // toggle; otherwise honour showReSites + the cut-count / active-set filter.
+    if (!fullSeq || (!override && !showReSites)) return [];
     const scan = scanAllSites(fullSeq, { circular, minSiteLen: reMinSiteLen || 6 });
-    return flattenSites(scan, reFilter);
-  }, [showReSites, fullSeq, circular, reMinSiteLen, reFilter]);
+    if (override) {
+      return flattenSites(scan, { enzymes: reEnzKey.split('|') });
+    }
+    return flattenSites(scan, { mode: reFilter, enzymes: activeSetEnzymes });
+  }, [showReSites, fullSeq, circular, reMinSiteLen, reFilter, activeSetEnzymes, reEnzKey]);
+
+  // «Липкие концы» — when the current selection's ends land on restriction cuts
+  // (reSites[].position is the top-strand cut), derive the per-end overhang so
+  // SelectionOverlay can stagger the two strands. null when neither end is a cut.
+  const stickyEndsInfo = useMemo(() => computeStickyEnds({
+    selStart: Math.min(caretAnchor, caretPos),
+    selEnd: Math.max(caretAnchor, caretPos),
+    sites: reSites,
+    enzymes: RE_ENZYMES,
+  }), [caretAnchor, caretPos, reSites]);
 
   // Container measurement — useLayoutEffect (not useEffect) so the
   // remeasure happens BEFORE the first paint. Switching to
@@ -566,6 +649,146 @@ const SequenceView = forwardRef(function SequenceView({
     // are only what the line math actually reads (topology, sequence,
     // wrap width, the bridge line).
   }, [circular, fullSeq, charsPerLine, lines, viewportHeight, mainLineHeight]);
+
+  // ---- Virtualization (perf, 19.06.2026 — Игорь «выравниватель всё ещё
+  // медленный» on >5 kb references). Only mount line indices near the
+  // viewport; render the rest as fixed-height placeholders (SequenceLine
+  // active={false}). Disabled in test env so all existing fixtures keep the
+  // eager DOM (happy-dom doesn't measure layout anyway → the rect-driven
+  // window can't be exercised there; correctness is covered by the pure
+  // line-window unit tests + the SequenceLine placeholder test + browser
+  // verification, the same approach as PERF-4/PERF-8). Size-gated so only
+  // large sequences (the slow case) ever leave the eager path.
+  const virtualize = !__IS_TEST_ENV__ && shouldVirtualize(lines.length);
+  const [lineWindow, setLineWindow] = useState(null);
+  const lineWindowRef = useRef(null);
+  lineWindowRef.current = lineWindow;
+  // Per-line measured heights (idx → border-box px), recorded as real lines
+  // pass through the window. A placeholder for a measured line reuses ITS own
+  // height, so total scrollHeight is invariant when a line flips real↔placeholder
+  // — kills the end-of-scroll up/down jitter (heights vary: annotation/AA/read
+  // tracks make some lines taller than a single `mainLineHeight` estimate).
+  const lineHeightsRef = useRef(new Map());
+  // Last measured firstVisibleIdx — for scroll velocity (lines/tick) → directional overscan.
+  const lastFirstVisibleRef = useRef(NaN);
+
+  // First-paint window (before the scroll driver has measured): a head band
+  // sized to the viewport, so the very first render is already narrow — the
+  // «появление» win doesn't wait a frame for the driver.
+  const effectiveWindow = useMemo(() => {
+    if (!virtualize) return null;
+    if (lineWindow) return lineWindow;
+    const lh = mainLineHeight > 0 ? mainLineHeight : 120;
+    const vh = viewportHeight > 0 ? viewportHeight : 800;
+    return computeDesiredWindow({
+      count: lines.length,
+      firstVisibleIdx: 0,
+      lastVisibleIdx: Math.max(0, Math.ceil(vh / lh)),
+      overscan: DEFAULT_OVERSCAN,
+    });
+  }, [virtualize, lineWindow, lines.length, viewportHeight, mainLineHeight]);
+
+  const placeholderHeight = mainLineHeight > 0 ? mainLineHeight : 120;
+
+  // Measure which rendered MAIN lines sit in the scroller viewport and
+  // extrapolate the visible index band linearly from the nearest rendered
+  // anchor (robust to the band being partly/fully off-screen after a jump —
+  // converges in 1–2 ticks). Same scroller-resolution + rect approach as
+  // AlignReferenceView.computeVisible.
+  const recomputeWindow = useCallback(() => {
+    if (!shouldVirtualize(lines.length)) {
+      if (lineWindowRef.current !== null) setLineWindow(null);
+      return;
+    }
+    const root = containerRef.current;
+    if (!root) return;
+    const scroller = (root.scrollHeight > root.clientHeight + 1)
+      ? root : findScrollingAncestor(root);
+    let vTop; let vBottom;
+    try {
+      if (scroller && scroller.getBoundingClientRect
+        && scroller !== document.documentElement && scroller !== document.body) {
+        const r = scroller.getBoundingClientRect();
+        vTop = r.top; vBottom = r.bottom;
+      } else { vTop = 0; vBottom = window.innerHeight || 0; }
+    } catch { vTop = 0; vBottom = window.innerHeight || 0; }
+    const lineH = mainLineHeight > 0 ? mainLineHeight : 120;
+    const els = root.querySelectorAll(
+      '[data-testid="sequence-view-line"][data-wraptail-kind="main"]',
+    );
+    let anchorIdx = null; let anchorTop = null;
+    for (const el of els) {
+      const idx = parseInt(el.dataset.lineIdx || '', 10);
+      if (Number.isNaN(idx)) continue;
+      let r; try { r = el.getBoundingClientRect(); } catch { continue; }
+      // Remember each REAL line's height so its placeholder reuses it (stable
+      // scrollHeight → no jitter). Skip placeholders (their height is the
+      // estimate we're trying to replace).
+      if (el.dataset.placeholder !== 'true' && r.height > 0) {
+        lineHeightsRef.current.set(idx, r.height);
+      }
+      if (anchorIdx === null || Math.abs(r.top - vTop) < Math.abs(anchorTop - vTop)) {
+        anchorIdx = idx; anchorTop = r.top;
+      }
+    }
+    let firstVisibleIdx = NaN; let lastVisibleIdx = NaN;
+    if (anchorIdx !== null) {
+      firstVisibleIdx = anchorIdx + Math.floor((vTop - anchorTop) / lineH);
+      lastVisibleIdx = anchorIdx + Math.ceil((vBottom - anchorTop) / lineH);
+    }
+    // Scroll velocity (lines moved since the previous tick) → lead the travel
+    // direction so a fast wheel / middle-button drag pre-mounts ahead and never
+    // flashes a blank placeholder.
+    const prevFv = lastFirstVisibleRef.current;
+    const deltaLines = (Number.isFinite(prevFv) && Number.isFinite(firstVisibleIdx))
+      ? (firstVisibleIdx - prevFv) : 0;
+    if (Number.isFinite(firstVisibleIdx)) lastFirstVisibleRef.current = firstVisibleIdx;
+    const { overscanBefore, overscanAfter } = directionalOverscan({
+      deltaLines, base: DEFAULT_OVERSCAN, max: DEFAULT_OVERSCAN * 3,
+    });
+    const next = computeDesiredWindow({
+      count: lines.length, firstVisibleIdx, lastVisibleIdx, overscanBefore, overscanAfter,
+    });
+    if (!windowsEqual(lineWindowRef.current, next)) setLineWindow(next);
+  }, [lines.length, mainLineHeight]);
+
+  // Drive the window: initial measure + on scroll/resize of the real scroller.
+  useEffect(() => {
+    if (!virtualize) {
+      if (lineWindowRef.current !== null) setLineWindow(null);
+      return undefined;
+    }
+    const raf = requestAnimationFrame(recomputeWindow);
+    const root = containerRef.current;
+    const scroller = root
+      ? ((root.scrollHeight > root.clientHeight + 1) ? root : findScrollingAncestor(root))
+      : null;
+    const target = (scroller && scroller !== document.documentElement && scroller !== document.body)
+      ? scroller : window;
+    let pending = false;
+    const onScroll = () => {
+      if (pending) return;
+      pending = true;
+      requestAnimationFrame(() => { pending = false; recomputeWindow(); });
+    };
+    target.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll);
+    return () => {
+      cancelAnimationFrame(raf);
+      target.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onScroll);
+    };
+  }, [virtualize, recomputeWindow, measured, charsPerLine]);
+
+  // Re-check coverage after each window change (converges after a jump: once
+  // the visible band is fully mounted, computeDesiredWindow returns the same
+  // window → windowsEqual → no setState → the loop stops).
+  useEffect(() => {
+    if (!virtualize) return undefined;
+    const id = requestAnimationFrame(recomputeWindow);
+    return () => cancelAnimationFrame(id);
+  }, [lineWindow, virtualize, recomputeWindow]);
+
   // Hoist filterAnnotationsForLine reference (reserved for a future
   // pre-filter optimisation in AnnotationTrack — for now per-line
   // tracks already clip features by lineStart/lineLen internally).
@@ -622,6 +845,26 @@ const SequenceView = forwardRef(function SequenceView({
     return { tm, len: sub.length };
   })();
 
+  // «Тянуть до конца» (Игорь 22.06): a LINEAR fragment's terminal overhang that
+  // PROTRUDES on the bottom strand (protruding==='bottom') sits OUTSIDE fullSeq,
+  // so the caret can't reach it. Derive the protruding lengths + displayed bases
+  // (bottom strand = per-nt complement, matching StrandsTrack) so the selection
+  // can extend over the overhang and copy it. Null for circular / blunt / no cut.
+  const terminalSelect = useMemo(() => {
+    if (!terminalStagger || circular) return null;
+    const out = (end) => (end && end.protruding === 'bottom' && end.len > 0 ? end : null);
+    const r = out(terminalStagger.right);
+    const l = out(terminalStagger.left);
+    if (!r && !l) return null;
+    const disp = (e) => (e ? e.seq.split('').map((ch) => complement(ch)).join('') : '');
+    return {
+      rightLen: r ? r.len : 0,
+      leftLen: l ? l.len : 0,
+      rightBases: disp(r),
+      leftBases: disp(l),
+    };
+  }, [terminalStagger, circular]);
+
   // Selection state hook — owns the contextMenu state, drag refs,
   // pointer handlers, copy dispatcher, click fallback. Returns a
   // bundle of callbacks the JSX wires onto the root <div>.
@@ -634,6 +877,8 @@ const SequenceView = forwardRef(function SequenceView({
     onRootContextMenu,
     onRootClickFallback,
     copySelection,
+    inverted,
+    toggleInverted,
   } = useSelectionState({
     fullSeq,
     seqLength,
@@ -643,10 +888,15 @@ const SequenceView = forwardRef(function SequenceView({
     caretAnchor,
     selectionMode,
     selectionStrand,
+    circular,
+    terminalSelect,
     onCaretChange,
     onSelectRange,
     containerRef,
   });
+  // Controlled override (assembly picker's «Инвертировать (бэкбон)» button) wins
+  // over the hook's internal right-click invert.
+  const effInverted = invertedProp != null ? invertedProp : inverted;
 
   const keyboardHandler = useSequenceKeyboard({
     fullSeq,
@@ -733,6 +983,22 @@ const SequenceView = forwardRef(function SequenceView({
     if (onPrimerDeleteKeyDown(e)) return;
     if (onEditKeyDown(e)) return;
     keyboardHandler(e);
+  };
+
+  // 17.06.2026 (Игорь «вставка последовательности не работает») — paste a
+  // block of bases at the caret / over the selection. Emits a multi-char
+  // `replace` op (the same shape applySequenceEditToEntry + the assembly
+  // router already handle), so paste rides the SAME edit path as typing.
+  // No-op when the viewer isn't editable or the consumer doesn't accept
+  // sequence edits (read-only viewers paste nothing).
+  const onRootPaste = (e) => {
+    if (!editable || typeof onSequenceEdit !== 'function') return;
+    let raw = '';
+    try { raw = (e.clipboardData && e.clipboardData.getData('text')) || ''; } catch { raw = ''; }
+    const op = buildSequencePasteOp(raw, caretAnchor, caretPos);
+    if (!op) return;
+    e.preventDefault();
+    onSequenceEdit(op);
   };
 
   // K4 — drag-handles on region edges. PointerDown on a left/right
@@ -837,6 +1103,24 @@ const SequenceView = forwardRef(function SequenceView({
   // run before the early `if (!fullSeq) return` so the hook order
   // (useMemo) stays stable across the empty/non-empty transition.
   const renderHybrid = framesResolution.strategy === "hybrid";
+  // RC-B1 (Игорь 24.06) — manual reading-frame override. When the user pins a
+  // forward frame (settings.overrideFrame ∈ 0|1|2) we drive the EXISTING hybrid AA
+  // path to render exactly that one forward row at full opacity, regardless of CDS
+  // detection: strategy 'hybrid' + framesMode 'all' (opacity 1) + visibleFrames =
+  // only the chosen +N. null → untouched (auto, CDS-driven).
+  const overrideFrame = settings.overrideFrame;
+  const hasFrameOverride = overrideFrame === 0 || overrideFrame === 1 || overrideFrame === 2;
+  const effFramesMode = hasFrameOverride ? "all" : settings.framesMode;
+  const effRenderHybrid = hasFrameOverride ? true : renderHybrid;
+  // Stable refs both ways: a frozen module const under override, the (already
+  // memoized) framesResolution otherwise → no spurious line/overlay re-renders.
+  const effFramesResolution = hasFrameOverride ? FRAME_OVERRIDE_RESOLUTION : framesResolution;
+  const effVisibleFrames = useMemo(
+    () => (hasFrameOverride
+      ? { "+1": overrideFrame === 0, "+2": overrideFrame === 1, "+3": overrideFrame === 2, "-1": false, "-2": false, "-3": false }
+      : settings.visibleFrames),
+    [hasFrameOverride, overrideFrame, settings.visibleFrames],
+  );
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const linesJsx = useMemo(() => {
     if (!fullSeq) return null;
@@ -850,13 +1134,23 @@ const SequenceView = forwardRef(function SequenceView({
     // include `kind` because leading-wrap and main may share a
     // line.start (degenerate case if main and trailing start
     // overlap); the prefix prevents a React duplicate-key warning.
-    const renderLine = (line, kind, nextKind) => (
+    const renderLine = (line, kind, nextKind, lineIndex) => (
       <SequenceLine
         key={`${kind}:${line.start}`}
         line={line}
         kind={kind}
         nextKind={nextKind}
+        // Virtualization: only MAIN lines window (leading/trailing wrap-tail
+        // rows are a small fixed band at the edges — always mounted).
+        active={(kind === 'main' && virtualize) ? isActiveIdx(lineIndex, effectiveWindow) : true}
+        lineIndex={kind === 'main' ? lineIndex : undefined}
+        // Per-line remembered height (measured while real) keeps this slot's
+        // footprint identical when it flips to a placeholder → invariant
+        // scrollHeight, no jitter. Falls back to the single estimate for lines
+        // never yet rendered real (fast scroll past them).
+        placeholderHeight={(kind === 'main' && lineHeightsRef.current.get(lineIndex)) || placeholderHeight}
         seqLength={seqLength}
+        terminalStagger={terminalStagger}
         fullSeq={fullSeq}
         features={features}
         primers={primers}
@@ -865,14 +1159,14 @@ const SequenceView = forwardRef(function SequenceView({
         selectedPrimerKeys={selectedPrimerKeys}
         reSites={reSites}
         charPx={charPx}
-        showBottomStrand={settings.showBottomStrand}
-        framesMode={settings.framesMode}
+        showBottomStrand={effShowBottomStrand}
+        framesMode={effFramesMode}
         primerStyle={settings.primerStyle}
         reOrientation={settings.reOrientation}
-        visibleFrames={settings.visibleFrames}
-        framesResolution={framesResolution}
+        visibleFrames={effVisibleFrames}
+        framesResolution={effFramesResolution}
         orfRanges={orfRanges}
-        renderHybrid={renderHybrid}
+        renderHybrid={effRenderHybrid}
         onAnnotationClick={onAnnotationClick}
         tracksReady={tracksReady}
         onAnnotationEdgePointerDown={onAnnotationEdgePointerDown}
@@ -885,6 +1179,17 @@ const SequenceView = forwardRef(function SequenceView({
         restrictionHighlightKey={restrictionHighlightKey}
         hoveredRestrictionKey={hoveredRestrictionKey}
         onRestrictionHover={setHoveredRestrictionKey}
+        alignmentRead={alignmentRead}
+        alignmentReads={alignmentReads}
+        chromatogram={chromatogram}
+        chromatogramMaxVal={chromatogramMaxVal}
+        alignmentColorMode={alignmentColorMode}
+        referenceGutterLabel={alignmentReferenceName}
+        alignmentReadName={alignmentReadName}
+        aaEffects={aaEffects}
+        onAcceptBase={onAcceptBase}
+        showAnnotations={showAnnotations}
+        showAATrack={showAATrack}
       />
     );
     const out = [];
@@ -904,7 +1209,7 @@ const SequenceView = forwardRef(function SequenceView({
       const next = i < lines.length - 1
         ? 'main'
         : (trailing.length > 0 ? 'trailing-wrap' : 'main');
-      out.push(renderLine(lines[i], 'main', next));
+      out.push(renderLine(lines[i], 'main', next, i));
     }
     for (let i = 0; i < trailing.length; i += 1) {
       // Last trailing line has no following row — keep its divider
@@ -916,10 +1221,14 @@ const SequenceView = forwardRef(function SequenceView({
   }, [
     measured, lines, wrapTailLines, fullSeq, features, primers, reSites, charPx,
     onPrimerClick, onPrimerDoubleClick, selectedPrimerKeys,
-    settings.showBottomStrand, settings.framesMode, settings.primerStyle,
-    settings.reOrientation, settings.visibleFrames,
-    framesResolution, orfRanges, renderHybrid,
+    effShowBottomStrand, effFramesMode, settings.primerStyle,
+    settings.reOrientation, effVisibleFrames,
+    effFramesResolution, orfRanges, effRenderHybrid,
     onAnnotationClick, tracksReady,
+    // Align-to-reference inputs — without these the read/chromatogram track
+    // would go stale when the result changes but the reference stays the same.
+    alignmentRead, alignmentReads, chromatogram, chromatogramMaxVal, alignmentColorMode,
+    alignmentReferenceName, alignmentReadName, aaEffects, onAcceptBase, showAnnotations, showAATrack,
     onAnnotationEdgePointerDown, draggedAnnotationId, draggedEdge, draggedCurrentCoord,
     onAnnotationDoubleClick, onAnnotationFeatureDoubleClick,
     // 12.05.2026 — was missing: click on RE site flips
@@ -928,6 +1237,11 @@ const SequenceView = forwardRef(function SequenceView({
     // SequenceLine → выделение не показывалось. Add both deps.
     onRestrictionClick, restrictionHighlightKey,
     hoveredRestrictionKey,
+    // Virtualization (19.06.2026): rebuild the lines when the active window
+    // shifts (scroll) so off-screen indices flip to placeholders and back.
+    // layoutEpoch bumps off this rebuild → overlays re-measure against the
+    // new DOM. placeholderHeight tracks mainLineHeight.
+    virtualize, effectiveWindow, placeholderHeight,
   ]);
 
   // V96 — bump the layout epoch after every `linesJsx` rebuild. The
@@ -965,6 +1279,7 @@ const SequenceView = forwardRef(function SequenceView({
       ref={containerRef}
       tabIndex={0}
       onKeyDown={onRootKeyDown}
+      onPaste={onRootPaste}
       onPointerDown={onRootPointerDown}
       onPointerMove={(e) => {
         onRootPointerMove(e);
@@ -980,7 +1295,7 @@ const SequenceView = forwardRef(function SequenceView({
       data-circular={circular ? "true" : "false"}
       data-chars-per-line={charsPerLine}
       data-line-count={lines.length}
-      data-show-bottom-strand={settings.showBottomStrand ? "true" : "false"}
+      data-show-bottom-strand={effShowBottomStrand ? "true" : "false"}
       data-frames-mode={settings.framesMode}
       data-frames-strategy={framesResolution.strategy}
       data-primer-style={settings.primerStyle}
@@ -1029,6 +1344,7 @@ const SequenceView = forwardRef(function SequenceView({
         containerRef={containerRef}
         onZoneClick={onZoneClick}
         onZoneHover={onZoneHover}
+        terminalStagger={terminalStagger}
         layoutEpoch={layoutEpoch}
       />
       {outOfRangeMask && Number.isFinite(outOfRangeMask.start)
@@ -1050,12 +1366,15 @@ const SequenceView = forwardRef(function SequenceView({
         charPx={charPx}
         charsPerLine={charsPerLine}
         containerRef={containerRef}
-        showBottomStrand={settings.showBottomStrand}
+        showBottomStrand={effShowBottomStrand}
         selectionMode={selectionMode}
         selectionStrand={selectionStrand}
         selectionFrame={selectionAaFrame}
         seqLength={seqLength}
         layoutEpoch={layoutEpoch}
+        inverted={effInverted}
+        stickyEnds={stickyEndsInfo}
+        terminalSelect={terminalSelect}
       />
       <SearchHitsOverlay
         hits={searchHits}
@@ -1068,7 +1387,7 @@ const SequenceView = forwardRef(function SequenceView({
         caretPos={caretPos}
         charPx={charPx}
         containerRef={containerRef}
-        showBottomStrand={settings.showBottomStrand}
+        showBottomStrand={effShowBottomStrand}
         seqLength={seqLength}
         charsPerLine={charsPerLine}
         layoutEpoch={layoutEpoch}
@@ -1094,6 +1413,8 @@ const SequenceView = forwardRef(function SequenceView({
         contextMenu={contextMenu}
         selectionMode={selectionMode}
         onCopy={copySelection}
+        onInvert={toggleInverted}
+        inverted={effInverted}
         onClose={() => setContextMenu(null)}
         extraItems={buildSelectionMenuItems({
           contextMenu,

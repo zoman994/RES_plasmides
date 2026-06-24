@@ -1,0 +1,223 @@
+/**
+ * LinearMapV2 — the LINEAR fragment/plasmid map («колбаска»). The sibling of the
+ * circular PlasmidMapV2 for the case Игорь meant by «линейная форма»: when the
+ * source fragment is itself linear (a circle would misrepresent it), and as an
+ * opt-in second view for circular sources. Feature arrows on lanes + clickable RE
+ * sites on a horizontal axis. Geometry — pure lib/linear-map (+ shared scan/filter
+ * with the circular map, so RE visibility is byte-identical).
+ *
+ * Scans circular:false for a linear topology → no phantom origin-spanning site.
+ */
+import { useMemo } from 'react';
+import { getRegions } from '../annotation-model';
+import { scanAllSites } from '../restriction-db';
+import { filterReSites } from '../lib/re-site-filter';
+import { featureColorShaded, FEATURE_STROKE } from '../feature-palette';
+import { useStore, selectActiveSetEnzymes } from '../store';
+import { buildReMarkers, featuresFromFragments } from '../lib/plasmid-map-v2';
+import { lanePack, laneCount, linearTicks, bpToX } from '../lib/linear-map';
+
+const W = 920;
+const PAD = 46;
+const X0 = PAD; const X1 = W - PAD;
+const RE_LABEL_H = 16;
+const FEAT_LANE_H = 22;
+
+function arrowPath(x0, x1, y, h, strand) {
+  const head = Math.max(0, Math.min(8, (x1 - x0) / 2));
+  if (strand < 0) {
+    return `M${x1},${y} L${x0 + head},${y} L${x0},${y + h / 2} L${x0 + head},${y + h} L${x1},${y + h} Z`;
+  }
+  return `M${x0},${y} L${x1 - head},${y} L${x1},${y + h / 2} L${x1 - head},${y + h} L${x0},${y + h} Z`;
+}
+
+function trunc(s, n = 16) { return (s || '').length > n ? `${s.slice(0, n - 1)}…` : (s || ''); }
+
+export default function LinearMapV2({
+  fragments, annotations, length, constructName, totalBp, topology = 'linear',
+  onFeatureClick, selectedRegionId = null, onSelectRegion, onSelectFragment,
+  reEnzymesFilter = null, onReSiteClick = null,
+}) {
+  const showReSites = useStore((s) => s.showReSites);
+  const reFilter = useStore((s) => s.reFilter);
+  const reMinSiteLen = useStore((s) => s.reMinSiteLen);
+  const setShowReSites = useStore((s) => s.setShowReSites);
+  const setReFilter = useStore((s) => s.setReFilter);
+  const activeSetEnzymes = useStore(selectActiveSetEnzymes);
+
+  const total = totalBp || length || 0;
+  const fullSeq = useMemo(() => (fragments || []).map((f) => f.sequence || '').join(''), [fragments]);
+  const hasSequence = !!fullSeq;
+  const centerName = constructName || '';
+
+  const features = useMemo(() => {
+    const feats = annotations
+      ? getRegions(annotations).map((r) => ({
+        id: r.id, name: r.name || r.type || '—', type: r.type || 'misc',
+        start: r.start, end: r.end, strand: Number.isFinite(r.strand) ? r.strand : 1,
+      }))
+      : featuresFromFragments(fragments, getRegions);
+    return feats
+      .filter((f) => Number.isFinite(f.start) && Number.isFinite(f.end))
+      .map((f, i) => ({ ...f, i, fill: featureColorShaded(f.type, f.name) || 'var(--feature-misc, #EEE7D5)' }));
+  }, [fragments, annotations]);
+
+  // RE sites — the SAME scan + shared filter as the circular map (RS-B1). A digest
+  // enzyme-list overrides the global cut-count filter; otherwise the global mode.
+  // circular:false for a linear topology — no origin-spanning site.
+  const reEnzKey = Array.isArray(reEnzymesFilter) && reEnzymesFilter.length
+    ? [...reEnzymesFilter].sort().join('|') : null;
+  const reSites = useMemo(() => {
+    const effShow = reEnzKey != null ? true : showReSites;
+    if (!effShow || !total || !hasSequence) return [];
+    const all = scanAllSites(fullSeq, { circular: topology === 'circular', minSiteLen: reMinSiteLen });
+    const filtered = reEnzKey != null
+      ? filterReSites(all, { enzymes: reEnzKey.split('|') })
+      : filterReSites(all, { mode: reFilter, enzymes: activeSetEnzymes });
+    return filtered.flatMap((s) => (s.positions || [])
+      .map((p) => ({ enzyme: s.enzyme, pos: typeof p === 'number' ? p : (p && p.position) }))
+      .filter((re) => Number.isFinite(re.pos)));
+  }, [fullSeq, showReSites, reFilter, reMinSiteLen, total, hasSequence, reEnzKey, activeSetEnzymes, topology]);
+
+  const reMarkers = useMemo(() => buildReMarkers(reSites, total || 1, {}), [reSites, total]);
+
+  // Feature lanes (pixel extents, min-width so a 1bp feature still packs).
+  const featLanes = useMemo(() => lanePack(features.map((f) => {
+    const a = bpToX(f.start, total, X0, X1); const b = bpToX(f.end, total, X0, X1);
+    return { start: a, end: Math.max(b, a + 8) };
+  })), [features, total]);
+  const nFeatLanes = laneCount(featLanes);
+
+  // RE label lanes (by label-text pixel extent around the cut x).
+  const reLabelExtents = reMarkers.map((m) => {
+    const xc = bpToX(m.positions[0], total, X0, X1);
+    const text = m.count > 1 ? `${m.enzyme} ×${m.count}` : `${m.enzyme}·${m.positions[0] + 1}`;
+    const w = text.length * 6.1 + 8;
+    return { start: xc - w / 2, end: xc + w / 2, xc, text };
+  });
+  const reLabelLanes = useMemo(() => lanePack(reLabelExtents), [reMarkers, total]);
+  const nReLanes = reMarkers.length ? laneCount(reLabelLanes) : 0;
+
+  const topPad = nReLanes * RE_LABEL_H + 12;
+  const featTop = topPad;
+  const axisY = featTop + nFeatLanes * FEAT_LANE_H + 6;
+  const H = axisY + 34;
+
+  const { majors } = total ? linearTicks(total) : { majors: [] };
+
+  const clickFeature = (f) => {
+    if (onSelectRegion && f.id != null) onSelectRegion(f.id === selectedRegionId ? null : f.id);
+    onSelectFragment?.(f.i);
+    onFeatureClick?.(f);
+  };
+
+  return (
+    <div className="relative w-full h-full overflow-hidden flex flex-col items-center justify-center min-h-0" data-testid="linear-map-v2">
+      {hasSequence && reEnzKey == null && (
+        <div className="absolute top-2 right-2 flex items-center gap-1 z-10 rounded-lg px-2 py-1"
+          style={{ background: 'var(--surface-1, #fff)', border: '0.5px solid var(--border-subtle, #e7e5e4)' }}>
+          <button data-testid="linear-v2-re-toggle" onClick={() => setShowReSites(!showReSites)}
+            className="text-[10px] px-2 py-1 rounded border"
+            style={showReSites
+              ? { background: 'var(--accent-50, #fffbeb)', color: 'var(--accent-700, #b45309)', borderColor: 'var(--accent-500, #f59e0b)' }
+              : { color: 'var(--text-secondary)', borderColor: 'var(--border-subtle, #e7e5e4)' }}>RE sites</button>
+          {showReSites && (
+            <div className="flex gap-1 ml-1">
+              {['unique', 'double', 'all'].map((f) => (
+                <button key={f} onClick={() => setReFilter(f)} className="text-[9px] px-1.5 py-0.5 rounded"
+                  style={reFilter === f ? { background: 'var(--surface-3, #e7e5e4)', fontWeight: 500 } : { color: 'var(--text-tertiary)' }}>
+                  {f === 'unique' ? '1x' : f === 'double' ? '≤2x' : 'All'}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" style={{ width: '100%', height: '100%' }}
+        role="img" aria-label={`Linear map of ${centerName}, ${total} bp`}>
+        {/* backbone axis */}
+        <line x1={X0} y1={axisY} x2={X1} y2={axisY} stroke="var(--viz-backbone, #e5e7eb)" strokeWidth={2.5} strokeLinecap="round" />
+        {/* End caps only for a genuinely LINEAR molecule (free ends). A circular
+            source shown linearly («развёрнуто») gets ↺ hints instead — its ends join. */}
+        {topology === 'linear' ? (
+          <>
+            <line x1={X0} y1={axisY - 7} x2={X0} y2={axisY + 7} stroke="var(--viz-backbone, #e5e7eb)" strokeWidth={2.5} />
+            <line x1={X1} y1={axisY - 7} x2={X1} y2={axisY + 7} stroke="var(--viz-backbone, #e5e7eb)" strokeWidth={2.5} />
+          </>
+        ) : (
+          <>
+            <text x={X0 - 5} y={axisY + 3} textAnchor="end" fontSize={12} fill="var(--text-tertiary)">↺</text>
+            <text x={X1 + 5} y={axisY + 3} textAnchor="start" fontSize={12} fill="var(--text-tertiary)">↺</text>
+          </>
+        )}
+
+        {/* ruler majors below the axis */}
+        {majors.map((bp, k) => {
+          const x = bpToX(bp, total, X0, X1);
+          return (
+            <g key={`mj${k}`} style={{ pointerEvents: 'none' }}>
+              <line x1={x} y1={axisY} x2={x} y2={axisY + 6} stroke="var(--viz-junction, #94a3b8)" strokeWidth={1} />
+              <text x={x} y={axisY + 18} textAnchor="middle" fontSize={9.5} fill="var(--text-tertiary)" style={{ fontFamily: 'var(--font-mono, monospace)' }}>{bp}</text>
+            </g>
+          );
+        })}
+
+        {/* features */}
+        {features.map((f) => {
+          const x0 = bpToX(f.start, total, X0, X1); const x1 = Math.max(bpToX(f.end, total, X0, X1), x0 + 3);
+          const y = featTop + featLanes[f.i] * FEAT_LANE_H; const h = FEAT_LANE_H - 7;
+          const sel = f.id != null && f.id === selectedRegionId;
+          const wide = x1 - x0 > 34;
+          return (
+            <g key={f.i} data-testid={`linear-map-v2-feature-${f.i}`} style={{ cursor: 'pointer' }} onClick={() => clickFeature(f)}>
+              <path d={arrowPath(x0, x1, y, h, f.strand)} fill={f.fill} stroke={sel ? FEATURE_STROKE : '#ffffff'} strokeWidth={sel ? 1.4 : 0.6} />
+              {wide && (
+                <text x={(x0 + x1) / 2} y={y + h / 2} dominantBaseline="central" textAnchor="middle" fontSize={11}
+                  fontWeight={sel ? 600 : 500} fill="var(--text-primary)" style={{ fontFamily: 'var(--font-ui, inherit)', pointerEvents: 'none' }}>
+                  {trunc(f.name, Math.floor((x1 - x0) / 7))}
+                </text>
+              )}
+              <title>{`${f.name} · ${f.start + 1}–${f.end} (${f.end - f.start} bp)`}</title>
+            </g>
+          );
+        })}
+
+        {/* RE cut ticks (cross the feature band + axis) */}
+        {reSites.map((re, k) => {
+          const x = bpToX(re.pos, total, X0, X1);
+          return (
+            <line key={`re${k}`} data-testid="linear-map-v2-re-site" x1={x} y1={featTop - 4} x2={x} y2={axisY + 5}
+              stroke="var(--viz-re-unique, #E24B4A)" strokeWidth={1.1} strokeLinecap="round" opacity={0.9} pointerEvents="none" />
+          );
+        })}
+
+        {/* RE labels (clickable when onReSiteClick) — de-collided in lanes above */}
+        {reMarkers.map((m, k) => {
+          const ext = reLabelExtents[k]; const lane = reLabelLanes[k];
+          const labelY = 10 + (nReLanes - 1 - lane) * RE_LABEL_H;
+          const tickX = bpToX(m.positions[0], total, X0, X1);
+          const clickable = !!onReSiteClick;
+          const w = ext.text.length * 6.1 + 8;
+          return (
+            <g key={`rl${k}`} data-testid={`linear-map-v2-re-label-${k}`} data-cluster={m.count > 1} data-clickable={clickable}
+              style={{ pointerEvents: clickable ? 'auto' : 'none', cursor: clickable ? 'pointer' : 'default' }}
+              onClick={clickable ? (e) => { e.stopPropagation(); onReSiteClick(m); } : undefined}>
+              <line x1={tickX} y1={labelY + 7} x2={tickX} y2={featTop - 4} stroke="var(--viz-re-unique, #E24B4A)" strokeWidth={0.6} opacity={0.55} />
+              {clickable && <rect x={ext.xc - w / 2} y={labelY - 8} width={w} height={16} fill="transparent" />}
+              {m.count > 1 && <rect x={ext.xc - w / 2} y={labelY - 8} width={w} height={16} rx={8} fill="var(--viz-re-unique, #E24B4A)" opacity={0.12} />}
+              <text x={ext.xc} y={labelY} dominantBaseline="central" textAnchor="middle" fontSize={11} fontWeight={500}
+                fill="var(--viz-re-unique, #E24B4A)" style={{ fontFamily: 'var(--font-mono, monospace)' }}>{ext.text}</text>
+              <title>{m.count > 1 ? `${m.enzyme} · ${m.count} sites: ${m.positions.map((p) => p + 1).join(', ')}` : `${m.enzyme} · ${m.positions[0] + 1}`}</title>
+            </g>
+          );
+        })}
+
+        {/* center caption */}
+        <text x={W / 2} y={H - 4} textAnchor="middle" fontSize={11} fill="var(--text-tertiary)" style={{ fontFamily: 'var(--font-mono, monospace)' }}>
+          {trunc(centerName, 28)}{centerName ? ' · ' : ''}{total.toLocaleString()} bp · {topology === 'circular' ? 'кольцевой (развёрнуто)' : 'линейный'}
+        </text>
+      </svg>
+    </div>
+  );
+}

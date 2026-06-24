@@ -169,6 +169,34 @@ describe('computeMutagenesisStrategy — fragmentContext propagation', () => {
   });
 });
 
+describe('single-base substitution (одна буква, не кодон)', () => {
+  const template = `ATG${'GCC'.repeat(300)}TAA`; // 906 bp; index 300 = 'G'
+
+  it('1-nt замена не съедает соседние 2 базы (length preserved)', () => {
+    const mut = { type: 'substitution', dnaPosition: 300, newCodon: 'T', label: 'G301T' };
+    const result = computeMutagenesisStrategy(template, [mut]);
+    expect(result.mutantSequence).toHaveLength(template.length);
+    expect(result.mutantSequence[300]).toBe('T');
+    expect(result.mutantSequence.slice(301, 303)).toBe(template.slice(301, 303));
+    expect(result.strategy).toBe('kld');
+  });
+
+  it('KLD fwd праймер для 1-nt замены начинается с новой базы + следующий nt (не пропускает 2)', () => {
+    const mut = { type: 'substitution', dnaPosition: 300, newCodon: 'T', label: 'G301T' };
+    const result = computeMutagenesisStrategy(template, [mut]);
+    const fwd = result.primers.find((p) => p.direction === 'forward');
+    expect(fwd.sequence[0]).toBe('T');
+    expect(fwd.sequence[1]).toBe(template[301]);
+  });
+
+  it('codon-замена (newCodon length 3) — регрессия, поведение не изменилось', () => {
+    const mut = { type: 'substitution', dnaPosition: 300, newCodon: 'GAT', label: 'A101D' };
+    const result = computeMutagenesisStrategy(template, [mut]);
+    expect(result.mutantSequence).toHaveLength(template.length);
+    expect(result.mutantSequence.slice(300, 303)).toBe('GAT');
+  });
+});
+
 describe('V11: KLD primers carry computed Tm and GC%, not placeholder zeros', () => {
   it('substitution KLD primers report realistic Tm and GC%', () => {
     const template = 'ATG' + 'GCC'.repeat(300) + 'TAA';
@@ -205,5 +233,33 @@ describe('designInlineKLDPrimers', () => {
     expect(result.reverse.sequence.length).toBeGreaterThan(15);
     expect(result.forward.tm).toBeGreaterThan(40);
     expect(result.reverse.tm).toBeGreaterThan(40);
+  });
+});
+
+describe('forceStrategy — expert mechanism swap (Кирпич 4)', () => {
+  const big = `ATG${'CCC'.repeat(999)}`; // 3000 bp
+  const mut = [{ type: 'substitution', dnaPosition: 300, newCodon: 'GCG' }];
+
+  it('forces overlap (two_fragment) on a circular standalone where auto would be KLD', () => {
+    const r = computeMutagenesisStrategy(big, mut, {
+      fragmentContext: { topology: 'circular', isStandalone: true, length: 3000 },
+      forceStrategy: 'two_fragment',
+    });
+    expect(r.strategy).toBe('two_fragment');
+  });
+
+  it('forcing KLD on a linear template is invalid → falls back to auto (two_fragment)', () => {
+    const r = computeMutagenesisStrategy(big, mut, {
+      fragmentContext: { topology: 'linear', isStandalone: true, length: 3000 },
+      forceStrategy: 'kld',
+    });
+    expect(r.strategy).toBe('two_fragment');
+  });
+
+  it('no forceStrategy → auto (kld on circular standalone)', () => {
+    const r = computeMutagenesisStrategy(big, mut, {
+      fragmentContext: { topology: 'circular', isStandalone: true, length: 3000 },
+    });
+    expect(r.strategy).toBe('kld');
   });
 });

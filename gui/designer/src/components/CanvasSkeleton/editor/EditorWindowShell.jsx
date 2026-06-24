@@ -20,6 +20,7 @@ import { STRINGS } from '../../../lib/strings';
 import {
   useSkeletonState,
   useSkeletonActions,
+  useSkeletonHistory,
   useContainerById,
   usePendingEdits,
 } from '../store/skeleton-context';
@@ -32,11 +33,13 @@ import PcrModeShell from './operation-modes/PcrModeShell';
 import AssemblyModeShell from './assembly-mode/AssemblyModeShell';
 import MiniProjectCanvas from '../canvas/MiniProjectCanvas';
 import useTabHotkey from './useTabHotkey';
+import useUndoHotkey from './useUndoHotkey';
 
 export default function EditorWindowShell() {
   const s = STRINGS.canvasSkeleton || {};
   const state = useSkeletonState();
   const actions = useSkeletonActions();
+  const history = useSkeletonHistory();
 
   const { tabs, activeTabId } = state.editorContext;
   const activeTab = deriveActiveTab(state.editorContext);
@@ -102,6 +105,9 @@ export default function EditorWindowShell() {
   // DEC-WIN-07 — TAB / Shift+TAB switches tabs (gated; editor-only by
   // virtue of the shell mounting only while the editor is open).
   useTabHotkey({ onNext: actions.switchNextTab, onPrev: actions.switchPrevTab });
+
+  // Ctrl+Z / Ctrl+Y → the canvas history engine (previously toolbar-only).
+  useUndoHotkey({ onUndo: actions.undo, onRedo: actions.redo, canUndo: history.canUndo, canRedo: history.canRedo });
 
   // Transient state guard (DEC-WIN — EditorWindowShell §5).
   if (!Array.isArray(tabs) || tabs.length === 0) return null;

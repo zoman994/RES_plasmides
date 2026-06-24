@@ -49,17 +49,23 @@ describe('SequenceLine — restriction binding-zone highlight', () => {
     expect(screen.queryAllByTestId('sequence-view-strand-binding').length).toBe(0);
   });
 
-  it('highlightedKey="EcoRI-4" → binding overlay rendered on BOTH strands', () => {
-    render(<SequenceLine {...baseProps} restrictionHighlightKey="EcoRI-4" />);
+  // Игорь 22.06 — the recognition-site (binding) box is HOVER-ONLY now: a CLICK
+  // selects the cut (cuts/overhang stay) but must NOT paint the whole binding zone.
+  it('hoveredRestrictionKey="EcoRI-4" → binding overlay rendered on BOTH strands', () => {
+    render(<SequenceLine {...baseProps} hoveredRestrictionKey="EcoRI-4" />);
     const overlays = screen.getAllByTestId('sequence-view-strand-binding');
-    // Two strands shown → one overlay per strand.
     expect(overlays.length).toBe(2);
     const strands = overlays.map((el) => el.getAttribute('data-strand')).sort();
     expect(strands).toEqual(['bottom', 'top']);
   });
 
-  it('binding overlay width matches recognition-site length × charPx', () => {
+  it('click (restrictionHighlightKey) does NOT paint the binding zone — hover-only', () => {
     render(<SequenceLine {...baseProps} restrictionHighlightKey="EcoRI-4" />);
+    expect(screen.queryAllByTestId('sequence-view-strand-binding').length).toBe(0);
+  });
+
+  it('binding overlay width matches recognition-site length × charPx', () => {
+    render(<SequenceLine {...baseProps} hoveredRestrictionKey="EcoRI-4" />);
     const overlay = screen.getAllByTestId('sequence-view-strand-binding')[0];
     // EcoRI = GAATTC = 6 bp; charPx = 10 → width = 60px.
     expect(overlay.style.width).toBe('60px');

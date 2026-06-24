@@ -11,16 +11,15 @@ function clip(seq, n = 28) {
 }
 
 export default function PrimerSuggestionsPanel({
-  pairs = [], level = 'default', onReuse, onRemove,
+  pairs = [], level = 'default', onReuse, onRemove, width = 320,
 }) {
   const showReuse = level === 'pro';
   return (
     <div
       data-testid="pcr-suggestions-panel"
       style={{
-        width: 320,
+        width,
         flexShrink: 0,
-        borderLeft: '1px solid var(--border-subtle)',
         background: 'var(--surface-2)',
         display: 'flex',
         flexDirection: 'column',

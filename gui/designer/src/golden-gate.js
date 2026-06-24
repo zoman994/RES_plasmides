@@ -42,12 +42,20 @@ export function checkInternalSites(fragments, enzymeKey) {
   const recRC = reverseComplement(rec);
   const problems = [];
 
+  // Find ALL occurrences on each strand, not just the first (indexOf only
+  // reported the first site, so a 2nd internal Type IIS site survived and broke
+  // the digest while suggestBestEnzyme declared the enzyme clean).
+  const allPos = (hay, needle) => {
+    const out = [];
+    if (!needle) return out;
+    let idx = hay.indexOf(needle);
+    while (idx !== -1) { out.push(idx); idx = hay.indexOf(needle, idx + 1); }
+    return out;
+  };
   fragments.forEach(f => {
     const seq = (f.sequence || '').toUpperCase();
-    const fwd = seq.indexOf(rec);
-    const rev = seq.indexOf(recRC);
-    if (fwd !== -1) problems.push({ fragment: f.name, position: fwd + 1, strand: '+' });
-    if (rev !== -1) problems.push({ fragment: f.name, position: rev + 1, strand: '-' });
+    allPos(seq, rec).forEach(p => problems.push({ fragment: f.name, position: p + 1, strand: '+' }));
+    if (recRC !== rec) allPos(seq, recRC).forEach(p => problems.push({ fragment: f.name, position: p + 1, strand: '-' }));
   });
 
   if (problems.length === 0) return { ok: true, problems: [] };

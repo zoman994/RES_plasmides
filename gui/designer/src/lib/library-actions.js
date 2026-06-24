@@ -7,28 +7,33 @@
  *
  * Shape: `{ id, label, icon, variant, onClick, disabled?, tooltip? }`
  *   • variant = 'primary' | 'default' | 'ghost' | 'danger'
- *   • Disabled actions surface a `tooltip` explaining why
- *     (typically `'M-X.7b: версионирование'` for save-as-version
- *     / rollback / branch flows that wait on the parallel
- *     versioning sprint).
  *
- * Handlers:
- *   • Concrete handlers come from `ctx` (caller wires them to
- *     librarySlice actions, projectSlice actions, etc.).
- *   • If a handler is missing, the action's `onClick` is a no-op
- *     and its `disabled` flag flips on with a generic tooltip
- *     so the row still renders the affordance (visual completeness
- *     for the K3 acceptance pass; K6+ wires the missing pipes).
+ * 17.06.2026 cleanup (Игорь «прибраться — часть убрать»): every action
+ * here now DOES something. The previous build rendered «visual
+ * completeness» placeholders — buttons backed by an unwired handler or
+ * hard-disabled pending a future sprint (Container Window, Save-as-
+ * version, cross-bodge import, primer-edit, clone) — plus the dead DAG
+ * path (Show/Use in DAG → the orphaned DagWorkspace). All removed.
+ * Save-as-version still exists, but as the working inspector save panel
+ * (LibrarySaveActions), not a dead row stub. A future feature re-adds
+ * its action only once the pipe is actually built.
+ *
+ * The only conditionally-disabled action is `align` (degrades via
+ * `wip()` if a caller forgets to wire `alignEntry`) and the
+ * «add/copy to active project» CTAs (disabled with a tooltip when no
+ * active project exists — a real, recoverable state, not a stub).
  */
 
 import { STRINGS } from './strings';
 
 const noop = () => {};
 
-const TOOLTIP_M_X_7B = 'M-X.7b: версионирование';
-const TOOLTIP_M_X_9 = 'M-X.9: импорт из чужих .bodge';
-// A5 (audit) — handler not wired yet: disable the affordance with a tooltip
-// instead of rendering an enabled button whose click does nothing.
+// A handler that may be unwired by some callers (only `align` today)
+// degrades gracefully to a disabled affordance with a tooltip rather
+// than a dead enabled button. The 17.06.2026 cleanup removed every
+// PERMANENTLY-disabled placeholder (DAG, Container Window, versioning,
+// cross-bodge import, primer-edit, clone) — those re-appear only when
+// their pipe is actually built. See getActionsFor docstring.
 const TOOLTIP_WIP = 'В разработке';
 const wip = (handler) => ({ disabled: !handler, tooltip: !handler ? TOOLTIP_WIP : null });
 
@@ -39,7 +44,6 @@ const A_LOOSE = STRINGS?.libraryWorkspace?.actionsLoose || {};
 const LBL = {
   addToActiveProject: A_LOOSE.addToActiveProject || 'Добавить в активный проект',
   addToActiveProjectDisabled: A_LOOSE.addToActiveProjectDisabled || 'Нет активного проекта',
-  createCopyForEdit: A_LOOSE.createCopyForEdit || 'Создать копию для правки',
   moveToFolder: A_LOOSE.moveToFolder || 'Переместить в папку…',
 };
 
@@ -72,11 +76,11 @@ function looseContainerActions(entry, ctx) {
       disabled: !ctx.hasActiveProject,
       tooltip: !ctx.hasActiveProject ? LBL.addToActiveProjectDisabled : null,
     }),
-    action('createCopyForEdit', {
-      label: LBL.createCopyForEdit,
-      icon: '✎',
-      onClick: () => ctx.createManualEditBranch?.(entry.id),
-      ...wip(ctx.createManualEditBranch),
+    action('align', {
+      label: STRINGS?.align?.action || 'Выровнять',
+      icon: '≣',
+      onClick: () => ctx.alignEntry?.(entry.id),
+      ...wip(ctx.alignEntry),
     }),
     action('moveToFolder', {
       label: LBL.moveToFolder,
@@ -111,12 +115,6 @@ function loosePrimerActions(entry, ctx) {
       disabled: !ctx.hasActiveProject,
       tooltip: !ctx.hasActiveProject ? LBL.addToActiveProjectDisabled : null,
     }),
-    action('editPrimer', {
-      label: 'Редактировать',
-      icon: '✎',
-      onClick: () => ctx.editPrimer?.(entry.id),
-      ...wip(ctx.editPrimer),
-    }),
     action('moveToFolder', {
       label: LBL.moveToFolder,
       icon: '📁',
@@ -137,35 +135,20 @@ function loosePrimerActions(entry, ctx) {
 }
 
 function activeContainerActions(entry, ctx) {
+  // «Сохранить как версию» lives in the inspector's own save panel
+  // (LibrarySaveActions) — it's not duplicated here as a dead stub.
+  // Container Window + DAG removed (17.06.2026 cleanup).
   return [
-    action('containerWindow', {
-      label: 'Container Window',
-      icon: '↗',
-      variant: 'primary',
-      onClick: () => ctx.openContainerWindow?.(entry.id),
-      ...wip(ctx.openContainerWindow),
-    }),
-    action('showInDag', {
-      label: 'Показать в DAG',
-      icon: '🔀',
-      onClick: () => ctx.showInDag?.(entry.id),
+    action('align', {
+      label: STRINGS?.align?.action || 'Выровнять',
+      icon: '≣',
+      onClick: () => ctx.alignEntry?.(entry.id),
+      ...wip(ctx.alignEntry),
     }),
     action('extractToLoose', {
       label: 'Извлечь в Loose',
       icon: '📤',
       onClick: () => ctx.extractEntryToLoose?.(entry.id),
-    }),
-    action('saveAsVersion', {
-      label: 'Сохранить как версию',
-      icon: '📚',
-      disabled: true,
-      tooltip: TOOLTIP_M_X_7B,
-    }),
-    action('clone', {
-      label: 'Клонировать',
-      icon: '📋',
-      onClick: () => ctx.cloneEntry?.(entry.id),
-      ...wip(ctx.cloneEntry),
     }),
     action('exportGenBank', {
       label: 'Экспорт GenBank',
@@ -182,24 +165,18 @@ function activeContainerActions(entry, ctx) {
 }
 
 function activePrimerActions(entry, ctx) {
+  // exportGenBank added for parity with loose primers (a primer in a
+  // project is just as exportable). DAG + versioning stubs removed.
   return [
-    action('useInDag', {
-      label: 'Использовать в DAG',
-      icon: '🧪',
-      variant: 'primary',
-      onClick: () => ctx.usePrimerInDag?.(entry.id),
-      ...wip(ctx.usePrimerInDag),
-    }),
     action('extractToLoose', {
       label: 'Извлечь в Loose',
       icon: '📤',
       onClick: () => ctx.extractEntryToLoose?.(entry.id),
     }),
-    action('saveAsVersion', {
-      label: 'Сохранить как версию',
-      icon: '📚',
-      disabled: true,
-      tooltip: TOOLTIP_M_X_7B,
+    action('exportGenBank', {
+      label: 'Экспорт',
+      icon: '⤓',
+      onClick: () => ctx.exportEntry?.(entry.id),
     }),
     action('delete', {
       label: 'Удалить из проекта',
@@ -220,23 +197,11 @@ function readonlyContainerActions(entry, ctx) {
       disabled: !ctx.hasActiveProject,
       tooltip: !ctx.hasActiveProject ? 'Откройте активный проект' : null,
     }),
-    action('copyToLoose', {
-      label: 'Скопировать в Loose',
-      icon: '📋',
-      onClick: () => ctx.copyToLoose?.(entry.id),
-      ...wip(ctx.copyToLoose),
-    }),
-    action('openAsActive', {
-      label: 'Открыть как активный',
-      icon: '🔓',
-      disabled: true,
-      tooltip: TOOLTIP_M_X_9,
-    }),
-    action('view', {
-      label: 'Просмотр',
-      icon: '↗',
-      onClick: () => ctx.openContainerWindow?.(entry.id),
-      ...wip(ctx.openContainerWindow),
+    action('align', {
+      label: STRINGS?.align?.action || 'Выровнять',
+      icon: '≣',
+      onClick: () => ctx.alignEntry?.(entry.id),
+      ...wip(ctx.alignEntry),
     }),
   ];
 }
@@ -251,18 +216,6 @@ function readonlyPrimerActions(entry, ctx) {
       disabled: !ctx.hasActiveProject,
       tooltip: !ctx.hasActiveProject ? 'Откройте активный проект' : null,
     }),
-    action('copyToLoose', {
-      label: 'Скопировать в Loose',
-      icon: '📋',
-      onClick: () => ctx.copyToLoose?.(entry.id),
-      ...wip(ctx.copyToLoose),
-    }),
-    action('openAsActive', {
-      label: 'Открыть как активный',
-      icon: '🔓',
-      disabled: true,
-      tooltip: TOOLTIP_M_X_9,
-    }),
   ];
 }
 
@@ -275,12 +228,6 @@ function labPrimerActions(entry, ctx) {
       onClick: () => ctx.cloneEntryToActiveProject?.(entry.id),
       disabled: !ctx.hasActiveProject,
       tooltip: !ctx.hasActiveProject ? 'Откройте активный проект' : null,
-    }),
-    action('editNotes', {
-      label: 'Редактировать заметки',
-      icon: '✎',
-      onClick: () => ctx.editPrimerNotes?.(entry.id),
-      ...wip(ctx.editPrimerNotes),
     }),
     action('toggleLabStock', {
       label: entry.inLabStock ? 'Снять метку' : 'Поставить метку',
@@ -300,11 +247,10 @@ function labPrimerActions(entry, ctx) {
  * @param {object} entry — LibraryEntry (must carry `kind`).
  * @param {string} zone — 'loose' | 'active_bodge' | 'readonly_bodge' | 'lab_pool'
  * @param {object} ctx — { hasActiveProject, cloneEntryToActiveProject,
- *   extractEntryToLoose, toggleLabStock, openContainerWindow,
- *   createManualEditBranch, openFolderPicker, exportEntry,
- *   deleteEntry, editPrimer, editPrimerNotes, showInDag, cloneEntry,
- *   copyToLoose, usePrimerInDag } — concrete handlers from
- *   LibraryWorkspace (K4) wiring.
+ *   extractEntryToLoose, toggleLabStock, openFolderPicker, exportEntry,
+ *   deleteEntry, alignEntry } — concrete working handlers from
+ *   LibraryWorkspace wiring. (17.06.2026 cleanup dropped the unwired /
+ *   dead-DAG handlers; only working actions are emitted now.)
  * @returns {Array<{id,label,icon,variant,onClick,disabled?,tooltip?}>}
  *   Empty array for unknown (zone, kind) combinations.
  */

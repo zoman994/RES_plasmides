@@ -19,6 +19,45 @@ body {
 
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 
+/* Compact origin-rotate slider (OverviewTab — «уменьшить размер ползунка,
+   сделать более аккуратным»). Thin track + small accent thumb, vs the chunky
+   native range. */
+.origin-rotate-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 12px;
+  background: transparent;
+  cursor: ew-resize;
+}
+.origin-rotate-slider::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--border-default, #d6d3d1);
+}
+.origin-rotate-slider::-moz-range-track {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--border-default, #d6d3d1);
+}
+.origin-rotate-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 11px;
+  height: 11px;
+  margin-top: -4px;
+  border-radius: 50%;
+  background: var(--accent-500, #e0894a);
+  border: 1px solid var(--surface-1, #fff);
+  box-shadow: 0 0 0 0.5px var(--border-default, #d6d3d1);
+}
+.origin-rotate-slider::-moz-range-thumb {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--accent-500, #e0894a);
+  border: 1px solid var(--surface-1, #fff);
+}
+
 /* Sprint M-X.3 follow-up — Annotator L1 progress bar.
    Indeterminate animated stripe so biolog sees the plugin is
    working («аннотация требует времени») and isn't tempted to
@@ -63,6 +102,14 @@ body {
   --accent-500: #f59e0b;
   --accent-700: #b45309;
   --accent-text: #78350f;
+
+  /* Viz chrome for the circular plasmid map (PlasmidMapV2) — light. From the
+     design package tokens/domain.css. Feature FILLS come from feature-palette
+     (same warm-sepia both themes); only this chrome adapts to theme. */
+  --viz-backbone: #e5e7eb;
+  --viz-junction: #94a3b8;
+  --viz-re-unique: #E24B4A;
+  --feature-misc: #EEE7D5;
 
   --success-bg: #dcfce7;
   --success-fg: #15803d;
@@ -116,6 +163,12 @@ body {
   --accent-500: #d97706;
   --accent-700: #fbbf24;
   --accent-text: #fde68a;
+
+  /* Viz chrome for the circular plasmid map (PlasmidMapV2) — dark overrides. */
+  --viz-backbone: #2a2a28;
+  --viz-junction: #57574f;
+  --viz-re-unique: #f87171;
+  --feature-misc: #EEE7D5;
 
   --success-bg: #0a2818;
   --success-fg: #86efac;

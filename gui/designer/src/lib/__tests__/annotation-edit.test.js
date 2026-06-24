@@ -12,6 +12,7 @@ import {
   splitAnnotation,
   mergeAnnotations,
 } from '../annotation-edit.js';
+import { getIntronsForRegion } from '../../intron-utils.js';
 
 const SEQLEN = 5000;
 
@@ -97,6 +98,38 @@ describe('annotation-edit — createAnnotation', () => {
     expect(createAnnotation({ start: 0, end: 10, strand: -1 }, SEQLEN).strand).toBe(-1);
     expect(createAnnotation({ start: 0, end: 10, strand: 1 }, SEQLEN).strand).toBe(1);
     expect(createAnnotation({ start: 0, end: 10 }, SEQLEN).strand).toBe(1);
+  });
+
+  it('preserves a detail intron with its parent regionId (manual splice marking)', () => {
+    const a = createAnnotation(
+      { type: 'intron', level: 'detail', regionId: 'cds1', start: 20, end: 80 },
+      SEQLEN,
+    );
+    expect(a).toMatchObject({ type: 'intron', level: 'detail', regionId: 'cds1' });
+  });
+
+  it('omits regionId when none is supplied (regular region annotation)', () => {
+    const a = createAnnotation({ type: 'CDS', start: 0, end: 30 }, SEQLEN);
+    expect(a.regionId).toBeUndefined();
+  });
+
+  it('preserves an explicit id (cross-referenced annotations keep their link)', () => {
+    expect(createAnnotation({ id: 'gene1', type: 'gene', start: 0, end: 30 }, SEQLEN).id).toBe('gene1');
+  });
+});
+
+describe('annotation-edit — create-batch keeps the gene↔intron link (apply path)', () => {
+  it('preserves ids so a gene + its detail introns still resolve after apply', () => {
+    // exactly what buildGeneAnnotations emits: a gene + introns linked by regionId
+    const batch = [
+      { id: 'g1', type: 'gene', level: 'region', start: 0, end: 120, strand: 1, name: 'ген' },
+      { id: 'i1', type: 'intron', level: 'detail', regionId: 'g1', start: 30, end: 90, strand: 1, name: 'интрон 1' },
+    ];
+    const { next } = applyAnnotationEdit([], { kind: 'create-batch', payload: batch }, 200);
+    const gene = next.find((a) => a.type === 'gene');
+    expect(gene.id).toBe('g1'); // id NOT regenerated
+    // link survives → AA splice + exon-block render both work
+    expect(getIntronsForRegion(next, gene)).toHaveLength(1);
   });
 });
 

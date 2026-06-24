@@ -45,3 +45,4 @@ node_modules/
 
 # graphify knowledge-graph data (generated: graph.json, report, html, wiki, cache)
 .graphify/
+/gui/designer/.rebase-tmp/

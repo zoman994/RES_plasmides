@@ -46,7 +46,10 @@ const R = 1.987; // gas constant cal/(mol·K)
  * @param {string} seq — primer sequence (5'→3')
  * @param {Object} opts — conditions
  * @param {number} opts.naConc — Na+ concentration in mM (default 50)
- * @param {number} opts.mgConc — Mg2+ concentration in mM (default 1.5)
+ * @param {number} opts.mgConc — Mg2+ concentration in mM (default 0 — monovalent-
+ *   only by default; pass a real PCR value, e.g. 1.5–2, to apply the Owczarzy
+ *   divalent correction. Default kept at 0 so existing primer calibration is
+ *   unchanged; making PCR-Mg the default is a separate calibration decision.)
  * @param {number} opts.dntpConc — dNTP concentration in mM (default 0.2)
  * @param {number} opts.oligoConc — total strand concentration in nM (default 250)
  * @returns {number} Tm in °C
@@ -54,12 +57,15 @@ const R = 1.987; // gas constant cal/(mol·K)
 export function calcTmNN(seq, opts = {}) {
   const {
     naConc = 50,     // mM
-    mgConc = 1.5,    // mM
+    mgConc = 0,      // mM — monovalent-only default (see JSDoc); pass real Mg to apply Owczarzy
     dntpConc = 0.2,  // mM
     oligoConc = 250, // nM
   } = opts;
 
-  const s = seq.toUpperCase().replace(/[^ATGC]/g, '');
+  // Keep IUPAC degenerate codes — silently stripping them shortens a degenerate
+  // primer and mis-estimates Tm; the NN loop already has a fallback for unknown
+  // pairs. Only drop genuinely non-nucleotide characters.
+  const s = seq.toUpperCase().replace(/[^ACGTURYSWKMBDHVN]/g, '');
   if (s.length < 2) return 0;
 
   // Sum NN parameters
@@ -91,36 +97,52 @@ export function calcTmNN(seq, opts = {}) {
   // For self-complementary: Ct = total / 1; for non-self-comp: Ct = total / 4
   const Ct = (oligoConc * 1e-9) / 4; // non-self-complementary assumed
 
-  // Salt correction — applied to entropy BEFORE Tm calculation
-  // SantaLucia 1998: ΔS_salt = 0.368 * (N-1) * ln([Na+])
-  const mono = naConc * 1e-3; // convert to M
-  const mg = mgConc * 1e-3;
-  const dntp = dntpConc * 1e-3;
-  const freeNg = Math.max(0, mg - dntp); // free Mg2+ after dNTP chelation
+  // ── Salt correction: SantaLucia monovalent + Owczarzy 2008 divalent ──
+  const monoM = naConc * 1e-3;       // M
+  const mgM = mgConc * 1e-3;         // M
+  const dntpM = dntpConc * 1e-3;     // M
+  const freeMg = Math.max(0, mgM - dntpM); // free Mg2+ after dNTP chelation
 
-  // Na+ dominant: entropy correction
-  const saltDS = 0.368 * (s.length - 1) * Math.log(mono);
-  let Tm = totalDH / (totalDS + saltDS + R * Math.log(Ct)) - 273.15;
+  // Baseline Tm at 1 M monovalent (salt entropy term vanishes, ln(1)=0).
+  const Tm1M = totalDH / (totalDS + R * Math.log(Ct)) - 273.15;
 
-  // Mg2+ dominant: Owczarzy 2008 override (recalculates from 1/Tm form)
-  if (freeNg > 0 && mono < 0.22 * Math.sqrt(freeNg)) {
+  // Owczarzy ratio R = sqrt([Mg2+]) / [Mon+] picks the dominant cation. The old
+  // code fired the Mg branch only when R was huge (≈ ≥52 mM Mg), so for normal
+  // PCR (1.5–4 mM Mg, R≈0.7) the documented Mg correction was DEAD — every Tm
+  // was computed monovalent-only.
+  const ratio = freeMg > 0 && monoM > 0
+    ? Math.sqrt(freeMg) / monoM
+    : (freeMg > 0 ? Infinity : 0);
+
+  let Tm;
+  if (freeMg > 0 && ratio >= 0.22) {
+    // Divalent contributes: competing (0.22 ≤ R ≤ 6) or divalent-dominant (R > 6).
     const fGC = gcFraction(s);
-    const lnMg = Math.log(freeNg);
-    const a = 3.92e-5;
-    const b = -9.11e-6;
-    const c = 6.26e-5;
-    const d = 1.42e-5;
-    const e2 = -4.82e-4;
-    const f2 = 5.25e-4;
-    const g = 8.31e-5;
-    // Owczarzy uses 1M NaCl Tm as baseline — recalculate without salt correction
-    const Tm1M = totalDH / (totalDS + 0.368 * (s.length - 1) * Math.log(1.0) + R * Math.log(Ct)) - 273.15;
+    const lnMg = Math.log(freeMg);
+    let a = 3.92e-5; let d = 1.42e-5; let g = 8.31e-5;
+    if (ratio <= 6.0 && monoM > 0) {
+      // Competing regime — monovalent modifies a, d, g (Owczarzy 2008).
+      const lnMon = Math.log(monoM);
+      a *= 0.843 - 0.352 * Math.sqrt(monoM) * lnMon;
+      d *= 1.279 - 4.03e-3 * lnMon - 8.03e-3 * lnMon * lnMon;
+      g *= 0.486 - 0.258 * lnMon + 5.25e-3 * lnMon * lnMon * lnMon;
+    }
+    const b = -9.11e-6; const c = 6.26e-5; const e2 = -4.82e-4; const f2 = 5.25e-4;
     const invTm = (1 / (Tm1M + 273.15))
       + a + b * lnMg + fGC * (c + d * lnMg)
       + (1 / (2 * (s.length - 1))) * (e2 + f2 * lnMg + g * lnMg * lnMg);
     Tm = 1 / invTm - 273.15;
+  } else if (monoM > 0) {
+    // Monovalent-only entropy correction (SantaLucia 1998).
+    const saltDS = 0.368 * (s.length - 1) * Math.log(monoM);
+    Tm = totalDH / (totalDS + saltDS + R * Math.log(Ct)) - 273.15;
+  } else {
+    // No salt info at all (naConc=0, no Mg) — fall back to the 1 M baseline
+    // instead of dividing by −Infinity → −273 °C.
+    Tm = Tm1M;
   }
 
+  if (!Number.isFinite(Tm)) return 0;
   return Math.round(Tm * 10) / 10;
 }
 

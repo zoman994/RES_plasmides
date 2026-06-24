@@ -29,66 +29,40 @@
 import {
   useState, useMemo, useEffect, useRef, useCallback,
 } from 'react';
-import { TREE_DRAG_MIME } from './use-tree-drop-target';
+// Import the constant from its standalone module (NOT use-tree-drop-target,
+// which pulls skeleton-context + canvas-layout — that heavy graph broke the
+// lazy align chunk when AlignInputPanel reused this picker).
+import { TREE_DRAG_MIME } from './tree-drag-mime';
 import MiniPlasmidMap from './MiniPlasmidMap';
 import {
   getRecent, getFavorites, recordRecent, toggleFavorite,
 } from './picker-prefs';
 import { useStore } from '../../../store';
+// Pure matchers live in a lightweight util now (single source of truth) so
+// lighter consumers can reuse them without pulling this whole picker. Imported
+// for internal use AND re-exported below for back-compat with existing callers.
+import { matchesQuery, matchesType, groupLibraryEntries } from '../../../lib/library-match';
+import { Icon } from '../../icons/Icon';
+
+export { matchesQuery, matchesType, groupLibraryEntries };
 
 const TYPE_FILTERS = [
-  { id: 'all', label: 'Все' },
-  { id: 'circular', label: '◯ Circular' },
-  { id: 'linear', label: '▭ Linear' },
-  { id: 'primer', label: '🧬 Primer' },
+  { id: 'all', label: 'Все', icon: null },
+  { id: 'circular', label: 'Circular', icon: 'circular' },
+  { id: 'linear', label: 'Linear', icon: 'linear' },
+  { id: 'primer', label: 'Primer', icon: 'primer' },
 ];
+
+// Mirrors file-import.js ACCEPT_STRING. Duplicated as a bare string on
+// purpose — importing file-import here would pull genbank-parser +
+// auto-annotate into this picker's graph, and this picker is in the
+// align lazy chunk (the tree-drag-mime extraction kept it light). The
+// actual parsing happens in the CONSUMER via onImportFiles.
+const IMPORT_ACCEPT = '.gb,.gbk,.genbank,.dna,.fasta,.fa,.fna';
 
 // Sections expanded by default (library core); other-projects + canvas
 // extraSections collapse by default to keep the dropdown scannable.
 const DEFAULT_EXPANDED = ['favorites', 'recent', 'project', 'loose'];
-
-// ── pure helpers (ported from EmptyAssemblyLibrary, single source) ──
-
-export function matchesQuery(entry, q) {
-  if (!q) return true;
-  const qLower = q.toLowerCase();
-  if (String(entry.name || '').toLowerCase().includes(qLower)) return true;
-  const seq = String(entry.payload?.sequence || entry.sequence || '').toUpperCase();
-  if (seq && seq.includes(q.toUpperCase())) return true;
-  return false;
-}
-
-export function matchesType(entry, type) {
-  if (!type || type === 'all') return true;
-  const t = entry.payload?.topology
-    || (entry.topology?.circular ? 'circular' : entry.topology);
-  if (type === 'circular') return t === 'circular';
-  if (type === 'linear') return t !== 'circular' && entry.kind !== 'oligonucleotide';
-  if (type === 'primer') return entry.kind === 'oligonucleotide' || /primer/i.test(entry.name || '');
-  return true;
-}
-
-/**
- * Entry-centric library grouping (SPEC §4 p2/p6): split LibraryEntries
- * into project / collection / other-projects buckets. Exported for unit
- * tests. Current-project entries are now INCLUDED (the «Из проекта»
- * section) — fixes the hole where the assembler couldn't see its own
- * project's plasmids.
- */
-export function groupLibraryEntries({
-  libraryEntries, currentProjectId, query, typeFilter,
-}) {
-  const all = (libraryEntries && typeof libraryEntries === 'object'
-    ? Object.values(libraryEntries) : [])
-    .filter((e) => e && !e._pendingDelete)
-    .filter((e) => matchesQuery(e, query) && matchesType(e, typeFilter));
-  const byName = (a, b) => String(a.name || a.id).localeCompare(String(b.name || b.id));
-  return {
-    project: all.filter((e) => currentProjectId && e.projectId === currentProjectId).sort(byName),
-    loose: all.filter((e) => !e.projectId).sort(byName),
-    other: all.filter((e) => e.projectId && e.projectId !== currentProjectId).sort(byName),
-  };
-}
 
 function entryDisplay(entry, kind) {
   if (!entry) return { length: 0, topology: 'linear', annotations: [], name: '?' };
@@ -132,7 +106,7 @@ function HighlightedText({ text, query }) {
 
 function EntryThumbnail({ display, kind }) {
   if (kind === 'primer') {
-    return <div data-testid="library-search-thumb-primer" style={styles.thumbPlaceholder} aria-hidden>🧬</div>;
+    return <div data-testid="library-search-thumb-primer" style={styles.thumbPlaceholder} aria-hidden><Icon name="primer" size={16} /></div>;
   }
   if (kind === 'zone') {
     return <div data-testid="library-search-thumb-zone" style={styles.thumbPlaceholder} aria-hidden>🧱</div>;
@@ -189,7 +163,7 @@ function PickerRow({
           onClick={(e) => { e.stopPropagation(); onToggleFav(entry.id); }}
           title={fav ? 'Убрать из избранного' : 'Добавить в избранное'}
           style={{ ...styles.favBtn, color: fav ? '#d97706' : 'var(--text-tertiary)' }}
-        >{fav ? '★' : '☆'}</button>
+        ><Icon name="star" size={14} filled={fav} /></button>
       )}
     </div>
   );
@@ -216,7 +190,9 @@ function PickerSection({
           opacity: disabled ? 0.55 : 1,
         }}
       >
-        <span style={styles.sectionChevron} aria-hidden>{disabled ? '·' : (isOpen ? '▼' : '▶')}</span>
+        <span style={styles.sectionChevron} aria-hidden>
+          {disabled ? '·' : <Icon name={isOpen ? 'chevron-down' : 'chevron-right'} size={12} />}
+        </span>
         <span style={{ flex: 1 }}>{title}</span>
         <span style={styles.sectionCount}>· {count}</span>
       </button>
@@ -249,6 +225,11 @@ export default function LibrarySearchBar({
   // SPEC_ASSEMBLY_CUSTOM_SEGMENT §3 (SAFE) — opt-in «вставить свой
   // сиквенс» секция. Только assembly-контекст её передаёт; canvas нет.
   onPasteSequence,
+  // Opt-in inline file-import (Игорь 17.06.2026): assembly picker passes
+  // this so a .gb/.fasta/.dna can be imported without a detour through
+  // the Library. Receives File[]; the consumer parses + adds to the
+  // library. Presentational only here (no file-import import).
+  onImportFiles,
   inline = false,
   autoFocus = false,
   testId = 'canvas-library-search-bar',
@@ -268,8 +249,36 @@ export default function LibrarySearchBar({
   const [recentIds, setRecentIds] = useState(() => getRecent());
   const wrapRef = useRef(null);
   const inputRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   useEffect(() => { if (autoFocus) inputRef.current?.focus(); }, [autoFocus]);
+
+  // Inline file-import wiring (opt-in via onImportFiles). The component
+  // only surfaces the File[]; the consumer parses + persists.
+  const emitImport = useCallback((fileList) => {
+    if (typeof onImportFiles !== 'function') return;
+    const files = Array.from(fileList || []);
+    if (files.length === 0) return;
+    onImportFiles(files);
+  }, [onImportFiles]);
+  const onFileInputChange = useCallback((e) => {
+    emitImport(e.target.files);
+    e.target.value = ''; // allow re-importing the same file
+  }, [emitImport]);
+  const onListDrop = useCallback((e) => {
+    if (typeof onImportFiles !== 'function') return;
+    const files = e.dataTransfer && e.dataTransfer.files;
+    if (!files || files.length === 0) return; // entry-drag (no files) → ignore
+    e.preventDefault();
+    e.stopPropagation();
+    emitImport(files);
+  }, [onImportFiles, emitImport]);
+  const onListDragOver = useCallback((e) => {
+    if (typeof onImportFiles !== 'function') return;
+    if (e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files')) {
+      e.preventDefault();
+    }
+  }, [onImportFiles]);
 
   // V106 (variant D) — claim the global Ctrl+F flag on the canvas. App.jsx's
   // handler sets `modals.sequenceSearch`; on the canvas there's no viewer to
@@ -393,13 +402,33 @@ export default function LibrarySearchBar({
 
   const sections = (
     <>
+      {typeof onImportFiles === 'function' && (
+        <div data-testid={`${testId}-import-section`} style={styles.importSection}>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept={IMPORT_ACCEPT}
+            multiple
+            data-testid={`${testId}-import-input`}
+            style={{ display: 'none' }}
+            onChange={onFileInputChange}
+          />
+          <button
+            type="button"
+            data-testid={`${testId}-import-btn`}
+            onClick={() => fileInputRef.current?.click()}
+            style={styles.importBtn}
+          ><Icon name="import" size={13} />Импортировать файл (.gb · .fasta · .dna)</button>
+          <span style={styles.importHint}>или перетащите файл сюда</span>
+        </div>
+      )}
       {totalCount === 0 && (
         <div data-testid={`${testId}-empty`} style={styles.empty}>
           {trimmedQuery ? 'Ничего не найдено.' : 'Начните вводить — найду плазмиду в библиотеке или в проекте.'}
         </div>
       )}
       <PickerSection
-        id="favorites" title="Избранное ★" entries={favEntries} kind="library"
+        id="favorites" title={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>Избранное <Icon name="star" size={11} filled /></span>} entries={favEntries} kind="library"
         query={query} onPick={handlePick} favSet={favSet} onToggleFav={onToggleFav}
         expanded={expanded.has('favorites')} onToggle={() => toggleSection('favorites')}
         testId={`${testId}-section-favorites`}
@@ -500,20 +529,33 @@ export default function LibrarySearchBar({
               onClick={() => setTypeFilter(f.id)}
               style={{
                 ...styles.filterPill,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
                 border: `1px solid ${active ? 'var(--accent-500, #d97706)' : 'var(--border-default, #d6d3d1)'}`,
                 background: active ? 'var(--accent-50, #fef3c7)' : 'var(--surface-1)',
                 color: active ? 'var(--accent-700, #b45309)' : 'var(--text-secondary)',
                 fontWeight: active ? 600 : 400,
               }}
-            >{f.label}</button>
+            >{f.icon && <Icon name={f.icon} size={12} />}{f.label}</button>
           );
         })}
       </div>
       {inline ? (
-        <div data-testid={`${testId}-list`} style={styles.inlineList}>{sections}</div>
+        <div
+          data-testid={`${testId}-list`}
+          style={styles.inlineList}
+          onDrop={onListDrop}
+          onDragOver={onListDragOver}
+        >{sections}</div>
       ) : (
         isOpen && (
-          <div data-testid={`${testId}-dropdown`} style={styles.dropdown}>{sections}</div>
+          <div
+            data-testid={`${testId}-dropdown`}
+            style={styles.dropdown}
+            onDrop={onListDrop}
+            onDragOver={onListDragOver}
+          >{sections}</div>
         )
       )}
     </div>
@@ -547,13 +589,28 @@ const styles = {
   },
   inlineList: { flex: 1, minHeight: 0, overflowY: 'auto', marginTop: 8 },
   empty: { padding: 12, fontSize: 11.5, color: 'var(--text-tertiary)' },
+  importSection: {
+    display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+    marginBottom: 6, padding: '8px', background: 'var(--surface-2)',
+    border: '1px dashed var(--border-default, #d6d3d1)', borderRadius: 4,
+  },
+  importBtn: {
+    display: 'inline-flex', alignItems: 'center', gap: 5,
+    padding: '5px 10px', fontSize: 11.5, fontWeight: 600,
+    background: 'var(--surface-1)', color: 'var(--accent-700, #b45309)',
+    border: '1px solid var(--accent-300, #fcd34d)', borderRadius: 4, cursor: 'pointer',
+  },
+  importHint: { fontSize: 10.5, color: 'var(--text-tertiary)' },
   section: { marginBottom: 4 },
   sectionHeader: {
     display: 'flex', alignItems: 'center', gap: 6, width: '100%', padding: '6px 8px',
     background: 'var(--surface-2)', border: '1px solid var(--border-subtle)', borderRadius: 4,
     fontSize: 10.5, fontWeight: 600, letterSpacing: 0.4, textTransform: 'uppercase', textAlign: 'left',
   },
-  sectionChevron: { fontSize: 9, color: 'var(--text-tertiary)', minWidth: 10 },
+  sectionChevron: {
+    fontSize: 9, color: 'var(--text-tertiary)', minWidth: 10,
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+  },
   sectionCount: { fontSize: 10, color: 'var(--text-tertiary)', fontWeight: 500, marginLeft: 4 },
   row: {
     display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '6px 8px',

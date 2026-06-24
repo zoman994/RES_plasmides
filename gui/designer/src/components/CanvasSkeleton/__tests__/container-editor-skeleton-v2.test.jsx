@@ -394,6 +394,21 @@ describe('K4 — useStore Annotator actions wired', () => {
   });
 });
 
+describe('RC-C1 — circular product map tab', () => {
+  it('circular container → «Карта» tab present; click → PlasmidMapV2 mounts', () => {
+    renderEditorFor('c-placeholder-1', { fillTopology: 'circular' });
+    const mapTab = screen.getByTestId('importer-tab-map');
+    expect(mapTab).toBeTruthy();
+    fireEvent.click(mapTab);
+    expect(screen.getByTestId('skeleton-editor-map')).toBeTruthy();
+  });
+
+  it('linear container → no «Карта» tab', () => {
+    renderEditorFor('c-placeholder-1', { fillTopology: 'linear' });
+    expect(screen.queryByTestId('importer-tab-map')).toBeNull();
+  });
+});
+
 // Suppress unused-import-warning for the imported within helper that
 // may come in handy for deeper assertions later.
 void within;

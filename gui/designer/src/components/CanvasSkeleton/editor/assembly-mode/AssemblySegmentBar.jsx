@@ -15,6 +15,7 @@
  *
  * Pure presentation — no store. Renders null when there are no segments.
  */
+import { acquisitionLabel } from '../../lib/acquisition-label';
 
 // Same translucent fill / stroke math SegmentZonesOverlay uses, so the bar and
 // the sequence strip read as one colour language.
@@ -52,6 +53,9 @@ export default function AssemblySegmentBar({ coloredZones, onZoneClick }) {
         const span = Math.max(1, (z.end || 0) - (z.start || 0));
         const jr = z.junctionRight || null;
         const decided = jr && jr.state === 'decided';
+        // S5 — acquisition badge (how it's made) + provenance (where from).
+        const acq = acquisitionLabel(z.acquisitionMethod);
+        const provenance = z.sourceName ? `${acq.full} · источник: ${z.sourceName}` : acq.full;
         return (
           <div key={z.zoneId} style={{ display: 'contents' }}>
             <button
@@ -59,7 +63,8 @@ export default function AssemblySegmentBar({ coloredZones, onZoneClick }) {
               data-testid="assembly-segment"
               data-zone-id={z.zoneId}
               data-orphan={z.isOrphan ? 'true' : 'false'}
-              title={z.label || z.zoneId}
+              data-acquisition={z.acquisitionMethod || 'undefined'}
+              title={`${z.label || z.zoneId} — ${provenance}`}
               onClick={() => onZoneClick && onZoneClick(z.zoneId)}
               style={{
                 flexGrow: span,
@@ -79,9 +84,20 @@ export default function AssemblySegmentBar({ coloredZones, onZoneClick }) {
                 whiteSpace: 'nowrap',
                 textOverflow: 'ellipsis',
                 padding: '0 6px',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                justifyContent: 'center',
+                gap: 1,
+                lineHeight: 1.1,
               }}
             >
-              {z.label || z.zoneId}
+              <span style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' }}>{z.label || z.zoneId}</span>
+              <span
+                data-testid="assembly-segment-acq"
+                aria-hidden
+                style={{ fontSize: 8.5, fontWeight: 600, color: 'var(--text-tertiary)', letterSpacing: 0.2 }}
+              >{acq.short}</span>
             </button>
             {jr && (
               <button

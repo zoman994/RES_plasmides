@@ -14,6 +14,7 @@ import { checkDuplicates } from '../duplicate-checker';
 import { migratePartAnnotations } from '../migrate-annotations';
 import { sanitizeSequence } from '../sequence-utils';
 import { digest, checkDoubleDigest, checkInsertSites, checkReadingFrame, scanAllSites } from '../restriction-db';
+import { Icon } from './icons/Icon';
 
 const MODES = [
   { id: 'view',        icon: '\uD83D\uDC41',  label: 'Посмотреть',            desc: 'только просмотр' },
@@ -324,7 +325,7 @@ export default function PlasmidUseWizard({ plasmid, presetMode, onClose }) {
           <div className="text-[10px] text-blue-500 mt-0.5">Смежные регионы — можно заменить как один блок</div>
           <button onClick={() => { setCreating(true); handleReplace(); }} disabled={creating}
             className="mt-1.5 text-[10px] px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">
-            {'🔄'} {creating ? 'Создано ✓' : 'Создать фланки гомологии (без выбранного блока)'}
+            <Icon name="swap" size={11} style={{ display: 'inline-block', verticalAlign: '-2px' }} /> {creating ? 'Создано ✓' : 'Создать фланки гомологии (без выбранного блока)'}
           </button>
         </div>
       )}
@@ -364,7 +365,7 @@ export default function PlasmidUseWizard({ plasmid, presetMode, onClose }) {
             <span className="w-3 h-3 rounded-full" style={{ backgroundColor: ANNOTATION_COLORS[r.type] || '#999' }} />
             <span className="text-xs font-medium flex-1">{r.name}</span>
             <span className="text-[10px] text-[var(--text-tertiary)]">{r.end - r.start} п.н.</span>
-            <span className="text-red-400 text-xs">{'🗑'}</span>
+            <span className="text-red-400 inline-flex items-center"><Icon name="trash" size={13} /></span>
           </button>
         ))}
       </div>
@@ -776,7 +777,7 @@ export default function PlasmidUseWizard({ plasmid, presetMode, onClose }) {
               <button onClick={() => setRcStep(2)} className="text-[10px] px-3 py-1.5 border rounded hover:bg-[var(--surface-2)]">← Назад</button>
               <button onClick={() => { setCreating(true); handleRcCreate(); }} disabled={creating}
                 className="text-[10px] px-4 py-1.5 bg-red-600 text-white rounded hover:bg-red-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed">
-                🔪 {creating ? 'Создано ✓' : 'Создать на canvas'}
+                <Icon name="restriction" size={12} style={{ display: 'inline-block', verticalAlign: '-2px' }} /> {creating ? 'Создано ✓' : 'Создать на canvas'}
               </button>
             </div>
           </div>
@@ -787,7 +788,7 @@ export default function PlasmidUseWizard({ plasmid, presetMode, onClose }) {
 
   const renderVersions = () => (
     <div className="text-center py-6">
-      <div className="text-[var(--text-tertiary)] text-sm mb-2">{'🌳'} Дерево версий загружается...</div>
+      <div className="text-[var(--text-tertiary)] text-sm mb-2"><Icon name="branch" size={13} style={{ display: 'inline-block', verticalAlign: '-2px' }} /> Дерево версий загружается...</div>
     </div>
   );
 
@@ -811,7 +812,7 @@ export default function PlasmidUseWizard({ plasmid, presetMode, onClose }) {
           <div className="flex items-center gap-2">
             {step !== 'menu' && (
               <button onClick={() => { setStep('menu'); setMessage(null); setSelectedRegionIds([]); }}
-                className="text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] text-sm mr-1">{'←'}</button>
+                className="text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] mr-1 inline-flex items-center"><Icon name="chevron-left" size={15} /></button>
             )}
             <h3 className="text-sm font-bold text-[var(--text-secondary)]">
               {step === 'menu' ? `Что сделать с «${plasmid.name}»?` : MODES.find(m => m.id === step)?.label || step}
@@ -820,7 +821,7 @@ export default function PlasmidUseWizard({ plasmid, presetMode, onClose }) {
               {totalBp.toLocaleString()} п.н., circular, {regions.length} регионов
             </span>
           </div>
-          <button onClick={onClose} className="text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] text-lg">{'✕'}</button>
+          <button onClick={onClose} className="text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] inline-flex items-center"><Icon name="close" size={16} /></button>
         </div>
 
         {/* Main */}

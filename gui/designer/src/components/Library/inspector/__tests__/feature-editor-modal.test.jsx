@@ -188,6 +188,25 @@ describe('FeatureEditorModal — Split sub-features / Merge / Delete', () => {
     if (tab) fireEvent.click(tab);
   }
 
+  it('«+ intron» adds an intron sub-feature emitted on save (→ AA track splices)', () => {
+    const onSave = vi.fn();
+    render(
+      <FeatureEditorModal
+        feature={FEATURE} seqLength={5000} neighbours={NEIGHBOURS}
+        onSave={onSave} onClose={() => {}} onMerge={() => {}} onDelete={() => {}}
+      />
+    );
+    switchToSubfeaturesTab();
+    fireEvent.click(screen.getByTestId('feature-editor-add-intron'));
+    fireEvent.click(screen.getByTestId('feature-editor-save'));
+    const intron = (onSave.mock.calls[0][0].subFeatures || []).find((x) => x.type === 'intron');
+    expect(intron).toBeTruthy();
+    // seeded inside the parent feature [100,900); biolog adjusts in the row
+    expect(intron.start).toBeGreaterThanOrEqual(100);
+    expect(intron.end).toBeGreaterThan(intron.start);
+    expect(intron.end).toBeLessThanOrEqual(900);
+  });
+
   it('Split button creates two sub-feature rows (parent halves)', () => {
     render(
       <FeatureEditorModal
@@ -488,7 +507,7 @@ describe('FeatureEditorModal — Split sub-features / Merge / Delete', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it('Introns section is rendered as a stub on the Subfeatures tab', () => {
+  it('Introns section offers an enabled «+ intron» on the Subfeatures tab', () => {
     render(
       <FeatureEditorModal
         feature={FEATURE} seqLength={5000} neighbours={[]}
@@ -496,9 +515,7 @@ describe('FeatureEditorModal — Split sub-features / Merge / Delete', () => {
       />
     );
     fireEvent.click(screen.getByTestId('feature-editor-tab-subfeatures'));
-    const stub = screen.getByTestId('feature-editor-introns');
-    expect(stub).toBeTruthy();
-    const btn = stub.querySelector('button');
-    if (btn) expect(btn.disabled).toBe(true);
+    expect(screen.getByTestId('feature-editor-introns')).toBeTruthy();
+    expect(screen.getByTestId('feature-editor-add-intron').disabled).toBe(false);
   });
 });

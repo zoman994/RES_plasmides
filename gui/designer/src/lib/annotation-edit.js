@@ -91,12 +91,14 @@ export function validateAnnotationCoords(start, end, seqLength) {
  * Sprint M-X.2.
  */
 export function createAnnotation({
+  id,
   name = '',
   type = 'misc_feature',
   start,
   end,
   level = 'region',
   strand = 1,
+  regionId,
   predicted,
   source,
   confidence,
@@ -105,7 +107,12 @@ export function createAnnotation({
   const v = validateAnnotationCoords(start, end, seqLength);
   if (!v.valid) throw new Error(`createAnnotation: ${v.error}`);
   const ann = {
-    id: generateAnnotationId({ start, end, type, name }),
+    // Preserve an explicit id when given — cross-referencing annotations (a
+    // gene + its introns linked by regionId) must keep their ids across the
+    // create/create-batch apply, or the regionId link breaks and the intron
+    // becomes an orphan (no exon-block render, no AA splice). Fall back to the
+    // deterministic backfill id only when none is supplied.
+    id: id != null ? id : generateAnnotationId({ start, end, type, name }),
     name,
     type,
     start,
@@ -113,6 +120,9 @@ export function createAnnotation({
     strand: strand === -1 ? -1 : 1,
     level,
   };
+  // Link a detail annotation (e.g. a manually-marked intron) to its parent
+  // region so the AA track can splice it (getIntronsForRegion link path).
+  if (regionId != null) ann.regionId = regionId;
   // Forward predictor metadata so accepted Annotator hits keep their
   // origin trail when applied as confident regions. Skip noise — drop
   // empty arrays / nullish values so the annotation stays clean.

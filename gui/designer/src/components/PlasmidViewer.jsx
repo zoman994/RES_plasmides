@@ -26,6 +26,7 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import PlasmidMap from './PlasmidMap';
 import AnnotationEditor from './AnnotationEditor';
+import { Icon } from './icons/Icon';
 import LinearFeatureBar from './Library/inspector/tabs/LinearFeatureBar';
 import { getRegions } from '../annotation-model';
 import { ANNOTATION_COLORS } from '../auto-annotate';
@@ -181,14 +182,14 @@ export default function PlasmidViewer({ part, onClose, onOpenWizard, onAnnotatio
         <div className="flex items-center justify-between px-5 py-3 border-b shrink-0">
           <div className="flex items-center gap-3">
             <h3 className="text-sm font-bold text-gray-700">
-              {'🔬'} {part.name}
+              <Icon name="dna" size={14} style={{ display: 'inline-block', verticalAlign: '-2px' }} /> {part.name}
               <span className="text-gray-400 font-normal ml-2">
                 {totalBp.toLocaleString()} п.н., {part.topology === 'circular' ? 'circular' : 'linear'}
               </span>
             </h3>
             {part.organism && <span className="text-[10px] text-gray-400 bg-gray-50 rounded px-1.5 py-0.5">{part.organism}</span>}
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-lg">{'✕'}</button>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 inline-flex items-center"><Icon name="close" size={16} /></button>
         </div>
 
         {/* CDS Warnings */}
@@ -453,22 +454,22 @@ export default function PlasmidViewer({ part, onClose, onOpenWizard, onAnnotatio
               <div className="flex gap-1.5">
                 <button onClick={() => { useStore.getState().setWizardPresetMode('restriction_cloning'); onClose(); onOpenWizard(part); }}
                   className="text-xs px-2.5 py-1.5 bg-red-50 text-red-700 border border-red-200 rounded hover:bg-red-100">
-                  {'🔪'} Клонировать
+                  <Icon name="restriction" size={13} style={{ display: 'inline-block', verticalAlign: '-2px' }} /> Клонировать
                 </button>
                 <button onClick={() => { useStore.getState().setWizardPresetMode('use_whole'); onClose(); onOpenWizard(part); }}
                   className="text-xs px-2.5 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded hover:bg-blue-100">
-                  {'⚗️'} Как backbone
+                  <Icon name="mix" size={13} style={{ display: 'inline-block', verticalAlign: '-2px' }} /> Как backbone
                 </button>
                 <button onClick={() => { useStore.getState().setWizardPresetMode('mutate'); onClose(); onOpenWizard(part); }}
                   className="text-xs px-2.5 py-1.5 bg-purple-50 text-purple-700 border border-purple-200 rounded hover:bg-purple-100">
-                  {'🔄'} Мутагенез
+                  <Icon name="mutagenesis" size={13} style={{ display: 'inline-block', verticalAlign: '-2px' }} /> Мутагенез
                 </button>
               </div>
             )}
             {onOpenWizard && part.topology !== 'circular' && (
               <button onClick={() => { onClose(); onOpenWizard(part); }}
                 className="text-xs px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded hover:bg-blue-100">
-                {'🔄'} Операции
+                <Icon name="swap" size={13} style={{ display: 'inline-block', verticalAlign: '-2px' }} /> Операции
               </button>
             )}
             {(part.children?.length > 0 || part.parentId) && (

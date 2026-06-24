@@ -73,6 +73,8 @@ import {
 // primer-container linkage lands in K10 via the oligonucleotide kind.
 import SequenceToolbar from './SequenceToolbar';
 import RestrictionSitePopover from './RestrictionSitePopover';
+import PlasmidMapV2 from '../../PlasmidMapV2';
+import { Icon } from '../../icons/Icon';
 
 // DEC-CANVAS-V2-EDITOR-04 — explicit namespace разделяет skeleton-target
 // от Library-target в global Annotator scope.
@@ -492,6 +494,10 @@ export default function ContainerEditorSkeleton() {
   const sequence = edits?.editedSequence ?? item?.sequence ?? '';
   const length = sequence.length || item?.length || 0;
   const topology = edits?.editedTopology ?? item?.topology ?? 'linear';
+  // RC-C1 (Игорь 24.06) — circular products get a «Карта» tab (PlasmidMapV2).
+  // Drive off the RESOLVED topology (respects pending editedTopology); handle both
+  // the string form ('circular') and a defensive object form ({circular:true}).
+  const isCircular = topology === 'circular' || topology?.circular === true;
   const displayAnnotations = Array.isArray(edits?.editedAnnotations)
     ? edits.editedAnnotations
     : (item?.annotations || []);
@@ -541,7 +547,7 @@ export default function ContainerEditorSkeleton() {
             gap: 8,
           }}
         >
-          <span style={{ fontSize: 14 }}>🔬</span>
+          <Icon name="pcr" size={14} style={{ display: 'inline-block', verticalAlign: '-2px' }} />
           <span>
             Предпросмотр продукта · OP_EXECUTE для финализации
             {virtual && virtual.state !== 'valid' && virtual.warnings?.length > 0
@@ -586,7 +592,7 @@ export default function ContainerEditorSkeleton() {
             gap: 8,
           }}
         >
-          <span style={{ fontSize: 14 }}>🔒</span>
+          <Icon name="lock" size={14} style={{ display: 'inline-block', verticalAlign: '-2px' }} />
           <span>
             Контейнер использован в операции. Любые изменения создают форк через «Save As fork».
           </span>
@@ -638,6 +644,7 @@ export default function ContainerEditorSkeleton() {
             onChange={setActiveTab}
             showHistory={showHistory}
             showOverview={false}
+            showMap={isCircular}
             showMutagenesis
             showAnnotations={false}
             annotatorActive={activeTab === 'annotations'}
@@ -731,6 +738,29 @@ export default function ContainerEditorSkeleton() {
                   containerLength={length}
                   onCut={onCutAtCursor}
                 />
+              </div>
+            )}
+
+            {/* RC-C1 — circular product map. Reuses PlasmidMapV2 (the same
+                redesigned circular map as Library/picker); a feature click jumps
+                the Sequence tab to that position. */}
+            {activeTab === 'map' && (
+              <div
+                data-testid="skeleton-editor-map"
+                style={{
+                  flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column',
+                  alignItems: 'center', justifyContent: 'flex-start', padding: 12, overflow: 'auto',
+                }}
+              >
+                <div style={{ width: 'min(560px, 80vh)', height: 'min(560px, 80vh)' }}>
+                  <PlasmidMapV2
+                    fragments={[{ sequence, annotations: displayAnnotations, length }]}
+                    constructName={item.name || item._fileName || ''}
+                    totalBp={length}
+                    topology="circular"
+                    onFeatureClick={(f) => { if (f && Number.isFinite(f.start)) onBarSettle(f.start); }}
+                  />
+                </div>
               </div>
             )}
 

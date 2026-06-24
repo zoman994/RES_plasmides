@@ -21,6 +21,7 @@ import { buildFolderTree } from './library-folder-tree';
 import LibraryZone from './LibraryZone';
 import TreeFolderRow from './TreeFolderRow';
 import TreeItemRow from './TreeItemRow';
+import { Icon } from '../../icons/Icon';
 
 function buildClaimedSet(projectsById, entriesById) {
   const claimed = new Set();
@@ -179,8 +180,8 @@ export default function LooseZone({
           data-testid="loose-zone-add-folder-btn"
           title="Создать папку"
           onClick={handleCreateFolder}
-          style={BTN_STYLE}
-        >📁+</button>
+          style={{ ...BTN_STYLE, display: 'inline-flex', alignItems: 'center', gap: 1 }}
+        ><Icon name="folder" size={12} /><Icon name="plus" size={9} /></button>
       )}
       {onAddToLoose && (
         <button
@@ -188,8 +189,8 @@ export default function LooseZone({
           data-testid="loose-zone-add-btn"
           title="Добавить в коллекцию"
           onClick={onAddToLoose}
-          style={BTN_STYLE}
-        >+</button>
+          style={{ ...BTN_STYLE, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+        ><Icon name="plus" size={13} /></button>
       )}
     </span>
   ) : null;
@@ -204,7 +205,7 @@ export default function LooseZone({
       <div key={node.path}>
         <TreeFolderRow
           name={node.name}
-          icon="📁"
+          icon={<Icon name="folder" size={13} />}
           count={totalCount}
           expanded={isOpen}
           indent={depth}
@@ -234,7 +235,7 @@ export default function LooseZone({
   return (
     <LibraryZone
       variant="loose"
-      icon="⎀"
+      icon={<Icon name="folder" size={13} />}
       title={ws.zoneLooseTitleNoProject || 'БЕЗ ПРОЕКТА'}
       sub={ws.zoneLooseSubFreeDesk || 'свободный стол биолога'}
       count={filtered.length}
@@ -245,7 +246,7 @@ export default function LooseZone({
     >
       <TreeFolderRow
         name="Контейнеры"
-        icon="📋"
+        icon={<Icon name="list" size={13} />}
         count={containerEntries.length}
         expanded={openFolders.has('containers')}
         indent={1}
@@ -287,7 +288,7 @@ export default function LooseZone({
 
       <TreeFolderRow
         name="Праймеры"
-        icon="🧬"
+        icon={<Icon name="primer" size={13} />}
         count={primerEntries.length}
         expanded={openFolders.has('primers')}
         indent={1}

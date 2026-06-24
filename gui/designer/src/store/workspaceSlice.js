@@ -13,8 +13,6 @@
  *                 default flipped per CURRENT_TASK.md).
  *   'library'   — Library workspace (M-X.7a v2 LibraryWorkspace).
  *   'construct' — DesignCanvas (Project's primary canvas).
- *   'flow'      — DAG (Project Flow). DEC-MX7A-V2-09 wires DAG
- *                 sub-row clicks via `setActiveWorkspace('flow', { projectId })`.
  *   'importer'  — legacy Importer fullscreen (preserved for now;
  *                 DEC-IMP-06 ⚓ marks it as superseded but the entry
  *                 is kept for power-flow access).
@@ -24,14 +22,17 @@
  * workspace. Capped at WORKSPACE_HISTORY_LIMIT to avoid memory growth
  * across long sessions.
  *
- * `context` carries optional per-switch data (e.g. `{ projectId }`
- * for `'flow'`). Reset to `{}` whenever a switch comes through with
- * no context — the prior context shouldn't leak into the next
- * workspace mount.
+ * `context` carries optional per-switch data (e.g. `{ projectId }`).
+ * Reset to `{}` whenever a switch comes through with no context — the
+ * prior context shouldn't leak into the next workspace mount.
+ *
+ * 17.06.2026: `'flow'` (DAG Project Flow) removed — DagWorkspace was
+ * deleted (dead legacy route), and DEC-MX7A-V2-09 (DAG sub-row wiring)
+ * is retracted. See TECH_DEBT TD-DEAD-DAGWORKSPACE.
  */
 
 const VALID_WORKSPACES = new Set([
-  'startup', 'library', 'construct', 'flow', 'importer', 'mix',
+  'startup', 'library', 'construct', 'importer', 'mix', 'align', 'restriction-sites',
 ]);
 
 export const WORKSPACE_HISTORY_LIMIT = 10;

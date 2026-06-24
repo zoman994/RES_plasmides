@@ -6,6 +6,7 @@
  * internal boundary fwd/rev coverage (DEC-CANVAS-ASM-PRIMER-05/07).
  */
 import { useMemo, useState } from 'react';
+import { Icon } from '../../../icons/Icon';
 import {
   useSkeletonState, useSkeletonActions, useAssemblyDraftById,
 } from '../../store/skeleton-context';
@@ -46,7 +47,7 @@ export function PrimerRow({ p, actions, draftId, onEdit }) {
       style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 0', fontSize: 10.5 }}
     >
       <span title={p.direction}>{p.direction === 'reverse' ? '◀' : '▶'}</span>
-      {cross && <span data-testid="assembly-primer-cross" title="Покрывает границу — junction primer (A4)">⚡</span>}
+      {cross && <span data-testid="assembly-primer-cross" title="Покрывает границу — junction primer (A4)" style={{ display: 'inline-flex', alignItems: 'center' }}><Icon name="warning" size={12} /></span>}
       {/* K12 — autoMode badge: 🔧 auto (will be recomputed by the K15
           finalizer on skeleton change) / 🔒 manual (frozen). */}
       <span
@@ -83,14 +84,14 @@ export function PrimerRow({ p, actions, draftId, onEdit }) {
           style={{ border: 'none', background: 'transparent', cursor: 'text', fontWeight: 600, color: 'var(--text-primary)', padding: 0 }}
         >{p.label || p.name}</button>
       )}
-      {p.status === 'edited' && <span title="Изменён вручную" style={{ color: 'var(--accent-500,#b85c3e)' }}>✎</span>}
+      {p.status === 'edited' && <span title="Изменён вручную" style={{ display: 'inline-flex', alignItems: 'center', color: 'var(--accent-500,#b85c3e)' }}><Icon name="edit" size={12} /></span>}
       {/* S3 §5.6 — координаты праймера устарели после правки в редакторе. */}
       {p.status === 'stale' && (
         <span
           data-testid="assembly-primer-stale"
           title="Координаты устарели после правки последовательности — проверьте/перепишите праймер"
-          style={{ color: 'var(--warning-fg,#b45309)' }}
-        >⚠</span>
+          style={{ display: 'inline-flex', alignItems: 'center', color: 'var(--warning-fg,#b45309)' }}
+        ><Icon name="warning" size={12} /></span>
       )}
       <span style={{ color: 'var(--text-tertiary)' }}>
         {`Tm ${p.tm}°`}
@@ -98,8 +99,8 @@ export function PrimerRow({ p, actions, draftId, onEdit }) {
           <span
             data-testid={`assembly-primer-tm-warn-${p.id}`}
             title={`Tm связывания ${p.tm}° ниже рабочего ~55–65° (отжиг ненадёжен) — перепишите праймер вручную`}
-            style={{ color: 'var(--warning-fg,#b45309)', marginLeft: 3 }}
-          >⚠</span>
+            style={{ display: 'inline-flex', alignItems: 'center', color: 'var(--warning-fg,#b45309)', marginLeft: 3 }}
+          ><Icon name="warning" size={12} /></span>
         )}
         {` · GC ${p.gc}%`}
       </span>
@@ -113,31 +114,31 @@ export function PrimerRow({ p, actions, draftId, onEdit }) {
           data-testid={`assembly-primer-lock-${p.id}`}
           onClick={() => actions.updateAssemblyPrimer(draftId, p.id, { autoMode: 'manual' })}
           title="Заблокировать (manual) — finalizer не будет трогать"
-          style={iconBtn}
-        >🔒</button>
+          style={iconBtnFlex}
+        ><Icon name="lock" size={12} /></button>
       ) : (
         <button
           type="button"
           data-testid={`assembly-primer-reset-${p.id}`}
           onClick={() => actions.updateAssemblyPrimer(draftId, p.id, { autoMode: 'auto' })}
           title="Сбросить в auto — finalizer пересчитает"
-          style={iconBtn}
-        >🔄</button>
+          style={iconBtnFlex}
+        ><Icon name="swap" size={12} /></button>
       )}
       <button
         type="button"
         data-testid="assembly-primer-edit"
         onClick={() => onEdit(p)}
         title="Редактировать ПСО"
-        style={iconBtn}
-      >✎</button>
+        style={iconBtnFlex}
+      ><Icon name="edit" size={12} /></button>
       <button
         type="button"
         data-testid="assembly-primer-delete"
         onClick={() => actions.removeAssemblyPrimer(draftId, p.id)}
         title="Удалить"
-        style={{ ...iconBtn, color: 'var(--accent-500,#b85c3e)' }}
-      >✕</button>
+        style={{ ...iconBtnFlex, color: 'var(--accent-500,#b85c3e)' }}
+      ><Icon name="close" size={12} /></button>
     </div>
   );
 }
@@ -322,6 +323,7 @@ export default function AssemblyPrimersPanel({ draftId, onClose }) {
 }
 
 const iconBtn = { border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: 11 };
+const iconBtnFlex = { ...iconBtn, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' };
 const ghostBtn = { fontSize: 11, padding: '4px 10px', background: 'transparent', border: '1px solid var(--border-subtle)', borderRadius: 4, cursor: 'pointer', color: 'var(--text-secondary)' };
 const primaryBtn = { fontSize: 11.5, padding: '5px 14px', background: 'var(--accent-500,#b85c3e)', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 600 };
 function tabBtn(active) {

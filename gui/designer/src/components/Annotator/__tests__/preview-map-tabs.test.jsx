@@ -32,6 +32,12 @@ vi.mock('../../SequenceView', () => ({
 vi.mock('../../PlasmidMiniMap.jsx', () => ({
   default: () => <div data-testid="mock-plasmid-mini-map" />,
 }));
+// Circular preview now renders the redesigned PlasmidMapV2
+// (DEC-DS-PLASMIDMAP-V2, flag plasmidMapV2). Mocked to a probe — the
+// map's own geometry lives in plasmid-map-v2.test.jsx.
+vi.mock('../../PlasmidMapV2', () => ({
+  default: () => <div data-testid="mock-plasmid-map-v2" />,
+}));
 
 import PreviewTab from '../PreviewTab.jsx';
 
@@ -79,11 +85,11 @@ describe('PreviewTab — Stage C linear/circular sub-tabs', () => {
     expect(useStore.getState().annotator.activeTab).toBe('circular');
   });
 
-  it('Circular state mounts PlasmidMiniMap inside annotator-preview-circular wrapper', () => {
+  it('Circular state mounts the circular map (V2) inside annotator-preview-circular wrapper', () => {
     setTab('circular');
     render(<PreviewTab sequence={SEQ} annotations={[]} name="p" />);
     expect(screen.getByTestId('annotator-preview-circular')).toBeTruthy();
-    expect(screen.getByTestId('mock-plasmid-mini-map')).toBeTruthy();
+    expect(screen.getByTestId('mock-plasmid-map-v2')).toBeTruthy();
     expect(screen.queryByTestId('mock-sequence-view')).toBeNull();
     expect(screen.getByTestId('annotator-tab-circular').getAttribute('data-active')).toBe('true');
   });
