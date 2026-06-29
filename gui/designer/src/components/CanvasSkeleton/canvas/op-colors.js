@@ -26,6 +26,7 @@ const OP_OWN_COLORS = {
   pcr: { stroke: '#0891b2', fill: '#cffafe' }, // cyan — amplification
   cut: { stroke: '#b45309', fill: '#fef3c7' }, // amber — digest
   mutagenesis: { stroke: '#be185d', fill: '#fce7f3' }, // rose — mutate
+  blunt: { stroke: '#0f766e', fill: '#ccfbf1' }, // teal — end prep (exonuclease/polymerase)
 };
 
 // Unknown / kind-not-yet-chosen. WARM neutral (taupe/sand), explicitly NOT grey

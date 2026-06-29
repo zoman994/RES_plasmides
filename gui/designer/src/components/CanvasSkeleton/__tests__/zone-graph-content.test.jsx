@@ -71,7 +71,9 @@ describe('ZoneGraphContent — V114 K1 extracted graph renderer', () => {
     const block = screen.getByTestId('skeleton-block-c1');
     fireEvent.click(block);
     fireEvent.doubleClick(block);
-    expect(onClick).toHaveBeenCalledWith('c1');
+    // CANVAS-CLICK-3 — click now also passes the event (2nd arg) so a host can anchor
+    // a popup at the click; the container id is still the first arg.
+    expect(onClick).toHaveBeenCalledWith('c1', expect.anything());
     expect(onDbl).toHaveBeenCalledWith('c1');
   });
 });

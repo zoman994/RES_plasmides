@@ -21,6 +21,8 @@ import { STRINGS } from '../../../lib/strings';
 import LibraryZone from './LibraryZone';
 import TreeFolderRow from './TreeFolderRow';
 import TreeItemRow from './TreeItemRow';
+import VersionLineageNode from './VersionLineageNode';
+import { groupVisibleLineages } from '../lib/version-lineage';
 import ContextMenu from '../../ContextMenu';
 import { FEATURE_FLAGS } from '../../../lib/feature-flags';
 import { Icon } from '../../icons/Icon';
@@ -73,12 +75,30 @@ export default function ProjectZone({
     [primerEntries, query],
   );
 
+  // Collapse version lineages: chained edits/versions of one molecule render
+  // as ONE node (head + count), not N flat sibling rows (главная боль —
+  // версии плодятся в библиотеке). Singletons fall through to a plain row.
+  const containerGroups = useMemo(
+    () => groupVisibleLineages(entriesById, filteredContainers),
+    [entriesById, filteredContainers],
+  );
+
   // Sub-folder open state: Контейнеры open by default
   const [openFolders, setOpenFolders] = useState(() => new Set(['containers']));
   const toggleFolder = useCallback((key) => {
     setOpenFolders((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }, []);
+
+  // Per-lineage expand state (which collapsed version-stacks are open).
+  const [expandedLineages, setExpandedLineages] = useState(() => new Set());
+  const toggleLineage = useCallback((id) => {
+    setExpandedLineages((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
   }, []);
@@ -252,21 +272,34 @@ export default function ProjectZone({
           onToggle={() => toggleFolder('containers')}
           testId={`tree-folder-containers-${projectId}`}
         />
-        {openFolders.has('containers') && filteredContainers.map((entry) => (
-          <TreeItemRow
-            key={entry.id}
-            entry={entry}
-            isSelected={entry.id === selectedId}
-            onSelect={onSelectEntry}
-            indent={2}
-            // 12.05.2026 — entries в проекте должны быть draggable
-            // (canvas-skeleton drop-target, cross-project clone в
-            // Library — обе фичи требуют drag). LooseZone уже
-            // включает это; ProjectZone было оставлено по умолчанию
-            // false — bug.
-            draggable
-            testId={`tree-item-project-${entry.id}`}
-          />
+        {openFolders.has('containers') && containerGroups.map((g) => (
+          g.count > 1 ? (
+            <VersionLineageNode
+              key={g.rootId}
+              group={g}
+              selectedId={selectedId}
+              onSelectEntry={onSelectEntry}
+              expanded={expandedLineages.has(g.rootId)}
+              onToggle={() => toggleLineage(g.rootId)}
+              indent={2}
+              testId={`version-lineage-${g.rootId}`}
+            />
+          ) : (
+            <TreeItemRow
+              key={g.headEntry.id}
+              entry={g.headEntry}
+              isSelected={g.headEntry.id === selectedId}
+              onSelect={onSelectEntry}
+              indent={2}
+              // 12.05.2026 — entries в проекте должны быть draggable
+              // (canvas-skeleton drop-target, cross-project clone в
+              // Library — обе фичи требуют drag). LooseZone уже
+              // включает это; ProjectZone было оставлено по умолчанию
+              // false — bug.
+              draggable
+              testId={`tree-item-project-${g.headEntry.id}`}
+            />
+          )
         ))}
 
         {/* M-X.7c K4: DAG sub-folder removed

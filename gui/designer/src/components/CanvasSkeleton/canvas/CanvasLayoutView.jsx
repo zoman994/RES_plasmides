@@ -26,6 +26,8 @@ import LibrarySearchBar from './LibrarySearchBar';
 import { Icon } from '../../icons/Icon';
 import OpKindPicker from './operations/OpKindPicker';
 import OpPopupRouter from './operations/OpPopupRouter';
+import FragmentInfoPanel from './FragmentInfoPanel';
+import { fragmentCardInfo } from '../lib/fragment-card-info';
 import { buildAssemblyZoneAction } from './assembly-zone-create';
 import {
   zoomAtPoint, canvasContentExtent, panScrollTarget, contentBBox, fitZoomToContent,
@@ -160,10 +162,14 @@ export default function CanvasLayoutView() {
   // popups are position:fixed, so the canvas scale/scroll doesn't affect them.
   const [openOpPicker, setOpenOpPicker] = useState(null); // {operationId,x,y}
   const [openOpPopup, setOpenOpPopup] = useState(null);
+  // CANVAS-CLICK-3 — single click a card → fragment info panel floated at the click
+  // (parity with the DAG view; one inspector at a time with the op popups).
+  const [openCardInfo, setOpenCardInfo] = useState(null); // {container,x,y}
   const onOperationClick = useCallback((op, e) => {
     if (!op) return;
     const x = e?.clientX ?? 100;
     const y = e?.clientY ?? 100;
+    setOpenCardInfo(null);
     if (op.kind === null || op.kind === undefined) {
       setOpenOpPicker({ operationId: op.id, x, y });
       setOpenOpPopup(null);
@@ -172,6 +178,13 @@ export default function CanvasLayoutView() {
       setOpenOpPicker(null);
     }
   }, []);
+  const onContainerClick = useCallback((id, container, e) => {
+    if (!container) return;
+    setOpenOpPicker(null);
+    setOpenOpPopup(null);
+    setOpenCardInfo({ container, x: e?.clientX ?? 120, y: e?.clientY ?? 120 });
+  }, []);
+  const cardInfo = openCardInfo ? fragmentCardInfo(openCardInfo.container) : null;
   const opsList = state.operations || [];
   const pickerOp = openOpPicker ? opsList.find((o) => o.id === openOpPicker.operationId) || null : null;
   const popupOp = openOpPopup ? opsList.find((o) => o.id === openOpPopup.operationId) || null : null;
@@ -330,6 +343,7 @@ export default function CanvasLayoutView() {
             dispatch={actions.zoneDispatch}
             onNavigateToZone={handleNavigateToZone}
             onOperationClick={onOperationClick}
+            onContainerClick={onContainerClick}
           />
           {/* T10 K9 — Sanger lab notebook (per focused zone). */}
           {sangerOpen && state.focusedZoneId && (
@@ -432,6 +446,17 @@ export default function CanvasLayoutView() {
           containers={state.containers || []}
           onCancel={onPopupCancel}
           onExecute={onPopupExecute}
+        />
+      )}
+      {/* CANVAS-CLICK-3 — fragment info panel for the clicked card (floated at click). */}
+      {cardInfo && (
+        <FragmentInfoPanel
+          info={cardInfo}
+          anchor={{ x: openCardInfo.x, y: openCardInfo.y }}
+          onClose={() => setOpenCardInfo(null)}
+          onOpen={actions.openEditorViewOnly
+            ? () => { actions.openEditorViewOnly(openCardInfo.container.id); setOpenCardInfo(null); }
+            : undefined}
         />
       )}
     </div>

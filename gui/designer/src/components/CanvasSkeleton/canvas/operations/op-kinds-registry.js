@@ -34,6 +34,7 @@ import GoldenGateOpPopup from './GoldenGateOpPopup';
 import LigateOpPopup from './LigateOpPopup';
 import KLDOpPopup from './KLDOpPopup';
 import MutagenesisOpPopup from './MutagenesisOpPopup';
+import BluntOpPopup from './BluntOpPopup';
 import { executeCut } from './adapters/cut';
 import { executePCR } from './adapters/pcr';
 import { executeGibson } from './adapters/gibson';
@@ -41,6 +42,7 @@ import { executeGoldenGate } from './adapters/golden-gate';
 import { executeLigate } from './adapters/ligate';
 import { executeKLD } from './adapters/kld';
 import { executeMutagenesis } from './adapters/mutagenesis';
+import { executeBlunt } from './adapters/blunt';
 
 /**
  * @typedef {Object} OpKindDef
@@ -138,6 +140,18 @@ export const OP_KINDS_LIST = [
     adapter: executeMutagenesis,
     popup: MutagenesisOpPopup,
     inputsLabel: 'template',
+    minInputs: 1,
+    maxInputs: 1,
+    acceptsMultiSelectInputs: false,
+  },
+  {
+    kind: 'blunt',
+    label: 'Blunt',
+    desc: 'Затупление концов экзонуклеазой/полимеразой',
+    originKind: 'op_blunt',
+    adapter: executeBlunt,
+    popup: BluntOpPopup,
+    inputsLabel: 'fragment (1 с липкими концами)',
     minInputs: 1,
     maxInputs: 1,
     acceptsMultiSelectInputs: false,

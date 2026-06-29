@@ -103,25 +103,29 @@ describe('LibraryWorkspace — edit-path wiring', () => {
     expect(screen.getByTestId('single-inspector-stub').getAttribute('data-show-save')).toBe('true');
   });
 
-  it('surfaces «История версий» for an entry with lineage; a node click navigates', async () => {
+  it('surfaces an inline version history for an entry with lineage; «Открыть» navigates; «Граф» opens the timeline', async () => {
     await useStore.getState().addLibraryEntry(makeContainer({ id: 'imp', name: 'pUC19', origin: { kind: 'file_import' } }));
     await useStore.getState().addLibraryEntry(makeContainer({
       id: 'br', name: 'pUC19 · испр.', parentEntryId: 'imp',
       origin: { kind: 'manual_edit', parentEntryId: 'imp', changes: 'замена 66: G→A' },
     }));
     render(<LibraryWorkspace />);
-    fireEvent.click(screen.getByTestId('tree-item-loose-br'));
-    const btn = screen.getByTestId('library-open-history');
-    expect(btn.textContent).toContain('2'); // 2-node lineage
-    fireEvent.click(btn);
-    expect(screen.getByTestId('version-timeline-modal')).toBeTruthy();
-    expect(screen.getByTestId('version-node-imp')).toBeTruthy();
-    expect(screen.getByTestId('version-node-br')).toBeTruthy();
-    // click the import node → workspace navigates the inspector to it
-    fireEvent.click(screen.getByTestId('version-node-imp'));
+    // imp→br now collapse into one lineage node; its head row represents the
+    // tip (br). Clicking it selects br.
+    fireEvent.click(screen.getByTestId('version-lineage-imp'));
+    // Inline list (list-first), not a modal button.
+    const list = screen.getByTestId('version-history-list');
+    expect(list.textContent).toContain('2'); // 2-node lineage
+    expect(screen.getByTestId('version-row-imp')).toBeTruthy();
+    expect(screen.getByTestId('version-row-br')).toBeTruthy();
+    // «Открыть» on the import row → workspace navigates the inspector to it.
+    fireEvent.click(screen.getByTestId('version-open-imp'));
     await waitFor(() => {
       expect(screen.getByTestId('single-inspector-stub').getAttribute('data-item-id')).toBe('imp');
     });
+    // «Граф» opens the full timeline modal on demand.
+    fireEvent.click(screen.getByTestId('version-history-open-graph'));
+    expect(screen.getByTestId('version-timeline-modal')).toBeTruthy();
   });
 
   it('onUpdateTags persists to the library entry (entry.tags, store + IndexedDB)', async () => {

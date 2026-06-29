@@ -75,9 +75,11 @@ describe('feature-palette — base color (M-B.2 v2: warm sepia + 4 fixes)', () =
     expect(all.has(featureColor('totally_unknown', 'wat'))).toBe(true);
   });
 
-  it('palette contract has exactly 15 feature types + misc', () => {
+  it('palette contract: 15 core types + 14 fungal detail types + misc', () => {
+    // FEAT-COLORS — added 14 dedicated detail/protein-feature hues (intron,
+    // signal_peptide, …, stem_loop) so fungal-gene details no longer fall to misc.
     const keys = Object.keys(FEATURE_COLORS_V2);
-    expect(keys.length).toBe(16);
+    expect(keys.length).toBe(30);
     for (const hex of Object.values(FEATURE_COLORS_V2)) {
       expect(hex).toMatch(/^#[0-9A-Fa-f]{6}$/);
     }
@@ -221,5 +223,29 @@ describe('feature-palette — featureColorShaded (canonical-key + shade)', () =>
   it('without a name, returns the base color (no shade)', () => {
     expect(featureColorShaded('promoter')).toBe(FEATURE_COLORS_V2.promoter);
     expect(featureColorShaded('CDS')).toBe(FEATURE_COLORS_V2.CDS);
+  });
+
+  // FEAT-COLORS — fungal-gene detail types must each get a DEDICATED hue (was all
+  // ivory misc → a multi-intron / multi-domain gene looked flat).
+  describe('fungal-gene detail types have dedicated colours (not misc)', () => {
+    const MISC = FEATURE_COLORS_V2.misc;
+    const TYPES = [
+      'intron', 'signal_peptide', 'transit_peptide', 'propeptide', 'mat_peptide',
+      'domain', 'motif', 'active_site', 'binding', 'disulfide_bond',
+      'core_promoter', 'poly_a', 'regulatory', 'stem_loop',
+    ];
+    it('every fungal detail type resolves to a non-misc colour', () => {
+      for (const t of TYPES) {
+        expect(featureColor(t), `${t} should not be misc`).not.toBe(MISC);
+        expect(featureColor(t)).toMatch(/^#[0-9A-Fa-f]{6}$/);
+      }
+    });
+    it('intron / signal_peptide / domain / active_site are mutually distinct', () => {
+      const c = ['intron', 'signal_peptide', 'domain', 'active_site'].map((t) => featureColor(t));
+      expect(new Set(c).size).toBe(4);
+    });
+    it('still distinct under per-name shading (a named domain ≠ misc)', () => {
+      expect(featureColorShaded('domain', 'catalytic')).not.toBe(MISC);
+    });
   });
 });

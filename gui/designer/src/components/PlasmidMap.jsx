@@ -166,7 +166,7 @@ function PlasmidMapLegacy({ fragments, constructName, totalBp, junctions = [], p
       if (!frag) return null;
       const arc = arcs[fragments.indexOf(frag)];
       if (!arc) return null;
-      const bL = (p.bindingSequence || '').length, tL = (p.tailSequence || '').length;
+      const bL = (p.bindingSequence || '').length, tL = (p.tailSequence ?? p.tail ?? '').length;
       if (!bL) return null;
       const bpR = arc.len > 0 ? (arc.endAngle - arc.startAngle) / arc.len : 0;
       const isFwd = p.direction === 'forward';
@@ -614,7 +614,7 @@ function PlasmidMapLegacy({ fragments, constructName, totalBp, junctions = [], p
                       <div className="text-[9px] text-gray-500">{revP.name} ←</div>
                       <div className="font-mono text-[10px] overflow-x-auto whitespace-nowrap" style={{ fontWeight: 400 }}>
                         <span className="text-gray-400 text-[8px]">5'─</span>
-                        <span className="text-teal-600">{(revP.tailSequence || '').toLowerCase()}</span>
+                        <span className="text-teal-600">{(revP.tailSequence ?? revP.tail ?? '').toLowerCase()}</span>
                         <span className="text-gray-800">{(revP.bindingSequence || '').toUpperCase()}</span>
                         <span className="text-gray-400 text-[8px]">─3'</span>
                       </div>
@@ -625,7 +625,7 @@ function PlasmidMapLegacy({ fragments, constructName, totalBp, junctions = [], p
                       <div className="text-[9px] text-gray-500">→ {fwdP.name}</div>
                       <div className="font-mono text-[10px] overflow-x-auto whitespace-nowrap" style={{ fontWeight: 400 }}>
                         <span className="text-gray-400 text-[8px]">5'─</span>
-                        <span className="text-teal-600">{(fwdP.tailSequence || '').toLowerCase()}</span>
+                        <span className="text-teal-600">{(fwdP.tailSequence ?? fwdP.tail ?? '').toLowerCase()}</span>
                         <span className="text-gray-800">{(fwdP.bindingSequence || '').toUpperCase()}</span>
                         <span className="text-gray-400 text-[8px]">─3'</span>
                       </div>

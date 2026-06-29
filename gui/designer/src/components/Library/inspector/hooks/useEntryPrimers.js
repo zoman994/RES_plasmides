@@ -41,13 +41,15 @@ export function useEntryPrimers(item) {
     [primersById, entryId],
   );
 
-  const onWritePrimer = useCallback(({ name, sequence, direction }) => {
+  const onWritePrimer = useCallback(({ name, sequence, direction, tail, binding }) => {
     if (!entryId || typeof addPrimerToPool !== "function") return;
     const libId = item && item._libraryEntryId;
     const entry = libId ? useStore.getState().libraryEntries?.[libId] : null;
     const projectId = entry?.projectId ?? null;
+    // PRIMER-7 (V173) — forward tail/binding so a tailed primer persists its
+    // overhang + binding and renders correctly on the sequence.
     const payload = buildEntryPrimerPayload({
-      id: uuidv7(), name, sequence, direction, entryId, projectId,
+      id: uuidv7(), name, sequence, direction, entryId, projectId, tail, binding,
     });
     if (payload) addPrimerToPool(payload);
   }, [entryId, item, addPrimerToPool]);

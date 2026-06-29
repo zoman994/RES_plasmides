@@ -35,6 +35,17 @@ export function primerHitKey(h) {
   return `${h.name || ""}|${h.direction || ""}|${h.start}`;
 }
 
+// PRIMER-AUDIT (V174) — two ecosystems name the 5'-overhang differently:
+// assembly/SequenceView use `tail`, PCR-mode/local-primer-design use `tailSequence`.
+// Read both so a PCR-mode primer's overhang renders here too (cross-ecosystem
+// friendship). Accepts a hit/primer object, returns the overhang string ('' if none).
+function tailOf(p) {
+  if (!p) return "";
+  if (typeof p.tail === "string") return p.tail;
+  if (typeof p.tailSequence === "string") return p.tailSequence;
+  return "";
+}
+
 function findHits(primers, fullSeq) {
   if (!Array.isArray(primers) || primers.length === 0 || !fullSeq) return [];
   const seqUpper = fullSeq.toUpperCase();
@@ -115,6 +126,10 @@ function PrimerTrack({
   wrapsOrigin,
   wrapAt,
   seqLength,
+  // Игорь 25.06 — on a CIRCULAR molecule a 5′-tail that runs off a sequence END
+  // wraps to the other end (rendered on the wrap-bridge row across the origin),
+  // so it must NOT dangle into the margin on the first/last line.
+  circular,
 }) {
   if (!primers || primers.length === 0 || !lineLen || charPx <= 0) return null;
 
@@ -148,11 +163,25 @@ function PrimerTrack({
     // it (the binding clip below stays empty for a tail-only row → no arrow).
     lineHits = allHits
       .filter((h) => {
-        const tl = typeof h.tail === "string" ? h.tail.length : 0;
+        const tl = tailOf(h).length;
         const fwd = h.direction !== "reverse";
         const lo = fwd ? Math.max(0, h.start - tl) : h.start;
         const hi = fwd ? h.end : Math.min(seqLen, h.end + tl);
-        return lo < lineEnd && hi > lineStart;
+        if (lo < lineEnd && hi > lineStart) return true;
+        // Circular (Игорь 25.06) — a 5′-tail running off an end wraps to the OTHER
+        // end. Keep the hit on whatever line renders those wrapped positions so the
+        // tail draws there; its binding clip stays empty → no spurious arrow.
+        if (circular && tl > 0 && seqLen > 0) {
+          if (fwd && h.start - tl < 0) {
+            const wStart = (((h.start - tl) % seqLen) + seqLen) % seqLen; // run [wStart, seqLen)
+            if (wStart < lineEnd) return true;
+          }
+          if (!fwd && h.end + tl > seqLen) {
+            const wEnd = h.end + tl - seqLen; // run [0, wEnd)
+            if (wEnd > lineStart) return true;
+          }
+        }
+        return false;
       })
       .map((h) => clipHit(h, lineStart, lineEnd, 0, "real"));
   }
@@ -235,7 +264,7 @@ function PrimerTrack({
         // 5′ of the binding (forward: left; reverse: right) so two internal
         // overlap-PCR primers visibly cross the boundary. Empty/absent →
         // nothing extra, identical to the prior render.
-        const tail = typeof hit.tail === "string" ? hit.tail : "";
+        const tail = tailOf(hit);
         const tailLen = tail.length;
         const hasTail = tailLen > 0;
         const tailW = tailLen * charPx;
@@ -249,12 +278,76 @@ function PrimerTrack({
         // keep the original draw-at-the-5′-fragment behaviour untouched.
         let inlineTail;
         let sepTail = null;
+        // On a CIRCULAR molecule a 5′-tail can run off a sequence END and wrap to
+        // the OTHER end (Игорь 25.06 «праймеры кольцевания должны показывать как
+        // хвосты ложатся на цепь»). `fullSeq` is the whole molecule, so `seqLen`
+        // is the wrap modulus. Detect it so the tail is drawn at its wrapped
+        // positions across the origin — not dangled into the static side margin.
+        const tailWrapsOrigin = circular && hasTail && seqLen > 0
+          && (isFwd ? (hit.start - tailLen < 0) : (hit.end + tailLen > seqLen));
         if (hasWrap) {
-          inlineTail = hasTail && (isFwd ? hit._visStart === hit.start : hit._visEnd === hit.end);
+          // Wrap-bridge row: a closure / self-closure primer binds near the start
+          // (its tail lies just BEFORE the ▶1 divider — the END of the molecule) or
+          // near the end (tail just AFTER the divider). Map each tail base to its real
+          // render column through the wrap-bridge coord system so the tail LANDS on
+          // the strand across the origin, instead of the static off-edge stub (Игорь
+          // 25.06 «хвосты уходят в сторону»). Never the inline stub here.
+          inlineTail = false;
+          const holds5p = isFwd ? hit._visStart === hit.start : hit._visEnd === hit.end;
+          if (hasTail && holds5p && seqLength > 0) {
+            const colForPos = (pp) => {
+              if (pp >= lineStart && pp < seqLength) return pp - lineStart; // real half (colBase 0)
+              if (pp >= 0 && pp < wrapWidthChars) return wrapAt + pp; // wrap half (past ▶1)
+              return null; // off this line
+            };
+            const vis = [];
+            for (let j = 0; j < tailLen; j += 1) {
+              const raw = isFwd ? (hit.start - tailLen + j) : (hit.end + j);
+              const pp = (((raw % seqLength) + seqLength) % seqLength);
+              const c = colForPos(pp);
+              if (c != null) vis.push({ c, ch: tail[j] });
+            }
+            if (vis.length > 0) {
+              let lo = vis[0].c;
+              let hi = vis[0].c;
+              for (const v of vis) { if (v.c < lo) lo = v.c; if (v.c > hi) hi = v.c; }
+              sepTail = {
+                x: (labelChars + lo) * charPx,
+                w: (hi - lo + 1) * charPx,
+                bases: showLetters ? vis.map((v) => v.ch).join("") : "",
+              };
+            }
+          }
+        } else if (tailWrapsOrigin) {
+          // Wrapped closure tail on a normal / wrap-context row: map each tail base
+          // to its real position (mod molecule length) and draw the run that lands
+          // on THIS line, so the tail reads continuous across the ▶1 origin — the
+          // forward closure tail surfaces at the molecule END (shown on the leading
+          // wrap-context row), the reverse one at the START (line 0).
+          inlineTail = false;
+          const vis = [];
+          for (let j = 0; j < tailLen; j += 1) {
+            const raw = isFwd ? (hit.start - tailLen + j) : (hit.end + j);
+            const pp = (((raw % seqLen) + seqLen) % seqLen);
+            if (pp >= lineStart && pp < lineEnd) vis.push({ c: pp - lineStart, ch: tail[j] });
+          }
+          if (vis.length > 0) {
+            vis.sort((a, b) => a.c - b.c);
+            const lo = vis[0].c;
+            const hi = vis[vis.length - 1].c;
+            sepTail = {
+              x: (labelChars + lo) * charPx,
+              w: (hi - lo + 1) * charPx,
+              bases: showLetters ? vis.map((v) => v.ch).join("") : "",
+            };
+          }
         } else {
           const fivePrimeOnLine = isFwd
             ? (hit.start >= lineStart && hit.start < lineEnd)
             : (hit.end > lineStart && hit.end <= lineEnd);
+          // A tail running off a sequence END belongs in the margin for a LINEAR
+          // molecule (a real 5′ overhang sticking out). Circular off-end tails are
+          // handled by the `tailWrapsOrigin` branch above, so this stays as before.
           const tailFits = isFwd
             ? ((hit.start - tailLen) >= lineStart || lineStart === 0)
             : ((hit.end + tailLen) <= lineEnd || lineEnd === seqLen);

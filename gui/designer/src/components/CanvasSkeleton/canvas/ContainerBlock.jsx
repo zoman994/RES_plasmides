@@ -32,8 +32,14 @@ import { isPlaceholderContainer } from '../fixture-canvas-skeleton';
 import { isOligonucleotideKind } from './container-kind-registry';
 import OligonucleotideBlock from './OligonucleotideBlock';
 import MiniPlasmidMap from './MiniPlasmidMap';
+import StickyEndFragment from './StickyEndFragment';
 import VirtualOutputBadge from './VirtualOutputBadge';
 import { virtualStroke } from './junction-styles';
+
+// VERT-READINESS (Игорь 27.06) — border/bg as the ASSEMBLY-READINESS channel: «what the
+// fragment IS» stays the feature segments inside; «how it BEHAVES in the assembly» is the
+// border colour. green = ends mate (ready), amber = blunt/unknown (check), red = won't join.
+const READINESS_COLOR = { ready: '#16a34a', check: '#d97706', incompatible: '#dc2626' };
 
 // F4 DEC-CANVAS-PROD-04 — virtual product preview block (4 states).
 function VirtualBlock({ container, virtualState, virtualWarnings, onClick, onDoubleClick }) {
@@ -97,6 +103,19 @@ function ContainerBlock({
   // currently-selected PCR op; undefined otherwise (no overlay).
   pcrPrimers,
   pcrFlank,
+  // DAG bp→bar scale (Игорь 26.06): the largest molecule in the graph. Passed by
+  // ZoneGraphContent so linear-fragment strips shrink ∝ bp and read smaller than the
+  // plasmid rings. Undefined elsewhere → MiniPlasmidMap keeps full-width bars.
+  maxBp,
+  // VERT-4 — vertical DAG («хвосты из карточки»): when true AND the container carries
+  // terminalStagger geometry (_stagger), the fragment's map row renders the sticky-end
+  // staircase (StickyEndFragment) instead of the MiniPlasmidMap. Passed only by
+  // ZoneGraphContent in TB mode; undefined elsewhere → unchanged ring/strip visual.
+  showTails,
+  // Ф4.3 — на сомкнутом стыке обращённое окно концов подавляется (меш-шов рисует
+  // ZoneGraphContent), иначе два окна налезают. Прокидывается в StickyEndFragment.
+  hideLeftEnd,
+  hideRightEnd,
 }) {
   if (virtualState) {
     return (
@@ -138,6 +157,10 @@ function ContainerBlock({
       onDoubleClick={onDoubleClick}
       pcrPrimers={pcrPrimers}
       pcrFlank={pcrFlank}
+      maxBp={maxBp}
+      showTails={showTails}
+      hideLeftEnd={hideLeftEnd}
+      hideRightEnd={hideRightEnd}
     />
   );
 }
@@ -201,11 +224,17 @@ function inferType(container) {
   return 'misc_feature';
 }
 
-function FilledBlock({ container, highlighted, onClick, onDoubleClick, pcrPrimers, pcrFlank }) {
+function FilledBlock({
+  container, highlighted, onClick, onDoubleClick, pcrPrimers, pcrFlank, maxBp, showTails,
+  hideLeftEnd, hideRightEnd,
+}) {
   const length = container?.length || (container?.sequence || '').length || 0;
   const isCircular = !!container?.topology?.circular;
   const type = inferType(container);
   const color = container?.customColor || getFragColor(type, 0);
+  // Assembly-readiness border (opt-in: only derived DAG fragments carry _readiness;
+  // every other surface keeps the feature-type colour). Highlight still wins.
+  const readyColor = container?._readiness ? READINESS_COLOR[container._readiness] : null;
 
   // R10: derived visual state from container.origin.
   // linearizedFromCircular — linear container whose parent was circular
@@ -241,8 +270,8 @@ function FilledBlock({ container, highlighted, onClick, onDoubleClick, pcrPrimer
         padding: '6px 10px',
         cursor: 'pointer',
         userSelect: 'none',
-        background: `${color}1A`,
-        border: '2px solid ' + (highlighted ? 'var(--accent-500, #d97706)' : color),
+        background: readyColor ? `${readyColor}14` : `${color}1A`,
+        border: '2px solid ' + (highlighted ? 'var(--accent-500, #d97706)' : (readyColor || color)),
         borderRadius: 6,
         boxShadow: highlighted
           ? '0 0 0 4px rgba(217,119,6,0.18)'
@@ -309,6 +338,31 @@ function FilledBlock({ container, highlighted, onClick, onDoubleClick, pcrPrimer
           whiteSpace: 'nowrap',
           flex: 1,
         }}>{container.name || 'untitled'}</span>
+        {showTails && container?._reversed && (
+          <span
+            data-testid={`skeleton-block-${container.id}-rc`}
+            title="Перевёрнут (reverse-complement) — чтобы липкий конец смотрел в стык"
+            style={{
+              flexShrink: 0,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 3,
+              fontSize: 9.5,
+              fontWeight: 700,
+              lineHeight: 1,
+              color: '#fff',
+              background: '#7c3aed',
+              borderRadius: 4,
+              padding: '2px 5px',
+            }}
+          >
+            <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M13 8a5 5 0 1 1-1.5-3.6" />
+              <path d="M13 3v3h-3" />
+            </svg>
+            rc
+          </span>
+        )}
         <span style={{
           fontSize: 10,
           color: 'var(--text-tertiary)',
@@ -325,25 +379,41 @@ function FilledBlock({ container, highlighted, onClick, onDoubleClick, pcrPrimer
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          // V68 — clip the overflow:visible map SVG so its V66 leader
-          // labels stay inside the map row and never reach the name band.
-          overflow: 'hidden',
+          // V68 — clip the overflow:visible map SVG so its V66 leader labels stay inside
+          // the map row. EXCEPT in the vertical-DAG tails mode (Игорь 27.06 «нуклеотиды
+          // должны выходить из карточки»): the sticky-end windows PROTRUDE past the box,
+          // so the row must NOT clip them.
+          overflow: showTails ? 'visible' : 'hidden',
         }}
       >
-        <MiniPlasmidMap
-          length={length}
-          annotations={container?.annotations || []}
-          circular={isCircular}
-          linearizedFromCircular={linearizedFromCircular}
-          cutPosition={origin.cutPosition || 0}
-          excised={excised}
-          frozen={container?.frozen}
-          primers={pcrPrimers || []}
-          flank={pcrFlank || null}
-          width={210}
-          height={90}
-          testId={`skeleton-block-${container.id}-svg`}
-        />
+        {showTails && container?._stagger ? (
+          <StickyEndFragment
+            stagger={container._stagger}
+            sequence={container.sequence || ''}
+            annotations={container.annotations || []}
+            name={container.name || ''}
+            width={210}
+            hideLeftEnd={hideLeftEnd}
+            hideRightEnd={hideRightEnd}
+            testId={`skeleton-block-${container.id}-tails`}
+          />
+        ) : (
+          <MiniPlasmidMap
+            length={length}
+            annotations={container?.annotations || []}
+            circular={isCircular}
+            linearizedFromCircular={linearizedFromCircular}
+            cutPosition={origin.cutPosition || 0}
+            excised={excised}
+            frozen={container?.frozen}
+            primers={pcrPrimers || []}
+            flank={pcrFlank || null}
+            maxBp={maxBp || 0}
+            width={210}
+            height={90}
+            testId={`skeleton-block-${container.id}-svg`}
+          />
+        )}
       </div>
 
       {/* Row 3 — state badge (circular / linear / linearized / excised) */}

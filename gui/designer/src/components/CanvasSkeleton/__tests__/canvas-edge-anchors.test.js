@@ -110,3 +110,20 @@ describe('edgeAnchors — flow:"LR" forces clean horizontal connectors (Игор
     expect(offset.c1x - offset.x1).toBeGreaterThan(aligned.c1x - aligned.x1);
   });
 });
+
+describe('edgeAnchors — flow:"TB" forces clean vertical connectors (вертикальный DAG)', () => {
+  it('horizontal-dominant target still exits BOTTOM / enters TOP (never left/right)', () => {
+    const r = edgeAnchors(A, { x: 300, y: 100, w: 100, h: 40 }, { flow: 'TB' });
+    expect(r.fromSide).toBe('bottom');
+    expect(r.toSide).toBe('top');
+    expect(r.x1).toBe(50); // bottom edge at the source's horizontal centre
+    expect(r.c1x).toBe(50); // control points stay vertical
+    expect(r.c1y).toBeGreaterThan(r.y1); // bows downward
+  });
+
+  it('backward target (above) exits TOP / enters BOTTOM', () => {
+    const r = edgeAnchors(A, { x: 100, y: -300, w: 100, h: 40 }, { flow: 'TB' });
+    expect(r.fromSide).toBe('top');
+    expect(r.toSide).toBe('bottom');
+  });
+});

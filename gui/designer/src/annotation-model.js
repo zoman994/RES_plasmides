@@ -153,3 +153,30 @@ export function getPoints(annotations) {
 export function hasRegions(annotations) {
   return (annotations || []).some(a => a.level === 'region');
 }
+
+/**
+ * UX-9 — the id of the SMALLEST region that FULLY contains [start,end) (store
+ * coords, 0-based half-open). Used to auto-link a newly-created sub-feature
+ * (detail/point — a domain, motif, mutation, site) to its enclosing gene via
+ * `regionId`, the model-standard parent link (getDetails / exon-split / V180
+ * cascade all key off it). Returns null when no region encloses the span, so an
+ * unparented sub-feature simply stays an orphan (prior behaviour). A region whose
+ * own span equals the selection still counts as enclosing (a whole-CDS domain).
+ */
+export function enclosingRegionId(annotations, start, end) {
+  const s = Number(start);
+  const e = Number(end);
+  if (!Number.isFinite(s) || !Number.isFinite(e)) return null;
+  let best = null;
+  let bestLen = Infinity;
+  for (const r of getRegions(annotations)) {
+    const rs = Number(r.start);
+    const re = Number(r.end);
+    if (!Number.isFinite(rs) || !Number.isFinite(re)) continue;
+    if (rs <= s && e <= re) {
+      const len = re - rs;
+      if (len < bestLen) { best = r.id; bestLen = len; }
+    }
+  }
+  return best;
+}

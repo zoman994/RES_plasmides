@@ -140,10 +140,10 @@ describe('K6 — OpPopup base frame', () => {
 });
 
 describe('K6 — OpKindPicker grid 3×2', () => {
-  it('renders 7 kind tiles (V60 — gibson + golden_gate separated)', () => {
+  it('renders 8 kind tiles (V60 — gibson + golden_gate separated; GAP-1 — blunt added)', () => {
     const op = makeOp();
     render(<OpKindPicker operation={op} onPick={() => {}} />);
-    expect(OP_KINDS.length).toBe(7);
+    expect(OP_KINDS.length).toBe(8);
     for (const k of OP_KINDS) {
       expect(screen.getByTestId(`op-kind-tile-${k.kind}`)).toBeTruthy();
     }

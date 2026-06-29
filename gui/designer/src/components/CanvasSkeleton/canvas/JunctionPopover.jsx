@@ -36,6 +36,40 @@ function enzymeRecognition(kind, key) {
   return RE_ENZYMES[key] && RE_ENZYMES[key].site;
 }
 
+// RC-JUNC (Игорь 25.06) — the ACTUAL cohesive end the chosen method/enzyme makes,
+// for the ends preview. The old generic «overhang 4 nt» placeholder didn't reflect
+// the enzyme at all; for RE we now show the real sticky end (EcoRI → 5′ AATT).
+function methodEndLabel(kind, enzyme) {
+  if (kind === 're_ligation') {
+    const e = enzyme && RE_ENZYMES[enzyme];
+    if (!e) return 'липкий конец';
+    if (e.end === 'blunt' || !e.overhang) return 'тупой';
+    return `${e.end === '3prime' ? '3′' : '5′'} ${e.overhang}`;
+  }
+  if (kind === 'golden_gate') return '4-nt липкий (задаётся стыком)';
+  if (kind === 'ligation') return 'тупой';
+  if (kind === 'kld') return 'тупой (5′-P)';
+  return null;
+}
+
+// RC-JUNC — one-line chemistry guidance per method («неинформативно» → информативно).
+function methodGuidance(kind, enzyme) {
+  switch (kind) {
+    case 'overlap':
+      return 'Гомология на стыке (Gibson / OE-PCR): концы наращиваются перекрывающимися праймерами и сшиваются по гомологии — шва не остаётся.';
+    case 're_ligation':
+      return `Дайджест ${enzyme || 'фермент'} → лигирование липких концов. Направленно при РАЗНЫХ ферментах на двух концах; одинаковый конец с обеих сторон → дефосфорилируйте вектор (самолигирование).`;
+    case 'golden_gate':
+      return `Golden Gate (${enzyme || 'BsaI'}, Type IIS): режет ВНЕ сайта — бесшовная направленная сборка, сайт в продукте не остаётся.`;
+    case 'ligation':
+      return 'Тупое лигирование: концы без выступов. Ненаправленно (вставка в любой ориентации) и менее эффективно — дефосфорилируйте вектор, скрининг ориентации.';
+    case 'kld':
+      return 'KLD (киназа/лигаза/DpnI), back-to-back — для точечных правок ОДНОЙ плазмиды, не для слияния двух фрагментов.';
+    default:
+      return '';
+  }
+}
+
 // JC-2 — 'preformed' removed from the picker: the «ничего не делаем» tile mapped
 // to a real blunt ligation (direct_ligation) — the label lied. (An already-
 // 'preformed' container junction still DISPLAYS elsewhere; it just isn't a pick.)
@@ -107,6 +141,12 @@ export default function JunctionPopover({
   const decided = junction.status === 'manual';
   // F — enzyme-driven kinds (GG / RE) expose an enzyme picker.
   const enzymeKeys = enzymeKeysForKind(kind);
+  // RC-JUNC — method-aware ends (real enzyme overhang) + one-line chemistry guidance.
+  const endLabel = methodEndLabel(kind, junction.enzyme);
+  const guidance = methodGuidance(kind, junction.enzyme);
+  const homologyBp = junction.overlapLength ?? 30;
+  const fromLabel = kind === 'overlap' ? `гомологичное плечо ${homologyBp} bp` : (endLabel || endText(ends.fromEnd));
+  const toLabel = kind === 'overlap' ? `гомологичное плечо ${homologyBp} bp` : (endLabel || endText(ends.toEnd));
 
   return (
     <div
@@ -277,7 +317,7 @@ export default function JunctionPopover({
             style={{ padding: '8px 12px', borderTop: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: 8 }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 11, color: 'var(--text-secondary)', minWidth: 60 }}>Overhang:</span>
+              <span style={{ fontSize: 11, color: 'var(--text-secondary)', minWidth: 60 }} title="Сторона(ы), на которые наращивается гомологичное плечо">Плечо:</span>
               {TARGETS.map((t) => (
                 <button
                   key={t.id}
@@ -341,14 +381,25 @@ export default function JunctionPopover({
         )}
         </div>
 
-        {/* Section 3 — ends preview */}
+        {/* Section 3 — ends preview (method-aware: real enzyme overhang / homology arm) */}
         <div
           data-testid="junction-popover-ends-preview"
           style={{ padding: '8px 12px', borderTop: '1px solid var(--border-subtle)', fontSize: 11, color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: 3 }}
         >
-          <div>From-контейнер 3′: <strong style={{ fontFamily: 'var(--mono, monospace)' }}>{endText(ends.fromEnd)}</strong></div>
-          <div>To-контейнер 5′: <strong style={{ fontFamily: 'var(--mono, monospace)' }}>{endText(ends.toEnd)}</strong></div>
+          <div>From-контейнер 3′: <strong data-testid="junction-end-from" style={{ fontFamily: 'var(--mono, monospace)' }}>{fromLabel}</strong></div>
+          <div>To-контейнер 5′: <strong data-testid="junction-end-to" style={{ fontFamily: 'var(--mono, monospace)' }}>{toLabel}</strong></div>
         </div>
+
+        {/* RC-JUNC — chemistry guidance for the CHOSEN method (Игорь 25.06: панель
+            должна объяснять выбранный способ, а не показывать обобщённый overhang). */}
+        {guidance && (
+          <div
+            data-testid="junction-popover-guidance"
+            style={{ padding: '8px 12px', borderTop: '1px solid var(--border-subtle)', fontSize: 10.5, lineHeight: '15px', color: 'var(--text-tertiary)', fontStyle: 'italic' }}
+          >
+            {guidance}
+          </div>
+        )}
 
         {/* Section 4 — validation */}
         {warnings.length > 0 && (

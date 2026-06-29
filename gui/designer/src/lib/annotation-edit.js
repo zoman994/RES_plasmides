@@ -177,6 +177,10 @@ export function deleteAnnotation(annotations, annotationId) {
 export function updateAnnotation(annotations, annotationId, patch, seqLength) {
   if (!Array.isArray(annotations)) return [];
   let found = false;
+  // Track an id shift on the edited annotation so detail/point children that
+  // link to it via `regionId` can be re-pointed (V180 — otherwise editing a
+  // gene's coords/name/type silently orphaned its introns/domains).
+  let idShift = null;
   const next = annotations.map((a) => {
     if (!matchesAnnotationId(a, annotationId)) return a;
     found = true;
@@ -184,6 +188,7 @@ export function updateAnnotation(annotations, annotationId, patch, seqLength) {
     const v = validateAnnotationCoords(merged.start, merged.end, seqLength);
     if (!v.valid) throw new Error(`updateAnnotation: ${v.error}`);
     if (merged.strand !== -1) merged.strand = 1;
+    const prevId = a.id || generateAnnotationId(a); // effective id BEFORE the edit
     // Regenerate id when the identifying fields shifted, OR when
     // the annotation came in without one (now we stamp the
     // deterministic backfill so subsequent edits round-trip cleanly).
@@ -196,9 +201,18 @@ export function updateAnnotation(annotations, annotationId, patch, seqLength) {
     ) {
       merged.id = generateAnnotationId(merged);
     }
+    if (merged.id !== prevId) idShift = { from: prevId, to: merged.id };
     return merged;
   });
-  return found ? next : annotations;
+  if (!found) return annotations;
+  // Cascade the id shift onto children: any annotation whose `regionId` pointed
+  // at the old id is re-linked to the new id. A no-op when nothing changed or
+  // the edited annotation has no children (only regions are parents).
+  if (idShift && idShift.from !== idShift.to) {
+    return next.map((a) =>
+      (a && a.regionId === idShift.from ? { ...a, regionId: idShift.to } : a));
+  }
+  return next;
 }
 
 /**

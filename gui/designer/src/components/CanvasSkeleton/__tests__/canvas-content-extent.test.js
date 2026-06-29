@@ -11,7 +11,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
-  canvasContentExtent, contentBBox, fitZoomToContent, graphContentBBox,
+  canvasContentExtent, contentBBox, fitZoomToContent, graphContentBBox, computeGraphPositions,
   BLOCK_LINEAR_W, BLOCK_LINEAR_H, OPERATION_NODE_W, OPERATION_NODE_H, EXTENT_MIN, ZOOM_MAX,
 } from '../canvas/canvas-layout';
 
@@ -162,5 +162,29 @@ describe('graphContentBBox — footprint of the per-zone DAG (AssemblyDagView zo
     expect(graphContentBBox([], [])).toEqual({ width: 0, height: 0 });
     expect(() => graphContentBBox()).not.toThrow();
     expect(graphContentBBox()).toEqual({ width: 0, height: 0 });
+  });
+
+  // VERT-2 — the vertical DAG lays the same chain out top→bottom (direction 'TB'),
+  // so the footprint transposes: taller and narrower than the default LR.
+  it('direction "TB" stacks the chain vertically (taller + narrower than LR)', () => {
+    const lr = graphContentBBox(containers, operations, 'LR');
+    const tb = graphContentBBox(containers, operations, 'TB');
+    expect(tb.height).toBeGreaterThan(lr.height);
+    expect(tb.width).toBeLessThan(lr.width);
+  });
+
+  // VERT-5 — TB siblings get a WIDE horizontal gap so the protruding sticky-end
+  // nucleotides of adjacent fragment cards don't overlap (Игорь 27.06 «они не должны
+  // накладываться друг на друга»). Two fragments feeding one ligation are siblings.
+  it('TB spaces same-rank siblings wide enough for protruding ends (no overlap)', () => {
+    const sib = [
+      { id: 'a', name: 'a', sequence: 'ATGC' },
+      { id: 'b', name: 'b', sequence: 'ATGC' },
+      { id: 'c', name: 'c', sequence: 'ATGC' },
+    ];
+    const op = [{ id: 'op', kind: 'ligate', inputs: ['a', 'b'], outputs: ['c'] }];
+    const pos = computeGraphPositions(sib, [], op, 'TB');
+    const dx = Math.abs(pos.a.x - pos.b.x);
+    expect(dx).toBeGreaterThanOrEqual(BLOCK_LINEAR_W + 100);
   });
 });

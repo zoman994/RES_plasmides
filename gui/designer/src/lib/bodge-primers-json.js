@@ -49,6 +49,15 @@ function serializePrimer(p) {
     id: p.id,
     name: p.name || '',
     sequence: String(p.sequence || ''),
+    // PRIMER-AUDIT (V174) — persist the V173 shape so a tailed primer keeps its
+    // overhang + binding (else PrimerTrack/binding-search degrade after reload).
+    // tail accepts both ecosystem field names (assembly `tail` / PCR `tailSequence`).
+    bindingSequence: typeof p.bindingSequence === 'string' ? p.bindingSequence : null,
+    tail: typeof p.tail === 'string' ? p.tail : (typeof p.tailSequence === 'string' ? p.tailSequence : ''),
+    direction: p.direction === 'reverse' ? 'reverse' : (p.direction === 'forward' ? 'forward' : null),
+    status: p.status || null,
+    projectId: p.projectId ?? null,
+    resourceHash: p.resourceHash || null,
     tm: typeof p.tm === 'number' ? p.tm : null,
     origin: p.origin ? { ...p.origin } : null,
     tags: Array.isArray(p.tags) ? [...p.tags] : [],

@@ -89,9 +89,22 @@ export default function GibsonOpPopup({
         annotations: [],
         ends: null,
         payload: {
+          // V175 (PRIMER-9) — split each oligo into binding (anneal, on template)
+          // + tail (homology arm, NOT on template) so executePCR anneals the
+          // binding, PrimerTrack draws the overhang, and binding-search is correct.
           sequences: [
-            { name: 'fwd', sequence: d.fwd.sequence, Tm: d.fwd.Tm, GC: d.fwd.GC, length: d.fwd.length, homologyLen: d.fwd.homologyLen },
-            { name: 'rev', sequence: d.rev.sequence, Tm: d.rev.Tm, GC: d.rev.GC, length: d.rev.length, homologyLen: d.rev.homologyLen },
+            {
+              name: 'fwd', sequence: d.fwd.sequence,
+              bindingSequence: d.fwd.sequence.slice(d.fwd.homologyLen),
+              tail: d.fwd.sequence.slice(0, d.fwd.homologyLen),
+              Tm: d.fwd.Tm, GC: d.fwd.GC, length: d.fwd.length, homologyLen: d.fwd.homologyLen,
+            },
+            {
+              name: 'rev', sequence: d.rev.sequence,
+              bindingSequence: d.rev.sequence.slice(d.rev.homologyLen),
+              tail: d.rev.sequence.slice(0, d.rev.homologyLen),
+              Tm: d.rev.Tm, GC: d.rev.GC, length: d.rev.length, homologyLen: d.rev.homologyLen,
+            },
           ],
           purpose: 'gibson_homology_primer',
         },

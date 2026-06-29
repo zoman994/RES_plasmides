@@ -1,86 +1,39 @@
 /**
- * circularize-apply.test.js — M-CIRCULARIZE C1. Pure mapping from the
- * CircularizeModal decision → the store actions AssemblyShellBody dispatches.
+ * circularize-apply.test.js — RC-SEP. Pure mapping from the «Замыкание» (closure-
+ * reaction) decision → a single SET_CLOSURE_METHOD action that stores the ring-closing
+ * reaction as ONE assembly property (zone.closureMethod), decoupled from internal
+ * junctions and topology.
  */
 import { describe, it, expect } from 'vitest';
-import { circularizeActions, applyCircularize } from '../circularize-apply';
-import { pairKeyFor } from '../junction-derive';
+import { closureActions, applyClosure } from '../circularize-apply';
 
-const segs = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
-
-describe('circularizeActions', () => {
-  it('always sets topology (carries isZoneTarget for routing)', () => {
-    const out = circularizeActions({
-      draftId: 'z1', circular: true, method: 'gibson', applyToAll: true, isZoneTarget: false, segments: segs,
-    });
-    expect(out[0]).toEqual({
-      kind: 'topology', draftId: 'z1', circular: true, isZoneTarget: false,
-    });
-  });
-
-  it('legacy draft (not a zone) → only topology, no method', () => {
-    const out = circularizeActions({
-      draftId: 'd1', circular: true, method: 'gibson', applyToAll: true, isZoneTarget: false, segments: segs,
-    });
-    expect(out).toHaveLength(1);
-    expect(out[0].kind).toBe('topology');
-  });
-
-  it('zone + applyToAll → SET_ASSEMBLY_METHOD for the whole assembly', () => {
-    const out = circularizeActions({
-      draftId: 'z1', circular: true, method: 'golden_gate', applyToAll: true, isZoneTarget: true, segments: segs,
-    });
-    expect(out).toEqual([
-      { kind: 'topology', draftId: 'z1', circular: true, isZoneTarget: true },
-      { kind: 'assemblyMethod', zoneId: 'z1', method: 'golden_gate', enzyme: null },
+describe('closureActions', () => {
+  it('maps the chosen reaction → a closureMethod action', () => {
+    expect(closureActions({ draftId: 'z1', method: 'restriction' })).toEqual([
+      { kind: 'closureMethod', zoneId: 'z1', method: 'restriction', enzyme: null },
     ]);
   });
 
-  it('applyCircularize routes a ZONE topology to SET_ZONE_TOPOLOGY (not the draft no-op)', () => {
+  it('carries the chosen enzyme (GG / RE)', () => {
+    expect(closureActions({ draftId: 'z1', method: 'golden_gate', enzyme: 'BsmBI' })[0].enzyme).toBe('BsmBI');
+  });
+
+  it('no method → no action', () => {
+    expect(closureActions({ draftId: 'z1', method: null })).toEqual([]);
+  });
+});
+
+describe('applyClosure', () => {
+  it('dispatches SET_CLOSURE_METHOD on the zone', () => {
     const calls = [];
-    const actions = {
-      setAssemblyDraftTopology: (id, c) => calls.push(['draft', id, c]),
-      zoneDispatch: (a) => calls.push([a.type, a.zoneId, a.circular ?? a.method]),
-    };
-    applyCircularize(actions, {
-      draftId: 'zn-1', circular: true, method: 'gibson', applyToAll: true, isZoneTarget: true, segments: segs,
-    });
-    expect(calls).toContainEqual(['SET_ZONE_TOPOLOGY', 'zn-1', true]);
-    expect(calls.find((c) => c[0] === 'draft')).toBeUndefined();
+    const actions = { zoneDispatch: (a) => calls.push(a) };
+    applyClosure(actions, { draftId: 'z1', method: 'gibson', enzyme: null });
+    expect(calls).toEqual([{ type: 'SET_CLOSURE_METHOD', zoneId: 'z1', method: 'gibson', enzyme: null }]);
   });
 
-  it('applyCircularize routes a LEGACY draft topology to setAssemblyDraftTopology', () => {
+  it('no-op when no method', () => {
     const calls = [];
-    const actions = {
-      setAssemblyDraftTopology: (id, c) => calls.push(['draft', id, c]),
-      zoneDispatch: (a) => calls.push([a.type, a.zoneId]),
-    };
-    applyCircularize(actions, {
-      draftId: 'd1', circular: true, method: 'gibson', applyToAll: true, isZoneTarget: false, segments: segs,
-    });
-    expect(calls).toContainEqual(['draft', 'd1', true]);
-  });
-
-  it('zone + closure-only (not applyToAll) → SET_BOUNDARY_OVERLAP on the closure pairKey (last→first)', () => {
-    const out = circularizeActions({
-      draftId: 'z1', circular: true, method: 'restriction', applyToAll: false, isZoneTarget: true, segments: segs,
-    });
-    expect(out[1]).toEqual({
-      kind: 'closureMethod', zoneId: 'z1', pairKey: pairKeyFor('c', 'a'), method: 'restriction', enzyme: null,
-    });
-  });
-
-  it('closure-only on a linear result → no closure action (no ring to close)', () => {
-    const out = circularizeActions({
-      draftId: 'z1', circular: false, method: 'overlap_pcr', applyToAll: false, isZoneTarget: true, segments: segs,
-    });
-    expect(out).toHaveLength(1); // topology only
-  });
-
-  it('closure-only with <2 segments → no closure action', () => {
-    const out = circularizeActions({
-      draftId: 'z1', circular: true, method: 'kld', applyToAll: false, isZoneTarget: true, segments: [{ id: 'a' }],
-    });
-    expect(out).toHaveLength(1); // topology only (single-fragment closure is C3)
+    applyClosure({ zoneDispatch: (a) => calls.push(a) }, { draftId: 'z1', method: null });
+    expect(calls).toEqual([]);
   });
 });

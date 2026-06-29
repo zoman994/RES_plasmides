@@ -85,6 +85,23 @@ export function entryToGenbank(entry) {
     if (ann.regionId) gb += `                     /bodgegene_regionId="${ann.regionId}"\n`;
     const color = ann.color || ANNOTATION_COLORS[ann.type];
     if (color) gb += `                     /ApEinfo_fwdcolor="${color}"\n`;
+    // FEAT-QUALIFIERS — round-trip the preserved INSDC qualifiers (/gene /product
+    // /note /EC_number /db_xref …) so provenance survives import→export. Array
+    // values emit one line each; `pseudo` is a valueless flag; embedded quotes are
+    // doubled per the GenBank convention.
+    if (ann.qualifiers && typeof ann.qualifiers === 'object') {
+      for (const [k, v] of Object.entries(ann.qualifiers)) {
+        const vals = Array.isArray(v) ? v : [v];
+        for (const one of vals) {
+          if (one == null || one === '') continue;
+          if (k === 'pseudo' && (one === true || one === 'true')) {
+            gb += `                     /pseudo\n`;
+          } else {
+            gb += `                     /${k}="${String(one).replace(/"/g, '""')}"\n`;
+          }
+        }
+      }
+    }
   }
 
   gb += `ORIGIN\n`;

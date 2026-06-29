@@ -140,7 +140,7 @@ export function exportProtocol(fragments, junctions, primers, method, circular) 
       // Find primers by fragment name (robust to ordering and skipped fragments)
       const fwd = primers.find(p => p.direction === 'forward' && p.name?.includes(f.name)) || {};
       const rev = primers.find(p => p.direction === 'reverse' && p.name?.includes(f.name)) || {};
-      const pcrSize = (f.sequence || '').length + (fwd.tailSequence || '').length + (rev.tailSequence || '').length;
+      const pcrSize = (f.sequence || '').length + (fwd.tailSequence ?? fwd.tail ?? '').length + (rev.tailSequence ?? rev.tail ?? '').length;
       const anneal = Math.round(Math.min(fwd.tmBinding || 60, rev.tmBinding || 60));
       const extSec = Math.ceil(pcrSize / 1000) * 30;
       const extTime = extSec >= 60 ? `${Math.floor(extSec/60)} min ${extSec%60?extSec%60+' sec':''}` : `${extSec} sec`;

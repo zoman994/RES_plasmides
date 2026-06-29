@@ -42,6 +42,7 @@ const ZONE_ACTIONS = new Set([
   'SET_BOUNDARY_OVERLAP', // JUNCTION layer 3 J1 — per-junction config edit
   'OPEN_JUNCTION_METHOD_PICKER', 'CLOSE_JUNCTION_PICKER', // J6b — JunctionControl
   'SET_ASSEMBLY_METHOD', // UX slice 3 — construct-level method that flows down
+  'SET_CLOSURE_METHOD', // RC-SEP — the ring-closing reaction (separate from junctions)
 ]);
 
 // JUNCTION layer 3 (J1) — fields a junction config record carries.
@@ -302,8 +303,28 @@ export function zonesReducer(state, action) {
       const zone = zones.find((z) => z.id === action.zoneId);
       if (!zone) return state;
       const want = !!action.circular;
-      if (!!(zone.topology && zone.topology.circular) === want) return state;
-      return patchZone(state, action.zoneId, { topology: { circular: want } });
+      const cur = !!(zone.topology && zone.topology.circular);
+      // P0 (Игорь 27.06) — mark the choice EXPLICIT so draftFromZone's auto-close
+      // (ringCloses) no longer overrides a user who deliberately picked «Линейная».
+      // Patch even when cur===want if the choice wasn't yet explicit (e.g. a closable
+      // assembly auto-shown as circular while stored linear — clicking «Линейная» must
+      // pin it). No-op only when the choice is already this AND already explicit.
+      const wasExplicit = !!(zone.topology && zone.topology.explicit);
+      if (cur === want && wasExplicit) return state;
+      return patchZone(state, action.zoneId, { topology: { circular: want, explicit: true } });
+    }
+
+    // RC-SEP (Игорь 25.06) — the RING-CLOSING reaction is ONE property of the
+    // assembly (Gibson / RE / blunt / GG / KLD), separate from the internal junctions
+    // (the strip ромбы) and the topology toggle. Stored on the zone, read by
+    // closureSeam (gate/display) + methodsFromJunctions (realise).
+    case 'SET_CLOSURE_METHOD': {
+      const zone = zones.find((z) => z.id === action.zoneId);
+      if (!zone || !action.method) return state;
+      return patchZone(state, action.zoneId, {
+        closureMethod: action.method,
+        closureEnzyme: action.enzyme || null,
+      });
     }
 
     // T4.5 DEC-T4.5-04 — pin/unpin a node (drag-override). pinned=true

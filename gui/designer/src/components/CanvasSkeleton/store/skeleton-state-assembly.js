@@ -402,6 +402,11 @@ export function assemblyReducer(state, action) {
         if (typeof patch.sequence === 'string') {
           next.status = 'edited';
           next.bindingSequence = patch.bindingSequence || patch.sequence;
+          // V178 (PRIMER-12) — a manual sequence edit replaces the whole oligo;
+          // without an explicit tail the edited sequence IS the binding (no
+          // overhang). Clear the stale `tail` so PrimerTrack draws no phantom
+          // overhang and binding-search stays consistent with the new sequence.
+          next.tail = typeof patch.tail === 'string' ? patch.tail : '';
         }
         return next;
       });

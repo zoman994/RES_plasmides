@@ -65,6 +65,24 @@ describe('PlasmidViewer — bug-rush #25 (linearised library entries)', () => {
     ).toBeNull();
   });
 
+  // V186 (audit) — origin-straddling RE site must be visible on a CIRCULAR part.
+  // ApaI GGGCCC wraps the origin: last 'G' + first 'GGCCC'. Sole ApaI site.
+  const WRAP_SEQ = `GGCCC${'ATGCATGCAT'.repeat(11)}G`; // 116 nt
+
+  it('shows an origin-straddling RE site on a CIRCULAR part (circular scan)', () => {
+    render(<PlasmidViewer part={buildPart({ sequence: WRAP_SEQ, topology: 'circular', annotations: [] })} onClose={() => {}} />);
+    const apa = Array.from(document.querySelectorAll('span'))
+      .find((s) => /ApaI/.test(s.getAttribute('title') || ''));
+    expect(apa).toBeTruthy();
+  });
+
+  it('does NOT show a phantom origin site on a LINEAR part', () => {
+    render(<PlasmidViewer part={buildPart({ sequence: WRAP_SEQ, topology: 'linear', annotations: [] })} onClose={() => {}} />);
+    const apa = Array.from(document.querySelectorAll('span'))
+      .find((s) => /ApaI/.test(s.getAttribute('title') || ''));
+    expect(apa).toBeFalsy();
+  });
+
   it('clicking the × delete button on a region calls onAnnotationsChange with the row removed', () => {
     const onAnnotationsChange = vi.fn();
     render(

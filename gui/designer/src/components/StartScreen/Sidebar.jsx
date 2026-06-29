@@ -12,6 +12,7 @@
  */
 import { useCallback, useEffect } from 'react';
 import { useStore } from '../../store';
+import { PENDING_NEW_ASSEMBLY } from '../../store/projectAssembliesSlice';
 import { APP_VERSION } from '../../lib/version';
 import { STRINGS } from '../../lib/strings';
 import { openBodgeIntoLibrary } from './lib/open-bodge';
@@ -112,10 +113,13 @@ export default function Sidebar({ collapsed, onToggle, onOpenHotkeys }) {
   const onAlign = activeWorkspace === 'align';
   // RS-C3 — «Сайты рестрикции» standalone tool (same axis-staleness guard as align).
   const onRestrictionSites = activeWorkspace === 'restriction-sites';
-  const isHomeActive = activeFullscreen === 'start' && !onAlign && !onRestrictionSites;
-  const isLibraryActive = (activeFullscreen === 'library' || activeWorkspace === 'library') && !onAlign && !onRestrictionSites;
+  // PRIMER-2b — «Праймеры» (пул) standalone tool под «Библиотекой» (same guard).
+  const onPrimerPool = activeWorkspace === 'primer-pool';
+  const isHomeActive = activeFullscreen === 'start' && !onAlign && !onRestrictionSites && !onPrimerPool;
+  const isLibraryActive = (activeFullscreen === 'library' || activeWorkspace === 'library') && !onAlign && !onRestrictionSites && !onPrimerPool;
   const isAlignActive = onAlign;
   const isRestrictionSitesActive = onRestrictionSites;
+  const isPrimerPoolActive = onPrimerPool;
 
   const onLibraryClick = () => {
     setActiveWorkspace?.('library');
@@ -135,6 +139,12 @@ export default function Sidebar({ collapsed, onToggle, onOpenHotkeys }) {
     // Same pattern as align: leave the start fullscreen → 'library' (the
     // WorkspaceRouter surface) so the «Сайты рестрикции» workspace renders.
     setActiveWorkspace?.('restriction-sites');
+    setActiveFullscreen?.('library');
+  };
+  const onPrimerPoolClick = () => {
+    // PRIMER-2b — «Праймеры» под «Библиотекой». Same standalone-tool pattern:
+    // leave start fullscreen → 'library' surface so PrimerPoolWorkspace renders.
+    setActiveWorkspace?.('primer-pool');
     setActiveFullscreen?.('library');
   };
   const onCreateProject = () => {
@@ -191,6 +201,10 @@ export default function Sidebar({ collapsed, onToggle, onOpenHotkeys }) {
     pushFullscreen?.({ fullscreen: 'canvasSkeleton', payload: { projectId: currentProjectId } });
   };
   const onOpenAssemblies = () => openProjectCanvas(null);
+  // «Новая сборка» — open the canvas with the CREATE sentinel so SkeletonProvider
+  // dispatches a fresh CREATE_ZONE + focuses it (was wrongly wired to onOpenAssemblies,
+  // which only OPENED the workspace → button «не создаёт сборку», Игорь 25.06).
+  const onNewAssembly = () => openProjectCanvas(PENDING_NEW_ASSEMBLY);
 
   return (
     <aside
@@ -272,6 +286,14 @@ export default function Sidebar({ collapsed, onToggle, onOpenHotkeys }) {
           testId="ss-nav-library"
         />
         <SidebarItem
+          icon={<Icon name="primer-pool" size={16} />}
+          label="Праймеры"
+          tip="Пул праймеров — статусы, заказ, куда садится"
+          active={isPrimerPoolActive}
+          onClick={onPrimerPoolClick}
+          testId="ss-nav-primer-pool"
+        />
+        <SidebarItem
           icon={<Icon name="sequence" size={16} />}
           label="Выравнивание"
           tip="Выравнивание (референс ↔ чтение)"
@@ -336,7 +358,7 @@ export default function Sidebar({ collapsed, onToggle, onOpenHotkeys }) {
                   label="Новая сборка"
                   tip="Создать новую сборку в проекте"
                   active={false}
-                  onClick={onOpenAssemblies}
+                  onClick={onNewAssembly}
                   testId="ss-nav-assembly-new"
                 />
               </>

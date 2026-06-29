@@ -13,6 +13,34 @@ import {
   indexPrimerPoolByHash,
 } from '../bodge-primers-json';
 
+// PRIMER-AUDIT (V174) — a tailed primer must survive .bodge round-trip with its
+// bindingSequence + tail + direction + status, else PrimerTrack loses the overhang
+// and binding-search matches the full oligo after reload.
+describe('serializePrimer — V173 shape round-trip (bindingSequence/tail/direction)', () => {
+  it('preserves bindingSequence, tail, direction, status, tags through write→read', async () => {
+    const tailed = {
+      id: 'pp01TAILED1',
+      name: 'BamHI-fwd',
+      sequence: 'GGATCCACGTACGTACGT',
+      bindingSequence: 'ACGTACGTACGT',
+      tail: 'GGATCC',
+      direction: 'forward',
+      status: 'ordered',
+      tm: 55,
+      tags: ['колония'],
+      origin: { kind: 'library-selection', projectId: 'p01PROJ-A' },
+    };
+    const json = writePrimerPool([tailed], 'p01PROJ-A');
+    const { pool } = await readPrimerPool(json, []);
+    const got = pool.find((p) => p.id === 'pp01TAILED1');
+    expect(got.bindingSequence).toBe('ACGTACGTACGT');
+    expect(got.tail).toBe('GGATCC');
+    expect(got.direction).toBe('forward');
+    expect(got.status).toBe('ordered');
+    expect(got.tags).toEqual(['колония']);
+  });
+});
+
 const PROJECT_A = 'p01PROJ-A';
 const PROJECT_B = 'p01PROJ-B';
 

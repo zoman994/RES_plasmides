@@ -24,6 +24,8 @@ describe("buildEntryPrimerPayload", () => {
         id: "p1",
         name: "myP",
         sequence: "ATGCAAAGGG",
+        bindingSequence: "ATGCAAAGGG", // V173 — no tail → binding = full seq
+        tail: "",
         direction: "forward",
         length: 10,
       },
@@ -101,6 +103,7 @@ describe("selectEntryPrimers", () => {
       name: "fwd",
       sequence: "AAACCCGGGTTT",
       bindingSequence: "AAACCCGGGTTT",
+      tail: "", // V173 — viewer shape now carries tail (empty for tail-less primers)
       direction: "forward",
       tmBinding: 58,
     });

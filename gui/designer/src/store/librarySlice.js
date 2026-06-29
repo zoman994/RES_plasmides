@@ -638,6 +638,12 @@ export const createLibrarySlice = (set, get) => ({
         editedAt,
         ...(meta && meta.reason ? { reason: meta.reason } : {}),
         ...(meta && meta.changes ? { changes: meta.changes } : {}),
+        // Explicit structural intent — a «version» continues the mainline, a
+        // «branch» is a divergent variant kept alongside (drives the tree's
+        // version/branch split via collectLineage). Only the two valid values
+        // are recorded; anything else falls back to lane-based derivation.
+        ...(meta && (meta.lineageRole === 'version' || meta.lineageRole === 'branch')
+          ? { lineageRole: meta.lineageRole } : {}),
       },
       version: 1,
       parentEntryId: parentId,
@@ -813,6 +819,30 @@ export const createLibrarySlice = (set, get) => ({
       e.name = safe;
     });
     await putLibraryEntry({ ...existing, name: safe });
+  },
+
+  /**
+   * Set a version/branch lifecycle status on `entry.origin.status`
+   * ('release' | 'wip' | 'deprecated'). Pass null to clear. Mirrors
+   * updateLibraryEntryTags — patch in-memory origin + persist, no version
+   * bump. Used by the version-history list status chip.
+   */
+  setLibraryEntryVersionStatus: async (id, status) => {
+    if (status != null && status !== 'release' && status !== 'wip' && status !== 'deprecated') return;
+    const existing = get().libraryEntries[id];
+    if (!existing) return;
+    const nextOrigin = { ...(existing.origin || {}) };
+    if (status == null) delete nextOrigin.status; else nextOrigin.status = status;
+    set(state => {
+      const e = state.libraryEntries[id];
+      if (e) e.origin = nextOrigin;
+    });
+    try {
+      await putLibraryEntry({ ...existing, origin: nextOrigin });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[bodgegene] setLibraryEntryVersionStatus persist failed', err);
+    }
   },
 
   /**

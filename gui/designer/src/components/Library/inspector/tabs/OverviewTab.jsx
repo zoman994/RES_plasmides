@@ -35,6 +35,9 @@ const __PREWARM_DISABLED__ =
 
 export default function OverviewTab({
   item, onUpdateTags, onUpdateTopology, onNavigateToFeature, onApplyOrigin,
+  // V181 / UX-2 — currently-selected feature id (shared with the Sequence tab);
+  // the map highlights it so selection reads consistently across tabs.
+  selectedRegionId = null,
 }) {
   const summary = useMemo(() => buildFileSummary(item), [item]);
   // Lazy reSites: in production we paint the rest of the overview first
@@ -128,6 +131,7 @@ export default function OverviewTab({
                 topology={topology}
                 centerLabel={{ name: item.name || item._fileName || '', bp: length }}
                 onFeatureClick={onNavigateToFeature}
+                selectedRegionId={selectedRegionId}
                 rotationDeg={typeof onApplyOrigin === 'function' ? originRotationDeg : 0}
               />
             </div>

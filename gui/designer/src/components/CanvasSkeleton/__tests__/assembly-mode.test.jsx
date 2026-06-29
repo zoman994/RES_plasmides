@@ -187,11 +187,11 @@ describe('K3 AssemblyShell + Header', () => {
     expect(info).toMatch(/linear/i);
   });
 
-  it('circularize modal sets topology (setAssemblyDraftTopology) — M-CIRCULARIZE', () => {
+  it('header topology toggle sets the draft topology — RC-SEP', () => {
     openDraftWith2();
-    act(() => { fireEvent.click(screen.getByTestId('assembly-circularize-btn')); });
-    act(() => { fireEvent.click(screen.getByTestId('circularize-topology-circular')); });
-    act(() => { fireEvent.click(screen.getByTestId('circularize-confirm')); });
+    // RC-SEP — topology is a plain header toggle (no modal), routed to the legacy
+    // assembly-draft via setAssemblyDraftTopology.
+    act(() => { fireEvent.click(screen.getByTestId('assembly-topology-circular')); });
     expect(S.assemblyDrafts[0].topology.circular).toBe(true);
   });
 

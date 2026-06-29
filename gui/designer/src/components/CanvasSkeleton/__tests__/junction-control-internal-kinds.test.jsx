@@ -1,9 +1,10 @@
 /**
- * junction-control-internal-kinds.test.jsx — audit JC-1/JC-3/JC-4. The per-
- * junction ромб is always an INTERNAL fuse boundary, so it must offer only the
- * internal-fuse methods (overlap / re_ligation) — not the closure-only / single-
- * fragment ones (gibson/kld/blunt/preformed). Re-picking the same kind is a no-op
- * (no gibson→overlap downgrade); switching snaps the new kind's overlap defaults.
+ * junction-control-internal-kinds.test.jsx — audit JC-1/JC-3/JC-4. The per-junction
+ * ромб is an INTERNAL fuse boundary. RC-JUNC (Игорь 25.06: «дать возможность миксовать
+ * типы методов сборки») — it now offers the MIX-able internal-fuse methods (overlap /
+ * golden_gate / re_ligation / blunt direct-ligation), NOT the single-plasmid KLD nor
+ * the legacy 'preformed'. Re-picking the same kind is a no-op (no gibson→overlap
+ * downgrade); switching snaps the new kind's overlap defaults.
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
@@ -22,13 +23,13 @@ const mount = (config, onChange = vi.fn()) => {
 };
 
 describe('JunctionControl — internal-fuse method filter (JC-1)', () => {
-  it('offers only overlap + re_ligation; not gibson/kld/blunt/preformed', () => {
+  it('offers the mix-able internal-fuse methods (overlap/GG/RE/blunt); not kld/preformed', () => {
     mount({ method: 'overlap_pcr' });
     expect(screen.getByTestId('junction-popover-kind-overlap')).toBeTruthy();
+    expect(screen.getByTestId('junction-popover-kind-golden_gate')).toBeTruthy();
     expect(screen.getByTestId('junction-popover-kind-re_ligation')).toBeTruthy();
-    expect(screen.queryByTestId('junction-popover-kind-golden_gate')).toBeNull();
+    expect(screen.getByTestId('junction-popover-kind-ligation')).toBeTruthy(); // blunt — Игорь 25.06
     expect(screen.queryByTestId('junction-popover-kind-kld')).toBeNull();
-    expect(screen.queryByTestId('junction-popover-kind-ligation')).toBeNull();
     expect(screen.queryByTestId('junction-popover-kind-preformed')).toBeNull();
   });
 

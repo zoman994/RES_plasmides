@@ -71,6 +71,23 @@ describe('V76 — near-cursor selection Tm', () => {
     expect(tip.textContent).not.toMatch(/Tm/i);
   });
 
+  // RC-CLOSE-GATE (Игорь 25.06) — symmetric lower bound: a tiny selection (<7 bp)
+  // can't anneal as a primer and the NN Tm there is unreliable (it produced a
+  // nonsensical «−100.6 °C · 3 bp»). Drop the Tm, keep the nucleotide count.
+  it('<7 bp selection: count stays, Tm is dropped (no garbage negative)', () => {
+    renderSV({ showSelectionTm: true, caretAnchor: 0, caretPos: 3 });
+    fireEvent.pointerMove(screen.getByTestId('sequence-view-root'), { clientX: 120, clientY: 90 });
+    const tip = screen.getByTestId('sequence-view-tm-tooltip');
+    expect(tip.textContent).toContain('3 bp');
+    expect(tip.textContent).not.toMatch(/Tm/i);
+  });
+
+  it('Tm shows again at the 7 bp lower boundary', () => {
+    renderSV({ showSelectionTm: true, caretAnchor: 0, caretPos: 7 });
+    fireEvent.pointerMove(screen.getByTestId('sequence-view-root'), { clientX: 120, clientY: 90 });
+    expect(screen.getByTestId('sequence-view-tm-tooltip').textContent).toMatch(/Tm/i);
+  });
+
   it('Tm still shows (with count) at the 150 bp boundary', () => {
     const LONG = { ...FRAGMENT, sequence: 'ACGT'.repeat(60) };
     render(<SequenceView fragments={[LONG]} showSelectionTm caretAnchor={0} caretPos={150} />);

@@ -66,6 +66,7 @@ import { runPredictors } from "../../predicted-detection.js";
 import { scanAllSites, RE_ENZYMES } from "../../restriction-db.js";
 import { stickyEnds as computeStickyEnds } from "./lib/selection-ops.js";
 import { FEATURE_STROKE } from "../../feature-palette.js";
+import { enclosingRegionId } from "../../annotation-model.js";
 
 import {
   LABEL_WIDTH,
@@ -84,6 +85,7 @@ import SelectionOverlay from "./overlays/SelectionOverlay.jsx";
 import OriginMarkerOverlay from "./overlays/OriginMarkerOverlay.jsx";
 import SearchHitsOverlay from "./overlays/SearchHitsOverlay.jsx";
 import SegmentZonesOverlay from "./overlays/SegmentZonesOverlay.jsx";
+import { computeSeamRecessBlanks } from "./seam-staircase";
 import OutOfRangeMaskOverlay from "./overlays/OutOfRangeMaskOverlay.jsx";
 import { flankedSpan } from "./lib/primer-flank.js";
 import PrimerFromSelectionModal from "./popups/PrimerFromSelectionModal.jsx";
@@ -136,11 +138,18 @@ const SequenceView = forwardRef(function SequenceView({
   // Terminal sticky-end staircase (Игорь 22.06 «физическая ступенька»):
   // { left, right } from terminalStagger(segment, RE_ENZYMES). Null → no staircase.
   terminalStagger = null,
+  // RC-CLOSE-GATE — the ring-closing junction { interlock, kind, selfClosure?, … }
+  // for a CIRCULAR assembly; forwarded to SegmentZonesOverlay which draws the
+  // closure verdict at the construct terminus. Null → nothing (back-compat).
+  closureSeam = null,
   primers = EMPTY_PRIMERS,
   // eslint-disable-next-line no-unused-vars
   readOnly = true,
   onSelect,
   onAnnotationClick,
+  // V181 / UX-2 — id of the feature selected elsewhere (plasmid map / inspector);
+  // the matching annotation row highlights so selection syncs map↔sequence.
+  selectedRegionId = null,
   onVisibleRangeChange,
   // eslint-disable-next-line no-unused-vars
   onMutate,
@@ -209,6 +218,9 @@ const SequenceView = forwardRef(function SequenceView({
   // SPEC_COMMON_FEATURES DEC-CF-05 — consumer-gated «Add to common features»
   // (same pattern as onWritePrimer). Undefined ⇒ no menu item / no modal.
   onPromoteToCommon,
+  // FEAT-EXTRACT — consumer-gated «extract feature → Library entry». Passed
+  // straight to the selection menu; the host does the splice + entry creation.
+  onExtractFeature,
   checkCommonDuplicate,
   // M-X.9 K2 follow-up (TD-SEARCH-OVERLAY-RECTS) — Ctrl+F search
   // hits to render as overlay rects + mismatch ticks. Each hit:
@@ -838,10 +850,11 @@ const SequenceView = forwardRef(function SequenceView({
     const sub = (fullSeq || '').slice(lo, hi);
     if (!sub.length) return null;
     // Игорь 18.05.2026: счётчик нуклеотидов остаётся ВСЕГДА; убирается
-    // только Tm вне 1–150 п.о. — праймер длиннее физически невозможен
-    // (и считать тяжело на огромных выделениях); <2 — Tm одной базы не
-    // определён. tm=null → подсказка показывает только «N bp».
-    const tm = (sub.length >= 2 && sub.length <= 150) ? calcTm(sub) : null;
+    // только Tm вне диапазона. >150 п.о. — праймер длиннее физически невозможен
+    // (и считать тяжело на огромных выделениях). RC-CLOSE-GATE (25.06): нижняя
+    // граница 7 нт — короче праймер не отжигается, а NN-модель там недостоверна
+    // (давала бессмысленные «−100.6 °C · 3 bp»). tm=null → подсказка только «N bp».
+    const tm = (sub.length >= 7 && sub.length <= 150) ? calcTm(sub) : null;
     return { tm, len: sub.length };
   })();
 
@@ -1121,6 +1134,13 @@ const SequenceView = forwardRef(function SequenceView({
       : settings.visibleFrames),
     [hasFrameOverride, overrideFrame, settings.visibleFrames],
   );
+  // RC-SEP-SEAM (Игорь 26.06 «просто буквы убрать») — recessed-strand blanks for
+  // incompatible restriction overhangs, so the join reads as a single-stranded staircase
+  // (the recessed base is physically not drawn, the zone band stays). Pure (positions only).
+  const recessBlanks = useMemo(
+    () => computeSeamRecessBlanks(pieceZones ?? coloredZones, closureSeam),
+    [pieceZones, coloredZones, closureSeam],
+  );
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const linesJsx = useMemo(() => {
     if (!fullSeq) return null;
@@ -1150,7 +1170,9 @@ const SequenceView = forwardRef(function SequenceView({
         // never yet rendered real (fast scroll past them).
         placeholderHeight={(kind === 'main' && lineHeightsRef.current.get(lineIndex)) || placeholderHeight}
         seqLength={seqLength}
+        circular={circular}
         terminalStagger={terminalStagger}
+        recessBlanks={recessBlanks}
         fullSeq={fullSeq}
         features={features}
         primers={primers}
@@ -1168,6 +1190,7 @@ const SequenceView = forwardRef(function SequenceView({
         orfRanges={orfRanges}
         renderHybrid={effRenderHybrid}
         onAnnotationClick={onAnnotationClick}
+        selectedRegionId={selectedRegionId}
         tracksReady={tracksReady}
         onAnnotationEdgePointerDown={onAnnotationEdgePointerDown}
         draggedAnnotationId={draggedAnnotationId}
@@ -1219,12 +1242,12 @@ const SequenceView = forwardRef(function SequenceView({
     }
     return out;
   }, [
-    measured, lines, wrapTailLines, fullSeq, features, primers, reSites, charPx,
+    measured, lines, wrapTailLines, fullSeq, circular, features, primers, reSites, charPx,
     onPrimerClick, onPrimerDoubleClick, selectedPrimerKeys,
     effShowBottomStrand, effFramesMode, settings.primerStyle,
     settings.reOrientation, effVisibleFrames,
     effFramesResolution, orfRanges, effRenderHybrid,
-    onAnnotationClick, tracksReady,
+    onAnnotationClick, selectedRegionId, tracksReady,
     // Align-to-reference inputs — without these the read/chromatogram track
     // would go stale when the result changes but the reference stays the same.
     alignmentRead, alignmentReads, chromatogram, chromatogramMaxVal, alignmentColorMode,
@@ -1242,6 +1265,7 @@ const SequenceView = forwardRef(function SequenceView({
     // layoutEpoch bumps off this rebuild → overlays re-measure against the
     // new DOM. placeholderHeight tracks mainLineHeight.
     virtualize, effectiveWindow, placeholderHeight,
+    recessBlanks,
   ]);
 
   // V96 — bump the layout epoch after every `linesJsx` rebuild. The
@@ -1345,6 +1369,7 @@ const SequenceView = forwardRef(function SequenceView({
         onZoneClick={onZoneClick}
         onZoneHover={onZoneHover}
         terminalStagger={terminalStagger}
+        closureSeam={closureSeam}
         layoutEpoch={layoutEpoch}
       />
       {outOfRangeMask && Number.isFinite(outOfRangeMask.start)
@@ -1429,19 +1454,24 @@ const SequenceView = forwardRef(function SequenceView({
           onWritePrimer: onWritePrimer ? requestWritePrimer : undefined,
           onCreatePiece,
           onPromoteToCommon: onPromoteToCommon ? requestPromoteToCommon : undefined,
+          onExtractFeature,
         })}
       />
       {primerDraft && onWritePrimer && (
         <PrimerFromSelectionModal
           draft={primerDraft}
           onClose={() => setPrimerDraft(null)}
-          onCreate={({ name, sequence, direction }) => {
+          onCreate={({ name, sequence, direction, tail, binding }) => {
             onWritePrimer({
               direction,
               start: primerDraft.start,
               end: primerDraft.end,
               name,
               sequence,
+              // PRIMER-7 (V173) — forward tail/binding so a 5'-tail (overhang)
+              // survives persistence and the primer renders on the sequence.
+              tail,
+              binding,
             });
             setPrimerDraft(null);
           }}
@@ -1468,7 +1498,17 @@ const SequenceView = forwardRef(function SequenceView({
           seqLength={seqLength}
           onCancel={closeCreatePopup}
           onCreate={(payload) => {
-            onAnnotationEdit?.({ kind: "create", payload });
+            // UX-9 — auto-link a new SUB-feature (detail/point: domain, motif,
+            // mutation, site) to the gene that encloses it, via `regionId` (the
+            // model-standard parent link → getDetails / exon-split / V180 cascade).
+            // A region-level feature, an unparented span, or an explicit regionId
+            // is left untouched.
+            let p = payload;
+            if (payload && payload.level && payload.level !== "region" && payload.regionId == null) {
+              const parent = enclosingRegionId(annotations, payload.start, payload.end);
+              if (parent != null) p = { ...payload, regionId: parent };
+            }
+            onAnnotationEdit?.({ kind: "create", payload: p });
             closeCreatePopup();
           }}
           onOpenAnnotator={({ start, end }) => {

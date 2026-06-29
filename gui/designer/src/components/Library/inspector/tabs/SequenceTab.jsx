@@ -43,6 +43,9 @@ export default function SequenceTab({
   // Terminal sticky-end staircase (Игорь 22.06): { left, right } from
   // terminalStagger(segment). Pass-through to SequenceView. Null → no staircase.
   terminalStagger = null,
+  // RC-CLOSE-GATE — ring-closing junction for a circular assembly. Pass-through to
+  // SequenceView → SegmentZonesOverlay (closure verdict at the terminus). Null → none.
+  closureSeam = null,
   // Entry id of the currently rendered library record. Used to scope
   // the global search-hits store-slot — overlay rects appear only
   // when the popover ran against THIS entry.
@@ -57,6 +60,11 @@ export default function SequenceTab({
   onSelectRange,
   onAnnotationEdit,
   onOpenAnnotator,
+  // V181 / UX-2 — id of the feature selected on the Overview map / list; the
+  // matching annotation row highlights in the sequence after navigation.
+  selectedRegionId = null,
+  // Clicking a feature in the sequence sets the shared selection (sync back).
+  onAnnotationClick,
   // Sprint M-X.3 follow-up — dblclick on a feature opens the
   // FeatureEditorModal (rename / type / coords / split / merge /
   // delete). Wired by SingleInspector.
@@ -113,6 +121,8 @@ export default function SequenceTab({
   // Assembly / PCR / Annotator-preview leave them undefined → no menu item.
   onPromoteToCommon,
   checkCommonDuplicate,
+  // FEAT-EXTRACT — «извлечь фичу → Library entry» (consumer-gated pass-through).
+  onExtractFeature,
 }) {
   const sequenceViewRef = useRef(null);
 
@@ -177,6 +187,7 @@ export default function SequenceTab({
           fragments={fragments}
           circular={topology === 'circular'}
           terminalStagger={terminalStagger}
+          closureSeam={closureSeam}
           readOnly
           caretPos={caretPos}
           caretAnchor={caretAnchor}
@@ -186,6 +197,8 @@ export default function SequenceTab({
           onSelectRange={onSelectRange}
           onAnnotationEdit={onAnnotationEdit}
           onOpenAnnotator={onOpenAnnotator}
+          selectedRegionId={selectedRegionId}
+          onAnnotationClick={onAnnotationClick}
           onOpenFeatureEditor={onOpenFeatureEditor}
           editable={editable}
           onSequenceEdit={onSequenceEdit}
@@ -205,6 +218,7 @@ export default function SequenceTab({
           outOfRangeMask={outOfRangeMask}
           inverted={inverted}
           onPromoteToCommon={onPromoteToCommon}
+          onExtractFeature={onExtractFeature}
           checkCommonDuplicate={checkCommonDuplicate}
         />
       </div>

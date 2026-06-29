@@ -85,6 +85,16 @@ function MutagenesisIcon() {
   );
 }
 
+function BluntIcon() {
+  return (
+    <svg width={SIZE} height={SIZE} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
+      <path d="M2 6 L11 6" />
+      <path d="M2 10 L11 10" />
+      <path d="M11 5 L11 11" />
+    </svg>
+  );
+}
+
 const ICONS = {
   pcr: PcrIcon,
   cut: CutIcon,
@@ -93,6 +103,7 @@ const ICONS = {
   ligate: LigateIcon,
   kld: KldIcon,
   mutagenesis: MutagenesisIcon,
+  blunt: BluntIcon,
 };
 
 function OpIcon({ kind, size = SIZE, color }) {

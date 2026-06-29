@@ -33,7 +33,9 @@ import {
   GLYPH_SIZE, GLYPH_MIN_PX, LEADER_LINE_LENGTH_PX,
 } from "./annotation-track-constants.js";
 import { ensureColor } from "./annotation-colors.js";
+import { isFragmentFeature } from "../../../lib/feature-fragment.js";
 import { chevronPath } from "./annotation-geometry.js";
+import { buildAnnotationTitle } from "./annotation-title.js";
 import { regionKey, labelLengthChars } from "./annotation-layout.js";
 import { LabelText } from "./AnnotationLabel.jsx";
 import { SubFeatureOverlay } from "./SubFeatureOverlay.jsx";
@@ -104,6 +106,9 @@ function AnnotationTrack({
   wrapsOrigin = false,
   wrapAt,
   seqLength,
+  // V181 / UX-2 — the region id currently selected (e.g. on the plasmid map).
+  // The matching feature row lights up so selection syncs map↔sequence.
+  selectedRegionId = null,
 }) {
   // Bug-rush #9 (04.05.2026 evening): hover state on the resize
   // handles. Lets the rect get a visible accent line when biolog
@@ -258,6 +263,9 @@ function AnnotationTrack({
           // labels per pLannotate convention (DEC-PRED-05). Confident
           // regions keep the existing solid+darkened look.
           const isPredicted = region.predicted === true;
+          // V181 / UX-2 — is this the region selected elsewhere (map / inspector)?
+          const isSelected = selectedRegionId != null && region.id != null
+            && region.id === selectedRegionId;
           const baseColor = ensureColor(region.color);
           // Bug-rush #4 (04.05.2026 evening, second take): biolog
           // «фичи должны быть именно более прозрачные а не другого
@@ -266,12 +274,18 @@ function AnnotationTrack({
           // perceived «paleness» so the colour family across
           // LinearFeatureBar / PlasmidMiniMap / AnnotationTrack
           // stays in lock-step (single palette source of truth).
-          const fill = isPredicted ? 'transparent' : baseColor;
-          const rectFillOpacity = isPredicted ? 1 : 0.55;
-          const rectStroke = isPredicted
-            ? baseColor
-            : 'var(--text-secondary, #3A2F1F)';
-          const rectStrokeWidth = isPredicted ? 1 : 0.6;
+          // UX-4 — a confirmed but INCOMPLETE feature (a fragment of its
+          // reference: `_part_` name / coverage<95% / partial flag) renders
+          // pLannotate-style: white fill + coloured outline, so a truncated
+          // AmpR reads as «обрезок», not a whole gene. Distinct from predicted
+          // (dashed) and selected (accent).
+          const isFragment = !isPredicted && isFragmentFeature(region);
+          const fill = isPredicted ? 'transparent' : (isFragment ? 'var(--surface-1, #fff)' : baseColor);
+          const rectFillOpacity = (isPredicted || isFragment) ? 1 : 0.55;
+          const rectStroke = isSelected
+            ? 'var(--accent-500, #f59e0b)'
+            : ((isPredicted || isFragment) ? baseColor : 'var(--text-secondary, #3A2F1F)');
+          const rectStrokeWidth = isSelected ? 1.8 : (isPredicted ? 1 : (isFragment ? 1.1 : 0.6));
           const rectStrokeDash = isPredicted ? '3,2' : undefined;
           const baseName = region.name || "feature";
           const labelText =
@@ -388,12 +402,18 @@ function AnnotationTrack({
               data-region-end={region.end}
               data-region-type={region.type || ""}
               data-region-strand={region.strand === -1 ? -1 : 1}
+              data-selected={isSelected ? "true" : undefined}
+              data-fragment={isFragment ? "true" : undefined}
               data-predicted={isPredicted ? "true" : undefined}
               data-region-source={region.source || undefined}
               data-dragged={isBeingDragged ? "true" : undefined}
               transform={`translate(${xLeft}, ${yTop})`}
               style={{ cursor: "pointer", opacity: isBeingDragged ? 0.4 : 1 }}
             >
+              {/* gap-research — qualifier hover tooltip in the SEQUENCE pane (was
+                  only on the maps' hover card). First child of the feature <g> so
+                  it covers both the exon-split and plain branches below. */}
+              <title>{buildAnnotationTitle(region)}</title>
               {geneIntronKids.length > 0 ? (
                 <GeneExonRects
                   region={region}

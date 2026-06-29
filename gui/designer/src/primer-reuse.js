@@ -37,7 +37,8 @@ export function findCompatiblePrimers(newPrimer, existingPrimers, options = {}) 
   const { minOverlap = 20, maxTmDiff = 3 } = options;
 
   const newBind = (newPrimer.bindingSequence || '').toUpperCase();
-  const newTail = (newPrimer.tailSequence || '').toUpperCase();
+  // V174 — accept both tail field names (PCR `tailSequence` / assembly `tail`).
+  const newTail = (newPrimer.tailSequence ?? newPrimer.tail ?? '').toUpperCase();
   const newDir = newPrimer.direction;
 
   if (!newBind) return [];
@@ -48,7 +49,7 @@ export function findCompatiblePrimers(newPrimer, existingPrimers, options = {}) 
       if (existing.direction && existing.direction !== newDir) return null;
 
       const exBind = (existing.bindingSequence || '').toUpperCase();
-      const exTail = (existing.tailSequence || '').toUpperCase();
+      const exTail = (existing.tailSequence ?? existing.tail ?? '').toUpperCase();
 
       // 1. Binding region must match (identical)
       if (exBind !== newBind) return null;
@@ -66,8 +67,12 @@ export function findCompatiblePrimers(newPrimer, existingPrimers, options = {}) 
       const tmDiff = Math.abs((newPrimer.tmBinding || 60) - (existing.tmBinding || 60));
       if (tmDiff > maxTmDiff) return null;
 
-      // Skip if it's the exact same primer (same name)
-      if (existing.name === newPrimer.name) return null;
+      // Never match a primer against ITSELF (same id) — the true self-guard.
+      if (existing.id && newPrimer.id && existing.id === newPrimer.id) return null;
+      // Skip same-name matches by default (avoids recommending a near-twin under
+      // the same label). `ignoreName` disables this for pool-reuse, where a
+      // durable copy legitimately carries the draft's name (PRIMER-4).
+      if (!options.ignoreName && existing.name === newPrimer.name) return null;
 
       return {
         existing,
@@ -99,6 +104,24 @@ export function findAllMatches(primers, options = {}) {
     if (m.length > 0) matches[p.name] = m;
   }
   return matches;
+}
+
+/**
+ * PRIMER-6 (V180) — auto-reuse against the UNIFIED POOL (primerSlice.primersById),
+ * not the legacy global registry. Answers «does this auto-derived primer already
+ * exist in my pool?» so the assembly panel can flag it WITHOUT a manual picker.
+ * Adapts both the query primer and pool rows (assembly/pool use `tm`,
+ * findCompatiblePrimers reads `tmBinding`). Returns compatible matches (empty = none).
+ * @param {Object} primer derived primer ({bindingSequence, tail, direction, tm|tmBinding})
+ * @param {Object[]} poolPrimers pool rows (primersById values)
+ */
+export function primerPoolReuse(primer, poolPrimers, options = {}) {
+  if (!primer || !Array.isArray(poolPrimers) || poolPrimers.length === 0) return [];
+  const adapted = { ...primer, tmBinding: primer.tmBinding ?? primer.tm };
+  const pool = poolPrimers.map((e) => ({ ...e, tmBinding: e.tmBinding ?? e.tm }));
+  // Pool reuse: a durable pool copy may legitimately share the draft's name
+  // (saved «＋ в пул»), so don't exclude same-name — id-based self-guard suffices.
+  return findCompatiblePrimers(adapted, pool, { ignoreName: true, ...options });
 }
 
 /**

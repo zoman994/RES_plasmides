@@ -60,6 +60,19 @@ describe('PrimerTrack — overlap tail segment', () => {
     expect(screen.getByTestId('sequence-view-primer')).toBeTruthy();
   });
 
+  // V174 — cross-ecosystem friendship: a PCR-mode primer names its overhang
+  // `tailSequence` (local-primer-design), not `tail`. PrimerTrack must still
+  // render it so PCR-mode primers show their overhang on the sequence.
+  it('forward primer with tailSequence (PCR-mode field) → tail segment renders', () => {
+    const p = {
+      name: 'fwd', direction: 'forward', bindingSequence: BINDING, tailSequence: TAIL, sequence: TAIL + BINDING,
+    };
+    render(<PrimerTrack {...base} primers={[p]} />);
+    const tail = screen.getByTestId('sequence-view-primer-tail');
+    expect(Number(tail.getAttribute('x'))).toBeCloseTo(-(TAIL.length * 7.2), 3);
+    expect(screen.getByTestId('sequence-view-primer-tail-bases').textContent).toBe(TAIL);
+  });
+
   it('clickable + tail → the hit-target rect is widened to cover the tail', () => {
     const p = {
       name: 'fwd', direction: 'forward', bindingSequence: BINDING, tail: TAIL, sequence: TAIL + BINDING,
@@ -206,5 +219,138 @@ describe('PrimerTrack — 5′-tail wraps onto the adjacent line', () => {
     expect(screen.getByTestId('sequence-view-primer')).toBeTruthy();          // binding starts here
     expect(screen.getByTestId('sequence-view-primer-tail-bases').textContent).toBe('GG'); // cols 20..21
     expect(txX(screen.getByTestId('sequence-view-primer-tail-wrap'))).toBeCloseTo((8 + 0) * 7.2, 3);
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// Circularisation primer tails wrap ACROSS THE ORIGIN (Игорь 25.06.2026 —
+// «праймеры кольцевания должны показывать как хвосты ложатся на цепь. сейчас
+// хвосты уходят в сторону»). A self-/ring-closure primer binds near the
+// molecule start (forward) or end (reverse); its 5′-tail runs off that end and,
+// on a CIRCULAR molecule, belongs to the OTHER end. We render it on the
+// wrap-bridge row at the real columns just before / wrap columns just after the
+// ▶1 origin divider — instead of dangling it into the static side margin.
+const CBIND = 'ACGTACGTACGT';            // 12 nt, self-rev-comp → reverse reuse
+const CTAIL = 'GGGGGG';                   // 6 nt closure overhang
+
+describe('PrimerTrack — circularisation tail wraps across the origin', () => {
+  // seqLength 90, last partial line [80,90) extended by the first 10 nt → a
+  // wrap-bridge row: real half [80,90) at cols [0,10), divider at wrapAt=10,
+  // wrap half [0,10) at cols [10,20).
+  const FWD_SEQ = CBIND + 'T'.repeat(78); // binding [0,12) at the start
+  const fwdBridge = {
+    fullSeq: FWD_SEQ, lineStart: 80, lineLen: 20, labelChars: 8, primerStyle: 'filled', charPx: 7.2,
+    wrapsOrigin: true, wrapAt: 10, seqLength: 90, circular: true, directionFilter: 'forward',
+    primers: [{ name: 'f', direction: 'forward', bindingSequence: CBIND, tail: CTAIL, sequence: CTAIL + CBIND }],
+  };
+
+  it('forward closure tail lands on the real half just BEFORE the ▶1 divider', () => {
+    render(<PrimerTrack {...fwdBridge} />);
+    const wrap = screen.getByTestId('sequence-view-primer-tail-wrap');
+    // tail covers plasmid positions 84..89 → real-half cols 4..9 (right of which
+    // the divider sits at col 10), x = (labelChars + 4) * charPx.
+    expect(txX(wrap)).toBeCloseTo((8 + 4) * 7.2, 3);
+    expect(screen.getByTestId('sequence-view-primer-tail-bases').textContent).toBe(CTAIL);
+    expect(Number(screen.getByTestId('sequence-view-primer-tail').getAttribute('width')))
+      .toBeCloseTo(CTAIL.length * 7.2, 3);
+  });
+
+  // reverse closure: binding [78,90), 5′-end at 90; tail runs to positions
+  // 90..95 ≡ 0..5 (mod 90) → wrap-half cols 10..15 (just past the divider).
+  const REV_SEQ = 'T'.repeat(78) + CBIND; // binding [78,90) at the end
+  const revBridge = {
+    fullSeq: REV_SEQ, lineStart: 80, lineLen: 20, labelChars: 8, primerStyle: 'filled', charPx: 7.2,
+    wrapsOrigin: true, wrapAt: 10, seqLength: 90, circular: true, directionFilter: 'reverse',
+    primers: [{ name: 'r', direction: 'reverse', bindingSequence: CBIND, tail: CTAIL, sequence: CTAIL + CBIND }],
+  };
+
+  it('reverse closure tail lands on the wrap half just AFTER the ▶1 divider', () => {
+    render(<PrimerTrack {...revBridge} />);
+    const wrap = screen.getByTestId('sequence-view-primer-tail-wrap');
+    expect(txX(wrap)).toBeCloseTo((8 + 10) * 7.2, 3);
+    expect(screen.getByTestId('sequence-view-primer-tail-bases').textContent).toBe(CTAIL);
+  });
+
+  // The dangle bug: on the FIRST line (lineStart 0, non-wrap) a forward closure
+  // primer's tail must NOT render in the left margin for a CIRCULAR molecule
+  // (it belongs on the wrap-bridge). For a LINEAR molecule the same tail is a
+  // real 5′-overhang sticking out the end → it SHOULD still render.
+  const firstLine = (circular) => ({
+    fullSeq: FWD_SEQ, lineStart: 0, lineLen: 20, labelChars: 8, primerStyle: 'filled', charPx: 7.2,
+    circular, directionFilter: 'forward',
+    primers: [{ name: 'f', direction: 'forward', bindingSequence: CBIND, tail: CTAIL, sequence: CTAIL + CBIND }],
+  });
+
+  it('circular: forward closure tail is SUPPRESSED on the first line (no margin dangle)', () => {
+    render(<PrimerTrack {...firstLine(true)} />);
+    expect(screen.getByTestId('sequence-view-primer')).toBeTruthy();        // binding arrow still here
+    expect(screen.queryByTestId('sequence-view-primer-tail')).toBeNull();   // tail not dangled into margin
+  });
+
+  it('linear: the same tail IS drawn on the first line (real 5′-overhang)', () => {
+    render(<PrimerTrack {...firstLine(false)} />);
+    expect(screen.getByTestId('sequence-view-primer-tail')).toBeTruthy();   // linear overhang renders
+  });
+
+  // The live circular view renders closure primers on the LEADING/TRAILING
+  // wrap-context rows (real plasmid coords), not on a single wrap-bridge row.
+  // The wrapped tail must surface THERE too: a forward closure primer binding
+  // at the start has its tail at the molecule END (a context row), a reverse one
+  // at the END has its tail at the START (line 0). No wrap-bridge props here.
+  it('forward closure tail surfaces on the leading wrap-context row (molecule end)', () => {
+    // FWD_SEQ has the binding at [0,12); a context row shows positions [78,90).
+    render(<PrimerTrack
+      fullSeq={FWD_SEQ}
+      lineStart={78}
+      lineLen={12}
+      labelChars={8}
+      primerStyle="filled"
+      charPx={7.2}
+      circular
+      directionFilter="forward"
+      primers={[{ name: 'f', direction: 'forward', bindingSequence: CBIND, tail: CTAIL, sequence: CTAIL + CBIND }]}
+    />);
+    expect(screen.queryByTestId('sequence-view-primer')).toBeNull();        // binding is elsewhere → no arrow
+    // tail at plasmid positions 84..89 → cols 6..11 on this [78,90) row.
+    expect(txX(screen.getByTestId('sequence-view-primer-tail-wrap'))).toBeCloseTo((8 + 6) * 7.2, 3);
+    expect(screen.getByTestId('sequence-view-primer-tail-bases').textContent).toBe(CTAIL);
+  });
+
+  it('reverse closure tail surfaces on line 0 (molecule start)', () => {
+    // REV_SEQ has the binding at [78,90); line 0 shows positions [0,12).
+    render(<PrimerTrack
+      fullSeq={REV_SEQ}
+      lineStart={0}
+      lineLen={12}
+      labelChars={8}
+      primerStyle="filled"
+      charPx={7.2}
+      circular
+      directionFilter="reverse"
+      primers={[{ name: 'r', direction: 'reverse', bindingSequence: CBIND, tail: CTAIL, sequence: CTAIL + CBIND }]}
+    />);
+    expect(screen.queryByTestId('sequence-view-primer')).toBeNull();
+    expect(txX(screen.getByTestId('sequence-view-primer-tail-wrap'))).toBeCloseTo((8 + 0) * 7.2, 3);
+    expect(screen.getByTestId('sequence-view-primer-tail-bases').textContent).toBe(CTAIL);
+  });
+
+  // Regression: a circular primer whose tail does NOT run off an end keeps the
+  // ordinary inline-tail rendering (the wrap path must not hijack internal tails).
+  it('circular internal tail (not off-end) still renders inline, not wrapped', () => {
+    const INT_SEQ = 'T'.repeat(46) + CBIND + 'T'.repeat(32); // len 90, binding [46,58)
+    render(<PrimerTrack
+      fullSeq={INT_SEQ}
+      lineStart={40}
+      lineLen={20}
+      labelChars={8}
+      primerStyle="filled"
+      charPx={7.2}
+      circular
+      directionFilter="forward"
+      primers={[{ name: 'f', direction: 'forward', bindingSequence: CBIND, tail: CTAIL, sequence: CTAIL + CBIND }]}
+    />);
+    expect(screen.getByTestId('sequence-view-primer')).toBeTruthy();          // binding arrow here
+    expect(screen.getByTestId('sequence-view-primer-tail')).toBeTruthy();     // inline tail glued to it
+    expect(screen.queryByTestId('sequence-view-primer-tail-wrap')).toBeNull(); // NOT the wrap path
   });
 });

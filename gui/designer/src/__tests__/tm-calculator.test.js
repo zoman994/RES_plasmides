@@ -61,6 +61,20 @@ describe('calcTmNN — SantaLucia 1998 NN model', () => {
     const tm = calcTmNN('ATGCNNNGATCGATCG');
     expect(tm).toBeGreaterThan(30);
   });
+
+  // RC-CLOSE-GATE (Игорь 25.06) — a 3 nt AT-rich «overlap» (e.g. a degenerate
+  // self-closure seam) underflowed the NN two-state model to ≈ −100 °C: the four
+  // terminal-initiation corrections outweigh the single stacking pair and flip the
+  // entropy sign. A DNA duplex never melts below 0 °C in any meaningful sense, so a
+  // sub-physical result on a very short oligo means «no real duplex» → 0, never a
+  // garbage negative that then leaks into the selection-Tm tooltip.
+  it('very short oligos never return a wildly negative, unphysical Tm', () => {
+    for (const s of ['AT', 'ATG', 'TATA', 'AAATT', 'AAACC']) {
+      expect(calcTmNN(s)).toBeGreaterThanOrEqual(0);
+    }
+    // real primers are unaffected (positive, in the calibrated range)
+    expect(calcTmNN('GTAAAACGACGGCCAGT')).toBeGreaterThan(40);
+  });
 });
 
 describe('gcPercent', () => {

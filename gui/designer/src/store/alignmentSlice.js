@@ -115,6 +115,10 @@ function normalizeInput(input) {
     // Annotations/features ride along so the reference can render them natively
     // in SequenceView («align to reference»). Empty for pasted sequences.
     annotations: input.annotations || [],
+    // V188 — carry topology so a CIRCULAR reference scans RE sites circular
+    // (origin-straddling sites visible in the RestrictionTrack). Accept either an
+    // explicit `circular` boolean or a `topology` string.
+    circular: typeof input.circular === 'boolean' ? input.circular : (input.topology === 'circular'),
     libraryEntryId: input.libraryEntryId || null,
   };
 }
@@ -128,6 +132,8 @@ function toInputFromEntry(entry) {
     source: 'library',
     kind: 'seq',
     annotations: entry.payload?.annotations || [],
+    // V188 — library entries store topology on the payload (librarySlice).
+    circular: entry.payload?.topology === 'circular' || !!entry.payload?.circular,
     libraryEntryId: entry.id || null,
   });
 }

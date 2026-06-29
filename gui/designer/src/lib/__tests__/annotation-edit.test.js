@@ -179,6 +179,62 @@ describe('annotation-edit — updateAnnotation', () => {
   });
 });
 
+// V180 — editing a region's coords/name/type regenerates its id; its detail/
+// point children link via `regionId = <old id>` and were left dangling →
+// orphaned sub-features (intron loses exon-block + AA splice, domain vanishes
+// from FeatureEditorModal). updateAnnotation must CASCADE the id change onto
+// children so the gene↔intron link survives the edit.
+describe('annotation-edit — updateAnnotation cascades regionId to children (V180)', () => {
+  const gene = { id: 'g-uuid', type: 'gene', level: 'region', start: 0, end: 120, strand: 1, name: 'ген' };
+  const intron = { id: 'i1', type: 'intron', level: 'detail', regionId: 'g-uuid', start: 30, end: 90, strand: 1, name: 'интрон 1' };
+
+  it('coord edit re-links detail children (no orphan; intron link survives)', () => {
+    const next = updateAnnotation([gene, intron], 'g-uuid', { end: 130 }, 200);
+    const g = next.find((a) => a.type === 'gene');
+    const i = next.find((a) => a.type === 'intron');
+    expect(g.id).not.toBe('g-uuid');        // id regenerated (existing contract)
+    expect(i.regionId).toBe(g.id);          // child re-linked to the new id
+    expect(getIntronsForRegion(next, g)).toHaveLength(1); // link intact
+  });
+
+  it('rename re-links children', () => {
+    const next = updateAnnotation([gene, intron], 'g-uuid', { name: 'ген2' }, 200);
+    const g = next.find((a) => a.type === 'gene');
+    const i = next.find((a) => a.type === 'intron');
+    expect(i.regionId).toBe(g.id);
+  });
+
+  it('strand-only edit keeps the id and does not disturb children', () => {
+    const next = updateAnnotation([gene, intron], 'g-uuid', { strand: -1 }, 200);
+    const g = next.find((a) => a.type === 'gene');
+    const i = next.find((a) => a.type === 'intron');
+    expect(g.id).toBe('g-uuid');
+    expect(i.regionId).toBe('g-uuid');
+  });
+
+  it('point children (e.g. mutation) are re-linked too', () => {
+    const mut = { id: 'm1', type: 'mutation', level: 'point', regionId: 'g-uuid', start: 45, end: 46 };
+    const next = updateAnnotation([gene, mut], 'g-uuid', { end: 130 }, 200);
+    const g = next.find((a) => a.type === 'gene');
+    expect(next.find((a) => a.type === 'mutation').regionId).toBe(g.id);
+  });
+
+  it('legacy region without id: edit re-links its backfill-linked children', () => {
+    const lg = { type: 'gene', level: 'region', start: 0, end: 120, strand: 1, name: 'ген' }; // no id
+    const child = { id: 'd1', type: 'domain', level: 'detail', regionId: 'region:0:120:gene:ген', start: 10, end: 50 };
+    const next = updateAnnotation([lg, child], 'region:0:120:gene:ген', { end: 130 }, 200);
+    const g = next.find((a) => a.type === 'gene');
+    expect(g.id).toBe('region:0:130:gene:ген');
+    expect(next.find((a) => a.type === 'domain').regionId).toBe('region:0:130:gene:ген');
+  });
+
+  it('does not touch unrelated children of other regions', () => {
+    const other = { id: 'd2', type: 'domain', level: 'detail', regionId: 'other-region', start: 10, end: 50 };
+    const next = updateAnnotation([gene, intron, other], 'g-uuid', { end: 130 }, 200);
+    expect(next.find((a) => a.id === 'd2').regionId).toBe('other-region');
+  });
+});
+
 describe('annotation-edit — createBatchAnnotations + DEC-ANN-09 dedup', () => {
   it('appends candidates with no overlap', () => {
     const arr = [lacZ];

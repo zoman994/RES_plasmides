@@ -238,6 +238,18 @@ describe('plasmid-map-v2 — collectIntronsByParent', () => {
     expect(collectIntronsByParent(null).size).toBe(0);
     expect(collectIntronsByParent([]).size).toBe(0);
   });
+  // V182 — regionId is the model-standard link (annotate-genes emits regionId);
+  // parentId stays a legacy fallback. Both must group; regionId wins if both set.
+  it('groups by regionId (standard) and falls back to parentId (legacy)', () => {
+    const anns = [
+      { id: 'i1', level: 'detail', type: 'intron', regionId: 'g', start: 300, end: 400 },
+      { id: 'i2', level: 'detail', type: 'intron', parentId: 'g', start: 600, end: 650 },
+      { id: 'i3', level: 'detail', type: 'intron', regionId: 'g', parentId: 'other', start: 700, end: 720 },
+    ];
+    const m = collectIntronsByParent(anns);
+    expect(m.get('g')).toEqual([[300, 400], [600, 650], [700, 720]]);
+    expect(m.has('other')).toBe(false);
+  });
 });
 
 describe('plasmid-map-v2 — featuresFromFragments', () => {

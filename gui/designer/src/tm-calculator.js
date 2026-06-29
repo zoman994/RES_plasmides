@@ -143,6 +143,13 @@ export function calcTmNN(seq, opts = {}) {
   }
 
   if (!Number.isFinite(Tm)) return 0;
+  // RC-CLOSE-GATE (Игорь 25.06) — the NN two-state model breaks down below ~6 nt:
+  // the four terminal-initiation corrections can outweigh the few stacking pairs
+  // and flip the entropy sign, yielding a large NEGATIVE, unphysical Tm (≈ −100 °C).
+  // A DNA duplex never melts below 0 °C meaningfully, so on a very short oligo a
+  // sub-physical result means «no real duplex» → 0 («no Tm»), never a garbage
+  // negative. Guards ONLY the short-and-negative case → never touches real primers.
+  if (s.length < 6 && Tm < 0) return 0;
   return Math.round(Tm * 10) / 10;
 }
 

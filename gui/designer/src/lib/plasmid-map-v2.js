@@ -63,16 +63,21 @@ export function arcStrokePath(cx, cy, a0, a1, r) {
 
 /**
  * Group intron `detail` annotations by their parent gene id. Introns live as
- * `{ level:'detail', type:'intron', parentId: <gene.id> }` (the 3-level model,
- * same contract AnnotationTrack uses). Returns Map<parentId, [[start,end), …]>.
+ * `{ level:'detail', type:'intron', regionId: <gene.id> }` — the model STANDARD
+ * link (annotate-genes emits `regionId`; getDetails filters by `regionId`). V182:
+ * legacy `parentId` is still accepted as a fallback, but `regionId` is canonical;
+ * reading only `parentId` left standard introns un-split on the map. Returns
+ * Map<geneId, [[start,end), …]>.
  */
 export function collectIntronsByParent(annotations) {
   const m = new Map();
   for (const a of (annotations || [])) {
-    if (!a || a.type !== 'intron' || a.parentId == null) continue;
+    if (!a || a.type !== 'intron') continue;
+    const parent = a.regionId != null ? a.regionId : a.parentId;
+    if (parent == null) continue;
     if (!Number.isFinite(a.start) || !Number.isFinite(a.end) || a.end <= a.start) continue;
-    if (!m.has(a.parentId)) m.set(a.parentId, []);
-    m.get(a.parentId).push([a.start, a.end]);
+    if (!m.has(parent)) m.set(parent, []);
+    m.get(parent).push([a.start, a.end]);
   }
   return m;
 }

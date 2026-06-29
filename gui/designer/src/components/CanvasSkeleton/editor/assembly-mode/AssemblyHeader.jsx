@@ -19,21 +19,29 @@ const METHOD_LABEL = {
   kld: 'KLD',
 };
 
+const topoBtn = (on) => ({
+  border: 'none', background: on ? 'var(--accent-500, #b85c3e)' : 'transparent',
+  color: on ? '#fff' : 'var(--text-secondary)', fontSize: 11, padding: '4px 12px',
+  borderRadius: 4, cursor: 'pointer', fontWeight: on ? 600 : 400,
+});
+
 export default function AssemblyHeader({
   draft, length, segmentCount,
   onRename, onRealise, canRealise,
   onToggleSequenceView,
-  // M-CIRCULARIZE — the whole-assembly method (for the chip label) + the opener
-  // for the «замкнуть в плазмиду» modal that now owns topology + method.
-  assemblyMethod,
-  onOpenCircularize,
+  // RC-SEP (Игорь 25.06) — TOPOLOGY is a plain segmented toggle here (линейная /
+  // кольцевая); the CLOSURE reaction is a SEPARATE button shown ONLY for a ring.
+  // Internal junctions are the strip ромбы — neither lives in here.
+  onSetTopology,
+  closureMethod,
+  onOpenClosure,
   /* V92 — caller (AssemblyShellBody) tells header that some side-panel is
      currently hidden via its × button → show a small restore-panels control. */
   anyPanelHidden = false,
   onRestorePanels,
 }) {
   const circular = !!(draft.topology && draft.topology.circular);
-  const methodLabel = assemblyMethod ? METHOD_LABEL[assemblyMethod] || assemblyMethod : null;
+  const closureLabel = closureMethod ? METHOD_LABEL[closureMethod] || closureMethod : null;
 
   return (
     <header
@@ -62,27 +70,52 @@ export default function AssemblyHeader({
         {length} bp · {segmentCount} сегм. · {circular ? 'circular' : 'linear'}
       </span>
 
-      {/* M-CIRCULARIZE (Игорь 12.06) — one control replaces the bare topology
-          toggle + method dropdown. Shows the current topology + assembly method
-          and opens the «замкнуть в плазмиду» modal (which owns both). */}
-      {typeof onOpenCircularize === 'function' && (
+      {/* RC-SEP — TOPOLOGY: a plain segmented toggle (линейная / кольцевая). Sets the
+          assembly's topology directly; no method/closure conflated in. */}
+      {typeof onSetTopology === 'function' && (
+        <div
+          data-testid="assembly-topology-toggle"
+          style={{
+            display: 'inline-flex', gap: 2, padding: 2, borderRadius: 6,
+            background: 'var(--surface-1)', border: '1px solid var(--border-subtle)',
+          }}
+        >
+          <button
+            type="button"
+            data-testid="assembly-topology-linear"
+            aria-pressed={!circular}
+            onClick={() => onSetTopology(false)}
+            style={topoBtn(!circular)}
+          >Линейная</button>
+          <button
+            type="button"
+            data-testid="assembly-topology-circular"
+            aria-pressed={circular}
+            onClick={() => onSetTopology(true)}
+            style={topoBtn(circular)}
+          >Кольцевая</button>
+        </div>
+      )}
+
+      {/* RC-SEP — CLOSURE reaction: a SEPARATE button, shown ONLY when circular (a
+          linear form has nothing to close). Opens the closure-reaction picker. */}
+      {circular && typeof onOpenClosure === 'function' && (
         <button
           type="button"
-          data-testid="assembly-circularize-btn"
-          onClick={onOpenCircularize}
-          title="Замыкание в плазмиду и метод сборки"
+          data-testid="assembly-closure-btn"
+          onClick={onOpenClosure}
+          title="Реакция замыкания кольца (последний → первый фрагмент)"
           style={{
             display: 'inline-flex', alignItems: 'center', gap: 6,
             fontSize: 11, padding: '4px 10px',
-            background: circular ? 'var(--accent-wash, rgba(184,92,62,0.10))' : 'var(--surface-1)',
+            background: 'var(--accent-wash, rgba(184,92,62,0.10))',
             color: 'var(--text-secondary)',
-            border: `1px solid ${circular ? 'var(--accent-500, #b85c3e)' : 'var(--border-subtle)'}`,
+            border: '1px solid var(--accent-500, #b85c3e)',
             borderRadius: 4, cursor: 'pointer',
           }}
         >
           <Icon name="circular" size={12} style={{ display: 'inline-block', verticalAlign: '-2px' }} />
-          {circular ? 'Кольцевая' : 'Линейная'}
-          {methodLabel ? <span style={{ color: 'var(--text-tertiary)' }}>· {methodLabel}</span> : null}
+          Замыкание{closureLabel ? <span style={{ color: 'var(--text-tertiary)' }}>: {closureLabel}</span> : null}
           <Icon name="edit" size={10} style={{ display: 'inline-block', verticalAlign: '-2px', color: 'var(--text-tertiary)' }} />
         </button>
       )}

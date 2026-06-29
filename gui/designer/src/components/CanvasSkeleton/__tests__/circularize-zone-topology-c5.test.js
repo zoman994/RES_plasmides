@@ -45,7 +45,8 @@ function oneFragZone(circular) {
 describe('M-CIRCULARIZE C5 — SET_ZONE_TOPOLOGY', () => {
   it('writes zone.topology.circular (was previously unsettable on a zone)', () => {
     const out = zonesReducer(oneFragZone(false), { type: 'SET_ZONE_TOPOLOGY', zoneId: 'zn-1', circular: true });
-    expect(out.zones[0].topology).toEqual({ circular: true });
+    // P0 — the choice is now marked EXPLICIT so draftFromZone auto-close can't override it.
+    expect(out.zones[0].topology).toEqual({ circular: true, explicit: true });
   });
   it('unknown zone → no-op', () => {
     const s = oneFragZone(false);

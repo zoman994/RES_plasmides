@@ -49,6 +49,30 @@ describe('alignmentSlice', () => {
     expect(inp.chromatogram).toBe(chromo);
   });
 
+  // V188 (audit) — the reference's topology must survive into the align input so
+  // SequenceView's RestrictionTrack can scan circular (origin-straddling RE sites).
+  it('setAlignInputs carries circular (explicit flag or topology string)', () => {
+    useStore.getState().setAlignInputs([
+      { name: 'A', sequence: 'ACGTACGT', circular: true },
+      { name: 'B', sequence: 'ACGTTCGT', topology: 'circular' },
+      { name: 'C', sequence: 'TTTTACGT' },
+    ]);
+    const inputs = useStore.getState().align.inputs;
+    expect(inputs[0].circular).toBe(true);
+    expect(inputs[1].circular).toBe(true);
+    expect(inputs[2].circular).toBe(false);
+  });
+
+  it('openAlignmentWith preserves a library entry payload.topology=circular onto the input', () => {
+    useStore.getState().openAlignmentWith([
+      { id: 'e1', name: 'pCirc', payload: { sequence: 'ACGTACGT', topology: 'circular', annotations: [] } },
+      { id: 'e2', name: 'pLin', payload: { sequence: 'ACGTTCGT', topology: 'linear', annotations: [] } },
+    ]);
+    const inputs = useStore.getState().align.inputs;
+    expect(inputs[0].circular).toBe(true);
+    expect(inputs[1].circular).toBe(false);
+  });
+
   it('runAlignment aligns the pair and marks done', () => {
     useStore.getState().setAlignInputs([
       { name: 'A', sequence: 'ACGTACGT' },

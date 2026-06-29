@@ -61,11 +61,22 @@ describe('junction-derive — pairKey + seed (J1/J3)', () => {
   });
 
   it('two-level method sets (J2): internal fuse vs closure', () => {
-    expect(INTERNAL_METHODS).toEqual(['overlap_pcr', 'restriction']);
+    // RC-JUNC (Игорь 25.06) — internal fuses are mix-able: overlap / Golden Gate /
+    // RE sticky / blunt direct-ligation. Gibson (ring-forming) + KLD (1-plasmid)
+    // stay OUT of internal; the closure (ring) is a separate decision.
+    expect(INTERNAL_METHODS).toEqual(['overlap_pcr', 'golden_gate', 'restriction', 'direct_ligation']);
+    expect(INTERNAL_METHODS).toContain('direct_ligation'); // blunt now allowed internally
+    expect(INTERNAL_METHODS).not.toContain('gibson'); // Gibson (ring-forming) can't fuse internally
+    expect(INTERNAL_METHODS).not.toContain('kld'); // KLD is single-plasmid, not a two-fragment fuse
     expect(CLOSURE_METHODS).toContain('gibson');
     expect(CLOSURE_METHODS).toContain('golden_gate');
     expect(CLOSURE_METHODS).toContain('kld');
-    expect(INTERNAL_METHODS).not.toContain('gibson'); // Gibson can't fuse internally
+    expect(CLOSURE_METHODS).toContain('restriction');
+    expect(CLOSURE_METHODS).not.toContain('direct_ligation'); // CircularizeModal appends blunt itself
+    // RC-SEP (Игорь 25.06) — overlap PCR is a fragment-JOINING method (stitches a
+    // LINEAR product); the ring-forming counterpart of overlap homology is Gibson, so
+    // overlap_pcr is NOT a closure reaction. Its presence here was the «бардак».
+    expect(CLOSURE_METHODS).not.toContain('overlap_pcr');
   });
 });
 

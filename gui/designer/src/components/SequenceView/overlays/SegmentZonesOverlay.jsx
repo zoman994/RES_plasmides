@@ -17,7 +17,9 @@
  * because SequenceView does not always re-render). `containerRef` is
  * still accepted as a primary lookup when available.
  */
-import { useLayoutEffect, useRef, useState } from 'react';
+import {
+  useLayoutEffect, useRef, useState,
+} from 'react';
 import { LABEL_WIDTH } from '../constants.js';
 
 const HANDLE_H = 5;
@@ -46,6 +48,15 @@ export default function SegmentZonesOverlay({
   // the overhang length so the highlight covers the whole step. protruding==='top'
   // draws no outward bases (recess only) → already covered, left untouched.
   terminalStagger = null,
+  // RC-CLOSE-GATE (Игорь 25.06) — the CLOSURE (ring-forming) junction: the last
+  // fragment's right end meeting the first fragment's left end (for a 1-fragment
+  // self-closure, the fragment's OWN two ends). Unlike internal seams it lives at
+  // the circular origin, not at an internal boundary, so it's passed separately as
+  // { interlock, kind, selfClosure?, leftLabel, rightLabel }. Renders a verdict badge
+  // at the construct's right terminus («⟳ ✓/✕ overhang») so a само-замыкание whose
+  // ends don't mate (blunt + sticky) reads as un-closable ON the strand, not only in
+  // the conflict list. null / 'unknown' → nothing (back-compat: Library/Importer/PCR).
+  closureSeam = null,
   // V96 — bumped by SequenceView on every line reflow so the colour
   // bands re-measure against the final strand-row layout (the rAF-
   // retry below only covers ~2 frames; the tracksReady flip is later).
@@ -64,6 +75,8 @@ export default function SegmentZonesOverlay({
   // V160 «визуализировать стык» — junction seam where two RE fragments' sticky
   // ends interlock (zones[i].interlock, precomputed upstream).
   const [seamRects, setSeamRects] = useState([]);
+  // RC-CLOSE-GATE — the ring-closing junction verdict badge (at the construct terminus).
+  const [closureRect, setClosureRect] = useState(null);
 
   useLayoutEffect(() => {
     if (!Array.isArray(zones) || zones.length === 0) {
@@ -71,6 +84,7 @@ export default function SegmentZonesOverlay({
       setJunctionRects((prev) => (prev.length === 0 ? prev : []));
       setChips((prev) => (prev.length === 0 ? prev : []));
       setSeamRects((prev) => (prev.length === 0 ? prev : []));
+      setClosureRect((prev) => (prev === null ? prev : null));
       return undefined;
     }
     // Игорь 20.05.2026 — после exit/re-enter ассемблера на mount
@@ -326,9 +340,100 @@ export default function SegmentZonesOverlay({
           entry.topBar = { top: topBox.top, height: topBox.height, color: il.topOwner === 'this' ? thisColor : nextColor };
           entry.botBar = { top: botBox.top, height: botBox.height, color: il.botOwner === 'this' ? thisColor : nextColor };
         }
+        // RC-SEP-SEAM (Игорь 25.06) — an INCOMPATIBLE seam reads as a «выбитый зуб»
+        // (knocked-out tooth), NOT a red highlight: the sticky end's overhang is a faint
+        // tooth on its protruding strand, and on the OPPOSITE (recessed) strand — where
+        // the partner's complementary tooth should interlock but doesn't (blunt / mismatch)
+        // — an EMPTY dashed socket. Geometry mirrors the compatible interlock (5′→after p,
+        // 3′→before p; left-right-end 5′:bottom/3′:top, right-left-end 5′:top/3′:bottom).
+        if (il.verdict === 'incompatible' && topBox && botBox) {
+          const leftE = zones[i].reOverhangs && zones[i].reOverhangs.right;
+          const rightE = zones[i + 1] && zones[i + 1].reOverhangs && zones[i + 1].reOverhangs.left;
+          if (leftE || rightE) {
+            const stepFor = (e, owner) => {
+              if (!e || e.type === 'blunt' || !e.seq) return null;
+              const len = Math.abs(e.delta) || e.seq.length;
+              const five = e.type === '5prime';
+              const c0 = five ? p : p - len;
+              const c1 = five ? p + len : p;
+              const protruding = (owner === 'left') ? (five ? 'bottom' : 'top') : (five ? 'top' : 'bottom');
+              const tBox = protruding === 'top' ? topBox : botBox; // overhang strand (tooth)
+              const sBox = protruding === 'top' ? botBox : topBox; // recessed strand (empty socket)
+              return {
+                left: colAt(Math.min(c0, c1)),
+                width: Math.max(2, Math.abs(c1 - c0) * charPx),
+                color: owner === 'left' ? thisColor : nextColor,
+                tooth: { top: tBox.top, height: tBox.height },
+                socket: { top: sBox.top, height: sBox.height },
+              };
+            };
+            const steps = [stepFor(leftE, 'left'), stepFor(rightE, 'right')].filter(Boolean);
+            if (steps.length) entry.mismatchSteps = steps;
+            const lbl = (e) => (e ? (e.label || (e.type === 'blunt' ? 'тупой' : e.seq)) : '?');
+            entry.label = `${lbl(leftE)} ↮ ${lbl(rightE)}`;
+          }
+        }
         seout.push(entry);
       }
       setSeamRects(seout);
+
+      // RC-CLOSE-GATE — the CLOSURE (ring) junction verdict, anchored at the
+      // construct's START (the origin, where the ring closes back — always on the
+      // first line, so the probe is robust). Reuses the same line/strand probe +
+      // verdict styling as internal seams.
+      let closureOut = null;
+      if (closureSeam && closureSeam.interlock && closureSeam.interlock.verdict !== 'unknown') {
+        let minStart = Infinity;
+        for (const z of zones) { const s = Math.max(0, z.start); if (s < minStart) minStart = s; }
+        const ln = Number.isFinite(minStart) ? lineFor(minStart) : null;
+        if (ln) {
+          const { el, ls } = ln;
+          const topBox = strandBox(el, 'top');
+          const botBox = strandBox(el, 'bottom');
+          const top = topBox ? topBox.top : (el.offsetTop || 0);
+          const bottom = botBox ? botBox.top + botBox.height : top + 12;
+          const il = closureSeam.interlock;
+          const colAtC = (c) => (el.offsetLeft || 0) + (LABEL_WIDTH + (c - ls)) * charPx;
+          // RC-SEP-SEAM (Игорь 26.06) — «выбитый зуб» at the origin for an INCOMPATIBLE ring closure:
+          // the sticky end's overhang extends into the sequence as a tooth; the blunt/mismatched
+          // partner is an EMPTY socket. Ends come from the construct's first/last zone (self-closure →
+          // same zone .left + .right). Mirrors the inter-fragment mismatchStep geometry.
+          let step = null;
+          if (il.verdict === 'incompatible' && topBox && botBox) {
+            const firstZone = zones.find((z) => Math.max(0, z.start) === minStart) || zones[0];
+            const lastZone = zones[zones.length - 1];
+            const startEnd = firstZone && firstZone.reOverhangs && firstZone.reOverhangs.left;
+            const wrapEnd = lastZone && lastZone.reOverhangs && lastZone.reOverhangs.right;
+            const pick = (e) => (e && e.type !== 'blunt' && e.seq ? e : null);
+            const sticky = pick(startEnd) || pick(wrapEnd);
+            if (sticky) {
+              const len = Math.abs(sticky.delta) || sticky.seq.length;
+              const five = sticky.type === '5prime';
+              const protruding = five ? 'top' : 'bottom'; // origin = construct 5′ start (left-end convention)
+              const tBox = protruding === 'top' ? topBox : botBox;
+              const sBox = protruding === 'top' ? botBox : topBox;
+              step = {
+                left: colAtC(minStart),
+                width: Math.max(2, len * charPx),
+                color: (firstZone && firstZone.color) || '#8b5cf6',
+                tooth: { top: tBox.top, height: tBox.height },
+                socket: { top: sBox.top, height: sBox.height },
+              };
+            }
+          }
+          closureOut = {
+            verdict: il.verdict,
+            message: il.message || '',
+            label: il.overhang || (il.verdict === 'blunt' ? 'тупой' : ''),
+            x: colAtC(minStart),
+            top,
+            height: Math.max(8, bottom - top),
+            selfClosure: !!closureSeam.selfClosure,
+            step,
+          };
+        }
+      }
+      setClosureRect(closureOut);
     };
 
     compute(0);
@@ -337,7 +442,7 @@ export default function SegmentZonesOverlay({
       if (raf1 && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(raf1);
       if (raf2 && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(raf2);
     };
-  }, [zones, charPx, charsPerLine, containerRef, terminalStagger, layoutEpoch]);
+  }, [zones, charPx, charsPerLine, containerRef, terminalStagger, closureSeam, layoutEpoch]);
 
   return (
     <>
@@ -519,8 +624,20 @@ export default function SegmentZonesOverlay({
       {seamRects.map((s) => {
         const ok = s.verdict === 'compatible';
         const bad = s.verdict === 'incompatible';
-        const accent = ok ? '#16a34a' : bad ? '#dc2626' : 'var(--border-strong, #a8a29e)';
-        const icon = ok ? '✓' : bad ? '✕' : '';
+        // RC-SEP-SEAM (Игорь 25.06 «там букв в принципе не должно быть, дело не в колористике»):
+        // the seam is PURELY VISUAL — compatible = interlocking teeth + a green join, incompatible =
+        // a solid tooth + an EMPTY dashed socket («выбитый зуб»), blunt = a flush line. The verdict /
+        // overhang / enzymes / join bases / frame-AA ALL move into a hover TOOLTIP; NO letters are
+        // painted at the seam. A premature STOP keeps a non-letter red marker (colour is an allowed
+        // signal; letters are not).
+        const tipParts = [];
+        if (s.label) tipParts.push(s.label);
+        if (s.message && s.message !== s.label) tipParts.push(s.message);
+        if (s.seam && (s.seam.left || s.seam.right)) tipParts.push(`стык …${s.seam.left || ''} │ ${s.seam.right || ''}…`);
+        if (s.seam && s.seam.codonAtSeam) tipParts.push(`рамка ${s.seam.codonAtSeam.dna} → ${s.seam.codonAtSeam.aa}${s.seam.stopAtSeam ? ' (STOP!)' : ''}`);
+        const tip = tipParts.join(' · ');
+        const stepW = (s.mismatchSteps || []).reduce((m, st) => Math.max(m, st.width), 0);
+        const hotW = Math.max(14, s.zoneWidth || 0, stepW * 2);
         return (
           <div key={`seam:${s.key}`}>
             {/* COMPATIBLE — two protruding strands (opposite cols) + rungs that
@@ -567,20 +684,41 @@ export default function SegmentZonesOverlay({
                 }}
               />
             )}
-            {/* INCOMPATIBLE — the ends don't anneal: a red dashed divider at the
-                seam instead of a join. */}
+            {/* INCOMPATIBLE — the ends don't anneal. RC-SEP-SEAM (Игорь «не красным»):
+                a thin NEUTRAL seam mark, not a red highlight — the empty socket(s)
+                above carry the «выбитый зуб» meaning; the ✕ badge below carries the
+                verdict colour. */}
             {bad && (
               <div
                 data-testid="sequence-view-seam-divider"
                 aria-hidden
                 style={{
-                  position: 'absolute', left: s.seamX - 1, top: s.top,
-                  width: 2, height: s.height,
-                  background: 'repeating-linear-gradient(0deg, #dc2626 0 3px, transparent 3px 6px)',
+                  position: 'absolute', left: s.seamX, top: s.top,
+                  width: 1, height: s.height,
+                  background: 'var(--border-strong, #a8a29e)',
                   pointerEvents: 'none', zIndex: 4,
                 }}
               />
             )}
+            {/* RC-SEP-SEAM (Игорь 26.06 «просто буквы убрать») — the incompatible seam is a real
+                single-stranded staircase: the recessed strand's BASES are blanked in StrandsTrack
+                (recessBlanks), so there's nothing to cover here. We only TINT the overhang that IS
+                there — a distinct accent behind its bases (NOT the zone colour → не сливается). */}
+            {(s.mismatchSteps || []).map((st, k) => (
+              <div
+                key={`mm:${s.key}:${k}`}
+                data-testid="sequence-view-seam-mismatch"
+                data-role="tooth"
+                aria-hidden
+                style={{
+                  position: 'absolute', left: st.left, top: st.tooth.top,
+                  width: st.width, height: st.tooth.height,
+                  background: toRgba('#b85c3e', 0.16),
+                  outline: '1.5px solid var(--accent-600, #b85c3e)',
+                  pointerEvents: 'none', zIndex: 3,
+                }}
+              />
+            ))}
             {/* BLUNT — flush butt-join: one clean seam line. */}
             {s.verdict === 'blunt' && (
               <div
@@ -594,60 +732,95 @@ export default function SegmentZonesOverlay({
                 }}
               />
             )}
-            {/* Verdict badge below the strands (the diamond/method glyph sits
-                above) — ✓/✕/«тупой» + the shared overhang, tooltip = message. */}
+            {/* RC-B2 — a premature STOP that straddles the seam: a NON-LETTER red marker (the words
+                live in the tooltip). Colour is an allowed signal; letters are not. */}
+            {s.seam && s.seam.stopAtSeam && (
+              <div
+                data-testid="sequence-view-seam-stop"
+                aria-hidden
+                title="Преждевременный STOP-кодон на стыке"
+                style={{
+                  position: 'absolute', left: s.seamX, top: s.top - 5,
+                  transform: 'translateX(-50%)',
+                  width: 6, height: 6, borderRadius: '50%',
+                  background: '#dc2626', pointerEvents: 'auto', zIndex: 5,
+                }}
+              />
+            )}
+            {/* The verdict / overhang / join bases / frame-AA — ALL in a hover TOOLTIP, NO on-screen
+                letters (Игорь «там букв в принципе не должно быть»). A transparent hotspot over the
+                seam carries the title; the SHAPES above (teeth / empty socket / join) carry meaning. */}
             <div
               data-testid="sequence-view-junction-seam"
               data-verdict={s.verdict}
-              title={s.message}
+              title={tip}
+              aria-label={tip}
               style={{
-                position: 'absolute', left: s.seamX, top: s.top + s.height + 2,
-                transform: 'translateX(-50%)',
-                display: 'flex', alignItems: 'center', gap: 2,
-                fontSize: 9, lineHeight: '12px', fontFamily: 'var(--font-mono, monospace)',
-                padding: '0 4px', borderRadius: 3, whiteSpace: 'nowrap',
-                background: 'var(--surface-1, #fff)',
-                border: `0.5px solid ${accent}`,
-                color: accent,
-                pointerEvents: 'none', zIndex: 4,
+                position: 'absolute', left: s.seamX - hotW / 2, top: s.top - 2,
+                width: hotW, height: s.height + 4,
+                background: 'transparent', cursor: 'help',
+                pointerEvents: 'auto', zIndex: 5,
               }}
-            >
-              {icon && <span aria-hidden style={{ fontWeight: 700 }}>{icon}</span>}
-              {s.label && <span>{s.label}</span>}
-            </div>
-            {/* RC-B2 — the nucleotide sequence AT the seam: last bases of the left
-                fragment │ first bases of the right, + (when a frame is pinned via
-                ⚙ «Рамка считывания») the codon/AA that straddles the join, with a
-                red ⚠ STOP if translation hits a premature stop across it. */}
-            {s.seam && (s.seam.left || s.seam.right) && (
-              <div
-                data-testid="sequence-view-seam-seq"
-                title={`Стык: …${s.seam.left} │ ${s.seam.right}…${s.seam.codonAtSeam ? ` · рамка: ${s.seam.codonAtSeam.dna} → ${s.seam.codonAtSeam.aa}${s.seam.stopAtSeam ? ' (STOP!)' : ''}` : ''}`}
-                style={{
-                  position: 'absolute', left: s.seamX, top: s.top + s.height + 16,
-                  transform: 'translateX(-50%)',
-                  display: 'flex', alignItems: 'center',
-                  fontSize: 9, lineHeight: '12px', fontFamily: 'var(--font-mono, monospace)',
-                  padding: '0 3px', borderRadius: 3, whiteSpace: 'nowrap',
-                  background: 'var(--surface-1, #fff)', border: '0.5px solid var(--border-default, #d6d3d1)',
-                  color: 'var(--text-tertiary)', pointerEvents: 'none', zIndex: 4,
-                }}
-              >
-                <span>{s.seam.left}</span>
-                <span aria-hidden style={{ color: 'var(--accent-600, #b85c3e)', fontWeight: 700, padding: '0 1px' }}>│</span>
-                <span>{s.seam.right}</span>
-                {s.seam.codonAtSeam && (
-                  s.seam.stopAtSeam ? (
-                    <span data-testid="sequence-view-seam-stop" style={{ marginLeft: 4, color: '#dc2626', fontWeight: 700 }}>⚠ STOP</span>
-                  ) : (
-                    <span data-testid="sequence-view-seam-aa" style={{ marginLeft: 4, color: 'var(--text-secondary)' }}>{s.seam.codonAtSeam.aa}</span>
-                  )
-                )}
-              </div>
-            )}
+            />
           </div>
         );
       })}
+      {closureRect && (() => {
+        const ok = closureRect.verdict === 'compatible';
+        const bad = closureRect.verdict === 'incompatible';
+        // RC-SEP-SEAM (Игорь 26.06 «приводи closure к тому же языку»): the ring-closure seam is now
+        // PURELY VISUAL too — compatible = green join, incompatible = a tooth + an EMPTY socket
+        // («выбитый зуб») + a neutral divider, blunt = a flush line. The ⟳ / verdict / overhang move
+        // into a hover TOOLTIP; NO letters at the origin. Mirrors the inter-fragment seam exactly.
+        const tip = `Замыкание кольца${closureRect.selfClosure ? ' (само-замыкание)' : ''}${closureRect.label ? ': ' + closureRect.label : ''}${closureRect.message ? ' · ' + closureRect.message : ''}`;
+        const st = closureRect.step;
+        return (
+          <div key="closure-seam">
+            {/* compatible → green join; incompatible → neutral divider; blunt → flush neutral line. */}
+            <div
+              data-testid={bad ? 'sequence-view-closure-divider' : 'sequence-view-closure-join'}
+              aria-hidden
+              style={{
+                position: 'absolute', left: closureRect.x - 1, top: closureRect.top,
+                width: ok ? 2 : 1, height: closureRect.height,
+                background: ok ? toRgba('#16a34a', 0.9) : 'var(--border-strong, #a8a29e)',
+                pointerEvents: 'none', zIndex: 4,
+              }}
+            />
+            {/* INCOMPATIBLE — single-stranded staircase at the origin: the recessed strand's BASES
+                are blanked in StrandsTrack (recessBlanks), so we only TINT the overhang that IS there
+                (distinct accent behind its bases). No cover box. */}
+            {st && (
+              <div
+                data-testid="sequence-view-closure-mismatch"
+                data-role="tooth"
+                aria-hidden
+                style={{
+                  position: 'absolute', left: st.left, top: st.tooth.top,
+                  width: st.width, height: st.tooth.height,
+                  background: toRgba('#b85c3e', 0.16),
+                  outline: '1.5px solid var(--accent-600, #b85c3e)',
+                  pointerEvents: 'none', zIndex: 3,
+                }}
+              />
+            )}
+            {/* The ⟳ / verdict / overhang — ALL in a hover TOOLTIP, NO on-screen letters at the origin.
+                A transparent hotspot carries the title; the shapes above carry the meaning. */}
+            <div
+              data-testid="sequence-view-closure-seam"
+              data-verdict={closureRect.verdict}
+              title={tip}
+              aria-label={tip}
+              style={{
+                position: 'absolute', left: closureRect.x - 7, top: closureRect.top - 2,
+                width: 14, height: closureRect.height + 4,
+                background: 'transparent', cursor: 'help',
+                pointerEvents: 'auto', zIndex: 5,
+              }}
+            />
+          </div>
+        );
+      })()}
     </>
   );
 }

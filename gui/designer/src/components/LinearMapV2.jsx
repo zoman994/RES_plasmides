@@ -9,10 +9,11 @@
  * Scans circular:false for a linear topology → no phantom origin-spanning site.
  */
 import { useMemo } from 'react';
-import { getRegions } from '../annotation-model';
+import { getRegions, getAllDetails, getPoints } from '../annotation-model';
 import { scanAllSites } from '../restriction-db';
 import { filterReSites } from '../lib/re-site-filter';
 import { featureColorShaded, FEATURE_STROKE } from '../feature-palette';
+import { isFragmentFeature } from '../lib/feature-fragment';
 import { useStore, selectActiveSetEnzymes } from '../store';
 import { buildReMarkers, featuresFromFragments } from '../lib/plasmid-map-v2';
 import { lanePack, laneCount, linearTicks, bpToX } from '../lib/linear-map';
@@ -55,12 +56,29 @@ export default function LinearMapV2({
       ? getRegions(annotations).map((r) => ({
         id: r.id, name: r.name || r.type || '—', type: r.type || 'misc',
         start: r.start, end: r.end, strand: Number.isFinite(r.strand) ? r.strand : 1,
+        // UX-4 — fragment-ness from the full region before this lossy reshape.
+        isFragment: isFragmentFeature(r),
       }))
-      : featuresFromFragments(fragments, getRegions);
+      : featuresFromFragments(fragments, getRegions).map((f) => ({ ...f, isFragment: isFragmentFeature(f) }));
     return feats
       .filter((f) => Number.isFinite(f.start) && Number.isFinite(f.end))
       .map((f, i) => ({ ...f, i, fill: featureColorShaded(f.type, f.name) || 'var(--feature-misc, #EEE7D5)' }));
   }, [fragments, annotations]);
+
+  // UX-1 / V-FEAT-3 — sub-features (detail) + points are drawn nested in the
+  // parent region's lane so a gene's introns/domains (and mutations/RE marks)
+  // are visible on the map, not only in the sequence track. Only on the
+  // `annotations` path (single molecule) — fragments-mode coords are offset.
+  const details = useMemo(() => (annotations
+    ? getAllDetails(annotations)
+      .filter((d) => Number.isFinite(d.start) && Number.isFinite(d.end))
+      .map((d) => ({ ...d, fill: featureColorShaded(d.type, d.name) || 'var(--feature-misc, #EEE7D5)', isFragment: isFragmentFeature(d) }))
+    : []), [annotations]);
+  const points = useMemo(() => (annotations
+    ? getPoints(annotations)
+      .filter((p) => Number.isFinite(p.start))
+      .map((p) => ({ ...p, fill: featureColorShaded(p.type, p.name) || 'var(--viz-junction, #94a3b8)' }))
+    : []), [annotations]);
 
   // RE sites — the SAME scan + shared filter as the circular map (RS-B1). A digest
   // enzyme-list overrides the global cut-count filter; otherwise the global mode.
@@ -88,6 +106,13 @@ export default function LinearMapV2({
   })), [features, total]);
   const nFeatLanes = laneCount(featLanes);
 
+  // region.id → lane, so a detail/point draws on its parent's band (inset).
+  const regionLaneById = useMemo(() => {
+    const m = new Map();
+    features.forEach((f) => { if (f.id != null) m.set(f.id, featLanes[f.i]); });
+    return m;
+  }, [features, featLanes]);
+
   // RE label lanes (by label-text pixel extent around the cut x).
   const reLabelExtents = reMarkers.map((m) => {
     const xc = bpToX(m.positions[0], total, X0, X1);
@@ -109,6 +134,11 @@ export default function LinearMapV2({
     if (onSelectRegion && f.id != null) onSelectRegion(f.id === selectedRegionId ? null : f.id);
     onSelectFragment?.(f.i);
     onFeatureClick?.(f);
+  };
+  // Sub-feature / point click — select by id (no fragment index).
+  const clickAnn = (a) => {
+    if (onSelectRegion && a.id != null) onSelectRegion(a.id === selectedRegionId ? null : a.id);
+    onFeatureClick?.(a);
   };
 
   return (
@@ -170,8 +200,11 @@ export default function LinearMapV2({
           const sel = f.id != null && f.id === selectedRegionId;
           const wide = x1 - x0 > 34;
           return (
-            <g key={f.i} data-testid={`linear-map-v2-feature-${f.i}`} style={{ cursor: 'pointer' }} onClick={() => clickFeature(f)}>
-              <path d={arrowPath(x0, x1, y, h, f.strand)} fill={f.fill} stroke={sel ? FEATURE_STROKE : '#ffffff'} strokeWidth={sel ? 1.4 : 0.6} />
+            <g key={f.i} data-testid={`linear-map-v2-feature-${f.i}`} data-fragment={f.isFragment ? 'true' : undefined} style={{ cursor: 'pointer' }} onClick={() => clickFeature(f)}>
+              <path d={arrowPath(x0, x1, y, h, f.strand)}
+                fill={f.isFragment ? 'var(--surface-1, #ffffff)' : f.fill}
+                stroke={sel ? FEATURE_STROKE : (f.isFragment ? f.fill : '#ffffff')}
+                strokeWidth={sel ? 1.4 : (f.isFragment ? 1.1 : 0.6)} />
               {wide && (
                 <text x={(x0 + x1) / 2} y={y + h / 2} dominantBaseline="central" textAnchor="middle" fontSize={11}
                   fontWeight={sel ? 600 : 500} fill="var(--text-primary)" style={{ fontFamily: 'var(--font-ui, inherit)', pointerEvents: 'none' }}>
@@ -179,6 +212,40 @@ export default function LinearMapV2({
                 </text>
               )}
               <title>{`${f.name} · ${f.start + 1}–${f.end} (${f.end - f.start} bp)`}</title>
+            </g>
+          );
+        })}
+
+        {/* sub-features (detail) — inset bars nested in the parent region's lane */}
+        {details.map((d, k) => {
+          const x0 = bpToX(d.start, total, X0, X1);
+          const x1 = Math.max(bpToX(d.end, total, X0, X1), x0 + 2);
+          const lane = regionLaneById.has(d.regionId) ? regionLaneById.get(d.regionId) : 0;
+          const bandY = featTop + lane * FEAT_LANE_H; const bh = FEAT_LANE_H - 7;
+          const dh = Math.max(4, bh * 0.5); const y = bandY + (bh - dh) / 2;
+          const sel = d.id != null && d.id === selectedRegionId;
+          return (
+            <g key={`d${k}`} data-testid={`linear-map-v2-detail-${k}`} data-fragment={d.isFragment ? 'true' : undefined} style={{ cursor: 'pointer' }} onClick={() => clickAnn(d)}>
+              <rect x={x0} y={y} width={x1 - x0} height={dh} rx={1.5}
+                fill={d.isFragment ? 'var(--surface-1, #ffffff)' : d.fill}
+                stroke={sel ? FEATURE_STROKE : (d.isFragment ? d.fill : 'var(--surface-1, #fff)')}
+                strokeWidth={sel ? 1.2 : (d.isFragment ? 1 : 0.5)} opacity={0.92} />
+              <title>{`${d.name || d.type} (саб-фича) · ${d.start + 1}–${d.end} (${d.end - d.start} bp)`}</title>
+            </g>
+          );
+        })}
+
+        {/* points (mutation / start-stop / RE mark) — small triangle markers */}
+        {points.map((p, k) => {
+          const x = bpToX(p.start, total, X0, X1);
+          const lane = regionLaneById.has(p.regionId) ? regionLaneById.get(p.regionId) : 0;
+          const y = featTop + lane * FEAT_LANE_H - 1;
+          const sel = p.id != null && p.id === selectedRegionId;
+          return (
+            <g key={`pt${k}`} data-testid={`linear-map-v2-point-${k}`} style={{ cursor: 'pointer' }} onClick={() => clickAnn(p)}>
+              <path d={`M${x - 3},${y - 6} L${x + 3},${y - 6} L${x},${y} Z`}
+                fill={p.fill} stroke={sel ? FEATURE_STROKE : 'var(--surface-1, #fff)'} strokeWidth={sel ? 1 : 0.5} />
+              <title>{`${p.name || p.type} · ${p.start + 1}`}</title>
             </g>
           );
         })}

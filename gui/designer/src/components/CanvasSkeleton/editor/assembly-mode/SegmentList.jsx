@@ -505,6 +505,18 @@ function SegmentRow({
                 <option value="restriction" disabled>Рестрикция (по сайтам)</option>
               </select>
             </label>
+            {/* GAP-2 — discoverability: a digest fragment can be RE-AMPLIFIED. The
+                method picker already allows restriction→ПЦР/Overlap-ПЦР (primer-derive
+                skips only 'restriction'); this hint tells the biolog the move exists. */}
+            {seg.acquisitionMethod === 'restriction' && (
+              <div
+                data-testid={`segment-reamplify-hint-${seg.id}`}
+                style={{ fontSize: 10, color: 'var(--text-secondary, #57534e)', lineHeight: 1.4, maxWidth: 260 }}
+              >
+                Рестрикция режет фрагмент по сайтам. Выберите ПЦР / Overlap-ПЦР, чтобы
+                перепраймировать его в новый ПЦР-продукт (например, под Gibson).
+              </div>
+            )}
             <label style={inlineLabel}>
               Цвет
               <button

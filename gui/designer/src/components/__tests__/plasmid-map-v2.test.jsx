@@ -54,6 +54,92 @@ describe('PlasmidMapV2 — feature-centric circular map', () => {
   });
 });
 
+// UX-1 / V-FEAT-3 (circular half) — introns already render as exon-split gaps;
+// this adds the MISSING layers: non-intron sub-features (domains/tags) as nested
+// arcs + points (mutations/RE) as markers, so a gene's internal structure is
+// visible on the circular overview.
+describe('PlasmidMapV2 — sub-features + points (UX-1)', () => {
+  // intron carries `parentId` → it exon-splits the gene (and is excluded from the
+  // detail-arc layer to avoid double-draw); domain (regionId) is a nested arc.
+  const ANN2 = [
+    { id: 'g1', level: 'region', type: 'CDS', name: 'glaA', start: 0, end: 1200, strand: 1 },
+    { id: 'i1', level: 'detail', type: 'intron', name: 'intron 1', parentId: 'g1', start: 300, end: 360, strand: 1 },
+    { id: 'd2', level: 'detail', type: 'domain', name: 'catalytic', regionId: 'g1', start: 700, end: 1100, strand: 1 },
+    { id: 'm1', level: 'point', type: 'mutation', name: 'C96S', regionId: 'g1', start: 960, end: 961 },
+  ];
+  const renderAnn = (props = {}) => render(
+    <PlasmidMapV2 annotations={ANN2} length={1200} totalBp={1200} constructName="glaA" {...props} />,
+  );
+
+  it('renders a non-intron sub-feature (domain) as a nested arc', () => {
+    renderAnn();
+    expect(screen.getByTestId('plasmid-v2-detail-0')).toBeTruthy();
+  });
+
+  it('renders point annotations (mutation) as markers', () => {
+    renderAnn();
+    expect(screen.getByTestId('plasmid-v2-point-0')).toBeTruthy();
+  });
+
+  it('a parentId intron exon-splits the gene and is NOT duplicated as a detail arc', () => {
+    renderAnn();
+    expect(screen.getByTestId('plasmid-v2-feature-0').getAttribute('data-spliced')).toBe('true');
+    expect(screen.queryByTestId('plasmid-v2-detail-1')).toBeNull(); // only the domain
+  });
+
+  it('a regionId-linked intron exon-splits the gene (V182 — regionId is the model standard)', () => {
+    const ANN3 = [
+      { id: 'g1', level: 'region', type: 'CDS', name: 'glaA', start: 0, end: 1200, strand: 1 },
+      { id: 'i1', level: 'detail', type: 'intron', name: 'intron 1', regionId: 'g1', start: 300, end: 360, strand: 1 },
+    ];
+    render(<PlasmidMapV2 annotations={ANN3} length={1200} totalBp={1200} />);
+    // V182: introns link to their gene via regionId (annotate-genes emits regionId,
+    // not parentId) → they MUST exon-split like parentId introns, not draw as a
+    // duplicate detail arc.
+    expect(screen.getByTestId('plasmid-v2-feature-0').getAttribute('data-spliced')).toBe('true');
+    expect(screen.queryByTestId('plasmid-v2-detail-0')).toBeNull();
+  });
+
+  it('clicking a sub-feature selects it (onSelectRegion with its id)', () => {
+    const onReg = vi.fn();
+    renderAnn({ onSelectRegion: onReg });
+    fireEvent.click(screen.getByTestId('plasmid-v2-detail-0'));
+    expect(onReg).toHaveBeenCalledWith('d2');
+  });
+});
+
+describe('PlasmidMapV2 — fragment (incomplete) features (UX-4)', () => {
+  // A complete CDS + an incomplete one (the project _part_ convention) + a partial domain.
+  const ANN_FRAG = [
+    { id: 'whole', level: 'region', type: 'CDS', name: 'AmpR', start: 0, end: 600, strand: 1 },
+    { id: 'frag', level: 'region', type: 'CDS', name: 'KanR_part_1-300', start: 700, end: 1000, strand: 1 },
+    { id: 'pdom', level: 'detail', type: 'domain', name: 'helix', regionId: 'whole', coverage: 0.4, start: 100, end: 250, strand: 1 },
+  ];
+
+  it('an incomplete (_part_) feature renders pLannotate-style: white fill + coloured outline', () => {
+    const { container } = render(<PlasmidMapV2 annotations={ANN_FRAG} length={1200} totalBp={1200} />);
+    const frag = container.querySelector('[data-testid^="plasmid-v2-feature-"][data-fragment="true"]');
+    expect(frag).toBeTruthy();
+    expect(frag.getAttribute('fill')).toMatch(/surface/); // white/paper, not the gene colour
+    expect(frag.getAttribute('stroke')).not.toBe('#ffffff'); // outline carries the colour
+  });
+
+  it('a complete feature keeps a solid (coloured) fill, no data-fragment', () => {
+    const { container } = render(<PlasmidMapV2 annotations={ANN_FRAG} length={1200} totalBp={1200} />);
+    const whole = [...container.querySelectorAll('[data-testid^="plasmid-v2-feature-"]')]
+      .find((n) => n.getAttribute('data-fragment') !== 'true');
+    expect(whole).toBeTruthy();
+    expect(whole.getAttribute('fill')).not.toMatch(/surface/);
+  });
+
+  it('a low-coverage sub-feature (detail) is drawn as a fragment too', () => {
+    const { container } = render(<PlasmidMapV2 annotations={ANN_FRAG} length={1200} totalBp={1200} />);
+    const det = container.querySelector('[data-testid^="plasmid-v2-detail-"][data-fragment="true"]');
+    expect(det).toBeTruthy();
+    expect(det.getAttribute('fill')).toMatch(/surface/);
+  });
+});
+
 describe('PlasmidMapV2 — RE sites from sequence (fragments mode)', () => {
   // One EcoRI site (GAATTC) at position 20 in a 60 bp fragment.
   const RE_SEQ = 'A'.repeat(20) + 'GAATTC' + 'A'.repeat(34);

@@ -216,6 +216,7 @@ export default function AlignReferenceView({
       <SequenceView
         ref={sequenceViewRef}
         fragments={fragments}
+        circular={!!referenceFragment?.circular}
         editable={editable}
         caretPos={caretPos}
         caretAnchor={caretAnchor}

@@ -145,6 +145,84 @@ describe('UX slice 4 — assemblyReadiness (pure)', () => {
     expect(assemblyReadiness(overlap).incompatible).toBe(0);
   });
 
+  // RC-CLOSE-GATE (Игорь 25.06) — the CLOSURE block is narrower than the internal
+  // gate: it counts an incompatible interlock ONLY for reactions that ligate the
+  // fragment's PRE-EXISTING physical ends (re_ligation / blunt direct ligation).
+  // KLD/overlap/Gibson/GG REBUILD the ends (PCR blunt product / homology), so the
+  // original RE-overhang chemistry is irrelevant — a 1-fragment overlap-/KLD-closure
+  // (the assembly finale, «сценарий с 1 фрагментом всегда на столе») stays buildable.
+  it('closure blocks for re_ligation + blunt ligation, but NOT for KLD (PCR rebuilds ends)', () => {
+    const zones = enrichZonesWithJunctions([{ zoneId: 'pc1', end: 16 }], {});
+    const incompat = { interlock: { verdict: 'incompatible', message: 'Несовместимые концы' } };
+    expect(assemblyReadiness(zones, { ...incompat, kind: 're_ligation' }).incompatible).toBe(1);
+    expect(assemblyReadiness(zones, { ...incompat, kind: 'ligation' }).incompatible).toBe(1);
+    // KLD self-closure: original RE ends are amplified over → must NOT block.
+    expect(assemblyReadiness(zones, { ...incompat, kind: 'kld' }).incompatible).toBe(0);
+    expect(assemblyReadiness(zones, { ...incompat, kind: 'overlap' }).incompatible).toBe(0);
+  });
+
+  it('a 1-fragment self-closure whose own two ends do not mate is NOT ready (RE closure)', () => {
+    // No internal junctions (js.length 0), but the closure is a real RE-ligation of
+    // the fragment's own ends and they are incompatible → un-buildable.
+    const zones = enrichZonesWithJunctions([{ zoneId: 'only', end: 24, label: 'insert' }], {});
+    const closure = {
+      interlock: { verdict: 'incompatible', message: 'Несовместимые концы: 5′ AATT ≠ тупой' },
+      kind: 're_ligation', selfClosure: true,
+      pairKey: pairKeyFor('only', 'only'), leftLabel: 'insert', rightLabel: 'insert',
+    };
+    const r = assemblyReadiness(zones, closure);
+    expect(r.incompatible).toBe(1);
+    expect(r.ready).toBe(false);
+    const conflicts = assemblyJunctionConflicts(zones, closure);
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0].isClosure).toBe(true);
+    expect(conflicts[0].message.toLowerCase()).toMatch(/само-замык/);
+  });
+
+  it('a 1-fragment self-closure with NO RE ends (unknown interlock) stays ready (overlap finale)', () => {
+    const zones = enrichZonesWithJunctions([{ zoneId: 'only', end: 24 }], {});
+    const closure = { interlock: { verdict: 'unknown' }, kind: 'overlap', selfClosure: true };
+    const r = assemblyReadiness(zones, closure);
+    expect(r.incompatible).toBe(0);
+    expect(r.ready).toBe(true); // hasJoin via closure.kind, nothing blocks
+  });
+
+  // RC-ORIENT (Игорь 25.06 «помочь собрать, а не заставлять гадать как подставить»):
+  // when a junction is incompatible AS-ORIENTED but flipping the NEXT fragment would
+  // make its ends mate, name that flip in the conflict so the user isn't left guessing.
+  const reEnd = (enzyme, type, seq, delta) => ({
+    enzyme, type, seq, delta, label: `${type === '3prime' ? '3′' : '5′'} ${seq || ''}`.trim(),
+  });
+
+  it('names a flip that would fix an incompatible junction', () => {
+    const zones = enrichZonesWithJunctions(
+      [
+        { zoneId: 'a', end: 16, label: 'insert', reOverhangs: { left: reEnd('SmaI', 'blunt', null, 0), right: reEnd('EcoRI', '5prime', 'AATT', 4) } },
+        { zoneId: 'b', end: 32, label: 'linker', reOverhangs: { left: reEnd('PstI', '3prime', 'TGCA', -4), right: reEnd('EcoRI', '5prime', 'AATT', 4) } },
+      ],
+      { [pairKeyFor('a', 'b')]: { method: 'restriction', autoMode: 'manual' } },
+    );
+    // a.right (EcoRI AATT) ↔ b.left (PstI TGCA) → incompatible; but b.right is EcoRI,
+    // so flipping b makes its left=EcoRI → mates a.right.
+    zones[0].interlock = { verdict: 'incompatible', message: 'Несовместимые липкие концы: 5′ AATT ≠ 3′ TGCA' };
+    const conflicts = assemblyJunctionConflicts(zones);
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0].flipFix).toMatchObject({ label: 'linker', side: 'next' });
+  });
+
+  it('no flip hint when flipping would NOT help', () => {
+    const zones = enrichZonesWithJunctions(
+      [
+        { zoneId: 'a', end: 16, label: 'insert', reOverhangs: { left: reEnd('SmaI', 'blunt', null, 0), right: reEnd('EcoRI', '5prime', 'AATT', 4) } },
+        { zoneId: 'b', end: 32, label: 'linker', reOverhangs: { left: reEnd('PstI', '3prime', 'TGCA', -4), right: reEnd('PstI', '3prime', 'TGCA', -4) } },
+      ],
+      { [pairKeyFor('a', 'b')]: { method: 'restriction', autoMode: 'manual' } },
+    );
+    zones[0].interlock = { verdict: 'incompatible', message: 'x' };
+    // b.right is PstI too → flipping b still can't mate a.right (EcoRI) → no hint.
+    expect(assemblyJunctionConflicts(zones)[0].flipFix).toBeUndefined();
+  });
+
   it('compatible / blunt / unknown interlocks do NOT block readiness', () => {
     const mk = (verdict) => {
       const zones = enrichZonesWithJunctions(
@@ -250,6 +328,46 @@ describe('UX slice 4 — readiness line in the live editor', () => {
     expect(line.getAttribute('data-incompatible')).toBe('1');
     expect(line.textContent.toLowerCase()).toMatch(/несовместим/);
     expect(screen.getByTestId('assembly-realise-btn').disabled).toBe(true);
+  });
+
+  // RC-CLOSE-GATE (Игорь 25.06) — a SINGLE RE-cut fragment with one blunt (EcoRV)
+  // and one sticky (EcoRI 5′ AATT) end CANNOT self-circularise by RE-ligation. The
+  // 1-fragment self-closure path must run the interlock + block Realise (previously
+  // bypassed via the segs.length<2 guard → reported «ready»).
+  it('1-fragment RE self-closure with non-mating ends + RE closure → Realise blocked', () => {
+    try { bootstrapStore(); } catch { /* idempotent */ }
+    render(<SkeletonProvider><H /><EditorWindowShell /></SkeletonProvider>);
+    act(() => { A.addContainer(C1); });
+    act(() => { A.zoneDispatch({ type: 'CREATE_ZONE', zone: { name: 'ZSELF', bounds: { x: 0, y: 0, width: 600, height: 400 } } }); });
+    const zid = S.zones[S.zones.length - 1].id;
+    act(() => { A.zoneDispatch({ type: 'SET_ZONE_TOPOLOGY', zoneId: zid, circular: true }); });
+    act(() => {
+      A.zoneDispatch({
+        type: 'CREATE_PIECE',
+        piece: {
+          kind: 'sourced', name: 'src1', sourceIds: ['src1'],
+          ranges: [{ sourceId: 'src1', start: 0, end: 24, orientation: 'forward' }],
+          origin: 'selection', acquisitionMethod: 'restriction',
+          // left EcoRV@2 (blunt) + right EcoRI@20 (5′ AATT) → ends do NOT mate.
+          acquisitionParams: { enzymes: ['EcoRV', 'EcoRI'], cutSites: [{ position: 2 }, { position: 20 }] },
+        },
+      });
+    });
+    const pid = S.pieces[S.pieces.length - 1].id;
+    act(() => { A.zoneDispatch({ type: 'SET_PIECE_ZONE', pieceId: pid, zoneId: zid }); });
+    // RC-SEP — the closure reaction is ONE assembly property (zone.closureMethod), set
+    // via SET_CLOSURE_METHOD (the «Замыкание» button), decoupled from internal junctions.
+    // Choose RE-ligation (ligates the physical ends as-is).
+    act(() => { A.zoneDispatch({ type: 'SET_CLOSURE_METHOD', zoneId: zid, method: 'restriction' }); });
+    act(() => { A.openEditorAssemblyTab(zid); });
+
+    const line = screen.getByTestId('assembly-readiness');
+    expect(line.getAttribute('data-incompatible')).toBe('1');
+    expect(screen.getByTestId('assembly-realise-btn').disabled).toBe(true);
+    // …but switching the closure to KLD (PCR rebuilds the ends) must UN-block it:
+    // Realise becomes enabled (and the now-nothing-to-warn readiness line drops out).
+    act(() => { A.zoneDispatch({ type: 'SET_CLOSURE_METHOD', zoneId: zid, method: 'kld' }); });
+    expect(screen.getByTestId('assembly-realise-btn').disabled).toBe(false);
   });
 
   // S2 (V162) — two CURSOR fragments (5′-OH) blunt-ligated → the junction can't

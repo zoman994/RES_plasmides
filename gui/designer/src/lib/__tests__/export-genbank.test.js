@@ -44,6 +44,23 @@ describe('entryToGenbank', () => {
     expect(gb).toMatch(/\/label="revGene"/);
   });
 
+  it('FEAT-QUALIFIERS — round-trips preserved INSDC qualifiers (export → re-parse)', () => {
+    const gb = entryToGenbank(makeEntry({
+      annotations: [
+        { id: 'a1', start: 0, end: 12, type: 'CDS', name: 'glaA', strand: 1, level: 'region',
+          qualifiers: { gene: 'glaA', product: 'glucoamylase', note: 'fungal', EC_number: '3.2.1.3' } },
+      ],
+    }));
+    expect(gb).toMatch(/\/gene="glaA"/);
+    expect(gb).toMatch(/\/product="glucoamylase"/);
+    expect(gb).toMatch(/\/note="fungal"/);
+    expect(gb).toMatch(/\/EC_number="3\.2\.1\.3"/);
+    // the parser reads them back as feature qualifiers
+    const parsed = parseGenBank(gb);
+    const cds = (parsed.features || []).find((f) => f.type === 'CDS');
+    expect(cds && cds.qualifiers && cds.qualifiers.product).toBe('glucoamylase');
+  });
+
   it('linear topology surfaces as "linear" not "circular"', () => {
     const gb = entryToGenbank(makeEntry({ topology: 'linear' }));
     expect(gb).toMatch(/^LOCUS.*\s+linear\s+SYN/);

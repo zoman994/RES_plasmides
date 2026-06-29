@@ -51,7 +51,7 @@ import {
   enrichZonesWithJunctions, assemblyReadiness, assemblyJunctionConflicts, methodsFromJunctions,
   pairKeyFor, junctionKindForMethod, DEFAULT_JUNCTION_METHOD,
 } from '../../lib/junction-derive';
-import { applyCircularize } from '../../lib/circularize-apply';
+import { applyClosure } from '../../lib/circularize-apply';
 import CircularizeModal from './CircularizeModal';
 import { suggestMethodForBoundary } from '../../lib/assembly-realise-suggest';
 import JunctionControl from '../../canvas/JunctionControl';
@@ -204,16 +204,31 @@ export default function AssemblyShellBody({ draft, embedded = false }) {
   // Without this, a circular RE build whose ring can't close would report «ready».
   const closureSeam = useMemo(() => {
     const segs = (draft && draft.segments) || [];
-    if (!(draft.topology && draft.topology.circular) || segs.length < 2) return null;
+    // RC-CLOSE-GATE (Игорь 25.06) — also compute for a SINGLE-fragment self-closure
+    // (segs.length === 1): the ring is the fragment's own two ends (right ↔ left),
+    // which must mate too. Previously gated `< 2`, so a self-closure of an RE
+    // fragment with non-mating ends (blunt + sticky) reported «ready». The closure
+    // METHOD still decides whether the mismatch blocks (closureBlocks → only
+    // re_ligation / blunt ligation; overlap/KLD/Gibson rework the ends).
+    if (!(draft.topology && draft.topology.circular) || segs.length < 1) return null;
     const ovr = segs.map((s) => segmentOverhangs(s, RE_ENZYMES));
     const last = segs.length - 1;
     const pairKey = pairKeyFor(segs[last].id, segs[0].id);
     const cfg = zoneJunctions[pairKey];
-    const method = (cfg && cfg.method) || assemblyMethod || DEFAULT_JUNCTION_METHOD;
+    // RC-SEP (Игорь 25.06) — the closure reaction is ONE assembly property
+    // (draft.closureMethod, set via the header «Замыкание» button), decoupled from the
+    // internal-fuse method (assemblyMethod / overlap_pcr) and surviving the finalizer's
+    // zone.junctions reset. Default: 1-fragment self-closure → KLD, multi-fragment ring
+    // → Gibson (mirrors methodsFromJunctions). A legacy per-closure junction cfg still
+    // wins if present (back-compat).
+    const closureDefault = segs.length === 1 ? 'kld' : 'gibson';
+    const method = (cfg && cfg.method) || draft.closureMethod || closureDefault;
     return {
       interlock: junctionInterlock(ovr[last] && ovr[last].right, ovr[0] && ovr[0].left),
       kind: junctionKindForMethod(method),
+      method,
       pairKey,
+      selfClosure: segs.length === 1,
       leftLabel: segLabel(segs[last], last),
       rightLabel: segLabel(segs[0], 0),
     };
@@ -259,21 +274,29 @@ export default function AssemblyShellBody({ draft, embedded = false }) {
   const [groupPickerIds, setGroupPickerIds] = useState(null);
   // K14 — mutation modal context: { pieceId, fromBase, position } | null.
   const [mutationFor, setMutationFor] = useState(null);
-  // M-CIRCULARIZE — «замкнуть в плазмиду» modal open state.
+  // RC-SEP — closure-reaction modal open state (opened from the header «Замыкание»
+  // button, circular only).
   const [circularizeOpen, setCircularizeOpen] = useState(false);
 
-  // M-CIRCULARIZE C1 — apply the modal's decision: topology + assembly/closure
-  // method. One method for the whole assembly (Игорь) when «применить ко всем»,
-  // else only the closure junction (last→first). The closure actually realises
-  // into the DAG in C2 (zone-pieces-to-dag); here we set topology + config.
-  const onCircularizeConfirm = useCallback(({
-    circular, method, applyToAll, enzyme,
-  }) => {
+  // RC-SEP (Игорь 25.06) — TOPOLOGY is set directly here from the header toggle, fully
+  // decoupled from the closure reaction + internal junctions. Routes a zone to
+  // SET_ZONE_TOPOLOGY, a legacy assembly-draft to setAssemblyDraftTopology.
+  const onSetTopology = useCallback((circular) => {
+    if (isZoneTarget && typeof actions.zoneDispatch === 'function') {
+      actions.zoneDispatch({ type: 'SET_ZONE_TOPOLOGY', zoneId: draftId, circular: !!circular });
+    } else if (typeof actions.setAssemblyDraftTopology === 'function') {
+      actions.setAssemblyDraftTopology(draftId, !!circular);
+    }
+  }, [actions, draftId, isZoneTarget]);
+
+  // RC-SEP — apply ONLY the closure reaction (the ring-closing last→first / self-closure
+  // junction). Internal junctions stay on the strip ромбы; topology is the toggle above.
+  const onClosureConfirm = useCallback(({ method, enzyme }) => {
     setCircularizeOpen(false);
-    applyCircularize(actions, {
-      draftId, circular, method, applyToAll, enzyme, isZoneTarget, segments: draft.segments,
+    applyClosure(actions, {
+      draftId, method, enzyme, segments: draft.segments,
     });
-  }, [actions, draftId, isZoneTarget, draft.segments]);
+  }, [actions, draftId, draft.segments]);
 
   // «Реализовать как DAG» — the confirm modal was removed (Игорь 11.06): the
   // strip junctions already own the per-boundary method (J9) and the real DAG
@@ -592,10 +615,11 @@ export default function AssemblyShellBody({ draft, embedded = false }) {
           && readiness.incompatible === 0}
         onRename={(name) => actions.renameAssemblyDraft(draftId, name)}
         onRealise={onRealise}
-        /* M-CIRCULARIZE — the «замкнуть в плазмиду» modal owns topology + method
-           (chip shows the current value). */
-        assemblyMethod={assemblyMethod}
-        onOpenCircularize={() => setCircularizeOpen(true)}
+        /* RC-SEP — topology toggle (direct) + closure button (circular only, opens
+           the closure-reaction modal). Internal junctions are the strip ромбы. */
+        onSetTopology={onSetTopology}
+        closureMethod={closureSeam ? closureSeam.method : null}
+        onOpenClosure={() => setCircularizeOpen(true)}
         /* V92 — restore editor side-panels hidden via their × (was «Палитра»). */
         anyPanelHidden={hiddenPanels.size > 0}
         onRestorePanels={hiddenPanels.size > 0 ? showAllPanels : undefined}
@@ -664,8 +688,12 @@ export default function AssemblyShellBody({ draft, embedded = false }) {
             </div>
           ) : (
             <>
-              {/* UX slice 4 — one readiness line: settled vs N defaults to check. */}
-              {isZoneTarget && readiness.total > 0 && (
+              {/* UX slice 4 — one readiness line: settled vs N defaults to check.
+                  RC-CLOSE-GATE — also show it when a CLOSURE (incl. a 1-fragment
+                  self-closure, which has no internal junction so total===0) is
+                  incompatible, so the block has a visible reason, not just a greyed
+                  Realise button. */}
+              {isZoneTarget && (readiness.total > 0 || readiness.incompatible > 0) && (
                 <div
                   data-testid="assembly-readiness"
                   data-incompatible={readiness.incompatible || 0}
@@ -715,6 +743,17 @@ export default function AssemblyShellBody({ draft, embedded = false }) {
                       {junctionConflicts.map((c) => (
                         <li key={c.pairKey || c.index} data-pair-key={c.pairKey || ''} style={{ fontSize: 10.5 }}>
                           {c.leftLabel} → {c.rightLabel}: {c.message}
+                          {/* RC-ORIENT — don't make the user guess orientation: if
+                              flipping the next fragment would mate the ends, say so. */}
+                          {c.flipFix && (
+                            <span
+                              data-testid="assembly-conflict-flip-hint"
+                              data-flip-label={c.flipFix.label}
+                              style={{ color: 'var(--accent-600, #b85c3e)', fontWeight: 600, marginLeft: 4 }}
+                            >
+                              ↻ совместимо, если перевернуть «{c.flipFix.label}»
+                            </span>
+                          )}
                         </li>
                       ))}
                     </ul>
@@ -821,6 +860,7 @@ export default function AssemblyShellBody({ draft, embedded = false }) {
                 annotations={assemblyAnnotations}
                 topology={draft.topology?.circular ? 'circular' : 'linear'}
                 terminalStagger={constructTerminalStagger}
+                closureSeam={closureSeam}
                 name={draft.name}
                 editable={editable}
                 onSequenceEdit={editable ? onSequenceEdit : undefined}
@@ -957,13 +997,13 @@ export default function AssemblyShellBody({ draft, embedded = false }) {
         />
       )}
 
-      {/* M-CIRCULARIZE — «замкнуть в плазмиду» modal (topology + assembly/closure
-          method). Opened from the AssemblyHeader chip. */}
+      {/* RC-SEP — closure-reaction picker (ring-forming chemistry only). Opened from
+          the header «Замыкание» button, which is itself shown only when circular. */}
       {circularizeOpen && (
         <CircularizeModal
           draft={draft}
-          assemblyMethod={assemblyMethod}
-          onConfirm={onCircularizeConfirm}
+          closureMethod={closureSeam ? closureSeam.method : null}
+          onConfirm={onClosureConfirm}
           onCancel={() => setCircularizeOpen(false)}
         />
       )}

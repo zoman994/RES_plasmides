@@ -32,6 +32,26 @@ describe('importFeatures', () => {
     expect(details[0].regionId).toBe(regions[0].id);
   });
 
+  it('FEAT-QUALIFIERS — preserves INSDC qualifiers (/gene //product //note) onto the annotation', () => {
+    const features = [
+      feat('CDS', 0, 1500, { label: 'glaA', gene: 'glaA', product: 'glucoamylase', note: 'fungal secreted', EC_number: '3.2.1.3', ApEinfo_fwdcolor: '#ff0000' }),
+      feat('sig_peptide', 0, 60, { label: 'signal', product: 'secretion signal' }),
+    ];
+    const { annotations } = importFeatures(features, 5000);
+    const region = annotations.find((a) => a.level === 'region');
+    const detail = annotations.find((a) => a.level === 'detail');
+    expect(region.qualifiers).toMatchObject({ gene: 'glaA', product: 'glucoamylase', note: 'fungal secreted', EC_number: '3.2.1.3' });
+    // already-mapped qualifiers are NOT duplicated into the bag
+    expect(region.qualifiers.label).toBeUndefined();
+    expect(region.qualifiers.ApEinfo_fwdcolor).toBeUndefined();
+    expect(detail.qualifiers).toMatchObject({ product: 'secretion signal' });
+  });
+
+  it('FEAT-QUALIFIERS — no qualifiers bag when the feature carries none portable', () => {
+    const { annotations } = importFeatures([feat('CDS', 0, 100, { label: 'x' })], 5000);
+    expect(annotations[0].qualifiers).toBeUndefined();
+  });
+
   it('promoter + TATA_signal → region + core_promoter detail', () => {
     const features = [
       feat('promoter', 0, 850, { label: 'PglaA' }),

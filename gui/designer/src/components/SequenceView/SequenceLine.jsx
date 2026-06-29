@@ -63,6 +63,7 @@ const SequenceLine = memo(function SequenceLine({
   orfRanges,
   renderHybrid,
   onAnnotationClick,
+  selectedRegionId,
   tracksReady,
   // Sprint M-X.2 K4 — drag-handles for region edges.
   onAnnotationEdgePointerDown,
@@ -94,10 +95,17 @@ const SequenceLine = memo(function SequenceLine({
   // chars from the plasmid start. RulerTrack splits its labels at
   // wrapAt; an inline vertical divider goes there too.
   seqLength = 0,
+  // Topology — circular primers' off-end 5′-tails wrap across the origin (rendered
+  // on the wrap-bridge row), so PrimerTrack must not dangle them into the margin.
+  circular = false,
   // Terminal sticky-end staircase (Игорь 22.06): { left, right } from
   // terminalStagger(segment). Gated to the FIRST line (left end) / LAST line
   // (right end) below. Null → no staircase (every existing consumer).
   terminalStagger = null,
+  // RC-SEP-SEAM (Игорь 26.06 «просто буквы убрать») — absolute (pos,strand) blanks for
+  // incompatible restriction overhangs; forwarded to BOTH strands so the recessed base is
+  // rendered blank (single-stranded staircase). Null → no blanks (every existing consumer).
+  recessBlanks = null,
   // 12.05.2026 — Игорь: «сайты рестрикции должны быть кликабельны».
   // Optional callbacks forwarded в RestrictionTrack. Library/Importer
   // don't pass them — track stays display-only as before.
@@ -427,6 +435,7 @@ const SequenceLine = memo(function SequenceLine({
           wrapsOrigin={line.wrapsOrigin === true}
           wrapAt={line.wrapsOrigin ? line.wrapAt : undefined}
           seqLength={line.wrapsOrigin ? seqLength : undefined}
+          circular={circular}
         />
       ) : null}
       <StrandsTrack
@@ -441,6 +450,7 @@ const SequenceLine = memo(function SequenceLine({
         overhangs={reCutLayout.overhangs}
         bindingHighlights={reCutLayout.bindingHighlights}
         gutterLabel={referenceGutterLabel}
+        blankRanges={recessBlanks}
       />
       {showBottomStrand && (
         <StrandsTrack
@@ -456,6 +466,7 @@ const SequenceLine = memo(function SequenceLine({
           bindingHighlights={reCutLayout.bindingHighlights}
           terminalLeft={terminalStagger && line.start === 0 ? terminalStagger.left : null}
           terminalRight={terminalStagger && (line.start + line.seq.length === seqLength) ? terminalStagger.right : null}
+          blankRanges={recessBlanks}
         />
       )}
       {/* Reverse primers sit BELOW the strand, arrows ← (Игорь
@@ -476,6 +487,7 @@ const SequenceLine = memo(function SequenceLine({
           wrapsOrigin={line.wrapsOrigin === true}
           wrapAt={line.wrapsOrigin ? line.wrapAt : undefined}
           seqLength={line.wrapsOrigin ? seqLength : undefined}
+          circular={circular}
         />
       ) : null}
       {tracksReady && showAnnotations ? (
@@ -486,6 +498,7 @@ const SequenceLine = memo(function SequenceLine({
           charPx={charPx}
           labelChars={LABEL_WIDTH}
           onAnnotationClick={onAnnotationClick}
+          selectedRegionId={selectedRegionId}
           onPointerDownEdge={onAnnotationEdgePointerDown}
           draggedAnnotationId={draggedAnnotationId}
           draggedEdge={draggedEdge}

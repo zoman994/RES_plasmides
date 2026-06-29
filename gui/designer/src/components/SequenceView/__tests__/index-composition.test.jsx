@@ -89,6 +89,15 @@ describe("SequenceView — K6 composition", () => {
     expect(screen.getAllByTestId("sequence-view-annotation").length).toBeGreaterThan(0);
   });
 
+  it("1b) selectedRegionId threads through to the annotation track (highlight)", () => {
+    render(<SequenceView fragments={[FRAGMENT]} circular={false} selectedRegionId="r1" />);
+    const groups = screen.getAllByTestId("sequence-view-annotation")
+      .filter((g) => g.dataset.regionId === "r1");
+    expect(groups.length).toBeGreaterThan(0);
+    // at least one rendered row of r1 is marked selected
+    expect(groups.some((g) => g.dataset.selected === "true")).toBe(true);
+  });
+
   it("2) framesMode='single' suppresses reverse AA rows", () => {
     useStore.setState((s) => ({
       sequenceView: { ...s.sequenceView, framesMode: "single" },

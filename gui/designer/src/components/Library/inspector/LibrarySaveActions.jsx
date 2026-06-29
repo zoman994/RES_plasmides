@@ -55,7 +55,7 @@ export default function LibrarySaveActions({
 
   const openVersionPrompt = useCallback(() => {
     if (!enabled) return;
-    setVersionPrompt({ name: defaultVersionName, reason: '' });
+    setVersionPrompt({ name: defaultVersionName, reason: '', lineageRole: 'version' });
   }, [enabled, defaultVersionName]);
 
   const closeVersionPrompt = useCallback(() => setVersionPrompt(null), []);
@@ -73,7 +73,12 @@ export default function LibrarySaveActions({
         libraryEntryId,
         typeof editedSequence === 'string' ? editedSequence : '',
         Array.isArray(editedAnnotations) ? editedAnnotations : [],
-        { name: trimmed, changes: changeText, reason: (versionPrompt.reason || '').trim() },
+        {
+          name: trimmed,
+          changes: changeText,
+          reason: (versionPrompt.reason || '').trim(),
+          lineageRole: versionPrompt.lineageRole === 'branch' ? 'branch' : 'version',
+        },
       );
       if (result?.ok) {
         showToast?.(`Сохранено как «${result.name}»`, { kind: 'success', duration: 3000 });
@@ -167,6 +172,46 @@ export default function LibrarySaveActions({
                 </div>
               </div>
             )}
+            {/* Версия vs ветка — явный выбор намерения (Игорь: «нет явного
+                разграничения новая ли это версия или ветка»). «Версия»
+                продолжает линию (голова двигается вперёд), «ветка» — вариант
+                рядом, исходная линия не двигается. */}
+            <div
+              data-testid="library-save-role"
+              role="radiogroup"
+              style={{ display: 'flex', gap: 8, marginBottom: 10 }}
+            >
+              {[
+                { value: 'version', label: 'Новая версия', hint: 'продолжает линию' },
+                { value: 'branch', label: 'Ветка', hint: 'вариант рядом' },
+              ].map((opt) => {
+                const active = (versionPrompt.lineageRole || 'version') === opt.value;
+                return (
+                  <label
+                    key={opt.value}
+                    style={{
+                      flex: 1, display: 'flex', flexDirection: 'column', gap: 2,
+                      padding: '6px 10px', cursor: 'pointer',
+                      border: `1px solid ${active ? 'var(--accent-500)' : 'var(--border-default)'}`,
+                      background: active ? 'var(--accent-50)' : 'var(--surface-1)',
+                      borderRadius: 'var(--radius-md)',
+                    }}
+                  >
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: active ? 500 : 400 }}>
+                      <input
+                        type="radio"
+                        name="library-save-role"
+                        data-testid={`library-save-role-${opt.value}`}
+                        checked={active}
+                        onChange={() => setVersionPrompt((p) => ({ ...p, lineageRole: opt.value }))}
+                      />
+                      {opt.value === 'branch' ? '⑂ ' : ''}{opt.label}
+                    </span>
+                    <span style={{ fontSize: 10.5, color: 'var(--text-tertiary)', paddingLeft: 22 }}>{opt.hint}</span>
+                  </label>
+                );
+              })}
+            </div>
             <input
               type="text"
               data-testid="library-save-version-name"

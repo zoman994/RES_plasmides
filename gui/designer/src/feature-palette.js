@@ -43,6 +43,25 @@ export const FEATURE_COLORS_V2 = {
   primer_bind: '#9EBAD9',
   operator:    '#6DA4C4',
   cap:         '#A5CFD5',
+  // Detail / protein-feature types (fungal-gene annotation). These are the
+  // canonical types normalizeDetailType emits; without dedicated hexes they all
+  // fell through to misc (ivory), so a multi-intron / multi-domain fungal gene
+  // rendered visually flat. Distinct, palette-coherent hues so introns recede and
+  // signal/propeptide/domain/active-site read apart at a glance.
+  intron:         '#AEB6BE', // muted slate — recedes vs exons
+  signal_peptide: '#B8AA8A', // tan (matches the generic «signal»)
+  transit_peptide:'#A89878', // darker tan sibling
+  propeptide:     '#C9A0C9', // light mauve
+  mat_peptide:    '#9FB88F', // sage — the mature chain
+  domain:         '#8FB0C4', // slate blue
+  motif:          '#C4A8D9', // lavender
+  active_site:    '#E0A020', // gold — catalytic
+  binding:        '#7FA8C9', // steel blue
+  disulfide_bond: '#B8B8B8', // silver
+  core_promoter:  '#FFD480', // light amber — promoter sibling
+  poly_a:         '#D9B38C', // tan
+  regulatory:     '#E0C060', // muted gold
+  stem_loop:      '#A0C0B0', // teal-green
   misc:        '#EEE7D5',
 };
 

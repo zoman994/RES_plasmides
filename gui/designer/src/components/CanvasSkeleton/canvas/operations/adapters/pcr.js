@@ -45,17 +45,28 @@ function executeSingleTemplatePCR(operation, ctx, templateId, primerPairId, auto
     if (seqs.length < 2) {
       return { error: 'У oligonucleotide-контейнера должно быть 2 sequences (fwd + rev)' };
     }
-    const fwd = (seqs[0]?.sequence || '').toUpperCase();
-    const rev = (seqs[1]?.sequence || '').toUpperCase();
-    if (!fwd) return { error: 'Forward primer пустой' };
-    if (!rev) return { error: 'Reverse primer пустой' };
+    const fwdFull = (seqs[0]?.sequence || '').toUpperCase();
+    const revFull = (seqs[1]?.sequence || '').toUpperCase();
+    if (!fwdFull) return { error: 'Forward primer пустой' };
+    if (!revFull) return { error: 'Reverse primer пустой' };
+    // V175 (PRIMER-9) — anneal on the BINDING region only: a Gibson/RE 5'-tail
+    // (homology arm / RE site) is NOT on the template, so searching the full
+    // primer fails. The overhangs are incorporated into the product ENDS.
+    // Tailless oligos: bindingSequence falls back to the full seq, tails are ''
+    // → byte-identical to the prior behaviour.
+    const fwdTail = (seqs[0]?.tail ?? seqs[0]?.tailSequence ?? '').toUpperCase();
+    const revTail = (seqs[1]?.tail ?? seqs[1]?.tailSequence ?? '').toUpperCase();
+    const fwdBind = (seqs[0]?.bindingSequence || fwdFull).toUpperCase();
+    const revBind = (seqs[1]?.bindingSequence || revFull).toUpperCase();
     const tplSeq = template.sequence.toUpperCase();
-    const fwdIdx = tplSeq.indexOf(fwd);
+    const fwdIdx = tplSeq.indexOf(fwdBind);
     if (fwdIdx < 0) return { error: 'Forward primer не найден в темплейте' };
-    const revRc = reverseComplement(rev);
+    const revRc = reverseComplement(revBind);
     const revRcIdx = tplSeq.indexOf(revRc, fwdIdx);
     if (revRcIdx < 0) return { error: 'Reverse primer не найден downstream от forward' };
-    const ampliconSeq = template.sequence.slice(fwdIdx, revRcIdx + rev.length);
+    const ampliconSeq = fwdTail
+      + template.sequence.slice(fwdIdx, revRcIdx + revBind.length)
+      + reverseComplement(revTail);
     const amplicon = newContainer({
       name: `${template.name || 'template'}_amplicon`,
       sequence: ampliconSeq,
@@ -67,7 +78,7 @@ function executeSingleTemplatePCR(operation, ctx, templateId, primerPairId, auto
         parentContainerId: templateId,
         primerPairId,
         fwdStart: fwdIdx,
-        revEnd: revRcIdx + rev.length,
+        revEnd: revRcIdx + revBind.length,
       },
     });
     return { outputs: [amplicon] };
@@ -139,9 +150,14 @@ function executeMultiTemplatePCR(operation, ctx, templateIds, primerPairId, auto
     if (!oligo) return { error: `Праймер-пара не найдена: ${primerPairId}` };
     const seqs = oligo?.payload?.sequences || [];
     if (seqs.length < 2) return { error: 'У oligonucleotide-контейнера должно быть 2 sequences' };
-    const fwd = (seqs[0]?.sequence || '').toUpperCase();
-    const rev = (seqs[1]?.sequence || '').toUpperCase();
-    if (!fwd || !rev) return { error: 'Primer sequences пустые' };
+    const fwdFull = (seqs[0]?.sequence || '').toUpperCase();
+    const revFull = (seqs[1]?.sequence || '').toUpperCase();
+    if (!fwdFull || !revFull) return { error: 'Primer sequences пустые' };
+    // V175 (PRIMER-9) — anneal on binding only; overhangs go to product ends.
+    const fwdTail = (seqs[0]?.tail ?? seqs[0]?.tailSequence ?? '').toUpperCase();
+    const revTail = (seqs[1]?.tail ?? seqs[1]?.tailSequence ?? '').toUpperCase();
+    const fwd = (seqs[0]?.bindingSequence || fwdFull).toUpperCase();
+    const rev = (seqs[1]?.bindingSequence || revFull).toUpperCase();
     const revRc = reverseComplement(rev);
     for (const tid of templateIds) {
       const template = ctx.containers[tid];
@@ -164,7 +180,9 @@ function executeMultiTemplatePCR(operation, ctx, templateIds, primerPairId, auto
         skipped.push(template.name || tid);
         continue;
       }
-      const ampliconSeq = template.sequence.slice(fwdIdx, revRcIdx + rev.length);
+      const ampliconSeq = fwdTail
+        + template.sequence.slice(fwdIdx, revRcIdx + rev.length)
+        + reverseComplement(revTail);
       amplicons.push(newContainer({
         name: `${template.name || 'template'}_amplicon`,
         sequence: ampliconSeq,

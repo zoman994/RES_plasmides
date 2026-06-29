@@ -130,6 +130,10 @@ export const TreeItemRow = memo(function TreeItemRow({
   // zones stay non-draggable — biolog can copy them via the
   // action-row's «Скопировать в активный» button instead.
   draggable = false,
+  // Optional small chip(s) rendered right after the mini-ring (used by
+  // VersionLineageNode for the «v3» / «⑂ ветка» / status markers on a
+  // collapsed version stack). Plain node, no layout assumptions.
+  badge = null,
 }) {
   // M-X.7c K5 — hover-revealed «+» quick-add per
   // DEC-UIRREV-QUICKADD-HOVER-01. Visible only when an active
@@ -308,6 +312,9 @@ export const TreeItemRow = memo(function TreeItemRow({
       <span style={{ flexShrink: 0, lineHeight: 0, width: 20, height: 20 }}>
         <MiniIcon entry={entry} color={ringColor} />
       </span>
+      {badge && (
+        <span style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 3 }}>{badge}</span>
+      )}
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
         <div
           style={{

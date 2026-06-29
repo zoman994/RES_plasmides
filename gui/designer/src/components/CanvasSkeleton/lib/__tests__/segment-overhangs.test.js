@@ -96,6 +96,47 @@ describe('segment-overhangs — segmentOverhangs', () => {
   });
 });
 
+describe('segment-overhangs — orientation-aware (reversed fragment)', () => {
+  // RC-ORIENT (Игорь 25.06) — a fragment placed REVERSED has its physical ends
+  // swapped: the lower-source-position cut becomes its RIGHT end, the higher its
+  // LEFT. Classical Type II overhangs are palindromic (self-complementary), so each
+  // end's seq + polarity are RC-invariant — only WHICH end is left/right flips.
+  it('a REVERSED fragment swaps which enzyme is the LEFT vs RIGHT end', () => {
+    const fwd = segmentOverhangs(reSeg(['EcoRI', 'PstI'], [5, 31]), ENZ);
+    expect(fwd.left.enzyme).toBe('EcoRI'); // @5
+    expect(fwd.right.enzyme).toBe('PstI'); // @31
+    const rev = segmentOverhangs({ ...reSeg(['EcoRI', 'PstI'], [5, 31]), reverseComplement: true }, ENZ);
+    expect(rev.left.enzyme).toBe('PstI'); // physical left = old right
+    expect(rev.right.enzyme).toBe('EcoRI');
+    expect(rev.left.type).toBe('3prime'); // PstI polarity invariant under RC
+    expect(rev.right.type).toBe('5prime'); // EcoRI
+  });
+
+  it('overhang seq is RC-invariant (palindromic Type II) — only the side swaps', () => {
+    const rev = segmentOverhangs({ ...reSeg(['EcoRI', 'PstI'], [5, 31]), reverseComplement: true }, ENZ);
+    expect(rev.left.seq).toBe('TGCA'); // PstI, unchanged
+    expect(rev.right.seq).toBe('AATT'); // EcoRI, unchanged
+  });
+
+  it('same enzyme on both ends reversed → unchanged (swap is identity)', () => {
+    const seg = {
+      acquisitionMethod: 'restriction',
+      acquisitionParams: { enzymes: ['EcoRI'], cutSites: [{ position: 10 }], single: true },
+      reverseComplement: true,
+    };
+    const r = segmentOverhangs(seg, ENZ);
+    expect(r.left.enzyme).toBe('EcoRI');
+    expect(r.right.enzyme).toBe('EcoRI');
+  });
+
+  it('reverseComplement:false behaves exactly as forward (back-compat)', () => {
+    const a = segmentOverhangs(reSeg(['EcoRI', 'PstI'], [5, 31]), ENZ);
+    const b = segmentOverhangs({ ...reSeg(['EcoRI', 'PstI'], [5, 31]), reverseComplement: false }, ENZ);
+    expect(b.left.enzyme).toBe(a.left.enzyme);
+    expect(b.right.enzyme).toBe(a.right.enzyme);
+  });
+});
+
 describe('segment-overhangs — stickyEndExtent', () => {
   const ext = (enzymes, positions, extra = {}) => stickyEndExtent({
     start: positions[0], end: positions[1],

@@ -95,3 +95,24 @@ describe('buildSelectionMenuItems — «Отметить как интрон»',
     expect(keys(items)).not.toContain('mark-intron');
   });
 });
+
+describe('buildSelectionMenuItems — FEAT-EXTRACT (извлечь в библиотеку)', () => {
+  it('includes the extract item when a region matches AND onExtractFeature is wired', () => {
+    const onExtractFeature = vi.fn();
+    const items = buildSelectionMenuItems(base({ onExtractFeature }));
+    expect(keys(items)).toContain('extract-feature');
+    const item = items.find((i) => i.key === 'extract-feature');
+    expect(item.label).toBe('Извлечь в библиотеку');
+    item.onClick();
+    expect(onExtractFeature).toHaveBeenCalledWith({ region: REGION, start: 10, end: 40 });
+  });
+
+  it('omits the extract item without the onExtractFeature prop', () => {
+    expect(keys(buildSelectionMenuItems(base()))).not.toContain('extract-feature');
+  });
+
+  it('omits the extract item when the selection does not match a region', () => {
+    const items = buildSelectionMenuItems(base({ caretAnchor: 12, caretPos: 38, onExtractFeature: vi.fn() }));
+    expect(keys(items)).not.toContain('extract-feature');
+  });
+});

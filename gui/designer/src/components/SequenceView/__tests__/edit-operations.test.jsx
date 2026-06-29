@@ -236,6 +236,45 @@ describe('K3 edit operations — H key opens CreateAnnotationPopup', () => {
     expect(screen.queryByTestId('sequence-view-create-annotation-popup')).toBeNull();
   });
 
+  it('UX-9 — a DETAIL sub-feature created inside a gene auto-links via regionId', () => {
+    const onAnnotationEdit = vi.fn();
+    render(
+      <SequenceView
+        fragments={[FRAGMENT]}
+        caretPos={40}
+        caretAnchor={10}
+        onAnnotationEdit={onAnnotationEdit}
+      />
+    );
+    const root = screen.getByTestId('sequence-view-root');
+    fireEvent.keyDown(root, { key: 'h' });
+    // pick a detail-level type → the selection [10,40) sits inside region [0,99)
+    fireEvent.change(screen.getByTestId('sequence-view-create-annotation-type'), { target: { value: 'domain' } });
+    fireEvent.click(screen.getByTestId('sequence-view-create-annotation-submit'));
+    expect(onAnnotationEdit).toHaveBeenCalledWith(expect.objectContaining({
+      kind: 'create',
+      payload: expect.objectContaining({ level: 'detail', regionId: 'region:0:99:CDS:lacZ' }),
+    }));
+  });
+
+  it('UX-9 — a REGION-level feature is NOT auto-parented (no regionId)', () => {
+    const onAnnotationEdit = vi.fn();
+    render(
+      <SequenceView
+        fragments={[FRAGMENT]}
+        caretPos={40}
+        caretAnchor={10}
+        onAnnotationEdit={onAnnotationEdit}
+      />
+    );
+    const root = screen.getByTestId('sequence-view-root');
+    fireEvent.keyDown(root, { key: 'h' }); // default type CDS = region-level
+    fireEvent.click(screen.getByTestId('sequence-view-create-annotation-submit'));
+    const payload = onAnnotationEdit.mock.calls[0][0].payload;
+    expect(payload.level).toBe('region');
+    expect(payload.regionId).toBeUndefined();
+  });
+
   it('[Найти в Аннотаторе] dispatches onOpenAnnotator with region scope', () => {
     const onOpenAnnotator = vi.fn();
     render(

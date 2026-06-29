@@ -140,6 +140,27 @@ function extractColor(feat) {
     || null;
 }
 
+// ═══ Qualifier preservation (FEAT-QUALIFIERS) ═══
+// GenBank/SnapGene carry rich INSDC qualifiers (/gene //product //note …) that a
+// fungal lab tracks (gene names, EC numbers, function notes). They were dropped on
+// import → provenance loss on round-trip. Preserve a whitelist on `ann.qualifiers`
+// (excludes ones already mapped elsewhere: label→name, ApEinfo→color, exons→introns,
+// primer_seq→primer). The feature tooltip (annotation-title) already reads
+// qualifiers.note/product, so preserved notes surface immediately.
+const QUALIFIER_WHITELIST = [
+  'note', 'product', 'gene', 'gene_synonym', 'locus_tag', 'old_locus_tag',
+  'EC_number', 'db_xref', 'function', 'standard_name', 'protein_id', 'pseudo',
+];
+function pickQualifiers(q) {
+  if (!q || typeof q !== 'object') return null;
+  const out = {};
+  for (const k of QUALIFIER_WHITELIST) {
+    const v = q[k];
+    if (v != null && v !== '') out[k] = v;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
 // ═══ Main import function ═══
 
 /**
@@ -178,6 +199,7 @@ export function importFeatures(features, seqLength, format) {
     if (!REGION_TYPES.has(feat.type)) continue;
 
     const regionId = generateRegionId();
+    const q = pickQualifiers(feat.qualifiers);
     const ann = {
       id: regionId,
       name: extractName(feat),
@@ -189,6 +211,7 @@ export function importFeatures(features, seqLength, format) {
       auto: false,
       source: 'import',
       color: extractColor(feat),
+      ...(q ? { qualifiers: q } : {}),
     };
 
     regions.push(ann);
@@ -227,6 +250,7 @@ export function importFeatures(features, seqLength, format) {
       const parentRegion = regions.find(r =>
         feat.start >= r.start && feat.end <= r.end
       );
+      const qd = pickQualifiers(feat.qualifiers);
       annotations.push({
         name: extractName(feat),
         type: normalizeDetailType(feat.type),
@@ -238,6 +262,7 @@ export function importFeatures(features, seqLength, format) {
         auto: false,
         source: 'import',
         color: extractColor(feat),
+        ...(qd ? { qualifiers: qd } : {}),
       });
       continue;
     }

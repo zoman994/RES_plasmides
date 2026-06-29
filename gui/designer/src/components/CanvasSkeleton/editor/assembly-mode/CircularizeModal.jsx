@@ -13,7 +13,7 @@
  * Mirrors the OpGroupPicker dialog contract (backdrop, Esc, confirm/cancel).
  */
 import { useEffect, useMemo, useState } from 'react';
-import { CLOSURE_METHODS, INTERNAL_METHODS, defaultEnzymeForMethod } from '../../lib/junction-derive';
+import { CLOSURE_METHODS, defaultEnzymeForMethod } from '../../lib/junction-derive';
 import { validateClosure } from '../../lib/circularize-validate';
 import { GG_ENZYMES } from '../../../../golden-gate';
 import { RE_ENZYMES } from '../../../../restriction-db';
@@ -25,7 +25,7 @@ const GG_ENZYME_KEYS = Object.keys(GG_ENZYMES);
 const COMMON_RE_KEYS = ['EcoRI', 'BamHI', 'HindIII', 'XhoI', 'SalI', 'NdeI', 'NcoI', 'XbaI', 'PstI', 'KpnI', 'SacI', 'SpeI', 'NheI', 'BglII']
   .filter((k) => RE_ENZYMES[k]);
 function enzymeKeysFor(method) {
-  if (method === 'golden_gate') return GG_ENZYME_KEYS;
+  if (method === 'golden_gate' || method === 'moclo') return GG_ENZYME_KEYS; // #111 MoClo = Type IIS
   if (method === 'restriction') return COMMON_RE_KEYS;
   return [];
 }
@@ -55,27 +55,41 @@ const META = {
     bio: 'Type IIS (BsaI) режет вне сайта → уникальные 4-нт свесы → лигирование. Скар-лесс.',
     req: 'фермент Type IIS, без внутренних сайтов',
   },
+  // #111 — SLIC: overlap homology (Gibson family), exonuclease chew-back + in-vivo repair.
+  slic: {
+    label: 'SLIC', color: '#378ADD', stroke: '#185FA5',
+    bio: 'T4 ДНК-полимераза (3′-экзо) грызёт концы → комплементарные одноцепочечные участки отжигаются → репарация in vivo. Без лигазы in vitro.',
+    req: 'гомология концов ≥15–20 bp',
+  },
+  // #111 — MoClo: standardized Type IIS one-pot assembly = Golden Gate preset (BsaI).
+  moclo: {
+    label: 'MoClo', color: '#1D9E75', stroke: '#0F6E56',
+    bio: 'Стандартизованные 4-нт fusion-сайты Type IIS (BsaI) → one-pot иерархическая сборка по синтаксису MoClo. Скар-лесс.',
+    req: 'фермент Type IIS (BsaI), без внутренних сайтов',
+  },
   restriction: {
     label: 'RE-лигирование', color: '#BA7517', stroke: '#854F0B',
     bio: 'Классические рестриктазы режут концы → совместимые свесы → T4-лигаза.',
     req: 'совместимые концы; разные ферменты → направленно',
   },
   kld: {
-    label: 'KLD · само-замыкание', color: '#D85A30', stroke: '#993C1D',
-    bio: 'ПЦР всей плазмиды back-to-back праймерами → киназа+лигаза+DpnI. Для 1 фрагмента.',
-    req: 'ровно 1 фрагмент; 5′-фосфорилирование',
+    label: 'KLD · ПЦР-продукт', color: '#D85A30', stroke: '#993C1D',
+    bio: 'Для ПЦР-АМПЛИФИЦИРОВАННОГО фрагмента (мутагенез): киназа фосфорилирует ПЦР-концы → лигаза смыкает тупой круг → DpnI убирает матрицу.',
+    req: 'ПЦР-продукт; ровно 1 фрагмент',
   },
   direct_ligation: {
     label: 'Тупое лигирование', color: '#888780', stroke: '#5F5E5A',
-    bio: 'Тупые концы → T4-лигаза напрямую. Просто, без направленности.',
-    req: 'тупые концы; дефосфорилировать вектор',
+    bio: 'Для ФИЗИЧЕСКИ тупых концов (тупой рез рестриктазой) → T4-лигаза напрямую. Без ПЦР/киназы/DpnI.',
+    req: 'физически тупые концы; 5′-фосфат',
   },
 };
 
-// Methods offered per topology. Circular = closure reactions (+ blunt ligation);
-// linear = the internal-fuse methods. KLD is single-fragment-only (gated below).
-const CIRCULAR_METHODS = [...CLOSURE_METHODS, 'direct_ligation'];
-const LINEAR_METHODS = [...INTERNAL_METHODS];
+// RC-SEP (Игорь 25.06) — this modal is the CLOSURE-REACTION picker ONLY (topology is a
+// header toggle; internal junctions are the strip ромбы). The closure reactions =
+// ring-forming chemistries (Gibson / Golden Gate / KLD / RE sticky ligation) + blunt
+// direct ligation. NO overlap_pcr — for a ring, overlap homology IS Gibson. KLD is
+// single-fragment-only (gated below).
+const CLOSURE_REACTIONS = [...CLOSURE_METHODS, 'direct_ligation'];
 
 function ringPath(cx, cy, r, a0, a1) {
   const p = (a) => {
@@ -130,17 +144,14 @@ function Preview({ segments, circular, methodColor }) {
 }
 
 export default function CircularizeModal({
-  draft, assemblyMethod, onConfirm, onCancel,
+  draft, closureMethod, onConfirm, onCancel,
 }) {
   const segments = (draft && draft.segments ? draft.segments.length : 0);
-  const [circular, setCircular] = useState(!!(draft && draft.topology && draft.topology.circular));
-  const [method, setMethod] = useState(() => {
-    const m = assemblyMethod || (circular ? 'gibson' : 'overlap_pcr');
-    return m;
-  });
-  const [applyToAll, setApplyToAll] = useState(true);
+  // KLD is single-fragment self-closure; a multi-fragment ring defaults to Gibson.
+  const closureDefault = segments === 1 ? 'kld' : 'gibson';
+  const [method, setMethod] = useState(() => closureMethod || closureDefault);
   // F — the chosen enzyme (GG Type IIS / RE). Defaults per the initial method.
-  const [enzyme, setEnzyme] = useState(() => defaultEnzymeForMethod(assemblyMethod || (circular ? 'gibson' : 'overlap_pcr')));
+  const [enzyme, setEnzyme] = useState(() => defaultEnzymeForMethod(closureMethod || closureDefault));
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onCancel(); };
@@ -148,16 +159,15 @@ export default function CircularizeModal({
     return () => window.removeEventListener('keydown', onKey);
   }, [onCancel]);
 
-  const methods = circular ? CIRCULAR_METHODS : LINEAR_METHODS;
   // KLD is only valid as single-fragment self-closure.
   const isDisabled = (id) => (id === 'kld' && segments !== 1);
 
-  // If the active method isn't offered for this topology (or got disabled),
-  // fall back to a sensible default so the preview/confirm stay coherent.
+  // If the active method got disabled / is unknown, fall back to the closure default.
   const effectiveMethod = useMemo(() => {
-    if (methods.includes(method) && !isDisabled(method)) return method;
-    return circular ? (segments === 1 ? 'kld' : 'gibson') : 'overlap_pcr';
-  }, [method, methods, circular, segments]);
+    if (CLOSURE_REACTIONS.includes(method) && !isDisabled(method)) return method;
+    return closureDefault;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [method, segments, closureDefault]);
 
   const meta = META[effectiveMethod] || META.gibson;
   // F — the enzyme offered for the effective method (GG/RE only). A stale enzyme
@@ -169,12 +179,12 @@ export default function CircularizeModal({
     if (!needsEnzyme) return null;
     return enzymeKeys.includes(enzyme) ? enzyme : defaultEnzymeForMethod(effectiveMethod);
   }, [needsEnzyme, enzymeKeys, enzyme, effectiveMethod]);
-  // C4 — live biovalidation of the chosen method against the real fragments.
+  // C4 — live biovalidation of the chosen reaction against the real fragments.
   const verdict = useMemo(
     () => validateClosure({
-      method: effectiveMethod, segments: draft && draft.segments, circular, enzyme: effectiveEnzyme || 'BsaI',
+      method: effectiveMethod, segments: draft && draft.segments, circular: true, enzyme: effectiveEnzyme || 'BsaI',
     }),
-    [effectiveMethod, draft, circular, effectiveEnzyme],
+    [effectiveMethod, draft, effectiveEnzyme],
   );
 
   return (
@@ -198,27 +208,25 @@ export default function CircularizeModal({
       >
         <div style={hdr}>
           <span aria-hidden style={{ fontSize: 15, color: 'var(--accent-500, #b85c3e)' }}>◉</span>
-          <strong style={{ fontSize: 13, flex: 1 }}>Замкнуть сборку в плазмиду</strong>
-          <div style={seg}>
-            <button type="button" data-testid="circularize-topology-linear" onClick={() => setCircular(false)} style={segBtn(!circular)}>Линейная</button>
-            <button type="button" data-testid="circularize-topology-circular" onClick={() => setCircular(true)} style={segBtn(circular)}>Кольцевая</button>
-          </div>
+          {/* RC-SEP — closure-reaction ONLY. Topology is the header toggle; internal
+              junctions are the strip ромбы. */}
+          <strong style={{ fontSize: 13, flex: 1 }}>Реакция замыкания кольца</strong>
           <button type="button" data-testid="circularize-cancel" onClick={onCancel} style={ghostBtn}>✕</button>
         </div>
 
         <div style={{ display: 'flex', gap: 14, padding: 14 }}>
           <div style={{ width: 180, flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-            <Preview segments={segments} circular={circular} methodColor={meta.color} />
+            <Preview segments={segments} circular methodColor={meta.color} />
             <div style={{ fontSize: 11, color: 'var(--text-secondary)', textAlign: 'center' }}>
-              {segments} фрагм. · {circular ? `замыкание — ${meta.label.split(' ')[0]}` : 'линейная'}
+              {segments} фрагм. · замыкание — {meta.label.split(' ')[0]}
             </div>
           </div>
 
           <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 5 }}>
             <div style={{ fontSize: 10.5, color: 'var(--text-tertiary)' }}>
-              {circular ? 'реакция замыкания кольца (последний → первый фрагмент)' : 'метод соединения фрагментов'}
+              как замыкается кольцо (последний → первый фрагмент). Стыки между фрагментами — ромбами на полоске.
             </div>
-            {methods.map((id) => {
+            {CLOSURE_REACTIONS.map((id) => {
               const m = META[id];
               const dis = isDisabled(id);
               const on = effectiveMethod === id;
@@ -295,29 +303,16 @@ export default function CircularizeModal({
           </label>
         )}
 
-        {/* A29 (audit) — the «иначе только к замыканию» fallback only exists for a
-            real ring with ≥2 fragments (a closure junction). On linear / single-
-            fragment topology there is no closure, so unchecking silently discarded
-            the method — only offer the checkbox where it actually branches. */}
-        {circular && segments >= 2 && (
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 14px 8px', fontSize: 11.5, color: 'var(--text-secondary)', cursor: 'pointer' }}>
-            <input type="checkbox" data-testid="circularize-apply-all" checked={applyToAll} onChange={(e) => setApplyToAll(e.target.checked)} />
-            применить метод ко всем стыкам (иначе — только к замыканию; внутренние настраиваются по ромбу)
-          </label>
-        )}
-
         <div style={{ display: 'flex', gap: 8, padding: '8px 14px', borderTop: '1px solid var(--border-subtle)', background: 'var(--surface-2)' }}>
           <span style={{ flex: 1 }} />
           <button type="button" data-testid="circularize-cancel-2" onClick={onCancel} style={ghostBtn}>Отмена</button>
           <button
             type="button"
             data-testid="circularize-confirm"
-            onClick={() => onConfirm({
-              circular, method: effectiveMethod, applyToAll, enzyme: effectiveEnzyme,
-            })}
+            onClick={() => onConfirm({ method: effectiveMethod, enzyme: effectiveEnzyme })}
             style={primaryBtn}
           >
-            {circular ? '◉ Замкнуть в плазмиду' : '— Оставить линейной'}
+            ◉ Применить замыкание
           </button>
         </div>
       </div>
@@ -329,15 +324,6 @@ const hdr = {
   display: 'flex', alignItems: 'center', gap: 9, padding: '9px 12px',
   borderBottom: '1px solid var(--border-subtle)', background: 'var(--surface-2)',
 };
-const seg = {
-  display: 'flex', gap: 2, background: 'var(--surface-1)', padding: 2, borderRadius: 6,
-  border: '1px solid var(--border-subtle)',
-};
-const segBtn = (on) => ({
-  border: 'none', background: on ? 'var(--accent-500, #b85c3e)' : 'transparent',
-  color: on ? '#fff' : 'var(--text-secondary)', fontSize: 11, padding: '4px 12px',
-  borderRadius: 4, cursor: 'pointer', fontWeight: on ? 600 : 400,
-});
 const ghostBtn = {
   fontSize: 11, padding: '5px 12px', background: 'transparent',
   border: '1px solid var(--border-subtle)', borderRadius: 4, cursor: 'pointer', color: 'var(--text-secondary)',

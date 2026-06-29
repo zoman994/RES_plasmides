@@ -115,10 +115,16 @@ export async function parseFile(file) {
     if (data.sequence) data.sequence = sanitizeSequence(data.sequence);
     if (data.length != null) data.length = data.sequence?.length ?? data.length;
     let annotations = [];
+    let primers = [];
     if (data.features?.length > 0) {
       const result = importFeatures(data.features, data.length, 'genbank');
       annotations = result.annotations || [];
+      // PRIMER-11 (V176) — primers extracted from primer_bind features were
+      // dropped here; surface them in _metadata.primers (PrimerWizardStepModal
+      // reads it) so a .dna's embedded primers reach the pool.
+      primers = result.primers || [];
     }
+    const dnaMeta = data.metadata || null;
     return {
       name: extractItemName(data, file),
       sequence: data.sequence || '',
@@ -129,7 +135,7 @@ export async function parseFile(file) {
       annotations,
       _fromFileCount: annotations.length,
       _ext: ext,
-      _metadata: data.metadata || null,
+      _metadata: primers.length ? { ...(dnaMeta || {}), primers } : dnaMeta,
     };
   }
 
@@ -159,9 +165,13 @@ export async function parseFile(file) {
   if (!parsed?.sequence) throw new Error('No sequence found in file');
 
   let annotations = [];
+  let primers = [];
   if (parsed.features?.length > 0) {
     const result = importFeatures(parsed.features, parsed.sequence.length, 'genbank');
     annotations = result.annotations || [];
+    // PRIMER-11 (V176) — same passthrough for GenBank: primer_bind features
+    // with a primer sequence reach the pool instead of being silently dropped.
+    primers = result.primers || [];
   }
 
   return {
@@ -174,7 +184,7 @@ export async function parseFile(file) {
     annotations,
     _fromFileCount: annotations.length,
     _ext: ext,
-    _metadata: null,
+    _metadata: primers.length ? { primers } : null,
   };
 }
 

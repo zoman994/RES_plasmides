@@ -13,6 +13,12 @@
  */
 import { loadSnapshot } from '../components/CanvasSkeleton/store/skeleton-persistence';
 
+// Sentinel `pendingAssemblyId` meaning «create a NEW assembly on open» (the rail's
+// «Новая сборка»): the rail can't dispatch CREATE_ZONE into the skeleton store, so it
+// sets this sentinel + opens the canvas; SkeletonProvider sees it, creates a fresh zone
+// and focuses it (mirrors the «focus an existing assembly by id» bridge).
+export const PENDING_NEW_ASSEMBLY = '__new_assembly__';
+
 export function createProjectAssembliesSlice(set, get) {
   return {
     activeProjectAssemblies: [], // [{ id, name }]

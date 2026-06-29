@@ -358,3 +358,47 @@ describe('V130 — realise keeps the auto-group overlap tail (not the fallback)'
     expect(up.reverse.length).toBe(up.revBinding.length);
   });
 });
+
+// P0 (Игорь 27.06) — draftFromZone auto-closes a closable RE assembly UNLESS the user made
+// an explicit «Линейная/Кольцевая» choice (zone.topology.explicit). SET_ZONE_TOPOLOGY marks
+// the choice explicit so auto-close can't override it.
+describe('P0 — explicit topology choice vs auto-close', () => {
+  const C = { id: 'cA', name: 'src', sequence: 'GGGCCCAAAATTTTGGGCCCAAAATTTTGGGCCCAAAA' };
+  // SmaI(blunt)/ApaI(GGCC) pair: two such fragments close into a ring (GGCC↔GGCC + blunt↔blunt).
+  const reP = (id, t) => ({
+    id, zoneId: 'zt', kind: 'sourced',
+    ranges: [{ sourceId: 'cA', start: 0, end: 10, orientation: 'forward' }],
+    acquisitionMethod: 'restriction',
+    acquisitionParams: { enzymes: ['SmaI', 'ApaI'], cutSites: [{ position: 0 }, { position: 10 }] },
+    createdAt: t,
+  });
+  const baseState = { containers: [C], pieces: [reP('p1', 1), reP('p2', 2)] };
+
+  it('no explicit choice → closable 2-RE assembly AUTO-closes (circular)', () => {
+    const zone = { id: 'zt', name: 'Z' };
+    expect(draftFromZone({ ...baseState, zones: [zone] }, zone).topology.circular).toBe(true);
+  });
+
+  it('explicit «Линейная» is RESPECTED → stays linear despite closable ends', () => {
+    const zone = { id: 'zt', name: 'Z', topology: { circular: false, explicit: true } };
+    expect(draftFromZone({ ...baseState, zones: [zone] }, zone).topology.circular).toBe(false);
+  });
+
+  it('SET_ZONE_TOPOLOGY marks the choice explicit (even when stored already matches)', () => {
+    const s0 = { ...buildInitialState(), ...baseState, zones: [{ id: 'zt', name: 'Z' }] };
+    const s1 = skeletonReducer(s0, { type: 'SET_ZONE_TOPOLOGY', zoneId: 'zt', circular: false });
+    const zone = s1.zones.find((z) => z.id === 'zt');
+    expect(zone.topology.explicit).toBe(true);
+    expect(zone.topology.circular).toBe(false);
+  });
+
+  // P0.2 — draftFromZone is memoized per (immutable state, zoneId): same state ref → same object
+  // (collapses the 2–5×/keystroke recompute incl. orientFragments); a new state ref recomputes.
+  it('P0.2 — memoized: same state → same draft ref; new state → fresh', () => {
+    const zone = { id: 'zt', name: 'Z' };
+    const s = { ...baseState, zones: [zone] };
+    expect(draftFromZone(s, zone)).toBe(draftFromZone(s, zone));
+    const s2 = { ...baseState, zones: [zone] }; // new state ref
+    expect(draftFromZone(s, zone)).not.toBe(draftFromZone(s2, zone));
+  });
+});

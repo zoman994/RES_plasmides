@@ -33,6 +33,7 @@
 
 const VALID_WORKSPACES = new Set([
   'startup', 'library', 'construct', 'importer', 'mix', 'align', 'restriction-sites',
+  'primer-pool',
 ]);
 
 export const WORKSPACE_HISTORY_LIMIT = 10;

@@ -24,6 +24,7 @@ const LibraryWorkspace = lazy(() => import('../Library/LibraryWorkspace'));
 const Importer = lazy(() => import('../Library'));
 const AlignWorkspace = lazy(() => import('../Align/AlignWorkspace'));
 const RestrictionSitesWorkspace = lazy(() => import('../RestrictionSites/RestrictionSitesWorkspace'));
+const PrimerPoolWorkspace = lazy(() => import('../PrimerPool/PrimerPoolWorkspace'));
 
 function WorkspacePlaceholder({ name, message }) {
   return (
@@ -55,6 +56,7 @@ export function WorkspaceRouter() {
       {active === 'importer' && <Importer />}
       {active === 'align' && <AlignWorkspace />}
       {active === 'restriction-sites' && <RestrictionSitesWorkspace />}
+      {active === 'primer-pool' && <PrimerPoolWorkspace />}
       {active === 'startup' && (
         <WorkspacePlaceholder
           name="startup"

@@ -258,4 +258,34 @@ export const createCommonFeaturesSlice = (set, get) => ({
     await deleteCommonFeature(id);
     invalidateMergedCache();
   },
+
+  /**
+   * FEAT-CF-SHARE — bulk import a parsed common-features set (from
+   * common-features-io.parseCommonFeatures). User features go through
+   * `promoteFeature` so the shared PSO-dedup applies (a feature already present
+   * is skipped, not duplicated); overrides re-apply onto the matching factory
+   * feature by baseId. Mints fresh ids on this install (no id-clobber).
+   * @returns {Promise<{added:number, skipped:number}>}
+   */
+  importCommonFeatures: async ({ userFeatures = [], overrides = [] } = {}) => {
+    let added = 0;
+    let skipped = 0;
+    for (const uf of userFeatures) {
+      // eslint-disable-next-line no-await-in-loop
+      const res = await get().promoteFeature({
+        name: uf.name, type: uf.type, sequence: uf.sequence, protein: uf.protein,
+      });
+      if (res && res.ok) added += 1; else skipped += 1;
+    }
+    for (const ov of overrides) {
+      const baseId = ov.baseId || ov.id;
+      if (!baseId) { skipped += 1; continue; }
+      // eslint-disable-next-line no-await-in-loop
+      await get().overrideCommonFeature(baseId, {
+        name: ov.name, type: ov.type, sequence: ov.sequence, protein: ov.protein,
+      });
+      added += 1;
+    }
+    return { added, skipped };
+  },
 });

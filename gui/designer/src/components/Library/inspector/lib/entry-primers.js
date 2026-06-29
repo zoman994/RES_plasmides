@@ -33,10 +33,15 @@ function cleanPrimerSeq(s) {
  * caller can no-op instead of writing a junk pool row.
  */
 export function buildEntryPrimerPayload({
-  id, name, sequence, direction, entryId, projectId = null,
+  id, name, sequence, direction, entryId, projectId = null, tail, binding,
 }) {
   if (!id) return null;
-  const seq = cleanPrimerSeq(sequence);
+  // PRIMER-7 (V173) — keep tail (overhang) + binding (anneals) separate. `sequence`
+  // is the full oligo (tail+binding); binding falls back to the full sequence for
+  // legacy callers that pass no tail, so PrimerTrack still matches on the template.
+  const tl = cleanPrimerSeq(tail);
+  const bind = cleanPrimerSeq(binding);
+  const seq = cleanPrimerSeq(sequence) || bind;
   if (!seq) return null;
   const dir = direction === "reverse" ? "reverse" : "forward";
   return {
@@ -44,6 +49,8 @@ export function buildEntryPrimerPayload({
       id,
       name: String(name || "").trim(),
       sequence: seq,
+      bindingSequence: bind || seq,
+      tail: tl,
       direction: dir,
       length: seq.length,
     },
@@ -76,7 +83,11 @@ export function selectEntryPrimers(primersById, entryId) {
     id: p.id,
     name: p.name,
     sequence: p.sequence,
-    bindingSequence: p.sequence,
+    // PRIMER-7 (V173) — PrimerTrack matches on bindingSequence (not tail+binding)
+    // and draws `tail` as a 5'-overhang. Fall back to the full sequence when no
+    // binding was stored (legacy / tail-less primers) — identical to prior render.
+    bindingSequence: p.bindingSequence || p.sequence,
+    tail: typeof p.tail === "string" ? p.tail : "",
     direction: p.direction,
     tmBinding: typeof p.tm === "number" ? p.tm : undefined,
   }));

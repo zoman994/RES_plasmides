@@ -122,46 +122,64 @@ describe('UX slice 3 — strip glyph shows a "differs from assembly" marker', ()
   });
 });
 
-// ─── AssemblyHeader: topology/method chip → circularize modal ──────────────
-// M-CIRCULARIZE (Игорь 12.06) — the bare method dropdown was replaced by a chip
-// that opens the «замкнуть в плазмиду» modal (where the method now lives; the
-// modal itself is covered in circularize-modal.test.jsx).
+// ─── AssemblyHeader: topology toggle + closure button (RC-SEP) ──────────────
+// RC-SEP (Игорь 25.06 «чётко разделить настройку стыков и кольцевание») — topology is
+// a plain segmented toggle; the CLOSURE reaction is a SEPARATE button shown ONLY for a
+// ring (a linear form has nothing to close). Internal junctions are the strip ромбы.
 
-describe('M-CIRCULARIZE — AssemblyHeader circularize chip', () => {
+describe('RC-SEP — AssemblyHeader topology toggle + closure button', () => {
   const draft = { name: 'x', topology: { circular: false }, segments: [{}, {}] };
-  it('shows topology + method and opens the circularize modal', () => {
-    const onOpenCircularize = vi.fn();
+
+  it('topology toggle: «Кольцевая» calls onSetTopology(true), «Линейная» onSetTopology(false)', () => {
+    const onSetTopology = vi.fn();
     render(
       <AssemblyHeader
         draft={draft} length={48} segmentCount={2}
         canRealise onRename={() => {}} onRealise={() => {}}
-        assemblyMethod="overlap_pcr" onOpenCircularize={onOpenCircularize}
+        onSetTopology={onSetTopology}
       />,
     );
-    const chip = screen.getByTestId('assembly-circularize-btn');
-    expect(chip.textContent).toMatch(/Линейная/);
-    expect(chip.textContent).toMatch(/Overlap PCR/);
-    fireEvent.click(chip);
-    expect(onOpenCircularize).toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('assembly-topology-circular'));
+    expect(onSetTopology).toHaveBeenCalledWith(true);
+    fireEvent.click(screen.getByTestId('assembly-topology-linear'));
+    expect(onSetTopology).toHaveBeenCalledWith(false);
   });
-  it('reflects circular topology', () => {
+
+  it('LINEAR → NO closure button (nothing to close)', () => {
+    render(
+      <AssemblyHeader
+        draft={draft} length={48} segmentCount={2}
+        canRealise onRename={() => {}} onRealise={() => {}}
+        onSetTopology={() => {}} onOpenClosure={() => {}}
+      />,
+    );
+    expect(screen.queryByTestId('assembly-closure-btn')).toBeNull();
+  });
+
+  it('CIRCULAR → closure button shows the closure reaction + opens the picker', () => {
+    const onOpenClosure = vi.fn();
     render(
       <AssemblyHeader
         draft={{ ...draft, topology: { circular: true } }} length={48} segmentCount={2}
         canRealise onRename={() => {}} onRealise={() => {}}
-        assemblyMethod="gibson" onOpenCircularize={() => {}}
+        onSetTopology={() => {}} closureMethod="gibson" onOpenClosure={onOpenClosure}
       />,
     );
-    expect(screen.getByTestId('assembly-circularize-btn').textContent).toMatch(/Кольцевая/);
+    const btn = screen.getByTestId('assembly-closure-btn');
+    expect(btn.textContent).toMatch(/Замыкание/);
+    expect(btn.textContent).toMatch(/Gibson/);
+    fireEvent.click(btn);
+    expect(onOpenClosure).toHaveBeenCalled();
   });
-  it('omits the chip when no opener is wired (back-compat)', () => {
+
+  it('omits the topology toggle when no setter is wired (back-compat for stand-alone renders)', () => {
     render(
       <AssemblyHeader
         draft={draft} length={48} segmentCount={2}
         canRealise onRename={() => {}} onRealise={() => {}}
       />,
     );
-    expect(screen.queryByTestId('assembly-circularize-btn')).toBeNull();
+    expect(screen.queryByTestId('assembly-topology-toggle')).toBeNull();
   });
 });
 

@@ -85,7 +85,11 @@ export default function PlasmidViewer({ part, onClose, onOpenWizard, onAnnotatio
   // B3: RE cut sites for sequence view markers
   const reCutMap = useMemo(() => {
     if (!seq || seq.length > 50000) return new Map();
-    const sites = scanAllSites(seq);
+    // V186 (audit) — a circular part can carry an RE site STRADDLING the origin;
+    // scanAllSites only wraps when circular:true (same pattern as PlasmidMapV2 /
+    // LinearMapV2 / file-summary). Without it the site is invisible in the sequence
+    // view even though the circular map shows it (Игорь «его не видно таки»).
+    const sites = scanAllSites(seq, { circular: part.topology === 'circular', minSiteLen: 6 });
     const map = new Map(); // position → [{ enzyme, strand }]
     for (const s of sites) {
       if (s.cutCount > 2) continue; // only unique/double cutters
@@ -96,7 +100,7 @@ export default function PlasmidViewer({ part, onClose, onOpenWizard, onAnnotatio
       }
     }
     return map;
-  }, [seq]);
+  }, [seq, part.topology]);
 
   // Build fragments array for PlasmidMap — ALWAYS one fragment = whole plasmid.
   // PlasmidMap draws sub-arcs from annotations. Avoids overlapping region chaos.

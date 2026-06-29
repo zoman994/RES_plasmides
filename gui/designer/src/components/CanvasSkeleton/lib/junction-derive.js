@@ -18,6 +18,7 @@
  */
 import { segmentBoundaries } from './assembly-model';
 import { METHOD_TO_JUNCTION } from './zone-pieces-to-dag';
+import { junctionInterlock } from './segment-overhangs';
 import { defaultJunctionParams, junctionStroke, junctionFill } from '../canvas/junction-styles';
 
 /** Default junction method (engine dict). J3 — default fuse is overlap PCR. */
@@ -25,8 +26,25 @@ export const DEFAULT_JUNCTION_METHOD = 'overlap_pcr';
 const DEFAULT_BINDING_TM = 60; // annealing Tm target for seeded junctions (A1b)
 
 // Two-level method whitelists (J2, real engine-dict values; §9a).
-export const INTERNAL_METHODS = ['overlap_pcr', 'restriction'];
-export const CLOSURE_METHODS = ['gibson', 'golden_gate', 'kld', 'restriction', 'overlap_pcr'];
+// Игорь 25.06: «дать возможность миксовать типы методов сборки» — an internal
+// fuse between two linear fragments can be made by overlap/Gibson homology, Type
+// IIS (Golden Gate), classical RE sticky-end ligation, OR blunt (direct) ligation.
+// Each junction picks independently → mixed-method assemblies. (KLD stays OUT — it
+// is back-to-back site-directed mutagenesis of ONE plasmid, not a two-fragment
+// fuse.) The CLOSURE (ring) is a SEPARATE decision (CircularizeModal / CLOSURE_METHODS).
+export const INTERNAL_METHODS = ['overlap_pcr', 'golden_gate', 'restriction', 'direct_ligation'];
+// CLOSURE = the ring-closing reactions (CircularizeModal appends blunt direct_ligation
+// itself — do NOT add it here or it double-renders). RC-SEP (Игорь 25.06): overlap_pcr
+// is OUT — it stitches fragments into a LINEAR product; the ring-forming counterpart of
+// overlap homology is Gibson. A closure reaction actually closes the ends into a circle:
+// Gibson (homology) / Golden Gate (Type IIS) / KLD (1-fragment PCR self-closure) /
+// RE sticky ligation / blunt ligation.
+// SLIC (overlap homology, Gibson-family) + MoClo (standardized Type IIS = Golden Gate
+// preset, BsaI) are ring-forming chemistries too — selectable as closure/assembly methods
+// (CircularizeModal). They reuse the gibson / golden_gate ops + junction kinds (see
+// METHOD_TO_OP_KIND / METHOD_TO_JUNCTION), so NO new op kind. They are NOT in INTERNAL_METHODS
+// (would just duplicate the overlap / golden_gate kinds in the kind-based junction picker).
+export const CLOSURE_METHODS = ['gibson', 'golden_gate', 'kld', 'restriction', 'slic', 'moclo'];
 
 /** Stable junction key from the two flanking segment/piece ids. */
 export function pairKeyFor(leftId, rightId) {
@@ -47,9 +65,9 @@ export function junctionKindForMethod(method) {
  * realisable out of the box instead of shipping a placeholder recognition.
  */
 export function defaultEnzymeForMethod(method) {
-  if (method === 'golden_gate') return 'BsaI';
+  if (method === 'golden_gate' || method === 'moclo') return 'BsaI'; // MoClo = Type IIS preset
   if (method === 'restriction') return 'EcoRI';
-  return null;
+  return null; // overlap / gibson / slic / kld / blunt carry no enzyme
 }
 
 // Reverse map junction.kind → canonical engine method (for the UI: JunctionControl
@@ -215,14 +233,24 @@ export function enrichZonesWithJunctions(coloredZones, zoneJunctions = {}, assem
 // irrelevant there and must not block the build.
 const STICKY_JOIN_KINDS = ['re_ligation', 'ligation', 'kld'];
 
+// RC-CLOSE-GATE (Игорь 25.06) — the CLOSURE block uses a NARROWER set than the
+// internal gate: a self-/ring-closure counts an incompatible interlock ONLY when
+// the chosen reaction ligates the fragment's PRE-EXISTING physical ends — classical
+// RE sticky ligation (re_ligation) or blunt direct ligation (ligation). KLD / overlap /
+// Gibson / Golden-Gate REBUILD the ends (PCR blunt product / homology arms / Type IIS
+// fusion), so the original RE-overhang chemistry is irrelevant and must NOT block — a
+// long overlap-/KLD-assembled fragment self-closing (the assembly finale, Игорь
+// «сценарий с 1 фрагментом всегда на столе») stays buildable.
+const CLOSURE_LIGATES_RAW_ENDS = ['re_ligation', 'ligation'];
+
 // RC-BIO-3 — the CIRCULAR closure seam (last fragment's right end meeting the
-// first fragment's left end) is a real ligation junction that must also mate. It
-// is not an adjacent-zone boundary, so it is passed in explicitly as
-// { interlock, kind, pairKey, leftLabel, rightLabel }. Counts only when the closure
-// method joins ends directly (STICKY_JOIN_KINDS) and its ends don't anneal.
+// first fragment's left end — or, for a 1-fragment SELF-closure, the fragment's
+// own two ends) is a real ligation junction that must also mate. It is not an
+// adjacent-zone boundary, so it is passed in explicitly as
+// { interlock, kind, pairKey, leftLabel, rightLabel, selfClosure? }.
 function closureBlocks(closure) {
   return !!(closure && closure.interlock && closure.interlock.verdict === 'incompatible'
-    && STICKY_JOIN_KINDS.includes(closure.kind));
+    && CLOSURE_LIGATES_RAW_ENDS.includes(closure.kind));
 }
 
 export function assemblyReadiness(coloredZones, closure = null) {
@@ -268,23 +296,43 @@ export function assemblyJunctionConflicts(coloredZones, closure = null) {
     const jr = z.junctionRight;
     if (!jr || !STICKY_JOIN_KINDS.includes(jr.kind)) continue;
     const next = zones[i + 1];
+    // RC-ORIENT (Игорь 25.06 «помочь собрать, не заставлять гадать как подставить»):
+    // if the seam is incompatible AS-ORIENTED but FLIPPING the next fragment would mate
+    // its ends, name that flip. Flipping next swaps its physical left↔right, so its new
+    // left = its current right → check junctionInterlock(this.right, next.right). Only a
+    // mating verdict (compatible / blunt) is offered; needs RE overhangs on both zones.
+    let flipFix;
+    const thisR = z.reOverhangs && z.reOverhangs.right;
+    const nextR = next && next.reOverhangs && next.reOverhangs.right;
+    if (thisR && nextR) {
+      const v = junctionInterlock(thisR, nextR);
+      if (v && (v.verdict === 'compatible' || v.verdict === 'blunt')) {
+        flipFix = { label: (next && next.label) || `Фрагмент ${i + 2}`, side: 'next' };
+      }
+    }
     out.push({
       pairKey: jr.pairKey || null,
       index: i,
       leftLabel: z.label || `Фрагмент ${i + 1}`,
       rightLabel: (next && next.label) || `Фрагмент ${i + 2}`,
       message: z.interlock.message || 'Несовместимые липкие концы',
+      ...(flipFix ? { flipFix } : {}),
     });
   }
-  // RC-BIO-3 — the circular closure seam, named «… (замыкание кольца)».
+  // RC-BIO-3 — the circular closure seam, named «… (замыкание кольца)»; for a
+  // 1-fragment SELF-closure the two ends are the fragment's own → «само-замыкание».
   if (closureBlocks(closure)) {
+    const base = closure.interlock.message || 'Несовместимые липкие концы';
     out.push({
       pairKey: closure.pairKey || null,
       index: -1,
       isClosure: true,
+      selfClosure: !!closure.selfClosure,
       leftLabel: closure.leftLabel || 'последний',
       rightLabel: closure.rightLabel || 'первый',
-      message: `${closure.interlock.message || 'Несовместимые липкие концы'} (замыкание кольца)`,
+      message: closure.selfClosure
+        ? `${base} — само-замыкание невозможно`
+        : `${base} (замыкание кольца)`,
     });
   }
   return out;
@@ -310,10 +358,14 @@ export function methodsFromJunctions(draft, zoneJunctions = {}, suggestions = []
   const out = {};
   bounds.forEach((b, i) => {
     const cfg = zoneJunctions[b.pairKey];
+    const isClosure = b.role === 'closure';
     const bioDefault = b.selfClosure
       ? 'kld'
-      : ((circular && b.role === 'closure') ? 'gibson' : DEFAULT_JUNCTION_METHOD);
+      : ((circular && isClosure) ? 'gibson' : DEFAULT_JUNCTION_METHOD);
     out[i] = (cfg && cfg.method)
+      // RC-SEP — the CLOSURE boundary takes the dedicated closure reaction
+      // (draft.closureMethod) over the internal assemblyMethod default.
+      || (isClosure ? (draft && draft.closureMethod) : null)
       || (suggestions[i] && suggestions[i].method)
       || (draft && draft.assemblyMethod)
       || bioDefault;

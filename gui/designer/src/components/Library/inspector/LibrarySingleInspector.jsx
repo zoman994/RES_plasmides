@@ -2,6 +2,7 @@ import { useCallback, useState, useEffect, useRef, useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { STRINGS } from '../../../lib/strings';
 import InlineEditableTitle from './InlineEditableTitle';
+import ProteinEffectBadge from './ProteinEffectBadge';
 import TabBar from './tabs/TabBar';
 import OverviewTab from './tabs/OverviewTab';
 import SequenceTab from './tabs/SequenceTab';
@@ -16,6 +17,8 @@ import LinearFeatureBar from './tabs/LinearFeatureBar';
 // Sequence and scrolls.
 import AnnotationsTab from './tabs/AnnotationsTab';
 import { getRegions } from '../../../annotation-model';
+import { extractFeatureSequences } from '../../../lib/feature-extract';
+import { buildLibraryEntry } from '../lib/build-library-entry';
 import { findDominatedRegions } from '../../../lib/plasmid-mini-map-geometry';
 import {
   applyAnnotationEdit,
@@ -143,10 +146,19 @@ export default function SingleInspector({
     onPendingScrollHandled,
   } = useInspectorSelectionNav({ activeTab, onActiveTabChange, itemKey });
 
+  // V181 / UX-2 — shared feature selection across the Overview (map) and
+  // Sequence tabs. Clicking a feature on the map / list sets this; the map
+  // highlights it AND, after navigating, the sequence track highlights the
+  // same feature (the tabs aren't co-visible, so this is the cross-tab sync).
+  const [selectedRegionId, setSelectedRegionId] = useState(null);
+  // Drop a stale highlight when the inspected entry changes.
+  useEffect(() => { setSelectedRegionId(null); }, [itemKey]);
+
   // Overview feature click → jump to the Sequence tab + scroll to the
   // feature start (reuses the strip-nav primitive). Works in both hosts.
   const onNavigateToFeature = useCallback((region) => {
     if (region && Number.isFinite(region.start)) onBarSettle(region.start);
+    setSelectedRegionId(region?.id ?? null);
   }, [onBarSettle]);
   // Editable by default (Игорь 17.06.2026 — «рид-онли/эдитэйбл убрать,
   // сделать редактируемой»). The read-only/editable pill (DEC-LIB-16 ⚓)
@@ -452,6 +464,27 @@ export default function SingleInspector({
     : (item.annotations || []);
   const displayItem = { ...item, annotations: displayAnnotations };
 
+  // FEAT-EXTRACT — «Извлечь в библиотеку»: splice the region out of its genomic
+  // context (introns removed, strand-aware) → mature cDNA → a fresh loose Library
+  // entry. The daily clone-a-CDS-from-a-multi-intron-locus move. Protein is left
+  // for a follow-up (depends on per-CDS genetic-code = FEAT-TRANSL-TABLE).
+  const onExtractFeature = useCallback(({ region }) => {
+    if (!region) return;
+    const seq = edits?.editedSequence ?? item?.sequence ?? '';
+    const r = extractFeatureSequences(seq, region, displayAnnotations);
+    if (!r || !r.cdna) return;
+    const entry = buildLibraryEntry(
+      {
+        sequence: r.cdna,
+        topology: 'linear',
+        description: `cDNA · извлечено из ${item?.name || 'фрагмента'}${r.intronsRemoved ? ` (убрано интронов: ${r.intronsRemoved})` : ''}`,
+      },
+      r.cdnaName,
+      null,
+    );
+    useStore.getState().addLibraryEntry(entry);
+  }, [edits, item, displayAnnotations]);
+
   // When the user is on the Annotations tab, also project the
   // Annotator's predicted regions onto the navigation strip so the
   // ghost features biolog sees on the map are visible on the «колбаса»
@@ -523,6 +556,18 @@ export default function SingleInspector({
         cursorAnchor={cursorAnchor}
         cursorSelectionMode={cursorSelectionMode}
       />
+      {/* UX-6 — live protein-effect verdict of a pending sequence edit
+          (silent ✓ / missense / truncation / frameshift ⚠), evaluated on the
+          ORIGINAL CDS coords. Renders null when there's no edit / no CDS. */}
+      {showSaveActions && (
+        <div style={{ padding: '0 12px', marginTop: -2 }}>
+          <ProteinEffectBadge
+            originalSequence={item.sequence}
+            editedSequence={edits?.editedSequence}
+            annotations={item.annotations}
+          />
+        </div>
+      )}
       {/* M-X.6 K0 — title row JSX moved into LibraryInspectorTitleRow.
           Legacy inline structure dropped below; the comment block
           above used to wrap the visible markup. */}
@@ -615,6 +660,7 @@ export default function SingleInspector({
               onUpdateTags={onUpdateTags}
               onUpdateTopology={onUpdateTopology}
               onNavigateToFeature={onNavigateToFeature}
+              selectedRegionId={selectedRegionId}
               onApplyOrigin={onApplyOrigin}
             />
           </div>
@@ -644,6 +690,8 @@ export default function SingleInspector({
               onAnnotationEdit={onAnnotationEditFromView}
               onOpenAnnotator={onOpenAnnotator}
               onOpenFeatureEditor={openFeatureEditor}
+              selectedRegionId={selectedRegionId}
+              onAnnotationClick={(region) => setSelectedRegionId(region?.id ?? null)}
               editable={editable}
               onSequenceEdit={onSequenceEditFromView}
               primers={entryPrimers}
@@ -651,6 +699,7 @@ export default function SingleInspector({
               onDeletePrimer={onDeleteEntryPrimer}
               onPromoteToCommon={onPromoteToCommon}
               checkCommonDuplicate={checkCommonDuplicate}
+              onExtractFeature={onExtractFeature}
               showSelectionTm
             />
           </div>

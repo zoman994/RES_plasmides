@@ -20,7 +20,9 @@ function countNodes(state, zoneId) {
   return containers.length + pieces.length + operations.length;
 }
 
-export default function ZoneLayer({ state, dispatch, onNavigateToZone, onOperationClick }) {
+export default function ZoneLayer({
+  state, dispatch, onNavigateToZone, onOperationClick, onContainerClick,
+}) {
   const zones = selectAllZones(state);
   const [menu, setMenu] = useState(null); // {zoneId,x,y} | null
   const gesture = useRef(null);
@@ -132,6 +134,8 @@ export default function ZoneLayer({ state, dispatch, onNavigateToZone, onOperati
           onFitToGraph={(zoneId) => dispatch({ type: 'SET_ZONE_AUTO_RESIZE', zoneId, autoResize: true })}
           /* `.2` — click a reaction diamond → host opens the in-zone op popup. */
           onOperationClick={onOperationClick}
+          /* CANVAS-CLICK-3 — click a card → host opens the fragment info panel. */
+          onContainerClick={onContainerClick}
           onContextMenu={(e) => setMenu({ zoneId: zone.id, x: e.clientX || 0, y: e.clientY || 0 })}
           onClickHeader={() => dispatch({ type: 'SET_ZONE_COLLAPSED', zoneId: zone.id, collapsed: !zone.collapsed })}
           onOpenAssembly={(zoneId) => dispatch({ type: 'OPEN_EDITOR_ASSEMBLY_TAB', draftId: zoneId })}

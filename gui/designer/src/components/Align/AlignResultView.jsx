@@ -148,10 +148,11 @@ export default function AlignResultView() {
     // re-aligned reads stay consistent), else the source.
     const editingRef = workingReference && workingReference.sourceId === multi.refId;
     const referenceFragment = editingRef
-      ? { id: multi.refId, name: `${workingReference.name} · правка`, sequence: workingReference.sequence, annotations: workingReference.annotations, type: 'reference' }
+      ? { id: multi.refId, name: `${workingReference.name} · правка`, sequence: workingReference.sequence, annotations: workingReference.annotations, type: 'reference', circular: !!refInput?.circular }
       : {
         id: refInput?.id || 'ref', name: refInput?.name || 'Реф',
         sequence: refInput?.sequence || '', annotations: refInput?.annotations || [], type: 'reference',
+        circular: !!refInput?.circular, // V188 — circular ref → RestrictionTrack scans origin-straddling sites
       };
     const cons = multi.consensus;
     const consMismatches = Object.keys(cons.byRefPos).filter((p) => cons.byRefPos[p].status === 'mismatch').map(Number);
@@ -256,8 +257,8 @@ export default function AlignResultView() {
   const aInput = result.alignedPair ? inputs.find((x) => x.id === result.alignedPair.aId) : null;
   const editing = !!(workingReference && workingReference.sourceId === aInput?.id);
   const referenceFragment = editing
-    ? { id: aInput?.id || 'ref', name: `${workingReference.name} · правка`, sequence: workingReference.sequence, annotations: workingReference.annotations, type: 'reference' }
-    : { id: aInput?.id || 'ref', name: aInput?.name || 'Реф', sequence: aInput?.sequence || '', annotations: aInput?.annotations || [], type: 'reference' };
+    ? { id: aInput?.id || 'ref', name: `${workingReference.name} · правка`, sequence: workingReference.sequence, annotations: workingReference.annotations, type: 'reference', circular: !!aInput?.circular }
+    : { id: aInput?.id || 'ref', name: aInput?.name || 'Реф', sequence: aInput?.sequence || '', annotations: aInput?.annotations || [], type: 'reference', circular: !!aInput?.circular };
   // cDNA/mRNA-vs-genomic: the read's gaps on the reference are candidate introns.
   const gapIntrons = result?.columns?.length
     ? intronsFromAlignment(buildAlignToReference(result), referenceFragment.sequence)

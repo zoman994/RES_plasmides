@@ -34,6 +34,72 @@ describe("AnnotationTrack — K3 integration", () => {
     expect(labels.map((el) => el.dataset.regionRow).sort()).toEqual(["0", "1"]);
   });
 
+  // gap-research — feature hover <title> in the sequence pane (qualifiers were
+  // only on the maps' hover card). Native SVG <title> = accessible browser tooltip.
+  it("renders a <title> tooltip carrying name · span · identity% · description", () => {
+    render(
+      <AnnotationTrack
+        regions={[{ id: "g1", start: 0, end: 60, name: "glaA", type: "CDS", color: "#B0C84A", identity: 0.92, description: "<i>glucoamylase</i>" }]}
+        lineStart={0}
+        lineLen={100}
+        charPx={7.2}
+        labelChars={8}
+      />,
+    );
+    const g = screen.getByTestId("sequence-view-annotation");
+    const title = g.querySelector("title");
+    expect(title).toBeTruthy();
+    expect(title.textContent).toContain("glaA");
+    expect(title.textContent).toContain("1..60");
+    expect(title.textContent).toContain("92%");
+    expect(title.textContent).toContain("glucoamylase");
+    expect(title.textContent).not.toContain("<i>"); // HTML stripped
+  });
+
+  // V181 / UX-2 — selection sync: the track highlights the region matching
+  // `selectedRegionId` so a feature picked on the map lights up in the sequence.
+  it("highlights the region matching selectedRegionId (data-selected)", () => {
+    const regions = [
+      { id: "g1", start: 0, end: 60, name: "glaA", type: "CDS", color: "#B0C84A" },
+      { id: "g2", start: 70, end: 95, name: "other", type: "CDS", color: "#5DA5C4" },
+    ];
+    render(
+      <AnnotationTrack regions={regions} lineStart={0} lineLen={100} charPx={7.2} labelChars={8} selectedRegionId="g1" />,
+    );
+    const items = screen.getAllByTestId("sequence-view-annotation");
+    const sel = items.find((el) => el.dataset.regionId === "g1");
+    const other = items.find((el) => el.dataset.regionId === "g2");
+    expect(sel.dataset.selected).toBe("true");
+    expect(other.dataset.selected).toBeUndefined();
+  });
+
+  it("no selectedRegionId → nothing marked selected", () => {
+    render(
+      <AnnotationTrack
+        regions={[{ id: "g1", start: 0, end: 60, name: "glaA", type: "CDS" }]}
+        lineStart={0} lineLen={100} charPx={7.2} labelChars={8}
+      />,
+    );
+    expect(screen.getByTestId("sequence-view-annotation").dataset.selected).toBeUndefined();
+  });
+
+  // UX-4 — incomplete feature (`_part_` name) renders as a fragment
+  // (data-fragment), distinct from a whole feature.
+  it("a _part_ feature is flagged data-fragment; a whole one is not", () => {
+    render(
+      <AnnotationTrack
+        regions={[
+          { id: "frag", start: 0, end: 40, name: "AmpR_part_10-856", type: "CDS", color: "#D9836B" },
+          { id: "whole", start: 50, end: 95, name: "AmpR", type: "CDS", color: "#D9836B" },
+        ]}
+        lineStart={0} lineLen={100} charPx={7.2} labelChars={8}
+      />,
+    );
+    const items = screen.getAllByTestId("sequence-view-annotation");
+    expect(items.find((el) => el.dataset.regionId === "frag").dataset.fragment).toBe("true");
+    expect(items.find((el) => el.dataset.regionId === "whole").dataset.fragment).toBeUndefined();
+  });
+
   it("2) more than MAX_VISIBLE_ROWS overlapping regions show overflow pill", () => {
     const regions = Array.from({ length: 6 }, (_, i) => ({
       id: `f${i}`,

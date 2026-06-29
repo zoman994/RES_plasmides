@@ -2,6 +2,7 @@ import 'fake-indexeddb/auto';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { useStore, bootstrapStore } from '../../../store';
+import { PENDING_NEW_ASSEMBLY } from '../../../store/projectAssembliesSlice';
 import Sidebar from '../Sidebar';
 
 const noop = () => {};
@@ -98,6 +99,24 @@ describe('Sidebar — двухуровневый рельс (фаза 2)', () =>
     renderSidebar();
     fireEvent.click(screen.getByTestId('ss-nav-assembly-z2'));
     expect(setPending).toHaveBeenCalledWith('z2');
+    expect(push).toHaveBeenCalledWith({ fullscreen: 'canvasSkeleton', payload: { projectId: 'p1' } });
+  });
+
+  it('«Новая сборка» ставит CREATE-сентинел (не просто открывает) + открывает канвас', () => {
+    const push = vi.fn();
+    const setPending = vi.fn();
+    useStore.setState((s) => {
+      s.projects = { p1: { id: 'p1', name: 'X', containerIds: [] } };
+      s.currentProjectId = 'p1';
+      s.activeProjectAssemblies = [{ id: 'z1', name: 'Сборка 1' }];
+      s.refreshActiveProjectAssemblies = () => {};
+      s.pushFullscreen = push;
+      s.setPendingAssemblyId = setPending;
+    });
+    renderSidebar();
+    fireEvent.click(screen.getByTestId('ss-nav-assembly-new'));
+    // the CREATE sentinel (not null / not an existing id) → SkeletonProvider creates a zone.
+    expect(setPending).toHaveBeenCalledWith(PENDING_NEW_ASSEMBLY);
     expect(push).toHaveBeenCalledWith({ fullscreen: 'canvasSkeleton', payload: { projectId: 'p1' } });
   });
 

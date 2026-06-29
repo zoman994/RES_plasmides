@@ -19,6 +19,8 @@ import { computeAssemblySequence, concatSegmentAnnotations } from './assembly-mo
 import { transferAnnotations } from './segment-annotation-transfer';
 import { applyPieceMutations } from './piece-mutations';
 import { defaultJunctionParams, inferEndRequirements } from '../canvas/junction-styles';
+import { orientFragments, reflectAnnotations, reverseComplementSegment } from './segment-overhangs';
+import { RE_ENZYMES } from '../../../restriction-db';
 
 // Engine method dict → junction.kind (palette / glyph / inferEndRequirements).
 // Exported so junction-derive (the JUNCTION pairKey/seed home) reuses one map
@@ -30,6 +32,9 @@ export const METHOD_TO_JUNCTION = {
   restriction: 're_ligation',
   direct_ligation: 'ligation',
   kld: 'kld',
+  // #111 — SLIC = overlap homology (Gibson family); MoClo = Type IIS (Golden Gate preset).
+  slic: 'overlap',
+  moclo: 'golden_gate',
 };
 
 // The assembly method → the kind of the single assembly OPERATION (the one-pot
@@ -46,6 +51,9 @@ export const METHOD_TO_OP_KIND = {
   restriction: 'ligate',
   direct_ligation: 'ligate',
   kld: 'kld',
+  // #111 — SLIC realises via the overlap (gibson) op; MoClo via the Type IIS (golden_gate) op.
+  slic: 'gibson',
+  moclo: 'golden_gate',
 };
 
 /**
@@ -58,14 +66,16 @@ export const METHOD_TO_OP_KIND = {
  * default last.
  */
 function resolveRealiseEnzyme(state, targetId, method, draftEnzyme) {
-  if (method !== 'golden_gate' && method !== 'restriction') return null;
+  // #111 — MoClo is a Type IIS (Golden Gate) preset → carries an enzyme like golden_gate.
+  const typeIIS = method === 'golden_gate' || method === 'moclo';
+  if (!typeIIS && method !== 'restriction') return null;
   if (draftEnzyme) return draftEnzyme;
   const zone = ((state && state.zones) || []).find((z) => z && z.id === targetId);
   const js = (zone && zone.junctions) || {};
   for (const k of Object.keys(js)) {
     if (js[k] && js[k].method === method && js[k].enzyme) return js[k].enzyme;
   }
-  return method === 'golden_gate' ? 'BsaI' : 'EcoRI';
+  return typeIIS ? 'BsaI' : 'EcoRI';
 }
 
 /**
@@ -193,7 +203,19 @@ function autoPrimerPair(seq) {
  * computeAssemblySequence reports it as an orphan. A gap piece → a
  * sequence-less manual segment (blocks realise like a legacy gap).
  */
+// P0.2 (Игорь 27.06) — memoize draftFromZone per (immutable state, zoneId). Within one render
+// several selectors call draftFromZone with the SAME state object; without memo each repeats the
+// full build incl. orientFragments (~2N segmentOverhangs) → 2–5× per keystroke. State is immutable
+// (Zustand/Immer): the same state ref ⇒ identical inputs ⇒ identical result, so a WeakMap keyed by
+// state (auto-GC'd when the state is replaced) is a safe, standard reselect-style cache. Consumers
+// treat the draft as read-only (derived view); none mutate it.
+const _draftCache = new WeakMap();
+
 export function draftFromZone(state, zone) {
+  if (state && zone) {
+    const byZone = _draftCache.get(state);
+    if (byZone) { const hit = byZone.get(zone.id); if (hit) return hit; }
+  }
   const containers = state.containers || [];
   const pieces = (state.pieces || [])
     .filter((p) => p.zoneId === zone.id)
@@ -244,15 +266,32 @@ export function draftFromZone(state, zone) {
     const ranges = (Array.isArray(p.ranges) && p.ranges.length > 0) ? p.ranges : [{}];
     const r = ranges[0] || {};
     const c = containers.find((x) => x.id === r.sourceId);
-    const sliceOf = (rr) => {
+    const isReverse = ranges.some((rr) => rr.orientation === 'reverse');
+    const fwdSliceOf = (rr) => {
       const cc = containers.find((x) => x.id === rr.sourceId);
-      const raw = cc ? String(cc.sequence || '').slice(rr.start, rr.end) : '';
-      return rr.orientation === 'reverse' ? reverseComplement(raw) : raw;
+      return cc ? String(cc.sequence || '').slice(rr.start, rr.end) : '';
     };
-    const rcSeq = ranges.map(sliceOf).join('');
+    const fwdSeq = ranges.map(fwdSliceOf).join('');
+    // V184 — OVERHANG-AWARE orientation. Build the FORWARD top strand, then flip the
+    // whole segment with sticky-end awareness. A plain per-range reverseComplement
+    // (the old path) dropped the overhang stagger, so a reversed RE fragment's
+    // recognition site at the seam vanished (Игорь «после лигирования не
+    // обнаруживается сайт ApaI … он на обратной цепи теперь»). The helper preserves
+    // length and falls back to a plain RC for blunt / non-palindromic (unknown) ends.
+    const orientedSeq = isReverse
+      ? reverseComplementSegment(
+        {
+          acquisitionMethod: p.acquisitionMethod,
+          acquisitionParams: p.acquisitionParams,
+          sequence: fwdSeq,
+          reverseComplement: false,
+        },
+        RE_ENZYMES,
+      )
+      : fwdSeq;
     // S2 §5.4 — apply mutations to the (post-rc) top-strand so the
     // assembled view shows the edited base, not the wild-type one.
-    const seq = applyPieceMutations(rcSeq, p.mutations);
+    const seq = applyPieceMutations(orientedSeq, p.mutations);
     return {
       id: p.id,
       source: {
@@ -305,10 +344,45 @@ export function draftFromZone(state, zone) {
       })(),
     };
   });
-  return {
+  // «В модель» (Игорь 27.06 «окно сиквенса должно соответствовать DAG», выбор «полностью в
+  // модель») — нормализуем RE-сборку к тому, что показывает DAG: авто-ориентации фрагментов
+  // (orientFragments: rc-последовательность + отражённые фичи + флаг) + авто-замыкание в кольцо
+  // (orient.closes). ЕДИНЫЙ источник → DAG, Sequence И «Реализовать» дают один ориентированный
+  // кольцевой продукт. Не-RE сборки (нет липких концов) НЕ затрагиваются: orientFragments даёт
+  // reversed=false / closes=false → segments + topology байт-идентичны прежним.
+  // P0 (Игорь 27.06) — respect an EXPLICIT user topology choice: once the «Линейная/Кольцевая»
+  // toggle has been used (zone.topology.explicit), auto-close must NOT override it.
+  const explicitTopology = !!(zone.topology && zone.topology.explicit);
+  let normSegments = segments;
+  let circular = !!(zone.topology && zone.topology.circular);
+  try {
+    const orient = orientFragments(segments, RE_ENZYMES, { circular: true });
+    // Orientation normalization always applies (the assembled sequence must be correct
+    // for linear AND circular); only the auto-CLOSE respects the explicit choice.
+    normSegments = segments.map((seg, i) => {
+      const want = !!(orient.orientations[i] && orient.orientations[i].reversed);
+      if (want === !!seg.reverseComplement) return seg;
+      const sq = seg.sequence || '';
+      return {
+        ...seg,
+        // V184 — overhang-aware flip: a plain reverseComplement(topSlice) would not
+        // restore the sticky-end stagger, so the reversed fragment's RE site at the
+        // seam would vanish (Игорь «после лигирования не обнаруживается сайт ApaI»).
+        sequence: reverseComplementSegment(seg, RE_ENZYMES),
+        annotations: reflectAnnotations(seg.annotations || [], sq.length),
+        reverseComplement: want,
+      };
+    });
+    // Auto-close only a MULTI-fragment assembly (the RE-cloning ring outcome) AND only when
+    // the user hasn't explicitly chosen a topology. A single fragment that self-mates stays
+    // linear unless circularised explicitly.
+    if (!explicitTopology) circular = circular || (segments.length >= 2 && orient.closes);
+  } catch { normSegments = segments; }
+
+  const result = {
     id: zone.id,
     name: zone.name,
-    topology: zone.topology || { circular: false },
+    topology: { ...(zone.topology || {}), circular },
     // M-CIRCULARIZE / AM-2 — carry the construct method so realise's
     // assemblyMethod fallback (and methodsFromJunctions' default) can recover the
     // chosen method for boundaries with no seeded junction config (notably the
@@ -317,10 +391,21 @@ export function draftFromZone(state, zone) {
     // F — the construct-level enzyme (GG Type IIS / RE), so realise's assembly op
     // params + the protocol can name the chosen enzyme instead of defaulting BsaI.
     assemblyEnzyme: zone.assemblyEnzyme || null,
-    segments,
+    // RC-SEP (Игорь 25.06) — the ring-closing reaction as ONE assembly property
+    // (decoupled from internal junctions + topology). Survives the finalizer's
+    // zone.junctions reset, so a single-fragment self-closure keeps its method.
+    closureMethod: zone.closureMethod || null,
+    closureEnzyme: zone.closureEnzyme || null,
+    segments: normSegments,
     realiseRevision: zone.realiseRevision || 0,
     position: zone.bounds ? { x: zone.bounds.x, y: zone.bounds.y } : null,
   };
+  if (state && zone) {
+    let byZone = _draftCache.get(state);
+    if (!byZone) { byZone = new Map(); _draftCache.set(state, byZone); }
+    byZone.set(zone.id, result);
+  }
+  return result;
 }
 
 /** Resolve targetId → a draft-like object (zone-pieces first, legacy fallback). */
@@ -440,14 +525,30 @@ export function realiseAssembly(state, targetId, perBoundaryMethods, options = {
     pinned: false,
   });
 
+  // V171/F2 (audit) — a RING-closing reaction must be a valid closure method.
+  // overlap_pcr makes a LINEAR product (its ring counterpart is Gibson); kld is
+  // whole-plasmid self-closure of a SINGLE fragment (cannot join N>1). Both →
+  // gibson. blunt (direct_ligation) + gibson/golden_gate/restriction are valid
+  // closures and stay. (A membership-in-CLOSURE_METHODS check would wrongly drop
+  // direct_ligation, which CircularizeModal appends as a real blunt-ring closure.)
+  const guardClosureMethod = (m, n) => {
+    if (m === 'overlap_pcr') return 'gibson';
+    if (m === 'kld' && n > 1) return 'gibson';
+    return m;
+  };
+
   // Assembly operation — the one-pot reaction that joins the fragments into the
   // product (Игорь 10.06): source→PCR→frag→[assembly]→product. Without it the
   // product floats (the renderer reads only op in/out, not junctions). Kind =
   // the assembly method → one colour per op type (op-colors). Per-boundary
   // methods stay as params here + as junction metadata below.
   if (fragContainerIds.length >= 2) {
-    const repMethod = (perBoundaryMethods && perBoundaryMethods[0]) || draft.assemblyMethod
+    let repMethod = (perBoundaryMethods && perBoundaryMethods[0]) || draft.assemblyMethod
       || ((draft.topology && draft.topology.circular) ? 'gibson' : 'overlap_pcr');
+    // V171/F2 — on a circular product the one-pot method is a ring-former; guard it.
+    if (draft.topology && draft.topology.circular) {
+      repMethod = guardClosureMethod(repMethod, fragContainerIds.length);
+    }
     const asmEnzyme = resolveRealiseEnzyme(state, targetId, repMethod, draft.assemblyEnzyme);
     const asmOpId = `op-${uuidv7()}`;
     const asmX = 80 + col * STEP_X;
@@ -475,7 +576,9 @@ export function realiseAssembly(state, targetId, perBoundaryMethods, options = {
     // ends close into a plasmid (KLD whole-plasmid PCR + ligation, or blunt
     // self-ligation). Emit a self-closure op (frag → circular product) so the
     // product is reachable instead of floating.
-    const closeMethod = (perBoundaryMethods && perBoundaryMethods[0]) || draft.assemblyMethod || 'kld';
+    let closeMethod = (perBoundaryMethods && perBoundaryMethods[0]) || draft.assemblyMethod || 'kld';
+    // V171/F2 — single-fragment self-closure: overlap_pcr→gibson; kld stays (valid for 1 frag).
+    closeMethod = guardClosureMethod(closeMethod, 1);
     const closeEnzyme = resolveRealiseEnzyme(state, targetId, closeMethod, draft.assemblyEnzyme);
     const closeOpId = `op-${uuidv7()}`;
     const closeX = 80 + col * STEP_X;
@@ -519,8 +622,9 @@ export function realiseAssembly(state, targetId, perBoundaryMethods, options = {
   // else the construct method, else gibson.
   if (draft.topology && draft.topology.circular && fragContainerIds.length >= 2) {
     const ci = fragContainerIds.length - 1;
-    const method = (perBoundaryMethods && perBoundaryMethods[ci])
+    let method = (perBoundaryMethods && perBoundaryMethods[ci])
       || draft.assemblyMethod || 'gibson';
+    method = guardClosureMethod(method, fragContainerIds.length); // V171/F2 — overlap_pcr/kld-multi → gibson
     const cj = junctionForMethod(method, fragContainerIds[ci], fragContainerIds[0]);
     cj.realisedFrom = {
       assemblyId: targetId, boundaryIdx: ci, revision, method, role: 'closure',

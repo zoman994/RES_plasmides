@@ -34,6 +34,7 @@ import LibraryTopBar from './LibraryTopBar';
 import LibraryTreeRoot from './tree/LibraryTreeRoot';
 import LibrarySingleInspector from './inspector/LibrarySingleInspector';
 import VersionTimelineModal from './inspector/VersionTimelineModal';
+import VersionHistoryList from './inspector/VersionHistoryList';
 import { buildVersionTimeline } from './lib/version-lineage';
 import LibraryActionRow from './inspector/LibraryActionRow';
 import CommonFeaturesPanel from './CommonFeaturesPanel';
@@ -610,16 +611,15 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
             <CommonFeaturesPanel />
           ) : item ? (
             <>
+              {/* Inline, list-first version history (redesign): compact list with
+                  per-version diff / rename / status / delete; «Граф» opens the
+                  full timeline. Replaces the old modal-first button. */}
               {hasHistory && (
-                <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '6px 10px 0' }}>
-                  <button
-                    type="button"
-                    data-testid="library-open-history"
-                    onClick={() => setHistoryOpen(true)}
-                    title="История версий этой записи"
-                    style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6, cursor: 'pointer', border: '1px solid var(--border-default, #d6d3d1)', background: 'var(--surface-1, #fff)', color: 'var(--text-secondary, #57534e)' }}
-                  >⑂ История версий · {historyModel.nodes.length}</button>
-                </div>
+                <VersionHistoryList
+                  focusId={selectedId}
+                  onSelect={(id) => { const e = entriesById[id]; if (e) onSelectEntry(e); }}
+                  onOpenGraph={() => setHistoryOpen(true)}
+                />
               )}
               <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
                 <LibrarySingleInspector

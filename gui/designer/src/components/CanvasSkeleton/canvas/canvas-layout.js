@@ -30,6 +30,45 @@ export const BLOCK_CIRCULAR_SIZE = BLOCK_LINEAR_W;
 export const OPERATION_NODE_W = 120;
 export const OPERATION_NODE_H = 60;
 
+// ── Grid for draggable DAG cards (Ф1, Игорь 27.06) ──────────────────
+//
+// Подвижные карточки вертикального DAG двигаются СТРОГО ПО СЕТКЕ
+// («перемещение строго по сетке, перескок чтобы можно было на уровень
+// ниже... чтобы их можно было на одном уровне ставить. Совсем свободное
+// перемещение не нужно»). Шаг сетки = шаг раскладки dagre в TB, поэтому
+// привязанные к ячейкам карточки сохраняют зазор, в котором живут
+// выходящие из них липкие концы (nodesep=140 в TB), и не накладываются.
+//   COL_W = BLOCK_LINEAR_W + nodesep(TB)  — дорожки (колонки = ветви)
+//   ROW_H = BLOCK_LINEAR_H + ranksep      — ранги (строки = уровни)
+export const GRID_COL_W = BLOCK_LINEAR_W + 140;
+export const GRID_ROW_H = BLOCK_LINEAR_H + 56;
+
+/**
+ * snapToGrid(pos, opts) → {x, y, col, row}.
+ *
+ * Привязывает произвольную позицию (top-left карточки в мире) к ближайшей
+ * ячейке сетки. col/row зажимаются ≥0 (канвас начинается с 0,0, как
+ * resolveNodeOverlap). Чистая — drag-обвязка зовёт её на drop.
+ *
+ * opts: { colW=GRID_COL_W, rowH=GRID_ROW_H, originX=0, originY=0 }.
+ */
+export function snapToGrid(pos, opts = {}) {
+  const colW = opts.colW != null ? opts.colW : GRID_COL_W;
+  const rowH = opts.rowH != null ? opts.rowH : GRID_ROW_H;
+  const originX = opts.originX || 0;
+  const originY = opts.originY || 0;
+  const px = (pos && pos.x) || 0;
+  const py = (pos && pos.y) || 0;
+  const col = Math.max(0, Math.round((px - originX) / colW));
+  const row = Math.max(0, Math.round((py - originY) / rowH));
+  return {
+    x: originX + col * colW,
+    y: originY + row * rowH,
+    col,
+    row,
+  };
+}
+
 /**
  * M-CANVAS-FIX.1 K1 — pure drop decision. Canvas is an AUTHORITATIVE
  * auto-layout (Игорь §0.5): in-zone nodes are not hand-arranged, so a drop
@@ -157,6 +196,58 @@ export function resolveNodeOverlap(desired, size, obstacles, opts = {}) {
   return { x: dx0, y: dy0 };
 }
 
+// ── Junction magnet-snap (Ф2, Игорь 27.06) ─────────────────────────
+//
+// «Притянуть одну карточку к другой → автоматически показывает стык; только
+// совместимые концы». После grid-snap проверяем: брошена ли карточка в клетку,
+// соседнюю с фрагментом, с которым у неё ЕСТЬ совместимый стык сборки? Если да —
+// «защёлкиваем» её вплотную к партнёру (выступающие липкие концы смыкаются),
+// перекрывая обычную привязку к ячейке. Несовместимые концы не липнут.
+export const JUNCTION_MATE_GAP = 28; // зазор край-в-край, при котором концы смыкаются
+
+/**
+ * magnetSnap(draggedId, gridPos, placements, junctions, opts) → {x,y,mate}|null.
+ *
+ * @param {string} draggedId
+ * @param {{x,y}} gridPos        — позиция после snapToGrid
+ * @param {Object} placements    — id→{x,y} текущих позиций остальных карточек
+ * @param {Array}  junctions     — [{fromId,toId,verdict}] (from.right ↔ to.left)
+ * @returns мейт-позицию если рядом совместимый партнёр, иначе null (оставить grid).
+ *
+ * Притягивает ТОЛЬКО к verdict==='compatible' стыку, и только когда карточка
+ * брошена с правильной стороны партнёра в пределах одной клетки и той же строки.
+ */
+export function magnetSnap(draggedId, gridPos, placements, junctions, opts = {}) {
+  if (!gridPos || !Array.isArray(junctions)) return null;
+  const W = opts.blockW != null ? opts.blockW : BLOCK_LINEAR_W;
+  const gap = opts.gap != null ? opts.gap : JUNCTION_MATE_GAP;
+  const rangeX = opts.rangeX != null ? opts.rangeX : GRID_COL_W;
+  const rangeY = opts.rangeY != null ? opts.rangeY : GRID_ROW_H / 2;
+  const places = placements || {};
+  let best = null;
+  let bestDist = Infinity;
+  for (const j of junctions) {
+    if (!j || j.verdict !== 'compatible') continue;
+    let partnerId = null;
+    let side = null; // конец перетаскиваемой карточки, который смыкается
+    if (j.fromId === draggedId) { partnerId = j.toId; side = 'right'; }
+    else if (j.toId === draggedId) { partnerId = j.fromId; side = 'left'; }
+    else continue;
+    const p = places[partnerId];
+    if (!p) continue;
+    // мейт-позиция: дотянуть `side`-конец карточки до партнёра, выровнять строку.
+    const mx = side === 'right' ? (p.x || 0) - W - gap : (p.x || 0) + W + gap;
+    const my = p.y || 0;
+    const dx = Math.abs(gridPos.x - mx);
+    const dy = Math.abs(gridPos.y - my);
+    if (dx <= rangeX && dy <= rangeY) {
+      const dist = dx + dy;
+      if (dist < bestDist) { bestDist = dist; best = { x: mx, y: my, mate: { partnerId, side } }; }
+    }
+  }
+  return best;
+}
+
 export function getBlockSize(_container) {
   return { width: BLOCK_LINEAR_W, height: BLOCK_LINEAR_H };
 }
@@ -235,8 +326,9 @@ export function buildGraphNodesEdges(containers, commits, operations = []) {
   return { nodes, edges };
 }
 
-// Compute graph view positions via dagre LR.
-export function computeGraphPositions(containers, commits, operations = []) {
+// Compute graph view positions via dagre. `direction`: 'LR' (default, horizontal
+// temporal DAG) or 'TB' (vertical assembler — chain stacks top→bottom).
+export function computeGraphPositions(containers, commits, operations = [], direction = 'LR') {
   const { nodes, edges } = buildGraphNodesEdges(containers, commits, operations);
   if (nodes.length === 0) return {};
   const dagreNodes = nodes.map((n) => ({ id: n.id }));
@@ -252,11 +344,15 @@ export function computeGraphPositions(containers, commits, operations = []) {
       ? getBlockSize(n.data.container)
       : { width: OPERATION_NODE_W, height: OPERATION_NODE_H };
   }
-  return computeAutoLayout(dagreNodes, dagreEdges, 'LR', {
+  return computeAutoLayout(dagreNodes, dagreEdges, direction, {
     nodeWidth: BLOCK_LINEAR_W,
     nodeHeight: BLOCK_LINEAR_H,
     ranksep: 56,
-    nodesep: 36,
+    // TB (vertical assembler): same-rank siblings are spaced WIDE so the sticky-end
+    // nucleotides that PROTRUDE past each fragment card's left/right edges (Игорь 27.06
+    // «нуклеотиды выходят из карточки») don't overlap the neighbour's protruding ends
+    // («они не должны накладываться друг на друга»). ~2× max protrusion (~60px/side) + gap.
+    nodesep: direction === 'TB' ? 140 : 36,
     sizeOf: (id) => sizeById[id],
   });
 }
@@ -349,7 +445,12 @@ export function edgeAnchors(from, to, opts = {}) {
 
   let fromSide;
   let toSide;
-  if (opts.flow === 'LR') {
+  if (opts.flow === 'TB') {
+    // Forced vertical flow (TB DAG, вертикальный сборщик): exit bottom / enter top
+    // (never left/right) — mirror of the LR branch below on the other axis.
+    fromSide = dy >= 0 ? 'bottom' : 'top';
+    toSide = dy >= 0 ? 'top' : 'bottom';
+  } else if (opts.flow === 'LR') {
     // Forced horizontal flow (an LR DAG): always exit the right / enter the
     // left edge (reversed only for a rare backward edge) — never top/bottom, so
     // arrows read cleanly edge-to-edge instead of weaving through the box
@@ -537,14 +638,17 @@ export function contentBBox(state) {
  * `state.positions` — don't describe it; this drives that view's scroll spacer
  * and fit-to-content («под размер сборки» in the DAG tab). Pure; {0,0} on empty.
  */
-export function graphContentBBox(containers = [], operations = []) {
+export function graphContentBBox(containers = [], operations = [], direction = 'LR', overrides = {}) {
   const { nodes } = buildGraphNodesEdges(containers, [], operations);
   if (nodes.length === 0) return { width: 0, height: 0 };
-  const positions = computeGraphPositions(containers, [], operations);
+  const positions = computeGraphPositions(containers, [], operations, direction);
+  const ov = overrides || {};
   let maxX = 0;
   let maxY = 0;
   for (const n of nodes) {
-    const p = positions[n.id] || { x: 0, y: 0 };
+    // Manual grid placement (Ф1) wins over the auto dagre slot so the scroll
+    // spacer / fit grows to cover a card the biologist dragged to a new cell.
+    const p = ov[n.id] || positions[n.id] || { x: 0, y: 0 };
     maxX = Math.max(maxX, (p.x || 0) + (n.width || 0));
     maxY = Math.max(maxY, (p.y || 0) + (n.height || 0));
   }

@@ -18,9 +18,11 @@
  * coords/strand/split к референс-записи неприменимы → onAnnotationEdit is NOT
  * wired. NOT a drag source (DEC-CF-07).
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore, selectMergedCommonFeatures } from '../../../store';
 import { flushCommonFeatureWrites } from '../../../store/commonFeaturesSlice';
+import { serializeCommonFeatures, parseCommonFeatures } from './common-features-io';
+import { downloadBlob } from '../../../lib/file-system';
 import { loadFeatureDB } from '../../../feature-detection';
 import { translateDNA } from '../../../codons';
 import { STRINGS } from '../../../lib/strings';
@@ -62,6 +64,27 @@ export default function CommonFeaturesPanel() {
   const resetCommonFeature = useStore((s) => s.resetCommonFeature);
   const deleteUserFeature = useStore((s) => s.deleteUserFeature);
   const editCommonFeature = useStore((s) => s.editCommonFeature);
+  // FEAT-CF-SHARE — export/import the curated overlay (backup + lab sharing; the
+  // overlay is browser-local and lost on the v0.6 data-wipe).
+  const importCommonFeatures = useStore((s) => s.importCommonFeatures);
+  const fileRef = useRef(null);
+  const [ioMsg, setIoMsg] = useState(null);
+
+  const handleExport = () => {
+    const json = serializeCommonFeatures(overlay);
+    downloadBlob(new Blob([json], { type: 'application/json' }), 'common-features.json');
+  };
+  const handleImportFile = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = ''; // allow re-importing the same file
+    if (!file) return;
+    let text = '';
+    try { text = await file.text(); } catch { setIoMsg(S.importError || 'Ошибка чтения файла'); return; }
+    const parsed = parseCommonFeatures(text);
+    if (!parsed.ok) { setIoMsg(parsed.error || 'Неверный файл'); return; }
+    const { added, skipped } = await importCommonFeatures(parsed);
+    setIoMsg(`Импортировано: ${added}${skipped ? `, пропущено (дубли): ${skipped}` : ''}`);
+  };
 
   const [builtin, setBuiltin] = useState([]);
   const [query, setQuery] = useState('');
@@ -180,6 +203,34 @@ export default function CommonFeaturesPanel() {
             onChange={(e) => setQuery(e.target.value)}
             style={{ height: 28, padding: '0 10px', fontSize: 12, background: 'var(--surface-2)', color: 'var(--text-primary)', border: '1px solid var(--border-subtle)', borderRadius: 4, outline: 'none' }}
           />
+          {/* FEAT-CF-SHARE — export/import the curated overlay (backup + sharing). */}
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <button
+              type="button"
+              data-testid="common-features-export"
+              onClick={handleExport}
+              title="Экспортировать свои фичи в файл (резервная копия / обмен)"
+              style={{ flex: 1, height: 26, fontSize: 11, background: 'var(--surface-2)', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)', borderRadius: 4, cursor: 'pointer' }}
+            >↓ Экспорт</button>
+            <button
+              type="button"
+              data-testid="common-features-import"
+              onClick={() => fileRef.current && fileRef.current.click()}
+              title="Импортировать набор фич из файла"
+              style={{ flex: 1, height: 26, fontSize: 11, background: 'var(--surface-2)', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)', borderRadius: 4, cursor: 'pointer' }}
+            >↑ Импорт</button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="application/json,.json"
+              data-testid="common-features-import-input"
+              onChange={handleImportFile}
+              style={{ display: 'none' }}
+            />
+          </div>
+          {ioMsg && (
+            <div data-testid="common-features-io-msg" style={{ fontSize: 10.5, color: 'var(--text-tertiary)' }}>{ioMsg}</div>
+          )}
         </div>
         <div data-testid="common-features-list" style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
           {filtered.length === 0 ? (

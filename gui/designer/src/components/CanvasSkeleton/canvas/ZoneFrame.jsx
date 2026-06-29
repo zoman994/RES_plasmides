@@ -51,7 +51,7 @@ export default function ZoneFrame({
   zone, nodeCount = 0,
   onDragStart, onResize, onContextMenu, onClickHeader,
   state, dispatch, onToggleViewMode, onFocus, onNavigateToZone,
-  onOpenAssembly, onAddPiece, onFitToGraph, onOperationClick,
+  onOpenAssembly, onAddPiece, onFitToGraph, onOperationClick, onContainerClick,
 }) {
   // AV-K3 — header «+» button opens the shared AddPiecePopover.
   const [addPopoverOpen, setAddPopoverOpen] = useState(false);
@@ -285,6 +285,11 @@ export default function ZoneFrame({
               containers={zoneNodes.containers}
               operations={zoneNodes.operations}
               highlightedId={state && state.highlightedContainerId}
+              // CANVAS-CLICK-3 — single click a card → host shows the fragment info panel
+              // (parity with the DAG view); needs the container object → pass id + the node.
+              onContainerClick={onContainerClick
+                ? (id, e) => onContainerClick(id, zoneNodes.containers.find((c) => c.id === id), e)
+                : undefined}
               onContainerDoubleClick={(id) => dispatch && dispatch({ type: 'OPEN_EDITOR_VIEW_ONLY', containerId: id })}
               // M-CANVAS-FIX.1 K4 (V139) — the reaction diamond is live inside a
               // zone. `.2` (Игорь 11.06): the host (CanvasLayoutView) now passes

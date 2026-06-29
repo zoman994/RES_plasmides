@@ -1,9 +1,13 @@
 /**
  * RC-B2 (Игорь 24.06) — «визуализировать на стыке нуклеотидный сиквенс». The
- * assembly junction seam now shows the actual bases of the join (left │ right)
- * and, when a reading frame is pinned, the codon/AA that straddles it with a red
- * ⚠ STOP marker if translation hits a premature stop across the junction. Data
- * (zone.seam = junctionSeamView output) is precomputed upstream in AssemblyShellBody.
+ * junction seam carries the actual bases of the join (left │ right) and, when a
+ * reading frame is pinned, the codon/AA that straddles it + a premature-STOP flag.
+ *
+ * RC-SEP-SEAM (Игорь 25.06 «там букв в принципе не должно быть») — these bases /
+ * codon / AA are NO LONGER painted at the seam; they live in the hover TOOLTIP
+ * (the seam element's `title`). A premature STOP keeps a non-letter visual marker
+ * (a red dot, `sequence-view-seam-stop`) because it's a hard error, with the words
+ * in the tooltip. Data (zone.seam = junctionSeamView output) is precomputed upstream.
  */
 import { describe, it, expect, afterEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
@@ -27,26 +31,37 @@ const renderSeam = (seam) => render(
     coloredZones={zonesWith(seam)} onZoneClick={() => {}} />,
 );
 
-describe('RC-B2 — junction-seam nucleotide readout', () => {
-  it('renders the bases on each side of the seam', () => {
+describe('RC-B2 — junction-seam nucleotide readout (в тултипе, без букв на экране)', () => {
+  it('the bases on each side of the seam live in the TOOLTIP, not on screen', () => {
     renderSeam({ left: 'CCGG', right: 'AATT', boundaryPos: 16, onCodonBoundary: null, codonAtSeam: null, stopAtSeam: false });
-    const el = screen.getByTestId('sequence-view-seam-seq');
-    expect(el.textContent).toMatch(/CCGG/);
-    expect(el.textContent).toMatch(/AATT/);
+    // нет текстового бокса с нуклеотидами на стыке.
+    expect(screen.queryByTestId('sequence-view-seam-seq')).toBeNull();
+    // базы стыка читаются в тултипе hotspot'а.
+    const seam = screen.getByTestId('sequence-view-junction-seam');
+    expect(seam.getAttribute('title')).toMatch(/CCGG/);
+    expect(seam.getAttribute('title')).toMatch(/AATT/);
+    expect(seam.textContent.trim()).toBe('');
   });
 
-  it('with a pinned frame → shows the straddling codon AA, no STOP marker', () => {
+  it('with a pinned frame → straddling codon AA в ТУЛТИПЕ, no STOP marker', () => {
     renderSeam({ left: 'CCGG', right: 'AATT', boundaryPos: 16, onCodonBoundary: false, codonAtSeam: { dna: 'GGA', aa: 'G', isStop: false, start: 14 }, stopAtSeam: false });
-    expect(screen.getByTestId('sequence-view-seam-aa').textContent).toBe('G');
+    const seam = screen.getByTestId('sequence-view-junction-seam');
+    expect(seam.getAttribute('title')).toMatch(/GGA/);   // кодон на стыке
+    expect(seam.getAttribute('title')).toMatch(/→\s*G/); // → AA
+    expect(screen.queryByTestId('sequence-view-seam-aa')).toBeNull(); // не отрисован буквой
     expect(screen.queryByTestId('sequence-view-seam-stop')).toBeNull();
   });
 
-  it('flags a premature STOP that straddles the seam', () => {
+  it('flags a premature STOP — нетекстовый красный маркер + слова в тултипе', () => {
     renderSeam({ left: 'CCAT', right: 'GACC', boundaryPos: 16, onCodonBoundary: false, codonAtSeam: { dna: 'TGA', aa: '*', isStop: true, start: 14 }, stopAtSeam: true });
-    expect(screen.getByTestId('sequence-view-seam-stop')).toBeTruthy();
+    const stop = screen.getByTestId('sequence-view-seam-stop');
+    expect(stop).toBeTruthy();
+    expect(stop.textContent.trim()).toBe('');           // маркер, не буквы «STOP»
+    const seam = screen.getByTestId('sequence-view-junction-seam');
+    expect(seam.getAttribute('title')).toMatch(/STOP/i);
   });
 
-  it('no seam data → no readout (only the V160 verdict badge)', () => {
+  it('no seam data → no readout (только визуальный verdict hotspot)', () => {
     renderSeam(null);
     expect(screen.queryByTestId('sequence-view-seam-seq')).toBeNull();
     expect(screen.getByTestId('sequence-view-junction-seam')).toBeTruthy();

@@ -21,6 +21,8 @@ import { buildFolderTree } from './library-folder-tree';
 import LibraryZone from './LibraryZone';
 import TreeFolderRow from './TreeFolderRow';
 import TreeItemRow from './TreeItemRow';
+import VersionLineageNode from './VersionLineageNode';
+import { groupVisibleLineages } from '../lib/version-lineage';
 import { Icon } from '../../icons/Icon';
 
 function buildClaimedSet(projectsById, entriesById) {
@@ -157,6 +159,46 @@ export default function LooseZone({
     });
   }, []);
 
+  // Per-lineage expand state — collapse chained versions/branches of one
+  // molecule under a single node instead of N flat rows.
+  const [expandedLineages, setExpandedLineages] = useState(() => new Set());
+  const toggleLineage = useCallback((id) => {
+    setExpandedLineages((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
+  // Render a flat container list with version lineages collapsed: a >1-member
+  // lineage → one VersionLineageNode; a singleton → a plain TreeItemRow.
+  const renderContainers = useCallback((entries, indent) => (
+    groupVisibleLineages(entriesById, entries).map((g) => (
+      g.count > 1 ? (
+        <VersionLineageNode
+          key={g.rootId}
+          group={g}
+          selectedId={selectedId}
+          onSelectEntry={onSelectEntry}
+          expanded={expandedLineages.has(g.rootId)}
+          onToggle={() => toggleLineage(g.rootId)}
+          indent={indent}
+          testId={`version-lineage-${g.rootId}`}
+        />
+      ) : (
+        <TreeItemRow
+          key={g.headEntry.id}
+          entry={g.headEntry}
+          isSelected={g.headEntry.id === selectedId}
+          onSelect={onSelectEntry}
+          indent={indent}
+          testId={`tree-item-loose-${g.headEntry.id}`}
+          draggable
+        />
+      )
+    ))
+  ), [entriesById, selectedId, onSelectEntry, expandedLineages, toggleLineage]);
+
   const handleCreateFolder = useCallback(() => {
     if (typeof window === 'undefined' || !createLooseFolder) return;
     const raw = window.prompt('Имя новой папки:');
@@ -215,17 +257,7 @@ export default function LooseZone({
         {isOpen && (
           <>
             {(node.children || []).map((child) => renderFolderNode(child, depth + 1))}
-            {items.map((entry) => (
-              <TreeItemRow
-                key={entry.id}
-                entry={entry}
-                isSelected={entry.id === selectedId}
-                onSelect={onSelectEntry}
-                indent={depth + 1}
-                testId={`tree-item-loose-${entry.id}`}
-                draggable
-              />
-            ))}
+            {renderContainers(items, depth + 1)}
           </>
         )}
       </div>
@@ -256,17 +288,7 @@ export default function LooseZone({
       {openFolders.has('containers') && (
         <>
           {folderForest.map((node) => renderFolderNode(node, 2))}
-          {rootlessContainers.map((entry) => (
-            <TreeItemRow
-              key={entry.id}
-              entry={entry}
-              isSelected={entry.id === selectedId}
-              onSelect={onSelectEntry}
-              indent={2}
-              testId={`tree-item-loose-${entry.id}`}
-              draggable
-            />
-          ))}
+          {renderContainers(rootlessContainers, 2)}
           {containerEntries.length === 0 && folderForest.length === 0 && onAddStarterSet && (
             <div style={{ padding: '6px 12px 6px 38px' }}>
               <button

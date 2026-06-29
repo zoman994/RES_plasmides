@@ -27,6 +27,9 @@ export function buildSelectionMenuItems({
   // Rides the same matchedRegion rail as edit/del; absent prop ⇒ no item, so
   // Annotator-preview / Assembly / PCR viewers are unaffected by construction.
   onPromoteToCommon,
+  // FEAT-EXTRACT — consumer-gated «extract this feature to a new Library entry»
+  // (spliced cDNA / protein). Same matchedRegion rail; absent prop ⇒ no item.
+  onExtractFeature,
 }) {
   // Build extra context-menu items lazily so we don't
   // re-allocate on every render. K3 wires «Создать
@@ -99,6 +102,19 @@ export function buildSelectionMenuItems({
         onClick: () => {
           setContextMenu(null);
           onPromoteToCommon({ region: matchedRegion, start: selStart, end: selEnd });
+        },
+      });
+    }
+    // FEAT-EXTRACT — «Извлечь в библиотеку» (spliced cDNA / protein → new entry).
+    // The host resolves introns + splices + creates the entry; here we just hand
+    // it the matched region.
+    if (typeof onExtractFeature === "function") {
+      items.push({
+        key: "extract-feature",
+        label: "Извлечь в библиотеку",
+        onClick: () => {
+          setContextMenu(null);
+          onExtractFeature({ region: matchedRegion, start: selStart, end: selEnd });
         },
       });
     }

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { buildOrderSheet } from '../primer-reuse';
 import { Icon } from './icons/Icon';
+import PrimerBindingSites from './PrimerBindingSites';
 
 const CAT_STYLES = {
   assembly: { dot: 'bg-blue-500', label: 'сборка', text: 'text-blue-600' },
@@ -13,6 +14,7 @@ export default function PrimerPanel({
   primerMatches = {}, onReusePrimer, onDeletePrimer,
 }) {
   const [showMatches, setShowMatches] = useState({});
+  const [showBind, setShowBind] = useState({}); // PRIMER-1 — «куда садится» toggle per primer
 
   if (!primers || primers.length === 0) return null;
 
@@ -31,6 +33,9 @@ export default function PrimerPanel({
 
   const toggleMatch = (name) => {
     setShowMatches(prev => ({ ...prev, [name]: !prev[name] }));
+  };
+  const toggleBind = (name) => {
+    setShowBind(prev => ({ ...prev, [name]: !prev[name] }));
   };
 
   return (
@@ -104,6 +109,16 @@ export default function PrimerPanel({
                         {' '}<Icon name="chevron-down" size={10} style={{ display: 'inline-block', verticalAlign: '-1px', transform: expanded ? 'rotate(180deg)' : 'none' }} />
                       </button>
                     )}
+                    {/* PRIMER-1 — «куда садится»: where this primer anneals in the library. */}
+                    {(p.bindingSequence || p.sequence) && (
+                      <button onClick={() => toggleBind(p.name)}
+                        data-testid={`primer-bind-toggle-${i}`}
+                        className="text-[9px] text-indigo-600 hover:text-indigo-800 mt-0.5 block">
+                        <Icon name="search" size={10} style={{ display: 'inline-block', verticalAlign: '-1px' }} /> куда садится
+                        {' '}<Icon name="chevron-down" size={10} style={{ display: 'inline-block', verticalAlign: '-1px', transform: showBind[p.name] ? 'rotate(180deg)' : 'none' }} />
+                      </button>
+                    )}
+                    {showBind[p.name] && <PrimerBindingSites primer={p} />}
                   </td>
                   <td className="p-2 font-mono text-[10px] max-w-xs break-all">
                     <span className="text-[8px] text-gray-400">{p.phosphorylated ? '5\'─[P]─' : '5\'─'}</span>

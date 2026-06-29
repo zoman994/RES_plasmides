@@ -22,6 +22,7 @@
 
 import { memo } from "react";
 import { complement } from "../../../sequence-utils.js";
+import { isBlanked } from "../seam-staircase";
 
 const ROW_HEIGHT_STRAND = 16;
 const STRAND_PADDING_X = 0;
@@ -106,6 +107,17 @@ function StrandsTrack({
   // the FIRST line (left) and LAST line (right). Bottom-strand only. Null elsewhere.
   terminalLeft = null,
   terminalRight = null,
+  // RC-SEP-SEAM (Игорь 26.06 «просто буквы убрать») — absolute (pos,strand) ranges whose
+  // base must render BLANK (a space) so an incompatible restriction overhang reads as a real
+  // single-stranded staircase (the recessed strand is physically gone, the zone band stays).
+  // [{pos0,pos1,strand}] | null. Filtered per `which` inside renderStrand. Opt-in: null → no-op.
+  blankRanges = null,
+  // Fill for the terminal-recess cover box (protruding='top' staircase). Defaults to the
+  // surface colour so it blends on the white viewer. A TINTED host (the DAG sticky-end
+  // card) passes 'transparent' + blankRanges so the recessed bases are physically removed
+  // instead of covered by a white box that wouldn't match the card background (Игорь 27.06
+  // «беленькое заливать цветом фона»).
+  recessFill = 'var(--surface-1, #ffffff)',
 }) {
   if (!seq) return null;
   const annArr = annMap && annMap.length === seq.length ? annMap : new Array(seq.length).fill(null);
@@ -125,10 +137,14 @@ function StrandsTrack({
     const runs = [];
     let curRun = null;
     for (let ci = 0; ci < chars.length; ci++) {
-      const ann = annArr[ci];
-      const intron = isIntron(ann);
-      const tint = isTop ? tintFor(ann) : tintForBottom(ann);
       const nt = chars[ci];
+      // A BLANKED cell (a space — the recessed/removed strand of a single-stranded
+      // overhang or seam) carries NO base, so it must carry NO feature tint either; else
+      // the «пустое пространство» of the staircase gets coloured (Игорь 27.06).
+      const blank = nt === " ";
+      const ann = blank ? null : annArr[ci];
+      const intron = blank ? false : isIntron(ann);
+      const tint = blank ? "transparent" : (isTop ? tintFor(ann) : tintForBottom(ann));
       const display = intron ? nt.toLowerCase() : nt;
       // Run key combines tint + intron flag — nucleotides only group
       // when they share BOTH so background-image (intron hatching)
@@ -146,7 +162,13 @@ function StrandsTrack({
 
   const renderStrand = (which) => {
     const isTop = which === "top";
-    const chars = isTop ? seq : seq.split("").map((c) => complement(c)).join("");
+    const rawChars = isTop ? seq : seq.split("").map((c) => complement(c)).join("");
+    // «настоящая ступенька»: blank the recessed strand under an incompatible overhang →
+    // a space (whiteSpace:pre keeps the column width; the band tint shows through). The
+    // protruding overhang strand is untouched, so the join reads as single-stranded.
+    const chars = (Array.isArray(blankRanges) && blankRanges.length)
+      ? rawChars.split("").map((c, ci) => (isBlanked(blankRanges, lineStart + ci, which) ? " " : c)).join("")
+      : rawChars;
     const direction = isTop ? "5'→3'" : "3'→5'";
     const runs = buildRuns(chars, isTop);
 
@@ -279,7 +301,7 @@ function StrandsTrack({
                 style={{
                   position: 'absolute', left: (labelChars + startCol) * charPx, top: 0,
                   width: st.len * charPx, height: ROW_HEIGHT_STRAND,
-                  background: 'var(--surface-1, #ffffff)',
+                  background: recessFill,
                   [stepSide]: '1px solid var(--border-default, #d6d3d1)',
                   zIndex: 3, pointerEvents: 'none',
                 }}

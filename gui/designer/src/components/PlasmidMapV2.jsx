@@ -12,10 +12,11 @@
  * верхняя засечка-ноль + центр зафиксированы. Гейт — FEATURE_FLAGS.plasmidMapV2.
  */
 import { useState, useMemo } from 'react';
-import { getRegions } from '../annotation-model';
+import { getRegions, getAllDetails, getPoints } from '../annotation-model';
 import { scanAllSites } from '../restriction-db';
 import { filterReSites } from '../lib/re-site-filter';
 import { featureColorShaded, FEATURE_STROKE } from '../feature-palette';
+import { isFragmentFeature } from '../lib/feature-fragment';
 import { useStore, selectActiveSetEnzymes } from '../store';
 import {
   TAU, polar, featureArrow, smallMarker, layoutLabels, rulerStep, buildReMarkers,
@@ -70,8 +71,11 @@ export default function PlasmidMapV2({
         id: r.id, name: r.name || r.type || '—', type: r.type || 'misc',
         start: r.start, end: r.end, strand: Number.isFinite(r.strand) ? r.strand : 1,
         introns: (intronsByParent.get(r.id) || []),
+        // UX-4 — compute fragment-ness from the FULL region (flags/coverage/name)
+        // before the lossy reshape above drops fragment/partial/coverage.
+        isFragment: isFragmentFeature(r),
       }))
-      : featuresFromFragments(fragments, getRegions);
+      : featuresFromFragments(fragments, getRegions).map((f) => ({ ...f, isFragment: isFragmentFeature(f) }));
     return feats.filter((f) => Number.isFinite(f.start) && Number.isFinite(f.end)).map((f, i) => {
       const sA = (f.start / total) * TAU; const eA = (f.end / total) * TAU;
       // Spliced gene → split into exon spans so introns show as visible gaps.
@@ -83,6 +87,26 @@ export default function PlasmidMapV2({
       };
     });
   }, [fragments, annotations, total]);
+
+  // UX-1 / V-FEAT-3 (circular) — introns already render as exon-split gaps in
+  // the arc above. This adds the still-missing layers on the `annotations` path:
+  // non-intron sub-features (domains/tags) as thin nested arcs at the inner edge
+  // of the gene ring, and points (mutations/RE/start-stop) as small diamonds.
+  const subFeatures = useMemo(() => (annotations
+    ? getAllDetails(annotations)
+      // Skip introns that are exon-split into gene gaps above (V182: grouped by
+      // `regionId` — the model standard — OR legacy `parentId`). Drawing them again
+      // as a detail arc would double-paint. A truly orphan intron (no gene link)
+      // still surfaces here so it isn't invisible.
+      .filter((d) => Number.isFinite(d.start) && Number.isFinite(d.end)
+        && !((d.type || '').toLowerCase() === 'intron' && (d.regionId != null || d.parentId != null)))
+      .map((d, k) => ({ ...d, k, fill: featureColorShaded(d.type, d.name) || 'var(--feature-misc, #EEE7D5)', isFragment: isFragmentFeature(d) }))
+    : []), [annotations]);
+  const pointMarks = useMemo(() => (annotations
+    ? getPoints(annotations)
+      .filter((p) => Number.isFinite(p.start))
+      .map((p, k) => ({ ...p, k, fill: featureColorShaded(p.type, p.name) || 'var(--viz-junction, #94a3b8)' }))
+    : []), [annotations]);
 
   // «При вращении динамически перестраивать подписи» (Игорь): the label layout
   // (column side + vertical stacking) is computed from the ROTATED angles, and
@@ -168,6 +192,11 @@ export default function PlasmidMapV2({
     onFeatureClick?.(f);
   };
   const isSel = (f) => f.id != null && f.id === selectedRegionId;
+  // Sub-feature / point click — select by id (no fragment index).
+  const clickAnn = (a) => {
+    if (onSelectRegion && a.id != null) onSelectRegion(a.id === selectedRegionId ? null : a.id);
+    onFeatureClick?.(a);
+  };
   const rotXf = rotationDeg ? `rotate(${rotationDeg} ${cx} ${cy})` : undefined;
 
   return (
@@ -290,8 +319,12 @@ export default function PlasmidMapV2({
                       ? featureArrow(cx, cy, a0, a1, a.strand, oR, iR)
                       : arcBand(cx, cy, a0, a1, oR, iR);
                     return (
-                      <path key={`ex${k}`} d={d} fill={a.fill} stroke={sel ? FEATURE_STROKE : '#ffffff'}
-                        strokeWidth={sel ? 1.4 : 0.6} opacity={h && !sel ? 0.88 : 1} data-testid="plasmid-v2-exon" />
+                      <path key={`ex${k}`} d={d}
+                        fill={a.isFragment ? 'var(--surface-1, #ffffff)' : a.fill}
+                        stroke={sel ? FEATURE_STROKE : (a.isFragment ? a.fill : '#ffffff')}
+                        strokeWidth={sel ? 1.4 : (a.isFragment ? 1.1 : 0.6)}
+                        opacity={h && !sel ? 0.88 : 1} data-testid="plasmid-v2-exon"
+                        data-fragment={a.isFragment ? 'true' : undefined} />
                     );
                   })}
                   <title>{title}</title>
@@ -302,11 +335,46 @@ export default function PlasmidMapV2({
             const span = a.endAngle - a.startAngle; const arcLen = span * fMid;
             const d = arcLen < 14 ? smallMarker(cx, cy, a.midAngle, a.strand, oR, iR) : featureArrow(cx, cy, a.startAngle + 0.004, a.endAngle - 0.004, a.strand, oR, iR);
             return (
-              <path key={a.i} d={d} fill={a.fill} stroke={sel ? FEATURE_STROKE : '#ffffff'} strokeWidth={sel ? 1.4 : 0.6}
+              <path key={a.i} d={d}
+                fill={a.isFragment ? 'var(--surface-1, #ffffff)' : a.fill}
+                stroke={sel ? FEATURE_STROKE : (a.isFragment ? a.fill : '#ffffff')}
+                strokeWidth={sel ? 1.4 : (a.isFragment ? 1.1 : 0.6)}
                 opacity={h && !sel ? 0.88 : 1} style={{ cursor: 'pointer', transition: 'opacity 100ms' }}
-                data-testid={`plasmid-v2-feature-${a.i}`} {...evt}>
+                data-testid={`plasmid-v2-feature-${a.i}`} data-fragment={a.isFragment ? 'true' : undefined} {...evt}>
                 <title>{title}</title>
               </path>
+            );
+          })}
+
+          {/* sub-features (detail, non-intron) — thin nested arc at the inner edge
+              of the gene ring so domains/tags read as «inside» the feature. */}
+          {subFeatures.map((d) => {
+            const s0 = (d.start / total) * TAU + 0.004;
+            const e0 = Math.max(s0 + 0.006, (d.end / total) * TAU - 0.004);
+            const sel = isSel(d);
+            return (
+              <path key={`sf${d.k}`} data-testid={`plasmid-v2-detail-${d.k}`}
+                data-fragment={d.isFragment ? 'true' : undefined}
+                d={arcBand(cx, cy, s0, e0, fIn + 6, fIn + 1)}
+                fill={d.isFragment ? 'var(--surface-1, #ffffff)' : d.fill}
+                stroke={sel ? FEATURE_STROKE : (d.isFragment ? d.fill : '#ffffff')}
+                strokeWidth={sel ? 1.2 : (d.isFragment ? 1 : 0.5)} opacity={0.92}
+                style={{ cursor: 'pointer' }} onClick={() => clickAnn(d)}>
+                <title>{`${d.name || d.type} (саб-фича) · ${d.start + 1}–${d.end} (${d.end - d.start} bp)`}</title>
+              </path>
+            );
+          })}
+
+          {/* points (mutation / RE / start-stop) — small diamond on the feature ring */}
+          {pointMarks.map((p) => {
+            const a = (p.start / total) * TAU; const pt = polar(cx, cy, fMid, a);
+            const sel = isSel(p); const r = 3.2;
+            return (
+              <g key={`pm${p.k}`} data-testid={`plasmid-v2-point-${p.k}`} style={{ cursor: 'pointer' }} onClick={() => clickAnn(p)}>
+                <path d={`M${pt.x},${pt.y - r} L${pt.x + r},${pt.y} L${pt.x},${pt.y + r} L${pt.x - r},${pt.y} Z`}
+                  fill={p.fill} stroke={sel ? FEATURE_STROKE : '#ffffff'} strokeWidth={sel ? 1 : 0.5} />
+                <title>{`${p.name || p.type} · ${p.start + 1}`}</title>
+              </g>
             );
           })}
 

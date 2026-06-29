@@ -50,3 +50,15 @@ describe('AlignReferenceView — selection drag does not re-render the whole vie
     expect(svProps.fragments).toBe(frags1);
   });
 });
+
+describe('AlignReferenceView — circular reference threads topology to SequenceView (V188)', () => {
+  it('passes circular=true when the reference is circular (origin-straddling RE sites visible)', () => {
+    render(<AlignReferenceView result={result} referenceFragment={{ ...referenceFragment, circular: true }} />);
+    expect(svProps.circular).toBe(true);
+  });
+
+  it('passes circular=false for a linear reference (no phantom origin site)', () => {
+    render(<AlignReferenceView result={result} referenceFragment={referenceFragment} />);
+    expect(svProps.circular).toBe(false);
+  });
+});

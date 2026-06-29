@@ -27,6 +27,8 @@ import {
 } from './skeleton-persistence';
 import { selectAssemblyDraftSequence, selectAssemblyDraftById } from './selectors-assembly';
 import { selectAssemblyTarget } from './selectors-pieces';
+import { buildAssemblyZoneAction } from '../canvas/assembly-zone-create';
+import { PENDING_NEW_ASSEMBLY } from '../../../store/projectAssembliesSlice';
 
 const EMPTY_ASSEMBLY = Object.freeze([]);
 const StateContext = createContext(null);
@@ -100,10 +102,20 @@ export function SkeletonProvider({ children }) {
   const pendingAssemblyId = useStore((s) => s.pendingAssemblyId);
   useEffect(() => {
     if (!pendingAssemblyId || !rehydratedRef.current) return;
+    const consume = useStore.getState().consumePendingAssemblyId;
+    // «Новая сборка» from the rail (Игорь 25.06 — the button «не создаёт сборку»): the
+    // rail can't dispatch CREATE_ZONE here, so it sets this sentinel; we create a fresh
+    // zone + focus it. consume() nulls the sentinel → the state-dep re-run early-returns.
+    if (pendingAssemblyId === PENDING_NEW_ASSEMBLY) {
+      const a = buildAssemblyZoneAction(state);
+      dispatch(a);
+      dispatch({ type: 'SET_ACTIVE_ASSEMBLY', zoneId: a.zone.id });
+      if (typeof consume === 'function') consume();
+      return;
+    }
     const zones = Array.isArray(state.zones) ? state.zones : [];
     if (zones.some((z) => z.id === pendingAssemblyId)) {
       dispatch({ type: 'SET_ACTIVE_ASSEMBLY', zoneId: pendingAssemblyId });
-      const consume = useStore.getState().consumePendingAssemblyId;
       if (typeof consume === 'function') consume();
     }
   }, [pendingAssemblyId, state, dispatch]);

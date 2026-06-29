@@ -1,52 +1,30 @@
 /**
- * circularize-apply — M-CIRCULARIZE C1. Pure: maps the CircularizeModal decision
- * ({ circular, method, applyToAll }) to the ordered store actions the editor
- * dispatches. Kept out of AssemblyShellBody so the file stays under the size
- * budget and the decision logic is unit-testable in isolation.
- *
- * Decision (Игорь 12.06): one method for the WHOLE assembly when «применить ко
- * всем», else only the closure junction (last→first). Topology is always set.
- * Single-fragment self-closure config is C3 (closureBoundary still guards <2).
+ * circularize-apply — RC-SEP (Игорь 25.06 «чётко разделить настройку стыков и
+ * кольцевание»). CLEAN SEPARATION:
+ *   • TOPOLOGY (линейная / кольцевая) is a header segmented toggle → SET_ZONE_TOPOLOGY,
+ *     set directly by AssemblyShellBody (NOT here).
+ *   • INTERNAL junctions live on the strip ромбы (per-boundary SET_BOUNDARY_OVERLAP).
+ *   • THIS maps the «Замыкание» (closure-reaction) decision → SET_CLOSURE_METHOD, which
+ *     stores the ring-closing reaction as ONE assembly property (zone.closureMethod),
+ *     read by closureSeam (gate/display) + methodsFromJunctions (realise). It is NOT an
+ *     internal junction and NOT the topology — fully decoupled.
  */
-import { pairKeyFor } from './junction-derive';
 
-export function circularizeActions({
-  draftId, circular, method, applyToAll, isZoneTarget, segments, enzyme = null,
-}) {
-  // M-CIRCULARIZE — a ZONE assembly sets topology via SET_ZONE_TOPOLOGY (the
-  // legacy SET_ASSEMBLY_DRAFT_TOPOLOGY only touches assemblyDrafts → no-op on a
-  // zone). isZoneTarget routes it in applyCircularize.
-  const out = [{ kind: 'topology', draftId, circular, isZoneTarget: !!isZoneTarget }];
-  if (isZoneTarget && method) {
-    if (applyToAll) {
-      // F — the chosen enzyme (GG/RE) rides the assembly-method action.
-      out.push({ kind: 'assemblyMethod', zoneId: draftId, method, enzyme });
-    } else if (circular) {
-      const segs = segments || [];
-      if (segs.length >= 2) {
-        out.push({
-          kind: 'closureMethod',
-          zoneId: draftId,
-          pairKey: pairKeyFor(segs[segs.length - 1].id, segs[0].id),
-          method,
-          enzyme,
-        });
-      }
-    }
-  }
-  return out;
+/** @returns {Array<{kind:'closureMethod', zoneId, method, enzyme}>} empty when no method. */
+export function closureActions({ draftId, method, enzyme = null }) {
+  if (!method) return [];
+  return [{
+    kind: 'closureMethod', zoneId: draftId, method, enzyme,
+  }];
 }
 
-/**
- * applyCircularize — thin imperative wrapper: dispatch the circularizeActions
- * through the skeleton `actions`. Keeps the editor's confirm handler tiny.
- */
-export function applyCircularize(actions, params) {
-  for (const a of circularizeActions(params)) {
-    if (a.kind === 'topology') {
-      if (a.isZoneTarget) actions.zoneDispatch({ type: 'SET_ZONE_TOPOLOGY', zoneId: a.draftId, circular: a.circular });
-      else actions.setAssemblyDraftTopology(a.draftId, a.circular);
-    } else if (a.kind === 'assemblyMethod') actions.zoneDispatch({ type: 'SET_ASSEMBLY_METHOD', zoneId: a.zoneId, method: a.method, enzyme: a.enzyme });
-    else if (a.kind === 'closureMethod') actions.zoneDispatch({ type: 'SET_BOUNDARY_OVERLAP', zoneId: a.zoneId, pairKey: a.pairKey, method: a.method, enzyme: a.enzyme, autoMode: 'manual' });
+/** Dispatch the closure-method action through the skeleton `actions`. */
+export function applyClosure(actions, params) {
+  for (const a of closureActions(params)) {
+    if (a.kind === 'closureMethod') {
+      actions.zoneDispatch({
+        type: 'SET_CLOSURE_METHOD', zoneId: a.zoneId, method: a.method, enzyme: a.enzyme,
+      });
+    }
   }
 }

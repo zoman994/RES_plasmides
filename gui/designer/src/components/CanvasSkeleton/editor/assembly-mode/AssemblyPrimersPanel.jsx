@@ -7,6 +7,10 @@
  */
 import { useMemo, useState } from 'react';
 import { Icon } from '../../../icons/Icon';
+import PrimerBindingSites from '../../../PrimerBindingSites';
+import { useStore } from '../../../../store';
+import { primerPoolReuse } from '../../../../primer-reuse';
+import { makeId } from '../../../../lib/ids';
 import {
   useSkeletonState, useSkeletonActions, useAssemblyDraftById,
 } from '../../store/skeleton-context';
@@ -39,8 +43,50 @@ function srcLabel(p, segName) {
 export function PrimerRow({ p, actions, draftId, onEdit }) {
   const [renaming, setRenaming] = useState(false);
   const [val, setVal] = useState(p.label || p.name);
+  const [showBind, setShowBind] = useState(false); // PRIMER-1 — «куда садится» in library
   const cross = (p.crossesBoundaries || []).length >= 2;
+  // PRIMER-6 (V180) — auto-reuse: does this auto-derived primer already exist in
+  // the unified pool? If so, flag «в наличии» so the biolog reuses it instead of
+  // ordering a duplicate (answers «проверяет ли автогенерация наличие в пуле»).
+  const primersById = useStore((s) => s.primersById);
+  const poolReuse = useMemo(
+    () => primerPoolReuse(p, Object.values(primersById || {})),
+    [p, primersById],
+  );
+  // PRIMER-4 (#118) — ephemeral vs durable: assembly primers are DRAFTS
+  // (recomputed by the finalizer). «＋ в пул» promotes one to the durable
+  // unified pool (a fresh-id snapshot) so it survives + is reusable. Hidden
+  // once «в наличии» (already in the pool).
+  const addPrimerToPool = useStore((s) => s.addPrimerToPool);
+  const currentProjectId = useStore((s) => s.currentProjectId);
+  const showToast = useStore((s) => s.showToast);
+  const [saving, setSaving] = useState(false);
+  const onSaveToPool = async () => {
+    if (saving || !addPrimerToPool) return;
+    setSaving(true);
+    try {
+      const res = await addPrimerToPool({
+        primer: {
+          id: makeId(),
+          name: p.label || p.name || 'primer',
+          sequence: p.sequence,
+          bindingSequence: p.bindingSequence || null,
+          tail: typeof p.tail === 'string' ? p.tail : (p.tailSequence || ''),
+          direction: p.direction || null,
+          tm: typeof p.tmBinding === 'number' ? p.tmBinding : p.tm,
+        },
+        projectId: currentProjectId ?? null,
+        status: 'imported',
+        origin: { kind: 'assembly-derived' },
+      });
+      if (res) showToast?.(`Праймер «${res.name}» сохранён в пул`, 'success');
+      else showToast?.('Не удалось сохранить праймер', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
   return (
+    <div>
     <div
       data-testid="assembly-primer-row"
       data-cross={cross ? 'true' : 'false'}
@@ -62,6 +108,16 @@ export function PrimerRow({ p, actions, draftId, onEdit }) {
       >
         {p.autoMode === 'auto' ? '🔧 черновик' : '🔒'}
       </span>
+      {poolReuse.length > 0 && (
+        <span
+          data-testid={`assembly-primer-reuse-${p.id}`}
+          title={`Уже есть в пуле: ${poolReuse[0].existing.name} — переиспользуйте, не заказывайте заново`}
+          style={{
+            fontSize: 9, padding: '0 4px', borderRadius: 3, whiteSpace: 'nowrap',
+            background: 'var(--success-50, #dcfce7)', color: 'var(--success-fg, #15803d)',
+          }}
+        >✓ в наличии{poolReuse.length > 1 ? ` (${poolReuse.length})` : ''}</span>
+      )}
       {renaming ? (
         <input
           data-testid="assembly-primer-rename-input"
@@ -132,6 +188,25 @@ export function PrimerRow({ p, actions, draftId, onEdit }) {
         title="Редактировать ПСО"
         style={iconBtnFlex}
       ><Icon name="edit" size={12} /></button>
+      {/* PRIMER-1 — «куда садится»: where this primer anneals across the library. */}
+      <button
+        type="button"
+        data-testid={`assembly-primer-bind-${p.id}`}
+        onClick={() => setShowBind((v) => !v)}
+        title="Куда садится в библиотеке (специфичность / кросс-референс)"
+        style={{ ...iconBtnFlex, color: showBind ? 'var(--accent-600,#4338ca)' : 'var(--text-secondary)' }}
+      ><Icon name="search" size={12} /></button>
+      {/* PRIMER-4 (#118) — promote this ephemeral draft to the durable pool. */}
+      {poolReuse.length === 0 && (
+        <button
+          type="button"
+          data-testid={`assembly-primer-save-pool-${p.id}`}
+          onClick={onSaveToPool}
+          disabled={saving}
+          title="Сохранить в общий пул праймеров (черновик → постоянный)"
+          style={{ ...iconBtnFlex, color: 'var(--success-fg,#15803d)' }}
+        ><Icon name="plus" size={12} /></button>
+      )}
       <button
         type="button"
         data-testid="assembly-primer-delete"
@@ -139,6 +214,8 @@ export function PrimerRow({ p, actions, draftId, onEdit }) {
         title="Удалить"
         style={{ ...iconBtnFlex, color: 'var(--accent-500,#b85c3e)' }}
       ><Icon name="close" size={12} /></button>
+    </div>
+    {showBind && <div style={{ padding: '0 0 4px 18px' }}><PrimerBindingSites primer={p} /></div>}
     </div>
   );
 }

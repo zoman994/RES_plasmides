@@ -4,6 +4,9 @@ import {
   deletePrimer,
   findPrimerByResourceHash,
 } from '../db/dexie-schema';
+// PRIMER-10 (V177) — same canonical hash the Importer uses, so dedup works
+// across paths (library-selection / assembly / import), not only on import.
+import { computeResourceHash } from '../components/Library/lib/resource-hash';
 
 /**
  * Unified primer pool slice (M-B.1 K1, DEC-IMP-11 ⚓).
@@ -32,6 +35,14 @@ function normalizePrimer(input, { projectId, status, origin } = {}) {
     id: input.id,
     name: input.name || 'primer',
     sequence: seq,
+    // PRIMER-7 (V173) — binding (anneals to template) + 5'-tail (overhang) kept
+    // separate so PrimerTrack matches the binding, not tail+binding, and draws
+    // the tail as an overhang. bindingSequence null ⇒ consumers fall back to seq.
+    bindingSequence: input.bindingSequence || null,
+    // PRIMER-AUDIT (V174) — accept both ecosystem field names (assembly `tail`,
+    // PCR-mode/local-primer-design `tailSequence`); canonicalize to `tail`.
+    tail: typeof input.tail === 'string' ? input.tail
+      : (typeof input.tailSequence === 'string' ? input.tailSequence : ''),
     tm: typeof input.tm === 'number' ? input.tm : null,
     length: typeof input.length === 'number' ? input.length : seq.length,
     direction: input.direction || null,
@@ -39,6 +50,8 @@ function normalizePrimer(input, { projectId, status, origin } = {}) {
     status: VALID_STATUSES.has(status) ? status : (input.status || 'imported'),
     origin: origin || input.origin || defaultOrigin(),
     resourceHash: input.resourceHash || null,
+    // PRIMER-3 — free-form user tags (колония / seq / fwd…). UI filter + chips.
+    tags: Array.isArray(input.tags) ? input.tags.filter((t) => typeof t === 'string' && t) : [],
     addedAt: input.addedAt || new Date().toISOString(),
   };
 }
@@ -67,9 +80,30 @@ export const createPrimerSlice = (set, get) => ({
   addPrimerToPool: async ({ primer, projectId = null, status = 'imported', origin = null }) => {
     const safe = normalizePrimer(primer, { projectId, status, origin });
     if (!safe) return null;
+    // Synchronous state-set FIRST — callers rely on the primer being in the pool
+    // immediately (V177 must NOT delay this behind the optional async hash; some
+    // envs' crypto.subtle.digest is slow/stubbed). NOTE: immer auto-freezes `safe`
+    // once it lands in state, so we must NOT mutate it afterwards — patch via set()
+    // and persist a fresh copy.
     set(state => { state.primersById[safe.id] = safe; });
-    await putPrimer(safe);
-    return safe;
+    // PRIMER-10 (V177) — then stamp a resourceHash so checkPrimerDedup works across
+    // ALL paths (library-selection / assembly / import), not only the Importer.
+    // Same canonical hash (full oligo + 5'/3' linear ends) → identical primers dedup.
+    // Best-effort: crypto missing/slow → row keeps null, callers degrade to name-only.
+    let toPersist = safe;
+    if (!safe.resourceHash) {
+      try {
+        const h = await computeResourceHash({
+          sequence: safe.sequence, topology: 'linear', ends: { left: '5', right: '3' },
+        });
+        if (h) {
+          set(state => { const e = state.primersById[safe.id]; if (e) e.resourceHash = h; });
+          toPersist = { ...safe, resourceHash: h };
+        }
+      } catch { /* crypto unavailable */ }
+    }
+    await putPrimer(toPersist);
+    return toPersist;
   },
 
   /**
@@ -99,6 +133,30 @@ export const createPrimerSlice = (set, get) => ({
       .find(r => r.resourceHash === resourceHash);
     if (inMem) return inMem;
     return findPrimerByResourceHash(resourceHash);
+  },
+
+  /**
+   * PRIMER-3 — patch editable fields (name, tags) of a pool primer. Ignores
+   * blank names (trim → no-op) and non-array tags. Persists to Dexie.
+   */
+  updatePrimerFields: async (primerId, patch) => {
+    const existing = get().primersById[primerId];
+    if (!existing || !patch || typeof patch !== 'object') return null;
+    const name = typeof patch.name === 'string' ? patch.name.trim() : null;
+    const tags = Array.isArray(patch.tags)
+      ? patch.tags.filter((t) => typeof t === 'string' && t)
+      : null;
+    const next = { ...existing };
+    if (name) next.name = name;
+    if (tags) next.tags = tags;
+    set((state) => {
+      const e = state.primersById[primerId];
+      if (!e) return;
+      if (name) e.name = name;
+      if (tags) e.tags = tags;
+    });
+    await putPrimer(next);
+    return next;
   },
 
   promotePrimerStatus: async (primerId, newStatus) => {

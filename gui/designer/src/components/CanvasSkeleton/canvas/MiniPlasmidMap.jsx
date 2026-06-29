@@ -21,6 +21,20 @@ const TWO_PI = Math.PI * 2;
 const LABEL_FONT = 6.5;
 const LABEL_LEAD = 5; // px leader past the ring / above the strip
 
+/**
+ * linearBarWidth — DAG bp→length scale (Игорь 26.06). The linear fragment strip
+ * is drawn at a width ∝ bp on a SHARED scale (maxBp = the largest molecule in the
+ * graph), so small fragments no longer fill the card and read as smaller than the
+ * plasmid rings. Clamped to [floor, fullW] so a tiny fragment stays a visible bar.
+ * Opt-in: maxBp falsy → fullW (current behaviour for the main canvas / Library).
+ */
+export function linearBarWidth(bp, maxBp, fullW, floor = 24) {
+  if (!maxBp || maxBp <= 0 || !(bp > 0)) return fullW;
+  const frac = Math.min(1, bp / maxBp);
+  const lo = Math.min(floor, fullW);
+  return Math.max(lo, Math.round(frac * fullW));
+}
+
 // Halo so small labels read over arcs/backbone on any theme.
 const LABEL_TEXT_STYLE = {
   paintOrder: 'stroke fill',
@@ -87,6 +101,10 @@ export default function MiniPlasmidMap({
   width = 90,
   height = 70,
   testId,
+  // DAG bp→bar scale (Игорь 26.06): the largest molecule in the graph. When set,
+  // a LINEAR strip is drawn at a width ∝ length/maxBp (rings ignore it). Falsy →
+  // current full-width behaviour (main canvas / Library never pass it).
+  maxBp = 0,
   // V85 r2 (Игорь 22.05.2026) — на 32px thumbnail'ах leader-line
   // labels фич нечитаемы и обрезаются. showLabels=false → рендерим
   // только цветное кольцо/strip, имя+счётчик фич живут в тексте
@@ -136,6 +154,7 @@ export default function MiniPlasmidMap({
       height={height}
       testId={testId}
       showLabels={showLabels}
+      maxBp={maxBp}
     />
   );
 }
@@ -324,19 +343,28 @@ function CutMarker({ cx, cy, r, theta }) {
   );
 }
 
-function LinearMap({ L, features, excised, frozen, primers = [], flank = null, width, height, testId, showLabels = true }) {
+function LinearMap({ L, features, excised, frozen, primers = [], flank = null, width, height, testId, showLabels = true, maxBp = 0 }) {
   // Horizontal strip in middle of viewport.
   const padX = 4;
-  const stripH = Math.max(10, Math.min(20, height * 0.35));
+  // Игорь 26.06 — тоньше бар (был «жирный блок») + рациональнее площадь карточки:
+  // короткий (scaled) бар ЦЕНТРИРУЕМ, чтобы он не висел в левом углу пустой карточки.
+  const stripH = Math.max(7, Math.min(10, Math.round(height * 0.13)));
   const stripY = (height - stripH) / 2;
-  const stripW = width - padX * 2;
-  const xOf = (pos) => padX + (Math.max(0, Math.min(L, pos)) / L) * stripW;
+  const fullW = width - padX * 2;
+  // DAG bp→bar scale (Игорь 26.06): when a graph-wide maxBp is supplied, draw the
+  // strip at width ∝ length/maxBp so small fragments read smaller than the rings.
+  const stripW = linearBarWidth(L, maxBp, fullW);
+  const stripX = padX + Math.max(0, (fullW - stripW) / 2);
+  const xOf = (pos) => stripX + (Math.max(0, Math.min(L, pos)) / L) * stripW;
 
   // V66 — feature labels (shared selection; placed above the strip).
-  // V85 r2 — skip entirely when showLabels=false (tiny thumbnails).
-  const labels = (showLabels ? pickRegionsForLabels(features, L) : [])
+  // V85 r2 — skip entirely when showLabels=false (tiny thumbnails). When the bar is
+  // scaled short (maxBp), drop labels too — they're unreadable on a <60px strip and
+  // the name/bp live in the card header anyway.
+  const showLbls = showLabels && stripW >= 60;
+  const labels = (showLbls ? pickRegionsForLabels(features, L) : [])
     .map((rg) => {
-      const x = padX + (((rg.start + rg.end) / 2) / L) * stripW;
+      const x = stripX + (((rg.start + rg.end) / 2) / L) * stripW;
       return {
         key: `lbl-${rg.start}-${rg.end}`,
         text: truncateLabel(rg.name || rg.type || 'region'),
@@ -367,7 +395,8 @@ function LinearMap({ L, features, excised, frozen, primers = [], flank = null, w
     >
       {/* Backbone strip */}
       <rect
-        x={padX} y={stripY}
+        data-testid="mini-plasmid-strip"
+        x={stripX} y={stripY}
         width={stripW} height={stripH}
         rx={2} ry={2}
         fill={excised ? '#cbd5e1' : '#94a3b8'}
@@ -375,7 +404,7 @@ function LinearMap({ L, features, excised, frozen, primers = [], flank = null, w
       />
       {/* Feature blocks */}
       {features.map((f, i) => {
-        const x = padX + (f.start / L) * stripW;
+        const x = stripX + (f.start / L) * stripW;
         const w = Math.max(1.5, ((f.end - f.start) / L) * stripW);
         const fillColor = featureColor(f.type, f.name);
         return (
@@ -445,12 +474,12 @@ function LinearMap({ L, features, excised, frozen, primers = [], flank = null, w
         );
       })}
       {/* End markers (5'/3' caps) — small triangles */}
-      <EndCap cx={padX} cy={stripY + stripH / 2} side="left" />
-      <EndCap cx={padX + stripW} cy={stripY + stripH / 2} side="right" />
+      <EndCap cx={stripX} cy={stripY + stripH / 2} side="left" />
+      <EndCap cx={stripX + stripW} cy={stripY + stripH / 2} side="right" />
       {/* Ghost overlay для frozen */}
       {frozen && (
         <rect
-          x={padX - 1} y={stripY - 1}
+          x={stripX - 1} y={stripY - 1}
           width={stripW + 2} height={stripH + 2}
           rx={2} ry={2}
           fill="rgba(127, 29, 29, 0.04)"
