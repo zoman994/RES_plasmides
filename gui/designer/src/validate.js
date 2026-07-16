@@ -76,9 +76,12 @@ export function validateConstruct(fragments) {
     if (frag.type === 'terminator' && frag.strand === -1)
       w.push(`⚠ ${frag.name}: терминатор перевёрнут — не будет работать для предыдущего гена.`);
 
-    // Intron warning
+    // Intron warning — host-aware. A fungal host (A. niger / T. reesei) SPLICES
+    // introns, so a genomic gene with introns is usually correct to KEEP; the
+    // danger case is expressing an intron-containing gene in a host that won't
+    // splice (E. coli). Phrase it both ways instead of assuming E. coli.
     if (frag.has_introns && frag.introns?.length > 0)
-      w.push(`⚠ ${frag.name}: содержит ${frag.introns.length} интрон(ов) — удалите для экспрессии в E. coli!`);
+      w.push(`💡 ${frag.name}: содержит ${frag.introns.length} интрон(ов) — сохранить для сплайсинга в грибном хозяине (A. niger / T. reesei); удалить (→ кДНК) для экспрессии в E. coli.`);
   });
 
   // Identical fragment detection

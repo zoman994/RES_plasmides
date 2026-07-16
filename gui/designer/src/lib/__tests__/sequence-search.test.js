@@ -21,6 +21,24 @@ import {
   hasIupacAmbiguity,
 } from '../sequence-search';
 
+describe('reverseComplement — IUPAC fix (P1.5, was truncated {A,T,G,C,N})', () => {
+  it('plain DNA unchanged', () => {
+    expect(reverseComplement('ATGC')).toBe('GCAT');
+  });
+  it('IUPAC codes are complemented, not N-ified', () => {
+    expect(reverseComplement('RYSWKM')).toBe('KMWSRY');
+    expect(reverseComplement('N')).toBe('N');
+    expect(reverseComplement('B')).toBe('V'); // was → N
+  });
+  it('RNA (U) is normalized and complemented (U→A)', () => {
+    expect(reverseComplement('AUGC')).toBe('GCAT');
+  });
+  it('is an involution over the full IUPAC alphabet', () => {
+    const s = 'ATGCNRYSWKMBDHV';
+    expect(reverseComplement(reverseComplement(s))).toBe(s);
+  });
+});
+
 describe('M-X.9 K1 — sequence-search core', () => {
   it('exact match — single full-length hit, identity 1.0', () => {
     const target = 'AAATTTGCATGCATGCATGCAAA';

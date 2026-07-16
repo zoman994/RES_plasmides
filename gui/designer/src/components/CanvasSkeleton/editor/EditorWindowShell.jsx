@@ -17,6 +17,7 @@
  */
 import { useCallback } from 'react';
 import { STRINGS } from '../../../lib/strings';
+import { useStore } from '../../../store';
 import {
   useSkeletonState,
   useSkeletonActions,
@@ -84,19 +85,12 @@ export default function EditorWindowShell() {
     actions.discardPendingEdits(activeContainerId);
   }, [activeContainerId, hasPending, actions]);
 
-  const onSaveAsFork = useCallback(() => {
+  const onSaveAsFork = useCallback(async () => {
     if (!activeContainerId || !activeContainer) return;
     const suggested = `${activeContainer.name || 'fork'} (fork)`;
-    let newName = suggested;
-    try {
-      const entered = typeof window !== 'undefined' && typeof window.prompt === 'function'
-        ? window.prompt('Имя нового контейнера (форк):', suggested)
-        : suggested;
-      if (entered === null) return; // cancelled
-      if (typeof entered === 'string' && entered.trim().length > 0) {
-        newName = entered.trim();
-      }
-    } catch { /* prompt unavailable */ }
+    const entered = await useStore.getState().requestPrompt({ title: 'Имя нового контейнера (форк)', defaultValue: suggested });
+    if (entered === null) return; // cancelled
+    const newName = (typeof entered === 'string' && entered.trim().length > 0) ? entered.trim() : suggested;
     actions.opForkContainer(activeContainerId, newName, { applyPendingEdits: true });
     // Close the frozen container's tab (last-tab-close → editor closes).
     if (activeTabId) actions.closeEditorTab(activeTabId);

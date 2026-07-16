@@ -189,6 +189,12 @@ export default function GoldenGateOpPopup({
               );
             })}
           </select>
+          {/* AUD-42 — teach why classical RE (EcoRI/BamHI) aren't here: Type IIS
+              cuts OUTSIDE its recognition site, so the site is removed from the
+              product and the junction is seamless. */}
+          <div data-testid="gg-op-typeiis-note" style={{ fontSize: 10.5, color: 'var(--text-tertiary)', lineHeight: 1.4, marginTop: 2 }}>
+            Type IIS режет <b>вне</b> сайта узнавания ({GG_ENZYMES[enzyme]?.recognition || '…'}) → сайт уходит из продукта, шов бесшовный. Классические рестриктазы (EcoRI, BamHI…) — в реакции «Разрез / RE-лигирование».
+          </div>
         </Field>
 
         <Field label="Топология результата">

@@ -592,6 +592,37 @@ function _shiftAnnotations(annotations, cutPos, seqLen) {
   return out;
 }
 
+/**
+ * CH-4 — clip annotations onto an EXCISE backbone (= source [pos2..seqLen) ++
+ * [0..pos1)). A feature crossing a cut boundary (pos1 or pos2) USED to be dropped
+ * (`return null`), silently losing it from the product — whereas _linearize (V122)
+ * splits such features. Here we intersect each feature with the backbone's two
+ * source ranges and keep the mapped portion(s): straddling one cut → one clipped
+ * arc; straddling BOTH cuts → two arcs; fully inside the excised region → dropped
+ * (correct — it belongs to the excised fragment). Matches the old coord mapping
+ * exactly for non-straddling features (and also cures the old start>end edge for
+ * a feature ending exactly at a cut). 0-based end-exclusive [start, end).
+ */
+function _clipToBackbone(annotations, pos1, pos2, seqLen) {
+  const shiftHigh = -pos2; // source [pos2, seqLen) → backbone [0, seqLen-pos2)
+  const shiftLow = seqLen - pos2; // source [0, pos1) → backbone [seqLen-pos2, …)
+  const out = [];
+  for (const a of (annotations || [])) {
+    const s = Number(a.start);
+    const e = Number(a.end);
+    if (!Number.isFinite(s) || !Number.isFinite(e) || e <= s) continue;
+    // ∩ R_high = [pos2, seqLen)
+    const hLo = Math.max(s, pos2);
+    const hHi = Math.min(e, seqLen);
+    if (hLo < hHi) out.push({ ...a, start: hLo + shiftHigh, end: hHi + shiftHigh });
+    // ∩ R_low = [0, pos1)
+    const lLo = Math.max(s, 0);
+    const lHi = Math.min(e, pos1);
+    if (lLo < lHi) out.push({ ...a, start: lLo + shiftLow, end: lHi + shiftLow });
+  }
+  return out;
+}
+
 function _linearize(sequence, annotations, enzymeName, enzymeInfo, site) {
   const seqLen = sequence.length;
   const cutPos = _cutPosition(site.position, enzymeInfo);
@@ -634,21 +665,9 @@ function _exciseTwoEnzymes(sequence, annotations, name1, info1, site1, name2, in
   const backboneSeq = sequence.slice(pos2) + sequence.slice(0, pos1);
   const excisedSeq = sequence.slice(pos1, pos2);
 
-  // Filter annotations into backbone vs excised
-  const backboneAnns = annotations
-    .filter(a => !(a.start >= pos1 && a.end <= pos2))
-    .map(a => {
-      let s = a.start, e = a.end;
-      // Shift for backbone rotation
-      if (s >= pos2) s -= pos2;
-      else if (s < pos1) s += (seqLen - pos2);
-      else return null;
-      if (e >= pos2) e -= pos2;
-      else if (e <= pos1) e += (seqLen - pos2);
-      else return null;
-      return { ...a, start: s, end: e };
-    })
-    .filter(Boolean);
+  // Annotations onto the backbone — straddling features are CLIPPED, not dropped
+  // (CH-4). Fully-inside-excised features fall out naturally (empty intersection).
+  const backboneAnns = _clipToBackbone(annotations, pos1, pos2, seqLen);
 
   const leftEnd = { ..._computeEnd(leftInfo), enzymeUsed: leftName };
   const rightEnd = { ..._computeEnd(rightInfo), enzymeUsed: rightName };
@@ -685,19 +704,8 @@ function _exciseSameEnzyme(sequence, annotations, enzymeName, enzymeInfo, site1,
   const backboneSeq = sequence.slice(pos2) + sequence.slice(0, pos1);
   const excisedSeq = sequence.slice(pos1, pos2);
 
-  const backboneAnns = annotations
-    .filter(a => !(a.start >= pos1 && a.end <= pos2))
-    .map(a => {
-      let s = a.start, e = a.end;
-      if (s >= pos2) s -= pos2;
-      else if (s < pos1) s += (seqLen - pos2);
-      else return null;
-      if (e >= pos2) e -= pos2;
-      else if (e <= pos1) e += (seqLen - pos2);
-      else return null;
-      return { ...a, start: s, end: e };
-    })
-    .filter(Boolean);
+  // CH-4 — clip straddling features onto the backbone instead of dropping them.
+  const backboneAnns = _clipToBackbone(annotations, pos1, pos2, seqLen);
 
   const endObj = { ..._computeEnd(enzymeInfo), enzymeUsed: enzymeName };
 

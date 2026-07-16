@@ -64,11 +64,15 @@ describe('MS-K3 — HelpPopover', () => {
     expect(onOpenHotkeys).toHaveBeenCalled();
   });
 
-  it('glossary tab shows placeholder content', () => {
+  it('glossary tab defines the core model terms (AUD-82 — was an empty placeholder)', () => {
     render(<HelpPopover open onClose={vi.fn()} />);
     fireEvent.click(screen.getByTestId('ss-help-tab-glossary'));
-    expect(screen.getByTestId('ss-help-tab-content-glossary').textContent)
-      .toMatch(/Содержание готовится/);
+    const txt = screen.getByTestId('ss-help-tab-content-glossary').textContent;
+    expect(txt).not.toMatch(/Содержание готовится/);
+    expect(txt).toMatch(/Контейнер/);
+    expect(txt).toMatch(/Сборка/);
+    expect(txt).toMatch(/Праймер/);
+    expect(txt).toMatch(/\.bodge/);
   });
 
   it('Esc closes popover', () => {

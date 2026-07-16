@@ -34,6 +34,7 @@ import { stickyEndExtent, segmentOverhangs } from '../../lib/segment-overhangs';
 import { auditReSites } from '../../lib/re-site-audit';
 import { suggestEnzymesForNextFragment } from '../../lib/restriction-cloning';
 import { fragmentRanges } from '../../lib/digest-fragments';
+import { resolveSingleLinearizeCut } from './re-single-cut';
 import DigestFragmentPicker from './DigestFragmentPicker';
 import PlasmidMapV2 from '../../../PlasmidMapV2';
 import LinearMapV2 from '../../../LinearMapV2';
@@ -173,8 +174,19 @@ export default function RangePickerModal({ source, onConfirm, onCancel, priorEnz
     ? stickyEndExtent({ start, end, acquisitionParams: reParams, reEnzymes: RE_ENZYMES, seqLen: seq.length })
     // Forward [lo,hi] so the mask renders for a bottom-up (anchor>pos) drag too.
     : { start: Math.min(Number(start), Number(end)), end: Math.max(Number(start), Number(end)) };
+  // V193/V195 — the PREVIEW overhangs must model the piece the biolog will confirm.
+  // When «Инвертировать» is active the taken piece is the origin-wrapping BACKBONE, so
+  // pass originWrap (and rc→reverseComplement) into segmentOverhangs — the SAME XOR
+  // draftFromZone uses — so the readout shows the backbone's true ends (left = the HIGH
+  // cut) instead of the mirror-swapped insert ends. Non-invert forward selection →
+  // both flags false → byte-identical to before.
   const reInfo = reAcquisition
-    ? segmentOverhangs({ acquisitionMethod: 'restriction', acquisitionParams: reParams }, RE_ENZYMES)
+    ? segmentOverhangs({
+      acquisitionMethod: 'restriction',
+      acquisitionParams: reParams,
+      originWrap: invert && sourceCircular,
+      reverseComplement: rc,
+    }, RE_ENZYMES)
     : null;
   // #3 (visual-acceptance) — uniqueness check: do the chosen RE(s) cut only at
   // the fragment ends, or elsewhere in the plasmid too? Extra sites → the
@@ -198,7 +210,14 @@ export default function RangePickerModal({ source, onConfirm, onCancel, priorEnz
   // MUST pick the band off the gel (Игорь 21.06: «режется только по 1 сайту,
   // а их там три — игнорирует»). Linearizing a multi-cutter is biologically wrong.
   const singleEnzymePending = !!(firstRESite && !reParams && !pickedActive);
-  const singleLinearizable = singleEnzymePending && cutCount === 1;
+  // A SINGLE enzyme cutting the molecule EXACTLY ONCE → linearize the whole plasmid
+  // and use the WHOLE linear fragment. Covers BOTH a clicked unique site AND a single
+  // unique enzyme picked from the dropdown (Игорь 07.07 «при выборе одного сайта —
+  // возможность использования всего линейного фрагмента»); a multi-cutter or pair → null.
+  const singleCut = resolveSingleLinearizeCut({
+    firstRESite, pickedEnzymes, reParams, uniqueSites, cutCount,
+  });
+  const singleLinearizable = !!singleCut;
   const singleNeedsGel = singleEnzymePending && cutCount >= 2;
   // A pair excision is ambiguous when a chosen enzyme also cuts elsewhere (>2 total).
   const pairAmbiguous = !pickedActive && !!reParams && cutCount > 2;
@@ -413,17 +432,18 @@ export default function RangePickerModal({ source, onConfirm, onCancel, priorEnz
   };
 
   // #4 — commit a single RE site as a plain CUT (linearize, remove nothing):
-  // the whole plasmid with that enzyme's overhang on BOTH ends.
+  // the whole plasmid with that enzyme's overhang on BOTH ends. `singleCut` resolves
+  // the one enzyme + its cut whether the biolog CLICKED the site or PICKED the enzyme.
   const confirmSingleCut = () => {
-    if (!firstRESite) return;
+    if (!singleCut) return;
     onConfirm({
       start: 0,
       end: seq.length,
       rc: !!rc,
       acquisitionMethod: 'restriction',
       acquisitionParams: {
-        enzymes: [firstRESite.enzyme],
-        cutSites: [{ position: firstRESite.position }],
+        enzymes: [singleCut.enzyme],
+        cutSites: [{ position: singleCut.position }],
         single: true,
       },
     });
@@ -459,8 +479,12 @@ export default function RangePickerModal({ source, onConfirm, onCancel, priorEnz
   // фрагмент выбирается без перекидывания на модалку, а там >2 фрагментов»). A
   // single UNIQUE cutter → linearize; otherwise confirm the selected range.
   const onPrimaryConfirm = () => {
-    if (offerDigest) { setDigestOpen(true); return; }
+    // A single UNIQUE cutter (clicked OR picked) → linearize the whole plasmid: the
+    // obvious intent, checked BEFORE the gel so a dropdown-picked unique enzyme isn't
+    // detoured through a one-band gel (Игорь 07.07 «весь линейный фрагмент»). The gel
+    // button stays available as a secondary path for a partial/alt view.
     if (singleLinearizable) { confirmSingleCut(); return; }
+    if (offerDigest) { setDigestOpen(true); return; }
     confirm();
   };
 
@@ -862,7 +886,10 @@ export default function RangePickerModal({ source, onConfirm, onCancel, priorEnz
           )}
           <span style={{ flex: 1, fontSize: 10.5, color: 'var(--text-tertiary)' }}>
             {invertActive
-              ? `Бэкбон: ${seq.length - (end - start)} bp — выделенный фрагмент затенён, берётся остаток (комплемент по кольцу)`
+              ? `Бэкбон: ${seq.length - (end - start)} bp — берётся остаток (комплемент по кольцу)`
+                + (reInfo ? ` · липкие концы: ${reInfo.left ? reInfo.left.label : '—'} | ${reInfo.right ? reInfo.right.label : '—'}` : '')
+              : singleLinearizable
+              ? `«${singleCut.enzyme}» режет 1× — «Использовать как фрагмент» линеаризует плазмиду (весь линейный фрагмент); добавь второй сайт/фермент для вырезания`
               : pickedActive
               ? (cutCount >= 1
                 ? `${digestEnzymes.join(' + ')} · ${cutCount} разрез(ов) — «Использовать как фрагмент» откроет гель`

@@ -41,6 +41,8 @@
  * informational only — hits are NOT filtered out when it's false.
  */
 
+import { reverseComplementIupac } from './iupac';
+
 const DEFAULT_OPTS = Object.freeze({
   identityThreshold: 0.8,
   match: 1,
@@ -70,17 +72,12 @@ const DEFAULT_OPTS = Object.freeze({
   primerModeMaxLen: 50,
 });
 
-const COMPLEMENT = { A: 'T', T: 'A', G: 'C', C: 'G', N: 'N' };
-
-export function reverseComplement(seq) {
-  if (!seq) return '';
-  const out = new Array(seq.length);
-  for (let i = 0; i < seq.length; i++) {
-    const c = seq[seq.length - 1 - i].toUpperCase();
-    out[i] = COMPLEMENT[c] || c;
-  }
-  return out.join('');
-}
+// V-SEARCH-IUPAC (P1.5) — the reverse-strand query used the truncated map
+// {A,T,G,C,N}, silently N-ifying R/Y/S/W/… and leaving U un-complemented, so an
+// IUPAC query never matched its reverse strand. Delegate to the canonical engine
+// (kept as a local binding so internal reverse-strand calls resolve, and re-export
+// under the historical name for any downstream import).
+export const reverseComplement = reverseComplementIupac;
 
 export function adaptiveSeedLen(queryLen) {
   if (!Number.isFinite(queryLen) || queryLen < 8) return 4;
@@ -552,9 +549,9 @@ export function identityBucket(identity) {
   return 'low';                             // grey
 }
 
-export function isDnaQuery(s) {
+export function isDnaQuery(s, minLen = 8) {
   if (typeof s !== 'string') return false;
-  if (s.length < 8) return false;
+  if (s.length < minLen) return false;
   return /^[ACGTUNRYWSKMBDHVacgtunrywskmbdhv]+$/.test(s);
 }
 

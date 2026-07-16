@@ -24,7 +24,7 @@
 
 import { useLayoutEffect, useState } from "react";
 import { LABEL_WIDTH } from "../constants.js";
-import { complementSegments } from "../lib/selection-ops.js";
+import { complementSegments, invertedStickyStrandRanges } from "../lib/selection-ops.js";
 
 export default function SelectionOverlay({
   caretPos,
@@ -100,6 +100,55 @@ export default function SelectionOverlay({
         if ((el.getAttribute('data-wraptail-kind') || 'main') !== 'main') continue;
         pushStrand(el, el.querySelector('[data-testid="sequence-view-strands-top"]'), ranges.top, 'top');
         pushStrand(el, el.querySelector('[data-testid="sequence-view-strands-bottom"]'), ranges.bottom, 'bottom');
+      }
+      setRects(out);
+      return undefined;
+    }
+
+    // STICKY ENDS + INVERT (Игорь 07.07 «при инверсии обжирает липкие концы») — when
+    // the biolog inverts a two-cut selection to take the BACKBONE, the excised piece's
+    // staircase (above) is gated off by `!inverted`, so the ends looked eaten. Paint the
+    // backbone's OWN staircase instead: its top strand wraps the origin
+    // ([sHi,len]+[0,sLo]) and its bottom is staggered by each cut's delta at the SAME
+    // columns (invertedStickyStrandRanges). The excised INSERT is veiled STRAND-AWARE
+    // (top [sLo,sHi] / bottom [sLo+leftDelta,sHi+rightDelta]) — never as a full rectangle,
+    // else the veil would re-hide the backbone's overhang sliver protruding into it.
+    const stickyInverted = stickyEnds && inverted && selectionMode === 'dna'
+      && showBottomStrand && (stickyEnds.leftDelta || stickyEnds.rightDelta)
+      && sLo >= 0 && sHi <= seqLength && Number.isFinite(seqLength) && seqLength > 0;
+    if (stickyInverted) {
+      const clampR = ([a, b]) => [Math.max(0, Math.min(seqLength, a)), Math.max(0, Math.min(seqLength, b))];
+      const bb = invertedStickyStrandRanges({
+        sLo, sHi, leftDelta: stickyEnds.leftDelta, rightDelta: stickyEnds.rightDelta, seqLength,
+      });
+      // The excised insert's own strands (the SAME geometry the non-inverted staircase
+      // draws) — veiled so the taken backbone reads as the foreground.
+      const insTop = [clampR([sLo, sHi])].filter(([a, b]) => b > a);
+      const insBot = [clampR([sLo + stickyEnds.leftDelta, sHi + stickyEnds.rightDelta])].filter(([a, b]) => b > a);
+      const out = [];
+      const pushStrand = (el, strandEl, range, tag, dim) => {
+        if (!strandEl) return;
+        const lineStart = parseInt(el.dataset.lineStart || '', 10);
+        if (Number.isNaN(lineStart)) return;
+        const lineEnd = lineStart + cpl;
+        const segStart = Math.max(range[0], lineStart);
+        const segEnd = Math.min(range[1], lineEnd);
+        if (segEnd <= segStart) return;
+        const left = (el.offsetLeft || 0) + (LABEL_WIDTH + (segStart - lineStart)) * charPx;
+        const width = (segEnd - segStart) * charPx;
+        const top = el.offsetTop + strandEl.offsetTop;
+        out.push({
+          left, top, width, height: strandEl.offsetHeight, key: `${lineStart}:${tag}:${dim ? 'dim' : 'inv'}`, kind: 'dna', strand: tag, dim: !!dim,
+        });
+      };
+      for (const el of lines) {
+        if ((el.getAttribute('data-wraptail-kind') || 'main') !== 'main') continue;
+        const topEl = el.querySelector('[data-testid="sequence-view-strands-top"]');
+        const botEl = el.querySelector('[data-testid="sequence-view-strands-bottom"]');
+        for (const r of bb.top) pushStrand(el, topEl, r, 'top', false);
+        for (const r of bb.bottom) pushStrand(el, botEl, r, 'bottom', false);
+        for (const r of insTop) pushStrand(el, topEl, r, 'top', true);
+        for (const r of insBot) pushStrand(el, botEl, r, 'bottom', true);
       }
       setRects(out);
       return undefined;

@@ -90,13 +90,11 @@ describe('VersionHistoryList', () => {
 
   it('rename row dispatches renameLibraryEntry', async () => {
     await seedLineage();
-    const origPrompt = window.prompt;
-    window.prompt = () => 'pUC19 переименован';
-    try {
-      render(<VersionHistoryList focusId="e1" onSelect={() => {}} />);
-      fireEvent.click(screen.getByTestId('version-rename-imp'));
-      await waitFor(() => expect(useStore.getState().libraryEntries.imp.name).toBe('pUC19 переименован'));
-    } finally { window.prompt = origPrompt; }
+    // Electron-safe prompt: stub the store's requestPrompt to resolve a name.
+    useStore.setState((s) => { s.requestPrompt = async () => 'pUC19 переименован'; });
+    render(<VersionHistoryList focusId="e1" onSelect={() => {}} />);
+    fireEvent.click(screen.getByTestId('version-rename-imp'));
+    await waitFor(() => expect(useStore.getState().libraryEntries.imp.name).toBe('pUC19 переименован'));
   });
 
   it('status select writes origin.status', async () => {

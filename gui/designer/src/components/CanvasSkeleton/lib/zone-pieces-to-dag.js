@@ -303,6 +303,13 @@ export function draftFromZone(state, zone) {
       start: r.start,
       end: r.end,
       reverseComplement: r.orientation === 'reverse',
+      // ORIGIN-WRAP (Игорь 07.07) — a piece built from MORE THAN ONE range crosses the
+      // circular origin ([hi..len]+[0..lo]); its top strand starts at the HIGH cut, so
+      // segmentOverhangs must flip which enzyme is the physical left/right end (see the
+      // XOR in segment-overhangs.js). Single-range pieces stay originWrap:false → byte-
+      // identical end assignment to before. Without this the inverted two-enzyme backbone
+      // reported its sticky ends on the wrong side ("липкие концы теряются").
+      originWrap: ranges.length > 1,
       sequence: seq,
       length: seq.length,
       color: p.color,
@@ -490,19 +497,43 @@ export function realiseAssembly(state, targetId, perBoundaryMethods, options = {
       origin: { kind: 'realised', assemblyId: targetId, revision, segmentId: seg.id },
       pinned: false,
     });
-    const userPrimers = mapPrimersForSegment(primers, seg) || autoPrimerPair(seg.sequence);
-    operations.push({
-      id: opId,
-      kind: 'pcr',
-      status: 'committed',
-      position: { x: 80 + col * STEP_X, y: baseY },
-      inputs: [seg.source.containerId],
-      outputs: [cId],
-      params: { userPrimers: [userPrimers] },
-      origin: { kind: 'realised', assemblyId: targetId, revision, segmentId: seg.id },
-      pinned: false,
-    });
-    primerAttachments.push({ opId, userPrimers: [userPrimers] });
+    // CH-2 — a restriction-acquired segment is DIGESTED out of its source, not
+    // PCR-amplified: realise must emit a «cut» op (mirror of the live-DAG preview,
+    // opKindForMethod) with NO primers. Previously EVERY sourced segment was
+    // hardcoded kind:'pcr' + autoPrimerPair, so the materialised DAG + exported
+    // protocol instructed PCR-amplifying a fragment that must be gel-purified from
+    // a digest (and deriveAutoPrimers/derivePiecesToGraph disagreed).
+    if (seg.acquisitionMethod === 'restriction') {
+      operations.push({
+        id: opId,
+        kind: 'cut',
+        status: 'committed',
+        position: { x: 80 + col * STEP_X, y: baseY },
+        inputs: [seg.source.containerId],
+        outputs: [cId],
+        params: {
+          enzymes: (seg.acquisitionParams && seg.acquisitionParams.enzymes) || [],
+          cutSites: (seg.acquisitionParams && seg.acquisitionParams.cutSites) || [],
+        },
+        origin: { kind: 'realised', assemblyId: targetId, revision, segmentId: seg.id },
+        pinned: false,
+      });
+      // No primerAttachments — a digest fragment carries no oligos.
+    } else {
+      const userPrimers = mapPrimersForSegment(primers, seg) || autoPrimerPair(seg.sequence);
+      operations.push({
+        id: opId,
+        kind: 'pcr',
+        status: 'committed',
+        position: { x: 80 + col * STEP_X, y: baseY },
+        inputs: [seg.source.containerId],
+        outputs: [cId],
+        params: { userPrimers: [userPrimers] },
+        origin: { kind: 'realised', assemblyId: targetId, revision, segmentId: seg.id },
+        pinned: false,
+      });
+      primerAttachments.push({ opId, userPrimers: [userPrimers] });
+    }
     positionsLayout.operations[opId] = { x: 80 + col * STEP_X, y: baseY };
     positionsLayout.containers[cId] = { x: 80 + col * STEP_X, y: baseY + 90 };
     fragContainerIds.push(cId);

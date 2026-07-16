@@ -15,10 +15,11 @@
  * Источник entries — global librarySlice. Click entry → onPick(entry) →
  * FILL_PLACEHOLDER в reducer.
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useStore } from '../../../store';
 import PlasmidMiniMap from '../../PlasmidMiniMap';
 import { Icon } from '../../icons/Icon';
+import { makeEntryMatcher } from '../../../lib/library-search';
 import {
   getRecent,
   getFavorites,
@@ -27,13 +28,14 @@ import {
   isFavorite,
 } from './picker-prefs';
 
-function matchesQuery(entry, q) {
+/** Match an entry against the picker query: the shared metadata engine
+ * (name/tag/type/status/feature) OR a by-sequence substring — the picker's
+ * defining feature (find a fragment by pasting its sequence). */
+function matchEntry(entry, q, metaMatch) {
   if (!q) return true;
-  const qLower = q.toLowerCase();
-  if ((entry.name || '').toLowerCase().includes(qLower)) return true;
+  if (metaMatch(entry)) return true;
   const seq = (entry.payload?.sequence || '').toUpperCase();
-  if (seq && seq.includes(q.toUpperCase())) return true;
-  return false;
+  return !!seq && seq.includes(q.toUpperCase());
 }
 
 // B11 — type filter: 'all' | 'circular' | 'linear' | 'primer'.
@@ -234,6 +236,11 @@ export default function PlaceholderTreePicker({ onPick, onCancel }) {
 
   const [query, setQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState('all'); // B11
+
+  // Shared search engine (tags/type/status/feature) built once per query; the
+  // picker keeps its by-sequence substring path on top (see matchEntry).
+  const metaMatch = useMemo(() => makeEntryMatcher(query), [query]);
+  const matchesQuery = useCallback((entry) => matchEntry(entry, query, metaMatch), [query, metaMatch]);
   const [libraryOpen, setLibraryOpen] = useState(false);
   // B8 — recent + favorites из localStorage.
   const [recentIds, setRecentIds] = useState(() => getRecent());
@@ -273,7 +280,7 @@ export default function PlaceholderTreePicker({ onPick, onCancel }) {
 
   const sections = useMemo(() => {
     const all = Object.values(entriesById || {}).filter((e) => e && !e._pendingDelete);
-    const filtered = all.filter((e) => matchesQuery(e, query) && matchesType(e, typeFilter));
+    const filtered = all.filter((e) => matchesQuery(e) && matchesType(e, typeFilter));
     const byName = (a, b) => (a.name || a.id).localeCompare(b.name || b.id);
 
     const projectEntries = filtered
@@ -287,7 +294,7 @@ export default function PlaceholderTreePicker({ onPick, onCancel }) {
       .sort(byName);
 
     return { projectEntries, looseEntries, otherProjectEntries };
-  }, [entriesById, currentProjectId, query, typeFilter]);
+  }, [entriesById, currentProjectId, query, typeFilter, matchesQuery]);
 
   const projectName = currentProjectId
     ? (projectsById?.[currentProjectId]?.name || currentProjectId)
@@ -438,7 +445,7 @@ export default function PlaceholderTreePicker({ onPick, onCancel }) {
           {favIds.length > 0 && (() => {
             const favEntries = favIds
               .map((id) => entriesById?.[id])
-              .filter((e) => e && !e._pendingDelete && matchesQuery(e, query));
+              .filter((e) => e && !e._pendingDelete && matchesQuery(e));
             if (favEntries.length === 0) return null;
             return (
               <Section id="favorites" title="Избранное ★" count={favEntries.length} collapsible={false}>
@@ -451,7 +458,7 @@ export default function PlaceholderTreePicker({ onPick, onCancel }) {
           {recentIds.length > 0 && (() => {
             const recentEntries = recentIds
               .map((id) => entriesById?.[id])
-              .filter((e) => e && !e._pendingDelete && matchesQuery(e, query));
+              .filter((e) => e && !e._pendingDelete && matchesQuery(e));
             if (recentEntries.length === 0) return null;
             return (
               <Section id="recent" title="Недавнo" count={recentEntries.length} collapsible={false}>

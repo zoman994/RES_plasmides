@@ -5,6 +5,7 @@
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { STRINGS } from '../../../lib/strings';
+import { useStore } from '../../../store';
 
 const Z = STRINGS.canvasSkeleton.zones;
 const CM = Z.contextMenu;
@@ -79,12 +80,11 @@ export default function ZoneContextMenu({ zoneId, x, y, state, dispatch, onClose
       <Item
         label={CM.rename}
         testid="zone-menu-rename"
-        onClick={() => {
-          const v = window.prompt ? window.prompt(CM.rename, zone.name) : null;
+        onClick={async () => {
+          onClose && onClose();
+          const v = await useStore.getState().requestPrompt({ title: CM.rename, defaultValue: zone.name || '' });
           if (v != null && String(v).trim()) {
             fire({ type: 'UPDATE_ZONE_NAME', zoneId, name: String(v).trim() });
-          } else {
-            onClose && onClose();
           }
         }}
       />
@@ -96,10 +96,10 @@ export default function ZoneContextMenu({ zoneId, x, y, state, dispatch, onClose
       <Item
         label={CM.editNotes}
         testid="zone-menu-notes"
-        onClick={() => {
-          const v = window.prompt ? window.prompt(CM.editNotes, zone.notes || '') : null;
+        onClick={async () => {
+          onClose && onClose();
+          const v = await useStore.getState().requestPrompt({ title: CM.editNotes, defaultValue: zone.notes || '', multiline: true });
           if (v != null) fire({ type: 'UPDATE_ZONE_NOTES', zoneId, notes: String(v) });
-          else onClose && onClose();
         }}
       />
       <Item

@@ -24,7 +24,10 @@ const sampleLibrary = {
       length: 2686, topology: 'circular', sequence: 'ATGCAAAA', annotations: [{ start: 0, end: 200, name: 'ori' }],
     },
   },
-  le02: { id: 'le02', name: 'pET-28b', projectId: 'other-proj', payload: { length: 5369, topology: 'linear' } },
+  le02: {
+    id: 'le02', name: 'pET-28b', projectId: 'other-proj', tags: ['экспрессия'],
+    payload: { length: 5369, topology: 'linear' },
+  },
   le03: { id: 'le03', name: 'in-current', projectId: 'cur-proj', payload: { length: 100, topology: 'linear' } },
 };
 const sampleProjects = { 'cur-proj': { name: 'Мой проект' }, 'other-proj': { name: 'Чужой' } };
@@ -59,6 +62,63 @@ describe('groupLibraryEntries (pure)', () => {
     expect(matchesType(sampleLibrary.le03, 'circular')).toBe(false);
     expect(matchesQuery(sampleLibrary.le01, 'puc')).toBe(true);
     expect(matchesQuery(sampleLibrary.le01, 'GGGG')).toBe(false);
+  });
+});
+
+describe('groupLibraryEntries — injectable matcher (ASM-SEARCH smart search)', () => {
+  it('uses the provided matcher instead of the built-in name/ATGC matchesQuery', () => {
+    const onlyLe02 = (e) => e.id === 'le02';
+    const r = groupLibraryEntries({
+      libraryEntries: sampleLibrary, currentProjectId: 'cur-proj',
+      query: 'whatever-name-nomatch', typeFilter: 'all', matcher: onlyLe02,
+    });
+    expect(r.other.map((e) => e.id)).toEqual(['le02']);
+    expect(r.loose).toHaveLength(0);
+    expect(r.project).toHaveLength(0);
+  });
+
+  it('still applies the topology type filter on top of the matcher', () => {
+    const all = () => true;
+    const r = groupLibraryEntries({
+      libraryEntries: sampleLibrary, currentProjectId: 'cur-proj',
+      query: '', typeFilter: 'circular', matcher: all,
+    });
+    expect(r.loose.map((e) => e.id)).toEqual(['le01']); // only le01 circular
+    expect(r.project).toHaveLength(0);
+  });
+
+  it('falls back to matchesQuery when no matcher is given (align panel back-compat)', () => {
+    const r = groupLibraryEntries({
+      libraryEntries: sampleLibrary, currentProjectId: 'cur-proj', query: 'ATGC', typeFilter: 'all',
+    });
+    expect(r.loose.map((e) => e.id)).toEqual(['le01']);
+  });
+});
+
+describe('LibrarySearchBar — smart metadata search (feature / tag, not just name)', () => {
+  it('a FEATURE name surfaces the entry even though its own name does not match', () => {
+    render(<LibrarySearchBar {...props()} />);
+    // le01 (pUC19) carries an 'ori' annotation; 'ori' is NOT in its name.
+    // The old name/ATGC matcher would miss this; the smart matcher finds it by feature.
+    fireEvent.change(screen.getByTestId('canvas-library-search-bar-input'), { target: { value: 'ori' } });
+    expect(screen.getByTestId('canvas-library-search-bar-section-loose-item-le01')).toBeTruthy();
+    // and does not spuriously pull in le03 (no ori, name mismatch)
+    expect(screen.queryByTestId('canvas-library-search-bar-section-project-item-le03')).toBeNull();
+  });
+
+  it('a TAG surfaces the entry (le02 tagged «экспрессия»)', () => {
+    render(<LibrarySearchBar {...props()} />);
+    fireEvent.change(screen.getByTestId('canvas-library-search-bar-input'), { target: { value: 'экспресс' } });
+    // le02 lives in another project → auto-expanded because it now has a match
+    expect(screen.getByTestId('canvas-library-search-bar-section-other-projects-item-le02')).toBeTruthy();
+  });
+
+  it('a nucleotide substring still matches by sequence (picker DNA path preserved)', () => {
+    render(<LibrarySearchBar {...props()} />);
+    fireEvent.change(screen.getByTestId('canvas-library-search-bar-input'), { target: { value: 'ATGC' } });
+    expect(screen.getByTestId('canvas-library-search-bar-section-loose-item-le01')).toBeTruthy();
+    // le02/le03 have no ATGC sequence → not surfaced
+    expect(screen.queryByTestId('canvas-library-search-bar-section-project-item-le03')).toBeNull();
   });
 });
 

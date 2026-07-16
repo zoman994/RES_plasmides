@@ -40,4 +40,13 @@ describe('PrimerPoolWorkspace', () => {
     fireEvent.click(screen.getByTestId('primer-pool-back'));
     expect(setActiveWorkspace).toHaveBeenCalledWith('library');
   });
+
+  it('passes workspace.context.selectedPrimerId down to the pool list (§10.4)', () => {
+    useStore.setState((s) => {
+      s.primersById = { prX: { id: 'prX', name: 'picked', sequence: 'ACGTACGT', status: 'ordered', tags: [] } };
+      s.workspace = { ...(s.workspace || {}), active: 'primer-pool', context: { selectedPrimerId: 'prX' } };
+    });
+    render(<PrimerPoolWorkspace />);
+    expect(screen.getByTestId('primer-pool-row-prX').getAttribute('aria-current')).toBe('true');
+  });
 });

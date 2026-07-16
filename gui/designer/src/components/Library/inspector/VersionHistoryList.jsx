@@ -54,6 +54,7 @@ export default function VersionHistoryList({ focusId, onSelect, onOpenGraph }) {
   const markPendingDelete = useStore((s) => s.markLibraryEntryPendingDelete);
   const unmarkPendingDelete = useStore((s) => s.unmarkLibraryEntryPendingDelete);
   const showToast = useStore((s) => s.showToast);
+  const requestPrompt = useStore((s) => s.requestPrompt);
 
   const lineage = useMemo(() => collectLineage(entriesById, focusId), [entriesById, focusId]);
   const [open, setOpen] = useState(true);
@@ -73,14 +74,13 @@ export default function VersionHistoryList({ focusId, onSelect, onOpenGraph }) {
   }, [lineage]);
 
   const doRename = useCallback(async (id, currentName) => {
-    if (typeof window === 'undefined' || typeof window.prompt !== 'function') return;
-    const next = window.prompt('Новое имя версии:', currentName || '');
+    const next = await requestPrompt({ title: 'Переименовать версию', defaultValue: currentName || '', placeholder: 'Новое имя версии' });
     if (next == null) return;
     const trimmed = String(next).trim();
     if (!trimmed || trimmed === currentName) return;
     try { await renameLibraryEntry(id, trimmed); showToast?.(`Переименовано: ${trimmed}`, 'success'); }
     catch (err) { showToast?.(err?.message || 'Ошибка', 'error'); }
-  }, [renameLibraryEntry, showToast]);
+  }, [renameLibraryEntry, showToast, requestPrompt]);
 
   const doSetStatus = useCallback(async (id, value) => {
     try { await setVersionStatus(id, value || null); }

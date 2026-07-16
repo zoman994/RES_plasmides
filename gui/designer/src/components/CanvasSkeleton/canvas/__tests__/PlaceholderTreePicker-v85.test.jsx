@@ -5,7 +5,7 @@
  */
 import 'fake-indexeddb/auto';
 import { describe, it, expect, afterEach, beforeEach } from 'vitest';
-import { render, screen, cleanup, act, within } from '@testing-library/react';
+import { render, screen, cleanup, act, within, fireEvent } from '@testing-library/react';
 import PlaceholderTreePicker from '../PlaceholderTreePicker';
 import { bootstrapStore, useStore } from '../../../../store';
 
@@ -79,5 +79,54 @@ describe('V85 — PlaceholderTreePicker entry-row visual parity', () => {
     const row = screen.getByTestId('skeleton-placeholder-picker-item-le-other');
     expect(row.textContent).toMatch(/5[\s ]?400 bp/);
     expect(row.textContent).toMatch(/circular/);
+  });
+});
+
+// Dedup: the picker search runs the shared metadata engine (tags/type/feature),
+// while KEEPING its by-sequence substring search (the picker's whole point).
+describe('PlaceholderTreePicker — shared search engine + sequence preserved', () => {
+  const seedOne = (over) => act(() => {
+    useStore.setState((s) => ({
+      ...s,
+      libraryEntries: {
+        t1: {
+          id: 't1', kind: 'container', name: 'pUC19', projectId: null,
+          tags: over.tags || [],
+          payload: { topology: 'circular', length: 120, sequence: over.seq || '', annotations: over.anns || [] },
+        },
+      },
+      currentProjectId: null,
+    }));
+  });
+  const type = (v) => fireEvent.change(
+    screen.getByTestId('skeleton-placeholder-picker-search'), { target: { value: v } },
+  );
+
+  it('a TAG match reveals an entry whose name does not match', () => {
+    seedOne({ tags: ['kanamycin'] });
+    render(<PlaceholderTreePicker onPick={() => {}} onCancel={() => {}} />);
+    type('kanamycin');
+    expect(screen.getByTestId('skeleton-placeholder-picker-item-t1')).toBeTruthy();
+  });
+
+  it('a FEATURE name reveals its entry', () => {
+    seedOne({ anns: [{ id: 'a1', name: 'AmpR', type: 'CDS' }] });
+    render(<PlaceholderTreePicker onPick={() => {}} onCancel={() => {}} />);
+    type('AmpR');
+    expect(screen.getByTestId('skeleton-placeholder-picker-item-t1')).toBeTruthy();
+  });
+
+  it('still finds by SEQUENCE substring (regression — picker raison d’être)', () => {
+    seedOne({ seq: 'ATGCATGCATGCTTAA' });
+    render(<PlaceholderTreePicker onPick={() => {}} onCancel={() => {}} />);
+    type('ATGCATGC');
+    expect(screen.getByTestId('skeleton-placeholder-picker-item-t1')).toBeTruthy();
+  });
+
+  it('a non-matching query hides the entry', () => {
+    seedOne({ tags: ['ampicillin'] });
+    render(<PlaceholderTreePicker onPick={() => {}} onCancel={() => {}} />);
+    type('zzz-nomatch');
+    expect(screen.queryByTestId('skeleton-placeholder-picker-item-t1')).toBeNull();
   });
 });

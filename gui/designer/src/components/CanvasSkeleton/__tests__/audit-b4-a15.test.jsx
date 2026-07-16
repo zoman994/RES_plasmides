@@ -76,6 +76,25 @@ describe('H2/M2 — MutationModal gates undeliverable / out-of-range positions',
     expect(screen.queryByTestId('mutation-error')).toBeNull();
     expect(screen.getByTestId('mutation-apply').disabled).toBe(false);
   });
+
+  // V197 (e2e-cloning-hunt) — a whole-plasmid KLD mutagenesis (circular, single
+  // segment) places the mutagenic primers BACK-TO-BACK at the mutation, so an
+  // interior position IS carried. The «олиги амплифицируют дикий тип» warning is a
+  // FALSE alarm on the exact standalone-plasmid KLD workflow the tool supports.
+  it('kldApplies → an interior position does NOT warn (KLD carries the mutation)', () => {
+    render(
+      <MutationModal sourceName="pRing" defaultPosition={100} fromBase="A" sequence={SEQ200} kldApplies onConfirm={vi.fn()} onCancel={vi.fn()} />,
+    );
+    expect(screen.queryByTestId('mutation-interior-warn')).toBeNull();
+    expect(screen.getByTestId('mutation-apply').disabled).toBe(false);
+  });
+
+  it('without kldApplies (linear / multi-segment fragment) the interior warning still fires', () => {
+    render(
+      <MutationModal sourceName="frag" defaultPosition={100} fromBase="A" sequence={SEQ200} onConfirm={vi.fn()} onCancel={vi.fn()} />,
+    );
+    expect(screen.getByTestId('mutation-interior-warn')).toBeTruthy();
+  });
 });
 
 describe('A15 — MutationModal Original base tracks the position (reactive)', () => {

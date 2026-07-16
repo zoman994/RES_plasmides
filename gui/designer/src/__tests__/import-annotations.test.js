@@ -52,6 +52,18 @@ describe('importFeatures', () => {
     expect(annotations[0].qualifiers).toBeUndefined();
   });
 
+  it('FEAT-QUALIFIERS — persists /codon_start + /transl_table (P4.0 — reading frame + genetic code)', () => {
+    // GenBank keeps these on a CDS to pin the reading frame (codon_start 1|2|3)
+    // and genetic code (transl_table). They were dropped on import; protein
+    // search (aa:) needs them to translate the CDS the way the file intends.
+    const features = [
+      feat('CDS', 0, 900, { label: 'mtGene', gene: 'cox1', codon_start: '2', transl_table: '4' }),
+    ];
+    const { annotations } = importFeatures(features, 5000);
+    const region = annotations.find((a) => a.level === 'region');
+    expect(region.qualifiers).toMatchObject({ codon_start: '2', transl_table: '4' });
+  });
+
   it('promoter + TATA_signal → region + core_promoter detail', () => {
     const features = [
       feat('promoter', 0, 850, { label: 'PglaA' }),

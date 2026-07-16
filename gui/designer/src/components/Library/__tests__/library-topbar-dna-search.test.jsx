@@ -1,19 +1,21 @@
 /**
- * Library topbar — global DNA search (Sprint M-X.9 K3).
+ * LibraryTopBar — universal smart search (P2, was DNA-only M-X.9 K3).
  *
- * Auto-detects DNA pattern in the «Поиск по библиотеке…» input and
- * renders a dropdown of hits across all container entries (loose +
- * bodge zones). Click → caller handles selection + activation.
+ * One box over the whole library: name / tag / type / feature AND sequence
+ * (IUPAC + circular). Metadata is instant; the sequence dim runs via the worker
+ * facade (inline fallback under vitest). Results are debounced + async → the tests
+ * await the rows. Click → caller handles selection + activation.
  */
 import 'fake-indexeddb/auto';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import { useStore } from '../../../store';
-import LibraryTopBar from '../LibraryTopBar';
+import { renderTopBar } from './_topbar-harness';
 
-const TARGET = 'AAATTT' + 'GCATGCATGCATGCATGCATGC' + 'AAATTT';
+const TARGET = `AAATTT${'GCATGCATGCATGCATGCATGC'}AAATTT`;
 
 beforeEach(() => {
+  try { localStorage.clear(); } catch { /* no-op */ }
   useStore.setState((s) => {
     s.libraryEntries = {};
     s.projects = {};
@@ -22,81 +24,143 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-function seedEntry(id, name, projectId, sequence) {
+function seedEntry(id, name, projectId, sequence, extra = {}) {
   useStore.setState((s) => {
     s.libraryEntries[id] = {
       id, name, projectId,
-      kind: 'container',
-      payload: { sequence, length: sequence.length, topology: 'circular', annotations: [] },
+      kind: extra.kind || 'container',
+      tags: extra.tags || [],
+      payload: { sequence, length: sequence.length, topology: 'circular', annotations: extra.anns || [] },
     };
   });
 }
 
-describe('M-X.9 K3 — LibraryTopBar global DNA search', () => {
-  it('non-DNA query does NOT render the DNA dropdown', () => {
-    render(<LibraryTopBar query="hello world" />);
-    expect(screen.queryByTestId('library-topbar-dna-results')).toBeNull();
+describe('LibraryTopBar — universal search', () => {
+  it('empty query → no results dropdown', () => {
+    renderTopBar({ query: '' });
+    expect(screen.queryByTestId('library-topbar-search-results')).toBeNull();
   });
 
-  it('DNA query (≥8 ACGT chars) renders the DNA results dropdown', () => {
-    seedEntry('e1', 'plasmid-1', null, TARGET);
-    render(<LibraryTopBar query="GCATGCATGCATGC" />);
-    expect(screen.getByTestId('library-topbar-dna-results')).toBeTruthy();
-    expect(screen.getByTestId('library-topbar-dna-results-header').textContent).toMatch(/hit\(s\)/);
+  it('metadata: a name query surfaces the matching entry as a smart-result row', async () => {
+    seedEntry('e1', 'plasmid-alpha', null, TARGET);
+    renderTopBar({ query: 'alpha' });
+    await waitFor(() => expect(screen.getByTestId('smart-result-e1')).toBeTruthy());
+    expect(screen.getByTestId('smart-result-e1-title').querySelector('mark').textContent).toBe('alpha');
   });
 
-  it('renders one row per hit, ordered by identity desc; click invokes onPickGlobalHit', () => {
+  it('metadata: a TAG query surfaces an entry whose name does not match', async () => {
+    seedEntry('e2', 'pUC19', null, TARGET, { tags: ['kanamycin'] });
+    renderTopBar({ query: 'kanamycin' });
+    await waitFor(() => expect(screen.getByTestId('smart-result-e2')).toBeTruthy());
+    expect(screen.getByTestId('smart-result-e2-reason').textContent).toBe('тег');
+  });
+
+  it('DNA: a sequence query surfaces the hit with metrics; click → onPickSearchResult(entityRef, occurrence)', async () => {
     seedEntry('a', 'plasmid-A', null, TARGET);
-    seedEntry('b', 'plasmid-B', null, 'CCCCCCCCCCCCCCCCCCCCCCCC' /* no hits */);
+    seedEntry('b', 'plasmid-B', null, 'CCCCCCCCCCCCCCCCCCCCCCCC');
     const onPick = vi.fn();
-    render(<LibraryTopBar query="GCATGCATGCATGC" onPickGlobalHit={onPick} />);
-    // Hit row for entry 'a' should exist; entry 'b' should NOT.
-    const aRows = document.querySelectorAll('[data-testid^="library-topbar-dna-hit-a-"]');
-    expect(aRows.length).toBeGreaterThan(0);
-    const bRows = document.querySelectorAll('[data-testid^="library-topbar-dna-hit-b-"]');
-    expect(bRows.length).toBe(0);
-    // Click first row.
-    fireEvent.click(aRows[0]);
-    expect(onPick).toHaveBeenCalled();
-    expect(onPick.mock.calls[0][0]).toBe('a');
-    expect(onPick.mock.calls[0][1].entryId).toBe('a');
+    renderTopBar({ query: 'GCATGCATGCATGC', onPickSearchResult: onPick });
+    await waitFor(() => expect(screen.getByTestId('smart-result-a')).toBeTruthy());
+    expect(screen.queryByTestId('smart-result-b')).toBeNull(); // no motif in b
+    expect(screen.getByTestId('smart-result-a-metrics').textContent).toMatch(/идентичность|совместимость/);
+    fireEvent.click(screen.getByTestId('smart-result-a'));
+    // kind-aware pick (§10.4): the RAW entityRef (kind+id, may carry revision); occurrence for the jump
+    expect(onPick).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'entry', id: 'a' }),
+      expect.objectContaining({ location: expect.anything() }),
+    );
   });
 
-  it('IUPAC ambiguity (N/R) shows the «pure ACGT» hint, no hit rows', () => {
-    seedEntry('e1', 'plasmid', null, TARGET);
-    render(<LibraryTopBar query="ACGTNCGT" />);
-    expect(screen.getByTestId('library-topbar-dna-results').textContent).toMatch(/IUPAC/);
-    const rows = document.querySelectorAll('[data-testid^="library-topbar-dna-hit-"]');
-    expect(rows.length).toBe(0);
+  it('IUPAC is now supported (no «не поддерживается» hint) and returns a compatible hit', async () => {
+    seedEntry('e1', 'plasmid', null, `AAAA${'GAATTC'}AAAA`);
+    // short IUPAC motif → seq: prefix; N matches T → GAANTC compatible with GAATTC.
+    renderTopBar({ query: 'seq:GAANTC' });
+    await waitFor(() => expect(screen.getByTestId('smart-result-e1')).toBeTruthy());
+    expect(screen.getByTestId('library-topbar-search-results').textContent).not.toMatch(/не поддерживается/);
+    expect(screen.getByTestId('smart-result-e1-metrics').textContent).toMatch(/совместимость/);
   });
 
-  it('Undo / Redo buttons render and dispatch a synthetic Ctrl+Z / Ctrl+Y keydown', () => {
-    render(<LibraryTopBar />);
-    const undoBtn = screen.getByTestId('library-topbar-undo');
-    const redoBtn = screen.getByTestId('library-topbar-redo');
-    expect(undoBtn).toBeTruthy();
-    expect(redoBtn).toBeTruthy();
-    // Capture keydown events at window level — synthetic events bubble up.
+  it('a contradictory query (two provider intents) shows the BLOCKED notice, never results (K7 gate)', async () => {
+    seedEntry('e1', 'plasmid-alpha', null, TARGET);
+    renderTopBar({ query: 'enz:Bsa seq:GAATTC' });
+    await waitFor(() => expect(screen.getByTestId('search-blocked-notice')).toBeTruthy());
+    // no search ran → no result rows, and the notice replaces «Ничего не найдено»
+    expect(screen.queryByTestId('smart-result-e1')).toBeNull();
+    expect(screen.getByTestId('library-topbar-search-results').textContent).not.toMatch(/Ничего не найдено/);
+    expect(screen.queryByTestId('library-topbar-search-count')).toBeNull();
+  });
+
+  it('A(seq) → B(blocked): the blocked notice shows, A’s stale results do not linger (K7-P1-4)', async () => {
+    seedEntry('a', 'plasmid-A', null, TARGET);
+    const { rerender } = renderTopBar({ query: 'GCATGCATGCATGC' }); // A: a real DNA hit
+    await waitFor(() => expect(screen.getByTestId('smart-result-a')).toBeTruthy());
+    rerender({ query: 'enz:Bsa seq:GAATTC' });                      // B: blocked
+    await waitFor(() => expect(screen.getByTestId('search-blocked-notice')).toBeTruthy());
+    expect(screen.queryByTestId('smart-result-a')).toBeNull();      // A’s hit must not overwrite B
+  });
+
+  it('the SnapGene catalog (kind === "catalog") is excluded', async () => {
+    seedEntry('a', 'plasmid', null, TARGET);
+    seedEntry('snap1', 'snapgene-X', null, TARGET, { kind: 'catalog' });
+    renderTopBar({ query: 'GCATGCATGCATGC' });
+    await waitFor(() => expect(screen.getByTestId('smart-result-a')).toBeTruthy());
+    expect(screen.queryByTestId('smart-result-snap1')).toBeNull();
+  });
+
+  it('the prefs summary + «изменить» entry render in the results header', async () => {
+    seedEntry('e1', 'plasmid-alpha', null, TARGET);
+    renderTopBar({ query: 'alpha' });
+    await waitFor(() => expect(screen.getByTestId('smart-result-e1')).toBeTruthy());
+    expect(screen.getByTestId('search-prefs-summary').textContent).toMatch(/порог 80%/);
+    expect(screen.getByTestId('search-prefs-open')).toBeTruthy();
+  });
+
+  it('bumping autoFocusSearchTick («полный поиск» escalation) focuses the input + opens the dropdown', async () => {
+    seedEntry('e1', 'plasmid-alpha', null, TARGET);
+    // The tree escalation SEEDS the global bar and bumps the tick; tick 0 (mount) must not
+    // auto-focus, tick 1 focuses the field and opens the dropdown.
+    const { rerender } = renderTopBar({ query: 'alpha', autoFocusSearchTick: 0 });
+    const input = screen.getByTestId('library-topbar-search-input');
+    expect(document.activeElement).not.toBe(input);
+    rerender({ query: 'alpha', autoFocusSearchTick: 1 });
+    expect(document.activeElement).toBe(input);
+    await waitFor(() => expect(screen.getByTestId('library-topbar-search-results')).toBeTruthy());
+  });
+
+  it('Undo / Redo buttons dispatch synthetic Ctrl+Z / Ctrl+Y', () => {
+    renderTopBar({});
     const captured = [];
     const onKey = (e) => { captured.push({ key: e.key, ctrl: e.ctrlKey }); };
     window.addEventListener('keydown', onKey, true);
-    fireEvent.click(undoBtn);
-    fireEvent.click(redoBtn);
+    fireEvent.click(screen.getByTestId('library-topbar-undo'));
+    fireEvent.click(screen.getByTestId('library-topbar-redo'));
     window.removeEventListener('keydown', onKey, true);
     expect(captured.some((c) => c.key === 'z' && c.ctrl)).toBe(true);
     expect(captured.some((c) => c.key === 'y' && c.ctrl)).toBe(true);
   });
+});
 
-  it('SnapGene catalog (kind !== container) is excluded from the search', () => {
-    seedEntry('a', 'plasmid', null, TARGET);
-    useStore.setState((s) => {
-      s.libraryEntries.snap1 = {
-        id: 'snap1', name: 'snapgene-X', kind: 'catalog',
-        payload: { sequence: TARGET },
-      };
-    });
-    render(<LibraryTopBar query="GCATGCATGCATGC" />);
-    expect(document.querySelectorAll('[data-testid^="library-topbar-dna-hit-snap1-"]').length).toBe(0);
-    expect(document.querySelectorAll('[data-testid^="library-topbar-dna-hit-a-"]').length).toBeGreaterThan(0);
+// REV #2 — S3-CLOSE / K1: a mixed metadata+biological query, through the LIVE facade pipeline.
+// A name-only candidate may flash during loading but must NOT survive the strict final search.
+describe('LibraryTopBar — S3-CLOSE K1 strict AND (name must not mask a missing sequence)', () => {
+  it('mol:pUC seq:GAATTC — a name match with NO GAATTC in the sequence disappears from the final', async () => {
+    seedEntry('puc', 'pUC19', null, 'AAAACCCCGGGGTTTTAAAACCCCGGGG'); // name matches «pUC», no GAATTC
+    renderTopBar({ query: 'mol:pUC seq:GAATTC' });
+    // Wait for the FINAL search to complete with an empty (nothing-found) result: the name
+    // candidate may flash during the partial/loading phase but must not survive the final.
+    await waitFor(() => expect(screen.getByTestId('library-topbar-search-results').textContent).toMatch(/Ничего не найдено/));
+    expect(screen.queryByTestId('smart-result-puc')).toBeNull();
+  });
+
+  it('mol:pUC seq:GAATTC — the object STAYS when the motif IS present', async () => {
+    seedEntry('puc', 'pUC19', null, 'AAAAGAATTCCCCCAAAAGAATTCCCCC'); // name AND sequence both match
+    renderTopBar({ query: 'mol:pUC seq:GAATTC' });
+    await waitFor(() => expect(screen.getByTestId('smart-result-puc')).toBeTruthy());
+  });
+
+  it('plain metadata search is unchanged (a name query still surfaces its entry)', async () => {
+    seedEntry('puc', 'pUC19', null, 'ACGTACGTACGT');
+    renderTopBar({ query: 'pUC' });
+    await waitFor(() => expect(screen.getByTestId('smart-result-puc')).toBeTruthy());
   });
 });

@@ -21,6 +21,15 @@ describe('validateConstruct', () => {
     expect(w.some(x => x.includes('ATG'))).toBe(true);
   });
 
+  it('intron warning is host-aware (fungal splicing vs E. coli), not E.-coli-first', () => {
+    const frags = [{ name: 'glaA', type: 'CDS', sequence: 'ATGGCGGCGTAA', length: 12, has_introns: true, introns: [{ start: 3, end: 6 }] }];
+    const w = validateConstruct(frags);
+    const line = w.find((x) => x.includes('интрон'));
+    expect(line).toBeTruthy();
+    expect(line).toMatch(/грибн|A\. niger|T\. reesei|сплайсинг/);
+    expect(line).toMatch(/E\. coli/);
+  });
+
   it('warns about frameshift (length not divisible by 3)', () => {
     const frags = [{ name: 'G1', type: 'CDS', sequence: 'ATGGCGT', length: 7 }];
     const w = validateConstruct(frags);

@@ -44,6 +44,39 @@ export function invertedSlice(seq, lo, hi, seqLength, circular) {
 }
 
 /**
+ * invertedStickyStrandRanges — the top/bottom strand ranges for the sticky-end
+ * staircase of the INVERTED backbone (Игорь 07.07: «при инверсии обжирает липкие
+ * концы»). When the biolog excises [sLo,sHi] between two restriction cuts and then
+ * presses «Инвертировать», the piece taken is the COMPLEMENT arc (the backbone),
+ * whose top strand wraps the origin: `[sHi, len] + [0, sLo]`.
+ *
+ * A restriction cut is a GLOBAL duplex property — the top strand is cut at
+ * `position` and the bottom strand at `position + delta` — so the SAME per-cut
+ * delta that staggers the excised piece staggers the backbone at the SAME columns,
+ * only the backbone owns the OTHER side of each cut:
+ *   • at the HIGH cut sHi (the backbone's physical LEFT end) the bottom strand
+ *     starts at `sHi + rightDelta`  (rightDelta = the enzyme at sHi);
+ *   • at the LOW cut sLo (the backbone's physical RIGHT end) the bottom strand
+ *     ends at `sLo + leftDelta`      (leftDelta = the enzyme at sLo).
+ * This mirrors the excised-piece formula `bottom = [sLo+leftDelta, sHi+rightDelta]`
+ * (same signs → works for 5′ delta>0, 3′ delta<0, blunt 0), so the backbone's
+ * overhang slivers are the exact complements of the insert's — nothing is eaten.
+ *
+ * @returns {{ top: number[][], bottom: number[][] }} inclusive-exclusive [a,b] ranges
+ */
+export function invertedStickyStrandRanges({
+  sLo, sHi, leftDelta = 0, rightDelta = 0, seqLength,
+} = {}) {
+  if (!Number.isFinite(seqLength) || seqLength <= 0) return { top: [], bottom: [] };
+  const lo = Math.max(0, Math.min(seqLength, Math.min(sLo, sHi)));
+  const hi = Math.max(0, Math.min(seqLength, Math.max(sLo, sHi)));
+  const clamp = ([a, b]) => [Math.max(0, Math.min(seqLength, a)), Math.max(0, Math.min(seqLength, b))];
+  const top = [[hi, seqLength], [0, lo]].map(clamp).filter(([a, b]) => b > a);
+  const bottom = [[hi + rightDelta, seqLength], [0, lo + leftDelta]].map(clamp).filter(([a, b]) => b > a);
+  return { top, bottom };
+}
+
+/**
  * Sticky-end overhangs at the selection boundaries. A selection end coincides
  * with a restriction cut when it equals a scanned site's `position` (which
  * `flattenSites` already stores as the TOP-strand cut = recognition + cut[0]).

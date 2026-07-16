@@ -10,23 +10,29 @@
  * right-side system tray (right of the search field, left of the
  * bell). Cleaner separation of crumb (identity) vs status.
  */
-import { memo, useMemo, useState, useEffect, useRef } from 'react';
+import { memo } from 'react';
 import { useStore } from '../../store';
 import { STRINGS } from '../../lib/strings';
 import { FEATURE_FLAGS } from '../../lib/feature-flags';
 import { Icon } from '../icons/Icon';
-import {
-  isDnaQuery, hasIupacAmbiguity, searchLibrary, identityBucket,
-} from '../../lib/sequence-search';
+import LibrarySmartSearchBar from './LibrarySmartSearchBar';
 
 export const LibraryTopBar = memo(function LibraryTopBar({
-  query = '',
-  onQueryChange,
-  // M-X.9 K3 — global DNA search hit picker. Caller wires this
-  // to its selection state + project activation.
-  onPickGlobalHit,
+  // REV#2 Stage 3 K4.2b∪K5 — the structured `globalSearch` controller (useSearchQueryState),
+  // owned by LibraryWorkspace. The bar renders its selector / chips / draft and runs the facade
+  // on its canonical query; it never keeps a copy of the mode / filters.
+  search,
+  // Kind-aware pick (REV #2 §10.4/§10.5): the caller receives (entityRef, occurrence) and
+  // routes by entityRef.kind — molecule / project / primer / enzyme card. The dropdown
+  // stays dumb: it never assumes an entry nor rewrites the query.
+  onPickSearchResult,
+  // «Полный поиск» escalation from the tree quick-filter — bumping this tick focuses this
+  // wide bar and opens its dropdown (LibraryWorkspace already SEEDED the global state).
+  autoFocusSearchTick = 0,
+  // Sequence-worker factory (`() => Worker|null`). Default spawns the real off-thread
+  // worker; tests inject a controllable factory to drive cancel / crash / lifecycle.
+  workerFactory,
 }) {
-  const ws = STRINGS.libraryWorkspace || {};
   const tb = STRINGS.topbar || {};
   const currentProjectId = useStore((s) => s.currentProjectId);
   const projects = useStore((s) => s.projects);
@@ -34,55 +40,6 @@ export const LibraryTopBar = memo(function LibraryTopBar({
   const activeProject = currentProjectId ? projects?.[currentProjectId] : null;
   const projectLabel = activeProject?.name || currentProjectId;
   const cs = STRINGS.canvasSkeleton || {};
-
-  // M-X.9 K3 — global DNA search across container entries.
-  // Per DEC-SEARCH-SNAPGENE-EXCLUDED-01: only entries with
-  // `kind === 'container'` from the user library; SnapGene catalog
-  // is excluded (it lives elsewhere).
-  const entriesById = useStore((s) => s.libraryEntries);
-  const containerEntries = useMemo(() => {
-    return Object.values(entriesById || {}).filter((e) =>
-      e && !e._pendingDelete
-      && (e.kind === 'container' || !e.kind)
-      && (e.payload?.sequence || e.sequence),
-    );
-  }, [entriesById]);
-
-  const trimmed = (query || '').trim().toUpperCase();
-  const isDna = isDnaQuery(trimmed);
-  const ambiguous = hasIupacAmbiguity(trimmed);
-  const [resultsOpen, setResultsOpen] = useState(false);
-  const wrapRef = useRef(null);
-
-  useEffect(() => {
-    setResultsOpen(isDna);
-  }, [isDna]);
-  useEffect(() => {
-    if (!resultsOpen) return undefined;
-    const onDoc = (e) => {
-      if (!wrapRef.current) return;
-      if (!wrapRef.current.contains(e.target)) setResultsOpen(false);
-    };
-    document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
-  }, [resultsOpen]);
-
-  const globalHits = useMemo(() => {
-    if (!isDna || ambiguous) return [];
-    const q = trimmed;
-    const list = [];
-    for (const e of containerEntries) {
-      const seq = (e.payload?.sequence || e.sequence || '');
-      if (!seq) continue;
-      const hits = searchLibrary(q, [{ id: e.id, sequence: seq }], { identityThreshold: 0.8 });
-      for (const h of hits) {
-        list.push({ ...h, entryName: e.name || e.id });
-      }
-    }
-    // Sort by identity desc, then by length desc, cap at 50.
-    list.sort((a, b) => (b.identity - a.identity) || (b.length - a.length));
-    return list.slice(0, 50);
-  }, [isDna, ambiguous, trimmed, containerEntries]);
 
   return (
     <header
@@ -180,139 +137,12 @@ export const LibraryTopBar = memo(function LibraryTopBar({
         */}
       <UndoRedoButtons />
 
-      <div
-        ref={wrapRef}
-        data-testid="library-topbar-search-wrap"
-        style={{ position: 'relative', width: 280 }}
-      >
-        <span style={{
-          position: 'absolute', left: 8, top: 7,
-          color: 'var(--text-tertiary)', display: 'inline-flex',
-        }}><Icon name="search" size={14} /></span>
-        <input
-          type="text"
-          data-testid="library-topbar-search"
-          value={query}
-          onChange={(e) => onQueryChange?.(e.target.value || '')}
-          onFocus={() => { if (isDna) setResultsOpen(true); }}
-          placeholder={ws.searchPlaceholder || 'Поиск по библиотеке…'}
-          style={{
-            width: '100%', height: 28, padding: '0 8px 0 26px',
-            fontSize: 12, lineHeight: '28px',
-            background: 'var(--surface-2)',
-            color: 'var(--text-primary)',
-            border: '1px solid var(--border-subtle)',
-            borderRadius: 4,
-            outline: 'none',
-            fontFamily: isDna ? 'var(--font-mono, monospace)' : undefined,
-            textTransform: isDna ? 'uppercase' : undefined,
-          }}
-        />
-        {isDna && resultsOpen && (
-          <div
-            data-testid="library-topbar-dna-results"
-            style={{
-              position: 'absolute', top: 32, left: 0, right: 0,
-              background: 'var(--surface-1)',
-              border: '1px solid var(--border-default)',
-              borderRadius: 4,
-              boxShadow: '0 6px 20px rgba(0,0,0,0.18)',
-              maxHeight: 320, overflowY: 'auto',
-              zIndex: 90,
-              minWidth: 480,
-            }}
-          >
-            <div
-              data-testid="library-topbar-dna-results-header"
-              style={{
-                padding: '6px 10px', fontSize: 10.5,
-                color: 'var(--text-tertiary)',
-                background: 'var(--surface-2)',
-                borderBottom: '1px solid var(--border-subtle)',
-                textTransform: 'uppercase', letterSpacing: 0.5,
-                fontWeight: 600,
-              }}
-            >Поиск ПСО · {ambiguous ? 'IUPAC не поддерживается' : `${globalHits.length} hit(s)`}</div>
-            {ambiguous && (
-              <div style={{ padding: 10, fontSize: 11, color: '#92400e' }}>
-                IUPAC degenerate codes пока не поддерживаются — используй plain ACGT.
-              </div>
-            )}
-            {!ambiguous && globalHits.length === 0 && (
-              <div style={{ padding: 10, fontSize: 11, color: 'var(--text-tertiary)' }}>
-                Ничего не найдено при identity ≥ 80%.
-              </div>
-            )}
-            {globalHits.map((h) => {
-              // FAIL-fix-pass 6 — bucket on per-query identity,
-              // mandatory coverage column `query[X..Y) · M/N nt`,
-              // tooltip surfaces secondary hit-identity.
-              const bucket = identityBucket(h.queryIdentity);
-              const color = bucket === 'high' ? 'var(--success-fg, #16a34a)'
-                : bucket === 'mid' ? '#d97706'
-                : bucket === 'orange' ? '#ea580c'
-                : 'var(--text-tertiary)';
-              const queryPct = (h.queryIdentity * 100).toFixed(1);
-              // Фикс 7 — coverage prefix only when partial overhang.
-              const isPartial = h.queryStart > 0
-                || h.queryEnd < (h.matches + h.mismatches + (h.gapsInQuery || 0));
-              const coverageText = isPartial
-                ? `query[${h.queryStart}..${h.queryEnd}) · ${h.matches}/${h.length} nt`
-                : `${h.matches}/${h.length} nt`;
-              const tip = (h.gapsInQuery || h.gapsInTarget)
-                ? `${(h.gapsInQuery || 0) + (h.gapsInTarget || 0)} indel(s) · ${h.length} nt window`
-                : `${h.length} nt window`;
-              return (
-                <button
-                  key={`${h.entryId}-${h.strand}-${h.targetStart}`}
-                  type="button"
-                  data-testid={`library-topbar-dna-hit-${h.entryId}-${h.targetStart}`}
-                  title={tip}
-                  onClick={() => {
-                    onPickGlobalHit?.(h.entryId, h);
-                    setResultsOpen(false);
-                  }}
-                  style={{
-                    width: '100%', textAlign: 'left',
-                    background: 'transparent', border: 'none',
-                    padding: '6px 10px',
-                    fontSize: 11.5,
-                    cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', gap: 8,
-                    borderBottom: '1px solid var(--border-subtle)',
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-                >
-                  <span style={{
-                    flex: '0 0 140px', color: 'var(--text-primary)',
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  }}>{h.entryName}</span>
-                  <span style={{
-                    fontFamily: 'var(--font-mono, monospace)',
-                    fontSize: 10, color: 'var(--text-secondary)', minWidth: 80,
-                  }}>{h.targetStart + 1}–{h.targetEnd} {h.strand === -1 ? '(−)' : ''}</span>
-                  <span style={{ color, fontWeight: 500, minWidth: 50 }}>
-                    {queryPct}%
-                  </span>
-                  <span
-                    data-testid={`library-topbar-dna-hit-${h.entryId}-${h.targetStart}-coverage`}
-                    style={{ color: 'var(--text-tertiary)', fontSize: 10, minWidth: 150 }}
-                  >{coverageText}</span>
-                  {h.threePrimeOk === false && (
-                    <span title="3'-end mismatch" style={{
-                      fontSize: 10, padding: '0 5px', borderRadius: 9,
-                      background: '#fef3c7', color: '#92400e',
-                      border: '1px solid var(--border-subtle)',
-                      display: 'inline-flex', alignItems: 'center', gap: 3,
-                    }}><Icon name="warning" size={11} />3′</span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
+      <LibrarySmartSearchBar
+        search={search}
+        onPickSearchResult={onPickSearchResult}
+        autoFocusSearchTick={autoFocusSearchTick}
+        workerFactory={workerFactory}
+      />
 
       {/* M-X.8 K5: «✓ сохранён» pill moved out of breadcrumb into
           the right-side tray (separation of identity vs status). */}

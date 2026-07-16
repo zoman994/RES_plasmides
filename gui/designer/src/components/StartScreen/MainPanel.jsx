@@ -56,9 +56,6 @@ export default function MainPanel({ onOpenHotkeys }) {
   const [helpOpen, setHelpOpen] = useState(false);
 
   const projectsById = useStore((s) => s.projects);
-  // MS-K5 — library banner conditional: hide once library has entries.
-  const libraryEntries = useStore((s) => s.libraryEntries);
-  const libraryEmpty = !libraryEntries || Object.keys(libraryEntries).length === 0;
   const openSettings = useStore((s) => s.openSettings);
   const createProject = useStore((s) => s.createProject);
   const openProjectInfo = useStore((s) => s.openProjectInfo);
@@ -209,26 +206,10 @@ export default function MainPanel({ onOpenHotkeys }) {
       />
 
       <div className="content">
-        {/* MS-K5: библиотечный onboarding banner — only when library is empty. */}
-        {libraryEmpty && (
-          <div data-testid="ss-library-onboarding" style={libraryBannerStyles.wrap}>
-            <div style={libraryBannerStyles.text}>
-              Сначала наполните библиотеку — добавьте плазмиды через импорт
-              или из готового набора.
-            </div>
-            <button
-              type="button"
-              data-testid="ss-library-onboarding-cta"
-              onClick={() => {
-                setActiveWorkspace?.('library');
-                setActiveFullscreen?.('library');
-              }}
-              style={libraryBannerStyles.cta}
-            >
-              Выбрать набор
-            </button>
-          </div>
-        )}
+        {/* Library onboarding lives in the richer <EmptyCard/> below (drag hint
+            + starter categories + dismiss). The old top banner here duplicated
+            the same «наполните библиотеку · Выбрать набор» CTA — removed to
+            de-clutter the empty Главная (one library CTA, not two). */}
         {sortedProjects.length > 0 ? (
           <>
             <div className="recent-head">
@@ -328,20 +309,4 @@ const actionAreaStyles = {
   cardIcon: { fontSize: 18, lineHeight: 1 },
   cardTitle: { fontSize: 13, fontWeight: 600 },
   cardSub: { fontSize: 11, color: 'var(--text-tertiary)' },
-};
-
-const libraryBannerStyles = {
-  wrap: {
-    margin: '12px 20px 0 20px',
-    padding: '12px 14px',
-    background: 'var(--surface-2)',
-    border: '1px solid var(--border-subtle)', borderRadius: 8,
-    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
-  },
-  text: { fontSize: 12.5, color: 'var(--text-secondary)' },
-  cta: {
-    padding: '6px 12px', fontSize: 12, fontWeight: 600,
-    background: 'var(--accent-500, #b85c3e)', color: '#fff',
-    border: 'none', borderRadius: 4, cursor: 'pointer',
-  },
 };

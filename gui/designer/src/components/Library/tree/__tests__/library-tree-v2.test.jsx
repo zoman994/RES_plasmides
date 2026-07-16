@@ -251,23 +251,20 @@ describe('K2 — LooseZone (post 09.05.2026 structural sub-folders)', () => {
     expect(screen.getByTestId('tree-item-loose-pr1')).toBeTruthy();
   });
 
-  it('respects query filter (case-insensitive substring)', async () => {
+  it('respects the root tree-session filter (case-insensitive substring)', async () => {
     await useStore.getState().addLibraryEntry(makeContainer({ id: 'e1', name: 'pUC19', zone: 'loose' }));
     await useStore.getState().addLibraryEntry(makeContainer({ id: 'e2', name: 'pET28b', zone: 'loose' }));
-    render(<LooseZone query="puc" />);
+    render(<LibraryTreeRoot query="puc" />);
     expect(screen.getByTestId('tree-item-loose-e1')).toBeTruthy();
     expect(screen.queryByTestId('tree-item-loose-e2')).toBeNull();
   });
 
-  it('«📁+» header button creates a user folder via createLooseFolder', () => {
-    const origPrompt = window.prompt;
-    window.prompt = () => 'Backbones';
-    try {
-      render(<LooseZone />);
-      fireEvent.click(screen.getByTestId('loose-zone-add-folder-btn'));
-    } finally {
-      window.prompt = origPrompt;
-    }
+  it('«📁+» header button creates a user folder via inline input (no window.prompt — dead in Electron)', () => {
+    render(<LooseZone />);
+    fireEvent.click(screen.getByTestId('loose-zone-add-folder-btn'));
+    const input = screen.getByTestId('loose-zone-new-folder-input');
+    fireEvent.change(input, { target: { value: 'Backbones' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
     expect(useStore.getState().looseFolders).toContain('Backbones');
     // Folder row appears in the tree (auto-opened on creation).
     expect(screen.getByTestId('tree-folder-loose-user-Backbones')).toBeTruthy();
@@ -587,6 +584,35 @@ describe('K2 — LibraryTreeRoot', () => {
     render(<LibraryTreeRoot query="" onQueryChange={onQ} />);
     fireEvent.change(screen.getByTestId('tree-search'), { target: { value: 'puc' } });
     expect(onQ).toHaveBeenCalledWith('puc');
+  });
+
+  it('«полный поиск» button escalates to the wide search (calls onRequestFullSearch)', () => {
+    const onFull = vi.fn();
+    render(<LibraryTreeRoot query="gfp" onRequestFullSearch={onFull} />);
+    fireEvent.click(screen.getByTestId('tree-full-search'));
+    expect(onFull).toHaveBeenCalledTimes(1);
+  });
+
+  it('«полный поиск» button is absent when no onRequestFullSearch handler is wired', () => {
+    render(<LibraryTreeRoot query="gfp" />);
+    expect(screen.queryByTestId('tree-full-search')).toBeNull();
+  });
+
+  // REV #2 Stage 0 (§12/§16, task #162): the tree quick-filter is metadata-only, so a
+  // bio-provider query (seq:/aa:/re:) can't be answered locally — it must NOT silently
+  // fail (before Stage 0 it match-all'd). The tree shows a «Открыть полный поиск» notice.
+  it('a bio-prefix query (seq:) surfaces the «Открыть полный поиск» escalation notice', () => {
+    const onFull = vi.fn();
+    render(<LibraryTreeRoot query="seq:GAATTC" onRequestFullSearch={onFull} />);
+    const notice = screen.getByTestId('tree-requires-full-search');
+    expect(notice).toBeTruthy();
+    fireEvent.click(screen.getByTestId('tree-requires-full-search-action'));
+    expect(onFull).toHaveBeenCalledTimes(1);
+  });
+
+  it('a plain metadata query does NOT show the escalation notice', () => {
+    render(<LibraryTreeRoot query="gfp" onRequestFullSearch={vi.fn()} />);
+    expect(screen.queryByTestId('tree-requires-full-search')).toBeNull();
   });
 
   it('discovers all project zones from state.projects (flat list — both current and non-current visible)', async () => {

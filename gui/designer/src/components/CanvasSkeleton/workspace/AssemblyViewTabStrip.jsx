@@ -2,11 +2,13 @@
  * AssemblyViewTabStrip — M-WORKSPACE second-level view tabs (segmented control,
  * Концепт B). Pure/presentational: the active view key + an onSelect callback.
  */
+// Russian labels — the UI is Russian-facing; a half-English tab strip
+// (Sequence / DAG / … / Pipeline) was jarring for a Russian biologist.
 export const ASSEMBLY_VIEWS = [
-  { key: 'sequence', label: 'Sequence' },
-  { key: 'dag', label: 'DAG' },
+  { key: 'sequence', label: 'Последовательность' },
+  { key: 'dag', label: 'Граф' },
   { key: 'primers', label: 'Праймеры' },
-  { key: 'pipeline', label: 'Pipeline' },
+  { key: 'pipeline', label: 'Протокол' },
 ];
 
 export default function AssemblyViewTabStrip({ active = 'sequence', onSelect }) {

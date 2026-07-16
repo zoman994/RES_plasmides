@@ -27,6 +27,7 @@ import {
   mergeStripWithPredicted,
 } from '../../../lib/annotation-edit.js';
 import { useStore } from '../../../store';
+import { entryRevision } from '../../../lib/search-document-adapters';
 import { selectAnnotator } from '../../../store/uiSlice.js';
 // selectAnnotator import removed — the modal-Annotator mount was the
 // only consumer here, and that mount is gone (Annotations tab embeds
@@ -144,6 +145,7 @@ export default function SingleInspector({
     onCaretChangeFromView,
     onSelectRangeFromView,
     onPendingScrollHandled,
+    scrollToPos,
   } = useInspectorSelectionNav({ activeTab, onActiveTabChange, itemKey });
 
   // V181 / UX-2 — shared feature selection across the Overview (map) and
@@ -160,6 +162,38 @@ export default function SingleInspector({
     if (region && Number.isFinite(region.start)) onBarSettle(region.start);
     setSelectedRegionId(region?.id ?? null);
   }, [onBarSettle]);
+
+  // P3 — consume a parked sequence-nav request once THIS entry is mounted. The
+  // jump can't be set synchronously from the search bar / Ctrl+F popover (the caret
+  // is local hook state that resets on entry switch, and SearchHost is a sibling),
+  // so it is parked in the store and drained here.
+  //
+  // TWO SEARCHES, TWO CHANNELS (kept separate on purpose):
+  //   • GLOBAL library search (the top bar) → jump = select ONE range here (the
+  //     SelectionOverlay band) + force-scroll to it. It does NOT touch `searchHits`.
+  //   • IN-SEQUENCE search (Ctrl+F, SequenceSearchPopover) → owns `searchHits` /
+  //     SearchHitsOverlay (ALL occurrences in the open molecule + next/prev).
+  // So a global jump never overwrites the in-molecule find-all overlay, and vice
+  // versa. A revision mismatch = the sequence changed since the request → drop it.
+  const navRequest = useStore((s) => s.navRequest);
+  const clearSequenceNav = useStore((s) => s.clearSequenceNav);
+  useEffect(() => {
+    if (!navRequest || !item?.id || navRequest.entryId !== item.id) return;
+    const rev = entryRevision(item);
+    if (navRequest.revision != null && rev != null && navRequest.revision !== rev) {
+      clearSequenceNav();
+      return;
+    }
+    const first = navRequest.segments && navRequest.segments[0];
+    const caret = navRequest.caret || (first ? { start: first.start, end: first.end } : null);
+    if (caret && Number.isFinite(caret.start) && Number.isFinite(caret.end)) {
+      const strand = navRequest.strand === -1 ? -1 : 1;
+      if (activeTab !== 'sequence' && activeTab !== 'annotations') onActiveTabChange?.('sequence');
+      onSelectRangeFromView(caret.start, caret.end, 'dna', strand); // the single selected range
+      scrollToPos(caret.start); // force-center regardless of scrollOnFeatureClick
+    }
+    clearSequenceNav();
+  }, [navRequest, item?.id, activeTab, onActiveTabChange, onSelectRangeFromView, scrollToPos, clearSequenceNav]);
   // Editable by default (Игорь 17.06.2026 — «рид-онли/эдитэйбл убрать,
   // сделать редактируемой»). The read-only/editable pill (DEC-LIB-16 ⚓)
   // and the read-only banner (DEC-MX7A-V2-05) are gone; every plasmid is

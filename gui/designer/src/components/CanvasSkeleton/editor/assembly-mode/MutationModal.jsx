@@ -15,7 +15,7 @@ const KINDS = [
 ];
 
 export default function MutationModal({
-  sourceName, defaultPosition, fromBase, sequence, onConfirm, onCancel,
+  sourceName, defaultPosition, fromBase, sequence, onConfirm, onCancel, kldApplies = false,
 }) {
   const [position, setPosition] = useState(
     Number.isFinite(defaultPosition) ? defaultPosition : 0,
@@ -44,10 +44,16 @@ export default function MutationModal({
   // substitution is sliced away from both primers → the ordered oligos amplify
   // wild-type while the in-silico product shows the edit (biologically impossible).
   // Block out-of-range; warn (don't silently accept) an interior position.
+  // V197 — a whole-plasmid KLD mutagenesis (circular, single segment) anneals the
+  // mutagenic primers BACK-TO-BACK at the mutation site, so ANY position — interior
+  // included — is carried by the ordered oligos. The terminal-binding-window caveat
+  // only applies when the piece is amplified as a FRAGMENT by terminal primers, so
+  // suppress the «amplify wild-type» warning when KLD applies (else it is a false alarm
+  // on the exact standalone-plasmid mutagenesis the tool is meant to support).
   const BINDING_WINDOW = 36;
   const seqLen = typeof sequence === 'string' && sequence.length > 0 ? sequence.length : null;
   const outOfRange = seqLen != null && (position < 0 || position >= seqLen);
-  const interior = seqLen != null && !outOfRange
+  const interior = seqLen != null && !outOfRange && !kldApplies
     && position >= BINDING_WINDOW && position < seqLen - BINDING_WINDOW;
 
   const apply = () => {

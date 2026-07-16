@@ -11,6 +11,8 @@ import PrimerPoolList from '../PrimerPoolList';
 export default function PrimerPoolWorkspace() {
   const goBack = useStore((s) => s.goBack);
   const setActiveWorkspace = useStore((s) => s.setActiveWorkspace);
+  // A primer picked in global search arrives via the workspace switch context (§10.4).
+  const selectedPrimerId = useStore((s) => s.workspace?.context?.selectedPrimerId || null);
 
   return (
     <div data-testid="primer-pool-workspace" style={shell}>
@@ -28,7 +30,7 @@ export default function PrimerPoolWorkspace() {
         >← Назад</button>
       </div>
       <div style={body}>
-        <PrimerPoolList />
+        <PrimerPoolList selectedPrimerId={selectedPrimerId} />
       </div>
     </div>
   );

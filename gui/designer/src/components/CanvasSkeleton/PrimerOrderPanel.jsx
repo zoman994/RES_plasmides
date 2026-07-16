@@ -12,7 +12,34 @@
  */
 import { useMemo, useState } from 'react';
 import { useSkeletonState } from './store/skeleton-context';
+import { useStore } from '../../store';
 import { Icon } from '../icons/Icon';
+
+/**
+ * AUD-13 — pure plan for «отметить заказанными». Ordering an oligo sheet must
+ * advance the durable pool's status lifecycle (spec: заказ → «Заказан»), which
+ * `PrimerOrderPanel` never did. Match each exported oligo to a pool primer by
+ * sequence (case-insensitive); collect pool ids to promote to 'ordered', and
+ * the sequences NOT yet in the pool (to add first, then promote). Dedupes by
+ * sequence so a fwd/rev pair sharing a sequence is handled once.
+ */
+export function planOrderStatusUpdate(exported, pool) {
+  const bySeq = new Map();
+  for (const r of pool || []) {
+    const seq = String(r?.sequence || '').toUpperCase();
+    if (seq && !bySeq.has(seq)) bySeq.set(seq, r);
+  }
+  const matchIds = new Set();
+  const toAdd = new Map();
+  for (const p of exported || []) {
+    const seq = String(p?.sequence || '').toUpperCase();
+    if (!seq) continue;
+    const row = bySeq.get(seq);
+    if (row && row.id) matchIds.add(row.id);
+    else if (!toAdd.has(seq)) toAdd.set(seq, { name: p.name, sequence: p.sequence });
+  }
+  return { matchIds: [...matchIds], toAdd: [...toAdd.values()] };
+}
 
 function collectOligoPrimers(containers) {
   const out = [];
@@ -100,6 +127,12 @@ export default function PrimerOrderPanel() {
   const [scale, setScale] = useState('25 nmol');
   const [purification, setPurification] = useState('Standard desalt');
   const [copied, setCopied] = useState(false);
+  const [ordered, setOrdered] = useState(false);
+  // AUD-13 — durable primer pool (main store) so ordering can advance status.
+  const primersById = useStore((s) => s.primersById);
+  const promotePrimerStatus = useStore((s) => s.promotePrimerStatus);
+  const addPrimerToPool = useStore((s) => s.addPrimerToPool);
+  const showToast = useStore((s) => s.showToast);
 
   const primers = useMemo(
     () => [
@@ -130,6 +163,32 @@ export default function PrimerOrderPanel() {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (e) { /* best-effort */ }
+  };
+
+  // AUD-13 — mark the exported oligos as «Заказан» in the durable pool, so the
+  // status lifecycle reflects reality instead of being decorative bookkeeping.
+  const onMarkOrdered = async () => {
+    if (!primers.length) return;
+    const plan = planOrderStatusUpdate(primers, Object.values(primersById || {}));
+    let advanced = 0;
+    let added = 0;
+    for (const id of plan.matchIds) {
+      try { if (await promotePrimerStatus?.(id, 'ordered')) advanced += 1; } catch { /* ignore */ }
+    }
+    for (const a of plan.toAdd) {
+      try {
+        const row = await addPrimerToPool?.({ name: a.name, sequence: a.sequence, origin: 'order-panel' });
+        if (row?.id && await promotePrimerStatus?.(row.id, 'ordered')) { advanced += 1; added += 1; }
+      } catch { /* ignore */ }
+    }
+    setOrdered(true);
+    setTimeout(() => setOrdered(false), 2000);
+    showToast?.(
+      advanced
+        ? `Отмечено заказанными: ${advanced}${added ? ` (+${added} в пул)` : ''}`
+        : 'Праймеров для отметки не нашлось',
+      advanced ? 'success' : 'info',
+    );
   };
 
   return (
@@ -222,6 +281,27 @@ export default function PrimerOrderPanel() {
                 </>
               ) : 'Копировать'}
             </button>
+            <button
+              type="button"
+              data-testid="skeleton-primer-order-mark-ordered"
+              onClick={onMarkOrdered}
+              disabled={primers.length === 0}
+              title="Отметить эти олиго как «Заказан» в пуле праймеров"
+              style={{
+                padding: '5px 10px',
+                background: ordered ? 'var(--success-500, #16a34a)' : 'transparent',
+                color: ordered ? '#fff' : 'var(--accent-700, #b45309)',
+                border: `1px solid ${ordered ? 'var(--success-500, #16a34a)' : 'var(--accent-500, #d97706)'}`,
+                borderRadius: 4,
+                fontSize: 11,
+                fontWeight: 600,
+                cursor: primers.length === 0 ? 'not-allowed' : 'pointer',
+                opacity: primers.length === 0 ? 0.5 : 1,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+              }}
+            >{ordered ? (<><Icon name="check" size={12} />Заказано</>) : 'Отметить заказанными'}</button>
             <button
               type="button"
               data-testid="skeleton-primer-order-close"

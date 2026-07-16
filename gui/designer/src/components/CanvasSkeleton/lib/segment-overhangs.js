@@ -52,7 +52,17 @@ export function segmentOverhangs(segment, reEnzymes) {
   // fragment with DIFFERENT enzymes at its two ends reports its ends backwards, so
   // junctionInterlock / the seam / the closure gate / readiness compare the WRONG end
   // → a silently false compatibility verdict (the user can't see which way to place it).
-  return segment.reverseComplement
+  //
+  // ORIGIN-WRAP (Игорь 07.07 «при инверсии теряются липкие концы, если были выбраны
+  // две рестриктазы») — the INVERTED backbone of a two-enzyme excision wraps the
+  // circular origin (stored ranges [hi..len]+[0..lo]) and its top strand starts at the
+  // HIGHER cut, so its physical LEFT end is the high-position enzyme — the exact opposite
+  // of the sorted-position assignment. Wrapping flips left/right just like a reverse-
+  // complement does, so the two signals XOR: left = high when EXACTLY ONE of
+  // {reverseComplement, originWrap} holds. Without this, the directional backbone reports
+  // both sticky ends on the wrong side and the seam/gate see them as "lost".
+  const swap = !!segment.reverseComplement !== !!segment.originWrap;
+  return swap
     ? { left: highEnd, right: lowEnd }
     : { left: lowEnd, right: highEnd };
 }

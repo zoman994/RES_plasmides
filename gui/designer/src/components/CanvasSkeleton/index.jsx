@@ -186,7 +186,7 @@ function CanvasArea() {
         data-testid="skeleton-clear-canvas"
         onClick={() => {
           const ok = typeof window !== 'undefined' && window.confirm
-            ? window.confirm('Очистить канвас? Все контейнеры, сборки, операции, зоны и позиции будут удалены безвозвратно.')
+            ? window.confirm('Очистить канвас? Все контейнеры, сборки, операции и позиции будут удалены безвозвратно.')
             : false;
           if (ok) actions.reset();
         }}

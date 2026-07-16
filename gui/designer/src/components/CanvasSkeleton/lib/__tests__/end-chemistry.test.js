@@ -108,3 +108,42 @@ describe('assemblyEndChemistry — roll-up', () => {
     expect(segs[0]).toEqual({ id: 's1', acquisitionMethod: 'undefined' });
   });
 });
+
+describe('assemblyEndChemistry — ring-closure / self-closure seam (CH-3)', () => {
+  it('a blunt/KLD-closed ring counts the closure seam (was undercounted by one)', () => {
+    const segs = [seg('a', 'pcr'), seg('b', 'pcr')];
+    const zj = { a__b: { method: 'overlap_pcr' } };
+    // Without closure (linear) — only the internal overlap seam, no phosphorylation.
+    expect(assemblyEndChemistry(segs, zj, 'overlap_pcr', ENZ).needsPhosphorylationCount).toBe(0);
+    // With the ring-closure seam (b→a) as a blunt ligation → 1 seam needs T4 PNK.
+    const r = assemblyEndChemistry(segs, zj, 'overlap_pcr', ENZ, { method: 'direct_ligation' });
+    expect(r.needsPhosphorylationCount).toBe(1);
+    expect(r.message).toMatch(/фосфорилир/i);
+    // the facing ends of the closure seam are badged
+    expect(r.perSegment.b.right.needsPhosphorylation).toBe(true);
+    expect(r.perSegment.a.left.needsPhosphorylation).toBe(true);
+  });
+
+  it('a single-fragment self-closure (KLD) needs phosphorylation — loop ran 0 times before', () => {
+    const segs = [seg('f0', 'pcr')];
+    // No closure → the length-1 loop never runs → 0 (the old bug).
+    expect(assemblyEndChemistry(segs, {}, 'kld', ENZ).needsPhosphorylationCount).toBe(0);
+    // With self-closure → the fragment's own two 5′-OH ends need T4 PNK.
+    const r = assemblyEndChemistry(segs, {}, 'kld', ENZ, { method: 'kld' });
+    expect(r.needsPhosphorylationCount).toBe(1);
+    expect(r.perSegment.f0.left.needsPhosphorylation).toBe(true);
+    expect(r.perSegment.f0.right.needsPhosphorylation).toBe(true);
+  });
+
+  it('a restriction-cut ring closure carries a native 5′-P → no phosphorylation', () => {
+    const segs = [seg('a', 'restriction'), seg('b', 'restriction')];
+    const r = assemblyEndChemistry(segs, {}, 'restriction', ENZ, { method: 'direct_ligation' });
+    expect(r.needsPhosphorylationCount).toBe(0);
+  });
+
+  it('a Gibson-closed ring (ends reworked) needs no closure phosphorylation', () => {
+    const segs = [seg('a', 'pcr'), seg('b', 'pcr')];
+    const r = assemblyEndChemistry(segs, {}, 'overlap_pcr', ENZ, { method: 'gibson' });
+    expect(r.needsPhosphorylationCount).toBe(0);
+  });
+});

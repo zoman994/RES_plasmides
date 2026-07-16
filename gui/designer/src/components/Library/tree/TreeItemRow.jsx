@@ -26,6 +26,9 @@ import { STRINGS } from '../../../lib/strings';
 import { FEATURE_FLAGS } from '../../../lib/feature-flags';
 import { downloadEntryAsGenbank } from '../../../lib/export-genbank';
 import { Icon } from '../../icons/Icon';
+import HighlightedText from '../../common/HighlightedText';
+import { REASON_LABELS } from '../../../lib/search-result-vm';
+import { t } from '../../../i18n';
 
 const INDENT_PX = [12, 22, 38, 54, 70];
 
@@ -134,6 +137,8 @@ export const TreeItemRow = memo(function TreeItemRow({
   // VersionLineageNode for the «v3» / «⑂ ветка» / status markers on a
   // collapsed version stack). Plain node, no layout assumptions.
   badge = null,
+  // Match detail from LibraryTreeRoot's one tree session. Rows never rerun the engine.
+  matchInfo = null,
 }) {
   // M-X.7c K5 — hover-revealed «+» quick-add per
   // DEC-UIRREV-QUICKADD-HOVER-01. Visible only when an active
@@ -154,6 +159,7 @@ export const TreeItemRow = memo(function TreeItemRow({
   // Phase 4 (правый клик): дополнительные действия записи для контекстного меню.
   const extractEntryToLoose = useStore((s) => s.extractEntryToLoose);
   const renameLibraryEntry = useStore((s) => s.renameLibraryEntry);
+  const requestPrompt = useStore((s) => s.requestPrompt);
   const [ctxMenu, setCtxMenu] = useState(null); // { x, y } | null
   const showQuickAdd = !!currentProjectId
     && !!entry
@@ -211,9 +217,7 @@ export const TreeItemRow = memo(function TreeItemRow({
   // Right-click menu actions (фаза 4).
   const doRename = useCallback(async () => {
     if (!entry?.id || !renameLibraryEntry) return;
-    const next = (typeof window !== 'undefined' && typeof window.prompt === 'function')
-      ? window.prompt('Новое имя записи:', entry.name || '')
-      : null;
+    const next = await requestPrompt({ title: 'Переименовать запись', defaultValue: entry.name || '', placeholder: 'Новое имя' });
     if (next == null) return;
     const trimmed = String(next).trim();
     if (!trimmed || trimmed === entry.name) return;
@@ -223,7 +227,7 @@ export const TreeItemRow = memo(function TreeItemRow({
     } catch (err) {
       showToast?.(err?.message || 'Ошибка', 'error');
     }
-  }, [entry, renameLibraryEntry, showToast]);
+  }, [entry, renameLibraryEntry, showToast, requestPrompt]);
 
   const doExtract = useCallback(async () => {
     if (!entry?.id || !extractEntryToLoose) return;
@@ -253,6 +257,7 @@ export const TreeItemRow = memo(function TreeItemRow({
   }, []);
 
   if (!entry) return null;
+  const baseId = testId || `tree-item-${entry.id}`;
   const meta = metaLine(entry);
   const oc = originChar(entry);
   const ocColor = originColor(entry);
@@ -309,23 +314,41 @@ export const TreeItemRow = memo(function TreeItemRow({
           : '2px solid transparent',
       }}
     >
+      {/* No disclosure gutter on plain rows — the mini-icon sits right at the
+          indent so there is no wasted left margin. VersionLineageNode pulls its
+          chevron INTO the indent (negative of the chevron column) so a head's
+          icon still lines up with these plain-row icons at the same indent. */}
       <span style={{ flexShrink: 0, lineHeight: 0, width: 20, height: 20 }}>
         <MiniIcon entry={entry} color={ringColor} />
       </span>
-      {badge && (
-        <span style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 3 }}>{badge}</span>
-      )}
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
         <div
           style={{
             fontSize: 12.5,
             color: 'var(--text-primary)',
             fontWeight: isSelected ? 500 : 400,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            minWidth: 0,
           }}
-        >{entry.name || entry.id}</div>
+        >
+          <HighlightedText
+            text={entry.name || entry.id}
+            spans={matchInfo?.nameHighlights}
+            style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}
+          />
+          {matchInfo?.reason && (
+            <span
+              data-testid={`${testId || `tree-item-${entry.id}`}-reason`}
+              style={{
+                flexShrink: 0, fontSize: 9.5, padding: '0 5px', borderRadius: 8,
+                background: 'var(--surface-2)', color: 'var(--text-secondary)',
+                border: '1px solid var(--border-subtle)',
+              }}
+            >{t(REASON_LABELS[matchInfo.reason] || matchInfo.reason)}</span>
+          )}
+        </div>
         {meta && (
           <div
             data-testid={`${testId || `tree-item-${entry.id}`}-meta`}
@@ -384,8 +407,17 @@ export const TreeItemRow = memo(function TreeItemRow({
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
         }}
       ><Icon name="trash" size={13} /></button>
+      {/* Version / branch badge (from VersionLineageNode) lives in the RIGHT
+          cluster — keeps the name column aligned and puts version chips in one
+          right-hand column with the lineage head, instead of zig-zagging. */}
+      {badge && (
+        <span
+          data-testid={`${baseId}-badge`}
+          style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 3 }}
+        >{badge}</span>
+      )}
       <span
-        data-testid={`${testId || `tree-item-${entry.id}`}-origin`}
+        data-testid={`${baseId}-origin`}
         title={entry?.origin?.kind || ''}
         style={{ fontSize: 12, flexShrink: 0, color: ocColor }}
       >{oc}</span>

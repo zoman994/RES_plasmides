@@ -233,6 +233,22 @@ export function enrichZonesWithJunctions(coloredZones, zoneJunctions = {}, assem
 // irrelevant there and must not block the build.
 const STICKY_JOIN_KINDS = ['re_ligation', 'ligation', 'kld'];
 
+// V196 (e2e-cloning-hunt) — a non-mating physical interlock (junctionInterlock
+// 'incompatible', which only arises between two REAL RE overhangs) BLOCKS the build
+// when the join uses the ends as-is. Two cases count:
+//   • a direct sticky-join method (STICKY_JOIN_KINDS) — always; OR
+//   • an UNDECIDED default junction (state !== 'decided') — the biologist has NOT opted
+//     into a homology method, so the seeded overlap_pcr default must not silently green-
+//     light a plasmid whose raw ends physically cannot ligate. A DECIDED overlap / gibson
+//     / golden_gate junction means the biologist chose to REBUILD the ends (homology arms
+//     / Type IIS fusion) → the raw RE mismatch is intentionally irrelevant and does NOT block.
+function countsAsIncompatible(interlock, junctionRight) {
+  if (!(interlock && interlock.verdict === 'incompatible')) return false;
+  if (!junctionRight) return false;
+  if (STICKY_JOIN_KINDS.includes(junctionRight.kind)) return true;
+  return junctionRight.state !== 'decided';
+}
+
 // RC-CLOSE-GATE (Игорь 25.06) — the CLOSURE block uses a NARROWER set than the
 // internal gate: a self-/ring-closure counts an incompatible interlock ONLY when
 // the chosen reaction ligates the fragment's PRE-EXISTING physical ends — classical
@@ -262,11 +278,7 @@ export function assemblyReadiness(coloredZones, closure = null) {
   // ligate, not just whether each junction glyph was clicked (clicked ≠ valid).
   // Count an 'incompatible' interlock ONLY at a junction whose method joins the
   // ends directly (STICKY_JOIN_KINDS) — see above.
-  const incompatibleInternal = zones.filter((z) => {
-    if (!(z && z.interlock && z.interlock.verdict === 'incompatible')) return false;
-    const jr = z.junctionRight;
-    return jr ? STICKY_JOIN_KINDS.includes(jr.kind) : false;
-  }).length;
+  const incompatibleInternal = zones.filter((z) => (z && z.junctionRight ? countsAsIncompatible(z.interlock, z.junctionRight) : false)).length;
   const incompatible = incompatibleInternal + (closureBlocks(closure) ? 1 : 0);
   // A circular assembly is buildable only if its closure also mates; a 1-fragment
   // self-closure has no internal junction (js.length 0) yet can still be ready.
@@ -292,9 +304,10 @@ export function assemblyJunctionConflicts(coloredZones, closure = null) {
   const out = [];
   for (let i = 0; i < zones.length; i += 1) {
     const z = zones[i];
-    if (!(z && z.interlock && z.interlock.verdict === 'incompatible')) continue;
-    const jr = z.junctionRight;
-    if (!jr || !STICKY_JOIN_KINDS.includes(jr.kind)) continue;
+    const jr = z && z.junctionRight;
+    // V196 — same gate as assemblyReadiness.incompatible (keeps
+    // `assemblyJunctionConflicts(z).length === assemblyReadiness(z).incompatible`).
+    if (!countsAsIncompatible(z && z.interlock, jr)) continue;
     const next = zones[i + 1];
     // RC-ORIENT (Игорь 25.06 «помочь собрать, не заставлять гадать как подставить»):
     // if the seam is incompatible AS-ORIENTED but FLIPPING the next fragment would mate

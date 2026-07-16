@@ -103,27 +103,45 @@ export function junctionEndPlan(leftSeg, rightSeg, method, enzyme, reEnzymes) {
  * @returns {{ needsPhosphorylationCount:number, unresolvedTailCount:number,
  *   perSegment:Object, message:string|null }}
  */
-export function assemblyEndChemistry(segments, zoneJunctions = {}, assemblyMethod = null, reEnzymes = {}) {
+export function assemblyEndChemistry(segments, zoneJunctions = {}, assemblyMethod = null, reEnzymes = {}, closure = null) {
   const segs = Array.isArray(segments) ? segments : [];
   const perSegment = {};
   let needsPhosphorylationCount = 0;
   let unresolvedTailCount = 0;
+
+  const ensure = (id) => { if (!perSegment[id]) perSegment[id] = { left: null, right: null }; };
+  const applySeam = (a, b, method, enzyme) => {
+    const plan = junctionEndPlan(a, b, method, enzyme, reEnzymes);
+    if (plan.needsPhosphorylation) needsPhosphorylationCount += 1;
+    if (!plan.ready) unresolvedTailCount += 1;
+    ensure(a.id); ensure(b.id);
+    perSegment[a.id].right = { ...plan.left, junctionMethod: method, needsPhosphorylation: plan.needsPhosphorylation };
+    perSegment[b.id].left = { ...plan.right, junctionMethod: method, needsPhosphorylation: plan.needsPhosphorylation };
+  };
 
   for (let i = 0; i < segs.length - 1; i += 1) {
     const a = segs[i];
     const b = segs[i + 1];
     if (!a || !b) continue;
     const cfg = (zoneJunctions && zoneJunctions[pairKeyFor(a.id, b.id)]) || {};
-    const method = cfg.method || assemblyMethod || 'overlap_pcr';
-    const enzyme = cfg.enzyme || null;
-    const plan = junctionEndPlan(a, b, method, enzyme, reEnzymes);
-    if (plan.needsPhosphorylation) needsPhosphorylationCount += 1;
-    if (!plan.ready) unresolvedTailCount += 1;
+    applySeam(a, b, cfg.method || assemblyMethod || 'overlap_pcr', cfg.enzyme || null);
+  }
 
-    if (!perSegment[a.id]) perSegment[a.id] = { left: null, right: null };
-    if (!perSegment[b.id]) perSegment[b.id] = { left: null, right: null };
-    perSegment[a.id].right = { ...plan.left, junctionMethod: method, needsPhosphorylation: plan.needsPhosphorylation };
-    perSegment[b.id].left = { ...plan.right, junctionMethod: method, needsPhosphorylation: plan.needsPhosphorylation };
+  // CH-3 — the ring-closure (last→first) / single-fragment self-closure seam was
+  // NEVER evaluated (the loop stops at segs.length-1), so a blunt/KLD-closed ring
+  // undercounted 5′-OH junctions by one (and a lone self-closing PCR fragment by
+  // all of them → the T4-PNK phosphorylation warning silently never fired). When
+  // the caller marks the assembly circular (`closure` truthy), evaluate it too.
+  // `closure` = { method?, enzyme? } | truthy; falls back to the closure-pair
+  // junction config, then assemblyMethod. Linear assemblies pass null → unchanged.
+  if (closure && segs.length >= 1) {
+    const first = segs[0];
+    const last = segs[segs.length - 1];
+    if (first && last) {
+      const cfg = (zoneJunctions && zoneJunctions[pairKeyFor(last.id, first.id)]) || {};
+      const c = (typeof closure === 'object') ? closure : {};
+      applySeam(last, first, c.method || cfg.method || assemblyMethod || 'overlap_pcr', c.enzyme || cfg.enzyme || null);
+    }
   }
 
   let message = null;

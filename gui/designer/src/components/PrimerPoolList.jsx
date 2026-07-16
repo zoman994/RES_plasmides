@@ -9,7 +9,7 @@
  * Presentation-only over the store; hosted full-page by PrimerPoolWorkspace
  * (sidebar «Праймеры» destination). No chrome of its own.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../store';
 import { Icon } from './icons/Icon';
 import PrimerStatusControl from './PrimerStatusControl';
@@ -22,7 +22,7 @@ const FILTERS = [
   ...ALL_STATUSES.map((s) => ({ value: s, label: statusLabel(s) })),
 ];
 
-export default function PrimerPoolList() {
+export default function PrimerPoolList({ selectedPrimerId = null } = {}) {
   const primersById = useStore((s) => s.primersById);
   const projects = useStore((s) => s.projects);
   const currentProjectId = useStore((s) => s.currentProjectId);
@@ -56,11 +56,15 @@ export default function PrimerPoolList() {
     if (filter === 'active') list = list.filter((p) => (p.status || 'imported') !== 'archived');
     else if (filter !== 'all') list = list.filter((p) => (p.status || 'imported') === filter);
     if (tagFilter) list = list.filter((p) => (p.tags || []).includes(tagFilter));
+    // A primer picked in global search (§10.4) must ALWAYS be visible — even an archived one
+    // the `active` filter would hide — or the pool lands on an empty/wrong row.
+    const sel = selectedPrimerId && primersById?.[selectedPrimerId];
+    if (sel && !list.some((p) => p.id === selectedPrimerId)) list = [sel, ...list];
     // Stable order: lifecycle rank asc (designed first, archived last), then newest.
     list.sort((a, b) => (statusRank(a.status) - statusRank(b.status))
       || (b.addedAt || '').localeCompare(a.addedAt || ''));
     return list;
-  }, [primersById, filter, tagFilter]);
+  }, [primersById, filter, tagFilter, selectedPrimerId]);
 
   const scopeLabel = (p) => {
     if (!p.projectId) return 'Библиотека';
@@ -132,6 +136,7 @@ export default function PrimerPoolList() {
             key={p.id}
             primer={p}
             scopeLabel={scopeLabel(p)}
+            selected={p.id === selectedPrimerId}
             onPromote={onPromote}
             onDelete={onDelete}
             onRename={onRename}
@@ -143,8 +148,13 @@ export default function PrimerPoolList() {
   );
 }
 
-function PrimerPoolRow({ primer: p, scopeLabel, onPromote, onDelete, onRename, onSetTags }) {
+function PrimerPoolRow({ primer: p, scopeLabel, onPromote, onDelete, onRename, onSetTags, selected = false }) {
   const tags = p.tags || [];
+  const rowRef = useRef(null);
+  // A primer picked in global search (§10.4) scrolls its pool row into view + highlights it.
+  useEffect(() => {
+    if (selected && rowRef.current) rowRef.current.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+  }, [selected]);
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(p.name || '');
   const [addingTag, setAddingTag] = useState(false);
@@ -168,10 +178,13 @@ function PrimerPoolRow({ primer: p, scopeLabel, onPromote, onDelete, onRename, o
 
   return (
     <div
+      ref={rowRef}
       data-testid={`primer-pool-row-${p.id}`}
+      aria-current={selected ? 'true' : undefined}
       style={{
-        border: '1px solid var(--border-subtle, #e7e5e4)', borderRadius: 6,
-        padding: '8px 10px', background: 'var(--surface-1, #fff)',
+        border: selected ? '1px solid var(--accent-500)' : '1px solid var(--border-subtle, #e7e5e4)',
+        borderRadius: 6, padding: '8px 10px',
+        background: selected ? 'var(--surface-2)' : 'var(--surface-1, #fff)',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>

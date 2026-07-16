@@ -27,14 +27,14 @@ import ContextMenu from '../../ContextMenu';
 import { FEATURE_FLAGS } from '../../../lib/feature-flags';
 import { Icon } from '../../icons/Icon';
 
-function matchesQuery(entry, q) {
-  if (!q) return true;
-  return (entry?.name || '').toLowerCase().includes(q.toLowerCase());
-}
+const SHOW_ALL = () => true;
+const NO_MATCH_INFO = () => null;
 
 export default function ProjectZone({
   project,
-  query = '',
+  // REV#2 Stage 3 K5 — visibility and explanations come only from LibraryTreeRoot's one session.
+  matchEntry = SHOW_ALL,
+  getMatchInfo = NO_MATCH_INFO,
   selectedId = null,
   onSelectEntry,
   expanded = true,
@@ -67,12 +67,12 @@ export default function ProjectZone({
   );
 
   const filteredContainers = useMemo(
-    () => containerEntries.filter((e) => matchesQuery(e, query)),
-    [containerEntries, query],
+    () => containerEntries.filter(matchEntry),
+    [containerEntries, matchEntry],
   );
   const filteredPrimers = useMemo(
-    () => primerEntries.filter((e) => matchesQuery(e, query)),
-    [primerEntries, query],
+    () => primerEntries.filter(matchEntry),
+    [primerEntries, matchEntry],
   );
 
   // Collapse version lineages: chained edits/versions of one molecule render
@@ -282,6 +282,7 @@ export default function ProjectZone({
               expanded={expandedLineages.has(g.rootId)}
               onToggle={() => toggleLineage(g.rootId)}
               indent={2}
+              getMatchInfo={getMatchInfo}
               testId={`version-lineage-${g.rootId}`}
             />
           ) : (
@@ -297,6 +298,7 @@ export default function ProjectZone({
               // включает это; ProjectZone было оставлено по умолчанию
               // false — bug.
               draggable
+              matchInfo={getMatchInfo(g.headEntry)}
               testId={`tree-item-project-${g.headEntry.id}`}
             />
           )
@@ -324,6 +326,7 @@ export default function ProjectZone({
             onSelect={onSelectEntry}
             indent={2}
             draggable
+            matchInfo={getMatchInfo(entry)}
             testId={`tree-item-project-${entry.id}`}
           />
         ))}

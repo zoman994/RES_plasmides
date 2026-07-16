@@ -243,8 +243,11 @@ export default function AssemblyShellBody({ draft, embedded = false }) {
   // ligation (need T4 PNK) and which junctions lack a chosen enzyme. Pure,
   // read-only; never touches stored ranges / tails / product (bio-safe).
   const endChem = useMemo(
-    () => assemblyEndChemistry(draft.segments, zoneJunctions, assemblyMethod, RE_ENZYMES),
-    [draft.segments, zoneJunctions, assemblyMethod],
+    // CH-3 — feed the ring-closure / self-closure seam so a blunt/KLD-closed ring
+    // (or a 1-fragment self-closure) also counts toward the T4-PNK phosphorylation
+    // verdict. closureSeam is null for linear builds → unchanged.
+    () => assemblyEndChemistry(draft.segments, zoneJunctions, assemblyMethod, RE_ENZYMES, closureSeam),
+    [draft.segments, zoneJunctions, assemblyMethod, closureSeam],
   );
   // S3 (V163) — RE-cloning chemistry: per-fragment double-digest staging
   // (sequential when buffers/temps differ) + directional vs self-ligation
@@ -989,6 +992,10 @@ export default function AssemblyShellBody({ draft, embedded = false }) {
           fromBase={mutationFor.fromBase}
           // A15 — pass the piece sequence so «Original base» tracks the position.
           sequence={((draft.segments || []).find((s) => s.id === mutationFor.pieceId) || {}).sequence || ''}
+          // V197 — a whole-plasmid KLD (circular + single segment) carries an interior
+          // mutation via back-to-back mutagenic primers, so suppress the false «oligos
+          // amplify wild-type» interior warning for that case.
+          kldApplies={!!(draft.topology && draft.topology.circular) && (draft.segments || []).length === 1}
           onConfirm={(m) => {
             actions.addPieceMutation(mutationFor.pieceId, m);
             setMutationFor(null);

@@ -58,4 +58,22 @@ describe('K2 — uiSlice', () => {
     expect(toasts[0].actionLabel).toBe('Продолжить аннотацию');
     expect(toasts[1].actionLabel).toBe(null);
   });
+
+  // P3 — cross-mount sequence-navigation channel.
+  it('requestSequenceNav parks a normalized nav request; clearSequenceNav acks it', () => {
+    useStore.getState().requestSequenceNav('e1', {
+      segments: [{ start: 3, end: 9 }], strand: '-', revision: 'rev7', caret: { start: 3, end: 9 },
+    });
+    const nav = useStore.getState().navRequest;
+    expect(nav).toMatchObject({ entryId: 'e1', strand: -1, revision: 'rev7', kind: 'sequence', status: 'pending' });
+    expect(nav.segments).toEqual([{ start: 3, end: 9 }]);
+    useStore.getState().clearSequenceNav();
+    expect(useStore.getState().navRequest).toBeNull();
+  });
+
+  it('requestSequenceNav with no entry/target clears the channel', () => {
+    useStore.getState().requestSequenceNav('e1', { segments: [{ start: 0, end: 4 }] });
+    useStore.getState().requestSequenceNav(null, null);
+    expect(useStore.getState().navRequest).toBeNull();
+  });
 });

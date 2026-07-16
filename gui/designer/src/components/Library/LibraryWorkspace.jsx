@@ -28,9 +28,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore } from '../../store';
 import { STRINGS } from '../../lib/strings';
+import { t } from '../../i18n';
+import { SEARCH_PROFILES } from '../../lib/search-profiles';
 import { useResizableSplit } from '../../hooks/useResizableSplit';
 import ResizeHandle from '../common/ResizeHandle';
 import LibraryTopBar from './LibraryTopBar';
+import SearchSettingsModal from './SearchSettingsModal';
+import EnzymeCard from './EnzymeCard';
+import { entryRevision } from '../../lib/search-document-adapters';
+import { makeOpenEntry } from '../../lib/open-entry-action';
+import { useSearchPickRouter } from './hooks/useSearchPickRouter';
+import { useSearchQueryState } from './hooks/useSearchQueryState';
 import LibraryTreeRoot from './tree/LibraryTreeRoot';
 import LibrarySingleInspector from './inspector/LibrarySingleInspector';
 import VersionTimelineModal from './inspector/VersionTimelineModal';
@@ -90,7 +98,12 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
   const [selectedId, setSelectedId] = useState(null);
   // «История версий» modal (entry point from the Library).
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [query, setQuery] = useState('');
+  // REV#2 Stage 3 K5 — the SEARCH-UNIFY shared string is split: the TREE keeps its own
+  // fast quick-filter (`treeQuery`, tree-local, unchanged), while the top-bar owns a
+  // separate structured `globalSearch` controller (below). They are independent (§9.4);
+  // the only bridge is the tree's «Полный поиск» escalation, which SEEDS (replaces) the
+  // global state from `treeQuery` — never a live two-way sync.
+  const [treeQuery, setTreeQuery] = useState('');
   const [perEntryState, setPerEntryState] = useState({});
   // SPEC_COMMON_FEATURES DEC-CF-06 — right-panel view: 'entry' inspector vs
   // the 'common' features section. Orthogonal to selectedId/perEntryState
@@ -139,6 +152,12 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
       consumedFocusRef.current = false;
     }
   }, [wsContext]);
+
+  // «Полный поиск» — the tree quick-filter escalates to the wide top-bar
+  // SmartSearchBar (results dropdown, honest metrics, jump-to-hit). Bumping
+  // this tick focuses that bar; `query` is already shared so the same text
+  // is there and the dropdown populates immediately.
+  const [fullSearchTick, setFullSearchTick] = useState(0);
 
   // Import files and add to store. `projectId` = null → LooseZone, id → project zone.
   const importFiles = useCallback(async (files, projectId, opts = {}) => {
@@ -349,6 +368,22 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
 
   const entriesById = useStore((s) => s.libraryEntries);
   const projectsById = useStore((s) => s.projects);
+
+  // REV#2 Stage 3 K4.2b∪K5 — the TOP-BAR's structured global search (§9.4). Owns the
+  // canonical `globalSearchState`; the tree keeps its own `treeQuery`. `in:` names resolve
+  // to a stable projectId (§617): a unique name → {projectId,label}, ambiguous/missing →
+  // a blocking diagnostic (fabricated ids never reach the engine). Two projects can share a
+  // name, so resolve by identity, not text.
+  const resolveProjectName = (name) => Object.entries(projectsById || {})
+    .filter(([, p]) => p && !p._pendingDelete && p.name === name)
+    .map(([id, p]) => ({ projectId: id, label: p.name }));
+  const globalSearch = useSearchQueryState({
+    capabilities: SEARCH_PROFILES.globalLibrary,
+    resolveProjectName,
+    resolveLabel: t,
+    resolveRemoveLabel: () => t('search.removeFilter.aria'),
+  });
+
   const totalEntries = useMemo(
     () => Object.values(entriesById || {}).filter((e) => e && !e._pendingDelete).length,
     [entriesById],
@@ -452,6 +487,28 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
     setPerEntryState((prev) => prev[entry.id] ? prev : { ...prev, [entry.id]: emptyEntryState() });
   }, [guardedSelect]);
 
+  // The molecule-open behaviour behind a global-search entry pick (§10.4) — the STANDARD
+  // guarded selection (dirty guard → activate project → common→entry → perEntryState → nav
+  // parked after a confirmed select). Extracted + unit-tested in lib/open-entry-action.
+  const openEntry = useMemo(() => makeOpenEntry({
+    getEntry: (id) => useStore.getState().libraryEntries?.[id],
+    guardedSelect,
+    activateProject: (pid) => useStore.getState().activateProject?.(pid),
+    setView,
+    setSelectedId,
+    initPerEntryState: (id) => setPerEntryState((prev) => (prev[id] ? prev : { ...prev, [id]: emptyEntryState() })),
+    requestSequenceNav: (id, target) => useStore.getState().requestSequenceNav?.(id, target),
+  }), [guardedSelect]);
+
+  const {
+    handlePickSearchResult, enzymeCardId, scanEnzymeSites, closeEnzymeCard,
+  } = useSearchPickRouter({
+    openEntry,
+    // Enzyme-card «Найти сайты» runs a `cut:` scan in the GLOBAL bar (§10.5) — seed
+    // (replace) the global state so it lands there, not in the tree quick-filter.
+    setQuery: (q) => globalSearch.seedGlobalQuery(q),
+  });
+
   // «+ Проект» → create a NEW project with a UNIQUE default name and open its
   // info to name it. «Нормальная логика» (Igor 15.06.2026): each click makes a
   // distinct project (no same-name collisions — «Новый проект», «Новый проект
@@ -553,24 +610,25 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
         height: '100%',
         minHeight: 0,
         background: 'var(--surface-1)',
+        position: 'relative', // containing block for the absolutely-positioned EnzymeCard
       }}
     >
       <LibraryTopBar
-        query={query}
-        onQueryChange={setQuery}
-        onPickGlobalHit={(entryId /* , hit */) => {
-          // M-X.9 K3 — global DNA hit click: select the entry +
-          // activate its project if it belongs to one. Hit `pos`
-          // navigation lives in K2 popover until SequenceView
-          // overlay rendering lands.
-          const entry = useStore.getState().libraryEntries?.[entryId];
-          if (!entry) return;
-          if (entry.projectId) {
-            useStore.getState().activateProject?.(entry.projectId);
-          }
-          setSelectedId(entryId);
-        }}
+        search={globalSearch}
+        autoFocusSearchTick={fullSearchTick}
+        onPickSearchResult={handlePickSearchResult}
       />
+
+      {/* Enzyme card (§10.5) — picking an enzyme opens it; «Найти сайты» is a SEPARATE
+          action that runs a `cut:` scan (never an implicit re: query rewrite). */}
+      <EnzymeCard
+        enzymeId={enzymeCardId}
+        onScanSites={() => scanEnzymeSites(enzymeCardId)}
+        onClose={closeEnzymeCard}
+      />
+
+      {/* Global «Настройки поиска» — opens on the bar's «изменить» link (P2). */}
+      <SearchSettingsModal />
 
       <div
         ref={splitRef}
@@ -583,9 +641,15 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
         }}
       >
         <LibraryTreeRoot
-          query={query}
-          onQueryChange={setQuery}
+          query={treeQuery}
+          onQueryChange={setTreeQuery}
           autoFocusSearchTick={focusSearchTick}
+          onRequestFullSearch={() => {
+            // Escalation is a REPLACE, not a merge (§9.4 / K5): seed the global bar from the
+            // tree's current text, then focus + open it. A prior global mode/chip cannot leak in.
+            globalSearch.seedGlobalQuery(treeQuery);
+            setFullSearchTick((t) => t + 1);
+          }}
           onCreateProject={onCreateProject}
           selectedId={selectedId}
           onSelectEntry={onSelectEntry}
@@ -677,6 +741,20 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
 function SearchHost({ item }) {
   const open = useStore((s) => s.modals?.sequenceSearch);
   const close = useStore((s) => s.closeSequenceSearch);
+  // P3 — revive the dead per-hit jump: route it through the shared nav channel
+  // (SearchHost is a SIBLING of the inspector, so it can't reach the caret
+  // directly). The inspector consumes navRequest and sets caret + scroll.
+  const requestSequenceNav = useStore((s) => s.requestSequenceNav);
+  const onJumpTo = useCallback((hit) => {
+    if (!item?.id || !hit || !Number.isFinite(hit.targetStart)) return;
+    requestSequenceNav(item.id, {
+      segments: [{ start: hit.targetStart, end: hit.targetEnd }],
+      caret: { start: hit.targetStart, end: hit.targetEnd },
+      strand: hit.strand === -1 ? -1 : 1,
+      revision: entryRevision(item),
+      metricPct: hit.queryIdentity ?? hit.identity ?? 1,
+    });
+  }, [item, requestSequenceNav]);
   return (
     <SequenceSearchPopover
       open={!!open}
@@ -684,6 +762,7 @@ function SearchHost({ item }) {
       targetSequence={item?.sequence || ''}
       targetName={item?.name || item?.id || null}
       entryId={item?.id || null}
+      onJumpTo={onJumpTo}
     />
   );
 }

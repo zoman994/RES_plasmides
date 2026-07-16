@@ -150,6 +150,11 @@ function extractColor(feat) {
 const QUALIFIER_WHITELIST = [
   'note', 'product', 'gene', 'gene_synonym', 'locus_tag', 'old_locus_tag',
   'EC_number', 'db_xref', 'function', 'standard_name', 'protein_id', 'pseudo',
+  // P4.0 — reading-frame + genetic-code provenance for protein search (aa:).
+  // INSDC /codon_start (1|2|3, 1-based frame offset) and /transl_table (NCBI id).
+  // Ride as raw strings on ann.qualifiers; the translate-cds consumer parses +
+  // converts codon_start→frame offset at its own boundary (never store shifted).
+  'codon_start', 'transl_table',
 ];
 function pickQualifiers(q) {
   if (!q || typeof q !== 'object') return null;

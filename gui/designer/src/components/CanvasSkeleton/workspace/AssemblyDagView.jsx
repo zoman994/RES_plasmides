@@ -227,7 +227,7 @@ export default function AssemblyDagView({ zoneId }) {
             color: 'var(--text-tertiary)',
           }}
           >
-            Граф появится после «Реализовать» во вкладке Sequence.
+            Добавьте фрагменты во вкладке Sequence — граф появится автоматически.
           </div>
         ) : (
           <>

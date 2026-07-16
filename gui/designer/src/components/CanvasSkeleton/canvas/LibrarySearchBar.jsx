@@ -42,9 +42,23 @@ import { useStore } from '../../../store';
 // lighter consumers can reuse them without pulling this whole picker. Imported
 // for internal use AND re-exported below for back-compat with existing callers.
 import { matchesQuery, matchesType, groupLibraryEntries } from '../../../lib/library-match';
+// The smart metadata matcher the rest of the app uses (tree filter, topbar):
+// name / tag / type / status / feature / qualifiers via classifyQuery. The picker
+// composes it with its own DNA-substring path (see smartMatch below), so a fragment
+// can be found by a tag or feature name, not only by its own plasmid name.
+import { makeEntryMatcher } from '../../../lib/library-search';
 import { Icon } from '../../icons/Icon';
 
 export { matchesQuery, matchesType, groupLibraryEntries };
+
+// Nucleotide alphabet the substring path accepts. Kept to literal A/C/G/T so a
+// text query («amp», «экспрессия») routes through the metadata matcher only, while
+// a real motif still matches by sequence. Length ≥3 mirrors the old picker's
+// «search by sequence» without turning 1–2 char queries into match-everything.
+const DNA_SUBSTRING_RE = /^[ACGT]+$/;
+function seqOf(entry) {
+  return String(entry?.payload?.sequence || entry?.sequence || '').toUpperCase();
+}
 
 const TYPE_FILTERS = [
   { id: 'all', label: 'Все', icon: null },
@@ -294,19 +308,37 @@ export default function LibrarySearchBar({
     closeSequenceSearch?.();
   }, [bindFindHotkey, findRequested, closeSequenceSearch]);
 
+  // Smart query predicate: the shared metadata matcher (name/tag/type/status/
+  // feature/qualifiers) OR — for a real nucleotide query — a literal sequence
+  // substring. matchesEntry returns false for a bare DNA query (no seq engine on
+  // this path), so the substring branch is what keeps «search by sequence» alive.
+  const smartMatch = useMemo(() => {
+    const q = (query || '').trim();
+    const meta = makeEntryMatcher(q);
+    const qUp = q.toUpperCase();
+    const dnaish = qUp.length >= 3 && DNA_SUBSTRING_RE.test(qUp);
+    return (entry) => {
+      if (!q) return true;
+      if (meta(entry)) return true;
+      return dnaish && seqOf(entry).includes(qUp);
+    };
+  }, [query]);
+
   const grouped = useMemo(
-    () => groupLibraryEntries({ libraryEntries, currentProjectId, query, typeFilter }),
-    [libraryEntries, currentProjectId, query, typeFilter],
+    () => groupLibraryEntries({
+      libraryEntries, currentProjectId, query, typeFilter, matcher: smartMatch,
+    }),
+    [libraryEntries, currentProjectId, query, typeFilter, smartMatch],
   );
 
   const favEntries = useMemo(() => favIds
     .map((id) => libraryEntries?.[id])
-    .filter((e) => e && !e._pendingDelete && matchesQuery(e, query) && matchesType(e, typeFilter)),
-  [favIds, libraryEntries, query, typeFilter]);
+    .filter((e) => e && !e._pendingDelete && smartMatch(e) && matchesType(e, typeFilter)),
+  [favIds, libraryEntries, smartMatch, typeFilter]);
   const recentEntries = useMemo(() => recentIds
     .map((id) => libraryEntries?.[id])
-    .filter((e) => e && !e._pendingDelete && matchesQuery(e, query) && matchesType(e, typeFilter)),
-  [recentIds, libraryEntries, query, typeFilter]);
+    .filter((e) => e && !e._pendingDelete && smartMatch(e) && matchesType(e, typeFilter)),
+  [recentIds, libraryEntries, smartMatch, typeFilter]);
 
   // Canvas extraSections are name-filtered only (not library-shaped).
   const filteredExtra = useMemo(() => (Array.isArray(extraSections) ? extraSections : []).map((s) => ({
@@ -515,7 +547,7 @@ export default function LibrarySearchBar({
         value={query}
         onChange={(e) => { setQuery(e.target.value); if (!inline) setIsOpen(true); }}
         onFocus={() => { if (!inline) setIsOpen(true); }}
-        placeholder="🔍 Поиск по имени или последовательности (ATGC…)"
+        placeholder="🔍 Поиск: имя · тег · фича · последовательность (ATGC…)"
         style={styles.input}
       />
       <div style={styles.filters}>

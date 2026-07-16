@@ -19,7 +19,7 @@ BodgeGene — open-source web-редактор плазмид со структ�
 
 **Архитектурное ядро.** Канвас проекта — четырёхуровневая модель данных `source → piece → reaction → product` внутри зон-фреймов (как Miro), с двумя режимами отображения зоны (graph / sequence). Source — существующий контейнер ДНК; piece — именованный логический отбор участка (план); reaction — операция получения/соединения (PCR, Gibson, restriction, …); product — derived-выход, материализуется в новый контейнер. Сборка — это операция-ребро графа, не отдельная сущность. Параллельно — ось версионирования внутри контейнера (ContainerCommit + replay).
 
-**Формат и модель работы.** `.bodge` (ZIP проекта) и `.bodgebox` (один контейнер) построены на стандартном GenBank с провенанс-слоём в COMMENT — graceful degradation, не lock-in. Local-first: IndexedDB — рабочая копия, файл на диске — явно сохранённая версия. Identity = label, не account; sync через файл, не через сервер; backend stateless.
+**Формат и модель работы.** `.bodge` (ZIP проекта) хранит structured canonical JSON как единственный source of truth и проверяемые GenBank-проекции каждой молекулы для graceful degradation без lock-in; COMMENT содержит pointers/digests, а не второй журнал. `.bodgebox` остаётся отдельным контейнерным обменным профилем. Local-first: IndexedDB — рабочая копия, файл на диске — явно сохранённая версия. Identity = label, не account; sync через файл, не через сервер; backend stateless.
 
 **Эволюция.** Архитектура прошла v2 (DAG-as-primary) → canvas-model → four-tier (реализована, спринты T1-T10, v0.8.x). Корневой view — канвас с зонами, не DAG и не список.
 
@@ -41,13 +41,13 @@ BodgeGene — open-source web-редактор плазмид со структ�
 
 **1.6 Canvas-as-primary-view.** ⚠️ *Принцип эволюционировал.* Изначально (v2, 29.04) формулировался как «DAG-as-primary-view»: корневой workspace проекта = DAG, не список/tree/table. С canvas-модели (11.05) и four-tier (16.05) корневой workspace = **бесконечный канвас с зонами-фреймами**; граф — это `viewMode: 'graph'` зоны, а не отдельный режим приложения. Суть USP сохранена: проект — визуальный граф материалов и операций, не список/таблица; список — projection (Tree-сайдбар). **Формальная ⚓-запись 1.6 в `ANCHORS.md` подлежит обновлению под canvas-модель** — хвост финализации, не сделан на момент создания этого файла.
 
-**1.7 Local-first, открытый формат.** `.bodge` = ZIP с manifest.json + per-container .gb (со structured COMMENT-блоком для provenance) + dag.json. RO-Crate metadata добавляется в v0.9 для FAIR-claims в статье. Файл живёт на диске пользователя, не в облаке. Никакого SaaS.
+**1.7 Local-first, открытый формат.** `.bodge` = ZIP с manifest allowlist, structured canonical JSON, проверяемыми per-container GenBank-проекциями и optional human-readable publication artifacts. Нормативный layout — только в `SPEC_BODGE_FORMAT_V2_CORE.md`. Файл живёт на диске пользователя, не в облаке. Никакого SaaS.
 
 **1.8 Скорость не приоритет. Качество и гибкость важнее.** Решение для UX-развилок (fragment-insert и т.п.). Прорабатываем через прототипы и дизайн-сессии, не оптимизируем под «сделать в один клик».
 
 **1.9 Stack-навигация.** В canvas-модели сводится к паре «канвас ↔ контейнер-редактор»: двойной клик на блок открывает контейнер-редактор, `← Назад` возвращает на канвас с сохранением state. Фулскрин-стек из v2 (много экранов с back-стеком) упрощён — большинство «экранов» стали зонами одного канваса.
 
-**1.10 Honest scope.** BodgeGene моделирует design intent provenance, не lab outcome verification. Не трекаем transformation efficiency, sequencing-verify, contamination, errors. Это design tool, не lab simulator.
+**1.10 Honest scope.** BodgeGene моделирует design intent provenance и MAY хранить claim-scoped сравнение готового whole-plasmid consensus с exact expected revision. Такое сравнение отвечает только «совпадает ли предоставленная наблюдаемая последовательность с ожидаемой»; оно не доказывает лабораторный маршрут, чистоту образца, функцию конструкции или качество raw reads. Не трекаем transformation efficiency, contamination и реальные lab errors; не выполняем basecalling/assembly reads. Это design tool с паспортом конструкции, не lab simulator и не LIMS.
 
 **1.11 Identity = label, не account.** В системе нет понятия user account. `agent` (name + email) — label для commit attribution, без auth/permissions. Файл — единственный источник правды. Несколько agents в одном файле — нормальное явление. Backend остаётся stateless calculation service, не user service.
 
@@ -382,7 +382,7 @@ interface LibraryEntry {
 
 **Принимается как корректное упрощение:** multi-fragment assembly как один атомарный Reaction (биологически = одна реакция, одна тубочка); mutagenesis / cut-keep / fragment-insert как ContainerCommit (правка той же молекулы); один контейнер = одна молекула, не популяция; `origin` immutable.
 
-**Документируется как НЕ моделируем (open для v1.5+):** transformation efficiency / strain context; sequencing-verification (Sanger/NGS validation); concentration / amount tracking; реальные lab-ошибки (PCR mismatch, contamination); failed experiments (возможен флаг `status: 'failed'` на Reaction); time-ordering между параллельными операциями; combinatorial / parametric design (SBOL3 `CombinatorialDerivation`).
+**Документируется как НЕ моделируем (open для v1.5+):** transformation efficiency / strain context; basecalling, demultiplexing, assembly и QC raw Sanger/NGS/Nanopore reads; concentration / amount tracking; реальные lab-ошибки (PCR mismatch, contamination); failed experiments как полноценный электронный лабораторный журнал; time-ordering между параллельными операциями; combinatorial / parametric design (SBOL3 `CombinatorialDerivation`). Готовый consensus и его scoped comparison с expected product — допустимое evidence, но не simulation/replay эксперимента.
 
 ---
 
@@ -466,30 +466,33 @@ Importer — фулскрин для парсинга **внешних** фор�
 ### 4.1 Форматы: `.bodge` и `.bodgebox`
 
 Два родных расширения:
-- **`.bodge`** — весь проект (граф + N контейнеров + primers + library + manifest). ZIP-архив.
-- **`.bodgebox`** — один контейнер (sequence + commits + provenance). Raw GenBank, не ZIP. Аналог SnapGene `.dna`, но открытый.
+- **`.bodge`** — весь проект: manifest, canonical project/containers/assemblies/provenance/primers/evidence, проверяемые GenBank-проекции и optional publication files. ZIP-архив; норматив `2.0.0` — `SPEC_BODGE_FORMAT_V2_CORE.md`.
+- **`.bodgebox`** — отдельный single-container exchange profile на базе обычного GenBank. Он не является скрытым source of truth для `.bodge` и не входит в Bodge 2 conformance, пока не получит отдельную нормативную спецификацию.
 
 *Этимология:* «to bodge» — британский инженерный жаргон «слепить наспех из подручного». Самоироничное название — биолог склеивает плазмиды из того что под рукой. `.bodgebox` — «коробка с одним bodge».
 
-**Обязательство обратной совместимости** (⚓ DEC-INTEROP-01). Оба формата построены на стандартном GenBank с опциональным провенанс-слоём в structured COMMENT block. Биолог без BodgeGene открывает `.bodgebox`, переименовав в `.gb`, или распаковывает `.bodge` как `.zip` — с потерей DAG/commits, но без потери sequence + features + per-container provenance. Graceful degradation, не lock-in.
+**Обязательство интероперабельности** (⚓ DEC-INTEROP-01). Биолог без BodgeGene распаковывает `.bodge` как ZIP и открывает `containers/*.gb` в обычном sequence editor; sequence, topology и поддерживаемые features остаются доступны. Полный graph/provenance читается из plain canonical JSON. GenBank projection не обязана переносить весь lineage и никогда не переопределяет canonical record. Graceful degradation, не lock-in.
 
 ### 4.2 Структура `.bodge` (ZIP)
 
 ```
 project.bodge/
-├── manifest.json         ← {fileFormatVersion, schemaVersion, appVersion, kind:'project'}
-├── project.json          ← Project entity (id/name/tags/agent/refs, без sequence)
-├── containers/<id>.gb     ← валидный GenBank + BodgeGene-Provenance COMMENT (§4.4)
-├── projectCommits/<hash>.json  ← plain JSON — рёбра графа (reactions), параметры
-├── primers/primers.json   ← plain JSON — primer pool + back-refs
-├── library/library.json   ← plain JSON — LibraryEntry refs
-├── refs/refs.json         ← plain JSON — «project/<id>/main» → containerId
-└── renders/<id>.png       ← optional PNG/SVG previews
+├── manifest.json
+├── project.json
+├── containers/<id>.json  ← canonical molecule record
+├── containers/<id>.gb    ← generated, validated projection
+├── assemblies/<id>.json  ← pieces + reactions + connections + product refs
+├── provenance/...
+├── primers/pool.json
+├── evidence/<id>.json
+├── attachments/...       ← profile-dependent, untrusted data
+├── publication/...       ← derived Methods/diagram/tables/verification
+└── extensions/...        ← optional, capability- and privacy-gated
 ```
 
-Никаких proprietary-полей в core data layer. Sequence + features + ContainerCommits — в `containers/<id>.gb` (GenBank + COMMENT-payload). Рёбра графа / metadata / primers / library — plain JSON. Переименование `.bodge` → `.zip` + extract = working multi-file backup. RO-Crate `ro-crate-metadata.json` — добавляется в v0.9 для FAIR-claims.
+`manifest.json` — exact allowlist: reader не ищет assets по glob и не парсит их до path/policy/hash gate. Structured JSON — единственная биология; `.gb`, README, Methods, diagrams и tables являются derived projections с `generatedFrom`. Переименование `.bodge` → `.zip` + extract остаётся working multi-file backup.
 
-`.bodgebox` — бит-в-бит равен файлу `containers/<id>.gb` внутри `.bodge`, различие только в паковке. Reuse export pipeline 95%.
+Standalone GenBank export и `.bodgebox` SHOULD использовать тот же единый codec, что `containers/<id>.gb`, но их packaging/compatibility contract задаётся отдельно.
 
 ### 4.3 IndexedDB через Dexie.js
 
@@ -512,23 +515,13 @@ db.stores({
 
 **Schema version и точные индексы** — авторитетно в коде `dexie-schema.js`. four-tier ввёл таблицы `pieces` и `zones` через schema bump (`DEC-CANVAS-4T-29` — backward-compat миграция). История миграций — в архиве four-tier-спеки (§7.2).
 
-### 4.4 GenBank экспорт + provenance COMMENT block
+### 4.4 GenBank projection boundary
 
-Провенанс-слой — структурированный COMMENT-блок:
+GenBank — открытая, извлекаемая проекция canonical container, но не контейнер полного provenance graph. Writer генерирует `.gb` только из final canonical JSON; manifest фиксирует `generatedFrom`, а full validator повторно парсит projection и проверяет ID, normalized sequence, topology и locations.
 
-```
-COMMENT     ##BodgeGene-Provenance-START##
-            schema  :: https://bodgegene.dev/schema/v1
-            format  :: base64-json
-            payload :: eyJjb250YWluZXJJZCI6...
-            ##BodgeGene-Provenance-END##
-```
+COMMENT содержит только короткие pointers/digests, достаточные для связи с canonical assets, но не base64-копию commits, primers или evidence. Custom qualifiers `/bodge_id`, `/bodge_type` и `/parent_feature` MAY помогать loss-minimizing round-trip и безопасно игнорируются сторонними tools; unknown standard qualifiers сохраняются codec-ом.
 
-`payload` — base64-encoded JSON (из-за NCBI-ограничения COMMENT 80 символов; опциональный gzip при >50 KB). Содержит: `containerId`, `baseSnapshotHash`, `currentHash`, `topology`, `ends`, `origin`, `provenance`, `commits[]` (все ContainerCommits — даёт полный round-trip lineage), `primersEmbedded[]`.
-
-**Custom GenBank qualifiers** (non-breaking, ignored другими tools): `/bodge_id=...` (stable feature ID), `/parent_feature=...` (sub-feature hierarchy), `/note=sequence:...` на `primer_bind` (SnapGene-симметричный primer attachment).
-
-NCBI-blessed pattern — все парсеры (SnapGene, Geneious, ApE, BioPython) сохраняют COMMENT byte-for-byte. **External-edit detection:** если sequence правлена вне BodgeGene, recomputed hash не совпадёт с hash в payload — при re-import toast с выбором [Treat as new] / [Restore baseline]. Lineage никогда не восстанавливается молча.
+External `.gb` всегда проходит обычный import workflow и создаёт новый canonical record/source. Изменённая projection внутри `.bodge` считается `PROJECTION_MISMATCH`; она не восстанавливает lineage и не перекрывает structured JSON молча.
 
 ### 4.5 Auto-save
 
@@ -621,7 +614,7 @@ Backend — stateless calculation service: FastAPI endpoints для парсин
 ### 7.1 Где проект сейчас (v0.8.x-alpha)
 
 Линия v0.6-v0.8 заложила:
-- **Persistence + interop** — `.bodge`/`.bodgebox`, IndexedDB/Dexie, GenBank-экспорт с provenance-COMMENT.
+- **Persistence + interop** — `.bodge`/`.bodgebox`, IndexedDB/Dexie, canonical JSON + validated GenBank projections.
 - **Importer** — 3 формата (`.dna`/`.gb`/`.fasta`), rich preview, primer-step.
 - **Контейнер-модель** — ContainerCommits, replay, Snapshot, редактирование последовательности/аннотаций.
 - **Четырёхуровневый канвас** (спринты T1-T10) — зоны-фреймы, pieces, reactions, products, dual-mode graph/sequence, 3-lane auto-layout, четыре способа задать piece.
@@ -661,7 +654,7 @@ Backend — stateless calculation service: FastAPI endpoints для парсин
 - *Данные* — `common-features.json` (~419 verified), `feature-palette.js` (⚓ цветовой контракт).
 - *Visualization* — `SequenceView/` (universal viewer), `Annotator/`, `PlasmidMiniMap`.
 
-**Переписывается / новое:** слайсы store (§6), persistence layer (Dexie), app shell + навигация, `.bodge` import/export, provenance COMMENT-блок, канвас с зонами, контейнер-редактор-обёртка.
+**Переписывается / новое:** слайсы store (§6), persistence layer (Dexie), app shell + навигация, `.bodge` import/export, единый GenBank projection codec, канвас с зонами, контейнер-редактор-обёртка.
 
 **Kill:** `assemblies` slice (нет AssemblyContainer как класса), superseded UI v0.5 (старые QuickStart, 3LEVELS-era компоненты, UI-оболочки легаси-визардов — алгоритмы из них harvested). Важно: superseded UI (старые версии компонентов после rewrite) — не то же что v0.5 algorithm core; первое kill'ится, второе живёт.
 
@@ -722,7 +715,7 @@ Backend — stateless calculation service: FastAPI endpoints для парсин
 | **PrimerUsage** | Computed back-reference: на контейнере видны праймеры, на праймере — где используется. |
 | **PROV-O / RO-Crate** | W3C Provenance Ontology (vocabulary, не RDF storage) / Research Object packaging spec (v0.9+ для FAIR). |
 | **`.bodge` / `.bodgebox`** | Родные форматы: проект (ZIP) / один контейнер (raw GenBank). |
-| **BodgeGene-Provenance COMMENT** | Structured COMMENT-блок в GenBank с base64-JSON (commits / origin / provenance). NCBI-blessed, сохраняется другими tools byte-for-byte. |
+| **BodgeGene GenBank pointer** | Короткие COMMENT pointers/digests + custom qualifiers, связывающие generated `.gb` с canonical assets; полный provenance хранится только в structured JSON. |
 | **External-edit detection** | Расхождение recomputed hash с hash в payload при re-import → toast [Treat as new] / [Restore baseline]. |
 | **Cross-project import** | Импорт контейнеров из другого `.bodge` через модалку с read-only вью донора. Flat import, `origin: cross_project_clone`. |
 | **Контейнер-редактор** | Layer-обёртка над SequenceView с operation toolbar. Вход — двойной клик на материал-блок. |
@@ -744,7 +737,7 @@ Backend — stateless calculation service: FastAPI endpoints для парсин
 **Отложено (v1.5+ / v2.0+):**
 - OPFS migration для blobs.
 - Auto-save в файл (Google-Docs style) — closed-no для v1.0, может пересмотреться по user feedback.
-- Sequencing-verify как reaction; transformation / strain context (§2.10 «не моделируем»).
+- Raw-read sequencing pipeline, sample QC и sequencing как лабораторная reaction; transformation / strain context (§2.10 «не моделируем»). Готовый whole-plasmid consensus comparison остаётся evidence, а не reaction.
 - Combinatorial / parametric design (SBOL3 `CombinatorialDerivation`).
 - Auto-merge `.bodge` через Merkle-DAG union — research direction.
 

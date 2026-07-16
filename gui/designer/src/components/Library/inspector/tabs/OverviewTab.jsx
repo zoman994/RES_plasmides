@@ -100,11 +100,13 @@ export default function OverviewTab({
       data-testid="importer-tab-panel-overview"
       style={{
         display: 'grid',
-        // 2-col layout: mini-map cell 320px (180px svg + ~70px label text
-        // each side after LABEL_MAX_CHARS=14 truncate). 240px was too tight
-        // and let leader-labels overflow past the dark cell border on the
-        // left. Summary takes remaining width and still has ~600 px.
-        gridTemplateColumns: '320px 1fr',
+        // Responsive 2-col ↔ stacked. Was a rigid `320px 1fr`, which in a
+        // narrow inspector squeezed the «Что в файле» summary to ~100px and
+        // wrapped headers mid-word («RESTRICTI SITES», «1 promote» — AUD-101).
+        // auto-fit + minmax lets the map + summary sit side-by-side when there
+        // is room (≥ ~500px) and stack (each full-width) when the panel is
+        // narrow, so the summary never collapses below a readable width.
+        gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
         gap: 14,
         alignItems: 'start',
       }}

@@ -15,10 +15,18 @@ import { memo, useMemo } from 'react';
 import { Icon } from '../../icons/Icon';
 import PlasmidMiniMap from '../../PlasmidMiniMap';
 import TreeItemRow from './TreeItemRow';
-import { lineageRoleLabel, statusMeta, entryStatus } from '../lib/version-status';
+import { statusMeta, entryStatus } from '../lib/version-status';
 
 const INDENT_PX = [12, 22, 38, 54, 70];
 const indentFor = (d) => INDENT_PX[Math.min(d, INDENT_PX.length - 1)];
+
+// Disclosure chevron column. The head row subtracts (TWIST_W + GAP) from its
+// indent so the chevron sits INSIDE the indentation gutter and the head's
+// mini-icon lands at the SAME x as a plain TreeItemRow icon at the same indent
+// (no extra left margin, icons aligned). See BUGS V190.
+const TWIST_W = 12;
+const GAP = 8;
+const NO_MATCH_INFO = () => null;
 
 function Chip({ label, color, bg, title, testId }) {
   return (
@@ -65,8 +73,8 @@ function HeadRow({
       onClick={() => onSelect?.(headEntry)}
       onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onSelect?.(headEntry); } }}
       style={{
-        display: 'flex', alignItems: 'center', gap: 8,
-        padding: '5px 12px', paddingLeft: indentFor(indent),
+        display: 'flex', alignItems: 'center', gap: GAP,
+        padding: '5px 12px', paddingLeft: Math.max(4, indentFor(indent) - TWIST_W - GAP),
         cursor: 'pointer', userSelect: 'none',
         background: isSelected ? 'var(--accent-50)' : 'transparent',
         borderLeft: isSelected ? '2px solid var(--accent-500)' : '2px solid transparent',
@@ -75,7 +83,7 @@ function HeadRow({
       <span
         data-testid={`${testId}-twist`}
         onClick={(e) => { e.stopPropagation(); onToggle?.(); }}
-        style={{ width: 12, flexShrink: 0, color: 'var(--text-tertiary)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+        style={{ width: TWIST_W, flexShrink: 0, color: 'var(--text-tertiary)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
       ><Icon name={expanded ? 'chevron-down' : 'chevron-right'} size={11} /></span>
       <span style={{ flexShrink: 0, lineHeight: 0, width: 20, height: 20 }}>
         {(top === 'linear' && (!ann || ann.length === 0))
@@ -105,7 +113,6 @@ function HeadRow({
         </div>
       </div>
       {sm && <Chip label={sm.label} title={sm.label} color={sm.color} bg={sm.bg} />}
-      <Chip label={`v${versionCount}`} title="текущая версия" color="var(--success-fg)" />
       <span
         data-testid={`${testId}-count`}
         style={{ fontSize: 10, color: 'var(--text-tertiary)', padding: '1px 6px', background: 'var(--surface-2)', borderRadius: 9, flexShrink: 0 }}
@@ -122,6 +129,7 @@ export const VersionLineageNode = memo(function VersionLineageNode({
   onToggle,
   indent = 2,
   testId,
+  getMatchInfo = NO_MATCH_INFO,
 }) {
   const { headEntry, lineage, members } = group || {};
   const tid = testId || `version-lineage-${group?.rootId}`;
@@ -169,6 +177,7 @@ export const VersionLineageNode = memo(function VersionLineageNode({
               indent={indent + 1}
               draggable
               testId={`tree-item-version-${entry.id}`}
+              matchInfo={getMatchInfo(entry)}
               badge={<MemberBadge role="version" order={order} status={entryStatus(entry)} isHead={isHead} />}
             />
           ))}
@@ -181,6 +190,7 @@ export const VersionLineageNode = memo(function VersionLineageNode({
               indent={indent + 1}
               draggable
               testId={`tree-item-version-${entry.id}`}
+              matchInfo={getMatchInfo(entry)}
               badge={<MemberBadge role="branch" status={entryStatus(entry)} />}
             />
           ))}

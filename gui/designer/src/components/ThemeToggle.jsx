@@ -1,11 +1,13 @@
 import { useStore } from '../store';
 import { STRINGS } from '../lib/strings';
+import { Icon } from './icons/Icon';
 
 export default function ThemeToggle() {
   const theme = useStore(s => s.theme);
   const setTheme = useStore(s => s.setTheme);
   const next = theme === 'dark' ? 'light' : 'dark';
-  const icon = theme === 'dark' ? '☀' : '🌙';
+  // Design-system §1.2/§6: no emoji in chrome — use the purpose-drawn Icon glyphs.
+  const iconName = theme === 'dark' ? 'sun' : 'moon';
   const label = theme === 'dark' ? STRINGS.topbar.themeToggle.toLight : STRINGS.topbar.themeToggle.toDark;
   return (
     <button
@@ -28,7 +30,7 @@ export default function ThemeToggle() {
         justifyContent: 'center',
       }}
     >
-      <span aria-hidden="true">{icon}</span>
+      <Icon name={iconName} size={16} />
     </button>
   );
 }

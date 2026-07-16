@@ -180,10 +180,37 @@ describe('M-X.7a v2 K4 — LibraryWorkspace', () => {
     expect(screen.getByTestId('library-zone-project-p1')).toBeTruthy();
   });
 
-  it('topbar search input updates the shared query (reaches tree-search input)', () => {
+  it('the global top-bar search and the tree quick-filter are INDEPENDENT (K5 split — no shared query)', () => {
+    // REV#2 Stage 3 K5 reverses SEARCH-UNIFY: the tree keeps its own `treeQuery` and the bar
+    // owns a separate structured `globalSearch`. Typing in one must NOT leak into the other
+    // (§9.4). The only bridge is the tree's «Полный поиск» escalation (a seed, not a live sync).
     render(<LibraryWorkspace />);
-    fireEvent.change(screen.getByTestId('library-topbar-search'), { target: { value: 'puc' } });
-    expect(screen.getByTestId('tree-search').value).toBe('puc');
+    const topbarInput = screen.getByTestId('library-topbar-search-input');
+    const treeInput = screen.getByTestId('tree-search');
+    fireEvent.change(treeInput, { target: { value: 'puc' } });
+    expect(treeInput.value).toBe('puc');
+    expect(topbarInput.value).toBe(''); // global bar untouched by the tree filter
+    fireEvent.change(topbarInput, { target: { value: 'gfp' } });
+    expect(topbarInput.value).toBe('gfp');
+    expect(treeInput.value).toBe('puc'); // tree filter untouched by the global bar
+  });
+
+  it('closes the global-search popup after Enter opens the selected molecule', async () => {
+    await useStore.getState().addLibraryEntry(makeContainer({
+      id: 'search-e1', name: 'pUC19-search-target', zone: 'loose',
+    }));
+    render(<LibraryWorkspace />);
+    const input = screen.getByTestId('library-topbar-search-input');
+    fireEvent.change(input, { target: { value: 'pUC19-search' } });
+    await waitFor(() => expect(screen.getAllByRole('option')).toHaveLength(1));
+
+    input.focus();
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => expect(screen.getByTestId('single-inspector-stub').getAttribute('data-item-id')).toBe('search-e1'));
+    await waitFor(() => expect(screen.queryByRole('listbox')).toBeNull());
+    expect(input.getAttribute('aria-expanded')).toBe('false');
   });
 
   it('breadcrumb says «Без активного проекта» when currentProjectId is null', () => {

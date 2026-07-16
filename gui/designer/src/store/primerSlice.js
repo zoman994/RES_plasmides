@@ -46,6 +46,9 @@ function normalizePrimer(input, { projectId, status, origin } = {}) {
     tm: typeof input.tm === 'number' ? input.tm : null,
     length: typeof input.length === 'number' ? input.length : seq.length,
     direction: input.direction || null,
+    // Free-form description — a searchable dimension (primerToDocument.textFields.description).
+    // Kept so a legacy kind='primer' LibraryEntry's description survives migration into the pool.
+    description: input.description || null,
     projectId: projectId === undefined ? (input.projectId ?? null) : (projectId ?? null),
     status: VALID_STATUSES.has(status) ? status : (input.status || 'imported'),
     origin: origin || input.origin || defaultOrigin(),

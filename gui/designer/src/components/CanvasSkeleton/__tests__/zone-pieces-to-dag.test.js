@@ -11,6 +11,8 @@ import { describe, it, expect } from 'vitest';
 import {
   realiseAssembly, nameWithRevision, pruneZoneRealiseOutput, draftFromZone,
 } from '../lib/zone-pieces-to-dag';
+import { segmentOverhangs } from '../lib/segment-overhangs';
+import { RE_ENZYMES } from '../../../restriction-db';
 import { skeletonReducer, buildInitialState } from '../store/skeleton-state';
 
 describe('pruneZoneRealiseOutput — idempotent re-realise helper (Игорь 11.06)', () => {
@@ -105,6 +107,45 @@ describe('draftFromZone — multi-range piece (#2 invert/backbone)', () => {
     expect(anns).toHaveLength(2); // both ranges contributed (was [] before the coord-stitch)
     expect(anns.map((a) => a.start).sort((x, y) => x - y)).toEqual([2, 6]); // range1's ann shifted by len(range0)=4
   });
+
+  // Игорь 07.07 — «при инверсии теряются липкие концы, если были выбраны две рестриктазы».
+  // The inverted two-enzyme backbone wraps the origin; segmentOverhangs must read its ends
+  // by PHYSICAL side (top strand starts at the high cut) not sorted position.
+  describe('origin-wrap RE ends survive the invert (two enzymes)', () => {
+    const SEQ = 'A'.repeat(20) + 'C'.repeat(10); // 30 bp; EcoRI@6(low), BamHI@20(high)
+    const rp = { enzymes: ['EcoRI', 'BamHI'], cutSites: [{ position: 6 }, { position: 20 }] };
+    const mkState = (ranges) => ({
+      containers: [{ id: 'c', name: 'pl', sequence: SEQ }],
+      pieces: [{
+        id: 'p1', zoneId: 'z1', kind: 'sourced', createdAt: 1, sourceIds: ['c'],
+        acquisitionMethod: 'restriction', acquisitionParams: rp, ranges,
+      }],
+      zones: [],
+    });
+    const segOf = (ranges) => draftFromZone(mkState(ranges), { id: 'z1', topology: { circular: false } }).segments[0];
+
+    it('inverted backbone [hi..end]+[0..lo] → originWrap:true, LEFT=BamHI(high), RIGHT=EcoRI(low)', () => {
+      const seg = segOf([
+        { sourceId: 'c', start: 20, end: 30, orientation: 'forward' }, // high arc = physical 5′ start
+        { sourceId: 'c', start: 0, end: 6, orientation: 'forward' }, // low arc
+      ]);
+      expect(seg.originWrap).toBe(true);
+      const oh = segmentOverhangs(seg, RE_ENZYMES);
+      expect(oh.left.enzyme).toBe('BamHI');
+      expect(oh.right.enzyme).toBe('EcoRI');
+      // sticky ends are NOT lost — both carry their overhang seq
+      expect(oh.left.seq).toBeTruthy();
+      expect(oh.right.seq).toBeTruthy();
+    });
+
+    it('the excised fragment [lo..hi] (single range) is unaffected → LEFT=EcoRI(low), RIGHT=BamHI(high)', () => {
+      const seg = segOf([{ sourceId: 'c', start: 6, end: 20, orientation: 'forward' }]);
+      expect(seg.originWrap).toBe(false);
+      const oh = segmentOverhangs(seg, RE_ENZYMES);
+      expect(oh.left.enzyme).toBe('EcoRI');
+      expect(oh.right.enzyme).toBe('BamHI');
+    });
+  });
 });
 
 const C1 = {
@@ -166,6 +207,26 @@ describe('T6 K5 — zone-pieces-to-dag realiseAssembly (zone + pieces shape)', (
     expect(r.diff.containers).toHaveLength(3); // 2 amplicons + 1 product
     expect(r.diff.operations[0].kind).toBe('pcr');
     expect(r.diff.operations[0].inputs).toContain('src1');
+  });
+
+  it('CH-2 — a restriction-acquired piece realises to a «cut» op (not pcr), no primers', () => {
+    const rp = (id, src) => piece(id, src, 0, 24, 'forward', {
+      acquisitionMethod: 'restriction',
+      acquisitionParams: { enzymes: ['EcoRI', 'BamHI'], cutSites: [{ position: 0 }, { position: 24 }] },
+    });
+    const s = zoneState([rp('pr1', 'src1'), rp('pr2', 'src2')]);
+    const r = realiseAssembly(s, 'zn-1', { 0: 'restriction' }, {});
+    expect(r.ok).toBe(true);
+    // each digest fragment's reaction is a «cut» (not a PCR amplification)
+    const fragOps = r.diff.operations.filter((o) => o.origin && o.origin.segmentId);
+    expect(fragOps.length).toBe(2);
+    for (const o of fragOps) {
+      expect(o.kind).toBe('cut');
+      expect(o.params.userPrimers).toBeUndefined();
+      expect(Array.isArray(o.params.enzymes)).toBe(true);
+    }
+    // and NO pcr op amplifies a digest fragment
+    expect(r.diff.operations.filter((o) => o.kind === 'pcr' && o.origin && o.origin.segmentId)).toHaveLength(0);
   });
 
   it('per-boundary methods reflected in junction kinds', () => {

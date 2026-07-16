@@ -21,6 +21,7 @@ import {
   cleanup,
   fireEvent,
   act,
+  waitFor,
 } from '@testing-library/react';
 import { useEffect } from 'react';
 import {
@@ -49,7 +50,7 @@ import MiniProjectCanvas from '../canvas/MiniProjectCanvas';
 
 afterEach(cleanup);
 
-import { bootstrapStore } from '../../../store';
+import { bootstrapStore, useStore } from '../../../store';
 beforeEach(() => {
   try { bootstrapStore(); } catch { /* idempotent */ }
 });
@@ -483,7 +484,7 @@ describe('K3 — EditorWindowShell lifecycle', () => {
     expect(shellState.editorContext).toEqual({ tabs: [], activeTabId: null });
   });
 
-  it('frozen container → Save As fork button (not Apply); fork clones + closes tab', () => {
+  it('frozen container → Save As fork button (not Apply); fork clones + closes tab', async () => {
     renderShell();
     act(() => {
       shellActions.addContainer({
@@ -499,15 +500,11 @@ describe('K3 — EditorWindowShell lifecycle', () => {
     act(() => { shellActions.openEditorTab('c-frozen'); });
     expect(screen.getByTestId('skeleton-editor-save-as-fork')).toBeTruthy();
     expect(screen.queryByTestId('skeleton-editor-apply')).toBeNull();
-    const origPrompt = window.prompt;
-    window.prompt = () => 'LOCKED-fork';
-    try {
-      fireEvent.click(screen.getByTestId('skeleton-editor-save-as-fork'));
-    } finally {
-      window.prompt = origPrompt;
-    }
-    // clone created, frozen tab was the only one → editor closed.
-    expect(shellState.containers.some((c) => c.name === 'LOCKED-fork')).toBe(true);
+    // Electron-safe prompt: stub the store's requestPrompt to resolve the name.
+    useStore.setState((s) => { s.requestPrompt = async () => 'LOCKED-fork'; });
+    fireEvent.click(screen.getByTestId('skeleton-editor-save-as-fork'));
+    // clone created, frozen tab was the only one → editor closed (after await).
+    await waitFor(() => expect(shellState.containers.some((c) => c.name === 'LOCKED-fork')).toBe(true));
     expect(shellState.editorOpen).toBe(false);
   });
 

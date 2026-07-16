@@ -30,14 +30,21 @@ export function matchesType(entry, type) {
 /**
  * Entry-centric library grouping: split LibraryEntries into project /
  * collection / other-projects buckets (current-project entries INCLUDED).
+ *
+ * @param {Function} [matcher] — optional `(entry) => boolean` query predicate. When
+ * given it REPLACES the built-in name/ATGC `matchesQuery` (the topology `typeFilter`
+ * still applies on top). The assembly/canvas picker injects the smart metadata
+ * matcher (`makeEntryMatcher`: name/tag/type/status/feature/qualifiers) here; a bare
+ * call (e.g. the alignment panel) keeps the lightweight name+sequence behaviour.
  */
 export function groupLibraryEntries({
-  libraryEntries, currentProjectId, query, typeFilter,
+  libraryEntries, currentProjectId, query, typeFilter, matcher,
 }) {
+  const matchQ = typeof matcher === 'function' ? matcher : (e) => matchesQuery(e, query);
   const all = (libraryEntries && typeof libraryEntries === 'object'
     ? Object.values(libraryEntries) : [])
     .filter((e) => e && !e._pendingDelete)
-    .filter((e) => matchesQuery(e, query) && matchesType(e, typeFilter));
+    .filter((e) => matchQ(e) && matchesType(e, typeFilter));
   const byName = (a, b) => String(a.name || a.id).localeCompare(String(b.name || b.id));
   return {
     project: all.filter((e) => currentProjectId && e.projectId === currentProjectId).sort(byName),

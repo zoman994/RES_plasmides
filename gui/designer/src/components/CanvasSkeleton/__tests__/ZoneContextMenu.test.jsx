@@ -3,8 +3,9 @@
  * dispatch + close; destructive confirm on delete; Esc / click-outside.
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { render, screen, cleanup, fireEvent } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 import ZoneContextMenu from '../canvas/ZoneContextMenu';
+import { useStore } from '../../../store';
 
 afterEach(cleanup);
 
@@ -91,13 +92,12 @@ describe('T4 K4 ZoneContextMenu', () => {
     }));
   });
 
-  it('rename → UPDATE_ZONE_NAME via prompt', () => {
-    const orig = window.prompt;
-    window.prompt = vi.fn(() => 'Renamed');
+  it('rename → UPDATE_ZONE_NAME via in-app prompt', async () => {
+    // Electron-safe prompt: stub the store's requestPrompt to resolve a name.
+    useStore.setState((s) => { s.requestPrompt = async () => 'Renamed'; });
     const { dispatch } = setup();
     fireEvent.click(screen.getByText('Переименовать'));
-    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: 'UPDATE_ZONE_NAME', zoneId: 'zn-1', name: 'Renamed' }));
-    window.prompt = orig;
+    await waitFor(() => expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: 'UPDATE_ZONE_NAME', zoneId: 'zn-1', name: 'Renamed' })));
   });
 
   it('Esc calls onClose', () => {

@@ -140,6 +140,15 @@ export function useInspectorSelectionNav({ activeTab, onActiveTabChange, itemKey
 
   const onPendingScrollHandled = useCallback(() => setPendingScroll(null), []);
 
+  // Force a scroll to `pos` regardless of the `scrollOnFeatureClick` gate — used by
+  // the global-search JUMP (which must always land the viewer on the hit), separate
+  // from the feature-click scroll which honours the setting.
+  const scrollToPos = useCallback((pos, opts) => {
+    if (typeof pos === 'number' && Number.isFinite(pos)) {
+      setPendingScroll({ pos, tick: Date.now(), instant: !!(opts && opts.instant) });
+    }
+  }, []);
+
   // Caret reset on plasmid switch is handled by the shared hook
   // (resetKey={itemKey}); pendingScroll reset stays local.
   useEffect(() => {
@@ -159,5 +168,6 @@ export function useInspectorSelectionNav({ activeTab, onActiveTabChange, itemKey
     onCaretChangeFromView,
     onSelectRangeFromView,
     onPendingScrollHandled,
+    scrollToPos,
   };
 }

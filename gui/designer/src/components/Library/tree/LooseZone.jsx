@@ -25,6 +25,9 @@ import VersionLineageNode from './VersionLineageNode';
 import { groupVisibleLineages } from '../lib/version-lineage';
 import { Icon } from '../../icons/Icon';
 
+const SHOW_ALL = () => true;
+const NO_MATCH_INFO = () => null;
+
 function buildClaimedSet(projectsById, entriesById) {
   const claimed = new Set();
   for (const proj of Object.values(projectsById || {})) {
@@ -43,11 +46,6 @@ function buildClaimedSet(projectsById, entriesById) {
 function isLooseEntry(entry, claimed) {
   if (!entry || entry._pendingDelete) return false;
   return !claimed.has(entry.id);
-}
-
-function matchesQuery(entry, q) {
-  if (!q) return true;
-  return (entry?.name || '').toLowerCase().includes(q.toLowerCase());
 }
 
 function normalizeFolderPath(raw) {
@@ -73,7 +71,10 @@ const BTN_STYLE = {
 };
 
 export default function LooseZone({
-  query = '',
+  // REV#2 Stage 3 K5 — visibility and explanations come only from LibraryTreeRoot's one session.
+  // Standalone rendering is an unfiltered zone; it never spins up a second search engine.
+  matchEntry = SHOW_ALL,
+  getMatchInfo = NO_MATCH_INFO,
   selectedId = null,
   onSelectEntry,
   expanded = true,
@@ -96,8 +97,8 @@ export default function LooseZone({
     [entriesById, claimed],
   );
   const filtered = useMemo(
-    () => looseEntries.filter((e) => matchesQuery(e, query)),
-    [looseEntries, query],
+    () => looseEntries.filter(matchEntry),
+    [looseEntries, matchEntry],
   );
 
   const containerEntries = useMemo(
@@ -183,6 +184,7 @@ export default function LooseZone({
           expanded={expandedLineages.has(g.rootId)}
           onToggle={() => toggleLineage(g.rootId)}
           indent={indent}
+          getMatchInfo={getMatchInfo}
           testId={`version-lineage-${g.rootId}`}
         />
       ) : (
@@ -192,19 +194,30 @@ export default function LooseZone({
           isSelected={g.headEntry.id === selectedId}
           onSelect={onSelectEntry}
           indent={indent}
+          matchInfo={getMatchInfo(g.headEntry)}
           testId={`tree-item-loose-${g.headEntry.id}`}
           draggable
         />
       )
     ))
-  ), [entriesById, selectedId, onSelectEntry, expandedLineages, toggleLineage]);
+  ), [entriesById, selectedId, onSelectEntry, expandedLineages, toggleLineage, getMatchInfo]);
 
+  // Inline folder creation — `window.prompt` is a no-op in the packaged
+  // Electron app (returns null), so the «📁+» button used to do nothing.
+  // Replaced with an inline input row that works in browser AND Electron.
+  const [creatingFolder, setCreatingFolder] = useState(false);
   const handleCreateFolder = useCallback(() => {
-    if (typeof window === 'undefined' || !createLooseFolder) return;
-    const raw = window.prompt('Имя новой папки:');
-    if (!raw) return;
-    const safe = raw.trim().replace(/\//g, '-').replace(/:/g, '-');
-    if (!safe) return;
+    setOpenFolders((prev) => {
+      const next = new Set(prev);
+      next.add('containers');
+      return next;
+    });
+    setCreatingFolder(true);
+  }, []);
+  const commitNewFolder = useCallback((raw) => {
+    const safe = String(raw || '').trim().replace(/[/:]/g, '-').trim();
+    setCreatingFolder(false);
+    if (!safe || !createLooseFolder) return;
     createLooseFolder(safe);
     setOpenFolders((prev) => {
       const next = new Set(prev);
@@ -287,6 +300,28 @@ export default function LooseZone({
       />
       {openFolders.has('containers') && (
         <>
+          {creatingFolder && (
+            <div style={{ padding: '4px 12px 4px 38px' }}>
+              <input
+                type="text"
+                autoFocus
+                data-testid="loose-zone-new-folder-input"
+                placeholder="Имя папки + Enter…"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { e.preventDefault(); commitNewFolder(e.currentTarget.value); }
+                  else if (e.key === 'Escape') { e.preventDefault(); setCreatingFolder(false); }
+                }}
+                onBlur={() => setCreatingFolder(false)}
+                style={{
+                  width: '100%', boxSizing: 'border-box', fontSize: 12,
+                  padding: '3px 6px', borderRadius: 3,
+                  border: '1px solid var(--accent-500)',
+                  background: 'var(--surface-1)', color: 'var(--text-primary)',
+                  outline: 'none',
+                }}
+              />
+            </div>
+          )}
           {folderForest.map((node) => renderFolderNode(node, 2))}
           {renderContainers(rootlessContainers, 2)}
           {containerEntries.length === 0 && folderForest.length === 0 && onAddStarterSet && (
@@ -324,6 +359,7 @@ export default function LooseZone({
           isSelected={entry.id === selectedId}
           onSelect={onSelectEntry}
           indent={2}
+          matchInfo={getMatchInfo(entry)}
           testId={`tree-item-loose-${entry.id}`}
           draggable
         />

@@ -34,6 +34,12 @@ import ProjectZone from './ProjectZone';
 import TrashZone from './TrashZone';
 import { APP_VERSION } from '../../../lib/version';
 import { Icon } from '../../icons/Icon';
+import {
+  collectTreeSearchDocuments,
+  runTreeSearch,
+  treeEntryEntityKey,
+} from '../../../lib/tree-search-controller';
+import { t } from '../../../i18n';
 
 function discoverProjects(projectsById) {
   // Exclude soft-deleted projects — they live in the Trash zone and
@@ -53,6 +59,10 @@ export default function LibraryTreeRoot({
   onQueryChange,
   // Bumped by «Все проекты» / ⌘P (focusSearch context) → focus the search input.
   autoFocusSearchTick = 0,
+  // «Полный поиск» — hand the current query to the wide top-bar SmartSearchBar
+  // (dropdown of results + honest metrics + jump). The tree box stays a quick
+  // in-place filter; this is the escalation to the full search (same shared query).
+  onRequestFullSearch,
   // Create a new project from the left panel (projects live in the Library).
   onCreateProject,
   selectedId = null,
@@ -133,27 +143,59 @@ export default function LibraryTreeRoot({
   // project, not just entries). When a query is set, a project is visible if
   // its NAME matches OR it contains a matching entry (preserves entry-search).
   // null = no query → show all projects.
-  const queryNorm = (query || '').trim().toLowerCase();
+  // REV#2 Stage 3 K5 — ONE tree session (the libraryQuick profile) drives the whole tree instead
+  // of independent zone/row matchers. Entry, project and primer documents are collected once; the session
+  // decides CAPABILITY: a seq:/aa:/cut:/enz: query ESCALATES (not active) → the tree does NOT filter
+  // — it shows everything plus the «Полный поиск» banner, never a false-empty — while an executable
+  // metadata query filters by the session's matched set.
+  const treeDocuments = useMemo(
+    () => collectTreeSearchDocuments(entriesById, projectsById),
+    [entriesById, projectsById],
+  );
+  const treeSession = useMemo(() => runTreeSearch(query, treeDocuments), [query, treeDocuments]);
+  // The single entry predicate handed to every zone: an active session filters by its matched set;
+  // an empty OR escalating query shows all (no filter).
+  const matchEntry = useMemo(
+    () => (treeSession.active
+      ? (e) => treeSession.matchingEntityKeys.has(treeEntryEntityKey(e))
+      : () => true),
+    [treeSession],
+  );
+  const getMatchInfo = useMemo(
+    () => (e) => treeSession.matchInfoByEntityKey.get(treeEntryEntityKey(e)) || null,
+    [treeSession],
+  );
   const visibleProjectIds = useMemo(() => {
-    if (!queryNorm) return null;
+    if (!treeSession.active) return null; // empty or escalating → show all projects
+    // Project documents cover project-name/tag matches. A matching child also reveals its parent,
+    // including legacy membership stored only in project.containerIds.
     const entries = Object.values(entriesById || {}).filter((e) => e && !e._pendingDelete);
-    const withMatchingEntry = new Set();
+    const out = new Set(treeSession.matchingProjectIds);
     for (const e of entries) {
-      if (!(e.name || '').toLowerCase().includes(queryNorm)) continue;
-      if (e.projectId) withMatchingEntry.add(e.projectId);
+      if (!matchEntry(e)) continue;
+      if (e.projectId) out.add(e.projectId);
     }
-    const out = new Set();
     for (const p of allProjects) {
-      if ((p.name || '').toLowerCase().includes(queryNorm) || withMatchingEntry.has(p.id)) { out.add(p.id); continue; }
-      // containerIds membership (entry linked to project without projectId field)
-      const cids = p.containerIds || [];
+      const cids = projectsById?.[p.id]?.containerIds || [];
       for (const cid of cids) {
         const e = entriesById?.[cid];
-        if (e && !e._pendingDelete && (e.name || '').toLowerCase().includes(queryNorm)) { out.add(p.id); break; }
+        if (e && !e._pendingDelete && matchEntry(e)) { out.add(p.id); break; }
       }
     }
     return out;
-  }, [queryNorm, entriesById, allProjects]);
+  }, [treeSession, matchEntry, entriesById, allProjects, projectsById]);
+
+  const blockedDiagnostic = treeSession.diagnostics?.[0];
+  const blockedMessage = treeSession.unsupported
+    ? t('search.error.filterNotAvailable')
+    : t({
+      'multiple-provider-intents': 'search.diag.multipleProviderIntents',
+      'duplicate-provider': 'search.diag.multipleProviderIntents',
+      'multiple-scope-presets': 'search.diag.multipleScopePresets',
+      'incompatible-scope-provider': 'search.diag.multipleScopePresets',
+      'incompatible-scope-status': 'search.diag.multipleScopePresets',
+      'unclosed-quote': 'search.diag.unclosedQuote',
+    }[blockedDiagnostic?.code] || 'search.diag.multipleProviderIntents');
 
   // One stable, flat project list (Igor «нормальная логика», 15.06.2026):
   // pinned first, then the rest by creation time so a NEW project lands at the
@@ -242,22 +284,9 @@ export default function LibraryTreeRoot({
             >{ph.treeCreateProject || '+ Проект'}</button>
           )}
           <div style={{ flex: 1 }} />
-          <button
-            type="button"
-            title="Сортировка — в разработке"
-            data-testid="tree-sort"
-            aria-disabled="true"
-            style={{
-              fontSize: 12, padding: '4px 6px',
-              background: 'transparent',
-              color: 'var(--text-tertiary)',
-              border: '1px solid transparent',
-              cursor: 'default',
-              opacity: 0.5,
-              display: 'inline-flex', alignItems: 'center',
-            }}
-            disabled
-          ><Icon name="sort" size={13} /></button>
+          {/* AUD-65: removed the permanently-disabled «Сортировка — в разработке»
+              button — a dead visible control trains users to ignore the toolbar.
+              Re-add as a working sort (name/date/length) when implemented. */}
         </div>
         <div style={{ position: 'relative' }}>
           <span style={{
@@ -268,20 +297,77 @@ export default function LibraryTreeRoot({
             ref={searchInputRef}
             type="text"
             data-testid="tree-search"
-            placeholder={ws.treeFilterPlaceholder || 'Фильтр в дереве…'}
+            placeholder={t('search.tree.filterPlaceholder')}
+            aria-label={t('search.tree.filterAria')}
             value={query}
             onChange={onInput}
             style={{
-              width: '100%', height: 28, padding: '0 8px 0 26px',
+              width: '100%', height: 28, padding: '0 30px 0 26px',
               fontSize: 12, lineHeight: '28px',
               background: 'var(--surface-2)',
               color: 'var(--text-primary)',
               border: '1px solid var(--border-subtle)',
               borderRadius: 4,
-              outline: 'none',
             }}
           />
+          {onRequestFullSearch && !treeSession.blocked && (
+            <button
+              type="button"
+              data-testid="tree-full-search"
+              title={t('search.tree.fullSearchTitle')}
+              onClick={() => onRequestFullSearch()}
+              style={{
+                position: 'absolute', right: 3, top: 3, height: 22, width: 22,
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                padding: 0, border: '1px solid var(--border-subtle)', borderRadius: 4,
+                background: 'var(--surface-1)', color: 'var(--text-secondary)',
+                cursor: 'pointer', fontSize: 12, lineHeight: 1,
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--accent-50)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--surface-1)'; }}
+            >⤢</button>
+          )}
         </div>
+        {/* REV #2 Stage 0: the tree quick-filter is metadata-only. A bio-provider
+            query (seq:/aa:/re:) can't be answered here, so fail closed and point the
+            user at the full search instead of silently showing everything/nothing. */}
+        {onRequestFullSearch && treeSession.requiresFullSearch && (
+          <div
+            data-testid="tree-requires-full-search"
+            style={{
+              marginTop: 6, padding: '6px 8px', fontSize: 11, lineHeight: 1.35,
+              background: 'var(--accent-50)', color: 'var(--text-secondary)',
+              border: '1px solid var(--border-subtle)', borderRadius: 4,
+              display: 'flex', alignItems: 'center', gap: 8,
+            }}
+          >
+            <span style={{ flex: 1 }}>
+              {t('search.tree.fullSearchHint')}
+            </span>
+            <button
+              type="button"
+              data-testid="tree-requires-full-search-action"
+              onClick={() => onRequestFullSearch()}
+              style={{
+                flexShrink: 0, padding: '2px 8px', fontSize: 11,
+                border: '1px solid var(--accent-500)', borderRadius: 4,
+                background: 'var(--surface-1)', color: 'var(--accent-600)',
+                cursor: 'pointer', whiteSpace: 'nowrap',
+              }}
+            >{t('search.tree.openFullSearch')}</button>
+          </div>
+        )}
+        {treeSession.blocked && (
+          <div
+            data-testid={treeSession.unsupported ? 'tree-search-unsupported' : 'tree-search-blocked'}
+            role="status"
+            style={{
+              marginTop: 6, padding: '6px 8px', fontSize: 11, lineHeight: 1.35,
+              background: 'var(--accent-50)', color: 'var(--text-secondary)',
+              border: '1px solid var(--border-subtle)', borderRadius: 4,
+            }}
+          >{blockedMessage}</div>
+        )}
       </div>
 
       <div
@@ -297,7 +383,8 @@ export default function LibraryTreeRoot({
             active project is highlighted IN PLACE (no top-slot pull-out, no
             collapsed «Все проекты» group). Clicking a project activates it. */}
         <LooseZone
-          query={query}
+          matchEntry={matchEntry}
+          getMatchInfo={getMatchInfo}
           selectedId={selectedId}
           onSelectEntry={onSelectEntry}
           expanded={looseExpanded}
@@ -309,7 +396,8 @@ export default function LibraryTreeRoot({
           <ProjectZone
             key={p.id}
             project={p}
-            query={query}
+            matchEntry={matchEntry}
+            getMatchInfo={getMatchInfo}
             selectedId={selectedId}
             onSelectEntry={onSelectEntry}
             expanded={isExpanded(p.id)}

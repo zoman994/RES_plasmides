@@ -25,6 +25,7 @@ import SettingsModal from './components/SettingsModal';
 import ProjectInfoModal from './components/ProjectInfoModal';
 import SequenceSearchPopover from './components/SequenceSearchPopover';
 import { ToastStack } from './components/Toast';
+import PromptModal from './components/PromptModal';
 import { openBodgeFilePicker, pickSaveAs, saveBlobToHandle } from './lib/file-system';
 import { writeBodge, writeBodgeV2, readBodge } from './lib/bodge-zip';
 // A1/A2 — bridge the CanvasSkeleton assembly snapshot ↔ the .bodge v2 state so
@@ -434,6 +435,7 @@ export default function App() {
       {projectInfoOpen && <ProjectInfoModal />}
       {settingsOpen && <SettingsModal />}
       <ToastStack />
+      <PromptModal />
     </div>
   );
 }

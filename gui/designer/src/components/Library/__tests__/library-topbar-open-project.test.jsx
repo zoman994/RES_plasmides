@@ -14,7 +14,7 @@ import {
 } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { useStore } from '../../../store';
-import LibraryTopBar from '../LibraryTopBar';
+import { renderTopBar } from './_topbar-harness';
 import { FEATURE_FLAGS } from '../../../lib/feature-flags';
 
 beforeEach(() => {
@@ -28,7 +28,7 @@ afterEach(cleanup);
 
 describe('LibraryTopBar — «Открыть проект» (дубль с рельсом)', () => {
   it('twoLevelRail ON (дефолт): кнопка «Открыть проект» убрана', () => {
-    render(<LibraryTopBar />);
+    renderTopBar({});
     expect(screen.queryByTestId('library-topbar-open-project')).toBeNull();
   });
 
@@ -38,7 +38,7 @@ describe('LibraryTopBar — «Открыть проект» (дубль с ре�
     const spy = vi.fn();
     useStore.setState((s) => { s.pushFullscreen = spy; });
     try {
-      render(<LibraryTopBar />);
+      renderTopBar({});
       const btn = screen.getByTestId('library-topbar-open-project');
       expect(btn).toBeTruthy();
       fireEvent.click(btn);
