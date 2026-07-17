@@ -12,7 +12,7 @@
 import { describe, it, expect } from 'vitest';
 import { executeBlunt } from '../canvas/operations/adapters/blunt';
 import {
-  getAdapter, getPopupComponent, isKnownKind, KNOWN_OP_KINDS,
+  getAdapter, isKnownKind, KNOWN_OP_KINDS,
 } from '../canvas/operations/op-kinds-registry';
 import { operationColor, OP_NEUTRAL } from '../canvas/op-colors';
 
@@ -25,11 +25,10 @@ const FIVE = { overhang: 'AATT', type: '5overhang', enzymeUsed: 'EcoRI' };
 const THREE = { overhang: 'TGCA', type: '3overhang', enzymeUsed: 'PstI' };
 
 describe('blunt op — registry wiring', () => {
-  it("'blunt' is a registered, executable op kind with a popup", () => {
+  it("'blunt' is a registered, executable op kind", () => {
     expect(isKnownKind('blunt')).toBe(true);
     expect(KNOWN_OP_KINDS.has('blunt')).toBe(true);
     expect(typeof getAdapter('blunt')).toBe('function');
-    expect(getPopupComponent('blunt')).toBeTruthy();
   });
   it("'blunt' has its own colour (not the neutral fallback)", () => {
     expect(operationColor('blunt').stroke).not.toBe(OP_NEUTRAL.stroke);

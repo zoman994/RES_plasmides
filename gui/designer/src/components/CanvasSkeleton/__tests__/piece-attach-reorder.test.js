@@ -7,7 +7,6 @@
  */
 import { describe, it, expect } from 'vitest';
 import { piecesReducer } from '../store/skeleton-state-pieces';
-import { selectAttachedPieces } from '../canvas/zone-sequence-mode/zone-mode-state';
 
 function piece(id, zoneId, order, createdAt) {
   return {
@@ -24,7 +23,11 @@ function st(pieces) {
     operations: [], junctions: [], zones: [{ id: 'zn-1' }, { id: 'zn-2' }], pieces,
   };
 }
-const orderIds = (s, z) => selectAttachedPieces(s, z).map((p) => p.id);
+const orderIds = (s, z) => (s.pieces || [])
+  .filter((p) => p.zoneId === z && typeof p.order === 'number' && Number.isFinite(p.order))
+  .slice()
+  .sort((a, b) => (a.order - b.order) || ((a.createdAt || 0) - (b.createdAt || 0)))
+  .map((p) => p.id);
 
 describe('T7 K4 — ATTACH_PIECE_TO_ASSEMBLY', () => {
   it('palette piece → attached at order, others shift, contiguous 0..n-1', () => {

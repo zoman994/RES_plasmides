@@ -1,5 +1,5 @@
 /**
- * picker-prefs — recent + favorites для PlaceholderTreePicker.
+ * picker-prefs — recent + favorites for the shared library source picker.
  *
  * B8 (14.05.2026 — TIER-B). Хранится в localStorage:
  *   - recent: array of last-picked entry IDs (max 5).

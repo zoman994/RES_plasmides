@@ -1,8 +1,8 @@
 /**
  * selectors-product — derived virtual product containers (live preview).
  * F4 M-CANVAS-PRODUCT (DEC-CANVAS-PROD-01/02). Pure — never writes
- * state.containers. CanvasLayoutView / EditorTabStrip / MiniProjectCanvas
- * consume via useMemo over [operations, containers, junctions].
+ * state.containers. ContainerEditorSkeleton resolves these previews for
+ * virtual editor tabs.
  */
 import { selectJunctionValidation } from './selectors-junction';
 import { assembleProduct } from '../lib/operation-product-assembly';

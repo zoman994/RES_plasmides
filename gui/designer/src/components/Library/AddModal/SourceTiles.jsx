@@ -3,7 +3,7 @@
  *
  * 4 tiles per spec §3 IN #8: Файл · Paste · Каталог · Из другого .bodge.
  * Each tile dispatches `onPick(sourceId)`; AddModal then either
- * routes to the existing PreImportModal flow (file/paste/catalog)
+ * delegates to LibraryWorkspace (file/paste/catalog)
  * or surfaces CrossProjectStub (cross-project, M-X.9 stub).
  */
 import { memo } from 'react';

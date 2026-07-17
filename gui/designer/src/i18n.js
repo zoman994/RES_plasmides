@@ -129,6 +129,7 @@ const TRANSLATIONS = {
     'search.diag.incompatibleScopeStatus': 'This status does not belong to the selected object type',
     'search.diag.invalidDna': 'The DNA query contains unsupported symbols',
     'search.diag.unclosedQuote': 'Unclosed quote',
+    'export.section.containerHistory': 'Container history',
 
     // ── Navigation ──
     'Parts Library': 'Parts Library',
@@ -529,6 +530,7 @@ const TRANSLATIONS = {
     'search.diag.incompatibleScopeStatus': 'Этот статус не относится к выбранному типу объекта',
     'search.diag.invalidDna': 'ДНК-запрос содержит неподдерживаемые символы',
     'search.diag.unclosedQuote': 'Незакрытая кавычка',
+    'export.section.containerHistory': 'История контейнеров',
 
     // ── Navigation ──
     'Parts Library': 'Библиотека частей',

@@ -42,9 +42,9 @@ describe('M-X.7a v2 K1 — workspaceSlice', () => {
 
   it('setActiveWorkspace called twice — history accumulates', () => {
     useStore.getState().setActiveWorkspace('align');
-    useStore.getState().setActiveWorkspace('importer');
+    useStore.getState().setActiveWorkspace('restriction-sites');
     const s = useStore.getState();
-    expect(s.workspace.active).toBe('importer');
+    expect(s.workspace.active).toBe('restriction-sites');
     expect(s.workspace.history).toEqual(['library', 'align']);
   });
 
@@ -60,9 +60,15 @@ describe('M-X.7a v2 K1 — workspaceSlice', () => {
     expect(useStore.getState().workspace.history).toEqual([]);
   });
 
+  it('setActiveWorkspace ignores the retired importer workspace', () => {
+    useStore.getState().setActiveWorkspace('importer');
+    expect(useStore.getState().workspace.active).toBe('library');
+    expect(useStore.getState().workspace.history).toEqual([]);
+  });
+
   it('goBack pops history and sets active to popped value', () => {
     useStore.getState().setActiveWorkspace('align');
-    useStore.getState().setActiveWorkspace('importer');
+    useStore.getState().setActiveWorkspace('primer-pool');
     useStore.getState().goBack();
     const s = useStore.getState();
     expect(s.workspace.active).toBe('align');
@@ -78,9 +84,9 @@ describe('M-X.7a v2 K1 — workspaceSlice', () => {
 
   it('history is capped at WORKSPACE_HISTORY_LIMIT entries', () => {
     expect(WORKSPACE_HISTORY_LIMIT).toBe(10);
-    const names = ['align', 'importer', 'mix', 'construct', 'startup',
-                   'align', 'importer', 'mix', 'construct', 'startup',
-                   'align', 'importer'];
+    const names = ['align', 'restriction-sites', 'mix', 'construct', 'startup',
+                   'align', 'primer-pool', 'mix', 'construct', 'startup',
+                   'align', 'restriction-sites'];
     for (const n of names) useStore.getState().setActiveWorkspace(n);
     const h = useStore.getState().workspace.history;
     expect(h.length).toBe(WORKSPACE_HISTORY_LIMIT);

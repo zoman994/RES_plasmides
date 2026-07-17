@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { BodgeDB, resetDBForTests } from '../dexie-schema';
 import {
   putProject, getProject, listAllProjects, listRecentProjects, deleteProject, clearAll,
+  putSnippet, listSnippets, deleteSnippet,
 } from '../dexie-schema';
 
 let db;
@@ -69,5 +70,19 @@ describe('K1 — Dexie schema v4 (M-X.7a v2 K1 bump from v3)', () => {
     ]);
     const filtered = await db.containers.where('[projectId+kind]').equals(['p-1', 'molecule']).toArray();
     expect(filtered.map(c => c.id).sort()).toEqual(['c-1', 'c-2']);
+  });
+
+  it('round-trips an account-global custom snippet', async () => {
+    await putSnippet({
+      id: 'snip-custom-1', name: 'pelB', sequence: 'ATGAAATAC', category: 'custom',
+      isCustom: true, createdAt: new Date().toISOString(),
+    });
+
+    let rows = await listSnippets();
+    expect(rows.map((row) => row.id)).toContain('snip-custom-1');
+
+    await deleteSnippet('snip-custom-1');
+    rows = await listSnippets();
+    expect(rows.map((row) => row.id)).not.toContain('snip-custom-1');
   });
 });

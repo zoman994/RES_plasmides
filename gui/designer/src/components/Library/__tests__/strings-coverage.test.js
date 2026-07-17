@@ -2,8 +2,7 @@
  * Sprint M-B.2 K6 — STRINGS sweep / coverage guard.
  *
  * Verifies every key in IMPORTER_STRINGS is referenced from at least one
- * file under components/Importer/ OR a known external mount-point
- * (Topbar import button). New unused keys → failure → forces author to
+ * live Library, SequenceView, or Annotator source file. New unused keys → failure → forces author to
  * either delete the key or wire it into the UI.
  *
  * Pure regex grep over source files; does not exercise React. fs reads
@@ -17,9 +16,6 @@ import { IMPORTER_STRINGS } from '../lib/importer-strings';
 const REPO_ROOT = resolve(__dirname, '../../../../');
 const IMPORTER_DIR = resolve(REPO_ROOT, 'src/components/Library');
 const SEQUENCE_VIEW_DIR = resolve(REPO_ROOT, 'src/components/SequenceView');
-const EXTERNAL_KNOWN_FILES = [
-  resolve(REPO_ROOT, 'src/components/AppShell/Topbar.jsx'),
-];
 
 function walkExternal(dir, out = []) {
   // Sprint M-X.2 K3 — annotation editing popups + Annotator UI live
@@ -68,7 +64,6 @@ const SOURCE_FILES = [
   ...walk(IMPORTER_DIR),
   ...walkExternal(SEQUENCE_VIEW_DIR),
   ...externalAnnotatorFiles,
-  ...EXTERNAL_KNOWN_FILES,
 ];
 const SOURCE_BLOB = SOURCE_FILES.map((p) => readFileSync(p, 'utf8')).join('\n');
 

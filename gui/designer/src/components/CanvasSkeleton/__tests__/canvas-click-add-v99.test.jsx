@@ -38,7 +38,7 @@ beforeEach(() => {
 
 describe('Node B §6 — library-entry click routes into an assembly zone', () => {
   // RETIRED by M-WORKSPACE — the canvas-top LibrarySearchBar lived in
-  // CanvasLayoutView, which is no longer mounted in the project view. Adding a
+  // the retired project canvas. Adding a
   // library molecule to an assembly now goes through the Sequence view tab's
   // inline picker (AssemblyShellBody empty-state / «+ Сегмент»). A workspace-
   // level quick-add search is a possible later re-add.

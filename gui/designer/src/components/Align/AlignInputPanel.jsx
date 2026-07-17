@@ -23,9 +23,8 @@ import {
 // пикера, ВОТ ЭТОТ»): the same rich library picker the assembly/canvas use
 // (search by name + DNA, filter pills, favorites/recent/project/collection
 // sections, mini-map cards). Static import is safe ONLY because the picker's
-// graph was made light — TREE_DRAG_MIME was extracted to its own module so the
-// picker no longer drags use-tree-drop-target → skeleton-context (the whole
-// CanvasSkeleton store) into the align chunk. Do NOT lazy-load it: a React.lazy
+// graph was made light — TREE_DRAG_MIME lives in a dependency-free module, so
+// the picker does not pull the CanvasSkeleton store into the align chunk. Do NOT lazy-load it: a React.lazy
 // nested inside the already-lazy align chunk deadlocks the outer lazy under
 // vite-node (align-routing hangs on Suspense).
 import LibrarySearchBar from '../CanvasSkeleton/canvas/LibrarySearchBar';

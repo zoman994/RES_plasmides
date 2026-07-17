@@ -42,7 +42,7 @@ describe('K1 — CanvasSkeleton mount', () => {
     }
   });
 
-  it('PC-K1: LibraryTreeHost no longer mounted (replaced by top search bar — PC-K2)', () => {
+  it('PC-K1: legacy library footer is no longer mounted', () => {
     render(<CanvasSkeleton />);
     expect(screen.queryByTestId('skeleton-library-tree-host')).toBeNull();
     expect(screen.queryByTestId('library-tree-root')).toBeNull();

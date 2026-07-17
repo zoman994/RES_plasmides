@@ -11,38 +11,29 @@ describe('MS-K3 — HelpPopover', () => {
     expect(screen.queryByTestId('ss-help-popover')).toBeNull();
   });
 
-  it('renders 4 tabs (Руководство / Хоткеи / Глоссарий / Скрытое)', () => {
+  it('renders only the current guide, hotkeys and glossary tabs', () => {
     render(<HelpPopover open onClose={vi.fn()} />);
+    expect(screen.getAllByRole('tab')).toHaveLength(3);
     expect(screen.getByTestId('ss-help-tab-guide')).toBeTruthy();
     expect(screen.getByTestId('ss-help-tab-hotkeys')).toBeTruthy();
     expect(screen.getByTestId('ss-help-tab-glossary')).toBeTruthy();
-    expect(screen.getByTestId('ss-help-tab-hidden')).toBeTruthy();
+    expect(screen.queryByTestId('ss-help-tab-hidden')).toBeNull();
   });
 
-  it('hidden tab lists still-deferred features (Notebook, Frame view, Mutation auto-detect)', () => {
-    // B2 — Протокол + Заказ олигов moved OUT of «hidden» (now mounted buttons).
+  it('does not expose the stale hidden-feature backlog', () => {
     render(<HelpPopover open onClose={vi.fn()} />);
-    fireEvent.click(screen.getByTestId('ss-help-tab-hidden'));
-    const content = screen.getByTestId('ss-help-tab-content-hidden');
-    expect(content.textContent).toMatch(/Notebook/);
-    expect(content.textContent).toMatch(/Frame view/);
-    expect(content.textContent).toMatch(/Mutation auto-detect|мутагенез/);
+    expect(screen.getByTestId('ss-help-popover').textContent)
+      .not.toMatch(/AddPiecePopover|OpPopup|Frame view|Готово,\s*жд[её]т|жд[её]т UI-mount/i);
   });
 
-  it('hidden tab lists power-user paths (ПКМ, drag-drop, hotkeys)', () => {
+  it('default guide is current, built in and has no external placeholder link', () => {
     render(<HelpPopover open onClose={vi.fn()} />);
-    fireEvent.click(screen.getByTestId('ss-help-tab-hidden'));
-    const content = screen.getByTestId('ss-help-tab-content-hidden');
-    expect(content.textContent).toMatch(/Ctrl\+R/);
-    expect(content.textContent).toMatch(/ПКМ|правый клик/i);
-    expect(content.textContent).toMatch(/Drag-and-drop/i);
-  });
-
-  it('default tab is "guide" with online-guide link', () => {
-    render(<HelpPopover open onClose={vi.fn()} />);
-    expect(screen.getByTestId('ss-help-tab-content-guide')).toBeTruthy();
-    expect(screen.getByTestId('ss-help-guide-link').getAttribute('href'))
-      .toMatch(/bodgegene\.dev/);
+    const guide = screen.getByTestId('ss-help-tab-content-guide');
+    expect(guide.textContent).toMatch(/библиотек|молекул|сборк/i);
+    expect(screen.queryByTestId('ss-help-guide-link')).toBeNull();
+    expect(document.querySelector('a[href="https://bodgegene.dev/guide"]')).toBeNull();
+    expect(screen.getByTestId('ss-help-tab-guide').getAttribute('style'))
+      .not.toMatch(/#eed2c1/i);
   });
 
   it('switching to "hotkeys" tab shows the open-hotkeys button', () => {
@@ -85,8 +76,9 @@ describe('MS-K3 — HelpPopover', () => {
   it('backdrop click closes popover; inner click does not', () => {
     const onClose = vi.fn();
     render(<HelpPopover open onClose={onClose} />);
-    // Close button
-    fireEvent.click(screen.getByTestId('ss-help-popover-close'));
-    expect(onClose).toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('ss-help-tab-content-guide'));
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('ss-help-popover'));
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

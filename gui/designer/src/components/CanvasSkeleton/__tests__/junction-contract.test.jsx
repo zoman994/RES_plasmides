@@ -20,7 +20,6 @@ import {
   screen,
   cleanup,
   fireEvent,
-  act,
 } from '@testing-library/react';
 import { skeletonReducer, buildInitialState } from '../store/skeleton-state';
 import {
@@ -36,7 +35,6 @@ import {
 } from '../store/selectors-junction';
 import { reverseComplement } from '../../../sequence-utils';
 import JunctionPopover from '../canvas/JunctionPopover';
-import CanvasLayoutView from '../canvas/CanvasLayoutView';
 import { SkeletonProvider, useSkeletonActions } from '../store/skeleton-context';
 import { useEffect } from 'react';
 import { migrateSnapshot, SCHEMA_VERSION_CURRENT } from '../store/skeleton-persistence';

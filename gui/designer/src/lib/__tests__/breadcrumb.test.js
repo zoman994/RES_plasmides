@@ -8,7 +8,6 @@ describe('breadcrumb — buildBreadcrumb', () => {
       { label: 'Библиотека', kind: 'window', current: true },
     ]);
     expect(buildBreadcrumb({ workspaceActive: 'align' })[1]).toEqual({ label: 'Выравнивание', kind: 'window', current: true });
-    expect(buildBreadcrumb({ workspaceActive: 'importer' })[1].label).toBe('Импорт');
   });
 
   it('canvasSkeleton → окно проекта с именем активного проекта', () => {
@@ -52,5 +51,10 @@ describe('breadcrumb — buildBreadcrumb', () => {
   it('пустой/неизвестный вход — «Рабочая область»', () => {
     expect(buildBreadcrumb({})[0].label).toBe('Рабочая область');
     expect(buildBreadcrumb()[0].label).toBe('Рабочая область');
+  });
+
+  it('retired importer workspace falls through to the unknown-workspace breadcrumb', () => {
+    expect(buildBreadcrumb({ workspaceActive: 'importer' }))
+      .toEqual(buildBreadcrumb({ workspaceActive: 'unknown' }));
   });
 });

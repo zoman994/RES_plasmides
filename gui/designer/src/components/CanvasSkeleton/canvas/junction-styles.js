@@ -1,18 +1,4 @@
-/**
- * junction-styles — копия v0.5 JunctionBlock TYPE_STYLES / LINE_COLORS
- * палитры для использования в SVG-рендере skeleton-junction'ов.
- *
- * Игорь (12.05.2026): «переиспользовать кодовую базу V0.5». В чистом
- * виде JunctionBlock невозможно импортировать (heavily store-coupled),
- * но его цветовые константы — переносимые. Здесь они вынесены, чтобы:
- *   - skeleton SVG path stroke / fill брал цвет из той же палитры,
- *     что v0.5 canvas будет (когда оба будут работать в одном UI).
- *   - canvas markers для типа junction'а (kind badge) тоже подсвечивались
- *     в той же логике (overlap blue / GG green / RE orange / KLD purple
- *     / ligation red / blunt grey).
- *
- * Источник: `components/JunctionBlock.jsx` строки 9-24 (v0.5).
- */
+/** Shared semantic colors for current CanvasSkeleton junction rendering. */
 import { GG_ENZYMES } from '../../../golden-gate';
 
 export const JUNCTION_STROKE = {

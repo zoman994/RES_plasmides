@@ -6,12 +6,11 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 import bodgegeneLocal from './eslint-rules/no-cyrillic.js'
 
 // Files that legitimately ship Russian content (i18n, RE descriptions,
-// part descriptions, peptide tag dictionary). These are user-facing
+// peptide tag dictionary). These are user-facing
 // data, not source comments — exempt from the no-cyrillic rule.
 const DATA_FILES_WITH_RUSSIAN = [
   'src/i18n.js',
   'src/restriction-db.js',
-  'src/part-descriptions.js',
   'src/tags-db.js',
 ]
 

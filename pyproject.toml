@@ -41,11 +41,11 @@ fast = [
 primers = [
     "primer3-py>=2.0",  # SantaLucia NN Tm + hairpin/dimer analysis
 ]
-golden-gate = [
-    "tatapov>=0.1",     # Potapov 2018 overhang fidelity data
-]
-snapgene = [
-    "snapgene-reader>=0.1.20",  # SnapGene .dna full feature extraction
+gui = [
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "pydantic>=2.8",
+    "python-multipart>=0.0.9",
 ]
 
 [project.scripts]

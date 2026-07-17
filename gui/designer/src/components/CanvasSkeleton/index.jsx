@@ -7,14 +7,8 @@
  * Zustand кроме popFullscreen для «← Назад».
  *
  * Composition:
- *   SkeletonHeader (← Назад + Layout/Graph toggle)
- *   ┌──────────────┬─────────────────────────────────┐
- *   │ LibraryTree  │ CanvasLayoutView / CanvasGraph  │
- *   │ Host         │                                 │
- *   │ (производная │                                 │
- *   │  Library     │                                 │
- *   │  tree)       │                                 │
- *   └──────────────┴─────────────────────────────────┘
+ *   SkeletonHeader (← Назад + workspace controls)
+ *   ProjectAssemblyWorkspace (assembly tabs + per-assembly DAG)
  *   + ContainerEditorSkeleton (overlay при state.editorOpen) —
  *     Canvas V2 Editor Full: TabBar + LinearFeatureBar +
  *     OverviewTab / SequenceTab / AnnotationsTab + FeatureEditorModal
@@ -22,12 +16,6 @@
  *     Operations toolbar / pills / draft tabs выпилены (operations
  *     переезжают на canvas, отдельный sprint).
  *   + Toast (success после commit-pending / mock-commit / etc.)
- *
- * Left tree (12.05.2026 — Игорь): bespoke SkeletonTree (3 sections)
- * выпилен в пользу production LibraryTreeRoot через LibraryTreeHost.
- * Все feature функционала Library — search, Loose zone, pinned,
- * Trash, drag-and-drop, AddModal, etc. — теперь работают в skeleton
- * без дублирования кода.
  *
  * Снос скелета = удаление этой папки + строки import в App.jsx + case
  * 'canvasSkeleton' + entry в FULLSCREENS + кнопка в Sidebar +
@@ -46,14 +34,9 @@ import CodonStatsPanel from './CodonStatsPanel';
 // were built + tested but had no entry point (PC-K5 removed the mounts).
 import ProtocolPanel from './ProtocolPanel';
 import PrimerOrderPanel from './PrimerOrderPanel';
-// Wave-4 orphan cleanup (audit C4/C6/C7): the dead OpKindPicker + OpSuggestions
-// mounts and the never-rendered CanvasGraphView import were removed. CanvasLayoutView
-// + AssemblyDraftsPanel + OpKindPicker files stay (still test-only harnesses) but
-// no longer leak into the production index.
-// PC-K1: LibraryTreeHost mount removed (top search bar will replace
-// it — PC-K2). PC-K5: ProtocolPanel + PrimerOrderPanel mounts removed
-// (non-functional UI noise per spec §4.4). The source files remain in
-// the repo as orphans for possible future re-use.
+// PC-K1: legacy library footer removed in favor of the top search bar.
+// PC-K5: ProtocolPanel + PrimerOrderPanel mounts were removed as
+// non-functional UI noise per spec §4.4 and later restored above.
 
 export default function CanvasSkeleton() {
   return (
@@ -160,23 +143,19 @@ function CanvasArea() {
         position: 'relative',
       }}
     >
-      {/* M-WORKSPACE — two-level assembly-tab workspace replaces the floating
-          ZoneFrame canvas (CanvasLayoutView/CanvasGraphView retired from the
-          project view; container/op editing stays as the EditorOverlay below). */}
+      {/* M-WORKSPACE — two-level assembly tabs with a dedicated DAG per assembly;
+          container/op editing stays in the EditorOverlay below. */}
       <ProjectAssemblyWorkspace />
       {/* AE-K9 (SPEC_ASSEMBLY_EDITOR_CLEANUP §7.1): standalone «+
           Операция» button удалён. Operations create only inside the
           assembly editor via 🔗 Сшить → OpGroupPicker. Mental model:
           op принадлежит zone (T-series four-tier), не существует
-          stand-alone на canvas. The OpKindPicker code path remains for
-          legacy ops migration paths but is no longer reachable from
-          the floating toolbar. */}
+          stand-alone на canvas. */}
       {/* «+ Сборка» (Игорь 18-19.05.2026 — унификация «Только зона» +
           regression-fix): создаёт ЗОНУ (four-tier, DEC-CANVAS-4T-07)
           И СРАЗУ открывает её редактор сборки (AssemblyShellBody —
           цветные сегменты + drag-insert фрагментов). Без open-шага
-          окно сборки было недостижимо. Тот же путь — «+ Новая сборка»
-          в AssemblyDraftsPanel. */}
+          окно сборки было недостижимо. */}
       {/* Очистить канвас — destructive, gated confirm (Игорь
           17.05.2026). RESET → пустой buildInitialState. Ghost-стиль,
           ниже по визуальному весу чем +действия; bottom:152 — следующий

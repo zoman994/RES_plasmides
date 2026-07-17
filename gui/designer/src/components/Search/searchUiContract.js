@@ -1,7 +1,7 @@
 /**
  * searchUiContract — K1.0 shared contract for the Search UI primitives
  * (SearchField / SearchResultsListbox / useSearchComboboxNavigation /
- * SearchCombobox / SearchFilterChips).
+ * SearchFilterChips).
  *
  * UI-ONLY. This module — and every file under components/Search — imports
  * nothing from the store, the query parser, search profiles, the search
@@ -40,9 +40,9 @@
 /**
  * The DOM id for the option with stable key `optionKey` within listbox
  * `listboxId`. This is the SINGLE shared formula: SearchResultsListbox stamps it
- * onto each `<li id>` (from its option key), and SearchCombobox uses it to
- * compute `aria-activedescendant` (from the ACTIVE key) — so the two can never
- * disagree. Keyed by the stable entity key, NOT the array index: the id follows
+ * onto each `<li id>` (from its option key), and the surface combobox controller
+ * uses it to compute `aria-activedescendant` (from the ACTIVE key) — so the two
+ * can never disagree. Keyed by the stable entity key, NOT the array index: the id follows
  * the entity through a partial→final reorder, so aria-activedescendant never
  * dangles or silently points at a different row after results churn.
  *

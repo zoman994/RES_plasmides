@@ -1,29 +1,10 @@
 /**
- * ContainerBlock — колбаса (feature bar) inside the rectangle.
- *
- * 12.05.2026 — Игорь: «колбаса должна быть в линейном виде внутри
- * контейнера на канвасе».
- *
- * Covers:
- *  - Filled container renders feature-bar div + per-feature ticks
- *    с testId pattern `skeleton-block-{id}-feature-{idx}`.
- *  - Tick positioned по % от length, colored by featureColor.
- *  - Placeholder block does NOT have feature bar.
- *  - level='detail' annotations исключены из колбасы.
- *
- *  Plus AddModal SnapGene «в разработке» banner tests.
+ * AddModal SnapGene catalog tile regression tests.
  */
 import 'fake-indexeddb/auto';
 import { describe, it, expect, afterEach, beforeEach } from 'vitest';
-import { render, screen, cleanup, act, fireEvent } from '@testing-library/react';
-import { useEffect } from 'react';
-import CanvasLayoutView from '../canvas/CanvasLayoutView';
-import CanvasSkeleton from '../index';
+import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import AddModal from '../../Library/AddModal/AddModal';
-import {
-  SkeletonProvider,
-  useSkeletonActions,
-} from '../store/skeleton-context';
 import {
   bootstrapStore,
   useStore,
@@ -37,36 +18,6 @@ afterEach(() => {
 beforeEach(() => {
   try { bootstrapStore(); } catch { /* */ }
 });
-
-const seedEntry = (annotations) => ({
-  id: 'lib-feat-test',
-  kind: 'container',
-  name: 'feat-test',
-  payload: {
-    sequence: 'A'.repeat(1000),
-    length: 1000,
-    topology: 'linear',
-    annotations,
-    ends: null,
-  },
-});
-
-function Filler({ entry }) {
-  const actions = useSkeletonActions();
-  useEffect(() => {
-    actions.fillPlaceholder('c-placeholder-1', entry);
-  }, [actions, entry]);
-  return null;
-}
-
-function renderCanvasWithFilled(entry) {
-  return render(
-    <SkeletonProvider>
-      <Filler entry={entry} />
-      <CanvasLayoutView />
-    </SkeletonProvider>,
-  );
-}
 
 describe('AddModal — SnapGene catalog tile', () => {
   it('catalog tile shows «в разработке» в подзаголовке', () => {
@@ -98,6 +49,3 @@ describe('AddModal — SnapGene catalog tile', () => {
     expect(calls[0].source).toBe('catalog');
   });
 });
-
-// Suppress unused-import warning for act.
-void act;

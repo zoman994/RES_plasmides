@@ -9,8 +9,8 @@
  * open a new one. Everything else is pointer-events:none.
  *
  * Fixed 200×150, top:60 right:16 — not resizable / draggable in F1
- * (DEC-WIN-06). Separate file (not a CanvasLayoutView flag) because
- * the full canvas is built for drag/drop/junction interactivity.
+ * (DEC-WIN-06). Kept separate because the compact overview has its own
+ * interaction and focus lifecycle.
  */
 import { useMemo, useCallback, useState } from 'react';
 import { useSkeletonState, useSkeletonActions } from '../store/skeleton-context';

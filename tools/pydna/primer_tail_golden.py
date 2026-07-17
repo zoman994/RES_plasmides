@@ -1,6 +1,6 @@
 """
 primer_tail_golden — OFFLINE pydna experiment resolving the GG/RE primer-tail
-convention (SPEC_PRIMER_TAIL_UNIFICATION §6.1 layer 1 / A2 / V131).
+convention (docs/specs/ASSEMBLY_WORKBENCH.md, primer contract).
 
 Run ONCE with the isolated venv:
     .venv-pydna/Scripts/python.exe tools/pydna/primer_tail_golden.py

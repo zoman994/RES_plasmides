@@ -14,7 +14,7 @@ import { createPortal } from "react-dom";
 import { reverseComplement } from "../../../sequence-utils.js";
 
 // K13 — quick-add helper sets (SPEC §3 шаг 3 PrimerFromSelectionModal
-// extension). Sequences from K2 snippet-catalog + restriction-db.
+// extension). Sequences are local built-ins plus restriction-db entries.
 const HELPER_SNIPPETS = [
   ['6xHis', 'CATCATCATCATCATCAT'],
   ['FLAG', 'GATTACAAGGATGACGATGACAAG'],
@@ -140,7 +140,6 @@ export default function PrimerFromSelectionModal({ draft, onCreate, onClose }) {
             <input
               data-testid="primer-modal-name"
               type="text"
-              // eslint-disable-next-line jsx-a11y/no-autofocus
               autoFocus
               value={name}
               onChange={(e) => setName(e.target.value)}

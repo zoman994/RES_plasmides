@@ -118,7 +118,7 @@ describe('components/Search — UI-only import boundary (AST)', () => {
 });
 
 describe('components/Search — boundary analyzer (self-test, AST is not fooled)', () => {
-  const fromFile = path.join(SEARCH_DIR, 'SearchCombobox.jsx');
+  const fromFile = path.join(SEARCH_DIR, 'SearchField.jsx');
 
   it('accepts react, the Icon, and in-cluster siblings/subdirs; rejects escapes + bare packages', () => {
     expect(isAllowedImport('react', fromFile)).toBe(true);

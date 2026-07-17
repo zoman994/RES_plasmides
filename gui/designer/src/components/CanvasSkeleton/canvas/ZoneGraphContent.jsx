@@ -1,19 +1,14 @@
 /**
  * ZoneGraphContent — shared graph renderer (Sprint V114 K1).
  *
- * Extracted verbatim from CanvasGraphView's graph core: given already-filtered
- * `containers` + `operations`, builds the bipartite graph via
+ * Given already-filtered `containers` + `operations`, builds the bipartite graph via
  * `buildGraphNodesEdges`, lays it out with the local dagre
  * (`computeGraphPositions`, LR from 0,0), and draws the SVG edge layer +
  * `ContainerBlock`/`OperationNode` nodes inside a relative-positioned box
  * sized to the graph bounds.
  *
- * Two consumers:
- *   - `CanvasGraphView` (DAG view) — passes full `state.containers/operations`
- *     + its op-picker / placeholder callbacks. The DAG view's existing tests
- *     guard that this extraction renders identically.
- *   - `ZoneFrame` graph-mode (V114 K2) — passes the zone's nodes filtered by
- *     `nodeListInZone`, so Layout shows the assembly graph inside the frame.
+ * AssemblyDagView supplies the active assembly's filtered graph and interaction
+ * callbacks.
  *
  * Pure: every interaction is an optional callback — with none passed the nodes
  * are decorative (no handler, no crash). Node wrappers are `pointer-events:auto`
@@ -61,8 +56,8 @@ export default function ZoneGraphContent({
   // концы via StickyEndFragment). Threaded into the dagre layout AND the edge-anchor
   // flow so wires exit the bottom / enter the top instead of right/left.
   direction = 'LR',
-  // Ф1 (Игорь 27.06) — opt-in перетаскивание карточек по сетке. Дефолт выкл →
-  // поведение прежнее (ZoneFrame регресс безопасен). `positionOverrides`
+  // Ф1 (Игорь 27.06) — opt-in перетаскивание карточек по сетке. Дефолт выкл.
+  // `positionOverrides`
   // (id→{x,y}, привязанные к сетке) перекрывают авто-слот dagre; перетаскивание
   // карточки зовёт `onNodeDragEnd(id, snapped)`. `zoom` нужен, т.к. узлы живут
   // внутри scale()-обёртки — экранную дельту делим на zoom, чтобы мир совпал.

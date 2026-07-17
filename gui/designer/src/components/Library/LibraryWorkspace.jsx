@@ -1,6 +1,5 @@
 /**
- * LibraryWorkspace — Sprint M-X.7a v2 K4 (replaces deprecated
- * Library/index.jsx Importer fullscreen surface per DEC-IMP-06 ⚓).
+ * LibraryWorkspace — Sprint M-X.7a v2 K4, the canonical Library surface.
  *
  * Layout per Library.html:
  *   ┌──────────────────────────────────────────────────────────────┐
@@ -50,7 +49,6 @@ import OnboardingNudge from './onboarding/OnboardingNudge';
 import AddModal from './AddModal/AddModal';
 import SequenceSearchPopover from '../SequenceSearchPopover';
 import { parseFile, extractItemName, ACCEPT_STRING, enrichAnnotations } from '../../file-import';
-import { drainImporterFiles } from './lib/pending-files'; // A24 — drain DAG-dropped files
 import { buildLibraryEntry } from './lib/build-library-entry';
 import { buildStarterSet } from './lib/starter-set';
 import { downloadEntryAsGenbank, downloadProjectAsZip } from '../../lib/export-genbank';
@@ -289,17 +287,6 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
     await importFiles(files, null);
   }, [importFiles]);
 
-  // A24 (audit) — files dropped on the DAG screen are queued to pending-files, then
-  // the app pushes Library; nothing drained them (the legacy Importer never mounts),
-  // so the drop was silently lost. Drain + import on mount (target = active project).
-  const drainedRef = useRef(false);
-  useEffect(() => {
-    if (drainedRef.current) return;
-    drainedRef.current = true;
-    const pending = drainImporterFiles();
-    if (pending && pending.length) importFiles(pending, currentProjectId || null);
-  }, [importFiles, currentProjectId]);
-
   // Starter set — adds 4 synthetic reference vectors to Коллекция.
   const onAddStarterSet = useCallback(async () => {
     try {
@@ -406,8 +393,7 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
   // Projects are created from the Library left panel now (project hub).
   const createProject = useStore((s) => s.createProject);
   const openProjectInfo = useStore((s) => s.openProjectInfo);
-  // Silent write-through for annotation edits (mirror the Importer host's
-  // useLibraryState.updateEdits hot-fix, 07.05.2026). Without it, an ORF
+  // Silent write-through for annotation edits. Without it, an ORF
   // created in the embedded Annotator lived only in transient perEntryState
   // and vanished on entry switch / reload.
   const writeLibraryEntryAnnotations = useStore((s) => s.writeLibraryEntryAnnotations);
@@ -425,8 +411,8 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
   // every existing reader keeps working without per-component
   // refactor. New code can still read entry.payload via item.payload
   // (the spread preserves the original key).
-  // `_libraryEntryId: selectedId` (entry id === selectedId) mirrors the
-  // Importer host (useLibraryState). Without it every inspector feature
+  // `_libraryEntryId: selectedId` (entry id === selectedId) preserves the
+  // Inspector contract. Without it every inspector feature
   // gated on item._libraryEntryId silently no-op'd here — most importantly
   // character-level SEQUENCE edits (onSequenceEditFromView early-returns)
   // and manual-edit branching, so a sequence edit vanished with no error

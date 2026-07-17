@@ -115,8 +115,7 @@ export function zonesReducer(state, action) {
       return { ...state, focusedZoneId: action.zoneId ?? null };
 
     // T8 DEC-T8-09 — transient post-navigation highlight. durationMs>0
-    // sets highlightedUntil = now+durationMs; ≤0 clears it (cleanup
-    // dispatch). ZoneFrame applies a CSS accent while now < that ts.
+    // sets highlightedUntil = now+durationMs; ≤0 clears it on cleanup.
     case 'HIGHLIGHT_ZONE': {
       const zone = zones.find((z) => z.id === action.zoneId);
       if (!zone) return state;
@@ -366,9 +365,8 @@ export function zonesReducer(state, action) {
       return patchZone(state, action.zoneId, { junctions: nextJ });
     }
 
-    // J6b — open/close the JunctionControl popover for a strip junction. The
-    // dispatch from ZoneAssembledView carries {fromPieceId,toPieceId}; we store
-    // the pairKey so the control reads zone.junctions[pairKey].
+    // J6b — open/close JunctionControl for a strip junction. The action carries
+    // {fromPieceId,toPieceId}; pairKey addresses zone.junctions[pairKey].
     case 'OPEN_JUNCTION_METHOD_PICKER': {
       const { zoneId, fromPieceId, toPieceId } = action;
       if (!zoneId || !fromPieceId || !toPieceId) return state;

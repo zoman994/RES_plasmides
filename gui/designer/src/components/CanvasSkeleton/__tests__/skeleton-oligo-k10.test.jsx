@@ -5,7 +5,7 @@
  */
 import 'fake-indexeddb/auto';
 import { describe, it, expect, afterEach, beforeEach } from 'vitest';
-import { render, screen, cleanup, fireEvent } from '@testing-library/react';
+import { render, screen, cleanup } from '@testing-library/react';
 import {
   KIND_REGISTRY,
   getKindRegistry,
@@ -15,8 +15,6 @@ import {
 } from '../canvas/container-kind-registry';
 import ContainerBlock from '../canvas/ContainerBlock';
 import OligonucleotideBlock from '../canvas/OligonucleotideBlock';
-import PCROpPopup from '../canvas/operations/PCROpPopup';
-import { createOperationDraft } from '../store/skeleton-state-operations';
 import { useStore, bootstrapStore } from '../../../store';
 
 afterEach(() => {
@@ -121,19 +119,5 @@ describe('K10 — ContainerBlock dispatch on kind', () => {
     render(<ContainerBlock container={MOL} />);
     const block = screen.getByTestId(`skeleton-block-${MOL.id}`);
     expect(block.getAttribute('data-kind')).toBe('circular');
-  });
-});
-
-describe('K10 — PCR popup filter integration', () => {
-  it('primer-pair select shows oligonucleotide containers when present', () => {
-    const op = { ...createOperationDraft({ position: { x: 0, y: 0 } }), kind: 'pcr', status: 'committed' };
-    render(<PCROpPopup operation={op} containers={[MOL, OLIGO]} />);
-    const select = screen.getByTestId('pcr-op-primer-pair');
-    const values = Array.from(select.querySelectorAll('option')).map((o) => o.value);
-    expect(values).toEqual(['', 'oligo-1']);
-    // Template select should not include the oligo.
-    const tplSelect = screen.getByTestId('pcr-op-template');
-    const tplValues = Array.from(tplSelect.querySelectorAll('option')).map((o) => o.value);
-    expect(tplValues).toEqual(['', 'mol-1']);
   });
 });

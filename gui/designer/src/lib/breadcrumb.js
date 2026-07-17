@@ -13,7 +13,7 @@
  * Источник вокабуляра (App.jsx switch + workspaceSlice): activeFullscreen ∈
  * {start, canvasSkeleton, containerWindow, multiTabBlocked, readOnlyForced,
  * underConstruction, null}; workspace.active ∈ {startup, library, align,
- * importer, mix, construct}.
+ * restriction-sites, primer-pool, mix, construct}.
  */
 
 const TOOL = 'Инструменты';
@@ -47,8 +47,6 @@ export function buildBreadcrumb({ activeFullscreen, workspaceActive, projectName
       return [{ label: TOOL, kind: 'tool' }, { label: 'Библиотека', kind: 'window', current: true }];
     case 'align':
       return [{ label: TOOL, kind: 'tool' }, { label: 'Выравнивание', kind: 'window', current: true }];
-    case 'importer':
-      return [{ label: TOOL, kind: 'tool' }, { label: 'Импорт', kind: 'window', current: true }];
     case 'mix':
       return [{ label: TOOL, kind: 'tool' }, { label: 'Mix', kind: 'window', current: true }];
     case 'construct':

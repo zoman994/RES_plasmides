@@ -98,9 +98,8 @@ function ContainerBlock({
   onPlaceholderClick,
   virtualState,
   virtualWarnings,
-  // V75 — PCR primer/flank overlay for the MiniPlasmidMap. Passed by
-  // CanvasLayoutView only when this container is the template of the
-  // currently-selected PCR op; undefined otherwise (no overlay).
+  // Optional PCR primer/flank overlay for the MiniPlasmidMap. Undefined when
+  // the host is not presenting a selected PCR template.
   pcrPrimers,
   pcrFlank,
   // DAG bp→bar scale (Игорь 26.06): the largest molecule in the graph. Passed by

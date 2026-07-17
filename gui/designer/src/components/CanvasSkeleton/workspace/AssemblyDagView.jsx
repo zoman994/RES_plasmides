@@ -4,7 +4,7 @@
  * with zoom/pan parity to the retired multi-zone canvas:
  *   - wheel zooms to the cursor (zoomAtPoint) — non-passive so the page scroll
  *     is suppressed; the post-zoom scroll lands in a layout effect after the
- *     scaled spacer re-sizes (same pattern as CanvasLayoutView).
+ *     scaled spacer re-sizes.
  *   - −/%/+/fit controls (fit = «под размер сборки», fitZoomToContent over the
  *     DAG's OWN footprint via graphContentBBox — the per-zone graph lays out
  *     locally, so canvasContentExtent/state.positions don't describe it).

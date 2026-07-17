@@ -1,9 +1,6 @@
 /**
- * folder-tree.test.js — Sprint M-X.3 K1 coverage for the shared
- * tag-prefix-folder tree builder. The CatalogColumn-side copy of
- * `buildFolderTree` was already battle-tested through render
- * snapshots; these tests lock the behaviour in the new shared
- * module so PreImportModal + CatalogColumn cannot drift apart.
+ * folder-tree.test.js — coverage for the shared tag-prefix-folder
+ * tree builder and its localStorage compatibility layer.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { buildFolderTree, readFolders, readFolderTree } from '../lib/folder-tree';

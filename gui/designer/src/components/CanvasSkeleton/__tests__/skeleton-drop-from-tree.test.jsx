@@ -7,7 +7,7 @@
  *    different ids (no dedup, NOTES §2 DEC-CANVAS-V2-INSTANCES-NOT-DEDUP).
  *  - containerFromLibraryEntry helper: maps payload.sequence /
  *    payload.topology / payload.annotations / payload.ends.
- *  - CanvasLayoutView/Graph: drop handler reads MIME, looks up entry
+ *  - Assembly DAG: drop handler reads MIME, looks up entry
  *    via global store, dispatches action.
  *  - Visual feedback: data-drag-over flips on dragenter / dragleave.
  *  - Negative: unknown MIME → no action; missing entry → no-op.

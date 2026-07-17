@@ -1,177 +1,75 @@
-# PlasmidVCS
+# BodgeGene (PlasmidVCS)
 
-Version control for genetic constructs.
+BodgeGene is a local-first application for creating, editing, searching and documenting plasmids and genetic assemblies. The primary product is the React application in `gui/designer`; the Python `plasmidvcs` package remains a secondary CLI and parsing backend.
 
----
+**Current application version:** `0.8.7-alpha`
+**Status:** active alpha; suitable for development and internal evaluation, not yet a production release.
 
-## The problem
+## Main capabilities
 
-Every molecular biology lab has this:
+- plasmid library with projects, versions, primers and annotations;
+- circular map and sequence editing;
+- assembly workspace with junctions and primer design;
+- DNA, protein, restriction-site and metadata search;
+- GenBank, FASTA, SnapGene `.dna` and BodgeGene `.bodge` workflows;
+- local IndexedDB persistence and portable `.bodge` project files;
+- optional Python CLI for construct history and format operations.
 
-```
-constructs/
-├── P43_Cas_v2_final.gb
-├── P43_Cas_v2_final_igor.gb
-├── P43_Cas_v2_final_igor_FIXED.gb
-├── P43_Cas_v2_polycistronic_NEW.gb
-├── P43_Cas_old_dont_use.gb
-└── which_one_is_current.xlsx
-```
+Biological decisions are intentionally fail-closed: an unavailable sequence/provider check must be shown as incomplete, not as proof that a feature is absent.
 
-Dozens of plasmid files, no clear history of what changed between them, no link to the strains they produced, no way to search across all constructs for a specific feature or restriction site.
+## Run the application
 
-PlasmidVCS fixes this.
+Requirements: Node.js, npm and Python 3.11+ available as `py` on Windows.
 
-## What it does
+From the repository root, install the local Python package with the GUI helper
+dependencies before installing the frontend dependencies:
 
-**Semantic diffs** — not "line 47 changed", but:
-
-```
-$ pvcs diff pEXP-XynTL:1.0 pEXP-XynTL:1.1
-
-  CONSTRUCT: pEXP-glaA-XynTL
-  ─────────────────────────────────────
-  v1.0 → v1.1  |  1 change  |  +0 bp
-  
-  1. POINT MUTATION pos 2847 (CDS:XynTL, codon 158)
-     CAG → CGG
-     Q158R (Gln → Arg)
-     
-  Summary: 1 coding mutation in XynTL
+```powershell
+py -m pip install -e ".[gui]"
+cd gui/designer
+npm install
+npm run dev
 ```
 
-**Construct history** — full revision log with commit messages:
+На Windows можно использовать `gui\run_designer.bat`; `--check` проверяет Python,
+npm и импорты локального FastAPI helper без запуска серверов.
 
-```
-$ pvcs log pEXP-glaA-XynTL
+This starts Vite and the local FastAPI helper. The core application remains usable without a remote cloud service.
 
-  pEXP-glaA-XynTL (8,432 bp, circular)
-  ├── v1.0  2026-03-01  Igor  TaXyn10A wild-type in glaA expression vector
-  ├── v1.1  2026-03-15  Igor  Q158R thermostability mutation (Souza 2016)
-  └── variant: TlXyn10A-transplant
-      └── v1.0  2026-03-20  Igor  Subsite +2/+4 mutations from TlXyn10A_P
-```
+Useful commands:
 
-**Variant branching** — track parallel versions of a construct:
-
-```
-$ pvcs tree P43_Cas_Uni_Tr
-
-  P43_Cas_Uni_Tr
-  ├── v1.0 — original (single guide, hygR)
-  ├── v1.1 — BsaI domestication
-  ├── variant: polycistronic
-  │   ├── v1.0 — dual-guide tRNA cassette
-  │   └── v1.1 — Golden Gate swap
-  └── variant: dual-guide-pepA
-      └── v1.0 — guides targeting pepA
+```powershell
+cd gui/designer
+npm test
+npm run build
+npm run lint
 ```
 
-**Strain lineage** — link strains to the constructs that made them:
+## Python CLI
 
-```
-$ pvcs strain tree AN-004
+The CLI is versioned independently in `pyproject.toml` and is not the primary GUI release number.
 
-  AN-001 CBS 513.88 (wild type)
-  └── AN-002 ΔkusA::amdS
-      └── AN-003 ΔkusA pyrG⁻  ← P43_Cas:v1.1
-          └── AN-004 ΔkusA ΔpepA pyrG⁻  ← P43_Cas/dual-guide-pepA:v1.0
-```
-
-**Part library** — reusable genetic elements linked across constructs:
-
-```
-$ pvcs part list
-
-  PROMOTERS
-    PglaA     850 bp  A. niger    used in: 4 constructs
-    PgpdA     540 bp  A. nidulans used in: 1 construct
-  TERMINATORS
-    TtrpC     740 bp  A. nidulans used in: 5 constructs
-  MARKERS
-    pyrG_Af   966 bp  A. fumigatus used in: 2 constructs
-    hygR     1026 bp  E. coli      used in: 1 construct
+```powershell
+py -m pip install -e .
+pvcs --help
+pytest
 ```
 
-**Search** — find features and restriction sites across all constructs:
+## Repository map
 
-```
-$ pvcs search "BsaI"
+- `gui/designer/` — React 19 application, tests and browser-side biological logic.
+- `gui/api/` — small local FastAPI helper, mainly for file parsing.
+- `src/pvcs/` — Python CLI and reusable backend modules.
+- `tests/` — Python tests.
+- `docs/` — current architecture, design, guides and active specifications.
+- `.agents/skills/` — project-specific agent contracts.
 
-  Found BsaI (GGTCTC) in 3 constructs:
-    P43_Cas_Uni_Tr v1.0     pos 1446 (fwd) ← domesticated in v1.1
-    pEXP-glaA-XynTL v1.0    pos 234 (fwd), pos 8100 (rev)
-    pHDR-pepA v1.0           pos 45 (fwd), pos 2300 (fwd)
-```
+Start project work by reading [AGENTS.md](AGENTS.md), [CURRENT_TASK.md](CURRENT_TASK.md) and [PROJECT_STATE.md](PROJECT_STATE.md). Historical sprint journals are intentionally not part of the startup context.
 
-## Installation
+## Data and privacy
 
-```bash
-pip install plasmidvcs
-```
+BodgeGene is local-first. Project data is stored in the browser and/or in files selected by the user. Do not commit personal laboratory data, local databases, generated catalogs or tool caches.
 
-Or from source:
+## License and author
 
-```bash
-git clone https://github.com/isinelnikov/plasmidvcs.git
-cd plasmidvcs
-pip install -e .
-```
-
-## Quick start
-
-```bash
-# Create a project
-pvcs init "My Expression Platform"
-
-# Import your first construct
-pvcs import P43_Cas.gb --name "P43_Cas_Uni_Tr" \
-    --message "Cas9 plasmid from Nødvig lab" \
-    --tags "CRISPR,hygR,ama1"
-
-# Edit in SnapGene, export as .gb, commit the change
-pvcs commit P43_Cas_v2.gb --version 1.1 \
-    --message "Domesticated internal BsaI site (A→G pos 1446)"
-
-# See what changed
-pvcs diff P43_Cas_Uni_Tr:1.0 P43_Cas_Uni_Tr:1.1
-
-# Create a variant
-pvcs variant P43_Cas_Uni_Tr --name "polycistronic" \
-    --from-version 1.1 \
-    --message "Dual-guide Golden Gate version"
-```
-
-## How it stores data
-
-```
-your-project/
-├── .pvcs/                     # PlasmidVCS data (like .git/)
-│   ├── config.json
-│   ├── database.sqlite
-│   └── objects/               # immutable .gb snapshots
-│       ├── a3f2c8d4...gb
-│       └── ...
-├── constructs/                # working directory
-│   ├── P43_Cas_Uni_Tr.gb
-│   └── pEXP-glaA-XynTL.gb
-├── parts/                     # reusable genetic parts
-│   └── promoters/PglaA.gb
-└── strains/                   # strain registry
-    └── AN-004.yaml
-```
-
-The `.pvcs/` folder is self-contained. You can put the whole project in a git repo for backup and collaboration.
-
-## Requirements
-
-- Python 3.11+
-- BioPython ≥ 1.83
-
-## License
-
-MIT
-
-## Author
-
-Igor Sinelnikov — Laboratory of Expression Systems Development, FRC Biotechnology RAS
+MIT. Igor Sinelnikov, Laboratory of Expression Systems Development, FRC Biotechnology RAS.

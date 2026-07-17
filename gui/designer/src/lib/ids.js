@@ -2,7 +2,7 @@
  * Shared annotation/entity id factory — `crypto.randomUUID` with feature-detect
  * (⚓ DEC-ANN-10 write-path id standard). Single source so importers,
  * auto-annotate and migration don't each reinvent `Math.random` ids or a
- * reset-on-reload counter. Mirrors the feature-detect in `lib/plasmid-git.js`.
+ * reset-on-reload counter. Keep the capability check centralized here.
  */
 const _hasUUID = typeof globalThis !== 'undefined'
   && globalThis.crypto

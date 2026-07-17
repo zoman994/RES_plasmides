@@ -34,9 +34,8 @@ import SegmentList from './SegmentList';
 // V94 / C3 (audit) — SegmentDetailPanel deleted (its range/RC/colour/label/delete
 // функции inline в SegmentList rows via chevron-expand).
 import AssemblyToolbar from './AssemblyToolbar';
-// SPEC_ASSEMBLY_PICKER_UNIFICATION — единый library-picker для обеих
-// поверхностей; bespoke EmptyAssemblyLibrary + assembly-usage
-// PlaceholderTreePicker удалены.
+// SPEC_ASSEMBLY_PICKER_UNIFICATION — one library picker for both surfaces;
+// bespoke assembly-only pickers were removed.
 import LibrarySearchBar from '../../canvas/LibrarySearchBar';
 import { useStore } from '../../../../store';
 import RangePickerModal from './RangePickerModal';
@@ -472,9 +471,8 @@ export default function AssemblyShellBody({ draft, embedded = false }) {
   }, [caretPos]);
 
   // K5 — pick a Library entry → open RangePickerModal step (SPEC §3.1.A
-  // step 2). Reuse of the shared PlaceholderTreePicker remains (Игорь
-  // 19.05.2026: «У НАС вот уже было такое окно поиска»); materialise
-  // happens at range-confirm so the picker is purely pre-flight.
+  // step 2). The shared library search remains; materialise happens at
+  // range-confirm so the picker is purely pre-flight.
   const onPickEntry = useCallback((entry) => {
     if (!entry || !entry.id) return;
     setPickerOpen(false);

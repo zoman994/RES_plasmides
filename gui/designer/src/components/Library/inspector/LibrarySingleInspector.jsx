@@ -75,10 +75,6 @@ const __PREWARM_DISABLED__ =
  *   [TabBar — Обзор · Последовательность · Аннотации (· История conditional)]
  *   [active tab content — OverviewTab eager; SequenceTab + AnnotationsTab
  *    + HistoryTab land in K4 with lazy mount that fixes V49 50-sec hang]
- *
- * MetaColumn renders sibling-of-this in Importer/index.jsx (the 4-region
- * layout has CatalogColumn / Inspector / MetaColumn — Inspector wraps title
- * + tabs only).
  */
 export default function SingleInspector({
   item,
@@ -92,13 +88,11 @@ export default function SingleInspector({
   onRenameItem,
   // eslint-disable-next-line no-unused-vars -- ditto
   onRunAutoAnnotate,
-  // The Importer host shows the explicit «Перезаписать» / «Сохранить как
-  // версию» buttons (DEC-LIB-13). The LibraryWorkspace host persists
-  // silently and passes false to keep them out (they'd misleadingly flag
+  // LibraryWorkspace persists silently and passes false to hide explicit
+  // «Перезаписать» / «Сохранить как версию» controls (they'd misleadingly flag
   // «несохранено» right after a silent save).
   showSaveActions = true,
-  // Workspace-only direct-persist editors in the Overview tab (the Importer
-  // edits these via its MetaColumn). Absent ⇒ Overview stays read-only.
+  // Direct-persist editors in the Overview tab. Absent ⇒ read-only.
   onUpdateTags,
   onUpdateTopology,
 }) {
@@ -242,7 +236,7 @@ export default function SingleInspector({
 
   // M-X.6 K12.4 (TD-LIB-K4-AUTO-TRIGGER) — auto-trigger L1 on first
   // open of an entry imported with `ext.annotationChoice === 'auto'`
-  // (set by MultiImportView's commitMultiImport). Plan: run once per
+  // (preserved for compatible imported entries). Plan: run once per
   // entry — `ext.autoRun.done` flag prevents re-triggering on
   // subsequent opens. Switches to the Annotations tab so biolog sees
   // the L1 progress; embedded Annotator's auto-run pipeline picks up
@@ -782,15 +776,8 @@ export default function SingleInspector({
         INSIDE the inspector for direct access to the displayed
         item's sequence + annotations + onUpdateEdits flow.
 
-        TD-ANNOTATOR-MOUNT (post-K10 review): the spec K8 step
-        called for «Root mount в App.jsx» so the Annotator can be
-        re-used from the future M-D Container Window without
-        Importer in the path. Lifting requires either Context or
-        a store-level «active target» registration; deferred to
-        M-D Container Window kickoff so we can pick the right
-        boundary once the second consumer exists. Until then this
-        mount works fine for the Importer pathway (the only one
-        biolog reaches today).
+        The Annotator stays mounted inside the inspector for direct
+        access to the active sequence, annotations, and edit callbacks.
       */}
       {/* Modal Annotator removed: the embedded Annotator inside the
           Annotations tab is the only entry surface now. Region-scope

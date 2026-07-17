@@ -264,8 +264,7 @@ export default function OverviewTab({
           )}
         </div>
 
-        {/* Editable entry meta — only in the workspace host (callbacks
-            present); the Importer keeps its own MetaColumn editors. */}
+        {/* Editable entry meta is shown when persistence callbacks are present. */}
         {typeof onUpdateTags === 'function' && (
           <div
             data-testid="overview-tags-editor"

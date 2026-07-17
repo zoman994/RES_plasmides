@@ -2,7 +2,6 @@ import 'fake-indexeddb/auto';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';
 import { bootstrapStore, useStore } from '../../store';
-import PlasmidMap from '../PlasmidMap';
 import PlasmidMapV2 from '../PlasmidMapV2';
 
 beforeEach(() => { try { bootstrapStore(); } catch { /* idempotent */ } });
@@ -318,18 +317,5 @@ describe('PlasmidMapV2 — spliced genes show intron gaps', () => {
     fireEvent.click(screen.getByTestId('plasmid-v2-feature-0'));
     expect(onFeat).toHaveBeenCalledTimes(1);
     expect(onFeat.mock.calls[0][0].name).toBe('glaA');
-  });
-});
-
-describe('PlasmidMap wrapper — V2 for viewer, legacy for assembly', () => {
-  it('renders V2 when there are no junctions/primers', () => {
-    render(<PlasmidMap fragments={FRAGS} constructName="pTest" totalBp={5000} />);
-    expect(screen.getByTestId('plasmid-map-v2')).toBeTruthy();
-  });
-
-  it('falls back to legacy when junctions are present (assembly map)', () => {
-    render(<PlasmidMap fragments={FRAGS} constructName="pTest" totalBp={5000}
-      junctions={[{ type: 'overlap', overlapLength: 20 }]} />);
-    expect(screen.queryByTestId('plasmid-map-v2')).toBeNull();
   });
 });

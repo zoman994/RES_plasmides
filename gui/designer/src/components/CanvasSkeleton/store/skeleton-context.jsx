@@ -199,9 +199,7 @@ export function SkeletonProvider({ children }) {
     toggleSelection: (containerId) => dispatch({ type: 'TOGGLE_SELECTION', containerId }),
     clearSelection: () => dispatch({ type: 'CLEAR_SELECTION' }),
     setSelectionBulk: (ids) => dispatch({ type: 'SET_SELECTION_BULK', ids }),
-    // K6 — wire дя OP_EXECUTE. K9 fills the reducer. До K9 — no-op
-    // на reducer уровне; UI всё равно может вызвать (Execute button
-    // в OpPopup), реакция придёт только когда K9 встанет.
+    // Execute a committed operation through the reducer-owned state transition.
     opExecute: (operationId) => dispatch({ type: 'OP_EXECUTE', operationId }),
     // K9 — Save As fork (clone frozen container w/o lock).
     opForkContainer: (containerId, newName, opts = {}) => dispatch({
@@ -327,9 +325,8 @@ export function SkeletonProvider({ children }) {
     updateAssemblyPrimerNotes: (draftId, primerId, value) => dispatch({
       type: 'UPDATE_ASSEMBLY_PRIMER_NOTES', draftId, primerId, value,
     }),
-    // T4 — zone wiring. moveNodeToZone for the drop-hit-detect path;
-    // zoneDispatch is a thin raw-dispatch passthrough for ZoneLayer /
-    // ZoneContextMenu (they emit CREATE_ZONE / DRAG_ZONE / etc.).
+    // Zone wiring. moveNodeToZone handles explicit reassignment; zoneDispatch
+    // is the raw action passthrough used by assembly workspace/editor surfaces.
     moveNodeToZone: (nodeType, nodeId, targetZoneId) => dispatch({
       type: 'MOVE_NODE_TO_ZONE', nodeType, nodeId, targetZoneId,
     }),

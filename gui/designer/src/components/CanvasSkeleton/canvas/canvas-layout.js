@@ -1,8 +1,8 @@
 /**
- * canvas-layout — helpers for CanvasLayoutView + CanvasGraphView.
+ * canvas-layout — shared dimensions, grid helpers and DAG layout utilities.
  *
- * Layout view: positions live in skeleton-state, updated on drag stop.
- * Graph view: dagre LR auto-layout, recomputed on toggle.
+ * AssemblyDagView and ZoneGraphContent consume the graph/layout helpers; the
+ * canvas reducers retain persisted node positions for compatibility.
  *
  * 12.05.2026 — Игорь: «не квадратные — прямоугольные.
  * стандартизированные». Все блоки 240×60 (золотое сечение
@@ -12,7 +12,7 @@
  * Переиспользование v0.5: ContainerBlock рендерит через те же
  * `getFragColor` / `FEATURE_COLORS` / `SBOLIcon` примитивы что
  * v0.5 PartBlock; junction layer использует `TYPE_STYLES` цветовой
- * палитру JunctionBlock'а (overlap blue / GG green / RE orange /
+ * палитру текущих junction controls (overlap blue / GG green / RE orange /
  * KLD purple / ligation red / blunt grey).
  */
 import { computeAutoLayout } from '../../../lib/dag-layout';
@@ -84,8 +84,8 @@ export function dropLayoutEffects({ kind, droppedZoneTarget } = {}) {
   const isLoose = droppedZoneTarget == null;
   return { pin: pinnable && isLoose, flipZoneManual: false };
 }
-// AssemblyDraftBlock renders 240-wide; its height is content-driven, so
-// collision uses a representative bbox height (SPEC_CANVAS_NODE_COLLISION).
+// Legacy assembly markers are 240-wide and content-driven, so collision uses
+// a representative bbox height (SPEC_CANVAS_NODE_COLLISION).
 export const ASSEMBLY_DRAFT_W = 240;
 export const ASSEMBLY_DRAFT_H = 120;
 

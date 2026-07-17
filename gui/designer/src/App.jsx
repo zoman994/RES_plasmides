@@ -13,11 +13,8 @@ import ContainerWindowPlaceholder from './components/Dag/ContainerWindowPlacehol
 // Снос скелета = удаление этого импорта + case в switch ниже + папки
 // `components/CanvasSkeleton/`.
 import CanvasSkeleton from './components/CanvasSkeleton';
-// Sprint Single-Sidebar (09.05.2026): Importer / DagWorkspace
-// stay imported only for the activeFullscreen overlay paths
-// (legacy `pushFullscreen('dag' | 'library')` callsites). The
-// canonical workspace render goes through AppShell.WorkspaceRouter
-// driven by `workspace.active`.
+// Canonical workspace rendering goes through AppShell.WorkspaceRouter;
+// fullscreen overlays remain owned by this root switch.
 import UnderConstruction from './components/UnderConstruction';
 import MultiTabBlocked from './components/MultiTabBlocked';
 import ReadOnlyForced from './components/ReadOnlyForced';
@@ -328,13 +325,9 @@ export default function App() {
   }, [currentProjectId]);
 
   useEffect(() => {
-    // Window-level drag handlers exist solely to ROUTE drops on the DAG
-    // screen into the Importer (push it onto navStack with the dropped
-    // files queued). The earlier full-screen «Drop file here (M-B feature
-    // preview)» overlay was removed — it intercepted the visual feedback
-    // for per-folder drop targets in CatalogColumn and biolog asked to
-    // strip the placeholder. dragenter/over still need preventDefault so
-    // the drop event fires; dragleave handler is no longer necessary.
+    // Window-level handlers keep browser file drops from navigating away.
+    // Workspace-local drop targets stop propagation and perform the actual
+    // import; an uncaught drop only surfaces an informational toast.
     function onDragOver(e) {
       if (Array.from(e.dataTransfer?.types || []).includes('Files')) {
         e.preventDefault();
@@ -342,7 +335,7 @@ export default function App() {
     }
     function onDrop(e) {
       if (!Array.from(e.dataTransfer?.types || []).includes('Files')) return;
-      // Inner targets (CatalogColumn folder rows, footer dropzone, etc.)
+      // Inner workspace targets
       // call e.stopPropagation() in their own handlers — so this listener
       // only fires when no inner consumer caught the drop.
       e.preventDefault();
@@ -402,7 +395,7 @@ export default function App() {
   // area picks one of three sources:
   //   1) activeFullscreen === 'start' → StartScreen MainPanel
   //   2) overlayContent set by the switch above → that overlay
-  //   3) otherwise → AppShell.WorkspaceRouter (Library / DAG / etc.
+  //   3) otherwise → AppShell.WorkspaceRouter (Library / tools / etc.
   //      via workspace.active)
   // `start-screen-root` className on the root flex-row container is
   // legacy-named (was StartScreen-only); now scopes the Sidebar +

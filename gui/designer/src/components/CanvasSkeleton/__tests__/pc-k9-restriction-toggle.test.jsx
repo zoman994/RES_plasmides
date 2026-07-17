@@ -1,6 +1,6 @@
 /**
  * PC-K9 — Restriction toggle relocated to SkeletonHeader (was inside
- * the removed LibraryTreeHost footer).
+ * the retired library footer).
  */
 import 'fake-indexeddb/auto';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';

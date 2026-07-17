@@ -1,6 +1,6 @@
 /**
  * junction-derive — pure helpers for the per-junction config model
- * (SPEC_ASSEMBLY_JUNCTION_MODULE §4/§5, layer 3 step 1; J1/J2/J3).
+ * (canonical contract: docs/specs/ASSEMBLY_WORKBENCH.md).
  *
  * The home of `pairKey` and the boundary topology. The engine
  * (primer-derive A3) and the zone-slice both key `zone.junctions` through

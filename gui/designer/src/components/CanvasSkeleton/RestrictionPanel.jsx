@@ -3,7 +3,7 @@
  *
  * 13.05.2026 — Игорь: «надо сделать кнопку отключения видимости сайтов
  * рестрикции и отдельно в сайдбаре слева 'Рестриктазы'». Панель живёт
- * под LibraryTreeRoot в LibraryTreeHost (skeleton-only).
+ * в skeleton editor рядом с Library tree.
  *
  * Управляет глобальными store-полями `showReSites`, `reFilter`,
  * `reMinSiteLen` (legacy v0.5 paradigma, см. PlasmidMap.jsx). Direct

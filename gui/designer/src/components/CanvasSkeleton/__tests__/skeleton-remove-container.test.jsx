@@ -140,7 +140,7 @@ describe('Del / Backspace keyboard integration', () => {
   });
 
   it('Del в provider scope: harness opens editor + sets highlight → Del не удаляет', () => {
-    // CanvasLayoutView use native pointer events for double-click
+    // The assembly DAG uses native pointer events for double-click
     // detection, не React onDoubleClick → нельзя dispatch editor open
     // через fireEvent на full CanvasSkeleton root. Тест строит свою
     // мини-сцену: SkeletonProvider + harness (highlight + openEditor)

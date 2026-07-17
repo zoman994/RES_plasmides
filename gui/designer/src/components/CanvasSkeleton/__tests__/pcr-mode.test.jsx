@@ -9,14 +9,12 @@
  * K4 — PcrModeShell default level + PrimerSuggestionsPanel.
  * K5 — level switcher + drag handles + reuse picker.
  * K6 — OrderOligosConfirmGate.
- * K7 — canvas op-rhombus picker + hover icons.
  */
 import 'fake-indexeddb/auto';
 import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 import {
   render, screen, cleanup, fireEvent, act,
 } from '@testing-library/react';
-import { useEffect } from 'react';
 import { skeletonReducer, buildInitialState } from '../store/skeleton-state';
 import {
   buildInitialEditorState,
@@ -31,7 +29,6 @@ import {
 } from '../store/skeleton-context';
 import EditorWindowShell from '../editor/EditorWindowShell';
 import EditorTabStrip from '../editor/EditorTabStrip';
-import CanvasLayoutView from '../canvas/CanvasLayoutView';
 import {
   suggestPrimers,
   recomputeFromSelection,
@@ -451,14 +448,4 @@ describe('K6 — OrderOligosConfirmGate', () => {
     expect(op.params.orderConfirmedAt).toBeTruthy();
   });
 });
-
-// ════════════════════════════════════════════════════════════════════
-// K7 — Canvas integration
-// ════════════════════════════════════════════════════════════════════
-let cvActions = null;
-let cvState = null;
-function CVH() { cvActions = useSkeletonActions(); cvState = useSkeletonState(); return null; }
-function renderCanvas() {
-  return render(<SkeletonProvider><CVH /><CanvasLayoutView /></SkeletonProvider>);
-}
 

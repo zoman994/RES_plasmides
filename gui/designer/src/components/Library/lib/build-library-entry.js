@@ -1,10 +1,9 @@
 import { v7 as uuidv7 } from 'uuid';
 
 /**
- * Build a fresh LibraryEntry container from a parsed Importer item
- * (M-B.1 K3 + K6). Shared between handleSimpleImport and the K6 Confirm flow
- * so a Library row from Simple mode and a row from Advanced mode have the
- * exact same shape.
+ * Build a fresh LibraryEntry container from a parsed import item.
+ * Canonical Library import paths share this builder so every row has
+ * the same shape.
  *
  * Caller controls `finalName` (autoname-resolved) and `resourceHash`
  * (SHA-256 over canonical sequence/topology/ends — usually computed via

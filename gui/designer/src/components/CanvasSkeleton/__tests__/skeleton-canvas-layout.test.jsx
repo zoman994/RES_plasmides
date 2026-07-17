@@ -26,7 +26,7 @@ describe.skip('Canvas Layout view — V61 ghost fixture (LEGACY — AE-K9.6 remo
     expect(screen.getByTestId('skeleton-placeholder-plus-c-placeholder-1')).toBeTruthy();
   });
 
-  it('click on ghost opens PlaceholderTreePicker + sets highlight', () => {
+  it('click on ghost opens the source picker + sets highlight', () => {
     render(<CanvasSkeleton />);
     const block = screen.getByTestId('skeleton-block-c-placeholder-1');
     fireEvent.click(block);

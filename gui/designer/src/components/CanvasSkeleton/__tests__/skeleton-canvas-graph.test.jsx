@@ -13,7 +13,7 @@ import CanvasSkeleton from '../index';
 afterEach(cleanup);
 
 // M-WORKSPACE retired the global Layout/Graph toggle + CanvasGraphView/
-// CanvasLayoutView from the project view: each assembly now owns its own DAG
+// the retired project canvas: each assembly now owns its own DAG
 // view tab inside the two-level workspace.
 describe('Canvas Graph view — retired by M-WORKSPACE', () => {
   it('no global Layout/Graph toggle; the project mounts the assembly-tab workspace', () => {

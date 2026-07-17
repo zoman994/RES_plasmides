@@ -2,7 +2,6 @@ import { getJSON, setJSON } from '../lib/storage';
 
 export const THEME_STORAGE_KEY = 'bodgegene-theme';
 export const AGENT_STORAGE_KEY = 'bodgegene-agent';
-export const IMPORTER_MODE_STORAGE_KEY = 'bodgegene-importer-mode';
 export const SEQUENCE_VIEW_STORAGE_KEY = 'bodgegene-ui-sequenceview';
 // Annotator state lives in store/annotatorSlice — keys / defaults /
 // selector re-exported here for back-compat with existing imports.
@@ -15,7 +14,6 @@ import {
 export { ANNOTATOR_STORAGE_KEY, ANNOTATOR_DEFAULTS, selectAnnotator };
 
 const THEMES = ['light', 'dark'];
-const IMPORTER_MODES = ['advanced', 'simple'];
 
 // UX-006 — Display & Defaults are user preferences that used to be
 // scattered (theme in Topbar only; sequence wrap hardcoded; polymerase
@@ -207,12 +205,6 @@ function loadInitialAgent() {
   return { name: '', email: '' };
 }
 
-function loadInitialImporterMode() {
-  const m = getJSON(IMPORTER_MODE_STORAGE_KEY, null);
-  if (IMPORTER_MODES.includes(m)) return m;
-  return 'advanced';
-}
-
 export function applyThemeToDOM(theme) {
   if (typeof document === 'undefined') return;
   const root = document.documentElement;
@@ -249,7 +241,6 @@ export const createUiSlice = (set, get) => ({
   ...createAnnotatorSlice(set),
   theme: loadInitialTheme(),
   agent: loadInitialAgent(),
-  importerMode: loadInitialImporterMode(),
   sequenceView: loadInitialSequenceView(),
   // UX-006 — user-tunable Display & Defaults (theme stays separate so
   // the Topbar quick-toggle can keep flipping it without going through
@@ -284,12 +275,6 @@ export const createUiSlice = (set, get) => ({
       state.displaySettings = merged;
       setJSON(DISPLAY_SETTINGS_STORAGE_KEY, merged);
     });
-  },
-
-  setImporterMode: (mode) => {
-    if (!IMPORTER_MODES.includes(mode)) return;
-    set(state => { state.importerMode = mode; });
-    setJSON(IMPORTER_MODE_STORAGE_KEY, mode);
   },
 
   setTheme: (theme) => {

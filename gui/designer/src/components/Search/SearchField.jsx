@@ -7,8 +7,8 @@
  * count, and a clear control. The combobox ARIA (role, aria-autocomplete,
  * aria-expanded, aria-controls, aria-activedescendant, aria-describedby) is a
  * pass-through channel applied to the <input> itself — never to the wrapper —
- * so a real combobox (SearchCombobox, K1.4) and a plain filter field share the
- * same shell.
+ * so a surface combobox controller and a plain filter field share the same
+ * shell.
  *
  * IME safety runs deeper than the keyboard: `onChange` reports
  * `onValueChange(value, { isComposing, inputType })` so the controller/parser can

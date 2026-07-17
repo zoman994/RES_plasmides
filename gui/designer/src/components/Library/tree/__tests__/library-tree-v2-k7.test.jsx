@@ -4,7 +4,6 @@
  * Covers:
  *   • STRINGS.libraryWorkspace populated (source-of-truth keys
  *     consumed by tree zones + topbar)
- *   • STRINGS.appShell populated (NavRail tooltips)
  *   • Native HTML5 drag-drop: Loose item dropped onto active
  *     ProjectZone clones via cloneEntryToActiveProject
  *   • Read-only ProjectZone is not a drop target
@@ -86,18 +85,6 @@ describe('M-X.7a v2 K7 — STRINGS namespaces', () => {
     expect(ws.actionsReadonly.openAsActive).toMatch(/Открыть/);
     expect(ws.actionsLab).toBeDefined();
     expect(ws.actionsLab.toggleStockOff).toMatch(/Снять/);
-  });
-
-  it('STRINGS.appShell exposes 5 nav tooltips + 2 footer tooltips', () => {
-    const a = STRINGS.appShell;
-    expect(a).toBeDefined();
-    expect(a.navTooltipStartup).toMatch(/разработке/);
-    expect(a.navTooltipLibrary).toBe('Библиотека');
-    expect(a.navTooltipFlow).toMatch(/DAG/);
-    expect(a.navTooltipImporter).toMatch(/Importer/);
-    expect(a.navTooltipMix).toMatch(/разработке/);
-    expect(a.navTooltipSettings).toMatch(/Настройки/);
-    expect(a.navTooltipTheme).toMatch(/Тема/);
   });
 
   it('LooseZone renders with STRINGS-driven title (M-X.7c K4: «БЕЗ ПРОЕКТА» / «свободный стол»)', async () => {

@@ -105,8 +105,8 @@ export default function FeatureEditorModal({
   // Esc closes — bound only while the modal is open. Listener runs
   // in CAPTURE phase + calls stopPropagation so the App-level
   // global Escape hotkey (`navStack.length > 1 → popFullscreen`)
-  // can't also fire and dump biolog out of the Importer back to
-  // Start. Biolog «из модалки этих фичес на эскейп выбрасывает из
+  // can't also fire and dump biolog out of the Library workspace.
+  // Biolog «из модалки этих фичес на эскейп выбрасывает из
   // библиотеки совсем».
   useEffect(() => {
     if (!feature) return undefined;

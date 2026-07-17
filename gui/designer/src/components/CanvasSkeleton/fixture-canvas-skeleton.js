@@ -19,8 +19,8 @@
  *   - drag entry из Library tree на placeholder → FILL_PLACEHOLDER
  *     dispatch → placeholder становится filled-контейнером (id
  *     сохраняется).
- *   - click на placeholder → PlaceholderTreePicker popover с
- *     entries активного project'а → выбор → FILL_PLACEHOLDER.
+ *   - click на placeholder → shared library source picker с entries
+ *     активного project'а → выбор → FILL_PLACEHOLDER.
  *
  * Drop на пустое место canvas (не placeholder) → создание НОВОГО
  * container (ADD_CONTAINER_FROM_ENTRY) — existing path.

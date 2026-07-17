@@ -21,8 +21,8 @@ import { useStore } from '../../../store';
  * with a `pending-delete` reason; this UI surfaces the failure as a
  * specific toast rather than silently dropping the click.
  *
- * Coexists with the silent write-through safety-net inside
- * `useLibraryState.updateEdits` — that path keeps biolog's keystroke
+ * Coexists with the LibraryWorkspace silent write-through safety-net,
+ * which keeps the biologist's keystroke
  * edits durable across browser refresh; these explicit buttons are
  * the «commit point» that bumps version / forks history.
  */

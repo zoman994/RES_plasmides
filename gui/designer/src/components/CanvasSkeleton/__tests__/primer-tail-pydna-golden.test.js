@@ -1,5 +1,5 @@
 /**
- * primer-tail-pydna-golden.test.js — SPEC_PRIMER_TAIL_UNIFICATION engine
+ * primer-tail-pydna-golden.test.js — Assembly Workbench primer-tail engine
  * layers 1 (diagnosis) + 2 (fix), guarded against the pydna ground truth.
  *
  * Ground truth (offline, run 2026-06-04, pydna 5.5.13 / biopython 1.87):

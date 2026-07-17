@@ -13,6 +13,7 @@ import {
   EXPORT_PROFILES_REGISTRY,
   getProfileSpec,
 } from '../lib/bodge-export-profiles';
+import { t } from '../i18n';
 
 const PROFILE_OPTIONS = [
   { key: 'full', label: 'Full', description: 'Все секции' },
@@ -24,7 +25,7 @@ const PROFILE_OPTIONS = [
 
 const SECTION_LABELS = {
   containers: 'Containers',
-  containerHistory: 'Plasmid-git history (commits)',
+  containerHistory: null,
   assemblies: 'Assemblies (zones + pieces + ops)',
   primers: 'Primer pool',
   notebookEntries: 'Lab journal (text entries)',
@@ -169,7 +170,7 @@ export default function ExportProjectModal({
                     checked={!!customSections[key]}
                     onChange={(e) => setCustomSections(s => ({ ...s, [key]: e.target.checked }))}
                   />
-                  {label}
+                  {key === 'containerHistory' ? t('export.section.containerHistory') : label}
                 </label>
               ))}
               <label style={{ ...checkLbl, marginTop: 8, fontWeight: 500 }}>

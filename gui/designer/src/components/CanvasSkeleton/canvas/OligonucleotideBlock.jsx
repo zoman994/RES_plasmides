@@ -2,8 +2,8 @@
  * OligonucleotideBlock — узкий rectangle с двумя sequence lanes
  * (forward / reverse) + Tm/GC pills.
  *
- * Sprint M-CANVAS-OPS K10 (12.05.2026 — DEC-OPS-09). Drag-source для
- * OpPopup primer-input select.
+ * Sprint M-CANVAS-OPS K10 (12.05.2026 — DEC-OPS-09). Visual representation
+ * for oligonucleotide containers.
  *
  * Payload shape:
  *   {

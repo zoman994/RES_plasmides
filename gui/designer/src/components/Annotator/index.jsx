@@ -111,8 +111,8 @@ export default function Annotator({
   // Esc closes the modal (third escape route alongside Back button
   // + backdrop click). Capture-phase + stopPropagation so the App's
   // global Escape hotkey doesn't also fire popFullscreen and dump
-  // biolog out of the Importer back to Start (same fix the
-  // FeatureEditorModal + PreImportModal got).
+  // biolog out of the current workspace. FeatureEditorModal uses the
+  // same containment rule.
   // Embedded mode has no «close» — ignored, the tab itself handles
   // navigation.
   useEffect(() => {

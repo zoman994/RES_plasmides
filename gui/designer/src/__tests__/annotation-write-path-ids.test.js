@@ -6,7 +6,6 @@
 import { describe, it, expect } from 'vitest';
 import { importFeatures } from '../import-annotations';
 import { autoAnnotate } from '../auto-annotate';
-import { migratePartAnnotations } from '../migrate-annotations';
 import { generateRegionId } from '../domain-detection';
 
 const allHaveStringId = (anns) =>
@@ -42,20 +41,6 @@ describe('autoAnnotate — details and points get ids', () => {
     const anns = autoAnnotate({ name: 'x', type: 'CDS', sequence: seq });
     expect(anns.length).toBeGreaterThan(1);
     expect(allHaveStringId(anns)).toBe(true);
-    expect(anns.some((a) => a.level === 'point' && a.id)).toBe(true);
-  });
-});
-
-describe('migratePartAnnotations — domains and mutations get ids', () => {
-  it('domain→detail and mutation→point carry a string id', () => {
-    const part = {
-      name: 'p', type: 'CDS', sequence: 'A'.repeat(300),
-      domains: [{ name: 'dom', startAA: 2, endAA: 20, type: 'domain' }],
-      mutations: [{ position: 5, from: 'A', to: 'G' }],
-    };
-    const anns = migratePartAnnotations(part);
-    expect(allHaveStringId(anns)).toBe(true);
-    expect(anns.some((a) => a.level === 'detail' && a.id)).toBe(true);
     expect(anns.some((a) => a.level === 'point' && a.id)).toBe(true);
   });
 });

@@ -9,10 +9,9 @@
  *   - executed  → filled green + ✓ badge
  *   - failed    → filled red + ! badge
  *
- * Click handler (onClick) — caller разбирает intent:
- *   - operation.kind === null → open OpKindPicker (K6)
- *   - operation.kind !== null → open OpPopup (K6+)
- * Right-click (onContextMenu) — caller mount'ит context menu.
+ * Interaction handlers are intentionally delegated to the caller. The live
+ * assembly DAG uses onClick to open the operation editor drill-in; optional
+ * context-menu behavior is also supplied by the host.
  *
  * Legacy V1 shim: если передан `commit` (старый V1 ProjectCommit shape)
  * вместо `operation`, рендерим в legacy-style с тем же визуалом draft

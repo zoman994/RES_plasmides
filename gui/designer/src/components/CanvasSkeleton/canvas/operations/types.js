@@ -28,7 +28,7 @@
  *   - 'op_ligate'           — Ligate output.
  *   - 'op_kld'              — KLD mutant.
  *   - 'op_mutagenesis'      — Mutagenesis mutant.
- *   - 'op_gibson_primer_designed' — designed primer oligos из GibsonOpPopup.
+ *   - 'op_gibson_primer_designed' — designed primer oligos from a Gibson workflow.
  */
 
 /**

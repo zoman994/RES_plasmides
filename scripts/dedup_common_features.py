@@ -18,7 +18,7 @@ Strategy:
   4. Also collapse the AmpR / Amp(R) pair (2-nt diff but same
      gene — explicitly mentioned by biolog).
   5. Drop redundant entries.
-  6. Backup original to docs/archive/common-features_v_pre_dedupe_*.json.
+  6. Backup original to ignored scripts/.backups/ before rewriting.
 
 Run:
   py scripts/dedup_common_features.py
@@ -31,7 +31,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = ROOT / 'gui' / 'designer' / 'public' / 'common-features.json'
-ARCHIVE_DIR = ROOT / 'docs' / 'archive'
+BACKUP_DIR = ROOT / 'scripts' / '.backups'
 
 # Curated canonical names — pick the cleaner / more conventional
 # form when both share an exact sequence. Keys are members of a
@@ -77,9 +77,9 @@ def main():
     print(f'Loaded {len(features)} features.')
 
     # Backup pre-dedupe.
-    ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     stamp = datetime.utcnow().strftime('%Y%m%d')
-    backup = ARCHIVE_DIR / f'common-features_v_pre_dedupe_{stamp}.json'
+    backup = BACKUP_DIR / f'common-features_v_pre_dedupe_{stamp}.json'
     backup.write_text(DB_PATH.read_text(encoding='utf-8'), encoding='utf-8')
     print(f'Backup -> {backup}')
 

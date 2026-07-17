@@ -4,17 +4,16 @@
  * Sprint M-CANVAS-OPS K5 (12.05.2026 — DEC-OPS-05). Coverage:
  *   1. Status-driven visual: draft / committed / executed / failed.
  *   2. Kind icon: PCR / Cut / Gibson / Ligate / KLD / Mutagenesis.
- *   3. Click handler: draft → setOpenPicker; committed → setOpenPopup.
- *   4. Right-click → context menu mount + Delete → opRemove.
+ *   3. Click and context-menu handlers forward the selected operation.
+ *   4. Provider operation state updates through public actions.
  *   5. Status badge for executed (✓) / failed (!).
- *   6. Layout view renders state.operations as ромбы.
+ *   6. CanvasSkeleton default-state smoke coverage.
  */
 import 'fake-indexeddb/auto';
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { render, screen, cleanup, fireEvent, act, renderHook } from '@testing-library/react';
 import OperationNode from '../canvas/OperationNode';
 import CanvasSkeleton from '../index';
-import CanvasLayoutView from '../canvas/CanvasLayoutView';
 import {
   SkeletonProvider,
   useSkeletonActions,
@@ -148,22 +147,13 @@ describe('K5 — OperationNode v2 backwards-compat (legacy commit prop)', () => 
   });
 });
 
-describe('K5 — Layout view renders state.operations', () => {
-  function wrapper({ children }) {
-    return <SkeletonProvider>{children}</SkeletonProvider>;
-  }
-
-  it('opAdd → state.operations renders an OperationNode in Layout view', () => {
+describe('K5 — operation state/actions', () => {
+  it('CanvasSkeleton default fixture starts without operations', () => {
     render(<CanvasSkeleton />);
     expect(document.querySelectorAll('[data-testid^="skeleton-op-node-"]').length).toBe(0);
-    // Dispatch through provider — we use renderHook + same provider here
-    // would isolate it from the rendered CanvasSkeleton. Instead, fire
-    // via a small inline harness that calls opAdd on the existing app's
-    // store. The simpler harness: a second tree mounting a Provider +
-    // CanvasSkeleton shares NO state, so use direct hook test below.
   });
 
-  it('Layout view: opAdd via actions hook + verify render via shared SkeletonProvider', () => {
+  it('opAdd via actions hook updates state.operations in a shared SkeletonProvider', () => {
     function Harness() {
       const actions = useSkeletonActions();
       const ops = useOperations();

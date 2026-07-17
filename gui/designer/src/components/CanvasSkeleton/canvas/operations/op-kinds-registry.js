@@ -3,8 +3,6 @@
  *
  * R12-1 (15.05.2026 — DEC-OPS-KIND-REGISTRY-01). До этого момента
  * каждый kind дублировался в:
- *   - OpKindPicker.OP_KINDS (label / desc).
- *   - OpPopupRouter switch (popup component).
  *   - op-icons.ICONS (icon component).
  *   - lib-adapters.REGISTRY (adapter function).
  *   - OpSuggestions heuristic кейсы.
@@ -19,7 +17,6 @@
  *   - desc        — short tooltip description.
  *   - originKind  — origin.kind для outputs ('op_pcr', 'op_cut', ...).
  *   - adapter     — executeXxx function (imported lazily).
- *   - popup       — XxxOpPopup component (imported lazily).
  *   - icon        — XxxIcon component.
  *   - inputs      — semantic input description ({type, label, min, max}).
  *   - acceptsMultiSelectInputs — biolog Ctrl+click prefill → op.inputs.
@@ -27,14 +24,6 @@
  * Consumer pattern:
  *   import { OP_KINDS_LIST, getOpKindDef, getAdapter } from './op-kinds-registry';
  */
-import PCROpPopup from './PCROpPopup';
-import CutOpPopup from './CutOpPopup';
-import GibsonOpPopup from './GibsonOpPopup';
-import GoldenGateOpPopup from './GoldenGateOpPopup';
-import LigateOpPopup from './LigateOpPopup';
-import KLDOpPopup from './KLDOpPopup';
-import MutagenesisOpPopup from './MutagenesisOpPopup';
-import BluntOpPopup from './BluntOpPopup';
 import { executeCut } from './adapters/cut';
 import { executePCR } from './adapters/pcr';
 import { executeGibson } from './adapters/gibson';
@@ -51,7 +40,6 @@ import { executeBlunt } from './adapters/blunt';
  * @property {string} desc
  * @property {string} originKind   — origin.kind тэг outputs.
  * @property {Function} adapter
- * @property {Function} popup
  * @property {string=} inputsLabel
  * @property {number=} minInputs
  * @property {number=} maxInputs   — Infinity для unlimited.
@@ -66,7 +54,6 @@ export const OP_KINDS_LIST = [
     desc: 'Амплификация фрагмента',
     originKind: 'op_pcr',
     adapter: executePCR,
-    popup: PCROpPopup,
     inputsLabel: 'template + primer pair',
     minInputs: 1,
     maxInputs: 2,
@@ -78,7 +65,6 @@ export const OP_KINDS_LIST = [
     desc: 'Рестрикция эндонуклеазами',
     originKind: 'op_cut',
     adapter: executeCut,
-    popup: CutOpPopup,
     inputsLabel: 'template',
     minInputs: 1,
     maxInputs: 1,
@@ -90,7 +76,6 @@ export const OP_KINDS_LIST = [
     desc: 'Сборка через 20-40 bp overlap',
     originKind: 'op_gibson',
     adapter: executeGibson,
-    popup: GibsonOpPopup,
     inputsLabel: 'fragments (≥2 linear)',
     minInputs: 2,
     maxInputs: Infinity,
@@ -102,7 +87,6 @@ export const OP_KINDS_LIST = [
     desc: 'Type IIS, 4-nt overhang assembly',
     originKind: 'op_golden_gate',
     adapter: executeGoldenGate,
-    popup: GoldenGateOpPopup,
     inputsLabel: 'fragments (≥2 with BsaI/BpiI overhangs)',
     minInputs: 2,
     maxInputs: Infinity,
@@ -114,7 +98,6 @@ export const OP_KINDS_LIST = [
     desc: 'Лигирование (sticky / blunt)',
     originKind: 'op_ligate',
     adapter: executeLigate,
-    popup: LigateOpPopup,
     inputsLabel: 'fragments (≥2)',
     minInputs: 2,
     maxInputs: Infinity,
@@ -126,7 +109,6 @@ export const OP_KINDS_LIST = [
     desc: 'KLD-мутагенез (kinase-ligase-DpnI)',
     originKind: 'op_kld',
     adapter: executeKLD,
-    popup: KLDOpPopup,
     inputsLabel: 'circular template + primer pair',
     minInputs: 2,
     maxInputs: 2,
@@ -138,7 +120,6 @@ export const OP_KINDS_LIST = [
     desc: 'Точечный мутагенез',
     originKind: 'op_mutagenesis',
     adapter: executeMutagenesis,
-    popup: MutagenesisOpPopup,
     inputsLabel: 'template',
     minInputs: 1,
     maxInputs: 1,
@@ -150,7 +131,6 @@ export const OP_KINDS_LIST = [
     desc: 'Затупление концов экзонуклеазой/полимеразой',
     originKind: 'op_blunt',
     adapter: executeBlunt,
-    popup: BluntOpPopup,
     inputsLabel: 'fragment (1 с липкими концами)',
     minInputs: 1,
     maxInputs: 1,
@@ -183,14 +163,6 @@ export function getOpKindDef(kind) {
  */
 export function getAdapter(kind) {
   return OP_ADAPTER_REGISTRY[kind] || null;
-}
-
-/**
- * getPopupComponent — popup component for kind, или null.
- */
-export function getPopupComponent(kind) {
-  const def = OP_KINDS_BY_KIND[kind];
-  return def ? def.popup : null;
 }
 
 /**

@@ -1,9 +1,6 @@
 /**
- * LibrarySearchBar — единый library-picker для двух поверхностей
- * (SPEC_ASSEMBLY_PICKER_UNIFICATION, Игорь 22.05.2026): canvas
- * (CanvasLayoutView) и редактор сборки (AssemblyShellBody). Раньше у
- * ассемблера был свой bespoke-пикер (EmptyAssemblyLibrary) — он удалён,
- * обе поверхности используют ЭТОТ компонент.
+ * LibrarySearchBar — shared library picker used by the assembly editor
+ * (AssemblyShellBody) and alignment input (AlignInputPanel).
  *
  * Богатая модель (объединение фич обоих пикеров):
  *   - MiniPlasmidMap-минимапа в строке + dropdown/inline shell;
@@ -12,13 +9,12 @@
  *   - <mark>-подсветка совпадения;
  *   - Избранное / Недавно (persist через picker-prefs.js);
  *   - entry-centric секции: Из проекта · {name} / Коллекция / Другие проекты;
- *   - drag-out с TREE_DRAG_MIME (canvas drop handler принимает unchanged);
- *   - prop `extraSections` — canvas прокидывает свои группы (контейнеры
- *     на канвасе / сборки-zones / праймеры-пул); ассемблер не передаёт.
+ *   - drag-out с TREE_DRAG_MIME for hosts that accept library drops;
+ *   - prop `extraSections` lets a host add domain-specific groups.
  *
  * Режимы:
  *   - dropdown (по умолчанию): input, на focus раскрывается dropdown,
- *     Esc / outside-click закрывают. Canvas + «+ Сегмент» popover.
+ *     Esc / outside-click закрывают. Used by compact picker surfaces.
  *   - inline (`inline`): список всегда виден (без dropdown). Empty-state
  *     ассемблера.
  *
@@ -29,9 +25,8 @@
 import {
   useState, useMemo, useEffect, useRef, useCallback,
 } from 'react';
-// Import the constant from its standalone module (NOT use-tree-drop-target,
-// which pulls skeleton-context + canvas-layout — that heavy graph broke the
-// lazy align chunk when AlignInputPanel reused this picker).
+// Keep the MIME constant in a dependency-free module; importing the skeleton
+// store/layout graph here would bloat the lazy align chunk.
 import { TREE_DRAG_MIME } from './tree-drag-mime';
 import MiniPlasmidMap from './MiniPlasmidMap';
 import {

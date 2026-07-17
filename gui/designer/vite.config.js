@@ -93,15 +93,13 @@ export default defineConfig({
   build: {
     // Vendor split keeps heavy third-party code in stable chunks so a
     // changed app file doesn't bust React/Dexie/etc. for repeat visitors.
-    // Project Flow's @xyflow + dagre + html-to-image cluster lives in its
-    // own chunk so it's only fetched if the user actually opens the flow.
+    // The graph layout engine lives in a stable chunk.
     // Rolldown expects a function form (the object form is Rollup-only).
     rollupOptions: {
       output: {
         manualChunks(id) {
           if (!id.includes('node_modules')) return undefined;
-          if (id.includes('@xyflow') || id.includes('@dagrejs') || id.includes('html-to-image')) return 'xyflow';
-          if (id.includes('react-dnd')) return 'dnd';
+          if (id.includes('@dagrejs')) return 'layout';
           if (id.includes('/dexie/') || id.endsWith('/dexie')) return 'db';
           if (id.includes('/fflate/') || id.endsWith('/fflate')) return 'compress';
           if (id.includes('/react-dom/') || id.match(/[\\/]react[\\/]/)) return 'react';

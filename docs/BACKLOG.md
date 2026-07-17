@@ -1,579 +1,114 @@
-# BACKLOG.md — тактический бэклог BodgeGene
-
-> Единый список незавершённых планов. Заменяет россыпь `SPEC_*` / `DESIGN_*` / `SPRINT_*`
-> файлов в `docs/`. Каждая запись — суть: что строим, зачем биологу, ключевая развилка.
-> Полные тела спек (диагностика по коду, сигнатуры helper'ов, пошаговый план) — в
-> `docs/archive/`, имя файла указано в записи; поднимаются при выдаче Code.
->
-> **Метки готовности:** 🟢 спроектировано, готово к выдаче Code · 🟡 спроектировано,
-> осталась развилка/доработка · ⚪ идея, не спроектирована.
->
-> Версия на момент составления — v0.8.3-alpha. Сборка бэклога идёт кластерами в
-> рамках консолидации `docs/` — см. план в `CURRENT_TASK.md`.
-
----
-
-## Движок праймеров
-
-Дизайн праймеров фрагментирован. В коде есть **один правильный движок** —
-`designPrimersLocal` (`local-primer-design.js`, v0.5) поверх `calcTmNN`
-(`tm-calculator.js`, термодинамика SantaLucia NN + Owczarzy, точность ±1–2 °C). Он
-уже учитывает overlap PCR, Gibson, Golden Gate, RE/лигирование, KLD, теги, повторы,
-circular self-closure, merged-блоки, полимеразу, мутагенный bridge. Но поверх него
-наросли параллельные дизайнеры, движок НЕ зовущие — отсюда наблюдаемый дрейф: один
-праймер показывает разную Tm в assembly- и PCR-режиме. Две задачи ниже чинят это с
-двух сторон — одна сводит **вычисление** к единому движку, вторая унифицирует **форму
-записи** праймера.
-
-### Единый калькулятор праймеров 🟢
-*Архив: `SPEC_PRIMER_CALCULATOR_UNIFICATION.md` + `DESIGN_PRIMER_CALCULATOR_UNIFICATION.md` (инвентаризация primer-кода 22.05).*
-
-Запрос Игоря (22.05): «один калькулятор, который всё учитывает». Сейчас три независимых
-Tm (правильный `calcTmNN` против устаревшего Wallace `4×GC+2×AT` ±5 °C в `deriveAutoPrimers`
-и `tm:0` в realise-fallback), четыре генератора хвостов, четыре экстрактора binding.
-Решение — референс `designPrimersLocal` + `calcTmNN`, всё остальное сводится к нему
-через новый адаптер `primer-calculator.js`: он переводит 4-tier модель (op-группа +
-pieces) в v0.5-shape `{fragments, junctions}`, зовёт движок, нормализует выход.
-`deriveAutoPrimers` становится тонким алиасом (имя и сигнатура сохраняются — call-sites
-не трогаются), `autoPrimerPair` (realise-fallback) и хвосты `buildAssemblyPrimer`
-сводятся к движку, `tmEstimate` удаляется. Единственная правка самого движка — junction-
-поле `insertSeq`: обвес/snippet дописывается в 5′-хвост соседнего fwd-праймера, отдельной
-реакции под него нет.
-
-Развилки решены: обвес-snippet идёт в движок как `junction.insertSeq` (не как отдельный
-фрагмент — биологически он физически в хвосте); мутации применяются к `fragment.sequence`
-до вызова движка через `applyPieceMutations`. Отсюда зависимость по порядку: консолидация
-идёт **после** editable-assembly спринта 2 (хелпер `applyPieceMutations` уже будет) и
-**перед** editable-assembly спринтом 3 (перезапуск авто-дизайна зовёт этот калькулятор).
-Главный риск — смена Wallace→NN сдвинет Tm-числа в существующих тестах; это исправление
-точности, не регрессия, пере-baseline фиксируется явным списком в отчёте Code.
-
-### Унификация record'а assembly-праймера (Узел A) 🟢
-*Архив: `SPEC_NODE_A_PRIMER_RECORD_UNIFY.md`. Закрывает V107, WT-UX-16/17. Согласовано с Игорем 23.05 (Вариант 1 — нормализация на записи).*
-
-Другая сторона той же фрагментации — не вычисление, а форма записи. Праймеры assembly
-хранятся в одной мапе `state.assemblyDraftPrimers`, но два продюсера пишут в неё разной
-формой: ручной (`buildAssemblyPrimer` — провенанс в `source`, binding в `bindingSequence`)
-и авто (`deriveAutoPrimers` — провенанс в объекте `origin`, binding в поле `binding`).
-Худшая ловушка — поле `origin`: одно имя, у ручного строка, у авто объект. Потребители
-покрытия границ фильтруют `source.kind==='boundary'` → авто-праймеры им невидимы →
-счётчик границ показывает 0/N (V107), вкладка «Границы» не видит overlap (WT-UX-16/17).
-
-Решение — канонический record праймера как надмножество обеих форм; оба продюсера эмитят
-его (продюсеров остаётся два — это разные вычисления, объединять не нужно). Провенанс
-целиком уходит в расширенное `source`, поле `origin` удаляется. Ключевое: покрытие границ
-ключуется на `source.boundaryAtOffset` (есть у любого праймера, реализующего внутренний
-стык — ручного-boundary или авто), не на `source.kind` — тогда `kind` остаётся честным
-(`auto-group` ≠ `boundary`), а счётчик считает всех. Старые персистентные праймеры —
-вайп на hydrate (схема-bump), не миграция (скелет DEV-only). Главный риск реализации —
-маппинг куска op-группы на индекс сегмента ассемблии для простановки `boundaryAtOffset`
-(резолв через `segmentId`, не позицию в `inputPieces`). Зависимости: после V105 (Tm
-SantaLucia) и V109 (realise opGroup.kind). Узел A суперсидит форму праймера в
-`SPEC_ASSEMBLY_WORKFLOW_UX` §6.3.
-
-### План выдачи Code — единый primer-спринт (решение 27.05.2026)
-
-Узел A и Единый калькулятор сливаются в **один спринт** «унификация
-primer-пайплайна». Это не две независимые задачи, а две половины одного
-переписывания: обе перелопачивают `primer-derive.js::deriveAutoPrimers`/`makePrimer`,
-обе трогают выходную форму праймера. Любой последовательный порядок
-даёт двойную работу — если Узел A первым, его правка `makePrimer` выбрасывается
-(калькулятор `makePrimer` удаляет вовсе); если калькулятор первым, его
-нормализатор пишется под старую форму и потом переписывается под канон.
-Решающий довод — `source.boundaryAtOffset` (труднейшая часть Узла A, его
-§13 R1): адаптер калькулятора `buildEngineInputs` и так строит `junctions[]`
-между соседними фрагментами — знает структуру стыков по построению,
-внутри адаптера `boundaryAtOffset` берётся почти бесплатно, тогда как
-Узел A в одиночку считает его окольно через `draftFromZone`/`segmentBoundaries`.
-
-**Один проход спринта:** канонический record праймера фиксируется как
-контракт до старта (решение, не код); адаптер `primer-calculator.js` → движок
-`designPrimersLocal`; нормализатор сразу эмитит канон, включая
-`source.boundaryAtOffset` (адаптер считает его по ходу); `deriveAutoPrimers` =
-тонкий алиас; `makePrimer`/`tmEstimate` удалены; `buildAssemblyPrimer` делит
-хвосты с движком и тоже эмитит канон; потребители покрытия границ
-ключуются на `boundaryAtOffset`; старые персистентные праймеры вайпаются.
-Закрывает разом V107, WT-UX-16/17, Tm-дрейф и раскол формы записи.
-Спринт крупный (обе исходные задачи — тип A), но когерентный — один
-проход по пайплайну.
-
-**Предпосылки:**
-- **V105** (Wallace→SantaLucia в `primer-derive`) — поглощается: спринт вычищает
-  Wallace `tmEstimate` целиком, везде `calcTmNN`. Отдельной задачей не нужен.
-- **V109** (realise читает `opGroup.kind`) — отдельный мелкий фикс
-  realise-диалога, спринт его не трогает; может идти независимо в любой момент.
-- **`applyPieceMutations`** (из editable-assembly S2) — нужен для мутагенных
-  праймеров; если editable-S2 ещё не слит, спринт выносит хелпер сам
-  (не жёсткий блокер).
-
-Исходные тела обеих спек — в `docs/archive/` (`SPEC_PRIMER_CALCULATOR_UNIFICATION` +
-`SPEC_NODE_A_PRIMER_RECORD_UNIFY` + design-doc); спринт пишется из обеих.
-
-### Follow-up (не спроектировано) ⚪
-
-- **Reuse-матчинг.** `findCompatiblePrimers` оставить, перевести реестр с localStorage
-  на `state.primers` (`primer-reuse.js` — логика матчинга переиспользуема, реестр legacy).
-- **Качество праймеров.** Подключить `checkHairpin`/`checkHomodimer` (уже есть в
-  `tm-calculator.js`) к выходу калькулятора — предупреждения о шпильках/димерах.
-- **Подгонка длины binding** авто-праймера под целевую Tm (WT-UX-18).
-
----
-
-## Импорт и вставка последовательностей
-
-Группа правок на пути «данные попадают в приложение» — файловый/paste-импорт
-через canvas-скелет, UX модалки добавления, продвижение вставленного сиквенса
-в библиотеку. Источник — живой прогон overlap-PCR 23.05 (`WALKTHROUGH_OVERLAP_PCR`) +
-запросы Игоря 21–22.05.
-
-### Импорт через canvas: пропавший сиквенс, common-features, autoAnnotate 🟢
-*Архив: `SPEC_WT_B_IMPORT_BATCH.md`. Закрывает V103, V104, WT-D-2.*
-
-Три дефекта пути импорта в canvas-скелете (`LibraryTreeHost`). **V103** — `parseFasta`
-теряет сиквенс, если FASTA вставлена одной строкой (`>F1 ACGT…`): остаток header-
-строки отбрасывается, биолог получает ошибку «No sequence found» — фикс спасает
-остаток, но только когда сиквенса иначе нет вовсе и остаток матчит нуклеотид-
-онли паттерн (не ломает ни multi-line FASTA, ни `>name описание`). **V104** — common-
-features (гомология-обогащение) не детектятся при импорте через canvas:
-`LibraryTreeHost.importFiles` зовёт голый `parseFile`, а `enrichAnnotations` подключена
-только к production-импортёру; фикс — прогнать `enrichAnnotations` в том же пути.
-**WT-D-2** — флаг `autoAnnotate` уже есть в коде, но не доведён до UI: тумблер
-«Авто-аннотация» в `AddModal` (дефолт on). Диагноз по коду подтверждён.
-
-### AddModal UX: заголовок, имя, топология, различение проектов 🟢
-*Архив: `SPEC_ADDMODAL_UX_BATCH.md`. Закрывает WT-UX-4/7/8/9. Ставить ПОСЛЕ import-батча выше — общий `preset`/`AddModal`.*
-
-Четыре UX-дефекта модалки добавления. **WT-UX-9** — заголовок захардкожен
-«в библиотеку», хотя дефолтная цель — активный проект; сделать заголовок
-производным от выбранного таргета. **WT-UX-8** — для headerless-вставки нет
-поля имени, контейнер становится «imported»; добавить опциональное поле
-имени в paste-секцию. **WT-UX-7** — нет выбора топологии для paste
-(`parseFasta` хардкодит linear), для кольцевой молекулы молча неверно;
-тумблер linear/circular. **WT-UX-4** — несколько проектов с дефолтным именем
-«Новый проект» дают неразличимые строки в списке «куда добавить»;
-добавить различающую деталь (дата создания / счётчик). Всё — презентационные
-правки `AddModal` + проброс `name`/`topology` через `preset`.
-
-### Мелкие дефекты: Ctrl+F на канвасе, счётчик контейнеров 🟢
-*Архив: `SPEC_WT_B_MINOR_BATCH.md`. Закрывает V106, V108.*
-
-**V106** — хоткеи перехватываются несогласованно: `runHotkeyResolver` гасит
-браузерный дефолт только если смонтированный компонент зарегистрировал
-хендлер. `Ctrl+F` на канвасе не перехвачен — срабатывает браузерный
-find-in-page вместо строки поиска. Фикс — канвас-поиск регистрирует find-хендлер;
-плюс discovery-таблица покрытия hotkey-id. Развилка — id для канвас-поиска
-(переиспользовать `sequence-search` vs новый `canvas-search`); рекомендация
-спеки — переиспользовать (единый жест «Ctrl+F = найти» важнее точности имени).
-**V108** — счётчик «Контейнеры · N» в редакторе сборки считает глобальный
-пул `state.containers`, не scoped на сборку — сойтись с тем, что биолог видит,
-не может; честный фикс — убрать численный `· N` из заголовка панели.
-Сопутствующий настоящий баг — `addContainerFromEntry` без дедупа
-материализует копию контейнера на каждую вставку (смыкается с V52 и
-реестром 8 дублей) — НЕ в этом scope, отдельный продуктовый вопрос.
-
-### Вставленный сиквенс → фрагмент библиотеки 🟡
-*Архив: `SPEC_PASTE_SEQUENCE_TO_FRAGMENT.md` + `SPEC_PASTE_PROMOTE_TO_FRAGMENT.md` — ДВЕ конкурирующие спеки одной фичи.*
-
-Запрос Игоря 22.05 (со скриншотом, вставлял 5941 bp): сейчас единственный
-исход вставки сиквенса в paste-секцию пикера — анонимный manual-сегмент
-в сборку. Крупный вставленный сиквенс — целая молекула; биолог хочет
-рассмотреть её, аннотировать, дать имя, сохранить в библиотеку как
-переиспользуемый фрагмент. Решение — ненавязчивая вторичная ссылка
-в paste-секции рядом с «Вставить сегмент»: «открыть и сохранить как
-фрагмент». Развилку Игорь закрыл — «сохранить как фрагмент» = только
-положить в библиотеку, без авто-вставки в текущую сборку.
-
-**Дублирование (нужно решение).** Фича спроектирована дважды:
-`PASTE_PROMOTE_TO_FRAGMENT` открывает вставленное в полном контейнер-
-редакторе (`ContainerEditorSkeleton`), оставляет развилку purely-promote
-открытой; `PASTE_SEQUENCE_TO_FRAGMENT` открывает в модалке `Annotator`,
-развилку фиксирует (только в библиотеку). `PASTE_SEQUENCE` — более
-поздняя/решённая версия (несёт решение Игоря, легче — `Annotator`
-вместо полного редактора). Рекомендация: каноничный план —
-`PASTE_SEQUENCE_TO_FRAGMENT`, `PASTE_PROMOTE` как ранний superseded-черновик.
-Подтвердить до выдачи Code.
-
-### Реализовано (в archive, не бэклог)
-- `SPEC_VIEWER_UNIFICATION.md` — общий хук `useSequenceSelection` (controlled-выделение
-  + 3 RE-стратегии pair-select/cut/off), все 5 call-sites переведены.
-  **Реализовано Code 22.05.2026** (отчёт в теле спеки, Vitest 3917 pass).
-
----
-
-## Библиотека
-
-Library — личная файловая система биолога внутри BodgeGene. Концепция
-и структура спроектированы в сессии 08.05 (драфты `LIBRARY_MODEL_DRAFT` +
-`LIBRARY_WIREFRAME_DRAFT`, оба в archive): три зоны с разными правилами —
-свободная зона (полная ФС-семантика: папки, drag/drop, rename),
-`.bodge`-проекты (ZIP-папки с прибитой структурой DAG/контейнеры/праймеры,
-read-only browse), лабораторный пул праймеров (что физически есть в морозильнике,
-opt-in promotion). Ключевой принцип — Library не отдельная коллекция, а unified
-projection всего из IndexedDB, сгруппированная по зонам владения.
-
-### Что реализовано
-Первый спринт этого плана — **M-X.7a** (Library tree rebuild + зоны +
-tabbed Inspector по паттерну Importer'а) — **реализован** (`components/Library/`,
-M-X.7a v2; затем M-X.7c UI revision). Драфты своё дело — родить спеку
-M-X.7a и согласовать визуал с дизайнером (`design_assets/Library.html`) — отслужили.
-
-### Незавершённый scope 🟡
-Драфт планировал ещё два спринта, статус которых **нужно сверить с кодом** —
-после 08.05 прошла four-tier T-серия, она могла переформировать или
-поглотить часть:
-
-- **M-X.8 — лабораторный пул праймеров.** Root-секция `Лабораторный пул`,
-  флаг `inLabStock`, opt-in promotion, под-секция «Из чужих проектов»,
-  рендер PrimerUsage в проектных папках, подсветка sequence-match между
-  cross-project праймером и lab-stock записью.
-- **M-X.9 — read-only `.bodge` + cross-project copy.** Read-only DAG view для
-  импортированных чужих `.bodge`, действие «Открыть как активный
-  проект», cross-project клон контейнера (immutable copy с lineage-trace,
-  без forward-sync), lineage trail в Inspector (цепочка origin'ов глубины N),
-  иконка manual-edit в узле дерева, type-badge taxonomy в табе «История».
-
-**Перед планированием M-X.8/M-X.9 — обязательная сверка с кодом**
-(`components/Library/`, four-tier модель): что из этого уже построено
-M-X.7a/M-X.7c/T-серией, что переформулировано, что осталось живым.
-Драфт также предлагал ⛓ `DEC-LIB-K11` (Library = unified projection grouped by
-ownership zones) — проверить, внесён ли он в ANCHORS.
-
----
-
-## Редактор сборки
-
-Редактор сборки (`AssemblyShellBody` + strip-вид + панели «Источники» / «Праймеры» /
-«Схема сборки» + тулбар) — рабочее место, где биолог раскладывает куски ДНК,
-группирует их в реакции и получает праймеры. Базовый 5-шаговый workflow реализован
-four-tier T-серией (см. «Реализовано» ниже). Записи ниже — итерации поверх него:
-убрать накопленную перегрузку UI, унифицировать source-picker с канвасом, дать
-прямую правку собранной последовательности по курсору, выровнять три представления
-зоны. Часть планов написана до финализации модели (упразднение свободных
-контейнеров — узел B; унификация формы праймера — узел A) и помечена как требующая
-пере-проверки по коду.
-
-### Единый source-picker ассемблера 🟢
-*Архив: `SPEC_ASSEMBLY_PICKER_UNIFICATION.md`.*
-
-Запрос Игоря (22.05): у ассемблера не должно быть собственного выбора источника —
-добавление сегмента идёт тем же пикером, что добавление на канвас, оформление
-одинаковое (минимапа плазмиды + вываливающийся список). Сейчас в ассемблере три
-отдельных пикера (`EmptyAssemblyLibrary` — bespoke-пикер пустого ассемблера,
-`PlaceholderTreePicker` — модалка «+ Плазмида», `AssemblySidebar` — drag-источник),
-все ведут в `RangePickerModal`. Эталон оформления — канвасный `LibrarySearchBar`.
-Решение — обобщить `LibrarySearchBar` до единственного library-пикера богатой
-модели (минимапы + фильтр-пилюли Все/Circular/Linear/Primer + поиск по ATGC +
-Избранное/Недавно + entry-секции), использовать на обеих поверхностях;
-`EmptyAssemblyLibrary` удалить, опциональный prop `extraSections` отдаёт канвасу его
-специфичные группы. `RangePickerModal` + `insertSegment` не трогаются. Развилок нет,
-parity-набор перечислен. Главный риск — `LibrarySearchBar` 15→~25 KB (под hard 40,
-у soft 30 — watch); `CanvasLayoutView` уже над hard-лимитом, три спеки трогают этот
-файл — назрел отдельный TD на его декомпозицию.
-
-### Custom-segment: вставка своего сиквенса 🟡
-*Архив: `SPEC_ASSEMBLY_CUSTOM_SEGMENT.md`. Ставить ПОСЛЕ единого пикера — «из библиотеки» = тот самый пикер.*
-
-Запрос Игоря (22.05): убрать сущности Обвес/Синтез/Gap («отвратительные названия»,
-три кнопки, три bespoke-модалки с вкладками и режимами) — биологу нужна одна явная
-возможность «вставить свой сиквенс», плюс «из библиотеки». Все три модалки по сути
-делают одно — получают последовательность и зовут `INSERT_MANUAL_SEGMENT` /
-`INSERT_SNIPPET` / `INSERT_SYNTHESIS`, адаптер всё сводит к piece. SAFE-часть — в
-единый пикер добавляется секция «Вставить свой сиквенс» (textarea ATGC + валидация +
-счётчик), вставка отдельным сегментом в конец сборки либо после выделенного через
-существующий `INSERT_MANUAL_SEGMENT`; четыре кнопки добавления → одна «+ Сегмент»;
-три модалки удаляются. Развилка осталась открытой (§6, ждёт фразы Игоря) —
-небезопасная часть: вставка своего сиквенса в произвольную позицию курсора и Ctrl+V
-требуют деления piece в середине (`SPLIT_PIECE`), это территория editable-сборки
-ниже; плюс судьба пустого placeholder-сегмента (бывший Gap «неизвестная длина»).
-Хвост — мёртвые после удаления модалок `INSERT_SNIPPET` / `INSERT_SYNTHESIS` и
-kind'ы `snippet` / `synthesis`: их **не сносить** dead-sweep'ом — editable-сборка
-(спринт 1) их воскрешает.
-
-### Editable-сборка — правка собранной последовательности по курсору (wave, 3 спринта) 🟢
-*Архив: `DESIGN_EDITABLE_ASSEMBLY_VIEW.md` (design-doc, форки решены 22.05) + `SPEC_EDITABLE_ASSEMBLY_S1/S2/S3.md`.*
-
-Запрос Игоря (22.05): куски накидываются на канвас, к ним авто-пишутся праймеры, но
-частая рутина — добавить к куску буквально 3 нуклеотида линкера; быстрее всего
-биологу дописать их руками прямо в собранной последовательности, а праймеры пусть
-пересчитываются сами. Ценность — не «текстовый редактор ради редактора», а
-устранение ручной возни с праймерами. Сейчас собранный вид (`AssemblyShellBody` →
-`SequenceTab editable={false}`) — read-only визуализация конкатенации цветных pieces.
-Wave дробится на три спринта (тип A): **S1** — собранный вид становится editable,
-печать на стыке pieces создаёт новый блок (≤ порога ~80 нт → `snippet`, заведомо
-хвост праймера; > порога → `synthesis`-кусок; порог настраиваемый), правка внутри
-inline-куска (gap/snippet/synthesis) меняет его строку, правка сгруппированного piece
-расформировывает op-группу; новый чистый роутер `assembly-edit-router.js` переводит
-правку в координатах сборки в piece-операции. **S2** — `SPLIT_PIECE` (rc-aware
-деление `sourced`-куска с сохранением родителей), печать/удаление внутри
-`sourced`-piece, замена той же длины → `mutations[]` (мутагенный праймер без split).
-**S3** — поддержка координат уже сохранённых праймеров после правки: сдвиг
-`selectionStart/End`, пометка `stale` при попадании правки внутрь binding-региона.
-Форки закрыты Игорём (дописанные нт = новый блок; правка grouped piece =
-разгруппировка). Зависимость по порядку: S3 — после единого primer-калькулятора
-(§Движок-праймеров); S2 даёт хелпер `applyPieceMutations`, который калькулятор
-переиспользует. Движок авто-дизайна (`deriveAutoPrimers`) уже есть — wave его не
-строит, только корректно кладёт правки в piece нужным `kind` и перезапускает
-пересчёт.
-
-### UX-батч редактора сборки (WT-UX-14/15/18) 🟢
-*Архив: `SPEC_ASSEMBLY_EDITOR_UX_BATCH.md`. Источник — прогон overlap-PCR 23.05.*
-
-Три мелких UX-дефекта редактора, диагноз по коду. **WT-UX-14** — `RangePickerModal`
-показывает «Tm» для выделений фрагмент-размера: Tm физически осмысленна только для
-олигонуклеотидов (~18–50 нт), для фрагмента 150–1500 п.о. число «Tm 77°» биолог в
-overlap-PCR может прочитать как «отжиг норм»; фикс — гейтить `showSelectionTm` по
-длине выделения. **WT-UX-15** — футер-хинт селектора фрагмента пишет «метод:
-cursor/feature/...», хотя это способ ВЫДЕЛЕНИЯ, а «метод» читается как способ ДОБЫЧИ
-(PCR/рестрикция); фикс — переписать хинт на «выделено: курсором / по фиче / ...»,
-слово «метод» убрать. **WT-UX-18** — авто-праймеры `deriveAutoPrimers` берут binding
-фиксированно 20 нт без подгонки под целевую Tm (AT-богатый конец даёт ~48°, вне
-рабочего диапазона), но в UX это не отражено — биолог видит 4 готовых праймера с Tm
-и может уйти в синтез; фикс — бейдж `autoMode:'auto'` усилить до «черновик, доведите
-вручную» + ⚠ при Tm вне рабочего диапазона. Все три — локальные правки
-`RangePickerModal` + `AssemblyPrimersPanel`, `SequenceView` / `primer-derive` не
-трогаются. WT-UX-16/17 в батч не вошли — требуют, чтобы вкладка «Границы» видела
-overlap-несущие праймеры, это раскол двух систем праймеров → закрывается единым
-primer-спринтом (§Движок-праймеров).
-
-### Прогрессивная сложность редактора + чистка дублей 🟡
-*Архив: `SPEC_ASSEMBLY_EDITOR_CLEANUP.md`. Крупные части суперсежены — см. ниже.*
-
-Запрос Игоря (20.05): редактор сборки перегружен — 528 px правых панелей
-одновременно на любом состоянии, пять разных empty-state сообщений на пустой сборке,
-дубль кнопки Realise (в header и в панели «Схема сборки»), tab-имя «(пустой)» из-за
-пустого `zone.name`, stale-текст «+ Сегмент». Живое ядро спеки — **прогрессивная
-сложность**: панели монтируются по трём состояниям (пусто → есть фрагменты → есть
-группы), один онбординг-хинт по центру вместо россыпи, дубль Realise убирается,
-`🔗 Сшить` — conditional-кнопка в тулбаре, default-имя зоны «Сборка N» в редьюсере.
-**Осторожно — спека частично суперсежена.** §2/§7 строят ментальную модель
-«контейнер всегда внутри зоны» + «drag из библиотеки создаёт зону»; узел B
-(`DEC-V0.8.3-CANVAS-FINAL-MODEL`, 23.05) свободные контейнеры на канвасе вообще
-упразднил — это уже зона `SPEC_CANVAS_NO_LOOSE_CONTAINERS` (§Канвас-и-окна, S4).
-Ссылки на 4 кнопки тулбара (`+ Обвес` / `+ Синтез` / `+ Gap`) и 3 модалки суперсежены
-custom-segment'ом выше. Перед выдачей Code спека требует пере-проверки по коду и
-переписи под текущую модель — что из progressive-disclosure уже сделано реверсом
-DEC-T3-08/V61, что осталось.
-
-### Унификация трёх представлений сборки 🟡
-*Архив: `SPEC_ASSEMBLY_VIEWS_UNIFICATION.md`. Набросок планирования, не готовая спека — см. ниже.*
-
-У зоны-сборки три представления: Frame-вид на канвасе (3-полосный dagre-layout
-T4.5), Sequence-вид inline в зоне (T7), полноэкранный редактор. Одни и те же действия
-доступны в них неравномерно — Frame-вид не умеет добавить snippet/мутацию (биолог
-вынужден открывать редактор ради His-тега), context-меню и иконография расходятся.
-Цель — выровнять affordances: общий компонент `AddPiecePopover` для добавления piece
-во всех трёх видах, единые context-меню (`PieceContextMenu` / `OpContextMenu`),
-единая иконография/цвета/лейблы из палитры, консистентные empty-state хинты.
-**Осторожно — это набросок планирования, не готовая спека:** в матрице действий §2
-половина ячеек помечена «unclear» (Chat не дочитал код Sequence-вида — нарушение §0
-playbook'а), есть copy-paste JSX и оценки сроков; первый K-пункт спеки — аудит
-кодом, что само по себе сигнал незавершённости. Ссылки на 4-entry-point модель
-Обвес/Синтез/Gap суперсежены custom-segment'ом. Перед выдачей Code —
-пере-проектирование от чтения кода трёх видов (§0), не от этого черновика.
-
-### Реализовано (в archive, не бэклог)
-- `SPEC_ASSEMBLY_WORKFLOW_UX.md` — финальный 5-шаговый workflow сборки: зона =
-  пробирки на столе, 4 entry-points для piece, явная группировка («выделил
-  подмножество → Сшить → выбрал метод реакции для группы»), multi-step pipeline в
-  одной зоне, панель «Схема сборки», авто-дизайн праймеров как auto/manual-флаг.
-  **Реализовано** four-tier T-серией (T1-T10 + T4.5, 16-18.05.2026; см.
-  `PROJECT_STATE` «Что работает»). Базовая модель, на которую опираются все записи
-  выше. Две поздних правки ревизовали части: узел A (`SPEC_NODE_A_PRIMER_RECORD_UNIFY`)
-  — форму записи праймера §6.3; узел B (`DEC-V0.8.3-CANVAS-FINAL-MODEL`) — свободные
-  контейнеры на канвасе §3.1.
-
----
-
-## Канвас и окна
-
-Верхнеуровневый канвас проекта — рабочий стол, где биолог раскладывает зоны-сборки —
-и окружающие его экраны (главный/стартовый экран, project canvas). После four-tier
-T-серии (16-18.05) модель канваса устоялась: канвас держит **зоны** (Miro-рамки
-сборок), не свободные ноды. Узел B (`DEC-V0.8.3-CANVAS-FINAL-MODEL`, 23.05) довёл это
-до конца — свободного контейнера-ноды на канвасе больше нет. Живые записи ниже —
-финализация этой модели и чистка перегруженных экранов. Четыре до-four-tier спринта
-канваса (M-C.1, M-CANVAS-OPS и др.) перечислены в конце как суперсеженные — в живой
-бэклог не идут.
-
-### Канвас без свободных контейнеров (узел B) 🟢
-*Архив: `SPEC_CANVAS_NO_LOOSE_CONTAINERS.md`. Реализует `DECISIONS.md` DEC-V0.8.3-CANVAS-FINAL-MODEL (23.05). Закрывает WT-UX-10.*
-
-Финальная модель канваса: верхний уровень рендерит **только зоны-сборки** (+ канвас-хром
-— строка поиска, zoom, pan, Sanger-notebook). Сейчас `CanvasLayoutView` рисует на полотне
-несколько типов свободных нод — контейнеры (`state.containers.map`→`ContainerBlock` на
-абсолютных позициях), операции, джанкшены, assemblyDrafts, virtual outputs. Это рудимент
-модели «контейнер свободно лежит на канвасе». Спека убирает loose-рендеринг целиком
-(операции/джанкшены/wires/drafts удаляются вместе с контейнерами — op-wires тянутся к
-позициям контейнеров, оставить их = висящие в пустоту линии), удаляет точки создания
-loose-контейнера, перенаправляет клик записи в `LibrarySearchBar` в зону-сборку.
-
-Данные не вайпаются (в отличие от узла A) — контейнеры остаются в библиотеке/проекте,
-умирает только их рендер-как-ноды и канвас-позиции. Удаление крупных блоков само ужимает
-`CanvasLayoutView.jsx` (49 KB, над hard 40) — декомпозиция следует из чистки, не самоцель.
-Главный риск, он же ключевая развилка: есть ли готовый зонный action «entry → source-piece
-зоны» — если нет, минимальная версия открывает/создаёт зону без авто-загрузки молекулы
-(богатый range-picker — отдельный спринт M-CANVAS-WORKFLOW-UX). Спека готова к выдаче Code.
-
-### Чистка project canvas 🟡
-*Архив: `SPEC_PROJECT_CANVAS_CLEANUP.md` (поправка 23.05 — узел B). Частично landed.*
-
-Project canvas перегружен. Чистка: заменить sidebar-дерево библиотеки на верхнюю
-строку-поиск с выпадающим списком (`LibrarySearchBar` — уже в коде, фигурирует в узле B §6
-и в §Редактор-сборки как канвасный пикер); убрать нефункциональные кнопки (`Протокол`,
-`Заказ олигов`); скрывать `Сборки (N)` при N=0; заголовок хедера `Canvas-скелет` → имя
-проекта; убрать футер-ссылку «Рабочие таблицы»; корзину перенести в Settings;
-рестриктазы-тумблер — relocation из футера дерева.
-
-Часть поглощена/амендирована узлом B — удаление loose-контейнеров вынесено в
-`SPEC_CANVAS_NO_LOOSE_CONTAINERS`, а `LibrarySearchBar` уже приземлён. Перед выдачей
-Code сверить по коду, что из остатка (нефункциональные кнопки, заголовок, футер, корзина,
-рестриктазы-тумблер) уже сделано Звено-сессиями, а что живо.
-
-### Чистка главного экрана 🟡
-*Архив: `SPEC_MAIN_SCREEN_CLEANUP.md`. Спека от 20.05 — статус по коду не сверялся.*
-
-StartScreen перегружен: три пути «открыть проект» (sidebar `Открыть проект`, sidebar
-`Все проекты`, карточки в main — биолог не понимает разницу), три пути import sequence,
-disabled-пункт `Праймеры soon` как визуальный шум, справка размазана по трём элементам.
-Чистка: реорганизовать sidebar (убрать 8 items, перенести `Все проекты` в основную
-навигацию), MainPanel — один primary CTA + два secondary + recent; `?` Help popover
-(Руководство / Хоткеи / Глоссарий — Глоссарий placeholder под будущий раунд); drop
-sequence-файла куда угодно на главном экране → авто-импорт в Библиотеку; conditional
-rendering (баннер «наполните библиотеку» только при пустой библиотеке, ⭐ только на
-непустом проекте); PWA-install переезжает в Settings.
-
-Не блокирующая, низкий-средний приоритет (главный экран работает, просто перегружен).
-Перед выдачей Code сверить, что из спеки уже сделано — между 20.05 и сейчас прошли
-four-tier и Звено-сессии.
-
-### Follow-up (не спроектировано) ⚪
-
-- **Превью операции до Execute.** Идея из суперсеженного `SPRINT_M_CANVAS_OPS_PREVIEWS`:
-  popup операции до нажатия Execute показывает, что Cut/PCR/Gibson/Mutagenesis сделает
-  с input'ом (cut-sites + затенение удаляемого, primer coverage, overhang-зоны,
-  mutation-dots) — биолог корректирует параметры до запуска реакции, а не проверяет
-  результат после. Семантически ценно, но спека писалась под старую OpPopup-архитектуру;
-  под operation-UI four-tier требует пере-проектирования.
-- **Анти-наезд зон.** `SPEC_CANVAS_NODE_COLLISION` (collision-resolve свободных нод)
-  суперсежен узлом B — свободных нод нет. Осталась ли потребность в анти-наезде между
-  зонами-сборками на канвасе — открытый вопрос, не спроектировано.
-
-### Реализовано / суперсежено (в archive, не бэклог)
-
-Четыре до-four-tier спринта канваса. Точная граница «реализовано / суперсежено» — по
-four-tier T-спекам (`docs/archive/SPRINT_T*.md`), в этой сессии не пере-сверялась; в
-живой бэклог не идут в любом случае.
-
-- `SPRINT_M-C-1_CONTAINER_CANVAS_BASELINE.md` (07.05) — DAG как корневой вид канваса
-  (PlasmidNode-карточки с embedded mini-map + палетка-браузер библиотеки).
-  **Суперсежено** — `ARCHITECTURE.md §1.6` зафиксировал Canvas-as-primary вместо
-  DAG-as-primary; модель канваса — зоны four-tier. Компоненты `components/Dag/`
-  частично переиспользованы внутри зон.
-- `SPRINT_M_CANVAS_OPS.md` (12.05) — операции как первоклассные ноды канваса
-  (OperationNode + OpKindPicker + 6 kinds PCR/Cut/Gibson/Ligate/KLD/Mutagenesis +
-  lib-adapters над v0.5-ядром + frozen-on-use + oligonucleotide-kind). **Поглощено
-  four-tier T-серией** — Operations slice, op-группы, реакции внутри зон.
-- `SPRINT_M_CANVAS_OPS_PREVIEWS.md` (12.05) — inline-превью в OpPopups. **Суперсежено**
-  — OpPopup-архитектура переработана four-tier; ценная идея preview-before-execute
-  сохранена как ⚪ выше.
-- `SPRINT_CANVAS_V2_EDITOR_FULL.md` (11.05) — `ContainerEditorSkeleton` как полный
-  редактор контейнера (композиция Library-табов через адаптер container→item).
-  **Реализовано** — компонент живой (`TD-CONTAINER-EDITOR-SKELETON`; ContainerEditor —
-  один из 5 дизайн-виверов в `PROJECT_STATE` «Что работает»).
-- `SPEC_CANVAS_NODE_COLLISION.md` (22.05) — анти-наезд свободных нод канваса
-  (collision-resolve loose-нод). **Суперсежено узлом B** — свободных нод нет;
-  остаточный вопрос (зоны) — ⚪ выше.
-
----
-
-## Зачистка кода
-
-В `gui/designer/src/components/` сосуществуют три поколения интерфейса: v0.5
-«парт-канвас» (`DesignCanvas` + `PartsPalette` + `PartBlock` + `flow/`), промежуточный
-Importer (`ImportStartScreen/` + `MoleculeWorkspace/` + корневой `AnnotationEditor`) и
-текущее ядро (`StartScreen/` + `Library/` + `Dag/` + `SequenceView/` + `Annotator/`).
-Старое не удалили при переходах, потому что оно держало рабочие тропы; сейчас тропы
-переехали, старое — мёртвый груз в bundle, путает поиск, рождает дубли при чтении карты.
-
-### Зачистка мёртвого кода (4 этапа) 🟡
-*Архив: `SPRINT_KILL_DEAD.md`. Источник списка — `docs/COMPONENT_MAP.md` секция «DEAD / kill».*
-
-Поэтапный снос ~510 KB кода; каждый этап — отдельный handoff Code, начинается с
-grep-проверки (если «мёртвый» файл импортируется из живого ядра — Code останавливается,
-карта неполна). **Этап 1** — изолированно мёртвое (`SequenceMapView`, `RacetrackView`,
-legacy v0.5-вьюеры — `FragmentSplitter`, `SequencePane`, `CDSEditor` и др., ~108 KB).
-**Этап 2** — harvest трёх helper'ов из `FragmentEditor/` (`mutation-normalize`,
-`region-types`, `color-palette`) в `lib/` перед сносом. **Этап 3** — большой блок
-старого верстака + Importer (`DesignCanvas` + `PartsPalette` + `PartsLibrary` +
-`PartBlock` + `AddFragmentModal` + `AnnotationEditor` + `FragmentEditor/` +
-`MoleculeWorkspace/` + `flow/` + `ImportStartScreen/`, ~402 KB) + чистка веток `App.jsx`.
-**Этап 4** (строго после R4 — AddModal Submit пишет запись в библиотеку) — старый
-`Library/index.jsx` + `useLibraryState`. Wizards-сироты (`PlasmidUseWizard`,
-`MutagenesisWizard`, `OligoManager`, `PrimerPanel`, `JunctionBlock`, `JunctionDNA` и
-др.) **не убивать** — harvest для Container Window M-C.2.
-
-**Перед выдачей Code — сверить статус.** План от 09.05; после него прошли four-tier
-T-серия (16-18.05) и Звено-сессии (23-25.05) — часть этапов могла быть выполнена
-попутно (напр., `BUGS.md` фиксирует, что `skeleton-state.js` и др. файлы «в дереве
-больше нет»). Code grep'ом + `COMPONENT_MAP.md` определяет, какие этапы ещё актуальны.
-
----
-
-## Алгоритмические primitive'ы
-
-Слой ниже UI / store — переиспользуемые алгоритмические helper'ы для поиска и
-мэтчинга последовательностей. Сейчас в коде копится потребность в **gapless
-seed-and-extend с mismatch tolerance**, который нужен в нескольких разных местах
-с одной механикой.
-
-### Shared seed-extend primitive ⚪
-*Связано: `SPEC_FEATURE_DETECTION_PARTIAL.md` (текущий спринт, первый callsite).*
-
-Один gapless seed-extend с mismatch tolerance — общая механика для четырёх
-сценариев, сейчас разбросанных по коду:
-
-- **A + B.** `feature-detection.js` partial seed-extend для truncated и split фич
-  (фрагмент гена в плазмиде / ген разрезан вставкой чужой ДНК) — реализуется
-  in-line в текущем спринте partial. Первый callsite.
-- **C.** Gibson / Overlap PCR — поиск гомологичных плеч между концами фрагментов
-  (seq-vs-seq, не feature-vs-target). Точка приложения не локализована; при
-  выдаче этого спринта первый шаг — grep `assembly-realise` / `bridge` /
-  `overlap` в `components/CanvasSkeleton/lib/`.
-- **D.** Primer binding mismatch tolerance — праймер 25 nt, ложатся 22 nt,
-  3 nt на 3'-конце mismatch. Сейчас primer matcher строгий (нашёл/нет).
-  Точка — `local-primer-design.js` и/или `validate.js`.
-- **Потенциальный 4-й callsite.** `lib/sequence-search.js` уже использует
-  seed-and-extend без gaps + full-window alignment (M-X.9, Ctrl+F поиск ПСО).
-  При extract'е shared primitive — кандидат на consolidation или общий код.
-
-Extract в `lib/seed-extend.js` — **не делаем сейчас**. Преждевременное
-обобщение из одного callsite. Когда C или D станут реальной задачей биолога,
-**в первой строке спеки** указывается: «extract `extendProteinPartial` +
-`extendDnaPartial` из `feature-detection.js` в `lib/seed-extend.js`, текущая
-задача — второй callsite». Решение зафиксировано в
-`SPEC_FEATURE_DETECTION_PARTIAL.md §11 риск №6`.
-
-**Метка ⚪.** Не спроектировано, инвентаризация всех callsites не сделана,
-сигнатура общего primitive'а не зафиксирована. Просыпается при первом запросе
-на C или D — тогда новая спека (тип B), которая делает extract и реализует
-второй callsite одним проходом.
-
----
-
-## Подключение forward-работы (wiring) — кандидаты после v0.8.4
-
-*Источник: `CODE_REPORT_2026-05-28_dead-code.md` §3 (разнесён → `archive/`). После сноса v0.5-верстака ~630 КБ недостижимого; часть — законченные оттестированные модули в шаге от «живого».*
-
-### A. Wiring-кластер (построено + тесты, не примонтировано) 🟡
-
-Рекомендуемый порядок: A1 → A2 (самые дешёвые — активные спеки, буквально ждут mount).
-
-- **A1. Лабораторный журнал (markdown notebook)** ⚪ — спека `SPEC_BODGE_NOTEBOOK_MARKDOWN` (активная), ~57 КБ, 7-8 тестов. `canvas/`: NotebookTab/List/Search/Toolbar/EntryEditor/RefPickerModal/MarkdownView; `lib/`: markdown-renderer + 3 плагина + notebook-migrations + useMarkdownRefResolver. Шапка `NotebookTab.jsx`: «mount this component once Igor wants the tab visible». Ждёт mount-решения Игоря (в `CanvasLayoutView`).
-- **A2. `.bodge` v2 — портируемый экспорт/импорт** ⚪ — спека `SPEC_BODGE_FORMAT_V2_CORE` (активная), ~44 КБ, 15+ тестов. `lib/`: bodge-assembly-portable / export-profiles / atomic-write / extensions / recovery / migrations; UI `canvas/ExportProjectModal`. Движок+модалка готовы; нет живого вызова `ExportProjectModal`/`applyProfile`. Нужна точка входа «Экспорт».
-- **A3. Canvas-аффордансы операций (T9 K13/K14 + assembly-views-unification)** ⚪ — ~88 КБ, 12 тестов. `CanvasSkeleton/canvas/`: MaterializeCloneModal / OpContextMenu / PieceContextMenu / JunctionPopover / StitchMarkers / zone-lane-divider / AssemblyDraftBlock / OpRhombusTemplatePicker / HoverOpIconRow; + PrimerOrderPanel (заказ олигов TSV/FASTA/Evrogen) / ProtocolPanel / LibraryTreeHost / snippet-catalog. Отложенные «K13/K14 wire trigger-points» из DEC-T9-13 — логика готова, не примонтирована. Кластер смешанный — при спеке триажить пофайлово.
-- **A4. Sanger-праймеры для секвенирования (T10/R7)** ⚪ — ~12 КБ, 2 теста. `lib/bio/`: sanger-primer-design / strain-compatibility. Готово+тесты, нет вызывающей точки.
-
-### B. Зарезервированные wizards (припаркованы под Container Window M-C.2) — ~190 КБ ⚪
-
-PlasmidUseWizard, JunctionBlock, JunctionDNA, MutagenesisWizard, OligoManager, PrimerPanel, PlasmidViewer, PlasmidMap, PlasmidVersionTree, PlasmidWorkspace, ProtocolTracker. **Не трогать до M-C.2.** Если M-C.2 отодвинут/отменён — решение «harvest vs kill». Реф — TD-DEAD-REMNANT-630KB (TECH_DEBT).
+# BodgeGene backlog
 
+Only unfinished product/architecture work belongs here. Confirmed defects belong in [`BUGS.md`](../BUGS.md); immediate execution belongs in [`CURRENT_TASK.md`](../CURRENT_TASK.md). Completed work and sprint reports are intentionally absent.
+
+## Now — pre-release stabilization
+
+### Repository and documentation cleanup
+
+Finish the active cleanup task: remove proven legacy surfaces, migrate local/audit artifacts, repair links, run full frontend/backend verification and rebuild a fresh local code graph if tooling is available.
+
+### Assembly ranges and derived reactions
+
+Recompute auto-reaction ranges when `piece.ranges` changes. A derived operation must not keep coordinates from an earlier piece shape. Add transition tests covering resize/edit after initial derivation.
+
+### Sanger notebook safety
+
+Close clone-to-focus gaps and replace save-on-blur-only behavior where focus changes can lose data. Persist explicit, testable draft/commit state and keep expected design separate from observed reads.
+
+### Revision and annotation history
+
+Complete sequence/annotation history through the current project/library revision model. Define one user-visible history path and migration behavior before adding more revision UI.
+
+### Modal event isolation
+
+Audit and fix event propagation/focus ownership in `PiecePrimersPickModal` and `PieceCreateModal`. Escape, Enter and click-outside must affect only the active transient surface.
+
+### Search completion
+
+- make `name:`, `feature:` and resolved `in:` executable before offering them;
+- support short-query insertion/deletion alignment instead of substitution-only exhaustive matching;
+- implement or remove `headVersionsOnly`;
+- index description/organism consistently;
+- keep provider failure/incomplete and strict final AND contracts unchanged.
+
+### Restriction-primer protective bases
+
+Replace the fixed/asymmetric `GCGC` policy with an enzyme-aware, symmetric and validated protective-base policy. Preserve separate Type IIS/classical restriction semantics and add end-to-end primer/export tests.
+
+## Next — connected capabilities
+
+### T9 design/materialization UI
+
+`CREATE_DESIGN_VARIANT` and `MATERIALIZE_REACTION` have reducer/test foundations but no current production dispatch. Re-design the UI against the present store contract; do not resurrect incompatible legacy wizards.
+
+### Transcript and isoform model
+
+Introduce explicit transcript identity for alternative intron/exon sets, non-table-1 translation and compound/origin-crossing CDS. Protein search and translation must consume selected transcript variants rather than a union of introns.
+
+### Annotation UX convergence
+
+- show `detail`/`point` and segmented exon structure on overview maps;
+- make incomplete/reference-derived annotations visually honest and expose source, identity and coverage;
+- add fast select -> name -> Enter annotation creation for the common case;
+- surface protein effect for CDS edits;
+- converge tooltip and edit affordances across Library, Sequence and Canvas.
+
+### Assembly workbench convergence
+
+Unify piece acquisition, junction configuration, primer-tail derivation and live graph projection around the current four-tier model and [`ASSEMBLY_WORKBENCH.md`](specs/ASSEMBLY_WORKBENCH.md). Finish PrimerPool reuse without reviving legacy wizards.
+
+### `.bodge` v2 completion
+
+Complete the normative core, migrations, notebook content, provenance and implementation plan under `docs/specs/`. Keep strict validation and explicit downgrade/loss reporting.
+
+### Alignment/Sanger trust
+
+Resume the blocked alignment reliability specification only after current repository/schema gates are stable. Require quality evidence and corpus-based acceptance, not presentation-only confidence.
+
+## Maintenance after format checkpoint
+
+### Oversized module boundaries
+
+Do not split stable files merely to satisfy a byte counter. Before the next feature change in these areas, characterize behavior and extract along live ownership boundaries: `SequenceView/index.jsx` (71.1 KiB), `AssemblyShellBody.jsx` (57.9 KiB), `RangePickerModal.jsx` (56.4 KiB), `PlasmidMiniMap.jsx` (42.8 KiB), `ContainerEditorSkeleton.jsx` (41.2 KiB) and `store/librarySlice.js` (49.2 KiB). Generated/data dictionaries are exempt. Prioritize a split only when the file is in scope and change coupling is demonstrated.
+
+### Legacy `project.dag` state
+
+Remove the remaining low-priority store orphan after `.bodge` compatibility/migration no longer depends on it.
+
+### Legacy annotation IDs
+
+New write paths already provide IDs. Add a narrow migration for historical detail/point annotations that still lack them; avoid a broad importer rewrite.
+
+### Performance baselines
+
+Maintain reproducible benchmarks on the reference 2-core/8-GB machine: UI cancellation p95, metadata preview, exact DNA search, project open and memory for a 10-Mb library.
+
+### Feature database build pipeline
+
+Move the curated cross-name/AmpR dedup rules from `scripts/dedup_common_features.py` into the tested SnapGene feature builder, then delete the separate postprocessor. Until then, its local snapshots belong only in ignored `scripts/.backups/`.
+
+### Library metadata editing
+
+Expose tags and topology in the current `LibraryWorkspace` with direct, tested persistence to the library entry. Do not restore the retired importer workspace merely to recover its old metadata column.
+
+## Active specifications
+
+| Area | Documents |
+|---|---|
+| Portable format | [`SPEC_BODGE_FORMAT_V2_CORE.md`](specs/SPEC_BODGE_FORMAT_V2_CORE.md), [`BODGE_V2_IMPLEMENTATION_PLAN.md`](specs/BODGE_V2_IMPLEMENTATION_PLAN.md), [`SPEC_REPRODUCIBLE_RECIPE.md`](specs/SPEC_REPRODUCIBLE_RECIPE.md) |
+| Assembly convergence | [`ASSEMBLY_WORKBENCH.md`](specs/ASSEMBLY_WORKBENCH.md) |
+| Alignment trust | [`SPEC_ALIGNMENT_RELIABILITY_AND_SANGER_VERIFICATION.md`](specs/SPEC_ALIGNMENT_RELIABILITY_AND_SANGER_VERIFICATION.md) |
+
+A task becomes active only when copied into `CURRENT_TASK.md` with scope, acceptance criteria and verification.
+
+## Ideas, not commitments
+
+- optional versioned local models for ranking annotation, primer and design candidates;
+- plugin boundary for external databases and alternative compute backends;
+- publication pack and reproducible construction passport;
+- collaboration/sync that preserves local-first operation.
+- typed biological parts: a declarative class registry validates annotations and enables a two-click, strand-aware replacement of promoters, CDS, tags and other compatible features;
+- an independent "Autolab" batch mode: generate validated combinatorial construct variants, primers, protocols and optional robot worklists without overloading the interactive assembly DAG.
+
+These ideas stay subordinate to correctness, reproducibility and the reference-hardware budget.

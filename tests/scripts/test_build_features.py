@@ -15,11 +15,9 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
-import pytest
-
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 SCRIPT_PATH = REPO_ROOT / "scripts" / "build_features_from_snapgene.py"
-PUC19_DNA = REPO_ROOT / "scripts" / "snapgene_dna" / "basic_cloning_vectors" / "pUC19.dna"
+PUC19_DNA = REPO_ROOT / "tests" / "fixtures" / "snapgene" / "pUC19.dna"
 
 
 def _load_script_module():
@@ -56,7 +54,6 @@ def test_script_does_not_define_inline_parsers():
     )
 
 
-@pytest.mark.skipif(not PUC19_DNA.exists(), reason="pUC19.dna reference fixture not present")
 def test_pUC19_AmpR_lacZalpha_have_codon_aligned_lengths():
     """V50 regression — every CDS-like feature on pUC19 must satisfy
     `(end - start) % 3 == 0` per DEC-PARSER-COORD-01.

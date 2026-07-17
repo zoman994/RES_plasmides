@@ -4,7 +4,6 @@
  */
 import { describe, it, expect } from 'vitest';
 import { CODON_TABLE, translateDNA, translateCodon, getCodonsForAA, getBestCodon, ORGANISMS } from '../codons';
-import { validateConstruct, checkPrimerQuality, pcrProductSize } from '../validate';
 import { detectSignalPeptide, detectHisTag, detectPropeptide, detectLinkers, autoDetectDomains } from '../domain-detection';
 import { findCompatiblePrimers, buildOrderSheet } from '../primer-reuse';
 import { darken, getFragColor, isMarker } from '../theme';
@@ -18,15 +17,6 @@ const EGFP_DNA = 'ATGGTGAGCAAGGGCGAGGAGCTGTTCACCGGGGTGGTGCCCATCCTGGTCGAGCTGGACGG
 
 // AmpR (bla): beta-lactamase, 861bp
 const AMPR_DNA = 'ATGAGTATTCAACATTTCCGTGTCGCCCTTATTCCCTTTTTTGCGGCATTTTGCCTTCCTGTTTTTGCTCACCCAGAAACGCTGGTGAAAGTAAAAGATGCTGAAGATCAGTTGGGTGCACGAGTGGGTTACATCGAACTGGATCTCAACAGCGGTAAGATCCTTGAGAGTTTTCGCCCCGAAGAACGTTTTCCAATGATGAGCACTTTTAAAGTTCTGCTATGTGGCGCGGTATTATCCCGTATTGACGCCGGGCAAGAGCAACTCGGTCGCCGCATACACTATTCTCAGAATGACTTGGTTGAGTACTCACCAGTCACAGAAAAGCATCTTACGGATGGCATGACAGTAAGAGAATTATGCAGTGCTGCCATAACCATGAGTGATAACACTGCGGCCAACTTACTTCTGACAACGATCGGAGGACCGAAGGAGCTAACCGCTTTTTTGCACAACATGGGGGATCATGTAACTCGCCTTGATCGTTGGGAACCGGAGCTGAATGAAGCCATACCAAACGACGAGCGTGACACCACGATGCCTGTAGCAATGGCAACAACGTTGCGCAAACTATTAACTGGCGAACTACTTACTCTAGCTTCCCGGCAACAATTAATAGACTGGATGGAGGCGGATAAAGTTGCAGGACCACTTCTGCGCTCGGCCCTTCCGGCTGGCTGGTTTATTGCTGATAAATCTGGAGCCGGTGAGCGTGGGTCTCGCGGTATCATTGCAGCACTGGGGCCAGATGGTAAGCCCTCCCGTATCGTAGTTATCTACACGACGGGGAGTCAGGCAACTATGGATGAACGAAATAGACAGATCGCTGAGATAGGTGCCTCACTGATTAAGCATTGGTAA';
-
-// Short CDS without stop codon (bug scenario)
-const NO_STOP_CDS = 'ATGGCCGCCGCCGCCGCCGCC';
-
-// CDS with internal stop (bug)
-const INTERNAL_STOP_CDS = 'ATGGCCTAGGCCGCCGCCTAA';
-
-// CDS with frameshift (not %3)
-const FRAMESHIFT_CDS = 'ATGGCCGCCGC'; // 11bp
 
 // glaA signal peptide (A. niger glucoamylase, 18 aa = 54 nt)
 const GLAA_SP_DNA = 'ATGTTCTCTCCCATCCTCACTGCCGTCGCTCTCGCAGCCGGCCTGGCCGCCCCC';
@@ -132,112 +122,6 @@ describe('Codon biology', () => {
 
   it('handles unknown codons as X', () => {
     expect(translateDNA('ATGNNN')).toBe('MX');
-  });
-});
-
-
-// ═══════════════════════════════════════════════════════════
-// CONSTRUCT VALIDATION — REAL CLONING SCENARIOS
-// ═══════════════════════════════════════════════════════════
-
-describe('Construct validation — real scenarios', () => {
-  it('valid expression cassette: promoter → CDS → terminator', () => {
-    const frags = [
-      { name: 'PglaA', type: 'promoter', sequence: 'A'.repeat(850) },
-      { name: 'GFP', type: 'CDS', sequence: EGFP_DNA },
-      { name: 'TtrpC', type: 'terminator', sequence: 'A'.repeat(567) },
-    ];
-    const w = validateConstruct(frags);
-    // Should have NO ATG/frameshift/stop warnings (EGFP is valid)
-    expect(w.filter(s => s.includes('ATG') && s.includes('нет')).length).toBe(0);
-    expect(w.filter(s => s.includes('рамк')).length).toBe(0);
-  });
-
-  it('CDS without stop codon: warns', () => {
-    const frags = [
-      { name: 'PglaA', type: 'promoter', sequence: 'AAAA' },
-      { name: 'noStop', type: 'CDS', sequence: NO_STOP_CDS },
-    ];
-    const w = validateConstruct(frags);
-    expect(w.some(s => s.includes('стоп') && s.includes('конце'))).toBe(true);
-  });
-
-  it('CDS with internal stop: warns at correct position', () => {
-    const frags = [
-      { name: 'PglaA', type: 'promoter', sequence: 'AAAA' },
-      { name: 'bad', type: 'CDS', sequence: INTERNAL_STOP_CDS },
-    ];
-    const w = validateConstruct(frags);
-    expect(w.some(s => s.includes('внутренний') && s.includes('TAG'))).toBe(true);
-  });
-
-  it('CDS with frameshift: warns with remainder', () => {
-    const frags = [{ name: 'fs', type: 'CDS', sequence: FRAMESHIFT_CDS }];
-    const w = validateConstruct(frags);
-    expect(w.some(s => s.includes('11') && s.includes('3'))).toBe(true);
-  });
-
-  it('missing promoter before CDS: warns', () => {
-    const frags = [
-      { name: 'TtrpC', type: 'terminator', sequence: 'AAAA' },
-      { name: 'GFP', type: 'CDS', sequence: EGFP_DNA },
-    ];
-    const w = validateConstruct(frags);
-    expect(w.some(s => s.includes('промотор'))).toBe(true);
-  });
-
-  it('CDS at end without terminator: warns', () => {
-    const frags = [
-      { name: 'PglaA', type: 'promoter', sequence: 'AAAA' },
-      { name: 'GFP', type: 'CDS', sequence: EGFP_DNA },
-    ];
-    const w = validateConstruct(frags);
-    expect(w.some(s => s.includes('терминатор') && s.includes('после'))).toBe(true);
-  });
-
-  it('two CDS in a row: warns about polycistronic', () => {
-    const frags = [
-      { name: 'PglaA', type: 'promoter', sequence: 'AAAA' },
-      { name: 'GFP', type: 'CDS', sequence: EGFP_DNA },
-      { name: 'AmpR', type: 'CDS', sequence: AMPR_DNA },
-    ];
-    const w = validateConstruct(frags);
-    expect(w.some(s => s.includes('подряд') || s.includes('полицистрон'))).toBe(true);
-  });
-
-  it('intron warning for eukaryotic gene in E. coli', () => {
-    const frags = [{
-      name: 'EukGene', type: 'CDS', sequence: EGFP_DNA,
-      has_introns: true, introns: [{ start: 100, end: 200 }],
-    }];
-    const w = validateConstruct(frags);
-    expect(w.some(s => s.includes('интрон'))).toBe(true);
-  });
-
-  it('reversed promoter: warns about antisense transcription', () => {
-    const frags = [{ name: 'PglaA', type: 'promoter', strand: -1, sequence: 'AAAA' }];
-    const w = validateConstruct(frags);
-    expect(w.some(s => s.includes('обратной ориентации'))).toBe(true);
-  });
-
-  it('reversed terminator: warns it wont work', () => {
-    const frags = [{ name: 'TtrpC', type: 'terminator', strand: -1, sequence: 'AAAA' }];
-    const w = validateConstruct(frags);
-    expect(w.some(s => s.includes('перевёрнут'))).toBe(true);
-  });
-
-  it('empty sequence on CDS: no crash', () => {
-    const frags = [{ name: 'empty', type: 'CDS', sequence: '' }];
-    expect(() => validateConstruct(frags)).not.toThrow();
-  });
-
-  it('non-CDS fragments: no CDS-specific warnings', () => {
-    const frags = [
-      { name: 'PglaA', type: 'promoter', sequence: 'AAAA' },
-      { name: 'TtrpC', type: 'terminator', sequence: 'GGGG' },
-    ];
-    const w = validateConstruct(frags);
-    expect(w.filter(s => s.includes('ATG') || s.includes('стоп') || s.includes('рамк')).length).toBe(0);
   });
 });
 
@@ -411,72 +295,6 @@ describe('autoDetectDomains — integrated', () => {
 
 
 // ═══════════════════════════════════════════════════════════
-// PRIMER QUALITY — REAL PRIMER SCENARIOS
-// ═══════════════════════════════════════════════════════════
-
-describe('Primer quality — real scenarios', () => {
-  it('good primer: 20bp, ends GC, no problems', () => {
-    const w = checkPrimerQuality({ bindingSequence: 'ACGTACGTACGTACGTACGC', length: 20 });
-    expect(w.length).toBe(0);
-  });
-
-  it('primer ending with AT: warns no GC clamp', () => {
-    const w = checkPrimerQuality({ bindingSequence: 'GCGCGCGCGCGCGCGCGCAT' });
-    expect(w.some(s => s.includes('GC'))).toBe(true);
-  });
-
-  it('poly-T run: warns homopolymer', () => {
-    const w = checkPrimerQuality({ bindingSequence: 'ATCGTTTTTTTGCGC' });
-    expect(w.some(s => s.includes('омополимер'))).toBe(true);
-  });
-
-  it('60nt primer: warns PAGE purification needed', () => {
-    const w = checkPrimerQuality({ bindingSequence: 'ATCG'.repeat(5), length: 60 });
-    expect(w.some(s => s.includes('PAGE'))).toBe(true);
-  });
-
-  it('palindromic primer: warns self-complementarity', () => {
-    // AATT is palindromic (RC = AATT)
-    const w = checkPrimerQuality({ bindingSequence: 'GCGCGCGCAATTGCGC' });
-    expect(w.some(s => s.includes('самокомплементарность'))).toBe(true);
-  });
-});
-
-
-// ═══════════════════════════════════════════════════════════
-// PCR PRODUCT SIZE CALCULATION
-// ═══════════════════════════════════════════════════════════
-
-describe('PCR product size — assembly scenarios', () => {
-  it('3-fragment overlap assembly: sizes include overlaps', () => {
-    const frags = [
-      { name: 'PglaA', length: 850, needsAmplification: true },
-      { name: 'GFP', length: 720, needsAmplification: true },
-      { name: 'TtrpC', length: 567, needsAmplification: true },
-    ];
-    const junctions = [{ overlapLength: 30 }, { overlapLength: 30 }];
-
-    // PglaA: no left junction, right junction 30bp
-    expect(pcrProductSize(frags[0], null, junctions[0])).toBe(880);
-    // GFP: left 30bp + right 30bp
-    expect(pcrProductSize(frags[1], junctions[0], junctions[1])).toBe(780);
-    // TtrpC: left 30bp, no right junction
-    expect(pcrProductSize(frags[2], junctions[1], null)).toBe(597);
-  });
-
-  it('fragment from tube (no amplification): returns null', () => {
-    const frag = { name: 'backbone', length: 5000, needsAmplification: false };
-    expect(pcrProductSize(frag, { overlapLength: 30 }, { overlapLength: 30 })).toBeNull();
-  });
-
-  it('uses sequence length when length field is missing', () => {
-    const frag = { name: 'X', sequence: 'ATCG'.repeat(100), needsAmplification: true };
-    expect(pcrProductSize(frag, null, null)).toBe(400);
-  });
-});
-
-
-// ═══════════════════════════════════════════════════════════
 // PRIMER REUSE — PRACTICAL SCENARIOS
 // ═══════════════════════════════════════════════════════════
 
@@ -587,15 +405,6 @@ describe('Edge cases and robustness', () => {
     expect(translateDNA('A')).toBe('');
   });
 
-  it('validateConstruct: empty array → no crash', () => {
-    expect(validateConstruct([])).toEqual([]);
-  });
-
-  it('validateConstruct: fragment with undefined sequence → no crash', () => {
-    const frags = [{ name: 'x', type: 'CDS' }];
-    expect(() => validateConstruct(frags)).not.toThrow();
-  });
-
   it('detectSignalPeptide: empty string → no crash', () => {
     expect(() => detectSignalPeptide('')).not.toThrow();
   });
@@ -608,14 +417,6 @@ describe('Edge cases and robustness', () => {
     const domains = autoDetectDomains('XXXNNNXXX'.repeat(20), 'test');
     // Should not crash, may return domains with X amino acids
     expect(Array.isArray(domains)).toBe(true);
-  });
-
-  it('checkPrimerQuality: empty binding → empty warnings', () => {
-    expect(checkPrimerQuality({ bindingSequence: '' })).toEqual([]);
-  });
-
-  it('pcrProductSize: missing length and sequence → returns 0', () => {
-    expect(pcrProductSize({ needsAmplification: true }, null, null)).toBe(0);
   });
 
   it('findCompatiblePrimers: empty binding → empty matches', () => {

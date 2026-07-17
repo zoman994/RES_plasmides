@@ -68,7 +68,7 @@ describe('sanitizeSequence', () => {
     expect(sanitizeSequence('∅GAATTCCC')).toBe('GAATTCCC');
   });
 
-  it('preserves IUPAC when PlasmidUseWizard-style strict [^ATGCN] would have dropped them', () => {
+  it('preserves IUPAC that a legacy strict [^ATGCN] sanitizer would have dropped', () => {
     // P-wizard-iupac: wizard used to strip R/Y/S/W/K/M/B/D/H/V — this test guards the fix
     expect(sanitizeSequence('ATGCRYSWKMBDHV')).toBe('ATGCRYSWKMBDHV');
   });

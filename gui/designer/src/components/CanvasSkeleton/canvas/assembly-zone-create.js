@@ -5,17 +5,14 @@
  *
  * Post-T6 an assembly IS a zone (ANCHORS DEC-CANVAS-4T-07: "Zone
  * supersedes assemblyDraft"; migration v7→v8 converts every legacy
- * draft → a zone). Both entry points — the bottom-right «+ Сборка»
- * button (CanvasSkeleton/index.jsx) and «+ Новая сборка» inside the
- * AssemblyDraftsPanel — now build their CREATE_ZONE action HERE, so
- * there is exactly one entity, one renderer (zone frame + lanes), one
- * counter. The legacy CREATE_ASSEMBLY_DRAFT path is left UI-unreachable
- * (reducer kept no-op for ~50 legacy tests — DEC-T6-14).
+ * draft → a zone). The active «+ Сборка» entry point builds its CREATE_ZONE
+ * action HERE, so there is exactly one entity, one renderer (zone frame +
+ * lanes), one counter. The legacy CREATE_ASSEMBLY_DRAFT path is left
+ * UI-unreachable (reducer kept no-op for ~50 legacy tests — DEC-T6-14).
  *
  * Pure: takes the skeleton state, returns a CREATE_ZONE action with an
  * auto-name «Сборка N» and a cascaded bounds rect (N = existing zone
- * count + 1). Verbatim of the cascade AssemblyDraftsPanel used before
- * — zero behaviour change for that panel.
+ * count + 1).
  */
 import { v7 as uuidv7 } from 'uuid';
 import { selectAllZones } from '../store/selectors-zones';

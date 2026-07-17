@@ -1,20 +1,15 @@
 /**
  * folder-tree.js — shared utility for tag-prefix-folder trees.
  *
- * The Importer's CatalogColumn already had a `buildFolderTree(paths)`
- * helper that turned a flat list of slash-separated paths
+ * Turns a flat list of slash-separated paths
  * (`['Vectors', 'Vectors/CRISPR', 'Promoters']`) into a forest of
- * `{ name, path, children[] }` nodes. Sprint M-X.3 K1 needs the same
- * tree inside `PreImportModal` so user-defined folders show up as a
- * pickable hierarchy. Extracted here so both consumers share the
- * exact same parser (no drift if we later add validation).
+ * `{ name, path, children[] }` nodes for Library folder consumers.
  *
  * Storage layout (existing — no migration here):
  *   localStorage['pvcs-catalog-user-folders-by-group'] = JSON
  *      { canvas: string[], demo: string[], mine: string[], snapgene: string[] }
- *   Each entry is a slash-separated path. The Importer paste / drop /
- *   catalog flows always land in the user's library, so callers
- *   typically read group `'mine'`.
+ *   Each entry is a slash-separated path; library callers typically
+ *   read group `'mine'`.
  */
 
 const STORAGE_KEY = 'pvcs-catalog-user-folders-by-group';
@@ -70,8 +65,7 @@ export function buildFolderTree(paths) {
  *
  * Migrates the pre-multi-group key (`pvcs-catalog-user-folders` —
  * a flat array assumed to belong to 'mine') on the fly without
- * writing back; the migration write is owned by CatalogColumn so
- * we don't risk a duplicate write race here.
+ * writing back so a read never creates a duplicate write race.
  */
 export function readFolders(group = 'mine') {
   if (typeof localStorage === 'undefined') return [];
@@ -106,11 +100,7 @@ const KNOWN_GROUPS = new Set(['canvas', 'demo', 'mine', 'snapgene']);
 /**
  * Append a folder path to the given group in localStorage. No-op
  * for empty / non-string paths, unknown groups, or paths that are
- * already present (de-duped). Used by:
- *   - PreImportModal — when the user types a new folder name and
- *     clicks «+ folder», we persist after commit so it shows up in
- *     CatalogColumn next time.
- *   - createProject (auto-folder per new project) — pushes the
+ * already present (de-duped). `createProject` pushes the
  *     project name into the `canvas` group so each project carries
  *     its own folder under «This project».
  */

@@ -5,12 +5,7 @@
  * retired this sprint — the StartScreen Sidebar is now the
  * single left panel for ALL workspaces. App.jsx renders Sidebar
  * outside, then mounts AppShell here for `workspace.active`
- * driven content (Library / DAG / Importer / placeholders).
- *
- * Old NavRail.jsx + Topbar.jsx files kept on disk with a
- * DEPRECATED comment; not imported anywhere. They get deleted
- * in a follow-up cleanup once the test suite confirms zero
- * references.
+ * driven content (Library / tools / placeholders).
  *
  * Lazy-mount preserved — heavy workspace bundles still split
  * out so the shell paint stays cheap.
@@ -21,7 +16,6 @@ import Breadcrumb from './Breadcrumb';
 import { FEATURE_FLAGS } from '../../lib/feature-flags';
 
 const LibraryWorkspace = lazy(() => import('../Library/LibraryWorkspace'));
-const Importer = lazy(() => import('../Library'));
 const AlignWorkspace = lazy(() => import('../Align/AlignWorkspace'));
 const RestrictionSitesWorkspace = lazy(() => import('../RestrictionSites/RestrictionSitesWorkspace'));
 const PrimerPoolWorkspace = lazy(() => import('../PrimerPool/PrimerPoolWorkspace'));
@@ -53,7 +47,6 @@ export function WorkspaceRouter() {
           picker superseded by the assembly editor (CanvasSkeleton).
           DagWorkspace + Dag palette files are now orphaned dead code
           (see TECH_DEBT). */}
-      {active === 'importer' && <Importer />}
       {active === 'align' && <AlignWorkspace />}
       {active === 'restriction-sites' && <RestrictionSitesWorkspace />}
       {active === 'primer-pool' && <PrimerPoolWorkspace />}

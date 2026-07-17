@@ -1,16 +1,13 @@
 /**
  * junction-control-l3-ui.test.jsx — JUNCTION layer 3 step 2 (J6/J6b).
- * The clickable strip junction → JunctionControl (evolution of JunctionPopover)
- * editing the live zone.junctions config; OPEN/CLOSE_JUNCTION_PICKER handler;
- * ImplicitJunction reads the stored method.
+ * JunctionControl edits the live zone.junctions config, with reducer coverage
+ * for the OPEN/CLOSE_JUNCTION_PICKER actions.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { skeletonReducer, buildInitialState } from '../store/skeleton-state';
 import { pairKeyFor } from '../lib/junction-derive';
 import JunctionControl from '../canvas/JunctionControl';
-import ImplicitJunction from '../canvas/zone-sequence-mode/ImplicitJunction';
-import ZoneAssembledView from '../canvas/zone-sequence-mode/ZoneAssembledView';
 
 afterEach(cleanup);
 
@@ -84,54 +81,5 @@ describe('JUNCTION L3 — JunctionControl (J6)', () => {
     expect(screen.getByTestId('junction-popover-status').getAttribute('data-status')).toBe('manual');
     fireEvent.click(screen.getByTestId('junction-popover-reset-auto'));
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ autoMode: 'auto', method: 'overlap_pcr' }));
-  });
-});
-
-// ─── ImplicitJunction — stored method wins over derived (J6b) ───────────────
-
-describe('JUNCTION L3 — ImplicitJunction stored method', () => {
-  it('uses the stored method when provided (overrides the derived one)', () => {
-    render(<ImplicitJunction fromPiece={{ acquisitionMethod: 'pcr' }} toPiece={{ acquisitionMethod: 'pcr' }} method="golden_gate" onClick={() => {}} />);
-    const j = screen.getByTestId('zone-seq-junction');
-    expect(j.getAttribute('data-method')).toBe('golden_gate'); // not the derived 'overlap-pcr'
-    expect(j.getAttribute('data-junction-kind')).toBe('golden_gate');
-  });
-
-  it('falls back to the derived method when none is stored', () => {
-    render(<ImplicitJunction fromPiece={{ acquisitionMethod: 'pcr' }} toPiece={{ acquisitionMethod: 'pcr' }} onClick={() => {}} />);
-    expect(screen.getByTestId('zone-seq-junction').getAttribute('data-method')).toBe('overlap-pcr');
-  });
-});
-
-// ─── ZoneAssembledView — strip surface wiring (J6b) ─────────────────────────
-
-describe('JUNCTION L3 — zone-strip surface (J6b)', () => {
-  it('the strip junction shows the SEEDED method (overlap_pcr) from zone.junctions', () => {
-    const s = twoPieceState();
-    render(<ZoneAssembledView state={s} dispatch={vi.fn()} zoneId="zn-1" finals={[]} />);
-    expect(screen.getByTestId('zone-seq-junction').getAttribute('data-method')).toBe('overlap_pcr');
-  });
-
-  it('clicking the junction dispatches OPEN_JUNCTION_METHOD_PICKER with the pair', () => {
-    const dispatch = vi.fn();
-    render(<ZoneAssembledView state={twoPieceState()} dispatch={dispatch} zoneId="zn-1" finals={[]} />);
-    fireEvent.click(screen.getByTestId('zone-seq-junction'));
-    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({
-      type: 'OPEN_JUNCTION_METHOD_PICKER', zoneId: 'zn-1', fromPieceId: 'pc1', toPieceId: 'pc2',
-    }));
-  });
-
-  it('when the picker is open, JunctionControl mounts; a method pick dispatches SET_BOUNDARY_OVERLAP', () => {
-    let s = twoPieceState();
-    s = skeletonReducer(s, {
-      type: 'OPEN_JUNCTION_METHOD_PICKER', zoneId: 'zn-1', fromPieceId: 'pc1', toPieceId: 'pc2',
-    });
-    const dispatch = vi.fn();
-    render(<ZoneAssembledView state={s} dispatch={dispatch} zoneId="zn-1" finals={[]} />);
-    expect(screen.getByTestId('junction-popover')).toBeTruthy();
-    fireEvent.click(screen.getByTestId('junction-popover-kind-re_ligation'));
-    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({
-      type: 'SET_BOUNDARY_OVERLAP', zoneId: 'zn-1', pairKey: PK, method: 'restriction',
-    }));
   });
 });

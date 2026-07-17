@@ -30,19 +30,24 @@ htmlcov/
 Thumbs.db
 
 *.dna
+!tests/fixtures/snapgene/pUC19.dna
 
-# Uncurated personal dump — installers, scanned IDs, contracts, papers, data
-# blobs. Explicitly NOT a source of truth (CLAUDE.md); never commit to git.
+# Uncurated personal dump — installers, scanned IDs, contracts, papers and data.
 docs/design_assets/
 
 # Stray save-format export artifact at repo root
 /test.bodge
 
-# Local tooling (Claude Code worktrees, IDE settings)
+# Local tooling, reports and IDE settings
 .claude/
+.codex/
+.audit/
 .vscode/
 node_modules/
+scripts/.backups/
 
 # graphify knowledge-graph data (generated: graph.json, report, html, wiki, cache)
 .graphify/
+/module-graph.json
+/module-graph.html
 /gui/designer/.rebase-tmp/

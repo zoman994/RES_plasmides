@@ -1,6 +1,6 @@
 /**
- * ProjectAssemblyWorkspace — M-WORKSPACE. Two-level tab workspace that replaces
- * the floating ZoneFrame canvas: a top tab per assembly (AssemblyTabStrip) + a
+ * ProjectAssemblyWorkspace — M-WORKSPACE. Two-level workspace with a top tab
+ * per assembly (AssemblyTabStrip) and a
  * per-assembly view switcher (AssemblyViewTabStrip: Sequence / DAG / Праймеры /
  * Pipeline) + the active (assembly, view) body full-area. Reuses the existing
  * view components (AssemblyModeShell, ZoneGraphContent, the primers/pipeline

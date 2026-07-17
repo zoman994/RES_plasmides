@@ -1,50 +1,36 @@
-# BodgeGene designer (gui/designer)
+# BodgeGene designer
 
-> **v0.6.0-dev — rewrite в работе.** Текущий main соответствует
-> v0.5.4-alpha; Sprint M-A находится в feature-ветке. v0.5
-> компоненты сохраняются на диске как orphan-файлы (не импортируются
-> в build entry) до конца rewrite-фазы — переиспользуются в M-B+ по
-> [`docs/ARCHITECTURE_v2.md`](../../docs/ARCHITECTURE_v2.md) §8.
+Основное локальное приложение BodgeGene: React 19 + Vite 8 + Zustand/Dexie, local-first persistence и Web Workers для тяжёлого поиска/анализа.
 
-## Стек
+Актуальная архитектура: [`docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md). Правила разработки: [`AGENTS.md`](../../AGENTS.md).
 
-React 19 + Vite 8 + Tailwind 4 + Zustand 5 (Immer) + React Compiler.
-Persistence: Dexie 4 (IndexedDB) + fflate (.bodge ZIP). UUIDv7 ids
-через `uuid` v10.
+## Запуск
 
-## Команды
+Сначала из корня репозитория установите Python helper и его зависимости, затем
+установите frontend-зависимости:
 
 ```bash
+py -m pip install -e ".[gui]"
 cd gui/designer
 npm install
-npm run dev:front      # Vite dev сервер (порт 3000)
-npx vitest run         # все unit-тесты
-npx vite build         # production-сборка
+npm run dev
 ```
 
-## Структура (актуальная для M-A)
+Приложение открывается на `http://localhost:3000`.
 
-```
-src/
-├── App.jsx                 — root layout + routing по activeFullscreen
-├── main.jsx                — bootstrap + ErrorBoundary
-├── index.css               — design tokens (light/dark) + StartScreen styles
-├── store/                  — Zustand 3 slices (project, canvas, ui)
-├── db/dexie-schema.js      — Dexie v1 (projects, containers)
-├── lib/
-│   ├── storage.js          — localStorage wrapper + memory fallback
-│   ├── file-system.js      — File System Access wrapper + fallback
-│   ├── bodge-zip.js        — .bodge ZIP I/O (fflate)
-│   ├── multi-tab-lock.js   — navigator.locks + BroadcastChannel
-│   └── v05-cleanup.js      — one-shot legacy localStorage wipe
-└── components/
-    ├── AppShell/           — Topbar + content frame
-    ├── StartScreen/        — wireframe v7 layout
-    ├── DagPlaceholder.jsx  — пустой канвас в проекте
-    ├── UnderConstruction.jsx — фулскрин-заглушка для M-F/M-H/etc
-    ├── MultiTabBlocked.jsx — multi-tab race UI
-    ├── ReadOnlyForced.jsx  — view после force-release
-    └── SettingsModal.jsx   — Display / Identity / Advanced
+## Проверка
+
+```bash
+npm test
+npx vite build
 ```
 
-См. также `docs/SPRINT_M-A.md` (спека) и `CURRENT_TASK.md` (чеклист).
+Для одного теста используйте `npm test -- path/to/file.test.jsx`. Не запускайте глобальный `npx vitest`: он может выбрать несовместимую версию из npm cache.
+
+## Основные каталоги
+
+- `src/components/` — рабочие пространства и UI;
+- `src/store/` — канонический Zustand state;
+- `src/lib/` — биологические, файловые и поисковые контракты;
+- `src/__tests__/` и локальные `__tests__/` — Vitest suites;
+- `public/` — PWA/static assets.

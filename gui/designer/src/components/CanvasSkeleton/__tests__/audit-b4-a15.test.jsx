@@ -1,7 +1,5 @@
 /**
- * audit-b4-a15.test.jsx — two small audit fixes.
- *  B4: CutOpPopup shows a methylation caution for ANY selected Dam/Dcm-sensitive
- *      enzyme (was gated to exactly 2 enzymes).
+ * audit-b4-a15.test.jsx — MutationModal audit fixes.
  *  A15: MutationModal's Position is read-only so the frozen «Original base» can't
  *      desync from an edited position.
  */
@@ -11,38 +9,9 @@ import {
 import {
   render, screen, cleanup, fireEvent,
 } from '@testing-library/react';
-import CutOpPopup from '../canvas/operations/CutOpPopup';
 import MutationModal from '../editor/assembly-mode/MutationModal';
 
 afterEach(cleanup);
-
-const SPACER = 'AAAAAAAAAACCCCCCCCCC';
-
-describe('B4 — CutOpPopup methylation caution for a single sensitive enzyme', () => {
-  function renderCut(seq, enzymes) {
-    return render(
-      <CutOpPopup
-        operation={{ id: 'op1', params: { templateId: 'c1', enzymes } }}
-        position={{ x: 0, y: 0 }}
-        containers={[{ id: 'c1', name: 't', kind: 'molecule', sequence: seq, topology: { circular: true } }]}
-        onCancel={vi.fn()}
-        onExecute={vi.fn()}
-      />,
-    );
-  }
-  it('a single Dam-sensitive enzyme (XbaI) surfaces the caution', () => {
-    // one XbaI site (TCTAGA) → viable single cut + Dam caution.
-    renderCut(`TCTAGA${SPACER}${SPACER}${SPACER}`, ['XbaI']);
-    const warn = screen.getByTestId('cut-op-warn-methylation');
-    expect(warn).toBeTruthy();
-    expect(warn.textContent).toMatch(/XbaI/);
-    expect(warn.textContent).toMatch(/Dam/);
-  });
-  it('a non-sensitive enzyme (EcoRI) shows no methylation caution', () => {
-    renderCut(`GAATTC${SPACER}${SPACER}${SPACER}`, ['EcoRI']);
-    expect(screen.queryByTestId('cut-op-warn-methylation')).toBeNull();
-  });
-});
 
 describe('H2/M2 — MutationModal gates undeliverable / out-of-range positions', () => {
   const SEQ200 = 'ACGT'.repeat(50); // 200 nt

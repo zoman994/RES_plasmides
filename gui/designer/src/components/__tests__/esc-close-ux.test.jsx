@@ -7,7 +7,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import 'fake-indexeddb/auto';
 import { render, cleanup, fireEvent } from '@testing-library/react';
-import OpRhombusTemplatePicker from '../CanvasSkeleton/canvas/OpRhombusTemplatePicker';
 import CategoryPickerModal from '../Library/onboarding/CategoryPickerModal';
 import { bootstrapStore } from '../../store';
 
@@ -15,21 +14,6 @@ afterEach(cleanup);
 const esc = () => fireEvent.keyDown(window, { key: 'Escape' });
 
 describe('UX convention A — modals close on Escape', () => {
-  it('OpRhombusTemplatePicker: Esc → onCancel', () => {
-    const onCancel = vi.fn();
-    render(
-      <OpRhombusTemplatePicker
-        op={{ id: 'o1' }}
-        position={{ x: 10, y: 10 }}
-        containers={[]}
-        onPick={() => {}}
-        onCancel={onCancel}
-      />,
-    );
-    esc();
-    expect(onCancel).toHaveBeenCalled();
-  });
-
   it('CategoryPickerModal: Esc → onClose', () => {
     try { bootstrapStore(); } catch { /* idempotent */ }
     const onClose = vi.fn();

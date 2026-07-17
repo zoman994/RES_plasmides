@@ -1,8 +1,7 @@
 /**
  * AddModal — Sprint M-X.7a v2 K6 (DEC-MX7A-V2-07).
  *
- * Wrapper around the existing PreImportModal flow per spec §3
- * IN #8 + §6 K6. Renders:
+ * Entry point for the canonical Library import flow. Renders:
  *   • Source tiles (Файл · Paste · Каталог · Cross-project)
  *   • Target radio (Активный / Без проекта / Лабпул — last
  *     visible only for kind=primer scope; deferred to a future
@@ -15,11 +14,8 @@
  *   • catalog → onLaunchPreImport({ source: 'catalog', target })
  *   • cross-project → opens CrossProjectStub (no PreImport handoff)
  *
- * The PreImportModal handoff signatures are minimal in K6 (preset
- * source + target). Concrete file picker / paste textarea / catalog
- * sub-flows live in the existing PreImportModal — we just hand it
- * the preset and let it run. R4 risk mitigation: 2 new props on
- * PreImportModal don't break existing Importer flow callsites.
+ * LibraryWorkspace owns the concrete picker, paste, and catalog actions;
+ * this component only returns the selected source and target preset.
  */
 import { useEffect, useMemo, useState } from 'react';
 import { STRINGS } from '../../../lib/strings';
@@ -58,8 +54,8 @@ export default function AddModal({ open, onClose, onLaunchPreImport }) {
   const [target, setTarget] = useState('loose');
   const [stubOpen, setStubOpen] = useState(false);
   const [pasteText, setPasteText] = useState('');
-  // WT-D-2 — homology auto-annotation toggle (default on). Rides the preset
-  // → LibraryTreeHost.importFiles opts → enrichAnnotations.
+  // WT-D-2 — homology auto-annotation toggle (default on). The active import
+  // flow passes this preset to enrichAnnotations.
   const [autoAnnotate, setAutoAnnotate] = useState(true);
   // WT-UX-8/7 — optional name + topology for paste imports (headerless ACGT
   // would otherwise land as «imported» / always-linear). Ride the preset.

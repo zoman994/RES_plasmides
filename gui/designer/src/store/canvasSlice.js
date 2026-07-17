@@ -22,13 +22,9 @@ export function isValidFullscreen(name) {
 }
 
 // Persist + restore the top navStack entry across reloads. We only
-// resurrect screens whose state is self-contained (no dependency on
-// transient in-memory data like parsed importer files): currently that
-// means «Importer with target=library» — biolog complained that a page
-// reload from the Library view kicked them back to the start screen.
-// Other fullscreens (DAG, importer→project, etc.) reset to start so we
-// don't restore a project that's been deleted or land in importer with
-// no parsed item.
+// resurrect screens whose state is self-contained. Currently that means
+// the Library fullscreen; other overlays reset to start so stale project
+// context cannot be restored after deletion or migration.
 const NAV_STORAGE_KEY = 'bodgegene-nav-top';
 
 function isRestorableEntry(entry) {

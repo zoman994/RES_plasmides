@@ -2,12 +2,9 @@
  * NotebookTab — host component that ties together NotebookList +
  * NotebookSearch + NotebookEntryEditor + NotebookRefPickerModal.
  *
- * Spec §K16 (under Igor's responsibility): this tab gets lazy-loaded
- * into CanvasLayoutView / EditorWindowShell. To keep the change
- * surface small, the tab ships here as a standalone composer that
- * receives notebook state + entity state via props. The CanvasLayoutView
- * integration is a follow-up wiring task — once Igor wants the tab
- * visible in his main canvas, mount this component there.
+ * The tab is a standalone composer that receives notebook state and entity
+ * state via props, so a workspace host can mount it without coupling the
+ * notebook data model to that host.
  *
  * Props:
  *   notebookEntries        — Array of notebook entries (from state).

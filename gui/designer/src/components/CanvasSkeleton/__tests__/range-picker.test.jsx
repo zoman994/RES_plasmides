@@ -1,7 +1,7 @@
 /**
  * range-picker.test.jsx — M-CANVAS-WORKFLOW-UX K5.
  *
- * «+ Плазмида»: PlaceholderTreePicker (plasmid) → RangePickerModal
+ * «+ Плазмида»: shared library source picker → RangePickerModal
  * (mini read-only SequenceView + numeric start/end + features dropdown
  * + RC) → sourced piece with the chosen range (SPEC §3.1.A). Drop of a
  * canvas container also routes through the range picker.
@@ -23,7 +23,7 @@ import { bootstrapStore, useStore } from '../../../store';
 afterEach(cleanup);
 beforeEach(() => {
   try { bootstrapStore(); } catch { /* idempotent */ }
-  // PlaceholderTreePicker persists Recent/Favorites in localStorage —
+  // The shared source picker persists Recent/Favorites in localStorage —
   // clear so a prior test's recordRecent doesn't render the same entry
   // twice (once in Недавно, once in Коллекция) breaking getByTestId.
   try { localStorage.clear(); } catch { /* no-op */ }

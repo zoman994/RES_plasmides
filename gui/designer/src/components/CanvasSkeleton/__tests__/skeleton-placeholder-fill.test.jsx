@@ -4,7 +4,7 @@
  * Coverage:
  *  - FILL_PLACEHOLDER reducer: fills in-place (id + position preserved),
  *    sets origin.kind='tree_pick', highlights, toast.
- *  - Click placeholder → PlaceholderTreePicker opens.
+ *  - Click placeholder → shared source picker opens.
  *  - Picker shows entries scoped to current project, with fallback to
  *    loose when project is empty.
  *  - Click entry in picker → fillPlaceholder + picker closes.
@@ -159,7 +159,7 @@ describe('FILL_PLACEHOLDER reducer', () => {
 });
 
 describe.skip('Placeholder click → TreePicker (LEGACY — AE-K9.6 ghost block removed, spec §7.6)', () => {
-  it('click placeholder block opens PlaceholderTreePicker', () => {
+  it('click placeholder block opens the shared source picker', () => {
     render(<CanvasSkeleton />);
     const block = screen.getByTestId('skeleton-block-c-placeholder-1');
     fireEvent.click(block);

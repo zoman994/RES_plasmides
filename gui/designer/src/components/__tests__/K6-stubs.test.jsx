@@ -3,9 +3,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { useStore } from '../../store';
 import UnderConstruction from '../UnderConstruction';
-import DagPlaceholder from '../DagPlaceholder';
 import SettingsModal from '../SettingsModal';
-import ThemeToggle from '../ThemeToggle';
 
 function reset() {
   useStore.setState((state) => {
@@ -17,7 +15,7 @@ function reset() {
   });
 }
 
-describe('K6 — UnderConstruction + DagPlaceholder + SettingsModal', () => {
+describe('K6 — UnderConstruction + SettingsModal', () => {
   beforeEach(() => { reset(); cleanup(); });
 
   it('UnderConstruction renders milestone + name from prop payload', () => {
@@ -39,23 +37,6 @@ describe('K6 — UnderConstruction + DagPlaceholder + SettingsModal', () => {
     const node = screen.getByTestId('under-construction');
     expect(node.textContent).toContain('Library');
     expect(node.textContent).toContain('M-H');
-  });
-
-  it('DagPlaceholder renders the empty-canvas placeholder text', () => {
-    render(<DagPlaceholder />);
-    const node = screen.getByTestId('dag-placeholder');
-    expect(node.textContent).toContain('Empty project');
-  });
-
-  it('ThemeToggle button flips theme + applies data-theme on root', () => {
-    render(<ThemeToggle />);
-    expect(useStore.getState().theme).toBe('light');
-    fireEvent.click(screen.getByTestId('theme-toggle'));
-    expect(useStore.getState().theme).toBe('dark');
-    expect(document.documentElement.dataset.theme).toBe('dark');
-    fireEvent.click(screen.getByTestId('theme-toggle'));
-    expect(useStore.getState().theme).toBe('light');
-    expect(document.documentElement.dataset.theme).toBe('light');
   });
 
   // UX-006 — Display tab restored 2026-05-06 to host theme + sequence

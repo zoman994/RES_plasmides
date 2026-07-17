@@ -101,8 +101,8 @@ async function importViaBackend(file) {
  *     annotations, _fromFileCount, _ext, _metadata? }
  *
  * `_fromFileCount` tells callers how many features came from the file (vs
- * potential later enrichment). `_metadata` is preserved for .dna primers
- * (PrimerWizardStepModal in K6 reads `_metadata.primers`).
+ * potential later enrichment). `_metadata` preserves embedded .dna primers
+ * for callers that migrate them into the canonical primer pool.
  *
  * @param {File} file
  * @returns {Promise<Object>}
@@ -119,9 +119,8 @@ export async function parseFile(file) {
     if (data.features?.length > 0) {
       const result = importFeatures(data.features, data.length, 'genbank');
       annotations = result.annotations || [];
-      // PRIMER-11 (V176) — primers extracted from primer_bind features were
-      // dropped here; surface them in _metadata.primers (PrimerWizardStepModal
-      // reads it) so a .dna's embedded primers reach the pool.
+      // PRIMER-11 (V176) — preserve primers extracted from primer_bind
+      // features in _metadata.primers for canonical-pool migration.
       primers = result.primers || [];
     }
     const dnaMeta = data.metadata || null;

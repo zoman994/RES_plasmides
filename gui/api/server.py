@@ -29,8 +29,8 @@ from pvcs.assembly_engine import (
     AssemblyFragment, JunctionSpec, generate_primers_for_step,
     design_overlap_junction, format_order_sheet, GG_ENZYMES,
 )
-from pvcs.golden_gate import design_golden_gate, check_overhang_uniqueness, check_internal_sites
-from pvcs.restriction import RE_DATABASE, design_re_primers, check_compatible_ends
+from pvcs.golden_gate import check_overhang_uniqueness, check_internal_sites
+from pvcs.restriction import RE_DATABASE, check_compatible_ends
 from pvcs.utils import calc_tm, gc_content
 
 app = FastAPI(title="PlasmidVCS Designer API")

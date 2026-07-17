@@ -1,8 +1,6 @@
 /** Golden Gate assembly: enzyme database, overhang design, validation. */
 
-// `reverseComplement` is re-exported for backward compatibility —
-// `validate.js` and `JunctionBlock.jsx` import it through this module.
-// Single source of truth lives in `sequence-utils.js`.
+// Re-exported for compatibility; the implementation lives in sequence-utils.
 import { reverseComplement } from './sequence-utils';
 export { reverseComplement };
 

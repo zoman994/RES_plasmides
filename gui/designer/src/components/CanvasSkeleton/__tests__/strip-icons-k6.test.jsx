@@ -2,23 +2,20 @@
  * strip-icons-k6.test.jsx — M-CANVAS-WORKFLOW-UX K6.
  *
  * Strip rendering for snippet / synthesis / mutation pieces (SPEC §5.3
- * iconography) + draftFromZone projection of inline-sequence pieces +
- * first-time snippet onboarding tooltip.
+ * iconography) + draftFromZone projection of inline-sequence pieces.
  */
 import 'fake-indexeddb/auto';
 import {
-  describe, it, expect, afterEach, beforeEach,
+  describe, it, expect, afterEach,
 } from 'vitest';
 import {
-  render, screen, cleanup, fireEvent, act,
+  render, screen, cleanup,
 } from '@testing-library/react';
 import SegmentList from '../editor/assembly-mode/SegmentList';
-import SnippetOnboardingTip from '../editor/assembly-mode/SnippetOnboardingTip';
 import { draftFromZone } from '../lib/zone-pieces-to-dag';
 import { SkeletonProvider } from '../store/skeleton-context';
 
 afterEach(cleanup);
-beforeEach(() => { try { localStorage.clear(); } catch { /* no-op */ } });
 
 const SEGS = [
   { id: 's1', source: { type: 'container', containerId: 'cA', sourceContainerName: 'pUC19' }, sequence: 'AAAA', length: 4, pieceKind: 'sourced', mutations: [] },
@@ -51,7 +48,6 @@ describe('K6 — SegmentList kind icons', () => {
     expect(rows[4].querySelector('[data-testid="segment-mutation-badge"]')).toBeTruthy();
   });
 });
-
 describe('K6 — draftFromZone projects snippet / synthesis pieces', () => {
   it('snippet piece → segment with sequence + pieceKind=snippet, source.manual', () => {
     const state = {
@@ -95,18 +91,5 @@ describe('K6 — draftFromZone projects snippet / synthesis pieces', () => {
     };
     const draft = draftFromZone(state, { id: 'z1', name: 'Z' });
     expect(draft.segments[0].mutations).toEqual([{ position: 2, fromBase: 'C', toBase: 'T' }]);
-  });
-});
-
-describe('K6 — SnippetOnboardingTip', () => {
-  it('first time → tip rendered; «Понятно» sets localStorage flag + hides', () => {
-    const { rerender } = render(<SnippetOnboardingTip hasSnippet />);
-    expect(screen.getByTestId('snippet-onboarding-tip')).toBeTruthy();
-    act(() => { fireEvent.click(screen.getByTestId('snippet-onboarding-dismiss')); });
-    expect(screen.queryByTestId('snippet-onboarding-tip')).toBeNull();
-    expect(localStorage.getItem('bodge-onboarding-snippet')).toBe('1');
-    // Second mount → flag set → not rendered.
-    rerender(<SnippetOnboardingTip hasSnippet />);
-    expect(screen.queryByTestId('snippet-onboarding-tip')).toBeNull();
   });
 });

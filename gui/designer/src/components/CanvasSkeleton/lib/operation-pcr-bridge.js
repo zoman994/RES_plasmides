@@ -1,54 +1,7 @@
 /**
- * operation-pcr-bridge — adapts the v0.5 pure primer-design core to the
- * skeleton-state shape. F3 M-CANVAS-PCR (DEC-CANVAS-PCR-05).
- *
- * ═══════════════════════════ HARVEST DISCOVERY (K1) ═══════════════════
- * v0.5 files read; what is cherry-picked vs left alone:
- *
- * src/local-primer-design.js (19.8 KB) — REUSED AS-IS via this bridge.
- *   - designPrimersLocal(fragments, junctions, circular, opts) — single
- *     export, PURE (no Zustand). opts = {tmTarget=60, primerPrefix='P',
- *     polymerase='phusion'}.
- *   - fragment shape it expects: {sequence, name, annotations,
- *     topology:'circular'|'linear', needsAmplification}.
- *   - returns {primers:[{name, sequence, bindingSequence, tailSequence,
- *     tmBinding, tmAdjusted, direction:'forward'|'reverse', fragmentName,
- *     length, purpose, ...}], warnings:[]}.
- *   - fragments.length===1 path = PCR-amplification (our case):
- *       circular → self-closure pair (15-bp tails);
- *       linear  → terminal pair (binding-only, no tails).
- *   - internal findBinding / findBindingTagAware / checkRepeats — not
- *     exported; reached only through designPrimersLocal (good — opaque).
- *
- * src/primer-reuse.js — AVAILABLE, deferred in F3 (pool empty).
- *   - findCompatiblePrimers(newPrimer, existing, opts) — similarity
- *     match (length / Tm). For PrimerReusePicker similarity ranking —
- *     follow-up (F3 ships substring filter; see F3 deviations).
- *   - buildOrderSheet(primers, reusedNames) — order text (optional).
- *
- * src/components/OligoManager.jsx (13.5 KB) — VALUES harvested only.
- *   - STATUSES enum: pending / ordered / shipping / received / bad.
- *   - calcGC(seq) reimplemented here (tiny, avoids importing the
- *     Tailwind/localStorage-coupled component).
- *   - localStorage 'pvcs-oligo-registry' — NOT used; skeleton keeps the
- *     pool in state.primers (exists as [] — no R2 gap).
- *
- * src/components/PrimerPanel.jsx (9.4 KB) — UX PATTERN only.
- *   - prop-driven shape {primers, warnings, onReusePrimer, onDeletePrimer}
- *     mirrored by the new PrimerSuggestionsPanel (rebuilt with skeleton
- *     design tokens — v0.5 file is Tailwind/legacy-shape coupled).
- *
- * src/components/JunctionBlock.jsx (29 KB) — NOT integrated. Tail
- *   construction already lives inside designPrimersLocal; F2
- *   selectTailsForJunction supplies skeleton-side tails.
- * src/components/PlasmidUseWizard.jsx (38.8 KB) — NOT mounted. It is
- *   mode-based (use_whole/disassemble/extract), no reusable 5′-drag
- *   handle; PrimerDragHandles is built fresh (transparent rects).
- * src/components/MutagenesisWizard.jsx — OUT (mutagenesis = later sprint).
- *
- * GAPS / FLAGS: none blocking. state.primers pool exists ([]), R1/R2
- * mitigations not needed. tm via tm-calculator (SantaLucia NN).
- * ══════════════════════════════════════════════════════════════════════
+ * Adapts the pure local primer-design core to the current CanvasSkeleton
+ * operation shape. Primer records are persisted through the canonical
+ * PrimerPool; this bridge never owns a second local registry.
  */
 import { designPrimersLocal } from '../../../local-primer-design';
 import { calcTm } from '../../../tm-calculator';

@@ -9,14 +9,6 @@
  * Imported and merged into the global STRINGS dict by `lib/strings.js`.
  */
 export const IMPORTER_STRINGS = {
-  toProjectTitle: 'Import to project',
-  toLibraryTitle: 'Library',
-
-  topbarButton: '+ Import',
-
-  // Header counts
-  filesReady: (n) => `Files: ${n}`,
-
   // M-X.7a v2 K2 — CatalogColumn STRINGS purged. The 28 catalog* +
   // dropzoneHover keys lived on the deleted LibraryTree.jsx +
   // LibraryGroupHeader/ItemRow/NestedSubGroup. New tree's strings
@@ -244,131 +236,8 @@ export const IMPORTER_STRINGS = {
   tagsLimit: (n) => `maximum ${n} tags`,
   tagRemoveAria: (tag) => `Remove tag ${tag}`,
 
-  // M-X.6 K1 (DEC-MX6-04) — ActionsBar block deleted with the
-  // component. Action affordances now live as per-item interactions
-  // (catalog quick-add icon for canvas, PreImportModal for library
-  // commits) per DEC-IMP-06 ⚓ migration.
-
-  // MetaColumn
-  metaTagsLabel: 'tags',
-  metaTopology: 'topology',
-  metaTopologyCircularTitle: 'Circular (plasmid)',
-  metaTopologyLinearTitle: 'Linear',
-  // UX-014 — visible button labels (kept concise to fit the 200 px
-  // MetaColumn rail). Removes the icon-only ambiguity biolog reported.
-  metaTopologyCircularLabel: 'Circular',
-  metaTopologyLinearLabel: 'Linear',
-  metaLengthLabel: 'length',
-  metaOrigin: 'origin (bp)',
-  metaOriginApply: '↻ apply',
-  metaOriginHintLabel: 'intergenic regions',
-  metaInfo: 'info',
-  // UX-029 — was «From file» bare; biolog read it as a property name
-  // and assumed the number was meaningless. Now: «From file: N regions»
-  // (count is appended in the consumer; here we just give the prefix
-  // its full form).
-  metaInfoFromFile: 'Loaded from file',
-  metaInfoEnriched: 'Auto-annotated',
-  metaDescription: 'description',
-  metaOrganism: 'organism',
-  metaSource: 'source',
-  metaSourceValue: (s) => {
-    if (s === 'catalog') return 'catalog';
-    if (s === 'mine') return 'my library';
-    if (s === 'project') return 'this project';
-    if (s === 'demo') return 'tutorial';
-    if (s === 'snapgene') return 'SnapGene catalog';
-    if (s === 'paste') return 'paste';
-    if (s === 'file') return 'file';
-    return s;
-  },
-  metaIupac: (chars) => `Contains IUPAC: ${chars} — primers will not be designed across these regions; the program will warn during assembly.`,
-
-  // M-X.6 K1 (DEC-MX6-04) — Multi-mode strings deleted with
-  // MultiInspector.jsx. Multi-file flow now goes through
-  // MultiImportView (K4); its UI strings live inline in the
-  // component for now (small footprint, low reuse risk).
-
   // Region count helper
   summaryRegionCount: (n) => `${n} regions`,
-
-  // Confirm-flow hints (mode-agnostic)
-  // M-X.6 K1 (DEC-MX6-04) — `confirmBusy` removed; the busy hint
-  // was rendered by ActionsBar / SessionSummary which are gone.
-  // M-X.7a v2 K2 — `busyParsing` was wired to the deleted CatalogColumn
-  // dropzone busy indicator; new AddModal flow (K6) emits its own
-  // busy state directly to PreImportModal.
-
-  // Confirm flow «skipped» toast still used (autoname Skip / parse fail).
-  confirmSkipped: (n) => `Skipped: ${n}`,
-
-  // K6 (M-B.1) — AutonameModal.
-  autonameTitle: (baseName) => `"${baseName}" already exists in Library`,
-  autonameExistingPreview: (name, length, addedAt) =>
-    `Existing: ${name} · ${length} bp · ${addedAt}`,
-  autonameInputLabel: 'Name for the new entry',
-  autonamePrimary: (name) => `✓ Save as "${name}"`,
-  autonameAdvancedShow: '▾ Advanced: replace existing / skip',
-  autonameAdvancedHide: '▴ Collapse advanced',
-  autonameReplace: 'Replace existing',
-  autonameSkip: 'Skip',
-  cancel: 'Cancel',
-
-  // K6 (M-B.1) — PrimerWizardStepModal.
-  primerWizardTitle: (n) => `Primers from file (${n})`,
-  primerWizardPoolHint:
-    'Primers go into the unified pool: visible both in Library Primers and in the Project Primer Pool filtered by projectId.',
-  primerWizardSelectedCount: (sel, total) => `Selected: ${sel}/${total}`,
-  primerWizardAdd: (n) => n > 0 ? `+ Add ${n}` : '+ Add',
-  primerWizardSkip: 'Skip primers',
-  primerStatusImported: 'imported',
-  primerDupeBadge: '⚠ duplicate',
-  primerMeta: (len, tm, direction) => {
-    const parts = [`${len} bp`];
-    if (typeof tm === 'number') parts.push(`Tm ${tm.toFixed(1)}°C`);
-    if (direction) parts.push(direction);
-    return parts.join(' · ');
-  },
-
-  // K6 (M-B.1) — Confirm flow toasts.
-  confirmAddedOne: (name) => `"${name}" added to Library`,
-  confirmAddedOneToProject: (name) => `"${name}" added to Library and project`,
-  confirmAddedMany: (n) => `Added ${n} files to Library`,
-  confirmAddedManyToProject: (n) => `Added ${n} files to Library and project`,
-  confirmReplaced: (name) => `"${name}" replaced`,
-  confirmPrimersAdded: (n) => `+ ${n} primers in the pool`,
-  confirmFailed: (msg) => `Import failed: ${msg}`,
-
-  // Sprint M-X.3 K1 — PreImportModal (metadata capture between
-  // entry-point and SingleInspector).
-  preImportTitle: 'New material',
-  preImportSubtitle: (n) => n ? `${n.toLocaleString()} bp` : '',
-  preImportNameLabel: 'Name',
-  preImportNamePlaceholder: 'pUC19, pET28a-GFP, …',
-  preImportTopologyLabel: 'Topology',
-  preImportTopologyLinear: 'Linear',
-  preImportTopologyCircular: 'Circular',
-  preImportFolderLabel: 'Folder',
-  preImportFolderRoot: '(root)',
-  preImportFolderGroupLibrary: 'Library folders',
-  preImportFolderGroupProject: (name) => name ? `Project: ${name}` : 'This project',
-  preImportNewFolderInput: 'New folder name…',
-  preImportNewFolderAdd: '+ folder',
-  preImportTagsLabel: 'Tags',
-  preImportAnnotateNowLabel: 'Annotate now',
-  preImportAnnotateNowHint: 'Run predictors + show ghost features in the Annotator',
-  preImportExistingAnnsLabel: 'Existing annotations',
-  preImportExistingAnnsKeep: (n) => `Keep ${n} existing`,
-  preImportExistingAnnsDiscard: 'Discard and re-annotate',
-  // UX-031 — was «Next» which suggested a multi-step wizard; this is
-  // actually the final commit action that promotes the prepared
-  // import into parsedItems. «Add» reads as the actual outcome.
-  preImportSubmit: 'Add',
-  preImportCancel: 'Cancel',
-  preImportSourceBadgePaste: 'Pasted',
-  preImportSourceBadgeFile: (ext) => ext ? `.${ext.toUpperCase()} file` : 'File',
-  // catalog badge dropped — catalog items skip the modal entirely
-  // (they're already named / annotated; nothing to capture).
 
   // ── Sprint M-X.3 follow-up — FeatureEditorModal (dblclick on a
   //    feature opens this instead of the Annotator). ────────────────

@@ -126,9 +126,8 @@ export const createPrimerSlice = (set, get) => ({
   },
 
   /**
-   * Async dedup check (hits Dexie). Returns the first existing primer with
-   * the same resourceHash, or undefined. Importer K6 uses this for the
-   * PrimerWizardStepModal warning row.
+    * Async dedup check (hits Dexie). Returns the first existing primer with
+    * the same resourceHash, or undefined.
    */
   checkPrimerDedup: async (resourceHash) => {
     if (!resourceHash) return undefined;

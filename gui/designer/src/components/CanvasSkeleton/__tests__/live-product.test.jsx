@@ -5,15 +5,13 @@
  *
  * K2 — state machine + assembleProduct (wraps executeOperation).
  * K3 — ContainerBlock virtualState branches.
- * K4 — CanvasLayoutView renders virtual outputs.
  * K5 — virtual tab read-only preview + OP_EXECUTE substitution.
  */
 import 'fake-indexeddb/auto';
 import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 import {
-  render, screen, cleanup, fireEvent, act,
+  render, screen, cleanup, act,
 } from '@testing-library/react';
-import { useEffect } from 'react';
 import { skeletonReducer, buildInitialState } from '../store/skeleton-state';
 import {
   selectVirtualOutputs,
@@ -28,7 +26,6 @@ import {
   useSkeletonActions,
   useSkeletonState,
 } from '../store/skeleton-context';
-import CanvasLayoutView from '../canvas/CanvasLayoutView';
 import EditorWindowShell from '../editor/EditorWindowShell';
 import ContainerBlock from '../canvas/ContainerBlock';
 
@@ -175,13 +172,6 @@ describe('K3 — ContainerBlock virtualState rendering (DEC-PROD-04)', () => {
     expect(screen.getByTestId('skeleton-block-v-o').getAttribute('data-virtual-state')).toBe('valid');
   });
 });
-
-// ════════════════════════════════════════════════════════════════════
-// K4 — CanvasLayoutView renders virtual outputs
-// ════════════════════════════════════════════════════════════════════
-let lpA = null;
-let lpS = null;
-function LPH() { lpA = useSkeletonActions(); lpS = useSkeletonState(); return null; }
 
 // ════════════════════════════════════════════════════════════════════
 // K5 — virtual tab read-only preview + OP_EXECUTE substitution

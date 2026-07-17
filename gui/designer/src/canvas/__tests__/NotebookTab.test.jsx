@@ -1,6 +1,5 @@
 /**
- * NB-K16 — NotebookTab integration (standalone, pre-wiring into
- * CanvasLayoutView).
+ * NB-K16 — standalone NotebookTab integration.
  */
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';

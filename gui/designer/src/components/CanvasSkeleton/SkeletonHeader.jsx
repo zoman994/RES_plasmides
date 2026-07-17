@@ -87,8 +87,8 @@ export default function SkeletonHeader() {
 }
 
 /**
- * PC-K9 (SPEC §4.7): Restriction sites toggle relocated from the
- * removed LibraryTreeHost footer to the canvas header. Click opens a
+ * PC-K9 (SPEC §4.7): Restriction sites toggle lives in the canvas header.
+ * Click opens a
  * small popover hosting the existing RestrictionPanel; pill colour
  * tracks the showReSites boolean so biologists see at a glance whether
  * sites are visible in the SequenceView.

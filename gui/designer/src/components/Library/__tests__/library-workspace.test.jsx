@@ -19,7 +19,6 @@ import { useStore } from '../../../store';
 import { FEATURE_FLAGS } from '../../../lib/feature-flags';
 import { resetDBForTests } from '../../../db/dexie-schema';
 import LibraryWorkspace from '../LibraryWorkspace';
-import { queueImporterFiles, peekImporterFiles } from '../lib/pending-files';
 
 // LibrarySingleInspector mounts SequenceView + Annotator under
 // lazy tabs; for a workspace mount-and-select integration test we
@@ -96,14 +95,6 @@ describe('M-X.7a v2 K4 — LibraryWorkspace', () => {
     expect(screen.getByTestId('onboarding-nudge')).toBeTruthy();
     fireEvent.click(screen.getByTestId('library-workspace-empty-add'));
     expect(onAdd).toHaveBeenCalled();
-  });
-
-  it('drains DAG-dropped pending files on mount (A24 — were silently lost)', () => {
-    const f = new File(['>x\nACGT'], 'x.fasta', { type: 'text/plain' });
-    queueImporterFiles([f]);
-    render(<LibraryWorkspace />);
-    // the mount effect drained the queue; before the fix nothing consumed it.
-    expect(peekImporterFiles()).toHaveLength(0);
   });
 
   it('opens the AddModal when navigated with context.openAdd (A23 — Sidebar «Импорт»)', () => {

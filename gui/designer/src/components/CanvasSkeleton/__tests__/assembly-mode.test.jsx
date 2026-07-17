@@ -8,10 +8,10 @@
  *   K3  AssemblyModeShell + AssemblyHeader
  *   K4  AssemblySidebar + DnD insert-at-caret
  *   K5  SegmentList + SegmentDetailPanel
- *   K6  segment source picker — reuse of the shared PlaceholderTreePicker
+ *   K6  segment source picker
  *   K7  InsertGapModal
  *   K8  assembly primer writing (slice + Ctrl+R + cross-boundary)
- *   K9  AssemblyDraftsPanel + canvas markers + pin
+ *   K9  canvas markers + pin
  *   K10 orphan UX + realise stub + undo/redo + deleteAssembly tab cleanup
  */
 import 'fake-indexeddb/auto';
@@ -21,7 +21,6 @@ import {
 import {
   render, screen, cleanup, fireEvent, act, within,
 } from '@testing-library/react';
-import { useEffect } from 'react';
 import { skeletonReducer, buildInitialState } from '../store/skeleton-state';
 import {
   buildInitialEditorState, editorReducer, deriveActiveTab,
@@ -32,8 +31,6 @@ import {
 import SequenceTab from '../../Library/inspector/tabs/SequenceTab';
 import EditorWindowShell from '../editor/EditorWindowShell';
 import EditorTabStrip from '../editor/EditorTabStrip';
-import CanvasLayoutView from '../canvas/CanvasLayoutView';
-import AssemblyDraftsPanel from '../canvas/AssemblyDraftsPanel';
 import MiniProjectCanvas from '../canvas/MiniProjectCanvas';
 import { reverseComplement } from '../../../sequence-utils';
 import {
@@ -363,9 +360,8 @@ describe('K5 SegmentList + SegmentDetailPanel', () => {
 });
 
 // ════════════════════════════════════════════════════════════════════
-// K6 — segment source picker (Игорь 19.05.2026: reuse the shared rich
-// PlaceholderTreePicker «У НАС вот уже было такое окно поиска» — no
-// bespoke parallel picker; library search + materialise-on-pick)
+// K6 — shared segment source picker: no bespoke parallel picker;
+// library search + materialise-on-pick.
 // ════════════════════════════════════════════════════════════════════
 
 function seedLibraryK6() {
@@ -526,54 +522,10 @@ describe('K8 WRITE_ASSEMBLY_PRIMER reducer', () => {
 });
 
 // ════════════════════════════════════════════════════════════════════
-// K9 — AssemblyDraftsPanel + canvas dbl-click + MiniProjectCanvas marker
+// K9 — MiniProjectCanvas marker
 // ════════════════════════════════════════════════════════════════════
 
-describe('K9 AssemblyDraftsPanel + canvas', () => {
-  // V82 panel is ZONE-based. DEC-T3-08 REVERSED (17.05.2026): new
-  // projects start CLEAN (no seeded «Сборка 1»). PC-K6 (20.05.2026):
-  // toggle is HIDDEN on zones=0 — first zone is seeded via direct
-  // CREATE_ZONE dispatch, then «+ Новая сборка» creates subsequent
-  // ones. The on-canvas AssemblyDraftBlock / MiniProjectCanvas cases
-  // below stay legacy-draft.
-  const seedFirstZone = () => {
-    act(() => {
-      A.zoneDispatch({
-        type: 'CREATE_ZONE',
-        zone: { bounds: { x: 0, y: 0, width: 600, height: 400 } },
-      });
-    });
-  };
-  const openAndCreateZone = () => {
-    act(() => { fireEvent.click(screen.getByTestId('assembly-drafts-toggle')); });
-    act(() => { fireEvent.click(screen.getByTestId('assembly-drafts-new')); });
-  };
-
-  it('PC-K6: clean start — toggle hidden; seed → toggle visible', () => {
-    render(<SkeletonProvider><H /><AssemblyDraftsPanel /></SkeletonProvider>);
-    expect(screen.queryByTestId('assembly-drafts-toggle')).toBeNull();
-    seedFirstZone();
-    expect(screen.getByTestId('assembly-drafts-toggle').textContent).toMatch(/\(1\)/);
-  });
-
-  it('card Open opens an assembly editor tab targeting the zone id', () => {
-    render(<SkeletonProvider><H /><AssemblyDraftsPanel /></SkeletonProvider>);
-    seedFirstZone();
-    act(() => { fireEvent.click(screen.getByTestId('assembly-drafts-toggle')); });
-    const zid = S.zones[0].id;
-    const card = screen.getByTestId('assembly-draft-card');
-    act(() => { fireEvent.click(within(card).getByTestId('assembly-draft-card-open')); });
-    expect(S.editorContext.tabs.some((t) => t.kind === 'assembly' && t.assemblyDraftId === zid)).toBe(true);
-  });
-
-  it('card Delete dispatches REMOVE_ZONE', () => {
-    render(<SkeletonProvider><H /><AssemblyDraftsPanel /></SkeletonProvider>);
-    seedFirstZone();
-    act(() => { fireEvent.click(screen.getByTestId('assembly-drafts-toggle')); });
-    act(() => { fireEvent.click(within(screen.getByTestId('assembly-draft-card')).getByTestId('assembly-draft-card-delete')); });
-    expect(S.zones).toHaveLength(0);
-  });
-
+describe('K9 canvas', () => {
   it('MiniProjectCanvas renders a marker for a pinned draft (after expand — V91)', () => {
     render(<SkeletonProvider><H /><MiniProjectCanvas /></SkeletonProvider>);
     act(() => { A.createAssemblyDraft({ id: 'asm-d5', name: 'D5', position: { x: 120, y: 80 } }); });

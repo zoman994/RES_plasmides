@@ -1,8 +1,6 @@
 /**
- * gg-enzyme-recognition-field.test.js — audit GG-3. GoldenGateOpPopup rendered
- * the enzyme recognition site from `e.site`, but GG_ENZYMES uses `.recognition`
- * (`.site` is the RE_ENZYMES field) → the option label was always blank. Guard
- * the field name the popup depends on.
+ * gg-enzyme-recognition-field.test.js — audit GG-3. Type IIS consumers use
+ * `.recognition`, while `.site` belongs to RE_ENZYMES. Guard that data contract.
  */
 import { describe, it, expect } from 'vitest';
 import { GG_ENZYMES } from '../../../golden-gate';

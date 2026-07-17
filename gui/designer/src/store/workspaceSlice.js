@@ -13,9 +13,6 @@
  *                 default flipped per CURRENT_TASK.md).
  *   'library'   — Library workspace (M-X.7a v2 LibraryWorkspace).
  *   'construct' — DesignCanvas (Project's primary canvas).
- *   'importer'  — legacy Importer fullscreen (preserved for now;
- *                 DEC-IMP-06 ⚓ marks it as superseded but the entry
- *                 is kept for power-flow access).
  *   'mix'       — placeholder for M-E Mix Workspace.
  *
  * History stack lets the back-button (UI in K5) return to the prior
@@ -32,7 +29,7 @@
  */
 
 const VALID_WORKSPACES = new Set([
-  'startup', 'library', 'construct', 'importer', 'mix', 'align', 'restriction-sites',
+  'startup', 'library', 'construct', 'mix', 'align', 'restriction-sites',
   'primer-pool',
 ]);
 

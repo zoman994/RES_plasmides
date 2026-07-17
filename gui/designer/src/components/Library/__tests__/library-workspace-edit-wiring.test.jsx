@@ -9,10 +9,10 @@
  * false), so a sequence edit in the workspace vanished with no error.
  *
  * Fix: build the item WITH `_libraryEntryId: selectedId` (entry id ===
- * selectedId), mirroring the Importer host (useLibraryState). That re-arms
+ * selectedId). That re-arms
  * the sequence-edit / branch-on-edit path (persists via
  * applySequenceEditOnLibraryEntry / createManualEditBranch). Side effect:
- * useLibrarySaveFlow.visible would surface the Importer-only explicit Save
+ * useLibrarySaveFlow.visible would surface explicit Save
  * buttons — those are suppressed in the workspace (silent-persist UX,
  * DEC-LIB-13) via showSaveActions={false}.
  */

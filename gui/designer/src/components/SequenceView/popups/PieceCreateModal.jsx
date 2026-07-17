@@ -1,7 +1,7 @@
 /**
- * PieceCreateModal — T5 K5 (DEC-T5-03/09/10). Self-contained overlay
- * (ZoneContextMenu-consistent — ModalStack is an App-level aggregator,
- * not a primitive). Esc / backdrop / Cancel close. Colours via tokens.
+ * PieceCreateModal — T5 K5 (DEC-T5-03/09/10). Self-contained overlay;
+ * ModalStack is an App-level aggregator, not a primitive. Esc, backdrop and
+ * Cancel close the modal. Colours use design tokens.
  */
 import React, { useEffect, useState } from 'react';
 import { STRINGS } from '../../../lib/strings';
