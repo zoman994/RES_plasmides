@@ -24,7 +24,17 @@ vi.mock('../search-worker-core', () => ({
   },
 }));
 
-const OCC = { location: { segments: [{ start: 3, end: 9 }], strand: '+', wrapsOrigin: false } };
+// A FULL canonical summary for the 6-mer `GAATTG` at [3,9). The inline path is now held to the
+// SEQUENCE gate rather than the looser generic provider gate, so a location-only stub is no longer
+// a well-formed reply — the metrics and the query length are part of what is verified.
+const OCC = {
+  location: { segments: [{ start: 3, end: 9 }], strand: '+', wrapsOrigin: false },
+  metrics: {
+    length: 6, queryLength: 6, alignmentLength: 6, targetSpan: 6, identity: 1, coverage: 1,
+    exactMatches: 6, substitutions: 0, insertions: 0, deletions: 0,
+    indelBases: 0, indelEvents: 0, editDistance: 0, mismatches: 0, indels: 0, identityBps: 10000,
+  },
+};
 const DOCS = [{ ref: { kind: 'entry', id: 'a' }, sequence: { seq: 'AAAGAATTGCCC', topology: 'linear' } }];
 
 // Two ways to reach runInline: no factory at all (pure inline), and a factory that yields nothing
@@ -67,9 +77,12 @@ describe.each(CLIENTS)('%s — the engine is validated, not trusted', (_label, m
   });
 
   it('a well-formed result still resolves', async () => {
-    stub.ret = { 'entry:a': [OCC] };
+    // The inline path is held to the SEQUENCE gate, exactly like the worker path: the per-document
+    // value is a locus envelope, and a bare array is refused (it carries neither the true locus
+    // count nor the rule-7 winner).
+    stub.ret = { 'entry:a': { occurrences: [OCC], locationCount: 1, bestIndex: 0 } };
     const map = await makeClient().searchSequences('GAATTG', DOCS);
-    expect(map.get('entry:a')).toHaveLength(1);
+    expect(map.get('entry:a').occurrences).toHaveLength(1);
   });
 
   it('an EMPTY result stays an honest miss (the engine ran and found nothing)', async () => {

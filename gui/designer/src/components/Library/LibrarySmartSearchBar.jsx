@@ -1,11 +1,12 @@
 /**
  * LibrarySmartSearchBar — the mounted global-search surface.
  *
- * It owns search-document projection, worker/facade lifecycle, progressive
- * results and the K1 combobox interaction contract. LibraryTopBar supplies only
- * layout and routes the selected entity; it does not know how search executes.
+ * It owns search-document projection, progressive results and the K1 combobox interaction
+ * contract. It does NOT own a worker: the sequence pass runs on the app-wide coordinator's
+ * `global` channel, so this surface and the in-molecule popover can never grind in parallel.
+ * LibraryTopBar supplies only layout and routes the selected entity.
  */
-import { useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef } from 'react';
 import { useStore } from '../../store';
 import { t, tf } from '../../i18n';
 import { Icon } from '../icons/Icon';
@@ -16,12 +17,8 @@ import {
 } from '../../lib/search-document-adapters';
 import { collectEnzymeDocuments } from '../../lib/search-enzyme-adapters';
 import { classifyQuery } from '../../lib/query-classify';
-import { deriveSearchSessionPresentation } from '../../lib/search-session-presentation';
-import { planIsBlocked, planNeedsEnzymeCatalog } from '../../lib/library-search';
-import { entityRefKey } from '../../lib/search-entity-key';
-import { createSearchFacade } from '../../lib/search-facade';
-import { resultRowViewModel } from '../../lib/search-result-vm';
 import { loadSearchPrefs } from '../../lib/search-prefs';
+import { deriveSearchSessionPresentation } from '../../lib/search-session-presentation';
 import { SEARCH_FILTER_DEFS } from '../../lib/search-modes';
 import { isExecutablePrefix, prefixEntry } from '../../lib/search-prefix-registry';
 import SearchField from '../Search/SearchField';
@@ -31,8 +28,10 @@ import SearchFilterChips from '../Search/SearchFilterChips';
 import SearchResultsListbox from '../Search/SearchResultsListbox';
 import { useSearchComboboxNavigation } from '../Search/useSearchComboboxNavigation';
 import { optionDomId } from '../Search/searchUiContract';
+import { useGlobalSearchController } from './hooks/useGlobalSearchController';
+import { useSearchRestoreApply, getRowKey } from './hooks/useSearchReturnFrame';
 import { SmartResultContent } from './SmartResultRow';
-import SearchWorker from '../../lib/search.worker.js?worker';
+import SearchStatusContent from './SearchStatusContent';
 
 const FILTER_MENU_DEFS = SEARCH_FILTER_DEFS.filter((d) => isExecutablePrefix(d.canonical));
 const FILTER_ENUM_OPTIONS = {
@@ -75,26 +74,19 @@ const PROVIDER_LABEL_KEY = {
   enzyme: 'search.provider.enzyme',
 };
 
-const getRowKey = (row) => row.entityKey;
-
-function collectUserSearchDocuments(entriesById, projects, primersById) {
+function collectUserSearchDocuments(entriesById, projects, primersById, entryGenerations) {
   const all = Object.values(entriesById || {});
   return [
-    ...collectEntryDocuments(all.filter((entry) => entry && entry.kind !== 'catalog' && entry.kind !== 'primer')),
+    // The per-entry ages travel with the documents: every result is stamped with the identity of the
+    // exact revision the search read, and the jump is verified against that — not against whatever
+    // the molecule happens to be when the row is clicked.
+    ...collectEntryDocuments(
+      all.filter((entry) => entry && entry.kind !== 'catalog' && entry.kind !== 'primer'),
+      { generations: entryGenerations },
+    ),
     ...collectProjectDocuments(projects),
     ...collectPrimerDocuments(primersById, { legacyEntries: all.filter((entry) => entry && entry.kind === 'primer') }),
   ];
-}
-
-function makeSearchWorker() {
-  try {
-    if (import.meta?.env?.VITEST || import.meta?.env?.MODE === 'test') return null;
-  } catch { /* import.meta.env is unavailable outside Vite */ }
-  try { return new SearchWorker(); } catch { return null; }
-}
-
-function allowInlineInTests() {
-  try { return !!import.meta?.env?.VITEST || import.meta?.env?.MODE === 'test'; } catch { return false; }
 }
 
 function SearchPrefsSummary() {
@@ -122,32 +114,15 @@ function SearchPrefsSummary() {
   );
 }
 
-function SearchNotice({ testId, children }) {
-  return (
-    <div
-      data-testid={testId}
-      style={{
-        display: 'flex', alignItems: 'flex-start', gap: 6,
-        padding: '6px 10px', fontSize: 11, lineHeight: 1.35,
-        color: 'var(--warning-fg)', background: 'var(--warning-bg)',
-        borderBottom: '1px solid var(--border-subtle)',
-      }}
-    >
-      <Icon name="warning" size={12} />
-      <span>{children}</span>
-    </div>
-  );
-}
-
 export default function LibrarySmartSearchBar({
   search,
   onPickSearchResult,
+  onOpenAlignment,
   autoFocusSearchTick = 0,
-  workerFactory = makeSearchWorker,
+  // The molecule currently open. The «Back to results» control is scoped to it: a frame captured
+  // from another entry must not offer a return the user did not come from.
+  selectedEntryId = null,
 }) {
-  const entriesById = useStore((s) => s.libraryEntries);
-  const projects = useStore((s) => s.projects);
-  const primersById = useStore((s) => s.primersById);
   const reactId = useId();
   const listboxId = `library-topbar-search-listbox-${reactId}`;
 
@@ -157,93 +132,44 @@ export default function LibrarySmartSearchBar({
   const trimmedQuery = runnable ? canonicalQuery : '';
   const plan = classifyQuery(trimmedQuery);
 
-  const facadeRef = useRef(null);
-  useEffect(() => {
-    const facade = createSearchFacade({ workerFactory, allowInlineFallback: allowInlineInTests() });
-    facadeRef.current = facade;
-    return () => { facade.terminate?.(); facadeRef.current = null; };
-  }, [workerFactory]);
-
-  const [resultsOpen, setResultsOpen] = useState(false);
-  const [searchResult, setSearchResult] = useState({
-    query: '', rows: [], incomplete: false, incompleteDims: [], providerFailures: [],
-    blocked: false, phase: 'idle',
-  });
-  const [closedForQuery, setClosedForQuery] = useState(null);
-  const wrapRef = useRef(null);
   const inputRef = useRef(null);
+  const wrapRef = useRef(null);
+  const focusInput = useCallback(() => inputRef.current?.focus(), []);
 
-  // EVERY field is gated through showForQuery: results are owned by their query, so a stale
-  // warning/row can never render under a newer one (it disappears on the very render the query
-  // changes, not 180 ms later when the new search resolves).
-  const showForQuery = searchResult.query === trimmedQuery;
-  const rows = showForQuery ? searchResult.rows : [];
-  // Provider-neutral: sequence, protein and enzyme all report through these two fields.
-  const providerIncomplete = showForQuery ? searchResult.incomplete : false;
-  const incompleteDims = showForQuery ? searchResult.incompleteDims : [];
-  const searchBlocked = showForQuery ? searchResult.blocked : false;
+  // The corpus, built at the moment the search READS it — not subscribed to. The library map moves on
+  // every write, and a dependency on it would re-run a pass for changes that cannot affect the query.
+  // The per-entry ages are read the same way, so whatever they are when the search runs is what the
+  // results carry into their document identity.
+  const collectDocuments = useCallback((withEnzymes) => {
+    const st = useStore.getState();
+    const user = collectUserSearchDocuments(st.libraryEntries, st.projects, st.primersById, st.entryGenerations);
+    return withEnzymes ? [...user, ...collectEnzymeDocuments()] : user;
+  }, []);
+
+  // ── THE SESSION ───────────────────────────────────────────────────────────────────────────────
+  // Owned by the controller, not by this component: the result, the phase, the provider verdicts, the
+  // run/retry/restore lifecycle and the Back frame. What is left here is a combobox.
+  const controller = useGlobalSearchController({
+    trimmedQuery,
+    collectDocuments,
+    onPickSearchResult,
+    selectedEntryId,
+    seedQuery: search?.seedGlobalQuery,
+    queryState: search?.state ?? null,
+    restoreQueryState: search?.restoreQueryState,
+    focusInput,
+  });
+  const {
+    rows, showForQuery, providerIncomplete, incompleteDims, searchBlocked, requiresAlignment,
+    cancelled, resultsOpen, setResultsOpen, closedForQuery, setClosedForQuery, resultsScrollRef,
+    scrollTopRef, cancelSearch, resumeSearch, canGoBack, goBackToResults,
+  } = controller;
 
   useEffect(() => {
     if (!autoFocusSearchTick) return;
     const el = inputRef.current;
     if (el) { el.focus(); el.select?.(); }
   }, [autoFocusSearchTick]);
-
-  useEffect(() => {
-    if (!trimmedQuery) {
-      facadeRef.current?.cancel();
-      return undefined;
-    }
-    const prefs = loadSearchPrefs();
-    const ctx = {
-      bothStrands: prefs.bothStrands,
-      identityThreshold: prefs.identityThreshold,
-      maxMismatches: prefs.maxMismatches,
-      iupac: prefs.iupac,
-      circular: prefs.circular,
-      minQueryLen: prefs.minQueryLen,
-      opts: { limit: prefs.limit },
-    };
-    const effectPlan = classifyQuery(trimmedQuery);
-    const userDocuments = collectUserSearchDocuments(entriesById, projects, primersById);
-    const documents = !planIsBlocked(effectPlan) && planNeedsEnzymeCatalog(effectPlan)
-      ? [...userDocuments, ...collectEnzymeDocuments()]
-      : userDocuments;
-    const docById = new Map(documents.map((d) => [entityRefKey(d.ref), d]));
-    const handle = setTimeout(() => {
-      if (!facadeRef.current) return;
-      setResultsOpen(true);
-      facadeRef.current.search(trimmedQuery, documents, ctx, (session, meta) => {
-        const phase = meta?.phase || (session.status === 'partial' ? 'partial' : 'final');
-        setSearchResult({
-          query: trimmedQuery,
-          rows: session.results.map((r) => resultRowViewModel(r, docById.get(entityRefKey(r.entityRef)))),
-          incomplete: !!session.incomplete,
-          // Kept alongside query/rows/phase so the warning can name the failed check and can
-          // never outlive its query. A blocked session carries neither → both default to [].
-          incompleteDims: Array.isArray(session.incompleteDims) ? session.incompleteDims : [],
-          providerFailures: Array.isArray(session.providerFailures) ? session.providerFailures : [],
-          blocked: !!session.blocked,
-          phase,
-        });
-      });
-    }, 180);
-    return () => {
-      clearTimeout(handle);
-      facadeRef.current?.cancel();
-    };
-  }, [trimmedQuery, entriesById, projects, primersById]);
-
-  useEffect(() => {
-    if (!resultsOpen) return undefined;
-    const onDoc = (event) => {
-      if (!wrapRef.current || wrapRef.current.contains(event.target)) return;
-      if (event.target?.closest?.('[data-testid="tree-full-search"]')) return;
-      setResultsOpen(false);
-    };
-    document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
-  }, [resultsOpen]);
 
   const modeModel = search?.modeSelectorModel || { groups: [], selectedModeId: 'lib' };
   const selectedModeLabel = modeModel.groups.flatMap((group) => group.modes)
@@ -269,14 +195,34 @@ export default function LibrarySmartSearchBar({
   const providerExpected = !!(plan.seqQuery || plan.aaQuery || plan.cutQuery || plan.reQuery);
   const presentation = deriveSearchSessionPresentation({
     ownsQuery: hasBlockingNotice || (showForQuery && !!trimmedQuery),
-    phase: showForQuery ? searchResult.phase : 'final',
+    phase: controller.phase,
     rowCount: rows.length,
     providerExpected,
     providerPending: rows.some((row) => row.providerPending),
     incomplete: providerIncomplete,
+    requiresAlignment: !!requiresAlignment,
+    cancelled,
     blocked: hasBlockingNotice || searchBlocked,
     interactionDisabled: composing,
   });
+  // Note there is no `searchIsRunning` derived from `presentation.ariaBusy` any more: liveness is
+  // stamped where the work actually starts (see the debounce below), because the rendered flag
+  // lags the launch by a commit. Refs are written in an effect, never during render.
+
+  useEffect(() => {
+    if (!resultsOpen) return undefined;
+    const onDoc = (event) => {
+      if (!wrapRef.current || wrapRef.current.contains(event.target)) return;
+      if (event.target?.closest?.('[data-testid="tree-full-search"]')) return;
+      // Clicking away abandons the answer — so stop paying for it. On a megabase molecule this is
+      // a full sweep burned for a result that now has nowhere to land. Unconditional: `cancelSearch`
+      // itself decides whether anything was in flight, and it also covers the pre-worker window.
+      cancelSearch();
+      setResultsOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [resultsOpen, cancelSearch, setResultsOpen]);
 
   const showResults = !composing && (
     (resultsOpen && !!trimmedQuery && closedForQuery !== trimmedQuery)
@@ -286,6 +232,9 @@ export default function LibrarySmartSearchBar({
 
   const handleResultsOpenChange = (nextOpen) => {
     if (nextOpen) setClosedForQuery(null);
+    // Escape / Tab / close = «I am no longer waiting for this». Leaving the sweep running would
+    // spend a full pass on an answer that has nowhere to land.
+    else cancelSearch();
     setResultsOpen(nextOpen);
   };
 
@@ -300,7 +249,7 @@ export default function LibrarySmartSearchBar({
     // popup; only a new user interaction clears the marker.
     setClosedForQuery(trimmedQuery);
     setResultsOpen(false);
-    onPickSearchResult?.(vm?.entityRef ?? null, vm?.occurrence || null);
+    controller.pickRow(vm);
   };
   const navigation = useSearchComboboxNavigation({
     items: rows,
@@ -313,11 +262,17 @@ export default function LibrarySmartSearchBar({
     onUnhandledKeyDown: (event) => {
       if (event.key === 'Enter') search?.onCommitDraft?.();
       else if (event.key === 'Backspace' && (search?.draftValue ?? '') === '') search?.onBackspaceEmpty?.();
+      // Escape with the panel not (yet) open still means «drop this»: during the debounce there is
+      // work scheduled but nothing on screen to close, so the hook routes the key here.
+      else if (event.key === 'Escape') cancelSearch();
     },
   });
+  const { setActiveKey } = navigation;
   const activeDescendantId = navigation.activeKey
     ? optionDomId(listboxId, navigation.activeKey)
     : undefined;
+
+  useSearchRestoreApply({ restore: controller.restore, rows, setActiveKey });
   const isDna = !!plan.seqQuery;
 
   // Verification state per row: "checking" while the check runs, "unverified" once it failed,
@@ -344,28 +299,23 @@ export default function LibrarySmartSearchBar({
     : t(isDna ? 'search.results.dna' : 'search.results.generic');
 
   // EXACTLY ONE status message reaches the result area — the projection already ranked them, so
-  // «not verified» and «nothing found» can no longer be rendered by two owners at once.
-  const STATUS_CONTENT = {
-    loading: () => (
-      <div style={{ padding: '6px 10px', fontSize: 11, color: 'var(--text-tertiary)' }}>
-        {t('search.results.loadingBio')}
-      </div>
-    ),
-    blocked: () => (
-      <SearchNotice testId="search-blocked-notice">
-        {hasBlockingNotice ? blockingText : t('search.results.blocked')}
-      </SearchNotice>
-    ),
-    incomplete: () => (
-      <SearchNotice testId="search-provider-incomplete-warning">{incompleteText}</SearchNotice>
-    ),
-    empty: () => (
-      <div style={{ padding: 10, fontSize: 11, color: 'var(--text-tertiary)' }}>
-        {t('search.results.empty')}
-      </div>
-    ),
-  };
-  const statusContent = (STATUS_CONTENT[presentation.statusKind] || (() => null))();
+  // «not verified» and «nothing found» can no longer be rendered by two owners at once. WHICH
+  // claim is allowed was decided above; SearchStatusContent only words it.
+  const statusContent = (
+    <SearchStatusContent
+      statusKind={presentation.statusKind}
+      blockingText={hasBlockingNotice ? blockingText : ''}
+      incompleteText={incompleteText}
+      maxApproxLength={requiresAlignment?.maxApproxLength}
+      // The SEQUENCE, never the query text. `seq:ACGT…` — and worse, a compound `pUC19 seq:ACGT…`
+      // — would arrive in the alignment workspace as if the prefix and the text term were bases.
+      // `plan.seqQuery` is the canonical ACGT the engine itself searched with (§2.5).
+      query={plan.seqQuery}
+      onOpenAlignment={onOpenAlignment}
+      onCancel={cancelSearch}
+      onResume={resumeSearch}
+    />
+  );
 
   return (
     <div
@@ -434,9 +384,29 @@ export default function LibrarySmartSearchBar({
         onCompositionEnd={navigation.compositionHandlers.onCompositionEnd}
       />
 
+      {canGoBack && (
+        <button
+          type="button"
+          data-testid="library-search-back"
+          onClick={goBackToResults}
+          title={t('search.back.title')}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 4,
+            marginLeft: 6, padding: '3px 8px', fontSize: 11,
+            background: 'var(--surface-2)', color: 'var(--text-secondary)',
+            border: '1px solid var(--border-subtle)', borderRadius: 4, cursor: 'pointer',
+          }}
+        >
+          <Icon name="chevron-left" size={12} />
+          {t('search.back.label')}
+        </button>
+      )}
+
       {showResults && (
         <div
           data-testid="library-topbar-search-results"
+          ref={resultsScrollRef}
+          onScroll={(e) => { scrollTopRef.current = e.currentTarget.scrollTop; }}
           style={{
             position: 'absolute', top: '100%', marginTop: 4, left: 0, right: 0,
             background: 'var(--surface-1)', border: '1px solid var(--border-default)',
@@ -463,6 +433,7 @@ export default function LibrarySmartSearchBar({
             testId="library-topbar-search-listbox"
             items={presentation.showRows ? rows : []}
             activeIndex={navigation.activeIndex}
+            onActiveIndexChange={navigation.activateIndex}
             getOptionKey={getRowKey}
             onSelect={pickRow}
             disabled={presentation.rowsDisabled}

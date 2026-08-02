@@ -10,6 +10,7 @@ import { computeResourceHash } from '../components/Library/lib/resource-hash';
 import { applySequenceEditToEntry } from '../components/Library/lib/library-sequence-edit';
 import { buildFolderTree } from '../components/Library/tree/library-folder-tree';
 import { enrichEditDescriptor, mergeCorrection } from '../lib/alignment/describe-edit';
+import { withEntryVersion, sameAnnotationSet, deriveOriginForExisting } from '../lib/library-entry-normalize';
 
 export const LIBRARY_TAGS_SOFT_LIMIT = 10;
 
@@ -40,54 +41,6 @@ function withZoneDefaults(entry) {
 
 const DEFAULT_FILTER_KIND = 'container';
 const DEFAULT_FILTER_TOPOLOGY = 'all';
-
-/**
- * Lazy migration heuristic for entries created before M-X.5 (07.05.2026).
- *
- * Pre-M-X.5 entries lack `origin` / `version` / `parentEntry*` fields.
- * Per the M-X.5 plan we don't I/O during hydrate (would slow startup
- * for biologists with 100+ entries) — we infer the origin kind from
- * what's already on the entry:
- *
- *   • Tag prefix `demo:<slug>` → entry came in via the SnapGene
- *     catalog flow (M-A.3). Origin → `demo_category`.
- *   • Otherwise → `file_import` fallback. Lossy for paste/manual-edit
- *     entries from earlier versions, but not a blocker — biolog can
- *     re-import if provenance matters. The fallback is kept only for
- *     compatibility with entries created before structured origins.
- *
- * Idempotent: re-running on an already-migrated entry returns it
- * unchanged. Pure — no Dexie writes (lazy: each future
- * `putLibraryEntry` will persist whatever the in-memory copy holds).
- *
- * Q2 in the M-X.5 plan: heuristic chosen over full match against
- * `plasmids-index.json` because the index is 867 KB and reading it
- * during hydrate adds I/O cost without proportional value.
- */
-function deriveOriginForExisting(entry) {
-  if (!entry || entry.origin) return entry;
-  const tags = Array.isArray(entry.tags) ? entry.tags : [];
-  const demoTag = tags.find(t => typeof t === 'string' && t.startsWith('demo:'));
-  const importedAt = entry.addedAt || new Date().toISOString();
-  const origin = demoTag
-    ? {
-        kind: 'demo_category',
-        categorySlug: demoTag.slice(5),
-        sourcePlasmidName: entry.name,
-        importedAt,
-      }
-    : {
-        kind: 'file_import',
-        sourceFileName: entry.name,
-        sourceFormat: 'gb',
-        importedAt,
-      };
-  return {
-    ...entry,
-    origin,
-    version: entry.version || 1,
-  };
-}
 
 /**
  * Library Zustand slice — flat personal collection of containers and primers
@@ -133,11 +86,11 @@ export const createLibrarySlice = (set, get) => ({
   addLibraryEntry: async (entry) => {
     if (!entry || !entry.id) return;
     const withDefaults = withZoneDefaults(entry);
-    const safe = {
+    const safe = withEntryVersion({
       ...withDefaults,
       tags: Array.isArray(entry.tags) ? entry.tags.slice(0, LIBRARY_TAGS_SOFT_LIMIT) : [],
       addedAt: entry.addedAt || new Date().toISOString(),
-    };
+    });
     set(state => { state.libraryEntries[safe.id] = safe; });
     await putLibraryEntry(safe);
   },
@@ -160,7 +113,11 @@ export const createLibrarySlice = (set, get) => ({
     if (!Array.isArray(entries) || entries.length === 0) return [];
     const safe = entries
       .filter(e => e && e.id)
-      .map(e => ({
+      // Same identity invariant as the single-add path. This is where every
+      // .bodge project import lands, and a foreign file may supply `origin`
+      // without `version` — hydrate runs once per session behind
+      // `_libraryHydrated`, so it can never repair a row imported after it.
+      .map(e => withEntryVersion({
         ...e,
         tags: Array.isArray(e.tags) ? e.tags.slice(0, LIBRARY_TAGS_SOFT_LIMIT) : [],
         addedAt: e.addedAt || new Date().toISOString(),
@@ -659,6 +616,12 @@ export const createLibrarySlice = (set, get) => ({
     if (!id || !Array.isArray(annotations)) return false;
     const existing = get().libraryEntries[id];
     if (!existing || existing._pendingDelete) return false;
+    // A write that changes nothing is not a write. This safety-net fires on every inspector open,
+    // and an unconditional store `set` replaced the entry object — which the search-corpus watcher
+    // reads as «the library changed». Merely LOOKING at a molecule then aged the corpus, so the
+    // search session captured a moment earlier was already stale by the time the user pressed Back
+    // and the «no new work» path could never be taken. Compared field-by-field, never by hashing.
+    if (sameAnnotationSet(existing.payload?.annotations, annotations)) return true;
     const nextPayload = { ...(existing.payload || {}), annotations };
     const updated = { ...existing, payload: nextPayload };
     set(state => {

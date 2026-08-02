@@ -34,7 +34,6 @@ import ResizeHandle from '../common/ResizeHandle';
 import LibraryTopBar from './LibraryTopBar';
 import SearchSettingsModal from './SearchSettingsModal';
 import EnzymeCard from './EnzymeCard';
-import { entryRevision } from '../../lib/search-document-adapters';
 import { makeOpenEntry } from '../../lib/open-entry-action';
 import { useSearchPickRouter } from './hooks/useSearchPickRouter';
 import { useSearchQueryState } from './hooks/useSearchQueryState';
@@ -47,7 +46,9 @@ import LibraryActionRow from './inspector/LibraryActionRow';
 import CommonFeaturesPanel from './CommonFeaturesPanel';
 import OnboardingNudge from './onboarding/OnboardingNudge';
 import AddModal from './AddModal/AddModal';
-import SequenceSearchPopover from '../SequenceSearchPopover';
+import SequenceSearchHost from './SequenceSearchHost';
+import SequenceSearchProvider from '../SequenceSearchProvider';
+import { useOpenAlignmentForQuery } from './hooks/useOpenAlignmentForQuery';
 import { parseFile, extractItemName, ACCEPT_STRING, enrichAnnotations } from '../../file-import';
 import { buildLibraryEntry } from './lib/build-library-entry';
 import { buildStarterSet } from './lib/starter-set';
@@ -74,6 +75,8 @@ function openFilePicker() {
 function emptyEntryState() {
   return { flags: {}, edits: {}, activeTab: 'overview' };
 }
+
+const hasKey = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
 
 // Russian plural picker (1 ген / 2 гена / 5 генов). Local to this file —
 // lib/strings.js has no shared plural helper (Звено 25.05.2026).
@@ -388,6 +391,7 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
   const extractEntryToLoose = useStore((s) => s.extractEntryToLoose);
   const toggleLabStock = useStore((s) => s.toggleLabStock);
   const openAlignmentWith = useStore((s) => s.openAlignmentWith);
+  const openAlignmentForQuery = useOpenAlignmentForQuery();
   const moveEntryToFolder = useStore((s) => s.moveEntryToFolder);
   const renameLibraryEntry = useStore((s) => s.renameLibraryEntry); // A4 (audit)
   // Projects are created from the Library left panel now (project hub).
@@ -402,22 +406,14 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
   const updateLibraryEntryTopology = useStore((s) => s.updateLibraryEntryTopology);
 
   const rawEntry = selectedId ? entriesById[selectedId] : null;
-  // LibrarySingleInspector + Overview/Sequence/Annotations tabs +
-  // PlasmidMiniMap all read FLAT fields off `item` (item.sequence,
-  // item.length, item.topology, item.annotations) — that's the
-  // legacy shape the existing Inspector body was built for. Library
-  // entries store the same data nested under `entry.payload`. Hoist
-  // payload onto the item before handing it to the Inspector so
-  // every existing reader keeps working without per-component
-  // refactor. New code can still read entry.payload via item.payload
-  // (the spread preserves the original key).
-  // `_libraryEntryId: selectedId` (entry id === selectedId) preserves the
-  // Inspector contract. Without it every inspector feature
-  // gated on item._libraryEntryId silently no-op'd here — most importantly
-  // character-level SEQUENCE edits (onSequenceEditFromView early-returns)
-  // and manual-edit branching, so a sequence edit vanished with no error
-  // (audit 14.06.2026). Setting it routes edits to
-  // applySequenceEditOnLibraryEntry / createManualEditBranch (both durable).
+  // The Inspector body + tabs + PlasmidMiniMap read FLAT fields off `item` (sequence, length,
+  // topology, annotations) — the legacy shape they were built for; library entries nest the same
+  // data under `entry.payload`. Hoist it before handing `item` over so every reader keeps working
+  // (the spread preserves `item.payload` for new code).
+  // `_libraryEntryId` restores the Inspector contract: without it every feature gated on it
+  // silently no-op'd — character-level SEQUENCE edits above all (onSequenceEditFromView
+  // early-returns) and manual-edit branching, so an edit vanished with no error (audit
+  // 14.06.2026). Set, it routes edits to applySequenceEditOnLibraryEntry / createManualEditBranch.
   const item = rawEntry ? { ...rawEntry, ...(rawEntry.payload || {}), _libraryEntryId: selectedId } : null;
   // Version-history lineage for the «История версий» entry point. Built from the
   // parentEntryId chain + origin provenance; the button shows once there is more
@@ -524,15 +520,16 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
         edits: { ...(prev[selectedId]?.edits || {}), ...patch },
       },
     }));
-    // Persist annotation-ONLY edits straight to the library entry payload
-    // (Annotator ORF etc. — biolog 14.06.2026 «создал ORF … после выхода
-    // пропадает», DEC-LIB-11). SEQUENCE edits (patch carries editedSequence)
-    // are TRANSIENT now (Игорь 17.06.2026) — they must NOT write through,
-    // else a nucleotide edit's indel-shifted annotations would silently
-    // mutate the SOURCE. Those commit only via «Сохранить версию».
-    const isSequenceEdit = Object.prototype.hasOwnProperty.call(patch, 'editedSequence');
+    // Annotation-ONLY edits write through to the entry payload (Annotator ORF, DEC-LIB-11);
+    // SEQUENCE edits stay TRANSIENT (17.06.2026) — writing them through would let an
+    // indel-shifted annotation mutate the SOURCE. They commit only via the save-version action.
+    const isSequenceEdit = hasKey(patch, 'editedSequence');
+    // THE central transient-edit point: a moved buffer is a NEW document, so the epoch that
+    // names it must move too. Never derived from the buffer — a substitution, an undo and a
+    // topology flip all leave its length and edit count exactly where they were.
+    if (isSequenceEdit || hasKey(patch, 'editedTopology')) useStore.getState().bumpBufferGeneration(selectedId);
     if (!isSequenceEdit
-        && Object.prototype.hasOwnProperty.call(patch, 'editedAnnotations')
+        && hasKey(patch, 'editedAnnotations')
         && Array.isArray(patch.editedAnnotations)
         && typeof writeLibraryEntryAnnotations === 'function') {
       try {
@@ -599,10 +596,15 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
         position: 'relative', // containing block for the absolutely-positioned EnzymeCard
       }}
     >
+      {/* One owner for both search surfaces: the bar below and the Ctrl+F host further down share
+          a single worker, so a megabase sweep can never run twice at once. */}
+      <SequenceSearchProvider>
       <LibraryTopBar
         search={globalSearch}
         autoFocusSearchTick={fullSearchTick}
         onPickSearchResult={handlePickSearchResult}
+        onOpenAlignment={openAlignmentForQuery}
+        selectedEntryId={view === 'entry' ? selectedId : null}
       />
 
       {/* Enzyme card (§10.5) — picking an enzyme opens it; «Найти сайты» is a SEPARATE
@@ -710,7 +712,8 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
       {/* M-X.9 K2 — Ctrl+F sequence search popover, scoped to the
           currently selected library entry. SequenceView overlay-rect
           rendering is deferred to a follow-up iteration. */}
-      <SearchHost item={item} />
+      <SequenceSearchHost item={item} edits={entryState.edits} />
+      </SequenceSearchProvider>
       {historyOpen && (
         <VersionTimelineModal
           model={historyModel}
@@ -719,37 +722,6 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
         />
       )}
     </div>
-  );
-}
-
-// Sub-component so the popover can read the modal flag without
-// re-rendering the full LibraryWorkspace on every key press.
-function SearchHost({ item }) {
-  const open = useStore((s) => s.modals?.sequenceSearch);
-  const close = useStore((s) => s.closeSequenceSearch);
-  // P3 — revive the dead per-hit jump: route it through the shared nav channel
-  // (SearchHost is a SIBLING of the inspector, so it can't reach the caret
-  // directly). The inspector consumes navRequest and sets caret + scroll.
-  const requestSequenceNav = useStore((s) => s.requestSequenceNav);
-  const onJumpTo = useCallback((hit) => {
-    if (!item?.id || !hit || !Number.isFinite(hit.targetStart)) return;
-    requestSequenceNav(item.id, {
-      segments: [{ start: hit.targetStart, end: hit.targetEnd }],
-      caret: { start: hit.targetStart, end: hit.targetEnd },
-      strand: hit.strand === -1 ? -1 : 1,
-      revision: entryRevision(item),
-      metricPct: hit.queryIdentity ?? hit.identity ?? 1,
-    });
-  }, [item, requestSequenceNav]);
-  return (
-    <SequenceSearchPopover
-      open={!!open}
-      onClose={close}
-      targetSequence={item?.sequence || ''}
-      targetName={item?.name || item?.id || null}
-      entryId={item?.id || null}
-      onJumpTo={onJumpTo}
-    />
   );
 }
 

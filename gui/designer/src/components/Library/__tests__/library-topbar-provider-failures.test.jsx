@@ -14,7 +14,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { screen, cleanup, act, fireEvent } from '@testing-library/react';
 import { useStore } from '../../../store';
 import { renderTopBar } from './_topbar-harness';
-import { handleSearchMessage } from '../../../lib/search-worker-core';
+import { recordingFactory } from '../../../lib/__tests__/helpers/search-worker-fakes';
 import { setLang } from '../../../i18n';
 
 const stub = vi.hoisted(() => ({ protein: 'hit', cut: 'hit' }));
@@ -42,24 +42,7 @@ vi.mock('../../../lib/re-match', () => ({
 const NO_MOTIF = 'AAAACCCCGGGGTTTT';
 const WITH_MOTIF = 'AAAGAATTCCCC';
 
-function makeFactory() {
-  const workers = [];
-  const factory = () => {
-    const w = {
-      onmessage: null, onerror: null, onmessageerror: null,
-      posted: [], terminated: false,
-      postMessage(msg) { w.posted.push(msg); },
-      replyLast() { const m = w.posted[w.posted.length - 1]; if (m) w.onmessage?.({ data: handleSearchMessage(m) }); },
-      replyRaw(over) { w.onmessage?.({ data: { id: w.posted[w.posted.length - 1]?.id, ...over } }); },
-      crash() { w.onerror?.({ message: 'boom' }); },
-      terminate() { w.terminated = true; },
-    };
-    workers.push(w);
-    return w;
-  };
-  factory.workers = workers;
-  return factory;
-}
+const makeFactory = recordingFactory;
 const lastWorker = (f) => f.workers[f.workers.length - 1];
 const flush = async () => { await act(async () => { await Promise.resolve(); await Promise.resolve(); }); };
 
@@ -133,7 +116,7 @@ describe('K2.4 — «nothing found» only after a COMPLETED check', () => {
     const factory = makeFactory();
     renderTopBar({ query: 'mol:pUC seq:GAATTC', workerFactory: factory });
     act(() => { vi.advanceTimersByTime(200); });
-    act(() => { lastWorker(factory).replyLast(); }); // engine ran; motif genuinely absent
+    act(() => { lastWorker(factory).flushLast(); }); // engine ran; motif genuinely absent
     await flush();
     expect(warning()).toBeNull();
     expect(screen.getByText('Ничего не найдено.')).toBeTruthy();
@@ -158,7 +141,8 @@ describe('K2.4 — «nothing found» only after a COMPLETED check', () => {
     const factory = makeFactory();
     renderTopBar({ query: 'mol:pUC seq:GAATTC', workerFactory: factory });
     act(() => { vi.advanceTimersByTime(200); });
-    act(() => { lastWorker(factory).replyRaw({ byId: null }); });
+    const w = lastWorker(factory);
+    act(() => { w.replyToJob(w.lastJobId(), { byId: null }); }); // malformed, aimed at the real job
     await flush();
     expect(screen.queryByText('Ничего не найдено.')).toBeNull();
     expect(warning()).toBeTruthy();
@@ -204,7 +188,7 @@ describe('K2.4 — an unconfirmed candidate is labelled and unopenable', () => {
     const onPick = vi.fn();
     renderTopBar({ query: 'mol:pUC seq:GAATTC', workerFactory: factory, onPickSearchResult: onPick });
     act(() => { vi.advanceTimersByTime(200); });
-    act(() => { lastWorker(factory).replyLast(); });
+    act(() => { lastWorker(factory).flushLast(); });
     await flush();
     expect(screen.queryByTestId('smart-result-puc-status')).toBeNull();
     fireEvent.click(screen.getByTestId('smart-result-puc'));
@@ -239,7 +223,7 @@ describe('K2.4 — transitions', () => {
     rerender({ query: 'mol:pUC seq:GAATTG', workerFactory: factory });
     rerender({ query: 'mol:pUC seq:GAATTC', workerFactory: factory });
     act(() => { vi.advanceTimersByTime(200); });
-    act(() => { lastWorker(factory).replyLast(); });
+    act(() => { lastWorker(factory).flushLast(); });
     await flush();
     expect(warning()).toBeNull();
     expect(screen.getByTestId('smart-result-puc')).toBeTruthy();
@@ -283,13 +267,20 @@ describe('K2.4 — transitions', () => {
     const factory = makeFactory();
     const { rerender } = renderTopBar({ query: 'mol:pUC seq:GAATTC', workerFactory: factory });
     act(() => { vi.advanceTimersByTime(200); });
-    const staleWorker = lastWorker(factory);
-    rerender({ query: 'mol:pUC seq:GAATTG', workerFactory: factory }); // cancels A
+    const worker = lastWorker(factory);
+    rerender({ query: 'mol:pUC seq:GAATTG', workerFactory: factory }); // asks A to stop
     act(() => { vi.advanceTimersByTime(200); });
-    act(() => { lastWorker(factory).replyLast(); });
+
+    // C2.2: B is HELD until A acknowledges — so the ack has to happen for B to run at all. The
+    // point of the test is unchanged: a superseded search is dropped, never reported as a failure.
+    expect(worker.cancels.length).toBe(1);
+    expect(worker.terminated, 'a supersede is not a fault').toBe(false);
+    act(() => { worker.ackCancel(); });
+    await flush();
+    act(() => { worker.flushLast(); });
     await flush();
     expect(warning()).toBeNull(); // A was dropped, not failed
-    expect(staleWorker.terminated).toBe(true);
+    expect(factory.workers.length, 'the same healthy thread served both queries').toBe(1);
   });
 });
 
@@ -343,7 +334,7 @@ describe('K2 corrective (P1-2) — the count follows the state of the check', ()
     const factory = makeFactory();
     renderTopBar({ query: 'mol:pUC seq:GAATTC', workerFactory: factory });
     act(() => { vi.advanceTimersByTime(200); });
-    act(() => { lastWorker(factory).replyLast(); }); // the check COMPLETED and found nothing
+    act(() => { lastWorker(factory).flushLast(); }); // the check COMPLETED and found nothing
     await flush();
     expect(headerText()).toContain('· 0');
     expect(liveRegion().textContent).toMatch(/Результатов: 0/);
@@ -355,7 +346,7 @@ describe('K2 corrective (P1-2) — the count follows the state of the check', ()
     const factory = makeFactory();
     renderTopBar({ query: 'mol:pUC seq:GAATTC', workerFactory: factory });
     act(() => { vi.advanceTimersByTime(200); });
-    act(() => { lastWorker(factory).replyLast(); });
+    act(() => { lastWorker(factory).flushLast(); });
     await flush();
     expect(liveRegion().textContent).toMatch(/Результатов: 1/);
     expect(headerText()).not.toMatch(/кандидат/i);
@@ -424,7 +415,7 @@ describe('K3.2 (§7.4) — the result area has exactly one status owner', () => 
     const factory = makeFactory();
     renderTopBar({ query: 'mol:pUC seq:GAATTC', workerFactory: factory });
     act(() => { vi.advanceTimersByTime(200); });
-    act(() => { lastWorker(factory).replyLast(); });
+    act(() => { lastWorker(factory).flushLast(); });
     await flush();
     expectSingleAnnouncer();
     expect(status().textContent).toMatch(/Ничего не найдено/);

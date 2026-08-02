@@ -29,6 +29,12 @@ export function buildLibraryEntry(parsedItem, finalName, resourceHash, opts = {}
     // folder path is structural placement.
     folderPath: typeof opts.folderPath === 'string' ? opts.folderPath : '',
     addedAt: new Date().toISOString(),
+    // Saved-revision counter. The store guarantees it too (withEntryVersion), but
+    // stamping it here means the entry is identifiable the moment it is built —
+    // callers that read it back before the async `addLibraryEntry` resolves
+    // (LibraryWorkspace.importFiles stamps `origin` onto this object first) never
+    // hold a version-less molecule.
+    version: 1,
     payload: {
       sequence: seq,
       length: parsedItem.length || seq.length,

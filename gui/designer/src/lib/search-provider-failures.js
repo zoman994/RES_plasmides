@@ -28,6 +28,7 @@ import { SEARCH_ABORT } from './search-worker-client';
 export const PROVIDER_FAILURE = Object.freeze({
   TIMEOUT: 'TIMEOUT',                 // the engine did not answer in time
   WORKER_FAILURE: 'WORKER_FAILURE',   // the worker crashed / was unavailable / spoke garbage
+  RESOURCE_LIMIT: 'RESOURCE_LIMIT',   // the budget stopped the pass — the engine is fine, the job was too big
   PROVIDER_ERROR: 'PROVIDER_ERROR',   // an inline engine threw, or returned something invalid
 });
 
@@ -57,6 +58,10 @@ export function normalizeFailureReason(err) {
   const reason = err && err.reason;
   if (reason === SEARCH_ABORT.TIMEOUT) return PROVIDER_FAILURE.TIMEOUT;
   if (reason === SEARCH_ABORT.WORKER_FAILURE) return PROVIDER_FAILURE.WORKER_FAILURE;
+  // SPEC, resource-limit protocol step 4: the cause is PRESERVED, not flattened. «The molecule was
+  // too big for the budget» and «the worker died» lead to different fixes — raise the budget or
+  // narrow the query, versus file a defect — and the user deserves the true one.
+  if (reason === SEARCH_ABORT.RESOURCE_LIMIT) return PROVIDER_FAILURE.RESOURCE_LIMIT;
   return PROVIDER_FAILURE.PROVIDER_ERROR;
 }
 
@@ -70,8 +75,23 @@ export function normalizeFailureReason(err) {
  */
 export function createProviderFailureTracker() {
   const failed = new Map(); // dimension → reason (the FIRST cause wins; later ones add nothing)
+  let routed = null; // REQUIRES_ALIGNMENT details — a ROUTE, deliberately not a failure
 
   const record = (dimension, err) => {
+    // §4.2.0: a >100 nt query with no exact hit was never compared approximately. That is not a
+    // broken provider and must not read as one — «поиск не завершён» would send the biologist
+    // looking for a bug, and a plain empty list would assert the sequence is absent. It is its
+    // own outcome, so it does not mark the dimension failed and does not trigger the deferred
+    // re-run: the metadata results around it are perfectly trustworthy.
+    if (err && err.code === 'REQUIRES_ALIGNMENT') {
+      if (!routed) {
+        routed = {
+          maxApproxLength: err.maxApproxLength ?? null,
+          queryLength: err.queryLength ?? null,
+        };
+      }
+      return;
+    }
     if (!failed.has(dimension)) failed.set(dimension, normalizeFailureReason(err));
   };
 
@@ -142,6 +162,9 @@ export function createProviderFailureTracker() {
         incomplete: dims.length > 0,
         incompleteDims: dims,
         providerFailures: dims.map((d) => ({ dimension: d, reason: failed.get(d) })),
+        // Present only when the length route fired, so a consumer that ignores it still cannot
+        // mistake this session for a confirmed zero — the flag is what the notice hangs on.
+        requiresAlignment: routed ? { ...routed } : null,
       };
     },
   };

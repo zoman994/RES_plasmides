@@ -135,6 +135,23 @@ describe('Escape and Tab', () => {
     expect(esc.stopPropagation).toHaveBeenCalled();
   });
 
+  // `disabled` means «these options cannot be chosen», never «this popup cannot be closed».
+  // The case that made the difference real: a slow biological check is running, there are no rows
+  // yet, so the listbox is disabled — and the user pressing Escape got nothing at all.
+  it('Escape still closes a DISABLED popup — dismissal is not option navigation', () => {
+    const { result, onOpenChange } = setup({ open: true, disabled: true });
+    const esc = ev('Escape');
+    act(() => result.current.onKeyDown(esc));
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(esc.preventDefault).toHaveBeenCalled();
+  });
+
+  it('a disabled popup still swallows nothing else: arrows stay inert', () => {
+    const { result, onOpenChange } = setup({ open: false, disabled: true });
+    act(() => result.current.onKeyDown(ev('ArrowDown')));
+    expect(onOpenChange).not.toHaveBeenCalled(); // disabled → no opening by keyboard
+  });
+
   it('Tab closes the popup WITHOUT preventDefault (focus must move away)', () => {
     const { result, onOpenChange } = setup({ open: true });
     const tab = ev('Tab');

@@ -54,7 +54,9 @@ describe('createProviderFailureTracker — guarded matcher', () => {
     const matcher = tracker.guard('protein', () => () => OCC);
     expect(matcher('q', {}, {}, {}, {})).toBe(OCC);
     expect(tracker.hasFailures()).toBe(false);
-    expect(tracker.snapshot()).toEqual({ incomplete: false, incompleteDims: [], providerFailures: [] });
+    expect(tracker.snapshot()).toEqual({
+      incomplete: false, incompleteDims: [], providerFailures: [], requiresAlignment: null,
+    });
   });
 
   it('an empty array is an HONEST MISS, not a failure', () => {
@@ -156,6 +158,8 @@ describe('createProviderFailureTracker — guard(dimension, factory, validate) s
       incomplete: true,
       incompleteDims: ['enzyme'],
       providerFailures: [{ dimension: 'enzyme', reason: PROVIDER_FAILURE.PROVIDER_ERROR }],
+      // §4.2.0 route field — absent here, because a validator reject IS a real failure.
+      requiresAlignment: null,
     });
   });
 
@@ -217,7 +221,7 @@ describe('createProviderFailureTracker — snapshot', () => {
 
   it('a clean tracker snapshots as an explicitly COMPLETE session', () => {
     expect(createProviderFailureTracker().snapshot()).toEqual({
-      incomplete: false, incompleteDims: [], providerFailures: [],
+      incomplete: false, incompleteDims: [], providerFailures: [], requiresAlignment: null,
     });
   });
 });

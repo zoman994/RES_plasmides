@@ -112,7 +112,13 @@ export const RELATIONS = Object.freeze([
  * @property {'name'|'tag'|'type'|'status'|'feature'|'sequence'|'protein'|'enzyme'} dimension
  * @property {'exact'|'prefix'|'substring'|'approximate'|'compatible'} relation
  * @property {Array<{field:string,start:number,end:number}>} highlights
- * @property {SearchOccurrence[]} occurrences
+ * @property {SearchOccurrence[]} occurrences  // RETAINED window, capped at maxLocationsPerEntity
+ * @property {number} locationCount  // how many PHYSICAL loci exist — measured before every cap
+ *                                   //   (P1-2), so a count shown to a biologist is not the size of
+ *                                   //   the window
+ * @property {number} bestIndex  // index into `occurrences` of the §3.2 winner, or −1 when this
+ *                               //   dimension declares none. Rule 7 is decided where the edit
+ *                               //   script exists and cannot be re-derived later (P1-3).
  */
 
 /**
@@ -205,7 +211,6 @@ export const RELATIONS = Object.freeze([
  * @property {QueryFilter[]} explicitFilters       // transitional
  * @property {QueryFilter[]} inferredFilters       // transitional
  * @property {Array<{kind:'text'|'dna'|'protein'|'enzyme', confidence:number}>} interpretations // transitional
- * @property {boolean} hasIupac
  */
 
 export {};

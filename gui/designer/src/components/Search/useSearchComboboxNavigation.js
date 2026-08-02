@@ -78,12 +78,30 @@ export function useSearchComboboxNavigation({
   };
 
   const onKeyDown = (e) => {
-    if (disabled) return;
     // IME guard — do not touch anything until composition ends.
     if (composingRef.current || e?.nativeEvent?.isComposing) return;
 
     const { key } = e;
     const count = items.length;
+
+    // DISMISSAL IS NOT OPTION NAVIGATION. `disabled` means «these options cannot be chosen» —
+    // it must never mean «this popup cannot be closed». The two were conflated, and the case
+    // where they diverge is the one that matters: while a slow check runs with no rows yet, the
+    // listbox is disabled, so the dismissal keys did nothing at all. The user was shown an open
+    // panel with no way out of it — and, since dismissal also stops the underlying search, no way
+    // to stop paying for it either. BOTH keys belong here: Escape and Tab are the two ways out,
+    // and fixing only Escape left the same hole open one key over.
+    if (key === 'Escape') {
+      // Stop propagation so closing the popup does not ALSO close a parent modal/dialog.
+      if (open) { e.preventDefault(); e.stopPropagation?.(); onOpenChange?.(false); setActiveKey(null); }
+      else onUnhandledKeyDown?.(e);
+      return;
+    }
+    if (key === 'Tab') {
+      if (open) onOpenChange?.(false); // never preventDefault — focus must be allowed to leave
+      return;
+    }
+    if (disabled) return;
 
     switch (key) {
       case 'ArrowDown':
@@ -114,15 +132,6 @@ export function useSearchComboboxNavigation({
           onUnhandledKeyDown?.(e);
         }
         return;
-      case 'Escape':
-        // Stop propagation so closing the popup does not ALSO close a parent
-        // modal/dialog listening for Escape.
-        if (open) { e.preventDefault(); e.stopPropagation?.(); onOpenChange?.(false); setActiveKey(null); }
-        else onUnhandledKeyDown?.(e);
-        return;
-      case 'Tab':
-        if (open) onOpenChange?.(false); // never preventDefault — focus leaves
-        return;
       default:
         onUnhandledKeyDown?.(e); // e.g. ':' — prefix semantics wire in here (K3)
     }
@@ -137,6 +146,10 @@ export function useSearchComboboxNavigation({
     activeKey,
     activeIndex,
     setActiveKey,
+    // U5-A — the listbox calls this on hover, so pointing at an option activates it. Hover and
+    // keyboard focus then share ONE state, and `aria-activedescendant` follows the mouse: what a
+    // screen reader announces is the row the sighted user is pointing at.
+    activateIndex,
     resetActive: () => setActiveKey(null),
     onKeyDown,
     compositionHandlers,

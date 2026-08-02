@@ -31,15 +31,17 @@ describe('classifyQuery — multi-intent DNA', () => {
     const p = classifyQuery('GAATTCGGATCCAAGCTT');
     expect(kinds(p)).toEqual(['dna', 'text']);
     expect(p.seqQuery).toBe('GAATTCGGATCCAAGCTT');
-    expect(p.hasIupac).toBe(false);
     // auto-detected DNA has < 1.0 confidence (still primarily a text token)
     const dna = p.interpretations.find((i) => i.kind === 'dna');
     expect(dna.confidence).toBeLessThan(1);
   });
-  it('IUPAC degenerate query flags hasIupac', () => {
+  it('a degenerate bare token stays TEXT ONLY — never an inferred DNA motif (K3.0 §2.5)', () => {
+    // Multi-intent is preserved for A/C/G/T (above): a name really can read ATGC…. But a
+    // degenerate token is not a searchable motif for the interactive engine, so inferring DNA
+    // from it would manufacture a query the engine must then reject.
     const p = classifyQuery('GAATTCNNNNRYGGATCC');
-    expect(p.hasIupac).toBe(true);
-    expect(kinds(p)).toContain('dna');
+    expect(kinds(p)).toEqual(['text']);
+    expect(p.seqQuery).toBeNull();
   });
   it('short (<8) non-keyword term stays text only', () => {
     const p = classifyQuery('amp');

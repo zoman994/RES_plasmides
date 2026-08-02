@@ -1,9 +1,14 @@
 # Умный поиск BodgeGene — REV #2: области поиска, префиксы и визуальный выбор режима
 
-**Статус:** готово к исполнению  
+**Статус:** 🟡 PARTIALLY IMPLEMENTED — Search runtime U7 PASS; остальные области по backlog
 **Дата фиксации решений:** 2026-07-13  
 **Назначение документа:** самостоятельное техническое задание для реализации  
-**Приоритет:** выполнить до расширения каталога Type IIS и его алиасов
+**Приоритет:** оставшиеся parse-only scopes и picker-конвергенция ведутся через `docs/BACKLOG.md`
+
+> **Актуальность DNA-разделов.** Реализованный DNA runtime задают
+> [`SPEC_GAPPED_DNA_SEARCH.md`](specs/SPEC_GAPPED_DNA_SEARCH.md) и
+> [`TECHNICAL_GUIDE_SEARCH.md`](guides/TECHNICAL_GUIDE_SEARCH.md). Старые варианты
+> short/IUPAC/seed-and-extend и kill/recreate worker superseded приёмкой U7.
 
 ---
 
@@ -171,7 +176,7 @@ entries, разрешённые `allowedPrefixKeys` текущего профи�
 | Align reference picker | mount `components/Align/AlignInputPanel.jsx:285` | выбор должен быть ограничен совместимыми molecule kinds | `libraryPicker` с align capabilities |
 | Assembly empty state | mount `AssemblyShellBody.jsx:680` | molecule/import/paste workflow | `libraryPicker` с assembly capabilities |
 | Assembly «+ сегмент» | mount `AssemblyShellBody.jsx:1050` | повтор того же picker | тот же assembly profile |
-| Поиск в открытом sequence | `components/SequenceSearchPopover.jsx:261-267` | min 8, IUPAC запрещён, другой scanner/circular policy | `sequenceWithinEntry` / G3 |
+| Поиск в открытом sequence | `components/SequenceSearchPopover.jsx` | тот же ACGT-only worker/core и topology contract, что global DNA | `sequenceWithinEntry` / G3 |
 | Повторное использование праймера | `PrimerReusePicker.jsx:13-26` | substring по skeleton `state.primers`, не canonical pool | `primerPool` fixed / G3 |
 | Праймерный пул | `components/PrimerPoolList.jsx:97-116` | есть только status/tag selects, текстового поиска нет | добавить `primerPool` / G2-G3 |
 | Контейнеры сборки | `AssemblySidebar.jsx:15-26,94-98` | name-only local filter | `simpleNameFilter` / G4 |
@@ -278,35 +283,19 @@ TreeSearchController(profile=libraryQuick)
 `classifyQuery` или `runSearch` повторно. Эскалация `tree -> global` копирует raw
 text один раз и переключает focus. Обратной live-синхронизации нет.
 
-### 1A.8. Унификация DNA-поиска без смешивания с homology
+### 1A.8. Единый DNA-поиск без смешивания с homology
 
-Сейчас пользовательские DNA-запросы имеют как минимум четыре политики:
+Global DNA provider и `SequenceSearchPopover` используют один worker/core и один occurrence-контракт.
+Shipping route — corpus-wide `EXACT_FIRST`: exact не имеет верхнего предела и исключает
+approximate-строки, если найден хотя бы один exact. Входные минимумы поверхностей пока различаются:
+bare DNA использует `minQueryLen`, явный `seq:` обходит этот порог, а `SequenceSearchPopover`
+требует 8 нт. Approximate-фаза работает до 100 нт через production kernel `LINEAR`; запрос
+`>100` без exact получает `REQUIRES_ALIGNMENT` при threshold <100%, тогда как 100% — exact-only.
 
-- global `seq-match`: exhaustive для short/IUPAC/circular и seed-and-extend для
-  длинных линейных запросов;
-- `SequenceSearchPopover`: min 8, IUPAC запрещён, другой `searchSequence` path;
-- `LibrarySearchBar`: literal ACGT substring, min 3;
-- legacy `PlaceholderTreePicker`/`library-match`: literal substring почти без gate.
-
-Нужен общий primitive:
-
-```ts
-scanDnaOccurrences(query, sequence, {
-  circular,
-  iupac,
-  bothStrands,
-  identityThreshold,
-  maxMismatches,
-  mode: 'exact-fast' | 'exhaustive' | 'seed-extend'
-})
-```
-
-Профиль решает, какой mode допустим, но нормализация, strand/circular coordinates,
-IUPAC и метрики совпадений едины. Если `libraryPicker` ради отзывчивости использует
-`exact-fast`, UI не должен обещать mismatch search и это проверяется profile-test.
-
-`rankHomologs` остаётся отдельным профилем `homology`: coverage-oriented ranking и
-один лучший hit на molecule. Его нельзя подменять motif-поиском `seq:`.
+Интерактивный DNA query принимает только A/C/G/T. Неоднозначный target-символ считается mismatch.
+Обе цепи, кольцевой origin-wrap, identity `M/(M+X+I+D)`, строгий envelope и cooperative cancel/ACK
+задаются [`SPEC_GAPPED_DNA_SEARCH.md`](specs/SPEC_GAPPED_DNA_SEARCH.md). Homology/alignment остаются
+отдельной задачей и не подменяются motif-поиском `seq:`.
 
 ### 1A.9. Праймеры: каталог и биологическая посадка — разные операции
 
@@ -1508,8 +1497,9 @@ components/Library/CommonFeaturesPanel/__tests__/CommonFeaturesPanel.test.jsx
   global и `LibrarySearchBar`; допустима разница порядка только если она задана
   profile ranking contract;
 - library entries и `extraSections` проходят один и тот же matcher contract;
-- одинаковые `minQueryLen`, IUPAC, circular и strand settings не интерпретируются
-  по-разному; если picker использует `exact-fast`, это явно отражено в profile и UI;
+- global DNA и sequence-within-entry одинаково применяют ACGT-only, threshold, circular и strand
+  contract; `LibrarySearchBar` пока остаётся отдельным min-3, forward-only literal ACGT
+  substring-фильтром без circular и approximate semantics;
 - четыре mount `LibrarySearchBar` не добавляют собственных parser branches.
 
 #### Enzyme resolver parity
@@ -1528,8 +1518,7 @@ components/Library/CommonFeaturesPanel/__tests__/CommonFeaturesPanel.test.jsx
 - `PrimerPoolList`, global `primer:` и `PrimerReusePicker` используют один canonical
   primer document key и не дублируют legacy primer;
 - текстовый primer search не выдаёт результат проверки посадки как catalog hit;
-- `SequenceSearchPopover` и global DNA provider одинаково нормализуют IUPAC,
-  обе цепи, circular origin и координаты occurrence для одного profile/options;
+- `SequenceSearchPopover` и global DNA provider используют один ACGT-only worker/core, обе цепи, circular origin и canonical occurrence coordinates;
 - homology и Annotator spies подтверждают, что common SearchField их не вызывает.
 
 #### UI contract
@@ -1581,8 +1570,8 @@ REV #2 считается завершённой только если выпо�
       сохранены отдельно.
 - [ ] В `PrimerPoolList` есть текстовый поиск по canonical pool; global `primer:` и
       `PrimerReusePicker` используют тот же adapter/dedup.
-- [ ] `SequenceSearchPopover` использует общий DNA occurrence primitive и совпадает
-      с profile/options global DNA-поиска по IUPAC/strand/circular coordinates.
+- [x] `SequenceSearchPopover` использует общий ACGT-only DNA worker/core и совпадает
+      с global DNA-поиском по threshold/strand/circular coordinates.
 - [ ] Legacy/dead search surfaces прошли reachability characterization: удалены или
       явно помечены и не продублированы в common layer; dead query state удалён.
 - [ ] Selector полностью управляется мышью и клавиатурой и имеет корректные ARIA roles.

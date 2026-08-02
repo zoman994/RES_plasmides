@@ -13,10 +13,10 @@
  *
  * Conflicts are DIAGNOSED, not silently last-wins: two providers, a duplicate provider,
  * two scope presets, or a scope/provider forbidden by the applicability matrix (§4.5)
- * each yield an error. Pure. Reuses isDnaQuery/hasIupacAmbiguity (sequence-search) — one
- * DNA/IUPAC alphabet. See search-types.js for the QueryPlan shape.
+ * each yield an error. Pure. Reuses canonicalDnaQuery (sequence-search) — one
+ * ACGT rule. See search-types.js for the QueryPlan shape.
  */
-import { isDnaQuery, hasIupacAmbiguity } from './sequence-search';
+import { canonicalDnaQuery } from './sequence-search';
 import { tokenizeQuery } from './search-query-lexer';
 import { resolvePrefix, canonicalPrefix, isExecutablePrefix } from './search-prefix-registry';
 
@@ -203,9 +203,10 @@ export function classifyQuery(rawQuery, opts = {}) {
         providerTokens.push({ intent: providerIntent, canonical, span: tok.span });
         const pid = nextClauseId();
         if (canonical === 'seq') {
-          seqQuery = value;
+          // §2.5: invalid -> NULL, not raw text; unrunnable field traps callers.
+          seqQuery = canonicalDnaQuery(value, 1);
           explicitFilters.push({ id: pid, dim: 'sequence', value });
-          if (!isDnaQuery(value, 1)) diagnostics.push({ code: 'invalid-dna', severity: 'error', token: tok.raw, messageKey: 'search.error.invalidDna' });
+          if (!seqQuery) diagnostics.push({ code: 'invalid-dna', severity: 'error', token: tok.raw, value, messageKey: 'search.error.invalidDna' });
         } else if (canonical === 'aa') {
           aaQuery = value;
           explicitFilters.push({ id: pid, dim: 'protein', value });
@@ -254,7 +255,7 @@ export function classifyQuery(rawQuery, opts = {}) {
   // was typed (an explicit aa:/seq:/enz:/cut: must never be overwritten by a bare DNA
   // token). Runs BEFORE the compatibility check so the inferred intent is validated too.
   const singleFree = textTerms.length === 1 ? textTerms[0] : null;
-  const autoDna = providerTokens.length === 0 && singleFree && isDnaQuery(singleFree, minDnaLen) ? singleFree : null;
+  const autoDna = providerTokens.length === 0 && singleFree ? canonicalDnaQuery(singleFree, minDnaLen) : null;
   if (autoDna) {
     seqQuery = autoDna;
     providerIntent = 'sequence';   // §7: an inferred DNA intent, so Stage 2 runs sequence
@@ -370,7 +371,6 @@ export function classifyQuery(rawQuery, opts = {}) {
     explicitFilters,
     inferredFilters,
     interpretations,
-    hasIupac: seqQuery ? hasIupacAmbiguity(seqQuery) : false,
   };
 }
 

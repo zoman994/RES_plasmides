@@ -60,7 +60,9 @@ const TRANSLATIONS = {
     'search.kind.enzyme': 'Enzyme',
     'search.topology.circular': 'circular',
     'search.topology.linear': 'linear',
-    'search.locations': '{count} locations ▸',
+    // No «▸»: it promised an expansion that does not exist, and this string now also names the
+    // count inside the locus card, where a disclosure arrow would be a lie twice over.
+    'search.locations': '{count} loci',
     'search.reason.tag': 'tag',
     'search.reason.feature': 'feature',
     'search.reason.type': 'type',
@@ -103,6 +105,14 @@ const TRANSLATIONS = {
     'search.results.unverified': 'Unverified',
     'search.results.incompleteWithCandidates': 'Check did not run: {providers}. Preliminary metadata matches are shown; they cannot be opened.',
     'search.results.incompleteNoCandidates': 'Check did not run: {providers}. The absence of matches is NOT confirmed.',
+    // A search the user stopped. Says who stopped it and what that leaves unknown — never
+    // «nothing found», which would claim an absence the engine never established.
+    // Names the pasted query once it lands in the alignment workspace, so it is not one of two
+    // anonymous sequences. The length is what distinguishes it at a glance.
+    'search.requiresAlignment.inputName': 'Search query · {len} nt',
+    'search.results.cancel': 'Stop',
+    'search.results.cancelled': 'Search stopped — the biological check did not finish, so nothing is confirmed or ruled out.',
+    'search.results.resume': 'Search again',
     'search.provider.sequence': 'DNA',
     'search.provider.protein': 'protein',
     'search.provider.enzyme': 'restriction sites',
@@ -128,6 +138,32 @@ const TRANSLATIONS = {
     'search.diag.incompatibleScopeProvider': 'This search kind is not available in the selected scope',
     'search.diag.incompatibleScopeStatus': 'This status does not belong to the selected object type',
     'search.diag.invalidDna': 'The DNA query contains unsupported symbols',
+    'search.popover.invalidDna': 'A, C, G, T only. Degenerate codes (N/R/Y/…), U and gaps are not searched here.',
+    'search.popover.invalidDnaToast': 'A, C, G, T only — degenerate codes, U and gaps are not searched.',
+    'search.popover.minLength': 'Minimum {min} nt. For RE sites use the enzyme panel.',
+    'search.popover.minLengthToast': 'Minimum {min} nt. For RE sites use the enzyme panel.',
+    'search.popover.empty': 'Enter a sequence (minimum {min} nt).',
+    'search.popover.checking': 'Checking…',
+    'search.popover.incomplete': 'The check did not complete — no answer to show. Try again.',
+    'search.popover.cancelled': 'Search was interrupted (another search took over). Press Find to retry.',
+    'search.popover.noHits': 'Nothing found at identity ≥ {threshold}%.',
+    'search.popover.gaps': 'gaps: {n}',
+    // U5-A · the one locus summary, shared by the dropdown row and the in-molecule popover.
+    'search.back.label': 'Back to results',
+    'search.back.title': 'Return to the search you came from',
+    'search.locus.nt': '{exact}/{total} nt',
+    'search.locus.strandLabel': 'strand',
+    'search.locus.coordsLabel': 'coords',
+    'search.locus.coordsTitle': 'coordinates, 0-based half-open [start, end)',
+    // Labelled, not a bare «1·1·1»: the words must be in the DOM, reachable by keyboard and
+    // announced by a screen reader, not hidden in a `title` on a non-focusable span.
+    'search.locus.xid': 'subs: {x} · ins: {i} · del: {d}',
+    'search.popover.dialogLabel': 'Sequence search',
+    'search.popover.placeholder': 'Find a sequence (ACGT, min 8 nt)…',
+    'search.popover.recentTitle': 'Recent searches',
+    'search.popover.closeTitle': 'Close (Esc)',
+    'search.requiresAlignment': 'Search with substitutions and gaps is available up to {max} nt. For a longer sequence, open alignment.',
+    'search.requiresAlignment.action': 'Open alignment',
     'search.diag.unclosedQuote': 'Unclosed quote',
     'export.section.containerHistory': 'Container history',
 
@@ -461,7 +497,8 @@ const TRANSLATIONS = {
     'search.kind.enzyme': 'Фермент',
     'search.topology.circular': 'кольцевая',
     'search.topology.linear': 'линейная',
-    'search.locations': '{count} лок. ▸',
+    // No disclosure arrow, see the EN entry.
+    'search.locations': '{count} лок.',
     'search.reason.tag': 'тег',
     'search.reason.feature': 'фича',
     'search.reason.type': 'тип',
@@ -504,6 +541,14 @@ const TRANSLATIONS = {
     'search.results.unverified': 'Не подтверждено',
     'search.results.incompleteWithCandidates': 'Проверка не выполнена: {providers}. Показаны предварительные совпадения по метаданным; открыть их нельзя.',
     'search.results.incompleteNoCandidates': 'Проверка не выполнена: {providers}. Отсутствие совпадений не подтверждено.',
+    // Поиск, остановленный пользователем. Говорит, кто остановил и что осталось неизвестным —
+    // но никогда «ничего не найдено»: это утверждало бы отсутствие, которого движок не проверял.
+    // Имя вставленного запроса в воркспейсе выравнивания, чтобы он не был одной из двух
+    // безымянных последовательностей. Длина — то, что различает его с одного взгляда.
+    'search.requiresAlignment.inputName': 'Запрос поиска · {len} нт',
+    'search.results.cancel': 'Остановить',
+    'search.results.cancelled': 'Поиск остановлен — биологическая проверка не завершена, поэтому ничего не подтверждено и не исключено.',
+    'search.results.resume': 'Искать снова',
     'search.provider.sequence': 'ДНК',
     'search.provider.protein': 'белок',
     'search.provider.enzyme': 'сайты рестрикции',
@@ -529,6 +574,31 @@ const TRANSLATIONS = {
     'search.diag.incompatibleScopeProvider': 'Этот вид поиска недоступен в выбранной области',
     'search.diag.incompatibleScopeStatus': 'Этот статус не относится к выбранному типу объекта',
     'search.diag.invalidDna': 'ДНК-запрос содержит неподдерживаемые символы',
+    'search.popover.invalidDna': 'Только A, C, G, T. Вырожденные коды (N/R/Y/…), U и пропуски здесь не ищутся.',
+    'search.popover.invalidDnaToast': 'Только A, C, G, T — вырожденные коды, U и пропуски не ищутся.',
+    'search.popover.minLength': 'Минимум {min} нт. Для RE-сайтов используй панель ферментов.',
+    'search.popover.minLengthToast': 'Минимум {min} нт. Для RE-сайтов используй панель ферментов.',
+    'search.popover.empty': 'Введите ПСО (минимум {min} нт).',
+    'search.popover.checking': 'Проверяю…',
+    'search.popover.incomplete': 'Проверка не завершилась — ответа нет. Повторите.',
+    'search.popover.cancelled': 'Поиск прерван (его вытеснил другой поиск). Нажмите «Найти», чтобы повторить.',
+    'search.popover.noHits': 'Ничего не найдено при identity ≥ {threshold}%.',
+    'search.popover.gaps': 'гэпы: {n}',
+    // U5-A · единая сводка локуса, общая для строки дропдауна и попапа в молекуле.
+    'search.back.label': 'Назад к результатам',
+    'search.back.title': 'Вернуться к поиску, из которого вы пришли',
+    'search.locus.nt': '{exact}/{total} нт',
+    'search.locus.strandLabel': 'цепь',
+    'search.locus.coordsLabel': 'координаты',
+    'search.locus.coordsTitle': 'координаты, 0-based полуинтервал [начало, конец)',
+    // Labelled, see the EN entry: the words belong in the DOM, not in a `title`.
+    'search.locus.xid': 'замен: {x} · вставок: {i} · делеций: {d}',
+    'search.popover.dialogLabel': 'Поиск ПСО',
+    'search.popover.placeholder': 'Найти ПСО (ACGT, мин. 8 нт)…',
+    'search.popover.recentTitle': 'Недавние запросы',
+    'search.popover.closeTitle': 'Закрыть (Esc)',
+    'search.requiresAlignment': 'Поиск с заменами и гэпами доступен до {max} нт. Для более длинной последовательности откройте выравнивание',
+    'search.requiresAlignment.action': 'Открыть выравнивание',
     'search.diag.unclosedQuote': 'Незакрытая кавычка',
     'export.section.containerHistory': 'История контейнеров',
 

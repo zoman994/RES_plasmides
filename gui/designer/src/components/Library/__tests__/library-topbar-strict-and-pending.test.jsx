@@ -14,28 +14,13 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { screen, cleanup, act, fireEvent } from '@testing-library/react';
 import { useStore } from '../../../store';
 import { renderTopBar } from './_topbar-harness';
-import { handleSearchMessage } from '../../../lib/search-worker-core';
+import { recordingFactory } from '../../../lib/__tests__/helpers/search-worker-fakes';
 
 const MOTIF = 'GAATTC';
 const WITH_MOTIF = `AAAA${MOTIF}TTTT`;
 const NO_MOTIF = 'AAAACCCCGGGGTTTT';
 
-function makeFactory() {
-  const workers = [];
-  const factory = () => {
-    const w = {
-      onmessage: null, onerror: null, onmessageerror: null,
-      posted: [], terminated: false,
-      postMessage(msg) { w.posted.push(msg); },
-      replyLast() { const m = w.posted[w.posted.length - 1]; if (m) w.onmessage?.({ data: handleSearchMessage(m) }); },
-      terminate() { w.terminated = true; },
-    };
-    workers.push(w);
-    return w;
-  };
-  factory.workers = workers;
-  return factory;
-}
+const makeFactory = recordingFactory;
 const flush = async () => { await act(async () => { await Promise.resolve(); await Promise.resolve(); }); };
 const lastWorker = (f) => f.workers[f.workers.length - 1];
 
@@ -87,7 +72,7 @@ describe('S3-CLOSE K1 (P1-3) — a pending candidate is verifiable, never select
     await flush();
     expect(screen.getByTestId('smart-result-puc')).toBeTruthy(); // candidate during partial
 
-    act(() => { lastWorker(factory).replyLast(); }); // motif absent → strict final drops it
+    act(() => { lastWorker(factory).flushLast(); }); // motif absent → strict final drops it
     await flush();
     expect(screen.queryByTestId('smart-result-puc')).toBeNull();
   });
@@ -104,29 +89,39 @@ describe('S3-CLOSE K1 (P1-3) — a pending candidate is verifiable, never select
     fireEvent.click(screen.getByTestId('smart-result-puc'));
     expect(onPick).not.toHaveBeenCalled();
 
-    act(() => { lastWorker(factory).replyLast(); }); // motif found → confirmed
+    act(() => { lastWorker(factory).flushLast(); }); // motif found → confirmed
     await flush();
 
     const row = screen.getByTestId('smart-result-puc');
     expect(row.closest('[role="option"]').getAttribute('aria-disabled')).not.toBe('true');
-    // the confirmed row carries the sequence dimension (its metrics render)
-    expect(screen.getByTestId('smart-result-puc-metrics').textContent).toMatch(/идентичность|совместимость/);
+    // the confirmed row carries the sequence dimension (its canonical identity renders)
+    // A DNA hit reports identity, full stop (§2.5) — «совместимость» belongs to enzyme sites, and the
+    // canonical cell can only ever print identity basis points (U5-A).
+    expect(screen.getByTestId('smart-result-puc-identity').textContent).toMatch(/^\d+\.\d{2}%$/);
     fireEvent.click(row);
     expect(onPick).toHaveBeenCalledWith(expect.objectContaining({ kind: 'entry', id: 'puc' }), expect.anything());
   });
 
-  it('a late reply from a superseded query is still stale-dropped', async () => {
+  it('a late terminal for the SUPERSEDED job is still stale-dropped', async () => {
+    // C2.2: `flushLast()` after a supersede used to answer whatever was posted last — which, under
+    // the cooperative protocol, is the cancel CONTROL FRAME. So the old version of this test proved
+    // nothing about a late reply. The job is remembered and answered by name.
     vi.useFakeTimers();
     seed('puc', 'pUC19', WITH_MOTIF);
     const factory = makeFactory();
     const { rerender } = renderTopBar({ query: `mol:pUC seq:${MOTIF}`, workerFactory: factory });
     act(() => { vi.advanceTimersByTime(200); });
-    const stale = lastWorker(factory);
-    rerender({ query: 'mol:zzznope', workerFactory: factory }); // supersede
+    const worker = lastWorker(factory);
+    const jobA = worker.lastJobId();
+    rerender({ query: 'mol:zzznope', workerFactory: factory }); // supersede → A is asked to stop
     act(() => { vi.advanceTimersByTime(200); });
-    act(() => { stale.replyLast(); }); // the OLD query answers late
+
+    expect(worker.cancels, 'the cancel names A, not some other job').toEqual([jobA]);
+    act(() => { expect(worker.flushJob(jobA)).toBe(true); }); // A answers LATE, for its own job
     await flush();
+
     expect(screen.queryByTestId('smart-result-puc')).toBeNull();
+    expect(worker.terminated, 'a supersede keeps the healthy thread').toBe(false);
   });
 
   it('plain metadata results are NOT blocked (no provider requested → immediately selectable)', async () => {

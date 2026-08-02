@@ -64,6 +64,17 @@ export function createSearchService(deps = {}) {
         const finalSession = { ...session, requestId, status: 'done' };
         if (onResult) onResult(finalSession, { stale: false, phase: 'final' });
         return { requestId, stale: false, session: finalSession };
+      }, (err) => {
+        // A run can END IN FAILURE, and staleness decides who is owed the news. If this request is
+        // no longer the latest, nobody is waiting for it: resolve stale, exactly as a late SUCCESS
+        // does, so a superseded query neither hangs its caller nor reports a verdict over the
+        // search that replaced it. If it IS still current, the caller must hear it — a cross-owner
+        // cancellation reaches the UI as «stopped» only because this rethrows.
+        //
+        // Deliberately the SECOND argument of `.then`, not a chained `.catch`: a catch would also
+        // swallow anything thrown by `onResult` above, quietly turning a UI bug into a stale drop.
+        if (requestId !== latest) return { requestId, stale: true, session: null };
+        throw err;
       });
   }
 

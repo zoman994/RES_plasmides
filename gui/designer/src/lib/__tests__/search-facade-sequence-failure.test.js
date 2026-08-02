@@ -20,9 +20,16 @@ function makeFactory() {
     const w = {
       onmessage: null, onerror: null, onmessageerror: null,
       posted: [], terminated: false,
-      postMessage(msg) { w.posted.push(msg); },
-      lastId() { return w.posted[w.posted.length - 1]?.id; },
-      replyReal() { const m = w.posted[w.posted.length - 1]; if (m) w.onmessage?.({ data: handleSearchMessage(m) }); },
+      // U4-CANCEL C2 — `cancel` is a control frame; a cooperative worker acks after unwinding.
+      postMessage(msg) {
+        w.posted.push(msg);
+        if (msg && msg.type === 'cancel') {
+          Promise.resolve().then(() => w.onmessage?.({ data: { id: msg.id, cancelled: true } }));
+        }
+      },
+      get jobs() { return w.posted.filter((m) => !m || m.type !== 'cancel'); },
+      lastId() { return w.jobs[w.jobs.length - 1]?.id; },
+      replyReal() { const m = w.jobs[w.jobs.length - 1]; if (m) w.onmessage?.({ data: handleSearchMessage(m) }); },
       replyRaw(over) { w.onmessage?.({ data: { id: w.lastId(), ...over } }); },
       crash() { w.onerror?.({ message: 'boom' }); },
       terminate() { w.terminated = true; },
@@ -149,12 +156,17 @@ describe('facade — a SUPERSEDED search is a normal drop, not a provider failur
     const metaA = [];
     const pA = facade.search('mol:pUC seq:GAATTC', [HIT], {}, (_s, m) => metaA.push(m.phase));
     const pB = facade.search('mol:pUC seq:GAATTC', [HIT], { bothStrands: false }); // supersedes A
+    // A late reply for the CANCELLED pass — it must be ignored, never published.
     last(factory).replyReal();
 
     const outA = await pA;
     expect(outA.stale).toBe(true);
     expect(outA.session).toBeNull();
     expect(metaA).toEqual(['partial']); // the final never fires for a superseded search
+    // U4-CANCEL C2: B is only posted once the cancelled pass has acknowledged, so it is answered
+    // here rather than above — the same worker, one heavy job at a time.
+    await Promise.resolve();
+    last(factory).replyReal();
     await pB;
   });
 

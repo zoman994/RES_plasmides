@@ -13,7 +13,12 @@
  *
  * The order is a CLAIM LADDER — the further down, the stronger the evidence required:
  *
- *   hidden → blocked → incomplete → checking → metadata-preview → complete-results / complete-empty
+ *   hidden → blocked → requires-alignment → cancelled → incomplete → checking → metadata-preview
+ *   → complete-results / complete-empty
+ *
+ * Every token is kebab-case machine text, and a test asserts that over EVERY returned string —
+ * which is how `requiresAlignment` was caught: it had been camelCase since the day it was added,
+ * invisible because the state was missing from that test's hand-built list of states.
  *
  * Two rungs carry the biology:
  *   • `incomplete` outranks `checking`: a check that FAILED is «not confirmed», not «still
@@ -41,6 +46,7 @@ const INVALID = { state: 'invalid', statusKind: STATUS_NONE, countKind: 'none', 
  *   providerExpected?: boolean,   // seq/aa/cut/re requested — NOT metadata or the enz: catalog
  *   providerPending?: boolean,    // at least one row still awaits its biological confirmation
  *   incomplete?: boolean,         // a requested check did not run
+ *   cancelled?: boolean,          // the user stopped it — the JOB is over, no answer is coming
  *   blocked?: boolean,            // the query never ran at all
  *   interactionDisabled?: boolean // IME composition / external UI gate — selection only
  * }} input
@@ -51,7 +57,7 @@ export function deriveSearchSessionPresentation(input) {
   if (!input || typeof input !== 'object') return { ...INVALID };
   const {
     ownsQuery, phase, rowCount, providerExpected,
-    providerPending, incomplete, blocked, interactionDisabled,
+    providerPending, incomplete, blocked, interactionDisabled, requiresAlignment, cancelled,
   } = input;
 
   // 1 — not our query (or none): publish nothing. A stale warning or count must never outlive
@@ -68,6 +74,52 @@ export function deriveSearchSessionPresentation(input) {
   if (!Number.isInteger(rowCount) || rowCount < 0) return { ...INVALID };
 
   const hasRows = rowCount > 0;
+
+  // 2.5 — the length route (§4.2.0): a >100 nt query with no exact hit was never compared
+  // approximately. Ranked ABOVE `incomplete` because nothing failed, and far above `empty`
+  // because «nothing found» here would assert an absence the engine never tested.
+  //
+  // Rows here are UNSELECTABLE CANDIDATES. A compound query («pUC19 seq:<400 nt>») can produce
+  // name matches while the sequence leg never ran, so counting them as «results» would tell a
+  // biologist the library holds exactly 3 molecules related to their insert — when the insert was
+  // never compared at all. Over-claiming completeness can end an investigation early; under-
+  // claiming only invites a second look.
+  //
+  // And they are not openable either (reviewer decision, 21.07.2026, pending a dedicated design
+  // pass): opening one would put an UNCOMPARED molecule in front of the user as though the search
+  // had confirmed it. The only live action under this state is the move to alignment.
+  if (requiresAlignment) {
+    return {
+      state: 'requires-alignment',
+      statusKind: 'requires-alignment',
+      countKind: hasRows ? 'candidates' : 'none',
+      showRows: hasRows,
+      rowsDisabled: true,
+      ariaBusy: false,
+    };
+  }
+
+  // 2.7 — the user pressed stop. Ranked ABOVE `incomplete` because the two answer different
+  // questions: `incomplete` blames the engine, and saying «the check could not be performed» to
+  // someone who just cancelled it is a lie about our own software. Ranked BELOW the route because
+  // §4.2.0 is a definite fact about the QUERY — a stop cannot make a 400-mer approximable.
+  //
+  // Never busy — and the reason is about the JOB, not about the thread. An ordinary cancel is
+  // cooperative: the running job is told to stop, unwinds through its own `finally` blocks and
+  // acknowledges (or its terminal reply beat the cancel). Either way THIS job is over and no answer
+  // is coming for it, so a spinner would wait forever. The worker itself stays alive and takes the
+  // next query immediately; `ariaBusy: false` states «nothing is running for this session», never
+  // «the worker was destroyed».
+  if (cancelled) {
+    return {
+      state: 'cancelled',
+      statusKind: 'cancelled',
+      countKind: hasRows ? 'candidates' : 'none',
+      showRows: hasRows,
+      rowsDisabled: true,
+      ariaBusy: false,
+    };
+  }
 
   // 3 — incomplete: a requested check FAILED. Surviving rows are metadata candidates only —
   // always disabled, counted as candidates, never as results. With no rows there is no number

@@ -8,6 +8,8 @@
  */
 import React from 'react';
 import HighlightedText from '../common/HighlightedText';
+import LocusSummary from '../Search/LocusSummary';
+import { LOCUS_LABELS } from '../../lib/search-locus-labels';
 import { strengthColor } from '../../lib/identity-color';
 import { t, tf } from '../../i18n';
 import { Icon } from '../icons/Icon';
@@ -63,12 +65,15 @@ export function SmartResultContent({ vm, testId, active = false, statusLabel = n
       data-testid={tid}
       style={{
         width: '100%', padding: '6px 10px',
-        display: 'flex', alignItems: 'center', gap: 8,
+        display: 'flex', flexDirection: 'column', gap: 3,
         borderBottom: '1px solid var(--border-subtle)',
         background: active ? 'var(--surface-2)' : 'transparent',
         fontSize: 11.5,
       }}
     >
+      {/* §5.3.1 — the MAIN line is the name and the identity percentage. Everything else belongs to
+          the card the active row opens, so a list of molecules stays scannable. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
       <span
         data-testid={`${tid}-kind-icon`}
         style={{
@@ -142,18 +147,43 @@ export function SmartResultContent({ vm, testId, active = false, statusLabel = n
         >{vm.reasonLabel}</span>
       )}
 
-      {vm.metricsText && (
+      {/* The legacy metric SENTENCE survives ONLY where there is no canonical locus — a protein or
+          enzyme hit, which has no alignment and therefore no `identityBps`. On a DNA locus it used to
+          render BESIDE the canonical numbers, so one row stated identity twice: `Math.round(float)`
+          against basis points (99.99 % printed as «100 %»), and `m.length` against `alignmentLength`
+          as the denominator, which differ precisely when there is an indel. */}
+      {!vm.locus && vm.metricsText && (
         <span
           data-testid={`${tid}-metrics`}
           style={{ flexShrink: 0, color, fontWeight: 500, fontSize: 10.5 }}
         >{vm.metricsText}</span>
       )}
-
-      {vm.locationCount > 0 && (
+      {!vm.locus && vm.locationCount > 0 && (
         <span
           data-testid={`${tid}-locations`}
           style={{ flexShrink: 0, color: 'var(--text-tertiary)', fontSize: 10 }}
         >{tf('search.locations', { count: vm.locationCount })}</span>
+      )}
+
+      {/* Identity — the one number the main line carries for a DNA locus, from the engine's own
+          integer via the SHARED summary. */}
+      <LocusSummary summary={vm.locus} testIdPrefix={tid} part="identity" dense labels={LOCUS_LABELS()} />
+      </div>
+
+      {/* The compact card of supporting numbers: strand, half-open coordinates (BOTH segments on a
+          wrap), M/L, X·I·D, gap events and the physical locus count. It belongs to the ACTIVE row —
+          and «active» is one state reached by hover AND by keyboard focus, so this is never
+          hover-only information. Same component, same object as the in-molecule popover. */}
+      {active && vm.locus && (
+        <div
+          data-testid={`${tid}-card`}
+          style={{
+            display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6,
+            paddingLeft: 26, // clears the kind icon so the card aligns under the name
+          }}
+        >
+          <LocusSummary summary={vm.locus} testIdPrefix={tid} part="card" dense labels={LOCUS_LABELS()} />
+        </div>
       )}
     </div>
   );

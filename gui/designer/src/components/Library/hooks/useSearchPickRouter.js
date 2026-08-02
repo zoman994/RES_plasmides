@@ -20,13 +20,16 @@ import { legacyPrimerToCanonical } from '../../../lib/legacy-primer-migrate';
 export function useSearchPickRouter({ openEntry, setQuery } = {}) {
   const [enzymeCardId, setEnzymeCardId] = useState(null);
 
+  // Returns TRUE when the pick actually navigated. Only the molecule route can report that
+  // honestly today (openEntry runs the dirty guard and says so); the others are unconditional.
+  // The caller uses it to decide whether a Back frame is owed — never assuming one is.
   const handlePickSearchResult = useCallback((entityRef, occurrence) => {
     const action = resolveSearchPick(entityRef, occurrence);
     const store = useStore.getState();
     switch (action.type) {
       case 'openMolecule':
-        openEntry?.(action.id, action.occurrence);
-        break;
+        // The result's OWN revision rides through — the sink must not re-stamp the current one.
+        return !!openEntry?.(action.id, action.occurrence, action.revision, action.docEpoch);
       case 'activateProject':
         store.activateProject?.(action.id);
         break;
@@ -59,6 +62,7 @@ export function useSearchPickRouter({ openEntry, setQuery } = {}) {
       default:
         break; // 'none' / 'unknown' → fail-closed no-op
     }
+    return false; // no molecule was opened — nothing to come back FROM
   }, [openEntry]);
 
   const scanEnzymeSites = useCallback((enzymeId) => {

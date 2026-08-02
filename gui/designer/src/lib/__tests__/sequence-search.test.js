@@ -17,8 +17,7 @@ import {
   adaptiveSeedLen,
   reverseComplement,
   identityBucket,
-  isDnaQuery,
-  hasIupacAmbiguity,
+  canonicalDnaQuery,
 } from '../sequence-search';
 
 describe('reverseComplement — IUPAC fix (P1.5, was truncated {A,T,G,C,N})', () => {
@@ -184,13 +183,18 @@ describe('M-X.9 K1 — sequence-search core', () => {
     expect(identityBucket(0.5)).toBe('low');    // grey now
   });
 
-  it('isDnaQuery + hasIupacAmbiguity classify input strings', () => {
-    expect(isDnaQuery('ACGTACGT')).toBe(true);
-    expect(isDnaQuery('not a dna string')).toBe(false);
-    expect(isDnaQuery('ACGT')).toBe(false); // too short
-    expect(hasIupacAmbiguity('ACGTACGT')).toBe(false);
-    expect(hasIupacAmbiguity('ACGTNCGT')).toBe(true);
-    expect(hasIupacAmbiguity('ACGTRCGT')).toBe(true);
+  it('canonicalDnaQuery returns the canonical string or null (K3.0 §2.5)', () => {
+    // One helper replaces the old isDnaQuery/hasIupacAmbiguity pair. It returns the STRING so the
+    // plan and the engine cannot disagree about what was searched — a boolean let the untrimmed
+    // original through to an engine that then rejected it.
+    expect(canonicalDnaQuery('ACGTACGT')).toBe('ACGTACGT');
+    expect(canonicalDnaQuery('  acgtacgt  ')).toBe('ACGTACGT'); // trim + uppercase
+    expect(canonicalDnaQuery('not a dna string')).toBeNull();
+    expect(canonicalDnaQuery('ACGT')).toBeNull();      // too short
+    expect(canonicalDnaQuery('ACGTNCGT')).toBeNull();  // degenerate: rejected, not flagged
+    expect(canonicalDnaQuery('ACGTRCGT')).toBeNull();
+    expect(canonicalDnaQuery('ACGUACGU')).toBeNull();  // U is NOT rewritten to T here
+    expect(canonicalDnaQuery('ACGT ACGT')).toBeNull(); // interior space: invalid, not stripped
   });
 
   it('3\'-end indicator is `null` for queries longer than the primer-mode threshold (>50 nt)', () => {

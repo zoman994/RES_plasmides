@@ -62,7 +62,12 @@ describe('LibraryTopBar — universal search', () => {
     renderTopBar({ query: 'GCATGCATGCATGC', onPickSearchResult: onPick });
     await waitFor(() => expect(screen.getByTestId('smart-result-a')).toBeTruthy());
     expect(screen.queryByTestId('smart-result-b')).toBeNull(); // no motif in b
-    expect(screen.getByTestId('smart-result-a-metrics').textContent).toMatch(/идентичность|совместимость/);
+    // Identity, not «or compatibility»: an ACGT-only engine always knows the exact ratio, so the
+    // alternation would let a compatibility-worded regression pass unnoticed. Read from the CANONICAL
+    // cell at basis-point precision — the legacy sentence («100% идентичность», a float rounded to a
+    // whole percent over a different denominator) no longer renders beside it (U5-A).
+    expect(screen.getByTestId('smart-result-a-identity').textContent).toMatch(/^\d+\.\d{2}%$/);
+    expect(screen.queryByTestId('smart-result-a-metrics')).toBeNull();
     fireEvent.click(screen.getByTestId('smart-result-a'));
     // kind-aware pick (§10.4): the RAW entityRef (kind+id, may carry revision); occurrence for the jump
     expect(onPick).toHaveBeenCalledWith(
@@ -71,13 +76,21 @@ describe('LibraryTopBar — universal search', () => {
     );
   });
 
-  it('IUPAC is now supported (no «не поддерживается» hint) and returns a compatible hit', async () => {
+  it('a degenerate motif is BLOCKED, not searched as a compatibility match (K3.0 §2.5)', async () => {
+    // Superseded contract: `seq:GAANTC` used to return GAATTC as a «100% совместимость» hit.
+    // DNA search is ACGT-only now — `N` is not «any base» — so the query is refused up front
+    // rather than answered with a match the biologist cannot verify base-for-base.
     seedEntry('e1', 'plasmid', null, `AAAA${'GAATTC'}AAAA`);
-    // short IUPAC motif → seq: prefix; N matches T → GAANTC compatible with GAATTC.
     renderTopBar({ query: 'seq:GAANTC' });
+    await waitFor(() => expect(screen.getByTestId('search-blocked-notice')).toBeTruthy());
+    expect(screen.queryByTestId('smart-result-e1')).toBeNull();
+  });
+
+  it('…and the concrete form of the same motif still searches normally', async () => {
+    seedEntry('e1', 'plasmid', null, `AAAA${'GAATTC'}AAAA`);
+    renderTopBar({ query: 'seq:GAATTC' });
     await waitFor(() => expect(screen.getByTestId('smart-result-e1')).toBeTruthy());
-    expect(screen.getByTestId('library-topbar-search-results').textContent).not.toMatch(/не поддерживается/);
-    expect(screen.getByTestId('smart-result-e1-metrics').textContent).toMatch(/совместимость/);
+    expect(screen.getByTestId('smart-result-e1-identity').textContent).toBe('100.00%');
   });
 
   it('a contradictory query (two provider intents) shows the BLOCKED notice, never results (K7 gate)', async () => {

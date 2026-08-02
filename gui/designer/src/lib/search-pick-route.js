@@ -27,7 +27,19 @@ export function resolveSearchPick(entityRef, occurrence) {
   const id = entityRef?.id;
   if (!kind || id == null) return { type: 'none' };
   switch (kind) {
-    case 'entry': return { type: 'openMolecule', id, occurrence: occurrence || null };
+    // U5-B — the REVISION the result was computed on travels with it. Re-deriving it from the
+    // current entry at click time (what the sink used to do) makes every result look fresh: a hit
+    // found on version N would pass the stale guard against version N+1 and select bases that have
+    // moved. `null` when the producer carried none — unverifiable, not silently "current".
+    case 'entry': return {
+      type: 'openMolecule',
+      id,
+      occurrence: occurrence || null,
+      revision: entityRef.revision ?? null,
+      // The identity of the document the search READ. Recomputing it at click time would name
+      // whatever the molecule is now — which is exactly the staleness the field exists to catch.
+      docEpoch: entityRef.docEpoch ?? null,
+    };
     case 'project': return { type: 'activateProject', id };
     case 'primer': return { type: 'openPrimer', id };
     case 'enzyme': return { type: 'openEnzymeCard', id };

@@ -20,12 +20,24 @@ describe('searchAllSequences', () => {
     ];
     const byId = searchAllSequences('GAATTG', docs, { bothStrands: false });
     expect(Object.keys(byId).sort()).toEqual(['a', 'c']); // b omitted (no hit)
-    expect(byId.a[0].location.segments[0]).toEqual({ start: 3, end: 9 });
-    expect(byId.c.length).toBe(2); // two overlapping-free occurrences
+    // Each value is a LOCUS ENVELOPE (P1-2/P1-3) — the retained window plus how many loci exist and
+    // which retained one is the §3.2 winner. Both numbers are measured inside the engine and cannot
+    // be recomputed here, so the sweep carries them rather than returning a bare array.
+    expect(byId.a.occurrences[0].location.segments[0]).toEqual({ start: 3, end: 9 });
+    expect(byId.a.locationCount).toBe(byId.a.occurrences.length); // nothing was capped away
+    expect(byId.a.occurrences[byId.a.bestIndex]).toBe(byId.a.occurrences[0]);
+    // Both exact copies are found…
+    const exact = byId.c.occurrences.filter((o) => o.metrics.identity === 1).map((o) => o.location.segments[0].start);
+    expect(exact).toEqual([0, 6]);
+    // …and the near-matches the old exact-only path hid are resolved by §3.2.1: everything that
+    // ends where an exact copy ends collapses onto it, in BOTH nesting directions — the leading-
+    // insertion variants at starts 1 and 7 (nested inside) and the interior-deletion variant at
+    // start 5 (which contains the exact hit at 6). One tandem copy, one occurrence.
+    expect(byId.c.occurrences.map((o) => o.location.segments[0].start)).toEqual([0, 6]);
   });
   it('honours circular topology per doc', () => {
     const byId = searchAllSequences('AAGTTC', [doc('z', 'TTCGGGAAG', 'circular')], { bothStrands: false });
-    expect(byId.z[0].location.wrapsOrigin).toBe(true);
+    expect(byId.z.occurrences[0].location.wrapsOrigin).toBe(true);
   });
   it('empty query / non-array → empty object', () => {
     expect(searchAllSequences('', [doc('a', 'ACGT')])).toEqual({});

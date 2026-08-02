@@ -27,16 +27,32 @@ import { createProviderFailureTracker, isSupersededFailure } from './search-prov
 import { validateProviderOccurrences } from './search-provider-contract';
 
 /**
- * @param {{ workerFactory?: (()=>(object|null)), worker?: object, allowInlineFallback?:boolean }} [deps] — prefer
- *   `workerFactory` (a `() => Worker`, so the client can terminate + recreate a stuck
- *   worker). A bare `worker` instance is accepted (wrapped as a one-shot factory) for
- *   back-compat. Omit both for the inline main-thread fallback.
+ * @param {{ sequenceChannel?: object, workerFactory?: (()=>(object|null)), worker?: object,
+ *   allowInlineFallback?:boolean }} [deps]
+ *
+ * PRODUCTION PASSES `sequenceChannel` — the `global` channel of the app-wide coordinator. The
+ * facade then owns no thread at all: the global bar and the in-molecule popover are two surfaces
+ * onto ONE worker, and a facade that quietly built its own would put a second megabase sweep on the
+ * machine least able to afford it.
+ *
+ * `workerFactory` / `worker` / inline remain for low-level lib tests that exercise this module in
+ * isolation. They are not a production path.
  */
-export function createSearchFacade({ workerFactory, worker, allowInlineFallback } = {}) {
+export function createSearchFacade({
+  sequenceChannel, workerFactory, worker, allowInlineFallback,
+} = {}) {
   const factory = typeof workerFactory === 'function'
     ? workerFactory
     : (worker ? () => worker : null);
-  const workerClient = createSearchWorkerClient(factory, { allowInlineFallback });
+  // A channel is an ADAPTER, not a client: it exposes the same three calls, but `terminate()` maps
+  // to `cancel()` because the coordinator's lifetime belongs to the Provider. A facade tearing down
+  // on unmount must stop ITS OWN work and nothing else — killing the shared owner here would abort
+  // the popover's search and leave the app with no searcher at all.
+  const workerClient = sequenceChannel ? {
+    searchSequences: (query, documents, ctx) => sequenceChannel.search(query, documents, ctx),
+    cancel: () => { sequenceChannel.cancel(); },
+    terminate: () => { sequenceChannel.cancel(); },
+  } : createSearchWorkerClient(factory, { allowInlineFallback });
 
   // Instant metadata pass — name/tag/type/status/feature only (no sequence engine). REV #2 S3-CLOSE
   // K1: pass the user ctx (so the partial honours opts.limit etc.) but force 'deferred' AFTER the
@@ -57,16 +73,28 @@ export function createSearchFacade({ workerFactory, worker, allowInlineFallback 
         byId = await workerClient.searchSequences(plan.seqQuery, documents, ctx);
       } catch (err) {
         byId = null;
-        // ONLY a superseded search (CANCELLED / TERMINATED) is a normal drop — the service
-        // stale-drops it, so the user is never told. ANY other cause (crash, timeout, garbage
-        // reply, unavailable worker, inline-engine throw) means the dim did NOT run.
-        if (!isSupersededFailure(err)) failures.record('sequence', err);
+        // A SUPERSEDED pass is neither a result nor a failure — it is an abandoned run, and the
+        // only honest thing to do is stop. Continuing would build the strict final WITHOUT the
+        // sequence provider and publish it as a confirmed answer: «nothing found» for a molecule
+        // that was never searched.
+        //
+        // This used to be a safe drop on the reasoning that the service stale-drops such a session
+        // anyway. That held only while the SAME surface could cancel itself — its requestId moved,
+        // so the session was stale. With a second owner (the in-molecule popover) the global query
+        // has not changed, its requestId is still the latest, and the session IS delivered. The
+        // rejection propagates instead; the caller's generation decides whether anyone still cares.
+        if (isSupersededFailure(err)) throw err;
+        // ANY other cause (crash, timeout, garbage reply, unavailable worker, engine throw) means
+        // the dim did not run — recorded, so the UI says so.
+        failures.record('sequence', err);
       }
     }
     const seqMatch = byId
       // Look up by the composite `<kind>:<id>` (§10.4) the worker keyed on — never the bare
       // ref.id, or a same-id entry/primer would read each other's occurrences.
-      ? (_q, _seqDoc, _plan, _ctx, doc) => (doc && byId.get(entityRefKey(doc.ref))) || []
+      // The value is a LOCUS ENVELOPE, handed on untouched: its `locationCount` and `bestIndex`
+      // were measured inside the worker, before the payload cap, and cannot be re-derived here.
+      ? (_q, _seqDoc, _plan, _ctx, doc) => (doc && byId.get(entityRefKey(doc.ref))) || null
       : undefined;
     // Protein (aa:) — CDS-directed, splice-aware, inline; library-search hands it the whole doc
     // so it can translate the annotated CDS. Enzyme (cut:/re:) — a whole-doc cut-site scan;

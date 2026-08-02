@@ -16,6 +16,7 @@ import {
 import { createRestrictionViewSlice, selectActiveSetEnzymes } from './restrictionViewSlice';
 import { createAlignmentSlice, selectAlignment } from './alignmentSlice';
 import { createProjectAssembliesSlice, selectActiveProjectAssemblies } from './projectAssembliesSlice';
+import { createSearchSessionSlice, registerSearchCorpusWatcher } from './searchSessionSlice';
 import { wipeLegacyV05Storage } from '../lib/v05-cleanup';
 
 export { wipeLegacyV05Storage };
@@ -40,9 +41,14 @@ const stateCreator = (set, get) => ({
   ...createRestrictionViewSlice(set, get),
   ...createAlignmentSlice(set, get),
   ...createProjectAssembliesSlice(set, get),
+  ...createSearchSessionSlice(set, get),
 });
 
 export const useStore = create(immer(stateCreator));
+
+// ONE watcher, registered at creation: the search corpus ages itself instead of every mutation
+// site remembering to say so. See registerSearchCorpusWatcher for why identity is enough.
+registerSearchCorpusWatcher(useStore);
 
 export { selectIsDirty, applyThemeToDOM };
 

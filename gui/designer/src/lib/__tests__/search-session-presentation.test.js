@@ -116,11 +116,56 @@ describe('deriveSearchSessionPresentation — the precedence ladder', () => {
   });
 });
 
+/**
+ * A search the USER stopped. The engine cannot be interrupted mid-pass, so «cancel» means the
+ * worker is killed — no answer will ever arrive. The projection therefore has to stop claiming
+ * the check is running, WITHOUT claiming it completed.
+ */
+describe('deriveSearchSessionPresentation — cancelled', () => {
+  it('a cancelled search is no longer «checking»: the spinner state must not survive the stop', () => {
+    expect(derive({ phase: 'partial', providerExpected: true, cancelled: true, rowCount: 2 })).toMatchObject({
+      state: 'cancelled', statusKind: 'cancelled', ariaBusy: false,
+    });
+  });
+
+  it('never announces «nothing found»: the check was stopped, not answered', () => {
+    const p = derive({ phase: 'partial', providerExpected: true, cancelled: true, rowCount: 0 });
+    expect(p.statusKind).not.toBe('empty');
+    expect(p.countKind).toBe('none'); // «· 0» beside «stopped» would read as zero matches
+  });
+
+  it('surviving rows are CANDIDATES and stay unselectable — their biology was never confirmed', () => {
+    expect(derive({ phase: 'partial', providerExpected: true, cancelled: true, rowCount: 3 })).toMatchObject({
+      countKind: 'candidates', showRows: true, rowsDisabled: true,
+    });
+  });
+
+  it('outranks `incomplete`: the user pressed stop, so blaming the engine would be a lie', () => {
+    expect(derive({ cancelled: true, incomplete: true, rowCount: 1 })).toMatchObject({ state: 'cancelled' });
+  });
+
+  it('does not outrank the route: a >100 nt query has a definite answer about ITSELF', () => {
+    expect(derive({ cancelled: true, requiresAlignment: true, rowCount: 1 })).toMatchObject({
+      state: 'requires-alignment',
+    });
+  });
+
+  it('a cancelled flag on a query that is not ours still publishes nothing', () => {
+    expect(derive({ ownsQuery: false, cancelled: true, rowCount: 5 })).toMatchObject({ state: 'hidden' });
+  });
+});
+
 describe('deriveSearchSessionPresentation — mutually exclusive by construction', () => {
   const ALL = [
     derive({ ownsQuery: false }),
     derive({ blocked: true }),
     derive({ incomplete: true, rowCount: 1 }),
+    // Added late, and it immediately paid for itself: this state had been live for a whole sprint
+    // WITHOUT being covered by any of the four invariants below, and two of them were being
+    // violated in silence (a camelCase token, and a RESULT count published by a check that had
+    // not run). A hand-built list is only as good as its newest entry.
+    derive({ requiresAlignment: true, rowCount: 1 }),
+    derive({ phase: 'partial', providerExpected: true, cancelled: true, rowCount: 1 }),
     derive({ phase: 'partial', providerExpected: true, rowCount: 1 }),
     derive({ phase: 'partial', rowCount: 1 }),
     derive({ phase: 'final', rowCount: 1 }),
@@ -128,8 +173,8 @@ describe('deriveSearchSessionPresentation — mutually exclusive by construction
     derive({ phase: 'nonsense' }),
   ];
 
-  it('statusKind is always exactly one of the five kinds — never two at once', () => {
-    const kinds = ['none', 'loading', 'blocked', 'incomplete', 'empty'];
+  it('statusKind is always exactly one of the known kinds — never two at once', () => {
+    const kinds = ['none', 'loading', 'blocked', 'incomplete', 'cancelled', 'requires-alignment', 'empty'];
     for (const p of ALL) expect(kinds).toContain(p.statusKind);
   });
 
@@ -138,7 +183,9 @@ describe('deriveSearchSessionPresentation — mutually exclusive by construction
   });
 
   it('rows are published only when there ARE rows and the state can show them', () => {
-    const publishable = new Set(['checking', 'incomplete', 'metadata-preview', 'complete-results']);
+    const publishable = new Set([
+      'checking', 'incomplete', 'cancelled', 'requires-alignment', 'metadata-preview', 'complete-results',
+    ]);
     for (const p of ALL) if (p.showRows) expect(publishable.has(p.state)).toBe(true);
     // hidden / blocked / complete-empty / invalid never publish rows, whatever the row count
     for (const state of ['hidden', 'blocked', 'complete-empty', 'invalid']) {

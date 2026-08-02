@@ -27,6 +27,23 @@ describe('navFromLocation', () => {
     expect(navFromLocation({ segments: [] })).toBeNull();
     expect(navFromLocation(null)).toBeNull();
   });
+
+  it('the CANONICAL strand travels beside the ±1 selection strand (U5-A)', () => {
+    // The selection is drawn on ONE strand, so it has to collapse `both` to the forward one. The
+    // overlay can paint both, and a palindromic hit must not arrive there as «forward only».
+    const pal = navFromLocation({ segments: [{ start: 0, end: 8 }], strand: 'both' });
+    expect(pal.strand).toBe(1);
+    expect(pal.strandRaw).toBe('both');
+    expect(navFromLocation({ segments: [{ start: 2, end: 5 }], strand: '-' }).strandRaw).toBe('-');
+    expect(navFromLocation({ segments: [{ start: 2, end: 5 }], strand: '+' }).strandRaw).toBe('+');
+  });
+
+  it('identityBps travels for the overlay colour; absent → null, never a guess from the float', () => {
+    const loc = { segments: [{ start: 0, end: 6 }], strand: '+' };
+    expect(navFromLocation(loc, { identityBps: 9500 }).identityBps).toBe(9500);
+    expect(navFromLocation(loc).identityBps).toBeNull();
+    expect(navFromLocation(loc, { identity: 0.95 }).identityBps).toBeNull();
+  });
 });
 
 describe('overlayHitsFromLocation', () => {

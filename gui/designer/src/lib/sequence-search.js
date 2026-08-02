@@ -549,13 +549,9 @@ export function identityBucket(identity) {
   return 'low';                             // grey
 }
 
-export function isDnaQuery(s, minLen = 8) {
-  if (typeof s !== 'string') return false;
-  if (s.length < minLen) return false;
-  return /^[ACGTUNRYWSKMBDHVacgtunrywskmbdhv]+$/.test(s);
-}
-
-export function hasIupacAmbiguity(s) {
-  if (typeof s !== 'string') return false;
-  return /[NRYWSKMBDHVnrywskmbdhv]/.test(s);
+// Validate before normalizeSeq: it rewrites U→T.
+export function canonicalDnaQuery(s, minLen = 8) {
+  if (typeof s !== 'string') return null;
+  const q = s.trim().toUpperCase();
+  return q.length >= minLen && /^[ACGT]+$/.test(q) ? q : null;
 }

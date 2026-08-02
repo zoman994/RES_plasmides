@@ -38,6 +38,7 @@ export default function SearchResultsListbox({
   id,
   items = [],
   activeIndex = -1,
+  onActiveIndexChange,
   onSelect,
   renderOption,
   getOptionKey = defaultGetOptionKey,
@@ -77,6 +78,12 @@ export default function SearchResultsListbox({
               // Keep focus on the input: prevent the default focus shift a
               // mousedown on the option would cause. Left button only, enabled only.
               onMouseDown={(e) => { if (!disabled && e.button === 0) e.preventDefault(); }}
+              // U5-A — pointing AT an option makes it the active one. Hover and keyboard focus are
+              // therefore the SAME state, rendered by the SAME component from the SAME view-model:
+              // there is no second, hover-only summary that could disagree with the focused one, and
+              // `aria-activedescendant` follows the mouse so what a screen reader announces is what
+              // the sighted user is pointing at. Inert while disabled, like every other path here.
+              onMouseEnter={() => { if (!disabled) onActiveIndexChange?.(index); }}
               // Selection is a single click of the primary button; contextmenu
               // (right button) fires no onClick, so it never selects. No-op while disabled.
               onClick={() => { if (!disabled) onSelect?.(item, index); }}

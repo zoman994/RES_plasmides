@@ -71,6 +71,32 @@ describe('K2 — uiSlice', () => {
     expect(useStore.getState().navRequest).toBeNull();
   });
 
+  it('the nav channel carries every physical fact of the locus (U5-A)', () => {
+    // `strand` is the ±1 the SELECTION needs and therefore cannot express `both`; `segments` can hold
+    // two ranges but a caret cannot. The consumer needs the canonical facts to hand the occurrence
+    // to the overlay unflattened, so they travel too instead of being re-derived downstream.
+    useStore.getState().requestSequenceNav('e1', {
+      segments: [{ start: 14, end: 20 }, { start: 0, end: 6 }],
+      caret: { start: 14, end: 20 },
+      strand: 1, strandRaw: 'both', wrapsOrigin: true, identityBps: 10000,
+    });
+    const nav = useStore.getState().navRequest;
+    expect(nav.segments).toEqual([{ start: 14, end: 20 }, { start: 0, end: 6 }]);
+    expect(nav.strandRaw).toBe('both');
+    expect(nav.wrapsOrigin).toBe(true);
+    expect(nav.identityBps).toBe(10000);
+  });
+
+  it('a junk identityBps is REFUSED, not repaired into a colour', () => {
+    for (const bad of [10001, -1, 1.5, '9500', NaN, null, undefined, Infinity]) {
+      useStore.getState().requestSequenceNav('e1', { segments: [{ start: 0, end: 4 }], identityBps: bad });
+      expect(useStore.getState().navRequest.identityBps, String(bad)).toBeNull();
+    }
+    // …and an absent strandRaw falls back to the selection strand, never to a bare «+».
+    useStore.getState().requestSequenceNav('e1', { segments: [{ start: 0, end: 4 }], strand: '-' });
+    expect(useStore.getState().navRequest.strandRaw).toBe('-');
+  });
+
   it('requestSequenceNav with no entry/target clears the channel', () => {
     useStore.getState().requestSequenceNav('e1', { segments: [{ start: 0, end: 4 }] });
     useStore.getState().requestSequenceNav(null, null);

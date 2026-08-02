@@ -27,7 +27,9 @@ describe('SearchSettingsModal', () => {
   it('renders each advanced item WITH an explanation', () => {
     render(<SearchSettingsModal />);
     openIt();
-    for (const key of ['identityThreshold', 'bothStrands', 'iupac', 'circular', 'limit']) {
+    // `iupac` and `maxMismatches` are gone (K3.0 §2.5): DNA search is ACGT-only and the threshold
+    // is its only acceptance rule, so those two rows were switches that changed nothing.
+    for (const key of ['identityThreshold', 'bothStrands', 'circular', 'minQueryLen', 'limit']) {
       expect(screen.getByTestId(`search-setting-${key}`)).toBeTruthy();
       expect(screen.getByTestId(`search-setting-${key}-help`).textContent.length).toBeGreaterThan(10);
     }

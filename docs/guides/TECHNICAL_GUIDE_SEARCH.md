@@ -110,12 +110,30 @@ Scope-фильтрация выполняется до provider scan и ранж
 
 ### DNA
 
-`seq-match.js` маршрутизирует:
+**Алфавит (§2.5).** Запрос после `trim` + `uppercase` принимает **только A/C/G/T**; всё остальное — типизированный отказ `INVALID_DNA`, никакой нормализации и никакого выбрасывания символов. Причина не стилистическая: выброс `N` из `ACNGT` даёт 4-мер `ACGT` и «100 %» для запроса, которого не было, а все координаты после него смещаются. В МИШЕНИ неоднозначная буква допустима и трактуется как **mismatch**, не как wildcard — она никогда не может дать колонку `=`.
 
-- `<=30 nt`, IUPAC или circular → `scanMotif` (`sequence-search-bio.js`);
-- длинный линейный concrete query → seed-and-extend (`sequence-search.js`).
+**Маршрут (§4.2.0), корпусный.** Решение принимает `search-worker-core.js::searchAllSequencesSteps`, и оно про БИБЛИОТЕКУ, а не про молекулу:
 
-Exhaustive path поддерживает overlaps, обе цепи, IUPAC, origin-wrap и ограниченное число substitutions. Seed-and-extend поддерживает substitutions и однонуклеотидные indel. Известный разрыв: короткий запрос с insertion/deletion не выравнивается как indel.
+1. `seqMatchExactSteps` проходит **всю** допустимую библиотеку — точная фаза работает для запроса любой длины;
+2. найден хоть один exact → возвращаются **только** точные попадания; approximate-строки не подмешиваются;
+3. точных нет и `identityThreshold >= 100 %` → честный пустой ответ (запрошена была именно точная фаза);
+4. точных нет и длина `> 100 нт` → типизированный `REQUIRES_ALIGNMENT` (маршрут, не miss);
+5. иначе `seqMatchApproxSteps` на всю библиотеку. У worker/core есть верхняя граница
+   `MAX_APPROX_QUERY_LEN = 100`; единого нижнего engine-гейта нет. Bare DNA использует
+   `minQueryLen` только для автоопределения, явный `seq:` намеренно обходит его, а
+   `SequenceSearchPopover` отдельно требует минимум 8 нт.
+
+Порядок «вся библиотека exact, потом approximate» — контракт, а не оптимизация: до
+исправления repeat-rich плазмида могла исчерпать бюджет и скрыть exact-попадание,
+лежащее дальше по библиотеке.
+
+**Точная фаза** — `dna-literal-exact.js`: буквальный оконный поиск запроса и его обратного комплемента, без DP. **Приблизительная фаза** — линейное ядро (`dna-linear-kernel.js` + `dna-linear-scan.js` + `dna-linear-verify.js`) за швом `sequence-kernel-seam.js`; production kernel — **`LINEAR`** (U6-F.2, по измерению). Прежний движок (`dna-gapped-search.js`) достижим через тот же шов и служит эталоном в паритетных и дифференциальных тестах.
+
+**Метрика (§2.3).** `identity = M / (M + X + I + D)`; приёмка сравнивается в целых basis points, поэтому 80,00 % проходит, а 79,99 % — нет. Замены и indel-события — часть одного выравнивания, отдельного «числа несовпадений» больше нет. Поддержаны обе цепи (палиндром сливается в одну `both`-строку по каноническому edit-script) и origin-wrap на кольце — одно попадание с двумя сегментами, без второго круга.
+
+**Ответ провайдера — строгий envelope** `{occurrences, locationCount, bestIndex}` (`search-locus-envelope.js`): `locationCount` измерен ДО обрезки payload, `bestIndex` назван там, где ещё существовал edit-script (§3.2 заканчивается лексическим сравнением скриптов, и восстановить его ниже по стеку нельзя). Голый массив на этом измерении — malformed.
+
+**Наружу alignment internals не уходят.** Компактная сводка несёт только `location` + 16 scalar-метрик. `script`, `editRuns` и `mismatchPositions` проверяются или используются до границы и затем отбрасываются. Поиск ведёт к локусу, окно выравнивания — другой инструмент.
 
 ### Protein
 
@@ -131,7 +149,10 @@ Type IIS aliases/catalog policy не должны расширять default sco
 
 ## 8. Provider boundary
 
-`search-provider-contract.js` валидирует ответы worker и inline-provider одной структурной проверкой:
+Граница разделена по форме ответа.
+
+`search-provider-contract.js` валидирует generic provider payload (protein/restriction и
+другие не-sequence измерения) как массивы occurrence:
 
 - plain object с допустимыми document keys;
 - непустые occurrence arrays;
@@ -141,7 +162,19 @@ Type IIS aliases/catalog policy не должны расширять default sco
 
 Допустимы составные/spliced и origin-wrap locations; контракт не требует глобальной сортировки смежности, которая сломала бы такие случаи.
 
-`search-provider-failures.js` различает `TIMEOUT`, `WORKER_FAILURE` и `PROVIDER_ERROR`. `[]` — честный miss; exception/non-array/invalid protocol — failure. Сырой текст исключения не попадает в пользовательскую сессию.
+Sequence worker/inline path сначала проходит `validateSequencePayload` и
+`search-sequence-contract.js`; там документ обязан вернуть строгий envelope
+`{occurrences, locationCount, bestIndex}`. Честный DNA miss — только
+`{occurrences:[], locationCount:0, bestIndex:-1}`; голый `[]` на этой границе malformed.
+
+`validateProviderOccurrences([], length)` допускает пустой список как локальный miss, но
+`validateProviderPayload` не принимает пустой массив под document key: реальные generic
+providers просто не публикуют такой ключ. Поэтому честный miss всего generic payload — `{}`.
+`search-provider-failures.js` различает `TIMEOUT`, `WORKER_FAILURE` и `PROVIDER_ERROR`;
+exception/non-array/invalid protocol — failure. Сырой текст исключения не попадает в
+пользовательскую сессию.
+
+**Ничто из этого не превращается в «совпадений нет».** Падение worker'а, таймаут клиента (15 с), исчерпание ресурсного бюджета (`RESOURCE_LIMIT`) и malformed-ответ (`MALFORMED_SEQUENCE_RESULT`) дают **incomplete** — «проверить не удалось», отдельное от «проверили, ничего нет». Отсутствие мотива в молекуле — утверждение о ДНК, и делать его можно только после завершённого прохода. `REQUIRES_ALIGNMENT` — третье, ещё раз отличное состояние: маршрут, а не отказ и не miss.
 
 ## 9. Facade, worker and lifecycle
 
@@ -154,7 +187,15 @@ Type IIS aliases/catalog policy не должны расширять default sco
 5. строит strict required final;
 6. при provider failure отбрасывает ложный strict-pass и выполняет один deferred fallback с `incomplete`.
 
-DNA проходит через worker client/core/service. Отмена активной работы завершает worker и создаёт новый для следующего поиска, потому что синхронный full-pass нельзя прервать сообщением. Generation guard не позволяет поздней ошибке старого worker повредить новый. `terminate()` закрывает lifecycle и немедленно отклоняет новые запросы.
+DNA проходит через worker client/core/service.
+
+**Обычная отмена кооперативная, worker остаётся жив.** Движок выражен генераторами и приостанавливается внутри молекулы, поэтому клиент шлёт управляющий кадр `{type:'cancel', id}`; работа доходит до ближайшей точки приостановки, разворачивается через свои `finally` и отвечает `{id, cancelled:true}` — ACK. До ACK новая тяжёлая задача не отправляется, так что «одна тяжёлая задача за раз» соблюдается без гонок. Терминальный ответ, опередивший отмену, — второе допустимое доказательство, что старая задача закончилась.
+
+`terminate()` больше **не** входит в обычный путь отмены и не создаёт новый worker на каждый набранный символ. Он остался для аварийного сброса (worker не подтвердил отмену или объявил сбой) и для dispose/unmount владельца. Измерено на шиппинг-сборке: перепечатка запроса даёт ACK за 6 мс, новых worker'ов 0, вызовов `terminate()` 0.
+
+Причина, по которой раньше было иначе, тоже стоит записи: `Worker.terminate()` не останавливает вычисление — Chromium форсирует `TerminateExecution()` только через фиксированную задержку ~2 с, если синхронный JS не отдаёт очередь задач. Флаг, опрашиваемый внутри синхронного цикла, тоже не спасает: сообщение об отмене — задача, а задача не может быть доставлена, пока цикл не вернулся в event loop. Единственное настоящее решение — чтобы сам поиск уступал управление.
+
+Generation guard не позволяет поздней ошибке старого worker повредить новый.
 
 Inline protein/cut providers используют тот же guard/validator; их failure классифицируется как PROVIDER_ERROR, не как перезапускаемый worker crash.
 
@@ -174,7 +215,10 @@ hidden → blocked → incomplete → checking → metadata-preview → complete
 - checking/incomplete с кандидатами показывает предварительное число;
 - blocked и incomplete без кандидатов не показывают ложный `0`;
 - pending row `aria-disabled` и не выбирается мышью/Enter;
-- один live region объявляет состояние; вложенные alerts/live regions запрещены.
+- один live region объявляет состояние; вложенные alerts/live regions запрещены;
+- индикатор сообщает только ФАКТ активности. Процента выполнения нет и не будет выдуман: движок не знает заранее, сколько молекул останется после exact-фазы, а шкала, которая врёт, хуже её отсутствия;
+- `hover` и клавиатурный фокус — ОДНО состояние: указатель на строку делает её активной и переносит `aria-activedescendant`, поэтому screen reader объявляет ровно ту строку, на которую смотрит зрячий пользователь. Enter открывает активную строку;
+- «Назад к результатам» восстанавливает состояние поиска целиком: запрос, режим и чипы, состав списка, прокрутку и активную строку. Возврат не перезапускает тяжёлый проход, если корпус не изменился.
 
 ## 11. Results and routing
 

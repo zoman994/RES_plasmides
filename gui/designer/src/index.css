@@ -70,6 +70,33 @@ body {
 .annotator-progress-bar-fill {
   animation: annotator-progress-slide 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
+
+/* ─── Search activity indicator (U6-C) ──────────────────────────────
+   The global dropdown and the in-molecule Ctrl+F panel both mount
+   `components/Search/SearchProgressTrack.jsx`, and this is the only
+   place its motion is declared — one keyframes block, one class, so
+   the two surfaces cannot drift into two different stripes.
+
+   It is an ACTIVITY indicator, never a percentage: the engine cannot
+   know how far through a corpus sweep it is, so nothing here is
+   driven by a value. */
+@keyframes search-progress-slide {
+  0%   { transform: translateX(-110%); }
+  100% { transform: translateX(320%); }
+}
+.search-progress-track-fill {
+  width: 38%;
+  animation: search-progress-slide 1.15s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  /* Still visibly «working», with nothing moving: the segment stops
+     travelling and fills the track instead. */
+  .search-progress-track-fill {
+    animation: none;
+    width: 100%;
+    opacity: 0.55;
+  }
+}
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-tertiary); }

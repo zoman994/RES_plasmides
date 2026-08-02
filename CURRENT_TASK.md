@@ -1,155 +1,128 @@
 # CURRENT_TASK — SEARCH-GAPPED-DNA
 
-**Статус:** 🟡 ГОТОВО К ИСПОЛНЕНИЮ
-**Дата:** 17.07.2026
-**Спека:** [`docs/specs/SPEC_GAPPED_DNA_SEARCH.md`](docs/specs/SPEC_GAPPED_DNA_SEARCH.md)
-**Scope:** только DNA Search; код вне перечисленного scope не трогать.
-**Предыдущая задача:** глобальная очистка завершена 17.07.2026; история сохранена в Git/checkpoint.
+**Статус:** ✅ COMPLETE — U7 PASS / local production acceptance
+**Закрыто:** 02.08.2026
+**Нормативный контракт:** [SPEC_GAPPED_DNA_SEARCH.md](docs/specs/SPEC_GAPPED_DNA_SEARCH.md)
+**Checkpoint:** ожидает отдельного разрешения пользователя на stage/commit.
 
-## Цель
+## Результат
 
-Сделать единый query-global / target-local DNA-поиск, в котором один порог сходства одинаково учитывает substitutions, insertions и deletions для коротких/длинных запросов, обеих цепей, IUPAC и кольцевых молекул.
+Глобальный поиск и Ctrl+F используют общий DNA worker/core по обеим цепям и кольцевым
+молекулам, но входные минимумы различаются: Ctrl+F требует 8 нт, bare DNA в глобальной
+строке использует настраиваемый порог автоопределения (по умолчанию 8), а явный `seq:`
+этот порог намеренно обходит. Exact не имеет верхнего предела; approximate выполняется
+для допустимого DNA-запроса длиной до 100 нт. Выдача ранжируется по биологическому
+качеству, ведёт к каноническому локусу, а Back восстанавливает поисковую сессию.
 
-Контрольный пользовательский сценарий:
+## Действующий продуктовый контракт
 
-- exact 20 нт → 100%;
-- одна лишняя буква → 20/21 = 95,24%, hit остаётся при 80%;
-- четыре замены → 80%, hit остаётся;
-- пять замен → 75%, hit исчезает.
+- DNA query после trim и uppercase принимает только `A/C/G/T`.
+- `U`, IUPAC-коды, внутренние пробелы и иные символы дают `invalid-dna`;
+  молчаливого исправления запроса нет.
+- Неоднозначная буква в target считается mismatch, а не wildcard.
+- Identity: `M / (M + X + I + D)`, сравнение выполняется в basis points.
+- Весь query участвует в query-global / target-local выравнивании; partial seed не является hit.
+- Exact-фаза выполняется первой по всему допустимому корпусу.
+- Если exact найден хотя бы в одной молекуле, approximate-строки не подмешиваются.
+- Exact не имеет верхнего предела длины.
+- Bare DNA распознаётся от `minQueryLen` (4–30, default 8); явный `seq:` принимает
+  любой непустой A/C/G/T query; Ctrl+F отдельно требует минимум 8 нт.
+- Approximate запускается для принятого DNA query длиной до 100 нт.
+- При threshold <100% запрос `>100` без exact возвращает `REQUIRES_ALIGNMENT`;
+  threshold 100% является exact-only и после exact-промаха честно возвращает ноль.
+- Production route: `EXACT_FIRST`.
+- Production approximate kernel: `LINEAR`.
+- Клиентский timeout остаётся 15 секунд.
+- Поддерживаются `+`, `−`, палиндромная `both` и origin-wrap кольцевой молекулы.
+- Канонический best выбирается общим occurrence-порядком с физическим endpoint кольца.
+- Результат sequence-провайдера — строгий envelope
+  `{occurrences, locationCount, bestIndex}`.
+- `locationCount` измеряется до транспортного cap; best сохраняется при обоих cap.
+- Ошибка, malformed payload, timeout и resource limit дают incomplete, не honest-empty.
+- Неполная строка не выбирается как подтверждённый результат.
 
-## Неподвижные решения
+## Исполнение и отмена
 
-1. Весь query выравнивается; partial seed не является hit.
-2. Concrete identity: `M / (M + X + I + D)`.
-3. При ambiguity: `identity=null`, порог применяется к compatibility.
-4. Float threshold нормализуется один раз в integer basis points; boundary 80,00% не зависит от float drift.
-5. `maxMismatches` больше не конкурирует с identity threshold в DNA Search.
-6. Один core используется global Library search и SequenceSearchPopover.
-7. Heavy compute только в worker; cancel/stale-drop/incomplete/strict-final-AND не ломать.
-8. `library-search.js` и `query-classify.js` новой логикой не расширять; `LibraryWorkspace.jsx` — только SearchHost wiring с нулевой/отрицательной дельтой.
-9. Новый алгоритм — в отдельных модулях под size budget.
-10. Любой resource/candidate cutoff без полного scan → incomplete, не «0 совпадений».
-11. Код строго TDD: RED → GREEN → focused → full/build/browser.
+- Тяжёлая работа выполняется в worker, не в UI-потоке.
+- Одновременно активна не более чем одна тяжёлая job.
+- Обычная отмена кооперативна: `cancel → unwind → ACK`.
+- При обычной отмене worker остаётся жив; `terminate()` — аварийный/dispose путь.
+- Следующая job отправляется только после ACK или terminal предыдущей.
+- Scan, verifier, traceback, materialisation и сортировка имеют ограниченные участки
+  работы между точками приостановки.
+- Поздние terminal-ответы не меняют UI.
 
-## Разрешённая поверхность
+## UI-контракт
 
-Новые:
+- Одна молекула занимает одну строку; подтверждённые строки идут первыми.
+- Далее строки сортируются по identity, каноническому best и стабильному entity key.
+- Строка показывает identity, `M/L`, `X/I/D`, gap events, цепь,
+  half-open координаты и точное число локусов.
+- Wrap показывается двумя сегментами; `both` сохраняет обе цепи.
+- Ответный occurrence payload и DOM не содержат edit script, `editRuns`, mismatch positions
+  или bases target; сам target закономерно передаётся в worker во входном документе.
+- Click и Enter открывают occurrence, по которому строка ранжирована.
+- Глобальный jump не уничтожает независимую Ctrl+F-подсветку.
+- Back восстанавливает query, mode, chips, строки, active row и scroll.
+- При неизменившемся корпусе Back переиспользует результат без новой worker-job;
+  при изменившемся выполняется ровно один новый поиск.
+- Dirty guard не создаёт return frame при отменённом переходе.
+- Во время поиска показывается индикатор активности без выдуманного процента;
+  `prefers-reduced-motion` отключает движение.
+- Pending/incomplete строки не открываются мышью или Enter.
 
-- `gui/designer/src/lib/dna-approx-scan.js`;
-- `gui/designer/src/lib/dna-gapped-align.js`;
-- `gui/designer/src/lib/dna-gapped-search.js`;
-- тестовые helpers/fixtures и тесты этих модулей.
+## Финальная проверка U7
 
-Существующие — только по необходимости спеки:
+### Доказано тестами
 
-- `gui/designer/src/lib/seq-match.js`;
-- `gui/designer/src/lib/sequence-search-bio.js` — exact fast path, без расширения fuzzy-логики;
-- `gui/designer/src/lib/search-types.js`;
-- `gui/designer/src/lib/search-prefs.js`;
-- `gui/designer/src/lib/search-worker-core.js`;
-- `gui/designer/src/lib/search-worker-client.js`;
-- `gui/designer/src/lib/search-facade.js` — только session failure/incomplete wiring;
-- `gui/designer/src/lib/search-provider-failures.js` — только typed `RESOURCE_LIMIT`;
-- `gui/designer/src/lib/search-provider-contract.js` — только sequence metrics/edit-run validation без регрессии protein/enzyme;
-- `gui/designer/src/lib/search-result-format.js`;
-- `gui/designer/src/lib/search-result-vm.js`;
-- `gui/designer/src/components/Library/LibrarySmartSearchBar.jsx`;
-- `gui/designer/src/components/Library/SearchSettingsModal.jsx`;
-- `gui/designer/src/components/SequenceSearchPopover.jsx`;
-- `gui/designer/src/components/SequenceView/overlays/SearchHitsOverlay.jsx`;
-- `gui/designer/src/components/Library/LibraryWorkspace.jsx` — только SearchHost wiring; при росте сначала вынести SearchHost в новый leaf;
-- соответствующие search tests, i18n keys;
-- `docs/guides/USER_GUIDE_SEARCH.md` и `docs/guides/TECHNICAL_GUIDE_SEARCH.md` только в K4;
-- `BUGS.md` и `docs/BACKLOG.md` по процессу закрытия.
+- Frontend: **804/804 файлов**, **8182 теста** —
+  **8162 passed, 20 skipped, 0 failed**.
+- Backend: **127 passed**.
+- Ranking-контракт отдельно доказывает 95% выше 85% независимо от имени
+  и corpus-wide исключение approximate-строк при найденном exact.
+- Mutation/temp/backup residues: 0; `git diff --check` чист.
+- После разделения K2-теста новых hard-size нарушителей нет.
+- Новые и изменённые файлы не добавляют lint errors;
+  полный проектный lint сохраняет предсуществующий долг.
 
-Любой дополнительный production-файл → STOP с доказательством необходимости.
+Первый corrective full-run дал четыре нагрузочных падения в трёх файлах.
+Все три прошли изолированно (27/27), а разрешённый повтор полного прогона прошёл
+804/804. Инфраструктурная нестабильность учитывается как BG-022.
 
-## K0 — baseline и RED-контракт
+### Доказано build
 
-- [ ] Перечитать спеку целиком.
-- [ ] Активировать `tdd-enforce`, `size-budget`, `scope-stop`; для UI — `design-system`/`ui-interactions`.
-- [ ] Снять актуальные sizes, git state, focused/full test и build baseline.
-- [ ] Записать BG-020 в `BUGS.md` до исправления либо подтвердить уже созданную запись.
-- [ ] Characterisation: доказать short-indel miss, short threshold bypass и отрицательную/100%-при-gap метрику старого engine.
-- [ ] Создать test-only exhaustive/Pareto glocal oracle, оптимизирующий нормативную identity tuple, а не только edit distance.
-- [ ] Добавить RED-матрицу §6 спецификации; тестировать переходы/позиции параметризованно, а не по одному примеру.
+- Production build: **успешен, 579 modules**.
 
-**Gate K0:** дефекты воспроизводятся ожидаемым RED; production code ещё не написан.
+### Проверено в браузере
 
-## K1 — concrete linear engine
+- Shipping build без benchmark override: **32/32 сценария**.
+- Проверены approximate ranking, exact-only, activity indicator, hover/focus,
+  Enter/click, plus/minus/wrap jump и Back.
+- Worker payload и DOM не содержат alignment internals.
+- Отмена: `job → cancel → ACK` за 6 мс, новых worker — 0, `terminate()` — 0.
+- Console errors: 0; HTTP errors: 0; long tasks >50 мс: 0.
 
-- [ ] Bit-parallel approximate-substring candidate scan без обязательного exact seed.
-- [ ] Bounded glocal traceback.
-- [ ] Canonical edit runs `= / X / I / D`.
-- [ ] Один occurrence на `(strand, normalizedStart)`; лучший end/alignment по tuple из спеки.
-- [ ] Full-query coverage, overlaps, stable tie-break.
-- [ ] Симметричные, неотрицательные metrics.
-- [ ] Differential/property tests против oracle.
-- [ ] Mutation gates: снять I, снять D, вернуть query-length denominator, потребовать 8-mer seed.
+### Граница доказательства
 
-**Gate K1:** concrete linear matrix зелёная; каждая обязательная мутация RED; новые модули ниже size limits.
+- Pending и incomplete mouse/Enter no-op покрыты интеграционными тестами.
+- В живом браузере эти два состояния не наблюдались: поиск завершался раньше рендера.
+- Живой `REQUIRES_ALIGNMENT` проверен, но не считается их проверкой.
+- Weak-PC benchmark и точный current-build worker-memory peak отложены в
+  [BACKLOG.md](docs/BACKLOG.md) и не входят в local production acceptance.
+- Fork-crash без assertion failure остаётся инфраструктурным BG-022.
 
-## K2 — IUPAC, strands, circular, budgets
+## Состояние этапов и STOP
 
-- [ ] IUPAC bit masks и operation `~`.
-- [ ] Honest compatibility/identityLowerBound.
-- [ ] Reverse complement, mapping query indices, `bothStrands:false`.
-- [ ] Palindrome merge только для эквивалентного alignment.
-- [ ] Circular origin, gapped wrap, два segments, запрет second lap.
-- [ ] Low-complexity streaming, deterministic limit.
-- [ ] Typed `RESOURCE_LIMIT`: worker/inline отбрасывают sequence hits и дают deferred metadata + incomplete.
-- [ ] Детерминированный benchmark 1 Mb; отдельный stress 10 Mb.
-
-**Gate K2:** alphabet/topology/property/mutation cluster зелёный; production scan не работает в UI thread.
-
-## K3 — production integration
-
-- [ ] `seq-match.js` использует unified core для всех fuzzy DNA lengths/topologies.
-- [ ] Threshold 100% MAY использовать доказанно эквивалентный exact fast path.
-- [ ] Worker/facade сохраняют strict AND, provider failures, pending, cancel и stale-drop.
-- [ ] Worker/inline boundary валидирует sequence metrics/edit runs; malformed payload → incomplete.
-- [ ] Search prefs v2: миграция v1, удалить DNA `maxMismatches`, сохранить остальные значения.
-- [ ] Сохранение Settings немедленно пересчитывает текущий query.
-- [ ] Result metrics используют alignmentLength и объясняют substitutions/indels/IUPAC.
-- [ ] Best occurrence применяет нормативный tie-break.
-- [ ] SequenceSearchPopover использует тот же core через worker, без sync DP в `useMemo`.
-- [ ] Popover получает topology; SearchHitsOverlay использует canonical segments/edit runs и корректно рисует wrap.
-- [ ] Global и Popover parity tests.
-
-**Gate K3:** один и тот же query/target/settings даёт одинаковые locations/metrics в обеих поверхностях.
-
-## K4 — acceptance и закрытие
-
-- [ ] Вся TDD-матрица и mutation proof.
-- [ ] Focused search cluster.
-- [ ] Полный frontend test.
-- [ ] `npx vite build`.
-- [ ] Scoped lint.
-- [ ] Size report; новые hard-нарушители запрещены.
-- [ ] Browser smoke: exact, insertion start/middle/end, deletion, 4/5 substitutions, reverse strand, circular origin, IUPAC, live prefs.
-- [ ] Отдельно назвать test-covered и live-verified состояния.
-- [ ] Обновить оба Search guide по фактическому поведению.
-- [ ] Закрыть BG-020 и убрать реализованный backlog-пункт только после зелёной приёмки.
-- [ ] Финальный sprint-report, затем STOP. Другие функции поиска не начинать.
-
-## Запрещено
-
-- Писать новый gap-код в `library-search.js` или старый near-hard `sequence-search.js`.
-- Полный DP `query × target` в production.
-- Silent heuristic/candidate cutoff.
-- Считать `N/R/Y` доказанной identity.
-- Оставить short query на отдельном `maxMismatches`-контракте.
-- Менять protein/cut/primer/alignment/intron functionality.
-- Добавлять Rust/WASM без измеренного gate.
-- Ослаблять тесты/timeout ради зелёного отчёта.
-- Делать commit/stage без прямого разрешения пользователя.
-
-## Формат каждого отчёта Code
-
-1. **Что изменилось.**
-2. **Что это даёт биологу.**
-3. **Какой риск устранён.**
-4. **Как проверить вручную.**
-5. RED→GREEN, mutation proof, focused/full/build/browser.
-6. Sizes и точный git state.
-7. Честные отклонения и что проверено только harness-тестом.
+- U0–U5: ✅ PASS.
+- U6: ✅ PASS — local production acceptance.
+- U7: ✅ PASS.
+- `EXACT_FIRST`, `LINEAR`, upper approximate limit 100 нт и timeout 15 с — финальные defaults;
+  различие входных минимумов поверхностей зафиксировано выше.
+- `SHARED_SCANNER` и approximate 200/400 нт не включены.
+- Индекс и новые поисковые функции не начинались.
+- После разрешённого checkpoint история промежуточных RED/GREEN, мутаций и бенчей
+  останется в Git; до него рабочее дерево не является сохранённой историей.
+- Незавершённые улучшения находятся только в `docs/BACKLOG.md`;
+  открытые дефекты — только в `BUGS.md`.
+- Следующая продуктовая работа требует нового отдельного scope.
+- Stage/commit — только после прямого разрешения пользователя.

@@ -22,16 +22,19 @@ export const LibraryTopBar = memo(function LibraryTopBar({
   // owned by LibraryWorkspace. The bar renders its selector / chips / draft and runs the facade
   // on its canonical query; it never keeps a copy of the mode / filters.
   search,
+  // The molecule currently open — scopes the «Back to results» control to the entry the search
+  // actually navigated to (U5-B). Layout-only pass-through, like every other prop here.
+  selectedEntryId = null,
   // Kind-aware pick (REV #2 §10.4/§10.5): the caller receives (entityRef, occurrence) and
   // routes by entityRef.kind — molecule / project / primer / enzyme card. The dropdown
   // stays dumb: it never assumes an entry nor rewrites the query.
   onPickSearchResult,
+  // The exit from the §4.2.0 length route. Passed straight through: the bar renders the action
+  // ONLY when this exists, so a parent that forgets it turns the notice into a dead end.
+  onOpenAlignment,
   // «Полный поиск» escalation from the tree quick-filter — bumping this tick focuses this
   // wide bar and opens its dropdown (LibraryWorkspace already SEEDED the global state).
   autoFocusSearchTick = 0,
-  // Sequence-worker factory (`() => Worker|null`). Default spawns the real off-thread
-  // worker; tests inject a controllable factory to drive cancel / crash / lifecycle.
-  workerFactory,
 }) {
   const tb = STRINGS.topbar || {};
   const currentProjectId = useStore((s) => s.currentProjectId);
@@ -140,8 +143,9 @@ export const LibraryTopBar = memo(function LibraryTopBar({
       <LibrarySmartSearchBar
         search={search}
         onPickSearchResult={onPickSearchResult}
+        onOpenAlignment={onOpenAlignment}
         autoFocusSearchTick={autoFocusSearchTick}
-        workerFactory={workerFactory}
+        selectedEntryId={selectedEntryId}
       />
 
       {/* M-X.8 K5: «✓ сохранён» pill moved out of breadcrumb into

@@ -1,43 +1,24 @@
 /**
- * search-worker-client — correlates async worker responses to their requests by id
- * and exposes a Promise API. Falls back to inline (main-thread) execution when the
- * factory yields no Worker (SSR / tests / old runtimes).
+ * search-worker-client — CORRELATION, INLINE FALLBACK and RESILIENCE contracts.
  *
- * RESILIENCE (task #168): single in-flight stream. A worker runs a SYNCHRONOUS full
- * pass that a message can't interrupt, so aborting active work TERMINATES the worker
- * and the next search spawns a fresh one via the factory. Every abort carries a
- * distinct reason (CANCELLED / TERMINATED / TIMEOUT / WORKER_FAILURE); a pending
- * request always settles — never hangs. terminate() closes the client permanently.
+ * Correlates async worker responses to their requests by id and exposes a Promise API; falls back
+ * to inline (main-thread) execution when the factory yields no Worker (SSR / tests / old runtimes).
+ *
+ * RESILIENCE (task #168) → COOPERATIVE CANCEL (U4-CANCEL C2 → C2.1.1): single in-flight stream.
+ * An ORDINARY cancel no longer terminates anything — the resumable engine is asked to stop and
+ * acknowledges, and the healthy worker stays in service. Termination is the FAULT path, and after a
+ * SILENT fault the client quarantines itself instead of handing out a fresh worker beside a thread
+ * that may still be running. Every abort carries a distinct reason (CANCELLED / TERMINATED /
+ * TIMEOUT / WORKER_FAILURE); a pending request always settles — never hangs. terminate() closes the
+ * client permanently.
+ *
+ * Split by contract (C2.1.1 size-STOP): the reply-protocol envelope lives in
+ * `search-worker-client-protocol.test.js`, the cancellation races and the quarantine window in
+ * `search-worker-client-cancel.test.js`. Same client, same fakes, same assertions.
  */
 import { describe, it, expect } from 'vitest';
 import { createSearchWorkerClient, SEARCH_ABORT, SearchAbortError } from '../search-worker-client';
-import { handleSearchMessage } from '../search-worker-core';
-
-const mkDoc = (id, seq, topology = 'linear') => ({ ref: { kind: 'entry', id }, sequence: { seq, topology } });
-
-// A worker whose responses the test flushes on demand, and that can crash / send a
-// bad message. Records lifecycle so factory-level respawn is observable.
-function controllableWorker() {
-  const w = {
-    onmessage: null, onerror: null, onmessageerror: null,
-    posted: [], queue: [], terminated: false,
-    postMessage(msg) { w.posted.push(msg); w.queue.push(handleSearchMessage(msg)); },
-    flushLast() { w.onmessage?.({ data: w.queue[w.queue.length - 1] }); },
-    flushIndexes(order) { for (const i of order) w.onmessage?.({ data: w.queue[i] }); },
-    crash() { w.onerror?.({ message: 'worker crashed' }); },
-    badMessage() { w.onmessageerror?.({ message: 'bad message' }); },
-    terminate() { w.terminated = true; },
-  };
-  return w;
-}
-
-// A factory that records every worker it hands out (to observe respawn / teardown).
-function recordingFactory() {
-  const workers = [];
-  const factory = () => { const w = controllableWorker(); workers.push(w); return w; };
-  factory.workers = workers;
-  return factory;
-}
+import { mkDoc, controllableWorker, recordingFactory } from './helpers/search-worker-fakes';
 
 describe('createSearchWorkerClient — correlation + lifecycle', () => {
   it('resolves a search with a Map<docId, occurrences> (spawns a worker lazily)', async () => {
@@ -48,7 +29,9 @@ describe('createSearchWorkerClient — correlation + lifecycle', () => {
     expect(factory.workers.length).toBe(1);
     factory.workers[0].flushLast();
     const map = await p;
-    expect(map.get('entry:a')[0].location.segments[0]).toEqual({ start: 3, end: 9 });
+    // The map value is a LOCUS ENVELOPE (P1-2/P1-3): the retained window, plus how many loci exist
+    // and which retained one is the §3.2 winner — neither recomputable on this side of the boundary.
+    expect(map.get('entry:a').occurrences[0].location.segments[0]).toEqual({ start: 3, end: 9 });
   });
 
   it('only forwards docs that carry a sequence', async () => {
@@ -66,7 +49,9 @@ describe('createSearchWorkerClient — inline fallback (factory yields no worker
   it('runs inline only when the caller explicitly opts into the test/core fallback', async () => {
     const client = createSearchWorkerClient(() => null, { allowInlineFallback: true });
     const map = await client.searchSequences('GAATTG', [mkDoc('a', 'AAAGAATTGCCC')], { bothStrands: false });
-    expect(map.get('entry:a')[0].location.segments[0]).toEqual({ start: 3, end: 9 });
+    // The map value is a LOCUS ENVELOPE (P1-2/P1-3): the retained window, plus how many loci exist
+    // and which retained one is the §3.2 winner — neither recomputable on this side of the boundary.
+    expect(map.get('entry:a').occurrences[0].location.segments[0]).toEqual({ start: 3, end: 9 });
   });
 
   it('fails closed when a runtime worker factory cannot create a worker', async () => {
@@ -151,19 +136,88 @@ describe('createSearchWorkerClient — resilience (kill + respawn, distinct reas
     expect(factory.workers.length).toBe(0); // no worker spawned for a closed client
   });
 
-  it('cancel() → CANCELLED, tears the busy worker down but keeps the client usable', async () => {
+  // ── U4-CANCEL C2: an ordinary cancel no longer kills anything ────────────────────────────────
+  // DELIBERATELY INVERTED. Before C2 the only way to stop a busy worker was `terminate()`, so this
+  // test asserted a teardown and a respawn on every supersede. That is exactly the behaviour the U4
+  // runtime gate measured as ~2026 ms of CPU still burning after the UI had cancelled — Chromium
+  // only forces termination ~2 s after a thread that never yields. Now the worker cooperates: the
+  // caller's promise settles at once, the thread unwinds itself and stays in service.
+  it('cancel() → CANCELLED at once, and the HEALTHY worker is kept (no teardown, no respawn)', async () => {
     const factory = recordingFactory();
     const client = createSearchWorkerClient(factory);
     const p1 = client.searchSequences('GAATTG', docs);
     client.cancel();
     await expect(p1).rejects.toMatchObject({ reason: SEARCH_ABORT.CANCELLED });
-    expect(factory.workers[0].terminated).toBe(true);
+    expect(factory.workers[0].terminated).toBe(false); // NOT torn down — it is healthy, just busy
+    expect(factory.workers[0].cancels.length).toBe(1); // it was ASKED to stop
     expect(client.healthy).toBe(true);
-    // the next search RESPAWNS a fresh worker and works
+  });
+
+  it('the next heavy job waits for cancel-complete, then runs on the SAME worker', async () => {
+    const factory = recordingFactory();
+    const client = createSearchWorkerClient(factory);
+    const p1 = client.searchSequences('GAATTG', docs);
+    client.cancel();
+    await expect(p1).rejects.toMatchObject({ reason: SEARCH_ABORT.CANCELLED });
+
+    const w = factory.workers[0];
     const p2 = client.searchSequences('GAATTG', [mkDoc('a', 'AAAGAATTGCCC')], { bothStrands: false });
-    expect(factory.workers.length).toBe(2);
-    factory.workers[1].flushLast();
+    expect(factory.workers.length).toBe(1);   // no respawn
+    expect(w.jobs.length).toBe(1);            // …and the new job is NOT posted yet — ack gates it
+
+    w.ackCancel();                            // «the old job has fully unwound»
+    expect(w.jobs.length).toBe(2);            // only NOW is the next heavy job sent
+    w.flushLast();
     expect((await p2).has('entry:a')).toBe(true);
+    expect(w.terminated).toBe(false);
+  });
+
+  it('only the LATEST queued search survives while a cancel is still unwinding', async () => {
+    const factory = recordingFactory();
+    const client = createSearchWorkerClient(factory);
+    const p1 = client.searchSequences('GAATTG', docs);
+    client.cancel();
+    await expect(p1).rejects.toMatchObject({ reason: SEARCH_ABORT.CANCELLED });
+    const w = factory.workers[0];
+    const pA = client.searchSequences('GAATTG', [mkDoc('a', 'AAAGAATTGCCC')], { bothStrands: false });
+    const pB = client.searchSequences('GAATTG', [mkDoc('a', 'AAAGAATTGCCC')], { bothStrands: false });
+    await expect(pA).rejects.toMatchObject({ reason: SEARCH_ABORT.CANCELLED }); // superseded in the queue
+    w.ackCancel();
+    w.flushLast();
+    expect((await pB).has('entry:a')).toBe(true);
+    expect(w.jobs.length).toBe(2); // the first job + exactly ONE queued job — never two heavy jobs
+  });
+
+  it('a cancelled job never publishes a partial byId', async () => {
+    const factory = recordingFactory();
+    const client = createSearchWorkerClient(factory);
+    const p1 = client.searchSequences('GAATTG', docs);
+    const w = factory.workers[0];
+    client.cancel();
+    await expect(p1).rejects.toMatchObject({ reason: SEARCH_ABORT.CANCELLED });
+    // Even if the worker's ORIGINAL reply arrives late, it must not resolve anything.
+    let resolved = false;
+    p1.then(() => { resolved = true; }, () => {});
+    w.flushLast();
+    w.ackCancel();
+    await Promise.resolve();
+    expect(resolved).toBe(false);
+  });
+
+  it('a wedged worker that never acknowledges is torn down by the ack watchdog', async () => {
+    // The ONLY remaining hard-terminate for a cancel: the thread did not answer at all.
+    const factory = recordingFactory();
+    const client = createSearchWorkerClient(factory, { timeoutMs: 15 });
+    const p1 = client.searchSequences('GAATTG', docs);
+    client.cancel();
+    await expect(p1).rejects.toMatchObject({ reason: SEARCH_ABORT.CANCELLED });
+    await new Promise((r) => { setTimeout(r, 40); }); // no ack ever comes
+    expect(factory.workers[0].terminated).toBe(true);
+    // C2.1.1 — and the client does NOT immediately hand out a second thread beside it; the window
+    // and the recovery after it are pinned in the quarantine block below.
+    await expect(client.searchSequences('GAATTG', docs))
+      .rejects.toMatchObject({ reason: SEARCH_ABORT.WORKER_FAILURE });
+    expect(factory.workers.length).toBe(1);
   });
 
   it('a fresh search after a crash respawns and succeeds (repeat after failure)', async () => {
@@ -178,13 +232,15 @@ describe('createSearchWorkerClient — resilience (kill + respawn, distinct reas
     expect((await p2).has('entry:a')).toBe(true);
   });
 
-  it('a LATE error from a superseded worker does NOT reject the new search or kill the new worker', async () => {
+  it('a LATE error from a CRASHED worker does NOT reject the new search or kill the new worker', async () => {
+    // A crash still respawns (faults are the fault-fallback path C2 keeps); the point pinned here
+    // is that the dead generation can no longer touch the live one.
     const factory = recordingFactory();
     const client = createSearchWorkerClient(factory);
     const pA = client.searchSequences('GAATTG', docs);
     const w1 = factory.workers[0];
-    client.cancel(); // A cancelled → w1 killed + detached
-    await expect(pA).rejects.toMatchObject({ reason: SEARCH_ABORT.CANCELLED });
+    w1.crash(); // FAULT → w1 killed + detached
+    await expect(pA).rejects.toMatchObject({ reason: SEARCH_ABORT.WORKER_FAILURE });
     const pB = client.searchSequences('GAATTG', [mkDoc('a', 'AAAGAATTGCCC')], { bothStrands: false });
     const w2 = factory.workers[1];
     expect(w2).not.toBe(w1);
@@ -195,12 +251,20 @@ describe('createSearchWorkerClient — resilience (kill + respawn, distinct reas
     expect(w2.terminated).toBe(false);      // the healthy new worker was not torn down
   });
 
-  it('after a timeout the next search spawns a FRESH worker and succeeds', async () => {
+  it('after a timeout the next search spawns a FRESH worker — once the quarantine window closes', async () => {
+    // DELIBERATELY INVERTED by C2.1.1. This used to assert an INSTANT respawn, which is precisely
+    // the second heavy thread the U4 gate measured: the timed-out worker can keep burning CPU for
+    // ~2 s after `terminate()`. Recovery is still guaranteed — just not before then.
     const factory = recordingFactory();
-    const client = createSearchWorkerClient(factory, { timeoutMs: 15 });
+    const client = createSearchWorkerClient(factory, { timeoutMs: 15, quarantineMs: 30 });
     const p1 = client.searchSequences('GAATTG', docs);
     await expect(p1).rejects.toMatchObject({ reason: SEARCH_ABORT.TIMEOUT });
     expect(factory.workers[0].terminated).toBe(true);
+    await expect(client.searchSequences('GAATTG', docs))
+      .rejects.toMatchObject({ reason: SEARCH_ABORT.WORKER_FAILURE });
+    expect(factory.workers.length).toBe(1);
+
+    await new Promise((r) => { setTimeout(r, 50); }); // the window closes
     const p2 = client.searchSequences('GAATTG', [mkDoc('a', 'AAAGAATTGCCC')], { bothStrands: false });
     expect(factory.workers.length).toBe(2); // respawned
     factory.workers[1].flushLast();
@@ -221,13 +285,16 @@ describe('createSearchWorkerClient — resilience (kill + respawn, distinct reas
     expect(client.healthy).toBe(false);
   });
 
-  it('a new search supersedes the prior in-flight one (single stream)', async () => {
+  it('a new search supersedes the prior in-flight one (single stream, same worker after ack)', async () => {
     const factory = recordingFactory();
     const client = createSearchWorkerClient(factory);
     const pA = client.searchSequences('GAATTG', [mkDoc('a', 'GAATTG')]);
     const pB = client.searchSequences('CCCC', [mkDoc('b', 'AACCCCAA')], { bothStrands: false });
     await expect(pA).rejects.toMatchObject({ reason: SEARCH_ABORT.CANCELLED });
-    factory.workers[factory.workers.length - 1].flushLast();
+    const w = factory.workers[0];
+    expect(factory.workers.length).toBe(1); // C2: supersede reuses the healthy worker
+    w.ackCancel();                          // B is released only once A has unwound
+    w.flushLast();
     expect((await pB).has('entry:b')).toBe(true);
   });
 
@@ -250,133 +317,5 @@ describe('createSearchWorkerClient — resilience (kill + respawn, distinct reas
     expect(err).toBeInstanceOf(SearchAbortError);
     expect(err).toBeInstanceOf(Error);
     expect(err.reason).toBe(SEARCH_ABORT.CANCELLED);
-  });
-});
-
-// S3-CLOSE K2.2 — PROTOCOL VALIDATION. A reply whose `id` matches is not automatically
-// trustworthy: `Object.entries(byId || {})` used to turn a null/garbage payload into an
-// EMPTY map, which the facade then published as an honest «no sites found». For a biologist
-// that is a fabricated negative. Only a well-formed payload may resolve; anything else is a
-// WORKER_FAILURE that tears the worker down so the next search runs on a fresh one.
-describe('createSearchWorkerClient — reply protocol validation (S3-CLOSE K2.2)', () => {
-  const docs = [mkDoc('a', 'GAATTG')];
-  // The one shape a real occurrence has: a segment a caret can actually be drawn at.
-  const OCC = { location: { segments: [{ start: 0, end: 6 }], strand: '+', wrapsOrigin: false } };
-  // Posts nothing back on its own — the test injects the exact payload it wants to test.
-  function rawWorker() {
-    const w = {
-      onmessage: null, onerror: null, onmessageerror: null,
-      posted: [], terminated: false,
-      postMessage(msg) { w.posted.push(msg); },
-      reply(payload) { w.onmessage?.({ data: payload }); },
-      replyToLast(over) { w.reply({ id: w.posted[w.posted.length - 1].id, ...over }); },
-      terminate() { w.terminated = true; },
-    };
-    return w;
-  }
-  function rawFactory() {
-    const workers = [];
-    const factory = () => { const w = rawWorker(); workers.push(w); return w; };
-    factory.workers = workers;
-    return factory;
-  }
-
-  it('an EMPTY byId is a valid honest miss → resolves with an empty Map', async () => {
-    const factory = rawFactory();
-    const client = createSearchWorkerClient(factory);
-    const p = client.searchSequences('GAATTG', docs);
-    factory.workers[0].replyToLast({ byId: {} });
-    const map = await p;
-    expect(map.size).toBe(0);
-    expect(factory.workers[0].terminated).toBe(false); // healthy worker kept
-  });
-
-  it('a null-prototype record is still a plain record → valid', async () => {
-    const factory = rawFactory();
-    const client = createSearchWorkerClient(factory);
-    const p = client.searchSequences('GAATTG', docs);
-    const bare = Object.create(null);
-    bare['entry:a'] = [OCC];
-    factory.workers[0].replyToLast({ byId: bare });
-    expect((await p).get('entry:a')).toHaveLength(1);
-  });
-
-  it.each([
-    ['byId: null', { byId: null }],
-    ['byId missing entirely', {}],
-    ['byId is an array', { byId: [] }],
-    ['byId is a non-empty array', { byId: [['entry:a', []]] }],
-    ['byId is a string', { byId: 'entry:a' }],
-    ['byId is a number', { byId: 7 }],
-    // ── P1-1: «looks like an object» is not proof of shape ──────────────────────────────
-    // A Map/Date survives `typeof === 'object'` but Object.entries() yields [] → the old gate
-    // published it as an honest «motif absent». That is a fabricated negative.
-    ['byId is a Map', { byId: new Map([['entry:a', [OCC]]]) }],
-    ['byId is a Date', { byId: new Date() }],
-    ['a byId VALUE is not an array', { byId: { 'entry:a': { start: 3 } } }],
-    ['a byId VALUE is null', { byId: { 'entry:a': null } }],
-    ['a byId VALUE is a string', { byId: { 'entry:a': 'occurrences' } }],
-    // A real worker NEVER writes an empty key (`if (occ.length) byId[d.id] = occ`), so an empty
-    // array is corruption — not «this molecule has no site».
-    ['a byId VALUE is an EMPTY array', { byId: { 'entry:a': [] } }],
-    // …and these are the opposite failure: a truthy array the old gate read as a real DNA hit.
-    ['occurrences are [null]', { byId: { 'entry:a': [null] } }],
-    ['occurrences are [{}] (no location)', { byId: { 'entry:a': [{}] } }],
-    ['an occurrence has no segments', { byId: { 'entry:a': [{ location: {} }] } }],
-    ['an occurrence has EMPTY segments', { byId: { 'entry:a': [{ location: { segments: [] } }] } }],
-    ['a segment is null', { byId: { 'entry:a': [{ location: { segments: [null] } }] } }],
-    ['segment coords are non-integer', { byId: { 'entry:a': [{ location: { segments: [{ start: 0.5, end: 6 }] } }] } }],
-    ['segment coords are NaN', { byId: { 'entry:a': [{ location: { segments: [{ start: NaN, end: 6 }] } }] } }],
-    ['segment coords are Infinite', { byId: { 'entry:a': [{ location: { segments: [{ start: 0, end: Infinity }] } }] } }],
-    ['a segment spans nothing (end === start)', { byId: { 'entry:a': [{ location: { segments: [{ start: 6, end: 6 }] } }] } }],
-    ['a segment is inverted (end < start)', { byId: { 'entry:a': [{ location: { segments: [{ start: 9, end: 3 }] } }] } }],
-    // The reply is not even about the document set we sent.
-    ['an UNKNOWN entityKey', { byId: { 'entry:ghost': [OCC] } }],
-  ])('%s → WORKER_FAILURE, never a fabricated result', async (_label, payload) => {
-    const factory = rawFactory();
-    const client = createSearchWorkerClient(factory);
-    const p = client.searchSequences('GAATTG', docs);
-    factory.workers[0].replyToLast(payload);
-    await expect(p).rejects.toMatchObject({ reason: SEARCH_ABORT.WORKER_FAILURE });
-    expect(factory.workers[0].terminated).toBe(true); // a worker speaking garbage is torn down
-  });
-
-  it('after a malformed reply the NEXT search runs on a fresh worker and succeeds', async () => {
-    const factory = rawFactory();
-    const client = createSearchWorkerClient(factory);
-    const p1 = client.searchSequences('GAATTG', docs);
-    factory.workers[0].replyToLast({ byId: null });
-    await expect(p1).rejects.toMatchObject({ reason: SEARCH_ABORT.WORKER_FAILURE });
-
-    const p2 = client.searchSequences('GAATTG', docs, { bothStrands: false });
-    expect(factory.workers.length).toBe(2); // respawned
-    factory.workers[1].replyToLast({ byId: { 'entry:a': [OCC] } });
-    expect((await p2).has('entry:a')).toBe(true);
-  });
-
-  it('a LATE malformed reply from a superseded generation cannot kill the new search', async () => {
-    const factory = rawFactory();
-    const client = createSearchWorkerClient(factory);
-    const pA = client.searchSequences('GAATTG', docs);
-    const w1 = factory.workers[0];
-    client.cancel();
-    await expect(pA).rejects.toMatchObject({ reason: SEARCH_ABORT.CANCELLED });
-
-    const pB = client.searchSequences('GAATTG', docs, { bothStrands: false });
-    const w2 = factory.workers[1];
-    w1.reply({ id: w1.posted[0].id, byId: null }); // the OLD worker speaks garbage, late
-    w2.replyToLast({ byId: { 'entry:a': [OCC] } });
-    expect((await pB).has('entry:a')).toBe(true);
-    expect(w2.terminated).toBe(false);
-  });
-
-  it('a malformed reply carrying an UNKNOWN id stays a stale reply (ignored, not a failure)', async () => {
-    const factory = rawFactory();
-    const client = createSearchWorkerClient(factory, { timeoutMs: 0 });
-    const p = client.searchSequences('GAATTG', docs);
-    factory.workers[0].reply({ id: 'w-not-mine', byId: null }); // different request → ignore
-    expect(factory.workers[0].terminated).toBe(false);
-    factory.workers[0].replyToLast({ byId: { 'entry:a': [OCC] } });
-    expect((await p).has('entry:a')).toBe(true);
   });
 });

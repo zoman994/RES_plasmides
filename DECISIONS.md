@@ -66,6 +66,13 @@ Graph/canvas views are projections of these tiers. Old DAG-primary and ProjectCo
 - Provider timeout/crash/invalid protocol means incomplete, never confirmed absence.
 - Entity identity is kind-qualified (`kind:id`); raw IDs remain domain-local.
 - Library tree query and global search state are separate. Escalation replaces global state instead of merging stale filters.
+- Interactive DNA queries are strict A/C/G/T after trim and uppercase. Ambiguous target symbols are mismatches, not wildcard evidence.
+- DNA routing is corpus-wide `EXACT_FIRST`: exact scans every eligible document and, if anything exact exists, approximate rows are not mixed into the result.
+- Exact DNA search has no upper query-length ceiling. Bare DNA uses the configurable auto-detection floor (`minQueryLen`, default 8); explicit `seq:` intentionally bypasses that floor, while Ctrl+F has its own fixed 8-nt minimum. An accepted DNA query can use the `LINEAR` approximate kernel up to 100 nt. Above 100 nt, a no-exact query returns `REQUIRES_ALIGNMENT` only when threshold is below 100%; threshold 100% is exact-only and may honestly return zero. Benchmark seams are internal and are not user settings.
+- DNA identity is `M / (M + X + I + D)` over a whole-query glocal alignment. Both strands, circular segments and the canonical physical locus are part of the result contract.
+- Heavy DNA work runs in a worker. Ordinary cancellation is cooperative (`cancel → unwind → ACK`); faults, timeout, malformed payload and resource exhaustion fail closed as incomplete.
+- The sequence boundary is the strict envelope `{occurrences, locationCount, bestIndex}`. Alignment internals do not cross into the Search UI.
+- Search is a locator/ranker, not an alignment viewer. Click and Enter open the ranked locus; Back restores the search session.
 
 ## 9. Portable project format
 

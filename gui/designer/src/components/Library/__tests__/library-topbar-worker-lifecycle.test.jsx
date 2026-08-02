@@ -1,10 +1,14 @@
 /**
  * LibraryTopBar — sequence-worker lifecycle + result-race acceptance (task #168).
  *
- * The worker runs a synchronous full pass, so an obsolete search must be cancelled
- * IMMEDIATELY (terminating its worker), a late reply must never render under the new
+ * An obsolete search must be cancelled IMMEDIATELY, a late reply must never render under the new
  * query, and a genuine provider failure must warn — not silently show «nothing found».
- * A controllable worker factory is injected so these are deterministic.
+ *
+ * C2.2 rewrote HOW «cancelled» is observed. The engine is resumable now (U4-CANCEL), so a supersede
+ * posts a `{type:'cancel', id}` control frame and the thread stays in service; terminating it is
+ * reserved for faults (crash / malformed / timeout), which this file still pins. The shared fake
+ * separates heavy jobs from control frames, so «a late reply» can finally be aimed at the job it
+ * belongs to instead of at whatever was posted last — which, after a cancel, is the cancel itself.
  */
 import 'fake-indexeddb/auto';
 import React, { StrictMode } from 'react';
@@ -12,28 +16,12 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, cleanup, act } from '@testing-library/react';
 import { useStore } from '../../../store';
 import { renderTopBar, Harness } from './_topbar-harness';
-import { handleSearchMessage } from '../../../lib/search-worker-core';
+import SequenceSearchProvider from '../../SequenceSearchProvider';
+import { recordingFactory } from '../../../lib/__tests__/helpers/search-worker-fakes';
 
 const TARGET = 'AAAGAATTGCCC'; // contains GAATTG for doc 'a'
 
-// A factory that hands out drivable workers and records their lifecycle.
-function makeFactory() {
-  const workers = [];
-  const factory = () => {
-    const w = {
-      onmessage: null, onerror: null, onmessageerror: null,
-      posted: [], terminated: false,
-      postMessage(msg) { w.posted.push(msg); },
-      replyLast() { const m = w.posted[w.posted.length - 1]; if (m) w.onmessage?.({ data: handleSearchMessage(m) }); },
-      crash() { w.onerror?.({ message: 'boom' }); },
-      terminate() { w.terminated = true; },
-    };
-    workers.push(w);
-    return w;
-  };
-  factory.workers = workers;
-  return factory;
-}
+const makeFactory = recordingFactory;
 const flush = async () => { await act(async () => { await Promise.resolve(); await Promise.resolve(); }); };
 
 beforeEach(() => {
@@ -50,26 +38,33 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 describe('LibraryTopBar — result-race + worker lifecycle (task #168)', () => {
-  it('changing the query cancels the in-flight worker IMMEDIATELY (not after the debounce)', () => {
+  it('changing the query cancels the in-flight pass IMMEDIATELY (not after the debounce)', () => {
     vi.useFakeTimers();
     const factory = makeFactory();
     const { rerender } = renderTopBar({ query: 'seq:GAATTG', workerFactory: factory });
     act(() => { vi.advanceTimersByTime(200); }); // debounce → search fires → worker in-flight
     const workerA = factory.workers[factory.workers.length - 1];
-    expect(workerA.posted.length).toBe(1);
-    expect(workerA.terminated).toBe(false);
+    expect(workerA.jobs.length).toBe(1);
+    expect(workerA.cancels.length).toBe(0);
     rerender({ query: 'seq:GAATTC', workerFactory: factory });
-    expect(workerA.terminated).toBe(true); // ← cancelled NOW, not in 180 ms
+
+    // Cancelled NOW, not in 180 ms — and cancelled by ASKING (C2.2). The thread survives, and the
+    // next heavy job waits for its acknowledgement, so two passes never overlap.
+    expect(workerA.cancels).toEqual([workerA.jobs[0].id]);
+    expect(workerA.terminated).toBe(false);
+    expect(factory.workers.length).toBe(1);
+    expect(workerA.jobs.length).toBe(1);
   });
 
-  it('clearing the field cancels the in-flight worker and empties the results', () => {
+  it('clearing the field cancels the in-flight pass and empties the results', () => {
     vi.useFakeTimers();
     const factory = makeFactory();
     const { rerender } = renderTopBar({ query: 'seq:GAATTG', workerFactory: factory });
     act(() => { vi.advanceTimersByTime(200); });
     const workerA = factory.workers[factory.workers.length - 1];
     rerender({ query: '', workerFactory: factory });
-    expect(workerA.terminated).toBe(true);
+    expect(workerA.cancels.length).toBe(1);
+    expect(workerA.terminated).toBe(false);
     expect(screen.queryByTestId('smart-result-a')).toBeNull();
   });
 
@@ -79,7 +74,7 @@ describe('LibraryTopBar — result-race + worker lifecycle (task #168)', () => {
     const { rerender } = renderTopBar({ query: 'seq:GAATTG', workerFactory: factory });
     act(() => { vi.advanceTimersByTime(200); });
     const workerA = factory.workers[factory.workers.length - 1];
-    act(() => { workerA.replyLast(); }); // A COMPLETES → its result is shown
+    act(() => { workerA.flushLast(); }); // A COMPLETES → its result is shown
     await flush();
     expect(screen.getByTestId('smart-result-a')).toBeTruthy();
     // Type B — A's row must vanish on the very render where the query becomes B, not
@@ -101,14 +96,18 @@ describe('LibraryTopBar — result-race + worker lifecycle (task #168)', () => {
     expect(screen.queryByTestId('search-provider-incomplete-warning')).toBeNull(); // old warning gone
   });
 
-  it('a late reply from a cancelled worker never renders under the new query', async () => {
+  it('a late terminal for the CANCELLED job never renders under the new query', async () => {
     vi.useFakeTimers();
     const factory = makeFactory();
     const { rerender } = renderTopBar({ query: 'seq:GAATTG', workerFactory: factory });
     act(() => { vi.advanceTimersByTime(200); });
     const workerA = factory.workers[factory.workers.length - 1];
-    rerender({ query: 'seq:CCCC', workerFactory: factory }); // cancels A
-    act(() => { workerA.replyLast(); }); // A replies LATE — must be ignored
+    const cancelledJob = workerA.lastJobId();
+    rerender({ query: 'seq:CCCC', workerFactory: factory }); // asks A to stop
+
+    // Aimed at A's job, not at «whatever was posted last» — after the cancel that would have been
+    // the control frame, so the old version of this test proved nothing about lateness.
+    act(() => { expect(workerA.flushJob(cancelledJob)).toBe(true); });
     await flush();
     expect(screen.queryByTestId('smart-result-a')).toBeNull();
   });
@@ -141,7 +140,7 @@ describe('LibraryTopBar — result-race + worker lifecycle (task #168)', () => {
     expect(screen.queryByText('Ничего не найдено.')).toBeNull();
 
     const live = factory.workers[factory.workers.length - 1];
-    act(() => { live.replyLast(); });
+    act(() => { live.flushLast(); });
     await flush();
     expect(screen.getByTestId('library-topbar-search-listbox-results').getAttribute('aria-busy')).toBeNull();
     expect(status().textContent).toBe(''); // a confirmed result announces nothing extra
@@ -153,14 +152,17 @@ describe('LibraryTopBar — result-race + worker lifecycle (task #168)', () => {
     const factory = makeFactory();
     render(
       <StrictMode>
-        <Harness query="seq:GAATTG" workerFactory={factory} />
+        {/* U4 — the owner is the Provider, so StrictMode double-invokes ITS effect too. */}
+        <SequenceSearchProvider workerFactory={factory}>
+          <Harness query="seq:GAATTG" />
+        </SequenceSearchProvider>
       </StrictMode>,
     );
     act(() => { vi.advanceTimersByTime(200); });
-    // StrictMode double-invoked the facade effect: the first lifecycle was torn down,
+    // StrictMode double-invoked the coordinator effect: the first lifecycle was torn down,
     // the search runs on the live one. Its worker replies → results land (no V199 hang).
     const live = factory.workers[factory.workers.length - 1];
-    act(() => { live.replyLast(); });
+    act(() => { live.flushLast(); });
     await flush();
     expect(screen.getByTestId('smart-result-a')).toBeTruthy();
   });

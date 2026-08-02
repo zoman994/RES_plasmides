@@ -27,11 +27,22 @@ const pick = (result, ref, occ) => act(() => result.current.handlePickSearchResu
 describe('useSearchPickRouter — route by kind', () => {
   beforeEach(() => { useStore.setState((s) => { s.primersById = {}; s.libraryEntries = {}; }); });
 
-  it('entry → openEntry(id, occurrence) [standard guarded selection, not a raw setSelectedId]', () => {
+  it('entry → openEntry(id, occurrence, revision) [standard guarded selection, not a raw setSelectedId]', () => {
     const occ = { location: { segments: [{ start: 1, end: 4 }] } };
     const { result, openEntry } = setup({ libraryEntries: { e1: { id: 'e1' } } });
     pick(result, { kind: 'entry', id: 'e1' }, occ);
-    expect(openEntry).toHaveBeenCalledWith('e1', occ);
+    expect(openEntry).toHaveBeenCalledWith('e1', occ, null, null);
+  });
+
+  it('forwards the RESULT\'s revision, so the sink never re-stamps the current one (U5-B)', () => {
+    // The router is the only place the result's document identity can be lost. If it drops the
+    // revision here, `makeOpenEntry` has nothing to park and the stale guard downstream has nothing
+    // to compare — a locus measured two saves ago would be applied without a word.
+    const occ = { location: { segments: [{ start: 1, end: 4 }] } };
+    const { result, openEntry } = setup({ libraryEntries: { e1: { id: 'e1', version: 3 } } });
+    pick(result, { kind: 'entry', id: 'e1', revision: 2, docEpoch: 'v2#g9' }, occ);
+    // the RESULT's identity — 2 and its epoch — not the entry's current 3
+    expect(openEntry).toHaveBeenCalledWith('e1', occ, 2, 'v2#g9');
   });
 
   it('project → activateProject', () => {

@@ -12,14 +12,20 @@
  *
  * Pure; no store/React imports. See search-types.js for the shapes.
  */
-import { inferType, inferStatus, classifyQuery } from './query-classify';
+import { classifyQuery } from './query-classify';
 import { entryToDocument } from './search-document-adapters';
 import { entityRefKey } from './search-entity-key';
+import { toLocusEnvelope, capLocusEnvelope, isValidLimit } from './search-locus-envelope';
+// The metadata dimensions (name / tag / feature / type / status) live in their own leaf — a pure
+// move made when this file reached its hard size budget. This module keeps what decides what a
+// RESULT is: providers, caps, sessions, visibility.
+import {
+  RELATION_RANK, matchTerm, passesExplicitFilters, passesSupportedFilter,
+} from './library-search-metadata';
 
 export const DEFAULT_SEARCH_OPTS = Object.freeze({
   dimensions: ['name', 'tag', 'type', 'status', 'feature', 'sequence', 'protein', 'enzyme'],
   bothStrands: true,
-  iupac: 'auto',
   circular: 'auto',
   headVersionsOnly: true,
   limit: 200,
@@ -31,41 +37,9 @@ export const DEFAULT_SEARCH_OPTS = Object.freeze({
 const DIM_RANK = {
   name: 0, sequence: 1, protein: 1, enzyme: 1, tag: 2, feature: 3, type: 4, status: 4,
 };
-const RELATION_RANK = {
-  exact: 0, prefix: 1, substring: 2, approximate: 3, compatible: 4,
-};
-
-function findSub(hay, needle) {
-  if (!hay || !needle) return null;
-  const H = String(hay).toLowerCase();
-  const N = String(needle).toLowerCase();
-  const i = H.indexOf(N);
-  if (i < 0) return null;
-  const relation = H === N ? 'exact' : i === 0 ? 'prefix' : 'substring';
-  return { start: i, end: i + N.length, relation };
-}
-
-function docType(doc) {
-  // ref.kind is AUTHORITATIVE (§10.4). The `type` dimension is TOPOLOGY, which is an
-  // ENTRY-only concept (§4.5): a primer is its own type; project / enzyme / reSite do NOT
-  // support `type` at all → null so NO `type:` value ever matches them (a topology filter
-  // must never leak an enzyme into `type:linear`, nor a project into `type:project`).
-  const kind = doc.ref?.kind;
-  if (kind === 'primer') return 'primer';
-  if (kind && kind !== 'entry') return null; // project / enzyme / reSite → not a `type`
-  // entry (or a kindless legacy doc): topology + the legacy primer-by-shape heuristic.
-  const k = doc.kind;
-  if (k === 'primer' || k === 'oligonucleotide' || /primer|праймер/i.test(doc.textFields?.name || '')) return 'primer';
-  if ((doc.topology || doc.sequence?.topology) === 'circular') return 'circular';
-  return 'linear';
-}
-const docStatus = (doc) => doc.textFields?.status || null;
-
-// The explicit-filter dims the metadata matcher can actually EVALUATE (consume).
-// Keep in exact sync with passesExplicitFilters below: any dim it does not handle
-// (sequence/protein/enzyme today; name/feature/… once REV #2 adds those prefixes)
-// must fail closed via planRequiresFullSearch — never be silently ignored and then
-// counted as a match.
+// The explicit-filter dims the metadata matcher can actually EVALUATE (consume). Keep in exact sync
+// with `passesExplicitFilters`: any dim it does not handle (sequence/protein/enzyme today) must fail
+// closed via planRequiresFullSearch — never be silently ignored and then counted as a match.
 const SUPPORTED_METADATA_FILTER_DIMS = Object.freeze(new Set(['type', 'status', 'tag']));
 // The structured field clauses the metadata matcher CAN evaluate (mirrored in explicitFilters).
 // name / feature / withinProject are parse-only — the metadata matcher does NOT execute them, so
@@ -106,77 +80,21 @@ function requiredProviderDimensions(plan) {
   return dims;
 }
 
-/** Does a doc satisfy ONE supported metadata filter (type/status/tag)? A non-supported dim
- * (sequence/protein/enzyme) is SKIPPED here → true, so runSearch keeps its behaviour: those
- * provider dims are evaluated by the injected engines in matchDocument, not by this filter. */
-function passesSupportedFilter(doc, f) {
-  if (f.dim === 'type') return docType(doc) === f.value;
-  if (f.dim === 'status') return docStatus(doc) === f.value;
-  if (f.dim === 'tag') {
-    const tags = doc.textFields?.tags || [];
-    return tags.some((t) => String(t).toLowerCase().includes(String(f.value).toLowerCase()));
-  }
-  return true; // provider dim — not this filter's job
-}
-
-/** A document passes the DELIBERATE (prefix) filters — hard AND. Provider dims are skipped
- * (handled by matchDocument); an unconsumed metadata dim short-circuits earlier via the
- * planRequiresFullSearch guard in matchesEntry / runSearch. */
-function passesExplicitFilters(doc, filters) {
-  return filters.every((f) => passesSupportedFilter(doc, f));
-}
-
-const entryOcc = (doc) => ({ targetRef: doc.ref });
-
 /**
- * Match one free term against a document's metadata dims. Mutates `bag` (a
- * Map<dimension, {relation,highlights[],occurrences[]}>) and returns whether it matched.
+ * Normalize a provider reply and stamp the OWNER on every occurrence.
+ *
+ * The spread runs owner-first so a provider-supplied `targetRef` cannot re-attribute a hit to
+ * another molecule; the boundary validator refuses one outright, and this ordering is the second
+ * lock. `locationCount` / `bestIndex` are carried through untouched — they were measured behind the
+ * provider's own cap and are not re-derivable here.
  */
-function matchTerm(doc, term, bag) {
-  let hit = false;
-  const add = (dim, field, span, occ) => {
-    hit = true;
-    let m = bag.get(dim);
-    if (!m) { m = { relation: span.relation, highlights: [], occurrences: [] }; bag.set(dim, m); }
-    if (RELATION_RANK[span.relation] < RELATION_RANK[m.relation]) m.relation = span.relation;
-    m.highlights.push({ field, start: span.start, end: span.end });
-    if (occ) m.occurrences.push(occ);
+function providerEnvelope(reply, doc) {
+  const env = toLocusEnvelope(reply);
+  return {
+    occurrences: env.occurrences.map((o) => ({ targetRef: doc.ref, ...o })),
+    locationCount: env.locationCount,
+    bestIndex: env.bestIndex,
   };
-
-  const nm = findSub(doc.textFields?.name, term);
-  if (nm) add('name', 'name', nm, entryOcc(doc));
-
-  for (const tag of doc.textFields?.tags || []) {
-    const tg = findSub(tag, term);
-    if (tg) { add('tag', 'tag', tg, entryOcc(doc)); break; }
-  }
-
-  for (const feat of doc.features || []) {
-    let span = findSub(feat.name, term); let field = 'feature.name';
-    if (!span) { const ts = findSub(feat.type, term); if (ts) { span = ts; field = 'feature.type'; } }
-    if (!span && feat.qualifiers) {
-      for (const [k, v] of Object.entries(feat.qualifiers)) {
-        const val = Array.isArray(v) ? v.join(' ') : String(v);
-        const qs = findSub(val, term);
-        if (qs) { span = qs; field = `feature.${k}`; break; }
-      }
-    }
-    if (span) {
-      const location = Number.isFinite(feat.start) && Number.isFinite(feat.end)
-        ? { segments: [{ start: feat.start, end: feat.end }], strand: feat.strand === -1 ? '-' : '+', wrapsOrigin: false }
-        : undefined;
-      add('feature', field, span, { targetRef: { kind: 'feature', id: feat.id, ownerRef: doc.ref }, location });
-    }
-  }
-
-  // Keyword-as-filter UNION: a term that names a type/status matches docs of that
-  // type/status (in addition to any literal text hit above).
-  const ty = inferType(term);
-  if (ty && docType(doc) === ty) add('type', 'type', { start: 0, end: term.length, relation: 'exact' }, entryOcc(doc));
-  const st = inferStatus(term);
-  if (st && docStatus(doc) === st) add('status', 'status', { start: 0, end: term.length, relation: 'exact' }, entryOcc(doc));
-
-  return hit;
 }
 
 function matchDocument(doc, plan, ctx) {
@@ -188,23 +106,26 @@ function matchDocument(doc, plan, ctx) {
   // Injected sequence / protein dims (engine provided by caller). `doc` is passed
   // last so a worker-backed injector can look up precomputed occurrences by doc id.
   if (plan.seqQuery && ctx.seqMatch) {
-    const occ = ctx.seqMatch(plan.seqQuery, doc.sequence, plan, ctx, doc) || [];
-    if (occ.length) {
-      bag.set('sequence', { relation: 'approximate', highlights: [], occurrences: occ.map((o) => ({ targetRef: doc.ref, ...o })) });
+    // A capped provider answers with a locus envelope; an uncapped one with a bare array.
+    // `toLocusEnvelope` normalises both, and it never invents facts: an array's loci are counted,
+    // and it declares NO canonical winner (−1) rather than pretending index 0 is one.
+    const env = providerEnvelope(ctx.seqMatch(plan.seqQuery, doc.sequence, plan, ctx, doc), doc);
+    if (env.occurrences.length) {
+      bag.set('sequence', { relation: 'approximate', highlights: [], ...env });
       if (plan.textTerms.includes(plan.seqQuery)) termsMatched.add(plan.seqQuery);
     }
   }
   if (plan.aaQuery && ctx.proteinMatch) {
-    const occ = ctx.proteinMatch(plan.aaQuery, doc, plan, ctx) || [];
-    if (occ.length) bag.set('protein', { relation: 'approximate', highlights: [], occurrences: occ.map((o) => ({ targetRef: doc.ref, ...o })) });
+    const env = providerEnvelope(ctx.proteinMatch(plan.aaQuery, doc, plan, ctx), doc);
+    if (env.occurrences.length) bag.set('protein', { relation: 'approximate', highlights: [], ...env });
   }
   // Injected enzyme dim (P5) — restriction-site cut positions in this molecule. S3-CLOSE K1 (P2):
   // single source `cutQuery || reQuery` (modern field first) so a modern-only plan runs too.
   // Exact recognition matches (IUPAC sites report compatibility) → relation 'exact'.
   const cutQuery = plan.cutQuery || plan.reQuery;
   if (cutQuery && ctx.reMatch) {
-    const occ = ctx.reMatch(cutQuery, doc, plan, ctx) || [];
-    if (occ.length) bag.set('enzyme', { relation: 'exact', highlights: [], occurrences: occ.map((o) => ({ targetRef: doc.ref, ...o })) });
+    const env = providerEnvelope(ctx.reMatch(cutQuery, doc, plan, ctx), doc);
+    if (env.occurrences.length) bag.set('enzyme', { relation: 'exact', highlights: [], ...env });
   }
   // Enzyme CATALOG card search (enz:) — match an enzyme-kind doc by its name / recognition
   // site (a text-style match). DISTINCT from the cut-site scan above (reQuery, on
@@ -285,7 +206,15 @@ let _rid = 0;
  */
 export function runSearch(plan, documents, ctx = {}) {
   const requestId = ctx.requestId || `s${(_rid += 1)}`;
-  const opts = { ...DEFAULT_SEARCH_OPTS, ...ctx.opts };
+  const merged = { ...DEFAULT_SEARCH_OPTS, ...ctx.opts };
+  // A cap must be a positive safe integer. `0` / `NaN` / `'50'` used to mean two contradictory
+  // things at once — `slice(0, NaN)` empties, a `length <= limit` guard passes everything — so an
+  // invalid value resolves to the documented default rather than silently disabling the cap.
+  const opts = {
+    ...merged,
+    maxLocationsPerEntity: isValidLimit(merged.maxLocationsPerEntity)
+      ? merged.maxLocationsPerEntity : DEFAULT_SEARCH_OPTS.maxLocationsPerEntity,
+  };
   // REV #2 S3-CLOSE K1 (corrective) — provider policy is a SYSTEM INVARIANT: absent/unknown/'required'
   // → strict AND (any requested biological dimension missing removes the doc, whether or not a matcher
   // was injected — a missing matcher is never a free pass). ONLY the exact 'deferred' keeps a metadata
@@ -321,10 +250,20 @@ export function runSearch(plan, documents, ctx = {}) {
       if (bag.size === 0 && !pureFilter) continue;
 
       const { key, primary } = relevanceKey(bag, plan, doc.title);
-      const matches = [...bag.entries()].map(([dimension, m]) => ({
-        dimension, relation: m.relation, highlights: m.highlights,
-        occurrences: m.occurrences.slice(0, opts.maxLocationsPerEntity),
-      }));
+      // THE SECOND CAP (P1-2 / P1-3). It uses the SAME rule as the engine's, from the same module,
+      // because a positional re-slice here undoes everything the first cap protected: the canonical
+      // winner on a circle has the largest start, so it is the first casualty twice over. What the
+      // provider measured is carried, never recomputed — a dimension that declared nothing has its
+      // PHYSICAL loci counted here, before its own truncation, and declares no winner.
+      const matches = [...bag.entries()].map(([dimension, m]) => {
+        const capped = capLocusEnvelope(toLocusEnvelope(m), opts.maxLocationsPerEntity);
+        return {
+          dimension, relation: m.relation, highlights: m.highlights,
+          occurrences: capped.occurrences,
+          locationCount: capped.locationCount,
+          bestIndex: capped.bestIndex,
+        };
+      });
       results.push({
         // Composite `<kind>:<id>` (§10.4) so project/primer/enzyme ids never collide with
         // entry ids in dedup / React keys / docById. `entityRef.id` stays RAW for nav.

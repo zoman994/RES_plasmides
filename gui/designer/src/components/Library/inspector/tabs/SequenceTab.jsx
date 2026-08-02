@@ -50,6 +50,9 @@ export default function SequenceTab({
   // the global search-hits store-slot — overlay rects appear only
   // when the popover ran against THIS entry.
   entryId,
+  // U5-A — the GLOBAL-search jump's own highlight (canonical occurrences), owned by the inspector's
+  // navigation consumer, NOT by the Ctrl+F `searchHits` slice. Merged with it below.
+  navHits = EMPTY_HITS,
   pendingScroll,
   onPendingScrollHandled,
   caretPos,
@@ -172,9 +175,17 @@ export default function SequenceTab({
   // pass to SequenceView only when the hits belong to the current
   // entry — otherwise we'd smear stale rects after switching entry.
   const searchHitsState = useStore((s) => s.searchHits);
-  const overlayHits = (searchHitsState?.entryId && searchHitsState.entryId === entryId)
+  const ctrlFHits = (searchHitsState?.entryId && searchHitsState.entryId === entryId)
     ? (searchHitsState.hits || EMPTY_HITS)
     : EMPTY_HITS;
+  // U5-A — TWO owners paint here and neither may erase the other: the `searchHits` slice belongs to
+  // the in-molecule Ctrl+F find-all, `navHits` is the locus a GLOBAL search jump landed on (owned by
+  // the inspector's navigation consumer, because a caret cannot express an origin wrap or a
+  // `both`-strand hit). This seam MERGES them; it never chooses.
+  const overlayHits = useMemo(
+    () => (navHits && navHits.length ? [...ctrlFHits, ...navHits] : ctrlFHits),
+    [ctrlFHits, navHits],
+  );
 
   // 17.06.2026 (Игорь) — read-only banner removed; the Library sequence
   // is editable by default. The ⚙ gear + length/topology live in the

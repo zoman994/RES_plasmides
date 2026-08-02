@@ -251,12 +251,8 @@ export const createUiSlice = (set, get) => ({
   // entry. SequenceSearchPopover writes here on each query update;
   // SequenceTab reads + paints overlay rects when entryId matches.
   searchHits: { entryId: null, query: '', hits: [] },
-  // P3 — cross-mount «jump to a sequence hit» request. The inspector's caret is
-  // LOCAL state that resets when the entry switches, so a jump fired from the
-  // SmartSearchBar dropdown (which selects a DIFFERENT entry first) can't be set
-  // synchronously — it's parked here and consumed once the target entry mounts.
-  // `revision` guards against a stale jump if the sequence changed meanwhile.
-  navRequest: null,
+  // navRequest MOVED to store/searchSessionSlice.js (U5-B): the jump channel belongs to the search
+  // subsystem, not beside toasts and theme in this near-soft file.
   toasts: [],
   canInstallPwa: false,
   // In-app prompt dialog — drop-in replacement for `window.prompt`, which is a
@@ -313,25 +309,7 @@ export const createUiSlice = (set, get) => ({
     state.searchHits = { entryId: null, query: '', hits: [] };
   }),
 
-  // P3 — request a jump to a sequence occurrence on `entryId`. `target` carries
-  // `segments[]` (0-based half-open), `strand`, optional `revision` (stale guard),
-  // and `caret` ({start,end}) for the range highlight. Consumed + cleared by the
-  // inspector after the entry mounts (or dropped if the revision no longer matches).
-  requestSequenceNav: (entryId, target) => set((state) => {
-    if (!entryId || !target) { state.navRequest = null; return; }
-    const strand = target.strand === -1 || target.strand === '-' ? -1 : 1;
-    state.navRequest = {
-      entryId,
-      segments: Array.isArray(target.segments) ? target.segments : [],
-      caret: target.caret || null,
-      strand,
-      revision: target.revision ?? null,
-      kind: target.kind || 'sequence',
-      status: 'pending',
-    };
-  }),
-  // Ack — completes / fails / cancels a nav request (all just clear the channel).
-  clearSequenceNav: () => set((state) => { state.navRequest = null; }),
+  // requestSequenceNav / clearSequenceNav MOVED to store/searchSessionSlice.js (U5-B).
 
   showToast: (msg, kind = 'info', options = {}) => {
     const id = _newToastId();

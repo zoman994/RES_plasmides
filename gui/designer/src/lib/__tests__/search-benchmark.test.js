@@ -5,12 +5,17 @@
  * whether the sequence dimension must move to a worker (>50 ms on the main thread)
  * or can stay main-thread + debounce. Logs numbers; asserts only that it ran.
  *
- * MEASURED DECISION (12.07, 1 MB corpus):
+ * MEASURED DECISION (12.07, 1 MB corpus, the pre-K3 two-engine implementation):
  *   metadata               ≈  2.5 ms   → stays main-thread (instant).
  *   short-seq 22nt (exhaustive) ≈ 385 ms → over the 50 ms gate ×7.7.
  *   long-seq 400nt (seed-extend) ≈ 408 ms → over the gate ×8.2.
- * ⇒ WORKER REQUIRED for the sequence dimension (metadata stays sync). The async
- *   facade (search-service) + the pure seqMatch provider are already worker-ready.
+ * ⇒ WORKER REQUIRED for the sequence dimension (metadata stays sync). That decision has since
+ *   SHIPPED (the sequence dimension runs off-thread), so this file is now a profile, not a gate.
+ *
+ * K3 replaced both engines with one glocal aligner, and a 400-nt query over this corpus currently
+ * ends in `RESOURCE_LIMIT` rather than completing — the open K3.1 performance item. The harness
+ * REPORTS that outcome instead of crashing on it: an honest «incomplete» is the measurement. It
+ * still asserts nothing about timing (a wall-clock assertion would be flaky under load).
  */
 import { describe, it, expect } from 'vitest';
 import { runSearch } from '../library-search';
@@ -40,11 +45,15 @@ function makeCorpus(count, len) {
   return docs;
 }
 
+/** Time `fn`, and record WHY it stopped — a run that bailed on the resource budget is a real
+ * measurement, not an error to swallow. Returns `{ ms, reason }`; `reason` is null on success. */
 function timeMs(fn) {
   const t0 = performance.now();
-  fn();
-  return performance.now() - t0;
+  let reason = null;
+  try { fn(); } catch (e) { reason = e?.code || 'ERROR'; }
+  return { ms: performance.now() - t0, reason };
 }
+const fmt = (r) => `${r.ms.toFixed(1)}ms${r.reason ? ` (${r.reason})` : ''}`;
 
 describe('search benchmark — worker decision (P1.5)', () => {
   it('measures metadata + sequence search over ~1 MB', () => {
@@ -54,14 +63,21 @@ describe('search benchmark — worker decision (P1.5)', () => {
     // Pick a real 22-nt motif out of the first doc so it actually hits.
     const motif = docs[0].sequence.seq.slice(500, 522);
 
-    const metadataMs = timeMs(() => runSearch(classifyQuery('plasmid ampR'), docs, { seqMatch }));
-    const shortSeqMs = timeMs(() => runSearch(classifyQuery(`seq:${motif}`), docs, { seqMatch }));
-    const longSeqMs = timeMs(() => runSearch(classifyQuery(docs[0].sequence.seq.slice(0, 400)), docs, { seqMatch }));
+    const metadata = timeMs(() => runSearch(classifyQuery('plasmid ampR'), docs, { seqMatch }));
+    const shortSeq = timeMs(() => runSearch(classifyQuery(`seq:${motif}`), docs, { seqMatch }));
+    const longSeq = timeMs(() => runSearch(classifyQuery(docs[0].sequence.seq.slice(0, 400)), docs, { seqMatch }));
 
     // eslint-disable-next-line no-console
-    console.log(`[BENCH] corpus=${(bytes / 1e6).toFixed(2)}MB  metadata=${metadataMs.toFixed(1)}ms  short-seq(22nt exhaustive)=${shortSeqMs.toFixed(1)}ms  long-seq(400nt seed-extend)=${longSeqMs.toFixed(1)}ms  GATE=50ms`);
+    console.log(`[BENCH] corpus=${(bytes / 1e6).toFixed(2)}MB  metadata=${fmt(metadata)}  short-seq(22nt)=${fmt(shortSeq)}  long-seq(400nt)=${fmt(longSeq)}  GATE=50ms`);
 
     expect(bytes).toBeGreaterThan(900000);
-    expect(Number.isFinite(metadataMs)).toBe(true);
-  });
+    // Metadata is the one dimension that must always complete — it is what keeps the box usable
+    // while the sequence dimension is still working off-thread.
+    expect(metadata.reason).toBeNull();
+    expect(Number.isFinite(metadata.ms)).toBe(true);
+    // An explicit budget because this deliberately profiles a 1 MB corpus: on its own it takes
+    // ~2-4 s, which races the 5 s default and times out inside a loaded full run. The number is
+    // a declaration that the harness is long-running — no assertion above is relaxed by it, and
+    // it must never be raised to make a slow ENGINE look acceptable (that gate is K3.1's).
+  }, 120_000);
 });

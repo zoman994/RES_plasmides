@@ -99,7 +99,36 @@ export function validateProviderOccurrences(value, sequenceLength) {
 }
 
 /**
+ * The SAME gate, for ONE occurrence — so a caller that must suspend between occurrences can apply it
+ * without wrapping each one in a throwaway array, and without re-spelling the rules. The sequence
+ * dimension's resumable validator is the reason this exists: the payload ceiling is 200 000
+ * occurrences, and validating them in a single loop is one uninterruptible block at the end of a
+ * search.
+ *
+ * Note the asymmetry with the array form, and that it is deliberate: an EMPTY list is an honest miss
+ * and needs no length, but a single occurrence is always a CLAIM, so a usable length is required.
+ *
+ * @param {unknown} occ
+ * @param {unknown} sequenceLength
+ * @returns {boolean}
+ */
+export function validateProviderOccurrence(occ, sequenceLength) {
+  try {
+    if (!isUsableLength(sequenceLength)) return false;
+    return isValidOccurrence(occ, sequenceLength);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Is `byId` a well-formed reply about exactly the documents that were sent?
+ *
+ * This is the GENERIC provider contract — protein and enzyme answer with a plain array and must go
+ * on doing so. Only the DNA engine caps its payload, so only the sequence dimension needs the locus
+ * envelope; that stricter gate lives in `search-sequence-envelope.js` and is applied by
+ * `validateSequencePayload`. Widening this shared shape to accept an envelope would have quietly
+ * relaxed the contract for two providers that never had the problem.
  *
  * @param {unknown} byId — plain record `entityKey → occurrences`; `{}` is a valid honest miss
  * @param {Map<string, number>} allowedLengthsByKey — a REAL Map: entityKey → sequence length, for

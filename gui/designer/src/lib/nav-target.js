@@ -14,19 +14,35 @@ function normStrand(strand) {
 }
 
 /**
- * @param {{ segments:{start,end}[], strand?:string|number, wrapsOrigin?:boolean }} location
- * @returns {{ caret:{start,end}, scrollPos:number, segments:Array, strand:number, wrapsOrigin:boolean }|null}
+ * The CANONICAL strand, kept alongside the ±1 selection strand. The selection can only be drawn on
+ * one strand, so it collapses `both` to the forward one; the overlay can paint both, and a
+ * palindromic hit that reads `both` must not arrive there as «forward only».
  */
-export function navFromLocation(location) {
+function canonicalStrand(strand) {
+  if (strand === 'both') return 'both';
+  return strand === '-' || strand === -1 ? '-' : '+';
+}
+
+/**
+ * @param {{ segments:{start,end}[], strand?:string|number, wrapsOrigin?:boolean }} location
+ * @param {Object} [metrics] — the occurrence's finalized metrics; only `identityBps` is carried, for
+ *   the overlay's colour bucket. Absent → null, and the overlay falls back to its neutral bucket.
+ * @returns {{ caret:{start,end}, scrollPos:number, segments:Array, strand:number, strandRaw:string,
+ *   wrapsOrigin:boolean, identityBps:number|null }|null}
+ */
+export function navFromLocation(location, metrics) {
   const segments = location && Array.isArray(location.segments) ? location.segments : [];
   if (!segments.length) return null;
   const first = segments[0];
+  const bps = metrics && metrics.identityBps;
   return {
     caret: { start: first.start, end: first.end },
     scrollPos: first.start,
     segments,
     strand: normStrand(location.strand),
+    strandRaw: canonicalStrand(location.strand),
     wrapsOrigin: !!location.wrapsOrigin,
+    identityBps: Number.isFinite(bps) ? bps : null,
   };
 }
 

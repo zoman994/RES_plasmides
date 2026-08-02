@@ -1,21 +1,21 @@
 /**
- * SearchHitsOverlay — paints translucent rectangles over the DNA
- * strand for every search hit (M-X.9 K2 follow-up,
- * TD-SEARCH-OVERLAY-RECTS).
+ * SearchHitsOverlay — paints translucent bands over the DNA strands for every search hit.
  *
- * Hits come from `state.searchHits` (uiSlice). Bucketed by
- * `queryIdentity` per FAIL-fix-pass 6:
- *   • ≥90% green
- *   • 80-89% amber
- *   • 70-79% orange
- *   • <70% grey (rare — slider relaxed)
+ * TWO input shapes, normalized to «bands» before painting:
+ *   • CANONICAL occurrence (the in-molecule popover → `searchHits` → SequenceTab): carries
+ *     `location.segments` (0-based half-open; TWO of them for an origin wrap), `location.strand`
+ *     (`'+'` / `'-'` / `'both'`) and `metrics.identityBps`. Each segment becomes a band; the strand
+ *     decides which row it paints — `+` the top strand, `-` the bottom, `both` PAINTS BOTH. No
+ *     mismatch ticks (the finalized metrics carry none).
+ *   • LEGACY FLAT hit (AlignReferenceView): `{ targetStart, targetEnd, queryIdentity|identity,
+ *     strand: ±1, mismatchPositions }`. One band, one row, with red mismatch boxes. Kept unchanged
+ *     so the reference view (and its ticks) is untouched by the occurrence migration.
  *
- * Mismatch positions (`hit.mismatchPositions`, absolute target
- * coordinates) get a thin red vertical tick on the strand band.
+ * Colour bucket by identity:
+ *   ≥90% green · 80-89% amber · 70-79% orange · <70% grey (rare — slider relaxed).
  *
- * Wrap-tail bands are NOT painted yet — for circular plasmids the
- * rect appears only on the «main» row. Bridge / wrap-tail support
- * is a follow-up if biolog asks for it.
+ * Wrap-tail LINES (`data-wraptail-kind` ≠ 'main') are still not painted; a circular occurrence draws
+ * both its segments on their respective MAIN lines instead.
  */
 import { useLayoutEffect, useState } from 'react';
 import { LABEL_WIDTH } from '../constants.js';
@@ -40,13 +40,43 @@ function bucketFor(identity) {
   return 'low';
 }
 
+/**
+ * Flatten ONE hit (either shape) into paintable bands: `{ start, end, identity, target, ticks }`
+ * where `target` ∈ 'top' | 'bottom' | 'both'. A canonical occurrence yields one band PER segment;
+ * a legacy flat hit yields exactly one.
+ */
+function bandsForHit(hit) {
+  const out = [];
+  if (hit && hit.location && Array.isArray(hit.location.segments)) {
+    const bps = hit.metrics && hit.metrics.identityBps;
+    const identity = Number.isFinite(bps) ? bps / 10000 : 0;
+    const s = hit.location.strand;
+    const target = s === 'both' ? 'both' : ((s === '-' || s === -1) ? 'bottom' : 'top');
+    for (const seg of hit.location.segments) {
+      if (!seg) continue;
+      const start = Math.max(0, seg.start);
+      const end = Math.max(start, seg.end);
+      if (end > start) out.push({ start, end, identity, target, ticks: [] });
+    }
+  } else if (hit && Number.isFinite(hit.targetStart)) {
+    const start = Math.max(0, hit.targetStart);
+    const end = Math.max(start, hit.targetEnd);
+    if (end > start) {
+      const identity = hit.queryIdentity ?? hit.identity ?? 0;
+      const target = hit.strand === -1 ? 'bottom' : 'top';
+      out.push({ start, end, identity, target, ticks: Array.isArray(hit.mismatchPositions) ? hit.mismatchPositions : [] });
+    }
+  }
+  return out;
+}
+
 export default function SearchHitsOverlay({
   hits,
   charPx,
   charsPerLine,
   containerRef,
-  // V96 — bumped by SequenceView on every line reflow so hit rects
-  // re-measure against the final layout without a caret-moving click.
+  // V96 — bumped by SequenceView on every line reflow so hit rects re-measure against the final
+  // layout without a caret-moving click.
   layoutEpoch = 0,
 }) {
   const [paint, setPaint] = useState({ rects: [], ticks: [] });
@@ -65,14 +95,16 @@ export default function SearchHitsOverlay({
       return undefined;
     }
 
+    const bands = [];
+    for (let i = 0; i < hits.length; i++) {
+      for (const b of bandsForHit(hits[i])) bands.push(b);
+    }
+
     const rects = [];
     const ticks = [];
-    for (let i = 0; i < hits.length; i++) {
-      const hit = hits[i];
-      const start = Math.max(0, hit.targetStart);
-      const end = Math.max(start, hit.targetEnd);
-      if (end <= start) continue;
-      const bucket = bucketFor(hit.queryIdentity ?? hit.identity ?? 0);
+    for (let bi = 0; bi < bands.length; bi++) {
+      const band = bands[bi];
+      const bucket = bucketFor(band.identity);
       const fill = BUCKET_FILL[bucket];
       const outline = BUCKET_OUTLINE[bucket];
 
@@ -82,52 +114,58 @@ export default function SearchHitsOverlay({
         const lineStart = parseInt(el.dataset.lineStart || '', 10);
         if (Number.isNaN(lineStart)) continue;
         const lineEnd = lineStart + cpl;
-        if (lineEnd <= start || lineStart >= end) continue;
-        const fromCh = Math.max(0, start - lineStart);
-        const toCh = Math.min(cpl, end - lineStart);
+        if (lineEnd <= band.start || lineStart >= band.end) continue;
+        const fromCh = Math.max(0, band.start - lineStart);
+        const toCh = Math.min(cpl, band.end - lineStart);
         const left = (el.offsetLeft || 0) + (LABEL_WIDTH + fromCh) * charPx;
         const width = (toCh - fromCh) * charPx;
 
-        // 11.05.2026 — strand-aware band. Forward hit (strand=+1)
-        // paints over the TOP strand row only; reverse hit
-        // (strand=-1) paints over the BOTTOM strand row only.
-        // Matches the SnapGene / Benchling convention so biolog
-        // can see at a glance which strand carries the match.
-        // Falls back to spanning both strands when only one strand
-        // row is available (linear single-strand renderer).
+        // 11.05.2026 — strand-aware band. `+` paints the TOP strand row, `-` the BOTTOM; `both`
+        // paints BOTH. Falls back to spanning the line when only one strand row is rendered.
         const topStrand = el.querySelector('[data-testid="sequence-view-strands-top"]');
         const bottomStrand = el.querySelector('[data-testid="sequence-view-strands-bottom"]');
-        let dnaTop;
-        let dnaHeight;
-        if (hit.strand === -1 && bottomStrand) {
-          dnaTop = el.offsetTop + bottomStrand.offsetTop;
-          dnaHeight = bottomStrand.offsetHeight;
-        } else if (topStrand) {
-          dnaTop = el.offsetTop + topStrand.offsetTop;
-          dnaHeight = topStrand.offsetHeight;
-        } else if (bottomStrand) {
-          dnaTop = el.offsetTop + bottomStrand.offsetTop;
-          dnaHeight = bottomStrand.offsetHeight;
+        const rows = [];
+        if (!topStrand && !bottomStrand) {
+          rows.push([band.target === 'bottom' ? 'rev' : 'fwd', null]);
+        } else if (band.target === 'both') {
+          if (topStrand) rows.push(['fwd', topStrand]);
+          if (bottomStrand) rows.push(['rev', bottomStrand]);
+        } else if (band.target === 'bottom') {
+          rows.push(['rev', bottomStrand || topStrand]);
         } else {
-          dnaTop = el.offsetTop;
-          dnaHeight = Math.max(8, el.offsetHeight - 14);
+          rows.push(['fwd', topStrand || bottomStrand]);
         }
-        rects.push({
-          key: `hit:${i}:${lineStart}`,
-          left, top: dnaTop, width, height: dnaHeight,
-          fill, outline,
-          strand: hit.strand,
-        });
 
-        // Mismatch ticks within this line.
-        if (Array.isArray(hit.mismatchPositions)) {
-          for (let m = 0; m < hit.mismatchPositions.length; m++) {
-            const mp = hit.mismatchPositions[m];
+        let firstTop = null;
+        let firstHeight = null;
+        for (let ri = 0; ri < rows.length; ri++) {
+          const [dir, strandEl] = rows[ri];
+          let dnaTop;
+          let dnaHeight;
+          if (strandEl) {
+            dnaTop = el.offsetTop + strandEl.offsetTop;
+            dnaHeight = strandEl.offsetHeight;
+          } else {
+            dnaTop = el.offsetTop;
+            dnaHeight = Math.max(8, el.offsetHeight - 14);
+          }
+          rects.push({
+            key: `hit:${bi}:${dir}:${lineStart}`,
+            left, top: dnaTop, width, height: dnaHeight, fill, outline,
+            strand: dir === 'rev' ? -1 : 1,
+          });
+          if (ri === 0) { firstTop = dnaTop; firstHeight = dnaHeight; }
+        }
+
+        // Mismatch ticks (flat only — canonical carries none) on the first painted row.
+        if (band.ticks.length && firstTop !== null) {
+          for (let m = 0; m < band.ticks.length; m++) {
+            const mp = band.ticks[m];
             if (mp < lineStart || mp >= lineEnd) continue;
             const mLeft = (el.offsetLeft || 0) + (LABEL_WIDTH + (mp - lineStart)) * charPx;
             ticks.push({
-              key: `mm:${i}:${mp}`,
-              left: mLeft, top: dnaTop, height: dnaHeight,
+              key: `mm:${bi}:${mp}:${lineStart}`,
+              left: mLeft, top: firstTop, height: firstHeight,
               width: charPx, // full cell — covers the mismatched letter
             });
           }
@@ -155,18 +193,13 @@ export default function SearchHitsOverlay({
           }}
         />
       ))}
-      {paint.ticks.map((t) => (
+      {paint.ticks.map((tk) => (
         <div
-          key={t.key}
+          key={tk.key}
           data-testid="sequence-view-search-mismatch-tick"
           style={{
             position: 'absolute',
-            // 11.05.2026 — full-cell-wide red box (was a 2 px tick).
-            // Biolog needs to see WHICH nucleotide is the mismatch
-            // at a glance; a thin line was easy to miss against the
-            // green hit-band. Translucent so the underlying letter
-            // still reads through.
-            left: t.left, top: t.top, width: t.width || 7.2, height: t.height,
+            left: tk.left, top: tk.top, width: tk.width || 7.2, height: tk.height,
             background: 'rgba(220, 38, 38, 0.45)', // red-600 @ 45%
             outline: '1px solid rgba(220, 38, 38, 0.85)',
             pointerEvents: 'none',

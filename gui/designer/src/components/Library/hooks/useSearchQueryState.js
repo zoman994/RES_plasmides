@@ -91,6 +91,24 @@ export function useSearchQueryState({
    */
   const seedGlobalQuery = (raw) => { setComposing(false); setState(withResolve(syncTypedDraft(DEFAULT_QUERY_STATE, raw, { commitTail: true }))); };
 
+  /**
+   * Put a PREVIOUSLY CAPTURED query state back, verbatim (U5-B «Back to results»).
+   *
+   * Distinct from `seedGlobalQuery`, which rebuilds a state by re-parsing text. Re-parsing is fine
+   * for an escalation from the tree, where there is only text to begin with, but it is lossy as a
+   * restore: a resolved `in:<project>` filter carries `{projectId,label}` that the canonical string
+   * cannot express, so round-tripping it through text turns a working filter back into an unresolved
+   * — and possibly ambiguous, i.e. blocking — one. The mode and the chips come back because they ARE
+   * the state, not because a parser guessed them from a string.
+   */
+  const restoreQueryState = (snapshot) => {
+    if (!snapshot || typeof snapshot !== 'object' || !Array.isArray(snapshot.filters)) return false;
+    setComposing(false);
+    setBuffer('');
+    setState(snapshot);
+    return true;
+  };
+
   const canonicalQuery = buildCanonicalQuery(state);
   // A filter whose prefix the engine cannot yet execute (name / feature / in are parse-only) must
   // NOT run as if it filtered — that would show a misleading result set. Fail-closed: surface a
@@ -137,5 +155,6 @@ export function useSearchQueryState({
     onClearAll,
     resolveEntities,
     seedGlobalQuery,
+    restoreQueryState,
   };
 }
