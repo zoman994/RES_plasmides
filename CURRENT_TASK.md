@@ -1,128 +1,65 @@
-# CURRENT_TASK — SEARCH-GAPPED-DNA
+# CURRENT_TASK — TREE-INTEGRATION-0.8.8
 
-**Статус:** ✅ COMPLETE — U7 PASS / local production acceptance
-**Закрыто:** 02.08.2026
-**Нормативный контракт:** [SPEC_GAPPED_DNA_SEARCH.md](docs/specs/SPEC_GAPPED_DNA_SEARCH.md)
-**Checkpoint:** ожидает отдельного разрешения пользователя на stage/commit.
+**Статус:** ACCEPTED / CHECKPOINTED (26.08.2026).
 
-## Результат
+## Git
 
-Глобальный поиск и Ctrl+F используют общий DNA worker/core по обеим цепям и кольцевым
-молекулам, но входные минимумы различаются: Ctrl+F требует 8 нт, bare DNA в глобальной
-строке использует настраиваемый порог автоопределения (по умолчанию 8), а явный `seq:`
-этот порог намеренно обходит. Exact не имеет верхнего предела; approximate выполняется
-для допустимого DNA-запроса длиной до 100 нт. Выдача ранжируется по биологическому
-качеству, ведёт к каноническому локусу, а Back восстанавливает поисковую сессию.
+- Accepted base: `876bad0d7e7e073ac29273be2a23afc13c6f26ad`.
+- WIP integration checkpoint:
+  `6f652ac846f6faaa832df28c1387327840b93bdb`.
+- Staged tree: `845988f21c474f2f273edd53f8cf68e13c4e9f1c`.
+- Staged manifest SHA-256:
+  `0a5b8fcd804fd9919827c5c85ea4e0d28f4d2292e32bab6d73cd0da789b4b9f8`.
+- Этот tracker и `PROJECT_STATE.md` входят во второй docs-handoff commit.
+- Push не выполнялся и не разрешался.
 
-## Действующий продуктовый контракт
+## Цель и решение
 
-- DNA query после trim и uppercase принимает только `A/C/G/T`.
-- `U`, IUPAC-коды, внутренние пробелы и иные символы дают `invalid-dna`;
-  молчаливого исправления запроса нет.
-- Неоднозначная буква в target считается mismatch, а не wildcard.
-- Identity: `M / (M + X + I + D)`, сравнение выполняется в basis points.
-- Весь query участвует в query-global / target-local выравнивании; partial seed не является hit.
-- Exact-фаза выполняется первой по всему допустимому корпусу.
-- Если exact найден хотя бы в одной молекуле, approximate-строки не подмешиваются.
-- Exact не имеет верхнего предела длины.
-- Bare DNA распознаётся от `minQueryLen` (4–30, default 8); явный `seq:` принимает
-  любой непустой A/C/G/T query; Ctrl+F отдельно требует минимум 8 нт.
-- Approximate запускается для принятого DNA query длиной до 100 нт.
-- При threshold <100% запрос `>100` без exact возвращает `REQUIRES_ALIGNMENT`;
-  threshold 100% является exact-only и после exact-промаха честно возвращает ноль.
-- Production route: `EXACT_FIRST`.
-- Production approximate kernel: `LINEAR`.
-- Клиентский timeout остаётся 15 секунд.
-- Поддерживаются `+`, `−`, палиндромная `both` и origin-wrap кольцевой молекулы.
-- Канонический best выбирается общим occurrence-порядком с физическим endpoint кольца.
-- Результат sequence-провайдера — строгий envelope
-  `{occurrences, locationCount, bestIndex}`.
-- `locationCount` измеряется до транспортного cap; best сохраняется при обоих cap.
-- Ошибка, malformed payload, timeout и resource limit дают incomplete, не honest-empty.
-- Неполная строка не выбирается как подтверждённый результат.
+Основной checkout `D:\RESplasmide` приведён к чистому Git-состоянию без потери
+накопленной работы. Смешанную annotation/primer поверхность не разделяли рискованным
+hunk-rollback: весь снимок сохранён как честный **WIP checkpoint**, а не как заявление
+о стабильном product release. Известные ANN-риски остаются в `BUGS.md`.
 
-## Исполнение и отмена
+## Что интегрировано
 
-- Тяжёлая работа выполняется в worker, не в UI-потоке.
-- Одновременно активна не более чем одна тяжёлая job.
-- Обычная отмена кооперативна: `cancel → unwind → ACK`.
-- При обычной отмене worker остаётся жив; `terminate()` — аварийный/dispose путь.
-- Следующая job отправляется только после ACK или terminal предыдущей.
-- Scan, verifier, traceback, materialisation и сортировка имеют ограниченные участки
-  работы между точками приостановки.
-- Поздние terminal-ответы не меняют UI.
+- Исходный frozen snapshot: 126 tracked-dirty + 146 untracked, index пуст.
+- Первый commit: 195 файлов — 70 added, 123 modified, 2 deleted from repository;
+  28 482 additions / 2 099 deletions.
+- 70 новых project-файлов проверены независимо: 816 134 bytes, aggregate SHA-256
+  `e121671c9738303652a7f12a3b4f21d87ac9aa42140e3fa296761888118fbdfe`.
+- `.claude/settings.local.json` удалён только из Git index, сохранён локально и
+  покрывается `.gitignore`.
+- Отдельный проект `RES-lab` атомарно перенесён в `D:\RES-lab`: 76 файлов,
+  64 826 067 bytes, tree digest
+  `47560e4b53258c291278432a8ea564c5cfd261aa02259a9ec158a85716efe10b`.
+- Старый параллельный debt-tracker удалён после консолидации: 52 unresolved legacy-ID
+  находятся в `BUGS.md`/`docs/BACKLOG.md`, 27 входят в проверенный resolved allowlist;
+  unresolved union 79, потерянных ID — 0.
+- Доказанные temp/cache/build residues были удалены до checkpoint; generated output
+  не попал в commit.
 
-## UI-контракт
+## Проверка
 
-- Одна молекула занимает одну строку; подтверждённые строки идут первыми.
-- Далее строки сортируются по identity, каноническому best и стабильному entity key.
-- Строка показывает identity, `M/L`, `X/I/D`, gap events, цепь,
-  half-open координаты и точное число локусов.
-- Wrap показывается двумя сегментами; `both` сохраняет обе цепи.
-- Ответный occurrence payload и DOM не содержат edit script, `editRuns`, mismatch positions
-  или bases target; сам target закономерно передаётся в worker во входном документе.
-- Click и Enter открывают occurrence, по которому строка ранжирована.
-- Глобальный jump не уничтожает независимую Ctrl+F-подсветку.
-- Back восстанавливает query, mode, chips, строки, active row и scroll.
-- При неизменившемся корпусе Back переиспользует результат без новой worker-job;
-  при изменившемся выполняется ровно один новый поиск.
-- Dirty guard не создаёт return frame при отменённом переходе.
-- Во время поиска показывается индикатор активности без выдуманного процента;
-  `prefers-reduced-motion` отключает движение.
-- Pending/incomplete строки не открываются мышью или Enter.
+- Frontend full gate: 828 файлов; 826 passed + 2 skipped.
+- Frontend tests: 8 817; 8 797 passed + 20 skipped, 0 failed.
+- Backend: 195/195 passed.
+- Production build для байт-идентичного product snapshot: PASS, 599 modules.
+- Version sync: package, lock и runtime — `0.8.8-alpha`.
+- Staged `git diff --check`: PASS после точечного удаления whitespace в восьми новых
+  docs/test files.
+- Secret/private-key/sensitive-filename scans: реальных совпадений нет.
+- Локальный dev server продолжает обслуживать `127.0.0.1:3000`.
 
-## Финальная проверка U7
+## Size budget
 
-### Доказано тестами
+Новых hard-zone production entrants нет. Новые soft-zone entrants зафиксированы в
+каноническом backlog: `PrimerTrack.jsx`, `PlasmidMapV2.jsx` и
+`skeleton-state-assembly.js`. Стабильные существующие hard-файлы не разрезались
+механически внутри checkpoint-пакета.
 
-- Frontend: **804/804 файлов**, **8182 теста** —
-  **8162 passed, 20 skipped, 0 failed**.
-- Backend: **127 passed**.
-- Ranking-контракт отдельно доказывает 95% выше 85% независимо от имени
-  и corpus-wide исключение approximate-строк при найденном exact.
-- Mutation/temp/backup residues: 0; `git diff --check` чист.
-- После разделения K2-теста новых hard-size нарушителей нет.
-- Новые и изменённые файлы не добавляют lint errors;
-  полный проектный lint сохраняет предсуществующий долг.
+## Сохранённые границы
 
-Первый corrective full-run дал четыре нагрузочных падения в трёх файлах.
-Все три прошли изолированно (27/27), а разрешённый повтор полного прогона прошёл
-804/804. Инфраструктурная нестабильность учитывается как BG-022.
-
-### Доказано build
-
-- Production build: **успешен, 579 modules**.
-
-### Проверено в браузере
-
-- Shipping build без benchmark override: **32/32 сценария**.
-- Проверены approximate ranking, exact-only, activity indicator, hover/focus,
-  Enter/click, plus/minus/wrap jump и Back.
-- Worker payload и DOM не содержат alignment internals.
-- Отмена: `job → cancel → ACK` за 6 мс, новых worker — 0, `terminate()` — 0.
-- Console errors: 0; HTTP errors: 0; long tasks >50 мс: 0.
-
-### Граница доказательства
-
-- Pending и incomplete mouse/Enter no-op покрыты интеграционными тестами.
-- В живом браузере эти два состояния не наблюдались: поиск завершался раньше рендера.
-- Живой `REQUIRES_ALIGNMENT` проверен, но не считается их проверкой.
-- Weak-PC benchmark и точный current-build worker-memory peak отложены в
-  [BACKLOG.md](docs/BACKLOG.md) и не входят в local production acceptance.
-- Fork-crash без assertion failure остаётся инфраструктурным BG-022.
-
-## Состояние этапов и STOP
-
-- U0–U5: ✅ PASS.
-- U6: ✅ PASS — local production acceptance.
-- U7: ✅ PASS.
-- `EXACT_FIRST`, `LINEAR`, upper approximate limit 100 нт и timeout 15 с — финальные defaults;
-  различие входных минимумов поверхностей зафиксировано выше.
-- `SHARED_SCANNER` и approximate 200/400 нт не включены.
-- Индекс и новые поисковые функции не начинались.
-- После разрешённого checkpoint история промежуточных RED/GREEN, мутаций и бенчей
-  останется в Git; до него рабочее дерево не является сохранённой историей.
-- Незавершённые улучшения находятся только в `docs/BACKLOG.md`;
-  открытые дефекты — только в `BUGS.md`.
-- Следующая продуктовая работа требует нового отдельного scope.
-- Stage/commit — только после прямого разрешения пользователя.
+- BG-035 и paused ANN-0M не объявлены исправленными только из-за checkpoint.
+- Три secondary worktree сохранены без удаления; принятая работа присутствует в main
+  checkpoint, а их локальные остатки не влияют на чистоту основного checkout.
+- Новые product fixes, reset/checkout/clean/stash и push не выполнялись.

@@ -1,91 +1,78 @@
 # PROJECT_STATE — BodgeGene
 
-Обновлено: 02.08.2026.
+Обновлено: 26.08.2026.
 
 ## Текущий снимок
 
-- Версия приложения: **0.8.7-alpha** (`gui/designer/package.json`,
-  `gui/designer/src/lib/version.js`).
-- Рабочая ветка: `checkpoint/integration-2026-07-17`.
-- SEARCH-GAPPED-DNA прошёл local production acceptance; checkpoint ещё не создан.
-- Frontend: **804/804 файлов**, **8182 теста**
-  (**8162 passed, 20 skipped, 0 failed**).
-- Backend: **127 passed**.
-- Production build: **успешен, 579 modules**.
-- Browser acceptance shipping-сборки: **32/32 сценария**,
-  0 console errors, 0 HTTP errors, 0 long tasks >50 мс.
-- `git diff --check` чист; mutation/temp/backup residues не найдены.
-- Новые и изменённые файлы не добавляют lint errors;
-  полный проектный lint сохраняет предсуществующий долг.
-- Stage/commit ожидают отдельного разрешения пользователя.
+- GUI version: **0.8.8-alpha**.
+- Ветка: `checkpoint/integration-2026-07-17`.
+- WIP integration checkpoint:
+  `6f652ac846f6faaa832df28c1387327840b93bdb`.
+- Текущий HEAD после него содержит только tracker handoff; push не выполнялся.
+- Frontend: **828 файлов**, **8 817 тестов** — 8 797 passed, 20 skipped,
+  0 failed.
+- Backend: **195 passed**.
+- Production build: **PASS, 599 modules**.
+- Основной checkout после tracker handoff не содержит staged, modified или untracked
+  project-файлов. Локальный `.claude/settings.local.json` сохранён и ignored.
+- Общий browser gate всего WIP snapshot не заявляется. Targeted browser acceptance
+  пройден для search, SnapGene import, `.bodge` flows и primer tail/reopen; известные
+  browser-находки находятся только в `BUGS.md`.
 
-## Приложение
+## Продукт
 
-BodgeGene — local-first React-приложение для создания, анализа и
-версионирования плазмид и генетических сборок.
+BodgeGene — local-first React-приложение для создания, анализа и версионирования
+плазмид и генетических сборок. Основной интерфейс находится в `gui/designer/`;
+Python `pvcs` версионируется отдельно и обслуживает CLI/парсинг.
 
-Основной интерфейс: `gui/designer/`.
+Текущий WIP snapshot включает:
 
-- React 19 + Zustand + Dexie + Vite.
-- FastAPI используется для операций, которым нужен Python/SnapGene-парсер.
-- Python CLI `pvcs` остаётся отдельным поддерживаемым интерфейсом.
+- библиотеку молекул, проектов, версий и canonical primer pool;
+- Sequence/Map просмотр, редактирование и annotation tracks;
+- сборочный canvas, PCR/KLD, primer reuse, substitution/indel/AA mutagenesis;
+- exact/approximate DNA search с worker cancellation и honest incomplete states;
+- локальный SnapGene catalog: 19 categories / 2 822 plasmids;
+- `.bodge` full-project open, donor-container import и v2 topology normalization;
+- GenBank/FASTA/SnapGene ingress, alignment и Sanger foundations.
 
-Основные рабочие области:
+## Важная WIP-граница
 
-- библиотека молекул, проектов и праймеров;
-- глобальный поиск по метаданным, ДНК, белку и сайтам рестрикции;
-- Sequence/Map просмотр и редактирование;
-- аннотации и common-feature detection;
-- сборочный canvas, стыки и проверка сборки;
-- canonical primer pool;
-- выравнивание и Sanger-данные;
-- `.bodge`, GenBank и SnapGene import/export.
+Checkpoint сохраняет смешанную ANN/primer поверхность, но не превращает её в
+release-ready реализацию. BG-035 и связанный paused ANN-0M остаются открыты: lossless
+primer/annotation ownership, document identity/provenance и Annotator scope требуют
+отдельного вертикального correction package. Остальные подтверждённые дефекты читаются
+только из `BUGS.md`, улучшения — только из `docs/BACKLOG.md`.
 
-## DNA Search
+## Репозиторий и локальные данные
 
-Shipping-контракт:
+- Накопленный snapshot сохранён одним WIP commit: 195 файлов, tree
+  `845988f21c474f2f273edd53f8cf68e13c4e9f1c`.
+- Старый параллельный debt-tracker ликвидирован; 79 unresolved legacy-ID получили
+  канонический исход без второго журнала.
+- Отдельный CAD/bioreactor проект сохранён в `D:\RES-lab`: 76 файлов,
+  64 826 067 bytes, digest
+  `47560e4b53258c291278432a8ea564c5cfd261aa02259a9ec158a85716efe10b`.
+- `.agents/skills`, project Claude profiles, agarose-gel future specification и новые
+  product tests/sources входят в checkpoint.
+- Три зарегистрированных secondary worktree оставлены как локальные recoverable
+  snapshots; принятая main-работа от них не зависит.
+- Generated caches, `dist`, temp PNG и одноразовые runners в checkpoint не входят.
 
-- corpus-wide route: **EXACT_FIRST**;
-- approximate kernel: **LINEAR**;
-- exact-запросы не имеют верхнего предела длины;
-- bare DNA использует `minQueryLen` (default 8), явный `seq:` обходит порог
-  автоопределения, а Ctrl+F отдельно требует минимум 8 нт;
-- approximate запускается для принятого DNA query длиной до **100 нт**;
-- при threshold <100% запрос `>100` без exact даёт `REQUIRES_ALIGNMENT`;
-  threshold 100% остаётся exact-only и может честно вернуть ноль;
-- query alphabet: только `A/C/G/T`;
-- identity: `M / (M + X + I + D)`;
-- обе цепи и кольцевые origin-wrap локусы поддерживаются;
-- timeout: **15 с**;
-- тяжёлая работа выполняется в worker;
-- обычная отмена кооперативна и не уничтожает worker;
-- строгая граница ответа: `{occurrences, locationCount, bestIndex}`;
-- ошибка или resource limit дают incomplete, а не honest-empty;
-- выдача ведёт к каноническому локусу, а Back восстанавливает search session;
-- индикатор показывает активность без фиктивного процента.
+## Проверенная search-семантика
 
-Локальная приёмка не заявляет поведение на эталонном слабом ПК
-и точный peak памяти самого worker текущей сборки. Эти измерения
-отложены в `docs/BACKLOG.md`.
-
-## Текущее состояние документов
-
-- `CURRENT_TASK.md` содержит только компактный итог закрытого Search scope.
-- Открытые дефекты читаются только из `BUGS.md`.
-- Незавершённые улучшения читаются только из `docs/BACKLOG.md`.
-- Действующие архитектурные решения читаются из `DECISIONS.md`.
-- Реализованные промежуточные планы и отчёты не хранятся в текущих документах.
-- Graphify не используется автоматически и не является доказательством.
+Shipping route остаётся EXACT_FIRST с LINEAR approximate kernel, обеими цепями,
+circular origin-wrap, worker execution/cancellation, 15 s timeout и строгой границей
+ответа `{occurrences, locationCount, bestIndex}`. Provider/resource failure даёт
+incomplete, а не honest-empty. Полный контракт находится в
+`docs/guides/TECHNICAL_GUIDE_SEARCH.md`.
 
 ## Источники истины
 
 1. Исполняемый код и тесты.
-2. `AGENTS.md` — постоянные правила разработки.
-3. `CURRENT_TASK.md` — единственная текущая задача или последний закрытый scope
-   до открытия следующего.
-4. Этот файл — краткий актуальный snapshot.
-5. `DECISIONS.md` — действующие архитектурные решения.
-6. `docs/ARCHITECTURE.md` и нормативные спецификации.
+2. `AGENTS.md` — постоянные правила.
+3. `CURRENT_TASK.md` — единственный текущий scope.
+4. Этот файл — короткий snapshot, не журнал.
+5. `BUGS.md`, `docs/BACKLOG.md`, `DECISIONS.md`.
+6. `docs/ARCHITECTURE.md` и активные нормативные specs.
 
-Если документ противоречит коду или тестам, документ считается устаревшим
-и исправляется.
+Если документ противоречит коду или тестам, документ устарел.

@@ -153,7 +153,7 @@ Move the curated cross-name/AmpR dedup rules from `scripts/dedup_common_features
 
 Expose tags and topology in the current `LibraryWorkspace` with direct, tested persistence to the library entry. Do not restore the retired importer workspace merely to recover its old metadata column.
 
-## Legacy debt migrated from `TECH_DEBT.md`
+## Legacy debt migrated from the retired tracker
 
 These unresolved IDs were consolidated here on 26.08.2026. Detailed historical wording
 remains in Git history; activation still requires a scoped `CURRENT_TASK.md` package.
