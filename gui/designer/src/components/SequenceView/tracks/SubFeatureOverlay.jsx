@@ -97,13 +97,18 @@ export function SubFeatureOverlay({
             y={subY + subH / 2 + KID_FONT / 2 - 1.5}
             textAnchor="middle"
             fontSize={KID_FONT}
-            fill="#ffffff"
-            stroke="#000000"
-            strokeWidth={1.0}
+            // SEQ-VIS-1 — same rule as the parent label, one size down. At 7 px
+            // a 1 px black halo is most of the glyph, so the separator is
+            // thinner here than on the parent and the colour comes from the
+            // theme rather than assuming a white page.
+            fill="var(--text-primary)"
+            stroke="var(--sequence-canvas-bg)"
+            strokeWidth={0.4}
             style={{
               pointerEvents: 'none',
               userSelect: 'none',
-              fontFamily: 'inherit',
+              fontFamily: 'var(--font-ui)',
+              fontWeight: 500,
               paintOrder: 'stroke fill',
             }}
           >{kidLabel}</text>

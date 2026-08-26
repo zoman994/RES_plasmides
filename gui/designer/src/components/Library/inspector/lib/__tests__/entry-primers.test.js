@@ -86,7 +86,10 @@ describe("selectEntryPrimers", () => {
     expect(a).toBe(d);
   });
 
-  it("filters by origin.kind + origin.entryId and maps to the viewer-primer shape", () => {
+  // ANN-0L supersedes the old assumption "only origin.kind === 'library-selection'
+  // belongs to an entry": an imported primer is scoped by `origin.entryId` too.
+  // A pool primer bound to NO entry (p4) is still excluded.
+  it("filters by origin.entryId and maps to the viewer-primer shape", () => {
     const primersById = {
       p1: mk("p1", "E1", { name: "fwd", direction: "forward", sequence: "AAACCCGGGTTT", tm: 58 }),
       p2: mk("p2", "E1", { name: "rev", direction: "reverse", sequence: "TTTGGGCCCAAA", tm: null }),
@@ -106,10 +109,45 @@ describe("selectEntryPrimers", () => {
       tail: "", // V173 — viewer shape now carries tail (empty for tail-less primers)
       direction: "forward",
       tmBinding: 58,
+      // ANN-0L — record v2 fields travel through so the shared projection can
+      // place the primer by its SOURCE sites. Undefined on a legacy row.
+      schemaVersion: undefined,
+      sites: undefined,
+      sequenceSource: undefined,
+      origin: { kind: "library-selection", entryId: "E1" },
     });
     // null tm → tmBinding omitted (PrimerTrack label gate is truthy).
     expect(byName.rev.tmBinding).toBeUndefined();
     expect(byName.rev.direction).toBe("reverse");
+  });
+
+  it("includes an IMPORTED primer scoped to this entry, sites and all", () => {
+    const site = {
+      id: "s1",
+      location: { kind: "single", segments: [{ start: 10, end: 30 }] },
+      strand: 1,
+      annealedSequence: "AAACCCGGGTTTAAACCCGG",
+      tail: null,
+      sourceVisibility: "shown",
+    };
+    const primersById = {
+      imp: {
+        id: "imp",
+        name: "M13-fwd",
+        schemaVersion: 2,
+        sequence: null,
+        sequenceSource: "unknown",
+        sites: [site],
+        origin: { kind: "file_import", entryId: "E1", sourceFileName: "p.dna" },
+      },
+    };
+    const out = selectEntryPrimers(primersById, "E1");
+    expect(out).toHaveLength(1);
+    expect(out[0].sites).toEqual([site]);
+    expect(out[0].schemaVersion).toBe(2);
+    // unknown full oligo stays unknown — not coerced to an empty string
+    expect(out[0].sequence).toBe(null);
+    expect(out[0].tail).toBe(null);
   });
 
   it("orders deterministically by addedAt ascending", () => {

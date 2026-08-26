@@ -13,6 +13,12 @@
 import { zipSync, strToU8 } from 'fflate';
 import { ANNOTATION_COLORS } from '../auto-annotate';
 import { getIntronsForRegion, getExonRanges } from '../intron-utils';
+import {
+  LOCATION_KINDS,
+  makeLocation,
+  getSegments,
+  formatGenBankLocation,
+} from './annotation-location';
 
 // Region types whose location is written as join(exons) when they carry introns
 // — so a spliced CDS/gene round-trips through GenBank instead of flattening.
@@ -64,20 +70,33 @@ export function entryToGenbank(entry) {
 
   for (const ann of annotations) {
     if (!ann) continue;
-    const start = Math.max(1, (Number(ann.start) || 0) + 1);
-    const end = Math.max(start, Number(ann.end) || start);
-    // A spliceable region carrying introns is written as join(exons) so the
-    // exon structure survives the round-trip (the parser reads join() back into
-    // exons → intron details). Other features keep a single span.
-    let span = `${start}..${end}`;
-    if (ann.level === 'region' && SPLICEABLE_TYPES.has(ann.type)) {
+    // The canonical location is authoritative — a compound or origin-crossing
+    // feature is written from its own segments, never rebuilt from a bounding
+    // span. Only a scalar region whose introns imply exons is still expanded to
+    // join(exons) here (that structure lives in detail annotations, not in the
+    // parent's location).
+    let source = ann;
+    if (
+      getSegments(ann).length === 1
+      && ann.level === 'region'
+      && SPLICEABLE_TYPES.has(ann.type)
+    ) {
       const introns = getIntronsForRegion(annotations, ann);
       if (introns.length) {
         const exons = getExonRanges(ann.start, ann.end, introns);
-        span = `join(${exons.map((e) => `${e.start + 1}..${e.end}`).join(',')})`;
+        if (exons.length > 1) {
+          source = {
+            strand: ann.strand,
+            location: makeLocation(
+              LOCATION_KINDS.JOIN,
+              exons.map((e) => ({ start: e.start, end: e.end })),
+            ),
+          };
+        }
       }
     }
-    const loc = ann.strand === -1 ? `complement(${span})` : span;
+    const loc = formatGenBankLocation(source);
+    if (!loc) continue;
     const gbType = GENBANK_TYPE_MAP[ann.type] || 'misc_feature';
     gb += `     ${gbType.padEnd(16)}${loc}\n`;
     gb += `                     /label="${ann.name || ann.type || 'feature'}"\n`;

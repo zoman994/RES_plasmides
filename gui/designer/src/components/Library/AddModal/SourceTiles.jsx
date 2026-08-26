@@ -2,38 +2,39 @@
  * SourceTiles — Sprint M-X.7a v2 K6.
  *
  * 4 tiles per spec §3 IN #8: Файл · Paste · Каталог · Из другого .bodge.
- * Each tile dispatches `onPick(sourceId)`; AddModal then either
- * delegates to LibraryWorkspace (file/paste/catalog)
- * or surfaces CrossProjectStub (cross-project, M-X.9 stub).
+ * Each tile dispatches `onPick(sourceId)`; AddModal owns the catalog picker,
+ * delegates file/paste to LibraryWorkspace, and keeps cross-project isolated.
  */
 import { memo } from 'react';
+import { t as translate, tf as format } from '../../../i18n';
+import { Icon } from '../../icons/Icon';
+import { SNAPGENE_EXPECTED_TOTAL } from './snapgene-catalog';
 
 const TILES = [
   {
     id: 'file',
     label: 'Файл',
-    icon: '⤓',
+    icon: 'import',
     sub: '.dna · .gb · .fasta',
   },
   {
     id: 'paste',
     label: 'Вставить',
-    icon: '⌘V',
+    icon: 'copy',
     sub: 'GenBank / FASTA / sequence',
   },
   {
     id: 'catalog',
-    label: 'Каталог SnapGene',
-    icon: '📚',
-    sub: '2800+ плазмид · в разработке',
-    inDev: true,
+    labelKey: 'catalog.sourceLabel',
+    icon: 'library',
+    subKey: 'catalog.sourceSub',
+    subParams: { count: SNAPGENE_EXPECTED_TOTAL },
   },
   {
     id: 'cross-project',
-    label: 'Из другого .bodge',
-    icon: '🔗',
-    sub: 'M-X.9 — заглушка',
-    stub: true,
+    labelKey: 'crossProject.sourceLabel',
+    icon: 'link',
+    subKey: 'crossProject.sourceSub',
   },
 ];
 
@@ -56,6 +57,7 @@ export const SourceTiles = memo(function SourceTiles({ onPick, picked }) {
             data-testid={`add-modal-source-${t.id}`}
             data-stub={t.stub ? 'true' : 'false'}
             data-picked={isPicked ? 'true' : 'false'}
+            aria-pressed={isPicked}
             onClick={() => onPick?.(t.id)}
             style={{
               padding: '14px 12px',
@@ -73,11 +75,15 @@ export const SourceTiles = memo(function SourceTiles({ onPick, picked }) {
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 16 }}>{t.icon}</span>
-              <span style={{ fontWeight: 500, fontSize: 13 }}>{t.label}</span>
+              <Icon name={t.icon} size={16} />
+              <span style={{ fontWeight: 500, fontSize: 13 }}>
+                {t.labelKey ? translate(t.labelKey) : t.label}
+              </span>
             </div>
             <span style={{ fontSize: 10.5, color: 'var(--text-tertiary)' }}>
-              {t.sub}
+              {t.subKey
+                ? (t.subParams ? format(t.subKey, t.subParams) : translate(t.subKey))
+                : t.sub}
             </span>
           </button>
         );

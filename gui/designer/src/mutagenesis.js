@@ -6,6 +6,17 @@ import { reverseComplement } from './sequence-utils';
 
 const revComp = s => reverseComplement(String(s).toUpperCase());
 
+function circularSlice(sequence, start, length) {
+  const seq = String(sequence || '');
+  if (!seq || !Number.isInteger(length) || length <= 0) return '';
+  let out = '';
+  for (let offset = 0; offset < length; offset += 1) {
+    const index = ((start + offset) % seq.length + seq.length) % seq.length;
+    out += seq[index];
+  }
+  return out;
+}
+
 /**
  * Choose strategy based on mutation count, spacing, AND fragment context.
  * KLD requires circular topology + standalone fragment (full plasmid with backbone
@@ -107,26 +118,34 @@ function makeKLDStrategy(templateSeq, mutations, bindingLength) {
   }
 
   let fwdSeq, revSeq, fwdName, revName;
+  let fwdTargetLength = 0;
+  let fwdBindingStartOffset = 0;
+  const revTargetLength = Math.min(bindingLength, templateSeq.length);
 
   if (mut.type === 'substitution') {
     // fwd starts at mutation: mutant bases (1 nt or full codon) + downstream binding.
     const subLen = mut.newCodon.length;
-    fwdSeq = mut.newCodon + templateSeq.slice(pos + subLen, pos + subLen + bindingLength);
+    const downstreamLength = Math.min(bindingLength, Math.max(0, templateSeq.length - subLen));
+    fwdSeq = mut.newCodon + circularSlice(templateSeq, pos + subLen, downstreamLength);
+    fwdTargetLength = subLen + downstreamLength;
     // rev ends just before mutation: upstream binding RC
-    const revRegion = templateSeq.slice(Math.max(0, pos - bindingLength), pos);
+    const revRegion = circularSlice(templateSeq, pos - revTargetLength, revTargetLength);
     revSeq = revComp(revRegion);
     fwdName = `KLD_fwd_${mut.label || 'mut'}`;
     revName = `KLD_rev_${mut.label || 'mut'}`;
   } else if (mut.type === 'insertion') {
-    fwdSeq = mut.insertSequence + templateSeq.slice(pos, pos + bindingLength);
-    const revRegion = templateSeq.slice(Math.max(0, pos - bindingLength), pos);
+    fwdTargetLength = Math.min(bindingLength, templateSeq.length);
+    fwdSeq = mut.insertSequence + circularSlice(templateSeq, pos, fwdTargetLength);
+    const revRegion = circularSlice(templateSeq, pos - revTargetLength, revTargetLength);
     revSeq = revComp(revRegion);
     fwdName = 'KLD_fwd_ins';
     revName = 'KLD_rev_ins';
   } else if (mut.type === 'deletion') {
     const afterDel = pos + mut.deleteLength;
-    fwdSeq = templateSeq.slice(afterDel, afterDel + bindingLength);
-    const revRegion = templateSeq.slice(Math.max(0, pos - bindingLength), pos);
+    fwdTargetLength = Math.min(bindingLength, templateSeq.length);
+    fwdBindingStartOffset = mut.deleteLength;
+    fwdSeq = circularSlice(templateSeq, afterDel, fwdTargetLength);
+    const revRegion = circularSlice(templateSeq, pos - revTargetLength, revTargetLength);
     revSeq = revComp(revRegion);
     fwdName = 'KLD_fwd_del';
     revName = 'KLD_rev_del';
@@ -156,10 +175,12 @@ function makeKLDStrategy(templateSeq, mutations, bindingLength) {
   const revTm = Math.round(calcTmNN(revSeq));
   const primers = [
     { name: fwdName, sequence: fwdSeq, bindingSequence: fwdSeq, tailSequence: '',
+      bindingTargetLength: fwdTargetLength, bindingStartOffset: fwdBindingStartOffset,
       tailPurpose: mut.type === 'substitution' ? `mutant codon ${mut.newCodon}` : mut.type,
       tmBinding: fwdTm, tmFull: fwdTm, gcPercent: gcPercent(fwdSeq),
       length: fwdSeq.length, direction: 'forward' },
     { name: revName, sequence: revSeq, bindingSequence: revSeq, tailSequence: '',
+      bindingTargetLength: revTargetLength,
       tailPurpose: 'back-to-back with fwd',
       tmBinding: revTm, tmFull: revTm, gcPercent: gcPercent(revSeq),
       length: revSeq.length, direction: 'reverse' },

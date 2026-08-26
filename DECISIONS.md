@@ -54,7 +54,10 @@ Graph/canvas views are projections of these tiers. Old DAG-primary and ProjectCo
 ## 7. Primers and restriction enzymes
 
 - The primer pool is canonical across the application.
-- Template-binding sequence and 5′ tail/overhang are separate fields and calculations. Synthetic tails never modify the source template.
+- Import is lossless at primer-record level: every source primer remains a distinct pool record, including records without a known binding site or full sequence. Equal names, sequences or hashes are not permission for silent merge.
+- Binding sites are per-primer, molecule-scoped facts with canonical 0-based half-open locations and per-site strand. Source-declared sites and computed binding hits remain distinguishable; neither is stored as annotations.
+- Full oligo, per-site annealed sequence and proven 5′ tail/overhang are separate facts. A template-derived annealed sequence is never promoted to an allegedly known full oligo, and synthetic tails never modify the source template.
+- The full-project `.bodge` container preserves primer-record multiplicity and sites. Sequence dedup, where a portable assembly explicitly needs it, is a separate merge policy rather than the primer model.
 - Type IIS enzymes for Golden Gate and classical restriction enzymes for restriction cloning are separate catalogs/semantics.
 - Primer design and assembly validation must preserve topology, orientation, reading frame and enzyme-specific cut geometry.
 

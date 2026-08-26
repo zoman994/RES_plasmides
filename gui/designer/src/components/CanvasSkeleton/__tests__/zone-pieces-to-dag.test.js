@@ -463,3 +463,87 @@ describe('P0 — explicit topology choice vs auto-close', () => {
     expect(draftFromZone(s, zone)).not.toBe(draftFromZone(s2, zone));
   });
 });
+
+/**
+ * PRIMER-LIVE-1 — a PCR product is NOT a slice of its template.
+ *
+ * The forward oligo's 5' tail is not on the template, and a deliberately
+ * substituted base disagrees with it on purpose. Re-slicing the template to
+ * rebuild the segment throws both away, so the assembly preview and the
+ * executed product quietly stop matching the product the biolog approved.
+ *
+ * When the piece was authored from two chosen landings and carries the
+ * resolved product, that product is the answer.
+ */
+describe('PRIMER-LIVE-1 — occurrence PCR keeps its resolved product', () => {
+  //             0         1         2         3
+  //             0123456789012345678901234567890123456789
+  const TPLSEQ = 'GGGGAAAACCTTTTGGGGAACCCCTTTTGGAATTCCGGAA';
+  // tail GAATTC + a substituted base (AATACCTT, not AAAACCTT) + interior + rev
+  const PRODUCT = 'GAATTCAATACCTTTTGGGGAACCCCTTTTGGAACCCTTT';
+
+  const stateWith = (params) => ({
+    ...buildInitialState(),
+    containers: [{ id: 'c-1', name: 'pTest', sequence: TPLSEQ, annotations: [] }],
+    zones: [{ id: 'zn-1', name: 'A' }],
+    pieces: [{
+      id: 'pc-1',
+      zoneId: 'zn-1',
+      name: 'amplicon',
+      kind: 'sourced',
+      createdAt: 1,
+      sourceIds: ['c-1'],
+      ranges: [{ sourceId: 'c-1', start: 4, end: 32, orientation: 'forward' }],
+      origin: 'pcr-occurrences',
+      acquisitionMethod: 'pcr',
+      acquisitionParams: params,
+    }],
+  });
+
+  it('uses the persisted product, tail and substitution included', () => {
+    const st = stateWith({
+      occurrenceKeys: ['f#1', 'r#1'],
+      productSequence: PRODUCT,
+    });
+    const draft = draftFromZone(st, st.zones[0]);
+    expect(draft.segments).toHaveLength(1);
+    expect(draft.segments[0].sequence).toBe(PRODUCT);
+    // The naive answer — a plain template slice — must NOT be what comes out.
+    expect(draft.segments[0].sequence).not.toBe(TPLSEQ.slice(4, 32));
+  });
+
+  it('reconstructs the wrapped product from the persisted sequence, not two slices', () => {
+    // WITH a 5' tail, so a naive re-slice of the two ranges cannot
+    // accidentally produce the right answer.
+    const WRAPPED = 'GAATTCAATTCCGGAAGGGGAAAACCTTTT';
+    const st = {
+      ...buildInitialState(),
+      containers: [{ id: 'c-1', name: 'pTest', sequence: TPLSEQ, annotations: [] }],
+      zones: [{ id: 'zn-1', name: 'A' }],
+      pieces: [{
+        id: 'pc-2',
+        zoneId: 'zn-1',
+        name: 'wrapped',
+        kind: 'sourced',
+        createdAt: 1,
+        sourceIds: ['c-1', 'c-1'],
+        ranges: [
+          { sourceId: 'c-1', start: 30, end: 40, orientation: 'forward' },
+          { sourceId: 'c-1', start: 0, end: 14, orientation: 'forward' },
+        ],
+        origin: 'pcr-occurrences',
+        acquisitionMethod: 'pcr',
+        acquisitionParams: { occurrenceKeys: ['wf#1', 'wr#1'], productSequence: WRAPPED },
+      }],
+    };
+    const draft = draftFromZone(st, st.zones[0]);
+    expect(draft.segments[0].sequence).toBe(WRAPPED);
+    expect(draft.segments[0].sequence).not.toBe('AATTCCGGAAGGGGAAAACCTTTT');
+  });
+
+  it('falls back to the template slice when no product was persisted', () => {
+    const st = stateWith({ occurrenceKeys: ['f#1', 'r#1'] });
+    const draft = draftFromZone(st, st.zones[0]);
+    expect(draft.segments[0].sequence).toBe(TPLSEQ.slice(4, 32));
+  });
+});

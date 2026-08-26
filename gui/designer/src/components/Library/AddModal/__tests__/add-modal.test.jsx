@@ -13,9 +13,10 @@
 import 'fake-indexeddb/auto';
 import React from 'react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import { useStore } from '../../../../store';
 import { resetDBForTests } from '../../../../db/dexie-schema';
+import { openBodgeFilePicker } from '../../../../lib/file-system';
 import AddModal from '../AddModal';
 import SourceTiles from '../SourceTiles';
 import CrossProjectStub from '../CrossProjectStub';
@@ -27,6 +28,10 @@ vi.mock('../../inspector/LibrarySingleInspector', () => ({
 vi.mock('../../onboarding/OnboardingNudge', () => ({
   default: () => <div data-testid="onboarding-nudge">onboarding</div>,
 }));
+vi.mock('../../../../lib/file-system', async (importOriginal) => {
+  const actual = await importOriginal();
+  return { ...actual, openBodgeFilePicker: vi.fn() };
+});
 
 async function freshDB() {
   const name = `bodgegene-addmodal-${Math.random().toString(36).slice(2)}`;
@@ -37,6 +42,8 @@ async function freshDB() {
 
 beforeEach(async () => {
   await freshDB();
+  vi.clearAllMocks();
+  openBodgeFilePicker.mockResolvedValue(null);
   useStore.setState((s) => {
     s.libraryEntries = {};
     s.looseFolders = [];
@@ -60,9 +67,9 @@ describe('M-X.7a v2 K6 — SourceTiles', () => {
     expect(screen.getByTestId('add-modal-source-cross-project')).toBeTruthy();
   });
 
-  it('cross-project tile flagged data-stub=true', () => {
+  it('cross-project tile is a live source, not a stub', () => {
     render(<SourceTiles onPick={() => {}} />);
-    expect(screen.getByTestId('add-modal-source-cross-project').getAttribute('data-stub')).toBe('true');
+    expect(screen.getByTestId('add-modal-source-cross-project').getAttribute('data-stub')).toBe('false');
     expect(screen.getByTestId('add-modal-source-file').getAttribute('data-stub')).toBe('false');
   });
 
@@ -80,13 +87,13 @@ describe('M-X.7a v2 K6 — SourceTiles', () => {
   });
 });
 
-describe('M-X.7a v2 K6 — CrossProjectStub', () => {
-  it('renders dialog and closes via OK button', () => {
+describe('LIB-SRC-2 — CrossProject importer entry', () => {
+  it('uses the canonical .bodge picker and treats picker cancel as nested close', async () => {
     const onClose = vi.fn();
-    render(<CrossProjectStub onClose={onClose} />);
-    expect(screen.getByTestId('cross-project-stub')).toBeTruthy();
-    fireEvent.click(screen.getByTestId('cross-project-stub-close'));
-    expect(onClose).toHaveBeenCalled();
+    render(<CrossProjectStub target="loose" onClose={onClose} />);
+    await waitFor(() => expect(openBodgeFilePicker).toHaveBeenCalledTimes(1));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('cross-project-stub')).toBeNull();
   });
 });
 
@@ -112,12 +119,14 @@ describe('M-X.7a v2 K6 — AddModal', () => {
     expect(screen.getByTestId('add-modal-submit').disabled).toBe(false);
   });
 
-  it('cross-project source opens CrossProjectStub instead of submitting', () => {
-    render(<AddModal open onClose={() => {}} />);
+  it('cross-project source launches the canonical picker instead of a stub submit', async () => {
+    const onClose = vi.fn();
+    render(<AddModal open onClose={onClose} />);
     fireEvent.click(screen.getByTestId('add-modal-source-cross-project'));
-    expect(screen.getByTestId('cross-project-stub')).toBeTruthy();
-    // Submit stays disabled (cross-project never resolves to PreImport).
+    await waitFor(() => expect(openBodgeFilePicker).toHaveBeenCalledTimes(1));
+    expect(screen.queryByTestId('cross-project-stub')).toBeNull();
     expect(screen.getByTestId('add-modal-submit').disabled).toBe(true);
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it('Cancel button closes the modal', () => {

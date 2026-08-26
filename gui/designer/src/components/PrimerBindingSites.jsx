@@ -9,6 +9,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useStore } from '../store';
 import { scanLibraryForPrimer, summarizeBindingHits } from '../lib/primer-binding-search';
+import { tf, t } from '../i18n';
 
 export default function PrimerBindingSites({ primer }) {
   const libraryEntries = useStore((s) => s.libraryEntries);
@@ -41,8 +42,55 @@ export default function PrimerBindingSites({ primer }) {
 
   const summary = useMemo(() => summarizeBindingHits(hits), [hits]);
 
+  // ANN-0L — what the FILE said is a different kind of fact from what a scan
+  // found. Source sites are listed first and separately; the library scan below
+  // stays an analysis and never gets promoted into a stored site.
+  const sourceSites = Array.isArray(primer?.sites) ? primer.sites : [];
+
   return (
     <div data-testid="primer-binding-sites" className="mt-1.5 space-y-1">
+      {sourceSites.length > 0 && (
+        <div data-testid="primer-source-sites" className="space-y-1">
+          <span className="text-[9px] text-gray-400 uppercase tracking-wide">
+            {tf('primer.sourceSites', { n: sourceSites.length })}
+          </span>
+          {sourceSites.map((st, i) => {
+            const segs = st?.location?.segments || [];
+            const first = segs[0];
+            const last = segs[segs.length - 1];
+            const hidden = st?.sourceVisibility === 'hidden';
+            return (
+              <div
+                key={st.id || i}
+                data-testid="primer-source-site"
+                data-primer-site-id={st.id || ''}
+                data-primer-visibility={st?.sourceVisibility || 'shown'}
+                className={`text-[10px] border rounded px-2 py-1 flex items-center gap-2 flex-wrap ${
+                  hidden
+                    ? 'bg-gray-50 border-dashed border-gray-300 text-gray-500'
+                    : 'bg-sky-50 border-sky-200 text-sky-800'
+                }`}
+              >
+                <span className="font-mono">
+                  {first ? `${first.start + 1}–${last.end}` : '—'}
+                  {segs.length > 1 ? ' · через ориджин' : ''}
+                </span>
+                <span className="font-mono">
+                  {st?.strand === -1 ? '◂ rev' : st?.strand === 1 ? 'fwd ▸' : '?'}
+                </span>
+                {st?.tail ? (
+                  <span className="text-[8px] px-1 rounded bg-amber-100 text-amber-700">
+                    5′ {st.tail}
+                  </span>
+                ) : null}
+                <span className="text-[8px] px-1 rounded bg-white/60">
+                  {hidden ? t('primer.siteHidden') : t('primer.siteSource')}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
       <div className="flex items-center gap-2">
         <span className="text-[9px] text-gray-400 uppercase tracking-wide">
           Садится в библиотеке ({hits.length})

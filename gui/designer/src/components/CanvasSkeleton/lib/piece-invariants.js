@@ -19,6 +19,11 @@ export const ORIGIN_ENUM = Object.freeze([
   'manual-gap', // T6 DEC-T6-02 — gap pieces
   // M-CANVAS-WORKFLOW-UX (SPEC §6.1) — inline-sequence pieces.
   'snippet', 'synthesis', 'intermediate',
+  // PRIMER-LIVE-1 — authored from two primer landings the biolog actually
+  // chose on the sequence. Distinct from 'existing-primers', which searches
+  // the template for a pair by sequence: this one already knows WHICH sites,
+  // and carries them so nothing downstream has to guess again.
+  'pcr-occurrences',
 ]);
 const GAP_MAX_LENGTH = 10000;
 // Inline-sequence kinds (no source container / ranges; carry `sequence`).

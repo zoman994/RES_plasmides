@@ -29,13 +29,21 @@ export function LabelText({
       textAnchor="start"
       fontSize={LABEL_FONT_SIZE}
       fontStyle={labelFontStyle}
-      fill="#ffffff"
-      stroke="#000000"
-      strokeWidth={1.5}
+      // SEQ-VIS-1 — a feature name is interface text, not DNA. It inherited the
+      // sequence pane's mono font and was painted white with a 1.5 px black
+      // stroke; at 1280x720 / DPR 1 that halo is thicker than the strokes of a
+      // 9 px glyph, so the name reads as ripple. The theme's own text colour
+      // over a separator the width of the canvas background lifts the letters
+      // off the coloured rect without becoming an outline of its own, and it
+      // follows light/dark instead of assuming a white page.
+      fill="var(--text-primary)"
+      stroke="var(--sequence-canvas-bg)"
+      strokeWidth={0.5}
       style={{
         pointerEvents: 'auto',
         cursor: 'text',
-        fontFamily: 'inherit',
+        fontFamily: 'var(--font-ui)',
+        fontWeight: 500,
         fontStyle: labelFontStyle,
         paintOrder: 'stroke fill',
       }}

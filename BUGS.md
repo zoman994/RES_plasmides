@@ -18,20 +18,6 @@
 **Риск:** изменённый или отфильтрованный canonical container/assembly может быть заменён старой копией.
 **Исправление:** биология только из canonical DTO; extension содержит только optional UI/layout и не имеет override path.
 
-### BG-003 — Start Screen/Sidebar открывает `.bodge` без assembly state
-
-`open-bodge.js` получает полный parsed-файл, но возвращает только `project`, `libraryEntries` и `warnings`. Этот helper вызывают Sidebar и MainPanel; путь Ctrl+O использует другой, уже исправленный loader.
-
-**Риск:** пользователь открывает валидный проект и теряет состояние сборки.
-**Приёмка:** все входные пути используют один loader и round-trip fixture сохраняет assembly state.
-
-### BG-004 — визуально отредактированный праймер сохраняется без правок
-
-`SequenceView/index.jsx` передаёт из модального окна `name`, `sequence`, `tail`, `binding`, а `PcrModeShell.jsx` принимает только `direction/start/end` и строит праймер заново по диапазону.
-
-**Риск:** заказанный праймер не соответствует тому, что подтвердил пользователь.
-**Приёмка:** изменения имени/binding/tail проходят в канонический PrimerPool; интеграционный тест проверяет итоговую запись.
-
 ### BG-005 — point mutagenesis можно реализовать без выведенной реакции
 
 `MutationModal.jsx` предупреждает об interior-мутации, но Apply блокируется только для `outOfRange`. `onRealise` не требует результата `onDeriveReaction`.
@@ -60,8 +46,154 @@
 **Риск:** биолог принимает сотни bp demo-последовательности за канонические многокилобазные векторы.
 **Исправление:** либо встроить проверенные канонические записи с source/version, либо переименовать в явно synthetic demo и запретить wet-lab export.
 
+### BG-026 — annotation-only edit transient-буфера портит сохранённую молекулу
+
+После sequence edit Inspector хранит `editedSequence` и пересчитанные под неё
+`editedAnnotations`. Следующая annotation-only операция передаёт только
+`{editedAnnotations}`; `LibraryWorkspace` проверяет наличие `editedSequence` только в
+текущем patch и поэтому пишет buffer-relative координаты в неизменённый saved entry.
+
+**Риск:** после вставки/удаления базы переименование, undo или Annotator Save может
+необратимо сдвинуть аннотации исходной последовательности.
+**Приёмка:** все annotation operations принадлежат единому current-document; пока есть
+transient sequence/topology, durable write в исходник невозможен. Интеграционный
+сценарий `sequence edit → annotation edit/undo/Annotator save → reload` сохраняет
+исходник и буфер раздельно.
+
+### BG-027 — Ctrl+S `.bodge` не включает project-linked library entries
+
+`App.handleSave` строит v2 state через `skeletonToCanonical`, но bridge не добавляет
+`libraryEntries`; writer создаёт `library/entries.json` только когда вызывающий передал
+его явно. Open-path этот раздел уже ожидает.
+
+**Риск:** portable checkpoint проекта может сохранить сборку, но потерять молекулы и
+их аннотации.
+**Приёмка:** один canonical save helper собирает assembly и связанные library entries;
+product-level `Ctrl+S → readBodge` round-trip сравнивает молекулы и полный `annotations[]`.
+
+### BG-028 — compound/origin-crossing annotation меняет биологический смысл
+
+Persisted model принимает только scalar `start < end`. GenBank `join(...)` и SnapGene
+segments сворачиваются в `min(start)..max(end)`, а смена origin режет один region на
+два независимых объекта без перепривязки children.
+
+**Риск:** origin-crossing CDS/promoter превращается в почти полную молекулу, получает
+гигантский ложный intron либо теряет hierarchy после rotate-origin.
+**Приёмка:** segment-aware canonical location сохраняет identity, strand и parent links;
+import/edit/rotate/render/export round-trip проверен на кольцевом compound CDS.
+
+### BG-029 — manual annotation lifecycle нарушает identity и parent links
+
+Manual create/update выводит ID из изменяемых полей и не включает strand/level/parent;
+rename/move меняет identity, а collision затрагивает несколько записей. Delete, split,
+merge и sequence-delete могут оставить detail/point с мёртвым `regionId`.
+
+**Риск:** дочерние домены/интроны теряются или связываются с другой фичей; удаление по
+collision-ID может удалить несколько объектов.
+**Приёмка:** один opaque ID factory, ID неизменен при edit, ingress мигрирует/отвергает
+дубли, а cascade/reparent semantics доказаны для update/delete/split/merge/sequence edit.
+
+Legacy debt ID: `TD-IMPORTER-NO-ID`.
+
+### BG-030 — annotation interchange теряет qualifiers, hierarchy и provenance
+
+Frontend GenBank parser перезаписывает повторные qualifiers; exporter пишет custom
+level/parent markers, которые importer не читает, и может дважды восстановить intron.
+SnapGene backend отбрасывает rich qualifiers и segment structure до JavaScript; `.bodge`
+container annotations используют параллельный `parentId` contract.
+
+**Риск:** `gene/product/codon_start/transl_table/db_xref`, exon structure, source и
+иерархия молча меняются после import/export/reopen.
+**Приёмка:** один ingress schema gate и lossless fixtures для repeated qualifiers,
+compound linear/circular locations, all three levels and both GenBank/SnapGene routes.
+
+### BG-031 — Annotator может принять результат другого scope или документа
+
+Result state очищается при смене `sequenceId`, но не при `full ↔ region` или смене
+region на той же молекуле. Заголовок использует live selection, тогда как L1/L2 могут
+исполняться по старому scope. Manual pipeline не имеет job/document epoch, cancel или
+stale-drop и безусловно публикует late reply.
+
+**Риск:** пользователь принимает и сохраняет предсказание, рассчитанное для другой
+области или предыдущего содержимого.
+**Приёмка:** result key включает document+topology+scope epoch; показанный scope равен
+исполненному; смена scope/document отменяет job или гарантированно отбрасывает ответ.
+
+Legacy debt ID: `TD-CANVAS-V2-ANNOTATOR-SCOPE-GUARD`.
+
+### BG-032 — annotation surfaces читают разные версии текущей молекулы
+
+Sequence/Annotator получают `editedSequence`, но Overview и несколько validation paths
+используют saved sequence/topology/length. FeatureEditor при обычном Save пересоздаёт
+children из узкой формы и стирает source/qualifiers/description/identity/coverage.
+
+**Риск:** карта показывает старую геометрию, валидная фича нового хвоста отвергается или
+detail provenance исчезает при редактировании родителя.
+**Приёмка:** один current-document DTO кормит все поверхности; editor применяет lossless
+patch и отдельный тест сохраняет неизвестные/qualifier fields детей.
+
+### BG-033 — reverse-strand CDS auto-annotation сканирует forward DNA
+
+`autoAnnotate` всегда анализирует `sequence.slice(start,end)` и не reverse-complement
+для region со strand `-1`; созданные start/stop/tag details также не наследуют strand.
+
+**Риск:** старт/стоп-кодоны и белковые теги reverse CDS пропускаются, создаются ложно
+или получают неверные координаты.
+**Приёмка:** strand-aware fixture сравнивает forward CDS с reverse-complement twin и
+проверяет абсолютные координаты/strand всех details.
+
+### BG-035 — primer-record v2 не замыкает реальный product route
+
+Corrected ANN-0L candidate построил полезную основу (`0..N sites`, source/computed,
+null/empty, segment-wise rendering и portable remap), но не замкнул product route.
+Если CanvasSkeleton snapshot отсутствует, реальный Save всё ещё выбирает v1
+`writeBodge(proj)` и теряет primer pool; тест Save всегда создаёт искусственный snapshot.
+Real JS ingress вызывает SnapGene packet converter singleton-вызовами и сбрасывает
+`sourceRecordIndex` в `0`; source-form provenance не проходит Python→JS, а site fold
+сливает записи только по coordinates/strand. Новые source sites не получают hash
+целевого документа, поэтому same-length edit не распознаётся как stale; proof fixtures
+подставляют hash вручную. Annotator доводит context до PreviewTab, но PreviewTab не
+передаёт template/documentHash конечным map/SequenceView. Overlay также оставляет
+unknown strand визуально forward, raw fallback colours и English-only подсказки.
+
+**Риск:** пользователь импортирует праймеры без открытия assembly canvas, сохраняет
+проект и теряет их; два source records становятся неразличимы; старая посадка может
+выглядеть подтверждённой после редактирования молекулы; Annotator скрывает корректные
+sites либо показывает их без достаточного контекста.
+
+**Приёмка:** real import→store→three views→Save/Open включает ветку без Canvas snapshot,
+сохраняет packet-wide provenance и полные records; target identity штампуется после
+commit и проверяется каждым конечным host; UI различает forward/reverse/unknown и не
+содержит локальных raw colours/English-only interaction. Corrected candidate отклонён;
+дальнейшая работа требует нового package из `CURRENT_TASK.md`, не второго correction.
+
+### BG-038 — hydrate может стереть только что созданный праймер из памяти
+
+`primerSlice.hydratePrimers()` ждёт `listPrimers()`, затем заменяет `primersById`.
+Если `addPrimerToPool` добавил запись между чтением Dexie и этой заменой, свежий primer
+исчезает из runtime-map, хотя асинхронная запись уже могла уйти в базу. В браузере primer
+остался на карте, а дерево одновременно показывало `Праймеры 0`.
+
+**Риск:** только что созданный праймер пропадает из UI или недоступен следующему действию.
+**Приёмка:** hydrate сливает состояние без потери более новых writes либо использует
+epoch; interleaving-тест удерживает и загруженную, и добавленную во время await запись.
 
 ## P1 — неверное или вводящее в заблуждение состояние
+
+### BG-039 — позиции mismatch показываются то с нуля, то с единицы
+
+Modal переводит внутренние 0-based позиции mismatch в пользовательские 1-based, а
+`PrimerSelectionActions.warningText()` выводит те же значения без сдвига.
+
+**Приёмка:** resolver остаётся 0-based, каждый пользовательский formatter делает один
+явный `+1`; один fixture показывает одинаковую позицию во всех primer/PCR-поверхностях.
+
+### BG-040 — hairpin warning отображается сырым ключом
+
+`evaluatePrimerWarnings` выдаёт код `hairpin`, но в `i18n.js` нет
+`pcr.product.warn.hairpin`; динамический formatter показывает технический ключ.
+
+**Приёмка:** EN/RU-строки существуют и компонентный тест показывает нормальный текст.
 
 ### BG-009 — Gibson предлагается как внутренний junction
 
@@ -138,15 +270,47 @@
 
 **Исправление:** гейт на `<EmptyCard />` по тому же источнику счёта, что кормит сайдбар (один знаменатель, не второй счётчик); тост об успехе не глушить; продумать идемпотентность повторного добавления стартового набора (сейчас дубликаты копятся молча).
 
-### BG-024 — переход в выравнивание может молча ничего не добавить (P2)
+## P2 — доступность и визуальная читаемость
 
-`addAlignInput` игнорирует запрос при двух условиях: воркспейс уже содержит `MAX_ALIGN_INPUTS = 12` входов, либо `isDuplicateInput` считает запрос уже имеющимся (совпали имя и последовательность). В обоих случаях действие в уведомлении §4.2.0 открывает инструмент выравнивания, но вставки там не появляется — то есть кнопка выглядит сработавшей, а результата нет.
+### BG-043 — один assembly-primer многократно рисуется на sequence canvas
 
-Дубликат — случай безобидный: искомая последовательность в воркспейсе уже есть, просто пользователю об этом не сказали. Переполнение — хуже: биолог думает, что перенёс вставку, и начинает искать её среди двенадцати чужих входов.
+В локальном browser gate PRIMER-TAIL-SAVE-1 для линейной тестовой сборки 88 bp
+панель и состояние показывали ровно `1 праймер`, но canvas после возврата в сборку и
+после reload рисовал тот же `asm-fwd-1` диагональной серией повторов. Full oligo и
+5′-tail при этом сохранялись корректно; console errors отсутствовали. Дефект не входит
+в пятифайловый persistence package и не исправлялся заодно.
 
-**Исправление:** `addAlignInput` должен возвращать исход (добавлено / дубликат / переполнено), а вызывающая сторона — показывать понятное сообщение вместо тихого перехода. Тест: 12 входов + переход → пользователь получает объяснение, а не пустой воркспейс.
+**Риск:** карта визуально обещает множество посадок/праймеров при одной canonical
+записи и становится практически нечитаемой.
+**Приёмка:** fixture с одним linear assembly primer отображает ровно один primer glyph
+до/после route-return и reload; panel count, hit targets и canvas instances согласованы.
+
+### BG-042 — подписи аннотаций с белым текстом и чёрной обводкой плохо читаются на HD
+
+В Sequence/Map view подписи длинных features (в частности `KanR`) используют белый
+текст с контрастной тёмной обводкой. На HD/низком масштабе тонкие глифы сливаются с
+обводкой и становятся заметно тяжелее для чтения. Дефект подтверждён пользовательским
+скриншотом на `1294×912`; в PRIMER-INDEL-2 typography/palette не менялись.
+
+**Приёмка:** на светлой и тёмной теме при 1280×720 и системном масштабе 100/125%
+feature labels остаются читаемыми без halo-эффекта; цвет выбирается через design tokens,
+не теряет контраст на светлых/тёмных feature fills и не ухудшает overlap/selection state.
 
 ## P2 — тестовая инфраструктура
+
+### BG-041 — NotebookEntryEditor preview стабильно пуст в Vitest
+
+Связанный прогон PRIMER-INDEL-2 (`828` файлов / `8803` теста) и последующий
+изолированный запуск на одном worker одинаково воспроизводят
+`NotebookEntryEditor.test.jsx > preview updates with new text`: за время `waitFor`
+`notebook-preview.innerHTML` остаётся пустым вместо `<strong>world</strong>`.
+Изолированно файл даёт `11/12 PASS`; соседний timeout из широкого прогона изолированно
+прошёл. Ни один Notebook production/test-файл не входит в primer/AA candidate.
+
+**Не установлено:** это реальный дефект initial/rerender preview либо устаревший harness
+асинхронного markdown renderer; браузерный notebook-flow не проверялся.
+**Приёмка:** один test-first package локализует owner, доказывает initial и rerendered
+Markdown preview без сетевого/API ingress и закрывает isolated + related assertion.
 
 ### BG-022 — Vitest fork иногда аварийно завершается в полном прогоне (P2, инфраструктура; не блокер продукта)
 
@@ -172,6 +336,8 @@ import/test duration и RSS процесса; сравнить `maxWorkers=4`, `
 Интермиттентный `Test timed out in 5000ms` появляется только под общей CPU-нагрузкой и проходит в изоляции/повторном прогоне.
 
 **Диагностика:** несколько прогонов с verbose/bail/no-file-parallelism, сохранить имя файла и import/test duration. Не объявлять произвольный timeout регрессией без изолированного воспроизведения.
+
+Legacy debt ID: `TD-PRIMER-WIZARD-FLAKE`.
 
 **Наблюдение 21.07.2026 — `dead-canvas-closure.test.js` подошёл к своему пределу.** На полном прогоне U8 файл упал по таймауту (5,7 с против дефолтных 5 с), изолированно — зелёный 2/2, assertion нет. Это не дефект поиска, но и не чистая случайность: его второй `it` читает КАЖДЫЙ `.js`/`.jsx` в `src`, а стоимость растёт вместе с репозиторием. Падение гигиенического теста никогда не означает регрессию продукта.
 

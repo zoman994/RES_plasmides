@@ -21,7 +21,12 @@
  */
 
 import { memo, Fragment } from "react";
-import { reverseComplement } from "../../../sequence-utils.js";
+import { projectPrimerPool } from "../../../lib/primer-site-projection";
+import { reverseComplement } from "../../../sequence-utils";
+import {
+  alignmentDisplay,
+  alignmentDisplayForSegment,
+} from "../lib/primer-alignment-glyphs";
 
 const ARROW_H = 14; // arrow body height (fits inscribed mono bases)
 const HEAD = 6; // arrowhead tip, extends BEYOND the footprint so the
@@ -30,9 +35,30 @@ const ROW_STRIDE = ARROW_H + 6; // vertical gap between stacked hits
 const FORWARD_COLOR = "#3b82f6";
 const REVERSE_COLOR = "#dc2626";
 
-/** Stable per-hit key (matches SequenceView's primer-selection model). */
+/**
+ * Stable per-hit key (matches SequenceView's primer-selection model).
+ *
+ * ANN-0L C3 — the canonical OCCURRENCE key when the projection supplied one.
+ * `name|direction|start` collided whenever two records shared a name and a
+ * locus (the ordinary case for a re-ordered oligo), so selecting one selected
+ * both; and an origin-crossing binding, drawn in two pieces, produced two
+ * different keys for what is one logical site.
+ */
 export function primerHitKey(h) {
+  if (h && h._occKey) return h._occKey;
   return `${h.name || ""}|${h.direction || ""}|${h.start}`;
+}
+
+/**
+ * Every key a hit answers to for SELECTION.
+ *
+ * The canonical occurrence key is the identity, but a caller that stored the
+ * older `name|direction|start` form must not silently lose its selection, so
+ * both are accepted. Only the canonical key is ever handed out.
+ */
+function selectionKeys(h) {
+  const legacy = `${h.name || ""}|${h.direction || ""}|${h.start}`;
+  return h && h._occKey ? [h._occKey, legacy] : [legacy];
 }
 
 // PRIMER-AUDIT (V174) — two ecosystems name the 5'-overhang differently:
@@ -46,32 +72,78 @@ function tailOf(p) {
   return "";
 }
 
-function findHits(primers, fullSeq) {
+/**
+ * Where each primer binds, via the ONE shared projection (ANN-0L).
+ *
+ * A source site always wins. Scanning the template with `indexOf` used to
+ * invent extra hits on a repetitive molecule and, worse, silently disagreed
+ * with the maps. The projection falls back to an exact search only when the
+ * record has no source site for this molecule, and marks those `computed`.
+ *
+ * A record with no site at all yields no hit here — and still exists in the
+ * primer list, which is where the user manages it.
+ */
+function findHits(primers, fullSeq, ctx = {}) {
   if (!Array.isArray(primers) || primers.length === 0 || !fullSeq) return [];
-  const seqUpper = fullSeq.toUpperCase();
-  const hits = [];
-  const seen = new Set();
+  const occurrences = projectPrimerPool(primers, { template: fullSeq, ...ctx });
+  // Keyed by position, not by `p.id`: a legacy pool row may carry no id at all,
+  // and two id-less primers must not collapse onto one another.
+  const byId = new Map();
+  (primers || []).forEach((p, i) => byId.set(p?.id ?? `#${i}`, p));
 
-  for (const p of primers) {
-    const bind = (p.bindingSequence || p.sequence || "").toUpperCase();
-    if (!bind || bind.length < 10) continue;
+  // ANN-0L C3 — ONE ENTRY PER SEGMENT. Flattening an occurrence to a single
+  // `{first.start, last.end}` pair painted straight through the gap between two
+  // non-contiguous segments, and made an origin-crossing binding either vanish
+  // or stretch across the whole molecule. Each segment is clipped on its own;
+  // they remain ONE logical site because they share `_occKey`.
+  return occurrences.flatMap((occ) => {
+    const p = byId.get(occ.primerId) || {};
+    // Only a SOURCE site overrides what the record itself says. A computed hit
+    // is a location, not a new set of facts about the oligo: it must not
+    // re-decide the strand or erase a tail the record already knows about.
+    const fromSource = occ.evidence === 'source';
+    const strandDir = occ.strand === -1 ? 'reverse' : (occ.strand === 1 ? 'forward' : null);
+    const strandName = occ.strand === -1 ? 'reverse' : (occ.strand === 1 ? 'forward' : 'unknown');
+    // The 5' end carries the overhang: the first segment for a forward primer,
+    // the last for a reverse one. Drawing it on both would show an oligo
+    // carrying its tail twice.
+    const tailAt = occ.strand === -1 ? occ.segments.length - 1 : 0;
+    const bindingTop = occ.oligoStatus === 'ok' && occ.annealedSequence
+      ? (occ.strand === -1 ? reverseComplement(occ.annealedSequence) : occ.annealedSequence)
+      : '';
+    const aligned = alignmentDisplay(occ);
+    let bindingOffset = 0;
 
-    const search = p.direction === "reverse" ? reverseComplement(bind) : bind;
-    let idx = seqUpper.indexOf(search);
-    while (idx >= 0) {
-      const key = `${p.name || ""}_${idx}_${p.direction || ""}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        hits.push({
-          ...p,
-          start: idx,
-          end: idx + search.length,
-        });
-      }
-      idx = seqUpper.indexOf(search, idx + 1);
-    }
-  }
-  return hits;
+    return occ.segments.map((seg, i) => {
+      const offset = bindingOffset;
+      const segmentLength = seg.end - seg.start;
+      bindingOffset += segmentLength;
+      const segmentDisplay = alignmentDisplayForSegment(
+        aligned, offset, segmentLength, i === occ.segments.length - 1,
+      );
+      return {
+        ...p,
+        // Genomic footprint of THIS segment — a 5' tail never lengthens it.
+        start: seg.start,
+        end: seg.end,
+        _occKey: occ.key,
+        _segIndex: i,
+        _segCount: occ.segments.length,
+        _evidence: occ.evidence,
+        _visibility: occ.sourceVisibility,
+        _strandName: strandName,
+        _wraps: occ.wrapsOrigin,
+        _oligoStatus: occ.oligoStatus,
+        _bindingTop: bindingTop,
+        _bindingOffset: offset,
+        _alignmentGlyphs: segmentDisplay.glyphs,
+        _alignmentInsertions: segmentDisplay.insertions,
+        tail: i === tailAt ? occ.tail : null,
+        bindingSequence: occ.oligoStatus === 'ok' ? occ.annealedSequence : null,
+        direction: fromSource ? (strandDir ?? p.direction ?? null) : (p.direction ?? strandDir),
+      };
+    });
+  });
 }
 
 function intersects(a, b1, b2) {
@@ -130,10 +202,20 @@ function PrimerTrack({
   // wraps to the other end (rendered on the wrap-bridge row across the origin),
   // so it must NOT dangle into the margin on the first/last line.
   circular,
+  // ANN-0L C2 — which molecule, and which version of it, this view is showing.
+  // Without them a source site declared elsewhere would be repeated here as if
+  // it described the sequence on screen.
+  entryId = null,
+  documentHash = null,
+  topology,
 }) {
   if (!primers || primers.length === 0 || !lineLen || charPx <= 0) return null;
 
-  const allHits = findHits(primers, fullSeq);
+  const allHits = findHits(primers, fullSeq, {
+    entryId,
+    documentHash,
+    topology: topology || (circular ? 'circular' : 'linear'),
+  });
   const lineEnd = lineStart + lineLen;
   const seqLen = (fullSeq || "").length;
   const hasWrap = wrapsOrigin === true
@@ -233,7 +315,7 @@ function PrimerTrack({
         const yTop = idx * ROW_STRIDE;
         const color = isFwd ? FORWARD_COLOR : REVERSE_COLOR;
         const key = primerHitKey(hit);
-        const selected = selSet.has(key);
+        const selected = selectionKeys(hit).some((k) => selSet.has(k));
         // Pentagon arrow: flat 5′ tail, pointed 3′ head. The head marks the
         // 3′-END — forward: hit.end; reverse: hit.start. When a binding is
         // split across a line-wrap (clipHit → two lineHits fragments), only
@@ -257,14 +339,31 @@ function PrimerTrack({
         const fill = filled ? color : "none";
         const labelText = filled
           ? `${hit.name || ""} ${hit.tmBinding ? hit.tmBinding + "°" : ""}`.trim()
-          : `${hit.name || ""} (${(hit.bindingSequence || hit.sequence || "").toUpperCase()})`;
-        const bases = showLetters ? upper.slice(visStart, visEnd) : "";
+          : (hit._oligoStatus === 'ok' && hit.bindingSequence
+            ? `${hit.name || ""} (${hit.bindingSequence.toUpperCase()})`
+            : (hit.name || ""));
+        const baseOffset = (hit._bindingOffset || 0) + (visStart - hit.start);
+        const clipOffset = visStart - hit.start;
+        const baseGlyphs = showLetters && hit._oligoStatus === 'ok'
+          ? (Array.isArray(hit._alignmentGlyphs)
+            ? hit._alignmentGlyphs.slice(clipOffset, clipOffset + (visEnd - visStart))
+            : [...(hit._bindingTop || '').slice(baseOffset, baseOffset + (visEnd - visStart))]
+              .map((base) => ({ base, op: null })))
+          : [];
+        const bases = baseGlyphs.map((glyph) => glyph?.base || '').join('');
+        const visibleInsertions = showLetters && Array.isArray(hit._alignmentInsertions)
+          ? hit._alignmentInsertions.filter((insertion) => (
+            insertion.boundary >= clipOffset
+            && (insertion.boundary < clipOffset + (visEnd - visStart)
+              || (insertion.boundary === hit.end - hit.start && visEnd === hit.end))
+          ))
+          : [];
         // Overlap 5'-overhang. When present, drawn as a semi-transparent
         // segment that occupies the `tail.length` char columns immediately
         // 5′ of the binding (forward: left; reverse: right) so two internal
         // overlap-PCR primers visibly cross the boundary. Empty/absent →
         // nothing extra, identical to the prior render.
-        const tail = tailOf(hit);
+        const tail = hit._oligoStatus === 'ok' ? tailOf(hit) : "";
         const tailLen = tail.length;
         const hasTail = tailLen > 0;
         const tailW = tailLen * charPx;
@@ -381,12 +480,20 @@ function PrimerTrack({
           : (inlineTail ? W + tailW + 4 : W + 4);
 
         return (
-          <Fragment key={`${hit.name || idx}-${hit.start}-${hit._seg}`}>
+          <Fragment key={`${hit._occKey || hit.name || idx}-${hit._segIndex ?? 0}-${hit.start}-${hit._seg}`}>
             {bindingVisible && (
               <g
                 data-testid="sequence-view-primer"
+                data-primer-id={hit.id || ""}
+                data-primer-evidence={hit._evidence || undefined}
+                data-primer-visibility={hit._visibility || undefined}
                 data-primer-name={hit.name || ""}
+                data-primer-occurrence-key={hit._occKey || undefined}
+                data-primer-strand={hit._strandName || undefined}
+                data-primer-span={`${hit.start}-${hit.end}`}
+                data-primer-wraps={hit._wraps ? "true" : undefined}
                 data-primer-direction={hit.direction || ""}
+                data-primer-oligo-status={hit._oligoStatus || undefined}
                 data-primer-line-start={lineStart}
                 data-primer-key={key}
                 data-selected={selected ? "true" : "false"}
@@ -448,6 +555,42 @@ function PrimerTrack({
                   strokeWidth={filled ? (selected ? 1.5 : 0.5) : (selected ? 2 : 1)}
                   opacity={filled ? (selected ? 1 : 0.95) : 1}
                 />
+                {visibleInsertions.map((insertion, insertionIndex) => {
+                  const insertionWidth = Math.max(charPx, insertion.bases.length * charPx);
+                  const boundaryX = (insertion.boundary - clipOffset) * charPx;
+                  return (
+                    <g
+                      key={`${insertion.boundary}-${insertionIndex}`}
+                      data-testid="sequence-view-primer-insertion"
+                      data-primer-alignment-op="I"
+                      data-primer-insertion-count={insertion.bases.length}
+                      transform={`translate(${boundaryX}, 0)`}
+                      style={{ pointerEvents: "none" }}
+                    >
+                      <rect
+                        x={-insertionWidth / 2}
+                        y={-baseFont - 5}
+                        width={insertionWidth}
+                        height={baseFont + 3}
+                        rx={2}
+                        fill="var(--surface-1)"
+                        stroke="var(--warning-fg)"
+                        strokeWidth={1}
+                      />
+                      <text
+                        x={0}
+                        y={-4}
+                        fontSize={baseFont}
+                        fontWeight={700}
+                        fill="var(--warning-fg)"
+                        textAnchor="middle"
+                        style={{ fontFamily: "var(--font-mono, ui-monospace, monospace)" }}
+                      >
+                        {insertion.bases}
+                      </text>
+                    </g>
+                  );
+                })}
                 {/* Inline overlap-tail — not on the template, so styled apart
                     from the solid binding arrow: same colour, low fill-opacity
                     + a thin outline, no arrowhead. Forward: left of binding
@@ -455,6 +598,7 @@ function PrimerTrack({
                 {inlineTail && (
                   <rect
                     data-testid="sequence-view-primer-tail"
+                    data-primer-tail="true"
                     data-primer-tail-direction={isFwd ? "forward" : "reverse"}
                     x={isFwd ? -tailW : W}
                     y={0}
@@ -506,7 +650,25 @@ function PrimerTrack({
                     textLength={W}
                     lengthAdjust="spacingAndGlyphs"
                   >
-                    {bases}
+                    {baseGlyphs.map((glyph, baseIndex) => {
+                      const base = glyph?.base || '';
+                      const coord = visStart + baseIndex;
+                      const deletion = glyph?.op === 'D';
+                      const mismatch = glyph?.op === 'X'
+                        || (!deletion && base !== upper[coord]);
+                      return (
+                        <tspan
+                          key={`${coord}-${baseIndex}`}
+                          data-testid={deletion
+                            ? "sequence-view-primer-base-deletion"
+                            : (mismatch ? "sequence-view-primer-base-mismatch" : undefined)}
+                          data-primer-base-mismatch={mismatch ? "true" : undefined}
+                          data-primer-alignment-op={glyph?.op || undefined}
+                          data-primer-template-coordinate={coord}
+                          fill={mismatch || deletion ? "var(--warning-fg)" : undefined}
+                        >{base}</tspan>
+                      );
+                    })}
                   </text>
                 )}
                 <text

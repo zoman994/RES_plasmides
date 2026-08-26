@@ -166,13 +166,24 @@ export function createAlignmentSlice(set, get) {
       reconcileSelection(s.align);
     }),
 
-    addAlignInput: (input) => set((s) => {
+    // Reports WHY, not merely whether. A caller that ROUTED the user here — the search's
+    // «open alignment» for a query too long to compare approximately — has to be able to
+    // say «already there» or «the list is full»; without a reason it would open a
+    // workspace in which the pasted sequence silently is not. Callers that only ever
+    // wanted the side effect may keep ignoring the value.
+    addAlignInput: (input) => {
       const norm = normalizeInput(input);
-      if (s.align.inputs.length >= MAX_ALIGN_INPUTS) return;
-      if (isDuplicateInput(s.align.inputs, norm)) return;
-      s.align.inputs.push(norm);
-      reconcileSelection(s.align);
-    }),
+      const { inputs } = get().align;
+      // Capacity is tested BEFORE duplication, as it always was: on a full list even a
+      // re-paste is refused as capacity, because that is the wall the user has to clear.
+      if (inputs.length >= MAX_ALIGN_INPUTS) return { ok: false, reason: 'capacity', limit: MAX_ALIGN_INPUTS };
+      if (isDuplicateInput(inputs, norm)) return { ok: false, reason: 'duplicate' };
+      set((s) => {
+        s.align.inputs.push(norm);
+        reconcileSelection(s.align);
+      });
+      return { ok: true, reason: 'added', id: norm.id };
+    },
 
     addTraceInput: (chromatogram, meta = {}) => set((s) => {
       const norm = normalizeInput({

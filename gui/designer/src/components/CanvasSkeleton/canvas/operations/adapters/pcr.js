@@ -14,6 +14,74 @@ import {
   makeUserOligoContainer,
 } from './_shared';
 import { resolveOpTemplate } from '../../../lib/op-piece-bridge';
+import { resolvePcrProduct } from '../../../../../lib/pcr-amplicon';
+import { documentIdentityOf } from '../../../../../lib/primer-live-workflow';
+
+
+/**
+ * Build the product from the landings the op already knows about.
+ *
+ * Returns `null` when this is not an occurrence-authored op, so the caller
+ * keeps its legacy behaviour byte-for-byte. Returns `{error}` when the op DOES
+ * carry landings but they no longer describe a possible reaction — failing
+ * closed, because an op that names its sites and cannot use them is a real
+ * problem, not an invitation to go looking for different ones.
+ */
+function resolveFromOccurrences(operation, template) {
+  const params = operation.params || {};
+  const snaps = params.primerSnapshots;
+  const keys = params.occurrenceKeys;
+  if (!snaps || !snaps.forward || !snaps.reverse || !Array.isArray(keys)) return null;
+
+  const circular = template.circular === true
+    || template.topology === 'circular'
+    || template.topology?.circular === true;
+
+  // PRIMER-LIVE-1 — revalidate the molecule, not the coordinates. An edited
+  // template usually still HAS positions 4..32, so the geometry alone would
+  // happily amplify a different molecule and report success. Fail closed: the
+  // op names the version it was resolved against, and if that is no longer
+  // what is on the bench, the biolog has to look at it again.
+  const declaredIdentity = params.documentIdentity ?? null;
+  if (declaredIdentity) {
+    const currentIdentity = documentIdentityOf({
+      sequence: template.sequence,
+      topology: circular ? 'circular' : 'linear',
+      resourceHash: template.resourceHash ?? null,
+    });
+    if (currentIdentity !== declaredIdentity) {
+      return {
+        error: 'PCR: посадки устарели — молекула изменилась с момента выбора (stale document)',
+      };
+    }
+  }
+
+  const resolved = resolvePcrProduct({
+    template: template.sequence,
+    topology: circular ? 'circular' : 'linear',
+    occurrences: [
+      {
+        key: snaps.forward.occurrenceKey,
+        primerId: 'fwd',
+        start: snaps.forward.start,
+        end: snaps.forward.end,
+        strand: 1,
+      },
+      {
+        key: snaps.reverse.occurrenceKey,
+        primerId: 'rev',
+        start: snaps.reverse.start,
+        end: snaps.reverse.end,
+        strand: -1,
+      },
+    ],
+    primersById: { fwd: { ...snaps.forward, id: 'fwd' }, rev: { ...snaps.reverse, id: 'rev' } },
+  });
+  if (resolved.ok !== true) {
+    return { error: `PCR не собирается по выбранным посадкам: ${resolved.reason}` };
+  }
+  return { sequence: resolved.product.sequence, product: resolved.product };
+}
 
 export function executePCR(operation, ctx) {
   const primerPairId = operation.params?.primerPairId;
@@ -38,6 +106,33 @@ function executeSingleTemplatePCR(operation, ctx, templateId, primerPairId, auto
     : null) || ctx.containers[templateId];
   if (!template) return { error: `Темплейт не найден: ${templateId}` };
   if (!template.sequence) return { error: 'Темплейт без последовательности' };
+  // PRIMER-LIVE-1 — an op authored from two CHOSEN landings carries them, and
+  // the immutable snapshots of what was on the bench. That is enough to build
+  // the product without searching the template again, so the preview the user
+  // approved and the amplicon that is executed come from the SAME resolver and
+  // cannot disagree. Legacy ops, which store only sequences, fall through to
+  // the search branches below unchanged.
+  const occurrenceProduct = resolveFromOccurrences(operation, template);
+  if (occurrenceProduct) {
+    if (occurrenceProduct.error) return { error: occurrenceProduct.error };
+    const amplicon = newContainer({
+      name: `${template.name || 'template'}_amplicon`,
+      sequence: occurrenceProduct.sequence,
+      circular: false,
+      annotations: [],
+      origin: {
+        kind: 'op_pcr',
+        operationId: operation.id,
+        parentContainerId: templateId,
+        occurrenceKeys: operation.params.occurrenceKeys,
+        primerSnapshots: operation.params.primerSnapshots,
+        fwdStart: occurrenceProduct.product.forward.start,
+        revEnd: occurrenceProduct.product.reverse.end,
+        wrapsOrigin: occurrenceProduct.product.wrapsOrigin,
+      },
+    });
+    return { outputs: [amplicon] };
+  }
   if (primerPairId && !autoDesign) {
     const oligo = ctx.containers[primerPairId];
     if (!oligo) return { error: `Праймер-пара не найдена: ${primerPairId}` };

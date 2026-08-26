@@ -7,6 +7,8 @@
  * здесь (юнит-тест без DOM); рендер — в PlasmidMap.jsx за флагом plasmidMapV2.
  */
 
+import { getSegments } from './annotation-location';
+
 export const TAU = Math.PI * 2;
 
 /** Polar → cartesian, 0 rad = top (12 o'clock), clockwise. */
@@ -251,6 +253,11 @@ export function featuresFromFragments(fragments, getRegionsFn) {
         id: r.id,
         name: r.name || r.type || '—',
         type: r.type || 'misc',
+        // ANN-0A — carry the canonical segments (shifted into concatenated
+        // coordinates) so a compound feature survives this reshape too.
+        segments: getSegments(r).map((s) => ({
+          start: offset + s.start, end: offset + s.end,
+        })),
         start: offset + r.start,
         end: offset + r.end,
         strand: Number.isFinite(r.strand) ? r.strand : 1,

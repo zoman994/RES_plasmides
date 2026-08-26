@@ -26,6 +26,7 @@
  */
 
 import { getRegions, getAllDetails } from "../../../annotation-model.js";
+import { getSegments, isCompound } from "../../../lib/annotation-location.js";
 import { featureColorShaded } from "../../../feature-palette.js";
 import { effectiveEnzymes } from "../../../restriction-db.js";
 import { filterReSites } from "../../../lib/re-site-filter.js";
@@ -48,10 +49,19 @@ export function buildFeatureMap(fragments) {
       // index combo). Falls back to the synthesized form when the
       // raw annotation lacks an id (legacy + freshly-parsed .gb).
       regions.forEach((r, ri) => {
+        // Carry the canonical segments into fragment-absolute coordinates so a
+        // compound or origin-crossing region stays one feature in the track
+        // instead of a single span across its own gap.
+        // The shifted segments are the truth here — the annotation's own
+        // `location` is in fragment-local coordinates and must NOT ride along,
+        // or a consumer would read unshifted positions back out.
+        const segments = getSegments(r)
+          .map((s) => ({ start: fragStart + s.start, end: fragStart + s.end }));
         feats.push({
           id: r.id || `${f.id || i}_r${ri}`,
           name: r.name,
           type: r.type,
+          segments,
           start: fragStart + r.start,
           end: fragStart + r.end,
           color: featureColorShaded(r.type, r.name),
@@ -131,15 +141,25 @@ export function buildLineAnnMap(features, lineStart, lineLen) {
   const map = new Array(lineLen).fill(null);
   if (!features || features.length === 0) return map;
   const lineEnd = lineStart + lineLen;
-  for (const f of features) {
-    if (f.end <= lineStart || f.start >= lineEnd) continue;
-    const from = Math.max(0, f.start - lineStart);
-    const to = Math.min(lineLen, f.end - lineStart);
-    for (let k = from; k < to; k++) {
-      // Latest-wins is OK here because the StrandsTrack tint is
-      // intentionally a low-alpha hint; the real multi-row track
-      // lives in AnnotationTrack and uses the unmutated regions list.
-      map[k] = f;
+  // Latest-wins is OK here because the StrandsTrack tint is intentionally a
+  // low-alpha hint; the real multi-row track lives in AnnotationTrack and uses
+  // the unmutated regions list.
+  const paint = (start, end) => {
+    if (end <= lineStart || start >= lineEnd) return;
+    const from = Math.max(0, start - lineStart);
+    const to = Math.min(lineLen, end - lineStart);
+    for (let k = from; k < to; k++) map[k] = f;
+  };
+  let f;
+  for (f of features) {
+    // Tint every segment separately — a compound or origin-crossing feature
+    // must not paint the gap between its parts. This runs for every feature on
+    // every rendered line, so the scalar case must not allocate a segment array
+    // just to read one span back out of it.
+    if (isCompound(f)) {
+      for (const seg of getSegments(f)) paint(seg.start, seg.end);
+    } else {
+      paint(f.start, f.end);
     }
   }
   return map;

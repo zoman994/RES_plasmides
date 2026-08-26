@@ -42,6 +42,7 @@ import RangePickerModal from './RangePickerModal';
 import OpGroupPicker from './OpGroupPicker';
 import AssemblyPipelinePanel from './AssemblyPipelinePanel';
 import MutationModal from './MutationModal';
+import AAMutationDialog from './AAMutationDialog';
 import { autoGroupPipeline } from '../../lib/auto-group-pipeline';
 import AssemblyPrimersPanel from './AssemblyPrimersPanel';
 import { useAssemblyPrimerWriting } from './useAssemblyPrimerWriting';
@@ -61,6 +62,9 @@ import { assemblyMutationPlan } from '../../lib/assembly-mutation-plan';
 import { deriveAssemblyPrimerRecords } from '../../lib/derived-primer-records';
 import { buildMutagenesisOpPayload } from '../../lib/derived-mutagenesis-op';
 import { STRINGS } from '../../../../lib/strings';
+import { t } from '../../../../i18n';
+import { documentIdentityOf } from '../../../../lib/primer-live-workflow';
+import { prepareAAMutagenesisCommit } from '../../store/skeleton-state-aa-mutagenesis';
 // Inline file-import for the picker (Игорь 17.06.2026): parse a dropped
 // .gb/.fasta/.dna here (the picker stays presentational) → add to the
 // library → immediately usable as a segment source.
@@ -119,6 +123,11 @@ export default function AssemblyShellBody({ draft, embedded = false }) {
   const { sequence, orphans } = useMemo(
     () => computeAssemblySequence(draft),
     [draft],
+  );
+  const assemblyTopology = draft.topology?.circular ? 'circular' : 'linear';
+  const assemblyDocumentHash = useMemo(
+    () => documentIdentityOf({ sequence, topology: assemblyTopology }),
+    [sequence, assemblyTopology],
   );
   const orphanIds = useMemo(
     () => new Set(orphans.map((o) => o.segmentId)),
@@ -276,6 +285,7 @@ export default function AssemblyShellBody({ draft, embedded = false }) {
   const [groupPickerIds, setGroupPickerIds] = useState(null);
   // K14 — mutation modal context: { pieceId, fromBase, position } | null.
   const [mutationFor, setMutationFor] = useState(null);
+  const [aaMutationFor, setAAMutationFor] = useState(null);
   // RC-SEP — closure-reaction modal open state (opened from the header «Замыкание»
   // button, circular only).
   const [circularizeOpen, setCircularizeOpen] = useState(false);
@@ -379,6 +389,30 @@ export default function AssemblyShellBody({ draft, embedded = false }) {
   const onDeletePrimer = useCallback((hit) => {
     if (hit && hit.id) actions.removeAssemblyPrimer(draftId, hit.id);
   }, [actions, draftId]);
+  const onAAClick = useCallback((selection) => {
+    if (!selection) return;
+    setAAMutationFor({ selection, error: null });
+  }, []);
+  const onApplyAAMutation = useCallback(({ targetAA, targetCodon }) => {
+    if (!aaMutationFor?.selection) return;
+    const transaction = prepareAAMutagenesisCommit({
+      state,
+      draft,
+      boundaries,
+      selection: aaMutationFor.selection,
+      targetAA,
+      targetCodon,
+      projectId: currentProjectId || null,
+    });
+    if (!transaction) {
+      setAAMutationFor((current) => (
+        current ? { ...current, error: t('aa.mutation.primerBlocked') } : current
+      ));
+      return;
+    }
+    actions.commitAAMutagenesis(transaction);
+    setAAMutationFor(null);
+  }, [aaMutationFor, actions, boundaries, currentProjectId, draft, state]);
 
   // ── SPEC_EDITABLE_ASSEMBLY_S1 — editable assembled view ────────────
   // §5.9 — settings-tunable synthesis threshold (default 80).
@@ -874,8 +908,11 @@ export default function AssemblyShellBody({ draft, embedded = false }) {
                 onSelectRange={sel.onSelectRange}
                 onWritePrimer={onWritePrimer}
                 onDeletePrimer={onDeletePrimer}
+                onAAClick={onAAClick}
                 showSelectionTm
                 primers={viewerPrimers}
+                entryId={draftId}
+                documentHash={assemblyDocumentHash}
                 coloredZones={coloredZones}
                 onZoneClick={onZoneClick}
                 onZoneHover={() => {}}
@@ -999,6 +1036,15 @@ export default function AssemblyShellBody({ draft, embedded = false }) {
             setMutationFor(null);
           }}
           onCancel={() => setMutationFor(null)}
+        />
+      )}
+
+      {aaMutationFor && (
+        <AAMutationDialog
+          selection={aaMutationFor.selection}
+          error={aaMutationFor.error}
+          onApply={onApplyAAMutation}
+          onCancel={() => setAAMutationFor(null)}
         />
       )}
 

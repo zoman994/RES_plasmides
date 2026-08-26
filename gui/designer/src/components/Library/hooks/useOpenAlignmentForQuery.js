@@ -14,23 +14,39 @@
  *
  * The caller must pass the SEQUENCE, not the query text: `seq:ACGT…` or a compound
  * `pUC19 seq:ACGT…` would otherwise arrive as if the prefix and the text term were bases.
+ *
+ * Appending can also be REFUSED — the sequence is already an input, or the list is at
+ * MAX_ALIGN_INPUTS — and refusing quietly is what made the route dishonest: the workspace
+ * opened and the pasted query simply was not in it. Each refusal is named out loud instead.
  */
 import { useCallback } from 'react';
 import { useStore } from '../../../store';
-import { tf } from '../../../i18n';
+import { t, tf } from '../../../i18n';
 
 export function useOpenAlignmentForQuery() {
   const addAlignInput = useStore((s) => s.addAlignInput);
   const setActiveWorkspace = useStore((s) => s.setActiveWorkspace);
+  const showToast = useStore((s) => s.showToast);
 
   return useCallback((query) => {
     const sequence = (query || '').trim();
     if (!sequence) return; // nothing to align; opening an empty workspace would just be a jump
-    addAlignInput({
+    const outcome = addAlignInput({
       name: tf('search.requiresAlignment.inputName', { len: sequence.length }),
       sequence,
       source: 'search',
     });
+    // A refusal still opens the workspace — for a duplicate the sequence the user came to
+    // see is already in there, and for a full list that is where they prune it — but it
+    // says which of the two happened. A successful add needs no toast: the new input IS
+    // the feedback, and a «done» pop-up on every route would be noise.
+    if (outcome?.reason === 'duplicate') {
+      showToast(t('search.requiresAlignment.duplicate'), 'info');
+    } else if (outcome?.reason === 'capacity') {
+      // The real cap comes back with the refusal, so the number the user reads is the
+      // number the slice enforces — never a second copy that can drift from it.
+      showToast(tf('search.requiresAlignment.capacity', { max: outcome.limit }), 'warning');
+    }
     setActiveWorkspace('align');
-  }, [addAlignInput, setActiveWorkspace]);
+  }, [addAlignInput, setActiveWorkspace, showToast]);
 }

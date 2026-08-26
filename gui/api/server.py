@@ -232,10 +232,51 @@ def remove_introns(body: dict):
 
 # ── File Import (.dna / .gb) ──────────────────────────────────
 
+def build_import_payload(sequence, features, meta, name=None):
+    """Shape the `/api/import` response.
+
+    A named function rather than an inline dict so the boundary is directly
+    testable: ANN-0I lost qualifiers and the whole primer packet here, and a
+    field quietly vanishing from an inline literal produced a frontend mystery
+    instead of a failing test.
+
+    The ONE 1-based→0-based conversion for this boundary lives here, applied
+    identically to the scalar span and to every segment of a compound or
+    origin-crossing location.
+    """
+    return {
+        "name": name if name is not None else (meta.get("name") or ""),
+        "sequence": sequence,
+        "length": len(sequence),
+        "topology": meta.get("topology", "linear"),
+        "organism": meta.get("organism", ""),
+        "description": meta.get("description", ""),
+        # Embedded oligos, forwarded verbatim for the canonical primer pool.
+        "primers": list(meta.get("primers") or []),
+        # Features the parser refused — a visible partial import, never silence.
+        "rejected": list(meta.get("rejected") or []),
+        "features": [
+            {
+                "type": f.type, "name": f.name,
+                "start": f.start - 1, "end": f.end, "strand": f.strand,
+                "segments": [{"start": s - 1, "end": e} for s, e in f.segments],
+                "location_kind": f.location_kind,
+                # Rich INSDC provenance — repeated values stay arrays, valueless
+                # flags stay booleans, single values stay scalar.
+                "qualifiers": dict(f.qualifiers or {}),
+                "sequence": f.sequence, "color": f.color,
+                "exons": f.exons, "introns": f.introns,
+                "has_introns": f.has_introns,
+            }
+            for f in features
+        ],
+    }
+
+
 @app.post("/api/import")
 async def import_file(file: UploadFile = File(...)):
     """Import a .dna (SnapGene) or .gb (GenBank) file via BioPython."""
-    from pvcs.parser import parse_snapgene, parse_genbank
+    from pvcs.parser import parse_snapgene, parse_genbank  # noqa: F401 (used below)
 
     ext = Path(file.filename or "").suffix.lower()
     content = await file.read()
@@ -266,24 +307,7 @@ async def import_file(file: UploadFile = File(...)):
     if not raw_name or raw_name == tmp_stem or raw_name.startswith("<"):
         raw_name = Path(file.filename or "").stem
 
-    return {
-        "name": raw_name,
-        "sequence": seq,
-        "length": len(seq),
-        "topology": meta.get("topology", "linear"),
-        "organism": meta.get("organism", ""),
-        "description": meta.get("description", ""),
-        "features": [
-            {
-                "type": f.type, "name": f.name,
-                "start": f.start - 1, "end": f.end, "strand": f.strand,
-                "sequence": f.sequence, "color": f.color,
-                "exons": f.exons, "introns": f.introns,
-                "has_introns": f.has_introns,
-            }
-            for f in features
-        ],
-    }
+    return build_import_payload(seq, features, meta, name=raw_name)
 
 
 # ── Serve React build (production) ─────────────────────────────

@@ -164,12 +164,18 @@ describe('K8 — full migration pipeline', () => {
     expect(r.state.zones).toEqual([]);
   });
 
-  it('migrates v0.8.x with zones inline → zones preserved', async () => {
+  it('migrates v0.8.x inline Canvas topology without losing circularity', async () => {
     const v1Project = {
       id: 'p08', name: 'with zones',
       tags: [], createdAt: 'x', updatedAt: 'x',
       zones: [{ id: 'zn01', name: 'sub-1', bounds: { x: 0, y: 0, width: 800, height: 600 }, viewMode: 'graph' }],
-      containers: [{ id: 'c01', name: 'pET', sequence: 'ATGC', topology: 'linear', annotations: [] }],
+      containers: [{
+        id: 'c01',
+        name: 'pET',
+        sequence: 'ATGC',
+        topology: { circular: true },
+        annotations: [],
+      }],
       pieces: [{ id: 'pc01', kind: 'sourced', sourceIds: ['c01'], ranges: [], zoneId: 'zn01' }],
       operations: [],
       containerIds: [], primerIds: [],
@@ -179,6 +185,7 @@ describe('K8 — full migration pipeline', () => {
     const r = await readBodge(v2);
     expect(r.state.zones).toHaveLength(1);
     expect(r.state.containers).toHaveLength(1);
+    expect(r.state.containers[0].topology).toBe('circular');
     expect(r.state.pieces).toHaveLength(1);
   });
 

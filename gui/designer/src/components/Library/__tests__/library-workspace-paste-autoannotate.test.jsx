@@ -14,7 +14,14 @@
  * LibraryWorkspace calls buildLibraryEntry POSITIONALLY (parsed, name, null),
  * and also imports extractItemName. The heavy children are stubbed; AddModal
  * is real (it produces the preset); file-import + build-library-entry are
- * mocked so we assert the resulting entry handed to addLibraryEntry.
+ * mocked so we assert the resulting entry handed to the store.
+ *
+ * ANN-0I migration: LibraryWorkspace no longer calls `addLibraryEntry` once per
+ * file. It delegates to the canonical ingress, which hands
+ * `addLibraryEntriesBulk` an ARRAY of shaped entries and reports success only
+ * from the rows the store returns. The auto-annotation, toast-action and
+ * selection assertions below are unchanged — only the store call they observe
+ * moved from the singular action to the awaited bulk receipt.
  */
 import 'fake-indexeddb/auto';
 import React from 'react';
@@ -73,8 +80,18 @@ let added;
 beforeEach(() => {
   added = [];
   useStore.setState((s) => {
-    s.addLibraryEntry = vi.fn(async (entry) => { added.push(entry); });
-    s.addLibraryEntriesBulk = vi.fn(async () => {});
+    // The real slice takes an ARRAY and returns the committed rows; the ingress
+    // reads success from that receipt, so the stub must behave the same way.
+    s.addLibraryEntriesBulk = vi.fn(async (entries) => {
+      const rows = (Array.isArray(entries) ? entries : []).filter((e) => e && e.id);
+      added.push(...rows);
+      // Mirror the real slice: committed rows become visible in the store.
+      useStore.setState((st) => {
+        for (const r of rows) st.libraryEntries[r.id] = r;
+      });
+      return rows;
+    });
+    s.addPrimerToPool = vi.fn(async (x) => x);
     s.showToast = vi.fn();
     s.currentProjectId = null;
     s.pinnedProjectIds = [];
@@ -99,7 +116,7 @@ describe('LibraryWorkspace paste import — «Авто-аннотация» actu
     openPasteAndType('ACGTACGTACGT');
     fireEvent.click(screen.getByTestId('add-modal-submit'));
 
-    await waitFor(() => expect(useStore.getState().addLibraryEntry).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(useStore.getState().addLibraryEntriesBulk).toHaveBeenCalledTimes(1));
     expect(enrichAnnotations).toHaveBeenCalledTimes(1);
     expect(enrichAnnotations.mock.calls[0][1]).toEqual({ autoAnnotate: true });
     // the created entry has the enriched feature, not the bare empty list
@@ -112,7 +129,7 @@ describe('LibraryWorkspace paste import — «Авто-аннотация» actu
     fireEvent.click(screen.getByTestId('add-modal-auto-annotate')); // toggle off
     fireEvent.click(screen.getByTestId('add-modal-submit'));
 
-    await waitFor(() => expect(useStore.getState().addLibraryEntry).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(useStore.getState().addLibraryEntriesBulk).toHaveBeenCalledTimes(1));
     expect(enrichAnnotations).not.toHaveBeenCalled();
     expect(added[0].payload.annotations.length).toBe(0);
   });
@@ -124,7 +141,7 @@ describe('LibraryWorkspace paste import — «Авто-аннотация» actu
     fireEvent.click(screen.getByTestId('add-modal-topology-circular'));
     fireEvent.click(screen.getByTestId('add-modal-submit'));
 
-    await waitFor(() => expect(useStore.getState().addLibraryEntry).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(useStore.getState().addLibraryEntriesBulk).toHaveBeenCalledTimes(1));
     expect(added[0].name).toBe('pKanR');
     expect(added[0].payload.topology).toBe('circular');
   });
@@ -134,7 +151,7 @@ describe('LibraryWorkspace paste import — «Авто-аннотация» actu
     openPasteAndType('ACGTACGTACGT');
     fireEvent.click(screen.getByTestId('add-modal-submit'));
 
-    await waitFor(() => expect(useStore.getState().addLibraryEntry).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(useStore.getState().addLibraryEntriesBulk).toHaveBeenCalledTimes(1));
     expect(added[0].name).toBe('F');
     expect(buildLibraryEntry).toHaveBeenCalledTimes(1);
   });
@@ -159,7 +176,7 @@ describe('LibraryWorkspace paste import — авто-аннотация: счё�
       { detector: 're_scan' }, { detector: 're_scan' }, { detector: 're_scan' },
       { detector: 're_scan' }, { detector: 're_scan' },
     ]);
-    await waitFor(() => expect(useStore.getState().addLibraryEntry).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(useStore.getState().addLibraryEntriesBulk).toHaveBeenCalledTimes(1));
     const { showToast } = useStore.getState();
     expect(showToast).toHaveBeenCalledWith(
       expect.stringMatching(/Авто-аннотация:\s*2\s+ген\S*.*5\s+сайт\S* рестрикции/),
@@ -170,7 +187,7 @@ describe('LibraryWorkspace paste import — авто-аннотация: счё�
 
   it('autoAnnotate ON, 0 генов → info-тост «Гомологичных элементов не найдено» (9000) + базовый тост', async () => {
     pasteImportWithAnnotations([{ detector: 're_scan' }, { detector: 're_scan' }]);
-    await waitFor(() => expect(useStore.getState().addLibraryEntry).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(useStore.getState().addLibraryEntriesBulk).toHaveBeenCalledTimes(1));
     const { showToast } = useStore.getState();
     expect(showToast).toHaveBeenCalledWith(
       'Гомологичных элементов не найдено', 'info',
@@ -184,7 +201,7 @@ describe('LibraryWorkspace paste import — авто-аннотация: счё�
     openPasteAndType('ACGTACGTACGT');
     fireEvent.click(screen.getByTestId('add-modal-auto-annotate')); // toggle off
     fireEvent.click(screen.getByTestId('add-modal-submit'));
-    await waitFor(() => expect(useStore.getState().addLibraryEntry).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(useStore.getState().addLibraryEntriesBulk).toHaveBeenCalledTimes(1));
     const { showToast } = useStore.getState();
     expect(enrichAnnotations).not.toHaveBeenCalled();
     expect(showToast).toHaveBeenCalledWith(expect.stringMatching(/^Добавлено: 1 файл/), 'success');
@@ -202,12 +219,19 @@ describe('LibraryWorkspace paste import — авто-аннотация: счё�
       cleanup();
       useStore.setState((s) => {
         s.showToast = vi.fn();
-        s.addLibraryEntry = vi.fn(async (entry) => { added.push(entry); });
+        s.addLibraryEntriesBulk = vi.fn(async (entries) => {
+          const rows = (Array.isArray(entries) ? entries : []).filter((e) => e && e.id);
+          added.push(...rows);
+          useStore.setState((st) => {
+            for (const r of rows) st.libraryEntries[r.id] = r;
+          });
+          return rows;
+        });
       });
       enrichAnnotations.mockClear();
       pasteImportWithAnnotations(Array.from({ length: n }, () => ({ source: 'common_db' })));
       // eslint-disable-next-line no-await-in-loop
-      await waitFor(() => expect(useStore.getState().addLibraryEntry).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(useStore.getState().addLibraryEntriesBulk).toHaveBeenCalledTimes(1));
       const { showToast } = useStore.getState();
       const hit = showToast.mock.calls.some((c) => form.test(String(c[0])));
       expect(hit, `genes=${n}`).toBe(true);
@@ -235,7 +259,7 @@ describe('LibraryWorkspace paste import — тост со ссылкой «Пр�
     render(<LibraryWorkspace />);
     openPasteAndType('ACGTACGTACGT');
     fireEvent.click(screen.getByTestId('add-modal-submit'));
-    await waitFor(() => expect(useStore.getState().addLibraryEntry).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(useStore.getState().addLibraryEntriesBulk).toHaveBeenCalledTimes(1));
 
     const { showToast } = useStore.getState();
     const successCall = showToast.mock.calls.find((c) => c[1] === 'success' && c[2] && c[2].actionLabel);
@@ -257,7 +281,7 @@ describe('LibraryWorkspace paste import — тост со ссылкой «Пр�
     render(<LibraryWorkspace />);
     openPasteAndType('ACGTACGTACGT');
     fireEvent.click(screen.getByTestId('add-modal-submit'));
-    await waitFor(() => expect(useStore.getState().addLibraryEntry).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(useStore.getState().addLibraryEntriesBulk).toHaveBeenCalledTimes(1));
     const { showToast } = useStore.getState();
     const withLabel = showToast.mock.calls.find((c) => c[2] && c[2].actionLabel);
     expect(withLabel).toBeUndefined();

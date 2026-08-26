@@ -1,8 +1,8 @@
 /**
  * Tests for region-aware auto-annotation model.
  */
-import { describe, it, expect, beforeEach } from 'vitest';
-import { autoAnnotate, generateAutoAnnotations } from '../auto-annotate';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { autoAnnotate, generateAutoAnnotations, enrichWithCommonFeatures } from '../auto-annotate';
 import { resetRegionCounter } from '../domain-detection';
 
 beforeEach(() => resetRegionCounter());
@@ -173,4 +173,87 @@ describe('generateAutoAnnotations — compat wrapper', () => {
     expect(regions).toHaveLength(1);
     expect(regions[0].type).toBe('CDS');
   });
+});
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ANN-0J Block 4 — ONE real enrichment path.
+//
+// Enrichment ADDS recognition; it must not rewrite where an annotation came
+// from. Overwriting `source` made an imported feature indistinguishable from a
+// database guess, and the Workspace — which counted `source === 'common_db'` —
+// then reported zero recognised genes for exactly the files that had them.
+//
+// The bundled feature DB is empty under test, so a hit is guaranteed by
+// stubbing the DB itself. The MERGE LOGIC under test is the real one.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// 60 nt of a non-CDS element; matched on the DNA path at 100% identity.
+const KNOWN_DNA = 'TTGACAGCTAGCTCAGTCCTAGGTATAATGCTAGCTACTAGAGAAAGAGGAGAAATACTA';
+
+vi.mock('../store/commonFeaturesSlice', () => ({
+  getMergedFeatureDB: async () => ({
+    features: [{
+      name: 'J23100_promoter',
+      type: 'promoter',
+      sequence: KNOWN_DNA,
+      length: KNOWN_DNA.length,
+    }],
+  }),
+}));
+
+describe('ANN-0J/4 — enrichment preserves provenance', () => {
+  function importedRegion(over = {}) {
+    return {
+      id: 'r1',
+      name: 'my_own_label',
+      type: 'promoter',
+      start: 0,
+      end: KNOWN_DNA.length,
+      strand: 1,
+      level: 'region',
+      source: 'import',
+      ...over,
+    };
+  }
+
+  it('the fixture really does produce a homology hit', async () => {
+    // Guards every assertion below: without a hit the provenance branch is
+    // never reached and the rest of this block would be decorative.
+    const [ann] = await enrichWithCommonFeatures(KNOWN_DNA, [importedRegion()]);
+    expect(ann.knownFeature).toBe('J23100_promoter');
+  }, 30000);
+
+  it('an imported annotation stays source:import after enrichment', async () => {
+    const [ann] = await enrichWithCommonFeatures(KNOWN_DNA, [importedRegion()]);
+    expect(ann.knownFeature).toBeTruthy();
+    expect(ann.source).toBe('import');
+  }, 30000);
+
+  it('the pre-enrichment name is recoverable after the rename', async () => {
+    const [ann] = await enrichWithCommonFeatures(KNOWN_DNA, [importedRegion()]);
+    expect(ann.knownFeature).toBeTruthy();
+    const original = ann.importedName ?? ann.originalName;
+    expect(original).toBe('my_own_label');
+  }, 30000);
+
+  it('a NEW detection with no prior source becomes common_db', async () => {
+    const fresh = importedRegion();
+    delete fresh.source;
+    const [ann] = await enrichWithCommonFeatures(KNOWN_DNA, [fresh]);
+    expect(ann.knownFeature).toBeTruthy();
+    expect(ann.source).toBe('common_db');
+  }, 30000);
+
+  it('recognised imported annotations are countable without reading source', async () => {
+    // The Workspace counter contract: recognition is knownFeature/detector,
+    // provenance is source. Conflating them reported 0 genes for an
+    // imported-and-recognised molecule.
+    const anns = await enrichWithCommonFeatures(KNOWN_DNA, [importedRegion()]);
+    const recognised = anns.filter((a) => a.knownFeature || a.source === 'common_db');
+    const imported = anns.filter((a) => a.source === 'import');
+
+    expect(recognised.length).toBeGreaterThan(0);
+    expect(imported.length).toBeGreaterThan(0);
+  }, 30000);
 });

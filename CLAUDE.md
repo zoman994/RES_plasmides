@@ -1,11 +1,14 @@
-# CLAUDE.md
+@AGENTS.md
+@CURRENT_TASK.md
+@PROJECT_STATE.md
 
-Единственные проектные инструкции находятся в [`AGENTS.md`](AGENTS.md).
+# Claude Code compatibility
 
-Перед работой прочитайте полностью:
+Импортированные файлы — канонические инструкции и единственный текущий tracker.
+Project skills находятся только в `.agents/skills/<name>/SKILL.md`: если `AGENTS.md`
+или принятый пакет называет skill, прочитайте этот файл полностью. Не используйте
+устаревшие копии skills из старых worktree.
 
-1. `AGENTS.md`;
-2. `CURRENT_TASK.md`;
-3. `PROJECT_STATE.md`.
-
-Не используйте старые документы и архивы как руководство, если текущая задача явно на них не ссылается.
+Auto-memory отключена и не заменяет `CURRENT_TASK.md`. Project agent profile задаёт
+роль, но не даёт scope: писать можно только после получения base SHA, режима writer,
+точного manifest, OUT и имени Integration owner от Planner.

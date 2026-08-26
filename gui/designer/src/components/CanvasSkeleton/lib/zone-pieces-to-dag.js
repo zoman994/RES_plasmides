@@ -271,7 +271,18 @@ export function draftFromZone(state, zone) {
       const cc = containers.find((x) => x.id === rr.sourceId);
       return cc ? String(cc.sequence || '').slice(rr.start, rr.end) : '';
     };
-    const fwdSeq = ranges.map(fwdSliceOf).join('');
+    // PRIMER-LIVE-1 — a PCR product authored from two chosen landings is NOT a
+    // slice of its template. The forward oligo's 5' tail is not on the template
+    // at all, and a deliberately substituted base disagrees with it on purpose.
+    // Re-deriving the segment by slicing throws both away, so the assembly
+    // preview and the executed product stop matching the product the biolog
+    // approved. When the resolver's answer was persisted, it IS the answer.
+    const persistedProduct = (p.origin === 'pcr-occurrences'
+      && typeof p.acquisitionParams?.productSequence === 'string'
+      && p.acquisitionParams.productSequence.length > 0)
+      ? p.acquisitionParams.productSequence
+      : null;
+    const fwdSeq = persistedProduct ?? ranges.map(fwdSliceOf).join('');
     // V184 — OVERHANG-AWARE orientation. Build the FORWARD top strand, then flip the
     // whole segment with sticky-end awareness. A plain per-range reverseComplement
     // (the old path) dropped the overhang stagger, so a reversed RE fragment's

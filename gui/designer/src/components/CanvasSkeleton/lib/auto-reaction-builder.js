@@ -55,6 +55,24 @@ export function buildReactionForPiece(piece, state) {
     if (sourceIds.length > 0) params.templateId = sourceIds[0];
     if (ranges.length > 0) {
       params.range = { start: ranges[0].start, end: ranges[0].end };
+      // An origin-crossing amplicon is an ordinary PCR whose coordinates wrap.
+      // Without this flag the executor would read `end < start` as an error.
+      if (ranges[0].wrapsOrigin === true) params.wrapsOrigin = true;
+    }
+    // PRIMER-LIVE-1 — WHICH landings, and WHAT was on the bench. These travel
+    // onto the reaction so it can still say what it was primed with after the
+    // pool has moved on, and on a machine whose freezer holds none of it.
+    if (Array.isArray(ap.occurrenceKeys)) params.occurrenceKeys = [...ap.occurrenceKeys];
+    // The product the biolog approved, and the molecule version it was
+    // approved against — both must reach the executor, or it silently
+    // re-derives a different answer from whatever the template is now.
+    if (typeof ap.productSequence === 'string') params.productSequence = ap.productSequence;
+    if (ap.documentIdentity) params.documentIdentity = ap.documentIdentity;
+    if (ap.primerSnapshots) {
+      params.primerSnapshots = {
+        forward: { ...ap.primerSnapshots.forward },
+        reverse: { ...ap.primerSnapshots.reverse },
+      };
     }
   } else if (kind === 'cut') {
     if (Array.isArray(ap.enzymes) && ap.enzymes.length > 0) {

@@ -37,6 +37,7 @@ import {
   useState,
 } from 'react';
 import { useStore } from '../../../store';
+import { documentIdentityOf } from '../../../lib/primer-live-workflow';
 import { useSequenceSelection } from '../../../hooks/useSequenceSelection';
 import { getRegions } from '../../../annotation-model';
 import { applyAnnotationEdit } from '../../../lib/annotation-edit.js';
@@ -46,7 +47,11 @@ import TabBar from '../../Library/inspector/tabs/TabBar';
 import SequenceTab from '../../Library/inspector/tabs/SequenceTab';
 import PieceCreateModal from '../../SequenceView/popups/PieceCreateModal';
 import PiecePrimersPickModal from '../../SequenceView/popups/PiecePrimersPickModal';
-import { buildPieceFromSelection, buildPieceFromFeature } from '../lib/piece-authoring';
+import {
+  buildPieceFromSelection,
+  buildPieceFromFeature,
+  buildPieceFromPcrProduct,
+} from '../lib/piece-authoring';
 import { STRINGS as _STR } from '../../../lib/strings';
 import AnnotationsTab from '../../Library/inspector/tabs/AnnotationsTab';
 import HistoryTab from '../../Library/inspector/tabs/HistoryTab';
@@ -202,6 +207,21 @@ export default function ContainerEditorSkeleton() {
       containerName: activeContainer.name,
       range: data.ranges[0],
       featureName: payload.origin === 'feature' ? data.name : undefined,
+    });
+  }, [activeContainer]);
+
+  // PRIMER-LIVE-1 — two chosen landings become a piece through the SAME
+  // PieceCreate → CREATE_PIECE → derived-reaction chain as every other way of
+  // authoring one. There is deliberately no second reaction model and no PCR
+  // wizard: the product is already resolved, so this only names it.
+  const handleCreatePcrProduct = useCallback((resolved) => {
+    if (!activeContainer || !resolved || resolved.ok !== true) return;
+    const data = buildPieceFromPcrProduct(activeContainer, resolved);
+    setPieceCreateModal({
+      data,
+      origin: 'pcr-occurrences',
+      containerName: activeContainer.name,
+      range: data.ranges[0],
     });
   }, [activeContainer]);
 
@@ -508,7 +528,28 @@ export default function ContainerEditorSkeleton() {
   // сиквенсвиверах»). Container primers persist to the unified pool,
   // scoped by container id — the same hook the Library inspector uses
   // (supersedes the K10-stub `[]`: render + selection-add now live).
-  const { primers: entryPrimers, onWritePrimer: onWriteEntryPrimer } = useEntryPrimers(item);
+  // PRIMER-LIVE-1 — the container editor opens a CONTAINER, not a library row,
+  // so the hook cannot look the project up for itself. Passing it explicitly is
+  // what keeps a Ctrl+R primer inside the open project instead of landing
+  // project-less and vanishing on the next Open.
+  const currentProjectId = useStore((st) => st.currentProjectId);
+  const {
+    primers: entryPrimers,
+    labPrimers: entryLabPrimers,
+    onWritePrimer: onWriteEntryPrimer,
+    onReuseLabPrimer: onReuseEntryLabPrimer,
+  } = useEntryPrimers(item, { projectId: currentProjectId ?? null });
+
+  // A stable name for the molecule on screen, so a primer's landing can later
+  // be confirmed against it rather than trusted on coordinates alone.
+  const containerDocumentHash = useMemo(
+    () => documentIdentityOf({
+      sequence: activeContainer?.sequence || '',
+      topology: isCircular ? 'circular' : 'linear',
+      resourceHash: activeContainer?.resourceHash ?? null,
+    }),
+    [activeContainer?.sequence, activeContainer?.resourceHash, isCircular],
+  );
   // SPEC_COMMON_FEATURES DEC-CF-05 — «Add to common features» in the Container
   // Editor (an IN viewer); consumer-gated via SequenceTab props.
   const { onPromoteToCommon, checkCommonDuplicate } = usePromoteToCommon();
@@ -722,6 +763,11 @@ export default function ContainerEditorSkeleton() {
                     isReadOnlyZone={false}
                     primers={entryPrimers}
                     onWritePrimer={onWriteEntryPrimer}
+                    labPrimers={entryLabPrimers}
+                    onReuseLabPrimer={onReuseEntryLabPrimer}
+                    onCreatePcrProduct={handleCreatePcrProduct}
+                    entryId={activeContainer?.id ?? null}
+                    documentHash={containerDocumentHash}
                     showSelectionTm
                     onRestrictionClick={sel.onRestrictionClick}
                     restrictionHighlightKey={restrictionHighlightKey}
@@ -759,6 +805,8 @@ export default function ContainerEditorSkeleton() {
                     totalBp={length}
                     topology="circular"
                     onFeatureClick={(f) => { if (f && Number.isFinite(f.start)) onBarSettle(f.start); }}
+                    primers={entryPrimers}
+                    entryId={item?._libraryEntryId || item?.id || null}
                   />
                 </div>
               </div>
@@ -822,6 +870,11 @@ export default function ContainerEditorSkeleton() {
                     isReadOnlyZone={false}
                     primers={entryPrimers}
                     onWritePrimer={onWriteEntryPrimer}
+                    labPrimers={entryLabPrimers}
+                    onReuseLabPrimer={onReuseEntryLabPrimer}
+                    onCreatePcrProduct={handleCreatePcrProduct}
+                    entryId={activeContainer?.id ?? null}
+                    documentHash={containerDocumentHash}
                     showSelectionTm
                     onRestrictionClick={sel.onRestrictionClick}
                     restrictionHighlightKey={restrictionHighlightKey}

@@ -2,7 +2,7 @@
 
 BodgeGene is a local-first application for creating, editing, searching and documenting plasmids and genetic assemblies. The primary product is the React application in `gui/designer`; the Python `plasmidvcs` package remains a secondary CLI and parsing backend.
 
-**Current application version:** `0.8.7-alpha`
+**Current application version:** `0.8.8-alpha`
 **Status:** active alpha; suitable for development and internal evaluation, not yet a production release.
 
 ## Main capabilities

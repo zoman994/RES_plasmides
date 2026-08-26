@@ -75,6 +75,10 @@ function walkRangeIntoRows(rows, fullSeq, start, end, isReverse, regionId) {
         isStop: c.aa === "*",
         regionId,
         strand: isReverse ? -1 : 1,
+        frame,
+        genomicPositions: isReverse
+          ? [c.position + 1, c.position, c.position - 1]
+          : [c.position - 1, c.position, c.position + 1],
       });
     }
     firstHit = false;
@@ -105,6 +109,8 @@ function walkSplicedIntoRows(rows, fullSeq, region, introns) {
         strand: isReverse ? -1 : 1,
         aaIndex: c.splicedIndex,
         spliced: true,
+        frame: c.frame,
+        genomicPositions: c.g,
       });
     }
     firstHit = false;

@@ -37,6 +37,7 @@ import { isFragmentFeature } from "../../../lib/feature-fragment.js";
 import { chevronPath } from "./annotation-geometry.js";
 import { buildAnnotationTitle } from "./annotation-title.js";
 import { regionKey, labelLengthChars } from "./annotation-layout.js";
+import { toRenderParts, isCompound } from "../../../lib/annotation-location.js";
 import { LabelText } from "./AnnotationLabel.jsx";
 import { SubFeatureOverlay } from "./SubFeatureOverlay.jsx";
 import { GeneExonRects } from "./GeneExonRects.jsx";
@@ -135,7 +136,17 @@ function AnnotationTrack({
       list.push(r);
       detailsByParent.set(r.parentId, list);
     } else {
-      parentRegions.push(r);
+      // ANN-0A — a compound / origin-crossing region becomes one visual PART
+      // per segment. Every part keeps the feature's id (so selection and click
+      // stay per-feature) and carries `logical` (the whole annotation) for
+      // consumers. Without this the stacker sees a single scalar span: a
+      // spliced gene painted over its own intron, and a wrapping feature
+      // vanished entirely because its `end < start`.
+      if (isCompound(r)) {
+        for (const part of toRenderParts(r)) parentRegions.push(part);
+      } else {
+        parentRegions.push(r);
+      }
     }
   }
   // V102 §5.1 — on a wrap-bridge row, annotations come from two plasmid
@@ -304,7 +315,9 @@ function AnnotationTrack({
           const tooNarrow = visLen < SHORT_VISIBLE_THRESHOLD;
           // V132 — origin-crossing feature: drop this (narrower) half's label
           // when it was assigned to the other half. Rect/glyph/chevron stay.
-          const labelSuppressed = hasWrap && labelOnHalf.get(regionKey(region)) === "wrap";
+          // A compound feature is labelled once — on its widest part only.
+          const labelSuppressed = (hasWrap && labelOnHalf.get(regionKey(region)) === "wrap")
+            || region.isLabelPart === false;
           const showLabelInside = fitsInside && !tooNarrow && !labelSuppressed;
           const showLeader = !fitsInside && !tooNarrow && !labelSuppressed;
           const strand = region.strand === -1 ? -1 : 1;
@@ -322,8 +335,14 @@ function AnnotationTrack({
           // NEW coords (bottom orange outline). Original rect stays
           // dim (opacity 0.4) so biolog sees both before/after.
           const isBeingDragged = region.id && draggedAnnotationId === region.id;
+          // ANN-0A — scalar edge-dragging cannot express a multi-segment
+          // location, so a compound feature exposes DISABLED handles carrying
+          // an accessible explanation instead of silently-broken active ones.
+          // Metadata edits (rename, colour, type) stay available.
+          const compoundLocked = region.isCompoundPart === true;
           const showLeftHandle = startsHere && typeof onPointerDownEdge === 'function';
           const showRightHandle = endsHere && typeof onPointerDownEdge === 'function';
+          const LOCK_REASON = 'Координаты составной фичи нельзя тянуть: у неё несколько сегментов. Изменяйте имя, цвет и тип — координаты редактируются посегментно.';
           // Bug-rush #9: 8 px wide so it's easier to grab on a
           // touchpad. Placed INWARD from the rect's edge (was
           // centered on the boundary), so adjacent features at a
@@ -386,7 +405,7 @@ function AnnotationTrack({
           );
 
           return (
-            <Fragment key={`${region.id || region.start + ":" + region.end}-r${rowIdx}`}>
+            <Fragment key={`${region.partKey || region.id || region.start + ":" + region.end}-r${rowIdx}`}>
             <g
               data-testid="sequence-view-annotation"
               data-region-id={region.id || ""}
@@ -457,13 +476,13 @@ function AnnotationTrack({
                 onClick={(e) => {
                   if (typeof onAnnotationClick !== 'function') return;
                   e.stopPropagation();
-                  onAnnotationClick(region);
+                  onAnnotationClick(region.logical || region);
                 }}
                 onDoubleClick={(e) => {
                   if (typeof onAnnotationFeatureDoubleClick !== 'function') return;
                   e.stopPropagation();
                   e.preventDefault();
-                  onAnnotationFeatureDoubleClick(region);
+                  onAnnotationFeatureDoubleClick(region.logical || region);
                 }}
               />
               )}
@@ -478,13 +497,13 @@ function AnnotationTrack({
                   onClick={(e) => {
                     if (typeof onAnnotationClick !== 'function') return;
                     e.stopPropagation();
-                    onAnnotationClick(region);
+                    onAnnotationClick(region.logical || region);
                   }}
                   onDoubleClick={(e) => {
                     if (typeof onAnnotationFeatureDoubleClick !== 'function') return;
                     e.stopPropagation();
                     e.preventDefault();
-                    onAnnotationFeatureDoubleClick(region);
+                    onAnnotationFeatureDoubleClick(region.logical || region);
                   }}
                 />
               ) : null}
@@ -623,16 +642,29 @@ function AnnotationTrack({
                     data-region-edge="left"
                     data-region-id={region.id || ""}
                     data-region-line-start={lineStart}
+                    data-edge-disabled={compoundLocked ? "true" : undefined}
+                    aria-disabled={compoundLocked ? "true" : undefined}
+                    aria-label={compoundLocked ? LOCK_REASON : undefined}
                     x={0}
                     y={-2}
                     width={HANDLE_WIDTH}
                     height={ROW_HEIGHT + 4}
                     fill="transparent"
-                    style={{ cursor: "ew-resize", pointerEvents: "all" }}
-                    onPointerDown={(e) => onPointerDownEdge(e, region.id, 'left', region)}
-                    onPointerEnter={() => setHover({ id: region.id, edge: 'left' })}
+                    style={{
+                      cursor: compoundLocked ? "not-allowed" : "ew-resize",
+                      pointerEvents: "all",
+                    }}
+                    onPointerDown={(e) => {
+                      if (compoundLocked) { e.preventDefault(); return; }
+                      onPointerDownEdge(e, region.id, 'left', region);
+                    }}
+                    onPointerEnter={() => {
+                      if (!compoundLocked) setHover({ id: region.id, edge: 'left' });
+                    }}
                     onPointerLeave={() => setHover(null)}
-                  />
+                  >
+                    {compoundLocked ? <title>{LOCK_REASON}</title> : null}
+                  </rect>
                   {isHoverLeft ? (
                     <rect
                       data-testid="sequence-view-annotation-edge-indicator"
@@ -654,16 +686,29 @@ function AnnotationTrack({
                     data-region-edge="right"
                     data-region-id={region.id || ""}
                     data-region-line-start={lineStart}
+                    data-edge-disabled={compoundLocked ? "true" : undefined}
+                    aria-disabled={compoundLocked ? "true" : undefined}
+                    aria-label={compoundLocked ? LOCK_REASON : undefined}
                     x={widthRect - HANDLE_WIDTH}
                     y={-2}
                     width={HANDLE_WIDTH}
                     height={ROW_HEIGHT + 4}
                     fill="transparent"
-                    style={{ cursor: "ew-resize", pointerEvents: "all" }}
-                    onPointerDown={(e) => onPointerDownEdge(e, region.id, 'right', region)}
-                    onPointerEnter={() => setHover({ id: region.id, edge: 'right' })}
+                    style={{
+                      cursor: compoundLocked ? "not-allowed" : "ew-resize",
+                      pointerEvents: "all",
+                    }}
+                    onPointerDown={(e) => {
+                      if (compoundLocked) { e.preventDefault(); return; }
+                      onPointerDownEdge(e, region.id, 'right', region);
+                    }}
+                    onPointerEnter={() => {
+                      if (!compoundLocked) setHover({ id: region.id, edge: 'right' });
+                    }}
                     onPointerLeave={() => setHover(null)}
-                  />
+                  >
+                    {compoundLocked ? <title>{LOCK_REASON}</title> : null}
+                  </rect>
                   {isHoverRight ? (
                     <rect
                       data-testid="sequence-view-annotation-edge-indicator"
@@ -705,7 +750,7 @@ function AnnotationTrack({
                       if (typeof onAnnotationDoubleClick !== 'function') return;
                       e.stopPropagation();
                       e.preventDefault();
-                      onAnnotationDoubleClick(region);
+                      onAnnotationDoubleClick(region.logical || region);
                     }}
                   >
                     {displayLabel}

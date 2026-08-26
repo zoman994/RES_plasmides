@@ -38,8 +38,17 @@ docs/design_assets/
 # Stray save-format export artifact at repo root
 /test.bodge
 
+# Generated scratch output at repo root
+/tmp/
+
 # Local tooling, reports and IDE settings
-.claude/
+.claude/*
+!.claude/settings.json
+!.claude/agents/
+.claude/agents/*
+!.claude/agents/implementation-coder.md
+!.claude/agents/proof-coder.md
+!.claude/agents/candidate-reviewer.md
 .codex/
 .audit/
 .vscode/

@@ -18,6 +18,7 @@
  * then re-derive on first edit via the finalizer).
  */
 import { buildInitialState } from '../store/skeleton-state';
+import { PRIMER_SCOPE_GLOBAL, primerScopeOf } from '../../../lib/primer-identity';
 
 const VENDOR = 'bodgegene';
 const SNAP_REL = 'skeleton.json';
@@ -50,22 +51,85 @@ function nestPositionsByZone(snap) {
   return out;
 }
 
+function containerToCanonical(container) {
+  if (!container || typeof container !== 'object') return container;
+  const topology = container.topology;
+  if (!topology || typeof topology !== 'object'
+      || typeof topology.circular !== 'boolean') return container;
+  return {
+    ...container,
+    topology: topology.circular ? 'circular' : 'linear',
+  };
+}
+
+function containerToSkeleton(container) {
+  if (!container || typeof container !== 'object') return container;
+  if (container.topology !== 'circular' && container.topology !== 'linear') return container;
+  return {
+    ...container,
+    topology: { circular: container.topology === 'circular' },
+  };
+}
+
+/**
+ * The primer records that belong to one project (ANN-0L C0).
+ *
+ * Ctrl+S must persist exactly the project's own pool: a library-scoped or
+ * foreign-project record is not this file's business, and omitting the
+ * project's own records is how a saved project reopened empty.
+ *
+ * @param {Record<string, object>} primersById  primerSlice map
+ * @param {string|null} projectId
+ * @returns {object[]} records in stable `addedAt` order
+ */
+export function primersForProject(primersById, projectId) {
+  const target = projectId ?? null;
+  return Object.values(primersById || {})
+    // PRIMER-LIVE-1 — the personal freezer never leaves this machine. Scope is
+    // checked explicitly rather than trusted to follow from `projectId`: the
+    // claim being made is "a tube of this exists", and a file that carried it
+    // to another lab would be asserting something it cannot know.
+    .filter((p) => p && primerScopeOf(p) !== PRIMER_SCOPE_GLOBAL)
+    .filter((p) => p && (p.projectId ?? null) === target)
+    .sort((a, b) => String(a.addedAt || '').localeCompare(String(b.addedAt || '')));
+}
+
+/**
+ * The primer records carried by a canonical `.bodge` v2 state (ANN-0L C0).
+ *
+ * Kept as its own named seam so Open has one obvious place to read them from;
+ * previously `state.primers` was parsed by the reader and then simply dropped
+ * on the floor, which is why reopening a project lost its primers.
+ */
+export function primersFromCanonical(state) {
+  const rows = state && Array.isArray(state.primers) ? state.primers : [];
+  return rows.filter((p) => p && p.id);
+}
+
 /**
  * Skeleton snapshot + projectSlice meta → canonical .bodge v2 `state` for
  * writeBodgeV2. The assembly draft primers ride the lossless extension (the v2
  * primer pool model drops their tail/binding/draftId fields), NOT state.primers.
+ *
+ * ANN-0L C0 — `primers` is the project's canonical pool. It used to be
+ * hardcoded to `[]`, so every Ctrl+S wrote a container with no primers in it
+ * and the biologist lost them on the next Open.
+ *
+ * @param {object} snap                skeleton snapshot
+ * @param {object} projectMeta
+ * @param {object[]} [primers]         project-scoped canonical primer records
  */
-export function skeletonToCanonical(snap, projectMeta = {}) {
+export function skeletonToCanonical(snap, projectMeta = {}, primers = []) {
   const s = snap || {};
   return {
     projectMeta,
-    containers: Array.isArray(s.containers) ? s.containers : [],
+    containers: Array.isArray(s.containers) ? s.containers.map(containerToCanonical) : [],
     zones: Array.isArray(s.zones) ? s.zones : [],
     pieces: Array.isArray(s.pieces) ? s.pieces : [],
     operations: Array.isArray(s.operations) ? s.operations : [],
     junctions: Array.isArray(s.junctions) ? s.junctions : [],
     positions: nestPositionsByZone(s),
-    primers: [],
+    primers: Array.isArray(primers) ? primers : [],
     extensions: {
       [VENDOR]: { [SNAP_REL]: encodeUtf8(JSON.stringify(s)) },
     },
@@ -103,7 +167,9 @@ export function canonicalToSkeleton(state) {
   }
   return {
     ...base,
-    containers: Array.isArray(state.containers) ? state.containers : [],
+    containers: Array.isArray(state.containers)
+      ? state.containers.map(containerToSkeleton)
+      : [],
     zones: Array.isArray(state.zones) ? state.zones : [],
     pieces: Array.isArray(state.pieces) ? state.pieces : [],
     operations: Array.isArray(state.operations) ? state.operations : [],

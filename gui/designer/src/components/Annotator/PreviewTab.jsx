@@ -30,6 +30,7 @@ import { isDuplicatePrediction, reconcileConfirmedWithPartials } from '../../lib
 import SequenceView from '../SequenceView';
 import PlasmidMiniMap from '../PlasmidMiniMap.jsx';
 import PlasmidMapV2 from '../PlasmidMapV2.jsx';
+import { buildRenderContext } from '../../lib/primer-site-projection';
 import { FEATURE_FLAGS } from '../../lib/feature-flags';
 import GhostDrillInPanel from './GhostDrillInPanel.jsx';
 import AnnotatorProgressBar from './AnnotatorProgressBar.jsx';
@@ -73,6 +74,12 @@ export default function PreviewTab({
   // primers here as well. Forwarded by the host (AnnotationsTab →
   // Annotator). Absent ⇒ no primers (back-compat).
   primers,
+  // ANN-0M root D — which molecule, and which version of it, the preview is
+  // showing. Absent ⇒ targeted source sites fail closed, which is the honest
+  // answer for a host that cannot say what it is rendering.
+  entryId = null,
+  documentHash = null,
+  onSelectPrimerSite = null,
   onWritePrimer,
   onDeletePrimer,
   // 2026-06-17 — the host (Annotator/index.jsx) lifts the selection hook so the
@@ -212,6 +219,15 @@ export default function PreviewTab({
     return predicted.find((r) => r.id === selectedId) || null;
   }, [predicted, selectedId]);
 
+  // ANN-0M root D — the ONE render context, built once and handed to every
+  // surface below unchanged.
+  const renderContext = buildRenderContext({
+    entryId,
+    sequence,
+    topology,
+    documentHash,
+  });
+
   return (
     <div
       data-testid="annotator-preview-tab"
@@ -265,6 +281,9 @@ export default function PreviewTab({
                   length={(sequence || '').length}
                   topology="circular"
                   centerLabel={{ name, bp: (sequence || '').length }}
+                  primers={primers}
+                  renderContext={renderContext}
+                  onSelectPrimerSite={onSelectPrimerSite}
                 />
               </div>
             ) : (
@@ -287,6 +306,9 @@ export default function PreviewTab({
             style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}
           >
             <SequenceView
+                entryId={renderContext.entryId}
+                documentHash={renderContext.documentHash}
+                topology={renderContext.topology}
               ref={seqRef}
               fragments={fragments}
               circular={topology === 'circular'}

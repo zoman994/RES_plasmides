@@ -210,3 +210,211 @@ describe('A3.K4 selectBoundaryCoverage', () => {
     expect(cov[0].rev).toBe(false);
   });
 });
+
+describe('PRIMER-TAIL-SAVE-1 — WRITE_ASSEMBLY_PRIMER preserves the 5′ tail', () => {
+  // seg0 = SEG0 (20 bp) [0,20); seg1 = SEG1 (16 bp) [20,36).
+  function draftWithSegments() {
+    let s = buildInitialState();
+    s = skeletonReducer(s, { type: 'CREATE_ASSEMBLY_DRAFT', id: 'a', name: 'A' });
+    s = skeletonReducer(s, { type: 'INSERT_MANUAL_SEGMENT', draftId: 'a', sequence: SEG0 });
+    s = skeletonReducer(s, { type: 'INSERT_MANUAL_SEGMENT', draftId: 'a', sequence: SEG1 });
+    return s;
+  }
+
+  it('an explicit 5′ tail on create is stored as an overhang, not folded into the binding', () => {
+    let s = draftWithSegments();
+    const tail = 'GGGGCCCC';
+    const binding = SEG0; // the annealed region for range [0,20)
+    s = skeletonReducer(s, {
+      type: 'WRITE_ASSEMBLY_PRIMER',
+      draftId: 'a',
+      range: { start: 0, end: 20 },
+      direction: 'forward',
+      tail,
+      binding,
+      sequence: tail + binding,
+    });
+    const ps = s.assemblyDraftPrimers.a;
+    expect(ps).toHaveLength(1);
+    const p = ps[0];
+    expect(p.tail).toBe(tail); // the tail is kept as an overhang…
+    expect(p.bindingSequence).toBe(binding); // …NOT absorbed into the binding
+    expect(p.sequence).toBe(tail + binding);
+    expect(p.status).toBe('edited');
+  });
+
+  it('saving an existing primer (primerId) edits it in place — no duplicate, anchor preserved, tail kept', () => {
+    let s = draftWithSegments();
+    // Auto forward primer within seg0 (tail-less to start).
+    s = skeletonReducer(s, {
+      type: 'WRITE_ASSEMBLY_PRIMER', draftId: 'a', range: { start: 0, end: 20 }, direction: 'forward',
+    });
+    const before = s.assemblyDraftPrimers.a[0];
+    expect(before.tail).toBe('');
+    const {
+      id, pairId, source, range,
+    } = before;
+    const binding = before.bindingSequence; // unchanged annealed region
+    const tail = 'TTTTGGGG';
+    // Re-open, add a 5′ tail, Save → carries primerId + the canonical split.
+    s = skeletonReducer(s, {
+      type: 'WRITE_ASSEMBLY_PRIMER',
+      draftId: 'a',
+      primerId: id,
+      range: { start: 0, end: 20 },
+      direction: 'forward',
+      tail,
+      binding,
+      sequence: tail + binding,
+      bindingModel: 'aligned-v1',
+    });
+    const after = s.assemblyDraftPrimers.a;
+    expect(after).toHaveLength(1); // edited in place, not duplicated
+    expect(after[0].id).toBe(id); // the SAME record
+    expect(after[0].pairId).toBe(pairId); // pair identity preserved
+    expect(after[0].source).toEqual(source); // source anchor preserved
+    expect(after[0].range).toEqual(range); // range preserved
+    expect(after[0].tail).toBe(tail); // the tail survives
+    expect(after[0].bindingSequence).toBe(binding);
+    expect(after[0].sequence).toBe(tail + binding);
+    expect(after[0].bindingModel).toBe('aligned-v1'); // aligned-v1 model preserved
+    expect(after[0].status).toBe('edited');
+  });
+
+  it('a conflicting edited sequence (≠ tail + binding) fails closed — record left unchanged', () => {
+    let s = draftWithSegments();
+    s = skeletonReducer(s, {
+      type: 'WRITE_ASSEMBLY_PRIMER', draftId: 'a', range: { start: 0, end: 20 }, direction: 'forward',
+    });
+    const before = s.assemblyDraftPrimers.a[0];
+    const s2 = skeletonReducer(s, {
+      type: 'WRITE_ASSEMBLY_PRIMER',
+      draftId: 'a',
+      primerId: before.id,
+      range: { start: 0, end: 20 },
+      direction: 'forward',
+      tail: 'GGGG',
+      binding: SEG0,
+      sequence: 'ACGT', // sequence disagrees with tail + binding → unusable
+    });
+    const after = s2.assemblyDraftPrimers.a;
+    expect(after).toHaveLength(1); // no duplicate, no invented record
+    expect(after[0].tail).toBe(''); // unchanged (no invented / re-anchored bases)
+    expect(after[0].sequence).toBe(before.sequence);
+  });
+});
+
+describe('PRIMER-TAIL-SAVE-1 CORRECTION — reducer contract', () => {
+  function draftWithPrimer() {
+    let s = buildInitialState();
+    s = skeletonReducer(s, { type: 'CREATE_ASSEMBLY_DRAFT', id: 'a', name: 'A' });
+    s = skeletonReducer(s, { type: 'INSERT_MANUAL_SEGMENT', draftId: 'a', sequence: SEG0 });
+    s = skeletonReducer(s, { type: 'INSERT_MANUAL_SEGMENT', draftId: 'a', sequence: SEG1 });
+    s = skeletonReducer(s, {
+      type: 'WRITE_ASSEMBLY_PRIMER', draftId: 'a', range: { start: 0, end: 20 }, direction: 'forward',
+    });
+    return s;
+  }
+
+  // A — stale primerId: no create, no mutation.
+  it('A: a stale primerId (record gone) fails closed — no new primer is created', () => {
+    const s = draftWithPrimer();
+    const before = s.assemblyDraftPrimers.a;
+    const s2 = skeletonReducer(s, {
+      type: 'WRITE_ASSEMBLY_PRIMER',
+      draftId: 'a',
+      primerId: 'nonexistent-id',
+      range: { start: 0, end: 20 },
+      direction: 'forward',
+      binding: SEG0,
+      sequence: SEG0,
+    });
+    expect(s2.assemblyDraftPrimers.a).toHaveLength(before.length); // unchanged
+    expect(s2.assemblyDraftPrimers.a[0].id).toBe(before[0].id); // same record
+  });
+
+  // B — tm: explicit finite replaces; explicit null clears; omitted preserves.
+  it('B: explicit finite tm replaces old tm on edit', () => {
+    let s = draftWithPrimer();
+    const original = s.assemblyDraftPrimers.a[0];
+    s = skeletonReducer(s, {
+      type: 'WRITE_ASSEMBLY_PRIMER',
+      draftId: 'a',
+      primerId: original.id,
+      range: { start: 0, end: 20 },
+      direction: 'forward',
+      binding: SEG0,
+      sequence: SEG0,
+      tm: 58.5,
+    });
+    expect(s.assemblyDraftPrimers.a[0].tm).toBe(58.5);
+  });
+
+  it('B: explicit tm:null clears Tm (indel/mismatch model)', () => {
+    let s = draftWithPrimer();
+    const original = s.assemblyDraftPrimers.a[0];
+    s = skeletonReducer(s, {
+      type: 'WRITE_ASSEMBLY_PRIMER',
+      draftId: 'a',
+      primerId: original.id,
+      range: { start: 0, end: 20 },
+      direction: 'forward',
+      binding: SEG0,
+      sequence: SEG0,
+      tm: null,
+    });
+    expect(s.assemblyDraftPrimers.a[0].tm).toBeNull();
+  });
+
+  it('B: omitted tm preserves existing tm on edit', () => {
+    let s = draftWithPrimer();
+    const original = s.assemblyDraftPrimers.a[0];
+    const prevTm = original.tm;
+    s = skeletonReducer(s, {
+      type: 'WRITE_ASSEMBLY_PRIMER',
+      draftId: 'a',
+      primerId: original.id,
+      range: { start: 0, end: 20 },
+      direction: 'forward',
+      binding: SEG0,
+      sequence: SEG0,
+      // tm intentionally omitted
+    });
+    expect(s.assemblyDraftPrimers.a[0].tm).toBe(prevTm);
+  });
+
+  // C — sequence-only write with a non-empty fallback tail clears the tail.
+  it('C: legacy sequence-only write with a non-empty fallback tail clears tail (sequence = binding, tail = empty)', () => {
+    let s = buildInitialState();
+    s = skeletonReducer(s, { type: 'CREATE_ASSEMBLY_DRAFT', id: 'b', name: 'B' });
+    s = skeletonReducer(s, { type: 'INSERT_MANUAL_SEGMENT', draftId: 'b', sequence: SEG0 });
+    s = skeletonReducer(s, { type: 'INSERT_MANUAL_SEGMENT', draftId: 'b', sequence: SEG1 });
+    // Write a primer that has a tail in its initial record.
+    s = skeletonReducer(s, {
+      type: 'WRITE_ASSEMBLY_PRIMER',
+      draftId: 'b',
+      range: { start: 0, end: 20 },
+      direction: 'forward',
+      tail: 'GGGG',
+      binding: SEG0,
+      sequence: 'GGGG' + SEG0,
+    });
+    const primer = s.assemblyDraftPrimers.b[0];
+    expect(primer.tail).toBe('GGGG'); // sanity — initial state has tail
+
+    // Now edit with a sequence-only override (no explicit binding).
+    // The fallback fb.tail must NOT be retained — it would make sequence ≠ tail + binding.
+    s = skeletonReducer(s, {
+      type: 'WRITE_ASSEMBLY_PRIMER',
+      draftId: 'b',
+      primerId: primer.id,
+      range: { start: 0, end: 20 },
+      direction: 'forward',
+      sequence: SEG0, // sequence-only, no `binding` field
+    });
+    const after = s.assemblyDraftPrimers.b[0];
+    expect(after.tail).toBe(''); // tail cleared — no inconsistent split
+    expect(after.bindingSequence).toBe(SEG0);
+    expect(after.sequence).toBe(SEG0);
+  });
+});

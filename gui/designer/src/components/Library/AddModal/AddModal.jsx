@@ -11,18 +11,20 @@
  * Source dispatch:
  *   • file → onLaunchPreImport({ source: 'file', target })
  *   • paste → onLaunchPreImport({ source: 'paste', target })
- *   • catalog → onLaunchPreImport({ source: 'catalog', target })
- *   • cross-project → opens CrossProjectStub (no PreImport handoff)
+ *   • catalog → opens the on-demand SnapGene catalog picker
+ *   • cross-project → opens the portable-container .bodge importer
  *
- * LibraryWorkspace owns the concrete picker, paste, and catalog actions;
- * this component only returns the selected source and target preset.
+ * LibraryWorkspace owns file/paste actions. Catalog import commits through
+ * the existing Library store so its selected target cannot be lost in a
+ * fallback branch.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { STRINGS } from '../../../lib/strings';
 import { useStore } from '../../../store';
 import { Icon } from '../../icons/Icon';
 import SourceTiles from './SourceTiles';
 import CrossProjectStub from './CrossProjectStub';
+import SnapGeneCatalogPicker from './SnapGeneCatalogPicker';
 
 const LOOSE_TARGET = { id: 'loose', label: 'Без проекта', sub: '⎀ свободный стол' };
 
@@ -52,7 +54,8 @@ export default function AddModal({ open, onClose, onLaunchPreImport }) {
   const currentProjectId = useStore((s) => s.currentProjectId);
   const [pickedSource, setPickedSource] = useState(null);
   const [target, setTarget] = useState('loose');
-  const [stubOpen, setStubOpen] = useState(false);
+  const [crossProjectOpen, setCrossProjectOpen] = useState(false);
+  const [catalogOpen, setCatalogOpen] = useState(false);
   const [pasteText, setPasteText] = useState('');
   // WT-D-2 — homology auto-annotation toggle (default on). The active import
   // flow passes this preset to enrichAnnotations.
@@ -61,6 +64,10 @@ export default function AddModal({ open, onClose, onLaunchPreImport }) {
   // would otherwise land as «imported» / always-linear). Ride the preset.
   const [pasteName, setPasteName] = useState('');
   const [pasteTopology, setPasteTopology] = useState('linear');
+  const catalogOpenerRef = useRef(null);
+  const restoreCatalogFocusRef = useRef(false);
+  const crossProjectOpenerRef = useRef(null);
+  const restoreCrossProjectFocusRef = useRef(false);
 
   // Build the target list: «Без проекта» + every pinned project +
   // (current project if it's not already in pinned). The current
@@ -93,7 +100,10 @@ export default function AddModal({ open, onClose, onLaunchPreImport }) {
   useEffect(() => {
     if (!open) return;
     setPickedSource(null);
-    setStubOpen(false);
+    setCrossProjectOpen(false);
+    setCatalogOpen(false);
+    restoreCatalogFocusRef.current = false;
+    restoreCrossProjectFocusRef.current = false;
     setPasteText('');
     setAutoAnnotate(true);
     setPasteName('');
@@ -114,6 +124,7 @@ export default function AddModal({ open, onClose, onLaunchPreImport }) {
     if (!open) return undefined;
     const onKey = (e) => {
       if (e.key === 'Escape') {
+        if (catalogOpen || crossProjectOpen) return;
         e.preventDefault();
         e.stopPropagation();
         onClose?.();
@@ -121,14 +132,30 @@ export default function AddModal({ open, onClose, onLaunchPreImport }) {
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [open, onClose]);
+  }, [open, onClose, catalogOpen, crossProjectOpen]);
+
+  useEffect(() => {
+    if (open && !catalogOpen && restoreCatalogFocusRef.current) {
+      restoreCatalogFocusRef.current = false;
+      catalogOpenerRef.current?.focus();
+    }
+  }, [open, catalogOpen]);
+
+  useEffect(() => {
+    if (open && !crossProjectOpen && restoreCrossProjectFocusRef.current) {
+      restoreCrossProjectFocusRef.current = false;
+      crossProjectOpenerRef.current?.focus();
+    }
+  }, [open, crossProjectOpen]);
 
   if (!open) return null;
 
   const onPickSource = (id) => {
     setPickedSource(id);
     if (id === 'cross-project') {
-      setStubOpen(true);
+      crossProjectOpenerRef.current = document.activeElement;
+      restoreCrossProjectFocusRef.current = false;
+      setCrossProjectOpen(true);
       return;
     }
   };
@@ -139,6 +166,11 @@ export default function AddModal({ open, onClose, onLaunchPreImport }) {
 
   const onSubmit = () => {
     if (submitDisabled) return;
+    if (pickedSource === 'catalog') {
+      restoreCatalogFocusRef.current = false;
+      setCatalogOpen(true);
+      return;
+    }
     if (pickedSource === 'paste') {
       onLaunchPreImport?.({
         source: 'paste', target, text: pasteText, autoAnnotate, name: pasteName, topology: pasteTopology,
@@ -252,35 +284,6 @@ export default function AddModal({ open, onClose, onLaunchPreImport }) {
           <FieldLabel label="ИСТОЧНИК">
             <SourceTiles onPick={onPickSource} picked={pickedSource} />
           </FieldLabel>
-
-          {/* 12.05.2026 — Игорь: «каталог снапгена ... модалка дает
-              выбрать но говорит что в разработке». Inline banner под
-              tiles когда выбран catalog. Submit всё ещё доступен —
-              отдаст тost через onLaunchPreImport fallback. */}
-          {pickedSource === 'catalog' && (
-            <div
-              data-testid="add-modal-catalog-in-dev"
-              role="status"
-              style={{
-                padding: '8px 12px',
-                background: 'var(--accent-50, #fef3c7)',
-                border: '1px solid var(--accent-300, #fcd34d)',
-                borderRadius: 'var(--radius-sm, 4px)',
-                fontSize: 11.5,
-                color: 'var(--accent-700, #b45309)',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 2,
-              }}
-            >
-              <strong style={{ fontSize: 12 }}>SnapGene-каталог в разработке</strong>
-              <span>
-                Браузер 2800+ плазмид из SnapGene Public Catalog появится
-                в M-X.9+. Пока загрузите файл (.dna / .gb) или вставьте
-                последовательность.
-              </span>
-            </div>
-          )}
 
           {/* Paste textarea — appears only when source = «Вставить».
               Uses parseFile via a synthetic File on submit (handled
@@ -431,9 +434,9 @@ export default function AddModal({ open, onClose, onLaunchPreImport }) {
             </div>
           </FieldLabel>
 
-          {/* File / catalog modes — no textarea above, so the toggle stays at
-              the bottom of the body (paste mode renders it under the textarea). */}
-          {pickedSource !== 'paste' && autoAnnotateRow}
+          {/* Catalog records already carry canonical annotations. Showing the
+              homology toggle there would promise a pass this route never runs. */}
+          {pickedSource !== 'paste' && pickedSource !== 'catalog' && autoAnnotateRow}
         </div>
 
         <footer
@@ -459,6 +462,7 @@ export default function AddModal({ open, onClose, onLaunchPreImport }) {
             }}
           >Отмена</button>
           <button
+            ref={catalogOpenerRef}
             type="button"
             data-testid="add-modal-submit"
             onClick={onSubmit}
@@ -477,7 +481,34 @@ export default function AddModal({ open, onClose, onLaunchPreImport }) {
         </footer>
       </div>
 
-      {stubOpen && <CrossProjectStub onClose={() => setStubOpen(false)} />}
+      {crossProjectOpen && (
+        <CrossProjectStub
+          target={target}
+          onClose={() => {
+            restoreCrossProjectFocusRef.current = true;
+            setCrossProjectOpen(false);
+          }}
+          onImported={() => {
+            restoreCrossProjectFocusRef.current = false;
+            setCrossProjectOpen(false);
+            onClose?.();
+          }}
+        />
+      )}
+      {catalogOpen && (
+        <SnapGeneCatalogPicker
+          target={target}
+          onClose={() => {
+            restoreCatalogFocusRef.current = true;
+            setCatalogOpen(false);
+          }}
+          onImported={() => {
+            restoreCatalogFocusRef.current = false;
+            setCatalogOpen(false);
+            onClose?.();
+          }}
+        />
+      )}
     </div>
   );
 }

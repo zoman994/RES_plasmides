@@ -7,8 +7,8 @@
  *  3) framesMode='auto' hybrid: AA chars outside ORF have opacity 0.35
  *  4) framesMode='all' hybrid: all AA chars have opacity 1
  */
-import { describe, it, expect, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { describe, it, expect, afterEach, vi } from "vitest";
+import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import AATrack from "../tracks/AATrack";
 
 afterEach(cleanup);
@@ -34,6 +34,133 @@ const REGIONS = [
 ];
 
 describe("AATrack — K4", () => {
+  it("emits the same exact forward codon payload from the AA and either side cell", () => {
+    const onAAClick = vi.fn();
+    render(
+      <AATrack
+        fullSeq={PROTEIN_SEQ}
+        lineStart={0}
+        lineLen={PROTEIN_SEQ.length}
+        labelChars={8}
+        strategy="single"
+        framesMode="single"
+        orfRanges={orfRanges}
+        dominantCDS={dominant}
+        regions={REGIONS}
+        onAAClick={onAAClick}
+      />,
+    );
+    const methionine = screen.getAllByTestId("sequence-view-aa-char")[0];
+    fireEvent.click(methionine);
+    const expected = {
+      aa: "M", codon: "ATG", aaIndex: 1, strand: 1, frame: 0,
+      regionId: "demo-cds", genomicPositions: [0, 1, 2], displayAnchor: 1,
+    };
+    expect(onAAClick).toHaveBeenLastCalledWith(expected);
+
+    const side = screen.getAllByTestId("sequence-view-aa-side")
+      .find((cell) => cell.dataset.aaPos === "1");
+    fireEvent.click(side);
+    expect(onAAClick).toHaveBeenLastCalledWith(expected);
+  });
+
+  it("gives visible AA letters one mouse/Enter/Space action without keyboard-stopping filler cells", () => {
+    const onAAClick = vi.fn();
+    const { container } = render(
+      <AATrack
+        fullSeq={PROTEIN_SEQ}
+        lineStart={0}
+        lineLen={PROTEIN_SEQ.length}
+        labelChars={8}
+        strategy="single"
+        framesMode="single"
+        orfRanges={orfRanges}
+        dominantCDS={dominant}
+        regions={REGIONS}
+        onAAClick={onAAClick}
+      />,
+    );
+    const aaChars = screen.getAllByTestId("sequence-view-aa-char");
+    const methionine = aaChars[0];
+
+    fireEvent.click(methionine);
+    const expectedPayload = onAAClick.mock.calls[0][0];
+    onAAClick.mockClear();
+    fireEvent.keyDown(methionine, { key: "Enter" });
+    expect(onAAClick).toHaveBeenCalledTimes(1);
+    expect(onAAClick).toHaveBeenLastCalledWith(expectedPayload);
+    onAAClick.mockClear();
+    fireEvent.keyDown(methionine, { key: " " });
+
+    expect(onAAClick).toHaveBeenCalledTimes(1);
+    expect(onAAClick).toHaveBeenLastCalledWith(expectedPayload);
+    expect(methionine.getAttribute("role")).toBe("button");
+    expect(methionine.getAttribute("tabindex")).toBe("0");
+    const keyboardStops = [...container.querySelectorAll('[tabindex="0"]')];
+    expect(keyboardStops).toHaveLength(aaChars.length);
+    expect(keyboardStops.every((node) => node.getAttribute("data-testid") === "sequence-view-aa-char")).toBe(true);
+  });
+
+  it("emits reverse genomic positions in coding 5-prime to 3-prime order", () => {
+    const onAAClick = vi.fn();
+    const seq = "AAANN" + "TTATATCAT" + "GGGCC";
+    const regions = [{ id: "ampr-rev", type: "CDS", start: 5, end: 14, strand: -1 }];
+    render(
+      <AATrack
+        fullSeq={seq}
+        lineStart={0}
+        lineLen={seq.length}
+        labelChars={8}
+        strategy="single"
+        framesMode="single"
+        orfRanges={[]}
+        dominantCDS={null}
+        regions={regions}
+        onAAClick={onAAClick}
+      />,
+    );
+    fireEvent.click(screen.getAllByTestId("sequence-view-aa-char")
+      .find((cell) => cell.dataset.aa === "M"));
+    expect(onAAClick).toHaveBeenCalledWith({
+      aa: "M", codon: "ATG", aaIndex: 1, strand: -1, frame: 2,
+      regionId: "ampr-rev", genomicPositions: [13, 12, 11], displayAnchor: 12,
+    });
+  });
+
+  it("preserves all three non-contiguous genomic positions for a splice-crossing codon", () => {
+    const onAAClick = vi.fn();
+    const exon1 = "ATGA";
+    const intron = "GTCCCCAG";
+    const exon2 = "AATTT";
+    const seq = exon1 + intron + exon2;
+    const exon2Start = exon1.length + intron.length;
+    const regions = [
+      { id: "spliced", type: "CDS", level: "region", start: 0, end: seq.length, strand: 1 },
+      { id: "intron", type: "intron", level: "region", start: exon1.length, end: exon2Start, strand: 1 },
+    ];
+    render(
+      <AATrack
+        fullSeq={seq}
+        lineStart={0}
+        lineLen={seq.length}
+        labelChars={8}
+        strategy="single"
+        framesMode="single"
+        orfRanges={[]}
+        dominantCDS={null}
+        regions={regions}
+        onAAClick={onAAClick}
+      />,
+    );
+    fireEvent.click(screen.getAllByTestId("sequence-view-aa-char")
+      .find((cell) => cell.dataset.aa === "K"));
+    expect(onAAClick).toHaveBeenCalledWith(expect.objectContaining({
+      aa: "K", codon: "AAA", aaIndex: 2, strand: 1, frame: 0,
+      regionId: "spliced", genomicPositions: [3, exon2Start, exon2Start + 1],
+      displayAnchor: exon2Start,
+    }));
+  });
+
   it("1) strategy='single' renders ONE forward row with M as start codon", () => {
     render(
       <AATrack

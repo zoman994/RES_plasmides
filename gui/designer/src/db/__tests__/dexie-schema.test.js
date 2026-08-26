@@ -21,11 +21,17 @@ describe('K1 — Dexie schema v4 (M-X.7a v2 K1 bump from v3)', () => {
     await freshDB();
   });
 
-  it('opens schema with projects + containers + library + primers + snippets + commonFeatures + custom-enzyme tables', async () => {
+  // PRIMER-LIVE-1 bumped v7 -> v8. Additive: the SAME tables, plus the scope
+  // indexes that let a project record and a personal-inventory record with one
+  // raw id coexist instead of overwriting each other.
+  it('opens schema v8 with projects + containers + library + primers + snippets + commonFeatures + custom-enzyme tables', async () => {
     expect(db.tables.map(t => t.name).sort()).toEqual(
       ['commonFeatures', 'containers', 'customEnzymes', 'enzymeSets', 'library', 'primers', 'projects', 'snippets'],
     );
-    expect(db.verno).toBe(7);
+    expect(db.verno).toBe(8);
+    const primerIdx = db.table('primers').schema.indexes.map((i) => i.name);
+    expect(primerIdx).toContain('scope');
+    expect(primerIdx).toContain('rawId');
   });
 
   it('round-trips a project record via put/get', async () => {

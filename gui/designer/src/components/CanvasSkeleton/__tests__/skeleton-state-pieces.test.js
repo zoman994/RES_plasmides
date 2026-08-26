@@ -237,3 +237,54 @@ describe('T1 K5 router integration', () => {
     expect(next.pieces).toEqual(snap.pieces);
   });
 });
+
+/**
+ * PRIMER-LIVE-1 — the REAL reducer, not a helper.
+ *
+ * The «create PCR product» action ends in a CREATE_PIECE dispatch. If the
+ * reducer refuses the piece, everything upstream still looks like it worked:
+ * the resolver returned a product, the builder returned a piece, the modal
+ * confirmed — and no piece exists. So the reducer is what has to accept it.
+ */
+describe('PRIMER-LIVE-1 — CREATE_PIECE accepts an occurrence-authored PCR piece', () => {
+  const occPiece = (over = {}) => ({
+    name: 'amplicon',
+    sourceIds: ['c-1'],
+    ranges: [{ sourceId: 'c-1', start: 10, end: 50, orientation: 'forward' }],
+    origin: 'pcr-occurrences',
+    acquisitionMethod: 'pcr',
+    acquisitionParams: {
+      occurrenceKeys: ['f#1', 'r#1'],
+      productSequence: 'ACGT',
+    },
+    ...over,
+  });
+
+  it('creates the piece instead of silently emitting an error toast', () => {
+    const next = piecesReducer(base(), { type: 'CREATE_PIECE', piece: occPiece() });
+    expect(next.pieces).toHaveLength(1);
+    expect(next.pieces[0].origin).toBe('pcr-occurrences');
+    expect(next.pieces[0].acquisitionMethod).toBe('pcr');
+  });
+
+  it('accepts the origin-crossing product as two ranges on one source', () => {
+    const next = piecesReducer(base(), {
+      type: 'CREATE_PIECE',
+      piece: occPiece({
+        sourceIds: ['c-1', 'c-1'],
+        ranges: [
+          { sourceId: 'c-1', start: 380, end: 400, orientation: 'forward' },
+          { sourceId: 'c-1', start: 0, end: 40, orientation: 'forward' },
+        ],
+      }),
+    });
+    expect(next.pieces).toHaveLength(1);
+    expect(next.pieces[0].ranges).toHaveLength(2);
+  });
+
+  it('routes through the top-level skeletonReducer too', () => {
+    const st = { ...buildInitialState(), containers: [C] };
+    const next = skeletonReducer(st, { type: 'CREATE_PIECE', piece: occPiece() });
+    expect(next.pieces).toHaveLength(1);
+  });
+});

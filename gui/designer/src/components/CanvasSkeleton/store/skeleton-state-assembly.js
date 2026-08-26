@@ -24,6 +24,7 @@ import { buildAssemblyPrimer, detectCrossBoundary } from '../lib/assembly-primer
 import { resolveManualJunctionTail } from '../lib/primer-derive';
 import { routeAssemblyWriteToZone } from '../lib/zone-assembly-write-adapter';
 import { draftFromZone } from '../lib/zone-pieces-to-dag';
+import { t } from '../../../i18n';
 
 // A3 DEC-CANVAS-ASM-PRIMER-02 — pair fwd+rev when their selections
 // overlap ≥50% and share the same source-attachment kind.
@@ -40,6 +41,54 @@ function findPairId(existing, primer) {
     if (ov / minLen >= 0.5) return p.pairId;
   }
   return null;
+}
+
+// PRIMER-TAIL-SAVE-1 — letters only, upper-cased (matches primer-identity).
+function cleanOligo(s) {
+  return typeof s === 'string' ? s.replace(/[^A-Za-z]/g, '').toUpperCase() : '';
+}
+
+// PRIMER-TAIL-SAVE-1 — resolve the canonical oligo split a WRITE carries.
+// The SequenceView modal submits the split explicitly (sequence = tail +
+// binding, plus tail / binding / bindingModel); the auto path (Ctrl+R) submits
+// none, and a legacy caller may submit only a full sequence. Fallbacks (`fb`)
+// come from the anchor on create, or the existing record on edit, so a partial
+// action never invents or re-anchors bases. Returns { conflict } when a stated
+// full sequence disagrees with tail + binding (fail closed — bio-invariants).
+function resolveWrittenOligo(action, fb = {}) {
+  const tail = cleanOligo(action.tail);
+  const binding = cleanOligo(action.binding);
+  const sequence = cleanOligo(action.sequence);
+  const bindingModel = action.bindingModel === 'aligned-v1' ? 'aligned-v1' : null;
+
+  // (1) Explicit canonical split — the tail is a 5′ overhang, kept OUT of the
+  //     binding; full = tail + binding. A stated sequence must agree exactly.
+  if (binding) {
+    const full = `${tail}${binding}`;
+    if (sequence && sequence !== full) return { conflict: true };
+    return {
+      edited: true, sequence: full, binding, tail, bindingModel,
+    };
+  }
+  // (2) Legacy full-oligo override (no split stated) — the whole supplied oligo
+  //     IS the binding; tail is cleared to empty. Retaining a fallback junction
+  //     tail would make sequence ≠ tail + binding, an immediate bio-invariant
+  //     violation. Never re-anchor bases from the prior record.
+  if (sequence) {
+    return {
+      edited: true, sequence, binding: sequence, tail: '', bindingModel,
+    };
+  }
+  // (3) Nothing restated — the anchor/record split stands (auto write, or a
+  //     name-/Tm-only edit).
+  const fbBinding = cleanOligo(fb.binding);
+  return {
+    edited: false,
+    sequence: cleanOligo(fb.sequence) || fbBinding,
+    binding: fbBinding,
+    tail: cleanOligo(fb.tail),
+    bindingModel,
+  };
 }
 
 export function buildInitialAssemblyState() {
@@ -291,6 +340,60 @@ export function assemblyReducer(state, action) {
 
     // ── G2 DEC-CANVAS-ASM-19/20 — assembly primers ──────────────────
     case 'WRITE_ASSEMBLY_PRIMER': {
+      const map = { ...(state.assemblyDraftPrimers || {}) };
+      const cur = map[action.draftId] || [];
+
+      // PRIMER-TAIL-SAVE-1 — a `primerId` means the biolog re-opened an existing
+      // primer, changed it (e.g. added a 5′ tail) and pressed Save. That is an
+      // EDIT of the same record — never a second primer. Update in place,
+      // preserving id / pairId / range / source anchor / provenance; only the
+      // physical split (sequence / tail / binding / bindingModel), name, Tm and
+      // status change. No `primerId` → a genuine create (below).
+      if (action.primerId) {
+        const idx = cur.findIndex((p) => p.id === action.primerId);
+        if (idx >= 0) {
+          const existing = cur[idx];
+          const written = resolveWrittenOligo(action, {
+            tail: existing.tail,
+            binding: existing.bindingSequence,
+            sequence: existing.sequence,
+          });
+          // Fail closed — a sequence that disagrees with tail + binding is not
+          // silently re-split or re-anchored (bio-invariants: no invented bases).
+          if (written.conflict) {
+            return warnToast(state, t('pcr.product.blocked.tail-binding-conflict'));
+          }
+          const nm = (action.name && String(action.name).trim())
+            ? String(action.name).trim() : existing.name;
+          // B — tm transport: explicit finite → replace; explicit null → clear
+          // (needed for indel/mismatch models where Tm is undefined); omitted
+          // (undefined) → preserve. The 5′ tail is never an annealing input.
+          const nextTm = action.tm === undefined
+            ? existing.tm
+            : (Number.isFinite(action.tm) ? action.tm : null);
+          const next = {
+            ...existing,
+            sequence: written.sequence,
+            bindingSequence: written.binding,
+            tail: written.tail,
+            tm: nextTm,
+            bindingModel: written.bindingModel || existing.bindingModel || null,
+            name: nm,
+            label: nm,
+            status: 'edited',
+            updatedAt: Date.now(),
+          };
+          const nextArr = cur.slice();
+          nextArr[idx] = next;
+          map[action.draftId] = nextArr;
+          return { ...state, assemblyDraftPrimers: map };
+        }
+        // A — primerId given but no matching record (stale edit target). Fail
+        // closed: do NOT create a new primer and do NOT mutate the list.
+        // A stale id must not silently invent a duplicate.
+        return state;
+      }
+
       // T6 K10 — dual-resolve: a zone target builds a pieces-shaped
       // draft-like for the sequence/boundaries; primers are still
       // stored under assemblyDraftPrimers[draftId] (id-keyed map works
@@ -328,16 +431,23 @@ export function assemblyReducer(state, action) {
       const built = buildAssemblyPrimer({
         assemblySequence: seq, boundaries, range: { start: lo, end: hi }, direction, tailOverride,
       });
-      const map = { ...(state.assemblyDraftPrimers || {}) };
-      const cur = map[action.draftId] || [];
       const n = cur.filter((p) => p.direction === direction).length + 1;
       const autoName = `asm-${direction === 'reverse' ? 'rev' : 'fwd'}-${n}`;
       // 18.05.2026 — primer-from-selection modal: optional name + an
-      // edited PSO override. Empty/absent → auto (back-compat).
+      // edited override. Empty/absent → auto (back-compat).
       const name = (action.name && String(action.name).trim())
         ? String(action.name).trim() : autoName;
-      const editedSeq = typeof action.sequence === 'string'
-        ? action.sequence.replace(/[^a-zA-Z]/g, '').toUpperCase() : '';
+      // PRIMER-TAIL-SAVE-1 — honour the modal's explicit split so a written 5′
+      // tail is stored as an overhang, not folded into the binding region. The
+      // anchor supplies the fallbacks for the auto / legacy-override paths.
+      const written = resolveWrittenOligo(action, {
+        tail: built.tail,
+        binding: built.bindingSequence,
+        sequence: built.sequence,
+      });
+      if (written.conflict) {
+        return warnToast(state, t('pcr.product.blocked.tail-binding-conflict'));
+      }
       const pairId = findPairId(cur, { direction, source: built.source })
         || `pair-${uuidv7()}`;
       const primer = {
@@ -346,8 +456,8 @@ export function assemblyReducer(state, action) {
         pairId,
         range: { start: lo, end: hi },
         direction,
-        sequence: editedSeq || built.sequence,
-        bindingSequence: editedSeq || built.bindingSequence,
+        sequence: written.sequence,
+        bindingSequence: written.binding,
         tm: built.tm,
         gc: built.gc,
         name,
@@ -356,10 +466,11 @@ export function assemblyReducer(state, action) {
         // Node A canon (§4/§5.3) — provenance lives only in `source`; the
         // old `origin` field is removed (it was a string here but an object
         // in deriveAutoPrimers — one name, two types).
-        tail: built.tail,
+        tail: written.tail,
+        bindingModel: written.bindingModel,
         autoMode: 'manual',
         mutated: false,
-        status: editedSeq ? 'edited' : 'auto',
+        status: written.edited ? 'edited' : 'auto',
         notes: '',
         createdAt: Date.now(),
         updatedAt: Date.now(),

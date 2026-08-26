@@ -49,6 +49,10 @@ export default function AnnotationsTab({
   // viewer incl. this embedded Annotator preview (Игорь). Host
   // (Library/Container) forwards its useEntryPrimers pair; optional.
   primers,
+  // ANN-0L C2 — pass-through: which molecule, and which version of it, the
+  // embedded annotator preview is showing.
+  entryId = null,
+  documentHash = null,
   onWritePrimer,
   onDeletePrimer,
   // «Убрать дубли» (Игорь 17.06) — count of redundant overlapping annotations
@@ -131,6 +135,8 @@ export default function AnnotationsTab({
         pendingScroll={pendingScroll}
         onPendingScrollHandled={onPendingScrollHandled}
         primers={primers}
+        entryId={entryId}
+        documentHash={documentHash}
         onWritePrimer={onWritePrimer}
         onDeletePrimer={onDeletePrimer}
       />

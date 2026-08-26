@@ -159,3 +159,52 @@ describe('T1 K2 validateUpdate', () => {
     expect(r.code).toBe('INVALID_RANGE');
   });
 });
+
+/**
+ * PRIMER-LIVE-1 — a piece authored from two chosen primer landings.
+ *
+ * The origin has to be in the enum or `validateCreate` rejects the piece and
+ * the whole «create PCR product» action is a silent no-op: the button appears
+ * to work, a toast says nothing useful, and no piece is ever made.
+ */
+describe('PRIMER-LIVE-1 — pcr-occurrences origin', () => {
+  it('accepts a piece authored from two chosen landings', () => {
+    const raw = goodRaw({
+      origin: 'pcr-occurrences',
+      acquisitionMethod: 'pcr',
+      acquisitionParams: { occurrenceKeys: ['f#1', 'r#1'] },
+    });
+    expect(validateCreate(stateWith(), raw)).toEqual({ ok: true });
+  });
+
+  it('still rejects an origin nobody defined', () => {
+    const raw = goodRaw({ origin: 'pcr-vibes' });
+    expect(validateCreate(stateWith(), raw).code).toBe('INVALID_ORIGIN');
+  });
+
+  it('accepts an origin-crossing product as TWO ranges on the same source', () => {
+    // A ring cannot be one `start > end` range — the invariant forbids it, and
+    // rightly so. The wrap is two real spans: [hi..len] and [0..lo].
+    const raw = goodRaw({
+      origin: 'pcr-occurrences',
+      acquisitionMethod: 'pcr',
+      acquisitionParams: { occurrenceKeys: ['f#1', 'r#1'] },
+      sourceIds: ['c-1', 'c-1'],
+      ranges: [
+        { sourceId: 'c-1', start: 380, end: 400, orientation: 'forward' },
+        { sourceId: 'c-1', start: 0, end: 40, orientation: 'forward' },
+      ],
+    });
+    expect(validateCreate(stateWith(), raw)).toEqual({ ok: true });
+  });
+
+  it('rejects a wrap smuggled in as one inverted range', () => {
+    const raw = goodRaw({
+      origin: 'pcr-occurrences',
+      acquisitionMethod: 'pcr',
+      acquisitionParams: { occurrenceKeys: ['f#1', 'r#1'] },
+      ranges: [{ sourceId: 'c-1', start: 380, end: 40, orientation: 'forward' }],
+    });
+    expect(validateCreate(stateWith(), raw).code).toBe('INVALID_RANGE');
+  });
+});

@@ -173,7 +173,28 @@ export default function SingleInspector({
 
   // 18.05.2026 — primer redesign on every SequenceView, Library
   // included. Primers persist to the unified pool, entry-scoped.
-  const { primers: entryPrimers, onWritePrimer: onWriteEntryPrimer, onDeletePrimer: onDeleteEntryPrimer } = useEntryPrimers(item);
+  const {
+    primers: entryPrimers,
+    // PRIMER-LIVE-1 — the freezer, and the two actions that touch it. Without
+    // these reaching the viewer the «already in the lab» answer had nothing to
+    // answer from, and reuse had nothing to call.
+    labPrimers: entryLabPrimers,
+    onWritePrimer: onWriteEntryPrimer,
+    onDeletePrimer: onDeleteEntryPrimer,
+    onReuseLabPrimer: onReuseEntryLabPrimer,
+  } = useEntryPrimers(item);
+
+  // ANN-0L C2 — which document the viewers are showing. A primer's source site
+  // is evidence about ONE version of ONE molecule, so the viewer needs both the
+  // entry and its current content identity to decide whether the coordinates
+  // still describe what is on screen. While an unsaved edit buffer is in play
+  // there is no saved identity to verify against, so the hash is deliberately
+  // null and every targeted source site fails closed rather than showing a
+  // position that may already have moved.
+  const viewerEntryId = item?._libraryEntryId || item?.id || null;
+  const viewerDocumentHash = edits?.editedSequence != null
+    ? null
+    : (item?.resourceHash || item?.payload?.resourceHash || null);
   // SPEC_COMMON_FEATURES DEC-CF-05 — «Add to common features» in the Library
   // inspector (an IN viewer). The hook reads the overlay slice; the consumer
   // gate (passing these to SequenceTab) keeps it out of the OUT viewers.
@@ -667,6 +688,7 @@ export default function SingleInspector({
               onNavigateToFeature={onNavigateToFeature}
               selectedRegionId={selectedRegionId}
               onApplyOrigin={onApplyOrigin}
+              primers={entryPrimers}
             />
           </div>
         )}
@@ -701,6 +723,10 @@ export default function SingleInspector({
               editable={editable}
               onSequenceEdit={onSequenceEditFromView}
               primers={entryPrimers}
+              entryId={viewerEntryId}
+              documentHash={viewerDocumentHash}
+              labPrimers={entryLabPrimers}
+              onReuseLabPrimer={onReuseEntryLabPrimer}
               onWritePrimer={onWriteEntryPrimer}
               onDeletePrimer={onDeleteEntryPrimer}
               onPromoteToCommon={onPromoteToCommon}
@@ -743,6 +769,10 @@ export default function SingleInspector({
               pendingScroll={activeTab === 'annotations' ? pendingScroll : null}
               onPendingScrollHandled={onPendingScrollHandled}
               primers={entryPrimers}
+              entryId={viewerEntryId}
+              documentHash={viewerDocumentHash}
+              labPrimers={entryLabPrimers}
+              onReuseLabPrimer={onReuseEntryLabPrimer}
               onWritePrimer={onWriteEntryPrimer}
               onDeletePrimer={onDeleteEntryPrimer}
             />

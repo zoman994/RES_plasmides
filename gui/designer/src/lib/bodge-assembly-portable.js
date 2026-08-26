@@ -107,11 +107,24 @@ export async function importBodgeAssembly(blob, currentState) {
   const merged = await readPrimerPool(
     JSON.stringify(incomingPool),
     out.primers,
-    { fallbackProjectId: incoming.projectMeta?.id || 'imported' },
+    {
+      fallbackProjectId: incoming.projectMeta?.id || 'imported',
+      // ANN-0L — the portable subset keeps its sequence-level merge, but only
+      // because it is asked for here. The full-project container never is.
+      dedupBySequence: true,
+    },
   );
-  out.primers = merged.pool;
   report.primersAdded = merged.mergedCount;
   report.primersDedup = merged.dedupCount;
+  // ANN-0L C4 — the dedup retired some incoming ids. Everything that named
+  // them has to follow, or the imported assembly refers to primers that are
+  // not in the file and nothing can resolve them.
+  const primerRemap = merged.remap || new Map();
+  report.primerRemap = primerRemap;
+  const toKept = (id) => (id == null ? id : (primerRemap.get(id) || id));
+  out.primers = merged.pool.map((p) => (p && p.kind === 'pair'
+    ? { ...p, forwardId: toKept(p.forwardId), reverseId: toKept(p.reverseId) }
+    : p));
 
   // 3. Remap incoming pieces / operations / junctions to use deduped IDs.
   const remap = report.refRemap;
@@ -121,6 +134,11 @@ export async function importBodgeAssembly(blob, currentState) {
   })));
   out.operations.push(...(incoming.operations || []).map(o => ({
     ...o,
+    // A PCR operation names the primer pair it runs with; a retired id there
+    // is a dangling reference exactly like one on the pair itself.
+    params: o.params?.primerPairId
+      ? { ...o.params, primerPairId: toKept(o.params.primerPairId) }
+      : o.params,
     inputs: (o.inputs || []).map(id => remap.get(id) || id),
     outputs: (o.outputs || []).map(id => remap.get(id) || id),
     materializedClones: o.materializedClones?.map(c => ({

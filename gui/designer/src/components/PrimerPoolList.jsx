@@ -15,6 +15,7 @@ import { Icon } from './icons/Icon';
 import PrimerStatusControl from './PrimerStatusControl';
 import PrimerBindingSites from './PrimerBindingSites';
 import { ALL_STATUSES, statusLabel, statusRank } from '../lib/primer-status';
+import { t, tf } from '../i18n';
 
 const FILTERS = [
   { value: 'active', label: 'Активные (без архива)' },
@@ -230,10 +231,29 @@ function PrimerPoolRow({ primer: p, scopeLabel, onPromote, onDelete, onRename, o
       </div>
 
       <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 10, fontSize: 10.5, color: 'var(--text-secondary, #57534e)' }}>
-        <span style={{ fontFamily: 'ui-monospace, monospace', color: 'var(--text-primary, #1c1917)', wordBreak: 'break-all' }}>
-          {(p.sequence || '').toUpperCase().slice(0, 60)}{(p.sequence || '').length > 60 ? '…' : ''}
+        {/* ANN-0L — an unknown full oligo is stated, not rendered as a blank
+            cell. A source file can declare where a primer binds without ever
+            giving the oligo itself, and that record still belongs here. */}
+        {p.sequence ? (
+          <>
+            <span style={{ fontFamily: 'ui-monospace, monospace', color: 'var(--text-primary, #1c1917)', wordBreak: 'break-all' }}>
+              {p.sequence.toUpperCase().slice(0, 60)}{p.sequence.length > 60 ? '…' : ''}
+            </span>
+            <span style={{ whiteSpace: 'nowrap' }}>{p.length || p.sequence.length} nt</span>
+          </>
+        ) : (
+          <span
+            data-testid={`primer-pool-noseq-${p.id}`}
+            style={{ fontStyle: 'italic', color: 'var(--text-tertiary, #a8a29e)' }}
+          >
+            {t('primer.sequenceUnknown')}
+          </span>
+        )}
+        <span data-testid={`primer-pool-sites-${p.id}`} style={{ whiteSpace: 'nowrap' }}>
+          {Array.isArray(p.sites) && p.sites.length > 0
+            ? tf('primer.sitesCount', { n: p.sites.length })
+            : t('primer.sitesNone')}
         </span>
-        <span style={{ whiteSpace: 'nowrap' }}>{p.length || (p.sequence || '').length} nt</span>
         {typeof p.tm === 'number' && <span style={{ whiteSpace: 'nowrap' }}>Tm {p.tm}°C</span>}
       </div>
 

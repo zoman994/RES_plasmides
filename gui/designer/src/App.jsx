@@ -23,12 +23,13 @@ import ProjectInfoModal from './components/ProjectInfoModal';
 import SequenceSearchPopover from './components/SequenceSearchPopover';
 import { ToastStack } from './components/Toast';
 import PromptModal from './components/PromptModal';
-import { openBodgeFilePicker, pickSaveAs, saveBlobToHandle } from './lib/file-system';
-import { writeBodge, writeBodgeV2, readBodge } from './lib/bodge-zip';
+import { pickSaveAs, saveBlobToHandle } from './lib/file-system';
 // A1/A2 — bridge the CanvasSkeleton assembly snapshot ↔ the .bodge v2 state so
 // save/open actually round-trip the assembly (not just projectSlice meta).
-import { loadSnapshot, saveSnapshot } from './components/CanvasSkeleton/store/skeleton-persistence';
-import { skeletonToCanonical, canonicalToSkeleton } from './components/CanvasSkeleton/lib/skeleton-bodge-bridge';
+import { loadSnapshot } from './components/CanvasSkeleton/store/skeleton-persistence';
+import { saveProjectToBodgeBlob, primersForProject } from './lib/project-bodge-state';
+// BG-003 — the one controller that owns every full-project `.bodge` Open.
+import { openBodgeIntoLibrary } from './components/StartScreen/lib/open-bodge';
 import { flushSkeletonSnapshot } from './components/CanvasSkeleton/store/skeleton-context';
 import { listenForceRelease } from './lib/multi-tab-lock';
 import { runHotkeyResolver, useHotkey } from './lib/hotkeys';
@@ -47,8 +48,6 @@ export default function App() {
   const navStack = useStore(s => s.canvas.navStack);
   const currentProjectId = useStore(s => s.currentProjectId);
   const project = useStore(s => (currentProjectId ? s.projects[currentProjectId] : null));
-  const openProjectFromFileData = useStore(s => s.openProjectFromFileData);
-  const addLibraryEntriesBulk = useStore(s => s.addLibraryEntriesBulk);
   const registerSavedFile = useStore(s => s.registerSavedFile);
   const showToast = useStore(s => s.showToast);
   const flushAutosave = useStore(s => s.flushAutosave);
@@ -115,50 +114,17 @@ export default function App() {
     s.openProjectInfo();
   }, []);
 
-  const handleOpen = useCallback(async () => {
-    let pick;
-    try {
-      pick = await openBodgeFilePicker();
-    } catch (e) {
-      showToast(STRINGS.toast.openFileFailed(e.message || e), 'error');
-      return;
-    }
-    if (!pick) return;
-    try {
-      const { project: parsed, state: canonicalState, libraryEntries, warnings } = await readBodge(pick.file);
-      // Симметрия с Sidebar onOpenBodge — Ctrl+O тоже сидит библиотеку
-      // встроенными entries. Отсутствующий projectId привязываем к
-      // загружаемому проекту (типично для self-contained .bodge).
-      const linkedEntries = (libraryEntries || []).map((e) => ({
-        ...e,
-        projectId: e.projectId || parsed.id,
-      }));
-      if (linkedEntries.length > 0) {
-        try { await addLibraryEntriesBulk(linkedEntries); }
-        catch (e) { showToast(`Не все плазмиды загружены: ${e?.message || e}`, 'warning'); }
-      }
-      // A2 — seed the CanvasSkeleton snapshot for this project BEFORE switching to
-      // it, so the assembly editor rehydrates the saved assembly on mount (was:
-      // only project meta restored → empty assembly editor on every open).
-      if (canonicalState) {
-        try {
-          const skel = canonicalToSkeleton(canonicalState);
-          if (skel) await saveSnapshot(skel, parsed.id);
-        } catch { /* non-fatal — degrade to an empty assembly */ }
-      }
-      await openProjectFromFileData({
-        project: parsed,
-        fileHandle: pick.handle,
-        fileName: pick.fileName,
-        lastModified: pick.lastModified,
-      });
-      if (warnings && warnings.length) {
-        showToast(warnings[0], 'warning');
-      }
-    } catch (e) {
-      showToast(e.message || String(e), 'error');
-    }
-  }, [openProjectFromFileData, addLibraryEntriesBulk, showToast]);
+  // BG-003 — Ctrl+O delegates to the one `.bodge` Open controller instead of
+  // keeping an inline copy of it. The copy was the only route that restored the
+  // Canvas snapshot and the primer pool, so the same file opened as a different
+  // project depending on which entry point the user used — and its silent catch
+  // let a valid assembly degrade to an empty one under a successful-looking open.
+  // Ctrl+O keeps its own semantics: it does not reroute to the Library and it
+  // stays silent on success.
+  const handleOpen = useCallback(() => openBodgeIntoLibrary({
+    navigateToLibrary: false,
+    successToast: false,
+  }), []);
 
   const handleSave = useCallback(async () => {
     const id = useStore.getState().currentProjectId;
@@ -174,21 +140,15 @@ export default function App() {
       // H1 (audit) — flush the debounced skeleton write so we serialize the LATEST
       // edit, not a ≤500ms-stale snapshot (Ctrl+S right after an edit lost it).
       try { await flushSkeletonSnapshot(); } catch { /* best-effort */ }
+      // ANN-0M root A — `loadSnapshot` may legitimately return null, and that
+      // changes nothing about what the file must contain. One collector owns
+      // the decision; there is no primer-aware and primer-blind path here.
       const snap = await loadSnapshot(id);
-      if (snap) {
-        const canonical = skeletonToCanonical(snap, {
-          id: proj.id,
-          name: proj.name,
-          description: proj.description,
-          tags: proj.tags,
-          author: proj.agent,
-          createdAt: proj.createdAt,
-          updatedAt: proj.updatedAt,
-        });
-        blob = await writeBodgeV2(canonical);
-      } else {
-        blob = writeBodge(proj); // no assembly yet → v1 meta-only is correct
-      }
+      blob = await saveProjectToBodgeBlob({
+        project: proj,
+        snapshot: snap,
+        primers: primersForProject(useStore.getState().primersById, id),
+      });
     } catch (e) {
       showToast(STRINGS.toast.saveFailed(e.message || e), 'error');
       return;

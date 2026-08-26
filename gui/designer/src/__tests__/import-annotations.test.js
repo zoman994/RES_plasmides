@@ -250,3 +250,201 @@ describe('normalizeDetailType', () => {
     expect(normalizeDetailType('some_custom')).toBe('some_custom');
   });
 });
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ANN-0J Block 2 — ONE qualifier matrix.
+//
+// Provenance must survive on EVERY level, not only on the two the importer
+// happened to shape first. An arbitrary key (a lab's own `/plasmid_id`), a
+// repeated key and a valueless flag are checked on region, detail, point and
+// the unknown/fallback branch in a single pass.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const RICH_Q = {
+  label: 'probe',
+  plasmid_id: 'LAB-7781',              // arbitrary, not on any allow-list
+  note: ['first', 'second'],           // repeated → ordered array
+  pseudo: true,                        // valueless flag
+  db_xref: 'GO:0004339',
+};
+
+const DOC = { length: 5000, topology: 'linear' };
+
+describe('ANN-0J/2 — qualifiers survive on every annotation level', () => {
+  const cases = [
+    ['region', 'CDS', 100, 400],
+    ['detail', 'sig_peptide', 100, 160],
+    ['point', 'variation', 200, 201],
+    // unknown INSDC type → the heuristic fallback branch
+    ['fallback', 'operon', 300, 340],
+  ];
+
+  it.each(cases)('%s keeps arbitrary, repeated and flag qualifiers', (label, type, start, end) => {
+    const { annotations } = importFeatures(
+      [feat(type, start, end, { ...RICH_Q })], 5000, 'genbank', DOC,
+    );
+    const ann = annotations.find((a) => a.name === 'probe');
+    expect(ann, `${label}: annotation missing`).toBeTruthy();
+
+    expect(ann.qualifiers, `${label}: qualifiers dropped`).toBeTruthy();
+    expect(ann.qualifiers.plasmid_id).toBe('LAB-7781');
+    expect(ann.qualifiers.note).toEqual(['first', 'second']);
+    expect(ann.qualifiers.pseudo).toBe(true);
+    expect(ann.qualifiers.db_xref).toBe('GO:0004339');
+  });
+
+  it('mapped fields are not duplicated into qualifiers but survive elsewhere', () => {
+    const { annotations } = importFeatures([feat('CDS', 100, 400, {
+      label: 'mapped', ApEinfo_fwdcolor: '#ff0000', primer_seq: 'ACGT',
+    })], 5000, 'genbank', DOC);
+    const ann = annotations.find((a) => a.name === 'mapped');
+
+    // label → name, colour → color: preserved, just not repeated as qualifiers
+    expect(ann.name).toBe('mapped');
+    expect(ann.color).toBe('#ff0000');
+    expect(ann.qualifiers?.label).toBeUndefined();
+    expect(ann.qualifiers?.ApEinfo_fwdcolor).toBeUndefined();
+    expect(ann.qualifiers?.primer_seq).toBeUndefined();
+  });
+
+  it('prototype-polluting keys never reach the model', () => {
+    const hostile = { label: 'evil' };
+    hostile.__proto__ = 'x';           // eslint-disable-line no-proto
+    hostile.constructor = 'y';
+    hostile.prototype = 'z';
+    const { annotations } = importFeatures(
+      [feat('CDS', 100, 400, hostile)], 5000, 'genbank', DOC,
+    );
+    const ann = annotations.find((a) => a.name === 'evil');
+    const q = ann.qualifiers || {};
+
+    expect(Object.prototype.hasOwnProperty.call(q, 'constructor')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(q, 'prototype')).toBe(false);
+    expect({}.polluted).toBeUndefined();
+  });
+
+  it('non-JSON-safe values are refused rather than persisted', () => {
+    const { annotations } = importFeatures([feat('CDS', 100, 400, {
+      label: 'fn', weird: () => 1, nested: { a: 1 }, ok: 'kept',
+    })], 5000, 'genbank', DOC);
+    const q = annotations.find((a) => a.name === 'fn').qualifiers || {};
+
+    expect(q.ok).toBe('kept');
+    expect(q.weird).toBeUndefined();
+    expect(q.nested).toBeUndefined();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ANN-0J Block 3 (model half) — identity, not name.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('ANN-0J/3 — a rejected primer never deletes a valid namesake', () => {
+  // ANN-0L C1 supersedes the ANN-0J assumption that a refused location also
+  // deletes the primer. The gate judges COORDINATES; the oligo and its
+  // provenance are separate facts it never examined. What ANN-0J root 4
+  // actually protected — that refusing one `P` must not take an unrelated `P`
+  // with it — still holds and is asserted below.
+  it('keeps BOTH `P` records, and marks only the refused one as unusable', () => {
+    const good = feat('primer_bind', 100, 118, { label: 'P', primer_seq: 'ACGTACGTACGTACGTAC' });
+    // same NAME, impossible location → refused by the gate
+    const bad = feat('primer_bind', 9000, 9018, { label: 'P', primer_seq: 'TTTTTTTTTTTTTTTTTT' });
+
+    const { primers, rejected, annotations } = importFeatures([good, bad], 5000, 'genbank', DOC);
+
+    expect(rejected.some((r) => r.name === 'P')).toBe(true);
+    // the ANNOTATION is refused — exactly one `P` is drawable
+    expect(annotations.filter((a) => a.name === 'P')).toHaveLength(1);
+    // …while both oligos survive as records, each keeping its own sequence
+    expect(primers).toHaveLength(2);
+    const seqs = primers.map((p) => p.sequence).sort();
+    expect(seqs).toEqual(['ACGTACGTACGTACGTAC', 'TTTTTTTTTTTTTTTTTT']);
+    const refused = primers.find((p) => p.sequence === 'TTTTTTTTTTTTTTTTTT');
+    expect(refused.locationRejected).toBe(true);
+    expect(refused.start).toBe(null);
+    // the valid neighbour is untouched by its namesake's refusal
+    const kept = primers.find((p) => p.sequence === 'ACGTACGTACGTACGTAC');
+    expect(kept.locationRejected).toBe(false);
+    expect(kept.start).toBe(100);
+  });
+
+  it('a refused primer_bind yields a record with no usable location', () => {
+    const bad = feat('primer_bind', 9000, 9018, { label: 'onlyBad', primer_seq: 'ACGT' });
+    const { primers, annotations } = importFeatures([bad], 5000, 'genbank', DOC);
+    // the row exists so the user can see and manage the oligo…
+    expect(primers).toHaveLength(1);
+    expect(primers[0].sequence).toBe('ACGT');
+    // …and nothing is drawn anywhere on the molecule
+    expect(primers[0].locationRejected).toBe(true);
+    expect(primers[0].location).toBe(null);
+    expect(annotations).toHaveLength(0);
+  });
+
+  it('carries the note through so the supported sequence form can be read', () => {
+    const p = feat('primer_bind', 100, 118, {
+      label: 'noted', note: 'sequence: ACGTACGTACGTACGTAC',
+    });
+    const { primers } = importFeatures([p], 5000, 'genbank', DOC);
+    expect(primers[0].note).toBe('sequence: ACGTACGTACGTACGTAC');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ANN-0L C1 - a refused location rejects the ANNOTATION, never the primer.
+//
+// The gate exists so an out-of-range or reversed span is not drawn on a
+// molecule it does not describe. Deleting the whole primer as well threw away
+// the oligo and its provenance - facts the bad coordinates never touched.
+// ---------------------------------------------------------------------------
+describe('ANN-0L C1 - a primer_bind with an unusable location', () => {
+  const SEQ = 'ACGT'.repeat(25); // 100 nt
+
+  const features = [
+    {
+      type: 'primer_bind', name: 'bad-locus',
+      start: 90, end: 400,                      // runs off the end of a linear molecule
+      strand: 1,
+      qualifiers: { primer_seq: 'GGGGCCCCAAAA', note: 'ordered 2026-04' },
+    },
+    {
+      type: 'primer_bind', name: 'good-locus',
+      start: 10, end: 22, strand: 1,
+      qualifiers: { primer_seq: 'ACGTACGTACGT' },
+    },
+  ];
+
+  function run() {
+    return importFeatures(features, SEQ.length, 'genbank', { length: SEQ.length, topology: 'linear' });
+  }
+
+  it('keeps the primer record even though its annotation was refused', () => {
+    const { primers } = run();
+    expect(primers.map((p) => p.name)).toContain('bad-locus');
+  });
+
+  it('keeps the oligo and its provenance', () => {
+    const { primers } = run();
+    const bad = primers.find((p) => p.name === 'bad-locus');
+    expect(bad.sequence).toBe('GGGGCCCCAAAA');
+    expect(bad.note).toBe('ordered 2026-04');
+  });
+
+  it('marks the location as unusable rather than passing bad coordinates on', () => {
+    const { primers } = run();
+    const bad = primers.find((p) => p.name === 'bad-locus');
+    // no usable site: the row exists, the glyph does not
+    expect(bad.locationRejected).toBe(true);
+  });
+
+  it('still refuses the annotation itself', () => {
+    const { annotations } = run();
+    expect(annotations.map((a) => a.name)).not.toContain('bad-locus');
+  });
+
+  it('leaves the valid neighbour untouched', () => {
+    const { primers, annotations } = run();
+    expect(primers.map((p) => p.name)).toContain('good-locus');
+    expect(annotations.map((a) => a.name)).toContain('good-locus');
+  });
+});

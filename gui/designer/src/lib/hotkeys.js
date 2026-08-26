@@ -137,6 +137,20 @@ export const HOTKEYS = Object.freeze({
     label: 'PCR: обратный праймер из выделения',
     allowInInput: true,
   },
+  // PRIMER-LIVE-1 — bare «E» edits the selected primer occurrence, the
+  // keyboard twin of double-click (ui-interactions: E is this project's edit
+  // key). `alt`/`shift`/`ctrl` are pinned so it never cross-matches a chord,
+  // and it is not allowInInput: typing an «e» into a name field must stay an
+  // «e».
+  'primer-edit': {
+    keys: {
+      mac: { meta: false, ctrl: false, alt: false, shift: false, key: 'e' },
+      other: { ctrl: false, alt: false, shift: false, key: 'e' },
+    },
+    scope: 'global',
+    label: 'Редактировать выбранный праймер',
+    allowInInput: false,
+  },
   // T5 DEC-T5-02 — bare «P» marks the selection as a piece. Not
   // allowInInput (R-T5-1: must not fire while the biolog types a name).
   'piece-create': {
@@ -278,6 +292,12 @@ function _isInInputElement(target) {
   return false;
 }
 
+function _blocksGlobalHotkeys(target) {
+  if (!target) return false;
+  const element = typeof target.closest === 'function' ? target : target.parentElement;
+  return !!element?.closest?.('[data-block-global-hotkeys="true"]');
+}
+
 function _defaultGetContext() {
   const s = useStore.getState();
   return {
@@ -326,6 +346,7 @@ function _scopeAllowed(scope, ctx) {
  */
 export function runHotkeyResolver(event, opts = {}) {
   if (!event || event.defaultPrevented) return false;
+  if (_blocksGlobalHotkeys(event.target)) return false;
   const platform = detectPlatform();
   const ctx = opts.context ? opts.context : _getContext();
   const inInput = _isInInputElement(event.target);

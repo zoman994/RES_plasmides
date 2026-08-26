@@ -17,6 +17,8 @@ import { isFragmentFeature } from '../lib/feature-fragment';
 import { useStore, selectActiveSetEnzymes } from '../store';
 import { buildReMarkers, featuresFromFragments } from '../lib/plasmid-map-v2';
 import { lanePack, laneCount, linearTicks, bpToX } from '../lib/linear-map';
+import { getSegments, locationLength, formatUiRange } from '../lib/annotation-location';
+import PrimerSiteOverlay from './PrimerSiteOverlay';
 
 const W = 920;
 const PAD = 46;
@@ -38,6 +40,12 @@ export default function LinearMapV2({
   fragments, annotations, length, constructName, totalBp, topology = 'linear',
   onFeatureClick, selectedRegionId = null, onSelectRegion, onSelectFragment,
   reEnzymesFilter = null, onReSiteClick = null,
+  // ANN-0L — canonical primer records; their known source sites are drawn by
+  // the shared overlay so every surface agrees on where a primer binds.
+  // ANN-0M root D — `renderContext` is the ONE description of the molecule on
+  // screen. Assembling a partial variant here is how two surfaces ended up
+  // disagreeing about whether a primer binds at all.
+  primers = null, renderContext = null, onSelectPrimerSite = null,
 }) {
   const showReSites = useStore((s) => s.showReSites);
   const reFilter = useStore((s) => s.reFilter);
@@ -55,6 +63,8 @@ export default function LinearMapV2({
     const feats = annotations
       ? getRegions(annotations).map((r) => ({
         id: r.id, name: r.name || r.type || '—', type: r.type || 'misc',
+        // ANN-0A — carry canonical segments through the reshape.
+        segments: getSegments(r),
         start: r.start, end: r.end, strand: Number.isFinite(r.strand) ? r.strand : 1,
         // UX-4 — fragment-ness from the full region before this lossy reshape.
         isFragment: isFragmentFeature(r),
@@ -99,12 +109,35 @@ export default function LinearMapV2({
 
   const reMarkers = useMemo(() => buildReMarkers(reSites, total || 1, {}), [reSites, total]);
 
-  // Feature lanes (pixel extents, min-width so a 1bp feature still packs).
-  const featLanes = useMemo(() => lanePack(features.map((f) => {
-    const a = bpToX(f.start, total, X0, X1); const b = bpToX(f.end, total, X0, X1);
-    return { start: a, end: Math.max(b, a + 8) };
+  // Pixel extents of every real part of a feature — a compound feature occupies
+  // only its segments, not the bounding span between them.
+  const featPartsPx = useMemo(() => features.map((f) => getSegments(f).map((s) => {
+    const a = bpToX(s.start, total, X0, X1);
+    const b = bpToX(s.end, total, X0, X1);
+    return { start: a, end: Math.max(b, a + 3) };
   })), [features, total]);
-  const nFeatLanes = laneCount(featLanes);
+
+  // Feature lanes. ANN-0A — packing tests every real part, so the empty gap of a
+  // spliced gene (or the middle of an origin-crossing one) stays available to
+  // other features instead of being reserved by a phantom bounding span. One
+  // lane per feature, so its parts always read as one row.
+  const featLanes = useMemo(() => {
+    const occupiedByLane = [];
+    return featPartsPx.map((partsPx) => {
+      const probe = partsPx.length
+        ? partsPx
+        : [{ start: bpToX(0, total, X0, X1), end: bpToX(0, total, X0, X1) + 8 }];
+      for (let lane = 0; ; lane++) {
+        const occupied = occupiedByLane[lane] || (occupiedByLane[lane] = []);
+        const collides = probe.some((p) => occupied.some((o) => p.start < o.end && o.start < p.end));
+        if (!collides) {
+          occupied.push(...probe);
+          return lane;
+        }
+      }
+    });
+  }, [featPartsPx, total]);
+  const nFeatLanes = featLanes.length ? Math.max(...featLanes) + 1 : 0;
 
   // region.id → lane, so a detail/point draws on its parent's band (inset).
   const regionLaneById = useMemo(() => {
@@ -195,26 +228,59 @@ export default function LinearMapV2({
 
         {/* features */}
         {features.map((f) => {
-          const x0 = bpToX(f.start, total, X0, X1); const x1 = Math.max(bpToX(f.end, total, X0, X1), x0 + 3);
+          // ANN-0A — one <g> per LOGICAL feature, one path per real part. A
+          // compound or origin-crossing feature therefore draws two bars (and
+          // for a wrap they sit at opposite ends) under one id and one click
+          // contract, instead of a single bar spanning the gap.
+          const partsPx = featPartsPx[f.i] || [];
           const y = featTop + featLanes[f.i] * FEAT_LANE_H; const h = FEAT_LANE_H - 7;
           const sel = f.id != null && f.id === selectedRegionId;
-          const wide = x1 - x0 > 34;
+          // Only the widest part carries the label — one name per feature.
+          let widest = 0;
+          partsPx.forEach((p, k) => {
+            if (p.end - p.start > partsPx[widest].end - partsPx[widest].start) widest = k;
+          });
+          const lastIdx = f.strand === -1 ? 0 : partsPx.length - 1;
           return (
-            <g key={f.i} data-testid={`linear-map-v2-feature-${f.i}`} data-fragment={f.isFragment ? 'true' : undefined} style={{ cursor: 'pointer' }} onClick={() => clickFeature(f)}>
-              <path d={arrowPath(x0, x1, y, h, f.strand)}
-                fill={f.isFragment ? 'var(--surface-1, #ffffff)' : f.fill}
-                stroke={sel ? FEATURE_STROKE : (f.isFragment ? f.fill : '#ffffff')}
-                strokeWidth={sel ? 1.4 : (f.isFragment ? 1.1 : 0.6)} />
-              {wide && (
-                <text x={(x0 + x1) / 2} y={y + h / 2} dominantBaseline="central" textAnchor="middle" fontSize={11}
-                  fontWeight={sel ? 600 : 500} fill="var(--text-primary)" style={{ fontFamily: 'var(--font-ui, inherit)', pointerEvents: 'none' }}>
-                  {trunc(f.name, Math.floor((x1 - x0) / 7))}
-                </text>
-              )}
-              <title>{`${f.name} · ${f.start + 1}–${f.end} (${f.end - f.start} bp)`}</title>
+            <g key={f.i} data-testid={`linear-map-v2-feature-${f.i}`}
+              data-region-id={f.id || ''}
+              data-part-count={partsPx.length}
+              data-fragment={f.isFragment ? 'true' : undefined}
+              style={{ cursor: 'pointer' }} onClick={() => clickFeature(f)}>
+              {partsPx.map((p, k) => {
+                const x0 = p.start; const x1 = Math.max(p.end, x0 + 3);
+                const wide = x1 - x0 > 34;
+                return (
+                  <g key={k} data-region-id={f.id || ''} data-part-index={k}>
+                    <path
+                      d={k === lastIdx
+                        ? arrowPath(x0, x1, y, h, f.strand)
+                        : arrowPath(x0, x1, y, h, 0)}
+                      fill={f.isFragment ? 'var(--surface-1, #ffffff)' : f.fill}
+                      stroke={sel ? FEATURE_STROKE : (f.isFragment ? f.fill : '#ffffff')}
+                      strokeWidth={sel ? 1.4 : (f.isFragment ? 1.1 : 0.6)} />
+                    {wide && k === widest && (
+                      <text x={(x0 + x1) / 2} y={y + h / 2} dominantBaseline="central" textAnchor="middle" fontSize={11}
+                        fontWeight={sel ? 600 : 500} fill="var(--text-primary)" style={{ fontFamily: 'var(--font-ui, inherit)', pointerEvents: 'none' }}>
+                        {trunc(f.name, Math.floor((x1 - x0) / 7))}
+                      </text>
+                    )}
+                  </g>
+                );
+              })}
+              <title>{`${f.name} · ${formatUiRange(f)} (${locationLength(f)} bp)`}</title>
             </g>
           );
         })}
+
+        <PrimerSiteOverlay
+          primers={primers}
+          context={renderContext}
+          onSelectSite={onSelectPrimerSite}
+          toX={(bp) => bpToX(bp, total, X0, X1)}
+          y={featTop + nFeatLanes * FEAT_LANE_H + 2}
+          height={5}
+        />
 
         {/* sub-features (detail) — inset bars nested in the parent region's lane */}
         {details.map((d, k) => {
@@ -230,7 +296,7 @@ export default function LinearMapV2({
                 fill={d.isFragment ? 'var(--surface-1, #ffffff)' : d.fill}
                 stroke={sel ? FEATURE_STROKE : (d.isFragment ? d.fill : 'var(--surface-1, #fff)')}
                 strokeWidth={sel ? 1.2 : (d.isFragment ? 1 : 0.5)} opacity={0.92} />
-              <title>{`${d.name || d.type} (саб-фича) · ${d.start + 1}–${d.end} (${d.end - d.start} bp)`}</title>
+              <title>{`${d.name || d.type} (саб-фича) · ${formatUiRange(d)} (${locationLength(d)} bp)`}</title>
             </g>
           );
         })}
@@ -245,7 +311,7 @@ export default function LinearMapV2({
             <g key={`pt${k}`} data-testid={`linear-map-v2-point-${k}`} style={{ cursor: 'pointer' }} onClick={() => clickAnn(p)}>
               <path d={`M${x - 3},${y - 6} L${x + 3},${y - 6} L${x},${y} Z`}
                 fill={p.fill} stroke={sel ? FEATURE_STROKE : 'var(--surface-1, #fff)'} strokeWidth={sel ? 1 : 0.5} />
-              <title>{`${p.name || p.type} · ${p.start + 1}`}</title>
+              <title>{`${p.name || p.type} · ${formatUiRange(p)}`}</title>
             </g>
           );
         })}

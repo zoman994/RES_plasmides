@@ -4,9 +4,16 @@ This file records product-level milestones, not individual fixes or sprint repor
 
 ## Unreleased
 
+## 0.8.8-alpha — August 2026
+
+- Added a canonical project primer pool with live sequence reuse and PCR-driven selection.
+- Added indel, substitution and amino-acid mutagenesis with physically complete oligos and KLD circularization.
+- Fixed primer save/reopen so persisted 5′ tails survive reload.
+- Bundled a local SnapGene catalog of 2822 plasmids for search and library import.
+- Extended `.bodge` full-project ingestion, donor-container import and v2 topology normalization.
 - Rebuilt library search around explicit entity scopes, provider intent and field filters.
 - Added visual search modes, filter chips, keyboard/IME-safe combobox behavior and separate tree/global query state.
-- Added strict DNA/protein/restriction confirmation, worker cancellation and honest incomplete-provider states.
+- Added strict DNA/protein/restriction confirmation with exact and approximate DNA routes, worker cancellation and honest incomplete-provider states.
 - Completed repository/documentation cleanup: removed proven legacy closures, stale generated/personal artifacts and parallel historical trackers; retained active migrations, scientific algorithms, runtime catalogs and fixtures.
 - Made the Windows launcher reproducible with one FastAPI process and an explicit Python GUI dependency extra.
 

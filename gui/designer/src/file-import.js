@@ -116,14 +116,34 @@ export async function parseFile(file) {
     if (data.length != null) data.length = data.sequence?.length ?? data.length;
     let annotations = [];
     let primers = [];
+    let rejected = [];
     if (data.features?.length > 0) {
-      const result = importFeatures(data.features, data.length, 'genbank');
+      // ANN-0A — ingress needs the DOCUMENT topology: an origin-crossing
+      // location is only legal on a circular molecule, and the SnapGene bridge
+      // reports topology alongside the features.
+      const result = importFeatures(data.features, data.length, 'genbank', {
+        length: data.length,
+        topology: data.topology,
+      });
       annotations = result.annotations || [];
       // PRIMER-11 (V176) — preserve primers extracted from primer_bind
       // features in _metadata.primers for canonical-pool migration.
       primers = result.primers || [];
+      // ANN-0I — a feature refused by the location gate must reach the UI as a
+      // visible partial-import warning, not disappear between two layers.
+      rejected = result.rejected || [];
     }
+    // ANN-0I — the bridge returns the SnapGene primer packet at the TOP level
+    // (`data.primers`), not under `metadata`. Reading only `metadata` meant the
+    // packet never reached `_metadata.primers`, so no embedded oligo ever
+    // arrived at the canonical pool.
     const dnaMeta = data.metadata || null;
+    const packetPrimers = Array.isArray(data.primers) ? data.primers : [];
+    primers = [...packetPrimers, ...primers];
+    // Parser-level refusals from the backend join the same structured channel.
+    if (Array.isArray(data.rejected) && data.rejected.length) {
+      rejected = [...data.rejected, ...rejected];
+    }
     return {
       name: extractItemName(data, file),
       sequence: data.sequence || '',
@@ -134,7 +154,9 @@ export async function parseFile(file) {
       annotations,
       _fromFileCount: annotations.length,
       _ext: ext,
-      _metadata: primers.length ? { ...(dnaMeta || {}), primers } : dnaMeta,
+      _rejected: rejected,
+      // SnapGene's own primer packet rides alongside primer_bind-derived ones.
+      _metadata: (primers.length || dnaMeta) ? { ...(dnaMeta || {}), primers } : null,
     };
   }
 
@@ -165,12 +187,25 @@ export async function parseFile(file) {
 
   let annotations = [];
   let primers = [];
+  let rejected = [];
   if (parsed.features?.length > 0) {
-    const result = importFeatures(parsed.features, parsed.sequence.length, 'genbank');
+    // ANN-0A — the parsed LOCUS line carries the topology; pass it so a
+    // circular `join(...)` across the origin is accepted and a linear one is
+    // rejected rather than silently normalized.
+    const result = importFeatures(parsed.features, parsed.sequence.length, 'genbank', {
+      length: parsed.sequence.length,
+      topology: parsed.topology,
+    });
     annotations = result.annotations || [];
     // PRIMER-11 (V176) — same passthrough for GenBank: primer_bind features
     // with a primer sequence reach the pool instead of being silently dropped.
     primers = result.primers || [];
+    rejected = result.rejected || [];
+  }
+  // Parser-level refusals (an unreadable location string) join the SAME
+  // structured channel as gate-level ones, so the UI has one thing to report.
+  if (Array.isArray(parsed.rejected) && parsed.rejected.length) {
+    rejected = [...parsed.rejected, ...rejected];
   }
 
   return {
@@ -183,6 +218,7 @@ export async function parseFile(file) {
     annotations,
     _fromFileCount: annotations.length,
     _ext: ext,
+    _rejected: rejected,
     _metadata: primers.length ? { primers } : null,
   };
 }
@@ -226,10 +262,33 @@ export async function enrichAnnotations(parsedItem, opts = {}) {
     const base = autoAnnotate({ name, type: 'misc_feature', sequence });
     annotations = await enrichWithCommonFeatures(sequence, base);
   } else {
-    annotations = await enrichWithCommonFeatures(sequence, annotations);
+    // ANN-0K — capture the pre-enrichment label BEFORE the lower layer runs.
+    // `enrichWithCommonFeatures` already renames a confident hit and records
+    // the true original itself; reading `ann.name` afterwards therefore read
+    // the CANONICAL name, and writing it back over `originalName` destroyed the
+    // biologist's own label. Keyed by identity, because coordinates and name
+    // both change during enrichment.
+    const priorNames = new Map();
+    for (const ann of annotations) {
+      if (ann) priorNames.set(ann, ann.importedName ?? ann.originalName ?? ann.name);
+    }
+
+    const enriched = await enrichWithCommonFeatures(sequence, annotations);
+    // The lower layer may return new objects; fall back to its own record.
+    annotations = enriched.map((ann, i) => {
+      const prior = priorNames.get(annotations[i]) ?? ann.originalName ?? ann.name;
+      return prior === undefined ? ann : { ...ann, __priorName: prior };
+    });
+
     for (const ann of annotations) {
       if (ann.knownFeature && ann.level === 'region') {
-        ann.originalName = ann.name;
+        // Provenance is not recognition: an imported feature keeps
+        // `source: 'import'`, and the name it arrived with stays recoverable.
+        // Never overwrite an already-filled original — a second enrichment pass
+        // must be a no-op for provenance.
+        const original = ann.importedName ?? ann.__priorName ?? ann.originalName;
+        if (ann.source === 'import') ann.importedName = original;
+        ann.originalName = original;
         // V136 — rebuild via the shared helper so a partial hit keeps its
         // «KanR_part_X-Y» name instead of being flattened back to the bare
         // knownFeature. knownFeature stays flat (canonical identity).
@@ -240,6 +299,7 @@ export async function enrichAnnotations(parsedItem, opts = {}) {
           featureEnd: ann.featureRange?.[1],
         });
       }
+      delete ann.__priorName;
     }
     const withDetails = autoAnnotate({ name, type: 'misc_feature', sequence, annotations });
     const existingKeys = new Set(annotations.map(a => `${a.start}-${a.end}-${a.level}`));

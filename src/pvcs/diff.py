@@ -409,10 +409,22 @@ def _rotate_features(features: list[Feature], offset: int, seq_len: int) -> list
         new_end = ((f.end - offset) % seq_len)
         if new_end == 0:
             new_end = seq_len
+        # ANN-0A — rotate every segment too, preserving traversal order and
+        # kind. Dropping them here silently flattened a compound feature back
+        # into a scalar span the moment a construct was canonicalized.
+        new_segments = []
+        for s, e in (f.segments or []):
+            rs = ((s - 1 - offset) % seq_len) + 1
+            re_ = ((e - offset) % seq_len)
+            if re_ == 0:
+                re_ = seq_len
+            new_segments.append((rs, re_))
         rotated.append(Feature(
             type=f.type, name=f.name, start=new_start, end=new_end,
             strand=f.strand, qualifiers=f.qualifiers,
             sequence=f.sequence, part_id=f.part_id, color=f.color,
+            segments=new_segments,
+            location_kind=f.location_kind,
         ))
     return rotated
 

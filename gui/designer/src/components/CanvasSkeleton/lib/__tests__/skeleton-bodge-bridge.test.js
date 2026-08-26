@@ -82,4 +82,31 @@ describe('skeleton-bodge-bridge — full .bodge round-trip (A1/A2)', () => {
     // Primers re-derive on first edit for external files → empty here, not crash.
     expect(restored.assemblyDraftPrimers).toEqual({});
   });
+
+  it('keeps a circular Canvas container circular through the structured Save/Open path', async () => {
+    const snap = makeSnapshot();
+    const canonical = skeletonToCanonical(snap, { id: 'proj1', name: 'P' });
+
+    expect(canonical.containers[0].topology).toBe('circular');
+    expect(snap.containers[0].topology).toEqual({ circular: true });
+
+    delete canonical.extensions; // force the interoperable structured path
+    const read = await readBodge(await writeBodgeV2(canonical));
+    expect(read.state.containers.find((c) => c.id === 'src').topology).toBe('circular');
+
+    const restored = canonicalToSkeleton(read.state);
+    expect(restored.containers.find((c) => c.id === 'src').topology)
+      .toEqual({ circular: true });
+  });
+
+  it('rejects a raw Canvas topology object at the canonical writer boundary', async () => {
+    const canonical = skeletonToCanonical(makeSnapshot(), { id: 'proj1', name: 'P' });
+    canonical.containers[0] = {
+      ...canonical.containers[0],
+      topology: { circular: true },
+    };
+
+    await expect(writeBodgeV2(canonical)).rejects
+      .toThrow(/topology must be canonical/i);
+  });
 });

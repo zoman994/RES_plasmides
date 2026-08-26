@@ -19,7 +19,8 @@ import React from 'react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, cleanup, act } from '@testing-library/react';
 import { useStore } from '../../../store';
-import { tf } from '../../../i18n';
+import { t, tf } from '../../../i18n';
+import { MAX_ALIGN_INPUTS } from '../../../store/alignmentSlice';
 
 // Capture what LibraryWorkspace hands the search bar, without rendering the real one.
 // `vi.hoisted` because the mock factory is lifted above the imports — a plain `const` declared
@@ -40,6 +41,7 @@ beforeEach(() => {
     s.projects = {};
     s.currentProjectId = null;
     s.align = { ...s.align, inputs: [], refId: null, readIds: [] };
+    s.toasts = []; // the route's feedback is asserted below; a leaked toast would fake it
   });
 });
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
@@ -83,9 +85,65 @@ describe('BG-023 — the alignment route reaches the alignment workspace', () =>
     expect(align.readIds).toContain(align.inputs[1].id);
   });
 
-  it('an empty or blank query opens nothing at all', () => {
+  it('an empty or blank query opens nothing at all, and does not navigate', () => {
     render(<LibraryWorkspace />);
+    // Park the user somewhere that is NOT align, with a real history and context behind them.
+    // Without a concrete starting workspace «did not navigate» is unprovable: landing on align
+    // from align looks identical to never moving.
+    act(() => {
+      useStore.setState((s) => { s.workspace = { active: 'startup', history: [], context: {} }; });
+      useStore.getState().setActiveWorkspace('library', { projectId: 'p1' });
+    });
+    const before = structuredClone(useStore.getState().workspace);
+    expect(before).toStrictEqual({ active: 'library', history: ['startup'], context: { projectId: 'p1' } });
+
     act(() => { barProps.current.onOpenAlignment('   '); });
+
     expect(useStore.getState().align.inputs).toHaveLength(0);
+    expect(useStore.getState().toasts).toEqual([]); // a no-op has nothing to report
+    // All three fields intact. setActiveWorkspace('align') would have moved every one of them:
+    // active → 'align', history → [...,'library'], context → {}.
+    expect(structuredClone(useStore.getState().workspace)).toStrictEqual(before);
+  });
+
+  // BG-024 — the route can also fail to add, and silence was the bug: the workspace opened,
+  // the pasted query was nowhere in it, and nothing said why. These pin the two ways a
+  // legitimate add gets refused, both through the real store and the real toast queue.
+  it('a re-pasted query adds nothing, says so, and still opens alignment', () => {
+    render(<LibraryWorkspace />);
+    act(() => { barProps.current.onOpenAlignment(QUERY); });
+    act(() => { barProps.current.onOpenAlignment(QUERY); });
+
+    const { align, toasts, workspace } = useStore.getState();
+    expect(align.inputs).toHaveLength(1); // the duplicate did not land
+    expect(workspace.active).toBe('align'); // but the user still gets to the sequence
+    expect(toasts).toHaveLength(1);
+    expect(toasts[0].kind).toBe('info'); // already there is not a failure
+    expect(toasts[0].msg).toBe(t('search.requiresAlignment.duplicate'));
+  });
+
+  it('a full alignment warns with the real limit instead of dropping the query silently', () => {
+    render(<LibraryWorkspace />);
+    act(() => {
+      for (let i = 0; i < MAX_ALIGN_INPUTS; i += 1) {
+        useStore.getState().addAlignInput({ name: `s${i}`, sequence: `ACGTACGT${i}` });
+      }
+    });
+    act(() => { barProps.current.onOpenAlignment(QUERY); });
+
+    const { align, toasts, workspace } = useStore.getState();
+    expect(align.inputs).toHaveLength(MAX_ALIGN_INPUTS); // nothing was evicted to make room
+    expect(workspace.active).toBe('align');
+    expect(toasts).toHaveLength(1);
+    expect(toasts[0].kind).toBe('warning'); // the query is lost unless the user acts
+    expect(toasts[0].msg).toBe(tf('search.requiresAlignment.capacity', { max: MAX_ALIGN_INPUTS }));
+    expect(toasts[0].msg).toContain(String(MAX_ALIGN_INPUTS)); // the real cap, not a literal
+  });
+
+  it('a successful add stays quiet — the input itself is the feedback', () => {
+    render(<LibraryWorkspace />);
+    act(() => { barProps.current.onOpenAlignment(QUERY); });
+    expect(useStore.getState().align.inputs).toHaveLength(1);
+    expect(useStore.getState().toasts).toEqual([]);
   });
 });

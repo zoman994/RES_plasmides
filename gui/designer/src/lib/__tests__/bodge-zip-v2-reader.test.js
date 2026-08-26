@@ -202,3 +202,117 @@ describe('K7 — error handling', () => {
 
 // strFromU8 only used in extensions assert above — import here:
 import { strFromU8 } from 'fflate';
+
+// ---------------------------------------------------------------------------
+// ANN-0L - the container is the round-trip, not just the pool serializer.
+//
+// The user's primers live in the .bodge file. If the container loses a site, a
+// duplicate record or a record with no known oligo, the loss is permanent and
+// invisible: the file reopens looking complete.
+// ---------------------------------------------------------------------------
+describe('ANN-0L - primer records survive a full .bodge round-trip', () => {
+  const RECORDS = [
+    {
+      id: 'pr-1',
+      schemaVersion: 2,
+      name: 'M13-fwd',
+      sequence: null,                 // the file never stated the full oligo
+      sequenceSource: 'unknown',
+      origin: { kind: 'file_import', entryId: 'c01XYZ', sourceFileName: 'a.dna', sourceRecordIndex: 0 },
+      sites: [
+        {
+          id: 'st-1', sourceIndex: 0,
+          target: { entryId: 'c01XYZ' },
+          location: { kind: 'join', segments: [{ start: 36, end: 40 }, { start: 0, end: 6 }] },
+          strand: 1,
+          annealedSequence: 'GAATTATGCAT',
+          tail: null,
+          meltingTemperature: null,
+          sourceVisibility: 'shown',
+          sourceForms: ['full', 'simplified'],
+        },
+        {
+          id: 'st-2', sourceIndex: 1,
+          target: { entryId: 'c01XYZ' },
+          location: { kind: 'single', segments: [{ start: 10, end: 20 }] },
+          strand: -1,
+          annealedSequence: 'AAGCTTATAT',
+          tail: '',                   // proven absent, NOT unknown
+          meltingTemperature: 58.2,
+          sourceVisibility: 'hidden',
+          sourceForms: ['full'],
+        },
+      ],
+    },
+    {
+      // same name AND same sequence as the next one: two things the user made
+      id: 'pr-2',
+      schemaVersion: 2,
+      name: 'T7-fwd',
+      sequence: 'ATACGACTCACTATAGG',
+      sequenceSource: 'source',
+      origin: { kind: 'file_import', entryId: 'c01XYZ', sourceFileName: 'a.dna', sourceRecordIndex: 1 },
+      sites: [],
+    },
+    {
+      id: 'pr-3',
+      schemaVersion: 2,
+      name: 'T7-fwd',
+      sequence: 'ATACGACTCACTATAGG',
+      sequenceSource: 'source',
+      origin: { kind: 'file_import', entryId: 'c01XYZ', sourceFileName: 'a.dna', sourceRecordIndex: 2 },
+      sites: [],
+    },
+  ];
+
+  async function roundTrip(primers) {
+    const blob = await writeBodgeV2({ ...CANONICAL_STATE(), primers });
+    const out = await readBodge(blob);
+    return out.state ? out.state.primers : out.primers;
+  }
+
+  it('returns every record, in order, deep-equal', async () => {
+    const back = await roundTrip(RECORDS);
+    expect(back.map((p) => p.id)).toEqual(['pr-1', 'pr-2', 'pr-3']);
+    for (let i = 0; i < RECORDS.length; i++) {
+      for (const k of Object.keys(RECORDS[i])) {
+        expect(back[i][k]).toEqual(RECORDS[i][k]);
+      }
+    }
+  });
+
+  it('does not collapse two records that share a name and a sequence', async () => {
+    const back = await roundTrip(RECORDS);
+    expect(back.filter((p) => p.name === 'T7-fwd')).toHaveLength(2);
+  });
+
+  it('keeps a record whose full oligo is unknown', async () => {
+    const back = await roundTrip(RECORDS);
+    const m13 = back.find((p) => p.id === 'pr-1');
+    expect(m13).toBeTruthy();
+    expect(m13.sequence).toBe(null);
+  });
+
+  it('keeps every site, its segments, its strand and its visibility', async () => {
+    const back = await roundTrip(RECORDS);
+    const m13 = back.find((p) => p.id === 'pr-1');
+    expect(m13.sites).toHaveLength(2);
+    // the origin-crossing site keeps BOTH segments and their order
+    expect(m13.sites[0].location.segments).toEqual([{ start: 36, end: 40 }, { start: 0, end: 6 }]);
+    expect(m13.sites[1].strand).toBe(-1);
+    expect(m13.sites[1].sourceVisibility).toBe('hidden');
+  });
+
+  it('preserves the difference between an unknown tail and a proven-absent one', async () => {
+    const back = await roundTrip(RECORDS);
+    const m13 = back.find((p) => p.id === 'pr-1');
+    expect(m13.sites[0].tail).toBe(null);   // unknown
+    expect(m13.sites[1].tail).toBe('');     // proven absent
+  });
+
+  it('is stable across a second save/open cycle', async () => {
+    const once = await roundTrip(RECORDS);
+    const twice = await roundTrip(once);
+    expect(twice).toEqual(once);
+  });
+});

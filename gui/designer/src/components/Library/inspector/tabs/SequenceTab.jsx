@@ -91,6 +91,18 @@ export default function SequenceTab({
   // right-click selection menu. Library/Importer leave it undefined →
   // SequenceView omits the items (same gating as onBlastSelection).
   onWritePrimer,
+  // PRIMER-LIVE-1 — pass-through only: personal-inventory records for the
+  // «already in the lab» answer, and the single action for two chosen
+  // landings. Undefined ⇒ the viewer renders no extra affordance.
+  labPrimers,
+  onReuseLabPrimer,
+  onCreatePcrProduct,
+  // Assembly-only amino-acid mutation entry point. Undefined everywhere else
+  // keeps the AA track display-only.
+  onAAClick,
+  // ANN-0M root D — which molecule and which version of it is on screen. The
+  // viewer cannot confirm a declared landing without being told.
+  documentHash,
   // Assembly editor — Del on a selected primer deletes it (consumer-gated
   // pass-through, same shape as onWritePrimer). Library/Importer leave it
   // undefined → SequenceView swallows Del on a selected primer (read-only).
@@ -220,6 +232,12 @@ export default function SequenceTab({
           reEnzymesFilter={reEnzymesFilter}
           onWritePrimer={onWritePrimer}
           onDeletePrimer={onDeletePrimer}
+          labPrimers={labPrimers}
+          onReuseLabPrimer={onReuseLabPrimer}
+          onCreatePcrProduct={onCreatePcrProduct}
+          onAAClick={onAAClick}
+          entryId={entryId}
+          documentHash={documentHash}
           onCreatePiece={onCreatePiece}
           showSelectionTm={showSelectionTm}
           coloredZones={coloredZones}

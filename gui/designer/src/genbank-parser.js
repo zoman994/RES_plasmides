@@ -6,6 +6,7 @@
  * where features match the format expected by importFeatures().
  */
 import { sanitizeSequence } from './sequence-utils';
+import { parseGenBankLocation, getSegments, locationSpan } from './lib/annotation-location';
 
 /**
  * Parse GenBank text into structured data.
@@ -24,6 +25,9 @@ export function parseGenBank(text) {
     organism: '',
     description: '',
     features: [],
+    // ANN-0I — features whose location could not be read. Structured so the
+    // ingress can turn them into a visible partial-import warning.
+    rejected: [],
   };
 
   let section = 'header'; // header | features | origin
@@ -32,15 +36,76 @@ export function parseGenBank(text) {
   let currentQualVal = '';
   let seqLines = [];
 
+  // ANN-0I — a location may wrap across lines (NCBI wraps at column 80), so
+  // the text is accumulated and parsed exactly once, when the first qualifier
+  // or the next feature ends it. Parsing the first line alone turned
+  // `join(101..150,\n 201..250)` into a single 50 bp span.
+  let pendingType = null;
+  let pendingLoc = '';
+
+  /**
+   * Store one qualifier, preserving repetition. INSDC allows the same key many
+   * times (/note, /db_xref, /EC_number); overwriting kept only the last and
+   * silently discarded a biologist's provenance.
+   */
+  function setQualifier(key, val) {
+    if (!currentFeature) return;
+    const q = currentFeature.qualifiers;
+    if (!(key in q)) { q[key] = val; return; }
+    if (Array.isArray(q[key])) q[key].push(val);
+    else q[key] = [q[key], val];
+  }
+
+  function finalizeFeature() {
+    if (pendingType == null) return;
+    const type = pendingType;
+    const locStr = pendingLoc.trim();
+    pendingType = null;
+    pendingLoc = '';
+
+    const loc = parseLocationFull(locStr);
+    // ANN-0I — an unparsable location is skipped rather than coerced to 0..0
+    // (a feature with invented coordinates is worse than a missing one), but it
+    // is RECORDED so the UI can report a partial import. It must not abort the
+    // features that follow.
+    if (!loc) {
+      result.rejected.push({
+        name: type,
+        reason: `unparsable location "${locStr}"`,
+      });
+      currentFeature = null;
+      return;
+    }
+
+    const span = locationSpan({ location: loc.location });
+    currentFeature = {
+      type,
+      location: loc.location,
+      start: span.start,
+      end: span.end,
+      strand: loc.strand,
+      qualifiers: {},
+    };
+
+    // Legacy side channel: a NON-wrapping multi-segment location still
+    // surfaces its exons so importFeatures can derive intron details.
+    // An origin-crossing join has no introns — the gap is the origin.
+    const segs = getSegments(currentFeature);
+    if (segs.length > 1 && span.end > span.start) {
+      currentFeature.qualifiers.exons = segs;
+    }
+  }
+
   function flushQualifier() {
     if (currentFeature && currentQualKey) {
-      currentFeature.qualifiers[currentQualKey] = currentQualVal;
+      setQualifier(currentQualKey, currentQualVal);
     }
     currentQualKey = null;
     currentQualVal = '';
   }
 
   function flushFeature() {
+    finalizeFeature();
     flushQualifier();
     if (currentFeature) {
       result.features.push(currentFeature);
@@ -79,43 +144,43 @@ export function parseGenBank(text) {
       if (featMatch && !line.match(/^\s{21,}\//)) {
         flushFeature();
         const [, type, locStr] = featMatch;
-        const loc = parseLocationFull(locStr.trim());
-
-        currentFeature = {
-          type,
-          start: loc.start,
-          end: loc.end,
-          strand: loc.strand,
-          qualifiers: {},
-        };
-
-        if (loc.exons && loc.exons.length > 1) {
-          currentFeature.qualifiers.exons = loc.exons;
-        }
+        // Start accumulating; the location may continue on the next lines.
+        pendingType = type;
+        pendingLoc = locStr.trim();
         continue;
       }
 
-      // Qualifier line: 21+ spaces + /key="value" or /key=number or /flag
+      // Qualifier line: 21+ spaces + /key="value" or /key=number or /flag.
+      // The first one also ends the location.
       const qualMatch = line.match(/^\s{21,}\/(\w+)(?:=(.*))?$/);
-      if (qualMatch && currentFeature) {
+      if (qualMatch && (currentFeature || pendingType != null)) {
+        finalizeFeature();
+        if (!currentFeature) continue;
         flushQualifier();
         const [, key, rawVal] = qualMatch;
         if (rawVal === undefined) {
           // Flag qualifier (no value)
-          currentFeature.qualifiers[key] = true;
+          setQualifier(key, true);
         } else {
           let val = rawVal;
           if (val.startsWith('"')) val = val.slice(1);
           if (val.endsWith('"')) {
             // Single-line value complete
             val = val.slice(0, -1);
-            currentFeature.qualifiers[key] = val;
+            setQualifier(key, val);
           } else {
             // Multiline value — start collecting
             currentQualKey = key;
             currentQualVal = val;
           }
         }
+        continue;
+      }
+
+      // Continuation of a wrapped LOCATION (indented, no leading slash, and no
+      // qualifier has started yet for this feature).
+      if (pendingType != null && line.match(/^\s{21,}/)) {
+        pendingLoc += line.trim();
         continue;
       }
 
@@ -173,83 +238,21 @@ export function parseGenBank(text) {
 // ═══ Location parsing ═══
 
 /**
- * Parse a full GenBank location string.
- * Handles: simple (1..900), complement(...), join(...), complement(join(...)).
- * @returns {{ start, end, strand, exons? }}
+ * Parse a GenBank location string into the canonical model.
+ *
+ * The INSDC grammar (simple / complement / join / order, `<` `>` partials) lives
+ * in `lib/annotation-location.js` — this parser must not carry a second copy of
+ * the ±1 conversion. Returns `null` when the string cannot be parsed, so the
+ * caller can drop the feature instead of inventing coordinates.
+ *
+ * @returns {{ location, strand } | null}
  */
 function parseLocationFull(loc) {
-  let strand = 1;
-  let inner = loc;
-
-  // Strip outer complement()
-  if (inner.startsWith('complement(') && inner.endsWith(')')) {
-    strand = -1;
-    inner = inner.slice(11, -1);
+  try {
+    return parseGenBankLocation(loc);
+  } catch {
+    return null;
   }
-
-  // join() — possibly inside complement()
-  if (inner.startsWith('join(') && inner.endsWith(')')) {
-    const body = inner.slice(5, -1);
-    const parts = splitTopLevel(body);
-    const ranges = parts.map(parseSimpleRange);
-    const start = Math.min(...ranges.map(r => r.start));
-    const end = Math.max(...ranges.map(r => r.end));
-    return { start, end, strand, exons: ranges };
-  }
-
-  // order() — treat like join
-  if (inner.startsWith('order(') && inner.endsWith(')')) {
-    const body = inner.slice(6, -1);
-    const parts = splitTopLevel(body);
-    const ranges = parts.map(parseSimpleRange);
-    const start = Math.min(...ranges.map(r => r.start));
-    const end = Math.max(...ranges.map(r => r.end));
-    return { start, end, strand, exons: ranges };
-  }
-
-  // Simple range
-  const r = parseSimpleRange(inner);
-  return { start: r.start, end: r.end, strand };
-}
-
-/**
- * Split comma-separated parts respecting parentheses depth.
- */
-function splitTopLevel(s) {
-  const parts = [];
-  let depth = 0;
-  let current = '';
-  for (const ch of s) {
-    if (ch === '(') depth++;
-    if (ch === ')') depth--;
-    if (ch === ',' && depth === 0) {
-      parts.push(current.trim());
-      current = '';
-    } else {
-      current += ch;
-    }
-  }
-  if (current.trim()) parts.push(current.trim());
-  return parts;
-}
-
-function parseSimpleRange(s) {
-  let inner = s.trim();
-  // Handle complement() around individual range within join
-  if (inner.startsWith('complement(') && inner.endsWith(')')) {
-    inner = inner.slice(11, -1);
-  }
-  // Remove < and > (partial indicators)
-  inner = inner.replace(/[<>]/g, '');
-
-  if (inner.includes('..')) {
-    const [a, b] = inner.split('..');
-    return { start: parseInt(a, 10) - 1, end: parseInt(b, 10) };
-  }
-  // Single position
-  const pos = parseInt(inner, 10);
-  if (isNaN(pos)) return { start: 0, end: 0 };
-  return { start: pos - 1, end: pos };
 }
 
 /**

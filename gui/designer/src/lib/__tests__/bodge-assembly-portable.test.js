@@ -6,6 +6,7 @@ import {
   writeBodgeAssembly,
   importBodgeAssembly,
 } from '../bodge-assembly-portable';
+import { applyProfile } from '../bodge-export-profiles';
 import { readBodge, writeBodgeV2 } from '../bodge-zip';
 
 function PROJECT_STATE() {
@@ -185,5 +186,114 @@ describe('K11 — round-trip into existing project + verify integrity', () => {
     const reblob = await writeBodgeV2(merged.state);
     const rr = await readBodge(reblob);
     expect(rr.state.zones.map(z => z.id)).toContain('zn01');
+  });
+});
+
+// ===========================================================================
+// ANN-0L CORRECTION C4 - portable dedup must not leave dangling references.
+//
+// Folding two identical oligos into one is the portable path's own policy and
+// stays. What is not allowed is retiring a record while the pair and the PCR
+// operation still point at the id that was dropped: the assembly then names a
+// primer that does not exist, and nothing in the UI can resolve it.
+// ===========================================================================
+describe('ANN-0L C4 - sequence dedup returns a usable remap', () => {
+  const FWD = 'ACGTACGTACGTAA';
+  const REV = 'TTGGCCTTGGCCTT';
+
+  // the project already owns this oligo under a different record id
+  const currentState = () => ({
+    projectMeta: { id: 'proj-1' },
+    containers: [], zones: [], pieces: [], operations: [], junctions: [],
+    libraryEntries: [], notebookEntries: [],
+    primers: [{ id: 'mine-fwd', name: 'existing fwd', sequence: FWD }],
+  });
+
+  const incoming = () => ({
+    projectMeta: { id: 'proj-2' },
+    containers: [], zones: [{ id: 'z1', name: 'z' }], pieces: [],
+    junctions: [], libraryEntries: [], notebookEntries: [],
+    operations: [
+      { id: 'op1', kind: 'pcr', zoneId: 'z1', inputs: [], outputs: [], params: { primerPairId: 'pair-1' } },
+    ],
+    primers: [
+      { id: 'theirs-fwd', name: 'their fwd', sequence: FWD },   // duplicate of mine-fwd
+      { id: 'theirs-rev', name: 'their rev', sequence: REV },   // new
+      { id: 'pair-1', kind: 'pair', forwardId: 'theirs-fwd', reverseId: 'theirs-rev', name: 'p1' },
+    ],
+  });
+
+  async function merge() {
+    const blob = await writeBodgeAssembly(incoming(), 'z1');
+    return importBodgeAssembly(blob, currentState());
+  }
+
+  it('reports which incoming id was retired in favour of which kept record', async () => {
+    const { report } = await merge();
+    expect(report.primerRemap instanceof Map).toBe(true);
+    expect(report.primerRemap.get('theirs-fwd')).toBe('mine-fwd');
+  });
+
+  it('rewrites the pair members onto records that exist', async () => {
+    const { state } = await merge();
+    const ids = new Set(state.primers.map((p) => p.id));
+    const pair = state.primers.find((p) => p.id === 'pair-1');
+    expect(ids.has(pair.forwardId)).toBe(true);
+    expect(ids.has(pair.reverseId)).toBe(true);
+    expect(pair.forwardId).toBe('mine-fwd');
+  });
+
+  it('leaves the PCR operation pointing at a resolvable pair', async () => {
+    const { state } = await merge();
+    const ids = new Set(state.primers.map((p) => p.id));
+    const op = state.operations.find((o) => o.id === 'op1');
+    expect(ids.has(op.params.primerPairId)).toBe(true);
+  });
+
+  it('does not resurrect the retired duplicate as a second row', async () => {
+    const { state } = await merge();
+    expect(state.primers.filter((p) => p.sequence === FWD)).toHaveLength(1);
+  });
+
+  it('survives a second import without breaking the references again', async () => {
+    const once = await merge();
+    const blob = await writeBodgeAssembly(incoming(), 'z1');
+    const twice = await importBodgeAssembly(blob, once.state);
+    const ids = new Set(twice.state.primers.map((p) => p.id));
+    for (const p of twice.state.primers.filter((x) => x.kind === 'pair')) {
+      expect(ids.has(p.forwardId)).toBe(true);
+      expect(ids.has(p.reverseId)).toBe(true);
+    }
+  });
+});
+
+describe('ANN-0L C4 - a single-assembly export carries the whole pair', () => {
+  const state = () => ({
+    projectMeta: { id: 'proj-1' },
+    containers: [], pieces: [], junctions: [], libraryEntries: [], notebookEntries: [],
+    zones: [{ id: 'z1', name: 'kept' }],
+    operations: [
+      { id: 'op1', kind: 'pcr', zoneId: 'z1', inputs: [], outputs: [], params: { primerPairId: 'pair-1' } },
+    ],
+    primers: [
+      { id: 'pr-fwd', name: 'fwd', sequence: 'ACGTACGTACGT' },
+      { id: 'pr-rev', name: 'rev', sequence: 'TTGGCCTTGGCC' },
+      { id: 'pair-1', kind: 'pair', forwardId: 'pr-fwd', reverseId: 'pr-rev', name: 'p1' },
+      { id: 'pr-unrelated', name: 'other', sequence: 'AAAACCCCGGGG' },
+    ],
+  });
+
+  it('includes the pair AND both of its member records', () => {
+    const out = applyProfile('single-assembly', state(), { singleAssemblyZoneId: 'z1' });
+    const ids = out.primers.map((p) => p.id);
+    expect(ids).toContain('pair-1');
+    // a pair whose members were left behind names primers that do not exist
+    expect(ids).toContain('pr-fwd');
+    expect(ids).toContain('pr-rev');
+  });
+
+  it('still leaves out a primer the assembly does not use', () => {
+    const out = applyProfile('single-assembly', state(), { singleAssemblyZoneId: 'z1' });
+    expect(out.primers.map((p) => p.id)).not.toContain('pr-unrelated');
   });
 });

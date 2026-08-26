@@ -159,6 +159,14 @@ export function applyProfile(profileName, state, opts = {}) {
       for (const o of out.operations) {
         if (o.params?.primerPairId) referenced.add(o.params.primerPairId);
       }
+      // ANN-0L C4 — a pair without its member records names two primers that
+      // are not in the exported file. Pull the members in with the pair.
+      for (const p of state.primers || []) {
+        if (p?.kind === 'pair' && referenced.has(p.id)) {
+          if (p.forwardId) referenced.add(p.forwardId);
+          if (p.reverseId) referenced.add(p.reverseId);
+        }
+      }
       out.primers = (state.primers || []).filter(p =>
         referenced.has(p.id) || referenced.has(p.forwardId) || referenced.has(p.reverseId));
     } else if (profile.name === 'containers-bundle') {

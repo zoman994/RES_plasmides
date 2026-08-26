@@ -1,0 +1,177 @@
+{
+  "name": "ann0m_primer_provenance",
+  "sequence": "ACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGT",
+  "length": 600,
+  "topology": "circular",
+  "features": [],
+  "primers": [
+    {
+      "name": "dup-name",
+      "sequence": "ACGTACGTACGT",
+      "sourceRecordIndex": 0,
+      "sequenceSource": "packet",
+      "description": "",
+      "sites": [
+        {
+          "start": 10,
+          "end": 22,
+          "strand": 1,
+          "segments": [
+            {
+              "start": 10,
+              "end": 22
+            }
+          ],
+          "annealedBases": "ACGTACGTACGT",
+          "meltingTemperature": 55.0,
+          "sourceForm": "standard"
+        }
+      ],
+      "allSites": [
+        {
+          "start": 10,
+          "end": 22,
+          "strand": 1,
+          "segments": [
+            {
+              "start": 10,
+              "end": 22
+            }
+          ],
+          "annealedBases": "ACGTACGTACGT",
+          "meltingTemperature": 55.0,
+          "sourceForm": "standard"
+        },
+        {
+          "start": 10,
+          "end": 22,
+          "strand": 1,
+          "segments": [
+            {
+              "start": 10,
+              "end": 22
+            }
+          ],
+          "annealedBases": "ACGTACGTACGT",
+          "meltingTemperature": 55.0,
+          "sourceForm": "simplified"
+        }
+      ],
+      "strand": 1,
+      "start": 10,
+      "end": 22
+    },
+    {
+      "name": "dup-name",
+      "sequence": "ACGTACGTACGT",
+      "sourceRecordIndex": 1,
+      "sequenceSource": "packet",
+      "description": "",
+      "sites": [
+        {
+          "start": 100,
+          "end": 112,
+          "strand": 1,
+          "segments": [
+            {
+              "start": 100,
+              "end": 112
+            }
+          ],
+          "annealedBases": "ACGTACGTACGT",
+          "meltingTemperature": 61.0,
+          "sourceForm": "standard"
+        },
+        {
+          "start": 100,
+          "end": 112,
+          "strand": 1,
+          "segments": [
+            {
+              "start": 100,
+              "end": 112
+            }
+          ],
+          "annealedBases": "TTTTACGTACGT",
+          "meltingTemperature": 49.0,
+          "sourceForm": "standard"
+        }
+      ],
+      "allSites": [
+        {
+          "start": 100,
+          "end": 112,
+          "strand": 1,
+          "segments": [
+            {
+              "start": 100,
+              "end": 112
+            }
+          ],
+          "annealedBases": "ACGTACGTACGT",
+          "meltingTemperature": 61.0,
+          "sourceForm": "standard"
+        },
+        {
+          "start": 100,
+          "end": 112,
+          "strand": 1,
+          "segments": [
+            {
+              "start": 100,
+              "end": 112
+            }
+          ],
+          "annealedBases": "TTTTACGTACGT",
+          "meltingTemperature": 49.0,
+          "sourceForm": "standard"
+        }
+      ],
+      "strand": 1,
+      "start": 100,
+      "end": 112
+    },
+    {
+      "name": "hidden-only",
+      "sequence": "GGGGCCCCAAAA",
+      "sourceRecordIndex": 2,
+      "sequenceSource": "packet",
+      "description": "",
+      "sites": [
+        {
+          "start": 200,
+          "end": 212,
+          "strand": -1,
+          "segments": [
+            {
+              "start": 200,
+              "end": 212
+            }
+          ],
+          "annealedBases": "GGGGCCCCAAAA",
+          "meltingTemperature": 70.0,
+          "sourceForm": "standard"
+        }
+      ],
+      "allSites": [
+        {
+          "start": 200,
+          "end": 212,
+          "strand": -1,
+          "segments": [
+            {
+              "start": 200,
+              "end": 212
+            }
+          ],
+          "annealedBases": "GGGGCCCCAAAA",
+          "meltingTemperature": 70.0,
+          "sourceForm": "standard"
+        }
+      ],
+      "strand": -1,
+      "start": 200,
+      "end": 212
+    }
+  ]
+}

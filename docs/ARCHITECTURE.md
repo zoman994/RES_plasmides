@@ -1,6 +1,6 @@
 # BodgeGene architecture
 
-**Status:** current architectural overview for the `0.8.7-alpha` application. Runtime code and normative format specifications override this overview when they disagree.
+**Status:** current architectural overview for the `0.8.8-alpha` application. Runtime code and normative format specifications override this overview when they disagree.
 
 ## 1. System boundary
 

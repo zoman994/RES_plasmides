@@ -1,7 +1,8 @@
 import Dexie from 'dexie';
+import { makePrimerKey } from '../lib/primer-identity';
 
 export const DB_NAME = 'bodgegene-db';
-export const DB_VERSION = 7;
+export const DB_VERSION = 8;
 
 /**
  * Schema v3 (M-B.1 K1, DEC-IMP-11 ⚓):
@@ -119,6 +120,52 @@ export class BodgeDB extends Dexie {
       commonFeatures: 'id, kind, baseId',
       customEnzymes: 'id, name, createdAt',
       enzymeSets: 'id, name, createdAt',
+    });
+    // Schema v8 (PRIMER-LIVE-1): primers gain an explicit `scope`.
+    //
+    // Two registers were being kept in one: a `project` record is a design the
+    // biolog is working on, a `global` record is their personal inventory — a
+    // tube that physically exists. Both are addressed by a raw id, and until
+    // now a global record and a project record sharing one silently overwrote
+    // each other, destroying either the design or the record of a real tube.
+    //
+    // Purely ADDITIVE: two new indexes, and every legacy row is stamped with
+    // the project scope it always implicitly had. NO WIPE — the v4 wipe was a
+    // one-off dev-environment decision, not a precedent, and there is real
+    // user data in these tables now.
+    this.version(8).stores({
+      projects: 'id, name, createdAt, updatedAt',
+      containers: 'id, projectId, kind, name, [projectId+kind]',
+      library: 'id, kind, addedAt, [kind+addedAt], *tags, zone, projectId',
+      primers: 'id, name, projectId, status, addedAt, resourceHash, scope, rawId, [projectId+status], [scope+status]',
+      snippets: 'id, name, category, createdAt',
+      commonFeatures: 'id, kind, baseId',
+      customEnzymes: 'id, name, createdAt',
+      enzymeSets: 'id, name, createdAt',
+    }).upgrade(async (tx) => {
+      const tbl = tx.table('primers');
+      const rows = await tbl.toArray();
+      const rekeyed = [];
+      const drop = [];
+      for (const row of rows) {
+        if (!row || !row.id || row.scope) continue;
+        const rawId = row.rawId || row.id;
+        // Every legacy row is a project record — that is what the single
+        // register always meant. A raw id that happens to read like a
+        // qualified key has to MOVE, or it keeps squatting the slot the
+        // freezer will use and the first real tube would overwrite it.
+        const key = makePrimerKey('project', rawId);
+        const next = { ...row, scope: 'project', rawId };
+        if (key !== row.id) {
+          next.id = key;
+          drop.push(row.id);
+        }
+        rekeyed.push(next);
+      }
+      if (rekeyed.length) await tbl.bulkPut(rekeyed);
+      // Delete only AFTER the moved rows are safely written, so a failure
+      // half-way leaves the original row rather than nothing at all.
+      if (drop.length) await tbl.bulkDelete(drop);
     });
   }
 }

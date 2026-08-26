@@ -135,6 +135,12 @@ body {
   --viz-backbone: #e5e7eb;
   --viz-junction: #94a3b8;
   --viz-re-unique: #E24B4A;
+  /* ANN-0M - primer strands. `unknown` is its own token: a file that does
+     not state a strand has not stated forward. */
+  --viz-primer-fwd: #0ea5e9;
+  --viz-primer-rev: #7c3aed;
+  --viz-primer-unknown: #a8a29e;
+  --viz-primer-tail: #f59e0b;
   --feature-misc: #EEE7D5;
 
   --success-bg: #dcfce7;
@@ -192,6 +198,10 @@ body {
   --viz-backbone: #2a2a28;
   --viz-junction: #57574f;
   --viz-re-unique: #f87171;
+  --viz-primer-fwd: #38bdf8;
+  --viz-primer-rev: #a78bfa;
+  --viz-primer-unknown: #78716c;
+  --viz-primer-tail: #fbbf24;
   --feature-misc: #EEE7D5;
 
   --success-bg: #0a2818;
@@ -395,4 +405,14 @@ body[data-app-ready="true"] {
   .annotator-drill-in-press-accept {
     animation: none;
   }
+}
+
+/* ANN-0M - a primer glyph that is a control looks like one when focused.
+   Never `outline: none` without an equivalent focus-visible state. */
+.primer-site-glyph {
+  cursor: pointer;
+}
+.primer-site-glyph:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--viz-primer-fwd));
+  outline-offset: 2px;
 }

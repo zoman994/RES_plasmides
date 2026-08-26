@@ -123,10 +123,21 @@ export const createLibrarySlice = (set, get) => ({
         addedAt: e.addedAt || new Date().toISOString(),
       }));
     if (safe.length === 0) return [];
+    // ANN-0I — persist FIRST, then publish. The previous order wrote the rows
+    // into memory and only afterwards awaited IndexedDB, so a quota error or a
+    // blocked upgrade left phantom rows the user could see, open and edit but
+    // that vanished on reload. Durability is the precondition for a row
+    // existing, and the return value is the commit receipt: callers report
+    // success from what came back, never from what they sent.
+    try {
+      await putLibraryEntriesBulk(safe);
+    } catch (err) {
+      // No rows, no receipt — the caller surfaces the failure.
+      throw err;
+    }
     set(state => {
       for (const e of safe) state.libraryEntries[e.id] = e;
     });
-    await putLibraryEntriesBulk(safe);
     return safe;
   },
 

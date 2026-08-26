@@ -300,15 +300,25 @@ export function SkeletonProvider({ children }) {
       type: 'SPLIT_SEGMENT', draftId, segmentId, atOffsetWithinSegment,
     }),
     // G2 DEC-CANVAS-ASM-19/20 — primers on the assembly sequence.
+    // PRIMER-TAIL-SAVE-1 — forward the modal's canonical split (primerId marks an
+    // edit of an existing primer; tail/binding/bindingModel keep the 5′ overhang
+    // out of the binding). Dropping them here folded the tail into the binding and
+    // routed every Save through create.
     writeAssemblyPrimer: ({
       draftId, range, direction, source, name, sequence,
+      primerId, tail, binding, bindingModel, tm,
     }) => dispatch({
-      type: 'WRITE_ASSEMBLY_PRIMER', draftId, range, direction, source, name, sequence,
+      type: 'WRITE_ASSEMBLY_PRIMER',
+      draftId, range, direction, source, name, sequence,
+      primerId, tail, binding, bindingModel, tm,
     }),
     // Кирпич 3b — insert pre-designed (mutagenesis) primers into the pool,
     // tagged with project + assembly provenance in each record's `source`.
     addDerivedAssemblyPrimers: (draftId, primers) => dispatch({
       type: 'ADD_DERIVED_ASSEMBLY_PRIMERS', draftId, primers,
+    }),
+    commitAAMutagenesis: (payload) => dispatch({
+      type: 'COMMIT_AA_MUTAGENESIS', payload,
     }),
     removeAssemblyPrimer: (draftId, primerId) => dispatch({ type: 'REMOVE_ASSEMBLY_PRIMER', draftId, primerId }),
     // SPEC_EDITABLE_ASSEMBLY_S3 §5.1 — shift saved-primer coordinates

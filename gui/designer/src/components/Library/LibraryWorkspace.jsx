@@ -49,8 +49,8 @@ import AddModal from './AddModal/AddModal';
 import SequenceSearchHost from './SequenceSearchHost';
 import SequenceSearchProvider from '../SequenceSearchProvider';
 import { useOpenAlignmentForQuery } from './hooks/useOpenAlignmentForQuery';
-import { parseFile, extractItemName, ACCEPT_STRING, enrichAnnotations } from '../../file-import';
-import { buildLibraryEntry } from './lib/build-library-entry';
+import { ACCEPT_STRING } from '../../file-import';
+import { importFilesToLibrary } from './lib/canonical-file-ingress';
 import { buildStarterSet } from './lib/starter-set';
 import { downloadEntryAsGenbank, downloadProjectAsZip } from '../../lib/export-genbank';
 
@@ -117,8 +117,8 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
   // (passed by AppShell wrappers / future LayoutHost) gets a chance
   // to intercept first — when not provided, default to opening the
   // AddModal here.
-  const addLibraryEntry = useStore((s) => s.addLibraryEntry);
   const addLibraryEntriesBulk = useStore((s) => s.addLibraryEntriesBulk);
+  const addPrimerToPool = useStore((s) => s.addPrimerToPool);
   const currentProjectId = useStore((s) => s.currentProjectId);
 
   const onAddClick = useCallback(() => {
@@ -168,44 +168,37 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
     // checkbox → preset → onLaunchPreImport). The same flag gates the
     // post-import «что нашлось» toast counter (Звено 25.05.2026).
     const autoAnnotated = opts.autoAnnotate !== false;
-    let added = 0;
+    // ANN-0I — one canonical ingress owns parse → shape → awaited commit →
+    // primers, shared with the StartScreen drop. This surface keeps only its
+    // own reporting (auto-annotation counters and the follow-up toast action).
+    const result = await importFilesToLibrary(files, {
+      store: { addLibraryEntriesBulk, addPrimerToPool },
+      projectId,
+      autoAnnotate: autoAnnotated,
+      nameOverride: opts.nameOverride,
+      topologyOverride: opts.topologyOverride,
+    });
+
+    const added = result.committed.length;
     let genesFound = 0;
     let reSitesFound = 0;
-    let lastEntryId = null;
-    const errors = [];
-    for (const file of files) {
-      try {
-        const parsed = await parseFile(file);
-        // enrichAnnotations returns a copy with an extended `annotations`; at
-        // autoAnnotate===false it is skipped so a headerless paste stays
-        // feature-less.
-        const item = autoAnnotated
-          ? await enrichAnnotations(parsed, { autoAnnotate: true })
-          : parsed;
-        // Name: an explicit paste-name override wins; else derive as before
-        // (`>name` headers are already honoured by extractItemName).
-        const overrideName = opts.nameOverride && opts.nameOverride.trim();
-        const name = overrideName ? opts.nameOverride.trim() : extractItemName(item, file);
-        const entry = buildLibraryEntry(item, name, null);
-        // Topology: explicit override (paste linear/circular toggle) beats the
-        // parsed topology (plain-ACGT parseFasta hardcodes 'linear').
-        if (opts.topologyOverride && entry.payload) entry.payload.topology = opts.topologyOverride;
-        entry.projectId = projectId || null;
-        if (projectId) entry.origin = { kind: 'file_import', sourceFileName: file.name, importedAt: new Date().toISOString() };
-        await addLibraryEntry(entry);
-        lastEntryId = entry.id;
-        // Count what auto-annotation attached, by the same array handed to the
-        // entry: gene-by-homology = source 'common_db'; RE-site = detector
-        // 're_scan'. Only when it actually ran (else counters stay 0).
-        if (autoAnnotated && Array.isArray(item.annotations)) {
-          genesFound += item.annotations.filter((a) => a.source === 'common_db').length;
-          reSitesFound += item.annotations.filter((a) => a.detector === 're_scan').length;
-        }
-        added++;
-      } catch (e) {
-        errors.push(`${file.name}: ${e?.message || e}`);
-      }
+    for (const entry of result.committed) {
+      const anns = entry?.payload?.annotations;
+      if (!autoAnnotated || !Array.isArray(anns)) continue;
+      // ANN-0J root 6 — RECOGNITION is not PROVENANCE. An imported annotation
+      // that auto-annotation recognised keeps `source: 'import'` (it came from
+      // the user's file); counting by `source === 'common_db'` therefore
+      // reported zero genes for exactly the files that had them. Count what the
+      // detector actually attached instead: a homology hit carries
+      // `knownFeature`, a fresh detection carries `source: 'common_db'`.
+      genesFound += anns.filter((a) => a.knownFeature || a.source === 'common_db').length;
+      reSitesFound += anns.filter((a) => a.detector === 're_scan').length;
     }
+    const lastEntryId = added > 0 ? result.committed[added - 1].id : null;
+    const errors = result.errors;
+    // A feature refused by the location gate is reported BEFORE the outcome, so
+    // a partial import can never hide behind a success toast.
+    for (const warning of result.warnings) showToast(warning, 'warning', { autoDismissMs: 12000 });
     if (added > 0) {
       const base = `Добавлено: ${added} файл(ов)`;
       if (autoAnnotated && genesFound > 0) {
@@ -238,7 +231,7 @@ export default function LibraryWorkspace({ onAddClick: onAddClickExternal }) {
       }
     }
     if (errors.length > 0) showToast(errors[0], 'error');
-  }, [addLibraryEntry, showToast, setSelectedId, setPerEntryState]);
+  }, [addLibraryEntriesBulk, addPrimerToPool, showToast, setSelectedId, setPerEntryState]);
 
   // Resolve the modal's `target` string to a projectId or null.
   // Accepts: 'loose' → null; 'project:<id>' → that id; legacy

@@ -56,6 +56,14 @@ class Feature:
     exons: list[tuple[int, int]] = field(default_factory=list)    # [(start,end), ...] 1-based
     introns: list[tuple[int, int]] = field(default_factory=list)  # [(start,end), ...] 1-based
     has_introns: bool = False
+    # ANN-0A canonical location. Every segment of a compound / origin-crossing
+    # feature, in 5'->3' traversal order, in the SAME 1-based inclusive
+    # convention as `start` / `end`. Empty means "a single span" — `start`/`end`
+    # already say everything. Collapsing these to min..max is what turned a
+    # spliced CDS into one false span and an origin-crossing feature into a
+    # near-full-length molecule (BG-028).
+    segments: list[tuple[int, int]] = field(default_factory=list)
+    location_kind: str = "single"   # "single" | "join" | "order"
 
 
 @dataclass

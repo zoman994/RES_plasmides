@@ -23,6 +23,9 @@ import {
   featuresFromFragments, wrapLabel, arcBand, arcStrokePath, collectIntronsByParent,
 } from '../lib/plasmid-map-v2';
 import { exonSegments } from './SequenceView/tracks/gene-exon-spans';
+import { getSegments, locationLength, formatUiRange } from '../lib/annotation-location';
+import PrimerSiteOverlay from './PrimerSiteOverlay';
+import { segmentAngles } from '../lib/primer-site-geometry';
 
 const SZ = 600;
 const cx = SZ / 2; const cy = SZ / 2;
@@ -39,6 +42,8 @@ function trunc(s, n = 14) { return (s || '').length > n ? `${s.slice(0, n - 1)}�
 
 export default function PlasmidMapV2({
   fragments, annotations, length, constructName, totalBp, topology = 'circular',
+  // ANN-0M root D — the ONE description of the molecule on screen.
+  primers = null, renderContext = null, onSelectPrimerSite = null,
   rotationDeg = 0, centerLabel, onFeatureClick,
   selectedRegionId = null, onSelectRegion, onSelectFragment,
   // Digest «gel» mode (opt-in): restrict RE markers to the digest enzyme(s) so
@@ -69,6 +74,9 @@ export default function PlasmidMapV2({
     const feats = annotations
       ? getRegions(annotations).map((r) => ({
         id: r.id, name: r.name || r.type || '—', type: r.type || 'misc',
+        // ANN-0A — the reshape must carry the canonical segments, or a compound
+        // feature silently degrades to its scalar span here.
+        segments: getSegments(r),
         start: r.start, end: r.end, strand: Number.isFinite(r.strand) ? r.strand : 1,
         introns: (intronsByParent.get(r.id) || []),
         // UX-4 — compute fragment-ness from the FULL region (flags/coverage/name)
@@ -77,12 +85,37 @@ export default function PlasmidMapV2({
       }))
       : featuresFromFragments(fragments, getRegions).map((f) => ({ ...f, isFragment: isFragmentFeature(f) }));
     return feats.filter((f) => Number.isFinite(f.start) && Number.isFinite(f.end)).map((f, i) => {
-      const sA = (f.start / total) * TAU; const eA = (f.end / total) * TAU;
-      // Spliced gene → split into exon spans so introns show as visible gaps.
-      const introns = Array.isArray(f.introns) ? f.introns : [];
-      const exons = introns.length ? exonSegments(f.start, f.end, introns) : null;
+      // A compound / origin-crossing location already IS the exon structure —
+      // draw its own segments. Otherwise fall back to splitting a scalar span
+      // on its intron details.
+      const segs = getSegments(f);
+      const wraps = segs.length > 1 && segs.some((s, k) => k > 0 && s.start < segs[k - 1].start);
+      let introns = Array.isArray(f.introns) ? f.introns : [];
+      let exons = null;
+      if (segs.length > 1) {
+        exons = segs.map((s) => [s.start, s.end]);
+        // Gaps between segments are real introns only on a linear run; across
+        // the origin the parts are contiguous, so no connector is drawn there.
+        introns = wraps
+          ? []
+          : segs.slice(1)
+            .map((s, k) => [segs[k].end, s.start])
+            .filter(([is, ie]) => ie > is);
+      } else if (introns.length) {
+        exons = exonSegments(f.start, f.end, introns);
+      }
+      // Angles: for a wrap the scalar span is the sentinel (end <= start), so
+      // the label anchor is computed from the SEGMENTS — walking the arc from
+      // the first segment's start through the total feature length — instead of
+      // averaging two coordinates that no longer bracket the feature.
+      const sA = (segs[0].start / total) * TAU;
+      const bioLen = segs.reduce((n, s) => n + (s.end - s.start), 0);
+      const eA = wraps
+        ? ((segs[0].start + bioLen) / total) * TAU
+        : (f.end / total) * TAU;
       return {
-        ...f, i, introns, exons, startAngle: sA, endAngle: eA, midAngle: (sA + eA) / 2,
+        ...f, i, introns, exons, segments: segs, wraps,
+        startAngle: sA, endAngle: eA, midAngle: (sA + eA) / 2,
         fill: featureColorShaded(f.type, f.name) || 'var(--feature-misc, #EEE7D5)',
       };
     });
@@ -293,7 +326,7 @@ export default function PlasmidMapV2({
             const sel = isSel(a); const h = hovered === a.i;
             const oR = sel || h ? fOut + 4 : fOut; const iR = sel || h ? fIn - 2 : fIn;
             const spliced = a.exons && a.exons.length > 1;
-            const title = `${a.name} · ${a.start + 1}–${a.end} (${a.end - a.start} bp)${spliced ? ` · ${a.exons.length} exons` : ''}`;
+            const title = `${a.name} · ${formatUiRange(a)} (${locationLength(a)} bp)${spliced ? ` · ${a.exons.length} exons` : ''}`;
             const evt = {
               onMouseEnter: () => setHovered(a.i), onMouseLeave: () => setHovered(null), onClick: () => clickFeature(a),
             };
@@ -307,6 +340,8 @@ export default function PlasmidMapV2({
               const termIdx = a.strand < 0 ? 0 : a.exons.length - 1;
               return (
                 <g key={a.i} data-testid={`plasmid-v2-feature-${a.i}`} data-spliced="true"
+                  data-region-id={a.id || ''}
+                  data-wraps-origin={a.wraps ? 'true' : undefined}
                   style={{ cursor: 'pointer' }} {...evt}>
                   {a.introns.map(([is, ie], k) => (
                     <path key={`cn${k}`} d={arcStrokePath(cx, cy, ang(is), ang(ie), fMid)}
@@ -346,6 +381,16 @@ export default function PlasmidMapV2({
             );
           })}
 
+          <PrimerSiteOverlay
+            primers={primers}
+            context={renderContext}
+            onSelectSite={onSelectPrimerSite}
+            segmentPath={(seg) => {
+              const { a0, a1 } = segmentAngles(seg, total);
+              return arcBand(cx, cy, a0, a1, fIn - 4, fIn - 9);
+            }}
+          />
+
           {/* sub-features (detail, non-intron) — thin nested arc at the inner edge
               of the gene ring so domains/tags read as «inside» the feature. */}
           {subFeatures.map((d) => {
@@ -360,7 +405,7 @@ export default function PlasmidMapV2({
                 stroke={sel ? FEATURE_STROKE : (d.isFragment ? d.fill : '#ffffff')}
                 strokeWidth={sel ? 1.2 : (d.isFragment ? 1 : 0.5)} opacity={0.92}
                 style={{ cursor: 'pointer' }} onClick={() => clickAnn(d)}>
-                <title>{`${d.name || d.type} (саб-фича) · ${d.start + 1}–${d.end} (${d.end - d.start} bp)`}</title>
+                <title>{`${d.name || d.type} (саб-фича) · ${formatUiRange(d)} (${locationLength(d)} bp)`}</title>
               </path>
             );
           })}
@@ -373,7 +418,7 @@ export default function PlasmidMapV2({
               <g key={`pm${p.k}`} data-testid={`plasmid-v2-point-${p.k}`} style={{ cursor: 'pointer' }} onClick={() => clickAnn(p)}>
                 <path d={`M${pt.x},${pt.y - r} L${pt.x + r},${pt.y} L${pt.x},${pt.y + r} L${pt.x - r},${pt.y} Z`}
                   fill={p.fill} stroke={sel ? FEATURE_STROKE : '#ffffff'} strokeWidth={sel ? 1 : 0.5} />
-                <title>{`${p.name || p.type} · ${p.start + 1}`}</title>
+                <title>{`${p.name || p.type} · ${formatUiRange(p)}`}</title>
               </g>
             );
           })}
@@ -478,7 +523,7 @@ export default function PlasmidMapV2({
               <rect x={bx} y={by} width={4} height={bh} rx={2} fill={f.fill} />
               <text x={bx + 14} y={by + 17} fontSize={12.5} fontWeight={600} fill="var(--text-primary)" style={{ fontFamily: 'var(--font-ui, inherit)' }}>{trunc(f.name, 20)}</text>
               <text x={bx + 14} y={by + 33} fontSize={10.5} fill="var(--text-secondary)" style={{ fontFamily: 'var(--font-mono, monospace)' }}>{f.type} · {stTxt}</text>
-              <text x={bx + 14} y={by + 48} fontSize={10.5} fill="var(--text-tertiary)" style={{ fontFamily: 'var(--font-mono, monospace)' }}>{(f.start + 1).toLocaleString()}–{f.end.toLocaleString()} · {(f.end - f.start).toLocaleString()} bp</text>
+              <text x={bx + 14} y={by + 48} fontSize={10.5} fill="var(--text-tertiary)" style={{ fontFamily: 'var(--font-mono, monospace)' }}>{formatUiRange(f)} · {locationLength(f).toLocaleString()} bp</text>
             </g>
           );
         })()}

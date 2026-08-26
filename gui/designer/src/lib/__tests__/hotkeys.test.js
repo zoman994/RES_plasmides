@@ -136,11 +136,14 @@ describe('K4 — hotkey infrastructure', () => {
     expect(noop).toHaveBeenCalledTimes(1);
   });
 
-  it('HOTKEYS map exposes 15 entries (T7 zone G/S; T10 added toggle-sanger-notebook)', () => {
+  // The registry is deliberately closed: a new key is an explicit decision,
+  // not something a feature slips in. PRIMER-LIVE-1 added exactly one —
+  // `primer-edit` (bare E) — so this list grew from 15 to 16.
+  it('HOTKEYS map exposes 16 entries (T7 zone G/S; T10 toggle-sanger-notebook; PRIMER-LIVE-1 primer-edit)', () => {
     expect(Object.keys(HOTKEYS).sort()).toEqual([
       'close-project', 'command-palette', 'escape', 'new-project',
       'open-bodge', 'open-settings', 'pcr-primer-forward', 'pcr-primer-reverse',
-      'piece-create', 'project-info', 'save-bodge', 'sequence-search',
+      'piece-create', 'primer-edit', 'project-info', 'save-bodge', 'sequence-search',
       'toggle-sanger-notebook', 'toggle-zone-view-graph', 'toggle-zone-view-sequence',
     ]);
   });
@@ -263,5 +266,57 @@ describe('K4 — hotkey infrastructure', () => {
     const ev = makeEvent({ key: 'Escape' });
     expect(runHotkeyResolver(ev)).toBe(true);
     expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it('an opt-in modal boundary blocks every global hotkey before handlers', () => {
+    _setPlatformOverrideForTests('other');
+    const handler = vi.fn();
+    renderHook(() => useHotkey('command-palette', handler));
+    const modal = document.createElement('section');
+    modal.setAttribute('data-block-global-hotkeys', 'true');
+    const button = document.createElement('button');
+    modal.appendChild(button);
+    document.body.appendChild(modal);
+
+    const event = makeEvent({ key: 'p', ctrl: true, target: button });
+    expect(runHotkeyResolver(event)).toBe(false);
+    expect(event.defaultPrevented).toBe(false);
+    expect(handler).not.toHaveBeenCalled();
+    modal.remove();
+  });
+
+  // PRIMER-LIVE-1 — «E» edits the selected primer occurrence, the keyboard
+  // twin of double-click. It is the standard edit key in this project's
+  // layout, so it is registered centrally rather than as a local listener
+  // inside one viewer.
+  it('bare E is registered as the edit key and runs its handler', () => {
+    _setPlatformOverrideForTests('other');
+    expect(HOTKEYS['primer-edit']).toBeTruthy();
+    expect(formatHotkey('primer-edit', 'other')).toBe('E');
+    const handler = vi.fn();
+    renderHook(() => useHotkey('primer-edit', handler));
+    const ev = makeEvent({ key: 'e' });
+    expect(runHotkeyResolver(ev)).toBe(true);
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it('E does not fire while the biolog is typing a name', () => {
+    _setPlatformOverrideForTests('other');
+    const handler = vi.fn();
+    renderHook(() => useHotkey('primer-edit', handler));
+    const input = document.createElement('input');
+    document.body.appendChild(input);
+    const ev = makeEvent({ key: 'e', target: input });
+    expect(runHotkeyResolver(ev)).toBe(false);
+    expect(handler).not.toHaveBeenCalled();
+    input.remove();
+  });
+
+  it('E does not cross-match a modified chord', () => {
+    _setPlatformOverrideForTests('other');
+    const handler = vi.fn();
+    renderHook(() => useHotkey('primer-edit', handler));
+    expect(runHotkeyResolver(makeEvent({ key: 'e', ctrl: true }))).toBe(false);
+    expect(handler).not.toHaveBeenCalled();
   });
 });

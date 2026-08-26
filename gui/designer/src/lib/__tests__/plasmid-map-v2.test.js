@@ -278,9 +278,18 @@ describe('plasmid-map-v2 — featuresFromFragments (legacy region shape)', () =>
       { id: 'b', name: 'XynTL', type: 'CDS', start: 971, end: 1990, strand: 1 },
     ] }];
     const out = featuresFromFragments(frags, identity);
+    // ANN-0A gave every feature its canonical `segments` alongside the scalar
+    // projection, so a compound or origin-crossing location survives the flatten.
+    // This expectation predates that and knew only the scalar pair.
     expect(out).toEqual([
-      { id: 'a', name: 'PglaA', type: 'promoter', start: 250, end: 950, strand: 1, introns: [] },
-      { id: 'b', name: 'XynTL', type: 'CDS', start: 971, end: 1990, strand: 1, introns: [] },
+      {
+        id: 'a', name: 'PglaA', type: 'promoter', start: 250, end: 950, strand: 1,
+        introns: [], segments: [{ start: 250, end: 950 }],
+      },
+      {
+        id: 'b', name: 'XynTL', type: 'CDS', start: 971, end: 1990, strand: 1,
+        introns: [], segments: [{ start: 971, end: 1990 }],
+      },
     ]);
   });
   it('offsets later fragments by accumulated length', () => {

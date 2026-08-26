@@ -24,11 +24,14 @@ describe('K1 — Dexie schema v2 + library table', () => {
     await freshDB();
   });
 
-  it('opens schema v7 with projects + containers + library + primers + snippets + commonFeatures + custom-enzyme tables', async () => {
+  // PRIMER-LIVE-1 bumped v7 -> v8 additively; the library table is untouched.
+  it('opens schema v8 with projects + containers + library + primers + snippets + commonFeatures + custom-enzyme tables', async () => {
     expect(db.tables.map(t => t.name).sort()).toEqual(
       ['commonFeatures', 'containers', 'customEnzymes', 'enzymeSets', 'library', 'primers', 'projects', 'snippets'],
     );
-    expect(db.verno).toBe(7);
+    expect(db.verno).toBe(8);
+    // The bump must not have disturbed the library schema it rides along with.
+    expect(db.table('library').schema.indexes.map((i) => i.name)).toContain('kind');
   });
 
   it('listLibraryEntries({ kind: "primer" }) returns only primer entries', async () => {

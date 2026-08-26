@@ -456,4 +456,35 @@ describe('alignmentSlice', () => {
     expect(s.align.refId).toBeTruthy();
     expect(s.align.readIds.length).toBeGreaterThan(0);
   });
+
+  describe('addAlignInput reports its outcome', () => {
+    const align = () => useStore.getState().align;
+    const add = (name, sequence) => useStore.getState().addAlignInput({ name, sequence });
+    const CAP = { ok: false, reason: 'capacity', limit: MAX_ALIGN_INPUTS };
+
+    // Refusal = the stated outcome AND an align untouched to the last field. Fresh deep
+    // copy per call, so the before-image cannot alias live state and pass vacuously.
+    const refuses = (name, sequence, outcome) => {
+      const before = structuredClone(align());
+      expect(add(name, sequence)).toEqual(outcome);
+      expect(structuredClone(align())).toStrictEqual(before);
+    };
+
+    it('added — with the id of the row it created', () => {
+      const res = add('A', 'ACGTACGT');
+      expect(res).toEqual({ ok: true, reason: 'added', id: align().inputs[0].id });
+    });
+
+    it('duplicate — refused, and align left completely untouched', () => {
+      add('A', 'ACGTACGT');
+      refuses('A', 'ACGTACGT', { ok: false, reason: 'duplicate' });
+    });
+
+    it('capacity — real limit, mutates nothing, and outranks duplicate on a full list', () => {
+      for (let i = 0; i < MAX_ALIGN_INPUTS; i += 1) add(`s${i}`, `ACGTACGT${i}`);
+      expect(align().inputs).toHaveLength(MAX_ALIGN_INPUTS);
+      refuses('new', 'TTTTTTTT', CAP);
+      refuses('s0', 'ACGTACGT0', CAP); // a re-paste on a full list is capacity, never duplicate
+    });
+  });
 });

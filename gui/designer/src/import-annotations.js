@@ -6,6 +6,70 @@
  */
 
 import { generateRegionId } from './domain-detection';
+import {
+  LOCATION_KINDS,
+  makeLocation,
+  normalizeLocation,
+  locationLength,
+  locationCovers,
+} from './lib/annotation-location';
+
+/**
+ * Canonical location for an incoming feature. A parser that already speaks the
+ * location contract (GenBank, `.bodge` container) supplies `feat.location`;
+ * a scalar-only source (legacy SnapGene projection) is lifted to a single
+ * segment here. This is the ingress point — downstream code reads segments.
+ */
+function locationForFeature(feat) {
+  if (feat.location) return makeLocation(feat.location.kind, feat.location.segments);
+  if (Array.isArray(feat.segments) && feat.segments.length) {
+    // The backend already decided join vs order — do not coerce every
+    // multi-segment answer to `join`. `order` means the parts' relative order
+    // is known but their connection is not, which is biologically different.
+    const declared = feat.location_kind;
+    const kind = feat.segments.length === 1
+      ? LOCATION_KINDS.SINGLE
+      : (declared === LOCATION_KINDS.ORDER ? LOCATION_KINDS.ORDER : LOCATION_KINDS.JOIN);
+    return makeLocation(kind, feat.segments);
+  }
+  return makeLocation(LOCATION_KINDS.SINGLE, [{ start: feat.start, end: feat.end }]);
+}
+
+/**
+ * Attach the canonical location plus its coherent scalar projection.
+ *
+ * Runs through `normalizeLocation`, so ingress obeys the SAME gate as every
+ * other write path: an origin crossing is accepted only on a circular document,
+ * a malformed multi-descent list is rejected rather than sorted, and the
+ * projection can never drift from the segments.
+ */
+function withLocation(ann, feat, doc) {
+  const location = locationForFeature(feat);
+  return normalizeLocation({ ...ann, location }, doc);
+}
+
+/**
+ * Fail-closed at FEATURE granularity.
+ *
+ * A location the gate rejects (out of the sequence, reversed, an origin
+ * crossing on a linear molecule, an unrepresentable multi-descent list) must
+ * never enter the model — but it must also not abort the whole import. A real
+ * `.gb` with one truncated or malformed feature still contains valid biology in
+ * the rest of the file, and throwing here made the entire document unopenable.
+ *
+ * Returns `null` for a rejected feature; the caller skips it and counts it.
+ */
+function tryWithLocation(ann, feat, doc, rejected, rejectedFeatures) {
+  try {
+    return withLocation(ann, feat, doc);
+  } catch (err) {
+    rejected.push({ name: ann?.name ?? feat?.type ?? 'feature', reason: err.message });
+    // Identity, not name: the caller excludes THIS feature, never every
+    // feature that happens to share its label.
+    if (rejectedFeatures && feat) rejectedFeatures.add(feat);
+    return null;
+  }
+}
 
 // ═══ Type classification sets ═══
 
@@ -147,23 +211,42 @@ function extractColor(feat) {
 // (excludes ones already mapped elsewhere: label→name, ApEinfo→color, exons→introns,
 // primer_seq→primer). The feature tooltip (annotation-title) already reads
 // qualifiers.note/product, so preserved notes surface immediately.
-const QUALIFIER_WHITELIST = [
-  'note', 'product', 'gene', 'gene_synonym', 'locus_tag', 'old_locus_tag',
-  'EC_number', 'db_xref', 'function', 'standard_name', 'protein_id', 'pseudo',
-  // P4.0 — reading-frame + genetic-code provenance for protein search (aa:).
-  // INSDC /codon_start (1|2|3, 1-based frame offset) and /transl_table (NCBI id).
-  // Ride as raw strings on ann.qualifiers; the translate-cds consumer parses +
-  // converts codon_start→frame offset at its own boundary (never store shifted).
-  'codon_start', 'transl_table',
-];
+// ANN-0I — provenance is PRESERVED, not whitelisted. A fungal lab tracks
+// arbitrary keys (`/inference`, `/experiment`, lab-local `/plasmid_id`), and a
+// fixed allow-list silently discarded every one of them. Only fields whose
+// information is already carried elsewhere on the annotation are dropped, plus
+// keys that would poison the prototype chain.
+const QUALIFIER_MAPPED_ELSEWHERE = new Set([
+  'label',            // → ann.name
+  'ApEinfo_fwdcolor', // → ann.color
+  'ApEinfo_revcolor', // → ann.color
+  'SnapGene:color',   // → ann.color
+  'color',            // → ann.color
+  'exons',            // → intron detail annotations
+  'primer_seq',       // → the primer pool
+]);
+const UNSAFE_QUALIFIER_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+/** JSON-safe = a string, finite number, boolean, or an array of those. */
+function isJsonSafeQualifier(v) {
+  if (typeof v === 'string' || typeof v === 'boolean') return true;
+  if (typeof v === 'number') return Number.isFinite(v);
+  if (Array.isArray(v)) return v.every((x) => isJsonSafeQualifier(x) && !Array.isArray(x));
+  return false;
+}
+
 function pickQualifiers(q) {
   if (!q || typeof q !== 'object') return null;
-  const out = {};
-  for (const k of QUALIFIER_WHITELIST) {
+  const out = Object.create(null);
+  for (const k of Object.keys(q)) {
+    if (UNSAFE_QUALIFIER_KEYS.has(k)) continue;
+    if (QUALIFIER_MAPPED_ELSEWHERE.has(k)) continue;
     const v = q[k];
-    if (v != null && v !== '') out[k] = v;
+    if (v == null || v === '') continue;
+    if (!isJsonSafeQualifier(v)) continue;
+    out[k] = v;
   }
-  return Object.keys(out).length ? out : null;
+  return Object.keys(out).length ? { ...out } : null;
 }
 
 // ═══ Main import function ═══
@@ -176,11 +259,18 @@ function pickQualifiers(q) {
  * @param {string} [format] — 'snapgene' | 'genbank' | 'ape' (optional, for color handling)
  * @returns {{ annotations: Array, primers: Array }}
  */
-export function importFeatures(features, seqLength, format) {
+export function importFeatures(features, seqLength, format, docOrTopology) {
+  const doc = (docOrTopology && typeof docOrTopology === 'object')
+    ? { length: Number.isFinite(docOrTopology.length) ? docOrTopology.length : seqLength,
+        topology: docOrTopology.topology }
+    : { length: seqLength, topology: docOrTopology };
   if (!features?.length) return { annotations: [], primers: [] };
 
   const annotations = [];
   const regions = [];
+  // Locations the coherence gate refused — skipped, never silently repaired.
+  const rejected = [];
+  const rejectedFeatures = new Set();
 
   // ── Step 1: Filter ──
   // Skip source features entirely.
@@ -189,15 +279,15 @@ export function importFeatures(features, seqLength, format) {
   const filtered = features.filter(f => {
     if (f.type === 'source') return false;
     if (f.type === 'gene') {
-      return !geneChildren.some(child =>
-        child.start >= f.start && child.end <= f.end
-      );
+      return !geneChildren.some(child => locationCovers(f, child));
     }
     return true;
   });
 
-  // Sort largest-first for region pass
-  const sorted = [...filtered].sort((a, b) => (b.end - b.start) - (a.end - a.start));
+  // Sort largest-first for region pass. Size is the summed segment length, so a
+  // spliced or origin-crossing feature is ranked by its real extent rather than
+  // by a bounding span that may be negative after an origin crossing.
+  const sorted = [...filtered].sort((a, b) => locationLength(b) - locationLength(a));
 
   // ── Step 2 + 3: First pass — create regions ──
   for (const feat of sorted) {
@@ -205,19 +295,18 @@ export function importFeatures(features, seqLength, format) {
 
     const regionId = generateRegionId();
     const q = pickQualifiers(feat.qualifiers);
-    const ann = {
+    const ann = tryWithLocation({
       id: regionId,
       name: extractName(feat),
       type: normalizeType(feat.type, feat),
-      start: feat.start,
-      end: feat.end,
       strand: feat.strand || 1,
       level: 'region',
       auto: false,
       source: 'import',
       color: extractColor(feat),
       ...(q ? { qualifiers: q } : {}),
-    };
+    }, feat, doc, rejected, rejectedFeatures);
+    if (!ann) continue;
 
     regions.push(ann);
     annotations.push(ann);
@@ -229,7 +318,9 @@ export function importFeatures(features, seqLength, format) {
         const intronStart = exons[ei].end;
         const intronEnd = exons[ei + 1].start;
         if (intronEnd > intronStart) {
-          annotations.push({
+          // A synthesized intron is a write path like any other — it gets a
+          // canonical location, not just a scalar pair.
+          const intronAnn = tryWithLocation({
             name: `intron ${ei + 1}`,
             type: 'intron',
             start: intronStart,
@@ -240,7 +331,8 @@ export function importFeatures(features, seqLength, format) {
             auto: false,
             source: 'import',
             color: '#9CA3AF',
-          });
+          }, { start: intronStart, end: intronEnd }, doc, rejected, null);
+          if (intronAnn) annotations.push(intronAnn);
         }
       }
     }
@@ -252,15 +344,11 @@ export function importFeatures(features, seqLength, format) {
     if (REGION_TYPES.has(feat.type)) continue; // already processed
 
     if (DETAIL_TYPES.has(feat.type)) {
-      const parentRegion = regions.find(r =>
-        feat.start >= r.start && feat.end <= r.end
-      );
+      const parentRegion = regions.find(r => locationCovers(r, feat));
       const qd = pickQualifiers(feat.qualifiers);
-      annotations.push({
+      const detailAnn = tryWithLocation({
         name: extractName(feat),
         type: normalizeDetailType(feat.type),
-        start: feat.start,
-        end: feat.end,
         strand: feat.strand || 1,
         level: 'detail',
         regionId: parentRegion?.id || null,
@@ -268,77 +356,99 @@ export function importFeatures(features, seqLength, format) {
         source: 'import',
         color: extractColor(feat),
         ...(qd ? { qualifiers: qd } : {}),
-      });
+      }, feat, doc, rejected, rejectedFeatures);
+      if (detailAnn) annotations.push(detailAnn);
       continue;
     }
 
     if (POINT_TYPES.has(feat.type)) {
-      annotations.push({
+      const qp = pickQualifiers(feat.qualifiers);
+      const pointAnn = tryWithLocation({
         name: extractName(feat),
         type: normalizeDetailType(feat.type),
-        start: feat.start,
-        end: feat.end,
         strand: feat.strand || 1,
         level: 'point',
         auto: false,
         source: 'import',
-      });
+        ...(qp ? { qualifiers: qp } : {}),
+      }, feat, doc, rejected, rejectedFeatures);
+      if (pointAnn) annotations.push(pointAnn);
       continue;
     }
 
     // Unknown type — heuristic.
     // Note: 'exon' features fall through here → typically become details.
     // Explicit handling not needed — GenBank join() in CDS already extracts introns via EXON_BEARING_TYPES.
-    const span = feat.end - feat.start;
-    const isInsideRegion = regions.some(r =>
-      feat.start >= r.start && feat.end <= r.end
-    );
+    const span = locationLength(feat);
+    const isInsideRegion = regions.some(r => locationCovers(r, feat));
 
     if (span > seqLength * 0.1 && !isInsideRegion) {
       // Large + not inside a region → region
       const regionId = generateRegionId();
-      const ann = {
+      const qu = pickQualifiers(feat.qualifiers);
+      const ann = tryWithLocation({
         id: regionId,
         name: extractName(feat),
         type: 'misc_feature',
-        start: feat.start,
-        end: feat.end,
         strand: feat.strand || 1,
         level: 'region',
         auto: false,
         source: 'import',
         color: extractColor(feat),
-      };
+        ...(qu ? { qualifiers: qu } : {}),
+      }, feat, doc, rejected, rejectedFeatures);
+      if (!ann) continue;
       regions.push(ann);
       annotations.push(ann);
     } else {
       // Small or inside a region → detail
-      const parentRegion = regions.find(r =>
-        feat.start >= r.start && feat.end <= r.end
-      );
-      annotations.push({
+      const parentRegion = regions.find(r => locationCovers(r, feat));
+      const qf = pickQualifiers(feat.qualifiers);
+      const fallbackAnn = tryWithLocation({
         name: extractName(feat),
         type: normalizeDetailType(feat.type),
-        start: feat.start,
-        end: feat.end,
         strand: feat.strand || 1,
         level: 'detail',
         regionId: parentRegion?.id || null,
         auto: false,
         source: 'import',
         color: extractColor(feat),
-      });
+        ...(qf ? { qualifiers: qf } : {}),
+      }, feat, doc, rejected, rejectedFeatures);
+      if (fallbackAnn) annotations.push(fallbackAnn);
     }
   }
 
   // ── Step 5: Extract primers ──
+  // A `primer_bind` whose location the gate refused is NOT a primer — letting
+  // it through would put an oligo with invented coordinates into the pool.
+  //
+  // ANN-0J root 4 — the exclusion keys on the FEATURE OBJECT, not its name.
+  // Matching by name meant a rejected `P` also deleted an unrelated, perfectly
+  // valid `P` elsewhere in the file: two different oligos, one shared label.
   const primers = features
     .filter(f => f.type === 'primer_bind')
+    // ANN-0L C1 — a refused location is refused as an ANNOTATION; the primer
+    // stays. The gate judges coordinates, and bad coordinates say nothing
+    // about the oligo or where it came from. Dropping the record here threw
+    // away facts the location never touched. The row keeps no usable site, so
+    // no glyph is drawn — which is the honest outcome, not deletion.
     .map(f => ({
+      locationRejected: rejectedFeatures.has(f),
       name: extractName(f),
       sequence: f.qualifiers?.primer_seq || '',
-      start: f.start,
-      end: f.end,
+      // ANN-0J root 3 — the supported `/note="sequence: …"` form lives in the
+      // qualifiers. Dropping them here is why that note never reached the
+      // primer and the oligo silently degraded to a derived binding sequence.
+      note: f.qualifiers?.note,
+      qualifiers: f.qualifiers || null,
+      // ANN-0L — forward the canonical location, not just its scalar
+      // projection. An origin-crossing primer_bind projects to end <= start,
+      // so start/end alone cannot describe where it binds.
+      // A refused location must not travel on as if it were usable.
+      location: rejectedFeatures.has(f) ? null : (f.location || null),
+      start: rejectedFeatures.has(f) ? null : f.start,
+      end: rejectedFeatures.has(f) ? null : f.end,
       strand: f.strand || 1,
       source: 'import',
     }));
@@ -349,5 +459,5 @@ export function importFeatures(features, seqLength, format) {
     if (!a.id) a.id = generateRegionId();
   }
 
-  return { annotations, primers };
+  return { annotations, primers, rejected };
 }

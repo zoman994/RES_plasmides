@@ -12,6 +12,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
 import PrimerTrack from '../tracks/PrimerTrack';
+import { reverseComplement } from '../../../sequence-utils';
 
 afterEach(cleanup);
 
@@ -110,6 +111,102 @@ describe('PrimerTrack — overlap tail segment', () => {
     render(<PrimerTrack {...base} primers={[p]} />);
     const W = BINDING.length * 7.2;
     expect(Number(screen.getByTestId('sequence-view-primer-label').getAttribute('x'))).toBeCloseTo(W + 6 + 4, 3);
+  });
+});
+
+describe('PrimerTrack — aligned-v1 M/X/I/D glyphs keep source geometry', () => {
+  const DOC = 'sha256:aligned-glyphs';
+  const ANCHOR = 'ACGTAGCTTACCGGTA';
+  const template = `${'T'.repeat(5)}${ANCHOR}${'G'.repeat(10)}`;
+  const site = (over = {}) => ({
+    id: over.id || 's1',
+    target: { entryId: 'E1', resourceHash: DOC, topology: over.topology || 'linear' },
+    location: over.location || { kind: 'single', segments: [{ start: 5, end: 21 }] },
+    strand: over.strand || 1,
+    annealedSequence: over.annealedSequence || ANCHOR,
+    tail: over.tail ?? 'GG',
+  });
+  const primer = (body, over = {}) => ({
+    id: over.id || 'aligned', name: over.name || 'aligned',
+    direction: over.direction || 'forward', bindingModel: 'aligned-v1',
+    tail: over.tail ?? 'GG', bindingSequence: body,
+    sequence: `${over.tail ?? 'GG'}${body}`,
+    sites: over.sites || [site()],
+  });
+  const props = {
+    fullSeq: template, lineStart: 0, lineLen: template.length,
+    labelChars: 8, primerStyle: 'filled', charPx: 7.2,
+    entryId: 'E1', documentHash: DOC, topology: 'linear',
+  };
+
+  it('draws a query-only insertion above its boundary, keeps tail separate and footprint 16 nt', () => {
+    const body = `${ANCHOR.slice(0, 7)}A${ANCHOR.slice(7)}`;
+    render(<PrimerTrack {...props} primers={[primer(body)]} />);
+    expect(screen.getByTestId('sequence-view-primer').getAttribute('data-primer-span')).toBe('5-21');
+    expect(screen.getByTestId('sequence-view-primer-insertion').textContent).toBe('A');
+    expect(screen.getByTestId('sequence-view-primer-tail-bases').textContent).toBe('GG');
+    expect(screen.getByTestId('sequence-view-primer-bases').textContent).toHaveLength(ANCHOR.length);
+  });
+
+  it('draws a target-only deletion as a dash in the target column', () => {
+    const body = `${ANCHOR.slice(0, 6)}${ANCHOR.slice(7)}`;
+    render(<PrimerTrack {...props} primers={[primer(body, { tail: '' })]} />);
+    const deletion = screen.getByTestId('sequence-view-primer-base-deletion');
+    expect(deletion.textContent).toBe('–');
+    expect(deletion.getAttribute('data-primer-alignment-op')).toBe('D');
+    expect(screen.getByTestId('sequence-view-primer').getAttribute('data-primer-span')).toBe('5-21');
+  });
+
+  it('maps a reverse insertion into top-strand orientation without changing the footprint', () => {
+    const anchorPrimer = reverseComplement(ANCHOR);
+    const body = `${anchorPrimer.slice(0, 5)}A${anchorPrimer.slice(5)}`;
+    render(<PrimerTrack {...props} primers={[primer(body, {
+      id: 'reverse-aligned', direction: 'reverse', tail: '',
+      sites: [site({ strand: -1, annealedSequence: anchorPrimer, tail: '' })],
+    })]} />);
+    expect(screen.getByTestId('sequence-view-primer').getAttribute('data-primer-strand')).toBe('reverse');
+    expect(screen.getByTestId('sequence-view-primer').getAttribute('data-primer-span')).toBe('5-21');
+    expect(screen.getByTestId('sequence-view-primer-insertion').textContent).toBe('T');
+  });
+
+  it('aligns the same body independently at every declared site', () => {
+    const body = `${ANCHOR.slice(0, 4)}A${ANCHOR.slice(4)}`;
+    const fullSeq = `${ANCHOR}${'T'.repeat(4)}${ANCHOR}`;
+    const sites = [
+      site({ id: 'a', location: { kind: 'single', segments: [{ start: 0, end: 16 }] }, tail: '' }),
+      site({ id: 'b', location: { kind: 'single', segments: [{ start: 20, end: 36 }] }, tail: '' }),
+    ];
+    render(<PrimerTrack
+      {...props}
+      fullSeq={fullSeq}
+      lineLen={fullSeq.length}
+      primers={[primer(body, { tail: '', sites })]}
+    />);
+    expect(screen.getAllByTestId('sequence-view-primer')).toHaveLength(2);
+    expect(screen.getAllByTestId('sequence-view-primer-insertion')).toHaveLength(2);
+  });
+
+  it('shows one insertion at an origin-split boundary and keeps both source segments', () => {
+    const circular = 'ACGTACGTACGTACGTACGT';
+    const anchor = circular.slice(16) + circular.slice(0, 4);
+    const body = `${anchor.slice(0, 4)}A${anchor.slice(4)}`;
+    const wrapSite = site({
+      id: 'wrap', topology: 'circular', annealedSequence: anchor, tail: '',
+      location: {
+        kind: 'join', segments: [{ start: 16, end: 20 }, { start: 0, end: 4 }],
+      },
+    });
+    render(<PrimerTrack
+      {...props}
+      fullSeq={circular}
+      lineLen={circular.length}
+      topology="circular"
+      circular
+      primers={[primer(body, { tail: '', sites: [wrapSite] })]}
+    />);
+    expect(screen.getAllByTestId('sequence-view-primer').map((node) => node.getAttribute('data-primer-span')))
+      .toEqual(['16-20', '0-4']);
+    expect(screen.getAllByTestId('sequence-view-primer-insertion')).toHaveLength(1);
   });
 });
 
@@ -352,5 +449,178 @@ describe('PrimerTrack — circularisation tail wraps across the origin', () => {
     expect(screen.getByTestId('sequence-view-primer')).toBeTruthy();          // binding arrow here
     expect(screen.getByTestId('sequence-view-primer-tail')).toBeTruthy();     // inline tail glued to it
     expect(screen.queryByTestId('sequence-view-primer-tail-wrap')).toBeNull(); // NOT the wrap path
+  });
+});
+
+/**
+ * SEQ-VIS-1 — the live pE-SUMOpro Kan shape, drawn by the real track.
+ *
+ * The record stores `AAAAAAAA` + a 31-nt anchor inside one long
+ * `bindingSequence` with `tail:''`, and the site remembers only the 31-nt
+ * snapshot. The eight A's are physically there and unbound, so they belong on
+ * screen as an overhang beside the landing — not silently dropped, and not
+ * pretended to be part of the footprint.
+ */
+describe('PrimerTrack — anchored source binding with a longer current oligo', () => {
+  const ANCHOR = 'ACGTTGCAACGTTGCAACGTTGCAACGTTGC';   // 31 nt
+  const POLY_A = 'AAAAAAAA';                           // 8 nt
+  const TPL = `${'T'.repeat(10)}${ANCHOR}${'T'.repeat(59)}`; // anchor at [10,41)
+  const DOC = 'sha256:seqvis-v1';
+  const CHAR_PX = 7.2;
+
+  const legacyPrimer = {
+    id: 'p1',
+    name: 'SUMO-fwd',
+    direction: 'forward',
+    tail: '',
+    bindingSequence: `${POLY_A}${ANCHOR}`,
+    sequence: `${POLY_A}${ANCHOR}`,
+    sites: [{
+      id: 's1',
+      target: { entryId: 'E1', resourceHash: DOC, topology: 'linear' },
+      location: { kind: 'single', segments: [{ start: 10, end: 41 }] },
+      strand: 1,
+      annealedSequence: ANCHOR,
+      tail: '',
+    }],
+  };
+
+  const renderTrack = (primer = legacyPrimer) => render(
+    <PrimerTrack
+      fullSeq={TPL}
+      lineStart={0}
+      lineLen={TPL.length}
+      labelChars={8}
+      primerStyle="filled"
+      charPx={CHAR_PX}
+      primers={[primer]}
+      entryId="E1"
+      documentHash={DOC}
+      topology="linear"
+    />,
+  );
+
+  it('draws the eight unbound A bases as a 5-prime tail beside the 31-nt landing', () => {
+    renderTrack();
+    expect(screen.getByTestId('sequence-view-primer-tail-bases').textContent).toBe(POLY_A);
+    const tail = screen.getByTestId('sequence-view-primer-tail');
+    expect(tail.getAttribute('data-primer-tail-direction')).toBe('forward');
+    expect(Number(tail.getAttribute('width'))).toBeCloseTo(POLY_A.length * CHAR_PX, 3);
+  });
+
+  it('the overhang does not lengthen the genomic footprint', () => {
+    renderTrack();
+    // The binding arrow still covers exactly the 31 nt the site declared.
+    const arrow = screen.getAllByTestId('sequence-view-primer')[0];
+    expect(Number(arrow.getAttribute('data-primer-len') ?? ANCHOR.length)).toBe(ANCHOR.length);
+    // and the tail sits OUTSIDE it, to the 5' side of a forward primer
+    expect(Number(screen.getByTestId('sequence-view-primer-tail').getAttribute('x')))
+      .toBeCloseTo(-(POLY_A.length * CHAR_PX), 3);
+  });
+
+  it('draws no tail when the current oligo is exactly its anchor', () => {
+    renderTrack({
+      ...legacyPrimer,
+      bindingSequence: ANCHOR,
+      sequence: ANCHOR,
+    });
+    expect(screen.queryByTestId('sequence-view-primer-tail')).toBeNull();
+  });
+
+  it('inscribes forward current substitution letters and marks the mismatch without changing tail geometry', () => {
+    const current = `${ANCHOR.slice(0, 30)}A`;
+    renderTrack({
+      ...legacyPrimer,
+      bindingSequence: `${POLY_A}${current}`,
+      sequence: `${POLY_A}${current}`,
+    });
+    expect(screen.getByTestId('sequence-view-primer-bases').textContent).toBe(current);
+    const mismatch = screen.getByTestId('sequence-view-primer-base-mismatch');
+    expect(mismatch.textContent).toBe('A');
+    expect(mismatch.getAttribute('fill')).toBe('var(--warning-fg)');
+    expect(screen.getByTestId('sequence-view-primer-tail-bases').textContent).toBe(POLY_A);
+    expect(Number(screen.getByTestId('sequence-view-primer-tail').getAttribute('width')))
+      .toBeCloseTo(POLY_A.length * CHAR_PX, 3);
+  });
+
+  it('maps reverse current binding into top-strand coordinate order and marks its substitution', () => {
+    const top = 'AACCGGTTAACC';
+    const primerBinding = 'GGTTAACCGGTT'; // reverse-complement(top)
+    const currentBinding = `A${primerBinding.slice(1)}`;
+    const expectedTop = 'AACCGGTTA ACT'.replace(/ /g, ''); // reverse-complement(currentBinding)
+    const template = `${'T'.repeat(5)}${top}${'T'.repeat(8)}`;
+    render(
+      <PrimerTrack
+        fullSeq={template}
+        lineStart={0}
+        lineLen={template.length}
+        labelChars={8}
+        primerStyle="filled"
+        charPx={CHAR_PX}
+        primers={[{
+          id: 'reverse-current', name: 'reverse-current', direction: 'reverse',
+          tail: 'GG', bindingSequence: currentBinding, sequence: `GG${currentBinding}`,
+          sites: [{
+            id: 'reverse-site',
+            target: { entryId: 'E1', resourceHash: DOC, topology: 'linear' },
+            location: { kind: 'single', segments: [{ start: 5, end: 17 }] },
+            strand: -1, annealedSequence: primerBinding, tail: 'GG',
+          }],
+        }]}
+        entryId="E1"
+        documentHash={DOC}
+        topology="linear"
+      />,
+    );
+    expect(screen.getByTestId('sequence-view-primer-bases').textContent).toBe(expectedTop);
+    expect(screen.getByTestId('sequence-view-primer-base-mismatch')).toBeTruthy();
+    expect(screen.getByTestId('sequence-view-primer').getAttribute('data-primer-span')).toBe('5-17');
+    expect(screen.getByTestId('sequence-view-primer-tail-bases').textContent).toBe('GG');
+  });
+
+  it('draws no current binding or tail composition for an unreadable occurrence', () => {
+    renderTrack({
+      ...legacyPrimer,
+      tail: 'GAATTC',
+      bindingSequence: ANCHOR.slice(4),
+      sequence: `GAATTC${ANCHOR.slice(4)}`,
+    });
+    const glyph = screen.getByTestId('sequence-view-primer');
+    expect(glyph.getAttribute('data-primer-oligo-status')).toBe('unsupported');
+    expect(screen.queryByTestId('sequence-view-primer-bases')).toBeNull();
+    expect(screen.queryByTestId('sequence-view-primer-tail')).toBeNull();
+  });
+
+  it('keeps current letters in top-strand order across an origin split and a clipped line', () => {
+    const template = 'ACGTACGTACGTACGTACGT';
+    const anchorTop = template.slice(16) + template.slice(0, 4);
+    const currentTop = `${anchorTop.slice(0, 7)}A`;
+    const primer = {
+      id: 'origin-current', name: 'origin-current', direction: 'forward',
+      tail: '', bindingSequence: currentTop, sequence: currentTop,
+      sites: [{
+        id: 'origin-site',
+        target: { entryId: 'E1', resourceHash: DOC, topology: 'circular' },
+        location: {
+          kind: 'split',
+          segments: [{ start: 16, end: 20 }, { start: 0, end: 4 }],
+        },
+        strand: 1, annealedSequence: anchorTop, tail: '',
+      }],
+    };
+    const props = {
+      fullSeq: template, labelChars: 8, primerStyle: 'filled', charPx: CHAR_PX,
+      primers: [primer], entryId: 'E1', documentHash: DOC, topology: 'circular', circular: true,
+    };
+
+    const { unmount } = render(<PrimerTrack {...props} lineStart={0} lineLen={20} />);
+    expect(screen.getAllByTestId('sequence-view-primer-bases').map((node) => node.textContent).join(''))
+      .toBe(currentTop);
+    expect(screen.getByTestId('sequence-view-primer-base-mismatch')
+      .getAttribute('data-primer-template-coordinate')).toBe('3');
+    unmount();
+
+    render(<PrimerTrack {...props} lineStart={0} lineLen={2} />);
+    expect(screen.getByTestId('sequence-view-primer-bases').textContent).toBe(currentTop.slice(4, 6));
   });
 });

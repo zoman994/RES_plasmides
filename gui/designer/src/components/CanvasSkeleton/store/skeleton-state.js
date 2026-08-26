@@ -59,6 +59,7 @@ import { selectPieceSequence } from './selectors-pieces';
 import { applyAutoReactions } from '../lib/auto-reaction-builder';
 import { applyZoneLayouts } from '../lib/zone-layout';
 import { applyJunctionConfig } from '../lib/junction-config-finalizer';
+import { commitAAMutagenesis } from './skeleton-state-aa-mutagenesis';
 
 const REALISE_HARD_CAP = 5;
 
@@ -116,6 +117,11 @@ function stampToast(toast) {
 const ASSEMBLY_VIEW_KINDS = new Set(['sequence', 'dag', 'primers', 'pipeline']);
 
 export function skeletonReducer(state, action) {
+  // This action owns three domains at once. Invalid input must return before
+  // generic layout/reaction finalizers can mutate any adjacent state.
+  if (action.type === 'COMMIT_AA_MUTAGENESIS') {
+    return commitAAMutagenesis(state, action.payload);
+  }
   let next;
   // Base actions resolved first; они set `next` и break чтобы дойти
   // до финализатора (toast queue, ghost placeholder, multi-select cleanup).

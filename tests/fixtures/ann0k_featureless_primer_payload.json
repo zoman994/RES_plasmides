@@ -1,0 +1,54 @@
+{
+  "name": "ann0k_featureless_primer",
+  "sequence": "ACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGT",
+  "length": 600,
+  "topology": "linear",
+  "organism": "",
+  "description": "",
+  "primers": [
+    {
+      "name": "ann0k_fwd",
+      "sequence": "GGATCCACGTACGTACGTACGTAC",
+      "sourceRecordIndex": 0,
+      "sequenceSource": "packet",
+      "description": "",
+      "sites": [
+        {
+          "start": 100,
+          "end": 118,
+          "strand": 1,
+          "segments": [
+            {
+              "start": 100,
+              "end": 118
+            }
+          ],
+          "annealedBases": "ACGTACGTACGTACGTAC",
+          "meltingTemperature": 55.0,
+          "sourceForm": "standard"
+        }
+      ],
+      "allSites": [
+        {
+          "start": 100,
+          "end": 118,
+          "strand": 1,
+          "segments": [
+            {
+              "start": 100,
+              "end": 118
+            }
+          ],
+          "annealedBases": "ACGTACGTACGTACGTAC",
+          "meltingTemperature": 55.0,
+          "sourceForm": "standard"
+        }
+      ],
+      "strand": 1,
+      "start": 100,
+      "end": 118
+    }
+  ],
+  "rejected": [],
+  "features": []
+}

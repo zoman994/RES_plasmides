@@ -1,0 +1,35 @@
+{
+  "autoMemoryEnabled": false,
+  "permissions": {
+    "allow": [
+      "Bash(git status:*)",
+      "Bash(git diff)",
+      "Bash(git diff --check)",
+      "Bash(git diff --stat)",
+      "Bash(git diff --name-only)",
+      "Bash(git diff --cached)",
+      "Bash(git diff --cached --check)",
+      "Bash(git rev-parse HEAD)",
+      "Bash(git rev-parse --abbrev-ref HEAD)",
+      "Bash(git ls-files:*)",
+      "Bash(sha256sum:*)",
+      "Bash(npm --prefix gui/designer test:*)",
+      "Bash(npm --prefix gui/designer run test:related --:*)",
+      "Bash(npm --prefix gui/designer run build)",
+      "Bash(npm --prefix gui/designer run lint)",
+      "Bash(py -m pytest:*)"
+    ],
+    "deny": [
+      "Bash(npx vitest:*)",
+      "Bash(git reset:*)",
+      "Bash(git restore:*)",
+      "Bash(git checkout --:*)",
+      "Bash(git clean:*)",
+      "Bash(git stash:*)",
+      "Bash(git add .)",
+      "Bash(git add -A)",
+      "Bash(git add --all)",
+      "Bash(rm:*)"
+    ]
+  }
+}

@@ -718,3 +718,99 @@ describe("AnnotationTrack — sub-feature inset rendering (Variant A)", () => {
     expect(labels.length).toBe(0);
   });
 });
+
+/**
+ * SEQ-VIS-1 contract B — annotation labels are UI text, not DNA.
+ *
+ * Parent and detail names inherited the sequence pane's mono font and were
+ * painted white with a 1–1.5 px black stroke. At 1280×720 / DPR 1 that halo is
+ * thicker than the strokes of a 7–9 px glyph, so the name turns into ripple.
+ * They are interface text: the UI font, the theme's own text colour, and a
+ * separator thin enough to lift the letters off the rect without becoming an
+ * outline of its own. Geometry, palette, data and hit targets are untouched.
+ */
+describe("SEQ-VIS-1 — readable annotation labels", () => {
+  const PARENT = {
+    id: "p1", start: 0, end: 200, name: "lacZα", type: "CDS",
+    color: "#7CB342", level: "region", strand: 1,
+  };
+  const SUB = {
+    id: "sub-l", start: 0, end: 80, name: "sig", type: "signal_peptide",
+    color: "#9B59B6", level: "detail", parentId: "p1", strand: 1,
+  };
+
+  const renderTrack = () => render(
+    <AnnotationTrack
+      regions={[PARENT, SUB]}
+      lineStart={0}
+      lineLen={250}
+      charPx={7.2}
+      labelChars={8}
+    />,
+  );
+
+  const strokeWidthOf = (el) => Number(
+    el.getAttribute("stroke-width") ?? el.style.strokeWidth ?? "0",
+  );
+
+  it("parent label uses the UI font, theme text colour and weight 500", () => {
+    const { container } = renderTrack();
+    const label = container.querySelector('[data-testid="sequence-view-annotation-label"]');
+    expect(label).toBeTruthy();
+    expect(label.style.fontFamily).toContain("--font-ui");
+    expect(String(label.style.fontWeight)).toBe("500");
+    expect(label.getAttribute("fill")).toBe("var(--text-primary)");
+    expect(Number(label.getAttribute("font-size"))).toBe(9); // size unchanged
+  });
+
+  it("parent separator is the canvas background, at most 0.5 px", () => {
+    const { container } = renderTrack();
+    const label = container.querySelector('[data-testid="sequence-view-annotation-label"]');
+    expect(label.getAttribute("stroke")).toBe("var(--sequence-canvas-bg)");
+    expect(strokeWidthOf(label)).toBeLessThanOrEqual(0.5);
+  });
+
+  it("detail label follows the same rule, at most 0.4 px", () => {
+    const { container } = renderTrack();
+    const kid = container.querySelector('[data-testid="annotation-subfeature-label"]');
+    expect(kid).toBeTruthy();
+    expect(kid.style.fontFamily).toContain("--font-ui");
+    expect(String(kid.style.fontWeight)).toBe("500");
+    expect(kid.getAttribute("fill")).toBe("var(--text-primary)");
+    expect(kid.getAttribute("stroke")).toBe("var(--sequence-canvas-bg)");
+    expect(strokeWidthOf(kid)).toBeLessThanOrEqual(0.4);
+    expect(Number(kid.getAttribute("font-size"))).toBe(7); // size unchanged
+  });
+
+  it("no raw white or black anywhere on either label", () => {
+    const { container } = renderTrack();
+    const labels = [
+      container.querySelector('[data-testid="sequence-view-annotation-label"]'),
+      container.querySelector('[data-testid="annotation-subfeature-label"]'),
+    ];
+    for (const el of labels) {
+      for (const attr of ["fill", "stroke"]) {
+        const v = String(el.getAttribute(attr) || "").toLowerCase();
+        expect(v).not.toMatch(/#fff|#ffffff|\bwhite\b/);
+        expect(v).not.toMatch(/#000|#000000|\bblack\b/);
+      }
+    }
+  });
+
+  it("double-click rename still reaches the handler", () => {
+    const seen = [];
+    const { container } = render(
+      <AnnotationTrack
+        regions={[PARENT, SUB]}
+        lineStart={0}
+        lineLen={250}
+        charPx={7.2}
+        labelChars={8}
+        onAnnotationDoubleClick={(region) => seen.push(region.id)}
+      />,
+    );
+    const label = container.querySelector('[data-testid="sequence-view-annotation-label"]');
+    label.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true }));
+    expect(seen).toEqual(["p1"]);
+  });
+});

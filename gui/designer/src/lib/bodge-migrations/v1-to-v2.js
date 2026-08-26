@@ -64,6 +64,17 @@ export function detectFormatVersion(manifest) {
   return 'unknown';
 }
 
+function normalizeLegacyContainerTopology(container) {
+  if (!container || typeof container !== 'object') return container;
+  const topology = container.topology;
+  if (!topology || typeof topology !== 'object'
+      || typeof topology.circular !== 'boolean') return container;
+  return {
+    ...container,
+    topology: topology.circular ? 'circular' : 'linear',
+  };
+}
+
 /**
  * Marshal a v1 projectSlice into the canonical v2 state shape.
  * Containers/pieces/operations/zones may be present if the v1 file
@@ -90,7 +101,9 @@ export function marshalV1ProjectToCanonicalState(v1Project, libraryEntries) {
   // Pull containers / pieces / operations / zones / junctions / primers
   // if the v1 file happened to carry them inline (some v0.8.x exports
   // embedded skeleton-state into project.json under the same keys).
-  const containers = Array.isArray(v1Project.containers) ? v1Project.containers : [];
+  const containers = Array.isArray(v1Project.containers)
+    ? v1Project.containers.map(normalizeLegacyContainerTopology)
+    : [];
   const pieces = Array.isArray(v1Project.pieces) ? v1Project.pieces : [];
   const operations = Array.isArray(v1Project.operations) ? v1Project.operations : [];
   const zones = Array.isArray(v1Project.zones) ? v1Project.zones : [];

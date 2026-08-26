@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import PlasmidMiniMap from '../../../PlasmidMiniMap';
 import PlasmidMapV2 from '../../../PlasmidMapV2';
+import LinearMapV2 from '../../../LinearMapV2';
+import { buildRenderContext } from '../../../../lib/primer-site-projection';
 import { FEATURE_FLAGS } from '../../../../lib/feature-flags';
 import { featureColor } from '../../../../feature-palette';
 import { STRINGS } from '../../../../lib/strings';
@@ -35,6 +37,10 @@ const __PREWARM_DISABLED__ =
 
 export default function OverviewTab({
   item, onUpdateTags, onUpdateTopology, onNavigateToFeature, onApplyOrigin,
+  // ANN-0L — the entry's primers, so the map can draw where they bind.
+  primers = [],
+  // ANN-0M root D — when given, a binding glyph becomes a real control.
+  onSelectPrimerSite = null,
   // V181 / UX-2 — currently-selected feature id (shared with the Sequence tab);
   // the map highlights it so selection reads consistently across tabs.
   selectedRegionId = null,
@@ -95,6 +101,17 @@ export default function OverviewTab({
   const hasCategoryLine =
     cats.selection.length || cats.promoters.length || cats.origins.length || cats.tags.length;
 
+  // ANN-0M root D — ONE description of the molecule on screen, built once by
+  // the host that knows what it is showing. `length` is derived from the
+  // sequence inside the builder, so a length that disagrees with the bases
+  // cannot reach the bounds gate.
+  const renderContext = buildRenderContext({
+    entryId: item._libraryEntryId || item.id || null,
+    sequence: item.sequence || item.payload?.sequence || '',
+    topology,
+    documentHash: item.resourceHash || item.payload?.resourceHash || null,
+  });
+
   return (
     <div
       data-testid="importer-tab-panel-overview"
@@ -135,6 +152,32 @@ export default function OverviewTab({
                 onFeatureClick={onNavigateToFeature}
                 selectedRegionId={selectedRegionId}
                 rotationDeg={typeof onApplyOrigin === 'function' ? originRotationDeg : 0}
+                primers={primers}
+                renderContext={renderContext}
+                onSelectPrimerSite={onSelectPrimerSite}
+              />
+            </div>
+          ) : FEATURE_FLAGS.plasmidMapV2 && topology !== 'circular' ? (
+            /* ANN-0L C3 — a linear molecule used to fall to PlasmidMiniMap,
+               which draws no primers at all, so an imported primer was
+               invisible on exactly the molecules most often imported. */
+            <div style={{ width: '100%', minWidth: 0 }}>
+              <LinearMapV2
+                fragments={[{
+                  sequence: item.sequence || '',
+                  annotations: item.annotations || [],
+                  length,
+                }]}
+                annotations={item.annotations || []}
+                length={length}
+                totalBp={length}
+                constructName={item.name || item._fileName || ''}
+                topology={topology}
+                onFeatureClick={onNavigateToFeature}
+                selectedRegionId={selectedRegionId}
+                primers={primers}
+                renderContext={renderContext}
+                onSelectPrimerSite={onSelectPrimerSite}
               />
             </div>
           ) : (

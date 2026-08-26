@@ -88,6 +88,9 @@ import SegmentZonesOverlay from "./overlays/SegmentZonesOverlay.jsx";
 import { computeSeamRecessBlanks } from "./seam-staircase";
 import OutOfRangeMaskOverlay from "./overlays/OutOfRangeMaskOverlay.jsx";
 import { flankedSpan } from "./lib/primer-flank.js";
+// PRIMER-LIVE-1 — the selection actions and the anchored primer draft live
+// in small owners; this file only routes props into them.
+import PrimerSelectionActions from "./PrimerSelectionActions.jsx";
 import PrimerFromSelectionModal from "./popups/PrimerFromSelectionModal.jsx";
 import PromoteToCommonModal from "./popups/PromoteToCommonModal.jsx";
 import { reverseComplement, complement } from "../../sequence-utils.js";
@@ -102,6 +105,8 @@ import EditAnnotationModal from "./popups/EditAnnotationModal.jsx";
 import { useSequenceKeyboard } from "./hooks/useSequenceKeyboard.js";
 import { usePieceHotkey } from "./hooks/usePieceHotkey";
 import { usePrimerHotkeys } from "./hooks/usePrimerHotkeys";
+import { usePrimerEditor } from "./hooks/usePrimerEditor";
+import { useHotkey } from "../../lib/hotkeys";
 import { useSelectionState } from "./hooks/useSelectionState.js";
 import { buildSequencePasteOp } from "./lib/paste-op.js";
 import { useSelectionEdit } from "./hooks/useSelectionEdit.js";
@@ -135,6 +140,12 @@ const FRAME_OVERRIDE_RESOLUTION = Object.freeze({ strategy: 'hybrid', dominant: 
 const SequenceView = forwardRef(function SequenceView({
   fragments,
   circular = false,
+  // ANN-0L C2 — which molecule, and which version of it, this view is showing.
+  // A primer's source site is only evidence about the document it was declared
+  // against; without these the track cannot tell, and fails closed.
+  entryId = null,
+  documentHash = null,
+  topology,
   // Terminal sticky-end staircase (Игорь 22.06 «физическая ступенька»):
   // { left, right } from terminalStagger(segment, RE_ENZYMES). Null → no staircase.
   terminalStagger = null,
@@ -206,6 +217,13 @@ const SequenceView = forwardRef(function SequenceView({
   // { direction:'forward'|'reverse', start, end }. Consumer-gated, same
   // as onBlastSelection — Library/Importer leave it undefined.
   onWritePrimer,
+  // PRIMER-LIVE-1 — pass-through only. `labPrimers` are the personal
+  // inventory records the host hydrated; `onCreatePcrProduct` is the single
+  // action for two chosen landings, routed to the host's existing piece path.
+  labPrimers = EMPTY_PRIMERS,
+  onReuseLabPrimer,
+  onCreatePcrProduct,
+  onAAClick = null,
   // Assembly editor — Del on a SELECTED primer deletes it (consumer-gated,
   // same pattern as onWritePrimer). Called with the primer hit; the assembler
   // resolves hit.id → removeAssemblyPrimer. Library/Importer leave it
@@ -376,23 +394,12 @@ const SequenceView = forwardRef(function SequenceView({
     () => selectedPrimers.map((s) => s.key),
     [selectedPrimers],
   );
-  const flankZone = useMemo(() => {
-    if (selectedPrimers.length !== 2) return null;
-    const span = flankedSpan(selectedPrimers[0].hit, selectedPrimers[1].hit);
-    if (!span || span.end <= span.start) return null;
-    // amber attention fill (design-system: not red/punk).
-    return {
-      zoneId: "__primer-flank__", start: span.start, end: span.end, color: "#B87A0E",
-    };
-  }, [selectedPrimers]);
+  // PRIMER-LIVE-1 — the landings behind the clicked arrows, resolved through
+  // the same projection the track drew them with (an origin-crossing binding
+  // is two arrows but ONE landing). Declared after `fullSeq` would be a TDZ,
+  // so the memo reads it lazily via the deps below.
 
-  // 18.05.2026 — «добавить праймер» opens a modal pre-filled from the
-  // selection (RC-oriented), editable name/seq/RC, then creates. The
-  // right-click "primer" item routes here instead of creating directly.
-  const [primerDraft, setPrimerDraft] = useState(null);
   const [promoteDraft, setPromoteDraft] = useState(null);
-  // requestWritePrimer is defined AFTER `fullSeq` (declared below) to
-  // avoid a TDZ — see just past the fullSeq/orfRanges memos.
 
   useEffect(() => {
     if (tracksReady) return undefined;
@@ -442,37 +449,33 @@ const SequenceView = forwardRef(function SequenceView({
 
   const orfRanges = useMemo(() => detectORFRanges(fullSeq, 20), [fullSeq]);
 
-  // Primer-from-selection: pre-fill the modal with the selected DNA
-  // (RC-oriented for a reverse primer). Declared here — after `fullSeq`.
-  const requestWritePrimer = useCallback(({ direction, start, end }) => {
-    const lo = Math.min(start, end);
-    const hi = Math.max(start, end);
-    const slice = String(fullSeq || "").slice(lo, hi).toUpperCase();
-    const dir = direction === "reverse" ? "reverse" : "forward";
-    setPrimerDraft({
-      direction: dir,
-      start: lo,
-      end: hi,
-      sequence: dir === "reverse" ? reverseComplement(slice) : slice,
-    });
-  }, [fullSeq]);
+  const {
+    primerDraft,
+    requestWritePrimer,
+    buildPrimerDraft,
+    selectedOccurrences,
+    primersById,
+    onReuseLabPrimerWithDocument,
+    onPrimerDoubleClick,
+    closePrimerDraft,
+    submitPrimerDraft,
+  } = usePrimerEditor({
+    fullSeq,
+    circular,
+    entryId,
+    documentHash,
+    primers,
+    selectedPrimers,
+    onWritePrimer,
+    onReuseLabPrimer,
+  });
 
-  // 18.05.2026 (Игорь) — double-click an existing primer opens the
-  // SAME modal, seeded from THAT primer (its own ПСО + name + dir),
-  // so the biolog can review / tweak it. Submit routes through the
-  // existing onWritePrimer path (the single write channel). Gated on
-  // onWritePrimer — without it the modal can't render anyway.
-  const onPrimerDoubleClick = useCallback((hit) => {
-    if (!onWritePrimer || !hit) return;
-    const dir = hit.direction === "reverse" ? "reverse" : "forward";
-    setPrimerDraft({
-      direction: dir,
-      start: hit.start,
-      end: hit.end,
-      sequence: String(hit.sequence || hit.bindingSequence || "").toUpperCase(),
-      name: hit.name || "",
-    });
-  }, [onWritePrimer]);
+  const primerSelectionRange = useMemo(() => {
+    const a = Number.isFinite(caretAnchor) ? caretAnchor : null;
+    const f = Number.isFinite(caretPos) ? caretPos : null;
+    if (a == null || f == null || a === f) return null;
+    return { start: Math.min(a, f), end: Math.max(a, f) };
+  }, [caretAnchor, caretPos]);
 
   // DEC-CF-05 — menu → draft. Bake region strand into the draft sequence
   // (coding 5'→3') so the hook translates protein in frame 0.
@@ -816,6 +819,27 @@ const SequenceView = forwardRef(function SequenceView({
     ? fragments[0].sequence.length
     : 0;
 
+  // PRIMER-LIVE-1 — on a ring the amplicon may cross the origin, and a naive
+  // min..max bracket would paint everything the product is NOT. The span owner
+  // returns the real segments; each becomes its own zone so the arc is drawn
+  // where the product actually is.
+  const flankZones = useMemo(() => {
+    if (selectedPrimers.length !== 2) return null;
+    const span = flankedSpan(
+      selectedPrimers[0].hit,
+      selectedPrimers[1].hit,
+      { circular, seqLength },
+    );
+    if (!span) return null;
+    const segs = span.segments || [{ start: span.start, end: span.end }];
+    const usable = segs.filter((sg) => sg.end > sg.start);
+    if (usable.length === 0) return null;
+    // amber attention fill (design-system: not red/punk).
+    return usable.map((sg, i) => ({
+      zoneId: `__primer-flank__${i}`, start: sg.start, end: sg.end, color: "#B87A0E",
+    }));
+  }, [selectedPrimers, circular, seqLength]);
+
   // Bug-rush #8 (04.05.2026 evening): when the AA selection is
   // active, derive the reading frame from (selection range, strand)
   // so SelectionOverlay can pick exactly ONE matching aa-row to
@@ -939,8 +963,17 @@ const SequenceView = forwardRef(function SequenceView({
   // selection in EVERY viewer (same flow as right-click «primer»),
   // not just the assembler (Игорь). Consumer-gated on onWritePrimer.
   usePrimerHotkeys({
-    onWritePrimer, requestWritePrimer, caretAnchor, caretPos,
+    onWritePrimer, buildPrimerDraft, caretAnchor, caretPos,
   });
+  // PRIMER-LIVE-1 — «E» is the keyboard twin of double-click: it edits the
+  // primer occurrence that is currently selected. With none or several
+  // selected there is no single subject, so it does nothing.
+  const editSelectedPrimer = useCallback(() => {
+    if (!onWritePrimer) return;
+    if (selectedPrimers.length !== 1) return;
+    onPrimerDoubleClick(selectedPrimers[0].hit);
+  }, [onWritePrimer, selectedPrimers, onPrimerDoubleClick]);
+  useHotkey("primer-edit", editSelectedPrimer);
 
   // K3 — Del / H / E edit handlers + popup state. Mounts above the
   // keyboard navigation handler so edit-keys claim the event first.
@@ -1156,6 +1189,9 @@ const SequenceView = forwardRef(function SequenceView({
     // overlap); the prefix prevents a React duplicate-key warning.
     const renderLine = (line, kind, nextKind, lineIndex) => (
       <SequenceLine
+          entryId={entryId}
+          documentHash={documentHash}
+          topology={topology}
         key={`${kind}:${line.start}`}
         line={line}
         kind={kind}
@@ -1213,6 +1249,7 @@ const SequenceView = forwardRef(function SequenceView({
         onAcceptBase={onAcceptBase}
         showAnnotations={showAnnotations}
         showAATrack={showAATrack}
+        onAAClick={onAAClick}
       />
     );
     const out = [];
@@ -1252,6 +1289,7 @@ const SequenceView = forwardRef(function SequenceView({
     // would go stale when the result changes but the reference stays the same.
     alignmentRead, alignmentReads, chromatogram, chromatogramMaxVal, alignmentColorMode,
     alignmentReferenceName, alignmentReadName, aaEffects, onAcceptBase, showAnnotations, showAATrack,
+    onAAClick,
     onAnnotationEdgePointerDown, draggedAnnotationId, draggedEdge, draggedCurrentCoord,
     onAnnotationDoubleClick, onAnnotationFeatureDoubleClick,
     // 12.05.2026 — was missing: click on RE site flips
@@ -1359,8 +1397,8 @@ const SequenceView = forwardRef(function SequenceView({
       {linesJsx}
       <SegmentZonesOverlay
         zones={
-          flankZone
-            ? [...(Array.isArray(pieceZones ?? coloredZones) ? (pieceZones ?? coloredZones) : []), flankZone]
+          flankZones
+            ? [...(Array.isArray(pieceZones ?? coloredZones) ? (pieceZones ?? coloredZones) : []), ...flankZones]
             : (pieceZones ?? coloredZones)
         }
         charPx={charPx}
@@ -1457,24 +1495,36 @@ const SequenceView = forwardRef(function SequenceView({
           onExtractFeature,
         })}
       />
+      {/* PRIMER-LIVE-1 — lab matches for the live selection and the single
+          «create the product» action for two chosen landings. Consumer-gated:
+          a host that wires neither renders nothing extra. */}
+      {(onCreatePcrProduct || (labPrimers && labPrimers.length > 0)) && (
+        <div
+          data-testid="sequence-view-primer-actions"
+          style={{ position: "absolute", right: 12, bottom: 12, zIndex: 22, maxWidth: 420 }}
+        >
+          <PrimerSelectionActions
+            template={fullSeq}
+            topology={circular ? "circular" : "linear"}
+            selection={primerSelectionRange}
+            occurrences={selectedOccurrences}
+            primersById={primersById}
+            labRecords={labPrimers}
+            onReuseLabPrimer={onReuseLabPrimerWithDocument}
+            onCreatePcrProduct={onCreatePcrProduct}
+          />
+        </div>
+      )}
       {primerDraft && onWritePrimer && (
         <PrimerFromSelectionModal
           draft={primerDraft}
-          onClose={() => setPrimerDraft(null)}
-          onCreate={({ name, sequence, direction, tail, binding }) => {
-            onWritePrimer({
-              direction,
-              start: primerDraft.start,
-              end: primerDraft.end,
-              name,
-              sequence,
-              // PRIMER-7 (V173) — forward tail/binding so a 5'-tail (overhang)
-              // survives persistence and the primer renders on the sequence.
-              tail,
-              binding,
-            });
-            setPrimerDraft(null);
-          }}
+          anchorSites={primerDraft.anchorSites}
+          template={fullSeq}
+          topology={circular ? "circular" : "linear"}
+          entryId={entryId}
+          documentHash={documentHash}
+          onClose={closePrimerDraft}
+          onCreate={submitPrimerDraft}
         />
       )}
       {promoteDraft && onPromoteToCommon && (

@@ -86,6 +86,9 @@ export default function Annotator({
   // viewer (Игорь). Forwarded host → AnnotationsTab → here →
   // PreviewTab → SequenceView. Optional (absent ⇒ no primers).
   primers,
+  // ANN-0L C2 — pass-through document context.
+  entryId = null,
+  documentHash = null,
   onWritePrimer,
   onDeletePrimer,
 }) {
@@ -520,6 +523,8 @@ export default function Annotator({
             pendingScroll={mergedPendingScroll}
             onPendingScrollHandled={handlePendingScrollHandled}
             primers={primers}
+            entryId={entryId}
+            documentHash={documentHash}
             onWritePrimer={onWritePrimer}
             onDeletePrimer={onDeletePrimer}
           />

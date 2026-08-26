@@ -1,6 +1,10 @@
 import 'fake-indexeddb/auto';
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, cleanup, act } from '@testing-library/react';
+vi.mock('../components/StartScreen/lib/open-bodge', () => ({
+  openBodgeIntoLibrary: vi.fn(async () => {}),
+}));
+import { openBodgeIntoLibrary } from '../components/StartScreen/lib/open-bodge';
 import { useStore } from '../store';
 import { clearAllAutosaveTimers, clearAllLocks, setAutosaveDelay, DEFAULT_AUTOSAVE_DELAY_MS } from '../store/projectSlice';
 import { clearAll } from '../db/dexie-schema';
@@ -81,6 +85,23 @@ describe('K4-fixup — hotkey scenario F (round-trip via registry)', () => {
       await flushAsync();
     });
     expect(useStore.getState().modals.projectInfo).toBe(true);
+  });
+
+  it('Cmd/Ctrl+O delegates to the one .bodge Open controller (BG-003)', async () => {
+    openBodgeIntoLibrary.mockClear();
+    render(<App />);
+    await act(async () => {
+      pressHotkey({ key: 'o', ctrl: true });
+      await flushAsync();
+    });
+
+    expect(openBodgeIntoLibrary).toHaveBeenCalledTimes(1);
+    const opts = openBodgeIntoLibrary.mock.calls[0][0] || {};
+    // Ctrl+O keeps its own semantics: it still opens the OS picker (no `pick`),
+    // it does NOT reroute to the Library, and it stays silent on success.
+    expect(opts.pick == null).toBe(true);
+    expect(opts.navigateToLibrary).toBe(false);
+    expect(opts.successToast).toBe(false);
   });
 
   it('Cmd/Ctrl+, opens Settings modal; Esc closes it', async () => {

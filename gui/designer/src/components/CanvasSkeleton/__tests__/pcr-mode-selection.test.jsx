@@ -55,6 +55,8 @@ vi.mock('../../Library/inspector/tabs/SequenceTab', () => ({
 }));
 
 import PcrModeShell from '../editor/operation-modes/PcrModeShell';
+import { selectPcrPrimers, selectPcrSpans } from '../store/selectors-pcr';
+import { executePCR } from '../canvas/operations/adapters/pcr';
 import {
   SkeletonProvider,
   useSkeletonActions,
@@ -221,5 +223,72 @@ describe('V71 — PCR primer-writing wired into the shared viewer', () => {
     const tab = screen.getByTestId('mock-sequence-tab');
     expect(tab.getAttribute('data-caret-anchor')).toBe('50');
     expect(tab.getAttribute('data-caret-pos')).toBe('80');
+  });
+});
+
+/**
+ * PRIMER-LIVE-1 — an op authored from two chosen landings already knows its pair.
+ *
+ * Auto-designing a *different* pair for such an op means the viewer shows one
+ * thing, the biolog edits that, and execution runs something else. And locating
+ * the pair again with a first-match `indexOf` answers about whichever copy of a
+ * repeated site comes first — not the one that was clicked.
+ */
+describe('PRIMER-LIVE-1 — occurrence PCR shows the pair it will execute', () => {
+  //             0         1         2         3
+  //             0123456789012345678901234567890123456789
+  const TPLSEQ = 'GGGGAAAACCTTTTGGGGAACCCCTTTTGGAATTCCGGAA';
+  const snapshots = {
+    forward: {
+      id: 'f', name: 'fwd', sequence: 'GAATTCAAAACCTT', bindingSequence: 'AAAACCTT',
+      tail: 'GAATTC', direction: 'forward', occurrenceKey: 'f#1', start: 4, end: 12,
+    },
+    reverse: {
+      id: 'r', name: 'rev', sequence: 'TTCCAAAA', bindingSequence: 'TTCCAAAA',
+      tail: '', direction: 'reverse', occurrenceKey: 'r#1', start: 24, end: 32,
+    },
+  };
+  const stateWith = () => ({
+    containers: [{ id: 'c-1', name: 'pTest', sequence: TPLSEQ, circular: true }],
+    operations: [{
+      id: 'op-1',
+      kind: 'pcr',
+      inputs: ['c-1'],
+      params: {
+        templateId: 'c-1',
+        occurrenceKeys: ['f#1', 'r#1'],
+        primerSnapshots: snapshots,
+        productSequence: 'GAATTCAAAACCTTTTGGGGAACCCCTTTTGGAA',
+      },
+    }],
+    junctions: [],
+  });
+
+  it('returns the CHOSEN pair, not an auto-designed one', () => {
+    const { pairs, status } = selectPcrPrimers(stateWith(), 'op-1');
+    expect(status).toBe('ready');
+    expect(pairs).toHaveLength(1);
+    expect(pairs[0].forward).toBe('GAATTCAAAACCTT');
+    expect(pairs[0].reverse).toBe('TTCCAAAA');
+    expect(pairs[0].fwdBinding).toBe('AAAACCTT');
+    expect(pairs[0].source).toBe('occurrences');
+  });
+
+  it('spans come from the chosen landings, never a first-match search', () => {
+    const spans = selectPcrSpans(stateWith(), 'op-1');
+    expect(spans.primers[0]).toMatchObject({ start: 4, end: 12, direction: 'forward' });
+    expect(spans.primers[1]).toMatchObject({ start: 24, end: 32, direction: 'reverse' });
+    expect(spans.product.sequence).toBe('GAATTCAAAACCTTTTGGGGAACCCCTTTTGGAA');
+  });
+
+  it('the displayed pair IS the executed pair', () => {
+    const st = stateWith();
+    const { pairs } = selectPcrPrimers(st, 'op-1');
+    const out = executePCR(
+      { ...st.operations[0], inputPieces: [] },
+      { containers: { 'c-1': st.containers[0] } },
+    );
+    expect(out.error).toBeUndefined();
+    expect(out.outputs[0].sequence.startsWith(pairs[0].forward)).toBe(true);
   });
 });

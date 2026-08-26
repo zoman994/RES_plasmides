@@ -9,9 +9,17 @@
  * the RC/direction toggle (flipping it reverse-complements the field).
  * Esc / backdrop close (ui-interactions modal contract).
  */
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { reverseComplement } from "../../../sequence-utils.js";
+import { evaluatePrimerWarnings } from "../../../lib/primer-live-workflow.js";
+import {
+  resolveAnchoredOligo,
+  ANCHORED_OLIGO_OK,
+  ANCHORED_OLIGO_CONFLICT,
+  ANCHORED_OLIGO_UNSUPPORTED,
+} from "../../../lib/primer-identity";
+import { tf } from "../../../i18n";
 
 // K13 — quick-add helper sets (SPEC §3 шаг 3 PrimerFromSelectionModal
 // extension). Sequences are local built-ins plus restriction-db entries.
@@ -30,16 +38,84 @@ function cleanDna(s) {
   return String(s || '').replace(/[^a-zA-Z]/g, '').toUpperCase();
 }
 
-export default function PrimerFromSelectionModal({ draft, onCreate, onClose }) {
+function alignmentRows(alignment) {
+  if (!alignment) return [];
+  return alignment.runs.map((run) => {
+    const queryLength = run.queryEnd - run.queryStart;
+    const targetLength = run.targetEnd - run.targetStart;
+    return {
+      op: run.op,
+      query: run.op === 'D'
+        ? '–'.repeat(targetLength)
+        : alignment.query.slice(run.queryStart, run.queryEnd),
+      target: run.op === 'I'
+        ? '–'.repeat(queryLength)
+        : alignment.target.slice(run.targetStart, run.targetEnd),
+    };
+  });
+}
+
+function warningText(warning) {
+  const positions = (warning.positions || []).map((position) => position + 1).join(', ');
+  return tf(`pcr.product.warn.${warning.code}`, { ...warning, positions });
+}
+
+export default function PrimerFromSelectionModal({
+  draft, onCreate, onClose,
+  // PRIMER-LIVE-1B — the landing this oligo is anchored to, plus the molecule
+  // it landed on. Display context only: the dialog never writes them back, so
+  // an ordinary edit still leaves the anchor exactly where it was.
+  anchorSites = null, template = "", topology = "linear",
+  entryId = null, documentHash = null,
+}) {
+  // Capture during render: React applies `autoFocus` during commit, before a
+  // passive effect runs. Capturing inside the effect therefore remembers the
+  // dialog input itself and has nothing live to restore on unmount.
+  const returnFocusRef = useRef(
+    typeof document !== "undefined" ? document.activeElement : null,
+  );
+  useEffect(() => {
+    return () => {
+      try { returnFocusRef.current?.focus({ preventScroll: true }); } catch { /* detached */ }
+    };
+  }, []);
   // `draft.name` seeds the field when opened from an EXISTING primer
   // (double-click); empty for the create-from-selection path.
   const [name, setName] = useState(draft.name || "");
   // K13 — split into tail (5' overhang) + binding (anneals to template).
   // Back-compat: if draft.tail exists use it; otherwise the legacy
   // `draft.sequence` is treated as the binding region.
-  const [tail, setTail] = useState(draft.tail || "");
-  const [binding, setBinding] = useState(draft.binding || draft.sequence || "");
+  // SEQ-VIS-1 — a legacy record stores its 5' overhang INSIDE one long
+  // `bindingSequence` with `tail:''`, because nobody ever wrote the split down.
+  // Opening that verbatim hands the biolog a 39-mer and asks them to work out
+  // which end anneals. The anchor fixes the landing length, so the dialog can
+  // open on the split the record already describes — and `submit` below then
+  // writes tail / binding / sequence back canonically, without touching the
+  // primer id or its anchor. Computed once, at mount: this is what the dialog
+  // OPENED with, not a value that should chase later renders.
+  const [opening] = useState(() => resolveAnchoredOligo(
+    {
+      tail: draft.tail,
+      bindingSequence: draft.binding || draft.sequence,
+      sequence: draft.sequence,
+      bindingModel: draft.bindingModel,
+    },
+    { anchor: anchorSites?.[0]?.annealedSequence },
+  ));
+  const split = opening.status === ANCHORED_OLIGO_OK;
+  const [tail, setTail] = useState(split ? opening.tail : (draft.tail || ""));
+  const [binding, setBinding] = useState(
+    split ? opening.binding : (draft.binding || draft.sequence || ""),
+  );
   const [direction, setDirection] = useState(draft.direction || "forward");
+  const openingDirection = draft.direction === "reverse" ? "reverse" : "forward";
+  const activeAnchorSites = Array.isArray(anchorSites) && direction !== openingDirection
+    ? anchorSites.map((site) => ({
+      ...site,
+      strand: site?.strand === -1 ? 1 : -1,
+      annealedSequence: reverseComplement(cleanDna(site?.annealedSequence || "")),
+    }))
+    : anchorSites;
 
   // Esc is handled HERE (React keydown on the backdrop), NOT via a
   // window listener: the backdrop must stopPropagation keydown (so
@@ -66,6 +142,61 @@ export default function PrimerFromSelectionModal({ draft, onCreate, onClose }) {
   const cleanTail = cleanDna(tail);
   const cleanBinding = cleanDna(binding);
   const fullSeq = cleanTail + cleanBinding;
+  // The opening split protects an unreadable stored record. Once an anchored
+  // record opened cleanly, validate the fields again on every render: shortening
+  // the binding is an unsupported re-anchor even when it happened after mount.
+  // An unanchored create draft has no fixed landing length and keeps its old flow.
+  const live = activeAnchorSites?.[0]?.annealedSequence
+    ? resolveAnchoredOligo(
+      {
+        tail: cleanTail,
+        bindingSequence: cleanBinding,
+        sequence: fullSeq,
+        // Once a legacy record opened into an unambiguous canonical split, the
+        // editing session opts into M/X/I/D. A legacy record that was already
+        // unreadable stays blocked by `opening.status` below.
+        bindingModel: opening.status === ANCHORED_OLIGO_OK
+          ? 'aligned-v1'
+          : draft.bindingModel,
+      },
+      { anchor: activeAnchorSites[0].annealedSequence },
+    )
+    : { status: ANCHORED_OLIGO_OK };
+  const oligoStatus = opening.status === ANCHORED_OLIGO_OK
+    ? live.status
+    : opening.status;
+  const blockedKey = oligoStatus === ANCHORED_OLIGO_CONFLICT
+    ? "pcr.product.blocked.tail-binding-conflict"
+    : (oligoStatus === ANCHORED_OLIGO_UNSUPPORTED
+      ? "pcr.product.blocked.indel-unsupported"
+      : null);
+
+  // PRIMER-LIVE-1B — a deliberate base change has to be visible WHILE it is
+  // being typed, not only after saving. Recomputed from the fields on every
+  // keystroke (React Compiler memoises; no hand-rolled useMemo) and routed
+  // through the SAME owner the selection panel uses, so one oligo cannot be
+  // judged by two different rules. Never a veto: the create button stays live.
+  const editWarnings = (Array.isArray(activeAnchorSites) && activeAnchorSites.length && template)
+    ? evaluatePrimerWarnings(
+      {
+        id: draft.primerId || null,
+        direction,
+        tail: cleanTail,
+        sequence: fullSeq,
+        bindingSequence: cleanBinding,
+        bindingModel: opening.status === ANCHORED_OLIGO_OK
+          ? 'aligned-v1'
+          : draft.bindingModel,
+        sites: activeAnchorSites,
+      },
+      { template, topology, entryId, documentHash },
+    ).filter((w) => [
+      'mismatch', 'insertion', 'deletion', 'three-prime-gap',
+      'three-prime-short', 'gapped-tm-unknown',
+    ].includes(w.code))
+    : [];
+  const alignment = oligoStatus === ANCHORED_OLIGO_OK ? live.alignment : null;
+  const alignedRows = alignmentRows(alignment);
 
   const submit = () => {
     onCreate({
@@ -74,6 +205,11 @@ export default function PrimerFromSelectionModal({ draft, onCreate, onClose }) {
       direction,
       tail: cleanTail,
       binding: cleanBinding,
+      bindingModel: 'aligned-v1',
+      // A direction flip is an explicit re-anchor of the same genomic
+      // footprint onto the opposite strand. A plain edit still omits sites.
+      sites: direction !== openingDirection ? activeAnchorSites : undefined,
+      tm: alignment?.hasGap ? null : undefined,
     });
   };
 
@@ -104,6 +240,15 @@ export default function PrimerFromSelectionModal({ draft, onCreate, onClose }) {
       onPointerUp={stopPtr}
       onPointerMove={stopPtr}
       onContextMenu={stopPtr}
+      // PRIMER-LIVE-1B — paste needs containing too, and for the same reason
+      // keydown did: React routes portal events through the COMPONENT tree, so
+      // Ctrl+V in a dialog field reached SequenceView's root `onPaste`, which
+      // preventDefault()s and applies a sequence edit — the plasmid behind the
+      // dialog was rewritten and the field got nothing. `stopPtr` only stops
+      // propagation; cancelling the event would break the field's own paste.
+      onPaste={stopPtr}
+      onCut={stopPtr}
+      onCopy={stopPtr}
       // Игорь 18.05.2026: «имя так же не печатается». React распускает
       // события по ДЕРЕВУ КОМПОНЕНТОВ, не по DOM — портал в body НЕ
       // выводит keydown из-под `<div onKeyDown>` SequenceView'а
@@ -247,12 +392,55 @@ export default function PrimerFromSelectionModal({ draft, onCreate, onClose }) {
               fontSize: 10, padding: "4px 6px", whiteSpace: "nowrap",
             }}>binding {cleanBinding.length} · Σ {fullSeq.length} нт</div>
           </div>
+          {alignment && (
+            <div data-testid="primer-modal-alignment" style={alignmentBox}>
+              <div style={alignmentLabel}>primer</div>
+              <div style={alignmentSequence}>
+                {alignedRows.map((row, index) => (
+                  <span key={`q-${index}`} style={alignmentRunStyle(row.op)}>{row.query}</span>
+                ))}
+              </div>
+              <div style={alignmentLabel}>template</div>
+              <div style={alignmentSequence}>
+                {alignedRows.map((row, index) => (
+                  <span key={`t-${index}`} style={alignmentRunStyle(row.op)}>{row.target}</span>
+                ))}
+              </div>
+              <div
+                data-testid="primer-modal-alignment-summary"
+                style={{ gridColumn: "1 / -1", color: "var(--text-secondary)" }}
+              >
+                {tf("primer.modal.alignment-summary", {
+                  landing: alignment.target.length,
+                  substitutions: alignment.counts.X,
+                  insertions: alignment.counts.I,
+                  deletions: alignment.counts.D,
+                })}
+              </div>
+            </div>
+          )}
+          {editWarnings.length > 0 && (
+            <div data-testid="primer-modal-mismatch" role="status" style={warnRow}>
+              {editWarnings.map(warningText).join(" · ")}
+            </div>
+          )}
+          {blockedKey && (
+            <div data-testid="primer-modal-blocked" role="alert" style={warnRow}>
+              {tf(blockedKey)}
+            </div>
+          )}
         </div>
 
         <div style={{ display: "flex", gap: 8, padding: "8px 12px", borderTop: "1px solid var(--border-subtle)", background: "var(--surface-2)" }}>
           <span style={{ flex: 1 }} />
           <button type="button" data-testid="primer-modal-cancel" onClick={onClose} style={ghostBtn}>Отмена</button>
-          <button type="button" data-testid="primer-modal-create" onClick={submit} style={primaryBtn}>Создать</button>
+          <button
+            type="button"
+            data-testid="primer-modal-create"
+            onClick={submit}
+            disabled={Boolean(blockedKey)}
+            style={blockedKey ? { ...primaryBtn, cursor: "not-allowed", opacity: 0.6 } : primaryBtn}
+          >{tf(draft.primerId ? "primer.modal.save" : "primer.modal.create")}</button>
         </div>
       </div>
     </div>,
@@ -261,6 +449,23 @@ export default function PrimerFromSelectionModal({ draft, onCreate, onClose }) {
 }
 
 const lbl = { display: "flex", flexDirection: "column", fontSize: 11, color: "var(--text-secondary)" };
+// Same token pair PrimerSelectionActions uses for its warning row, so one
+// oligo does not get two different-looking warnings on two screens.
+const warnRow = { fontSize: 11, color: "var(--warning-fg)" };
+const alignmentBox = {
+  display: "grid", gridTemplateColumns: "52px minmax(0, 1fr)", gap: "3px 8px",
+  padding: 8, border: "1px solid var(--border-subtle)", borderRadius: 4,
+  background: "var(--surface-2)", fontSize: 10,
+};
+const alignmentLabel = { color: "var(--text-tertiary)", textTransform: "uppercase" };
+const alignmentSequence = {
+  minWidth: 0, overflowX: "auto", whiteSpace: "pre", fontFamily: "var(--font-mono, monospace)",
+};
+const alignmentRunStyle = (op) => ({
+  color: op === 'M' ? "var(--text-secondary)" : "var(--warning-fg)",
+  textDecoration: op === 'D' ? "underline dashed" : "none",
+  fontWeight: op === 'M' ? 400 : 700,
+});
 const inp = {
   marginTop: 4, fontSize: 12, padding: "5px 8px", border: "1px solid var(--border-subtle)",
   borderRadius: 4, background: "var(--surface-2)", color: "var(--text-primary)", outline: "none",

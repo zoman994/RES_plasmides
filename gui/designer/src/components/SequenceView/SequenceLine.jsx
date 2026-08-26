@@ -98,6 +98,10 @@ const SequenceLine = memo(function SequenceLine({
   // Topology — circular primers' off-end 5′-tails wrap across the origin (rendered
   // on the wrap-bridge row), so PrimerTrack must not dangle them into the margin.
   circular = false,
+  // ANN-0L C2 — which molecule, and which version of it, is on screen.
+  entryId = null,
+  documentHash = null,
+  topology,
   // Terminal sticky-end staircase (Игорь 22.06): { left, right } from
   // terminalStagger(segment). Gated to the FIRST line (left end) / LAST line
   // (right end) below. Null → no staircase (every existing consumer).
@@ -139,6 +143,7 @@ const SequenceLine = memo(function SequenceLine({
   // Layer toggles (opt-in; default visible → no change for other consumers).
   showAnnotations = true,
   showAATrack = true,
+  onAAClick,
   // Virtualization (perf, 19.06.2026). `active` defaults true → eager render
   // (unchanged for every existing consumer). When the orchestrator windows a
   // large sequence it passes active={false} for off-screen line indices: the
@@ -422,6 +427,9 @@ const SequenceLine = memo(function SequenceLine({
       {tracksReady ? (
         <PrimerTrack
           primers={primers}
+          entryId={entryId}
+          documentHash={documentHash}
+          topology={topology}
           fullSeq={fullSeq}
           lineStart={line.start}
           lineLen={line.seq.length}
@@ -474,6 +482,9 @@ const SequenceLine = memo(function SequenceLine({
       {tracksReady ? (
         <PrimerTrack
           primers={primers}
+          entryId={entryId}
+          documentHash={documentHash}
+          topology={topology}
           fullSeq={fullSeq}
           lineStart={line.start}
           lineLen={line.seq.length}
@@ -561,6 +572,7 @@ const SequenceLine = memo(function SequenceLine({
           strandFilter="forward"
           visibleFrames={visibleFrames}
           terminalCut={terminalStagger ? { left: !!terminalStagger.left, right: !!terminalStagger.right } : null}
+          onAAClick={onAAClick}
         />
       ) : null}
       {tracksReady && showAATrack && renderHybrid ? (
@@ -576,6 +588,7 @@ const SequenceLine = memo(function SequenceLine({
           regions={features}
           strandFilter="reverse"
           visibleFrames={visibleFrames}
+          onAAClick={onAAClick}
         />
       ) : null}
     </div>

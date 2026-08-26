@@ -10,7 +10,7 @@ import { Icon } from '../../../icons/Icon';
 import PrimerBindingSites from '../../../PrimerBindingSites';
 import { useStore } from '../../../../store';
 import { primerPoolReuse } from '../../../../primer-reuse';
-import { makeId } from '../../../../lib/ids';
+import { isLabStock } from '../../../../lib/primer-identity';
 import {
   useSkeletonState, useSkeletonActions, useAssemblyDraftById,
 } from '../../store/skeleton-context';
@@ -45,46 +45,16 @@ export function PrimerRow({ p, actions, draftId, onEdit }) {
   const [val, setVal] = useState(p.label || p.name);
   const [showBind, setShowBind] = useState(false); // PRIMER-1 — «куда садится» in library
   const cross = (p.crossesBoundaries || []).length >= 2;
-  // PRIMER-6 (V180) — auto-reuse: does this auto-derived primer already exist in
-  // the unified pool? If so, flag «в наличии» so the biolog reuses it instead of
-  // ordering a duplicate (answers «проверяет ли автогенерация наличие в пуле»).
+  // PRIMER-LIVE-1 — «в наличии» is a claim about a TUBE, so it may only be
+  // answered from real lab stock: `global` scope, status `received`. It used to
+  // search the whole unified pool, which meant a primer the biolog had merely
+  // designed once — or ordered and not yet received — reported itself as
+  // available. That sends someone to a freezer drawer that does not contain it.
   const primersById = useStore((s) => s.primersById);
   const poolReuse = useMemo(
-    () => primerPoolReuse(p, Object.values(primersById || {})),
+    () => primerPoolReuse(p, Object.values(primersById || {}).filter(isLabStock)),
     [p, primersById],
   );
-  // PRIMER-4 (#118) — ephemeral vs durable: assembly primers are DRAFTS
-  // (recomputed by the finalizer). «＋ в пул» promotes one to the durable
-  // unified pool (a fresh-id snapshot) so it survives + is reusable. Hidden
-  // once «в наличии» (already in the pool).
-  const addPrimerToPool = useStore((s) => s.addPrimerToPool);
-  const currentProjectId = useStore((s) => s.currentProjectId);
-  const showToast = useStore((s) => s.showToast);
-  const [saving, setSaving] = useState(false);
-  const onSaveToPool = async () => {
-    if (saving || !addPrimerToPool) return;
-    setSaving(true);
-    try {
-      const res = await addPrimerToPool({
-        primer: {
-          id: makeId(),
-          name: p.label || p.name || 'primer',
-          sequence: p.sequence,
-          bindingSequence: p.bindingSequence || null,
-          tail: typeof p.tail === 'string' ? p.tail : (p.tailSequence || ''),
-          direction: p.direction || null,
-          tm: typeof p.tmBinding === 'number' ? p.tmBinding : p.tm,
-        },
-        projectId: currentProjectId ?? null,
-        status: 'imported',
-        origin: { kind: 'assembly-derived' },
-      });
-      if (res) showToast?.(`Праймер «${res.name}» сохранён в пул`, 'success');
-      else showToast?.('Не удалось сохранить праймер', 'error');
-    } finally {
-      setSaving(false);
-    }
-  };
   return (
     <div>
     <div
@@ -196,17 +166,9 @@ export function PrimerRow({ p, actions, draftId, onEdit }) {
         title="Куда садится в библиотеке (специфичность / кросс-референс)"
         style={{ ...iconBtnFlex, color: showBind ? 'var(--accent-600,#4338ca)' : 'var(--text-secondary)' }}
       ><Icon name="search" size={12} /></button>
-      {/* PRIMER-4 (#118) — promote this ephemeral draft to the durable pool. */}
-      {poolReuse.length === 0 && (
-        <button
-          type="button"
-          data-testid={`assembly-primer-save-pool-${p.id}`}
-          onClick={onSaveToPool}
-          disabled={saving}
-          title="Сохранить в общий пул праймеров (черновик → постоянный)"
-          style={{ ...iconBtnFlex, color: 'var(--success-fg,#15803d)' }}
-        ><Icon name="plus" size={12} /></button>
-      )}
+      {/* PRIMER-LIVE-1 — no «＋ в пул» button. An assembly primer is already a
+          real project record the moment it is derived; asking the biolog to
+          promote each one by hand was bookkeeping the program should do. */}
       <button
         type="button"
         data-testid="assembly-primer-delete"

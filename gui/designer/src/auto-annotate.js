@@ -398,7 +398,14 @@ export async function enrichWithCommonFeatures(sequence, annotations) {
           existing.aliases = hit.feature.aliases;
         }
         existing.knownFeature = hit.feature.name;
-        existing.source = 'common_db';
+        // ANN-0I — enrichment may ADD detector data, but it must not rewrite
+        // provenance. A feature that came from the user's file stays
+        // `source: 'import'`; overwriting it made every imported annotation
+        // indistinguishable from a database guess, so the biologist could no
+        // longer tell what their own file actually contained. Only a NEW
+        // detection (no prior source) becomes common_db.
+        if (existing.source !== 'import') existing.source = 'common_db';
+        existing.detector = existing.detector || 'common_db';
         existing.identity = hit.identity;
         // Carry the detected strand onto the region (Звено 25.05.2026): a gene
         // on the −strand must drive a −strand AA frame in AATrack. Guard on

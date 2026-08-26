@@ -6,26 +6,37 @@ Only unfinished product/architecture work belongs here. Confirmed defects belong
 
 ### Assembly ranges and derived reactions
 
-Recompute auto-reaction ranges when `piece.ranges` changes. A derived operation must not keep coordinates from an earlier piece shape. Add transition tests covering resize/edit after initial derivation.
+Recompute auto-reaction ranges when `piece.ranges` changes. A derived operation must not keep coordinates from an earlier piece shape. Add transition tests covering resize/edit after initial derivation. Legacy debt ID: `TD-T8-PIECE-RANGE-RECOMPUTE`.
 
 ### Sanger notebook safety
 
-Close clone-to-focus gaps and replace save-on-blur-only behavior where focus changes can lose data. Persist explicit, testable draft/commit state and keep expected design separate from observed reads.
+Close clone-to-focus gaps and replace save-on-blur-only behavior where focus changes can lose data. Persist explicit, testable draft/commit state and keep expected design separate from observed reads. Legacy debt IDs: `TD-T10-SHOW-NOTEBOOK-WIRE`, `TD-T10-NOTES-FLUSH`.
 
 ### Revision and annotation history
 
-Complete sequence/annotation history through the current project/library revision model. Define one user-visible history path and migration behavior before adding more revision UI.
+Complete sequence/annotation history through the current project/library revision model. Define one user-visible history path and migration behavior before adding more revision UI. Legacy debt IDs: `TD-ARCH-ANNOTATION-VERSIONING`, `TD-PLASMID-GIT-LOSS`.
 
 ### Modal event isolation
 
 Audit and fix event propagation/focus ownership in `PiecePrimersPickModal` and `PieceCreateModal`. Escape, Enter and click-outside must affect only the active transient surface.
+Refactor `AddModal` open-transition reset away from synchronous state writes inside `useEffect`;
+the pattern already exists in HEAD and keeps scoped ESLint red even when new modal code is clean.
+Legacy debt ID: `TD-CROSS-PORTAL-AUDIT`.
+
+### Lint baseline and scoped command
+
+Restore a green project-wide ESLint baseline and add a true scoped script. Today
+`npm run lint -- <paths>` still executes `eslint .` before the requested paths, so a package
+must invoke the local ESLint binary directly to separate its result from unrelated legacy errors.
+Move the remaining user-visible `.bodge` Open/StartScreen literal strings into the i18n
+dictionary; BG-003's scoped gate is error-free but still reports these Cyrillic-string warnings.
 
 ### Search follow-ups
 
 - make `name:`, `feature:` and resolved `in:` executable before offering them;
 - implement or remove `headVersionsOnly`;
 - index description/organism consistently;
-- design the corpus filter/index layer before adding new search modes: cheap metadata/scope filters
+- design the corpus filter/index layer before adding new search modes (`TD-SEARCH-INDEX-EAGER`): cheap metadata/scope filters
   first, exact sequence index next, approximate verification only for surviving documents;
 - converge `LibrarySearchBar` with the shared DNA contract or label its current behavior explicitly;
   it is still a separate min-3, forward-only literal ACGT substring filter without circular or
@@ -63,13 +74,13 @@ own peak.
 
 ### Restriction-primer protective bases
 
-Replace the fixed/asymmetric `GCGC` policy with an enzyme-aware, symmetric and validated protective-base policy. Preserve separate Type IIS/classical restriction semantics and add end-to-end primer/export tests.
+Replace the fixed/asymmetric `GCGC` policy with an enzyme-aware, symmetric and validated protective-base policy. Preserve separate Type IIS/classical restriction semantics and add end-to-end primer/export tests. Legacy debt ID: `TD-PRIMER-PER-ENZYME-IDENTITY`.
 
 ## Next — connected capabilities
 
 ### T9 design/materialization UI
 
-`CREATE_DESIGN_VARIANT` and `MATERIALIZE_REACTION` have reducer/test foundations but no current production dispatch. Re-design the UI against the present store contract; do not resurrect incompatible legacy wizards.
+`CREATE_DESIGN_VARIANT` and `MATERIALIZE_REACTION` have reducer/test foundations but no current production dispatch. Re-design the UI against the present store contract; do not resurrect incompatible legacy wizards. Legacy debt ID: `TD-T9-K13-K14-WIRE`.
 
 ### Transcript and isoform model
 
@@ -77,11 +88,28 @@ Introduce explicit transcript identity for alternative intron/exon sets, non-tab
 
 ### Annotation UX convergence
 
-- show `detail`/`point` and segmented exon structure on overview maps;
-- make incomplete/reference-derived annotations visually honest and expose source, identity and coverage;
-- add fast select -> name -> Enter annotation creation for the common case;
-- surface protein effect for CDS edits;
-- converge tooltip and edit affordances across Library, Sequence and Canvas.
+- converge the duplicated type registries and three edit surfaces on one schema;
+- make `detail`, `point` and compound locations consistently selectable and editable
+  in Overview, Sequence, Map and Annotator (maps already render more than Sequence);
+- share one provenance summary for source, identity, coverage and incomplete/reference
+  state across all surfaces;
+- surface protein effect and coding-frame consequences before committing CDS edits;
+- add keyboard-accessible feature selection/editing, dialog/menu semantics and focus
+  restoration without relying on the SVG map as the only control;
+- give common-feature curation an explicit edit transaction or undo, validated DNA/
+  IUPAC/frame semantics and a preview before destructive dedup.
+
+The fast select -> name -> Enter creation path and detail/point rendering on overview
+maps already exist; do not plan them again. Correctness defects discovered by the
+annotation audit are tracked only as BG-026…BG-034 in `BUGS.md`.
+
+### Primer-pool interaction after ANN-0L
+
+After the lossless record/site foundation is accepted, add one keyboard-first primer
+workflow rather than another editor surface: occurrence selection shared by Map and
+SequenceView, `E`/double-click to edit, guarded Delete/Backspace, Escape/focus return,
+and explicit version/variant behavior when the full oligo changes. Keep source-declared
+sites distinct from computed off-targets and do not infer tubes, lots or physical stock.
 
 ### Assembly workbench convergence
 
@@ -90,6 +118,10 @@ Unify piece acquisition, junction configuration, primer-tail derivation and live
 ### `.bodge` v2 completion
 
 Complete the normative core, migrations, notebook content, provenance and implementation plan under `docs/specs/`. Keep strict validation and explicit downgrade/loss reporting.
+The next vertical must include conflict-safe project-owned primer identity, typed reaction/pair
+references, real `.bodgeassembly` merge semantics, recoverable cross-store import cleanup and
+byte-preserving handling of unknown optional extensions. BG-003 unified project Open but did not
+claim any of these format/repository cutovers.
 
 ### Alignment/Sanger trust
 
@@ -99,11 +131,11 @@ Resume the blocked alignment reliability specification only after current reposi
 
 ### Oversized module boundaries
 
-Do not split stable files merely to satisfy a byte counter. Before the next feature change in these areas, characterize behavior and extract along live ownership boundaries: `SequenceView/index.jsx` (71.1 KiB), `AssemblyShellBody.jsx` (57.9 KiB), `RangePickerModal.jsx` (56.4 KiB), `PlasmidMiniMap.jsx` (42.8 KiB), `ContainerEditorSkeleton.jsx` (41.2 KiB) and `store/librarySlice.js` (47.3 KiB at this checkpoint). Generated/data dictionaries are exempt. Prioritize a split only when the file is in scope and change coupling is demonstrated.
+Do not split stable files merely to satisfy a byte counter. Before the next feature change in these areas, characterize behavior and extract along live ownership boundaries. Current hard-zone changed modules include `SequenceView/index.jsx` (71.5 KiB), `AssemblyShellBody.jsx` (59.5 KiB), `ContainerEditorSkeleton.jsx` (42.7 KiB), `store/librarySlice.js` (47.8 KiB), `zone-pieces-to-dag.js` (31.9 KiB) and `skeleton-state.js` (26.8 KiB). New soft-zone entrants in the 0.8.8 WIP snapshot are `PrimerTrack.jsx` (35.2 KiB), `PlasmidMapV2.jsx` (30.7 KiB) and `skeleton-state-assembly.js` (24.7 KiB). Existing watch items also include `RangePickerModal.jsx`, `PlasmidMiniMap.jsx`, `LibrarySingleInspector.jsx`, `AnnotationTrack.jsx` and `AATrack.jsx`. Generated/data dictionaries are exempt. Prioritize a split only when the file is in scope and change coupling is demonstrated. Legacy debt IDs: `TD-SIZE-SEQUENCEVIEW-INDEX`, `TD-SIZE-CONTAINER-EDITOR-SKELETON`, `TD-SIZE-LIBRARYSLICE`, `TD-SIZE-PLASMID-MINI-MAP`, `TD-SIZE-LIBRARYSINGLEINSPECTOR`, `TD-LIBRARYSINGLEINSPECTOR-DECOMP-V2`, `TD-ANNOTATIONTRACK-DECOMPOSE-V2`, `TD-SIZE-AATRACK`, `TD-SKELETON-STATE-SIZE`.
 
 ### Legacy `project.dag` state
 
-Remove the remaining low-priority store orphan after `.bodge` compatibility/migration no longer depends on it.
+Remove the remaining low-priority store orphan after `.bodge` compatibility/migration no longer depends on it. Legacy debt ID: `TD-DEAD-DAG-STORE-MODEL`.
 
 ### Legacy annotation IDs
 
@@ -111,7 +143,7 @@ New write paths already provide IDs. Add a narrow migration for historical detai
 
 ### Performance baselines
 
-Maintain reproducible benchmarks on the reference 2-core/8-GB machine: UI cancellation p95, metadata preview, exact DNA search, project open and memory for a 10-Mb library.
+Maintain reproducible benchmarks on the reference 2-core/8-GB machine: UI cancellation p95, metadata preview, exact DNA search, project open and memory for a 10-Mb library. Legacy debt ID: `TD-DEV-POLICY-LEGACY-HARDWARE`.
 
 ### Feature database build pipeline
 
@@ -120,6 +152,37 @@ Move the curated cross-name/AmpR dedup rules from `scripts/dedup_common_features
 ### Library metadata editing
 
 Expose tags and topology in the current `LibraryWorkspace` with direct, tested persistence to the library entry. Do not restore the retired importer workspace merely to recover its old metadata column.
+
+## Legacy debt migrated from `TECH_DEBT.md`
+
+These unresolved IDs were consolidated here on 26.08.2026. Detailed historical wording
+remains in Git history; activation still requires a scoped `CURRENT_TASK.md` package.
+
+- **Assembly/primer:** remove the remaining parallel assembly reducer
+  (`TD-ASSEMBLYREDUCER-REMOVAL`) and define PCR-operation primer-name consumers
+  (`TD-PRIMER-NAME-OP-PCR-CONSUMERS`).
+- **Library UX/data:** complete character apply (`TD-LIB-K10-CHARACTER-APPLY`), preview
+  and auto-trigger behavior (`TD-LIB-K4-VIEW-PREVIEW`, `TD-LIB-K4-AUTO-TRIGGER`),
+  library-card drag/drop (`TD-DRAG-DROP-LIBRARY-CARDS`), replace deprecated Mine-tag
+  grouping (`TD-MINE-TAG-GROUPING-DEPRECATED`), finish pending-delete cleanup
+  (`TD-LIBRARY-CLEANUP-PENDING-DELETES`), persisted tag storage
+  (`TD-LIBRARY-PERSISTED-TAG-DB`) and search/sort/bulk workflows
+  (`TD-LIBRARY-SEARCH-SORT-BULK`).
+- **Sequence/accessibility:** wrap keyboard navigation (`TD-WRAP-KEYBOARD-NAV`), category
+  button semantics (`TD-A11Y-CATEGORY-BUTTONS`), shift selection and focus visibility
+  (`TD-SEQUENCEVIEW-SHIFT-SELECTION`, `TD-SEQUENCEVIEW-FOCUS-RING`), prediction labels
+  (`TD-LINEAR-BAR-PREDICTIONS`) and the remaining environment nit (`NIT-3`).
+- **Annotation/data sources:** per-CDS SignalP (`TD-PER-CDS-SIGNALIP`), Addgene and open
+  plasmid repositories (`TD-ADDGENE-API-PENDING`, `TD-OPEN-PLASMID-REPOS`) and optional
+  CAZy integration (`TD-CAZY-INTEGRATION`).
+- **Platform/future:** measure before any Rust core (`TD-RUST-CORE-PARSER`,
+  `TD-RUST-CORE-PROGRESSIVE`), evaluate native shell/UI only from evidence
+  (`TD-DESKTOP-NATIVE-SHELL`, `TD-NATIVE-UI-EVALUATION`), retain a mobile-viewer probe
+  (`TD-MOBILE-VIEWER-PROBE`), file association (`TD-BODGE-FILE-ASSOCIATION`), OS fallback
+  for Ctrl+N (`TD-CTRL-N-OS-FALLBACK`) and optional onboarding video
+  (`TD-ONBOARDING-INTRO-VIDEO`).
+- **Maintenance:** repeat a current production reachability audit before deleting further
+  remnants (`TD-DEAD-REMNANT-630KB`); the old size/count estimate is not authoritative.
 
 ## Active specifications
 

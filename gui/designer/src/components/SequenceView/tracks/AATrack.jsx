@@ -101,6 +101,42 @@ function hybridRows({ strandFilter, visibleFrames }) {
   return rows;
 }
 
+function aaClickPayload(codon, {
+  displayAnchor, frame, regionId = null, aaIndex = null, strand,
+}) {
+  const resolvedStrand = strand === -1 ? -1 : 1;
+  const positions = Array.isArray(codon.genomicPositions)
+    ? codon.genomicPositions.slice(0, 3)
+    : (resolvedStrand === -1
+      ? [displayAnchor + 1, displayAnchor, displayAnchor - 1]
+      : [displayAnchor - 1, displayAnchor, displayAnchor + 1]);
+  return {
+    aa: codon.aa,
+    codon: codon.codon,
+    aaIndex: Number.isInteger(aaIndex) ? aaIndex : null,
+    strand: resolvedStrand,
+    frame: Number.isInteger(frame) ? frame : 0,
+    regionId: regionId || null,
+    genomicPositions: positions,
+    displayAnchor,
+  };
+}
+
+function aaActivationProps(onAAClick, payload) {
+  if (!onAAClick) return {};
+  return {
+    role: "button",
+    tabIndex: 0,
+    onClick: () => onAAClick(payload),
+    onKeyDown: (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      event.stopPropagation();
+      onAAClick(payload);
+    },
+  };
+}
+
 /**
  * @param {object} props
  * @param {string} props.fullSeq
@@ -127,6 +163,7 @@ function AATrack({
   // «Ген разрезан — тянуть AA до реза»: { left, right } booleans for terminal
   // sticky-end cuts → the terminal gene's translation extends to the cut.
   terminalCut,
+  onAAClick,
 }) {
   if (!fullSeq || !lineLen) return null;
 
@@ -434,6 +471,13 @@ function AATrack({
                   borderBottomRightRadius: isRightEdge ? "5px" : "0",
                 };
                 if (role === "mid") {
+                  const payload = aaClickPayload(c, {
+                    displayAnchor: lineStart + ci,
+                    frame: row.frame,
+                    regionId: c.regionId,
+                    aaIndex: aaNumberFor(c, lineStart + ci),
+                    strand: c.strand || row.strand,
+                  });
                   return (
                     <span
                       key={ci}
@@ -444,6 +488,7 @@ function AATrack({
                       data-aa-strand={c.strand || 1}
                       data-aa-region={c.regionId || ""}
                       title={`${c.aa} (${c.codon}) pos ${lineStart + ci + 1} ${c.strand === -1 ? "rev" : "fwd"}${c.isStop ? " · STOP" : c.isStart ? " · START" : ""}`}
+                      {...aaActivationProps(onAAClick, payload)}
                       style={{
                         ...cellStyle,
                         color: aaColor(c.aa, c.isStart),
@@ -470,6 +515,13 @@ function AATrack({
                 // и пробелы с боков от буквы давали тот же эффект»).
                 // role 'start' → mid is at ci+1; role 'end' → mid at ci-1.
                 const sideMidAbs = role === "start" ? (lineStart + ci + 1) : (lineStart + ci - 1);
+                const payload = aaClickPayload(c, {
+                  displayAnchor: sideMidAbs,
+                  frame: row.frame,
+                  regionId: c.regionId,
+                  aaIndex: aaNumberFor(c, sideMidAbs),
+                  strand: c.strand || row.strand,
+                });
                 return (
                   <span
                     key={ci}
@@ -477,6 +529,7 @@ function AATrack({
                     data-aa-pos={sideMidAbs}
                     data-aa-strand={c.strand || 1}
                     data-aa-region-fill={c.regionId || ""}
+                    onClick={onAAClick ? () => onAAClick(payload) : undefined}
                     style={{ ...cellStyle, userSelect: "none", WebkitUserSelect: "none" }}
                   >
                     {" "}
@@ -644,6 +697,13 @@ function AATrack({
                     data-aa-pos={adjacent ? adjacent.position : undefined}
                     data-aa-strand={adjacent ? row.strand : undefined}
                     data-aa-frame={adjacent ? row.frame : undefined}
+                    onClick={adjacent && onAAClick ? () => onAAClick(aaClickPayload(adjacent, {
+                      displayAnchor: adjacent.position,
+                      frame: row.frame,
+                      regionId: fillerCds?.id || null,
+                      aaIndex: null,
+                      strand: row.strand,
+                    })) : undefined}
                     style={{
                       display: "inline-block",
                       width: "1ch",
@@ -717,6 +777,17 @@ function AATrack({
                   data-aa-strand={row.strand}
                   data-aa-region={cdsHit?.id || ""}
                   title={`${codon.aa} (${codon.codon}) frame ${row.label} pos ${absPos + 1}${codon.isStop ? " · STOP" : codon.isStart ? " · START" : cdsHit ? ` · ${cdsHit.name || cdsHit.type}` : ""}`}
+                  {...aaActivationProps(onAAClick, aaClickPayload(codon, {
+                    displayAnchor: absPos,
+                    frame: row.frame,
+                    regionId: cdsHit?.id || null,
+                    aaIndex: cdsHit
+                      ? (row.strand === -1
+                        ? Math.floor((cdsHit.end + 1 - absPos) / 3)
+                        : Math.floor((absPos - cdsHit.start + 2) / 3))
+                      : null,
+                    strand: row.strand,
+                  }))}
                   style={{
                     display: "inline-block",
                     width: "1ch",

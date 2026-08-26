@@ -8,6 +8,7 @@ import { describe, it, expect } from 'vitest';
 import {
   deriveMutationMechanism, normalizeEditorMutations, mechanismLabel,
 } from '../lib/mutation-to-mechanism';
+import { deriveAssemblyPrimerRecords } from '../lib/derived-primer-records';
 
 const TEMPLATE = `ATG${'GCC'.repeat(300)}TAA`; // 906 bp; index 300 = 'G'
 const BIG = `ATG${'GCC'.repeat(600)}TAA`; // 1806 bp
@@ -51,6 +52,52 @@ describe('normalizeEditorMutations', () => {
 });
 
 describe('deriveMutationMechanism — mechanism selection', () => {
+  it('keeps circular KLD primers full-length and exposes exact wrapped canonical sites at both origin edges', () => {
+    const template = 'ACGT'.repeat(20);
+    const deriveAt = (position, toBase) => {
+      const result = deriveMutationMechanism({
+        templateSequence: template,
+        editorMutations: [{ position, fromBase: template[position], toBase }],
+        fragmentContext: { topology: 'circular', isStandalone: true },
+      });
+      const records = deriveAssemblyPrimerRecords(result.plan.primers, {
+        draftId: 'draft-origin',
+        anchorPos: position,
+        templateSequence: template,
+        target: { entryId: 'draft-origin', resourceHash: 'sha256:origin', topology: 'circular' },
+        idGen: (() => { let serial = 0; return () => `origin-${serial += 1}`; })(),
+      });
+      return { result, records };
+    };
+
+    const nearStart = deriveAt(3, template[3] === 'A' ? 'G' : 'A');
+    const nearEnd = deriveAt(template.length - 3, template.at(-3) === 'A' ? 'G' : 'A');
+    const startForward = nearStart.records.find((primer) => primer.direction === 'forward');
+    const startReverse = nearStart.records.find((primer) => primer.direction === 'reverse');
+    const endForward = nearEnd.records.find((primer) => primer.direction === 'forward');
+    const endReverse = nearEnd.records.find((primer) => primer.direction === 'reverse');
+
+    expect({
+      nearStartLengths: nearStart.result.plan.primers.map((primer) => primer.sequence.length),
+      nearStartReverseSite: startReverse.sites[0].location,
+      nearStartForwardSpan: startForward.sites[0].alignment.target.length,
+      nearEndLengths: nearEnd.result.plan.primers.map((primer) => primer.sequence.length),
+      nearEndForwardSite: endForward.sites[0].location,
+      nearEndReverseSpan: endReverse.sites[0].alignment.target.length,
+    }).toEqual({
+      nearStartLengths: [21, 20],
+      nearStartReverseSite: {
+        kind: 'join', segments: [{ start: 63, end: 80 }, { start: 0, end: 3 }],
+      },
+      nearStartForwardSpan: 21,
+      nearEndLengths: [21, 20],
+      nearEndForwardSite: {
+        kind: 'join', segments: [{ start: 77, end: 80 }, { start: 0, end: 18 }],
+      },
+      nearEndReverseSpan: 20,
+    });
+  });
+
   it('single-base edit on circular standalone → KLD, 1 base changed, primers present', () => {
     const r = deriveMutationMechanism({
       templateSequence: TEMPLATE,

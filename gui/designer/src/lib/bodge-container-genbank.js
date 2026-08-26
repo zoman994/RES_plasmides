@@ -21,6 +21,11 @@
  *                         primer round-trip.
  */
 import {
+  formatGenBankLocation,
+  parseGenBankLocation,
+  locationSpan,
+} from './annotation-location';
+import {
   encodeProvenanceComment,
   formatCommentBlock,
   decodeProvenanceComment,
@@ -106,22 +111,33 @@ function formatDate(iso) {
   return `${dd}-${mm}-${yyyy}`;
 }
 
-function formatLocation(start, end, strand) {
-  // Convert 0-based inclusive-exclusive [start,end) to 1-based inclusive.
-  const s = start + 1;
-  const e = end;
-  return strand === -1 ? `complement(${s}..${e})` : `${s}..${e}`;
+function requireCanonicalTopology(topology) {
+  if (topology !== 'circular' && topology !== 'linear') {
+    throw new TypeError(
+      'writeContainerToGenBank: topology must be canonical "circular" or "linear"',
+    );
+  }
+  return topology;
+}
+
+// ANN-0A — the container shares the one GenBank location codec with the plain
+// `.gb` parser/exporter. No second ±1 conversion lives here, so a compound or
+// origin-crossing feature round-trips through `.bodge` exactly as it does
+// through a standalone GenBank file.
+
+function formatLocation(ann) {
+  return formatGenBankLocation(ann);
 }
 
 function parseLocation(loc) {
   if (!loc) return null;
-  const m = /^(complement\()?(\d+)\.\.(\d+)\)?$/.exec(loc.trim());
-  if (!m) return null;
-  return {
-    start: parseInt(m[2], 10) - 1,
-    end: parseInt(m[3], 10),
-    strand: m[1] ? -1 : 1,
-  };
+  try {
+    const { location, strand } = parseGenBankLocation(loc);
+    const span = locationSpan({ location });
+    return { location, start: span.start, end: span.end, strand };
+  } catch {
+    return null;
+  }
 }
 
 function escapeQualifier(v) {
@@ -161,7 +177,7 @@ export function writeContainerToGenBank(container) {
     throw new Error('writeContainerToGenBank: container required');
   }
   const seq = String(container.sequence || '');
-  const topology = container.topology === 'circular' ? 'circular' : 'linear';
+  const topology = requireCanonicalTopology(container.topology);
   const updatedAt = container.updatedAt || container.createdAt;
 
   let out = '';
@@ -182,11 +198,11 @@ export function writeContainerToGenBank(container) {
 
   for (const ann of container.annotations || []) {
     if (!ann) continue;
-    const start = Math.max(0, Number(ann.start) || 0);
-    const end = Math.max(start, Number(ann.end) || start);
     const strand = ann.strand === -1 ? -1 : 1;
+    const location = formatLocation({ ...ann, strand });
+    if (!location) continue;
     const gbType = GENBANK_TYPE_MAP[ann.type] || 'misc_feature';
-    out += `     ${gbType.padEnd(16)}${formatLocation(start, end, strand)}\n`;
+    out += `     ${gbType.padEnd(16)}${location}\n`;
     out += `${formatQualifier('label', ann.name || ann.type || 'feature')}\n`;
     if (ann.id) out += `${formatQualifier('bodge_id', ann.id)}\n`;
     if (ann.parentId) out += `${formatQualifier('parent_feature', ann.parentId)}\n`;
@@ -303,6 +319,7 @@ export function readContainerFromGenBank(gbText, opts = {}) {
             id: '',
             name: '',
             type: REVERSE_TYPE_MAP[featureMatch[1]] || featureMatch[1],
+            location: loc.location,
             start: loc.start,
             end: loc.end,
             strand: loc.strand,

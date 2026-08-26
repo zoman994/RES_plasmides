@@ -21,6 +21,46 @@
  * skipped as duplicates» footer toast).
  */
 
+import {
+  LOCATION_KINDS,
+  makeLocation,
+  getSegments,
+  locationSpan,
+  locationLength,
+  normalizeLocation,
+  isPoint,
+  isCompound,
+  overlapFraction,
+  toUiSegments,
+  fromUiSegment,
+} from './annotation-location';
+
+/**
+ * Build the `{ length, topology }` document descriptor the location gate needs.
+ * Callers historically passed only `seqLength`; topology may arrive as a second
+ * argument (a string, or a full doc object). Unknown topology stays linear, so
+ * an origin crossing is never minted by accident.
+ */
+function docOf(seqLength, docOrTopology) {
+  if (docOrTopology && typeof docOrTopology === 'object') {
+    return {
+      length: Number.isFinite(docOrTopology.length) ? docOrTopology.length : seqLength,
+      topology: docOrTopology.topology,
+    };
+  }
+  return { length: seqLength, topology: docOrTopology };
+}
+
+// Re-exported so existing consumers keep their import path while the two
+// responsibilities live in separate files (ANN-0A corrective, size budget).
+export {
+  isDuplicatePrediction,
+  mergeStripWithPredicted,
+  basePartName,
+  reconcileConfirmedWithPartials,
+} from './annotation-predicted-merge';
+export { overlapFraction };
+
 /**
  * B3 (audit) — feature type → annotation level. Mirrors AnnotationEditor's
  * TYPE_TO_LEVEL so the SequenceView create/edit popups can author all THREE
@@ -96,6 +136,7 @@ export function createAnnotation({
   type = 'misc_feature',
   start,
   end,
+  location,
   level = 'region',
   strand = 1,
   regionId,
@@ -103,20 +144,45 @@ export function createAnnotation({
   source,
   confidence,
   signals,
-}, seqLength) {
-  const v = validateAnnotationCoords(start, end, seqLength);
-  if (!v.valid) throw new Error(`createAnnotation: ${v.error}`);
+}, seqLength, docOrTopology) {
+  // ANN-0A — a supplied canonical location is authoritative and must NOT be
+  // gated behind the scalar validator, which cannot express a compound or
+  // origin-crossing range. Only a scalar-only payload goes through the legacy
+  // range check first.
+  const doc = docOf(seqLength, docOrTopology);
+  if (!location) {
+    const v = validateAnnotationCoords(start, end, seqLength);
+    if (!v.valid) throw new Error(`createAnnotation: ${v.error}`);
+  }
+  // The coherence gate owns topology: a wrap can only be minted on a circular
+  // document, and a location contradicting a supplied scalar is rejected.
+  const normalized = normalizeLocation(
+    location
+      ? { location, ...(start !== undefined ? { start } : {}), ...(end !== undefined ? { end } : {}) }
+      : { start, end },
+    doc,
+  );
+  if (level === 'point' && !isPoint(normalized)) {
+    throw new Error(
+      `createAnnotation: a point annotation must be exactly one base, got ${locationLength(normalized)}`,
+    );
+  }
   const ann = {
+    location: normalized.location,
     // Preserve an explicit id when given — cross-referencing annotations (a
     // gene + its introns linked by regionId) must keep their ids across the
     // create/create-batch apply, or the regionId link breaks and the intron
     // becomes an orphan (no exon-block render, no AA splice). Fall back to the
     // deterministic backfill id only when none is supplied.
-    id: id != null ? id : generateAnnotationId({ start, end, type, name }),
+    id: id != null
+      ? id
+      : generateAnnotationId({ start: normalized.start, end: normalized.end, type, name }),
     name,
     type,
-    start,
-    end,
+    // Scalar fields are the projection of the canonical location, never an
+    // independent input — so `locationSpan(ann)` always equals {start, end}.
+    start: normalized.start,
+    end: normalized.end,
     strand: strand === -1 ? -1 : 1,
     level,
   };
@@ -174,7 +240,7 @@ export function deleteAnnotation(annotations, annotationId) {
  * Throws on invalid coord patches. Returns a new annotations array.
  * Returns the original reference if the id is not found.
  */
-export function updateAnnotation(annotations, annotationId, patch, seqLength) {
+export function updateAnnotation(annotations, annotationId, patch, seqLength, doc) {
   if (!Array.isArray(annotations)) return [];
   let found = false;
   // Track an id shift on the edited annotation so detail/point children that
@@ -184,9 +250,33 @@ export function updateAnnotation(annotations, annotationId, patch, seqLength) {
   const next = annotations.map((a) => {
     if (!matchesAnnotationId(a, annotationId)) return a;
     found = true;
+    const isCompound = getSegments(a).length > 1;
+    const touchesCoords = patch.start !== undefined || patch.end !== undefined;
+    // ANN-0A — a compound / origin-crossing feature has no single scalar range.
+    // Accepting a scalar coordinate patch here would silently flatten it into
+    // one span and change the biology. Refuse instead; metadata edits (name,
+    // colour, type, qualifiers) still pass through and keep every segment.
+    if (isCompound && touchesCoords && patch.location === undefined) {
+      throw new Error(
+        'updateAnnotation: cannot apply a scalar coordinate edit to a compound (multi-segment) annotation — edit its segments instead',
+      );
+    }
     const merged = { ...a, ...patch };
-    const v = validateAnnotationCoords(merged.start, merged.end, seqLength);
-    if (!v.valid) throw new Error(`updateAnnotation: ${v.error}`);
+    if (isCompound && !touchesCoords) {
+      // Keep the projection coherent with the untouched canonical location.
+      const span = locationSpan(merged);
+      merged.start = span.start;
+      merged.end = span.end;
+    } else {
+      const v = validateAnnotationCoords(merged.start, merged.end, seqLength);
+      if (!v.valid) throw new Error(`updateAnnotation: ${v.error}`);
+      if (touchesCoords || merged.location === undefined) {
+        merged.location = normalizeLocation(
+          { start: merged.start, end: merged.end },
+          doc ?? seqLength,
+        ).location;
+      }
+    }
     if (merged.strand !== -1) merged.strand = 1;
     const prevId = a.id || generateAnnotationId(a); // effective id BEFORE the edit
     // Regenerate id when the identifying fields shifted, OR when
@@ -215,177 +305,6 @@ export function updateAnnotation(annotations, annotationId, patch, seqLength) {
   return next;
 }
 
-/**
- * Compute the overlap fraction of two regions relative to the SHORTER
- * region (avoids the asymmetry where a tiny region inside a huge one
- * would otherwise look like a small overlap %). Used by the
- * create-batch dedup heuristic (DEC-ANN-09).
- */
-export function overlapFraction(a, b) {
-  const lo = Math.max(a.start, b.start);
-  const hi = Math.min(a.end, b.end);
-  if (hi <= lo) return 0;
-  const minLen = Math.min(a.end - a.start, b.end - b.start);
-  if (minLen <= 0) return 0;
-  return (hi - lo) / minLen;
-}
-
-/**
- * Decide whether a predicted region duplicates a confirmed
- * annotation already present on the same plasmid. The previous
- * heuristic required EXACT type equality, but the bundled
- * common-features DB tags AmpR as `marker` while a SnapGene-imported
- * plasmid tags it as `CDS` — same region, different label, dedup
- * missed it.
- *
- * Two-strike rule:
- *   1. Same name (case-insensitive trimmed) + ≥30 % overlap → dup.
- *      Catches the type-drift case described above.
- *   2. Same type (case-insensitive) + ≥50 % overlap → dup. Default
- *      DEC-ANN-09 path.
- *
- * Different name AND different type, even with full coord overlap,
- * are KEPT — a gene and its internal promoter can occupy the same
- * span and biolog needs to see both.
- *
- * Skips entries whose `level` is set and not 'region' (sub-features
- * shouldn't shadow predicted parents).
- */
-/**
- * Merge predicted regions from the Annotator's results into a
- * confirmed-annotations array (used by SingleInspector's
- * LinearFeatureBar nav-strip overlay). Mirrors the filter rules
- * PreviewTab and LevelPanel apply:
- *   - drop regions below the confidence threshold
- *   - drop user-rejected regions
- *   - skip duplicates (`isDuplicatePrediction`) unless the user
- *     opted in via «Show duplicates»
- *   - accepted-this-session predictions render as solid
- *     (`predicted: false`); the rest stay ghosts
- *   - on the strip, suppress duplicate name labels when the
- *     predicted region's name already exists among confirmed
- *     regions (`_suppressLabel: true`)
- */
-export function mergeStripWithPredicted(
-  confirmed,
-  results,
-  threshold,
-  acceptedIds,
-  rejectedIds,
-  showDuplicates,
-) {
-  if (!results || typeof results !== 'object') return confirmed;
-  // V134 — collect raw predictions (threshold + reject), then reconcile
-  // partial names: a confirmed `X` whose predicted `X_part_…` sits on the
-  // same locus DISPLAYS the part name (fragment → с part) and absorbs that
-  // prediction, so the strip shows one name instead of «AmpR» + «AmpR_part_…».
-  const predictedRaw = [];
-  for (const res of Object.values(results)) {
-    for (const r of (res?.regions || [])) {
-      if (Number.isFinite(r.confidence) && r.confidence < (threshold ?? 0)) continue;
-      const id = r.id || `${r.start}:${r.end}:${r.type || ''}:${r.name || ''}`;
-      if (rejectedIds && rejectedIds[id]) continue;
-      predictedRaw.push({ ...r, id });
-    }
-  }
-  // V136 — reconcile (one feature, part name) only when NOT showing duplicates;
-  // with «Show duplicates» ON keep confirmed + the Level-1 partial both visible.
-  const { confirmed: rc, predicted: predRemaining } = showDuplicates
-    ? { confirmed: confirmed || [], predicted: predictedRaw }
-    : reconcileConfirmedWithPartials(confirmed || [], predictedRaw);
-  const out = rc.slice();
-  const seenIds = new Set();
-  const confirmedNames = new Set();
-  for (const ann of out) {
-    if (ann && ann.id) seenIds.add(ann.id);
-    const nm = (ann?.name || '').toLowerCase().trim();
-    if (nm) confirmedNames.add(nm);
-  }
-  for (const r of predRemaining) {
-    const id = r.id;
-    if (seenIds.has(id)) continue;
-    const accepted = !!(acceptedIds && acceptedIds[id]);
-    // Mirror the PreviewTab fix (2026-05-06): always skip predicted
-    // duplicates of an existing confirmed region — even if the user
-    // accepted them — because after Save the accepted region lives
-    // in `confirmed` and the strip would otherwise stack two copies
-    // (the confirmed one + the same prediction rendered solid).
-    if (!showDuplicates && isDuplicatePrediction(r, rc)) continue;
-    const predName = (r.name || '').toLowerCase().trim();
-    const suppressLabel = !!(predName && confirmedNames.has(predName));
-    out.push({
-      ...r,
-      id,
-      predicted: accepted ? false : true,
-      _suppressLabel: suppressLabel,
-    });
-    seenIds.add(id);
-  }
-  return out;
-}
-
-export function isDuplicatePrediction(predicted, confirmedRegions) {
-  if (!Array.isArray(confirmedRegions) || confirmedRegions.length === 0) return false;
-  const pName = (predicted.name || '').toLowerCase().trim();
-  const pType = (predicted.type || '').toLowerCase();
-  for (const c of confirmedRegions) {
-    if (!c) continue;
-    if (c.level && c.level !== 'region') continue;
-    const overlap = overlapFraction(c, predicted);
-    if (overlap <= 0) continue;
-    const cName = (c.name || '').toLowerCase().trim();
-    const cType = (c.type || '').toLowerCase();
-    if (pName && cName && pName === cName && overlap > 0.3) return true;
-    if (pType && cType && pType === cType && overlap > 0.5) return true;
-  }
-  return false;
-}
-
-/**
- * Strip a trailing `_part_A-B` suffix → the base feature name. Used to match
- * a predicted partial (`AmpR_part_10-856`) against a confirmed full feature
- * (`AmpR`). Non-strings / plain names pass through unchanged.
- */
-export function basePartName(name) {
-  return typeof name === 'string' ? name.replace(/_part_\d+-\d+$/, '') : name;
-}
-
-/**
- * Fragment naming reconciliation (биолог: «кусок с парт, не кусок без парт;
- * одно имя»). When a predicted partial `X_part_A-B` overlaps a confirmed `X`
- * at the same locus, the locus IS that fragment — so the confirmed region
- * DISPLAYS the part name, and the now-redundant predicted partial is absorbed
- * (one feature, one name, independent of the «Show duplicates» toggle). A full
- * match (`X` == `X`, no `_part_`) is left plain (полная фича → без part).
- * Pure / display-only — inputs are not mutated, nothing is persisted; the
- * prior name is preserved on `displayBaseName`.
- *
- * @returns {{ confirmed: Array, predicted: Array }} confirmed with upgraded
- *   display names + predicted minus the absorbed partials.
- */
-export function reconcileConfirmedWithPartials(confirmed, predicted) {
-  const conf = Array.isArray(confirmed) ? confirmed : [];
-  const pred = Array.isArray(predicted) ? predicted : [];
-  if (conf.length === 0 || pred.length === 0) {
-    return { confirmed: conf, predicted: pred };
-  }
-  const absorbed = new Set();
-  const outConfirmed = conf.map((c) => {
-    if (!c || typeof c.name !== 'string') return c;
-    const cName = c.name.toLowerCase().trim();
-    const match = pred.find((p) => {
-      if (absorbed.has(p) || !p || typeof p.name !== 'string') return false;
-      if (!p.name.includes('_part_')) return false;            // only partials upgrade
-      if (basePartName(p.name).toLowerCase().trim() !== cName) return false;
-      return overlapFraction(c, p) > 0.5;                       // same locus
-    });
-    if (!match) return c;
-    absorbed.add(match);
-    return { ...c, name: match.name, displayBaseName: c.name };
-  });
-  const outPredicted = pred.filter((p) => !absorbed.has(p));
-  return { confirmed: outConfirmed, predicted: outPredicted };
-}
 
 /**
  * Append a batch of new regions to an existing annotations array.
@@ -467,7 +386,8 @@ export function applyAnnotationEdit(annotations, edit, seqLength) {
  * (lacZα CDS spans nucleotides 146..469 to a biologist's eye).
  */
 export function toUiCoords(start, end) {
-  return { uiStart: start + 1, uiEnd: end };
+  const [seg] = toUiSegments({ start, end });
+  return seg || { uiStart: start + 1, uiEnd: end };
 }
 
 /**
@@ -475,7 +395,7 @@ export function toUiCoords(start, end) {
  * Inverse of `toUiCoords`.
  */
 export function fromUiCoords(uiStart, uiEnd) {
-  return { start: uiStart - 1, end: uiEnd };
+  return fromUiSegment(uiStart, uiEnd);
 }
 
 /**
@@ -500,13 +420,22 @@ export function fromUiCoords(uiStart, uiEnd) {
  *
  * Unknown id → no-op (returns input array unchanged).
  */
-export function splitAnnotation(annotations, annotationId, n, seqLength) {
+export function splitAnnotation(annotations, annotationId, n, seqLength, docOrTopology) {
   if (typeof n !== 'number' || !Number.isFinite(n) || n < 2) {
     throw new Error(`splitAnnotation: n must be ≥ 2, got ${n}`);
   }
   const idx = (annotations || []).findIndex((a) => matchesAnnotationId(a, annotationId));
   if (idx < 0) return annotations || [];
   const parent = annotations[idx];
+  // ANN-0A — splitting a compound feature needs a segment editor that does not
+  // exist yet. Refuse loudly rather than slicing its bounding span, which would
+  // silently rewrite the biology.
+  if (isCompound(parent)) {
+    throw new Error(
+      'splitAnnotation: cannot split a compound (multi-segment) annotation — segment editing is not available yet',
+    );
+  }
+  const doc = docOf(seqLength, docOrTopology);
   const total = (parent.end || 0) - (parent.start || 0);
   if (total < n) {
     throw new Error(`splitAnnotation: feature length ${total} too short for ${n}-way split`);
@@ -518,12 +447,15 @@ export function splitAnnotation(annotations, annotationId, n, seqLength) {
     const ce = i === n - 1 ? (parent.end || 0) : cs + chunk;
     if (typeof seqLength === 'number') validateAnnotationCoords(cs, ce, seqLength);
     const name = parent.name ? `${parent.name}-${i + 1}` : `(unnamed)-${i + 1}`;
-    const child = {
+    // Each child gets its OWN single-segment location — inheriting the parent's
+    // would leave every child claiming the parent's full span.
+    const child = normalizeLocation({
       ...parent,
+      location: makeLocation(LOCATION_KINDS.SINGLE, [{ start: cs, end: ce }]),
       start: cs,
       end: ce,
       name,
-    };
+    }, doc);
     child.id = generateAnnotationId(child);
     children.push(child);
   }
@@ -547,21 +479,33 @@ export function splitAnnotation(annotations, annotationId, n, seqLength) {
  *
  * Order of `idA` / `idB` doesn't matter.
  */
-export function mergeAnnotations(annotations, idA, idB) {
+export function mergeAnnotations(annotations, idA, idB, docOrTopology) {
   const list = annotations || [];
   const a = list.find((x) => matchesAnnotationId(x, idA));
   const b = list.find((x) => matchesAnnotationId(x, idB));
   if (!a || !b) return list;
+  // ANN-0A — merging a compound feature would need segment-level union logic;
+  // refuse rather than collapse it to a bounding span.
+  if (isCompound(a) || isCompound(b)) {
+    throw new Error(
+      'mergeAnnotations: cannot merge a compound (multi-segment) annotation — segment editing is not available yet',
+    );
+  }
   const adjacent = a.end === b.start || b.end === a.start;
   if (!adjacent) return list;
   const lenA = (a.end || 0) - (a.start || 0);
   const lenB = (b.end || 0) - (b.start || 0);
   const dominant = lenA >= lenB ? a : b;
-  const merged = {
+  const start = Math.min(a.start || 0, b.start || 0);
+  const end = Math.max(a.end || 0, b.end || 0);
+  // Build a NEW location for the union — inheriting the dominant feature's
+  // location would keep the merged result claiming only the dominant's span.
+  const merged = normalizeLocation({
     ...dominant,
-    start: Math.min(a.start || 0, b.start || 0),
-    end: Math.max(a.end || 0, b.end || 0),
-  };
+    location: makeLocation(LOCATION_KINDS.SINGLE, [{ start, end }]),
+    start,
+    end,
+  }, docOf(undefined, docOrTopology));
   merged.id = generateAnnotationId(merged);
   const aId = a.id || generateAnnotationId(a);
   const bId = b.id || generateAnnotationId(b);
