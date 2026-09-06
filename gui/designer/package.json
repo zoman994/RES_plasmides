@@ -12,6 +12,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:gate": "node scripts/vitest-gate.mjs",
+    "test:gate:serial": "node scripts/vitest-gate.mjs --no-file-parallelism",
     "test:watch": "vitest",
     "test:related": "vitest run --changed"
   },

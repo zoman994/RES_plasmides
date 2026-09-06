@@ -1,6 +1,6 @@
 # PROJECT_STATE — BodgeGene
 
-Обновлено: 06.09.2026 (приёмка SYNC-1 и S3-C2).
+Обновлено: 06.09.2026 (INFRA-GATE-2 принят, готов к checkpoint).
 
 ## Текущий снимок
 
@@ -9,7 +9,9 @@
   (предыдущий base `15169db8636ed8c9fdc2dbb759a8719f58e7af23`).
 - Checkpoint зафиксировал точный main-manifest: 150 изменённых tracked + 54 untracked =
   204 файла, 22 358 additions / 2 930 deletions. Main был чист сразу после commit;
-  этот snapshot-документ фиксируется отдельным docs-commit поверх recovery base.
+  follow-up snapshot — `6145bf0f1fcc8e44211eaf17445f1b00f84a6d96`. Оба commit отправлены
+  в `origin/checkpoint/integration-2026-07-17`; проверенный complete bundle хранится вне
+  репозитория. Тег не создавался.
 - Post-correction gate 06.09.2026: из трёх полных Vitest-прогонов на одном дереве два
   собрали **857 файлов / 9 286 тестов** (9 266 passed, 20 skipped, exit 0), один —
   **856 / 9 266**, `Worker exited unexpectedly`, exit 1, потерян файл на 20 тестов.
@@ -49,11 +51,15 @@
 
 ## Текущий пакет
 
-**SYNC-1 checkpointed. S3-C2 принят только как smoke-test isolation** (см.
-`CURRENT_TASK.md`): локальные async/network side effects конкретного теста устранены, но
-случайный fork-worker crash пережил correction. Эта линия остановлена по контракту;
-BG-022 открыт. Recovery base — `31fcca17`; bundle и обычный push разрешены и выполняются
-после follow-up docs-commit. Тег не создаётся без явно названного имени.
+**INFRA-GATE-2 принят** на `6145bf0` и готов к checkpoint (см. `CURRENT_TASK.md`). Два
+read-only reviewer воспроизвели frozen digest и дали ACCEPT. Единственный полный
+parallel gate: exact 860/860 expected/ended/run-end/JSON, 9 318 тестов (9 297 passed,
+21 skipped), raw exit 0, unhandled 0. Module-aware RSS complete: 860 setup, 857
+afterAll, 857 пар и три точно названных skipped setup-only; observed worker point maximum
+866 148 352 bytes, не peak/process-tree total. Common-features network noise исчез;
+четыре отдельных `/api/import` ECONNREFUSED-группы остаются в BACKLOG. Production build
+624 modules PASS; scoped ESLint новых infra-файлов 0. BG-022 остаётся открыт: причина
+случайного fork crash не установлена, а один чистый run не выполняет критерий закрытия.
 
 ## Открытые направления после SYNC-1
 
@@ -69,9 +75,9 @@ BG-022 открыт. Recovery base — `31fcca17`; bundle и обычный push
 4. **Modal hotkey isolation** (BG-078, BG-079) и **Annotator fail-closed** (BG-067).
 5. **Alignment** (BG-077) до старта спецификации M-ALIGN-TRUST.
 6. Перф-инструментовка на эталонной машине; scanAllSites и alignment вне UI-потока.
-7. **Test infrastructure** (BG-022): установить причину случайного fork-worker exit по
-   диагностическому протоколу; отдельно убрать happy-dom шум от `/common-features.json`
-   детерминированным test-harness stub с явными override для error-path тестов.
+7. **Test infrastructure** (BG-022): использовать принятый module-aware exact-inventory
+   gate и установить причину случайного fork-worker exit. Точечный test-harness stub для
+   `/common-features.json` не должен скрывать отдельный `/api/import` network noise.
 
 ## Производительность и размеры
 

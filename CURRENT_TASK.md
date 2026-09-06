@@ -1,161 +1,99 @@
-# CURRENT_TASK — SYNC-1 checkpointed / S3-C2 smoke isolation принят, BG-022 STOP / 0.8.8
+# CURRENT_TASK — INFRA-GATE-2: module-aware RSS и точный Vitest gate
 
-**Статус:** SYNC-1 и S3-C2 приняты 06.09.2026; S3-C2 — только изоляция конкретного
-smoke-теста, не worker-fix. Recovery checkpoint всего принятого main создан как
-`31fcca17a56e9d76c9db46c2c0d8cd6972968658`; этот docs-follow-up закрепляет новый base.
-BG-022 открыт, correction-линия остановлена. Bundle и обычный push разрешены отдельно
-от checkpoint; тег без явно названного имени не создаётся.
+**Статус:** принят 06.09.2026 на recovery base, готов к exact checkpoint. INFRA-GATE-1 остановлен после
+информативного полного прогона: все 859 модулей завершились; reporter отдельно показал
+два skipped, а RSS — две setup-only записи без moduleId. Их точное соответствие ещё не
+доказано. Строгий контракт «две RSS-точки на каждый expected module» отклонён; это не
+worker crash и не закрытие BG-022.
 
-## S3-C2 correction contract
+## Основание и режим
 
-Этот раздел — единственное разрешённое расширение прежних Manifest/OUT для correction.
+- Base/HEAD: `6145bf0f1fcc8e44211eaf17445f1b00f84a6d96`; текущий candidate не закоммичен.
+- Writer mode: solo; Integration owner: Codex; writable checkout только
+  `D:\RESplasmide`.
+- Владелец 06.09.2026 разрешил пакет, exact stage/commit, bundle и обычный push. Tag не
+  создаётся: имя не задано, а BG-022 открыт.
+- Принятые входы нового пакета: точечный common-features stub, три независимых inventory
+  и сохранение raw stdout/stderr. Перепроверяется только опровергнутый RSS-контракт.
 
-- Base/HEAD: `15169db8636ed8c9fdc2dbb759a8719f58e7af23`; accepted dirty main:
-  150 tracked modified + 54 untracked, index clean.
-- RED: полный Vitest собрал 856 файлов / 9 280 тестов (9 260 passed, 20 skipped),
-  затем завершился с code 1: unnamed fork-worker exit и пять `ECONNREFUSED` к
-  `localhost:3000`; относительно предыдущего gate потеряны 1 файл / 6 тестов.
-- Локализация: три запуска `container-editor-skeleton-v2.test.jsx` дали 25/25 assertions,
-  но `--detectAsyncLeaks` обнаружил 7 висящих Promise из fire-and-forget primer hydration.
-- Цель: smoke-тест не запускает неотносящиеся primer hydration и реальный HTTP; focused
-  leak-check завершается с 0 leaks, а полный gate собирает весь набор и выходит с code 0.
-- Writer mode: solo; Integration owner: Codex; writable checkout только main.
-- Correction manifest: этот файл и
-  `gui/designer/src/components/CanvasSkeleton/__tests__/container-editor-skeleton-v2.test.jsx`.
-  Существующий B1-ui hunk теста (pre-edit SHA-256
-  `b1060be0306ac83c499f152580bebdb30df56f1cdd98fb2552b6b366ef459621`) сохранить.
-- OUT: product code, другие тесты, BUGS/BACKLOG/PROJECT_STATE, вторичные worktree,
-  dependency/config changes, staging, commit, bundle и push.
-- Gate: focused 1 файл / 25 тестов, 0 async leaks и 0 localhost errors → один read-only
-  review → один post-correction Vitest → при PASS pytest → production build.
-- Если тот же worker failure переживает correction либо открывается новая корневая
-  причина — STOP и новое планирование; второй test-only correction запрещён.
-- Результат smoke-isolation: focused 1 файл / 25 тестов PASS без leaks и
-  `ECONNREFUSED`; cleanup/unstub, `_primersHydrated` и локальный fetch-stub приняты.
-- Полный post-correction Vitest: из трёх прогонов на одном дереве два собрали
-  857 файлов / 9 286 тестов и вышли с code 0; один собрал 856 / 9 266, потерял другой
-  файл на 20 тестов и завершился `Worker exited unexpectedly`, code 1. Единственный
-  JSON-инвентарный repeat чистого прогона совпал с `rg` поимённо: 857 / 857.
-- Вердикт: причина worker crash не установлена и S3-C2 её не устранил; BG-022 открыт.
-  Поскольку тот же дефект пережил correction, действует STOP без второго test-only pass.
-- Остаточный сетевой шум: пять пойманных `ECONNREFUSED` печатает happy-dom для
-  относительного `fetch('/common-features.json')`; это отдельная инфраструктурная
-  гигиена и по имеющимся данным не причина worker crash.
-- Остальной gate: pytest 195 / 195 и production build 624 modules — PASS; browser не
-  проверялся. Полный Vitest не считается стабильно зелёным.
+## Наблюдаемый контракт
 
-## Основание и границы
-
-- HEAD/base: `15169db8636ed8c9fdc2dbb759a8719f58e7af23`.
-- Pre-checkpoint dirty main (150 M / 54 ??) был принятым воспроизводимым входом и
-  целиком зафиксирован в recovery checkpoint `31fcca17`. Вторичные worktree исключены и
-  оставлены нетронутыми.
-- Writer mode: один Implementation coder, он же Integration owner; main checkout
-  `D:\RESplasmide`, без отдельного worktree. Stage/commit/push запрещены.
-- Planner: Claude (сессия аудита 05.09). Приёмка владельца после одного review.
-- Источник правок: пакет `D:\RESplasmide\.claude\handoff\2026-09-05-sync1` вне репозитория —
-  `02-BUGS-delta.md`, `03-BACKLOG-delta.md`, `04-docs-delta.md`,
-  `05-PROJECT_STATE.md`. Готовый текст применять как есть. При расхождении текста с
-  кодом не «улучшать» самостоятельно, а записать в handoff как open question.
-- Цель: трекеры и нормативные документы описывают код, который есть в дереве сейчас;
-  полный Vitest gate становится зелёным (BG-047).
+1. Test setup перехватывает только точную строку `/common-features.json`, возвращает
+   свежую test DB и делегирует любой другой URL/Request исходному happy-dom fetch.
+   Локальные success/error mocks тестов имеют приоритет и восстанавливаются cleanup.
+2. Gate требует raw exit 0, Vitest reason `passed`, JSON success и точное ненулевое
+   expected = ended = run-end = JSON inventory; missing/extra/duplicate дают nonzero.
+3. Каждый RSS-сэмпл содержит `moduleId`, один раз полученный из текущего Vitest worker
+   context, и `phase`; gate нормализует путь централизованно. Каждый expected module
+   обязан дать ровно один `setup`.
+4. Модуль со state `skipped` может дать `setup` либо `setup -> afterAll`; любой иной
+   модуль обязан дать точную пару. State кроме `passed`/`skipped` независимо оставляет
+   общий gate красным. Неизвестный module/state, duplicate, неверный порядок, missing
+   или лишний sample — FAIL; skipped setup-only отдельно перечисляются в summary.
+5. Сопоставление RSS по одному `moduleId` допустимо только при его уникальности в expected
+   inventory; неоднозначность между проектами делает evidence неполным.
+6. RSS остаётся точечным `process.memoryUsage().rss`, не process-tree total и не peak.
+   Каждый run сохраняет отдельные byte-for-byte stdout/stderr, JSON, lifecycle, RSS и
+   summary в ignored `tmp/vitest-gate/<run-id>`.
 
 ## Manifest
 
-Часть S1 (docs-only):
+Implementation candidate:
 
-- `BUGS.md`, `docs/BACKLOG.md`, `PROJECT_STATE.md`;
-- `AGENTS.md`, `docs/COMPONENT_MAP.md`, `docs/ARCHITECTURE.md`, `docs/DESIGN_SYSTEM.md`;
-- `CHANGELOG.md`, `README.md`, `gui/designer/README.md`;
-- `.agents/skills/bio-invariants/SKILL.md`, `.agents/skills/annotation-contract/SKILL.md`.
+- `CURRENT_TASK.md`;
+- `gui/designer/package.json`;
+- `gui/designer/vite.config.js`;
+- `gui/designer/src/test/common-features-fetch.js`;
+- `gui/designer/src/test/setup.js`;
+- `gui/designer/src/test/vitest-process-probe.js`;
+- `gui/designer/src/test/__tests__/common-features-fetch.test.js`;
+- `gui/designer/scripts/vitest-inventory-reporter.mjs`;
+- `gui/designer/scripts/vitest-gate.mjs`;
+- `gui/designer/scripts/__tests__/vitest-gate.test.js`;
+- `gui/designer/scripts/__tests__/fixtures/vitest-gate-fully-skipped.test.js`.
 
-Часть S2 (одна строка кода):
+Planner tracker sync: `BUGS.md`, `docs/BACKLOG.md`, `PROJECT_STATE.md`.
 
-- `gui/designer/src/components/Library/lib/importer-strings.js`.
+## OUT
 
-OUT: `DECISIONS.md`; любой другой продуктовый код и тесты; новые файлы в `docs/` или в
-корне; `.graphify/`; вторичные worktree; BUGS/BACKLOG-записи, не названные в `02`/`03`;
-`CURRENT_TASK.md` сверх отметки чеклиста ниже.
+- Product fetch/load semantics, `/api/import`, store/plugin behavior и BG-067.
+- Смена Vitest pool, зависимостей, timeout, concurrency или product fixtures.
+- Закрытие BG-022, три подтверждающих прогона, browser и продуктовые ASM/ACT-пакеты.
+- Вторичные worktree, Graphify, release tag и force-push.
 
-## Инварианты пакета
+## TDD и проверка
 
-- `BUGS.md` содержит только живые дефекты плюс один раздел «Ожидают приёмки владельца
-  или checkpoint»; закрытые записи удаляются, история остаётся в Git.
-- Каждая новая BG-запись: заголовок, механизм с `file:line`, риск, приёмка. Статус
-  evidence — «по коду»; browser-воспроизведение не выдумывать.
-- `CURRENT_TASK.md` ≤ 200 строк; в `docs/` ≤ 8 файлов `.md`; никаких `*_TODO`,
-  `*_REPORT`, временных spec.
-- Каждая ссылка, заявленная как существующий repo-файл, разрешается рекурсивно;
-  псевдосинтаксис, archive members, generated/policy и внешние artifacts явно
-  классифицируются отдельно.
-- Единственное изменение поведения — удаление мёртвого ключа BG-047.
-- Строки изменённых файлов сохраняют существующий стиль переносов; `git diff --check`
-  не добавляет новых предупреждений кроме LF→CRLF.
+- [x] RED/GREEN для точечного common-features stub и потерянного inventory; compatibility
+      selection подтвердил override/cleanup/delegation.
+- [x] Первый полный gate дал exact 859/859 во всех inventory и опроверг строгую RSS-пару:
+      setup 859, afterAll 857; reporter отдельно дал два ended state `skipped`, но старые
+      samples не позволяют сопоставить их по moduleId.
+- [x] RED-RSS2: `passed` setup-only должен FAIL, а точно сопоставленный `skipped`
+      setup-only — PASS; unknown/duplicate/missing module остаются fail-closed.
+- [x] Реализация записывает реальный moduleId в setup и afterAll; focused real gate
+      exact 2/2 доказал одну RSS-пару и один именованный skipped setup-only; unit 25/25.
+- [x] Frozen digest `006d5009…a42a` воспроизвели два независимых read-only reviewer;
+      оба дали ACCEPT без correction.
+- [x] Один полный параллельный `test:gate`: exact 860/860 во всех inventories,
+      9 318 тестов (9 297 passed, 21 skipped), exit 0, unhandled 0, RSS complete.
+- [x] Production build: 624 modules PASS; scoped ESLint 8 infra-файлов: 0 ошибок.
+- [x] Финальные `git diff --check`, размеры, exact status/manifest и package digest.
+      Pytest/browser вне scope.
 
-## Шаги
+## Критерий завершения
 
-- [x] S1.1 `BUGS.md` по `02`: удалить 8 записей; свернуть 10 в раздел ожидания;
-      переписать BG-028, BG-030; дополнить BG-007, BG-033, BG-045, BG-062; добавить
-      BG-063…BG-087 в указанные секции.
-- [x] S1.2 `docs/BACKLOG.md` по `03`.
-- [x] S1.3 Нормативные документы и skills по `04`.
-- [x] S1.4 `PROJECT_STATE.md` = `05` целиком.
-- [x] S1.5 Проверки S1 из раздела Gate; результат в handoff.
-- [x] S2.1 Удалить строку `featureEditorSubfeatureDelete: '✕',` в `importer-strings.js`
-      (сейчас строка 274). Доказательство отсутствия потребителей:
-      `rg -n featureEditorSubfeatureDelete gui/designer/src` → только определение.
-- [x] S2.2 Focused test (естественный RED: 05.09 в полном прогоне этот файл FAIL):
-      `npm test -- src/components/Library/__tests__/strings-coverage.test.js --maxWorkers=4`
-      → 1 файл / 1 тест PASS.
-- [x] Handoff: manifest; SHA-256 каждого файла manifest после правок; `wc -l` для
-      `CURRENT_TASK.md` и `BUGS.md`; вывод каждой проверки gate; open questions.
+- Common-features localhost noise отсутствует; остаточный `/api/import` шум не маскируется.
+- Полный gate либо поимённо доказывает каждый модуль и module-aware RSS, либо честно
+  называет потерю/state/sample и возвращает nonzero.
+- BG-022 остаётся OPEN до причины, исправления и трёх подряд полных parallel exact PASS;
+  один чистый gate этого пакета для закрытия недостаточен.
 
-## Gate
+Итоговый run: 860 setup, 857 afterAll, 857 точных пар и три поимённых skipped
+setup-only (`vitest-gate-fully-skipped`, `canvas-click-add-v99`,
+`skeleton-canvas-layout`); 1 717/1 717 RSS-сэмплов валидны. Наблюдавшийся максимум
+worker RSS — 866 148 352 bytes; это не process-tree total и не гарантированный peak.
 
-- `git status --porcelain` показывает изменения только в manifest поверх стартового
-  состояния; число `??` остаётся 54 (новых untracked нет).
-- `wc -l CURRENT_TASK.md` ≤ 200; `ls docs/*.md | wc -l` ≤ 8.
-- Рекурсивная проверка реальных filesystem-ссылок в backticks → 0 unresolved;
-  псевдосинтаксис (`.js/.jsx`), члены `.bodge`-архива, globs и явно внешние пути
-  handoff/benchmark, а также опциональные generated/policy-каталоги классифицируются
-  отдельно и не считаются обязательными repo-файлами.
-- Focused test `strings-coverage.test.js` PASS.
-- `git diff --check` без новых предупреждений кроме LF→CRLF.
-- Related и полный прогон coder не выполняет: Planner запускает полный
-  test/build/pytest один раз перед S3 (checkpoint).
-- Review: один read-only reviewer, линза «документ против кода»: выборочно 8 новых
-  BG-записей (пути, строки, механизм), таблица размеров в BACKLOG, карта AGENTS.md.
+## Следом, не смешивать
 
-## Контракт содержимого
-
-- Новые BG-номера идут подряд с BG-063; нумерацию не переставлять.
-- Секции BUGS.md: P0/P1 биология и потеря данных; P1 неверное или вводящее в
-  заблуждение состояние; P2 доступность и визуальная читаемость; P2 тестовая
-  инфраструктура; в конце — «Ожидают приёмки владельца или checkpoint».
-- BACKLOG сохраняет структуру Now / Next / Maintenance / Legacy / Active specifications /
-  Ideas; выполненные пункты удаляются, а не помечаются.
-- Цифры gate в `05` — из сессии 05.09 (Vitest 857 файлов / 9 286 тестов, 1 FAIL
-  BG-047; pytest 195; build PASS; ESLint 360 errors / 5 458 warnings). Не пересчитывать.
-
-## Допущения Planner
-
-- A1: BG-017/026/029/031/040 переносятся в раздел ожидания, не удаляются.
-- A2: ручные boundary-праймеры регистрируются как BG-064 с приёмкой «решение владельца».
-- A3: BG-007 остаётся открытым с зафиксированным противоречием по химии KLD.
-- A4: `DECISIONS.md` не меняется; предложение по источнику истины каталогов лежит в `04`.
-- A5: checkpoint, bundle и push выполняет Planner после приёмки SYNC-1.
-
-## После приёмки (S3, не для coder)
-
-Выполнено: полный gate и flake-классификация → `git worktree list` → точный stage
-204 файлов (150 M + 54 ??) → recovery checkpoint `31fcca17` с честным телом про BG-022,
-gate и manifest digests. Этот отдельный docs-commit фиксирует checkpoint как base;
-`git bundle --all` на другой диск и обычный `git push -u origin
-checkpoint/integration-2026-07-17` выполняются по выданному разрешению после него.
-
-## Открытые вопросы владельца
-
-- Семантика ручных boundary-праймеров (BG-064): дефект или принятая конвенция.
-- Химия KLD (BG-007): 5′-фосфат в заказе или киназный шаг.
-- Источник истины по каталогам ферментов: JS; фиксировать в DECISIONS §7.
-- Второй экземпляр репозитория: путь для bundle, push в origin да/нет, тег да/нет.
+- Первый продуктовый пакет после infra acceptance: ASM-6, затем ASM-5.
+- ACT-0 ждёт явных семантических решений владельца, включая BG-064 и KLD.

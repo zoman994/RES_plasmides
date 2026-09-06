@@ -746,20 +746,49 @@ assertion-дефекта и доказанной связи с DNA Search, LINEA
 файл на 6 тестов. Поэтому изоляция `container-editor-skeleton-v2.test.jsx` принята как
 локальная гигиена, но не как установленная причина или исправление worker crash.
 
+**Наблюдение INFRA-GATE-1 06.09.2026:** на recovery base `6145bf0` с
+диагностическим candidate один полный parallel run завершил Vitest code 0 и точные
+expected = ended = run-end = JSON inventories **859 / 859**: 9 307 тестов, 9 287
+passed, 20 skipped, 0 failed. Fork-error не сообщён, ни один module/file не отсутствует
+в inventories. Gate вернул FAIL только потому, что строгий RSS-контракт ожидал 859 пар,
+а получил 859 setup и 857 afterAll. Reporter отдельно зафиксировал 857 модулей state
+`passed` и два state `skipped`: `canvas-click-add-v99.test.jsx` и
+`skeleton-canvas-layout.test.jsx`. Старые RSS-записи не содержат moduleId, поэтому их
+точное соответствие двум skipped-модулям остаётся гипотезой. INFRA-GATE-1 остановлен:
+опровергнут контракт инструмента, а не воспроизведён или исправлен BG-022. Следующий
+candidate обязан связать RSS с moduleId и разрешать setup-only только модулю, который
+reporter завершил как `skipped`.
+
+**Наблюдение INFRA-GATE-2 06.09.2026:** принятый module-aware candidate выполнил один
+полный parallel run с exact expected = ended = run-end = JSON inventories **860 / 860**:
+9 318 тестов, 9 297 passed, 21 skipped, 0 failed, raw exit 0, reason `passed`, 0
+unhandled errors. Все 1 717 RSS-сэмплов валидны: 860 setup, 857 afterAll, 857 точных
+пар. Три setup-only записи теперь по moduleId совпадают только с reporter state
+`skipped`: инфраструктурная fixture, `canvas-click-add-v99.test.jsx` и
+`skeleton-canvas-layout.test.jsx`; sequence errors 0. Наблюдавшийся worker RSS maximum
+866 148 352 bytes — точечный sample, не process-tree total и не гарантированный peak.
+Этот run не воспроизвёл fork-error и доказал полноту собственного inventory, но не
+установил причину интермиттентного crash и один не закрывает BG-022.
+
 Пять безымянных блоков `ECONNREFUSED` к `localhost:3000` печатает happy-dom
 (`node_modules/happy-dom/lib/fetch/Fetch.js:539`) через `page.console.error` для
 относительного `fetch('/common-features.json')` в
 `gui/designer/src/feature-detection.js:49`. Ошибка перехватывается и не является
-unhandled rejection; по коду это отдельный от worker crash шум. 13 тестовых файлов,
-которые рендерят Library, App или Annotator без fetch-stub, требуют отдельного
-infra-пакета; работа записана в BACKLOG.
+unhandled rejection; по коду это отдельный от worker crash шум. До INFRA-GATE-2 аудит
+считал 13 тестовых файлов, рендерящих Library, App или Annotator без fetch-stub,
+кандидатами этого источника шума.
+
+Точечный common-features test stub убрал этот источник из полного INFRA-GATE-2 run.
+Остались четыре анонимных блока `ECONNREFUSED`; временная compatibility-трассировка
+ранее связала их с двумя делегированными запросами `/api/import`. Это отдельный backlog,
+а не критерий закрытия BG-022.
 
 **Риск:** полный прогон может потерять файл и дать неполное доказательство; поэтому один итоговый
 счётчик без сверки списка файлов недостаточен. Нагрузочные assertion-timeout принадлежат BG-019,
 а не этому дефекту.
 
 **Диагностика и приёмка:** при следующем воспроизведении сохранить stderr, имя потерянного файла,
-import/test duration и RSS процесса; сравнить `maxWorkers=4`, `maxWorkers=2` и
+import/test duration и module-aware RSS процесса; сравнить `maxWorkers=4`, `maxWorkers=2` и
 `--no-file-parallelism`. Закрывать после устранения установленной причины и трёх последовательных
 полных прогонов с точным file inventory без fork-error; произвольные test-timeout не поднимать.
 

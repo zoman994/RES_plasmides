@@ -145,6 +145,7 @@ export default defineConfig({
   test: {
     environment: 'happy-dom',
     globals: true,
+    setupFiles: ['./src/test/setup.js'],
     // M-X.5 K6 (07.05.2026) — switched from default `threads` to `forks`.
     // Symptom: ~half the test files (everything that calls `render()`)
     // started failing with «document is not defined» / `environment 0ms`.

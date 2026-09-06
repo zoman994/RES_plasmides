@@ -242,14 +242,10 @@ unmount cleanup drops the pending 500 ms debounce without flushing.
 
 ### Test infrastructure
 
-Сделать загрузку common-features детерминированной в Vitest: добавить в `setupFiles`
-глобальный stub только для `/common-features.json` либо инъекцию загрузчика. Неожиданные
-URL не должны молча получать успешный ответ, а тесты fail-closed/error-path обязаны явно
-переопределять default stub. Сейчас относительный fetch из `feature-detection.js:49`
-разрешается happy-dom в `localhost:3000` и печатает пять безымянных `ECONNREFUSED` через
-`page.console.error`; аудит выявил 13 файлов-кандидатов, рендерящих Library, App или
-Annotator без stub. Это отдельная гигиена логов и изоляция тестов, а не исправление или
-критерий закрытия BG-022.
+После точечного common-features stub compatibility trace зафиксировал два делегированных
+запроса `/api/import`, которые напечатали четыре безымянных блока `ECONNREFUSED`. Не
+расширять глобальный stub: отдельно определить владельца test ingress и явные
+success/error fixtures для этих запросов.
 
 ### Oversized module boundaries
 
