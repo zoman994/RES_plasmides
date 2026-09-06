@@ -1,12 +1,13 @@
 # PROJECT_STATE — BodgeGene
 
-Обновлено: 06.09.2026 (INFRA-GATE-2 принят, готов к checkpoint).
+Обновлено: 06.09.2026 (INFRA-GATE-2 checkpointed).
 
 ## Текущий снимок
 
 - GUI: **0.8.8-alpha**; ветка `checkpoint/integration-2026-07-17`; recovery checkpoint
   принятого product/WIP-снимка — `31fcca17a56e9d76c9db46c2c0d8cd6972968658`
-  (предыдущий base `15169db8636ed8c9fdc2dbb759a8719f58e7af23`).
+  (предыдущий base `15169db8636ed8c9fdc2dbb759a8719f58e7af23`); принятый infra checkpoint —
+  `7417966c2d29adc424139b21e59b9154bf42863c`.
 - Checkpoint зафиксировал точный main-manifest: 150 изменённых tracked + 54 untracked =
   204 файла, 22 358 additions / 2 930 deletions. Main был чист сразу после commit;
   follow-up snapshot — `6145bf0f1fcc8e44211eaf17445f1b00f84a6d96`. Оба commit отправлены
@@ -51,7 +52,8 @@
 
 ## Текущий пакет
 
-**INFRA-GATE-2 принят** на `6145bf0` и готов к checkpoint (см. `CURRENT_TASK.md`). Два
+**INFRA-GATE-2 checkpointed** как `7417966c2d29adc424139b21e59b9154bf42863c`
+на base `6145bf0` (см. `CURRENT_TASK.md`). Два
 read-only reviewer воспроизвели frozen digest и дали ACCEPT. Единственный полный
 parallel gate: exact 860/860 expected/ended/run-end/JSON, 9 318 тестов (9 297 passed,
 21 skipped), raw exit 0, unhandled 0. Module-aware RSS complete: 860 setup, 857

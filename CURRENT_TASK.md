@@ -1,6 +1,7 @@
-# CURRENT_TASK — INFRA-GATE-2: module-aware RSS и точный Vitest gate
+# CURRENT_TASK — INFRA-GATE-2 checkpointed: module-aware RSS и точный Vitest gate
 
-**Статус:** принят 06.09.2026 на recovery base, готов к exact checkpoint. INFRA-GATE-1 остановлен после
+**Статус:** принят и сохранён 06.09.2026 как
+`7417966c2d29adc424139b21e59b9154bf42863c`. INFRA-GATE-1 остановлен после
 информативного полного прогона: все 859 модулей завершились; reporter отдельно показал
 два skipped, а RSS — две setup-only записи без moduleId. Их точное соответствие ещё не
 доказано. Строгий контракт «две RSS-точки на каждый expected module» отклонён; это не
@@ -8,7 +9,8 @@ worker crash и не закрытие BG-022.
 
 ## Основание и режим
 
-- Base/HEAD: `6145bf0f1fcc8e44211eaf17445f1b00f84a6d96`; текущий candidate не закоммичен.
+- Accepted base: `6145bf0f1fcc8e44211eaf17445f1b00f84a6d96`; implementation checkpoint:
+  `7417966c2d29adc424139b21e59b9154bf42863c`.
 - Writer mode: solo; Integration owner: Codex; writable checkout только
   `D:\RESplasmide`.
 - Владелец 06.09.2026 разрешил пакет, exact stage/commit, bundle и обычный push. Tag не
